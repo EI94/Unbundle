@@ -2,7 +2,10 @@ import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import type { Client as PgClient } from "pg";
+import { tasksLockOfUseCaseSql } from "../factory/pull-request-sql.ts";
 
 // `use-case-admin repo-unregister` (rilascio 8.0c) sul database del pacchetto: lo script gira in un processo figlio, come
 // lo lancia l'operatore di Lateral Space, con `USE_CASE_ADMIN_DATABASE_URL` e il trasporto locale
@@ -305,20 +308,41 @@ test("--apply ha chiuso le PR aperte di quel repository: i compiti in revisione 
   assert.equal((await prs())[0], "A:REPO#11:chiusa");
 });
 
-test("un evento che aveva già letto il caso mentre l'operatore toglie il repository non scrive niente: nessuna PR aperta dopo, nessun segnale di vita", opts, async () => {
-  /** Un esecutore che, subito prima della transazione dell'evento, fa girare `between` per intero. */
-  const racing = (between: () => void): typeof exec => {
-    let fired = false;
-    return {
-      batch: async (statements) => {
-        if (!fired && statements.some((st) => st.text.includes("INSERT INTO use_case_github_deliveries"))) {
-          fired = true;
-          between();
-        }
-        return exec.batch(statements);
-      },
-    };
+/** Un esecutore che, subito prima della transazione dell'evento, fa girare `between` per intero. */
+function racing(between: () => void): typeof exec {
+  let fired = false;
+  return {
+    batch: async (statements) => {
+      if (!fired && statements.some((st) => st.text.includes("INSERT INTO use_case_github_deliveries"))) {
+        fired = true;
+        between();
+      }
+      return exec.batch(statements);
+    },
   };
+}
+
+/** Una connessione sua al database di prova, per tenere un lock come lo terrebbe lo script dell'operatore a metà. */
+async function lockHolder(): Promise<PgClient> {
+  const pg = createRequire(import.meta.url)("pg") as { Client: new (config: { connectionString: string }) => PgClient };
+  const client = new pg.Client({ connectionString: url! });
+  await client.connect();
+  return client;
+}
+
+/** Vero quando una transazione di questo database aspetta un advisory lock (al massimo 3 secondi). */
+async function someoneWaits(client: PgClient): Promise<boolean> {
+  for (let i = 0; i < 150; i++) {
+    const { rows } = await client.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM pg_locks WHERE locktype = 'advisory' AND NOT granted AND database = (SELECT oid FROM pg_database WHERE datname = current_database())`,
+    );
+    if (rows[0].n > 0) return true;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  return false;
+}
+
+test("un evento che aveva già letto il caso mentre l'operatore toglie il repository non scrive niente: nessuna PR aperta dopo, nessun segnale di vita", opts, async () => {
   const activity = async (useCaseId: string) => String((await q(`SELECT last_activity_at FROM use_case_tasks WHERE use_case_id = $1 AND ref = 'T-1'`, [useCaseId]))[0].last_activity_at);
 
   // Una PR nuova in B, che ha ancora il repository: l'evento legge il caso, poi l'operatore toglie il repository.
@@ -353,4 +377,48 @@ test("un evento che aveva già letto il caso mentre l'operatore toglie il reposi
   );
   assert.equal((unregistered as AdminRun | null)?.last.status, "APPLIED");
   assert.equal(await activity(ids.uc2), before, "nessun segnale di vita da un repository tolto");
+});
+
+test("un'issue che aveva già letto il caso mentre l'operatore toglie il repository non lascia una proposta da decidere: aspetta il lock dei compiti e rilegge la registrazione", opts, async () => {
+  const issue = (number: number, title: string, executor = exec) =>
+    github.applyGithubEvent(executor, {
+      deliveryId: `repo-${suffix}-issue-${number}`,
+      event: "issues",
+      parsed: { kind: "proposta", repo: REPO, number, commentId: null, title, caseCodes: ["NR-0001"], onPullRequest: false },
+    });
+  // Il repository di nuovo per NR-0001, il caso con il dossier aperto: le sue issue diventano proposte lì.
+  const register = () => q(`INSERT INTO use_case_repos (use_case_id, workspace_id, repo, folder, created_by_user_id) VALUES ($1, $2, $3, 'casi/nr-0001', $4)`, [ids.uc1, ids.wsA, REPO, ids.lead]);
+
+  // L'issue legge il caso; prima della sua transazione l'operatore toglie il repository per intero.
+  await register();
+  let unregistered: AdminRun | null = null;
+  const raced = await issue(
+    41,
+    "Arrivata mentre si toglie",
+    racing(() => {
+      unregistered = runAdmin(["--workspace", ids.wsA, "--repo", REPO, ...confirm]);
+    }),
+  );
+  assert.equal((unregistered as AdminRun | null)?.last.status, "APPLIED", "il repository è stato tolto nel mezzo");
+  assert.equal(raced.esito, "applicato", "la consegna è registrata");
+  assert.deepEqual(await registrations(), []);
+  assert.equal(await titled("Arrivata mentre si toglie"), 0, "nessuna proposta da un repository tolto");
+
+  // L'operatore è a metà della sua transazione: il lock dei compiti preso, la registrazione tolta ma non ancora
+  // confermata. L'issue ha letto il caso, aspetta il lock e poi non trova più la registrazione.
+  await register();
+  const holder = await lockHolder();
+  try {
+    const lock = tasksLockOfUseCaseSql(ids.uc1);
+    await holder.query("BEGIN");
+    await holder.query(lock.text, [...lock.params]);
+    await holder.query(`DELETE FROM use_case_repos WHERE workspace_id = $1 AND use_case_id = $2 AND lower(repo) = lower($3)`, [ids.wsA, ids.uc1, REPO]);
+    const waiting = issue(42, "Arrivata a metà della transazione");
+    assert.equal(await someoneWaits(holder), true, "l'issue aspetta il lock dei compiti dello use case");
+    await holder.query("COMMIT");
+    assert.equal((await waiting).esito, "applicato");
+    assert.equal(await titled("Arrivata a metà della transazione"), 0, "dopo il lock la registrazione non c'è più: niente proposta");
+  } finally {
+    await holder.end();
+  }
 });

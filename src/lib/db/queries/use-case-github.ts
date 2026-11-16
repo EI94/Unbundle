@@ -19,8 +19,9 @@ import "server-only";
  *   Diventa una proposta da decidere (`use-case-task-proposals.ts`), mai un compito da sola.
  * - **Una volta sola:** l'id della consegna sta in `use_case_github_deliveries`, nella stessa transazione degli
  *   effetti; se c'è già, l'evento non conta di nuovo («ripetuto»).
- * - **Un repository tolto nel mezzo** (`use-case-admin repo-unregister`, che prende lo stesso lock dei compiti): una PR o
- *   un push che avevano già letto il caso non scrivono niente, se alla transazione la registrazione non c'è più.
+ * - **Un repository tolto nel mezzo** (`use-case-admin repo-unregister`, che prende lo stesso lock dei compiti): una PR,
+ *   un push o una proposta che avevano già letto il caso non scrivono niente, se alla transazione la registrazione non
+ *   c'è più.
  *
  * Nessuna lettura qui raggruppa, conta o ordina per persona (art. 15.4).
  */
@@ -145,11 +146,16 @@ async function applyProposal(executor: UcExecutor, deliveryId: string, event: st
   if (!proposalTitleAllowed(e.title)) return ignore(executor, deliveryId, event, e.repo, "testo_non_ammesso");
   const externalKey = `gh:${e.repo.toLowerCase()}#${e.number}${e.commentId ? `:c${e.commentId}` : ""}`;
   const builders = await loadBuilderScope(executor, ucLsDomains());
+  // Come una PR: prima il lock dei compiti dello use case (quello di `use-case-admin repo-unregister`), poi la proposta
+  // solo se il repository è ancora del caso, riletto nella transazione. Altrimenti una proposta arrivata mentre
+  // l'operatore toglie il repository resterebbe da decidere, dopo che lo script ha tolto quelle di quel repository.
+  const live = ucSql`(${freshSql(deliveryId)} AND ${stillRegisteredSql(target, e.repo)})`;
   const results = await executor.batch([
+    tasksLock(target),
     deliveryInsert(deliveryId, event, e.repo, "applicato"),
-    ...proposalStatements(target, { source: "github", externalKey, title: e.title, link: proposalUrl(e.repo, e.number, e.commentId) }, freshSql(deliveryId), builders),
+    ...proposalStatements(target, { source: "github", externalKey, title: e.title, link: proposalUrl(e.repo, e.number, e.commentId) }, live, builders),
   ]);
-  if (results[0].length === 0) return { esito: "ripetuto" };
+  if (results[1].length === 0) return { esito: "ripetuto" };
   return { esito: "applicato", casi: [{ workspaceId: target.workspaceId, useCaseId: target.useCaseId, caseId: target.caseId, compito: null, stato: "proposta" }] };
 }
 
@@ -176,7 +182,7 @@ const freshSql = (deliveryId: string): SqlFragment =>
  * Vero se il repository è ancora registrato per lo use case, letto nella transazione degli effetti (dopo il lock dei
  * compiti). I casi si leggono prima, fuori dalla transazione: nel mezzo `use-case-admin repo-unregister` può aver tolto
  * la registrazione e chiuso le PR aperte, e una PR scritta dopo resterebbe aperta per sempre (gli eventi di dopo si
- * ignorano).
+ * ignorano); una proposta scritta dopo resterebbe da decidere, anche se lo script toglie quelle di quel repository.
  */
 const stillRegisteredSql = (t: Target, repo: string): SqlFragment =>
   ucSql`EXISTS (SELECT 1 FROM use_case_repos gr WHERE gr.workspace_id = ${cast(t.workspaceId, "uuid")} AND gr.use_case_id = ${cast(t.useCaseId, "uuid")}
