@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray, or, sql } from "drizzle-orm";
 import { db } from "..";
 import {
   activities,
@@ -70,6 +70,11 @@ export async function linkActivityDependency(
   });
 }
 
+/**
+ * Le dipendenze che toccano le attività di un'unità, in un verso o nell'altro. Gli id vanno con `inArray`: un array JS
+ * dentro `ANY(${…})` diventa `ANY(($1, $2))`, che PostgreSQL rifiuta («malformed array literal» con un'attività,
+ * «op ANY/ALL (array) requires array on right side» con due o più).
+ */
 export async function getDependenciesByDepartment(departmentId: string) {
   const deptActivities = await getActivitiesByDepartment(departmentId);
   const activityIds = deptActivities.map((a) => a.id);
@@ -79,7 +84,10 @@ export async function getDependenciesByDepartment(departmentId: string) {
     .select()
     .from(activityDependencies)
     .where(
-      sql`${activityDependencies.sourceActivityId} = ANY(${activityIds}) OR ${activityDependencies.targetActivityId} = ANY(${activityIds})`
+      or(
+        inArray(activityDependencies.sourceActivityId, activityIds),
+        inArray(activityDependencies.targetActivityId, activityIds)
+      )
     );
 }
 

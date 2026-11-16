@@ -53,12 +53,16 @@ const DEFAULT_SUITES = [
 ];
 const SUITE = /^src\/(lib\/use-cases\/.+|lib\/db\/use-case-hub[^/]*|components\/use-cases\/.+|lib\/mappatura\/.+)\.integration\.test\.ts$/;
 
+/** The database suites of the app's own queries (src/lib/db/queries): the same cluster, the same copies. */
+const QUERY_SUITES = ["src/lib/db/queries/**/*.integration.test.ts"];
+const QUERY_SUITE = /^src\/lib\/db\/queries\/.+\.integration\.test\.ts$/;
+
 const requested = process.argv.slice(2);
 for (const file of requested) {
-  if (!SUITE.test(file)) throw new Error(`Not a hub integration suite: ${file}`);
+  if (!SUITE.test(file) && !QUERY_SUITE.test(file)) throw new Error(`Not a hub integration suite: ${file}`);
   if (!existsSync(resolve(repoRoot, file))) throw new Error(`Suite not found: ${file}`);
 }
-const files = requested.length ? requested : DEFAULT_SUITES;
+const files = requested.length ? requested : [...DEFAULT_SUITES, ...QUERY_SUITES];
 
 // Human output on stdout, and a TAP copy in a temporary file for the counts below.
 const reportDir = mkdtempSync(join(tmpdir(), "hub-db-tests-"));
