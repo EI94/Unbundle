@@ -16,7 +16,6 @@ import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { users } from "@/lib/db/schema";
 import { isEmailVerifiedValue, isLateralSpaceEmail } from "@/lib/uc/lateral-space";
 import { isUuid } from "@/lib/uc/ids";
-import type { TeamPrincipal } from "@/lib/use-cases/mcp/auth";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
 import type { ContextActor } from "@/lib/context/visibility";
 
@@ -52,16 +51,8 @@ export async function contextActorFromSession(workspaceId: string): Promise<Acto
   return { ok: true, actor: contextActorFor(session.user, access, workspaceId) };
 }
 
-/** La persona del token dell'MCP del team, canale «claude». Ruolo e Lateral Space sono quelli riletti per la richiesta. */
-export function contextActorFromPrincipal(principal: TeamPrincipal): ContextActor {
-  return {
-    workspaceId: principal.workspaceId,
-    userId: principal.userId,
-    role: principal.viewer.role,
-    isLateralSpace: principal.viewer.isLateralSpace === true,
-    channel: "claude",
-  };
-}
+/** La persona del token dell'MCP del team, canale «claude»: sta nel modulo puro, così il MCP non carica `auth()`. */
+export { contextActorFromPrincipal } from "@/lib/context/visibility";
 
 /** Per Granola e per la notte: la persona collegata, riletta adesso (ruolo e Lateral Space). null se non ha più accesso. */
 export async function contextActorForUser(userId: string, workspaceId: string, channel: "granola" | "cron"): Promise<ContextActor | null> {

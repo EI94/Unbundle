@@ -100,22 +100,6 @@ export interface ContextToolKit {
   now(): Date;
 }
 
-/**
- * La persona del token come chi agisce in «Contesto», canale «claude»: ruolo e Lateral Space sono quelli riletti per
- * questa richiesta (`authenticateTeamRequest`). È `contextActorFromPrincipal` di src/lib/context/server/actor.ts, qui
- * senza la sessione: quel modulo carica `auth()` (Firebase) per le pagine, e il MCP del team, che entra con il token,
- * non ne ha bisogno.
- */
-export function teamContextActor(principal: TeamPrincipal): ContextActor {
-  return {
-    workspaceId: principal.workspaceId,
-    userId: principal.userId,
-    role: principal.viewer.role,
-    isLateralSpace: principal.viewer.isLateralSpace === true,
-    channel: "claude",
-  };
-}
-
 function succeeded<T extends object>(data: T): TeamToolOutcome {
   return { outcome: "ok", result: teamResult(data) };
 }

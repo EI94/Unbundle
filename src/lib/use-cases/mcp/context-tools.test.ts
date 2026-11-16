@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { CONTEXT_TEXT } from "../../context/text.ts";
-import type { ContextActor } from "../../context/visibility.ts";
+import { contextActorFromPrincipal, type ContextActor } from "../../context/visibility.ts";
 import type { ProposalKind, SkippedCounts } from "../../context/vocab.ts";
 import type { ConfirmItem, OpenProposals, ProposalView } from "../../db/queries/context-proposals.ts";
 import type { ReadOutcome } from "../../db/queries/context-read.ts";
@@ -21,7 +21,6 @@ import {
   CONTEXT_MCP_READ_TIMEOUT_MS,
   CONTEXT_PROPOSALS_CHANGED_MESSAGE,
   CONTEXT_TWICE_MESSAGE,
-  teamContextActor,
   type TeamContextDeps,
 } from "./context-tools.ts";
 import { READ_ONLY_TOKEN_MESSAGE, type TeamToolName } from "./contract.ts";
@@ -176,7 +175,7 @@ function memoryContext(opts: { ready?: boolean } = {}) {
   };
   const deps: TeamContextDeps = {
     ready: async () => opts.ready ?? true,
-    actor: (p): ContextActor => ({ workspaceId: p.workspaceId, userId: p.userId, role: p.viewer.role, isLateralSpace: p.viewer.isLateralSpace === true, channel: "claude" }),
+    actor: contextActorFromPrincipal,
     async addNote(actor, input: NewNoteInput) {
       note("addNote", actor, input);
       if (!actor.isLateralSpace) return denied;
@@ -340,13 +339,18 @@ test("senza la 0038: riprova con «il contesto si sta preparando», senza legger
 
 test("la persona del token in «Contesto»: ruolo e Lateral Space riletti, canale «claude»; il MCP non carica la sessione", () => {
   const ls = principal();
-  assert.deepEqual(teamContextActor(ls), { workspaceId: WS, userId: ls.userId, role: "transformation_lead", isLateralSpace: true, channel: "claude" });
+  assert.deepEqual(contextActorFromPrincipal(ls), { workspaceId: WS, userId: ls.userId, role: "transformation_lead", isLateralSpace: true, channel: "claude" });
   const client = principal({ isLateralSpace: false, role: "analyst" });
-  assert.deepEqual(teamContextActor(client), { workspaceId: WS, userId: client.userId, role: "analyst", isLateralSpace: false, channel: "claude" });
-  // src/lib/context/server/actor.ts carica `auth()` (Firebase) per le pagine: le dipendenze del MCP non lo importano.
+  assert.deepEqual(contextActorFromPrincipal(client), { workspaceId: WS, userId: client.userId, role: "analyst", isLateralSpace: false, channel: "claude" });
+  // src/lib/context/server/actor.ts carica `auth()` (Firebase) per le pagine: le dipendenze del MCP non lo importano, e
+  // usano la stessa funzione che quel modulo riesporta (una sola regola per il token).
   const deps = readFileSync(new URL("./app-deps.ts", import.meta.url), "utf8");
-  assert.match(deps, /actor: teamContextActor,/);
+  assert.match(deps, /actor: contextActorFromPrincipal,/);
+  assert.match(deps, /import \{ contextActorFromPrincipal \} from "@\/lib\/context\/visibility";/);
   assert.doesNotMatch(deps, /@\/lib\/context\/server\/actor|@\/lib\/auth"/);
+  const actorModule = readFileSync(new URL("../../context/server/actor.ts", import.meta.url), "utf8");
+  assert.match(actorModule, /export \{ contextActorFromPrincipal \} from "@\/lib\/context\/visibility";/);
+  assert.doesNotMatch(actorModule, /export function contextActorFromPrincipal/);
 });
 
 // ─── add_context_notes ───────────────────────────────────────────────

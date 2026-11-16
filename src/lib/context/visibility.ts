@@ -59,6 +59,25 @@ const NOTHING: ContextAbilities = Object.freeze({
   canUseGranola: false,
 });
 
+/**
+ * La persona del token dell'MCP del team, canale «claude» (§3.3): ruolo e Lateral Space sono quelli riletti per la
+ * richiesta (`authenticateTeamRequest`). Qui, nel modulo puro, così il MCP la usa senza caricare la sessione delle
+ * pagine; src/lib/context/server/actor.ts la riesporta.
+ */
+export function contextActorFromPrincipal(principal: {
+  workspaceId: string;
+  userId: string;
+  viewer: { role: string | null; isLateralSpace: boolean };
+}): ContextActor {
+  return {
+    workspaceId: principal.workspaceId,
+    userId: principal.userId,
+    role: principal.viewer.role,
+    isLateralSpace: principal.viewer.isLateralSpace === true,
+    channel: "claude",
+  };
+}
+
 /** Che cosa può fare chi guarda: la tabella del §5.1. */
 export function contextAbilities(viewer: Pick<ContextActor, "role" | "isLateralSpace">): ContextAbilities {
   const role = viewer.role;

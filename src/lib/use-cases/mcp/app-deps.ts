@@ -36,7 +36,8 @@ import { phaseInputOf } from "@/lib/use-cases/views";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
 import type { UseCase } from "@/lib/db/schema";
 import { TEAM_MCP_PROVIDER, type TeamAuthDeps } from "./auth";
-import { teamContextActor, type TeamContextDeps } from "./context-tools";
+import { contextActorFromPrincipal } from "@/lib/context/visibility";
+import type { TeamContextDeps } from "./context-tools";
 import type { TeamHandlerDeps } from "./handler";
 import { guideAreaOptions } from "./output";
 import { TEAM_MCP_LOG_AREA, type TeamReadDeps, type TeamToolDeps } from "./tools";
@@ -250,14 +251,14 @@ const appNotifyDeps: TeamNotifyDeps = {
 /**
  * «Contesto» (rilascio 9a, docs/contesto/RILASCIO-9a-COSTRUZIONE.md §9.5): le funzioni condivise di
  * `src/lib/db/queries/context-*.ts`, che rifanno da sé il controllo di chi chiama, e la persona del token
- * (`teamContextActor`, canale «claude», come `contextActorFromPrincipal`: senza caricare la sessione di Firebase,
- * che al MCP non serve). «In breve» si riscrive dopo la risposta, con lo scheduler della rotta, come dopo
+ * (`contextActorFromPrincipal`, canale «claude», dal modulo puro: senza caricare la sessione di Firebase, che al MCP
+ * non serve). «In breve» si riscrive dopo la risposta, con lo scheduler della rotta, come dopo
  * «Conferma» nella pagina.
  */
 export function appTeamContextDeps(schedule: (task: () => Promise<void>) => void): TeamContextDeps {
   return {
     ready: () => contextStoreReady(),
-    actor: teamContextActor,
+    actor: contextActorFromPrincipal,
     addNote: (actor, input) => addContextNote(actor, input),
     read: (actor, sourceId, opts) => readContextSource(actor, sourceId, { timeoutMs: opts.timeoutMs }),
     listOpen: (actor, opts) => listOpenProposals(actor, opts ?? {}),
