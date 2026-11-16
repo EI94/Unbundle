@@ -54,6 +54,29 @@
 [data-board-root] .b-node-w:has(> .b-grip[data-drop-before])::before { content: ""; position: absolute; left: -11px; top: 4px; bottom: 4px; width: 3px; border-radius: 2px; background: var(--board-signal-deep); }
 [data-board-root] .b-drop-mark { align-self: stretch; width: 3px; margin-right: 8px; border-radius: 2px; background: var(--board-signal-deep); }
 
+/* ── Il drawer del passo ── */
+[data-board-root] .b-dr-lede { font-size: 14px; }
+[data-board-root] .b-dr-body .b-textin { margin: 0 -5px; width: calc(100% + 10px); }
+[data-board-root] .b-dr-chips { display: flex; flex-direction: column; gap: 6px; }
+[data-board-root] .b-dr-none { margin: 0; font-size: 13px; color: var(--board-graphite); }
+[data-board-root] .b-dr-text { margin: 0; font-size: 13.5px; color: var(--board-ink-2); white-space: pre-wrap; }
+/* Frequenza, ore, tipo di lavoro, qualità: i campi del riferimento (etichetta in mono sopra, campo sul colore della pagina). */
+[data-board-root] .b-dr-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; margin-bottom: 8px; }
+[data-board-root] .b-dr-fields .b-textin { margin: 0; width: 100%; padding: 5px 7px; border-color: var(--board-line-strong); border-radius: 5px; background: var(--board-bone); font: 13px var(--board-font-sans); letter-spacing: 0; text-transform: none; }
+[data-board-root] .b-dr-value { font: 13px var(--board-font-sans); letter-spacing: 0; text-transform: none; color: var(--board-ink); }
+[data-board-root] .b-select { cursor: pointer; }
+[data-board-root] .b-dec-label { display: block; margin-bottom: 2px; font-family: var(--board-font-mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--board-ink); }
+[data-board-root] .b-links { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 6px; }
+[data-board-root] .b-links-k { margin-right: 4px; font-family: var(--board-font-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--board-graphite); }
+[data-board-root] .b-chip-link { cursor: pointer; }
+[data-board-root] .b-chip-link:hover { border-color: var(--board-graphite-3); }
+[data-board-root] .b-dr-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding-top: 14px; border-top: 1px solid var(--board-line); }
+[data-board-root] .b-dr-origin { font-family: var(--board-font-mono); font-size: 11px; color: var(--board-graphite); }
+[data-board-root] .b-dr-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+[data-board-root] .b-move-to { width: auto; padding-block: 6px; }
+[data-board-root] .b-btn.b-danger { color: var(--board-crit); }
+[data-board-root] .b-copy { min-height: 60vh; resize: vertical; white-space: pre; font-family: var(--board-font-mono); font-size: 12px; }
+
 /* ── Senza mouse (telefono, tablet): i controlli che compaiono al passaggio si vedono sempre; niente trascinamento ── */
 @media (hover: none) {
   [data-board-root] .b-row-ctl { opacity: 1; }
