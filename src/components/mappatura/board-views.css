@@ -116,6 +116,9 @@
 /* Sopra le note di «Attriti» i quattro livelli: lo spazio dei controlli delle note, che stanno sopra il loro angolo. */
 [data-board-root] .b-dr-body .b-feas { margin-bottom: 12px; }
 [data-board-root] .b-dr-none { margin: 0; font-size: 13px; color: var(--board-graphite); }
+/* Una corsia senza note: chi modifica vede sempre «+ nota» (o «+ idea»), dove chi legge vede «—» (P21). Le corsie con
+   delle note lo mostrano al passaggio o al fuoco, come sul riferimento (board.css). */
+[data-board-root] .b-cell:not(:has(.b-note-w)) > .b-add { opacity: 1; }
 [data-board-root] .b-dr-text { margin: 0; font-size: 13.5px; color: var(--board-ink-2); white-space: pre-wrap; }
 /* Frequenza, ore, tipo di lavoro, qualità: i campi del riferimento (etichetta in mono sopra, campo sul colore della pagina). */
 [data-board-root] .b-dr-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; margin-bottom: 8px; }

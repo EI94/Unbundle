@@ -65,3 +65,10 @@ test("sul tocco niente trascinamento; i controlli che compaiono al passaggio si 
   assert.equal(declared(".b-point .b-point-ctl")?.get("opacity"), "1");
   assert.equal(declared(".b-add-step")?.get("opacity"), ".8");
 });
+
+test("una corsia vuota che si modifica mostra sempre «+ nota»; in una corsia con note compare al passaggio o al fuoco (P21)", () => {
+  const empty = views.find((rule) => rule.at === null && rule.selector === "[data-board-root] .b-cell:not(:has(.b-note-w)) > .b-add");
+  assert.equal(empty?.declarations.get("opacity"), "1");
+  // Il riferimento nasconde «+ nota» fino al passaggio: la regola portata resta com'è, per le corsie con note.
+  assert.equal(board.find((rule) => rule.at === null && rule.selector === "[data-board-root] .b-cell .b-add")?.declarations.get("opacity"), "0");
+});

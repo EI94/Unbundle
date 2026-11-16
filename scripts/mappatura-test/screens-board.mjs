@@ -178,6 +178,8 @@ function measure() {
       innovate: css(q('.b-adot[data-tone="innovate"]'), "backgroundColor"),
     },
     filled: [...document.querySelectorAll(".b-btn.b-primary")].filter((element) => visible(element) && !element.closest(".b-drawer")).map((element) => element.textContent.trim()),
+    // In una corsia del drawer senza note, chi modifica vede «+ nota» senza passarci sopra (P21).
+    hiddenAdds: [...document.querySelectorAll(".b-drawer .b-cell")].filter((cell) => !cell.querySelector(".b-note-w") && cell.querySelector(":scope > .b-add") && getComputedStyle(cell.querySelector(":scope > .b-add")).opacity !== "1").map((cell) => cell.dataset.lane ?? "?"),
     // Un testo sul posto è alto quanto il suo testo dal primo disegno: nessuno tagliato.
     clipped: [...document.querySelectorAll("textarea.b-textin")].filter((element) => visible(element) && element.scrollHeight > element.clientHeight + 1).map((element) => element.value.slice(0, 40)),
     // La seconda riga di un'unità (i conteggi) comincia allo stesso punto in ogni riga.
@@ -199,6 +201,7 @@ function check(name, config, m, expected, failures) {
   if (m.page.scrollWidth > m.page.innerWidth) fail(`la pagina scorre di lato (${m.page.scrollWidth} > ${m.page.innerWidth})`);
   if (m.filled.length > 1) fail(`${m.filled.length} bottoni pieni: ${m.filled.join(", ")}`);
   if (m.clipped.length) fail(`testi sul posto tagliati: ${m.clipped.join(" | ")}`);
+  if (m.hiddenAdds.length) fail(`corsie senza note con «+ nota» nascosto: ${m.hiddenAdds.join(", ")}`);
   if (config.width === 390 && new Set(m.unitMeta).size > 1) fail(`la seconda riga delle unità comincia in punti diversi: ${m.unitMeta.join(", ")}`);
   for (const family of ["Geist", "Geist Mono", "Instrument Serif"]) if (!m.fonts.includes(family)) fail(`font non caricato: ${family}`);
   // I colori calcolati: quelli che la pagina mostra.
