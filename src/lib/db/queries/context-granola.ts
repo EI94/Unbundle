@@ -29,7 +29,7 @@ import {
 } from "@/lib/db/schema";
 import { granolaConfig, type GranolaConfig } from "@/lib/context/granola/config";
 import { discoverGranola, GRANOLA_ENDPOINTS, type GranolaEndpoints } from "@/lib/context/granola/endpoints";
-import { defaultTitleWords, emailDomainOf, isPublicMailDomain, matchMeeting, type WorkspaceMatchProfile } from "@/lib/context/granola/match";
+import { defaultTitleWords, emailDomainOf, matchMeeting, type WorkspaceMatchProfile } from "@/lib/context/granola/match";
 import { callGranolaTool, GranolaMcpError, openGranolaSession, type GranolaMcpDeps, type GranolaReadTool, type GranolaSession } from "@/lib/context/granola/mcp-client";
 import {
   authorizationUrl,
@@ -513,7 +513,7 @@ export async function disconnectGranola(userId: string): Promise<ServiceResult<t
 interface WorkspaceProfile extends WorkspaceMatchProfile {
   name: string;
   wantTranscript: boolean;
-  /** Le persone del cliente che Unbundle conosce già: i contatti e i referenti, fuori da Lateral Space e dalle caselle pubbliche. */
+  /** Le persone del cliente che Unbundle conosce già: i contatti e i referenti, fuori da Lateral Space. */
   knownPeople: number;
 }
 
@@ -530,11 +530,11 @@ const asStrings = (value: unknown): string[] => (Array.isArray(value) ? value.fi
 
 /**
  * I profili dei workspace dove la persona collegata è di Lateral Space e non segue solo un corso (§8.6): la sua
- * cartella; le persone del cliente, cioè le e-mail dei contatti attivi e non anonimizzati (i referenti sono lì), fuori
- * dai domini di Lateral Space e dalle caselle pubbliche, e quelle aggiunte a mano, fuori dai domini di Lateral Space
- * (un indirizzo intero in una casella pubblica, scritto a mano, vale per quella persona sola); i domini aggiunti a mano;
- * le parole nel titolo, salvate o predefinite. Un membro del workspace non è per forza del cliente (chi costruisce da
- * fuori, per esempio): non conta. In più quando una regola o una cartella è cambiata l'ultima volta.
+ * cartella; le persone del cliente, cioè le e-mail dei contatti attivi e non anonimizzati (i referenti sono lì) e quelle
+ * aggiunte a mano, fuori dai domini di Lateral Space (un indirizzo intero in una casella pubblica vale per quella persona
+ * sola, mai per il dominio); i domini aggiunti a mano; le parole nel titolo, salvate o predefinite. Un membro del
+ * workspace non è per forza del cliente (chi costruisce da fuori, per esempio): non conta. In più quando una regola o una
+ * cartella è cambiata l'ultima volta.
  */
 async function loadProfiles(userId: string, onlyWorkspaceId?: string): Promise<{ profiles: WorkspaceProfile[]; rulesChangedAt: Date | null }> {
   const ls = lsDomains();
@@ -586,12 +586,11 @@ async function loadProfiles(userId: string, onlyWorkspaceId?: string): Promise<{
     const domain = emailDomainOf(email);
     return domain !== null && !ls.some((base) => domain === base || domain.endsWith(`.${base}`));
   };
-  // Una persona che Unbundle conosce già è del cliente se è fuori da Lateral Space e non in una casella pubblica.
-  const ofClient = (email: string) => outsideLs(email) && !isPublicMailDomain(emailDomainOf(email));
   let rulesChangedAt: Date | null = null;
   const profiles = usable.map((row): WorkspaceProfile => {
-    const known = [...new Set((contacts.get(row.id) ?? []).filter(ofClient))];
-    // Un indirizzo intero scritto a mano vale, anche in una casella pubblica: si confronta solo per uguale.
+    // Le persone che Unbundle conosce già e gli indirizzi scritti a mano, fuori da Lateral Space. Un indirizzo in una
+    // casella pubblica vale per sé, confrontato per uguale (`matchMeeting`): mai il suo dominio.
+    const known = [...new Set((contacts.get(row.id) ?? []).filter(outsideLs))];
     const manual = asStrings(row.emails).filter(outsideLs);
     for (const changed of [toDate(row.rules_updated_at), toDate(row.link_updated_at)]) {
       if (changed && (!rulesChangedAt || changed > rulesChangedAt)) rulesChangedAt = changed;

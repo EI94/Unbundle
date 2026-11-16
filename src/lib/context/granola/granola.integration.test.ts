@@ -523,8 +523,8 @@ function errorOf(result: { ok: boolean; error?: string }): string | null {
 
 test("le regole: si leggono con le parole predefinite; una parola aggiunta al titolo fa entrare al giro dopo una call di prima", opts, async () => {
   const rules = await granola.readGranolaRules(actor("ls"));
-  // Una persona sola del cliente: il contatto con l'indirizzo dell'azienda. Non i membri del workspace, non una casella pubblica.
-  assert.deepEqual(rules, { folder: null, knownPeople: 1, emails: [], domains: [], titleWords: ["Nardi"], titleWordsAreDefault: true, wantTranscript: false, transcriptAvailable: true });
+  // Due persone del cliente: i due contatti, anche quello in Gmail (conta per il suo indirizzo intero). Non i membri del workspace.
+  assert.deepEqual(rules, { folder: null, knownPeople: 2, emails: [], domains: [], titleWords: ["Nardi"], titleWordsAreDefault: true, wantTranscript: false, transcriptAvailable: true });
   // Una casella pubblica non vale come dominio: farebbe entrare le call di chiunque.
   const publicDomain = await granola.saveGranolaRules(actor("ls"), { folderId: null, folderName: null, emails: [], domains: ["@Gmail.com"], titleWords: ["Nardi"], wantTranscript: false });
   assert.deepEqual([errorOf(publicDomain), !publicDomain.ok && publicDomain.fieldErrors], ["dati_non_validi", { domains: "Gmail, Outlook e le altre caselle pubbliche non valgono come dominio: aggiungi l'indirizzo intero della persona." }]);
@@ -547,7 +547,7 @@ test("le regole: si leggono con le parole predefinite; una parola aggiunta al ti
   value(await granola.saveGranolaRules(actor("ls"), { folderId: null, folderName: null, emails: ["Acquisti@Nardi.test", `p@ls.test`, EMAIL.ext.toUpperCase()], domains: ["@nardi-group.test"], titleWords: ["Nardi", "Ferrari"], wantTranscript: false }));
   const saved = (await q(`SELECT emails, domains, title_words, updated_by_user_id FROM context_granola_rules WHERE workspace_id = $1`, [ids.wsN]))[0];
   assert.deepEqual([saved.emails, saved.domains, saved.title_words, saved.updated_by_user_id], [["acquisti@nardi.test", EMAIL.ext], ["nardi-group.test"], ["Nardi", "Ferrari"], ids.ls]);
-  assert.equal((await granola.readGranolaRules(actor("ls")))?.knownPeople, 1, "gli indirizzi scritti a mano non sono persone già note");
+  assert.equal((await granola.readGranolaRules(actor("ls")))?.knownPeople, 2, "gli indirizzi scritti a mano non sono persone già note");
   const result = await granola.syncGranolaForUser(ids.ls, { force: true });
   assert.equal(result.status, "fatto");
   assert.equal(result.imported, 2, "il giro dopo una regola cambiata è intero: la parola nel titolo e l'indirizzo");
@@ -728,6 +728,24 @@ test("«Assegna» una call senza note: lo dice, e non salva niente", opts, async
   } finally {
     fake.meetings.splice(fake.meetings.indexOf(empty), 1);
   }
+});
+
+test("un contatto con un indirizzo in una casella pubblica conta per quell'indirizzo intero, mai per il dominio", opts, async () => {
+  const owner = `titolare-${suffix}@gmail.com`;
+  await q(`INSERT INTO uc_contacts (workspace_id, display_name, email) VALUES ($1::uuid, 'Titolare di prova', $2)`, [ids.wsN, owner]);
+  const now = new Date().toISOString();
+  const withOwner: FakeMeeting = { id: `m-titolare-${suffix}`, title: `Preventivo ${suffix}`, meetingAt: now, updatedAt: now, participants: `Titolare (${owner.toUpperCase()})`, summary: "Il preventivo per il nuovo telaio." };
+  const withGuest: FakeMeeting = { id: `m-ospite-${suffix}`, title: `Sopralluogo ${suffix}`, meetingAt: now, updatedAt: now, participants: `Ospite (ospite-${suffix}@gmail.com)`, summary: "Il sopralluogo in officina." };
+  fake.meetings.push(withOwner, withGuest);
+  const result = await granola.syncGranolaForUser(ids.ls, { force: true });
+  assert.deepEqual([result.status, result.imported], ["fatto", 1]);
+  // Il titolare è un contatto del cliente: la sua call entra lì, per il suo indirizzo.
+  assert.equal((await sourceOf(withOwner.id)).workspace_id, ids.wsN);
+  assert.equal((await decisionOf(withOwner.id)).decided_by, "regola");
+  // Un'altra persona in Gmail no: il dominio di una casella pubblica non dice di quale cliente è.
+  assert.equal(await sourceOf(withGuest.id), undefined);
+  assert.equal(await decisionOf(withGuest.id), undefined);
+  assert.ok(value(await granola.listGranolaUnsorted(actor("ls"))).some((m) => m.id === withGuest.id));
 });
 
 // ─── La notte e scollegare ───────────────────────────────────────────

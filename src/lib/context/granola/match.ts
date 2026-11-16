@@ -6,7 +6,7 @@
  * 2. **partecipanti**: tra i partecipanti c'è una persona del cliente che Unbundle conosce (un contatto o un referente),
  *    o un indirizzo o un dominio aggiunto a mano. Chi ha un dominio di Lateral Space non conta (chi registra è sempre
  *    tra loro), e nemmeno chi ha registrato la call. Una casella di posta pubblica (`PUBLIC_MAIL_DOMAINS`) non vale mai
- *    come dominio; un indirizzo intero lì, aggiunto a mano, vale solo per quella persona;
+ *    come dominio; un indirizzo intero lì (di un contatto, o aggiunto a mano) vale solo per quella persona;
  * 3. **titolo**: il titolo contiene una delle parole del cliente, come parola intera, senza maiuscole e accenti.
  * Si guarda il livello più forte raggiunto da almeno un workspace: se lo raggiunge uno solo, e il titolo non dice anche
  * un altro cliente, la call entra lì; se lo raggiungono in due o più, se il titolo dice anche un altro cliente, o se non
@@ -16,9 +16,8 @@
 
 /**
  * Le caselle di posta pubbliche, in un elenco solo: un dominio così farebbe entrare le call di chiunque, e non vale mai
- * (né nelle regole di Impostazioni, né in una regola vecchia); tra le persone che Unbundle conosce già, un indirizzo lì
- * non dice di quale cliente è la persona. Un indirizzo intero aggiunto a mano vale, solo per quella persona. Valgono
- * anche i sottodomini.
+ * (né nelle regole di Impostazioni, né in una regola vecchia). Un indirizzo intero lì, di un contatto o aggiunto a mano,
+ * vale solo per quella persona, confrontato per uguale. Valgono anche i sottodomini.
  */
 export const PUBLIC_MAIL_DOMAINS: readonly string[] = Object.freeze([
   // Internazionali
