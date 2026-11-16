@@ -383,7 +383,12 @@ export function stepDrawerHead(p: { place: StepPlace; editable: boolean; actions
   };
 }
 
-/** La testa del drawer di un passo nuovo: il cursore nel titolo; nasce quando il titolo c'è (P53, P55). */
+/**
+ * La testa del drawer di un passo nuovo: il cursore nel titolo; nasce quando il titolo c'è (P53, P55). Il cursore ce lo
+ * mette il dialogo (`drawerFocus`, «title»), non `autoFocus`: il dialogo ricorda chi l'ha aperto («+ passo») prima di
+ * spostare il fuoco, e alla chiusura glielo rende; un `autoFocus` sposterebbe il fuoco prima, e il fuoco tornerebbe a
+ * chi aveva aperto il drawer di prima.
+ */
 export function draftDrawerHead(p: { board: MappingBoard; processId: string | null; actions: Pick<StepActions, "dispatch" | "newId">; onCreated(stepId: string): void }): { context: string; title: ReactNode } {
   const place = newStepPlace(p.board, p.processId);
   return {
@@ -391,7 +396,6 @@ export function draftDrawerHead(p: { board: MappingBoard; processId: string | nu
     title: (
       <LineInPlace
         value=""
-        autoFocus
         label={D.titlePlaceholder}
         placeholder={D.titlePlaceholder}
         maxLength={L.title}

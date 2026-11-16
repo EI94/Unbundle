@@ -212,7 +212,9 @@ test("un passo nuovo nasce dal suo titolo, con il cursore dentro; senza titolo n
   assert.equal(head.context, "Dall'ordine alla consegna · B3");
   const title = head.title as AnyElement;
   assert.equal(title.type, LineInPlace);
-  assert.equal(title.props.autoFocus, true);
+  // Il cursore nel titolo lo mette il dialogo (initialFocus «title», sotto), non autoFocus: così il dialogo ricorda «+
+  // passo» come chi l'ha aperto, e alla chiusura il fuoco torna lì, non alla card che aveva aperto il drawer di prima.
+  assert.equal(title.props.autoFocus, undefined);
   assert.equal(title.props.value, "");
   assert.equal(title.props.placeholder, "Titolo del passo");
   (title.props.onCommit as (next: string) => void)("");
