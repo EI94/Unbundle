@@ -48,8 +48,9 @@ const DEFAULT_SUITES = [
   "src/components/use-cases/**/*.integration.test.ts",
   // «Contesto» (rilascio 9a): the context tables live in the hub's database too.
   "src/lib/context/**/*.integration.test.ts",
+  "src/components/context/**/*.integration.test.ts",
 ];
-const SUITE = /^src\/(lib\/use-cases\/.+|lib\/db\/use-case-hub[^/]*|components\/use-cases\/.+|lib\/context\/.+)\.integration\.test\.ts$/;
+const SUITE = /^src\/(lib\/use-cases\/.+|lib\/db\/use-case-hub[^/]*|components\/use-cases\/.+|lib\/context\/.+|components\/context\/.+)\.integration\.test\.ts$/;
 
 const requested = process.argv.slice(2);
 for (const file of requested) {

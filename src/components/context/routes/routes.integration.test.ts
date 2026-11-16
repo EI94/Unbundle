@@ -9,8 +9,8 @@ import { fakeAppClaude, installAppModules, message, recordLogs, refusal, THINKIN
 // la sessione, `revalidatePath` e `after` (fuori da una richiesta di Next non ci sono).
 //
 // - Con HUB_TEST_ISOLATED=true e un DATABASE_URL di loopback su una copia hub_<id> (scripts/use-case-test/
-//   run-db-tests.mjs, che oggi prende src/lib/context/**: chi integra aggiunge src/components/context/**). Dati
-//   sintetici, creati e cancellati qui. Nessun modello vero.
+//   run-db-tests.mjs, che prende src/lib/context/** e src/components/context/**). Dati sintetici, creati e cancellati
+//   qui. Nessun modello vero.
 const url = process.env.DATABASE_URL;
 const enabled = process.env.HUB_TEST_ISOLATED === "true" && Boolean(url);
 if (enabled) {

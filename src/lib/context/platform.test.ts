@@ -102,12 +102,18 @@ test("run-db-tests.mjs prende le suite sul database di src/lib/context/, e nient
   const globs = [...suites.matchAll(/"([^"]+)"/g)].map((found) => found[1]);
   assert.ok(globs.includes("src/lib/context/**/*.integration.test.ts"), globs.join(", "));
   const suite = new RegExp(/const SUITE = \/(.+)\/;/.exec(runner)?.[1] ?? "(?!)");
-  for (const file of ["src/lib/context/context.integration.test.ts", "src/lib/context/granola/granola.integration.test.ts", "src/lib/use-cases/mcp/mcp.integration.test.ts"]) {
+  for (const file of [
+    "src/lib/context/context.integration.test.ts",
+    "src/lib/context/granola/granola.integration.test.ts",
+    "src/lib/use-cases/mcp/mcp.integration.test.ts",
+    "src/components/context/routes/routes.integration.test.ts",
+  ]) {
     assert.ok(suite.test(file), `${file}: si può chiedere per nome`);
     assert.ok(globs.some((glob) => globToRegExp(glob).test(file)), `${file}: è tra le suite predefinite`);
   }
   assert.equal(suite.test("src/lib/context/text.test.ts"), false, "solo le suite sul database");
   assert.equal(suite.test("src/lib/contextual/altro.integration.test.ts"), false);
+  assert.equal(suite.test("src/components/contextual/altro.integration.test.ts"), false);
   // La suite si accende solo con il segnale del runner e solo su 127.0.0.1, su una copia hub_<id>.
   const integration = read("src/lib/context/context.integration.test.ts");
   assert.match(integration, /process\.env\.HUB_TEST_ISOLATED === "true"/);
