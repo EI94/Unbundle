@@ -29,6 +29,7 @@ import {
   storeProbe,
   streamFold,
   unitBoards,
+  unitDocuments,
   unitsToAdopt,
   type BoardActor,
   type BoardScope,
@@ -125,6 +126,7 @@ const UNIT_STATEMENTS: Record<string, UcStatement> = {
   ...Object.fromEntries(saveSummary(scope, { headline: NASTY, points: [{ id: id(), title: NASTY, text: NASTY }] }).map((statement, index) => [`saveSummary ${index}`, statement])),
   "saveClassifications (unità)": saveClassifications(scope, [{ id: id(), stream: "automate", confidence: 0.8, reason: NASTY, potential: NASTY }], true),
   saveOnetMatches: saveOnetMatches(scope, [{ id: id(), code: "13-1023.00", title: NASTY, exposure: 0.3 }], 200),
+  unitDocuments: unitDocuments(scope),
 };
 /** Le istruzioni di tutto un workspace, per definizione: l'elenco delle unità e «Classifica attività». */
 const WORKSPACE_STATEMENTS: Record<string, UcStatement> = {

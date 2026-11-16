@@ -1,118 +1,17 @@
+import { UnitsView } from "@/components/mappatura/board/units-view";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
-import { notFound } from "next/navigation";
-import Link from "next/link";
-import {
-  getWorkspaceById,
-  getDepartmentsByWorkspace,
-} from "@/lib/db/queries/workspaces";
-import { getActivitiesByDepartment } from "@/lib/db/queries/activities";
-import {
-  ArrowRight,
-  Compass,
-  Check,
-} from "lucide-react";
+import { getAppUcExecutor } from "@/lib/db/uc-executor";
+import { listUnitBoards } from "@/lib/mappatura/units";
 import { getUnitTerm } from "@/lib/utils/unit-terminology";
 
-export default async function MappingPage({
-  params,
-}: {
-  params: Promise<{ workspaceId: string }>;
-}) {
-
+/**
+ * L'activity mapping, S1 · Le unità (docs/mappatura/MAPPATURA-BOARD-PIANO.md §1.2, §4.10): una riga per unità, con i
+ * numeri della sua board, in una lettura sola. Chi segue solo un corso resta fuori (`requireWorkspacePage`).
+ */
+export default async function MappingPage({ params }: { params: Promise<{ workspaceId: string }> }) {
   const { workspaceId } = await params;
-
-  await requireWorkspacePage(workspaceId);
-  const workspace = await getWorkspaceById(workspaceId);
-  if (!workspace) notFound();
-
-  const departments = await getDepartmentsByWorkspace(workspaceId);
-
-  const deptWithActivities = await Promise.all(
-    departments.map(async (dept) => {
-      const acts = await getActivitiesByDepartment(dept.id);
-      return { ...dept, activities: acts };
-    })
-  );
-
-  const term = getUnitTerm(workspace);
-  const totalDepts = departments.length;
-  const mappedDepts = departments.filter(
-    (d) => d.mappingStatus === "mapped" || d.mappingStatus === "validated"
-  ).length;
-  const totalActivities = deptWithActivities.reduce(
-    (sum, d) => sum + d.activities.length,
-    0
-  );
-
-  return (
-    <div className="mx-auto w-full min-w-0 max-w-3xl flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
-      <div className="mb-10">
-        <span className="text-xs text-muted-foreground tracking-wide uppercase">
-          Mapping
-        </span>
-        <h1 className="mt-1 text-2xl font-medium tracking-tight">
-          Activity mapping
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Scomponi il lavoro di ogni {term.singular} in unit&agrave; analizzabili.
-        </p>
-      </div>
-
-      {totalDepts > 0 && (
-        <div className="mb-8 flex items-center gap-4 text-sm text-muted-foreground">
-          <span>{mappedDepts}/{totalDepts} {term.plural} mappate</span>
-          <span className="h-1 w-1 rounded-full bg-border" />
-          <span>{totalActivities} attivit&agrave; totali</span>
-        </div>
-      )}
-
-      {departments.length === 0 ? (
-        <div className="mt-16 text-center max-w-md mx-auto">
-          <h2 className="text-lg font-medium">Prima la Discovery</h2>
-          <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
-            Le {term.plural} vengono create durante la Discovery.
-            Completa quella fase per sbloccare il mapping.
-          </p>
-          <Link
-            href={`/dashboard/${workspaceId}/setup/leadership`}
-            className="group mt-6 inline-flex items-center gap-2 text-sm font-medium hover:gap-3 transition-all"
-          >
-            <Compass className="h-3.5 w-3.5" />
-            Vai alla Discovery
-            <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-          </Link>
-        </div>
-      ) : (
-        <div className="space-y-1">
-          {deptWithActivities.map((dept) => {
-            const isDone =
-              dept.mappingStatus === "mapped" || dept.mappingStatus === "validated";
-            return (
-              <Link
-                key={dept.id}
-                href={`/dashboard/${workspaceId}/mapping/${dept.id}`}
-                className="group flex items-center gap-4 rounded-lg px-3 py-3 hover:bg-accent transition-colors"
-              >
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border">
-                  {isDone ? (
-                    <Check className="h-3.5 w-3.5" />
-                  ) : (
-                    <span className="h-2 w-2 rounded-full bg-muted-foreground/30" />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{dept.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {dept.activities.length} attivit&agrave;
-                    {dept.teamSize ? ` \u00B7 ${dept.teamSize} persone` : ""}
-                  </p>
-                </div>
-                <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-              </Link>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
+  const { access } = await requireWorkspacePage(workspaceId);
+  const executor = await getAppUcExecutor();
+  const units = await listUnitBoards(executor, workspaceId);
+  return <UnitsView workspaceId={workspaceId} workspaceName={access.workspace.name} unitTerm={getUnitTerm(access.workspace)} units={units} />;
 }

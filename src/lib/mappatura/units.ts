@@ -10,7 +10,7 @@ import "server-only";
 import type { UcExecutor } from "@/lib/db/uc-executor";
 import type { UnitBoardSummary } from "./board-model";
 import { unitSummaryFromRow } from "./board-rows";
-import { unitBoards } from "./board-sql";
+import { unitBoards, unitDocuments, type BoardScope } from "./board-sql";
 import { mappingStoreReady } from "./board-store";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -23,4 +23,11 @@ export async function listUnitBoards(executor: UcExecutor, workspaceId: string):
   const ready = await mappingStoreReady(executor);
   const [rows] = await executor.batch([unitBoards(workspaceId, ready)]);
   return rows.map(unitSummaryFromRow);
+}
+
+/** L'unità ha almeno un documento caricato, in quel workspace? Per «Proponi passi dai documenti» (§1.5, §5.5). */
+export async function unitHasDocuments(executor: UcExecutor, scope: BoardScope): Promise<boolean> {
+  if (!UUID.test(scope.workspaceId) || !UUID.test(scope.departmentId)) return false;
+  const [rows] = await executor.batch([unitDocuments(scope)]);
+  return rows[0]?.has === true;
 }

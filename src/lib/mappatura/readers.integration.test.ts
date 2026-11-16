@@ -180,6 +180,24 @@ test("gli use case nati dalla mappatura: solo quelli che chi guarda può vedere,
   }
 });
 
+test("i documenti di un'unità: la pagina sa se ce ne sono, solo per l'unità e il workspace giusti", opts, async () => {
+  assert.equal(await units.unitHasDocuments(db.exec, scope()), false);
+  const doc = randomUUID();
+  await q(
+    `INSERT INTO uploaded_documents (id, workspace_id, user_id, department_id, file_name, file_type, file_size, blob_url) VALUES ($1, $2, $3, $4, 'procedura.txt', 'text/plain', 10, 'https://blob.prova.test/procedura.txt')`,
+    [doc, f.ws, f.lead, f.otherUnit],
+  );
+  try {
+    assert.equal(await units.unitHasDocuments(db.exec, scope()), false, "un documento di un'altra unità non conta");
+    await q(`UPDATE uploaded_documents SET department_id = $2 WHERE id = $1`, [doc, f.unit]);
+    assert.equal(await units.unitHasDocuments(db.exec, scope()), true);
+    assert.equal(await units.unitHasDocuments(db.exec, { workspaceId: f.otherWs, departmentId: f.unit }), false, "la stessa unità con un altro workspace");
+    assert.equal(await units.unitHasDocuments(db.exec, { workspaceId: "non-un-id", departmentId: f.unit }), false);
+  } finally {
+    await q(`DELETE FROM uploaded_documents WHERE id = $1`, [doc]);
+  }
+});
+
 test("senza la 0039 l'elenco delle unità conta dalle sole attività", opts, async () => {
   const withStore = await units.listUnitBoards(db.exec, f.ws);
   await q(`DROP INDEX mapping_votes_user_idx`);

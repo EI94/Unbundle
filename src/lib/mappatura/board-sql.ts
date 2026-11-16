@@ -654,6 +654,11 @@ GROUP BY d.id
 ORDER BY d.name, d.id`);
 }
 
+/** L'unità ha almeno un documento caricato? (La pagina mostra «Proponi passi dai documenti».) */
+export function unitDocuments(scope: BoardScope): UcStatement {
+  return toStatement(ucSql`SELECT EXISTS (SELECT 1 FROM uploaded_documents u WHERE ${inUnit("u", scope)}) AS has`);
+}
+
 // ─── Completamento (§4.5) ────────────────────────────────────────────
 
 /** L'unità e quello che serve al classificatore: il nome, la value thesis dell'organizzazione, gli obiettivi, le attività. */
