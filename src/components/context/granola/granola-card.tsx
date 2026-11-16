@@ -44,7 +44,7 @@ export async function GranolaCard(props: GranolaCardProps) {
   const rules = state === "collegato" ? await readGranolaRules(actor) : null;
   const T = CONTEXT_TEXT.granola;
   return (
-    <SettingsSection icon={NotebookPen} iconClassName="bg-amber-500/10 text-amber-400" title={T.cardTitle} description={T.cardDescription}>
+    <SettingsSection icon={NotebookPen} iconClassName="bg-uc-giallo-bg text-uc-giallo" title={T.cardTitle} description={T.cardDescription}>
       <GranolaCardPanel
         workspaceId={props.workspaceId}
         workspaceName={props.workspaceName}

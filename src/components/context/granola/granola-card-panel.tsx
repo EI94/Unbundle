@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 
 const T = CONTEXT_TEXT.granola;
 const SELECT_CLASS = "h-11 w-full rounded-lg border border-input bg-background px-2 text-base sm:h-8 sm:max-w-sm sm:text-sm";
-const LINE_TONE: Record<Line["tone"], string> = { ok: "text-emerald-300", info: "text-muted-foreground", error: "text-red-300" };
+const LINE_TONE: Record<Line["tone"], string> = { ok: "text-uc-verde", info: "text-muted-foreground", error: "text-destructive" };
 
 /**
  * Il corpo del blocco «Granola» in Impostazioni (componente client di `GranolaCard`): collegare e scollegare, e le
@@ -216,7 +216,7 @@ function GranolaRulesForm({ workspaceId, workspaceName, rules }: { workspaceId: 
             </option>
           ))}
         </select>
-        {errors.folder && <p role="alert" className="text-xs text-red-300">{errors.folder}</p>}
+        {errors.folder && <p role="alert" className="text-xs text-destructive">{errors.folder}</p>}
       </div>
 
       <div className="space-y-1.5">
@@ -252,7 +252,7 @@ function GranolaRulesForm({ workspaceId, workspaceName, rules }: { workspaceId: 
             {T.add}
           </Button>
         </div>
-        {errors.people && <p role="alert" className="text-xs text-red-300">{errors.people}</p>}
+        {errors.people && <p role="alert" className="text-xs text-destructive">{errors.people}</p>}
       </div>
 
       <div className="space-y-1.5">
@@ -279,7 +279,7 @@ function GranolaRulesForm({ workspaceId, workspaceName, rules }: { workspaceId: 
             {T.add}
           </Button>
         </div>
-        {errors.words && <p role="alert" className="text-xs text-red-300">{errors.words}</p>}
+        {errors.words && <p role="alert" className="text-xs text-destructive">{errors.words}</p>}
       </div>
 
       <div className="space-y-1">

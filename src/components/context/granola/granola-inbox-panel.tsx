@@ -14,7 +14,7 @@ import type { GranolaSyncResult, UnsortedMeeting } from "@/lib/db/queries/contex
 import { cn } from "@/lib/utils";
 
 const T = CONTEXT_TEXT.granola;
-const LINE_TONE: Record<Line["tone"], string> = { ok: "text-emerald-300", info: "text-muted-foreground", error: "text-red-300" };
+const LINE_TONE: Record<Line["tone"], string> = { ok: "text-uc-verde", info: "text-muted-foreground", error: "text-destructive" };
 
 /** Il messaggio di una risposta non riuscita delle rotte di «Contesto» (`{ error, message }`), o quello di riserva. */
 async function failureMessage(response: Response, fallback: string): Promise<string> {
@@ -219,7 +219,7 @@ function UnsortedMeetings({ workspaceId, workspaceName, count, renderedAt }: { w
           <p className="text-xs text-muted-foreground">{T.unsortedHint}</p>
           {loading && <p className="text-sm text-muted-foreground">{T.unsortedLoading}</p>}
           {error && (
-            <p role="alert" className="text-sm text-red-300">
+            <p role="alert" className="text-sm text-destructive">
               {error}
             </p>
           )}
