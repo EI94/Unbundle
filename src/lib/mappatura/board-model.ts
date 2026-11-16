@@ -370,14 +370,25 @@ export function adoptionOrder(
  * passo agli use case che lo elencano; si tengono solo i passi di questa board.
  */
 export function withUseCaseLinks(board: MappingBoard, links: { links: readonly BoardUseCaseLink[]; byStep: ReadonlyMap<string, readonly string[]> }): MappingBoard {
-  return {
+  const linked: MappingBoard = {
     ...board,
-    useCases: [...links.links],
     processes: board.processes.map((process) => ({
       ...process,
       steps: process.steps.map((step) => ({ ...step, useCaseIds: [...(links.byStep.get(step.id) ?? [])] })),
     })),
   };
+  return { ...linked, useCases: links.links.map((link) => ({ ...link, stream: useCaseStream(linked, link.id) })) };
+}
+
+/**
+ * Lo stream di uno use case collegato: quello che ha la maggior parte dei suoi passi su questa board (a parità, il
+ * primo nell'ordine Automate, Differentiate, Innovate). null se nessuno dei suoi passi è classificato.
+ */
+export function useCaseStream(board: Pick<MappingBoard, "processes">, useCaseId: string): Stream | null {
+  const counts: Record<Stream, number> = { automate: 0, differentiate: 0, innovate: 0 };
+  for (const step of allSteps(board)) if (step.stream && step.useCaseIds.includes(useCaseId)) counts[step.stream] += 1;
+  const best = STREAMS.reduce((winner, stream) => (counts[stream] > counts[winner] ? stream : winner), STREAMS[0]);
+  return counts[best] > 0 ? best : null;
 }
 
 /** Gli use case collegati di una board già letta, da tenere quando ne arriva una più nuova dal server. */

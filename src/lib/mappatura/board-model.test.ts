@@ -20,6 +20,7 @@ import {
   uncheckedNoteStatus,
   unitNumbers,
   useCaseLinksOf,
+  useCaseStream,
   withUseCaseLinks,
 } from "./board-model.ts";
 import { FIXTURE_IDS, fixtureBoard, fixtureUnits } from "./board-fixture.ts";
@@ -197,12 +198,17 @@ test("gli use case collegati: li mette la pagina, e restano quando arriva una bo
     links: [{ id: "uc-1", code: "UC-0001", title: "Lettura delle richieste", href: "/dashboard/ws/use-cases/uc-1", stream: "automate" as const }],
     byStep: new Map([[I.richieste, ["uc-1"]], ["passo-di-un-altra-unità", ["uc-1"]]]),
   };
-  const linked = withUseCaseLinks(board, links);
-  assert.deepEqual(linked.useCases, links.links);
+  const linked = withUseCaseLinks(board, { ...links, links: links.links.map((link) => ({ ...link, stream: null })) });
+  assert.deepEqual(linked.useCases, links.links, "lo stream è quello dei suoi passi su questa board");
   assert.deepEqual(allSteps(linked).map((step) => step.useCaseIds), [["uc-1"], [], [], [], [], []]);
   assert.deepEqual(allSteps(board).map((step) => step.useCaseIds), [[], [], [], [], [], []], "la board di partenza non cambia");
   // Una board riletta dal server non ha i collegamenti: si rimettono quelli che c'erano.
   const kept = useCaseLinksOf(linked);
   assert.deepEqual([kept.links, [...kept.byStep]], [links.links, [[I.richieste, ["uc-1"]]]]);
   assert.deepEqual(withUseCaseLinks(fixtureBoard({ classified: true }), kept), linked);
+  // Lo stream di uno use case: quello della maggior parte dei suoi passi; a parità il primo; null senza passi classificati.
+  const many = withUseCaseLinks(board, { links: links.links, byStep: new Map([[I.richieste, ["uc-1"]], [I.scelta, ["uc-1"]], [I.controllo, ["uc-1"]], [I.solleciti, ["uc-1"]], [I.ordine, ["uc-2"]]]) });
+  assert.deepEqual([useCaseStream(many, "uc-1"), useCaseStream(many, "uc-2"), useCaseStream(many, "uc-3")], ["automate", null, null]);
+  const tie = withUseCaseLinks(board, { links: links.links, byStep: new Map([[I.scelta, ["uc-1"]], [I.controllo, ["uc-1"]]]) });
+  assert.deepEqual([useCaseStream(tie, "uc-1"), tie.useCases[0].stream], ["differentiate", "differentiate"]);
 });
