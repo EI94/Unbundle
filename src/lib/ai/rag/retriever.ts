@@ -1,6 +1,8 @@
 import { db } from "@/lib/db";
 import { documentChunks, conversationMemory } from "@/lib/db/schema";
 import { sql, desc } from "drizzle-orm";
+import { scanPersonalData } from "@/lib/context/scan";
+import { contextStoreReady } from "@/lib/db/queries/context-store";
 
 export interface RetrievedChunk {
   content: string;
@@ -13,6 +15,11 @@ export interface RetrievedChunk {
 interface RetrieveOptions {
   topK?: number;
   includeConversations?: boolean;
+  /**
+   * (Rilascio 9a) Chi scrive nella chat. I frammenti dei documenti «Solo Lateral Space» tornano solo a Lateral Space:
+   * per gli altri, e quando `viewer` manca, restano fuori (si chiude, non si apre).
+   */
+  viewer?: { isLateralSpace: boolean };
 }
 
 function buildTsQuery(input: string): string {
@@ -35,6 +42,13 @@ export async function retrieveRelevantContext(
   const tsQuery = buildTsQuery(query);
   if (!tsQuery) return [];
 
+  // I documenti «Solo Lateral Space» (un file caricato da «Aggiungi appunti») non arrivano al cliente dalla chat. La
+  // visibilità sta sulla fonte del documento (0038): senza la 0038 nessun documento è «Solo Lateral Space».
+  const lsOnly =
+    options.viewer?.isLateralSpace !== true && (await contextStoreReady())
+      ? sql` AND NOT EXISTS (SELECT 1 FROM context_sources s WHERE s.document_id = ${documentChunks.documentId} AND s.visibility = 'ls')`
+      : sql``;
+
   const docResults = await db
     .select({
       content: documentChunks.content,
@@ -45,7 +59,7 @@ export async function retrieveRelevantContext(
     })
     .from(documentChunks)
     .where(
-      sql`${documentChunks.workspaceId} = ${workspaceId} AND to_tsvector('italian', ${documentChunks.content}) @@ to_tsquery('italian', ${tsQuery})`
+      sql`${documentChunks.workspaceId} = ${workspaceId} AND to_tsvector('italian', ${documentChunks.content}) @@ to_tsquery('italian', ${tsQuery})${lsOnly}`
     )
     .orderBy(
       desc(
@@ -106,6 +120,13 @@ export async function retrieveRelevantContext(
   return deduped.slice(0, topK);
 }
 
+/**
+ * Mette un messaggio nella memoria della chat (cercata per parole dai turni dopo).
+ *
+ * (Rilascio 9a) Un messaggio con dati sanitari o discriminatori, un nome e cognome, una data di nascita, un codice
+ * fiscale, un'e-mail o un telefono non entra nella memoria. Il messaggio resta nella conversazione; nel log solo il
+ * motivo, mai il testo.
+ */
 export async function indexConversationMessage(
   conversationId: string,
   workspaceId: string,
@@ -113,6 +134,11 @@ export async function indexConversationMessage(
   role: string
 ): Promise<void> {
   if (!content || content.length < 30) return;
+  const scan = scanPersonalData(content);
+  if (!scan.ok) {
+    console.warn("[chat/memoria] non_indicizzato", JSON.stringify({ motivo: scan.issue }));
+    return;
+  }
 
   try {
     await db.insert(conversationMemory).values({

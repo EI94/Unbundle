@@ -1653,6 +1653,48 @@ test("il giro della notte: legge gli appunti in attesa dei workspace con l'ok, s
 
 // ─── Ricerca per parole: gli indici ──────────────────────────────────
 
+// ─── La ricerca della chat (retriever.ts) ────────────────────────────
+
+test("la chat cerca nei documenti: i frammenti di un documento «Solo Lateral Space» tornano solo a Lateral Space; un messaggio con un nome non entra nella memoria", opts, async (t) => {
+  const retriever = await import("../ai/rag/retriever.ts");
+  const word = `betulla${suffix}`;
+  const open = okValue(await addDocument("ls"));
+  const internal = okValue(await addDocument("ls", { visibility: "ls" }));
+  await q(`INSERT INTO document_chunks (document_id, workspace_id, content, chunk_index) VALUES ($1, $3, $4, 0), ($2, $3, $5, 0)`, [
+    open.documentId,
+    internal.documentId,
+    ids.wsA,
+    `Il fornitore consegna la ${word} ogni lunedì.`,
+    `Il margine sulla ${word} è del dodici per cento.`,
+  ]);
+  const found = async (options: Parameters<typeof retriever.retrieveRelevantContext>[2]) =>
+    (await retriever.retrieveRelevantContext(`quanta ${word} arriva`, ids.wsA, options)).map((chunk) => chunk.documentId).sort();
+  const both = [open.documentId, internal.documentId].sort();
+  assert.deepEqual(await found({ viewer: { isLateralSpace: true } }), both);
+  assert.deepEqual(await found({ viewer: { isLateralSpace: false } }), [open.documentId]);
+  assert.deepEqual(await found({}), [open.documentId], "senza sapere chi chiede, il documento interno resta fuori");
+  assert.deepEqual(await found(undefined), [open.documentId]);
+  // Un altro workspace non trova niente, chiunque chieda.
+  assert.deepEqual(await retriever.retrieveRelevantContext(`quanta ${word} arriva`, ids.wsB, { viewer: { isLateralSpace: true } }), []);
+  // Appena il documento diventa «Per tutti», il cliente lo trova.
+  assert.equal(okValue(await sources.setDocumentVisibility(actor("ls"), internal.sourceId, "tutti")), true);
+  assert.deepEqual(await found({ viewer: { isLateralSpace: false } }), both);
+
+  // La memoria della chat: un messaggio con un nome e cognome non entra; uno senza sì, e la ricerca lo ritrova.
+  const lines = recordLogs(t);
+  const conversation = randomUUID();
+  await q(`INSERT INTO conversations (id, workspace_id, user_id, type) VALUES ($1, $2, $3, 'general')`, [conversation, ids.wsA, ids.con]);
+  await retriever.indexConversationMessage(conversation, ids.wsA, `Mario Rossi decide quanta ${word} comprare ogni mese.`, "user");
+  await retriever.indexConversationMessage(conversation, ids.wsA, `Il magazzino ordina la ${word} quando ne restano dieci bancali.`, "user");
+  assert.deepEqual(
+    (await q(`SELECT content, role FROM conversation_memory WHERE conversation_id = $1`, [conversation])),
+    [{ content: `Il magazzino ordina la ${word} quando ne restano dieci bancali.`, role: "user" }],
+  );
+  assert.deepEqual(lines, ['[chat/memoria] non_indicizzato {"motivo":"nome_persona"}']);
+  const fromChat = (await retriever.retrieveRelevantContext(`quanta ${word} arriva`, ids.wsA, { viewer: { isLateralSpace: false } })).filter((chunk) => chunk.source === "conversation");
+  assert.deepEqual(fromChat.map((chunk) => chunk.conversationId), [conversation]);
+});
+
 test("le quattro ricerche usano i loro indici GIN (EXPLAIN senza scansione sequenziale)", opts, async () => {
   const plans: Array<[string, string]> = [
     ["context_facts_fts_idx", `SELECT 1 FROM context_facts WHERE to_tsvector('italian', statement) @@ to_tsquery('italian', 'magazzino:*')`],
