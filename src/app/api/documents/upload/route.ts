@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
+import { getDepartmentById } from "@/lib/db/queries/workspaces";
 import { db } from "@/lib/db";
 import { uploadedDocuments } from "@/lib/db/schema";
 import { del, put } from "@vercel/blob";
@@ -8,6 +9,8 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { CLAUDE_MODEL, claudeCallSettings, logClaudeStop } from "@/lib/ai/models";
 import { indexDocument } from "@/lib/ai/rag/chunker";
 import { logSafeError } from "@/lib/log/safe-error";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -18,7 +21,8 @@ export async function POST(req: Request) {
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
   const workspaceId = formData.get("workspaceId") as string | null;
-  const departmentId = formData.get("departmentId") as string | null;
+  // Un campo vuoto vale come nessuna unità (la Discovery carica senza).
+  const departmentId = (formData.get("departmentId") as string | null)?.trim() || null;
 
   if (!file || !workspaceId) {
     return Response.json({ error: "File and workspaceId required" }, { status: 400 });
@@ -30,6 +34,15 @@ export async function POST(req: Request) {
   const access = await getCollaboratorAccess(session.user.id, workspaceId);
   if (!access) {
     return Response.json({ error: "Workspace non accessibile" }, { status: 403 });
+  }
+
+  // (Mappatura board) L'unità, quando c'è, è di questo workspace: altrimenti il documento puntava a un'unità di un altro
+  // cliente. Prima di leggere il file o chiamare il modello.
+  if (departmentId) {
+    const unit = UUID.test(departmentId) ? await getDepartmentById(departmentId) : null;
+    if (!unit || unit.workspaceId !== workspaceId) {
+      return Response.json({ error: "Unità non valida" }, { status: 400 });
+    }
   }
 
   const maxSize = 20 * 1024 * 1024; // 20MB
