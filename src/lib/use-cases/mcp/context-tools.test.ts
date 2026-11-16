@@ -522,6 +522,26 @@ test("list_context_proposals: tutte o quelle di un appunto, con gli appunti, le 
   assert.deepEqual(bad.content.fieldErrors, { sourceId: "Formato non valido." });
 });
 
+test("i nomi e i contatti degli appunti non arrivano a Claude: né nel testo di una proposta da correggere, né nelle citazioni", async () => {
+  const { h, who, list } = await seeded([
+    { statement: "Mario Rossi guida il reparto acquisti da tre anni.", quote: "Mario Rossi guida il reparto acquisti da tre anni.", issue: "nome_persona", issueMessage: "Non scrivere nomi di persone: indica il ruolo.", preselected: false },
+    { statement: "Gli ordini urgenti arrivano per e-mail.", quote: "Per gli ordini urgenti scrivere a ordini.urgenti@esempio.test entro le 10." },
+    { statement: "Il gestionale è SAP Business One.", quote: "Il gestionale è SAP Business One." },
+  ]);
+  // Tutta la risposta, con la copia in JSON per i client che leggono solo il testo.
+  const listed = await callTeamTool("list_context_proposals", {}, who, h.deps);
+  for (const out of [JSON.stringify(list), JSON.stringify(listed.result)]) assert.doesNotMatch(out, /Mario|Rossi|ordini\.urgenti@|esempio\.test/);
+  const shown = (listed.result.structuredContent as { proposals: Array<{ text: string; quote: string | null; issue: string | null }> }).proposals;
+  assert.deepEqual(
+    shown.map((p) => [p.text, p.quote, p.issue]),
+    [
+      ["Testo non mostrato: contiene dati di una persona. Si corregge in Unbundle.", null, "Non scrivere nomi di persone: indica il ruolo."],
+      ["Gli ordini urgenti arrivano per e-mail.", null, null],
+      ["Il gestionale è SAP Business One.", "Il gestionale è SAP Business One.", null],
+    ],
+  );
+});
+
 // ─── confirm_context_proposals ───────────────────────────────────────
 
 async function seeded(drafts: Array<Partial<ProposalView>>) {

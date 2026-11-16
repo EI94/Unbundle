@@ -26,6 +26,7 @@
  */
 import type { ConnectorStatusCode } from "../../connector/status.ts";
 import { CONNECTOR_STATUS_LABEL } from "../../connector/status.ts";
+import { scanPersonalData } from "../../context/scan.ts";
 import { CONTEXT_TEXT } from "../../context/text.ts";
 import type { Basis, CommitmentParty, ContextSection, ContextVisibility, ProposalKind, SkippedCounts } from "../../context/vocab.ts";
 import type { ProposalView } from "../../db/queries/context-proposals.ts";
@@ -585,10 +586,16 @@ export const COMMITMENT_PARTY_LABEL: Readonly<Record<CommitmentParty, string>> =
   cliente: CONTEXT_TEXT.confirm.partyTheirs,
 });
 
+/** Al posto del testo di una proposta con i dati di una persona: Claude non li riceve, la persona la corregge in Unbundle. */
+export const CONTEXT_PERSONAL_DATA_HIDDEN = "Testo non mostrato: contiene dati di una persona. Si corregge in Unbundle.";
+
 /**
  * Una proposta come la riceve Claude (§9.3): il testo, la citazione dagli appunti, «detto» o «dedotto», la sezione,
  * chi la vede, gli use case per codice e, per un impegno o una domanda, la parte e il ruolo. Mai «Con chi», mai chi
- * ha aggiunto gli appunti o chi conferma: campo per campo, nessuno spread della vista.
+ * ha aggiunto gli appunti o chi conferma: campo per campo, nessuno spread della vista. Nomi e cognomi, contatti, codici
+ * fiscali e date di nascita non escono dall'MCP (§9: l'MCP porta i ruoli): un testo che li ha si sostituisce con
+ * `CONTEXT_PERSONAL_DATA_HIDDEN` (la proposta va corretta in Unbundle, e la conferma da qui la rifiuta), una citazione
+ * che li ha non si manda.
  */
 export interface McpProposal {
   id: string;
@@ -626,8 +633,8 @@ export function mcpProposal(view: ProposalView): McpProposal {
     sourceId: view.sourceId,
     kind: view.kind,
     kindLabel: PROPOSAL_KIND_LABEL[view.kind],
-    text: view.statement,
-    quote: view.quote,
+    text: scanPersonalData(view.statement).ok ? view.statement : CONTEXT_PERSONAL_DATA_HIDDEN,
+    quote: view.quote && scanPersonalData(view.quote).ok ? view.quote : null,
     basis: view.basis,
     basisLabel: BASIS_LABEL[view.basis],
     section: view.section,
