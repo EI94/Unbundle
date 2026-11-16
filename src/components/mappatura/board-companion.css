@@ -7,7 +7,8 @@
  */
 
 /* ── L'assistente: una colonna che riempie il suo pannello; il campo resta in fondo mentre la conversazione scorre ── */
-[data-board-root] .b-comp { display: flex; flex-direction: column; gap: 12px; min-height: 100%; font-size: 13.5px; line-height: 1.5; color: var(--board-ink-2); }
+/* Il corpo del pannello (della board) non ha margini: il compagno prende quelli della testa del pannello, 22 px. */
+[data-board-root] .b-comp { display: flex; flex-direction: column; gap: 12px; min-height: 100%; padding: 14px 22px 0; font-size: 13.5px; line-height: 1.5; color: var(--board-ink-2); }
 [data-board-root] .b-comp-tools { display: flex; flex-wrap: wrap; gap: 8px; }
 [data-board-root] .b-comp-log { display: flex; flex-direction: column; gap: 14px; flex: 1 1 auto; min-width: 0; }
 [data-board-root] .b-comp-msg { min-width: 0; overflow-wrap: anywhere; }
@@ -27,7 +28,8 @@
 [data-board-root] .b-comp-error b { font-family: var(--board-font-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; font-weight: 500; }
 [data-board-root] .b-comp-sugg { display: flex; flex-wrap: wrap; gap: 6px; }
 [data-board-root] .b-comp-sugg .b-fchip { white-space: normal; text-align: left; color: var(--board-ink-2); }
-[data-board-root] .b-comp-form { position: sticky; bottom: 0; display: flex; gap: 8px; align-items: flex-end; padding: 10px 0 2px; border-top: 1px solid var(--board-line); background: var(--board-paper); }
+/* Il campo, fermo in fondo al pannello che scorre: largo quanto il pannello, con lo stesso margine dentro e sotto. */
+[data-board-root] .b-comp-form { position: sticky; bottom: 0; display: flex; gap: 8px; align-items: flex-end; margin: 0 -22px; padding: 10px 22px 16px; border-top: 1px solid var(--board-line); background: var(--board-paper); }
 [data-board-root] .b-comp-input { flex: 1 1 auto; min-height: 38px; max-height: 200px; resize: none; overflow-y: auto; padding: 8px 10px; font-size: 13.5px; line-height: 1.45; }
 [data-board-root] .b-comp-input[disabled] { cursor: not-allowed; }
 [data-board-root] .b-comp-form .b-btn { flex: none; height: 38px; }
