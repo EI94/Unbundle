@@ -35,10 +35,10 @@ test("il confronto: badge, «Oggi» (la riga grigia) accanto a «Classificazione
   assert.match(out, /<div class="b-ag" data-b="badges"><span class="b-abadge" data-stream="automate" data-b="stream-badge">Automate<\/span><span class="b-abadge b-auto" data-b="exposure-badge">AI 22%<\/span><\/div>/);
   assert.match(
     out,
-    /<div class="b-compare" data-b="compare"><div class="b-was"><p class="b-k">Oggi<\/p><p>Per ogni richiesta si chiedono tre offerte e si confrontano\.<\/p><\/div><div class="b-now"><p class="b-k">Classificazione<\/p><p>Il confronto è meccanico, ma la scelta dei criteri no\.<\/p><p class="b-muted">Affidabilità 61%<\/p><\/div><\/div>/,
+    /<div class="b-compare" data-b="compare"><div><p class="b-k">Oggi<\/p><div class="b-was"><p>Per ogni richiesta si chiedono tre offerte e si confrontano\.<\/p><\/div><\/div><div><p class="b-k">Classificazione<\/p><div class="b-now"><p>Il confronto è meccanico, ma la scelta dei criteri no\.<\/p><p class="b-muted">Affidabilità 61%<\/p><\/div><\/div><\/div>/,
   );
   // Un passo senza stream: resta da classificare.
-  assert.match(drawer(fixtureBoard({ classified: true }), I.ordine), /<div class="b-now"><p class="b-k">Classificazione<\/p><p>Resta da classificare\.<\/p><\/div>/);
+  assert.match(drawer(fixtureBoard({ classified: true }), I.ordine), /<p class="b-k">Classificazione<\/p><div class="b-now"><p>Resta da classificare\.<\/p><\/div>/);
 });
 
 test("il selettore dello stream: uno premuto, il punto ambra sulla proposta dell'assistente; spento per chi non rivede", () => {

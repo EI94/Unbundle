@@ -156,17 +156,20 @@ export function DrawerList(p: { label: string; never?: boolean; children: ReactN
   );
 }
 
-/** «Prima» accanto a «dopo» (P27): la riga grigia di oggi, la riga dell'accento della classificazione. */
+/**
+ * «Prima» accanto a «dopo» (P27): la riga grigia di oggi, la riga dell'accento della classificazione. L'etichetta in mono
+ * sta sopra la riga, come sul riferimento: la riga comincia sotto di lei.
+ */
 export function Compare(p: { was: ReactNode; now: ReactNode; wasLabel: string; nowLabel: string }): JSX.Element {
   return (
     <div className="b-compare" data-b="compare">
-      <div className="b-was">
+      <div>
         <p className="b-k">{p.wasLabel}</p>
-        {p.was}
+        <div className="b-was">{p.was}</div>
       </div>
-      <div className="b-now">
+      <div>
         <p className="b-k">{p.nowLabel}</p>
-        {p.now}
+        <div className="b-now">{p.now}</div>
       </div>
     </div>
   );

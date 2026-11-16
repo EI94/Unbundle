@@ -52,7 +52,8 @@ test("i blocchi del drawer: le colonne, l'etichetta in mono con il suo contenuto
   assert.equal(html(h(DrawerList, { label: "Mai", never: true }, "x")), '<div data-b="drawer-list"><p class="b-k b-never">Mai</p>x</div>');
   assert.equal(
     html(h(Compare, { was: "Si fa a mano.", now: "Si automatizza.", wasLabel: "Oggi", nowLabel: "Classificazione" })),
-    '<div class="b-compare" data-b="compare"><div class="b-was"><p class="b-k">Oggi</p>Si fa a mano.</div><div class="b-now"><p class="b-k">Classificazione</p>Si automatizza.</div></div>',
+    // L'etichetta sopra la riga grigia o dell'accento, non dentro: la riga comincia sotto di lei, come sul riferimento.
+    '<div class="b-compare" data-b="compare"><div><p class="b-k">Oggi</p><div class="b-was">Si fa a mano.</div></div><div><p class="b-k">Classificazione</p><div class="b-now">Si automatizza.</div></div></div>',
   );
   assert.equal(html(h(Human, { label: "Decide una persona" }, "Il buyer conferma l'ordine.")), '<div class="b-human" data-b="human"><b>Decide una persona</b>Il buyer conferma l&#x27;ordine.</div>');
 });
