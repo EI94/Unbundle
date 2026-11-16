@@ -461,6 +461,16 @@ test("i tre stream restano distinti per chi non distingue rosso e verde, nei due
   }
 });
 
+test("il rombo di «decide una persona» nella legenda è il punto di 9 px del riferimento, girato e ambra", () => {
+  const diamond = declarationsOf(boardRules, `${ROOT} .b-adot.b-diamond`);
+  assert.ok(diamond);
+  assert.deepEqual([diamond.get("transform"), diamond.get("border-radius"), diamond.get("background")], ["rotate(45deg)", "1px", "var(--board-amber-deep)"]);
+  // Nessuna misura sua: tiene quella di `.b-adot`, come lo stile in linea del riferimento.
+  assert.equal(diamond.has("width") || diamond.has("height"), false);
+  const dot = declarationsOf(boardRules, `${ROOT} .b-adot`);
+  assert.deepEqual([dot?.get("width"), dot?.get("height")], ["9px", "9px"]);
+});
+
 // ─── 6. Movimento, fuoco ─────────────────────────────────────────────
 
 test("con il movimento ridotto nessuna transizione, dentro la board; il fuoco è l'anello di 2 px del riferimento", () => {

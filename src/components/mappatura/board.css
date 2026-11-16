@@ -300,7 +300,8 @@
 [data-board-root] .b-head .b-head-action { flex: 0 0 auto; }
 [data-board-root] .b-chip button { appearance: none; border: 0; background: transparent; padding: 0 0 0 2px; cursor: pointer; color: var(--board-graphite); line-height: 1; }
 [data-board-root] .b-chip button:hover { color: var(--board-crit); }
-/* Punti della legenda: i tre attriti, gli stream, il grigio; il rombo di «decide una persona». */
+/* Punti della legenda: i tre attriti, gli stream, il grigio; il rombo di «decide una persona» (il punto di 9 px girato, come
+   sul riferimento). */
 [data-board-root] .b-adot[data-tone="crit"] { background: var(--board-crit); }
 [data-board-root] .b-adot[data-tone="amber"] { background: var(--board-amber); }
 [data-board-root] .b-adot[data-tone="neutral"] { background: var(--board-bone-3); }
@@ -308,7 +309,7 @@
 [data-board-root] .b-adot[data-tone="differentiate"] { background: var(--board-differentiate); }
 [data-board-root] .b-adot[data-tone="innovate"] { background: var(--board-innovate); }
 [data-board-root] .b-adot[data-tone="auto"] { background: var(--board-a-auto); }
-[data-board-root] .b-adot.b-diamond { border-radius: 1px; transform: rotate(45deg); width: 8px; height: 8px; background: var(--board-amber-deep); }
+[data-board-root] .b-adot.b-diamond { border-radius: 1px; transform: rotate(45deg); background: var(--board-amber-deep); }
 /* Badge: uno stream ha il suo colore; quello grigio (AI exposure) il suo testo. La forma piccola sta nelle card. */
 [data-board-root] .b-abadge[data-stream="automate"] { background: var(--board-automate); }
 [data-board-root] .b-abadge[data-stream="differentiate"] { background: var(--board-differentiate); }
