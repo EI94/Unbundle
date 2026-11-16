@@ -377,14 +377,14 @@ export function withUseCaseLinks(board: MappingBoard, links: { links: readonly B
       steps: process.steps.map((step) => ({ ...step, useCaseIds: [...(links.byStep.get(step.id) ?? [])] })),
     })),
   };
-  return { ...linked, useCases: links.links.map((link) => ({ ...link, stream: useCaseStream(linked, link.id) })) };
+  return { ...linked, useCases: links.links.map((link) => ({ ...link, stream: linkedCaseStream(linked, link.id) })) };
 }
 
 /**
  * Lo stream di uno use case collegato: quello che ha la maggior parte dei suoi passi su questa board (a parità, il
  * primo nell'ordine Automate, Differentiate, Innovate). null se nessuno dei suoi passi è classificato.
  */
-export function useCaseStream(board: Pick<MappingBoard, "processes">, useCaseId: string): Stream | null {
+export function linkedCaseStream(board: Pick<MappingBoard, "processes">, useCaseId: string): Stream | null {
   const counts: Record<Stream, number> = { automate: 0, differentiate: 0, innovate: 0 };
   for (const step of allSteps(board)) if (step.stream && step.useCaseIds.includes(useCaseId)) counts[step.stream] += 1;
   const best = STREAMS.reduce((winner, stream) => (counts[stream] > counts[winner] ? stream : winner), STREAMS[0]);
@@ -392,7 +392,7 @@ export function useCaseStream(board: Pick<MappingBoard, "processes">, useCaseId:
 }
 
 /** Gli use case collegati di una board già letta, da tenere quando ne arriva una più nuova dal server. */
-export function useCaseLinksOf(board: MappingBoard): { links: BoardUseCaseLink[]; byStep: Map<string, string[]> } {
+export function caseLinksOf(board: MappingBoard): { links: BoardUseCaseLink[]; byStep: Map<string, string[]> } {
   const byStep = new Map<string, string[]>();
   for (const step of allSteps(board)) if (step.useCaseIds.length) byStep.set(step.id, [...step.useCaseIds]);
   return { links: [...board.useCases], byStep };
