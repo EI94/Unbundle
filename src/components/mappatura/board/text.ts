@@ -139,7 +139,11 @@ export const toValidateText = (n: number): string => `${formatCount(n)} da valid
 export const toClassifyText = (n: number): string => `${formatCount(n)} da classificare`;
 export const peopleText = (n: number): string => counted(n, "persona", "persone");
 export const openBoardLabel = (unitName: string): string => `Apri la board di ${unitName}`;
-export const discoveryText = (words: UnitWords): string => `Le ${words.plural} nascono nella Discovery. Completa quella fase per aprire la mappatura.`;
+/**
+ * Senza unità. Il piano diceva «Le {plurale} nascono nella Discovery»: l'articolo concorda con la parola dell'unità («Le
+ * reparti»), che §7 vieta. La frase dice la stessa cosa senza nominarla.
+ */
+export const discoveryText = (): string => "La mappatura comincia dalla Discovery. Completa quella fase per aprire le board.";
 
 // ─── S2 · «Processi di oggi» ─────────────────────────────────────────
 

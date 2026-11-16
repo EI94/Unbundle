@@ -2,6 +2,28 @@
  *
  * Solo quello che il riferimento non ha: i controlli di modifica sulla mappa, i moduli del drawer, la griglia del
  * pannello agganciato, le regole per il telefono. Stesse regole di board.css: ogni selettore sotto `[data-board-root]`,
- * colori solo come `var(--board-…)` (le controlla src/components/theme/board-theme.test.ts).
- * Il file nasce vuoto con le fondamenta: lo riempie il pacchetto delle viste.
+ * colori solo come `var(--board-…)` (le controlla src/components/theme/board-theme.test.ts). Nessuna regola di qui
+ * riscrive una regola portata dal riferimento con lo stesso selettore (lo controlla
+ * src/components/mappatura/board/views-css.test.ts): quello che cambia per un contesto nuovo ha un selettore suo.
+ * Le soglie delle griglie sono container query sull'area della board, come in board.css; sulla finestra solo il
+ * pannello dell'assistente (agganciato da 1280 px), il telefono e il tocco.
  */
+
+/* ── S1 · Le unità: una riga per unità ── */
+/* Le colonne della riga: stato, nome, punti degli stream, passi e ore, freccia. Sul telefono i conteggi scendono sotto il nome. */
+[data-board-root] .b-units { --b-crow-cols: 132px minmax(0,1fr) 112px minmax(190px,max-content) 16px; }
+[data-board-root] .b-units .b-crow { padding-block: 10px; }
+[data-board-root] .b-units .b-cn small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+[data-board-root] .b-crow-st { display: flex; min-width: 0; }
+[data-board-root] .b-crow-meta { display: contents; }
+[data-board-root] .b-crow-streams { display: flex; align-items: center; gap: 10px; min-width: 0; }
+[data-board-root] .b-sdot { display: inline-flex; align-items: center; gap: 5px; font-family: var(--board-font-mono); font-size: 11px; color: var(--board-ink-2); font-variant-numeric: tabular-nums; }
+[data-board-root] .b-crow-go { display: flex; align-items: center; justify-content: flex-end; color: var(--board-graphite-3); }
+[data-board-root] .b-crow:hover .b-crow-go { color: var(--board-ink); }
+@container board (max-width: 680px) {
+  [data-board-root] .b-units { --b-crow-cols: auto minmax(0,1fr) 16px; }
+  [data-board-root] .b-units .b-crow { row-gap: 6px; }
+  [data-board-root] .b-units .b-crow-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; grid-column: 2 / 3; grid-row: 2; min-width: 0; }
+  [data-board-root] .b-units .b-num2 { text-align: left; }
+  [data-board-root] .b-units .b-crow-go { grid-column: 3; grid-row: 1; }
+}

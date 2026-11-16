@@ -40,7 +40,7 @@ test("ogni scritta delle viste rispetta lo stile della casa: «use case», nessu
       ...Object.values(unitsTitle(words)),
       unitsLede(words),
       unitsSectionTitle(words),
-      discoveryText(words),
+      discoveryText(),
       ...unitsTileTexts({ complete: 1, total: 3, steps: 1, hoursWeek: 1, toValidate: 1 }, words).flatMap((tile) => [tile.value, tile.label]),
       ...unitsTileTexts({ complete: 0, total: 15, steps: 12, hoursWeek: 28.5, toValidate: 4 }, words).flatMap((tile) => [tile.value, tile.label]),
     ]),
@@ -113,7 +113,8 @@ test("le scritte del piano, parola per parola; la parola dell'unità viene dal w
   assert.equal(unitsLede(REPARTI), "Ogni reparto ha la sua board: i processi, i passi, chi li fa e dove decide una persona.");
   assert.equal(unitsSectionTitle(REPARTI), "Reparti");
   assert.equal(capitalized(""), "");
-  assert.equal(discoveryText(FUNZIONI), "Le funzioni nascono nella Discovery. Completa quella fase per aprire la mappatura.");
+  // Senza unità la frase non nomina la parola dell'unità: «Le reparti» non si può dire (§7, nessuna concordanza).
+  assert.equal(discoveryText(), "La mappatura comincia dalla Discovery. Completa quella fase per aprire le board.");
   assert.equal(openBoardLabel("Magazzino"), "Apri la board di Magazzino");
   assert.equal(toValidateText(4), "4 da validare");
   assert.equal(toClassifyText(1), "1 da classificare");
