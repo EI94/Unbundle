@@ -688,3 +688,25 @@ Progetto: `docs/contesto/RILASCIO-9-CONTESTO.md` (approvato dal titolare il 15/1
 **Richieste delle persone e conservazione**: un appunto si toglie dalla vista «Appunti» («Togli»): i suoi fatti restano, segnati «senza fonte». Il testo degli appunti si cancella da solo dopo 12 mesi. Scollegare Granola revoca il token e cancella il collegamento; gli appunti già entrati restano.
 
 **Costi**: una lettura di due pagine costa pochi centesimi. Tetti: 200 letture al giorno per workspace, 30 domande all'ora per persona, 300 al giorno per workspace.
+
+### 10.20 Rilascio insieme: 8.0c, 9a e la mappatura come board (0037, 0038, 0039)
+
+Piano della board: `docs/mappatura/MAPPATURA-BOARD-PIANO.md`. Un solo deploy porta la 8.0c (§10.18), la 9a (§10.19) e «Activity mapping» come board.
+
+**Che cosa cambia nella mappatura:**
+
+- `/dashboard/<ws>/mapping` ha una riga per unità; `/mapping/<unità>` è la board, con «Processi di oggi» e, dopo «Completa la mappatura», «Classificazione». Le attività di prima entrano nella board da sole («prima», «da validare»), senza cambiare una colonna di `activities`.
+- L'assistente sta accanto alla board e scrive sulla stessa board, con l'unità controllata dalla rotta della chat (400 senza unità, 404 se non è del workspace). Senza l'ok ai sub-responsabili mostra l'avviso del §10.19 al posto del campo; «Proponi passi dai documenti» e il caricamento di un documento lo dicono.
+- «Completa la mappatura» classifica con la tesi del valore del workspace (§10.19) e scrive una riga in campanella per il workspace. Nessuna e-mail, nessuna variabile nuova, nessun cron. Al build si scarica un font in più (Instrument Serif).
+
+**Migrazioni (le applica l'app, al primo avvio dopo il deploy):**
+
+1. `ENSURE_VERSION` 33. Al primo avvio a freddo il self-heal applica, nell'ordine, la 0037, la 0038 e la 0039: tre transazioni, ognuna con il suo advisory lock e `lock_timeout` 3s (31 e 32, nei §10.18 e §10.19, sono i numeri dei loro blocchi). La 0038 vuole la 0037; la 0039 non dipende dalle due. Provato con la build di produzione su una copia nuova del database modello dell'hub: le tre sonde false prima, vere dopo il primo accesso, nessun errore nel log.
+2. La 0039 crea sei tabelle (`mapping_boards`, `mapping_processes`, `mapping_steps`, `mapping_notes`, `mapping_votes`, `mapping_applied_ops`), i loro indici e due indici unici su `departments` e `activities` per le chiavi composte. Non scrive dati e non cambia colonne né CHECK delle tabelle di prima. Il DDL uc della 0018 e la sua impronta non cambiano.
+3. Subito dopo il deploy: aprire una pagina, poi `use-case-admin doctor` deve dire `migrazione0037: true` e `migrazione0038: true`; per la 0039, in sola lettura, `SELECT <MAPPING_BOARD_PROBE_SQL>` (`src/lib/db/mapping-board-ddl.ts`) dà `true`.
+4. Se la sonda della 0039 resta `false` (nel log «0039 self-heal failed…»): l'app serve, la mappatura si legge e non si modifica, l'assistente risponde «La board non è ancora disponibile: riprova tra qualche minuto.», il self-heal riprova al massimo ogni 5 minuti. Solo allora, a mano: `psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 -f drizzle/0039_mapping_board.sql`. Mai drizzle-kit, mai `db:push`.
+5. Un'anteprima di Vercel non applica la 0038 (`VERCEL_ENV=preview`), la 0037 e la 0039 sì: i rami di questi rilasci e `rilascio/insieme` non si pubblicano.
+
+**Ritorno indietro:** un passo su Vercel (Promote del deploy di prima, che legge già le dipendenze delle attività con `inArray`). Prima, i documenti «Solo Lateral Space» come al §10.19, punto 5. Le sei tabelle restano: il codice di prima non le legge. I passi aggiunti sulla board sono attività come le altre e le pagine di prima li mostrano; i tool di prima della chat scrivono su `activities` e la board adotta quelle righe quando torna. Una riga `mapping_completed` in campanella resta senza link. Niente da cancellare.
+
+**Dopo il deploy, a mano:** aprire un'unità, aggiungere un passo e vedere «Salvato»; in un workspace con l'ok, chiedere un passo all'assistente e vederlo comparire senza ricaricare; completare una piccola unità e vedere la riga in campanella e la scheda «Classificazione»; in «Chiaro» e sul telefono.

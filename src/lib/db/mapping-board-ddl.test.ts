@@ -260,3 +260,17 @@ test("le colonne Drizzle sono quelle del DDL, nello stesso ordine", () => {
   assert.equal(Object.keys(getTableColumns(schema.departments)).length, 8);
   assert.equal(Object.keys(getTableColumns(schema.activityDependencies)).length, 3);
 });
+
+test("RUNBOOK §10.20: il rilascio insieme, ENSURE_VERSION 33, la 0037, la 0038 e la 0039 in ordine, la 0039 a mano solo di riserva, il ritorno indietro", () => {
+  const runbook = readFileSync(new URL("../../../docs/casi-duso/RUNBOOK.md", import.meta.url), "utf8");
+  assert.ok(runbook.includes("### 10.20 Rilascio insieme: 8.0c, 9a e la mappatura come board (0037, 0038, 0039)"), "manca §10.20");
+  const section = runbook.slice(runbook.indexOf("### 10.20 Rilascio insieme"));
+  assert.match(section, /`ENSURE_VERSION` 33/);
+  assert.match(section, /nell'ordine, la 0037, la 0038 e la 0039/);
+  assert.match(section, /psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 -f drizzle\/0039_mapping_board\.sql/);
+  assert.match(section, /Mai drizzle-kit, mai `db:push`/);
+  assert.match(section, /\*\*Ritorno indietro:\*\* un passo su Vercel \(Promote del deploy di prima/);
+  for (const table of MAPPING_BOARD_TABLES) assert.ok(section.includes(`\`${table}\``), table);
+  // Il numero del codice e quello del documento sono lo stesso.
+  assert.equal(Number(ensureSchema.match(/const ENSURE_VERSION = (\d+);/)?.[1]), 33);
+});
