@@ -1,13 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 
 // Le regole di «Contesto» che valgono su tutto il codice (rilascio 9a, RILASCIO-9a-COSTRUZIONE.md §11.2): chi legge la
 // tesi del valore, chi tocca le tabelle `context_*`, dove può comparire l'indirizzo di Granola. Si leggono i sorgenti.
 
 const ROOT = new URL("../../../", import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, ROOT), "utf8");
-const exists = (path: string) => existsSync(new URL(path, ROOT));
 
 /** I sorgenti .ts e .tsx sotto src/, test compresi. */
 function sourceFiles(): string[] {
@@ -30,15 +29,6 @@ test("i sorgenti ci sono", () => {
 const THESIS_COLUMN_ALLOWED = new Set(["src/lib/db/schema.ts", "src/lib/db/queries/value-thesis.ts", "src/lib/db/context-ddl.ts"]);
 /** Una lettura (o una scrittura) della tesi dell'organizzazione: `org?.companyValueThesis`, `organizations.companyValueThesis`. */
 const ORG_THESIS = /\b(?:org|organization|organizations)\??\.companyValueThesis\b/;
-/**
- * I tre file che leggono ancora la tesi dell'organizzazione alla testa di F: li spostano i pacchetti «mcp» e «pagina»
- * (§10.1). Chi integra toglie da qui ogni file già spostato: l'elenco deve finire vuoto.
- */
-const MOVED_BY_OTHER_PACKAGES: Readonly<Record<string, "mcp" | "pagina">> = {
-  "src/app/api/ai/chat/route.ts": "mcp",
-  "src/app/api/workspaces/[workspaceId]/sidebar-data/route.ts": "mcp",
-  "src/app/(dashboard)/dashboard/[workspaceId]/setup/context/page.tsx": "pagina",
-};
 
 test("`company_value_thesis` compare solo nello schema, nelle due funzioni della tesi e nel DDL", () => {
   for (const file of CODE) {
@@ -51,11 +41,13 @@ test("`company_value_thesis` compare solo nello schema, nelle due funzioni della
 
 test("nessuno legge più la tesi dell'organizzazione: ogni lettura passa da getWorkspaceValueThesis", () => {
   for (const file of CODE) {
-    if (!ORG_THESIS.test(read(file))) continue;
-    assert.ok(Object.hasOwn(MOVED_BY_OTHER_PACKAGES, file), `${file}: legge la tesi dell'organizzazione; usa getWorkspaceValueThesis(workspaceId)`);
+    assert.doesNotMatch(read(file), ORG_THESIS, `${file}: legge la tesi dell'organizzazione; usa getWorkspaceValueThesis(workspaceId)`);
   }
-  for (const file of Object.keys(MOVED_BY_OTHER_PACKAGES)) assert.ok(exists(file), `${file} non c'è più: toglilo dall'elenco`);
-  // I lettori di F: tutti dalla funzione, con il workspace della richiesta.
+  // Il vecchio indirizzo di «Contesto» è solo un reindirizzamento: la pagina nuova legge la tesi con loadLiveDiscovery.
+  const oldPage = read("src/app/(dashboard)/dashboard/[workspaceId]/setup/context/page.tsx");
+  assert.doesNotMatch(oldPage, /ValueThesis/);
+  assert.match(oldPage, /redirect\(`\/dashboard\/\$\{workspaceId\}\/contesto`\)/);
+  // I lettori: tutti dalla funzione, con il workspace della richiesta (F, poi la chat e la barra della Discovery di «mcp»).
   const readers: Readonly<Record<string, RegExp>> = {
     "src/lib/ai/tools/activity-mapping-tools.ts": /await getWorkspaceValueThesis\(workspaceId\)/,
     "src/lib/use-cases/create-flow.ts": /getWorkspaceValueThesis\(ctx\.workspaceId\)/,
@@ -65,6 +57,8 @@ test("nessuno legge più la tesi dell'organizzazione: ogni lettura passa da getW
     "src/lib/actions/strategy.ts": /await getWorkspaceValueThesis\(workspaceId\)/,
     "src/lib/actions/simulation.ts": /await getWorkspaceValueThesis\(workspaceId\)/,
     "src/lib/db/queries/context-discovery.ts": /getWorkspaceValueThesis\(workspace\.id\)/,
+    "src/app/api/ai/chat/route.ts": /await getWorkspaceValueThesis\(workspaceId\)/,
+    "src/app/api/workspaces/[workspaceId]/sidebar-data/route.ts": /getWorkspaceValueThesis\(workspaceId\)/,
   };
   for (const [file, pattern] of Object.entries(readers)) {
     const source = read(file);
