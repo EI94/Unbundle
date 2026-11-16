@@ -1,0 +1,142 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+
+// Le regole della pagina «Contesto» che si leggono nei sorgenti (rilascio 9a, RILASCIO-9a-COSTRUZIONE.md §7, §11.3):
+// il vecchio indirizzo reindirizza con un 307 vero; «Da confermare» non c'è per chi non è di Lateral Space; ogni testo
+// a schermo viene da CONTEXT_TEXT; i componenti del browser non importano moduli del server; le rotte hanno i tempi
+// del piano.
+
+const ROOT = new URL("../../../", import.meta.url);
+const read = (path: string) => readFileSync(new URL(path, ROOT), "utf8");
+const exists = (path: string) => existsSync(new URL(path, ROOT));
+const filesUnder = (dir: string) =>
+  (readdirSync(new URL(dir, ROOT), { recursive: true }) as string[]).map((file) => `${dir}/${file.split("\\").join("/")}`).filter((file) => /\.(ts|tsx)$/.test(file));
+
+const DASHBOARD = "src/app/(dashboard)/dashboard/[workspaceId]";
+const PAGE = `${DASHBOARD}/contesto/page.tsx`;
+const CONFIRM_PAGE = `${DASHBOARD}/contesto/conferma/page.tsx`;
+const SETUP_PAGE = `${DASHBOARD}/setup/context/page.tsx`;
+const API = "src/app/api/context/[workspaceId]";
+
+/** I file del pacchetto «pagina» (§12.2), senza i test: i componenti (non Granola, non l'avviso dell'ok), le pagine, le rotte, le azioni. */
+const PACKAGE_FILES = [
+  ...filesUnder("src/components/context").filter((file) => !file.includes("/granola/") && !file.endsWith("/ai-consent-notice.tsx")),
+  ...filesUnder(`${DASHBOARD}/contesto`),
+  SETUP_PAGE,
+  ...filesUnder(`${API}/sources`),
+  ...filesUnder(`${API}/facts`),
+  ...filesUnder(`${API}/ask`),
+  "src/lib/actions/context.ts",
+].filter((file) => !/\.test\.tsx?$/.test(file));
+
+/** Il sorgente senza i commenti (blocchi e righe; un `//` dopo i due punti è un indirizzo, non un commento). */
+function withoutComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`\\])\/\/.*$/gm, "$1");
+}
+
+test("i file del pacchetto ci sono", () => {
+  for (const file of [PAGE, CONFIRM_PAGE, SETUP_PAGE, `${DASHBOARD}/contesto/loading.tsx`, `${DASHBOARD}/contesto/error.tsx`, "src/components/context/view-model.ts", "src/lib/actions/context.ts"]) {
+    assert.ok(exists(file), file);
+  }
+  assert.ok(PACKAGE_FILES.length >= 25, `${PACKAGE_FILES.length} file`);
+});
+
+test("il vecchio indirizzo reindirizza a /contesto, con un 307 vero: nessun loading.tsx sopra di lui", () => {
+  const source = withoutComments(read(SETUP_PAGE));
+  assert.match(source, /await requireWorkspacePage\(workspaceId\);/);
+  assert.match(source, /redirect\(`\/dashboard\/\$\{workspaceId\}\/contesto`\);/);
+  // Niente più dati letti qui: la tesi del valore e i dati della Discovery stanno nella Memoria.
+  assert.doesNotMatch(source, /companyValueThesis|organizations|getDepartmentsByWorkspace|from "@\/lib\/db"/);
+  // `redirect()` sotto un loading.tsx risponde 200 con una meta refresh: la cartella e le sue madri non ne hanno.
+  for (const dir of [`${DASHBOARD}/setup/context`, `${DASHBOARD}/setup`, DASHBOARD, "src/app/(dashboard)/dashboard", "src/app/(dashboard)"]) {
+    assert.equal(exists(`${dir}/loading.tsx`), false, `${dir}/loading.tsx`);
+  }
+});
+
+test("«Da confermare»: notFound() per chi non è di Lateral Space, prima di leggere le proposte; e se non ci sono", () => {
+  const source = withoutComments(read(CONFIRM_PAGE));
+  const gate = source.indexOf("if (!contextAbilities(actor).canConfirm) notFound();");
+  assert.ok(gate > 0, "il controllo c'è");
+  assert.ok(gate < source.indexOf("listOpenProposals("), "prima di leggere");
+  assert.match(source, /if \(!open\) notFound\(\);/);
+  assert.match(source, /export const maxDuration = 60;/, "«In breve» si riscrive dopo la conferma, dentro questo tempo");
+  assert.match(source, /await requireWorkspacePage\(workspaceId\)/);
+});
+
+test("la pagina: chi è nel workspace, la 0038 controllata, le due viste, Granola montato nei due punti, 60 secondi", () => {
+  const source = withoutComments(read(PAGE));
+  assert.match(source, /export const metadata = \{ title: CONTEXT_TEXT\.page\.title \};/);
+  assert.match(source, /export const maxDuration = 60;/);
+  assert.match(source, /await requireWorkspacePage\(workspaceId\)/);
+  assert.match(source, /if \(!abilities\.canOpen\) notFound\(\);/);
+  assert.ok(source.indexOf("contextStoreReady()") < source.indexOf("loadContextMemory("), "prima l'archivio, poi la memoria");
+  assert.match(source, /search\.vista === "appunti"/);
+  assert.match(source, /<GranolaInbox workspaceId=\{workspaceId\} workspaceName=\{workspaceName\} compact \/>/, "una riga nella Memoria");
+  assert.match(source, /<GranolaInbox workspaceId=\{workspaceId\} workspaceName=\{workspaceName\} \/>/, "il blocco intero negli Appunti");
+  // Il lettore degli appunti in attesa parte solo con l'ok (senza, c'è l'avviso al suo posto).
+  assert.match(source, /lateralSpace && consentNotice === null \? memory\.counts\.pendingSourceIds : \[\]/);
+  const error = read(`${DASHBOARD}/contesto/error.tsx`);
+  assert.match(error, /^"use client";/);
+  assert.match(error, /\{ retry \}: \{ retry: \(\) => void \}/, "Next 16: `retry`, non `reset`");
+  assert.match(read(`${DASHBOARD}/contesto/loading.tsx`), /Skeleton/);
+});
+
+test("nessun testo in italiano scritto a mano fuori da CONTEXT_TEXT (lettere accentate, «», …)", () => {
+  const ITALIAN = /[àèéìíòóùÀÈÉÌÒÙ«»…]/;
+  const found: string[] = [];
+  for (const file of PACKAGE_FILES) {
+    withoutComments(read(file))
+      .split("\n")
+      .forEach((line, index) => {
+        if (ITALIAN.test(line)) found.push(`${file}:${index + 1}: ${line.trim()}`);
+      });
+  }
+  assert.deepEqual(found, []);
+  // Il controllo vede davvero un testo scritto a mano.
+  assert.equal(ITALIAN.test(withoutComments('const x = "Già fatto";')), true);
+  assert.equal(ITALIAN.test(withoutComments("// già fatto\nconst y = 1;")), false);
+  assert.equal(ITALIAN.test(withoutComments('<p>Così</p>')), true);
+});
+
+test("i componenti del browser non importano moduli del server: dalle funzioni condivise solo tipi", () => {
+  const clientFiles = PACKAGE_FILES.filter((file) => /^\s*"use client";/.test(read(file)) || file.endsWith("/view-model.ts") || file.endsWith("/read-client.ts"));
+  assert.ok(clientFiles.length >= 15, `${clientFiles.length} file del browser`);
+  const SERVER = /^(@\/lib\/db(\/|$)|@\/lib\/context\/server\/|(\.\.\/)+lib\/db\/|@\/lib\/auth|server-only$)/;
+  for (const file of clientFiles) {
+    for (const match of read(file).matchAll(/^import\s+(type\s+)?[^"']*from\s+"([^"]+)";/gm)) {
+      if (SERVER.test(match[2])) assert.ok(match[1], `${file}: «${match[2]}» si importa solo come tipo`);
+    }
+    assert.doesNotMatch(read(file), /^import "server-only";/m, file);
+  }
+  // I moduli del server della pagina lo dicono.
+  for (const file of ["src/components/context/page-data.ts", "src/components/context/routes/respond.ts"]) assert.match(read(file), /^import "server-only";/, file);
+});
+
+test("le rotte della pagina: funzioni Node, mai in cache, con i tempi del piano; tutte partono da chi chiama", () => {
+  const routes: Readonly<Record<string, number>> = {
+    [`${API}/sources/route.ts`]: 30,
+    [`${API}/sources/[sourceId]/route.ts`]: 30,
+    [`${API}/sources/[sourceId]/read/route.ts`]: 120,
+    [`${API}/facts/[factId]/route.ts`]: 30,
+    [`${API}/ask/route.ts`]: 60,
+  };
+  for (const [file, seconds] of Object.entries(routes)) {
+    const source = read(file);
+    assert.match(source, /export const runtime = "nodejs";/, file);
+    assert.match(source, /export const dynamic = "force-dynamic";/, file);
+    assert.match(source, new RegExp(`export const maxDuration = ${seconds};`), file);
+    const body = withoutComments(source);
+    assert.ok(body.indexOf("contextActorFromSession(") < body.indexOf("contextStoreReady()"), `${file}: prima chi chiama, poi l'archivio`);
+  }
+});
+
+test("le azioni rileggono chi chiama e aggiornano la pagina solo se la scrittura è riuscita; «In breve» dopo la conferma", () => {
+  const source = withoutComments(read("src/lib/actions/context.ts"));
+  assert.match(source, /^"use server";/);
+  assert.match(source, /const who = await contextActorFromSession\(workspaceId\);/);
+  assert.match(source, /if \(result\.ok\) revalidatePath\(`\/dashboard\/\$\{workspaceId\}\/contesto`, "layout"\);/);
+  assert.match(source, /after\(async \(\) => \{\s*await refreshContextBrief\(workspaceId, \{ force: true \}\);\s*\}\);/);
+  // Nessuna chiamata al modello nelle azioni: solo scritture brevi.
+  assert.doesNotMatch(source, /readContextSource|askContext|generateObject|generateText/);
+});
