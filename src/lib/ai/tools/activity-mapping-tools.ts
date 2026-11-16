@@ -1,221 +1,317 @@
+import { randomUUID } from "node:crypto";
 import { tool } from "ai";
 import { z } from "zod";
-import { db } from "@/lib/db";
-import { activities, activityDependencies, departments } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
-import { getActivitiesByDepartment } from "@/lib/db/queries/activities";
-import { getWorkspaceById, getStrategicGoalsByWorkspace } from "@/lib/db/queries/workspaces";
-import { organizations } from "@/lib/db/schema";
-import { classifyActivitiesBatch, skippedClassificationsText } from "@/lib/ai/classify";
-import { matchActivitiesToOnet } from "@/lib/ai/onet-matching";
-import { ClaudeRefusalError, logClaudeTimeout, stoppedByDeadline, timeUntil } from "@/lib/ai/models";
-import { logSafeError } from "@/lib/log/safe-error";
-import { updateActivityClassification, updateActivity } from "@/lib/db/queries/activities";
+import { skippedClassificationsText } from "@/lib/ai/classify";
+import { getAppUcExecutor, type UcExecutor } from "@/lib/db/uc-executor";
+import { allSteps, locateStep, type MappingBoard, type StepPlace } from "@/lib/mappatura/board-model";
+import { cutLine, opsForNewStep, opsForStepPatch, type BoardOp, type StepDraft } from "@/lib/mappatura/board-ops";
+import { mappingStoreReady, readBoard, resolveProcess, saveBoardOps, type BoardActor, type BoardScope, type Rejection } from "@/lib/mappatura/board-store";
+import { appCompleteDeps, completeUnitMapping, type CompleteDeps, type CompletionOutcome } from "@/lib/mappatura/complete";
+import { BOARD_TEXT } from "@/lib/mappatura/text";
+import { FREQUENCIES, MAPPING_LIMITS, WORK_TYPES, type Friction } from "@/lib/mappatura/vocab";
+import { cast, toStatement, ucSql, type UcStatement } from "@/lib/uc/sql/statement";
 
 /**
- * I tool dell'activity mapping, costruiti per ogni richiesta della chat. `deadline` è la scadenza dei tool della
- * richiesta (chatToolsDeadline in src/lib/ai/models.ts): la classificazione e il match O*NET di «Completo mapping» si
- * fermano lì.
+ * I tool dell'activity mapping, costruiti per ogni richiesta della chat (docs/mappatura/MAPPATURA-BOARD-PIANO.md §5.1).
+ *
+ * L'unità arriva già controllata dalla rotta (è di quel workspace) e l'attore è l'assistente, con chi scrive e il suo
+ * ruolo: nessun tool scrive con `db`. I passi e le loro note passano da `saveBoardOps`, l'unica strada per scrivere la
+ * board, dove ogni istruzione porta il workspace e l'unità; il completamento passa da `completeUnitMapping`. Un id
+ * scritto dal modello vale solo se è un passo di questa unità.
+ *
+ * `deadline` è la scadenza dei tool della richiesta (chatToolsDeadline in src/lib/ai/models.ts): la classificazione e il
+ * match O*NET del completamento si fermano lì. Senza le tabelle della 0039 ogni tool risponde la stessa frase e non
+ * scrive niente. I testi troppo lunghi si tagliano, mai si rifiutano. Nei log solo id e codici.
  */
+
+/** Quello che i tool usano per leggere e scrivere: nell'app il database; nei test una board finta. */
+export interface MappingToolDeps {
+  executor(): Promise<UcExecutor>;
+  storeReady(executor: UcExecutor): Promise<boolean>;
+  readBoard: typeof readBoard;
+  resolveProcess: typeof resolveProcess;
+  saveBoardOps: typeof saveBoardOps;
+  completeDeps(executor: UcExecutor): CompleteDeps;
+  complete: typeof completeUnitMapping;
+  newId(): string;
+}
+
+export const APP_MAPPING_TOOL_DEPS: MappingToolDeps = Object.freeze({
+  executor: getAppUcExecutor,
+  storeReady: mappingStoreReady,
+  readBoard,
+  resolveProcess,
+  saveBoardOps,
+  completeDeps: appCompleteDeps,
+  complete: completeUnitMapping,
+  newId: () => randomUUID(),
+});
+
+/** Senza le tabelle della 0039: niente si scrive, e il modello lo dice con queste parole. */
+export const BOARD_NOT_READY_MESSAGE = "La board non è ancora disponibile: riprova tra qualche minuto.";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const uuidOf = (value: string | undefined): string | null => {
+  const id = value?.trim() ?? "";
+  return UUID.test(id) ? id.toLowerCase() : null;
+};
+
+// ─── Gli schemi che il modello riempie ───────────────────────────────
+
+/** I campi di un passo, tutti facoltativi: `saveActivity` vuole in più titolo e descrizione, `updateActivity` l'id. */
+const stepFields = {
+  afterActivityId: z.string().optional().describe("L'id del passo dopo il quale va questo passo, quando va in mezzo ad altri. Senza, va in fondo al processo"),
+  who: z.array(z.string()).optional().describe("Chi fa il passo: ruoli o nomi, come li dice l'utente"),
+  toolsUsed: z.array(z.string()).optional().describe("Strumenti e sistemi usati"),
+  inputDescription: z.string().optional().describe("Che cosa entra: che cosa arriva, da chi, in che forma"),
+  outputDescription: z.string().optional().describe("Che cosa esce: che cosa si produce, per chi"),
+  steps: z.array(z.string()).optional().describe("I passaggi operativi, uno per voce"),
+  decisionPoints: z.string().optional().describe("Dove decide una persona: chi decide, e che cosa"),
+  decisionLabel: z.string().optional().describe("Il nome della decisione in poche parole, per esempio «Conferma dell'ordine»"),
+  exception: z.string().optional().describe("Che cosa succede quando qualcosa va storto"),
+  frictions: z.array(z.string()).optional().describe("Gli attriti: dove il lavoro si inceppa, uno per voce"),
+  frictionLevel: z.number().int().min(0).max(3).optional().describe("Quanto pesano gli attriti: 0 nessuno, 1 lieve, 2 medio, 3 forte"),
+  data: z.array(z.string()).optional().describe("Dati e documenti che servono, uno per voce"),
+  times: z.array(z.string()).optional().describe("Tempi e volumi, uno per voce: «Quaranta richieste a settimana»"),
+  frequency: z.enum(FREQUENCIES).optional().describe("Frequenza: giornaliera, settimanale, mensile, ad_hoc"),
+  timeSpentHoursWeek: z.number().optional().describe("Ore a settimana stimate"),
+  qualityPerceived: z.string().optional().describe("Qualità percepita del passo"),
+  workType: z.enum(WORK_TYPES).optional().describe("Tipo di lavoro"),
+};
+
+const saveActivitySchema = z.object({
+  title: z.string().describe("Il nome del passo, breve"),
+  description: z.string().describe("Che cosa succede in questo passo, in una frase"),
+  processName: z
+    .string()
+    .optional()
+    .describe("Il nome del processo (il flusso) di cui il passo fa parte, con le parole dell'utente: lo stesso per tutti i passi dello stesso processo"),
+  ...stepFields,
+});
+
+const updateActivitySchema = z.object({
+  activityId: z.string().describe("L'id del passo, dall'elenco dei passi della board nel contesto"),
+  title: z.string().optional().describe("Il nome del passo, breve"),
+  description: z.string().optional().describe("Che cosa succede in questo passo, in una frase"),
+  ...stepFields,
+});
+
+type StepInput = Partial<z.infer<typeof saveActivitySchema>>;
+
+/** Dal modulo del modello al modulo di un passo della board (§5.1): solo i campi che il modello ha scritto. */
+export function draftOf(input: StepInput): Partial<StepDraft> {
+  const draft: Partial<StepDraft> = {};
+  const put = <K extends keyof StepDraft>(key: K, value: StepDraft[K] | undefined) => {
+    if (value !== undefined) draft[key] = value;
+  };
+  put("title", input.title);
+  put("description", input.description);
+  put("who", input.who);
+  put("tools", input.toolsUsed);
+  put("input", input.inputDescription);
+  put("output", input.outputDescription);
+  put("decision", input.decisionPoints);
+  put("decisionLabel", input.decisionLabel);
+  put("exception", input.exception);
+  put("friction", input.frictionLevel as Friction | undefined);
+  put("frequency", input.frequency);
+  put("hoursWeek", input.timeSpentHoursWeek);
+  put("quality", input.qualityPerceived);
+  put("workType", input.workType);
+  put("steps", input.steps);
+  put("frictions", input.frictions);
+  put("data", input.data);
+  put("times", input.times);
+  return draft;
+}
+
+// ─── Le risposte al modello ──────────────────────────────────────────
+
+type ToolAnswer = { success: boolean; message: string; activityId?: string };
+
+const notReady = (): ToolAnswer => ({ success: false, message: BOARD_NOT_READY_MESSAGE });
+
+/** Perché un passo non si è salvato, in parole per il modello. */
+function stepRefusal(reason: Rejection["reason"], board: MappingBoard): string {
+  if (reason === "limit") {
+    return `Passo non salvato. ${allSteps(board).length >= MAPPING_LIMITS.stepsPerUnit ? BOARD_TEXT.toast.limitStepsInBoard : BOARD_TEXT.toast.limitStepsInProcess}`;
+  }
+  return "Passo non salvato: il processo non c'è più sulla board. Riprova.";
+}
+
+/** Un salvataggio che non è partito: senza la 0039 la frase di sempre, altrimenti un nuovo tentativo. */
+const saveFailure = (code: string): ToolAnswer => (code === "non_disponibile" ? notReady() : { success: false, message: "Passo non salvato. Riprova." });
+
+/**
+ * Il messaggio di «Completa la mappatura» per il modello, con le frasi di sempre: ora sono vere, perché la board ha il
+ * bottone «Classifica N passi» per quello che resta.
+ */
+export function completionMessage(summary: string, outcome: CompletionOutcome): string {
+  const { counts } = outcome;
+  const classification =
+    outcome.classification === "niente_da_fare"
+      ? ""
+      : outcome.classification === "non_riuscita"
+        ? "Classificazione non riuscita — verrà riprovata manualmente."
+        : [`Classificazione completata: ${counts.automate} Automate, ${counts.differentiate} Differentiate, ${counts.innovate} Innovate.`, skippedClassificationsText(outcome.remaining)]
+            .filter(Boolean)
+            .join(" ");
+  const onet =
+    outcome.onet === "niente_da_fare"
+      ? ""
+      : outcome.onet === "non_riuscito"
+        ? "Match O*NET non riuscito — verrà riprovato manualmente."
+        : `Match O*NET completato su ${outcome.matched} attività. AI Exposure media: ${outcome.avgExposurePct ?? 0}%.`;
+  return ["Dipartimento segnato come mappato.", summary.trim(), classification, onet].filter(Boolean).join(" ");
+}
+
+// ─── Le dipendenze ───────────────────────────────────────────────────
+
+/**
+ * Una dipendenza tra due passi, in un'istruzione: si scrive solo se le due attività sono di questo workspace e quella
+ * che dipende è di questa unità; una coppia già presente non cambia niente. Se la coppia è nuova la board sale di
+ * revisione, così la rilettura dalla board aperta la porta. `linked`: le due attività ci sono, e sono due.
+ */
+export function linkDependencyStatement(scope: BoardScope, sourceId: string, targetId: string, type: string | null): UcStatement {
+  const ws = cast(scope.workspaceId, "uuid");
+  const unit = cast(scope.departmentId, "uuid");
+  return toStatement(ucSql`WITH src AS (SELECT a.id FROM activities a WHERE a.id = ${cast(sourceId, "uuid")} AND a.department_id = ${unit} AND a.workspace_id = ${ws}),
+tgt AS (SELECT a.id FROM activities a WHERE a.id = ${cast(targetId, "uuid")} AND a.workspace_id = ${ws}),
+done AS (
+  INSERT INTO activity_dependencies (source_activity_id, target_activity_id, dependency_type)
+  SELECT src.id, tgt.id, ${cast(type, "text")} FROM src, tgt WHERE src.id <> tgt.id
+  ON CONFLICT (source_activity_id, target_activity_id) DO NOTHING
+  RETURNING 1),
+board AS (
+  UPDATE mapping_boards b SET revision = b.revision + 1, updated_at = now()
+  WHERE b.department_id = ${unit} AND b.workspace_id = ${ws} AND EXISTS (SELECT 1 FROM done)
+  RETURNING 1)
+SELECT EXISTS (SELECT 1 FROM src, tgt WHERE src.id <> tgt.id) AS linked`);
+}
+
+// ─── Spostare un passo dopo un altro ─────────────────────────────────
+
+/** Lo spostamento che mette il passo subito dopo `afterId` (anche in un altro processo); null se è già lì o se `afterId` non è un passo. */
+function moveAfter(board: MappingBoard, place: StepPlace, afterId: string | null, newId: () => string): BoardOp | null {
+  const after = afterId ? locateStep(board, afterId) : null;
+  if (!after || after.step.id === place.step.id) return null;
+  if (after.process.id === place.process.id && after.process.steps[after.stepIndex + 1]?.id === place.step.id) return null;
+  const siblings = after.process.steps.filter((step) => step.id !== place.step.id);
+  const beforeId = siblings[siblings.findIndex((step) => step.id === after.step.id) + 1]?.id ?? null;
+  return { id: newId(), t: "step.move", stepId: place.step.id, processId: after.process.id, beforeId };
+}
+
+// ─── I tool ──────────────────────────────────────────────────────────
+
 export function getActivityMappingTools(
   workspaceId: string,
   departmentId: string,
-  { deadline }: { deadline: number }
+  { deadline, actor }: { deadline: number; actor: BoardActor },
+  deps: MappingToolDeps = APP_MAPPING_TOOL_DEPS,
 ) {
+  const scope: BoardScope = { workspaceId, departmentId };
+  const viewer = { userId: actor.userId, role: actor.role };
+
   return {
     saveActivity: tool({
       description:
-        "Salva una nuova attività lavorativa emersa dall'intervista. Usare ogni volta che hai raccolto abbastanza dettagli su un'attività (servono almeno titolo, descrizione e qualche dettaglio).",
-      inputSchema: z.object({
-        title: z.string().describe("Nome dell'attività"),
-        description: z.string().describe("Descrizione dettagliata dell'attività"),
-        frequency: z.string().optional().describe("Frequenza: giornaliera, settimanale, mensile, ad_hoc"),
-        timeSpentHoursWeek: z.number().optional().describe("Ore settimanali stimate"),
-        toolsUsed: z.array(z.string()).optional().describe("Strumenti utilizzati"),
-        inputDescription: z.string().optional().describe("Cosa riceve in input"),
-        outputDescription: z.string().optional().describe("Cosa produce in output"),
-        decisionPoints: z.string().optional().describe("Dove serve giudizio umano"),
-        painPoints: z.string().optional().describe("Frizioni e dolori del workflow"),
-        dataRequired: z.string().optional().describe("Dati necessari e dove si trovano"),
-        qualityPerceived: z.string().optional().describe("Qualità percepita del processo"),
-        workType: z.enum(["enrichment", "detection", "interpretation", "delivery"]).optional().describe("Tipo di lavoro"),
-      }),
-      execute: async (data) => {
-        const [activity] = await db
-          .insert(activities)
-          .values({
-            departmentId,
-            workspaceId,
-            title: data.title,
-            description: data.description,
-            frequency: data.frequency,
-            timeSpentHoursWeek: data.timeSpentHoursWeek,
-            toolsUsed: data.toolsUsed,
-            inputDescription: data.inputDescription,
-            outputDescription: data.outputDescription,
-            decisionPoints: data.decisionPoints,
-            painPoints: data.painPoints,
-            dataRequired: data.dataRequired,
-            qualityPerceived: data.qualityPerceived,
-            workType: data.workType,
-          })
-          .returning();
-
-        return {
-          success: true,
-          activityId: activity.id,
-          message: `Attivita' "${data.title}" salvata con successo.`,
-        };
+        "Salva sulla board un passo emerso dall'intervista, nel suo processo. Usalo quando hai raccolto abbastanza dettagli su un passo (almeno titolo, descrizione e qualche dettaglio). Il passo compare subito sulla board come «da validare».",
+      inputSchema: saveActivitySchema,
+      execute: async (input): Promise<ToolAnswer> => {
+        const executor = await deps.executor();
+        if (!(await deps.storeReady(executor))) return notReady();
+        const processName = input.processName?.trim() || null;
+        // «Dopo quel passo»: vale solo un passo di questa unità; senza un processo nominato, il passo va nel suo.
+        let after: StepPlace | null = null;
+        let baseRevision = 0;
+        const afterId = uuidOf(input.afterActivityId);
+        if (afterId) {
+          const board = await deps.readBoard(executor, scope, viewer);
+          after = board ? locateStep(board, afterId) : null;
+          baseRevision = board?.revision ?? 0;
+        }
+        const processId = processName === null && after ? after.process.id : await deps.resolveProcess(executor, scope, processName);
+        if (!processId) return { success: false, message: "Passo non salvato: la board non accetta altri processi." };
+        const { stepId, ops } = opsForNewStep({ ...draftOf(input), title: input.title }, { processId, afterStepId: after && after.process.id === processId ? after.step.id : null }, deps.newId);
+        const add = ops[0];
+        if (!add || add.t !== "step.add") return { success: false, message: "Passo non salvato: serve un titolo." };
+        const result = await deps.saveBoardOps(executor, scope, actor, { baseRevision, ops });
+        if (!result.ok) return saveFailure(result.code);
+        const refused = result.rejected.find((rejection) => rejection.id === add.id);
+        if (refused) return { success: false, message: stepRefusal(refused.reason, result.board) };
+        const name = result.board.processes.find((process) => process.id === processId)?.name ?? processName ?? BOARD_TEXT.defaultProcessName;
+        return { success: true, activityId: stepId, message: `Passo "${add.title}" salvato nel processo "${name}".` };
       },
     }),
 
-    updateActivityClassification: tool({
+    updateActivity: tool({
       description:
-        "Classifica un'attività per tipo di lavoro (work type). Usare quando si ha chiaro il tipo.",
-      inputSchema: z.object({
-        activityId: z.string().describe("ID dell'attività da classificare"),
-        workType: z.enum(["enrichment", "detection", "interpretation", "delivery"]).describe("Tipo di lavoro"),
-      }),
-      execute: async ({ activityId, workType }) => {
-        await db
-          .update(activities)
-          .set({ workType, updatedAt: new Date() })
-          .where(eq(activities.id, activityId));
-        return {
-          success: true,
-          message: `Attivita' classificata come "${workType}".`,
-        };
+        "Corregge o completa un passo già sulla board, con il suo id: scrivi solo i campi che cambiano. Le liste (passaggi, attriti, dati, tempi, ruoli, strumenti) aggiungono voci e non ne tolgono. Con afterActivityId sposta il passo subito dopo quell'altro.",
+      inputSchema: updateActivitySchema,
+      execute: async (input): Promise<ToolAnswer> => {
+        const executor = await deps.executor();
+        if (!(await deps.storeReady(executor))) return notReady();
+        const board = await deps.readBoard(executor, scope, viewer);
+        const id = uuidOf(input.activityId);
+        const place = board && id ? locateStep(board, id) : null;
+        if (!board || !place) return { success: false, message: "Passo non trovato su questa board: usa un id dall'elenco dei passi." };
+        const ops = opsForStepPatch(place.step, draftOf(input), deps.newId);
+        const move = moveAfter(board, place, uuidOf(input.afterActivityId), deps.newId);
+        if (move) ops.push(move);
+        if (ops.length === 0) return { success: true, message: `Passo "${place.step.title}": niente da cambiare.` };
+        const result = await deps.saveBoardOps(executor, scope, actor, { baseRevision: board.revision, ops });
+        if (!result.ok) return saveFailure(result.code);
+        const title = locateStep(result.board, place.step.id)?.step.title ?? place.step.title;
+        if (result.rejected.length === 0) return { success: true, message: `Passo "${title}" aggiornato.` };
+        if (result.rejected.length === ops.length) {
+          return { success: false, message: `Passo "${title}" non aggiornato: è appena stato cambiato sulla board. Rileggi l'elenco dei passi.` };
+        }
+        return { success: true, message: `Passo "${title}" aggiornato. Alcuni campi erano appena stati cambiati sulla board e restano come sono.` };
       },
     }),
 
     linkActivityDependency: tool({
-      description:
-        "Collega una dipendenza tra due attività. Usare quando emerge che un'attività dipende da un'altra.",
+      description: "Collega una dipendenza tra due passi: quando emerge che un passo dipende da un altro. Gli id vengono dall'elenco dei passi della board.",
       inputSchema: z.object({
-        sourceActivityId: z.string().describe("ID dell'attività che dipende"),
-        targetActivityId: z.string().describe("ID dell'attività da cui dipende"),
+        sourceActivityId: z.string().describe("L'id del passo che dipende"),
+        targetActivityId: z.string().describe("L'id del passo da cui dipende"),
         dependencyType: z.string().optional().describe("Tipo di dipendenza (input, approval, data, handoff)"),
       }),
-      execute: async ({ sourceActivityId, targetActivityId, dependencyType }) => {
-        await db.insert(activityDependencies).values({
-          sourceActivityId,
-          targetActivityId,
-          dependencyType,
-        });
-        return {
-          success: true,
-          message: "Dipendenza collegata con successo.",
-        };
+      execute: async ({ sourceActivityId, targetActivityId, dependencyType }): Promise<ToolAnswer> => {
+        const executor = await deps.executor();
+        if (!(await deps.storeReady(executor))) return notReady();
+        const source = uuidOf(sourceActivityId);
+        const target = uuidOf(targetActivityId);
+        if (!source || !target || source === target) return { success: false, message: "Dipendenza non collegata: servono gli id di due passi diversi dall'elenco della board." };
+        const [rows] = await executor.batch([linkDependencyStatement(scope, source, target, cutLine(dependencyType, 100))]);
+        return rows?.[0]?.linked === true
+          ? { success: true, message: "Passi collegati." }
+          : { success: false, message: "Dipendenza non collegata: uno dei due passi non è su questa board." };
       },
     }),
 
     markDepartmentMapped: tool({
       description:
-        "Segna il dipartimento come completamente mappato. Usare quando ritieni di aver raccolto tutte le attività principali. Questo trigger automaticamente la classificazione 3 stream e il match O*NET.",
+        "Segna la mappatura dell'unità come completa, quando hai raccolto tutti i passi principali. Classifica da sola i passi nei 3 stream e cerca il match O*NET. Porta la scoperta in una frase e i punti di analisi.",
       inputSchema: z.object({
-        summary: z.string().describe("Breve riepilogo del mapping"),
+        summary: z.string().describe("Breve riepilogo della mappatura"),
+        headline: z.string().optional().describe("La scoperta in una frase: dove va il tempo, che cosa blocca (al più 300 caratteri)"),
+        analysisPoints: z
+          .array(z.object({ title: z.string().describe("Il titolo del punto, breve"), text: z.string().describe("Il punto: la prima frase dice il punto, poi i dettagli") }))
+          .optional()
+          .describe("Fino a sei punti di analisi"),
       }),
-      execute: async ({ summary }) => {
-        await db
-          .update(departments)
-          .set({ mappingStatus: "mapped" })
-          .where(eq(departments.id, departmentId));
-
-        const deptActivities = await getActivitiesByDepartment(departmentId);
-        const unclassified = deptActivities.filter((a) => !a.classification);
-
-        let classificationSummary = "";
-        let onetSummary = "";
-
-        if (unclassified.length > 0) {
-          try {
-            const workspace = await getWorkspaceById(workspaceId);
-            const [org] = workspace
-              ? await db
-                  .select()
-                  .from(organizations)
-                  .where(eq(organizations.id, workspace.organizationId))
-                  .limit(1)
-              : [null];
-
-            const goals = await getStrategicGoalsByWorkspace(workspaceId);
-
-            // Le classificazioni riuscite si scrivono; quelle rifiutate, fallite o fermate dalla scadenza restano da fare.
-            const results = await classifyActivitiesBatch(
-              unclassified,
-              { companyValueThesis: org?.companyValueThesis, goals },
-              { abortSignal: AbortSignal.timeout(timeUntil(deadline)) },
-            );
-
-            for (const [activityId, result] of results) {
-              await updateActivityClassification(
-                activityId,
-                result.classification,
-                result.confidenceScore
-              );
-            }
-
-            const counts = { automate: 0, differentiate: 0, innovate: 0 };
-            for (const [, result] of results) {
-              counts[result.classification]++;
-            }
-            classificationSummary =
-              results.size === 0
-                ? "Classificazione non riuscita — verrà riprovata manualmente."
-                : [
-                    `Classificazione completata: ${counts.automate} Automate, ${counts.differentiate} Differentiate, ${counts.innovate} Innovate.`,
-                    skippedClassificationsText(unclassified.length - results.size),
-                  ]
-                    .filter(Boolean)
-                    .join(" ");
-          } catch {
-            classificationSummary =
-              "Classificazione non riuscita — verrà riprovata manualmente.";
-          }
-        }
-
-        const unmatched = deptActivities.filter((a) => !a.onetTaskId);
-        if (unmatched.length > 0) {
-          const timeoutMs = timeUntil(deadline);
-          const abortSignal = AbortSignal.timeout(timeoutMs);
-          try {
-            const matches = await matchActivitiesToOnet(unmatched, { abortSignal });
-            for (const match of matches) {
-              await updateActivity(match.activityId, {
-                onetTaskId: match.suggestedOnetCode,
-                aiExposureScore: match.aiExposureEstimate,
-              });
-            }
-            // La stima va da 0 a 1 (onet-matching.ts): nel messaggio in percentuale, come nella dashboard del reparto.
-            const avgExposure =
-              matches.length > 0
-                ? (
-                    (matches.reduce((s, m) => s + m.aiExposureEstimate, 0) /
-                      matches.length) *
-                    100
-                  ).toFixed(0)
-                : "0";
-            onetSummary = `Match O*NET completato su ${matches.length} attività. AI Exposure media: ${avgExposure}%.`;
-          } catch (error) {
-            // Un rifiuto è già nel log (throwIfRefused); la scadenza e gli altri errori senza testi.
-            if (stoppedByDeadline(error, abortSignal)) logClaudeTimeout("ai/onet-matching", { timeoutMs });
-            else if (!(error instanceof ClaudeRefusalError)) logSafeError("ai/onet-matching", "match_non_riuscito", error);
-            onetSummary =
-              "Match O*NET non riuscito — verrà riprovato manualmente.";
-          }
-        }
-
-        return {
-          success: true,
-          message: [
-            `Dipartimento segnato come mappato.`,
-            summary,
-            classificationSummary,
-            onetSummary,
-          ]
-            .filter(Boolean)
-            .join(" "),
-        };
+      execute: async ({ summary, headline, analysisPoints }): Promise<ToolAnswer> => {
+        const executor = await deps.executor();
+        if (!(await deps.storeReady(executor))) return notReady();
+        const outcome = await deps.complete(deps.completeDeps(executor), {
+          scope,
+          deadline,
+          headline: headline?.trim() ? headline : null,
+          analysis: analysisPoints?.slice(0, MAPPING_LIMITS.analysisPoints),
+        });
+        if (!outcome) return notReady();
+        return { success: true, message: completionMessage(summary, outcome) };
       },
     }),
   };

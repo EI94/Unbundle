@@ -209,7 +209,7 @@ export async function POST(req: Request) {
 
       systemPrompt = ACTIVITY_MAPPING_SYSTEM_PROMPT + mappingContext;
       tools = {
-        ...getActivityMappingTools(workspaceId, departmentId!, { deadline: toolsDeadline }),
+        ...getActivityMappingTools(workspaceId, departmentId!, { deadline: toolsDeadline, actor: { kind: "assistente", userId: session.user.id, role: access.role } }),
         ...getWebSearchTool({ deadline: toolsDeadline }),
       };
       break;

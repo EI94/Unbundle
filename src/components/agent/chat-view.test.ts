@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   CHAT_REFUSAL_NOTICE,
   HIDDEN_TOOLS,
+  MAPPING_TOOL_LABELS,
+  TOOL_LABELS,
   assistantView,
   chatRequestMessages,
   chatTransportBody,
@@ -227,7 +229,7 @@ test("quando arriva il testo della risposta le note se ne vanno; i tool restano,
     { kind: "note", text: "Salvo l'attività «Fatture mensili»." },
     { kind: "tool", label: "Attività salvata", done: true },
     { kind: "note", text: "Ora collego la dipendenza." },
-    { kind: "tool", label: "Dipendenza collegata", done: true },
+    { kind: "tool", label: "Passi collegati", done: true },
   ]);
   // Uno spazio non è ancora una risposta.
   assert.equal(assistantView(reply([...parts, { type: "text", text: "\n " }]), HIDDEN_TOOLS, { arriving: true }).progress.length, 4);
@@ -238,7 +240,7 @@ test("quando arriva il testo della risposta le note se ne vanno; i tool restano,
       text: "Fatto. Altro?",
       progress: [
         { kind: "tool", label: "Attività salvata", done: true },
-        { kind: "tool", label: "Dipendenza collegata", done: true },
+        { kind: "tool", label: "Passi collegati", done: true },
       ],
     });
   }
@@ -320,3 +322,36 @@ test("l'etichetta di un tool: «fatto» con il risultato, «in corso» prima; se
   assert.deepEqual(toolChip({ type: "tool-nuovoTool", state: "input-available" }), { kind: "tool", label: "Elaboro...", done: false });
 });
 
+
+test("(mappatura board) l'assistente accanto alla board mostra i passi: le etichette dei quattro tool della board, sopra quelle di sempre", () => {
+  // §7.5: «Salvo il passo» e «Passo salvato»; il tool che correggeva il tipo di lavoro non c'è più.
+  assert.deepEqual(MAPPING_TOOL_LABELS, {
+    saveActivity: { active: "Salvo il passo", done: "Passo salvato" },
+    updateActivity: { active: "Aggiorno il passo", done: "Passo aggiornato" },
+    linkActivityDependency: { active: "Collego i passi", done: "Passi collegati" },
+    markDepartmentMapped: { active: "Completo la mappatura", done: "Mappatura completata" },
+  });
+  assert.equal("updateActivityClassification" in TOOL_LABELS, false);
+  const labels = { ...TOOL_LABELS, ...MAPPING_TOOL_LABELS };
+  assert.deepEqual(toolChip({ type: "tool-saveActivity", state: "output-available", output: { success: true } }, labels), { kind: "tool", label: "Passo salvato", done: true });
+  assert.deepEqual(toolChip({ type: "tool-saveActivity", state: "input-available" }, labels), { kind: "tool", label: "Salvo il passo", done: false });
+  // Un tool che le etichette della board non nominano prende quelle di sempre.
+  assert.deepEqual(toolChip({ type: "tool-saveStrategicGoal", state: "output-available" }, MAPPING_TOOL_LABELS), { kind: "tool", label: "Obiettivo salvato", done: true });
+  const reply: ChatUIMessage = {
+    id: "a",
+    role: "assistant",
+    metadata: { finishReason: "stop" },
+    parts: [
+      { type: "step-start" },
+      { type: "tool-saveActivity", toolCallId: "t1", state: "output-available", input: {}, output: { success: true } },
+      { type: "tool-markDepartmentMapped", toolCallId: "t2", state: "output-available", input: {}, output: { success: true } },
+      { type: "text", text: "Fatto." },
+    ],
+  };
+  assert.deepEqual(assistantView(reply, HIDDEN_TOOLS, { arriving: false, labels }).progress, [
+    { kind: "tool", label: "Passo salvato", done: true },
+    { kind: "tool", label: "Mappatura completata", done: true },
+  ]);
+  // Senza `labels`, la chat generica resta com'era.
+  assert.deepEqual(assistantView(reply, HIDDEN_TOOLS, { arriving: false }).progress[0], { kind: "tool", label: "Attività salvata", done: true });
+});
