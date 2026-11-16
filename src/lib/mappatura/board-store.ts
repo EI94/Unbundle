@@ -248,8 +248,10 @@ export async function saveBoardOps(executor: UcExecutor, scope: BoardScope, acto
   try {
     await adoptUnit(executor, scope);
     // Chi non può modificare non scrive niente; le operazioni dei soli revisori, fatte da altri, escono prima di ogni SQL.
+    // Lo stato di un passo («confermato», «da validare») lo cambia solo una persona: l'assistente non conferma.
     const abilities = boardAbilities(actor.role);
-    const allowed = ops.filter((op) => abilities.edit && (abilities.setStream || !REVIEWER_ONLY_OPS.includes(op.t)));
+    const personOnly = (op: BoardOp) => op.t === "step.set" && op.field === "status" && actor.kind !== "persona";
+    const allowed = ops.filter((op) => abilities.edit && (abilities.setStream || !REVIEWER_ONLY_OPS.includes(op.t)) && !personOnly(op));
     const forbidden: Rejection[] = ops.filter((op) => !allowed.includes(op)).map((op) => ({ id: op.id, reason: "forbidden" }));
     const viewer = { userId: actor.userId, role: actor.role };
 

@@ -368,6 +368,34 @@ test("applyOps tiene i limiti del server, e mette l'unità «in corso» al primo
   assert.equal(applyOps(board, [op({ t: "step.add", stepId: id(), processId: processes[5], title: "Il duecentunesimo" })], person), board);
 });
 
+test("applyOps: un passo confermato che l'assistente cambia torna «da validare»; solo una persona lo conferma", () => {
+  const board = fixtureBoard();
+  const assistant = { kind: "assistente" as const };
+  assert.equal(stepOf(board, I.richieste).status, "confermato");
+  const attivita = stepOf(board, I.richieste).notes.attivita[0];
+  // Ogni cambio dell'assistente: un campo di activities, uno della riga del passo, lo spostamento, le note.
+  for (const [label, change] of [
+    ["descrizione", op({ t: "step.set", stepId: I.richieste, field: "description", prev: "x", next: "Le richieste arrivano anche per telefono." })],
+    ["ruoli", op({ t: "step.set", stepId: I.richieste, field: "who", prev: ["Buyer"], next: ["Buyer", "Segreteria"] })],
+    ["spostamento", op({ t: "step.move", stepId: I.richieste, processId: I.processA, beforeId: null })],
+    ["nota nuova", op({ t: "note.add", noteId: id(), stepId: I.richieste, lane: "attriti", text: "Richieste doppie" })],
+    ["nota cambiata", op({ t: "note.set", noteId: attivita.id, field: "text", prev: attivita.text, next: "Si apre la casella" })],
+    ["nota tolta", op({ t: "note.remove", noteId: attivita.id })],
+  ] as const) {
+    assert.equal(stepOf(applyOps(board, [change], assistant), I.richieste).status, "da_validare", label);
+    assert.equal(stepOf(applyOps(board, [change], { kind: "documenti" }), I.richieste).status, "da_validare", `${label}, dai documenti`);
+    assert.equal(stepOf(applyOps(board, [change], person), I.richieste).status, "confermato", `${label}, da una persona`);
+  }
+  // Gli altri passi, i punti di analisi, i processi e gli stream non cambiano lo stato di nessun passo.
+  const other = applyOps(board, [op({ t: "note.add", noteId: id(), stepId: null, lane: "analisi", text: "Un punto." }), op({ t: "process.set", processId: I.processA, field: "name", prev: "x", next: "Dalle richieste agli ordini" })], assistant);
+  assert.deepEqual(allSteps(other).map((step) => step.status), allSteps(board).map((step) => step.status));
+  // Un bersaglio che non c'è non cambia niente.
+  assert.equal(applyOps(board, [op({ t: "step.set", stepId: id(), field: "description", prev: null, next: "x" })], assistant), board);
+  // Confermare torna una scelta della persona.
+  const back = applyOps(board, [op({ t: "step.set", stepId: I.richieste, field: "description", prev: "x", next: "Nuova." })], assistant);
+  assert.equal(stepOf(applyOps(back, [op({ t: "step.set", stepId: I.richieste, field: "status", prev: "da_validare", next: "confermato" })], person), I.richieste).status, "confermato");
+});
+
 test("coalesce: più modifiche dello stesso campo diventano una, con il prev della prima e il next dell'ultima", () => {
   const title = (prev: string, next: string) => op({ t: "step.set", stepId: I.richieste, field: "title", prev, next });
   const a = title("A", "B");

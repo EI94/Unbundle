@@ -22,6 +22,8 @@
  * - **R5 la coda di ogni salvataggio**: la copia di «Attriti» e «Dati e documenti» nelle loro colonne, la
  *   rinumerazione delle righe toccate, le operazioni applicate più di 30 giorni fa dimenticate, l'unità «in corso» al
  *   primo passo e, per ultima, la revisione.
+ * - **Chi non è una persona non conferma.** Un passo che l'assistente cambia (un campo, lo spostamento, una nota) torna
+ *   «da validare» nella stessa istruzione, come un passo nuovo dell'assistente; solo una persona lo conferma.
  *
  * Il campo letto e il campo confrontato usano la stessa espressione (`STEP_FIELDS`): quello che il browser ha visto è
  * proprio quello con cui il database confronta.
@@ -168,6 +170,26 @@ interface OpParts {
 
 type Op<K extends BoardOp["t"]> = Extract<BoardOp, { t: K }>;
 
+/**
+ * Un passo che l'assistente (o chi non è una persona) cambia torna «da validare», come un passo nuovo dall'assistente:
+ * solo la conferma di una persona lo toglie (domanda 1 del piano). Vale per i campi, lo spostamento e le note del passo.
+ */
+const revalidates = (actor: BoardActor) => actor.kind !== "persona";
+/** Nella stessa `UPDATE` della riga del passo: lo stato torna «da validare». */
+const revalidateSet = (actor: BoardActor) => raw(revalidates(actor) ? "status = 'da_validare', " : "");
+/**
+ * La CTE che rimette «da validare» i passi `steps` (un'espressione che dà gli id) quando la scrittura `done` è
+ * avvenuta. Una CTE a sé: `done` scrive un'altra tabella (activities, mapping_notes).
+ */
+function revalidateSteps(scope: BoardScope, actor: BoardActor, steps: SqlFragment): SqlFragment {
+  if (!revalidates(actor)) return raw("");
+  return ucSql`,
+revalidate AS (
+  UPDATE mapping_steps s SET status = 'da_validare', updated_at = now()
+  WHERE s.activity_id IN (${steps}) AND ${inUnit("s", scope)} AND s.status <> 'da_validare' AND EXISTS (SELECT 1 FROM done)
+  RETURNING 1)`;
+}
+
 function processAdd(scope: BoardScope, op: Op<"process.add">): OpParts {
   return {
     ctes: ucSql`unit AS (${unitRow(scope)}),
@@ -261,17 +283,21 @@ done AS (
   };
 }
 
-function stepSet(scope: BoardScope, op: Op<"step.set">): OpParts {
+function stepSet(scope: BoardScope, actor: BoardActor, op: Op<"step.set">): OpParts {
   const spec = STEP_FIELDS[op.field];
   const alias = spec.table === "activities" ? "a" : "s";
   const row = ucSql`${ref(`${alias}.${spec.table === "activities" ? "id" : "activity_id"}`)} = ${U(op.stepId)} AND ${inUnit(alias, scope)}`;
   const table = ucSql`${raw(spec.table)} ${raw(alias)}`;
+  // Il campo dell'assistente: sulla riga del passo lo stato torna «da validare» nella stessa UPDATE; per una colonna di
+  // activities, con la CTE `revalidate`. (Lo stato stesso lo cambia solo una persona: `saveBoardOps`.)
+  const own = spec.table === "mapping_steps";
+  const status = own && op.field !== "status" ? revalidateSet(actor) : raw("");
   return {
     ctes: ucSql`target AS (SELECT 1 FROM ${table} WHERE ${row}),
 done AS (
-  UPDATE ${table} SET ${raw(spec.column)} = ${spec.write(op.next)}, updated_at = now()
+  UPDATE ${table} SET ${raw(spec.column)} = ${spec.write(op.next)}, ${status}updated_at = now()
   WHERE ${row} AND ${FRESH} AND (${spec.current} IS NOT DISTINCT FROM ${spec.param(op.prev)} OR ${spec.current} IS NOT DISTINCT FROM ${spec.param(op.next)})
-  RETURNING 1)`,
+  RETURNING 1)${own ? raw("") : revalidateSteps(scope, actor, U(op.stepId))}`,
     outcome: OUTCOME_SET,
   };
 }
@@ -280,13 +306,13 @@ done AS (
  * Un passo nella sua riga o in un'altra. Il limite dei passi vale per chi entra in una riga: dentro la sua riga un passo
  * si riordina sempre, anche in un processo che l'adozione ha riempito oltre i 40 passi (come fa il riduttore).
  */
-function stepMove(scope: BoardScope, op: Op<"step.move">): OpParts {
+function stepMove(scope: BoardScope, actor: BoardActor, op: Op<"step.move">): OpParts {
   return {
     ctes: ucSql`step AS (SELECT 1 FROM mapping_steps s WHERE s.activity_id = ${U(op.stepId)} AND ${inUnit("s", scope)}),
 proc AS (SELECT 1 FROM mapping_processes p WHERE p.id = ${U(op.processId)} AND ${inUnit("p", scope)}),
 room AS (SELECT count(*)::int AS n FROM mapping_steps s WHERE s.process_id = ${U(op.processId)} AND ${inUnit("s", scope)} AND s.activity_id <> ${U(op.stepId)}),
 done AS (
-  UPDATE mapping_steps s SET process_id = ${U(op.processId)}, position = ${placeAt(stepsOf(scope, op.processId, op.stepId), { beforeId: op.beforeId })}, updated_at = now()
+  UPDATE mapping_steps s SET process_id = ${U(op.processId)}, position = ${placeAt(stepsOf(scope, op.processId, op.stepId), { beforeId: op.beforeId })}, ${revalidateSet(actor)}updated_at = now()
   WHERE s.activity_id = ${U(op.stepId)} AND ${inUnit("s", scope)} AND ${FRESH} AND EXISTS (SELECT 1 FROM proc)
     AND (s.process_id = ${U(op.processId)} OR (SELECT n FROM room) < ${N(L.stepsPerProcess)})
   RETURNING 1)`,
@@ -357,12 +383,12 @@ done AS (
   SELECT ${U(op.noteId)}, parent.workspace_id, parent.department_id, parent.activity_id, ${T(op.lane)}, ${T(ofBoard ? (op.title ?? null) : null)}, ${T(op.text)}, ${T(defaults.noteStatus)}, ${T(defaults.origin)},
          ${placeAt(notesOf(scope, op.stepId, op.lane), { beforeId: op.beforeId })}
   FROM parent, room WHERE room.n < ${N(max)} AND ${FRESH}
-  ON CONFLICT (id) DO NOTHING RETURNING 1)`,
+  ON CONFLICT (id) DO NOTHING RETURNING 1)${ofBoard ? raw("") : revalidateSteps(scope, actor, U(op.stepId))}`,
     outcome: ucSql`CASE WHEN EXISTS (SELECT 1 FROM done) OR EXISTS (SELECT 1 FROM was) THEN 'ok' WHEN NOT EXISTS (SELECT 1 FROM parent) THEN 'gone' WHEN (SELECT n FROM room) >= ${N(max)} THEN 'limit' ELSE 'gone' END`,
   };
 }
 
-function noteSet(scope: BoardScope, op: Op<"note.set">): OpParts {
+function noteSet(scope: BoardScope, actor: BoardActor, op: Op<"note.set">): OpParts {
   const column = raw(op.field === "text" ? "body" : op.field === "title" ? "title" : "status");
   // Solo un punto di analisi ha un titolo (CHECK mapping_notes_title_lane_check): sulle altre note non si scrive.
   const onlyAnalysis = op.field === "title" ? raw(` AND n.lane = '${BOARD_LANE}'`) : raw("");
@@ -371,15 +397,15 @@ function noteSet(scope: BoardScope, op: Op<"note.set">): OpParts {
 done AS (
   UPDATE mapping_notes n SET ${column} = ${T(op.next)}, updated_at = now()
   WHERE n.id = ${U(op.noteId)} AND ${inUnit("n", scope)} AND ${FRESH}${onlyAnalysis} AND (n.${column} IS NOT DISTINCT FROM ${T(op.prev)} OR n.${column} IS NOT DISTINCT FROM ${T(op.next)})
-  RETURNING 1)`,
+  RETURNING n.activity_id)${revalidateSteps(scope, actor, raw("SELECT done.activity_id FROM done"))}`,
     outcome: OUTCOME_SET,
   };
 }
 
 /** Una nota già sparita conta come eliminata. */
-function noteRemove(scope: BoardScope, op: Op<"note.remove">): OpParts {
+function noteRemove(scope: BoardScope, actor: BoardActor, op: Op<"note.remove">): OpParts {
   return {
-    ctes: ucSql`done AS (DELETE FROM mapping_notes n WHERE n.id = ${U(op.noteId)} AND ${inUnit("n", scope)} AND ${FRESH} RETURNING 1)`,
+    ctes: ucSql`done AS (DELETE FROM mapping_notes n WHERE n.id = ${U(op.noteId)} AND ${inUnit("n", scope)} AND ${FRESH} RETURNING n.activity_id)${revalidateSteps(scope, actor, raw("SELECT done.activity_id FROM done"))}`,
     outcome: raw("'ok'"),
   };
 }
@@ -410,9 +436,9 @@ function opParts(scope: BoardScope, actor: BoardActor, op: BoardOp): OpParts {
     case "step.add":
       return stepAdd(scope, actor, op);
     case "step.set":
-      return stepSet(scope, op);
+      return stepSet(scope, actor, op);
     case "step.move":
-      return stepMove(scope, op);
+      return stepMove(scope, actor, op);
     case "step.remove":
       return stepRemove(scope, op);
     case "step.stream":
@@ -422,9 +448,9 @@ function opParts(scope: BoardScope, actor: BoardActor, op: BoardOp): OpParts {
     case "note.add":
       return noteAdd(scope, actor, op);
     case "note.set":
-      return noteSet(scope, op);
+      return noteSet(scope, actor, op);
     case "note.remove":
-      return noteRemove(scope, op);
+      return noteRemove(scope, actor, op);
     case "board.set":
       return boardSet(scope, op);
   }

@@ -546,6 +546,51 @@ test("come nasce quello che scrivono l'assistente e i documenti: «da validare»
   assert.deepEqual([step(board, docStep.id).status, step(board, docStep.id).notes.attriti[0].status, step(board, docStep.id).notes.attriti[0].origin], ["confermato", "validato", "documenti"]);
 });
 
+test("un passo confermato che l'assistente cambia torna «da validare»; l'assistente non conferma, una persona sì", opts, async () => {
+  const processId = id();
+  const other = id();
+  const stepId = id();
+  const status = async () => (await q(`SELECT status FROM mapping_steps WHERE activity_id = $1`, [stepId]))[0].status;
+  const confirm = () => save([op({ t: "step.set", stepId, field: "status", prev: "da_validare", next: "confermato" })]);
+  let board = await save([
+    op({ t: "process.add", processId, name: "Rientri dal cliente" }),
+    op({ t: "process.add", processId: other, name: "Reclami" }),
+    op({ t: "step.add", stepId, processId, title: "Rientro di un collo" }),
+  ]);
+  try {
+    assert.equal(step(board, stepId).status, "confermato", "scritto da una persona: confermato");
+    // Un campo di activities, uno della riga del passo, una nota, lo spostamento: ogni volta torna «da validare».
+    const changes: Array<[string, BoardOp]> = [
+      ["descrizione", op({ t: "step.set", stepId, field: "description", prev: null, next: "Il collo rotto torna al fornitore." })],
+      ["ruoli", op({ t: "step.set", stepId, field: "who", prev: [], next: ["Magazzino"] })],
+      ["nota", op({ t: "note.add", noteId: id(), stepId, lane: "attriti", text: "Il corriere non passa." })],
+      ["spostamento", op({ t: "step.move", stepId, processId: other, beforeId: null })],
+    ];
+    for (const [label, change] of changes) {
+      board = await save([change], lead("assistente"));
+      assert.deepEqual([step(board, stepId).status, await status()], ["da_validare", "da_validare"], label);
+      board = await confirm();
+      assert.equal(step(board, stepId).status, "confermato", `${label}: una persona lo conferma`);
+    }
+    // L'assistente non conferma un passo: l'operazione esce prima di ogni SQL.
+    await save([op({ t: "step.set", stepId, field: "description", prev: "Il collo rotto torna al fornitore.", next: "Il collo torna al fornitore." })], lead("assistente"));
+    const denied = op({ t: "step.set", stepId, field: "status", prev: "da_validare", next: "confermato" });
+    board = await save([denied], lead("assistente"), { [denied.id]: "forbidden" });
+    assert.deepEqual([step(board, stepId).status, await status()], ["da_validare", "da_validare"]);
+    await confirm();
+    // Un cambio dell'assistente rifiutato (il campo è cambiato nel frattempo) non tocca lo stato.
+    const stale = op({ t: "step.set", stepId, field: "description", prev: "Un testo di prima", next: "Un altro testo" });
+    board = await save([stale], lead("assistente"), { [stale.id]: "conflict" });
+    assert.deepEqual([step(board, stepId).status, await status()], ["confermato", "confermato"]);
+  } finally {
+    // La board torna com'era per le prove che seguono, anche se una prova sopra non passa.
+    await store.saveBoardOps(db.exec, scope(), lead(), {
+      baseRevision: 0,
+      ops: [op({ t: "step.remove", stepId }), op({ t: "process.remove", processId }), op({ t: "process.remove", processId: other })],
+    });
+  }
+});
+
 test("i limiti: 26 processi, 40 passi per processo, 30 note per corsia, 6 punti di analisi", opts, async () => {
   const g = newFixture();
   await seed(q, g, "limiti");

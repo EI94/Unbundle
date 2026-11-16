@@ -102,11 +102,15 @@ const OPS: Record<string, BoardOp> = {
   "board.set": op({ t: "board.set", field: "headline", prev: null, next: NASTY }),
 };
 const opStatements: Record<string, UcStatement> = Object.fromEntries(Object.entries(OPS).map(([name, item]) => [name, opStatement(scope, actor, item)]));
+/** Le stesse operazioni scritte dall'assistente: un passo che cambia torna «da validare» nella stessa istruzione. */
+const assistant: BoardActor = { kind: "assistente", userId: USER, role: "analyst" };
+const assistantStatements: Record<string, UcStatement> = Object.fromEntries(Object.entries(OPS).map(([name, item]) => [`${name} (assistente)`, opStatement(scope, assistant, item)]));
 
 const ids = [id(), id(), id()];
 /** Le istruzioni legate a un'unità: ognuna deve nominare workspace e unità. */
 const UNIT_STATEMENTS: Record<string, UcStatement> = {
   ...opStatements,
+  ...assistantStatements,
   ensureBoardRow: ensureBoardRow(scope),
   "projectLane attriti": projectLane(scope, "attriti", ids),
   "projectLane dati": projectLane(scope, "dati", ids),
@@ -170,6 +174,36 @@ test("R1: ogni istruzione di un'unità nomina workspace_id e department_id, e li
       const alias = match[2];
       assert.match(statement.text, new RegExp(`\\b${alias}\\.workspace_id\\b`), `${name}: ${match[1]} ${alias} senza workspace_id`);
       assert.match(statement.text, new RegExp(`\\b${alias}\\.department_id\\b`), `${name}: ${match[1]} ${alias} senza department_id`);
+    }
+  }
+});
+
+test("chi non è una persona non conferma: il passo che l'assistente cambia torna «da validare» nella stessa istruzione", () => {
+  const revalidate = (ids: string) =>
+    new RegExp(
+      `,\\nrevalidate AS \\(\\n  UPDATE mapping_steps s SET status = 'da_validare', updated_at = now\\(\\)\\n  WHERE s\\.activity_id IN \\(${ids}\\) AND s\\.department_id = \\$\\d+::uuid AND s\\.workspace_id = \\$\\d+::uuid AND s\\.status <> 'da_validare' AND EXISTS \\(SELECT 1 FROM done\\)\\n  RETURNING 1\\)`,
+    );
+  const inSet = /\ndone AS \(\n  UPDATE mapping_steps s SET [^\n]*status = 'da_validare', updated_at = now\(\)/;
+  const activityFields = STEP_SETS.map(([field]) => field).filter((field) => !["who", "decisionLabel", "exception", "friction", "status"].includes(field));
+  // Un campo di activities, una nota del passo: la CTE `revalidate`, dopo la scrittura e solo se è avvenuta.
+  for (const name of [...activityFields.map((field) => `step.set ${field}`), "note.add"]) assert.match(assistantStatements[`${name} (assistente)`].text, revalidate("\\$\\d+::uuid"), name);
+  for (const name of ["note.set text", "note.set title", "note.set status", "note.remove"]) assert.match(assistantStatements[`${name} (assistente)`].text, revalidate("SELECT done\\.activity_id FROM done"), name);
+  // Un campo della riga del passo, lo spostamento: nella stessa UPDATE della riga.
+  for (const name of ["step.set who", "step.set decisionLabel", "step.set exception", "step.set friction", "step.move"]) {
+    assert.match(assistantStatements[`${name} (assistente)`].text, inSet, name);
+    assert.doesNotMatch(assistantStatements[`${name} (assistente)`].text, /\nrevalidate AS/, name);
+  }
+  // Lo stato stesso, un passo nuovo, i processi, i punti di analisi, gli stream: nessun ritorno a «da validare».
+  for (const name of ["step.set status", "step.add", "step.remove", "step.stream", "streams.reset", "note.add (analisi)", "process.add", "process.set name", "process.move", "process.vote", "board.set"]) {
+    assert.doesNotMatch(assistantStatements[`${name} (assistente)`].text, /'da_validare'/, name);
+  }
+  // Le stesse operazioni di una persona non toccano lo stato del passo.
+  for (const [name, statement] of Object.entries(opStatements)) assert.doesNotMatch(statement.text, /'da_validare'/, name);
+  // Ogni tabella che le istruzioni dell'assistente toccano ha il suo scope.
+  for (const [name, statement] of Object.entries(assistantStatements)) {
+    for (const match of statement.text.matchAll(/\b(?:FROM|UPDATE|JOIN|USING)\s+(mapping_[a-z_]+|activities)\s+([a-z]+)\b/g)) {
+      assert.match(statement.text, new RegExp(`\\b${match[2]}\\.workspace_id\\b`), `${name}: ${match[1]} ${match[2]} senza workspace_id`);
+      assert.match(statement.text, new RegExp(`\\b${match[2]}\\.department_id\\b`), `${name}: ${match[1]} ${match[2]} senza department_id`);
     }
   }
 });

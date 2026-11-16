@@ -457,7 +457,37 @@ function mapNotes(board: MappingBoard, place: { stepId: string | null; lane: Lan
   return mapStep(board, place.stepId, (step) => withFriction({ ...step, notes: { ...step.notes, [lane]: change(step.notes[lane]) } }));
 }
 
+/**
+ * Il passo che un'operazione cambia: i suoi campi (tranne lo stato), il suo posto, le sue note. null per le operazioni
+ * dei processi, della board, degli stream e per un passo nuovo.
+ */
+function changedStep(board: MappingBoard, op: BoardOp): string | null {
+  switch (op.t) {
+    case "step.set":
+      return op.field === "status" ? null : op.stepId;
+    case "step.move":
+      return op.stepId;
+    case "note.add":
+      return op.stepId;
+    case "note.set":
+    case "note.remove":
+      return findNote(board, op.noteId)?.stepId ?? null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Un'operazione applicata alla board. Un passo che cambia per mano di chi non è una persona (l'assistente, i documenti)
+ * torna «da validare», come un passo nuovo dell'assistente: solo una persona lo conferma (lo stesso fa il database).
+ */
 function applyOp(board: MappingBoard, op: BoardOp, actor: { kind: ActorKind }): MappingBoard {
+  const next = applyOpAs(board, op, actor);
+  const stepId = actor.kind === "persona" || next === board ? null : changedStep(board, op);
+  return stepId ? mapStep(next, stepId, (step) => (step.status === "da_validare" ? step : { ...step, status: "da_validare" })) : next;
+}
+
+function applyOpAs(board: MappingBoard, op: BoardOp, actor: { kind: ActorKind }): MappingBoard {
   switch (op.t) {
     case "process.add": {
       if (board.processes.length >= L.processes || board.processes.some((process) => process.id === op.processId)) return board;

@@ -246,6 +246,8 @@ test("updateActivity: corregge i campi che cambiano; le liste aggiungono note, r
   const step = locateStep(store.board(), I.richieste)!;
   assert.equal(step.code, "A2", "dopo «Confronto delle offerte»");
   assert.equal(step.step.notes.attriti.length, 3, "le note di prima restano");
+  // Il passo era confermato da una persona: cambiato dall'assistente, torna «da validare» finché qualcuno non lo rilegge.
+  assert.deepEqual([locateStep(fakeStore().board(), I.richieste)!.step.status, step.step.status], ["confermato", "da_validare"]);
 
   // Niente da cambiare: niente si scrive.
   const same = fakeStore();
