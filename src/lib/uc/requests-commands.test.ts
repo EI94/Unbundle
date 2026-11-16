@@ -184,6 +184,9 @@ class FakeDb implements UcExecutor {
     if (/^SELECT DISTINCT u\.email FROM uc_case_members/.test(text)) return s.lsEmails.map((email) => ({ email }));
     // (8.0c) La sonda della 0037 e le email di chi costruisce il caso da fuori (il contesto delle firme).
     if (/to_regclass\('public\.use_case_external_builders'\) IS NOT NULL/.test(text)) return [{ ready: s.builderEmails !== undefined }];
+    // Con la sonda falsa, i controlli di firmatari e referenti chiedono se la tabella c'è: qui no, come prima della 0037
+    // (nessuno costruisce da fuori, e passano come prima). Se la tabella ci fosse, rifiuterebbero: non si sa chi costruisce.
+    if (/^SELECT to_regclass\(\$1::text\) IS NOT NULL AS present$/.test(text)) return [{ present: false }];
     if (/^SELECT DISTINCT lower\(u\.email\) AS email FROM uc_cases c JOIN use_case_external_builders/.test(text)) return (s.builderEmails ?? []).map((email) => ({ email }));
     if (/^SELECT id, display_name, role_label, template_role_key, email, phone_e164, preferred_channel, is_active, anonymized_at, user_id\nFROM uc_contacts/.test(text)) {
       return /template_role_key IS NOT NULL/.test(text) ? s.contacts.filter((c) => c.template_role_key) : s.contacts;

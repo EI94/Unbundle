@@ -175,9 +175,10 @@ function persona(userId: string): ReferentActor {
 /**
  * (Referente già iscritto) Una persona del workspace non può fare il referente? Le regole dei referenti
  * (`checkContactEmail`): di Lateral Space (`referente_lateral_space`) o, 8.0c, chi costruisce i casi del cliente da fuori
- * (`referente_costruttore`). null se può.
+ * (`referente_costruttore`). Con `builders` null (chi costruisce non si legge adesso) `non_disponibile`: si riprova. null
+ * se può.
  */
-function memberRefusal(m: Pick<WorkspaceMemberFacts, "userId" | "email">, lsDomains: readonly string[], lsMembers: readonly string[], builders: readonly string[]): string | null {
+function memberRefusal(m: Pick<WorkspaceMemberFacts, "userId" | "email">, lsDomains: readonly string[], lsMembers: readonly string[], builders: readonly string[] | null): string | null {
   const user = userContextFrom({ id: m.userId, email: m.email, emailVerified: true }, lsDomains);
   const check = checkContactEmail({ email: m.email, user, lsDomains, lsMemberEmails: lsMembers, builderEmails: builders });
   return check.ok ? null : check.code;
@@ -684,7 +685,9 @@ export async function loadUseCaseReferentPanel(i: {
         : !outside.ok
           ? outside.code === "referente_costruttore"
             ? "costruttore"
-            : "lateral_space"
+            : outside.code === "non_disponibile"
+              ? "non_verificabile"
+              : "lateral_space"
           : isSelfRequest(person, i.session.id)
             ? "sei_tu"
             : liveHere.has(id)
@@ -2024,6 +2027,8 @@ export const listReferentPickerPeople = guardedReferent(
       readWorkspaceMembers(executor, ws, null, { learners: true }),
       workspaceBuilderEmails(executor, ws),
     ]);
+    // (8.0c) Chi costruisce non si legge adesso: le persone non si propongono alla cieca, la finestra dice di riprovare.
+    if (builders === null) return rfail("non_disponibile");
     return ok({ members: pickerOptionsOf({ all, known, people, viewerUserId: writer.userId, lsDomains: lsDomainsOf(env), lsMembers, builders, learners: true }) });
   },
 );

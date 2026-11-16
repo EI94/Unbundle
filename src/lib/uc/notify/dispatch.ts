@@ -152,7 +152,8 @@ export const SUBPROCESSORS_MISSING = "sub_responsabili_mancanti";
 /**
  * (8.0c) Il motivo di un'e-mail a chi costruisce da fuori che aspetta perché non si riesce a sapere chi costruisce (la
  * tabella delle concessioni non c'è ancora, o la sua sonda non risponde): resta in coda e si riprova al prossimo giro.
- * Una lettura mancata non annulla mai un'e-mail.
+ * Lo stesso per il link di approvazione del firmatario del cliente, quando non si legge chi costruisce il caso. Una
+ * lettura mancata non annulla mai un'e-mail.
  */
 export const HOLD_BUILDERS_UNREAD = "concessioni_non_lette";
 
@@ -555,6 +556,8 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
       if (r.contactId !== recipient.id) return cancel("destinatario_cambiato");
       const designation = n.payload.designation === "privacy" ? "privacy" : n.payload.designation === "owner" ? "owner" : null;
       if (!designation || c.designated[designation] !== recipient.id) return cancel("firmatario_cambiato");
+      // (8.0c) Non si riesce a leggere chi costruisce il caso: il link non parte e non si annulla, si riprova al giro dopo.
+      if (f.approvals && !f.approvals.signer.ok && f.approvals.signer.code === "non_disponibile") return hold(HOLD_BUILDERS_UNREAD);
       if (!f.approvals || !f.approvals.signer.ok) return cancel("firmatario_non_ammesso");
       const pending = f.approvals.pending;
       if (pending <= 0) return cancel("nessuna_firma_in_attesa");

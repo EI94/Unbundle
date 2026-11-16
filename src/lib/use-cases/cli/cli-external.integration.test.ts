@@ -630,6 +630,94 @@ test("D7: a chi costruisce il caso niente ruoli del cliente, niente referente, n
   assert.equal(fromLink.ok ? "ok" : fromLink.code, "firmatario_costruttore");
 });
 
+test("D7 con le concessioni che non si leggono: se la sonda della 0037, il controllo della tabella o la lettura delle concessioni non rispondono, firmatario, referente e ruolo del cliente rispondono «riprova tra poco»; con la tabella che non c'è ancora passano come prima", opts, async () => {
+  const ucCases = await import("../../db/queries/uc-cases.ts");
+  const requests = await import("../../db/queries/uc-requests.ts");
+  const builders = await import("../../db/queries/use-case-builders.ts");
+  const perms = await import("../../uc/permissions.ts");
+  type Exec = typeof exec;
+  type Statements = Parameters<Exec["batch"]>[0];
+  const LS = ["ls.test"];
+  // La sonda della 0037 (la riconosce pg_constraint) e le letture delle concessioni (la tabella nel testo, senza la sonda).
+  const isProbe = (st: Statements) => st.some((s) => s.text.includes("pg_constraint") && s.text.includes("use_case_external_builders"));
+  const readsGrants = (st: Statements) => st.some((s) => s.text.includes("use_case_external_builders") && !s.text.includes("pg_constraint"));
+  const probeDown: Exec = { batch: (st) => (isProbe(st) ? Promise.reject(new Error("la sonda non risponde")) : exec.batch(st)) };
+  const grantsDown: Exec = { batch: (st) => (readsGrants(st) ? Promise.reject(new Error("la lettura non risponde")) : exec.batch(st)) };
+  // La tabella della 0037 non c'è ancora: la sonda dice no, to_regclass dice no, e una lettura della tabella fallirebbe.
+  const tableMissing: Exec = {
+    batch: (st) =>
+      isProbe(st)
+        ? Promise.resolve([[{ ready: false }]])
+        : st.some((s) => s.text.includes("to_regclass") && s.text.includes("AS present"))
+          ? Promise.resolve([[{ present: false }]])
+          : readsGrants(st)
+            ? Promise.reject(new Error("la tabella non c'è"))
+            : exec.batch(st),
+  };
+  // La sonda dice no, ma non si riesce a sapere se la tabella c'è: non si sa, e non si apre.
+  const tableCheckDown: Exec = {
+    batch: (st) =>
+      isProbe(st)
+        ? Promise.resolve([[{ ready: false }]])
+        : st.some((s) => s.text.includes("to_regclass") && s.text.includes("AS present"))
+          ? Promise.reject(new Error("il controllo della tabella non risponde"))
+          : exec.batch(st),
+  };
+  const outcome = (r: { ok: boolean; code?: string }) => (r.ok ? "ok" : r.code);
+  const lead = await ucCases.commandContextFor(exec, { workspaceId: ids.wsA, caseId: ids.caseA1, userId: ids.lead, lsDomains: LS });
+  assert.ok(lead.ok);
+  if (!lead.ok) return;
+  const core = await ucCases.loadCaseCore(exec, ids.wsA, ids.caseA1);
+  const contacts = () => q(`SELECT count(*)::int AS n FROM uc_contacts WHERE workspace_id = $1`, [ids.wsA]).then((r) => Number(r[0].n));
+  const rolesOf = (caseId: string, person: Person) =>
+    q(`SELECT role FROM uc_case_members WHERE case_id = $1 AND user_id = $2 ORDER BY role`, [caseId, ids[person]]).then((r) => r.map((x) => String(x.role)));
+  const before = { contacts: await contacts(), rolesE: await rolesOf(ids.caseA1, "e"), rolesP: await rolesOf(ids.caseA1, "p") };
+
+  for (const [name, x] of [
+    ["sonda che non risponde", probeDown],
+    ["lettura che non risponde", grantsDown],
+    ["tabella che non si controlla", tableCheckDown],
+  ] as const) {
+    // conflitto_ruoli: nessun ruolo del cliente alla cieca, né a chi costruisce A1 (E) né a chi non lo costruisce (P).
+    const board = await ucCases.addCaseMember(x, lead.value, { userId: ids.e, role: "ai_board" });
+    assert.deepEqual([board.ok, !board.ok && board.code, !board.ok && board.message], [false, "non_disponibile", perms.BUILDERS_UNREADABLE_MESSAGE], name);
+    assert.equal(outcome(await ucCases.addCaseMember(x, lead.value, { userId: ids.p, role: "ai_board" })), "non_disponibile", name);
+    // firmatario_costruttore: il contesto delle firme non ha l'elenco; firma dal link e designazione si fermano.
+    const sig = await ucCases.loadSignatureContext(x, core!, LS);
+    assert.equal(sig.builderEmails, null, name);
+    assert.equal(outcome(perms.checkSignerEmail(EMAIL.e, LS, sig.lsMemberEmails, sig.builderEmails)), "non_disponibile", name);
+    assert.equal(outcome(perms.checkSignerEmail(EMAIL.p, LS, sig.lsMemberEmails, sig.builderEmails)), "non_disponibile", name);
+    const linked = perms.signatureRole({ kind: "link", contactId: "c-owner", designation: "owner", email: EMAIL.p }, "gate", { ...sig, designated: { owner: "c-owner", privacy: null } });
+    assert.equal(outcome(linked), "non_disponibile", name);
+    // referente_costruttore: il referente del dossier non nasce; l'elenco di «Chiedi al referente» non si legge.
+    assert.equal(outcome(await requests.createContact(x, lead.value, { displayName: "Referente di prova", email: `nuovo-${suffix}@gmail.test` })), "non_disponibile", name);
+    const workspace = await builders.workspaceBuilderEmails(x, ids.wsA);
+    assert.equal(workspace, null, name);
+    assert.equal(outcome(perms.checkContactEmail({ email: EMAIL.p, lsDomains: LS, lsMemberEmails: [], builderEmails: workspace })), "non_disponibile", name);
+    assert.equal(await builders.hasGrantForCase(x, { caseId: ids.caseA1, userId: ids.e }), null, name);
+  }
+  assert.deepEqual({ contacts: await contacts(), rolesE: await rolesOf(ids.caseA1, "e"), rolesP: await rolesOf(ids.caseA1, "p") }, before, "nessuna riga scritta");
+
+  // La tabella della 0037 non c'è ancora: nessuna concessione, nessuno costruisce da fuori, tutto come prima della 0037.
+  assert.equal(await builders.hasGrantForCase(tableMissing, { caseId: ids.caseA1, userId: ids.e }), false);
+  assert.deepEqual(await builders.workspaceBuilderEmails(tableMissing, ids.wsA), []);
+  const sig = await ucCases.loadSignatureContext(tableMissing, core!, LS);
+  assert.deepEqual(sig.builderEmails, []);
+  assert.equal(outcome(perms.checkSignerEmail(EMAIL.e, LS, sig.lsMemberEmails, sig.builderEmails)), "ok");
+  assert.equal(outcome(perms.checkContactEmail({ email: EMAIL.e, lsDomains: LS, lsMemberEmails: [], builderEmails: [] })), "ok");
+  const board = await ucCases.addCaseMember(tableMissing, lead.value, { userId: ids.e, role: "ai_board" });
+  const contact = await requests.createContact(tableMissing, lead.value, { displayName: "Referente di prova", email: EMAIL.e });
+  try {
+    assert.equal(outcome(board), "ok", "il ruolo del cliente passa");
+    assert.equal(outcome(contact), "ok", "il referente nasce");
+  } finally {
+    await q(`DELETE FROM uc_case_members WHERE case_id = $1 AND user_id = $2 AND role = 'ai_board'`, [ids.caseA1, ids.e]);
+    if (contact.ok) await q(`DELETE FROM uc_contacts WHERE id = $1`, [contact.value.contactId]);
+  }
+  // Con il database vero, gli stessi controlli rifiutano chi costruisce, come in D7.
+  assert.equal(outcome(await ucCases.addCaseMember(exec, lead.value, { userId: ids.e, role: "ai_board" })), "conflitto_ruoli");
+});
+
 test("D7: nel caso che «Aggiungi» salta perché lì la persona firma o approva per il cliente, resta del cliente: firma dal link e può avere un altro ruolo del cliente", opts, async () => {
   const team = await import("../../db/queries/use-case-workspace-team.ts");
   const builders = await import("../../db/queries/use-case-builders.ts");

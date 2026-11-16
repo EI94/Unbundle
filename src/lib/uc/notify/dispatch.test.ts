@@ -524,3 +524,19 @@ test("a text that cannot be rendered revokes the token and never reaches the mai
   assert.deepEqual(store.failed, [{ id: NOTIF, code: "testo_non_valido" }]);
   assert.equal(mailer.emails.length, 0);
 });
+
+test("(8.0c) approval links: when it cannot be read who builds the case, the link waits for the next run instead of being cancelled; a builder is still refused", () => {
+  const n = claimed({ templateKey: "richiesta_approvazione", recipientContactId: OWNER, payload: { designation: "owner" } });
+  const approval = (signer: NonNullable<DeliveryFacts["approvals"]>["signer"]) =>
+    facts({
+      recipient: { kind: "contact", id: OWNER, email: "owner@cliente.test", reachable: true, digestOptOut: false, lateralSpace: false },
+      request: request({ purpose: "approvazioni", contactId: OWNER }),
+      approvals: { pending: 2, signer },
+    });
+  assert.deepEqual(planDelivery(n, approval({ ok: false, code: "non_disponibile", message: "Adesso non si riesce a controllare chi costruisce i casi: riprova tra poco." }), OPTS), {
+    action: "hold",
+    reason: "concessioni_non_lette",
+  });
+  assert.deepEqual(planDelivery(n, approval({ ok: false, code: "firmatario_costruttore", message: "" }), OPTS), { action: "cancel", reason: "firmatario_non_ammesso" });
+  assert.deepEqual(sendPlan(n, approval({ ok: true, value: undefined })).link, { requestId: REQ, issuedFor: "invio" });
+});

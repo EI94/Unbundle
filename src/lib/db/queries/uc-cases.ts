@@ -18,6 +18,7 @@ import { gatePolicyToJson, gateScopeForItem, isItemOk, type GateComputation, typ
 import { caseRoleAllowedFor, userContextFrom } from "../../uc/lateral-space.ts";
 import {
   assertMemberRoles,
+  BUILDERS_UNREADABLE_MESSAGE,
   can,
   checkCaseCreator,
   checkPersonalZoneProposal,
@@ -192,7 +193,8 @@ export async function commandContextFor(
 
 /**
  * Email dei membri Lateral Space del caso, (8.0c) di chi costruisce il caso da fuori (una concessione che lo copre e lì
- * nessun ruolo del cliente: solo con la 0037) e contatti designati: il contesto delle firme.
+ * nessun ruolo del cliente: solo con la 0037; null quando non si riesce a leggerle, e allora ogni firma del cliente
+ * risponde `non_disponibile`) e contatti designati: il contesto delle firme.
  */
 export async function loadSignatureContext(executor: UcExecutor, core: CaseCore, lsDomains: readonly string[]): Promise<SignatureContext> {
   const [rows] = await executor.batch([
@@ -756,8 +758,11 @@ export async function addCaseMember(
   if (roles.stored.includes(role)) return fail("gia_membro", CASE_MESSAGES.gia_membro);
   const allowed = assertMemberRoles(target, [...roles.stored, role], ctx.lsDomains);
   if (!allowed.ok) return allowed;
-  if ((CLIENT_CASE_ROLES as readonly string[]).includes(role) && (await hasGrantForCase(executor, { caseId: ctx.caseId, userId }))) {
-    return fail("conflitto_ruoli", "Costruisce questo caso: non può avere anche un ruolo del cliente.");
+  if ((CLIENT_CASE_ROLES as readonly string[]).includes(role)) {
+    // Le concessioni che non si leggono (null) fermano il ruolo del cliente: si riprova, non si dà alla cieca.
+    const builds = await hasGrantForCase(executor, { caseId: ctx.caseId, userId });
+    if (builds === null) return fail("non_disponibile", BUILDERS_UNREADABLE_MESSAGE);
+    if (builds) return fail("conflitto_ruoli", "Costruisce questo caso: non può avere anche un ruolo del cliente.");
   }
   const c = cast(ctx.caseId, "uuid");
   const run = await runCommand(

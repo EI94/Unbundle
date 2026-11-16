@@ -218,13 +218,20 @@ export function checkCaseCreator(i: { user: UserContext; canReviewWorkspacePortf
 }
 
 /**
+ * (8.0c) Il rifiuto quando non si riesce a sapere chi costruisce (le concessioni della 0037 non si leggono: la sonda o la
+ * lettura non rispondono): `non_disponibile`, si riprova. Una firma o un ruolo del cliente dati a chi costruisce non si
+ * tolgono facilmente; un nuovo tentativo non costa niente.
+ */
+export const BUILDERS_UNREADABLE_MESSAGE = "Adesso non si riesce a controllare chi costruisce i casi: riprova tra poco.";
+
+/**
  * Email di un firmatario del cliente (Owner o approvatore privacy designato):
  * non di un dominio Lateral Space, non uguale all'email di un membro Lateral
  * Space del caso e (8.0c) non di chi costruisce il caso da fuori Lateral Space
- * (`builderEmails`: chi ha una concessione che copre il caso). Si ricontrolla a
- * ogni firma.
+ * (`builderEmails`: chi ha una concessione che copre il caso; null quando non si
+ * riesce a leggerle: `non_disponibile`). Si ricontrolla a ogni firma.
  */
-export function checkSignerEmail(email: string | null | undefined, lsDomains: readonly string[], lsMemberEmails: readonly string[], builderEmails: readonly string[] = []): Result<void> {
+export function checkSignerEmail(email: string | null | undefined, lsDomains: readonly string[], lsMemberEmails: readonly string[], builderEmails: readonly string[] | null = []): Result<void> {
   const domain = emailDomain(email);
   if (!email || !domain) return fail("email_non_valida", "Il firmatario del cliente deve avere un'email valida.");
   if (lsDomains.includes(domain)) {
@@ -234,6 +241,7 @@ export function checkSignerEmail(email: string | null | undefined, lsDomains: re
   if (lsMemberEmails.some((m) => m.trim().toLowerCase() === normalized)) {
     return fail("firmatario_lateral_space", "Il firmatario del cliente non può essere una persona di Lateral Space del caso.");
   }
+  if (builderEmails === null) return fail("non_disponibile", BUILDERS_UNREADABLE_MESSAGE);
   if (builderEmails.some((m) => m.trim().toLowerCase() === normalized)) {
     return fail("firmatario_costruttore", "Il firmatario del cliente non può essere chi costruisce il caso.");
   }
@@ -254,8 +262,11 @@ export function checkContactEmail(i: {
   user?: Pick<UserContext, "isLateralSpace" | "emailDomain"> | null;
   lsDomains: readonly string[];
   lsMemberEmails: readonly string[];
-  /** (8.0c) Le email di chi costruisce i casi del cliente da fuori Lateral Space: non fa il referente. */
-  builderEmails?: readonly string[];
+  /**
+   * (8.0c) Le email di chi costruisce i casi del cliente da fuori Lateral Space: non fa il referente. null quando non si
+   * riesce a leggerle: `non_disponibile`.
+   */
+  builderEmails?: readonly string[] | null;
 }): Result<void> {
   const lsMessage = "Il referente è una persona del cliente: non può essere di Lateral Space.";
   if (i.user && (i.user.isLateralSpace || (i.user.emailDomain !== null && i.lsDomains.includes(i.user.emailDomain)))) {
@@ -268,6 +279,7 @@ export function checkContactEmail(i: {
   if (i.lsDomains.includes(domain) || i.lsMemberEmails.some((m) => m.trim().toLowerCase() === normalized)) {
     return fail("referente_lateral_space", lsMessage);
   }
+  if (i.builderEmails === null) return fail("non_disponibile", BUILDERS_UNREADABLE_MESSAGE);
   if ((i.builderEmails ?? []).some((m) => m.trim().toLowerCase() === normalized)) {
     return fail("referente_costruttore", "Chi costruisce i casi di questo cliente non fa il referente: le risposte le dà un'altra persona.");
   }
@@ -279,7 +291,7 @@ export function checkAssignee(i: {
   contact: { email: string | null; isActive: boolean; anonymized: boolean; user?: Pick<UserContext, "isLateralSpace" | "emailDomain"> | null };
   lsDomains: readonly string[];
   lsMemberEmails: readonly string[];
-  builderEmails?: readonly string[];
+  builderEmails?: readonly string[] | null;
 }): Result<void> {
   if (!i.contact.isActive || i.contact.anonymized) return fail("contatto_non_attivo", "Il contatto non è attivo.");
   return checkContactEmail({ email: i.contact.email, user: i.contact.user, lsDomains: i.lsDomains, lsMemberEmails: i.lsMemberEmails, builderEmails: i.builderEmails });
@@ -323,8 +335,11 @@ export interface SignatureContext {
   lsDomains: readonly string[];
   /** Email dei membri Lateral Space del caso. */
   lsMemberEmails: readonly string[];
-  /** (8.0c) Email di chi costruisce il caso da fuori Lateral Space (una concessione che lo copre): non firma per il cliente. */
-  builderEmails?: readonly string[];
+  /**
+   * (8.0c) Email di chi costruisce il caso da fuori Lateral Space (una concessione che lo copre): non firma per il cliente.
+   * null quando non si riesce a leggerle: ogni firma del cliente risponde `non_disponibile`.
+   */
+  builderEmails?: readonly string[] | null;
   /** Contatti designati con prova (`uc_cases.signers_designation`). */
   designated: { owner: string | null; privacy: string | null };
 }

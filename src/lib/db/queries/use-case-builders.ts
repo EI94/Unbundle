@@ -354,36 +354,83 @@ function grantBuildsCaseSql(user: SqlFragment, caseAlias = "c"): SqlFragment {
   return ucSql`(${grantCoversCaseSql(user, caseAlias)} AND NOT ${clientRoleInCaseSql(user, caseAlias)})`;
 }
 
-/** Costruisce il caso per la concessione (`grantBuildsCaseSql`): niente ruoli del cliente lì. Falso senza la 0037. */
-export async function hasGrantForCase(executor: UcExecutor, i: { caseId: string; userId: string }): Promise<boolean> {
-  if (!UUID_RE.test(i.caseId) || !UUID_RE.test(i.userId) || !(await externalBuildersReady(executor))) return false;
-  const [rows] = await executor.batch([toStatement(ucSql`SELECT ${grantBuildsCaseSql(cast(i.userId, "uuid"))} AS ok FROM uc_cases c WHERE c.id = ${cast(i.caseId, "uuid")}`)]);
-  return rows[0]?.ok === true;
+/**
+ * Le concessioni per i tre controlli che un guasto non deve aprire: il firmatario del cliente (`firmatario_costruttore`),
+ * il referente (`referente_costruttore`) e il ruolo del cliente nel dossier (`conflitto_ruoli`). Una firma o un ruolo
+ * del cliente dati a chi costruisce non si tolgono facilmente; un nuovo tentativo non costa niente.
+ * - `pronta`: la 0037 c'è e le concessioni si leggono.
+ * - `assente`: la tabella della 0037 non c'è ancora (prima del self-heal): nessuna concessione, nessuno costruisce da
+ *   fuori, e il controllo permette come prima.
+ * - `illeggibile`: la sonda non risponde, oppure la tabella c'è ma la 0037 non è intera: non si sa chi costruisce, e il
+ *   controllo rifiuta con `non_disponibile` («riprova tra poco»). Lo stesso se poi la lettura delle concessioni non riesce.
+ */
+async function grantsForChecks(executor: UcExecutor): Promise<"pronta" | "assente" | "illeggibile"> {
+  const probe = await probeExternalBuilders(executor);
+  if (probe === "pronta") return "pronta";
+  if (probe === "guasta") return "illeggibile";
+  try {
+    const [rows] = await executor.batch([toStatement(ucSql`SELECT to_regclass(${cast(`public.${EXTERNAL_BUILDERS_TABLE}`, "text")}) IS NOT NULL AS present`)]);
+    return rows[0]?.present === false ? "assente" : "illeggibile";
+  } catch {
+    return "illeggibile";
+  }
+}
+
+/**
+ * Costruisce il caso per la concessione (`grantBuildsCaseSql`): niente ruoli del cliente lì. Falso senza la tabella della
+ * 0037; null quando le concessioni non si leggono (`grantsForChecks`): chi chiama rifiuta.
+ */
+export async function hasGrantForCase(executor: UcExecutor, i: { caseId: string; userId: string }): Promise<boolean | null> {
+  if (!UUID_RE.test(i.caseId) || !UUID_RE.test(i.userId)) return false;
+  const state = await grantsForChecks(executor);
+  if (state !== "pronta") return state === "assente" ? false : null;
+  try {
+    const [rows] = await executor.batch([toStatement(ucSql`SELECT ${grantBuildsCaseSql(cast(i.userId, "uuid"))} AS ok FROM uc_cases c WHERE c.id = ${cast(i.caseId, "uuid")}`)]);
+    return rows[0]?.ok === true;
+  } catch {
+    return null;
+  }
 }
 
 /**
  * Le e-mail (in minuscolo) di chi costruisce il caso per la concessione (`grantBuildsCaseSql`): non firma per il cliente
  * lì (`firmatario_costruttore`) e non fa il referente (`referente_costruttore`). Chi nel caso ha un ruolo del cliente
- * (il caso che «Aggiungi» ha saltato) firma come prima. Vuoto senza la 0037.
+ * (il caso che «Aggiungi» ha saltato) firma come prima. Vuoto senza la tabella della 0037; null quando le concessioni
+ * non si leggono (`grantsForChecks`): i controlli rifiutano.
  */
-export async function caseBuilderEmails(executor: UcExecutor, caseId: string): Promise<string[]> {
-  if (!UUID_RE.test(caseId) || !(await externalBuildersReady(executor))) return [];
-  const [rows] = await executor.batch([
-    toStatement(ucSql`SELECT DISTINCT lower(u.email) AS email FROM uc_cases c JOIN use_case_external_builders g ON ${grantCoversSql(ref("c"), ref("g"))}
+export async function caseBuilderEmails(executor: UcExecutor, caseId: string): Promise<string[] | null> {
+  if (!UUID_RE.test(caseId)) return [];
+  const state = await grantsForChecks(executor);
+  if (state !== "pronta") return state === "assente" ? [] : null;
+  try {
+    const [rows] = await executor.batch([
+      toStatement(ucSql`SELECT DISTINCT lower(u.email) AS email FROM uc_cases c JOIN use_case_external_builders g ON ${grantCoversSql(ref("c"), ref("g"))}
 JOIN users u ON u.id = g.user_id
 WHERE c.id = ${cast(caseId, "uuid")} AND u.email IS NOT NULL AND NOT ${clientRoleInCaseSql(raw("u.id"))}`),
-  ]);
-  return rows.map((r) => String(r.email));
+    ]);
+    return rows.map((r) => String(r.email));
+  } catch {
+    return null;
+  }
 }
 
-/** Le e-mail (in minuscolo) di chi costruisce i casi del workspace da fuori: non fa il referente del cliente. */
-export async function workspaceBuilderEmails(executor: UcExecutor, workspaceId: string): Promise<string[]> {
-  if (!UUID_RE.test(workspaceId) || !(await externalBuildersReady(executor))) return [];
-  const [rows] = await executor.batch([
-    toStatement(ucSql`SELECT DISTINCT lower(u.email) AS email FROM use_case_external_builders g JOIN users u ON u.id = g.user_id
+/**
+ * Le e-mail (in minuscolo) di chi costruisce i casi del workspace da fuori: non fa il referente del cliente. Vuoto senza
+ * la tabella della 0037; null quando le concessioni non si leggono (`grantsForChecks`): i controlli rifiutano.
+ */
+export async function workspaceBuilderEmails(executor: UcExecutor, workspaceId: string): Promise<string[] | null> {
+  if (!UUID_RE.test(workspaceId)) return [];
+  const state = await grantsForChecks(executor);
+  if (state !== "pronta") return state === "assente" ? [] : null;
+  try {
+    const [rows] = await executor.batch([
+      toStatement(ucSql`SELECT DISTINCT lower(u.email) AS email FROM use_case_external_builders g JOIN users u ON u.id = g.user_id
 WHERE g.workspace_id = ${cast(workspaceId, "uuid")} AND u.email IS NOT NULL`),
-  ]);
-  return rows.map((r) => String(r.email));
+    ]);
+    return rows.map((r) => String(r.email));
+  } catch {
+    return null;
+  }
 }
 
 /** I casi che la persona costruisce o costruiva, per «Togli»: i dossier aperti coperti dalle sue concessioni. */

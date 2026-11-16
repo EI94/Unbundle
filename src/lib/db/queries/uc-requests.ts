@@ -168,16 +168,17 @@ function caseGuard(ctx: UcCommandContext, core: CaseCore): UcStatement {
 
 /**
  * Chi non risponde né firma per il cliente in questo caso: le email dei membri di Lateral Space e (8.0c) di chi costruisce
- * il caso da fuori (`builders`), dal contesto delle firme.
+ * il caso da fuori (`builders`), dal contesto delle firme. `builders` è null quando non si riesce a leggerle: referenti e
+ * firmatari rispondono `non_disponibile`, mai «nessuno costruisce».
  */
 interface OutsideEmails {
   ls: string[];
-  builders: string[];
+  builders: string[] | null;
 }
 
 async function lsMemberEmails(executor: UcExecutor, core: CaseCore, lsDomains: readonly string[]): Promise<OutsideEmails> {
   const ctx = await loadSignatureContext(executor, core, lsDomains);
-  return { ls: [...ctx.lsMemberEmails], builders: [...(ctx.builderEmails ?? [])] };
+  return { ls: [...ctx.lsMemberEmails], builders: ctx.builderEmails === null ? null : [...(ctx.builderEmails ?? [])] };
 }
 
 async function loadContacts(executor: UcExecutor, workspaceId: string, ids: readonly string[]): Promise<Map<string, ContactRowState>> {

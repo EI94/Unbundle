@@ -62,6 +62,7 @@ import {
   isPersonalClass,
   planReferentAnswer,
   publicFail,
+  publicUnavailable,
   referentProgress,
   referentStatusLabel,
   type ApprovalKind,
@@ -177,8 +178,10 @@ const PUBLIC_MESSAGES: Readonly<Record<string, string>> = {
   caso_chiuso: INVALID_LINK_MESSAGE,
 };
 
+/** Un esito di comando per chi apre il link; (8.0c) `non_disponibile` è il 503 calmo delle pagine pubbliche (`publicUnavailable`). */
 function fromResult<T>(r: Result<T>): PublicOutcome<T> {
-  return r.ok ? r : publicFail(r.code, r.code === "link_non_valido" ? INVALID_LINK_MESSAGE : r.message);
+  if (r.ok) return r;
+  return publicUnavailable(r) ?? publicFail(r.code, r.code === "link_non_valido" ? INVALID_LINK_MESSAGE : r.message);
 }
 
 function referentCtx(link: ResolvedLink, opts: PublicOptions, now: Date): UcCommandContext {
@@ -1088,6 +1091,9 @@ export async function delegateItems(executor: UcExecutor, link: ResolvedLink, in
   const existingUserId = rowString(existing?.user_id);
   const existingUser = existingUserId ? await loadUserContext(executor, existingUserId, opts.lsDomains) : null;
   const allowed = checkContactEmail({ email, user: existingUser, lsDomains: opts.lsDomains, lsMemberEmails: sig.lsMemberEmails, builderEmails: sig.builderEmails });
+  // (8.0c) Chi costruisce il caso non si legge adesso: la delega aspetta, «riprova tra poco».
+  const unreadable = publicUnavailable(allowed);
+  if (unreadable) return unreadable;
   if (!allowed.ok) return publicFail("delega_a_lateral_space", "Non si può girare una domanda a Lateral Space: chiedi a un collega della tua azienda.");
   const rules = checkDelegation({
     parentDepth: link.delegationDepth,
@@ -1310,6 +1316,9 @@ export async function decideApproval(executor: UcExecutor, link: ResolvedLink, i
     if (!core) return publicFail("link_non_valido", INVALID_LINK_MESSAGE);
     const sig = await loadSignatureContext(executor, core, opts.lsDomains);
     const email = checkSignerEmail(link.contactEmail, opts.lsDomains, sig.lsMemberEmails, sig.builderEmails);
+    // (8.0c) Chi costruisce il caso non si legge adesso: «riprova tra poco», mai «non sei più il firmatario».
+    const unreadable = publicUnavailable(email);
+    if (unreadable) return unreadable;
     if (!email.ok || core.designated.owner !== link.contactId) return publicFail("firmatario_non_designato", "Il firmatario non è più quello designato dal cliente.");
     if (target.kind === "na") {
       const r = await rejectNa(executor, ctx, { itemId: target.targetId, reason, expectedTextHash: d.text_hash });

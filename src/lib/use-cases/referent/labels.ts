@@ -155,6 +155,8 @@ export const REFERENT_UI_TEXT = Object.freeze({
       lateral_space: "(di Lateral Space)",
       // (8.0c) Chi costruisce i casi del cliente da fuori Lateral Space non fa il referente.
       costruttore: "(costruisce i casi)",
+      // (8.0c) Adesso non si riesce a leggere chi costruisce i casi: il contatto non si sceglie alla cieca.
+      non_verificabile: "(riprova tra poco)",
       richiesta_aperta: "(richiesta già aperta)",
       sei_tu: "(sei tu)",
       referente: "(è il referente)",
@@ -736,6 +738,8 @@ export const REFERENT_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.
   referente_lateral_space: "Il referente è una persona del cliente: non può essere di Lateral Space.",
   // (8.0c) Chi costruisce i casi del cliente da fuori Lateral Space non risponde come referente.
   referente_costruttore: "Chi costruisce i casi di questo cliente non fa il referente: le risposte le dà un'altra persona.",
+  // (8.0c) Non si riesce a leggere chi costruisce i casi del cliente: il referente non si sceglie alla cieca.
+  non_disponibile: "Adesso non si riesce a controllare chi costruisce i casi: riprova tra poco.",
   email_in_uso: "C'è già un referente con questa email: sceglilo dall'elenco.",
   referente_in_dossier: "Questo referente è anche in un dossier: l'email si corregge in «Persone» del dossier.",
   dati_non_validi: "Scrivi il nome del referente.",

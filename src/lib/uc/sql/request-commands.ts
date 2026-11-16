@@ -280,7 +280,7 @@ export function prepareContactPatch(
 /** Email del referente: del cliente, non di Lateral Space né di un membro LS del caso, né (8.0c) di chi lo costruisce. */
 export function checkContactDraft(
   draft: { email: string | null },
-  ctx: { lsDomains: readonly string[]; lsMemberEmails: readonly string[]; builderEmails?: readonly string[]; user?: Pick<UserContext, "isLateralSpace" | "emailDomain"> | null },
+  ctx: { lsDomains: readonly string[]; lsMemberEmails: readonly string[]; builderEmails?: readonly string[] | null; user?: Pick<UserContext, "isLateralSpace" | "emailDomain"> | null },
 ): Result<void> {
   return checkContactEmail({ email: draft.email, user: ctx.user ?? null, lsDomains: ctx.lsDomains, lsMemberEmails: ctx.lsMemberEmails, builderEmails: ctx.builderEmails });
 }
@@ -502,7 +502,7 @@ export function suggestContactForRole(
 /** Referente assegnabile: attivo, non anonimizzato, del cliente (`checkAssignee`). */
 export function checkContactAssignable(
   contact: Pick<ContactRowState, "email" | "isActive" | "anonymized">,
-  ctx: { lsDomains: readonly string[]; lsMemberEmails: readonly string[]; builderEmails?: readonly string[]; user?: Pick<UserContext, "isLateralSpace" | "emailDomain"> | null },
+  ctx: { lsDomains: readonly string[]; lsMemberEmails: readonly string[]; builderEmails?: readonly string[] | null; user?: Pick<UserContext, "isLateralSpace" | "emailDomain"> | null },
 ): Result<void> {
   return checkAssignee({
     contact: { email: contact.email, isActive: contact.isActive, anonymized: contact.anonymized, user: ctx.user ?? null },
@@ -1111,7 +1111,7 @@ export function checkDelegationApproval(i: {
   delegationsToday: number;
   lsDomains: readonly string[];
   lsMemberEmails: readonly string[];
-  builderEmails?: readonly string[];
+  builderEmails?: readonly string[] | null;
 }): Result<{ depth: number }> {
   const r = i.request;
   if (!r.delegatedFromRequestId || r.purpose !== "raccolta") return fail("non_delega", "Questa richiesta non è una delega da approvare.");
