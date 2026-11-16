@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { CONTEXT_TEXT } from "@/lib/context/text";
 import type { AiConsentNoticeData } from "@/lib/db/queries/context-consent";
 import { cn } from "@/lib/utils";
+import { AskBox } from "./ask-box";
 import { ContextSheet } from "./context-sheet";
 import type { UseCaseOption } from "./fields";
 import { WriteFactForm } from "./write-fact-form";
@@ -52,7 +53,7 @@ export interface ContextPageProps {
  * cliente «Documenti») con «Scrivi un fatto», poi la vista. Sul telefono la testata si impila: titolo, domanda,
  * «Aggiungi appunti» su tutta la larghezza.
  */
-export function ContextPage({ workspaceId, workspaceName, tab, lateralSpace, canEditMemory, useCaseOptions, children }: ContextPageProps) {
+export function ContextPage({ workspaceId, workspaceName, today, tab, lateralSpace, canEditMemory, useCaseOptions, children }: ContextPageProps) {
   const [writing, setWriting] = useState(false);
   const base = `/dashboard/${workspaceId}/contesto`;
   const tabs = useMemo(
@@ -70,6 +71,9 @@ export function ContextPage({ workspaceId, workspaceName, tab, lateralSpace, can
           <div className="min-w-0">
             <p className="truncate text-xs text-muted-foreground">{workspaceName}</p>
             <h1 className="mt-0.5 text-2xl font-semibold tracking-tight">{T.page.title}</h1>
+          </div>
+          <div className="order-2 sm:order-3 sm:col-span-2">
+            <AskBox workspaceId={workspaceId} today={today} lateralSpace={lateralSpace} />
           </div>
         </header>
 
