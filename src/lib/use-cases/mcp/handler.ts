@@ -9,10 +9,12 @@
  *     si segna «esposto, da revocare» e da allora riceve 401, anche nell'header); metodo diverso
  *     da POST → 405 con `Allow: POST`; `Origin`
  *     presente → 403 (nessuna origine ammessa: i client MCP non sono pagine web); `Content-Type`
- *     non JSON → 415; corpo oltre 256 KB → 413; autenticazione (`auth.ts`: token personale,
- *     ruolo riletto adesso) → altrimenti 401; corpo JSON letto a blocchi.
+ *     non JSON → 415; corpo oltre 1 MB → 413 (`TEAM_MCP_BODY_MAX_BYTES`: gli appunti di una call
+ *     arrivano a 300.000 caratteri, il connettore resta a 256 KB); autenticazione (`auth.ts`:
+ *     token personale, ruolo riletto adesso) → altrimenti 401; corpo JSON letto a blocchi.
  *  2. Server MCP nuovo per questa richiesta (`serveStatelessMcp`), con le istruzioni del workspace
- *     (`instructions.ts`) e gli 8 tool (`contract.ts`, `tools.ts`). Il workspace lo dà il token.
+ *     (`instructions.ts`) e gli 11 tool (`contract.ts`, `tools.ts`, `context-tools.ts`). Il
+ *     workspace lo dà il token.
  *     Con l'area spenta handshake e `tools/list` funzionano e ogni tool risponde `area_spenta`.
  *  3. Una riga di log per ogni messaggio JSON-RPC (`logMcpCall`, area `team-mcp`): data e ora,
  *     tool o metodo, esito, durata, i primi 8 caratteri dell'id del token. Mai token, corpo,
@@ -43,6 +45,13 @@ import { callTeamTool, TEAM_MCP_LOG_AREA, type TeamToolDeps } from "./tools.ts";
 
 /** Nessuna origine ammessa: claude.ai e Claude Code non mandano `Origin`; una pagina web sì, e riceve 403. */
 export const TEAM_MCP_ALLOWED_ORIGINS: readonly string[] = Object.freeze([]);
+
+/**
+ * Il corpo di una richiesta al MCP del team: 1 MB. `add_context_notes` porta gli appunti di una call fino a 300.000
+ * caratteri (RILASCIO-9a-COSTRUZIONE.md §9.2), che in JSON con lettere accentate e a capo superano i 256 KB del
+ * connettore; una funzione di Vercel ne riceve 4,5.
+ */
+export const TEAM_MCP_BODY_MAX_BYTES = 1024 * 1024;
 
 type Env = Readonly<Record<string, string | undefined>>;
 
@@ -107,7 +116,7 @@ export async function handleTeamMcpRequest(request: Request, deps: TeamHandlerDe
   }
   if (request.method.toUpperCase() !== "POST") return reject("method_not_allowed", methodNotAllowed(["POST"]));
 
-  const screen = screenMcpRequest(request, { allowedOrigins: TEAM_MCP_ALLOWED_ORIGINS });
+  const screen = screenMcpRequest(request, { allowedOrigins: TEAM_MCP_ALLOWED_ORIGINS, maxBytes: TEAM_MCP_BODY_MAX_BYTES });
   if (!screen.ok) return reject(screen.code, screen.response);
 
   let principal: TeamPrincipal;
@@ -120,7 +129,7 @@ export async function handleTeamMcpRequest(request: Request, deps: TeamHandlerDe
     return reject("internal_error", hygieneError("internal_error"));
   }
 
-  const body = await readMcpJsonBody(request);
+  const body = await readMcpJsonBody(request, TEAM_MCP_BODY_MAX_BYTES);
   if (!body.ok) return reject(body.code, body.response, principal.tokenId);
 
   const calls = new Map<string | number, { tool: string; outcome: string; ms: number }>();

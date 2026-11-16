@@ -57,6 +57,8 @@ let createPage: typeof import("../../actions/use-case-create.ts");
 let needsPage: typeof import("../../actions/use-case-needs.ts");
 let needsReads: typeof import("../../db/queries/use-case-needs.ts");
 let rest: typeof import("../../portfolio/submission-http.ts");
+let claude: typeof import("../../ai/claude-test-kit.ts");
+let subprocessors: typeof import("../../uc/legal/subprocessors.ts");
 let q: (text: string, params?: unknown[]) => Promise<Record<string, unknown>[]>;
 let deps: HandlerDeps;
 
@@ -279,6 +281,10 @@ before(async () => {
       return nextResolve(specifier, context);
     },
   });
+  // «Contesto» legge gli appunti con il modello: risponde il Claude finto di claude-test-kit.ts, mai l'API vera.
+  claude = await import("../../ai/claude-test-kit.ts");
+  await claude.installAppModules({});
+  subprocessors = await import("../../uc/legal/subprocessors.ts");
 
   const { neon } = await import("@neondatabase/serverless");
   const sql = neon(url!);
@@ -361,7 +367,7 @@ after(async () => {
 
 // ─── Server, tool e istruzioni ───────────────────────────────────────
 
-test("initialize e tools/list: «Unbundle Use case», istruzioni del workspace con la riga sul costo, 8 tool con titoli e annotazioni", opts, async () => {
+test("initialize e tools/list: «Unbundle Use case», istruzioni del workspace con la riga sul costo, 11 tool con titoli e annotazioni", opts, async () => {
   const client = await connect(tokens.builder.token);
   try {
     assert.deepEqual(client.getServerVersion(), { name: "unbundle-use-case", title: "Unbundle Use case", version: "1.0.0" });
@@ -370,6 +376,7 @@ test("initialize e tools/list: «Unbundle Use case», istruzioni del workspace c
     assert.ok(text.length <= 2048 && text.includes(instructions.TEAM_MCP_COST_LINE));
     const { tools } = await client.listTools();
     assert.deepEqual(tools.map((t) => t.name), [...contract.TEAM_MCP_TOOL_NAMES]);
+    assert.equal(tools.length, 11);
     for (const tool of tools) {
       const name = tool.name as keyof typeof contract.TEAM_MCP_TOOL_TEXT;
       assert.equal(tool.title, contract.TEAM_MCP_TOOL_TEXT[name].title);
@@ -435,7 +442,7 @@ test("igiene HTTP: token nell'indirizzo 400 senza eco (segnato esposto), 415, 41
   assert.equal(afterExposure.status, 401, "un token personale finito in un indirizzo non entra più, nemmeno nell'header");
   assert.deepEqual(await afterExposure.json(), { error: "unauthorized" });
   assert.equal((await handle(rpcRequest(tokens.builder.token, initialize, { "content-type": "text/plain" }), deps)).status, 415);
-  assert.equal((await handle(rpcRequest(tokens.builder.token, initialize, { "content-length": String(300 * 1024) }), deps)).status, 413);
+  assert.equal((await handle(rpcRequest(tokens.builder.token, initialize, { "content-length": String(2 * 1024 * 1024) }), deps)).status, 413);
   assert.equal((await handle(rpcRequest(tokens.builder.token, initialize, { origin: "https://esempio.test" }), deps)).status, 403);
   const get = await handle(new Request(ENDPOINT, { method: "GET", headers: { authorization: `Bearer ${tokens.builder.token}` } }), deps);
   assert.equal(get.status, 405);
@@ -448,7 +455,7 @@ test("igiene HTTP: token nell'indirizzo 400 senza eco (segnato esposto), 415, 41
 test("area spenta per il workspace del token: handshake e tools/list sì, ogni tool area_spenta", opts, async () => {
   const client = await connect(tokens.builderB.token);
   try {
-    assert.equal((await client.listTools()).tools.length, 8);
+    assert.equal((await client.listTools()).tools.length, 11);
     for (const name of contract.TEAM_MCP_TOOL_NAMES) {
       const out = await call(client, name, {});
       assert.equal(out.content.error, "area_spenta", name);
@@ -1363,6 +1370,137 @@ test("con un errore uc forzato le decisioni che dipendono dal dossier rispondono
   }
 });
 
+// ─── «Contesto» (rilascio 9a) ────────────────────────────────────────
+
+/** Gli appunti di prova: «Con chi» sono nomi, e non vanno mai al modello né nelle uscite. */
+const CONTEXT_PEOPLE = `Mario Rossi ${suffix}`;
+const contextNote = (n: number) =>
+  `Call di avvio ${suffix}, numero ${n}.\nIl gestionale è SAP Business One. Gli ordini arrivano quasi tutti per telefono.\nIl direttore operativo vuole partire dagli ordini.`;
+
+/** Una proposta come la scrive il modello (src/lib/context/read/schema.ts). */
+const modelProposal = (over: Record<string, unknown> = {}) => ({
+  tipo: "nuovo",
+  testo: "Il gestionale è SAP Business One.",
+  citazione: "Il gestionale è SAP Business One.",
+  base: "detto",
+  sezione: "sistemi",
+  visibilita: "tutti",
+  fattoRif: null,
+  domandaRif: null,
+  useCase: [],
+  parte: null,
+  ruolo: null,
+  entro: null,
+  entita: [{ nome: "SAP Business One", tipo: "sistema" }],
+  collegamenti: [],
+  ...over,
+});
+
+test("«Contesto»: un revisore del cliente non passa; senza l'ok gli appunti si salvano e non si leggono; con l'ok proposte, sì della persona, fatto in memoria", opts, async () => {
+  const ls = await connect(tokens.ls.token);
+  const builder = await connect(tokens.builder.token);
+  try {
+    // Un revisore del cliente: nessuno dei tre strumenti, e niente si salva.
+    for (const [name, args] of [
+      ["add_context_notes", write({ title: "Call di avvio", text: contextNote(0) })],
+      ["list_context_proposals", {}],
+      ["confirm_context_proposals", write({ discard: [randomUUID()] })],
+    ] as const) {
+      const out = await call(builder, name, args);
+      assert.deepEqual(out.content, { error: "permesso_mancante", message: "Gli appunti e le proposte li gestisce Lateral Space." }, name);
+    }
+    assert.equal((await one(`SELECT count(*)::int AS n FROM context_sources WHERE workspace_id = $1::uuid`, [ids.wsA])).n, 0);
+
+    // Senza l'ok ai sub-responsabili: gli appunti sono salvati, il modello non riceve niente.
+    const none = claude.fakeAppClaude([]);
+    const waiting = await call(ls, "add_context_notes", write({ title: "Call senza ok", date: "2026-11-13", text: contextNote(1), participants: CONTEXT_PEOPLE }));
+    assert.equal(waiting.isError, false, JSON.stringify(waiting.content));
+    assert.equal((waiting.content.reading as { status: string }).status, "ok_mancante");
+    assert.deepEqual(waiting.content.proposals, []);
+    assert.equal(none.length, 0, "nessuna richiesta al modello senza l'ok");
+    const saved = await one(`SELECT origin, kind, visibility, read_status, read_reason, participants FROM context_sources WHERE id = $1::uuid`, [(waiting.content.source as { id: string }).id]);
+    assert.deepEqual(saved, { origin: "claude", kind: "appunti", visibility: "ls", read_status: "da_leggere", read_reason: "ok_mancante", participants: CONTEXT_PEOPLE });
+
+    // Con l'ok: la lettura con il Claude finto, le proposte, e il sì della persona.
+    await q(
+      `INSERT INTO uc_subprocessor_acks (workspace_id, list_version, statement_text, declared_by_user_id, declared_by_role)
+       VALUES ($1::uuid, $2, 'Registrato da Lateral Space per conto del cliente di prova H5a.', $3::uuid, 'transformation_lead')`,
+      [ids.wsA, subprocessors.SUBPROCESSORS_VERSION, ids.ls],
+    );
+    const requests = claude.fakeAppClaude([
+      claude.message([
+        claude.THINKING,
+        {
+          type: "text",
+          text: JSON.stringify({
+            proposte: [
+              modelProposal(),
+              modelProposal({ testo: "Gli ordini arrivano soprattutto per telefono.", citazione: "Gli ordini arrivano quasi tutti per telefono.", base: "dedotto", sezione: "lavoro", entita: [] }),
+            ],
+            nonRiportati: { persone: 1, sanitari: 0, altriClienti: 0, clientiDelCliente: 0 },
+          }),
+        },
+      ]),
+    ]);
+    const added = await call(ls, "add_context_notes", write({ title: "Call di avvio", date: "2026-11-14", text: contextNote(2), participants: CONTEXT_PEOPLE }));
+    assert.equal(added.isError, false, JSON.stringify(added.content));
+    assert.equal(requests.length, 1);
+    const sent = JSON.stringify(requests[0].body);
+    assert.equal(sent.includes(CONTEXT_PEOPLE), false, "«Con chi» non va al modello");
+    assert.equal("tools" in requests[0].body, false, "la lettura non ha strumenti");
+    assert.deepEqual(added.content.reading, { status: "letto", message: "Letti: 2 proposte da confermare." });
+    assert.deepEqual(added.content.notReported, ["1 passaggio non riportato: parlava di persone"]);
+    const proposals = added.content.proposals as Array<{ id: string; version: number; text: string; basis: string; preselected: boolean; quote: string | null }>;
+    assert.deepEqual(
+      proposals.map((p) => [p.text, p.basis, p.preselected]),
+      [
+        ["Il gestionale è SAP Business One.", "detto", true],
+        ["Gli ordini arrivano soprattutto per telefono.", "dedotto", false],
+      ],
+    );
+    assert.equal(JSON.stringify(added.content).includes(CONTEXT_PEOPLE), false, "«Con chi» non esce");
+    const listed = await call(ls, "list_context_proposals", { sourceId: (added.content.source as { id: string }).id });
+    assert.deepEqual((listed.content.proposals as Array<{ id: string }>).map((p) => p.id), proposals.map((p) => p.id));
+
+    // La dedotta senza il sì specifico non entra, e niente si scrive.
+    const [said, inferred] = proposals;
+    const refused = await call(ls, "confirm_context_proposals", write({ confirm: [{ id: said.id, version: said.version }, { id: inferred.id, version: inferred.version }] }));
+    assert.equal(refused.content.error, "invalid_payload");
+    assert.deepEqual(refused.content.fieldErrors, { "confirm.1.inferredConfirmed": "È una proposta dedotta: chiedi alla persona se è vera." });
+    assert.equal((await one(`SELECT count(*)::int AS n FROM context_facts WHERE workspace_id = $1::uuid`, [ids.wsA])).n, 0);
+
+    const before = tasks.length;
+    const confirmed = await call(ls, "confirm_context_proposals", write({ confirm: [{ id: said.id, version: said.version }, { id: inferred.id, version: inferred.version, inferredConfirmed: true }] }));
+    assert.equal(confirmed.isError, false, JSON.stringify(confirmed.content));
+    assert.equal(confirmed.content.confirmed, 2);
+    assert.equal(confirmed.content.newFacts, 2);
+    assert.equal(confirmed.content.remaining, 0);
+    assert.equal(tasks.length, before + 1, "«In breve» dopo la risposta");
+    const facts = await q(
+      `SELECT statement, basis, origin, source_id, confirmed_by_user_id, visibility FROM context_facts WHERE workspace_id = $1::uuid AND status = 'attivo' ORDER BY statement`,
+      [ids.wsA],
+    );
+    assert.deepEqual(
+      facts.map((f) => [f.statement, f.basis, f.origin, f.source_id, f.confirmed_by_user_id, f.visibility]),
+      [
+        ["Gli ordini arrivano soprattutto per telefono.", "dedotto", "fonte", (added.content.source as { id: string }).id, ids.ls, "tutti"],
+        ["Il gestionale è SAP Business One.", "detto", "fonte", (added.content.source as { id: string }).id, ids.ls, "tutti"],
+      ],
+    );
+    const events = await q(`SELECT DISTINCT channel FROM context_events WHERE workspace_id = $1::uuid`, [ids.wsA]);
+    assert.deepEqual(events.map((e) => e.channel), ["claude"]);
+    assert.deepEqual((await call(ls, "list_context_proposals", {})).content.proposals, []);
+    // «In breve» si riscrive con il Claude finto (o non serve: meno di tre voci); non lancia.
+    claude.fakeAppClaude([claude.message([claude.THINKING, { type: "text", text: JSON.stringify({ righe: ["Il gestionale è SAP Business One."] }) }])]);
+    await runTasks();
+  } finally {
+    // L'ok resta (uc_subprocessor_acks si aggiunge e basta): lo toglie la cancellazione del workspace, in after().
+    // Per questo la prova sta in fondo, prima del solo controllo dei log.
+    await ls.close();
+    await builder.close();
+  }
+});
+
 // ─── Log ─────────────────────────────────────────────────────────────
 
 test("log: una riga per chiamata con area, tool, esito, durata e 8 caratteri dell'id del token; mai token, hash, testi o email", opts, async () => {
@@ -1375,7 +1513,19 @@ test("log: una riga per chiamata con area, tool, esito, durata e 8 caratteri del
     assert.equal(all.includes(sha256(t.token)), false, "nessun hash");
   }
   assert.ok(lines.some((line) => line.includes('"tool":"save_needs"')) && lines.some((line) => line.includes('"tool":"list_needs"')));
-  for (const text of [`Dal basso ${suffix}`, "Ne parliamo al prossimo AI Lab.", "Problema riscritto", `Accesso al gestionale ${suffix}`, "Ufficio IT", "Superata dal nuovo contratto.", ...Object.values(emails)]) {
+  assert.ok(lines.some((line) => line.includes('"tool":"add_context_notes"')) && lines.some((line) => line.includes('"tool":"confirm_context_proposals"')));
+  for (const text of [
+    `Dal basso ${suffix}`,
+    "Ne parliamo al prossimo AI Lab.",
+    "Problema riscritto",
+    `Accesso al gestionale ${suffix}`,
+    "Ufficio IT",
+    "Superata dal nuovo contratto.",
+    "SAP Business One",
+    "per telefono",
+    CONTEXT_PEOPLE,
+    ...Object.values(emails),
+  ]) {
     assert.equal(all.includes(text), false, text);
   }
 });

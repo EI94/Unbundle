@@ -476,6 +476,17 @@ function harness(
       unlinkNeed: record("unlinkNeed", (ctx, id, useCaseId) => needs.unlink(ctx, id as string, useCaseId as string)) as TeamToolDeps["service"]["unlinkNeed"],
     },
     requests: requests.store,
+    // «Contesto»: i suoi strumenti hanno i loro test (context-tools.test.ts); qui un archivio vuoto.
+    context: {
+      ready: async () => true,
+      actor: (p) => ({ workspaceId: p.workspaceId, userId: p.userId, role: p.viewer.role, isLateralSpace: p.viewer.isLateralSpace === true, channel: "claude" }),
+      addNote: async () => ({ ok: false, error: "riprova", message: "x" }),
+      read: async () => ({ ok: false, error: "riprova", message: "x" }),
+      listOpen: async (actor) => (actor.isLateralSpace ? { sources: [], proposals: [], reconfirmed: [] } : null),
+      confirm: async () => ({ ok: false, error: "riprova", message: "x" }),
+      discard: async () => ({ ok: false, error: "riprova", message: "x" }),
+      refreshBrief() {},
+    },
     notifyCreated(_ws, ids) {
       notified.push([...ids]);
     },
@@ -512,12 +523,13 @@ test("area spenta: ogni tool risponde area_spenta, senza consumare il limite né
 test("token «Solo lettura»: le scritture rispondono permesso_mancante, le letture passano", async () => {
   const h = harness();
   const reader = principal({ scopes: [TEAM_MCP_READ_SCOPE] });
-  for (const name of ["create_use_cases", "update_use_case", "decide_use_case", "set_priority", "save_needs"] as const) {
+  for (const name of ["create_use_cases", "update_use_case", "decide_use_case", "set_priority", "save_needs", "add_context_notes", "confirm_context_proposals"] as const) {
     const out = await call(h, name, createArgs(), reader);
     assert.deepEqual(out.content, { error: "permesso_mancante", message: READ_ONLY_TOKEN_MESSAGE }, name);
   }
   assert.equal((await call(h, "search_use_cases", {}, reader)).isError, false);
   assert.equal((await call(h, "list_needs", {}, reader)).isError, false);
+  assert.equal((await call(h, "list_context_proposals", {}, principal({ scopes: [TEAM_MCP_READ_SCOPE], isLateralSpace: true }))).isError, false);
   assert.deepEqual(h.requests.calls, []);
 });
 
