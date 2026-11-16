@@ -623,6 +623,21 @@ test("la trascrizione solo se il workspace la chiede e il piano la dà; una call
   assert.equal((await sourceOf(transcriptCall.id)).kind, "appunti");
 });
 
+test("una call che Granola elenca ma di cui non dà la nota si salta, senza fermare il giro breve", opts, async () => {
+  const noteless: FakeMeeting = { id: `m-senza-nota-${suffix}`, title: "Call senza nota", meetingAt: new Date().toISOString(), updatedAt: new Date().toISOString(), participants: `Giulia (${EMAIL.cli})`, summary: "Non arriva.", noteless: true };
+  fake.meetings.push(noteless);
+  const calls = fake.toolCalls.length;
+  const result = await granola.syncGranolaForUser(ids.ls, { force: true });
+  assert.deepEqual([result.status, result.imported], ["fatto", 0]);
+  const asked = fake.toolCalls.slice(calls).filter((c) => c.tool === "get_meetings").map((c) => c.args.meeting_ids);
+  assert.deepEqual(asked.at(-1), [noteless.id], "richiesta di nuovo da sola");
+  assert.equal(await decisionOf(noteless.id), undefined);
+  assert.equal(await sourceOf(noteless.id), undefined);
+  const row = await connection("ls");
+  assert.equal(iso(row.synced_through), noteless.updatedAt, "synced_through va avanti lo stesso");
+  assert.equal(row.last_error, null);
+});
+
 // ─── La notte e scollegare ───────────────────────────────────────────
 
 test("la registrazione dinamica (riserva) si fa una volta sola e si riusa", opts, async () => {

@@ -897,11 +897,10 @@ async function runSync(userId: string, connection: Connection, o: { deadline: nu
             complete = false;
             break;
           }
+          // Una call che Granola elenca ma di cui non dà la nota (tolta nel frattempo, o non più condivisa) si salta: senza
+          // una decisione, la riprende il prossimo giro intero. Non ferma `synced_through`, o il giro breve non andrebbe più avanti.
           const note = notes.get(item.id);
-          if (!note) {
-            complete = false;
-            continue;
-          }
+          if (!note) continue;
           const { outcome } = await importMeeting(ctx, note, { id: item.workspace.workspaceId, wantTranscript: item.workspace.wantTranscript }, "regola");
           if (outcome === "importata") counts.imported++;
           else if (outcome === "aggiornata") counts.updated++;

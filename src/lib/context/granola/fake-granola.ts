@@ -34,6 +34,8 @@ export interface FakeMeeting {
   privateNotes?: string | null;
   folderIds?: string[];
   transcript?: string | null;
+  /** `search_meetings` la elenca, `get_meetings` non ne dà la nota (tolta nel frattempo, o non più condivisa). */
+  noteless?: boolean;
 }
 
 export interface FakeToolCall {
@@ -219,7 +221,7 @@ export async function startFakeGranola(seed: { meetings?: FakeMeeting[]; folders
     },
     get_meetings(args) {
       const ids = Array.isArray(args.meeting_ids) ? (args.meeting_ids as unknown[]).filter((id): id is string => typeof id === "string").slice(0, 10) : [];
-      const found = ids.map((id) => fake.meetings.find((m) => m.id === id)).filter((m): m is FakeMeeting => m !== undefined);
+      const found = ids.map((id) => fake.meetings.find((m) => m.id === id && !m.noteless)).filter((m): m is FakeMeeting => m !== undefined);
       const keep = fake.notesPerResponse === null ? found : found.slice(0, fake.notesPerResponse);
       const omitted = found.slice(keep.length);
       const omittedXml = omitted.length ? `\n<omitted_meetings>\n${omitted.map((m) => `<meeting id="${escapeXml(m.id)}" title="${escapeXml(m.title)}" />`).join("\n")}\n</omitted_meetings>` : "";
