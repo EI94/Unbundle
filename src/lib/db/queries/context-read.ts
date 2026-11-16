@@ -186,8 +186,9 @@ async function loadReadMemory(reader: Reader, sourceId: string): Promise<ReadMem
     goals: rowsOf<{ id: string; title: string }>(goals).map((g, i) => ({ ref: `O${i + 1}`, id: g.id, title: g.title })),
     questions: rowsOf<{ id: string; question: string }>(questions).map((q, i) => ({ ref: `D${i + 1}`, id: q.id, question: q.question })),
     commitments: rowsOf<{ statement: string }>(commitments).map((c) => c.statement),
-    // «Già proposto»: le frasi confermate, scartate o ancora aperte. Le superate no: le ha tolte «Rileggi» o una call
-    // cambiata su Granola, senza che nessuno le decidesse; se il testo le dice ancora, devono tornare.
+    // «Già proposto»: le frasi confermate, scartate o ancora aperte (anche quelle corrette e non ancora confermate, che
+    // «Rileggi» e una call cambiata lasciano aperte). Le superate no: le ha tolte «Rileggi» o una call cambiata su
+    // Granola, senza che nessuno le decidesse; se il testo le dice ancora, devono tornare.
     already: decidedOrOpen.map((a) => a.statement),
     // Di una proposta corretta dalla persona resta la citazione: il modello la ritroverebbe con la sua frase di prima.
     editedQuotes: decidedOrOpen.flatMap((a) => (a.edited === true && a.quote ? [a.quote] : [])),
@@ -195,7 +196,11 @@ async function loadReadMemory(reader: Reader, sourceId: string): Promise<ReadMem
   };
 }
 
-/** «Rileggi»: l'appunto torna `da_leggere` dalla prima parte e le proposte aperte diventano `superata`. Non tocca una lettura in corso. */
+/**
+ * «Rileggi»: l'appunto torna `da_leggere` dalla prima parte e le proposte aperte diventano `superata`, tranne quelle
+ * che la persona ha corretto (restano aperte, e la lettura non ripropone il loro passaggio). Non tocca una lettura in
+ * corso.
+ */
 async function resetForRereading(workspaceId: string, sourceId: string): Promise<void> {
   const reset = sql`EXISTS (SELECT 1 FROM context_sources x WHERE x.id = ${sourceId}::uuid AND x.read_status = 'da_leggere' AND x.updated_at = now())`;
   await db.batch([
@@ -206,7 +211,7 @@ async function resetForRereading(workspaceId: string, sourceId: string): Promise
         AND NOT (read_status = 'in_lettura' AND read_started_at > now() - make_interval(secs => ${CONTEXT_LIMITS.readLeaseSeconds}))`),
     db.execute(sql`
       UPDATE context_proposals SET status = 'superata', decided_at = now(), updated_at = now(), version = version + 1
-      WHERE source_id = ${sourceId}::uuid AND workspace_id = ${workspaceId}::uuid AND status = 'aperta' AND ${reset}`),
+      WHERE source_id = ${sourceId}::uuid AND workspace_id = ${workspaceId}::uuid AND status = 'aperta' AND NOT edited AND ${reset}`),
   ]);
 }
 

@@ -1060,6 +1060,46 @@ test("una proposta corretta dalla persona non torna, con il nome, quando la call
   await proposals.discardProposals(actor("ls"), again.map((p) => p.id));
 });
 
+test("una correzione non ancora confermata resta, quando la call cambia o con «Rileggi»; la frase del modello con il nome non torna", opts, async () => {
+  const base = { title: "Call acquisti E4", occurredOn: "2026-11-10", origin: "granola" as const, externalId: `not_${suffix}_e4`, externalUpdatedAt: new Date("2026-11-10T10:00:00Z") };
+  const line = `Luisa Verdi approva gli ordini sopra i diecimila euro (${suffix}).`;
+  const text1 = `[Riassunto di Granola]\n${line}\nIl gestionale è SAP Business One.`;
+  const call = okValue(await sources.upsertExternalNote(actor("ls", "wsA", "granola"), { ...base, body: text1 }));
+  const named = proposal({ testo: `Luisa Verdi approva gli ordini sopra i diecimila euro ${suffix}.`, citazione: line, sezione: "persone" });
+  fakeAppClaude([answer([named])]);
+  okValue(await reading.readContextSource(actor("ls"), call.sourceId));
+  const [open] = (await proposals.listOpenProposals(actor("ls"), { sourceId: call.sourceId }))!.proposals;
+  assert.equal(open.issue, "nome_persona");
+  // La persona la corregge sul posto, con il ruolo, ma non la conferma ancora.
+  const fixed = okValue(await proposals.editProposal(actor("ls"), open.id, open.version, { statement: `Il responsabile acquisti approva gli ordini sopra i diecimila euro ${suffix}.` }));
+  assert.equal(fixed.issue, null);
+  // La call cambia su Granola: il modello rilegge tutto e ritrova il passaggio con la frase di prima.
+  okValue(await sources.upsertExternalNote(actor("ls", "wsA", "granola"), { ...base, body: `${text1}\nDa gennaio anche il sabato.`, externalUpdatedAt: new Date("2026-11-11T09:00:00Z") }));
+  const saturday = proposal({ testo: `Il magazzino E4 lavora anche il sabato da gennaio ${suffix}.`, citazione: "Da gennaio anche il sabato." });
+  fakeAppClaude([answer([named, saturday])]);
+  okValue(await reading.readContextSource(actor("ls"), call.sourceId));
+  const after = (await proposals.listOpenProposals(actor("ls"), { sourceId: call.sourceId }))!.proposals;
+  assert.deepEqual(
+    after.map((p) => [p.id === fixed.id, p.statement, p.issue]),
+    [
+      [true, fixed.statement, null],
+      [false, saturday.testo, null],
+    ],
+    "la correzione resta, con la sua versione; il nome non torna",
+  );
+  assert.equal(after[0].version, fixed.version, "la pagina aperta può ancora confermarla");
+  // «Rileggi»: lo stesso. Le altre proposte tornano se il testo le dice ancora.
+  fakeAppClaude([answer([named, saturday])]);
+  okValue(await reading.readContextSource(actor("ls"), call.sourceId, { again: true }));
+  const reread = (await proposals.listOpenProposals(actor("ls"), { sourceId: call.sourceId }))!.proposals;
+  assert.deepEqual(reread.map((p) => [p.id === fixed.id, p.statement]), [
+    [true, fixed.statement],
+    [false, saturday.testo],
+  ]);
+  okValue(await proposals.confirmProposals(actor("ls"), pick([reread[0]])));
+  await proposals.discardProposals(actor("ls"), [reread[1].id]);
+});
+
 test("confirmProposals: un fatto nuovo, una decisione, un impegno, una domanda; entità e collegamenti; la domanda chiusa dal fatto che le risponde", opts, async () => {
   const question = randomUUID();
   await q(`INSERT INTO context_questions (id, workspace_id, question, visibility, origin) VALUES ($1, $2, $3, 'tutti', 'manuale')`, [question, ids.wsA, `Chi approva gli ordini grandi ${suffix}?`]);

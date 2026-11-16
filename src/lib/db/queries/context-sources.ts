@@ -158,7 +158,8 @@ export async function addContextNote(actor: ContextActor, input: NewNoteInput): 
 /**
  * Granola: crea o aggiorna l'appunto di una call (`external_id`). Testo uguale: aggiorna solo
  * `external_updated_at`. Testo diverso: aggiorna, torna `da_leggere`, le proposte aperte diventano `superata`,
- * scrive `fonte_aggiornata`.
+ * scrive `fonte_aggiornata`. Le proposte aperte che la persona ha corretto restano aperte: sono il suo lavoro, e la
+ * lettura dopo non ripropone il loro passaggio (`editedQuotes`).
  */
 export async function upsertExternalNote(
   actor: ContextActor,
@@ -211,9 +212,10 @@ export async function upsertExternalNote(
           read_status = 'da_leggere', read_reason = NULL, read_attempts = 0, read_started_at = NULL, read_at = NULL,
           parts_total = ${partsFor(note.body.length)}, parts_read = 0, skipped = '{}'::jsonb, version = version + 1, updated_at = now()
         WHERE id = ${existing.id}::uuid AND workspace_id = ${ws}::uuid`),
+      // Le proposte che nessuno ha toccato tornano, se il testo nuovo le dice ancora; quelle corrette dalla persona restano.
       db.execute(sql`
         UPDATE context_proposals SET status = 'superata', decided_at = now(), updated_at = now(), version = version + 1
-        WHERE source_id = ${existing.id}::uuid AND workspace_id = ${ws}::uuid AND status = 'aperta'`),
+        WHERE source_id = ${existing.id}::uuid AND workspace_id = ${ws}::uuid AND status = 'aperta' AND NOT edited`),
       eventStatement({ workspaceId: ws, action: "fonte_aggiornata", channel: actor.channel, actorUserId: actor.userId, sourceId: existing.id, detail: { origine: note.origin, caratteri: note.body.length } }),
     ]);
     return ok({ sourceId: existing.id, created: false, readStatus: "da_leggere", changed: true });
