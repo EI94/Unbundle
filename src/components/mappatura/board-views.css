@@ -65,6 +65,12 @@
 [data-board-root] .b-map-tools { margin-bottom: 10px; }
 [data-board-root] .b-roles .b-sec { padding-bottom: 0; }
 [data-board-root] .b-steprefs { display: flex; flex-wrap: wrap; gap: 2px 12px; }
+/* Sul telefono le tabelle si impilano: «Passi:» e i passi sulla stessa riga, come «Chi:» e il suo valore sul riferimento.
+   I passi scorrono dopo il nome della colonna e vanno a capo come un testo. */
+@container board (max-width: 680px) {
+  [data-board-root] .b-tbl.b-stack .b-steprefs { display: inline; }
+  [data-board-root] .b-tbl.b-stack .b-stepref { margin-right: 12px; }
+}
 [data-board-root] .b-stepref { appearance: none; border: 0; background: transparent; padding: 0; text-align: left; cursor: pointer; font-size: 13px; color: var(--board-ink-2); }
 [data-board-root] .b-stepref:hover { text-decoration: underline; text-underline-offset: 3px; }
 

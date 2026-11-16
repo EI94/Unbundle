@@ -72,3 +72,13 @@ test("una corsia vuota che si modifica mostra sempre «+ nota»; in una corsia c
   // Il riferimento nasconde «+ nota» fino al passaggio: la regola portata resta com'è, per le corsie con note.
   assert.equal(board.find((rule) => rule.at === null && rule.selector === "[data-board-root] .b-cell .b-add")?.declarations.get("opacity"), "0");
 });
+
+test("nelle tabelle impilate del telefono il nome della colonna e i passi stanno sulla stessa riga", () => {
+  const stacked = views.find((rule) => rule.at === "@container board (max-width: 680px)" && rule.selector === "[data-board-root] .b-tbl.b-stack .b-steprefs");
+  // In linea: i passi scorrono dopo «Passi: » e vanno a capo come un testo (un riquadro, anche in linea, andrebbe a capo
+  // intero appena i passi sono più di uno).
+  assert.equal(stacked?.declarations.get("display"), "inline");
+  assert.equal(views.find((rule) => rule.at === "@container board (max-width: 680px)" && rule.selector === "[data-board-root] .b-tbl.b-stack .b-stepref")?.declarations.get("margin-right"), "12px");
+  // «Passi: » è il ::before della cella (board.css): un blocco dopo di lui andrebbe a capo.
+  assert.ok(board.some((rule) => rule.selector === "[data-board-root] .b-tbl.b-stack td[data-l]::before"));
+});
