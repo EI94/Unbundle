@@ -26,7 +26,7 @@ test("un titolo che dice un altro cliente manda la call in «Da smistare», anch
   assert.deepEqual(matchMeeting(meeting({ title: "Ordini Nardi", folderIds: ["f-nardi"] }), PROFILES, LS), { rule: "cartella", workspaceIds: ["ws-nardi"] });
 });
 
-test("le caselle pubbliche (Gmail, Outlook, Libero…) non dicono di quale cliente è una persona: non valgono, nemmeno in una regola vecchia", () => {
+test("le caselle pubbliche (Gmail, Outlook, Libero…): mai come dominio, nemmeno in una regola vecchia; un indirizzo intero vale per sé, solo uguale", () => {
   for (const domain of ["gmail.com", "outlook.com", "hotmail.com", "yahoo.com", "icloud.com", "libero.it", "virgilio.it", "alice.it", "tiscali.it"]) {
     assert.ok(PUBLIC_MAIL_DOMAINS.includes(domain), domain);
     assert.equal(isPublicMailDomain(domain), true, domain);
@@ -36,8 +36,11 @@ test("le caselle pubbliche (Gmail, Outlook, Libero…) non dicono di quale clien
   assert.equal(isPublicMailDomain("nardi.test"), false);
   assert.equal(isPublicMailDomain("notgmail.com"), false);
   assert.equal(isPublicMailDomain(""), false);
-  const old: WorkspaceMatchProfile = { workspaceId: "ws-vecchio", folderIds: [], emails: ["alessio@gmail.com"], domains: ["gmail.com"], titleWords: [] };
-  assert.deepEqual(matchMeeting(meeting({ participantEmails: ["alessio@gmail.com", "chiunque@gmail.com"] }), [old, ...PROFILES], LS), { rule: null, workspaceIds: [] });
+  const gmail: WorkspaceMatchProfile = { workspaceId: "ws-gmail", folderIds: [], emails: ["alessio@gmail.com"], domains: ["gmail.com"], titleWords: [] };
+  // L'indirizzo scritto a mano: la stessa persona sì, per uguale.
+  assert.deepEqual(matchMeeting(meeting({ participantEmails: ["ALESSIO@gmail.com"] }), [gmail, ...PROFILES], LS), { rule: "partecipanti", workspaceIds: ["ws-gmail"] });
+  // Un altro indirizzo della stessa casella no: il dominio «gmail.com» di una regola vecchia non vale.
+  assert.deepEqual(matchMeeting(meeting({ participantEmails: ["chiunque@gmail.com", "altro@mail.gmail.com"] }), [gmail, ...PROFILES], LS), { rule: null, workspaceIds: [] });
 });
 
 test("con solo chi registra e «Nardi» nel titolo la call entra in Nardi", () => {

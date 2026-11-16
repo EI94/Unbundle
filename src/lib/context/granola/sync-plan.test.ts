@@ -148,10 +148,14 @@ test("le regole pulite: minuscole, senza doppioni, senza Lateral Space; valori s
   });
   const many = cleanGranolaRules({ emails: Array.from({ length: 101 }, (_, i) => `p${i}@nardi.test`), domains: Array.from({ length: 31 }, (_, i) => `d${i}.test`), titleWords: Array.from({ length: 21 }, (_, i) => `parola${i}`) }, ls);
   assert.deepEqual(!many.ok && Object.keys(many.fieldErrors).sort(), ["domains", "emails", "titleWords"]);
-  // Le caselle pubbliche non dicono di quale cliente è una call: né un dominio, né un indirizzo.
-  const publicMail = "Gmail, Outlook e le altre caselle pubbliche non dicono di quale cliente è una call. Usa la cartella o le parole nel titolo.";
-  assert.deepEqual(cleanGranolaRules({ emails: ["alessio@gmail.com"], domains: ["@Libero.it"] }, ls), { ok: false, fieldErrors: { emails: publicMail, domains: publicMail } });
-  assert.deepEqual(cleanGranolaRules({ emails: ["acquisti@nardi.test"], domains: ["mail.hotmail.com"] }, ls), { ok: false, fieldErrors: { domains: publicMail } });
+  // Una casella pubblica non vale come dominio; un indirizzo intero lì sì, perché nomina una persona sola.
+  const publicDomain = "Gmail, Outlook e le altre caselle pubbliche non valgono come dominio: aggiungi l'indirizzo intero della persona.";
+  assert.deepEqual(cleanGranolaRules({ emails: ["alessio@gmail.com"], domains: ["@Libero.it"] }, ls), { ok: false, fieldErrors: { domains: publicDomain } });
+  assert.deepEqual(cleanGranolaRules({ emails: ["acquisti@nardi.test"], domains: ["mail.hotmail.com"] }, ls), { ok: false, fieldErrors: { domains: publicDomain } });
+  assert.deepEqual(cleanGranolaRules({ emails: ["Alessio@Gmail.com", "giulia@libero.it"] }, ls), {
+    ok: true,
+    value: { folderId: null, folderName: null, emails: ["alessio@gmail.com", "giulia@libero.it"], domains: [], titleWords: [], wantTranscript: false },
+  });
 });
 
 test("le parole uguali alle predefinite, maiuscole e accenti a parte", () => {

@@ -525,8 +525,9 @@ test("le regole: si leggono con le parole predefinite; una parola aggiunta al ti
   const rules = await granola.readGranolaRules(actor("ls"));
   // Una persona sola del cliente: il contatto con l'indirizzo dell'azienda. Non i membri del workspace, non una casella pubblica.
   assert.deepEqual(rules, { folder: null, knownPeople: 1, emails: [], domains: [], titleWords: ["Nardi"], titleWordsAreDefault: true, wantTranscript: false, transcriptAvailable: true });
-  assert.equal(errorOf(await granola.saveGranolaRules(actor("ls"), { folderId: null, folderName: null, emails: [EMAIL.ext], domains: [], titleWords: ["Nardi"], wantTranscript: false })), "dati_non_validi");
-  assert.equal(errorOf(await granola.saveGranolaRules(actor("ls"), { folderId: null, folderName: null, emails: [], domains: ["gmail.com"], titleWords: ["Nardi"], wantTranscript: false })), "dati_non_validi");
+  // Una casella pubblica non vale come dominio: farebbe entrare le call di chiunque.
+  const publicDomain = await granola.saveGranolaRules(actor("ls"), { folderId: null, folderName: null, emails: [], domains: ["@Gmail.com"], titleWords: ["Nardi"], wantTranscript: false });
+  assert.deepEqual([errorOf(publicDomain), !publicDomain.ok && publicDomain.fieldErrors], ["dati_non_validi", { domains: "Gmail, Outlook e le altre caselle pubbliche non valgono come dominio: aggiungi l'indirizzo intero della persona." }]);
   assert.equal(await granola.readGranolaRules(actor("cli", "wsN", "contributor")), null);
   const topjet = await granola.readGranolaRules(actor("ls", "wsT"));
   assert.deepEqual(topjet?.folder, { id: "f-topjet", name: "TopJet" });
@@ -537,17 +538,29 @@ test("le regole: si leggono con le parole predefinite; una parola aggiunta al ti
   assert.equal(errorOf(invalid), "dati_non_validi");
   assert.deepEqual(!invalid.ok && invalid.fieldErrors, { emails: "Scrivi un'e-mail o un dominio.", domains: "Scrivi un'e-mail o un dominio." });
 
-  value(await granola.saveGranolaRules(actor("ls"), { folderId: null, folderName: null, emails: ["Acquisti@Nardi.test", `p@ls.test`], domains: ["@nardi-group.test"], titleWords: ["Nardi", "Ferrari"], wantTranscript: false }));
+  // Due call con una persona in Gmail, che nessuna regola riconosce ancora (Alessio è un membro del workspace, non un contatto).
+  const byAddress: FakeMeeting = { id: `m-gmail-${suffix}`, title: `Revisione disegni ${suffix}`, meetingAt: ago(60 * 20), updatedAt: ago(60 * 19), participants: `Alessio (${EMAIL.ext})`, summary: "Revisione dei disegni." };
+  const sameProvider: FakeMeeting = { id: `m-gmail2-${suffix}`, title: `Prova dei colori ${suffix}`, meetingAt: ago(60 * 21), updatedAt: ago(60 * 20), participants: `Chiara (chiara-${suffix}@gmail.com)`, summary: "Prova dei colori." };
+  fake.meetings.push(byAddress, sameProvider);
+
+  // Un indirizzo intero in una casella pubblica, scritto a mano, si accetta: nomina una persona sola.
+  value(await granola.saveGranolaRules(actor("ls"), { folderId: null, folderName: null, emails: ["Acquisti@Nardi.test", `p@ls.test`, EMAIL.ext.toUpperCase()], domains: ["@nardi-group.test"], titleWords: ["Nardi", "Ferrari"], wantTranscript: false }));
   const saved = (await q(`SELECT emails, domains, title_words, updated_by_user_id FROM context_granola_rules WHERE workspace_id = $1`, [ids.wsN]))[0];
-  assert.deepEqual([saved.emails, saved.domains, saved.title_words, saved.updated_by_user_id], [["acquisti@nardi.test"], ["nardi-group.test"], ["Nardi", "Ferrari"], ids.ls]);
+  assert.deepEqual([saved.emails, saved.domains, saved.title_words, saved.updated_by_user_id], [["acquisti@nardi.test", EMAIL.ext], ["nardi-group.test"], ["Nardi", "Ferrari"], ids.ls]);
+  assert.equal((await granola.readGranolaRules(actor("ls")))?.knownPeople, 1, "gli indirizzi scritti a mano non sono persone già note");
   const result = await granola.syncGranolaForUser(ids.ls, { force: true });
   assert.equal(result.status, "fatto");
-  assert.equal(result.imported, 1, "il giro dopo una regola cambiata è intero");
+  assert.equal(result.imported, 2, "il giro dopo una regola cambiata è intero: la parola nel titolo e l'indirizzo");
   assert.equal((await sourceOf(MEETINGS.word.id)).workspace_id, ids.wsN);
   assert.equal((await decisionOf(MEETINGS.word.id)).decided_by, "regola");
+  // L'indirizzo vale per quella persona sola: un altro indirizzo della stessa casella resta da smistare.
+  assert.equal((await sourceOf(byAddress.id)).workspace_id, ids.wsN);
+  assert.equal(await sourceOf(sameProvider.id), undefined);
+  assert.equal(await decisionOf(sameProvider.id), undefined);
+  assert.ok(value(await granola.listGranolaUnsorted(actor("ls"))).some((m) => m.id === sameProvider.id));
   // Salvare le stesse regole non cambia la data: il giro dopo non torna intero.
   const stamp = (await q(`SELECT updated_at FROM context_granola_rules WHERE workspace_id = $1`, [ids.wsN]))[0].updated_at;
-  value(await granola.saveGranolaRules(actor("ls"), { folderId: null, folderName: null, emails: ["acquisti@nardi.test"], domains: ["nardi-group.test"], titleWords: ["Nardi", "Ferrari"], wantTranscript: false }));
+  value(await granola.saveGranolaRules(actor("ls"), { folderId: null, folderName: null, emails: ["acquisti@nardi.test", EMAIL.ext], domains: ["nardi-group.test"], titleWords: ["Nardi", "Ferrari"], wantTranscript: false }));
   assert.equal(iso((await q(`SELECT updated_at FROM context_granola_rules WHERE workspace_id = $1`, [ids.wsN]))[0].updated_at), iso(stamp));
 });
 

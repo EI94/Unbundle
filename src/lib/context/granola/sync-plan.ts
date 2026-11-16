@@ -211,9 +211,9 @@ function isLsDomain(domain: string, lsDomains: readonly string[]): boolean {
 
 /**
  * Le regole pulite: e-mail e domini in minuscolo, senza doppioni, senza quelli di Lateral Space; le parole nel titolo
- * su una riga, senza doppioni (maiuscole e accenti a parte). Un valore che non è un'e-mail o un dominio, un'e-mail o un
- * dominio di una casella pubblica (`PUBLIC_MAIL_DOMAINS`: non dicono di quale cliente è una call), o troppi valori:
- * errori per campo.
+ * su una riga, senza doppioni (maiuscole e accenti a parte). Un valore che non è un'e-mail o un dominio, un dominio di
+ * una casella pubblica (`PUBLIC_MAIL_DOMAINS`: farebbe entrare le call di chiunque), o troppi valori: errori per campo.
+ * Un indirizzo intero di una casella pubblica sì: nomina una persona sola, e vale solo per lei (mai per il dominio).
  */
 export function cleanGranolaRules(
   input: Partial<GranolaRulesInput> | null | undefined,
@@ -229,7 +229,6 @@ export function cleanGranolaRules(
     const email = raw.trim().toLowerCase();
     if (!email) continue;
     if (!EMAIL.test(email) || email.length > 320) fieldErrors.emails = T.granola.invalidEntry;
-    else if (isPublicMailDomain(emailDomainOf(email))) fieldErrors.emails = T.granola.publicMail;
     else if (!isLsDomain(emailDomainOf(email) ?? "", ls) && !emails.includes(email)) emails.push(email);
   }
   if (emails.length > GRANOLA_LIMITS.emailsMax) fieldErrors.emails = T.errors.tooLong(GRANOLA_LIMITS.emailsMax);
@@ -239,7 +238,7 @@ export function cleanGranolaRules(
     const domain = raw.trim().toLowerCase().replace(/^@/, "");
     if (!domain) continue;
     if (!DOMAIN.test(domain)) fieldErrors.domains = T.granola.invalidEntry;
-    else if (isPublicMailDomain(domain)) fieldErrors.domains = T.granola.publicMail;
+    else if (isPublicMailDomain(domain)) fieldErrors.domains = T.granola.publicDomain;
     else if (!isLsDomain(domain, ls) && !domains.includes(domain)) domains.push(domain);
   }
   if (domains.length > GRANOLA_LIMITS.domainsMax) fieldErrors.domains = T.errors.tooLong(GRANOLA_LIMITS.domainsMax);

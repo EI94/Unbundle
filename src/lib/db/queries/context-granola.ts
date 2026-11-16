@@ -530,10 +530,11 @@ const asStrings = (value: unknown): string[] => (Array.isArray(value) ? value.fi
 
 /**
  * I profili dei workspace dove la persona collegata è di Lateral Space e non segue solo un corso (§8.6): la sua
- * cartella; le persone del cliente, cioè le e-mail dei contatti attivi e non anonimizzati (i referenti sono lì) e
- * quelle aggiunte a mano, fuori dai domini di Lateral Space e dalle caselle pubbliche; i domini aggiunti a mano; le
- * parole nel titolo, salvate o predefinite. Un membro del workspace non è per forza del cliente (chi costruisce da fuori,
- * per esempio): non conta. In più quando una regola o una cartella è cambiata l'ultima volta.
+ * cartella; le persone del cliente, cioè le e-mail dei contatti attivi e non anonimizzati (i referenti sono lì), fuori
+ * dai domini di Lateral Space e dalle caselle pubbliche, e quelle aggiunte a mano, fuori dai domini di Lateral Space
+ * (un indirizzo intero in una casella pubblica, scritto a mano, vale per quella persona sola); i domini aggiunti a mano;
+ * le parole nel titolo, salvate o predefinite. Un membro del workspace non è per forza del cliente (chi costruisce da
+ * fuori, per esempio): non conta. In più quando una regola o una cartella è cambiata l'ultima volta.
  */
 async function loadProfiles(userId: string, onlyWorkspaceId?: string): Promise<{ profiles: WorkspaceProfile[]; rulesChangedAt: Date | null }> {
   const ls = lsDomains();
@@ -581,15 +582,17 @@ async function loadProfiles(userId: string, onlyWorkspaceId?: string): Promise<{
     );
     for (const row of found) contacts.set(row.workspace_id, asStrings(row.emails));
   }
-  // Una persona del cliente: fuori dai domini di Lateral Space e non in una casella pubblica.
-  const ofClient = (email: string) => {
+  const outsideLs = (email: string) => {
     const domain = emailDomainOf(email);
-    return domain !== null && !ls.some((base) => domain === base || domain.endsWith(`.${base}`)) && !isPublicMailDomain(domain);
+    return domain !== null && !ls.some((base) => domain === base || domain.endsWith(`.${base}`));
   };
+  // Una persona che Unbundle conosce già è del cliente se è fuori da Lateral Space e non in una casella pubblica.
+  const ofClient = (email: string) => outsideLs(email) && !isPublicMailDomain(emailDomainOf(email));
   let rulesChangedAt: Date | null = null;
   const profiles = usable.map((row): WorkspaceProfile => {
     const known = [...new Set((contacts.get(row.id) ?? []).filter(ofClient))];
-    const manual = asStrings(row.emails).filter(ofClient);
+    // Un indirizzo intero scritto a mano vale, anche in una casella pubblica: si confronta solo per uguale.
+    const manual = asStrings(row.emails).filter(outsideLs);
     for (const changed of [toDate(row.rules_updated_at), toDate(row.link_updated_at)]) {
       if (changed && (!rulesChangedAt || changed > rulesChangedAt)) rulesChangedAt = changed;
     }

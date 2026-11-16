@@ -284,7 +284,7 @@ export const CONTEXT_TEXT = Object.freeze({
     saved: "Regole salvate.",
     add: "Aggiungi",
     invalidEntry: "Scrivi un'e-mail o un dominio.",
-    publicMail: "Gmail, Outlook e le altre caselle pubbliche non dicono di quale cliente è una call. Usa la cartella o le parole nel titolo.",
+    publicDomain: "Gmail, Outlook e le altre caselle pubbliche non valgono come dominio: aggiungi l'indirizzo intero della persona.",
     updatedAt: (when: string) => `Granola aggiornato ${when}`,
     refresh: "Aggiorna da Granola",
     refreshing: "Aggiorno da Granola…",
