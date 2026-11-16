@@ -15,7 +15,7 @@
  * `TodayContent` non ha stato (lo provano i test con Node, chiamando i suoi controlli); `TodayView` tiene il drawer,
  * «Evidenzia attriti», la nota o il punto che si sta scrivendo, e legge la board dallo store.
  */
-import { useEffect, useRef, useState, type JSX, type ReactNode } from "react";
+import { useState, type JSX, type ReactNode } from "react";
 import { boardAsText, rolesTable, toolsTable, type BoardNote, type MappingBoard } from "../../../lib/mappatura/board-model.ts";
 import { BOARD_TEXT, noteCaption } from "../../../lib/mappatura/text.ts";
 import { MAPPING_LIMITS, type StepLane } from "../../../lib/mappatura/vocab.ts";
@@ -231,21 +231,12 @@ export function TodayContent(p: TodayContentProps): JSX.Element {
 
 /**
  * La mappa come testo, quando gli appunti non ci sono (P62): il drawer stretto con il testo scelto, da copiare a mano.
- * Il dialogo mette il fuoco su «Chiudi» appena aperto; subito dopo il testo prende il fuoco ed è scelto.
+ * Il dialogo mette il fuoco nel testo appena aperto (`initialFocus="body"`), e il testo preso dal fuoco è scelto.
  */
-function CopyDrawer(p: { text: string | null; onClose(): void }): JSX.Element {
-  const area = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
-    if (p.text === null) return;
-    const timer = setTimeout(() => {
-      area.current?.focus();
-      area.current?.select();
-    }, 80);
-    return () => clearTimeout(timer);
-  }, [p.text]);
+export function CopyDrawer(p: { text: string | null; onClose(): void }): JSX.Element {
   return (
-    <Drawer open={p.text !== null} onClose={p.onClose} context={VIEW_TEXT.copy.context} title={VIEW_TEXT.copy.title}>
-      <textarea ref={area} className="b-input b-copy" readOnly value={p.text ?? ""} aria-label={VIEW_TEXT.copy.title} onFocus={(event) => event.currentTarget.select()} />
+    <Drawer open={p.text !== null} onClose={p.onClose} context={VIEW_TEXT.copy.context} title={VIEW_TEXT.copy.title} initialFocus="body">
+      <textarea className="b-input b-copy" readOnly value={p.text ?? ""} aria-label={VIEW_TEXT.copy.title} onFocus={(event) => event.currentTarget.select()} />
     </Drawer>
   );
 }

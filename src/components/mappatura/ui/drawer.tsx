@@ -30,8 +30,23 @@ const findBoardRoot = () => document.querySelector<HTMLElement>(BOARD_ROOT_SELEC
 const noBoardRoot = () => null;
 
 /** Il primo elemento che prende il fuoco dentro `element` (il campo del titolo di un passo appena aggiunto). */
-function firstFocusable(element: HTMLElement | null): HTMLElement | null {
+function firstFocusable(element: Pick<ParentNode, "querySelector"> | null): HTMLElement | null {
   return element?.querySelector<HTMLElement>("input:not([disabled]), textarea:not([disabled]), select:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex='-1'])") ?? null;
+}
+
+/** Dove va il fuoco del drawer appena aperto. */
+export type DrawerFocus = "close" | "title" | "body";
+
+/**
+ * Il fuoco all'apertura (P30): «Chiudi»; con `title` il campo del titolo (un passo appena aggiunto, P53); con `body` il
+ * primo campo del corpo (la mappa come testo, da scegliere e copiare a mano, P62). Senza quel campo, «Chiudi».
+ */
+export function drawerInitialFocus(
+  kind: DrawerFocus | undefined,
+  parts: { title: Pick<ParentNode, "querySelector"> | null; body: Pick<ParentNode, "querySelector"> | null; close: HTMLElement | null },
+): HTMLElement | true {
+  const wanted = kind === "title" ? firstFocusable(parts.title) : kind === "body" ? firstFocusable(parts.body) : null;
+  return wanted ?? parts.close ?? true;
 }
 
 interface DrawerFrameProps {
@@ -42,11 +57,12 @@ interface DrawerFrameProps {
   onClose(): void;
   closeRef?: RefObject<HTMLButtonElement | null>;
   titleRef?: RefObject<HTMLHeadingElement | null>;
+  bodyRef?: RefObject<HTMLDivElement | null>;
   children: ReactNode;
 }
 
 /** La testa (contesto, titolo, «Chiudi»), il corpo e il posto del toast: lo stesso nel dialogo e nella vetrina. */
-function DrawerFrame({ context, title, titleId, toastHost, onClose, closeRef, titleRef, children }: DrawerFrameProps): JSX.Element {
+function DrawerFrame({ context, title, titleId, toastHost, onClose, closeRef, titleRef, bodyRef, children }: DrawerFrameProps): JSX.Element {
   return (
     <>
       <div className="b-dr-head">
@@ -60,7 +76,9 @@ function DrawerFrame({ context, title, titleId, toastHost, onClose, closeRef, ti
           {BOARD_TEXT.buttons.close}
         </button>
       </div>
-      <div className="b-dr-body">{children}</div>
+      <div className="b-dr-body" ref={bodyRef}>
+        {children}
+      </div>
       <BoardToastView host={toastHost} />
     </>
   );
@@ -71,18 +89,19 @@ type TransitionState = { open: boolean; transitionStatus?: "starting" | "ending"
 const shown = (state: TransitionState) => state.open && state.transitionStatus !== "starting";
 
 /**
- * Il drawer (P29–P33): un dialogo modale con la testa del riferimento. `initialFocus`: «Chiudi» (default) o il primo
- * campo del titolo, per un passo appena aggiunto (P30, P53). Chiuderlo lascia la pagina dov'era; il fuoco torna a chi
- * l'ha aperto.
+ * Il drawer (P29–P33): un dialogo modale con la testa del riferimento. `initialFocus`: «Chiudi» (default), il primo
+ * campo del titolo per un passo appena aggiunto (P30, P53), o il primo campo del corpo (`drawerInitialFocus`).
+ * Chiuderlo lascia la pagina dov'era; il fuoco torna a chi l'ha aperto.
  */
-export function Drawer(p: { open: boolean; onClose(): void; wide?: boolean; context: string; title: ReactNode; initialFocus?: "close" | "title"; children: ReactNode }): JSX.Element {
+export function Drawer(p: { open: boolean; onClose(): void; wide?: boolean; context: string; title: ReactNode; initialFocus?: DrawerFocus; children: ReactNode }): JSX.Element {
   const root = useSyncExternalStore(noSubscription, findBoardRoot, noBoardRoot);
   const titleId = useId();
   const toastHost = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   useClaimToastHost(toastHost, p.open);
-  const initialFocus = () => (p.initialFocus === "title" ? firstFocusable(titleRef.current) : null) ?? closeRef.current ?? true;
+  const initialFocus = () => drawerInitialFocus(p.initialFocus, { title: titleRef.current, body: bodyRef.current, close: closeRef.current });
   return (
     <Dialog.Root
       open={p.open}
@@ -93,7 +112,7 @@ export function Drawer(p: { open: boolean; onClose(): void; wide?: boolean; cont
       <Dialog.Portal container={root ?? undefined}>
         <Dialog.Backdrop className={(state) => cx("b-scrim", shown(state) && "b-on")} data-b="scrim" />
         <Dialog.Popup className={(state) => cx("b-drawer", p.wide && "b-wide", shown(state) && "b-on")} aria-labelledby={titleId} initialFocus={initialFocus} data-b="drawer">
-          <DrawerFrame context={p.context} title={p.title} titleId={titleId} toastHost={toastHost} onClose={p.onClose} closeRef={closeRef} titleRef={titleRef}>
+          <DrawerFrame context={p.context} title={p.title} titleId={titleId} toastHost={toastHost} onClose={p.onClose} closeRef={closeRef} titleRef={titleRef} bodyRef={bodyRef}>
             {p.children}
           </DrawerFrame>
         </Dialog.Popup>

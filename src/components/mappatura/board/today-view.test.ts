@@ -165,3 +165,20 @@ test("i punti di analisi: titolo, prima frase e «Dettagli»; si validano, si el
   assert.doesNotMatch(render({ ...board, analysis: [] }), /Punti di analisi/);
   assert.match(render({ ...fixtureBoard({ classified: true }), analysis: [] }), /<h3 class="b-sh">Punti di analisi<\/h3><div class="b-points" data-b="points"><\/div><button type="button" class="b-add b-add-point" data-b="add">\+ punto<\/button>/);
 });
+
+test("la mappa come testo senza appunti: il drawer stretto mette il fuoco nel testo appena aperto, che si sceglie da sé (P62)", async () => {
+  const { CopyDrawer } = await import("./today-view.tsx");
+  const { Drawer } = await import("../ui/drawer.tsx");
+  const opened = CopyDrawer({ text: "A · Dall'ordine alla consegna", onClose() {} });
+  assert.equal(opened.type, Drawer);
+  assert.equal(opened.props.open, true);
+  assert.equal(opened.props.wide, undefined, "la forma stretta");
+  assert.equal(opened.props.initialFocus, "body", "il fuoco nel testo dal dialogo stesso, non da un timer dopo «Chiudi»");
+  const area = opened.props.children as { type: string; props: Record<string, unknown> };
+  assert.equal(area.type, "textarea");
+  assert.equal(area.props.readOnly, true);
+  let selected = 0;
+  (area.props.onFocus as (event: unknown) => void)({ currentTarget: { select: () => (selected += 1) } });
+  assert.equal(selected, 1, "preso il fuoco, il testo è scelto");
+  assert.equal(CopyDrawer({ text: null, onClose() {} }).props.open, false);
+});

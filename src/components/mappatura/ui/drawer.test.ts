@@ -10,7 +10,7 @@ import { enableTsxImports } from "../../use-cases/detail/referent/tsx-test-loade
 // `DrawerStatic`, che usa gli stessi pezzi; il dialogo si prova dal suo sorgente.
 
 await enableTsxImports();
-const { BOARD_ROOT_SELECTOR, Compare, Drawer, DrawerColumns, DrawerList, DrawerStatic, Human } = await import("./drawer.tsx");
+const { BOARD_ROOT_SELECTOR, Compare, Drawer, DrawerColumns, DrawerList, DrawerStatic, Human, drawerInitialFocus } = await import("./drawer.tsx");
 
 const html = (element: Parameters<typeof renderToStaticMarkup>[0]) => renderToStaticMarkup(element);
 /** `createElement` con i figli dopo le props: il tipo di React li vuole tra le props quando un componente li chiede. */
@@ -38,9 +38,9 @@ test("il dialogo: Base UI, modale, dentro la radice della board; velo e pannello
   assert.match(drawer, /<Dialog\.Portal container=\{root \?\? undefined\}>/, "il portale sta nella radice della board");
   assert.match(drawer, /<Dialog\.Backdrop className=\{\(state\) => cx\("b-scrim", shown\(state\) && "b-on"\)\}/);
   assert.match(drawer, /<Dialog\.Popup className=\{\(state\) => cx\("b-drawer", p\.wide && "b-wide", shown\(state\) && "b-on"\)\} aria-labelledby=\{titleId\} initialFocus=\{initialFocus\}/);
-  assert.match(drawer, /<DrawerFrame context=\{p\.context\} title=\{p\.title\} titleId=\{titleId\} toastHost=\{toastHost\} onClose=\{p\.onClose\} closeRef=\{closeRef\} titleRef=\{titleRef\}>/);
-  // Il fuoco all'apertura: «Chiudi», oppure il campo del titolo di un passo appena aggiunto (P30).
-  assert.match(drawer, /p\.initialFocus === "title" \? firstFocusable\(titleRef\.current\) : null\) \?\? closeRef\.current \?\? true/);
+  assert.match(drawer, /<DrawerFrame context=\{p\.context\} title=\{p\.title\} titleId=\{titleId\} toastHost=\{toastHost\} onClose=\{p\.onClose\} closeRef=\{closeRef\} titleRef=\{titleRef\} bodyRef=\{bodyRef\}>/);
+  // Il fuoco all'apertura: «Chiudi», il campo del titolo di un passo appena aggiunto (P30), o il primo campo del corpo.
+  assert.match(drawer, /const initialFocus = \(\) => drawerInitialFocus\(p\.initialFocus, \{ title: titleRef\.current, body: bodyRef\.current, close: closeRef\.current \}\);/);
   // Il toast sta nel drawer finché è aperto: fuori, la pagina è inerte.
   assert.match(drawer, /useClaimToastHost\(toastHost, p\.open\);/);
   assert.doesNotMatch(drawer, /modal=\{false\}|disablePointerDismissal/, "modale, e il clic sul velo chiude");
@@ -55,4 +55,18 @@ test("i blocchi del drawer: le colonne, l'etichetta in mono con il suo contenuto
     '<div class="b-compare" data-b="compare"><div class="b-was"><p class="b-k">Oggi</p>Si fa a mano.</div><div class="b-now"><p class="b-k">Classificazione</p>Si automatizza.</div></div>',
   );
   assert.equal(html(h(Human, { label: "Decide una persona" }, "Il buyer conferma l'ordine.")), '<div class="b-human" data-b="human"><b>Decide una persona</b>Il buyer conferma l&#x27;ordine.</div>');
+});
+
+test("il fuoco all'apertura: «Chiudi»; il primo campo del titolo o del corpo quando chiesto, e «Chiudi» se non c'è", () => {
+  const close = { name: "chiudi" } as unknown as HTMLElement;
+  const field = { name: "campo" } as unknown as HTMLElement;
+  const holding = (element: HTMLElement | null) => ({ querySelector: () => element }) as unknown as Pick<ParentNode, "querySelector">;
+  const empty = holding(null);
+  assert.equal(drawerInitialFocus(undefined, { title: holding(field), body: holding(field), close }), close);
+  assert.equal(drawerInitialFocus("close", { title: holding(field), body: holding(field), close }), close);
+  assert.equal(drawerInitialFocus("title", { title: holding(field), body: empty, close }), field);
+  // La mappa come testo: il testo da copiare prende il fuoco subito, senza aspettare un timer (P62).
+  assert.equal(drawerInitialFocus("body", { title: empty, body: holding(field), close }), field);
+  assert.equal(drawerInitialFocus("body", { title: empty, body: empty, close }), close);
+  assert.equal(drawerInitialFocus("title", { title: null, body: null, close: null }), true);
 });
