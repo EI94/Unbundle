@@ -3,7 +3,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ADMIN_COMMANDS, parseAdminOptions } from "./cli.ts";
-import { parseRepoOption, parseUseCaseCode, REPO_UNREGISTER_NOTE, REPO_UNREGISTER_OPTIONS, repoUnregisterPlan, repoUnregisterReads } from "./repo-unregister.ts";
+import {
+  openPullRequestsSql,
+  parseRepoOption,
+  parseUseCaseCode,
+  REPO_UNREGISTER_NOTE,
+  REPO_UNREGISTER_OPTIONS,
+  REPO_UNREGISTER_SCHEMA_SQL,
+  repoUnregisterOutcome,
+  repoUnregisterPlan,
+  repoUnregisterReads,
+} from "./repo-unregister.ts";
+import { raw } from "../../uc/sql/statement.ts";
+import { taskAfterPullRequestSql, tasksLockOfUseCaseSql } from "../factory/pull-request-sql.ts";
 
 const WS = "3f2a9c1e-0000-4000-8000-0000000000a1";
 const REG = [
@@ -37,8 +49,18 @@ test("le registrazioni si leggono nel workspace, per repository senza badare all
   assert.deepEqual(one.params, [WS, "Voltaen/nardi-esploso", "NM-0009"]);
 });
 
+const NO_PRS = { openPullRequests: 0, tasksInReview: 0 };
+
 test("il piano: le proposte da decidere di quel repository, le registrazioni, la versione se non resta nessun caso; un riepilogo senza nomi", () => {
-  const plan = repoUnregisterPlan({ workspaceId: WS, repo: "Voltaen/nardi-esploso", registrations: REG, tables: { proposals: true, factoryRepos: true }, pendingProposals: 2, remaining: 0 });
+  const plan = repoUnregisterPlan({
+    workspaceId: WS,
+    repo: "Voltaen/nardi-esploso",
+    registrations: REG,
+    tables: { proposals: true, factoryRepos: true, pullRequests: false },
+    pendingProposals: 2,
+    ...NO_PRS,
+    remaining: 0,
+  });
   assert.equal(plan.statements.length, 3);
   assert.match(plan.statements[0].text, /^DELETE FROM use_case_task_proposals p WHERE p\.workspace_id = \$1::uuid AND p\.use_case_id = ANY \(\$2::uuid\[\]\) AND p\.status = 'proposta'/);
   assert.deepEqual(plan.statements[0].params, [WS, [REG[0].useCaseId, REG[1].useCaseId], "https://github.com/voltaen/nardi-esploso/"]);
@@ -52,15 +74,118 @@ test("il piano: le proposte da decidere di quel repository, le registrazioni, la
       { caso: "NM-0010", cartella: "casi/nm-0010" },
     ],
     proposteDaTogliere: 2,
+    prDaChiudere: 0,
+    compitiInRevisione: 0,
     restanoNelWorkspace: 0,
     nota: REPO_UNREGISTER_NOTE,
   });
   assert.doesNotMatch(JSON.stringify(plan.report), /@/);
-  // Senza le tabelle delle proposte e delle versioni: solo le registrazioni.
-  const bare = repoUnregisterPlan({ workspaceId: WS, repo: "Voltaen/nardi-esploso", registrations: REG.slice(0, 1), tables: { proposals: false, factoryRepos: false }, pendingProposals: 5, remaining: 1 });
+  // Senza le tabelle delle proposte, delle versioni e delle pull request: solo le registrazioni.
+  const bare = repoUnregisterPlan({
+    workspaceId: WS,
+    repo: "Voltaen/nardi-esploso",
+    registrations: REG.slice(0, 1),
+    tables: { proposals: false, factoryRepos: false, pullRequests: false },
+    pendingProposals: 5,
+    openPullRequests: 4,
+    tasksInReview: 3,
+    remaining: 1,
+  });
   assert.deepEqual(
     bare.statements.map((s) => s.text.split(" ").slice(0, 3).join(" ")),
     ["DELETE FROM use_case_repos"],
   );
-  assert.equal(bare.report.proposteDaTogliere, 0);
+  assert.deepEqual([bare.report.proposteDaTogliere, bare.report.prDaChiudere, bare.report.compitiInRevisione, bare.at], [0, 0, 0, null]);
+  assert.deepEqual(repoUnregisterOutcome(bare, [[]]), { prChiuse: 0, compitiTornati: 0 });
+});
+
+test("il piano con le pull request: prima i lock dei compiti, nell'ordine del webhook; le PR aperte chiuse e i compiti mossi con la regola del webhook, prima di togliere le registrazioni", () => {
+  // Gli use case arrivano in ordine di codice, non di id: i lock vanno in ordine di id.
+  const registrations = [REG[1], REG[0], { ...REG[0], id: "3f2a9c1e-0000-4000-8000-0000000000b3", folder: "casi/altra" }];
+  const plan = repoUnregisterPlan({
+    workspaceId: WS,
+    repo: "Voltaen/Nardi-Esploso",
+    registrations,
+    tables: { proposals: true, factoryRepos: true, pullRequests: true },
+    pendingProposals: 1,
+    openPullRequests: 3,
+    tasksInReview: 2,
+    remaining: 0,
+  });
+  const kinds = plan.statements.map((s) => s.text.split(/\s+/).slice(0, 3).join(" "));
+  assert.deepEqual(kinds, [
+    "SELECT pg_advisory_xact_lock(hashtext('unbundle:use-case-tasks:' ||",
+    "SELECT pg_advisory_xact_lock(hashtext('unbundle:use-case-tasks:' ||",
+    "DELETE FROM use_case_task_proposals",
+    "SELECT DISTINCT t.id",
+    "UPDATE use_case_pull_requests p",
+    "UPDATE use_case_tasks t",
+    "DELETE FROM use_case_repos",
+    "DELETE FROM use_case_factory_repos",
+  ]);
+  // Un lock per use case (uno solo anche con due cartelle), in ordine di id: lo stesso lock e lo stesso ordine del webhook.
+  assert.deepEqual(plan.statements.slice(0, 2), [tasksLockOfUseCaseSql(REG[0].useCaseId), tasksLockOfUseCaseSql(REG[1].useCaseId)]);
+  assert.deepEqual(plan.at, { inReview: 3, closed: 4, tasks: 5 });
+  const scope = /p\.workspace_id = \$1::uuid AND lower\(p\.repo\) = lower\(\$2::text\) AND p\.use_case_id = ANY \(\$3::uuid\[\]\)/;
+  const touched = [REG[1].useCaseId, REG[0].useCaseId];
+  // I compiti in revisione di prima, solo quelli legati a una PR aperta di quel repository negli use case toccati.
+  assert.match(plan.statements[3].text, /JOIN use_case_tasks t ON t\.id = p\.task_id AND t\.status = 'in_revisione'/);
+  assert.match(plan.statements[3].text, scope);
+  assert.match(plan.statements[3].text, /AND p\.state = 'aperta'$/);
+  assert.deepEqual(plan.statements[3].params, [WS, "Voltaen/Nardi-Esploso", touched]);
+  // Solo le aperte si chiudono (le unite e le chiuse restano com'erano), e la chiusura conta come un cambio di adesso.
+  assert.match(plan.statements[4].text, /^UPDATE use_case_pull_requests p SET state = 'chiusa', closed_at = now\(\), changed_at = now\(\), updated_at = now\(\)\nWHERE /);
+  assert.match(plan.statements[4].text, scope);
+  assert.match(plan.statements[4].text, /AND p\.state = 'aperta'\nRETURNING p\.id$/);
+  assert.doesNotMatch(plan.statements[4].text, /merged_at|gh_updated_at|draft/);
+  assert.deepEqual(plan.statements[4].params, [WS, "Voltaen/Nardi-Esploso", touched]);
+  // I compiti: la regola del webhook, tale e quale, sulle PR chiuse adesso; `pr_url` resta com'è, nessun segnale di vita.
+  const rule = (text: string) => text.slice(0, text.indexOf("\nWHERE "));
+  assert.equal(rule(plan.statements[5].text), rule(taskAfterPullRequestSql({ match: raw("true"), url: raw("t.pr_url"), signal: false }).text));
+  assert.match(
+    plan.statements[5].text,
+    /\nWHERE p\.workspace_id = \$2::uuid AND lower\(p\.repo\) = lower\(\$3::text\) AND p\.use_case_id = ANY \(\$4::uuid\[\]\) AND p\.state = 'chiusa' AND p\.changed_at = now\(\) AND t\.id = p\.task_id AND t\.status IN \('da_fare', 'in_corso', 'in_revisione'\)\nRETURNING t\.id, t\.status$/,
+  );
+  assert.deepEqual(plan.statements[5].params, [false, WS, "Voltaen/Nardi-Esploso", touched]);
+  assert.deepEqual([plan.report.prDaChiudere, plan.report.compitiInRevisione], [3, 2]);
+  assert.match(plan.report.nota, /pull request aperte di questo repository si segnano chiuse/);
+  assert.doesNotMatch(JSON.stringify(plan.report), /@/);
+});
+
+test("dopo --apply: le PR chiuse davvero e i compiti che erano in revisione e non lo sono più, dai risultati della transazione", () => {
+  const plan = repoUnregisterPlan({
+    workspaceId: WS,
+    repo: "Voltaen/nardi-esploso",
+    registrations: REG.slice(0, 1),
+    tables: { proposals: false, factoryRepos: false, pullRequests: true },
+    pendingProposals: 0,
+    openPullRequests: 3,
+    tasksInReview: 2,
+    remaining: 0,
+  });
+  assert.deepEqual(plan.at, { inReview: 1, closed: 2, tasks: 3 });
+  const results = [
+    [{ pg_advisory_xact_lock: "" }],
+    // In revisione prima: t1 e t2.
+    [{ id: "t1" }, { id: "t2" }],
+    // Tre PR chiuse.
+    [{ id: "p1" }, { id: "p2" }, { id: "p3" }],
+    // Dopo: t1 torna in corso; t2 resta in revisione (un'altra PR pronta); t3 era in corso con una PR in bozza e resta lì.
+    [
+      { id: "t1", status: "in_corso" },
+      { id: "t2", status: "in_revisione" },
+      { id: "t3", status: "in_corso" },
+    ],
+    [],
+  ];
+  assert.deepEqual(repoUnregisterOutcome(plan, results), { prChiuse: 3, compitiTornati: 1 });
+  assert.deepEqual(repoUnregisterOutcome(plan, []), { prChiuse: 0, compitiTornati: 0 });
+});
+
+test("le letture del piano: le PR aperte del repository negli use case toccati e i compiti in revisione legati; la sonda dice se le tabelle ci sono", () => {
+  const open = openPullRequestsSql(WS, "Voltaen/nardi-esploso", [REG[0].useCaseId]);
+  assert.match(open.text, /^SELECT count\(\*\)::int AS n, count\(DISTINCT t\.id\)::int AS tasks\nFROM use_case_pull_requests p LEFT JOIN use_case_tasks t ON t\.id = p\.task_id AND t\.status = 'in_revisione'/);
+  assert.match(open.text, /AND p\.state = 'aperta'$/);
+  assert.deepEqual(open.params, [WS, "Voltaen/nardi-esploso", [REG[0].useCaseId]]);
+  assert.match(REPO_UNREGISTER_SCHEMA_SQL, /to_regclass\('public\.use_case_pull_requests'\) IS NOT NULL AND to_regclass\('public\.use_case_tasks'\) IS NOT NULL\) AS pull_requests/);
 });

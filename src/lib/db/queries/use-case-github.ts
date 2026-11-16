@@ -34,6 +34,7 @@ import { loadBuilderScope, NO_EXTERNAL_BUILDERS, type BuilderScope } from "@/lib
 import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { cast, raw, toStatement, ucSql, type SqlFragment, type UcStatement } from "@/lib/uc/sql/statement";
 import { caseCodeFromBranch, GITHUB_DELIVERY_RE, proposalUrl, pullRequestUrl, taskRefOfBranch, type GithubEvent } from "@/lib/use-cases/factory/github";
+import { byUseCaseId, taskAfterPullRequestSql } from "@/lib/use-cases/factory/pull-request-sql";
 
 /** Vero se la 0032 e la 0033 sono applicate. */
 export async function githubStoreReady(executor: UcExecutor): Promise<boolean> {
@@ -214,28 +215,15 @@ ON CONFLICT (workspace_id, repo, number) DO UPDATE SET
 WHERE p.use_case_id = EXCLUDED.use_case_id`),
   ];
   if (task) {
-    const url = cast(pullRequestUrl(e.repo, e.number), "text");
-    // Una PR pronta (aperta, non in bozza) del compito, dopo l'aggiornamento qui sopra.
-    const readyPr = ucSql`EXISTS (SELECT 1 FROM use_case_pull_requests o WHERE o.task_id = t.id AND o.state = 'aperta' AND NOT o.draft)`;
-    // Lo stato del compito cambia solo se questo evento ha cambiato la PR: un'etichetta, una modifica del testo o un
-    // evento vecchio su una PR già unita non rimettono «fatto» un compito riaperto.
-    const changed = raw("p.changed_at = now()");
+    // Il compito dopo la PR scritta qui sopra: la regola sta in `taskAfterPullRequestSql`, la stessa di
+    // `use-case-admin repo-unregister` quando chiude le PR aperte di un repository tolto.
     out.push(
-      toStatement(ucSql`UPDATE use_case_tasks t SET
-  status = CASE
-    WHEN NOT ${changed} THEN t.status
-    WHEN p.state = 'unita' THEN 'fatto'
-    WHEN ${readyPr} THEN 'in_revisione'
-    WHEN t.status = 'in_revisione' THEN CASE WHEN t.holder_user_id IS NULL THEN 'da_fare' ELSE 'in_corso' END
-    ELSE t.status END,
-  pr_url = CASE WHEN ${changed} AND (p.state = 'unita' OR (p.state = 'aperta' AND NOT p.draft)) THEN ${url} ELSE t.pr_url END,
-  branch = coalesce(t.branch, p.branch),
-  last_activity_at = CASE WHEN ${cast(e.signal, "boolean")} OR (${changed} AND p.state = 'unita') THEN now() ELSE t.last_activity_at END,
-  updated_at = CASE WHEN ${changed} THEN now() ELSE t.updated_at END
-FROM use_case_pull_requests p
-WHERE p.workspace_id = ${ws} AND p.repo = ${repo} AND p.number = ${number} AND p.use_case_id = ${uc}
-  AND t.id = ${cast(task.id, "uuid")} AND t.status IN ('da_fare', 'in_corso', 'in_revisione') AND ${fresh}
-RETURNING t.status`),
+      taskAfterPullRequestSql({
+        match: ucSql`p.workspace_id = ${ws} AND p.repo = ${repo} AND p.number = ${number} AND p.use_case_id = ${uc}
+  AND t.id = ${cast(task.id, "uuid")} AND ${fresh}`,
+        url: cast(pullRequestUrl(e.repo, e.number), "text"),
+        signal: e.signal,
+      }),
     );
   }
   if (e.ready) {
@@ -287,7 +275,7 @@ export async function applyGithubEvent(executor: UcExecutor, input: { deliveryId
     plan.push({ target: t, task, statements: e.kind === "pr" ? prStatements(t, task, e, fresh, builders ?? NO_EXTERNAL_BUILDERS) : pushStatements(task, fresh) });
   }
   // Un lock per use case, sempre nello stesso ordine; poi la consegna; poi gli effetti, solo se la consegna è nuova.
-  const locks = [...plan].sort((a, b) => a.target.useCaseId.localeCompare(b.target.useCaseId)).map((p) => tasksLock(p.target));
+  const locks = [...plan].sort((a, b) => byUseCaseId(a.target.useCaseId, b.target.useCaseId)).map((p) => tasksLock(p.target));
   const statements = [...locks, deliveryInsert(input.deliveryId, input.event, e.repo, "applicato"), ...plan.flatMap((p) => p.statements)];
   const results = await executor.batch(statements);
   if (results[locks.length].length === 0) return { esito: "ripetuto" };

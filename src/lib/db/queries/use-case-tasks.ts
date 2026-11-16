@@ -17,13 +17,14 @@ import { cast, jsonb, raw, toStatement, ucSql, type UcStatement } from "@/lib/uc
 import { fail, ok, type Result } from "@/lib/uc/types";
 import type { FactoryRole } from "@/lib/use-cases/factory/builders";
 import { overlappingTasks, planTaskImport, type TaskDraft, type TaskImportPlan, type TaskRow } from "@/lib/use-cases/factory/tasks";
+import { tasksLockOfUseCaseSql } from "@/lib/use-cases/factory/pull-request-sql";
 import { hasOpenTasksSql, NOBODY, notifyTask } from "@/lib/db/queries/use-case-tasks-notices";
 import { externalBuilderSql, loadBuilderScope, lsStoredBuilderSql } from "@/lib/db/queries/use-case-builders";
 import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { isEmailVerifiedValue, isLateralSpaceEmail } from "@/lib/uc/lateral-space";
 
-/** Un compito alla volta per use case: l'import, `compito nuovo` (stesso lock, stessa chiave). */
-export const tasksLock = (target: FactoryTarget) => toStatement(ucSql`SELECT pg_advisory_xact_lock(hashtext('unbundle:use-case-tasks:' || ${cast(target.useCaseId, "text")}))`);
+/** Un compito alla volta per use case: l'import, `compito nuovo` (stesso lock, stessa chiave: `tasksLockOfUseCaseSql`). */
+export const tasksLock = (target: FactoryTarget) => tasksLockOfUseCaseSql(target.useCaseId);
 
 /** Vero se la 0032 è applicata (la stessa sonda di `ensureDbSchema`). */
 export async function tasksStoreReady(executor: UcExecutor): Promise<boolean> {
