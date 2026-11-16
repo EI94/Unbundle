@@ -27,8 +27,9 @@ import {
   createConversation,
 } from "@/lib/db/queries/conversations";
 import { db } from "@/lib/db";
-import { uploadedDocuments, organizations, activities } from "@/lib/db/schema";
+import { uploadedDocuments, activities } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
+import { getWorkspaceValueThesis } from "@/lib/db/queries/value-thesis";
 import { retrieveRelevantContext, indexConversationMessage } from "@/lib/ai/rag/retriever";
 import { contextAiConsent } from "@/lib/db/queries/context-consent";
 import { CONTEXT_TEXT } from "@/lib/context/text";
@@ -86,11 +87,9 @@ export async function POST(req: Request) {
     return new Response("Missing required fields", { status: 400 });
   }
 
-  const [org] = await db
-    .select()
-    .from(organizations)
-    .where(eq(organizations.id, workspace.organizationId))
-    .limit(1);
+  // La tesi del valore sta sul workspace (rilascio 9a, RILASCIO-9a-COSTRUZIONE.md §10.1): mai quella di un altro
+  // workspace della stessa organizzazione.
+  const valueThesis = await getWorkspaceValueThesis(workspaceId);
 
   let contextBlock = "";
 
@@ -99,8 +98,8 @@ export async function POST(req: Request) {
     contextBlock += `\n\n--- TERMINOLOGIA ORGANIZZATIVA ---\nL'utente chiama le proprie unità organizzative "${unitTerm.plural}" (singolare: "${unitTerm.singular}"). Usa SEMPRE questi termini, MAI "dipartimento" o "funzione" generici.\n`;
   }
 
-  if (org?.companyValueThesis) {
-    contextBlock += `\n--- CONTESTO: VALUE THESIS GIÀ RACCOLTA ---\n${JSON.stringify(org.companyValueThesis, null, 2)}\n`;
+  if (valueThesis) {
+    contextBlock += `\n--- CONTESTO: VALUE THESIS GIÀ RACCOLTA ---\n${JSON.stringify(valueThesis, null, 2)}\n`;
   }
 
   if (workspace.systemBoundary) {

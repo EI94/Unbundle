@@ -27,8 +27,11 @@ type Prova = {
   consent?: boolean;
   /** I workspace di cui la rotta ha chiesto l'ok. */
   consentAsked: string[];
+  /** (Rilascio 9a) La tesi del valore del workspace, e i workspace di cui la rotta l'ha chiesta. */
+  thesis: Record<string, unknown> | null;
+  thesisAsked: string[];
 };
-const prova: Prova = { saved: [], deleted: [], reads: 0, indexed: [], tools: {}, toolArgs: [], consentAsked: [] };
+const prova: Prova = { saved: [], deleted: [], reads: 0, indexed: [], tools: {}, toolArgs: [], consentAsked: [], thesis: null, thesisAsked: [] };
 (globalThis as { __prova?: Prova }).__prova = prova;
 
 await installAppModules({
@@ -72,10 +75,15 @@ await installAppModules({
     globalThis.__prova.consentAsked.push(workspaceId);
     return globalThis.__prova.consent !== false;
   }`,
+  "@/lib/db/queries/value-thesis": `export async function getWorkspaceValueThesis(workspaceId) {
+    globalThis.__prova.thesisAsked.push(workspaceId);
+    return globalThis.__prova.thesis;
+  }`,
   "@/lib/db/schema": `export const uploadedDocuments = {}; export const organizations = {}; export const activities = {};`,
   "drizzle-orm": `export const eq = (column, value) => ({ column, value }); export const and = (...parts) => ({ and: parts });`,
   "@/lib/db": `export const db = {
-    select: () => ({ from: () => ({ where: () => Object.assign(Promise.resolve([]), { limit: async () => [{ id: "org-prova", companyValueThesis: null }] }) }) }),
+    // L'organizzazione ha la tesi di un altro workspace: la chat non deve leggerla (rilascio 9a, §10.1).
+    select: () => ({ from: () => ({ where: () => Object.assign(Promise.resolve([]), { limit: async () => [{ id: "org-prova", companyValueThesis: { coreValueProposition: "Tesi di un altro workspace della stessa organizzazione" } }] }) }) }),
   };`,
 });
 const { POST } = await import("../../app/api/ai/chat/route.ts");
@@ -114,6 +122,8 @@ function reset() {
   delete prova.realWebSearch;
   delete prova.consent;
   prova.consentAsked = [];
+  prova.thesis = null;
+  prova.thesisAsked = [];
 }
 
 const HISTORY = [
@@ -133,6 +143,22 @@ test("(Rilascio 9a) senza l'ok ai sub-responsabili: 403 ok_fornitori_mancante, n
     assert.deepEqual(prova.saved, [], "la domanda non si salva");
     assert.deepEqual(prova.indexed, []);
     assert.deepEqual(prova.consentAsked, ["ws-prova"], "l'ok è quello del workspace della richiesta");
+  }
+});
+
+test("(Rilascio 9a) la tesi del valore nel contesto della chat è quella del workspace, mai quella dell'organizzazione", async (t) => {
+  recordLogs(t);
+  for (const thesis of [{ coreValueProposition: "Cucine su misura del workspace di prova", strategicNodes: ["Progettazione"] }, null]) {
+    reset();
+    prova.thesis = thesis;
+    const requests = fakeAppClaude([sse([ev.start("msg_1"), ...ev.text(0, "Bene."), ...ev.end("end_turn")])]);
+    const { status } = await chat(HISTORY);
+    assert.equal(status, 200);
+    assert.deepEqual(prova.thesisAsked, ["ws-prova"]);
+    const system = JSON.stringify(requests[0].body.system);
+    assert.equal(system.includes("Tesi di un altro workspace"), false, "mai la tesi dell'organizzazione");
+    assert.equal(system.includes("Cucine su misura del workspace di prova"), thesis !== null);
+    assert.equal(system.includes("VALUE THESIS GIÀ RACCOLTA"), thesis !== null);
   }
 });
 

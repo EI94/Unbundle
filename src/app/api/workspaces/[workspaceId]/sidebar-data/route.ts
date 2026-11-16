@@ -3,9 +3,7 @@ import {
   getDepartmentsByWorkspace,
   getStrategicGoalsByWorkspace,
 } from "@/lib/db/queries/workspaces";
-import { db } from "@/lib/db";
-import { organizations } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { getWorkspaceValueThesis } from "@/lib/db/queries/value-thesis";
 import { getUnitTerm } from "@/lib/utils/unit-terminology";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
 
@@ -25,20 +23,16 @@ export async function GET(
   }
   const { workspace } = access;
 
-  const [org] = await db
-    .select()
-    .from(organizations)
-    .where(eq(organizations.id, workspace.organizationId))
-    .limit(1);
-
-  const departments = await getDepartmentsByWorkspace(workspaceId);
-  const goals = await getStrategicGoalsByWorkspace(workspaceId);
+  // La tesi del valore del workspace (rilascio 9a, RILASCIO-9a-COSTRUZIONE.md §10.1): con più workspace nella stessa
+  // organizzazione, ognuno la sua.
+  const [valueThesis, departments, goals] = await Promise.all([
+    getWorkspaceValueThesis(workspaceId),
+    getDepartmentsByWorkspace(workspaceId),
+    getStrategicGoalsByWorkspace(workspaceId),
+  ]);
   const term = getUnitTerm(workspace);
 
-  const thesis = (org?.companyValueThesis as {
-    coreValueProposition?: string;
-    strategicNodes?: string[];
-  } | null) ?? null;
+  const thesis = valueThesis ?? null;
 
   return Response.json({
     thesis,
