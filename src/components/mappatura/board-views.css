@@ -91,6 +91,7 @@
 [data-board-root] .b-pm-row:hover .b-add-step, [data-board-root] .b-pm-row:focus-within .b-add-step, [data-board-root] .b-add-step:focus-visible, [data-board-root] .b-add-step.b-add-first { opacity: 1; }
 /* «+ processo» sotto l'ultima riga, fermo a sinistra quando la mappa scorre. */
 [data-board-root] .b-pm-foot { position: sticky; left: 0; width: max-content; padding: 10px 12px; }
+[data-board-root] .b-add-process { white-space: nowrap; }
 [data-board-root] .b-pm-row + .b-pm-foot { border-top: 1px solid var(--board-line); width: auto; }
 /* Il trascinamento: la maniglia dentro il margine della card, la card presa più chiara, la riga sotto colorata, il segno dove cadrà. */
 [data-board-root] .b-node-w > .b-grip { left: 4px; top: 9px; z-index: 1; }
