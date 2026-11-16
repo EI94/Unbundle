@@ -919,8 +919,13 @@ async function runExternalBuildersDdlSafely(): Promise<void> {
 /** Dopo un errore della 0038, come la 0024: un nuovo tentativo al massimo ogni 5 minuti per processo. */
 let contextDdlFailedAt: number | null = null;
 
-/** La 0038 senza far fallire `ensureDbSchema()`, come `runUseCaseReferentsDdlSafely`. */
+/**
+ * La 0038 senza far fallire `ensureDbSchema()`, come `runUseCaseReferentsDdlSafely`. Mai da un'anteprima di Vercel: le
+ * anteprime usano il database di produzione, e la 0038 la applica solo il deploy di produzione (o il file a mano). Senza,
+ * l'anteprima serve come prima e «Contesto» dice che si sta preparando.
+ */
 async function runContextDdlSafely(): Promise<void> {
+  if (process.env.VERCEL_ENV === "preview") return;
   try {
     await runContextDdl();
     contextDdlFailedAt = null;

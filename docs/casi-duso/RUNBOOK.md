@@ -638,7 +638,7 @@ Progetto: `docs/contesto/RILASCIO-9-CONTESTO.md` (approvato dal titolare il 15/1
 **Prima del deploy:**
 
 1. La 9a esce insieme o dopo la 8.0c (§10.18) e la migrazione a `claude-sonnet-5-5`: il ramo le contiene tutte e due.
-2. Il ramo non si pubblica prima del rilascio: le anteprime usano il database di produzione, e il self-heal applicherebbe la 0038 da un'anteprima. Di riserva, `vercel.json` spegne le anteprime di `feat/rilascio-9a-contesto`.
+2. Il ramo non si pubblica prima del rilascio: le anteprime usano il database di produzione. Di riserva, `vercel.json` spegne le anteprime di `feat/rilascio-9a-contesto` (e dei tre pacchetti `feat/9a-granola`, `feat/9a-mcp`, `feat/9a-pagina`), e il self-heal del ramo non applica la 0038 in un'anteprima (`VERCEL_ENV=preview`). I tre pacchetti, però, hanno il self-heal senza questo controllo e un `vercel.json` che non li nomina: dopo l'unione si cancellano (`git branch -d`), e comunque non si pubblicano.
 3. Vercel, Produzione, a mano: `CONTEXT_TOKEN_KEY` (32 byte in base64, generata sul proprio computer, mai in chat o in git; `AMBIENTE.md` §1). È la sola variabile nuova. Senza, «Collega Granola» resta spento e tutto il resto funziona. Non si cambia più: cambiarla vuol dire tutti da ricollegare. `NEXT_PUBLIC_APP_URL` deve essere l'indirizzo pubblico con `www`. `CRON_SECRET` c'è già: lo usa anche il cron nuovo.
 4. Un restore point su Neon. La 0038 è additiva, ma riempie una colonna.
 5. Di sera, con il main fermo per circa 24 ore dopo.

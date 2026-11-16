@@ -31,9 +31,11 @@ test("vercel.json: il cron di «Contesto» ogni notte alle 2 UTC, una volta sola
   assert.match(read("src/app/api/cron/contesto/route.ts"), /export async function GET\(request: Request\): Promise<Response>/);
 });
 
-test("vercel.json: nessuna anteprima per il ramo della 9a (le anteprime usano il database di produzione)", () => {
+test("vercel.json: nessuna anteprima per i rami della 9a (le anteprime usano il database di produzione)", () => {
   const vercel = JSON.parse(read("vercel.json")) as { git: { deploymentEnabled: Record<string, boolean> } };
   assert.equal(vercel.git.deploymentEnabled["feat/rilascio-9a-contesto"], false);
+  // I tre pacchetti hanno lo stesso self-heal della 0038: anche loro, finché esistono.
+  for (const branch of ["feat/9a-granola", "feat/9a-mcp", "feat/9a-pagina"]) assert.equal(vercel.git.deploymentEnabled[branch], false, branch);
   // Le righe di prima restano.
   assert.equal(vercel.git.deploymentEnabled["feat/chiedi-al-referente"], false);
   assert.equal(vercel.git.deploymentEnabled["codex/m1-ux-refinements"], false);
