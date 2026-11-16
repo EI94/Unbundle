@@ -9,6 +9,8 @@ import { HIDDEN_TOOLS, TOOL_LABELS, toolChip } from "./chat-view.ts";
 
 await installAppModules({
   "@/lib/db": `export const db = {};`,
+  "@/lib/db/queries/value-thesis": `export async function getWorkspaceValueThesis() { return null; }
+    export async function saveWorkspaceValueThesis() { return true; }`,
   "@/lib/db/queries/activities": `export async function getActivitiesByDepartment() { return []; }
     export async function updateActivityClassification() {}
     export async function updateActivity() {}`,

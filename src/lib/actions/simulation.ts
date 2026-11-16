@@ -6,7 +6,8 @@ import { getUseCasesByWorkspace } from "@/lib/db/queries/use-cases";
 import { getActivitiesByWorkspace } from "@/lib/db/queries/activities";
 import { getDepartmentsByWorkspace } from "@/lib/db/queries/workspaces";
 import { db } from "@/lib/db";
-import { organizations, simulations } from "@/lib/db/schema";
+import { simulations } from "@/lib/db/schema";
+import { getWorkspaceValueThesis } from "@/lib/db/queries/value-thesis";
 import { eq, desc } from "drizzle-orm";
 import { generateSimulation, type SimulationResult } from "@/lib/ai/generate-simulation";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
@@ -22,13 +23,8 @@ export async function generateSimulationAction(
   if (!canReviewWorkspacePortfolio(access.role)) {
     throw new Error("Non hai i permessi per generare simulazioni.");
   }
-  const { workspace } = access;
-
-  const [org] = await db
-    .select()
-    .from(organizations)
-    .where(eq(organizations.id, workspace.organizationId))
-    .limit(1);
+  // (9a) La tesi del valore del workspace, non più quella dell'organizzazione.
+  const thesis = await getWorkspaceValueThesis(workspaceId);
 
   const [useCases, activities, departments] = await Promise.all([
     getUseCasesByWorkspace(workspaceId),
@@ -40,7 +36,7 @@ export async function generateSimulationAction(
     useCases,
     activities,
     departments,
-    companyValueThesis: org?.companyValueThesis,
+    companyValueThesis: thesis,
   });
 
   await db.insert(simulations).values({

@@ -4,8 +4,8 @@ import { db } from "@/lib/db";
 import { activities, activityDependencies, departments } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { getActivitiesByDepartment } from "@/lib/db/queries/activities";
-import { getWorkspaceById, getStrategicGoalsByWorkspace } from "@/lib/db/queries/workspaces";
-import { organizations } from "@/lib/db/schema";
+import { getStrategicGoalsByWorkspace } from "@/lib/db/queries/workspaces";
+import { getWorkspaceValueThesis } from "@/lib/db/queries/value-thesis";
 import { classifyActivitiesBatch, skippedClassificationsText } from "@/lib/ai/classify";
 import { matchActivitiesToOnet } from "@/lib/ai/onet-matching";
 import { ClaudeRefusalError, logClaudeTimeout, stoppedByDeadline, timeUntil } from "@/lib/ai/models";
@@ -129,21 +129,14 @@ export function getActivityMappingTools(
 
         if (unclassified.length > 0) {
           try {
-            const workspace = await getWorkspaceById(workspaceId);
-            const [org] = workspace
-              ? await db
-                  .select()
-                  .from(organizations)
-                  .where(eq(organizations.id, workspace.organizationId))
-                  .limit(1)
-              : [null];
-
+            // (9a) La tesi del valore del workspace, non più quella dell'organizzazione.
+            const thesis = await getWorkspaceValueThesis(workspaceId);
             const goals = await getStrategicGoalsByWorkspace(workspaceId);
 
             // Le classificazioni riuscite si scrivono; quelle rifiutate, fallite o fermate dalla scadenza restano da fare.
             const results = await classifyActivitiesBatch(
               unclassified,
-              { companyValueThesis: org?.companyValueThesis, goals },
+              { companyValueThesis: thesis, goals },
               { abortSignal: AbortSignal.timeout(timeUntil(deadline)) },
             );
 

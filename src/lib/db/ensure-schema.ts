@@ -1203,8 +1203,8 @@ export async function runExternalBuildersDdl(statements: readonly string[] = EXT
 /**
  * Applica il DDL della 0038 in una sola transazione, con lo stesso advisory lock del file e `lock_timeout` di 3s, come la
  * 0037. In produzione la applica questo self-heal, al primo avvio dopo il deploy; il file a mano resta la strada di
- * riserva. Il blocco della tesi del valore riempie `workspaces.company_value_thesis` solo quando crea la colonna: una
- * volta sola, anche se il self-heal ripassa.
+ * riserva. Il blocco della tesi del valore riempie la colonna nuova di `workspaces` solo quando la crea: una volta sola,
+ * anche se il self-heal ripassa.
  */
 export async function runContextDdl(statements: readonly string[] = CONTEXT_DDL): Promise<void> {
   const client = db.$client;

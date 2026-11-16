@@ -2,14 +2,19 @@ import { tool } from "ai";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import {
-  organizations,
   workspaces,
   departments,
   strategicGoals,
 } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
+import { saveWorkspaceValueThesis } from "@/lib/db/queries/value-thesis";
 import { companyValueThesisSchema, systemBoundarySchema } from "../schemas";
 
+/**
+ * I tool della Discovery. `organizationId` resta nella firma per chi chiama, ma non si usa più: (rilascio 9a) la tesi
+ * del valore si salva sul workspace, non sull'organizzazione, dove i workspace della stessa organizzazione se la
+ * sovrascrivevano (src/lib/db/queries/value-thesis.ts).
+ */
 export function getLeadershipTools(workspaceId: string, organizationId: string, opts: { canSaveCompanyFacts?: boolean } = {}) {
   return {
     saveCompanyFacts: tool({
@@ -31,16 +36,11 @@ export function getLeadershipTools(workspaceId: string, organizationId: string, 
 
     saveCompanyValueThesis: tool({
       description:
-        "Salva la Company Value Thesis dell'organizzazione. Usare quando hai raccolto abbastanza informazioni per formulare dove l'azienda crea valore e quali nodi sono strategici.",
+        "Salva la Company Value Thesis dell'azienda. Usare quando hai raccolto abbastanza informazioni per formulare dove l'azienda crea valore e quali nodi sono strategici.",
       inputSchema: companyValueThesisSchema,
       execute: async (thesis) => {
-        await db
-          .update(organizations)
-          .set({
-            companyValueThesis: thesis,
-            updatedAt: new Date(),
-          })
-          .where(eq(organizations.id, organizationId));
+        const saved = await saveWorkspaceValueThesis(workspaceId, thesis);
+        if (!saved) return { success: false, message: "Non salvata: riprova tra qualche minuto." };
         return {
           success: true,
           message: "Company Value Thesis salvata con successo.",

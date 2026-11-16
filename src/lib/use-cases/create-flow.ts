@@ -1,9 +1,8 @@
 import "server-only";
-import { eq } from "drizzle-orm";
-import { db } from "@/lib/db";
 import { getActivitiesByWorkspace } from "@/lib/db/queries/activities";
+import { getWorkspaceValueThesis } from "@/lib/db/queries/value-thesis";
 import { getStrategicGoalsByWorkspace } from "@/lib/db/queries/workspaces";
-import { organizations, type Activity, type StrategicGoal, type UseCase } from "@/lib/db/schema";
+import type { Activity, StrategicGoal, UseCase } from "@/lib/db/schema";
 import { logSafeError } from "@/lib/log/safe-error";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
@@ -223,18 +222,12 @@ export async function proposeFromActivityMapping(
 
   const workspace = access.workspace;
   const includeEsg = workspace.esgEnabled === true;
-  const [goals, [org]] = await Promise.all([
-    getStrategicGoalsByWorkspace(ctx.workspaceId),
-    db
-      .select({ companyValueThesis: organizations.companyValueThesis })
-      .from(organizations)
-      .where(eq(organizations.id, workspace.organizationId))
-      .limit(1),
-  ]);
+  // (9a) La tesi del valore del workspace, non più quella dell'organizzazione.
+  const [goals, thesis] = await Promise.all([getStrategicGoalsByWorkspace(ctx.workspaceId), getWorkspaceValueThesis(ctx.workspaceId)]);
 
   let generated: readonly unknown[];
   try {
-    generated = await deps.generate(classified, { companyValueThesis: org?.companyValueThesis, goals }, includeEsg);
+    generated = await deps.generate(classified, { companyValueThesis: thesis, goals }, includeEsg);
   } catch (error) {
     logSafeError(LOG_SCOPE, "activity_mapping_generate_failed", error, { workspaceId: ctx.workspaceId });
     return { ok: false, error: "riprova", message: ACTIVITY_MAPPING_TEXT.error };

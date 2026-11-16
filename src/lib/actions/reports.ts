@@ -9,8 +9,8 @@ import {
 } from "@/lib/db/queries/workspaces";
 import { getUseCasesByWorkspace } from "@/lib/db/queries/use-cases";
 import { db } from "@/lib/db";
-import { organizations, reports } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { reports } from "@/lib/db/schema";
+import { getWorkspaceValueThesis } from "@/lib/db/queries/value-thesis";
 import { generateReport } from "@/lib/ai/generate-report";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
@@ -25,11 +25,8 @@ export async function generateReportAction(workspaceId: string) {
   }
   const { workspace } = access;
 
-  const [org] = await db
-    .select()
-    .from(organizations)
-    .where(eq(organizations.id, workspace.organizationId))
-    .limit(1);
+  // (9a) La tesi del valore del workspace, non più quella dell'organizzazione.
+  const thesis = await getWorkspaceValueThesis(workspaceId);
 
   const [departments, activities, useCases, goals] = await Promise.all([
     getDepartmentsByWorkspace(workspaceId),
@@ -39,7 +36,7 @@ export async function generateReportAction(workspaceId: string) {
   ]);
 
   const reportContent = await generateReport({
-    companyValueThesis: org?.companyValueThesis,
+    companyValueThesis: thesis,
     departments,
     activities,
     useCases,
