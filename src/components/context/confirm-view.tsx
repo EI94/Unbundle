@@ -25,7 +25,6 @@ import {
   selectedItems,
   selectionFrom,
   type ConfirmChoices,
-  type ConfirmSource,
   type Resolution,
 } from "./view-model";
 
@@ -59,7 +58,7 @@ export function ConfirmView({
   const [pending, startTransition] = useTransition();
   // Le proposte scartate escono subito, anche dal conto, prima che arrivi la pagina aggiornata.
   const open: OpenProposals = discarded.size === 0 ? served : { ...served, proposals: served.proposals.filter((p) => !discarded.has(p.id)), reconfirmed: served.reconfirmed.filter((p) => !discarded.has(p.id)) };
-  const sources = open.sources as ConfirmSource[];
+  const sources = open.sources;
   const selection = selectionFrom(open, choices);
   const items = selectedItems(open, selection);
   const groups = confirmGroups(open.proposals);

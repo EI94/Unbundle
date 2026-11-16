@@ -834,7 +834,7 @@ test("listOpenProposals: solo Lateral Space; i gruppi, la preselezione («dedott
     proposal({ tipo: "nuovo", testo: "Mario Rossi decide gli acquisti.", citazione: "", sezione: "persone" }),
     proposal({ tipo: "impegno", testo: `Mandare l'elenco dei fornitori ${suffix}.`, citazione: "", sezione: null, parte: "cliente", ruolo: "responsabile acquisti", entro: "2026-11-30" }),
   ]);
-  assert.deepEqual(open.sources.map((s) => [s.id, s.title, s.occurredOn]), [[sourceId, "Call di avvio", "2026-11-14"]]);
+  assert.deepEqual(open.sources.map((s) => [s.id, s.kind, s.title, s.occurredOn]), [[sourceId, "appunti", "Call di avvio", "2026-11-14"]]);
   assert.deepEqual(open.proposals.map((p) => [p.kind, p.basis, p.preselected, p.issue]), [
     ["nuovo", "detto", true, null],
     ["conflitto", "detto", false, null],

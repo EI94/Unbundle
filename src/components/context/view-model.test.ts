@@ -205,12 +205,12 @@ test("i passaggi non riportati: una riga per motivo, sommando gli appunti, al si
 });
 
 test("la testata di «Da confermare»: un appunto, più appunti, nessuno", () => {
-  assert.equal(confirmSubtitle([{ id: "a", title: "Call di avvio", occurredOn: "2026-11-14", skipped: {} }], TODAY), T.confirm.fromOne("Call di avvio", "14 nov"));
+  assert.equal(confirmSubtitle([{ id: "a", kind: "appunti", title: "Call di avvio", occurredOn: "2026-11-14", skipped: {} }], TODAY), T.confirm.fromOne("Call di avvio", "14 nov"));
   assert.equal(
     confirmSubtitle(
       [
-        { id: "a", title: "Uno", occurredOn: "2026-11-14", skipped: {} },
-        { id: "b", title: "Due", occurredOn: "2026-11-10", skipped: {} },
+        { id: "a", kind: "appunti", title: "Uno", occurredOn: "2026-11-14", skipped: {} },
+        { id: "b", kind: "documento", title: "Due", occurredOn: "2026-11-10", skipped: {} },
       ],
       TODAY,
     ),

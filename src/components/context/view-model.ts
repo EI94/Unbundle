@@ -178,11 +178,8 @@ export function proposalSourceLabel(kind: SourceKind | null | undefined, occurre
   return day ? T.fact.sourceCall(day) : T.fact.sourceCallWord;
 }
 
-/**
- * Una fonte di «Da confermare». `kind` c'è se la fondazione lo manda (richiesta a chi integra): senza, una proposta
- * viene da una call.
- */
-export type ConfirmSource = OpenProposals["sources"][number] & { kind?: SourceKind };
+/** Una fonte di «Da confermare»: `kind` dice se è una call o un documento. */
+export type ConfirmSource = Pick<OpenProposals["sources"][number], "id" | "occurredOn"> & { kind?: SourceKind };
 
 /** La fonte di una proposta, per «Ora: … (Call 14 nov)»: quella del suo appunto. */
 export function proposalSource(proposal: Pick<ProposalView, "sourceId">, sources: readonly ConfirmSource[], today: string): string {

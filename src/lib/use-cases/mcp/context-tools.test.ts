@@ -206,7 +206,7 @@ function memoryContext(opts: { ready?: boolean } = {}) {
       const open = [...proposals.values()].filter((p) => p.status === "aperta" && (!o.sourceId || p.sourceId === o.sourceId));
       const used = [...new Set(open.map((p) => p.sourceId))].map((id) => sources.get(id)!);
       const result: OpenProposals = {
-        sources: used.map((s) => ({ id: s.id, title: s.title, occurredOn: s.occurredOn, skipped: s.skipped })),
+        sources: used.map((s) => ({ id: s.id, kind: "appunti" as const, title: s.title, occurredOn: s.occurredOn, skipped: s.skipped })),
         proposals: open.filter((p) => p.kind !== "conferma").map(view),
         reconfirmed: open.filter((p) => p.kind === "conferma").map(view),
       };
