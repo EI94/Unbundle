@@ -3,7 +3,8 @@
 //
 // Pagine statiche fatte con i componenti veri (renderToStaticMarkup), i tre fogli della board e la board inventata di
 // fixture.ts: l'elenco delle unità; «Processi di oggi» piena, vuota e in sola lettura; il drawer di un passo; il
-// pannello dell'assistente; «Classificazione» (lo slot del compagno, come lo disegna il suo componente); la testata in
+// pannello dell'assistente; «Classificazione» (lo slot del compagno, come lo disegna il suo componente) e il suo drawer
+// che confronta; la testata in
 // ogni stato della pillola; i due toast del riferimento e quello con «Annulla». Niente app, niente database, niente
 // login: la testata sta in cima alla finestra (nessuna barra del workspace sopra) e la board è larga quanto lei, come
 // l'artifact di riferimento. Sopra i fogli della board c'è il preflight di Tailwind, come nell'app.
@@ -33,6 +34,7 @@ export const PAGES = [
   { name: "02d-oggi-assistente", viewport: true },
   { name: "02e-oggi-toast-annulla", viewport: true },
   { name: "04-domani", viewport: false },
+  { name: "04b-domani-drawer-confronto", viewport: true },
   { name: "status/0-caricamento", viewport: true, header: true },
   { name: "status/1-salvato", viewport: true, header: true },
   { name: "status/1b-pronto", viewport: true, header: true },
@@ -87,6 +89,7 @@ export async function buildVetrina(out) {
   const { Companion } = await at("src/components/mappatura/companion/companion.tsx");
   const { CompleteButton } = await at("src/components/mappatura/companion/complete-button.tsx");
   const { ClassificationView } = await at("src/components/mappatura/classification/classification-view.tsx");
+  const { ClassificationDetails } = await at("src/components/mappatura/classification/classification-drawer.tsx");
   const { DrawerStatic } = await at("src/components/mappatura/ui/drawer.tsx");
   const { BoardBrand, BoardHeader, BoardTabs, BoardTitle, StatusPill } = await at("src/components/mappatura/ui/frame.tsx");
   const { BOARD_TABS, BOARD_TEXT } = await at("src/lib/mappatura/text.ts");
@@ -138,6 +141,11 @@ export async function buildVetrina(out) {
   const head = stepDrawerHead({ place, editable: true, actions });
   const drawer = html(h(DrawerStatic, { wide: true, context: head.context, title: head.title }, h(StepDrawerBody, { board: full, place, editable: true, addingLane: null, actions })));
   const savedAt = full.savedAt;
+  // Il drawer che confronta (P27): un passo classificato con la proposta dell'assistente, come lo apre «Classificazione».
+  const compared = locateStep(full, FIXTURE_IDS.confronto);
+  const compare = html(
+    h(DrawerStatic, { wide: true, context: `${compared.process.name} · ${compared.code}`, title: compared.step.title }, h(ClassificationDetails, { board: full, place: compared, dispatch: noop, newId: actions.newId })),
+  );
 
   const bodies = {
     "00-unita": html(h(UnitsView, { workspaceId, workspaceName: SHOWCASE.workspaceName, unitTerm: SHOWCASE.unitTerm, units: fixtureUnits() })),
@@ -150,6 +158,7 @@ export async function buildVetrina(out) {
     "02d-oggi-assistente": unitBoard(full, { assistantOpen: true }),
     "02e-oggi-toast-annulla": unitBoard(full) + toast(BOARD_TEXT.toast.noteRemoved, BOARD_TEXT.buttons.undo),
     "04-domani": unitBoard(full, { tab: "classificazione" }),
+    "04b-domani-drawer-confronto": unitBoard(full, { tab: "classificazione" }) + compare,
     "status/0-caricamento": header("loading", null),
     "status/1-salvato": header("saved", savedAt),
     "status/1b-pronto": header("saved", null),

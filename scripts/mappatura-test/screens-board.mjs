@@ -62,7 +62,7 @@ const CONFIGS = [
 function referenceOf(name, config) {
   if (name.startsWith("status/")) return config.dir === "1440-light" ? `ledger/${name}.png` : null;
   if (name === "02e-oggi-toast-annulla") return config.width === 1440 ? `desk/detail-2x-${config.theme}/02-toast-con-annulla.png` : null;
-  const same = { "00-unita": "07-casi", "02-oggi": "02-oggi", "02c-oggi-drawer-passo": "02c-oggi-drawer-passo", "04-domani": "04-domani" }[name];
+  const same = { "00-unita": "07-casi", "02-oggi": "02-oggi", "02c-oggi-drawer-passo": "02c-oggi-drawer-passo", "04-domani": "04-domani", "04b-domani-drawer-confronto": "04b-domani-drawer-confronto" }[name];
   return same ? `ledger/${config.dir}/${same}.png` : null;
 }
 
@@ -197,7 +197,7 @@ function check(name, config, m, expected, failures) {
   // La testata della board (con le schede): 127 px sul riferimento. L'elenco delle unità non ha schede.
   if (config.width === 1440 && m.header !== null && m.tabs) near(m.header, 127, 8, "testata");
   if (config.width === 390 && m.map && m.rows.some((row) => row.widths.length >= 2) && !(m.map.scrollWidth > m.map.clientWidth)) fail("la mappa non scorre nel suo riquadro");
-  if (name === "02c-oggi-drawer-passo") near(m.drawer, config.width === 1440 ? 920 : 390, 0.5, "drawer");
+  if (name === "02c-oggi-drawer-passo" || name === "04b-domani-drawer-confronto") near(m.drawer, config.width === 1440 ? 920 : 390, 0.5, "drawer");
   if (name === "02d-oggi-assistente" && m.assistant) {
     if (config.width === 1440 && (m.assistant.width !== 380 || m.assistant.position !== "sticky")) fail(`assistente ${m.assistant.width} ${m.assistant.position}, atteso agganciato di 380 px`);
     if (config.width === 390 && (m.assistant.width !== 390 || m.assistant.position !== "fixed")) fail(`assistente ${m.assistant.width} ${m.assistant.position}, atteso sopra la pagina, largo 390 px`);
