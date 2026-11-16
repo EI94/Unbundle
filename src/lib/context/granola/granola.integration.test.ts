@@ -298,6 +298,24 @@ test("il ritorno con un rifiuto su Granola → annullato; un codice sbagliato �
   assert.equal(String((await connection("ls")).tokens_sealed), before, "il collegamento di prima non cambia");
 });
 
+test("chi smette di essere di Lateral Space tra «Collega Granola» e il ritorno: errore, e nessun collegamento", opts, async () => {
+  signIn("ls2");
+  const start = value(await granola.startGranolaConnect(actor("ls2")));
+  const back = await fake.consent(start.url);
+  // Nel frattempo l'e-mail della persona non è più di Lateral Space (il ritorno rilegge la persona dal database).
+  await q(`UPDATE users SET email = $2 WHERE id = $1`, [ids.ls2, `marco-${suffix}@altrove.test`]);
+  try {
+    const issuedBefore = fake.issued.length;
+    const response = await callbackRoute.GET(new Request(back.toString()));
+    assert.equal(location(response).href, `${ORIGIN}/dashboard/${ids.wsN}/settings?granola=errore#granola`);
+    assert.equal(await connection("ls2"), undefined, "nessun collegamento");
+    assert.equal(fake.issued.length, issuedBefore, "il codice non si cambia in token");
+  } finally {
+    await q(`UPDATE users SET email = $2 WHERE id = $1`, [ids.ls2, EMAIL.ls2]);
+    signIn(null);
+  }
+});
+
 test("lo stato di Granola per la pagina e per Impostazioni", opts, async () => {
   const status = await granola.loadGranolaStatus({ userId: ids.ls, workspaceId: ids.wsN });
   assert.deepEqual(
@@ -431,6 +449,18 @@ test("un giro di meno di 30 minuti fa: recente; due giri insieme: uno solo", opt
   assert.equal((await granola.syncGranolaForUser(ids.ls, { force: true })).status, "in_corso");
   await q(`UPDATE context_granola_connections SET syncing_until = NULL WHERE user_id = $1`, [ids.ls]);
   assert.equal((await granola.syncGranolaForUser(ids.cli, { force: true })).status, "non_collegato");
+});
+
+test("il giro di chi è collegato ma non è più di Lateral Space: non_collegato, senza chiedere niente a Granola", opts, async () => {
+  assert.equal((await connection("ls")).status, "attiva");
+  const calls = fake.toolCalls.length;
+  await q(`UPDATE users SET email = $2 WHERE id = $1`, [ids.ls, `paola-${suffix}@altrove.test`]);
+  try {
+    assert.equal((await granola.syncGranolaForUser(ids.ls, { force: true })).status, "non_collegato");
+    assert.equal(fake.toolCalls.length, calls, "nessuna chiamata a Granola");
+  } finally {
+    await q(`UPDATE users SET email = $2 WHERE id = $1`, [ids.ls, EMAIL.ls]);
+  }
 });
 
 test("«Da smistare» dal vivo; «Assegna» e «Lascia fuori»; il conto scende", opts, async () => {
