@@ -110,6 +110,36 @@ test("(8.0c) gli identificativi tecnici non passano dai nomi da nascondere: codi
   }
 });
 
+test("(8.0c) un nome noto in ogni testo libero: strumenti nuovi, modifica chiesta dall'AI Board, argomento, scelta e perché di una decisione passano tutti dai nomi da nascondere", () => {
+  // Mario Rossi è tra i nomi che Unbundle conosce: sta in ogni testo che il team scrive a mano, un campo alla volta.
+  const named = input({
+    approved: null,
+    open: project({
+      version: 2,
+      status: "da_approvare",
+      approvedAt: null,
+      aiBoardOkAt: null,
+      topics: { funzionalita: { scelta: "Rossi prepara le bozze", perche: "Mario conosce i clienti", alternativa: "Farle scrivere a Mario Rossi" } },
+      newTools: [{ nome: "Agenda di Mario Rossi", perche: "la usa già Mario per i turni" }],
+      changeRequest: "Togliere l'accesso di Mario Rossi all'archivio",
+    }),
+    decisions: [decision(1, { topic: "Il turno di Mario", choice: "Lo copre Rossi", reason: "Mario Rossi è in sede ogni lunedì" })],
+  });
+  // Il brief: gli strumenti nuovi e le decisioni (argomento e scelta).
+  const brief = composeBrief(named);
+  assert.match(brief, /\nStrumenti nuovi: Agenda di una persona \(manca l'ok dell'AI Board\)\.\n/);
+  assert.match(brief, /\n- 11\/11 · Il turno di una persona · Lo copre una persona\n/);
+  // Lo strato «progetto»: scelta, perché e alternativa; il nome e il perché di uno strumento nuovo; la modifica chiesta.
+  const layer = composeProjectLayer(named);
+  assert.match(layer, /\nuna persona prepara le bozze\nPerché: una persona conosce i clienti\nScartata: Farle scrivere a una persona\n/);
+  assert.match(layer, /\n- Agenda di una persona: la usa già una persona per i turni\n/);
+  assert.match(layer, /\nL'AI Board chiede una modifica: Togliere l'accesso di una persona all'archivio$/);
+  // Lo strato «decisioni»: argomento, scelta e perché.
+  const decisions = composeDecisionsLayer(named);
+  assert.match(decisions, /\n- 11\/11\/2026 · Il turno di una persona · Lo copre una persona \(perché: una persona è in sede ogni lunedì\)$/);
+  for (const text of [brief, layer, decisions]) assert.doesNotMatch(text, /Mario|Rossi/, text);
+});
+
 test("solo le decisioni che valgono: una scelta rifatta sostituisce quella di prima", () => {
   const decisions = [
     decision(1, { topicKey: "modelli", topic: "Modelli", choice: "Modello grande", decidedOn: "2026-11-09", createdAt: "2026-11-09T09:00:00.000Z" }),
@@ -153,6 +183,16 @@ test("lo strato domande: le proposte a chi vede «Cosa serve», senza nomi; per 
   const seen = composeQuestionsLayer({ code: "PX-0042", openNeeds: [], proposals, namesToHide: ["Olga Cliente"] });
   assert.match(seen, /Proposte dei coding agent da decidere \(1\):\n- 11\/11\/2026 · Le richieste di una persona vanno prima\?/);
   assert.match(seen, /unbundle ask PX-0042/);
+  // Anche il perché di una proposta e il titolo di un'esigenza aperta passano dai nomi da nascondere.
+  const reasoned = composeQuestionsLayer({
+    code: "PX-0042",
+    openNeeds: [{ title: "L'elenco dei clienti di Olga", status: "aperta" }],
+    proposals: [{ question: "Chi copre il turno di Olga?", reason: "Olga Cliente è in ferie ad agosto", createdAt: "2026-11-11T10:00:00.000Z" }],
+    namesToHide: ["Olga Cliente"],
+  });
+  assert.match(reasoned, /\n- L'elenco dei clienti di una persona \(aperta\)\n/);
+  assert.match(reasoned, /\n- 11\/11\/2026 · Chi copre il turno di una persona\? \(perché: una persona è in ferie ad agosto\)\n/);
+  assert.doesNotMatch(reasoned, /Olga|Cliente/);
   const hidden = composeQuestionsLayer({ code: "PX-0042", openNeeds: null, proposals: null, namesToHide: [] });
   assert.equal(hidden, "PX-0042 · domande\n«Cosa serve»: le esigenze le vede chi valuta lo use case.\nProposte dei coding agent: le vede chi valuta lo use case.");
 });
