@@ -465,13 +465,15 @@ test("gli stessi id scritti in maiuscolo prendono lo stesso lock della persona",
     assert.equal(await someoneWaits(holder), true, "la stessa persona, lo stesso lock");
     await holder.query(`SELECT pg_advisory_unlock(${PERSON_LOCK})`, [ids.ws, ids.racer]);
     await upper;
-    // E al contrario: chi tiene il lock scritto in maiuscolo ferma chi lo chiede in minuscolo.
-    const key = `hashtext('unbundle:external-builders:' || lower($1) || ':' || lower($2))`;
-    await holder.query(`SELECT pg_advisory_lock(${key})`, [ids.ws.toUpperCase(), ids.racer.toUpperCase()]);
+    // E al contrario, con le istruzioni vere da tutte e due le parti: una transazione ha preso il lock con gli id in
+    // maiuscolo, e la riga osservatore di un dossier, chiesta con gli id in minuscolo, si mette in fila dietro.
+    const [lock] = builders.deleteGrantsStatements(ids.ws.toUpperCase(), ids.racer.toUpperCase());
+    await holder.query("BEGIN");
+    await holder.query(lock.text, [...lock.params]);
     const lower = exec.batch(builders.grantGuardStatements(ids.ws, ids.racer, dossier.d1)).catch((error: unknown) => error);
     assert.equal(await someoneWaits(holder), true, "anche la riga osservatore si mette in fila");
-    await holder.query(`SELECT pg_advisory_unlock(${key})`, [ids.ws.toUpperCase(), ids.racer.toUpperCase()]);
-    // Senza concessione la riga non entra: la guardia risponde «concessione tolta».
+    await holder.query("COMMIT");
+    // Senza concessione la riga non entra: dopo il lock la guardia risponde «concessione tolta».
     const refused = await lower;
     assert.ok(refused instanceof Error && /concessione_tolta/.test(refused.message), "la guardia è passata dopo il lock");
   } finally {
@@ -601,7 +603,13 @@ test("la coda con la sonda della 0037 che non risponde: le e-mail a chi costruis
   const probeAbsent: Exec = { batch: (statements) => (isProbe(statements) ? Promise.resolve([[{ ready: false }]]) : exec.batch(statements)) };
   const held = { status: "in_coda", hold_reason: "concessioni_non_lette", error: null };
 
-  // Il workspace ha già l'ok ai sub-responsabili (la prova di prima). Il benvenuto e un'e-mail di chi costruisce, in coda.
+  // Il workspace ha l'ok ai sub-responsabili (lo ha dato la prova di prima; qui si rimette, se manca). Il benvenuto e
+  // un'e-mail di chi costruisce, in coda.
+  await q(
+    `INSERT INTO uc_subprocessor_acks (workspace_id, list_version, statement_text, declared_by_user_id, declared_by_role)
+     VALUES ($1::uuid, '2026-10', 'Autorizzazione di prova', $2::uuid, 'transformation_lead') ON CONFLICT (workspace_id, list_version) DO NOTHING`,
+    [ids.ws, ids.e2],
+  );
   const added = await add("racer", "tutti");
   assert.ok(added.ok && added.value.noticeId, added.ok ? "senza e-mail di benvenuto" : added.message);
   if (!added.ok || !added.value.noticeId) return;
