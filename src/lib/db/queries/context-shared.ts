@@ -158,6 +158,20 @@ export const CONTEXT_DAY_TIME_ZONE = "Europe/Rome";
 
 // ─── Piccole cose ────────────────────────────────────────────────────
 
+/** Un elenco di id come array di Postgres. Entrano solo UUID: ogni altro valore si scarta. */
+export function uuidArray(ids: readonly string[]): SQL {
+  const safe = ids.filter(isUuid);
+  return sql`${`{${safe.join(",")}}`}::uuid[]`;
+}
+
+/** Gli use case di questo workspace tra quelli chiesti. */
+export async function knownUseCases(workspaceId: string, ids: readonly string[]): Promise<Set<string>> {
+  const safe = [...new Set(ids.filter(isUuid))];
+  if (safe.length === 0) return new Set();
+  const rows = rowsOf<{ id: string }>(await db.execute(sql`SELECT id FROM use_cases WHERE workspace_id = ${workspaceId}::uuid AND id = ANY(${uuidArray(safe)})`));
+  return new Set(rows.map((r) => r.id));
+}
+
 /** Oggi a Roma, `AAAA-MM-GG`. */
 export function romeToday(now: Date = new Date()): string {
   return romeDate(now);

@@ -14,7 +14,7 @@ import "server-only";
  * Il bersaglio di «cambia», «conferma» e «conflitto» è la versione attiva del fatto, seguendo la sua storia; se il
  * fatto è stato ritirato o non c'è più, la proposta vale come `nuovo`.
  */
-import { and, desc, eq, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { contextCommitments, contextEntities, contextEvents, contextFacts, contextProposals, contextQuestions, contextSources } from "@/lib/db/schema";
 import { dayLabel, factSourceLabel } from "@/lib/context/labels";
@@ -45,7 +45,7 @@ import {
 } from "@/lib/context/vocab";
 import { logSafeError } from "@/lib/log/safe-error";
 import type { ServiceResult } from "@/lib/use-cases/types";
-import { ctxErrorCode, gate, invalid, isUniqueViolation, isUuid, notFound, ok, requireSql, retry, romeToday, rowsOf, stale, toIsoDate } from "./context-shared";
+import { ctxErrorCode, gate, invalid, isUniqueViolation, isUuid, knownUseCases, notFound, ok, requireSql, retry, romeToday, rowsOf, stale, toIsoDate, uuidArray } from "./context-shared";
 import { contextStoreReady } from "./context-store";
 
 const LOG_SCOPE = "context/proposals";
@@ -82,12 +82,6 @@ export interface OpenProposals {
 
 // ─── Leggere ─────────────────────────────────────────────────────────
 
-/** Un elenco di id come array di Postgres (gli id sono già controllati: solo UUID). */
-function uuidArray(ids: readonly string[]): SQL {
-  const safe = ids.filter(isUuid);
-  return sql`${`{${safe.join(",")}}`}::uuid[]`;
-}
-
 interface TargetFact {
   id: string;
   kind: FactKind;
@@ -102,7 +96,7 @@ interface TargetFact {
 }
 
 /** Per ogni fatto, la versione in testa alla sua storia (quella attiva, o l'ultima se è stato ritirato). */
-async function resolveHeads(workspaceId: string, factIds: readonly string[]): Promise<Map<string, TargetFact>> {
+export async function resolveHeads(workspaceId: string, factIds: readonly string[]): Promise<Map<string, TargetFact>> {
   const out = new Map<string, TargetFact>();
   const ids = [...new Set(factIds.filter(isUuid))];
   if (ids.length === 0) return out;
@@ -251,14 +245,6 @@ export interface ProposalPatch {
   party?: CommitmentParty;
   roleLabel?: string | null;
   dueOn?: string | null;
-}
-
-/** Gli use case di questo workspace tra quelli chiesti. */
-async function knownUseCases(workspaceId: string, ids: readonly string[]): Promise<Set<string>> {
-  const safe = [...new Set(ids.filter(isUuid))];
-  if (safe.length === 0) return new Set();
-  const rows = rowsOf<{ id: string }>(await db.execute(sql`SELECT id FROM use_cases WHERE workspace_id = ${workspaceId}::uuid AND id = ANY(${uuidArray(safe)})`));
-  return new Set(rows.map((r) => r.id));
 }
 
 /** Corregge una proposta sul posto. Ricalcola `issue` con `scanStatement`; `edited = true`; `version + 1`. */

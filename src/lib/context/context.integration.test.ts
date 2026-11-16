@@ -28,6 +28,7 @@ let sources: typeof import("../db/queries/context-sources.ts");
 let reading: typeof import("../db/queries/context-read.ts");
 let consent: typeof import("../db/queries/context-consent.ts");
 let proposals: typeof import("../db/queries/context-proposals.ts");
+let memory: typeof import("../db/queries/context-memory.ts");
 let actors: typeof import("./server/actor.ts");
 
 const LS = ["ls.test"];
@@ -143,6 +144,7 @@ before(async () => {
   reading = await import("../db/queries/context-read.ts");
   consent = await import("../db/queries/context-consent.ts");
   proposals = await import("../db/queries/context-proposals.ts");
+  memory = await import("../db/queries/context-memory.ts");
   actors = await import("./server/actor.ts");
 
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1, 'Organizzazione A di prova contesto', $2), ($3, 'Organizzazione B di prova contesto', $4)`, [
@@ -1143,4 +1145,267 @@ test("due proposte della stessa conferma sullo stesso fatto si mettono in fila; 
   const result = okValue(await proposals.confirmProposals(actor("ls"), pick([view])));
   assert.deepEqual([result.newFacts, result.changedFacts], [1, 0]);
   assert.deepEqual((await q(`SELECT supersedes_id, status FROM context_facts WHERE statement = $1`, [`Il fatto ritirato ${suffix}, aggiornato.`]))[0], { supersedes_id: null, status: "attivo" });
+});
+
+// ─── La Memoria ──────────────────────────────────────────────────────
+
+const allFacts = (view: Awaited<ReturnType<typeof memory.loadContextMemory>>) => view.sections.flatMap((s) => s.facts);
+
+test("loadContextMemory: Lateral Space vede tutto con la fonte; il cliente mai un fatto «Solo Lateral Space», mai una proposta, mai un appunto da leggere", opts, async () => {
+  const { sourceId, all } = await readProposals([
+    proposal({ testo: `Il magazzino della memoria è a Udine ${suffix}.`, citazione: "Il gestionale è SAP Business One.", sezione: "lavoro", visibilita: "tutti" }),
+    proposal({ testo: `Il margine della memoria è del 12% ${suffix}.`, citazione: "Il contratto con Lateral Space vale 40.000 euro.", sezione: "azienda", visibilita: "ls" }),
+    proposal({ tipo: "impegno", testo: `Mandare il listino della memoria ${suffix}.`, citazione: "", sezione: null, parte: "cliente", ruolo: "responsabile commerciale", entro: "2020-01-15", visibilita: "tutti" }),
+    proposal({ tipo: "impegno", testo: `Preparare l'offerta della memoria ${suffix}.`, citazione: "", sezione: null, parte: "nostra", visibilita: "ls" }),
+    proposal({ tipo: "domanda", testo: `Chi firma il rinnovo della memoria ${suffix}?`, citazione: "", sezione: null, ruolo: "direttore generale", visibilita: "ls" }),
+    proposal({ tipo: "domanda", testo: `Quanti magazzini ci sono nella memoria ${suffix}?`, citazione: "", sezione: null, visibilita: "tutti" }),
+  ]);
+  okValue(await proposals.confirmProposals(actor("ls"), pick(all)));
+  const manual = okValue(await memory.writeFact(actor("ls"), { statement: `Il cliente della memoria vende in Austria ${suffix}.`, section: "azienda", visibility: "tutti" }));
+  const pendingNote = await addNote();
+
+  const forLs = await memory.loadContextMemory(actor("lsc"));
+  assert.deepEqual(forLs.sections.map((s) => s.section), ["azienda", "persone", "lavoro", "sistemi", "obiettivi", "regole", "parole"]);
+  const lsFacts = allFacts(forLs);
+  const shared = lsFacts.find((f) => f.statement === `Il magazzino della memoria è a Udine ${suffix}.`)!;
+  const internal = lsFacts.find((f) => f.statement === `Il margine della memoria è del 12% ${suffix}.`)!;
+  const written = lsFacts.find((f) => f.id === manual.factId)!;
+  assert.deepEqual(
+    { section: shared.section, basis: shared.basis, visibility: shared.visibility, needsCheck: shared.needsCheck, sourceKind: shared.sourceKind, sourceLabel: shared.sourceLabel, kind: shared.kind },
+    { section: "lavoro", basis: "detto", visibility: "tutti", needsCheck: false, sourceKind: "call", sourceLabel: "Call 14 nov", kind: "fatto" },
+  );
+  assert.match(shared.lastConfirmedOn, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(internal.visibility, "ls");
+  assert.deepEqual([written.sourceKind, written.sourceLabel, written.basis], ["manuale", "Scritto a mano", "detto"]);
+  assert.ok(forLs.sections.find((s) => s.section === "azienda")!.facts.includes(written), "ogni fatto nella sua sezione");
+  // «Prossimi passi»: aperti, per parte; scaduto se la data è passata. «Domande aperte».
+  const theirs = forLs.nextSteps.cliente.find((c) => c.statement === `Mandare il listino della memoria ${suffix}.`)!;
+  assert.deepEqual({ party: theirs.party, roleLabel: theirs.roleLabel, dueOn: theirs.dueOn, overdue: theirs.overdue, visibility: theirs.visibility }, { party: "cliente", roleLabel: "responsabile commerciale", dueOn: "2020-01-15", overdue: true, visibility: "tutti" });
+  const ours = forLs.nextSteps.nostri.find((c) => c.statement === `Preparare l'offerta della memoria ${suffix}.`)!;
+  assert.deepEqual([ours.overdue, ours.dueOn, ours.visibility], [false, null, "ls"]);
+  assert.ok(forLs.questions.some((x) => x.question === `Chi firma il rinnovo della memoria ${suffix}?` && x.askWhom === "direttore generale" && x.visibility === "ls"));
+  // I conteggi di servizio: solo per Lateral Space.
+  assert.equal(forLs.counts.facts, lsFacts.length);
+  assert.ok(forLs.counts.unreadSources >= 1 && forLs.counts.pendingSourceIds.length >= 1 && forLs.counts.pendingSourceIds.length <= 20);
+  assert.ok(forLs.counts.unreadSources > 20 || forLs.counts.pendingSourceIds.includes(pendingNote.sourceId));
+
+  for (const person of ["rev", "con"] as const) {
+    const view = await memory.loadContextMemory(actor(person));
+    const facts = allFacts(view);
+    assert.ok(facts.length > 0 && facts.every((f) => f.visibility === "tutti"), `${person}: solo fatti «Per tutti»`);
+    assert.ok(facts.some((f) => f.id === shared.id) && facts.some((f) => f.id === manual.factId));
+    assert.equal(facts.some((f) => f.id === internal.id), false, `${person}: mai un fatto «Solo Lateral Space»`);
+    assert.equal(JSON.stringify(view).includes("12%"), false, `${person}: nemmeno il suo testo`);
+    assert.equal(JSON.stringify(view).includes("Il contratto con Lateral Space vale"), false, `${person}: mai una citazione`);
+    assert.ok([...view.nextSteps.cliente, ...view.nextSteps.nostri].every((c) => c.visibility === "tutti"));
+    assert.ok(view.nextSteps.cliente.some((c) => c.id === theirs.id));
+    assert.equal(view.nextSteps.nostri.some((c) => c.id === ours.id), false);
+    assert.ok(view.questions.every((x) => x.visibility === "tutti"));
+    assert.ok(view.questions.some((x) => x.question === `Quanti magazzini ci sono nella memoria ${suffix}?`));
+    assert.deepEqual({ ...view.counts, facts: 0 }, { facts: 0, openProposals: 0, unreadSources: 0, pendingSourceIds: [] }, `${person}: niente di interno`);
+  }
+  // Chi segue solo un corso, chi non è nel workspace, e Lateral Space di un altro workspace: una memoria vuota.
+  for (const who of [actor("lrn"), actor("out"), actor("ls", "wsB")]) {
+    const none = await memory.loadContextMemory(who);
+    assert.equal(allFacts(none).length + none.questions.length + none.nextSteps.cliente.length + none.nextSteps.nostri.length, 0);
+    assert.equal(none.sections.every((s) => s.live.length === 0), true);
+  }
+  const other = await memory.loadContextMemory(actor("lsb"));
+  assert.equal(allFacts(other).some((f) => lsFacts.some((x) => x.id === f.id)), false, "un altro workspace ha la sua memoria");
+  await sources.removeContextSource(actor("ls"), pendingNote.sourceId);
+  // Gli appunti di questa prova risultano confermati.
+  assert.equal((await sources.getContextSource(actor("ls"), sourceId))?.state, "confermato");
+});
+
+test("la Memoria mostra i dati della Discovery nella sezione giusta, letti dal vivo; dipendenti e ricavo solo ai revisori", opts, async () => {
+  await q(`INSERT INTO program_settings (workspace_id, employees, employees_source, revenue_eur, revenue_source) VALUES ($1, 420, 'manuale', 12000000, 'manuale') ON CONFLICT (workspace_id) DO UPDATE SET employees = 420, revenue_eur = 12000000`, [ids.wsA]);
+  assert.equal(await thesis.saveWorkspaceValueThesis(ids.wsA, { coreValueProposition: "Cucine su misura per il mercato italiano.", strategicNodes: ["Progettazione"], commodityNodes: ["Contabilità"], marginDrivers: [], keyRisks: [], aiReadiness: "Bassa" }), true);
+  await q(`INSERT INTO activities (department_id, workspace_id, title) VALUES ($1, $2, 'Ordini ai fornitori'), ($1, $2, 'Controllo delle consegne')`, [ids.unitA, ids.wsA]);
+  const view = await memory.loadContextMemory(actor("ls"));
+  const live = (section: string) => view.sections.find((s) => s.section === section)!.live.map((row) => (row.tag ? `${row.tag}: ${row.text}` : row.text));
+  assert.deepEqual(live("azienda"), ["Cucine su misura per il mercato italiano.", "Nodi strategici: Progettazione", "Nodi commodity: Contabilità", "Maturità AI: Bassa", "Dipendenti: 420", "Ricavo dell'ultimo anno: 12 mln €"]);
+  assert.deepEqual(live("lavoro"), ["Acquisti: Compra legno e ferramenta · 4 persone · 2 attività mappate"]);
+  assert.deepEqual(live("obiettivi"), ["Obiettivo: Ridurre i tempi di consegna"]);
+  assert.deepEqual(live("regole"), ["Perimetro: incluse Vendite, Acquisti; escluse Produzione", "Si parte dalle vendite.", "Orizzonte: 12 mesi"]);
+  assert.deepEqual([live("persone"), live("sistemi"), live("parole")], [[], [], []]);
+  // I dati della Discovery non sono fatti: non hanno una riga in memoria.
+  assert.equal((await q(`SELECT count(*)::int AS n FROM context_facts WHERE workspace_id = $1 AND statement LIKE 'Cucine su misura per il mercato%'`, [ids.wsA]))[0].n, 0);
+  // Le cifre: i revisori sì (anche del cliente), i contributori no (nemmeno di Lateral Space).
+  const figures = async (person: Person) => (await memory.loadContextMemory(actor(person))).sections[0].live.some((row) => /Dipendenti|Ricavo/.test(row.text));
+  assert.deepEqual([await figures("ls"), await figures("rev"), await figures("lsc"), await figures("con")], [true, true, false, false]);
+  // Si leggono dal vivo: una modifica alla Discovery si vede subito.
+  await q(`UPDATE departments SET team_size = 5 WHERE id = $1`, [ids.unitA]);
+  assert.deepEqual((await memory.loadContextMemory(actor("con"))).sections.find((s) => s.section === "lavoro")!.live.map((r) => r.text), ["Acquisti: Compra legno e ferramenta · 5 persone · 2 attività mappate"]);
+});
+
+test("«Novità per te»: niente alla prima visita; dopo 31 minuti i fatti nati dopo, non i propri, non quelli riconfermati; durante la visita restano", opts, async () => {
+  const viewer = actor("rev");
+  const t0 = new Date("2026-11-16T09:00:00Z");
+  await q(`DELETE FROM context_seen WHERE workspace_id = $1 AND user_id = ANY($2::uuid[])`, [ids.wsA, [ids.rev, ids.ls]]);
+  assert.equal(await memory.touchContextSeen(viewer, t0), null, "prima visita");
+  assert.equal(await memory.touchContextSeen(viewer, new Date(t0.getTime() + 29 * 60_000)), null, "la stessa visita");
+  const second = await memory.touchContextSeen(viewer, new Date(t0.getTime() + 31 * 60_000));
+  assert.equal(second?.toISOString(), t0.toISOString(), "dopo 31 minuti è una visita nuova: la visita di prima è quella delle 9");
+  assert.equal((await memory.touchContextSeen(viewer, new Date(t0.getTime() + 40 * 60_000)))?.toISOString(), t0.toISOString(), "durante la visita la visita di prima non si muove");
+  assert.equal(await memory.touchContextSeen(actor("lrn"), t0), null);
+  assert.equal((await q(`SELECT count(*)::int AS n FROM context_seen WHERE user_id = $1`, [ids.lrn]))[0].n, 0, "chi segue solo un corso non lascia tracce");
+
+  // La visita di prima del revisore è nel passato vero: i fatti nati adesso sono novità.
+  await q(`UPDATE context_seen SET seen_at = now() - interval '2 hours', previous_seen_at = now() - interval '3 days' WHERE workspace_id = $1 AND user_id = $2`, [ids.wsA, ids.rev]);
+  const old = await seedFact(`Il fatto vecchio delle novità ${suffix}.`, { section: "azienda" });
+  await q(`UPDATE context_facts SET created_at = now() - interval '3 hours', last_confirmed_at = now() - interval '3 hours' WHERE id = $1`, [old]);
+  const fresh = okValue(await memory.writeFact(actor("ls"), { statement: `Il fatto nuovo delle novità ${suffix}.`, section: "lavoro", visibility: "tutti" }));
+  const hidden = okValue(await memory.writeFact(actor("ls"), { statement: `Il fatto interno delle novità ${suffix}.`, section: "lavoro", visibility: "ls" }));
+  const base = okValue(await memory.writeFact(actor("ls"), { statement: `Il fatto delle novità vale 1 ${suffix}.`, section: "azienda", visibility: "tutti" }));
+  await q(`UPDATE context_facts SET created_at = now() - interval '3 hours' WHERE id = $1`, [base.factId]);
+  const changed = okValue(await memory.editFact(actor("ls"), base.factId, 1, { statement: `Il fatto delle novità vale 2 ${suffix}.` }));
+  okValue(await memory.reconfirmFact(actor("ls"), old));
+
+  const view = await memory.loadContextMemory(viewer);
+  assert.ok(view.novelties, "ci sono novità");
+  const items = new Map(view.novelties!.items.map((n) => [n.factId, n]));
+  assert.deepEqual(items.get(fresh.factId), { factId: fresh.factId, statement: `Il fatto nuovo delle novità ${suffix}.`, section: "lavoro", tag: "nuovo" });
+  assert.equal(items.get(changed.factId)?.tag, "cambiato");
+  assert.equal(items.has(hidden.factId), false, "mai un fatto che chi guarda non può vedere");
+  assert.equal(items.has(old), false, "un fatto solo riconfermato non è una novità");
+  assert.ok(view.novelties!.items.length <= 5);
+  assert.ok(view.novelties!.more >= 0);
+  // Durante la stessa visita le novità restano; chi le ha confermate non le vede tra le sue.
+  assert.ok((await memory.loadContextMemory(viewer)).novelties?.items.some((n) => n.factId === fresh.factId));
+  await q(`INSERT INTO context_seen (workspace_id, user_id, seen_at, previous_seen_at) VALUES ($1, $2, now() - interval '2 hours', now() - interval '3 days') ON CONFLICT (workspace_id, user_id) DO UPDATE SET seen_at = excluded.seen_at, previous_seen_at = excluded.previous_seen_at`, [ids.wsA, ids.ls]);
+  const mine = await memory.loadContextMemory(actor("ls"));
+  assert.equal(mine.novelties?.items.some((n) => n.factId === fresh.factId || n.factId === changed.factId) ?? false, false, "non le proprie");
+  // Alla prima visita, niente.
+  await q(`DELETE FROM context_seen WHERE workspace_id = $1 AND user_id = $2`, [ids.wsA, ids.con]);
+  assert.equal((await memory.loadContextMemory(actor("con"))).novelties, null);
+});
+
+test("getFactDetail: fonte, ultima conferma e use case per tutti; citazione, storia e chi ha confermato solo a Lateral Space", opts, async () => {
+  const { sourceId, all } = await readProposals([proposal({ testo: `Il dettaglio di prova vale 1 ${suffix}.`, citazione: "Il gestionale è SAP Business One.", sezione: "sistemi", useCase: ["CX-0001"] })]);
+  okValue(await proposals.confirmProposals(actor("ls"), pick(all)));
+  const first = String((await q(`SELECT id FROM context_facts WHERE source_id = $1`, [sourceId]))[0].id);
+  const second = okValue(await memory.editFact(actor("lsc"), first, 1, { statement: `Il dettaglio di prova vale 2 ${suffix}.` })).factId;
+  const third = okValue(await memory.editFact(actor("ls"), second, 1, { statement: `Il dettaglio di prova vale 3 ${suffix}.` })).factId;
+  const detail = await memory.getFactDetail(actor("ls"), third);
+  assert.ok(detail);
+  assert.deepEqual(
+    { statement: detail.statement, sourceKind: detail.sourceKind, sourceLabel: detail.sourceLabel, useCases: detail.useCases, quote: detail.quote, source: detail.source, confirmedBy: detail.confirmedBy?.name, version: detail.version },
+    { statement: `Il dettaglio di prova vale 3 ${suffix}.`, sourceKind: "manuale", sourceLabel: "Scritto a mano", useCases: [{ id: ids.ucA, code: "CX-0001", title: "Ordini automatici" }], quote: null, source: null, confirmedBy: "Persona ls", version: 1 },
+  );
+  // La storia: le versioni di prima, dalla più recente, ognuna con la sua fonte.
+  assert.deepEqual(detail.history.map((h) => [h.statement, h.sourceLabel, h.to !== null]), [
+    [`Il dettaglio di prova vale 2 ${suffix}.`, "Scritto a mano", true],
+    [`Il dettaglio di prova vale 1 ${suffix}.`, "Call 14 nov", true],
+  ]);
+  // La prima versione porta la citazione e l'appunto da cui viene.
+  const origin = await memory.getFactDetail(actor("ls"), first);
+  assert.deepEqual([origin?.quote, origin?.source, origin?.history], ["Il gestionale è SAP Business One.", { id: sourceId, title: "Call di avvio", occurredOn: "2026-11-14" }, []]);
+  // Il cliente: la fonte, la data, gli use case; niente citazione, storia, appunto, chi ha confermato. E mai una versione superata.
+  for (const person of ["rev", "con"] as const) {
+    const view = await memory.getFactDetail(actor(person), third);
+    assert.deepEqual(
+      view && { statement: view.statement, sourceLabel: view.sourceLabel, useCases: view.useCases.map((u) => u.code), quote: view.quote, source: view.source, history: view.history, confirmedBy: view.confirmedBy },
+      { statement: `Il dettaglio di prova vale 3 ${suffix}.`, sourceLabel: "Scritto a mano", useCases: ["CX-0001"], quote: null, source: null, history: [], confirmedBy: null },
+      person,
+    );
+    assert.equal(await memory.getFactDetail(actor(person), first), null, `${person}: una versione superata non si vede`);
+  }
+  const internal = okValue(await memory.writeFact(actor("ls"), { statement: `Il dettaglio interno di prova ${suffix}.`, section: "regole", visibility: "ls" }));
+  assert.equal(await memory.getFactDetail(actor("rev"), internal.factId), null);
+  assert.ok(await memory.getFactDetail(actor("lsc"), internal.factId));
+  for (const who of [actor("lrn"), actor("out"), actor("lsb")]) assert.equal(await memory.getFactDetail(who, third), null);
+  assert.equal(await memory.getFactDetail(actor("ls"), "non-un-id"), null);
+});
+
+test("un conflitto aperto segna il fatto «da verificare», per Lateral Space", opts, async () => {
+  const fact = await seedFact(`Il fatto da verificare ${suffix} è vero.`, { section: "regole" });
+  const { all } = await readProposals([proposal({ tipo: "conflitto", testo: `Il fatto da verificare ${suffix} non è vero.`, citazione: "", fattoRif: "F1", sezione: "regole" })]);
+  assert.equal(all[0].before?.factId, fact);
+  const find = async (person: Person) => allFacts(await memory.loadContextMemory(actor(person))).find((f) => f.id === fact);
+  assert.equal((await find("ls"))?.needsCheck, true);
+  assert.equal((await memory.getFactDetail(actor("ls"), fact))?.needsCheck, true);
+  assert.equal((await find("rev"))?.needsCheck, false, "il conflitto è una proposta: la vede solo Lateral Space");
+  okValue(await proposals.confirmProposals(actor("ls"), [{ id: all[0].id, version: all[0].version, resolution: "prima" }]));
+  assert.equal((await find("ls"))?.needsCheck, false);
+});
+
+test("writeFact, editFact, reconfirmFact, retireFact: solo Lateral Space; un nome non entra; un testo nuovo è una versione nuova; il resto aggiorna la riga", opts, async () => {
+  const input = { statement: `Il fatto scritto a mano ${suffix}.`, section: "parole" as const, visibility: "tutti" as const, useCaseIds: [ids.ucA] };
+  for (const person of ["rev", "con", "lrn", "out"] as const) assert.equal(errOf(await memory.writeFact(actor(person), input)), "permesso_mancante", person);
+  const bad = await memory.writeFact(actor("ls"), { statement: "Mario Rossi decide gli acquisti.", section: "persone", visibility: "tutti" });
+  assert.deepEqual([errOf(bad), !bad.ok && bad.fieldErrors], ["dati_non_validi", { statement: "Non scrivere nomi di persone: indica il ruolo, per esempio «il responsabile commerciale»." }]);
+  const invalid = await memory.writeFact(actor("ls"), { statement: "x", section: "altro" as never, visibility: "pubblico" as never, useCaseIds: [randomUUID()] });
+  assert.deepEqual(Object.keys((!invalid.ok && invalid.fieldErrors) || {}).sort(), ["section", "statement", "useCaseIds", "visibility"]);
+  assert.equal(errOf(await memory.writeFact(actor("ls"), { ...input, statement: "y".repeat(201) })), "dati_non_validi");
+  const { factId } = okValue(await memory.writeFact(actor("ls"), input));
+  assert.deepEqual((await q(`SELECT kind, basis, origin, status, source_id, quote, version, confirmed_by_user_id::text AS who FROM context_facts WHERE id = $1`, [factId]))[0], { kind: "fatto", basis: "detto", origin: "manuale", status: "attivo", source_id: null, quote: null, version: 1, who: ids.ls });
+  assert.deepEqual((await q(`SELECT action, actor_user_id::text AS who FROM context_events WHERE fact_id = $1`, [factId])), [{ action: "fatto_scritto", who: ids.ls }]);
+  // Sezione e visibilità aggiornano la riga (versione + 1) e lasciano una riga di storia l'una.
+  assert.deepEqual(okValue(await memory.editFact(actor("lsc"), factId, 1, { section: "regole", visibility: "ls", useCaseIds: [] })), { factId });
+  assert.deepEqual((await q(`SELECT section, visibility, version, status FROM context_facts WHERE id = $1`, [factId]))[0], { section: "regole", visibility: "ls", version: 2, status: "attivo" });
+  assert.equal((await q(`SELECT count(*)::int AS n FROM context_fact_links WHERE fact_id = $1`, [factId]))[0].n, 0);
+  assert.deepEqual((await q(`SELECT action, detail FROM context_events WHERE fact_id = $1 AND action IN ('sezione_cambiata', 'visibilita_cambiata') ORDER BY action`, [factId])), [
+    { action: "sezione_cambiata", detail: { da: "parole", a: "regole" } },
+    { action: "visibilita_cambiata", detail: { da: "tutti", a: "ls" } },
+  ]);
+  // La versione di prima non vale più; un testo con un nome non passa.
+  assert.equal(errOf(await memory.editFact(actor("ls"), factId, 1, { section: "azienda" })), "versione_superata");
+  assert.equal(errOf(await memory.editFact(actor("ls"), factId, 2, { statement: "Anna Bianchi decide tutto." })), "dati_non_validi");
+  // Un testo nuovo: una versione nuova che tiene sezione e visibilità; quella di prima passa alla storia.
+  const next = okValue(await memory.editFact(actor("ls"), factId, 2, { statement: `Il fatto scritto a mano, corretto ${suffix}.` })).factId;
+  assert.notEqual(next, factId);
+  assert.deepEqual((await q(`SELECT status, ended_at IS NOT NULL AS ended FROM context_facts WHERE id = $1`, [factId]))[0], { status: "superato", ended: true });
+  assert.deepEqual((await q(`SELECT section, visibility, status, origin, supersedes_id::text AS supersedes, version FROM context_facts WHERE id = $1`, [next]))[0], { section: "regole", visibility: "ls", status: "attivo", origin: "manuale", supersedes: factId, version: 1 });
+  assert.equal(errOf(await memory.editFact(actor("ls"), factId, 3, { statement: "Un terzo testo di prova." })), "versione_superata", "una versione superata non si modifica");
+  // «Ancora vero»: la data si rinfresca e la versione non cambia. «Non più vero»: ritirato, resta nella storia.
+  await q(`UPDATE context_facts SET last_confirmed_at = now() - interval '200 days', needs_check = true WHERE id = $1`, [next]);
+  for (const person of ["rev", "con"] as const) assert.equal(errOf(await memory.reconfirmFact(actor(person), next)), "permesso_mancante", person);
+  assert.equal(okValue(await memory.reconfirmFact(actor("lsc"), next)), true);
+  assert.deepEqual((await q(`SELECT needs_check, (last_confirmed_at > now() - interval '1 minute') AS fresh, confirmed_by_user_id::text AS who, version FROM context_facts WHERE id = $1`, [next]))[0], { needs_check: false, fresh: true, who: ids.lsc, version: 1 });
+  assert.equal(errOf(await memory.reconfirmFact(actor("ls"), factId)), "non_trovato", "solo un fatto attivo");
+  assert.equal(errOf(await memory.retireFact(actor("rev"), next, 1)), "permesso_mancante");
+  assert.equal(errOf(await memory.retireFact(actor("lsb"), next, 1)), "non_trovato");
+  assert.equal(errOf(await memory.retireFact(actor("ls"), next, 9)), "versione_superata");
+  assert.equal(okValue(await memory.retireFact(actor("ls"), next, 1)), true);
+  assert.deepEqual((await q(`SELECT status, ended_at IS NOT NULL AS ended FROM context_facts WHERE id = $1`, [next]))[0], { status: "ritirato", ended: true });
+  assert.equal(allFacts(await memory.loadContextMemory(actor("ls"))).some((f) => f.id === next), false, "un fatto ritirato esce dalla memoria");
+  assert.deepEqual((await q(`SELECT action FROM context_events WHERE fact_id = $1 ORDER BY at`, [next])).map((e) => e.action), ["fatto_cambiato", "fatto_riconfermato", "fatto_ritirato"]);
+});
+
+test("impegni e domande: «Fatto», «Riapri», «Chiusa» solo per Lateral Space; una domanda da «Chiedi» la aggiunge chi apre la pagina", opts, async () => {
+  const commitment = randomUUID();
+  const question = randomUUID();
+  await q(`INSERT INTO context_commitments (id, workspace_id, statement, party, visibility, origin) VALUES ($1, $2, $3, 'cliente', 'tutti', 'manuale')`, [commitment, ids.wsA, `Impegno da chiudere ${suffix}.`]);
+  await q(`INSERT INTO context_questions (id, workspace_id, question, visibility, origin) VALUES ($1, $2, $3, 'tutti', 'manuale')`, [question, ids.wsA, `Domanda da chiudere ${suffix}?`]);
+  for (const person of ["rev", "con", "lrn"] as const) {
+    assert.equal(errOf(await memory.closeCommitment(actor(person), commitment, 1)), "permesso_mancante", person);
+    assert.equal(errOf(await memory.closeQuestion(actor(person), question, 1)), "permesso_mancante", person);
+  }
+  assert.equal(errOf(await memory.closeCommitment(actor("lsb"), commitment, 1)), "non_trovato");
+  assert.equal(errOf(await memory.closeCommitment(actor("ls"), commitment, 2)), "versione_superata");
+  assert.equal(okValue(await memory.closeCommitment(actor("ls"), commitment, 1)), true);
+  assert.deepEqual((await q(`SELECT status, closed_at IS NOT NULL AS closed, version FROM context_commitments WHERE id = $1`, [commitment]))[0], { status: "fatto", closed: true, version: 2 });
+  assert.equal((await memory.loadContextMemory(actor("ls"))).nextSteps.cliente.some((c) => c.id === commitment), false, "un impegno fatto esce dai prossimi passi");
+  assert.equal(errOf(await memory.closeCommitment(actor("ls"), commitment, 2)), "versione_superata", "già fatto");
+  assert.equal(okValue(await memory.reopenCommitment(actor("lsc"), commitment, 2)), true);
+  assert.deepEqual((await q(`SELECT status, closed_at, version FROM context_commitments WHERE id = $1`, [commitment]))[0], { status: "aperto", closed_at: null, version: 3 });
+  assert.equal(okValue(await memory.closeQuestion(actor("ls"), question, 1)), true);
+  assert.deepEqual((await q(`SELECT status, closed_at IS NOT NULL AS closed FROM context_questions WHERE id = $1`, [question]))[0], { status: "chiusa", closed: true });
+  // La storia di impegni e domande non dice chi: valgono per parte e per ruolo.
+  const events = await q(`SELECT action, actor_user_id FROM context_events WHERE commitment_id = $1 OR question_id = $2 ORDER BY at`, [commitment, question]);
+  assert.deepEqual(events, [{ action: "impegno_chiuso", actor_user_id: null }, { action: "impegno_riaperto", actor_user_id: null }, { action: "domanda_chiusa", actor_user_id: null }]);
+
+  // «Aggiungi alle domande aperte»: `ls` da Lateral Space, `tutti` dal cliente; la stessa domanda non si aggiunge due volte.
+  const asked = okValue(await memory.addQuestion(actor("con"), { question: `  Quanti ordini arrivano al giorno ${suffix}? `, askWhom: "responsabile acquisti" }));
+  assert.deepEqual((await q(`SELECT question, ask_whom, visibility, origin, status FROM context_questions WHERE id = $1`, [asked.questionId]))[0], { question: `Quanti ordini arrivano al giorno ${suffix}?`, ask_whom: "responsabile acquisti", visibility: "tutti", origin: "chiedi", status: "aperta" });
+  assert.deepEqual(okValue(await memory.addQuestion(actor("rev"), { question: `quanti ordini arrivano al giorno ${suffix}?` })), asked);
+  const internal = okValue(await memory.addQuestion(actor("ls"), { question: `Quanto margine ha il cliente ${suffix}?` }));
+  assert.equal((await q(`SELECT visibility FROM context_questions WHERE id = $1`, [internal.questionId]))[0].visibility, "ls");
+  // Il cliente fa la stessa domanda: non vede quella interna, e nasce la sua.
+  const theirs = okValue(await memory.addQuestion(actor("con"), { question: `Quanto margine ha il cliente ${suffix}?` }));
+  assert.notEqual(theirs.questionId, internal.questionId);
+  assert.equal(errOf(await memory.addQuestion(actor("lrn"), { question: "Una domanda di prova?" })), "permesso_mancante");
+  const wrong = await memory.addQuestion(actor("con"), { question: "Che cosa decide Mario Rossi?", askWhom: "Anna Bianchi" });
+  assert.deepEqual(Object.keys((!wrong.ok && wrong.fieldErrors) || {}).sort(), ["askWhom", "question"]);
+  assert.equal(errOf(await memory.addQuestion(actor("con"), { question: "a" })), "dati_non_validi");
 });
