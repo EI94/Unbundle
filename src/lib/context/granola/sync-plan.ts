@@ -91,6 +91,22 @@ export function participantEmails(participants: readonly GranolaParticipant[], a
   return [...new Set(participants.filter((p) => p.email && !p.noteCreator && p.email !== own).map((p) => p.email as string))];
 }
 
+/**
+ * «Con chi» di una call in «Da smistare»: i nomi, o l'e-mail di chi non ha un nome, separati da virgole; senza chi ha
+ * registrato («(note creator)» o l'account collegato) e senza «from …» (`parseParticipants` li toglie già dal nome).
+ * Al massimo 500 caratteri.
+ */
+export function unsortedParticipants(participants: readonly GranolaParticipant[], accountEmail: string | null): string {
+  const own = accountEmail?.trim().toLowerCase() || null;
+  const shown: string[] = [];
+  for (const person of participants) {
+    if (person.noteCreator || (own !== null && person.email === own)) continue;
+    const label = oneLine(person.name ?? person.email ?? "");
+    if (label && !shown.includes(label)) shown.push(label);
+  }
+  return cutTo(shown.join(", "), GRANOLA_LIMITS.participantsMax).trim();
+}
+
 // ─── Una nota di Granola come appunto ────────────────────────────────
 
 export const GRANOLA_NOTE_LABELS = Object.freeze({

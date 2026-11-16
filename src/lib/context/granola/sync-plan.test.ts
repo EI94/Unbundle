@@ -12,7 +12,9 @@ import {
   sameWords,
   searchWindow,
   stepFor,
+  unsortedParticipants,
 } from "./sync-plan.ts";
+import { parseParticipants } from "./parse.ts";
 
 // Le regole del giro di Granola (RILASCIO-9a-COSTRUZIONE.md §8.6, §8.7), senza database e senza rete. Dati inventati.
 
@@ -93,6 +95,14 @@ test("la trascrizione: sotto la sua etichetta; oltre 300.000 caratteri si accorc
   assert.equal(partial?.title.length, 200);
   assert.match(partial?.title ?? "", / \(trascrizione in parte\)$/);
   assert.equal(composeGranolaNote(note(), { text: "   ", partial: false }, NOW)?.kind, "appunti");
+});
+
+test("«Con chi» in «Da smistare»: i nomi, o l'e-mail senza nome; senza chi ha registrato, «(note creator)» e «from …»", () => {
+  const raw = "Paola Verdi (note creator) from Lateral Space (paola@ls.test), Giulia Bianchi from Nardi (giulia@nardi.test), luca@topjet.test, Paola (paola.granola@altro.test), Giulia Bianchi from Nardi (giulia@nardi.test)";
+  assert.equal(unsortedParticipants(parseParticipants(raw), "PAOLA.granola@altro.test"), "Giulia Bianchi, luca@topjet.test");
+  assert.equal(unsortedParticipants(parseParticipants(raw), null), "Giulia Bianchi, luca@topjet.test, Paola");
+  assert.equal(unsortedParticipants([], null), "");
+  assert.equal(unsortedParticipants(parseParticipants(Array.from({ length: 80 }, (_, i) => `Persona Numero ${i}`).join(", ")), null).length <= GRANOLA_LIMITS.participantsMax, true);
 });
 
 test("le e-mail che contano: senza chi ha registrato e senza l'account collegato", () => {

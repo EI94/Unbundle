@@ -81,7 +81,14 @@ const MEETINGS: Record<string, FakeMeeting> = {
     summary: "Il gestionale è SAP Business One. Gli ordini arrivano via e-mail.",
     privateNotes: "Richiamare l'ufficio acquisti.",
   },
-  both: { id: `m-both-${suffix}`, title: `Nardi e TopJet a confronto ${suffix}`, meetingAt: ago(60 * 48), updatedAt: ago(60 * 47), participants: `Paola (${EMAIL.ls})`, summary: "Confronto tra due clienti." },
+  both: {
+    id: `m-both-${suffix}`,
+    title: `Nardi e TopJet a confronto ${suffix}`,
+    meetingAt: ago(60 * 48),
+    updatedAt: ago(60 * 47),
+    participants: `Paola Verdi (note creator) from Lateral Space (${EMAIL.ls}), Giulia Bianchi from Nardi (${EMAIL.cli}), ${EMAIL.out}`,
+    summary: "Confronto tra due clienti.",
+  },
   none: { id: `m-none-${suffix}`, title: `Riunione interna ${suffix}`, meetingAt: ago(60 * 50), updatedAt: ago(60 * 49), participants: `Paola (${EMAIL.ls})`, summary: "Organizzazione del lavoro interno." },
   word: { id: `m-word-${suffix}`, title: `Revisione Ferrari ${suffix}`, meetingAt: ago(60 * 72), updatedAt: ago(60 * 71), participants: `Paola (${EMAIL.ls})`, summary: "Revisione del progetto con il cliente." },
   health: {
@@ -484,7 +491,7 @@ test("«Da smistare» dal vivo; «Assegna» e «Lascia fuori»; il conto scende"
   const both = unsorted.find((m) => m.id === MEETINGS.both.id);
   assert.equal(both?.title, MEETINGS.both.title);
   assert.match(both?.date ?? "", /^\d{4}-\d{2}-\d{2}$/);
-  assert.equal(both?.participants, `Paola (${EMAIL.ls})`);
+  assert.equal(both?.participants, `Giulia Bianchi, ${EMAIL.out}`, "i nomi, o l'e-mail senza nome; senza chi ha registrato");
   assert.equal(await decisionOf(MEETINGS.both.id), undefined, "leggere «Da smistare» non salva niente");
   // Il cliente non vede «Da smistare».
   assert.equal(errorOf(await granola.listGranolaUnsorted(actor("cli", "wsN", "contributor"))), "permesso_mancante");

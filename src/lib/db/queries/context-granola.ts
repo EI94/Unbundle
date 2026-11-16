@@ -57,6 +57,7 @@ import {
   sameWords,
   searchWindow,
   stepFor,
+  unsortedParticipants,
 } from "@/lib/context/granola/sync-plan";
 import { openGranolaTokens, openGranolaVerifier, sealGranolaTokens, sealGranolaVerifier } from "@/lib/context/granola/token-crypto";
 import { scanNote } from "@/lib/context/scan";
@@ -1046,7 +1047,8 @@ export async function listGranolaUnsorted(actor: ContextActor): Promise<ServiceR
         id: head.id,
         title: head.title || CONTEXT_TEXT.fact.sourceCallWord,
         date: head.meetingAt ? romeDate(new Date(head.meetingAt)) : null,
-        participants: head.participantsRaw.replace(/\s+/g, " ").trim().slice(0, GRANOLA_LIMITS.participantsMax),
+        // I nomi (o l'e-mail di chi non ha un nome), senza chi ha registrato, senza «(note creator)» e «from …».
+        participants: unsortedParticipants(head.participants, live.connection.accountEmail),
       })),
     );
   } catch (error) {
