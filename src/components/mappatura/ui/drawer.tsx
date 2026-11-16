@@ -175,11 +175,16 @@ export function Compare(p: { was: ReactNode; now: ReactNode; wasLabel: string; n
   );
 }
 
-/** «Decide una persona» (P25, P27): la riga ambra, l'etichetta in mono, chi decide che cosa. */
-export function Human(p: { label: string; children: ReactNode }): JSX.Element {
+/**
+ * «Decide una persona» (P25, P27): la riga ambra, l'etichetta in mono, chi decide che cosa. Senza `label` (una decisione
+ * senza nome, sotto un blocco che dice già «Decide una persona») solo la riga e il testo, come sul riferimento, che
+ * scrive l'etichetta solo quando c'è il nome.
+ */
+export function Human(p: { label?: string | null; children: ReactNode }): JSX.Element {
+  const label = p.label?.trim();
   return (
     <div className="b-human" data-b="human">
-      <b>{p.label}</b>
+      {label ? <b>{label}</b> : null}
       {p.children}
     </div>
   );

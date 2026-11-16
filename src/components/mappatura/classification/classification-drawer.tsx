@@ -118,7 +118,7 @@ export function ClassificationDetails(p: { board: MappingBoard; place: StepPlace
         <DrawerList label={T.potential}>{step.aiPotential?.trim() ? <p>{step.aiPotential}</p> : EMPTY}</DrawerList>
         {hasHumanDecision(step) ? (
           <DrawerList label={T.decides}>
-            <Human label={step.decisionLabel?.trim() || T.decides}>{step.decision?.trim() || null}</Human>
+            <Human label={step.decisionLabel}>{step.decision?.trim() || null}</Human>
           </DrawerList>
         ) : null}
         <DrawerList label={T.exposure}>

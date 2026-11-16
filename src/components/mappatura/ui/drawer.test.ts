@@ -56,6 +56,8 @@ test("i blocchi del drawer: le colonne, l'etichetta in mono con il suo contenuto
     '<div class="b-compare" data-b="compare"><div><p class="b-k">Oggi</p><div class="b-was">Si fa a mano.</div></div><div><p class="b-k">Classificazione</p><div class="b-now">Si automatizza.</div></div></div>',
   );
   assert.equal(html(h(Human, { label: "Decide una persona" }, "Il buyer conferma l'ordine.")), '<div class="b-human" data-b="human"><b>Decide una persona</b>Il buyer conferma l&#x27;ordine.</div>');
+  // Senza nome della decisione, niente etichetta: il blocco sopra dice già «Decide una persona».
+  for (const label of [null, undefined, "  "]) assert.equal(html(h(Human, { label }, "Il buyer conferma l'ordine.")), '<div class="b-human" data-b="human">Il buyer conferma l&#x27;ordine.</div>');
 });
 
 test("il fuoco all'apertura: «Chiudi»; il primo campo del titolo o del corpo quando chiesto, e «Chiudi» se non c'è", () => {

@@ -91,6 +91,14 @@ test("il resto del passo: potenziale, la decisione con il suo nome, l'esposizion
   assert.match(plain, /<p class="b-k">AI exposure<\/p><p class="b-muted">—<\/p>/);
   assert.match(plain, /<p class="b-k">Use case<\/p><p class="b-muted">—<\/p>/);
   assert.doesNotMatch(plain, /Decide una persona/);
+  // Una decisione senza nome (i passi di prima della board, o l'assistente che non lo dà): «Decide una persona» una volta.
+  const unnamed: MappingBoard = {
+    ...board,
+    processes: board.processes.map((process) => ({ ...process, steps: process.steps.map((step) => (step.id === I.richieste ? { ...step, decisionLabel: null } : step)) })),
+  };
+  const once = drawer(unnamed, I.richieste);
+  assert.equal(once.match(/Decide una persona/gi)?.length, 1, "l'etichetta del blocco, non due volte");
+  assert.match(once, /<p class="b-k">Decide una persona<\/p><div class="b-human" data-b="human">Chi compra decide se la richiesta è completa\.<\/div>/);
 });
 
 test("in sola lettura le idee non si scrivono: niente «+ idea», le note spente, «—» se non ce ne sono", () => {
