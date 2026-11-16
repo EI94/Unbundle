@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createElement } from "react";
+import { createElement, type FunctionComponent } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { enableTsxImports } from "../../use-cases/detail/referent/tsx-test-loader.ts";
 import { fixtureBoard } from "../../../lib/mappatura/board-fixture.ts";
@@ -123,7 +123,9 @@ test("il primo disegno, sul server: lo stato è quello della board letta, e fuor
     return createElement("span", { "data-pill": pill }, String(steps));
   }
   const board = fixtureBoard();
-  const html = renderToStaticMarkup(createElement(BoardProvider, { workspaceId: board.unit.id, departmentId: board.unit.id, initial: board }, createElement(Pillola)));
+  // I figli dopo le props: il tipo di React li vorrebbe tra le props, la regola di lint no.
+  const Provider = BoardProvider as unknown as FunctionComponent<Omit<Parameters<typeof BoardProvider>[0], "children">>;
+  const html = renderToStaticMarkup(createElement(Provider, { workspaceId: board.unit.id, departmentId: board.unit.id, initial: board }, createElement(Pillola)));
   const steps = board.processes.reduce((sum, process) => sum + process.steps.length, 0);
   assert.equal(html, `<span data-pill="saved">${steps}</span>`);
   assert.deepEqual(seen, [0, PAGE_TOAST_HOST]);
