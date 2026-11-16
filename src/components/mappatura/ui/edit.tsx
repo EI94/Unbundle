@@ -344,11 +344,12 @@ export function LevelButtons<T extends string | number>(p: {
 
 /**
  * Il selettore a segmenti (P44): uno solo premuto; il punto ambra segna quello proposto (`recommended`), con
- * `recommendedLabel` come titolo e per gli screen reader («Proposto dall'assistente»).
+ * `recommendedLabel` come titolo e per gli screen reader («Proposto dall'assistente»). `ariaLabel`: il nome di
+ * un'opzione che si vede come un segno («—» si legge «Nessuno stream»).
  */
 export function Segmented<T extends string>(p: {
   label: string;
-  options: ReadonlyArray<{ value: T; label: string; recommended?: boolean }>;
+  options: ReadonlyArray<{ value: T; label: string; recommended?: boolean; ariaLabel?: string }>;
   value: T;
   disabled?: boolean;
   onChange(value: T): void;
@@ -361,6 +362,7 @@ export function Segmented<T extends string>(p: {
           key={option.value}
           type="button"
           className={option.recommended ? "b-rec" : undefined}
+          aria-label={option.ariaLabel ? [option.ariaLabel, option.recommended ? p.recommendedLabel : null].filter(Boolean).join(", ") : undefined}
           aria-pressed={option.value === p.value}
           disabled={p.disabled}
           title={option.recommended ? p.recommendedLabel : undefined}

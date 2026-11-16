@@ -146,6 +146,21 @@ test("i livelli e i segmenti: uno solo premuto, aria-pressed; il punto ambra su 
   assert.match(segmented, /^<div class="b-wsel" role="group" aria-label="Stream del passo" data-b="segmented"><button type="button" aria-pressed="true">Automate<\/button>/);
   assert.match(segmented, /<button type="button" class="b-rec" aria-pressed="false" title="Proposto dall&#x27;assistente">Differentiate<span class="b-sr"> Proposto dall&#x27;assistente<\/span><\/button>/);
   assert.equal((segmented.match(/aria-pressed="true"/g) ?? []).length, 1);
+  // Un'opzione che si vede come un segno ha il suo nome per gli screen reader; proposta, lo dice anche.
+  const named = html(
+    createElement(Segmented, {
+      label: "Stream del passo",
+      options: [
+        { value: "none", label: "—", ariaLabel: "Nessuno stream" },
+        { value: "mark", label: "◆", ariaLabel: "Segno", recommended: true },
+      ],
+      value: "none",
+      recommendedLabel: "Proposto dall'assistente",
+      onChange() {},
+    }),
+  );
+  assert.match(named, /<button type="button" aria-label="Nessuno stream" aria-pressed="true">—<\/button>/);
+  assert.match(named, /<button type="button" class="b-rec" aria-label="Segno, Proposto dall&#x27;assistente" aria-pressed="false" title="Proposto dall&#x27;assistente">◆/);
 });
 
 test("il campo con l'etichetta in mono; la conferma in linea; il blocco di una vista vuota", () => {

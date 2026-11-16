@@ -46,12 +46,13 @@ test("il selettore dello stream: uno premuto, il punto ambra sulla proposta dell
   const out = drawer(board, I.confronto);
   assert.match(
     out,
-    /<p class="b-k">Stream<\/p><div class="b-wsel" role="group" aria-label="Stream del passo" data-b="segmented"><button type="button" aria-pressed="true">Automate<\/button><button type="button" class="b-rec" aria-pressed="false" title="Proposto dall'assistente">Differentiate<span class="b-sr"> Proposto dall'assistente<\/span><\/button><button type="button" aria-pressed="false">Innovate<\/button><button type="button" aria-pressed="false">—<\/button><\/div>/,
+    /<p class="b-k">Stream<\/p><div class="b-wsel" role="group" aria-label="Stream del passo" data-b="segmented"><button type="button" aria-pressed="true">Automate<\/button><button type="button" class="b-rec" aria-pressed="false" title="Proposto dall'assistente">Differentiate<span class="b-sr"> Proposto dall'assistente<\/span><\/button><button type="button" aria-pressed="false">Innovate<\/button><button type="button" aria-label="Nessuno stream" aria-pressed="false">—<\/button><\/div>/,
   );
   const contributor = drawer({ ...board, can: { ...board.can, setStream: false } }, I.confronto);
-  assert.equal(contributor.match(/<button type="button"(?: class="b-rec")? aria-pressed="(?:true|false)" disabled=""/g)?.length, 4, "spento dal primo disegno");
+  assert.equal(contributor.match(/<button type="button"(?: class="b-rec")?(?: aria-label="Nessuno stream")? aria-pressed="(?:true|false)" disabled=""/g)?.length, 4, "spento dal primo disegno");
   // «—» premuto per un passo senza stream.
-  assert.match(drawer(board, I.ordine), /<button type="button" aria-pressed="true">—<\/button>/);
+  // Il segno «—» ha un nome per chi usa uno screen reader: «Nessuno stream» (§7.3).
+  assert.match(drawer(board, I.ordine), /<button type="button" aria-label="Nessuno stream" aria-pressed="true">—<\/button>/);
 });
 
 test("la scelta nel selettore: un'operazione dei revisori con lo stream di adesso; la stessa scelta, niente", () => {
@@ -59,11 +60,11 @@ test("la scelta nel selettore: un'operazione dei revisori con lo stream di adess
   assert.deepEqual(streamChoiceOp(I.confronto, "automate", "none"), { t: "step.stream", stepId: I.confronto, prev: "automate", next: null });
   assert.equal(streamChoiceOp(I.confronto, "automate", "automate"), null);
   assert.equal(streamChoiceOp(I.ordine, null, "none"), null);
-  assert.deepEqual(streamOptions(null).map((option) => [option.value, option.label, option.recommended === true]), [
-    ["automate", "Automate", false],
-    ["differentiate", "Differentiate", false],
-    ["innovate", "Innovate", false],
-    ["none", "—", false],
+  assert.deepEqual(streamOptions(null).map((option) => [option.value, option.label, option.recommended === true, option.ariaLabel ?? null]), [
+    ["automate", "Automate", false, null],
+    ["differentiate", "Differentiate", false, null],
+    ["innovate", "Innovate", false, null],
+    ["none", "—", false, "Nessuno stream"],
   ]);
 });
 

@@ -27,10 +27,11 @@ import { CLASSIFICATION_TEXT, onetLine, reliabilityText } from "./text.ts";
 type StreamChoice = Stream | "none";
 
 /** Le voci del selettore: i tre stream e «—»; il punto ambra su quello proposto dall'assistente. */
-export function streamOptions(proposed: Stream | null): Array<{ value: StreamChoice; label: string; recommended?: boolean }> {
+export function streamOptions(proposed: Stream | null): Array<{ value: StreamChoice; label: string; recommended?: boolean; ariaLabel?: string }> {
   return [
     ...STREAMS.map((stream) => ({ value: stream, label: STREAM_LABEL[stream], ...(proposed === stream ? { recommended: true } : {}) })),
-    { value: "none" as const, label: CLASSIFICATION_TEXT.drawer.none },
+    // «—» è un segno: a chi usa uno screen reader l'opzione dice «Nessuno stream» (§7.3).
+    { value: "none" as const, label: CLASSIFICATION_TEXT.drawer.none, ariaLabel: CLASSIFICATION_TEXT.drawer.noneLabel },
   ];
 }
 
