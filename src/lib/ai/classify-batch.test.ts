@@ -2,10 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { hang, installAppModules, message, recordLogs, refusal, THINKING, fakeAppClaude, type Reply } from "./claude-test-kit.ts";
 import { MIN_MODEL_CALL_MS } from "./models.ts";
+import { randomUUID } from "node:crypto";
+import type { CompleteDeps } from "../mappatura/complete.ts";
+import type { MappingToolDeps } from "./tools/activity-mapping-tools.ts";
 
 // (Migrazione a Claude Sonnet 5.5) La classificazione nei tre stream: un rifiuto o un errore del modello su
-// un'attività non fa perdere le altre. Moduli veri (classify.ts, il tool della chat, l'azione), database e sessione
-// finti; il modello è il Claude finto di claude-test-kit.ts, che risponde secondo l'attività nel prompt.
+// un'attività non fa perdere le altre. Moduli veri (classify.ts, il match O*NET, il tool della chat con il completamento
+// della mappatura, l'azione), database e sessione finti; il modello è il Claude finto di claude-test-kit.ts, che
+// risponde secondo l'attività nel prompt. (Mappatura board) Il tool completa l'unità con completeUnitMapping, su
+// dipendenze finte che registrano che cosa si scrive; l'azione scrive con recordClassifications, qui finta.
 
 type Prova = {
   activities: Array<Record<string, unknown>>;
@@ -13,8 +18,10 @@ type Prova = {
   /** I match O*NET scritti, per id dell'attività. */
   matched: string[];
   departmentUpdates: number;
+  /** I workspace per cui l'azione ha scritto le classificazioni (recordClassifications). */
+  recordedFor: string[];
 };
-const prova: Prova = { activities: [], classified: [], matched: [], departmentUpdates: 0 };
+const prova: Prova = { activities: [], classified: [], matched: [], departmentUpdates: 0, recordedFor: [] };
 (globalThis as { __prova?: Prova }).__prova = prova;
 
 await installAppModules({
@@ -23,24 +30,63 @@ await installAppModules({
     return { role: "transformation_lead", workspace: { id: "ws-prova", organizationId: "org-prova" } };
   }`,
   "next/cache": `export function revalidatePath() {}`,
-  "@/lib/db/queries/activities": `
-    export async function getActivitiesByWorkspace() { return globalThis.__prova.activities; }
-    export async function getActivitiesByDepartment() { return globalThis.__prova.activities; }
-    export async function updateActivityClassification(id, classification, confidence) { globalThis.__prova.classified.push([id, classification, confidence]); }
-    export async function updateActivity(id) { globalThis.__prova.matched.push(id); }`,
-  "@/lib/db/queries/workspaces": `
-    export async function getWorkspaceById() { return { id: "ws-prova", organizationId: "org-prova" }; }
-    export async function getStrategicGoalsByWorkspace() { return []; }`,
-  "@/lib/db/schema": `export const organizations = { id: "id" }; export const activities = {}; export const activityDependencies = {}; export const departments = { id: "id" };`,
+  "@/lib/db/queries/activities": `export async function getActivitiesByWorkspace() { return globalThis.__prova.activities; }`,
+  "@/lib/db/queries/workspaces": `export async function getStrategicGoalsByWorkspace() { return []; }`,
+  "@/lib/db/schema": `export const organizations = { id: "id" };`,
   "drizzle-orm": `export const eq = (column, value) => ({ column, value });`,
   "@/lib/db": `export const db = {
     select: () => ({ from: () => ({ where: () => ({ limit: async () => [{ id: "org-prova", companyValueThesis: null }] }) }) }),
-    update: () => ({ set: () => ({ where: async () => { globalThis.__prova.departmentUpdates += 1; } }) }),
   };`,
+  "@/lib/db/uc-executor": `export const EXECUTOR = { batch() { throw new Error("niente SQL in questa prova"); } };
+    export async function getAppUcExecutor() { return EXECUTOR; }`,
+  // Il completamento vero; la scrittura delle classificazioni del workspace, finta.
+  "@/lib/mappatura/complete": `export * from ${JSON.stringify(new URL("../mappatura/complete.ts", import.meta.url).href)};
+    export async function recordClassifications(executor, workspaceId, results) {
+      globalThis.__prova.recordedFor.push(workspaceId);
+      for (const [id, result] of results) globalThis.__prova.classified.push([id, result.classification, result.confidenceScore]);
+      return results.size;
+    }`,
 });
 const { classifyActivitiesBatch, skippedClassificationsText } = await import("./classify.ts");
+const { matchActivitiesToOnet } = await import("./onet-matching.ts");
 const { runClassificationAction } = await import("../actions/classify.ts");
+const { completeUnitMapping } = await import("../mappatura/complete.ts");
 const { getActivityMappingTools } = await import("./tools/activity-mapping-tools.ts");
+
+/** Le dipendenze del completamento: l'unità con le attività della prova; quello che si scrive finisce nella prova. */
+const completeDeps = (): CompleteDeps => ({
+  async loadUnit() {
+    return { unitName: "Reparto di prova", activities: prova.activities as never, companyValueThesis: null, goals: [] };
+  },
+  async markMapped() {
+    prova.departmentUpdates += 1;
+    return { first: prova.departmentUpdates === 1 };
+  },
+  async saveSummary() {},
+  async saveClassifications(_scope, results) {
+    for (const [id, result] of results) prova.classified.push([id, result.classification, result.confidenceScore]);
+  },
+  async saveOnetMatches(_scope, matches) {
+    for (const match of matches) prova.matched.push(match.activityId);
+    return matches.length;
+  },
+  classify: classifyActivitiesBatch,
+  matchOnet: matchActivitiesToOnet,
+});
+const unused = async () => {
+  throw new Error("non serve al completamento");
+};
+const TOOL_DEPS: MappingToolDeps = {
+  executor: async () => ({ batch: unused }),
+  storeReady: async () => true,
+  readBoard: unused,
+  resolveProcess: unused,
+  saveBoardOps: unused,
+  completeDeps,
+  complete: completeUnitMapping,
+  newId: () => randomUUID(),
+};
+const ACTOR = { kind: "assistente", userId: "utente-prova", role: "transformation_lead" } as const;
 
 /** Quattro attività (due giri da tre): una rifiutata dopo un JSON completo, una con un errore dell'API. */
 const ACTIVITIES = [
@@ -66,7 +112,7 @@ const byActivity: Reply = (init) => {
  * è data) e chiamato come lo chiama streamText.
  */
 async function markDepartmentMapped(summary: string, deadline = Date.now() + 10 * 60_000) {
-  const { execute } = getActivityMappingTools("ws-prova", "reparto-prova", { deadline }).markDepartmentMapped;
+  const { execute } = getActivityMappingTools("ws-prova", "reparto-prova", { deadline, actor: ACTOR }, TOOL_DEPS).markDepartmentMapped;
   return (await execute!({ summary }, { toolCallId: "toolu_prova", messages: [] })) as { success: boolean; message: string };
 }
 
@@ -75,6 +121,7 @@ function reset() {
   prova.classified = [];
   prova.matched = [];
   prova.departmentUpdates = 0;
+  prova.recordedFor = [];
   return fakeAppClaude(ACTIVITIES.map(() => byActivity));
 }
 
@@ -97,6 +144,8 @@ test("l'azione «Classifica attività»: scrive le riuscite e dice quante sono r
   recordLogs(t);
   reset();
   const result = await runClassificationAction("ws-prova");
+  // (Mappatura board) Scrive con recordClassifications, per il workspace dell'azione: mai fuori da lui.
+  assert.deepEqual(prova.recordedFor, ["ws-prova"]);
   assert.deepEqual(prova.classified, [
     ["a-1", "automate", 0.8],
     ["a-4", "automate", 0.8],
@@ -231,7 +280,7 @@ test("«Completo mapping»: il tempo delle chiamate si conta quando il tool part
   const start = Date.now();
   // La rotta costruisce i tool all'inizio della richiesta, con la scadenza tra 60 secondi; il modello chiama
   // «Completo mapping» dopo 40: la classificazione e il match O*NET hanno i 20 che restano.
-  const { execute } = getActivityMappingTools("ws-prova", "reparto-prova", { deadline: start + 60_000 }).markDepartmentMapped;
+  const { execute } = getActivityMappingTools("ws-prova", "reparto-prova", { deadline: start + 60_000, actor: ACTOR }, TOOL_DEPS).markDepartmentMapped;
   t.mock.method(Date, "now", () => start + 40_000);
   await execute!({ summary: "Una attività." }, { toolCallId: "toolu_prova", messages: [] });
   assert.deepEqual(requested, [20_000, 20_000]);

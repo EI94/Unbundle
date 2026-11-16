@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import { tool } from "ai";
 import { z } from "zod";
 import { ev, hang, installAppModules, recordLogs, sse, fakeAppClaude } from "./claude-test-kit.ts";
+import { FIXTURE_IDS, fixtureBoard } from "../mappatura/board-fixture.ts";
+import type { MappingBoard } from "../mappatura/board-model.ts";
+import { boardContextBlock } from "./prompts/activity-mapping.ts";
 
 // (Migrazione a Claude Sonnet 5.5) La rotta vera della chat (/api/ai/chat): che cosa salva, che cosa mette nella
 // memoria della chat (RAG) e che cosa manda al browser. Sessione, database, memoria e tool dei reparti finti; il
@@ -23,8 +26,18 @@ type Prova = {
   toolArgs: unknown[][];
   /** Se vero, la ricerca web è il tool vero (src/lib/ai/tools/web-search-tool.ts), con il Claude finto. */
   realWebSearch?: boolean;
+  /** (Mappatura board) La board dell'unità «reparto-prova»; le letture della board, come [scope, chi guarda]. */
+  board: MappingBoard;
+  boardReads: unknown[][];
+  /** Quante volte la rotta ha cercato o creato la conversazione. */
+  conversations: number;
 };
-const prova: Prova = { saved: [], deleted: [], reads: 0, indexed: [], tools: {}, toolArgs: [] };
+/** La board inventata (board-fixture.ts), con l'id dell'unità che usano le prove di questo file. */
+const boardOfUnit = (): MappingBoard => {
+  const board = fixtureBoard();
+  return { ...board, unit: { ...board.unit, id: "reparto-prova" } };
+};
+const prova: Prova = { saved: [], deleted: [], reads: 0, indexed: [], tools: {}, toolArgs: [], board: boardOfUnit(), boardReads: [], conversations: 0 };
 (globalThis as { __prova?: Prova }).__prova = prova;
 
 await installAppModules({
@@ -45,8 +58,8 @@ await installAppModules({
     return globalThis.__prova.realWebSearch ? realWebSearchTool(...args) : {};
   }`,
   "@/lib/db/queries/conversations": `
-    export async function getActiveConversation() { return { id: "conv-prova" }; }
-    export async function createConversation() { return { id: "conv-prova" }; }
+    export async function getActiveConversation() { globalThis.__prova.conversations += 1; return { id: "conv-prova" }; }
+    export async function createConversation() { globalThis.__prova.conversations += 1; return { id: "conv-prova" }; }
     export async function saveMessage(message) {
       globalThis.__prova.saved.push(message);
       return { id: "msg-" + globalThis.__prova.saved.length, ...message };
@@ -64,7 +77,14 @@ await installAppModules({
   "@/lib/ai/rag/retriever": `
     export async function retrieveRelevantContext() { return []; }
     export function indexConversationMessage(conversationId, workspaceId, content, role) { globalThis.__prova.indexed.push([role, content]); return Promise.resolve(); }`,
-  "@/lib/db/schema": `export const uploadedDocuments = {}; export const organizations = {}; export const activities = {};`,
+  "@/lib/db/schema": `export const uploadedDocuments = {}; export const organizations = {};`,
+  "@/lib/db/uc-executor": `export async function getAppUcExecutor() { return { batch() { throw new Error("la rotta non scrive SQL da sé"); } }; }`,
+  // (Mappatura board) La board dell'unità di questo workspace; un'altra unità non c'è (readBoard restituisce null).
+  "@/lib/mappatura/board-store": `export async function readBoard(executor, scope, viewer) {
+    globalThis.__prova.boardReads.push([scope, viewer]);
+    const board = globalThis.__prova.board;
+    return scope.workspaceId === "ws-prova" && scope.departmentId.toLowerCase() === board.unit.id ? board : null;
+  }`,
   "drizzle-orm": `export const eq = (column, value) => ({ column, value }); export const and = (...parts) => ({ and: parts });`,
   "@/lib/db": `export const db = {
     select: () => ({ from: () => ({ where: () => Object.assign(Promise.resolve([]), { limit: async () => [{ id: "org-prova", companyValueThesis: null }] }) }) }),
@@ -104,6 +124,9 @@ function reset() {
   prova.tools = {};
   prova.toolArgs = [];
   delete prova.realWebSearch;
+  prova.board = boardOfUnit();
+  prova.boardReads = [];
+  prova.conversations = 0;
 }
 
 const HISTORY = [
@@ -631,4 +654,60 @@ test("la ricerca vera fermata alla scadenza dei tool (orologio finto): il modell
       label,
     );
   }
+});
+
+// ─── (Mappatura board) L'unità della chat dell'activity mapping (docs/mappatura/MAPPATURA-BOARD-PIANO.md §5.4, §6) ───
+
+test("(mappatura board) un'unità di un altro workspace: 404 prima di leggere la conversazione; niente al modello, niente salvato", async (t) => {
+  recordLogs(t);
+  reset();
+  const requests = fakeAppClaude([]);
+  const { status } = await chat(HISTORY, "activity_mapping", "reparto-altrui");
+  assert.equal(status, 404);
+  assert.deepEqual(prova.boardReads, [[{ workspaceId: "ws-prova", departmentId: "reparto-altrui" }, { userId: "utente-prova", role: "transformation_lead" }]]);
+  assert.equal(requests.length, 0, "nessuna chiamata al modello");
+  assert.equal(prova.conversations, 0, "la conversazione non si legge e non si crea");
+  assert.deepEqual(prova.saved, [], "la domanda non si salva");
+  assert.deepEqual(prova.toolArgs, [], "i tool non si costruiscono");
+});
+
+test("(mappatura board) la chat dell'activity mapping senza unità: 400, niente letto, niente salvato", async (t) => {
+  recordLogs(t);
+  reset();
+  const requests = fakeAppClaude([]);
+  for (const departmentId of [undefined, "", "   "]) {
+    const { status } = await chat(HISTORY, "activity_mapping", departmentId);
+    assert.equal(status, 400, JSON.stringify(departmentId));
+  }
+  assert.equal(requests.length, 0);
+  assert.deepEqual([prova.boardReads, prova.conversations, prova.saved], [[], 0, []]);
+});
+
+test("(mappatura board) il modello riceve la board dell'unità con gli id dei passi; i tool l'unità come la scrive il database e l'assistente come attore", async (t) => {
+  recordLogs(t);
+  reset();
+  const requests = fakeAppClaude([sse([ev.start("msg_1"), ...ev.text(0, "Partiamo dalla raccolta delle richieste."), ...ev.end("end_turn")])]);
+  const { status } = await chat(HISTORY, "activity_mapping", " REPARTO-PROVA ");
+  assert.equal(status, 200);
+  const system = JSON.stringify(requests[0].body.system);
+  assert.ok(system.includes(JSON.stringify(boardContextBlock(prova.board)).slice(1, -1)), "il blocco della board, com'è");
+  assert.match(system, /--- LA BOARD DI QUESTA UNITÀ ---/);
+  assert.ok(system.includes(`- [${FIXTURE_IDS.richieste}] \\"Raccolta delle richieste\\" (confermato; enrichment): Le richieste degli uffici`));
+  assert.doesNotMatch(system, /ATTIVITÀ GIÀ SALVATE/);
+  const [[name, workspaceId, unitId, options]] = prova.toolArgs;
+  assert.deepEqual([name, workspaceId, unitId], ["activity-mapping", "ws-prova", "reparto-prova"]);
+  assert.deepEqual((options as { actor: unknown }).actor, { kind: "assistente", userId: "utente-prova", role: "transformation_lead" });
+});
+
+test("(mappatura board) il blocco della board: processi e passi in ordine, il loro stato e il tipo di lavoro; niente senza processi", () => {
+  const board = fixtureBoard();
+  const block = boardContextBlock(board);
+  assert.deepEqual(block.split("\n").slice(0, 4), ["", "--- LA BOARD DI QUESTA UNITÀ ---", "Processo «Dalla richiesta all'ordine»:", `- [${FIXTURE_IDS.richieste}] "Raccolta delle richieste" (confermato; enrichment): Le richieste degli uffici arrivano per e-mail e si copiano in un foglio.`]);
+  assert.ok(block.includes(`- [${FIXTURE_IDS.confronto}] "Confronto delle offerte" (da validare; detection): Per ogni richiesta si chiedono tre offerte e si confrontano.`));
+  assert.ok(block.includes(`- [${FIXTURE_IDS.controllo}] "Controllo della merce" (confermato; senza tipo)\n`), "senza descrizione, niente due punti");
+  assert.ok(block.trimEnd().endsWith("Questi passi sono già sulla board. NON ri-salvarli: per cambiarli usa `updateActivity`."));
+  assert.equal(boardContextBlock(fixtureBoard({ empty: true })), "");
+  const onlyProcess = { ...board, processes: [{ ...board.processes[0], steps: [] }] };
+  assert.equal(boardContextBlock(onlyProcess), "\n--- LA BOARD DI QUESTA UNITÀ ---\nProcesso «Dalla richiesta all'ordine»:\n(nessun passo)\n");
+  assert.match(boardContextBlock({ ...board, store: "mancante" }), /La board si sta aggiornando: per qualche minuto i passi non si salvano\.\n$/);
 });

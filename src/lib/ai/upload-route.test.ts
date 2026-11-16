@@ -17,6 +17,8 @@ type Prova = {
   deleteError?: Error;
 };
 const prova: Prova = { blobs: 0, deletedBlobs: [], inserted: [], indexed: 0 };
+const OWN_UNIT = "d1d1d1d1-0000-4000-8000-000000000001";
+const FOREIGN_UNIT = "d1d1d1d1-0000-4000-8000-000000000002";
 (globalThis as { __prova?: Prova }).__prova = prova;
 
 await installAppModules({
@@ -37,14 +39,21 @@ await installAppModules({
       globalThis.__prova.deletedBlobs.push(url);
     }`,
   "@/lib/ai/rag/chunker": `export async function indexDocument() { globalThis.__prova.indexed += 1; }`,
+  // (Mappatura board) Le unità: una di questo workspace, una di un altro.
+  "@/lib/db/queries/workspaces": `export async function getDepartmentById(id) {
+    globalThis.__prova.unitReads = (globalThis.__prova.unitReads ?? 0) + 1;
+    const units = { ${JSON.stringify(OWN_UNIT)}: "ws-prova", ${JSON.stringify(FOREIGN_UNIT)}: "ws-altrui" };
+    return units[id.toLowerCase()] ? { id: id.toLowerCase(), workspaceId: units[id.toLowerCase()] } : null;
+  }`,
 });
 const { POST } = await import("../../app/api/documents/upload/route.ts");
 
-/** Il caricamento di un PDF, come lo fa il browser. */
-function upload() {
+/** Il caricamento di un PDF, come lo fa il browser (con l'unità, dalla board della mappatura). */
+function upload(departmentId?: string) {
   const form = new FormData();
   form.set("file", new File([new Uint8Array([37, 80, 68, 70, 45, 49, 46, 52])], "organigramma.pdf", { type: "application/pdf" }));
   form.set("workspaceId", "ws-prova");
+  if (departmentId !== undefined) form.set("departmentId", departmentId);
   return POST(new Request("http://localhost/api/documents/upload", { method: "POST", body: form }));
 }
 
@@ -162,4 +171,28 @@ test("la riga non si scrive e nemmeno la cancellazione riesce: 500, due righe di
     '[documents/upload] upload_non_riuscito {"error":{"name":"NeonDbError","code":"23505"}}',
   ]);
   for (const line of lines) assert.doesNotMatch(line, /organigramma|riservato|documento\.pdf|blob\.example|documents\/ws-prova/i);
+});
+
+test("(mappatura board) un'unità di un altro workspace, o un id che non è un'unità: 400 prima di leggere il file; niente al modello, niente salvato", async (t) => {
+  recordLogs(t);
+  for (const departmentId of [FOREIGN_UNIT, "d1d1d1d1-0000-4000-8000-000000000009", "reparto-prova"]) {
+    reset();
+    const requests = fakeAppClaude([]);
+    const response = await upload(departmentId);
+    assert.equal(response.status, 400, departmentId);
+    assert.deepEqual(await response.json(), { error: "Unità non valida" });
+    assert.equal(requests.length, 0, `${departmentId}: nessuna chiamata al modello`);
+    assert.deepEqual({ blobs: prova.blobs, inserted: prova.inserted.length, indexed: prova.indexed }, { blobs: 0, inserted: 0, indexed: 0 });
+  }
+});
+
+test("(mappatura board) un'unità di questo workspace: il documento si salva con lei; senza unità (la Discovery) come sempre", async (t) => {
+  recordLogs(t);
+  for (const [departmentId, saved] of [[OWN_UNIT.toUpperCase(), OWN_UNIT.toUpperCase()], ["", undefined], [undefined, undefined]] as const) {
+    reset();
+    fakeAppClaude([message([THINKING, { type: "text", text: TEXT }]), message([THINKING, { type: "text", text: "- Tre funzioni." }])]);
+    const response = await upload(departmentId);
+    assert.equal(response.status, 200, String(departmentId));
+    assert.equal(prova.inserted[0]?.departmentId, saved, String(departmentId));
+  }
 });

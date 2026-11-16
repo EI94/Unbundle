@@ -6,7 +6,7 @@ import { getLeadershipTools } from "@/lib/ai/tools/leadership-tools";
 import { getActivityMappingTools } from "@/lib/ai/tools/activity-mapping-tools";
 import { getWebSearchTool } from "@/lib/ai/tools/web-search-tool";
 import { DISCOVERY_SYSTEM_PROMPT } from "@/lib/ai/prompts/discovery";
-import { ACTIVITY_MAPPING_SYSTEM_PROMPT } from "@/lib/ai/prompts/activity-mapping";
+import { ACTIVITY_MAPPING_SYSTEM_PROMPT, boardContextBlock } from "@/lib/ai/prompts/activity-mapping";
 import { withAgentReliability } from "@/lib/ai/agent-reliability";
 import { chatHistory, closingQuestions, refusedQuestionIds } from "@/lib/ai/chat-history";
 import {
@@ -27,9 +27,12 @@ import {
   createConversation,
 } from "@/lib/db/queries/conversations";
 import { db } from "@/lib/db";
-import { uploadedDocuments, organizations, activities } from "@/lib/db/schema";
+import { uploadedDocuments, organizations } from "@/lib/db/schema";
+import { getAppUcExecutor } from "@/lib/db/uc-executor";
 import { eq, and } from "drizzle-orm";
 import { retrieveRelevantContext, indexConversationMessage } from "@/lib/ai/rag/retriever";
+import type { MappingBoard } from "@/lib/mappatura/board-model";
+import { readBoard } from "@/lib/mappatura/board-store";
 
 /** Vercel / Next: consenti più round LLM dopo i tool (webSearch, salvataggi DB, ecc.) */
 export const maxDuration = 120;
@@ -62,6 +65,21 @@ export async function POST(req: Request) {
     return new Response("Workspace not found", { status: 404 });
   }
   const { workspace } = access;
+  // (Mappatura board) La chat dell'activity mapping vale per un'unità di questo workspace, prima di leggere o creare la
+  // conversazione e di salvare la domanda: senza unità 400, un'unità di un altro workspace 404. La board letta qui è
+  // quella che la persona vede: il modello la riceve come contesto, e i tool scrivono solo su di lei.
+  let mappingBoard: MappingBoard | null = null;
+  if (conversationType === "activity_mapping") {
+    if (typeof departmentId !== "string" || !departmentId.trim()) {
+      return new Response("Missing required fields", { status: 400 });
+    }
+    mappingBoard = await readBoard(await getAppUcExecutor(), { workspaceId, departmentId: departmentId.trim() }, { userId: session.user.id, role: access.role });
+    if (!mappingBoard) {
+      return new Response("Unit not found", { status: 404 });
+    }
+  }
+  // L'id dell'unità come lo scrive il database: la conversazione, i documenti e i tool usano sempre lo stesso.
+  const unitId = mappingBoard?.unit.id ?? departmentId;
   // «Programma» (rilascio 7): dipendenti e ricavo dalla chat li scrive solo chi li scriverebbe nella pagina.
   const { canEditProgram } = await import("@/lib/db/queries/use-case-program");
   const { viewerFromSession } = await import("@/lib/db/queries/use-case-hub");
@@ -157,33 +175,10 @@ export async function POST(req: Request) {
       };
       break;
     case "activity_mapping": {
-      let mappingContext = contextBlock;
+      // I processi e i passi della board, con i loro id (src/lib/ai/prompts/activity-mapping.ts).
+      let mappingContext = contextBlock + (mappingBoard ? boardContextBlock(mappingBoard) : "");
 
-      if (departmentId) {
-        const existingActivities = await db
-          .select({
-            id: activities.id,
-            title: activities.title,
-            description: activities.description,
-            workType: activities.workType,
-            timeSpentHoursWeek: activities.timeSpentHoursWeek,
-          })
-          .from(activities)
-          .where(
-            and(
-              eq(activities.workspaceId, workspaceId),
-              eq(activities.departmentId, departmentId)
-            )
-          );
-
-        if (existingActivities.length > 0) {
-          mappingContext += `\n--- ATTIVITÀ GIÀ SALVATE PER QUESTO DIPARTIMENTO (${existingActivities.length}) ---\n`;
-          for (const act of existingActivities) {
-            mappingContext += `- [${act.id}] "${act.title}" (${act.workType ?? "non classificata"}): ${act.description ?? ""}\n`;
-          }
-          mappingContext += `\nQueste attività sono già nel database. NON ri-salvarle. Usale come base per il deep dive.\n`;
-        }
-
+      if (unitId) {
         const deptDocs = await db
           .select({
             fileName: uploadedDocuments.fileName,
@@ -193,7 +188,7 @@ export async function POST(req: Request) {
           .where(
             and(
               eq(uploadedDocuments.workspaceId, workspaceId),
-              eq(uploadedDocuments.departmentId, departmentId)
+              eq(uploadedDocuments.departmentId, unitId)
             )
           );
 
@@ -209,7 +204,7 @@ export async function POST(req: Request) {
 
       systemPrompt = ACTIVITY_MAPPING_SYSTEM_PROMPT + mappingContext;
       tools = {
-        ...getActivityMappingTools(workspaceId, departmentId!, { deadline: toolsDeadline }),
+        ...getActivityMappingTools(workspaceId, unitId!, { deadline: toolsDeadline, actor: { kind: "assistente", userId: session.user.id, role: access.role } }),
         ...getWebSearchTool({ deadline: toolsDeadline }),
       };
       break;
@@ -230,7 +225,7 @@ export async function POST(req: Request) {
       | "activity_mapping"
       | "analysis"
       | "general",
-    departmentId
+    unitId
   );
 
   if (!conversation) {
@@ -243,7 +238,7 @@ export async function POST(req: Request) {
         | "activity_mapping"
         | "analysis"
         | "general",
-      departmentId,
+      departmentId: unitId,
       title:
         conversationType === "leadership_setup"
           ? "Discovery"
