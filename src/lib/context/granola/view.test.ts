@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { CONTEXT_TEXT } from "../text.ts";
 import {
+  folderOptions,
   granolaCardState,
   granolaCompactLine,
   granolaFlashLine,
@@ -80,4 +81,14 @@ test("persone e domini: e-mail, domini (anche con @ davanti), separatori diversi
 test("le parole nel titolo: separate da virgole, senza doppioni, con le frasi di più parole", () => {
   assert.deepEqual(splitTitleWords("Ferrari, nardi ;  Officina   Nardi", ["Nardi"]), ["Nardi", "Ferrari", "Officina Nardi"]);
   assert.deepEqual(splitTitleWords("  ", ["Nardi"]), ["Nardi"]);
+});
+
+test("il menu delle cartelle: prima solo quella scelta; poi quelle di Granola, e quella scelta se su Granola non c'è più", () => {
+  const nardi = { id: "f-nardi", name: "Nardi" };
+  const topjet = { id: "f-topjet", name: "TopJet" };
+  assert.deepEqual(folderOptions(null, null), []);
+  assert.deepEqual(folderOptions(null, nardi), [nardi]);
+  assert.deepEqual(folderOptions([topjet, nardi], nardi), [topjet, nardi]);
+  assert.deepEqual(folderOptions([topjet], nardi), [nardi, topjet], "tolta su Granola: resta in testa");
+  assert.deepEqual(folderOptions([topjet], null), [topjet]);
 });

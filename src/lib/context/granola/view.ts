@@ -109,6 +109,17 @@ export function splitTitleWords(input: string, current: readonly string[] = []):
   return out;
 }
 
+type Folder = { id: string; name: string };
+
+/**
+ * Le voci del menu «Cartella di Granola»: finché le cartelle non sono lette, solo quella scelta; dopo, quelle di Granola,
+ * con in testa quella scelta se su Granola non c'è più (così si vede, e si può togliere).
+ */
+export function folderOptions(loaded: readonly Folder[] | null, current: Folder | null): Folder[] {
+  if (!loaded) return current ? [current] : [];
+  return current && !loaded.some((f) => f.id === current.id) ? [current, ...loaded] : [...loaded];
+}
+
 /** La riga compatta della vista «Memoria»: solo quando c'è qualcosa da dire. */
 export function granolaCompactLine(i: { syncing: boolean; last: { status: string; imported: number; updated: number } | null; unsortedCount: number }): { text: string; toNotes: boolean } | null {
   if (i.syncing) return { text: T.refreshing, toNotes: false };

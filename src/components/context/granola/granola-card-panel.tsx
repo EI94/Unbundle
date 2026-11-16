@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { disconnectGranolaAction, listGranolaFoldersAction, saveGranolaRulesAction, startGranolaConnectAction } from "@/lib/actions/context-granola";
-import { splitPeopleEntries, splitTitleWords, type GranolaCardState, type Line } from "@/lib/context/granola/view";
+import { folderOptions, splitPeopleEntries, splitTitleWords, type GranolaCardState, type Line } from "@/lib/context/granola/view";
 import { CONTEXT_TEXT } from "@/lib/context/text";
 import type { GranolaRulesView } from "@/lib/db/queries/context-granola";
 import { cn } from "@/lib/utils";
@@ -185,7 +185,7 @@ function GranolaRulesForm({ workspaceId, workspaceName, rules }: { workspaceId: 
       router.refresh();
     });
 
-  const options = folders ?? (folder ? [folder] : []);
+  const options = folderOptions(folders, folder);
   const onEnter = (run: () => void) => (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
       event.preventDefault();
