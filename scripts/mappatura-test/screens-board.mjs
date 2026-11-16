@@ -7,8 +7,9 @@
 // dove una vista ne rispecchia una, misura i numeri del riferimento (BOARD-SPEC §6, manifest.json) e si ferma con un
 // errore se uno non torna:
 // - i tre font caricati; titolo della vista 42 px a 1440 e 28 px a 390; titolo della board 28 px; scheda 13,5 px con il
-//   numero d'ordine in mono 10,5 px; etichetta della riga 136 px (160 da 1500 px di board); card di una riga larghe
-//   uguali, almeno 170 px; numero dei riquadri 30 px in serif; testata 127 ± 8 px a 1440;
+//   numero d'ordine in mono 10,5 px; etichetta della riga 136 px (160 da 1500 px di board); ogni card della mappa larga
+//   quanto il token --board-card (188 px, il riferimento a 1440), in ogni riga; numero dei riquadri 30 px in serif;
+//   testata 127 ± 8 px a 1440;
 // - la mappa che scorre nel suo riquadro a 390, e la pagina che non scorre mai di lato, in ogni vista; con la mappa fatta
 //   scorrere fino in fondo l'etichetta di ogni riga al bordo sinistro, le righe larghe uguali, «+ passo» dentro la riga;
 // - il drawer di 920 px a 1440 e di tutta la larghezza a 390; il pannello dell'assistente agganciato (380 px) a 1440 e
@@ -192,6 +193,9 @@ function measure() {
 
 // ─── I controlli ─────────────────────────────────────────────────────
 
+/** La larghezza di una card della mappa: il token di board.css. */
+const CARD = Number(/--board-card:\s*(\d+(?:\.\d+)?)px/.exec(readFileSync(join(REPO, "src/components/mappatura/board.css"), "utf8"))?.[1]);
+
 function check(name, config, m, expected, failures) {
   const fail = (what) => failures.push(`${config.dir} ${name}: ${what}`);
   const near = (value, want, tolerance, what) => {
@@ -215,10 +219,10 @@ function check(name, config, m, expected, failures) {
   if (m.rowLabel !== null) near(m.rowLabel, m.board !== null && m.board >= 1500 ? 160 : 136, 0.5, "etichetta della riga");
   m.rows.forEach(({ widths }, index) => {
     if (widths.length === 0) return;
-    // Le card della stessa riga sono larghe uguali, con o senza maniglia: anche senza (sola lettura, «Classificazione»)
-    // la card parte da 170 px (board.css), così il bordo dell'attrito da 4 px non la allarga (sul riferimento di 3 px).
-    if (Math.max(...widths) - Math.min(...widths) > 1) fail(`riga ${index + 1}: card di larghezze diverse ${widths.join(", ")}`);
-    if (Math.min(...widths) < 170) fail(`riga ${index + 1}: card più strette di 170 px (${Math.min(...widths)})`);
+    // Le card sono tutte della larghezza del riferimento (--board-card, 188 px), con o senza maniglia e in ogni riga: una
+    // riga corta non le stira, e la mappa si legge come una griglia. Il bordo dell'attrito non allarga la card.
+    const off = widths.filter((value) => Math.abs(value - CARD) > 0.5);
+    if (off.length) fail(`riga ${index + 1}: card larghe ${widths.join(", ")}, attese ${CARD}`);
   });
   // La testata della board (con le schede): 127 px sul riferimento. L'elenco delle unità non ha schede: il titolo ha sotto
   // il suo spazio, e non tocca la riga della testata.

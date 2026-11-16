@@ -110,13 +110,13 @@ test("i token della board: scuro per default, chiaro sotto il selettore del tema
   assert.equal(lightRule.selector, LIGHT);
   assert.match(darkRule.body, /color-scheme:\s*dark;/);
   assert.match(lightRule.body, /color-scheme:\s*light;/);
-  const colours = (tokens: Record<string, string>) => Object.fromEntries(Object.entries(tokens).filter(([name]) => !/^--board-(font-|radius$|shell-top$)/.test(name)).map(([name, value]) => [name.replace("--board-", ""), value]));
+  const colours = (tokens: Record<string, string>) => Object.fromEntries(Object.entries(tokens).filter(([name]) => !/^--board-(font-|radius$|shell-top$|card$)/.test(name)).map(([name, value]) => [name.replace("--board-", ""), value]));
   assert.deepEqual(colours(darkTokens), DARK);
   assert.deepEqual(colours(lightTokens), LIGHT_VALUES);
   // Il chiaro ridefinisce ogni colore dello scuro, tranne quelli che non cambiano con il tema; e nient'altro.
   assert.deepEqual(Object.keys(DARK).filter((name) => !(name in LIGHT_VALUES)).sort(), [...SAME_IN_LIGHT].sort());
   assert.deepEqual(Object.keys(LIGHT_VALUES).filter((name) => !(name in DARK)), []);
-  assert.deepEqual(Object.keys(lightTokens).filter((name) => /^--board-(font-|radius$|shell-top$)/.test(name)), [], "font e misure non cambiano con il tema");
+  assert.deepEqual(Object.keys(lightTokens).filter((name) => /^--board-(font-|radius$|shell-top$|card$)/.test(name)), [], "font e misure non cambiano con il tema");
   // I token dell'app dentro la board prendono la tavolozza della board (un componente dell'app che finisce qui).
   assert.equal(appRule.selector, ROOT);
   const app = declarations(appRule.body);
@@ -233,12 +233,13 @@ const DEVIATIONS: Record<string, Record<string, string>> = {
   },
   [`${ROOT} .b-pm-row`]: {
     "min-width":
-      "segue i passi della riga più lunga della mappa (--steps, lo stesso per ogni riga, come la larghezza fissa del riferimento, che ne tiene sei) e lo spazio di «+ passo» (--b-after)",
+      "segue i passi della riga più lunga della mappa (--steps, lo stesso per ogni riga, come la larghezza fissa del riferimento, che ne tiene sei), card della larghezza del riferimento e frecce, e lo spazio di «+ passo» (--b-after)",
   },
   [`@container board (max-width:1499px)|${ROOT} .b-pm-row`]: { "min-width": "come sopra, con l'etichetta di 136 px" },
   [`${ROOT} .b-node`]: { transition: "anche l'opacità: «Evidenzia attriti» sfuma i passi senza attrito (sul riferimento sfumano le note, con la stessa durata)" },
   [`${ROOT} .b-pm-steps .b-node`]: {
-    flex: "base di 170 px, non 0: le card di una riga restano larghe uguali (P12) anche quando il bordo dell'attrito (4 px) e quello neutro (1 px) differiscono; sul riferimento la card con il bordo spesso è 3 px più larga",
+    flex: "la larghezza del riferimento a 1440 (188 px, --board-card: sei card riempiono la mappa di 1382 px come lì), fissa: le card non si stirano per riempire una riga corta e la mappa si legge come una griglia (decisione del coordinatore, 16/11); il bordo dell'attrito non allarga la card",
+    "min-width": "la stessa larghezza fissa (--board-card), non il minimo di 170 px del riferimento",
   },
   [`${ROOT} .b-node .b-none`]: { color: "«da classificare» è un testo, non un segno: il grigio dei testi (7,5:1), non graphite-3 (2,4:1)" },
   [`${ROOT} .b-human b`]: { color: "l'etichetta di «Decide una persona» è un testo: amber-text (6,2:1 sul foglio in chiaro), non amber-deep (3,9:1)" },

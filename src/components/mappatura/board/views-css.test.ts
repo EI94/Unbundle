@@ -82,3 +82,32 @@ test("nelle tabelle impilate del telefono il nome della colonna e i passi stanno
   // «Passi: » è il ::before della cella (board.css): un blocco dopo di lui andrebbe a capo.
   assert.ok(board.some((rule) => rule.selector === "[data-board-root] .b-tbl.b-stack td[data-l]::before"));
 });
+
+// ─── La mappa: card della larghezza del riferimento, in griglia ──────
+
+/** Una dichiarazione di una regola di board.css (o del foglio delle viste), nel contesto dato. */
+const rule = (sheet: typeof board, selector: string, at: string | null = null) => sheet.find((item) => item.at === at && item.selector === `[data-board-root] ${selector}`)?.declarations;
+
+test("le card della mappa: la larghezza del riferimento a 1440, mai stirate per riempire una riga corta; la mappa si legge come una griglia", () => {
+  // Il token: 188 px, la card della riga di sei passi del riferimento a 1440 (188,7 px nella sua mappa di 1382 px, BOARD-SPEC
+  // §6 la arrotonda a 189): sei card in sola lettura stanno nella mappa di 1440 senza farla scorrere, come lì.
+  assert.equal(board.find((item) => item.at === null && item.selector === "[data-board-root]" && item.declarations.has("--board-card"))?.declarations.get("--board-card"), "188px");
+  assert.ok(136 + 24 + 6 * 188 + 5 * 18 <= 1382, "sei passi nella mappa del riferimento a 1440");
+  // La card, con o senza la maniglia: base fissa, niente crescita, mai più stretta.
+  for (const selector of [".b-pm-steps .b-node", ".b-node-w"]) {
+    const declared = rule(board, selector);
+    assert.equal(declared?.get("flex")?.replace(/\s+/g, " "), "0 0 var(--board-card)", `${selector}: flex`);
+    assert.equal(declared?.get("min-width"), "var(--board-card)", `${selector}: min-width`);
+  }
+  // Dentro la card con la maniglia la card riempie il suo posto, e niente di più.
+  assert.equal(rule(board, ".b-node-w > .b-node")?.get("flex"), "1 1 auto");
+  // Ogni riga è larga quanto la più lunga: n card della stessa larghezza, n − 1 frecce, i margini, l'etichetta.
+  const arrow = rule(board, ".b-arrow")?.get("width");
+  const padding = rule(board, ".b-pm-steps")?.get("padding");
+  assert.deepEqual([arrow, padding], ["18px", "12px"]);
+  for (const [at, label] of [[null, "160px"], ["@container board (max-width:1499px)", "136px"]] as const) {
+    const row = rule(board, ".b-pm-row", at);
+    assert.equal(row?.get("grid-template-columns"), `${label} minmax(0,1fr)`);
+    assert.equal(row?.get("min-width"), `calc(${label} + 24px + var(--steps, 1) * (var(--board-card) + 18px) - 18px + var(--b-after, 0px))`, `${at ?? "sempre"}: la larghezza della riga`);
+  }
+});
