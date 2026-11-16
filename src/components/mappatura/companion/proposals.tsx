@@ -29,15 +29,28 @@ const STEP_CHECK = (
   </svg>
 );
 
-/** Una riga per proposta, da scegliere o togliere (`aria-pressed`): titolo, descrizione, tipo di lavoro, ore, strumenti. */
-export function ProposalList(p: { items: readonly PreGeneratedActivity[]; chosen: ReadonlySet<number>; disabled?: boolean; onToggle(index: number): void }): JSX.Element {
+/**
+ * Una riga per proposta, da scegliere o togliere (`aria-pressed`): titolo, descrizione, tipo di lavoro, ore, strumenti.
+ * `busy`: i passi si stanno aggiungendo, e le righe non si cambiano (restano raggiungibili).
+ */
+export function ProposalList(p: { items: readonly PreGeneratedActivity[]; chosen: ReadonlySet<number>; busy?: boolean; onToggle(index: number): void }): JSX.Element {
   return (
     <div className="b-comp-props" data-b="proposals">
       {p.items.map((item, index) => {
         const meta = [item.workType ? workTypeLabel(item.workType) : null, typeof item.estimatedHoursWeek === "number" ? `${formatHours(item.estimatedHoursWeek)} h a settimana` : null].filter(Boolean);
         const tools = (item.toolsUsed ?? []).filter((tool) => tool.trim() !== "");
         return (
-          <button key={index} type="button" className="b-comp-prop" aria-pressed={p.chosen.has(index)} disabled={p.disabled} onClick={() => p.onToggle(index)}>
+          <button
+            key={index}
+            type="button"
+            className="b-comp-prop"
+            aria-pressed={p.chosen.has(index)}
+            // Mentre i passi si aggiungono restano raggiungibili (aria-disabled): il fuoco resta nel drawer (F1).
+            aria-disabled={p.busy || undefined}
+            onClick={() => {
+              if (!p.busy) p.onToggle(index);
+            }}
+          >
             <span className="b-comp-tick" aria-hidden="true">
               {p.chosen.has(index) ? STEP_CHECK : null}
             </span>
@@ -118,7 +131,17 @@ export function Proposals(p: { workspaceId: string; departmentId: string; disabl
   const adding = phase === "adding";
   return (
     <>
-      <BoardButton small disabled={p.disabled || phase !== "idle"} aria-busy={phase === "reading" || undefined} onClick={() => void propose()} data-action="propose">
+      {/* Mentre legge resta raggiungibile (aria-disabled): spento, il fuoco cadrebbe sulla pagina (F1). */}
+      <BoardButton
+        small
+        disabled={p.disabled}
+        aria-disabled={phase !== "idle" || undefined}
+        aria-busy={phase === "reading" || undefined}
+        onClick={() => {
+          if (phase === "idle") void propose();
+        }}
+        data-action="propose"
+      >
         {phase === "reading" ? T.reading : T.propose}
       </BoardButton>
       <Drawer
@@ -129,12 +152,26 @@ export function Proposals(p: { workspaceId: string; departmentId: string; disabl
         context={chosenText(chosen.size, items.length)}
         title={T.drawerTitle}
       >
-        <ProposalList items={items} chosen={chosen} disabled={adding} onToggle={toggle} />
+        <ProposalList items={items} chosen={chosen} busy={adding} onToggle={toggle} />
         <div className="b-comp-foot">
-          <BoardButton disabled={adding} onClick={() => setPhase("idle")}>
+          <BoardButton
+            aria-disabled={adding || undefined}
+            onClick={() => {
+              if (!adding) setPhase("idle");
+            }}
+          >
             {T.cancel}
           </BoardButton>
-          <BoardButton variant="primary" disabled={adding || chosen.size === 0} aria-busy={adding || undefined} onClick={() => void add()}>
+          {/* Mentre aggiunge resta raggiungibile (aria-disabled): il fuoco resta nel drawer finché si chiude (F1). */}
+          <BoardButton
+            variant="primary"
+            disabled={chosen.size === 0}
+            aria-disabled={adding || undefined}
+            aria-busy={adding || undefined}
+            onClick={() => {
+              if (!adding) void add();
+            }}
+          >
             {addStepsLabel(chosen.size)}
           </BoardButton>
         </div>

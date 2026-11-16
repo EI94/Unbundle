@@ -31,14 +31,14 @@
 /* Il campo, fermo in fondo al pannello che scorre: largo quanto il pannello, con lo stesso margine dentro e sotto. */
 [data-board-root] .b-comp-form { position: sticky; bottom: 0; display: flex; gap: 8px; align-items: flex-end; margin: 0 -22px; padding: 10px 22px 16px; border-top: 1px solid var(--board-line); background: var(--board-paper); }
 [data-board-root] .b-comp-input { flex: 1 1 auto; min-height: 38px; max-height: 200px; resize: none; overflow-y: auto; padding: 8px 10px; font-size: 13.5px; line-height: 1.45; }
-[data-board-root] .b-comp-input[disabled] { cursor: not-allowed; }
+[data-board-root] .b-comp-input[disabled], [data-board-root] .b-comp-input[aria-disabled="true"] { cursor: not-allowed; }
 [data-board-root] .b-comp-form .b-btn { flex: none; height: 38px; }
 
 /* ── «Passi dai documenti»: una riga da scegliere per proposta, e il piede del drawer con «Annulla» e il bottone pieno ── */
 [data-board-root] .b-comp-props { display: flex; flex-direction: column; gap: 8px; }
 [data-board-root] .b-comp-prop { appearance: none; display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 10px; align-items: start; width: 100%; padding: 10px 12px; border: 1px solid var(--board-line-strong); border-radius: 7px; background: var(--board-paper); color: var(--board-ink-2); font: inherit; text-align: left; cursor: pointer; }
 [data-board-root] .b-comp-prop:hover { border-color: var(--board-graphite-3); }
-[data-board-root] .b-comp-prop[disabled] { opacity: .6; cursor: not-allowed; }
+[data-board-root] .b-comp-prop[disabled], [data-board-root] .b-comp-prop[aria-disabled="true"] { opacity: .6; cursor: not-allowed; }
 [data-board-root] .b-comp-tick { display: grid; place-items: center; width: 18px; height: 18px; border: 1px solid var(--board-line-strong); border-radius: 4px; background: var(--board-bone); }
 [data-board-root] .b-comp-prop[aria-pressed="true"] .b-comp-tick { border-color: var(--board-ink); background: var(--board-ink); color: var(--board-bone); }
 [data-board-root] .b-comp-prop-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 13px; }

@@ -195,18 +195,30 @@ export function BoardTabs<T extends string>(p: {
 /**
  * La pillola dello stato (P70–P75, BOARD-SPEC §3.4): il punto (verde salvato, ambra da salvare o in salvataggio, grigio
  * altrimenti) e la scritta; «Salva ora» accanto solo con modifiche da salvare. È una regione viva educata (P85).
- * `compact`: solo il punto, con la scritta per gli screen reader (la riga delle schede sul telefono).
+ * `compact`: solo il punto, con la scritta per gli screen reader (la riga delle schede sul telefono). «Salva ora» sparisce
+ * appena il salvataggio parte: prima porta il fuoco sulla pillola (che lo prende senza entrare nel giro del Tab), che
+ * dice «Salvataggio…» e poi «Salvato» (F1).
  */
 export function StatusPill(p: { state: PillState | "loading"; savedAt: string | null; compact?: boolean; onSaveNow?: () => void }): JSX.Element {
   const text = pillText(p.state, p.savedAt);
+  const pill = useRef<HTMLSpanElement>(null);
+  const saves = Boolean(p.onSaveNow) && !p.compact;
   return (
     <>
-      <span className={cx("b-status", p.compact && "b-compact")} data-s={p.state} role="status" aria-live="polite" data-b="pill">
+      <span ref={pill} className={cx("b-status", p.compact && "b-compact")} data-s={p.state} role="status" aria-live="polite" tabIndex={saves ? -1 : undefined} data-b="pill">
         <span className="b-dot" aria-hidden="true" />
         <span className={p.compact ? "b-sr" : undefined}>{text}</span>
       </span>
-      {p.onSaveNow && p.state === "dirty" && !p.compact ? (
-        <button type="button" className="b-btn b-small" data-b="save-now" onClick={p.onSaveNow}>
+      {saves && p.state === "dirty" ? (
+        <button
+          type="button"
+          className="b-btn b-small"
+          data-b="save-now"
+          onClick={(event) => {
+            if (event.currentTarget.ownerDocument.activeElement === event.currentTarget) pill.current?.focus({ preventScroll: true });
+            p.onSaveNow?.();
+          }}
+        >
           {BOARD_TEXT.buttons.saveNow}
         </button>
       ) : null}

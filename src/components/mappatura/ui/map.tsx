@@ -77,6 +77,8 @@ export function StepArrow(): JSX.Element {
  */
 export function StepCard(p: {
   code: string;
+  /** L'id del passo, in `data-step-id`: dove torna il fuoco quando un altro passo sparisce. */
+  stepId?: string;
   title: string;
   description?: string | null;
   who?: readonly string[];
@@ -102,6 +104,7 @@ export function StepCard(p: {
       data-pain={pain}
       data-stream={stream?.stream ?? undefined}
       data-step={p.code}
+      data-step-id={p.stepId}
       data-dimmed={p.dimmed ? "" : undefined}
       aria-haspopup="dialog"
       onClick={() => p.onOpen()}

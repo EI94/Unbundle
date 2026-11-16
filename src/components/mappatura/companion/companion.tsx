@@ -247,7 +247,16 @@ export function Companion(p: CompanionProps): JSX.Element {
       {showSuggestions ? (
         <div className="b-comp-sugg">
           {COMPANION_TEXT.suggestions.map((suggestion) => (
-            <button key={suggestion} type="button" className="b-fchip" onClick={() => send(suggestion)}>
+            <button
+              key={suggestion}
+              type="button"
+              className="b-fchip"
+              onClick={() => {
+                // I suggerimenti spariscono con il primo messaggio: il cursore va nel campo, dove si continua (F1).
+                field.current?.focus();
+                send(suggestion);
+              }}
+            >
               {suggestion}
             </button>
           ))}
@@ -260,12 +269,14 @@ export function Companion(p: CompanionProps): JSX.Element {
           rows={1}
           aria-label={F.label}
           placeholder={busy ? F.waiting : F.placeholder}
-          disabled={busy}
+          // Mentre aspetta la risposta il campo non si scrive ma tiene il cursore: spento, il fuoco cadrebbe sulla pagina (F1).
+          readOnly={busy}
+          aria-disabled={busy || undefined}
           onInput={grow}
           onKeyDown={onKeyDown}
           data-b="companion-input"
         />
-        <BoardButton type="submit" aria-label={F.send} title={F.send} disabled={busy} data-action="send">
+        <BoardButton type="submit" aria-label={F.send} title={F.send} aria-disabled={busy || undefined} data-action="send">
           {SEND_ICON}
         </BoardButton>
       </form>

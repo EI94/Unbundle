@@ -29,6 +29,7 @@ function body(board: MappingBoard, stepId: string, options: { editable?: boolean
     dispatch: log.record("dispatch"),
     openStep: log.record("openStep"),
     close: log.record("close"),
+    removeStep: log.record("removeStep"),
     notify: log.record("notify"),
     newId: () => `f0000000-0000-4000-8000-${String(++seq).padStart(12, "0")}`,
     setAdding: log.record("setAdding"),
@@ -80,12 +81,9 @@ test("in fondo: da dove viene il passo, «Conferma il passo» pieno (la strada a
   // Un passo confermato si può rimettere da validare, con un bottone contornato.
   const confirmed = body(board, I.ordine);
   assert.equal(clickable(confirmed.tree, "Segna da validare").props.variant, "outline");
-  // Eliminare: il passo sparisce, il toast offre «Annulla», il drawer si chiude.
+  // Eliminare: chi monta il drawer toglie il passo (con «Annulla»), chiude il drawer e porta il fuoco alla card vicina.
   press(confirmed.tree, "Elimina il passo");
-  assert.deepEqual(confirmed.log.calls, [
-    ["dispatch", { t: "step.remove", stepId: I.ordine }, { undo: "Passo eliminato." }],
-    ["close"],
-  ]);
+  assert.deepEqual(confirmed.log.calls, [["removeStep", I.ordine]]);
   // Un passo che uno use case elenca non si elimina: lo dice subito, e niente parte.
   const linkedBoard = { ...board, processes: board.processes.map((process) => ({ ...process, steps: process.steps.map((step) => (step.id === I.ordine ? { ...step, useCaseIds: ["uc-1"] } : step)) })) };
   const linked = body(linkedBoard, I.ordine);
@@ -235,9 +233,9 @@ test("un passo nuovo nasce dal suo titolo, con il cursore dentro; senza titolo n
   assert.equal(drawerFocus({ kind: "draft", processId: null }), "title");
   assert.equal(drawerFocus({ kind: "step", stepId: I.ordine }), "close");
   const source = readFileSync(new URL("./step-drawer.tsx", import.meta.url), "utf8");
-  assert.match(source, /<Drawer open=\{open\} onClose=\{p\.actions\.close\} wide context=\{head\.context\} title=\{head\.title\} initialFocus=\{drawerFocus\(target\)\}>/);
+  assert.match(source, /<Drawer open=\{open\} onClose=\{p\.actions\.close\} wide context=\{head\.context\} title=\{head\.title\} initialFocus=\{drawerFocus\(target\)\} finalFocus=\{p\.finalFocus\}>/);
   // Il passo appena nato porta il cursore nella descrizione.
-  const created = StepDrawerBody({ board, place: locateStep(board, I.ordine)!, editable: true, created: true, addingLane: null, actions: { dispatch() {}, openStep() {}, close() {}, notify() {}, newId, setAdding() {} } });
+  const created = StepDrawerBody({ board, place: locateStep(board, I.ordine)!, editable: true, created: true, addingLane: null, actions: { dispatch() {}, openStep() {}, close() {}, removeStep() {}, notify() {}, newId, setAdding() {} } });
   const description = elements(created, EXPAND).find((element) => element.props.label === "Descrizione del passo")!;
   assert.equal(description.props.autoFocus, true);
 });

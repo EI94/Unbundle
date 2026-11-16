@@ -37,7 +37,9 @@ test("il dialogo: Base UI, modale, dentro la radice della board; velo e pannello
   assert.match(drawer, /<Dialog\.Root\s+open=\{p\.open\}\s+onOpenChange=\{\(open\) => \{\s+if \(!open\) p\.onClose\(\);\s+\}\}/, "Escape e il clic sul velo chiudono, con onClose");
   assert.match(drawer, /<Dialog\.Portal container=\{root \?\? undefined\}>/, "il portale sta nella radice della board");
   assert.match(drawer, /<Dialog\.Backdrop className=\{\(state\) => cx\("b-scrim", shown\(state\) && "b-on"\)\}/);
-  assert.match(drawer, /<Dialog\.Popup className=\{\(state\) => cx\("b-drawer", p\.wide && "b-wide", shown\(state\) && "b-on"\)\} aria-labelledby=\{titleId\} initialFocus=\{initialFocus\}/);
+  assert.match(drawer, /<Dialog\.Popup\s+className=\{\(state\) => cx\("b-drawer", p\.wide && "b-wide", shown\(state\) && "b-on"\)\}\s+aria-labelledby=\{titleId\}\s+initialFocus=\{initialFocus\}/);
+  // Alla chiusura il fuoco va dove dice chi usa il drawer (un passo eliminato: la card vicina), o dove lo rimette il dialogo.
+  assert.match(drawer, /finalFocus=\{p\.finalFocus \? \(\) => p\.finalFocus\?\.\(\) \?\? true : undefined\}/);
   assert.match(drawer, /<DrawerFrame context=\{p\.context\} title=\{p\.title\} titleId=\{titleId\} toastHost=\{toastHost\} onClose=\{p\.onClose\} closeRef=\{closeRef\} titleRef=\{titleRef\} bodyRef=\{bodyRef\}>/);
   // Il fuoco all'apertura: «Chiudi», il campo del titolo di un passo appena aggiunto (P30), o il primo campo del corpo.
   assert.match(drawer, /const initialFocus = \(\) => drawerInitialFocus\(p\.initialFocus, \{ title: titleRef\.current, body: bodyRef\.current, close: closeRef\.current \}\);/);

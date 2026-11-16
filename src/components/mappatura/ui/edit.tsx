@@ -21,6 +21,7 @@ import { BOARD_TEXT, formatCount, noteCaption, votesLabel } from "../../../lib/m
 import { MAPPING_LIMITS } from "../../../lib/mappatura/vocab.ts";
 import { PAGE_TOAST_HOST, useOptionalBoardState, useToastHost } from "../store/use-board.tsx";
 import { AddButton, BoardButton, Chip, RemoveIcon } from "./atoms.tsx";
+import { fieldHolder, focusBeforeRemoving, keepFocusAfter, type FocusNode } from "./focus.ts";
 
 const cx = (...names: Array<string | false | null | undefined>) => names.filter(Boolean).join(" ");
 
@@ -112,26 +113,8 @@ export interface FieldKeyEvent {
   stopPropagation(): void;
 }
 
-/**
- * Dove va il fuoco quando la persona lascia un campo con Escape: il drawer che lo tiene, o la vista della board (il suo
- * pannello, che prende il fuoco senza entrare nel giro del Tab). Mai la pagina: il Tab dopo ripartirebbe dalla barra
- * laterale dell'app, anche con un drawer aperto (F1, F2).
- */
-export function fieldHolder(field: Pick<Element, "closest">): HTMLElement | null {
-  return (field.closest('[role="dialog"]') ?? field.closest('[role="tabpanel"]')) as HTMLElement | null;
-}
-
-/**
- * Dopo un controllo che sparisce sotto il fuoco («Usa gli stream proposti» applicato, «Annulla» del toast): il fuoco va
- * dove stava il controllo, nel drawer o nella vista (`fieldHolder`), o nella vista aperta della board se il controllo
- * stava fuori (il toast in fondo alla pagina). Solo se il fuoco è andato perso: niente lo ruba a chi lo ha preso.
- */
-export function keepFocusAfter(control: Pick<Element, "closest">, doc: Pick<Document, "activeElement" | "body"> | null = typeof document === "undefined" ? null : document): void {
-  if (!doc) return;
-  const target = fieldHolder(control) ?? (control.closest("[data-board-root]")?.querySelector('[role="tabpanel"]:not([hidden])') as HTMLElement | null) ?? null;
-  const active = doc.activeElement;
-  if (target && (!active || active === doc.body || active === control)) target.focus({ preventScroll: true });
-}
+// Dove va il fuoco quando un controllo sparisce (F1): focus.ts, che anche gli atomi usano.
+export { fieldHolder, focusBeforeRemoving, focusKeeper, keepFocusAfter } from "./focus.ts";
 
 /**
  * I tasti che lasciano un campo sul posto. Invio (`enter`: su una riga; su più righe con Cmd/Ctrl) salva e lascia il
@@ -307,7 +290,16 @@ export function NoteItem(p: { note: BoardNote; label: string; disabled?: boolean
           <button type="button" aria-label={toggle} title={toggle} onClick={() => p.onToggle()}>
             <CheckIcon />
           </button>
-          <button type="button" aria-label={BOARD_TEXT.note.removeLabel} title={BOARD_TEXT.note.remove} onClick={() => p.onRemove()}>
+          <button
+            type="button"
+            aria-label={BOARD_TEXT.note.removeLabel}
+            title={BOARD_TEXT.note.remove}
+            onClick={(event) => {
+              // La nota se ne va con la sua «×»: il fuoco va alla «×» della nota vicina, o a «+ nota» (F1).
+              focusBeforeRemoving(event.currentTarget as unknown as FocusNode, '[data-b="note"]');
+              p.onRemove();
+            }}
+          >
             <RemoveIcon />
           </button>
         </div>

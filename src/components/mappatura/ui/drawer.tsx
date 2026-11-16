@@ -91,9 +91,19 @@ const shown = (state: TransitionState) => state.open && state.transitionStatus !
 /**
  * Il drawer (P29–P33): un dialogo modale con la testa del riferimento. `initialFocus`: «Chiudi» (default), il primo
  * campo del titolo per un passo appena aggiunto (P30, P53), o il primo campo del corpo (`drawerInitialFocus`).
- * Chiuderlo lascia la pagina dov'era; il fuoco torna a chi l'ha aperto.
+ * Chiuderlo lascia la pagina dov'era; il fuoco torna a chi l'ha aperto. `finalFocus`: dove va il fuoco alla chiusura
+ * quando chi l'ha aperto non c'è più (un passo eliminato); null lascia fare al dialogo.
  */
-export function Drawer(p: { open: boolean; onClose(): void; wide?: boolean; context: string; title: ReactNode; initialFocus?: DrawerFocus; children: ReactNode }): JSX.Element {
+export function Drawer(p: {
+  open: boolean;
+  onClose(): void;
+  wide?: boolean;
+  context: string;
+  title: ReactNode;
+  initialFocus?: DrawerFocus;
+  finalFocus?: () => HTMLElement | null;
+  children: ReactNode;
+}): JSX.Element {
   const root = useSyncExternalStore(noSubscription, findBoardRoot, noBoardRoot);
   const titleId = useId();
   const toastHost = useId();
@@ -111,7 +121,13 @@ export function Drawer(p: { open: boolean; onClose(): void; wide?: boolean; cont
     >
       <Dialog.Portal container={root ?? undefined}>
         <Dialog.Backdrop className={(state) => cx("b-scrim", shown(state) && "b-on")} data-b="scrim" />
-        <Dialog.Popup className={(state) => cx("b-drawer", p.wide && "b-wide", shown(state) && "b-on")} aria-labelledby={titleId} initialFocus={initialFocus} data-b="drawer">
+        <Dialog.Popup
+          className={(state) => cx("b-drawer", p.wide && "b-wide", shown(state) && "b-on")}
+          aria-labelledby={titleId}
+          initialFocus={initialFocus}
+          finalFocus={p.finalFocus ? () => p.finalFocus?.() ?? true : undefined}
+          data-b="drawer"
+        >
           <DrawerFrame context={p.context} title={p.title} titleId={titleId} toastHost={toastHost} onClose={p.onClose} closeRef={closeRef} titleRef={titleRef} bodyRef={bodyRef}>
             {p.children}
           </DrawerFrame>

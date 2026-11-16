@@ -15,6 +15,7 @@ import type { ButtonHTMLAttributes, JSX, ReactNode } from "react";
 import { firstSentence } from "../../../lib/mappatura/board-model.ts";
 import { BOARD_TEXT, exposureBadgeLabel, removeChipLabel, streamLabel } from "../../../lib/mappatura/text.ts";
 import type { Stream } from "../../../lib/mappatura/vocab.ts";
+import { focusBeforeRemoving, type FocusNode } from "./focus.ts";
 
 const cx = (...names: Array<string | false | null | undefined>) => names.filter(Boolean).join(" ");
 
@@ -75,7 +76,16 @@ export function Chip(p: { tool?: boolean; onRemove?: () => void; removeLabel?: s
     <span className={cx("b-chip", p.tool && "b-tool")} data-b="chip">
       {p.children}
       {p.onRemove ? (
-        <button type="button" aria-label={label} title={label} onClick={p.onRemove}>
+        <button
+          type="button"
+          aria-label={label}
+          title={label}
+          onClick={(event) => {
+            // Il chip se ne va con la sua «×»: il fuoco va alla «×» del chip vicino, o a «+ ruolo» (F1).
+            focusBeforeRemoving(event.currentTarget as unknown as FocusNode, '[data-b="chip"]');
+            p.onRemove?.();
+          }}
+        >
           <RemoveIcon />
         </button>
       ) : null}

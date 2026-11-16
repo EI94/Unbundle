@@ -5,6 +5,9 @@ import { allSteps, locateStep, type MappingBoard } from "../../../lib/mappatura/
 import { applyOps, boardOpSchema, type BoardOp } from "../../../lib/mappatura/board-ops.ts";
 import type { OpInput } from "../store/board-client.ts";
 import {
+  drawerReturnFocus,
+  focusAfterRemoval,
+  mapFocusSelector,
   analysisShown,
   boardEditable,
   boardEmpty,
@@ -280,4 +283,39 @@ test("le righe delle unità: lo stato mostrato, i conteggi, quello che resta da 
     { value: "59,5 h", label: "ore a settimana" },
     { value: "6", label: "passi da validare" },
   ]);
+});
+
+test("dopo «Elimina il passo» il fuoco va alla card prima nella riga, o a quella dopo, o a «+ passo» della riga vuota (F1)", () => {
+  const board = fixtureBoard();
+  const [first, second] = board.processes[0].steps;
+  const last = board.processes[0].steps.at(-1)!;
+  // Nel mezzo e in fondo: la card prima; in testa: quella dopo.
+  assert.deepEqual(focusAfterRemoval(board, second.id), { kind: "step", stepId: first.id });
+  assert.deepEqual(focusAfterRemoval(board, last.id), { kind: "step", stepId: board.processes[0].steps.at(-2)!.id });
+  assert.deepEqual(focusAfterRemoval(board, first.id), { kind: "step", stepId: second.id });
+  // L'unico passo della riga: «+ passo» di quella riga. Un passo che non c'è: niente.
+  const alone = { ...board, processes: [{ ...board.processes[1], steps: board.processes[1].steps.slice(0, 1) }] };
+  assert.deepEqual(focusAfterRemoval(alone, alone.processes[0].steps[0].id), { kind: "add", processId: alone.processes[0].id });
+  assert.equal(focusAfterRemoval(board, "f0f0f0f0-0000-4000-8000-000000000999"), null);
+  assert.equal(mapFocusSelector({ kind: "step", stepId: first.id }), `[data-b="step"][data-step-id="${first.id}"]`);
+  assert.equal(mapFocusSelector({ kind: "add", processId: I.processB }), `[data-add-step="${I.processB}"]`);
+});
+
+test("alla chiusura del drawer: il posto deciso, chi l'ha aperto se c'è ancora, la card del passo o la vista; mai la pagina", () => {
+  const found = new Map<string, { name: string }>([
+    [`[data-b="step"][data-step-id="${I.richieste}"]`, { name: "card A1" }],
+    [`[data-add-step="${I.processB}"]`, { name: "+ passo B" }],
+  ]);
+  const view = { name: "vista", querySelector: (selector: string) => found.get(selector) ?? null };
+  const gone = { isConnected: false };
+  const there = { isConnected: true };
+  // Dopo «Elimina il passo»: il posto deciso; se non si trova, la vista.
+  assert.equal(drawerReturnFocus({ view, planned: { kind: "step", stepId: I.richieste }, opener: gone, stepId: null })?.name, "card A1");
+  assert.equal(drawerReturnFocus({ view, planned: { kind: "add", processId: I.processB }, opener: gone, stepId: null })?.name, "+ passo B");
+  assert.equal(drawerReturnFocus({ view, planned: { kind: "step", stepId: I.scelta }, opener: gone, stepId: null })?.name, "vista");
+  // Chi l'ha aperto c'è ancora: lo rimette il dialogo (null).
+  assert.equal(drawerReturnFocus({ view, planned: null, opener: there, stepId: I.richieste }), null);
+  // Non c'è più (il blocco dell'unità vuota, sparito con il primo passo): la card del passo del drawer, o la vista.
+  assert.equal(drawerReturnFocus({ view, planned: null, opener: gone, stepId: I.richieste })?.name, "card A1");
+  assert.equal(drawerReturnFocus({ view, planned: null, opener: null, stepId: null })?.name, "vista");
 });

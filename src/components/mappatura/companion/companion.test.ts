@@ -122,7 +122,13 @@ test("le proposte dai documenti: una riga da scegliere per proposta, con titolo,
   assert.match(out, /^<div class="b-comp-props" data-b="proposals"><button type="button" class="b-comp-prop" aria-pressed="true"><span class="b-comp-tick" aria-hidden="true"><svg/);
   assert.match(out, /<b>Raccolta delle richieste<\/b><span>Le richieste arrivano per e-mail\.<\/span><small>Raccolta dati · 4,5 h a settimana<\/small><span class="b-chips"><span class="b-chip b-tool">E-mail<\/span><\/span>/);
   assert.match(out, /<button type="button" class="b-comp-prop" aria-pressed="false"><span class="b-comp-tick" aria-hidden="true"><\/span><span class="b-comp-prop-body"><b>Invio dell'ordine<\/b><\/span><\/button><\/div>$/);
-  assert.match(html(h(ProposalList, { items, chosen: new Set(), disabled: true, onToggle() {} })), /<button type="button" class="b-comp-prop" aria-pressed="false" disabled=""/);
+  // Mentre i passi si aggiungono le righe restano raggiungibili ma non si cambiano (F1).
+  let toggled = 0;
+  const busy = ProposalList({ items, chosen: new Set(), busy: true, onToggle: () => void (toggled += 1) });
+  assert.match(html(busy), /<button type="button" class="b-comp-prop" aria-pressed="false" aria-disabled="true"/);
+  assert.doesNotMatch(html(busy), /disabled=""/);
+  ((busy.props.children as Array<{ props: { onClick(): void } }>)[0].props.onClick)();
+  assert.equal(toggled, 0);
 });
 
 test("il caricamento: un invio per file con il workspace e l'unità; il toast dice se è andato tutto", async () => {

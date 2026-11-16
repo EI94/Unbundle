@@ -60,7 +60,17 @@ export function Documents(p: { workspaceId: string; departmentId: string; disabl
   return (
     <>
       <input ref={input} type="file" accept={DOCUMENT_ACCEPT} multiple hidden tabIndex={-1} aria-hidden="true" onChange={(event) => void onFiles(event.currentTarget.files)} data-b="companion-files" />
-      <BoardButton small disabled={p.disabled || uploading} aria-busy={uploading || undefined} onClick={() => input.current?.click()} data-action="upload">
+      {/* Mentre carica il bottone resta raggiungibile (aria-disabled): spento, il fuoco cadrebbe sulla pagina (F1). */}
+      <BoardButton
+        small
+        disabled={p.disabled}
+        aria-disabled={uploading || undefined}
+        aria-busy={uploading || undefined}
+        onClick={() => {
+          if (!uploading) input.current?.click();
+        }}
+        data-action="upload"
+      >
         {uploading ? T.uploading : T.upload}
       </BoardButton>
     </>

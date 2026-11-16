@@ -44,6 +44,8 @@ export interface StepActions {
   dispatch(ops: OpInput | OpInput[], options?: { undo?: string }): void;
   openStep(stepId: string): void;
   close(): void;
+  /** «Elimina il passo»: lo toglie (con «Annulla»), chiude il drawer e porta il fuoco alla card vicina (`focusAfterRemoval`). */
+  removeStep(stepId: string): void;
   notify(text: string): void;
   newId(): string;
   /** La corsia dove la persona sta scrivendo una nota nuova (null: nessuna). */
@@ -359,8 +361,8 @@ export function StepDrawerBody(p: StepDrawerBodyProps): JSX.Element {
                   actions.notify(BOARD_TEXT.toast.linked);
                   return;
                 }
-                actions.dispatch({ t: "step.remove", stepId: step.id }, { undo: BOARD_TEXT.toast.stepRemoved });
-                actions.close();
+                // La card che ha aperto il drawer se ne va con il passo: il fuoco va alla card vicina (F1).
+                actions.removeStep(step.id);
               }}
             >
               {D.remove}
@@ -436,6 +438,8 @@ export function StepDrawer(p: {
   addingLane: StepLane | null;
   actions: StepActions;
   onCreated(stepId: string): void;
+  /** Dove va il fuoco alla chiusura (`drawerReturnFocus`); null lascia fare al dialogo. */
+  finalFocus?: () => HTMLElement | null;
 }): JSX.Element {
   const target = p.target;
   const place = target?.kind === "step" ? locateStep(p.board, target.stepId) : null;
@@ -447,7 +451,7 @@ export function StepDrawer(p: {
       ? draftDrawerHead({ board: p.board, processId: draft.processId, actions: p.actions, onCreated: p.onCreated })
       : { context: "", title: "" };
   return (
-    <Drawer open={open} onClose={p.actions.close} wide context={head.context} title={head.title} initialFocus={drawerFocus(target)}>
+    <Drawer open={open} onClose={p.actions.close} wide context={head.context} title={head.title} initialFocus={drawerFocus(target)} finalFocus={p.finalFocus}>
       {place ? <StepDrawerBody board={p.board} place={place} editable={p.editable} created={target?.kind === "step" && target.created === true} addingLane={p.addingLane} actions={p.actions} /> : null}
     </Drawer>
   );

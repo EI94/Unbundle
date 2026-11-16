@@ -48,8 +48,10 @@ test("tag, chip di ruoli e strumenti con la loro ×, punti della legenda, il rom
   assert.match(html(h(Chip, { onRemove() {}, removeLabel: "Togli il ruolo" }, createElement("b", null, "Buyer"))), /aria-label="Togli il ruolo"/);
   let removed = 0;
   const chip = Chip({ onRemove: () => void (removed += 1), children: "Buyer" });
-  (buttonsOf(chip)[0].props.onClick as () => void)();
+  // La «×» porta prima il fuoco al chip vicino (ui/focus.ts): qui il controllo premuto non ha il fuoco, e niente si muove.
+  (buttonsOf(chip)[0].props.onClick as (event: unknown) => void)({ currentTarget: { ownerDocument: { activeElement: null } } });
   assert.equal(removed, 1);
+  assert.match(readFileSync(new URL("./atoms.tsx", import.meta.url), "utf8"), /focusBeforeRemoving\(event\.currentTarget as unknown as FocusNode, '\[data-b="chip"\]'\);\s+p\.onRemove\?\.\(\);/);
 
   assert.equal(html(h(Dot, { tone: "crit" })), '<i class="b-adot" data-tone="crit" aria-hidden="true" data-b="dot"></i>');
   assert.equal(html(h(Dot, { tone: "innovate" })), '<i class="b-adot" data-tone="innovate" aria-hidden="true" data-b="dot"></i>');

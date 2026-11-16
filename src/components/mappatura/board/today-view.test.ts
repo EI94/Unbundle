@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createElement, type FunctionComponent, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { readFileSync } from "node:fs";
 import { enableTsxImports } from "../../use-cases/detail/referent/tsx-test-loader.ts";
 import { FIXTURE_IDS, fixtureBoard } from "../../../lib/mappatura/board-fixture.ts";
 import type { MappingBoard } from "../../../lib/mappatura/board-model.ts";
@@ -181,4 +182,18 @@ test("la mappa come testo senza appunti: il drawer stretto mette il fuoco nel te
   (area.props.onFocus as (event: unknown) => void)({ currentTarget: { select: () => (selected += 1) } });
   assert.equal(selected, 1, "preso il fuoco, il testo è scelto");
   assert.equal(CopyDrawer({ text: null, onClose() {} }).props.open, false);
+});
+
+test("«Elimina il passo» dalla vista: il passo esce con «Annulla», il drawer si chiude, il fuoco va dove dice focusAfterRemoval (F1)", () => {
+  const source = readFileSync(new URL("./today-view.tsx", import.meta.url), "utf8");
+  const remove = source.slice(source.indexOf("removeStep: (stepId) => {"), source.indexOf("setAdding: setAddingLane", source.indexOf("removeStep: (stepId) => {")));
+  assert.match(remove, /afterRemoval\.current = focusAfterRemoval\(board, stepId\);\s+client\.dispatch\(\{ t: "step\.remove", stepId \}, \{ undo: BOARD_TEXT\.toast\.stepRemoved \}\);\s+close\(\);/);
+  // Alla chiusura il posto deciso, poi chi ha aperto il drawer se c'è ancora: `drawerReturnFocus` nella vista «Processi di oggi».
+  assert.match(source, /finalFocus=\{\(\) => \{[\s\S]*drawerReturnFocus\(\{ view, planned, opener: opener\.current, stepId: drawer\.target\?\.kind === "step" \? drawer\.target\.stepId : null \}\)/);
+  assert.match(source, /const open = \(target: DrawerTarget\) => \{\s+opener\.current = typeof document === "undefined" \? null : document\.activeElement;/);
+  // Le card e «+ passo» si trovano per id.
+  const board = fixtureBoard();
+  const out = render(board);
+  for (const step of board.processes.flatMap((process) => process.steps)) assert.match(out, new RegExp(`data-step-id="${step.id}"`));
+  for (const process of board.processes) assert.match(out, new RegExp(`data-add-step="${process.id}"`));
 });

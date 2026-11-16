@@ -44,7 +44,7 @@ test("la testata: il marchio con il link all'elenco, la pillola, «Assistente»,
   const html = render(fixtureBoard());
   assert.match(html, /<header class="b-top" data-b="header">/);
   assert.match(html, /<div class="b-brand" data-b="brand">.*?lateral <span class="b-mute">space<\/span><\/b><span class="b-x" aria-hidden="true">×<\/span><span>Officina di prova<\/span><span class="b-x" aria-hidden="true">·<\/span><a href="\/dashboard\/[^/]+\/mapping">Activity mapping<\/a><\/div>/);
-  assert.match(html, /<span class="b-status" data-s="saved" role="status" aria-live="polite" data-b="pill"><span class="b-dot" aria-hidden="true"><\/span><span>Salvato 16\/11, 10:30<\/span><\/span>/);
+  assert.match(html, /<span class="b-status" data-s="saved" role="status" aria-live="polite" tabindex="-1" data-b="pill"><span class="b-dot" aria-hidden="true"><\/span><span>Salvato 16\/11, 10:30<\/span><\/span>/);
   assert.doesNotMatch(html, /data-b="save-now"/, "«Salva ora» solo con modifiche da salvare");
   const toggle = html.match(/<button type="button" class="b-btn b-hide-phone b-assist-toggle" aria-expanded="false" aria-controls="([^"]+)" data-b="assistant-toggle">Assistente<\/button>/);
   assert.ok(toggle, "il bottone dell'assistente, contornato");

@@ -15,7 +15,7 @@
  * `TodayContent` non ha stato (lo provano i test con Node, chiamando i suoi controlli); `TodayView` tiene il drawer,
  * «Evidenzia attriti», la nota o il punto che si sta scrivendo, e legge la board dallo store.
  */
-import { useState, type JSX, type ReactNode } from "react";
+import { useRef, useState, type JSX, type ReactNode } from "react";
 import { boardAsText, rolesTable, toolsTable, type BoardNote, type MappingBoard } from "../../../lib/mappatura/board-model.ts";
 import { BOARD_TEXT, noteCaption } from "../../../lib/mappatura/text.ts";
 import { MAPPING_LIMITS, type StepLane } from "../../../lib/mappatura/vocab.ts";
@@ -24,12 +24,30 @@ import { useBoard, useBoardClient } from "../store/use-board.tsx";
 import { AddButton, BoardButton, Dot, FilterChip, Kpis, Legend, LegendItem, RemoveIcon, Section, StackTable } from "../ui/atoms.tsx";
 import { Drawer } from "../ui/drawer.tsx";
 import { EmptyBlock, noteToggleLabel } from "../ui/edit.tsx";
+import { focusBeforeRemoving, type FocusNode } from "../ui/focus.ts";
 import { Block, ViewHead } from "../ui/frame.tsx";
 import { DraftPoint, LineInPlace, TextWithMore } from "./in-place.tsx";
 import { ProcessMapEditor, type MapActions } from "./process-map.tsx";
 import { StepDrawer, type DrawerTarget, type StepActions } from "./step-drawer.tsx";
 import { VIEW_TEXT, rolesToolsHint, stepRefText } from "./text.ts";
-import { analysisShown, boardEditable, boardEmpty, headlineOp, laneFull, mapCounts, newProcessOp, noteTextOps, noteTitleOp, noteToggleOp, pointAddOp, stepCodes, todayTiles } from "./view-model.ts";
+import {
+  analysisShown,
+  boardEditable,
+  boardEmpty,
+  drawerReturnFocus,
+  focusAfterRemoval,
+  headlineOp,
+  laneFull,
+  mapCounts,
+  newProcessOp,
+  noteTextOps,
+  noteTitleOp,
+  noteToggleOp,
+  pointAddOp,
+  stepCodes,
+  todayTiles,
+  type MapFocus,
+} from "./view-model.ts";
 
 const L = MAPPING_LIMITS;
 
@@ -83,7 +101,16 @@ export function AnalysisPoint(p: { note: BoardNote; editable: boolean; actions: 
           <button type="button" aria-label={toggle} title={toggle} onClick={() => actions.dispatch(noteToggleOp(note))}>
             <CheckIcon />
           </button>
-          <button type="button" aria-label={BOARD_TEXT.note.removeLabel} title={BOARD_TEXT.note.remove} onClick={() => actions.dispatch({ t: "note.remove", noteId: note.id }, { undo: BOARD_TEXT.toast.noteRemoved })}>
+          <button
+            type="button"
+            aria-label={BOARD_TEXT.note.removeLabel}
+            title={BOARD_TEXT.note.remove}
+            onClick={(event) => {
+              // Il punto se ne va con la sua «×»: il fuoco va alla «×» del punto vicino, o a «+ punto» (F1).
+              focusBeforeRemoving(event.currentTarget as unknown as FocusNode, '[data-b="point"]');
+              actions.dispatch({ t: "note.remove", noteId: note.id }, { undo: BOARD_TEXT.toast.noteRemoved });
+            }}
+          >
             <RemoveIcon />
           </button>
         </div>
@@ -252,10 +279,20 @@ export function TodayView(p: { headAction: ReactNode; onStartAssistant(): void }
   const [addingPoint, setAddingPoint] = useState(false);
   const [focusProcessId, setFocusProcessId] = useState<string | null>(null);
   const [copyText, setCopyText] = useState<string | null>(null);
+  // Chi ha aperto il drawer (la card, «+ passo», «Aggiungi un passo») e il posto deciso dopo «Elimina il passo»: alla
+  // chiusura il fuoco non cade sulla pagina se chi l'ha aperto non c'è più (F1).
+  const opener = useRef<Element | null>(null);
+  const afterRemoval = useRef<MapFocus | null>(null);
 
   const open = (target: DrawerTarget) => {
+    opener.current = typeof document === "undefined" ? null : document.activeElement;
+    afterRemoval.current = null;
     setAddingLane(null);
     setDrawer({ open: true, target });
+  };
+  const close = () => {
+    setAddingLane(null);
+    setDrawer((current) => ({ ...current, open: false }));
   };
   const actions: TodayActions & StepActions = {
     dispatch: (ops, options) => client.dispatch(ops, options),
@@ -268,9 +305,11 @@ export function TodayView(p: { headAction: ReactNode; onStartAssistant(): void }
       client.dispatch(newProcessOp(processId));
       setFocusProcessId(processId);
     },
-    close: () => {
-      setAddingLane(null);
-      setDrawer((current) => ({ ...current, open: false }));
+    close,
+    removeStep: (stepId) => {
+      afterRemoval.current = focusAfterRemoval(board, stepId);
+      client.dispatch({ t: "step.remove", stepId }, { undo: BOARD_TEXT.toast.stepRemoved });
+      close();
     },
     setAdding: setAddingLane,
     setAddingPoint,
@@ -301,6 +340,12 @@ export function TodayView(p: { headAction: ReactNode; onStartAssistant(): void }
         addingLane={addingLane}
         actions={actions}
         onCreated={(stepId) => setDrawer({ open: true, target: { kind: "step", stepId, created: true } })}
+        finalFocus={() => {
+          const planned = afterRemoval.current;
+          afterRemoval.current = null;
+          const view = document.querySelector<HTMLElement>('[data-b="view-oggi"]');
+          return drawerReturnFocus({ view, planned, opener: opener.current, stepId: drawer.target?.kind === "step" ? drawer.target.stepId : null });
+        }}
       />
       <CopyDrawer text={copyText} onClose={() => setCopyText(null)} />
     </>

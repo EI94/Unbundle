@@ -55,9 +55,15 @@ export function clickable(tree: unknown, label: string, expand: ReadonlyArray<Co
   return found[0];
 }
 
+/**
+ * Un clic finto: il controllo premuto non ha il fuoco e non sta in una pagina, così chi sposta il fuoco prima di far
+ * sparire un controllo (ui/focus.ts) non fa niente.
+ */
+export const PRESS_EVENT = Object.freeze({ currentTarget: Object.freeze({ ownerDocument: { activeElement: null }, closest: () => null }) });
+
 /** Il clic sull'unico controllo con quella scritta. */
 export function press(tree: unknown, label: string, expand: ReadonlyArray<Component> = []): void {
-  (clickable(tree, label, expand).props.onClick as () => void)();
+  (clickable(tree, label, expand).props.onClick as (event: unknown) => void)(PRESS_EVENT);
 }
 
 /** Gli elementi di un tipo (un componente o un tag). */

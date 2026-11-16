@@ -149,7 +149,7 @@ test("il trascinamento: la riga sotto il passo si colora, un segno dice dove cad
 test("«Evidenzia attriti» sfuma i passi senza attrito; il processo appena aggiunto ha il cursore nel nome, scelto (P61)", () => {
   const { html } = rows(fixtureBoard(), { dim: true });
   assert.match(html, /^<div class="b-pm" style="--steps:4" data-dim="" data-adds="" data-b="map">/);
-  assert.deepEqual([...html.matchAll(/data-step="(\w+)" data-dimmed=""/g)].map((match) => match[1]), ["A3", "B2"]);
+  assert.deepEqual([...html.matchAll(/data-step="(\w+)" data-step-id="[^"]+" data-dimmed=""/g)].map((match) => match[1]), ["A3", "B2"]);
   assert.doesNotMatch(rows(fixtureBoard()).html, /data-dimmed/);
   const focused = rows(fixtureBoard(), { focusProcessId: I.processB });
   const [nameA, , nameB] = ofType(focused.tree, LineInPlace);

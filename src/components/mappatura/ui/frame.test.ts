@@ -104,14 +104,17 @@ test("la pillola: la scritta di ogni stato, una regione viva educata, «Salva or
   ] as const;
   for (const [state, at, text] of cases) {
     const out = html(h(StatusPill, { state, savedAt: at, onSaveNow() {} }));
+    // Con «Salva ora» la pillola prende il fuoco quando il bottone sparisce (tabindex -1: fuori dal giro del Tab).
     assert.ok(
-      out.startsWith(`<span class="b-status" data-s="${state}" role="status" aria-live="polite" data-b="pill"><span class="b-dot" aria-hidden="true"></span><span>${text}</span></span>`),
+      out.startsWith(`<span class="b-status" data-s="${state}" role="status" aria-live="polite" tabindex="-1" data-b="pill"><span class="b-dot" aria-hidden="true"></span><span>${text}</span></span>`),
       `${state}: ${out}`,
     );
     assert.equal(out.includes("Salva ora"), state === "dirty", `${state}: «Salva ora»`);
   }
   assert.match(html(h(StatusPill, { state: "dirty", savedAt: null, onSaveNow() {} })), /<button type="button" class="b-btn b-small" data-b="save-now">Salva ora<\/button>$/);
-  assert.doesNotMatch(html(h(StatusPill, { state: "dirty", savedAt: null })), /Salva ora/, "senza onSaveNow niente bottone");
+  assert.doesNotMatch(html(h(StatusPill, { state: "dirty", savedAt: null })), /Salva ora|tabindex/, "senza onSaveNow niente bottone, e la pillola non prende il fuoco");
+  // «Salva ora» sparisce appena il salvataggio parte: prima il fuoco va alla pillola, se era sul bottone (F1).
+  assert.match(readFileSync(new URL("./frame.tsx", import.meta.url), "utf8"), /if \(event\.currentTarget\.ownerDocument\.activeElement === event\.currentTarget\) pill\.current\?\.focus\(\{ preventScroll: true \}\);\s+p\.onSaveNow\?\.\(\);/);
   // Compatta (la riga delle schede sul telefono): solo il punto; la scritta resta per gli screen reader.
   const compact = html(h(StatusPill, { state: "dirty", savedAt: null, compact: true, onSaveNow() {} }));
   assert.equal(compact, '<span class="b-status b-compact" data-s="dirty" role="status" aria-live="polite" data-b="pill"><span class="b-dot" aria-hidden="true"></span><span class="b-sr">Modifiche da salvare</span></span>');

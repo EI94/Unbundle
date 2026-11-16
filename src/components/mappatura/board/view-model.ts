@@ -298,3 +298,40 @@ export function headlineOp(next: string, base: string): OpInput | null {
   const value = nextText(next);
   return prev === value ? null : { t: "board.set", field: "headline", prev, next: value };
 }
+
+// ─── Dove va il fuoco quando un controllo sparisce (F1) ──────────────
+
+/** Un posto della mappa che prende il fuoco: la card di un passo, o «+ passo» in fondo a una riga. */
+export type MapFocus = { kind: "step"; stepId: string } | { kind: "add"; processId: string };
+
+/**
+ * Dopo «Elimina il passo» il drawer si chiude, e la card che l'aveva aperto non c'è più: il fuoco va alla card prima
+ * nella riga, o a quella dopo, o a «+ passo» della riga rimasta vuota. null se il passo non c'è.
+ */
+export function focusAfterRemoval(board: Pick<MappingBoard, "processes">, stepId: string): MapFocus | null {
+  const place = locateStep(board, stepId);
+  if (!place) return null;
+  const near = place.process.steps[place.stepIndex - 1] ?? place.process.steps[place.stepIndex + 1];
+  return near ? { kind: "step", stepId: near.id } : { kind: "add", processId: place.process.id };
+}
+
+/** Il selettore del posto, nella vista: la card porta `data-step-id`, «+ passo» `data-add-step`. */
+export const mapFocusSelector = (target: MapFocus): string =>
+  target.kind === "step" ? `[data-b="step"][data-step-id="${target.stepId}"]` : `[data-add-step="${target.processId}"]`;
+
+/**
+ * Dove va il fuoco quando il drawer di un passo si chiude: il posto deciso prima (`planned`, dopo «Elimina il passo»);
+ * altrimenti chi l'ha aperto, se c'è ancora (null: il dialogo lo rimette lui); se non c'è più (il blocco dell'unità vuota
+ * con «Aggiungi un passo», sparito quando il primo passo è nato) la card del passo del drawer, o la vista. Mai la pagina.
+ */
+export function drawerReturnFocus<E>(p: {
+  view: (E & { querySelector(selector: string): unknown }) | null;
+  planned: MapFocus | null;
+  opener: { isConnected: boolean } | null;
+  stepId: string | null;
+}): E | null {
+  const find = (target: MapFocus) => (p.view?.querySelector(mapFocusSelector(target)) as E | null | undefined) ?? null;
+  if (p.planned) return find(p.planned) ?? p.view;
+  if (p.opener?.isConnected) return null;
+  return (p.stepId ? find({ kind: "step", stepId: p.stepId }) : null) ?? p.view;
+}

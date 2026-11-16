@@ -151,7 +151,7 @@ export function MapRows(p: MapRowsProps): JSX.Element {
             <span hidden data-process-id={process.id} data-drop-row={over ? "" : undefined} />
             {over && over.beforeId === null ? <span className="b-drop-mark" aria-hidden="true" /> : null}
             {processFull(process) ? null : (
-              <AddButton className={process.steps.length === 0 ? "b-add-step b-add-first" : "b-add-step"} aria-label={addStepLabel(process.name)} onClick={() => actions.addStep(process.id)}>
+              <AddButton className={process.steps.length === 0 ? "b-add-step b-add-first" : "b-add-step"} aria-label={addStepLabel(process.name)} data-add-step={process.id} onClick={() => actions.addStep(process.id)}>
                 {VIEW_TEXT.add.step}
               </AddButton>
             )}
@@ -164,6 +164,7 @@ export function MapRows(p: MapRowsProps): JSX.Element {
                 {stepIndex > 0 ? <StepArrow /> : null}
                 <StepCard
                   code={stepCode(processIndex, stepIndex)}
+                  stepId={step.id}
                   title={step.title}
                   description={step.description}
                   who={step.who}
