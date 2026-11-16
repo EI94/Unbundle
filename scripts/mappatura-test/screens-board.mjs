@@ -9,7 +9,8 @@
 // - i tre font caricati; titolo della vista 42 px a 1440 e 28 px a 390; titolo della board 28 px; scheda 13,5 px con il
 //   numero d'ordine in mono 10,5 px; etichetta della riga 136 px (160 da 1500 px di board); card di una riga larghe
 //   uguali, almeno 170 px; numero dei riquadri 30 px in serif; testata 127 ± 8 px a 1440;
-// - la mappa che scorre nel suo riquadro a 390, e la pagina che non scorre mai di lato, in ogni vista;
+// - la mappa che scorre nel suo riquadro a 390, e la pagina che non scorre mai di lato, in ogni vista; con la mappa fatta
+//   scorrere fino in fondo l'etichetta di ogni riga al bordo sinistro, le righe larghe uguali, «+ passo» dentro la riga;
 // - il drawer di 920 px a 1440 e di tutta la larghezza a 390; il pannello dell'assistente agganciato (380 px) a 1440 e
 //   sopra la pagina a 390;
 // - i colori calcolati della pagina, di un riquadro, del titolo, del suo corsivo, del punto della pillola e dei tre
@@ -137,6 +138,18 @@ function measure() {
     })),
     tabs: tabbar !== null,
     map: map ? { scrollWidth: map.scrollWidth, clientWidth: map.clientWidth } : null,
+    // Ogni mappa fatta scorrere fino in fondo: l'etichetta di ogni riga resta al bordo sinistro (P13), le righe sono
+    // larghe uguali e «+ passo» sta dentro la sua riga. Poi la mappa torna dov'era.
+    pinned: [...document.querySelectorAll(".b-pm")].map((element) => {
+      const before = element.scrollLeft;
+      element.scrollLeft = element.scrollWidth;
+      const edge = element.getBoundingClientRect().left + element.clientLeft;
+      const labels = [...element.querySelectorAll(".b-pm-lab")].map((label) => Math.round((label.getBoundingClientRect().left - edge) * 10) / 10);
+      const rows = [...element.querySelectorAll(".b-pm-row")].map((row) => Math.round(row.getBoundingClientRect().width * 10) / 10);
+      const pinned = { scrolled: element.scrollLeft, scrollWidth: element.scrollWidth, labels, rows };
+      element.scrollLeft = before;
+      return pinned;
+    }),
     page: { scrollWidth: document.documentElement.scrollWidth, innerWidth: window.innerWidth },
     drawer: width(drawer),
     assistant: assistant ? { width: width(assistant), position: css(assistant, "position") } : null,
@@ -197,6 +210,12 @@ function check(name, config, m, expected, failures) {
   // La testata della board (con le schede): 127 px sul riferimento. L'elenco delle unità non ha schede.
   if (config.width === 1440 && m.header !== null && m.tabs) near(m.header, 127, 8, "testata");
   if (config.width === 390 && m.map && m.rows.some((row) => row.widths.length >= 2) && !(m.map.scrollWidth > m.map.clientWidth)) fail("la mappa non scorre nel suo riquadro");
+  m.pinned.forEach(({ labels, rows, scrollWidth }, index) => {
+    const where = `mappa ${index + 1} in fondo`;
+    if (labels.some((left) => Math.abs(left) > 1)) fail(`${where}: etichette fuori dal bordo sinistro (${labels.join(", ")})`);
+    if (rows.length > 0 && Math.max(...rows) - Math.min(...rows) > 1) fail(`${where}: righe di larghezze diverse (${rows.join(", ")})`);
+    if (rows.length > 0 && scrollWidth > Math.max(...rows) + 1) fail(`${where}: qualcosa esce dalle righe (la mappa scorre per ${scrollWidth} px, la riga è ${Math.max(...rows)})`);
+  });
   if (name === "02c-oggi-drawer-passo" || name === "04b-domani-drawer-confronto") near(m.drawer, config.width === 1440 ? 920 : 390, 0.5, "drawer");
   if (name === "02d-oggi-assistente" && m.assistant) {
     if (config.width === 1440 && (m.assistant.width !== 380 || m.assistant.position !== "sticky")) fail(`assistente ${m.assistant.width} ${m.assistant.position}, atteso agganciato di 380 px`);

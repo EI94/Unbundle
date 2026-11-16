@@ -37,7 +37,9 @@ function rows(board: MappingBoard, options: { editable?: boolean; dim?: boolean;
 test("una riga per processo, i passi da sinistra a destra con una freccia tra due; card, bordo dell'attrito, «◆», «da validare» (P11–P17, P25)", () => {
   const { html } = rows(fixtureBoard());
   assert.equal((html.match(/data-b="process-row"/g) ?? []).length, 2);
-  assert.match(html, /^<div class="b-pm" data-b="map">/);
+  // Ogni riga è larga quanto la più lunga (A, quattro passi), con il posto di «+ passo»: l'etichetta di B resta ferma
+  // a sinistra quando la mappa scorre fino in fondo (P13).
+  assert.match(html, /^<div class="b-pm" style="--steps:4" data-adds="" data-b="map">/);
   // A: quattro passi, tre frecce; B: due passi, una freccia. Le lettere e i codici vengono dall'ordine.
   const [a, b] = html.split('data-b="process-row"').slice(1);
   assert.equal((a.match(/data-b="arrow"/g) ?? []).length, 3);
@@ -49,8 +51,9 @@ test("una riga per processo, i passi da sinistra a destra con una freccia tra du
   assert.match(a, /data-pain="2" data-step="A2".*?<span class="b-tag b-line">da validare<\/span>/);
   assert.match(a, /data-pain="1" data-step="A4"/);
   assert.match(b, /data-step="B2"[^>]*>.*?<span class="b-gate" data-b="gate">Decide una persona<\/span>/);
-  // Le righe sono larghe quanto i loro passi.
-  assert.deepEqual([...html.matchAll(/<div class="b-pm-row" style="--steps:(\d+)"/g)].map((match) => match[1]), ["4", "2"]);
+  assert.doesNotMatch(html, /<div class="b-pm-row" style=/, "nessuna riga ha una larghezza sua");
+  // In sola lettura niente «+ passo», e la riga non ne tiene il posto.
+  assert.match(rows(fixtureBoard({ readOnly: true }), { editable: false }).html, /^<div class="b-pm" style="--steps:4" data-b="map">/);
 });
 
 test("l'etichetta della riga: nome e chi lo segue sul posto, gli attriti, i voti, su, giù; un processo vuoto si elimina con «Annulla»", () => {
@@ -135,7 +138,7 @@ test("il trascinamento: la riga sotto il passo si colora, un segno dice dove cad
 
 test("«Evidenzia attriti» sfuma i passi senza attrito; il processo appena aggiunto ha il cursore nel nome, scelto (P61)", () => {
   const { html } = rows(fixtureBoard(), { dim: true });
-  assert.match(html, /^<div class="b-pm" data-dim="" data-b="map">/);
+  assert.match(html, /^<div class="b-pm" style="--steps:4" data-dim="" data-adds="" data-b="map">/);
   assert.deepEqual([...html.matchAll(/data-step="(\w+)" data-dimmed=""/g)].map((match) => match[1]), ["A3", "B2"]);
   assert.doesNotMatch(rows(fixtureBoard()).html, /data-dimmed/);
   const focused = rows(fixtureBoard(), { focusProcessId: I.processB });

@@ -231,7 +231,10 @@ const DEVIATIONS: Record<string, Record<string, string>> = {
     flex: "l'area della board riempie la pagina dell'app, che è una colonna flessibile",
     "min-width": "come sopra: non allarga la pagina oltre lo spazio che c'è",
   },
-  [`${ROOT} .b-pm-row`]: { "min-width": "segue il numero dei passi della riga (--steps): il riferimento fissa la larghezza di sei passi" },
+  [`${ROOT} .b-pm-row`]: {
+    "min-width":
+      "segue i passi della riga più lunga della mappa (--steps, lo stesso per ogni riga, come la larghezza fissa del riferimento, che ne tiene sei) e lo spazio di «+ passo» (--b-after)",
+  },
   [`@container board (max-width:1499px)|${ROOT} .b-pm-row`]: { "min-width": "come sopra, con l'etichetta di 136 px" },
   [`${ROOT} .b-node`]: { transition: "anche l'opacità: «Evidenzia attriti» sfuma i passi senza attrito (sul riferimento sfumano le note, con la stessa durata)" },
   [`${ROOT} .b-pm-steps .b-node`]: {

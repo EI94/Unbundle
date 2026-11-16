@@ -24,7 +24,7 @@ import { MAPPING_LIMITS } from "../../../lib/mappatura/vocab.ts";
 import type { OpInput } from "../store/board-client.ts";
 import { AddButton, RemoveIcon } from "../ui/atoms.tsx";
 import { Votes } from "../ui/edit.tsx";
-import { ProcessMap, ProcessRow, StepArrow, StepCard } from "../ui/map.tsx";
+import { ProcessMap, ProcessRow, StepArrow, StepCard, widestRow } from "../ui/map.tsx";
 import { LineInPlace } from "./in-place.tsx";
 import { VIEW_TEXT, addStepLabel, rowFrictionsText } from "./text.ts";
 import { dropBeforeId, dropMoveOp, processFull, processMoveOp, processNameOp, processOwnerOp, stepDimmed, voteOp } from "./view-model.ts";
@@ -76,7 +76,7 @@ export function MapRows(p: MapRowsProps): JSX.Element {
     if (op) actions.dispatch(op);
   };
   return (
-    <ProcessMap dim={p.dim}>
+    <ProcessMap dim={p.dim} steps={widestRow(board.processes)} adds={editable}>
       {board.processes.map((process, processIndex) => {
         const frictions = processFrictions(process);
         const focus = p.focusProcessId === process.id;
@@ -137,7 +137,7 @@ export function MapRows(p: MapRowsProps): JSX.Element {
           </>
         ) : undefined;
         return (
-          <ProcessRow key={process.id} letter={processLetter(processIndex)} name={name} owner={owner} extra={extra} steps={process.steps.length} after={after}>
+          <ProcessRow key={process.id} letter={processLetter(processIndex)} name={name} owner={owner} extra={extra} after={after}>
             {process.steps.map((step, stepIndex) => (
               <Fragment key={step.id}>
                 {stepIndex > 0 ? <StepArrow /> : null}

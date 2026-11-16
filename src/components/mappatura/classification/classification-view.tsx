@@ -23,7 +23,7 @@ import { CompleteButton } from "../companion/complete-button.tsx";
 import { useBoard, useBoardClient } from "../store/use-board.tsx";
 import { BoardButton, Dot, ExposureBadge, FilterChip, Legend, LegendItem, StreamBadge } from "../ui/atoms.tsx";
 import { BoardTitle, ViewHead } from "../ui/frame.tsx";
-import { ProcessMap, ProcessRow, StepArrow, StepCard } from "../ui/map.tsx";
+import { ProcessMap, ProcessRow, StepArrow, StepCard, widestRow } from "../ui/map.tsx";
 import { EmptyBlock } from "../ui/edit.tsx";
 import { ClassificationDrawer } from "./classification-drawer.tsx";
 import { CLASSIFICATION_TEXT, exposureTileValue, streamTileLabel, toClassifyLine } from "./text.ts";
@@ -164,9 +164,9 @@ export function ClassificationView(p: ClassificationViewProps): JSX.Element {
           </FilterChip>
         ))}
       </div>
-      <ProcessMap dim={filter !== "all"}>
+      <ProcessMap dim={filter !== "all"} steps={widestRow(board.processes)}>
         {board.processes.map((process, processIndex) => (
-          <ProcessRow key={process.id} letter={processLetter(processIndex)} name={process.name} owner={process.owner} steps={process.steps.length}>
+          <ProcessRow key={process.id} letter={processLetter(processIndex)} name={process.name} owner={process.owner}>
             {process.steps.map((step, stepIndex) => (
               <Fragment key={step.id}>
                 {stepIndex > 0 ? <StepArrow /> : null}

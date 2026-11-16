@@ -8,7 +8,7 @@ import { enableTsxImports } from "../../use-cases/detail/referent/tsx-test-loade
 // l'etichetta, la freccia, la card di un passo oggi (attrito) e nella classificazione (stream). Markup statico.
 
 await enableTsxImports();
-const { ProcessMap, ProcessRow, STEP_CARD_TOOLS, StepArrow, StepCard } = await import("./map.tsx");
+const { ProcessMap, ProcessRow, STEP_CARD_TOOLS, StepArrow, StepCard, widestRow } = await import("./map.tsx");
 const { ExposureBadge, StreamBadge } = await import("./atoms.tsx");
 
 const html = (element: Parameters<typeof renderToStaticMarkup>[0]) => renderToStaticMarkup(element);
@@ -18,16 +18,20 @@ const h = <P extends object>(type: (props: P) => ReactNode, props: Omit<P, "chil
 const noop = () => {};
 
 test("il riquadro della mappa e una riga: l'etichetta con lettera, nome, chi lo segue; i passi; «+ passo» in fondo", () => {
-  assert.equal(html(h(ProcessMap, null, "righe")), '<div class="b-pm" data-b="map">righe</div>');
-  assert.equal(html(h(ProcessMap, { dim: true }, "righe")), '<div class="b-pm" data-dim="" data-b="map">righe</div>');
-  const row = html(h(ProcessRow, { letter: "A", name: "Dall'ordine alla consegna", owner: "Buyer", extra: "2 attriti", steps: 3, after: "+ passo" }, "passi"));
+  assert.equal(html(h(ProcessMap, { steps: 6 }, "righe")), '<div class="b-pm" style="--steps:6" data-b="map">righe</div>');
+  assert.equal(html(h(ProcessMap, { dim: true, steps: 2, adds: true }, "righe")), '<div class="b-pm" style="--steps:2" data-dim="" data-adds="" data-b="map">righe</div>');
+  const row = html(h(ProcessRow, { letter: "A", name: "Dall'ordine alla consegna", owner: "Buyer", extra: "2 attriti", after: "+ passo" }, "passi"));
   assert.equal(
     row,
-    '<div class="b-pm-row" style="--steps:3" data-b="process-row"><div class="b-pm-lab"><span class="b-lid">A</span><b>Dall&#x27;ordine alla consegna</b><small>Buyer</small><div class="b-pm-extra">2 attriti</div></div><div class="b-pm-steps">passi<div class="b-pm-after">+ passo</div></div></div>',
+    '<div class="b-pm-row" data-b="process-row"><div class="b-pm-lab"><span class="b-lid">A</span><b>Dall&#x27;ordine alla consegna</b><small>Buyer</small><div class="b-pm-extra">2 attriti</div></div><div class="b-pm-steps">passi<div class="b-pm-after">+ passo</div></div></div>',
   );
-  // La larghezza minima segue i passi; una riga vuota ne conta uno (P13).
-  assert.match(html(h(ProcessRow, { letter: "B", name: "Resi", steps: 0 }, null)), /style="--steps:1"/);
-  assert.doesNotMatch(html(h(ProcessRow, { letter: "B", name: "Resi", steps: 2 }, null)), /<small>|b-pm-extra|b-pm-after/);
+  // Ogni riga è larga quanto la più lunga della mappa: `--steps` sta sul riquadro, mai su una riga (P13). Una mappa di
+  // righe vuote ne conta uno.
+  assert.equal(widestRow([{ steps: [1, 2] }, { steps: [1, 2, 3, 4, 5, 6, 7] }, { steps: [] }]), 7);
+  assert.equal(widestRow([{ steps: [] }]), 1);
+  assert.equal(widestRow([]), 1);
+  assert.match(html(h(ProcessMap, { steps: 0 }, null)), /style="--steps:1"/);
+  assert.doesNotMatch(html(h(ProcessRow, { letter: "B", name: "Resi" }, null)), /<small>|b-pm-extra|b-pm-after|--steps/);
   assert.equal(html(h(StepArrow)), '<div class="b-arrow" aria-hidden="true" data-b="arrow"><svg viewBox="0 0 16 10" focusable="false"><path d="M0 5h13M10 1l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.3"></path></svg></div>');
 });
 

@@ -17,10 +17,19 @@ import { GatePill } from "./atoms.tsx";
 /** Quante card di strumento mostra al più un passo (P15). */
 export const STEP_CARD_TOOLS = 4;
 
-/** Il riquadro della mappa (P13, P14). `dim`: è acceso «Evidenzia attriti» o un filtro (le card dicono da sole se sfumano). */
-export function ProcessMap(p: { children: ReactNode; dim?: boolean }): JSX.Element {
+/** Il numero di passi della riga più lunga (almeno uno): la larghezza di ogni riga della mappa. */
+export const widestRow = (rows: ReadonlyArray<{ steps: readonly unknown[] }>) => Math.max(1, ...rows.map((row) => row.steps.length));
+
+/**
+ * Il riquadro della mappa (P13, P14). `dim`: è acceso «Evidenzia attriti» o un filtro (le card dicono da sole se
+ * sfumano). `steps`: i passi della riga più lunga (`widestRow`); ogni riga è larga quanto lei, come sul riferimento dove
+ * ogni riga ha la stessa larghezza, così quando la mappa scorre di lato l'etichetta di ogni riga resta ferma a
+ * sinistra. `adds`: le righe hanno «+ passo» in fondo, e la loro larghezza ne tiene conto.
+ */
+export function ProcessMap(p: { children: ReactNode; dim?: boolean; steps: number; adds?: boolean }): JSX.Element {
+  const style = { "--steps": Math.max(1, Math.floor(p.steps)) } as CSSProperties;
   return (
-    <div className="b-pm" data-dim={p.dim ? "" : undefined} data-b="map">
+    <div className="b-pm" style={style} data-dim={p.dim ? "" : undefined} data-adds={p.adds ? "" : undefined} data-b="map">
       {p.children}
     </div>
   );
@@ -28,13 +37,11 @@ export function ProcessMap(p: { children: ReactNode; dim?: boolean }): JSX.Eleme
 
 /**
  * Una riga della mappa (P11, P13): l'etichetta ferma a sinistra (lettera, nome, chi lo segue, `extra` sotto: attriti,
- * voti), poi i passi; `after` in fondo alla riga («+ passo»). La larghezza minima segue il numero dei passi (`steps`):
- * il riferimento la fissa per sei.
+ * voti), poi i passi; `after` in fondo alla riga («+ passo»). La larghezza minima è quella del riquadro (`--steps`).
  */
-export function ProcessRow(p: { letter: string; name: ReactNode; owner?: ReactNode; extra?: ReactNode; steps: number; children: ReactNode; after?: ReactNode }): JSX.Element {
-  const style = { "--steps": Math.max(1, Math.floor(p.steps)) } as CSSProperties;
+export function ProcessRow(p: { letter: string; name: ReactNode; owner?: ReactNode; extra?: ReactNode; children: ReactNode; after?: ReactNode }): JSX.Element {
   return (
-    <div className="b-pm-row" style={style} data-b="process-row">
+    <div className="b-pm-row" data-b="process-row">
       <div className="b-pm-lab">
         <span className="b-lid">{p.letter}</span>
         <b>{p.name}</b>
