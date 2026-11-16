@@ -1403,6 +1403,12 @@ test("lo stesso fatto da due appunti, confermato con un clic: un fatto solo; ugu
   okValue(await proposals.confirmProposals(actor("ls"), pick([...twice.all, ...other.all])));
   const versions = await q(`SELECT statement, status FROM context_facts WHERE supersedes_id = $1 OR supersedes_id IN (SELECT id FROM context_facts WHERE supersedes_id = $1)`, [erp]);
   assert.deepEqual(versions.map((v) => [v.statement, v.status]), [[`Il gestionale doppio ${suffix} è Odoo.`, "attivo"]], "una versione sola");
+  // Una «conferma» resta quello che era (§3.4.5): rinfresca la data, e non aggiunge use case al fatto.
+  const plain = await seedFact(`Il fatto riconfermato doppio ${suffix}.`, { section: "azienda" });
+  const reconfirmed = await readProposals([proposal({ tipo: "conferma", testo: "x", citazione: "", fattoRif: "F1", useCase: ["CX-0001"] })], `${NOTE}\nCall della riconferma doppia (${suffix}).`);
+  assert.equal(reconfirmed.all[0].before?.factId, plain);
+  assert.deepEqual(okValue(await proposals.confirmProposals(actor("ls"), pick(reconfirmed.all))).reconfirmed, 1);
+  assert.deepEqual(await q(`SELECT use_case_id FROM context_fact_links WHERE fact_id = $1`, [plain]), []);
 });
 
 test("due proposte della stessa conferma sullo stesso fatto si mettono in fila; un fatto ritirato fa della proposta un fatto nuovo", opts, async () => {

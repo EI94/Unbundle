@@ -534,8 +534,10 @@ export async function confirmProposals(actor: ContextActor, items: readonly Conf
       const head = target ? (headOf.get(target.id) ?? target.id) : null;
       const headStatement = head ? (newFacts.get(head)?.statement ?? target!.statement) : null;
       // Un fatto nuovo con la frase di un fatto attivo, o una versione nuova con la frase di quella in testa: lo stesso fatto.
-      const same = head ? (normalizeStatement(statement) === normalizeStatement(headStatement!) ? head : null) : (sameFact.get(normalizeStatement(statement)) ?? null);
-      if (same && !(kind === "conflitto" && item.resolution === "prima")) {
+      // Le riconferme e i conflitti risolti con «Prima» restano come sono, qui sotto.
+      const writesFact = kind !== "conferma" && !(kind === "conflitto" && item.resolution === "prima");
+      const same = !writesFact ? null : head ? (normalizeStatement(statement) === normalizeStatement(headStatement!) ? head : null) : (sameFact.get(normalizeStatement(statement)) ?? null);
+      if (same) {
         const born = newFacts.get(same);
         if (born) {
           // Nato in questa conferma da un'altra voce: la visibilità si chiude, non si apre; use case, entità e collegamenti si sommano.
