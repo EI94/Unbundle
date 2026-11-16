@@ -1695,6 +1695,46 @@ test("la chat cerca nei documenti: i frammenti di un documento «Solo Lateral Sp
   assert.deepEqual(fromChat.map((chunk) => chunk.conversationId), [conversation]);
 });
 
+// ─── I due tool della mappatura (§10.5) ──────────────────────────────
+
+test("i due tool della mappatura scrivono solo sulle attività del workspace della conversazione", opts, async () => {
+  const { getActivityMappingTools } = await import("../ai/tools/activity-mapping-tools.ts");
+  const [mine1, mine2, theirs, unitB] = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+  await q(`INSERT INTO departments (id, workspace_id, name) VALUES ($1, $2, 'Unità B della mappatura')`, [unitB, ids.wsB]);
+  await q(
+    `INSERT INTO activities (id, department_id, workspace_id, title, updated_at) VALUES
+       ($1, $4, $6, 'Ordini ai fornitori', '2026-01-01'), ($2, $4, $6, 'Controllo delle consegne', '2026-01-01'), ($3, $5, $7, 'Attività del workspace B', '2026-01-01')`,
+    [mine1, mine2, theirs, ids.unitA, unitB, ids.wsA, ids.wsB],
+  );
+  const tools = getActivityMappingTools(ids.wsA, ids.unitA, { deadline: Date.now() + 60_000 });
+  const call = { toolCallId: "toolu_prova", messages: [] };
+  type ToolResult = { success: boolean; message: string };
+  const classify = async (activityId: string) => (await tools.updateActivityClassification.execute!({ activityId, workType: "detection" }, call)) as ToolResult;
+  const link = async (sourceActivityId: string, targetActivityId: string) =>
+    (await tools.linkActivityDependency.execute!({ sourceActivityId, targetActivityId, dependencyType: "handoff" }, call)) as ToolResult;
+  const state = async () => q(`SELECT id::text AS id, work_type::text AS type, updated_at > '2026-06-01' AS touched FROM activities WHERE id = ANY($1::uuid[]) ORDER BY title`, [[mine1, mine2, theirs]]);
+  const links = async () =>
+    q(`SELECT source_activity_id::text AS source, target_activity_id::text AS target, dependency_type AS type FROM activity_dependencies WHERE source_activity_id = ANY($1::uuid[]) OR target_activity_id = ANY($1::uuid[])`, [[mine1, mine2, theirs]]);
+
+  // Un'attività di un altro workspace, una che non c'è, un id che non è un UUID: niente si scrive.
+  for (const id of [theirs, randomUUID(), "a-1", ""]) assert.deepEqual(await classify(id), { success: false, message: "Attività non trovata in questo workspace." }, id);
+  assert.deepEqual(await state(), [
+    { id: theirs, type: null, touched: false },
+    { id: mine2, type: null, touched: false },
+    { id: mine1, type: null, touched: false },
+  ]);
+  assert.equal((await classify(mine1)).success, true);
+  assert.deepEqual((await state()).find((row) => row.id === mine1), { id: mine1, type: "detection", touched: true });
+  assert.deepEqual((await state()).find((row) => row.id === theirs), { id: theirs, type: null, touched: false });
+
+  for (const [source, target] of [[mine1, theirs], [theirs, mine2], [mine1, mine1], [mine1, mine1.toUpperCase()], [mine1, randomUUID()], ["a-1", mine2]]) {
+    assert.deepEqual(await link(source, target), { success: false, message: "Attività non trovate in questo workspace." }, `${source} → ${target}`);
+  }
+  assert.deepEqual(await links(), []);
+  assert.deepEqual(await link(mine1, mine2), { success: true, message: "Dipendenza collegata con successo." });
+  assert.deepEqual(await links(), [{ source: mine1, target: mine2, type: "handoff" }]);
+});
+
 test("le quattro ricerche usano i loro indici GIN (EXPLAIN senza scansione sequenziale)", opts, async () => {
   const plans: Array<[string, string]> = [
     ["context_facts_fts_idx", `SELECT 1 FROM context_facts WHERE to_tsvector('italian', statement) @@ to_tsquery('italian', 'magazzino:*')`],

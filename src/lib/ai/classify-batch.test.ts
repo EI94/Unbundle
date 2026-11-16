@@ -35,7 +35,7 @@ await installAppModules({
     export async function getWorkspaceById() { return { id: "ws-prova", organizationId: "org-prova" }; }
     export async function getStrategicGoalsByWorkspace() { return []; }`,
   "@/lib/db/schema": `export const organizations = { id: "id" }; export const activities = {}; export const activityDependencies = {}; export const departments = { id: "id" };`,
-  "drizzle-orm": `export const eq = (column, value) => ({ column, value });`,
+  "drizzle-orm": `export const eq = (column, value) => ({ column, value }); export const and = (...parts) => ({ and: parts }); export const inArray = (column, values) => ({ column, values });`,
   // (Rilascio 9a) La tesi del valore viene dal workspace: quella dell'organizzazione, qui sotto, non si legge più.
   "@/lib/db/queries/value-thesis": `export async function getWorkspaceValueThesis(workspaceId) { globalThis.__prova.thesisAsked.push(workspaceId); return globalThis.__prova.thesis; }`,
   "@/lib/db": `export const db = {
