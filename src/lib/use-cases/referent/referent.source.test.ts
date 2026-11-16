@@ -104,6 +104,8 @@ const TABLE_FILES = new Set([
   "scripts/use-case-test/schema-check.mjs",
   // (0025) La prova nel browser delle due righe nuove, sul database usa e getta del harness.
   "scripts/use-case-test/case-alerts-acceptance.mjs",
+  // (Rilascio 9a) «Chiedi al contesto»: le risposte inviate e non tolte dei referenti tra i brani, solo per i revisori.
+  "src/lib/db/queries/context-ask.ts",
 ]);
 
 test("le tabelle nuove si nominano solo nei moduli della funzione", () => {

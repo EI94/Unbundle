@@ -77,11 +77,17 @@ test("U5: la tabella delle concessioni la legge e la scrive solo use-case-builde
     // Il DDL della 0037 e la tabella di Drizzle (solo la forma: nessuna query).
     "src/lib/db/use-case-hub-builders-ddl.ts",
     "src/lib/db/schema.ts",
+    // (0038, rilascio 9a) Il DDL di «Contesto» controlla solo che la 0037 ci sia (`to_regclass`): nessuna query.
+    "src/lib/db/context-ddl.ts",
   ]);
   const files = walk(join(root, "src"));
   assert.ok(files.length > 500);
   const users = files.filter((file) => /use_case_external_builders|useCaseExternalBuilders/.test(readFileSync(file, "utf8"))).map(rel);
   assert.deepEqual(users.filter((name) => !allowed.has(name)), []);
+  // Il DDL della 0038 la nomina in una riga sola: il controllo che la 0037 ci sia.
+  assert.deepEqual(readFileSync(join(root, "src/lib/db/context-ddl.ts"), "utf8").match(/[^\n]*use_case_external_builders[^\n]*/g), [
+    "  IF to_regclass('public.use_case_external_builders') IS NULL THEN",
+  ]);
   // Nessuno importa la tabella di Drizzle: le query stanno in use-case-builders.ts.
   for (const file of files) {
     if (rel(file) === "src/lib/db/schema.ts") continue;

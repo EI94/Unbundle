@@ -89,6 +89,10 @@ const TABLE_FILES = new Set([
   // (Rilascio 8.0b) «Aggiungi a Cosa serve» di una proposta: se l'esigenza con l'id riservato c'è già (una ripresa
   // dopo una risposta persa). Solo l'id, mai un testo.
   "src/lib/db/queries/use-case-agent-questions.ts",
+  // (Rilascio 9a) «Chiedi al contesto»: tra i brani, le risposte inviate dai referenti con il titolo della loro
+  // domanda, solo per i revisori (`canSeeReviewerSources`, gli stessi ruoli di `canSeeNeeds`); agli altri la ricerca
+  // non parte (src/lib/context/context.integration.test.ts).
+  "src/lib/db/queries/context-ask.ts",
 ]);
 
 const READS = /\b(listWorkspaceNeeds|getWorkspaceNeed|needUseCaseRefs)\b|queries\/use-case-needs/;
@@ -107,6 +111,16 @@ test("le tabelle delle esigenze si nominano solo in schema, DDL, letture e servi
   const found = files.filter((file) => TABLES.test(read(file)));
   assert.deepEqual(found.filter((file) => !TABLE_FILES.has(file)), []);
   for (const file of TABLE_FILES) assert.ok(found.includes(file), `${file} non nomina più le tabelle: aggiorna l'elenco`);
+});
+
+test("(9a) «Chiedi al contesto» nomina le esigenze in un posto solo, e solo per i revisori", () => {
+  const code = read("src/lib/db/queries/context-ask.ts");
+  // La ricerca delle risposte dei referenti parte solo se chi chiede è un revisore: altrimenti non c'è nessuna query.
+  const reviewersOnly = /abilities\.canSeeReviewerSources\s*\?\s*safely\("referente", ws, async \(\) => \{[\s\S]*?\}\)\s*:\s*Promise\.resolve\(\[\](?: as Found\[\])?\)/.exec(code);
+  assert.ok(reviewersOnly, "il ramo dei revisori");
+  assert.match(reviewersOnly[0], /FROM use_case_need_answers a JOIN use_case_needs n ON n\.id = a\.need_id/);
+  assert.match(reviewersOnly[0], /a\.workspace_id = \$\{ws\}::uuid AND a\.status = 'inviata' AND a\.removed_at IS NULL/);
+  assert.doesNotMatch(code.replace(reviewersOnly[0], ""), NEEDS_ANYWHERE, "fuori da quel ramo le esigenze non si nominano");
 });
 
 test("le letture delle esigenze le chiamano solo le pagine dell'area, con canSeeNeeds", () => {
