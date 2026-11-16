@@ -11,7 +11,7 @@ import "server-only";
  * Un fatto non si riscrive: un testo nuovo è una versione nuova, e quella di prima resta nella storia («Prima: …»).
  * Cambiare sezione, visibilità o use case aggiorna la riga.
  */
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { factSourceLabel, type SourceLabelKind } from "@/lib/context/labels";
 import type { LiveRow } from "@/lib/context/live";
@@ -136,13 +136,27 @@ interface FactRow {
   source_kind: SourceKind | null;
   source_day: unknown;
   source_title: string | null;
+  /** La versione nasce da «Modifica» su un fatto con una fonte: «Call 14 nov · corretto a mano». */
+  corrected: boolean;
 }
 
+/** Una versione riscritta a mano da «Modifica» (`editFact`): la sua storia lo dice, con `detail.modo = 'a_mano'`. */
+const CORRECTED_BY_HAND = (fact: SQL) => sql`EXISTS (
+  SELECT 1 FROM context_events e WHERE e.fact_id = ${fact}.id AND e.workspace_id = ${fact}.workspace_id AND e.action = 'fatto_cambiato' AND e.detail->>'modo' = 'a_mano'
+)`;
+
 const FACT_COLUMNS = sql`f.id, f.version, f.kind, f.section, f.statement, f.basis, f.visibility, f.status, f.origin, f.needs_check, f.last_confirmed_at, f.created_at,
-  f.ended_at, f.supersedes_id, f.confirmed_by_user_id, f.quote, f.source_id, s.kind AS source_kind, s.occurred_on AS source_day, s.title AS source_title`;
+  f.ended_at, f.supersedes_id, f.confirmed_by_user_id, f.quote, f.source_id, s.kind AS source_kind, s.occurred_on AS source_day, s.title AS source_title,
+  ${CORRECTED_BY_HAND(sql.raw("f"))} AS corrected`;
+
+/** La fonte a parole: «Call 14 nov», e se il testo l'ha corretto una persona «Call 14 nov · corretto a mano». */
+function sourceLabelOf(row: Pick<FactRow, "origin" | "source_kind" | "source_day" | "corrected">, today: string) {
+  const source = factSourceLabel({ origin: row.origin, sourceKind: row.source_kind, sourceOccurredOn: row.source_day ? toIsoDate(row.source_day) : null }, today);
+  return { ...source, label: row.corrected === true && source.kind !== "manuale" ? CONTEXT_TEXT.fact.correctedByHand(source.label) : source.label };
+}
 
 function factViewOf(row: FactRow, today: string, disputed: ReadonlySet<string>): FactView {
-  const source = factSourceLabel({ origin: row.origin, sourceKind: row.source_kind, sourceOccurredOn: row.source_day ? toIsoDate(row.source_day) : null }, today);
+  const source = sourceLabelOf(row, today);
   const confirmed = toDate(row.last_confirmed_at);
   return {
     id: row.id,
@@ -332,7 +346,7 @@ export async function getFactDetail(actor: ContextActor, factId: string): Promis
         UNION ALL
         SELECT p.id, p.supersedes_id, b.depth + 1 FROM back b JOIN context_facts p ON p.id = b.supersedes_id AND p.workspace_id = ${ws}::uuid WHERE b.depth < 200
       )
-      SELECT f.statement, f.created_at, f.ended_at, f.origin, s.kind AS source_kind, s.occurred_on AS source_day
+      SELECT f.statement, f.created_at, f.ended_at, f.origin, s.kind AS source_kind, s.occurred_on AS source_day, ${CORRECTED_BY_HAND(sql.raw("f"))} AS corrected
       FROM back b JOIN context_facts f ON f.id = b.id LEFT JOIN context_sources s ON s.id = f.source_id
       WHERE b.depth > 0 ORDER BY b.depth`),
     row.confirmed_by_user_id
@@ -341,14 +355,14 @@ export async function getFactDetail(actor: ContextActor, factId: string): Promis
   ]);
   view.quote = row.quote;
   view.source = row.source_id && row.source_title ? { id: row.source_id, title: row.source_title, occurredOn: toIsoDate(row.source_day) } : null;
-  view.history = rowsOf<{ statement: string; created_at: unknown; ended_at: unknown; origin: FactOrigin; source_kind: SourceKind | null; source_day: unknown }>(history).map((h) => {
+  view.history = rowsOf<{ statement: string; created_at: unknown; ended_at: unknown; origin: FactOrigin; source_kind: SourceKind | null; source_day: unknown; corrected: boolean }>(history).map((h) => {
     const from = toDate(h.created_at);
     const to = toDate(h.ended_at);
     return {
       statement: h.statement,
       from: from ? romeDate(from) : "",
       to: to ? romeDate(to) : null,
-      sourceLabel: factSourceLabel({ origin: h.origin, sourceKind: h.source_kind, sourceOccurredOn: h.source_day ? toIsoDate(h.source_day) : null }, today).label,
+      sourceLabel: sourceLabelOf(h, today).label,
     };
   });
   const name = rowsOf<{ name: string | null }>(confirmer)[0]?.name;
@@ -429,15 +443,34 @@ export async function writeFact(actor: ContextActor, input: { statement: string;
   }
 }
 
-/** Un fatto attivo di questo workspace, con la sua versione. */
+/** Un fatto attivo di questo workspace, con la sua versione e la sua fonte. */
 async function loadActiveFact(workspaceId: string, factId: string) {
-  const [row] = rowsOf<{ id: string; version: number; kind: FactKind; section: ContextSection; statement: string; visibility: ContextVisibility; status: string }>(
-    await db.execute(sql`SELECT id, version, kind, section, statement, visibility, status FROM context_facts WHERE id = ${factId}::uuid AND workspace_id = ${workspaceId}::uuid`),
+  const [row] = rowsOf<{
+    id: string;
+    version: number;
+    kind: FactKind;
+    section: ContextSection;
+    statement: string;
+    visibility: ContextVisibility;
+    status: string;
+    basis: Basis;
+    origin: FactOrigin;
+    source_id: string | null;
+    quote: string | null;
+  }>(
+    await db.execute(sql`
+      SELECT id, version, kind, section, statement, visibility, status, basis, origin, source_id, quote
+      FROM context_facts WHERE id = ${factId}::uuid AND workspace_id = ${workspaceId}::uuid`),
   );
   return row ?? null;
 }
 
-/** Un testo nuovo crea una versione (`fatto_cambiato`); sezione, visibilità e use case aggiornano la riga. Risponde con l'id della versione attiva. */
+/**
+ * Un testo nuovo crea una versione (`fatto_cambiato`, `detail.modo = 'a_mano'`) che tiene la fonte, la citazione e la
+ * base di quella di prima: un fatto venuto da una call resta di quella call, «Call 14 nov · corretto a mano»; uno
+ * scritto a mano resta «Scritto a mano». Sezione, visibilità e use case aggiornano la riga. Risponde con l'id della
+ * versione attiva.
+ */
 export async function editFact(
   actor: ContextActor,
   factId: string,
@@ -466,7 +499,7 @@ export async function editFact(
     // Un fatto «Per tutti» che cambia testo o diventa «Solo Lateral Space» esce da «In breve» (`dropBriefStatement`).
     const leavesBrief = current.visibility === "tutti" && (next.statement !== current.statement || next.visibility !== "tutti");
     if (next.statement !== current.statement) {
-      // Un testo nuovo è una versione nuova, scritta a mano: quella di prima resta nella storia.
+      // Un testo nuovo è una versione nuova, corretta a mano: tiene la fonte e la citazione; quella di prima resta nella storia.
       const newId = crypto.randomUUID();
       await db.batch([
         // Le proposte aperte su questo fatto hanno un «Prima» nuovo: chi le ha davanti come erano le rilegge.
@@ -474,14 +507,15 @@ export async function editFact(
         db.execute(held()),
         ...(leavesBrief ? [dropBriefStatement(ws)] : []),
         db.execute(sql`
-          INSERT INTO context_facts (id, workspace_id, kind, section, statement, basis, visibility, origin, supersedes_id, confirmed_by_user_id)
-          VALUES (${newId}::uuid, ${ws}::uuid, ${current.kind}, ${next.section}, ${next.statement}, 'detto', ${next.visibility}, 'manuale', ${factId}::uuid, ${actor.userId}::uuid)`),
+          INSERT INTO context_facts (id, workspace_id, kind, section, statement, basis, visibility, origin, source_id, quote, supersedes_id, confirmed_by_user_id)
+          VALUES (${newId}::uuid, ${ws}::uuid, ${current.kind}, ${next.section}, ${next.statement}, ${current.basis}, ${next.visibility}, ${current.origin},
+            ${current.source_id}::uuid, ${current.quote}, ${factId}::uuid, ${actor.userId}::uuid)`),
         next.useCaseIds !== null
           ? linkUseCasesStatement(ws, newId, next.useCaseIds)
           : db.execute(sql`
               INSERT INTO context_fact_links (workspace_id, fact_id, use_case_id)
               SELECT workspace_id, ${newId}::uuid, use_case_id FROM context_fact_links WHERE fact_id = ${factId}::uuid AND workspace_id = ${ws}::uuid AND use_case_id IS NOT NULL`),
-        eventStatement({ workspaceId: ws, action: "fatto_cambiato", channel: actor.channel, actorUserId: actor.userId, factId: newId }),
+        eventStatement({ workspaceId: ws, action: "fatto_cambiato", channel: actor.channel, actorUserId: actor.userId, factId: newId, detail: { modo: "a_mano" } }),
       ]);
       return ok({ factId: newId });
     }

@@ -1712,15 +1712,30 @@ test("getFactDetail: fonte, ultima conferma e use case per tutti; citazione, sto
   const third = okValue(await memory.editFact(actor("ls"), second, 1, { statement: `Il dettaglio di prova vale 3 ${suffix}.` })).factId;
   const detail = await memory.getFactDetail(actor("ls"), third);
   assert.ok(detail);
+  // «Modifica» tiene la fonte e la citazione: il fatto resta della call, corretto a mano.
   assert.deepEqual(
     { statement: detail.statement, sourceKind: detail.sourceKind, sourceLabel: detail.sourceLabel, useCases: detail.useCases, quote: detail.quote, source: detail.source, confirmedBy: detail.confirmedBy?.name, version: detail.version },
-    { statement: `Il dettaglio di prova vale 3 ${suffix}.`, sourceKind: "manuale", sourceLabel: "Scritto a mano", useCases: [{ id: ids.ucA, code: "CX-0001", title: "Ordini automatici" }], quote: null, source: null, confirmedBy: "Persona ls", version: 1 },
+    {
+      statement: `Il dettaglio di prova vale 3 ${suffix}.`,
+      sourceKind: "call",
+      sourceLabel: "Call 14 nov · corretto a mano",
+      useCases: [{ id: ids.ucA, code: "CX-0001", title: "Ordini automatici" }],
+      quote: "Il gestionale è SAP Business One.",
+      source: { id: sourceId, title: "Call di avvio", occurredOn: "2026-11-14" },
+      confirmedBy: "Persona ls",
+      version: 1,
+    },
   );
+  assert.deepEqual((await q(`SELECT origin, basis, source_id::text AS source FROM context_facts WHERE id = $1`, [third]))[0], { origin: "fonte", basis: "detto", source: sourceId });
+  assert.deepEqual((await q(`SELECT detail FROM context_events WHERE fact_id = $1 AND action = 'fatto_cambiato'`, [third]))[0].detail, { modo: "a_mano" });
   // La storia: le versioni di prima, dalla più recente, ognuna con la sua fonte.
   assert.deepEqual(detail.history.map((h) => [h.statement, h.sourceLabel, h.to !== null]), [
-    [`Il dettaglio di prova vale 2 ${suffix}.`, "Scritto a mano", true],
+    [`Il dettaglio di prova vale 2 ${suffix}.`, "Call 14 nov · corretto a mano", true],
     [`Il dettaglio di prova vale 1 ${suffix}.`, "Call 14 nov", true],
   ]);
+  // Nella Memoria la riga dice la stessa fonte.
+  const row = (await memory.loadContextMemory(actor("ls"))).sections.flatMap((section) => section.facts).find((f) => f.id === third);
+  assert.deepEqual([row?.sourceKind, row?.sourceLabel], ["call", "Call 14 nov · corretto a mano"]);
   // La prima versione porta la citazione e l'appunto da cui viene.
   const origin = await memory.getFactDetail(actor("ls"), first);
   assert.deepEqual([origin?.quote, origin?.source, origin?.history], ["Il gestionale è SAP Business One.", { id: sourceId, title: "Call di avvio", occurredOn: "2026-11-14" }, []]);
@@ -1729,7 +1744,7 @@ test("getFactDetail: fonte, ultima conferma e use case per tutti; citazione, sto
     const view = await memory.getFactDetail(actor(person), third);
     assert.deepEqual(
       view && { statement: view.statement, sourceLabel: view.sourceLabel, useCases: view.useCases.map((u) => u.code), quote: view.quote, source: view.source, history: view.history, confirmedBy: view.confirmedBy },
-      { statement: `Il dettaglio di prova vale 3 ${suffix}.`, sourceLabel: "Scritto a mano", useCases: ["CX-0001"], quote: null, source: null, history: [], confirmedBy: null },
+      { statement: `Il dettaglio di prova vale 3 ${suffix}.`, sourceLabel: "Call 14 nov · corretto a mano", useCases: ["CX-0001"], quote: null, source: null, history: [], confirmedBy: null },
       person,
     );
     assert.equal(await memory.getFactDetail(actor(person), first), null, `${person}: una versione superata non si vede`);
