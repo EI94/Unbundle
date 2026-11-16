@@ -163,7 +163,7 @@
 [data-board-root] .b-pm-lab small{font-size:11.5px;color:var(--board-graphite)}
 [data-board-root] .b-pm-lab .b-lid{font-family:var(--board-font-mono);font-size:10px;color:var(--board-graphite-3)}
 [data-board-root] .b-pm-steps{display:flex;align-items:stretch;gap:0;padding:12px}
-[data-board-root] .b-pm-steps .b-node{flex:1 1 0;min-width:170px;max-width:none}
+[data-board-root] .b-pm-steps .b-node{flex:1 1 170px;min-width:170px;max-width:none}
 [data-board-root] .b-pm-steps .b-node .b-who{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
 [data-board-root] .b-pm-steps .b-node .b-ns2{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
 @container board (max-width:1499px){[data-board-root] .b-pm-row{grid-template-columns:136px minmax(0,1fr);min-width:calc(136px + 24px + var(--steps, 1) * 188px)}}

@@ -234,6 +234,9 @@ const DEVIATIONS: Record<string, Record<string, string>> = {
   [`${ROOT} .b-pm-row`]: { "min-width": "segue il numero dei passi della riga (--steps): il riferimento fissa la larghezza di sei passi" },
   [`@container board (max-width:1499px)|${ROOT} .b-pm-row`]: { "min-width": "come sopra, con l'etichetta di 136 px" },
   [`${ROOT} .b-node`]: { transition: "anche l'opacità: «Evidenzia attriti» sfuma i passi senza attrito (sul riferimento sfumano le note, con la stessa durata)" },
+  [`${ROOT} .b-pm-steps .b-node`]: {
+    flex: "base di 170 px, non 0: le card di una riga restano larghe uguali (P12) anche quando il bordo dell'attrito (4 px) e quello neutro (1 px) differiscono; sul riferimento la card con il bordo spesso è 3 px più larga",
+  },
   [`${ROOT} .b-node .b-none`]: { color: "«da classificare» è un testo, non un segno: il grigio dei testi (7,5:1), non graphite-3 (2,4:1)" },
   [`${ROOT} .b-human b`]: { color: "l'etichetta di «Decide una persona» è un testo: amber-text (6,2:1 sul foglio in chiaro), non amber-deep (3,9:1)" },
   [`${ROOT} .b-l`]: { "list-style": "sotto il preflight dell'app una lista non ha i punti: quelle della board sì, come sul riferimento" },
@@ -304,7 +307,7 @@ test("le regole portate sono quelle del riferimento, dichiarazione per dichiaraz
     assert.ok(ported.has(key), `${key}: deviazione di una regola che non è tra quelle portate`);
     for (const [property, why] of Object.entries(properties)) assert.ok(why.length > 20, `${key} ${property}: manca il motivo`);
   }
-  assert.equal(Object.keys(DEVIATIONS).length, 19);
+  assert.equal(Object.keys(DEVIATIONS).length, 20);
 });
 
 test("fuori dal suo contesto una regola portata non si riscrive: solo la testata sul telefono", () => {

@@ -187,12 +187,11 @@ function check(name, config, m, expected, failures) {
   if (m.kpi !== null && (m.kpi !== "30px" || !/Instrument Serif/.test(m.kpiFamily))) fail(`numero dei riquadri ${m.kpi} ${m.kpiFamily}`);
   if (m.viewTitle !== null && m.viewTitle !== (config.width === 1440 ? "42px" : "28px")) fail(`titolo della vista ${m.viewTitle}`);
   if (m.rowLabel !== null) near(m.rowLabel, m.board !== null && m.board >= 1500 ? 160 : 136, 0.5, "etichetta della riga");
-  m.rows.forEach(({ widths, bare }, index) => {
+  m.rows.forEach(({ widths }, index) => {
     if (widths.length === 0) return;
-    // Le card della stessa riga sono larghe uguali. Senza maniglia (sola lettura) la card è il flex item del riferimento
-    // (`flex: 1 1 0` con il bordo dentro): una card con il bordo dell'attrito da 4 px è 3 px più larga, come là.
-    const tolerance = bare ? 3.5 : 1;
-    if (Math.max(...widths) - Math.min(...widths) > tolerance) fail(`riga ${index + 1}: card di larghezze diverse ${widths.join(", ")}`);
+    // Le card della stessa riga sono larghe uguali, con o senza maniglia: anche senza (sola lettura, «Classificazione»)
+    // la card parte da 170 px (board.css), così il bordo dell'attrito da 4 px non la allarga (sul riferimento di 3 px).
+    if (Math.max(...widths) - Math.min(...widths) > 1) fail(`riga ${index + 1}: card di larghezze diverse ${widths.join(", ")}`);
     if (Math.min(...widths) < 170) fail(`riga ${index + 1}: card più strette di 170 px (${Math.min(...widths)})`);
   });
   // La testata della board (con le schede): 127 px sul riferimento. L'elenco delle unità non ha schede.
