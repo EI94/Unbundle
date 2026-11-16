@@ -112,8 +112,35 @@ export const prose = (text: string): string =>
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
-/** Taglia a `max` caratteri senza lasciare uno spazio in fondo. */
-const cut = (text: string, max: number): string => (text.length > max ? text.slice(0, max).trimEnd() : text);
+const graphemes = typeof Intl !== "undefined" && typeof Intl.Segmenter === "function" ? new Intl.Segmenter("it", { granularity: "grapheme" }) : null;
+
+/**
+ * Un testo a pezzi di al più `max` unità UTF-16 (la misura di `String.length` e dei limiti), senza mai spezzare un
+ * grafema: una lettera con i suoi segni, un'emoji intera con i suoi modificatori. Senza `Intl.Segmenter` si taglia
+ * almeno tra due punti di codice, mai dentro una coppia surrogata: una metà di emoji da sola non si scrive nel
+ * database (la sua stringa JSON non è valida) e farebbe fallire tutto il salvataggio. Un grafema più lungo di un pezzo
+ * (migliaia di segni sulla stessa lettera) va per punti di codice. `limit`: si ferma dopo tanti pezzi.
+ */
+function pieces(text: string, max: number, limit = Number.POSITIVE_INFINITY): string[] {
+  const out: string[] = [];
+  let current = "";
+  const units = graphemes ? Array.from(graphemes.segment(text), (part) => part.segment) : Array.from(text);
+  for (const unit of units) {
+    for (const part of unit.length > max ? Array.from(unit) : [unit]) {
+      if (current !== "" && current.length + part.length > max) {
+        out.push(current);
+        if (out.length >= limit) return out;
+        current = "";
+      }
+      current += part;
+    }
+  }
+  if (current !== "" && out.length < limit) out.push(current);
+  return out;
+}
+
+/** Taglia a `max` caratteri senza lasciare uno spazio in fondo e senza spezzare un grafema (`pieces`). */
+const cut = (text: string, max: number): string => (text.length > max ? (pieces(text, max, 1)[0] ?? "").trimEnd() : text);
 /** Una riga rifinita e tagliata; null se resta vuota. */
 export function cutLine(text: string | null | undefined, max: number): string | null {
   const out = typeof text === "string" ? cut(oneLine(text), max) : "";
@@ -126,9 +153,10 @@ export function cutProse(text: string | null | undefined, max: number): string |
 }
 /**
  * Un testo più lungo di una nota come più note di al più `max` caratteri (l'adozione di `pain_points` e `data_required`
- * scritti prima della board, §3.5): si divide agli a capo, e una riga più lunga di `max` ogni `max` caratteri. Unite da
- * un a capo, come le ricopia la coda del salvataggio (`projectLane`), le parti ridanno il testo: cambiano solo gli spazi
- * ai bordi di ogni parte (e un a capo dentro una riga troppo lunga), nessuna parola va persa. Una parte vuota non c'è.
+ * scritti prima della board, §3.5): si divide agli a capo, e una riga più lunga di `max` a pezzi di al più `max`
+ * caratteri, mai dentro un grafema (`pieces`: un'emoji a cavallo del taglio resta intera nel pezzo dopo). Unite da un a
+ * capo, come le ricopia la coda del salvataggio (`projectLane`), le parti ridanno il testo: cambiano solo gli spazi ai
+ * bordi di ogni parte (e un a capo dentro una riga troppo lunga), nessuna parola va persa. Una parte vuota non c'è.
  */
 export function splitNoteText(text: string, max: number): string[] {
   const parts: string[] = [];
@@ -139,8 +167,7 @@ export function splitNoteText(text: string, max: number): string[] {
     current = null;
   };
   for (const line of text.replace(/\r\n?/g, "\n").split("\n")) {
-    const pieces = line.length <= max ? [line] : Array.from({ length: Math.ceil(line.length / max) }, (_, index) => line.slice(index * max, (index + 1) * max));
-    for (const piece of pieces) {
+    for (const piece of line.length <= max ? [line] : pieces(line, max)) {
       if (current !== null && current.length + 1 + piece.length <= max) current = `${current}\n${piece}`;
       else {
         close();

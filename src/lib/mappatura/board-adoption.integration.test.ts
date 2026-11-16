@@ -296,6 +296,31 @@ test("«Attriti» e «Dati e documenti» più lunghi di una nota entrano interi,
   }
 });
 
+test("un testo di prima con un'emoji a cavallo del 2000° carattere: la board si apre e si salva, l'emoji resta intera", opts, async () => {
+  const g = newFixture();
+  await seed(q, g, "emoji");
+  const where = { workspaceId: g.ws, departmentId: g.unit };
+  const who = { kind: "persona" as const, userId: g.lead, role: "transformation_lead" };
+  try {
+    const emoji = "\u{1F600}";
+    const pain = `${"a".repeat(MAPPING_LIMITS.note - 1)}${emoji}${" e poi il resto del testo".repeat(20)}`;
+    const activityId = await insertActivity(q, { ws: g.ws, unit: g.unit }, { title: "Passo con un testo lungo", pain_points: pain });
+    // Prima: il pezzo tagliato a metà dell'emoji faceva fallire l'adozione, e con lei ogni lettura e salvataggio dell'unità.
+    const board = await store.readBoard(db.exec, where, who);
+    assert.ok(board);
+    const notes = steps(board).find((item) => item.id === activityId)?.notes.attriti.map((note) => note.text) ?? [];
+    assert.deepEqual(notes.map((text) => text.length), [MAPPING_LIMITS.note - 1, pain.length - (MAPPING_LIMITS.note - 1)]);
+    assert.ok(notes[1].startsWith(emoji));
+    assert.equal(notes.join("").replace(/\s/g, ""), pain.replace(/\s/g, ""));
+    const saved = await store.saveBoardOps(db.exec, where, who, { baseRevision: board.revision, ops: [{ id: randomUUID(), t: "board.set", field: "headline", prev: null, next: "Prova" }] });
+    assert.ok(saved.ok && saved.rejected.length === 0);
+    // La colonna di prima non cambia con l'adozione.
+    assert.equal((await q(`SELECT pain_points FROM activities WHERE id = $1`, [activityId]))[0].pain_points, pain);
+  } finally {
+    await unseed(q, g);
+  }
+});
+
 test("senza la 0039 la board si legge dalle sole attività, in sola lettura, e niente si scrive", opts, async () => {
   const withStore = await store.readBoard(db.exec, scope(), viewer());
   assert.ok(withStore);

@@ -563,3 +563,36 @@ test("un testo più lungo di una nota: parti agli a capo entro il limite, una ri
   assert.equal(real.length, 2);
   assert.equal(real.join("\n"), legacy);
 });
+
+/** Una stringa senza metà di emoji: UTF-8 la scrive e la rilegge uguale (una metà da sola diventerebbe U+FFFD). */
+const wellFormed = (text: string) => new TextDecoder().decode(new TextEncoder().encode(text)) === text;
+
+test("un taglio non spezza mai un'emoji né una lettera con i suoi segni: né le note di un testo lungo, né i limiti dei campi", () => {
+  const max = MAPPING_LIMITS.note;
+  // L'emoji a cavallo del 2000° carattere (1999 + 2): il primo pezzo si ferma prima, l'emoji intera apre il secondo.
+  const emoji = "\u{1F600}";
+  const line = `${"a".repeat(max - 1)}${emoji}${" e poi il resto del testo".repeat(20)}`;
+  const parts = splitNoteText(line, max);
+  assert.equal(parts.length, 2);
+  for (const part of parts) assert.ok(wellFormed(part) && part.length <= max, `${part.length} unità, ben formata: ${wellFormed(part)}`);
+  assert.equal(parts[0], "a".repeat(max - 1));
+  assert.ok(parts[1].startsWith(emoji));
+  assert.equal(parts.join("").replace(/\s/g, ""), line.replace(/\s/g, ""));
+  // Un grafema di più punti di codice (una famiglia unita da ZWJ, una bandiera, una lettera con l'accento combinato)
+  // sul confine resta intero nel pezzo dopo.
+  for (const cluster of ["\u{1F469}‍\u{1F469}‍\u{1F467}", "\u{1F1EE}\u{1F1F9}", "é"]) {
+    const text = `${"x".repeat(max - 1)}${cluster}fine`;
+    const cut = splitNoteText(text, max);
+    assert.deepEqual(cut, ["x".repeat(max - 1), `${cluster}fine`], JSON.stringify(cluster));
+  }
+  // Un grafema più lungo di un pezzo intero va per punti di codice: nessun pezzo supera il limite, niente si perde.
+  const marks = `o${"́".repeat(12)}`;
+  const small = splitNoteText(marks, 5);
+  assert.ok(small.every((part) => part.length <= 5 && wellFormed(part)));
+  assert.equal(small.join(""), marks);
+  // I limiti dei campi (titoli, descrizioni, note dell'assistente) tagliano allo stesso modo.
+  assert.equal(cutLine(`${"a".repeat(MAPPING_LIMITS.title - 1)}${emoji}`, MAPPING_LIMITS.title), "a".repeat(MAPPING_LIMITS.title - 1));
+  assert.equal(cutProse(`${"b".repeat(9)}\u{1F1EE}\u{1F1F9}`, 10), "b".repeat(9));
+  assert.equal(cutLine(`ab${emoji}`, 4), `ab${emoji}`);
+  assert.deepEqual(cutList([`${"c".repeat(MAPPING_LIMITS.toolItem - 1)}${emoji}`], 3, MAPPING_LIMITS.toolItem), ["c".repeat(MAPPING_LIMITS.toolItem - 1)]);
+});
