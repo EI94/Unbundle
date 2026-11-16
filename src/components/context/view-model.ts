@@ -258,10 +258,24 @@ export function sourceOriginLabel(item: { kind: SourceKind; origin: SourceOrigin
   return item.kind === "documento" ? T.notes.origin.documento : T.notes.origin[item.origin];
 }
 
-/** A che punto è una fonte: «Da leggere», «Leggo…», «Da confermare (4)», «Confermato», «Letto», «Non letto». */
-export function sourceStateLabel(item: { state: SourceState; openProposals: number }): string {
+/**
+ * A che punto è una fonte: «Da leggere», «Leggo…», «Da confermare (4)», «Confermato», «Letto», «Non letto». Un
+ * documento senza testo da leggere (una scansione, un file vuoto) è «Testo non letto».
+ */
+export function sourceStateLabel(item: { state: SourceState; openProposals: number; kind?: SourceKind; readReason?: string | null }): string {
   if (item.state === "da_confermare") return T.notes.state.da_confermare(item.openProposals);
+  if (item.state === "non_letto" && item.kind === "documento" && item.readReason === "vuoto") return T.documents.unread;
   return T.notes.state[item.state];
+}
+
+/**
+ * Dopo il caricamento di un documento (§10.2, §6.2): si legge solo se il testo c'è. Una scansione senza l'ok ai
+ * fornitori lo dice, con l'avviso; un file senza testo è «Testo non letto». `consent`: manca l'ok.
+ */
+export function afterUpload(doc: { textRead: boolean; ai: "ok" | "ok_mancante" | "non_serve" }): { read: boolean; text: string | null; consent: boolean } {
+  const consent = doc.ai === "ok_mancante";
+  if (!doc.textRead) return { read: false, text: consent ? T.documents.scanned : T.documents.unread, consent };
+  return { read: true, text: null, consent };
 }
 
 /**

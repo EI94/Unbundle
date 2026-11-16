@@ -6,6 +6,7 @@ import type { OpenProposals, ProposalView } from "../../lib/db/queries/context-p
 import type { SourceListItem } from "../../lib/db/queries/context-sources.ts";
 import {
   addNotesClose,
+  afterUpload,
   afterConfirm,
   askSourceMeta,
   briefMaterial,
@@ -286,6 +287,16 @@ test("da dove viene una fonte e a che punto è: le etichette, mai un codice", ()
   assert.equal(sectionLabel("lavoro"), "Come lavorano");
   assert.equal(visibilityLabel("ls"), "Solo Lateral Space");
   assert.equal(visibilityLabel("tutti"), "Per tutti");
+});
+
+test("un documento senza testo da leggere: «Testo non letto»; dopo il caricamento si legge solo se il testo c'è", () => {
+  assert.equal(sourceStateLabel(source({ kind: "documento", state: "non_letto", readReason: "vuoto" })), T.documents.unread);
+  assert.equal(sourceStateLabel(source({ kind: "documento", state: "non_letto", readReason: "rifiuto" })), "Non letto");
+  assert.equal(sourceStateLabel(source({ kind: "appunti", state: "non_letto", readReason: "vuoto" })), "Non letto");
+  assert.deepEqual(afterUpload({ textRead: true, ai: "ok" }), { read: true, text: null, consent: false });
+  assert.deepEqual(afterUpload({ textRead: true, ai: "ok_mancante" }), { read: true, text: null, consent: true });
+  assert.deepEqual(afterUpload({ textRead: false, ai: "ok_mancante" }), { read: false, text: T.documents.scanned, consent: true });
+  assert.deepEqual(afterUpload({ textRead: false, ai: "non_serve" }), { read: false, text: T.documents.unread, consent: false });
 });
 
 test("la riga di una fonte: per Lateral Space data, origine, stato e, per un documento, chi lo vede; per il cliente data e dimensione", () => {

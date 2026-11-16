@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { CONTEXT_TEXT } from "@/lib/context/text";
 import { uploadDocument } from "./read-client";
-import { ACCEPTED_DOCUMENTS, uploadableDocument } from "./view-model";
+import { ACCEPTED_DOCUMENTS, afterUpload, uploadableDocument } from "./view-model";
 
 const T = CONTEXT_TEXT;
 
@@ -34,11 +34,11 @@ export function UploadDocumentButton({ workspaceId, className }: { workspaceId: 
       toast.error(result ? result.message : T.errors.retry);
       return;
     }
-    if (result.value.ai === "ok_mancante") {
-      toast(T.documents.savedNoConsent, { action: { label: T.documents.openSettings, onClick: () => router.push(`/dashboard/${workspaceId}/settings#sub-responsabili`) } });
-    } else {
-      toast.success(T.documents.uploaded);
-    }
+    const then = afterUpload(result.value);
+    const settings = { label: T.documents.openSettings, onClick: () => router.push(`/dashboard/${workspaceId}/settings#sub-responsabili`) };
+    if (then.text) toast(then.text, then.consent ? { action: settings } : undefined);
+    else if (then.consent) toast(T.documents.savedNoConsent, { action: settings });
+    else toast.success(T.documents.uploaded);
     router.refresh();
   };
 

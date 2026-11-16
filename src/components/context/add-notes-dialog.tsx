@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 import { AiConsentNotice } from "./ai-consent-notice";
 import { Field } from "./fields";
 import { readUntilDone, saveNote, uploadDocument } from "./read-client";
-import { ACCEPTED_FILES, addNotesClose, droppedFileKind, fileSizeText, noteDraftErrors, proposedTitle, readOutcomeMessage, titleFromFileName, type AddNotesPhase, type ReadMessage } from "./view-model";
+import { ACCEPTED_FILES, addNotesClose, afterUpload, droppedFileKind, fileSizeText, noteDraftErrors, proposedTitle, readOutcomeMessage, titleFromFileName, type AddNotesPhase, type ReadMessage } from "./view-model";
 
 const T = CONTEXT_TEXT;
 
@@ -168,6 +168,14 @@ export function AddNotesDialog({
         return;
       }
       sourceId = uploaded.value.sourceId;
+      const then = afterUpload(uploaded.value);
+      if (!then.read) {
+        // Niente testo da leggere: lo si dice, e il documento resta nell'elenco.
+        setPhase("fatto");
+        setEnding({ message: { text: then.text ?? T.documents.unread, retry: false, tone: "attesa" }, sourceId, duplicate: false, consent: then.consent });
+        router.refresh();
+        return;
+      }
     } else {
       const saved = await saveNote(fetch, workspaceId, draft).catch(() => null);
       if (round.current !== mine) return;
