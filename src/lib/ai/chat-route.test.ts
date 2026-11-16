@@ -30,8 +30,10 @@ type Prova = {
   /** (Rilascio 9a) La tesi del valore del workspace, e i workspace di cui la rotta l'ha chiesta. */
   thesis: Record<string, unknown> | null;
   thesisAsked: string[];
+  /** (Rilascio 9a) Le unità che la rotta ha cercato. */
+  unitsAsked: string[];
 };
-const prova: Prova = { saved: [], deleted: [], reads: 0, indexed: [], tools: {}, toolArgs: [], consentAsked: [], thesis: null, thesisAsked: [] };
+const prova: Prova = { saved: [], deleted: [], reads: 0, indexed: [], tools: {}, toolArgs: [], consentAsked: [], thesis: null, thesisAsked: [], unitsAsked: [] };
 (globalThis as { __prova?: Prova }).__prova = prova;
 
 await installAppModules({
@@ -74,6 +76,13 @@ await installAppModules({
   "@/lib/db/queries/context-consent": `export async function contextAiConsent(workspaceId) {
     globalThis.__prova.consentAsked.push(workspaceId);
     return globalThis.__prova.consent !== false;
+  }`,
+  // Le unità: UNIT è del workspace della prova, OTHER_UNIT di un altro.
+  "@/lib/db/queries/workspaces": `export async function getDepartmentById(id) {
+    globalThis.__prova.unitsAsked.push(id);
+    if (id === "3b2a1c0d-9e8f-4a6b-8c5d-7e6f5a4b3c2d") return { id, workspaceId: "ws-prova" };
+    if (id === "1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f") return { id, workspaceId: "ws-altro" };
+    return null;
   }`,
   "@/lib/db/queries/value-thesis": `export async function getWorkspaceValueThesis(workspaceId) {
     globalThis.__prova.thesisAsked.push(workspaceId);
@@ -124,7 +133,12 @@ function reset() {
   prova.consentAsked = [];
   prova.thesis = null;
   prova.thesisAsked = [];
+  prova.unitsAsked = [];
 }
+
+/** Un'unità del workspace della prova, e una di un altro workspace (rilascio 9a, §10.5). */
+const UNIT = "3b2a1c0d-9e8f-4a6b-8c5d-7e6f5a4b3c2d";
+const OTHER_UNIT = "1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f";
 
 const HISTORY = [
   { role: "assistant", content: "Benvenuto: di che cosa ti occupi?" },
@@ -136,7 +150,7 @@ test("(Rilascio 9a) senza l'ok ai sub-responsabili: 403 ok_fornitori_mancante, n
     reset();
     prova.consent = false;
     const requests = fakeAppClaude([]);
-    const { status, raw } = await chat(HISTORY, conversationType, conversationType === "activity_mapping" ? "reparto-prova" : undefined);
+    const { status, raw } = await chat(HISTORY, conversationType, conversationType === "activity_mapping" ? UNIT : undefined);
     assert.equal(status, 403, conversationType);
     assert.deepEqual(JSON.parse(raw), { error: "ok_fornitori_mancante", message: "Serve l'ok ai fornitori di AI" });
     assert.equal(requests.length, 0, "nessun testo al modello");
@@ -144,6 +158,31 @@ test("(Rilascio 9a) senza l'ok ai sub-responsabili: 403 ok_fornitori_mancante, n
     assert.deepEqual(prova.indexed, []);
     assert.deepEqual(prova.consentAsked, ["ws-prova"], "l'ok è quello del workspace della richiesta");
   }
+});
+
+test("(Rilascio 9a) un'unità di un altro workspace, un id che non è un'unità o la mappatura senza unità: 404 prima di tutto", async () => {
+  for (const [conversationType, departmentId] of [
+    ["activity_mapping", OTHER_UNIT],
+    ["activity_mapping", "reparto-prova"],
+    ["activity_mapping", undefined],
+    ["leadership_setup", OTHER_UNIT],
+  ] as const) {
+    reset();
+    const requests = fakeAppClaude([]);
+    const { status } = await chat(HISTORY, conversationType, departmentId);
+    assert.equal(status, 404, `${conversationType} ${departmentId}`);
+    assert.equal(requests.length, 0);
+    assert.deepEqual(prova.saved, [], "niente salvato");
+    assert.deepEqual(prova.toolArgs, [], "nessun tool costruito con l'unità di un altro workspace");
+    assert.deepEqual(prova.consentAsked, [], "prima di tutto, anche dell'ok");
+  }
+  // L'unità del workspace passa ai tool della mappatura.
+  reset();
+  fakeAppClaude([sse([ev.start("msg_1"), ...ev.text(0, "Bene."), ...ev.end("end_turn")])]);
+  const { status } = await chat(HISTORY, "activity_mapping", UNIT);
+  assert.equal(status, 200);
+  assert.deepEqual(prova.unitsAsked, [UNIT]);
+  assert.deepEqual(prova.toolArgs[0].slice(1, 3), ["ws-prova", UNIT]);
 });
 
 test("(Rilascio 9a) la tesi del valore nel contesto della chat è quella del workspace, mai quella dell'organizzazione", async (t) => {
@@ -602,7 +641,7 @@ test("un passo rifiutato alla scadenza (orologio finto) resta un rifiuto: niente
 test("una scadenza per richiesta, ai tool che chiamano il modello: l'inizio più 120 secondi, meno 25 di riserva e 20 per un altro passo", async (t) => {
   recordLogs(t);
   for (const [conversationType, departmentId, built] of [
-    ["activity_mapping", "reparto-prova", ["activity-mapping", "web-search"]],
+    ["activity_mapping", UNIT, ["activity-mapping", "web-search"]],
     ["leadership_setup", undefined, ["web-search"]],
   ] as const) {
     reset();
@@ -618,7 +657,7 @@ test("una scadenza per richiesta, ai tool che chiamano il modello: l'inizio più
       assert.ok(deadline >= before + 75_000 && deadline <= after + 75_000, `${conversationType}: scadenza ${deadline - before} ms dopo l'inizio`);
     }
     assert.equal(new Set(deadlines).size, 1, "la stessa scadenza per tutti i tool della richiesta");
-    if (conversationType === "activity_mapping") assert.deepEqual(prova.toolArgs[0].slice(1, 3), ["ws-prova", "reparto-prova"]);
+    if (conversationType === "activity_mapping") assert.deepEqual(prova.toolArgs[0].slice(1, 3), ["ws-prova", UNIT]);
   }
 });
 

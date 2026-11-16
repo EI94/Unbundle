@@ -30,6 +30,8 @@ import { db } from "@/lib/db";
 import { uploadedDocuments, activities } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { getWorkspaceValueThesis } from "@/lib/db/queries/value-thesis";
+import { getDepartmentById } from "@/lib/db/queries/workspaces";
+import { isUuid } from "@/lib/uc/ids";
 import { retrieveRelevantContext, indexConversationMessage } from "@/lib/ai/rag/retriever";
 import { contextAiConsent } from "@/lib/db/queries/context-consent";
 import { CONTEXT_TEXT } from "@/lib/context/text";
@@ -65,6 +67,14 @@ export async function POST(req: Request) {
     return new Response("Workspace not found", { status: 404 });
   }
   const { workspace } = access;
+  // L'unità arriva dal browser (rilascio 9a, RILASCIO-9a-COSTRUZIONE.md §10.5): deve essere di questo workspace, prima
+  // di tutto. Con l'id di un'unità di un altro workspace i tool della mappatura scriverebbero lì. La mappatura la vuole.
+  if (departmentId !== undefined || conversationType === "activity_mapping") {
+    const unit = typeof departmentId === "string" && isUuid(departmentId) ? await getDepartmentById(departmentId) : null;
+    if (!unit || unit.workspaceId !== workspaceId) {
+      return new Response("Department not found", { status: 404 });
+    }
+  }
   // L'ok ai sub-responsabili (rilascio 9a, docs/contesto/RILASCIO-9a-COSTRUZIONE.md §6.2): senza, nessun testo del
   // cliente va al modello e niente si salva. La chat mostra l'avviso al posto del campo per scrivere
   // (src/components/agent/chat-consent.ts); i messaggi di prima restano.
