@@ -171,9 +171,13 @@ test("uno stream scelto da una persona mentre il classificatore lavora resta: la
   const s = step(board, ids.richieste);
   assert.deepEqual([s.stream, s.proposedStream, s.reason, s.confidence], ["innovate", "differentiate", "Un altro motivo.", 0.8], "lo stream e la confidenza di prima restano");
   assert.equal(board.revision, revision + 1);
-  // Un id di un'altra unità o di un altro workspace: niente, neanche la proposta.
+  // Un id di un'altra unità o di un altro workspace: niente, neanche la proposta. Il passo dell'altra unità è sulla sua
+  // board (adottato): ha la sua riga del passo, e solo lo scope dell'unità lo tiene fuori.
+  const elsewhere = await store.readBoard(db.exec, { workspaceId: f.ws, departmentId: f.otherUnit }, lead());
+  assert.ok(elsewhere?.processes.some((process) => process.steps.some((item) => item.id === ids.altrove)), "il passo dell'altra unità è sulla sua board");
   await deps.saveClassifications(scope(), new Map([[ids.altrove, { classification: "automate", confidenceScore: 1, reasoning: "x", aiPotential: "x" }], [ids.fuori, { classification: "automate", confidenceScore: 1, reasoning: "x", aiPotential: "x" }]]));
   for (const id of [ids.altrove, ids.fuori]) assert.equal((await activityRow(id)).classification, null);
+  assert.equal((await q(`SELECT proposed_stream FROM mapping_steps WHERE activity_id = $1`, [ids.altrove]))[0].proposed_stream, null);
   // Il codice O*NET non copre quello che c'è già, e non esce dall'unità.
   assert.equal(await deps.saveOnetMatches(scope(), [{ activityId: ids.richieste, suggestedOnetCode: "99-9999.99", occupationTitle: "Altro", aiExposureEstimate: 1 }, { activityId: ids.altrove, suggestedOnetCode: "99-9999.99", occupationTitle: "Altro", aiExposureEstimate: 1 }]), 0);
   assert.deepEqual([(await activityRow(ids.richieste)).onet_task_id, (await activityRow(ids.altrove)).onet_task_id], ["13-1023.00", null]);

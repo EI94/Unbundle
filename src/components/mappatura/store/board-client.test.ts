@@ -42,6 +42,8 @@ function harness(options: { initial?: MappingBoard; server?: MappingBoard; draft
     reject: new Map<BoardOp["t"], string>(),
     getStatus: 200,
     gate: null as null | { wait: Promise<void>; open(): void },
+    /** Trattiene la risposta dei GET: il server ha già letto la board, la risposta arriva dopo. */
+    getGate: null as null | { wait: Promise<void>; open(): void },
   };
 
   /** Il server: una operazione alla volta, R3 sui campi dei passi, la revisione sale di uno per salvataggio. */
@@ -79,7 +81,9 @@ function harness(options: { initial?: MappingBoard; server?: MappingBoard; draft
       server.gets.push(url);
       if (server.getStatus !== 200) return json({ code: "non_trovata" }, server.getStatus);
       const since = Number(new URL(url, "http://board.test").searchParams.get("since"));
-      return since === server.board.revision ? json({ unchanged: true, revision: since }) : json({ board: server.board });
+      const answer = since === server.board.revision ? json({ unchanged: true, revision: since }) : json({ board: server.board });
+      if (server.getGate) await server.getGate.wait;
+      return answer;
     }
     assert.equal(url, URL_BOARD);
     assert.equal(init?.method, "PUT");
@@ -166,6 +170,20 @@ function harness(options: { initial?: MappingBoard; server?: MappingBoard; draft
     async release() {
       const gate = server.gate;
       server.gate = null;
+      gate?.open();
+      await flush();
+    },
+    /** Trattiene le risposte dei GET finché il test non le lascia andare (`releaseGets`). */
+    holdGets() {
+      let open = () => {};
+      const wait = new Promise<void>((resolve) => {
+        open = resolve;
+      });
+      server.getGate = { wait, open };
+    },
+    async releaseGets() {
+      const gate = server.getGate;
+      server.getGate = null;
       gate?.open();
       await flush();
     },
@@ -746,6 +764,28 @@ test("pull rilegge la board e tiene sopra le modifiche non salvate; se niente è
   const kept = h.state();
   await h.client.pull();
   assert.equal(h.state(), kept);
+});
+
+test("una rilettura lenta che risponde dopo un salvataggio non riporta indietro la board", async () => {
+  const h = harness();
+  const start = h.state().board.revision;
+  // Qualcun altro salva: la rilettura che parte ora porta la sua board (una revisione in più), ma la risposta è lenta.
+  h.someoneElse([{ id: "0b0b0b0b-0000-4000-8000-000000000001", ...setTitle(I.confronto, "Confronto delle offerte", "Confronto dei preventivi") }]);
+  h.holdGets();
+  const pulling = h.client.pull();
+  await flush();
+  assert.equal(h.server.gets.length, 1);
+  // Intanto la persona modifica e salva: la risposta del salvataggio porta la board più recente (due revisioni in più).
+  h.client.dispatch(setTitle(I.richieste, TITLE, "Raccolta delle richieste d'acquisto"));
+  await h.client.saveNow();
+  assert.equal(h.state().board.revision, start + 2);
+  // La rilettura arriva adesso, con la board di prima del salvataggio: non prende il suo posto.
+  await h.releaseGets();
+  await pulling;
+  assert.equal(h.state().board.revision, start + 2);
+  assert.equal(titleOf(h.state().board, I.richieste), "Raccolta delle richieste d'acquisto");
+  assert.equal(titleOf(h.state().board, I.confronto), "Confronto dei preventivi");
+  assert.equal(h.state().pill, "saved");
 });
 
 test("pull durante un salvataggio non parte: la risposta del salvataggio porta già la board più recente", async () => {
