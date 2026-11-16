@@ -2,11 +2,12 @@
  * «Mappatura board»: le bozze della board sul dispositivo (docs/mappatura/MAPPATURA-BOARD-PIANO.md §4.7).
  *
  * Una bozza è di una persona e di un'unità: su un browser condiviso chi entra dopo non salva a suo nome le modifiche
- * di chi c'era prima (né i suoi voti). Quando la persona esce dall'app (`signOutBoards`, dalla barra laterale) ogni
- * board aperta manda quello che resta finché la sessione c'è e smette di scrivere la sua bozza; poi le bozze della
- * board si tolgono dal dispositivo, tutte.
+ * di chi c'era prima (né i suoi voti). Quando la persona esce dall'app (`signOutBoards`, da ogni strada che chiude la
+ * sessione: «Esci» e «Cambia account», con `endAppSession` di src/lib/auth/end-session.ts) ogni board aperta manda
+ * quello che resta finché la sessione c'è e smette di scrivere la sua bozza; poi le bozze della board si tolgono dal
+ * dispositivo, tutte.
  *
- * Modulo puro, senza import: lo carica anche la barra laterale dell'app.
+ * Modulo puro, senza import: lo carica anche la fine della sessione dell'app.
  */
 
 /** L'inizio della chiave di ogni bozza della board. */

@@ -25,7 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { confirmLearningNavigation } from "@/components/learning/use-unsaved-changes";
-import { signOutBoards } from "@/components/mappatura/store/drafts";
+import { endAppSession } from "@/lib/auth/end-session";
 import { USE_CASE_NAV_MATCH, isNavItemActive } from "@/components/dashboard/nav-active";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ThemeMenuGroup } from "@/components/theme/theme-menu";
@@ -102,14 +102,6 @@ interface AppSidebarProps {
 }
 
 /** La memoria del dispositivo, se il browser la dà. */
-function deviceStorage(): Storage | null {
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-}
-
 export function AppSidebar({
   learningAvailable = false,
   casesAvailable = false,
@@ -129,10 +121,9 @@ export function AppSidebar({
 
   const handleLogout = async () => {
     if (!confirmLearningNavigation()) return;
-    // L'activity mapping: la board aperta manda quello che resta finché la sessione c'è, poi nessuna bozza della board
-    // resta sul dispositivo (un browser condiviso non la passa a chi entra dopo).
-    await signOutBoards(deviceStorage());
-    await fetch("/api/auth/session", { method: "DELETE" });
+    // La fine della sessione, la stessa di «Cambia account»: le board dell'activity mapping aperte mandano quello che
+    // resta e le loro bozze lasciano il dispositivo, poi la sessione finisce.
+    await endAppSession();
     await signOut(firebaseAuth).catch(() => {});
     closeMobileNavigation();
     router.push("/login");

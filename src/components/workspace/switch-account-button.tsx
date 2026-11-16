@@ -2,11 +2,14 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { endAppSession } from "@/lib/auth/end-session";
 
 /**
  * "Cambia account" stile Slack: chiude la sessione corrente e porta al login
  * mantenendo il ritorno all'invito. Senza questo, chi apre un invito
- * riservato a un'altra email resta in un vicolo cieco.
+ * riservato a un'altra email resta in un vicolo cieco. La sessione si chiude
+ * come con «Esci»: le bozze della board dell'activity mapping lasciano il
+ * dispositivo prima (endAppSession).
  */
 export function SwitchAccountButton({ loginHref }: { loginHref: string }) {
   const [pending, setPending] = useState(false);
@@ -14,7 +17,7 @@ export function SwitchAccountButton({ loginHref }: { loginHref: string }) {
   async function switchAccount() {
     setPending(true);
     try {
-      await fetch("/api/auth/session", { method: "DELETE" });
+      await endAppSession();
     } catch {
       // anche se la revoca fallisce, il login sovrascriverà la sessione
     }
