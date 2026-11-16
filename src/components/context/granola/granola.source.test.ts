@@ -76,3 +76,12 @@ test("«Da smistare» sul telefono: i due pulsanti vanno a capo, e «Assegna a �
   assert.match(row, /<Button variant="outline" className="[^"]*\bwhitespace-normal\b[^"]*\bmax-w-full\b|<Button variant="outline" className="[^"]*\bmax-w-full\b[^"]*\bwhitespace-normal\b/, "il testo di «Assegna a …» va a capo");
   assert.match(row, /\bmin-h-11\b/, "e resta alto almeno 44 px");
 });
+
+test("Impostazioni ha un solo pulsante pieno: nel blocco di Granola ogni pulsante è «outline» o «ghost», anche «Salva»", () => {
+  for (const file of ["granola-card-panel.tsx", "granola-inbox-panel.tsx"]) {
+    const buttons = [...code(read(file)).matchAll(/<Button\b[^>]*>/g)].map((m) => m[0]);
+    assert.ok(buttons.length > 0, file);
+    for (const button of buttons) assert.match(button, /\bvariant="(?:outline|ghost)"/, `${file}: ${button}`);
+  }
+  assert.match(code(read("granola-card-panel.tsx")), /<Button type="button" variant="outline"[^>]*onClick=\{save\}>/);
+});

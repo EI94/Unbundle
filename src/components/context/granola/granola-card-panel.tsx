@@ -292,7 +292,7 @@ function GranolaRulesForm({ workspaceId, workspaceName, rules }: { workspaceId: 
         {!rules.transcriptAvailable && <p className="text-xs text-muted-foreground">{T.transcriptUnavailable}</p>}
       </div>
 
-      <Button type="button" className="h-11 px-4 sm:h-8" disabled={pending} onClick={save}>
+      <Button type="button" variant="outline" className="h-11 px-4 sm:h-8" disabled={pending} onClick={save}>
         {pending ? CONTEXT_TEXT.add.saving : T.save}
       </Button>
     </div>
