@@ -27,3 +27,36 @@
   [data-board-root] .b-units .b-num2 { text-align: left; }
   [data-board-root] .b-units .b-crow-go { grid-column: 3; grid-row: 1; }
 }
+
+/* ── La mappa che si modifica ── */
+/* L'etichetta della riga: nome e chi lo segue si scrivono sul posto, allineati alla lettera. */
+[data-board-root] .b-pm-lab .b-textin { margin: 0 -5px; width: calc(100% + 10px); }
+@media (hover: hover) {
+  [data-board-root] .b-pm-lab:not(:hover):not(:focus-within) .b-textin:placeholder-shown::placeholder { color: transparent; }
+}
+[data-board-root] .b-pm-fr { font-family: var(--board-font-mono); font-size: 10.5px; color: var(--board-crit); }
+/* «Sposta su», «Sposta giù», «Elimina il processo»: i controlli tondi delle note, visibili al passaggio o al fuoco, sempre senza mouse. */
+[data-board-root] .b-row-ctl { display: flex; gap: 3px; opacity: 0; transition: opacity .12s; }
+[data-board-root] .b-pm-lab:hover .b-row-ctl, [data-board-root] .b-pm-lab:focus-within .b-row-ctl { opacity: 1; }
+[data-board-root] .b-row-ctl button { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--board-line-strong); background: var(--board-paper); color: var(--board-ink); display: grid; place-items: center; padding: 0; cursor: pointer; }
+[data-board-root] .b-row-ctl button[disabled] { opacity: .35; cursor: not-allowed; }
+/* «+ passo» in fondo alla riga: compare al passaggio o al fuoco, come «+ nota»; sempre in una riga vuota e senza mouse. */
+[data-board-root] .b-add-step { white-space: nowrap; opacity: 0; transition: opacity .15s; }
+[data-board-root] .b-pm-row:hover .b-add-step, [data-board-root] .b-pm-row:focus-within .b-add-step, [data-board-root] .b-add-step:focus-visible, [data-board-root] .b-add-step.b-add-first { opacity: 1; }
+/* «+ processo» sotto l'ultima riga, fermo a sinistra quando la mappa scorre. */
+[data-board-root] .b-pm-foot { position: sticky; left: 0; width: max-content; padding: 10px 12px; }
+[data-board-root] .b-pm-row + .b-pm-foot { border-top: 1px solid var(--board-line); width: auto; }
+/* Il trascinamento: la maniglia dentro il margine della card, la card presa più chiara, la riga sotto colorata, il segno dove cadrà. */
+[data-board-root] .b-node-w > .b-grip { left: 4px; top: 9px; z-index: 1; }
+[data-board-root] .b-mapzone[data-dragging] .b-node { cursor: grabbing; }
+[data-board-root] .b-node-w:has(> .b-grip[data-dragging]) { opacity: .4; }
+[data-board-root] .b-pm-steps:has(> .b-pm-after > [data-drop-row]) { background: color-mix(in srgb, var(--board-signal) 22%, transparent); transition: background .15s; }
+[data-board-root] .b-node-w:has(> .b-grip[data-drop-before])::before { content: ""; position: absolute; left: -11px; top: 4px; bottom: 4px; width: 3px; border-radius: 2px; background: var(--board-signal-deep); }
+[data-board-root] .b-drop-mark { align-self: stretch; width: 3px; margin-right: 8px; border-radius: 2px; background: var(--board-signal-deep); }
+
+/* ── Senza mouse (telefono, tablet): i controlli che compaiono al passaggio si vedono sempre; niente trascinamento ── */
+@media (hover: none) {
+  [data-board-root] .b-row-ctl { opacity: 1; }
+  [data-board-root] .b-add-step { opacity: .8; }
+  [data-board-root] .b-node-w > .b-grip { display: none; }
+}
