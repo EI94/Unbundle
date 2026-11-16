@@ -683,6 +683,27 @@ test("resolveProcess: per nome senza badare a maiuscole e spazi, uno nuovo in fo
   }
 });
 
+test("resolveProcess: un processo eliminato e chiesto di nuovo con lo stesso nome rinasce, e il passo dell'assistente ci entra", opts, async () => {
+  // Il server ricorda le operazioni applicate (R4): con un id d'operazione che dipende dal processo, la seconda
+  // `process.add` sarebbe «già fatta» e non scriverebbe niente; il processo non rinascerebbe e il passo andrebbe perso.
+  const name = "Resi ai fornitori";
+  const first = await store.resolveProcess(db.exec, scope(), name);
+  assert.ok(first);
+  assert.ok((await read()).processes.some((process) => process.id === first));
+  await save([op({ t: "process.remove", processId: first })]);
+  assert.ok(!(await read()).processes.some((process) => process.id === first), "eliminato");
+
+  const again = await store.resolveProcess(db.exec, scope(), name);
+  assert.equal(again, first, "lo stesso nome dà lo stesso processo");
+  const board = await read();
+  assert.deepEqual(board.processes.filter((process) => process.id === again).map((process) => [process.name, process.steps.length]), [[name, 0]], "il processo c'è di nuovo");
+  const stepId = id();
+  const added = await save([op({ t: "step.add", stepId, processId: first, title: "Reso di un collo danneggiato" })], lead("assistente"));
+  assert.deepEqual(added.processes.find((process) => process.id === first)?.steps.map((item) => item.id), [stepId]);
+  // La board torna com'era per le prove che seguono.
+  await save([op({ t: "step.remove", stepId }), op({ t: "process.remove", processId: first })]);
+});
+
 test("readBoardSince: «unchanged» con la stessa revisione, la board se è cambiata o se un'attività è appena entrata", opts, async () => {
   const board = await read();
   assert.deepEqual(await store.readBoardSince(db.exec, scope(), lead(), board.revision), { unchanged: true, revision: board.revision });
