@@ -57,6 +57,9 @@
 [data-board-root] .b-board textarea.b-textin, [data-board-root] .b-drawer textarea.b-textin { field-sizing: content; }
 /* Un campo sul posto si allinea al testo intorno: il suo margine interno sta fuori dalla colonna. */
 [data-board-root] .b-h .b-textin, [data-board-root] .b-dr-t .b-textin { margin: 0 -5px; width: calc(100% + 10px); padding: 0 4px; }
+/* Il serif stretto dei titoli (1,03 e 1,1) esce dalla sua riga: il campo ha lo spazio per le lettere, la riga resta quella del riferimento. */
+[data-board-root] .b-h .b-textin { padding-block: 6px; margin-block: -6px; }
+[data-board-root] .b-dr-t .b-textin { padding-block: 2px; margin-block: -2px; }
 [data-board-root] .b-notice { margin: -6px 0 18px; padding-left: 10px; border-left: 2px solid var(--board-amber); font-size: 13px; color: var(--board-graphite); }
 [data-board-root] .b-legend-note { font-family: var(--board-font-mono); font-size: 10.5px; }
 [data-board-root] .b-map-tools { margin-bottom: 10px; }
