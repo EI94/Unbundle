@@ -126,8 +126,12 @@ export function AddNotesDialog({
     setProgress(null);
     setEnding(null);
     const result = await readUntilDone(fetch, workspaceId, sourceId, { signal: controller.signal, onPart: setProgress }).catch(() => null);
-    // Chiusa nel frattempo: la pagina si è già aggiornata, niente da mostrare.
-    if (running.current !== controller) return;
+    // Chiusa nel frattempo: niente da mostrare nella finestra, ma la lettura sul server è finita adesso. La pagina si
+    // aggiorna, così «N proposte da confermare» conta anche queste.
+    if (running.current !== controller) {
+      router.refresh();
+      return;
+    }
     running.current = null;
     if (!result) {
       setPhase("fatto");

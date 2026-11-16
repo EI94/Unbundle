@@ -9,6 +9,7 @@
  * Nessun testo scritto qui: i messaggi vengono da `CONTEXT_TEXT`. Modulo puro, senza `node:`.
  */
 import { CONTEXT_TEXT } from "../../lib/context/text.ts";
+import { CONTEXT_LIMITS } from "../../lib/context/vocab.ts";
 import type { AskAnswer } from "../../lib/db/queries/context-ask.ts";
 import type { ReadOutcome } from "../../lib/db/queries/context-read.ts";
 import type { AddedSource } from "../../lib/db/queries/context-sources.ts";
@@ -139,21 +140,50 @@ export interface PendingRun {
   stoppedBy: "ok_mancante" | "limite" | "sessione" | "errore" | null;
 }
 
+/** Ogni quanto si richiede un appunto che un'altra richiesta sta leggendo (`in_lettura`). */
+export const IN_READING_RETRY_MS = 3_000;
+
+/** Aspetta `ms`; un'interruzione (`AbortError`) ferma l'attesa e passa a chi chiama. */
+function wait(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const stop = () => reject(signal?.reason ?? new DOMException("Interrotto", "AbortError"));
+    if (signal?.aborted) return stop();
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      stop();
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 /**
- * Gli appunti in attesa, uno alla volta (`PendingReader`): ognuno fino in fondo. Un appunto che non si legge (rifiuto,
- * tempo, errore, già in lettura, tolto nel frattempo) non ferma gli altri. Si ferma tutto senza l'ok ai fornitori,
- * al limite del giorno, senza sessione, o se la rotta non risponde (rete, 503).
+ * Gli appunti in attesa, uno alla volta (`PendingReader`): ognuno fino in fondo. Un appunto che un'altra richiesta sta
+ * leggendo (per esempio «Aggiungi appunti» chiusa durante la lettura) si richiede ogni 3 secondi, finché quella
+ * lettura finisce o la sua presa in carico scade: così la pagina si aggiorna quando le proposte ci sono. Un appunto che
+ * non si legge (rifiuto, tempo, errore, tolto nel frattempo) non ferma gli altri. Si ferma tutto senza l'ok ai
+ * fornitori, al limite del giorno, senza sessione, o se la rotta non risponde (rete, 503).
  */
 export async function readPending(
   fetchImpl: FetchLike,
   workspaceId: string,
   sourceIds: readonly string[],
-  opts: { signal?: AbortSignal; onProgress?: (index: number, total: number) => void } = {},
+  opts: { signal?: AbortSignal; onProgress?: (index: number, total: number) => void; sleep?: (ms: number, signal?: AbortSignal) => Promise<void>; now?: () => number } = {},
 ): Promise<PendingRun> {
+  const sleep = opts.sleep ?? wait;
+  const now = opts.now ?? Date.now;
   let read = 0;
   for (let i = 0; i < sourceIds.length; i += 1) {
     opts.onProgress?.(i + 1, sourceIds.length);
-    const result = await readUntilDone(fetchImpl, workspaceId, sourceIds[i], { signal: opts.signal });
+    const until = now() + CONTEXT_LIMITS.readLeaseSeconds * 1000;
+    let result = await readUntilDone(fetchImpl, workspaceId, sourceIds[i], { signal: opts.signal });
+    while (result.ok && result.outcome.status === "in_lettura" && now() + IN_READING_RETRY_MS <= until) {
+      await sleep(IN_READING_RETRY_MS, opts.signal);
+      result = await readUntilDone(fetchImpl, workspaceId, sourceIds[i], { signal: opts.signal });
+    }
     if (!result.ok) {
       if (result.status === 401) return { read, stoppedBy: "sessione" };
       if (result.status === 0 || result.status >= 500) return { read, stoppedBy: "errore" };

@@ -147,7 +147,7 @@ test("gli appunti in attesa, uno alla volta: i problemi di uno non fermano gli a
     reading({ error: "non_trovato", message: "Non trovato." }, 404),
     reading({ status: "in_corso", partsRead: 1, partsTotal: 2 }),
     reading({ status: "letto", proposals: 2, skipped: {} }),
-    reading({ status: "in_lettura" }),
+    reading({ status: "errore" }),
     reading({ status: "letto", proposals: 0, skipped: {} }),
   ]);
   const progress: Array<[number, number]> = [];
@@ -164,6 +164,29 @@ test("gli appunti in attesa, uno alla volta: i problemi di uno non fermano gli a
     sent.map((r) => r.url.split("/").at(-2)),
     ["a", "b", "c", "c", "d", "e"],
   );
+});
+
+test("un appunto che un'altra richiesta sta leggendo («Chiudi» durante la lettura): si richiede ogni 3 secondi, finché è letto", async () => {
+  const { fetch, sent } = fakeFetch([reading({ status: "in_lettura" }), reading({ status: "in_lettura" }), reading({ status: "letto", proposals: 2, skipped: {} }), reading({ status: "letto", proposals: 0, skipped: {} })]);
+  const waited: number[] = [];
+  const run = await readPending(fetch, WS, ["a", "b"], { sleep: async (ms) => void waited.push(ms) });
+  assert.deepEqual(run, { read: 2, stoppedBy: null }, "letto: la pagina si aggiorna");
+  assert.deepEqual(sent.map((r) => r.url.split("/").at(-2)), ["a", "a", "a", "b"]);
+  assert.deepEqual(waited, [3_000, 3_000]);
+});
+
+test("un appunto che resta «in lettura»: si smette quando la presa in carico dell'altra lettura scade (180 secondi)", async () => {
+  let clock = 0;
+  const replies = Array.from({ length: 100 }, () => reading({ status: "in_lettura" }));
+  const { fetch, sent } = fakeFetch(replies);
+  const run = await readPending(fetch, WS, ["a"], { sleep: async (ms) => void (clock += ms), now: () => clock });
+  assert.deepEqual(run, { read: 0, stoppedBy: null });
+  assert.equal(sent.length, 61, "la prima richiesta e una ogni 3 secondi per 180 secondi");
+  // Un'interruzione (la pagina chiusa) ferma l'attesa.
+  const controller = new AbortController();
+  const stopped = readPending(fakeFetch([reading({ status: "in_lettura" })]).fetch, WS, ["a"], { signal: controller.signal });
+  controller.abort();
+  await assert.rejects(stopped);
 });
 
 test("gli appunti in attesa: ci si ferma senza l'ok, al limite del giorno, senza sessione, con la rotta giù", async () => {

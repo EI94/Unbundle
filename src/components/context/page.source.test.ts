@@ -119,6 +119,11 @@ test("«Aggiungi appunti» legge un file di testo trascinato come il caricamento
   assert.doesNotMatch(source, /\.text\(\)/, "File.text() legge solo UTF-8");
 });
 
+test("«Aggiungi appunti» chiusa durante la lettura: quando la lettura finisce, la pagina si aggiorna", () => {
+  const source = withoutComments(read("src/components/context/add-notes-dialog.tsx"));
+  assert.match(source, /if \(running\.current !== controller\) \{\s*router\.refresh\(\);\s*return;\s*\}/);
+});
+
 test("le rotte della pagina: funzioni Node, mai in cache, con i tempi del piano; tutte partono da chi chiama", () => {
   const routes: Readonly<Record<string, number>> = {
     [`${API}/sources/route.ts`]: 30,
