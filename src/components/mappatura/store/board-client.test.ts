@@ -5,7 +5,7 @@ import { allSteps, locateStep, withUseCaseLinks, type MappingBoard } from "../..
 import { applyOps, stepFieldValue, type BoardOp } from "../../../lib/mappatura/board-ops.ts";
 import { BOARD_TEXT } from "../../../lib/mappatura/text.ts";
 import { AUTOSAVE, MAPPING_LIMITS } from "../../../lib/mappatura/vocab.ts";
-import { boardUrl, createBoardClient, draftKey, type BoardClientState } from "./board-client.ts";
+import { KEEPALIVE_MAX_BYTES, boardUrl, createBoardClient, draftKey, fitsInBody, type BoardClientState } from "./board-client.ts";
 
 // La board nel browser (docs/mappatura/MAPPATURA-BOARD-PIANO.md §4.7; parità P70–P77, difetto F4): quando salva, che cosa
 // manda, che cosa mostra la pillola, che cosa resta sul dispositivo. Orologio, fetch e memoria sono finti; il server
@@ -973,6 +973,44 @@ test("più di 200 modifiche in coda partono a gruppi di 200: «Salva ora» le ma
   assert.equal(h.state().pill, "saved");
   assert.deepEqual(h.state().board, h.server.board);
 });
+
+test("la pagina che si chiude: ogni salvataggio keepalive sta sotto i 64 KB; il resto parte dopo, e intanto resta nella bozza", async () => {
+  const h = harness();
+  // Quaranta note quasi piene (circa 80 KB in tutto, con le lettere accentate che contano due byte).
+  const text = "È una nota lunga, scritta più volte. ".repeat(53).slice(0, MAPPING_LIMITS.note);
+  const lanes = ["attivita", "attriti", "dati", "tempi"] as const;
+  h.client.dispatch(Array.from({ length: 40 }, (_, index) => ({ t: "note.add" as const, noteId: `0d0d0d0d-0000-4000-8000-${String(index + 1).padStart(12, "0")}`, stepId: I.richieste, lane: lanes[index % 4], text })));
+  const body = (put: { baseRevision: number; ops: BoardOp[] }) => new TextEncoder().encode(JSON.stringify({ baseRevision: put.baseRevision, ops: put.ops })).length;
+  h.hold();
+  const closing = h.client.saveNow({ keepalive: true });
+  await flush();
+  assert.equal(h.server.puts.length, 1);
+  assert.equal(h.server.puts[0].keepalive, true);
+  assert.ok(body(h.server.puts[0]) <= KEEPALIVE_MAX_BYTES, `${body(h.server.puts[0])} byte`);
+  const first = h.server.puts[0].ops.length;
+  assert.ok(first > 0 && first < 40);
+  // Finché il primo non torna, il resto aspetta nella bozza (la pagina potrebbe non esserci più).
+  assert.equal(h.draft()?.length, 40);
+  await h.release();
+  await closing;
+  // La pagina era ancora lì: il resto è partito dopo, sempre sotto il limite, e la bozza non c'è più.
+  assert.ok(h.server.puts.length >= 2);
+  for (const put of h.server.puts) assert.ok(put.keepalive && body(put) <= KEEPALIVE_MAX_BYTES, `${body(put)} byte`);
+  assert.equal(h.server.puts.reduce((sum, put) => sum + put.ops.length, 0), 40);
+  assert.equal(h.state().pill, "saved");
+  assert.equal(h.draft(), null);
+  // Un salvataggio normale non ha questo limite: tutto in una richiesta.
+  const normal = harness();
+  normal.client.dispatch(Array.from({ length: 40 }, (_, index) => ({ t: "note.add" as const, noteId: `0d0d0d0d-0000-4000-8000-${String(index + 1).padStart(12, "0")}`, stepId: I.richieste, lane: lanes[index % 4], text })));
+  await normal.client.saveNow();
+  assert.deepEqual(normal.server.puts.map((put) => [put.keepalive, put.ops.length]), [[false, 40]]);
+  // Il conto dei byte: l'involucro, le virgole; un'operazione da sola passa anche se supera il limite.
+  assert.deepEqual(fitsInBody([{ a: "x" }, { a: "y" }], 3, bodySize([{ a: "x" }, { a: "y" }], 3)), [{ a: "x" }, { a: "y" }]);
+  assert.deepEqual(fitsInBody([{ a: "x" }, { a: "y" }], 3, bodySize([{ a: "x" }, { a: "y" }], 3) - 1), [{ a: "x" }]);
+  assert.deepEqual(fitsInBody([{ a: "x" }], 3, 1), [{ a: "x" }]);
+});
+
+const bodySize = (ops: unknown[], baseRevision: number) => new TextEncoder().encode(JSON.stringify({ baseRevision, ops })).length;
 
 test("due «Salva ora» insieme: un salvataggio alla volta, niente mandato due volte", async () => {
   const h = harness();

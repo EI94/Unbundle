@@ -66,7 +66,9 @@ type Listened = Pick<EventTarget, "addEventListener" | "removeEventListener">;
 /**
  * Collega lo store alla pagina e restituisce la funzione che lo stacca. Alla partenza la bozza del dispositivo torna
  * sopra la board; la pagina che si nasconde o si chiude salva subito, anche le eliminazioni che aspettano il loro
- * toast; la pagina che torna visibile, senza niente da salvare, rilegge la board; il browser che torna in linea
+ * toast: nascosta è ancora viva, e salva con una richiesta normale; solo la pagina che si chiude (`pagehide`) usa
+ * `keepalive`, che il browser accetta fino a 64 KB (il client manda il resto dopo, o lo lascia nella bozza). La pagina
+ * che torna visibile, senza niente da salvare, rilegge la board; il browser che torna in linea
  * riprova il salvataggio non riuscito; la persona che esce dall'app (`signOutBoards`) manda quello che resta e la
  * board lascia la sua bozza. Staccarlo (la pagina lascia la board) salva quello che resta.
  */
@@ -75,28 +77,30 @@ export function connectBrowser(
   win: Listened & { navigator: { onLine?: boolean } },
   doc: Listened & { visibilityState: DocumentVisibilityState },
 ): () => void {
-  const flush = () => {
-    if (client.getState().pending > 0) void client.saveNow({ keepalive: true });
+  const flush = (keepalive: boolean) => {
+    if (client.getState().pending > 0) void client.saveNow(keepalive ? { keepalive: true } : undefined);
   };
+  const closing = () => flush(true);
   const online = () => client.setOnline(win.navigator.onLine !== false);
   const visibility = () => {
-    if (doc.visibilityState === "hidden") flush();
+    if (doc.visibilityState === "hidden") flush(false);
     else if (client.getState().pending === 0) void client.pull();
   };
   client.start();
   online();
   win.addEventListener("online", online);
   win.addEventListener("offline", online);
-  win.addEventListener("pagehide", flush);
+  win.addEventListener("pagehide", closing);
   doc.addEventListener("visibilitychange", visibility);
   const stopLeaving = onSignOut(() => client.signOut());
   return () => {
     win.removeEventListener("online", online);
     win.removeEventListener("offline", online);
-    win.removeEventListener("pagehide", flush);
+    win.removeEventListener("pagehide", closing);
     doc.removeEventListener("visibilitychange", visibility);
     stopLeaving();
-    flush();
+    // La pagina lascia la board ma resta viva (un'altra pagina dell'app): una richiesta normale.
+    flush(false);
   };
 }
 

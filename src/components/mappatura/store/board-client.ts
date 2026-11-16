@@ -106,6 +106,26 @@ const isBoard = (value: unknown): value is MappingBoard => {
   return Boolean(board && typeof board === "object" && Array.isArray(board.processes) && Array.isArray(board.analysis) && typeof board.revision === "number" && board.can && board.unit);
 };
 const NO_ABILITIES = { edit: false, setStream: false, complete: false };
+/**
+ * Il corpo più grande di un salvataggio `keepalive` (la pagina che si chiude): il browser rifiuta oltre 64 KB. Il
+ * resto delle modifiche aspetta il salvataggio dopo, o la bozza.
+ */
+export const KEEPALIVE_MAX_BYTES = 60_000;
+const encoder = new TextEncoder();
+const bytes = (text: string) => encoder.encode(text).length;
+
+/** Le prime operazioni che stanno in un corpo di `max` byte (almeno una): `{ baseRevision, ops: [...] }`. */
+export function fitsInBody<T>(items: readonly T[], baseRevision: number, max: number): T[] {
+  let size = bytes(JSON.stringify({ baseRevision, ops: [] }));
+  const out: T[] = [];
+  for (const item of items) {
+    size += bytes(JSON.stringify(item)) + (out.length > 0 ? 1 : 0);
+    if (out.length > 0 && size > max) break;
+    out.push(item);
+  }
+  return out;
+}
+
 /** Quanto vive la bozza sul dispositivo: oltre, chi riapre la board non rimanda modifiche vecchie di giorni. */
 const DRAFT_MAX_AGE_MS = OP_MEMORY.draftDays * 24 * 60 * 60 * 1000;
 const isRemove = (op: BoardOp) => op.t === "step.remove" || op.t === "note.remove" || op.t === "process.remove";
@@ -297,7 +317,9 @@ export function createBoardClient(deps: BoardClientDeps): BoardClient {
     if (saving) return saving.then(rest);
 
     const now = deps.now();
-    const sending = queue.filter((item) => all || item.heldUntil === undefined || item.heldUntil <= now).slice(0, MAPPING_LIMITS.opsPerSave);
+    const ready = queue.filter((item) => all || item.heldUntil === undefined || item.heldUntil <= now).slice(0, MAPPING_LIMITS.opsPerSave);
+    // La pagina che si chiude: solo quello che sta in un corpo `keepalive`; il resto resta in coda e nella bozza.
+    const sending = keepalive ? ready.slice(0, fitsInBody(ready.map((item) => item.op), base.revision, KEEPALIVE_MAX_BYTES).length) : ready;
     if (sending.length === 0) {
       schedule();
       return Promise.resolve();

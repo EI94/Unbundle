@@ -68,7 +68,8 @@ test("collegata alla pagina: la bozza alla partenza, il browser in linea o no, i
   doc.fire("visibilitychange");
   assert.deepEqual(calls, ["pull"]);
 
-  // Con delle modifiche: la pagina che si nasconde o si chiude salva subito, con keepalive; tornando visibile non rilegge.
+  // Con delle modifiche: la pagina che si nasconde salva subito con una richiesta normale (è ancora viva: keepalive
+  // rifiuterebbe un corpo oltre 64 KB); quella che si chiude con keepalive; tornando visibile non rilegge.
   calls.length = 0;
   client.pending = 2;
   doc.visibilityState = "hidden";
@@ -76,16 +77,16 @@ test("collegata alla pagina: la bozza alla partenza, il browser in linea o no, i
   win.fire("pagehide");
   doc.visibilityState = "visible";
   doc.fire("visibilitychange");
-  assert.deepEqual(calls, ["save:keepalive", "save:keepalive"]);
+  assert.deepEqual(calls, ["save:normale", "save:keepalive"]);
 
-  // Staccata (la pagina lascia la board): nessuno ascolta più, e quello che resta si salva.
+  // Staccata (la pagina lascia la board, l'app resta aperta): nessuno ascolta più, e quello che resta si salva.
   calls.length = 0;
   stop();
   assert.equal(win.count() + doc.count(), 0);
-  assert.deepEqual(calls, ["save:keepalive"]);
+  assert.deepEqual(calls, ["save:normale"]);
   win.fire("pagehide");
   doc.fire("visibilitychange");
-  assert.deepEqual(calls, ["save:keepalive"]);
+  assert.deepEqual(calls, ["save:normale"]);
 });
 
 test("uscire dall'app: ogni board aperta manda quello che resta e lascia la sua bozza, poi nessuna bozza resta; staccata, non conta più", async () => {
