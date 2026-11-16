@@ -1371,7 +1371,7 @@ test("una conferma su un fatto cambiato dopo che la persona l'ha visto: «versio
 
   // Una riconferma letta prima che il fatto cambiasse: gli appunti dicevano «alle 7», il fatto adesso dice «alle 6».
   const shift = await seedFact(`Il turno visto ${suffix} inizia alle 7.`, { section: "lavoro" });
-  const ra = await readProposals([proposal({ tipo: "conferma", testo: "x", citazione: "", fattoRif: "F1" })], `${NOTE}\nCall A sul turno visto (${suffix}).`);
+  const ra = await readProposals([proposal({ tipo: "conferma", testo: "x", citazione: "", fattoRif: "F1", sezione: "azienda" })], `${NOTE}\nCall A sul turno visto (${suffix}).`);
   assert.equal(ra.open.reconfirmed.length, 1);
   const rb = await readProposals([proposal({ tipo: "cambia", testo: `Il turno visto ${suffix} inizia alle 6.`, citazione: "", fattoRif: "F1", sezione: "lavoro" })], `${NOTE}\nCall B sul turno visto (${suffix}).`);
   okValue(await proposals.confirmProposals(actor("lsc"), pick(rb.all)));
@@ -1733,6 +1733,23 @@ test("writeFact, editFact, reconfirmFact, retireFact: solo Lateral Space; un nom
   assert.deepEqual((await q(`SELECT status, ended_at IS NOT NULL AS ended FROM context_facts WHERE id = $1`, [next]))[0], { status: "ritirato", ended: true });
   assert.equal(allFacts(await memory.loadContextMemory(actor("ls"))).some((f) => f.id === next), false, "un fatto ritirato esce dalla memoria");
   assert.deepEqual((await q(`SELECT action FROM context_events WHERE fact_id = $1 ORDER BY at`, [next])).map((e) => e.action), ["fatto_cambiato", "fatto_riconfermato", "fatto_ritirato"]);
+});
+
+test("«Non più vero» su un fatto cambiato mentre la richiesta aspettava: «versione superata», e niente si scrive", opts, async () => {
+  const fact = await seedFact(`Il fatto ritirato in gara ${suffix} vale 1.`, { section: "azienda" });
+  const open = await readProposals([proposal({ tipo: "cambia", testo: `Il fatto ritirato in gara ${suffix} vale 2.`, citazione: "", fattoRif: "F1", sezione: "azienda" })], `${NOTE}\nCall del ritiro in gara (${suffix}).`);
+  const proposalVersion = open.all[0].version;
+  // La richiesta legge il fatto alla versione 1, poi aspetta sulle proposte; intanto il fatto passa alla versione 2.
+  const unlock = await holdTableLock("context_proposals");
+  const retiring = memory.retireFact(actor("ls"), fact, 1);
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  await q(`UPDATE context_facts SET version = version + 1, updated_at = now() WHERE id = $1`, [fact]);
+  await unlock();
+  assert.equal(errOf(await retiring), "versione_superata");
+  assert.deepEqual((await q(`SELECT status, ended_at IS NULL AS open FROM context_facts WHERE id = $1`, [fact]))[0], { status: "attivo", open: true }, "il fatto resta attivo");
+  assert.equal((await q(`SELECT count(*)::int AS n FROM context_events WHERE fact_id = $1 AND action = 'fatto_ritirato'`, [fact]))[0].n, 0);
+  assert.equal(Number((await q(`SELECT version FROM context_proposals WHERE id = $1`, [open.all[0].id]))[0].version), proposalVersion, "le proposte sul fatto non cambiano");
+  await proposals.discardProposals(actor("ls"), [open.all[0].id]);
 });
 
 test("impegni e domande: «Fatto», «Riapri», «Chiusa» solo per Lateral Space; una domanda da «Chiedi» la aggiunge chi apre la pagina", opts, async () => {
