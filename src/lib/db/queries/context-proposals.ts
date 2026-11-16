@@ -403,6 +403,8 @@ function entityRef(entity: ProposalEntity): { type: EntityType; key: string } | 
 
 /**
  * Conferma le proposte scelte, tutte o nessuna, in una transazione (`db.batch`). Solo Lateral Space.
+ * Una frase uguale a quella di un fatto attivo (o di un fatto nato da un'altra voce della stessa conferma) è una
+ * riconferma di quel fatto: lo stesso fatto non si scrive due volte.
  * `versione_superata`: una proposta non è più aperta, ha un'altra `version`, o il suo fatto è appena stato sostituito
  * da un'altra conferma. `dati_non_validi` con `fieldErrors[<id della proposta>]`: una proposta con `issue`, un
  * conflitto senza `resolution`, più di 75 voci, nessuna voce. In tutti e due i casi non si scrive niente.
@@ -490,6 +492,26 @@ export async function confirmProposals(actor: ContextActor, items: readonly Conf
     const event = (action: ContextEventAction, more: Partial<typeof contextEvents.$inferInsert> = {}) => events.push({ workspaceId: ws, action, channel: actor.channel, actorUserId: actor.userId, ...more });
     const validUseCases = (ids: readonly string[]) => [...new Set(ids.filter((id) => useCases.has(id)))];
 
+    // La stessa frase di un fatto in memoria, o di un fatto che questa conferma ha appena scritto, è lo stesso fatto: due
+    // appunti della stessa call, letti prima che qualcuno confermasse, lo propongono due volte. Si riconferma, non si
+    // scrive due volte. `sameFact`: la frase (normalizzata) → il fatto attivo, del database o nato qui.
+    const sameFact = new Map<string, string>();
+    if (plan.some((p) => p.kind === "nuovo" || p.kind === "decisione")) {
+      const active = rowsOf<{ id: string; statement: string }>(
+        await db.execute(sql`SELECT id, statement FROM context_facts WHERE workspace_id = ${ws}::uuid AND status = 'attivo' ORDER BY last_confirmed_at DESC, id LIMIT 5000`),
+      );
+      for (const fact of active) {
+        const key = normalizeStatement(fact.statement);
+        if (key && !sameFact.has(key)) sameFact.set(key, fact.id);
+      }
+    }
+    /** Il fatto `factId` non è più attivo dopo questa conferma: la sua frase non indica più lui. */
+    const forget = (factId: string, statement: string) => {
+      const key = normalizeStatement(statement);
+      if (sameFact.get(key) === factId) sameFact.delete(key);
+    };
+    const reconfirmLinks: Array<{ factId: string; useCaseId: string }> = [];
+
     for (const { item, row, kind, target, statement } of plan) {
       if (kind === "impegno") {
         const id = crypto.randomUUID();
@@ -510,6 +532,27 @@ export async function confirmProposals(actor: ContextActor, items: readonly Conf
       }
       // La versione in testa adesso: quella del database, o quella nata da una voce di prima.
       const head = target ? (headOf.get(target.id) ?? target.id) : null;
+      const headStatement = head ? (newFacts.get(head)?.statement ?? target!.statement) : null;
+      // Un fatto nuovo con la frase di un fatto attivo, o una versione nuova con la frase di quella in testa: lo stesso fatto.
+      const same = head ? (normalizeStatement(statement) === normalizeStatement(headStatement!) ? head : null) : (sameFact.get(normalizeStatement(statement)) ?? null);
+      if (same && !(kind === "conflitto" && item.resolution === "prima")) {
+        const born = newFacts.get(same);
+        if (born) {
+          // Nato in questa conferma da un'altra voce: la visibilità si chiude, non si apre; use case, entità e collegamenti si sommano.
+          if (row.visibility === "ls") born.visibility = "ls";
+          for (const useCaseId of validUseCases(row.useCaseIds)) born.useCaseIds.add(useCaseId);
+          born.entities = [...born.entities, ...(row.entities ?? [])];
+          born.relations = [...born.relations, ...(row.relations ?? [])];
+        } else {
+          reconfirm.add(same);
+          for (const useCaseId of validUseCases(row.useCaseIds)) reconfirmLinks.push({ factId: same, useCaseId });
+        }
+        event("fatto_riconfermato", { factId: same, sourceId: row.sourceId });
+        if (row.questionId) closing.push({ questionId: row.questionId, factId: same });
+        decided.push({ id: row.id, status: "confermata", resultId: same });
+        counts.reconfirmed += 1;
+        continue;
+      }
       const keepsBefore = kind === "conferma" || (kind === "conflitto" && item.resolution === "prima");
       if (head && keepsBefore) {
         if (!newFacts.has(head)) reconfirm.add(head);
@@ -545,6 +588,7 @@ export async function confirmProposals(actor: ContextActor, items: readonly Conf
       if (head && target) {
         if (before) before.superseded = true;
         else supersede.add(head);
+        forget(head, headStatement!);
         headOf.set(target.id, id);
         if (kind === "conflitto") event("conflitto_risolto", { factId: id, sourceId: row.sourceId, detail: { scelta: "ora" } });
         else event("fatto_cambiato", { factId: id, sourceId: row.sourceId });
@@ -555,6 +599,8 @@ export async function confirmProposals(actor: ContextActor, items: readonly Conf
       }
       if (row.questionId) closing.push({ questionId: row.questionId, factId: id });
       decided.push({ id: row.id, status: "confermata", resultId: id });
+      const key = normalizeStatement(statement);
+      if (key && !sameFact.has(key)) sameFact.set(key, id);
     }
     const sourceIds = new Set(plan.map((p) => p.row.sourceId));
     event("proposte_confermate", { sourceId: sourceIds.size === 1 ? [...sourceIds][0] : null, detail: { n: list.length } });
@@ -592,7 +638,11 @@ export async function confirmProposals(actor: ContextActor, items: readonly Conf
         relations.push({ fact_id: fact.id, from_type: from.type, from_key: from.key, verb: relation.verb, to_type: to.type, to_key: to.key });
       }
     }
-    const useCaseLinks = [...newFacts.values()].flatMap((fact) => [...fact.useCaseIds].map((useCaseId) => ({ workspaceId: ws, factId: fact.id, useCaseId })));
+    const useCaseLinks = [
+      ...[...newFacts.values()].flatMap((fact) => [...fact.useCaseIds].map((useCaseId) => ({ workspaceId: ws, factId: fact.id, useCaseId }))),
+      // Un fatto riconfermato perché due appunti lo dicono: prende anche gli use case della voce.
+      ...reconfirmLinks.map((link) => ({ workspaceId: ws, ...link })),
+    ];
     const count = (n: number) => sql`${n}`;
     // Un fatto «Per tutti» sostituito da una versione nuova esce da «In breve»: la riga si cancella e si riscrive dopo.
     const publicHeads = new Set([...heads.values()].filter((head) => head.visibility === "tutti").map((head) => head.id));

@@ -1243,6 +1243,45 @@ test("una conferma su un fatto cambiato dopo che la persona l'ha visto: «versio
   await proposals.discardProposals(actor("ls"), [afterRetire.id]);
 });
 
+test("lo stesso fatto da due appunti, confermato con un clic: un fatto solo; uguale a uno in memoria: una riconferma", opts, async () => {
+  const statement = `Gli ordini del magazzino doppio ${suffix} si inseriscono a mano ogni mattina.`;
+  const activeWith = async (text: string) => (await q(`SELECT id, visibility FROM context_facts WHERE workspace_id = $1 AND status = 'attivo' AND statement = $2`, [ids.wsA, text]));
+  // Due appunti della stessa call (due persone di Lateral Space, ognuna con le sue note), letti prima che qualcuno confermi.
+  const a = await readProposals([proposal({ testo: statement, sezione: "lavoro", useCase: ["CX-0001"] })], `${NOTE}\nNote di Ada sulla call doppia (${suffix}).`);
+  const b = await readProposals([proposal({ testo: statement, sezione: "lavoro", visibilita: "ls" })], `${NOTE}\nNote di Bruno sulla call doppia (${suffix}).`);
+  // Un terzo appunto, letto anche lui prima della conferma: lo confermerà qualcuno più tardi.
+  const c = await readProposals([proposal({ testo: `${statement.slice(0, -1)}!`, sezione: "lavoro" })], `${NOTE}\nNote di Carla sulla call doppia (${suffix}).`);
+  assert.equal(c.all[0].kind, "nuovo");
+  // «Da confermare» senza filtro le mostra tutte e due, preselezionate: la persona preme «Conferma (n)».
+  const result = okValue(await proposals.confirmProposals(actor("ls"), pick([...a.all, ...b.all])));
+  assert.deepEqual([result.newFacts, result.reconfirmed], [1, 1]);
+  const [fact] = await activeWith(statement);
+  assert.equal((await activeWith(statement)).length, 1, "un clic non scrive due volte lo stesso fatto");
+  assert.equal(fact.visibility, "ls", "una delle due voci lo voleva «Solo Lateral Space»: si chiude, non si apre");
+  assert.deepEqual((await q(`SELECT result_id::text AS r, status FROM context_proposals WHERE id = ANY($1::uuid[])`, [[a.all[0].id, b.all[0].id]])).map((r) => [r.r, r.status]), [
+    [fact.id, "confermata"],
+    [fact.id, "confermata"],
+  ]);
+  assert.deepEqual((await q(`SELECT use_case_id::text AS uc FROM context_fact_links WHERE fact_id = $1 AND use_case_id IS NOT NULL`, [fact.id])).map((r) => r.uc), [ids.ucA]);
+  // Il terzo, confermato dopo, propone ancora come nuovo un fatto che adesso è in memoria: è una riconferma.
+  await q(`UPDATE context_facts SET last_confirmed_at = now() - interval '3 days' WHERE id = $1`, [fact.id]);
+  const later = okValue(await proposals.confirmProposals(actor("ls"), pick(c.all)));
+  assert.deepEqual([later.newFacts, later.reconfirmed], [0, 1]);
+  assert.equal((await activeWith(statement)).length, 1);
+  assert.equal((await q(`SELECT last_confirmed_at > now() - interval '1 minute' AS fresh FROM context_facts WHERE id = $1`, [fact.id]))[0].fresh, true);
+  // Una versione nuova con la stessa frase di quella in testa: non è un cambiamento, è una riconferma.
+  const erp = await seedFact(`Il gestionale doppio ${suffix} è SAP.`, { section: "sistemi" });
+  const twice = await readProposals([
+    proposal({ tipo: "cambia", testo: `Il gestionale doppio ${suffix} è Odoo.`, citazione: "", fattoRif: "F1", sezione: "sistemi" }),
+    proposal({ tipo: "cambia", testo: `Il gestionale doppio ${suffix} è Odoo!`, citazione: "", fattoRif: "F1", sezione: "sistemi" }),
+  ], `${NOTE}\nCall sul gestionale doppio (${suffix}).`);
+  assert.equal(twice.all.length, 1, "nella stessa lettura il doppione va già via");
+  const other = await readProposals([proposal({ tipo: "cambia", testo: `Il gestionale doppio ${suffix} è Odoo.`, citazione: "", fattoRif: "F1", sezione: "sistemi" })], `${NOTE}\nAltra call sul gestionale doppio (${suffix}).`);
+  okValue(await proposals.confirmProposals(actor("ls"), pick([...twice.all, ...other.all])));
+  const versions = await q(`SELECT statement, status FROM context_facts WHERE supersedes_id = $1 OR supersedes_id IN (SELECT id FROM context_facts WHERE supersedes_id = $1)`, [erp]);
+  assert.deepEqual(versions.map((v) => [v.statement, v.status]), [[`Il gestionale doppio ${suffix} è Odoo.`, "attivo"]], "una versione sola");
+});
+
 test("due proposte della stessa conferma sullo stesso fatto si mettono in fila; un fatto ritirato fa della proposta un fatto nuovo", opts, async () => {
   const fact = await seedFact(`Il fatto in fila ${suffix} vale 1.`, { section: "azienda" });
   const { all } = await readProposals([
