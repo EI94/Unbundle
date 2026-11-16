@@ -55,7 +55,7 @@ import { isUuid, loadCaseCore, loadCaseReadiness, loadSignatureContext, loadUser
 import { eventInsertFromSql } from "./uc-events.ts";
 import { loadApprovals } from "./uc-public.ts";
 import { issueRequestToken, revokeIssuedToken } from "./uc-requests.ts";
-import { isExternalBuilderOfCase, readExternalGrant } from "./use-case-builders.ts";
+import { externalBuilderMailFacts } from "./use-case-builders.ts";
 import { loadSubprocessorAck } from "./uc-subprocessors.ts";
 
 export type { UcBellItem } from "../../uc/notify/bell.ts";
@@ -448,17 +448,16 @@ export async function loadDeliveryFacts(executor: UcExecutor, n: ClaimedNotifica
     facts.request = request;
   }
 
-  // (8.0c) Chi non è di Lateral Space, sulle e-mail di chi costruisce e del team: costruisce il caso adesso, l'ok ai
-  // sub-responsabili del workspace, la concessione. Tre letture solo per queste righe.
+  // (8.0c) Chi non è di Lateral Space, sulle e-mail di chi costruisce e del team: costruisce il caso adesso, la
+  // concessione, l'ok ai sub-responsabili del workspace. Solo per queste righe. La sonda della 0037 si fa una volta, e il
+  // suo esito va nei fatti (`ready`): se non risponde non si sa chi costruisce, e l'e-mail aspetta invece di annullarsi.
   const isBuilderMail = (BUILDER_EMAIL_TEMPLATES as readonly string[]).includes(n.templateKey) || n.templateKey === "team_aggiunto" || n.templateKey === "team_tolto";
   if (isBuilderMail && facts.recipient?.kind === "user" && !facts.recipient.lateralSpace) {
-    const userId = facts.recipient.id;
-    const [buildsCase, ack, grant] = await Promise.all([
-      facts.case ? isExternalBuilderOfCase(executor, { caseId: facts.case.id, userId, lsDomains: o.lsDomains }) : Promise.resolve(false),
+    const [external, ack] = await Promise.all([
+      externalBuilderMailFacts(executor, { workspaceId: n.workspaceId, caseId: facts.case?.id ?? null, userId: facts.recipient.id, lsDomains: o.lsDomains }),
       loadSubprocessorAck(executor, n.workspaceId),
-      readExternalGrant(executor, n.workspaceId, userId),
     ]);
-    facts.builder = { buildsCase, workspaceAck: ack !== null, grant: grant !== null };
+    facts.builder = { ready: external !== null, buildsCase: external?.buildsCase ?? false, workspaceAck: ack !== null, grant: external?.grant ?? false };
   }
 
   if (!facts.case) {

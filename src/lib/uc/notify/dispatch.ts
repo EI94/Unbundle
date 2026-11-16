@@ -149,6 +149,13 @@ export const BUILDER_EMAIL_TEMPLATES = [
 /** (8.0c) Il motivo di un'e-mail a chi costruisce da fuori senza l'ok ai sub-responsabili del cliente: resta la campanella. */
 export const SUBPROCESSORS_MISSING = "sub_responsabili_mancanti";
 
+/**
+ * (8.0c) Il motivo di un'e-mail a chi costruisce da fuori che aspetta perché non si riesce a sapere chi costruisce (la
+ * tabella delle concessioni non c'è ancora, o la sua sonda non risponde): resta in coda e si riprova al prossimo giro.
+ * Una lettura mancata non annulla mai un'e-mail.
+ */
+export const HOLD_BUILDERS_UNREAD = "concessioni_non_lette";
+
 /** (8.0c) «Costruisci i casi d'uso di…» aspetta l'ok ai sub-responsabili al massimo 14 giorni, poi si annulla. */
 export const TEAM_ADDED_WAIT_DAYS = 14;
 
@@ -385,9 +392,10 @@ export interface DeliveryFacts {
   /**
    * (8.0c) Per chi non è di Lateral Space, sulle e-mail di chi costruisce e del team: costruisce il caso adesso (il
    * predicato unico), il workspace ha l'ok ai sub-responsabili della versione di oggi, ha ancora una concessione nel
-   * workspace.
+   * workspace. `ready` dice se le concessioni si sono lette davvero (la 0037 pronta): se no, `buildsCase` e `grant` non
+   * dicono niente e l'e-mail aspetta ({@link HOLD_BUILDERS_UNREAD}).
    */
-  builder?: { buildsCase: boolean; workspaceAck: boolean; grant: boolean };
+  builder?: { ready: boolean; buildsCase: boolean; workspaceAck: boolean; grant: boolean };
 }
 
 export type AfterSent = { kind: "promemoria"; reminder: 1 | 2; nextReminderAt: Date | null } | { kind: "segnalazione" } | null;
@@ -673,11 +681,13 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
 
 /**
  * (8.0c) Chi riceve un'e-mail di chi costruisce: Lateral Space come prima; da fuori solo chi costruisce il caso adesso,
- * con l'ok ai sub-responsabili del cliente (altrimenti si annulla e resta la campanella). null: si manda.
+ * con l'ok ai sub-responsabili del cliente (altrimenti si annulla e resta la campanella). Se non si è riusciti a leggere
+ * chi costruisce, l'e-mail aspetta il prossimo giro. null: si manda.
  */
 function builderRecipient(recipient: NonNullable<DeliveryFacts["recipient"]>, f: DeliveryFacts): DeliveryPlan | null {
   if (recipient.kind !== "user") return cancel("destinatario_non_lateral_space");
   if (recipient.lateralSpace) return null;
+  if (f.builder && !f.builder.ready) return hold(HOLD_BUILDERS_UNREAD);
   if (!f.builder?.buildsCase) return cancel("destinatario_non_lateral_space");
   if (!f.builder.workspaceAck) return cancel(SUBPROCESSORS_MISSING);
   return null;
@@ -691,7 +701,8 @@ function externalBuilder(recipient: NonNullable<DeliveryFacts["recipient"]>): bo
 /**
  * (8.0c) «Costruisci i casi d'uso di…» e «Non costruisci più…»: alla persona stessa, che non è di Lateral Space, senza
  * caso. Solo con l'ok ai sub-responsabili del cliente: «aggiunto» lo aspetta al massimo {@link TEAM_ADDED_WAIT_DAYS}
- * giorni e parte solo se la concessione c'è ancora; «tolto» parte solo se la persona non costruisce più.
+ * giorni e parte solo se la concessione c'è ancora; «tolto» parte solo se la persona non costruisce più. Con le
+ * concessioni non lette tutte e due aspettano ({@link HOLD_BUILDERS_UNREAD}).
  */
 function planTeamChange(
   tpl: "team_aggiunto" | "team_tolto",
@@ -704,6 +715,8 @@ function planTeamChange(
   if (recipient.kind !== "user") return cancel("destinatario_non_utente");
   if (recipient.lateralSpace) return cancel("destinatario_lateral_space");
   const b = f.builder;
+  // Non si è riusciti a leggere le concessioni: né «concessione tolta» né «non costruisci più», si riprova dopo.
+  if (b && !b.ready) return hold(HOLD_BUILDERS_UNREAD);
   if (tpl === "team_tolto") {
     if (b?.grant) return cancel("concessione_ancora_presente");
     if (!b?.workspaceAck) return cancel(SUBPROCESSORS_MISSING);

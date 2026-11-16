@@ -118,6 +118,30 @@ export async function isExternalBuilderOfCase(executor: UcExecutor, i: { caseId:
 }
 
 /**
+ * Per la coda delle e-mail (`loadDeliveryFacts`), con una sonda sola: la persona costruisce il caso adesso (il predicato;
+ * falso senza caso) e ha una concessione nel workspace. `null` quando la 0037 non è pronta (la tabella non c'è ancora, o
+ * la sonda non risponde): non si sa, e la coda tiene l'e-mail per il prossimo giro invece di leggerlo come «no».
+ */
+export async function externalBuilderMailFacts(
+  executor: UcExecutor,
+  i: { workspaceId: string; caseId: string | null; userId: string; lsDomains: readonly string[] },
+): Promise<{ buildsCase: boolean; grant: boolean } | null> {
+  if ((await probeExternalBuilders(executor)) !== "pronta") return null;
+  if (!UUID_RE.test(i.workspaceId) || !UUID_RE.test(i.userId)) return { buildsCase: false, grant: false };
+  const scope: BuilderScope = { lsDomains: [...i.lsDomains], externalReady: true };
+  const user = cast(i.userId, "uuid");
+  const builds =
+    i.caseId && UUID_RE.test(i.caseId)
+      ? ucSql`coalesce((SELECT ${externalBuilderSql(scope)} FROM uc_cases c JOIN users u ON u.id = ${user} WHERE c.id = ${cast(i.caseId, "uuid")}), false)`
+      : raw("false");
+  const [rows] = await executor.batch([
+    toStatement(ucSql`SELECT ${builds} AS builds,
+  EXISTS (SELECT 1 FROM use_case_external_builders xb_w WHERE xb_w.workspace_id = ${cast(i.workspaceId, "uuid")} AND xb_w.user_id = ${user}) AS granted`),
+  ]);
+  return { buildsCase: rows[0]?.builds === true, grant: rows[0]?.granted === true };
+}
+
+/**
  * Per le porte (`loadFactoryAccess`): costruisce il caso da fuori adesso (il predicato), e se no, perché, quando le porte
  * lo devono dire (`ExternalBuilderBlock`). Con la 0037 non pronta nessuno costruisce da fuori, ma a chi ha una concessione
  * che copre il caso, o se non si riesce a saperlo, la risposta è «riprova» (`non_disponibile`), non «non hai un ruolo».

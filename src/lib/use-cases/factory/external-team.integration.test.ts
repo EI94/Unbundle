@@ -520,3 +520,62 @@ test("le e-mail: «Costruisci i casi d'uso di…» aspetta l'ok ai sub-responsab
   await send({ notificationId: back.value.noticeId });
   assert.deepEqual(await row(back.value.noticeId), { status: "annullata", hold_reason: null, error: "concessione_tolta" });
 });
+
+test("la coda con la sonda della 0037 che non risponde: le e-mail a chi costruisce da fuori aspettano il prossimo giro, non si annullano e non partono a caso", opts, async () => {
+  const dispatch = await import("../../db/queries/uc-notifications-dispatch.ts");
+  const notices = await import("../../db/queries/use-case-tasks-notices.ts");
+  type Exec = typeof exec;
+  const outbox: { to: string; subject: string }[] = [];
+  const mailer = { async send(m: { to: string; subject: string }) { outbox.push(m); return { ok: true as const }; } };
+  const env = { UC_ENABLED: "true", RESEND_API_KEY: "re_test_finto", UC_EMAIL_FROM: "Lateral Space via Unbundle <test@example.test>", NEXT_PUBLIC_APP_URL: "http://localhost:3000", UC_LS_EMAIL_DOMAINS: "ls.test" };
+  const send = (executor: Exec, notificationId: string) => dispatch.dispatchQueue(executor, { env, mailer, sendIntervalMs: 0, notificationId });
+  const row = async (id: string) => (await q(`SELECT status, hold_reason, error FROM uc_notifications WHERE id = $1`, [id]))[0];
+  const toRacer = () => outbox.filter((m) => m.to === EMAIL.racer).map((m) => m.subject);
+  // Solo la sonda della 0037 (la riconosce l'indice che cerca): un guasto di un momento, il resto del database risponde.
+  const isProbe = (statements: Parameters<Exec["batch"]>[0]) => statements.some((st) => st.text.includes("use_case_external_builders_all_unique"));
+  const probeDown: Exec = { batch: (statements) => (isProbe(statements) ? Promise.reject(new Error("la sonda non risponde")) : exec.batch(statements)) };
+  // Oppure la sonda risponde che la tabella non c'è ancora (il self-heal non l'ha ancora creata).
+  const probeAbsent: Exec = { batch: (statements) => (isProbe(statements) ? Promise.resolve([[{ ready: false }]]) : exec.batch(statements)) };
+  const held = { status: "in_coda", hold_reason: "concessioni_non_lette", error: null };
+
+  // Il workspace ha già l'ok ai sub-responsabili (la prova di prima). Il benvenuto e un'e-mail di chi costruisce, in coda.
+  const added = await add("racer", "tutti");
+  assert.ok(added.ok && added.value.noticeId, added.ok ? "senza e-mail di benvenuto" : added.message);
+  if (!added.ok || !added.value.noticeId) return;
+  const welcome = added.value.noticeId;
+  try {
+    await exec.batch(notices.notifyTask({ workspaceId: ids.ws, useCaseId: uc.u1 }, "compito_passato", { userId: ids.racer }, ids.lead, new Date(), "T-1"));
+    const [queued] = await q(`SELECT id FROM uc_notifications WHERE case_id = $1 AND template_key = 'compito_passato' AND recipient_user_id = $2 AND status = 'in_coda'`, [dossier.d1, ids.racer]);
+    assert.ok(queued, "l'e-mail «ti hanno passato il compito» in coda");
+    const passed = String(queued.id);
+
+    for (const broken of [probeDown, probeAbsent]) {
+      await send(broken, welcome);
+      await send(broken, passed);
+      assert.deepEqual(await row(welcome), held, "il benvenuto aspetta: la concessione c'è, solo non si è letta");
+      assert.deepEqual(await row(passed), held, "l'e-mail di chi costruisce aspetta");
+      assert.deepEqual(toRacer(), []);
+    }
+    // Al giro dopo la sonda risponde: partono tutte e due.
+    await send(exec, welcome);
+    await send(exec, passed);
+    assert.deepEqual([(await row(welcome)).status, (await row(passed)).status], ["inviata", "inviata"]);
+    assert.equal(toRacer().length, 2);
+
+    // «Non costruisci più…» in coda, poi la persona torna tra chi costruisce: con la sonda giù non parte (non si sa se
+    // la concessione c'è); quando risponde si annulla, perché la concessione c'è ancora.
+    const removed = await team.removeExternalBuilder(exec, { workspaceId: ids.ws, actorUserId: ids.lead, userId: ids.racer, lsDomains: LS });
+    assert.ok(removed.ok && removed.value.noticeId);
+    if (!removed.ok || !removed.value.noticeId) return;
+    const goodbye = removed.value.noticeId;
+    const back = await add("racer", [uc.u1]);
+    assert.ok(back.ok, back.ok ? "" : back.message);
+    await send(probeDown, goodbye);
+    assert.deepEqual(await row(goodbye), held);
+    assert.equal(toRacer().some((subject) => subject.startsWith("Non costruisci più")), false, "niente «Non costruisci più…» a chi costruisce ancora");
+    await send(exec, goodbye);
+    assert.deepEqual(await row(goodbye), { status: "annullata", hold_reason: null, error: "concessione_ancora_presente" });
+  } finally {
+    await team.removeExternalBuilder(exec, { workspaceId: ids.ws, actorUserId: ids.lead, userId: ids.racer, lsDomains: LS });
+  }
+});

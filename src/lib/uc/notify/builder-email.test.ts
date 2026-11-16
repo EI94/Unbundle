@@ -1,10 +1,11 @@
 // Le e-mail a chi costruisce i casi da fuori Lateral Space (rilascio 8.0c, RILASCIO-8.0c-ESTERNI.md §10, U4): partono solo
 // se costruisce quel caso adesso e il cliente ha dato l'ok ai sub-responsabili; altrimenti si annullano e resta la
 // campanella. Mai quelle del responsabile, dell'AI Board, e il riepilogo settimanale. «Costruisci i casi d'uso di…»
-// aspetta l'ok al massimo 14 giorni e parte solo se la concessione c'è ancora.
+// aspetta l'ok al massimo 14 giorni e parte solo se la concessione c'è ancora. Se le concessioni non si sono lette (la
+// sonda della 0037 non risponde), ogni e-mail a chi costruisce da fuori aspetta il prossimo giro: non si annulla.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { BUILDER_EMAIL_TEMPLATES, EMAIL_TEMPLATES, planDelivery, TEAM_ADDED_WAIT_DAYS, type ClaimedNotification, type DeliveryFacts } from "./dispatch.ts";
+import { BUILDER_EMAIL_TEMPLATES, EMAIL_TEMPLATES, HOLD_BUILDERS_UNREAD, planDelivery, TEAM_ADDED_WAIT_DAYS, type ClaimedNotification, type DeliveryFacts } from "./dispatch.ts";
 import { renderEmail } from "./email-templates.ts";
 import { UC_NOTIFICATION_TEMPLATES } from "../../db/queries/uc-notifications.ts";
 
@@ -40,12 +41,14 @@ const claimed = (templateKey: string, payload: Record<string, string | number | 
   dedupeKey: `${templateKey}:${CASE}:${USER}:2026-11-16`,
 });
 
-const external = (builder: DeliveryFacts["builder"], withCase = true): DeliveryFacts => ({
+type BuilderFacts = NonNullable<DeliveryFacts["builder"]>;
+/** I fatti di una persona che non è di Lateral Space. `ready` (le concessioni lette) vale sì, se la prova non dice altro. */
+const external = (builder: (Omit<BuilderFacts, "ready"> & { ready?: boolean }) | undefined, withCase = true): DeliveryFacts => ({
   clientName: "Nardi di prova",
   case: withCase ? { id: CASE, code: "NM-0009", title: "Esploso dei ricambi", status: "in_sviluppo", ownerContactId: null, designated: { owner: null, privacy: null } } : null,
   recipient: { kind: "user", id: USER, email: "alessio@gmail.test", reachable: true, digestOptOut: false, lateralSpace: false },
   request: null,
-  ...(builder ? { builder } : {}),
+  ...(builder ? { builder: { ready: true, ...builder } } : {}),
 });
 
 const action = (p: ReturnType<typeof planDelivery>) => (p.action === "send" ? "send" : `${p.action}:${p.reason}`);
@@ -113,6 +116,33 @@ test("U4: «Costruisci i casi d'uso di…» aspetta l'ok al massimo 14 giorni e 
   // A una persona di Lateral Space non parte mai (non si mette in coda, ma la regola lo dice).
   const ls = { ...external({ buildsCase: false, workspaceAck: true, grant: true }, false), recipient: { kind: "user" as const, id: USER, email: "leo@ls.test", reachable: true, digestOptOut: false, lateralSpace: true } };
   assert.equal(action(planDelivery(added(yesterday), ls, OPTS)), "cancel:destinatario_lateral_space");
+});
+
+test("le concessioni non lette: le e-mail di chi costruisce, «Costruisci i casi d'uso di…» e «Non costruisci più…» aspettano il prossimo giro, nessuna si annulla né parte", () => {
+  assert.equal(HOLD_BUILDERS_UNREAD, "concessioni_non_lette");
+  const yesterday = new Date(NOW.getTime() - 86_400_000).toISOString();
+  const longAgo = new Date(NOW.getTime() - (TEAM_ADDED_WAIT_DAYS + 1) * 86_400_000).toISOString();
+  // Con `ready: false` gli altri fatti non dicono niente: qualunque cosa valgano, l'e-mail resta in coda.
+  for (const facts of [
+    { buildsCase: false, workspaceAck: true, grant: false },
+    { buildsCase: false, workspaceAck: false, grant: false },
+    { buildsCase: true, workspaceAck: true, grant: true },
+  ]) {
+    const unread = { ...facts, ready: false };
+    for (const tpl of BUILDER_EMAIL_TEMPLATES) assert.equal(action(planDelivery(claimed(tpl), external(unread), OPTS)), "hold:concessioni_non_lette", tpl);
+    // Il benvenuto: mai «concessione tolta» per una lettura mancata, nemmeno dopo i 14 giorni dell'ok.
+    for (const queuedAt of [yesterday, longAgo]) assert.equal(action(planDelivery(claimed("team_aggiunto", { tutti: true, queuedAt }, null), external(unread, false), OPTS)), "hold:concessioni_non_lette");
+    // «Non costruisci più…» non parte finché non si sa che la concessione non c'è più.
+    assert.equal(action(planDelivery(claimed("team_tolto", { queuedAt: yesterday }, null), external(unread, false), OPTS)), "hold:concessioni_non_lette");
+  }
+  // Le altre regole non cambiano: un caso chiuso annulla, le e-mail del responsabile non vanno mai a chi viene da fuori.
+  const unread = { ready: false, buildsCase: false, workspaceAck: false, grant: false };
+  const closed = external(unread);
+  assert.equal(action(planDelivery(claimed("compito_passato"), { ...closed, case: { ...closed.case!, status: "chiuso" } }, OPTS)), "cancel:caso_chiuso");
+  assert.equal(action(planDelivery(claimed("progetto_da_approvare", { useCase: UC, version: 1 }), external(unread), OPTS)), "cancel:destinatario_non_lateral_space");
+  // A Lateral Space come prima.
+  const ls: DeliveryFacts = { ...external(undefined), recipient: { kind: "user", id: USER, email: "leo@ls.test", reachable: true, digestOptOut: false, lateralSpace: true } };
+  assert.equal(action(planDelivery(claimed("compito_passato"), ls, OPTS)), "send");
 });
 
 test("U4: «Non costruisci più…» solo con l'ok e solo se non costruisce più", () => {
