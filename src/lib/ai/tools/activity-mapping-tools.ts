@@ -6,10 +6,10 @@ import { getAppUcExecutor, type UcExecutor } from "@/lib/db/uc-executor";
 import { allSteps, locateStep, type MappingBoard, type StepPlace } from "@/lib/mappatura/board-model";
 import { cutLine, opsForNewStep, opsForStepPatch, type BoardOp, type StepDraft } from "@/lib/mappatura/board-ops";
 import { mappingStoreReady, readBoard, resolveProcess, saveBoardOps, type BoardActor, type BoardScope, type Rejection } from "@/lib/mappatura/board-store";
+import { linkDependencyStatement } from "@/lib/mappatura/board-sql";
 import { appCompleteDeps, completeUnitMapping, type CompleteDeps, type CompletionOutcome } from "@/lib/mappatura/complete";
 import { BOARD_TEXT } from "@/lib/mappatura/text";
 import { FREQUENCIES, MAPPING_LIMITS, WORK_TYPES, type Friction } from "@/lib/mappatura/vocab";
-import { cast, toStatement, ucSql, type UcStatement } from "@/lib/uc/sql/statement";
 
 /**
  * I tool dell'activity mapping, costruiti per ogni richiesta della chat (docs/mappatura/MAPPATURA-BOARD-PIANO.md §5.1).
@@ -163,30 +163,6 @@ export function completionMessage(summary: string, outcome: CompletionOutcome): 
         ? "Match O*NET non riuscito — verrà riprovato manualmente."
         : `Match O*NET completato su ${outcome.matched} attività. AI Exposure media: ${outcome.avgExposurePct ?? 0}%.`;
   return ["Dipartimento segnato come mappato.", summary.trim(), classification, onet].filter(Boolean).join(" ");
-}
-
-// ─── Le dipendenze ───────────────────────────────────────────────────
-
-/**
- * Una dipendenza tra due passi, in un'istruzione: si scrive solo se le due attività sono di questo workspace e quella
- * che dipende è di questa unità; una coppia già presente non cambia niente. Se la coppia è nuova la board sale di
- * revisione, così la rilettura dalla board aperta la porta. `linked`: le due attività ci sono, e sono due.
- */
-export function linkDependencyStatement(scope: BoardScope, sourceId: string, targetId: string, type: string | null): UcStatement {
-  const ws = cast(scope.workspaceId, "uuid");
-  const unit = cast(scope.departmentId, "uuid");
-  return toStatement(ucSql`WITH src AS (SELECT a.id FROM activities a WHERE a.id = ${cast(sourceId, "uuid")} AND a.department_id = ${unit} AND a.workspace_id = ${ws}),
-tgt AS (SELECT a.id FROM activities a WHERE a.id = ${cast(targetId, "uuid")} AND a.workspace_id = ${ws}),
-done AS (
-  INSERT INTO activity_dependencies (source_activity_id, target_activity_id, dependency_type)
-  SELECT src.id, tgt.id, ${cast(type, "text")} FROM src, tgt WHERE src.id <> tgt.id
-  ON CONFLICT (source_activity_id, target_activity_id) DO NOTHING
-  RETURNING 1),
-board AS (
-  UPDATE mapping_boards b SET revision = b.revision + 1, updated_at = now()
-  WHERE b.department_id = ${unit} AND b.workspace_id = ${ws} AND EXISTS (SELECT 1 FROM done)
-  RETURNING 1)
-SELECT EXISTS (SELECT 1 FROM src, tgt WHERE src.id <> tgt.id) AS linked`);
 }
 
 // ─── Spostare un passo dopo un altro ─────────────────────────────────

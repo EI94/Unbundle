@@ -14,7 +14,8 @@ import type { UcStatement } from "../uc/sql/statement.ts";
 // nessun tool scrive niente. Dati inventati («Ufficio acquisti», board-fixture.ts).
 
 await installAppModules({});
-const { BOARD_NOT_READY_MESSAGE, completionMessage, getActivityMappingTools, linkDependencyStatement } = await import("./tools/activity-mapping-tools.ts");
+const { BOARD_NOT_READY_MESSAGE, completionMessage, getActivityMappingTools } = await import("./tools/activity-mapping-tools.ts");
+const { linkDependencyStatement } = await import("../mappatura/board-sql.ts");
 type Deps = Parameters<typeof getActivityMappingTools>[3] & object;
 
 const I = FIXTURE_IDS;

@@ -659,6 +659,31 @@ export function unitDocuments(scope: BoardScope): UcStatement {
   return toStatement(ucSql`SELECT EXISTS (SELECT 1 FROM uploaded_documents u WHERE ${inUnit("u", scope)}) AS has`);
 }
 
+// ─── Le dipendenze tra passi (il tool `linkActivityDependency`, §5.1) ─────
+
+/**
+ * Una dipendenza tra due passi, in un'istruzione: si scrive solo se le due attività sono di questo workspace e quella
+ * che dipende è di questa unità (quella da cui dipende può stare in un'altra unità dello stesso workspace); una coppia
+ * già presente non cambia niente; un passo non dipende da sé. Se la coppia è nuova la board sale di revisione, così la
+ * rilettura dalla board aperta la porta. `linked`: le due attività ci sono, e sono due.
+ */
+export function linkDependencyStatement(scope: BoardScope, sourceId: string, targetId: string, type: string | null): UcStatement {
+  const ws = cast(scope.workspaceId, "uuid");
+  const unit = cast(scope.departmentId, "uuid");
+  return toStatement(ucSql`WITH src AS (SELECT a.id FROM activities a WHERE a.id = ${cast(sourceId, "uuid")} AND a.department_id = ${unit} AND a.workspace_id = ${ws}),
+tgt AS (SELECT a.id FROM activities a WHERE a.id = ${cast(targetId, "uuid")} AND a.workspace_id = ${ws}),
+done AS (
+  INSERT INTO activity_dependencies (source_activity_id, target_activity_id, dependency_type)
+  SELECT src.id, tgt.id, ${cast(type, "text")} FROM src, tgt WHERE src.id <> tgt.id
+  ON CONFLICT (source_activity_id, target_activity_id) DO NOTHING
+  RETURNING 1),
+board AS (
+  UPDATE mapping_boards b SET revision = b.revision + 1, updated_at = now()
+  WHERE b.department_id = ${unit} AND b.workspace_id = ${ws} AND EXISTS (SELECT 1 FROM done)
+  RETURNING 1)
+SELECT EXISTS (SELECT 1 FROM src, tgt WHERE src.id <> tgt.id) AS linked`);
+}
+
 // ─── Completamento (§4.5) ────────────────────────────────────────────
 
 /** L'unità e quello che serve al classificatore: il nome, la value thesis dell'organizzazione, gli obiettivi, le attività. */
