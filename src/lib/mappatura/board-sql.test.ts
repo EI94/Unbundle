@@ -121,6 +121,7 @@ const UNIT_STATEMENTS: Record<string, UcStatement> = {
   ...Object.fromEntries(activitiesOnlyReads(scope).map((statement, index) => [`activitiesOnlyReads ${index}`, statement])),
   ...Object.fromEntries(adoptionReads(scope).map((statement, index) => [`adoptionReads ${index}`, statement])),
   ...Object.fromEntries(adoptionWrites(scope, ids, NASTY).map((statement, index) => [`adoptionWrites ${index}`, statement])),
+  ...Object.fromEntries(adoptionWrites(scope, ids, NASTY, [{ id: ids[0], lane: "attriti", parts: [NASTY, NASTY] }]).map((statement, index) => [`adoptionWrites (testi lunghi) ${index}`, statement])),
   "completionReads unità": completionReads(scope)[0],
   "completionReads attività": completionReads(scope)[2],
   markMapped: markMapped(scope, { type: "mapping_completed", title: NASTY, description: NASTY }),
@@ -356,6 +357,26 @@ test("l'adozione non scrive in activities e non alza la revisione; il completame
   assert.equal(notes.length, 2);
   for (const statement of notes) assert.match(statement.text, /SELECT md5\(a\.id::text \|\| \$\d+::text\)::uuid[\s\S]*'fonte', 'prima', 1[\s\S]*ON CONFLICT \(id\) DO NOTHING$/);
   assert.deepEqual(notes.map((statement) => statement.params.filter((param) => typeof param === "string" && param.startsWith(":"))), [[":attriti"], [":dati"]]);
+  // Un testo più lungo di una nota non si taglia: la nota di sempre lo salta, le sue parti entrano una per nota, la
+  // prima con l'id di sempre, le altre con il numero della parte, nella loro posizione.
+  for (const statement of notes) {
+    assert.doesNotMatch(statement.text, /\bleft\(/, "nessun taglio");
+    assert.match(statement.text, /AND length\(btrim\(a\.(pain_points|data_required)\)\) <= \$\d+::int\nON CONFLICT/);
+    assert.ok(statement.params.includes(MAPPING_LIMITS.note));
+  }
+  const long = adoptionWrites(scope, ids, "Processo principale", [{ id: ids[0], lane: "dati", parts: ["Una parte.", "Un'altra parte."] }]);
+  assert.equal(long.length, writes.length + 1);
+  assert.equal(long.at(-1)?.text, writes.at(-1)?.text, "l'ultima istruzione resta l'inserimento dei passi");
+  const parts = long.filter((statement) => statement.text.includes("jsonb_to_recordset"));
+  assert.equal(parts.length, 1);
+  assert.match(parts[0].text, /^INSERT INTO mapping_notes \(id, workspace_id, department_id, activity_id, lane, body, status, origin, position\)\nSELECT md5\(a\.id::text \|\| ':' \|\| i\.lane \|\| CASE WHEN i\.part = 1 THEN '' ELSE ':' \|\| i\.part END\)::uuid, [\s\S]*'fonte', 'prima', i\.part\n/);
+  assert.match(parts[0].text, /WHERE a\.id = ANY\(\$\d+::uuid\[\]\) AND i\.lane IN \('attriti', 'dati'\) AND length\(btrim\(i\.body\)\) BETWEEN 1 AND \$\d+::int\nON CONFLICT \(id\) DO NOTHING$/);
+  assert.deepEqual(JSON.parse(String(parts[0].params.find((param) => typeof param === "string" && param.startsWith("[{")))), [
+    { id: ids[0], lane: "dati", part: 1, body: "Una parte." },
+    { id: ids[0], lane: "dati", part: 2, body: "Un'altra parte." },
+  ]);
+  // Senza testi lunghi, nessuna istruzione in più.
+  assert.equal(adoptionWrites(scope, ids, "Processo principale", []).length, writes.length);
   // «Processo principale» solo se l'unità non ha processi, con l'id che dipende solo dall'unità.
   assert.match(writes[1].text, /md5\(unit\.department_id::text \|\| ':processo'\)::uuid[\s\S]*WHERE NOT EXISTS \(SELECT 1 FROM mapping_processes p[\s\S]*ON CONFLICT \(id\) DO NOTHING$/);
 

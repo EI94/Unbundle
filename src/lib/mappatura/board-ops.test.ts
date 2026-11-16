@@ -14,6 +14,7 @@ import {
   opsForNewStep,
   opsForStepPatch,
   saveInputSchema,
+  splitNoteText,
   stepFieldValue,
   type BoardOp,
 } from "./board-ops.ts";
@@ -537,4 +538,28 @@ test("i tagli: una riga, un testo, una lista", () => {
   assert.deepEqual([cutProse(" a \r\n b ", 10), cutProse("a\n\n\n\nb", 10), cutProse("", 10)], ["a\n b", "a\n\nb", null]);
   assert.deepEqual(cutList([" a ", "A", "", "b", "c"], 2, 5), ["a", "b"]);
   assert.deepEqual(cutList(undefined, 2, 5), []);
+});
+
+test("un testo più lungo di una nota: parti agli a capo entro il limite, una riga troppo lunga a pezzi; unite ridanno il testo", () => {
+  const max = 50;
+  const lines = ["Prima riga del testo.", "Seconda riga, un po' più lunga.", "", "Terza riga dopo una riga vuota.", "Quarta."];
+  const text = lines.join("\n");
+  const parts = splitNoteText(text, max);
+  assert.ok(parts.length > 1);
+  for (const part of parts) assert.ok(part.length > 0 && part.length <= max && part === part.trim(), JSON.stringify(part));
+  // Agli a capo: unite da un a capo le parti ridanno le righe, senza la riga vuota a un confine.
+  assert.equal(parts.join("\n").replace(/\n{2,}/g, "\n"), lines.filter(Boolean).join("\n"));
+  // Una riga più lunga del limite: pezzi di `max` caratteri, nessuna lettera persa.
+  const long = "abcdefghij".repeat(12);
+  const pieces = splitNoteText(`Inizio.\n${long}\nFine.`, max);
+  assert.ok(pieces.every((part) => part.length <= max));
+  assert.equal(pieces.join("").replace(/\s/g, ""), `Inizio.${long}Fine.`);
+  // Un testo entro il limite resta una parte sola; spazi e righe vuote non diventano note.
+  assert.deepEqual(splitNoteText("Corto.", max), ["Corto."]);
+  assert.deepEqual(splitNoteText(" \n \n ", max), []);
+  // Con il limite vero: un testo di 2.724 caratteri su più righe entra in due note.
+  const legacy = Array.from({ length: 60 }, () => "Le richieste arrivano per e-mail e telefono.").join("\n");
+  const real = splitNoteText(legacy, MAPPING_LIMITS.note);
+  assert.equal(real.length, 2);
+  assert.equal(real.join("\n"), legacy);
 });

@@ -20,7 +20,7 @@ import type { UcExecutor, UcRow } from "@/lib/db/uc-executor";
 import { logSafeError } from "@/lib/log/safe-error";
 import { boardAbilities } from "./abilities";
 import { adoptionOrder, type MappingBoard } from "./board-model";
-import { REVIEWER_ONLY_OPS, oneLine, saveInputSchema, type BoardOp } from "./board-ops";
+import { REVIEWER_ONLY_OPS, oneLine, saveInputSchema, splitNoteText, type BoardOp } from "./board-ops";
 import { assembleActivitiesOnly, assembleBoard, date, isoDate, number, text } from "./board-rows";
 import {
   activitiesOnlyReads,
@@ -97,7 +97,15 @@ export async function adoptUnit(executor: UcExecutor, scope: BoardScope): Promis
     orphans.map((row) => ({ id: text(row.id) ?? "", createdAt: date(row.created_at) })),
     dependencyPairs(dependencies),
   );
-  const results = await executor.batch(adoptionWrites(scope, ordered, BOARD_TEXT.defaultProcessName));
+  // «Attriti» e «Dati e documenti» più lunghi di una nota entrano in più note, senza tagliare niente.
+  const longNotes = orphans.flatMap((row) =>
+    (["attriti", "dati"] as const).flatMap((lane) => {
+      const long = text(row[`long_${lane}`]);
+      const id = text(row.id);
+      return long && id ? [{ id, lane, parts: splitNoteText(long, MAPPING_LIMITS.note) }] : [];
+    }),
+  );
+  const results = await executor.batch(adoptionWrites(scope, ordered, BOARD_TEXT.defaultProcessName, longNotes));
   return { adopted: results[results.length - 1]?.length ?? 0 };
 }
 

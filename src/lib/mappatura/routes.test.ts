@@ -60,7 +60,7 @@ await installAppModules({
       p.all.push({ text, params: [...statement.params] });
       if (text.includes(" AS ready")) return [{ ready: p.ready }];
       if (text.startsWith("SELECT d.id FROM departments d")) return statement.params[0] === I.UNIT && statement.params[1] === I.WS ? [{ id: I.UNIT }] : [];
-      if (text.startsWith("SELECT a.id, a.created_at FROM activities a")) return [];
+      if (text.startsWith("SELECT a.id, a.created_at, ")) return [];
       if (text.includes(" AS loose")) return [{ loose: 0 }];
       if (text.includes("FROM activity_dependencies")) return [];
       if (text.startsWith("SELECT coalesce((SELECT b.revision")) return [{ revision: String(p.revision) }];

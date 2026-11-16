@@ -124,6 +124,33 @@ export function cutProse(text: string | null | undefined, max: number): string |
   const out = typeof text === "string" ? cut(prose(text), max) : "";
   return out === "" ? null : out;
 }
+/**
+ * Un testo più lungo di una nota come più note di al più `max` caratteri (l'adozione di `pain_points` e `data_required`
+ * scritti prima della board, §3.5): si divide agli a capo, e una riga più lunga di `max` ogni `max` caratteri. Unite da
+ * un a capo, come le ricopia la coda del salvataggio (`projectLane`), le parti ridanno il testo: cambiano solo gli spazi
+ * ai bordi di ogni parte (e un a capo dentro una riga troppo lunga), nessuna parola va persa. Una parte vuota non c'è.
+ */
+export function splitNoteText(text: string, max: number): string[] {
+  const parts: string[] = [];
+  let current: string | null = null;
+  const close = () => {
+    const part = current?.trim() ?? "";
+    if (part) parts.push(part);
+    current = null;
+  };
+  for (const line of text.replace(/\r\n?/g, "\n").split("\n")) {
+    const pieces = line.length <= max ? [line] : Array.from({ length: Math.ceil(line.length / max) }, (_, index) => line.slice(index * max, (index + 1) * max));
+    for (const piece of pieces) {
+      if (current !== null && current.length + 1 + piece.length <= max) current = `${current}\n${piece}`;
+      else {
+        close();
+        current = piece;
+      }
+    }
+  }
+  close();
+  return parts;
+}
 /** Una lista di righe rifinite: senza vuoti, senza doppioni (a meno di maiuscole), tagliata a `maxItems` voci di `maxLength`. */
 export function cutList(items: readonly string[] | null | undefined, maxItems: number, maxLength: number): string[] {
   const out: string[] = [];

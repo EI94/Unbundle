@@ -571,10 +571,19 @@ ORDER BY a.created_at, a.id`),
 /** L'id del processo «Processo principale» di un'unità: sempre lo stesso, così due adozioni insieme ne creano uno. */
 export const defaultProcessIdSql = (department: string) => raw(`md5(${department}::text || ':processo')::uuid`);
 
-/** Che cosa c'è da adottare: le attività senza riga del passo, i passi rimasti senza processo, le dipendenze. */
+/** Il testo di una colonna di sempre solo quando è più lungo di una nota (si adotta in più note), altrimenti NULL. */
+const longText = (lane: ProjectedLane) => {
+  const column = raw(`a.${PROJECTED_LANES[lane]}`);
+  return ucSql`CASE WHEN length(btrim(coalesce(${column}, ''))) > ${N(L.note)} THEN btrim(${column}) END`;
+};
+
+/**
+ * Che cosa c'è da adottare: le attività senza riga del passo (con «Attriti» e «Dati e documenti» quando sono più lunghi
+ * di una nota), i passi rimasti senza processo, le dipendenze.
+ */
 export function adoptionReads(scope: BoardScope): UcStatement[] {
   return [
-    toStatement(ucSql`SELECT a.id, a.created_at FROM activities a
+    toStatement(ucSql`SELECT a.id, a.created_at, ${longText("attriti")} AS long_attriti, ${longText("dati")} AS long_dati FROM activities a
 WHERE ${inUnit("a", scope)} AND NOT EXISTS (SELECT 1 FROM mapping_steps s WHERE s.activity_id = a.id)
 ORDER BY a.created_at, a.id`),
     toStatement(ucSql`SELECT count(*)::int AS loose FROM mapping_steps s WHERE ${inUnit("s", scope)} AND s.process_id IS NULL`),
@@ -588,17 +597,37 @@ const firstProcess = (scope: BoardScope) => ucSql`(SELECT p.id FROM mapping_proc
  * L'adozione in una transazione: la riga della board; «Processo principale» se l'unità non ha processi; i passi rimasti
  * senza processo nel primo; una riga del passo per ogni attività di `orderedIds`, nel loro ordine, in fondo al primo
  * processo; una nota di «Attriti» e una di «Dati e documenti» dalle colonne di sempre, con un id che dipende solo
- * dall'attività e dalla corsia. Non cambia nessuna colonna di `activities` e non alza la revisione.
+ * dall'attività e dalla corsia. Un testo più lungo di una nota non si taglia: entra nelle sue parti (`longNotes`, da
+ * `splitNoteText`), una nota per parte, nell'ordine, la prima con l'id di sempre e le altre con il numero della parte;
+ * unite, le note ridanno la colonna, che così resta intera anche quando la coda la riscrive dalle note.
+ * Non cambia nessuna colonna di `activities` e non alza la revisione.
  * L'ultima istruzione restituisce le righe dei passi inserite.
  */
-export function adoptionWrites(scope: BoardScope, orderedIds: readonly string[], defaultProcessName: string): UcStatement[] {
+export function adoptionWrites(
+  scope: BoardScope,
+  orderedIds: readonly string[],
+  defaultProcessName: string,
+  longNotes: ReadonlyArray<{ id: string; lane: ProjectedLane; parts: readonly string[] }> = [],
+): UcStatement[] {
   const ids = cast([...orderedIds], "uuid[]");
   const note = (lane: ProjectedLane) =>
     toStatement(ucSql`INSERT INTO mapping_notes (id, workspace_id, department_id, activity_id, lane, body, status, origin, position)
-SELECT md5(a.id::text || ${T(`:${lane}`)})::uuid, a.workspace_id, a.department_id, a.id, ${T(lane)}, left(btrim(a.${raw(PROJECTED_LANES[lane])}), ${N(L.note)}), 'fonte', 'prima', 1
+SELECT md5(a.id::text || ${T(`:${lane}`)})::uuid, a.workspace_id, a.department_id, a.id, ${T(lane)}, btrim(a.${raw(PROJECTED_LANES[lane])}), 'fonte', 'prima', 1
 FROM activities a
-WHERE a.id = ANY(${ids}) AND ${inUnit("a", scope)} AND btrim(coalesce(a.${raw(PROJECTED_LANES[lane])}, '')) <> ''
+WHERE a.id = ANY(${ids}) AND ${inUnit("a", scope)} AND btrim(coalesce(a.${raw(PROJECTED_LANES[lane])}, '')) <> '' AND length(btrim(a.${raw(PROJECTED_LANES[lane])})) <= ${N(L.note)}
 ON CONFLICT (id) DO NOTHING`);
+  const parts = longNotes.flatMap((item) => item.parts.map((body, index) => ({ id: item.id, lane: item.lane, part: index + 1, body })));
+  const longParts =
+    parts.length === 0
+      ? []
+      : [
+          toStatement(ucSql`INSERT INTO mapping_notes (id, workspace_id, department_id, activity_id, lane, body, status, origin, position)
+SELECT md5(a.id::text || ':' || i.lane || CASE WHEN i.part = 1 THEN '' ELSE ':' || i.part END)::uuid, a.workspace_id, a.department_id, a.id, i.lane, i.body, 'fonte', 'prima', i.part
+FROM jsonb_to_recordset(${jsonb(parts)}) AS i(id uuid, lane text, part int, body text)
+JOIN activities a ON a.id = i.id AND ${inUnit("a", scope)}
+WHERE a.id = ANY(${ids}) AND i.lane IN ('attriti', 'dati') AND length(btrim(i.body)) BETWEEN 1 AND ${N(L.note)}
+ON CONFLICT (id) DO NOTHING`),
+        ];
   return [
     ensureBoardRow(scope),
     toStatement(ucSql`INSERT INTO mapping_processes (id, workspace_id, department_id, name, position)
@@ -616,6 +645,7 @@ FROM (
 WHERE s.activity_id = o.activity_id AND ${inUnit("s", scope)} AND s.process_id IS NULL`),
     note("attriti"),
     note("dati"),
+    ...longParts,
     toStatement(ucSql`INSERT INTO mapping_steps (activity_id, workspace_id, department_id, process_id, position, status, origin)
 SELECT a.id, a.workspace_id, a.department_id, ${firstProcess(scope)},
        coalesce((SELECT max(m.position) FROM mapping_steps m WHERE ${inUnit("m", scope)} AND m.process_id = ${firstProcess(scope)}), 0) + o.ord,

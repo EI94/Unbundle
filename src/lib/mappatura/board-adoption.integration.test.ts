@@ -1,7 +1,9 @@
 import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { boardCounts, connect, enabled, insertActivity, newFixture, opts, seed, unseed, type Connection, type Row } from "./integration-kit.ts";
 import type { BoardStep, MappingBoard } from "./board-model.ts";
+import { MAPPING_LIMITS } from "./vocab.ts";
 
 // L'adozione sul database del pacchetto (docs/mappatura/MAPPATURA-BOARD-PIANO.md §3.5, §8.2): le attività di prima
 // compaiono sulla board **senza perdere niente**.
@@ -247,6 +249,51 @@ test("un passo rimasto senza processo torna nel primo alla lettura seguente", op
   assert.equal(board.processes.length, 1);
   assert.deepEqual(board.processes[0].steps.map((step) => step.id).at(-1), moved.activity_id, "in fondo al primo processo");
   assert.equal((await q(`SELECT process_id FROM mapping_steps WHERE activity_id = $1`, [moved.activity_id]))[0].process_id, store.defaultProcessId(f.otherUnit));
+});
+
+test("«Attriti» e «Dati e documenti» più lunghi di una nota entrano interi, in più note; una nota aggiunta dopo non taglia la colonna", opts, async () => {
+  const g = newFixture();
+  await seed(q, g, "testi-lunghi");
+  const where = { workspaceId: g.ws, departmentId: g.unit };
+  const who = { kind: "persona" as const, userId: g.lead, role: "transformation_lead" };
+  try {
+    // Un testo di prima su più righe (circa 3.200 caratteri) e uno di una riga sola più lunga di una nota.
+    const pain = [...Array.from({ length: 30 }, (_, index) => `Punto ${index + 1}: le richieste arrivano per e-mail, per telefono e a voce, e ognuna va ricopiata nel foglio.`), "FINE DEGLI ATTRITI"].join("\n");
+    const data = `${"Ordini aperti, bolle, listini e contratti dei fornitori; ".repeat(45)}FINE DEI DATI`;
+    assert.ok(pain.length > MAPPING_LIMITS.note && data.length > MAPPING_LIMITS.note);
+    const activityId = await insertActivity(q, { ws: g.ws, unit: g.unit }, { title: "Smistamento delle richieste", pain_points: pain, data_required: data });
+    const board = await store.readBoard(db.exec, where, who);
+    assert.ok(board);
+    const step = steps(board).find((item) => item.id === activityId);
+    assert.ok(step);
+    // Più note per corsia, ognuna entro il limite, «da fonti», «prima della board»; la prima con l'id di sempre.
+    assert.equal(step.notes.attriti.length, 2);
+    assert.equal(step.notes.dati.length, 2);
+    for (const note of [...step.notes.attriti, ...step.notes.dati]) {
+      assert.ok(note.text.length <= MAPPING_LIMITS.note, `${note.text.length} caratteri`);
+      assert.deepEqual([note.status, note.origin], ["fonte", "prima"]);
+    }
+    assert.equal(step.notes.attriti[0].id, store.adoptedNoteId(activityId, "attriti"));
+    assert.equal(step.notes.dati[0].id, store.adoptedNoteId(activityId, "dati"));
+    // Unite come le ricopia la coda, le note ridanno il testo: per righe, esatto; una riga troppo lunga, con un a capo in più.
+    assert.equal(step.notes.attriti.map((note) => note.text).join("\n"), pain);
+    assert.equal(step.notes.dati.map((note) => note.text).join("").replace(/\s/g, ""), data.replace(/\s/g, ""));
+    // Una nota aggiunta in ogni corsia: le colonne di sempre tengono il testo intero, con la nota nuova in fondo.
+    const saved = await store.saveBoardOps(db.exec, where, who, {
+      baseRevision: board.revision,
+      ops: [
+        { id: randomUUID(), t: "note.add", noteId: randomUUID(), stepId: activityId, lane: "attriti", text: "Nessun modulo unico." },
+        { id: randomUUID(), t: "note.add", noteId: randomUUID(), stepId: activityId, lane: "dati", text: "Anche le fatture." },
+      ],
+    });
+    assert.ok(saved.ok && saved.rejected.length === 0);
+    const [row] = await q(`SELECT pain_points, data_required FROM activities WHERE id = $1`, [activityId]);
+    assert.equal(row.pain_points, `${pain}\nNessun modulo unico.`);
+    assert.ok(String(row.data_required).endsWith("FINE DEI DATI\nAnche le fatture."));
+    assert.equal(String(row.data_required).replace(/\s/g, ""), `${data}Anche le fatture.`.replace(/\s/g, ""));
+  } finally {
+    await unseed(q, g);
+  }
 });
 
 test("senza la 0039 la board si legge dalle sole attività, in sola lettura, e niente si scrive", opts, async () => {
