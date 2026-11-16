@@ -42,14 +42,25 @@ export function committedText(edit: { base: string; text: string }, multiline: b
 /** Quello di un campo che serve a misurarlo (un `textarea`, o un finto nei test). */
 export interface FittedField {
   clientWidth: number;
+  clientHeight: number;
+  offsetHeight: number;
   scrollHeight: number;
   style: { height: string };
 }
 
-/** Alto quanto il suo testo; nascosto (dentro un `details` chiuso) non misura niente e torna all'altezza del foglio. */
-export function fitHeight(element: FittedField): void {
+/**
+ * Alto quanto il suo testo, al più `max` px; nascosto (dentro un `details` chiuso) non misura niente e torna
+ * all'altezza del foglio. L'altezza comprende il bordo (`box-sizing: border-box`): senza, il testo resterebbe 2 px più
+ * alto del campo, e scorrerebbe.
+ */
+export function fitHeight(element: FittedField, max?: number): void {
   element.style.height = "auto";
-  element.style.height = element.scrollHeight > 0 ? `${element.scrollHeight}px` : "";
+  if (element.scrollHeight <= 0) {
+    element.style.height = "";
+    return;
+  }
+  const height = element.scrollHeight + Math.max(0, element.offsetHeight - element.clientHeight);
+  element.style.height = `${max === undefined ? height : Math.min(height, max)}px`;
 }
 
 /** Il browser che serve a seguire il campo; nei test, uno finto. */

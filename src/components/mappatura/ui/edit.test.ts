@@ -199,11 +199,12 @@ test("il toast della board: una regione viva sempre presente; il testo e «Annul
   }
 });
 
-test("un campo sul posto resta alto quanto il suo testo quando cambia la sua larghezza o arrivano i font", async () => {
+test("un campo sul posto resta alto quanto il suo testo, bordo compreso, quando cambia la sua larghezza o arrivano i font", async () => {
   const { fitHeight, keepFitted } = edit;
-  const field = { clientWidth: 600, scrollHeight: 50, style: { height: "" } };
+  // Un campo con il bordo di 1 px sopra e sotto: l'altezza è quella del testo più i 2 px del bordo.
+  const field = { clientWidth: 600, clientHeight: 20, offsetHeight: 22, scrollHeight: 50, style: { height: "" } };
   fitHeight(field);
-  assert.equal(field.style.height, "50px");
+  assert.equal(field.style.height, "52px", "il testo non resta 2 px più alto del campo");
   let resized: (() => void) | null = null;
   let disconnected = false;
   class FakeObserver {
@@ -224,29 +225,33 @@ test("un campo sul posto resta alto quanto il suo testo quando cambia la sua lar
   field.clientWidth = 380;
   field.scrollHeight = 100;
   resize();
-  assert.equal(field.style.height, "100px");
+  assert.equal(field.style.height, "102px");
   // Cambia solo l'altezza (quella appena data): niente da rifare.
   field.scrollHeight = 120;
   resize();
-  assert.equal(field.style.height, "100px");
+  assert.equal(field.style.height, "102px");
   // Arrivano i font: il serif va a capo in un altro punto del font di riserva.
   field.scrollHeight = 110;
   fontsReady();
   await fonts.ready;
   await Promise.resolve();
-  assert.equal(field.style.height, "110px");
+  assert.equal(field.style.height, "112px");
   stop();
   assert.equal(disconnected, true);
   field.clientWidth = 900;
   field.scrollHeight = 50;
   resize();
-  assert.equal(field.style.height, "110px", "smesso di seguire, il campo non cambia più");
-  // Nascosto (dentro un `details` chiuso) non misura niente: torna all'altezza del foglio.
-  const hidden = { clientWidth: 0, scrollHeight: 0, style: { height: "40px" } };
+  assert.equal(field.style.height, "112px", "smesso di seguire, il campo non cambia più");
+  // Al più `max` (il campo dell'assistente, poi scorre); nascosto (dentro un `details` chiuso) torna all'altezza del foglio.
+  const long = { clientWidth: 300, clientHeight: 36, offsetHeight: 38, scrollHeight: 400, style: { height: "" } };
+  fitHeight(long, 200);
+  assert.equal(long.style.height, "200px");
+  const hidden = { clientWidth: 0, clientHeight: 0, offsetHeight: 0, scrollHeight: 0, style: { height: "40px" } };
   fitHeight(hidden);
   assert.equal(hidden.style.height, "");
-  // Il testo sul posto delle fondamenta e le righe sul posto delle viste usano tutti e due questo campo.
+  // Il testo sul posto delle fondamenta, le righe sul posto delle viste e il campo dell'assistente si misurano così.
   const source = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
   assert.match(source("./edit.tsx"), /const area = useFittedHeight<HTMLTextAreaElement>\(shown\);/);
   assert.match(source("../board/in-place.tsx"), /const useAutoHeight = \(text: string\) => useFittedHeight<HTMLTextAreaElement>\(text\);/);
+  assert.match(source("../companion/companion.tsx"), /if \(field\.current\) fitHeight\(field\.current, FIELD_MAX_HEIGHT\);/);
 });

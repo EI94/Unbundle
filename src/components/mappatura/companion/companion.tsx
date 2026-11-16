@@ -19,6 +19,7 @@ import { HIDDEN_TOOLS, MAPPING_TOOL_LABELS, TOOL_LABELS, assistantView, messageT
 import type { CompanionProps } from "../contracts.ts";
 import { useBoard, useBoardClient } from "../store/use-board.tsx";
 import { BoardButton, StatusChip } from "../ui/atoms.tsx";
+import { fitHeight } from "../ui/edit.tsx";
 import { Documents } from "./documents.tsx";
 import { Proposals } from "./proposals.tsx";
 import { openClassificationTab } from "./completion.ts";
@@ -30,6 +31,9 @@ export const COMPANION_TOOL_LABELS = Object.freeze({ ...TOOL_LABELS, ...MAPPING_
 
 /** Dopo quanti secondi, se tocca alla persona, l'assistente lo ricorda. */
 export const NUDGE_AFTER_S = 45;
+
+/** Il campo dell'assistente cresce con il testo fino a questa altezza (board-companion.css, `.b-comp-input`), poi scorre. */
+export const FIELD_MAX_HEIGHT = 200;
 
 // ─── Il testo di una risposta ────────────────────────────────────────
 
@@ -198,12 +202,9 @@ export function Companion(p: CompanionProps): JSX.Element {
     wasBusy.current = busy;
   }, [busy]);
 
-  // Il campo cresce con il testo, fino a 200 px.
+  // Il campo cresce con il testo, fino a 200 px (il bordo compreso: senza, il testo scorrerebbe di 2 px).
   const grow = () => {
-    const element = field.current;
-    if (!element) return;
-    element.style.height = "auto";
-    element.style.height = `${Math.min(element.scrollHeight, 200)}px`;
+    if (field.current) fitHeight(field.current, FIELD_MAX_HEIGHT);
   };
 
   const send = (text: string) => {
