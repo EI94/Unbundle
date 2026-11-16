@@ -3,6 +3,7 @@ import { SettingsSection } from "@/components/dashboard/settings-section";
 import { UcAccessError, ensureUcAvailable, getUcUserContext, isUcEnabledFor, ucLsDomains } from "@/lib/db/queries/uc-access";
 import { loadSubprocessorAck, type SubprocessorAck } from "@/lib/db/queries/uc-subprocessors";
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
+import { subprocessorAcksReady } from "@/lib/db/queries/context-consent";
 import { referentStoreReady } from "@/lib/db/queries/use-case-referent-base";
 import { referentAskEnabled } from "@/lib/use-cases/referent/availability";
 import {
@@ -25,8 +26,10 @@ import { SubprocessorsForm } from "./subprocessors-form";
  * di Lateral Space e l'autorizzazione del cliente. Componente server, montato con
  * una riga nella pagina delle impostazioni. Solo dove la sezione Casi d'uso è
  * accesa per il workspace e lo schema uc è aggiornato, oppure dove è accesa «Chiedi al referente»
- * (le sue email vogliono la stessa autorizzazione) con i suoi archivi pronti; altrimenti, o se la
- * lettura non riesce, non mostra nulla e il resto della pagina resta com'è.
+ * (le sue email vogliono la stessa autorizzazione) con i suoi archivi pronti; (rilascio 9a) oppure, in
+ * ogni altro workspace, se la tabella dell'ok esiste: le funzioni AI di «Contesto», la chat di Discovery e
+ * la lettura dei PDF vogliono la stessa autorizzazione, e l'ok si deve poter dare ovunque. Altrimenti, o se
+ * la lettura non riesce, non mostra nulla e il resto della pagina resta com'è.
  *
  * (Rilascio 5.1) Una persona di Lateral Space con un ruolo da revisore che autorizza registra l'ok per
  * conto del cliente con un clic («Registra l'ok di {cliente}», un pulsante non pieno, senza la casella
@@ -45,7 +48,7 @@ export async function SubprocessorsCard({
   workspaceRole: string;
 }) {
   const dossiers = isUcEnabledFor(workspaceId);
-  if (!dossiers && !(referentAskEnabled(workspaceId, process.env) && (await referentStoreReady()))) return null;
+  if (!dossiers && !(referentAskEnabled(workspaceId, process.env) && (await referentStoreReady())) && !(await subprocessorAcksReady())) return null;
   let ack: SubprocessorAck | null;
   let user: UserContext | null;
   try {
