@@ -1,0 +1,7 @@
+/* «Mappatura board»: le regole delle viste della board (docs/mappatura/MAPPATURA-BOARD-PIANO.md §9.2).
+ *
+ * Solo quello che il riferimento non ha: i controlli di modifica sulla mappa, i moduli del drawer, la griglia del
+ * pannello agganciato, le regole per il telefono. Stesse regole di board.css: ogni selettore sotto `[data-board-root]`,
+ * colori solo come `var(--board-…)` (le controlla src/components/theme/board-theme.test.ts).
+ * Il file nasce vuoto con le fondamenta: lo riempie il pacchetto delle viste.
+ */

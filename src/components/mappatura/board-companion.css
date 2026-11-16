@@ -1,0 +1,7 @@
+/* «Mappatura board»: le regole dell'assistente, della classificazione e del completamento
+ * (docs/mappatura/MAPPATURA-BOARD-PIANO.md §9.3).
+ *
+ * Stesse regole di board.css: ogni selettore sotto `[data-board-root]`, colori solo come `var(--board-…)` (le controlla
+ * src/components/theme/board-theme.test.ts).
+ * Il file nasce vuoto con le fondamenta: lo riempie il pacchetto del compagno.
+ */
