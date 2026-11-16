@@ -471,8 +471,9 @@ class GranolaCaller {
 
 /**
  * «Scollega»: la revoca su Granola (il `refresh_token`, o l'access token; se non riesce si va avanti lo stesso), poi
- * il collegamento, i legami con i workspace, le decisioni sulle call e gli stati OAuth della persona. Gli appunti già
- * entrati restano.
+ * il collegamento, i legami con i workspace e gli stati OAuth della persona. Gli appunti già entrati restano, e
+ * restano le decisioni sulle call (`context_granola_meetings`, solo gli id delle call): ricollegato, una call assegnata
+ * o lasciata fuori resta com'era.
  */
 export async function disconnectGranola(userId: string): Promise<ServiceResult<true>> {
   if (!isUuid(userId)) return notFound();
@@ -494,9 +495,9 @@ export async function disconnectGranola(userId: string): Promise<ServiceResult<t
         }
       }
     }
+    // Le decisioni sulle call restano: ricollegando, una call assegnata o lasciata fuori non torna in «Da smistare».
     await db.batch([
       db.delete(contextGranolaLinks).where(eq(contextGranolaLinks.userId, userId)),
-      db.delete(contextGranolaMeetings).where(eq(contextGranolaMeetings.userId, userId)),
       db.delete(contextGranolaOauthStates).where(eq(contextGranolaOauthStates.userId, userId)),
       db.delete(contextGranolaConnections).where(eq(contextGranolaConnections.userId, userId)),
     ]);

@@ -750,18 +750,32 @@ test("il giro della notte: scollega chi non è più di Lateral Space, cancella g
   assert.ok((await connection("ls")).last_sync_at);
 });
 
-test("scollegare revoca e cancella il collegamento, i legami e le decisioni; gli appunti restano", opts, async () => {
+test("scollegare revoca e cancella il collegamento e i legami; gli appunti e le decisioni sulle call restano, anche ricollegando", opts, async () => {
   const tokens = openGranolaTokens(KEY, ids.ls, String((await connection("ls")).tokens_sealed));
   assert.ok(tokens.ok);
   const imported = Number((await q(`SELECT count(*)::int AS n FROM context_sources WHERE origin = 'granola' AND added_by_user_id = $1`, [ids.ls]))[0].n);
   assert.ok(imported >= 4);
+  const decisions = async () => (await q(`SELECT meeting_id, decision FROM context_granola_meetings WHERE user_id = $1 ORDER BY meeting_id`, [ids.ls])).map((r) => `${r.meeting_id}:${r.decision}`);
+  const decided = await decisions();
+  assert.ok(decided.includes(`${MEETINGS.none.id}:fuori`) && decided.includes(`${MEETINGS.both.id}:entrata`), decided.join(" "));
+  const unsortedBefore = value(await granola.listGranolaUnsorted(actor("ls"))).map((m) => m.id).sort();
   value(await granola.disconnectGranola(ids.ls));
   assert.deepEqual(fake.revoked.at(-1), { token: tokens.value.refreshToken, hint: "refresh_token", clientId: `${ORIGIN}/api/granola/client-metadata` });
-  for (const table of ["context_granola_connections", "context_granola_links", "context_granola_meetings", "context_granola_oauth_states"]) {
+  for (const table of ["context_granola_connections", "context_granola_links", "context_granola_oauth_states"]) {
     assert.equal((await q(`SELECT count(*)::int AS n FROM ${table} WHERE user_id = $1`, [ids.ls]))[0].n, 0, table);
   }
+  assert.deepEqual(await decisions(), decided, "le decisioni sulle call restano: solo gli id");
   assert.equal(Number((await q(`SELECT count(*)::int AS n FROM context_sources WHERE origin = 'granola' AND added_by_user_id = $1`, [ids.ls]))[0].n), imported);
   assert.equal((await granola.loadGranolaStatus({ userId: ids.ls, workspaceId: ids.wsN })).connected, false);
   assert.equal(errorOf(await granola.listGranolaUnsorted(actor("ls"))), "non_trovato");
   assert.equal((await granola.syncGranolaForUser(ids.ls, { force: true })).status, "non_collegato");
+
+  // Ricollegato: le call assegnate o lasciate fuori restano decise, e il giro non fa entrare doppioni.
+  assert.equal(location(await connect("ls")).search, "?granola=collegato");
+  assert.deepEqual(value(await granola.listGranolaUnsorted(actor("ls"))).map((m) => m.id).sort(), unsortedBefore);
+  assert.equal((await granola.syncGranolaForUser(ids.ls, { force: true })).status, "fatto");
+  assert.equal(Number((await q(`SELECT count(*)::int AS n FROM context_sources WHERE origin = 'granola' AND added_by_user_id = $1`, [ids.ls]))[0].n), imported);
+  assert.equal(await sourceOf(MEETINGS.none.id), undefined, "lasciata fuori resta fuori");
+  assert.deepEqual(await decisions(), decided);
+  value(await granola.disconnectGranola(ids.ls));
 });
