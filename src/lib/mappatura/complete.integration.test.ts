@@ -179,6 +179,55 @@ test("uno stream scelto da una persona mentre il classificatore lavora resta: la
   assert.deepEqual([(await activityRow(ids.richieste)).onet_task_id, (await activityRow(ids.altrove)).onet_task_id], ["13-1023.00", null]);
 });
 
+test("due giri insieme sullo stesso passo: stream, proposta e motivo restano del giro che ha scritto lo stream; l'altro non conta quello che non ha scritto", opts, async () => {
+  const g = newFixture();
+  await seed(q, g, "due-giri");
+  try {
+    const where = { workspaceId: g.ws, departmentId: g.unit };
+    const who = { kind: "persona" as const, userId: g.lead, role: "transformation_lead" };
+    const processId = randomUUID();
+    const stepId = randomUUID();
+    const made = await store.saveBoardOps(db.exec, where, who, { baseRevision: 0, ops: [op({ t: "process.add", processId, name: "Dalla fattura al pagamento" }), op({ t: "step.add", stepId, processId, title: "Registrazione delle fatture" })] });
+    assert.ok(made.ok && made.rejected.length === 0);
+    // Due giri partiti insieme (il bottone e il tool della chat, o due persone) leggono il passo senza stream prima che
+    // uno dei due scriva. Il primo risponde dopo che il secondo ha letto; il secondo dopo che il primo ha scritto.
+    let secondRead!: () => void;
+    const secondHasRead = new Promise<void>((resolve) => (secondRead = resolve));
+    let firstWrote!: () => void;
+    const firstHasWritten = new Promise<void>((resolve) => (firstWrote = resolve));
+    const result = (stream: "automate" | "differentiate") => ({ classification: stream, confidenceScore: 0.8, reasoning: `Motivo per ${stream}.`, aiPotential: `Potenziale per ${stream}.` });
+    const deps = (stream: "automate" | "differentiate", wait: () => Promise<void>) => ({
+      ...complete.appCompleteDeps(db.exec),
+      classify: (async (activities: Array<{ id: string }>) => {
+        await wait();
+        return new Map(activities.filter((activity) => activity.id === stepId).map((activity) => [activity.id, result(stream)]));
+      }) as never,
+      matchOnet: (async () => []) as never,
+    });
+    const first = complete.completeUnitMapping(deps("automate", () => secondHasRead), { scope: where, deadline: FAR() }).then((outcome) => {
+      firstWrote();
+      return outcome;
+    });
+    const second = complete.completeUnitMapping(
+      deps("differentiate", async () => {
+        secondRead();
+        await firstHasWritten;
+      }),
+      { scope: where, deadline: FAR() },
+    );
+    const [firstOutcome, secondOutcome] = await Promise.all([first, second]);
+    const board = await store.readBoard(db.exec, where, who);
+    assert.ok(board);
+    const s = step(board, stepId);
+    assert.deepEqual([s.stream, s.proposedStream, s.reason, s.aiPotential], ["automate", "automate", "Motivo per automate.", "Potenziale per automate."]);
+    assert.deepEqual([firstOutcome?.counts, firstOutcome?.classified, firstOutcome?.classification], [{ automate: 1, differentiate: 0, innovate: 0 }, 1, "fatta"]);
+    // Il secondo giro non ha scritto niente: niente «1 Differentiate» nella chat, niente «1 passo classificato».
+    assert.deepEqual([secondOutcome?.counts, secondOutcome?.classified, secondOutcome?.remaining, secondOutcome?.classification], [{ automate: 0, differentiate: 0, innovate: 0 }, 0, 0, "niente_da_fare"]);
+  } finally {
+    await unseed(q, g);
+  }
+});
+
 test("la sintesi dell'assistente: la frase solo se manca; i punti al posto di quelli della chat non validati, mai oltre sei", opts, async () => {
   const deps = complete.appCompleteDeps(db.exec);
   const before = await read();

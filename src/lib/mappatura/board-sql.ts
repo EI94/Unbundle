@@ -796,8 +796,12 @@ export interface ClassificationRow {
 /**
  * Scrive le classificazioni: lo stream e la confidenza nelle colonne di sempre (solo dove lo stream manca ancora: una
  * scelta fatta nel frattempo da una persona resta), e sulla riga del passo la proposta, il motivo e il potenziale.
+ * La proposta si scrive dove questo giro ha scritto lo stream, o dove lo stream di adesso non è la proposta che c'è:
+ * uno stream scelto da una persona nel frattempo prende la proposta nuova, ma uno stream che un altro giro ha appena
+ * scritto con la sua proposta resta con lei (due giri insieme sulla stessa unità non lasciano uno stream con il motivo
+ * di un altro).
  * Solo attività di quel workspace; con `departmentId`, solo di quell'unità. `withBoard` falso: senza la 0039, le sole
- * colonne di sempre. Restituisce `n`, le attività scritte.
+ * colonne di sempre. Restituisce `n`, le attività scritte da questo giro, e quante per stream.
  */
 export function saveClassifications(scope: { workspaceId: string; departmentId?: string | null }, rows: readonly ClassificationRow[], withBoard: boolean): UcStatement {
   const inScope = (alias: string) =>
@@ -808,18 +812,21 @@ export function saveClassifications(scope: { workspaceId: string; departmentId?:
   const activity = ucSql`act AS (
   UPDATE activities a SET classification = input.stream::classification, confidence_score = input.confidence, updated_at = now()
   FROM input WHERE a.id = input.id AND ${inScope("a")} AND a.classification IS NULL
-  RETURNING a.id)`;
-  if (!withBoard) return toStatement(ucSql`WITH ${input}, ${activity} SELECT count(*)::int AS n FROM act`);
+  RETURNING a.id, input.stream)`;
+  const counted = ucSql`SELECT count(*)::int AS n, ${join(STREAMS.map((stream) => ucSql`(count(*) FILTER (WHERE act.stream = ${T(stream)}))::int AS ${raw(stream)}`))} FROM act`;
+  if (!withBoard) return toStatement(ucSql`WITH ${input}, ${activity} ${counted}`);
   return toStatement(ucSql`WITH ${input}, ${activity},
 step AS (
   UPDATE mapping_steps s SET proposed_stream = input.stream, classification_reason = left(input.reason, ${N(L.description)}), ai_potential = left(input.potential, ${N(L.description)}), updated_at = now()
-  FROM input WHERE s.activity_id = input.id AND ${inScope("s")}
+  FROM input JOIN activities a ON a.id = input.id
+  WHERE s.activity_id = input.id AND ${inScope("s")} AND a.department_id = s.department_id AND a.workspace_id = s.workspace_id
+    AND (s.activity_id IN (SELECT act.id FROM act) OR ${streamFold("a.classification")} IS DISTINCT FROM s.proposed_stream)
   RETURNING 1),
 board AS (
   UPDATE mapping_boards b SET revision = b.revision + 1, updated_at = now()
   WHERE b.workspace_id = ${U(scope.workspaceId)} AND b.department_id IN (SELECT s.department_id FROM mapping_steps s JOIN input ON input.id = s.activity_id WHERE ${inScope("s")})
   RETURNING 1)
-SELECT count(*)::int AS n FROM act`);
+${counted}`);
 }
 
 /** Le unità che hanno, tra queste attività del workspace, almeno una senza riga del passo (da adottare prima di scrivere). */

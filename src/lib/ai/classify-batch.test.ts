@@ -64,7 +64,12 @@ const completeDeps = (): CompleteDeps => ({
   },
   async saveSummary() {},
   async saveClassifications(_scope, results) {
-    for (const [id, result] of results) prova.classified.push([id, result.classification, result.confidenceScore]);
+    const written = { automate: 0, differentiate: 0, innovate: 0 };
+    for (const [id, result] of results) {
+      prova.classified.push([id, result.classification, result.confidenceScore]);
+      if (result.classification in written) written[result.classification as keyof typeof written] += 1;
+    }
+    return written;
   },
   async saveOnetMatches(_scope, matches) {
     for (const match of matches) prova.matched.push(match.activityId);

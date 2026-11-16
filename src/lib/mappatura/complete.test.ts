@@ -76,7 +76,15 @@ function fakeStore(activities: Activity[] | null) {
     },
     async saveClassifications(_where, results) {
       log.classified.push([...results]);
-      for (const [id, result] of results) activities!.find((item) => item.id === id)!.classification = result.classification;
+      // Come il database: lo stream si scrive solo dove manca, e si conta quello che si è scritto.
+      const written = { automate: 0, differentiate: 0, innovate: 0 };
+      for (const [id, result] of results) {
+        const item = activities!.find((activity) => activity.id === id)!;
+        if (item.classification) continue;
+        item.classification = result.classification;
+        if (result.classification in written) written[result.classification as keyof typeof written] += 1;
+      }
+      return written;
     },
     async saveOnetMatches(_where, matches) {
       log.onet.push(matches.map((item) => item.activityId));
@@ -232,6 +240,34 @@ test("la sintesi si salva solo se chi chiama la porta; un'unità senza passi si 
   await completeUnitMapping(deps, { scope, deadline: FAR(), headline: null });
   await completeUnitMapping(deps, { scope, deadline: FAR(), headline: "" });
   assert.deepEqual(log.summaries.slice(1), [{ headline: "Solo la frase.", analysis: undefined }, { headline: undefined, analysis: [] }]);
+});
+
+test("un passo che un altro giro classifica mentre questo aspetta il modello non è suo: non si conta; se gli altri hanno fatto tutto, niente da fare", async (t) => {
+  recordLogs(t);
+  const activities = ACTIVITIES();
+  const { deps } = fakeStore(activities);
+  // Mentre questo giro aspetta il modello, un altro (il tool della chat, o un'altra persona) scrive lo stream di «Confronto».
+  deps.classify = (async (...args: Parameters<typeof classifyActivitiesBatch>) => {
+    const results = await classifyActivitiesBatch(...args);
+    activities[1].classification = "automate";
+    return results;
+  }) as typeof classifyActivitiesBatch;
+  // Quattro classificazioni e il match O*NET.
+  fakeAppClaude(Array.from({ length: 5 }, () => replies()));
+  const outcome = await completeUnitMapping(deps, { scope, deadline: FAR() });
+  assert.deepEqual([outcome?.counts, outcome?.classified, outcome?.remaining, outcome?.classification], [{ automate: 2, differentiate: 0, innovate: 1 }, 3, 0, "fatta"]);
+
+  // Tutti i passi classificati da un altro giro nel frattempo: questo non ne ha scritto nessuno, e non lo dice come suo.
+  const others = ACTIVITIES().slice(0, 2);
+  const second = fakeStore(others);
+  second.deps.classify = (async (...args: Parameters<typeof classifyActivitiesBatch>) => {
+    const results = await classifyActivitiesBatch(...args);
+    for (const activity of others) activity.classification = "innovate";
+    return results;
+  }) as typeof classifyActivitiesBatch;
+  fakeAppClaude(Array.from({ length: 3 }, () => replies()));
+  const late = await completeUnitMapping(second.deps, { scope, deadline: FAR() });
+  assert.deepEqual([late?.counts, late?.classified, late?.remaining, late?.classification], [{ automate: 0, differentiate: 0, innovate: 0 }, 0, 0, "niente_da_fare"]);
 });
 
 test("un'unità che non si trova: null, niente segnato, niente chiesto al modello", async (t) => {

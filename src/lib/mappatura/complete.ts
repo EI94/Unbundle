@@ -50,7 +50,11 @@ export interface CompleteDeps {
   loadUnit(scope: BoardScope): Promise<{ unitName: string; activities: Activity[]; companyValueThesis: unknown; goals: StrategicGoal[] } | null>;
   markMapped(scope: BoardScope, signal: { title: string; description: string }): Promise<{ first: boolean }>;
   saveSummary(scope: BoardScope, summary: { headline?: string | null; analysis?: ReadonlyArray<{ title: string; text: string }> }): Promise<void>;
-  saveClassifications(scope: BoardScope, results: ReadonlyMap<string, ClassificationResult>): Promise<void>;
+  /**
+   * Scrive le classificazioni e dice quante ne ha scritte, per stream: solo i passi ancora senza stream (uno che
+   * qualcuno ha classificato nel frattempo, una persona o un altro giro, resta com'è e non conta).
+   */
+  saveClassifications(scope: BoardScope, results: ReadonlyMap<string, ClassificationResult>): Promise<Record<Stream, number>>;
   saveOnetMatches(scope: BoardScope, matches: ReadonlyArray<{ activityId: string; suggestedOnetCode: string; occupationTitle: string; aiExposureEstimate: number }>): Promise<number>;
   classify: typeof classifyActivitiesBatch;
   matchOnet: typeof matchActivitiesToOnet;
@@ -112,6 +116,8 @@ function goalFromRow(row: UcRow): StrategicGoal {
   };
 }
 
+const noStreams = (): Record<Stream, number> => ({ automate: 0, differentiate: 0, innovate: 0 });
+
 const classificationRows = (results: ReadonlyMap<string, ClassificationResult>): ClassificationRow[] =>
   [...results]
     .filter(([id, result]) => UUID.test(id) && isStream(result.classification))
@@ -147,7 +153,9 @@ export function appCompleteDeps(executor: UcExecutor): CompleteDeps {
     },
     async saveClassifications(scope, results) {
       const rows = classificationRows(results);
-      if (rows.length > 0) await executor.batch([saveClassifications(scope, rows, true)]);
+      if (rows.length === 0) return noStreams();
+      const [written] = await executor.batch([saveClassifications(scope, rows, true)]);
+      return { automate: number(written[0]?.automate) ?? 0, differentiate: number(written[0]?.differentiate) ?? 0, innovate: number(written[0]?.innovate) ?? 0 };
     },
     async saveOnetMatches(scope, matches) {
       const rows = matches.filter((match) => UUID.test(match.activityId)).map((match) => ({ id: match.activityId, code: match.suggestedOnetCode, title: match.occupationTitle, exposure: match.aiExposureEstimate }));
@@ -181,7 +189,7 @@ export async function completeUnitMapping(
     total: unit.activities.length,
     classified: 0,
     remaining: 0,
-    counts: { automate: 0, differentiate: 0, innovate: 0 },
+    counts: noStreams(),
     classification: "niente_da_fare",
     matched: 0,
     avgExposurePct: null,
@@ -195,11 +203,12 @@ export async function completeUnitMapping(
       // Le classificazioni riuscite si scrivono; quelle rifiutate, fallite o fermate dalla scadenza restano da fare.
       const results = await deps.classify(unclassified, { companyValueThesis: unit.companyValueThesis, goals: unit.goals }, { abortSignal: AbortSignal.timeout(timeUntil(deadline)) });
       const own = new Map([...results].filter(([id]) => unclassified.some((activity) => activity.id === id)));
-      await deps.saveClassifications(scope, own);
-      for (const [, result] of own) if ((STREAMS as readonly string[]).includes(result.classification)) outcome.counts[result.classification] += 1;
-      outcome.classified = own.size;
+      // Si conta quello che questo giro ha scritto: un passo che un altro giro (o una persona) ha classificato nel
+      // frattempo non è suo. Se gli altri hanno fatto tutto, a questo giro non resta niente da fare.
+      outcome.counts = await deps.saveClassifications(scope, own);
+      outcome.classified = STREAMS.reduce((sum, stream) => sum + outcome.counts[stream], 0);
       outcome.remaining = unclassified.length - own.size;
-      outcome.classification = own.size === 0 ? "non_riuscita" : own.size < unclassified.length ? "parziale" : "fatta";
+      outcome.classification = own.size === 0 ? "non_riuscita" : own.size < unclassified.length ? "parziale" : outcome.classified === 0 ? "niente_da_fare" : "fatta";
     } catch (error) {
       logSafeError("mappatura/complete", "classificazione_non_riuscita", error, logContext(scope));
       outcome.classification = "non_riuscita";
