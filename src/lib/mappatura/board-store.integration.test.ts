@@ -592,6 +592,36 @@ test("i limiti: 26 processi, 40 passi per processo, 30 note per corsia, 6 punti 
   }
 });
 
+test("un processo che l'adozione ha riempito oltre 40 passi: i suoi passi si riordinano nella riga; da un'altra riga non entra nessuno", opts, async () => {
+  const g = newFixture();
+  await seed(q, g, "riga-lunga");
+  const where = { workspaceId: g.ws, departmentId: g.unit };
+  const who = { kind: "persona" as const, userId: g.lead, role: "transformation_lead" };
+  try {
+    // 41 attività scritte prima della board: l'adozione le mette tutte in «Processo principale».
+    for (let index = 0; index < MAPPING_LIMITS.stepsPerProcess + 1; index++) await insertActivity(q, { ws: g.ws, unit: g.unit }, { title: `Attività ${index + 1}`, minutesAgo: 100 - index });
+    let board = await read(who, where);
+    assert.deepEqual([board.processes.length, board.processes[0].steps.length], [1, 41]);
+    const row = board.processes[0];
+    const fifth = row.steps[4].id;
+    // Il quinto passo prima del quarto, poi l'ultimo in testa: dentro la sua riga, ogni spostamento passa.
+    board = await save([op({ t: "step.move", stepId: fifth, processId: row.id, beforeId: row.steps[3].id })], who, {}, where);
+    assert.equal(board.processes[0].steps[3].id, fifth);
+    board = await save([op({ t: "step.move", stepId: row.steps[40].id, processId: row.id, beforeId: row.steps[0].id })], who, {}, where);
+    assert.deepEqual([board.processes[0].steps[0].id, board.processes[0].steps.length], [row.steps[40].id, 41]);
+    // Da un'altra riga il limite resta: la riga piena non prende un passo in più.
+    const other = id();
+    const outside = id();
+    board = await save([op({ t: "process.add", processId: other, name: "Un altro processo" }), op({ t: "step.add", stepId: outside, processId: other, title: "Un passo fuori" })], who, {}, where);
+    const enter = op({ t: "step.move", stepId: outside, processId: row.id, beforeId: null });
+    board = await save([enter], who, { [enter.id]: "limit" }, where);
+    assert.deepEqual([board.processes[0].steps.length, board.processes[1].steps.length], [41, 1]);
+    assert.deepEqual(await positions("mapping_steps", "department_id = $1 AND process_id = $2", [g.unit, row.id]), Array.from({ length: 41 }, (_, index) => index + 1));
+  } finally {
+    await unseed(q, g);
+  }
+});
+
 test("un salvataggio non valido o troppo grande non scrive niente", opts, async () => {
   const counts = await boardCounts(q, [f.ws]);
   const revision = (await read()).revision;

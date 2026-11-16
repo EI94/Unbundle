@@ -250,13 +250,18 @@ done AS (
 ${OUTCOME_SET}`;
 }
 
+/**
+ * Un passo nella sua riga o in un'altra. Il limite dei passi vale per chi entra in una riga: dentro la sua riga un passo
+ * si riordina sempre, anche in un processo che l'adozione ha riempito oltre i 40 passi (come fa il riduttore).
+ */
 function stepMove(scope: BoardScope, op: Op<"step.move">): SqlFragment {
   return ucSql`WITH step AS (SELECT 1 FROM mapping_steps s WHERE s.activity_id = ${U(op.stepId)} AND ${inUnit("s", scope)}),
 proc AS (SELECT 1 FROM mapping_processes p WHERE p.id = ${U(op.processId)} AND ${inUnit("p", scope)}),
 room AS (SELECT count(*)::int AS n FROM mapping_steps s WHERE s.process_id = ${U(op.processId)} AND ${inUnit("s", scope)} AND s.activity_id <> ${U(op.stepId)}),
 done AS (
   UPDATE mapping_steps s SET process_id = ${U(op.processId)}, position = ${placeAt(stepsOf(scope, op.processId, op.stepId), { beforeId: op.beforeId })}, updated_at = now()
-  WHERE s.activity_id = ${U(op.stepId)} AND ${inUnit("s", scope)} AND EXISTS (SELECT 1 FROM proc) AND (SELECT n FROM room) < ${N(L.stepsPerProcess)}
+  WHERE s.activity_id = ${U(op.stepId)} AND ${inUnit("s", scope)} AND EXISTS (SELECT 1 FROM proc)
+    AND (s.process_id = ${U(op.processId)} OR (SELECT n FROM room) < ${N(L.stepsPerProcess)})
   RETURNING 1)
 SELECT CASE WHEN EXISTS (SELECT 1 FROM done) THEN 'ok' WHEN NOT EXISTS (SELECT 1 FROM step) OR NOT EXISTS (SELECT 1 FROM proc) THEN 'gone' ELSE 'limit' END AS outcome`;
 }
