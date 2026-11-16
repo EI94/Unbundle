@@ -102,10 +102,10 @@ async function reviewTodos(): Promise<string[]> {
 
 let clock = Date.now();
 /** Un evento di una pull request, come lo legge il webhook dopo la firma. Senza la campanella (`ready: false`). */
-function prEvent(i: { repo?: string; number: number; branch: string; state?: "aperta" | "chiusa" | "unita"; draft?: boolean; action?: string }) {
+function prEvent(i: { repo?: string; number: number; branch: string; state?: "aperta" | "chiusa" | "unita"; draft?: boolean; action?: string }, executor = exec) {
   const at = new Date((clock += 1000)).toISOString();
   const state = i.state ?? "aperta";
-  return github.applyGithubEvent(exec, {
+  return github.applyGithubEvent(executor, {
     deliveryId: `repo-${suffix}-${i.repo === OTHER ? "o" : "r"}${i.number}-${state}-${clock}`,
     event: "pull_request",
     parsed: {
@@ -303,4 +303,54 @@ test("--apply ha chiuso le PR aperte di quel repository: i compiti in revisione 
   // La chiusura vera, quando arriva da GitHub, si ignora: non c'è più niente da chiudere.
   assert.deepEqual(await prEvent({ number: 11, branch: "nr-0001/t-1-prova", state: "chiusa" }), { esito: "ignorato", motivo: "repository_non_registrato" });
   assert.equal((await prs())[0], "A:REPO#11:chiusa");
+});
+
+test("un evento che aveva già letto il caso mentre l'operatore toglie il repository non scrive niente: nessuna PR aperta dopo, nessun segnale di vita", opts, async () => {
+  /** Un esecutore che, subito prima della transazione dell'evento, fa girare `between` per intero. */
+  const racing = (between: () => void): typeof exec => {
+    let fired = false;
+    return {
+      batch: async (statements) => {
+        if (!fired && statements.some((st) => st.text.includes("INSERT INTO use_case_github_deliveries"))) {
+          fired = true;
+          between();
+        }
+        return exec.batch(statements);
+      },
+    };
+  };
+  const activity = async (useCaseId: string) => String((await q(`SELECT last_activity_at FROM use_case_tasks WHERE use_case_id = $1 AND ref = 'T-1'`, [useCaseId]))[0].last_activity_at);
+
+  // Una PR nuova in B, che ha ancora il repository: l'evento legge il caso, poi l'operatore toglie il repository.
+  let unregistered: AdminRun | null = null;
+  const opened = await prEvent(
+    { number: 32, branch: "tr-0001/t-1-nuova" },
+    racing(() => {
+      unregistered = runAdmin(["--workspace", ids.wsB, "--repo", REPO, ...confirm]);
+    }),
+  );
+  assert.equal((unregistered as AdminRun | null)?.last.status, "APPLIED", "il repository è stato tolto nel mezzo");
+  assert.equal(opened.esito, "applicato", "la consegna è registrata");
+  assert.deepEqual(await registrations(), []);
+  assert.deepEqual((await prs()).filter((pr) => pr.startsWith("B:")), ["B:REPO#31:chiusa"], "la PR nuova non entra aperta dopo che il repository è stato tolto");
+  assert.equal((await tasks()).at(-1), "TR-0001 T-1:in_corso:suo", "il compito non va in revisione");
+
+  // Un push: con il repository registrato è un segnale di vita; se l'operatore lo toglie nel mezzo, no.
+  const push = (deliveryId: string, executor = exec) => github.applyGithubEvent(executor, { deliveryId, event: "push", parsed: { kind: "push", repo: REPO, branch: "nr-0002/t-1-prova" } });
+  await q(`INSERT INTO use_case_repos (use_case_id, workspace_id, repo, folder, created_by_user_id) VALUES ($1, $2, $3, 'casi/nr-0002', $4)`, [ids.uc2, ids.wsA, REPO, ids.lead]);
+  await q(`UPDATE use_case_tasks SET last_activity_at = now() - interval '2 days' WHERE use_case_id = $1 AND ref = 'T-1'`, [ids.uc2]);
+  const stale = await activity(ids.uc2);
+  assert.equal((await push(`repo-${suffix}-push-1`)).esito, "applicato");
+  const alive = await activity(ids.uc2);
+  assert.notEqual(alive, stale, "un push di un repository registrato è un segnale di vita");
+  await q(`UPDATE use_case_tasks SET last_activity_at = now() - interval '2 days' WHERE use_case_id = $1 AND ref = 'T-1'`, [ids.uc2]);
+  const before = await activity(ids.uc2);
+  await push(
+    `repo-${suffix}-push-2`,
+    racing(() => {
+      unregistered = runAdmin(["--workspace", ids.wsA, "--repo", REPO, "--use-case", "NR-0002", ...confirm]);
+    }),
+  );
+  assert.equal((unregistered as AdminRun | null)?.last.status, "APPLIED");
+  assert.equal(await activity(ids.uc2), before, "nessun segnale di vita da un repository tolto");
 });

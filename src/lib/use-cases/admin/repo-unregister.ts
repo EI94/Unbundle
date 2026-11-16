@@ -152,8 +152,9 @@ export function repoUnregisterPlan(i: RepoUnregisterFacts): RepoUnregisterPlan {
   const useCaseIds = cast(touched, "uuid[]");
   const statements: UcStatement[] = [];
   let at: RepoUnregisterPlan["at"] = null;
-  // Prima di ogni scrittura, i lock dei compiti degli use case toccati, nell'ordine del webhook di GitHub: un evento di
-  // quel repository che arriva adesso aspetta, e poi non trova più la registrazione.
+  // Prima di ogni scrittura, i lock dei compiti degli use case toccati, nell'ordine del webhook di GitHub. Un evento di
+  // quel repository già in corso finisce prima, e la sua PR si chiude qui; uno che arriva adesso aspetta, poi rilegge la
+  // registrazione nella sua transazione e non scrive niente (`stillRegisteredSql` in use-case-github.ts).
   if (i.tables.pullRequests) statements.push(...[...touched].sort(byUseCaseId).map(tasksLockOfUseCaseSql));
   if (i.tables.proposals) {
     statements.push(

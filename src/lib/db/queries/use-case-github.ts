@@ -19,6 +19,8 @@ import "server-only";
  *   Diventa una proposta da decidere (`use-case-task-proposals.ts`), mai un compito da sola.
  * - **Una volta sola:** l'id della consegna sta in `use_case_github_deliveries`, nella stessa transazione degli
  *   effetti; se c'è già, l'evento non conta di nuovo («ripetuto»).
+ * - **Un repository tolto nel mezzo** (`use-case-admin repo-unregister`, che prende lo stesso lock dei compiti): una PR o
+ *   un push che avevano già letto il caso non scrivono niente, se alla transazione la registrazione non c'è più.
  *
  * Nessuna lettura qui raggruppa, conta o ordina per persona (art. 15.4).
  */
@@ -170,6 +172,16 @@ ON CONFLICT (delivery_id) DO NOTHING RETURNING delivery_id`);
 const freshSql = (deliveryId: string): SqlFragment =>
   ucSql`EXISTS (SELECT 1 FROM use_case_github_deliveries d WHERE d.delivery_id = ${cast(deliveryId, "text")} AND d.received_at = now())`;
 
+/**
+ * Vero se il repository è ancora registrato per lo use case, letto nella transazione degli effetti (dopo il lock dei
+ * compiti). I casi si leggono prima, fuori dalla transazione: nel mezzo `use-case-admin repo-unregister` può aver tolto
+ * la registrazione e chiuso le PR aperte, e una PR scritta dopo resterebbe aperta per sempre (gli eventi di dopo si
+ * ignorano).
+ */
+const stillRegisteredSql = (t: Target, repo: string): SqlFragment =>
+  ucSql`EXISTS (SELECT 1 FROM use_case_repos gr WHERE gr.workspace_id = ${cast(t.workspaceId, "uuid")} AND gr.use_case_id = ${cast(t.useCaseId, "uuid")}
+    AND lower(gr.repo) = lower(${cast(repo, "text")}))`;
+
 /** Registra un evento che non riguarda nessun caso. */
 async function ignore(executor: UcExecutor, deliveryId: string, event: string, repo: string | null, motivo: string): Promise<GithubApplyResult> {
   const [rows] = await executor.batch([deliveryInsert(deliveryId, event, repo, "ignorato")]);
@@ -272,7 +284,9 @@ export async function applyGithubEvent(executor: UcExecutor, input: { deliveryId
   const plan: { target: Target; task: TaskNow | null; statements: UcStatement[] }[] = [];
   for (const t of targets) {
     const task = await taskFor(executor, t, taskRefOfBranch(e.branch, t.code));
-    plan.push({ target: t, task, statements: e.kind === "pr" ? prStatements(t, task, e, fresh, builders ?? NO_EXTERNAL_BUILDERS) : pushStatements(task, fresh) });
+    // Gli effetti contano solo per una consegna nuova e solo se il repository è ancora del caso (`stillRegisteredSql`).
+    const live = ucSql`(${fresh} AND ${stillRegisteredSql(t, e.repo)})`;
+    plan.push({ target: t, task, statements: e.kind === "pr" ? prStatements(t, task, e, live, builders ?? NO_EXTERNAL_BUILDERS) : pushStatements(task, live) });
   }
   // Un lock per use case, sempre nello stesso ordine; poi la consegna; poi gli effetti, solo se la consegna è nuova.
   const locks = [...plan].sort((a, b) => byUseCaseId(a.target.useCaseId, b.target.useCaseId)).map((p) => tasksLock(p.target));
