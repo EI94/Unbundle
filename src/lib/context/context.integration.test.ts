@@ -918,6 +918,43 @@ test("discardProposals: le proposte scartate non entrano e non si ripropongono; 
   await proposals.discardProposals(actor("ls"), (await proposals.listOpenProposals(actor("ls"), { sourceId }))!.proposals.map((p) => p.id));
 });
 
+test("«Rileggi» e una call cambiata su Granola: le proposte che nessuno aveva deciso tornano, se il testo le dice ancora", opts, async () => {
+  const statuses = async (sourceId: string) => (await q(`SELECT statement, status FROM context_proposals WHERE source_id = $1 ORDER BY position`, [sourceId])).map((r) => [r.status, r.statement]);
+  // «Rileggi» su un appunto con una proposta aperta: il modello trova di nuovo lo stesso fatto, e la proposta torna.
+  const note = await addNote();
+  const kept = proposal({ testo: `Gli ordini del magazzino R1 ${suffix} si inseriscono a mano.` });
+  fakeAppClaude([answer([kept])]);
+  okValue(await reading.readContextSource(actor("ls"), note.sourceId));
+  const requests = fakeAppClaude([answer([kept])]);
+  assert.deepEqual(okValue(await reading.readContextSource(actor("ls"), note.sourceId, { again: true })), { status: "letto", proposals: 1, skipped: {} });
+  assert.equal(JSON.stringify(requests[0].body.messages).includes(`Gli ordini del magazzino R1 ${suffix}`), false, "una proposta superata non è in «Già proposto»");
+  assert.deepEqual(await statuses(note.sourceId), [
+    ["superata", `Gli ordini del magazzino R1 ${suffix} si inseriscono a mano.`],
+    ["aperta", `Gli ordini del magazzino R1 ${suffix} si inseriscono a mano.`],
+  ]);
+
+  // Una call di Granola con due proposte aperte cambia (una riga in più): i due fatti che il testo dice ancora tornano.
+  const base = { title: "Call settimanale R2", occurredOn: "2026-11-10", origin: "granola" as const, externalId: `not_${suffix}_r2`, externalUpdatedAt: new Date("2026-11-10T10:00:00Z") };
+  const text1 = `[Riassunto di Granola]\nIl magazzino passa a due turni (${suffix}).\nIl gestionale è SAP Business One.`;
+  const call = okValue(await sources.upsertExternalNote(actor("ls", "wsA", "granola"), { ...base, body: text1 }));
+  const shifts = proposal({ testo: `Il magazzino passa a due turni ${suffix}.`, citazione: `Il magazzino passa a due turni (${suffix}).` });
+  const erp = proposal({ testo: `Il gestionale R2 è SAP Business One ${suffix}.`, citazione: "Il gestionale è SAP Business One.", sezione: "sistemi" });
+  fakeAppClaude([answer([shifts, erp])]);
+  okValue(await reading.readContextSource(actor("ls"), call.sourceId));
+  assert.equal(okValue(await sources.upsertExternalNote(actor("ls", "wsA", "granola"), { ...base, body: `${text1}\nDa gennaio anche il sabato.`, externalUpdatedAt: new Date("2026-11-11T09:00:00Z") })).changed, true);
+  const saturday = proposal({ testo: `Il magazzino lavora anche il sabato da gennaio ${suffix}.`, citazione: "Da gennaio anche il sabato." });
+  fakeAppClaude([answer([shifts, erp, saturday])]);
+  assert.deepEqual(okValue(await reading.readContextSource(actor("ls"), call.sourceId)), { status: "letto", proposals: 3, skipped: {} });
+  assert.deepEqual(
+    (await proposals.listOpenProposals(actor("ls"), { sourceId: call.sourceId }))!.proposals.map((p) => p.statement),
+    [shifts.testo, erp.testo, saturday.testo],
+  );
+  // Le proposte già decise, invece, non tornano (lo prova la prova di «discardProposals»): qui si chiude.
+  for (const sourceId of [note.sourceId, call.sourceId]) {
+    await proposals.discardProposals(actor("ls"), (await proposals.listOpenProposals(actor("ls"), { sourceId }))!.proposals.map((p) => p.id));
+  }
+});
+
 test("confirmProposals: un fatto nuovo, una decisione, un impegno, una domanda; entità e collegamenti; la domanda chiusa dal fatto che le risponde", opts, async () => {
   const question = randomUUID();
   await q(`INSERT INTO context_questions (id, workspace_id, question, visibility, origin) VALUES ($1, $2, $3, 'tutti', 'manuale')`, [question, ids.wsA, `Chi approva gli ordini grandi ${suffix}?`]);

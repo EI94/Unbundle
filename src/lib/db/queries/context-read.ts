@@ -165,15 +165,16 @@ async function loadReadMemory(reader: Reader, sourceId: string): Promise<ReadMem
     db.execute(sql`
       SELECT statement FROM context_commitments
       WHERE workspace_id = ${ws}::uuid AND status = 'aperto' ORDER BY created_at DESC, id LIMIT ${L.openItemsInPrompt}`),
+    // Le proposte di questi appunti, prima quelle decise o ancora aperte; la posizione più alta tra tutte.
     db.execute(sql`
-      SELECT statement, position FROM context_proposals
-      WHERE source_id = ${sourceId}::uuid AND workspace_id = ${ws}::uuid ORDER BY position LIMIT 500`),
+      SELECT statement, status, (max(position) OVER ())::int AS last_position FROM context_proposals
+      WHERE source_id = ${sourceId}::uuid AND workspace_id = ${ws}::uuid ORDER BY (status = 'superata'), position LIMIT 500`),
     loadLiveDiscovery(workspace, reader.viewer),
   ]);
   const factRows = rowsOf<{ id: string; section: ContextSection; visibility: ContextVisibility; statement: string; total: number }>(facts);
   const total = Number(factRows[0]?.total ?? 0);
   if (total > L.memoryFactsInPrompt) console.warn(`[${LOG_SCOPE}] memoria_troncata`, JSON.stringify({ workspaceId: ws, fatti: total }));
-  const alreadyRows = rowsOf<{ statement: string; position: number }>(already);
+  const alreadyRows = rowsOf<{ statement: string; status: string; last_position: number }>(already);
   return {
     clientName: workspace.name,
     facts: factRows.map((f, i) => ({ ref: `F${i + 1}`, id: f.id, section: f.section, visibility: f.visibility, statement: f.statement })),
@@ -183,8 +184,10 @@ async function loadReadMemory(reader: Reader, sourceId: string): Promise<ReadMem
     goals: rowsOf<{ id: string; title: string }>(goals).map((g, i) => ({ ref: `O${i + 1}`, id: g.id, title: g.title })),
     questions: rowsOf<{ id: string; question: string }>(questions).map((q, i) => ({ ref: `D${i + 1}`, id: q.id, question: q.question })),
     commitments: rowsOf<{ statement: string }>(commitments).map((c) => c.statement),
-    already: alreadyRows.map((a) => a.statement),
-    lastPosition: alreadyRows.reduce((max, a) => Math.max(max, Number(a.position)), 0),
+    // «Già proposto»: le frasi confermate, scartate o ancora aperte. Le superate no: le ha tolte «Rileggi» o una call
+    // cambiata su Granola, senza che nessuno le decidesse; se il testo le dice ancora, devono tornare.
+    already: alreadyRows.filter((a) => a.status !== "superata").map((a) => a.statement),
+    lastPosition: Number(alreadyRows[0]?.last_position ?? 0),
   };
 }
 
