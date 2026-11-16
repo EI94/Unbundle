@@ -10,6 +10,11 @@ import { db } from "@/lib/db";
 import { activities, uploadedDocuments } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { contextActorFor } from "@/lib/context/server/actor";
+import type { ContextActor } from "@/lib/context/visibility";
+import { contextAiConsent } from "@/lib/db/queries/context-consent";
+import { listContextSources } from "@/lib/db/queries/context-sources";
+import { contextStoreReady } from "@/lib/db/queries/context-store";
 
 /** Lo schema che il modello riempie: la motivazione ha un nome neutro (MOTIVAZIONE_DESCRIPTION in models.ts). */
 const preGeneratedActivitySchema = z.object({
@@ -45,15 +50,40 @@ async function requireDepartmentInWorkspace(workspaceId: string, departmentId: s
   }
 }
 
+/**
+ * I documenti che chi chiama può mandare al modello (rilascio 9a, RILASCIO-9a-COSTRUZIONE.md §5.2): null vuol dire
+ * tutti (Lateral Space; e senza la 0038, quando nessun documento è «Solo Lateral Space»). Per gli altri solo i
+ * documenti «Per tutti» che vedono in «Contesto»: un documento interno non torna al cliente come attività.
+ */
+async function readableDocumentIds(actor: ContextActor): Promise<Set<string> | null> {
+  if (actor.isLateralSpace || !(await contextStoreReady())) return null;
+  const sources = await listContextSources(actor, { limit: 500 });
+  return new Set(sources.flatMap((source) => (source.document ? [source.document.id] : [])));
+}
+
+/** L'esito: le attività proposte; `consentMissing` quando il workspace non ha l'ok ai fornitori di AI. */
+export type PreGeneratedActivities = { activities: PreGeneratedActivity[]; consentMissing?: true };
+
 export async function preGenerateActivitiesFromDocuments(
   workspaceId: string,
   departmentId: string
-) {
-  await requireWorkspaceAccess(workspaceId);
+): Promise<PreGeneratedActivities> {
+  const { session, access } = await requireWorkspaceAccess(workspaceId);
   await requireDepartmentInWorkspace(workspaceId, departmentId);
 
-  const docs = await db
+  // L'ok ai sub-responsabili (rilascio 9a, RILASCIO-9a-COSTRUZIONE.md §6.2): senza, nessun testo dei documenti va al modello.
+  if (!(await contextAiConsent(workspaceId))) {
+    return { activities: [], consentMissing: true };
+  }
+  const actor = contextActorFor(
+    { id: session.user.id, email: session.user.email ?? null, emailVerified: session.user.emailVerified === true },
+    access,
+    workspaceId
+  );
+
+  const unitDocs = await db
     .select({
+      id: uploadedDocuments.id,
       fileName: uploadedDocuments.fileName,
       extractedText: uploadedDocuments.extractedText,
       summary: uploadedDocuments.summary,
@@ -65,6 +95,8 @@ export async function preGenerateActivitiesFromDocuments(
         eq(uploadedDocuments.departmentId, departmentId)
       )
     );
+  const readable = await readableDocumentIds(actor);
+  const docs = readable ? unitDocs.filter((doc) => readable.has(doc.id)) : unitDocs;
 
   if (docs.length === 0) {
     return { activities: [] };

@@ -1757,6 +1757,40 @@ test("la chat è una stanza comune: anche quando scrive Lateral Space, un docume
   assert.equal(mapping.includes("Sintesi riservata"), false);
 });
 
+test("«Pre-genera da documenti» della mappatura: senza l'ok nessun testo al modello; il cliente non manda mai un documento «Solo Lateral Space»", opts, async (t) => {
+  recordLogs(t);
+  const { preGenerateActivitiesFromDocuments } = await import("../actions/pre-generate-activities.ts");
+  const word = `frassino${suffix}`;
+  okValue(await addDocument("ls", { departmentId: ids.unitA, extractedText: `Procedura condivisa: gli ordini di ${word} partono ogni lunedì.` }));
+  okValue(await addDocument("ls", { visibility: "ls", departmentId: ids.unitA, extractedText: `Nota riservata: il margine sul ${word} è al quaranta per cento.` }));
+  const activities = json({ activities: [{ title: "Ordini del lunedì", description: "Gli ordini partono ogni lunedì.", motivazione: "La procedura lo dice." }] });
+  const prompt = (requests: Array<{ body: Record<string, unknown> }>) => JSON.stringify(requests[0]?.body ?? {});
+  try {
+    // Il cliente: al modello va solo il documento «Per tutti» dell'unità.
+    signIn("con");
+    const forClient = fakeAppClaude([activities]);
+    assert.equal((await preGenerateActivitiesFromDocuments(ids.wsA, ids.unitA)).activities.length, 1);
+    assert.equal(forClient.length, 1);
+    assert.ok(prompt(forClient).includes("Procedura condivisa"), "il documento «Per tutti» va al modello");
+    assert.equal(prompt(forClient).includes("quaranta per cento"), false, "quello «Solo Lateral Space» no");
+    // Lateral Space li legge tutti: le attività tornano solo a chi le ha chieste, che sceglie che cosa salvare.
+    signIn("ls");
+    const forLs = fakeAppClaude([activities]);
+    await preGenerateActivitiesFromDocuments(ids.wsA, ids.unitA);
+    assert.ok(prompt(forLs).includes("Procedura condivisa") && prompt(forLs).includes("quaranta per cento"));
+    // Nel workspace senza l'ok ai sub-responsabili nessun testo va al modello, nemmeno per Lateral Space.
+    const unitB = randomUUID();
+    await q(`INSERT INTO departments (id, workspace_id, name) VALUES ($1, $2, 'Unità B da pre-generare')`, [unitB, ids.wsB]);
+    okValue(await sources.saveUploadedDocument(actor("lsb"), { fileName: "procedura-b.txt", fileType: "text/plain", fileSize: 120, blobUrl: `https://archivio.test/procedura-b-${suffix}.txt`, extractedText: `Procedura del workspace B: ${word} ogni martedì.`, summary: "", departmentId: unitB, title: "Procedura B", occurredOn: "2026-11-13", visibility: "tutti", origin: "web" }));
+    signIn("lsb");
+    const none = fakeAppClaude([]);
+    assert.deepEqual(await preGenerateActivitiesFromDocuments(ids.wsB, unitB), { activities: [], consentMissing: true });
+    assert.equal(none.length, 0, "nessuna richiesta al modello");
+  } finally {
+    signIn(null);
+  }
+});
+
 // ─── I due tool della mappatura (§10.5) ──────────────────────────────
 
 test("i due tool della mappatura scrivono solo sulle attività del workspace della conversazione", opts, async () => {
