@@ -1,12 +1,13 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import { PenLine } from "lucide-react";
 import { SegmentedNav } from "@/components/dashboard/segmented-nav";
 import { Button } from "@/components/ui/button";
 import { CONTEXT_TEXT } from "@/lib/context/text";
 import type { AiConsentNoticeData } from "@/lib/db/queries/context-consent";
 import { cn } from "@/lib/utils";
+import { AddNotesDialog } from "./add-notes-dialog";
 import { AskBox } from "./ask-box";
 import { ContextSheet } from "./context-sheet";
 import type { UseCaseOption } from "./fields";
@@ -53,8 +54,10 @@ export interface ContextPageProps {
  * cliente «Documenti») con «Scrivi un fatto», poi la vista. Sul telefono la testata si impila: titolo, domanda,
  * «Aggiungi appunti» su tutta la larghezza.
  */
-export function ContextPage({ workspaceId, workspaceName, today, tab, lateralSpace, canEditMemory, useCaseOptions, children }: ContextPageProps) {
+export function ContextPage({ workspaceId, workspaceName, today, tab, lateralSpace, canEditMemory, addNotesInHeader, useCaseOptions, consentNotice, children }: ContextPageProps) {
+  const [addOpen, setAddOpen] = useState(false);
   const [writing, setWriting] = useState(false);
+  const openAdd = useCallback(() => setAddOpen(true), []);
   const base = `/dashboard/${workspaceId}/contesto`;
   const tabs = useMemo(
     () => [
@@ -65,13 +68,18 @@ export function ContextPage({ workspaceId, workspaceName, today, tab, lateralSpa
   );
 
   return (
-    <AddNotesContext.Provider value={null}>
+    <AddNotesContext.Provider value={lateralSpace ? openAdd : null}>
       <div className="space-y-6">
         <header className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
           <div className="min-w-0">
             <p className="truncate text-xs text-muted-foreground">{workspaceName}</p>
             <h1 className="mt-0.5 text-2xl font-semibold tracking-tight">{T.page.title}</h1>
           </div>
+          {lateralSpace && addNotesInHeader ? (
+            <div className="order-3 sm:order-2">
+              <AddNotesButton className="w-full sm:w-auto" />
+            </div>
+          ) : null}
           <div className="order-2 sm:order-3 sm:col-span-2">
             <AskBox workspaceId={workspaceId} today={today} lateralSpace={lateralSpace} />
           </div>
@@ -89,6 +97,8 @@ export function ContextPage({ workspaceId, workspaceName, today, tab, lateralSpa
 
         {children}
       </div>
+
+      {lateralSpace ? <AddNotesDialog open={addOpen} onOpenChange={setAddOpen} workspaceId={workspaceId} today={today} consentNotice={consentNotice} /> : null}
 
       {lateralSpace && canEditMemory ? (
         <ContextSheet open={writing} onOpenChange={setWriting} title={T.writeFact.title}>

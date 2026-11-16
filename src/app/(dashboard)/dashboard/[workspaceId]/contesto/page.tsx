@@ -3,6 +3,7 @@ import { ContextPage } from "@/components/context/context-page";
 import { GranolaInbox } from "@/components/context/granola/granola-inbox";
 import { MemoryView } from "@/components/context/memory-view";
 import { loadUseCaseOptions, romeToday } from "@/components/context/page-data";
+import { PendingReader } from "@/components/context/pending-reader";
 import { briefMaterial, consentNoticeNeeded, isMemoryEmpty } from "@/components/context/view-model";
 import { PageContainer } from "@/components/dashboard/page-container";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
@@ -40,13 +41,17 @@ export default async function ContextRoute({ params }: { params: Promise<{ works
 
   const lateralSpace = abilities.seesLateralSpace;
   const today = romeToday();
-  const [memory, useCaseOptions] = await Promise.all([loadContextMemory(actor), abilities.canEditMemory ? loadUseCaseOptions(workspaceId) : Promise.resolve([])]);
-  // L'avviso dell'ok (§6.3): solo a Lateral Space, e solo se c'è qualcosa da leggere o un «In breve» da scrivere.
-  const consentNotice =
-    lateralSpace && consentNoticeNeeded({ unreadSources: memory.counts.unreadSources, brief: memory.brief, material: briefMaterial(memory.sections) })
-      ? await loadAiConsentNotice({ workspaceId, userId: actor.userId, role: actor.role })
-      : null;
+  const [memory, useCaseOptions, consentNotice] = await Promise.all([
+    loadContextMemory(actor),
+    abilities.canEditMemory ? loadUseCaseOptions(workspaceId) : Promise.resolve([]),
+    // L'avviso dell'ok ai fornitori, per Lateral Space: null se l'ok c'è. «Aggiungi appunti» lo mostra dopo il salvataggio.
+    lateralSpace ? loadAiConsentNotice({ workspaceId, userId: actor.userId, role: actor.role }) : Promise.resolve(null),
+  ]);
+  // Nelle righe di servizio (§6.3) l'avviso c'è solo se c'è qualcosa da leggere o un «In breve» da scrivere.
+  const serviceNotice = consentNotice && consentNoticeNeeded({ unreadSources: memory.counts.unreadSources, brief: memory.brief, material: briefMaterial(memory.sections) }) ? consentNotice : null;
   const empty = isMemoryEmpty(memory);
+  // Gli appunti in attesa si leggono appena Lateral Space apre la Memoria, e solo con l'ok (senza, c'è l'avviso).
+  const pending = lateralSpace && consentNotice === null ? memory.counts.pendingSourceIds : [];
 
   return (
     <PageContainer size="narrow">
@@ -68,8 +73,9 @@ export default async function ContextRoute({ params }: { params: Promise<{ works
           canEditMemory={abilities.canEditMemory}
           memory={memory}
           useCaseOptions={useCaseOptions}
-          consentNotice={consentNotice}
+          consentNotice={serviceNotice}
           granola={lateralSpace ? <GranolaInbox workspaceId={workspaceId} workspaceName={access.workspace.name} compact /> : null}
+          reader={pending.length > 0 ? <PendingReader workspaceId={workspaceId} sourceIds={pending} /> : null}
         />
       </ContextPage>
     </PageContainer>

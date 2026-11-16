@@ -133,6 +133,39 @@ export async function readUntilDone(
   return { ok: true, outcome: last ?? { status: "errore" } };
 }
 
+/** Come è finito il giro degli appunti in attesa: quanti letti, e perché si è fermato prima della fine. */
+export interface PendingRun {
+  read: number;
+  stoppedBy: "ok_mancante" | "limite" | "sessione" | "errore" | null;
+}
+
+/**
+ * Gli appunti in attesa, uno alla volta (`PendingReader`): ognuno fino in fondo. Un appunto che non si legge (rifiuto,
+ * tempo, errore, già in lettura, tolto nel frattempo) non ferma gli altri. Si ferma tutto senza l'ok ai fornitori,
+ * al limite del giorno, senza sessione, o se la rotta non risponde (rete, 503).
+ */
+export async function readPending(
+  fetchImpl: FetchLike,
+  workspaceId: string,
+  sourceIds: readonly string[],
+  opts: { signal?: AbortSignal; onProgress?: (index: number, total: number) => void } = {},
+): Promise<PendingRun> {
+  let read = 0;
+  for (let i = 0; i < sourceIds.length; i += 1) {
+    opts.onProgress?.(i + 1, sourceIds.length);
+    const result = await readUntilDone(fetchImpl, workspaceId, sourceIds[i], { signal: opts.signal });
+    if (!result.ok) {
+      if (result.status === 401) return { read, stoppedBy: "sessione" };
+      if (result.status === 0 || result.status >= 500) return { read, stoppedBy: "errore" };
+      continue;
+    }
+    const status = result.outcome.status;
+    if (status === "letto") read += 1;
+    if (status === "ok_mancante" || status === "limite") return { read, stoppedBy: status };
+  }
+  return { read, stoppedBy: null };
+}
+
 // ─── Documenti ───────────────────────────────────────────────────────
 
 /** La risposta della rotta di caricamento (§10.2). */
