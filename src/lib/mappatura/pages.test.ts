@@ -32,6 +32,8 @@ const pagina: Pagina = { calls: [], board: null, conversation: null, hasDocument
 (globalThis as { __pagina?: Pagina }).__pagina = pagina;
 
 await installAppModules({
+  // (Rilascio insieme) L'assistente importa l'avviso dell'ok di «Contesto» (rilascio 9a), con la sua azione del server.
+  "@/lib/actions/uc-subprocessors": `export async function declareSubprocessorsAction() { return { ok: true }; }`,
   "@/lib/auth/require-workspace": `export async function requireWorkspacePage(workspaceId) {
     globalThis.__pagina.calls.push(["requireWorkspacePage", workspaceId]);
     return { session: { user: { id: ${JSON.stringify(USER)}, email: "persona@cliente.test", emailVerified: true } }, access: { role: "contributor", source: "workspace", workspace: { id: workspaceId, name: "Officina di prova", unitTerminology: { singular: "reparto", plural: "reparti" } } } };

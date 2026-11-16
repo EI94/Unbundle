@@ -12,9 +12,13 @@
  *
  * Le due azioni si caricano quando servono: il modulo delle azioni vive sul server, e questo componente si carica anche
  * nei test con Node.
+ *
+ * (Rilascio 9a, RILASCIO-9a-COSTRUZIONE.md §6.2) Senza l'ok ai sub-responsabili la lettura non parte
+ * (`consentMissing`): il toast lo dice, non «Dai documenti non emergono passi chiari», che direbbe una cosa falsa.
  */
 import { useState, type JSX } from "react";
 import type { PreGeneratedActivity } from "@/lib/actions/pre-generate-activities";
+import { CONTEXT_TEXT } from "../../../lib/context/text.ts";
 import { formatHours, workTypeLabel } from "../../../lib/mappatura/text.ts";
 import { useBoardClient } from "../store/use-board.tsx";
 import { BoardButton } from "../ui/atoms.tsx";
@@ -77,6 +81,16 @@ export function ProposalList(p: { items: readonly PreGeneratedActivity[]; chosen
 
 type Phase = "idle" | "reading" | "open" | "adding";
 
+/**
+ * Che cosa fare con la risposta della lettura dei documenti: senza l'ok ai sub-responsabili la riga dell'ok (rilascio
+ * 9a), senza passi «Dai documenti non emergono passi chiari», altrimenti il drawer con le proposte.
+ */
+export function proposalsNext(result: { activities: readonly PreGeneratedActivity[]; consentMissing?: true }): { toast: string } | { open: readonly PreGeneratedActivity[] } {
+  if (result.consentMissing) return { toast: CONTEXT_TEXT.consent.title };
+  if (result.activities.length === 0) return { toast: COMPANION_TEXT.proposals.none };
+  return { open: result.activities };
+}
+
 export function Proposals(p: { workspaceId: string; departmentId: string; disabled?: boolean }): JSX.Element {
   const client = useBoardClient();
   const [phase, setPhase] = useState<Phase>("idle");
@@ -88,12 +102,13 @@ export function Proposals(p: { workspaceId: string; departmentId: string; disabl
     setPhase("reading");
     try {
       const { preGenerateActivitiesFromDocuments } = await loadActions();
-      const { activities } = await preGenerateActivitiesFromDocuments(p.workspaceId, p.departmentId);
-      if (activities.length === 0) {
+      const next = proposalsNext(await preGenerateActivitiesFromDocuments(p.workspaceId, p.departmentId));
+      if ("toast" in next) {
         setPhase("idle");
-        client.notify(T.none);
+        client.notify(next.toast);
         return;
       }
+      const activities = [...next.open];
       setItems(activities);
       setChosen(new Set(activities.map((_, index) => index)));
       setPhase("open");

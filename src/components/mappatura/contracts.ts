@@ -11,6 +11,7 @@
 import type { ReactNode } from "react";
 import type { UnitBoardSummary } from "../../lib/mappatura/board-model.ts";
 import type { UnitTerm } from "../../lib/utils/unit-terminology.ts";
+import type { ChatConsent } from "../agent/chat-consent.ts";
 
 /**
  * La board di un'unità (S2): testata, schede, pillola, «Processi di oggi» con il drawer del passo, posto e stato del
@@ -46,6 +47,11 @@ export interface CompanionProps {
   teamSize: number | null;
   initialMessages: Array<{ id: string; role: "user" | "assistant"; content: string }>;
   hasDocuments: boolean;
+  /**
+   * (Rilascio 9a) Lo stato di partenza dell'ok ai sub-responsabili (src/components/agent/chat-consent.ts), come per la
+   * chat di Discovery; poi lo chiede l'assistente al montaggio.
+   */
+  initialConsent?: ChatConsent;
 }
 
 /** La scheda «Classificazione»: legge la board con `useBoard`. `useCaseHub`: l'area «Use case» è accesa nel workspace. */

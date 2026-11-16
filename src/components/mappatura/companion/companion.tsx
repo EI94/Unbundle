@@ -12,10 +12,18 @@
  * La conversazione vive nella sessione dello store della board (session.ts): chiudere e riaprire il pannello non la
  * perde, e ogni tool della board finito rilegge la board aperta. Il campo porta `data-b="companion-input"`: «Inizia con
  * l'assistente» della board ci mette il cursore.
+ *
+ * (Rilascio 9a, RILASCIO-9a-COSTRUZIONE.md §6.3) Senza l'ok ai sub-responsabili del workspace al posto del campo c'è
+ * l'avviso calmo di «Contesto» (`AiConsentNotice`), come nella chat di Discovery; i messaggi di prima restano. L'ok si
+ * chiede al montaggio e dopo un 403 `ok_fornitori_mancante` della rotta, che è il controllo vero: mentre si chiede il
+ * campo resta com'è.
  */
 import { useChat } from "@ai-sdk/react";
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type JSX, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type JSX, type KeyboardEvent, type ReactNode } from "react";
+import { CONTEXT_TEXT } from "../../../lib/context/text.ts";
+import { CONSENT_CHECKING, isConsentError, loadChatConsent, type ChatConsent } from "../../agent/chat-consent.ts";
 import { HIDDEN_TOOLS, MAPPING_TOOL_LABELS, TOOL_LABELS, assistantView, messageText, type ChatProgress, type ChatUIMessage } from "../../agent/chat-view.ts";
+import { AiConsentNotice } from "../../context/ai-consent-notice.tsx";
 import type { CompanionProps } from "../contracts.ts";
 import { useBoard, useBoardClient } from "../store/use-board.tsx";
 import { BoardButton, StatusChip } from "../ui/atoms.tsx";
@@ -170,8 +178,25 @@ export function Companion(p: CompanionProps): JSX.Element {
   const root = useRef<HTMLDivElement>(null);
   const field = useRef<HTMLTextAreaElement>(null);
   const busy = status === "submitted" || status === "streaming";
+
+  // L'ok ai sub-responsabili (rilascio 9a): al montaggio, e di nuovo quando la rotta risponde che manca.
+  const [consent, setConsent] = useState<ChatConsent>(p.initialConsent ?? CONSENT_CHECKING);
+  const checkConsent = useCallback(() => {
+    let live = true;
+    void loadChatConsent(p.workspaceId).then((next) => {
+      if (live) setConsent(next);
+    });
+    return () => {
+      live = false;
+    };
+  }, [p.workspaceId]);
+  useEffect(() => checkConsent(), [checkConsent]);
+  const refusedForConsent = isConsentError(error);
+  useEffect(() => (refusedForConsent ? checkConsent() : undefined), [refusedForConsent, checkConsent]);
+  const consentMissing = consent.state === "missing";
+
   const userTurn = !busy && messages.length > 1 && messages[messages.length - 1]?.role === "assistant" && messages.some((message) => message.role === "user");
-  const showSuggestions = !busy && !messages.some((message) => message.role === "user");
+  const showSuggestions = !busy && !consentMissing && !messages.some((message) => message.role === "user");
 
   // Ogni tool della board finito rilegge la board aperta, una volta (session.ts).
   useEffect(() => session.observe(messages), [session, messages]);
@@ -209,7 +234,7 @@ export function Companion(p: CompanionProps): JSX.Element {
 
   const send = (text: string) => {
     const value = text.trim();
-    if (!value || busy) return;
+    if (!value || busy || consentMissing) return;
     atBottom.current = true;
     void sendMessage({ role: "user", parts: [{ type: "text", text: value }] });
   };
@@ -241,7 +266,8 @@ export function Companion(p: CompanionProps): JSX.Element {
           <MessageView key={message.id} message={message} arriving={busy && index === messages.length - 1} />
         ))}
         {busy ? <Waiting /> : null}
-        {error ? <ChatError error={error} /> : null}
+        {/* Manca l'ok: al posto dell'errore, l'avviso in fondo. */}
+        {error && !refusedForConsent ? <ChatError error={error} /> : null}
         {userTurn ? <Nudge /> : null}
       </div>
       {showSuggestions ? (
@@ -262,6 +288,22 @@ export function Companion(p: CompanionProps): JSX.Element {
           ))}
         </div>
       ) : null}
+      {consent.state === "missing" ? (
+        <div className="b-comp-form" data-b="companion-consent">
+          <PanelToast />
+          <div>
+            <AiConsentNotice
+              notice={consent.notice}
+              variant="card"
+              onGranted={() => {
+                setConsent(CONSENT_CHECKING);
+                checkConsent();
+              }}
+            />
+            <p className="b-comp-note">{CONTEXT_TEXT.consent.chatHint}</p>
+          </div>
+        </div>
+      ) : (
       <form className="b-comp-form" onSubmit={onSubmit}>
         {/* Il toast della board, quando il pannello sta sopra la pagina: sopra il campo, mai sopra quello che si scrive. */}
         <PanelToast />
@@ -282,6 +324,7 @@ export function Companion(p: CompanionProps): JSX.Element {
           {SEND_ICON}
         </BoardButton>
       </form>
+      )}
     </div>
   );
 }
