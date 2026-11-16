@@ -221,7 +221,16 @@ const TRUE_WORDS = new Set(["", "true", "1", "yes", "si", "sì"]);
 
 // ─── Partecipanti ────────────────────────────────────────────────────
 
-const EMAIL = /[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/;
+/**
+ * Un indirizzo e-mail, con le parti limitate come negli indirizzi veri (64 caratteri prima della chiocciola, etichette
+ * del dominio di 63): senza limiti, su un partecipante lungo e senza virgole la ricerca ripartiva da ogni carattere e
+ * correva fino in fondo, in un tempo quadratico. I nomi dei partecipanti li scrive chi manda l'invito, anche fuori da
+ * Lateral Space.
+ */
+const EMAIL = /[A-Za-z0-9._%+'-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){0,8}\.[A-Za-z]{2,24}/;
+
+/** Un partecipante più lungo di così non è un partecipante: se ne legge solo questo pezzo. */
+const PARTICIPANT_MAX = 320;
 
 /** Divide su virgole, punti e virgola e a capo fuori da parentesi tonde, quadre e angolari. */
 function splitOutside(text: string): string[] {
@@ -250,7 +259,7 @@ export function parseParticipants(raw: string): GranolaParticipant[] {
   if (typeof raw !== "string" || !raw.trim()) return [];
   const out: GranolaParticipant[] = [];
   for (const piece of splitOutside(raw)) {
-    const part = piece.replace(/^\s*[-*•]\s+/, "").trim();
+    const part = piece.slice(0, PARTICIPANT_MAX).replace(/^\s*[-*•]\s+/, "").trim();
     if (!part) continue;
     const email = EMAIL.exec(part)?.[0].toLowerCase() ?? null;
     const noteCreator = /\(\s*note[\s_-]*creator\s*\)/i.test(part);

@@ -120,6 +120,23 @@ test("partecipanti: con e senza nome, azienda, parentesi, a capo e punto e virgo
   assert.deepEqual(parseParticipants("Pietro (pietro@a.test, ufficio)"), [{ name: "Pietro", email: "pietro@a.test", company: null, noteCreator: false }], "la virgola tra parentesi non divide");
 });
 
+test("partecipanti lunghi e senza virgole (li scrive chi manda l'invito): il tempo cresce con la lunghezza, non con il suo quadrato", () => {
+  for (const n of [40_000, 400_000]) {
+    const raw = `Mario Rossi ${"a".repeat(n)}`;
+    const started = performance.now();
+    const people = parseParticipants(raw);
+    const meeting = parseSearchMeetings(`<meetings_data><meeting id="m-lungo" title="Call" meeting_at="2026-11-14T10:00:00Z"><known_participants>${raw}</known_participants></meeting></meetings_data>`);
+    const elapsed = performance.now() - started;
+    assert.ok(elapsed < 1_000, `${n} caratteri: ${Math.round(elapsed)} ms`);
+    assert.equal(people.length, 1);
+    assert.equal(people[0].email, null);
+    assert.equal(meeting.meetings[0].participants.length, 1);
+  }
+  // Un indirizzo vero dentro un partecipante lungo si trova ancora; una parte prima della chiocciola oltre 64 caratteri no.
+  assert.equal(parseParticipants(`Ufficio ${"x".repeat(200)} (ufficio@nardi.test)`)[0].email, "ufficio@nardi.test");
+  assert.equal(parseParticipants(`${"y".repeat(70)}@nardi.test`)[0].email, `${"y".repeat(64)}@nardi.test`);
+});
+
 test("testo rotto o inatteso: nessuna eccezione, si legge quello che c'è", () => {
   const broken = [
     "",
