@@ -2,6 +2,7 @@ import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import { installAppModules } from "../../ai/claude-test-kit.ts";
+import { CONTEXT_TEXT } from "../text.ts";
 import { forgetGranolaDiscovery } from "./endpoints.ts";
 import { FAKE_READ_TOOLS, startFakeGranola, type FakeGranola, type FakeMeeting } from "./fake-granola.ts";
 import { openGranolaTokens } from "./token-crypto.ts";
@@ -646,6 +647,19 @@ test("una call che Granola elenca ma di cui non dà la nota si salta, senza ferm
   const row = await connection("ls");
   assert.equal(iso(row.synced_through), noteless.updatedAt, "synced_through va avanti lo stesso");
   assert.equal(row.last_error, null);
+});
+
+test("«Assegna» una call senza note: lo dice, e non salva niente", opts, async () => {
+  const empty: FakeMeeting = { id: `m-vuota-${suffix}`, title: `Call ancora vuota ${suffix}`, meetingAt: ago(60), updatedAt: ago(59), participants: `Paola (${EMAIL.ls})`, summary: null, privateNotes: null };
+  fake.meetings.push(empty);
+  try {
+    const result = await granola.assignGranolaMeeting(actor("ls"), empty.id);
+    assert.deepEqual(result, { ok: false, error: "dati_non_validi", message: CONTEXT_TEXT.granola.noNotes });
+    assert.equal(await decisionOf(empty.id), undefined);
+    assert.equal(await sourceOf(empty.id), undefined);
+  } finally {
+    fake.meetings.splice(fake.meetings.indexOf(empty), 1);
+  }
 });
 
 // ─── La notte e scollegare ───────────────────────────────────────────

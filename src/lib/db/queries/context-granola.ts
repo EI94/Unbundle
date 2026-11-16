@@ -1076,7 +1076,7 @@ export async function assignGranolaMeeting(actor: ContextActor, meetingId: strin
       "persona",
     );
     if (imported.outcome === "bloccata") return failure("dati_non_validi", TEXT.blocked(1));
-    if (imported.outcome === "vuota") return failure("dati_non_validi", TEXT.loadFailed);
+    if (imported.outcome === "vuota") return failure("dati_non_validi", TEXT.noNotes);
     if (imported.outcome === "senza_accesso" || !imported.sourceId) return failure("permesso_mancante", CONTEXT_TEXT.errors.denied);
     if (!known || known.decision !== "entrata") await lowerUnsorted(actor.userId, 1);
     return ok({ sourceId: imported.sourceId });

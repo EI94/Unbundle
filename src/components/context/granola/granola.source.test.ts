@@ -59,3 +59,12 @@ test("i testi dei blocchi sono quelli di CONTEXT_TEXT.granola (più i pochi comu
   assert.deepEqual(outside.sort(), ["add", "notes"], "solo «Salvo…» e «Togli», comuni a Contesto");
   for (const file of FILES.filter((f) => f.endsWith("-panel.tsx"))) assert.match(read(file), /const T = CONTEXT_TEXT\.granola;/, file);
 });
+
+test("«Da smistare» aperto: una riga mentre legge da Granola, e una quando non c'è niente; mai «Aggiorno da Granola…»", () => {
+  const panel = code(read("granola-inbox-panel.tsx"));
+  const unsorted = panel.slice(panel.indexOf("function UnsortedMeetings("));
+  assert.ok(unsorted.length > 0);
+  assert.match(unsorted, /\{loading && <p[^>]*>\{T\.unsortedLoading\}<\/p>\}/);
+  assert.match(unsorted, /\{meetings && meetings\.length === 0 && <p[^>]*>\{T\.unsortedEmpty\}<\/p>\}/);
+  assert.doesNotMatch(unsorted, /T\.refreshing/, "leggere l'elenco non aggiorna Granola");
+});

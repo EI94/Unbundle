@@ -217,12 +217,13 @@ function UnsortedMeetings({ workspaceId, workspaceName, count, renderedAt }: { w
       {open && (
         <div id="granola-da-smistare" className="space-y-2">
           <p className="text-xs text-muted-foreground">{T.unsortedHint}</p>
-          {loading && <p className="text-sm text-muted-foreground">{T.refreshing}</p>}
+          {loading && <p className="text-sm text-muted-foreground">{T.unsortedLoading}</p>}
           {error && (
             <p role="alert" className="text-sm text-red-300">
               {error}
             </p>
           )}
+          {meetings && meetings.length === 0 && <p className="text-sm text-muted-foreground">{T.unsortedEmpty}</p>}
           {meetings && meetings.length > 0 && (
             <>
               <ul className="divide-y rounded-lg border">
