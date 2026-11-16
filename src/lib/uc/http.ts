@@ -28,7 +28,7 @@
  */
 import type { Issue } from "./answers/issues.ts";
 import { parseLsDomains } from "./lateral-space.ts";
-import { INVALID_LINK_MESSAGE, PAUSED_CASE_MESSAGE, PRIVACY_PENDING_MESSAGE } from "./public-view.ts";
+import { INVALID_LINK_MESSAGE, PAUSED_CASE_MESSAGE, PRIVACY_PENDING_MESSAGE, PUBLIC_UNAVAILABLE_MESSAGE } from "./public-view.ts";
 import type { RateLimitHit } from "./sql/public.ts";
 import { ipHashFromSecret } from "./tokens.ts";
 import type { AnswerDevice } from "./vocab.ts";
@@ -68,7 +68,7 @@ export const PUBLIC_ERRORS: Readonly<Record<string, ErrorSpec>> = {
   troppe_richieste: { status: 429, message: "Troppe richieste in poco tempo. Aspetta un minuto e riprova." },
   caso_sospeso: { status: 409, message: PAUSED_CASE_MESSAGE },
   informativa_da_leggere: { status: 409, message: PRIVACY_PENDING_MESSAGE },
-  non_disponibile: { status: 503, message: "Il servizio non è disponibile in questo momento. Riprova tra poco." },
+  non_disponibile: { status: 503, message: PUBLIC_UNAVAILABLE_MESSAGE },
   errore: { status: 500, message: "Qualcosa non ha funzionato. Riprova tra poco." },
 };
 
@@ -89,7 +89,9 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   firmatario_non_ammesso: 403,
   firmatario_non_designato: 403,
   firmatario_lateral_space: 403,
+  firmatario_costruttore: 403,
   referente_lateral_space: 422,
+  referente_costruttore: 422,
   approvazione_non_trovata: 404,
 };
 

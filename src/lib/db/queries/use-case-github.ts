@@ -19,6 +19,9 @@ import "server-only";
  *   Diventa una proposta da decidere (`use-case-task-proposals.ts`), mai un compito da sola.
  * - **Una volta sola:** l'id della consegna sta in `use_case_github_deliveries`, nella stessa transazione degli
  *   effetti; se c'è già, l'evento non conta di nuovo («ripetuto»).
+ * - **Un repository tolto nel mezzo** (`use-case-admin repo-unregister`, che prende lo stesso lock dei compiti): una PR,
+ *   un push o una proposta che avevano già letto il caso non scrivono niente, se alla transazione la registrazione non
+ *   c'è più.
  *
  * Nessuna lettura qui raggruppa, conta o ordina per persona (art. 15.4).
  */
@@ -29,9 +32,12 @@ import { scanPayload } from "@/lib/uc/text/scan";
 import { proposalsStoreReady, proposalStatements } from "@/lib/db/queries/use-case-task-proposals";
 import { TASKS_PROBE_SQL } from "@/lib/db/use-case-hub-tasks-ddl";
 import { tasksLock } from "@/lib/db/queries/use-case-tasks";
-import { BUILDER_ROLES, NOBODY, notifyTask } from "@/lib/db/queries/use-case-tasks-notices";
+import { NOBODY, notifyTask } from "@/lib/db/queries/use-case-tasks-notices";
+import { loadBuilderScope, NO_EXTERNAL_BUILDERS, type BuilderScope } from "@/lib/db/queries/use-case-builders";
+import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { cast, raw, toStatement, ucSql, type SqlFragment, type UcStatement } from "@/lib/uc/sql/statement";
 import { caseCodeFromBranch, GITHUB_DELIVERY_RE, proposalUrl, pullRequestUrl, taskRefOfBranch, type GithubEvent } from "@/lib/use-cases/factory/github";
+import { byUseCaseId, taskAfterPullRequestSql } from "@/lib/use-cases/factory/pull-request-sql";
 
 /** Vero se la 0032 e la 0033 sono applicate. */
 export async function githubStoreReady(executor: UcExecutor): Promise<boolean> {
@@ -139,11 +145,17 @@ async function applyProposal(executor: UcExecutor, deliveryId: string, event: st
   if (target === "non_chiaro") return ignore(executor, deliveryId, event, e.repo, "caso_non_chiaro");
   if (!proposalTitleAllowed(e.title)) return ignore(executor, deliveryId, event, e.repo, "testo_non_ammesso");
   const externalKey = `gh:${e.repo.toLowerCase()}#${e.number}${e.commentId ? `:c${e.commentId}` : ""}`;
+  const builders = await loadBuilderScope(executor, ucLsDomains());
+  // Come una PR: prima il lock dei compiti dello use case (quello di `use-case-admin repo-unregister`), poi la proposta
+  // solo se il repository è ancora del caso, riletto nella transazione. Altrimenti una proposta arrivata mentre
+  // l'operatore toglie il repository resterebbe da decidere, dopo che lo script ha tolto quelle di quel repository.
+  const live = ucSql`(${freshSql(deliveryId)} AND ${stillRegisteredSql(target, e.repo)})`;
   const results = await executor.batch([
+    tasksLock(target),
     deliveryInsert(deliveryId, event, e.repo, "applicato"),
-    ...proposalStatements(target, { source: "github", externalKey, title: e.title, link: proposalUrl(e.repo, e.number, e.commentId) }, freshSql(deliveryId)),
+    ...proposalStatements(target, { source: "github", externalKey, title: e.title, link: proposalUrl(e.repo, e.number, e.commentId) }, live, builders),
   ]);
-  if (results[0].length === 0) return { esito: "ripetuto" };
+  if (results[1].length === 0) return { esito: "ripetuto" };
   return { esito: "applicato", casi: [{ workspaceId: target.workspaceId, useCaseId: target.useCaseId, caseId: target.caseId, compito: null, stato: "proposta" }] };
 }
 
@@ -166,6 +178,16 @@ ON CONFLICT (delivery_id) DO NOTHING RETURNING delivery_id`);
 const freshSql = (deliveryId: string): SqlFragment =>
   ucSql`EXISTS (SELECT 1 FROM use_case_github_deliveries d WHERE d.delivery_id = ${cast(deliveryId, "text")} AND d.received_at = now())`;
 
+/**
+ * Vero se il repository è ancora registrato per lo use case, letto nella transazione degli effetti (dopo il lock dei
+ * compiti). I casi si leggono prima, fuori dalla transazione: nel mezzo `use-case-admin repo-unregister` può aver tolto
+ * la registrazione e chiuso le PR aperte, e una PR scritta dopo resterebbe aperta per sempre (gli eventi di dopo si
+ * ignorano); una proposta scritta dopo resterebbe da decidere, anche se lo script toglie quelle di quel repository.
+ */
+const stillRegisteredSql = (t: Target, repo: string): SqlFragment =>
+  ucSql`EXISTS (SELECT 1 FROM use_case_repos gr WHERE gr.workspace_id = ${cast(t.workspaceId, "uuid")} AND gr.use_case_id = ${cast(t.useCaseId, "uuid")}
+    AND lower(gr.repo) = lower(${cast(repo, "text")}))`;
+
 /** Registra un evento che non riguarda nessun caso. */
 async function ignore(executor: UcExecutor, deliveryId: string, event: string, repo: string | null, motivo: string): Promise<GithubApplyResult> {
   const [rows] = await executor.batch([deliveryInsert(deliveryId, event, repo, "ignorato")]);
@@ -173,7 +195,7 @@ async function ignore(executor: UcExecutor, deliveryId: string, event: string, r
 }
 
 /** Gli statement di una PR per un caso: la PR, il compito, la notifica. */
-function prStatements(t: Target, task: TaskNow | null, e: Extract<GithubEvent, { kind: "pr" }>, fresh: SqlFragment): UcStatement[] {
+function prStatements(t: Target, task: TaskNow | null, e: Extract<GithubEvent, { kind: "pr" }>, fresh: SqlFragment, builders: BuilderScope): UcStatement[] {
   const ws = cast(t.workspaceId, "uuid");
   const uc = cast(t.useCaseId, "uuid");
   const repo = cast(e.repo, "text");
@@ -211,28 +233,15 @@ ON CONFLICT (workspace_id, repo, number) DO UPDATE SET
 WHERE p.use_case_id = EXCLUDED.use_case_id`),
   ];
   if (task) {
-    const url = cast(pullRequestUrl(e.repo, e.number), "text");
-    // Una PR pronta (aperta, non in bozza) del compito, dopo l'aggiornamento qui sopra.
-    const readyPr = ucSql`EXISTS (SELECT 1 FROM use_case_pull_requests o WHERE o.task_id = t.id AND o.state = 'aperta' AND NOT o.draft)`;
-    // Lo stato del compito cambia solo se questo evento ha cambiato la PR: un'etichetta, una modifica del testo o un
-    // evento vecchio su una PR già unita non rimettono «fatto» un compito riaperto.
-    const changed = raw("p.changed_at = now()");
+    // Il compito dopo la PR scritta qui sopra: la regola sta in `taskAfterPullRequestSql`, la stessa di
+    // `use-case-admin repo-unregister` quando chiude le PR aperte di un repository tolto.
     out.push(
-      toStatement(ucSql`UPDATE use_case_tasks t SET
-  status = CASE
-    WHEN NOT ${changed} THEN t.status
-    WHEN p.state = 'unita' THEN 'fatto'
-    WHEN ${readyPr} THEN 'in_revisione'
-    WHEN t.status = 'in_revisione' THEN CASE WHEN t.holder_user_id IS NULL THEN 'da_fare' ELSE 'in_corso' END
-    ELSE t.status END,
-  pr_url = CASE WHEN ${changed} AND (p.state = 'unita' OR (p.state = 'aperta' AND NOT p.draft)) THEN ${url} ELSE t.pr_url END,
-  branch = coalesce(t.branch, p.branch),
-  last_activity_at = CASE WHEN ${cast(e.signal, "boolean")} OR (${changed} AND p.state = 'unita') THEN now() ELSE t.last_activity_at END,
-  updated_at = CASE WHEN ${changed} THEN now() ELSE t.updated_at END
-FROM use_case_pull_requests p
-WHERE p.workspace_id = ${ws} AND p.repo = ${repo} AND p.number = ${number} AND p.use_case_id = ${uc}
-  AND t.id = ${cast(task.id, "uuid")} AND t.status IN ('da_fare', 'in_corso', 'in_revisione') AND ${fresh}
-RETURNING t.status`),
+      taskAfterPullRequestSql({
+        match: ucSql`p.workspace_id = ${ws} AND p.repo = ${repo} AND p.number = ${number} AND p.use_case_id = ${uc}
+  AND t.id = ${cast(task.id, "uuid")} AND ${fresh}`,
+        url: cast(pullRequestUrl(e.repo, e.number), "text"),
+        signal: e.signal,
+      }),
     );
   }
   if (e.ready) {
@@ -242,7 +251,7 @@ RETURNING t.status`),
   AND p.use_case_id = ${uc} AND p.state = 'aperta' AND NOT p.draft AND p.changed_at = now()))`;
     const holder = task ? ucSql`(SELECT x.holder_user_id FROM use_case_tasks x WHERE x.id = ${cast(task.id, "uuid")})` : NOBODY;
     out.push(
-      ...notifyTask({ workspaceId: t.workspaceId, useCaseId: t.useCaseId }, "pr_da_rivedere", { roles: BUILDER_ROLES }, holder, new Date(), task?.ref ?? null, stillReady, {
+      ...notifyTask({ workspaceId: t.workspaceId, useCaseId: t.useCaseId }, "pr_da_rivedere", { builders }, holder, new Date(), task?.ref ?? null, stillReady, {
         pr: e.number,
         repo: e.repo,
       }),
@@ -276,13 +285,17 @@ export async function applyGithubEvent(executor: UcExecutor, input: { deliveryId
   if (targets.length === 0) return ignore(executor, input.deliveryId, input.event, e.repo, "repository_non_registrato");
 
   const fresh = freshSql(input.deliveryId);
+  // (8.0c) A chi costruisce il caso adesso, anche da fuori Lateral Space: l'ambito si legge una volta per evento.
+  const builders = e.kind === "pr" && e.ready ? await loadBuilderScope(executor, ucLsDomains()) : null;
   const plan: { target: Target; task: TaskNow | null; statements: UcStatement[] }[] = [];
   for (const t of targets) {
     const task = await taskFor(executor, t, taskRefOfBranch(e.branch, t.code));
-    plan.push({ target: t, task, statements: e.kind === "pr" ? prStatements(t, task, e, fresh) : pushStatements(task, fresh) });
+    // Gli effetti contano solo per una consegna nuova e solo se il repository è ancora del caso (`stillRegisteredSql`).
+    const live = ucSql`(${fresh} AND ${stillRegisteredSql(t, e.repo)})`;
+    plan.push({ target: t, task, statements: e.kind === "pr" ? prStatements(t, task, e, live, builders ?? NO_EXTERNAL_BUILDERS) : pushStatements(task, live) });
   }
   // Un lock per use case, sempre nello stesso ordine; poi la consegna; poi gli effetti, solo se la consegna è nuova.
-  const locks = [...plan].sort((a, b) => a.target.useCaseId.localeCompare(b.target.useCaseId)).map((p) => tasksLock(p.target));
+  const locks = [...plan].sort((a, b) => byUseCaseId(a.target.useCaseId, b.target.useCaseId)).map((p) => tasksLock(p.target));
   const statements = [...locks, deliveryInsert(input.deliveryId, input.event, e.repo, "applicato"), ...plan.flatMap((p) => p.statements)];
   const results = await executor.batch(statements);
   if (results[locks.length].length === 0) return { esito: "ripetuto" };

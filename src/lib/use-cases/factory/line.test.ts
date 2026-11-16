@@ -2,7 +2,7 @@
 // passo; i conteggi; la coda della fabbrica con i repository indietro con il modello.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { benchFacts, compareVersions, evalsFact, evalsTodoText, factoryQueue, lineCounts, nextStepOf, stationOf, type LineCase } from "./line.ts";
+import { AGENT_FACTORY_TEMPLATE_REPO, AGENT_FACTORY_TEMPLATE_VERSION, benchFacts, compareVersions, evalsFact, evalsTodoText, factoryQueue, isTemplateRepo, lineCounts, nextStepOf, stationOf, type LineCase } from "./line.ts";
 import { analyzeBench, type BenchResult } from "./benchmark.ts";
 
 const none = { total: 0, open: 0, inProgress: 0, inReview: 0, done: 0, cancelled: 0 };
@@ -51,6 +51,15 @@ test("la coda della fabbrica: i repository indietro con il modello, o senza vers
   assert.match(queue[1].text, /Ha il modello 1\.2\.0, c'è il 1\.3\.0: «unbundle aggiorna»/);
 });
 
+test("(8.0c) il modello di oggi è la 1.5.0 (decide da `scrive`): i repository con la 1.4.x vanno in coda per «unbundle aggiorna»", () => {
+  assert.equal(AGENT_FACTORY_TEMPLATE_VERSION, "1.5.0");
+  const queue = factoryQueue([
+    { repo: "Voltaen/topjet-rosa", templateVersion: "1.4.1" },
+    { repo: "Voltaen/nardi-esploso", templateVersion: "1.5.0" },
+  ]);
+  assert.deepEqual(queue, [{ repo: "Voltaen/topjet-rosa", text: "Ha il modello 1.4.1, c'è il 1.5.0: «unbundle aggiorna» apre la pull request." }]);
+});
+
 test("(8.2a) le evals e il banco nella riga del caso: «evals 96%», «sotto soglia», «il banco consiglia …»", () => {
   assert.equal(evalsFact(null), null);
   assert.equal(evalsFact({ quality: 0.96, thresholdsMet: true, fakeModels: false, branch: "main" }), "evals 96%");
@@ -75,4 +84,10 @@ test("(8.2a) le evals e il banco nella riga del caso: «evals 96%», «sotto sog
   for (const text of [evalsFact({ quality: 0.8, thresholdsMet: false, fakeModels: false, branch: null }), evalsTodoText(0.8), ...benchFacts([{ role: "lettura", verdict: change }])]) {
     assert.doesNotMatch(String(text), /caso d'uso/, "nella dashboard si dice «use case»");
   }
+});
+
+test("(8.0c) il repository modello si riconosce con ogni maiuscola e con .git; un repository di un cliente no", () => {
+  assert.equal(AGENT_FACTORY_TEMPLATE_REPO, "Voltaen/agent-factory-modello");
+  for (const repo of ["Voltaen/agent-factory-modello", "voltaen/AGENT-FACTORY-MODELLO", "Voltaen/agent-factory-modello.git", " Voltaen/agent-factory-modello "]) assert.equal(isTemplateRepo(repo), true, repo);
+  for (const repo of ["Voltaen/agent-factory-modello-2", "Voltaen/nardi-esploso", "Altri/agent-factory-modello"]) assert.equal(isTemplateRepo(repo), false, repo);
 });

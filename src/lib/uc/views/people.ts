@@ -38,9 +38,49 @@ export const CASE_ROLE_HINT: Readonly<Record<CaseRole, string>> = {
   osservatore: "Legge Panoramica, Soluzione e Valore.",
 };
 
+/** (8.0c) La riga «Osservatore» di chi costruisce il caso da fuori Lateral Space (una concessione di «Chi costruisce»). */
+export const MEMBER_BUILDS_LABEL = "Osservatore · costruisce";
+
+/** (8.0c) La conferma quando si toglie quella riga: da lì la persona non costruisce più questo caso, e i suoi compiti lì tornano da prendere. */
+export const MEMBER_BUILDS_REMOVE_TEXT = "Non costruirà più questo caso: i compiti che ha qui tornano da prendere. Per tutti i casi: Agent Factory › Chi costruisce.";
+
+/**
+ * (8.0c) La conferma quando si toglie a una persona di Lateral Space l'ultimo ruolo con cui costruisce il caso: anche i
+ * suoi compiti lì tornano da prendere (`removeCaseMemberReleasingTasks`).
+ */
+export const MEMBER_LAST_LS_ROLE_REMOVE_TEXT = "Non costruirà più questo caso: i compiti che ha qui tornano da prendere.";
+
+/** La conferma quando si toglie un ruolo che non cambia chi costruisce il caso. */
+export const MEMBER_ROLE_REMOVE_TEXT = "Smette subito di vedere ciò che quel ruolo permetteva. Gli altri ruoli restano.";
+
+/**
+ * (8.0c) La conferma di «Togli» nel team del dossier, secondo quello che succede davvero: chi con quel ruolo costruiva
+ * il caso e non ne ha un altro per costruirlo lascia i suoi compiti lì. `roles` sono i ruoli della persona nel caso,
+ * `buildsFromOutside` dice se la riga «Osservatore» è di chi costruisce da fuori Lateral Space.
+ */
+export function removeRoleConfirmText(roles: readonly CaseRole[], role: CaseRole, buildsFromOutside: boolean): string {
+  if (role === "osservatore" && buildsFromOutside) return MEMBER_BUILDS_REMOVE_TEXT;
+  const builds = (r: CaseRole) => (LS_CASE_ROLES as readonly CaseRole[]).includes(r);
+  if (builds(role) && !roles.some((r) => r !== role && builds(r))) return MEMBER_LAST_LS_ROLE_REMOVE_TEXT;
+  return MEMBER_ROLE_REMOVE_TEXT;
+}
+
 /** Ruoli che si possono dare a una persona: Lateral Space o cliente, mai mescolati (D36). */
 export function rolesAssignableTo(isLateralSpace: boolean): CaseRole[] {
   return isLateralSpace ? [...LS_CASE_ROLES, "osservatore"] : [...CLIENT_CASE_ROLES, "osservatore"];
+}
+
+/** (8.0c) Sotto il modulo, quando la persona scelta costruisce il caso da fuori: perché i ruoli del cliente sono spenti. */
+export const MEMBER_BUILDS_CLIENT_ROLE_TEXT = "Costruisce questo caso: non può avere anche un ruolo del cliente.";
+
+/**
+ * I ruoli da offrire a una persona in «Accesso al caso»: quelli che può avere e non ha già. (8.0c) A chi costruisce il
+ * caso da fuori (`buildsCase`) i ruoli del cliente si vedono spenti: `addCaseMember` li rifiuta (`conflitto_ruoli`).
+ */
+export function roleChoicesFor(isLateralSpace: boolean, held: ReadonlySet<CaseRole>, buildsCase: boolean): { role: CaseRole; disabled: boolean }[] {
+  return rolesAssignableTo(isLateralSpace)
+    .filter((role) => !held.has(role))
+    .map((role) => ({ role, disabled: buildsCase && (CLIENT_CASE_ROLES as readonly CaseRole[]).includes(role) }));
 }
 
 export const CONTACT_CHANNEL_LABEL: Readonly<Record<ContactChannel, string>> = {

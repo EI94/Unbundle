@@ -2,9 +2,15 @@
 
 /**
  * Le azioni della scheda «Impostazione» del dossier (rilascio 8.0a, docs/rilascio-8/RILASCIO-8.0-PIANO.md §2).
- * Ognuna chiama per prima `requireWorkspaceAccess`, poi i ruoli di caso (`openUcCase`, per le scritture senza
- * sola lettura), poi la sonda della 0030, poi il servizio (`queries/use-case-factory.ts`), che rilegge permessi e
- * stato. Restituiscono solo quello che serve all'interfaccia.
+ * Ognuna chiama per prima `requireWorkspaceAccess`, poi i ruoli, poi la sonda della 0030, poi il servizio
+ * (`queries/use-case-factory.ts`), che rilegge permessi e stato. Restituiscono solo quello che serve all'interfaccia.
+ *
+ * - **Le 7 azioni di chi costruisce** (pacchetto, proposte di compito, apri, scelte, dettagli, «Manda in approvazione»,
+ *   decisioni) passano da `onFactoryBuild` (8.0c): `openUcCase` senza elenco e in lettura, poi i ruoli della fabbrica
+ *   (`loadFactoryAccess`: anche `builder_esterno`) e la loro sola lettura, con gli stessi codici di prima
+ *   (`non_trovato`, `sola_lettura`, `configurazione_incompleta`).
+ * - **Approvare, riaprire, l'ok dell'AI Board e la modifica** restano su `onFactory`, la porta del dossier di prima, con
+ *   gli elenchi dei ruoli del caso: chi costruisce da fuori non c'è.
  *
  * «Approva il progetto» porta il caso da «pronto per lo sviluppo» a «in sviluppo» con `transitionCase`, solo se è
  * in quello stato: negli altri stati registra l'approvazione e lascia lo stato com'è (lo dice il messaggio).
@@ -36,12 +42,14 @@ import type { Result } from "@/lib/uc/types";
 import type { CaseRole } from "@/lib/uc/vocab";
 import { KIND_LABEL } from "@/lib/use-cases/labels";
 import { abilitiesForUseCase } from "@/lib/use-cases/permissions";
+import { loadFactoryAccess } from "@/lib/use-cases/factory/access";
+import type { FactoryRole } from "@/lib/use-cases/factory/builders";
+import { canWriteFactory } from "@/lib/use-cases/factory/permissions";
 import { computedOutput } from "@/lib/use-cases/mcp/output";
 import { quarterLabel } from "@/lib/use-cases/quarter";
 import type { WorkspaceAccess } from "@/lib/workspace-access";
 import { finishUcCommand, fromResult, openUcCase, ucFailure, type OpenedUcCase, type UcActionResult } from "./uc-action-context";
 
-const LS_WRITERS: readonly CaseRole[] = ["ls_lead", "ls_analista", "ls_sviluppatore"];
 const NOT_READY = ucFailure("non_disponibile", "L'impostazione non è ancora disponibile: riprova tra qualche minuto.");
 
 interface Opened {
@@ -52,6 +60,10 @@ interface Opened {
   access: WorkspaceAccess;
 }
 
+/**
+ * La porta del dossier, per approvare, riaprire, l'ok dell'AI Board e la modifica: i ruoli del caso in `allow`, mai in
+ * sola lettura (`openUcCase`).
+ */
 async function onFactory<T>(
   guard: { session: Session; access: WorkspaceAccess },
   workspaceId: string,
@@ -63,14 +75,53 @@ async function onFactory<T>(
   const { session, access } = guard;
   const opened = await openUcCase({ session, access, workspaceId, caseId, allow, write: true });
   if (!opened.ok) return opened.result;
+  return runOnCase(guard, workspaceId, opened.value, actorRoles(opened.value.ctx), run, message);
+}
+
+/**
+ * (8.0c) La porta di chi costruisce: l'accesso al caso senza elenco e in lettura, poi i ruoli della fabbrica (anche chi
+ * costruisce da fuori, `builder_esterno`) e la loro sola lettura. Gli stessi codici della porta del dossier: chi non
+ * costruisce riceve «non trovato», come prima con l'elenco dei ruoli di Lateral Space.
+ */
+async function onFactoryBuild<T>(
+  guard: { session: Session; access: WorkspaceAccess },
+  workspaceId: string,
+  caseId: string,
+  run: (opened: Opened) => Promise<Result<T>>,
+  message?: (value: T) => string | undefined,
+): Promise<UcActionResult<T>> {
+  const { session, access } = guard;
+  const opened = await openUcCase({ session, access, workspaceId, caseId, write: false });
+  if (!opened.ok) return opened.result;
   const o = opened.value;
+  const factory = await loadFactoryAccess(o.executor, o.caseAccess);
+  // La 0037 non è pronta e la persona costruisce il caso da fuori (o non si sa): «riprova», non «non trovato».
+  if (factory.blocked === "non_disponibile") return NOT_READY;
+  if (!canWriteFactory(factory.roles)) return ucFailure("non_trovato", "Caso non trovato o non accessibile.");
+  if (factory.readOnly) {
+    return o.caseAccess.lsConfigured
+      ? ucFailure("sola_lettura", "Hai accesso al caso in sola lettura.")
+      : ucFailure("configurazione_incompleta", "Configurazione incompleta: manca l'elenco dei domini di Lateral Space.");
+  }
+  return runOnCase(guard, workspaceId, o, factory.roles, run, message);
+}
+
+async function runOnCase<T>(
+  guard: { session: Session; access: WorkspaceAccess },
+  workspaceId: string,
+  o: OpenedUcCase,
+  roles: readonly FactoryRole[],
+  run: (opened: Opened) => Promise<Result<T>>,
+  message?: (value: T) => string | undefined,
+): Promise<UcActionResult<T>> {
+  const { session, access } = guard;
   // Come le altre scritture dei dossier: a caso chiuso niente, in pausa niente (si riprende da Impostazioni).
   if (o.caseAccess.status === "chiuso") return ucFailure("caso_chiuso", "Il caso è chiuso: il progetto si legge soltanto.");
   if (o.caseAccess.status === "sospeso") return ucFailure("caso_sospeso", "Il caso è in pausa: riprendilo da Impostazioni del caso per cambiare il progetto.");
   if (!(await factoryStoreReady(o.executor))) return NOT_READY;
   const useCase = await findUseCaseOfCase(o.executor, workspaceId, o.ctx.caseId);
   if (!useCase) return ucFailure("non_trovato", "Il dossier non è collegato a uno use case.");
-  const actor: FactoryActor = { kind: "persona", userId: session.user.id, roles: actorRoles(o.ctx) };
+  const actor: FactoryActor = { kind: "persona", userId: session.user.id, roles };
   const result = await run({ o, actor, target: { workspaceId, useCaseId: useCase.useCaseId }, session, access });
   if (result.ok) finishUcCommand({ workspaceId, caseId: o.ctx.caseId });
   return fromResult(result, undefined, result.ok ? message?.(result.value) : undefined);
@@ -101,11 +152,10 @@ async function packageCard(session: Session, access: WorkspaceAccess, target: Fa
 
 /** «Aggiorna il pacchetto»: una versione nuova solo se la scheda è cambiata. */
 export async function generatePackageAction(workspaceId: string, caseId: string): Promise<UcActionResult<{ version: number; created: boolean }>> {
-  return onFactory(
+  return onFactoryBuild(
     await requireWorkspaceAccess(workspaceId),
     workspaceId,
     caseId,
-    LS_WRITERS,
     async ({ o, actor, target, session, access }) => {
       const read = await packageCard(session, access, target);
       if (!read) return { ok: false, code: "permesso_negato", message: "Per generare il pacchetto serve poter leggere la scheda dello use case." };
@@ -115,13 +165,12 @@ export async function generatePackageAction(workspaceId: string, caseId: string)
   );
 }
 
-/** (8.1b) Una proposta di compito: «Accetta come compito» (nasce T-n, da prendere) o «Scarta». Solo il team che costruisce. */
+/** (8.1b) Una proposta di compito: «Accetta come compito» (nasce T-n, da prendere) o «Scarta». Solo chi costruisce il caso. */
 export async function decideTaskProposalAction(workspaceId: string, caseId: string, proposalId: string, decision: "accetta" | "scarta"): Promise<UcActionResult<{ ref: string | null }>> {
-  return onFactory(
+  return onFactoryBuild(
     await requireWorkspaceAccess(workspaceId),
     workspaceId,
     caseId,
-    LS_WRITERS,
     ({ o, session, target }) => decideProposal(o.executor, target, { id: proposalId, decision, actorId: session.user.id }),
     (v) => (v.ref ? `È nato il compito ${v.ref}: da prendere.` : "Proposta scartata."),
   );
@@ -129,7 +178,7 @@ export async function decideTaskProposalAction(workspaceId: string, caseId: stri
 
 /** «Imposta il caso» o «Rivedi il progetto»: una versione nuova, con le scelte dell'ultima. */
 export async function startProjectAction(workspaceId: string, caseId: string): Promise<UcActionResult<{ version: number; created: boolean }>> {
-  return onFactory(await requireWorkspaceAccess(workspaceId), workspaceId, caseId, LS_WRITERS, ({ o, actor, target }) => startProject(o.executor, actor, target), (v) =>
+  return onFactoryBuild(await requireWorkspaceAccess(workspaceId), workspaceId, caseId, ({ o, actor, target }) => startProject(o.executor, actor, target), (v) =>
     v.created ? (v.version === 1 ? "Versione 1 aperta: scegli i 10 argomenti." : `Versione ${v.version} aperta: le scelte partono da quelle di prima.`) : `La versione ${v.version} è già aperta.`,
   );
 }
@@ -137,7 +186,7 @@ export async function startProjectAction(workspaceId: string, caseId: string): P
 /** La scelta di un argomento (scelta, perché, alternativa scartata). */
 export async function saveProjectTopicAction(workspaceId: string, caseId: string, input: unknown): Promise<UcActionResult<{ version: number }>> {
   const i = (input ?? {}) as Record<string, unknown>;
-  return onFactory(await requireWorkspaceAccess(workspaceId), workspaceId, caseId, LS_WRITERS, ({ o, actor, target }) =>
+  return onFactoryBuild(await requireWorkspaceAccess(workspaceId), workspaceId, caseId, ({ o, actor, target }) =>
     saveProjectTopic(o.executor, actor, target, { topic: i.topic, scelta: i.scelta, perche: i.perche, alternativa: i.alternativa }),
   () => "Scelta salvata.");
 }
@@ -145,7 +194,7 @@ export async function saveProjectTopicAction(workspaceId: string, caseId: string
 /** Framework, strumenti nuovi, stima. */
 export async function saveProjectDetailsAction(workspaceId: string, caseId: string, input: unknown): Promise<UcActionResult<{ version: number }>> {
   const i = (input ?? {}) as Record<string, unknown>;
-  return onFactory(await requireWorkspaceAccess(workspaceId), workspaceId, caseId, LS_WRITERS, ({ o, actor, target }) =>
+  return onFactoryBuild(await requireWorkspaceAccess(workspaceId), workspaceId, caseId, ({ o, actor, target }) =>
     saveProjectDetails(o.executor, actor, target, { framework: i.framework, newTools: i.newTools, estimateHours: i.estimateHours, monthlyCostEur: i.monthlyCostEur }),
   () => "Salvato.");
 }
@@ -153,7 +202,7 @@ export async function saveProjectDetailsAction(workspaceId: string, caseId: stri
 /** «Manda in approvazione». */
 export async function submitProjectAction(workspaceId: string, caseId: string, input: unknown): Promise<UcActionResult<{ version: number; newTools: number }>> {
   const i = (input ?? {}) as Record<string, unknown>;
-  return onFactory(await requireWorkspaceAccess(workspaceId), workspaceId, caseId, LS_WRITERS, ({ o, actor, target }) => submitProject(o.executor, actor, target, { revision: i.revision }), (v) =>
+  return onFactoryBuild(await requireWorkspaceAccess(workspaceId), workspaceId, caseId, ({ o, actor, target }) => submitProject(o.executor, actor, target, { revision: i.revision }), (v) =>
     v.newTools > 0 ? "Progetto da approvare. Serve anche l'ok dell'AI Board agli strumenti nuovi." : "Progetto da approvare.",
   );
 }
@@ -170,7 +219,7 @@ export async function reopenProjectAction(workspaceId: string, caseId: string, i
 export async function requestProjectChangeAction(workspaceId: string, caseId: string, input: unknown): Promise<UcActionResult<{ version: number }>> {
   const i = (input ?? {}) as Record<string, unknown>;
   return onFactory(await requireWorkspaceAccess(workspaceId), workspaceId, caseId, ["ai_board"], ({ o, actor, target }) => requestProjectChange(o.executor, actor, target, { note: i.note, revision: i.revision }), () =>
-    "Richiesta inviata al team di Lateral Space.",
+    "Richiesta inviata a chi costruisce il caso.",
   );
 }
 
@@ -209,7 +258,7 @@ export async function approveProjectAction(workspaceId: string, caseId: string, 
 /** Una decisione del team. */
 export async function addDecisionAction(workspaceId: string, caseId: string, input: unknown): Promise<UcActionResult<{ id: string }>> {
   const i = (input ?? {}) as Record<string, unknown>;
-  return onFactory(await requireWorkspaceAccess(workspaceId), workspaceId, caseId, LS_WRITERS, ({ o, actor, target }) =>
+  return onFactoryBuild(await requireWorkspaceAccess(workspaceId), workspaceId, caseId, ({ o, actor, target }) =>
     addTeamDecision(o.executor, actor, target, { topic: i.topic, choice: i.choice, reason: i.reason, rejected: i.rejected, topicKey: i.topicKey }),
   () => "Decisione registrata.");
 }

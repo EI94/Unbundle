@@ -60,6 +60,9 @@ test("le righe di «A chi»: ruolo · email coperta, «Fa parte del team», i mo
   assert.equal(contactRowLine(OPEN), `l•••@rondine.it ${T.suffix.richiesta_aperta}`);
   assert.equal(contactRowLine(contact({ id: "x", displayName: "Solo nome" })), "");
   assert.equal(contactRowLine(contact({ id: "x", displayName: "Solo nome", selectable: false, reason: "lateral_space" })), T.suffix.lateral_space);
+  // (8.0c) Adesso non si legge chi costruisce i casi: il referente con l'email non si sceglie, «(riprova tra poco)».
+  assert.equal(T.suffix.non_verificabile, "(riprova tra poco)");
+  assert.equal(contactRowLine({ ...MARIO, selectable: false, reason: "non_verificabile" }), "Ufficio acquisti · m•••@rondine.it (riprova tra poco)");
   // Chi guarda: «(sei tu)», non si sceglie; il motivo basta, senza «Fa parte del team».
   assert.equal(contactRowLine(ME), `g•••@rondine.it ${T.suffix.sei_tu}`);
   const sara: ReferentMemberOption = { userId: "cccccccc-0000-4000-8000-000000000001", displayName: "Sara Conti", emailMasked: "s•••@rondine.it", team: false };

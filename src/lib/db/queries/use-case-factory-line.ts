@@ -4,9 +4,11 @@ import "server-only";
  * con la loro stazione, le famiglie (i repository), «Da fare per te» e la coda della fabbrica.
  *
  * - **Chi la vede (8.1a):** chi costruisce, cioè ha un ruolo di Lateral Space nel team di almeno un caso, e vede i
- *   suoi casi. I manager del workspace di Lateral Space vedono tutti i casi, in lettura. Il cliente arriva con la 8.0c.
+ *   suoi casi. I manager del workspace di Lateral Space vedono tutti i casi, in lettura. (8.0c) Anche chi costruisce da
+ *   fuori Lateral Space e oggi lo può fare (il predicato unico di `use-case-builders.ts`): mai la voce per poi un 403.
  * - **«Da fare per te»:** le domande dei coding agent da decidere (a chi vede «Cosa serve»), i compiti che qualcuno del
- *   team ti chiede, i tuoi compiti fermi, i progetti che approvi tu. Sono i tuoi, mai una classifica.
+ *   team ti chiede, i tuoi compiti fermi, i progetti che approvi tu (solo il responsabile del caso). Sono i tuoi, mai una
+ *   classifica. (8.0c) «Collega Claude Code» a chi costruisce almeno un caso e non ha una CLI collegata nel workspace.
  * - **Sessioni dei coding agent:** quante, token e costo per caso; mai per persona.
  * - **(8.1b) Pull request:** quante aperte e unite per caso, e quanto passa di solito dalla presa del compito
  *   all'unione (la mediana), solo da {@link MIN_MERGED_FOR_MEDIAN} PR unite in su: con meno sarebbe il tempo di una
@@ -28,18 +30,28 @@ import { factoryQueue, nextStepOf, stationOf, type LineCase, type Station } from
 import { pullRequestUrl } from "@/lib/use-cases/factory/github";
 import { EVALS_MAIN_BRANCH, loadEvalFacts, type CaseEvalFacts } from "@/lib/db/queries/use-case-evals";
 import { evalsTodoText } from "@/lib/use-cases/factory/line";
+import { buildsCaseSql, externalBuilderSql, loadBuilderScope, lsStoredBuilderSql, NO_EXTERNAL_BUILDERS, type BuilderScope } from "@/lib/db/queries/use-case-builders";
+import { CLI_TOKEN_PROVIDER } from "@/lib/use-cases/cli/codes";
 
-const LS_CASE_ROLES_SQL = raw("('ls_lead', 'ls_analista', 'ls_sviluppatore')");
-
-/** Vero se la persona costruisce in almeno un caso del workspace (la voce «Agent Factory» nella barra). */
-export async function factoryNavVisible(executor: UcExecutor, input: { workspaceId: string; userId: string; lsManager: boolean }): Promise<boolean> {
+/**
+ * Vero se la persona costruisce in almeno un caso del workspace (la voce «Agent Factory» nella barra): un ruolo di
+ * Lateral Space nel caso, o (8.0c) da fuori Lateral Space, adesso, con il predicato unico. `lsDomains`: i domini di
+ * Lateral Space (`UC_LS_EMAIL_DOMAINS`).
+ */
+export async function factoryNavVisible(executor: UcExecutor, input: { workspaceId: string; userId: string; lsManager: boolean; lsDomains: readonly string[] }): Promise<boolean> {
   if (input.lsManager) return true;
   try {
+    const me = cast(input.userId, "uuid");
     const [rows] = await executor.batch([
-      toStatement(ucSql`SELECT 1 AS ok FROM uc_case_members m JOIN uc_cases c ON c.id = m.case_id
-WHERE c.workspace_id = ${cast(input.workspaceId, "uuid")} AND m.user_id = ${cast(input.userId, "uuid")} AND m.role IN ${LS_CASE_ROLES_SQL} LIMIT 1`),
+      toStatement(ucSql`SELECT 1 AS ok FROM uc_cases c WHERE c.workspace_id = ${cast(input.workspaceId, "uuid")} AND ${lsStoredBuilderSql(me)} LIMIT 1`),
     ]);
-    return rows.length > 0;
+    if (rows.length > 0) return true;
+    const builders = await loadBuilderScope(executor, input.lsDomains);
+    if (!builders.externalReady) return false;
+    const [external] = await executor.batch([
+      toStatement(ucSql`SELECT 1 AS ok FROM uc_cases c JOIN users u ON u.id = ${me} WHERE c.workspace_id = ${cast(input.workspaceId, "uuid")} AND ${externalBuilderSql(builders)} LIMIT 1`),
+    ]);
+    return external.length > 0;
   } catch {
     return false;
   }
@@ -69,7 +81,8 @@ export interface FactoryCaseRow {
 }
 
 export interface FactoryTodo {
-  kind: "domande" | "chiesto" | "fermo" | "approva" | "rivedi" | "proposte" | "banco" | "evals";
+  kind: "domande" | "chiesto" | "fermo" | "approva" | "rivedi" | "proposte" | "banco" | "evals" | "collega";
+  /** Vuoti per «Collega Claude Code», che è del workspace e non di un caso. */
   useCaseId: string;
   caseId: string;
   code: string;
@@ -92,13 +105,23 @@ export const MIN_MERGED_FOR_MEDIAN = 3;
 const num = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
 const statusOf = (v: unknown): CaseStatus => ((CASE_STATUSES as readonly string[]).includes(String(v)) ? (String(v) as CaseStatus) : "bozza");
 
+/** «Collega Claude Code: nel terminale «unbundle login», poi scegli {cliente}.» */
+export function connectCliTodoText(clientName: string): string {
+  return `Collega Claude Code: nel terminale «unbundle login», poi scegli ${clientName.replace(/\s+/g, " ").trim() || "questo workspace"}.`;
+}
+
 /**
  * La pagina per chi guarda: con `seeAll` (manager di Lateral Space) tutti i dossier del workspace, altrimenti quelli
  * dove la persona è nel team. `canSeeNeeds`: chi vede «Cosa serve» (le domande dei coding agent da decidere).
+ * `lsDomains`: i domini di Lateral Space, per dire chi costruisce da fuori (senza, nessuno).
  */
-export async function loadFactoryOverview(executor: UcExecutor, input: { workspaceId: string; userId: string; seeAll: boolean; canSeeNeeds: boolean }): Promise<FactoryOverview> {
+export async function loadFactoryOverview(
+  executor: UcExecutor,
+  input: { workspaceId: string; userId: string; seeAll: boolean; canSeeNeeds: boolean; lsDomains?: readonly string[] },
+): Promise<FactoryOverview> {
   const ws = cast(input.workspaceId, "uuid");
   const me = cast(input.userId, "uuid");
+  const builders: BuilderScope = input.lsDomains?.length ? await loadBuilderScope(executor, input.lsDomains) : NO_EXTERNAL_BUILDERS;
   const tasksReady = await tasksTablesReady(executor);
   const githubReady = tasksReady && (await githubStoreReady(executor));
   const proposalsReady = githubReady && (await proposalsStoreReady(executor));
@@ -125,7 +148,7 @@ export async function loadFactoryOverview(executor: UcExecutor, input: { workspa
   const [rows] = await executor.batch([
     toStatement(ucSql`SELECT u.id AS use_case_id, c.id AS case_id, coalesce(u.code, c.code) AS code, u.title, c.status AS dossier_status,
   EXISTS (SELECT 1 FROM uc_case_members m WHERE m.case_id = c.id AND m.user_id = ${me}) AS mine,
-  EXISTS (SELECT 1 FROM uc_case_members m WHERE m.case_id = c.id AND m.user_id = ${me} AND m.role IN ${LS_CASE_ROLES_SQL}) AS builder,
+  ${buildsCaseSql(builders, me)} AS builder,
   (SELECT CASE WHEN bool_or(p.status = 'approvato') THEN 'approvato' WHEN bool_or(p.status = 'da_approvare') THEN 'da_approvare' WHEN bool_or(p.status = 'in_corso') THEN 'in_corso' END
      FROM use_case_projects p WHERE p.use_case_id = u.id AND p.workspace_id = u.workspace_id) AS project_status,
   ${taskCounts} AS tasks,
@@ -200,7 +223,7 @@ ORDER BY coalesce(u.code, c.code)`),
   // «Da fare per te»: solo le cose della persona.
   const todos: FactoryTodo[] = [];
   const byCase = new Map(cases.map((c) => [c.useCaseId, c]));
-  const [mineRows, approveRows, questionRows, reviewRows, proposalRows] = await executor.batch([
+  const [mineRows, approveRows, questionRows, reviewRows, proposalRows, cliRows] = await executor.batch([
     tasksReady
       ? toStatement(ucSql`SELECT t.use_case_id, t.ref, t.status, (t.stale_asked_at IS NOT NULL AND t.stale_asked_at >= coalesce(t.last_activity_at, t.taken_at)) AS stale,
   (SELECT count(*) FROM use_case_task_notes n WHERE n.task_id = t.id AND n.kind = 'richiesta' AND n.created_at >= coalesce(t.taken_at, t.created_at)) AS requests
@@ -213,18 +236,25 @@ WHERE p.workspace_id = ${ws} AND p.status = 'da_approvare'`),
     input.canSeeNeeds
       ? toStatement(ucSql`SELECT q.use_case_id, count(*) AS n FROM use_case_agent_questions q WHERE q.workspace_id = ${ws} AND q.status = 'proposta' GROUP BY q.use_case_id`)
       : toStatement(ucSql`SELECT NULL::uuid AS use_case_id, 0 AS n WHERE false`),
-    // (8.1b) Le PR pronte dei casi dove costruisci, tranne quelle dei tuoi compiti.
+    // (8.1b) Le PR pronte dei casi dove costruisci (anche da fuori, 8.0c), tranne quelle dei tuoi compiti.
     githubReady
       ? toStatement(ucSql`SELECT DISTINCT p.use_case_id, p.repo, p.number, t.ref FROM use_case_pull_requests p
 LEFT JOIN use_case_tasks t ON t.id = p.task_id
 JOIN uc_cases c ON c.portfolio_use_case_id = p.use_case_id AND c.workspace_id = p.workspace_id
-JOIN uc_case_members m ON m.case_id = c.id AND m.user_id = ${me} AND m.role IN ${LS_CASE_ROLES_SQL}
-WHERE p.workspace_id = ${ws} AND p.state = 'aperta' AND NOT p.draft AND t.holder_user_id IS DISTINCT FROM ${me}
+WHERE p.workspace_id = ${ws} AND p.state = 'aperta' AND NOT p.draft AND t.holder_user_id IS DISTINCT FROM ${me} AND ${buildsCaseSql(builders, me)}
 ORDER BY p.use_case_id, p.number`)
       : toStatement(ucSql`SELECT NULL::uuid AS use_case_id WHERE false`),
     // (8.1b) Le proposte di compito da decidere, nei casi dove costruisci.
-    proposalsReady ? openProposalsCountSql(input.workspaceId, input.userId) : toStatement(ucSql`SELECT NULL::uuid AS use_case_id, 0 AS n WHERE false`),
+    proposalsReady ? openProposalsCountSql(input.workspaceId, input.userId, builders) : toStatement(ucSql`SELECT NULL::uuid AS use_case_id, 0 AS n WHERE false`),
+    // (8.0c) Una CLI collegata nel workspace (viva), e il nome del cliente per «Collega Claude Code».
+    toStatement(ucSql`SELECT w.name, EXISTS (SELECT 1 FROM workspace_integration_tokens t WHERE t.workspace_id = w.id AND t.owner_user_id = ${me}
+    AND t.provider = ${cast(CLI_TOKEN_PROVIDER, "text")} AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at > now())) AS cli
+FROM workspaces w WHERE w.id = ${ws}`),
   ]);
+  // (8.0c) Chi costruisce almeno un caso e non ha ancora collegato la CLI: il primo passo, prima di tutti gli altri.
+  if (builderOf.size > 0 && cliRows[0] && cliRows[0].cli !== true) {
+    todos.push({ kind: "collega", useCaseId: "", caseId: "", code: "", text: connectCliTodoText(String(cliRows[0].name ?? "")) });
+  }
   for (const r of mineRows) {
     const c = byCase.get(String(r.use_case_id));
     if (!c) continue;

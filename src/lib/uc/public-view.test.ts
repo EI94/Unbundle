@@ -16,6 +16,8 @@ import {
   isLockedPersonal,
   planReferentAnswer,
   publicFail,
+  publicUnavailable,
+  PUBLIC_UNAVAILABLE_MESSAGE,
   referentCapabilities,
   referentItemDone,
   referentProgress,
@@ -23,6 +25,7 @@ import {
   type ReferentItemFacts,
 } from "./public-view.ts";
 import { findForbiddenIn } from "./views/copy-guard.ts";
+import { PUBLIC_ERRORS, publicStatusFor } from "./http.ts";
 import type { Actor, ItemSnapshot } from "./types.ts";
 import { ACTIVE_REQUEST_ITEM_STATES, ITEM_STATUSES, REQUEST_ITEM_STATES, type ItemStatus, type RequestItemState } from "./vocab.ts";
 
@@ -239,4 +242,17 @@ test("greeting: the first name when it looks like one, otherwise just «Ciao»",
   assert.equal(greetingNameFrom("R2"), null);
   assert.equal(greetingNameFrom(""), null);
   assert.equal(greetingNameFrom(null), null);
+});
+
+test("(8.0c) un controllo che adesso non si fa (non_disponibile) è, per chi apre il link, il 503 calmo «riprova tra poco», senza dire perché; gli altri esiti restano a chi chiama", () => {
+  const unreadable = { ok: false as const, code: "non_disponibile", message: "Adesso non si riesce a controllare chi costruisce i casi: riprova tra poco." };
+  assert.deepEqual(publicUnavailable(unreadable), { ok: false, code: "non_disponibile", message: PUBLIC_UNAVAILABLE_MESSAGE });
+  assert.equal(PUBLIC_UNAVAILABLE_MESSAGE, "Il servizio non è disponibile in questo momento. Riprova tra poco.");
+  // Il 503 delle pagine pubbliche, con lo stesso testo.
+  assert.equal(publicStatusFor("non_disponibile"), 503);
+  assert.equal(PUBLIC_ERRORS.non_disponibile.message, PUBLIC_UNAVAILABLE_MESSAGE);
+  // Un rifiuto vero, o un esito riuscito: li decide chi chiama.
+  assert.equal(publicUnavailable({ ok: false, code: "firmatario_costruttore", message: "Il firmatario del cliente non può essere chi costruisce il caso." }), null);
+  assert.equal(publicUnavailable({ ok: false, code: "referente_costruttore", message: "…" }), null);
+  assert.equal(publicUnavailable({ ok: true, value: undefined }), null);
 });

@@ -11,6 +11,7 @@ import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { loadCaseSettings, loadStatusOptions } from "@/lib/db/queries/uc-people-view";
 import { loadCaseMembers, loadMemberCandidates } from "@/lib/db/queries/uc-shell";
+import { caseGrantUserIds } from "@/lib/db/queries/use-case-builders";
 import { CASE_STATUS_LABEL } from "@/lib/uc/case-state";
 import { transitionHint, transitionNeedsReason } from "@/lib/uc/views/case-shell";
 import { groupMembers } from "@/lib/uc/views/people";
@@ -41,11 +42,13 @@ export default async function CaseSettingsPage({ params }: { params: Promise<{ w
   const { caseAccess, executor, ctx } = await openShellPage({ workspaceId, caseId, session, access, page: "impostazioni" });
   const write = canWrite(caseAccess);
   const lsDomains = ucLsDomains();
-  const [settings, status, memberRows, candidates] = await Promise.all([
+  const [settings, status, memberRows, candidates, builderIds] = await Promise.all([
     loadCaseSettings(executor, { workspaceId, caseId }),
     write ? loadStatusOptions(executor, ctx) : Promise.resolve(null),
     loadCaseMembers(executor, { workspaceId, caseId, lsDomains }),
     write ? loadMemberCandidates(executor, { workspaceId, lsDomains }) : Promise.resolve([]),
+    // (8.0c) Chi costruisce il caso da fuori: la sua riga «Osservatore» dice «costruisce».
+    caseGrantUserIds(executor, caseId),
   ]);
   if (!settings) notFound();
 
@@ -121,6 +124,7 @@ export default async function CaseSettingsPage({ params }: { params: Promise<{ w
             members={groupMembers(memberRows, { withEmail: true })}
             candidates={candidates.map((m) => ({ userId: m.userId, name: m.name, isLateralSpace: m.isLateralSpace }))}
             canManage={editable}
+            builderIds={builderIds}
           />
         </SettingsSection>
 

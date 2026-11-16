@@ -32,7 +32,8 @@ import { randomUUID } from "node:crypto";
 import type { UcExecutor, UcRow } from "@/lib/db/uc-executor";
 import type { FactoryTarget } from "@/lib/db/queries/use-case-factory";
 import { EVALS_PROBE_SQL } from "@/lib/db/use-case-hub-evals-ddl";
-import { BUILDER_ROLES, NOBODY, notifyTask } from "@/lib/db/queries/use-case-tasks-notices";
+import { NOBODY, notifyTask } from "@/lib/db/queries/use-case-tasks-notices";
+import { loadBuilderScope } from "@/lib/db/queries/use-case-builders";
 import { cast, jsonb, raw, ref, toStatement, ucSql, type SqlFragment, type UcStatement } from "@/lib/uc/sql/statement";
 import { rowDate } from "@/lib/uc/sql/readiness";
 import { fail, ok, type Result } from "@/lib/uc/types";
@@ -352,7 +353,13 @@ export async function recordEvalRun(
   executor: UcExecutor,
   target: FactoryTarget,
   input: EvalRunInput,
-  o: { id?: string | null; actorUserId: string | null; now?: Date },
+  o: {
+    id?: string | null;
+    actorUserId: string | null;
+    now?: Date;
+    /** (8.0c) I domini di Lateral Space, per avvisare anche chi costruisce il caso da fuori; senza, solo Lateral Space. */
+    lsDomains?: readonly string[];
+  },
 ): Promise<Result<EvalRunRecorded>> {
   const id = o.id ?? randomUUID();
   if (!UUID_RE.test(id)) return fail("dati_non_validi", "Id non valido.");
@@ -376,7 +383,7 @@ export async function recordEvalRun(
     // nome del catalogo: un id fuori dal catalogo l'ha scelto chi manda, e non va mai in un'e-mail.
     const notices =
       verdict.kind === "cambia" && !input.fakeModels
-        ? notifyTask(target, "banco_consiglio", { roles: BUILDER_ROLES }, actor, now, null, insertedNow(id), { role, model: verdict.model, ...catalogueLabel(verdict.model) })
+        ? notifyTask(target, "banco_consiglio", { builders: await loadBuilderScope(executor, o.lsDomains ?? []) }, actor, now, null, insertedNow(id), { role, model: verdict.model, ...catalogueLabel(verdict.model) })
         : [];
     // In fila per caso, e il posto per il ruolo si conta dentro la scrittura: due banchi di ruoli nuovi insieme non
     // superano il tetto.
@@ -399,7 +406,7 @@ export async function recordEvalRun(
     const alert = evalsAlert(previous?.point ?? null, point);
     const notices =
       alert !== null && evalsNoticeApplies(input)
-        ? notifyTask(target, "evals_in_calo", { roles: BUILDER_ROLES }, actor, now, null, makesStatusSql(target, id, input), {
+        ? notifyTask(target, "evals_in_calo", { builders: await loadBuilderScope(executor, o.lsDomains ?? []) }, actor, now, null, makesStatusSql(target, id, input), {
             alert: alert.kind,
             qualityText: formatQuality(point.quality),
             ...(alert.kind === "in_calo" ? { drop: alert.drop } : {}),

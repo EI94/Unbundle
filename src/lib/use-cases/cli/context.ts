@@ -8,8 +8,10 @@ import { cliCaseExtras, namesToHide, readFactory } from "@/lib/db/queries/use-ca
 import { listTasks, tasksStoreReady } from "@/lib/db/queries/use-case-tasks";
 import { tasksBriefLine } from "@/lib/use-cases/factory/tasks";
 import type { UcExecutor } from "@/lib/db/uc-executor";
+import { canWriteFactory } from "@/lib/use-cases/factory/permissions";
 import { composeBrief, composeDecisionsLayer, composePackageLayer, composeProjectLayer, composeQuestionsLayer, nextStep, type ContextLayer } from "./brief";
-import type { CliCase } from "./case";
+import { CLI_NOT_A_BUILDER, type CliCase } from "./case";
+import { notBuilderMessage } from "./case-errors";
 
 export { CONTEXT_LAYERS, type ContextLayer } from "./brief";
 
@@ -24,7 +26,18 @@ export interface CliContext {
     repository: unknown;
     /** (8.1a) I compiti, senza nomi: solo se è tuo. */
     compiti: { ref: string; stato: string; tuo: boolean }[];
+    /** (8.0c) I ruoli della fabbrica: quelli del caso, più `builder_esterno` per chi costruisce da fuori. */
     ruoli: readonly string[];
+    /**
+     * (8.0c) La persona costruisce il caso (un ruolo che costruisce, fuori dalla sola lettura): la CLI del modello 1.5.0
+     * decide da qui, non dall'elenco dei ruoli. Lo stato del caso (chiuso, in pausa) resta a parte, in `dossier`.
+     */
+    scrive: boolean;
+    /**
+     * (8.0c) Con `scrive` falso, il perché, lo stesso testo del 403 di una scrittura: la CLI del modello 1.5.0 lo dice prima
+     * di toccare GitHub (a chi scende a Contributore: il ruolo si cambia da Impostazioni › Persone). Senza, null.
+     */
+    perche: string | null;
   };
 }
 
@@ -65,6 +78,7 @@ export async function loadCliContext(executor: UcExecutor, c: CliCase, input: { 
             ? composeQuestionsLayer({ code: c.useCase.code, openNeeds: extras.openNeeds, proposals: extras.proposals, namesToHide: names })
             : composeBrief(base);
   const project = view.open ?? view.approved;
+  const scrive = !c.factory.readOnly && canWriteFactory(c.factory.roles);
   return {
     testo,
     dati: {
@@ -75,7 +89,9 @@ export async function loadCliContext(executor: UcExecutor, c: CliCase, input: { 
       prossimoPasso: nextStep(base),
       repository: extras.repos,
       compiti: tasks.map((t) => ({ ref: t.ref, stato: t.status, tuo: t.holderUserId !== null && t.holderUserId === viewerId })),
-      ruoli: c.access.roles,
+      ruoli: c.factory.roles,
+      scrive,
+      perche: scrive ? null : notBuilderMessage(c.factory.blocked, CLI_NOT_A_BUILDER),
     },
   };
 }

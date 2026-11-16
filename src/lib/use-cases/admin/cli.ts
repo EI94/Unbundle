@@ -33,6 +33,8 @@ export const ADMIN_COMMANDS = [
   "erase-referent",
   // (Rilascio 8.0a) L'impostazione fatta a mano nella settimana zero, dal repository della famiglia.
   "factory-import",
+  // (Rilascio 8.0c) La registrazione sbagliata di un repository, tolta dai casi di un workspace (solo Lateral Space).
+  "repo-unregister",
 ] as const;
 export type AdminCommandName = (typeof ADMIN_COMMANDS)[number];
 

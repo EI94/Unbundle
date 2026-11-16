@@ -723,3 +723,59 @@ test("(revisione) due revisori aggiungono insieme la stessa persona: un referent
   assert.ok(!ok(await referents.listReferentPickerPeople(as("builder"), cards.dossier2, ENV), "elenco").members.some((m) => m.userId === ids.dario));
   assert.equal(panel!.contacts.filter((x) => x.id === String(rows[0].id)).length, 1);
 });
+
+test("D7 (8.0c): chi costruisce i casi del cliente da fuori non è nell'elenco «A chi» e non si sceglie come referente", opts, async () => {
+  // Teo (Analista del workspace) costruisce i casi del cliente da fuori: una concessione per tutti i casi.
+  await q(`INSERT INTO use_case_external_builders (workspace_id, user_id) VALUES ($1::uuid, $2::uuid)`, [ids.ws, ids.analyst]);
+  try {
+    const listed = ok(await referents.listReferentPickerPeople(as("builder"), cards.contrib, ENV), "elenco").members.map((m) => m.userId);
+    assert.ok(!listed.includes(ids.analyst), "fuori da «A chi»");
+    assert.ok(listed.includes(ids.sponsor), "gli altri restano");
+    const [n0] = await needsOf(cards.forged);
+    const chosen = await referents.sendReferentRequest(as("builder"), cards.forged, { contact: { kind: "membro", userId: ids.analyst }, needIds: [n0] }, { env: ENV, requester: requester("builder") });
+    refused(chosen, "referente_costruttore", "dall'elenco");
+    assert.equal(
+      (chosen as { message?: string }).message,
+      "Chi costruisce i casi di questo cliente non fa il referente: le risposte le dà un'altra persona.",
+    );
+    const typed = await referents.sendReferentRequest(as("builder"), cards.forged, { contact: { kind: "nuovo", displayName: "Teo", email: EXTRA.analyst.email.toUpperCase() }, needIds: [n0] }, { env: ENV, requester: requester("builder") });
+    refused(typed, "referente_costruttore", "scritto a mano, anche in maiuscolo");
+    refused(await referents.revealReferentMemberEmail(as("builder"), cards.contrib, ids.analyst, ENV), "referente_costruttore", "indirizzo");
+  } finally {
+    await q(`DELETE FROM use_case_external_builders WHERE workspace_id = $1::uuid AND user_id = $2::uuid`, [ids.ws, ids.analyst]);
+  }
+  assert.ok(ok(await referents.listReferentPickerPeople(as("builder"), cards.contrib, ENV), "elenco").members.some((m) => m.userId === ids.analyst), "senza concessione torna");
+});
+
+test("D7 (8.0c) con le concessioni che non si leggono (la 0037 non intera): «A chi», l'indirizzo, l'aggiunta e il pannello dicono «riprova tra poco», per chiunque; poi tutto torna", opts, async () => {
+  const { REFERENT_ERROR_MESSAGES } = await import("./labels.ts");
+  const retry = "Adesso non si riesce a controllare chi costruisce i casi: riprova tra poco.";
+  assert.equal(REFERENT_ERROR_MESSAGES.non_disponibile, retry);
+  // Teo costruisce i casi del cliente da fuori; poi uno degli indici della 0037 non c'è più: la tabella c'è, ma chi
+  // costruisce non si può dire.
+  await q(`INSERT INTO use_case_external_builders (workspace_id, user_id) VALUES ($1::uuid, $2::uuid)`, [ids.ws, ids.analyst]);
+  await q(`ALTER INDEX use_case_external_builders_all_unique RENAME TO use_case_external_builders_all_unique_r80c`);
+  try {
+    const listed = await referents.listReferentPickerPeople(as("builder"), cards.contrib, ENV);
+    refused(listed, "non_disponibile", "«A chi» non si propone alla cieca");
+    assert.equal((listed as { message?: string }).message, retry);
+    refused(await referents.revealReferentMemberEmail(as("builder"), cards.contrib, ids.sponsor, ENV), "non_disponibile", "l'indirizzo di chi non costruisce, nemmeno");
+    const [n0] = await needsOf(cards.forged);
+    const send = (contact: ContactInput) => referents.sendReferentRequest(as("builder"), cards.forged, { contact, needIds: [n0] }, { env: ENV, requester: requester("builder") });
+    refused(await send({ kind: "membro", userId: ids.sponsor }), "non_disponibile", "dall'elenco");
+    refused(await send({ kind: "nuovo", displayName: "Persona Nuova", email: `mai-${Date.now()}@cliente.test` }), "non_disponibile", "scritto a mano");
+    // Il pannello: i referenti con l'email non si scelgono, «(riprova tra poco)».
+    const panel = await panelFor("builder", cards.dossier2);
+    const withEmail = panel!.contacts.filter((c) => c.emailMasked);
+    assert.ok(withEmail.some((c) => c.reason === "non_verificabile"), "ci sono referenti con l'email da riprovare");
+    assert.ok(withEmail.every((c) => !c.selectable), "nessun referente con l'email si sceglie alla cieca");
+    // Lateral Space resta Lateral Space: quel motivo non dipende da chi costruisce.
+    assert.ok(withEmail.every((c) => c.reason === "non_verificabile" || c.reason === "lateral_space"), JSON.stringify(withEmail.map((c) => c.reason)));
+  } finally {
+    await q(`ALTER INDEX use_case_external_builders_all_unique_r80c RENAME TO use_case_external_builders_all_unique`);
+    await q(`DELETE FROM use_case_external_builders WHERE workspace_id = $1::uuid AND user_id = $2::uuid`, [ids.ws, ids.analyst]);
+  }
+  // La 0037 di nuovo intera: «A chi» torna, e nel pannello nessun «(riprova tra poco)».
+  assert.ok(ok(await referents.listReferentPickerPeople(as("builder"), cards.contrib, ENV), "elenco").members.some((m) => m.userId === ids.sponsor));
+  assert.ok(!(await panelFor("builder", cards.dossier2))!.contacts.some((c) => c.reason === "non_verificabile"));
+});

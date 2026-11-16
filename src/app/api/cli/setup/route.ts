@@ -5,12 +5,13 @@ import { SETUP_GUIDE } from "@/lib/use-cases/cli/brief";
 import { requireCliWrite, resolveCliCase, runCliWrite } from "@/lib/use-cases/cli/case";
 import { canWriteFactory } from "@/lib/use-cases/factory/permissions";
 import { cliError, cliJson, openCli, readCliBody } from "@/lib/use-cases/cli/route-kit";
+import { notBuilderMessage } from "@/lib/use-cases/cli/case-errors";
 
 /**
  * `unbundle setup <ID>` (rilascio 8.0b, standard §3): l'impostazione guidata. La guida sta in Unbundle, la skill
  * «imposta» la conduce.
  *
- * - GET (il team che scrive l'Agent Factory): la guida dei 10 argomenti con le scelte di adesso, il catalogo dei
+ * - GET (chi costruisce il caso, anche da fuori Lateral Space): la guida dei 10 argomenti con le scelte di adesso, il catalogo dei
  *   framework, le scelte approvate degli altri casi della famiglia dove la persona è nel team (mai con il token di
  *   un caso solo), la revisione del progetto aperto. Ogni testo passa dai nomi da nascondere.
  * - POST `azione`: `apri` (una versione nuova, con le scelte dell'ultima), `scelta` (un argomento: diventa anche
@@ -25,7 +26,7 @@ export async function GET(request: Request): Promise<Response> {
   const resolved = await resolveCliCase(opened.value, new URL(request.url).searchParams.get("caso"));
   if (!resolved.ok) return resolved.response;
   const c = resolved.value;
-  if (!canWriteFactory(c.access.roles)) return cliError(403, "permesso_negato", "La guida dell'impostazione è per il team di Lateral Space del caso.");
+  if (!canWriteFactory(c.factory.roles)) return cliError(403, "permesso_negato", notBuilderMessage(c.factory.blocked, "La guida dell'impostazione è per chi costruisce il caso."));
   const { executor, principal } = opened.value;
   const read = await readFactory(executor, c.target, c.actor);
   if (!read.ok) return cliError(404, "non_trovato", read.message);

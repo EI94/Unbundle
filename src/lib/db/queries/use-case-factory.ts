@@ -31,7 +31,7 @@ import { AGENT_QUESTION_CHANNELS, CLI_LIMITS, type AgentQuestionChannel } from "
 import type { BuildSessionInput, CaseRepoInput } from "@/lib/use-cases/cli/inputs";
 import { cast, jsonb, raw, toStatement, ucSql, type UcStatement } from "@/lib/uc/sql/statement";
 import { fail, ok, type Result } from "@/lib/uc/types";
-import type { CaseRole } from "@/lib/uc/vocab";
+import type { FactoryRole } from "@/lib/use-cases/factory/builders";
 import { packageContent, packageFiles, packageFilesHash, packageHash, type PackageSource } from "@/lib/use-cases/factory/package";
 import { withSupersession } from "@/lib/use-cases/factory/decisions";
 import {
@@ -46,12 +46,19 @@ import {
 } from "@/lib/use-cases/factory/permissions";
 import { isNeedDone, needStatusView, type NeedStatus, type NeedType } from "@/lib/use-cases/needs";
 import { romeToday } from "@/lib/use-cases/quarter";
-import { BUILDER_ROLES, hasOpenTasksSql, NOBODY, notifyTask, tasksTablesReady } from "@/lib/db/queries/use-case-tasks-notices";
+import { hasOpenTasksSql, NOBODY, notifyTask, tasksTablesReady } from "@/lib/db/queries/use-case-tasks-notices";
+import { caseRecipientsSql, loadBuilderScope, NO_EXTERNAL_BUILDERS, type BuilderScope } from "@/lib/db/queries/use-case-builders";
+import { ucLsDomains } from "@/lib/db/queries/uc-access";
+import { EXTERNAL_BUILDER_ROLE, FACTORY_BUILDER_ROLES, LS_BUILDER_ROLES } from "@/lib/use-cases/factory/builders";
+import { isTemplateRepo } from "@/lib/use-cases/factory/line";
 
 // ─── Chi agisce ──────────────────────────────────────────────────────
 
-/** Una persona con i suoi ruoli di caso, oppure uno script di Lateral Space (l'import), con il suo ruolo a parole. */
-export type FactoryActor = { kind: "persona"; userId: string; roles: readonly CaseRole[] } | { kind: "script"; authorRole: string };
+/**
+ * Una persona con i suoi ruoli della fabbrica (quelli del caso, più `builder_esterno` per chi costruisce da fuori), oppure
+ * uno script di Lateral Space (l'import), con il suo ruolo a parole.
+ */
+export type FactoryActor = { kind: "persona"; userId: string; roles: readonly FactoryRole[] } | { kind: "script"; authorRole: string };
 
 /** Lo use case e il workspace su cui si lavora. */
 export interface FactoryTarget {
@@ -232,48 +239,66 @@ type Fragment = ReturnType<typeof ucSql>;
 const ALWAYS = raw("true");
 
 /**
- * Una riga nella campanella per ogni persona del team con uno dei ruoli del tipo, mai a chi ha agito. `when` è la
+ * L'ambito di chi costruisce da fuori, per i tipi che lo comprendono (`builder_esterno` nei destinatari): i domini di
+ * Lateral Space e la sonda della 0037, letti una volta per comando. Per gli altri tipi non serve leggerlo.
+ */
+async function scopeFor(executor: UcExecutor, roles: readonly FactoryRole[]): Promise<BuilderScope> {
+  return roles.includes(EXTERNAL_BUILDER_ROLE) ? loadBuilderScope(executor, ucLsDomains()) : NO_EXTERNAL_BUILDERS;
+}
+
+/**
+ * Una riga nella campanella per ogni persona del team con uno dei ruoli del tipo, mai a chi ha agito; con
+ * `builder_esterno` nel tipo anche chi costruisce il caso da fuori, adesso (`scope`, il predicato unico). `when` è la
  * condizione nella stessa transazione (per esempio: l'invio in approvazione è avvenuto adesso).
  */
-function noticeSql(target: FactoryTarget, kind: FactoryNoticeKind, actor: FactoryActor, now: Date, when: Fragment = ALWAYS): UcStatement {
+function noticeSql(target: FactoryTarget, kind: FactoryNoticeKind, actor: FactoryActor, now: Date, scope: BuilderScope, when: Fragment = ALWAYS): UcStatement {
   return toStatement(ucSql`INSERT INTO use_case_notifications (workspace_id, use_case_id, recipient_user_id, kind, rome_day)
-SELECT DISTINCT c.workspace_id, c.portfolio_use_case_id, m.user_id, ${cast(kind, "text")}, ${cast(romeToday(now), "date")}
-FROM uc_cases c JOIN uc_case_members m ON m.case_id = c.id
+SELECT DISTINCT c.workspace_id, c.portfolio_use_case_id, r.user_id, ${cast(kind, "text")}, ${cast(romeToday(now), "date")}
+FROM uc_cases c CROSS JOIN LATERAL ${caseRecipientsSql(FACTORY_RECIPIENTS[kind], scope)} r
 WHERE c.workspace_id = ${cast(target.workspaceId, "uuid")} AND c.portfolio_use_case_id = ${cast(target.useCaseId, "uuid")}
-  AND m.role = ANY (${cast([...FACTORY_RECIPIENTS[kind]], "text[]")})
-  AND m.user_id IS DISTINCT FROM ${cast(userOf(actor), "uuid")}
+  AND r.user_id IS DISTINCT FROM ${cast(userOf(actor), "uuid")}
   AND ${when}
 ON CONFLICT (recipient_user_id, use_case_id, kind, rome_day) DO UPDATE SET last_event_at = now(), read_at = NULL`);
 }
 
 /**
- * L'email della coda dei dossier: interna di Lateral Space. «Progetto da approvare» dice anche quanti strumenti
- * nuovi ci sono (una sola email al responsabile); «Modifica chiesta» va al responsabile, che riapre il progetto;
- * «Strumento nuovo» è per l'AI Board del cliente e arriva con la 8.0c.
+ * L'email della coda dei dossier. «Progetto da approvare» dice anche quanti strumenti nuovi ci sono (una sola email al
+ * responsabile); «Modifica chiesta» va al responsabile, che riapre il progetto. «Il pacchetto è cambiato» va a chi
+ * costruisce, dalla 8.0c anche da fuori Lateral Space: a quelle persone il motore la manda solo con l'ok ai
+ * sub-responsabili del cliente (`dispatch.ts`). Le altre restano interne di Lateral Space.
  */
 type FactoryEmailKind = "progetto_appr" | "pacchetto_nuovo" | "modifica_chiesta" | "domanda_agente";
-const FACTORY_EMAIL: Readonly<Record<FactoryEmailKind, { template: string; roles: readonly CaseRole[] }>> = Object.freeze({
+const FACTORY_EMAIL: Readonly<Record<FactoryEmailKind, { template: string; roles: readonly FactoryRole[] }>> = Object.freeze({
   progetto_appr: { template: "progetto_da_approvare", roles: ["ls_lead"] },
-  pacchetto_nuovo: { template: "pacchetto_aggiornato", roles: ["ls_lead", "ls_analista", "ls_sviluppatore"] },
+  pacchetto_nuovo: { template: "pacchetto_aggiornato", roles: FACTORY_BUILDER_ROLES },
   modifica_chiesta: { template: "modifica_richiesta", roles: ["ls_lead"] },
   // (8.0b) Una domanda proposta da un coding agent: al responsabile, che la decide (al massimo una e-mail al giorno).
   domanda_agente: { template: "domanda_proposta", roles: ["ls_lead"] },
 });
 
 /**
- * Un'email in coda (`uc_notifications`, canale email) per ogni persona di Lateral Space del team con il ruolo del
- * tipo, mai a chi ha agito; al massimo una al giorno per persona, caso e tipo (la chiave di deduplica). La manda il
- * motore dei dossier dopo il comando (`finishUcCommand`) o il cron, che controlla anche che sia di Lateral Space.
+ * Un'email in coda (`uc_notifications`, canale email) per ogni persona del team con il ruolo del tipo (e, con
+ * `builder_esterno`, chi costruisce il caso da fuori adesso), mai a chi ha agito; al massimo una al giorno per persona,
+ * caso e tipo (la chiave di deduplica). La manda il motore dei dossier dopo il comando (`finishUcCommand`) o il cron, che
+ * ricontrolla il destinatario (Lateral Space, o chi costruisce da fuori con l'ok ai sub-responsabili).
  */
-function emailSql(target: FactoryTarget, kind: FactoryEmailKind, actor: FactoryActor, now: Date, version: number, when: Fragment = ALWAYS, count = 0): UcStatement {
+function emailSql(
+  target: FactoryTarget,
+  kind: FactoryEmailKind,
+  actor: FactoryActor,
+  now: Date,
+  version: number,
+  scope: BuilderScope,
+  when: Fragment = ALWAYS,
+  count = 0,
+): UcStatement {
   const e = FACTORY_EMAIL[kind];
   return toStatement(ucSql`INSERT INTO uc_notifications (workspace_id, case_id, recipient_user_id, channel, template_key, payload, status, dedupe_key, scheduled_at)
-SELECT DISTINCT ON (m.user_id) c.workspace_id, c.id, m.user_id, 'email', ${cast(e.template, "text")}, ${jsonb({ version, count, useCase: target.useCaseId })}, 'in_coda',
-       ${cast(e.template, "text")} || ':' || c.id::text || ':' || m.user_id::text || ':' || ${cast(romeToday(now), "text")}, now()
-FROM uc_cases c JOIN uc_case_members m ON m.case_id = c.id
+SELECT DISTINCT ON (r.user_id) c.workspace_id, c.id, r.user_id, 'email', ${cast(e.template, "text")}, ${jsonb({ version, count, useCase: target.useCaseId })}, 'in_coda',
+       ${cast(e.template, "text")} || ':' || c.id::text || ':' || r.user_id::text || ':' || ${cast(romeToday(now), "text")}, now()
+FROM uc_cases c CROSS JOIN LATERAL ${caseRecipientsSql(e.roles, scope)} r
 WHERE c.workspace_id = ${cast(target.workspaceId, "uuid")} AND c.portfolio_use_case_id = ${cast(target.useCaseId, "uuid")}
-  AND m.role = ANY (${cast([...e.roles], "text[]")})
-  AND m.user_id IS DISTINCT FROM ${cast(userOf(actor), "uuid")}
+  AND r.user_id IS DISTINCT FROM ${cast(userOf(actor), "uuid")}
   AND ${when}
 ON CONFLICT (dedupe_key) DO NOTHING`);
 }
@@ -328,13 +353,14 @@ export async function savePackageVersion(
   if (last[0] && String(last[0].content_hash) === hash) return ok({ version: lastVersion, created: false });
   if (Buffer.byteLength(JSON.stringify(files), "utf8") > FACTORY_LIMITS.packageBytesMax) return fail("pacchetto_troppo_grande", "Il pacchetto supera i 200 KB: accorcia i testi della scheda.");
   const inserted = ucSql`EXISTS (SELECT 1 FROM use_case_packages WHERE use_case_id = ${uc} AND version = ${cast(version, "int")} AND created_at = now())`;
+  const scope = await scopeFor(executor, FACTORY_RECIPIENTS.pacchetto_nuovo);
   const rows = await batchOrConflict(executor, [
     toStatement(ucSql`INSERT INTO use_case_packages (use_case_id, workspace_id, version, content_hash, files, source, created_by_user_id)
 SELECT ${uc}, ${ws}, ${cast(version, "int")}, ${cast(hash, "text")}, ${jsonb(files)}, ${cast(source, "text")}, ${cast(userOf(actor), "uuid")}
 WHERE EXISTS (SELECT 1 FROM use_cases WHERE id = ${uc} AND workspace_id = ${ws})
 RETURNING version`),
-    noticeSql(target, "pacchetto_nuovo", actor, now, inserted),
-    emailSql(target, "pacchetto_nuovo", actor, now, version, inserted),
+    noticeSql(target, "pacchetto_nuovo", actor, now, scope, inserted),
+    emailSql(target, "pacchetto_nuovo", actor, now, version, scope, inserted),
   ]);
   if (!rows.ok) return rows;
   if (!rows.value[0][0]) return fail("non_trovato", "Use case non trovato.");
@@ -593,10 +619,10 @@ export async function submitProject(
   change_request = NULL, change_requested_at = NULL, revision = revision + 1, updated_at = now()
 WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'in_corso' AND version = ${cast(version, "int")} AND revision = ${cast(revision, "int")}
 RETURNING version`),
-    noticeSql(target, "progetto_appr", actor, now, sent),
-    emailSql(target, "progetto_appr", actor, now, version, sent, tools),
+    noticeSql(target, "progetto_appr", actor, now, NO_EXTERNAL_BUILDERS, sent),
+    emailSql(target, "progetto_appr", actor, now, version, NO_EXTERNAL_BUILDERS, sent, tools),
   ];
-  if (tools > 0) statements.push(noticeSql(target, "strumento_nuovo", actor, now, sent));
+  if (tools > 0) statements.push(noticeSql(target, "strumento_nuovo", actor, now, NO_EXTERNAL_BUILDERS, sent));
   const [rows] = await executor.batch(statements);
   if (!rows[0]) return fail("conflitto", CHANGED);
   return ok({ version, newTools: tools });
@@ -633,7 +659,7 @@ export async function reopenProject(
 WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'da_approvare' AND version = ${version} AND revision = ${cast(revision, "int")}
 RETURNING version`),
   ];
-  if (boardOkDropped) statements.push(noticeSql(target, "ok_decaduto", actor, now, reopened));
+  if (boardOkDropped) statements.push(noticeSql(target, "ok_decaduto", actor, now, NO_EXTERNAL_BUILDERS, reopened));
   const [rows] = await executor.batch(statements);
   if (!rows[0]) return fail("conflitto", CHANGED);
   return ok({ version: Number(rows[0].version), boardOkDropped });
@@ -685,13 +711,14 @@ export async function requestProjectChange(
   if (!check[0]) return fail("progetto_non_aperto", "Non c'è un progetto da approvare.");
   const version = Number(check[0].version);
   const asked = ucSql`EXISTS (SELECT 1 FROM use_case_projects WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'da_approvare' AND version = ${cast(version, "int")} AND change_requested_at = now())`;
+  const scope = await scopeFor(executor, FACTORY_RECIPIENTS.modifica_chiesta);
   const [rows] = await executor.batch([
     toStatement(ucSql`UPDATE use_case_projects SET change_request = ${cast(note.value, "text")}, change_requested_at = now(), revision = revision + 1, updated_at = now()
 WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'da_approvare' AND version = ${cast(version, "int")} AND jsonb_array_length(new_tools) > 0
   AND ai_board_ok_at IS NULL AND revision = ${cast(revision, "int")}
 RETURNING version`),
-    noticeSql(target, "modifica_chiesta", actor, now, asked),
-    emailSql(target, "modifica_chiesta", actor, now, version, asked),
+    noticeSql(target, "modifica_chiesta", actor, now, scope, asked),
+    emailSql(target, "modifica_chiesta", actor, now, version, NO_EXTERNAL_BUILDERS, asked),
   ]);
   if (!rows[0]) return fail("conflitto", CHANGED);
   return ok({ version });
@@ -725,13 +752,14 @@ export async function approveProject(executor: UcExecutor, actor: FactoryActor, 
   // (8.1a) Con l'approvazione i compiti diventano da prendere: «ci sono compiti da prendere» a chi costruisce, se ce
   // ne sono (e solo dove la 0032 c'è: senza, l'approvazione va come prima).
   const tasksReady = await tasksTablesReady(executor);
+  const builders = await scopeFor(executor, FACTORY_RECIPIENTS.progetto_ok);
   const [, rows] = await executor.batch([
     toStatement(ucSql`UPDATE use_case_projects SET status = 'superato', revision = revision + 1, updated_at = now() WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'approvato' AND ${target0} RETURNING version`),
     toStatement(ucSql`UPDATE use_case_projects SET status = 'approvato', approved_at = ${when}, approved_by_user_id = ${cast(userOf(actor), "uuid")}, revision = revision + 1, updated_at = now()
 WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'da_approvare' AND version = ${version} AND revision = ${rev}
 RETURNING version`),
-    noticeSql(target, "progetto_ok", actor, now, approvedNow),
-    ...(tasksReady ? notifyTask(target, "compiti_pronti", { roles: BUILDER_ROLES }, userOf(actor) ?? NOBODY, now, null, ucSql`${approvedNow} AND ${hasOpenTasksSql(target)}`) : []),
+    noticeSql(target, "progetto_ok", actor, now, builders, approvedNow),
+    ...(tasksReady ? notifyTask(target, "compiti_pronti", { builders }, userOf(actor) ?? NOBODY, now, null, ucSql`${approvedNow} AND ${hasOpenTasksSql(target)}`) : []),
   ]);
   if (!rows[0]) return fail("conflitto", CHANGED);
   return ok({ version: Number(rows[0].version) });
@@ -827,8 +855,8 @@ FROM use_cases u WHERE u.id = ${uc} AND u.workspace_id = ${ws}
 ON CONFLICT (id) DO NOTHING
 RETURNING id`),
     toStatement(ucSql`SELECT id FROM use_case_agent_questions WHERE id = ${cast(id, "uuid")} AND use_case_id = ${uc} AND workspace_id = ${ws}`),
-    noticeSql(target, "domanda_agente", actor, now, inserted),
-    emailSql(target, "domanda_agente", actor, now, 0, inserted),
+    noticeSql(target, "domanda_agente", actor, now, NO_EXTERNAL_BUILDERS, inserted),
+    emailSql(target, "domanda_agente", actor, now, 0, NO_EXTERNAL_BUILDERS, inserted),
   ]);
   if (rows[0]) return ok({ id: String(rows[0].id) });
   if (existing[0]) return ok({ id: String(existing[0].id) });
@@ -838,19 +866,49 @@ RETURNING id`),
   return fail("non_trovato", "Use case non trovato.");
 }
 
-/** `unbundle repo create`: registra (o aggiorna) il repository e la cartella dello use case. */
+/** (8.0c) Il repository modello, a chiunque lo registri. */
+export const REPO_TEMPLATE_MESSAGE = "Il repository modello non è il repository di un cliente: indica quello della famiglia del caso.";
+
+/**
+ * (8.0c) A chi costruisce da fuori, lo stesso testo per un repository nuovo e per uno registrato da un altro cliente: non
+ * dice mai se un nome lo usa qualcun altro.
+ */
+export const REPO_NOT_OF_CLIENT_MESSAGE =
+  "Questo repository non è tra quelli dei casi del cliente: uno nuovo lo registra Lateral Space. Chiedilo al responsabile del caso, poi rilancia lo stesso comando.";
+
+/**
+ * `unbundle repo create`: registra (o aggiorna) il repository e la cartella dello use case. In fila per repository
+ * (l'advisory lock), così due clienti insieme non lo registrano tutti e due. (8.0c)
+ * - Mai il repository modello, per nessuno (`repo_modello`).
+ * - Mai un repository già registrato per un altro cliente (`repo_di_altro_cliente`): il webhook di GitHub cerca i casi
+ *   per repository in tutti i workspace, e gli eventi di un cliente arriverebbero ai casi di un altro.
+ * - Chi nel caso non ha un ruolo di Lateral Space che costruisce (chi costruisce da fuori) registra solo un repository
+ *   già registrato per i casi dello stesso cliente: la famiglia la crea e la registra Lateral Space, chi costruisce da
+ *   fuori ci aggiunge i casi. Un repository nuovo, o di un altro cliente, gli risponde con un testo solo
+ *   (`repo_non_del_cliente`): nessuno occupa un repository, e nessuno scopre chi usa un nome.
+ */
 export async function registerCaseRepo(executor: UcExecutor, actor: FactoryActor, target: FactoryTarget, input: CaseRepoInput): Promise<Result<{ id: string; created: boolean }>> {
   if (!mayWrite(actor)) return fail("permesso_negato", DENIED);
+  if (isTemplateRepo(input.repo)) return fail("repo_modello", REPO_TEMPLATE_MESSAGE);
+  const lsBuilder = actor.kind === "script" || actor.roles.some((role) => (LS_BUILDER_ROLES as readonly string[]).includes(role));
   const ws = cast(target.workspaceId, "uuid");
   const uc = cast(target.useCaseId, "uuid");
-  const [rows] = await executor.batch([
+  const repo = cast(input.repo, "text");
+  const elsewhere = ucSql`EXISTS (SELECT 1 FROM use_case_repos o WHERE lower(o.repo) = lower(${repo}) AND o.workspace_id <> ${ws})`;
+  const known = ucSql`EXISTS (SELECT 1 FROM use_case_repos o WHERE lower(o.repo) = lower(${repo}) AND o.workspace_id = ${ws})`;
+  const [, facts, rows] = await executor.batch([
+    toStatement(ucSql`SELECT pg_advisory_xact_lock(hashtext('unbundle:use-case-repo:' || lower(${repo})))`),
+    toStatement(ucSql`SELECT ${elsewhere} AS taken, ${known} AS known`),
     toStatement(ucSql`INSERT INTO use_case_repos (use_case_id, workspace_id, repo, folder, profile, vercel_project, created_by_user_id)
-SELECT u.id, u.workspace_id, ${cast(input.repo, "text")}, ${cast(input.folder, "text")}, ${cast(input.profile, "text")}, ${cast(input.vercelProject, "text")}, ${cast(userOf(actor), "uuid")}
-FROM use_cases u WHERE u.id = ${uc} AND u.workspace_id = ${ws}
+SELECT u.id, u.workspace_id, ${repo}, ${cast(input.folder, "text")}, ${cast(input.profile, "text")}, ${cast(input.vercelProject, "text")}, ${cast(userOf(actor), "uuid")}
+FROM use_cases u WHERE u.id = ${uc} AND u.workspace_id = ${ws} AND NOT ${elsewhere} AND (${cast(lsBuilder, "boolean")} OR ${known})
 ON CONFLICT (use_case_id, repo, folder) DO UPDATE SET profile = coalesce(EXCLUDED.profile, use_case_repos.profile),
   vercel_project = coalesce(EXCLUDED.vercel_project, use_case_repos.vercel_project), updated_at = now()
 RETURNING id, (xmax = 0) AS created`),
   ]);
+  const taken = facts[0]?.taken === true;
+  if (!lsBuilder && (taken || facts[0]?.known !== true)) return fail("repo_non_del_cliente", REPO_NOT_OF_CLIENT_MESSAGE);
+  if (taken) return fail("repo_di_altro_cliente", "Questo repository è già registrato per un altro cliente: ogni cliente ha i suoi.");
   if (!rows[0]) return fail("non_trovato", "Use case non trovato.");
   return ok({ id: String(rows[0].id), created: rows[0].created === true });
 }

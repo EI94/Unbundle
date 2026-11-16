@@ -18,6 +18,7 @@ import { gatePolicyToJson, gateScopeForItem, isItemOk, type GateComputation, typ
 import { caseRoleAllowedFor, userContextFrom } from "../../uc/lateral-space.ts";
 import {
   assertMemberRoles,
+  BUILDERS_UNREADABLE_MESSAGE,
   can,
   checkCaseCreator,
   checkPersonalZoneProposal,
@@ -73,6 +74,7 @@ import { zoneApprovalHash } from "../../uc/views/approvals.ts";
 import { fail, ok, type Actor, type Approval, type Json, type Result, type UserContext } from "../../uc/types.ts";
 import {
   CASE_ROLES,
+  CLIENT_CASE_ROLES,
   GATE_POLICY_SCOPES,
   LEVERS,
   LS_CASE_ROLES,
@@ -86,6 +88,7 @@ import {
   type Phase,
 } from "../../uc/vocab.ts";
 import { eventActorFrom, eventInsertFromSql, eventInsertSql, eventPayload, type EventActor } from "./uc-events.ts";
+import { caseBuilderEmails, hasGrantForCase } from "./use-case-builders.ts";
 import { enqueueForLsMembersSql } from "./uc-notifications.ts";
 import { bellPrefix } from "../../uc/notify/dedupe.ts";
 import { createCaseFromTemplate, type TemplateRef } from "./uc-templates.ts";
@@ -188,13 +191,17 @@ export async function commandContextFor(
   return ok({ workspaceId: i.workspaceId, caseId: i.caseId, actor: { type: "utente", userId: user.userId, roles: roles.effective }, user, lsDomains: i.lsDomains, now: i.now });
 }
 
-/** Email dei membri Lateral Space del caso e contatti designati: il contesto delle firme. */
+/**
+ * Email dei membri Lateral Space del caso, (8.0c) di chi costruisce il caso da fuori (una concessione che lo copre e lì
+ * nessun ruolo del cliente: solo con la 0037; null quando non si riesce a leggerle, e allora ogni firma del cliente
+ * risponde `non_disponibile`) e contatti designati: il contesto delle firme.
+ */
 export async function loadSignatureContext(executor: UcExecutor, core: CaseCore, lsDomains: readonly string[]): Promise<SignatureContext> {
   const [rows] = await executor.batch([
     toStatement(ucSql`SELECT DISTINCT u.email FROM uc_case_members m JOIN users u ON u.id = m.user_id
 WHERE m.case_id = ${cast(core.id, "uuid")} AND m.role IN (${raw(LS_ROLES_SQL)}) AND u.email IS NOT NULL`),
   ]);
-  return { lsDomains, lsMemberEmails: rows.map((r) => String(r.email)), designated: { ...core.designated } };
+  return { lsDomains, lsMemberEmails: rows.map((r) => String(r.email)), builderEmails: await caseBuilderEmails(executor, core.id), designated: { ...core.designated } };
 }
 
 /** Riga del caso (completo, del workspace). */
@@ -725,9 +732,20 @@ function collaboratorSql(workspaceId: string, userId: string): UcStatement {
 /**
  * Aggiunge un ruolo di caso a un collaboratore del workspace (solo ls_lead).
  * Ruoli `ls_*` solo a persone di Lateral Space, ruoli del cliente solo alle
- * altre, mai insieme sulla stessa persona (`assertMemberRoles`).
+ * altre, mai insieme sulla stessa persona (`assertMemberRoles`). (8.0c) Mai un
+ * ruolo del cliente a chi costruisce il caso da fuori (una concessione che lo
+ * copre: solo con la 0037): `conflitto_ruoli`. Chi lì ha già un ruolo del
+ * cliente («Aggiungi» ha saltato il caso) resta del cliente e ne può avere altri.
+ * `opts.guard`: istruzioni nella stessa transazione, prima della riga (8.0c: il
+ * lock della persona e la concessione di chi costruisce da fuori); se una si
+ * ferma, niente riga e niente evento.
  */
-export async function addCaseMember(executor: UcExecutor, ctx: UcCommandContext, input: unknown): Promise<Result<{ userId: string; role: CaseRole }>> {
+export async function addCaseMember(
+  executor: UcExecutor,
+  ctx: UcCommandContext,
+  input: unknown,
+  opts: { guard?: readonly UcStatement[] } = {},
+): Promise<Result<{ userId: string; role: CaseRole }>> {
   if (!can(actorRoles(ctx), "gestire_membri")) return fail("attore_non_ammesso", "Solo il Responsabile del caso gestisce i membri.");
   const parsed = MemberSchema.safeParse(input);
   if (!parsed.success) return fail("dati_non_validi", "Scegli la persona e il ruolo.");
@@ -740,11 +758,18 @@ export async function addCaseMember(executor: UcExecutor, ctx: UcCommandContext,
   if (roles.stored.includes(role)) return fail("gia_membro", CASE_MESSAGES.gia_membro);
   const allowed = assertMemberRoles(target, [...roles.stored, role], ctx.lsDomains);
   if (!allowed.ok) return allowed;
+  if ((CLIENT_CASE_ROLES as readonly string[]).includes(role)) {
+    // Le concessioni che non si leggono (null) fermano il ruolo del cliente: si riprova, non si dà alla cieca.
+    const builds = await hasGrantForCase(executor, { caseId: ctx.caseId, userId });
+    if (builds === null) return fail("non_disponibile", BUILDERS_UNREADABLE_MESSAGE);
+    if (builds) return fail("conflitto_ruoli", "Costruisce questo caso: non può avere anche un ruolo del cliente.");
+  }
   const c = cast(ctx.caseId, "uuid");
   const run = await runCommand(
     executor,
     [
       caseOpenSql(ctx.workspaceId, ctx.caseId),
+      ...(opts.guard ?? []),
       toStatement(
         requireRows(
           ucSql`INSERT INTO uc_case_members (case_id, user_id, role, added_by_user_id)
@@ -778,8 +803,15 @@ ON CONFLICT (case_id, user_id, role) DO NOTHING RETURNING id`,
  * Toglie un ruolo di caso (solo ls_lead; mai l'ultimo ls_lead). Se la persona
  * non ha più ruoli nel caso, i link che aveva copiato si revocano e le sue firme
  * in attesa si tolgono; senza ruoli Lateral Space perde la zona personale.
+ * `opts.after`: istruzioni di chi chiama, nella stessa transazione, dopo la riga
+ * tolta (8.0c: i compiti di chi non costruisce più il caso tornano da prendere).
  */
-export async function removeCaseMember(executor: UcExecutor, ctx: UcCommandContext, input: unknown): Promise<Result<{ userId: string; role: CaseRole }>> {
+export async function removeCaseMember(
+  executor: UcExecutor,
+  ctx: UcCommandContext,
+  input: unknown,
+  opts: { after?: (removed: { userId: string; role: CaseRole }) => Promise<readonly UcStatement[]> } = {},
+): Promise<Result<{ userId: string; role: CaseRole }>> {
   if (!can(actorRoles(ctx), "gestire_membri")) return fail("attore_non_ammesso", "Solo il Responsabile del caso gestisce i membri.");
   const parsed = MemberSchema.safeParse(input);
   if (!parsed.success) return fail("dati_non_validi", "Scegli la persona e il ruolo.");
@@ -824,6 +856,7 @@ WHERE id = ${c} AND ls_lead_user_id = ${u}`),
       }),
     ),
   );
+  if (opts.after) statements.push(...(await opts.after({ userId, role })));
   const run = await runCommand(executor, statements, CASE_MESSAGES);
   return run.ok ? ok({ userId, role }) : run;
 }

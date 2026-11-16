@@ -19,6 +19,7 @@
 import { formatDateIt, type WeeklyCaseSummary } from "../../uc/notify/email-templates.ts";
 import { toBellItems, type UcBellItem, type UcBellRow } from "../../uc/notify/bell.ts";
 import {
+  BUILDER_EMAIL_TEMPLATES,
   DISPATCH_AFTER_COMMAND_LIMIT,
   DISPATCH_LEASE_MINUTES,
   MAX_EMAIL_ATTEMPTS,
@@ -54,6 +55,8 @@ import { isUuid, loadCaseCore, loadCaseReadiness, loadSignatureContext, loadUser
 import { eventInsertFromSql } from "./uc-events.ts";
 import { loadApprovals } from "./uc-public.ts";
 import { issueRequestToken, revokeIssuedToken } from "./uc-requests.ts";
+import { externalBuilderMailFacts } from "./use-case-builders.ts";
+import { loadSubprocessorAck } from "./uc-subprocessors.ts";
 
 export type { UcBellItem } from "../../uc/notify/bell.ts";
 export type { DispatchSummary } from "../../uc/notify/dispatch.ts";
@@ -445,6 +448,18 @@ export async function loadDeliveryFacts(executor: UcExecutor, n: ClaimedNotifica
     facts.request = request;
   }
 
+  // (8.0c) Chi non è di Lateral Space, sulle e-mail di chi costruisce e del team: costruisce il caso adesso, la
+  // concessione, l'ok ai sub-responsabili del workspace. Solo per queste righe. La sonda della 0037 si fa una volta, e il
+  // suo esito va nei fatti (`ready`): se non risponde non si sa chi costruisce, e l'e-mail aspetta invece di annullarsi.
+  const isBuilderMail = (BUILDER_EMAIL_TEMPLATES as readonly string[]).includes(n.templateKey) || n.templateKey === "team_aggiunto" || n.templateKey === "team_tolto";
+  if (isBuilderMail && facts.recipient?.kind === "user" && !facts.recipient.lateralSpace) {
+    const [external, ack] = await Promise.all([
+      externalBuilderMailFacts(executor, { workspaceId: n.workspaceId, caseId: facts.case?.id ?? null, userId: facts.recipient.id, lsDomains: o.lsDomains }),
+      loadSubprocessorAck(executor, n.workspaceId),
+    ]);
+    facts.builder = { ready: external !== null, buildsCase: external?.buildsCase ?? false, workspaceAck: ack !== null, grant: external?.grant ?? false };
+  }
+
   if (!facts.case) {
     if (n.templateKey === "riepilogo_settimanale") facts.weekly = { cases: await weeklyCases(executor, n, o.now) };
     if (n.templateKey === "cli_collegata") facts.cliToken = await cliTokenFacts(executor, n);
@@ -497,7 +512,7 @@ export async function loadDeliveryFacts(executor: UcExecutor, n: ClaimedNotifica
         const signature = core ? await loadSignatureContext(executor, core, o.lsDomains) : null;
         facts.approvals = {
           pending,
-          signer: signature ? checkSignerEmail(recipient.email, o.lsDomains, signature.lsMemberEmails) : { ok: false, code: "caso_assente", message: "" },
+          signer: signature ? checkSignerEmail(recipient.email, o.lsDomains, signature.lsMemberEmails, signature.builderEmails) : { ok: false, code: "caso_assente", message: "" },
         };
       }
       break;

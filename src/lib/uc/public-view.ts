@@ -79,6 +79,19 @@ export function publicFail<T = never>(code: string, message: string, issues?: Is
   return issues && issues.length > 0 ? { ok: false, code, message, issues } : { ok: false, code, message };
 }
 
+/** Il 503 calmo delle pagine pubbliche (`non_disponibile`): si riprova, senza dire perché. */
+export const PUBLIC_UNAVAILABLE_MESSAGE = "Il servizio non è disponibile in questo momento. Riprova tra poco.";
+
+/**
+ * (8.0c) Per chi apre il link, un controllo che adesso non si è potuto fare (`non_disponibile`: per esempio non si riesce
+ * a leggere chi costruisce il caso, e la firma o la delega non passano alla cieca) è il 503 calmo delle pagine
+ * pubbliche, «riprova tra poco», mai un altro motivo («non sei più il firmatario», «è di Lateral Space»). null per ogni
+ * altro esito.
+ */
+export function publicUnavailable(r: Result<unknown>): PublicOutcome<never> | null {
+  return !r.ok && r.code === "non_disponibile" ? publicFail("non_disponibile", PUBLIC_UNAVAILABLE_MESSAGE) : null;
+}
+
 // ── Cosa può fare il referente su una voce ────────────────────────────
 
 /** Tipi di risposta che il referente invia dal link (`POST …/answer`). */

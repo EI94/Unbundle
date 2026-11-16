@@ -166,8 +166,19 @@ function caseGuard(ctx: UcCommandContext, core: CaseCore): UcStatement {
   return caseRevisionSql({ workspaceId: ctx.workspaceId, caseId: ctx.caseId, expectStatus: [core.status], bump: false });
 }
 
-async function lsMemberEmails(executor: UcExecutor, core: CaseCore, lsDomains: readonly string[]): Promise<string[]> {
-  return [...(await loadSignatureContext(executor, core, lsDomains)).lsMemberEmails];
+/**
+ * Chi non risponde né firma per il cliente in questo caso: le email dei membri di Lateral Space e (8.0c) di chi costruisce
+ * il caso da fuori (`builders`), dal contesto delle firme. `builders` è null quando non si riesce a leggerle: referenti e
+ * firmatari rispondono `non_disponibile`, mai «nessuno costruisce».
+ */
+interface OutsideEmails {
+  ls: string[];
+  builders: string[] | null;
+}
+
+async function lsMemberEmails(executor: UcExecutor, core: CaseCore, lsDomains: readonly string[]): Promise<OutsideEmails> {
+  const ctx = await loadSignatureContext(executor, core, lsDomains);
+  return { ls: [...ctx.lsMemberEmails], builders: ctx.builderEmails === null ? null : [...(ctx.builderEmails ?? [])] };
 }
 
 async function loadContacts(executor: UcExecutor, workspaceId: string, ids: readonly string[]): Promise<Map<string, ContactRowState>> {
@@ -187,8 +198,8 @@ async function contactUser(executor: UcExecutor, contact: Pick<ContactRowState, 
   return contact.userId ? loadUserContext(executor, contact.userId, lsDomains) : null;
 }
 
-async function assignable(executor: UcExecutor, contact: ContactRowState, ctx: UcCommandContext, emails: readonly string[]): Promise<Result<void>> {
-  return checkContactAssignable(contact, { lsDomains: ctx.lsDomains, lsMemberEmails: emails, user: await contactUser(executor, contact, ctx.lsDomains) });
+async function assignable(executor: UcExecutor, contact: ContactRowState, ctx: UcCommandContext, emails: OutsideEmails): Promise<Result<void>> {
+  return checkContactAssignable(contact, { lsDomains: ctx.lsDomains, lsMemberEmails: emails.ls, builderEmails: emails.builders, user: await contactUser(executor, contact, ctx.lsDomains) });
 }
 
 async function loadRequest(executor: UcExecutor, ctx: UcCommandContext, requestId: unknown): Promise<Result<RequestRowState>> {
@@ -376,7 +387,7 @@ export async function createContact(executor: UcExecutor, ctx: UcCommandContext,
   const role = await checkTemplateRole(executor, ctx, draft.value.templateRoleKey);
   if (!role.ok) return role;
   const emails = await lsMemberEmails(executor, core, ctx.lsDomains);
-  const allowed = checkContactDraft(draft.value, { lsDomains: ctx.lsDomains, lsMemberEmails: emails });
+  const allowed = checkContactDraft(draft.value, { lsDomains: ctx.lsDomains, lsMemberEmails: emails.ls, builderEmails: emails.builders });
   if (!allowed.ok) return allowed;
   if (draft.value.email) {
     const [[taken]] = await executor.batch([contactEmailTakenSql({ workspaceId: ctx.workspaceId, email: draft.value.email })]);
@@ -434,11 +445,11 @@ export async function updateContact(executor: UcExecutor, ctx: UcCommandContext,
   const designated = designationRows.length > 0;
   if (emailChanged) {
     const emails = await lsMemberEmails(executor, core, ctx.lsDomains);
-    const allowed = checkContactDraft({ email: patch.email ?? null }, { lsDomains: ctx.lsDomains, lsMemberEmails: emails, user: await contactUser(executor, contact, ctx.lsDomains) });
+    const allowed = checkContactDraft({ email: patch.email ?? null }, { lsDomains: ctx.lsDomains, lsMemberEmails: emails.ls, builderEmails: emails.builders, user: await contactUser(executor, contact, ctx.lsDomains) });
     if (!allowed.ok) return allowed;
     if (designated) {
       if (!patch.email) return fail("email_firmatario", "È firmatario del cliente: l'email serve per il link di approvazione. Cambia prima la designazione.");
-      const signer = checkSignerEmail(patch.email, ctx.lsDomains, emails);
+      const signer = checkSignerEmail(patch.email, ctx.lsDomains, emails.ls, emails.builders);
       if (!signer.ok) return signer;
     }
     if (patch.email) {
@@ -1217,7 +1228,7 @@ export async function approveDelegation(executor: UcExecutor, ctx: UcCommandCont
     delegationsTodaySql({ caseId: ctx.caseId, parentRequestId: r.delegatedFromRequestId, excludeRequestId: r.id, since: romeMidnightUtc(romeDateOf(now)) }),
   ]);
   const emails = await lsMemberEmails(executor, core, ctx.lsDomains);
-  const checked = checkDelegationApproval({ request: r, delegationsToday: rowNumber(today?.n) ?? 0, lsDomains: ctx.lsDomains, lsMemberEmails: emails });
+  const checked = checkDelegationApproval({ request: r, delegationsToday: rowNumber(today?.n) ?? 0, lsDomains: ctx.lsDomains, lsMemberEmails: emails.ls, builderEmails: emails.builders });
   if (!checked.ok) return checked;
   const contactUserCtx = r.contact.userId ? await loadUserContext(executor, r.contact.userId, ctx.lsDomains) : null;
   if (contactUserCtx && (contactUserCtx.isLateralSpace || (contactUserCtx.emailDomain && ctx.lsDomains.includes(contactUserCtx.emailDomain)))) {
@@ -1336,7 +1347,8 @@ export async function requestApproval(
   const contact = (await loadContacts(executor, ctx.workspaceId, [contactId])).get(contactId);
   if (!contact || !contact.isActive || contact.anonymized) return fail("contatto_non_attivo", "Il firmatario non è un referente attivo.");
   if (!contact.email) return fail("email_mancante", "Il firmatario deve avere un'email: il link di approvazione parte solo per email.");
-  const signer = checkSignerEmail(contact.email, ctx.lsDomains, await lsMemberEmails(executor, core, ctx.lsDomains));
+  const outside = await lsMemberEmails(executor, core, ctx.lsDomains);
+  const signer = checkSignerEmail(contact.email, ctx.lsDomains, outside.ls, outside.builders);
   if (!signer.ok) return signer;
   const now = ctx.now ?? new Date();
   const actor = eventActorFrom(ctx.actor);

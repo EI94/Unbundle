@@ -11,7 +11,7 @@ import { factoryStoreReady, readFactory, topicLabel, findUseCaseOfCase, type Dec
 import { FACTORY_LIMITS, SETUP_TOPICS } from "@/lib/db/use-case-hub-factory-ddl";
 import { listTasks, tasksStoreReady, type TaskView } from "@/lib/db/queries/use-case-tasks";
 import { listOpenProposals, proposalsStoreReady, type ProposalView } from "@/lib/db/queries/use-case-task-proposals";
-import { BUILDER_ROLES } from "@/lib/db/queries/use-case-tasks-notices";
+import { loadFactoryAccess } from "@/lib/use-cases/factory/access";
 import { aiBoardOkRule, AI_BOARD_NOTE_MIN, canApproveProject, canRequestProjectChange, canWriteFactory } from "@/lib/use-cases/factory/permissions";
 import { AiBoardOk, DecisionForm, DetailsEditor, PackageButton, ProjectPrimaryAction, ProposalButtons, ReopenProject, TopicEditor } from "./project-forms";
 
@@ -27,11 +27,14 @@ import { AiBoardOk, DecisionForm, DetailsEditor, PackageButton, ProjectPrimaryAc
  *   Con una versione nuova aperta resta da leggere quella approvata.
  * - Strumenti nuovi e stima, con l'ok o la modifica chiesta dall'AI Board.
  * - Le decisioni che valgono, oltre alle scelte; lo storico completo, con quelle sostituite, su richiesta.
- * - Il pacchetto, solo per il team di Lateral Space: la versione di oggi, i suoi tre file, «Aggiorna il pacchetto».
+ * - Il pacchetto, solo per chi costruisce: la versione di oggi, i suoi tre file, «Aggiorna il pacchetto».
  * - (8.1a) I compiti (`#compiti`): stato e chi li ha, le aree e le prove a richiesta. Si prendono e si passano dal
  *   coding agent, con la CLI; qui si leggono.
- * - (8.1b) Le proposte di compito da GitHub (un'issue, un commento `/compito`), solo per il team di Lateral Space: chi
- *   costruisce le accetta (nasce il compito) o le scarta.
+ * - (8.1b) Le proposte di compito da GitHub (un'issue, un commento `/compito`), solo per chi costruisce: le accetta
+ *   (nasce il compito) o le scarta.
+ * - (8.0c) Chi scrive, il pacchetto e le proposte vengono dai ruoli della fabbrica (`loadFactoryAccess`): chi costruisce
+ *   il caso da fuori Lateral Space, da osservatore nel dossier, imposta il progetto come uno sviluppatore. Chi approva,
+ *   riapre e dà l'ok dell'AI Board resta quello di prima (i ruoli del caso).
  * - (8.2a) Evals e banco di prova (`#banco`), per tutti quelli che vedono la pagina: le ultime evals con l'andamento,
  *   l'ultimo banco per ruolo con il grafico qualità contro costo e la raccomandazione, o i comandi per cominciare.
  *   Si lanciano dalla CLI; qui si leggono. Una lettura che fallisce non fa cadere la pagina.
@@ -153,14 +156,25 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
   const useCase = await findUseCaseOfCase(executor, workspaceId, caseId);
   if (!useCase) notFound();
   const target = { workspaceId, useCaseId: useCase.useCaseId };
-  const read = await readFactory(executor, target, { kind: "persona", userId: session.user.id, roles });
+  // (8.0c) I ruoli della fabbrica: quelli del caso, più `builder_esterno` per chi costruisce da fuori.
+  const factory = await loadFactoryAccess(executor, caseAccess);
+  // La 0037 non è pronta e la persona costruisce il caso da fuori (o non si sa): come la fabbrica non ancora pronta.
+  if (factory.blocked === "non_disponibile") {
+    return (
+      <PageContainer>
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Progetto dell&apos;agente</h1>
+        <p className="mt-4 text-sm text-muted-foreground">Non ancora disponibile: riprova tra qualche minuto.</p>
+      </PageContainer>
+    );
+  }
+  const read = await readFactory(executor, target, { kind: "persona", userId: session.user.id, roles: factory.roles });
   if (!read.ok) notFound();
   const view = read.value;
 
   const writable = canWrite(caseAccess);
-  // Il team di Lateral Space: scrive il progetto e legge il pacchetto (che è per i coding agent, non per il cliente).
-  const lsTeam = canWriteFactory(roles);
-  const writer = writable && lsTeam;
+  // Chi costruisce: scrive il progetto e legge il pacchetto (che è per i coding agent, non per il cliente).
+  const builder = canWriteFactory(factory.roles);
+  const writer = builder && !factory.readOnly && caseAccess.status !== "chiuso";
   const approver = writable && canApproveProject(roles);
   const board = writable ? aiBoardOkRule(roles) : { allowed: false, noteRequired: false };
   const boardMember = writable && canRequestProjectChange(roles);
@@ -218,9 +232,8 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
   const tasksReady = await tasksStoreReady(executor);
   // Le evals e i banchi insieme ai compiti; `readEvalOverview` non rifiuta mai (un errore va nel log e nella sezione).
   const [tasks, evals] = await Promise.all([tasksReady ? listTasks(executor, target) : Promise.resolve<TaskView[]>([]), readEvalOverview(executor, target)]);
-  // Le proposte sono testi del team: le vede solo chi costruisce (i ruoli di Lateral Space nel caso), e le decide chi
-  // tra loro può scrivere nel caso. Non `canWriteFactory`, che dalla 8.0c comprende anche lo sviluppatore del cliente.
-  const builder = roles.some((r) => (BUILDER_ROLES as readonly string[]).includes(r));
+  // Le proposte sono testi del team: le vede solo chi costruisce il caso (anche da fuori Lateral Space), e le decide chi
+  // tra loro può scrivere nel caso.
   const proposals = tasksReady && builder && (await proposalsStoreReady(executor)) ? await listOpenProposals(executor, target) : [];
   const caseCode = useCase.code ?? "<ID>";
   const tally = {
@@ -281,9 +294,9 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
           description={
             project
               ? `${chosen} di ${SETUP_TOPICS.length} argomenti scelti. Ogni scelta è anche una decisione del caso.`
-              : lsTeam
+              : builder
                 ? "Si fanno qui o dal coding agent, con la skill /agent-factory:imposta."
-                : "Le prepara il team di Lateral Space; qui le leggi e, se serve, le approvi."
+                : "Le prepara chi costruisce il caso; qui le leggi e, se serve, le approvi."
           }
         >
           {project ? (
@@ -370,7 +383,7 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
                 </p>
                 <ul className="divide-y">
                   {proposals.map((p) => (
-                    <ProposalLine key={p.id} p={p} ids={writable && builder ? { workspaceId, caseId } : null} />
+                    <ProposalLine key={p.id} p={p} ids={writer ? { workspaceId, caseId } : null} />
                   ))}
                 </ul>
               </div>
@@ -417,7 +430,7 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
           </div>
         </SettingsSection>
 
-        {lsTeam ? (
+        {builder ? (
           <SettingsSection id="pacchetto" icon={Package} title="Pacchetto" description="I tre file che il repository del caso legge e non cambia: senza nomi di persona.">
             <div className="space-y-3 text-sm">
               {view.latestPackage ? (

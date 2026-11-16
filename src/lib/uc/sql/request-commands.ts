@@ -277,12 +277,12 @@ export function prepareContactPatch(
   return ok({ patch, fields, emailChanged: "email" in patch, deactivated: current.isActive && !next.isActive });
 }
 
-/** Email del referente: del cliente, non di Lateral Space né di un membro LS del caso. */
+/** Email del referente: del cliente, non di Lateral Space né di un membro LS del caso, né (8.0c) di chi lo costruisce. */
 export function checkContactDraft(
   draft: { email: string | null },
-  ctx: { lsDomains: readonly string[]; lsMemberEmails: readonly string[]; user?: Pick<UserContext, "isLateralSpace" | "emailDomain"> | null },
+  ctx: { lsDomains: readonly string[]; lsMemberEmails: readonly string[]; builderEmails?: readonly string[] | null; user?: Pick<UserContext, "isLateralSpace" | "emailDomain"> | null },
 ): Result<void> {
-  return checkContactEmail({ email: draft.email, user: ctx.user ?? null, lsDomains: ctx.lsDomains, lsMemberEmails: ctx.lsMemberEmails });
+  return checkContactEmail({ email: draft.email, user: ctx.user ?? null, lsDomains: ctx.lsDomains, lsMemberEmails: ctx.lsMemberEmails, builderEmails: ctx.builderEmails });
 }
 
 /** Un altro referente del workspace (non anonimizzato) ha già questa email? */
@@ -502,12 +502,13 @@ export function suggestContactForRole(
 /** Referente assegnabile: attivo, non anonimizzato, del cliente (`checkAssignee`). */
 export function checkContactAssignable(
   contact: Pick<ContactRowState, "email" | "isActive" | "anonymized">,
-  ctx: { lsDomains: readonly string[]; lsMemberEmails: readonly string[]; user?: Pick<UserContext, "isLateralSpace" | "emailDomain"> | null },
+  ctx: { lsDomains: readonly string[]; lsMemberEmails: readonly string[]; builderEmails?: readonly string[] | null; user?: Pick<UserContext, "isLateralSpace" | "emailDomain"> | null },
 ): Result<void> {
   return checkAssignee({
     contact: { email: contact.email, isActive: contact.isActive, anonymized: contact.anonymized, user: ctx.user ?? null },
     lsDomains: ctx.lsDomains,
     lsMemberEmails: ctx.lsMemberEmails,
+    builderEmails: ctx.builderEmails,
   });
 }
 
@@ -1110,6 +1111,7 @@ export function checkDelegationApproval(i: {
   delegationsToday: number;
   lsDomains: readonly string[];
   lsMemberEmails: readonly string[];
+  builderEmails?: readonly string[] | null;
 }): Result<{ depth: number }> {
   const r = i.request;
   if (!r.delegatedFromRequestId || r.purpose !== "raccolta") return fail("non_delega", "Questa richiesta non è una delega da approvare.");
@@ -1129,7 +1131,7 @@ export function checkDelegationApproval(i: {
     activeItemIds: r.activeItemIds,
   });
   if (!rules.ok) return rules;
-  const email = checkContactEmail({ email: r.contact.email, lsDomains: i.lsDomains, lsMemberEmails: i.lsMemberEmails });
+  const email = checkContactEmail({ email: r.contact.email, lsDomains: i.lsDomains, lsMemberEmails: i.lsMemberEmails, builderEmails: i.builderEmails });
   if (!email.ok) return email;
   return ok({ depth: rules.value.depth });
 }

@@ -40,7 +40,7 @@ import {
 import { answerContext, normalizeAnswer } from "./answers/normalize.ts";
 import { deriveWorkspaceKek, envelopeAad, openJson } from "./crypto.ts";
 import { tokenRateLimitRule } from "./http.ts";
-import { MAX_BATCH_ANSWERS, REFERENT_PRIVACY_NOTICE, greetingNameFrom, type ReferentItemView, type ReferentView } from "./public-view.ts";
+import { MAX_BATCH_ANSWERS, PUBLIC_UNAVAILABLE_MESSAGE, REFERENT_PRIVACY_NOTICE, greetingNameFrom, type ReferentItemView, type ReferentView } from "./public-view.ts";
 import { planTemplateLoad } from "./template/load.ts";
 import { newRequestToken } from "./tokens.ts";
 import { batchEntry, chunkBatch, gridFromRows, initialForm, isReadyToSend } from "./views/referente-form.ts";
@@ -67,6 +67,19 @@ const opts = { skip: !enabled };
 
 const sql = url ? neon(url) : null;
 const exec: UcExecutor | null = sql ? createUcExecutor(sql) : null;
+
+/** (8.0c) La sonda della 0037 non risponde (la riconosce pg_constraint); il resto del database sì. */
+const isBuildersProbe = (statements: Parameters<UcExecutor["batch"]>[0]) => statements.some((s) => s.text.includes("pg_constraint") && s.text.includes("use_case_external_builders"));
+const buildersProbeDown = (real: UcExecutor): UcExecutor => ({ batch: (st) => (isBuildersProbe(st) ? Promise.reject(new Error("la sonda non risponde")) : real.batch(st)) });
+/** (8.0c) La tabella della 0037 non c'è ancora: la sonda dice no, to_regclass dice no. */
+const buildersTableMissing = (real: UcExecutor): UcExecutor => ({
+  batch: (st) =>
+    isBuildersProbe(st)
+      ? Promise.resolve([[{ ready: false }]])
+      : st.some((s) => s.text.includes("to_regclass") && s.text.includes("AS present"))
+        ? Promise.resolve([[{ present: false }]])
+        : real.batch(st),
+});
 const q = (text: string, params: unknown[] = []) => sql!.query(text, params) as Promise<Record<string, unknown>[]>;
 const one = async (text: string, params: unknown[] = []) => (await q(text, params))[0];
 const num = (v: unknown) => Number(v);
@@ -442,6 +455,11 @@ test("delegation: a colleague of a known domain gets a new link right away; dept
   assert.equal(self.ok ? null : self.code, "delega_a_se_stessi");
   const notMine = await delegateItems(exec!, l, { nome: "Collega", email: `collega-${suffix}@cliente.test`, voci: [item("q.servizio.01")] }, popts());
   assert.equal(notMine.ok ? null : notMine.code, "risposta_non_valida");
+  // (8.0c) Chi costruisce il caso non si legge adesso (la sonda della 0037 non risponde): la delega non passa alla cieca, il
+  // 503 calmo delle pagine pubbliche, niente scritto. Poi, con la sonda che risponde, la stessa delega parte.
+  const unreadable = await delegateItems(buildersProbeDown(exec!), l, { nome: "Collega Sistemi", email: `collega-${suffix}@cliente.test`, voci: [item("q.sistemi.02")] }, popts());
+  assert.deepEqual(unreadable, { ok: false, code: "non_disponibile", message: PUBLIC_UNAVAILABLE_MESSAGE });
+  assert.equal(await one(`SELECT id FROM uc_contacts WHERE workspace_id = $1::uuid AND email = $2`, [ids.ws, `collega-${suffix}@cliente.test`]), undefined, "nessun collega scritto");
   const done = await delegateItems(exec!, l, { nome: "Collega Sistemi", email: `collega-${suffix}@cliente.test`, messaggio: "Ci pensi tu?", voci: [item("q.sistemi.02")] }, popts());
   assert.ok(done.ok, done.ok ? "" : done.message);
   assert.equal(done.value.status, "inviata");
@@ -592,7 +610,15 @@ test("approval link: the designated Owner signs a «non applicabile» and a fall
   assert.equal(unread.ok ? null : unread.code, "dati_non_validi");
   const changed = await decideApproval(exec!, l, { kind: "na", target_id: na.targetId, decision: "approvo", read: true, text_hash: "0".repeat(64) }, popts());
   assert.equal(changed.ok ? null : changed.code, "testo_cambiato");
-  const signed = await decideApproval(exec!, l, { kind: "na", target_id: na.targetId, decision: "approvo", read: true, text_hash: na.textHash }, popts());
+  // (8.0c) Chi costruisce il caso non si legge adesso: né «Approvo» né «Non approvo» passano alla cieca (il 503 calmo,
+  // mai «non sei più il firmatario»), e niente si firma.
+  for (const choice of [{ decision: "approvo" }, { decision: "non_approvo", reason: "Non ancora" }]) {
+    const refused = await decideApproval(buildersProbeDown(exec!), l, { kind: "na", target_id: na.targetId, read: true, text_hash: na.textHash, ...choice }, popts());
+    assert.deepEqual(refused, { ok: false, code: "non_disponibile", message: PUBLIC_UNAVAILABLE_MESSAGE }, choice.decision);
+  }
+  assert.equal((await one(`SELECT na_approved_by_contact_id FROM uc_items WHERE id = $1::uuid`, [item("q.costi.04")])).na_approved_by_contact_id, null, "niente firmato");
+  // Con la tabella della 0037 che non c'è ancora nessuno costruisce da fuori: la firma passa come prima.
+  const signed = await decideApproval(buildersTableMissing(exec!), l, { kind: "na", target_id: na.targetId, decision: "approvo", read: true, text_hash: na.textHash }, popts());
   assert.ok(signed.ok, signed.ok ? "" : signed.message);
   assert.equal(signed.value.complete, false, "Lateral Space still has to sign");
   assert.equal(String((await one(`SELECT na_approved_by_contact_id FROM uc_items WHERE id = $1::uuid`, [item("q.costi.04")])).na_approved_by_contact_id), state.contactOwner);

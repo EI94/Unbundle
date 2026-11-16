@@ -9,14 +9,18 @@ import { factoryNavVisible, loadFactoryOverview, type FactoryCaseRow, type Facto
 import { factoryStoreReady } from "@/lib/db/queries/use-case-factory";
 import { cliStoreReady } from "@/lib/db/queries/use-case-cli-auth";
 import { viewerFromSession } from "@/lib/db/queries/use-case-hub";
+import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
 import { AGENT_FACTORY_TEMPLATE_VERSION, benchFacts, compareVersions, evalsFact, STATION_LABEL, STATIONS, type Station } from "@/lib/use-cases/factory/line";
 import { abilitiesForUseCase } from "@/lib/use-cases/permissions";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
-import { listWorkspaceTeam, workspaceTeamReady } from "@/lib/db/queries/use-case-workspace-team";
+import { externalRefusals, listBuilders, listWhereChoices, type BuilderRow } from "@/lib/db/queries/use-case-workspace-team";
+import { loadMemberCandidates } from "@/lib/db/queries/uc-shell";
 import { ROLE_LABEL } from "@/lib/uc/views/labels";
-import { AddWorkspaceTeamMember, RemoveWorkspaceTeamMember } from "./team-forms";
+import { builderStateText, builderWhereText, externalRemoveConfirm } from "@/lib/use-cases/factory/builders-text";
+import { BuilderFacts } from "@/components/agent-factory/builder-facts";
+import { AddBuilder, RemoveBuilder } from "./team-forms";
 
 /**
  * «Agent Factory» (rilascio 8.1a, docs/rilascio-8/RILASCIO-8.1-COSTRUZIONE.md §2): i casi di un cliente
@@ -27,13 +31,15 @@ import { AddWorkspaceTeamMember, RemoveWorkspaceTeamMember } from "./team-forms"
  * - Le famiglie (i repository): ogni caso con la stazione, il prossimo passo, i compiti e le sessioni dei coding
  *   agent. Mai una cifra per persona.
  * - La coda della fabbrica, al posto dei turni: chi ci lavora la prende.
- * - (8.1b) Il team di Lateral Space del cliente, solo per il manager: chi è qui entra in tutti i casi del workspace,
- *   anche in quelli che si apriranno; per un caso solo resta il team del dossier.
+ * - (8.1b, 8.0c) «Chi costruisce», solo per il manager di Lateral Space: il team di Lateral Space del cliente (in tutti
+ *   i casi, anche in quelli che si apriranno) e chi costruisce da fuori, «Sviluppatore esterno», con il suo «Dove». Ogni
+ *   riga dice se la CLI è collegata, o perché da fuori oggi non costruisce. «Togli» chiede conferma con i casi e i
+ *   repository di GitHub (da togliere a mano).
  * - (8.2a) Per ogni caso le evals («evals 96%», «sotto soglia») e il consiglio del banco di prova; in «Da fare per te»,
  *   a chi costruisce il caso, il consiglio del banco e le evals sotto soglia, con il link a «Evals e banco di prova».
  *
- * La vede chi costruisce (ruolo di Lateral Space nel team di un caso), con i suoi casi, e il manager del workspace
- * di Lateral Space, con tutti. Agli altri: 404.
+ * La vede chi costruisce (ruolo di Lateral Space nel team di un caso o, 8.0c, da fuori con il predicato unico), con i
+ * suoi casi, e il manager del workspace di Lateral Space, con tutti. Agli altri: 404.
  */
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Agent Factory" };
@@ -69,6 +75,7 @@ function prLine(p: FactoryCaseRow["prs"]): string | null {
 
 function todoHref(workspaceId: string, t: FactoryTodo): string {
   if (t.href) return t.href;
+  if (t.kind === "collega") return `/dashboard/${workspaceId}/settings#cli`;
   if (t.kind === "domande") return `/dashboard/${workspaceId}/use-cases/${t.useCaseId}/proposte`;
   if (t.kind === "banco" || t.kind === "evals") return `/dashboard/${workspaceId}/casi-duso/${t.caseId}/progetto#banco`;
   return `/dashboard/${workspaceId}/casi-duso/${t.caseId}/progetto${t.kind === "approva" ? "" : "#compiti"}`;
@@ -102,6 +109,27 @@ function CaseRow({ workspaceId, c }: { workspaceId: string; c: FactoryCaseRow })
   );
 }
 
+/** Una persona di «Chi costruisce»: nome, da fuori o no, ruolo, dove, la CLI (o perché da fuori oggi non costruisce). */
+function BuilderLine({ workspaceId, m }: { workspaceId: string; m: BuilderRow }) {
+  const role = m.external ? "Sviluppatore" : ROLE_LABEL[m.role as keyof typeof ROLE_LABEL];
+  const facts = [...(m.external ? ["esterno"] : []), role, builderWhereText(m.where, m.whereCodes), builderStateText(m)];
+  const confirm = m.external
+    ? externalRemoveConfirm({ name: m.name, openCases: m.openCases, repos: m.repos })
+    : {
+        title: `Togliere ${m.name} da chi costruisce?`,
+        text: `Esce da tutti i casi aperti dove è ${role.toLowerCase()} e non entra in quelli nuovi; i compiti che ha lì tornano da prendere. I ruoli dati caso per caso restano; l'unico responsabile di un caso non si toglie.`,
+      };
+  return (
+    <li className="flex min-h-11 items-center justify-between gap-3 py-2 text-sm">
+      <span className="min-w-0">
+        <span className="font-medium break-words">{m.name}</span>
+        <BuilderFacts email={m.external ? null : m.email} facts={facts} />
+      </span>
+      <RemoveBuilder workspaceId={workspaceId} userId={m.userId} name={m.name} title={confirm.title} text={confirm.text} />
+    </li>
+  );
+}
+
 export default async function AgentFactoryPage({ params }: { params: Promise<{ workspaceId: string }> }) {
   const { workspaceId } = await params;
   const { session, access } = await requireWorkspacePage(workspaceId);
@@ -109,7 +137,8 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
   const viewer = viewerFromSession(session.user, access.role);
   const lsManager = viewer.isLateralSpace && canReviewWorkspacePortfolio(access.role);
   const executor = await getAppUcExecutor();
-  if (!(await factoryNavVisible(executor, { workspaceId, userId: session.user.id, lsManager }))) notFound();
+  const lsDomains = ucLsDomains();
+  if (!(await factoryNavVisible(executor, { workspaceId, userId: session.user.id, lsManager, lsDomains }))) notFound();
   // La pagina legge le tabelle della 0030 e della 0031: finché non ci sono (il primo avvio dopo un rilascio), lo dice.
   const [factoryReady, cliReady] = await Promise.all([factoryStoreReady(executor), cliStoreReady(executor)]);
   if (!factoryReady || !cliReady) {
@@ -120,8 +149,19 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
       </PageContainer>
     );
   }
-  const view = await loadFactoryOverview(executor, { workspaceId, userId: session.user.id, seeAll: lsManager, canSeeNeeds: abilitiesForUseCase(viewer).canSeeNeeds });
-  const team = lsManager && (await workspaceTeamReady(executor)) ? await listWorkspaceTeam(executor, workspaceId) : null;
+  const view = await loadFactoryOverview(executor, { workspaceId, userId: session.user.id, seeAll: lsManager, canSeeNeeds: abilitiesForUseCase(viewer).canSeeNeeds, lsDomains });
+  const [builders, candidates, choices] = lsManager
+    ? await Promise.all([listBuilders(executor, workspaceId, lsDomains), loadMemberCandidates(executor, { workspaceId, lsDomains }), listWhereChoices(executor, workspaceId)])
+    : [null, [], []];
+  // (8.0c) Chi da fuori oggi «Aggiungi» rifiuterebbe (Contributore, e-mail da verificare): si vede, non si sceglie.
+  const refused = lsManager
+    ? await externalRefusals(
+        executor,
+        workspaceId,
+        candidates.filter((c) => !c.isLateralSpace).map((c) => c.userId),
+        lsDomains,
+      )
+    : new Map<string, string>();
   const counts = STATIONS.map((station) => ({ station, n: view.cases.filter((c) => c.station === station).length }));
 
   return (
@@ -150,9 +190,13 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
                   </a>
                 ) : (
                   <Link href={todoHref(workspaceId, t)} className="flex min-h-11 items-center justify-between gap-3 py-2 text-sm hover:underline">
-                    <span>
-                      <span className="font-medium tabular-nums">{t.code}</span> · {t.text}
-                    </span>
+                    {t.code ? (
+                      <span>
+                        <span className="font-medium tabular-nums">{t.code}</span> · {t.text}
+                      </span>
+                    ) : (
+                      <span>{t.text}</span>
+                    )}
                     <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground" />
                   </Link>
                 )}
@@ -196,32 +240,27 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
           ))
         )}
 
-        {team ? (
+        {builders ? (
           <SettingsSection
             id="team"
             icon={Users}
-            title="Team di Lateral Space"
-            description="Chi è qui entra nel team di tutti i casi del cliente, anche di quelli che si apriranno. Per un caso solo: dal team del dossier."
+            title="Chi costruisce"
+            description="Lavorano ai casi del cliente da Unbundle e con Claude Code. Chi è in tutti i casi entra anche in quelli nuovi. Il progetto di ogni caso lo approva il suo responsabile."
           >
-            {team.length ? (
+            {builders.length ? (
               <ul className="divide-y">
-                {team.map((m) => (
-                  <li key={m.userId} className="flex min-h-11 items-center justify-between gap-3 py-2 text-sm">
-                    <span className="min-w-0">
-                      <span className="font-medium">{m.name}</span>
-                      <span className="block break-all text-xs text-muted-foreground sm:inline sm:break-normal">
-                        <span className="hidden sm:inline"> · </span>
-                        {m.email} · {ROLE_LABEL[m.role]}
-                      </span>
-                    </span>
-                    <RemoveWorkspaceTeamMember workspaceId={workspaceId} userId={m.userId} name={m.name} roleLabel={ROLE_LABEL[m.role]} />
-                  </li>
+                {builders.map((m) => (
+                  <BuilderLine key={m.userId} workspaceId={workspaceId} m={m} />
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-muted-foreground">Ancora nessuno: chi aggiungi qui entra in tutti i casi.</p>
+              <p className="text-sm text-muted-foreground">Ancora nessuno: chi aggiungi qui lavora ai casi del cliente.</p>
             )}
-            <AddWorkspaceTeamMember workspaceId={workspaceId} />
+            <AddBuilder
+              workspaceId={workspaceId}
+              candidates={candidates.map((c) => ({ userId: c.userId, name: c.name, isLateralSpace: c.isLateralSpace, blocked: c.isLateralSpace ? null : (refused.get(c.userId) ?? null) }))}
+              choices={choices}
+            />
           </SettingsSection>
         ) : null}
 

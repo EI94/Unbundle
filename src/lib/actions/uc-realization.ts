@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireWorkspaceAccess } from "@/lib/auth/require-workspace";
 import { getUcUserContext, ucLsDomains } from "@/lib/db/queries/uc-access";
-import { applyWorkspaceTeamToCase } from "@/lib/db/queries/use-case-workspace-team";
+import { applyExternalBuildersToCase, applyWorkspaceTeamToCase } from "@/lib/db/queries/use-case-workspace-team";
 import { startRealization } from "@/lib/db/queries/uc-realization";
 import { realizationPrefillOf } from "@/lib/db/queries/use-case-dossiers";
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
@@ -62,6 +62,14 @@ export async function startRealizationAction(workspaceId: string, input: unknown
     if (team.skipped.length) ucLogError({ area: "uc", op: "team_workspace_nuovo_dossier_saltati", workspaceId }, new Error(`uc:${team.skipped.map((s) => s.reason).join(",")}`));
   } catch (error) {
     ucLogError({ area: "uc", op: "team_workspace_nuovo_dossier", workspaceId }, error);
+  }
+  // (8.0c) Poi chi costruisce da fuori con una concessione che copre il caso entra da osservatore; come sopra, se non
+  // riesce il dossier resta, e il log lo dice (mai chi).
+  try {
+    const external = await applyExternalBuildersToCase(executor, { workspaceId, caseId, actorUserId: session.user.id, lsDomains: ucLsDomains() });
+    if (external.skipped.length) ucLogError({ area: "uc", op: "esterni_nuovo_dossier_saltati", workspaceId }, new Error(`uc:${external.skipped.map((s) => s.reason).join(",")}`));
+  } catch (error) {
+    ucLogError({ area: "uc", op: "esterni_nuovo_dossier", workspaceId }, error);
   }
   if (isUseCaseHubWorkspace(workspaceId)) {
     const story = await recordRealizationStarted(

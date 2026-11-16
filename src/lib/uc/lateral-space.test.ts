@@ -65,3 +65,18 @@ test("Lateral Space roles only for Lateral Space users, client roles only for ve
   assert.equal(isClientUser(client, ["ls.test"]), true);
   assert.equal(isClientUser(unverifiedLs), false);
 });
+
+test("(8.0c) un ruolo che non si conosce non vale per nessuno: tra quelli né di Lateral Space né del cliente vale solo osservatore", () => {
+  type U = Parameters<typeof caseRoleAllowedFor>[0];
+  const everyone: U[] = [
+    { isLateralSpace: true, emailVerified: true, emailDomain: "ls.test" },
+    { isLateralSpace: false, emailVerified: true, emailDomain: "cliente.test" },
+    { isLateralSpace: false, emailVerified: false, emailDomain: null },
+  ];
+  for (const u of everyone) {
+    for (const unknown of ["sviluppatore_cliente", "revisore", "builder_esterno", ""]) {
+      assert.equal(caseRoleAllowedFor(u, unknown as Parameters<typeof caseRoleAllowedFor>[1], ["ls.test"]), false, unknown);
+    }
+    assert.equal(caseRoleAllowedFor(u, "osservatore", ["ls.test"]), true);
+  }
+});

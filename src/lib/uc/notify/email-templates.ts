@@ -28,6 +28,16 @@ interface CaseRef {
   /** Nome del cliente (workspace o organizzazione). */
   clientName: string;
   caseTitle: string;
+  /** (8.0c) Va a chi costruisce il caso da fuori Lateral Space: il piede non dice «interna» (`builderFooter`). */
+  external?: boolean;
+}
+
+/**
+ * (8.0c) Il piede delle e-mail di chi costruisce: a Lateral Space «Email interna di Lateral Space.», come prima; a chi
+ * costruisce il caso da fuori Lateral Space l'e-mail non è interna, e il piede dice solo da dove arriva.
+ */
+function builderFooter(input: { external?: boolean }): Block {
+  return { small: input.external === true ? "Email automatica di Unbundle." : "Email interna di Lateral Space." };
 }
 
 export interface WeeklyCaseSummary {
@@ -84,13 +94,17 @@ export type EmailInput =
   | (CaseRef & { template: "banco_consiglio"; role: string; model: string | null; link: string })
   // (8.2a) Le evals di main sono sotto soglia o giù di almeno 5 punti (`drop`, 0..1): al team che costruisce, tranne chi
   // le ha mandate. `quality`: già scritta («80%»).
-  | (CaseRef & { template: "evals_in_calo"; alert: "sotto_soglia" | "in_calo"; quality: string; drop: number | null; link: string });
+  | (CaseRef & { template: "evals_in_calo"; alert: "sotto_soglia" | "in_calo"; quality: string; drop: number | null; link: string })
+  // (8.0c) A chi entra tra chi costruisce i casi di un cliente da fuori Lateral Space, e a chi ne esce: senza caso, solo
+  // con l'ok ai sub-responsabili del cliente. `cases`: null per «tutti, anche quelli che si apriranno».
+  | { template: "team_aggiunto"; clientName: string; cases: number | null; link: string }
+  | { template: "team_tolto"; clientName: string };
 
 // ── Aiuti ─────────────────────────────────────────────────────────────
 
 const LOCAL_HOSTS = /^(localhost|127\.0\.0\.1|\[::1\]|[a-z0-9-]+\.localhost)$/;
 const REQUEST_PATH = /^\/r\/ucr_[A-Za-z0-9_-]{32}$/;
-const DASHBOARD_PATH = /^\/dashboard\/[0-9a-f-]{36}\/(casi-duso(\/[0-9a-f-]{36}(\/progetto)?)?|use-cases\/[0-9a-f-]{36}\/(proposte|progetto)|settings)$/;
+const DASHBOARD_PATH = /^\/dashboard\/[0-9a-f-]{36}\/(casi-duso(\/[0-9a-f-]{36}(\/progetto)?)?|use-cases\/[0-9a-f-]{36}\/(proposte|progetto)|settings|agent-factory)$/;
 
 /**
  * Il link è pulito? https (http solo in locale), nessuna credenziale, nessun
@@ -340,7 +354,7 @@ export function renderEmail(input: EmailInput): RenderedEmail {
         { p: `c'è ${k} del pacchetto del caso d'uso «${oneLine(input.caseTitle, 120)}»: la scheda è cambiata.` },
         { p: "Nel repository del caso lo porta «unbundle start». Fino ad allora il coding agent legge il pacchetto di prima." },
         { link: { href: link, label: "Leggi il pacchetto" } },
-        { small: "Email interna di Lateral Space." },
+        builderFooter(input),
       ]);
     }
     case "domanda_proposta": {
@@ -394,7 +408,7 @@ export function renderEmail(input: EmailInput): RenderedEmail {
         { p: "Buongiorno," },
         ...t.lines.map((p) => ({ p })),
         { link: { href: link, label: "Apri il progetto" } },
-        { small: "Email interna di Lateral Space." },
+        builderFooter(input),
       ]);
     }
     case "pr_da_rivedere": {
@@ -405,7 +419,7 @@ export function renderEmail(input: EmailInput): RenderedEmail {
         { p: `la pull request #${input.pr} in ${oneLine(input.repo, 140)} ${what}, nel caso d'uso «${oneLine(input.caseTitle, 120)}», è pronta da rivedere.` },
         { p: "La trovi su GitHub; la rivede qualcuno del team che non l'ha scritta. Quando si unisce, il compito è fatto da solo." },
         { link: { href: link, label: "Apri il progetto" } },
-        { small: "Email interna di Lateral Space." },
+        builderFooter(input),
       ]);
     }
     case "compito_proposto": {
@@ -415,7 +429,7 @@ export function renderEmail(input: EmailInput): RenderedEmail {
         { p: `per il caso d'uso «${oneLine(input.caseTitle, 120)}» è arrivata da GitHub una proposta di compito.` },
         { p: "Da sola non diventa un compito: nei compiti del progetto la accetti (nasce il compito, da prendere) o la scarti." },
         { link: { href: link, label: "Apri il progetto" } },
-        { small: "Email interna di Lateral Space." },
+        builderFooter(input),
       ]);
     }
     case "banco_consiglio": {
@@ -426,7 +440,7 @@ export function renderEmail(input: EmailInput): RenderedEmail {
         { p: `per il ruolo «${oneLine(input.role, 40)}» dell'agente del caso d'uso «${oneLine(input.caseTitle, 120)}», il banco di prova ${advice}` },
         { p: "Nel progetto, in «Evals e banco di prova», trovi il confronto (qualità, costo per 1.000 esecuzioni, tempi) e il comando per la pull request di una riga. Il modello lo cambia una persona del team, con la PR." },
         { link: { href: link, label: "Apri il progetto" } },
-        { small: "Email interna di Lateral Space." },
+        builderFooter(input),
       ]);
     }
     case "evals_in_calo": {
@@ -445,7 +459,7 @@ export function renderEmail(input: EmailInput): RenderedEmail {
           p: "Prima di cambiare altro, guarda quali gruppi non passano: nel progetto, in «Evals e banco di prova», ci sono i gruppi e l'andamento; prova per prova con «npm run eval» nel repository del caso.",
         },
         { link: { href: link, label: "Apri il progetto" } },
-        { small: "Email interna di Lateral Space." },
+        builderFooter(input),
       ]);
     }
     case "cli_collegata": {
@@ -460,6 +474,29 @@ export function renderEmail(input: EmailInput): RenderedEmail {
         { p: "Se non la riconosci, revocala in Impostazioni › CLI di Unbundle: lì trovi tutti i collegamenti della CLI al tuo account in questo workspace." },
         { link: { href: link, label: "Apri Impostazioni" } },
         { small: "Email automatica di Unbundle: arriva a ogni nuovo collegamento della CLI." },
+      ]);
+    }
+    case "team_aggiunto": {
+      // Nessun nome e nessun repository: chi aggiunge e i repository li dice Lateral Space, a voce o su GitHub.
+      const link = checkEmailLink(input.link, "dashboard");
+      const client = oneLine(input.clientName, 80);
+      const which = input.cases === null ? "tutti, anche quelli che si apriranno" : input.cases === 1 ? "1 caso d'uso" : `${input.cases} casi d'uso`;
+      return render(subjectOf(`Costruisci i casi d'uso di ${client} con l'Agent Factory`), [
+        { p: "Buongiorno," },
+        { p: `Da oggi costruisci con Lateral Space i casi d'uso di ${client}: ${which}. Un caso d'uso è un lavoro che un agente AI fa insieme alle persone.` },
+        { p: "Per cominciare: apri l'Agent Factory, collega Claude Code con «unbundle login» e prendi un compito." },
+        { p: "Il progetto di ogni caso lo approva il suo responsabile; l'accesso ai repository su GitHub te lo dà Lateral Space." },
+        { link: { href: link, label: "Apri l'Agent Factory" } },
+        { small: "Email automatica di Unbundle." },
+      ]);
+    }
+    case "team_tolto": {
+      const client = oneLine(input.clientName, 80);
+      return render(subjectOf(`Non costruisci più i casi d'uso di ${client}`), [
+        { p: "Buongiorno," },
+        { p: `da adesso non lavori più ai casi d'uso di ${client} dall'Agent Factory. I compiti che avevi in corso sono tornati da prendere.` },
+        { p: "L'accesso ai repository su GitHub lo toglie Lateral Space." },
+        { small: "Email automatica di Unbundle." },
       ]);
     }
     case "modifica_richiesta": {

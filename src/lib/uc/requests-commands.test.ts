@@ -54,6 +54,8 @@ interface FakeState {
   revokeTargets: Row[];
   liveApproval: string | null;
   listRequests: Row[];
+  /** (8.0c) Le email di chi costruisce il caso da fuori; senza, la 0037 non c'è (la sonda dice di no). */
+  builderEmails?: string[];
 }
 
 function contactRow(over: Row = {}): Row {
@@ -180,6 +182,12 @@ class FakeDb implements UcExecutor {
     }
     if (/^SELECT i\.id, i\.key, i\.kind, i\.section, i\.status, i\.status_reason/.test(text)) return s.items;
     if (/^SELECT DISTINCT u\.email FROM uc_case_members/.test(text)) return s.lsEmails.map((email) => ({ email }));
+    // (8.0c) La sonda della 0037 e le email di chi costruisce il caso da fuori (il contesto delle firme).
+    if (/to_regclass\('public\.use_case_external_builders'\) IS NOT NULL/.test(text)) return [{ ready: s.builderEmails !== undefined }];
+    // Con la sonda falsa, i controlli di firmatari e referenti chiedono se la tabella c'è: qui no, come prima della 0037
+    // (nessuno costruisce da fuori, e passano come prima). Se la tabella ci fosse, rifiuterebbero: non si sa chi costruisce.
+    if (/^SELECT to_regclass\(\$1::text\) IS NOT NULL AS present$/.test(text)) return [{ present: false }];
+    if (/^SELECT DISTINCT lower\(u\.email\) AS email FROM uc_cases c JOIN use_case_external_builders/.test(text)) return (s.builderEmails ?? []).map((email) => ({ email }));
     if (/^SELECT id, display_name, role_label, template_role_key, email, phone_e164, preferred_channel, is_active, anonymized_at, user_id\nFROM uc_contacts/.test(text)) {
       return /template_role_key IS NOT NULL/.test(text) ? s.contacts.filter((c) => c.template_role_key) : s.contacts;
     }
@@ -427,6 +435,15 @@ test("a referent with a Lateral Space address, or the address of an LS member, i
   }
   const member = new FakeDb(state({ lsEmails: ["consulente@altro.test"] }));
   assert.equal(((await createContact(member, ctx(), { displayName: "Persona", email: "consulente@altro.test" })) as { code: string }).code, "referente_lateral_space");
+});
+
+test("(8.0c) a referent with the address of who builds the case from outside is refused, and nothing is written", async () => {
+  const db = new FakeDb(state({ builderEmails: ["alessio@gmail.test"] }));
+  const r = await createContact(db, ctx(), { displayName: "Persona", email: "Alessio@Gmail.test" });
+  assert.equal(r.ok ? null : r.code, "referente_costruttore");
+  assert.equal(db.writes.length, 0);
+  const other = await createContact(new FakeDb(state({ builderEmails: ["alessio@gmail.test"] })), ctx(), { displayName: "Persona", email: "titolare@cliente.test" });
+  assert.ok(other.ok, other.ok ? "" : other.message);
 });
 
 test("the client Owner adds a colleague; the audit event carries no name or email", async () => {

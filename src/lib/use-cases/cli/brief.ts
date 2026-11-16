@@ -3,7 +3,9 @@
  * massimo 300 token e gli strati (`progetto`, `decisioni`, `pacchetto`, `domande`), in testo italiano pronto da
  * leggere. Lo compone il server, la CLI lo stampa così com'è (`--json` per gli script).
  *
- * - **Mai nomi né e-mail:** ogni testo passa da `redact` con i nomi che Unbundle conosce, come il pacchetto.
+ * - **Mai nomi né e-mail:** ogni testo libero (titolo, scelte, decisioni, strumenti, domande) passa da `redact` con i nomi
+ *   che Unbundle conosce, come il pacchetto. (8.0c) Gli identificativi tecnici (codice del caso, repository, cartelle,
+ *   rami) non ci passano mai: «Voltaen/prova-esterni» con una persona di nome Prova restava «Voltaen/una persona-esterni».
  * - **Solo le decisioni che valgono:** quelle sostituite da una scelta rifatta restano fuori (`currentDecisions`).
  * - **Corto:** il brief sta in 1.200 caratteri (≈ 300 token); le righe lunghe si tagliano.
  * - **`dal`:** con una data, il brief dice anche che cosa è cambiato da allora.
@@ -113,7 +115,8 @@ export function composeBrief(input: BriefInput): string {
   const hide = hider(input.namesToHide);
   const project = input.open ?? input.approved;
   const lines: string[] = [];
-  lines.push(cut(`${input.code} · ${oneLine(input.title)}`, 110));
+  // Solo il testo libero passa dai nomi da nascondere; codici, repository e cartelle restano come sono.
+  lines.push(cut(`${input.code} · ${hide(oneLine(input.title))}`, 110));
   const status = CASE_STATUS_LABEL[input.dossierStatus] ?? input.dossierStatus;
   if (project) {
     const projectText =
@@ -128,7 +131,7 @@ export function composeBrief(input: BriefInput): string {
   if (input.latestPackage) lines.push(`Pacchetto: k${input.latestPackage.version} del ${day(input.latestPackage.createdAt)} («unbundle start» lo porta nel repository).`);
   if (input.tasksLine) lines.push(cut(input.tasksLine, 200));
   if (project?.newTools.length) {
-    lines.push(cut(`Strumenti nuovi: ${project.newTools.map((t) => t.nome).join(", ")}${project.aiBoardOkAt ? ` (ok AI Board ${day(project.aiBoardOkAt)})` : " (manca l'ok dell'AI Board)"}.`, 160));
+    lines.push(cut(`Strumenti nuovi: ${project.newTools.map((t) => hide(t.nome)).join(", ")}${project.aiBoardOkAt ? ` (ok AI Board ${day(project.aiBoardOkAt)})` : " (manca l'ok dell'AI Board)"}.`, 160));
   }
   const decisions = currentDecisions(input.decisions)
     .slice()
@@ -136,7 +139,7 @@ export function composeBrief(input: BriefInput): string {
     .slice(0, BRIEF_DECISIONS);
   if (decisions.length) {
     lines.push("Decisioni recenti:");
-    for (const d of decisions) lines.push(cut(`- ${shortDay(d.decidedOn)} · ${oneLine(d.topic)} · ${oneLine(d.choice)}`, 120));
+    for (const d of decisions) lines.push(cut(`- ${shortDay(d.decidedOn)} · ${hide(oneLine(d.topic))} · ${hide(oneLine(d.choice))}`, 120));
   }
   const questions = [
     input.openNeeds === null ? null : `${input.openNeeds} ${input.openNeeds === 1 ? "aperta" : "aperte"} in «Cosa serve»`,
@@ -155,7 +158,7 @@ export function composeBrief(input: BriefInput): string {
     lines.push(`Dal ${day(since)}: ${changes.length ? changes.join(", ") : "niente di nuovo"}.`);
   }
   lines.push("Strati: --progetto, --decisioni, --pacchetto, --domande.");
-  let text = hide(lines.join("\n"));
+  let text = lines.join("\n");
   // Le righe delle decisioni sono le prime a cedere, se il brief è lungo.
   while (text.length > BRIEF_MAX_CHARS) {
     const at = text.lastIndexOf("\n- ");
@@ -182,17 +185,17 @@ export function composeProjectLayer(input: Pick<BriefInput, "code" | "open" | "a
       lines.push("Da scegliere.");
       continue;
     }
-    lines.push(oneLine(choice.scelta));
-    if (choice.perche) lines.push(`Perché: ${oneLine(choice.perche)}`);
-    if (choice.alternativa) lines.push(`Scartata: ${oneLine(choice.alternativa)}`);
+    lines.push(hide(oneLine(choice.scelta)));
+    if (choice.perche) lines.push(`Perché: ${hide(oneLine(choice.perche))}`);
+    if (choice.alternativa) lines.push(`Scartata: ${hide(oneLine(choice.alternativa))}`);
   }
   lines.push("## Strumenti nuovi e stima");
-  lines.push(project.newTools.length ? project.newTools.map((t) => `- ${t.nome}${t.perche ? `: ${t.perche}` : ""}`).join("\n") : "Nessuno strumento nuovo per il cliente.");
+  lines.push(project.newTools.length ? project.newTools.map((t) => `- ${hide(t.nome)}${t.perche ? `: ${hide(t.perche)}` : ""}`).join("\n") : "Nessuno strumento nuovo per il cliente.");
   lines.push(
     `Costruzione: ${project.estimateHours === null ? "non stimata" : `circa ${project.estimateHours} ore`}. Esercizio: ${project.monthlyCostEur === null ? "non stimato" : `circa ${project.monthlyCostEur} € al mese`}.`,
   );
-  if (project.changeRequest) lines.push(`L'AI Board chiede una modifica: ${oneLine(project.changeRequest)}`);
-  return hide(lines.join("\n"));
+  if (project.changeRequest) lines.push(`L'AI Board chiede una modifica: ${hide(oneLine(project.changeRequest))}`);
+  return lines.join("\n");
 }
 
 /** Lo strato «decisioni»: tutte quelle che valgono, dalla più recente. */
@@ -202,9 +205,9 @@ export function composeDecisionsLayer(input: Pick<BriefInput, "code" | "decision
   if (!current.length) return `${input.code}: nessuna decisione ancora.`;
   const lines = [`${input.code} · decisioni che valgono (${current.length})`];
   for (const d of current) {
-    lines.push(`- ${day(d.decidedOn)} · ${oneLine(d.topic)} · ${oneLine(d.choice)}${d.reason ? ` (perché: ${oneLine(d.reason)})` : ""}`);
+    lines.push(`- ${day(d.decidedOn)} · ${hide(oneLine(d.topic))} · ${hide(oneLine(d.choice))}${d.reason ? ` (perché: ${hide(oneLine(d.reason))})` : ""}`);
   }
-  return hide(lines.join("\n"));
+  return lines.join("\n");
 }
 
 /** La guida di un argomento dell'impostazione: la domanda da fare al team, in una frase. */
@@ -235,19 +238,19 @@ export function composeQuestionsLayer(input: {
   else if (!input.openNeeds.length) lines.push("«Cosa serve»: nessuna esigenza aperta.");
   else {
     lines.push(`«Cosa serve», aperte (${input.openNeeds.length}):`);
-    for (const n of input.openNeeds) lines.push(`- ${oneLine(n.title)} (${n.status})`);
+    for (const n of input.openNeeds) lines.push(`- ${hide(oneLine(n.title))} (${n.status})`);
   }
   if (input.proposals === null) {
     lines.push("Proposte dei coding agent: le vede chi valuta lo use case.");
-    return hide(lines.join("\n"));
+    return lines.join("\n");
   }
   if (!input.proposals.length) lines.push("Proposte dei coding agent: nessuna da decidere.");
   else {
     lines.push(`Proposte dei coding agent da decidere (${input.proposals.length}):`);
-    for (const p of input.proposals) lines.push(`- ${day(p.createdAt)} · ${oneLine(p.question)}${p.reason ? ` (perché: ${oneLine(p.reason)})` : ""}`);
+    for (const p of input.proposals) lines.push(`- ${day(p.createdAt)} · ${hide(oneLine(p.question))}${p.reason ? ` (perché: ${hide(oneLine(p.reason))})` : ""}`);
   }
   lines.push(`Per proporne un'altra: «unbundle ask ${input.code} "…"». Non parte da sola: la decide una persona.`);
-  return hide(lines.join("\n"));
+  return lines.join("\n");
 }
 
 /** Lo strato «pacchetto»: le versioni, dalla più recente; i file li porta «unbundle start». */

@@ -15,14 +15,16 @@ import { checkLsText } from "@/lib/db/queries/uc-cases";
 import type { FactoryTarget } from "@/lib/db/queries/use-case-factory";
 import { cast, jsonb, raw, toStatement, ucSql, type UcStatement } from "@/lib/uc/sql/statement";
 import { fail, ok, type Result } from "@/lib/uc/types";
-import type { CaseRole } from "@/lib/uc/vocab";
+import type { FactoryRole } from "@/lib/use-cases/factory/builders";
 import { overlappingTasks, planTaskImport, type TaskDraft, type TaskImportPlan, type TaskRow } from "@/lib/use-cases/factory/tasks";
-import { BUILDER_ROLES, hasOpenTasksSql, NOBODY, notifyTask } from "@/lib/db/queries/use-case-tasks-notices";
+import { tasksLockOfUseCaseSql } from "@/lib/use-cases/factory/pull-request-sql";
+import { hasOpenTasksSql, NOBODY, notifyTask } from "@/lib/db/queries/use-case-tasks-notices";
+import { externalBuilderSql, loadBuilderScope, lsStoredBuilderSql } from "@/lib/db/queries/use-case-builders";
 import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { isEmailVerifiedValue, isLateralSpaceEmail } from "@/lib/uc/lateral-space";
 
-/** Un compito alla volta per use case: l'import, `compito nuovo` (stesso lock, stessa chiave). */
-export const tasksLock = (target: FactoryTarget) => toStatement(ucSql`SELECT pg_advisory_xact_lock(hashtext('unbundle:use-case-tasks:' || ${cast(target.useCaseId, "text")}))`);
+/** Un compito alla volta per use case: l'import, `compito nuovo` (stesso lock, stessa chiave: `tasksLockOfUseCaseSql`). */
+export const tasksLock = (target: FactoryTarget) => tasksLockOfUseCaseSql(target.useCaseId);
 
 /** Vero se la 0032 è applicata (la stessa sonda di `ensureDbSchema`). */
 export async function tasksStoreReady(executor: UcExecutor): Promise<boolean> {
@@ -130,7 +132,8 @@ WHERE id = ${cast(op.id, "uuid")} AND workspace_id = ${ws} AND use_case_id = ${u
   // Compiti nuovi da prendere su un progetto già approvato: lo sa chi costruisce (mai chi importa).
   if (plan.ops.some((o) => o.kind === "nuovo" && o.status === "da_fare")) {
     const approved = ucSql`EXISTS (SELECT 1 FROM use_case_projects p WHERE p.workspace_id = ${ws} AND p.use_case_id = ${uc} AND p.status = 'approvato')`;
-    statements.push(...notify(target, "compiti_pronti", { roles: BUILDER_ROLES }, input.actorId ?? NOBODY, now, null, ucSql`${approved} AND ${hasOpenTasksSql(target)}`));
+    const builders = await loadBuilderScope(executor, ucLsDomains());
+    statements.push(...notify(target, "compiti_pronti", { builders }, input.actorId ?? NOBODY, now, null, ucSql`${approved} AND ${hasOpenTasksSql(target)}`));
   }
   await executor.batch(statements);
   return ok({ ...plan, dryRun: false });
@@ -138,10 +141,10 @@ WHERE id = ${cast(op.id, "uuid")} AND workspace_id = ${ws} AND use_case_id = ${u
 
 // ─── Le azioni sui compiti ───────────────────────────────────────────
 
-/** Chi agisce: la persona e i suoi ruoli nel caso (chi può scrivere lo controlla chi chiama). */
+/** Chi agisce: la persona e i suoi ruoli della fabbrica nel caso (chi può scrivere lo controlla chi chiama). */
 export interface TaskActor {
   userId: string;
-  roles: readonly CaseRole[];
+  roles: readonly FactoryRole[];
 }
 
 const isLead = (a: TaskActor) => a.roles.includes("ls_lead");
@@ -235,9 +238,9 @@ RETURNING task_id`),
 }
 
 /**
- * `passa`: il compito a una persona del team che costruisce (di Lateral Space, con l'e-mail verificata), con la nota.
- * Lo passa chi lo ha, o il responsabile. La notifica parte solo se il passaggio è avvenuto. (8.1b) Anche «in
- * revisione»: lo stato resta, cambia chi lo ha.
+ * `passa`: il compito a una persona che costruisce il caso adesso, con la nota: di Lateral Space con l'e-mail verificata
+ * e un ruolo che costruisce, oppure (8.0c) da fuori, con il predicato unico. Lo passa chi lo ha, o il responsabile. La
+ * notifica parte solo se il passaggio è avvenuto. (8.1b) Anche «in revisione»: lo stato resta, cambia chi lo ha.
  */
 export async function passTask(
   executor: UcExecutor,
@@ -254,14 +257,17 @@ export async function passTask(
   if (!task) return notFound(input.ref);
   if (task.status !== "in_corso" && task.status !== "in_revisione") return fail("conflitto", `${task.ref} non è in corso né in revisione: si passa solo un compito che qualcuno ha. Per uno da fare: «unbundle take».`);
   if (task.holderUserId !== actor.userId && !isLead(actor)) return fail("permesso_negato", `${task.ref} è di ${who(task)}: lo passa chi lo ha, o il responsabile del caso.`);
+  const lsDomains = ucLsDomains();
+  const builders = await loadBuilderScope(executor, lsDomains);
   const [people] = await executor.batch([
-    toStatement(ucSql`SELECT DISTINCT u.id, u.email, u.email_verified
-FROM uc_cases c JOIN uc_case_members m ON m.case_id = c.id JOIN users u ON u.id = m.user_id
-WHERE c.workspace_id = ${cast(target.workspaceId, "uuid")} AND c.portfolio_use_case_id = ${cast(target.useCaseId, "uuid")}
-  AND m.role = ANY (${cast([...BUILDER_ROLES], "text[]")}) AND lower(u.email) = ${cast(email, "text")}`),
+    toStatement(ucSql`SELECT u.id, u.email, u.email_verified, ${lsStoredBuilderSql(raw("u.id"))} AS ls_builder, ${externalBuilderSql(builders)} AS external_builder
+FROM uc_cases c JOIN users u ON lower(u.email) = ${cast(email, "text")}
+WHERE c.workspace_id = ${cast(target.workspaceId, "uuid")} AND c.portfolio_use_case_id = ${cast(target.useCaseId, "uuid")}`),
   ]);
-  const to = people.find((p) => isLateralSpaceEmail({ email: String(p.email), emailVerified: isEmailVerifiedValue(p.email_verified) }, ucLsDomains()));
-  if (!to) return fail("non_trovato", "Questa persona non è nel team del caso con un ruolo che costruisce, o non è di Lateral Space: la aggiunge il responsabile, nel dossier.");
+  const to = people.find(
+    (p) => (p.ls_builder === true && isLateralSpaceEmail({ email: String(p.email), emailVerified: isEmailVerifiedValue(p.email_verified) }, lsDomains)) || p.external_builder === true,
+  );
+  if (!to) return fail("non_trovato", "Questa persona non costruisce questo caso: la aggiunge Lateral Space.");
   const toId = String(to.id);
   if (toId === task.holderUserId) return fail("conflitto", `${task.ref} ce l'ha già questa persona.`);
   // Nella stessa transazione: il compito è passato adesso (`now()` è l'ora della transazione).

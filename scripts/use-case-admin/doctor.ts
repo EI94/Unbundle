@@ -20,6 +20,7 @@
  * (0034) `migrazione0034`: la sonda della 0034 («Proposte di compito»), come la 0033.
  * (0035) `migrazione0035`: la sonda della 0035 («Il team di Lateral Space per cliente»), come la 0034.
  * (0036) `migrazione0036`: la sonda della 0036 («Banco di prova ed evals»), come la 0035.
+ * (0037) `migrazione0037`: la sonda della 0037 («Esterni al 100%»: chi costruisce da fuori Lateral Space), come la 0036.
  */
 import { parseLsDomains } from "../../src/lib/uc/lateral-space.ts";
 import { done, scopeQuery, stopped, type AdminCommand } from "../../src/lib/use-cases/admin/cli.ts";
@@ -40,6 +41,7 @@ import { GITHUB_PROBE_SQL } from "../../src/lib/db/use-case-hub-github-ddl.ts";
 import { PROPOSALS_PROBE_SQL } from "../../src/lib/db/use-case-hub-proposals-ddl.ts";
 import { WORKSPACE_TEAM_PROBE_SQL } from "../../src/lib/db/use-case-hub-team-ddl.ts";
 import { EVALS_PROBE_SQL } from "../../src/lib/db/use-case-hub-evals-ddl.ts";
+import { EXTERNAL_BUILDERS_PROBE_SQL } from "../../src/lib/db/use-case-hub-builders-ddl.ts";
 import { cast, toStatement, ucSql } from "../../src/lib/uc/sql/statement.ts";
 import { declarerRecipientsSql } from "../../src/lib/use-cases/case-alerts/sql.ts";
 import { clientNoticesEnabled } from "../../src/lib/use-cases/client-notices.ts";
@@ -130,6 +132,7 @@ export const command: AdminCommand = {
     const m0034 = (await ctx.db.read(`SELECT ${PROPOSALS_PROBE_SQL} AS ok`))[0]?.ok === true;
     const m0035 = (await ctx.db.read(`SELECT ${WORKSPACE_TEAM_PROBE_SQL} AS ok`))[0]?.ok === true;
     const m0036 = (await ctx.db.read(`SELECT ${EVALS_PROBE_SQL} AS ok`))[0]?.ok === true;
+    const m0037 = (await ctx.db.read(`SELECT ${EXTERNAL_BUILDERS_PROBE_SQL} AS ok`))[0]?.ok === true;
     const lsDomains = parseLsDomains(ctx.lsEmailDomains);
     const declarers = new Map<string, boolean>();
     for (const ws of perWorkspace) {
@@ -178,6 +181,7 @@ export const command: AdminCommand = {
       migrazione0034: m0034,
       migrazione0035: m0035,
       migrazione0036: m0036,
+      migrazione0037: m0037,
     };
     return result.green ? done(output) : stopped(output);
   },

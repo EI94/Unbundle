@@ -1595,6 +1595,24 @@ export const useCaseWorkspaceTeam = pgTable(
   (t) => [primaryKey({ name: "use_case_workspace_team_pkey", columns: [t.id] })]
 );
 
+/**
+ * (0037, rilascio 8.0c) Le concessioni di «Chi costruisce» a chi viene da fuori Lateral Space: un caso (lo use case) o
+ * tutti i casi del workspace (`useCaseId` null). Gli indici unici parziali stanno solo nella migrazione e in
+ * use-case-hub-builders-ddl.ts. La legge e la scrive solo src/lib/db/queries/use-case-builders.ts (un predicato solo).
+ */
+export const useCaseExternalBuilders = pgTable(
+  "use_case_external_builders",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    useCaseId: uuid("use_case_id").references(() => useCases.id, { onDelete: "cascade" }),
+    addedByUserId: uuid("added_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: tz("created_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "use_case_external_builders_pkey", columns: [t.id] })]
+);
+
 /** (0034, rilascio 8.1b) Le proposte di compito. Nessuna colonna su chi propone o decide (art. 15.4). */
 export const useCaseTaskProposals = pgTable(
   "use_case_task_proposals",

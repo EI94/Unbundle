@@ -90,6 +90,10 @@ export const EMAIL_TEMPLATES = [
   // link al progetto dell'agente.
   "banco_consiglio",
   "evals_in_calo",
+  // (8.0c) Chi entra tra chi costruisce i casi di un cliente da fuori Lateral Space, e chi ne esce: senza caso, solo con
+  // l'ok ai sub-responsabili del cliente.
+  "team_aggiunto",
+  "team_tolto",
 ] as const;
 export type EmailTemplateKey = (typeof EMAIL_TEMPLATES)[number];
 
@@ -124,6 +128,37 @@ export const NOTICE_MODEL_NAMES: ReadonlySet<string> = new Set([
 
 export const HOLD_EMAIL_NOT_CONFIGURED = "email_non_configurata";
 export const HOLD_CASE_SUSPENDED = "caso_sospeso";
+
+/**
+ * (8.0c) Le e-mail di chi costruisce: a Lateral Space come prima; a chi costruisce da fuori solo se costruisce quel caso
+ * adesso (il predicato) e il workspace ha l'ok ai sub-responsabili della versione di oggi (Resend è uno di loro). Le
+ * e-mail del responsabile, dell'AI Board e il riepilogo settimanale restano a Lateral Space.
+ */
+export const BUILDER_EMAIL_TEMPLATES = [
+  "pacchetto_aggiornato",
+  "compito_chiesto",
+  "compito_passato",
+  "compito_fermo",
+  "compiti_pronti",
+  "pr_da_rivedere",
+  "compito_proposto",
+  "banco_consiglio",
+  "evals_in_calo",
+] as const satisfies readonly EmailTemplateKey[];
+
+/** (8.0c) Il motivo di un'e-mail a chi costruisce da fuori senza l'ok ai sub-responsabili del cliente: resta la campanella. */
+export const SUBPROCESSORS_MISSING = "sub_responsabili_mancanti";
+
+/**
+ * (8.0c) Il motivo di un'e-mail a chi costruisce da fuori che aspetta perché non si riesce a sapere chi costruisce (la
+ * tabella delle concessioni non c'è ancora, o la sua sonda non risponde): resta in coda e si riprova al prossimo giro.
+ * Lo stesso per il link di approvazione del firmatario del cliente, quando non si legge chi costruisce il caso. Una
+ * lettura mancata non annulla mai un'e-mail.
+ */
+export const HOLD_BUILDERS_UNREAD = "concessioni_non_lette";
+
+/** (8.0c) «Costruisci i casi d'uso di…» aspetta l'ok ai sub-responsabili al massimo 14 giorni, poi si annulla. */
+export const TEAM_ADDED_WAIT_DAYS = 14;
 
 /** Calendario lavorativo unico (`calendar.ts`) per i solleciti e la finestra d'invio. */
 export const ROME_WORKING_CALENDAR: WorkingCalendar = { isWorkingDay: (date) => isWorkingDay(date) };
@@ -355,6 +390,13 @@ export interface DeliveryFacts {
   weekly?: { cases: readonly (WeeklyCaseSummary & { caseId: string })[] };
   /** CLI collegata: il token del login, della persona destinataria (anche se poi revocato). */
   cliToken?: { createdAt: Date; expiresAt: Date | null } | null;
+  /**
+   * (8.0c) Per chi non è di Lateral Space, sulle e-mail di chi costruisce e del team: costruisce il caso adesso (il
+   * predicato unico), il workspace ha l'ok ai sub-responsabili della versione di oggi, ha ancora una concessione nel
+   * workspace. `ready` dice se le concessioni si sono lette davvero (la 0037 pronta): se no, `buildsCase` e `grant` non
+   * dicono niente e l'e-mail aspetta ({@link HOLD_BUILDERS_UNREAD}).
+   */
+  builder?: { ready: boolean; buildsCase: boolean; workspaceAck: boolean; grant: boolean };
 }
 
 export type AfterSent = { kind: "promemoria"; reminder: 1 | 2; nextReminderAt: Date | null } | { kind: "segnalazione" } | null;
@@ -418,6 +460,7 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
 
   if (tpl === "riepilogo_settimanale") return planWeekly(n, f, recipient, to, o);
   if (tpl === "cli_collegata") return planCliConnected(n, f, recipient, to, o);
+  if (tpl === "team_aggiunto" || tpl === "team_tolto") return planTeamChange(tpl, n, f, recipient, to, o);
 
   const c = f.case;
   if (!c) return cancel("caso_assente");
@@ -513,6 +556,8 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
       if (r.contactId !== recipient.id) return cancel("destinatario_cambiato");
       const designation = n.payload.designation === "privacy" ? "privacy" : n.payload.designation === "owner" ? "owner" : null;
       if (!designation || c.designated[designation] !== recipient.id) return cancel("firmatario_cambiato");
+      // (8.0c) Non si riesce a leggere chi costruisce il caso: il link non parte e non si annulla, si riprova al giro dopo.
+      if (f.approvals && !f.approvals.signer.ok && f.approvals.signer.code === "non_disponibile") return hold(HOLD_BUILDERS_UNREAD);
       if (!f.approvals || !f.approvals.signer.ok) return cancel("firmatario_non_ammesso");
       const pending = f.approvals.pending;
       if (pending <= 0) return cancel("nessuna_firma_in_attesa");
@@ -528,25 +573,29 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
     case "strumento_da_approvare":
     case "pacchetto_aggiornato":
     case "modifica_richiesta": {
-      // Email interne: mai al cliente (la 8.0c le apre all'AI Board con l'ok ai sub-responsabili).
-      if (recipient.kind !== "user" || !recipient.lateralSpace) return cancel("destinatario_non_lateral_space");
+      // Email interne: mai al cliente. (8.0c) «Il pacchetto è cambiato» anche a chi costruisce il caso da fuori, con
+      // l'ok ai sub-responsabili; le altre restano del responsabile e dell'AI Board.
+      const refused = tpl === "pacchetto_aggiornato" ? builderRecipient(recipient, f) : recipient.kind !== "user" || !recipient.lateralSpace ? cancel("destinatario_non_lateral_space") : null;
+      if (refused) return refused;
       const version = typeof n.payload.version === "number" && n.payload.version > 0 ? n.payload.version : null;
       const tools = typeof n.payload.count === "number" && n.payload.count > 0 ? n.payload.count : 0;
       const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/casi-duso/${c.id.toLowerCase()}/progetto`;
-      return { action: "send", to, link: null, build: () => ({ ...base, template: tpl, version, tools, link }), after: null };
+      return { action: "send", to, link: null, build: () => ({ ...base, template: tpl, version, tools, link, external: externalBuilder(recipient) }), after: null };
     }
     case "compito_proposto": {
       // Email interna: una al giorno per caso, senza il testo della proposta (lo legge chi decide, nel progetto).
-      if (recipient.kind !== "user" || !recipient.lateralSpace) return cancel("destinatario_non_lateral_space");
+      const refused = builderRecipient(recipient, f);
+      if (refused) return refused;
       const useCase = typeof n.payload.useCase === "string" && /^[0-9a-f-]{36}$/i.test(n.payload.useCase) ? n.payload.useCase.toLowerCase() : null;
       if (!useCase) return cancel("use_case_assente");
       const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/use-cases/${useCase}/progetto`;
-      return { action: "send", to, link: null, build: () => ({ ...base, template: "compito_proposto", link }), after: null };
+      return { action: "send", to, link: null, build: () => ({ ...base, template: "compito_proposto", link, external: externalBuilder(recipient) }), after: null };
     }
     case "banco_consiglio": {
       // Email interna: una al giorno per caso. Il ruolo e il modello consigliato vengono dalla coda, controllati con le
       // regole del banco; mai una persona, mai i numeri del cliente. Il modello si scrive solo con il nome del catalogo.
-      if (recipient.kind !== "user" || !recipient.lateralSpace) return cancel("destinatario_non_lateral_space");
+      const refused = builderRecipient(recipient, f);
+      if (refused) return refused;
       const useCase = typeof n.payload.useCase === "string" && /^[0-9a-f-]{36}$/i.test(n.payload.useCase) ? n.payload.useCase.toLowerCase() : null;
       if (!useCase) return cancel("use_case_assente");
       const role = typeof n.payload.role === "string" && NOTICE_ROLE_RE.test(n.payload.role) ? n.payload.role : null;
@@ -555,12 +604,13 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
       // Il nome del catalogo; altrimenti l'e-mail dice «un altro modello» e rimanda al confronto nel progetto. Mai l'id.
       const name = typeof n.payload.label === "string" && NOTICE_MODEL_NAMES.has(n.payload.label) ? n.payload.label : null;
       const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/use-cases/${useCase}/progetto`;
-      return { action: "send", to, link: null, build: () => ({ ...base, template: "banco_consiglio", role, model: name, link }), after: null };
+      return { action: "send", to, link: null, build: () => ({ ...base, template: "banco_consiglio", role, model: name, link, external: externalBuilder(recipient) }), after: null };
     }
     case "evals_in_calo": {
       // Email interna: una al giorno per caso. Sotto soglia, o giù rispetto alle precedenti (con il calo): dalla coda,
       // controllati.
-      if (recipient.kind !== "user" || !recipient.lateralSpace) return cancel("destinatario_non_lateral_space");
+      const refused = builderRecipient(recipient, f);
+      if (refused) return refused;
       const useCase = typeof n.payload.useCase === "string" && /^[0-9a-f-]{36}$/i.test(n.payload.useCase) ? n.payload.useCase.toLowerCase() : null;
       if (!useCase) return cancel("use_case_assente");
       const alert = n.payload.alert === "sotto_soglia" || n.payload.alert === "in_calo" ? n.payload.alert : null;
@@ -568,26 +618,28 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
       const drop = typeof n.payload.drop === "number" && Number.isFinite(n.payload.drop) && n.payload.drop > 0 && n.payload.drop <= 1 ? n.payload.drop : null;
       if (!alert || quality === null || (alert === "in_calo" && drop === null)) return cancel("avviso_assente");
       const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/use-cases/${useCase}/progetto`;
-      return { action: "send", to, link: null, build: () => ({ ...base, template: "evals_in_calo", alert, quality, drop: alert === "in_calo" ? drop : null, link }), after: null };
+      return { action: "send", to, link: null, build: () => ({ ...base, template: "evals_in_calo", alert, quality, drop: alert === "in_calo" ? drop : null, link, external: externalBuilder(recipient) }), after: null };
     }
     case "compito_chiesto":
     case "compito_passato":
     case "compito_fermo":
     case "compiti_pronti": {
       // Email interne, come quelle dell'Agent Factory: mai a un contatto né a un utente del cliente (dalla 8.0c sì,
-      // all'IT del cliente nel team). Il compito (T-n) viene dalla coda, controllato.
-      if (recipient.kind !== "user" || !recipient.lateralSpace) return cancel("destinatario_non_lateral_space");
+      // a chi costruisce il caso da fuori, con l'ok ai sub-responsabili). Il compito (T-n) viene dalla coda, controllato.
+      const refused = builderRecipient(recipient, f);
+      if (refused) return refused;
       const useCase = typeof n.payload.useCase === "string" && /^[0-9a-f-]{36}$/i.test(n.payload.useCase) ? n.payload.useCase.toLowerCase() : null;
       if (!useCase) return cancel("use_case_assente");
       const ref = typeof n.payload.ref === "string" && /^T-[1-9][0-9]{0,3}$/.test(n.payload.ref) ? n.payload.ref : null;
       if (tpl !== "compiti_pronti" && !ref) return cancel("compito_assente");
       const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/use-cases/${useCase}/progetto`;
       const responsabile = tpl === "compito_fermo" && n.payload.responsabile === true;
-      return { action: "send", to, link: null, build: () => ({ ...base, template: tpl, ref, link, responsabile }), after: null };
+      return { action: "send", to, link: null, build: () => ({ ...base, template: tpl, ref, link, responsabile, external: externalBuilder(recipient) }), after: null };
     }
     case "pr_da_rivedere": {
       // Email interna, come quelle dei compiti. Repository e numero vengono dalla coda, controllati.
-      if (recipient.kind !== "user" || !recipient.lateralSpace) return cancel("destinatario_non_lateral_space");
+      const refused = builderRecipient(recipient, f);
+      if (refused) return refused;
       const useCase = typeof n.payload.useCase === "string" && /^[0-9a-f-]{36}$/i.test(n.payload.useCase) ? n.payload.useCase.toLowerCase() : null;
       if (!useCase) return cancel("use_case_assente");
       const repo = typeof n.payload.repo === "string" && /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/.test(n.payload.repo) ? n.payload.repo : null;
@@ -595,7 +647,7 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
       if (!repo || !pr) return cancel("pr_assente");
       const ref = typeof n.payload.ref === "string" && /^T-[1-9][0-9]{0,3}$/.test(n.payload.ref) ? n.payload.ref : null;
       const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/use-cases/${useCase}/progetto`;
-      return { action: "send", to, link: null, build: () => ({ ...base, template: "pr_da_rivedere", ref, repo, pr, link }), after: null };
+      return { action: "send", to, link: null, build: () => ({ ...base, template: "pr_da_rivedere", ref, repo, pr, link, external: externalBuilder(recipient) }), after: null };
     }
     case "domanda_proposta": {
       // Email interna: una domanda proposta da un coding agent, al responsabile del caso, che la decide in «Cosa serve».
@@ -628,6 +680,61 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
     }
   }
   return cancel("modello_non_previsto");
+}
+
+/**
+ * (8.0c) Chi riceve un'e-mail di chi costruisce: Lateral Space come prima; da fuori solo chi costruisce il caso adesso,
+ * con l'ok ai sub-responsabili del cliente (altrimenti si annulla e resta la campanella). Se non si è riusciti a leggere
+ * chi costruisce, l'e-mail aspetta il prossimo giro. null: si manda.
+ */
+function builderRecipient(recipient: NonNullable<DeliveryFacts["recipient"]>, f: DeliveryFacts): DeliveryPlan | null {
+  if (recipient.kind !== "user") return cancel("destinatario_non_lateral_space");
+  if (recipient.lateralSpace) return null;
+  if (f.builder && !f.builder.ready) return hold(HOLD_BUILDERS_UNREAD);
+  if (!f.builder?.buildsCase) return cancel("destinatario_non_lateral_space");
+  if (!f.builder.workspaceAck) return cancel(SUBPROCESSORS_MISSING);
+  return null;
+}
+
+/** (8.0c) Un'e-mail di chi costruisce che va a chi costruisce il caso da fuori Lateral Space: il piede non dice «interna». */
+function externalBuilder(recipient: NonNullable<DeliveryFacts["recipient"]>): boolean {
+  return recipient.kind === "user" && !recipient.lateralSpace;
+}
+
+/**
+ * (8.0c) «Costruisci i casi d'uso di…» e «Non costruisci più…»: alla persona stessa, che non è di Lateral Space, senza
+ * caso. Solo con l'ok ai sub-responsabili del cliente: «aggiunto» lo aspetta al massimo {@link TEAM_ADDED_WAIT_DAYS}
+ * giorni e parte solo se la concessione c'è ancora; «tolto» parte solo se la persona non costruisce più. Con le
+ * concessioni non lette tutte e due aspettano ({@link HOLD_BUILDERS_UNREAD}).
+ */
+function planTeamChange(
+  tpl: "team_aggiunto" | "team_tolto",
+  n: ClaimedNotification,
+  f: DeliveryFacts,
+  recipient: NonNullable<DeliveryFacts["recipient"]>,
+  to: string,
+  o: { origin: string; now: Date },
+): DeliveryPlan {
+  if (recipient.kind !== "user") return cancel("destinatario_non_utente");
+  if (recipient.lateralSpace) return cancel("destinatario_lateral_space");
+  const b = f.builder;
+  // Non si è riusciti a leggere le concessioni: né «concessione tolta» né «non costruisci più», si riprova dopo.
+  if (b && !b.ready) return hold(HOLD_BUILDERS_UNREAD);
+  if (tpl === "team_tolto") {
+    if (b?.grant) return cancel("concessione_ancora_presente");
+    if (!b?.workspaceAck) return cancel(SUBPROCESSORS_MISSING);
+    return { action: "send", to, link: null, build: () => ({ template: "team_tolto", clientName: f.clientName }), after: null };
+  }
+  if (!b?.grant) return cancel("concessione_tolta");
+  if (!b.workspaceAck) {
+    const queued = typeof n.payload.queuedAt === "string" ? new Date(n.payload.queuedAt) : null;
+    const waited = queued && !Number.isNaN(queued.getTime()) ? (o.now.getTime() - queued.getTime()) / 86_400_000 : Number.POSITIVE_INFINITY;
+    return waited < TEAM_ADDED_WAIT_DAYS ? hold(SUBPROCESSORS_MISSING) : cancel(SUBPROCESSORS_MISSING);
+  }
+  const cases = n.payload.tutti === true ? null : typeof n.payload.casi === "number" && Number.isInteger(n.payload.casi) && n.payload.casi > 0 ? n.payload.casi : null;
+  if (n.payload.tutti !== true && cases === null) return cancel("concessione_assente");
+  const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/agent-factory`;
+  return { action: "send", to, link: null, build: () => ({ template: "team_aggiunto", clientName: f.clientName, cases, link }), after: null };
 }
 
 function planWeekly(
