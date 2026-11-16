@@ -47,7 +47,7 @@ export default async function DashboardPage({
         ) : null}
         {sp.granola === "scaduto" ? (
           // Il ritorno da Granola con uno stato scaduto, senza un workspace da cui ripartire (rilascio 9a).
-          <div className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          <div role="status" className="mb-6 rounded-lg border px-4 py-3 text-sm text-muted-foreground">
             {CONTEXT_TEXT.granola.stateExpiredSomewhere}
           </div>
         ) : null}
