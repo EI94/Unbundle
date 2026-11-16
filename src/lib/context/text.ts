@@ -176,6 +176,7 @@ export const CONTEXT_TEXT = Object.freeze({
     groupCommitments: "Impegni",
     groupQuestions: "Domande",
     reconfirmed: (n: number) => (n === 1 ? "1 fatto riconfermato: si aggiorna la data" : `${n} fatti riconfermati: si aggiorna la data`),
+    reconfirmedToChoose: (n: number) => (n === 1 ? "1 fatto riconfermato da scegliere: spuntalo se è giusto" : `${n} fatti riconfermati da scegliere: spunta quelli giusti`),
     button: (n: number) => `Conferma (${n})`,
     before: (text: string, source: string, date: string) => `Prima: ${text} (${source}, ${date})`,
     now: (text: string, source: string) => `Ora: ${text} (${source})`,

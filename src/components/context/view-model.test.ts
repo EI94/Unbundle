@@ -35,6 +35,7 @@ import {
   proposedTitle,
   readOutcomeMessage,
   reconfirmable,
+  reconfirmationsToChoose,
   responseMessage,
   rowErrors,
   sectionLabel,
@@ -157,6 +158,22 @@ test("«Conferma (n)»: le righe spuntate, i conflitti con una scelta, le riconf
   assert.equal(confirmCount(data, { ...chosen, reconfirm: false }), 3);
   // Niente spuntato, nessuna scelta, riconferme tolte: zero (il pulsante è spento).
   assert.equal(confirmCount(data, { checked: {}, resolutions: {}, reconfirm: false }), 0);
+});
+
+test("riconferme: solo le «detto» partono spuntate, nella riga; le «dedotto» si scelgono una per una, come nell'MCP", () => {
+  const said = proposal({ kind: "conferma" });
+  const inferred = proposal({ kind: "conferma", basis: "dedotto", preselected: false });
+  const fromClient = proposal({ kind: "conferma", preselected: false });
+  const data = open([], [said, inferred, fromClient]);
+  assert.deepEqual(reconfirmable(data).map((p) => p.id), [said.id]);
+  assert.deepEqual(reconfirmationsToChoose(data).map((p) => p.id), [inferred.id, fromClient.id]);
+  const start = initialSelection(data);
+  assert.deepEqual([start.reconfirm, start.checked[inferred.id], start.checked[fromClient.id]], [true, false, false]);
+  assert.deepEqual(selectedItems(data, start), [{ id: said.id, version: 1 }]);
+  // Spuntata a mano, la «dedotto» entra; la riga tolta, le «detto» no.
+  const picked = selectionFrom(data, { overrides: { [inferred.id]: true }, resolutions: {}, reconfirm: false });
+  assert.deepEqual(selectedItems(data, picked), [{ id: inferred.id, version: 1 }]);
+  assert.equal(confirmCount(data, selectionFrom(data, { overrides: { [inferred.id]: true }, resolutions: {}, reconfirm: true })), 2);
 });
 
 test("le scelte a mano restano sopra le proposte del server: una correzione o un aggiornamento non le cancellano", () => {

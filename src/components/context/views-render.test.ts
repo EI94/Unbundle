@@ -249,6 +249,24 @@ test("«Da confermare»: i gruppi nell'ordine, «dedotto» e conflitti senza spu
   assert.match(html, /<q>il gestionale è SAP<\/q>/, "la citazione tra virgolette");
 });
 
+test("«Da confermare»: le riconferme «detto» stanno nella riga spuntata; una «dedotto» ha la sua casella, senza spunta", () => {
+  const open: OpenProposals = {
+    sources: [{ id: "s1", kind: "appunti", origin: "web", title: "Call di avvio", occurredOn: "2026-11-14", skipped: {} }],
+    proposals: [],
+    reconfirmed: [
+      proposal({ kind: "conferma", before: { factId: "f7", statement: "Hanno due stabilimenti.", sourceLabel: "Call", date: "1 nov" } }),
+      proposal({ kind: "conferma", basis: "dedotto", preselected: false, before: { factId: "f6", statement: "Il magazzino è piccolo.", sourceLabel: "Call", date: "2 nov" } }),
+    ],
+  };
+  const html = render(createElement(ConfirmView, confirmProps(open)));
+  const text = textOf(html);
+  assert.ok(text.includes("1 fatto riconfermato: si aggiorna la data"), text.join(" | "));
+  assert.ok(text.includes("1 fatto riconfermato da scegliere: spuntalo se è giusto") && text.includes("Il magazzino è piccolo."));
+  assert.ok(text.includes("Conferma (1)"), "parte solo la riconferma «detto»");
+  const checkboxes = [...html.matchAll(/<(?:button|span)[^>]*role="checkbox"[^>]*>/g)].map((m) => m[0]);
+  assert.deepEqual(checkboxes.map((tag) => /aria-checked="true"/.test(tag)), [false, true], "la «dedotto» senza spunta, la riga delle «detto» spuntata");
+});
+
 test("«Da confermare»: un conflitto che viene da un documento dice «Documento 14 nov», non «Call»", () => {
   const open: OpenProposals = {
     sources: [{ id: "s1", kind: "documento", origin: "web", title: "Organigramma", occurredOn: "2026-11-14", skipped: {} }],

@@ -4,7 +4,8 @@
  * `view-model.test.ts` con `node --test`.
  *
  * - «Da confermare» (§7.4): i gruppi nell'ordine fisso; «dedotto» e conflitti mai spuntati da soli; una proposta da
- *   correggere non si spunta; un conflitto senza scelta non entra nel conto; le riconferme in una riga sola.
+ *   correggere non si spunta; un conflitto senza scelta non entra nel conto; le riconferme preselezionate («detto»)
+ *   in una riga sola, spuntata; le altre («dedotto», o da un documento del cliente) una per una, senza spunta.
  * - La Memoria (§7.2): le sezioni vuote non si vedono; le scadenze degli impegni.
  * - Gli appunti e i documenti (§7.5): da dove vengono, a che punto è la lettura, chi li vede.
  * - «Aggiungi appunti» (§7.3): il titolo proposto, i file che si leggono nel browser e quelli che si caricano.
@@ -93,20 +94,26 @@ export const NO_CHOICES: ConfirmChoices = Object.freeze({ overrides: Object.free
 /**
  * Le caselle a schermo: spuntate le proposte `preselected` (base «detto», non un conflitto, niente da correggere),
  * oppure come le ha messe la persona. Una proposta da correggere o un conflitto non si spuntano mai; corretta, torna
- * come prima (la scelta a mano resta). Nessun conflitto ha una scelta di partenza; le riconferme partono spuntate.
+ * come prima (la scelta a mano resta). Nessun conflitto ha una scelta di partenza. Le riconferme preselezionate stanno
+ * nella riga delle riconferme, che parte spuntata; le altre hanno una casella loro, che parte senza spunta.
  */
-export function selectionFrom(open: Pick<OpenProposals, "proposals">, choices: ConfirmChoices = NO_CHOICES): ConfirmSelection {
+export function selectionFrom(open: Pick<OpenProposals, "proposals"> & Partial<Pick<OpenProposals, "reconfirmed">>, choices: ConfirmChoices = NO_CHOICES): ConfirmSelection {
   const checked: Record<string, boolean> = {};
-  for (const proposal of open.proposals) checked[proposal.id] = isCheckable(proposal) && (choices.overrides[proposal.id] ?? proposal.preselected);
+  for (const proposal of [...open.proposals, ...reconfirmationsToChoose({ reconfirmed: open.reconfirmed ?? [] })]) {
+    checked[proposal.id] = isCheckable(proposal) && (choices.overrides[proposal.id] ?? proposal.preselected);
+  }
   return { checked, resolutions: choices.resolutions, reconfirm: choices.reconfirm };
 }
 
 /** La scelta di partenza: nessuna scelta della persona. */
-export function initialSelection(open: Pick<OpenProposals, "proposals">): ConfirmSelection {
+export function initialSelection(open: Pick<OpenProposals, "proposals"> & Partial<Pick<OpenProposals, "reconfirmed">>): ConfirmSelection {
   return selectionFrom(open, NO_CHOICES);
 }
 
-/** Le voci da mandare a `confirmProposals`: le righe spuntate, i conflitti con una scelta, le riconferme se la riga è spuntata. */
+/**
+ * Le voci da mandare a `confirmProposals`: le righe spuntate, i conflitti con una scelta, le riconferme preselezionate
+ * se la loro riga è spuntata, e le altre riconferme spuntate una per una.
+ */
 export function selectedItems(open: Pick<OpenProposals, "proposals" | "reconfirmed">, selection: ConfirmSelection): ConfirmItem[] {
   const items: ConfirmItem[] = [];
   for (const proposal of open.proposals) {
@@ -119,7 +126,10 @@ export function selectedItems(open: Pick<OpenProposals, "proposals" | "reconfirm
     if (selection.checked[proposal.id] === true) items.push({ id: proposal.id, version: proposal.version });
   }
   if (selection.reconfirm) {
-    for (const proposal of open.reconfirmed) if (proposal.issue === null) items.push({ id: proposal.id, version: proposal.version });
+    for (const proposal of reconfirmable(open)) items.push({ id: proposal.id, version: proposal.version });
+  }
+  for (const proposal of reconfirmationsToChoose(open)) {
+    if (selection.checked[proposal.id] === true) items.push({ id: proposal.id, version: proposal.version });
   }
   return items;
 }
@@ -129,9 +139,17 @@ export function confirmCount(open: Pick<OpenProposals, "proposals" | "reconfirme
   return selectedItems(open, selection).length;
 }
 
-/** Le riconferme che entrano con la riga spuntata (una da correggere resta fuori). */
+/** Le riconferme che entrano con la riga spuntata: le preselezionate («detto»), senza niente da correggere. */
 export function reconfirmable(open: Pick<OpenProposals, "reconfirmed">): ProposalView[] {
-  return open.reconfirmed.filter((proposal) => proposal.issue === null);
+  return open.reconfirmed.filter((proposal) => proposal.issue === null && proposal.preselected);
+}
+
+/**
+ * Le riconferme da scegliere una per una: «dedotto», o da un documento del cliente, o di un fatto «Solo Lateral Space».
+ * Partono senza spunta, come fa l'MCP del team.
+ */
+export function reconfirmationsToChoose(open: Pick<OpenProposals, "reconfirmed">): ProposalView[] {
+  return open.reconfirmed.filter((proposal) => proposal.issue === null && !proposal.preselected);
 }
 
 /**

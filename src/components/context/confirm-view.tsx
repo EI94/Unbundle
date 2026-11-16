@@ -10,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { confirmProposalsAction } from "@/lib/actions/context";
 import { CONTEXT_TEXT } from "@/lib/context/text";
 import type { OpenProposals } from "@/lib/db/queries/context-proposals";
-import type { UseCaseOption } from "./fields";
+import { Mark, type UseCaseOption } from "./fields";
 import { ProposalRow } from "./proposal-row";
 import {
   afterConfirm,
@@ -21,6 +21,7 @@ import {
   NO_CHOICES,
   proposalSource,
   reconfirmable,
+  reconfirmationsToChoose,
   rowErrors,
   selectedItems,
   selectionFrom,
@@ -63,6 +64,7 @@ export function ConfirmView({
   const items = selectedItems(open, selection);
   const groups = confirmGroups(open.proposals);
   const again = reconfirmable(open);
+  const toChoose = reconfirmationsToChoose(open);
   const notReported = notReportedLines(sources.map((source) => source.skipped));
   const subtitle = confirmSubtitle(sources, today);
   const memoryHref = `/dashboard/${workspaceId}/contesto`;
@@ -149,6 +151,34 @@ export function ConfirmView({
           </ul>
         </section>
       ))}
+
+      {toChoose.length > 0 ? (
+        <section aria-labelledby="conferma-riconferme-da-scegliere" className="space-y-1 rounded-xl border p-3">
+          <p id="conferma-riconferme-da-scegliere" className="text-sm">
+            {T.confirm.reconfirmedToChoose(toChoose.length)}
+          </p>
+          <ul className="space-y-1">
+            {toChoose.map((proposal) => (
+              <li key={`${proposal.id}:${proposal.version}`}>
+                <label className="flex min-h-11 cursor-pointer items-start gap-3 py-1 text-sm sm:min-h-0">
+                  <span className="flex min-h-9 min-w-9 shrink-0 items-start justify-center pt-0.5 sm:min-h-0 sm:min-w-0">
+                    <Checkbox
+                      checked={selection.checked[proposal.id] === true}
+                      disabled={pending}
+                      onCheckedChange={(next) => check(proposal.id, next === true)}
+                      aria-labelledby={`riconferma-${proposal.id}`}
+                    />
+                  </span>
+                  <span id={`riconferma-${proposal.id}`} className="min-w-0 flex-1 break-words">
+                    {proposal.before?.statement ?? proposal.statement}
+                    {proposal.basis === "dedotto" ? <Mark className="ml-2">{T.fact.inferred}</Mark> : null}
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {again.length > 0 ? (
         <div className="flex gap-3 rounded-xl border p-3">
