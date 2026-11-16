@@ -40,7 +40,7 @@ function rendered(): Array<{ path: string; text: string }> {
 
 test("ci sono tutti i gruppi, e i testi sono congelati", () => {
   assert.deepEqual(Object.keys(CONTEXT_TEXT), [
-    "page", "sections", "brief", "novelties", "fact", "writeFact", "nextSteps", "questions", "ask", "add", "read", "confirm", "notes", "documents", "consent", "granola", "errors",
+    "page", "sections", "brief", "live", "novelties", "fact", "writeFact", "nextSteps", "questions", "ask", "add", "read", "confirm", "notes", "documents", "consent", "granola", "errors",
   ]);
   assert.ok(ALL.length > 200, `${ALL.length} testi`);
   assert.ok(Object.isFrozen(CONTEXT_TEXT));

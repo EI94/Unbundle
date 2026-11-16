@@ -39,6 +39,23 @@ export const CONTEXT_TEXT = Object.freeze({
     prossimiPassi: "Prossimi passi",
   }),
   brief: Object.freeze({ title: "In breve", updated: (date: string) => `Aggiornato il ${date}` }),
+  // I dati della Discovery, letti dal vivo: le righe che la Memoria mostra con la fonte «Discovery».
+  live: Object.freeze({
+    strategicNodes: (items: string) => `Nodi strategici: ${items}`,
+    commodityNodes: (items: string) => `Nodi commodity: ${items}`,
+    marginDrivers: (items: string) => `Motori di margine: ${items}`,
+    risks: (items: string) => `Rischi: ${items}`,
+    aiReadiness: (level: string) => `Maturità AI: ${level}`,
+    employees: (count: string) => `Dipendenti: ${count}`,
+    revenue: (amount: string) => `Ricavo dell'ultimo anno: ${amount}`,
+    people: (n: number) => (n === 1 ? "1 persona" : `${n} persone`),
+    activities: (n: number) => (n === 1 ? "1 attività mappata" : `${n} attività mappate`),
+    boundaryIncluded: (items: string) => `incluse ${items}`,
+    boundaryExcluded: (items: string) => `escluse ${items}`,
+    boundary: (parts: string) => `Perimetro: ${parts}`,
+    horizon: (value: string) => `Orizzonte: ${value}`,
+    goalTag: Object.freeze({ goal: "Goal", objective: "Obiettivo", key_result: "Risultato chiave" }),
+  }),
   novelties: Object.freeze({ title: "Novità per te", tagNew: "Nuovo", tagChanged: "Cambiato", more: (n: number) => (n === 1 ? "e un'altra" : `e altre ${n}`) }),
   fact: Object.freeze({
     inferred: "dedotto",

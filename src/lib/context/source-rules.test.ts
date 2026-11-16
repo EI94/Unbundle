@@ -64,6 +64,7 @@ test("nessuno legge più la tesi dell'organizzazione: ogni lettura passa da getW
     "src/lib/actions/classify.ts": /await getWorkspaceValueThesis\(workspaceId\)/,
     "src/lib/actions/strategy.ts": /await getWorkspaceValueThesis\(workspaceId\)/,
     "src/lib/actions/simulation.ts": /await getWorkspaceValueThesis\(workspaceId\)/,
+    "src/lib/db/queries/context-discovery.ts": /getWorkspaceValueThesis\(workspace\.id\)/,
   };
   for (const [file, pattern] of Object.entries(readers)) {
     const source = read(file);
@@ -76,4 +77,45 @@ test("nessuno legge più la tesi dell'organizzazione: ogni lettura passa da getW
   assert.match(tools, /await saveWorkspaceValueThesis\(workspaceId, thesis\)/);
   assert.doesNotMatch(tools, /\borganizations\b/);
   assert.match(tools, /export function getLeadershipTools\(workspaceId: string, organizationId: string, opts:/, "la firma non cambia");
+});
+
+// ─── Le tabelle `context_*` (§3) ─────────────────────────────────────
+
+/** I soli moduli che toccano le tabelle di «Contesto»: le funzioni condivise, la tesi, lo schema e il DDL. */
+const TABLE_OWNERS = /^src\/lib\/db\/(queries\/(context-[a-z-]+|value-thesis)\.ts|schema\.ts|context-ddl\.ts|ensure-schema\.ts)$/;
+/** Un import con i nomi importati e da dove. */
+const NAMED_IMPORT = /import\s+(?:type\s+)?\{([^}]*)\}\s+from\s+"([^"]+)"/g;
+/** Vero se l'import di `file` punta allo schema Drizzle (`src/lib/db/schema.ts`), con l'alias o con un percorso relativo. */
+function isDbSchemaImport(file: string, specifier: string): boolean {
+  if (specifier === "@/lib/db/schema") return true;
+  if (!specifier.startsWith(".")) return false;
+  const resolved = new URL(specifier, new URL(file, "file:///repo/")).pathname.replace(/^\/repo\//, "").replace(/\.ts$/, "");
+  return resolved === "src/lib/db/schema";
+}
+const CONTEXT_TABLE_SQL = /\bcontext_(?:sources|facts|fact_links|entities|relations|commitments|questions|proposals|events|seen|briefs|granola_[a-z_]+)\b/;
+
+test("le tabelle `context*` dello schema le importano solo le funzioni di src/lib/db/queries/context-*.ts", () => {
+  let checked = 0;
+  for (const file of CODE) {
+    const source = read(file);
+    for (const match of source.matchAll(NAMED_IMPORT)) {
+      if (!isDbSchemaImport(file, match[2])) continue;
+      checked += 1;
+      const names = match[1].split(",").map((name) => name.trim().replace(/^type\s+/, "").split(/\s+as\s+/)[0]);
+      const tables = names.filter((name) => /^context[A-Z]/.test(name));
+      if (tables.length > 0) assert.ok(TABLE_OWNERS.test(file), `${file} importa ${tables.join(", ")}: passa dalle funzioni di context-*.ts`);
+    }
+  }
+  assert.ok(checked >= 80, `${checked} import dallo schema controllati`);
+  assert.ok(TABLE_OWNERS.test("src/lib/db/queries/context-sources.ts") && TABLE_OWNERS.test("src/lib/db/queries/context-granola.ts"));
+  assert.equal(TABLE_OWNERS.test("src/lib/actions/context.ts"), false);
+});
+
+test("pagine, rotte, azioni, componenti e MCP non scrivono SQL sulle tabelle `context_*`", () => {
+  const outer = CODE.filter((file) => /^src\/(app|components|lib\/actions|lib\/use-cases)\//.test(file));
+  assert.ok(outer.length > 300);
+  for (const file of outer) {
+    const code = read(file).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    assert.equal(CONTEXT_TABLE_SQL.test(code), false, `${file}: le tabelle di «Contesto» si leggono e si scrivono dalle funzioni di context-*.ts`);
+  }
 });
