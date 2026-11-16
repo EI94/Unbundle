@@ -144,6 +144,13 @@ test("il ritorno da Granola: senza sessione al login; poi dove dice l'esito, sen
   }
   prova.results.complete = { status: "scaduto" };
   assert.equal(where(await back("state=s")), "https://www.unbundle.test/dashboard?granola=scaduto");
+  // Con Granola spento la rotta non c'è: 404, e lo stato non si tocca.
+  prova.available = false;
+  prova.calls = [];
+  const off = await back("code=c&state=s");
+  assert.equal(off.status, 404);
+  assert.equal(off.headers.get("cache-control"), "no-store");
+  assert.deepEqual(prova.calls, []);
 });
 
 test("il documento del cliente: con Granola spento 404; altrimenti il JSON pubblico, un'ora in cache", async () => {
