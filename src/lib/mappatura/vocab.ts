@@ -37,6 +37,10 @@ export const WORK_TYPES = ["enrichment", "detection", "interpretation", "deliver
 export type Friction = 0 | 1 | 2 | 3;
 export const FRICTIONS = [0, 1, 2, 3] as const satisfies readonly Friction[];
 
+/** Com'è andata un'operazione salvata (la riga che ogni istruzione restituisce, e quella che il server ricorda). */
+export const OP_OUTCOMES = ["ok", "conflict", "gone", "limit", "linked"] as const;
+export type OpOutcome = (typeof OP_OUTCOMES)[number];
+
 /** I valori che la chat scrive oggi in `activities.frequency`; ogni altro testo si mostra com'è. */
 export const FREQUENCIES = ["giornaliera", "settimanale", "mensile", "ad_hoc"] as const;
 export type Frequency = (typeof FREQUENCIES)[number];
@@ -76,6 +80,13 @@ export const ACTIVITY_COLUMNS = Object.freeze({ title: 500, frequency: 100, qual
 
 /** I tempi della board di riferimento (BOARD-SPEC §3.3, §1.4.15). */
 export const AUTOSAVE = Object.freeze({ quietMs: 5_000, minGapMs: 15_000, undoMs: 6_000, toastMs: 4_200 });
+
+/**
+ * Quanto vive una modifica non salvata. La bozza sul dispositivo dura 7 giorni (poi si lascia: chi riapre la board
+ * dopo una settimana non riscrive quello che gli altri hanno fatto nel frattempo); il server ricorda le operazioni già
+ * applicate per 30 giorni, così una bozza rimandata non le applica una seconda volta.
+ */
+export const OP_MEMORY = Object.freeze({ draftDays: 7, appliedDays: 30 });
 
 const includes = <T extends string | number>(list: readonly T[], value: unknown): value is T => (list as readonly unknown[]).includes(value);
 

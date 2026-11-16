@@ -12,7 +12,9 @@
  * 5. `mapping_steps`: una riga per attività, con quello che la board aggiunge (processo, posizione, chi, eccezione, nome
  *    della decisione, attrito, stato, origine, la proposta del classificatore);
  * 6. `mapping_notes`: le note di un passo per corsia e i punti di analisi della board (senza passo);
- * 7. `mapping_votes`: i voti di ogni persona su un processo.
+ * 7. `mapping_votes`: i voti di ogni persona su un processo;
+ * 8. `mapping_applied_ops`: le operazioni già applicate (id ed esito, per 30 giorni): un salvataggio rimandato (la
+ *    bozza di una pagina chiusa prima della risposta) risponde con l'esito di allora e non scrive una seconda volta.
  *
  * Nessun dato scritto, nessuna colonna aggiunta, cambiata o tolta nelle tabelle di prima: `activities`, `departments` e
  * `activity_dependencies` restano come sono, e il codice di prima ignora le tabelle nuove.
@@ -26,7 +28,7 @@
  * qui sotto e che la sonda copra ogni oggetto.
  * Modulo puro: importa solo il vocabolario; lo caricano anche gli script di verifica.
  */
-import { FRICTIONS, LANES, MAPPING_LIMITS, NOTE_STATUSES, ORIGINS, STEP_STATUSES, STREAMS } from "../mappatura/vocab.ts";
+import { FRICTIONS, LANES, MAPPING_LIMITS, NOTE_STATUSES, OP_OUTCOMES, ORIGINS, STEP_STATUSES, STREAMS } from "../mappatura/vocab.ts";
 
 /** La chiave dell'advisory lock della 0039: la stessa nel file e in `runMappingBoardDdl`. */
 export const MAPPING_BOARD_ADVISORY_LOCK = "unbundle:mapping-board-ddl";
@@ -55,6 +57,7 @@ export const MAPPING_BOARD_WIDTHS = Object.freeze({
   stream: 13,
   lane: 8,
   noteStatus: 8,
+  outcome: 8,
 });
 for (const [name, width, words] of [
   ["stepStatus", MAPPING_BOARD_WIDTHS.stepStatus, STEP_STATUSES],
@@ -62,6 +65,7 @@ for (const [name, width, words] of [
   ["stream", MAPPING_BOARD_WIDTHS.stream, STREAMS],
   ["lane", MAPPING_BOARD_WIDTHS.lane, LANES],
   ["noteStatus", MAPPING_BOARD_WIDTHS.noteStatus, NOTE_STATUSES],
+  ["outcome", MAPPING_BOARD_WIDTHS.outcome, OP_OUTCOMES],
 ] as const) {
   if (widest(words) > width) throw new Error(`mapping-board-ddl: una parola di ${name} non entra in varchar(${width})`);
 }
@@ -158,12 +162,22 @@ END $$;`,
   CONSTRAINT mapping_votes_process_fkey FOREIGN KEY (process_id, department_id, workspace_id) REFERENCES mapping_processes (id, department_id, workspace_id) ON DELETE CASCADE
 );`,
   `CREATE INDEX IF NOT EXISTS mapping_votes_user_idx ON mapping_votes (user_id);`,
+  `CREATE TABLE IF NOT EXISTS mapping_applied_ops (
+  op_id uuid NOT NULL,
+  workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  department_id uuid NOT NULL,
+  outcome varchar(${W.outcome}) NOT NULL CONSTRAINT mapping_applied_ops_outcome_check CHECK (outcome IN (${quoted(OP_OUTCOMES)})),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT mapping_applied_ops_pkey PRIMARY KEY (op_id),
+  CONSTRAINT mapping_applied_ops_unit_fkey FOREIGN KEY (department_id, workspace_id) REFERENCES departments (id, workspace_id) ON DELETE CASCADE
+);`,
+  `CREATE INDEX IF NOT EXISTS mapping_applied_ops_unit_idx ON mapping_applied_ops (department_id, created_at);`,
 ];
 
 // ─── Sonda ───────────────────────────────────────────────────────────
 
 /** Le tabelle della 0039. */
-export const MAPPING_BOARD_TABLES = ["mapping_boards", "mapping_processes", "mapping_steps", "mapping_notes", "mapping_votes"] as const;
+export const MAPPING_BOARD_TABLES = ["mapping_boards", "mapping_processes", "mapping_steps", "mapping_notes", "mapping_votes", "mapping_applied_ops"] as const;
 
 /** Gli indici della 0039, per nome (oltre alle chiavi primarie e ai vincoli UNIQUE): i primi quattro sulle tabelle di prima. */
 export const MAPPING_BOARD_INDEXES = [
@@ -176,9 +190,10 @@ export const MAPPING_BOARD_INDEXES = [
   "mapping_notes_step_idx",
   "mapping_notes_unit_idx",
   "mapping_votes_user_idx",
+  "mapping_applied_ops_unit_idx",
 ] as const;
 
-/** I 34 vincoli con nome delle cinque tabelle (pkey, fkey composte, check, unique). */
+/** I 37 vincoli con nome delle sei tabelle (pkey, fkey composte, check, unique). */
 export const MAPPING_BOARD_NAMED_CONSTRAINTS: readonly string[] = [
   "mapping_boards_revision_check",
   "mapping_boards_headline_check",
@@ -214,6 +229,9 @@ export const MAPPING_BOARD_NAMED_CONSTRAINTS: readonly string[] = [
   "mapping_votes_votes_check",
   "mapping_votes_pkey",
   "mapping_votes_process_fkey",
+  "mapping_applied_ops_outcome_check",
+  "mapping_applied_ops_pkey",
+  "mapping_applied_ops_unit_fkey",
 ];
 
 /** Vera solo con tutto il DDL della 0039: tabelle, indici, vincoli con nome. Per ensureDbSchema() e mappingStoreReady(). */

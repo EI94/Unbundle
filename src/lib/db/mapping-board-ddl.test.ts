@@ -13,7 +13,7 @@ import {
   MISSING_ACTIVITIES_FOR_BOARD_MESSAGE,
   ONET_TITLE_MAX,
 } from "./mapping-board-ddl.ts";
-import { BOARD_LANE, FRICTIONS, LANES, MAPPING_LIMITS, NOTE_STATUSES, ORIGINS, STEP_LANES, STEP_STATUSES, STREAMS } from "../mappatura/vocab.ts";
+import { BOARD_LANE, FRICTIONS, LANES, MAPPING_LIMITS, NOTE_STATUSES, OP_OUTCOMES, ORIGINS, STEP_LANES, STEP_STATUSES, STREAMS } from "../mappatura/vocab.ts";
 import * as schema from "./schema.ts";
 
 // Migrazione 0039 e self-heal: la board dell'activity mapping (docs/mappatura/MAPPATURA-BOARD-PIANO.md §3.2–§3.4). Le
@@ -51,6 +51,7 @@ const processes = table("mapping_processes");
 const steps = table("mapping_steps");
 const notes = table("mapping_notes");
 const votes = table("mapping_votes");
+const applied = table("mapping_applied_ops");
 
 const ddlColumns = (statement: string) =>
   statement
@@ -139,6 +140,7 @@ test("i CHECK nascono da MAPPING_LIMITS e dal vocabolario", () => {
   assert.equal(check(notes, "mapping_notes_status_check"), `CONSTRAINT mapping_notes_status_check CHECK (status IN ${inList(NOTE_STATUSES)})`);
   assert.equal(check(notes, "mapping_notes_origin_check"), `CONSTRAINT mapping_notes_origin_check CHECK (origin IN ${inList(ORIGINS)})`);
   assert.equal(check(votes, "mapping_votes_votes_check"), `CONSTRAINT mapping_votes_votes_check CHECK (votes BETWEEN 0 AND ${L.votes})`);
+  assert.equal(check(applied, "mapping_applied_ops_outcome_check"), `CONSTRAINT mapping_applied_ops_outcome_check CHECK (outcome IN ${inList(OP_OUTCOMES)})`);
   // Un punto di analisi è una nota senza passo, e solo lui ha un titolo.
   assert.ok(notes.includes(`CONSTRAINT mapping_notes_scope_check CHECK ((lane = '${BOARD_LANE}') = (activity_id IS NULL))`));
   assert.ok(notes.includes(`CONSTRAINT mapping_notes_title_lane_check CHECK (title IS NULL OR lane = '${BOARD_LANE}')`));
@@ -154,12 +156,17 @@ test("i CHECK nascono da MAPPING_LIMITS e dal vocabolario", () => {
   assert.ok(widest(STREAMS) <= MAPPING_BOARD_WIDTHS.stream && steps.includes(`proposed_stream varchar(${MAPPING_BOARD_WIDTHS.stream})`));
   assert.ok(widest(LANES) <= MAPPING_BOARD_WIDTHS.lane && notes.includes(`lane varchar(${MAPPING_BOARD_WIDTHS.lane})`));
   assert.ok(widest(NOTE_STATUSES) <= MAPPING_BOARD_WIDTHS.noteStatus && notes.includes(`status varchar(${MAPPING_BOARD_WIDTHS.noteStatus})`));
+  assert.ok(widest(OP_OUTCOMES) <= MAPPING_BOARD_WIDTHS.outcome && applied.includes(`outcome varchar(${MAPPING_BOARD_WIDTHS.outcome}) NOT NULL`));
 });
 
 test("lo scope sta nel database: chiavi esterne composte, tutto si cancella con il workspace, l'unità e l'attività", () => {
-  for (const t of [boards, processes, steps, notes, votes]) {
+  for (const t of [boards, processes, steps, notes, votes, applied]) {
     assert.match(t, /workspace_id uuid NOT NULL REFERENCES workspaces\(id\) ON DELETE CASCADE/);
   }
+  // Le operazioni applicate: una per id, nell'unità e nel workspace di chi le ha salvate; vanno con l'unità.
+  assert.ok(applied.includes("CONSTRAINT mapping_applied_ops_pkey PRIMARY KEY (op_id)"));
+  assert.ok(applied.includes("CONSTRAINT mapping_applied_ops_unit_fkey FOREIGN KEY (department_id, workspace_id) REFERENCES departments (id, workspace_id) ON DELETE CASCADE"));
+  assert.ok(MAPPING_BOARD_DDL.includes("CREATE INDEX IF NOT EXISTS mapping_applied_ops_unit_idx ON mapping_applied_ops (department_id, created_at);"));
   assert.ok(boards.includes("CONSTRAINT mapping_boards_unit_fkey FOREIGN KEY (department_id, workspace_id) REFERENCES departments (id, workspace_id) ON DELETE CASCADE"));
   assert.ok(processes.includes("CONSTRAINT mapping_processes_unit_fkey FOREIGN KEY (department_id, workspace_id) REFERENCES departments (id, workspace_id) ON DELETE CASCADE"));
   assert.ok(processes.includes("CONSTRAINT mapping_processes_scope_unique UNIQUE (id, department_id, workspace_id)"));
@@ -171,26 +178,26 @@ test("lo scope sta nel database: chiavi esterne composte, tutto si cancella con 
   assert.ok(votes.includes("CONSTRAINT mapping_votes_process_fkey FOREIGN KEY (process_id, department_id, workspace_id) REFERENCES mapping_processes (id, department_id, workspace_id) ON DELETE CASCADE"));
   assert.ok(votes.includes("CONSTRAINT mapping_votes_pkey PRIMARY KEY (process_id, user_id)"));
   // Nessuna colonna sulla persona, tranne nei voti (ognuno i suoi).
-  for (const t of [boards, processes, steps, notes]) assert.doesNotMatch(t, /\b\w*(_by|author|actor|user_id|email|person)\w*\b/i);
+  for (const t of [boards, processes, steps, notes, applied]) assert.doesNotMatch(t, /\b\w*(_by|author|actor|user_id|email|person)\w*\b/i);
   assert.match(votes, /user_id uuid NOT NULL REFERENCES users\(id\) ON DELETE CASCADE/);
   // Le posizioni sono double precision: uno spostamento scrive «tra quei due» e poi si rinumera.
   for (const t of [processes, steps, notes]) assert.match(t, /position double precision NOT NULL DEFAULT 0/);
 });
 
-test("la sonda copre le cinque tabelle, i nove indici e i 34 vincoli con nome", () => {
+test("la sonda copre le sei tabelle, i dieci indici e i 37 vincoli con nome", () => {
   for (const name of [...MAPPING_BOARD_TABLES, ...MAPPING_BOARD_INDEXES]) assert.ok(MAPPING_BOARD_PROBE_SQL.includes(`to_regclass('public.${name}') IS NOT NULL`), name);
-  assert.deepEqual([...MAPPING_BOARD_TABLES], ["mapping_boards", "mapping_processes", "mapping_steps", "mapping_notes", "mapping_votes"]);
+  assert.deepEqual([...MAPPING_BOARD_TABLES], ["mapping_boards", "mapping_processes", "mapping_steps", "mapping_notes", "mapping_votes", "mapping_applied_ops"]);
   const created = MAPPING_BOARD_DDL.map((s) => s.match(/^CREATE TABLE IF NOT EXISTS ([a-z_]+) \(/)?.[1]).filter(Boolean);
   assert.deepEqual(created, [...MAPPING_BOARD_TABLES]);
   const named = [...MAPPING_BOARD_DDL.join("\n").matchAll(/CONSTRAINT ([a-z0-9_]+) (CHECK|PRIMARY KEY|UNIQUE|FOREIGN KEY)/g)].map((m) => m[1]);
   assert.deepEqual([...named].sort(), [...MAPPING_BOARD_NAMED_CONSTRAINTS].sort());
-  assert.equal(MAPPING_BOARD_NAMED_CONSTRAINTS.length, 34);
-  assert.equal(new Set(MAPPING_BOARD_NAMED_CONSTRAINTS).size, 34);
+  assert.equal(MAPPING_BOARD_NAMED_CONSTRAINTS.length, 37);
+  assert.equal(new Set(MAPPING_BOARD_NAMED_CONSTRAINTS).size, 37);
   for (const name of MAPPING_BOARD_NAMED_CONSTRAINTS) assert.ok(MAPPING_BOARD_PROBE_SQL.includes(`'${name}'`), name);
-  assert.ok(MAPPING_BOARD_PROBE_SQL.includes(") = 34"));
+  assert.ok(MAPPING_BOARD_PROBE_SQL.includes(") = 37"));
   const indexes = MAPPING_BOARD_DDL.filter((s) => /^CREATE (UNIQUE )?INDEX/.test(s)).map((s) => s.match(/INDEX IF NOT EXISTS ([a-z_]+) /)?.[1]);
   assert.deepEqual(indexes, [...MAPPING_BOARD_INDEXES]);
-  assert.equal(MAPPING_BOARD_INDEXES.length, 9);
+  assert.equal(MAPPING_BOARD_INDEXES.length, 10);
   // L'indice parziale dei punti di analisi.
   assert.ok(MAPPING_BOARD_DDL.includes("CREATE INDEX IF NOT EXISTS mapping_notes_unit_idx ON mapping_notes (department_id) WHERE activity_id IS NULL;"));
 });
@@ -225,6 +232,7 @@ test("le colonne Drizzle sono quelle del DDL, nello stesso ordine", () => {
     [schema.mappingSteps, steps, "mapping_steps", 17],
     [schema.mappingNotes, notes, "mapping_notes", 12],
     [schema.mappingVotes, votes, "mapping_votes", 6],
+    [schema.mappingAppliedOps, applied, "mapping_applied_ops", 5],
   ] as const;
   for (const [drizzleTable, statement, name, count] of pairs) {
     assert.equal(getTableName(drizzleTable), name);

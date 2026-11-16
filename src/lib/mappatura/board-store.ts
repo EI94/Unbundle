@@ -15,7 +15,7 @@ import "server-only";
  * Ogni funzione prende l'esecutore SQL dei comandi uc (`src/lib/db/uc-executor.ts`): l'app passa quello condiviso, le
  * suite sul database il loro. Nei log solo id e codici, mai titoli o testi.
  */
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { UcExecutor, UcRow } from "@/lib/db/uc-executor";
 import { logSafeError } from "@/lib/log/safe-error";
 import { boardAbilities } from "./abilities";
@@ -39,7 +39,7 @@ import {
   type ProjectedLane,
 } from "./board-sql";
 import { BOARD_TEXT } from "./text";
-import { MAPPING_LIMITS } from "./vocab";
+import { MAPPING_LIMITS, OP_OUTCOMES } from "./vocab";
 
 export type { ActorKind } from "./board-ops";
 export type { BoardActor, BoardScope } from "./board-sql";
@@ -174,7 +174,7 @@ export type SaveResult =
   | { ok: true; revision: number; savedAt: string; rejected: Rejection[]; board: MappingBoard }
   | { ok: false; code: "non_trovata" | "non_valida" | "troppe_modifiche" | "non_disponibile" };
 
-const OUTCOMES: readonly OpOutcome[] = ["ok", "conflict", "gone", "limit", "linked"];
+const OUTCOMES: readonly OpOutcome[] = OP_OUTCOMES;
 
 /**
  * In quali passi cambiano le note di «Attriti» e «Dati e documenti»: per una nota modificata o eliminata lo sa solo il
@@ -300,7 +300,9 @@ export async function resolveProcess(executor: UcExecutor, scope: BoardScope, na
       if (same) return text(same.id);
     }
     const processId = wanted ? namedProcessId(scope.departmentId, nameKey(wanted)) : defaultProcessId(scope.departmentId);
-    const op: BoardOp = { id: md5Uuid(`op:${processId}`), t: "process.add", processId, name: wanted || BOARD_TEXT.defaultProcessName };
+    // L'id del processo dipende dal nome (due richieste insieme ne creano uno); quello dell'operazione è nuovo ogni volta:
+    // il server ricorda le operazioni applicate, e un processo eliminato e chiesto di nuovo deve rinascere.
+    const op: BoardOp = { id: randomUUID(), t: "process.add", processId, name: wanted || BOARD_TEXT.defaultProcessName };
     // Un processo non ha autore né stato: chi lo crea non conta.
     const done = await runOps(executor, scope, { kind: "assistente", userId: "", role: "" }, [op]);
     return done.rejected.length === 0 ? processId : null;

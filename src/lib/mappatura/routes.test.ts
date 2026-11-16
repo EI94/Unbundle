@@ -171,12 +171,14 @@ test("PUT: salva e risponde con revisione, ora, rifiuti e board; ogni istruzione
   assert.equal(saved.status, 200);
   assert.deepEqual([saved.body.revision, saved.body.savedAt, saved.body.rejected], [5, "2026-11-16T10:00:00.000Z", []]);
   assert.equal((saved.body.board as { revision: number }).revision, 5);
-  // La riga della board, le due operazioni, l'unità «in corso», la revisione: tutte nello scope di chi è entrato.
-  assert.equal(prova.writes.length, 5);
+  // La riga della board, le due operazioni, le operazioni vecchie dimenticate, l'unità «in corso», la revisione: tutte
+  // nello scope di chi è entrato.
+  assert.equal(prova.writes.length, 6);
   for (const statement of prova.writes) assert.ok(statement.params.includes(WS) && statement.params.includes(UNIT), statement.text.slice(0, 50));
   assert.ok(prova.writes[1].params.includes(USER), "i voti sono di chi è entrato, non di un id nel corpo");
   assert.ok(prova.writes[2].params.includes("Raccolta delle richieste d'acquisto"), "il testo arriva rifinito");
-  assert.match(prova.writes[4].text, /RETURNING b\.revision, b\.updated_at$/);
+  assert.match(prova.writes[3].text, /^DELETE FROM mapping_applied_ops o /);
+  assert.match(prova.writes[5].text, /RETURNING b\.revision, b\.updated_at$/);
 });
 
 test("PUT: 400 per un corpo che non si legge o non valido, 413 oltre 200 operazioni, 503 senza la 0039; niente scritto", async () => {

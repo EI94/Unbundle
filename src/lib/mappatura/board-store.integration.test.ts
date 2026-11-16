@@ -456,10 +456,13 @@ test("R4: la stessa richiesta due volte lascia un passo, una nota, gli stessi vo
   assert.equal(second.revision, first.revision + 1, "la revisione sale a ogni salvataggio");
   assert.equal(JSON.stringify({ ...(await activityRow(stepId)), updated_at: null }), JSON.stringify({ ...JSON.parse(row), updated_at: null }));
   assert.equal(second.board.processes.find((process) => process.id === processId)?.votes, 4);
-  // Eliminare due volte: la seconda trova il passo già sparito («gone»), e chi salva non vede un errore.
+  // Eliminare due volte: la stessa eliminazione rimandata risponde come la prima volta («ok», il server la ricorda);
+  // un'altra eliminazione dello stesso passo lo trova già sparito («gone»). Chi salva non vede mai un errore.
   const remove = op({ t: "step.remove", stepId });
   await save([remove]);
-  await save([remove, op({ t: "process.remove", processId })], lead(), { [remove.id]: "gone" });
+  await save([remove]);
+  const again = op({ t: "step.remove", stepId });
+  await save([again, op({ t: "process.remove", processId })], lead(), { [again.id]: "gone" });
 });
 
 test("eliminare un passo porta via note, riga del passo, dipendenze e nodo della value map; non se uno use case lo elenca", opts, async () => {

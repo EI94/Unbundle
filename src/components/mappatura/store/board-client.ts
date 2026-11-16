@@ -22,7 +22,7 @@
 import { allSteps, caseLinksOf, withUseCaseLinks, type MappingBoard } from "../../../lib/mappatura/board-model.ts";
 import { applyOps, boardOpSchema, coalesce, type BoardOp } from "../../../lib/mappatura/board-ops.ts";
 import { BOARD_TEXT } from "../../../lib/mappatura/text.ts";
-import { AUTOSAVE, MAPPING_LIMITS } from "../../../lib/mappatura/vocab.ts";
+import { AUTOSAVE, MAPPING_LIMITS, OP_MEMORY } from "../../../lib/mappatura/vocab.ts";
 
 export type PillState = "saved" | "dirty" | "saving" | "readonly" | "local";
 
@@ -101,6 +101,8 @@ const isBoard = (value: unknown): value is MappingBoard => {
   return Boolean(board && typeof board === "object" && Array.isArray(board.processes) && Array.isArray(board.analysis) && typeof board.revision === "number" && board.can && board.unit);
 };
 const NO_ABILITIES = { edit: false, setStream: false, complete: false };
+/** Quanto vive la bozza sul dispositivo: oltre, chi riapre la board non rimanda modifiche vecchie di giorni. */
+const DRAFT_MAX_AGE_MS = OP_MEMORY.draftDays * 24 * 60 * 60 * 1000;
 const isRemove = (op: BoardOp) => op.t === "step.remove" || op.t === "note.remove" || op.t === "process.remove";
 
 /** La chiave della bozza sul dispositivo. */
@@ -160,19 +162,27 @@ export function createBoardClient(deps: BoardClientDeps): BoardClient {
     try {
       const ops = pendingOps();
       if (ops.length === 0) deps.storage.removeItem(key);
-      else deps.storage.setItem(key, JSON.stringify({ v: 1, ops }));
+      else deps.storage.setItem(key, JSON.stringify({ v: 1, at: deps.now(), ops }));
     } catch {
       // La memoria del dispositivo è piena o spenta: la board funziona lo stesso, senza bozza.
     }
   }
 
+  /**
+   * La bozza del dispositivo, se c'è e ha meno di 7 giorni (`at`: l'ultima volta che è stata scritta). Una bozza più
+   * vecchia, o senza ora, si toglie: le sue modifiche non tornano sopra il lavoro fatto dagli altri nel frattempo.
+   */
   function readDraft(): BoardOp[] {
     if (!deps.storage) return [];
     try {
       const raw = deps.storage.getItem(key);
       if (!raw) return [];
-      const draft = JSON.parse(raw) as { v?: unknown; ops?: unknown };
+      const draft = JSON.parse(raw) as { v?: unknown; at?: unknown; ops?: unknown };
       if (draft?.v !== 1 || !Array.isArray(draft.ops)) return [];
+      if (typeof draft.at !== "number" || !(deps.now() - draft.at <= DRAFT_MAX_AGE_MS)) {
+        deps.storage.removeItem(key);
+        return [];
+      }
       return draft.ops.flatMap((item) => {
         const parsed = boardOpSchema.safeParse(item);
         return parsed.success ? [parsed.data] : [];

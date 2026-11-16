@@ -11,6 +11,7 @@ import {
   bumpRevision,
   completionReads,
   ensureBoardRow,
+  forgetOldOps,
   linkDependencyStatement,
   markMapped,
   noteLanes,
@@ -36,13 +37,14 @@ import {
   type BoardScope,
 } from "./board-sql.ts";
 import { STREAM_OF_CLASSIFICATION } from "./streams.ts";
-import { MAPPING_LIMITS } from "./vocab.ts";
+import { MAPPING_LIMITS, OP_MEMORY, OP_OUTCOMES } from "./vocab.ts";
 
 // Le istruzioni SQL della board (docs/mappatura/MAPPATURA-BOARD-PIANO.md §4.3, §6): le regole che si leggono dal testo,
 // senza database. Quelle che servono un database stanno in board-store.integration.test.ts.
 // - R1: ogni istruzione nomina `workspace_id` e `department_id`, e li lega ai valori dello scope;
 // - R2: nessun `INSERT … VALUES`: ogni inserimento legge da un genitore; niente solleva errori;
 // - R3: ogni modifica di un campo ha il confronto «com'era, o com'è già»;
+// - R4: un'operazione già applicata non scrive di nuovo: risponde con l'esito di allora;
 // - R5: la coda viene dopo tutte le operazioni, la revisione per ultima.
 
 const WS = "11111111-aaaa-4aaa-8aaa-111111111111";
@@ -112,6 +114,7 @@ const UNIT_STATEMENTS: Record<string, UcStatement> = {
   renumberSteps: renumberSteps(scope),
   renumberNotes: renumberNotes(scope),
   startUnit: startUnit(scope),
+  forgetOldOps: forgetOldOps(scope),
   bumpRevision: bumpRevision(scope),
   "preflight unità": preflight(scope)[1],
   noteLanes: noteLanes(scope, ids),
@@ -163,7 +166,7 @@ test("R1: ogni istruzione di un'unità nomina workspace_id e department_id, e li
   assert.deepEqual(Object.keys(WORKSPACE_STATEMENTS).length, 6);
   // Ogni tabella della board che un'istruzione tocca compare con il suo scope: nessun alias resta senza.
   for (const [name, statement] of Object.entries(opStatements)) {
-    for (const match of statement.text.matchAll(/\b(?:FROM|UPDATE|JOIN|USING)\s+(mapping_[a-z]+|activities)\s+([a-z]+)\b/g)) {
+    for (const match of statement.text.matchAll(/\b(?:FROM|UPDATE|JOIN|USING)\s+(mapping_[a-z_]+|activities)\s+([a-z]+)\b/g)) {
       const alias = match[2];
       assert.match(statement.text, new RegExp(`\\b${alias}\\.workspace_id\\b`), `${name}: ${match[1]} ${alias} senza workspace_id`);
       assert.match(statement.text, new RegExp(`\\b${alias}\\.department_id\\b`), `${name}: ${match[1]} ${alias} senza department_id`);
@@ -190,10 +193,10 @@ test("R2: nessun INSERT … VALUES, ogni inserimento legge da un genitore; nient
   // Ogni operazione restituisce una riga con il suo esito, e gli esiti sono quelli che il server conosce.
   for (const [name, statement] of Object.entries(opStatements)) {
     assert.match(statement.text, /AS outcome$/, `${name}: l'esito`);
-    const last = statement.text.slice(statement.text.lastIndexOf("\nSELECT "));
-    const outcomes = [...last.matchAll(/(?:THEN|ELSE|SELECT) '([a-z]+)'/g)].map((match) => match[1]);
+    const result = statement.text.slice(statement.text.indexOf("\nresult AS (SELECT "), statement.text.indexOf("\nmark AS ("));
+    const outcomes = [...result.matchAll(/(?:THEN|ELSE|SELECT) '([a-z]+)'/g)].map((match) => match[1]);
     assert.ok(outcomes.length > 0 && outcomes[0] === "ok", `${name}: il primo esito è «ok»`);
-    for (const outcome of outcomes) assert.ok(["ok", "conflict", "gone", "limit", "linked"].includes(outcome), `${name}: ${outcome}`);
+    for (const outcome of outcomes) assert.ok((OP_OUTCOMES as readonly string[]).includes(outcome), `${name}: ${outcome}`);
   }
 });
 
@@ -215,7 +218,7 @@ test("R3: ogni modifica di un campo si applica solo se il campo è com'era, o è
     assert.match(is[1], /^\$\d+(::[a-z_]+)*$/, `${name}: il valore nuovo è un parametro`);
     assert.notEqual(was[1], is[1], `${name}: prima e dopo sono due parametri`);
     // Chi non passa il confronto risulta «conflict» se il bersaglio c'è, «gone» se non c'è.
-    assert.match(text, /WHEN EXISTS \(SELECT 1 FROM done\) THEN 'ok' WHEN EXISTS \(SELECT 1 FROM target\) THEN 'conflict' ELSE 'gone' END AS outcome$/, name);
+    assert.match(text, /\nresult AS \(SELECT CASE WHEN EXISTS \(SELECT 1 FROM done\) THEN 'ok' WHEN EXISTS \(SELECT 1 FROM target\) THEN 'conflict' ELSE 'gone' END AS outcome\),\nmark AS/, name);
   }
   // Gli altri UPDATE e DELETE delle operazioni: spostamenti, eliminazioni, i voti (la riga di chi salva), il ritorno alla proposta.
   const others = Object.keys(opStatements).filter((name) => !sets.includes(name) && /\b(UPDATE|DELETE FROM)\b/.test(opStatements[name].text));
@@ -233,6 +236,33 @@ test("R3: ogni modifica di un campo si applica solo se il campo è com'era, o è
   // Il titolo di una nota: solo su un punto di analisi.
   assert.match(opStatements["note.set title"].text, /AND n\.lane = 'analisi' AND \(n\.title IS NOT DISTINCT FROM/);
   assert.doesNotMatch(opStatements["note.set text"].text, /n\.lane = 'analisi'/);
+});
+
+test("R4: un'operazione già applicata non scrive di nuovo: risponde con l'esito di allora; ogni operazione lascia il suo id e il suo esito", () => {
+  for (const [name, statement] of Object.entries(opStatements)) {
+    const opId = OPS[name].id;
+    const { text } = statement;
+    // Prima di tutto: l'operazione è già stata applicata in questa unità?
+    assert.match(text, /^WITH seen AS \(SELECT o\.outcome FROM mapping_applied_ops o WHERE o\.op_id = \$(\d+)::uuid AND o\.department_id = \$\d+::uuid AND o\.workspace_id = \$\d+::uuid\),\n/, name);
+    const at = Number(text.match(/o\.op_id = \$(\d+)::uuid/)![1]);
+    assert.equal(statement.params[at - 1], opId, `${name}: l'id dell'operazione`);
+    // Ogni scrittura dell'operazione aspetta che non lo sia (le scritture che leggono da un'altra scrittura la seguono).
+    const writes = [...text.matchAll(/\n([a-z]+) AS \(\s*(INSERT INTO|UPDATE|DELETE FROM) ([a-z_]+)/g)].map((match) => ({ cte: match[1], table: match[3] }));
+    assert.ok(writes.length > 0, `${name}: scrive`);
+    for (const { cte, table } of writes) {
+      const body = text.slice(text.indexOf(`\n${cte} AS (`), text.indexOf("RETURNING", text.indexOf(`\n${cte} AS (`)));
+      if (table === "mapping_applied_ops") continue;
+      if (/\bFROM act\b/.test(body)) continue;
+      assert.match(body, /NOT EXISTS \(SELECT 1 FROM seen\)/, `${name}: ${cte} scrive anche se l'operazione è già stata applicata`);
+    }
+    // L'id e l'esito si ricordano, una volta, solo se l'operazione non c'era; la risposta è l'esito di allora, o quello di adesso.
+    assert.match(text, /\nmark AS \(\n  INSERT INTO mapping_applied_ops \(op_id, workspace_id, department_id, outcome\)\n  SELECT \$\d+::uuid, d\.workspace_id, d\.id, result\.outcome FROM departments d, result\n  WHERE d\.id = \$\d+::uuid AND d\.workspace_id = \$\d+::uuid AND NOT EXISTS \(SELECT 1 FROM seen\)\n  ON CONFLICT \(op_id\) DO NOTHING\n  RETURNING 1\)\nSELECT coalesce\(\(SELECT seen\.outcome FROM seen\), \(SELECT result\.outcome FROM result\)\) AS outcome$/, name);
+    assert.equal(statement.params.filter((param) => param === opId).length, 2, `${name}: l'id letto e scritto`);
+  }
+  // Gli id si dimenticano dopo 30 giorni (la bozza ne vive 7), nell'unità di chi salva.
+  assert.match(forgetOldOps(scope).text, /^DELETE FROM mapping_applied_ops o WHERE o\.department_id = \$\d+::uuid AND o\.workspace_id = \$\d+::uuid AND o\.created_at < now\(\) - make_interval\(days => \$\d+::int\)$/);
+  assert.ok(forgetOldOps(scope).params.includes(OP_MEMORY.appliedDays));
+  assert.ok(OP_MEMORY.appliedDays > OP_MEMORY.draftDays);
 });
 
 test("il campo letto e il campo confrontato sono la stessa espressione", () => {
@@ -305,6 +335,7 @@ test("R5: la riga della board per prima, un'istruzione per operazione, poi la co
     text(renumberProcesses(scope)),
     text(renumberSteps(scope)),
     text(renumberNotes(scope)),
+    text(forgetOldOps(scope)),
     text(startUnit(scope)),
     text(bumpRevision(scope)),
   ]);
@@ -317,15 +348,15 @@ test("R5: la riga della board per prima, un'istruzione per operazione, poi la co
 
   // Solo quello che serve: una modifica di un campo non rinumera e non ricopia niente.
   const small = saveBatch(scope, actor, [OPS["step.set title"]]);
-  assert.deepEqual(small.statements.map(text), [text(ensureBoardRow(scope)), text(opStatement(scope, actor, OPS["step.set title"])), text(startUnit(scope)), text(bumpRevision(scope))]);
-  assert.deepEqual([small.opAt, small.revisionAt], [[1], 3]);
+  assert.deepEqual(small.statements.map(text), [text(ensureBoardRow(scope)), text(opStatement(scope, actor, OPS["step.set title"])), text(forgetOldOps(scope)), text(startUnit(scope)), text(bumpRevision(scope))]);
+  assert.deepEqual([small.opAt, small.revisionAt], [[1], 4]);
   const move = saveBatch(scope, actor, [OPS["step.move"]]);
-  assert.deepEqual(move.statements.slice(2).map(text), [text(renumberSteps(scope)), text(startUnit(scope)), text(bumpRevision(scope))]);
+  assert.deepEqual(move.statements.slice(2).map(text), [text(renumberSteps(scope)), text(forgetOldOps(scope)), text(startUnit(scope)), text(bumpRevision(scope))]);
   const process = saveBatch(scope, actor, [OPS["process.remove"]]);
-  assert.deepEqual(process.statements.slice(2).map(text), [text(renumberProcesses(scope)), text(startUnit(scope)), text(bumpRevision(scope))]);
+  assert.deepEqual(process.statements.slice(2).map(text), [text(renumberProcesses(scope)), text(forgetOldOps(scope)), text(startUnit(scope)), text(bumpRevision(scope))]);
   // Una nota di una corsia senza colonna di sempre («Tempi e volumi») non ricopia niente.
   const tempi = saveBatch(scope, actor, [op({ t: "note.add", noteId: id(), stepId, lane: "tempi", text: "Un volume" })]);
-  assert.deepEqual(tempi.statements.slice(2).map(text), [text(renumberNotes(scope)), text(startUnit(scope)), text(bumpRevision(scope))]);
+  assert.deepEqual(tempi.statements.slice(2).map(text), [text(renumberNotes(scope)), text(forgetOldOps(scope)), text(startUnit(scope)), text(bumpRevision(scope))]);
 });
 
 test("la coda: la copia nelle colonne di sempre scrive solo dove il testo cambia, la rinumerazione solo dove il posto cambia", () => {
@@ -400,7 +431,7 @@ test("l'adozione non scrive in activities e non alza la revisione; il completame
 
 test("senza la 0039 le letture non toccano le tabelle nuove", () => {
   for (const statement of [...activitiesOnlyReads(scope), preflight(scope)[1], unitBoards(WS, false), saveClassifications({ workspaceId: WS }, [], false)]) {
-    assert.doesNotMatch(statement.text, /\bmapping_(boards|processes|steps|notes|votes)\b/, statement.text.slice(0, 60));
+    assert.doesNotMatch(statement.text, /\bmapping_(boards|processes|steps|notes|votes|applied_ops)\b/, statement.text.slice(0, 60));
   }
   assert.match(storeProbe().text, /to_regclass\('public\.mapping_boards'\) IS NOT NULL/);
   assert.equal(preflight(scope)[0].text, storeProbe().text);

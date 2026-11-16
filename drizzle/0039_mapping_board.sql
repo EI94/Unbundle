@@ -8,6 +8,8 @@
 --     della decisione, attrito, stato, origine, la proposta del classificatore);
 --   - mapping_notes: le note di un passo per corsia e i punti di analisi della board;
 --   - mapping_votes: i voti di ogni persona su un processo;
+--   - mapping_applied_ops: le operazioni già applicate (id ed esito, per 30 giorni): un salvataggio rimandato risponde
+--     con l'esito di allora e non scrive una seconda volta;
 --   - due indici unici (departments, activities) per le chiavi esterne composte, e due indici su activities.
 -- Nessun dato scritto, nessuna colonna aggiunta, cambiata o tolta nelle tabelle di prima: activities, departments e
 -- activity_dependencies restano come sono, e il codice di prima ignora le tabelle nuove.
@@ -122,3 +124,15 @@ CREATE TABLE IF NOT EXISTS mapping_votes (
 );
 
 CREATE INDEX IF NOT EXISTS mapping_votes_user_idx ON mapping_votes (user_id);
+
+CREATE TABLE IF NOT EXISTS mapping_applied_ops (
+  op_id uuid NOT NULL,
+  workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  department_id uuid NOT NULL,
+  outcome varchar(8) NOT NULL CONSTRAINT mapping_applied_ops_outcome_check CHECK (outcome IN ('ok', 'conflict', 'gone', 'limit', 'linked')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT mapping_applied_ops_pkey PRIMARY KEY (op_id),
+  CONSTRAINT mapping_applied_ops_unit_fkey FOREIGN KEY (department_id, workspace_id) REFERENCES departments (id, workspace_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS mapping_applied_ops_unit_idx ON mapping_applied_ops (department_id, created_at);

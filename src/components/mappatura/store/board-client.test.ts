@@ -23,8 +23,12 @@ const titleOf = (board: MappingBoard, stepId: string) => locateStep(board, stepI
 type Put = { baseRevision: number; ops: BoardOp[]; keepalive: boolean };
 type Mode = number | "rete" | "persa";
 
+/** L'ora del test: il harness parte da qui, e una bozza scritta adesso porta questa ora. */
+const T0 = Date.UTC(2026, 10, 16, 9, 0, 0);
+const DAY = 24 * 60 * 60 * 1000;
+
 function harness(options: { initial?: MappingBoard; server?: MappingBoard; draft?: unknown; storage?: "nessuna" | "rotta" } = {}) {
-  let time = Date.UTC(2026, 10, 16, 9, 0, 0);
+  let time = T0;
   let ids = 0;
   let timerSeq = 0;
   const timers = new Map<number, { at: number; run: () => void }>();
@@ -458,7 +462,7 @@ test("503 (le tabelle mancano ancora): sola lettura senza toast; quando una lett
 
 test("una board che non si può modificare apre in sola lettura, e la bozza resta dov'è", async () => {
   for (const initial of [fixtureBoard({ readOnly: true }), { ...fixtureBoard(), store: "mancante" as const }]) {
-    const draft = { v: 1, ops: [{ id: "0b0b0b0b-0000-4000-8000-000000000001", ...setTitle(I.richieste, TITLE, "Raccolta") }] };
+    const draft = { v: 1, at: T0, ops: [{ id: "0b0b0b0b-0000-4000-8000-000000000001", ...setTitle(I.richieste, TITLE, "Raccolta") }] };
     const h = harness({ initial, draft });
     h.client.start();
     assert.equal(h.state().pill, "readonly");
@@ -551,7 +555,7 @@ test("la bozza: scritta a ogni modifica, tolta quando è salvata (P74)", async (
   const h = harness();
   assert.equal(h.draft(), null);
   h.client.dispatch(setTitle(I.richieste, TITLE, "Raccolta"));
-  assert.deepEqual(JSON.parse(h.stored.get(KEY)!), { v: 1, ops: [{ id: "0a0a0a0a-0000-4000-8000-000000000001", ...setTitle(I.richieste, TITLE, "Raccolta") }] });
+  assert.deepEqual(JSON.parse(h.stored.get(KEY)!), { v: 1, at: T0, ops: [{ id: "0a0a0a0a-0000-4000-8000-000000000001", ...setTitle(I.richieste, TITLE, "Raccolta") }] });
   h.client.dispatch({ t: "process.vote", processId: I.processA, mine: 2 });
   assert.equal(h.draft()?.length, 2);
   await h.client.saveNow();
@@ -562,6 +566,7 @@ test("la bozza torna sopra una board più recente: «dirty», e il salvataggio p
   const stale = fixtureBoard();
   const draft = {
     v: 1,
+    at: T0 - 6 * DAY,
     ops: [
       { id: "0b0b0b0b-0000-4000-8000-000000000001", ...setTitle(I.richieste, TITLE, "Raccolta") },
       { id: "0b0b0b0b-0000-4000-8000-000000000002", t: "step.add", stepId: "0c0c0c0c-0000-4000-8000-000000000001", processId: I.processB, title: "Archivio" },
@@ -602,7 +607,7 @@ test("la bozza torna sopra una board più recente: «dirty», e il salvataggio p
 test("una bozza già salvata (la pagina si è chiusa prima della risposta) non riapre «dirty»: si toglie e basta", async () => {
   const op = { id: "0b0b0b0b-0000-4000-8000-000000000001", ...setTitle(I.richieste, TITLE, "Raccolta") };
   const saved: MappingBoard = { ...applyOps(fixtureBoard(), [op], { kind: "persona" }), revision: fixtureBoard().revision + 1 };
-  const h = harness({ initial: saved, draft: { v: 1, ops: [op, { id: "0b0b0b0b-0000-4000-8000-000000000002", t: "step.remove", stepId: "0c0c0c0c-0000-4000-8000-000000000077" }] } });
+  const h = harness({ initial: saved, draft: { v: 1, at: T0, ops: [op, { id: "0b0b0b0b-0000-4000-8000-000000000002", t: "step.remove", stepId: "0c0c0c0c-0000-4000-8000-000000000077" }] } });
   h.client.start();
   assert.equal(h.state().pill, "saved");
   assert.equal(h.state().pending, 0);
@@ -611,8 +616,27 @@ test("una bozza già salvata (la pagina si è chiusa prima della risposta) non r
   assert.equal(h.server.puts.length, 0);
 });
 
+test("una bozza di più di 7 giorni, o senza ora, non torna: si toglie, e la board apre com'è sul server", async () => {
+  const ops = [{ id: "0b0b0b0b-0000-4000-8000-000000000001", ...setTitle(I.richieste, TITLE, "Raccolta") }];
+  for (const draft of [{ v: 1, at: T0 - 7 * DAY - 1, ops }, { v: 1, ops }, { v: 1, at: "ieri", ops }]) {
+    const h = harness({ draft });
+    h.client.start();
+    assert.equal(h.state().pill, "saved");
+    assert.equal(h.state().pending, 0);
+    assert.equal(titleOf(h.state().board, I.richieste), TITLE);
+    assert.equal(h.stored.has(KEY), false, "la bozza vecchia si toglie");
+    await h.advance(60_000);
+    assert.equal(h.server.puts.length, 0);
+  }
+  // Una di 7 giorni esatti torna ancora.
+  const recent = harness({ draft: { v: 1, at: T0 - 7 * DAY, ops } });
+  recent.client.start();
+  assert.equal(recent.state().pill, "dirty");
+  assert.equal(titleOf(recent.state().board, I.richieste), "Raccolta");
+});
+
 test("una bozza illeggibile, di un'altra versione o senza memoria: la board apre lo stesso", async () => {
-  for (const draft of ["{non json", { v: 2, ops: [{ id: "0b0b0b0b-0000-4000-8000-000000000001", ...setTitle(I.richieste, TITLE, "Raccolta") }] }, { v: 1, ops: "no" }, "null"]) {
+  for (const draft of ["{non json", { v: 2, at: T0, ops: [{ id: "0b0b0b0b-0000-4000-8000-000000000001", ...setTitle(I.richieste, TITLE, "Raccolta") }] }, { v: 1, at: T0, ops: "no" }, "null"]) {
     const h = harness({ draft });
     h.client.start();
     assert.equal(h.state().pill, "saved");

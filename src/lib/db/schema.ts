@@ -78,7 +78,7 @@ import type { GithubDeliveryOutcome, PullRequestState } from "./use-case-hub-git
 import type { ProposalSource, ProposalStatus } from "./use-case-hub-proposals-ddl.ts";
 import type { UseCaseNoticeKind0036 } from "./use-case-hub-evals-ddl.ts";
 import type { EvalGroup, EvalRunKind } from "../use-cases/factory/benchmark.ts";
-import type { Lane, NoteStatus, Origin, StepStatus, Stream } from "../mappatura/vocab.ts";
+import type { Lane, NoteStatus, OpOutcome, Origin, StepStatus, Stream } from "../mappatura/vocab.ts";
 import type { WorkspaceTeamRole } from "./use-case-hub-team-ddl.ts";
 import type { Origin as UseCaseOrigin } from "../use-cases/types.ts";
 import type { ValueModel as UseCaseValueModel } from "../use-cases/value-model.ts";
@@ -1782,6 +1782,25 @@ export const mappingVotes = pgTable(
   (t) => [
     primaryKey({ name: "mapping_votes_pkey", columns: [t.processId, t.userId] }),
     index("mapping_votes_user_idx").on(t.userId),
+  ]
+);
+
+/**
+ * (0039) Le operazioni della board già applicate, con il loro esito, per 30 giorni: un salvataggio rimandato (la bozza
+ * di una pagina chiusa prima della risposta) risponde con l'esito di allora e non scrive una seconda volta.
+ */
+export const mappingAppliedOps = pgTable(
+  "mapping_applied_ops",
+  {
+    opId: uuid("op_id").notNull(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    departmentId: uuid("department_id").notNull(),
+    outcome: varchar("outcome", { length: 8 }).$type<OpOutcome>().notNull(),
+    createdAt: tz("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    primaryKey({ name: "mapping_applied_ops_pkey", columns: [t.opId] }),
+    index("mapping_applied_ops_unit_idx").on(t.departmentId, t.createdAt),
   ]
 );
 

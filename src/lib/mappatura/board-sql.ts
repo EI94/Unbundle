@@ -14,10 +14,14 @@
  *   altre operazioni vanno avanti.
  * - **R3 confronta e scrivi.** `<campo> IS NOT DISTINCT FROM prev OR <campo> IS NOT DISTINCT FROM next`: si applica se
  *   il campo ha ancora il valore che la persona ha visto, o ha già quello nuovo.
- * - **R4 una richiesta ripetuta non cambia niente.** Gli inserimenti sono `ON CONFLICT (id) DO NOTHING` e contano come
- *   fatti se la riga c'è, in questa unità; i voti sono assoluti; la seconda metà di R3 copre le modifiche.
+ * - **R4 una richiesta ripetuta non cambia niente.** Ogni operazione applicata lascia il suo id e il suo esito in
+ *   `mapping_applied_ops` (per 30 giorni): la stessa operazione mandata di nuovo (una bozza rimandata da una pagina
+ *   chiusa prima della risposta) risponde con l'esito di allora e non scrive, anche se nel frattempo altri hanno
+ *   eliminato il passo o rimesso il valore di prima. Sotto, gli inserimenti sono `ON CONFLICT (id) DO NOTHING` e
+ *   contano come fatti se la riga c'è, in questa unità; i voti sono assoluti; la seconda metà di R3 copre le modifiche.
  * - **R5 la coda di ogni salvataggio**: la copia di «Attriti» e «Dati e documenti» nelle loro colonne, la
- *   rinumerazione delle righe toccate, l'unità «in corso» al primo passo e, per ultima, la revisione.
+ *   rinumerazione delle righe toccate, le operazioni applicate più di 30 giorni fa dimenticate, l'unità «in corso» al
+ *   primo passo e, per ultima, la revisione.
  *
  * Il campo letto e il campo confrontato usano la stessa espressione (`STEP_FIELDS`): quello che il browser ha visto è
  * proprio quello con cui il database confronta.
@@ -28,7 +32,7 @@ import { MAPPING_BOARD_PROBE_SQL } from "../db/mapping-board-ddl.ts";
 import { cast, join, jsonb, raw, ref, toStatement, ucSql, type SqlFragment, type UcStatement } from "../uc/sql/statement.ts";
 import { ACTOR_DEFAULTS, type ActorKind, type BoardOp, type StepField, type StepValue } from "./board-ops.ts";
 import { STREAM_OF_CLASSIFICATION } from "./streams.ts";
-import { BOARD_LANE, MAPPING_LIMITS, STREAMS, type Lane } from "./vocab.ts";
+import { BOARD_LANE, MAPPING_LIMITS, OP_MEMORY, STREAMS, type Lane } from "./vocab.ts";
 
 export interface BoardScope {
   workspaceId: string;
@@ -41,8 +45,8 @@ export interface BoardActor {
   role: string;
 }
 
-/** Com'è andata un'operazione: il valore di `outcome` nella riga che ogni istruzione restituisce. */
-export type OpOutcome = "ok" | "conflict" | "gone" | "limit" | "linked";
+/** Com'è andata un'operazione: il valore di `outcome` nella riga che ogni istruzione restituisce (il vocabolario). */
+export type { OpOutcome } from "./vocab.ts";
 
 const L = MAPPING_LIMITS;
 const U = (value: string | null | undefined) => cast(value ?? null, "uuid");
@@ -57,8 +61,10 @@ export function inUnit(alias: string, scope: BoardScope): SqlFragment {
 /** L'unità stessa, come genitore di un inserimento. */
 const unitRow = (scope: BoardScope) => ucSql`SELECT d.id AS department_id, d.workspace_id FROM departments d WHERE d.id = ${U(scope.departmentId)} AND d.workspace_id = ${U(scope.workspaceId)}`;
 
-const OUTCOME_SET = raw("SELECT CASE WHEN EXISTS (SELECT 1 FROM done) THEN 'ok' WHEN EXISTS (SELECT 1 FROM target) THEN 'conflict' ELSE 'gone' END AS outcome");
-const OUTCOME_DONE = raw("SELECT CASE WHEN EXISTS (SELECT 1 FROM done) THEN 'ok' ELSE 'gone' END AS outcome");
+const OUTCOME_SET = raw("CASE WHEN EXISTS (SELECT 1 FROM done) THEN 'ok' WHEN EXISTS (SELECT 1 FROM target) THEN 'conflict' ELSE 'gone' END");
+const OUTCOME_DONE = raw("CASE WHEN EXISTS (SELECT 1 FROM done) THEN 'ok' ELSE 'gone' END");
+/** R4: l'operazione non è già stata applicata (la sua riga in `mapping_applied_ops`, letta nel CTE `seen`). */
+const FRESH = raw("NOT EXISTS (SELECT 1 FROM seen)");
 
 // ─── Espressioni condivise da lettura e confronto ────────────────────
 
@@ -154,69 +160,86 @@ const notesOf = (scope: BoardScope, stepId: string | null, lane: Lane): Siblings
 
 // ─── Le operazioni, una istruzione ciascuna ──────────────────────────
 
+/** Un'operazione in pezzi: i suoi CTE (ogni scrittura con `FRESH`) e l'espressione del suo esito. */
+interface OpParts {
+  ctes: SqlFragment;
+  outcome: SqlFragment;
+}
+
 type Op<K extends BoardOp["t"]> = Extract<BoardOp, { t: K }>;
 
-function processAdd(scope: BoardScope, op: Op<"process.add">): SqlFragment {
-  return ucSql`WITH unit AS (${unitRow(scope)}),
+function processAdd(scope: BoardScope, op: Op<"process.add">): OpParts {
+  return {
+    ctes: ucSql`unit AS (${unitRow(scope)}),
 was AS (SELECT 1 FROM mapping_processes p WHERE p.id = ${U(op.processId)} AND ${inUnit("p", scope)}),
 room AS (SELECT count(*)::int AS n FROM mapping_processes p WHERE ${inUnit("p", scope)}),
 done AS (
   INSERT INTO mapping_processes (id, workspace_id, department_id, name, position)
   SELECT ${U(op.processId)}, unit.workspace_id, unit.department_id, ${T(op.name)}, ${placeAt(processesOf(scope), { beforeId: op.beforeId })}
-  FROM unit, room WHERE room.n < ${N(L.processes)}
-  ON CONFLICT (id) DO NOTHING RETURNING 1)
-SELECT CASE WHEN EXISTS (SELECT 1 FROM done) OR EXISTS (SELECT 1 FROM was) THEN 'ok' WHEN (SELECT n FROM room) >= ${N(L.processes)} THEN 'limit' ELSE 'gone' END AS outcome`;
+  FROM unit, room WHERE room.n < ${N(L.processes)} AND ${FRESH}
+  ON CONFLICT (id) DO NOTHING RETURNING 1)`,
+    outcome: ucSql`CASE WHEN EXISTS (SELECT 1 FROM done) OR EXISTS (SELECT 1 FROM was) THEN 'ok' WHEN (SELECT n FROM room) >= ${N(L.processes)} THEN 'limit' ELSE 'gone' END`,
+  };
 }
 
-function processSet(scope: BoardScope, op: Op<"process.set">): SqlFragment {
+function processSet(scope: BoardScope, op: Op<"process.set">): OpParts {
   const column = raw(op.field === "name" ? "name" : "owner");
-  return ucSql`WITH target AS (SELECT 1 FROM mapping_processes p WHERE p.id = ${U(op.processId)} AND ${inUnit("p", scope)}),
+  return {
+    ctes: ucSql`target AS (SELECT 1 FROM mapping_processes p WHERE p.id = ${U(op.processId)} AND ${inUnit("p", scope)}),
 done AS (
   UPDATE mapping_processes p SET ${column} = ${T(op.next)}, updated_at = now()
-  WHERE p.id = ${U(op.processId)} AND ${inUnit("p", scope)} AND (p.${column} IS NOT DISTINCT FROM ${T(op.prev)} OR p.${column} IS NOT DISTINCT FROM ${T(op.next)})
-  RETURNING 1)
-${OUTCOME_SET}`;
+  WHERE p.id = ${U(op.processId)} AND ${inUnit("p", scope)} AND ${FRESH} AND (p.${column} IS NOT DISTINCT FROM ${T(op.prev)} OR p.${column} IS NOT DISTINCT FROM ${T(op.next)})
+  RETURNING 1)`,
+    outcome: OUTCOME_SET,
+  };
 }
 
-function processMove(scope: BoardScope, op: Op<"process.move">): SqlFragment {
-  return ucSql`WITH done AS (
+function processMove(scope: BoardScope, op: Op<"process.move">): OpParts {
+  return {
+    ctes: ucSql`done AS (
   UPDATE mapping_processes p SET position = ${placeAt(processesOf(scope, op.processId), { beforeId: op.beforeId })}, updated_at = now()
-  WHERE p.id = ${U(op.processId)} AND ${inUnit("p", scope)}
-  RETURNING 1)
-${OUTCOME_DONE}`;
+  WHERE p.id = ${U(op.processId)} AND ${inUnit("p", scope)} AND ${FRESH}
+  RETURNING 1)`,
+    outcome: OUTCOME_DONE,
+  };
 }
 
 /** Solo un processo senza passi: con dei passi resta dov'è, e l'operazione risulta `gone`. */
-function processRemove(scope: BoardScope, op: Op<"process.remove">): SqlFragment {
-  return ucSql`WITH done AS (
+function processRemove(scope: BoardScope, op: Op<"process.remove">): OpParts {
+  return {
+    ctes: ucSql`done AS (
   DELETE FROM mapping_processes p
-  WHERE p.id = ${U(op.processId)} AND ${inUnit("p", scope)}
+  WHERE p.id = ${U(op.processId)} AND ${inUnit("p", scope)} AND ${FRESH}
     AND NOT EXISTS (SELECT 1 FROM mapping_steps s WHERE s.process_id = p.id AND s.department_id = p.department_id AND s.workspace_id = p.workspace_id)
-  RETURNING 1)
-${OUTCOME_DONE}`;
+  RETURNING 1)`,
+    outcome: OUTCOME_DONE,
+  };
 }
 
 /** I voti di chi salva, valore assoluto: ognuno scrive solo la sua riga; zero la toglie. */
-function processVote(scope: BoardScope, actor: BoardActor, op: Op<"process.vote">): SqlFragment {
-  return ucSql`WITH target AS (
+function processVote(scope: BoardScope, actor: BoardActor, op: Op<"process.vote">): OpParts {
+  return {
+    ctes: ucSql`target AS (
   SELECT p.id AS process_id, p.workspace_id, p.department_id, u.id AS user_id
   FROM mapping_processes p JOIN users u ON u.id = ${U(actor.userId)}
   WHERE p.id = ${U(op.processId)} AND ${inUnit("p", scope)}),
 cleared AS (
   DELETE FROM mapping_votes v USING target
-  WHERE ${N(op.mine)} = 0 AND v.process_id = target.process_id AND v.user_id = target.user_id AND v.department_id = target.department_id AND v.workspace_id = target.workspace_id
+  WHERE ${N(op.mine)} = 0 AND ${FRESH} AND v.process_id = target.process_id AND v.user_id = target.user_id AND v.department_id = target.department_id AND v.workspace_id = target.workspace_id
   RETURNING 1),
 done AS (
   INSERT INTO mapping_votes (process_id, user_id, workspace_id, department_id, votes)
-  SELECT target.process_id, target.user_id, target.workspace_id, target.department_id, ${N(op.mine)} FROM target WHERE ${N(op.mine)} > 0
+  SELECT target.process_id, target.user_id, target.workspace_id, target.department_id, ${N(op.mine)} FROM target WHERE ${N(op.mine)} > 0 AND ${FRESH}
   ON CONFLICT (process_id, user_id) DO UPDATE SET votes = EXCLUDED.votes, updated_at = now()
-  RETURNING 1)
-SELECT CASE WHEN EXISTS (SELECT 1 FROM target) THEN 'ok' ELSE 'gone' END AS outcome`;
+  RETURNING 1)`,
+    outcome: raw("CASE WHEN EXISTS (SELECT 1 FROM target) THEN 'ok' ELSE 'gone' END"),
+  };
 }
 
-function stepAdd(scope: BoardScope, actor: BoardActor, op: Op<"step.add">): SqlFragment {
+function stepAdd(scope: BoardScope, actor: BoardActor, op: Op<"step.add">): OpParts {
   const defaults = ACTOR_DEFAULTS[actor.kind];
-  return ucSql`WITH proc AS (SELECT p.id, p.department_id, p.workspace_id FROM mapping_processes p WHERE p.id = ${U(op.processId)} AND ${inUnit("p", scope)}),
+  return {
+    ctes: ucSql`proc AS (SELECT p.id, p.department_id, p.workspace_id FROM mapping_processes p WHERE p.id = ${U(op.processId)} AND ${inUnit("p", scope)}),
 was AS (SELECT 1 FROM mapping_steps s WHERE s.activity_id = ${U(op.stepId)} AND ${inUnit("s", scope)}),
 room AS (
   SELECT (SELECT count(*) FROM mapping_steps s WHERE ${inUnit("s", scope)})::int AS in_unit,
@@ -224,46 +247,51 @@ room AS (
 act AS (
   INSERT INTO activities (id, department_id, workspace_id, title)
   SELECT ${U(op.stepId)}, proc.department_id, proc.workspace_id, ${T(op.title)}
-  FROM proc, room WHERE room.in_unit < ${N(L.stepsPerUnit)} AND room.in_process < ${N(L.stepsPerProcess)}
+  FROM proc, room WHERE room.in_unit < ${N(L.stepsPerUnit)} AND room.in_process < ${N(L.stepsPerProcess)} AND ${FRESH}
   ON CONFLICT (id) DO NOTHING RETURNING id, department_id, workspace_id),
 done AS (
   INSERT INTO mapping_steps (activity_id, workspace_id, department_id, process_id, position, status, origin)
   SELECT act.id, act.workspace_id, act.department_id, ${U(op.processId)}, ${placeAt(stepsOf(scope, op.processId), { beforeId: op.beforeId, afterId: op.afterId })}, ${T(defaults.stepStatus)}, ${T(defaults.origin)}
   FROM act
-  ON CONFLICT (activity_id) DO NOTHING RETURNING 1)
-SELECT CASE WHEN EXISTS (SELECT 1 FROM done) OR EXISTS (SELECT 1 FROM was) THEN 'ok'
+  ON CONFLICT (activity_id) DO NOTHING RETURNING 1)`,
+    outcome: ucSql`CASE WHEN EXISTS (SELECT 1 FROM done) OR EXISTS (SELECT 1 FROM was) THEN 'ok'
             WHEN NOT EXISTS (SELECT 1 FROM proc) THEN 'gone'
             WHEN (SELECT in_unit >= ${N(L.stepsPerUnit)} OR in_process >= ${N(L.stepsPerProcess)} FROM room) THEN 'limit'
-            ELSE 'gone' END AS outcome`;
+            ELSE 'gone' END`,
+  };
 }
 
-function stepSet(scope: BoardScope, op: Op<"step.set">): SqlFragment {
+function stepSet(scope: BoardScope, op: Op<"step.set">): OpParts {
   const spec = STEP_FIELDS[op.field];
   const alias = spec.table === "activities" ? "a" : "s";
   const row = ucSql`${ref(`${alias}.${spec.table === "activities" ? "id" : "activity_id"}`)} = ${U(op.stepId)} AND ${inUnit(alias, scope)}`;
   const table = ucSql`${raw(spec.table)} ${raw(alias)}`;
-  return ucSql`WITH target AS (SELECT 1 FROM ${table} WHERE ${row}),
+  return {
+    ctes: ucSql`target AS (SELECT 1 FROM ${table} WHERE ${row}),
 done AS (
   UPDATE ${table} SET ${raw(spec.column)} = ${spec.write(op.next)}, updated_at = now()
-  WHERE ${row} AND (${spec.current} IS NOT DISTINCT FROM ${spec.param(op.prev)} OR ${spec.current} IS NOT DISTINCT FROM ${spec.param(op.next)})
-  RETURNING 1)
-${OUTCOME_SET}`;
+  WHERE ${row} AND ${FRESH} AND (${spec.current} IS NOT DISTINCT FROM ${spec.param(op.prev)} OR ${spec.current} IS NOT DISTINCT FROM ${spec.param(op.next)})
+  RETURNING 1)`,
+    outcome: OUTCOME_SET,
+  };
 }
 
 /**
  * Un passo nella sua riga o in un'altra. Il limite dei passi vale per chi entra in una riga: dentro la sua riga un passo
  * si riordina sempre, anche in un processo che l'adozione ha riempito oltre i 40 passi (come fa il riduttore).
  */
-function stepMove(scope: BoardScope, op: Op<"step.move">): SqlFragment {
-  return ucSql`WITH step AS (SELECT 1 FROM mapping_steps s WHERE s.activity_id = ${U(op.stepId)} AND ${inUnit("s", scope)}),
+function stepMove(scope: BoardScope, op: Op<"step.move">): OpParts {
+  return {
+    ctes: ucSql`step AS (SELECT 1 FROM mapping_steps s WHERE s.activity_id = ${U(op.stepId)} AND ${inUnit("s", scope)}),
 proc AS (SELECT 1 FROM mapping_processes p WHERE p.id = ${U(op.processId)} AND ${inUnit("p", scope)}),
 room AS (SELECT count(*)::int AS n FROM mapping_steps s WHERE s.process_id = ${U(op.processId)} AND ${inUnit("s", scope)} AND s.activity_id <> ${U(op.stepId)}),
 done AS (
   UPDATE mapping_steps s SET process_id = ${U(op.processId)}, position = ${placeAt(stepsOf(scope, op.processId, op.stepId), { beforeId: op.beforeId })}, updated_at = now()
-  WHERE s.activity_id = ${U(op.stepId)} AND ${inUnit("s", scope)} AND EXISTS (SELECT 1 FROM proc)
+  WHERE s.activity_id = ${U(op.stepId)} AND ${inUnit("s", scope)} AND ${FRESH} AND EXISTS (SELECT 1 FROM proc)
     AND (s.process_id = ${U(op.processId)} OR (SELECT n FROM room) < ${N(L.stepsPerProcess)})
-  RETURNING 1)
-SELECT CASE WHEN EXISTS (SELECT 1 FROM done) THEN 'ok' WHEN NOT EXISTS (SELECT 1 FROM step) OR NOT EXISTS (SELECT 1 FROM proc) THEN 'gone' ELSE 'limit' END AS outcome`;
+  RETURNING 1)`,
+    outcome: raw("CASE WHEN EXISTS (SELECT 1 FROM done) THEN 'ok' WHEN NOT EXISTS (SELECT 1 FROM step) OR NOT EXISTS (SELECT 1 FROM proc) THEN 'gone' ELSE 'limit' END"),
+  };
 }
 
 /**
@@ -271,42 +299,48 @@ SELECT CASE WHEN EXISTS (SELECT 1 FROM done) THEN 'ok' WHEN NOT EXISTS (SELECT 1
  * CASCADE). Rifiutata (`linked`) se uno use case del workspace la elenca in `related_activity_ids`, visibile o no a
  * chi chiede.
  */
-function stepRemove(scope: BoardScope, op: Op<"step.remove">): SqlFragment {
-  return ucSql`WITH target AS (SELECT 1 FROM activities a WHERE a.id = ${U(op.stepId)} AND ${inUnit("a", scope)}),
+function stepRemove(scope: BoardScope, op: Op<"step.remove">): OpParts {
+  return {
+    ctes: ucSql`target AS (SELECT 1 FROM activities a WHERE a.id = ${U(op.stepId)} AND ${inUnit("a", scope)}),
 linked AS (
   SELECT 1 FROM use_cases u
   WHERE u.workspace_id = ${U(scope.workspaceId)} AND jsonb_typeof(u.related_activity_ids) = 'array' AND u.related_activity_ids @> jsonb_build_array(${T(op.stepId)})
   LIMIT 1),
 done AS (
   DELETE FROM activities a
-  WHERE a.id = ${U(op.stepId)} AND ${inUnit("a", scope)} AND NOT EXISTS (SELECT 1 FROM linked)
-  RETURNING 1)
-SELECT CASE WHEN EXISTS (SELECT 1 FROM done) THEN 'ok' WHEN NOT EXISTS (SELECT 1 FROM target) THEN 'gone' ELSE 'linked' END AS outcome`;
+  WHERE a.id = ${U(op.stepId)} AND ${inUnit("a", scope)} AND ${FRESH} AND NOT EXISTS (SELECT 1 FROM linked)
+  RETURNING 1)`,
+    outcome: raw("CASE WHEN EXISTS (SELECT 1 FROM done) THEN 'ok' WHEN NOT EXISTS (SELECT 1 FROM target) THEN 'gone' ELSE 'linked' END"),
+  };
 }
 
 /** Lo stream di un passo, scelto da un revisore. La confidenza resta: descrive la proposta del classificatore. */
-function stepStream(scope: BoardScope, op: Op<"step.stream">): SqlFragment {
+function stepStream(scope: BoardScope, op: Op<"step.stream">): OpParts {
   const current = streamFold("a.classification");
-  return ucSql`WITH target AS (SELECT 1 FROM activities a WHERE a.id = ${U(op.stepId)} AND ${inUnit("a", scope)}),
+  return {
+    ctes: ucSql`target AS (SELECT 1 FROM activities a WHERE a.id = ${U(op.stepId)} AND ${inUnit("a", scope)}),
 done AS (
   UPDATE activities a SET classification = ${T(op.next)}::classification, updated_at = now()
-  WHERE a.id = ${U(op.stepId)} AND ${inUnit("a", scope)} AND (${current} IS NOT DISTINCT FROM ${T(op.prev)} OR ${current} IS NOT DISTINCT FROM ${T(op.next)})
-  RETURNING 1)
-${OUTCOME_SET}`;
+  WHERE a.id = ${U(op.stepId)} AND ${inUnit("a", scope)} AND ${FRESH} AND (${current} IS NOT DISTINCT FROM ${T(op.prev)} OR ${current} IS NOT DISTINCT FROM ${T(op.next)})
+  RETURNING 1)`,
+    outcome: OUTCOME_SET,
+  };
 }
 
 /** Ogni passo dell'unità che ha una proposta torna allo stream proposto. */
-function streamsReset(scope: BoardScope): SqlFragment {
-  return ucSql`WITH done AS (
+function streamsReset(scope: BoardScope): OpParts {
+  return {
+    ctes: ucSql`done AS (
   UPDATE activities a SET classification = s.proposed_stream::classification, updated_at = now()
   FROM mapping_steps s
-  WHERE s.activity_id = a.id AND s.department_id = a.department_id AND s.workspace_id = a.workspace_id AND ${inUnit("a", scope)}
+  WHERE s.activity_id = a.id AND s.department_id = a.department_id AND s.workspace_id = a.workspace_id AND ${inUnit("a", scope)} AND ${FRESH}
     AND s.proposed_stream IS NOT NULL AND ${streamFold("a.classification")} IS DISTINCT FROM s.proposed_stream
-  RETURNING 1)
-SELECT 'ok' AS outcome`;
+  RETURNING 1)`,
+    outcome: raw("'ok'"),
+  };
 }
 
-function noteAdd(scope: BoardScope, actor: BoardActor, op: Op<"note.add">): SqlFragment {
+function noteAdd(scope: BoardScope, actor: BoardActor, op: Op<"note.add">): OpParts {
   const defaults = ACTOR_DEFAULTS[actor.kind];
   const ofBoard = op.stepId === null;
   const max = ofBoard ? L.analysisPoints : L.notesPerLane;
@@ -314,79 +348,106 @@ function noteAdd(scope: BoardScope, actor: BoardActor, op: Op<"note.add">): SqlF
   const parent = ofBoard
     ? ucSql`SELECT NULL::uuid AS activity_id, d.id AS department_id, d.workspace_id FROM departments d WHERE d.id = ${U(scope.departmentId)} AND d.workspace_id = ${U(scope.workspaceId)}`
     : ucSql`SELECT a.id AS activity_id, a.department_id, a.workspace_id FROM activities a WHERE a.id = ${U(op.stepId)} AND ${inUnit("a", scope)}`;
-  return ucSql`WITH parent AS (${parent}),
+  return {
+    ctes: ucSql`parent AS (${parent}),
 was AS (SELECT 1 FROM mapping_notes n WHERE n.id = ${U(op.noteId)} AND ${inUnit("n", scope)}),
 room AS (SELECT count(*)::int AS n FROM mapping_notes n WHERE ${notesOf(scope, op.stepId, op.lane).group("n")}),
 done AS (
   INSERT INTO mapping_notes (id, workspace_id, department_id, activity_id, lane, title, body, status, origin, position)
   SELECT ${U(op.noteId)}, parent.workspace_id, parent.department_id, parent.activity_id, ${T(op.lane)}, ${T(ofBoard ? (op.title ?? null) : null)}, ${T(op.text)}, ${T(defaults.noteStatus)}, ${T(defaults.origin)},
          ${placeAt(notesOf(scope, op.stepId, op.lane), { beforeId: op.beforeId })}
-  FROM parent, room WHERE room.n < ${N(max)}
-  ON CONFLICT (id) DO NOTHING RETURNING 1)
-SELECT CASE WHEN EXISTS (SELECT 1 FROM done) OR EXISTS (SELECT 1 FROM was) THEN 'ok' WHEN NOT EXISTS (SELECT 1 FROM parent) THEN 'gone' WHEN (SELECT n FROM room) >= ${N(max)} THEN 'limit' ELSE 'gone' END AS outcome`;
+  FROM parent, room WHERE room.n < ${N(max)} AND ${FRESH}
+  ON CONFLICT (id) DO NOTHING RETURNING 1)`,
+    outcome: ucSql`CASE WHEN EXISTS (SELECT 1 FROM done) OR EXISTS (SELECT 1 FROM was) THEN 'ok' WHEN NOT EXISTS (SELECT 1 FROM parent) THEN 'gone' WHEN (SELECT n FROM room) >= ${N(max)} THEN 'limit' ELSE 'gone' END`,
+  };
 }
 
-function noteSet(scope: BoardScope, op: Op<"note.set">): SqlFragment {
+function noteSet(scope: BoardScope, op: Op<"note.set">): OpParts {
   const column = raw(op.field === "text" ? "body" : op.field === "title" ? "title" : "status");
   // Solo un punto di analisi ha un titolo (CHECK mapping_notes_title_lane_check): sulle altre note non si scrive.
   const onlyAnalysis = op.field === "title" ? raw(` AND n.lane = '${BOARD_LANE}'`) : raw("");
-  return ucSql`WITH target AS (SELECT 1 FROM mapping_notes n WHERE n.id = ${U(op.noteId)} AND ${inUnit("n", scope)}),
+  return {
+    ctes: ucSql`target AS (SELECT 1 FROM mapping_notes n WHERE n.id = ${U(op.noteId)} AND ${inUnit("n", scope)}),
 done AS (
   UPDATE mapping_notes n SET ${column} = ${T(op.next)}, updated_at = now()
-  WHERE n.id = ${U(op.noteId)} AND ${inUnit("n", scope)}${onlyAnalysis} AND (n.${column} IS NOT DISTINCT FROM ${T(op.prev)} OR n.${column} IS NOT DISTINCT FROM ${T(op.next)})
-  RETURNING 1)
-${OUTCOME_SET}`;
+  WHERE n.id = ${U(op.noteId)} AND ${inUnit("n", scope)} AND ${FRESH}${onlyAnalysis} AND (n.${column} IS NOT DISTINCT FROM ${T(op.prev)} OR n.${column} IS NOT DISTINCT FROM ${T(op.next)})
+  RETURNING 1)`,
+    outcome: OUTCOME_SET,
+  };
 }
 
 /** Una nota già sparita conta come eliminata. */
-function noteRemove(scope: BoardScope, op: Op<"note.remove">): SqlFragment {
-  return ucSql`WITH done AS (DELETE FROM mapping_notes n WHERE n.id = ${U(op.noteId)} AND ${inUnit("n", scope)} RETURNING 1)
-SELECT 'ok' AS outcome`;
+function noteRemove(scope: BoardScope, op: Op<"note.remove">): OpParts {
+  return {
+    ctes: ucSql`done AS (DELETE FROM mapping_notes n WHERE n.id = ${U(op.noteId)} AND ${inUnit("n", scope)} AND ${FRESH} RETURNING 1)`,
+    outcome: raw("'ok'"),
+  };
 }
 
-function boardSet(scope: BoardScope, op: Op<"board.set">): SqlFragment {
-  return ucSql`WITH target AS (SELECT 1 FROM mapping_boards b WHERE ${inUnit("b", scope)}),
+function boardSet(scope: BoardScope, op: Op<"board.set">): OpParts {
+  return {
+    ctes: ucSql`target AS (SELECT 1 FROM mapping_boards b WHERE ${inUnit("b", scope)}),
 done AS (
   UPDATE mapping_boards b SET headline = ${T(op.next)}
-  WHERE ${inUnit("b", scope)} AND (b.headline IS NOT DISTINCT FROM ${T(op.prev)} OR b.headline IS NOT DISTINCT FROM ${T(op.next)})
-  RETURNING 1)
-${OUTCOME_SET}`;
+  WHERE ${inUnit("b", scope)} AND ${FRESH} AND (b.headline IS NOT DISTINCT FROM ${T(op.prev)} OR b.headline IS NOT DISTINCT FROM ${T(op.next)})
+  RETURNING 1)`,
+    outcome: OUTCOME_SET,
+  };
 }
 
-/** L'istruzione di un'operazione: una sola, che restituisce una riga con `outcome`. */
-export function opStatement(scope: BoardScope, actor: BoardActor, op: BoardOp): UcStatement {
+function opParts(scope: BoardScope, actor: BoardActor, op: BoardOp): OpParts {
   switch (op.t) {
     case "process.add":
-      return toStatement(processAdd(scope, op));
+      return processAdd(scope, op);
     case "process.set":
-      return toStatement(processSet(scope, op));
+      return processSet(scope, op);
     case "process.move":
-      return toStatement(processMove(scope, op));
+      return processMove(scope, op);
     case "process.remove":
-      return toStatement(processRemove(scope, op));
+      return processRemove(scope, op);
     case "process.vote":
-      return toStatement(processVote(scope, actor, op));
+      return processVote(scope, actor, op);
     case "step.add":
-      return toStatement(stepAdd(scope, actor, op));
+      return stepAdd(scope, actor, op);
     case "step.set":
-      return toStatement(stepSet(scope, op));
+      return stepSet(scope, op);
     case "step.move":
-      return toStatement(stepMove(scope, op));
+      return stepMove(scope, op);
     case "step.remove":
-      return toStatement(stepRemove(scope, op));
+      return stepRemove(scope, op);
     case "step.stream":
-      return toStatement(stepStream(scope, op));
+      return stepStream(scope, op);
     case "streams.reset":
-      return toStatement(streamsReset(scope));
+      return streamsReset(scope);
     case "note.add":
-      return toStatement(noteAdd(scope, actor, op));
+      return noteAdd(scope, actor, op);
     case "note.set":
-      return toStatement(noteSet(scope, op));
+      return noteSet(scope, op);
     case "note.remove":
-      return toStatement(noteRemove(scope, op));
+      return noteRemove(scope, op);
     case "board.set":
-      return toStatement(boardSet(scope, op));
+      return boardSet(scope, op);
   }
+}
+
+/**
+ * L'istruzione di un'operazione: una sola, che restituisce una riga con `outcome`. Prima di tutto guarda se l'operazione
+ * (il suo id) è già stata applicata in questa unità (`seen`): allora non scrive niente e risponde con l'esito di allora.
+ * Altrimenti la applica e ne ricorda id ed esito (`mark`), qualunque sia l'esito: una bozza rimandata da una pagina
+ * chiusa prima della risposta non rifà un passo eliminato nel frattempo e non copre un valore cambiato dopo (R4).
+ */
+export function opStatement(scope: BoardScope, actor: BoardActor, op: BoardOp): UcStatement {
+  const parts = opParts(scope, actor, op);
+  return toStatement(ucSql`WITH seen AS (SELECT o.outcome FROM mapping_applied_ops o WHERE o.op_id = ${U(op.id)} AND ${inUnit("o", scope)}),
+${parts.ctes},
+result AS (SELECT ${parts.outcome} AS outcome),
+mark AS (
+  INSERT INTO mapping_applied_ops (op_id, workspace_id, department_id, outcome)
+  SELECT ${U(op.id)}, d.workspace_id, d.id, result.outcome FROM departments d, result
+  WHERE d.id = ${U(scope.departmentId)} AND d.workspace_id = ${U(scope.workspaceId)} AND ${FRESH}
+  ON CONFLICT (op_id) DO NOTHING
+  RETURNING 1)
+SELECT coalesce((SELECT seen.outcome FROM seen), (SELECT result.outcome FROM result)) AS outcome`);
 }
 
 // ─── Testa e coda di un salvataggio (R5) ─────────────────────────────
@@ -438,6 +499,11 @@ FROM (SELECT x.id, row_number() OVER (PARTITION BY x.activity_id, x.lane ORDER B
 WHERE n.id = o.id AND ${inUnit("n", scope)} AND n.position IS DISTINCT FROM o.rn`);
 }
 
+/** Le operazioni applicate più di 30 giorni fa si dimenticano: una bozza vive al più 7 giorni (OP_MEMORY). */
+export function forgetOldOps(scope: BoardScope): UcStatement {
+  return toStatement(ucSql`DELETE FROM mapping_applied_ops o WHERE ${inUnit("o", scope)} AND o.created_at < now() - make_interval(days => ${N(OP_MEMORY.appliedDays)})`);
+}
+
 /** L'unità va «in corso» da sola quando ha il primo passo. Niente la riporta indietro. */
 export function startUnit(scope: BoardScope): UcStatement {
   return toStatement(ucSql`UPDATE departments d SET mapping_status = 'in_progress'
@@ -482,6 +548,7 @@ export function saveBatch(scope: BoardScope, actor: BoardActor, ops: readonly Bo
   if (kinds.has("process.add") || kinds.has("process.move") || kinds.has("process.remove")) statements.push(renumberProcesses(scope));
   if (kinds.has("step.add") || kinds.has("step.move") || kinds.has("step.remove")) statements.push(renumberSteps(scope));
   if (kinds.has("note.add") || kinds.has("note.remove")) statements.push(renumberNotes(scope));
+  statements.push(forgetOldOps(scope));
   statements.push(startUnit(scope));
   const revisionAt = statements.push(bumpRevision(scope)) - 1;
   return { statements, opAt, revisionAt };

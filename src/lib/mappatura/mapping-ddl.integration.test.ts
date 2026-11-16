@@ -18,7 +18,8 @@ import {
 // - lo scope sta nel database: un'unità di un altro workspace non possiede un processo, un passo non entra in un
 //   processo di un'altra unità, una nota resta nell'unità del suo passo;
 // - i CHECK rifiutano la riga sbagliata;
-// - cancellare un'attività porta via le sue righe; cancellare un workspace con una board piena non lascia niente.
+// - cancellare un'attività porta via le sue righe; cancellare un workspace con una board piena (operazioni applicate
+//   comprese) non lascia niente.
 // Con scripts/use-case-test/run-db-tests.mjs. Dati inventati, creati e cancellati qui.
 
 const migration = readFileSync(new URL("../../../drizzle/0039_mapping_board.sql", import.meta.url), "utf8");
@@ -58,15 +59,23 @@ test("lo schema della 0039 c'è; il self-heal due volte e il file due volte non 
   await q(migration);
   assert.equal(await schemaSnapshot(), first);
   assert.equal(await probe(), true);
-  // Gli oggetti sono quelli della sonda: cinque tabelle, nove indici, 34 vincoli con nome.
+  // Gli oggetti sono quelli della sonda: sei tabelle, dieci indici, 37 vincoli con nome.
   const tables = (await q(`SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename LIKE 'mapping_%' ORDER BY 1`)).map((r) => String(r.tablename));
   assert.deepEqual(tables, [...MAPPING_BOARD_TABLES].sort());
   const named = (await q(`SELECT conname FROM pg_constraint WHERE conrelid IN (${MAPPING_BOARD_TABLES.map((t) => `'public.${t}'::regclass`).join(", ")}) ORDER BY 1`)).map((r) => String(r.conname));
   for (const name of MAPPING_BOARD_NAMED_CONSTRAINTS) assert.ok(named.includes(name), name);
-  // Oltre ai 34, solo le chiavi verso workspace e persone, con il nome dato da PostgreSQL.
+  // Oltre ai 37, solo le chiavi verso workspace e persone, con il nome dato da PostgreSQL.
   assert.deepEqual(
     named.filter((name) => !MAPPING_BOARD_NAMED_CONSTRAINTS.includes(name)).sort(),
-    ["mapping_boards_workspace_id_fkey", "mapping_notes_workspace_id_fkey", "mapping_processes_workspace_id_fkey", "mapping_steps_workspace_id_fkey", "mapping_votes_user_id_fkey", "mapping_votes_workspace_id_fkey"],
+    [
+      "mapping_applied_ops_workspace_id_fkey",
+      "mapping_boards_workspace_id_fkey",
+      "mapping_notes_workspace_id_fkey",
+      "mapping_processes_workspace_id_fkey",
+      "mapping_steps_workspace_id_fkey",
+      "mapping_votes_user_id_fkey",
+      "mapping_votes_workspace_id_fkey",
+    ],
   );
   // Nessuna colonna in più nelle tabelle di prima.
   const activityColumns = (await q(`SELECT count(*)::int AS n FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'activities'`))[0].n;
@@ -90,7 +99,7 @@ test("la sonda è falsa senza uno dei suoi indici, e torna vera dopo un altro gi
 test("su un database senza la 0039 il self-heal la crea (in una transazione annullata); senza le tabelle di partenza si ferma", opts, async () => {
   const marker = `prova-0039-annullata-${f.suffix}`;
   const text = [
-    `DROP TABLE mapping_votes, mapping_notes, mapping_steps, mapping_processes, mapping_boards;`,
+    `DROP TABLE mapping_applied_ops, mapping_votes, mapping_notes, mapping_steps, mapping_processes, mapping_boards;`,
     `DROP INDEX departments_scope_unique, activities_scope_unique, activities_department_idx, activities_workspace_idx;`,
     `DO $$ BEGIN IF ${MAPPING_BOARD_PROBE_SQL} THEN RAISE EXCEPTION 'sonda ancora vera'; END IF; END $$;`,
     ...MAPPING_BOARD_DDL,
@@ -191,9 +200,16 @@ test("i CHECK rifiutano la riga sbagliata", opts, async () => {
   await q(note, good);
   await rejects(q, `INSERT INTO mapping_votes (process_id, user_id, workspace_id, department_id, votes) VALUES ($1, $2, $3, $4, 100)`, [processId, f.contributor, f.ws, f.unit], "mapping_votes_votes_check");
   await rejects(q, `INSERT INTO mapping_votes (process_id, user_id, workspace_id, department_id, votes) VALUES ($1, $2, $3, $4, -1)`, [processId, f.contributor, f.ws, f.unit], "mapping_votes_votes_check");
+  // Un'operazione applicata: un esito del vocabolario, un id una volta sola, nell'unità del suo workspace.
+  const applied = `INSERT INTO mapping_applied_ops (op_id, workspace_id, department_id, outcome) VALUES ($1, $2, $3, $4)`;
+  const opId = randomUUID();
+  await rejects(q, applied, [opId, f.ws, f.unit, "fatto"], "mapping_applied_ops_outcome_check");
+  await rejects(q, applied, [opId, f.otherWs, f.unit, "ok"], "mapping_applied_ops_unit_fkey");
+  await q(applied, [opId, f.ws, f.unit, "ok"]);
+  await rejects(q, applied, [opId, f.ws, f.unit, "conflict"], "mapping_applied_ops_pkey");
 });
 
-test("cancellare un workspace con una board piena non solleva niente e non lascia righe nelle cinque tabelle", opts, async () => {
+test("cancellare un workspace con una board piena non solleva niente e non lascia righe nelle sei tabelle", opts, async () => {
   const g = newFixture();
   await seed(q, g, "ddl2");
   try {
@@ -209,9 +225,13 @@ test("cancellare un workspace con una board piena non solleva niente e non lasci
     }
     await q(`INSERT INTO mapping_notes (workspace_id, department_id, activity_id, lane, title, body) VALUES ($1, $2, NULL, 'analisi', 'Dove va il tempo', 'Nei solleciti.')`, [g.ws, g.unit]);
     await q(`INSERT INTO mapping_votes (process_id, user_id, workspace_id, department_id, votes) VALUES ($1, $2, $3, $4, 3), ($1, $5, $3, $4, 1)`, [processId, g.lead, g.ws, g.unit, g.contributor]);
+    await q(`INSERT INTO mapping_applied_ops (op_id, workspace_id, department_id, outcome) VALUES ($1, $3, $4, 'ok'), ($2, $3, $4, 'conflict')`, [randomUUID(), randomUUID(), g.ws, g.unit]);
+    const appliedOps = async () => Number((await q(`SELECT count(*)::int AS n FROM mapping_applied_ops WHERE workspace_id = $1`, [g.ws]))[0].n);
     assert.deepEqual(await boardCounts(q, [g.ws]), { mapping_boards: 1, mapping_processes: 1, mapping_steps: 2, mapping_notes: 3, mapping_votes: 2 });
+    assert.equal(await appliedOps(), 2);
     await q(`DELETE FROM workspaces WHERE id = $1`, [g.ws]);
     assert.deepEqual(await boardCounts(q, [g.ws]), { mapping_boards: 0, mapping_processes: 0, mapping_steps: 0, mapping_notes: 0, mapping_votes: 0 });
+    assert.equal(await appliedOps(), 0);
     assert.equal((await q(`SELECT count(*)::int AS n FROM activities WHERE workspace_id = $1`, [g.ws]))[0].n, 0);
     // Una persona che se ne va porta via solo i suoi voti.
     assert.equal((await q(`SELECT count(*)::int AS n FROM users WHERE id = ANY($1::uuid[])`, [[g.lead, g.contributor]]))[0].n, 2);
