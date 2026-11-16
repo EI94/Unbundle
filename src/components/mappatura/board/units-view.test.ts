@@ -18,7 +18,8 @@ const render = (units = fixtureUnits()) => renderToStaticMarkup(createElement(Un
 
 test("la testata della board senza schede né pillola, la testa della vista con la parola dell'unità", () => {
   const html = render();
-  assert.match(html, /^<header class="b-top" data-b="header">/);
+  // Senza schede: sotto il titolo resta lo spazio della loro riga (il serif non tocca la riga della testata).
+  assert.match(html, /^<header class="b-top b-notabs" data-b="header">/);
   assert.match(html, /<h1 class="b-title" style="margin-top:8px"><span data-b="title">Activity <i>mapping<\/i><\/span><\/h1>/);
   assert.doesNotMatch(html, /role="tablist"|data-b="pill"|data-b="save-now"/, "qui non si modifica niente");
   assert.match(html, /<p class="b-eyebrow">Activity mapping<\/p><h2 class="b-h">Il lavoro di oggi, <i>reparto per reparto<\/i><\/h2><p class="b-lede">Ogni reparto ha la sua board: i processi, i passi, chi li fa e dove decide una persona\.<\/p>/);

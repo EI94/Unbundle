@@ -24,11 +24,12 @@ const cx = (...names: Array<string | false | null | undefined>) => names.filter(
 /**
  * La testata della board, ferma in alto sotto la barra del workspace (P1, P2): la riga del marchio con `aside` a destra
  * (la pillola, «Salva ora», il bottone dell'assistente), il titolo, le schede. Sul telefono scorre con la pagina e resta
- * ferma la sola riga delle schede (board.css).
+ * ferma la sola riga delle schede (board.css). Senza schede (l'elenco delle unità) sotto il titolo resta lo spazio che
+ * darebbe la loro riga (`b-notabs`): il serif non tocca la riga della testata.
  */
 export function BoardHeader(p: { brand: ReactNode; title: ReactNode; aside?: ReactNode; tabs?: ReactNode }): JSX.Element {
   return (
-    <header className="b-top" data-b="header">
+    <header className={cx("b-top", !p.tabs && "b-notabs")} data-b="header">
       <div className="b-wrap">
         <div className="b-shell">
           <div className="b-top-in">

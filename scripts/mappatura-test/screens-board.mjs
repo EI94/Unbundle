@@ -154,6 +154,16 @@ function measure() {
     drawer: width(drawer),
     assistant: assistant ? { width: width(assistant), position: css(assistant, "position") } : null,
     header: top && css(top, "display") !== "contents" ? Math.round(top.getBoundingClientRect().height) : null,
+    // Lo spazio tra il fondo delle lettere del titolo della board (il serif scende sotto la sua riga, interlinea 1) e la
+    // riga in fondo alla testata: negativo, le lettere la attraversano.
+    titleGap: (() => {
+      const title = q(".b-title");
+      if (!top || !title || css(top, "display") === "contents") return null;
+      const range = document.createRange();
+      range.selectNodeContents(title);
+      const rule = top.getBoundingClientRect().bottom - parseFloat(css(top, "borderBottomWidth"));
+      return Math.round((rule - range.getBoundingClientRect().bottom) * 10) / 10;
+    })(),
     headerBottom: tabbar ? Math.ceil(tabbar.getBoundingClientRect().bottom + window.scrollY) : top ? Math.ceil(top.getBoundingClientRect().bottom + window.scrollY) : null,
     kpi: css(q(".b-kpi .b-kv"), "fontSize"),
     kpiFamily: css(q(".b-kpi .b-kv"), "fontFamily"),
@@ -207,8 +217,10 @@ function check(name, config, m, expected, failures) {
     if (Math.max(...widths) - Math.min(...widths) > 1) fail(`riga ${index + 1}: card di larghezze diverse ${widths.join(", ")}`);
     if (Math.min(...widths) < 170) fail(`riga ${index + 1}: card più strette di 170 px (${Math.min(...widths)})`);
   });
-  // La testata della board (con le schede): 127 px sul riferimento. L'elenco delle unità non ha schede.
+  // La testata della board (con le schede): 127 px sul riferimento. L'elenco delle unità non ha schede: il titolo ha sotto
+  // il suo spazio, e non tocca la riga della testata.
   if (config.width === 1440 && m.header !== null && m.tabs) near(m.header, 127, 8, "testata");
+  if (config.width === 1440 && m.titleGap !== null && !m.tabs && m.titleGap < 4) fail(`le lettere del titolo toccano la riga della testata (${m.titleGap} px tra loro)`);
   if (config.width === 390 && m.map && m.rows.some((row) => row.widths.length >= 2) && !(m.map.scrollWidth > m.map.clientWidth)) fail("la mappa non scorre nel suo riquadro");
   m.pinned.forEach(({ labels, rows, scrollWidth }, index) => {
     const where = `mappa ${index + 1} in fondo`;

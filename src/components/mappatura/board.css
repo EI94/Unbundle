@@ -285,6 +285,11 @@
 [data-board-root] .b-brand .b-mute { color: var(--board-graphite); }
 [data-board-root] .b-brand a { font-family: var(--board-font-mono); letter-spacing: .02em; font-size: 11px; text-transform: uppercase; color: var(--board-graphite); text-decoration: none; }
 [data-board-root] .b-brand a:hover { color: var(--board-ink); text-decoration: underline; text-underline-offset: 3px; }
+/* Una testata senza schede (l'elenco delle unità): lo spazio sotto il titolo che darebbe la riga delle schede, così il
+   serif (interlinea 1) non tocca la riga della testata. Sul telefono la testata non ha riga: niente da fare. */
+@media (min-width: 48rem) {
+  [data-board-root] .b-top.b-notabs .b-title { padding-bottom: 12px; }
+}
 /* La riga delle schede: le schede (che scorrono di lato) e, sul telefono, la pillola a punto e il bottone dell'assistente. */
 [data-board-root] .b-tabbar { display: flex; align-items: center; gap: 8px; min-width: 0; }
 [data-board-root] .b-tabbar .b-tabs { flex: 1 1 auto; min-width: 0; }

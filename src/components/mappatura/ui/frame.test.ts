@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createElement, type FunctionComponent, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { enableTsxImports } from "../../use-cases/detail/referent/tsx-test-loader.ts";
@@ -34,9 +35,13 @@ test("la testata: il marchio con la pillola a destra, il titolo con il corsivo, 
   assert.ok(at('data-b="brand"') < at('class="b-spacer"') && at('class="b-spacer"') < at('class="b-top-aside"') && at('class="b-top-aside"') < at('data-b="pill"'));
   assert.ok(at('data-b="pill"') < at('<h1 class="b-title"') && at('<h1 class="b-title"') < at('role="tablist"'), "marchio e pillola, poi il titolo, poi le schede");
   assert.match(out, /<h1 class="b-title" style="margin-top:8px"><span data-b="title">Ufficio acquisti <i>board<\/i><\/span><\/h1>/);
-  // Senza `aside` e senza schede (l'elenco delle unità): niente pillola, niente schede.
+  // Senza `aside` e senza schede (l'elenco delle unità): niente pillola, niente schede, e lo spazio della loro riga sotto
+  // il titolo (b-notabs), così il serif non tocca la riga della testata.
   const bare = html(h(BoardHeader, { brand: "marchio", title: "titolo" }));
   assert.doesNotMatch(bare, /b-top-aside|tablist/);
+  assert.match(bare, /^<header class="b-top b-notabs" data-b="header">/);
+  const css = readFileSync(new URL("../board.css", import.meta.url), "utf8");
+  assert.match(css, /@media \(min-width: 48rem\) \{\s*\[data-board-root\] \.b-top\.b-notabs \.b-title \{ padding-bottom: 12px; \}/);
 });
 
 test("il marchio: il segno, «lateral space», ×, il workspace, · e l'etichetta che porta all'elenco delle unità", () => {
