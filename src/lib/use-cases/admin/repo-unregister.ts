@@ -24,7 +24,8 @@
  *    repository.
  * Le pull request già unite o chiuse e le proposte già decise restano: sono la storia dei casi. Gli eventi che arrivano
  * dopo da quel repository si ignorano («repository_non_registrato»). GitHub non si tocca: lì le pull request e gli
- * accessi si chiudono a mano.
+ * accessi si chiudono a mano. Se poi il repository si registra di nuovo, una pull request rimasta aperta su GitHub qui
+ * resta chiusa finché su GitHub non la si chiude e riapre: il webhook riapre una chiusa solo con «reopened».
  *
  * Modulo puro: import relativi `.ts`. Nell'uscita solo codici dei casi, cartelle e conteggi: mai nomi, e-mail o titoli.
  */
