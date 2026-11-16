@@ -383,6 +383,12 @@ test("addContextNote: solo Lateral Space; i campi sbagliati dicono quale; «visi
   assert.equal(errOf(health), "dati_non_validi");
   assert.deepEqual(!health.ok && health.fieldErrors, { body: "Negli appunti ci sono dati sanitari («visita medica»). Toglili e riprova." });
   assert.equal((await q(`SELECT count(*)::int AS n FROM context_sources WHERE workspace_id = $1 AND body LIKE '%visita medica%'`, [ids.wsA]))[0].n, 0, "niente salvato");
+  // Nel titolo o in «Con chi» l'errore sta sotto quel campo, e dice quel campo, non «Negli appunti».
+  const inFields = await sources.addContextNote(actor("ls"), { ...valid, title: "Call sulla visita medica", participants: "Per questo ruolo preferiamo solo uomini giovani" });
+  const fields = (!inFields.ok && inFields.fieldErrors) || {};
+  assert.deepEqual(Object.keys(fields).sort(), ["participants", "title"]);
+  assert.equal(fields.title, "Nel titolo ci sono dati sanitari («visita medica»). Toglili e riprova.");
+  assert.match(fields.participants, /^In «Con chi» c'è una frase che discrimina \(«.+»\)\. Toglila e riprova\.$/);
   // Un nome nel testo e in «Con chi» passa: l'appunto lo vede solo Lateral Space.
   const named = okValue(await sources.addContextNote(actor("ls"), { ...valid, body: `${NOTE}\nMario Rossi conferma le date (${suffix}).`, participants: "Mario Rossi, Anna Bianchi", link: "https://esempio.test/nota" }));
   assert.equal(named.created, true);

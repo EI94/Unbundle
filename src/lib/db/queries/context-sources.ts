@@ -92,11 +92,16 @@ function checkNote(input: NewNoteInput): { ok: true; note: CleanNote } | { ok: f
   if (origin !== "web" && origin !== "claude" && origin !== "granola") fieldErrors.origin = T.errors.invalid;
   const kind = input?.kind ?? "appunti";
   if (kind !== "appunti" && kind !== "trascrizione") fieldErrors.kind = T.errors.invalid;
-  // Il controllo dei testi: dati sanitari e discriminatori fermano il salvataggio, con la parola trovata.
+  // Il controllo dei testi: dati sanitari e discriminatori fermano il salvataggio, con la parola trovata e il campo
+  // giusto («Negli appunti», «Nel titolo», «In «Con chi»»).
+  const A = T.add;
+  const blocked = { title: [A.blockedTitleHealth, A.blockedTitleDiscrimination], participants: [A.blockedParticipantsHealth, A.blockedParticipantsDiscrimination] } as const;
   for (const [field, text] of [["body", body], ["title", title], ["participants", participants]] as const) {
     if (fieldErrors[field] || !text) continue;
     const scan = scanNote(text);
-    if (!scan.ok) fieldErrors[field] = scan.message;
+    if (scan.ok) continue;
+    if (field === "body") fieldErrors[field] = scan.message;
+    else fieldErrors[field] = (scan.category === "sanitario" ? blocked[field][0] : blocked[field][1])(scan.term);
   }
   if (Object.keys(fieldErrors).length > 0 || !occurredOn || !link.ok) return { ok: false, fieldErrors };
   return { ok: true, note: { title, occurredOn, body, participants: participants || null, link: link.link, origin: origin as CleanNote["origin"], kind, hash: bodyHash(body) } };
