@@ -209,18 +209,20 @@ test("(Rilascio 9a) un'unità di un altro workspace, un id che non è un'unità 
   assert.deepEqual(prova.toolArgs[0].slice(1, 3), ["ws-prova", UNIT]);
 });
 
-test("(Rilascio 9a) i documenti «Solo Lateral Space» non arrivano al cliente dalla chat: né frammenti, né nomi e sintesi", async (t) => {
+test("(Rilascio 9a) i documenti «Solo Lateral Space» non arrivano nella chat: né frammenti, né nomi e sintesi, nemmeno quando scrive Lateral Space", async (t) => {
   recordLogs(t);
   const DOCS = [
     { id: "doc-interno", fileName: "contratto-interno.pdf", summary: "Prezzi e margini di Lateral Space." },
     { id: "doc-cliente", fileName: "organigramma.pdf", summary: "Tre funzioni principali." },
   ];
-  const cases: Array<{ email?: string; storeReady?: boolean; conversationType: string; seen: string[]; lateralSpace: boolean }> = [
-    { conversationType: "leadership_setup", seen: ["organigramma.pdf"], lateralSpace: false },
-    { conversationType: "activity_mapping", seen: ["organigramma.pdf"], lateralSpace: false },
-    { email: "persona@ls.test", conversationType: "leadership_setup", seen: ["contratto-interno.pdf", "organigramma.pdf"], lateralSpace: true },
+  const cases: Array<{ email?: string; storeReady?: boolean; conversationType: string; seen: string[] }> = [
+    { conversationType: "leadership_setup", seen: ["organigramma.pdf"] },
+    { conversationType: "activity_mapping", seen: ["organigramma.pdf"] },
+    // La chat è una stanza comune: la conversazione e la sua memoria le rilegge il cliente. Lateral Space la usa come lui.
+    { email: "persona@ls.test", conversationType: "leadership_setup", seen: ["organigramma.pdf"] },
+    { email: "persona@ls.test", conversationType: "activity_mapping", seen: ["organigramma.pdf"] },
     // Senza la 0038 nessun documento è «Solo Lateral Space»: la chat li vede tutti, come prima.
-    { storeReady: false, conversationType: "leadership_setup", seen: ["contratto-interno.pdf", "organigramma.pdf"], lateralSpace: false },
+    { storeReady: false, conversationType: "leadership_setup", seen: ["contratto-interno.pdf", "organigramma.pdf"] },
   ];
   for (const c of cases) {
     reset();
@@ -231,7 +233,11 @@ test("(Rilascio 9a) i documenti «Solo Lateral Space» non arrivano al cliente d
     const requests = fakeAppClaude([sse([ev.start("msg_1"), ...ev.text(0, "Bene."), ...ev.end("end_turn")])]);
     const { status } = await chat(HISTORY, c.conversationType, c.conversationType === "activity_mapping" ? UNIT : undefined);
     assert.equal(status, 200, JSON.stringify(c));
-    assert.deepEqual(prova.retrieveOptions, [{ topK: 8, includeConversations: true, viewer: { isLateralSpace: c.lateralSpace } }], "il recupero sa chi scrive");
+    assert.deepEqual(prova.retrieveOptions, [{ topK: 8, includeConversations: true, viewer: { isLateralSpace: false } }], "il recupero, per chiunque scriva, è quello del cliente");
+    if (c.storeReady !== false) {
+      const listed = prova.listedFor as Array<{ isLateralSpace: boolean }>;
+      assert.ok(listed.length > 0 && listed.every((reader) => reader.isLateralSpace === false), "l'elenco dei documenti è quello del cliente");
+    }
     const system = JSON.stringify(requests[0].body.system);
     for (const doc of DOCS) assert.equal(system.includes(doc.fileName), c.seen.includes(doc.fileName), `${doc.fileName} ${JSON.stringify(c)}`);
     assert.equal(system.includes("Prezzi e margini"), c.seen.includes("contratto-interno.pdf"));

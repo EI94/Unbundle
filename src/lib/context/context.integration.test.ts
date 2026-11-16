@@ -1,7 +1,7 @@
 import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
-import { fakeAppClaude, hang, installAppModules, message, recordLogs, refusal, THINKING, type Reply } from "../ai/claude-test-kit.ts";
+import { ev, fakeAppClaude, hang, installAppModules, message, recordLogs, refusal, sse, THINKING, type Reply } from "../ai/claude-test-kit.ts";
 
 // «Contesto» sul database del pacchetto (rilascio 9a, RILASCIO-9a-COSTRUZIONE.md §11.2): la 0038 e la sua sonda, la
 // tesi del valore per workspace, appunti e documenti, la lettura con il Claude finto, proposte e conferma, la memoria
@@ -1693,6 +1693,68 @@ test("la chat cerca nei documenti: i frammenti di un documento «Solo Lateral Sp
   assert.deepEqual(lines, ['[chat/memoria] non_indicizzato {"motivo":"nome_persona"}']);
   const fromChat = (await retriever.retrieveRelevantContext(`quanta ${word} arriva`, ids.wsA, { viewer: { isLateralSpace: false } })).filter((chunk) => chunk.source === "conversation");
   assert.deepEqual(fromChat.map((chunk) => chunk.conversationId), [conversation]);
+});
+
+test("la chat è una stanza comune: anche quando scrive Lateral Space, un documento «Solo Lateral Space» non entra nel prompt, né in frammenti né in sintesi", opts, async (t) => {
+  recordLogs(t);
+  const { POST } = await import("../../app/api/ai/chat/route.ts");
+  const word = `ontano${suffix}`;
+  const shared = okValue(await addDocument("ls", { departmentId: ids.unitA, extractedText: `Il fornitore consegna l'${word} ogni lunedì.`, summary: `Sintesi condivisa: l'${word} arriva il lunedì.` }));
+  const internal = okValue(
+    await addDocument("ls", { visibility: "ls", departmentId: ids.unitA, extractedText: `Il margine sull'${word} è riservato, al trentotto per cento.`, summary: `Sintesi riservata: margine sull'${word} al trentotto per cento.` }),
+  );
+  await q(`INSERT INTO document_chunks (document_id, workspace_id, content, chunk_index) VALUES ($1, $3, $4, 0), ($2, $3, $5, 0)`, [
+    shared.documentId,
+    internal.documentId,
+    ids.wsA,
+    `Il fornitore consegna l'${word} ogni lunedì.`,
+    `Il margine sull'${word} è riservato, al trentotto per cento.`,
+  ]);
+  /** Un turno di Lateral Space nella chat; restituisce il prompt di sistema che il modello ha ricevuto. */
+  const turn = async (conversationType: "leadership_setup" | "activity_mapping", question: string) => {
+    signIn("ls");
+    const requests = fakeAppClaude([sse([ev.start("msg_1"), ...ev.text(0, "Bene, grazie."), ...ev.end("end_turn")])]);
+    try {
+      const response = await POST(
+        new Request("http://localhost/api/ai/chat", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            workspaceId: ids.wsA,
+            conversationType,
+            ...(conversationType === "activity_mapping" ? { departmentId: ids.unitA } : {}),
+            messages: [{ id: "u1", role: "user", parts: [{ type: "text", text: question }] }],
+          }),
+        }),
+      );
+      assert.equal(response.status, 200, await response.clone().text());
+      await response.text();
+      // La risposta si salva dopo lo stream (onFinish): si aspetta che ci sia, prima di passare oltre.
+      for (let i = 0; i < 40; i++) {
+        const [saved] = await q(`SELECT count(*)::int AS n FROM messages m JOIN conversations c ON c.id = m.conversation_id WHERE c.workspace_id = $1 AND m.role = 'assistant' AND m.content = 'Bene, grazie.'`, [ids.wsA]);
+        if (Number(saved.n) > 0) break;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      assert.equal(requests.length, 1);
+      return JSON.stringify(requests[0].body.system);
+    } finally {
+      signIn(null);
+      await q(`DELETE FROM conversations WHERE workspace_id = $1 AND type IN ('leadership_setup', 'activity_mapping')`, [ids.wsA]);
+    }
+  };
+  // Una domanda che trova i frammenti: entra quello del documento «Per tutti», mai quello interno.
+  const withChunks = await turn("leadership_setup", `Quando arriva l'${word} dal fornitore?`);
+  assert.ok(withChunks.includes(`Il fornitore consegna l'${word} ogni lunedì.`), "il documento «Per tutti» c'è");
+  assert.equal(withChunks.includes("trentotto"), false, "il frammento «Solo Lateral Space» no");
+  // Una domanda che non trova frammenti: la chat elenca le sintesi, solo quelle «Per tutti».
+  const withSummaries = await turn("leadership_setup", "Come possiamo cominciare la discovery con calma?");
+  assert.ok(withSummaries.includes("Sintesi condivisa"), "la sintesi «Per tutti» c'è");
+  assert.equal(withSummaries.includes("Sintesi riservata"), false, "la sintesi «Solo Lateral Space» no");
+  // La mappatura dell'unità elenca anche le sintesi dei documenti dell'unità: di nuovo solo quelle «Per tutti».
+  const mapping = await turn("activity_mapping", `Che cosa sappiamo dell'${word} in questa unità?`);
+  assert.ok(mapping.includes("Sintesi condivisa"));
+  assert.equal(mapping.includes("trentotto"), false);
+  assert.equal(mapping.includes("Sintesi riservata"), false);
 });
 
 // ─── I due tool della mappatura (§10.5) ──────────────────────────────
