@@ -34,10 +34,25 @@ import { getDepartmentById } from "@/lib/db/queries/workspaces";
 import { isUuid } from "@/lib/uc/ids";
 import { retrieveRelevantContext, indexConversationMessage } from "@/lib/ai/rag/retriever";
 import { contextAiConsent } from "@/lib/db/queries/context-consent";
+import { listContextSources } from "@/lib/db/queries/context-sources";
+import { contextStoreReady } from "@/lib/db/queries/context-store";
+import { contextActorFor } from "@/lib/context/server/actor";
 import { CONTEXT_TEXT } from "@/lib/context/text";
+import type { ContextActor } from "@/lib/context/visibility";
 
 /** Vercel / Next: consenti più round LLM dopo i tool (webSearch, salvataggi DB, ecc.) */
 export const maxDuration = 120;
+
+/**
+ * I documenti che chi scrive può vedere (rilascio 9a, RILASCIO-9a-COSTRUZIONE.md §5.2, §10.4): null vuol dire tutti
+ * (Lateral Space; e senza la 0038, quando nessun documento è «Solo Lateral Space»). Per gli altri solo i documenti
+ * «Per tutti» di «Contesto»: un file caricato da Lateral Space da «Aggiungi appunti» non arriva al cliente dalla chat.
+ */
+async function visibleDocumentIds(actor: ContextActor): Promise<Set<string> | null> {
+  if (actor.isLateralSpace || !(await contextStoreReady())) return null;
+  const sources = await listContextSources(actor, { limit: 500 });
+  return new Set(sources.flatMap((source) => (source.document ? [source.document.id] : [])));
+}
 
 export async function POST(req: Request) {
   // Due scadenze per la richiesta, dal suo inizio (src/lib/ai/models.ts). I tool che chiamano il modello (ricerca web,
@@ -81,6 +96,8 @@ export async function POST(req: Request) {
   if (!(await contextAiConsent(workspaceId))) {
     return Response.json({ error: "ok_fornitori_mancante", message: CONTEXT_TEXT.consent.title }, { status: 403, headers: { "Cache-Control": "no-store" } });
   }
+  // Chi scrive, per «Contesto»: i documenti «Solo Lateral Space» non arrivano al cliente dalla chat.
+  const actor = contextActorFor({ id: session.user.id, email: session.user.email ?? null, emailVerified: session.user.emailVerified === true }, access, workspaceId);
   // «Programma» (rilascio 7): dipendenti e ricavo dalla chat li scrive solo chi li scriverebbe nella pagina.
   const { canEditProgram } = await import("@/lib/db/queries/use-case-program");
   const { viewerFromSession } = await import("@/lib/db/queries/use-case-hub");
@@ -123,6 +140,7 @@ export async function POST(req: Request) {
       ragChunks = await retrieveRelevantContext(lastUserContent, workspaceId, {
         topK: 8,
         includeConversations: true,
+        viewer: { isLateralSpace: actor.isLateralSpace },
       });
     }
   } catch {
@@ -147,10 +165,13 @@ export async function POST(req: Request) {
     }
     contextBlock += `\nUsa queste informazioni per arricchire le tue risposte. Fai riferimento a contenuti specifici quando pertinente.\n`;
   } else {
-    const docs = await db
-      .select({ fileName: uploadedDocuments.fileName, summary: uploadedDocuments.summary })
-      .from(uploadedDocuments)
-      .where(eq(uploadedDocuments.workspaceId, workspaceId));
+    const visible = await visibleDocumentIds(actor);
+    const docs = (
+      await db
+        .select({ id: uploadedDocuments.id, fileName: uploadedDocuments.fileName, summary: uploadedDocuments.summary })
+        .from(uploadedDocuments)
+        .where(eq(uploadedDocuments.workspaceId, workspaceId))
+    ).filter((doc) => !visible || visible.has(doc.id));
 
     if (docs.length > 0) {
       contextBlock += `\n--- DOCUMENTI CARICATI DALL'UTENTE (${docs.length}) ---\n`;
@@ -201,18 +222,22 @@ export async function POST(req: Request) {
           mappingContext += `\nQueste attività sono già nel database. NON ri-salvarle. Usale come base per il deep dive.\n`;
         }
 
-        const deptDocs = await db
-          .select({
-            fileName: uploadedDocuments.fileName,
-            summary: uploadedDocuments.summary,
-          })
-          .from(uploadedDocuments)
-          .where(
-            and(
-              eq(uploadedDocuments.workspaceId, workspaceId),
-              eq(uploadedDocuments.departmentId, departmentId)
+        const visible = await visibleDocumentIds(actor);
+        const deptDocs = (
+          await db
+            .select({
+              id: uploadedDocuments.id,
+              fileName: uploadedDocuments.fileName,
+              summary: uploadedDocuments.summary,
+            })
+            .from(uploadedDocuments)
+            .where(
+              and(
+                eq(uploadedDocuments.workspaceId, workspaceId),
+                eq(uploadedDocuments.departmentId, departmentId)
+              )
             )
-          );
+        ).filter((doc) => !visible || visible.has(doc.id));
 
         if (deptDocs.length > 0) {
           mappingContext += `\n--- DOCUMENTI SPECIFICI (${deptDocs.length}) ---\n`;

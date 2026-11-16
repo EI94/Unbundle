@@ -32,12 +32,27 @@ type Prova = {
   thesisAsked: string[];
   /** (Rilascio 9a) Le unità che la rotta ha cercato. */
   unitsAsked: string[];
+  /** (Rilascio 9a) Chi scrive (`@ls.test` è Lateral Space), i documenti del workspace e quelli «Per tutti». */
+  email?: string;
+  docs: Array<{ id: string; fileName: string; summary: string }>;
+  forAll: string[];
+  storeReady?: boolean;
+  retrieveOptions: unknown[];
+  listedFor: unknown[];
 };
-const prova: Prova = { saved: [], deleted: [], reads: 0, indexed: [], tools: {}, toolArgs: [], consentAsked: [], thesis: null, thesisAsked: [], unitsAsked: [] };
+const prova: Prova = { saved: [], deleted: [], reads: 0, indexed: [], tools: {}, toolArgs: [], consentAsked: [], thesis: null, thesisAsked: [], unitsAsked: [], docs: [], forAll: [], retrieveOptions: [], listedFor: [] };
 (globalThis as { __prova?: Prova }).__prova = prova;
 
 await installAppModules({
-  "@/lib/auth": `export async function auth() { return { user: { id: "utente-prova", email: "persona@cliente.test", emailVerified: true } }; }`,
+  "@/lib/auth": `export async function auth() { return { user: { id: "utente-prova", email: globalThis.__prova.email ?? "persona@cliente.test", emailVerified: true } }; }`,
+  "@/lib/context/server/actor": `export function contextActorFor(user, access, workspaceId) {
+    return { workspaceId, userId: user.id, role: access.role, isLateralSpace: String(user.email).endsWith("@ls.test"), channel: "web" };
+  }`,
+  "@/lib/db/queries/context-store": `export async function contextStoreReady() { return globalThis.__prova.storeReady !== false; }`,
+  "@/lib/db/queries/context-sources": `export async function listContextSources(actor) {
+    globalThis.__prova.listedFor.push(actor);
+    return globalThis.__prova.forAll.map((id) => ({ id: "fonte-" + id, kind: "documento", visibility: "tutti", document: { id, fileName: "x", fileType: "x", fileSize: 1 } }));
+  }`,
   "@/lib/workspace-access": `export async function getCollaboratorAccess() {
     return { role: "transformation_lead", workspace: { id: "ws-prova", organizationId: "org-prova", unitTerminology: null, systemBoundary: null } };
   }`,
@@ -71,7 +86,7 @@ await installAppModules({
         .filter((message) => !globalThis.__prova.deleted.some(([, id]) => id === message.id));
     }`,
   "@/lib/ai/rag/retriever": `
-    export async function retrieveRelevantContext() { return []; }
+    export async function retrieveRelevantContext(query, workspaceId, options) { globalThis.__prova.retrieveOptions.push(options); return []; }
     export function indexConversationMessage(conversationId, workspaceId, content, role) { globalThis.__prova.indexed.push([role, content]); return Promise.resolve(); }`,
   "@/lib/db/queries/context-consent": `export async function contextAiConsent(workspaceId) {
     globalThis.__prova.consentAsked.push(workspaceId);
@@ -88,11 +103,11 @@ await installAppModules({
     globalThis.__prova.thesisAsked.push(workspaceId);
     return globalThis.__prova.thesis;
   }`,
-  "@/lib/db/schema": `export const uploadedDocuments = {}; export const organizations = {}; export const activities = {};`,
+  "@/lib/db/schema": `export const uploadedDocuments = { table: "uploaded_documents" }; export const organizations = {}; export const activities = { table: "activities" };`,
   "drizzle-orm": `export const eq = (column, value) => ({ column, value }); export const and = (...parts) => ({ and: parts });`,
   "@/lib/db": `export const db = {
     // L'organizzazione ha la tesi di un altro workspace: la chat non deve leggerla (rilascio 9a, §10.1).
-    select: () => ({ from: () => ({ where: () => Object.assign(Promise.resolve([]), { limit: async () => [{ id: "org-prova", companyValueThesis: { coreValueProposition: "Tesi di un altro workspace della stessa organizzazione" } }] }) }) }),
+    select: () => ({ from: (table) => ({ where: () => Object.assign(Promise.resolve(table?.table === "uploaded_documents" ? globalThis.__prova.docs : []), { limit: async () => [{ id: "org-prova", companyValueThesis: { coreValueProposition: "Tesi di un altro workspace della stessa organizzazione" } }] }) }) }),
   };`,
 });
 const { POST } = await import("../../app/api/ai/chat/route.ts");
@@ -134,6 +149,12 @@ function reset() {
   prova.thesis = null;
   prova.thesisAsked = [];
   prova.unitsAsked = [];
+  delete prova.email;
+  delete prova.storeReady;
+  prova.docs = [];
+  prova.forAll = [];
+  prova.retrieveOptions = [];
+  prova.listedFor = [];
 }
 
 /** Un'unità del workspace della prova, e una di un altro workspace (rilascio 9a, §10.5). */
@@ -183,6 +204,35 @@ test("(Rilascio 9a) un'unità di un altro workspace, un id che non è un'unità 
   assert.equal(status, 200);
   assert.deepEqual(prova.unitsAsked, [UNIT]);
   assert.deepEqual(prova.toolArgs[0].slice(1, 3), ["ws-prova", UNIT]);
+});
+
+test("(Rilascio 9a) i documenti «Solo Lateral Space» non arrivano al cliente dalla chat: né frammenti, né nomi e sintesi", async (t) => {
+  recordLogs(t);
+  const DOCS = [
+    { id: "doc-interno", fileName: "contratto-interno.pdf", summary: "Prezzi e margini di Lateral Space." },
+    { id: "doc-cliente", fileName: "organigramma.pdf", summary: "Tre funzioni principali." },
+  ];
+  const cases: Array<{ email?: string; storeReady?: boolean; conversationType: string; seen: string[]; lateralSpace: boolean }> = [
+    { conversationType: "leadership_setup", seen: ["organigramma.pdf"], lateralSpace: false },
+    { conversationType: "activity_mapping", seen: ["organigramma.pdf"], lateralSpace: false },
+    { email: "persona@ls.test", conversationType: "leadership_setup", seen: ["contratto-interno.pdf", "organigramma.pdf"], lateralSpace: true },
+    // Senza la 0038 nessun documento è «Solo Lateral Space»: la chat li vede tutti, come prima.
+    { storeReady: false, conversationType: "leadership_setup", seen: ["contratto-interno.pdf", "organigramma.pdf"], lateralSpace: false },
+  ];
+  for (const c of cases) {
+    reset();
+    if (c.email) prova.email = c.email;
+    if (c.storeReady === false) prova.storeReady = false;
+    prova.docs = DOCS;
+    prova.forAll = ["doc-cliente"];
+    const requests = fakeAppClaude([sse([ev.start("msg_1"), ...ev.text(0, "Bene."), ...ev.end("end_turn")])]);
+    const { status } = await chat(HISTORY, c.conversationType, c.conversationType === "activity_mapping" ? UNIT : undefined);
+    assert.equal(status, 200, JSON.stringify(c));
+    assert.deepEqual(prova.retrieveOptions, [{ topK: 8, includeConversations: true, viewer: { isLateralSpace: c.lateralSpace } }], "il recupero sa chi scrive");
+    const system = JSON.stringify(requests[0].body.system);
+    for (const doc of DOCS) assert.equal(system.includes(doc.fileName), c.seen.includes(doc.fileName), `${doc.fileName} ${JSON.stringify(c)}`);
+    assert.equal(system.includes("Prezzi e margini"), c.seen.includes("contratto-interno.pdf"));
+  }
 });
 
 test("(Rilascio 9a) la tesi del valore nel contesto della chat è quella del workspace, mai quella dell'organizzazione", async (t) => {
