@@ -154,3 +154,14 @@ test("«Inizia con l'assistente» mette il cursore nel campo del compagno, non n
   assert.equal(pick([close]), "chiudi");
   assert.equal(focusTarget(null), null);
 });
+
+test("la vista che cambia mentre il fuoco non è da nessuna parte (il toast «Apri») prende il fuoco; non alla prima apertura", async () => {
+  const { focusIsLost } = await import("./unit-board.tsx");
+  const body = { closest: () => null };
+  assert.equal(focusIsLost({ activeElement: null, body } as unknown as Document), true);
+  assert.equal(focusIsLost({ activeElement: body, body } as unknown as Document), true);
+  assert.equal(focusIsLost({ activeElement: { closest: (selector: string) => (selector === "[hidden]" ? {} : null) }, body } as unknown as Document), true, "nella vista appena nascosta");
+  assert.equal(focusIsLost({ activeElement: { closest: () => null }, body } as unknown as Document), false);
+  const source = readFileSync(new URL("./unit-board.tsx", import.meta.url), "utf8");
+  assert.match(source, /if \(shownTab\.current === tab\) return;\s+shownTab\.current = tab;\s+if \(focusIsLost\(document\)\) document\.getElementById\(boardPanelId\(tab\)\)\?\.focus\(\{ preventScroll: true \}\);/);
+});

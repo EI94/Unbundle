@@ -15,7 +15,7 @@ import type { BoardNote } from "../../../lib/mappatura/board-model.ts";
 await enableTsxImports();
 const edit = await import("./edit.tsx");
 const { BoardToastView, ChipInput, EmptyBlock, Field, InlineConfirm, LevelButtons, NoteItem, NumberInput, Segmented, TextInPlace, Votes } = edit;
-const { addedChip, committedText, fieldHolder, leaveFieldKey, nextVotes, noteToggleLabel, parsedNumber } = edit;
+const { addedChip, committedText, fieldHolder, keepFocusAfter, leaveFieldKey, nextVotes, noteToggleLabel, parsedNumber } = edit;
 const { BoardProvider, useBoardClient } = await import("../store/use-board.tsx");
 
 const html = (element: Parameters<typeof renderToStaticMarkup>[0]) => renderToStaticMarkup(element);
@@ -331,4 +331,22 @@ test("ogni campo sul posto lascia il fuoco con leaveFieldKey: nessun blur() a ma
   // I chip: Escape annulla e porta il fuoco al drawer, e il campo che lo perde non aggiunge niente.
   assert.match(editSource, /cancelled\.current = true;[\s\S]*?fieldHolder\(event\.currentTarget\)\?\.focus\(\{ preventScroll: true \}\);/);
   assert.match(editSource, /onBlur=\{\(\) => \{\s+if \(!cancelled\.current\) add\(text\);/);
+});
+
+test("un controllo che sparisce sotto il fuoco (il bottone del toast): il fuoco resta nel drawer o nella vista aperta, se non l'ha preso altro", () => {
+  const focused: string[] = [];
+  const target = (name: string) => ({ focus: () => void focused.push(name) }) as unknown as HTMLElement;
+  const body = { name: "body" } as unknown as HTMLElement;
+  // Il toast di un drawer: il drawer.
+  const inDrawer = { closest: (selector: string) => (selector === '[role="dialog"]' ? target("drawer") : null) } as unknown as Element;
+  keepFocusAfter(inDrawer, { activeElement: inDrawer, body } as unknown as Document);
+  // Il toast in fondo alla pagina: la vista aperta della board.
+  const root = { querySelector: (selector: string) => (selector === '[role="tabpanel"]:not([hidden])' ? target("vista aperta") : null) };
+  const onPage = { closest: (selector: string) => (selector === "[data-board-root]" ? root : null) } as unknown as Element;
+  keepFocusAfter(onPage, { activeElement: body, body } as unknown as Document);
+  // Il fuoco è già altrove (un drawer che si è aperto e ha messo il fuoco nel suo campo): niente.
+  keepFocusAfter(onPage, { activeElement: { name: "un campo" }, body } as unknown as Document);
+  assert.deepEqual(focused, ["drawer", "vista aperta"]);
+  const source = readFileSync(new URL("./edit.tsx", import.meta.url), "utf8");
+  assert.match(source, /toast\.action\?\.run\(\);\s+\/\/ [^\n]*\n\s+keepFocusAfter\(button\);/, "il bottone del toast lascia il fuoco al suo posto");
 });

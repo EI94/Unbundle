@@ -314,10 +314,21 @@ export function StepDrawerBody(p: StepDrawerBodyProps): JSX.Element {
             <BoardButton variant={step.status === "da_validare" ? "primary" : "outline"} onClick={() => actions.dispatch(statusOp(step))}>
               {step.status === "da_validare" ? D.confirm : D.unconfirm}
             </BoardButton>
-            <BoardButton disabled={atStart} onClick={() => run(stepMoveOp(board, step.id, "left"))}>
+            {/* In fondo alla riga il bottone resta raggiungibile (aria-disabled, come i voti): il fuoco non si perde (F1). */}
+            <BoardButton
+              aria-disabled={atStart || undefined}
+              onClick={() => {
+                if (!atStart) run(stepMoveOp(board, step.id, "left"));
+              }}
+            >
               {D.left}
             </BoardButton>
-            <BoardButton disabled={atEnd} onClick={() => run(stepMoveOp(board, step.id, "right"))}>
+            <BoardButton
+              aria-disabled={atEnd || undefined}
+              onClick={() => {
+                if (!atEnd) run(stepMoveOp(board, step.id, "right"));
+              }}
+            >
               {D.right}
             </BoardButton>
             {targets.length > 0 ? (

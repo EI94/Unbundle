@@ -23,7 +23,7 @@ import { BOARD_TEXT } from "../../../lib/mappatura/text.ts";
 import { MAPPING_LIMITS } from "../../../lib/mappatura/vocab.ts";
 import type { OpInput } from "../store/board-client.ts";
 import { AddButton, RemoveIcon } from "../ui/atoms.tsx";
-import { Votes } from "../ui/edit.tsx";
+import { Votes, fieldHolder } from "../ui/edit.tsx";
 import { ProcessMap, ProcessRow, StepArrow, StepCard, widestRow } from "../ui/map.tsx";
 import { LineInPlace } from "./in-place.tsx";
 import { VIEW_TEXT, addStepLabel, rowFrictionsText } from "./text.ts";
@@ -105,10 +105,27 @@ export function MapRows(p: MapRowsProps): JSX.Element {
             {editable || process.votes > 0 ? <Votes total={process.votes} mine={process.myVotes} disabled={!editable} onChange={(mine) => run(voteOp(process, mine))} /> : null}
             {editable ? (
               <span className="b-row-ctl" data-b="row-controls">
-                <button type="button" aria-label={VIEW_TEXT.row.up} title={VIEW_TEXT.row.up} disabled={processIndex === 0} onClick={() => run(processMoveOp(board, process.id, "up"))}>
+                {/* In cima e in fondo il bottone resta raggiungibile (aria-disabled, come i voti): il fuoco non si perde (F1). */}
+                <button
+                  type="button"
+                  aria-label={VIEW_TEXT.row.up}
+                  title={VIEW_TEXT.row.up}
+                  aria-disabled={processIndex === 0 || undefined}
+                  onClick={() => {
+                    if (processIndex > 0) run(processMoveOp(board, process.id, "up"));
+                  }}
+                >
                   <ArrowIcon up />
                 </button>
-                <button type="button" aria-label={VIEW_TEXT.row.down} title={VIEW_TEXT.row.down} disabled={processIndex === board.processes.length - 1} onClick={() => run(processMoveOp(board, process.id, "down"))}>
+                <button
+                  type="button"
+                  aria-label={VIEW_TEXT.row.down}
+                  title={VIEW_TEXT.row.down}
+                  aria-disabled={processIndex === board.processes.length - 1 || undefined}
+                  onClick={() => {
+                    if (processIndex < board.processes.length - 1) run(processMoveOp(board, process.id, "down"));
+                  }}
+                >
                   <ArrowIcon up={false} />
                 </button>
                 {process.steps.length === 0 ? (
@@ -116,7 +133,11 @@ export function MapRows(p: MapRowsProps): JSX.Element {
                     type="button"
                     aria-label={VIEW_TEXT.row.remove}
                     title={VIEW_TEXT.row.remove}
-                    onClick={() => actions.dispatch({ t: "process.remove", processId: process.id }, { undo: BOARD_TEXT.toast.processRemoved })}
+                    onClick={(event) => {
+                      // La riga se ne va con il bottone: il fuoco resta nella vista, non sulla pagina (F1).
+                      fieldHolder(event.currentTarget)?.focus({ preventScroll: true });
+                      actions.dispatch({ t: "process.remove", processId: process.id }, { undo: BOARD_TEXT.toast.processRemoved });
+                    }}
                   >
                     <RemoveIcon />
                   </button>

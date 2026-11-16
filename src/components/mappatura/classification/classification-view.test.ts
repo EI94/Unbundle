@@ -109,6 +109,12 @@ test("«Usa gli stream proposti»: per chi rivede, solo se un passo è diverso d
   const calls: unknown[] = [];
   resetStreams({ dispatch: (op) => void calls.push(op), notify: (text) => void calls.push(text) });
   assert.deepEqual(calls, [{ t: "streams.reset" }, "Stream riportati alla proposta."]);
+  // Il bottone sparisce dopo il clic (nessun passo è più diverso dalla proposta): il fuoco va prima nella vista (F1).
+  const view_ = { focus: (options?: { preventScroll?: boolean }) => void calls.push(`vista.focus ${options?.preventScroll === true}`) };
+  const button = { closest: (selector: string) => (selector === '[role="tabpanel"]' ? view_ : null) as Element | null };
+  calls.length = 0;
+  resetStreams({ dispatch: (op) => void calls.push(op), notify: (text) => void calls.push(text) }, button);
+  assert.deepEqual(calls, ["vista.focus true", { t: "streams.reset" }, "Stream riportati alla proposta."]);
   const asProposed = { ...board, processes: board.processes.map((process) => ({ ...process, steps: process.steps.map((step) => ({ ...step, proposedStream: step.stream })) })) };
   assert.doesNotMatch(view(asProposed), /Usa gli stream proposti/, "niente di diverso dalla proposta");
 });

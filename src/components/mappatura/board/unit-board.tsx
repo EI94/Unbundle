@@ -59,6 +59,12 @@ export function focusTarget(panel: Pick<ParentNode, "querySelector"> | null): HT
   );
 }
 
+/** Il fuoco non è da nessuna parte: sulla pagina, o dentro una parte nascosta (la vista che si è appena chiusa). */
+export function focusIsLost(doc: Pick<Document, "activeElement" | "body">): boolean {
+  const active = doc.activeElement;
+  return !active || active === doc.body || active.closest("[hidden]") !== null;
+}
+
 /** Il primo dei bottoni che si vede (quello della testata, o quello della riga delle schede sul telefono). */
 function visibleOf(...elements: Array<HTMLElement | null>): HTMLElement | null {
   return elements.find((element) => element && element.offsetParent !== null) ?? null;
@@ -85,6 +91,14 @@ export function UnitBoard(p: UnitBoardProps & { initialTab?: BoardTab }): JSX.El
     window.addEventListener("hashchange", top);
     return () => window.removeEventListener("hashchange", top);
   }, []);
+  // La vista cambia mentre il fuoco non è da nessuna parte (il toast «Apri», sparito con il suo bottone; o stava nella
+  // vista che si nasconde): il fuoco va nella vista nuova, non sulla pagina (F1). Non alla prima apertura.
+  const shownTab = useRef(tab);
+  useEffect(() => {
+    if (shownTab.current === tab) return;
+    shownTab.current = tab;
+    if (focusIsLost(document)) document.getElementById(boardPanelId(tab))?.focus({ preventScroll: true });
+  }, [tab]);
 
   // Il pannello dell'assistente: la scelta di questa visita, poi il default della pagina, poi quella ricordata.
   const remembered = useSyncExternalStore(prefs.subscribe, () => prefs.assistant(), () => null);

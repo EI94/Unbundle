@@ -100,7 +100,7 @@
 [data-board-root] .b-row-ctl { display: flex; gap: 3px; opacity: 0; transition: opacity .12s; }
 [data-board-root] .b-pm-lab:hover .b-row-ctl, [data-board-root] .b-pm-lab:focus-within .b-row-ctl { opacity: 1; }
 [data-board-root] .b-row-ctl button { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--board-line-strong); background: var(--board-paper); color: var(--board-ink); display: grid; place-items: center; padding: 0; cursor: pointer; }
-[data-board-root] .b-row-ctl button[disabled] { opacity: .35; cursor: not-allowed; }
+[data-board-root] .b-row-ctl button[disabled], [data-board-root] .b-row-ctl button[aria-disabled="true"] { opacity: .35; cursor: not-allowed; }
 /* Ogni riga è larga quanto la più lunga (`--steps` sul riquadro); sulla mappa che si modifica ci sta anche «+ passo». */
 [data-board-root] .b-pm[data-adds] { --b-after: 64px; }
 /* «+ passo» in fondo alla riga: compare al passaggio o al fuoco, come «+ nota»; sempre in una riga vuota e senza mouse. */
@@ -144,6 +144,8 @@
 [data-board-root] .b-dr-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 [data-board-root] .b-move-to { width: auto; padding-block: 6px; }
 [data-board-root] .b-btn.b-danger { color: var(--board-crit); }
+/* «Sposta a sinistra» in testa alla riga, «Sposta a destra» in fondo: spenti ma raggiungibili (il fuoco non si perde). */
+[data-board-root] .b-btn[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
 [data-board-root] .b-copy { min-height: 60vh; resize: vertical; white-space: pre; font-family: var(--board-font-mono); font-size: 12px; }
 
 /* ── Senza mouse (telefono, tablet): i controlli che compaiono al passaggio si vedono sempre; niente trascinamento ── */

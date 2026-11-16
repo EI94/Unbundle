@@ -24,7 +24,7 @@ import { useBoard, useBoardClient } from "../store/use-board.tsx";
 import { BoardButton, Dot, ExposureBadge, FilterChip, Legend, LegendItem, StreamBadge } from "../ui/atoms.tsx";
 import { BoardTitle, ViewHead } from "../ui/frame.tsx";
 import { ProcessMap, ProcessRow, StepArrow, StepCard, widestRow } from "../ui/map.tsx";
-import { EmptyBlock } from "../ui/edit.tsx";
+import { EmptyBlock, fieldHolder } from "../ui/edit.tsx";
 import { ClassificationDrawer } from "./classification-drawer.tsx";
 import { CLASSIFICATION_TEXT, exposureTileValue, streamTileLabel, toClassifyLine } from "./text.ts";
 import { UseCaseRows } from "./use-case-rows.tsx";
@@ -67,8 +67,12 @@ function StreamKpis(p: { items: ReadonlyArray<{ value: string; label: string; st
   );
 }
 
-/** «Usa gli stream proposti»: ogni passo torna alla proposta del classificatore, e il toast lo dice (P46). */
-export function resetStreams(client: { dispatch(ops: { t: "streams.reset" }): void; notify(text: string): void }): void {
+/**
+ * «Usa gli stream proposti»: ogni passo torna alla proposta del classificatore, e il toast lo dice (P46). Il bottone poi
+ * sparisce (nessun passo è più diverso dalla proposta): il fuoco resta nella vista (F1).
+ */
+export function resetStreams(client: { dispatch(ops: { t: "streams.reset" }): void; notify(text: string): void }, button?: Pick<Element, "closest">): void {
+  if (button) fieldHolder(button)?.focus({ preventScroll: true });
   client.dispatch({ t: "streams.reset" });
   client.notify(CLASSIFICATION_TEXT.resetDone);
 }
@@ -119,7 +123,7 @@ export function ClassificationView(p: ClassificationViewProps): JSX.Element {
       action={
         <div className="b-cls-actions">
           {canReset ? (
-            <BoardButton onClick={() => resetStreams(client)} data-action="reset-streams">
+            <BoardButton onClick={(event) => resetStreams(client, event.currentTarget)} data-action="reset-streams">
               {T.reset}
             </BoardButton>
           ) : null}

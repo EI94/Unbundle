@@ -122,6 +122,18 @@ export function fieldHolder(field: Pick<Element, "closest">): HTMLElement | null
 }
 
 /**
+ * Dopo un controllo che sparisce sotto il fuoco («Usa gli stream proposti» applicato, «Annulla» del toast): il fuoco va
+ * dove stava il controllo, nel drawer o nella vista (`fieldHolder`), o nella vista aperta della board se il controllo
+ * stava fuori (il toast in fondo alla pagina). Solo se il fuoco è andato perso: niente lo ruba a chi lo ha preso.
+ */
+export function keepFocusAfter(control: Pick<Element, "closest">, doc: Pick<Document, "activeElement" | "body"> | null = typeof document === "undefined" ? null : document): void {
+  if (!doc) return;
+  const target = fieldHolder(control) ?? (control.closest("[data-board-root]")?.querySelector('[role="tabpanel"]:not([hidden])') as HTMLElement | null) ?? null;
+  const active = doc.activeElement;
+  if (target && (!active || active === doc.body || active === control)) target.focus({ preventScroll: true });
+}
+
+/**
  * I tasti che lasciano un campo sul posto. Invio (`enter`: su una riga; su più righe con Cmd/Ctrl) salva e lascia il
  * cursore nel campo, che resta; Escape salva e lascia il campo: il fuoco va al drawer che lo tiene (un secondo Escape lo
  * chiude, Tab resta dentro) o alla vista. Un campo che sparisce quando si salva (`stays` falso: una nota, un punto
@@ -521,7 +533,15 @@ export function BoardToastView(p: { host?: string } = {}): JSX.Element {
         <>
           <span key={toast.key}>{toast.text}</span>
           {toast.action ? (
-            <button type="button" onClick={() => toast.action?.run()}>
+            <button
+              type="button"
+              onClick={(event) => {
+                const button = event.currentTarget;
+                toast.action?.run();
+                // Il toast se ne va con il suo bottone: il fuoco resta nel drawer o nella vista (F1).
+                keepFocusAfter(button);
+              }}
+            >
               {toast.action.label}
             </button>
           ) : null}

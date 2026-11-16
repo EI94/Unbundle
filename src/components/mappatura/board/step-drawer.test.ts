@@ -55,10 +55,16 @@ test("spostare: a sinistra, a destra, in un altro processo; i bottoni spenti dov
     [{ t: "step.move", stepId: I.confronto, processId: I.processA, beforeId: I.ordine }],
     [{ t: "step.move", stepId: I.confronto, processId: I.processB, beforeId: null }],
   ]);
-  // Il primo passo non va più a sinistra, l'ultimo non va più a destra.
-  assert.equal(clickable(body(board, I.richieste).tree, "Sposta a sinistra").props.disabled, true);
-  assert.equal(clickable(body(board, I.richieste).tree, "Sposta a destra").props.disabled, false);
-  assert.equal(clickable(body(board, I.ordine).tree, "Sposta a destra").props.disabled, true);
+  // Il primo passo non va più a sinistra, l'ultimo non va più a destra: il bottone lo dice (aria-disabled) e non fa niente,
+  // ma resta raggiungibile, così il fuoco non cade sulla pagina quando il passo arriva in fondo (F1).
+  const first = body(board, I.richieste);
+  const left = clickable(first.tree, "Sposta a sinistra");
+  assert.deepEqual([left.props.disabled, left.props["aria-disabled"]], [undefined, true]);
+  (left.props.onClick as () => void)();
+  assert.deepEqual(first.log.named("dispatch"), [], "spento: niente si muove");
+  assert.equal(clickable(first.tree, "Sposta a destra").props["aria-disabled"], undefined);
+  const last = clickable(body(board, I.ordine).tree, "Sposta a destra");
+  assert.deepEqual([last.props.disabled, last.props["aria-disabled"]], [undefined, true]);
 });
 
 test("in fondo: da dove viene il passo, «Conferma il passo» pieno (la strada avanti del drawer) o «Segna da validare», «Elimina il passo»", () => {

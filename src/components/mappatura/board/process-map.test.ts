@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { enableTsxImports } from "../../use-cases/detail/referent/tsx-test-loader.ts";
 import { FIXTURE_IDS, fixtureBoard } from "../../../lib/mappatura/board-fixture.ts";
 import type { MappingBoard } from "../../../lib/mappatura/board-model.ts";
-import { clickables, elements, ofType, press, recorder, type AnyElement } from "./test-support/elements.ts";
+import { clickable, clickables, elements, ofType, press, recorder, type AnyElement } from "./test-support/elements.ts";
 
 // La mappa che si modifica (docs/mappatura/MAPPATURA-BOARD-PIANO.md §1.3; P11–P19, P53, P57–P61, P65): il disegno del
 // riferimento, i controlli di [v1] portati sulla mappa, e niente controlli in sola lettura. I controlli si chiamano
@@ -78,10 +78,14 @@ test("l'etichetta della riga: nome e chi lo segue sul posto, gli attriti, i voti
   const [votesA] = ofType(tree, Votes);
   assert.deepEqual([votesA.props.total, votesA.props.mine, votesA.props.disabled], [3, 1, false]);
   (votesA.props.onChange as (mine: number) => void)(2);
-  // Su e giù: il primo non sale, l'ultimo non scende.
+  // Su e giù: il primo non sale, l'ultimo non scende. Il bottone lo dice (aria-disabled) e non fa niente, ma resta
+  // raggiungibile: il fuoco non cade sulla pagina quando la riga arriva in cima o in fondo (F1).
   const ups = clickables(tree, "Sposta su");
   const downs = clickables(tree, "Sposta giù");
-  assert.deepEqual([ups[0].props.disabled, ups[1].props.disabled, downs[0].props.disabled, downs[1].props.disabled], [true, false, false, true]);
+  assert.deepEqual([ups[0], ups[1], downs[0], downs[1]].map((button) => button.props["aria-disabled"]), [true, undefined, undefined, true]);
+  assert.ok([...ups, ...downs].every((button) => button.props.disabled === undefined));
+  (ups[0].props.onClick as () => void)();
+  (downs[1].props.onClick as () => void)();
   (downs[0].props.onClick as () => void)();
   assert.deepEqual(log.named("dispatch"), [
     [{ t: "process.set", processId: I.processA, field: "name", prev: "Dalla richiesta all'ordine", next: "Acquisti" }],
@@ -93,7 +97,13 @@ test("l'etichetta della riga: nome e chi lo segue sul posto, gli attriti, i voti
   assert.deepEqual(clickables(tree, "Elimina il processo"), []);
   const emptyRow = { ...board, processes: [...board.processes, { id: "a0000000-0000-4000-8000-000000000009", name: "Resi", owner: null, votes: 0, myVotes: 0, steps: [] }] };
   const withEmpty = rows(emptyRow);
-  press(withEmpty.tree, "Elimina il processo");
+  // La riga se ne va con il bottone: prima il fuoco va nella vista, così non cade sulla pagina (F1).
+  const order: string[] = [];
+  const view = { focus: () => void order.push("vista") };
+  const remove = clickable(withEmpty.tree, "Elimina il processo");
+  (remove.props.onClick as (event: unknown) => void)({ currentTarget: { closest: (selector: string) => (selector === '[role="tabpanel"]' ? view : null) } });
+  order.push(`dispatch ${withEmpty.log.named("dispatch").length}`);
+  assert.deepEqual(order, ["vista", "dispatch 1"]);
   assert.deepEqual(withEmpty.log.named("dispatch"), [[{ t: "process.remove", processId: "a0000000-0000-4000-8000-000000000009" }, { undo: "Processo eliminato." }]]);
   // Una riga vuota mostra sempre il suo «+ passo».
   assert.match(withEmpty.html, /class="b-add b-add-step b-add-first" data-b="add">\+ passo<\/button>/);
