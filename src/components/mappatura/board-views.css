@@ -23,7 +23,8 @@
 @container board (max-width: 680px) {
   [data-board-root] .b-units { --b-crow-cols: auto minmax(0,1fr) 16px; }
   [data-board-root] .b-units .b-crow { row-gap: 6px; }
-  [data-board-root] .b-units .b-crow-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; grid-column: 2 / 3; grid-row: 2; min-width: 0; }
+  [data-board-root] .b-units .b-crow-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; grid-column: 1 / 3; grid-row: 2; min-width: 0; }
+  [data-board-root] .b-units .b-crow-streams:empty { display: none; }
   [data-board-root] .b-units .b-num2 { text-align: left; }
   [data-board-root] .b-units .b-crow-go { grid-column: 3; grid-row: 1; }
 }
@@ -52,6 +53,8 @@
 [data-board-root] .b-tabs-pill { display: flex; }
 
 /* ── «Processi di oggi»: la testa e il resto della vista ── */
+/* Un testo sul posto è alto quanto il suo testo già al primo disegno, prima che il codice lo misuri (dove il browser lo sa fare). */
+[data-board-root] .b-board textarea.b-textin, [data-board-root] .b-drawer textarea.b-textin { field-sizing: content; }
 /* Un campo sul posto si allinea al testo intorno: il suo margine interno sta fuori dalla colonna. */
 [data-board-root] .b-h .b-textin, [data-board-root] .b-dr-t .b-textin { margin: 0 -5px; width: calc(100% + 10px); padding: 0 4px; }
 [data-board-root] .b-notice { margin: -6px 0 18px; padding-left: 10px; border-left: 2px solid var(--board-amber); font-size: 13px; color: var(--board-graphite); }
@@ -105,6 +108,8 @@
 [data-board-root] .b-dr-lede { font-size: 14px; }
 [data-board-root] .b-dr-body .b-textin { margin: 0 -5px; width: calc(100% + 10px); }
 [data-board-root] .b-dr-chips { display: flex; flex-direction: column; gap: 6px; }
+/* Sopra le note di «Attriti» i quattro livelli: lo spazio dei controlli delle note, che stanno sopra il loro angolo. */
+[data-board-root] .b-dr-body .b-feas { margin-bottom: 12px; }
 [data-board-root] .b-dr-none { margin: 0; font-size: 13px; color: var(--board-graphite); }
 [data-board-root] .b-dr-text { margin: 0; font-size: 13.5px; color: var(--board-ink-2); white-space: pre-wrap; }
 /* Frequenza, ore, tipo di lavoro, qualità: i campi del riferimento (etichetta in mono sopra, campo sul colore della pagina). */
