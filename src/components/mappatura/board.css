@@ -310,6 +310,8 @@
 [data-board-root] .b-abadge[data-stream="innovate"] { background: var(--board-innovate); }
 [data-board-root] .b-abadge.b-auto { background: var(--board-a-auto); color: var(--board-on-auto); }
 [data-board-root] .b-abadge.b-small { font-size: 9.5px; padding: 2px 6px; }
+/* Il nome dello stream in maiuscolo, come i nomi degli agenti sul riferimento: la scritta resta «Automate». */
+[data-board-root] .b-abadge[data-stream] { text-transform: uppercase; }
 /* Il passo: «Chi:» è nel markup; il bordo sinistro dice l'attrito oppure lo stream. */
 [data-board-root] .b-node .b-who b { color: var(--board-graphite-2); font-weight: 600; }
 [data-board-root] .b-node .b-tag { align-self: flex-start; }
@@ -328,10 +330,16 @@
 [data-board-root] .b-crow[data-accent="innovate"] { border-left-color: var(--board-innovate); }
 /* Il drawer: titolo, corpo, liste. */
 [data-board-root] .b-dr-head > div:first-child { min-width: 0; flex: 1 1 auto; }
+/* Il titolo del drawer è un titolo vero (h2): senza i margini del browser, come il div del riferimento. */
+[data-board-root] .b-dr-head .b-dr-t { margin: 0; }
 [data-board-root] .b-drawer:focus { outline: none; }
 /* Le corsie di note: una colonna di note con «+ nota» in fondo. */
 [data-board-root] .b-cell { display: flex; flex-direction: column; gap: 7px; min-height: 34px; border-radius: 3px; transition: background .15s; }
-[data-board-root] .b-note[aria-readonly="true"] { cursor: default; }
+/* Il testo di una nota è un campo dentro il foglio della nota: il foglio ha il fuoco del riferimento (l'anello di 2 px). */
+[data-board-root] .b-note > .b-textin { padding: 0; border: 0; border-radius: 0; }
+[data-board-root] .b-note > .b-textin:focus { outline: none; background: transparent; }
+[data-board-root] .b-note:focus-within { box-shadow: 0 0 0 2px var(--board-signal-deep), var(--board-shadow); }
+[data-board-root] .b-note-w[data-status="fonte"] .b-note:focus-within { box-shadow: 0 0 0 2px var(--board-signal-deep), var(--board-shadow); }
 [data-board-root] .b-add { align-self: flex-start; border: 1px dashed var(--board-line-strong); background: transparent; border-radius: 4px; font-size: 12px; padding: 2px 8px; cursor: pointer; color: var(--board-graphite); }
 [data-board-root] .b-add[disabled] { opacity: .45; cursor: not-allowed; }
 /* La didascalia di una nota non validata («ipotesi», «da fonti · chat») sta nel markup, dove il riferimento usa `content`. */
@@ -339,6 +347,8 @@
 /* Voti: `−` n `+`, con il totale in ambra. */
 [data-board-root] .b-votes .b-vb { font-family: var(--board-font-mono); font-size: 10px; background: var(--board-amber); color: var(--board-on-auto); border-radius: 999px; padding: 0 5px; line-height: 15px; min-width: 15px; text-align: center; font-variant-numeric: tabular-nums; }
 [data-board-root] .b-votes button[disabled], [data-board-root] .b-feas button[disabled], [data-board-root] .b-wsel button[disabled], [data-board-root] .b-fchip[disabled] { opacity: .45; cursor: not-allowed; }
+/* Al limite (zero voti, o il massimo) il bottone resta raggiungibile: il fuoco non si perde. */
+[data-board-root] .b-votes button[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
 /* Campi: un'etichetta in mono sopra un campo (i campi numerici del riferimento); il testo che si scrive sul posto. */
 [data-board-root] .b-field { display: flex; flex-direction: column; gap: 2px; font-family: var(--board-font-mono); font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--board-signal-deep); min-width: 0; }
 [data-board-root] .b-field > span { display: block; }

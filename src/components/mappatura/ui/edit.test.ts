@@ -1,0 +1,184 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { createElement, type FunctionComponent, type ReactElement, type ReactNode } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { enableTsxImports } from "../../use-cases/detail/referent/tsx-test-loader.ts";
+import { fixtureBoard } from "../../../lib/mappatura/board-fixture.ts";
+import type { BoardNote } from "../../../lib/mappatura/board-model.ts";
+
+// I controlli per modificare la board (docs/mappatura/MAPPATURA-BOARD-PIANO.md §4.9; P44, P51–P57, P65, P67, P78, P85,
+// F1, F9): il testo sul posto, la nota con i suoi tre stati, i chip con «+ ruolo», i voti, i livelli, i segmenti, i
+// campi, il toast, la conferma in linea, il blocco vuoto. Markup statico; le funzioni pure a parte; i clic dagli
+// elementi che i componenti senza hook restituiscono.
+
+await enableTsxImports();
+const edit = await import("./edit.tsx");
+const { BoardToastView, ChipInput, EmptyBlock, Field, InlineConfirm, LevelButtons, NoteItem, NumberInput, Segmented, TextInPlace, Votes } = edit;
+const { addedChip, committedText, nextVotes, noteToggleLabel, parsedNumber } = edit;
+const { BoardProvider, useBoardClient } = await import("../store/use-board.tsx");
+
+const html = (element: Parameters<typeof renderToStaticMarkup>[0]) => renderToStaticMarkup(element);
+/** `createElement` con i figli dopo le props: il tipo di React li vuole tra le props quando un componente li chiede. */
+const h = <P extends object>(type: (props: P) => ReactNode, props: Omit<P, "children"> | null = null, ...children: ReactNode[]) =>
+  createElement(type as unknown as FunctionComponent<Omit<P, "children">>, props, ...children);
+type Props = Record<string, unknown>;
+function* elements(node: unknown): Generator<ReactElement<Props>> {
+  if (Array.isArray(node)) {
+    for (const item of node) yield* elements(item);
+  } else if (node && typeof node === "object" && "props" in node) {
+    const element = node as ReactElement<Props>;
+    yield element;
+    yield* elements(element.props.children);
+  }
+}
+const buttonsOf = (node: unknown) => [...elements(node)].filter((element) => element.type === "button");
+const note = (status: BoardNote["status"], origin: BoardNote["origin"]): BoardNote => ({ id: "n1", lane: "attriti", title: null, text: "Richieste incomplete", status, origin });
+
+test("il testo sul posto: una riga o più righe, con la sua etichetta, il limite, il segnaposto; spento in sola lettura", () => {
+  const line = html(h(TextInPlace, { value: "Ordini", onCommit() {}, label: "Nome del processo", placeholder: "Nome del processo", maxLength: 120 }));
+  assert.equal(line, '<input class="b-textin" aria-label="Nome del processo" placeholder="Nome del processo" maxLength="120" spellCheck="true" data-b="text" type="text" value="Ordini"/>');
+  const area = html(h(TextInPlace, { value: "Prima riga\nseconda", onCommit() {}, label: "Descrizione", multiline: true, maxLength: 2000, disabled: true, className: "b-extra" }));
+  assert.equal(area, '<textarea class="b-textin b-extra" aria-label="Descrizione" maxLength="2000" disabled="" spellCheck="true" data-b="text" rows="1">Prima riga\nseconda</textarea>');
+});
+
+test("si salva lasciando il campo: il testo rifinito, solo se è cambiato rispetto a quando la persona ci è entrata (P52)", () => {
+  assert.equal(committedText({ base: "Ordini", text: "Ordini" }, false), null);
+  assert.equal(committedText({ base: "Ordini", text: "  Ordini  " }, false), null, "uno spazio in più non è una modifica");
+  assert.equal(committedText({ base: "Ordini", text: "Ordini  e resi" }, false), "Ordini e resi");
+  assert.equal(committedText({ base: "Ordini", text: "" }, false), "", "svuotato: chi lo usa decide (una nota vuota sparisce, P55)");
+  assert.equal(committedText({ base: "uno", text: "uno\n\n\n\ndue  \n" }, true), "uno\n\ndue", "più righe: a capo puliti");
+  // Il confronto è con il valore di quando la persona è entrata, non con quello di adesso.
+  assert.equal(committedText({ base: "vecchio", text: "vecchio" }, false), null);
+  // I numeri: vuoto è null, la virgola vale il punto, fuori dai limiti si porta dentro.
+  assert.deepEqual([parsedNumber(""), parsedNumber("12,5"), parsedNumber(" 3 "), parsedNumber("abc"), parsedNumber("200", 0, 168), parsedNumber("-1", 0, 168)], [null, 12.5, 3, null, 168, 0]);
+  assert.match(html(h(NumberInput, { value: 6.5, onCommit() {}, label: "Ore a settimana", min: 0, max: 168 })), /^<input class="b-input" type="number" inputMode="decimal" aria-label="Ore a settimana" min="0" max="168" step="any" data-b="number" value="6.5"\/>$/);
+});
+
+test("la nota: i tre stati del riferimento (P51), la spunta che dice dove torna (P56), la «×» (P57); in sola lettura niente controlli (F9)", () => {
+  const hypothesis = html(h(NoteItem, { note: note("ipotesi", "board"), label: "Nota: Attriti", onText() {}, onToggle() {}, onRemove() {} }));
+  assert.match(hypothesis, /^<div class="b-note-w" data-status="ipotesi" data-origin="board" data-b="note"><div class="b-note"><textarea class="b-textin" aria-label="Nota: Attriti" maxLength="2000"/);
+  assert.match(hypothesis, /<span class="b-note-cap">ipotesi<\/span><div class="b-note-ctl"><button type="button" aria-label="Segna come validata" title="Segna come validata">/);
+  assert.match(hypothesis, /<button type="button" aria-label="Elimina nota" title="Elimina">/);
+  const source = html(h(NoteItem, { note: note("fonte", "chat"), label: "Nota: Attriti", onText() {}, onToggle() {}, onRemove() {} }));
+  assert.match(source, /data-status="fonte" data-origin="chat"/);
+  assert.match(source, /<span class="b-note-cap">da fonti · chat<\/span>/);
+  assert.match(html(h(NoteItem, { note: note("fonte", "prima"), label: "Nota", onText() {}, onToggle() {}, onRemove() {} })), /da fonti · prima della board/);
+  const validated = html(h(NoteItem, { note: note("validato", "documenti"), label: "Nota: Attriti", onText() {}, onToggle() {}, onRemove() {} }));
+  assert.match(validated, /data-status="validato"/);
+  assert.match(validated, /<span class="b-sr">validata<\/span>/, "la spunta è un segno: per gli screen reader c'è la parola");
+  assert.doesNotMatch(validated, /b-note-cap/);
+  // La spunta: validare, oppure toglierla; tolta, una nota della board torna «ipotesi», una da fuori torna «da fonti».
+  assert.equal(noteToggleLabel({ status: "ipotesi", origin: "board" }), "Segna come validata");
+  assert.equal(noteToggleLabel({ status: "fonte", origin: "chat" }), "Segna come validata");
+  assert.equal(noteToggleLabel({ status: "validato", origin: "board" }), "Segna come ipotesi");
+  assert.equal(noteToggleLabel({ status: "validato", origin: "documenti" }), "Togli la spunta");
+  assert.match(validated, /aria-label="Togli la spunta"/);
+  // In sola lettura: il testo spento, nessun controllo.
+  const readonly = html(h(NoteItem, { note: note("ipotesi", "board"), label: "Nota", disabled: true, onText() {}, onToggle() {}, onRemove() {} }));
+  assert.match(readonly, /disabled=""/);
+  assert.doesNotMatch(readonly, /b-note-ctl|<button/);
+});
+
+test("i chip di ruoli e strumenti: ognuno con la sua «×», «+ ruolo» finché c'è posto; niente in sola lettura", () => {
+  const chips = html(h(ChipInput, { values: ["Buyer", "Segreteria"], addLabel: "+ ruolo", placeholder: "Ruolo o persona", max: 12, maxLength: 80, onChange() {} }));
+  assert.match(chips, /^<div class="b-chipin" data-b="chip-input"><span class="b-chip" data-b="chip">Buyer<button type="button" aria-label="Togli Buyer"/);
+  assert.match(chips, /<button type="button" class="b-add" data-b="add">\+ ruolo<\/button><\/div>$/);
+  assert.match(html(h(ChipInput, { values: ["Gestionale"], tool: true, addLabel: "+ strumento", placeholder: "Strumento o sistema", max: 20, maxLength: 80, onChange() {} })), /class="b-chip b-tool"/);
+  assert.doesNotMatch(html(h(ChipInput, { values: ["A", "B"], addLabel: "+ ruolo", placeholder: "Ruolo", max: 2, maxLength: 80, onChange() {} })), /b-add/, "piena: niente «+ ruolo»");
+  const readonly = html(h(ChipInput, { values: ["Buyer"], addLabel: "+ ruolo", placeholder: "Ruolo", max: 12, maxLength: 80, disabled: true, onChange() {} }));
+  assert.doesNotMatch(readonly, /<button/);
+  // Il valore scritto: rifinito, tagliato, senza doppioni a meno di maiuscole, mai oltre il massimo.
+  assert.deepEqual(addedChip(["Buyer"], "  Segreteria   acquisti ", 12, 80), ["Buyer", "Segreteria acquisti"]);
+  assert.equal(addedChip(["Buyer"], "BUYER", 12, 80), null);
+  assert.equal(addedChip(["Buyer"], "   ", 12, 80), null);
+  assert.equal(addedChip(["A", "B"], "C", 2, 80), null);
+  assert.deepEqual(addedChip([], "x".repeat(100), 12, 80), ["x".repeat(80)]);
+});
+
+test("i voti: `−` n `+`, ognuno i suoi, mai sotto zero né oltre 99; al limite il bottone resta raggiungibile (P65, F1)", () => {
+  const seen: number[] = [];
+  const at = (mine: number, total = 5) => buttonsOf(Votes({ total, mine, onChange: (value) => void seen.push(value) }));
+  const [lessAtZero, moreAtZero] = at(0);
+  assert.equal(lessAtZero.props["aria-disabled"], true);
+  assert.equal(lessAtZero.props.disabled, undefined, "non spento: il fuoco resta lì");
+  (lessAtZero.props.onClick as () => void)();
+  (moreAtZero.props.onClick as () => void)();
+  const [lessAtTwo] = at(2);
+  (lessAtTwo.props.onClick as () => void)();
+  const [, moreAtMax] = at(99, 120);
+  assert.equal(moreAtMax.props["aria-disabled"], true);
+  (moreAtMax.props.onClick as () => void)();
+  assert.deepEqual(seen, [1, 1], "a zero il `−` non fa niente; al massimo il `+` nemmeno");
+  assert.deepEqual([nextVotes(0, -1), nextVotes(98, 1), nextVotes(99, 1), nextVotes(3.7, 0)], [0, 99, 99, 3]);
+  const out = html(h(Votes, { total: 5, mine: 2, onChange() {} }));
+  assert.equal(
+    out,
+    '<div class="b-votes" role="group" aria-label="Voti: 5. Tuoi: 2." data-b="votes"><button type="button" aria-label="Togli un tuo voto">−</button><span class="b-vb" aria-hidden="true">5</span><button type="button" aria-label="Aggiungi un voto">+</button></div>',
+  );
+  const readonly = html(h(Votes, { total: 5, mine: 0, disabled: true, onChange() {} }));
+  assert.equal((readonly.match(/disabled=""/g) ?? []).length, 2);
+  assert.doesNotMatch(readonly, /aria-disabled/);
+});
+
+test("i livelli e i segmenti: uno solo premuto, aria-pressed; il punto ambra su quello proposto (P44, P67, P85)", () => {
+  const options = [
+    { value: 0, label: "Nessuno" },
+    { value: 1, label: "Lieve" },
+    { value: 2, label: "Medio" },
+    { value: 3, label: "Forte" },
+  ] as const;
+  const levels = html(createElement(LevelButtons, { label: "Attrito: Medio", options, value: 2, onChange() {} }));
+  assert.match(levels, /^<div class="b-feas" role="group" aria-label="Attrito: Medio" data-b="levels">/);
+  assert.deepEqual([...levels.matchAll(/aria-pressed="(true|false)">(\w+)</g)].map((match) => [match[2], match[1]]), [["Nessuno", "false"], ["Lieve", "false"], ["Medio", "true"], ["Forte", "false"]]);
+  const picked: number[] = [];
+  const buttons = buttonsOf(LevelButtons({ label: "Attrito", options, value: null, onChange: (value) => void picked.push(value) }));
+  (buttons[3].props.onClick as () => void)();
+  assert.deepEqual(picked, [3]);
+  assert.equal((html(createElement(LevelButtons, { label: "Attrito", options, value: 1, disabled: true, onChange() {} })).match(/disabled=""/g) ?? []).length, 4);
+
+  const streams = [
+    { value: "automate", label: "Automate" },
+    { value: "differentiate", label: "Differentiate", recommended: true },
+    { value: "innovate", label: "Innovate" },
+    { value: "none", label: "—" },
+  ] as const;
+  const segmented = html(createElement(Segmented, { label: "Stream del passo", options: streams, value: "automate", recommendedLabel: "Proposto dall'assistente", onChange() {} }));
+  assert.match(segmented, /^<div class="b-wsel" role="group" aria-label="Stream del passo" data-b="segmented"><button type="button" aria-pressed="true">Automate<\/button>/);
+  assert.match(segmented, /<button type="button" class="b-rec" aria-pressed="false" title="Proposto dall&#x27;assistente">Differentiate<span class="b-sr"> Proposto dall&#x27;assistente<\/span><\/button>/);
+  assert.equal((segmented.match(/aria-pressed="true"/g) ?? []).length, 1);
+});
+
+test("il campo con l'etichetta in mono; la conferma in linea; il blocco di una vista vuota", () => {
+  assert.equal(html(h(Field, { label: "Frequenza" }, createElement("select", { className: "b-input" }))), '<label class="b-field" data-b="field"><span>Frequenza</span><select class="b-input"></select></label>');
+  assert.equal(
+    html(h(InlineConfirm, { question: "Eliminare il processo?", yes: "Sì, elimina", no: "Annulla", onYes() {}, onNo() {} })),
+    '<span class="b-confirm b-on" role="group" aria-label="Eliminare il processo?" data-b="confirm">Eliminare il processo?<button type="button" class="b-btn b-small" data-b="button" data-variant="outline">Sì, elimina</button><button type="button" class="b-btn b-ghost b-small" data-b="button" data-variant="ghost">Annulla</button></span>',
+  );
+  assert.equal(
+    html(h(EmptyBlock, { title: "Nessun passo, per ora", text: "Racconta il lavoro all'assistente." }, "azioni")),
+    '<div class="b-empty" data-b="empty"><b>Nessun passo, per ora</b><p>Racconta il lavoro all&#x27;assistente.</p><div class="b-empty-actions">azioni</div></div>',
+  );
+  assert.doesNotMatch(html(h(EmptyBlock, { title: "T", text: "Una frase." })), /b-empty-actions/);
+});
+
+test("il toast della board: una regione viva sempre presente; il testo e «Annulla» quando lo store ne ha uno, nel suo posto (P78)", () => {
+  // Fuori da BoardProvider: la regione c'è, vuota.
+  assert.equal(html(h(BoardToastView)), '<div class="b-toast" role="status" aria-live="polite" data-b="toast"></div>');
+  const board = fixtureBoard();
+  function Probe(props: { host?: string }) {
+    useBoardClient().notify("Mappa copiata.", { label: "Apri", run() {} });
+    return h(BoardToastView, props.host ? { host: props.host } : {});
+  }
+  // Il toast parte con il suo timer (4,2 s): qui non tiene vivo il processo.
+  const realSetTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = ((run: () => void, ms?: number) => realSetTimeout(run, ms).unref()) as typeof setTimeout;
+  try {
+    const shown = html(h(BoardProvider, { workspaceId: board.unit.id, departmentId: board.unit.id, initial: board }, h(Probe, {})));
+    assert.equal(shown, '<div class="b-toast b-on" role="status" aria-live="polite" data-b="toast"><span>Mappa copiata.</span><button type="button">Apri</button></div>');
+    // Un posto che non ha il toast (un drawer chiuso) non lo mostra.
+    const elsewhere = html(h(BoardProvider, { workspaceId: board.unit.id, departmentId: board.unit.id, initial: board }, h(Probe, { host: "drawer" })));
+    assert.equal(elsewhere, '<div class="b-toast" role="status" aria-live="polite" data-b="toast"></div>');
+  } finally {
+    globalThis.setTimeout = realSetTimeout;
+  }
+});

@@ -71,7 +71,30 @@ export const BOARD_TEXT = Object.freeze({
   }),
   /** I segni della mappa come testo (P62). */
   marks: Object.freeze({ toValidate: "[da validare]", hypothesis: "[ipotesi]" }),
+  /** La card di un passo. */
+  card: Object.freeze({ who: "Chi:", toValidate: "da validare", decides: "Decide una persona" }),
+  /**
+   * I due controlli di una nota e la sua spunta. Tolta la spunta, una nota scritta sulla board torna «ipotesi», una
+   * venuta dalla chat, dai documenti o da prima della board torna «da fonti» (P56): per lei «Togli la spunta».
+   */
+  note: Object.freeze({
+    validate: "Segna come validata",
+    unvalidate: "Segna come ipotesi",
+    unvalidateSource: "Togli la spunta",
+    validated: "validata",
+    remove: "Elimina",
+    removeLabel: "Elimina nota",
+  }),
+  /** I voti di un processo. */
+  votes: Object.freeze({ less: "Togli un tuo voto", more: "Aggiungi un voto" }),
 });
+
+/** L'etichetta del gruppo dei voti: il totale e quelli di chi guarda. */
+export const votesLabel = (total: number, mine: number): string => `Voti: ${formatCount(total)}. Tuoi: ${formatCount(mine)}.`;
+/** L'etichetta della × di un ruolo o di uno strumento. */
+export const removeChipLabel = (name: string): string => `Togli ${name}`;
+/** Il badge grigio dell'esposizione all'AI di un passo. */
+export const exposureBadgeLabel = (pct: number): string => `AI ${formatCount(Math.round(pct))}%`;
 
 // ─── Il vocabolario, in parole ───────────────────────────────────────
 
@@ -199,11 +222,6 @@ export function pillText(state: PillTextState, savedAt: string | null): string {
     return when ? `Salvato ${when}` : BOARD_TEXT.pill.ready;
   }
   return BOARD_TEXT.pill[state];
-}
-
-/** L'etichetta del link «Activity mapping» nella riga del marchio: «Tutte le {plurale}». */
-export function unitsLinkLabel(unitPlural: string): string {
-  return `Tutte le ${unitPlural}`;
 }
 
 // ─── La riga della campanella (la scrive il server, §7.6) ────────────

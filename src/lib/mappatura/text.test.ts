@@ -22,8 +22,10 @@ import {
   noteCaption,
   noteMark,
   pillText,
+  exposureBadgeLabel,
+  removeChipLabel,
   savedAtLabel,
-  unitsLinkLabel,
+  votesLabel,
 } from "./text.ts";
 import { assertHouseStyle, collectTexts, houseStyleFaults } from "./text-rules.ts";
 import { FREQUENCIES, FRICTIONS, LANES, MAPPING_LIMITS, NOTE_STATUSES, ORIGINS, STEP_STATUSES, STREAMS, UNIT_STATUSES, WORK_TYPES } from "./vocab.ts";
@@ -45,11 +47,13 @@ test("ogni scritta rispetta lo stile della casa: «use case», nessuna chiave in
     pillText("saving", null),
     pillText("readonly", null),
     pillText("local", null),
-    unitsLinkLabel("funzioni"),
     ...Object.values(mappingCompletedSignal("Ufficio acquisti", 6, 28.5)),
     ...Object.values(mappingCompletedSignal("Magazzino", 1, 1)),
     counted(1, "passo", "passi"),
     counted(3, "passo", "passi"),
+    votesLabel(5, 2),
+    removeChipLabel("magazzino"),
+    exposureBadgeLabel(34),
   ];
   assert.ok(texts.length > 100, "le scritte ci sono");
   assertHouseStyle(texts);
@@ -116,7 +120,8 @@ test("i numeri e i plurali: 1 passo, 3 passi; le ore con la virgola; la riga del
   assert.deepEqual(mappingCompletedSignal("Magazzino", 1, 1), { title: "Mappatura completata: Magazzino", description: "1 passo, 1 ora a settimana." });
   assert.equal(mappingCompletedSignal("Magazzino", 0, 0).description, "0 passi, 0 ore a settimana.");
   assert.equal(MAPPING_COMPLETED_SIGNAL, "mapping_completed");
-  assert.equal(unitsLinkLabel("aree"), "Tutte le aree");
+  assert.deepEqual([votesLabel(5, 2), removeChipLabel("Buyer"), exposureBadgeLabel(34.4), exposureBadgeLabel(0)], ["Voti: 5. Tuoi: 2.", "Togli Buyer", "AI 34%", "AI 0%"]);
+  assert.deepEqual(BOARD_TEXT.card, { who: "Chi:", toValidate: "da validare", decides: "Decide una persona" });
 });
 
 test("i toast dei limiti dicono i numeri di MAPPING_LIMITS", () => {
