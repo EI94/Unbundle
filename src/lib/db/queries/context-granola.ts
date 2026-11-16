@@ -29,7 +29,7 @@ import {
 } from "@/lib/db/schema";
 import { granolaConfig, type GranolaConfig } from "@/lib/context/granola/config";
 import { discoverGranola, GRANOLA_ENDPOINTS, type GranolaEndpoints } from "@/lib/context/granola/endpoints";
-import { defaultTitleWords, emailDomainOf, matchMeeting, type WorkspaceMatchProfile } from "@/lib/context/granola/match";
+import { defaultTitleWords, emailDomainOf, isPublicMailDomain, matchMeeting, type WorkspaceMatchProfile } from "@/lib/context/granola/match";
 import { callGranolaTool, GranolaMcpError, openGranolaSession, type GranolaMcpDeps, type GranolaReadTool, type GranolaSession } from "@/lib/context/granola/mcp-client";
 import {
   authorizationUrl,
@@ -511,7 +511,7 @@ export async function disconnectGranola(userId: string): Promise<ServiceResult<t
 interface WorkspaceProfile extends WorkspaceMatchProfile {
   name: string;
   wantTranscript: boolean;
-  /** Le persone del cliente che Unbundle conosce già (membri fuori da Lateral Space e contatti). */
+  /** Le persone del cliente che Unbundle conosce già: i contatti e i referenti, fuori da Lateral Space e dalle caselle pubbliche. */
   knownPeople: number;
 }
 
@@ -528,9 +528,10 @@ const asStrings = (value: unknown): string[] => (Array.isArray(value) ? value.fi
 
 /**
  * I profili dei workspace dove la persona collegata è di Lateral Space e non segue solo un corso (§8.6): la sua
- * cartella; le e-mail dei membri del workspace e dell'organizzazione fuori dai domini di Lateral Space, dei contatti
- * attivi e non anonimizzati, e quelle aggiunte a mano; i domini aggiunti a mano; le parole nel titolo, salvate o
- * predefinite. In più quando una regola o una cartella è cambiata l'ultima volta.
+ * cartella; le persone del cliente, cioè le e-mail dei contatti attivi e non anonimizzati (i referenti sono lì) e
+ * quelle aggiunte a mano, fuori dai domini di Lateral Space e dalle caselle pubbliche; i domini aggiunti a mano; le
+ * parole nel titolo, salvate o predefinite. Un membro del workspace non è per forza del cliente (chi costruisce da fuori,
+ * per esempio): non conta. In più quando una regola o una cartella è cambiata l'ultima volta.
  */
 async function loadProfiles(userId: string, onlyWorkspaceId?: string): Promise<{ profiles: WorkspaceProfile[]; rulesChangedAt: Date | null }> {
   const ls = lsDomains();
@@ -538,7 +539,6 @@ async function loadProfiles(userId: string, onlyWorkspaceId?: string): Promise<{
     id: string;
     name: string;
     role: string | null;
-    member_emails: unknown;
     emails: unknown;
     domains: unknown;
     title_words: unknown;
@@ -560,10 +560,6 @@ async function loadProfiles(userId: string, onlyWorkspaceId?: string): Promise<{
             OR EXISTS (SELECT 1 FROM workspace_memberships wm WHERE wm.workspace_id = w.id AND wm.user_id = ${userId}::uuid))
       )
       SELECT ws.id, ws.name, ws.role,
-        to_json(ARRAY(
-          SELECT DISTINCT lower(u.email) FROM users u
-          WHERE u.id IN (SELECT user_id FROM workspace_memberships WHERE workspace_id = ws.id UNION SELECT user_id FROM memberships WHERE organization_id = ws.organization_id)
-        )) AS member_emails,
         to_json(r.emails) AS emails, to_json(r.domains) AS domains, to_json(r.title_words) AS title_words, r.want_transcript, r.updated_at AS rules_updated_at,
         l.folder_id, l.updated_at AS link_updated_at
       FROM ws
@@ -583,14 +579,15 @@ async function loadProfiles(userId: string, onlyWorkspaceId?: string): Promise<{
     );
     for (const row of found) contacts.set(row.workspace_id, asStrings(row.emails));
   }
-  const outsideLs = (email: string) => {
+  // Una persona del cliente: fuori dai domini di Lateral Space e non in una casella pubblica.
+  const ofClient = (email: string) => {
     const domain = emailDomainOf(email);
-    return domain !== null && !ls.some((base) => domain === base || domain.endsWith(`.${base}`));
+    return domain !== null && !ls.some((base) => domain === base || domain.endsWith(`.${base}`)) && !isPublicMailDomain(domain);
   };
   let rulesChangedAt: Date | null = null;
   const profiles = usable.map((row): WorkspaceProfile => {
-    const known = [...new Set([...asStrings(row.member_emails), ...(contacts.get(row.id) ?? [])].filter(outsideLs))];
-    const manual = asStrings(row.emails).filter(outsideLs);
+    const known = [...new Set((contacts.get(row.id) ?? []).filter(ofClient))];
+    const manual = asStrings(row.emails).filter(ofClient);
     for (const changed of [toDate(row.rules_updated_at), toDate(row.link_updated_at)]) {
       if (changed && (!rulesChangedAt || changed > rulesChangedAt)) rulesChangedAt = changed;
     }

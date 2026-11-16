@@ -14,7 +14,7 @@
 import { romeDate } from "../../uc/calendar.ts";
 import { dayLabel } from "../labels.ts";
 import { CONTEXT_TEXT } from "../text.ts";
-import { emailDomainOf, foldWord } from "./match.ts";
+import { emailDomainOf, foldWord, isPublicMailDomain } from "./match.ts";
 import type { GranolaMeetingNote, GranolaParticipant } from "./parse.ts";
 import type { GranolaDecision } from "../vocab.ts";
 
@@ -195,8 +195,9 @@ function isLsDomain(domain: string, lsDomains: readonly string[]): boolean {
 
 /**
  * Le regole pulite: e-mail e domini in minuscolo, senza doppioni, senza quelli di Lateral Space; le parole nel titolo
- * su una riga, senza doppioni (maiuscole e accenti a parte). Un valore che non è un'e-mail o un dominio, o troppi
- * valori: errori per campo.
+ * su una riga, senza doppioni (maiuscole e accenti a parte). Un valore che non è un'e-mail o un dominio, un'e-mail o un
+ * dominio di una casella pubblica (`PUBLIC_MAIL_DOMAINS`: non dicono di quale cliente è una call), o troppi valori:
+ * errori per campo.
  */
 export function cleanGranolaRules(
   input: Partial<GranolaRulesInput> | null | undefined,
@@ -212,6 +213,7 @@ export function cleanGranolaRules(
     const email = raw.trim().toLowerCase();
     if (!email) continue;
     if (!EMAIL.test(email) || email.length > 320) fieldErrors.emails = T.granola.invalidEntry;
+    else if (isPublicMailDomain(emailDomainOf(email))) fieldErrors.emails = T.granola.publicMail;
     else if (!isLsDomain(emailDomainOf(email) ?? "", ls) && !emails.includes(email)) emails.push(email);
   }
   if (emails.length > GRANOLA_LIMITS.emailsMax) fieldErrors.emails = T.errors.tooLong(GRANOLA_LIMITS.emailsMax);
@@ -221,6 +223,7 @@ export function cleanGranolaRules(
     const domain = raw.trim().toLowerCase().replace(/^@/, "");
     if (!domain) continue;
     if (!DOMAIN.test(domain)) fieldErrors.domains = T.granola.invalidEntry;
+    else if (isPublicMailDomain(domain)) fieldErrors.domains = T.granola.publicMail;
     else if (!isLsDomain(domain, ls) && !domains.includes(domain)) domains.push(domain);
   }
   if (domains.length > GRANOLA_LIMITS.domainsMax) fieldErrors.domains = T.errors.tooLong(GRANOLA_LIMITS.domainsMax);

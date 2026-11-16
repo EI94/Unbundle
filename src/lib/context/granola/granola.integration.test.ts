@@ -33,7 +33,7 @@ let metadataRoute: typeof import("../../../app/api/granola/client-metadata/route
 const KEY = randomBytes(32).toString("base64");
 const ORIGIN = "https://unbundle.test";
 const suffix = randomBytes(3).toString("hex");
-const people = ["ls", "ls2", "cli", "top", "out"] as const;
+const people = ["ls", "ls2", "cli", "top", "out", "ext", "own"] as const;
 type Person = (typeof people)[number];
 const ids = {
   orgN: randomUUID(),
@@ -48,6 +48,9 @@ const EMAIL: Record<Person, string> = {
   cli: `giulia-${suffix}@nardi.test`,
   top: `luca-${suffix}@topjet.test`,
   out: `anna-${suffix}@altrove.test`,
+  // Chi costruisce da fuori, con una casella pubblica; una persona del cliente che non è un contatto.
+  ext: `alessio-${suffix}@gmail.com`,
+  own: `marta-${suffix}@nardi.test`,
 };
 type Actor = import("../visibility.ts").ContextActor;
 const actor = (person: Person, workspace: "wsN" | "wsT" = "wsN", role = "transformation_lead"): Actor => ({
@@ -91,7 +94,7 @@ const MEETINGS: Record<string, FakeMeeting> = {
   },
   folder: {
     id: `m-folder-${suffix}`,
-    title: "Nardi, ma nella cartella di TopJet",
+    title: "Manutenzione, nella cartella di TopJet",
     meetingAt: ago(60 * 26),
     updatedAt: ago(60 * 25),
     participants: `Paola (${EMAIL.ls})`,
@@ -144,6 +147,13 @@ before(async () => {
   await member(ids.wsN, "ls2", "analyst");
   await member(ids.wsN, "cli", "contributor");
   await member(ids.wsT, "top", "contributor");
+  await member(ids.wsN, "ext", "transformation_lead");
+  await member(ids.wsN, "own", "analyst");
+  // Le persone del cliente che Unbundle conosce: i contatti e i referenti. Un contatto con una casella pubblica non conta.
+  const contact = (ws: string, name: string, email: string) => q(`INSERT INTO uc_contacts (workspace_id, display_name, email) VALUES ($1::uuid, $2, $3)`, [ws, name, email]);
+  await contact(ids.wsN, "Giulia Bianchi", EMAIL.cli);
+  await contact(ids.wsN, "Mario Verdi", `mario-${suffix}@gmail.com`);
+  await contact(ids.wsT, "Luca Neri", EMAIL.top);
 });
 
 after(async () => {
@@ -506,7 +516,10 @@ function errorOf(result: { ok: boolean; error?: string }): string | null {
 
 test("le regole: si leggono con le parole predefinite; una parola aggiunta al titolo fa entrare al giro dopo una call di prima", opts, async () => {
   const rules = await granola.readGranolaRules(actor("ls"));
+  // Una persona sola del cliente: il contatto con l'indirizzo dell'azienda. Non i membri del workspace, non una casella pubblica.
   assert.deepEqual(rules, { folder: null, knownPeople: 1, emails: [], domains: [], titleWords: ["Nardi"], titleWordsAreDefault: true, wantTranscript: false, transcriptAvailable: true });
+  assert.equal(errorOf(await granola.saveGranolaRules(actor("ls"), { folderId: null, folderName: null, emails: [EMAIL.ext], domains: [], titleWords: ["Nardi"], wantTranscript: false })), "dati_non_validi");
+  assert.equal(errorOf(await granola.saveGranolaRules(actor("ls"), { folderId: null, folderName: null, emails: [], domains: ["gmail.com"], titleWords: ["Nardi"], wantTranscript: false })), "dati_non_validi");
   assert.equal(await granola.readGranolaRules(actor("cli", "wsN", "contributor")), null);
   const topjet = await granola.readGranolaRules(actor("ls", "wsT"));
   assert.deepEqual(topjet?.folder, { id: "f-topjet", name: "TopJet" });

@@ -3,14 +3,39 @@
  *
  * Per ogni workspace dove la persona collegata è di Lateral Space, la regola più forte che corrisponde:
  * 1. **cartella**: la call sta nella cartella di Granola scelta per quel cliente;
- * 2. **partecipanti**: tra i partecipanti c'è una persona del cliente che Unbundle conosce, o un indirizzo o un dominio
- *    aggiunto a mano. Chi ha un dominio di Lateral Space non conta (chi registra è sempre tra loro), e nemmeno chi ha
- *    registrato la call;
+ * 2. **partecipanti**: tra i partecipanti c'è una persona del cliente che Unbundle conosce (un contatto o un referente),
+ *    o un indirizzo o un dominio aggiunto a mano. Chi ha un dominio di Lateral Space non conta (chi registra è sempre
+ *    tra loro), e nemmeno chi ha registrato la call; le caselle di posta pubbliche (`PUBLIC_MAIL_DOMAINS`) non contano
+ *    mai: non dicono di quale cliente è una persona;
  * 3. **titolo**: il titolo contiene una delle parole del cliente, come parola intera, senza maiuscole e accenti.
- * Si guarda il livello più forte raggiunto da almeno un workspace: se lo raggiunge uno solo, la call entra lì; se lo
- * raggiungono in due o più, o nessuno, la call va in «Da smistare».
+ * Si guarda il livello più forte raggiunto da almeno un workspace: se lo raggiunge uno solo, e il titolo non dice anche
+ * un altro cliente, la call entra lì; se lo raggiungono in due o più, se il titolo dice anche un altro cliente, o se non
+ * lo raggiunge nessuno, la call va in «Da smistare».
  * Modulo puro.
  */
+
+/**
+ * Le caselle di posta pubbliche, in un elenco solo: un indirizzo lì non dice di quale cliente è una persona, e un
+ * dominio così farebbe entrare le call di chiunque. Non valgono nelle regole scritte in Impostazioni, né tra le persone
+ * che Unbundle conosce già. Valgono anche i sottodomini.
+ */
+export const PUBLIC_MAIL_DOMAINS: readonly string[] = Object.freeze([
+  // Internazionali
+  "gmail.com", "googlemail.com", "outlook.com", "outlook.it", "hotmail.com", "hotmail.it", "live.com", "live.it", "msn.com",
+  "yahoo.com", "yahoo.it", "ymail.com", "rocketmail.com", "icloud.com", "me.com", "mac.com", "aol.com",
+  "proton.me", "protonmail.com", "pm.me", "gmx.com", "gmx.net", "gmx.it", "gmx.de", "mail.com", "zoho.com", "yandex.com", "tutanota.com",
+  // Italiane
+  "libero.it", "virgilio.it", "alice.it", "tim.it", "tin.it", "tiscali.it", "email.it", "inwind.it", "iol.it",
+  "fastwebnet.it", "katamail.com", "teletu.it", "vodafone.it", "poste.it",
+  // Posta certificata condivisa
+  "pec.it", "legalmail.it", "postecert.it", "arubapec.it",
+]);
+
+/** Vero se il dominio è una casella di posta pubblica (`PUBLIC_MAIL_DOMAINS`) o un suo sottodominio. */
+export function isPublicMailDomain(domain: string | null | undefined): boolean {
+  const d = String(domain ?? "").trim().toLowerCase().replace(/^@/, "");
+  return d !== "" && PUBLIC_MAIL_DOMAINS.some((base) => d === base || d.endsWith(`.${base}`));
+}
 
 export interface WorkspaceMatchProfile {
   workspaceId: string;
@@ -27,7 +52,7 @@ export type MatchRule = "cartella" | "partecipanti" | "titolo";
 export interface MeetingMatch {
   /** La regola più forte raggiunta da almeno un workspace; null se nessuno. */
   rule: MatchRule | null;
-  /** I workspace a quel livello: la call entra da sola solo se è uno. */
+  /** I workspace a quel livello, più quelli che il titolo dice: la call entra da sola solo se è uno. */
   workspaceIds: string[];
 }
 
@@ -88,17 +113,23 @@ function inDomain(domain: string, base: string): boolean {
   return domain === base || domain.endsWith(`.${base}`);
 }
 
+/** Vero se il titolo contiene una delle parole del cliente. */
+function titleMatches(title: string, profile: WorkspaceMatchProfile): boolean {
+  return profile.titleWords.some((word) => titleHasWord(title, word));
+}
+
 /** Il livello (0 cartella, 1 partecipanti, 2 titolo) a cui un profilo riconosce la call, o -1. */
 function levelOf(meeting: { title: string; participantEmails: string[]; folderIds: string[] }, profile: WorkspaceMatchProfile): number {
   if (profile.folderIds.length > 0 && meeting.folderIds.some((id) => profile.folderIds.includes(id))) return 0;
-  const emails = new Set(profile.emails.map((e) => e.toLowerCase()));
-  const domains = profile.domains.map((d) => d.toLowerCase().replace(/^@/, "")).filter(Boolean);
+  // Una casella pubblica non dice di quale cliente è una persona: non vale, anche se una regola vecchia la porta.
+  const emails = new Set(profile.emails.map((e) => e.toLowerCase()).filter((e) => !isPublicMailDomain(emailDomainOf(e))));
+  const domains = profile.domains.map((d) => d.toLowerCase().replace(/^@/, "")).filter((d) => d && !isPublicMailDomain(d));
   for (const email of meeting.participantEmails) {
     if (emails.has(email)) return 1;
     const domain = emailDomainOf(email);
     if (domain && domains.some((base) => inDomain(domain, base))) return 1;
   }
-  if (profile.titleWords.some((word) => titleHasWord(meeting.title, word))) return 2;
+  if (titleMatches(meeting.title, profile)) return 2;
   return -1;
 }
 
@@ -135,5 +166,10 @@ export function matchMeeting(
       ids.push(profile.workspaceId);
     }
   }
-  return best < 0 ? { rule: null, workspaceIds: [] } : { rule: RULES[best], workspaceIds: ids };
+  if (best < 0) return { rule: null, workspaceIds: [] };
+  // Il titolo dice anche un altro cliente: la call non entra da sola, nemmeno con la cartella o i partecipanti.
+  for (const profile of profiles) {
+    if (!ids.includes(profile.workspaceId) && titleMatches(subject.title, profile)) ids.push(profile.workspaceId);
+  }
+  return { rule: RULES[best], workspaceIds: ids };
 }

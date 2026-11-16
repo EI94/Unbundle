@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { defaultTitleWords, matchMeeting, titleHasWord, type WorkspaceMatchProfile } from "./match.ts";
+import { defaultTitleWords, isPublicMailDomain, matchMeeting, PUBLIC_MAIL_DOMAINS, titleHasWord, type WorkspaceMatchProfile } from "./match.ts";
 
 // Di quale cliente è una call (RILASCIO-9a-COSTRUZIONE.md §8.6). Clienti, persone e domini inventati.
 
@@ -15,8 +15,29 @@ test("la cartella vince sui partecipanti: una call nella cartella di Nardi con u
   assert.deepEqual(matchMeeting(meeting({ folderIds: ["f-nardi"], participantEmails: ["luca@topjet.test"] }), PROFILES, LS), { rule: "cartella", workspaceIds: ["ws-nardi"] });
 });
 
-test("i partecipanti vincono sul titolo: «TopJet» nel titolo e una persona di Nardi → Nardi", () => {
-  assert.deepEqual(matchMeeting(meeting({ title: "Allineamento TopJet", participantEmails: ["GIULIA@nardi.test"] }), PROFILES, LS), { rule: "partecipanti", workspaceIds: ["ws-nardi"] });
+test("i partecipanti vincono sul titolo di nessun cliente: una persona di Nardi → Nardi", () => {
+  assert.deepEqual(matchMeeting(meeting({ title: "Allineamento ordini", participantEmails: ["GIULIA@nardi.test"] }), PROFILES, LS), { rule: "partecipanti", workspaceIds: ["ws-nardi"] });
+});
+
+test("un titolo che dice un altro cliente manda la call in «Da smistare», anche con la cartella o i partecipanti", () => {
+  assert.deepEqual(matchMeeting(meeting({ title: "Allineamento TopJet", participantEmails: ["GIULIA@nardi.test"] }), PROFILES, LS), { rule: "partecipanti", workspaceIds: ["ws-nardi", "ws-topjet"] });
+  assert.deepEqual(matchMeeting(meeting({ title: "Nardi, ma per TopJet", folderIds: ["f-nardi"] }), PROFILES, LS), { rule: "cartella", workspaceIds: ["ws-nardi", "ws-topjet"] });
+  // Il titolo del cliente stesso non cambia niente.
+  assert.deepEqual(matchMeeting(meeting({ title: "Ordini Nardi", folderIds: ["f-nardi"] }), PROFILES, LS), { rule: "cartella", workspaceIds: ["ws-nardi"] });
+});
+
+test("le caselle pubbliche (Gmail, Outlook, Libero…) non dicono di quale cliente è una persona: non valgono, nemmeno in una regola vecchia", () => {
+  for (const domain of ["gmail.com", "outlook.com", "hotmail.com", "yahoo.com", "icloud.com", "libero.it", "virgilio.it", "alice.it", "tiscali.it"]) {
+    assert.ok(PUBLIC_MAIL_DOMAINS.includes(domain), domain);
+    assert.equal(isPublicMailDomain(domain), true, domain);
+  }
+  assert.equal(isPublicMailDomain("@GMAIL.com"), true);
+  assert.equal(isPublicMailDomain("mail.libero.it"), true, "un sottodominio");
+  assert.equal(isPublicMailDomain("nardi.test"), false);
+  assert.equal(isPublicMailDomain("notgmail.com"), false);
+  assert.equal(isPublicMailDomain(""), false);
+  const old: WorkspaceMatchProfile = { workspaceId: "ws-vecchio", folderIds: [], emails: ["alessio@gmail.com"], domains: ["gmail.com"], titleWords: [] };
+  assert.deepEqual(matchMeeting(meeting({ participantEmails: ["alessio@gmail.com", "chiunque@gmail.com"] }), [old, ...PROFILES], LS), { rule: null, workspaceIds: [] });
 });
 
 test("con solo chi registra e «Nardi» nel titolo la call entra in Nardi", () => {
