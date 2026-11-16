@@ -24,9 +24,15 @@ export function granolaCardState(status: { available: boolean; connected: boolea
   return status.status === "da_ricollegare" ? "da_ricollegare" : "collegato";
 }
 
-/** La riga dopo il ritorno da Granola (`?granola=…`): collegato, oppure non riuscito, oppure scaduto. */
-export function granolaFlashLine(flash: string | null | undefined): Line | null {
-  if (flash === "collegato") return { tone: "ok", text: T.connected };
+/**
+ * La riga dopo il ritorno da Granola (`?granola=…`): collegato, oppure non riuscito, oppure scaduto. Solo se dice la
+ * stessa cosa del blocco: l'indirizzo resta dopo «Scollega» o un altro ritorno, e «Granola collegato.» sopra a
+ * «Collega Granola» dice il contrario di quello che c'è. «Collegato» solo con un collegamento attivo; le altre solo
+ * senza.
+ */
+export function granolaFlashLine(flash: string | null | undefined, state: GranolaCardState): Line | null {
+  if (flash === "collegato") return state === "collegato" ? { tone: "ok", text: T.connected } : null;
+  if (state === "collegato") return null;
   if (flash === "annullato" || flash === "errore") return { tone: "error", text: T.connectFailed };
   if (flash === "scaduto") return { tone: "error", text: T.stateExpired };
   return null;

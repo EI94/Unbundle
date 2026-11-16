@@ -52,7 +52,7 @@ export async function GranolaCard(props: GranolaCardProps) {
         accountEmail={status.accountEmail}
         plan={status.plan}
         rules={rules}
-        flash={granolaFlashLine(props.flash)}
+        flash={granolaFlashLine(props.flash, state)}
       />
     </SettingsSection>
   );

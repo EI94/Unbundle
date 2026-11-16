@@ -25,13 +25,19 @@ test("lo stato del blocco in Impostazioni: non disponibile, non collegato, colle
   assert.equal(granolaCardState({ available: true, connected: true, status: "da_ricollegare" }), "da_ricollegare");
 });
 
-test("la riga dopo il ritorno da Granola", () => {
-  assert.deepEqual(granolaFlashLine("collegato"), { tone: "ok", text: T.connected });
-  assert.deepEqual(granolaFlashLine("annullato"), { tone: "error", text: T.connectFailed });
-  assert.deepEqual(granolaFlashLine("errore"), { tone: "error", text: T.connectFailed });
-  assert.deepEqual(granolaFlashLine("scaduto"), { tone: "error", text: T.stateExpired });
-  assert.equal(granolaFlashLine(undefined), null);
-  assert.equal(granolaFlashLine("<script>"), null, "un valore inventato non mostra niente");
+test("la riga dopo il ritorno da Granola, solo se dice la stessa cosa del blocco", () => {
+  assert.deepEqual(granolaFlashLine("collegato", "collegato"), { tone: "ok", text: T.connected });
+  for (const state of ["non_collegato", "da_ricollegare"] as const) {
+    assert.deepEqual(granolaFlashLine("annullato", state), { tone: "error", text: T.connectFailed });
+    assert.deepEqual(granolaFlashLine("errore", state), { tone: "error", text: T.connectFailed });
+    assert.deepEqual(granolaFlashLine("scaduto", state), { tone: "error", text: T.stateExpired });
+    // Dopo «Scollega» l'indirizzo dice ancora «collegato»: niente «Granola collegato.» sopra a «Collega Granola».
+    assert.equal(granolaFlashLine("collegato", state), null, state);
+  }
+  // Collegato: un ritorno non riuscito o scaduto di prima non si mostra sopra al collegamento che c'è.
+  for (const flash of ["annullato", "errore", "scaduto"]) assert.equal(granolaFlashLine(flash, "collegato"), null, flash);
+  assert.equal(granolaFlashLine(undefined, "non_collegato"), null);
+  assert.equal(granolaFlashLine("<script>", "non_collegato"), null, "un valore inventato non mostra niente");
 });
 
 test("quando, a parole, e la riga «Granola aggiornato …»", () => {
