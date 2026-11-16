@@ -79,10 +79,14 @@ export interface FakeGranola {
   tokenRequests: Array<{ grantType: string; clientId: string | null; resource: string | null; withVerifier: boolean }>;
   registrations: Array<Record<string, unknown>>;
   revoked: Array<{ token: string; hint: string | null; clientId: string | null }>;
+  /** Ogni coppia di token data, in ordine: per controllare che nessuno finisca in chiaro nel database. */
+  issued: Array<{ accessToken: string; refreshToken: string }>;
   /** Ogni richiesta ricevuta: metodo e percorso. */
   requests: Array<{ method: string; path: string }>;
   /** Ritardo del server MCP, in millisecondi. */
   mcpDelayMs: number;
+  /** Ritardo di uno strumento, in millisecondi. */
+  toolDelays: Record<string, number>;
   /** Fa scadere tutti gli access token: la prossima chiamata all'MCP risponde 401. */
   expireAccessTokens(): void;
   /** Token validi senza passare dal consenso (per i test del client MCP). */
@@ -158,8 +162,10 @@ export async function startFakeGranola(seed: { meetings?: FakeMeeting[]; folders
     tokenRequests: [],
     registrations: [],
     revoked: [],
+    issued: [],
     requests: [],
     mcpDelayMs: 0,
+    toolDelays: {},
     expireAccessTokens: () => accessTokens.clear(),
     grant: (clientId = "cliente-di-prova") => issue(clientId),
     isLive: (token) => accessTokens.has(token) || refreshTokens.has(token),
@@ -182,6 +188,7 @@ export async function startFakeGranola(seed: { meetings?: FakeMeeting[]; folders
     const refreshToken = `rt-${randomBytes(12).toString("hex")}`;
     accessTokens.add(accessToken);
     refreshTokens.set(refreshToken, { clientId });
+    fake.issued.push({ accessToken, refreshToken });
     return { access_token: accessToken, token_type: "Bearer", expires_in: fake.expiresIn, refresh_token: refreshToken, scope: "openid email profile offline_access" };
   };
 
@@ -269,6 +276,7 @@ export async function startFakeGranola(seed: { meetings?: FakeMeeting[]; folders
       const name = String(message.params?.name ?? "");
       const args = (message.params?.arguments ?? {}) as Record<string, unknown>;
       fake.toolCalls.push({ tool: name, args });
+      if (fake.toolDelays[name]) await new Promise((resolve) => setTimeout(resolve, fake.toolDelays[name]));
       const failure = fake.failures.indexOf(name);
       if (failure >= 0) {
         fake.failures.splice(failure, 1);

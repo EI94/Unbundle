@@ -511,7 +511,8 @@ export function parseTranscript(text: string): { text: string | null; nextOffset
     const json = asJson(text);
     if (isRecord(json)) {
       const transcript = json.transcript;
-      result.text = typeof transcript === "string" ? trimText(transcript) : null;
+      // Un pezzo si tiene com'è, spazi compresi: i pezzi uniti ridanno la trascrizione.
+      result.text = typeof transcript === "string" && transcript.trim() ? transcript.replace(/\r\n?/g, "\n") : null;
       result.nextOffset = offset(json.next_offset);
       result.unavailable = json.transcript_unavailable !== undefined && json.transcript_unavailable !== null && json.transcript_unavailable !== false ? true : transcript === null;
       if (json.truncated === false) result.nextOffset = null;
@@ -519,7 +520,8 @@ export function parseTranscript(text: string): { text: string | null; nextOffset
     }
     const tagged = firstElement(text, "transcript");
     if (tagged) {
-      result.text = tagged.attrs.status === "unavailable" ? null : cleanText(tagged.inner);
+      const inner = decodeEntities(tagged.inner).replace(/\r\n?/g, "\n");
+      result.text = tagged.attrs.status === "unavailable" || !inner.trim() ? null : inner;
       result.nextOffset = offset(tagged.attrs.next_offset ?? firstElement(text, "next_offset")?.inner);
       result.unavailable = /transcript_unavailable|status\s*=\s*["']unavailable/i.test(text) || result.text === null;
       return result;
