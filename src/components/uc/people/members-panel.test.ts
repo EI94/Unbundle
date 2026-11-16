@@ -1,5 +1,6 @@
 import test, { before } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import * as nodeModule from "node:module";
 import { enableTsxImports } from "../../use-cases/detail/referent/tsx-test-loader.ts";
 import { MEMBER_BUILDS_LABEL, MEMBER_BUILDS_REMOVE_TEXT, type MemberView } from "../../../lib/uc/views/people.ts";
@@ -46,4 +47,10 @@ test("«Osservatore · costruisce» solo per chi ha una concessione che copre il
 test("i testi del pannello sono quelli della specifica", () => {
   assert.equal(MEMBER_BUILDS_LABEL, "Osservatore · costruisce");
   assert.equal(MEMBER_BUILDS_REMOVE_TEXT, "Non costruirà più questo caso: i compiti che ha qui tornano da prendere. Per tutti i casi: Agent Factory › Chi costruisce.");
+});
+
+test("la conferma di «Togli» la sceglie removeRoleConfirmText, con i ruoli della persona: dice quando lascia i compiti", () => {
+  const source = readFileSync(new URL("./members-panel.tsx", import.meta.url), "utf8");
+  assert.match(source, /<DialogDescription>\s*\{removeRoleConfirmText\(removing\.member\.roles, removing\.role, builds\(removing\.member, removing\.role\)\)\}\s*<\/DialogDescription>/);
+  assert.doesNotMatch(source, /Smette subito/, "nessun testo di conferma scritto nel pannello");
 });

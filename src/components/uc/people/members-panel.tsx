@@ -12,8 +12,8 @@ import {
   CASE_ROLE_LABEL,
   MEMBER_BUILDS_CLIENT_ROLE_TEXT,
   MEMBER_BUILDS_LABEL,
-  MEMBER_BUILDS_REMOVE_TEXT,
   PERSONAL_ZONE_MEMBER_LABEL,
+  removeRoleConfirmText,
   roleChoicesFor,
   sideLabel,
   type MemberView,
@@ -35,6 +35,8 @@ export interface MemberCandidateOption {
  * cliente solo al cliente. (8.0c) Chi costruisce il caso da fuori Lateral Space
  * (una concessione di «Chi costruisce» che lo copre) è «Osservatore · costruisce»:
  * la riga serve, ma da sola non dà poteri; toglierla lo ferma in questo caso.
+ * Chi perde il ruolo con cui costruiva il caso lascia i suoi compiti lì: la
+ * conferma lo dice (`removeRoleConfirmText`).
  */
 export function MembersPanel({
   workspaceId,
@@ -162,7 +164,7 @@ export function MembersPanel({
             <DialogHeader>
               <DialogTitle>Togliere il ruolo «{CASE_ROLE_LABEL[removing.role]}» a {removing.member.name}?</DialogTitle>
               <DialogDescription>
-                {builds(removing.member, removing.role) ? MEMBER_BUILDS_REMOVE_TEXT : "Smette subito di vedere ciò che quel ruolo gli permetteva. Gli altri ruoli restano."}
+                {removeRoleConfirmText(removing.member.roles, removing.role, builds(removing.member, removing.role))}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>

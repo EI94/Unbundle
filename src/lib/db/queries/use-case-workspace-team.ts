@@ -653,15 +653,15 @@ RETURNING task_id`);
 }
 
 /**
- * (8.0c) Il responsabile toglie un ruolo dal team del dossier (`removeCaseMember`). Se era la riga `osservatore` di chi
- * costruiva il caso da fuori, da lì non costruisce più: i suoi compiti in quel caso tornano da prendere, come con «Togli»,
- * nella stessa transazione della riga tolta (o tutte e due, o niente). Chi costruisce ancora il caso (un ruolo di
- * Lateral Space) li tiene.
+ * (8.0c) Il responsabile toglie un ruolo dal team del dossier (`removeCaseMember`). Se con quel ruolo la persona
+ * costruiva il caso (la riga `osservatore` di chi costruisce da fuori, o un ruolo di Lateral Space) e adesso non lo
+ * costruisce più, i suoi compiti in quel caso tornano da prendere, come con «Togli», nella stessa transazione del ruolo
+ * tolto (o tutte e due, o niente). Vale per ogni ruolo tolto: «costruisce ancora» si legge dopo, nella transazione, e chi
+ * tiene un altro ruolo con cui costruisce il caso tiene i suoi compiti; chi non ne aveva non perde niente.
  */
 export async function removeCaseMemberReleasingTasks(executor: UcExecutor, ctx: UcCommandContext, input: unknown): Promise<Result<{ userId: string; role: CaseRole }>> {
   return removeCaseMember(executor, ctx, input, {
-    after: async ({ userId, role }) =>
-      role === "osservatore" ? ((await taskReleaseStatements(executor, { workspaceId: ctx.workspaceId, userId, lsDomains: ctx.lsDomains, caseId: ctx.caseId })) ?? []) : [],
+    after: async ({ userId }) => (await taskReleaseStatements(executor, { workspaceId: ctx.workspaceId, userId, lsDomains: ctx.lsDomains, caseId: ctx.caseId })) ?? [],
   });
 }
 

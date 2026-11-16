@@ -27,6 +27,10 @@ import {
   requestDetailLines,
   requestTimeline,
   MEMBER_BUILDS_CLIENT_ROLE_TEXT,
+  MEMBER_BUILDS_REMOVE_TEXT,
+  MEMBER_LAST_LS_ROLE_REMOVE_TEXT,
+  MEMBER_ROLE_REMOVE_TEXT,
+  removeRoleConfirmText,
   roleChoicesFor,
   rolesAssignableTo,
   sendButtonText,
@@ -69,6 +73,23 @@ test("(8.0c) to someone who builds the case from outside, client roles show swit
   ]);
   assert.deepEqual(roleChoicesFor(true, new Set(["ls_lead"] as const), true).map((c) => c.disabled), [false, false, false], "Lateral Space roles never switch off");
   assert.equal(MEMBER_BUILDS_CLIENT_ROLE_TEXT, "Costruisce questo caso: non può avere anche un ruolo del cliente.");
+});
+
+test("(8.0c) the confirmation before a role is removed says when the person stops building the case and leaves the tasks there", () => {
+  assert.equal(MEMBER_LAST_LS_ROLE_REMOVE_TEXT, "Non costruirà più questo caso: i compiti che ha qui tornano da prendere.");
+  assert.equal(MEMBER_ROLE_REMOVE_TEXT, "Smette subito di vedere ciò che quel ruolo permetteva. Gli altri ruoli restano.");
+  // The last Lateral Space role of the person in the case: the tasks held there go back.
+  assert.equal(removeRoleConfirmText(["ls_sviluppatore"], "ls_sviluppatore", false), MEMBER_LAST_LS_ROLE_REMOVE_TEXT);
+  assert.equal(removeRoleConfirmText(["ls_analista", "osservatore"], "ls_analista", false), MEMBER_LAST_LS_ROLE_REMOVE_TEXT);
+  // Another Lateral Space role stays: the person still builds and keeps the tasks.
+  assert.equal(removeRoleConfirmText(["ls_lead", "ls_sviluppatore"], "ls_sviluppatore", false), MEMBER_ROLE_REMOVE_TEXT);
+  assert.equal(removeRoleConfirmText(["ls_sviluppatore", "osservatore"], "osservatore", false), MEMBER_ROLE_REMOVE_TEXT);
+  // The observer row of someone who builds from outside Lateral Space, and a plain observer or client role.
+  assert.equal(removeRoleConfirmText(["osservatore"], "osservatore", true), MEMBER_BUILDS_REMOVE_TEXT);
+  assert.equal(removeRoleConfirmText(["osservatore"], "osservatore", false), MEMBER_ROLE_REMOVE_TEXT);
+  assert.equal(removeRoleConfirmText(["owner_cliente", "ai_board"], "ai_board", false), MEMBER_ROLE_REMOVE_TEXT);
+  // Neutral wording: no pronoun that gives the person a gender («gli permetteva», «le permetteva»).
+  for (const text of [MEMBER_LAST_LS_ROLE_REMOVE_TEXT, MEMBER_ROLE_REMOVE_TEXT, MEMBER_BUILDS_REMOVE_TEXT]) assert.doesNotMatch(text, /\b(gli|le|lui|lei) (permett|toglie|serv)/i, text);
 });
 
 test("members are grouped per person, Lateral Space first, emails only when allowed", () => {

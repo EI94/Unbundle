@@ -44,6 +44,27 @@ export const MEMBER_BUILDS_LABEL = "Osservatore · costruisce";
 /** (8.0c) La conferma quando si toglie quella riga: da lì la persona non costruisce più questo caso, e i suoi compiti lì tornano da prendere. */
 export const MEMBER_BUILDS_REMOVE_TEXT = "Non costruirà più questo caso: i compiti che ha qui tornano da prendere. Per tutti i casi: Agent Factory › Chi costruisce.";
 
+/**
+ * (8.0c) La conferma quando si toglie a una persona di Lateral Space l'ultimo ruolo con cui costruisce il caso: anche i
+ * suoi compiti lì tornano da prendere (`removeCaseMemberReleasingTasks`).
+ */
+export const MEMBER_LAST_LS_ROLE_REMOVE_TEXT = "Non costruirà più questo caso: i compiti che ha qui tornano da prendere.";
+
+/** La conferma quando si toglie un ruolo che non cambia chi costruisce il caso. */
+export const MEMBER_ROLE_REMOVE_TEXT = "Smette subito di vedere ciò che quel ruolo permetteva. Gli altri ruoli restano.";
+
+/**
+ * (8.0c) La conferma di «Togli» nel team del dossier, secondo quello che succede davvero: chi con quel ruolo costruiva
+ * il caso e non ne ha un altro per costruirlo lascia i suoi compiti lì. `roles` sono i ruoli della persona nel caso,
+ * `buildsFromOutside` dice se la riga «Osservatore» è di chi costruisce da fuori Lateral Space.
+ */
+export function removeRoleConfirmText(roles: readonly CaseRole[], role: CaseRole, buildsFromOutside: boolean): string {
+  if (role === "osservatore" && buildsFromOutside) return MEMBER_BUILDS_REMOVE_TEXT;
+  const builds = (r: CaseRole) => (LS_CASE_ROLES as readonly CaseRole[]).includes(r);
+  if (builds(role) && !roles.some((r) => r !== role && builds(r))) return MEMBER_LAST_LS_ROLE_REMOVE_TEXT;
+  return MEMBER_ROLE_REMOVE_TEXT;
+}
+
 /** Ruoli che si possono dare a una persona: Lateral Space o cliente, mai mescolati (D36). */
 export function rolesAssignableTo(isLateralSpace: boolean): CaseRole[] {
   return isLateralSpace ? [...LS_CASE_ROLES, "osservatore"] : [...CLIENT_CASE_ROLES, "osservatore"];

@@ -799,6 +799,53 @@ test("la riga osservatore tolta e i compiti liberati vanno insieme: se i compiti
   }
 });
 
+test("il responsabile toglie un ruolo di Lateral Space dal team del dossier: chi lì non costruisce più lascia i compiti di quel caso, chi tiene un altro ruolo con cui costruisce li tiene", opts, async () => {
+  const ucActions = await import("../../actions/uc-cases.ts");
+  const team = await import("../../db/queries/use-case-workspace-team.ts");
+  // Due persone di Lateral Space: una sviluppa in A1 e in A2; l'altra in A1 è analista e sviluppatore.
+  const dev = randomUUID();
+  const both = randomUUID();
+  await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1, $3, 'Dario Sviluppo', now()), ($2, $4, 'Bianca Doppia', now())`, [dev, both, `dev-${suffix}@ls.test`, `doppia-${suffix}@ls.test`]);
+  await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, 'analyst'::member_role), ($1::uuid, $3::uuid, 'analyst'::member_role)`, [ids.wsA, dev, both]);
+  await q(
+    `INSERT INTO uc_case_members (case_id, user_id, role) VALUES ($1, $3, 'ls_sviluppatore'), ($2, $3, 'ls_sviluppatore'), ($1, $4, 'ls_analista'), ($1, $4, 'ls_sviluppatore')`,
+    [ids.caseA1, ids.caseA2, dev, both],
+  );
+  await q(
+    `INSERT INTO use_case_tasks (use_case_id, workspace_id, ref, title, status, holder_user_id, taken_at, source) VALUES
+       ($1, $3, 'T-80', 'Compito in corso in A1', 'in_corso', $4, now(), 'cli'),
+       ($1, $3, 'T-81', 'Compito in revisione in A1', 'in_revisione', $4, now(), 'cli'),
+       ($2, $3, 'T-82', 'Compito in corso in A2', 'in_corso', $4, now(), 'cli'),
+       ($1, $3, 'T-83', 'Compito di chi ha due ruoli', 'in_corso', $5, now(), 'cli')`,
+    [ids.ucA1, ids.ucA2, ids.wsA, dev, both],
+  );
+  const tasks = async () =>
+    (await q(`SELECT ref, status, holder_user_id FROM use_case_tasks WHERE workspace_id = $1 AND ref IN ('T-80', 'T-81', 'T-82', 'T-83') ORDER BY ref`, [ids.wsA])).map(
+      (t) => `${t.ref}:${t.status}:${t.holder_user_id === dev ? "dev" : t.holder_user_id === both ? "doppia" : "nessuno"}`,
+    );
+  const remove = (userId: string, role: string) => as("lead", () => ucActions.removeMemberAction(ids.wsA, ids.caseA1, { userId, role }));
+  try {
+    // Tolto uno dei due ruoli: costruisce ancora il caso (è analista) e tiene il suo compito.
+    const kept = await remove(both, "ls_sviluppatore");
+    assert.equal(kept.ok, true, kept.ok ? "" : kept.message);
+    assert.deepEqual(await tasks(), ["T-80:in_corso:dev", "T-81:in_revisione:dev", "T-82:in_corso:dev", "T-83:in_corso:doppia"]);
+    // Tolto l'unico ruolo in A1: lì non costruisce più. Il compito in corso torna da fare, quello in revisione resta in
+    // revisione senza nessuno; in A2, dove sviluppa ancora, il compito resta suo.
+    const left = await remove(dev, "ls_sviluppatore");
+    assert.equal(left.ok, true, left.ok ? "" : left.message);
+    assert.deepEqual(await tasks(), ["T-80:da_fare:nessuno", "T-81:in_revisione:nessuno", "T-82:in_corso:dev", "T-83:in_corso:doppia"]);
+    const notes = await q(`SELECT t.ref, n.body FROM use_case_task_notes n JOIN use_case_tasks t ON t.id = n.task_id WHERE t.workspace_id = $1 AND t.ref IN ('T-80', 'T-81', 'T-82', 'T-83') AND n.kind = 'passaggio' ORDER BY t.ref`, [ids.wsA]);
+    assert.deepEqual(notes.map((n) => [n.ref, n.body]), [["T-80", team.RELEASED_TASK_NOTE], ["T-81", team.RELEASED_TASK_NOTE]], "la nota senza nomi, solo sui compiti tornati");
+    // Tolto anche l'ultimo ruolo con cui costruiva: adesso il compito torna da prendere.
+    const last = await remove(both, "ls_analista");
+    assert.equal(last.ok, true, last.ok ? "" : last.message);
+    assert.deepEqual(await tasks(), ["T-80:da_fare:nessuno", "T-81:in_revisione:nessuno", "T-82:in_corso:dev", "T-83:da_fare:nessuno"]);
+  } finally {
+    await q(`DELETE FROM use_case_tasks WHERE workspace_id = $1 AND ref IN ('T-80', 'T-81', 'T-82', 'T-83')`, [ids.wsA]);
+    await q(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [[dev, both]]);
+  }
+});
+
 // ─── Togliere ────────────────────────────────────────────────────────
 
 test("D9: la discesa a Contributore ferma le scritture subito, senza revoca, e il no dice che il ruolo si cambia da Impostazioni › Persone; tornato Analista ricomincia", opts, async () => {
