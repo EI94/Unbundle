@@ -49,9 +49,10 @@ await installAppModules({
     globalThis.__prova.saved.push({ ...input, actor });
     return { ok: true, value: { documentId: "doc-prova", sourceId: "fonte-prova" } };
   }`,
+  // Come PostgreSQL: l'uuid in maiuscolo è lo stesso, e la riga torna con l'id come lo scrive il database.
   "@/lib/db/queries/workspaces": `export async function getDepartmentById(id) {
-    const workspaceId = globalThis.__prova.units[id];
-    return workspaceId ? { id, workspaceId } : null;
+    const workspaceId = globalThis.__prova.units[id.toLowerCase()];
+    return workspaceId ? { id: id.toLowerCase(), workspaceId } : null;
   }`,
   "@vercel/blob": `
     export async function put() { globalThis.__prova.blobs += 1; return { url: "https://blob.example.test/documento" }; }
@@ -141,7 +142,8 @@ test("oltre 4 MB: 400, niente letto né salvato", async () => {
 });
 
 test("un'unità di un altro workspace, o un id che non è un'unità: 400, niente letto né salvato", async () => {
-  for (const departmentId of [OTHER_UNIT, "reparto-prova"]) {
+  // (Mappatura board) Anche un UUID che non è un'unità.
+  for (const departmentId of [OTHER_UNIT, "reparto-prova", "d1d1d1d1-0000-4000-8000-000000000009"]) {
     reset();
     const requests = fakeAppClaude([]);
     const response = await upload(buildDocx(["Testo"]), "verbale.docx", { departmentId });
@@ -343,4 +345,15 @@ test("un unità rifiutata al salvataggio (dati non validi): 400 con i campi, il 
   assert.equal(response.status, 400);
   assert.deepEqual(await response.json(), { error: "dati_non_validi", message: "Controlla i campi indicati.", fieldErrors: { departmentId: "Controlla i campi indicati." } });
   assert.deepEqual(prova.deletedBlobs, ["https://blob.example.test/documento"]);
+});
+
+test("(mappatura board) un'unità di questo workspace: il documento si salva con lei; senza unità (la Discovery) come sempre", async () => {
+  for (const [departmentId, saved] of [[` ${UNIT.toUpperCase()} `, UNIT.toUpperCase()], ["", null], [undefined, null]] as const) {
+    reset();
+    const requests = fakeAppClaude([]);
+    const response = await upload(buildDocx(["Il gestionale è SAP Business One."]), "verbale.docx", departmentId === undefined ? {} : { departmentId });
+    assert.equal(response.status, 200, String(departmentId));
+    assert.equal(prova.saved[0]?.departmentId, saved, String(departmentId));
+    assert.equal(requests.length, 0);
+  }
 });

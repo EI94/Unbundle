@@ -134,19 +134,23 @@ export const TOOL_LABELS: Readonly<Record<string, { active: string; done: string
     active: "Salvo l'obiettivo",
     done: "Obiettivo salvato",
   },
+  // Fuori dalla mappatura nessuna chat salva un'attività: l'etichetta di sempre resta per la chat generica
+  // (chat-interface.tsx, i suoi test la fissano); l'assistente della board mostra quelle di MAPPING_TOOL_LABELS.
   saveActivity: { active: "Salvo l'attività", done: "Attività salvata" },
-  updateActivityClassification: {
-    active: "Classifico",
-    done: "Classificazione aggiornata",
-  },
-  linkActivityDependency: {
-    active: "Collego dipendenza",
-    done: "Dipendenza collegata",
-  },
-  markDepartmentMapped: {
-    active: "Completo mapping",
-    done: "Mapping completato",
-  },
+  updateActivity: { active: "Aggiorno il passo", done: "Passo aggiornato" },
+  linkActivityDependency: { active: "Collego i passi", done: "Passi collegati" },
+  markDepartmentMapped: { active: "Completo la mappatura", done: "Mappatura completata" },
+};
+
+/**
+ * Le etichette dei tool della board (docs/mappatura/MAPPATURA-BOARD-PIANO.md §7.5), come le mostra l'assistente accanto
+ * alla board: un'attività salvata è un passo della board. Sono anche i tool dopo i quali l'assistente rilegge la board.
+ */
+export const MAPPING_TOOL_LABELS: Readonly<Record<string, { active: string; done: string }>> = {
+  saveActivity: { active: "Salvo il passo", done: "Passo salvato" },
+  updateActivity: { active: "Aggiorno il passo", done: "Passo aggiornato" },
+  linkActivityDependency: { active: "Collego i passi", done: "Passi collegati" },
+  markDepartmentMapped: { active: "Completo la mappatura", done: "Mappatura completata" },
 };
 
 /** I tool che non si mostrano come etichetta (le loro note di avanzamento sì). */
@@ -174,13 +178,14 @@ export function toolOutcome(part: PartLike): "done" | "failed" | "running" {
 /**
  * Il tool di una risposta come si mostra: finito, con l'etichetta di quando ha finito e la spunta, o in corso. Un tool
  * fallito non si mostra (null): la sua etichetta direbbe fatto quello che non è stato fatto, e il testo del modello dice
- * già che non è riuscito.
+ * già che non è riuscito. `labelsOf`: le etichette di chi mostra la chat (l'assistente della board ha le sue); un tool
+ * che non vi compare prende quelle di sempre.
  */
-export function toolChip(part: PartLike): Extract<ChatProgress, { kind: "tool" }> | null {
+export function toolChip(part: PartLike, labelsOf: Readonly<Record<string, { active: string; done: string }>> = TOOL_LABELS): Extract<ChatProgress, { kind: "tool" }> | null {
   const outcome = toolOutcome(part);
   if (outcome === "failed") return null;
   const name = toolNameOf(part);
-  const labels = TOOL_LABELS[name];
+  const labels = labelsOf[name] ?? TOOL_LABELS[name];
   const done = outcome === "done";
   return { kind: "tool", label: done ? (labels?.done ?? name) : (labels?.active ?? "Elaboro..."), done };
 }
@@ -193,12 +198,16 @@ export function toolChip(part: PartLike): Extract<ChatProgress, { kind: "tool" }
  * testo. Una risposta che non arriva più (finita, rifiutata, o interrotta da un errore o dallo stop) mostra solo i tool
  * che hanno finito con un risultato, così si vede che cosa è stato fatto davvero: un tool in corso non finirà più (quelli
  * del passo rifiutato non partono nemmeno), e le note non indicano più niente; come dopo il ricaricamento, dove resta solo
- * il testo finale salvato. Un tool fallito non si mostra mai (toolChip).
+ * il testo finale salvato. Un tool fallito non si mostra mai (toolChip). `labels`: le etichette dei tool (toolChip).
  */
-export function assistantView(message: MessageLike, hiddenTools: ReadonlySet<string>, { arriving }: { arriving: boolean }): AssistantView {
+export function assistantView(
+  message: MessageLike,
+  hiddenTools: ReadonlySet<string>,
+  { arriving, labels = TOOL_LABELS }: { arriving: boolean; labels?: Readonly<Record<string, { active: string; done: string }>> },
+): AssistantView {
   const items = progressItems(message.parts ?? [], hiddenTools);
   const chips = (part: PartLike) => {
-    const chip = toolChip(part);
+    const chip = toolChip(part, labels);
     return chip ? [chip] : [];
   };
   const completed = items.flatMap((item) => (item.kind === "tool" && toolOutcome(item.part) === "done" ? chips(item.part) : []));

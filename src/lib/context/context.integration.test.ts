@@ -2403,9 +2403,13 @@ test("«Pre-genera da documenti» della mappatura: senza l'ok nessun testo al mo
   }
 });
 
-// ─── I due tool della mappatura (§10.5) ──────────────────────────────
+// ─── I tool della mappatura (§10.5) ──────────────────────────────────
 
-test("i due tool della mappatura scrivono solo sulle attività del workspace della conversazione", opts, async () => {
+// (Rilascio insieme) I tool sono quelli della board (docs/mappatura/MAPPATURA-BOARD-PIANO.md §5.1, §6): `updateActivity`
+// prende il posto di `updateActivityClassification` e ogni scrittura passa dalla board dell'unità (`saveBoardOps`,
+// `linkDependencyStatement`). La regola del §10.5 resta, sul database: un'attività di un altro workspace, una che non c'è
+// o un id che non è un UUID non scrivono niente.
+test("i tool della mappatura scrivono solo sulle attività del workspace della conversazione", opts, async () => {
   const { getActivityMappingTools } = await import("../ai/tools/activity-mapping-tools.ts");
   const [mine1, mine2, theirs, unitB] = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
   await q(`INSERT INTO departments (id, workspace_id, name) VALUES ($1, $2, 'Unità B della mappatura')`, [unitB, ids.wsB]);
@@ -2414,10 +2418,10 @@ test("i due tool della mappatura scrivono solo sulle attività del workspace del
        ($1, $4, $6, 'Ordini ai fornitori', '2026-01-01'), ($2, $4, $6, 'Controllo delle consegne', '2026-01-01'), ($3, $5, $7, 'Attività del workspace B', '2026-01-01')`,
     [mine1, mine2, theirs, ids.unitA, unitB, ids.wsA, ids.wsB],
   );
-  const tools = getActivityMappingTools(ids.wsA, ids.unitA, { deadline: Date.now() + 60_000 });
+  const tools = getActivityMappingTools(ids.wsA, ids.unitA, { deadline: Date.now() + 60_000, actor: { kind: "assistente", userId: ids.ls, role: "transformation_lead" } });
   const call = { toolCallId: "toolu_prova", messages: [] };
   type ToolResult = { success: boolean; message: string };
-  const classify = async (activityId: string) => (await tools.updateActivityClassification.execute!({ activityId, workType: "detection" }, call)) as ToolResult;
+  const classify = async (activityId: string) => (await tools.updateActivity.execute!({ activityId, workType: "detection" }, call)) as ToolResult;
   const link = async (sourceActivityId: string, targetActivityId: string) =>
     (await tools.linkActivityDependency.execute!({ sourceActivityId, targetActivityId, dependencyType: "handoff" }, call)) as ToolResult;
   const state = async () => q(`SELECT id::text AS id, work_type::text AS type, updated_at > '2026-06-01' AS touched FROM activities WHERE id = ANY($1::uuid[]) ORDER BY title`, [[mine1, mine2, theirs]]);
@@ -2425,7 +2429,9 @@ test("i due tool della mappatura scrivono solo sulle attività del workspace del
     q(`SELECT source_activity_id::text AS source, target_activity_id::text AS target, dependency_type AS type FROM activity_dependencies WHERE source_activity_id = ANY($1::uuid[]) OR target_activity_id = ANY($1::uuid[])`, [[mine1, mine2, theirs]]);
 
   // Un'attività di un altro workspace, una che non c'è, un id che non è un UUID: niente si scrive.
-  for (const id of [theirs, randomUUID(), "a-1", ""]) assert.deepEqual(await classify(id), { success: false, message: "Attività non trovata in questo workspace." }, id);
+  for (const id of [theirs, randomUUID(), "a-1", ""]) {
+    assert.deepEqual(await classify(id), { success: false, message: "Passo non trovato su questa board: usa un id dall'elenco dei passi." }, id);
+  }
   assert.deepEqual(await state(), [
     { id: theirs, type: null, touched: false },
     { id: mine2, type: null, touched: false },
@@ -2436,10 +2442,10 @@ test("i due tool della mappatura scrivono solo sulle attività del workspace del
   assert.deepEqual((await state()).find((row) => row.id === theirs), { id: theirs, type: null, touched: false });
 
   for (const [source, target] of [[mine1, theirs], [theirs, mine2], [mine1, mine1], [mine1, mine1.toUpperCase()], [mine1, randomUUID()], ["a-1", mine2]]) {
-    assert.deepEqual(await link(source, target), { success: false, message: "Attività non trovate in questo workspace." }, `${source} → ${target}`);
+    assert.equal((await link(source, target)).success, false, `${source} → ${target}`);
   }
   assert.deepEqual(await links(), []);
-  assert.deepEqual(await link(mine1, mine2), { success: true, message: "Dipendenza collegata con successo." });
+  assert.deepEqual(await link(mine1, mine2), { success: true, message: "Passi collegati." });
   assert.deepEqual(await links(), [{ source: mine1, target: mine2, type: "handoff" }]);
 });
 

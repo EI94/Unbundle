@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import { tool } from "ai";
 import { z } from "zod";
 import { ev, hang, installAppModules, recordLogs, sse, fakeAppClaude } from "./claude-test-kit.ts";
+import { FIXTURE_IDS, fixtureBoard } from "../mappatura/board-fixture.ts";
+import type { MappingBoard } from "../mappatura/board-model.ts";
+import { boardContextBlock } from "./prompts/activity-mapping.ts";
 
 // (Migrazione a Claude Sonnet 5.5) La rotta vera della chat (/api/ai/chat): che cosa salva, che cosa mette nella
 // memoria della chat (RAG) e che cosa manda al browser. Sessione, database, memoria e tool dei reparti finti; il
@@ -43,8 +46,21 @@ type Prova = {
   listedFor: unknown[];
   /** I frammenti che il recupero restituisce. */
   chunks: Array<{ content: string; source: string }>;
+  /** (Mappatura board) La board dell'unità UNIT; le letture della board, come [scope, chi guarda]. */
+  board: MappingBoard;
+  boardReads: unknown[][];
+  /** Quante volte la rotta ha cercato o creato la conversazione. */
+  conversations: number;
 };
-const prova: Prova = { saved: [], deleted: [], reads: 0, indexed: [], tools: {}, toolArgs: [], consentAsked: [], thesis: null, thesisAsked: [], unitsAsked: [], docs: [], forAll: [], retrieveOptions: [], listedFor: [], chunks: [] };
+/** Un'unità del workspace della prova, e una di un altro workspace (rilascio 9a, §10.5). */
+const UNIT = "3b2a1c0d-9e8f-4a6b-8c5d-7e6f5a4b3c2d";
+const OTHER_UNIT = "1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f";
+/** La board inventata (board-fixture.ts), con l'id dell'unità che usano le prove di questo file (UNIT). */
+const boardOfUnit = (): MappingBoard => {
+  const board = fixtureBoard();
+  return { ...board, unit: { ...board.unit, id: UNIT } };
+};
+const prova: Prova = { saved: [], deleted: [], reads: 0, indexed: [], tools: {}, toolArgs: [], consentAsked: [], thesis: null, thesisAsked: [], unitsAsked: [], docs: [], forAll: [], retrieveOptions: [], listedFor: [], chunks: [], board: boardOfUnit(), boardReads: [], conversations: 0 };
 (globalThis as { __prova?: Prova }).__prova = prova;
 
 await installAppModules({
@@ -74,8 +90,8 @@ await installAppModules({
     return globalThis.__prova.realWebSearch ? realWebSearchTool(...args) : {};
   }`,
   "@/lib/db/queries/conversations": `
-    export async function getActiveConversation() { return { id: "conv-prova" }; }
-    export async function createConversation() { return { id: "conv-prova" }; }
+    export async function getActiveConversation() { globalThis.__prova.conversations += 1; return { id: "conv-prova" }; }
+    export async function createConversation() { globalThis.__prova.conversations += 1; return { id: "conv-prova" }; }
     export async function saveMessage(message) {
       globalThis.__prova.saved.push(message);
       return { id: "msg-" + globalThis.__prova.saved.length, ...message };
@@ -100,8 +116,10 @@ await installAppModules({
   // Le unità: UNIT è del workspace della prova, OTHER_UNIT di un altro.
   "@/lib/db/queries/workspaces": `export async function getDepartmentById(id) {
     globalThis.__prova.unitsAsked.push(id);
-    if (id === "3b2a1c0d-9e8f-4a6b-8c5d-7e6f5a4b3c2d") return { id, workspaceId: "ws-prova" };
-    if (id === "1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f") return { id, workspaceId: "ws-altro" };
+    // Come PostgreSQL: l'uuid in maiuscolo è lo stesso, e la riga torna con l'id come lo scrive il database.
+    const key = id.toLowerCase();
+    if (key === "3b2a1c0d-9e8f-4a6b-8c5d-7e6f5a4b3c2d") return { id: key, workspaceId: "ws-prova" };
+    if (key === "1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f") return { id: key, workspaceId: "ws-altro" };
     return null;
   }`,
   "@/lib/db/queries/value-thesis": `export async function getWorkspaceValueThesis(workspaceId) {
@@ -109,6 +127,13 @@ await installAppModules({
     return globalThis.__prova.thesis;
   }`,
   "@/lib/db/schema": `export const uploadedDocuments = { table: "uploaded_documents" }; export const organizations = {}; export const activities = { table: "activities" };`,
+  "@/lib/db/uc-executor": `export async function getAppUcExecutor() { return { batch() { throw new Error("la rotta non scrive SQL da sé"); } }; }`,
+  // (Mappatura board) La board dell'unità di questo workspace; un'altra unità non c'è (readBoard restituisce null).
+  "@/lib/mappatura/board-store": `export async function readBoard(executor, scope, viewer) {
+    globalThis.__prova.boardReads.push([scope, viewer]);
+    const board = globalThis.__prova.board;
+    return scope.workspaceId === "ws-prova" && scope.departmentId.toLowerCase() === board.unit.id ? board : null;
+  }`,
   "drizzle-orm": `export const eq = (column, value) => ({ column, value }); export const and = (...parts) => ({ and: parts });`,
   "@/lib/db": `export const db = {
     // L'organizzazione ha la tesi di un altro workspace: la chat non deve leggerla (rilascio 9a, §10.1).
@@ -162,11 +187,10 @@ function reset() {
   prova.retrieveOptions = [];
   prova.listedFor = [];
   prova.chunks = [];
+  prova.board = boardOfUnit();
+  prova.boardReads = [];
+  prova.conversations = 0;
 }
-
-/** Un'unità del workspace della prova, e una di un altro workspace (rilascio 9a, §10.5). */
-const UNIT = "3b2a1c0d-9e8f-4a6b-8c5d-7e6f5a4b3c2d";
-const OTHER_UNIT = "1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f";
 
 const HISTORY = [
   { role: "assistant", content: "Benvenuto: di che cosa ti occupi?" },
@@ -188,17 +212,19 @@ test("(Rilascio 9a) senza l'ok ai sub-responsabili: 403 ok_fornitori_mancante, n
   }
 });
 
-test("(Rilascio 9a) un'unità di un altro workspace, un id che non è un'unità o la mappatura senza unità: 404 prima di tutto", async () => {
-  for (const [conversationType, departmentId] of [
-    ["activity_mapping", OTHER_UNIT],
-    ["activity_mapping", "reparto-prova"],
-    ["activity_mapping", undefined],
-    ["leadership_setup", OTHER_UNIT],
+test("(Rilascio 9a) un'unità di un altro workspace, un id che non è un'unità o la mappatura senza unità: 404 (400 senza unità) prima di tutto", async () => {
+  // (Rilascio insieme) La mappatura senza unità risponde 400, come vuole la board (MAPPATURA-BOARD-PIANO.md §5.4): sempre
+  // prima di tutto, anche dell'ok.
+  for (const [conversationType, departmentId, expected] of [
+    ["activity_mapping", OTHER_UNIT, 404],
+    ["activity_mapping", "reparto-prova", 404],
+    ["activity_mapping", undefined, 400],
+    ["leadership_setup", OTHER_UNIT, 404],
   ] as const) {
     reset();
     const requests = fakeAppClaude([]);
     const { status } = await chat(HISTORY, conversationType, departmentId);
-    assert.equal(status, 404, `${conversationType} ${departmentId}`);
+    assert.equal(status, expected, `${conversationType} ${departmentId}`);
     assert.equal(requests.length, 0);
     assert.deepEqual(prova.saved, [], "niente salvato");
     assert.deepEqual(prova.toolArgs, [], "nessun tool costruito con l'unità di un altro workspace");
@@ -833,4 +859,69 @@ test("la ricerca vera fermata alla scadenza dei tool (orologio finto): il modell
       label,
     );
   }
+});
+
+// ─── (Mappatura board) L'unità della chat dell'activity mapping (docs/mappatura/MAPPATURA-BOARD-PIANO.md §5.4, §6) ───
+
+test("(mappatura board) un'unità di un altro workspace: 404 prima di leggere la conversazione; niente al modello, niente salvato", async (t) => {
+  recordLogs(t);
+  // (Rilascio insieme) Un'unità di un altro workspace la ferma il controllo della 9a (§10.5), prima ancora della board.
+  // Un'unità di questo workspace la cui board non si legge (readBoard restituisce null) dà 404 come prima.
+  for (const [departmentId, boardUnit, reads] of [
+    [OTHER_UNIT, UNIT, []],
+    [UNIT, "un-altro-id", [[{ workspaceId: "ws-prova", departmentId: UNIT }, { userId: "utente-prova", role: "transformation_lead" }]]],
+  ] as const) {
+    reset();
+    prova.board = { ...prova.board, unit: { ...prova.board.unit, id: boardUnit } };
+    const requests = fakeAppClaude([]);
+    const { status } = await chat(HISTORY, "activity_mapping", departmentId);
+    assert.equal(status, 404, departmentId);
+    assert.deepEqual(prova.boardReads, reads);
+    assert.equal(requests.length, 0, "nessuna chiamata al modello");
+    assert.equal(prova.conversations, 0, "la conversazione non si legge e non si crea");
+    assert.deepEqual(prova.saved, [], "la domanda non si salva");
+    assert.deepEqual(prova.toolArgs, [], "i tool non si costruiscono");
+  }
+});
+
+test("(mappatura board) la chat dell'activity mapping senza unità: 400, niente letto, niente salvato", async (t) => {
+  recordLogs(t);
+  reset();
+  const requests = fakeAppClaude([]);
+  for (const departmentId of [undefined, "", "   "]) {
+    const { status } = await chat(HISTORY, "activity_mapping", departmentId);
+    assert.equal(status, 400, JSON.stringify(departmentId));
+  }
+  assert.equal(requests.length, 0);
+  assert.deepEqual([prova.boardReads, prova.conversations, prova.saved], [[], 0, []]);
+});
+
+test("(mappatura board) il modello riceve la board dell'unità con gli id dei passi; i tool l'unità come la scrive il database e l'assistente come attore", async (t) => {
+  recordLogs(t);
+  reset();
+  const requests = fakeAppClaude([sse([ev.start("msg_1"), ...ev.text(0, "Partiamo dalla raccolta delle richieste."), ...ev.end("end_turn")])]);
+  const { status } = await chat(HISTORY, "activity_mapping", ` ${UNIT.toUpperCase()} `);
+  assert.equal(status, 200);
+  const system = JSON.stringify(requests[0].body.system);
+  assert.ok(system.includes(JSON.stringify(boardContextBlock(prova.board)).slice(1, -1)), "il blocco della board, com'è");
+  assert.match(system, /--- LA BOARD DI QUESTA UNITÀ ---/);
+  assert.ok(system.includes(`- [${FIXTURE_IDS.richieste}] \\"Raccolta delle richieste\\" (confermato; enrichment): Le richieste degli uffici`));
+  assert.doesNotMatch(system, /ATTIVITÀ GIÀ SALVATE/);
+  const [[name, workspaceId, unitId, options]] = prova.toolArgs;
+  assert.deepEqual([name, workspaceId, unitId], ["activity-mapping", "ws-prova", UNIT]);
+  assert.deepEqual(prova.boardReads, [[{ workspaceId: "ws-prova", departmentId: UNIT }, { userId: "utente-prova", role: "transformation_lead" }]]);
+  assert.deepEqual((options as { actor: unknown }).actor, { kind: "assistente", userId: "utente-prova", role: "transformation_lead" });
+});
+
+test("(mappatura board) il blocco della board: processi e passi in ordine, il loro stato e il tipo di lavoro; niente senza processi", () => {
+  const board = fixtureBoard();
+  const block = boardContextBlock(board);
+  assert.deepEqual(block.split("\n").slice(0, 4), ["", "--- LA BOARD DI QUESTA UNITÀ ---", "Processo «Dalla richiesta all'ordine»:", `- [${FIXTURE_IDS.richieste}] "Raccolta delle richieste" (confermato; enrichment): Le richieste degli uffici arrivano per e-mail e si copiano in un foglio.`]);
+  assert.ok(block.includes(`- [${FIXTURE_IDS.confronto}] "Confronto delle offerte" (da validare; detection): Per ogni richiesta si chiedono tre offerte e si confrontano.`));
+  assert.ok(block.includes(`- [${FIXTURE_IDS.controllo}] "Controllo della merce" (confermato; senza tipo)\n`), "senza descrizione, niente due punti");
+  assert.ok(block.trimEnd().endsWith("Questi passi sono già sulla board. NON ri-salvarli: per cambiarli usa `updateActivity`."));
+  assert.equal(boardContextBlock(fixtureBoard({ empty: true })), "");
+  const onlyProcess = { ...board, processes: [{ ...board.processes[0], steps: [] }] };
+  assert.equal(boardContextBlock(onlyProcess), "\n--- LA BOARD DI QUESTA UNITÀ ---\nProcesso «Dalla richiesta all'ordine»:\n(nessun passo)\n");
+  assert.match(boardContextBlock({ ...board, store: "mancante" }), /La board si sta aggiornando: per qualche minuto i passi non si salvano\.\n$/);
 });

@@ -90,11 +90,6 @@
     "palette": 7,
     "hex": 4
   },
-  "src/components/dashboard/activity-sidebar.tsx": {
-    "palette": 15,
-    "fadedText": 2,
-    "light": 2
-  },
   "src/components/dashboard/app-sidebar.tsx": {
     "fadedText": 3,
     "light": 3
@@ -108,11 +103,6 @@
   },
   "src/components/dashboard/delete-workspace-form.tsx": {
     "palette": 10
-  },
-  "src/components/dashboard/department-dashboard.tsx": {
-    "palette": 16,
-    "fadedText": 2,
-    "light": 2
   },
   "src/components/dashboard/gantt-chart.tsx": {
     "palette": 5

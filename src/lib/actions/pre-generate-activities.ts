@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { requireWorkspaceAccess } from "@/lib/auth/require-workspace";
 import { getDepartmentById } from "@/lib/db/queries/workspaces";
 import { generateObject } from "ai";
@@ -7,14 +8,16 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { CLAUDE_MODEL, MOTIVAZIONE_DESCRIPTION, claudeCallSettings, throwIfRefused } from "@/lib/ai/models";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { activities, uploadedDocuments } from "@/lib/db/schema";
+import { uploadedDocuments } from "@/lib/db/schema";
+import { getAppUcExecutor } from "@/lib/db/uc-executor";
 import { eq, and } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
 import { contextActorFor } from "@/lib/context/server/actor";
 import type { ContextActor } from "@/lib/context/visibility";
 import { contextAiConsent } from "@/lib/db/queries/context-consent";
 import { listContextSources } from "@/lib/db/queries/context-sources";
 import { contextStoreState } from "@/lib/db/queries/context-store";
+import { opsForNewStep, type BoardOp } from "@/lib/mappatura/board-ops";
+import { resolveProcess, saveBoardOps } from "@/lib/mappatura/board-store";
 
 /** Lo schema che il modello riempie: la motivazione ha un nome neutro (MOTIVAZIONE_DESCRIPTION in models.ts). */
 const preGeneratedActivitySchema = z.object({
@@ -41,6 +44,14 @@ export type PreGeneratedActivity = Omit<
   "motivazione"
 > & { reasoning: string };
 
+
+/**
+ * Quante attività propone al più la lettura dei documenti, e quanti passi si confermano al più in una volta. Il prompt
+ * chiede «Massimo 15», ma lo schema del modello non ha un massimo: le proposte oltre la quindicesima non arrivano al
+ * browser, e una lista più lunga che torna dal browser si salva nei suoi primi 15 passi (i testi si tagliano, non si
+ * rifiutano). (In un file «use server» solo funzioni esportate.)
+ */
+const MAX_PROPOSED_ACTIVITIES = 15;
 
 /** Il reparto deve essere di questo workspace: l'id arriva dal client. */
 async function requireDepartmentInWorkspace(workspaceId: string, departmentId: string) {
@@ -142,40 +153,81 @@ Identifica le attività lavorative ricorrenti e strutturali descritte nei docume
   }));
 
   return {
-    activities: object.activities.map(({ motivazione, ...activity }): PreGeneratedActivity => ({ ...activity, reasoning: motivazione })),
+    activities: object.activities.slice(0, MAX_PROPOSED_ACTIVITIES).map(({ motivazione, ...activity }): PreGeneratedActivity => ({ ...activity, reasoning: motivazione })),
   };
 }
 
+/** Un testo che arriva dal browser: si taglia ai limiti della board quando si scrive, qui si guarda solo la forma. */
+const raw = z.string().max(20_000);
+/**
+ * (Mappatura board) La lista che torna dal browser, già tagliata ai suoi primi 15 passi: ognuno con la forma di una
+ * proposta. I testi si tagliano ai limiti della board (`opsForNewStep`), come per l'assistente: niente oltre i limiti
+ * arriva al database.
+ */
+const confirmedSchema = z
+  .array(
+    z.object({
+      title: raw,
+      description: raw.optional(),
+      frequency: raw.optional(),
+      estimatedHoursWeek: z.number().finite().optional(),
+      workType: z.enum(["enrichment", "detection", "interpretation", "delivery"]).optional(),
+      inputDescription: raw.optional(),
+      outputDescription: raw.optional(),
+      toolsUsed: z.array(raw).max(200).optional(),
+    }),
+  )
+  .max(MAX_PROPOSED_ACTIVITIES);
+
+/**
+ * Le attività scelte tra quelle proposte dai documenti diventano passi della board, nel primo processo dell'unità, «da
+ * validare» e venuti dai documenti: una sola scrittura, con `saveBoardOps` (lo scope dell'unità controllata in ogni
+ * istruzione). Restituisce quanti passi sono entrati.
+ */
 export async function confirmPreGeneratedActivities(
   workspaceId: string,
   departmentId: string,
   confirmedActivities: PreGeneratedActivity[]
 ) {
-  await requireWorkspaceAccess(workspaceId);
+  const { session, access } = await requireWorkspaceAccess(workspaceId);
   await requireDepartmentInWorkspace(workspaceId, departmentId);
 
-  const saved = [];
+  // Oltre il quindicesimo i passi restano fuori, come le proposte oltre la quindicesima: non si rifiuta tutto.
+  const firstFifteen: unknown = Array.isArray(confirmedActivities) ? confirmedActivities.slice(0, MAX_PROPOSED_ACTIVITIES) : confirmedActivities;
+  const parsed = confirmedSchema.safeParse(firstFifteen);
+  if (!parsed.success) throw new Error("Passi non validi.");
+  if (parsed.data.length === 0) return { saved: 0 };
 
-  for (const act of confirmedActivities) {
-    const [activity] = await db
-      .insert(activities)
-      .values({
-        departmentId,
-        workspaceId,
+  const executor = await getAppUcExecutor();
+  const scope = { workspaceId, departmentId };
+  const processId = await resolveProcess(executor, scope, null);
+  if (!processId) throw new Error("La board non è ancora disponibile.");
+
+  const ops: BoardOp[] = [];
+  const adds: string[] = [];
+  for (const act of parsed.data) {
+    const step = opsForNewStep(
+      {
         title: act.title,
         description: act.description,
         frequency: act.frequency,
-        timeSpentHoursWeek: act.estimatedHoursWeek,
+        hoursWeek: act.estimatedHoursWeek,
         workType: act.workType,
-        inputDescription: act.inputDescription,
-        outputDescription: act.outputDescription,
-        toolsUsed: act.toolsUsed,
-      })
-      .returning();
-    saved.push(activity);
+        input: act.inputDescription,
+        output: act.outputDescription,
+        tools: act.toolsUsed,
+      },
+      { processId },
+      () => randomUUID(),
+    );
+    if (step.ops.length === 0) continue;
+    adds.push(step.ops[0].id);
+    ops.push(...step.ops);
   }
+  if (ops.length === 0) return { saved: 0 };
 
-  revalidatePath(`/dashboard/${workspaceId}/mapping/${departmentId}`);
-
-  return { saved: saved.length };
+  const result = await saveBoardOps(executor, scope, { kind: "documenti", userId: session.user.id, role: access.role }, { baseRevision: 0, ops });
+  if (!result.ok) throw new Error(result.code === "non_disponibile" ? "La board non è ancora disponibile." : "Passi non salvati.");
+  const refused = new Set(result.rejected.map((rejection) => rejection.id));
+  return { saved: adds.filter((id) => !refused.has(id)).length };
 }

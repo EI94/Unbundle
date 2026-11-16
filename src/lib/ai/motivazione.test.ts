@@ -73,6 +73,17 @@ test("attività dai documenti: il modello vede «motivazione» (anche nel prompt
   assert.deepEqual(result, { activities: [{ ...activity, reasoning: WHY }] });
 });
 
+test("attività dai documenti: oltre quindici proposte arrivano le prime quindici (il prompt dice «Massimo 15», lo schema no)", async (t) => {
+  recordLogs(t);
+  const proposals = Array.from({ length: 16 }, (_, index) => ({ title: `Attività ${index + 1}`, description: "Si ripete ogni mese.", motivazione: WHY }));
+  fakeAppClaude([reply({ activities: proposals })]);
+  const result = await preGenerateActivitiesFromDocuments("ws-prova", "reparto-prova");
+  assert.deepEqual(
+    result.activities.map((activity) => activity.title),
+    Array.from({ length: 15 }, (_, index) => `Attività ${index + 1}`),
+  );
+});
+
 test("nessuno schema che il modello riempie ha un campo «reasoning»: chiamate generateObject, tool della chat, schemi del ranking e del filo", () => {
   const root = new URL("../../../", import.meta.url);
   const files = (readdirSync(new URL("src/", root), { recursive: true }) as string[])

@@ -1,166 +1,75 @@
-import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { notFound } from "next/navigation";
-import { getDepartmentById } from "@/lib/db/queries/workspaces";
-import {
-  getActivitiesByDepartment,
-  getDependenciesByDepartment,
-} from "@/lib/db/queries/activities";
-import {
-  getActiveConversation,
-  getMessages,
-} from "@/lib/db/queries/conversations";
-import { db } from "@/lib/db";
-import { uploadedDocuments } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
-import { ChatInterface } from "@/components/agent/chat-interface";
-import { ActivitySidebar } from "@/components/dashboard/activity-sidebar";
-import { DocumentUpload } from "@/components/dashboard/document-upload";
-import { ActivityPreGenerator } from "@/components/dashboard/activity-pre-generator";
-import { DepartmentDashboard } from "@/components/dashboard/department-dashboard";
+import { ClassificationView } from "@/components/mappatura/classification/classification-view";
+import { Companion } from "@/components/mappatura/companion/companion";
+import { CompleteButton } from "@/components/mappatura/companion/complete-button";
+import { UnitBoard } from "@/components/mappatura/board/unit-board";
+import { BoardProvider } from "@/components/mappatura/store/use-board";
+import { requireWorkspacePage } from "@/lib/auth/require-workspace";
+import { getActiveConversation, getMessages } from "@/lib/db/queries/conversations";
+import { viewerFromSession } from "@/lib/db/queries/use-case-hub";
+import { getAppUcExecutor } from "@/lib/db/uc-executor";
+import { allSteps, withUseCaseLinks } from "@/lib/mappatura/board-model";
+import { readBoard } from "@/lib/mappatura/board-store";
+import { unitHasDocuments } from "@/lib/mappatura/units";
+import { boardUseCaseLinks } from "@/lib/mappatura/use-case-links";
+import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
+import { getUnitTerm } from "@/lib/utils/unit-terminology";
 
-export default async function DepartmentMappingPage({
+/**
+ * L'activity mapping di un'unità, S2 · La board (docs/mappatura/MAPPATURA-BOARD-PIANO.md §1.3–§1.5, §4.10).
+ *
+ * La pagina legge e monta, niente di più: la board per chi guarda (`readBoard`: un'unità di un altro workspace è un
+ * 404), la conversazione dell'unità, se ci sono documenti, gli use case nati dalla mappatura che chi guarda può vedere
+ * (una volta sola: le riletture dopo un salvataggio non li portano). Poi la board nel browser (`BoardProvider`) con la
+ * vista della board e i tre slot del compagno. `?mode=chat` (i link di prima) apre la board con l'assistente aperto,
+ * come un'unità ancora senza passi.
+ */
+export default async function UnitBoardPage({
   params,
   searchParams,
 }: {
   params: Promise<{ workspaceId: string; deptId: string }>;
-  searchParams: Promise<{ mode?: string }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-
   const { workspaceId, deptId } = await params;
-
-  await requireWorkspacePage(workspaceId);
+  const { session, access } = await requireWorkspacePage(workspaceId);
   const { mode } = await searchParams;
 
-  const department = await getDepartmentById(deptId);
-  if (!department || department.workspaceId !== workspaceId) notFound();
+  const executor = await getAppUcExecutor();
+  const read = await readBoard(executor, { workspaceId, departmentId: deptId }, { userId: session.user.id, role: access.role });
+  if (!read) notFound();
+  // L'id come lo scrive il database: la bozza sul dispositivo e le rotte usano sempre lo stesso.
+  const departmentId = read.unit.id;
 
-  const activities = await getActivitiesByDepartment(deptId);
-
-  const isMapped =
-    department.mappingStatus === "mapped" ||
-    department.mappingStatus === "validated";
-
-  const forceChat = mode === "chat";
-
-  if (isMapped && !forceChat) {
-    const dependencies = await getDependenciesByDepartment(deptId);
-    return (
-      <DepartmentDashboard
-        departmentName={department.name}
-        teamSize={department.teamSize}
-        activities={activities}
-        dependencies={dependencies}
-        workspaceId={workspaceId}
-        departmentId={deptId}
-      />
-    );
-  }
-
-  const conversation = await getActiveConversation(
-    workspaceId,
-    "activity_mapping",
-    deptId
-  );
-  const existingMessages = conversation
-    ? await getMessages(conversation.id)
-    : [];
-
-  const initialMessages = existingMessages.map((m) => ({
-    id: m.id,
-    role: m.role as "user" | "assistant",
-    content: m.content,
-  }));
-
-  const deptDocs = await db
-    .select({ id: uploadedDocuments.id })
-    .from(uploadedDocuments)
-    .where(
-      and(
-        eq(uploadedDocuments.workspaceId, workspaceId),
-        eq(uploadedDocuments.departmentId, deptId)
-      )
-    );
-
-  const hasDocuments = deptDocs.length > 0;
-
-  const statusLabels: Record<string, string> = {
-    not_started: "Non iniziato",
-    in_progress: "In corso",
-    mapped: "Mappato",
-    validated: "Validato",
-  };
-
-  const statusLabel =
-    statusLabels[department.mappingStatus] ?? department.mappingStatus;
-
-  const welcome = `Iniziamo il mapping di **${department.name}**${department.teamSize ? ` (${department.teamSize} persone)` : ""}.
-
-Scomporremo il lavoro in unit\u00e0 analizzabili. Per ogni attivit\u00e0 raccoglier\u00f2:
-\u2014 **Cosa** si fa e con quale **frequenza**
-\u2014 **Input/Output** del processo
-\u2014 **Strumenti** utilizzati
-\u2014 **Decision point** dove serve giudizio umano
-\u2014 **Pain point** e frizioni
-
-Ogni attivit\u00e0 verr\u00e0 classificata in uno dei 3 stream:
-\u2014 **Automate** \u2014 lavoro che non dovrebbe esistere cos\u00ec
-\u2014 **Differentiate** \u2014 dove concentrare l\u2019energia umana
-\u2014 **Innovate** \u2014 valore che prima non esisteva
-
-Alla fine del mapping, il sistema classificher\u00e0 automaticamente ogni attivit\u00e0 e calcolerai l\u2019AI Exposure con il framework O*NET.
-
-${hasDocuments ? "Ho gi\u00e0 dei documenti a disposizione. Li user\u00f2 per fare domande pi\u00f9 precise.\n\n" : "Puoi caricare documenti (SOP, organigramma, procedure) con il pulsante in alto per accelerare il processo.\n\n"}**Descrivimi una settimana tipo: su cosa si passa pi\u00f9 tempo?**`;
-
-  const suggestions = [
-    "Le attivit\u00e0 principali sono 4-5",
-    "Passiamo molto tempo su report e analisi",
-    "Il lavoro \u00e8 molto frammentato",
-    "Abbiamo molti processi manuali",
-  ];
+  const [conversation, hasDocuments, links] = await Promise.all([
+    getActiveConversation(workspaceId, "activity_mapping", departmentId),
+    unitHasDocuments(executor, { workspaceId, departmentId }),
+    boardUseCaseLinks(workspaceId, viewerFromSession(session.user, access.role), new Set(allSteps(read).map((step) => step.id))),
+  ]);
+  const messages = conversation ? await getMessages(conversation.id) : [];
+  const initialMessages = messages.map((message) => ({ id: message.id, role: message.role as "user" | "assistant", content: message.content }));
+  const board = withUseCaseLinks(read, links);
 
   return (
-    <div className="flex h-[calc(100vh-1px)] overflow-hidden">
-      <div className="flex-1 flex flex-col">
-        <div className="border-b border-border px-6 py-3.5 flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-sm font-medium">{department.name}</h1>
-              <span className="text-xs text-muted-foreground">
-                {statusLabel}
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {department.description ?? "Activity Mapping"}
-              {department.teamSize
-                ? ` \u00B7 ${department.teamSize} persone`
-                : ""}
-              {activities.length > 0
-                ? ` \u00B7 ${activities.length} attivit\u00e0`
-                : ""}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <DocumentUpload
-              workspaceId={workspaceId}
-              departmentId={deptId}
-            />
-            <ActivityPreGenerator
-              workspaceId={workspaceId}
-              departmentId={deptId}
-              hasDocuments={hasDocuments}
-            />
-          </div>
-        </div>
-        <ChatInterface
-          workspaceId={workspaceId}
-          conversationType="activity_mapping"
-          departmentId={deptId}
-          initialMessages={initialMessages}
-          welcomeMessage={welcome}
-          suggestions={suggestions}
-        />
-      </div>
-      <ActivitySidebar activities={activities} />
-    </div>
+    <BoardProvider workspaceId={workspaceId} departmentId={departmentId} userId={session.user.id} initial={board}>
+      <UnitBoard
+        workspaceId={workspaceId}
+        workspaceName={access.workspace.name}
+        unitTerm={getUnitTerm(access.workspace)}
+        assistantDefaultOpen={mode === "chat" || allSteps(board).length === 0}
+        assistant={
+          <Companion
+            workspaceId={workspaceId}
+            departmentId={departmentId}
+            unitName={board.unit.name}
+            teamSize={board.unit.teamSize}
+            initialMessages={initialMessages}
+            hasDocuments={hasDocuments}
+          />
+        }
+        classification={<ClassificationView workspaceId={workspaceId} useCaseHub={isUseCaseHubWorkspace(workspaceId)} />}
+        headAction={<CompleteButton workspaceId={workspaceId} departmentId={departmentId} />}
+      />
+    </BoardProvider>
   );
 }

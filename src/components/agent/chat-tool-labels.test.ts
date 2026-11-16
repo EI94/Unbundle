@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { installAppModules } from "../../lib/ai/claude-test-kit.ts";
-import { HIDDEN_TOOLS, TOOL_LABELS, toolChip } from "./chat-view.ts";
+import { HIDDEN_TOOLS, MAPPING_TOOL_LABELS, TOOL_LABELS, toolChip } from "./chat-view.ts";
 
 // (Migrazione a Claude Sonnet 5.5) Le etichette dei tool nella chat (chat-view.ts): ogni tool che la rotta dà al
 // modello ha le sue, in italiano, tranne quelli nascosti; senza, la chat mostrerebbe «Elaboro...» e poi il nome inglese
@@ -25,7 +25,7 @@ test("ogni tool della chat ha le sue etichette, in corso e finito, tranne quelli
   const deadline = Date.now() + 60_000;
   const names = Object.keys({
     ...getLeadershipTools("ws-prova", "org-prova", { canSaveCompanyFacts: true }),
-    ...getActivityMappingTools("ws-prova", "reparto-prova", { deadline }),
+    ...getActivityMappingTools("ws-prova", "reparto-prova", { deadline, actor: { kind: "assistente", userId: "utente-prova", role: "contributor" } }),
     ...getWebSearchTool({ deadline }),
   });
   assert.ok(["saveCompanyFacts", "saveStrategicGoal", "markDepartmentMapped", "webSearch"].every((name) => names.includes(name)), names.join(", "));
@@ -34,6 +34,9 @@ test("ogni tool della chat ha le sue etichette, in corso e finito, tranne quelli
     assert.ok(labels?.active && labels.done, `${name}: senza etichette la chat mostra «Elaboro...» e poi «${name}»`);
     assert.notEqual(labels.done, name);
   }
+  // I tool della board hanno anche le etichette dell'assistente accanto alla board, e sono tutti e soli quelli della mappatura.
+  const mapping = Object.keys(getActivityMappingTools("ws-prova", "reparto-prova", { deadline, actor: { kind: "assistente", userId: "utente-prova", role: "contributor" } }));
+  assert.deepEqual(mapping.sort(), Object.keys(MAPPING_TOOL_LABELS).sort());
   assert.deepEqual(toolChip({ type: "tool-saveCompanyFacts", state: "input-available" }), { kind: "tool", label: "Salvo i dati dell'azienda", done: false });
   assert.deepEqual(toolChip({ type: "tool-saveCompanyFacts", state: "output-available", output: { success: true } }), {
     kind: "tool",

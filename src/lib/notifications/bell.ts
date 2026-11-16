@@ -24,6 +24,7 @@ import { GITHUB_NOTICE_KINDS } from "../db/use-case-hub-github-ddl.ts";
 import { PROPOSAL_NOTICE_KINDS } from "../db/use-case-hub-proposals-ddl.ts";
 import { EVAL_NOTICE_KINDS } from "../db/use-case-hub-evals-ddl.ts";
 import { hubSignalHref } from "../use-cases/digest.ts";
+import { MAPPING_COMPLETED_SIGNAL } from "../mappatura/text.ts";
 import { noticeContextOf, noticeTextOf } from "../use-cases/notices.ts";
 import { cosaServeHref, realizzazioneHref, richiesteHref, subprocessorsSettingsHref } from "../use-cases/referent/contract.ts";
 
@@ -184,13 +185,17 @@ export interface BellUseCaseInput {
 /**
  * Dove porta un segnale (le regole di oggi di `workspace-topbar.tsx`, spostate qui). Con l'area
  * «Use case» accesa un nuovo use case apre la sua scheda e i riepiloghi dell'area la loro vista;
- * spenta, solo il nuovo contributo, verso la pagina di revisione.
+ * spenta, solo il nuovo contributo, verso la pagina di revisione. Una mappatura completata apre la
+ * board dell'unità sulla scheda «Classificazione», in ogni workspace (docs/mappatura/MAPPATURA-BOARD-PIANO.md §4.6).
  */
 export function signalHref(
   workspaceId: string,
   s: Pick<BellSignalInput, "signalType" | "relatedEntityType" | "relatedEntityId">,
   useCaseHub: boolean,
 ): string | null {
+  if (s.signalType === MAPPING_COMPLETED_SIGNAL && s.relatedEntityType === "department" && s.relatedEntityId) {
+    return `/dashboard/${workspaceId}/mapping/${encodeURIComponent(s.relatedEntityId)}#classificazione`;
+  }
   if (s.signalType === "new_portfolio_item" && s.relatedEntityType === "use_case" && s.relatedEntityId) {
     const id = encodeURIComponent(s.relatedEntityId);
     return useCaseHub ? `/dashboard/${workspaceId}/use-cases/${id}` : `/dashboard/${workspaceId}/portfolio/review/${id}`;

@@ -6,7 +6,7 @@ import { getLeadershipTools } from "@/lib/ai/tools/leadership-tools";
 import { getActivityMappingTools } from "@/lib/ai/tools/activity-mapping-tools";
 import { getWebSearchTool } from "@/lib/ai/tools/web-search-tool";
 import { DISCOVERY_SYSTEM_PROMPT } from "@/lib/ai/prompts/discovery";
-import { ACTIVITY_MAPPING_SYSTEM_PROMPT } from "@/lib/ai/prompts/activity-mapping";
+import { ACTIVITY_MAPPING_SYSTEM_PROMPT, boardContextBlock } from "@/lib/ai/prompts/activity-mapping";
 import { withAgentReliability } from "@/lib/ai/agent-reliability";
 import { chatHistory, closingQuestions, refusedQuestionIds } from "@/lib/ai/chat-history";
 import {
@@ -27,7 +27,8 @@ import {
   createConversation,
 } from "@/lib/db/queries/conversations";
 import { db } from "@/lib/db";
-import { uploadedDocuments, activities } from "@/lib/db/schema";
+import { uploadedDocuments } from "@/lib/db/schema";
+import { getAppUcExecutor } from "@/lib/db/uc-executor";
 import { eq, and } from "drizzle-orm";
 import { getWorkspaceValueThesis } from "@/lib/db/queries/value-thesis";
 import { getDepartmentById } from "@/lib/db/queries/workspaces";
@@ -39,6 +40,8 @@ import { contextStoreState } from "@/lib/db/queries/context-store";
 import { contextActorFor } from "@/lib/context/server/actor";
 import { CONTEXT_TEXT } from "@/lib/context/text";
 import type { ContextActor } from "@/lib/context/visibility";
+import type { MappingBoard } from "@/lib/mappatura/board-model";
+import { readBoard } from "@/lib/mappatura/board-store";
 
 /** Vercel / Next: consenti più round LLM dopo i tool (webSearch, salvataggi DB, ecc.) */
 export const maxDuration = 120;
@@ -103,13 +106,21 @@ export async function POST(req: Request) {
     return new Response("Workspace not found", { status: 404 });
   }
   const { workspace } = access;
+  // (Mappatura board) La chat dell'activity mapping vale per un'unità: senza, 400, prima di tutto.
+  if (conversationType === "activity_mapping" && (typeof departmentId !== "string" || !departmentId.trim())) {
+    return new Response("Missing required fields", { status: 400 });
+  }
   // L'unità arriva dal browser (rilascio 9a, RILASCIO-9a-COSTRUZIONE.md §10.5): deve essere di questo workspace, prima
   // di tutto. Con l'id di un'unità di un altro workspace i tool della mappatura scriverebbero lì. La mappatura la vuole.
+  // L'id si controlla senza spazi, come lo legge la board; da qui in poi vale l'id come lo scrive il database.
+  let unitDbId: string | undefined;
   if (departmentId !== undefined || conversationType === "activity_mapping") {
-    const unit = typeof departmentId === "string" && isUuid(departmentId) ? await getDepartmentById(departmentId) : null;
+    const requested = typeof departmentId === "string" ? departmentId.trim() : "";
+    const unit = isUuid(requested) ? await getDepartmentById(requested) : null;
     if (!unit || unit.workspaceId !== workspaceId) {
       return new Response("Department not found", { status: 404 });
     }
+    unitDbId = unit.id;
   }
   // L'ok ai sub-responsabili (rilascio 9a, docs/contesto/RILASCIO-9a-COSTRUZIONE.md §6.2): senza, nessun testo del
   // cliente va al modello e niente si salva. La chat mostra l'avviso al posto del campo per scrivere
@@ -119,6 +130,18 @@ export async function POST(req: Request) {
   }
   // Chi scrive, per «Contesto», visto come il cliente: la chat è una stanza comune (`sharedRoomReader`).
   const reader = sharedRoomReader(contextActorFor({ id: session.user.id, email: session.user.email ?? null, emailVerified: session.user.emailVerified === true }, access, workspaceId));
+  // (Mappatura board) La board dell'unità, prima di leggere o creare la conversazione e di salvare la domanda: se non si
+  // legge, 404. La board letta qui è quella che la persona vede: il modello la riceve come contesto, e i tool scrivono
+  // solo su di lei.
+  let mappingBoard: MappingBoard | null = null;
+  if (conversationType === "activity_mapping" && unitDbId) {
+    mappingBoard = await readBoard(await getAppUcExecutor(), { workspaceId, departmentId: unitDbId }, { userId: session.user.id, role: access.role });
+    if (!mappingBoard) {
+      return new Response("Unit not found", { status: 404 });
+    }
+  }
+  // L'id dell'unità come lo scrive il database: la conversazione, i documenti e i tool usano sempre lo stesso.
+  const unitId = mappingBoard?.unit.id ?? unitDbId;
   // «Programma» (rilascio 7): dipendenti e ricavo dalla chat li scrive solo chi li scriverebbe nella pagina.
   const { canEditProgram } = await import("@/lib/db/queries/use-case-program");
   const { viewerFromSession } = await import("@/lib/db/queries/use-case-hub");
@@ -216,33 +239,10 @@ export async function POST(req: Request) {
       };
       break;
     case "activity_mapping": {
-      let mappingContext = contextBlock;
+      // I processi e i passi della board, con i loro id (src/lib/ai/prompts/activity-mapping.ts).
+      let mappingContext = contextBlock + (mappingBoard ? boardContextBlock(mappingBoard) : "");
 
-      if (departmentId) {
-        const existingActivities = await db
-          .select({
-            id: activities.id,
-            title: activities.title,
-            description: activities.description,
-            workType: activities.workType,
-            timeSpentHoursWeek: activities.timeSpentHoursWeek,
-          })
-          .from(activities)
-          .where(
-            and(
-              eq(activities.workspaceId, workspaceId),
-              eq(activities.departmentId, departmentId)
-            )
-          );
-
-        if (existingActivities.length > 0) {
-          mappingContext += `\n--- ATTIVITÀ GIÀ SALVATE PER QUESTO DIPARTIMENTO (${existingActivities.length}) ---\n`;
-          for (const act of existingActivities) {
-            mappingContext += `- [${act.id}] "${act.title}" (${act.workType ?? "non classificata"}): ${act.description ?? ""}\n`;
-          }
-          mappingContext += `\nQueste attività sono già nel database. NON ri-salvarle. Usale come base per il deep dive.\n`;
-        }
-
+      if (unitId) {
         const visible = await visibleDocumentIds(reader);
         const deptDocs = (
           await db
@@ -255,7 +255,7 @@ export async function POST(req: Request) {
             .where(
               and(
                 eq(uploadedDocuments.workspaceId, workspaceId),
-                eq(uploadedDocuments.departmentId, departmentId)
+                eq(uploadedDocuments.departmentId, unitId)
               )
             )
         ).filter((doc) => !visible || visible.has(doc.id));
@@ -272,7 +272,7 @@ export async function POST(req: Request) {
 
       systemPrompt = ACTIVITY_MAPPING_SYSTEM_PROMPT + mappingContext;
       tools = {
-        ...getActivityMappingTools(workspaceId, departmentId!, { deadline: toolsDeadline }),
+        ...getActivityMappingTools(workspaceId, unitId!, { deadline: toolsDeadline, actor: { kind: "assistente", userId: session.user.id, role: access.role } }),
         ...getWebSearchTool({ deadline: toolsDeadline }),
       };
       break;
@@ -293,7 +293,7 @@ export async function POST(req: Request) {
       | "activity_mapping"
       | "analysis"
       | "general",
-    departmentId
+    unitId
   );
 
   if (!conversation) {
@@ -306,7 +306,7 @@ export async function POST(req: Request) {
         | "activity_mapping"
         | "analysis"
         | "general",
-      departmentId,
+      departmentId: unitId,
       title:
         conversationType === "leadership_setup"
           ? "Discovery"

@@ -2,10 +2,12 @@
 
 import { requireSession } from "@/lib/auth/redirect-to-login";
 import { revalidatePath } from "next/cache";
-import { getActivitiesByWorkspace, updateActivityClassification } from "@/lib/db/queries/activities";
+import { getActivitiesByWorkspace } from "@/lib/db/queries/activities";
 import { getStrategicGoalsByWorkspace } from "@/lib/db/queries/workspaces";
 import { getWorkspaceValueThesis } from "@/lib/db/queries/value-thesis";
 import { classifyActivitiesBatch, skippedClassificationsText } from "@/lib/ai/classify";
+import { getAppUcExecutor } from "@/lib/db/uc-executor";
+import { recordClassifications } from "@/lib/mappatura/complete";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 
@@ -36,13 +38,9 @@ export async function runClassificationAction(workspaceId: string) {
     goals,
   });
 
-  for (const [activityId, result] of results) {
-    await updateActivityClassification(
-      activityId,
-      result.classification,
-      result.confidenceScore
-    );
-  }
+  // (Mappatura board) Lo stream e la confidenza come sempre, più la proposta, il motivo e il potenziale sulla board:
+  // ogni istruzione porta il workspace, e un'attività di un altro workspace non si tocca.
+  await recordClassifications(await getAppUcExecutor(), workspaceId, results);
 
   revalidatePath(`/dashboard/${workspaceId}`);
 

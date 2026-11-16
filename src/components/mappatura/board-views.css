@@ -1,0 +1,159 @@
+/* «Mappatura board»: le regole delle viste della board (docs/mappatura/MAPPATURA-BOARD-PIANO.md §9.2).
+ *
+ * Solo quello che il riferimento non ha: i controlli di modifica sulla mappa, i moduli del drawer, la griglia del
+ * pannello agganciato, le regole per il telefono. Stesse regole di board.css: ogni selettore sotto `[data-board-root]`,
+ * colori solo come `var(--board-…)` (le controlla src/components/theme/board-theme.test.ts). Nessuna regola di qui
+ * riscrive una regola portata dal riferimento con lo stesso selettore (lo controlla
+ * src/components/mappatura/board/views-css.test.ts): quello che cambia per un contesto nuovo ha un selettore suo.
+ * Le soglie delle griglie sono container query sull'area della board, come in board.css; sulla finestra solo il
+ * pannello dell'assistente (agganciato da 1280 px), il telefono e il tocco.
+ */
+
+/* ── S1 · Le unità: una riga per unità ── */
+/* Le colonne della riga: stato, nome, punti degli stream, passi e ore, freccia. Sul telefono i conteggi scendono sotto il nome. */
+[data-board-root] .b-units { --b-crow-cols: 132px minmax(0,1fr) 112px minmax(190px,max-content) 16px; }
+[data-board-root] .b-units .b-crow { padding-block: 10px; }
+[data-board-root] .b-units .b-cn small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+[data-board-root] .b-crow-st { display: flex; min-width: 0; }
+[data-board-root] .b-crow-meta { display: contents; }
+[data-board-root] .b-crow-streams { display: flex; align-items: center; gap: 10px; min-width: 0; }
+[data-board-root] .b-sdot { display: inline-flex; align-items: center; gap: 5px; font-family: var(--board-font-mono); font-size: 11px; color: var(--board-ink-2); font-variant-numeric: tabular-nums; }
+[data-board-root] .b-crow-go { display: flex; align-items: center; justify-content: flex-end; color: var(--board-graphite-3); }
+[data-board-root] .b-crow:hover .b-crow-go { color: var(--board-ink); }
+@container board (max-width: 680px) {
+  [data-board-root] .b-units { --b-crow-cols: auto minmax(0,1fr) 16px; }
+  [data-board-root] .b-units .b-crow { row-gap: 6px; }
+  [data-board-root] .b-units .b-crow-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; grid-column: 1 / 3; grid-row: 2; min-width: 0; }
+  [data-board-root] .b-units .b-crow-streams:empty { display: none; }
+  [data-board-root] .b-units .b-num2 { text-align: left; }
+  [data-board-root] .b-units .b-crow-go { grid-column: 3; grid-row: 1; }
+}
+
+/* ── S2 · La board e il pannello dell'assistente ── */
+/* La board è una riga: la colonna della board (testata e viste) e, a destra, il pannello. */
+[data-board-root] .b-board { flex: 1 1 auto; min-width: 0; display: flex; align-items: flex-start; }
+[data-board-root] .b-board-col { flex: 1 1 auto; min-width: 0; align-self: stretch; display: flex; flex-direction: column; }
+/* Più stretto di 1280 px di finestra il pannello sta sopra la pagina velata, come il drawer stretto (540 px, tutta la larghezza sul telefono). */
+[data-board-root] .b-assist { position: fixed; top: 0; right: 0; bottom: 0; z-index: 50; width: min(540px, 100%); display: flex; flex-direction: column; background: var(--board-paper); border-left: 1px solid var(--board-line-strong); padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-inset-right, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+[data-board-root] .b-assist[hidden] { display: none; }
+[data-board-root] .b-assist-head { display: flex; align-items: center; gap: 12px; padding: 16px 22px 12px; border-bottom: 1px solid var(--board-line); }
+[data-board-root] .b-assist-t { margin: 0; font-family: var(--board-font-serif); font-weight: 400; font-size: 26px; line-height: 1.1; }
+[data-board-root] .b-assist-head .b-x { margin-left: auto; }
+/* Il corpo è del compagno: una colonna che riempie il pannello e scorre da sé se il compagno non scorre per conto suo. */
+[data-board-root] .b-assist-body { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
+/* Da 1280 px di finestra il pannello si aggancia: una colonna di 380 px, ferma sotto la barra del workspace, alta quanto la finestra. */
+@media (min-width: 1280px) {
+  [data-board-root] .b-assist { position: sticky; top: var(--board-shell-top); right: auto; bottom: auto; z-index: 1; flex: 0 0 380px; width: 380px; height: calc(100vh - var(--board-shell-top)); height: calc(100dvh - var(--board-shell-top)); }
+  [data-board-root] .b-assist-scrim { display: none; }
+}
+/* I due bottoni dell'assistente: contornati, con il bordo d'inchiostro quando il pannello è aperto (il pieno resta al bottone della vista). */
+[data-board-root] .b-assist-toggle[aria-expanded="true"] { border-color: var(--board-ink); }
+[data-board-root] .b-iconbtn { appearance: none; width: 30px; height: 30px; display: grid; place-items: center; padding: 0; border: 1px solid var(--board-line-strong); border-radius: 6px; background: var(--board-paper); color: var(--board-ink); cursor: pointer; }
+[data-board-root] .b-iconbtn[aria-expanded="true"] { border-color: var(--board-ink); }
+[data-board-root] .b-tabs-pill { display: flex; }
+
+/* Una vista prende il fuoco quando la persona lascia un campo con Escape: senza l'anello, come il drawer. */
+[data-board-root] .b-view:focus { outline: none; }
+
+/* ── «Processi di oggi»: la testa e il resto della vista ── */
+/* Un testo sul posto è alto quanto il suo testo già al primo disegno, prima che il codice lo misuri (dove il browser lo sa fare). */
+[data-board-root] .b-board textarea.b-textin, [data-board-root] .b-drawer textarea.b-textin { field-sizing: content; }
+/* Un campo sul posto si allinea al testo intorno: il suo margine interno sta fuori dalla colonna. */
+[data-board-root] .b-h .b-textin, [data-board-root] .b-dr-t .b-textin { margin: 0 -5px; width: calc(100% + 10px); padding: 0 4px; }
+/* Il serif stretto dei titoli (1,03 e 1,1) esce dalla sua riga: il campo ha lo spazio per le lettere, la riga resta quella del riferimento. */
+[data-board-root] .b-h .b-textin { padding-block: 6px; margin-block: -6px; }
+[data-board-root] .b-dr-t .b-textin { padding-block: 2px; margin-block: -2px; }
+[data-board-root] .b-notice { margin: -6px 0 18px; padding-left: 10px; border-left: 2px solid var(--board-amber); font-size: 13px; color: var(--board-graphite); }
+[data-board-root] .b-legend-note { font-family: var(--board-font-mono); font-size: 10.5px; }
+[data-board-root] .b-map-tools { margin-bottom: 10px; }
+[data-board-root] .b-roles .b-sec { padding-bottom: 0; }
+[data-board-root] .b-steprefs { display: flex; flex-wrap: wrap; gap: 2px 12px; }
+/* Sul telefono le tabelle si impilano: «Passi:» e i passi sulla stessa riga, come «Chi:» e il suo valore sul riferimento.
+   I passi scorrono dopo il nome della colonna e vanno a capo come un testo. */
+@container board (max-width: 680px) {
+  [data-board-root] .b-tbl.b-stack .b-steprefs { display: inline; }
+  [data-board-root] .b-tbl.b-stack .b-stepref { margin-right: 12px; }
+}
+[data-board-root] .b-stepref { appearance: none; border: 0; background: transparent; padding: 0; text-align: left; cursor: pointer; font-size: 13px; color: var(--board-ink-2); }
+[data-board-root] .b-stepref:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* I punti di analisi: ognuno è una nota, con la sua didascalia e i suoi due controlli. */
+[data-board-root] .b-points .b-point { position: relative; }
+[data-board-root] .b-point .b-textin { margin: 0 -5px; width: calc(100% + 10px); }
+[data-board-root] .b-point .b-more-w .b-textin { font-size: 13.5px; color: var(--board-ink-2); }
+[data-board-root] .b-more-edit { appearance: none; display: inline; margin: 0 -5px; padding: 0 4px; border: 1px solid transparent; border-radius: 4px; background: transparent; text-align: left; cursor: text; font-size: 13.5px; color: var(--board-graphite); }
+[data-board-root] .b-more-edit:hover { border-color: var(--board-line-strong); }
+[data-board-root] .b-point-cap { display: block; margin-top: 6px; font-family: var(--board-font-mono); font-size: 9.5px; font-style: normal; letter-spacing: .08em; color: var(--board-graphite); }
+[data-board-root] .b-point .b-point-ctl { top: -11px; right: 0; }
+[data-board-root] .b-point:hover .b-point-ctl, [data-board-root] .b-point:focus-within .b-point-ctl { opacity: 1; }
+[data-board-root] .b-add-point { margin-top: 12px; }
+[data-board-root] .b-point-draft { display: flex; flex-direction: column; gap: 4px; }
+
+/* ── La mappa che si modifica ── */
+/* L'etichetta della riga: nome e chi lo segue si scrivono sul posto, allineati alla lettera. */
+[data-board-root] .b-pm-lab .b-textin { margin: 0 -5px; width: calc(100% + 10px); }
+@media (hover: hover) {
+  [data-board-root] .b-pm-lab:not(:hover):not(:focus-within) .b-textin:placeholder-shown::placeholder { color: transparent; }
+}
+[data-board-root] .b-pm-fr { font-family: var(--board-font-mono); font-size: 10.5px; color: var(--board-crit); }
+/* «Sposta su», «Sposta giù», «Elimina il processo»: i controlli tondi delle note, visibili al passaggio o al fuoco, sempre senza mouse. */
+[data-board-root] .b-row-ctl { display: flex; gap: 3px; opacity: 0; transition: opacity .12s; }
+[data-board-root] .b-pm-lab:hover .b-row-ctl, [data-board-root] .b-pm-lab:focus-within .b-row-ctl { opacity: 1; }
+[data-board-root] .b-row-ctl button { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--board-line-strong); background: var(--board-paper); color: var(--board-ink); display: grid; place-items: center; padding: 0; cursor: pointer; }
+[data-board-root] .b-row-ctl button[disabled], [data-board-root] .b-row-ctl button[aria-disabled="true"] { opacity: .35; cursor: not-allowed; }
+/* Ogni riga è larga quanto la più lunga (`--steps` sul riquadro), con le card della larghezza del riferimento che non
+   si stirano: le colonne della mappa restano in griglia, e una riga corta lascia vuoto il suo fondo. Sulla mappa che si
+   modifica in fondo a ogni riga ci sta anche «+ passo»: 8 px prima, il bottone (61 px con Geist a 12 px), e il segno
+   di dove cade un passo trascinato (11 px). */
+[data-board-root] .b-pm[data-adds] { --b-after: 80px; }
+/* «+ passo» in fondo alla riga: compare al passaggio o al fuoco, come «+ nota»; sempre in una riga vuota e senza mouse. */
+[data-board-root] .b-add-step { white-space: nowrap; opacity: 0; transition: opacity .15s; }
+[data-board-root] .b-pm-row:hover .b-add-step, [data-board-root] .b-pm-row:focus-within .b-add-step, [data-board-root] .b-add-step:focus-visible, [data-board-root] .b-add-step.b-add-first { opacity: 1; }
+/* «+ processo» sotto l'ultima riga, fermo a sinistra quando la mappa scorre. */
+[data-board-root] .b-pm-foot { position: sticky; left: 0; width: max-content; padding: 10px 12px; }
+[data-board-root] .b-add-process { white-space: nowrap; }
+[data-board-root] .b-pm-row + .b-pm-foot { border-top: 1px solid var(--board-line); width: auto; }
+/* Il trascinamento: la maniglia dentro il margine della card, la card presa più chiara, la riga sotto colorata, il segno dove cadrà. */
+[data-board-root] .b-node-w > .b-grip { left: 4px; top: 9px; z-index: 1; }
+[data-board-root] .b-mapzone[data-dragging] .b-node { cursor: grabbing; }
+[data-board-root] .b-node-w:has(> .b-grip[data-dragging]) { opacity: .4; }
+[data-board-root] .b-pm-steps:has(> .b-pm-after > [data-drop-row]) { background: color-mix(in srgb, var(--board-signal) 22%, transparent); transition: background .15s; }
+[data-board-root] .b-node-w:has(> .b-grip[data-drop-before])::before { content: ""; position: absolute; left: -11px; top: 4px; bottom: 4px; width: 3px; border-radius: 2px; background: var(--board-signal-deep); }
+[data-board-root] .b-drop-mark { align-self: stretch; width: 3px; margin-right: 8px; border-radius: 2px; background: var(--board-signal-deep); }
+
+/* ── Il drawer del passo ── */
+[data-board-root] .b-dr-lede { font-size: 14px; }
+[data-board-root] .b-dr-body .b-textin { margin: 0 -5px; width: calc(100% + 10px); }
+[data-board-root] .b-dr-chips { display: flex; flex-direction: column; gap: 6px; }
+/* Sopra le note di «Attriti» i quattro livelli: lo spazio dei controlli delle note, che stanno sopra il loro angolo. */
+[data-board-root] .b-dr-body .b-feas { margin-bottom: 12px; }
+[data-board-root] .b-dr-none { margin: 0; font-size: 13px; color: var(--board-graphite); }
+/* Una corsia senza note: chi modifica vede sempre «+ nota» (o «+ idea»), dove chi legge vede «—» (P21). Le corsie con
+   delle note lo mostrano al passaggio o al fuoco, come sul riferimento (board.css). */
+[data-board-root] .b-cell:not(:has(.b-note-w)) > .b-add { opacity: 1; }
+[data-board-root] .b-dr-text { margin: 0; font-size: 13.5px; color: var(--board-ink-2); white-space: pre-wrap; }
+/* Frequenza, ore, tipo di lavoro, qualità: i campi del riferimento (etichetta in mono sopra, campo sul colore della pagina). */
+[data-board-root] .b-dr-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; margin-bottom: 8px; }
+[data-board-root] .b-dr-fields .b-textin { margin: 0; width: 100%; padding: 5px 7px; border-color: var(--board-line-strong); border-radius: 5px; background: var(--board-bone); font: 13px var(--board-font-sans); letter-spacing: 0; text-transform: none; }
+[data-board-root] .b-dr-value { font: 13px var(--board-font-sans); letter-spacing: 0; text-transform: none; color: var(--board-ink); }
+[data-board-root] .b-select { cursor: pointer; }
+[data-board-root] .b-dec-label { display: block; margin-bottom: 2px; font-family: var(--board-font-mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--board-ink); }
+[data-board-root] .b-links { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 6px; }
+[data-board-root] .b-links-k { margin-right: 4px; font-family: var(--board-font-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--board-graphite); }
+[data-board-root] .b-chip-link { cursor: pointer; }
+[data-board-root] .b-chip-link:hover { border-color: var(--board-graphite-3); }
+[data-board-root] .b-dr-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding-top: 14px; border-top: 1px solid var(--board-line); }
+[data-board-root] .b-dr-origin { font-family: var(--board-font-mono); font-size: 11px; color: var(--board-graphite); }
+[data-board-root] .b-dr-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+[data-board-root] .b-move-to { width: auto; padding-block: 6px; }
+[data-board-root] .b-btn.b-danger { color: var(--board-crit); }
+/* «Sposta a sinistra» in testa alla riga, «Sposta a destra» in fondo: spenti ma raggiungibili (il fuoco non si perde). */
+[data-board-root] .b-btn[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
+[data-board-root] .b-copy { min-height: 60vh; resize: vertical; white-space: pre; font-family: var(--board-font-mono); font-size: 12px; }
+
+/* ── Senza mouse (telefono, tablet): i controlli che compaiono al passaggio si vedono sempre; niente trascinamento ── */
+@media (hover: none) {
+  [data-board-root] .b-row-ctl, [data-board-root] .b-point .b-point-ctl { opacity: 1; }
+  [data-board-root] .b-add-step { opacity: .8; }
+  [data-board-root] .b-node-w > .b-grip { display: none; }
+}

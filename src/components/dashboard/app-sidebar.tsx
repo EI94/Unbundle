@@ -25,6 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { confirmLearningNavigation } from "@/components/learning/use-unsaved-changes";
+import { endAppSession } from "@/lib/auth/end-session";
 import { CONTEXT_NAV_MATCH, USE_CASE_NAV_MATCH, isNavItemActive } from "@/components/dashboard/nav-active";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ThemeMenuGroup } from "@/components/theme/theme-menu";
@@ -100,6 +101,7 @@ interface AppSidebarProps {
   };
 }
 
+/** La memoria del dispositivo, se il browser la dà. */
 export function AppSidebar({
   learningAvailable = false,
   casesAvailable = false,
@@ -119,7 +121,9 @@ export function AppSidebar({
 
   const handleLogout = async () => {
     if (!confirmLearningNavigation()) return;
-    await fetch("/api/auth/session", { method: "DELETE" });
+    // La fine della sessione, la stessa di «Cambia account»: le board dell'activity mapping aperte mandano quello che
+    // resta e le loro bozze lasciano il dispositivo, poi la sessione finisce.
+    await endAppSession();
     await signOut(firebaseAuth).catch(() => {});
     closeMobileNavigation();
     router.push("/login");

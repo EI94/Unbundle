@@ -128,10 +128,6 @@ test("nel tema chiaro gli stessi colori per le stesse cose (stessa tinta, entro 
 
 test("i testi sbiaditi dei pannelli vecchi tornano pieni nel tema chiaro", () => {
   const sites: Array<[string, string]> = [
-    ["src/components/dashboard/activity-sidebar.tsx", "text-muted-foreground/70 light:text-muted-foreground"],
-    ["src/components/dashboard/activity-sidebar.tsx", "text-muted-foreground/50 light:text-muted-foreground"],
-    ["src/components/dashboard/department-dashboard.tsx", "font-mono text-muted-foreground/50 light:text-muted-foreground"],
-    ["src/components/dashboard/department-dashboard.tsx", "shrink-0 text-muted-foreground/50 light:text-muted-foreground"],
     ["src/components/agent/chat-interface.tsx", "text-muted-foreground/50 light:text-muted-foreground"],
     ["src/components/agent/chat-interface.tsx", "text-muted-foreground/60 light:text-muted-foreground"],
   ];

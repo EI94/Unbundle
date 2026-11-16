@@ -95,6 +95,19 @@ test("signalHref: le regole della barra in alto, ad area accesa e spenta", () =>
   assert.equal(signalHref(WS, { signalType: "risk_alert", relatedEntityType: null, relatedEntityId: null }, true), null);
 });
 
+test("(mappatura board) una mappatura completata apre la board dell'unità su «Classificazione», ad area accesa e spenta", () => {
+  const UNIT = ID(7);
+  const done = { signalType: "mapping_completed", relatedEntityType: "department", relatedEntityId: UNIT };
+  for (const useCaseHub of [true, false]) {
+    assert.equal(signalHref(WS, done, useCaseHub), `/dashboard/${WS}/mapping/${UNIT}#classificazione`);
+    // Senza l'unità la riga resta senza link.
+    assert.equal(signalHref(WS, { ...done, relatedEntityId: null }, useCaseHub), null);
+    assert.equal(signalHref(WS, { ...done, relatedEntityType: "use_case" }, useCaseHub), null);
+  }
+  const s = signalEntry(WS, { id: ID(8), title: "Mappatura completata: Ufficio acquisti", description: "6 passi, 28,5 ore a settimana.", ...done, createdAt: "2026-11-16T09:30:00.000Z", read: false }, false);
+  assert.equal(s.href, `/dashboard/${WS}/mapping/${UNIT}#classificazione`);
+});
+
 test("righe: segnale, dossier, use case", () => {
   const s = signalEntry(WS, { id: ID(1), title: "Nuovo use case", description: "x", signalType: "risk_alert", relatedEntityType: null, relatedEntityId: null, createdAt: "2026-10-27T09:30:00.123Z", read: false }, true);
   assert.deepEqual([s.key, s.source, s.activityAt, s.unread, s.href], [`s:${ID(1)}`, "segnale", "2026-10-27T09:30:00.123Z", true, null]);
