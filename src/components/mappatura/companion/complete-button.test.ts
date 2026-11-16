@@ -20,7 +20,7 @@ const I = FIXTURE_IDS;
 const h = <P extends object>(type: (props: P) => ReactNode, props: Omit<P, "children"> | null = null, ...children: ReactNode[]) =>
   createElement(type as unknown as FunctionComponent<Omit<P, "children">>, props, ...children);
 const button = (board: MappingBoard) =>
-  renderToStaticMarkup(h(BoardProvider, { workspaceId: I.workspace, departmentId: I.unit, initial: board }, h(CompleteButton, { workspaceId: I.workspace, departmentId: I.unit })));
+  renderToStaticMarkup(h(BoardProvider, { workspaceId: I.workspace, departmentId: I.unit, userId: I.user, initial: board }, h(CompleteButton, { workspaceId: I.workspace, departmentId: I.unit })));
 
 const outcome = (over: Partial<CompletionOutcome> = {}): CompletionOutcome => ({
   firstCompletion: true,

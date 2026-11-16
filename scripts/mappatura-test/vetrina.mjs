@@ -104,7 +104,7 @@ export async function buildVetrina(out) {
     html(
       h(
         BoardProvider,
-        { workspaceId, departmentId: board.unit.id, initial: board },
+        { workspaceId, departmentId: board.unit.id, userId: FIXTURE_IDS.user, initial: board },
         h(UnitBoard, {
           workspaceId,
           workspaceName: SHOWCASE.workspaceName,

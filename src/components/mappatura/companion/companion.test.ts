@@ -29,7 +29,7 @@ function companion(options: { board?: MappingBoard; hasDocuments?: boolean; init
     html(
       h(
         BoardProvider,
-        { workspaceId: I.workspace, departmentId: I.unit, initial: options.board ?? fixtureBoard() },
+        { workspaceId: I.workspace, departmentId: I.unit, userId: I.user, initial: options.board ?? fixtureBoard() },
         h(Companion, { workspaceId: I.workspace, departmentId: I.unit, unitName: "Ufficio acquisti", teamSize: 6, initialMessages: options.initialMessages ?? [], hasDocuments: options.hasDocuments ?? false }),
       ),
     ),
@@ -146,6 +146,6 @@ test("il caricamento: un invio per file con il workspace e l'unità; il toast di
     "Caricamento non riuscito. Riprova.",
   ]);
   // Il bottone da solo: contornato e piccolo, spento se la board non si modifica.
-  const out = html(h(BoardProvider, { workspaceId: I.workspace, departmentId: I.unit, initial: fixtureBoard() }, h(Documents, { workspaceId: I.workspace, departmentId: I.unit, disabled: true, onUploaded() {} })));
+  const out = html(h(BoardProvider, { workspaceId: I.workspace, departmentId: I.unit, userId: I.user, initial: fixtureBoard() }, h(Documents, { workspaceId: I.workspace, departmentId: I.unit, disabled: true, onUploaded() {} })));
   assert.match(out, /<button disabled="" data-action="upload" type="button" class="b-btn b-small"/);
 });

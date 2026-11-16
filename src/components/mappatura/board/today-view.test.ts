@@ -23,7 +23,7 @@ const h = <P extends object>(type: (props: P) => ReactNode, props: Omit<P, "chil
 const completeButton = () => h(BoardButton, { variant: "primary" }, "Completa la mappatura");
 /** La vista com'è al primo disegno, dentro la board del browser. */
 const render = (board: MappingBoard, headAction: ReactNode = completeButton()) =>
-  renderToStaticMarkup(h(BoardProvider, { workspaceId: I.workspace, departmentId: board.unit.id, initial: board }, h(TodayView, { headAction, onStartAssistant() {} })));
+  renderToStaticMarkup(h(BoardProvider, { workspaceId: I.workspace, departmentId: board.unit.id, userId: I.user, initial: board }, h(TodayView, { headAction, onStartAssistant() {} })));
 
 function content(board: MappingBoard, extra: { dim?: boolean; addingPoint?: boolean } = {}) {
   const log = recorder();

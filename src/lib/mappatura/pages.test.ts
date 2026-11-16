@@ -95,6 +95,7 @@ test("la board di un'unità: letta per chi guarda, con gli use case che può ved
   assert.equal(page.type, BoardProvider);
   assert.equal(page.props.workspaceId, WS);
   assert.equal(page.props.departmentId, board.unit.id, "la bozza e le rotte usano l'id del database");
+  assert.equal(page.props.userId, USER, "la bozza sul dispositivo è di chi guarda");
   const initial = page.props.initial as MappingBoard;
   assert.deepEqual(initial.useCases.map((link) => [link.id, link.code]), [["uc-1", "UC-0001"]]);
   assert.deepEqual(initial.processes[0].steps.find((step) => step.id === FIXTURE_IDS.richieste)?.useCaseIds, ["uc-1"]);

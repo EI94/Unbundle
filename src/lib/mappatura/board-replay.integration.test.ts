@@ -71,6 +71,7 @@ function open(initial: MappingBoard, storage: ReturnType<typeof device>["storage
   return createBoardClient({
     workspaceId: f.ws,
     departmentId: f.unit,
+    userId: f.lead,
     initial,
     fetch: fetchImpl,
     storage,
@@ -124,7 +125,7 @@ test("un passo eliminato da un collega non torna quando chi l'aveva aggiunto ria
   void first.saveNow({ keepalive: true });
   await settle();
   assert.equal((await q(`SELECT count(*)::int AS n FROM activities WHERE id = $1`, [stepId]))[0].n, 1, "il salvataggio è arrivato");
-  assert.ok(phone.stored.has(draftKey(f.unit)), "la bozza resta: nessuno ha letto la risposta");
+  assert.ok(phone.stored.has(draftKey(f.lead, f.unit)), "la bozza resta: nessuno ha letto la risposta");
 
   // B elimina quel passo.
   const removed = await store.saveBoardOps(db.exec, scope(), contributor(), { baseRevision: 0, ops: [op({ t: "step.remove", stepId })] });
@@ -139,7 +140,7 @@ test("un passo eliminato da un collega non torna quando chi l'aveva aggiunto ria
   assert.deepEqual(shown, []);
   assert.equal((await q(`SELECT count(*)::int AS n FROM activities WHERE id = $1`, [stepId]))[0].n, 0, "il passo eliminato non torna");
   assert.equal(again.getState().board.processes.some((item) => item.steps.some((step) => step.id === stepId)), false);
-  assert.equal(phone.stored.has(draftKey(f.unit)), false, "la bozza se ne va");
+  assert.equal(phone.stored.has(draftKey(f.lead, f.unit)), false, "la bozza se ne va");
 });
 
 test("un valore cambiato da un collega dopo il salvataggio non si copre con la bozza di allora, anche se è tornato quello di prima", opts, async () => {

@@ -18,6 +18,7 @@
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type JSX, type ReactNode } from "react";
 import type { MappingBoard } from "../../../lib/mappatura/board-model.ts";
 import { createBoardClient, type BoardClient, type BoardClientDeps, type BoardClientState } from "./board-client.ts";
+import { onSignOut } from "./drafts.ts";
 
 // ─── Il posto del toast ──────────────────────────────────────────────
 
@@ -66,10 +67,11 @@ type Listened = Pick<EventTarget, "addEventListener" | "removeEventListener">;
  * Collega lo store alla pagina e restituisce la funzione che lo stacca. Alla partenza la bozza del dispositivo torna
  * sopra la board; la pagina che si nasconde o si chiude salva subito, anche le eliminazioni che aspettano il loro
  * toast; la pagina che torna visibile, senza niente da salvare, rilegge la board; il browser che torna in linea
- * riprova il salvataggio non riuscito. Staccarlo (la pagina lascia la board) salva quello che resta.
+ * riprova il salvataggio non riuscito; la persona che esce dall'app (`signOutBoards`) manda quello che resta e la
+ * board lascia la sua bozza. Staccarlo (la pagina lascia la board) salva quello che resta.
  */
 export function connectBrowser(
-  client: Pick<BoardClient, "start" | "setOnline" | "saveNow" | "pull" | "getState">,
+  client: Pick<BoardClient, "start" | "setOnline" | "saveNow" | "pull" | "getState" | "signOut">,
   win: Listened & { navigator: { onLine?: boolean } },
   doc: Listened & { visibilityState: DocumentVisibilityState },
 ): () => void {
@@ -87,17 +89,19 @@ export function connectBrowser(
   win.addEventListener("offline", online);
   win.addEventListener("pagehide", flush);
   doc.addEventListener("visibilitychange", visibility);
+  const stopLeaving = onSignOut(() => client.signOut());
   return () => {
     win.removeEventListener("online", online);
     win.removeEventListener("offline", online);
     win.removeEventListener("pagehide", flush);
     doc.removeEventListener("visibilitychange", visibility);
+    stopLeaving();
     flush();
   };
 }
 
 /** Fetch, memoria, orologio, timer e id del browser. Sul server (il primo disegno) niente memoria. */
-export function browserDeps(): Omit<BoardClientDeps, "workspaceId" | "departmentId" | "initial"> {
+export function browserDeps(): Omit<BoardClientDeps, "workspaceId" | "departmentId" | "userId" | "initial"> {
   let storage: BoardClientDeps["storage"] = null;
   try {
     storage = typeof window === "undefined" ? null : window.localStorage;
@@ -124,10 +128,11 @@ interface BoardContextValue {
 
 const BoardContext = createContext<BoardContextValue | null>(null);
 
-export function BoardProvider(props: { workspaceId: string; departmentId: string; initial: MappingBoard; children: ReactNode }): JSX.Element {
-  const { workspaceId, departmentId, initial, children } = props;
+/** `userId`: chi ha la board aperta; la bozza sul dispositivo è sua. */
+export function BoardProvider(props: { workspaceId: string; departmentId: string; userId: string; initial: MappingBoard; children: ReactNode }): JSX.Element {
+  const { workspaceId, departmentId, userId, initial, children } = props;
   const [value] = useState<BoardContextValue>(() => ({
-    client: createBoardClient({ ...browserDeps(), workspaceId, departmentId, initial }),
+    client: createBoardClient({ ...browserDeps(), workspaceId, departmentId, userId, initial }),
     hosts: createToastHosts(),
   }));
   const client = value.client;

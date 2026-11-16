@@ -22,7 +22,7 @@ const h = <P extends object>(type: (props: P) => ReactNode, props: Omit<P, "chil
   createElement(type as unknown as FunctionComponent<Omit<P, "children">>, props, ...children);
 const decode = (text: string) => text.replaceAll("&#x27;", "'").replaceAll("&quot;", '"').replaceAll("&amp;", "&");
 const view = (board: MappingBoard, useCaseHub = false) =>
-  decode(renderToStaticMarkup(h(BoardProvider, { workspaceId: I.workspace, departmentId: I.unit, initial: board }, h(ClassificationView, { workspaceId: I.workspace, useCaseHub }))));
+  decode(renderToStaticMarkup(h(BoardProvider, { workspaceId: I.workspace, departmentId: I.unit, userId: I.user, initial: board }, h(ClassificationView, { workspaceId: I.workspace, useCaseHub }))));
 const primaries = (out: string) => out.match(/data-variant="primary"/g)?.length ?? 0;
 
 test("prima del completamento: la testa della classificazione e il blocco; il bottone pieno è «Completa la mappatura»", () => {

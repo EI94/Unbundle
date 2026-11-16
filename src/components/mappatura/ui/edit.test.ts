@@ -189,10 +189,10 @@ test("il toast della board: una regione viva sempre presente; il testo e «Annul
   const realSetTimeout = globalThis.setTimeout;
   globalThis.setTimeout = ((run: () => void, ms?: number) => realSetTimeout(run, ms).unref()) as typeof setTimeout;
   try {
-    const shown = html(h(BoardProvider, { workspaceId: board.unit.id, departmentId: board.unit.id, initial: board }, h(Probe, {})));
+    const shown = html(h(BoardProvider, { workspaceId: board.unit.id, departmentId: board.unit.id, userId: board.unit.id, initial: board }, h(Probe, {})));
     assert.equal(shown, '<div class="b-toast b-on" role="status" aria-live="polite" data-b="toast"><span>Mappa copiata.</span><button type="button">Apri</button></div>');
     // Un posto che non ha il toast (un drawer chiuso) non lo mostra.
-    const elsewhere = html(h(BoardProvider, { workspaceId: board.unit.id, departmentId: board.unit.id, initial: board }, h(Probe, { host: "drawer" })));
+    const elsewhere = html(h(BoardProvider, { workspaceId: board.unit.id, departmentId: board.unit.id, userId: board.unit.id, initial: board }, h(Probe, { host: "drawer" })));
     assert.equal(elsewhere, '<div class="b-toast" role="status" aria-live="polite" data-b="toast"></div>');
   } finally {
     globalThis.setTimeout = realSetTimeout;

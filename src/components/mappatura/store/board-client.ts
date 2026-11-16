@@ -23,6 +23,7 @@ import { allSteps, caseLinksOf, withUseCaseLinks, type MappingBoard } from "../.
 import { applyOps, boardOpSchema, coalesce, type BoardOp } from "../../../lib/mappatura/board-ops.ts";
 import { BOARD_TEXT } from "../../../lib/mappatura/text.ts";
 import { AUTOSAVE, MAPPING_LIMITS, OP_MEMORY } from "../../../lib/mappatura/vocab.ts";
+import { draftKey } from "./drafts.ts";
 
 export type PillState = "saved" | "dirty" | "saving" | "readonly" | "local";
 
@@ -65,12 +66,16 @@ export interface BoardClient {
   start(): void;
   /** Il browser è in linea o no: fuori linea le modifiche restano «solo su questo dispositivo»; al ritorno si riprova una volta. */
   setOnline(online: boolean): void;
+  /** La persona esce dall'app: si manda quello che c'è da salvare, poi la board smette e la sua bozza si toglie. */
+  signOut(): Promise<void>;
   dispose(): void;
 }
 
 export interface BoardClientDeps {
   workspaceId: string;
   departmentId: string;
+  /** Chi ha la board aperta: la bozza sul dispositivo è sua (`draftKey`). */
+  userId: string;
   initial: MappingBoard;
   fetch: typeof fetch;
   storage: Pick<Storage, "getItem" | "setItem" | "removeItem"> | null;
@@ -105,14 +110,14 @@ const NO_ABILITIES = { edit: false, setStream: false, complete: false };
 const DRAFT_MAX_AGE_MS = OP_MEMORY.draftDays * 24 * 60 * 60 * 1000;
 const isRemove = (op: BoardOp) => op.t === "step.remove" || op.t === "note.remove" || op.t === "process.remove";
 
-/** La chiave della bozza sul dispositivo. */
-export const draftKey = (departmentId: string) => `unbundle-mapping-draft:${departmentId}`;
+/** La chiave della bozza sul dispositivo: di una persona su un'unità (drafts.ts). */
+export { draftKey };
 /** Dove si legge e si salva la board di un'unità. */
 export const boardUrl = (workspaceId: string, departmentId: string) => `/api/workspaces/${workspaceId}/mapping/${departmentId}/board`;
 
 export function createBoardClient(deps: BoardClientDeps): BoardClient {
   const url = boardUrl(deps.workspaceId, deps.departmentId);
-  const key = draftKey(deps.departmentId);
+  const key = draftKey(deps.userId, deps.departmentId);
   const listeners = new Set<() => void>();
 
   /** L'ultima board letta dal server. */
@@ -390,6 +395,15 @@ export function createBoardClient(deps: BoardClientDeps): BoardClient {
     if (wasReadonly && !readonly) schedule();
   }
 
+  function dispose() {
+    disposed = true;
+    if (saveTimer !== null) deps.clearTimer(saveTimer);
+    if (toastTimer !== null) deps.clearTimer(toastTimer);
+    saveTimer = null;
+    toastTimer = null;
+    listeners.clear();
+  }
+
   state = compute();
 
   return {
@@ -470,13 +484,18 @@ export function createBoardClient(deps: BoardClientDeps): BoardClient {
       emit();
       if (next && failed) void save(false, false);
     },
-    dispose() {
-      disposed = true;
-      if (saveTimer !== null) deps.clearTimer(saveTimer);
-      if (toastTimer !== null) deps.clearTimer(toastTimer);
-      saveTimer = null;
-      toastTimer = null;
-      listeners.clear();
+    async signOut() {
+      if (disposed) return;
+      // Finché la sessione c'è: quello che resta in coda parte adesso (la richiesta esce subito), poi la board smette.
+      const leaving = pendingOps().length > 0 ? save(true, true) : Promise.resolve();
+      dispose();
+      try {
+        deps.storage?.removeItem(key);
+      } catch {
+        // La memoria del dispositivo è spenta: non c'è bozza.
+      }
+      await leaving;
     },
+    dispose,
   };
 }

@@ -51,7 +51,7 @@ export default async function UnitBoardPage({
   const board = withUseCaseLinks(read, links);
 
   return (
-    <BoardProvider workspaceId={workspaceId} departmentId={departmentId} initial={board}>
+    <BoardProvider workspaceId={workspaceId} departmentId={departmentId} userId={session.user.id} initial={board}>
       <UnitBoard
         workspaceId={workspaceId}
         workspaceName={access.workspace.name}

@@ -14,6 +14,8 @@ const uuid = (group: string, n: number) => `${group}${group}${group}${group}${gr
 export const FIXTURE_IDS = Object.freeze({
   unit: uuid("d", 1),
   workspace: uuid("e", 1),
+  /** Chi ha la board aperta (la sua bozza sul dispositivo). */
+  user: uuid("f", 1),
   processA: uuid("a", 1),
   processB: uuid("a", 2),
   richieste: uuid("b", 1),

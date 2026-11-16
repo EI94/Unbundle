@@ -136,6 +136,7 @@ test("una chat vera con il Claude finto: «Passo salvato», e dopo la rilettura 
   const client = createBoardClient({
     workspaceId: I.workspace,
     departmentId: I.unit,
+    userId: I.user,
     initial: fixtureBoard(),
     fetch: (async (input: string | URL | Request) => {
       const url = new URL(String(input), "http://localhost");

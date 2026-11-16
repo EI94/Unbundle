@@ -13,7 +13,7 @@ import { boardUrl, createBoardClient, draftKey, type BoardClientState } from "./
 
 const I = FIXTURE_IDS;
 const URL_BOARD = boardUrl(I.workspace, I.unit);
-const KEY = draftKey(I.unit);
+const KEY = draftKey(I.user, I.unit);
 const T = BOARD_TEXT.toast;
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -27,12 +27,13 @@ type Mode = number | "rete" | "persa";
 const T0 = Date.UTC(2026, 10, 16, 9, 0, 0);
 const DAY = 24 * 60 * 60 * 1000;
 
-function harness(options: { initial?: MappingBoard; server?: MappingBoard; draft?: unknown; storage?: "nessuna" | "rotta" } = {}) {
+function harness(options: { initial?: MappingBoard; server?: MappingBoard; draft?: unknown; storage?: "nessuna" | "rotta"; userId?: string; stored?: Map<string, string> } = {}) {
   let time = T0;
   let ids = 0;
   let timerSeq = 0;
   const timers = new Map<number, { at: number; run: () => void }>();
-  const stored = new Map<string, string>();
+  // La memoria del dispositivo: la sua, o quella di un altro harness (lo stesso browser).
+  const stored = options.stored ?? new Map<string, string>();
   if (options.draft !== undefined) stored.set(KEY, typeof options.draft === "string" ? options.draft : JSON.stringify(options.draft));
 
   const initial = options.initial ?? fixtureBoard();
@@ -126,6 +127,7 @@ function harness(options: { initial?: MappingBoard; server?: MappingBoard; draft
   const client = createBoardClient({
     workspaceId: I.workspace,
     departmentId: I.unit,
+    userId: options.userId ?? I.user,
     initial,
     fetch: fetchFake as typeof fetch,
     storage,
@@ -616,6 +618,53 @@ test("una bozza già salvata (la pagina si è chiusa prima della risposta) non r
   assert.equal(h.server.puts.length, 0);
 });
 
+test("la bozza è di chi l'ha scritta: su un browser condiviso chi apre la board dopo non salva a suo nome le modifiche (né i voti) di un altro", async () => {
+  const OTHER = "f1f1f1f1-0000-4000-8000-000000000002";
+  const stored = new Map<string, string>();
+  // A vota senza rete: il voto resta nella sua bozza.
+  const a = harness({ stored });
+  a.client.setOnline(false);
+  a.client.dispatch({ t: "process.vote", processId: I.processA, mine: 3 });
+  a.server.next.push("rete");
+  await a.client.saveNow();
+  assert.ok(stored.has(draftKey(I.user, I.unit)));
+  assert.equal(draftKey(I.user, I.unit), `unbundle-mapping-draft:${I.user}:${I.unit}`);
+  // B entra nello stesso browser e apre la stessa board: la bozza di A non è sua, non torna e non parte.
+  const b = harness({ stored, userId: OTHER });
+  b.client.start();
+  assert.equal(b.state().pill, "saved");
+  assert.equal(b.state().pending, 0);
+  await b.advance(60_000);
+  assert.equal(b.server.puts.length, 0);
+  assert.ok(stored.has(draftKey(I.user, I.unit)), "la bozza di A resta ad A");
+  assert.equal(stored.has(draftKey(OTHER, I.unit)), false);
+});
+
+test("uscire dall'app: quello che resta in coda parte subito, poi la board smette e la sua bozza si toglie", async () => {
+  const h = harness();
+  h.client.dispatch(setTitle(I.richieste, TITLE, "Raccolta"));
+  assert.ok(h.stored.has(KEY));
+  h.hold();
+  const leaving = h.client.signOut();
+  await flush();
+  assert.equal(h.server.puts.length, 1, "la richiesta è partita prima dell'uscita");
+  assert.equal(h.server.puts[0].keepalive, true);
+  assert.equal(h.stored.has(KEY), false, "la bozza non resta sul dispositivo");
+  // La risposta arriva, o no: la board non scrive più la bozza e non salva più.
+  h.server.next.push(500);
+  await h.release();
+  await leaving;
+  assert.equal(h.stored.has(KEY), false);
+  h.client.dispatch(setTitle(I.richieste, "Raccolta", "Raccolta delle richieste d'acquisto"));
+  await h.advance(60_000);
+  assert.equal(h.server.puts.length, 1);
+  assert.equal(h.stored.has(KEY), false);
+  // Senza niente in coda non parte niente.
+  const idle = harness();
+  await idle.client.signOut();
+  assert.equal(idle.server.puts.length, 0);
+});
+
 test("una bozza di più di 7 giorni, o senza ora, non torna: si toglie, e la board apre com'è sul server", async () => {
   const ops = [{ id: "0b0b0b0b-0000-4000-8000-000000000001", ...setTitle(I.richieste, TITLE, "Raccolta") }];
   for (const draft of [{ v: 1, at: T0 - 7 * DAY - 1, ops }, { v: 1, ops }, { v: 1, at: "ieri", ops }]) {
@@ -952,6 +1001,7 @@ test("una risposta che non è una board vale come un salvataggio non riuscito: n
   const broken = createBoardClient({
     workspaceId: I.workspace,
     departmentId: I.unit,
+    userId: I.user,
     initial: fixtureBoard(),
     fetch: (async () => json({ ok: true })) as typeof fetch,
     storage: null,

@@ -25,7 +25,7 @@ function render(board: MappingBoard, extra: { assistantDefaultOpen?: boolean; in
   return renderToStaticMarkup(
     h(
       BoardProvider,
-      { workspaceId: I.workspace, departmentId: board.unit.id, initial: board },
+      { workspaceId: I.workspace, departmentId: board.unit.id, userId: I.user, initial: board },
       h(UnitBoard, {
         workspaceId: I.workspace,
         workspaceName: "Officina di prova",
