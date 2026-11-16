@@ -20,12 +20,13 @@
  * Sul telefono la riga del marchio, la pillola e il titolo scorrono con la pagina; resta ferma la sola riga delle
  * schede, con la pillola a punto e il bottone dell'assistente a destra (P79 adattato: board.css).
  */
-import { useEffect, useId, useRef, useState, useSyncExternalStore, type JSX } from "react";
+import { useEffect, useEffectEvent, useId, useRef, useState, useSyncExternalStore, type JSX } from "react";
 import { BOARD_TABS, BOARD_TEXT, type BoardTab } from "../../../lib/mappatura/text.ts";
 import type { UnitBoardProps } from "../contracts.ts";
-import { useBoard, useBoardClient } from "../store/use-board.tsx";
+import { useBoard, useBoardClient, useClaimToastHost } from "../store/use-board.tsx";
 import { BoardToastView } from "../ui/edit.tsx";
 import { BoardBrand, BoardHeader, BoardMain, BoardTabs, BoardTitle, StatusPill, boardPanelId, boardTabId } from "../ui/frame.tsx";
+import { closesOnEscape, inertOthers, wrapFocus, type InertNode } from "./modal-panel.ts";
 import { boardPrefs, subscribeWide, wideNow, wideOnServer } from "./prefs.ts";
 import { VIEW_TEXT } from "./text.ts";
 import { TodayView } from "./today-view.tsx";
@@ -134,6 +135,28 @@ export function UnitBoard(p: UnitBoardProps & { initialTab?: BoardTab }): JSX.El
   const toggle = () => setOpen(!open, open ? null : "field");
   const close = () => setOpen(false, "toggle");
 
+  // Sopra la pagina il pannello è un dialogo modale (F2): il resto della pagina e dell'app è inerte (tranne il velo, che lo
+  // chiude), il Tab gira dentro di lui (le guardie), Escape lo chiude dovunque sia il fuoco, il toast sta dentro di lui.
+  const panelToastHost = useId();
+  useClaimToastHost(panelToastHost, overlay);
+  const closeOnEscape = useEffectEvent(() => close());
+  useEffect(() => {
+    const element = panel.current;
+    if (!overlay || !element) return;
+    const keep = (node: InertNode) => (node as unknown as Element).classList?.contains("b-assist-scrim") === true;
+    const restore = inertOthers(element as unknown as InertNode, document.body as unknown as InertNode, keep);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!closesOnEscape(event, element)) return;
+      event.preventDefault();
+      closeOnEscape();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      restore();
+    };
+  }, [overlay]);
+
   const assistantButtons = { "aria-expanded": open, "aria-controls": panelId };
   const brand = <BoardBrand workspaceName={p.workspaceName} areaHref={`/dashboard/${p.workspaceId}/mapping`} />;
   const tabs = BOARD_TABS.map((id) => ({ id, label: BOARD_TEXT.tabs[id] }));
@@ -181,22 +204,8 @@ export function UnitBoard(p: UnitBoardProps & { initialTab?: BoardTab }): JSX.El
             ))}
           </BoardMain>
         </div>
-        <aside
-          ref={panel}
-          id={panelId}
-          className="b-assist"
-          hidden={!open}
-          role={overlay ? "dialog" : "complementary"}
-          aria-modal={overlay || undefined}
-          aria-labelledby={titleId}
-          onKeyDown={(event) => {
-            if (event.key === "Escape" && overlay && !event.defaultPrevented) {
-              event.stopPropagation();
-              close();
-            }
-          }}
-          data-b="assistant"
-        >
+        <aside ref={panel} id={panelId} className="b-assist" hidden={!open} role={overlay ? "dialog" : "complementary"} aria-modal={overlay || undefined} aria-labelledby={titleId} data-b="assistant">
+          {overlay ? <span tabIndex={0} data-focus-guard="" aria-hidden="true" onFocus={() => panel.current && wrapFocus(panel.current, "start")} /> : null}
           <div className="b-assist-head">
             <h2 className="b-assist-t" id={titleId}>
               {VIEW_TEXT.header.assistant}
@@ -206,6 +215,8 @@ export function UnitBoard(p: UnitBoardProps & { initialTab?: BoardTab }): JSX.El
             </button>
           </div>
           <div className="b-assist-body">{p.assistant}</div>
+          {overlay ? <BoardToastView host={panelToastHost} /> : null}
+          {overlay ? <span tabIndex={0} data-focus-guard="" aria-hidden="true" onFocus={() => panel.current && wrapFocus(panel.current, "end")} /> : null}
         </aside>
       </div>
       <div className={cx("b-scrim", "b-assist-scrim", overlay && "b-on")} aria-hidden="true" onClick={close} data-b="assistant-scrim" />

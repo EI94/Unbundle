@@ -104,8 +104,18 @@ test("nel browser: la scheda scelta porta in cima e si ricorda; il pannello sopr
   assert.match(source, /const open = choice \?\? \(p\.assistantDefaultOpen \|\| remembered === true\);/);
   assert.match(source, /const overlay = open && !wide;/);
   assert.match(source, /<div className="b-board-col" inert=\{overlay \|\| undefined\}>/);
-  assert.match(source, /if \(event\.key === "Escape" && overlay && !event\.defaultPrevented\)/);
   assert.match(source, /<div className=\{cx\("b-scrim", "b-assist-scrim", overlay && "b-on"\)\} aria-hidden="true" onClick=\{close\}/);
+  // Sopra la pagina è un dialogo modale (F2): il resto (app compresa) inerte tranne il velo, Escape sul documento, le due
+  // guardie del Tab, il toast dentro il pannello (modal-panel.test.ts prova le funzioni).
+  assert.match(source, /const restore = inertOthers\(element as unknown as InertNode, document\.body as unknown as InertNode, keep\);/);
+  assert.match(source, /classList\?\.contains\("b-assist-scrim"\)/);
+  assert.match(source, /document\.addEventListener\("keydown", onKeyDown\);/);
+  assert.match(source, /if \(!closesOnEscape\(event, element\)\) return;/);
+  assert.match(source, /useClaimToastHost\(panelToastHost, overlay\);/);
+  assert.match(source, /\{overlay \? <BoardToastView host=\{panelToastHost\} \/> : null\}/);
+  assert.equal(source.match(/data-focus-guard=""/g)?.length, 2);
+  assert.match(source, /onFocus=\{\(\) => panel\.current && wrapFocus\(panel\.current, "start"\)\}/);
+  assert.match(source, /onFocus=\{\(\) => panel\.current && wrapFocus\(panel\.current, "end"\)\}/);
   // «Inizia con l'assistente» apre il pannello con il cursore nel suo campo; chiuso, il fuoco torna al bottone.
   assert.match(source, /onStartAssistant=\{\(\) => setOpen\(true, "field"\)\}/);
   // Già aperto (un'unità vuota apre il pannello da sé): «Inizia con l'assistente» porta il cursore nel campo subito.
