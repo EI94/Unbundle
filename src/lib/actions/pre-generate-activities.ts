@@ -40,6 +40,14 @@ export type PreGeneratedActivity = Omit<
 > & { reasoning: string };
 
 
+/**
+ * Quante attività propone al più la lettura dei documenti, e quanti passi si confermano al più in una volta. Il prompt
+ * chiede «Massimo 15», ma lo schema del modello non ha un massimo: le proposte oltre la quindicesima non arrivano al
+ * browser, e una lista più lunga che torna dal browser si salva nei suoi primi 15 passi (i testi si tagliano, non si
+ * rifiutano). (In un file «use server» solo funzioni esportate.)
+ */
+const MAX_PROPOSED_ACTIVITIES = 15;
+
 /** Il reparto deve essere di questo workspace: l'id arriva dal client. */
 async function requireDepartmentInWorkspace(workspaceId: string, departmentId: string) {
   const department = await getDepartmentById(departmentId);
@@ -109,18 +117,16 @@ Identifica le attività lavorative ricorrenti e strutturali descritte nei docume
   }));
 
   return {
-    activities: object.activities.map(({ motivazione, ...activity }): PreGeneratedActivity => ({ ...activity, reasoning: motivazione })),
+    activities: object.activities.slice(0, MAX_PROPOSED_ACTIVITIES).map(({ motivazione, ...activity }): PreGeneratedActivity => ({ ...activity, reasoning: motivazione })),
   };
 }
-
-/** Quanti passi si confermano al più in una volta: quanti ne propone il modello. (In un file «use server» solo funzioni esportate.) */
-const MAX_CONFIRMED_ACTIVITIES = 15;
 
 /** Un testo che arriva dal browser: si taglia ai limiti della board quando si scrive, qui si guarda solo la forma. */
 const raw = z.string().max(20_000);
 /**
- * (Mappatura board) La lista che torna dal browser: al più 15 passi, ognuno con la forma di una proposta. I testi si
- * tagliano ai limiti della board (`opsForNewStep`), come per l'assistente: niente oltre i limiti arriva al database.
+ * (Mappatura board) La lista che torna dal browser, già tagliata ai suoi primi 15 passi: ognuno con la forma di una
+ * proposta. I testi si tagliano ai limiti della board (`opsForNewStep`), come per l'assistente: niente oltre i limiti
+ * arriva al database.
  */
 const confirmedSchema = z
   .array(
@@ -135,7 +141,7 @@ const confirmedSchema = z
       toolsUsed: z.array(raw).max(200).optional(),
     }),
   )
-  .max(MAX_CONFIRMED_ACTIVITIES);
+  .max(MAX_PROPOSED_ACTIVITIES);
 
 /**
  * Le attività scelte tra quelle proposte dai documenti diventano passi della board, nel primo processo dell'unità, «da
@@ -150,7 +156,9 @@ export async function confirmPreGeneratedActivities(
   const { session, access } = await requireWorkspaceAccess(workspaceId);
   await requireDepartmentInWorkspace(workspaceId, departmentId);
 
-  const parsed = confirmedSchema.safeParse(confirmedActivities);
+  // Oltre il quindicesimo i passi restano fuori, come le proposte oltre la quindicesima: non si rifiuta tutto.
+  const firstFifteen: unknown = Array.isArray(confirmedActivities) ? confirmedActivities.slice(0, MAX_PROPOSED_ACTIVITIES) : confirmedActivities;
+  const parsed = confirmedSchema.safeParse(firstFifteen);
   if (!parsed.success) throw new Error("Passi non validi.");
   if (parsed.data.length === 0) return { saved: 0 };
 

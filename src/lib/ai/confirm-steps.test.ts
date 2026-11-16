@@ -6,7 +6,7 @@ import { MAPPING_LIMITS } from "../mappatura/vocab.ts";
 
 // (Mappatura board) I passi proposti dai documenti e scelti nel drawer «Passi dai documenti» (azione
 // confirmPreGeneratedActivities, docs/mappatura/MAPPATURA-BOARD-PIANO.md §5.5, §6): la lista che torna dal browser si
-// controlla (al più 15, con la forma di una proposta) e si scrive in una volta con saveBoardOps, come «documenti», nel
+// controlla (i primi 15, con la forma di una proposta) e si scrive in una volta con saveBoardOps, come «documenti», nel
 // primo processo dell'unità. Sessione, unità e board finte; l'azione vera.
 
 const UNIT = "d1d1d1d1-0000-4000-8000-000000000001";
@@ -82,9 +82,18 @@ test("i passi scelti: una scrittura sola con saveBoardOps, come «documenti», n
   ]);
 });
 
-test("più di 15 passi, o una lista che non ha la forma delle proposte: niente si scrive", async () => {
+test("più di 15 passi: entrano i primi 15, gli altri restano fuori, come le proposte oltre la quindicesima", async () => {
   reset();
-  await assert.rejects(confirmPreGeneratedActivities(WS, UNIT, Array.from({ length: 16 }, (_, index) => proposal(`Passo ${index + 1}`)) as never), /Passi non validi/);
+  const result = await confirmPreGeneratedActivities(WS, UNIT, Array.from({ length: 16 }, (_, index) => proposal(`Passo ${index + 1}`)) as never);
+  assert.deepEqual(result, { saved: 15 });
+  const saves = called("saveBoardOps") as Array<[string, unknown, unknown, { ops: BoardOp[] }]>;
+  assert.equal(saves.length, 1);
+  const titles = saves[0][3].ops.flatMap((op) => (op.t === "step.add" ? [op.title] : []));
+  assert.deepEqual(titles, Array.from({ length: 15 }, (_, index) => `Passo ${index + 1}`));
+});
+
+test("una lista che non ha la forma delle proposte: niente si scrive", async () => {
+  reset();
   await assert.rejects(confirmPreGeneratedActivities(WS, UNIT, [{ title: 42 }] as never), /Passi non validi/);
   await assert.rejects(confirmPreGeneratedActivities(WS, UNIT, "tutti" as never), /Passi non validi/);
   assert.deepEqual([called("resolveProcess"), called("saveBoardOps")], [[], []]);
