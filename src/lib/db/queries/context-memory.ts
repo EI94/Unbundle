@@ -36,7 +36,7 @@ import { romeDate } from "@/lib/uc/calendar";
 import type { ServiceResult } from "@/lib/use-cases/types";
 import { loadLiveDiscovery } from "./context-discovery";
 import { resolveHeads } from "./context-proposals";
-import { ctxErrorCode, dropBriefStatement, eventStatement, gate, invalid, isUniqueViolation, isUuid, knownUseCases, notFound, ok, requireSql, retry, romeToday, rowsOf, stale, toDate, toIsoDate, uuidArray } from "./context-shared";
+import { bumpProposalsOnFactsStatement, ctxErrorCode, dropBriefStatement, eventStatement, gate, invalid, isUniqueViolation, isUuid, knownUseCases, notFound, ok, requireSql, retry, romeToday, rowsOf, stale, toDate, toIsoDate, uuidArray } from "./context-shared";
 import { contextStoreReady } from "./context-store";
 import { getWorkspaceById } from "./workspaces";
 
@@ -469,6 +469,8 @@ export async function editFact(
       // Un testo nuovo è una versione nuova, scritta a mano: quella di prima resta nella storia.
       const newId = crypto.randomUUID();
       await db.batch([
+        // Le proposte aperte su questo fatto hanno un «Prima» nuovo: chi le ha davanti come erano le rilegge.
+        bumpProposalsOnFactsStatement(ws, [factId]),
         db.execute(held()),
         ...(leavesBrief ? [dropBriefStatement(ws)] : []),
         db.execute(sql`
@@ -547,17 +549,23 @@ export async function retireFact(actor: ContextActor, factId: string, expectedVe
     if (!current) return notFound();
     if (current.status !== "attivo" || Number(current.version) !== expectedVersion) return stale();
     const retired = sql`EXISTS (SELECT 1 FROM context_facts x WHERE x.id = ${factId}::uuid AND x.status = 'ritirato' AND x.ended_at = now())`;
-    const results = await db.batch([
+    await db.batch([
+      // Le proposte aperte su questo fatto ora valgono come fatti nuovi: chi le ha davanti come erano le rilegge.
+      bumpProposalsOnFactsStatement(ws, [factId]),
       db.execute(sql`
-        UPDATE context_facts SET status = 'ritirato', ended_at = now(), updated_at = now(), version = version + 1
-        WHERE id = ${factId}::uuid AND workspace_id = ${ws}::uuid AND status = 'attivo' AND version = ${expectedVersion}
-        RETURNING id`),
+        WITH gone AS (
+          UPDATE context_facts SET status = 'ritirato', ended_at = now(), updated_at = now(), version = version + 1
+          WHERE id = ${factId}::uuid AND workspace_id = ${ws}::uuid AND status = 'attivo' AND version = ${expectedVersion}
+          RETURNING id
+        )
+        ${requireSql(sql`(SELECT count(*) FROM gone) = 1`, "versione_superata")}`),
       eventStatement({ workspaceId: ws, action: "fatto_ritirato", channel: actor.channel, actorUserId: actor.userId, factId }, retired),
       // Un fatto «Per tutti» ritirato esce da «In breve».
       ...(current.visibility === "tutti" ? [dropBriefStatement(ws, retired)] : []),
     ]);
-    return rowsOf(results[0]).length === 1 ? ok(true) : stale();
+    return ok(true);
   } catch (error) {
+    if (ctxErrorCode(error) === "versione_superata") return stale();
     logSafeError(LOG_SCOPE, "fatto_non_ritirato", error, { workspaceId: ws, factId });
     return retry();
   }

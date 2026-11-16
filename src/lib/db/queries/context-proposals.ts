@@ -12,13 +12,16 @@ import "server-only";
  * corretta, e prima di scrivere il controllo dei testi si rifà su ogni frase.
  *
  * Il bersaglio di «cambia», «conferma» e «conflitto» è la versione attiva del fatto, seguendo la sua storia; se il
- * fatto è stato ritirato o non c'è più, la proposta vale come `nuovo`.
+ * fatto è stato ritirato o non c'è più, la proposta vale come `nuovo`. Una «conferma» letta prima che il fatto cambiasse
+ * vale come conflitto tra la versione di adesso e la frase che gli appunti dicevano. Quando un fatto cambia (una
+ * conferma lo sostituisce, una persona lo riscrive o lo ritira) le proposte aperte che lo toccano alzano la versione:
+ * chi le ha davanti come erano prima riceve `versione_superata` (`bumpProposalsOnFactsStatement`).
  */
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { contextCommitments, contextEntities, contextEvents, contextFacts, contextProposals, contextQuestions, contextSources } from "@/lib/db/schema";
 import { dayLabel, factSourceLabel } from "@/lib/context/labels";
-import { entityKey, entityName, oneLine } from "@/lib/context/normalize";
+import { entityKey, entityName, normalizeStatement, oneLine } from "@/lib/context/normalize";
 import { isPreselected, realIsoDate } from "@/lib/context/read/reconcile";
 import { isHardIssue, issueMessage, scanPersonalData, scanStatement } from "@/lib/context/scan";
 import { CONTEXT_TEXT } from "@/lib/context/text";
@@ -45,7 +48,7 @@ import {
 } from "@/lib/context/vocab";
 import { logSafeError } from "@/lib/log/safe-error";
 import type { ServiceResult } from "@/lib/use-cases/types";
-import { ctxErrorCode, dropBriefStatement, gate, invalid, isUniqueViolation, isUuid, knownUseCases, notFound, ok, requireSql, retry, romeToday, rowsOf, stale, toIsoDate, uuidArray } from "./context-shared";
+import { bumpProposalsOnFactsStatement, ctxErrorCode, dropBriefStatement, factChainCte, gate, invalid, isUniqueViolation, isUuid, knownUseCases, notFound, ok, requireSql, retry, romeToday, rowsOf, stale, toIsoDate, uuidArray } from "./context-shared";
 import { contextStoreReady } from "./context-store";
 
 const LOG_SCOPE = "context/proposals";
@@ -134,11 +137,17 @@ type ProposalRow = typeof contextProposals.$inferSelect;
 const TARGET_KINDS: readonly ProposalKind[] = ["cambia", "conferma", "conflitto"];
 const LOOSE_KINDS: readonly ProposalKind[] = ["impegno", "domanda"];
 
-/** Il tipo che vale adesso: un «cambia», una «conferma» o un «conflitto» senza un fatto attivo da toccare valgono come `nuovo`. */
-function effectiveKind(row: Pick<ProposalRow, "kind" | "targetFactId">, heads: ReadonlyMap<string, TargetFact>): { kind: ProposalKind; target: TargetFact | null } {
+/**
+ * Il tipo che vale adesso: un «cambia», una «conferma» o un «conflitto» senza un fatto attivo da toccare valgono come
+ * `nuovo`. Una «conferma» il cui fatto è cambiato dopo la lettura vale come «conflitto»: gli appunti dicevano la frase di
+ * prima (salvata nella proposta), non quella di adesso, e riconfermarla sarebbe dire che la nota la conferma.
+ */
+function effectiveKind(row: Pick<ProposalRow, "kind" | "targetFactId" | "statement">, heads: ReadonlyMap<string, TargetFact>): { kind: ProposalKind; target: TargetFact | null } {
   if (!TARGET_KINDS.includes(row.kind)) return { kind: row.kind, target: null };
   const head = row.targetFactId ? heads.get(row.targetFactId) : undefined;
-  return head && head.status === "attivo" ? { kind: row.kind, target: head } : { kind: "nuovo", target: null };
+  if (!head || head.status !== "attivo") return { kind: "nuovo", target: null };
+  if (row.kind === "conferma" && head.id !== row.targetFactId && normalizeStatement(head.statement) !== normalizeStatement(row.statement)) return { kind: "conflitto", target: head };
+  return { kind: row.kind, target: head };
 }
 
 interface ViewContext {
@@ -520,7 +529,8 @@ export async function confirmProposals(actor: ContextActor, items: readonly Conf
       newFacts.set(id, {
         id,
         kind: head ? (before?.kind ?? target!.kind) : row.kind === "decisione" ? "decisione" : "fatto",
-        section: row.section!,
+        // Una «conferma» diventata conflitto, risolta con «Ora», resta nella sezione del fatto.
+        section: row.kind === "conferma" && target ? target.section : row.section!,
         statement,
         basis: row.basis,
         visibility: row.visibility,
@@ -589,15 +599,25 @@ export async function confirmProposals(actor: ContextActor, items: readonly Conf
     const briefLosesFact = [...supersede].some((id) => publicHeads.has(id));
 
     const statements = [
-      // Le proposte, ferme e ancora come le ha viste la persona: se una è cambiata, tutto si annulla.
+      // Le proposte, ferme e ancora come le ha viste la persona: se una è cambiata, tutto si annulla. Si prendono in
+      // ordine di id, insieme alle altre proposte aperte sui fatti che questa conferma sostituisce (la loro versione si
+      // alza qui sotto): due conferme sugli stessi fatti si mettono in fila invece di bloccarsi a vicenda.
       db.execute(sql`
-        WITH held AS (
-          SELECT p.id FROM context_proposals p
-          JOIN jsonb_to_recordset(${JSON.stringify(list.map((item) => ({ id: item.id, version: item.version })))}::jsonb) AS x(id uuid, version integer) ON x.id = p.id AND x.version = p.version
+        WITH RECURSIVE ${factChainCte(ws, [...supersede])},
+        locked AS MATERIALIZED (
+          SELECT p.id, p.version FROM context_proposals p
           WHERE p.workspace_id = ${ws}::uuid AND p.status = 'aperta'
+            AND (p.id = ANY(${uuidArray(ids)}) OR p.target_fact_id IN (SELECT id FROM chain))
+          ORDER BY p.id
           FOR UPDATE OF p
+        ),
+        held AS (
+          SELECT l.id FROM locked l
+          JOIN jsonb_to_recordset(${JSON.stringify(list.map((item) => ({ id: item.id, version: item.version })))}::jsonb) AS x(id uuid, version integer) ON x.id = l.id AND x.version = l.version
         )
-        ${requireSql(sql`(SELECT count(*) FROM held) = ${count(list.length)}`, "versione_superata")}`),
+        ${requireSql(sql`(SELECT count(*) FROM locked) >= 0 AND (SELECT count(*) FROM held) = ${count(list.length)}`, "versione_superata")}`),
+      // Le altre proposte aperte su un fatto che cambia: il loro «Prima» non è più quello che si vede (`versione_superata`).
+      ...(supersede.size > 0 ? [bumpProposalsOnFactsStatement(ws, [...supersede], ids)] : []),
       // I fatti riconfermati: la data si rinfresca. Devono essere ancora attivi.
       ...(reconfirm.size > 0
         ? [

@@ -93,6 +93,35 @@ export function dropBriefStatement(workspaceId: string, when?: SQL) {
   return db.execute(sql`DELETE FROM context_briefs WHERE workspace_id = ${workspaceId}::uuid AND ${when ?? sql`true`}`);
 }
 
+/** La CTE `chain(id, supersedes_id)`: questi fatti e tutte le loro versioni di prima (la storia di `supersedes_id`). */
+export function factChainCte(workspaceId: string, factIds: readonly string[]): SQL {
+  return sql`chain AS (
+    SELECT f.id, f.supersedes_id FROM context_facts f WHERE f.workspace_id = ${workspaceId}::uuid AND f.id = ANY(${uuidArray(factIds)})
+    UNION
+    SELECT f.id, f.supersedes_id FROM context_facts f JOIN chain c ON f.id = c.supersedes_id WHERE f.workspace_id = ${workspaceId}::uuid
+  )`;
+}
+
+/**
+ * Un fatto che cambia testo, è ritirato o è sostituito da una conferma cambia il «Prima» delle proposte aperte che lo
+ * toccano (o che toccano una sua versione di prima): la loro versione si alza, così chi le ha davanti come erano prima
+ * riceve `versione_superata` e le rilegge, invece di confermare su un fatto che non ha visto. Le righe si prendono in
+ * ordine di id, come nella conferma: due scritture sugli stessi fatti si mettono in fila. `except`: le proposte che la
+ * stessa transazione sta decidendo. Da mettere nel batch prima delle scritture sui fatti.
+ */
+export function bumpProposalsOnFactsStatement(workspaceId: string, factIds: readonly string[], except: readonly string[] = []) {
+  return db.execute(sql`
+    WITH RECURSIVE ${factChainCte(workspaceId, factIds)},
+    locked AS (
+      SELECT p.id FROM context_proposals p
+      WHERE p.workspace_id = ${workspaceId}::uuid AND p.status = 'aperta' AND p.target_fact_id IN (SELECT id FROM chain)
+        AND NOT (p.id = ANY(${uuidArray(except)}))
+      ORDER BY p.id
+      FOR UPDATE OF p
+    )
+    UPDATE context_proposals p SET version = p.version + 1, updated_at = now() FROM locked WHERE p.id = locked.id`);
+}
+
 /** Una riga di storia scritta da sola (fuori da un batch). */
 export async function writeEvent(e: ContextEventInput): Promise<void> {
   await db.insert(contextEvents).values({

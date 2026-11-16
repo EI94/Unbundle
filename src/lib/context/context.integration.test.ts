@@ -1182,6 +1182,67 @@ test("due conferme insieme sullo stesso fatto: una vince, l'altra torna «versio
   assert.deepEqual(history.map((h) => h.status), ["superato", "superato", "attivo"]);
 });
 
+test("una conferma su un fatto cambiato dopo che la persona l'ha visto: «versione superata»; riletta, mostra il «Prima» di adesso", opts, async () => {
+  const chainOf = async (id: string) =>
+    (
+      await q(
+        `WITH RECURSIVE chain AS (SELECT id, statement, status, 0 AS depth FROM context_facts WHERE id = $1
+           UNION ALL SELECT n.id, n.statement, n.status, c.depth + 1 FROM chain c JOIN context_facts n ON n.supersedes_id = c.id)
+         SELECT statement, status FROM chain ORDER BY depth`,
+        [id],
+      )
+    ).map((f) => [f.statement, f.status]);
+  // Due appunti cambiano lo stesso fatto; tutti e due mostrano «Prima: … vale 1». Si conferma il secondo.
+  const fact = await seedFact(`Il fatto visto ${suffix} vale 1.`, { section: "azienda" });
+  const a = await readProposals([proposal({ tipo: "cambia", testo: `Il fatto visto ${suffix} vale 2.`, citazione: "", fattoRif: "F1", sezione: "azienda" })], `${NOTE}\nPrima call sul fatto visto (${suffix}).`);
+  const b = await readProposals([proposal({ tipo: "cambia", testo: `Il fatto visto ${suffix} vale 3.`, citazione: "", fattoRif: "F1", sezione: "azienda" })], `${NOTE}\nSeconda call sul fatto visto (${suffix}).`);
+  okValue(await proposals.confirmProposals(actor("lsc"), pick(b.all)));
+  // Il primo, confermato dopo con la versione che la persona ha visto: non sostituisce «vale 3» senza che nessuno l'abbia visto.
+  assert.equal(errOf(await proposals.confirmProposals(actor("ls"), pick(a.all))), "versione_superata");
+  assert.deepEqual(await chainOf(fact), [[`Il fatto visto ${suffix} vale 1.`, "superato"], [`Il fatto visto ${suffix} vale 3.`, "attivo"]]);
+  // Riletto, mostra «Prima: … vale 3»: chi conferma adesso sa che cosa sostituisce.
+  const again = (await proposals.listOpenProposals(actor("ls"), { sourceId: a.sourceId }))!.proposals[0];
+  assert.equal(again.before?.statement, `Il fatto visto ${suffix} vale 3.`);
+  okValue(await proposals.confirmProposals(actor("ls"), pick([again])));
+  assert.deepEqual((await chainOf(fact)).map(([, status]) => status), ["superato", "superato", "attivo"]);
+
+  // Una riconferma letta prima che il fatto cambiasse: gli appunti dicevano «alle 7», il fatto adesso dice «alle 6».
+  const shift = await seedFact(`Il turno visto ${suffix} inizia alle 7.`, { section: "lavoro" });
+  const ra = await readProposals([proposal({ tipo: "conferma", testo: "x", citazione: "", fattoRif: "F1" })], `${NOTE}\nCall A sul turno visto (${suffix}).`);
+  assert.equal(ra.open.reconfirmed.length, 1);
+  const rb = await readProposals([proposal({ tipo: "cambia", testo: `Il turno visto ${suffix} inizia alle 6.`, citazione: "", fattoRif: "F1", sezione: "lavoro" })], `${NOTE}\nCall B sul turno visto (${suffix}).`);
+  okValue(await proposals.confirmProposals(actor("lsc"), pick(rb.all)));
+  assert.equal(errOf(await proposals.confirmProposals(actor("ls"), pick(ra.all))), "versione_superata", "la pagina di prima non riconferma «alle 6»");
+  // Riletta, non è più una riconferma ma un conflitto, mai preselezionato: «Prima: alle 6», «Ora: alle 7».
+  const reloaded = (await proposals.listOpenProposals(actor("ls"), { sourceId: ra.sourceId }))!;
+  assert.deepEqual(reloaded.reconfirmed, []);
+  const [conflict] = reloaded.proposals;
+  assert.deepEqual(
+    [conflict.kind, conflict.preselected, conflict.statement, conflict.before?.statement],
+    ["conflitto", false, `Il turno visto ${suffix} inizia alle 7.`, `Il turno visto ${suffix} inizia alle 6.`],
+  );
+  assert.equal(errOf(await proposals.confirmProposals(actor("ls"), pick([conflict]))), "dati_non_validi", "un conflitto vuole la scelta della persona");
+  okValue(await proposals.confirmProposals(actor("ls"), [{ id: conflict.id, version: conflict.version, resolution: "ora" }]));
+  assert.deepEqual(
+    (await q(`SELECT statement, section, status FROM context_facts WHERE supersedes_id = (SELECT id FROM context_facts WHERE supersedes_id = $1)`, [shift]))[0],
+    { statement: `Il turno visto ${suffix} inizia alle 7.`, section: "lavoro", status: "attivo" },
+    "«Ora» scrive la frase degli appunti, nella sezione del fatto",
+  );
+
+  // Un fatto riscritto o ritirato a mano: le proposte aperte su di lui, viste prima, sono «versione superata».
+  const site = await seedFact(`La sede vista ${suffix} è a Udine.`, { section: "azienda" });
+  const rc = await readProposals([proposal({ tipo: "cambia", testo: `La sede vista ${suffix} è a Trieste.`, citazione: "", fattoRif: "F1", sezione: "azienda" })], `${NOTE}\nCall sulla sede vista (${suffix}).`);
+  const edited = okValue(await memory.editFact(actor("lsc"), site, 1, { statement: `La sede vista ${suffix} è a Gorizia.` })).factId;
+  assert.equal(errOf(await proposals.confirmProposals(actor("ls"), pick(rc.all))), "versione_superata");
+  const afterEdit = (await proposals.listOpenProposals(actor("ls"), { sourceId: rc.sourceId }))!.proposals[0];
+  assert.equal(afterEdit.before?.statement, `La sede vista ${suffix} è a Gorizia.`);
+  okValue(await memory.retireFact(actor("lsc"), edited, 1));
+  assert.equal(errOf(await proposals.confirmProposals(actor("ls"), pick([afterEdit]))), "versione_superata");
+  const afterRetire = (await proposals.listOpenProposals(actor("ls"), { sourceId: rc.sourceId }))!.proposals[0];
+  assert.deepEqual([afterRetire.kind, afterRetire.before], ["nuovo", null]);
+  await proposals.discardProposals(actor("ls"), [afterRetire.id]);
+});
+
 test("due proposte della stessa conferma sullo stesso fatto si mettono in fila; un fatto ritirato fa della proposta un fatto nuovo", opts, async () => {
   const fact = await seedFact(`Il fatto in fila ${suffix} vale 1.`, { section: "azienda" });
   const { all } = await readProposals([
