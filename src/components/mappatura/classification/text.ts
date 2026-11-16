@@ -66,6 +66,12 @@ export const classifyButtonLabel = (n: number): string => `Classifica ${counted(
 /** Dopo il bottone, tutto classificato: «Mappatura completata: 5 passi classificati.». */
 export const completedClassifiedText = (n: number): string => `Mappatura completata: ${counted(n, "passo classificato", "passi classificati")}.`;
 
+/**
+ * Dopo «Classifica {n} passi» su un'unità già completa: «5 passi classificati.», «1 passo classificato.»; niente da
+ * fare (un altro giro li ha classificati prima): «Nessun passo da classificare.».
+ */
+export const classifiedText = (n: number): string => (n > 0 ? `${counted(n, "passo classificato", "passi classificati")}.` : "Nessun passo da classificare.");
+
 /** Dopo il bottone, una parte classificata: «Classificati 3 passi su 5. Riprova per gli altri.». */
 export const partialText = (classified: number, of: number): string =>
   `${classified === 1 ? "Classificato" : "Classificati"} ${counted(classified, "passo", "passi")} su ${formatCount(of)}. Riprova per gli altri.`;

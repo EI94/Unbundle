@@ -5,6 +5,7 @@ import { STREAMS } from "../../../lib/mappatura/vocab.ts";
 import {
   CLASSIFICATION_TEXT,
   caseRowLabel,
+  classifiedText,
   classifyButtonLabel,
   completedClassifiedText,
   exposureTileValue,
@@ -30,6 +31,9 @@ test("ogni scritta della classificazione rispetta lo stile della casa", () => {
     classifyButtonLabel(3),
     completedClassifiedText(1),
     completedClassifiedText(5),
+    classifiedText(0),
+    classifiedText(1),
+    classifiedText(5),
     partialText(1, 4),
     partialText(3, 5),
     reliabilityText(0.86),
@@ -48,6 +52,7 @@ test("i numeri e i plurali per uno", () => {
   assert.deepEqual([toClassifyLine(1), toClassifyLine(2)], ["1 passo da classificare.", "2 passi da classificare."]);
   assert.deepEqual([classifyButtonLabel(1), classifyButtonLabel(2)], ["Classifica 1 passo", "Classifica 2 passi"]);
   assert.deepEqual([completedClassifiedText(1), completedClassifiedText(5)], ["Mappatura completata: 1 passo classificato.", "Mappatura completata: 5 passi classificati."]);
+  assert.deepEqual([classifiedText(1), classifiedText(5), classifiedText(0)], ["1 passo classificato.", "5 passi classificati.", "Nessun passo da classificare."]);
   assert.deepEqual([partialText(1, 4), partialText(3, 5)], ["Classificato 1 passo su 4. Riprova per gli altri.", "Classificati 3 passi su 5. Riprova per gli altri."]);
   assert.equal(reliabilityText(0.856), "Affidabilità 86%");
   assert.deepEqual([onetLine("13-1023.00", " Purchasing agents "), onetLine("13-1023.00", null)], ["O*NET 13-1023.00 · Purchasing agents", "O*NET 13-1023.00"]);

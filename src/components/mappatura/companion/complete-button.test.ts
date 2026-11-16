@@ -62,6 +62,17 @@ test("il toast dopo il bottone: tutto classificato, una parte, niente, niente da
   assert.deepEqual(completionToast(outcome({ classification: "non_riuscita", classified: 0, remaining: 5 })), { text: "Classificazione non riuscita. Riprova.", open: false });
   assert.deepEqual(completionToast(outcome({ classification: "niente_da_fare", classified: 0 })), { text: "Mappatura completata.", open: true });
   assert.deepEqual(completionToast(null), { text: "Classificazione non riuscita. Riprova.", open: false });
+  // «Classifica {n} passi» su un'unità già completa: quanti passi ha classificato, non «Mappatura completata».
+  assert.deepEqual(completionToast(outcome({ firstCompletion: false, classified: 3 })), { text: "3 passi classificati.", open: true });
+  assert.deepEqual(completionToast(outcome({ firstCompletion: false, classified: 1 })), { text: "1 passo classificato.", open: true });
+  assert.deepEqual(completionToast(outcome({ firstCompletion: false, classification: "niente_da_fare", classified: 0 })), { text: "Nessun passo da classificare.", open: true });
+  assert.deepEqual(completionToast(outcome({ firstCompletion: false, classification: "parziale", classified: 1, remaining: 2 })), { text: "Classificato 1 passo su 3. Riprova per gli altri.", open: false });
+  for (const firstCompletion of [true, false]) {
+    for (const classification of ["fatta", "niente_da_fare"] as const) {
+      const { text } = completionToast(outcome({ firstCompletion, classification }));
+      assert.equal(text.startsWith("Mappatura completata"), firstCompletion, `${classification}, prima volta: ${firstCompletion}`);
+    }
+  }
 });
 
 function fakeClient() {

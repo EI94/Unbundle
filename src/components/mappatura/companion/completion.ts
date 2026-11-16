@@ -14,7 +14,7 @@ import { allSteps, type MappingBoard } from "../../../lib/mappatura/board-model.
 import type { CompletionOutcome } from "../../../lib/mappatura/complete.ts";
 import { BOARD_TEXT } from "../../../lib/mappatura/text.ts";
 import type { BoardClient } from "../store/board-client.ts";
-import { CLASSIFICATION_TEXT, classifyButtonLabel, completedClassifiedText, partialText } from "../classification/text.ts";
+import { CLASSIFICATION_TEXT, classifiedText, classifyButtonLabel, completedClassifiedText, partialText } from "../classification/text.ts";
 
 export type CompletionMode = { kind: "complete" } | { kind: "classify"; steps: number };
 
@@ -34,19 +34,22 @@ export function completionLabel(mode: CompletionMode, working: boolean): string 
   return mode.kind === "complete" ? CLASSIFICATION_TEXT.button.complete : classifyButtonLabel(mode.steps);
 }
 
-/** Il toast dopo il bottone, secondo l'esito; `open`: porta anche a «Classificazione». */
+/**
+ * Il toast dopo il bottone, secondo l'esito; `open`: porta anche a «Classificazione». «Mappatura completata» solo la
+ * prima volta: «Classifica {n} passi» su un'unità già completa dice quanti passi ha classificato.
+ */
 export function completionToast(outcome: CompletionOutcome | null | undefined): { text: string; open: boolean } {
   const T = CLASSIFICATION_TEXT.after;
   if (!outcome) return { text: T.failed, open: false };
   switch (outcome.classification) {
     case "fatta":
-      return { text: completedClassifiedText(outcome.classified), open: true };
+      return { text: outcome.firstCompletion ? completedClassifiedText(outcome.classified) : classifiedText(outcome.classified), open: true };
     case "parziale":
       return { text: partialText(outcome.classified, outcome.classified + outcome.remaining), open: false };
     case "non_riuscita":
       return { text: T.failed, open: false };
     case "niente_da_fare":
-      return { text: T.completed, open: true };
+      return { text: outcome.firstCompletion ? T.completed : classifiedText(outcome.classified), open: true };
   }
 }
 
