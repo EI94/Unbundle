@@ -13,7 +13,7 @@ import { sql } from "drizzle-orm";
 import type { z } from "zod";
 import type { companyValueThesisSchema } from "@/lib/ai/schemas";
 import { db } from "@/lib/db";
-import { contextStoreReady } from "@/lib/db/queries/context-store";
+import { contextStoreReady, contextStoreState } from "@/lib/db/queries/context-store";
 import { logSafeError } from "@/lib/log/safe-error";
 import { isUuid } from "@/lib/uc/ids";
 
@@ -28,16 +28,23 @@ function thesisOf(value: unknown): CompanyValueThesis | null {
 
 /**
  * La tesi del workspace. Con la 0038: `workspaces.company_value_thesis`; se è nulla e l'organizzazione ha un solo
- * workspace, quella dell'organizzazione. Senza la 0038: quella dell'organizzazione (il comportamento di prima).
+ * workspace, quella dell'organizzazione. Senza la 0038: quella dell'organizzazione (il comportamento di prima). Se la
+ * sonda della 0038 non risponde non si sa quale vale: quella dell'organizzazione solo se l'organizzazione ha un workspace
+ * solo, altrimenti nessuna (la tesi di un'organizzazione con più workspace non è di tutti).
  */
 export async function getWorkspaceValueThesis(workspaceId: string): Promise<CompanyValueThesis | null> {
   if (!isUuid(workspaceId)) return null;
-  if (!(await contextStoreReady())) {
+  const store = await contextStoreState();
+  if (store !== "pronto") {
     const result = (await db.execute(sql`
-      SELECT o.company_value_thesis AS org_thesis
+      SELECT o.company_value_thesis AS org_thesis,
+        (SELECT count(*) FROM workspaces x WHERE x.organization_id = w.organization_id)::int AS workspaces
       FROM workspaces w JOIN organizations o ON o.id = w.organization_id
       WHERE w.id = ${workspaceId}::uuid`)) as unknown as Rows;
-    return thesisOf(result.rows?.[0]?.org_thesis);
+    const row = result.rows?.[0];
+    if (!row) return null;
+    if (store === "sconosciuto" && Number(row.workspaces) !== 1) return null;
+    return thesisOf(row.org_thesis);
   }
   const result = (await db.execute(sql`
     SELECT w.company_value_thesis AS ws_thesis, o.company_value_thesis AS org_thesis,

@@ -14,7 +14,7 @@ import { contextActorFor } from "@/lib/context/server/actor";
 import type { ContextActor } from "@/lib/context/visibility";
 import { contextAiConsent } from "@/lib/db/queries/context-consent";
 import { listContextSources } from "@/lib/db/queries/context-sources";
-import { contextStoreReady } from "@/lib/db/queries/context-store";
+import { contextStoreState } from "@/lib/db/queries/context-store";
 
 /** Lo schema che il modello riempie: la motivazione ha un nome neutro (MOTIVAZIONE_DESCRIPTION in models.ts). */
 const preGeneratedActivitySchema = z.object({
@@ -53,10 +53,14 @@ async function requireDepartmentInWorkspace(workspaceId: string, departmentId: s
 /**
  * I documenti che chi chiama può mandare al modello (rilascio 9a, RILASCIO-9a-COSTRUZIONE.md §5.2): null vuol dire
  * tutti (Lateral Space; e senza la 0038, quando nessun documento è «Solo Lateral Space»). Per gli altri solo i
- * documenti «Per tutti» che vedono in «Contesto»: un documento interno non torna al cliente come attività.
+ * documenti «Per tutti» che vedono in «Contesto»: un documento interno non torna al cliente come attività. Se la sonda
+ * della 0038 non risponde non si sa quali sono interni: nessuno (si chiude, non si apre).
  */
 async function readableDocumentIds(actor: ContextActor): Promise<Set<string> | null> {
-  if (actor.isLateralSpace || !(await contextStoreReady())) return null;
+  if (actor.isLateralSpace) return null;
+  const store = await contextStoreState();
+  if (store === "assente") return null;
+  if (store === "sconosciuto") return new Set();
   const sources = await listContextSources(actor, { limit: 500 });
   return new Set(sources.flatMap((source) => (source.document ? [source.document.id] : [])));
 }

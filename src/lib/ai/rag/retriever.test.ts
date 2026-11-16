@@ -8,8 +8,8 @@ import { installAppModules, recordLogs } from "../claude-test-kit.ts";
 // dati di una persona non entra nella memoria; i frammenti di un documento «Solo Lateral Space» non tornano a chi non
 // è di Lateral Space. Il modulo è quello vero; il database è finto e registra che cosa gli si chiede.
 
-type Prova = { inserted: Array<Record<string, unknown>>; wheres: SQL[]; storeReady: boolean; insertFails: boolean };
-const prova: Prova = { inserted: [], wheres: [], storeReady: true, insertFails: false };
+type Prova = { inserted: Array<Record<string, unknown>>; wheres: SQL[]; storeState: "pronto" | "assente" | "sconosciuto"; insertFails: boolean };
+const prova: Prova = { inserted: [], wheres: [], storeState: "pronto", insertFails: false };
 (globalThis as { __prova?: Prova }).__prova = prova;
 
 await installAppModules({
@@ -19,7 +19,8 @@ await installAppModules({
       select: () => chain(),
       insert: () => ({ values: async (row) => { if (globalThis.__prova.insertFails) throw new Error("testo riservato del messaggio"); globalThis.__prova.inserted.push(row); } }),
     };`,
-  "@/lib/db/queries/context-store": `export async function contextStoreReady() { return globalThis.__prova.storeReady; }`,
+  "@/lib/db/queries/context-store": `export async function contextStoreState() { return globalThis.__prova.storeState; }
+    export async function contextStoreReady() { return globalThis.__prova.storeState === "pronto"; }`,
 });
 const { retrieveRelevantContext, indexConversationMessage } = await import("./retriever.ts");
 
@@ -30,7 +31,7 @@ const text = (where: SQL) => dialect.sqlToQuery(where).sql;
 const LS_ONLY = /AND NOT EXISTS \(SELECT 1 FROM context_sources s WHERE s\.document_id = "document_chunks"\."document_id" AND s\.visibility = 'ls'\)/;
 
 function reset(over: Partial<Prova> = {}) {
-  Object.assign(prova, { inserted: [], wheres: [], storeReady: true, insertFails: false }, over);
+  Object.assign(prova, { inserted: [], wheres: [], storeState: "pronto", insertFails: false }, over);
 }
 
 test("un messaggio senza dati di persone entra nella memoria della chat, tagliato a 5.000 caratteri", async () => {
@@ -74,7 +75,7 @@ test("se la scrittura non riesce il messaggio resta nella conversazione e nel lo
 
 test("i frammenti di un documento «Solo Lateral Space» tornano solo a Lateral Space: per gli altri, e senza sapere chi chiede, restano fuori", async () => {
   const documentWhere = async (options: Parameters<typeof retrieveRelevantContext>[2]) => {
-    reset({ storeReady: prova.storeReady });
+    reset({ storeState: prova.storeState });
     await retrieveRelevantContext("magazzino ordini", WS, options);
     assert.equal(prova.wheres.length, options?.includeConversations === false ? 1 : 2);
     return text(prova.wheres[0]);
@@ -89,11 +90,27 @@ test("i frammenti di un documento «Solo Lateral Space» tornano solo a Lateral 
   // La memoria della chat non ha documenti: il suo filtro non cambia.
   assert.doesNotMatch(text(prova.wheres[1]), /context_sources/);
   // Senza la 0038 nessun documento è «Solo Lateral Space»: la tabella non si nomina.
-  prova.storeReady = false;
+  prova.storeState = "assente";
   assert.doesNotMatch(await documentWhere({ viewer: { isLateralSpace: false } }), /context_sources/);
-  prova.storeReady = true;
+  prova.storeState = "pronto";
   // Una domanda senza parole non cerca niente.
   reset();
   assert.deepEqual(await retrieveRelevantContext("a è", WS, {}), []);
   assert.deepEqual(prova.wheres, []);
+});
+
+test("se la sonda della 0038 non risponde, chi non è di Lateral Space non riceve frammenti di documenti: si chiude, non si apre", async () => {
+  // La sonda non risponde (un errore del database, o il self-heal che lancia a freddo): non si sa quali documenti sono interni.
+  reset({ storeState: "sconosciuto" });
+  assert.deepEqual(await retrieveRelevantContext("magazzino ordini", WS, { viewer: { isLateralSpace: false } }), []);
+  assert.equal(prova.wheres.length, 1, "la ricerca nei documenti non parte");
+  assert.doesNotMatch(text(prova.wheres[0]), /document_chunks/, "resta solo la memoria della chat");
+  reset({ storeState: "sconosciuto" });
+  await retrieveRelevantContext("magazzino ordini", WS, {});
+  assert.equal(prova.wheres.length, 1, "senza `viewer`, lo stesso");
+  // Lateral Space vede tutti i documenti: per lui la sonda non conta.
+  reset({ storeState: "sconosciuto" });
+  await retrieveRelevantContext("magazzino ordini", WS, { viewer: { isLateralSpace: true } });
+  assert.equal(prova.wheres.length, 2);
+  assert.match(text(prova.wheres[0]), /document_chunks/);
 });

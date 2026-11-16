@@ -21,7 +21,7 @@ await installAppModules({
   // (Rilascio 9a) L'ok ai sub-responsabili c'è; chi chiama vede il documento «Per tutti» dell'unità.
   "@/lib/db/queries/context-consent": `export async function contextAiConsent() { return true; }`,
   "@/lib/context/server/actor": `export function contextActorFor(user, access, workspaceId) { return { workspaceId, userId: user.id, role: access.role, isLateralSpace: false, channel: "web" }; }`,
-  "@/lib/db/queries/context-store": `export async function contextStoreReady() { return true; }`,
+  "@/lib/db/queries/context-store": `export async function contextStoreState() { return "pronto"; } export async function contextStoreReady() { return true; }`,
   "@/lib/db/queries/context-sources": `export async function listContextSources() { return [{ id: "fonte-prova", kind: "documento", visibility: "tutti", document: { id: "doc-prova" } }]; }`,
 });
 const { classifyActivity } = await import("./classify.ts");

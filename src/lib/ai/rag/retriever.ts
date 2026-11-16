@@ -2,7 +2,7 @@ import { db } from "@/lib/db";
 import { documentChunks, conversationMemory } from "@/lib/db/schema";
 import { sql, desc } from "drizzle-orm";
 import { scanPersonalData } from "@/lib/context/scan";
-import { contextStoreReady } from "@/lib/db/queries/context-store";
+import { contextStoreState } from "@/lib/db/queries/context-store";
 
 export interface RetrievedChunk {
   content: string;
@@ -43,30 +43,36 @@ export async function retrieveRelevantContext(
   if (!tsQuery) return [];
 
   // I documenti «Solo Lateral Space» (un file caricato da «Aggiungi appunti») non arrivano al cliente dalla chat. La
-  // visibilità sta sulla fonte del documento (0038): senza la 0038 nessun documento è «Solo Lateral Space».
+  // visibilità sta sulla fonte del documento (0038). Per chi non è di Lateral Space: con la 0038 il filtro; senza la
+  // 0038 nessun documento è «Solo Lateral Space»; se la sonda non risponde non si sa quali lo sono, e i frammenti dei
+  // documenti restano fuori (si chiude, non si apre).
+  const store = options.viewer?.isLateralSpace === true ? null : await contextStoreState();
   const lsOnly =
-    options.viewer?.isLateralSpace !== true && (await contextStoreReady())
+    store === "pronto"
       ? sql` AND NOT EXISTS (SELECT 1 FROM context_sources s WHERE s.document_id = ${documentChunks.documentId} AND s.visibility = 'ls')`
       : sql``;
 
-  const docResults = await db
-    .select({
-      content: documentChunks.content,
-      rank: sql<number>`ts_rank_cd(to_tsvector('italian', ${documentChunks.content}), to_tsquery('italian', ${tsQuery}))`.as(
-        "rank"
-      ),
-      documentId: documentChunks.documentId,
-    })
-    .from(documentChunks)
-    .where(
-      sql`${documentChunks.workspaceId} = ${workspaceId} AND to_tsvector('italian', ${documentChunks.content}) @@ to_tsquery('italian', ${tsQuery})${lsOnly}`
-    )
-    .orderBy(
-      desc(
-        sql`ts_rank_cd(to_tsvector('italian', ${documentChunks.content}), to_tsquery('italian', ${tsQuery}))`
-      )
-    )
-    .limit(topK);
+  const docResults =
+    store === "sconosciuto"
+      ? []
+      : await db
+          .select({
+            content: documentChunks.content,
+            rank: sql<number>`ts_rank_cd(to_tsvector('italian', ${documentChunks.content}), to_tsquery('italian', ${tsQuery}))`.as(
+              "rank"
+            ),
+            documentId: documentChunks.documentId,
+          })
+          .from(documentChunks)
+          .where(
+            sql`${documentChunks.workspaceId} = ${workspaceId} AND to_tsvector('italian', ${documentChunks.content}) @@ to_tsquery('italian', ${tsQuery})${lsOnly}`
+          )
+          .orderBy(
+            desc(
+              sql`ts_rank_cd(to_tsvector('italian', ${documentChunks.content}), to_tsquery('italian', ${tsQuery}))`
+            )
+          )
+          .limit(topK);
 
   const chunks: RetrievedChunk[] = docResults.map((r) => ({
     content: r.content,
