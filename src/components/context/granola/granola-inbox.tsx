@@ -1,11 +1,16 @@
 /**
- * Granola nella pagina «Contesto» (rilascio 9a, docs/contesto/RILASCIO-9a-COSTRUZIONE.md §8.9): la riga «Aggiorna da
- * Granola» e «Da smistare».
+ * Granola nella pagina «Contesto» (rilascio 9a, docs/contesto/RILASCIO-9a-COSTRUZIONE.md §8.7, §8.9): la riga «Aggiorna
+ * da Granola» e «Da smistare». Il pacchetto «pagina» lo monta nei due punti del §7: con `compact` nella vista «Memoria»
+ * (una riga sola, e solo se c'è qualcosa da dire), senza nella vista «Appunti» (il blocco intero).
  *
- * Questo file è lo **stub** della fondazione: il componente c'è, con le proprietà del piano, e non mostra niente. Il
- * pacchetto «granola» scrive il corpo; il pacchetto «pagina» lo monta. È un componente server asincrono: legge da sé
- * lo stato e non mostra niente a chi non è di Lateral Space.
+ * È un componente server asincrono: legge da sé chi guarda e lo stato, e non mostra niente a chi non è di Lateral Space
+ * o dove Granola non è attivo. Se l'ultimo giro ha più di 30 minuti, il pannello lo fa partire da solo.
  */
+import { contextActorFromSession } from "@/lib/context/server/actor";
+import { contextAbilities } from "@/lib/context/visibility";
+import { loadGranolaStatus } from "@/lib/db/queries/context-granola";
+import { GranolaInboxPanel } from "./granola-inbox-panel";
+
 export interface GranolaInboxProps {
   workspaceId: string;
   workspaceName: string;
@@ -13,7 +18,24 @@ export interface GranolaInboxProps {
   compact?: boolean;
 }
 
-export async function GranolaInbox(props: GranolaInboxProps): Promise<null> {
-  void props;
-  return null;
+export async function GranolaInbox({ workspaceId, workspaceName, compact = false }: GranolaInboxProps) {
+  const who = await contextActorFromSession(workspaceId);
+  // Solo Lateral Space: per gli altri il blocco non c'è.
+  if (!who.ok || !contextAbilities(who.actor).canUseGranola) return null;
+  const status = await loadGranolaStatus({ userId: who.actor.userId, workspaceId });
+  if (!status.available) return null;
+  return (
+    <GranolaInboxPanel
+      workspaceId={workspaceId}
+      workspaceName={workspaceName}
+      compact={compact}
+      connected={status.connected}
+      expired={status.status === "da_ricollegare"}
+      lastSyncAt={status.lastSyncAt?.toISOString() ?? null}
+      stale={status.stale}
+      unsortedCount={status.unsortedCount}
+      blockedCount={status.blockedCount}
+      renderedAt={new Date().toISOString()}
+    />
+  );
 }
