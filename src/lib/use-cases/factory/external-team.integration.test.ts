@@ -416,6 +416,69 @@ test("il «Dove» che si stringe legge i casi di prima dopo il lock della person
   }
 });
 
+test("«Aggiungi» aspetta il lock della persona: due «Dove» scritti insieme non si mescolano, resta l'ultimo per intero", opts, async () => {
+  assert.deepEqual(await grantsOf("racer"), []);
+  const holder = await lockHolder();
+  try {
+    // Un altro «Aggiungi» per la stessa persona tiene il suo lock e non ha ancora scritto.
+    await holder.query(`SELECT pg_advisory_lock(${PERSON_LOCK})`, [ids.ws, ids.racer]);
+    const adding = add("racer", "tutti");
+    assert.equal(await someoneWaits(holder), true, "«Aggiungi» aspetta il lock della persona");
+    assert.deepEqual(await grantsOf("racer"), [], "finché aspetta non ha scritto niente");
+    // L'altro scrive «solo in NX-0001» e lascia il lock: adesso tocca a questo, che lo sostituisce con «tutti».
+    await holder.query(`INSERT INTO use_case_external_builders (workspace_id, user_id, use_case_id, added_by_user_id) VALUES ($1, $2, $3, $4)`, [ids.ws, ids.racer, uc.u1, ids.lead]);
+    await holder.query(`SELECT pg_advisory_unlock(${PERSON_LOCK})`, [ids.ws, ids.racer]);
+    const added = await adding;
+    assert.ok(added.ok, added.ok ? "" : added.message);
+    assert.deepEqual(await grantsOf("racer"), [null], "una riga «tutti», mai insieme a righe per caso");
+  } finally {
+    await holder.end();
+    await team.removeExternalBuilder(exec, { workspaceId: ids.ws, actorUserId: ids.lead, userId: ids.racer, lsDomains: LS });
+  }
+});
+
+test("l'uscita dal workspace aspetta il lock della persona: la concessione che un «Aggiungi» stava scrivendo se ne va con l'uscita", opts, async () => {
+  assert.deepEqual(await grantsOf("racer"), []);
+  const holder = await lockHolder();
+  try {
+    // Un «Aggiungi» già partito: la sua transazione ha il lock della persona e non ha ancora scritto la concessione.
+    await holder.query("BEGIN");
+    await holder.query(`SELECT pg_advisory_xact_lock(${PERSON_LOCK})`, [ids.ws, ids.racer]);
+    const leaving = team.leaveWorkspaceFactory(exec, { workspaceId: ids.ws, userId: ids.racer, lsDomains: LS });
+    assert.equal(await someoneWaits(holder), true, "l'uscita aspetta il lock della persona");
+    await holder.query(`INSERT INTO use_case_external_builders (workspace_id, user_id, use_case_id, added_by_user_id) VALUES ($1, $2, NULL, $3)`, [ids.ws, ids.racer, ids.lead]);
+    await holder.query("COMMIT");
+    await leaving;
+    assert.deepEqual(await grantsOf("racer"), [], "senza il lock l'uscita cancellerebbe prima, e questa concessione resterebbe");
+  } finally {
+    await holder.end();
+    await q(`DELETE FROM use_case_external_builders WHERE workspace_id = $1 AND user_id = $2`, [ids.ws, ids.racer]);
+  }
+});
+
+test("gli stessi id scritti in maiuscolo prendono lo stesso lock della persona", opts, async () => {
+  const holder = await lockHolder();
+  try {
+    // Il lock con gli id in minuscolo, come li dà Postgres; la scrittura li riceve in maiuscolo (da un indirizzo, da un modulo).
+    await holder.query(`SELECT pg_advisory_lock(${PERSON_LOCK})`, [ids.ws, ids.racer]);
+    const upper = exec.batch(builders.deleteGrantsStatements(ids.ws.toUpperCase(), ids.racer.toUpperCase()));
+    assert.equal(await someoneWaits(holder), true, "la stessa persona, lo stesso lock");
+    await holder.query(`SELECT pg_advisory_unlock(${PERSON_LOCK})`, [ids.ws, ids.racer]);
+    await upper;
+    // E al contrario: chi tiene il lock scritto in maiuscolo ferma chi lo chiede in minuscolo.
+    const key = `hashtext('unbundle:external-builders:' || lower($1) || ':' || lower($2))`;
+    await holder.query(`SELECT pg_advisory_lock(${key})`, [ids.ws.toUpperCase(), ids.racer.toUpperCase()]);
+    const lower = exec.batch(builders.grantGuardStatements(ids.ws, ids.racer, dossier.d1)).catch((error: unknown) => error);
+    assert.equal(await someoneWaits(holder), true, "anche la riga osservatore si mette in fila");
+    await holder.query(`SELECT pg_advisory_unlock(${key})`, [ids.ws.toUpperCase(), ids.racer.toUpperCase()]);
+    // Senza concessione la riga non entra: la guardia risponde «concessione tolta».
+    const refused = await lower;
+    assert.ok(refused instanceof Error && /concessione_tolta/.test(refused.message), "la guardia è passata dopo il lock");
+  } finally {
+    await holder.end();
+  }
+});
+
 test("«Aggiungi» di chi non è responsabile di nessun dossier: ogni caso saltato, il messaggio lo dice; la riga e «Togli» contano le righe vere", opts, async () => {
   const { externalAddedText, externalRemoveConfirm } = await import("./builders-text.ts");
   // Lateral Space, ma responsabile di nessun dossier: ogni caso aperto si salta.
