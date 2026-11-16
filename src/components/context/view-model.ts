@@ -20,6 +20,7 @@ import type { FactView, MemorySection, MemoryView } from "../../lib/db/queries/c
 import type { ConfirmItem, OpenProposals, ProposalPatch, ProposalView } from "../../lib/db/queries/context-proposals.ts";
 import type { ReadOutcome } from "../../lib/db/queries/context-read.ts";
 import type { SourceListItem, SourceState } from "../../lib/db/queries/context-sources.ts";
+import { decodeWindows1252 } from "../../lib/uc/files/charset.ts";
 
 const T = CONTEXT_TEXT;
 
@@ -399,6 +400,19 @@ export function droppedFileKind(file: { name: string; size: number }): DroppedFi
   if (!TEXT_EXTENSIONS.has(extension) && !DOCUMENT_EXTENSIONS.has(extension)) return { kind: "rifiutato", message: T.documents.badType };
   if (!(file.size > 0) || file.size > CONTEXT_LIMITS.uploadMaxBytes) return { kind: "rifiutato", message: T.documents.tooBig };
   return TEXT_EXTENSIONS.has(extension) ? { kind: "testo" } : { kind: "documento" };
+}
+
+/**
+ * Il testo di un file `.txt` o `.md` trascinato in «Aggiungi appunti»: UTF-8 se lo è (senza il BOM), altrimenti
+ * Windows-1252 («ANSI» di Blocco note e di Excel), come lo legge il caricamento dei documenti. `File.text()` legge solo
+ * UTF-8: «Qualità» in Windows-1252 diventava «Qualit�».
+ */
+export function droppedText(bytes: Uint8Array): string {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return decodeWindows1252(bytes);
+  }
 }
 
 /** Un documento da caricare con «Carica documento»: i formati letti, fino a 4 MB. */

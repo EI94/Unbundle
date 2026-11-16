@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 import { AiConsentNotice } from "./ai-consent-notice";
 import { Field } from "./fields";
 import { readUntilDone, saveNote, uploadDocument } from "./read-client";
-import { ACCEPTED_FILES, addNotesClose, afterUpload, droppedFileKind, fileSizeText, noteDraftErrors, proposedTitle, readOutcomeMessage, titleFromFileName, type AddNotesPhase, type ReadMessage } from "./view-model";
+import { ACCEPTED_FILES, addNotesClose, afterUpload, droppedFileKind, droppedText, fileSizeText, noteDraftErrors, proposedTitle, readOutcomeMessage, titleFromFileName, type AddNotesPhase, type ReadMessage } from "./view-model";
 
 const T = CONTEXT_TEXT;
 
@@ -109,7 +109,7 @@ export function AddNotesDialog({
     setErrors((e) => ({ ...e, body: "" }));
     const title = titleFromFileName(picked.name);
     if (kind.kind === "testo") {
-      const text = await picked.text();
+      const text = droppedText(new Uint8Array(await picked.arrayBuffer()));
       setDraft((d) => ({ ...d, body: text, title: titleTouched && d.title ? d.title : title || proposedTitle(text) }));
       setFile(null);
       return;

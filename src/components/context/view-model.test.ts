@@ -16,6 +16,7 @@ import {
   confirmSubtitle,
   consentNoticeNeeded,
   droppedFileKind,
+  droppedText,
   dueText,
   editableFields,
   factMarks,
@@ -431,6 +432,16 @@ test("un file trascinato: il testo si legge nel browser, i documenti si caricano
   assert.deepEqual(droppedFileKind({ name: "a.pdf", size: 0 }), { kind: "rifiutato", message: T.documents.tooBig });
   assert.deepEqual(uploadableDocument({ name: "a.md", size: 10 }), { ok: true });
   assert.deepEqual(uploadableDocument({ name: "a.exe", size: 10 }), { ok: false, message: T.documents.badType });
+});
+
+test("un .txt o un .md trascinato: UTF-8 se lo è, altrimenti Windows-1252, come il caricamento dei documenti", () => {
+  // «Qualità è alta — 3 €» salvato da Blocco note in «ANSI» (Windows-1252).
+  const ansi = Uint8Array.from([0x51, 0x75, 0x61, 0x6c, 0x69, 0x74, 0xe0, 0x20, 0xe8, 0x20, 0x61, 0x6c, 0x74, 0x61, 0x20, 0x97, 0x20, 0x33, 0x20, 0x80]);
+  assert.equal(droppedText(ansi), "Qualità è alta — 3 €");
+  const utf8 = new TextEncoder().encode("Qualità è alta — 3 €");
+  assert.equal(droppedText(utf8), "Qualità è alta — 3 €");
+  assert.equal(droppedText(Uint8Array.from([0xef, 0xbb, 0xbf, ...utf8])), "Qualità è alta — 3 €", "senza il BOM");
+  assert.equal(droppedText(new Uint8Array()), "");
 });
 
 test("i controlli prima di salvare: gli stessi limiti del server, i messaggi di CONTEXT_TEXT", () => {

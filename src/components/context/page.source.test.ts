@@ -113,6 +113,12 @@ test("i componenti del browser non importano moduli del server: dalle funzioni c
   for (const file of ["src/components/context/page-data.ts", "src/components/context/routes/respond.ts"]) assert.match(read(file), /^import "server-only";/, file);
 });
 
+test("«Aggiungi appunti» legge un file di testo trascinato come il caricamento dei documenti: mai solo come UTF-8", () => {
+  const source = withoutComments(read("src/components/context/add-notes-dialog.tsx"));
+  assert.match(source, /const text = droppedText\(new Uint8Array\(await picked\.arrayBuffer\(\)\)\);/);
+  assert.doesNotMatch(source, /\.text\(\)/, "File.text() legge solo UTF-8");
+});
+
 test("le rotte della pagina: funzioni Node, mai in cache, con i tempi del piano; tutte partono da chi chiama", () => {
   const routes: Readonly<Record<string, number>> = {
     [`${API}/sources/route.ts`]: 30,
