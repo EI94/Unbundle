@@ -819,11 +819,13 @@ SELECT EXISTS (SELECT 1 FROM src, tgt WHERE src.id <> tgt.id) AS linked`);
 
 // ─── Completamento (§4.5) ────────────────────────────────────────────
 
-/** L'unità e quello che serve al classificatore: il nome, la value thesis dell'organizzazione, gli obiettivi, le attività. */
+/**
+ * L'unità e quello che serve al classificatore: il nome, gli obiettivi, le attività. La tesi del valore non si legge qui:
+ * è quella del workspace, da `getWorkspaceValueThesis` (rilascio 9a), mai quella dell'organizzazione.
+ */
 export function completionReads(scope: BoardScope): UcStatement[] {
   return [
-    toStatement(ucSql`SELECT d.name, o.company_value_thesis
-FROM departments d JOIN workspaces w ON w.id = d.workspace_id LEFT JOIN organizations o ON o.id = w.organization_id
+    toStatement(ucSql`SELECT d.name FROM departments d
 WHERE d.id = ${U(scope.departmentId)} AND d.workspace_id = ${U(scope.workspaceId)}`),
     toStatement(ucSql`SELECT g.* FROM strategic_goals g WHERE g.workspace_id = ${U(scope.workspaceId)} ORDER BY g.created_at, g.id`),
     toStatement(ucSql`SELECT a.* FROM activities a JOIN mapping_steps s ON s.activity_id = a.id AND s.department_id = a.department_id AND s.workspace_id = a.workspace_id

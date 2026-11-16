@@ -377,3 +377,37 @@ test("recordClassifications («Classifica attività» del workspace): solo attiv
     await unseed(q, g);
   }
 });
+
+test("(rilascio insieme) il classificatore riceve la tesi del valore del workspace, mai quella dell'organizzazione", opts, async (t) => {
+  recordLogs(t);
+  // Il rilascio 9a sposta la tesi sul workspace (RILASCIO-9a-COSTRUZIONE.md §10.1): l'organizzazione della prova ha due
+  // workspace, e la sua tesi può essere di un altro dei due. Senza la tesi del workspace il classificatore non ne riceve.
+  const g = newFixture();
+  await seed(q, g, "tesi");
+  try {
+    const where = { workspaceId: g.ws, departmentId: g.unit };
+    const ORG = "Tesi di un altro workspace della stessa organizzazione";
+    const WS = "Cucine su misura del workspace di prova";
+    await q(`UPDATE organizations SET company_value_thesis = $2::jsonb WHERE id = $1`, [g.org, JSON.stringify({ coreValueProposition: ORG })]);
+    /** I prompt del classificatore (non quelli del match O*NET) di una chiusura. */
+    const classifierPrompts = async () => {
+      const requests = fakeAppClaude(Array.from({ length: 2 }, () => replies([])));
+      await completed(complete.appCompleteDeps(db.exec), { scope: where, deadline: FAR() });
+      return requests.map((request) => JSON.stringify(request.body)).filter((body) => !body.includes("O*NET SOC"));
+    };
+
+    await insertActivity(q, { ws: g.ws, unit: g.unit }, { title: "Raccolta delle richieste" });
+    const without = await classifierPrompts();
+    assert.equal(without.length, 1);
+    assert.equal(without[0].includes(ORG), false, "senza la tesi del workspace, niente tesi: mai quella dell'organizzazione");
+
+    await insertActivity(q, { ws: g.ws, unit: g.unit }, { title: "Scelta del fornitore" });
+    await q(`UPDATE workspaces SET company_value_thesis = $2::jsonb WHERE id = $1`, [g.ws, JSON.stringify({ coreValueProposition: WS })]);
+    const withThesis = await classifierPrompts();
+    assert.equal(withThesis.length, 1);
+    assert.ok(withThesis[0].includes(WS), "la tesi del workspace è nel prompt");
+    assert.equal(withThesis[0].includes(ORG), false);
+  } finally {
+    await unseed(q, g);
+  }
+});

@@ -49,7 +49,9 @@ test("nessuno legge più la tesi dell'organizzazione: ogni lettura passa da getW
   assert.match(oldPage, /redirect\(`\/dashboard\/\$\{workspaceId\}\/contesto`\)/);
   // I lettori: tutti dalla funzione, con il workspace della richiesta (F, poi la chat e la barra della Discovery di «mcp»).
   const readers: Readonly<Record<string, RegExp>> = {
-    "src/lib/ai/tools/activity-mapping-tools.ts": /await getWorkspaceValueThesis\(workspaceId\)/,
+    // (Rilascio insieme) «Completo mapping» classifica con il completamento della board (mappatura board): la tesi la
+    // legge lui, caricando il modulo quando serve.
+    "src/lib/mappatura/complete.ts": /getWorkspaceValueThesis\(workspaceId\)/,
     "src/lib/use-cases/create-flow.ts": /getWorkspaceValueThesis\(ctx\.workspaceId\)/,
     "src/lib/actions/reports.ts": /await getWorkspaceValueThesis\(workspaceId\)/,
     "src/lib/actions/value-map.ts": /await getWorkspaceValueThesis\(workspaceId\)/,
@@ -63,7 +65,7 @@ test("nessuno legge più la tesi dell'organizzazione: ogni lettura passa da getW
   for (const [file, pattern] of Object.entries(readers)) {
     const source = read(file);
     assert.match(source, pattern, file);
-    assert.match(source, /from "@\/lib\/db\/queries\/value-thesis"/, file);
+    assert.match(source, /(?:from |import\()"@\/lib\/db\/queries\/value-thesis"/, file);
     assert.doesNotMatch(source, /\borganizations\b/, `${file}: non serve più la tabella delle organizzazioni`);
   }
   // La Discovery scrive sul workspace: il tool non tocca più `organizations`.

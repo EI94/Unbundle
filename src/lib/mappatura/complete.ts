@@ -79,6 +79,15 @@ async function ensureSchema(): Promise<void> {
   await ensureDbSchema();
 }
 
+/**
+ * La tesi del valore che il classificatore riceve: quella del workspace (rilascio 9a, RILASCIO-9a-COSTRUZIONE.md §10.1),
+ * mai quella dell'organizzazione, che può essere di un altro workspace. Si carica quando serve, come lo schema.
+ */
+async function workspaceValueThesis(workspaceId: string): Promise<unknown> {
+  const { getWorkspaceValueThesis } = await import("@/lib/db/queries/value-thesis");
+  return getWorkspaceValueThesis(workspaceId);
+}
+
 /** Una riga di `activities` come la dà Drizzle: è il tipo che il classificatore e il match O*NET prendono. */
 function activityFromRow(row: UcRow): Activity {
   return {
@@ -145,7 +154,8 @@ export function appCompleteDeps(executor: UcExecutor): CompleteDeps {
       await adoptUnit(executor, scope);
       const [units, goals, activities] = await executor.batch(completionReads(scope));
       if (units.length === 0) return null;
-      return { unitName: text(units[0].name) ?? "", activities: activities.map(activityFromRow), companyValueThesis: units[0].company_value_thesis ?? null, goals: goals.map(goalFromRow) };
+      const companyValueThesis = await workspaceValueThesis(scope.workspaceId);
+      return { unitName: text(units[0].name) ?? "", activities: activities.map(activityFromRow), companyValueThesis, goals: goals.map(goalFromRow) };
     },
     async markMapped(scope, signal) {
       const [rows] = await executor.batch([markMapped(scope, { type: MAPPING_COMPLETED_SIGNAL, ...signal })]);
