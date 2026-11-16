@@ -67,6 +67,8 @@ export const CONTEXT_TEXT = Object.freeze({
     sourceDocument: (date: string) => `Documento ${date}`,
     sourceManual: "Scritto a mano",
     sourceDiscovery: "Discovery",
+    sourceCallWord: "Call",
+    sourceDocumentWord: "Documento",
     quote: "Citazione",
     source: "Fonte",
     history: "Storia",

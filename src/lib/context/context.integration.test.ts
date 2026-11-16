@@ -27,6 +27,7 @@ let thesis: typeof import("../db/queries/value-thesis.ts");
 let sources: typeof import("../db/queries/context-sources.ts");
 let reading: typeof import("../db/queries/context-read.ts");
 let consent: typeof import("../db/queries/context-consent.ts");
+let proposals: typeof import("../db/queries/context-proposals.ts");
 let actors: typeof import("./server/actor.ts");
 
 const LS = ["ls.test"];
@@ -141,6 +142,7 @@ before(async () => {
   sources = await import("../db/queries/context-sources.ts");
   reading = await import("../db/queries/context-read.ts");
   consent = await import("../db/queries/context-consent.ts");
+  proposals = await import("../db/queries/context-proposals.ts");
   actors = await import("./server/actor.ts");
 
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1, 'Organizzazione A di prova contesto', $2), ($3, 'Organizzazione B di prova contesto', $4)`, [
@@ -790,4 +792,355 @@ test("purgeExpiredNoteText: a 12 mesi e un giorno il testo si cancella, restano 
   assert.equal(none.length, 0);
   // Un secondo giro non cancella di nuovo.
   assert.equal(await sources.purgeExpiredNoteText(now), 0);
+});
+
+// ─── Proposte e conferma ─────────────────────────────────────────────
+
+/** Un appunto nuovo letto dal Claude finto: restituisce le sue proposte aperte, come le vede Lateral Space. */
+async function readProposals(modelProposals: ModelProposal[], body?: string) {
+  const note = await addNote(body);
+  fakeAppClaude([answer(modelProposals)]);
+  okValue(await reading.readContextSource(actor("ls"), note.sourceId));
+  const open = await proposals.listOpenProposals(actor("ls"), { sourceId: note.sourceId });
+  assert.ok(open);
+  return { sourceId: note.sourceId, open, all: [...open.proposals, ...open.reconfirmed] };
+}
+const pick = (list: Array<{ id: string; version: number }>) => list.map((p) => ({ id: p.id, version: p.version }));
+/** Un fatto attivo scritto direttamente, per le prove che partono da una memoria già piena. */
+async function seedFact(statement: string, over: { visibility?: string; section?: string } = {}) {
+  const id = randomUUID();
+  await q(`INSERT INTO context_facts (id, workspace_id, section, statement, basis, visibility, origin) VALUES ($1, $2, $3, $4, 'detto', $5, 'manuale')`, [id, ids.wsA, over.section ?? "sistemi", statement, over.visibility ?? "tutti"]);
+  return id;
+}
+
+test("listOpenProposals: solo Lateral Space; i gruppi, la preselezione («dedotto» e conflitti mai), il fatto di prima, la domanda che si chiude", opts, async () => {
+  const erp = await seedFact(`Il gestionale è SAP Business One ${suffix}.`);
+  const question = randomUUID();
+  await q(`INSERT INTO context_questions (id, workspace_id, question, visibility, origin) VALUES ($1, $2, 'Quando cambia il gestionale?', 'ls', 'manuale')`, [question, ids.wsA]);
+  const { sourceId, open } = await readProposals([
+    proposal({ useCase: ["CX-0001"] }),
+    proposal({ tipo: "conflitto", testo: `Il gestionale è Odoo ${suffix}.`, citazione: "Il gestionale è SAP Business One.", fattoRif: "F1", sezione: "sistemi" }),
+    proposal({ tipo: "cambia", testo: `Il gestionale è SAP S/4HANA ${suffix}.`, citazione: "", fattoRif: "F1", sezione: "sistemi" }),
+    proposal({ tipo: "conferma", testo: "x", citazione: "Il gestionale è SAP Business One.", fattoRif: "F1" }),
+    proposal({ tipo: "nuovo", testo: `Il gestionale cambia entro giugno ${suffix}.`, citazione: "L'ERP lo cambiamo entro giugno", domandaRif: "D1", sezione: "sistemi" }),
+    proposal({ tipo: "nuovo", testo: "Mario Rossi decide gli acquisti.", citazione: "", sezione: "persone" }),
+    proposal({ tipo: "impegno", testo: `Mandare l'elenco dei fornitori ${suffix}.`, citazione: "", sezione: null, parte: "cliente", ruolo: "responsabile acquisti", entro: "2026-11-30" }),
+  ]);
+  assert.deepEqual(open.sources.map((s) => [s.id, s.title, s.occurredOn]), [[sourceId, "Call di avvio", "2026-11-14"]]);
+  assert.deepEqual(open.proposals.map((p) => [p.kind, p.basis, p.preselected, p.issue]), [
+    ["nuovo", "detto", true, null],
+    ["conflitto", "detto", false, null],
+    ["cambia", "dedotto", false, null],
+    ["nuovo", "detto", true, null],
+    ["nuovo", "dedotto", false, "nome_persona"],
+    ["impegno", "dedotto", false, null],
+  ]);
+  assert.deepEqual(open.reconfirmed.map((p) => [p.kind, p.statement, p.preselected]), [["conferma", `Il gestionale è SAP Business One ${suffix}.`, true]]);
+  const [first, conflict, , answers, named, commitment] = open.proposals;
+  assert.deepEqual(first.useCases, [{ id: ids.ucA, code: "CX-0001", title: "Ordini automatici" }]);
+  assert.deepEqual(conflict.before, { factId: erp, statement: `Il gestionale è SAP Business One ${suffix}.`, sourceLabel: "Scritto a mano", date: conflict.before?.date });
+  assert.match(conflict.before?.date ?? "", /^\d{1,2} [a-z]{3}/, "la data come a schermo: «14 nov»");
+  assert.deepEqual(answers.closesQuestion, { id: question, question: "Quando cambia il gestionale?" });
+  assert.equal(named.issueMessage, "Non scrivere nomi di persone: indica il ruolo, per esempio «il responsabile commerciale».");
+  assert.deepEqual([commitment.party, commitment.roleLabel, commitment.dueOn, commitment.section], ["cliente", "responsabile acquisti", "2026-11-30", null]);
+  // Tutte le proposte aperte del workspace, e mai a chi non è di Lateral Space.
+  const everything = await proposals.listOpenProposals(actor("lsc"));
+  assert.ok(everything && everything.proposals.length >= open.proposals.length && everything.sources.some((s) => s.id === sourceId));
+  for (const person of ["rev", "con", "lrn", "out"] as const) assert.equal(await proposals.listOpenProposals(actor(person)), null, person);
+  assert.deepEqual(await proposals.listOpenProposals(actor("lsb"), { sourceId }), { sources: [], proposals: [], reconfirmed: [] }, "un appunto di un altro workspace non ha proposte, per lui");
+  assert.equal(await proposals.countOpenProposals(actor("rev")), 0);
+  assert.ok((await proposals.countOpenProposals(actor("ls"))) >= 7);
+  await proposals.discardProposals(actor("ls"), [...open.proposals, ...open.reconfirmed].map((p) => p.id));
+});
+
+test("editProposal: corregge sul posto, ricalcola il controllo dei testi, alza la versione; una versione vecchia non passa", opts, async () => {
+  const { all } = await readProposals([
+    proposal({ tipo: "nuovo", testo: "Mario Rossi decide gli acquisti.", citazione: "", sezione: "persone" }),
+    proposal({ tipo: "impegno", testo: `Preparare la proposta ${suffix}.`, citazione: "", sezione: null, parte: "nostra" }),
+  ]);
+  const [named, commitment] = all;
+  assert.equal(named.issue, "nome_persona");
+  const fixed = okValue(await proposals.editProposal(actor("ls"), named.id, named.version, { statement: "  Il responsabile acquisti   decide gli acquisti. ", section: "lavoro", visibility: "ls", useCaseIds: [ids.ucA] }));
+  assert.deepEqual(
+    { statement: fixed.statement, issue: fixed.issue, section: fixed.section, visibility: fixed.visibility, version: fixed.version, useCases: fixed.useCases.map((u) => u.code), preselected: fixed.preselected },
+    { statement: "Il responsabile acquisti decide gli acquisti.", issue: null, section: "lavoro", visibility: "ls", version: named.version + 1, useCases: ["CX-0001"], preselected: false },
+  );
+  assert.equal((await q(`SELECT edited FROM context_proposals WHERE id = $1`, [named.id]))[0].edited, true);
+  // La versione di prima non vale più.
+  assert.equal(errOf(await proposals.editProposal(actor("ls"), named.id, named.version, { statement: "Un altro testo." })), "versione_superata");
+  // Un testo lungo si salva ma va accorciato; un nome torna a fermare la proposta; un dato sanitario non si salva.
+  const long = okValue(await proposals.editProposal(actor("ls"), named.id, fixed.version, { statement: `Il responsabile acquisti decide ${"e ancora decide ".repeat(14)}gli acquisti.` }));
+  assert.equal(long.issue, "lungo");
+  assert.equal(long.issueMessage, "Accorcia la frase: al massimo 200 caratteri.");
+  const again = okValue(await proposals.editProposal(actor("ls"), named.id, long.version, { statement: "Anna Bianchi decide gli acquisti." }));
+  assert.equal(again.issue, "nome_persona");
+  const health = await proposals.editProposal(actor("ls"), named.id, again.version, { statement: "Il responsabile acquisti è assente per una visita medica." });
+  assert.equal(errOf(health), "dati_non_validi");
+  assert.match(String(!health.ok && health.fieldErrors?.statement), /dati sanitari/);
+  // I campi di un impegno: parte, ruolo (mai un nome), data vera. Un fatto non ha una parte.
+  const done = okValue(await proposals.editProposal(actor("lsc"), commitment.id, commitment.version, { party: "cliente", roleLabel: "direttore operativo", dueOn: "2026-12-15" }));
+  assert.deepEqual([done.party, done.roleLabel, done.dueOn], ["cliente", "direttore operativo", "2026-12-15"]);
+  const bad = await proposals.editProposal(actor("ls"), commitment.id, done.version, { roleLabel: "Mario Rossi", dueOn: "2026-02-30", section: "lavoro", useCaseIds: [randomUUID()] });
+  assert.deepEqual(Object.keys((!bad.ok && bad.fieldErrors) || {}).sort(), ["dueOn", "roleLabel", "section", "useCaseIds"]);
+  assert.equal(errOf(await proposals.editProposal(actor("ls"), named.id, again.version, { party: "cliente" })), "dati_non_validi");
+  // Solo Lateral Space, solo nel suo workspace.
+  for (const person of ["rev", "con", "lrn"] as const) assert.equal(errOf(await proposals.editProposal(actor(person), named.id, again.version, { statement: "Testo." })), "permesso_mancante", person);
+  assert.equal(errOf(await proposals.editProposal(actor("lsb"), named.id, again.version, { statement: "Testo." })), "non_trovato");
+  await proposals.discardProposals(actor("ls"), all.map((p) => p.id));
+});
+
+test("discardProposals: le proposte scartate non entrano e non si ripropongono; solo Lateral Space", opts, async () => {
+  const { sourceId, all } = await readProposals([proposal({ testo: `Fatto da scartare ${suffix}.`, citazione: "" }), proposal({ testo: `Fatto da tenere ${suffix}.`, citazione: "" })]);
+  for (const person of ["rev", "con", "lrn"] as const) assert.equal(errOf(await proposals.discardProposals(actor(person), [all[0].id])), "permesso_mancante", person);
+  assert.deepEqual(okValue(await proposals.discardProposals(actor("lsb"), [all[0].id])), { discarded: 0 }, "di un altro workspace: niente");
+  assert.deepEqual(okValue(await proposals.discardProposals(actor("ls"), [all[0].id, all[0].id, randomUUID()])), { discarded: 1 });
+  assert.deepEqual((await q(`SELECT status, decided_by_user_id::text AS who FROM context_proposals WHERE id = $1`, [all[0].id]))[0], { status: "scartata", who: ids.ls });
+  assert.deepEqual((await q(`SELECT detail FROM context_events WHERE workspace_id = $1 AND action = 'proposte_scartate' ORDER BY at DESC LIMIT 1`, [ids.wsA]))[0].detail, { n: 1 });
+  assert.equal(errOf(await proposals.discardProposals(actor("ls"), [])), "dati_non_validi");
+  assert.equal(errOf(await proposals.discardProposals(actor("ls"), ["non-un-id"])), "dati_non_validi");
+  // Una rilettura riceve la frase scartata in «Già proposto», e non la ripropone.
+  const requests = fakeAppClaude([answer([proposal({ testo: `Fatto da scartare ${suffix}.`, citazione: "" }), proposal({ testo: `Fatto nuovo dopo la rilettura ${suffix}.`, citazione: "" })])]);
+  assert.deepEqual(okValue(await reading.readContextSource(actor("ls"), sourceId, { again: true })), { status: "letto", proposals: 1, skipped: {} });
+  assert.ok(JSON.stringify(requests[0].body.messages).includes(`- Fatto da scartare ${suffix}.`));
+  assert.deepEqual((await q(`SELECT statement, status FROM context_proposals WHERE source_id = $1 ORDER BY position`, [sourceId])).map((r) => [r.statement, r.status]), [
+    [`Fatto da scartare ${suffix}.`, "scartata"],
+    [`Fatto da tenere ${suffix}.`, "superata"],
+    [`Fatto nuovo dopo la rilettura ${suffix}.`, "aperta"],
+  ]);
+  await proposals.discardProposals(actor("ls"), (await proposals.listOpenProposals(actor("ls"), { sourceId }))!.proposals.map((p) => p.id));
+});
+
+test("confirmProposals: un fatto nuovo, una decisione, un impegno, una domanda; entità e collegamenti; la domanda chiusa dal fatto che le risponde", opts, async () => {
+  const question = randomUUID();
+  await q(`INSERT INTO context_questions (id, workspace_id, question, visibility, origin) VALUES ($1, $2, $3, 'tutti', 'manuale')`, [question, ids.wsA, `Chi approva gli ordini grandi ${suffix}?`]);
+  const { sourceId, all } = await readProposals([
+    proposal({
+      testo: `Gli ordini grandi li approva il direttore operativo ${suffix}.`,
+      citazione: "Il direttore operativo dice",
+      sezione: "persone",
+      domandaRif: "D1",
+      useCase: ["CX-0001"],
+      entita: [{ nome: "Direttore operativo", tipo: "ruolo" }, { nome: "Acquisti", tipo: "unita" }, { nome: `SAP ${suffix}`, tipo: "sistema" }, { nome: "CX-0001", tipo: "use_case" }, { nome: "Ridurre i tempi di consegna", tipo: "obiettivo" }],
+      collegamenti: [{ da: "Direttore operativo", verbo: "decide", a: "Acquisti" }, { da: "Acquisti", verbo: "usa", a: `SAP ${suffix}` }],
+    }),
+    proposal({ tipo: "decisione", testo: `Si parte dagli ordini automatici ${suffix}.`, citazione: "", sezione: "obiettivi", visibilita: "ls" }),
+    proposal({ tipo: "impegno", testo: `Mandare l'elenco dei fornitori entro fine mese ${suffix}.`, citazione: "", sezione: null, parte: "cliente", ruolo: "responsabile acquisti", entro: "2026-11-30", useCase: ["CX-0001"] }),
+    proposal({ tipo: "domanda", testo: `Quanti ordini arrivano ogni giorno ${suffix}?`, citazione: "", sezione: null, ruolo: "responsabile acquisti", visibilita: "ls" }),
+  ]);
+  const result = okValue(await proposals.confirmProposals(actor("ls"), pick(all)));
+  assert.deepEqual({ ...result, remaining: 0 }, { confirmed: 4, newFacts: 2, changedFacts: 0, reconfirmed: 0, commitments: 1, questions: 1, remaining: 0 });
+  const facts = await q(`SELECT id, kind, section, statement, basis, visibility, status, origin, source_id::text AS source, quote, confirmed_by_user_id::text AS who, supersedes_id FROM context_facts WHERE source_id = $1 ORDER BY created_at, statement`, [sourceId]);
+  const fact = facts.find((f) => f.kind === "fatto")!;
+  const decision = facts.find((f) => f.kind === "decisione")!;
+  assert.deepEqual(
+    { section: fact.section, statement: fact.statement, basis: fact.basis, visibility: fact.visibility, status: fact.status, origin: fact.origin, source: fact.source, quote: fact.quote, who: fact.who, supersedes: fact.supersedes_id },
+    { section: "persone", statement: `Gli ordini grandi li approva il direttore operativo ${suffix}.`, basis: "detto", visibility: "tutti", status: "attivo", origin: "fonte", source: sourceId, quote: "Il direttore operativo dice", who: ids.ls, supersedes: null },
+  );
+  assert.deepEqual([decision.section, decision.basis, decision.visibility, decision.quote], ["obiettivi", "dedotto", "ls", null], "un fatto dedotto resta segnato, anche dopo la conferma");
+  // I legami: lo use case, e le entità (quelle di Unbundle con la loro riga, le altre con il nome).
+  assert.deepEqual((await q(`SELECT use_case_id::text AS uc FROM context_fact_links WHERE fact_id = $1 AND use_case_id IS NOT NULL`, [fact.id])).map((r) => r.uc), [ids.ucA]);
+  const entities = await q(
+    `SELECT e.type, e.name, e.name_key, e.department_id::text AS unit, e.goal_id::text AS goal, e.use_case_id::text AS uc
+     FROM context_fact_links l JOIN context_entities e ON e.id = l.entity_id WHERE l.fact_id = $1 ORDER BY e.type, e.name`,
+    [fact.id],
+  );
+  assert.deepEqual(entities, [
+    { type: "obiettivo", name: "Ridurre i tempi di consegna", name_key: ids.goalA, unit: null, goal: ids.goalA, uc: null },
+    { type: "ruolo", name: "Direttore operativo", name_key: "direttore operativo", unit: null, goal: null, uc: null },
+    { type: "sistema", name: `SAP ${suffix}`, name_key: `sap ${suffix}`, unit: null, goal: null, uc: null },
+    { type: "unita", name: "Acquisti", name_key: ids.unitA, unit: ids.unitA, goal: null, uc: null },
+    { type: "use_case", name: "Ordini automatici", name_key: ids.ucA, unit: null, goal: null, uc: ids.ucA },
+  ]);
+  const relations = await q(
+    `SELECT a.name AS from_name, r.verb, b.name AS to_name FROM context_relations r JOIN context_entities a ON a.id = r.from_entity_id JOIN context_entities b ON b.id = r.to_entity_id WHERE r.fact_id = $1 ORDER BY r.verb`,
+    [fact.id],
+  );
+  assert.deepEqual(relations, [{ from_name: "Direttore operativo", verb: "decide", to_name: "Acquisti" }, { from_name: "Acquisti", verb: "usa", to_name: `SAP ${suffix}` }]);
+  // La domanda aperta a cui il fatto risponde si chiude con quel fatto.
+  assert.deepEqual((await q(`SELECT status, closed_by_fact_id::text AS fact, closed_at IS NOT NULL AS closed FROM context_questions WHERE id = $1`, [question]))[0], { status: "chiusa", fact: fact.id, closed: true });
+  // L'impegno e la domanda: per parte e per ruolo, mai per persona.
+  assert.deepEqual((await q(`SELECT statement, party, role_label, due_on::text AS due, status, visibility, origin, use_case_ids::text[] AS ucs FROM context_commitments WHERE source_id = $1`, [sourceId]))[0], {
+    statement: `Mandare l'elenco dei fornitori entro fine mese ${suffix}.`,
+    party: "cliente",
+    role_label: "responsabile acquisti",
+    due: "2026-11-30",
+    status: "aperto",
+    visibility: "tutti",
+    origin: "fonte",
+    ucs: [ids.ucA],
+  });
+  assert.deepEqual((await q(`SELECT question, ask_whom, status, visibility FROM context_questions WHERE source_id = $1`, [sourceId]))[0], { question: `Quanti ordini arrivano ogni giorno ${suffix}?`, ask_whom: "responsabile acquisti", status: "aperta", visibility: "ls" });
+  // Le proposte sono confermate, con che cosa sono diventate; la fonte risulta confermata.
+  const decidedRows = await q(`SELECT kind, status, result_id IS NOT NULL AS has_result, decided_by_user_id::text AS who FROM context_proposals WHERE source_id = $1 ORDER BY position`, [sourceId]);
+  assert.deepEqual(decidedRows.map((r) => [r.status, r.has_result, r.who]), Array.from({ length: 4 }, () => ["confermata", true, ids.ls]));
+  assert.equal((await sources.listContextSources(actor("ls"))).find((s) => s.id === sourceId)?.state, "confermato");
+  // La storia: chi ha confermato i fatti; impegni e domande senza attore; nessun testo nel dettaglio.
+  const events = await q(`SELECT action, actor_user_id::text AS who, detail FROM context_events WHERE source_id = $1 AND at >= (SELECT min(decided_at) FROM context_proposals WHERE source_id = $1) ORDER BY action`, [sourceId]);
+  assert.deepEqual(events.map((e) => [e.action, e.who]), [
+    ["domanda_aggiunta", null],
+    ["fatto_confermato", ids.ls],
+    ["fatto_confermato", ids.ls],
+    ["impegno_aggiunto", null],
+    ["proposte_confermate", ids.ls],
+  ]);
+  assert.deepEqual(events.find((e) => e.action === "proposte_confermate")?.detail, { n: 4 });
+  assert.equal((await q(`SELECT count(*)::int AS n FROM context_events WHERE question_id = $1 AND action = 'domanda_chiusa'`, [question]))[0].n, 1);
+  for (const e of events) assert.doesNotMatch(JSON.stringify(e.detail), /direttore|ordini|fornitori/);
+  // Confermare due volte le stesse proposte: non sono più aperte.
+  assert.equal(errOf(await proposals.confirmProposals(actor("ls"), pick(all))), "versione_superata");
+});
+
+test("confirmProposals: «cambia» fa una versione nuova e lascia quella di prima nella storia; «conferma» rinfresca la data; un conflitto si risolve con «Prima» o con «Ora»", opts, async () => {
+  const erp = await seedFact(`Il gestionale di prova è SAP Business One ${suffix}.`);
+  const people = await seedFact(`I dipendenti di prova sono 400 ${suffix}.`, { section: "azienda", visibility: "ls" });
+  const site = await seedFact(`La sede di prova è a Udine ${suffix}.`, { section: "azienda" });
+  const shifts = await seedFact(`Il magazzino di prova lavora su un turno ${suffix}.`, { section: "lavoro" });
+  await q(`INSERT INTO context_fact_links (workspace_id, fact_id, use_case_id) VALUES ($1, $2, $3)`, [ids.wsA, erp, ids.ucA]);
+  await q(`UPDATE context_facts SET last_confirmed_at = now() - interval '40 days', needs_check = true WHERE id = ANY($1::uuid[])`, [[erp, people, site, shifts]]);
+  // I riferimenti F1…Fn seguono l'ordine della memoria (dal più recente): li cerchiamo per testo nel prompt.
+  const note = await addNote();
+  const requests = fakeAppClaude([
+    (init) => {
+      const prompt = JSON.parse(String(init?.body)).messages[0].content[0].text as string;
+      const ref = (text: string) => prompt.split("\n").find((line) => line.includes(text))?.split(" | ")[0] ?? "F0";
+      return answer([
+        proposal({ tipo: "cambia", testo: `Il gestionale di prova è SAP S/4HANA ${suffix}.`, citazione: "", fattoRif: ref("gestionale di prova"), sezione: "sistemi", visibilita: "tutti" }),
+        proposal({ tipo: "cambia", testo: `I dipendenti di prova sono 420 ${suffix}.`, citazione: "", fattoRif: ref("dipendenti di prova"), sezione: "azienda", visibilita: "tutti" }),
+        proposal({ tipo: "conferma", testo: "x", citazione: "", fattoRif: ref("sede di prova") }),
+        proposal({ tipo: "conflitto", testo: `Il magazzino di prova lavora su due turni ${suffix}.`, citazione: "", fattoRif: ref("magazzino di prova"), sezione: "lavoro" }),
+      ])(init);
+    },
+  ]);
+  okValue(await reading.readContextSource(actor("ls"), note.sourceId));
+  assert.equal(requests.length, 1);
+  const open = (await proposals.listOpenProposals(actor("ls"), { sourceId: note.sourceId }))!;
+  const [changeErp, changePeople, conflict] = open.proposals;
+  const [reconfirm] = open.reconfirmed;
+  assert.equal(changePeople.visibility, "ls", "un fatto «Solo Lateral Space» cambiato resta «Solo Lateral Space»");
+  // Un conflitto senza scelta non entra, e niente si scrive.
+  const noChoice = await proposals.confirmProposals(actor("ls"), pick([changeErp, conflict]));
+  assert.equal(errOf(noChoice), "dati_non_validi");
+  assert.deepEqual(!noChoice.ok && noChoice.fieldErrors, { [conflict.id]: "Scegli quale tenere." });
+  assert.equal((await q(`SELECT status FROM context_facts WHERE id = $1`, [erp]))[0].status, "attivo", "niente scritto");
+  // «Prima»: resta il fatto in memoria, e la proposta è scartata.
+  const result = okValue(await proposals.confirmProposals(actor("lsc"), [...pick([changeErp, changePeople, reconfirm]), { id: conflict.id, version: conflict.version, resolution: "prima" }]));
+  assert.deepEqual({ ...result, remaining: 0 }, { confirmed: 4, newFacts: 0, changedFacts: 2, reconfirmed: 2, commitments: 0, questions: 0, remaining: 0 });
+  // «Cambia»: il vecchio è superato, con la data di fine; il nuovo lo sostituisce e tiene il tipo, e lo use case di prima.
+  const chain = await q(`SELECT id, statement, status, ended_at IS NOT NULL AS ended, supersedes_id::text AS supersedes, visibility, version FROM context_facts WHERE id = $1 OR supersedes_id = $1 ORDER BY created_at`, [erp]);
+  assert.deepEqual(chain.map((f) => [f.statement, f.status, f.ended, f.supersedes]), [
+    [`Il gestionale di prova è SAP Business One ${suffix}.`, "superato", true, null],
+    [`Il gestionale di prova è SAP S/4HANA ${suffix}.`, "attivo", false, erp],
+  ]);
+  assert.deepEqual((await q(`SELECT use_case_id::text AS uc FROM context_fact_links WHERE fact_id = $1`, [chain[1].id])).map((r) => r.uc), [ids.ucA]);
+  assert.equal((await q(`SELECT visibility FROM context_facts WHERE supersedes_id = $1`, [people]))[0].visibility, "ls");
+  // «Conferma» e «Prima»: la data si rinfresca, il fatto non è più «da verificare», la versione non cambia.
+  for (const id of [site, shifts]) {
+    assert.deepEqual((await q(`SELECT status, needs_check, (last_confirmed_at > now() - interval '1 minute') AS fresh, confirmed_by_user_id::text AS who, version FROM context_facts WHERE id = $1`, [id]))[0], { status: "attivo", needs_check: false, fresh: true, who: ids.lsc, version: 1 });
+  }
+  assert.deepEqual((await q(`SELECT status, result_id::text AS result FROM context_proposals WHERE id = $1`, [conflict.id]))[0], { status: "scartata", result: shifts });
+  const kinds = (await q(`SELECT action, detail FROM context_events WHERE source_id = $1 AND action IN ('fatto_cambiato', 'fatto_riconfermato', 'conflitto_risolto') ORDER BY action`, [note.sourceId])).map((e) => [e.action, e.detail]);
+  assert.deepEqual(kinds, [["conflitto_risolto", { scelta: "prima" }], ["fatto_cambiato", {}], ["fatto_cambiato", {}], ["fatto_riconfermato", {}]]);
+
+  // «Ora»: il conflitto diventa una versione nuova.
+  const { all } = await readProposals([proposal({ tipo: "conflitto", testo: `La sede di prova è a Trieste ${suffix}.`, citazione: "", fattoRif: "F1", sezione: "azienda" })], `${NOTE}\nSeconda call sulla sede (${suffix}).`);
+  // (F1 è il fatto appena riconfermato per ultimo: la sede o il magazzino. Qui conta solo che il conflitto si risolva.)
+  const target = all[0].before!.factId;
+  okValue(await proposals.confirmProposals(actor("ls"), [{ id: all[0].id, version: all[0].version, resolution: "ora" }]));
+  assert.equal((await q(`SELECT status FROM context_facts WHERE id = $1`, [target]))[0].status, "superato");
+  assert.deepEqual((await q(`SELECT statement, status FROM context_facts WHERE supersedes_id = $1`, [target]))[0], { statement: `La sede di prova è a Trieste ${suffix}.`, status: "attivo" });
+  assert.deepEqual((await q(`SELECT detail FROM context_events WHERE action = 'conflitto_risolto' AND fact_id = (SELECT id FROM context_facts WHERE supersedes_id = $1)`, [target]))[0].detail, { scelta: "ora" });
+});
+
+test("confirmProposals: una proposta da correggere non entra e niente si scrive; troppe voci, nessuna voce, una versione vecchia; solo Lateral Space", opts, async () => {
+  const { sourceId, all } = await readProposals([
+    proposal({ testo: `Fatto buono ${suffix}.`, citazione: "" }),
+    proposal({ testo: "Mario Rossi decide gli acquisti.", citazione: "", sezione: "persone" }),
+    proposal({ testo: `Un fatto troppo lungo ${"che continua ".repeat(20)}${suffix}.`, citazione: "" }),
+  ]);
+  const [good, named, long] = all;
+  const blocked = await proposals.confirmProposals(actor("ls"), pick(all));
+  assert.equal(errOf(blocked), "dati_non_validi");
+  assert.deepEqual(!blocked.ok && blocked.fieldErrors, {
+    [named.id]: "Non scrivere nomi di persone: indica il ruolo, per esempio «il responsabile commerciale».",
+    [long.id]: "Accorcia la frase: al massimo 200 caratteri.",
+  });
+  assert.equal((await q(`SELECT count(*)::int AS n FROM context_facts WHERE source_id = $1`, [sourceId]))[0].n, 0, "tutte o nessuna: nemmeno il fatto buono è entrato");
+  assert.equal((await q(`SELECT count(*)::int AS n FROM context_proposals WHERE source_id = $1 AND status = 'aperta'`, [sourceId]))[0].n, 3);
+  // Una proposta scritta nel database con un nome ma senza `issue` (come se il controllo fosse stato saltato): il controllo si rifà alla conferma.
+  await q(`UPDATE context_proposals SET issue = NULL WHERE id = $1`, [named.id]);
+  const recheck = await proposals.confirmProposals(actor("ls"), pick([named]));
+  assert.deepEqual(!recheck.ok && recheck.fieldErrors, { [named.id]: "Non scrivere nomi di persone: indica il ruolo, per esempio «il responsabile commerciale»." });
+  // Nessuna voce, troppe voci, voci doppie, una versione che non è quella vista.
+  assert.equal(errOf(await proposals.confirmProposals(actor("ls"), [])), "dati_non_validi");
+  const many = Array.from({ length: 76 }, () => ({ id: randomUUID(), version: 1 }));
+  const tooMany = await proposals.confirmProposals(actor("ls"), many);
+  assert.deepEqual([errOf(tooMany), !tooMany.ok && tooMany.message], ["dati_non_validi", "Al massimo 75 proposte alla volta."]);
+  assert.equal(errOf(await proposals.confirmProposals(actor("ls"), [...pick([good]), ...pick([good])])), "dati_non_validi");
+  assert.equal(errOf(await proposals.confirmProposals(actor("ls"), [{ id: good.id, version: good.version + 1 }])), "versione_superata");
+  assert.equal(errOf(await proposals.confirmProposals(actor("ls"), [{ id: randomUUID(), version: 1 }])), "versione_superata");
+  assert.equal(errOf(await proposals.confirmProposals(actor("lsb"), pick([good]))), "versione_superata", "di un altro workspace: per lui non c'è");
+  for (const person of ["rev", "con", "lrn", "out"] as const) assert.equal(errOf(await proposals.confirmProposals(actor(person), pick([good]))), "permesso_mancante", person);
+  // Il fatto buono, da solo, entra; restano le altre due.
+  const done = okValue(await proposals.confirmProposals(actor("ls"), pick([good])));
+  assert.equal(done.newFacts, 1);
+  assert.ok(done.remaining >= 2);
+  await proposals.discardProposals(actor("ls"), [named.id, long.id]);
+});
+
+test("due conferme insieme sullo stesso fatto: una vince, l'altra torna «versione superata» e non scrive niente", opts, async () => {
+  const fact = await seedFact(`Il fatto conteso ${suffix} vale 1.`, { section: "azienda" });
+  const one = await readProposals([proposal({ tipo: "cambia", testo: `Il fatto conteso ${suffix} vale 2.`, citazione: "", fattoRif: "F1", sezione: "azienda" })], `${NOTE}\nPrima call sul fatto conteso (${suffix}).`);
+  const two = await readProposals([proposal({ tipo: "cambia", testo: `Il fatto conteso ${suffix} vale 3.`, citazione: "", fattoRif: "F1", sezione: "azienda" })], `${NOTE}\nSeconda call sul fatto conteso (${suffix}).`);
+  assert.equal(one.all[0].before?.factId, fact);
+  assert.equal(two.all[0].before?.factId, fact);
+  const [a, b] = await Promise.all([proposals.confirmProposals(actor("ls"), pick(one.all)), proposals.confirmProposals(actor("lsc"), pick(two.all))]);
+  assert.deepEqual([a.ok, b.ok].sort(), [false, true], "una sola conferma passa");
+  assert.equal(errOf(a.ok ? b : a), "versione_superata");
+  const versions = await q(`SELECT statement, status FROM context_facts WHERE supersedes_id = $1`, [fact]);
+  assert.equal(versions.length, 1, "il fatto si sostituisce una volta sola");
+  assert.equal(versions[0].status, "attivo");
+  const loser = a.ok ? two : one;
+  assert.equal((await q(`SELECT status FROM context_proposals WHERE id = $1`, [loser.all[0].id]))[0].status, "aperta", "la proposta che ha perso resta aperta");
+  // Riletta, la proposta rimasta punta alla versione attiva: la conferma adesso passa, e la storia ha tre versioni.
+  const again = (await proposals.listOpenProposals(actor("ls"), { sourceId: loser.sourceId }))!.proposals[0];
+  assert.notEqual(again.before?.factId, fact);
+  okValue(await proposals.confirmProposals(actor("ls"), pick([again])));
+  const history = await q(
+    `WITH RECURSIVE chain AS (SELECT id, statement, status, 0 AS depth FROM context_facts WHERE id = $1
+       UNION ALL SELECT n.id, n.statement, n.status, c.depth + 1 FROM chain c JOIN context_facts n ON n.supersedes_id = c.id)
+     SELECT status FROM chain ORDER BY depth`,
+    [fact],
+  );
+  assert.deepEqual(history.map((h) => h.status), ["superato", "superato", "attivo"]);
+});
+
+test("due proposte della stessa conferma sullo stesso fatto si mettono in fila; un fatto ritirato fa della proposta un fatto nuovo", opts, async () => {
+  const fact = await seedFact(`Il fatto in fila ${suffix} vale 1.`, { section: "azienda" });
+  const { all } = await readProposals([
+    proposal({ tipo: "cambia", testo: `Il fatto in fila ${suffix} vale 2.`, citazione: "", fattoRif: "F1", sezione: "azienda" }),
+    proposal({ tipo: "cambia", testo: `Il fatto in fila ${suffix} vale 3.`, citazione: "", fattoRif: "F1", sezione: "azienda" }),
+    proposal({ tipo: "conferma", testo: "x", citazione: "", fattoRif: "F1" }),
+  ]);
+  okValue(await proposals.confirmProposals(actor("ls"), pick(all)));
+  const history = await q(
+    `WITH RECURSIVE chain AS (SELECT id, statement, status, 0 AS depth FROM context_facts WHERE id = $1
+       UNION ALL SELECT n.id, n.statement, n.status, c.depth + 1 FROM chain c JOIN context_facts n ON n.supersedes_id = c.id)
+     SELECT statement, status FROM chain ORDER BY depth`,
+    [fact],
+  );
+  assert.deepEqual(history.map((h) => [h.statement, h.status]), [
+    [`Il fatto in fila ${suffix} vale 1.`, "superato"],
+    [`Il fatto in fila ${suffix} vale 2.`, "superato"],
+    [`Il fatto in fila ${suffix} vale 3.`, "attivo"],
+  ]);
+  // Il bersaglio ritirato dopo la lettura: la proposta vale come un fatto nuovo, senza «Prima».
+  const gone = await seedFact(`Il fatto ritirato ${suffix}.`, { section: "azienda" });
+  const later = await readProposals([proposal({ tipo: "cambia", testo: `Il fatto ritirato ${suffix}, aggiornato.`, citazione: "", fattoRif: "F1", sezione: "azienda" })], `${NOTE}\nCall sul fatto ritirato (${suffix}).`);
+  assert.equal(later.all[0].before?.factId, gone);
+  await q(`UPDATE context_facts SET status = 'ritirato', ended_at = now() WHERE id = $1`, [gone]);
+  const view = (await proposals.listOpenProposals(actor("ls"), { sourceId: later.sourceId }))!.proposals[0];
+  assert.deepEqual([view.kind, view.before], ["nuovo", null]);
+  const result = okValue(await proposals.confirmProposals(actor("ls"), pick([view])));
+  assert.deepEqual([result.newFacts, result.changedFacts], [1, 0]);
+  assert.deepEqual((await q(`SELECT supersedes_id, status FROM context_facts WHERE statement = $1`, [`Il fatto ritirato ${suffix}, aggiornato.`]))[0], { supersedes_id: null, status: "attivo" });
 });
