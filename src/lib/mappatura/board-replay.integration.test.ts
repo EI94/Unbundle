@@ -122,7 +122,7 @@ test("un passo eliminato da un collega non torna quando chi l'aveva aggiunto ria
     { t: "step.add", stepId, processId: process, title: "Controllo fatture fornitori" },
     { t: "note.add", noteId: randomUUID(), stepId, lane: "attriti", text: "Le fatture arrivano in tre formati." },
   ]);
-  void first.saveNow({ keepalive: true });
+  void first.saveNow({ hidden: true });
   await settle();
   assert.equal((await q(`SELECT count(*)::int AS n FROM activities WHERE id = $1`, [stepId]))[0].n, 1, "il salvataggio è arrivato");
   assert.ok(phone.stored.has(draftKey(f.lead, f.unit)), "la bozza resta: nessuno ha letto la risposta");
@@ -152,7 +152,7 @@ test("un valore cambiato da un collega dopo il salvataggio non si copre con la b
   // A rinomina il passo e chiude la scheda: il salvataggio arriva, la risposta no.
   const first = open(await read(), phone.storage, routes(lead(), { closing: true }));
   first.dispatch({ t: "step.set", stepId, field: "title", prev: "Verifica ordini", next: "Verifica ordini aperti" });
-  void first.saveNow({ keepalive: true });
+  void first.saveNow({ hidden: true });
   await settle();
   // B vede «Verifica ordini aperti» e rimette apposta il nome di prima.
   const back = await store.saveBoardOps(db.exec, scope(), contributor(), { baseRevision: 0, ops: [op({ t: "step.set", stepId, field: "title", prev: "Verifica ordini aperti", next: "Verifica ordini" })] });
@@ -176,7 +176,7 @@ test("un'operazione rifiutata mentre la pagina si chiudeva risponde di nuovo «c
   await store.saveBoardOps(db.exec, scope(), contributor(), { baseRevision: 0, ops: [op({ t: "step.set", stepId, field: "title", prev: "Archivio delle bolle", next: "Archivio dei documenti" })] });
   const first = open(seen, phone.storage, routes(lead(), { closing: true }));
   first.dispatch({ t: "step.set", stepId, field: "title", prev: "Archivio delle bolle", next: "Archivio bolle firmate" });
-  void first.saveNow({ keepalive: true });
+  void first.saveNow({ hidden: true });
   await settle();
   // Il collega rimette il nome che A aveva visto: la stessa operazione rimandata non passa per questo.
   await store.saveBoardOps(db.exec, scope(), contributor(), { baseRevision: 0, ops: [op({ t: "step.set", stepId, field: "title", prev: "Archivio dei documenti", next: "Archivio delle bolle" })] });

@@ -10,7 +10,10 @@
  * - un salvataggio manda la coda com'è in quel momento; una modifica fatta mentre viaggia resta in coda e la pillola
  *   torna «da salvare» (il difetto F4 del riferimento);
  * - un'eliminazione si vede subito e aspetta il suo toast: «Annulla» la toglie dalla coda; «Salva ora» e la pagina che
- *   si chiude la mandano lo stesso;
+ *   si nasconde o si chiude la mandano lo stesso;
+ * - la pagina che si nasconde o si chiude salva subito: con `keepalive` quando il corpo sta sotto i 60 KB (una pagina
+ *   in secondo piano sul telefono può essere fermata senza `pagehide`), con una richiesta normale altrimenti; la bozza
+ *   resta sul dispositivo finché il server non risponde;
  * - un rifiuto del server per un campo cambiato da altri alza il toast del conflitto, e la board prende i valori più
  *   recenti; il resto è salvato;
  * - senza permesso (401, 403, 404) la board passa in sola lettura e le modifiche restano sul dispositivo; un errore di
@@ -51,8 +54,11 @@ export interface BoardClient {
   subscribe(listener: () => void): () => void;
   /** Applica subito, segna «da salvare», scrive la bozza, programma il salvataggio. `undo`: il toast con «Annulla» (eliminazioni). */
   dispatch(ops: OpInput | OpInput[], options?: { undo?: string }): void;
-  /** Salva subito tutta la coda, anche le eliminazioni che aspettano il loro toast. `keepalive`: mentre la pagina si chiude. */
-  saveNow(options?: { keepalive?: boolean }): Promise<void>;
+  /**
+   * Salva subito tutta la coda, anche le eliminazioni che aspettano il loro toast. `hidden`: la pagina si nasconde o si
+   * chiude, e ogni richiesta usa `keepalive` se il suo corpo sta sotto i 60 KB (`keepaliveFits`).
+   */
+  saveNow(options?: { hidden?: boolean }): Promise<void>;
   /** Rilegge la board dal server e ci rimette sopra le modifiche non salvate. */
   pull(): Promise<void>;
   /**
@@ -107,24 +113,14 @@ const isBoard = (value: unknown): value is MappingBoard => {
 };
 const NO_ABILITIES = { edit: false, setStream: false, complete: false };
 /**
- * Il corpo più grande di un salvataggio `keepalive` (la pagina che si chiude): il browser rifiuta oltre 64 KB. Il
- * resto delle modifiche aspetta il salvataggio dopo, o la bozza.
+ * Il corpo più grande di un salvataggio `keepalive` (la pagina che si nasconde o si chiude): il browser rifiuta una
+ * richiesta `keepalive` oltre 64 KB (in tutto, per pagina). Un corpo più grande parte con una richiesta normale.
  */
 export const KEEPALIVE_MAX_BYTES = 60_000;
 const encoder = new TextEncoder();
-const bytes = (text: string) => encoder.encode(text).length;
 
-/** Le prime operazioni che stanno in un corpo di `max` byte (almeno una): `{ baseRevision, ops: [...] }`. */
-export function fitsInBody<T>(items: readonly T[], baseRevision: number, max: number): T[] {
-  let size = bytes(JSON.stringify({ baseRevision, ops: [] }));
-  const out: T[] = [];
-  for (const item of items) {
-    size += bytes(JSON.stringify(item)) + (out.length > 0 ? 1 : 0);
-    if (out.length > 0 && size > max) break;
-    out.push(item);
-  }
-  return out;
-}
+/** Un corpo da mandare con `keepalive`: al più `KEEPALIVE_MAX_BYTES` byte in UTF-8 (una lettera accentata ne conta due). */
+export const keepaliveFits = (body: string): boolean => encoder.encode(body).length <= KEEPALIVE_MAX_BYTES;
 
 /** Quanto vive la bozza sul dispositivo: oltre, chi riapre la board non rimanda modifiche vecchie di giorni. */
 const DRAFT_MAX_AGE_MS = OP_MEMORY.draftDays * 24 * 60 * 60 * 1000;
@@ -304,22 +300,22 @@ export function createBoardClient(deps: BoardClientDeps): BoardClient {
   }
 
   /**
-   * Un salvataggio. `all`: anche le eliminazioni che aspettano il loro toast («Salva ora», la pagina che si chiude).
-   * Uno alla volta: chi arriva mentre uno viaggia aspetta che finisca, poi manda quello che restava in coda quando ha
-   * chiesto (anche oltre le 200 operazioni di un salvataggio). Le modifiche fatte dopo, mentre il salvataggio viaggia,
-   * restano «da salvare» e partono con il salvataggio automatico (F4).
+   * Un salvataggio. `all`: anche le eliminazioni che aspettano il loro toast («Salva ora», la pagina che si nasconde o
+   * si chiude). `hidden`: la pagina si nasconde o si chiude, e la richiesta usa `keepalive` se il suo corpo sta sotto i
+   * 60 KB. Uno alla volta: chi arriva mentre uno viaggia aspetta che finisca, poi manda quello che restava in coda quando
+   * ha chiesto (anche oltre le 200 operazioni di un salvataggio). Le modifiche fatte dopo, mentre il salvataggio
+   * viaggia, restano «da salvare» e partono con il salvataggio automatico (F4). Quello che viaggia resta nella bozza
+   * finché il server non risponde.
    */
-  function save(all: boolean, keepalive: boolean): Promise<void> {
+  function save(all: boolean, hidden: boolean): Promise<void> {
     if (disposed || readonly) return Promise.resolve();
     const asked = all ? new Set(queue.map((item) => item.op.id)) : null;
     // Dopo un salvataggio non riuscito non si insiste: decide la persona, con «Salva ora».
-    const rest = () => (asked && !failed && !readonly && !disposed && queue.some((item) => asked.has(item.op.id)) ? save(true, keepalive) : undefined);
+    const rest = () => (asked && !failed && !readonly && !disposed && queue.some((item) => asked.has(item.op.id)) ? save(true, hidden) : undefined);
     if (saving) return saving.then(rest);
 
     const now = deps.now();
-    const ready = queue.filter((item) => all || item.heldUntil === undefined || item.heldUntil <= now).slice(0, MAPPING_LIMITS.opsPerSave);
-    // La pagina che si chiude: solo quello che sta in un corpo `keepalive`; il resto resta in coda e nella bozza.
-    const sending = keepalive ? ready.slice(0, fitsInBody(ready.map((item) => item.op), base.revision, KEEPALIVE_MAX_BYTES).length) : ready;
+    const sending = queue.filter((item) => all || item.heldUntil === undefined || item.heldUntil <= now).slice(0, MAPPING_LIMITS.opsPerSave);
     if (sending.length === 0) {
       schedule();
       return Promise.resolve();
@@ -336,12 +332,16 @@ export function createBoardClient(deps: BoardClientDeps): BoardClient {
     // Un'eliminazione che parte non si annulla più: il suo toast se ne va.
     if (sent.some((op) => undoIds.includes(op.id))) hideToast();
 
+    const payload = JSON.stringify({ baseRevision: base.revision, ops: sent });
+    // La pagina che si nasconde o si chiude: `keepalive` se il corpo ci sta (il browser rifiuta oltre 64 KB), altrimenti
+    // una richiesta normale. In tutti e due i casi la bozza tiene le operazioni finché il server non risponde.
+    const keepalive = hidden && keepaliveFits(payload);
     const request = (async (): Promise<{ status: number; body: SaveAnswer | null }> => {
       try {
         const response = await deps.fetch(url, {
           method: "PUT",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ baseRevision: base.revision, ops: sent }),
+          body: payload,
           keepalive,
         });
         return { status: response.status, body: response.ok ? ((await response.json()) as SaveAnswer) : null };
@@ -470,7 +470,7 @@ export function createBoardClient(deps: BoardClientDeps): BoardClient {
       emit();
       schedule();
     },
-    saveNow: (options) => save(true, options?.keepalive === true),
+    saveNow: (options) => save(true, options?.hidden === true),
     pull,
     replace(board, options) {
       // Una board più vecchia di quella a schermo (un salvataggio è arrivato prima) non torna indietro.

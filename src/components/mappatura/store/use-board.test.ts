@@ -37,7 +37,7 @@ function fakeClient(pending = 0) {
     pending,
     start: () => void calls.push("start"),
     setOnline: (online: boolean) => void calls.push(`online:${online}`),
-    saveNow: async (options?: { keepalive?: boolean }) => void calls.push(`save:${options?.keepalive === true ? "keepalive" : "normale"}`),
+    saveNow: async (options?: { hidden?: boolean }) => void calls.push(`save:${options?.hidden === true ? "nascosta" : "normale"}`),
     pull: async () => void calls.push("pull"),
     signOut: async () => void calls.push("esce"),
     getState: () => ({ pending: client.pending }) as ReturnType<Parameters<typeof connectBrowser>[0]["getState"]>,
@@ -68,16 +68,18 @@ test("collegata alla pagina: la bozza alla partenza, il browser in linea o no, i
   doc.fire("visibilitychange");
   assert.deepEqual(calls, ["pull"]);
 
-  // Con delle modifiche: la pagina che si nasconde salva subito con una richiesta normale (è ancora viva: keepalive
-  // rifiuterebbe un corpo oltre 64 KB); quella che si chiude con keepalive; tornando visibile non rilegge.
+  // Con delle modifiche: la pagina che si nasconde e quella che si chiude salvano subito, tutte e due come pagina
+  // nascosta (keepalive se il corpo ci sta: sul telefono una pagina in secondo piano può essere fermata senza
+  // `pagehide`); tornando visibile non rilegge.
   calls.length = 0;
   client.pending = 2;
   doc.visibilityState = "hidden";
   doc.fire("visibilitychange");
+  assert.deepEqual(calls, ["save:nascosta"], "basta nascondersi");
   win.fire("pagehide");
   doc.visibilityState = "visible";
   doc.fire("visibilitychange");
-  assert.deepEqual(calls, ["save:normale", "save:keepalive"]);
+  assert.deepEqual(calls, ["save:nascosta", "save:nascosta"]);
 
   // Staccata (la pagina lascia la board, l'app resta aperta): nessuno ascolta più, e quello che resta si salva.
   calls.length = 0;

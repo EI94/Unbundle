@@ -5,8 +5,8 @@
  *
  * `BoardProvider` crea lo store di `board-client.ts` una volta per unità, con fetch, orologio, timer e memoria del
  * browser, e lo collega alla pagina (`connectBrowser`): rimette la bozza del dispositivo sopra la board dopo il primo
- * disegno, salva subito quando la pagina si nasconde o si chiude (`keepalive`), rilegge la board quando la pagina
- * torna visibile senza niente da salvare, sa se il browser è in linea. Nessun timer rilegge la board.
+ * disegno, salva subito quando la pagina si nasconde o si chiude (`keepalive` se il corpo ci sta), rilegge la board
+ * quando la pagina torna visibile senza niente da salvare, sa se il browser è in linea. Nessun timer rilegge la board.
  *
  * `useBoard(select)` legge lo stato con `useSyncExternalStore`: `select` riceve lo stato intero e può restituire
  * qualsiasi cosa (si ricalcola a ogni cambio). `useBoardClient()` dà lo store, per `dispatch`, «Salva ora», `pull`.
@@ -65,25 +65,26 @@ type Listened = Pick<EventTarget, "addEventListener" | "removeEventListener">;
 
 /**
  * Collega lo store alla pagina e restituisce la funzione che lo stacca. Alla partenza la bozza del dispositivo torna
- * sopra la board; la pagina che si nasconde o si chiude salva subito, anche le eliminazioni che aspettano il loro
- * toast: nascosta è ancora viva, e salva con una richiesta normale; solo la pagina che si chiude (`pagehide`) usa
- * `keepalive`, che il browser accetta fino a 64 KB (il client manda il resto dopo, o lo lascia nella bozza). La pagina
- * che torna visibile, senza niente da salvare, rilegge la board; il browser che torna in linea
- * riprova il salvataggio non riuscito; la persona che esce dall'app (`signOutBoards`) manda quello che resta e la
- * board lascia la sua bozza. Staccarlo (la pagina lascia la board) salva quello che resta.
+ * sopra la board; la pagina che si nasconde (`visibilitychange`) o si chiude (`pagehide`) salva subito, anche le
+ * eliminazioni che aspettano il loro toast, con `keepalive` quando il corpo sta sotto i 60 KB e con una richiesta
+ * normale altrimenti (`saveNow({ hidden })`): sul telefono una pagina in secondo piano può essere fermata senza
+ * `pagehide`, e la bozza resta finché il server non risponde. La pagina che torna visibile, senza niente da salvare,
+ * rilegge la board; il browser che torna in linea riprova il salvataggio non riuscito; la persona che esce dall'app
+ * (`signOutBoards`) manda quello che resta e la board lascia la sua bozza. Staccarlo (la pagina lascia la board, l'app
+ * resta aperta) salva quello che resta con una richiesta normale.
  */
 export function connectBrowser(
   client: Pick<BoardClient, "start" | "setOnline" | "saveNow" | "pull" | "getState" | "signOut">,
   win: Listened & { navigator: { onLine?: boolean } },
   doc: Listened & { visibilityState: DocumentVisibilityState },
 ): () => void {
-  const flush = (keepalive: boolean) => {
-    if (client.getState().pending > 0) void client.saveNow(keepalive ? { keepalive: true } : undefined);
+  const flush = (hidden: boolean) => {
+    if (client.getState().pending > 0) void client.saveNow(hidden ? { hidden: true } : undefined);
   };
   const closing = () => flush(true);
   const online = () => client.setOnline(win.navigator.onLine !== false);
   const visibility = () => {
-    if (doc.visibilityState === "hidden") flush(false);
+    if (doc.visibilityState === "hidden") flush(true);
     else if (client.getState().pending === 0) void client.pull();
   };
   client.start();
