@@ -87,7 +87,9 @@ export function eventStatement(e: ContextEventInput, when?: SQL) {
  * «In breve» lo legge anche il cliente, ed è fatto dei soli fatti «Per tutti» attivi (§4.3). Quando un fatto «Per tutti»
  * esce da lì (diventa «Solo Lateral Space», cambia testo, si ritira, è sostituito da una conferma) la riga si cancella
  * nella stessa transazione: il blocco non si vede finché non si riscrive (`refreshContextBrief`, dopo la risposta o di
- * notte). `when`: una condizione in più (la scrittura è avvenuta).
+ * notte). `when`: una condizione in più (la scrittura è avvenuta). Nel batch va dopo l'UPDATE del fatto: una
+ * riscrittura in corso prende i fatti con un lock condiviso, così o la sua riga si scrive prima e questa la toglie, o
+ * vede il fatto cambiato e non scrive.
  */
 export function dropBriefStatement(workspaceId: string, when?: SQL) {
   return db.execute(sql`DELETE FROM context_briefs WHERE workspace_id = ${workspaceId}::uuid AND ${when ?? sql`true`}`);

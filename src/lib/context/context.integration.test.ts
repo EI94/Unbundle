@@ -1959,6 +1959,63 @@ test("«In breve» non mostra mai al cliente un fatto uscito da «Per tutti»: �
   await q(`DELETE FROM context_briefs WHERE workspace_id = $1`, [ids.wsA]);
 });
 
+test("«In breve» riscritto mentre un fatto letto esce da «Per tutti»: la riscrittura che l'aveva letto non scrive niente", opts, async () => {
+  const clientBrief = async () => (await memory.loadContextMemory(actor("con"))).brief?.lines ?? null;
+  const version = async (id: string) => Number((await q(`SELECT version FROM context_facts WHERE id = $1`, [id]))[0].version);
+  await q(`DELETE FROM context_briefs WHERE workspace_id = $1`, [ids.wsA]);
+  const price = okValue(await memory.writeFact(actor("ls"), { statement: `Il listino G1 ${suffix} sale del 5 per cento.`, section: "azienda", visibility: "tutti" })).factId;
+  // Mentre il modello scrive, Lateral Space rende il fatto «Solo Lateral Space» (la sua transazione toglie la riga, qui assente).
+  const racing: Reply = async (init) => {
+    okValue(await memory.editFact(actor("ls"), price, await version(price), { visibility: "ls" }));
+    return json({ righe: ["Il listino sale del 5 per cento."] })(init);
+  };
+  const requests = fakeAppClaude([racing]);
+  assert.equal(await briefs.refreshContextBrief(ids.wsA, { force: true }), "cambiato");
+  assert.equal(requests.length, 1);
+  assert.ok(JSON.stringify(requests[0].body.messages).includes(`Il listino G1 ${suffix}`), "il modello l'aveva letto");
+  assert.equal(await clientBrief(), null, "il cliente non vede righe scritte da un fatto che non è più per tutti");
+  // La riscrittura dopo non lo legge più.
+  const again = fakeAppClaude([json({ righe: ["Produce cucine su misura."] })]);
+  assert.equal(await briefs.refreshContextBrief(ids.wsA, { force: true }), "aggiornato");
+  assert.equal(JSON.stringify(again[0].body.messages).includes(`Il listino G1 ${suffix}`), false);
+  assert.deepEqual(await clientBrief(), ["Produce cucine su misura."]);
+  await q(`DELETE FROM context_briefs WHERE workspace_id = $1`, [ids.wsA]);
+});
+
+test("«In breve» porta il momento in cui ha letto i fatti: un fatto nato mentre il modello scriveva lo fa riscrivere di notte; tra due riscritture vince quella che ha letto dopo", opts, async () => {
+  const clientBrief = async () => (await memory.loadContextMemory(actor("con"))).brief?.lines ?? null;
+  await q(`DELETE FROM context_briefs WHERE workspace_id = $1`, [ids.wsA]);
+  let late = "";
+  const writing: Reply = async (init) => {
+    late = okValue(await memory.writeFact(actor("ls"), { statement: `Il magazzino G2 ${suffix} apre anche il sabato.`, section: "lavoro", visibility: "tutti" })).factId;
+    return json({ righe: ["Riassunto letto prima del sabato."] })(init);
+  };
+  fakeAppClaude([writing]);
+  assert.equal(await briefs.refreshContextBrief(ids.wsA, { force: true }), "aggiornato", "i fatti letti non sono cambiati: si scrive");
+  const [row] = await q(`SELECT b.generated_at < f.created_at AS older FROM context_briefs b, context_facts f WHERE b.workspace_id = $1 AND f.id = $2`, [ids.wsA, late]);
+  assert.equal(row.older, true, "il riassunto è più vecchio del fatto nato mentre il modello scriveva");
+  // La notte vede il fatto più recente del riassunto e lo riscrive, con il fatto.
+  const night = fakeAppClaude([json({ righe: ["Il magazzino apre anche il sabato."] })]);
+  assert.equal(await briefs.refreshStaleBriefs({ budgetMs: 200_000 }), 1);
+  assert.equal(night.length, 1);
+  assert.ok(JSON.stringify(night[0].body.messages).includes(`Il magazzino G2 ${suffix}`));
+  assert.deepEqual(await clientBrief(), ["Il magazzino apre anche il sabato."]);
+
+  // Due riscritture insieme: quella che ha letto prima finisce dopo, e non copre quella che ha letto dopo.
+  okValue(await memory.writeFact(actor("ls"), { statement: `Il magazzino G3 ${suffix} ha una sola rampa di carico.`, section: "lavoro", visibility: "tutti" }));
+  let inner: string | null = null;
+  const slower: Reply = async (init) => {
+    okValue(await memory.writeFact(actor("ls"), { statement: `Il magazzino G4 ${suffix} lavora su due turni.`, section: "lavoro", visibility: "tutti" }));
+    inner = await briefs.refreshContextBrief(ids.wsA, { force: true });
+    return json({ righe: ["Riassunto letto prima dei due turni."] })(init);
+  };
+  fakeAppClaude([slower, json({ righe: ["Il magazzino lavora su due turni."] })]);
+  assert.equal(await briefs.refreshContextBrief(ids.wsA, { force: true }), "cambiato");
+  assert.equal(inner, "aggiornato");
+  assert.deepEqual(await clientBrief(), ["Il magazzino lavora su due turni."]);
+  await q(`DELETE FROM context_briefs WHERE workspace_id = $1`, [ids.wsA]);
+});
+
 // ─── La notte ────────────────────────────────────────────────────────
 
 test("il giro della notte: legge gli appunti in attesa dei workspace con l'ok, senza attore nella storia; riscrive «In breve»; lascia stare chi non ha l'ok", opts, async () => {
