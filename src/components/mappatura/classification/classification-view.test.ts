@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createElement, type FunctionComponent, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { enableTsxImports } from "../../use-cases/detail/referent/tsx-test-loader.ts";
@@ -118,4 +119,9 @@ test("i filtri: un passo resta acceso con il suo stream, con «Tutti», o senza 
   assert.equal(matchesFilter({ stream: "automate" }, "innovate"), false);
   assert.equal(matchesFilter({ stream: null }, "none"), true);
   assert.equal(matchesFilter({ stream: "differentiate" }, "none"), false);
+});
+
+test("«da classificare» nella legenda e nei filtri è un anello: il punto pieno neutro quasi sparisce sul fondo scuro", () => {
+  const css = readFileSync(new URL("../board-companion.css", import.meta.url), "utf8");
+  assert.match(css, /\[data-board-root\] \.b-cls \.b-adot\[data-tone="neutral"\] \{ background: transparent; box-shadow: inset 0 0 0 1\.5px var\(--board-graphite-2\); \}/);
 });
