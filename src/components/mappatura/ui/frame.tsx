@@ -139,7 +139,7 @@ export function tabAfterKey<T extends string>(ids: readonly T[], current: T, key
  * Le schede (P3, P6): un `tablist` con il numero d'ordine in mono, la scheda scelta con il testo in inchiostro e la
  * riga dell'accento, nessun conteggio. Le frecce scelgono e mettono il fuoco sulla vicina, con il giro; solo la scheda
  * scelta entra nel giro del Tab. `aside`: a destra della riga, solo sul telefono (la pillola a punto e il bottone
- * dell'assistente).
+ * dell'assistente). `inert`: la riga c'è ma non si usa ancora (la board che si apre).
  */
 export function BoardTabs<T extends string>(p: {
   label: string;
@@ -147,6 +147,7 @@ export function BoardTabs<T extends string>(p: {
   selected: T;
   onSelect(id: T): void;
   aside?: ReactNode;
+  inert?: boolean;
 }): JSX.Element {
   const list = useRef<HTMLDivElement>(null);
   const ids = p.tabs.map((tab) => tab.id);
@@ -158,7 +159,7 @@ export function BoardTabs<T extends string>(p: {
     list.current?.querySelector<HTMLButtonElement>(`[data-tab="${next}"]`)?.focus();
   };
   return (
-    <div className="b-tabbar" data-b="tabs">
+    <div className="b-tabbar" inert={p.inert || undefined} data-b="tabs">
       <div className="b-tabs" role="tablist" aria-label={p.label} ref={list}>
         {p.tabs.map((tab, index) => {
           const selected = tab.id === p.selected;

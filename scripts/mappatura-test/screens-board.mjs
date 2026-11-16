@@ -347,6 +347,13 @@ try {
   server.close();
 }
 
+// La board che si apre ha la testata alta come quella della board arrivata: la pagina non salta.
+for (const config of CONFIGS) {
+  const loading = measures[`${config.dir}/status/0-caricamento`]?.headerBottom;
+  const loaded = measures[`${config.dir}/status/1-salvato`]?.headerBottom;
+  if (loading === undefined || loaded === undefined || Math.abs(loading - loaded) > 1) failures.push(`${config.dir}: la testata che carica finisce a ${loading}, quella della board a ${loaded}`);
+}
+
 writeFileSync(join(OUT, "misure.json"), `${JSON.stringify(measures, null, 1)}\n`);
 writeFileSync(join(OUT, "confronto.html"), comparison(shots));
 const summary = (key) => {

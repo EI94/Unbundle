@@ -92,6 +92,7 @@ export async function buildVetrina(out) {
   const { ClassificationDetails } = await at("src/components/mappatura/classification/classification-drawer.tsx");
   const { DrawerStatic } = await at("src/components/mappatura/ui/drawer.tsx");
   const { BoardBrand, BoardHeader, BoardTabs, BoardTitle, StatusPill } = await at("src/components/mappatura/ui/frame.tsx");
+  const { BoardLoadingHeader } = await at("src/components/mappatura/board/loading-header.tsx");
   const { BOARD_TABS, BOARD_TEXT } = await at("src/lib/mappatura/text.ts");
   const { locateStep } = await at("src/lib/mappatura/board-model.ts");
   const { FIXTURE_IDS, SHOWCASE, fixtureBoard, fixtureUnits, showcaseBoard } = await at("scripts/mappatura-test/fixture.ts");
@@ -159,7 +160,8 @@ export async function buildVetrina(out) {
     "02e-oggi-toast-annulla": unitBoard(full) + toast(BOARD_TEXT.toast.noteRemoved, BOARD_TEXT.buttons.undo),
     "04-domani": unitBoard(full, { tab: "classificazione" }),
     "04b-domani-drawer-confronto": unitBoard(full, { tab: "classificazione" }) + compare,
-    "status/0-caricamento": header("loading", null),
+    // La cornice vera della board che si apre (loading.tsx): la stessa forma della testata, la pillola «Caricamento».
+    "status/0-caricamento": html(h(BoardLoadingHeader, { workspaceId, departmentId: FIXTURE_IDS.unit })),
     "status/1-salvato": header("saved", savedAt),
     "status/1b-pronto": header("saved", null),
     "status/2-modifiche-da-salvare": header("dirty", savedAt),
