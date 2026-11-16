@@ -111,3 +111,29 @@ test("le card della mappa: la larghezza del riferimento a 1440, mai stirate per 
     assert.equal(row?.get("min-width"), `calc(${label} + 24px + var(--steps, 1) * (var(--board-card) + 18px) - 18px + var(--b-after, 0px))`, `${at ?? "sempre"}: la larghezza della riga`);
   }
 });
+
+test("«+ passo» ha il suo posto in fondo a ogni riga della mappa che si modifica: --b-after copre il bottone e il segno di un trascinamento", () => {
+  const px = (value: string | undefined, what: string) => {
+    const match = /^(\d+(?:\.\d+)?)px$/.exec(value?.trim() ?? "");
+    assert.ok(match, `${what}: «${value}» non è in px`);
+    return Number(match[1]);
+  };
+  // Quello che sta dopo l'ultima card: il margine del contenitore, il bottone tratteggiato (margini, bordo, la scritta) e,
+  // mentre si trascina un passo in fondo alla riga, il segno di dove cadrà.
+  const after = rule(board, ".b-pm-after");
+  const add = rule(board, ".b-add");
+  const mark = rule(views, ".b-drop-mark");
+  assert.equal(after?.get("flex"), "none", "il posto di «+ passo» non si stringe");
+  assert.equal(rule(views, ".b-add-step")?.get("white-space"), "nowrap", "«+ passo» non va a capo");
+  const [padY, padX] = (add?.get("padding") ?? "").split(/\s+/);
+  assert.equal(px(padY, "padding verticale del bottone"), 2);
+  const border = px(/^(\d+px)/.exec(add?.get("border") ?? "")?.[1], "bordo del bottone");
+  // La scritta «+ passo» in Geist 12 px: 42,5 px in Chrome (lo script delle schermate controlla che resti dentro la riga).
+  const TEXT = 43;
+  assert.equal(add?.get("font-size"), "12px");
+  const need = px(after?.get("padding-left"), "margine di .b-pm-after") + 2 * px(padX, "padding del bottone") + 2 * border + TEXT + px(mark?.get("width"), "segno") + px(mark?.get("margin-right"), "margine del segno");
+  const room = px(rule(views, ".b-pm[data-adds]")?.get("--b-after"), "--b-after");
+  assert.ok(room >= need, `--b-after ${room} px, ne servono ${need}`);
+  // La mappa in sola lettura non ha «+ passo»: niente posto in più (la larghezza della riga lo legge con 0 px di default).
+  assert.equal(views.filter((item) => item.declarations.has("--b-after")).map((item) => item.selector).join(), "[data-board-root] .b-pm[data-adds]");
+});
