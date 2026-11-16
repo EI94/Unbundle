@@ -14,25 +14,19 @@
  * Si salva quando la persona lascia il campo: un'operazione per modifica, dal valore che c'era quando è entrata (P52).
  * Escape lascia il campo e basta: un secondo Escape chiude il drawer.
  */
-import { useLayoutEffect, useRef, useState, type FocusEvent, type JSX, type KeyboardEvent } from "react";
+import { useState, type FocusEvent, type JSX, type KeyboardEvent } from "react";
 import { firstSentence } from "../../../lib/mappatura/board-model.ts";
 import { BOARD_TEXT } from "../../../lib/mappatura/text.ts";
 import { MoreText } from "../ui/atoms.tsx";
-import { TextInPlace, committedText, settledText } from "../ui/edit.tsx";
+import { TextInPlace, committedText, settledText, useFittedHeight } from "../ui/edit.tsx";
 
 const cx = (...names: Array<string | false | null | undefined>) => names.filter(Boolean).join(" ");
 
-/** Un campo di testo alto quanto il suo testo. Nascosto (dentro un `details` chiuso) resta alto una riga. */
-function useAutoHeight(text: string) {
-  const area = useRef<HTMLTextAreaElement>(null);
-  useLayoutEffect(() => {
-    const element = area.current;
-    if (!element) return;
-    element.style.height = "auto";
-    element.style.height = element.scrollHeight > 0 ? `${element.scrollHeight}px` : "";
-  }, [text]);
-  return area;
-}
+/**
+ * Un campo di testo alto quanto il suo testo, anche quando cambia la sua larghezza (il pannello dell'assistente che si
+ * apre, la finestra che si stringe) o arrivano i font: `useFittedHeight` delle fondamenta.
+ */
+const useAutoHeight = (text: string) => useFittedHeight<HTMLTextAreaElement>(text);
 
 /** Escape lascia il campo senza chiudere il drawer; Invio (su una riga) o Cmd/Ctrl+Invio salvano. */
 function leaveKeys(event: KeyboardEvent<HTMLTextAreaElement>, singleLine: boolean) {

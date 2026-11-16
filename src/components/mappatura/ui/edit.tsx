@@ -13,7 +13,7 @@
  * entrata a quello che lascia (P52). Escape lascia il campo e basta: un secondo Escape chiude il drawer. Un controllo
  * spento (board in sola lettura) è spento dal primo disegno (F9).
  */
-import { useLayoutEffect, useRef, useState, type JSX, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type JSX, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { uncheckedNoteStatus, type BoardNote } from "../../../lib/mappatura/board-model.ts";
 import { cutLine, oneLine, prose } from "../../../lib/mappatura/board-ops.ts";
 import { BOARD_TEXT, formatCount, noteCaption, votesLabel } from "../../../lib/mappatura/text.ts";
@@ -37,6 +37,66 @@ export function committedText(edit: { base: string; text: string }, multiline: b
   return next === settledText(edit.base, multiline) ? null : next;
 }
 
+// ─── Un campo alto quanto il suo testo ───────────────────────────────
+
+/** Quello di un campo che serve a misurarlo (un `textarea`, o un finto nei test). */
+export interface FittedField {
+  clientWidth: number;
+  scrollHeight: number;
+  style: { height: string };
+}
+
+/** Alto quanto il suo testo; nascosto (dentro un `details` chiuso) non misura niente e torna all'altezza del foglio. */
+export function fitHeight(element: FittedField): void {
+  element.style.height = "auto";
+  element.style.height = element.scrollHeight > 0 ? `${element.scrollHeight}px` : "";
+}
+
+/** Il browser che serve a seguire il campo; nei test, uno finto. */
+export interface FitEnv {
+  ResizeObserver?: new (callback: () => void) => { observe(target: never): void; disconnect(): void };
+  fonts?: { ready: Promise<unknown> } | null;
+}
+const browserFitEnv = (): FitEnv => ({
+  ResizeObserver: typeof ResizeObserver === "undefined" ? undefined : (ResizeObserver as unknown as FitEnv["ResizeObserver"]),
+  fonts: typeof document === "undefined" ? null : document.fonts,
+});
+
+/**
+ * Tiene il campo alto quanto il suo testo anche quando cambia la sua larghezza: il pannello dell'assistente che si apre
+ * accanto alla board dopo il primo disegno, la finestra che si stringe, un `details` che si apre. E una volta quando
+ * arrivano i font: il serif dei titoli va a capo in un altro punto del font di riserva. Restituisce chi smette di seguire.
+ */
+export function keepFitted(element: FittedField, env: FitEnv = browserFitEnv()): () => void {
+  let live = true;
+  let width = element.clientWidth;
+  const observer = env.ResizeObserver
+    ? new env.ResizeObserver(() => {
+        if (!live || element.clientWidth === width) return;
+        width = element.clientWidth;
+        fitHeight(element);
+      })
+    : null;
+  observer?.observe(element as never);
+  void env.fonts?.ready.then(() => {
+    if (live) fitHeight(element);
+  });
+  return () => {
+    live = false;
+    observer?.disconnect();
+  };
+}
+
+/** Un `textarea` alto quanto il suo testo: misurato quando il testo cambia, e seguito quando cambia la sua larghezza. */
+export function useFittedHeight<T extends HTMLTextAreaElement>(text: string): RefObject<T | null> {
+  const area = useRef<T>(null);
+  useLayoutEffect(() => {
+    if (area.current) fitHeight(area.current);
+  }, [text]);
+  useEffect(() => (area.current ? keepFitted(area.current) : undefined), []);
+  return area;
+}
+
 /**
  * Un testo che si modifica sul posto (P52): una riga (`input`) o più righe (`textarea` che cresce con il testo). Si
  * salva lasciando il campo, o con Invio su una riga, o con Cmd/Ctrl+Invio su più righe; `onCommit` riceve il testo
@@ -54,16 +114,9 @@ export function TextInPlace(p: {
   className?: string;
 }): JSX.Element {
   const [edit, setEdit] = useState<{ base: string; text: string } | null>(null);
-  const area = useRef<HTMLTextAreaElement>(null);
   const shown = edit?.text ?? p.value;
-
-  // Più righe: il campo è alto quanto il suo testo.
-  useLayoutEffect(() => {
-    const element = area.current;
-    if (!element) return;
-    element.style.height = "auto";
-    element.style.height = `${element.scrollHeight}px`;
-  }, [shown]);
+  // Più righe: il campo è alto quanto il suo testo, anche quando cambia la sua larghezza.
+  const area = useFittedHeight<HTMLTextAreaElement>(shown);
 
   const leave = (text: string) => {
     const base = edit?.base ?? p.value;

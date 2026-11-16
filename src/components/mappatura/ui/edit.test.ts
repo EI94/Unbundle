@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createElement, type FunctionComponent, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { enableTsxImports } from "../../use-cases/detail/referent/tsx-test-loader.ts";
@@ -196,4 +197,56 @@ test("il toast della board: una regione viva sempre presente; il testo e «Annul
   } finally {
     globalThis.setTimeout = realSetTimeout;
   }
+});
+
+test("un campo sul posto resta alto quanto il suo testo quando cambia la sua larghezza o arrivano i font", async () => {
+  const { fitHeight, keepFitted } = edit;
+  const field = { clientWidth: 600, scrollHeight: 50, style: { height: "" } };
+  fitHeight(field);
+  assert.equal(field.style.height, "50px");
+  let resized: (() => void) | null = null;
+  let disconnected = false;
+  class FakeObserver {
+    constructor(callback: () => void) {
+      resized = callback;
+    }
+    observe() {}
+    disconnect() {
+      disconnected = true;
+    }
+  }
+  let fontsReady: () => void = () => {};
+  const fonts = { ready: new Promise<void>((resolve) => (fontsReady = resolve)) };
+  const stop = keepFitted(field, { ResizeObserver: FakeObserver, fonts });
+  assert.ok(resized, "il campo è seguito");
+  const resize = resized as () => void;
+  // Il pannello dell'assistente si apre accanto alla board: il campo si stringe e la scoperta va su due righe.
+  field.clientWidth = 380;
+  field.scrollHeight = 100;
+  resize();
+  assert.equal(field.style.height, "100px");
+  // Cambia solo l'altezza (quella appena data): niente da rifare.
+  field.scrollHeight = 120;
+  resize();
+  assert.equal(field.style.height, "100px");
+  // Arrivano i font: il serif va a capo in un altro punto del font di riserva.
+  field.scrollHeight = 110;
+  fontsReady();
+  await fonts.ready;
+  await Promise.resolve();
+  assert.equal(field.style.height, "110px");
+  stop();
+  assert.equal(disconnected, true);
+  field.clientWidth = 900;
+  field.scrollHeight = 50;
+  resize();
+  assert.equal(field.style.height, "110px", "smesso di seguire, il campo non cambia più");
+  // Nascosto (dentro un `details` chiuso) non misura niente: torna all'altezza del foglio.
+  const hidden = { clientWidth: 0, scrollHeight: 0, style: { height: "40px" } };
+  fitHeight(hidden);
+  assert.equal(hidden.style.height, "");
+  // Il testo sul posto delle fondamenta e le righe sul posto delle viste usano tutti e due questo campo.
+  const source = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
+  assert.match(source("./edit.tsx"), /const area = useFittedHeight<HTMLTextAreaElement>\(shown\);/);
+  assert.match(source("../board/in-place.tsx"), /const useAutoHeight = \(text: string\) => useFittedHeight<HTMLTextAreaElement>\(text\);/);
 });
