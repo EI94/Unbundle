@@ -235,8 +235,8 @@ function UnsortedMeetings({ workspaceId, workspaceName, count, renderedAt }: { w
                         {[meeting.date ? dayLabel(meeting.date, today) : "", meeting.participants].filter(Boolean).join(" · ")}
                       </p>
                     </div>
-                    <div className="flex shrink-0 gap-2">
-                      <Button variant="outline" className="h-11 sm:h-8" disabled={pending} onClick={() => assign(meeting)}>
+                    <div className="flex min-w-0 flex-wrap gap-2 sm:shrink-0">
+                      <Button variant="outline" className="h-auto min-h-11 max-w-full py-2 whitespace-normal sm:min-h-8 sm:py-1" disabled={pending} onClick={() => assign(meeting)}>
                         {T.assign(workspaceName)}
                       </Button>
                       <Button variant="ghost" className="h-11 sm:h-8" disabled={pending} onClick={() => leaveOut([meeting.id])}>

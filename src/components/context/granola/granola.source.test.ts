@@ -68,3 +68,11 @@ test("«Da smistare» aperto: una riga mentre legge da Granola, e una quando non
   assert.match(unsorted, /\{meetings && meetings\.length === 0 && <p[^>]*>\{T\.unsortedEmpty\}<\/p>\}/);
   assert.doesNotMatch(unsorted, /T\.refreshing/, "leggere l'elenco non aggiorna Granola");
 });
+
+test("«Da smistare» sul telefono: i due pulsanti vanno a capo, e «Assegna a …» con un nome lungo va a capo nel suo testo", () => {
+  const source = code(read("granola-inbox-panel.tsx"));
+  const row = source.slice(source.indexOf("onClick={() => assign(meeting)}") - 400, source.indexOf("onClick={() => assign(meeting)}"));
+  assert.match(row, /<div className="flex min-w-0 flex-wrap gap-2 sm:shrink-0">/, "la riga dei pulsanti va a capo");
+  assert.match(row, /<Button variant="outline" className="[^"]*\bwhitespace-normal\b[^"]*\bmax-w-full\b|<Button variant="outline" className="[^"]*\bmax-w-full\b[^"]*\bwhitespace-normal\b/, "il testo di «Assegna a …» va a capo");
+  assert.match(row, /\bmin-h-11\b/, "e resta alto almeno 44 px");
+});
