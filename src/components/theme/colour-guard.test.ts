@@ -14,8 +14,6 @@ const current = census.census() as Record<string, Record<string, number>>;
 // Dove la variante `light:` può stare: i pochi testi sbiaditi che i token non raggiungono.
 const LIGHT_ALLOWED = [
   "src/components/dashboard/app-sidebar.tsx",
-  "src/components/dashboard/activity-sidebar.tsx",
-  "src/components/dashboard/department-dashboard.tsx",
   "src/components/agent/chat-interface.tsx",
   // L'interruttore spento dei risultati di Learning: al 40% del grigio secondario sarebbe 2:1 sulla card chiara.
   "src/components/learning/results-toggle.tsx",
