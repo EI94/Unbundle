@@ -82,3 +82,8 @@ export function cut(text: string, max: number): string {
   const last = sliced.charCodeAt(sliced.length - 1);
   return last >= 0xd800 && last <= 0xdbff ? sliced.slice(0, -1) : sliced;
 }
+
+/** Il nome del cliente dentro una frase di un prompt, tra «»: una riga, senza virgolette che chiudano le sue. */
+export function nameForPrompt(name: string): string {
+  return cut(oneLine(String(name ?? "").replace(/[«»"]/g, " ")), 120).trim() || "il cliente";
+}

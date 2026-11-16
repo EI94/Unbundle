@@ -45,7 +45,12 @@ export const PROPOSAL_STATUSES = ["aperta", "confermata", "scartata", "superata"
 export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number];
 export const PROPOSAL_ISSUES = ["lungo", "nome_persona", "data_nascita", "codice_fiscale", "contatto"] as const;
 export type ProposalIssue = (typeof PROPOSAL_ISSUES)[number];
-export type ProposalEntity = { name: string; type: EntityType };
+/**
+ * Un'entità citata da una proposta (`context_proposals.entities`). `refId`: per `unita`, `obiettivo` e `use_case`, la
+ * riga che Unbundle ha già (`departments.id`, `strategic_goals.id`, `use_cases.id`), trovata negli elenchi alla lettura.
+ */
+export type ProposalEntity = { name: string; type: EntityType; refId?: string };
+/** Un collegamento tra due entità della stessa proposta, per nome (`context_proposals.relations`). */
 export type ProposalRelation = { from: string; verb: RelationVerb; to: string };
 
 // ─── Impegni e domande ───────────────────────────────────────────────
