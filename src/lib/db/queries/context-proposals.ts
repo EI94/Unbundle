@@ -25,7 +25,7 @@ import { entityKey, entityName, normalizeStatement, oneLine } from "@/lib/contex
 import { isPreselected, realIsoDate } from "@/lib/context/read/reconcile";
 import { isHardIssue, issueMessage, scanPersonalData, scanStatement } from "@/lib/context/scan";
 import { CONTEXT_TEXT } from "@/lib/context/text";
-import { contextAbilities, type ContextActor } from "@/lib/context/visibility";
+import { contextAbilities, stricterVisibility, type ContextActor } from "@/lib/context/visibility";
 import {
   COMMITMENT_PARTIES,
   CONTEXT_LIMITS,
@@ -159,6 +159,8 @@ interface ViewContext {
 
 function viewOf(row: ProposalRow, ctx: ViewContext): ProposalView {
   const { kind, target } = effectiveKind(row, ctx.heads);
+  // La visibilità che la conferma scriverà: con un fatto di adesso, la più stretta delle due (una conferma non allarga).
+  const visibility = target ? stricterVisibility(row.visibility, target.visibility) : row.visibility;
   const question = row.questionId ? ctx.questions.get(row.questionId) : undefined;
   let before: ProposalView["before"] = null;
   if (target) {
@@ -174,7 +176,7 @@ function viewOf(row: ProposalRow, ctx: ViewContext): ProposalView {
     quote: row.quote,
     basis: row.basis,
     section: row.section,
-    visibility: row.visibility,
+    visibility,
     preselected: isPreselected({ basis: row.basis, kind, issue: row.issue }),
     issue: row.issue,
     issueMessage: row.issue ? issueMessage(row.issue) : null,
@@ -578,7 +580,9 @@ export async function confirmProposals(actor: ContextActor, items: readonly Conf
         section: row.kind === "conferma" && target ? target.section : row.section!,
         statement,
         basis: row.basis,
-        visibility: row.visibility,
+        // Una versione nuova tiene la visibilità più stretta tra la proposta e il fatto di adesso: un «cambia» letto
+        // prima che Lateral Space rendesse il fatto «Solo Lateral Space» non lo rende di nuovo pubblico.
+        visibility: head ? stricterVisibility(row.visibility, before ? before.visibility : target!.visibility) : row.visibility,
         sourceId: row.sourceId,
         quote: row.quote,
         supersedesId: head,

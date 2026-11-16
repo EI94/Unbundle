@@ -107,6 +107,15 @@ export function visibleTo(viewer: Pick<ContextActor, "isLateralSpace">, visibili
   return visibility === "tutti" || viewer.isLateralSpace === true;
 }
 
+/**
+ * La più stretta di due visibilità: «Solo Lateral Space» se una delle due lo è. Una conferma non allarga mai chi vede un
+ * fatto: una versione nuova tiene la visibilità più stretta tra la proposta e il fatto di adesso. Allarga solo una
+ * modifica esplicita del fatto («Per tutti / Solo Lateral Space»).
+ */
+export function stricterVisibility(a: ContextVisibility, b: ContextVisibility): ContextVisibility {
+  return a === "ls" || b === "ls" ? "ls" : "tutti";
+}
+
 /** «Togli» su un documento: Lateral Space; chi gestisce il workspace; chi l'ha caricato. Mai chi segue solo un corso. */
 export function canRemoveDocument(viewer: Pick<ContextActor, "userId" | "role" | "isLateralSpace">, doc: { uploadedByUserId: string | null }): boolean {
   const abilities = contextAbilities(viewer);

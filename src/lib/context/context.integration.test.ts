@@ -1366,6 +1366,34 @@ test("una conferma su un fatto cambiato dopo che la persona l'ha visto: «versio
   await proposals.discardProposals(actor("ls"), [afterRetire.id]);
 });
 
+test("una conferma non allarga chi vede un fatto: un «cambia» o un conflitto letti prima che il fatto diventasse «Solo Lateral Space» scrivono una versione «Solo Lateral Space»", opts, async () => {
+  const version = async (id: string) => Number((await q(`SELECT version FROM context_facts WHERE id = $1`, [id]))[0].version);
+  const clientSees = async (statement: string) => (await memory.loadContextMemory(actor("con"))).sections.some((section) => section.facts.some((f) => f.statement === statement));
+  // «Cambia»: la proposta dice «per tutti»; poi Lateral Space rende il fatto «Solo Lateral Space».
+  const margin = await seedFact(`Lo sconto V1 ${suffix} è dell'8 per cento.`, { section: "azienda" });
+  const changing = await readProposals([proposal({ tipo: "cambia", testo: `Lo sconto V1 ${suffix} è del 9 per cento.`, citazione: "", fattoRif: "F1", sezione: "azienda", visibilita: "tutti" })], `${NOTE}\nCall sullo sconto V1 (${suffix}).`);
+  assert.equal(changing.all[0].visibility, "tutti");
+  okValue(await memory.editFact(actor("ls"), margin, await version(margin), { visibility: "ls" }));
+  const [shown] = (await proposals.listOpenProposals(actor("ls"), { sourceId: changing.sourceId }))!.proposals;
+  assert.equal(shown.visibility, "ls", "«Da confermare» mostra la visibilità che la conferma scriverà");
+  okValue(await proposals.confirmProposals(actor("ls"), pick([shown])));
+  assert.deepEqual((await q(`SELECT statement, visibility FROM context_facts WHERE supersedes_id = $1`, [margin]))[0], { statement: `Lo sconto V1 ${suffix} è del 9 per cento.`, visibility: "ls" });
+  assert.equal(await clientSees(`Lo sconto V1 ${suffix} è del 9 per cento.`), false, "il cliente non vede la versione nuova");
+
+  // Un conflitto risolto con «Ora», sullo stesso schema.
+  const price = await seedFact(`Il listino V2 ${suffix} vale per un anno.`, { section: "regole" });
+  const conflict = await readProposals([proposal({ tipo: "conflitto", testo: `Il listino V2 ${suffix} vale per sei mesi.`, citazione: "", fattoRif: "F1", sezione: "regole", visibilita: "tutti" })], `${NOTE}\nCall sul listino V2 (${suffix}).`);
+  okValue(await memory.editFact(actor("ls"), price, await version(price), { visibility: "ls" }));
+  const [disputed] = (await proposals.listOpenProposals(actor("ls"), { sourceId: conflict.sourceId }))!.proposals;
+  assert.deepEqual([disputed.kind, disputed.visibility], ["conflitto", "ls"]);
+  okValue(await proposals.confirmProposals(actor("ls"), [{ id: disputed.id, version: disputed.version, resolution: "ora" }]));
+  assert.equal((await q(`SELECT visibility FROM context_facts WHERE supersedes_id = $1`, [price]))[0].visibility, "ls");
+  // Allarga solo una modifica esplicita del fatto.
+  const head = String((await q(`SELECT id FROM context_facts WHERE supersedes_id = $1`, [price]))[0].id);
+  okValue(await memory.editFact(actor("ls"), head, await version(head), { visibility: "tutti" }));
+  assert.equal(await clientSees(`Il listino V2 ${suffix} vale per sei mesi.`), true);
+});
+
 test("lo stesso fatto da due appunti, confermato con un clic: un fatto solo; uguale a uno in memoria: una riconferma", opts, async () => {
   const statement = `Gli ordini del magazzino doppio ${suffix} si inseriscono a mano ogni mattina.`;
   const activeWith = async (text: string) => (await q(`SELECT id, visibility FROM context_facts WHERE workspace_id = $1 AND status = 'attivo' AND statement = $2`, [ids.wsA, text]));
