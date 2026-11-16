@@ -20,18 +20,31 @@
 //
 //   node scripts/mappatura-test/screens-board.mjs --out <cartella> [--ref <board-ref/shots>] [--vetrina <cartella>]
 //
+// Con `--live` (per l'integratore, con l'app accesa sul banco del hub, scripts/uc-test/start-app.mjs, e un'unità con la
+// sua board) le pagine sono quelle vere: per ogni larghezza (390, 768, 900, 1024, 1280, 1440) e per ogni indirizzo di
+// `--pages`, dopo l'accesso con l'account di prova `--account` (scripts/uc-test/browser-login.mjs), lo stato sotto 500,
+// nessun errore nella pagina, la pagina che non scorre di lato; le foto in <out>/live/<larghezza>/.
+//
+//   node scripts/mappatura-test/screens-board.mjs --live --out <cartella> --pages /dashboard/<ws>/mapping,/dashboard/<ws>/mapping/<unità>
+//        [--account ls-lead] [--origin http://127.0.0.1:53110]
+//
 // Solo indirizzi locali: la vetrina sta su 127.0.0.1; i font arrivano da Google Fonts come sul riferimento.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import { evaluate, launchBrowser, navigate, newPage, closePage, screenshot } from "../uc-test/cdp.mjs";
+import { closePage, evaluate, launchBrowser, loginAs, navigate, newPage, pageReport, screenshot } from "../uc-test/cdp.mjs";
+import { UC_TEST_APP_PORT, UC_TEST_HOST } from "../uc-test/config.mjs";
 import { REPO, buildVetrina } from "./vetrina.mjs";
 
 const arg = (name, fallback) => {
   const at = process.argv.indexOf(name);
   return at !== -1 && process.argv[at + 1] ? resolve(process.argv[at + 1]) : fallback;
+};
+const text = (name, fallback) => {
+  const at = process.argv.indexOf(name);
+  return at !== -1 && process.argv[at + 1] ? process.argv[at + 1] : fallback;
 };
 const OUT = arg("--out", join(process.env.TMPDIR || tmpdir(), "mappatura-shots"));
 const REF = arg("--ref", null);
@@ -197,6 +210,56 @@ function comparison(shots) {
   return `<!doctype html><html lang="it"><head><meta charset="utf-8"><title>Board: vetrina e riferimento</title>
 <style>body{font:13px system-ui;margin:16px;background:#ddd}table{border-collapse:collapse}th{text-align:left;vertical-align:top;padding:8px;width:160px;font-weight:500}td{vertical-align:top;padding:8px;width:45vw}img{max-width:100%;border:1px solid #999;background:#fff}.none{color:#555}</style></head>
 <body><h1>Board: la vetrina (sinistra) e il riferimento (destra)</h1><p>I contenuti sono diversi apposta: si confrontano grafica e disposizione, non i pixel.</p><table>${rows}</table></body></html>`;
+}
+
+// ─── Le pagine vere (--live) ─────────────────────────────────────────
+
+const LIVE_WIDTHS = [390, 768, 900, 1024, 1280, 1440];
+
+/** Le pagine vere dell'app, a ogni larghezza: stato sotto 500, nessun errore, nessuno scorrimento di lato. */
+async function live() {
+  const origin = text("--origin", `http://${UC_TEST_HOST}:${UC_TEST_APP_PORT}`);
+  const paths = text("--pages", "").split(",").map((path) => path.trim()).filter(Boolean);
+  const account = text("--account", null);
+  if (paths.length === 0) throw new Error("--live vuole --pages, gli indirizzi delle pagine della mappatura (/dashboard/<ws>/mapping,…)");
+  const browser = await launchBrowser();
+  const failures = [];
+  const report = {};
+  try {
+    for (const width of LIVE_WIDTHS) {
+      const tab = await newPage(browser, { width });
+      if (account) await loginAs(tab, account, { to: paths[0] });
+      for (const path of paths) {
+        const landed = await navigate(tab, new URL(path, origin).href);
+        const errors = tab.errors.map((error) => error.text);
+        const page = await pageReport(tab);
+        const slug = path.replace(/^\/+/, "").replace(/[^\w-]+/g, "_") || "radice";
+        report[`${width}/${slug}`] = { status: landed.status, url: landed.url, scrollWidth: page.scrollWidth, innerWidth: page.innerWidth, errors };
+        const where = `${width} ${path}`;
+        if (landed.status === null || landed.status >= 500) failures.push(`${where}: stato ${landed.status}`);
+        if (page.applicationError) failures.push(`${where}: «Application error»`);
+        if (errors.length) failures.push(`${where}: errori nella pagina ${errors.join(" | ")}`);
+        if (page.horizontalOverflow) failures.push(`${where}: la pagina scorre di lato (${page.scrollWidth} > ${page.innerWidth})`);
+        await screenshot(tab, join(OUT, "live", String(width), `${slug}.png`));
+      }
+      await closePage(tab);
+    }
+  } finally {
+    await browser.close();
+  }
+  mkdirSync(join(OUT, "live"), { recursive: true });
+  writeFileSync(join(OUT, "live", "rapporto.json"), `${JSON.stringify(report, null, 1)}\n`);
+  console.log(`pagine vere: ${Object.keys(report).length} foto in ${join(OUT, "live")}`);
+  if (failures.length) {
+    console.error(`\n${failures.length} controlli non tornano:\n${failures.join("\n")}`);
+    process.exit(1);
+  }
+  console.log("tutte le pagine vere a posto");
+}
+
+if (process.argv.includes("--live")) {
+  await live();
+  process.exit(0);
 }
 
 // ─── Il giro ─────────────────────────────────────────────────────────
