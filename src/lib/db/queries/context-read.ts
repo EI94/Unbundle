@@ -139,6 +139,7 @@ interface ReadMemory {
   questions: Array<{ ref: string; id: string; question: string }>;
   commitments: string[];
   already: string[];
+  editedQuotes: string[];
   lastPosition: number;
 }
 
@@ -167,14 +168,15 @@ async function loadReadMemory(reader: Reader, sourceId: string): Promise<ReadMem
       WHERE workspace_id = ${ws}::uuid AND status = 'aperto' ORDER BY created_at DESC, id LIMIT ${L.openItemsInPrompt}`),
     // Le proposte di questi appunti, prima quelle decise o ancora aperte; la posizione più alta tra tutte.
     db.execute(sql`
-      SELECT statement, status, (max(position) OVER ())::int AS last_position FROM context_proposals
+      SELECT statement, quote, edited, status, (max(position) OVER ())::int AS last_position FROM context_proposals
       WHERE source_id = ${sourceId}::uuid AND workspace_id = ${ws}::uuid ORDER BY (status = 'superata'), position LIMIT 500`),
     loadLiveDiscovery(workspace, reader.viewer),
   ]);
   const factRows = rowsOf<{ id: string; section: ContextSection; visibility: ContextVisibility; statement: string; total: number }>(facts);
   const total = Number(factRows[0]?.total ?? 0);
   if (total > L.memoryFactsInPrompt) console.warn(`[${LOG_SCOPE}] memoria_troncata`, JSON.stringify({ workspaceId: ws, fatti: total }));
-  const alreadyRows = rowsOf<{ statement: string; status: string; last_position: number }>(already);
+  const alreadyRows = rowsOf<{ statement: string; quote: string | null; edited: boolean; status: string; last_position: number }>(already);
+  const decidedOrOpen = alreadyRows.filter((a) => a.status !== "superata");
   return {
     clientName: workspace.name,
     facts: factRows.map((f, i) => ({ ref: `F${i + 1}`, id: f.id, section: f.section, visibility: f.visibility, statement: f.statement })),
@@ -186,7 +188,9 @@ async function loadReadMemory(reader: Reader, sourceId: string): Promise<ReadMem
     commitments: rowsOf<{ statement: string }>(commitments).map((c) => c.statement),
     // «Già proposto»: le frasi confermate, scartate o ancora aperte. Le superate no: le ha tolte «Rileggi» o una call
     // cambiata su Granola, senza che nessuno le decidesse; se il testo le dice ancora, devono tornare.
-    already: alreadyRows.filter((a) => a.status !== "superata").map((a) => a.statement),
+    already: decidedOrOpen.map((a) => a.statement),
+    // Di una proposta corretta dalla persona resta la citazione: il modello la ritroverebbe con la sua frase di prima.
+    editedQuotes: decidedOrOpen.flatMap((a) => (a.edited === true && a.quote ? [a.quote] : [])),
     lastPosition: Number(alreadyRows[0]?.last_position ?? 0),
   };
 }
@@ -368,6 +372,7 @@ async function readSource(reader: Reader, sourceId: string, opts: ReadOptions): 
       units: memory.units,
       goals: memory.goals,
       already: memory.already,
+      editedQuotes: memory.editedQuotes,
       occurredOn: toIsoDate(source.occurred_on),
     });
     if (reconciled.overCap > 0) console.warn(`[${LOG_SCOPE}] proposte_oltre_il_tetto`, JSON.stringify({ workspaceId: ws, sourceId, oltre: reconciled.overCap }));

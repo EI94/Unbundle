@@ -185,6 +185,20 @@ test("5. stesso testo: di un fatto in memoria è una riconferma; già proposto, 
   assert.deepEqual(again.proposals, []);
 });
 
+test("5. il passaggio di una proposta che la persona ha corretto (la stessa citazione) non torna con la frase del modello", () => {
+  // La persona ha corretto «Mario Rossi decide gli ordini.» in «Il responsabile decide gli ordini.»: in «Già proposto» c'è
+  // la frase corretta, e il modello rilegge lo stesso passaggio con la frase di prima.
+  const answer = [
+    proposal({ tipo: "nuovo", testo: "Mario Rossi inserisce gli ordini a mano ogni mattina.", citazione: "Gli ordini si inseriscono a mano, ogni mattina.", sezione: "persone" }),
+    proposal({ tipo: "nuovo", testo: "Il direttore operativo cambia l'ERP entro giugno.", citazione: "L’ERP lo cambiamo entro giugno" }),
+  ];
+  const kept = run(answer, { already: ["Il responsabile inserisce gli ordini a mano ogni mattina."], editedQuotes: ["gli ordini si inseriscono a mano ogni mattina"] });
+  assert.deepEqual(kept.proposals.map((p) => p.statement), ["Il direttore operativo cambia l'ERP entro giugno."]);
+  // Senza la citazione corretta (o con un'altra), il passaggio è nuovo e la proposta resta.
+  assert.equal(run(answer, { already: ["Il responsabile inserisce gli ordini a mano ogni mattina."] }).proposals.length, 2);
+  assert.equal(run(answer, { editedQuotes: ["Il gestionale è SAP Business One."] }).proposals.length, 2);
+});
+
 test("6. visibilità: un cambiamento o un conflitto su un fatto «Solo Lateral Space» resta «Solo Lateral Space»", () => {
   const { proposals } = run([
     proposal({ tipo: "cambia", testo: "Il contratto vale 40.000 euro.", citazione: "Il contratto con Lateral Space vale 40.000 euro.", fattoRif: "F2", visibilita: "tutti", sezione: "regole" }),

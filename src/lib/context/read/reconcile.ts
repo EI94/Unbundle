@@ -7,7 +7,8 @@
  *    da correggere (`issue`);
  * 3. una citazione che gli appunti non contengono non si salva, e la proposta diventa «dedotto»;
  * 4. un riferimento a un fatto che non c'è fa della proposta un fatto nuovo;
- * 5. lo stesso testo di un fatto in memoria è una riconferma; una frase già proposta non si ripropone;
+ * 5. lo stesso testo di un fatto in memoria è una riconferma; una frase già proposta non si ripropone, e nemmeno il
+ *    passaggio di una proposta che la persona ha corretto (la stessa citazione);
  * 6. un cambiamento o un conflitto su un fatto «Solo Lateral Space» resta «Solo Lateral Space» (si chiude, non si apre);
  * 7. sezione nulla solo per impegni e domande;
  * 8. un impegno ha sempre una parte; una data è una data vera;
@@ -43,6 +44,12 @@ export interface ReconcileInput {
   units: Array<{ ref: string; name: string; id: string }>;
   goals: Array<{ ref: string; title: string; id: string }>;
   already: string[];
+  /**
+   * Le citazioni delle proposte di questi appunti che la persona ha corretto (confermate, scartate o aperte). La frase
+   * corretta è in `already`, quella del modello non c'è più: una proposta nuova con la stessa citazione è lo stesso
+   * passaggio, già deciso, e non si ripropone.
+   */
+  editedQuotes?: string[];
   occurredOn: string;
 }
 
@@ -206,6 +213,7 @@ export function reconcile(input: ReconcileInput): ReconcileResult {
   const lists = listsOf(input);
   const source = foldText(input.sourceText);
   const seen = new Set(input.already.map(normalizeStatement).filter(Boolean));
+  const editedQuotes = new Set((input.editedQuotes ?? []).map(normalizeStatement).filter(Boolean));
   const skipped = { persone: 0, sanitari: 0, altri_clienti: 0, clienti_del_cliente: 0 };
   const drafts: DraftProposal[] = [];
   const confirmedFacts = new Set<string>();
@@ -233,6 +241,8 @@ export function reconcile(input: ReconcileInput): ReconcileResult {
     let quote: string | null = cut(oneLine(typeof raw.citazione === "string" ? raw.citazione : ""), CONTEXT_LIMITS.quoteMax).trim() || null;
     if (quote && (!source.includes(foldText(quote)) || !scanNote(quote).ok)) quote = null;
     if (!quote) basis = "dedotto";
+    // Il passaggio di una proposta che la persona ha già corretto: è già deciso, con le sue parole.
+    if (quote && editedQuotes.has(normalizeStatement(quote))) continue;
 
     // 4. Riferimento al fatto.
     let kind: ProposalKind = raw.tipo;
