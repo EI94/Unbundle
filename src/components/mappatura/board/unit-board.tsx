@@ -41,11 +41,19 @@ function AssistantIcon(): JSX.Element {
   );
 }
 
-/** Il campo dove si scrive all'assistente, il primo che c'è nel pannello; altrimenti il suo primo bottone. */
-function focusTarget(panel: HTMLElement | null): HTMLElement | null {
+/** Il campo dell'assistente: il compagno lo segna con `data-b="companion-input"`. */
+export const ASSISTANT_FIELD_SELECTOR = '.b-assist-body [data-b="companion-input"]:not([disabled])';
+
+/**
+ * Dove va il cursore quando il pannello si apre: il campo dell'assistente; se non c'è (o aspetta la risposta), il primo
+ * campo che si vede nel pannello, poi il suo primo bottone. Un `input` nascosto (la scelta dei file di «Carica
+ * documenti», che sta prima del campo) non prende il fuoco e non conta.
+ */
+export function focusTarget(panel: Pick<ParentNode, "querySelector"> | null): HTMLElement | null {
   if (!panel) return null;
   return (
-    panel.querySelector<HTMLElement>(".b-assist-body textarea:not([disabled]), .b-assist-body input:not([type='hidden']):not([disabled])") ??
+    panel.querySelector<HTMLElement>(ASSISTANT_FIELD_SELECTOR) ??
+    panel.querySelector<HTMLElement>(".b-assist-body textarea:not([disabled]):not([hidden]), .b-assist-body input:not([type='hidden']):not([type='file']):not([hidden]):not([disabled])") ??
     panel.querySelector<HTMLElement>(".b-assist-body button:not([disabled])") ??
     panel.querySelector<HTMLElement>("button")
   );

@@ -112,3 +112,44 @@ test("nel browser: la scheda scelta porta in cima e si ricorda; il pannello sopr
   assert.match(source, /if \(want === "field" && open\) focusTarget\(panel\.current\)\?\.focus\(\);/);
   assert.match(source, /if \(want === "toggle" && !open\) visibleOf\(headToggle\.current, tabToggle\.current\)\?\.focus\(\);/);
 });
+
+/**
+ * Un pannello finto con gli elementi del compagno nell'ordine del documento, e `querySelector` come il browser: il primo
+ * elemento che risponde a una delle parti del selettore. Basta per i selettori di `focusTarget`: un antenato di classe,
+ * un tag, attributi con o senza valore, `:not(…)`.
+ */
+type FakeElement = { name: string; tag: string; inBody: boolean; attrs: Record<string, string> };
+function fakePanel(elements: FakeElement[]) {
+  const simple = (element: FakeElement, part: string): boolean => {
+    const not = [...part.matchAll(/:not\(([^)]*)\)/g)].map((match) => match[1]);
+    const rest = part.replace(/:not\([^)]*\)/g, "");
+    const tag = /^[a-z]+/.exec(rest)?.[0];
+    if (tag && element.tag !== tag) return false;
+    for (const [, name, , value] of rest.matchAll(/\[([\w-]+)(=(["']?)([^"'\]]*)\3)?\]/g).map((m) => [m[0], m[1], m[2], m[4]] as const)) {
+      if (!(name in element.attrs) || (value !== undefined && element.attrs[name] !== value)) return false;
+    }
+    return not.every((inner) => !simple(element, inner));
+  };
+  const matches = (element: FakeElement, selector: string) =>
+    selector.split(/\s*,\s*/).some((part) => {
+      const [ancestor, own] = part.includes(" ") ? [part.slice(0, part.lastIndexOf(" ")), part.slice(part.lastIndexOf(" ") + 1)] : [null, part];
+      return (ancestor === null || (ancestor === ".b-assist-body" && element.inBody)) && simple(element, own);
+    });
+  return { querySelector: (selector: string) => elements.find((element) => matches(element, selector)) ?? null };
+}
+
+test("«Inizia con l'assistente» mette il cursore nel campo del compagno, non nella scelta dei file nascosta che sta prima", async () => {
+  const { focusTarget } = await import("./unit-board.tsx");
+  const close: FakeElement = { name: "chiudi", tag: "button", inBody: false, attrs: { type: "button" } };
+  const files: FakeElement = { name: "file", tag: "input", inBody: true, attrs: { type: "file", hidden: "", "data-b": "companion-files" } };
+  const upload: FakeElement = { name: "carica", tag: "button", inBody: true, attrs: { type: "button" } };
+  const field: FakeElement = { name: "campo", tag: "textarea", inBody: true, attrs: { "data-b": "companion-input" } };
+  const pick = (elements: FakeElement[]) => (focusTarget(fakePanel(elements) as never) as unknown as FakeElement | null)?.name ?? null;
+  assert.equal(pick([close, files, upload, field]), "campo");
+  // Mentre l'assistente risponde il campo è spento: il primo bottone del corpo, mai la scelta dei file.
+  assert.equal(pick([close, files, upload, { ...field, attrs: { ...field.attrs, disabled: "" } }]), "carica");
+  // Senza compagno, il primo campo visibile del corpo; senza niente, il primo bottone del pannello.
+  assert.equal(pick([close, files, { name: "altro", tag: "input", inBody: true, attrs: { type: "text" } }]), "altro");
+  assert.equal(pick([close]), "chiudi");
+  assert.equal(focusTarget(null), null);
+});
