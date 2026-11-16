@@ -151,3 +151,15 @@ test("le azioni rileggono chi chiama e aggiornano la pagina solo se la scrittura
   // Nessuna chiamata al modello nelle azioni: solo scritture brevi.
   assert.doesNotMatch(source, /readContextSource|askContext|generateObject|generateText/);
 });
+
+test("«Da confermare» sul telefono: ogni casella si tocca in un'area di almeno 44 px", () => {
+  const row = read("src/components/context/proposal-row.tsx");
+  assert.match(row, /<label className="[^"]*\bmin-h-11\b[^"]*\bmin-w-11\b[^"]*">\s*<Checkbox checked=\{checkable && checked\}/, "la casella di una proposta");
+  const view = read("src/components/context/confirm-view.tsx");
+  assert.match(view, /<label className="[^"]*\bmin-h-11\b[^"]*\bmin-w-11\b[^"]*">\s*<Checkbox checked=\{choices\.reconfirm\}/, "la riga delle riconferme");
+  assert.match(view, /<label className="flex min-h-11 [^"]*">\s*<span className="[^"]*\bmin-w-11\b[^"]*">\s*<Checkbox/, "una riconferma da scegliere: tutta la riga");
+  // Nessuna casella fuori da un'area così.
+  for (const [name, source] of [["proposal-row.tsx", row], ["confirm-view.tsx", view]] as const) {
+    assert.equal((source.match(/<Checkbox\b/g) ?? []).length, (source.match(/<label className="[^"]*\bmin-h-11\b[^"]*">\s*(?:<span[^>]*>\s*)?<Checkbox\b/g) ?? []).length, name);
+  }
+});

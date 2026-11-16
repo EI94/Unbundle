@@ -100,7 +100,7 @@ export function GranolaInboxPanel({
     return (
       <p role="status" className="flex min-h-11 items-center text-sm text-muted-foreground">
         {line.toNotes ? (
-          <Link className="underline-offset-4 hover:text-foreground hover:underline" href={`/dashboard/${workspaceId}/contesto?vista=appunti`}>
+          <Link className="inline-flex min-h-11 items-center underline-offset-4 hover:text-foreground hover:underline" href={`/dashboard/${workspaceId}/contesto?vista=appunti`}>
             {line.text}
           </Link>
         ) : (

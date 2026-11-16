@@ -161,7 +161,7 @@ export function ConfirmView({
             {toChoose.map((proposal) => (
               <li key={`${proposal.id}:${proposal.version}`}>
                 <label className="flex min-h-11 cursor-pointer items-start gap-3 py-1 text-sm sm:min-h-0">
-                  <span className="flex min-h-9 min-w-9 shrink-0 items-start justify-center pt-0.5 sm:min-h-0 sm:min-w-0">
+                  <span className="flex min-w-11 shrink-0 items-start justify-center pt-0.5 sm:min-w-0">
                     <Checkbox
                       checked={selection.checked[proposal.id] === true}
                       disabled={pending}
@@ -182,9 +182,10 @@ export function ConfirmView({
 
       {again.length > 0 ? (
         <div className="flex gap-3 rounded-xl border p-3">
-          <div className="flex min-h-11 shrink-0 items-start pt-1 sm:min-h-0">
+          {/* Sul telefono la casella si tocca in un'area di 44 × 44 px. */}
+          <label className="flex min-h-11 min-w-11 shrink-0 cursor-pointer items-start justify-center pt-1 sm:min-h-0 sm:min-w-0 sm:justify-start">
             <Checkbox checked={choices.reconfirm} disabled={pending} onCheckedChange={(next) => setChoices((c) => ({ ...c, reconfirm: next === true }))} aria-labelledby="conferma-riconferme" />
-          </div>
+          </label>
           <details className="min-w-0 flex-1">
             <summary id="conferma-riconferme" className="flex min-h-11 cursor-pointer items-center text-sm sm:min-h-0">
               {T.confirm.reconfirmed(again.length)}

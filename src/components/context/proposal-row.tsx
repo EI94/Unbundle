@@ -81,9 +81,10 @@ export function ProposalRow({
     <li className={cn("space-y-3 rounded-xl border p-3", error && "border-destructive/50")}>
       <div className="flex gap-3">
         {conflict ? null : (
-          <div className="flex min-h-11 shrink-0 items-start pt-1 sm:min-h-0">
+          // Sul telefono la casella si tocca in un'area di 44 × 44 px: tutta l'area la spunta.
+          <label className="flex min-h-11 min-w-11 shrink-0 cursor-pointer items-start justify-center pt-1 sm:min-h-0 sm:min-w-0 sm:justify-start">
             <Checkbox checked={checkable && checked} disabled={busy || !checkable} onCheckedChange={(next) => onCheck(next === true)} aria-labelledby={statementId} />
-          </div>
+          </label>
         )}
         <div className="min-w-0 flex-1 space-y-1.5">
           {proposal.before && proposal.kind === "cambia" ? <p className="text-xs leading-relaxed text-muted-foreground">{T.confirm.before(proposal.before.statement, proposal.before.sourceLabel, proposal.before.date)}</p> : null}

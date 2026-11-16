@@ -85,3 +85,10 @@ test("Impostazioni ha un solo pulsante pieno: nel blocco di Granola ogni pulsant
   }
   assert.match(code(read("granola-card-panel.tsx")), /<Button type="button" variant="outline"[^>]*onClick=\{save\}>/);
 });
+
+test("la riga di Granola nella Memoria: il link a «Da smistare» si tocca in un'area alta almeno 44 px", () => {
+  const source = code(read("granola-inbox-panel.tsx"));
+  const compact = source.slice(source.indexOf("if (compact) {"), source.indexOf("if (!connected || expired) {"));
+  assert.match(compact, /<p role="status" className="[^"]*\bmin-h-11\b[^"]*">/);
+  assert.match(compact, /<Link className="[^"]*\binline-flex\b[^"]*\bmin-h-11\b[^"]*" href=\{`\/dashboard\/\$\{workspaceId\}\/contesto\?vista=appunti`\}>/);
+});
