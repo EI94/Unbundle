@@ -1,7 +1,9 @@
 /**
- * Gli 8 tool del MCP del team «Unbundle Use case» (docs/use-case/DESIGN.md §9.4, D3, D9; «Cosa
- * serve» e «Benefici e costi» dalla spec di Pierpaolo, 25/10/2026): gli handler di `tools/call`.
- * Le definizioni di `tools/list` sono in `contract.ts`.
+ * Gli 11 tool del MCP del team «Unbundle Use case» (docs/use-case/DESIGN.md §9.4, D3, D9; «Cosa
+ * serve» e «Benefici e costi» dalla spec di Pierpaolo, 25/10/2026; «Contesto» dal rilascio 9a,
+ * docs/contesto/RILASCIO-9a-COSTRUZIONE.md §9): gli handler di `tools/call`. Le definizioni di
+ * `tools/list` sono in `contract.ts`; i tre strumenti di «Contesto» in `context-tools.ts`, con i
+ * passi comuni di qui (limiti, idempotenza).
  *
  * Ogni tool risponde sempre nel formato del contratto (`structuredContent` più la copia JSON;
  * gli errori con `isError: true`), mai con il testo «Input validation error» dell'SDK.
@@ -10,6 +12,8 @@
  *  1. area accesa per il workspace del token (`USE_CASE_HUB_WORKSPACES`), altrimenti
  *     `area_spenta` a ogni tool, senza consumare il limite;
  *  2. scrittura con un token «Solo lettura» → `permesso_mancante`;
+ *  2b. i tre strumenti di «Contesto»: solo Lateral Space (`permesso_mancante`), poi la 0038
+ *     (`riprova`), poi gli stessi passi qui sotto (`context-tools.ts`);
  *  3. letture: limite delle letture, validazione, lettura;
  *  4. scritture: validazione (zod stretto, `confirmedByUser: true`), lettura della chiave di
  *     idempotenza senza scrivere (una richiesta già completata con lo stesso contenuto torna
@@ -106,6 +110,7 @@ import {
   type UpdateUseCaseInput,
   type UseCaseChangesMcp,
 } from "./contract.ts";
+import { callContextTool, isContextToolName, type TeamContextDeps } from "./context-tools.ts";
 import { decideExistingTeamRequest, releasesKey } from "./idempotency.ts";
 import {
   NEEDS_RESULTS_NOTE,
@@ -243,6 +248,8 @@ export interface TeamToolDeps {
   reads: TeamReadDeps;
   service: TeamServiceDeps;
   requests: TeamRequestStore;
+  /** «Contesto» (rilascio 9a): le funzioni condivise dei tre strumenti, e la persona del token. */
+  context: TeamContextDeps;
   /** Notifiche delle schede nuove dopo la risposta (nella rotta: `after()`). Non deve lanciare. */
   notifyCreated(workspaceId: string, useCaseIds: readonly string[]): void;
   /** Origine pubblica dell'app, per i link (`NEXT_PUBLIC_APP_URL`, poi il dominio di produzione). */
@@ -345,12 +352,21 @@ export function teamWriteContext(principal: TeamPrincipal, now?: Date): WriteCon
 
 // ─── Ingresso ────────────────────────────────────────────────────────
 
-/** Esegue un tool. `name` deve essere uno degli 8 (`isTeamToolName`). Non lancia. */
+/** Esegue un tool. `name` deve essere uno degli 11 (`isTeamToolName`). Non lancia. */
 export async function callTeamTool(name: TeamToolName, args: unknown, principal: TeamPrincipal, deps: TeamToolDeps): Promise<TeamToolOutcome> {
   const log = deps.log ?? console;
   try {
     if (!deps.isAreaOn(principal.workspaceId)) return failed(teamError("area_spenta"));
     if (isTeamWriteTool(name) && !principal.canWrite) return failed(teamError("permesso_mancante", { message: READ_ONLY_TOKEN_MESSAGE }));
+    if (isContextToolName(name)) {
+      return await callContextTool(name, args, principal, deps.context, {
+        consumeLimit: (kind) => consumeLimit(principal, deps, kind),
+        runWrite: (plan) => runWrite(principal, deps, plan),
+        saveProgress: (key, attempt, result) => deps.requests.progress(key, attempt, result),
+        appOrigin: deps.appOrigin,
+        now: () => deps.now?.() ?? new Date(),
+      });
+    }
     switch (name) {
       case "search_use_cases":
         return await searchUseCases(args, principal, deps);
@@ -528,13 +544,19 @@ async function getUseCase(args: unknown, principal: TeamPrincipal, deps: TeamToo
 
 // ═══ Scritture: presa in carico e chiusura ═══════════════════════════
 
-type Claimed = Extract<TeamClaim, { status: "claimed" }>;
+export type Claimed = Extract<TeamClaim, { status: "claimed" }>;
 
-type Execution =
-  | { ok: true; result: Record<string, unknown>; respond(): Promise<TeamToolOutcome> }
+/**
+ * L'esito di una scrittura presa in carico. Riuscita: si chiude la richiesta e si risponde; con
+ * `resumable` si risponde lo stesso, ma la richiesta resta «failed» con il suo avanzamento, così la
+ * stessa chiamata con la stessa chiave riprende (`add_context_notes` con parti ancora da leggere, o
+ * una lettura da riprovare). Non riuscita: la chiave torna libera o resta «failed» (`releasesKey`).
+ */
+export type Execution =
+  | { ok: true; result: Record<string, unknown>; respond(): Promise<TeamToolOutcome>; resumable?: boolean }
   | { ok: false; error: TeamMcpError; partial: boolean };
 
-interface WritePlan {
+export interface WritePlan {
   tool: TeamWriteToolName;
   idempotencyKey: string;
   requestHash: string;
@@ -585,6 +607,12 @@ async function runWrite(principal: TeamPrincipal, deps: TeamToolDeps, plan: Writ
     const release = releasesKey(execution.error.error, { partial: execution.partial });
     await settle(() => (release ? deps.requests.release(key, claim.attempt) : deps.requests.fail(key, claim.attempt)), log);
     return failed(execution.error);
+  }
+  if (execution.resumable) {
+    // La risposta dice dove si è arrivati; la riga resta «failed» con l'avanzamento: la stessa chiave riprende.
+    await settle(() => deps.requests.progress(key, claim.attempt, execution.result), log);
+    await settle(() => deps.requests.fail(key, claim.attempt), log);
+    return execution.respond();
   }
 
   let completed = false;

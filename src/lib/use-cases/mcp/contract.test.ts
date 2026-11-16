@@ -20,16 +20,26 @@ import {
 } from "./contract.ts";
 
 // Contratto del MCP del team (docs/use-case/DESIGN.md §9.4, §12.5 test 5; «Benefici e costi» e
-// «Cosa serve» dalla spec di Pierpaolo, 25/10/2026).
+// «Cosa serve» dalla spec di Pierpaolo, 25/10/2026; «Contesto» dal rilascio 9a,
+// docs/contesto/RILASCIO-9a-COSTRUZIONE.md §9).
 
 const key = "registra-ai-lab-0001";
 
-test("tools/list: esattamente 8 tool, nell'ordine, con titolo, descrizione, schema e annotazioni; nessun outputSchema", () => {
+test("tools/list: esattamente 11 tool, nell'ordine, con titolo, descrizione, schema e annotazioni; nessun outputSchema", () => {
   const defs = teamToolDefinitions();
-  assert.deepEqual(
-    defs.map((d) => d.name),
-    ["search_use_cases", "get_use_case", "create_use_cases", "update_use_case", "decide_use_case", "set_priority", "list_needs", "save_needs"],
-  );
+  assert.deepEqual(defs.map((d) => d.name), [
+    "search_use_cases",
+    "get_use_case",
+    "create_use_cases",
+    "update_use_case",
+    "decide_use_case",
+    "set_priority",
+    "list_needs",
+    "save_needs",
+    "add_context_notes",
+    "list_context_proposals",
+    "confirm_context_proposals",
+  ]);
   for (const def of defs) {
     assert.ok(def.title.length > 0 && def.description.length > 0, def.name);
     assert.equal(def.inputSchema.type, "object", def.name);
@@ -59,7 +69,11 @@ test("nessun tool per cancellare, avviare, segnare come in realizzazione, oscura
   assert.equal(rejected.ok, false);
 });
 
-test("annotazioni: tre letture, cinque scritture idempotenti, nessuna distruttiva né aperta al mondo", () => {
+test("annotazioni: quattro letture, sette scritture idempotenti, nessuna distruttiva né aperta al mondo", () => {
+  assert.deepEqual(
+    TEAM_MCP_TOOL_NAMES.filter((name) => TEAM_MCP_TOOL_ANNOTATIONS[name].readOnlyHint),
+    ["search_use_cases", "get_use_case", "list_needs", "list_context_proposals"],
+  );
   for (const name of TEAM_MCP_TOOL_NAMES) {
     const a = TEAM_MCP_TOOL_ANNOTATIONS[name];
     assert.equal(a.readOnlyHint, !isTeamWriteTool(name), name);
@@ -70,8 +84,9 @@ test("annotazioni: tre letture, cinque scritture idempotenti, nessuna distruttiv
 });
 
 test("le scritture vogliono confirmedByUser true e un idempotencyKey di 8-128 caratteri", () => {
-  assert.deepEqual(TEAM_MCP_TOOL_NAMES.filter(isTeamWriteTool), ["create_use_cases", "update_use_case", "decide_use_case", "set_priority", "save_needs"]);
-  for (const name of ["create_use_cases", "update_use_case", "decide_use_case", "set_priority", "save_needs"] as const) {
+  const writes = ["create_use_cases", "update_use_case", "decide_use_case", "set_priority", "save_needs", "add_context_notes", "confirm_context_proposals"] as const;
+  assert.deepEqual(TEAM_MCP_TOOL_NAMES.filter(isTeamWriteTool), [...writes]);
+  for (const name of writes) {
     const schema = teamToolDefinitions().find((d) => d.name === name)!.inputSchema as { required: string[]; properties: Record<string, Record<string, unknown>> };
     assert.ok(schema.required.includes("confirmedByUser") && schema.required.includes("idempotencyKey"), name);
     assert.equal(schema.properties.confirmedByUser.const, true, name);
@@ -276,5 +291,63 @@ test("i testi del contratto rispettano le parole di §14.5 (niente «caso d'uso�
   for (const def of teamToolDefinitions()) walk(def.inputSchema);
   assert.ok(descriptions.length > 20);
   for (const text of [...texts, ...descriptions]) assert.deepEqual(findHubForbidden(text, "area"), [], text);
-  assert.equal(Object.keys(TEAM_MCP_INPUT_SCHEMAS).length, 8);
+  assert.equal(Object.keys(TEAM_MCP_INPUT_SCHEMAS).length, 11);
+});
+
+// ─── «Contesto» (rilascio 9a) ────────────────────────────────────────
+
+const ID = "4f1c2b8e-2d6a-4c4e-9a51-0d1d6a1f00aa";
+
+test("add_context_notes: titolo 3-200, testo 20-300.000, data AAAA-MM-GG facoltativa, link solo https, «Con chi» fino a 500", () => {
+  const base = { title: "Call di avvio", text: "Il gestionale è SAP Business One.", idempotencyKey: key, confirmedByUser: true };
+  const errors = (over: Record<string, unknown>) => {
+    const result = validateTeamToolInput("add_context_notes", { ...base, ...over });
+    return result.ok ? null : result.error.fieldErrors;
+  };
+  assert.equal(errors({}), null);
+  assert.equal(errors({ date: "2026-11-14", participants: "Il direttore operativo", link: "https://notes.example.test/1" }), null);
+  assert.equal(errors({ text: "x".repeat(300_000) }), null);
+  assert.ok(errors({ title: "ab" })?.title);
+  assert.ok(errors({ title: "x".repeat(201) })?.title);
+  assert.ok(errors({ text: "x".repeat(19) })?.text);
+  assert.ok(errors({ text: "x".repeat(300_001) })?.text);
+  // Come negli altri strumenti, il messaggio di un formato sbagliato è quello del contratto, senza il valore ricevuto.
+  assert.deepEqual(errors({ date: "14/11/2026" }), { date: "Formato non valido." });
+  assert.deepEqual(errors({ link: "http://notes.example.test/1" }), { link: "Formato non valido." });
+  assert.ok(errors({ participants: "x".repeat(501) })?.participants);
+  assert.equal(errors({ visibility: "tutti" })?.visibility, "Campo non previsto dal contratto.", "chi vede gli appunti non si sceglie: solo Lateral Space");
+  assert.equal(errors({ origin: "web" })?.origin, "Campo non previsto dal contratto.");
+  assert.deepEqual(errors({ confirmedByUser: false }), { confirmedByUser: "Deve essere true." });
+});
+
+test("list_context_proposals: nessun campo, o l'id di un appunto", () => {
+  assert.ok(validateTeamToolInput("list_context_proposals", {}).ok);
+  assert.ok(validateTeamToolInput("list_context_proposals", { sourceId: ID }).ok);
+  const bad = validateTeamToolInput("list_context_proposals", { sourceId: "call-di-avvio" });
+  assert.equal(bad.ok, false);
+  if (!bad.ok) assert.deepEqual(bad.error.fieldErrors, { sourceId: "Formato non valido." });
+  const person = validateTeamToolInput("list_context_proposals", { addedBy: "chiunque" });
+  assert.equal(person.ok, false, "nessun filtro su chi ha aggiunto gli appunti");
+});
+
+test("confirm_context_proposals: almeno una voce, al massimo 75 per elenco; il sì specifico è solo true; la scelta solo prima o ora", () => {
+  const errors = (input: Record<string, unknown>) => {
+    const result = validateTeamToolInput("confirm_context_proposals", { idempotencyKey: key, confirmedByUser: true, ...input });
+    return result.ok ? null : result.error.fieldErrors;
+  };
+  assert.equal(errors({ confirm: [{ id: ID, version: 2 }] }), null);
+  assert.equal(errors({ confirm: [{ id: ID, version: 2, inferredConfirmed: true, resolution: "ora" }], discard: [ID] }), null);
+  assert.equal(errors({ discard: [ID] }), null);
+  assert.deepEqual(errors({}), { confirm: "Indica almeno una proposta da confermare o da scartare." });
+  assert.deepEqual(errors({ confirm: [], discard: [] }), { confirm: "Indica almeno una proposta da confermare o da scartare." });
+  assert.ok(errors({ confirm: Array.from({ length: 76 }, () => ({ id: ID, version: 1 })) })?.confirm);
+  assert.ok(errors({ discard: Array.from({ length: 76 }, () => ID) })?.discard);
+  assert.ok(errors({ confirm: [{ id: ID, version: 1, inferredConfirmed: false }] })?.["confirm.0.inferredConfirmed"]);
+  assert.ok(errors({ confirm: [{ id: ID, version: 1, resolution: "entrambi" }] })?.["confirm.0.resolution"]);
+  assert.deepEqual(errors({ confirm: [{ id: "proposta-1", version: 1 }] }), { "confirm.0.id": "Formato non valido." });
+  assert.ok(errors({ confirm: [{ id: ID }] })?.["confirm.0.version"]);
+  assert.equal(errors({ confirm: [{ id: ID, version: 1, statement: "Un testo nuovo" }] })?.["confirm.0.statement"], "Campo non previsto dal contratto.", "le correzioni si fanno in Unbundle");
+  assert.deepEqual(errors({ confirm: [{ id: ID, version: 1 }], confirmedByUser: false }), { confirmedByUser: "Deve essere true." });
+  const schema = teamToolDefinitions().find((d) => d.name === "confirm_context_proposals")!.inputSchema as { required: string[] };
+  assert.deepEqual([...schema.required].sort(), ["confirmedByUser", "idempotencyKey"]);
 });

@@ -51,9 +51,10 @@ const NEED_OWNER_FIELDS = ["ownerLabel", "ownerSide"];
 /** «(proposta)» accanto alla scadenza: la data è da confermare. Non parla di chi ha proposto. */
 const DUE_IS_PROPOSAL = "dueIsProposal";
 
-test("ingressi degli 8 tool: nessun campo o filtro sulla persona; «Chi» di un'esigenza solo in save_needs", () => {
+test("ingressi degli 11 tool: nessun campo o filtro sulla persona; «Chi» di un'esigenza solo in save_needs", () => {
   const defs = teamToolDefinitions();
   assert.equal(defs.length, TEAM_MCP_TOOL_NAMES.length);
+  assert.equal(defs.length, 11);
   for (const def of defs) {
     const fields = inputFieldNames(def.inputSchema);
     assert.ok(fields.length > 0, def.name);
@@ -62,6 +63,22 @@ test("ingressi degli 8 tool: nessun campo o filtro sulla persona; «Chi» di un'
   }
   const save = inputFieldNames(defs.find((def) => def.name === "save_needs")!.inputSchema);
   assert.deepEqual(save.filter((name) => PERSON_KEY.test(name) && name !== "confirmedByUser" && name !== DUE_IS_PROPOSAL), NEED_OWNER_FIELDS);
+});
+
+/**
+ * (Rilascio 9a) `participants` di `add_context_notes` è «Con chi» della call: un testo libero degli appunti, che vede
+ * solo Lateral Space e che non va al modello. Non è un filtro né un campo su chi ha proposto uno use case: nessuno
+ * strumento cerca, ordina o conta per lui, e nessuna uscita lo restituisce (context-tools.test.ts).
+ */
+test("«Contesto»: participants è «Con chi» della call, solo in add_context_notes; nessun filtro su chi aggiunge o conferma", () => {
+  const defs = teamToolDefinitions();
+  const fieldsOf = (name: string) => inputFieldNames(defs.find((def) => def.name === name)!.inputSchema);
+  assert.deepEqual(fieldsOf("add_context_notes").sort(), ["confirmedByUser", "date", "idempotencyKey", "link", "participants", "text", "title"]);
+  assert.deepEqual(fieldsOf("list_context_proposals"), ["sourceId"]);
+  for (const def of defs.filter((d) => d.name !== "add_context_notes")) assert.equal(inputFieldNames(def.inputSchema).includes("participants"), false, def.name);
+  for (const key of ["participants", "addedBy", "confirmedBy", "persona", "userId", "email"]) {
+    assert.equal(validateTeamToolInput("list_context_proposals", { [key]: "chiunque" }).ok, false, key);
+  }
 });
 
 test("list_needs rifiuta ogni filtro sulla persona, anche su «Chi»", () => {

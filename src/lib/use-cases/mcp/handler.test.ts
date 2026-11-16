@@ -7,7 +7,7 @@ import { hashIntegrationToken } from "../../connector/auth.ts";
 import { MCP_BODY_MAX_BYTES } from "../../connector/http-hygiene.ts";
 import { TEAM_MCP_SCOPES, TEAM_MCP_TOKEN_PREFIX, type TeamAuthDeps } from "./auth.ts";
 import { TEAM_MCP_TOOL_ANNOTATIONS, TEAM_MCP_TOOL_NAMES } from "./contract.ts";
-import { handleTeamMcpRequest, type TeamHandlerDeps } from "./handler.ts";
+import { TEAM_MCP_BODY_MAX_BYTES, handleTeamMcpRequest, type TeamHandlerDeps } from "./handler.ts";
 import { teamMcpInstructions } from "./instructions.ts";
 import type { TeamToolDeps } from "./tools.ts";
 
@@ -101,15 +101,15 @@ test("token nell'indirizzo: 400 token_in_url senza ripetere l'indirizzo; il toke
   assert.equal(named.status, 400);
 });
 
-test("Origin presente: 403; Content-Type non JSON: 415; corpo oltre 256 KB: 413; senza token: 401", async () => {
+test("Origin presente: 403; Content-Type non JSON: 415; corpo oltre 1 MB: 413; senza token: 401", async () => {
   const { deps: d } = deps();
   assert.equal((await handleTeamMcpRequest(rpc(initialize, { origin: "https://claude.ai" }), d)).status, 403);
   assert.equal((await handleTeamMcpRequest(rpc(initialize, { "content-type": "text/plain" }), d)).status, 415);
-  assert.equal((await handleTeamMcpRequest(rpc(initialize, { "content-length": String(MCP_BODY_MAX_BYTES + 1) }), d)).status, 413);
+  assert.equal((await handleTeamMcpRequest(rpc(initialize, { "content-length": String(TEAM_MCP_BODY_MAX_BYTES + 1) }), d)).status, 413);
   const big = new Request(URL_BASE, {
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/json, text/event-stream", authorization: `Bearer ${token}` },
-    body: JSON.stringify({ ...initialize, padding: "x".repeat(MCP_BODY_MAX_BYTES) }),
+    body: JSON.stringify({ ...initialize, padding: "x".repeat(TEAM_MCP_BODY_MAX_BYTES) }),
   });
   assert.equal((await handleTeamMcpRequest(big, d)).status, 413);
   const anonymous = await handleTeamMcpRequest(rpc(initialize, { authorization: "" }), d);
@@ -120,7 +120,21 @@ test("Origin presente: 403; Content-Type non JSON: 415; corpo oltre 256 KB: 413;
   assert.equal(other.status, 401);
 });
 
-test("con l'SDK: initialize con nome e istruzioni del workspace, tools/list con 6 tool e annotazioni; area spenta su ogni tool", async () => {
+test("gli appunti di una call fino a 300.000 caratteri passano: il corpo del MCP del team arriva a 1 MB, oltre i 256 KB del connettore", async () => {
+  const { deps: d } = deps();
+  // 300.000 caratteri con lettere accentate e a capo: in JSON più dei 256 KB del connettore, meno di 1 MB.
+  const text = "Qualità già più però.\n".repeat(13_637).slice(0, 300_000);
+  assert.equal(text.length, 300_000);
+  const body = { jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "add_context_notes", arguments: { title: "Call di avvio", text, idempotencyKey: "contesto-1234", confirmedByUser: true } } };
+  const size = Buffer.byteLength(JSON.stringify(body), "utf8");
+  assert.ok(size > MCP_BODY_MAX_BYTES && size < TEAM_MCP_BODY_MAX_BYTES, `${size} byte`);
+  const response = await handleTeamMcpRequest(rpc(body), d);
+  assert.equal(response.status, 200, "non 413: la richiesta arriva allo strumento");
+  const json = JSON.parse(await response.text()) as { result: { isError?: boolean; structuredContent: { error?: string } } };
+  assert.equal(json.result.structuredContent.error, "area_spenta", "le dipendenze finte hanno l'area spenta");
+});
+
+test("con l'SDK: initialize con nome e istruzioni del workspace, tools/list con 11 tool e annotazioni; area spenta su ogni tool", async () => {
   const { deps: d, lines } = deps();
   const transport = new StreamableHTTPClientTransport(new URL(URL_BASE), {
     fetch: async (input, init) => handleTeamMcpRequest(new Request(input, init), d),

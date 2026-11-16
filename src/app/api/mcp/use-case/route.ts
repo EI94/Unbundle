@@ -9,14 +9,16 @@ import { handleTeamMcpRequest } from "@/lib/use-cases/mcp/handler";
  *
  * Tutto il lavoro è in `src/lib/use-cases/mcp/handler.ts`: igiene HTTP, autenticazione con il
  * token personale del team e i permessi della persona riletti a ogni richiesta, server
- * nuovo a ogni richiesta, 8 tool, log senza dati. Spento (404) finché `MCP_TEAM_ENABLED` non vale
+ * nuovo a ogni richiesta, 11 tool, log senza dati. Spento (404) finché `MCP_TEAM_ENABLED` non vale
  * `true`. Solo POST: ogni altro metodo risponde 405 con `Allow: POST`, le intestazioni di igiene e
  * una riga di log; per questo la rotta esporta tutti i metodi che Next gestisce (un metodo non
  * esportato lo gestirebbe Next da solo, anche con la rotta spenta). Le notifiche delle schede
- * create partono con `after()`, dopo la risposta.
+ * create e «In breve» dopo una conferma di «Contesto» partono con `after()`, dopo la risposta.
+ * `maxDuration` 120: `add_context_notes` legge gli appunti con il modello in al massimo 75 secondi
+ * (docs/contesto/RILASCIO-9a-COSTRUZIONE.md §9.3).
  */
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 async function handle(request: Request): Promise<Response> {
   return handleTeamMcpRequest(request, appTeamMcpHandlerDeps({ schedule: (task) => after(task) }));

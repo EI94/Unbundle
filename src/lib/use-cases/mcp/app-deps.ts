@@ -7,6 +7,11 @@ import { USE_CASE_NEEDS_EVENT_FIELD } from "@/lib/db/use-case-hub-ddl";
 import { appExposedTokenAlertDeps, appRateLimitExecutor } from "@/lib/connector/app-deps";
 import { CONNECTOR_PUBLIC_ORIGIN } from "@/lib/connector/auth";
 import { alertExposedToken, type ExposedTokenAlertDeps } from "@/lib/connector/exposed-token-alert";
+import { refreshContextBrief } from "@/lib/db/queries/context-brief";
+import { confirmProposals, discardProposals, listOpenProposals } from "@/lib/db/queries/context-proposals";
+import { readContextSource } from "@/lib/db/queries/context-read";
+import { addContextNote } from "@/lib/db/queries/context-sources";
+import { contextStoreReady } from "@/lib/db/queries/context-store";
 import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { getUseCaseDetail, listHubItems } from "@/lib/db/queries/use-case-hub";
 import { listWorkspaceNeeds, needUseCaseRefs } from "@/lib/db/queries/use-case-needs";
@@ -31,6 +36,7 @@ import { phaseInputOf } from "@/lib/use-cases/views";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
 import type { UseCase } from "@/lib/db/schema";
 import { TEAM_MCP_PROVIDER, type TeamAuthDeps } from "./auth";
+import { teamContextActor, type TeamContextDeps } from "./context-tools";
 import type { TeamHandlerDeps } from "./handler";
 import { guideAreaOptions } from "./output";
 import { TEAM_MCP_LOG_AREA, type TeamReadDeps, type TeamToolDeps } from "./tools";
@@ -40,8 +46,8 @@ import { TEAM_MCP_LOG_AREA, type TeamReadDeps, type TeamToolDeps } from "./tools
  * con il client Neon condiviso (dopo il self-heal), il servizio unico di scrittura, le letture
  * proiettate della pagina, il limite di richieste e l'avviso di un token esposto del connettore,
  * usati senza modifiche. La rotta passa lo scheduler (`after()` di Next): le notifiche delle
- * schede create partono dopo la risposta. I test d'integrazione usano queste stesse dipendenze
- * sul database locale, con notifiche e Slack finti.
+ * schede create e «In breve» dopo una conferma di «Contesto» partono dopo la risposta. I test
+ * d'integrazione usano queste stesse dipendenze sul database locale, con notifiche e Slack finti.
  */
 
 type Env = Readonly<Record<string, string | undefined>>;
@@ -241,6 +247,34 @@ const appNotifyDeps: TeamNotifyDeps = {
   notify: (params) => dispatchNewPortfolioNotifications(params),
 };
 
+/**
+ * «Contesto» (rilascio 9a, docs/contesto/RILASCIO-9a-COSTRUZIONE.md §9.5): le funzioni condivise di
+ * `src/lib/db/queries/context-*.ts`, che rifanno da sé il controllo di chi chiama, e la persona del token
+ * (`teamContextActor`, canale «claude», come `contextActorFromPrincipal`: senza caricare la sessione di Firebase,
+ * che al MCP non serve). «In breve» si riscrive dopo la risposta, con lo scheduler della rotta, come dopo
+ * «Conferma» nella pagina.
+ */
+export function appTeamContextDeps(schedule: (task: () => Promise<void>) => void): TeamContextDeps {
+  return {
+    ready: () => contextStoreReady(),
+    actor: teamContextActor,
+    addNote: (actor, input) => addContextNote(actor, input),
+    read: (actor, sourceId, opts) => readContextSource(actor, sourceId, { timeoutMs: opts.timeoutMs }),
+    listOpen: (actor, opts) => listOpenProposals(actor, opts ?? {}),
+    confirm: (actor, items) => confirmProposals(actor, items),
+    discard: (actor, ids) => discardProposals(actor, ids),
+    refreshBrief(workspaceId) {
+      schedule(async () => {
+        try {
+          await refreshContextBrief(workspaceId, { force: true });
+        } catch (error) {
+          logSafeError(TEAM_MCP_LOG_AREA, "brief_failed", error, { workspaceId });
+        }
+      });
+    },
+  };
+}
+
 /** Le dipendenze dei tool, con un esecutore SQL del limite e lo scheduler di chi chiama. */
 export function appTeamToolDeps(opts: { schedule: (task: () => Promise<void>) => void; env?: Env; notify?: TeamNotifyDeps }): TeamToolDeps {
   const env = opts.env ?? process.env;
@@ -271,6 +305,7 @@ export function appTeamToolDeps(opts: { schedule: (task: () => Promise<void>) =>
       fail: failTeamMcpRequest,
       release: releaseTeamMcpRequest,
     },
+    context: appTeamContextDeps(opts.schedule),
     notifyCreated(workspaceId, useCaseIds) {
       const ids = [...useCaseIds];
       opts.schedule(async () => {
