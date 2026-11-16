@@ -45,6 +45,7 @@ import {
   type ProposalRelation,
   type SkippedCounts,
   type SourceKind,
+  type SourceOrigin,
 } from "@/lib/context/vocab";
 import { logSafeError } from "@/lib/log/safe-error";
 import type { ServiceResult } from "@/lib/use-cases/types";
@@ -76,8 +77,8 @@ export interface ProposalView {
   closesQuestion: { id: string; question: string } | null;
 }
 export interface OpenProposals {
-  /** `kind`: «Call 14 nov» o «Documento 14 nov» nel «Ora: …» dei conflitti. */
-  sources: Array<{ id: string; kind: SourceKind; title: string; occurredOn: string; skipped: SkippedCounts }>;
+  /** `kind`: «Call 14 nov» o «Documento 14 nov» nel «Ora: …» dei conflitti. `origin`: da dove è entrata la fonte. */
+  sources: Array<{ id: string; kind: SourceKind; origin: SourceOrigin; title: string; occurredOn: string; skipped: SkippedCounts }>;
   /** Tutte tranne «conferma», nell'ordine: appunto più recente, poi `position`. */
   proposals: ProposalView[];
   /** Le «conferma». */
@@ -220,7 +221,7 @@ export async function listOpenProposals(actor: ContextActor, opts: { sourceId?: 
   if (opts.sourceId !== undefined && !isUuid(opts.sourceId)) return { sources: [], proposals: [], reconfirmed: [] };
   const ws = actor.workspaceId;
   const joined = await db
-    .select({ proposal: contextProposals, kind: contextSources.kind, title: contextSources.title, occurredOn: contextSources.occurredOn, skipped: contextSources.skipped })
+    .select({ proposal: contextProposals, kind: contextSources.kind, origin: contextSources.origin, title: contextSources.title, occurredOn: contextSources.occurredOn, skipped: contextSources.skipped })
     .from(contextProposals)
     .innerJoin(contextSources, eq(contextSources.id, contextProposals.sourceId))
     .where(
@@ -237,7 +238,7 @@ export async function listOpenProposals(actor: ContextActor, opts: { sourceId?: 
   const ctx = await loadViewContext(ws, rows);
   const sources = new Map<string, OpenProposals["sources"][number]>();
   for (const j of joined) {
-    if (!sources.has(j.proposal.sourceId)) sources.set(j.proposal.sourceId, { id: j.proposal.sourceId, kind: j.kind, title: j.title, occurredOn: toIsoDate(j.occurredOn), skipped: j.skipped ?? {} });
+    if (!sources.has(j.proposal.sourceId)) sources.set(j.proposal.sourceId, { id: j.proposal.sourceId, kind: j.kind, origin: j.origin, title: j.title, occurredOn: toIsoDate(j.occurredOn), skipped: j.skipped ?? {} });
   }
   const views = rows.map((row) => viewOf(row, ctx));
   return {

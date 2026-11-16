@@ -28,7 +28,8 @@ import type { ConnectorStatusCode } from "../../connector/status.ts";
 import { CONNECTOR_STATUS_LABEL } from "../../connector/status.ts";
 import { scanPersonalData } from "../../context/scan.ts";
 import { CONTEXT_TEXT } from "../../context/text.ts";
-import type { Basis, CommitmentParty, ContextSection, ContextVisibility, ProposalKind, SkippedCounts } from "../../context/vocab.ts";
+import { dayLabel } from "../../context/labels.ts";
+import type { Basis, CommitmentParty, ContextSection, ContextVisibility, ProposalKind, SkippedCounts, SourceKind, SourceOrigin } from "../../context/vocab.ts";
 import type { ProposalView } from "../../db/queries/context-proposals.ts";
 import { CASE_STATUS_LABEL } from "../../uc/case-state.ts";
 import type { CostBandInfo } from "../cost-bands.ts";
@@ -588,6 +589,24 @@ export const COMMITMENT_PARTY_LABEL: Readonly<Record<CommitmentParty, string>> =
 
 /** Al posto del testo di una proposta con i dati di una persona: Claude non li riceve, la persona la corregge in Unbundle. */
 export const CONTEXT_PERSONAL_DATA_HIDDEN = "Testo non mostrato: contiene dati di una persona. Si corregge in Unbundle.";
+/** Accanto a una citazione non mandata perché ha i dati di una persona. */
+export const CONTEXT_QUOTE_HIDDEN = "Apri Unbundle per la citazione.";
+
+/**
+ * Il titolo di un appunto o di un documento come lo riceve Claude: quello vero solo se non porta i dati di una persona
+ * (`scanPersonalData`); altrimenti un'etichetta neutra con il giorno: «Call 14 nov» per una call di Granola o una
+ * trascrizione, «Documento 14 nov» per un documento, «Appunti 14 nov» per gli altri appunti. I titoli di Granola
+ * portano spesso i nomi o le e-mail di chi era alla call.
+ */
+export function mcpSourceTitle(source: { title: string; kind: SourceKind; origin: SourceOrigin; occurredOn: string }, today: Date | string): string {
+  const title = source.title.replace(/\s+/g, " ").trim();
+  if (title && scanPersonalData(title).ok) return title;
+  const F = CONTEXT_TEXT.fact;
+  const day = dayLabel(source.occurredOn, today);
+  if (source.kind === "documento") return day ? F.sourceDocument(day) : F.sourceDocumentWord;
+  if (source.origin === "granola" || source.kind === "trascrizione") return day ? F.sourceCall(day) : F.sourceCallWord;
+  return day ? F.sourceNotes(day) : F.sourceNotesWord;
+}
 
 /**
  * Una proposta come la riceve Claude (§9.3): il testo, la citazione dagli appunti, «detto» o «dedotto», la sezione,
@@ -595,7 +614,7 @@ export const CONTEXT_PERSONAL_DATA_HIDDEN = "Testo non mostrato: contiene dati d
  * ha aggiunto gli appunti o chi conferma: campo per campo, nessuno spread della vista. Nomi e cognomi, contatti, codici
  * fiscali e date di nascita non escono dall'MCP (§9: l'MCP porta i ruoli): un testo che li ha si sostituisce con
  * `CONTEXT_PERSONAL_DATA_HIDDEN` (la proposta va corretta in Unbundle, e la conferma da qui la rifiuta), una citazione
- * che li ha non si manda.
+ * che li ha non si manda (al suo posto `quoteNote`, «Apri Unbundle per la citazione.»).
  */
 export interface McpProposal {
   id: string;
@@ -604,7 +623,10 @@ export interface McpProposal {
   kind: ProposalKind;
   kindLabel: string;
   text: string;
+  /** La citazione dagli appunti, solo se non porta i dati di una persona. */
   quote: string | null;
+  /** Quando la citazione c'è ma non si manda: «Apri Unbundle per la citazione.». */
+  quoteNote: string | null;
   basis: Basis;
   basisLabel: string;
   section: ContextSection | null;
@@ -626,6 +648,7 @@ export interface McpProposal {
 }
 
 export function mcpProposal(view: ProposalView): McpProposal {
+  const quoteShown = view.quote !== null && scanPersonalData(view.quote).ok;
   const commitment = view.kind === "impegno" && view.party ? { party: view.party, partyLabel: COMMITMENT_PARTY_LABEL[view.party], role: view.roleLabel, dueOn: view.dueOn } : null;
   return {
     id: view.id,
@@ -634,7 +657,8 @@ export function mcpProposal(view: ProposalView): McpProposal {
     kind: view.kind,
     kindLabel: PROPOSAL_KIND_LABEL[view.kind],
     text: scanPersonalData(view.statement).ok ? view.statement : CONTEXT_PERSONAL_DATA_HIDDEN,
-    quote: view.quote && scanPersonalData(view.quote).ok ? view.quote : null,
+    quote: quoteShown ? view.quote : null,
+    quoteNote: view.quote && !quoteShown ? CONTEXT_QUOTE_HIDDEN : null,
     basis: view.basis,
     basisLabel: BASIS_LABEL[view.basis],
     section: view.section,

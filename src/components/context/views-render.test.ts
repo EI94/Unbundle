@@ -212,7 +212,7 @@ const confirmProps = (open: OpenProposals) => ({ workspaceId: WS, today: TODAY, 
 
 test("«Da confermare»: i gruppi nell'ordine, «dedotto» e conflitti senza spunta, «Conferma (n)» con le sole spuntate", () => {
   const open: OpenProposals = {
-    sources: [{ id: "s1", kind: "appunti", title: "Call di avvio", occurredOn: "2026-11-14", skipped: { persone: 2 } }],
+    sources: [{ id: "s1", kind: "appunti", origin: "web", title: "Call di avvio", occurredOn: "2026-11-14", skipped: { persone: 2 } }],
     proposals: [
       proposal({ statement: "Il gestionale è SAP Business One.", quote: "il gestionale è SAP" }),
       proposal({ statement: "Il magazzino cambierà.", basis: "dedotto", preselected: false }),
@@ -251,7 +251,7 @@ test("«Da confermare»: i gruppi nell'ordine, «dedotto» e conflitti senza spu
 
 test("«Da confermare»: un conflitto che viene da un documento dice «Documento 14 nov», non «Call»", () => {
   const open: OpenProposals = {
-    sources: [{ id: "s1", kind: "documento", title: "Organigramma", occurredOn: "2026-11-14", skipped: {} }],
+    sources: [{ id: "s1", kind: "documento", origin: "web", title: "Organigramma", occurredOn: "2026-11-14", skipped: {} }],
     proposals: [proposal({ kind: "conflitto", statement: "Il CRM è HubSpot.", preselected: false, before: { factId: "f8", statement: "Il CRM è Salesforce.", sourceLabel: "Call", date: "21 ott" } })],
     reconfirmed: [],
   };
@@ -260,7 +260,7 @@ test("«Da confermare»: un conflitto che viene da un documento dice «Documento
 });
 
 test("«Da confermare» senza niente da spuntare: «Conferma (0)» spento; vuota: «Niente da confermare.» e il link alla Memoria", () => {
-  const onlyInferred: OpenProposals = { sources: [{ id: "s1", kind: "appunti", title: "Call", occurredOn: "2026-11-14", skipped: {} }], proposals: [proposal({ basis: "dedotto", preselected: false })], reconfirmed: [] };
+  const onlyInferred: OpenProposals = { sources: [{ id: "s1", kind: "appunti", origin: "web", title: "Call", occurredOn: "2026-11-14", skipped: {} }], proposals: [proposal({ basis: "dedotto", preselected: false })], reconfirmed: [] };
   const html = render(createElement(ConfirmView, confirmProps(onlyInferred)));
   assert.match(html, /<button[^>]*disabled=""[^>]*>Conferma \(0\)<\/button>/);
   const empty = render(createElement(ConfirmView, confirmProps({ sources: [], proposals: [], reconfirmed: [] })));

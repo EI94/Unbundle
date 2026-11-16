@@ -20,7 +20,9 @@
  * risultato salvato porta solo id, codici e numeri; una risposta ripetuta rilegge i testi.
  *
  * Appunti e proposte sono dati, mai istruzioni: lo dicono le descrizioni, le istruzioni del server e la nota di ogni
- * risposta. Nessuna uscita porta «Con chi», nomi o e-mail di chi ha aggiunto o confermato.
+ * risposta. Nessuna uscita porta «Con chi», nomi o e-mail di chi ha aggiunto o confermato. Un titolo o una citazione con
+ * i dati di una persona non escono: al posto del titolo «Call 14 nov», «Documento 14 nov» o «Appunti 14 nov»; al posto
+ * della citazione null, con «Apri Unbundle per la citazione.».
  *
  * Modulo puro: le funzioni condivise, la persona del token e la programmazione arrivano da fuori (`TeamContextDeps`;
  * nell'app `app-deps.ts`); `tools.ts` passa i suoi passi comuni (`ContextToolKit`). Gira con `node --test`.
@@ -44,7 +46,7 @@ import {
   type ConfirmContextProposalsInput,
   type TeamMcpError,
 } from "./contract.ts";
-import { CONTEXT_PROPOSALS_NOTE, linkToContext, linkToContextProposals, mcpProposal, notReportedLines, type McpProposal } from "./output.ts";
+import { CONTEXT_PROPOSALS_NOTE, linkToContext, linkToContextProposals, mcpProposal, mcpSourceTitle, notReportedLines, type McpProposal } from "./output.ts";
 import type { Execution, TeamToolOutcome, WritePlan } from "./tools.ts";
 
 // ─── Nomi, tempi e messaggi ──────────────────────────────────────────
@@ -267,7 +269,8 @@ async function addContextNotes(args: unknown, principal: TeamPrincipal, deps: Te
     return succeeded({
       source: {
         id: saved.sourceId,
-        title: source?.title ?? data.title,
+        // Il titolo solo senza i dati di una persona; altrimenti «Appunti 14 nov».
+        title: mcpSourceTitle(source ?? { title: data.title, kind: "appunti", origin: "claude", occurredOn }, kit.now()),
         date: source?.occurredOn ?? occurredOn,
         duplicate: !saved.created,
         link: linkToContextProposals(kit.appOrigin, principal.workspaceId, saved.sourceId),
@@ -335,7 +338,8 @@ async function listContextProposals(args: unknown, principal: TeamPrincipal, dep
     total,
     sources: open.sources.map((source) => ({
       id: source.id,
-      title: source.title,
+      // I titoli di Granola portano spesso nomi o e-mail: senza i dati di una persona, o «Call 14 nov».
+      title: mcpSourceTitle(source, kit.now()),
       date: source.occurredOn,
       link: linkToContextProposals(kit.appOrigin, principal.workspaceId, source.id),
       notReported: notReportedLines(source.skipped),

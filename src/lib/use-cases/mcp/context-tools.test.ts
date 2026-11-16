@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { CONTEXT_TEXT } from "../../context/text.ts";
 import { contextActorFromPrincipal, type ContextActor } from "../../context/visibility.ts";
-import type { ProposalKind, SkippedCounts } from "../../context/vocab.ts";
+import type { ProposalKind, SkippedCounts, SourceKind, SourceOrigin } from "../../context/vocab.ts";
 import type { ConfirmItem, OpenProposals, ProposalView } from "../../db/queries/context-proposals.ts";
 import type { ReadOutcome } from "../../db/queries/context-read.ts";
 import type { NewNoteInput } from "../../db/queries/context-sources.ts";
@@ -160,7 +160,7 @@ function proposal(sourceId: string, over: Partial<ProposalView> = {}): Stored {
  * lettura «letto» mette le proposte di `drafts` sull'appunto.
  */
 function memoryContext(opts: { ready?: boolean } = {}) {
-  const sources = new Map<string, { id: string; title: string; occurredOn: string; body: string; participants: string | null; skipped: SkippedCounts }>();
+  const sources = new Map<string, { id: string; kind: SourceKind; origin: SourceOrigin; title: string; occurredOn: string; body: string; participants: string | null; skipped: SkippedCounts }>();
   const proposals = new Map<string, Stored>();
   const calls: Record<string, unknown[][]> = {};
   const reads: Array<ReadOutcome | "fallisce"> = [];
@@ -183,7 +183,7 @@ function memoryContext(opts: { ready?: boolean } = {}) {
       const same = [...sources.values()].find((s) => s.body === input.body);
       if (same) return { ok: true, value: { sourceId: same.id, created: false, readStatus: "letto" } };
       const id = randomUUID();
-      sources.set(id, { id, title: input.title, occurredOn: input.occurredOn, body: input.body, participants: input.participants ?? null, skipped: {} });
+      sources.set(id, { id, kind: input.kind ?? "appunti", origin: input.origin, title: input.title, occurredOn: input.occurredOn, body: input.body, participants: input.participants ?? null, skipped: {} });
       return { ok: true, value: { sourceId: id, created: true, readStatus: "da_leggere" } };
     },
     async read(actor, sourceId, o) {
@@ -205,7 +205,7 @@ function memoryContext(opts: { ready?: boolean } = {}) {
       const open = [...proposals.values()].filter((p) => p.status === "aperta" && (!o.sourceId || p.sourceId === o.sourceId));
       const used = [...new Set(open.map((p) => p.sourceId))].map((id) => sources.get(id)!);
       const result: OpenProposals = {
-        sources: used.map((s) => ({ id: s.id, kind: "appunti" as const, title: s.title, occurredOn: s.occurredOn, skipped: s.skipped })),
+        sources: used.map((s) => ({ id: s.id, kind: s.kind, origin: s.origin, title: s.title, occurredOn: s.occurredOn, skipped: s.skipped })),
         proposals: open.filter((p) => p.kind !== "conferma").map(view),
         reconfirmed: open.filter((p) => p.kind === "conferma").map(view),
       };
@@ -531,15 +531,40 @@ test("i nomi e i contatti degli appunti non arrivano a Claude: né nel testo di 
   // Tutta la risposta, con la copia in JSON per i client che leggono solo il testo.
   const listed = await callTeamTool("list_context_proposals", {}, who, h.deps);
   for (const out of [JSON.stringify(list), JSON.stringify(listed.result)]) assert.doesNotMatch(out, /Mario|Rossi|ordini\.urgenti@|esempio\.test/);
-  const shown = (listed.result.structuredContent as { proposals: Array<{ text: string; quote: string | null; issue: string | null }> }).proposals;
+  const shown = (listed.result.structuredContent as { proposals: Array<{ text: string; quote: string | null; quoteNote: string | null; issue: string | null }> }).proposals;
   assert.deepEqual(
-    shown.map((p) => [p.text, p.quote, p.issue]),
+    shown.map((p) => [p.text, p.quote, p.quoteNote, p.issue]),
     [
-      ["Testo non mostrato: contiene dati di una persona. Si corregge in Unbundle.", null, "Non scrivere nomi di persone: indica il ruolo."],
-      ["Gli ordini urgenti arrivano per e-mail.", null, null],
-      ["Il gestionale è SAP Business One.", "Il gestionale è SAP Business One.", null],
+      ["Testo non mostrato: contiene dati di una persona. Si corregge in Unbundle.", null, "Apri Unbundle per la citazione.", "Non scrivere nomi di persone: indica il ruolo."],
+      ["Gli ordini urgenti arrivano per e-mail.", null, "Apri Unbundle per la citazione.", null],
+      ["Il gestionale è SAP Business One.", "Il gestionale è SAP Business One.", null, null],
     ],
   );
+});
+
+test("i titoli con nomi o e-mail non arrivano a Claude: «Call 14 nov», «Documento 10 nov», «Appunti 14 nov»; un titolo pulito resta", async () => {
+  const h = harness();
+  const who = principal();
+  // Appunti mandati da Claude con un nome nel titolo.
+  h.context.drafts.push({});
+  const added = await call(h, "add_context_notes", addArgs({ title: "Call con Mario Rossi" }), who);
+  assert.equal((added.content.source as { title: string }).title, "Appunti 14 nov");
+  // Una call di Granola, un documento e un appunto con un titolo pulito, già in «Contesto».
+  const extra = [
+    { kind: "appunti" as const, origin: "granola" as const, title: "Allineamento con mario.rossi@cliente.test", occurredOn: "2026-11-14" },
+    { kind: "documento" as const, origin: "web" as const, title: "Organigramma di Anna Bianchi", occurredOn: "2026-11-10" },
+    { kind: "trascrizione" as const, origin: "granola" as const, title: "Avvio progetto ordini", occurredOn: "2026-11-12" },
+  ];
+  for (const source of extra) {
+    const id = randomUUID();
+    h.context.sources.set(id, { id, ...source, body: "x".repeat(40), participants: null, skipped: {} });
+    const p = proposal(id);
+    h.context.proposals.set(p.id, p);
+  }
+  const listed = await callTeamTool("list_context_proposals", {}, who, h.deps);
+  const titles = (listed.result.structuredContent as { sources: Array<{ title: string }> }).sources.map((source) => source.title).sort();
+  assert.deepEqual(titles, ["Appunti 14 nov", "Avvio progetto ordini", "Call 14 nov", "Documento 10 nov"]);
+  assert.doesNotMatch(JSON.stringify(listed.result), /Mario|Rossi|Bianchi|mario\.rossi@/);
 });
 
 // ─── confirm_context_proposals ───────────────────────────────────────
