@@ -7,8 +7,8 @@ import { ClaudeRefusalError } from "./models.ts";
 // non si usa e niente si scrive (la value map cancella e riscrive i nodi del workspace). Database e sessione finti;
 // il modello è il Claude finto di claude-test-kit.ts, senza rete.
 
-type Prova = { writes: string[]; activities: unknown[] };
-const prova: Prova = { writes: [], activities: [] };
+type Prova = { writes: string[]; activities: unknown[]; thesisAsked: string[] };
+const prova: Prova = { writes: [], activities: [], thesisAsked: [] };
 (globalThis as { __prova?: Prova }).__prova = prova;
 
 await installAppModules({
@@ -18,6 +18,11 @@ await installAppModules({
   }`,
   "@/lib/db/queries/activities": `export async function getActivitiesByWorkspace() { return globalThis.__prova.activities; }`,
   "@/lib/db/schema": `export const valueMapNodes = { workspaceId: "workspace_id" }; export const organizations = { id: "id" };`,
+  // (Rilascio 9a) La tesi del valore viene dal workspace.
+  "@/lib/db/queries/value-thesis": `export async function getWorkspaceValueThesis(workspaceId) {
+    globalThis.__prova.thesisAsked.push(workspaceId);
+    return { coreValueProposition: "Cucine su misura del workspace di prova" };
+  }`,
   "drizzle-orm": `export const eq = (column, value) => ({ column, value });`,
   "@/lib/db": `export const db = {
     select: () => ({ from: () => ({ where: () => ({ limit: async () => [] }) }) }),
@@ -45,7 +50,11 @@ test("value map: la stessa risposta completa, senza rifiuto, cancella e riscrive
   recordLogs(t);
   prova.writes = [];
   prova.activities = [ACTIVITY];
-  fakeAppClaude([message([THINKING, { type: "text", text: JSON.stringify(NODES) }])]);
+  prova.thesisAsked = [];
+  const requests = fakeAppClaude([message([THINKING, { type: "text", text: JSON.stringify(NODES) }])]);
   assert.deepEqual(await generateValueMapAction("ws-prova"), { positioned: 1 });
   assert.deepEqual(prova.writes, ["delete", "insert"]);
+  // (9a) Nel prompt la tesi del valore del workspace.
+  assert.deepEqual(prova.thesisAsked, ["ws-prova"]);
+  assert.ok(JSON.stringify(requests[0].body.system).includes("Cucine su misura del workspace di prova"));
 });

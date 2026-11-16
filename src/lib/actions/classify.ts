@@ -4,9 +4,7 @@ import { requireSession } from "@/lib/auth/redirect-to-login";
 import { revalidatePath } from "next/cache";
 import { getActivitiesByWorkspace, updateActivityClassification } from "@/lib/db/queries/activities";
 import { getStrategicGoalsByWorkspace } from "@/lib/db/queries/workspaces";
-import { db } from "@/lib/db";
-import { organizations } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { getWorkspaceValueThesis } from "@/lib/db/queries/value-thesis";
 import { classifyActivitiesBatch, skippedClassificationsText } from "@/lib/ai/classify";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
@@ -19,13 +17,8 @@ export async function runClassificationAction(workspaceId: string) {
   if (!canReviewWorkspacePortfolio(access.role)) {
     throw new Error("Non hai i permessi per classificare le attivita.");
   }
-  const { workspace } = access;
-
-  const [org] = await db
-    .select()
-    .from(organizations)
-    .where(eq(organizations.id, workspace.organizationId))
-    .limit(1);
+  // (9a) La tesi del valore del workspace, non più quella dell'organizzazione.
+  const thesis = await getWorkspaceValueThesis(workspaceId);
 
   const [allActivities, goals] = await Promise.all([
     getActivitiesByWorkspace(workspaceId),
@@ -39,7 +32,7 @@ export async function runClassificationAction(workspaceId: string) {
 
   // Le classificazioni riuscite si scrivono; quelle rifiutate o fallite restano da fare (si riprovano con un altro clic).
   const results = await classifyActivitiesBatch(unclassified, {
-    companyValueThesis: org?.companyValueThesis,
+    companyValueThesis: thesis,
     goals,
   });
 

@@ -13,8 +13,11 @@ type Prova = {
   /** I match O*NET scritti, per id dell'attività. */
   matched: string[];
   departmentUpdates: number;
+  /** La tesi del valore del workspace (rilascio 9a) e i workspace per cui è stata chiesta. */
+  thesis: unknown;
+  thesisAsked: string[];
 };
-const prova: Prova = { activities: [], classified: [], matched: [], departmentUpdates: 0 };
+const prova: Prova = { activities: [], classified: [], matched: [], departmentUpdates: 0, thesis: null, thesisAsked: [] };
 (globalThis as { __prova?: Prova }).__prova = prova;
 
 await installAppModules({
@@ -32,9 +35,11 @@ await installAppModules({
     export async function getWorkspaceById() { return { id: "ws-prova", organizationId: "org-prova" }; }
     export async function getStrategicGoalsByWorkspace() { return []; }`,
   "@/lib/db/schema": `export const organizations = { id: "id" }; export const activities = {}; export const activityDependencies = {}; export const departments = { id: "id" };`,
-  "drizzle-orm": `export const eq = (column, value) => ({ column, value });`,
+  "drizzle-orm": `export const eq = (column, value) => ({ column, value }); export const and = (...parts) => ({ and: parts }); export const inArray = (column, values) => ({ column, values });`,
+  // (Rilascio 9a) La tesi del valore viene dal workspace: quella dell'organizzazione, qui sotto, non si legge più.
+  "@/lib/db/queries/value-thesis": `export async function getWorkspaceValueThesis(workspaceId) { globalThis.__prova.thesisAsked.push(workspaceId); return globalThis.__prova.thesis; }`,
   "@/lib/db": `export const db = {
-    select: () => ({ from: () => ({ where: () => ({ limit: async () => [{ id: "org-prova", companyValueThesis: null }] }) }) }),
+    select: () => ({ from: () => ({ where: () => ({ limit: async () => [{ id: "org-prova", companyValueThesis: { coreValueProposition: "Tesi di un altro workspace della stessa organizzazione" } }] }) }) }),
     update: () => ({ set: () => ({ where: async () => { globalThis.__prova.departmentUpdates += 1; } }) }),
   };`,
 });
@@ -75,8 +80,27 @@ function reset() {
   prova.classified = [];
   prova.matched = [];
   prova.departmentUpdates = 0;
+  prova.thesis = null;
+  prova.thesisAsked = [];
   return fakeAppClaude(ACTIVITIES.map(() => byActivity));
 }
+
+test("(9a) la classificazione legge la tesi del valore del workspace, non quella dell'organizzazione", async (t) => {
+  recordLogs(t);
+  for (const run of [() => runClassificationAction("ws-prova"), () => markDepartmentMapped("Mappate quattro attività.")]) {
+    const requests = reset();
+    prova.thesis = { coreValueProposition: "Cucine su misura del workspace di prova" };
+    await run();
+    assert.deepEqual(prova.thesisAsked, ["ws-prova"]);
+    const classify = requests.filter((r) => JSON.stringify(r.body).includes("Value Thesis") || JSON.stringify(r.body).includes("Cucine su misura"));
+    assert.ok(classify.length >= 4, "le quattro classificazioni");
+    for (const request of classify) {
+      const body = JSON.stringify(request.body);
+      assert.ok(body.includes("Cucine su misura del workspace di prova"), "la tesi del workspace è nel prompt");
+      assert.equal(body.includes("Tesi di un altro workspace"), false, "mai la tesi dell'organizzazione");
+    }
+  }
+});
 
 test("classifyActivitiesBatch: tiene le classificazioni riuscite; rifiuto ed errore restano fuori, nel log senza testi", async (t) => {
   const lines = recordLogs(t);

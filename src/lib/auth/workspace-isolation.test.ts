@@ -37,6 +37,9 @@ const GUARDS = [
   "assertAssessmentReviewer",
   "assertWorkspaceInviteManager",
   "assertWorkspaceIntegrationManager",
+  // «Contesto» (rilascio 9a): legge la sessione e poi getCollaboratorAccess, e risponde un esito invece di lanciare.
+  // Che lo faccia davvero lo prova il test «contextActorFromSession è una guardia del workspace» qui sotto.
+  "contextActorFromSession",
 ];
 
 /**
@@ -94,14 +97,39 @@ function takesWorkspaceId(body: string) {
   return /workspaceId\s*:\s*string/.test(signature);
 }
 
+/**
+ * Gli aiuti del file (funzioni non esportate) che passano da una guardia con il `workspaceId` che ricevono per primo:
+ * per esempio in «Contesto» `run(workspaceId, …)` e `actorFor(workspaceId)`, che chiamano
+ * `contextActorFromSession(workspaceId)`. Un'azione che li chiama con il suo `workspaceId` come primo argomento
+ * passa dalla guardia come se la chiamasse lei.
+ */
+function guardedHelpers(source: string): string[] {
+  const parts = source.split(/\n(?=(?:export )?(?:async )?function |export const |const )/g);
+  const helpers: string[] = [];
+  for (const part of parts) {
+    const head = /^(?:async )?function ([A-Za-z_]\w*)\s*(?:<[^>]*>)?\(\s*([A-Za-z_]\w*)/.exec(part);
+    if (!head) continue;
+    const [, name, firstParam] = head;
+    if (GUARDS.some((guard) => new RegExp(`\\b${guard}\\(\\s*${firstParam}\\b`).test(part))) helpers.push(name);
+  }
+  return helpers;
+}
+
+/** L'azione chiama uno degli aiuti con la guardia, con il suo `workspaceId` come primo argomento. */
+function callsGuardedHelper(body: string, helpers: readonly string[]) {
+  return helpers.some((helper) => new RegExp(`\\b${helper}(?:<[^>]*>)?\\(\\s*workspaceId\\b`).test(body));
+}
+
 test("ogni action che riceve un workspaceId verifica l'accesso a quel workspace", () => {
   const unguarded: string[] = [];
 
   for (const file of actionFiles()) {
+    const helpers = guardedHelpers(file.source);
     for (const fn of exportedFunctions(file.source)) {
       if (!takesWorkspaceId(fn.body)) continue;
       if (PUBLIC_BY_DESIGN.has(fn.name)) continue;
       if (GUARDS.some((guard) => fn.body.includes(guard))) continue;
+      if (callsGuardedHelper(fn.body, helpers)) continue;
       unguarded.push(`${file.name}: ${fn.name}`);
     }
   }
@@ -146,6 +174,30 @@ test("le azioni dei casi d'uso verificano il workspace per prima cosa", () => {
   }
   assert.ok(actions >= 30, "attese almeno 30 azioni uc");
   assert.deepEqual(offenders, []);
+});
+
+test("contextActorFromSession è una guardia del workspace: sessione, poi getCollaboratorAccess, senza accesso 404", () => {
+  const source = withoutComments(readFileSync("src/lib/context/server/actor.ts", "utf8"));
+  const body = source.slice(source.indexOf("export async function contextActorFromSession("));
+  const end = body.indexOf("\n}\n");
+  const fn = body.slice(0, end);
+  assert.match(fn, /const session = await auth\(\);/);
+  assert.match(fn, /const access = await getCollaboratorAccess\(session\.user\.id, workspaceId\);/);
+  assert.match(fn, /if \(!access\) return \{ ok: false, status: 404 \};/);
+});
+
+test("gli aiuti con la guardia si riconoscono solo se la guardia riceve il loro primo argomento", () => {
+  const guarded = "\nasync function run(workspaceId: string, op: string) {\n  const who = await contextActorFromSession(workspaceId);\n}\n";
+  assert.deepEqual(guardedHelpers(guarded), ["run"]);
+  assert.equal(callsGuardedHelper("(workspaceId: string) {\n  return run(workspaceId, \"x\");\n}", ["run"]), true);
+  assert.equal(callsGuardedHelper("(workspaceId: string) {\n  return run(otherId, \"x\");\n}", ["run"]), false);
+  // Un aiuto che controlla un altro workspace, o nessuno, non vale.
+  assert.deepEqual(guardedHelpers("\nasync function run(workspaceId: string) {\n  await contextActorFromSession(altroId);\n}\n"), []);
+  assert.deepEqual(guardedHelpers("\nasync function run(workspaceId: string) {\n  await auth();\n}\n"), []);
+  // Le azioni di «Contesto» passano dai loro aiuti.
+  for (const [file, helper] of [["context.ts", "run"], ["context-granola.ts", "actorFor"]] as const) {
+    assert.ok(guardedHelpers(readFileSync(join(ACTIONS_DIR, file), "utf8")).includes(helper), `${file}: ${helper} passa da contextActorFromSession`);
+  }
 });
 
 test("requireSession da solo non e' accettato come guardia di workspace", () => {

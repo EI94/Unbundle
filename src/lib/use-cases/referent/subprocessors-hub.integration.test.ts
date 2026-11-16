@@ -11,6 +11,9 @@ import { fileURLToPath } from "node:url";
 // Impostazioni › «Sub-responsabili» per un workspace dell'area «Use case» senza i dossier (SPEC
 // §2.3): la scheda e l'autorizzazione ci sono anche fuori da `UC_WORKSPACE_IDS`, perché le email di
 // «Chiedi al referente» la vogliono; con i dossier accesi la strada è quella di prima.
+// (Rilascio 9a, docs/contesto/RILASCIO-9a-COSTRUZIONE.md §6.2) La scheda e l'autorizzazione ci sono in ogni
+// workspace, anche fuori dall'area e con «Chiedi al referente» spento: l'ok serve alle funzioni AI di «Contesto» e
+// alla chat, e si deve poter dare ovunque. Chi può darlo non cambia.
 //
 // - Con scripts/use-case-test/run-db-tests.mjs (HUB_TEST_ISOLATED=true, database hub_<id> su
 //   127.0.0.1). La sessione è quella scelta dalla prova. Dati sintetici, creati e cancellati qui.
@@ -188,8 +191,9 @@ test("la scheda c'è per un workspace dell'area senza i dossier, e l'autorizzazi
   const { SubprocessorsCard } = await import("../../../components/workspace/subprocessors-card.tsx");
   const card = await SubprocessorsCard({ workspaceId: ids.ws, workspaceName: "Rondine prova", userId: ids.builder, workspaceRole: "function_lead" });
   assert.ok(card, "la scheda si mostra");
-  const off = await SubprocessorsCard({ workspaceId: randomUUID(), workspaceName: "Fuori dall'area", userId: ids.builder, workspaceRole: "function_lead" });
-  assert.equal(off, null, "fuori dall'area niente");
+  // (Rilascio 9a) Anche fuori dall'area «Use case»: la scheda c'è in ogni workspace.
+  const outside = await SubprocessorsCard({ workspaceId: randomUUID(), workspaceName: "Fuori dall'area", userId: ids.builder, workspaceRole: "function_lead" });
+  assert.ok(outside, "la scheda si mostra anche fuori dall'area");
   signIn("builder");
   const { declareSubprocessorsAction } = await import("../../actions/uc-subprocessors.ts");
   const result = await declareSubprocessorsAction(ids.ws, "2026-10", true);
@@ -202,16 +206,30 @@ test("la scheda c'è per un workspace dell'area senza i dossier, e l'autorizzazi
   assert.ok(sent.ok, JSON.stringify(sent));
 });
 
-test("con la funzione spenta e senza dossier la scheda non c'è; l'action risponde che la sezione è spenta", opts, async () => {
+test("(rilascio 9a) con «Chiedi al referente» spento e senza dossier la scheda c'è lo stesso, e l'autorizzazione si registra; chi può darla non cambia", opts, async () => {
   const { SubprocessorsCard } = await import("../../../components/workspace/subprocessors-card.tsx");
   process.env.USE_CASE_REFERENTS = "off";
   try {
-    assert.equal(await SubprocessorsCard({ workspaceId: ids.other, workspaceName: "Altro", userId: ids.builder, workspaceRole: "function_lead" }), null);
-    signIn("builder");
+    // Prima della 9a qui la scheda non c'era e l'azione rispondeva che la sezione era spenta.
+    const card = await SubprocessorsCard({ workspaceId: ids.other, workspaceName: "Altro", userId: ids.builder, workspaceRole: "function_lead" });
+    assert.ok(card, "la scheda si mostra");
+    assert.ok(findElement(card, (el) => typeof el.type === "function" && (el.type as { name?: string }).name === "SubprocessorsForm"), "con il modulo, per chi può autorizzare");
+    const reader = await SubprocessorsCard({ workspaceId: ids.other, workspaceName: "Altro", userId: ids.contributor, workspaceRole: "contributor" });
+    assert.equal(findElement(reader, (el) => typeof el.type === "function" && (el.type as { name?: string }).name === "SubprocessorsForm"), null, "un contributore legge soltanto");
     const { declareSubprocessorsAction } = await import("../../actions/uc-subprocessors.ts");
-    const result = await declareSubprocessorsAction(ids.other, "2026-10", true);
-    assert.equal(result.ok, false);
+    signIn("contributor");
+    assert.equal((await declareSubprocessorsAction(ids.other, "2026-10", true)).ok, false, "un contributore no");
+    signIn("builder");
+    assert.equal((await declareSubprocessorsAction(ids.other, "2026-10", false)).ok, false, "senza la casella dei poteri no");
+    assert.equal((await declareSubprocessorsAction(ids.other, "2020-01", true)).ok, false, "una lista vecchia no");
     assert.equal((await q(`SELECT 1 FROM uc_subprocessor_acks WHERE workspace_id = $1::uuid`, [ids.other])).length, 0);
+    const result = await declareSubprocessorsAction(ids.other, "2026-10", true);
+    assert.ok(result.ok, JSON.stringify(result));
+    assert.equal(result.message, "Autorizzazione registrata.");
+    assert.deepEqual(
+      await q(`SELECT list_version, declared_by_user_id::text AS who, declared_by_role FROM uc_subprocessor_acks WHERE workspace_id = $1::uuid`, [ids.other]),
+      [{ list_version: "2026-10", who: ids.builder, declared_by_role: "function_lead" }],
+    );
   } finally {
     delete process.env.USE_CASE_REFERENTS;
   }

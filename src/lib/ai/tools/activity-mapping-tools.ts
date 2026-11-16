@@ -2,10 +2,11 @@ import { tool } from "ai";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { activities, activityDependencies, departments } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
+import { isUuid } from "@/lib/uc/ids";
 import { getActivitiesByDepartment } from "@/lib/db/queries/activities";
-import { getWorkspaceById, getStrategicGoalsByWorkspace } from "@/lib/db/queries/workspaces";
-import { organizations } from "@/lib/db/schema";
+import { getStrategicGoalsByWorkspace } from "@/lib/db/queries/workspaces";
+import { getWorkspaceValueThesis } from "@/lib/db/queries/value-thesis";
 import { classifyActivitiesBatch, skippedClassificationsText } from "@/lib/ai/classify";
 import { matchActivitiesToOnet } from "@/lib/ai/onet-matching";
 import { ClaudeRefusalError, logClaudeTimeout, stoppedByDeadline, timeUntil } from "@/lib/ai/models";
@@ -77,10 +78,18 @@ export function getActivityMappingTools(
         workType: z.enum(["enrichment", "detection", "interpretation", "delivery"]).describe("Tipo di lavoro"),
       }),
       execute: async ({ activityId, workType }) => {
-        await db
-          .update(activities)
-          .set({ workType, updatedAt: new Date() })
-          .where(eq(activities.id, activityId));
+        // (Rilascio 9a) Solo un'attività di questo workspace: l'id lo scrive il modello, e con l'id di un'attività di
+        // un altro workspace prima si scriveva lì.
+        const updated = isUuid(activityId)
+          ? await db
+              .update(activities)
+              .set({ workType, updatedAt: new Date() })
+              .where(and(eq(activities.id, activityId), eq(activities.workspaceId, workspaceId)))
+              .returning({ id: activities.id })
+          : [];
+        if (updated.length === 0) {
+          return { success: false, message: "Attività non trovata in questo workspace." };
+        }
         return {
           success: true,
           message: `Attivita' classificata come "${workType}".`,
@@ -97,6 +106,16 @@ export function getActivityMappingTools(
         dependencyType: z.string().optional().describe("Tipo di dipendenza (input, approval, data, handoff)"),
       }),
       execute: async ({ sourceActivityId, targetActivityId, dependencyType }) => {
+        // (Rilascio 9a) Le due attività devono essere due, diverse e di questo workspace: altrimenti niente si scrive.
+        const notFound = { success: false, message: "Attività non trovate in questo workspace." };
+        if (!isUuid(sourceActivityId) || !isUuid(targetActivityId)) return notFound;
+        if (sourceActivityId.toLowerCase() === targetActivityId.toLowerCase()) return notFound;
+        const found = await db
+          .select({ id: activities.id })
+          .from(activities)
+          .where(and(inArray(activities.id, [sourceActivityId, targetActivityId]), eq(activities.workspaceId, workspaceId)));
+        if (found.length !== 2) return notFound;
+
         await db.insert(activityDependencies).values({
           sourceActivityId,
           targetActivityId,
@@ -129,21 +148,14 @@ export function getActivityMappingTools(
 
         if (unclassified.length > 0) {
           try {
-            const workspace = await getWorkspaceById(workspaceId);
-            const [org] = workspace
-              ? await db
-                  .select()
-                  .from(organizations)
-                  .where(eq(organizations.id, workspace.organizationId))
-                  .limit(1)
-              : [null];
-
+            // (9a) La tesi del valore del workspace, non più quella dell'organizzazione.
+            const thesis = await getWorkspaceValueThesis(workspaceId);
             const goals = await getStrategicGoalsByWorkspace(workspaceId);
 
             // Le classificazioni riuscite si scrivono; quelle rifiutate, fallite o fermate dalla scadenza restano da fare.
             const results = await classifyActivitiesBatch(
               unclassified,
-              { companyValueThesis: org?.companyValueThesis, goals },
+              { companyValueThesis: thesis, goals },
               { abortSignal: AbortSignal.timeout(timeUntil(deadline)) },
             );
 

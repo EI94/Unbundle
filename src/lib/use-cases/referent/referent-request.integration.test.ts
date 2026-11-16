@@ -110,13 +110,17 @@ function workingDaysBefore(to: Date, n: number): Date {
 }
 const V = virtualNow();
 
+/** I codici delle carte di prova: uno nuovo per carta, mai lo stesso nella corsa (il workspace è nuovo a ogni corsa). */
+let cardCodes = 0;
+const nextCardCode = (prefix = "RC") => `${prefix}-${String(1000 + ++cardCodes)}`;
+
 /** Uno use case approvato con «Prepara le domande»: sei requisiti del cliente da chiedere. */
 async function newCard(): Promise<{ id: string; needs: string[] }> {
   const id = randomUUID();
   await q(
     `INSERT INTO use_cases (id, workspace_id, title, description, status, portfolio_review_status, portfolio_kind, code, source)
      VALUES ($1::uuid, $2::uuid, 'Fatture fornitori', 'Le fatture arrivano via PEC. Si risparmia il 30%.', 'accepted', 'scored', 'use_case_ai', $3, 'web_proposed')`,
-    [id, ids.ws, `RC-${String(1000 + Math.floor(Math.random() * 8000))}`],
+    [id, ids.ws, nextCardCode()],
   );
   ok(await referents.prepareReferentQuestions(as("builder"), id), "Prepara le domande");
   const rows = await q(`SELECT n.id::text AS id FROM use_case_needs n JOIN use_case_need_links l ON l.need_id = n.id WHERE l.use_case_id = $1::uuid ORDER BY n.sort_order, n.id`, [id]);
@@ -468,7 +472,7 @@ test("nessun referente dove la scheda non ne offre uno: «Da diffondere» e arch
     await q(
       `INSERT INTO use_cases (id, workspace_id, title, description, status, portfolio_review_status, portfolio_kind, code, source)
        VALUES ($1::uuid, $2::uuid, 'Buona pratica', 'Una pratica da diffondere.', 'accepted', $3::portfolio_review_status, $4, $5, 'web_proposed')`,
-      [id, ids.ws, k.review, k.kind, `RN-${String(1000 + Math.floor(Math.random() * 8000))}`],
+      [id, ids.ws, k.review, k.kind, nextCardCode("RN")],
     );
     const res = await sendReferent(id, { contact: newContact(`nonprevisto.${k.review}.${randomBytes(2).toString("hex")}@rondine.test`, "Aldo Prova"), needIds: [] });
     assert.equal(res.ok, false, `${k.label}: rifiutata`);

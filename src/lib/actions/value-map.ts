@@ -2,7 +2,8 @@
 
 import { requireSession } from "@/lib/auth/redirect-to-login";
 import { db } from "@/lib/db";
-import { valueMapNodes, organizations } from "@/lib/db/schema";
+import { valueMapNodes } from "@/lib/db/schema";
+import { getWorkspaceValueThesis } from "@/lib/db/queries/value-thesis";
 import { eq } from "drizzle-orm";
 import { getActivitiesByWorkspace } from "@/lib/db/queries/activities";
 import { generateObject } from "ai";
@@ -20,7 +21,6 @@ export async function generateValueMapAction(workspaceId: string) {
   if (!canReviewWorkspacePortfolio(access.role)) {
     throw new Error("Non hai i permessi per generare la value map.");
   }
-  const { workspace } = access;
 
   const allActivities = await getActivitiesByWorkspace(workspaceId);
   const classified = allActivities.filter((a) => a.classification);
@@ -29,11 +29,8 @@ export async function generateValueMapAction(workspaceId: string) {
     throw new Error("Nessuna attività classificata.");
   }
 
-  const [org] = await db
-    .select()
-    .from(organizations)
-    .where(eq(organizations.id, workspace.organizationId))
-    .limit(1);
+  // (9a) La tesi del valore del workspace, non più quella dell'organizzazione.
+  const thesis = await getWorkspaceValueThesis(workspaceId);
 
   const activitySummaries = classified.map((a) => ({
     id: a.id,
@@ -55,7 +52,7 @@ I 3 stream del framework Unbundle:
 - **DIFFERENTIATE** ("Qui concentrare l'energia umana"): Y alto (0.65-0.95), X basso-medio (0.15-0.55) — sono custom/product, il valore è nel giudizio umano
 - **INNOVATE** ("Questo valore prima non esisteva"): Y medio-alto (0.5-0.85), X molto basso (0.0-0.3) — sono genesis/sperimentali, opportunità emergenti
 
-Value Thesis dell'azienda (usala per capire cosa è davvero strategico): ${JSON.stringify(org?.companyValueThesis ?? {})}`,
+Value Thesis dell'azienda (usala per capire cosa è davvero strategico): ${JSON.stringify(thesis ?? {})}`,
     messages: [
       {
         role: "user",

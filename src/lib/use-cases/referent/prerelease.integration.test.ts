@@ -64,6 +64,8 @@ const emails: Record<Person, string> = {
 const MARIO = `mario.rossi.${suffix}@rondine.test`;
 const DOSSIER = `paola.bianchi.${suffix}@rondine.test`;
 const contacts = { carlo: randomUUID(), mario: randomUUID(), dossier: randomUUID() };
+/** I codici delle carte, uno nuovo per carta: mai lo stesso nella corsa (il workspace è nuovo a ogni corsa). */
+let cardCodes = 0;
 const cards = { self: randomUUID(), team: randomUUID(), replyA: randomUUID(), replyB: randomUUID(), gate: randomUUID(), review: randomUUID(), locks: randomUUID(), solo: randomUUID() };
 const storageDir = mkdtempSync(join(tmpdir(), "referenti-rilascio-"));
 
@@ -195,7 +197,7 @@ before(async () => {
     await q(
       `INSERT INTO use_cases (id, workspace_id, title, description, status, portfolio_review_status, portfolio_kind, code, source)
        VALUES ($1::uuid, $2::uuid, $3, 'Problema di prova', 'accepted', 'scored', 'use_case_ai', $4, 'web_proposed')`,
-      [card, name === "solo" ? ids.ws2 : ids.ws, `Scheda ${name}`, `RL-${String(1000 + Math.floor(Math.random() * 8000))}`],
+      [card, name === "solo" ? ids.ws2 : ids.ws, `Scheda ${name}`, `RL-${String(1000 + ++cardCodes)}`],
     );
   }
   for (const [ws, by] of [

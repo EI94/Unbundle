@@ -19,12 +19,20 @@
     {
       "path": "/api/cron/use-case-referents",
       "schedule": "0 9 * * 1-5"
+    },
+    {
+      "path": "/api/cron/contesto",
+      "schedule": "0 2 * * *"
     }
   ],
   "git": {
     "deploymentEnabled": {
       "codex/m1-ux-refinements": false,
-      "feat/chiedi-al-referente": false
+      "feat/chiedi-al-referente": false,
+      "feat/rilascio-9a-contesto": false,
+      "feat/9a-granola": false,
+      "feat/9a-mcp": false,
+      "feat/9a-pagina": false
     }
   }
 }

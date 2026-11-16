@@ -19,6 +19,7 @@ import { PROPOSALS_DDL, PROPOSALS_PROBE_SQL } from "./use-case-hub-proposals-ddl
 import { WORKSPACE_TEAM_DDL, WORKSPACE_TEAM_PROBE_SQL } from "./use-case-hub-team-ddl.ts";
 import { EVALS_DDL, EVALS_PROBE_SQL } from "./use-case-hub-evals-ddl.ts";
 import { EXTERNAL_BUILDERS_DDL, EXTERNAL_BUILDERS_PROBE_SQL } from "./use-case-hub-builders-ddl.ts";
+import { CONTEXT_DDL, CONTEXT_PROBE_SQL } from "./context-ddl.ts";
 
 /**
  * Self-heal dello schema.
@@ -38,7 +39,7 @@ import { EXTERNAL_BUILDERS_DDL, EXTERNAL_BUILDERS_PROBE_SQL } from "./use-case-h
  */
 
 /** Incrementa ad ogni modifica a `runOnce`: così i worker warm ri-eseguono il catch-up. */
-const ENSURE_VERSION = 31;
+const ENSURE_VERSION = 32;
 
 let ensurePromise: Promise<void> | null = null;
 let ensureVersionApplied = 0;
@@ -718,6 +719,11 @@ async function runOnce(): Promise<void> {
   // Dopo la 0036. Non blocca il resto dell'app: senza la 0037 nessuno è sviluppatore esterno (il predicato vale false) e
   // «Chi costruisce» resta il team di Lateral Space (`externalBuildersReady`).
   await runExternalBuildersDdlSafely();
+
+  // «Contesto»: la memoria del cliente, gli appunti, le proposte e il collegamento a Granola (drizzle/0038_contesto.sql) ─────
+  // Dopo la 0037. Non blocca il resto dell'app: senza la 0038 la pagina «Contesto» dice che si sta preparando, la tesi
+  // del valore resta quella dell'organizzazione e niente legge le tabelle nuove (`contextStoreReady`).
+  await runContextDdlSafely();
 }
 
 /** Dopo un errore della 0024, un nuovo tentativo al massimo ogni 5 minuti per processo, mai a ogni richiesta. */
@@ -907,6 +913,25 @@ async function runExternalBuildersDdlSafely(): Promise<void> {
   } catch (err) {
     externalBuildersDdlFailedAt = Date.now();
     console.error("[db/ensure-schema] 0037 self-heal failed, the app keeps serving without external builders (apply drizzle/0037 by hand):", err);
+  }
+}
+
+/** Dopo un errore della 0038, come la 0024: un nuovo tentativo al massimo ogni 5 minuti per processo. */
+let contextDdlFailedAt: number | null = null;
+
+/**
+ * La 0038 senza far fallire `ensureDbSchema()`, come `runUseCaseReferentsDdlSafely`. Mai da un'anteprima di Vercel: le
+ * anteprime usano il database di produzione, e la 0038 la applica solo il deploy di produzione (o il file a mano). Senza,
+ * l'anteprima serve come prima e «Contesto» dice che si sta preparando.
+ */
+async function runContextDdlSafely(): Promise<void> {
+  if (process.env.VERCEL_ENV === "preview") return;
+  try {
+    await runContextDdl();
+    contextDdlFailedAt = null;
+  } catch (err) {
+    contextDdlFailedAt = Date.now();
+    console.error("[db/ensure-schema] 0038 self-heal failed, the app keeps serving without «Contesto» (apply drizzle/0038 by hand):", err);
   }
 }
 
@@ -1180,6 +1205,21 @@ export async function runExternalBuildersDdl(statements: readonly string[] = EXT
   ]);
 }
 
+/**
+ * Applica il DDL della 0038 in una sola transazione, con lo stesso advisory lock del file e `lock_timeout` di 3s, come la
+ * 0037. In produzione la applica questo self-heal, al primo avvio dopo il deploy; il file a mano resta la strada di
+ * riserva. Il blocco della tesi del valore riempie la colonna nuova di `workspaces` solo quando la crea: una volta sola,
+ * anche se il self-heal ripassa.
+ */
+export async function runContextDdl(statements: readonly string[] = CONTEXT_DDL): Promise<void> {
+  const client = db.$client;
+  await client.transaction([
+    client.query("SELECT set_config('lock_timeout', '3s', true)"),
+    client.query("SELECT pg_advisory_xact_lock(hashtext('unbundle:context-ddl'))"),
+    ...statements.map((statement) => client.query(statement)),
+  ]);
+}
+
 async function schemaLooksCurrent(): Promise<boolean> {
   try {
     const result = (await db.execute(sql`
@@ -1304,6 +1344,7 @@ async function schemaLooksCurrent(): Promise<boolean> {
         AND ${sql.raw(WORKSPACE_TEAM_PROBE_SQL)}
         AND ${sql.raw(EVALS_PROBE_SQL)}
         AND ${sql.raw(EXTERNAL_BUILDERS_PROBE_SQL)}
+        AND ${sql.raw(CONTEXT_PROBE_SQL)}
       ) AS current;
     `)) as unknown as { rows?: Array<{ current?: unknown }> };
     return result.rows?.[0]?.current === true;
@@ -1393,6 +1434,11 @@ export async function ensureDbSchema(): Promise<void> {
     if (externalBuildersDdlFailedAt !== null && Date.now() - externalBuildersDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
       externalBuildersDdlFailedAt = Date.now();
       ensurePromise = ensurePromise.then(runExternalBuildersDdlSafely);
+    }
+    // La 0038 era fallita (non fatale): come la 0024, un tentativo alla volta, dopo la pausa.
+    if (contextDdlFailedAt !== null && Date.now() - contextDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
+      contextDdlFailedAt = Date.now();
+      ensurePromise = ensurePromise.then(runContextDdlSafely);
     }
     return ensurePromise;
   }

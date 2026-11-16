@@ -24,8 +24,14 @@ import {
   throwIfRefused,
   timeUntil,
   WEB_SEARCH_TIMEOUT_MS,
+  CONTEXT_ASK_TIMEOUT_MS,
+  CONTEXT_BRIEF_TIMEOUT_MS,
+  CONTEXT_NIGHTLY_READ_TIMEOUT_MS,
+  CONTEXT_READ_TIMEOUT_MS,
   type ClaudeTask,
 } from "./models.ts";
+import { buildReadPrompt } from "../context/read/prompt.ts";
+import { contextReadSchema } from "../context/read/schema.ts";
 
 // (Migrazione a Claude Sonnet 5.5) Le richieste vere di @ai-sdk/anthropic, senza rete: il provider finto di
 // claude-test-kit.ts (`createAnthropic({ apiKey: "test", fetch })`) registra indirizzo, intestazione beta e corpo, e
@@ -197,6 +203,52 @@ test("generateObject: un rifiuto prima di scrivere o a metà JSON è un errore d
   const notFound: Reply = () => Response.json({ type: "error", error: { type: "not_found_error", message: "model" } }, { status: 404 });
   await assert.rejects(throwIfRefused("ai/generate-report", report(notFound)), (error: unknown) => (error as { statusCode?: number }).statusCode === 404);
   assert.equal(lines.length, 4);
+});
+
+test("«Contesto»: i tre compiti (lettura, «In breve», «Chiedi») e una richiesta contextRead vera, con il suo schema e il suo prompt", async () => {
+  for (const task of ["contextRead", "contextBrief", "contextAsk"] as const) {
+    assert.deepEqual(CLAUDE_TASKS[task], { effort: "low", maxOutputTokens: 16_000, fallbacks: true }, task);
+  }
+  // I tempi massimi stanno dentro il maxDuration delle rotte: 120 s la lettura, 60 s la domanda e la pagina di conferma.
+  assert.ok(CONTEXT_READ_TIMEOUT_MS === 90_000 && CONTEXT_READ_TIMEOUT_MS < 120_000);
+  assert.ok(CONTEXT_ASK_TIMEOUT_MS === 40_000 && CONTEXT_ASK_TIMEOUT_MS < 60_000);
+  assert.ok(CONTEXT_BRIEF_TIMEOUT_MS === 40_000 && CONTEXT_BRIEF_TIMEOUT_MS < 60_000);
+  assert.ok(CONTEXT_NIGHTLY_READ_TIMEOUT_MS === 60_000 && CONTEXT_NIGHTLY_READ_TIMEOUT_MS < 120_000);
+
+  const { system, prompt } = buildReadPrompt({
+    clientName: "Cliente di prova",
+    today: "2026-11-16",
+    occurredOn: "2026-11-14",
+    title: "Call di avvio",
+    text: "Il gestionale è SAP Business One.",
+    part: { index: 1, total: 1 },
+    facts: [{ ref: "F1", section: "sistemi", visibility: "tutti", statement: "Il gestionale è SAP." }],
+    live: [],
+    useCases: [],
+    units: [],
+    goals: [],
+    questions: [],
+    commitments: [],
+    already: [],
+    nonce: "abc123def456",
+  });
+  const answer = { proposte: [], nonRiportati: { persone: 0, sanitari: 0, altriClienti: 0, clientiDelCliente: 0 } };
+  const { provider, requests } = fakeClaude([message([THINKING, { type: "text", text: JSON.stringify(answer) }])]);
+  const result = await generateObject({ model: provider(CLAUDE_MODEL), schema: contextReadSchema, system, prompt, ...claudeCallSettings("contextRead") });
+  assert.deepEqual(result.object, answer);
+  assert.deepEqual(result.warnings ?? [], [], "nessun parametro riscritto o tolto dall'SDK");
+  const [request] = requests;
+  assertSonnet55Request(request, "contextRead");
+  assert.equal(request.body.max_tokens, 16_000);
+  assert.equal(request.body.tools, undefined, "nessun tool: il modello può solo proporre");
+  assert.equal(request.body.tool_choice, undefined);
+  assert.equal(request.body.fallbacks, "default");
+  const format = (request.body.output_config as { format?: { type: string; schema: unknown } }).format;
+  assert.equal(format?.type, "json_schema");
+  const schemaJson = JSON.stringify(format?.schema);
+  assert.equal(/"reasoning"/i.test(schemaJson), false, "nessun campo chiede al modello il suo ragionamento");
+  assert.equal(/"minimum"|"maximum"|"minLength"|"maxLength"/.test(schemaJson), false, "i limiti stanno nelle descrizioni");
+  assert.ok(schemaJson.includes('"proposte"') && schemaJson.includes('"nonRiportati"'));
 });
 
 test("throwIfRefused con un contesto: nella riga del rifiuto l'id, prima di motivo e categoria, che non sostituisce", async (t) => {
@@ -507,6 +559,10 @@ const CALL_SITES: Readonly<Record<string, readonly ClaudeTask[]>> = {
   "src/lib/ai/generate-blueprints.ts": ["blueprints"],
   "src/lib/actions/intelligence.ts": ["competitiveAnalysis"],
   "src/lib/actions/strategy.ts": ["okrSuggestions"],
+  // «Contesto» (rilascio 9a): la lettura di un appunto, «In breve», «Chiedi al contesto».
+  "src/lib/context/read/generate.ts": ["contextRead"],
+  "src/lib/context/brief/generate.ts": ["contextBrief"],
+  "src/lib/context/ask/generate.ts": ["contextAsk"],
 };
 
 /**
@@ -580,8 +636,8 @@ test("ogni chiamata usa il modello e le impostazioni del suo compito, per ultime
       spreads.push(`${file} ${match[0]}`);
     }
   }
-  // Le quindici chiamate con CLAUDE_MODEL, più l'auto-ranking del portfolio.
-  assert.equal(spreads.length, 16, spreads.join("\n"));
+  // Le diciotto chiamate con CLAUDE_MODEL (le tre di «Contesto» comprese), più l'auto-ranking del portfolio.
+  assert.equal(spreads.length, 19, spreads.join("\n"));
   for (const [task, { settings, uses, call }] of Object.entries(CONFIGURABLE_CALLS)) {
     assert.ok(readFileSync(new URL(settings, ROOT), "utf8").includes(uses), `${settings}: impostazioni di «${task}»`);
     assert.match(readFileSync(new URL(call, ROOT), "utf8"), /(\.\.\.portfolioRankingCallSettings\(modelId\)|referentAiCallSettings\(model\))/, call);
@@ -614,6 +670,10 @@ test("ogni generateObject dell'app passa subito da throwIfRefused, prima di usar
     assert.equal(guarded.length, calls, `${file}: ${calls} generateObject, ${guarded.length} dentro await throwIfRefused("scope", generateObject(...))`);
     sites.push(...guarded.map((match) => `${file} ${match[1]}`));
   }
-  // Le undici chiamate con CLAUDE_MODEL, più l'auto-ranking del portfolio e la proposta del filo con il referente.
-  assert.equal(sites.length, 13, sites.join("\n"));
+  // Le quattordici chiamate con CLAUDE_MODEL (le tre di «Contesto» comprese), più l'auto-ranking del portfolio e la
+  // proposta del filo con il referente.
+  assert.equal(sites.length, 16, sites.join("\n"));
+  for (const scope of ["context/read", "context/brief", "context/ask"]) {
+    assert.ok(sites.some((site) => site.endsWith(` ${scope}`)), `manca la chiamata protetta di ${scope}`);
+  }
 });

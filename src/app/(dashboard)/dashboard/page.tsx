@@ -5,6 +5,7 @@ import { CreateWorkspaceDialog } from "@/components/dashboard/create-workspace-d
 import { WorkspaceCard } from "@/components/dashboard/workspace-card";
 import { DashboardListShell } from "@/components/dashboard/dashboard-list-shell";
 import { Plus } from "lucide-react";
+import { CONTEXT_TEXT } from "@/lib/context/text";
 
 const SLACK_ERR: Record<string, string> = {
   invalid_workspace: "Link Slack non valido. Apri Impostazioni dal workspace e riprova.",
@@ -14,7 +15,7 @@ const SLACK_ERR: Record<string, string> = {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ slack_error?: string; workspaceDeleted?: string }>;
+  searchParams?: Promise<{ slack_error?: string; workspaceDeleted?: string; granola?: string }>;
 }) {
   const session = await requireSession();
 
@@ -42,6 +43,12 @@ export default async function DashboardPage({
         {sp.workspaceDeleted === "1" ? (
           <div className="mb-6 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-500">
             Workspace eliminato correttamente.
+          </div>
+        ) : null}
+        {sp.granola === "scaduto" ? (
+          // Il ritorno da Granola con uno stato scaduto, senza un workspace da cui ripartire (rilascio 9a).
+          <div role="status" className="mb-6 rounded-lg border px-4 py-3 text-sm text-muted-foreground">
+            {CONTEXT_TEXT.granola.stateExpiredSomewhere}
           </div>
         ) : null}
         {slackErrMsg ? (

@@ -3,8 +3,8 @@
 import { requireSession } from "@/lib/auth/redirect-to-login";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { organizations, strategicGoals } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { strategicGoals } from "@/lib/db/schema";
+import { getWorkspaceValueThesis } from "@/lib/db/queries/value-thesis";
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { CLAUDE_MODEL, claudeCallSettings, throwIfRefused } from "@/lib/ai/models";
@@ -71,15 +71,8 @@ export async function suggestOKRsAction(
   if (!canReviewWorkspacePortfolio(access.role)) {
     throw new Error("Non hai i permessi per suggerire OKR.");
   }
-  const { workspace } = access;
-
-  const [org] = await db
-    .select()
-    .from(organizations)
-    .where(eq(organizations.id, workspace.organizationId))
-    .limit(1);
-
-  const thesis = org?.companyValueThesis;
+  // (9a) La tesi del valore del workspace, non più quella dell'organizzazione.
+  const thesis = await getWorkspaceValueThesis(workspaceId);
   if (!thesis) {
     throw new Error(
       "Completa prima la Discovery per avere la Value Thesis."

@@ -9,6 +9,7 @@ import {
 } from "@/lib/actions/pre-generate-activities";
 import { Loader2, Sparkles, Check, Clock, Wrench } from "lucide-react";
 import { toast } from "sonner";
+import { CONTEXT_TEXT } from "@/lib/context/text";
 
 interface ActivityPreGeneratorProps {
   workspaceId: string;
@@ -45,7 +46,11 @@ export function ActivityPreGenerator({
         workspaceId,
         departmentId
       );
-      if (result.activities.length === 0) {
+      if (result.consentMissing) {
+        // Senza l'ok ai fornitori di AI i documenti non vanno al modello (rilascio 9a).
+        toast.info(CONTEXT_TEXT.consent.title);
+        setProposals(null);
+      } else if (result.activities.length === 0) {
         toast.info(
           "Non ho trovato attività specifiche nei documenti. Procedi con la chat."
         );

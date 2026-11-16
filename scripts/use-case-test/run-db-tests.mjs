@@ -46,8 +46,11 @@ const DEFAULT_SUITES = [
   "src/lib/use-cases/**/*.integration.test.ts",
   "src/lib/db/use-case-hub*.integration.test.ts",
   "src/components/use-cases/**/*.integration.test.ts",
+  // «Contesto» (rilascio 9a): the context tables live in the hub's database too.
+  "src/lib/context/**/*.integration.test.ts",
+  "src/components/context/**/*.integration.test.ts",
 ];
-const SUITE = /^src\/(lib\/use-cases\/.+|lib\/db\/use-case-hub[^/]*|components\/use-cases\/.+)\.integration\.test\.ts$/;
+const SUITE = /^src\/(lib\/use-cases\/.+|lib\/db\/use-case-hub[^/]*|components\/use-cases\/.+|lib\/context\/.+|components\/context\/.+)\.integration\.test\.ts$/;
 
 /** The database suites of the app's own queries (src/lib/db/queries): the same cluster, the same copies. */
 const QUERY_SUITES = ["src/lib/db/queries/**/*.integration.test.ts"];

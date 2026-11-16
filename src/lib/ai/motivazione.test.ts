@@ -15,9 +15,14 @@ await installAppModules({
   "@/lib/db/schema": `export const activities = {}; export const uploadedDocuments = { workspaceId: "workspace_id", departmentId: "department_id" };`,
   "drizzle-orm": `export const eq = (column, value) => ({ column, value }); export const and = (...parts) => ({ and: parts });`,
   "@/lib/db": `export const db = {
-    select: () => ({ from: () => ({ where: async () => [{ fileName: "procedure.pdf", extractedText: "Ogni mese il team prepara le fatture.", summary: null }] }) }),
+    select: () => ({ from: () => ({ where: async () => [{ id: "doc-prova", fileName: "procedure.pdf", extractedText: "Ogni mese il team prepara le fatture.", summary: null }] }) }),
   };`,
   "next/cache": `export function revalidatePath() {}`,
+  // (Rilascio 9a) L'ok ai sub-responsabili c'è; chi chiama vede il documento «Per tutti» dell'unità.
+  "@/lib/db/queries/context-consent": `export async function contextAiConsent() { return true; }`,
+  "@/lib/context/server/actor": `export function contextActorFor(user, access, workspaceId) { return { workspaceId, userId: user.id, role: access.role, isLateralSpace: false, channel: "web" }; }`,
+  "@/lib/db/queries/context-store": `export async function contextStoreState() { return "pronto"; } export async function contextStoreReady() { return true; }`,
+  "@/lib/db/queries/context-sources": `export async function listContextSources() { return [{ id: "fonte-prova", kind: "documento", visibility: "tutti", document: { id: "doc-prova" } }]; }`,
 });
 const { classifyActivity } = await import("./classify.ts");
 const { matchActivitiesToOnet } = await import("./onet-matching.ts");

@@ -96,6 +96,16 @@ export const CLAUDE_TASKS = {
    * impostazioni lette da referentAiCallSettings (src/lib/use-cases/referent/ai-followup.ts), senza ripiego.
    */
   referentFollowUp: { effort: "low", maxOutputTokens: 16_000, fallbacks: false },
+  /**
+   * «Contesto»: la lettura di un appunto contro la memoria di oggi, al massimo 25 proposte. `low`: estrarre e
+   * classificare, e ogni proposta la conferma una persona. Se le proposte risultano povere su call vere, è la riga da
+   * portare a `medium`.
+   */
+  contextRead: { effort: "low", maxOutputTokens: 16_000, fallbacks: true },
+  /** «In breve»: sei righe dai fatti «Per tutti». */
+  contextBrief: { effort: "low", maxOutputTokens: 16_000, fallbacks: true },
+  /** «Chiedi al contesto»: una risposta breve dai brani trovati, con le fonti. */
+  contextAsk: { effort: "low", maxOutputTokens: 16_000, fallbacks: true },
 } as const satisfies Record<string, ClaudeTaskSettings>;
 
 export type ClaudeTask = keyof typeof CLAUDE_TASKS;
@@ -149,6 +159,12 @@ export const CHAT_ANSWER_RESERVE_MS = 25_000;
  * una chiamata (MIN_MODEL_CALL_MS): anche una chiamata partita alla scadenza dei tool finisce prima di quella del giro.
  */
 export const CHAT_TOOLS_LEAD_MS = 20_000;
+
+/** I tempi massimi delle chiamate di «Contesto» (AbortSignal.timeout): dentro il maxDuration delle loro rotte. */
+export const CONTEXT_READ_TIMEOUT_MS = 90_000; // rotta di lettura: 120 s
+export const CONTEXT_ASK_TIMEOUT_MS = 40_000; // rotta della domanda: 60 s
+export const CONTEXT_BRIEF_TIMEOUT_MS = 40_000; // dopo la conferma, dentro i 60 s della pagina
+export const CONTEXT_NIGHTLY_READ_TIMEOUT_MS = 60_000; // nel giro della notte
 
 /** Il tempo minimo di una chiamata al modello dentro la chat, anche con la scadenza vicina o passata. */
 export const MIN_MODEL_CALL_MS = 5_000;

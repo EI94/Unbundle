@@ -25,7 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { confirmLearningNavigation } from "@/components/learning/use-unsaved-changes";
-import { USE_CASE_NAV_MATCH, isNavItemActive } from "@/components/dashboard/nav-active";
+import { CONTEXT_NAV_MATCH, USE_CASE_NAV_MATCH, isNavItemActive } from "@/components/dashboard/nav-active";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ThemeMenuGroup } from "@/components/theme/theme-menu";
 import {
@@ -150,7 +150,7 @@ export function AppSidebar({
             ]
           : [{ title: "Raccolta & ranking", href: `${basePath}/portfolio`, icon: Inbox, match: EXACT }]),
         { title: "Discovery", href: `${basePath}/setup/leadership`, icon: Compass, match: own },
-        { title: "Contesto", href: `${basePath}/setup/context`, icon: Building2, match: own },
+        { title: "Contesto", href: `${basePath}/contesto`, icon: Building2, match: CONTEXT_NAV_MATCH },
         { title: "Strategia", href: `${basePath}/strategy`, icon: Target, match: own },
         { title: "Activity mapping", href: `${basePath}/mapping`, icon: GitBranch, match: own },
         { title: "Value map", href: `${basePath}/value-map`, icon: Map, match: own },

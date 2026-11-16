@@ -617,3 +617,74 @@ Specifica: `docs/rilascio-8/RILASCIO-8.0c-ESTERNI.md` (scelte del titolare del 1
 
 **Un cliente nuovo con chi costruisce da fuori** (ogni passo con il sì del titolare): §4 per accendere i dossier del workspace; un modello di dossier visibile al cliente, gli use case approvati, «Avvia la realizzazione»; il ruolo nel workspace della persona (Analista, D1) e l'ok ai sub-responsabili del cliente; «Chi costruisce» › la persona › Sviluppatore esterno › il «Dove»; il repository di ogni famiglia lo crea e lo registra Lateral Space (`unbundle repo create <ID> --repo owner/nome`), la persona ci registra gli altri casi; su GitHub la persona collaboratore esterno con la scrittura sui repository della famiglia (main protetto, D2) e la lettura sul modello; una chiave dell'AI Gateway sua, con un tetto, oppure i modelli finti.
 
+
+### 10.19 Rilascio 9a: «Contesto» (0038)
+
+Progetto: `docs/contesto/RILASCIO-9-CONTESTO.md` (approvato dal titolare il 15/11/2026). Piano di costruzione: `docs/contesto/RILASCIO-9a-COSTRUZIONE.md`. «Contesto» diventa la memoria del cliente: gli appunti di una call entrano (da Granola, dal web, da Claude con l'MCP del team), Unbundle li legge contro la memoria di oggi e propone che cosa cambia, una persona di Lateral Space conferma con un clic. Ogni fatto porta la sua fonte.
+
+**Che cosa cambia:**
+
+- **La pagina «Contesto»** sta a `/dashboard/<ws>/contesto`; il vecchio indirizzo `/setup/context` reindirizza. Due viste: «Memoria» e «Appunti» (per il cliente «Documenti»). «Da confermare» è una pagina sua, solo per Lateral Space.
+- **La Memoria**: fatti brevi in sette sezioni, con i dati della Discovery letti dal vivo; «In breve», «Novità per te», «Prossimi passi», «Domande aperte», «Chiedi al contesto».
+- **Chi vede che cosa**: gli appunti, le citazioni e le proposte li vede solo Lateral Space. Un fatto è «Per tutti» oppure «Solo Lateral Space»: lo propone il modello, lo conferma la persona. Chi segue solo un corso non vede niente.
+- **Conferma**: niente entra in memoria senza il clic di una persona di Lateral Space. I fatti «dedotti» e i conflitti non sono mai preselezionati.
+- **L'ok ai sub-responsabili**: il modello legge appunti e documenti solo nei workspace con l'ok per la lista di oggi. Dal deploy lo stesso controllo vale per la chat di Discovery e di mappatura, per la lettura dei PDF con il modello e per la sintesi dei documenti. Senza l'ok gli appunti si salvano e si cercano, e i fatti si scrivono a mano. La scheda «Sub-responsabili» in Impostazioni c'è in ogni workspace.
+- **I documenti**: hanno un elenco e «Togli». Word, Excel, PowerPoint e PDF si leggono senza modello; il modello resta per le scansioni, con l'ok. Un file arriva al massimo a 4 MB.
+- **La tesi del valore** sta sul workspace (`workspaces.company_value_thesis`), non più sull'organizzazione. Quella dell'organizzazione resta come valore di partenza e non si scrive più.
+- **Granola**: ogni persona di Lateral Space collega il suo account da Impostazioni. Unbundle usa solo gli strumenti che leggono e tiene i token cifrati. Una call che non è di un cliente non entra in Unbundle.
+- **La notte**: il cron `/api/cron/contesto` (02:00 UTC) aggiorna da Granola, legge gli appunti in attesa, riscrive «In breve» dove serve e cancella il testo degli appunti più vecchi di 12 mesi (restano i fatti e le citazioni brevi).
+- **I log** portano solo id, codici e numeri: mai il testo di un appunto, di un fatto o di una citazione, mai un titolo, un nome o un'e-mail.
+
+**Prima del deploy:**
+
+1. La 9a esce insieme o dopo la 8.0c (§10.18) e la migrazione a `claude-sonnet-5-5`: il ramo le contiene tutte e due.
+2. Il ramo non si pubblica prima del rilascio: le anteprime usano il database di produzione. Di riserva, `vercel.json` spegne le anteprime di `feat/rilascio-9a-contesto` (e dei tre pacchetti `feat/9a-granola`, `feat/9a-mcp`, `feat/9a-pagina`), e il self-heal del ramo non applica la 0038 in un'anteprima (`VERCEL_ENV=preview`). I tre pacchetti, però, hanno il self-heal senza questo controllo e un `vercel.json` che non li nomina: dopo l'unione si cancellano (`git branch -d`), e comunque non si pubblicano.
+3. Vercel, Produzione, a mano: `CONTEXT_TOKEN_KEY` (32 byte in base64, generata sul proprio computer, mai in chat o in git; `AMBIENTE.md` §1). È la sola variabile nuova. Senza, «Collega Granola» resta spento e tutto il resto funziona. Non si cambia più: cambiarla vuol dire tutti da ricollegare. `NEXT_PUBLIC_APP_URL` deve essere l'indirizzo pubblico con `www`. `CRON_SECRET` c'è già: lo usa anche il cron nuovo.
+4. Un restore point su Neon. La 0038 è additiva, ma riempie una colonna.
+5. Di sera, con il main fermo per circa 24 ore dopo.
+
+**Migrazione 0038 (la applica l'app, al primo avvio dopo il deploy)**, con il metodo della 0037 (§10.18):
+
+1. Al primo avvio a freddo il self-heal (`ensureDbSchema()`, `ENSURE_VERSION` 32) trova la sonda della 0038 falsa e applica gli stessi statement di `drizzle/0038_contesto.sql` (`CONTEXT_DDL`), in una transazione con l'advisory lock del file e `lock_timeout` 3s: crea le 17 tabelle `context_*` con le loro chiavi e i loro indici, aggiunge `workspaces.company_value_thesis` e i due indici per la ricerca in italiano su `document_chunks` e `conversation_memory`. Nessuna tabella tolta, nessun CHECK più stretto, nessuna colonna cambiata. Il DDL uc della 0018 e la sua impronta non cambiano: niente 503, niente `UC_SCHEMA_SELF_HEAL`.
+2. La tesi del valore si copia una volta sola, quando la colonna nasce. Se l'organizzazione ha un solo workspace, va a quello. Se ne ha di più, va al solo workspace con un messaggio di Discovery a non più di 10 minuti dal salvataggio della tesi; se i workspace così sono zero o più di uno, a nessuno.
+3. Subito dopo il deploy: aprire una pagina, poi `use-case-admin doctor` deve dire `migrazione0038: true` (oppure `SELECT <CONTEXT_PROBE_SQL>` dà `true`: tabelle, indici unici, indici di ricerca, chiavi e la colonna); l'impronta uc è sempre quella della 0018.
+4. Se la sonda resta `false` (nel log «0038 self-heal failed…», per esempio il lock occupato): l'app serve come prima, «Contesto» dice che si sta preparando, la tesi resta quella dell'organizzazione, il self-heal riprova al massimo ogni 5 minuti. Solo allora, a mano: `psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 -f drizzle/0038_contesto.sql`. Mai drizzle-kit, mai `db:push`.
+5. Ritorno indietro: un passo su Vercel (Promote del deploy di prima). Le tabelle e la colonna della 0038 restano: il codice di prima non le legge. Il codice di prima torna a leggere e scrivere la tesi sull'organizzazione: una tesi salvata dopo il rilascio sul workspace non la vede. Il cron nuovo risponde 404 finché il codice non torna. I collegamenti a Granola restano salvati, cifrati, e nessuno li usa.
+   - **Prima del Promote, i documenti «Solo Lateral Space».** Stanno in `uploaded_documents` e `document_chunks`, che il codice di prima legge senza guardare la visibilità: la chat di Discovery e di mappatura e «Pre-genera da documenti» li porterebbero al cliente. Se `SELECT count(*) FROM context_sources WHERE visibility = 'ls' AND document_id IS NOT NULL` dà più di zero, si mettono da parte (non si cancellano), in una transazione:
+     ```sql
+     BEGIN;
+     CREATE TABLE context_rollback_ls_documents AS
+       SELECT id, file_name, summary, department_id FROM uploaded_documents
+       WHERE id IN (SELECT document_id FROM context_sources WHERE visibility = 'ls' AND document_id IS NOT NULL);
+     CREATE TABLE context_rollback_ls_chunks AS
+       SELECT * FROM document_chunks WHERE document_id IN (SELECT id FROM context_rollback_ls_documents);
+     DELETE FROM document_chunks WHERE document_id IN (SELECT id FROM context_rollback_ls_documents);
+     UPDATE uploaded_documents SET file_name = 'Documento', summary = NULL, department_id = NULL
+       WHERE id IN (SELECT id FROM context_rollback_ls_documents);
+     COMMIT;
+     ```
+   - **Al ritorno in avanti** (la 9a di nuovo in produzione), si rimettono al loro posto e le due tabelle si cancellano:
+     ```sql
+     BEGIN;
+     UPDATE uploaded_documents d SET file_name = h.file_name, summary = h.summary,
+         department_id = (SELECT x.id FROM departments x WHERE x.id = h.department_id)
+       FROM context_rollback_ls_documents h WHERE d.id = h.id;
+     INSERT INTO document_chunks SELECT c.* FROM context_rollback_ls_chunks c
+       WHERE EXISTS (SELECT 1 FROM uploaded_documents d WHERE d.id = c.document_id);
+     DROP TABLE context_rollback_ls_chunks, context_rollback_ls_documents;
+     COMMIT;
+     ```
+
+**Dopo il deploy:**
+
+1. La tesi del valore: la mostra solo il workspace giusto, nella sezione «Azienda» di «Contesto».
+2. `/dashboard/<ws>/setup/context` porta a `/dashboard/<ws>/contesto`; la voce «Contesto» della barra è accesa.
+3. In Vercel › Cron Jobs compare `/api/cron/contesto`, il sesto.
+4. In un workspace di prova: «Aggiungi appunti» con poche righe; l'avviso dell'ok; «Registra l'ok»; la lettura; «Da confermare»; «Conferma»; i fatti in Memoria con la fonte, e «In breve» dopo qualche secondo. Con un account del cliente: i fatti «Solo Lateral Space» e gli appunti non si vedono.
+5. Registrare l'ok ai sub-responsabili nei workspace dei clienti attivi (un clic l'uno), così la chat di Discovery non si ferma.
+6. Granola, la prima prova vera (si vede solo in produzione): l'indirizzo `/api/granola/client-metadata` risponde il suo JSON; Impostazioni › «Collega Granola» con l'account del titolare. Se Granola rifiuta il cliente: `CONTEXT_GRANOLA_CLIENT=dcr` e un nuovo deploy; se rifiuta ancora: `CONTEXT_GRANOLA=off`. Resta la porta «Da Claude».
+7. MCP del team: `tools/list` risponde 11 strumenti.
+
+**Richieste delle persone e conservazione**: un appunto si toglie dalla vista «Appunti» («Togli»): i suoi fatti restano, segnati «senza fonte». Il testo degli appunti si cancella da solo dopo 12 mesi. Scollegare Granola revoca il token e cancella il collegamento; gli appunti già entrati restano.
+
+**Costi**: una lettura di due pagine costa pochi centesimi. Tetti: 200 letture al giorno per workspace, 30 domande all'ora per persona, 300 al giorno per workspace.
