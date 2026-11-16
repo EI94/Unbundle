@@ -47,6 +47,8 @@
 /* ── «Classificazione»: le azioni della testa, la riga da classificare, i filtri, le righe degli use case ── */
 [data-board-root] .b-cls-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; }
 [data-board-root] .b-cls-todo { margin: 0 0 14px; font-size: 13px; color: var(--board-graphite); }
+/* I riquadri dei tre stream: il punto dello stream davanti alla riga (un colore per stream, P28). */
+[data-board-root] .b-cls .b-kpi .b-kl .b-adot { margin-right: 6px; }
 [data-board-root] .b-cls-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
 /* «da classificare» nella legenda e nel filtro: un anello, come il bordo neutro delle card senza stream (il punto pieno
    neutro quasi sparisce sul fondo scuro). */

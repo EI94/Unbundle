@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { enableTsxImports } from "../../use-cases/detail/referent/tsx-test-loader.ts";
 import { FIXTURE_IDS, fixtureBoard } from "../../../lib/mappatura/board-fixture.ts";
 import { allSteps, type MappingBoard } from "../../../lib/mappatura/board-model.ts";
+import { applyOps } from "../../../lib/mappatura/board-ops.ts";
 
 // (Mappatura board) La scheda «Classificazione» (docs/mappatura/MAPPATURA-BOARD-PIANO.md §1.4, §7.3; P22–P28, P37,
 // P42–P46): prima del completamento la testa e il blocco; dopo, i numeri prima, la riga da classificare, la legenda, i
@@ -14,7 +15,7 @@ import { allSteps, type MappingBoard } from "../../../lib/mappatura/board-model.
 
 await enableTsxImports();
 const { BoardProvider } = await import("../store/use-board.tsx");
-const { ClassificationView, classificationKpis, matchesFilter } = await import("./classification-view.tsx");
+const { ClassificationView, classificationKpis, matchesFilter, resetStreams } = await import("./classification-view.tsx");
 
 const I = FIXTURE_IDS;
 const h = <P extends object>(type: (props: P) => ReactNode, props: Omit<P, "children"> | null = null, ...children: ReactNode[]) =>
@@ -38,13 +39,23 @@ test("dopo il completamento: i numeri prima di tutto, la riga da classificare co
   const board = fixtureBoard({ classified: true });
   const out = view(board);
   // I quattro riquadri: tre stream con passi e ore, poi l'esposizione media (34, 22, 40 → 32%).
-  assert.deepEqual([...out.matchAll(/<div class="b-kpi"><div class="b-kv">([^<]+)<\/div><div class="b-kl">([^<]+)<\/div><\/div>/g)].map((match) => [match[1], match[2]]), [
-    ["3", "Automate · 19,5 h a settimana"],
-    ["1", "Differentiate · 3 h a settimana"],
-    ["1", "Innovate · 4 h a settimana"],
-    ["32%", "AI exposure media"],
-  ]);
+  // Un colore per stream anche qui (P28): il punto dello stream davanti alla riga dei tre riquadri.
+  assert.deepEqual(
+    [...out.matchAll(/<div class="b-kpi"(?: data-stream="([a-z]+)")?><div class="b-kv">([^<]+)<\/div><div class="b-kl">(?:<i class="b-adot" data-tone="([a-z]+)"[^>]*><\/i>)?([^<]+)<\/div><\/div>/g)].map((match) => [match[1] ?? null, match[2], match[3] ?? null, match[4]]),
+    [
+      ["automate", "3", "automate", "Automate · 19,5 h a settimana"],
+      ["differentiate", "1", "differentiate", "Differentiate · 3 h a settimana"],
+      ["innovate", "1", "innovate", "Innovate · 4 h a settimana"],
+      [null, "32%", null, "AI exposure media"],
+    ],
+  );
   assert.deepEqual(classificationKpis(board).map((item) => item.value), ["3", "1", "1", "32%"]);
+  // Una sola fonte (P38): uno stream corretto cambia i riquadri.
+  const corrected = applyOps(board, [{ id: "00000000-0000-4000-8000-000000000001", t: "step.stream", stepId: I.ordine, prev: null, next: "differentiate" }], { kind: "persona" });
+  assert.deepEqual(classificationKpis(corrected).map((item) => [item.value, item.label]).slice(0, 2), [
+    ["3", "Automate · 19,5 h a settimana"],
+    ["2", "Differentiate · 5 h a settimana"],
+  ]);
   assert.ok(out.indexOf('data-b="kpis"') < out.indexOf('data-b="map"'), "i numeri prima della mappa");
   assert.match(out, /<p class="b-cls-todo">1 passo da classificare\.<\/p>/);
   assert.match(out, /data-variant="primary">Classifica 1 passo<\/button>/);
@@ -91,6 +102,10 @@ test("«Usa gli stream proposti»: per chi rivede, solo se un passo è diverso d
   assert.match(out, /<div class="b-cls-actions"><button data-action="reset-streams" type="button" class="b-btn" data-b="button" data-variant="outline">Usa gli stream proposti<\/button><button data-action="complete"/);
   assert.equal(primaries(out), 1, "un solo bottone pieno");
   assert.doesNotMatch(view({ ...board, can: { ...board.can, setStream: false } }), /Usa gli stream proposti/, "chi non rivede non lo vede");
+  // Il clic: un'operazione dei revisori, e il toast (P46).
+  const calls: unknown[] = [];
+  resetStreams({ dispatch: (op) => void calls.push(op), notify: (text) => void calls.push(text) });
+  assert.deepEqual(calls, [{ t: "streams.reset" }, "Stream riportati alla proposta."]);
   const asProposed = { ...board, processes: board.processes.map((process) => ({ ...process, steps: process.steps.map((step) => ({ ...step, proposedStream: step.stream })) })) };
   assert.doesNotMatch(view(asProposed), /Usa gli stream proposti/, "niente di diverso dalla proposta");
 });

@@ -21,7 +21,7 @@ import { STREAMS, type Stream } from "../../../lib/mappatura/vocab.ts";
 import type { ClassificationViewProps } from "../contracts.ts";
 import { CompleteButton } from "../companion/complete-button.tsx";
 import { useBoard, useBoardClient } from "../store/use-board.tsx";
-import { BoardButton, Dot, ExposureBadge, FilterChip, Kpis, Legend, LegendItem, StreamBadge } from "../ui/atoms.tsx";
+import { BoardButton, Dot, ExposureBadge, FilterChip, Legend, LegendItem, StreamBadge } from "../ui/atoms.tsx";
 import { BoardTitle, ViewHead } from "../ui/frame.tsx";
 import { ProcessMap, ProcessRow, StepArrow, StepCard } from "../ui/map.tsx";
 import { EmptyBlock } from "../ui/edit.tsx";
@@ -39,12 +39,38 @@ export function matchesFilter(step: Pick<BoardStep, "stream">, filter: StreamFil
 }
 
 /** I quattro riquadri: i tre stream (passi, ore a settimana) e l'esposizione media all'AI. */
-export function classificationKpis(board: MappingBoard): Array<{ value: string; label: string }> {
+export function classificationKpis(board: MappingBoard): Array<{ value: string; label: string; stream?: Stream }> {
   const numbers = streamNumbers(board);
   return [
-    ...STREAMS.map((stream) => ({ value: formatCount(numbers.byStream[stream].steps), label: streamTileLabel(stream, numbers.byStream[stream].hoursWeek) })),
+    ...STREAMS.map((stream) => ({ value: formatCount(numbers.byStream[stream].steps), label: streamTileLabel(stream, numbers.byStream[stream].hoursWeek), stream })),
     { value: exposureTileValue(numbers.avgExposurePct), label: CLASSIFICATION_TEXT.exposureTile },
   ];
+}
+
+/**
+ * I riquadri della classificazione: le classi di `Kpis`, con il punto dello stream davanti alla riga di ognuno dei tre
+ * (P28: un colore per stream anche nei riquadri). `Kpis` prende solo testi.
+ */
+function StreamKpis(p: { items: ReadonlyArray<{ value: string; label: string; stream?: Stream }> }): JSX.Element {
+  return (
+    <div className="b-kpis" data-b="kpis">
+      {p.items.map((item) => (
+        <div className="b-kpi" key={item.label} data-stream={item.stream}>
+          <div className="b-kv">{item.value}</div>
+          <div className="b-kl">
+            {item.stream ? <Dot tone={item.stream} /> : null}
+            {item.label}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** «Usa gli stream proposti»: ogni passo torna alla proposta del classificatore, e il toast lo dice (P46). */
+export function resetStreams(client: { dispatch(ops: { t: "streams.reset" }): void; notify(text: string): void }): void {
+  client.dispatch({ t: "streams.reset" });
+  client.notify(CLASSIFICATION_TEXT.resetDone);
 }
 
 const isComplete = (board: Pick<MappingBoard, "unit">) => board.unit.status === "mapped" || board.unit.status === "validated";
@@ -93,13 +119,7 @@ export function ClassificationView(p: ClassificationViewProps): JSX.Element {
       action={
         <div className="b-cls-actions">
           {canReset ? (
-            <BoardButton
-              onClick={() => {
-                client.dispatch({ t: "streams.reset" });
-                client.notify(T.resetDone);
-              }}
-              data-action="reset-streams"
-            >
+            <BoardButton onClick={() => resetStreams(client)} data-action="reset-streams">
               {T.reset}
             </BoardButton>
           ) : null}
@@ -126,7 +146,7 @@ export function ClassificationView(p: ClassificationViewProps): JSX.Element {
   return (
     <div className="b-cls" data-b="classification">
       {head}
-      <Kpis items={classificationKpis(board)} />
+      <StreamKpis items={classificationKpis(board)} />
       {numbers.unclassified > 0 ? <p className="b-cls-todo">{toClassifyLine(numbers.unclassified)}</p> : null}
       <Legend>
         {STREAMS.map((stream) => (
