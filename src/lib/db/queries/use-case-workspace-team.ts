@@ -58,7 +58,7 @@ import { CLIENT_CASE_ROLES, type CaseRole } from "../../uc/vocab.ts";
 import { userContextFrom } from "../../uc/lateral-space.ts";
 import { CLI_TOKEN_PROVIDER } from "../../use-cases/cli/codes.ts";
 import { PORTFOLIO_REVIEWER_ROLES } from "../../workspace-permissions.ts";
-import type { UcExecutor } from "../uc-executor.ts";
+import type { UcExecutor, UcRow } from "../uc-executor.ts";
 
 const LS_ROLES: readonly CaseRole[] = WORKSPACE_TEAM_ROLES;
 
@@ -338,9 +338,11 @@ interface OpenCase {
   useCaseId: string | null;
 }
 
+const openCasesOf = (rows: readonly UcRow[]): OpenCase[] => rows.map((r) => ({ id: String(r.id), code: String(r.code), useCaseId: r.use_case_id ? String(r.use_case_id) : null }));
+
 async function grantedOpenCases(executor: UcExecutor, workspaceId: string, userId: string): Promise<OpenCase[]> {
   const [rows] = await executor.batch([grantedOpenCasesSql(workspaceId, userId)]);
-  return rows.map((r) => ({ id: String(r.id), code: String(r.code), useCaseId: r.use_case_id ? String(r.use_case_id) : null }));
+  return openCasesOf(rows);
 }
 
 /**
@@ -420,15 +422,18 @@ export async function addExternalBuilder(
     if (ids.length !== asked.ids.length) return fail("dati_non_validi", "Uno dei casi scelti non è di questo cliente: ricarica la pagina.");
     where = { all: false, useCaseIds: ids };
   }
-  const before = await grantedOpenCases(executor, i.workspaceId, userId);
   const isNew = (await readExternalGrant(executor, i.workspaceId, userId)) === null;
+  const write = writeGrantStatements({ workspaceId: i.workspaceId, userId, where, actorUserId: i.actorUserId });
   const written = await executor.batch([
-    ...writeGrantStatements({ workspaceId: i.workspaceId, userId, where, actorUserId: i.actorUserId }),
+    ...write.statements,
     // L'e-mail di benvenuto, solo a chi entra adesso: un «Dove» che cambia non la rimanda.
     ...(isNew
       ? [teamNoticeStatement({ workspaceId: i.workspaceId, userId, template: "team_aggiunto", payload: { tutti: where.all, casi: where.all ? null : where.useCaseIds.length, queuedAt: new Date().toISOString() } })]
       : []),
   ]);
+  // I casi di prima, letti dopo il lock della persona nella transazione che scrive il «Dove»: c'è anche il dossier dove
+  // la riga `osservatore` è entrata un attimo prima, e da lì esce se il «Dove» nuovo non lo copre.
+  const before = openCasesOf(written[write.casesAt] ?? []);
   const noticeId = isNew ? (written[written.length - 1]?.[0]?.id ? String(written[written.length - 1][0].id) : null) : null;
   const after = await grantedOpenCases(executor, i.workspaceId, userId);
   // Dai casi tolti dal «Dove» esce, e i suoi compiti lì tornano da prendere.

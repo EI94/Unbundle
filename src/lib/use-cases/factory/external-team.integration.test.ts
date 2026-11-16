@@ -387,6 +387,35 @@ test("«Togli» legge i casi dopo il lock della persona: esce anche dal dossier 
   }
 });
 
+test("il «Dove» che si stringe legge i casi di prima dopo il lock della persona: esce anche dal dossier dove la riga è entrata un attimo prima", opts, async () => {
+  const added = await add("racer", "tutti");
+  assert.ok(added.ok, added.ok ? "" : added.message);
+  const useCaseId = randomUUID();
+  const caseId = randomUUID();
+  await q(`INSERT INTO use_cases (id, workspace_id, title, code) VALUES ($1, $2, 'Caso della corsa tre', 'NX-0009')`, [useCaseId, ids.ws]);
+  const holder = await lockHolder();
+  try {
+    await holder.query(`SELECT pg_advisory_lock(${PERSON_LOCK})`, [ids.ws, ids.racer]);
+    const narrowing = add("racer", [uc.u1]);
+    assert.equal(await someoneWaits(holder), true, "il «Dove» nuovo aspetta il lock della persona");
+    // Intanto «Avvia la realizzazione» apre un dossier e la persona ci entra: «tutti» lo copre ancora.
+    await openDossier(caseId, useCaseId, "lead");
+    await q(`INSERT INTO uc_case_members (case_id, user_id, role) VALUES ($1, $2, 'osservatore')`, [caseId, ids.racer]);
+    await holder.query(`SELECT pg_advisory_unlock(${PERSON_LOCK})`, [ids.ws, ids.racer]);
+    const narrowed = await narrowing;
+    assert.ok(narrowed.ok, narrowed.ok ? "" : narrowed.message);
+    if (!narrowed.ok) return;
+    assert.ok(narrowed.value.left.includes("NX-0009"), JSON.stringify(narrowed.value));
+    assert.deepEqual(await rolesOf(caseId, "racer"), [], "non resta a guardare un dossier che il «Dove» nuovo non copre");
+    assert.deepEqual(await grantsOf("racer"), [uc.u1]);
+    assert.deepEqual(await rolesOf(dossier.d1, "racer"), ["osservatore"], "nel caso che resta nel «Dove» non cambia niente");
+  } finally {
+    await holder.end();
+    await team.removeExternalBuilder(exec, { workspaceId: ids.ws, actorUserId: ids.lead, userId: ids.racer, lsDomains: LS });
+    await q(`DELETE FROM uc_case_members WHERE case_id = $1 AND user_id = $2`, [caseId, ids.racer]);
+  }
+});
+
 test("«Aggiungi» di chi non è responsabile di nessun dossier: ogni caso saltato, il messaggio lo dice; la riga e «Togli» contano le righe vere", opts, async () => {
   const { externalAddedText, externalRemoveConfirm } = await import("./builders-text.ts");
   // Lateral Space, ma responsabile di nessun dossier: ogni caso aperto si salta.

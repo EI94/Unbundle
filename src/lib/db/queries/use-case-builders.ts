@@ -233,26 +233,37 @@ function grantLockSql(workspaceId: string, userId: string) {
 /**
  * Le istruzioni che portano le concessioni di una persona al «Dove» nuovo, in una transazione sola: una riga «tutti»
  * oppure righe per caso, mai le due insieme. Gli use case sono quelli del workspace (gli altri non entrano).
+ *
+ * I dossier aperti che le concessioni coprivano si leggono qui, dopo il lock della persona (il risultato `casesAt`, con
+ * `id`, `code`, `use_case_id`), come fa «Togli»: così tra i casi da cui esce c'è anche il dossier dove la riga
+ * `osservatore` è entrata un attimo prima, e dopo, lì, non ne entra più nessuna (`grantGuardStatements`).
  */
-export function writeGrantStatements(i: { workspaceId: string; userId: string; where: BuilderWhere; actorUserId: string }) {
+export function writeGrantStatements(i: { workspaceId: string; userId: string; where: BuilderWhere; actorUserId: string }): { statements: UcStatement[]; casesAt: number } {
   const ws = cast(i.workspaceId, "uuid");
   const user = cast(i.userId, "uuid");
   const actor = cast(i.actorUserId, "uuid");
+  const head = [grantLockSql(i.workspaceId, i.userId), grantedOpenCasesSql(i.workspaceId, i.userId)];
   if (i.where.all) {
-    return [
-      grantLockSql(i.workspaceId, i.userId),
-      toStatement(ucSql`DELETE FROM use_case_external_builders WHERE workspace_id = ${ws} AND user_id = ${user} AND use_case_id IS NOT NULL`),
-      toStatement(ucSql`INSERT INTO use_case_external_builders (workspace_id, user_id, use_case_id, added_by_user_id) VALUES (${ws}, ${user}, NULL, ${actor}) ON CONFLICT DO NOTHING`),
-    ];
+    return {
+      statements: [
+        ...head,
+        toStatement(ucSql`DELETE FROM use_case_external_builders WHERE workspace_id = ${ws} AND user_id = ${user} AND use_case_id IS NOT NULL`),
+        toStatement(ucSql`INSERT INTO use_case_external_builders (workspace_id, user_id, use_case_id, added_by_user_id) VALUES (${ws}, ${user}, NULL, ${actor}) ON CONFLICT DO NOTHING`),
+      ],
+      casesAt: 1,
+    };
   }
   const ids = cast(i.where.useCaseIds, "uuid[]");
-  return [
-    grantLockSql(i.workspaceId, i.userId),
-    toStatement(ucSql`DELETE FROM use_case_external_builders WHERE workspace_id = ${ws} AND user_id = ${user} AND (use_case_id IS NULL OR use_case_id <> ALL (${ids}))`),
-    toStatement(ucSql`INSERT INTO use_case_external_builders (workspace_id, user_id, use_case_id, added_by_user_id)
+  return {
+    statements: [
+      ...head,
+      toStatement(ucSql`DELETE FROM use_case_external_builders WHERE workspace_id = ${ws} AND user_id = ${user} AND (use_case_id IS NULL OR use_case_id <> ALL (${ids}))`),
+      toStatement(ucSql`INSERT INTO use_case_external_builders (workspace_id, user_id, use_case_id, added_by_user_id)
 SELECT ${ws}, ${user}, u.id, ${actor} FROM use_cases u WHERE u.workspace_id = ${ws} AND u.id = ANY (${ids})
 ON CONFLICT DO NOTHING`),
-  ];
+    ],
+    casesAt: 1,
+  };
 }
 
 const deleteGrantsSql = (workspaceId: string, userId: string) =>
