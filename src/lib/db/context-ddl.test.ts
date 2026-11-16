@@ -292,14 +292,24 @@ test("il doctor guarda la sonda della 0038", () => {
   assert.match(doctor, /migrazione0038: m0038,/);
 });
 
-test("RUNBOOK §10.19: la 0038 la applica il self-heal al primo avvio, il file a mano è la riserva, il doctor dopo il deploy, il ritorno indietro senza database", () => {
+test("RUNBOOK §10.19: la 0038 la applica il self-heal al primo avvio, il file a mano è la riserva, il doctor dopo il deploy, il ritorno indietro nasconde i documenti interni al codice di prima", () => {
   assert.ok(runbook.includes("### 10.19 Rilascio 9a: «Contesto» (0038)"), "manca §10.19");
   const section = runbook.slice(runbook.indexOf("### 10.19 Rilascio 9a"));
   assert.match(section, /`ENSURE_VERSION` 32/);
   assert.match(section, /psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 -f drizzle\/0038_contesto\.sql/);
   assert.match(section, /`migrazione0038: true`/);
   assert.match(section, /Mai drizzle-kit, mai `db:push`/);
-  assert.match(section, /Ritorno indietro: un passo su Vercel \(Promote del deploy di prima\), niente sul database/);
+  assert.match(section, /Ritorno indietro: un passo su Vercel \(Promote del deploy di prima\)/);
+  // Il codice di prima legge `uploaded_documents` e `document_chunks` senza filtro: prima del Promote i documenti
+  // «Solo Lateral Space» si mettono da parte (frammenti, sintesi, nome e unità), e tornano al ritorno in avanti.
+  const rollback = section.slice(section.indexOf("Ritorno indietro"), section.indexOf("**Dopo il deploy:**"));
+  assert.match(rollback, /Prima del Promote, i documenti «Solo Lateral Space»/);
+  assert.match(rollback, /SELECT count\(\*\) FROM context_sources WHERE visibility = 'ls' AND document_id IS NOT NULL/);
+  assert.match(rollback, /DELETE FROM document_chunks WHERE document_id IN \(SELECT id FROM context_rollback_ls_documents\);/);
+  assert.match(rollback, /UPDATE uploaded_documents SET file_name = 'Documento', summary = NULL, department_id = NULL/);
+  assert.match(rollback, /Al ritorno in avanti/);
+  assert.match(rollback, /INSERT INTO document_chunks SELECT c\.\* FROM context_rollback_ls_chunks c/);
+  assert.match(rollback, /DROP TABLE context_rollback_ls_chunks, context_rollback_ls_documents;/);
   assert.match(section, /Il DDL uc della 0018 e la sua impronta non cambiano/);
   assert.match(section, /`CONTEXT_TOKEN_KEY`/);
 });

@@ -649,7 +649,31 @@ Progetto: `docs/contesto/RILASCIO-9-CONTESTO.md` (approvato dal titolare il 15/1
 2. La tesi del valore si copia una volta sola, quando la colonna nasce. Se l'organizzazione ha un solo workspace, va a quello. Se ne ha di più, va al solo workspace con un messaggio di Discovery a non più di 10 minuti dal salvataggio della tesi; se i workspace così sono zero o più di uno, a nessuno.
 3. Subito dopo il deploy: aprire una pagina, poi `use-case-admin doctor` deve dire `migrazione0038: true` (oppure `SELECT <CONTEXT_PROBE_SQL>` dà `true`: tabelle, indici unici, indici di ricerca, chiavi e la colonna); l'impronta uc è sempre quella della 0018.
 4. Se la sonda resta `false` (nel log «0038 self-heal failed…», per esempio il lock occupato): l'app serve come prima, «Contesto» dice che si sta preparando, la tesi resta quella dell'organizzazione, il self-heal riprova al massimo ogni 5 minuti. Solo allora, a mano: `psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 -f drizzle/0038_contesto.sql`. Mai drizzle-kit, mai `db:push`.
-5. Ritorno indietro: un passo su Vercel (Promote del deploy di prima), niente sul database. Le tabelle e la colonna restano: il codice di prima non le legge. Il codice di prima torna a leggere e scrivere la tesi sull'organizzazione: una tesi salvata dopo il rilascio sul workspace non la vede. Il cron nuovo risponde 404 finché il codice non torna. I collegamenti a Granola restano salvati, cifrati, e nessuno li usa.
+5. Ritorno indietro: un passo su Vercel (Promote del deploy di prima). Le tabelle e la colonna della 0038 restano: il codice di prima non le legge. Il codice di prima torna a leggere e scrivere la tesi sull'organizzazione: una tesi salvata dopo il rilascio sul workspace non la vede. Il cron nuovo risponde 404 finché il codice non torna. I collegamenti a Granola restano salvati, cifrati, e nessuno li usa.
+   - **Prima del Promote, i documenti «Solo Lateral Space».** Stanno in `uploaded_documents` e `document_chunks`, che il codice di prima legge senza guardare la visibilità: la chat di Discovery e di mappatura e «Pre-genera da documenti» li porterebbero al cliente. Se `SELECT count(*) FROM context_sources WHERE visibility = 'ls' AND document_id IS NOT NULL` dà più di zero, si mettono da parte (non si cancellano), in una transazione:
+     ```sql
+     BEGIN;
+     CREATE TABLE context_rollback_ls_documents AS
+       SELECT id, file_name, summary, department_id FROM uploaded_documents
+       WHERE id IN (SELECT document_id FROM context_sources WHERE visibility = 'ls' AND document_id IS NOT NULL);
+     CREATE TABLE context_rollback_ls_chunks AS
+       SELECT * FROM document_chunks WHERE document_id IN (SELECT id FROM context_rollback_ls_documents);
+     DELETE FROM document_chunks WHERE document_id IN (SELECT id FROM context_rollback_ls_documents);
+     UPDATE uploaded_documents SET file_name = 'Documento', summary = NULL, department_id = NULL
+       WHERE id IN (SELECT id FROM context_rollback_ls_documents);
+     COMMIT;
+     ```
+   - **Al ritorno in avanti** (la 9a di nuovo in produzione), si rimettono al loro posto e le due tabelle si cancellano:
+     ```sql
+     BEGIN;
+     UPDATE uploaded_documents d SET file_name = h.file_name, summary = h.summary,
+         department_id = (SELECT x.id FROM departments x WHERE x.id = h.department_id)
+       FROM context_rollback_ls_documents h WHERE d.id = h.id;
+     INSERT INTO document_chunks SELECT c.* FROM context_rollback_ls_chunks c
+       WHERE EXISTS (SELECT 1 FROM uploaded_documents d WHERE d.id = c.document_id);
+     DROP TABLE context_rollback_ls_chunks, context_rollback_ls_documents;
+     COMMIT;
+     ```
 
 **Dopo il deploy:**
 
