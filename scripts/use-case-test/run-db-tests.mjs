@@ -41,13 +41,17 @@ if (!/^hub_[a-z0-9][a-z0-9_]{0,39}$/.test(db)) {
 }
 const url = `postgresql://uc_test@127.0.0.1:${port}/${db}`;
 
-/** The hub's integration suites (the same files `npm run test:use-cases` skips without a database). */
+/**
+ * The hub's integration suites (the same files `npm run test:use-cases` skips without a database), and the mapping
+ * board's (`npm run test:mappatura` skips them the same way): they share the hub's cluster and its copies.
+ */
 const DEFAULT_SUITES = [
   "src/lib/use-cases/**/*.integration.test.ts",
   "src/lib/db/use-case-hub*.integration.test.ts",
   "src/components/use-cases/**/*.integration.test.ts",
+  "src/lib/mappatura/**/*.integration.test.ts",
 ];
-const SUITE = /^src\/(lib\/use-cases\/.+|lib\/db\/use-case-hub[^/]*|components\/use-cases\/.+)\.integration\.test\.ts$/;
+const SUITE = /^src\/(lib\/use-cases\/.+|lib\/db\/use-case-hub[^/]*|components\/use-cases\/.+|lib\/mappatura\/.+)\.integration\.test\.ts$/;
 
 const requested = process.argv.slice(2);
 for (const file of requested) {
