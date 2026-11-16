@@ -554,6 +554,82 @@ test("readContextSource: due letture insieme leggono una volta sola; solo Latera
   assert.equal(quiet.length, 0);
 });
 
+/** Una connessione a parte che tiene un lock esclusivo su una tabella, per fermare una richiesta a metà; `release` lo lascia. */
+async function holdTableLock(table: string): Promise<() => Promise<void>> {
+  const pg = (await import("pg")).default as unknown as { Client: new (o: { connectionString: string }) => { connect(): Promise<void>; query(t: string): Promise<unknown>; end(): Promise<void> } };
+  const locker = new pg.Client({ connectionString: url! });
+  await locker.connect();
+  await locker.query("BEGIN");
+  await locker.query(`LOCK TABLE ${table} IN ACCESS EXCLUSIVE MODE`);
+  return async () => {
+    await locker.query("ROLLBACK");
+    await locker.end();
+  };
+}
+
+test("due letture che hanno già trovato l'appunto «da leggere»: la presa in carico ne fa passare una, una chiamata al modello", opts, async () => {
+  const note = await addNote();
+  // Tutte e due caricano l'appunto, poi aspettano sull'ok ai sub-responsabili finché il lock non va via: poi si prendono la fonte insieme.
+  const unlock = await holdTableLock("uc_subprocessor_acks");
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  const slow: Reply = async (init) => {
+    await gate;
+    return answer([proposal({ testo: `Fatto della gara sulla presa ${suffix}.` })])(init);
+  };
+  const requests = fakeAppClaude([slow, slow]);
+  const both = Promise.all([reading.readContextSource(actor("ls"), note.sourceId), reading.readContextSource(actor("lsc"), note.sourceId)]);
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  await unlock();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  release();
+  assert.deepEqual((await both).map((r) => okValue(r).status).sort(), ["in_lettura", "letto"]);
+  assert.equal(requests.length, 1, "una chiamata al modello");
+});
+
+test("una call di Granola che cambia mentre il testo di prima si legge: la lettura di prima non scrive niente", opts, async () => {
+  const base = { title: "Call della presa persa", occurredOn: "2026-11-10", origin: "granola" as const, externalId: `not_${suffix}_presa`, externalUpdatedAt: new Date("2026-11-10T10:00:00Z") };
+  const created = okValue(await sources.upsertExternalNote(actor("ls", "wsA", "granola"), { ...base, body: `[Riassunto di Granola]\nTesto vecchio della call (${suffix}).` }));
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  const slow: Reply = async (init) => {
+    await gate;
+    return answer([proposal({ testo: `Fatto dal testo vecchio ${suffix}.`, citazione: "" })])(init);
+  };
+  const requests = fakeAppClaude([slow]);
+  const old = reading.readContextSource(actor("ls"), created.sourceId);
+  while (requests.length === 0) await new Promise((resolve) => setTimeout(resolve, 5));
+  okValue(await sources.upsertExternalNote(actor("ls", "wsA", "granola"), { ...base, body: `[Riassunto di Granola]\nTesto nuovo della call (${suffix}).`, externalUpdatedAt: new Date("2026-11-11T10:00:00Z") }));
+  release();
+  assert.deepEqual(okValue(await old), { status: "in_lettura" });
+  assert.equal((await q(`SELECT count(*)::int AS n FROM context_proposals WHERE source_id = $1`, [created.sourceId]))[0].n, 0, "nessuna proposta dal testo vecchio");
+  assert.equal((await q(`SELECT read_status FROM context_sources WHERE id = $1`, [created.sourceId]))[0].read_status, "da_leggere");
+});
+
+test("il limite delle letture del giorno: la lettura si ferma prima del modello, l'appunto resta da leggere e il tentativo non conta", opts, async () => {
+  const note = await addNote();
+  const { rateLimitBucket } = await import("../connector/rate-limit.ts");
+  const bucket = rateLimitBucket("ctx", "ws", ids.wsA, "read", "day");
+  await q(`DELETE FROM connector_rate_limits WHERE bucket = $1`, [bucket]);
+  await q(`INSERT INTO connector_rate_limits (bucket, window_start, count) VALUES ($1, date_trunc('day', now(), 'Europe/Rome'), 200)`, [bucket]);
+  try {
+    const none = fakeAppClaude([]);
+    assert.deepEqual(okValue(await reading.readContextSource(actor("ls"), note.sourceId)), { status: "limite" });
+    assert.equal(none.length, 0);
+    assert.deepEqual((await q(`SELECT read_status, read_reason, read_attempts, read_started_at FROM context_sources WHERE id = $1`, [note.sourceId]))[0], {
+      read_status: "da_leggere",
+      read_reason: "limite",
+      read_attempts: 0,
+      read_started_at: null,
+    });
+  } finally {
+    await q(`DELETE FROM connector_rate_limits WHERE bucket = $1`, [bucket]);
+  }
+  // Senza il limite si legge, una volta.
+  fakeAppClaude([answer([])]);
+  assert.equal(okValue(await reading.readContextSource(actor("ls"), note.sourceId)).status, "letto");
+});
+
 test("un appunto lungo si legge in più parti, una chiamata per richiesta; le parti dopo sanno che cosa è già stato proposto", opts, async () => {
   const line = (i: number) => `Riga ${String(i).padStart(6, "0")} degli appunti lunghi di prova ${suffix}, con qualche parola in più.\n`;
   let long = "";
@@ -1153,6 +1229,47 @@ test("confirmProposals: una proposta da correggere non entra e niente si scrive;
   assert.equal(done.newFacts, 1);
   assert.ok(done.remaining >= 2);
   await proposals.discardProposals(actor("ls"), [named.id, long.id]);
+});
+
+test("un doppio clic su «Conferma»: si scrive una volta, il secondo clic è «versione superata»", opts, async () => {
+  const { all, sourceId } = await readProposals([
+    proposal({ testo: `Fatto del doppio clic ${suffix}.` }),
+    proposal({ tipo: "impegno", testo: `Mandare il listino del doppio clic ${suffix}.`, citazione: "", sezione: null, parte: "cliente", ruolo: "responsabile acquisti" }),
+  ]);
+  const [x, y] = await Promise.all([proposals.confirmProposals(actor("ls"), pick(all)), proposals.confirmProposals(actor("ls"), pick(all))]);
+  assert.deepEqual([x.ok, y.ok].sort(), [false, true]);
+  assert.equal(errOf(x.ok ? y : x), "versione_superata");
+  assert.equal((await q(`SELECT count(*)::int AS n FROM context_facts WHERE source_id = $1`, [sourceId]))[0].n, 1);
+  assert.equal((await q(`SELECT count(*)::int AS n FROM context_commitments WHERE source_id = $1`, [sourceId]))[0].n, 1);
+  assert.equal((await q(`SELECT count(*)::int AS n FROM context_events WHERE source_id = $1 AND action = 'proposte_confermate'`, [sourceId]))[0].n, 1);
+});
+
+test("un fatto che smette di essere attivo tra il piano e la scrittura: niente si sostituisce né si riconferma, «versione superata»", opts, async () => {
+  // «Cambia»: il fatto esce dalla memoria mentre la conferma aspetta sugli use case (qui con SQL, come una scrittura
+  // che non toccasse le proposte): il fatto ritirato non prende una versione nuova.
+  const fact = await seedFact(`Il fatto ritirato a metà ${suffix} vale 1.`, { section: "azienda" });
+  const changing = await readProposals([proposal({ tipo: "cambia", testo: `Il fatto ritirato a metà ${suffix} vale 2.`, citazione: "", fattoRif: "F1", sezione: "azienda", useCase: ["CX-0001"] })], `${NOTE}\nCall del ritiro a metà (${suffix}).`);
+  let unlock = await holdTableLock("use_cases");
+  const confirming = proposals.confirmProposals(actor("ls"), pick(changing.all));
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  await q(`UPDATE context_facts SET status = 'ritirato', ended_at = now(), updated_at = now(), version = version + 1 WHERE id = $1`, [fact]);
+  await unlock();
+  assert.equal(errOf(await confirming), "versione_superata");
+  assert.equal((await q(`SELECT count(*)::int AS n FROM context_facts WHERE supersedes_id = $1`, [fact]))[0].n, 0, "un fatto ritirato non ha una versione nuova");
+  assert.equal((await q(`SELECT status FROM context_proposals WHERE id = $1`, [changing.all[0].id]))[0].status, "aperta");
+  // «Conferma»: anche qui il fatto esce dalla memoria mentre la conferma aspetta. Niente si riconferma.
+  const same = await seedFact(`Il fatto riconfermato a metà ${suffix} vale 1.`, { section: "azienda" });
+  const again = await readProposals([proposal({ tipo: "conferma", testo: "x", citazione: "", fattoRif: "F1", useCase: ["CX-0001"] })], `${NOTE}\nCall della riconferma a metà (${suffix}).`);
+  assert.deepEqual([again.all[0].kind, again.all[0].before?.factId], ["conferma", same]);
+  unlock = await holdTableLock("use_cases");
+  const reconfirming = proposals.confirmProposals(actor("ls"), pick(again.all));
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  await q(`UPDATE context_facts SET status = 'ritirato', ended_at = now(), updated_at = now(), version = version + 1, last_confirmed_at = now() - interval '2 days' WHERE id = $1`, [same]);
+  await unlock();
+  assert.equal(errOf(await reconfirming), "versione_superata");
+  assert.equal((await q(`SELECT status FROM context_proposals WHERE id = $1`, [again.all[0].id]))[0].status, "aperta", "niente si riconferma");
+  assert.deepEqual((await q(`SELECT status, last_confirmed_at < now() - interval '1 day' AS old FROM context_facts WHERE id = $1`, [same]))[0], { status: "ritirato", old: true });
+  await proposals.discardProposals(actor("ls"), [changing.all[0].id, again.all[0].id]);
 });
 
 test("due conferme insieme sullo stesso fatto: una vince, l'altra torna «versione superata» e non scrive niente", opts, async () => {
