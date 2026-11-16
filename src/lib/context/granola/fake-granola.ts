@@ -75,6 +75,8 @@ export interface FakeGranola {
   tokenDelayMs: number;
   /** `get_meetings` mette in `<omitted_meetings>` le call oltre questo numero. */
   notesPerResponse: number | null;
+  /** Caratteri in più in ogni token dato (token molto lunghi, come certi JWT). */
+  tokenPadding: number;
   // Registri.
   toolCalls: FakeToolCall[];
   mcpRequests: FakeMcpRequest[];
@@ -159,6 +161,7 @@ export async function startFakeGranola(seed: { meetings?: FakeMeeting[]; folders
     expiresIn: 3600,
     tokenDelayMs: 0,
     notesPerResponse: null,
+    tokenPadding: 0,
     toolCalls: [],
     mcpRequests: [],
     tokenRequests: [],
@@ -186,8 +189,9 @@ export async function startFakeGranola(seed: { meetings?: FakeMeeting[]; folders
   };
 
   const issue = (clientId: string) => {
-    const accessToken = `at-${randomBytes(12).toString("hex")}`;
-    const refreshToken = `rt-${randomBytes(12).toString("hex")}`;
+    const pad = "p".repeat(fake.tokenPadding);
+    const accessToken = `at-${randomBytes(12).toString("hex")}${pad}`;
+    const refreshToken = `rt-${randomBytes(12).toString("hex")}${pad}`;
     accessTokens.add(accessToken);
     refreshTokens.set(refreshToken, { clientId });
     fake.issued.push({ accessToken, refreshToken });

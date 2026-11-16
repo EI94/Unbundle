@@ -285,6 +285,16 @@ test("il ritorno con un rifiuto su Granola → annullato; un codice sbagliato �
   const wrong = await callbackRoute.GET(new Request(back.toString()));
   assert.equal(location(wrong).search, "?granola=errore");
   assert.equal((await connection("ls")).status, "attiva");
+  // Un guasto dopo aver preso lo stato (qui token così lunghi che la colonna non li tiene): di nuovo alle Impostazioni, con «errore».
+  const before = String((await connection("ls")).tokens_sealed);
+  fake.tokenPadding = 7_900;
+  try {
+    const broken = await connect("ls", "wsT");
+    assert.equal(location(broken).href, `${ORIGIN}/dashboard/${ids.wsT}/settings?granola=errore#granola`);
+  } finally {
+    fake.tokenPadding = 0;
+  }
+  assert.equal(String((await connection("ls")).tokens_sealed), before, "il collegamento di prima non cambia");
 });
 
 test("lo stato di Granola per la pagina e per Impostazioni", opts, async () => {

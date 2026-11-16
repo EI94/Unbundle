@@ -250,6 +250,8 @@ export type GranolaConnectOutcome = { status: "collegato" | "annullato" | "error
  */
 export async function completeGranolaConnect(i: { userId: string; state: string | null; code: string | null; error: string | null }): Promise<GranolaConnectOutcome> {
   if (!isUuid(i?.userId) || !isStateShape(i?.state)) return { status: "scaduto" };
+  // Preso lo stato, un guasto riporta comunque la persona alle Impostazioni del suo workspace, con «errore».
+  let workspaceId: string | null = null;
   try {
     if (!(await contextStoreReady())) return { status: "scaduto" };
     const [taken] = rowsOf<{ workspace_id: string; verifier_sealed: string; client_id: string; redirect_uri: string }>(
@@ -259,7 +261,7 @@ export async function completeGranolaConnect(i: { userId: string; state: string 
         RETURNING workspace_id, verifier_sealed, client_id, redirect_uri`),
     );
     if (!taken) return { status: "scaduto" };
-    const workspaceId = String(taken.workspace_id);
+    workspaceId = String(taken.workspace_id);
     if (i.error || !i.code || i.code.length > 2_000) return { status: "annullato", workspaceId };
     const cfg = config();
     if (!cfg.available || !cfg.tokenKey) return { status: "errore", workspaceId };
@@ -296,7 +298,7 @@ export async function completeGranolaConnect(i: { userId: string; state: string 
     return { status: "collegato", workspaceId };
   } catch (error) {
     logSafeError(LOG_SCOPE, "collegamento_non_finito", error);
-    return { status: "scaduto" };
+    return workspaceId ? { status: "errore", workspaceId } : { status: "scaduto" };
   }
 }
 
