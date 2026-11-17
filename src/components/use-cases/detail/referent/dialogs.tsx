@@ -1,6 +1,6 @@
 "use client";
 
-import { deleteNeedFileAction, removeNeedAnswerAction, reviewNeedFileAction, revokeReferentRequestAction } from "@/lib/actions/use-case-referents";
+import { deleteNeedFileAction, removeNeedAnswerAction, reviewNeedFileAction, reviewTemplateFileAction, revokeReferentRequestAction } from "@/lib/actions/use-case-referents";
 import type { ReferentRequestView, UseCaseReferentPanel } from "@/lib/use-cases/referent/contract";
 import { REFERENT_BLOCK_TEXT, REFERENT_UI_TEXT, fillText } from "@/lib/use-cases/referent/labels";
 import { AssignDialog, type AssignContext } from "./assign-dialog";
@@ -12,6 +12,7 @@ import { AskSteps, type AskStepsContext } from "./ask-steps";
 import type { AskSession } from "./ask-steps-state";
 import { ConfirmDialog, CorrectEmailDialog, EraseContactDialog } from "./contact-dialogs";
 import { FileDialog } from "./file-dialog";
+import { TemplateDialog } from "./template-dialog";
 import { ThreadLineDialog } from "./thread-dialog";
 import type { ClarifyTarget } from "@/lib/use-cases/referent/contract";
 
@@ -34,6 +35,10 @@ export type ReferentDialog =
   | { kind: "removeAnswer"; answerId: string }
   | { kind: "deleteFile"; fileId: string }
   | { kind: "rejectFile"; fileId: string }
+  /** («File da compilare») «Aggiungi un file da compilare» da un'esigenza, «Sostituisci», «Rifiuta il file» di un PDF da compilare. */
+  | { kind: "template"; need: { id: string; title: string } }
+  | { kind: "replaceTemplate"; file: { id: string; name: string } }
+  | { kind: "rejectTemplate"; fileId: string }
   /** (Rilascio 6) «Chiedi un chiarimento» su una risposta del referente; `prefill` dal suggerimento dell'AI («Chiedi questo»). */
   | { kind: "clarify"; target: ClarifyTarget; prefill?: string; suggestionId?: string }
   /** (Rilascio 6) «Rispondi» a un dubbio del referente. */
@@ -178,6 +183,29 @@ export function ReferentDialogs({
           description={T.fileRejectConfirmText}
           confirmLabel={T.fileRejectConfirm}
           action={() => reviewNeedFileAction(workspaceId, useCaseId, dialog.fileId, "rifiuta")}
+          onClose={onClose}
+        />
+      );
+    case "template":
+    case "replaceTemplate":
+      return (
+        <TemplateDialog
+          workspaceId={workspaceId}
+          useCaseId={useCaseId}
+          mode={dialog.kind === "template" ? { kind: "aggiungi", needId: dialog.need.id } : { kind: "sostituisci", fileId: dialog.file.id, fileName: dialog.file.name }}
+          needs={(panel.templateNeedIds ?? []).map((id) => ({ id, title: needTitles.get(id) ?? needTitles.get(id.toLowerCase()) ?? "" })).filter((n) => n.title)}
+          clientMode={panel.upload.clientMode}
+          accept={panel.limits.accept}
+          onClose={onClose}
+        />
+      );
+    case "rejectTemplate":
+      return (
+        <ConfirmDialog
+          title={T.fileRejectConfirmTitle}
+          description={T.fileRejectConfirmText}
+          confirmLabel={T.fileRejectConfirm}
+          action={() => reviewTemplateFileAction(workspaceId, useCaseId, dialog.fileId, "rifiuta")}
           onClose={onClose}
         />
       );

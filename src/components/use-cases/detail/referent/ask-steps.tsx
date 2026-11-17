@@ -16,7 +16,7 @@ import {
 import type { ReferentActionResult, ReferentMemberOption, ReferentRequestView, UseCaseReferentPanel } from "@/lib/use-cases/referent/contract";
 import { REFERENT_ASSIGN_TEXT, REFERENT_ERROR_MESSAGES, REFERENT_UI_TEXT, companyLabel, fillText } from "@/lib/use-cases/referent/labels";
 import { orgWordsOf } from "@/lib/use-cases/referent/match";
-import { referentRequestPreview, requesterNameOf } from "@/lib/use-cases/referent/preview";
+import { fillInNeedIds, referentRequestPreview, requesterNameOf } from "@/lib/use-cases/referent/preview";
 import { cn } from "@/lib/utils";
 import {
   ASK_MODE,
@@ -145,6 +145,8 @@ export function AskSteps({
   const [refreshing, startRefresh] = useTransition();
   const ask = mode.kind === "ask";
   const limit = panel.limits.questionsPerRequest;
+  // («File da compilare») Le domande con un file da compilare pulito: «con file da compilare» e la riga dell'email.
+  const fillIn = useMemo(() => fillInNeedIds(panel.needs), [panel.needs]);
 
   const [people, setPeople] = useState<AskPeopleList>(() =>
     !ask ? { state: "ready", members: [] } : peopleCache ? { state: "ready", members: peopleCache } : { state: "loading", members: [] },
@@ -502,8 +504,9 @@ export function AskSteps({
                   questions: tickedIds.length,
                   message: draft.message.trim() || null,
                   today: new Date(),
+                  fillInQuestions: tickedIds.filter((id) => fillIn.has(id.toLowerCase())).length,
                 })}
-                questions={tickedIds.map((id) => needInfo[id]?.title ?? id)}
+                questions={tickedIds.map((id) => ({ title: needInfo[id]?.title ?? id, fillIn: fillIn.has(id.toLowerCase()) }))}
                 replyTo={panel.requester.email}
                 gates={entry.sendGates}
                 okNotice={okNotice}

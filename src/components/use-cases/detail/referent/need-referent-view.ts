@@ -5,7 +5,7 @@
  *
  * I numeri contano le voci di questa esigenza, mai le persone (art. 15.4).
  */
-import type { ClarifyTarget, NeedAnswerView, NeedFileView, NeedReferentView } from "../../../../lib/use-cases/referent/contract.ts";
+import type { ClarifyTarget, NeedAnswerView, NeedFileView, NeedReferentView, NeedTemplateView } from "../../../../lib/use-cases/referent/contract.ts";
 import { REFERENT_THREAD_TEXT, REFERENT_UI_TEXT, fillText } from "../../../../lib/use-cases/referent/labels.ts";
 
 const T = REFERENT_UI_TEXT;
@@ -41,6 +41,30 @@ export interface NeedFileRow {
   canReview: boolean;
 }
 
+/**
+ * («File da compilare») Una riga «Da compilare: {nome} · Sostituisci · Togli» sotto l'esigenza, sempre a vista (non
+ * dentro «Risposte e file»: non è una risposta e non si conta lì).
+ */
+export interface NeedTemplateRow {
+  id: string;
+  /** «Da compilare:». */
+  label: string;
+  name: string;
+  sizeLabel: string | null;
+  /** Il nome scarica il file; null quando chi guarda non lo può aprire. */
+  href: string | null;
+  /** «Da controllare: PDF con poco testo» finché un'altra persona non lo accetta; null altrimenti. */
+  reviewLabel: string | null;
+  /** «Sostituisci»: solo a chi modifica, e non mentre una versione nuova aspetta il controllo. */
+  canReplace: boolean;
+  /** «Togli»: solo a chi modifica. */
+  canRemove: boolean;
+  /** «Accetta il file» / «Rifiuta il file» per un PDF che chi guarda non ha caricato. */
+  canReview: boolean;
+  /** La versione nuova che aspetta il controllo: «Nuova versione da controllare: PDF con poco testo». */
+  pending: { id: string; name: string; sizeLabel: string | null; label: string; href: string | null; downloadLabel: string; canReview: boolean } | null;
+}
+
 export interface NeedReferentRows {
   line: string | null;
   /** «File non controllato in tempo: chiedi di caricarlo di nuovo.», oppure null. */
@@ -51,9 +75,31 @@ export interface NeedReferentRows {
   summary: string | null;
   answers: NeedAnswerRow[];
   files: NeedFileRow[];
+  /** («File da compilare») Le righe «Da compilare: …»; [] senza file da compilare. */
+  templates: NeedTemplateRow[];
 }
 
-export const EMPTY_NEED_REFERENT_ROWS: NeedReferentRows = Object.freeze({ line: null, notice: null, silentTag: null, summary: null, answers: [], files: [] }) as NeedReferentRows;
+export const EMPTY_NEED_REFERENT_ROWS: NeedReferentRows = Object.freeze({ line: null, notice: null, silentTag: null, summary: null, answers: [], files: [], templates: [] }) as NeedReferentRows;
+
+/** («File da compilare») La riga di un file da compilare: «Sostituisci» e «Togli» solo a chi modifica «Cosa serve». */
+export function templateRow(t: NeedTemplateView, opts: { canEdit: boolean }): NeedTemplateRow {
+  const inReview = t.status === "in_revisione";
+  return {
+    id: t.id,
+    label: T.templateLabel,
+    name: t.name,
+    sizeLabel: t.sizeLabel,
+    href: t.href,
+    reviewLabel: inReview ? T.fileInReview : null,
+    canReplace: opts.canEdit && t.canEdit && t.pending === null,
+    canRemove: opts.canEdit && t.canEdit,
+    canReview: opts.canEdit && inReview && t.canReview,
+    pending:
+      opts.canEdit && t.pending
+        ? { id: t.pending.id, name: t.pending.name, sizeLabel: t.pending.sizeLabel, label: T.templatePending, href: t.pending.href, downloadLabel: T.fileDownloadToReview, canReview: t.pending.canReview }
+        : null,
+  };
+}
 
 function answerRow(answer: NeedAnswerView, canEdit: boolean): NeedAnswerRow {
   return {
@@ -104,5 +150,7 @@ export function needReferentRows(view: NeedReferentView | null | undefined, opts
     summary: count > 0 ? fillText(T.entriesSummary, { n: count }) : messages > 0 ? `${REFERENT_THREAD_TEXT.heading} · ${messages}` : null,
     answers,
     files,
+    // («File da compilare») Un PDF da controllare il server lo manda solo a chi modifica «Cosa serve».
+    templates: (view.templates ?? []).filter((t) => t.status === "pulito" || opts.canEdit).map((t) => templateRow(t, { canEdit: opts.canEdit })),
   };
 }

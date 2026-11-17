@@ -161,6 +161,8 @@ export function SectionNeeds({
   // «Chiedi al referente»: solo con la funzione accesa per il workspace e gli archivi pronti.
   const feature = referents?.available ? referents : null;
   const answerable = useMemo(() => new Set((feature?.answerableNeedIds ?? []).map((needId) => needId.toLowerCase())), [feature]);
+  // («File da compilare») Le esigenze del cliente o «insieme» che accettano un file da compilare.
+  const templatable = useMemo(() => new Set((feature?.templateNeedIds ?? []).map((needId) => needId.toLowerCase())), [feature]);
   // «Richieste inviate» aperta quando la pagina arriva con `?capitolo=richieste` («Nessuna risposta»
   // della campanella e delle email a chi ha chiesto), dove si chiede di nuovo: l'arrivo della
   // navigazione (`Arrival`), non quello che lo stesso indirizzo darebbe dopo una rilettura.
@@ -220,6 +222,7 @@ export function SectionNeeds({
               views: feature.needs,
               thread: feature.thread,
               answerable: canEdit && feature.canAsk ? answerable : new Set<string>(),
+              templatable: canEdit && feature.canAsk ? templatable : new Set<string>(),
               canReviewFiles: feature.canReviewFiles,
               onOpen: setReferentDialog,
             }
@@ -381,25 +384,30 @@ interface NeedListReferent {
   thread?: UseCaseReferentPanel["thread"];
   /** Le esigenze che accettano una risposta o un file del team (id in minuscolo); vuoto per chi non modifica. */
   answerable: ReadonlySet<string>;
+  /** («File da compilare») Le esigenze che accettano un file da compilare (id in minuscolo); vuoto per chi non modifica. */
+  templatable?: ReadonlySet<string>;
   canReviewFiles: boolean;
   onOpen: (dialog: ReferentDialog) => void;
 }
 
 /**
  * Le voci del «⋯» di una riga (un solo menu per riga, rilascio 3): «Aggiungi una risposta» e «Allega
- * un file» quando l'esigenza accetta una risposta del team, poi «Modifica». Vuoto per chi non
- * modifica: allora il menu non c'è.
+ * un file» quando l'esigenza accetta una risposta del team, («File da compilare») «Aggiungi un file da
+ * compilare» accanto quando l'esigenza del cliente o «insieme» ne accetta uno, poi «Modifica». Vuoto per
+ * chi non modifica: allora il menu non c'è.
  */
 export function needRowActions({
   need,
   canEdit,
   answerable,
+  templatable = false,
   onOpen,
   onEdit,
 }: {
   need: { id: string; title: string };
   canEdit: boolean;
   answerable: boolean;
+  templatable?: boolean;
   onOpen: ((dialog: ReferentDialog) => void) | null;
   onEdit: () => void;
 }): ActionMenuItem[] {
@@ -411,7 +419,8 @@ export function needRowActions({
           { label: REFERENT_UI_TEXT.rowAttachFile, onSelect: () => onOpen({ kind: "file", need }) },
         ]
       : [];
-  return [...reply, { label: TEXT.edit, onSelect: onEdit }];
+  const template: ActionMenuItem[] = templatable && onOpen ? [{ label: REFERENT_UI_TEXT.rowAddTemplate, onSelect: () => onOpen({ kind: "template", need }) }] : [];
+  return [...reply, ...template, { label: TEXT.edit, onSelect: onEdit }];
 }
 
 function NeedList({
@@ -446,6 +455,7 @@ function NeedList({
           need: { id: need.id, title: row.title },
           canEdit,
           answerable: Boolean(referent?.answerable.has(need.id.toLowerCase())),
+          templatable: Boolean(referent?.templatable?.has(need.id.toLowerCase())),
           onOpen: referent?.onOpen ?? null,
           onEdit: () => onEdit(need),
         });

@@ -39,6 +39,8 @@ test("senza richiesta e senza voci non si mostra niente", () => {
     summary: null,
     answers: [],
     files: [],
+    // («File da compilare») Nessun file da compilare: nessuna riga «Da compilare».
+    templates: [],
   });
 });
 

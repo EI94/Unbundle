@@ -9,6 +9,7 @@ import { Disclosure } from "../../disclosure";
 import type { ReferentDialog } from "./dialogs";
 import { FileReview } from "./file-review";
 import { needReferentRows } from "./need-referent-view";
+import { NeedTemplateLine } from "./template-line";
 import { ClarifyControl, ThreadList } from "./thread-parts";
 import { suggestionFor, threadLinesOf } from "./thread-view";
 
@@ -41,9 +42,13 @@ export function NeedReferentBlock({
 }) {
   const lines = view ? threadLinesOf(thread, { needId: view.needId, showAnchor: false }) : [];
   const rows = needReferentRows(view, { canEdit, canReviewFiles, messages: lines.length });
-  if (!rows.line && !rows.silentTag && !rows.summary && !rows.notice) return null;
+  if (!rows.line && !rows.silentTag && !rows.summary && !rows.notice && rows.templates.length === 0) return null;
   return (
     <div data-slot="need-referent" className="space-y-1">
+      {/* («File da compilare») A vista, prima di tutto: non sono risposte e non stanno in «Risposte e file». */}
+      {view
+        ? rows.templates.map((row) => <NeedTemplateLine key={row.id} workspaceId={workspaceId} useCaseId={useCaseId} needId={view.needId} row={row} onOpen={onOpen} />)
+        : null}
       {rows.line || rows.silentTag ? (
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs break-words text-muted-foreground">
           {rows.line ? <span data-slot="need-referent-line">{rows.line}</span> : null}

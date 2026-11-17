@@ -20,7 +20,7 @@ import { benefitQuestion } from "@/lib/use-cases/referent/impact-text";
 import type { ImpactRow } from "@/lib/use-cases/referent/impact";
 import { REFERENT_ASSIGN_TEXT, REFERENT_ERROR_MESSAGES, REFERENT_UI_TEXT, companyLabel, fillText } from "@/lib/use-cases/referent/labels";
 import { orgWordsOf } from "@/lib/use-cases/referent/match";
-import { referentNewQuestionsPreview, referentRequestPreview, requesterNameOf } from "@/lib/use-cases/referent/preview";
+import { fillInNeedIds, referentNewQuestionsPreview, referentRequestPreview, requesterNameOf } from "@/lib/use-cases/referent/preview";
 import { cn } from "@/lib/utils";
 import { Disclosure } from "../../disclosure";
 import { NEW_CONTACT, contactRowLine, memberIdOf } from "./ask-dialog-state";
@@ -376,7 +376,16 @@ export function AssignDialog({
   // (Rilascio 6) «Chiedi al referente» verso chi ha già una richiesta attiva qui: le domande entrano lì e parte
   // l'email «nuove», non una richiesta nuova; l'anteprima è quella.
   const joins = kind === "domande" && locked && joinsActiveRequest(panel, referent?.contact.id ?? null, new Date());
-  const previewInput = { company: companyName, useCase: card, requesterName: requesterNameOf(panel.requester.name, companyName), questions: ticked.length, today: new Date() };
+  // («File da compilare») Le domande con un file da compilare pulito: «con file da compilare» e la riga dell'email.
+  const fillIn = fillInNeedIds(panel.needs);
+  const previewInput = {
+    company: companyName,
+    useCase: card,
+    requesterName: requesterNameOf(panel.requester.name, companyName),
+    questions: ticked.length,
+    today: new Date(),
+    fillInQuestions: ticked.filter((id) => fillIn.has(id.toLowerCase())).length,
+  };
   const previewParts = joins ? referentNewQuestionsPreview(previewInput) : referentRequestPreview({ ...previewInput, kind, message: draft.message.trim() || null });
   const sendLabel = assignSendLabel(name);
   const gate = entry.notice;
@@ -524,6 +533,12 @@ export function AssignDialog({
                       {ticked.map((id) => (
                         <li key={id} className="break-words">
                           {needInfo[id]?.title ?? id}
+                          {fillIn.has(id.toLowerCase()) ? (
+                            <span data-slot="assign-preview-fill-in" className="text-muted-foreground">
+                              {" · "}
+                              {T.withTemplate}
+                            </span>
+                          ) : null}
                         </li>
                       ))}
                     </ol>

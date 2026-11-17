@@ -35,8 +35,11 @@ export function AskPreviewStep({
   /** «A»: «Mario Rossi · mario.rossi@…». */
   to: string;
   parts: ReferentRequestParts;
-  /** I titoli delle domande spuntate, nell'ordine della scheda. */
-  questions: readonly string[];
+  /**
+   * I titoli delle domande spuntate, nell'ordine della scheda; («File da compilare») con `fillIn` una domanda che ha un
+   * file da compilare pulito, con «con file da compilare» accanto.
+   */
+  questions: readonly (string | { title: string; fillIn: boolean })[];
   /** L'email di chi chiede, dove arrivano le risposte all'email. */
   replyTo: string | null;
   gates: readonly ReferentGate[];
@@ -76,11 +79,20 @@ export function AskPreviewStep({
       <div className="space-y-1.5">
         <p className="text-sm">{T.questionsOnLink}</p>
         <ol data-slot="ask-preview-questions" className="list-decimal space-y-0.5 pl-5 text-sm">
-          {questions.map((title, index) => (
-            <li key={`${index}-${title}`} className="break-words">
-              {title}
-            </li>
-          ))}
+          {questions.map((item, index) => {
+            const { title, fillIn } = typeof item === "string" ? { title: item, fillIn: false } : item;
+            return (
+              <li key={`${index}-${title}`} className="break-words">
+                {title}
+                {fillIn ? (
+                  <span data-slot="ask-preview-fill-in" className="text-muted-foreground">
+                    {" · "}
+                    {T.withTemplate}
+                  </span>
+                ) : null}
+              </li>
+            );
+          })}
         </ol>
       </div>
       {replyTo ? <p className="text-xs break-words text-muted-foreground">{fillText(T.replyNote, { tuaEmail: replyTo })}</p> : null}
