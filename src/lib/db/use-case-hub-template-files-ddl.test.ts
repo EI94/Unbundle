@@ -172,6 +172,8 @@ test("ensure-schema: ENSURE_VERSION 34, la 0040 dopo la 0039, non bloccante, con
   const ours = runOnce.indexOf("await runTemplateFilesDdlSafely();");
   assert.ok(mapping > 0 && ours > mapping, "la 0040 dopo la 0039");
   const safe = topLevelFunction(ensureSchema, "async function runTemplateFilesDdlSafely(): Promise<void> {");
+  // Mai da un'anteprima di Vercel: le anteprime usano il database di produzione.
+  assert.match(safe, /^async function runTemplateFilesDdlSafely\(\): Promise<void> \{\s+if \(process\.env\.VERCEL_ENV === "preview"\) return;/);
   assert.match(safe, /templateFilesDdlFailedAt = Date\.now\(\);/);
   assert.match(safe, /0040 self-heal failed/);
   const run = topLevelFunction(ensureSchema, "export async function runTemplateFilesDdl(");

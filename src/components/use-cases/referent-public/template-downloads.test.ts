@@ -38,13 +38,14 @@ function sectionOf(q: ReferentQuestionView) {
   return questionSections(view)[0];
 }
 
-function render(q: ReferentQuestionView): string {
+function render(q: ReferentQuestionView, o: { downloads?: boolean } = {}): string {
   const noop = () => undefined;
   return readable(
     renderToStaticMarkup(
       h(card.QuestionCard, {
         token: TOKEN,
         section: sectionOf(q),
+        ...(o.downloads === undefined ? {} : { downloads: o.downloads }),
         today: "2026-11-17",
         clientMode: false,
         issues: [],
@@ -99,6 +100,15 @@ test("una domanda già inviata ha ancora il link; una «gestita» no", () => {
   const handled = render(question({ needId: NEED_B, state: "gestita", templates: [TEMPLATE] }));
   assert.equal(handled.includes("/da-compilare"), false);
   assert.deepEqual(templateLinks(TOKEN, { state: "gestita", templates: [TEMPLATE] }), []);
+});
+
+test("senza l'informativa di adesso letta, nessun link: il download risponderebbe 404", () => {
+  for (const state of ["aperta", "inviata"] as const) {
+    const answer = state === "inviata" ? { text: "Testo di prova", dontKnow: false, alreadyAttached: false, comment: null, submittedAt: "2026-11-15T10:00:00.000Z" } : null;
+    const html = render(question({ needId: NEED_A, state, answer, templates: [TEMPLATE] }), { downloads: false });
+    assert.equal(html.includes("/da-compilare"), false, state);
+    assert.equal(html.includes(T.templateDownload), false, state);
+  }
 });
 
 test("i link e l'etichetta, puri: un link per file, ogni link con il suo nome", () => {

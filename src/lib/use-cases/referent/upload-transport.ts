@@ -102,8 +102,9 @@ async function serverUpload(dest: ReferentUploadDestination, file: File, opts: {
   form.set("file", file, file.name);
   if (dest.kind === "da_compilare") {
     const target = templateTarget(dest);
+    // Un campo per esigenza: i campi del modulo stanno sotto i 1000 caratteri ciascuno (`readUploadForm`).
     if ("replacesId" in target) form.set("replacesId", target.replacesId);
-    else form.set("needIds", JSON.stringify(target.needIds));
+    else target.needIds.forEach((needId, index) => form.set(`needIds.${index}`, needId));
   } else {
     form.set("needId", dest.needId);
     form.set("declaration", "true");

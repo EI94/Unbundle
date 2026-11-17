@@ -131,10 +131,13 @@ export function OpenQuestionCard({
   onClosure,
   tooSoon,
   extra,
+  downloads = true,
 }: {
   token: string;
   section: QuestionSection;
   clientMode: boolean;
+  /** («File da compilare») I link dei file da compilare sotto il titolo: solo con l'informativa di adesso letta. */
+  downloads?: boolean;
   /** I problemi dell'ultimo invio su questa domanda. */
   issues: readonly string[];
   disabled: boolean;
@@ -297,7 +300,7 @@ export function OpenQuestionCard({
   const showComment = value.dontKnow || (offerComment && (commentOpen || Boolean(value.comment?.trim())));
 
   return (
-    <CardFrame section={section} token={token} invalid={fieldErrors.length > 0} missing={missing && !closed} closed={closed}>
+    <CardFrame section={section} token={downloads ? token : undefined} invalid={fieldErrors.length > 0} missing={missing && !closed} closed={closed}>
       {fileRequired ? (
         <p className="text-sm break-words text-muted-foreground">
           <span className="font-medium text-foreground">{T.fileRequired}</span> · {attachHelp(clientMode)}
@@ -396,8 +399,13 @@ export function OpenQuestionCard({
   );
 }
 
-export function QuestionCard(props: Parameters<typeof OpenQuestionCard>[0] & { today: string }) {
-  if (props.section.kind === "inviata") return <SentQuestionCard section={props.section} today={props.today} extra={props.extra} token={props.token} />;
+/**
+ * La scheda di una domanda nel suo stato. («File da compilare») `downloads`: i link «Scarica il file da compilare» solo
+ * con l'informativa di adesso letta, come il download (che senza risponde 404): di default sì.
+ */
+export function QuestionCard({ downloads = true, ...props }: Parameters<typeof OpenQuestionCard>[0] & { today: string; downloads?: boolean }) {
+  const token = downloads ? props.token : undefined;
+  if (props.section.kind === "inviata") return <SentQuestionCard section={props.section} today={props.today} extra={props.extra} token={token} />;
   if (props.section.kind === "gestita") return <HandledQuestionCard section={props.section} />;
-  return <OpenQuestionCard {...props} />;
+  return <OpenQuestionCard {...props} downloads={downloads} />;
 }

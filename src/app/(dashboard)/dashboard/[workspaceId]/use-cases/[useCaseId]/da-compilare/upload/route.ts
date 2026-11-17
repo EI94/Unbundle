@@ -10,7 +10,7 @@ export const maxDuration = 60;
 
 /**
  * («File da compilare») `POST …/use-cases/[useCaseId]/da-compilare/upload` (modalità server, ≤ 4 MB, multipart: `file`
- * e `needIds` (JSON, le esigenze a cui legarlo) oppure `replacesId` («Sostituisci»)): un file che il referente scarica,
+ * e `needIds.0`, `needIds.1`, … (le esigenze a cui legarlo) oppure `replacesId` («Sostituisci»)): un file che il referente scarica,
  * compila e ricarica. Riga in quarantena, controllo dei byte, poi l'archivio privato. Non è una risposta: l'esigenza
  * non cambia.
  */
@@ -21,12 +21,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ wor
     if (!opened.ok) return opened.response;
     const form = await readUploadForm(request);
     if (!form.ok) return referentFileFail(uploadStatusFor(form.code), form.code, form.message);
-    const result = await uploadTemplateFileServer(
-      opened.ctx,
-      opened.useCaseId,
-      { target: { needIds: form.value.fields.needIds, replacesId: form.value.fields.replacesId }, fileName: form.value.file.name, bytes: form.value.file.bytes },
-      process.env,
-    );
+    // Le esigenze come un campo ciascuna (`needIds.0`, …) oppure `replacesId`: le legge `templateTargetOf`.
+    const result = await uploadTemplateFileServer(opened.ctx, opened.useCaseId, { target: form.value.fields, fileName: form.value.file.name, bytes: form.value.file.bytes }, process.env);
     if (result.ok) revalidatePath(`/dashboard/${workspaceId}/use-cases/${opened.useCaseId}`);
     return referentFileResult(result);
   } catch (error) {

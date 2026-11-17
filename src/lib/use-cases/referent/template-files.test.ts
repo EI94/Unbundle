@@ -124,6 +124,24 @@ test("le richieste dalla scheda: 1–50 esigenze distinte, oppure la versione da
   const many = Array.from({ length: TEMPLATE_LIMITS.needsPerFile + 1 }, (_, i) => `55555555-0000-4000-8000-${String(i).padStart(12, "0")}`);
   assert.equal(templateTargetOf({ needIds: many }), null);
   assert.equal(templateTargetOf({ needIds: many.slice(0, TEMPLATE_LIMITS.needsPerFile) })?.needIds.length, 50);
+  // Dal modulo del caricamento dal server: un campo per esigenza, nell'ordine degli indici.
+  assert.deepEqual(templateTargetOf({ "needIds.1": NEED_B, "needIds.0": NEED_A, file: "x" }), { needIds: [NEED_A, NEED_B], replacesId: null });
+  assert.equal(templateTargetOf({ "needIds.0": "non-un-id" }), null);
+});
+
+test("50 esigenze passano dal modulo del caricamento dal server, un campo ciascuna", async () => {
+  const { readUploadForm } = await import("../../uc/files/multipart.ts");
+  const ids = Array.from({ length: TEMPLATE_LIMITS.needsPerFile }, (_, i) => `55555555-0000-4000-8000-${String(i).padStart(12, "0")}`);
+  const form = new FormData();
+  form.set("file", new File(["dati di prova"], "modello-XX-0001.xlsx"));
+  ids.forEach((id, index) => form.set(`needIds.${index}`, id));
+  const request = new Request("https://app.example.test/upload", { method: "POST", body: form });
+  const read = await readUploadForm(request);
+  assert.equal(read.ok, true);
+  if (!read.ok) return;
+  assert.deepEqual(templateTargetOf(read.value.fields), { needIds: ids, replacesId: null });
+  // Un solo campo con 50 id (oltre 1000 caratteri) il modulo lo scarta: per questo un campo per esigenza.
+  assert.ok(JSON.stringify(ids).length > 1000);
 });
 
 function need(over: Partial<NeedView> & { id: string }): NeedView {
@@ -167,7 +185,11 @@ test("quali esigenze accettano un file da compilare: del cliente o «insieme», 
 test("«Sostituisci»: la versione nuova prende i legami della vecchia solo pulita (o accettata), con CAS sulla vecchia", () => {
   const replaced = templateCheckedEffects({ workspaceId: WS, useCaseId: UC, fileId: FILE_NEW, replacesId: FILE_OLD, userId: USER, outcome: "pulito" });
   const [cas, move, event] = replaced;
-  assert.match(cas.text, /UPDATE use_case_template_files SET deleted_at = now\(\), deleted_reason = 'sostituito'[\s\S]*deleted_at IS NULL RETURNING id[\s\S]*'conflitto'/);
+  // Solo la versione di adesso: viva, pulita o in controllo, ancora legata a un'esigenza (mai una rifiutata intanto).
+  assert.match(
+    cas.text,
+    /UPDATE use_case_template_files SET deleted_at = now\(\), deleted_reason = 'sostituito'[\s\S]*deleted_at IS NULL AND scan_status IN \('pulito', 'in_revisione'\)\s+AND EXISTS \(SELECT 1 FROM use_case_template_links l WHERE l\.file_id = \$\d+::uuid\)\s+RETURNING id[\s\S]*'conflitto'/,
+  );
   assert.ok(cas.params.includes(FILE_OLD));
   assert.match(move.text, /UPDATE use_case_template_links SET file_id = \$\d+::uuid WHERE file_id = \$\d+::uuid AND workspace_id = /);
   assert.deepEqual(move.params.slice(0, 2), [FILE_NEW, FILE_OLD]);
@@ -381,7 +403,9 @@ test("«Allega il file compilato» è il caricamento di sempre del referente: st
     assert.equal(calls[0].url, `/dashboard/${WS}/use-cases/${UC}/da-compilare/upload`);
     assert.equal(calls[0].init.credentials, "same-origin");
     const teamForm = calls[0].init.body as FormData;
-    assert.equal(teamForm.get("needIds"), JSON.stringify([NEED_A, NEED_B]));
+    // Un campo per esigenza: ognuno sotto il limite dei campi del modulo (`readUploadForm`).
+    assert.deepEqual([teamForm.get("needIds.0"), teamForm.get("needIds.1"), teamForm.get("needIds.2")], [NEED_A, NEED_B, null]);
+    assert.equal(teamForm.get("needIds"), null);
     assert.equal(teamForm.get("needId"), null);
     calls.length = 0;
     await uploadReferentFile({ kind: "da_compilare", workspaceId: WS, useCaseId: UC, needIds: [], replacesId: FILE_OLD }, new File(["dati"], "v2.xlsx"), { clientMode: false });

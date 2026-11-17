@@ -30,6 +30,7 @@ import {
   templateCheckedEffects,
   templateFirstDownloadStatement,
   templateInsertStatements,
+  templateLockStatement,
   templateRejectedStatements,
   templateRemoveStatements,
   templateTargetOf,
@@ -198,7 +199,15 @@ RETURNING id`,
     ),
   );
   const effects = templateCheckedEffects({ workspaceId: f.workspaceId, useCaseId: f.useCaseId, fileId: f.id, replacesId: f.replacesId, userId: uploader, outcome: outcome.status });
-  const run = await referentBatch(executor, [update, ...effects]);
+  // Sotto il lock dello use case, come «Togli»: una sostituzione e un «Togli» insieme non si incrociano.
+  let run: Awaited<ReturnType<typeof referentBatch>>;
+  try {
+    run = await referentBatch(executor, [templateLockStatement(f.useCaseId), update, ...effects]);
+  } catch (error) {
+    // La transazione è annullata: la riga non punta all'oggetto appena scritto, che non deve restare.
+    await safeDelete(store, [finalPath]);
+    throw error;
+  }
   if (!run.ok) {
     const current = await loadTemplate(executor, f.workspaceId, f.id);
     if (!current || current.blobPath !== finalPath) await safeDelete(store, [finalPath]);

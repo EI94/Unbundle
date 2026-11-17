@@ -681,6 +681,7 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
       key={`${section.needId}:${section.kind}:${generation}`}
       token={token}
       section={o.label ? { ...section, label: o.label } : section}
+      downloads={view.privacy.accepted}
       today={today}
       clientMode={view.upload.clientMode}
       issues={issues.get(section.needId.toLowerCase()) ?? []}

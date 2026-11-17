@@ -42,12 +42,26 @@ function templateNeedSql(useCaseId: string): SqlFragment {
   AND EXISTS (SELECT 1 FROM use_case_need_links nl WHERE nl.need_id = n.id AND nl.use_case_id = ${id(useCaseId, "use case")})`;
 }
 
-/** Un caricamento alla volta per use case: due file insieme non superano i limiti per esigenza. */
+/**
+ * Una scrittura alla volta sui file da compilare di uno use case (caricamento, controllo, sostituzione, «Togli»): due
+ * file insieme non superano i limiti per esigenza, e una sostituzione e un «Togli» insieme non si incrociano.
+ */
+export function templateLockStatement(useCaseId: string): UcStatement {
+  return lockStatement(useCaseId);
+}
+
 function lockStatement(useCaseId: string): UcStatement {
   return toStatement(ucSql`SELECT pg_advisory_xact_lock(hashtext('use_case_template_files'), hashtext(${cast(uuidOf(useCaseId, "use case"), "text")})) IS NULL AS locked`);
 }
 
-/** Le esigenze di un file nuovo (1–50 uuid distinti) o la versione da sostituire; null se la richiesta non è valida. */
+/** Un campo del modulo per esigenza (`needIds.0`, `needIds.1`, …): ognuno resta sotto il limite di 1000 caratteri dei campi. */
+const NEED_FIELD = /^needIds\.(\d{1,2})$/;
+
+/**
+ * Le esigenze di un file nuovo (1–50 uuid distinti) o la versione da sostituire; null se la richiesta non è valida.
+ * Le esigenze arrivano come elenco (JSON del caricamento diretto) o, dal modulo del caricamento dal server, un campo per
+ * esigenza (`needIds.0`, `needIds.1`, …): un solo campo con 50 id supererebbe il limite dei campi del modulo.
+ */
 export function templateTargetOf(body: unknown): { needIds: string[]; replacesId: string | null } | null {
   const b = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
   const replaces = b.replacesId;
@@ -55,6 +69,12 @@ export function templateTargetOf(body: unknown): { needIds: string[]; replacesId
     return isUuid(replaces) ? { needIds: [], replacesId: replaces.toLowerCase() } : null;
   }
   let list = b.needIds;
+  if (list === undefined) {
+    const fields = Object.entries(b)
+      .map(([key, value]) => ({ index: Number(NEED_FIELD.exec(key)?.[1] ?? NaN), value }))
+      .filter((f) => Number.isInteger(f.index));
+    if (fields.length) list = fields.sort((x, y) => x.index - y.index).map((f) => f.value);
+  }
   if (typeof list === "string") {
     try {
       list = JSON.parse(list);
@@ -128,16 +148,21 @@ SELECT ${id(i.fileId, "file")}, x.id, ${ws}, ${uc} FROM unnest(${cast(needs, "uu
 }
 
 /**
- * Una versione nuova prende il posto della vecchia: la vecchia si cancella (`sostituito`, solo se è ancora viva: CAS)
- * e i suoi legami passano alla nuova, nello stesso batch. Il referente con il link scarica la nuova da subito.
+ * Una versione nuova prende il posto della vecchia: la vecchia si cancella (`sostituito`, solo se è ancora la versione
+ * di adesso: viva, pulita o in controllo, con almeno un legame; CAS) e i suoi legami passano alla nuova, nello stesso
+ * batch. Il referente con il link scarica la nuova da subito. Una vecchia rifiutata o tolta intanto: `conflitto`, e la
+ * nuova non resta mai pulita senza legami.
  */
 export function templateReplaceStatements(i: { workspaceId: string; oldId: string; newId: string }): UcStatement[] {
   const ws = id(i.workspaceId, "workspace");
+  const old = id(i.oldId, "file");
   return [
     toStatement(
       requireRows(
         ucSql`UPDATE use_case_template_files SET deleted_at = now(), deleted_reason = 'sostituito'
-WHERE id = ${id(i.oldId, "file")} AND workspace_id = ${ws} AND deleted_at IS NULL RETURNING id`,
+WHERE id = ${old} AND workspace_id = ${ws} AND deleted_at IS NULL AND scan_status IN ('pulito', 'in_revisione')
+  AND EXISTS (SELECT 1 FROM use_case_template_links l WHERE l.file_id = ${old})
+RETURNING id`,
         1,
         "conflitto",
       ),
@@ -172,6 +197,7 @@ export function templateCheckedEffects(i: { workspaceId: string; useCaseId: stri
 export function templateAcceptedStatements(i: { workspaceId: string; useCaseId: string; fileId: string; replacesId: string | null; reviewerUserId: string }): UcStatement[] {
   const actor = personOf(i.reviewerUserId);
   return [
+    lockStatement(i.useCaseId),
     toStatement(
       requireRows(
         ucSql`UPDATE use_case_template_files SET scan_status = 'pulito', reviewed_at = now(), reviewed_by_user_id = ${id(i.reviewerUserId, "persona")}, checked_at = now()
@@ -190,6 +216,7 @@ WHERE id = ${id(i.fileId, "file")} AND workspace_id = ${id(i.workspaceId, "works
 /** Un PDF da compilare rifiutato da un'altra persona: senza oggetto (cancellato prima) e senza legami. */
 export function templateRejectedStatements(i: { workspaceId: string; useCaseId: string; fileId: string; reviewerUserId: string }): UcStatement[] {
   return [
+    lockStatement(i.useCaseId),
     toStatement(
       requireRows(
         ucSql`UPDATE use_case_template_files SET scan_status = 'rifiutato', rejection_reason = 'revisione_rifiutata', blob_path = NULL, reviewed_at = now(), reviewed_by_user_id = ${id(i.reviewerUserId, "persona")}

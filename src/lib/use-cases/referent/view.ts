@@ -7,7 +7,9 @@
  * date («Chiesta a … il …», «Risposta ricevuta il …», «Promemoria inviato il …») e chi ha scritto
  * ogni risposta. Solo lì, solo per quella scheda: mai sommato tra schede o persone, mai ordinato o
  * filtrato per persona, mai trasformato in durate o ritardi. Lo stato «In corso» non esiste: chi
- * ha aperto il link non si vede. Per questo i tipi di ingresso di queste funzioni non hanno
+ * ha aperto il link non si vede. («File da compilare», richiesta del titolare del 17/11/2026) Un'eccezione sola: la
+ * Storia dice «file da compilare scaricato dal referente» al primo download di ogni versione per ogni richiesta, senza
+ * nome, mai in queste viste. Per questo i tipi di ingresso di queste funzioni non hanno
  * l'accettazione dell'informativa né differenze tra date.
  *
  * `toPublicView` è un elenco chiuso (`PUBLIC_VIEW_KEYS`): copia solo i campi del contratto, mai
