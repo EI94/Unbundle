@@ -43,6 +43,8 @@ export interface ReminderEntry {
   replies?: number;
   /** (Rilascio 6) I chiarimenti del team che aspettano ancora la sua risposta (per i promemoria): mai tra le domande. */
   openClarifications?: number;
+  /** («File da compilare») Per l'email «nuove»: quante domande nuove hanno un file da compilare. */
+  fillInQuestions?: number;
 }
 
 export type ReferentEmailInput =
@@ -65,6 +67,8 @@ export type ReferentEmailInput =
        * zero); «domande» o assente: i testi del rilascio 4.
        */
       kind?: "referente" | "domande";
+      /** («File da compilare») Quante domande hanno un file da compilare: con almeno una, la riga `FILL_IN_LINE`. */
+      fillInQuestions?: number;
     }
   /** Da 1 a n voci, nell'ordine di creazione delle richieste. replyName c'è solo se tutte le voci hanno chi chiede uguale e la risposta all'email arriva a quella persona. */
   | { template: "promemoria"; company: string; entries: ReminderEntry[]; replyToKnown: boolean; replyName: string | null; accountNotice?: boolean }
@@ -129,6 +133,16 @@ function teamAccessBlocks(cardLink: string | null | undefined, accountNotice = f
   return accountNotice ? [{ small: ACCOUNT_NOTICE_LINE }] : [];
 }
 
+/**
+ * («File da compilare») La riga dell'email quando almeno una domanda ha un file da compilare: mai il nome del file,
+ * mai quali domande. Sta prima del pulsante del link.
+ */
+export const FILL_IN_LINE = "Alcune domande hanno un file da compilare: lo scarichi dal link.";
+
+function fillInBlocks(questions: number | undefined): Block[] {
+  return (questions ?? 0) > 0 ? [{ p: FILL_IN_LINE }] : [];
+}
+
 const questionsWord = (n: number) => (n === 1 ? "una domanda" : `${n} domande`);
 const openWord = (n: number) => (n === 1 ? "una domanda aperta" : `${n} domande aperte`);
 
@@ -154,7 +168,15 @@ export function referentNewsParts(e: ReminderEntry, input: { company: string; re
       : { subject: `${e.newQuestions} novità sul caso d'uso «${uc}»`, line: `Hai ${e.newQuestions} novità sul caso d'uso «${uc}»: le trovi con lo stesso link.`, label: "Apri le novità" };
     return {
       subject: subjectFor(input.company, what.subject),
-      blocks: [{ p: "Buongiorno," }, { p: what.line }, { link: { href: link, label: what.label } }, { small: expiry(e.expiresAt) }, ...teamAccessBlocks(e.cardLink, input.accountNotice === true), reply],
+      blocks: [
+        { p: "Buongiorno," },
+        { p: what.line },
+        ...fillInBlocks(e.fillInQuestions),
+        { link: { href: link, label: what.label } },
+        { small: expiry(e.expiresAt) },
+        ...teamAccessBlocks(e.cardLink, input.accountNotice === true),
+        reply,
+      ],
     };
   }
   return {
@@ -162,6 +184,7 @@ export function referentNewsParts(e: ReminderEntry, input: { company: string; re
     blocks: [
       { p: "Buongiorno," },
       { p: `${name(e.requesterName)} ha aggiunto ${questionsWord(e.newQuestions)} sul caso d'uso «${uc}»: le trovi insieme alle altre, con lo stesso link.` },
+      ...fillInBlocks(e.fillInQuestions),
       { link: { href: link, label: "Apri le domande" } },
       { small: expiry(e.expiresAt) },
       ...teamAccessBlocks(e.cardLink, input.accountNotice === true),
@@ -295,6 +318,7 @@ export function referentRequestParts(input: Extract<ReferentEmailInput, { templa
     if (input.message && input.message.trim()) blocks.push({ quote: multiLine(input.message, 1000) });
     blocks.push(
       { p: "Bastano pochi minuti, anche dal telefono. Se un'informazione non ce l'hai, scegli «Non ce l'ho»." },
+      ...fillInBlocks(input.fillInQuestions),
       { link: { href: link, label: "Inizia" } },
       { small: expiry(input.expiresAt) },
       ...teamAccessBlocks(input.cardLink, input.accountNotice === true),
@@ -313,6 +337,7 @@ export function referentRequestParts(input: Extract<ReferentEmailInput, { templa
   if (input.message && input.message.trim()) blocks.push({ quote: multiLine(input.message, 1000) });
   blocks.push(
     { p: "Bastano pochi minuti, anche dal telefono. Se un'informazione non ce l'hai, scegli «Non ce l'ho». Se hai un documento utile, allegalo." },
+    ...fillInBlocks(input.fillInQuestions),
     { link: { href: link, label: "Apri le domande" } },
     { small: expiry(input.expiresAt) },
     ...teamAccessBlocks(input.cardLink, input.accountNotice === true),

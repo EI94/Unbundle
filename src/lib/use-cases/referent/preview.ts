@@ -51,6 +51,8 @@ export interface ReferentRequestPreviewInput {
   today: Date;
   /** (Rilascio 5) «referente»: l'email della richiesta al referente (conferma, stima, domande). */
   kind?: "referente" | "domande";
+  /** («File da compilare») Quante domande spuntate hanno un file da compilare pulito (`fillInNeedIds`). */
+  fillInQuestions?: number;
 }
 
 /** L'oggetto e i blocchi dell'email che riceve il referente, senza il link vero né la riga dell'account. */
@@ -68,7 +70,18 @@ export function referentRequestPreview(input: ReferentRequestPreviewInput): Refe
     replyToKnown: true,
     cardLink: null,
     accountNotice: false,
+    fillInQuestions: Math.max(0, input.fillInQuestions ?? 0),
   });
+}
+
+/**
+ * («File da compilare») Le esigenze con un file da compilare che il referente riceve davvero (pulito): «con file da
+ * compilare» nell'anteprima e la riga dell'email. Un PDF da controllare non conta finché non è accettato.
+ */
+export function fillInNeedIds(needs: Readonly<Record<string, { templates?: readonly { status: string }[] }>> | null | undefined): Set<string> {
+  const out = new Set<string>();
+  for (const [id, view] of Object.entries(needs ?? {})) if ((view.templates ?? []).some((t) => t.status === "pulito")) out.add(id.toLowerCase());
+  return out;
 }
 
 /**
@@ -88,6 +101,7 @@ export function referentNewQuestionsPreview(input: Omit<ReferentRequestPreviewIn
       expiresAt: new Date(input.today.getTime() + REFERENT_LIMITS.linkDays * DAY_MS),
       link: PREVIEW_LINK,
       cardLink: null,
+      fillInQuestions: Math.max(0, input.fillInQuestions ?? 0),
     },
     { company: input.company ?? "", replyToKnown: true, accountNotice: false },
   );

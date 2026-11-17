@@ -101,6 +101,11 @@ export interface ReferentRequestFacts {
   checkPending?: boolean;
   /** (Rilascio 6) I chiarimenti del team che aspettano il referente: contano in `openItems`, mai tra le domande delle email. */
   openClarifications?: number;
+  /**
+   * («File da compilare») Le domande con un file da compilare pulito: tutte per la prima email, le nuove non ancora
+   * risposte per l'email «nuove». Con almeno una, l'email ha la riga `FILL_IN_LINE`.
+   */
+  fillInQuestions?: number;
 }
 
 /** (Rilascio 5) Le domande aperte di una richiesta, senza la conferma ancora da inviare e (rilascio 6) senza i chiarimenti. */
@@ -273,6 +278,7 @@ export function planReferentDelivery(
         cardLink: cardLinkOf(e, f, req, o.origin),
         accountNotice: accountNoticeOf(f),
         kind: req.referentRequest ? "referente" : "domande",
+        fillInQuestions: Math.max(0, req.fillInQuestions ?? 0),
       }),
       after: [{ requestId: req.id, reminder: null, first: true, manual: false }],
     };
@@ -349,6 +355,8 @@ export function planReferentDelivery(
             clarifications: x.item?.clarifications ?? 0,
             replies: x.item?.replies ?? 0,
             openClarifications: Math.max(0, x.openClarifications ?? 0),
+            // («File da compilare») Solo l'email «nuove» ha la riga: i promemoria no.
+            fillInQuestions: x.item?.kind === "nuove" ? Math.max(0, x.fillInQuestions ?? 0) : 0,
           }),
         ),
     }),

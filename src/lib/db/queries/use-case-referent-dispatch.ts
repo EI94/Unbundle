@@ -2,7 +2,8 @@ import "server-only";
 import { getAppUcExecutor, type UcExecutor, type UcRow } from "@/lib/db/uc-executor";
 import { loadUserContext } from "@/lib/db/queries/uc-cases";
 import { loadSubprocessorAck } from "@/lib/db/queries/uc-subprocessors";
-import { lsDomainsOf, logReferentError, readReferentPerson, type Env } from "@/lib/db/queries/use-case-referent-base";
+import { lsDomainsOf, logReferentError, readReferentPerson, templateFilesStoreReady, type Env } from "@/lib/db/queries/use-case-referent-base";
+import { fillInQuestionsSql } from "@/lib/db/queries/use-case-template-files";
 import type { ReferentEmailTemplate, ReferentReminderKind, ReferentRequestStatus } from "@/lib/db/use-case-hub-referents-ddl";
 import { DISPATCH_LEASE_MINUTES, RETRY_DELAY_MINUTES, type DispatchEnv, type UcMailer } from "@/lib/uc/notify/dispatch";
 import { rowBool, rowDate, rowNumber, rowString } from "@/lib/uc/sql/readiness";
@@ -67,8 +68,11 @@ function scopeOf(requestId: string | null): ReturnType<typeof ucSql> {
 }
 
 /** Le colonne di una richiesta per il motore; la voce del promemoria con il suo tipo. */
-function requestFactsSql(i: { emailId: string; template: ReferentEmailTemplate; requestId: string | null; workspaceId: string }): UcStatement {
+function requestFactsSql(i: { emailId: string; template: ReferentEmailTemplate; requestId: string | null; workspaceId: string; templates: boolean }): UcStatement {
   const ws = cast(i.workspaceId, "uuid");
+  // («File da compilare») Quante domande hanno un file da compilare pulito: tutte quelle della richiesta per la prima
+  // email, le nuove non ancora risposte per l'email «nuove». Senza la 0040: zero, senza leggere le tabelle.
+  const fillIn = (items: ReturnType<typeof raw>) => (i.templates ? ucSql`${fillInQuestionsSql("r", items)} AS fill_in_questions` : raw("0 AS fill_in_questions"));
   // (Rilascio 5) Una richiesta al referente (la riga della conferma c'è) e la sua conferma ancora da inviare.
   const common = ucSql`${raw(`r.id, r.use_case_id, r.status, r.expires_at, r.sent_at, r.reminder_count, r.last_email_at, r.message, r.requester_name, r.requested_by_user_id, r.created_at,
   (r.status = 'inviata' AND r.revoked_at IS NULL AND r.expires_at > now()) AS live, u.code, u.title,
@@ -78,13 +82,14 @@ function requestFactsSql(i: { emailId: string; template: ReferentEmailTemplate; 
   // Già partita ma senza link valido per l'indirizzo di adesso («Correggi l'email»).
   const changed = ucSql`(r.sent_at IS NOT NULL AND NOT ${validLinkSql("r")}) AS address_changed`;
   if (i.template !== "promemoria") {
-    return toStatement(ucSql`SELECT ${common}, ${changed}, ${openItemsCountSql("r")} AS open_items, 0 AS new_questions, NULL::text AS item_kind, false AS already_sent,
+    return toStatement(ucSql`SELECT ${common}, ${changed}, ${openItemsCountSql("r")} AS open_items, 0 AS new_questions, NULL::text AS item_kind, false AS already_sent, ${fillIn(raw("TRUE"))},
   (SELECT count(*)::int FROM use_case_referent_request_items x WHERE x.request_id = r.id AND x.answered_at >= (date_trunc('day', now() AT TIME ZONE 'Europe/Rome') AT TIME ZONE 'Europe/Rome'))
   + (SELECT count(*)::int FROM use_case_referent_checks xc WHERE xc.request_id = r.id AND xc.submitted_at >= (date_trunc('day', now() AT TIME ZONE 'Europe/Rome') AT TIME ZONE 'Europe/Rome')) AS answered_today
 FROM use_case_referent_requests r JOIN use_cases u ON u.id = r.use_case_id AND u.workspace_id = r.workspace_id
 WHERE r.id = ${cast(i.requestId, "uuid")} AND r.workspace_id = ${ws}`);
   }
   return toStatement(ucSql`SELECT ${common}, ${changed}, ${openItemsCountSql("r")} AS open_items, it.new_questions, it.kind AS item_kind, it.clarifications, it.replies,
+  ${fillIn(raw("x.follow_up AND x.answered_at IS NULL"))},
   EXISTS (SELECT 1 FROM use_case_referent_email_items o JOIN use_case_referent_emails oe ON oe.id = o.email_id
           WHERE o.request_id = r.id AND o.kind = it.kind AND o.state = 'inviata' AND o.email_id <> it.email_id
             -- (Rilascio 6) Dopo una riapertura contano solo i promemoria partiti da lì.
@@ -124,6 +129,7 @@ function requestFactsOf(r: UcRow): ReferentRequestFacts | null {
     referentRequest: rowBool(r.referent_request),
     checkPending: (rowNumber(r.check_pending) ?? 0) > 0,
     openClarifications: rowNumber(r.open_clarifications) ?? 0,
+    fillInQuestions: rowNumber(r.fill_in_questions) ?? 0,
   };
 }
 
@@ -183,7 +189,7 @@ RETURNING e.id, e.workspace_id, e.contact_id, e.request_id, e.template, e.attemp
         toStatement(ucSql`SELECT w.name AS company, c.email, c.is_active, c.anonymized_at IS NOT NULL AS anonymized, c.user_id, c.id AS contact_id
 FROM workspaces w LEFT JOIN uc_contacts c ON c.id = ${cast(e.contactId, "uuid")} AND c.workspace_id = w.id
 WHERE w.id = ${ws}`),
-        requestFactsSql({ emailId: e.id, template: e.template, requestId: e.requestId, workspaceId: e.workspaceId }),
+        requestFactsSql({ emailId: e.id, template: e.template, requestId: e.requestId, workspaceId: e.workspaceId, templates: await templateFilesStoreReady() }),
         toStatement(ucSql`SELECT EXISTS (SELECT 1 FROM use_case_referent_emails x
   WHERE x.workspace_id = ${ws} AND x.contact_id = ${cast(e.contactId, "uuid")} AND x.template = 'promemoria' AND x.status = 'inviata' AND x.id <> ${cast(e.id, "uuid")}
     AND x.sent_at >= (date_trunc('day', now() AT TIME ZONE 'Europe/Rome') AT TIME ZONE 'Europe/Rome')) AS today`),
