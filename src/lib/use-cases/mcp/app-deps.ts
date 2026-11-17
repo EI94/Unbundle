@@ -15,6 +15,9 @@ import { contextStoreReady } from "@/lib/db/queries/context-store";
 import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { getUseCaseDetail, listHubItems } from "@/lib/db/queries/use-case-hub";
 import { listWorkspaceNeeds, needUseCaseRefs } from "@/lib/db/queries/use-case-needs";
+import { readNeedTemplates, readUseCaseTemplates } from "@/lib/db/queries/use-case-template-files";
+import { getAppUcExecutor } from "@/lib/db/uc-executor";
+import { abilitiesForUseCase } from "@/lib/use-cases/permissions";
 import { getUseCaseById } from "@/lib/db/queries/use-cases";
 import { markIntegrationTokenExposed } from "@/lib/db/queries/workspace-integrations";
 import {
@@ -176,6 +179,13 @@ export const appTeamReadDeps: TeamReadDeps = {
   },
   needs: (workspaceId, viewer, opts) => listWorkspaceNeeds(workspaceId, viewer, { includeArchived: opts.includeArchived }),
   needUseCaseRefs: (workspaceId, ids, viewer) => needUseCaseRefs(workspaceId, ids, viewer),
+  // («File da compilare») In sola lettura, solo a chi vede «Cosa serve»; [] senza la 0040.
+  async templateFiles(workspaceId, scope, viewer) {
+    if (!abilitiesForUseCase(viewer).canSeeNeeds) return [];
+    const executor = await getAppUcExecutor();
+    const facts = "useCaseId" in scope ? await readUseCaseTemplates(executor, workspaceId, scope.useCaseId) : await readNeedTemplates(executor, workspaceId, scope.needIds);
+    return facts.map((f) => ({ id: f.id, name: f.name, sizeBytes: f.sizeBytes, status: f.status, needIds: f.needIds }));
+  },
   async findUseCases(workspaceId, { codes, ids }) {
     if (codes.length === 0 && ids.length === 0) return [];
     await ensureDbSchema();

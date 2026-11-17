@@ -198,6 +198,21 @@ export interface TeamReadDeps {
   needUseCaseRefs(workspaceId: string, ids: readonly string[], viewer: UseCaseViewer): Promise<Record<string, NeedUseCaseRef>>;
   /** Gli use case del workspace con questi codici o questi id: id in minuscolo e codice. */
   findUseCases(workspaceId: string, refs: { codes: readonly string[]; ids: readonly string[] }): Promise<Array<{ id: string; code: string | null }>>;
+  /**
+   * («File da compilare») I file da compilare vivi (puliti o in controllo) legati alle esigenze `needIds`, oppure quelli
+   * dello use case `useCaseId`, con le loro esigenze; [] a chi non vede «Cosa serve» o senza la 0040. Facoltativa: senza,
+   * `templateFiles` è vuoto.
+   */
+  templateFiles?(workspaceId: string, scope: { needIds: readonly string[] } | { useCaseId: string }, viewer: UseCaseViewer): Promise<TemplateFileFact[]>;
+}
+
+/** («File da compilare») Un file da compilare per l'MCP: quello che `templateFiles` mostra, più le esigenze legate. */
+export interface TemplateFileFact {
+  id: string;
+  name: string;
+  sizeBytes: number | null;
+  status: "pulito" | "in_revisione";
+  needIds: string[];
 }
 
 /** Lo stato di una scheda letto dopo una scrittura già salvata da un tentativo di prima. */
@@ -519,7 +534,10 @@ async function readDetail(principal: TeamPrincipal, deps: TeamToolDeps, useCaseI
     deps.reads.areaOptions(principal.workspaceId),
   ]);
   if (!detail || detail.projection === "contributore") return null;
+  // («File da compilare») Solo le versioni di adesso, legate ad almeno un'esigenza (una versione nuova in controllo no).
+  const templateFiles = deps.reads.templateFiles ? (await deps.reads.templateFiles(principal.workspaceId, { useCaseId }, principal.viewer)).filter((f) => f.needIds.length > 0) : [];
   return cardOutput(detail.useCase, {
+    templateFiles,
     areaOptions,
     model: detail.model,
     costBands: detail.costBands,
@@ -1110,11 +1128,14 @@ async function listNeedsTool(args: unknown, principal: TeamPrincipal, deps: Team
   const page = found.slice(offset, offset + limit);
   const linked = [...new Set(page.flatMap((need) => need.useCaseIds))];
   const refs = linked.length ? await deps.reads.needUseCaseRefs(principal.workspaceId, linked, principal.viewer) : {};
+  // («File da compilare») In sola lettura, per esigenza.
+  const templates = page.length && deps.reads.templateFiles ? await deps.reads.templateFiles(principal.workspaceId, { needIds: page.map((need) => need.id) }, principal.viewer) : [];
+  const templatesOf = (needId: string) => templates.filter((f) => f.needIds.includes(needId.toLowerCase()));
   const today = romeToday(deps.now?.() ?? new Date());
   const link = (id: string) => linkToUseCase(deps.appOrigin, principal.workspaceId, id);
   const next = offset + page.length;
   return succeeded({
-    needs: page.map((need) => needOutput(need, { today, refs, link })),
+    needs: page.map((need) => needOutput(need, { today, refs, link, templateFiles: templatesOf(need.id) })),
     total: found.length,
     nextCursor: next < found.length ? encodeCursor(next) : null,
     link: linkToNeeds(deps.appOrigin, principal.workspaceId),

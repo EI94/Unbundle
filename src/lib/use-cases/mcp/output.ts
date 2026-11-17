@@ -336,6 +336,8 @@ export interface CardOutputContext {
   valueParams?: ValueParams | null;
   /** I mesi di avvio e di entrata in uso della scheda (approvata o in realizzazione, con un modello). */
   plan?: PlannedMonths | null;
+  /** («File da compilare») I file da compilare dello use case, con le esigenze a cui sono legati. */
+  templateFiles?: readonly (TemplateFileOutput & { needIds: readonly string[] })[];
 }
 
 /** La scheda di `get_use_case` (e di `update_use_case` dopo la scrittura). */
@@ -397,6 +399,8 @@ export function cardOutput(detail: UseCaseDetail, ctx: CardOutputContext) {
     risks: detail.risks.map((id: RiskChip) => ({ id, label: RISK_LABEL[id] })),
     realization: { read: ctx.dossierRead, dossier: dossierOutput(detail.dossier) },
     costBands: costBandsOutput(ctx.costBands),
+    // («File da compilare») In sola lettura: le esigenze di ogni file sono quelle di `list_needs` (stessi id).
+    templateFiles: (ctx.templateFiles ?? []).map((f) => ({ ...templateFileOutput(f), needIds: [...f.needIds] })),
     version: detail.version,
     link: ctx.link,
   };
@@ -514,7 +518,26 @@ export interface NeedUseCaseOutput {
  * case collegati (codice, titolo, link). «Chi» (`ownerLabel`, `ownerSide`) è un testo della riga,
  * scritto dal team: nessun tool filtra o conta per persona.
  */
-export function needOutput(need: NeedView, ctx: { today: string; refs: Readonly<Record<string, NeedUseCaseRef>>; link: (useCaseId: string) => string }) {
+/**
+ * («File da compilare») Un file da compilare in `list_needs` e `get_use_case`, in sola lettura: il nome, la dimensione e
+ * lo stato del controllo («pulito»: il referente lo scarica; «in_revisione»: un PDF che aspetta il controllo di
+ * un'altra persona). Mai chi l'ha caricato. Il caricamento resta solo dal web.
+ */
+export interface TemplateFileOutput {
+  id: string;
+  name: string;
+  sizeBytes: number | null;
+  status: "pulito" | "in_revisione";
+}
+
+export function templateFileOutput(f: { id: string; name: string; sizeBytes: number | null; status: "pulito" | "in_revisione" }): TemplateFileOutput {
+  return { id: f.id, name: f.name, sizeBytes: f.sizeBytes, status: f.status };
+}
+
+export function needOutput(
+  need: NeedView,
+  ctx: { today: string; refs: Readonly<Record<string, NeedUseCaseRef>>; link: (useCaseId: string) => string; templateFiles?: readonly TemplateFileOutput[] },
+) {
   const area = needAreaOf(need.kind);
   const status = needStatusView(need.type, need.status);
   const useCases: NeedUseCaseOutput[] = need.useCaseIds.flatMap((id) => {
@@ -553,6 +576,8 @@ export function needOutput(need: NeedView, ctx: { today: string; refs: Readonly<
     archiveReason: need.archiveReason,
     doneAt: need.doneAt,
     updatedAt: need.updatedAt,
+    // («File da compilare») In sola lettura; [] senza file (o senza la 0040).
+    templateFiles: (ctx.templateFiles ?? []).map(templateFileOutput),
   };
 }
 
