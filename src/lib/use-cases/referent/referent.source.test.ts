@@ -39,7 +39,7 @@ function read(file: string): string {
 }
 
 const NEW_TABLES =
-  /\b(use_case_referent_\w+|use_case_need_answers|use_case_need_files|weekly_signal_reads|workspace_bell_state|use_case_notifications|use_case_info_state|use_case_requester_email\w*|use_case_ready_state|use_case_alert_email\w*|useCaseReferent\w*|useCaseNeedAnswers|useCaseNeedFiles|weeklySignalReads|workspaceBellState|useCaseNotifications|useCaseInfoState|useCaseRequesterEmail\w*|useCaseReadyState|useCaseAlertEmail\w*)\b/;
+  /\b(use_case_referent_\w+|use_case_need_answers|use_case_need_files|use_case_template_\w+|weekly_signal_reads|workspace_bell_state|use_case_notifications|use_case_info_state|use_case_requester_email\w*|use_case_ready_state|use_case_alert_email\w*|useCaseReferent\w*|useCaseNeedAnswers|useCaseNeedFiles|useCaseTemplate\w*|weeklySignalReads|workspaceBellState|useCaseNotifications|useCaseInfoState|useCaseRequesterEmail\w*|useCaseReadyState|useCaseAlertEmail\w*)\b/;
 
 const TABLE_FILES = new Set([
   "src/lib/db/schema.ts",
@@ -54,6 +54,8 @@ const TABLE_FILES = new Set([
   "src/lib/db/use-case-hub-referent-benefits-ddl.ts",
   // (0028) «Il filo con il referente»: il DDL dei messaggi e delle proposte dell'AI.
   "src/lib/db/use-case-hub-referent-thread-ddl.ts",
+  // (0040) «File da compilare»: il DDL dei file, dei legami con le esigenze e del primo download.
+  "src/lib/db/use-case-hub-template-files-ddl.ts",
   // (0029, rilascio 7) «Programma»: il CHECK della campanella allargato con «da_rivedere» e la riga che il cron scrive.
   "src/lib/db/use-case-hub-program-ddl.ts",
   // (0030, rilascio 8.0a) «Agent Factory»: il CHECK della campanella allargato con i tre tipi nuovi.

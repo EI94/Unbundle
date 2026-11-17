@@ -21,6 +21,7 @@ import { EVALS_DDL, EVALS_PROBE_SQL } from "./use-case-hub-evals-ddl.ts";
 import { EXTERNAL_BUILDERS_DDL, EXTERNAL_BUILDERS_PROBE_SQL } from "./use-case-hub-builders-ddl.ts";
 import { CONTEXT_DDL, CONTEXT_PROBE_SQL } from "./context-ddl.ts";
 import { MAPPING_BOARD_DDL, MAPPING_BOARD_PROBE_SQL } from "./mapping-board-ddl.ts";
+import { TEMPLATE_FILES_ADVISORY_LOCK, TEMPLATE_FILES_DDL, TEMPLATE_FILES_PROBE_SQL } from "./use-case-hub-template-files-ddl.ts";
 
 /**
  * Self-heal dello schema.
@@ -40,7 +41,7 @@ import { MAPPING_BOARD_DDL, MAPPING_BOARD_PROBE_SQL } from "./mapping-board-ddl.
  */
 
 /** Incrementa ad ogni modifica a `runOnce`: così i worker warm ri-eseguono il catch-up. */
-const ENSURE_VERSION = 33;
+const ENSURE_VERSION = 34;
 
 let ensurePromise: Promise<void> | null = null;
 let ensureVersionApplied = 0;
@@ -730,6 +731,11 @@ async function runOnce(): Promise<void> {
   // Dopo la 0038, ma non dipende dalle migrazioni dopo la 0036. Non blocca il resto dell'app: senza la 0039 la mappatura
   // resta leggibile, non modificabile (`mappingStoreReady`).
   await runMappingBoardDdlSafely();
+
+  // «File da compilare»: i file che il team allega alle esigenze per il referente (drizzle/0040_file_da_compilare.sql) ─────
+  // Dopo la 0039, ma dipende solo dalla 0024. Non blocca il resto dell'app: senza la 0040 «Aggiungi un file da compilare»
+  // non si vede, la pagina del referente non ha link e niente legge le tabelle nuove (`templateFilesStoreReady`).
+  await runTemplateFilesDdlSafely();
 }
 
 /** Dopo un errore della 0024, un nuovo tentativo al massimo ogni 5 minuti per processo, mai a ogni richiesta. */
@@ -952,6 +958,20 @@ async function runMappingBoardDdlSafely(): Promise<void> {
   } catch (err) {
     mappingBoardDdlFailedAt = Date.now();
     console.error("[db/ensure-schema] 0039 self-heal failed, the app keeps serving the mapping read only (apply drizzle/0039 by hand):", err);
+  }
+}
+
+/** Dopo un errore della 0040, come la 0024: un nuovo tentativo al massimo ogni 5 minuti per processo. */
+let templateFilesDdlFailedAt: number | null = null;
+
+/** La 0040 senza far fallire `ensureDbSchema()`, come `runUseCaseReferentsDdlSafely`. */
+async function runTemplateFilesDdlSafely(): Promise<void> {
+  try {
+    await runTemplateFilesDdl();
+    templateFilesDdlFailedAt = null;
+  } catch (err) {
+    templateFilesDdlFailedAt = Date.now();
+    console.error("[db/ensure-schema] 0040 self-heal failed, the app keeps serving without «File da compilare» (apply drizzle/0040 by hand):", err);
   }
 }
 
@@ -1254,6 +1274,20 @@ export async function runMappingBoardDdl(statements: readonly string[] = MAPPING
   ]);
 }
 
+/**
+ * Applica il DDL della 0040 in una sola transazione, con lo stesso advisory lock del file e `lock_timeout` di 3s, come la
+ * 0039. In produzione la applica questo self-heal, al primo avvio dopo il deploy; il file a mano resta la strada di
+ * riserva.
+ */
+export async function runTemplateFilesDdl(statements: readonly string[] = TEMPLATE_FILES_DDL): Promise<void> {
+  const client = db.$client;
+  await client.transaction([
+    client.query("SELECT set_config('lock_timeout', '3s', true)"),
+    client.query(`SELECT pg_advisory_xact_lock(hashtext('${TEMPLATE_FILES_ADVISORY_LOCK}'))`),
+    ...statements.map((statement) => client.query(statement)),
+  ]);
+}
+
 async function schemaLooksCurrent(): Promise<boolean> {
   try {
     const result = (await db.execute(sql`
@@ -1380,6 +1414,7 @@ async function schemaLooksCurrent(): Promise<boolean> {
         AND ${sql.raw(EXTERNAL_BUILDERS_PROBE_SQL)}
         AND ${sql.raw(CONTEXT_PROBE_SQL)}
         AND ${sql.raw(MAPPING_BOARD_PROBE_SQL)}
+        AND ${sql.raw(TEMPLATE_FILES_PROBE_SQL)}
       ) AS current;
     `)) as unknown as { rows?: Array<{ current?: unknown }> };
     return result.rows?.[0]?.current === true;
@@ -1479,6 +1514,11 @@ export async function ensureDbSchema(): Promise<void> {
     if (mappingBoardDdlFailedAt !== null && Date.now() - mappingBoardDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
       mappingBoardDdlFailedAt = Date.now();
       ensurePromise = ensurePromise.then(runMappingBoardDdlSafely);
+    }
+    // La 0040 era fallita (non fatale): come la 0024, un tentativo alla volta, dopo la pausa.
+    if (templateFilesDdlFailedAt !== null && Date.now() - templateFilesDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
+      templateFilesDdlFailedAt = Date.now();
+      ensurePromise = ensurePromise.then(runTemplateFilesDdlSafely);
     }
     return ensurePromise;
   }

@@ -271,6 +271,6 @@ test("RUNBOOK §10.20: il rilascio insieme, ENSURE_VERSION 33, la 0037, la 0038 
   assert.match(section, /Mai drizzle-kit, mai `db:push`/);
   assert.match(section, /\*\*Ritorno indietro:\*\* un passo su Vercel \(Promote del deploy di prima/);
   for (const table of MAPPING_BOARD_TABLES) assert.ok(section.includes(`\`${table}\``), table);
-  // Il numero del codice e quello del documento sono lo stesso.
-  assert.equal(Number(ensureSchema.match(/const ENSURE_VERSION = (\d+);/)?.[1]), 33);
+  // Il numero del codice non torna mai sotto quello del documento (la 0040, «File da compilare», lo porta a 34: §10.21).
+  assert.ok(Number(ensureSchema.match(/const ENSURE_VERSION = (\d+);/)?.[1]) >= 33);
 });
