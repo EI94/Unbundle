@@ -120,11 +120,13 @@ FROM use_case_need_files WHERE id = ${cast(fileId, "uuid")} AND workspace_id = $
   return fileRowOf(row);
 }
 
-function storeOf(env: Env): UcObjectStore | null {
+/** L'archivio privato dei file di «Cosa serve» (anche dei file da compilare, `use-case-template-files.ts`). */
+export function storeOf(env: Env): UcObjectStore | null {
   return ucStore("standard", env);
 }
 
-async function safeDelete(store: UcObjectStore | null, paths: readonly (string | null)[]): Promise<boolean> {
+/** Cancella gli oggetti; false se l'archivio non ha risposto (la riga resta da pulire). */
+export async function safeDelete(store: UcObjectStore | null, paths: readonly (string | null)[]): Promise<boolean> {
   const list = paths.filter((p): p is string => typeof p === "string" && p.length > 0);
   if (!store || list.length === 0) return list.length === 0;
   try {
@@ -144,7 +146,8 @@ const MESSAGES: Readonly<Record<string, string>> = {
   oggetto_mancante: "Il file non è arrivato. Riprova a caricarlo.",
 };
 
-function failCode<T>(code: string, message?: string): Result<T> {
+/** Un esito non riuscito della catena dei file, con il messaggio del suo codice. */
+export function failCode<T>(code: string, message?: string): Result<T> {
   return fail(code, message ?? MESSAGES[code] ?? REFERENT_ERROR_MESSAGES.riprova);
 }
 
@@ -272,7 +275,7 @@ function acceptedTeamFileEffects(f: FileRow, accepterUserId: string): UcStatemen
 }
 
 /** C'è nel workspace un'altra persona che può controllare un PDF caricato da `userId` (revisore, non lui). */
-async function anotherReviewerExists(executor: UcExecutor, workspaceId: string, userId: string): Promise<boolean> {
+export async function anotherReviewerExists(executor: UcExecutor, workspaceId: string, userId: string): Promise<boolean> {
   const [[row]] = await executor.batch([
     toStatement(ucSql`SELECT EXISTS (${reviewerRecipientsSql(cast(workspaceId, "uuid"), userId)}) AS ok`),
   ]);

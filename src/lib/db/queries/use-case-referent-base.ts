@@ -4,6 +4,7 @@ import { ensureDbSchema } from "@/lib/db/ensure-schema";
 import { USE_CASE_REFERENT_CHECK_PROBE_SQL } from "@/lib/db/use-case-hub-referent-check-ddl";
 import { USE_CASE_REFERENT_BENEFITS_PROBE_SQL } from "@/lib/db/use-case-hub-referent-benefits-ddl";
 import { USE_CASE_REFERENT_THREAD_PROBE_SQL } from "@/lib/db/use-case-hub-referent-thread-ddl";
+import { TEMPLATE_FILES_PROBE_SQL } from "@/lib/db/use-case-hub-template-files-ddl";
 import { getAppUcExecutor, runUcBatch, type UcExecutor, type UcRow } from "@/lib/db/uc-executor";
 import type { ReferentItemState, ReferentRequestStatus } from "@/lib/db/use-case-hub-referents-ddl";
 import { logSafeError } from "@/lib/log/safe-error";
@@ -77,6 +78,27 @@ export async function referentStoreReady(): Promise<boolean> {
     return storeReady;
   } catch (error) {
     logReferentError("archivi", error);
+    return false;
+  }
+}
+
+let templateStoreReady = false;
+
+/**
+ * («File da compilare») Gli archivi di «Chiedi al referente» e la 0040: senza, la scheda non offre «Aggiungi un file
+ * da compilare», la pagina del referente non ha link, l'email non ha la riga e niente legge le tabelle nuove. Come
+ * `referentStoreReady`, il risultato positivo si tiene per tutto il processo.
+ */
+export async function templateFilesStoreReady(): Promise<boolean> {
+  if (templateStoreReady) return true;
+  if (!(await referentStoreReady())) return false;
+  try {
+    const executor = await getAppUcExecutor();
+    const [[row]] = await executor.batch([toStatement(ucSql`SELECT ${raw(TEMPLATE_FILES_PROBE_SQL)} AS ok`)]);
+    templateStoreReady = rowBool(row?.ok);
+    return templateStoreReady;
+  } catch (error) {
+    logReferentError("archivi_da_compilare", error);
     return false;
   }
 }

@@ -133,6 +133,34 @@ export function invalidLinkResponse(): Response {
   return publicError("link_non_valido");
 }
 
+/** Un file da scaricare da una pagina pubblica: il flusso (null per una HEAD), la dimensione, il tipo e il nome. */
+export interface PublicAttachment {
+  body: ReadableStream<Uint8Array> | null;
+  size: number | null;
+  mime: string;
+  /** `Content-Disposition` già pronto: deve essere un allegato (`attachment; …`). */
+  disposition: string;
+}
+
+/**
+ * («File da compilare») Il file sempre come allegato, mai aperto nel browser (`sandbox`, `nosniff`); senza file
+ * (qualunque rifiuto) lo stesso 404 del link non valido, byte per byte.
+ */
+export function publicAttachmentResponse(file: PublicAttachment | null): Response {
+  if (!file) return invalidLinkResponse();
+  const disposition = /^attachment;/.test(file.disposition) ? file.disposition : "attachment";
+  return new Response(file.body, {
+    status: 200,
+    headers: {
+      ...PUBLIC_HEADERS,
+      "Content-Type": file.mime,
+      "Content-Disposition": disposition,
+      "Content-Security-Policy": "sandbox; default-src 'none'",
+      ...(file.size !== null && Number.isSafeInteger(file.size) && file.size >= 0 ? { "Content-Length": String(file.size) } : {}),
+    },
+  });
+}
+
 // ── Origine ───────────────────────────────────────────────────────────
 
 /**

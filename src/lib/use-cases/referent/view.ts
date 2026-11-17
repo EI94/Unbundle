@@ -17,8 +17,18 @@
  */
 import { parseCivilDate, romeDate } from "../../uc/calendar.ts";
 import type { ReferentItemState, ReferentRequestStatus } from "../../db/use-case-hub-referents-ddl.ts";
-import type { ReferentAskView, ReferentCheckView, ReferentFileView, ReferentQuestionView, ReferentThreadView } from "./contract.ts";
+import {
+  templateFileHref,
+  type NeedTemplateView,
+  type ReferentAskView,
+  type ReferentCheckView,
+  type ReferentFileView,
+  type ReferentQuestionView,
+  type ReferentTemplateView,
+  type ReferentThreadView,
+} from "./contract.ts";
 import { REFERENT_PRIVACY_NOTICE, REFERENT_REQUEST_WORD, REFERENT_UI_TEXT, fillText } from "./labels.ts";
+import { formatFileSize } from "./upload-transport.ts";
 import { nextReminderOn } from "./schedule.ts";
 import { privacyAccepted, reviewerStatus } from "./state.ts";
 
@@ -169,10 +179,20 @@ export interface PublicItemRow {
   draft: { body: string | null; dontKnow: boolean; alreadyAttached?: boolean; comment?: string | null; updatedAt: Date } | null;
   answer: { body: string | null; dontKnow: boolean; alreadyAttached?: boolean; comment?: string | null; submittedAt: Date; editedAt?: Date | null } | null;
   files: PublicFileRow[];
+  /** («File da compilare») I file da compilare legati all'esigenza, come li legge il server (anche quelli non puliti). */
+  templates?: PublicTemplateRow[];
   /** (Rilascio 6) Aggiunta dopo il primo invio («Nuove domande»). */
   followUp?: boolean;
   /** (Rilascio 6) L'informazione non è «A posto» né «Non si applica»: la risposta inviata si può cambiare. */
   editable?: boolean;
+}
+
+/** («File da compilare») Un file da compilare legato all'esigenza della domanda, non cancellato. */
+export interface PublicTemplateRow {
+  id: string;
+  fileName: string;
+  sizeBytes: number | null;
+  scanStatus: "in_quarantena" | "in_revisione" | "pulito" | "rifiutato";
 }
 
 export interface PublicFileRow {
@@ -214,9 +234,92 @@ function fileView(f: PublicFileRow): ReferentFileView {
 /** (Parte 3) Una domanda a cui ha già pensato il team: solo il titolo, mai quello che hanno scritto gli altri. */
 const isHandled = (i: PublicItemRow) => !i.open && i.state === "aperta" && i.visible && i.handled === true;
 
+/**
+ * («File da compilare») I file che il referente può scaricare da una domanda: solo quelli puliti (un PDF da
+ * controllare, un file in quarantena o rifiutato non arriva mai al referente), una volta ciascuno, nell'ordine letto.
+ */
+export function offeredTemplates(rows: readonly PublicTemplateRow[] | undefined): ReferentTemplateView[] {
+  const seen = new Set<string>();
+  const out: ReferentTemplateView[] = [];
+  for (const t of rows ?? []) {
+    const id = t.id.toLowerCase();
+    if (t.scanStatus !== "pulito" || seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, name: t.fileName, sizeBytes: t.sizeBytes });
+  }
+  return out;
+}
+
+/** («File da compilare») Un file da compilare vivo di uno use case, come lo legge il server (`readUseCaseTemplates`). */
+export interface TemplateFact {
+  id: string;
+  /** «Sostituisci»: la versione che questa prende il posto, quando è pulita (o accettata). */
+  replacesId: string | null;
+  name: string;
+  sizeBytes: number | null;
+  status: "pulito" | "in_revisione";
+  uploadedByUserId: string | null;
+  /** Le esigenze legate (una versione nuova in controllo non ne ha: prende quelle della vecchia quando è accettata). */
+  needIds: string[];
+}
+
+/**
+ * («File da compilare») I file da compilare di un'esigenza per la scheda, dal più vecchio: «Da compilare: {nome} ·
+ * Sostituisci · Togli». Un PDF da controllare lo vede solo chi modifica «Cosa serve» (`canAsk`), e lo scarica o lo
+ * controlla solo chi non l'ha caricato; la versione nuova di «Sostituisci» che aspetta il controllo sta sotto quella
+ * di adesso. Non sono risposte: un elenco a parte, che «Risposte e file» non conta.
+ */
+export function needTemplateViews(facts: readonly TemplateFact[], needId: string, o: { workspaceId: string; useCaseId: string; canAsk: boolean; viewerId: string }): NeedTemplateView[] {
+  const viewer = o.viewerId.toLowerCase();
+  const need = needId.toLowerCase();
+  const reviewable = (f: TemplateFact) => f.status === "in_revisione" && o.canAsk && f.uploadedByUserId !== viewer;
+  const href = (f: TemplateFact) => (f.status === "pulito" || reviewable(f) ? templateFileHref(o.workspaceId, o.useCaseId, f.id) : null);
+  return facts
+    .filter((f) => f.needIds.includes(need) && (f.status === "pulito" || o.canAsk))
+    .map((f) => {
+      const pending = o.canAsk ? (facts.find((p) => p.replacesId === f.id && p.status === "in_revisione") ?? null) : null;
+      return {
+        id: f.id,
+        name: f.name,
+        sizeLabel: formatFileSize(f.sizeBytes),
+        status: f.status,
+        href: href(f),
+        canEdit: o.canAsk,
+        canReview: reviewable(f),
+        pending: pending ? { id: pending.id, name: pending.name, sizeLabel: formatFileSize(pending.sizeBytes), href: href(pending), canReview: reviewable(pending) } : null,
+      };
+    });
+}
+
+/**
+ * («File da compilare») Il download vale solo per un file che la pagina di questo link offre adesso: legato a una
+ * domanda aperta o già inviata della richiesta (mai a una «gestita»), pulito. Il resto (un'altra richiesta, un file
+ * tolto o sostituito, uno da controllare) è il 404 del link non valido.
+ */
+export function templateDownloadAllowed(view: Pick<ReferentAskView, "questions"> | null, fileId: unknown): boolean {
+  if (!view || typeof fileId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(fileId)) return false;
+  const id = fileId.toLowerCase();
+  return view.questions.some((q) => q.state !== "gestita" && (q.templates ?? []).some((t) => t.id === id));
+}
+
+/**
+ * («File da compilare») La decisione del download, tutta: il link si può usare (`resolveReferentToken`: né scaduto né
+ * revocato), l'informativa è letta, e il file è sulla pagina di questo link (`templateDownloadAllowed`). Ogni «no» è lo
+ * stesso 404 del link non valido (`publicAttachmentResponse(null)`), byte per byte.
+ */
+export function templateDownloadDecision(i: {
+  access: "ok" | "non_valido" | "revocato" | "scaduto" | "non_disponibile";
+  privacyAccepted: boolean;
+  view: Pick<ReferentAskView, "questions"> | null;
+  fileId: unknown;
+}): boolean {
+  return i.access === "ok" && i.privacyAccepted && templateDownloadAllowed(i.view, i.fileId);
+}
+
 function questionView(i: PublicItemRow): ReferentQuestionView {
   const fileRequired = i.fileRequired === true;
   const followUp = i.followUp === true;
+  // («File da compilare») Una «gestita» non ha file da compilare: niente da scaricare, il team ci ha già pensato.
   if (isHandled(i)) return { needId: i.needId, position: i.position, title: i.question, state: "gestita", fileRequired, draft: null, answer: null, files: [], followUp, editable: false };
   const sent = !i.open;
   // (Rilascio 5) Le chiusure lette come sono salvate: «Non ce l'ho» vince, poi «È già allegato», poi il testo.
@@ -242,6 +345,7 @@ function questionView(i: PublicItemRow): ReferentQuestionView {
           }
         : null,
     files: i.files.filter((f) => (sent ? f.submitted : true) && f.scanStatus !== "rifiutato").map(fileView),
+    templates: offeredTemplates(i.templates),
     followUp,
     // (Rilascio 6, decisione 3) Solo una risposta inviata, del referente, su un'informazione non ancora «A posto».
     editable: sent && i.answer !== null && i.editable === true,
@@ -328,6 +432,11 @@ export const PUBLIC_VIEW_KEYS: readonly string[] = Object.freeze([
   "questions[].followUp",
   "questions[].editable",
   "questions[].answer.editedAt",
+  // («File da compilare») Il nome e la dimensione dei file da scaricare, mai chi li ha caricati né quando.
+  "questions[].templates",
+  "questions[].templates[].id",
+  "questions[].templates[].name",
+  "questions[].templates[].sizeBytes",
   "upload",
   "upload.clientMode",
   // (Rilascio 5) La richiesta al referente: la conferma e la stima, mai euro, quote o punteggi.
@@ -470,10 +579,27 @@ export const PANEL_VIEW_KEYS: readonly string[] = Object.freeze([
   "needs{}.files[].canDelete",
   "needs{}.files[].canReview",
   "needs{}.reviewExpired",
+  // («File da compilare») Non sono risposte: un elenco a parte sotto l'esigenza.
+  "needs{}.templates",
+  "needs{}.templates[].id",
+  "needs{}.templates[].name",
+  "needs{}.templates[].sizeLabel",
+  "needs{}.templates[].status",
+  "needs{}.templates[].href",
+  "needs{}.templates[].canEdit",
+  "needs{}.templates[].canReview",
+  "needs{}.templates[].pending",
+  "needs{}.templates[].pending.id",
+  "needs{}.templates[].pending.name",
+  "needs{}.templates[].pending.sizeLabel",
+  "needs{}.templates[].pending.href",
+  "needs{}.templates[].pending.canReview",
   "askableNeedIds",
   "askableNeedIds[]",
   "answerableNeedIds",
   "answerableNeedIds[]",
+  "templateNeedIds",
+  "templateNeedIds[]",
   "preparable",
   "preparable[]",
   "prepareGaps",

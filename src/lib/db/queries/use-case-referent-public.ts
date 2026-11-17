@@ -6,6 +6,7 @@ import {
   readReferentPerson,
   referentBatch,
   referentStoreReady,
+  templateFilesStoreReady,
   type Env,
   type ReferentLink,
 } from "@/lib/db/queries/use-case-referent-base";
@@ -59,7 +60,9 @@ import { REFERENT_EDIT_LOCKED_STATUSES, waitsForReferent, type ThreadMessageFact
 import { threadRowOf } from "@/lib/db/queries/use-case-referent-thread";
 import { checkDraftText, checkSubmitText } from "@/lib/use-cases/referent/text";
 import { hashReferentToken, looksLikeReferentToken, RECIPIENT_HASH_SQL } from "@/lib/use-cases/referent/tokens";
-import { toPublicView, type PublicFileRow, type PublicItemRow } from "@/lib/use-cases/referent/view";
+import { templateDownloadDecision, toPublicView, type PublicFileRow, type PublicItemRow, type PublicTemplateRow } from "@/lib/use-cases/referent/view";
+import { submitClosureOf, submitTransitionsOf, type SubmitTarget } from "@/lib/use-cases/referent/submit";
+import { openLinkTemplateDownload, requestTemplatesByNeed, requestTemplatesStatement, type TemplateDownload } from "@/lib/db/queries/use-case-template-files";
 import { referentDescription } from "@/lib/use-cases/referent/description";
 import { REFERENT_NUMBER_MAX, referentNumber, sameTeamEstimate, type TeamSnapshot } from "@/lib/use-cases/referent/estimate";
 import { REFERENT_CHECK_LIMITS } from "@/lib/db/use-case-hub-referent-check-ddl";
@@ -232,9 +235,11 @@ interface RequestFacts {
   active: boolean;
   /** (Rilascio 6) I messaggi del filo, in ordine di tempo, senza quelli tolti. */
   messages: ThreadMessageFact[];
+  /** («File da compilare») I file da compilare legati alle esigenze delle domande, per esigenza; vuoto senza la 0040. */
+  templates: Map<string, PublicTemplateRow[]>;
 }
 
-function requestStatements(link: ReferentLink): UcStatement[] {
+function requestStatements(link: ReferentLink, o: { templates: boolean }): UcStatement[] {
   const req = cast(link.requestId, "uuid");
   const ws = cast(link.workspaceId, "uuid");
   return [
@@ -278,6 +283,8 @@ FROM use_case_referent_messages m
 WHERE m.request_id = ${req} AND m.workspace_id = ${ws} AND m.removed_at IS NULL AND m.body IS NOT NULL
 ORDER BY m.created_at, m.id
 LIMIT 400`),
+    // («File da compilare») Solo con la 0040: senza, le tabelle non ci sono.
+    ...(o.templates ? [requestTemplatesStatement(link)] : []),
   ];
 }
 
@@ -286,8 +293,8 @@ function fileStatusOf(value: unknown): ReferentFileView["status"] {
   return s === "in_revisione" || s === "pulito" || s === "rifiutato" ? s : "in_quarantena";
 }
 
-async function readRequestFacts(executor: UcExecutor, link: ReferentLink): Promise<RequestFacts | null> {
-  const [[r], items, answers, files, benefits, messages] = await executor.batch(requestStatements(link));
+async function readRequestFacts(executor: UcExecutor, link: ReferentLink, o: { templates: boolean } = { templates: false }): Promise<RequestFacts | null> {
+  const [[r], items, answers, files, benefits, messages, templates] = await executor.batch(requestStatements(link, o));
   if (!r) return null;
   const expiresAt = rowDate(r.expires_at);
   if (!expiresAt) return null;
@@ -345,6 +352,7 @@ async function readRequestFacts(executor: UcExecutor, link: ReferentLink): Promi
     check: rowBool(r.has_check) ? checkFactOf(r, benefits) : null,
     active: rowBool(r.active),
     messages: messages.map(threadRowOf).filter((m): m is NonNullable<ReturnType<typeof threadRowOf>> => m !== null),
+    templates: requestTemplatesByNeed(templates ?? []),
   };
 }
 
@@ -457,7 +465,7 @@ function liveFile(f: FileFact, now: Date): boolean {
 
 export async function loadReferentAskView(link: ReferentLink, o: { env: Env; now: Date }): Promise<ReferentAskView> {
   const executor = await getAppUcExecutor();
-  const facts = await readRequestFacts(executor, link);
+  const facts = await readRequestFacts(executor, link, { templates: await templateFilesStoreReady() });
   if (!facts) throw new Error("richiesta_mancante");
   const items: PublicItemRow[] = facts.items.map((i) => {
     const draft = facts.answers.find((a) => a.needId === i.needId && a.status === "bozza") ?? null;
@@ -477,6 +485,7 @@ export async function loadReferentAskView(link: ReferentLink, o: { env: Env; now
           ? { body: answer.body, dontKnow: answer.dontKnow, alreadyAttached: answer.alreadyAttached, comment: answer.comment, submittedAt: answer.submittedAt, editedAt: answer.editedAt }
           : null,
       files: facts.files.filter((f) => f.needId === i.needId && liveFile(f, o.now)),
+      templates: facts.templates.get(i.needId) ?? [],
       followUp: i.followUp,
       editable: i.editable,
     };
@@ -794,28 +803,10 @@ WHERE b.request_id = c.request_id AND c.request_id = ${cast(link.requestId, "uui
   return { ok: true, value: { savedAt: savedAt.toISOString(), warnings } };
 }
 
-interface Target {
-  needId: string;
-  dontKnow: boolean;
-  /** (Rilascio 5) «È già allegato»: conta come una risposta, l'esigenza va «Da verificare». */
-  alreadyAttached: boolean;
-  hasDraft: boolean;
-  /** C'è un testo: solo così conta come «risposta» (un file da solo conta tra i documenti). */
-  hasText: boolean;
-  documents: number;
-}
-
-/**
- * (Rilascio 5, §3.6) Una domanda aperta è chiusa da: un testo (non su «Serve un file»), un file che si
- * può inviare, «Non ce l'ho» o «È già allegato». Il messaggio di quello che manca, per domanda.
- */
-function closureOf(i: { fileRequired: boolean }, draft: AnswerFact | null, files: number): "testo" | "file" | "non_so" | "allegato" | null {
-  if (draft?.dontKnow) return "non_so";
-  if (draft?.alreadyAttached) return "allegato";
-  if (files > 0) return "file";
-  if (!i.fileRequired && draft?.body?.trim()) return "testo";
-  return null;
-}
+// (Rilascio 5, §3.6) Le chiusure e gli stati dopo l'invio sono puri (`referent/submit.ts`): un file da compilare del
+// team non chiude mai una domanda, la chiude il file ricaricato dal referente.
+type Target = SubmitTarget;
+const closureOf = submitClosureOf;
 
 /**
  * L'invio (§3.8; rilascio 5 §6.2): tutto in un batch, oppure niente; e (D17) solo quando ogni domanda
@@ -925,8 +916,7 @@ export async function submitReferentAnswers(link: ReferentLink, body: unknown, n
   const ws = cast(link.workspaceId, "uuid");
   const req = cast(link.requestId, "uuid");
   const all = ready.map((t) => t.needId);
-  const unknownIds = ready.filter((t) => t.dontKnow).map((t) => t.needId);
-  const answerIds = ready.filter((t) => !t.dontKnow).map((t) => t.needId);
+  const { inVerifica: answerIds, mancante: unknownIds } = submitTransitionsOf(ready);
   // (Rilascio 5) Un testo che non chiude la domanda (con un file su «Serve un file») non parte; il
   // commento parte solo con una chiusura senza testo.
   const textless = ready.filter((t) => !t.hasText && t.hasDraft).map((t) => t.needId);
@@ -1143,6 +1133,25 @@ WHERE id = ${cast(file.id, "uuid")} AND request_id = ${cast(link.requestId, "uui
   ]);
   if (rows.length !== 1) return pfail("file_non_trovato");
   return { ok: true, value: { confirmed: true } };
+}
+
+// ─── File da compilare ───────────────────────────────────────────────
+
+export type { TemplateDownload } from "@/lib/db/queries/use-case-template-files";
+
+/**
+ * («File da compilare») `GET …/da-compilare?file=<id>`: il file, solo se la pagina di questo link lo offre adesso
+ * (`templateDownloadAllowed`: legato a una domanda aperta o già inviata della richiesta, pulito) e con l'informativa
+ * letta; null in ogni altro caso, e la rotta risponde con lo stesso 404 del link non valido. `record`: una GET (mai una
+ * HEAD) scrive il primo download di questa versione per questa richiesta nella Storia.
+ */
+export async function openReferentTemplateDownload(link: ReferentLink, fileId: unknown, o: { env: Env; now: Date; record: boolean }): Promise<TemplateDownload | null> {
+  // Il link arriva da `resolveReferentToken` (`access: "ok"`): scaduto, revocato o non valido non arriva qui.
+  if (!link.privacyAccepted || !isUuid(fileId)) return null;
+  if (!(await templateFilesStoreReady())) return null;
+  const view = await loadReferentAskView(link, { env: o.env, now: o.now });
+  if (!templateDownloadDecision({ access: "ok", privacyAccepted: link.privacyAccepted, view, fileId })) return null;
+  return openLinkTemplateDownload(link, fileId.toLowerCase(), { env: o.env, record: o.record });
 }
 
 // ─── Limiti, invio dopo la risposta, codici HTTP ─────────────────────

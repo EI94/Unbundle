@@ -1,7 +1,8 @@
 /**
  * Caricamento dei file di «Chiedi al referente» dal browser (SPEC §2.1), per la pagina pubblica
- * (`/api/rispondi/<token>/upload*`) e per il capitolo «Cosa serve» della scheda
- * (`/dashboard/<ws>/use-cases/<id>/allegati/upload*`). Sul modello di
+ * (`/api/rispondi/<token>/upload*`), per il capitolo «Cosa serve» della scheda
+ * (`/dashboard/<ws>/use-cases/<id>/allegati/upload*`) e («File da compilare») per i file da compilare
+ * (`/dashboard/<ws>/use-cases/<id>/da-compilare/upload*`, con `needIds` o `replacesId`). Sul modello di
  * `src/components/uc/documents/upload-transport.ts`:
  *
  * - fino a 4 MB: modalità server (multipart `file`, `needId`);
@@ -17,12 +18,22 @@
  * indietro) chiede. Nessun `server-only`: si usa nei componenti client.
  */
 import { formatNumberIt } from "../../uc/views/format.ts";
-import { REFERENT_API, REFERENT_LIMITS, referentApiBase, reviewerFilesBase, type ReferentUploadResult } from "./contract.ts";
+import { REFERENT_API, REFERENT_LIMITS, referentApiBase, reviewerFilesBase, templateFilesBase, type ReferentUploadResult } from "./contract.ts";
 import { REFERENT_ERROR_MESSAGES } from "./labels.ts";
 
+/**
+ * Dove va il file: il referente dal suo link, il team su un'esigenza («Allega un file»), oppure («File da compilare»)
+ * un file da compilare legato alle esigenze `needIds`, o la versione nuova di `replacesId` («Sostituisci»).
+ */
 export type ReferentUploadDestination =
   | { kind: "referente"; token: string; needId: string }
-  | { kind: "revisore"; workspaceId: string; useCaseId: string; needId: string };
+  | { kind: "revisore"; workspaceId: string; useCaseId: string; needId: string }
+  | { kind: "da_compilare"; workspaceId: string; useCaseId: string; needIds: readonly string[]; replacesId: string | null };
+
+/** I campi che dicono al server a quali esigenze va un file da compilare, o quale versione sostituisce. */
+function templateTarget(dest: Extract<ReferentUploadDestination, { kind: "da_compilare" }>): { needIds: string[] } | { replacesId: string } {
+  return dest.replacesId ? { replacesId: dest.replacesId } : { needIds: [...dest.needIds] };
+}
 
 export type ReferentUploadOutcome = { ok: true; file: ReferentUploadResult } | { ok: false; code: string; message: string };
 
@@ -31,9 +42,9 @@ const GENERIC = "Caricamento non riuscito. Riprova tra poco.";
 const TOO_BIG_SERVER = "Il file supera il limite di 4 MB. Dividilo, oppure salvalo come CSV o XLSX.";
 
 function baseOf(dest: ReferentUploadDestination): string {
-  return dest.kind === "referente"
-    ? referentApiBase(dest.token)
-    : reviewerFilesBase(encodeURIComponent(dest.workspaceId), encodeURIComponent(dest.useCaseId));
+  if (dest.kind === "referente") return referentApiBase(dest.token);
+  if (dest.kind === "da_compilare") return templateFilesBase(encodeURIComponent(dest.workspaceId), encodeURIComponent(dest.useCaseId));
+  return reviewerFilesBase(encodeURIComponent(dest.workspaceId), encodeURIComponent(dest.useCaseId));
 }
 
 function fetchInit(dest: ReferentUploadDestination, init: RequestInit): RequestInit {
@@ -89,8 +100,14 @@ async function postJson(dest: ReferentUploadDestination, path: string, body: unk
 async function serverUpload(dest: ReferentUploadDestination, file: File, opts: { validate?: boolean }): Promise<ReferentUploadOutcome> {
   const form = new FormData();
   form.set("file", file, file.name);
-  form.set("needId", dest.needId);
-  form.set("declaration", "true");
+  if (dest.kind === "da_compilare") {
+    const target = templateTarget(dest);
+    if ("replacesId" in target) form.set("replacesId", target.replacesId);
+    else form.set("needIds", JSON.stringify(target.needIds));
+  } else {
+    form.set("needId", dest.needId);
+    form.set("declaration", "true");
+  }
   if (dest.kind === "revisore" && opts.validate) form.set("validate", "true");
   let result: Parsed;
   try {
@@ -106,7 +123,8 @@ async function serverUpload(dest: ReferentUploadDestination, file: File, opts: {
 
 async function clientUpload(dest: ReferentUploadDestination, file: File, opts: { validate?: boolean }): Promise<ReferentUploadOutcome> {
   const validate = dest.kind === "revisore" && opts.validate ? { validate: true } : {};
-  const ticket = await postJson(dest, REFERENT_API.uploadToken, { needId: dest.needId, fileName: file.name, size: file.size, declaration: true, ...validate });
+  const target = dest.kind === "da_compilare" ? templateTarget(dest) : { needId: dest.needId, declaration: true };
+  const ticket = await postJson(dest, REFERENT_API.uploadToken, { ...target, fileName: file.name, size: file.size, ...validate });
   if (!ticket.ok) return ticket;
   const t = ticket.data as { fileId?: unknown; pathname?: unknown; clientToken?: unknown; contentType?: unknown } | null;
   if (!t || typeof t.fileId !== "string" || typeof t.pathname !== "string" || typeof t.clientToken !== "string") return { ok: false, code: "errore", message: GENERIC };

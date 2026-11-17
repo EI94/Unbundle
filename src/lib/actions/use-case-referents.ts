@@ -21,6 +21,7 @@ import { requireSession } from "@/lib/auth/redirect-to-login";
 import { viewerFromSession } from "@/lib/db/queries/use-case-hub";
 import { scheduleReferentDispatch } from "@/lib/db/queries/use-case-referent-public";
 import { cleanupDeletedFiles } from "@/lib/db/queries/use-case-referent-files";
+import { removeTemplateFromNeed, reviewTemplateFile } from "@/lib/db/queries/use-case-template-files";
 import {
   addReviewerAnswer,
   addToReferentRequest,
@@ -374,6 +375,29 @@ export async function reviewNeedFileAction(workspaceId: string, useCaseId: strin
   if (!p.ok) return p.result;
   const result = await reviewNeedFile(p.ctx, useCaseId, fileId, outcome, process.env);
   if (result.ok && result.value.status === "rifiutato") afterFiles(workspaceId);
+  return done(workspaceId, useCaseId, result, (v) => ({ data: null, message: v.status === "pulito" ? T.fileAccepted : T.fileRejected }));
+}
+
+// ─── («File da compilare») ───────────────────────────────────────────
+
+/** «Togli» su un'esigenza: il file da compilare non è più lì; dall'ultima esigenza, il file si cancella. L'esigenza non cambia. */
+export async function removeTemplateFileAction(workspaceId: string, useCaseId: string, fileId: string, needId: string): Promise<ReferentActionResult> {
+  if (!isUuid(workspaceId) || !isUuid(useCaseId) || !isUuid(fileId) || !isUuid(needId)) return failure("non_trovato");
+  const session = await requireSession();
+  const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
+  if (!p.ok) return p.result;
+  const result = await removeTemplateFromNeed(p.ctx, useCaseId, fileId, needId, process.env);
+  return done(workspaceId, useCaseId, result, () => ({ data: null, message: T.templateRemoved }));
+}
+
+/** «Accetta il file» / «Rifiuta il file» su un PDF da compilare con poco testo: mai chi l'ha caricato. */
+export async function reviewTemplateFileAction(workspaceId: string, useCaseId: string, fileId: string, outcome: FileReviewOutcome): Promise<ReferentActionResult> {
+  if (!isUuid(workspaceId) || !isUuid(useCaseId) || !isUuid(fileId)) return failure("non_trovato");
+  if (outcome !== "accetta" && outcome !== "rifiuta") return failure("revisione_non_ammessa");
+  const session = await requireSession();
+  const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
+  if (!p.ok) return p.result;
+  const result = await reviewTemplateFile(p.ctx, useCaseId, fileId, outcome, process.env);
   return done(workspaceId, useCaseId, result, (v) => ({ data: null, message: v.status === "pulito" ? T.fileAccepted : T.fileRejected }));
 }
 

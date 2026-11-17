@@ -36,20 +36,23 @@ import { looksLikeReferentToken } from "@/lib/use-cases/referent/tokens";
  * 2. scritture: su Vercel (anteprime comprese) senza `UC_SECRET` → 503; `Origin` dello stesso sito;
  *    corpo JSON ≤ 256 KB (i caricamenti multipart leggono il corpo da sé, con il loro limite);
  * 3. archivi pronti (`referentStoreReady`), altrimenti 503;
- * 4. scritture: limite per impronta dell'IP (120 al minuto) prima di leggere il link;
+ * 4. scritture (e il download del file da compilare): limite per impronta dell'IP (120 al minuto) prima di
+ *    leggere il link;
  * 5. una sola lettura per il link (`resolveReferentToken`): sbagliato, scaduto, revocato, oppure di un
  *    workspace con la funzione spenta → `link_non_valido`, sempre la stessa risposta 404;
- * 6. scritture: limite per link e tipo di chiamata (`ucq:<link>:<tipo>`);
+ * 6. scritture (e il download del file da compilare): limite per link e tipo di chiamata (`ucq:<link>:<tipo>`);
  * 7. il comando.
  *
  * La pagina non legge mai la sessione: vale uguale da disconnessi e da connessi, con qualsiasi ruolo.
- * Le GET non scrivono niente, nemmeno i contatori dei limiti. Nei log solo il tipo di chiamata e un
- * codice: mai il token, il corpo o un testo.
+ * Le GET non scrivono niente, nemmeno i contatori dei limiti, tranne una: («File da compilare») il download
+ * del file da compilare (`rate` con `write: false`) conta nei limiti per IP e per link e registra il primo
+ * download nella Storia. Nei log solo il tipo di chiamata e un codice: mai il token, il corpo o un testo.
  */
 
 export interface ReferentPublicSpec {
   /** Scrive: `UC_SECRET` su Vercel, `Origin`, corpo JSON, limiti di frequenza. */
   write: boolean;
+  /** Il limite per link; con `write: false` solo il download del file da compilare, che conta anche per IP. */
   rate: RateLimitKind | null;
   /** `json` (default, ≤ 256 KB) oppure `raw`: il comando legge da sé il corpo (multipart). */
   body?: "json" | "raw";
@@ -91,13 +94,13 @@ export async function handleReferentPublic(request: Request, token: string, spec
     }
     if (!(await referentStoreReady())) return publicError("non_disponibile");
     const now = new Date();
-    if (spec.write) {
+    if (spec.write || spec.rate) {
       const ipRule = ipRateLimitRule(requestIpHash(request.headers, process.env.UC_SECRET));
       if (ipRule && (await hitRateLimits(await getAppUcExecutor(), [ipRule]))) return publicError("troppe_richieste", { retryAfterSeconds: retryAfter(ipRule.unit, now) });
     }
     const resolved = await resolveReferentToken(token, now);
     if (resolved.access !== "ok" || !referentAskEnabled(resolved.link.workspaceId, process.env)) return invalidLinkResponse();
-    if (spec.write && spec.rate) {
+    if (spec.rate) {
       const rule = referentRateRule(resolved.link.tokenId, spec.rate);
       if (await hitRateLimits(await getAppUcExecutor(), [rule])) return publicError("troppe_richieste", { retryAfterSeconds: retryAfter(rule.unit, now) });
     }

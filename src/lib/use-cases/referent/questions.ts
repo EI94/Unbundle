@@ -44,3 +44,28 @@ export function answerableNeeds(needs: readonly NeedView[], useCaseId: string): 
     .slice()
     .sort(compareNeeds);
 }
+
+/**
+ * («File da compilare») Gli stati in cui un'esigenza accetta un file da compilare: ancora da chiedere, chiesta,
+ * mancante o parziale. Il file non cambia lo stato: resta «Da chiedere» o «Chiesta».
+ */
+export const TEMPLATE_NEED_STATUSES = ["da_chiedere", "chiesta", "mancante", "parziale"] as const satisfies readonly NeedStatus[];
+
+/**
+ * («File da compilare») Le esigenze della scheda a cui legare un file da compilare, nell'ordine della scheda:
+ * requisiti collegati e non archiviati, dalla parte del cliente, «Insieme» o di nessuno, in `TEMPLATE_NEED_STATUSES`.
+ * Il server ricontrolla le stesse regole (`templateNeedSql` in `queries/use-case-template-files.ts`).
+ */
+export function templateNeeds(needs: readonly NeedView[], useCaseId: string): NeedView[] {
+  return needs
+    .filter(
+      (need) =>
+        need.type === "requisito" &&
+        !need.archivedAt &&
+        linkedTo(need, useCaseId) &&
+        (ASKABLE_SIDES as readonly (string | null)[]).includes(need.ownerSide ?? null) &&
+        (TEMPLATE_NEED_STATUSES as readonly string[]).includes(need.status),
+    )
+    .slice()
+    .sort(compareNeeds);
+}

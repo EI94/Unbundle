@@ -96,9 +96,10 @@ const TABLE_FILES = new Set([
   // (0040) «File da compilare»: il legame di un file con un'esigenza (solo l'id, chiave esterna) e, nel modulo del
   // file, i controlli su un'esigenza dello use case (requisito, collegata, non archiviata). Mai un testo delle esigenze.
   "src/lib/db/use-case-hub-template-files-ddl.ts",
+  "src/lib/use-cases/referent/template-sql.ts",
 ]);
 
-const READS =/\b(listWorkspaceNeeds|getWorkspaceNeed|needUseCaseRefs)\b|queries\/use-case-needs/;
+const READS = /\b(listWorkspaceNeeds|getWorkspaceNeed|needUseCaseRefs)\b|queries\/use-case-needs/;
 const READ_FILES = new Set([
   "src/lib/db/queries/use-case-needs.ts",
   "src/components/use-cases/hub.tsx",

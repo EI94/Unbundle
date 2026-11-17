@@ -64,6 +64,17 @@ SELECT u.workspace_id, u.id, ${actorColumns(i.actor)}, 'modificato', ${REFERENT_
 FROM use_cases u WHERE u.id = ${id(i.useCaseId, "use case")} AND u.workspace_id = ${id(i.workspaceId, "workspace")}`);
 }
 
+/**
+ * («File da compilare») Una riga `richiesta_referente` solo quando `once` scrive una riga: `once` è un INSERT … ON
+ * CONFLICT DO NOTHING RETURNING 1 (una CTE che scrive), così due download insieme ne registrano uno.
+ */
+export function referentEventOnceSql(i: { workspaceId: string; useCaseId: string; code: ReferentHistoryCode; actor: ReferentActor; once: SqlFragment }): UcStatement {
+  return toStatement(ucSql`WITH once AS (${i.once})
+${EVENT_COLUMNS}
+SELECT u.workspace_id, u.id, ${actorColumns(i.actor)}, 'modificato', ${REFERENT_FIELD}, NULL, ${cast(i.code, "text")}
+FROM use_cases u WHERE u.id = ${id(i.useCaseId, "use case")} AND u.workspace_id = ${id(i.workspaceId, "workspace")} AND EXISTS (SELECT 1 FROM once)`);
+}
+
 /** Una riga `richiesta_referente` per ogni richiesta che soddisfa `filter` (alias `r`). */
 export function referentEventsForRequestsSql(i: { filter: SqlFragment; code: ReferentHistoryCode | SqlFragment; actor: ReferentActor }): UcStatement {
   const code = typeof i.code === "string" ? cast(i.code, "text") : i.code;

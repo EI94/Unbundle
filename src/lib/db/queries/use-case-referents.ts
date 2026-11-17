@@ -28,6 +28,7 @@ import {
   rfailVars,
   silentOf,
   logReferentError,
+  templateFilesStoreReady,
   type AskRow,
   type Env,
   type ReferentFailure,
@@ -36,6 +37,7 @@ import { createReferentDispatchStore, runReferentDispatchWith } from "@/lib/db/q
 import { processReferentSuggestions } from "@/lib/db/queries/use-case-referent-ai";
 import { REFERENT_AI_LIMITS, referentAiSuggestionsOn } from "@/lib/use-cases/referent/ai-followup";
 import { cleanupPendingFiles, deleteFileObjects, collectDeletedFileRows } from "@/lib/db/queries/use-case-referent-files";
+import { cleanupPendingTemplateFiles, readUseCaseTemplates } from "@/lib/db/queries/use-case-template-files";
 import { dispatchRequesterAlerts, purgeOldNotifications } from "@/lib/db/queries/use-case-notifications";
 import {
   dispatchCaseAlerts,
@@ -78,7 +80,7 @@ import {
 import { contactHubOnlyReadSql, contactHubOnlySql, contactUseCasesSql, referentEraseStatements, referentPurgeStatements } from "@/lib/use-cases/referent/erase";
 import { REFERENT_ERROR_MESSAGES, REFERENT_THREAD_TEXT, REFERENT_UI_TEXT, companyLabel, fillText } from "@/lib/use-cases/referent/labels";
 import { gapsOf, missingPreparedQuestions, preparedNeedInput } from "@/lib/use-cases/referent/prepare";
-import { askableNeeds, answerableNeeds } from "@/lib/use-cases/referent/questions";
+import { askableNeeds, answerableNeeds, templateNeeds } from "@/lib/use-cases/referent/questions";
 import { manualReminderCheck, referentReminderDue, retentionDue, sameRomeDay, isStaleEmail, type ReminderState } from "@/lib/use-cases/referent/schedule";
 import {
   cancelQueuedForRequestsStatements as cancelQueuedRaw,
@@ -134,7 +136,7 @@ import {
 } from "@/lib/db/queries/use-case-referent-thread";
 import { threadEmailAt, waitsForReferent } from "@/lib/use-cases/referent/thread";
 import { formatFileSize } from "@/lib/use-cases/referent/upload-transport";
-import { maskEmail, needReferentLine, referentDateLabel, requestLines, requestWordOf, type LatestAskForNeed } from "@/lib/use-cases/referent/view";
+import { maskEmail, needReferentLine, needTemplateViews, referentDateLabel, requestLines, requestWordOf, type LatestAskForNeed } from "@/lib/use-cases/referent/view";
 import type { UseCaseNeedLists } from "@/lib/use-cases/needs";
 import type { ServiceResult, WriteContext } from "@/lib/use-cases/service";
 
@@ -611,12 +613,15 @@ export async function loadUseCaseReferentPanel(i: {
     const threadRows: ThreadRow[] = threadMessageRows.map(threadRowOf).filter((r): r is ThreadRow => r !== null);
     const threadByRequest = threadFactsByRequest(threadRows);
     const reviewExpired = new Set(expiredRows.map((r) => String(r.need_id).toLowerCase()));
-    const [asks, ack, lsMembers, builders] = await Promise.all([
+    const [asks, ack, lsMembers, builders, templatesReady] = await Promise.all([
       readAsksForNeeds(executor, ws, requirementIds),
       loadSubprocessorAck(executor, ws),
       readLsMemberEmails(executor, ws),
       workspaceBuilderEmails(executor, ws),
+      templateFilesStoreReady(),
     ]);
+    // («File da compilare») I file da compilare dello use case, con le loro esigenze; [] senza la 0040.
+    const templateFacts = templatesReady ? await readUseCaseTemplates(executor, ws, uc) : [];
     const lsDomains = lsDomainsOf(env);
     const requests = requestRows.map((r) => requestRowOf(r, now)).filter((r): r is RequestRow => r !== null);
     // (Rilascio 5.1) Le risposte per beneficio inviate, sulla conferma della loro richiesta.
@@ -899,7 +904,15 @@ export async function loadUseCaseReferentPanel(i: {
             canReview: reviewable,
           };
         });
-      needsView[id] = { needId: id, line: needReferentLine(latestLine, today, uc), silent: silentNeed, answers, files, reviewExpired: reviewExpired.has(id) };
+      needsView[id] = {
+        needId: id,
+        line: needReferentLine(latestLine, today, uc),
+        silent: silentNeed,
+        answers,
+        files,
+        reviewExpired: reviewExpired.has(id),
+        templates: needTemplateViews(templateFacts, id, { workspaceId: ws, useCaseId: uc, canAsk, viewerId: i.session.id }),
+      };
     }
 
     // (Rilascio 5, §9.5) Il referente dello use case, dalle richieste: mai salvato, mai contato per persona.
@@ -967,6 +980,7 @@ export async function loadUseCaseReferentPanel(i: {
       needs: needsView,
       askableNeedIds: askable.map((n) => n.id.toLowerCase()),
       answerableNeedIds: answerableNeeds(cardNeeds, uc).map((n) => n.id.toLowerCase()),
+      templateNeedIds: canAsk && templatesReady ? templateNeeds(cardNeeds, uc).map((n) => n.id.toLowerCase()) : [],
       preparable,
       prepareGaps,
       requester: { name: i.session.name?.trim() || "", email: i.session.email ? i.session.email.toLowerCase() : null },
@@ -2445,6 +2459,12 @@ RETURNING id`,
     counts.quarantine += await cleanupPendingFiles(env, now);
     const rows = await collectDeletedFileRows(null, 200);
     counts.blobs += await deleteFileObjects(rows, env);
+  });
+
+  // 6b. («File da compilare») Le stesse pulizie per i file da compilare: quarantene e PDF scaduti, oggetti dei file
+  // tolti o sostituiti. Un passo a parte: un errore qui non ferma le pulizie dei file delle risposte.
+  await step("cron_da_compilare", async () => {
+    counts.quarantine += await cleanupPendingTemplateFiles(env, now);
   });
 
   // 8. Conservazione: 12 mesi dopo la fine, senza esigenze ancora da verificare.

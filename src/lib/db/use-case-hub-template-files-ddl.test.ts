@@ -108,8 +108,8 @@ test("i vincoli con nome sono tutti nella sonda, e la sonda non ne cerca altri",
 });
 
 test("la stessa catena dei file di «Cosa serve»: tipi, stati, limiti e i quattro CHECK di coerenza", () => {
-  const needFiles = USE_CASE_REFERENTS_DDL.find((s) => s.startsWith("CREATE TABLE IF NOT EXISTS use_case_need_files ("));
-  assert.ok(needFiles);
+  const needFiles: string = USE_CASE_REFERENTS_DDL.find((s) => s.startsWith("CREATE TABLE IF NOT EXISTS use_case_need_files (")) ?? "";
+  assert.ok(needFiles, "manca use_case_need_files nella 0024");
   assert.equal(check(files, "use_case_template_files_kind_check"), `CONSTRAINT use_case_template_files_kind_check CHECK (kind IS NULL OR kind IN ${inList(TEMPLATE_FILE_KINDS)})`);
   assert.equal(check(files, "use_case_template_files_scan_check"), `CONSTRAINT use_case_template_files_scan_check CHECK (scan_status IN ${inList(TEMPLATE_SCAN_STATUSES)})`);
   assert.equal(check(files, "use_case_template_files_deleted_reason_check"), `CONSTRAINT use_case_template_files_deleted_reason_check CHECK (deleted_reason IS NULL OR deleted_reason IN ${inList(TEMPLATE_DELETED_REASONS)})`);
@@ -117,8 +117,8 @@ test("la stessa catena dei file di «Cosa serve»: tipi, stati, limiti e i quatt
   // Il massimo è quello del caricamento diretto dei file del referente e del team.
   assert.equal(TEMPLATE_MAX_BYTES, REFERENT_LIMITS.clientMaxBytes);
   for (const suffix of ["kind", "scan", "clean", "review", "rejected", "deleted", "reviewed", "sha256", "mode", "findings", "quarantine_path", "blob_path", "size", "max_bytes"]) {
-    const ours = check(files, `use_case_template_files_${suffix}_check`).replace(/use_case_template_files_/g, "X_");
-    const theirs = check(needFiles, `use_case_need_files_${suffix}_check`).replace(/use_case_need_files_/g, "X_");
+    const ours: string = check(files, `use_case_template_files_${suffix}_check`).replace(/use_case_template_files_/g, "X_");
+    const theirs: string = check(needFiles, `use_case_need_files_${suffix}_check`).replace(/use_case_need_files_/g, "X_");
     assert.equal(ours, theirs, suffix);
   }
   // Nessuna colonna della persona oltre a chi carica e chi controlla; nessuna richiesta, nessuna esigenza nella riga.

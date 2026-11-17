@@ -107,6 +107,21 @@ async function ucBlobPathsForWorkspace(id: string): Promise<UcWorkspaceBlobs> {
   } catch (error) {
     console.error("[use-case] file di «Cosa serve» non raccolti", error instanceof Error ? error.name : "errore");
   }
+  // («File da compilare», 0040) I file che il team allega alle esigenze per il referente: stesso archivio, zona standard.
+  try {
+    const { rows: present } = await db.execute(sql`SELECT to_regclass('public.use_case_template_files') IS NOT NULL AS ok`);
+    if ((present[0] as { ok: boolean } | undefined)?.ok === true) {
+      const { rows } = await db.execute(sql`
+        SELECT blob_path, quarantine_path FROM use_case_template_files
+        WHERE workspace_id = ${id}::uuid AND (blob_path IS NOT NULL OR quarantine_path IS NOT NULL)`);
+      for (const row of rows as { blob_path: string | null; quarantine_path: string | null }[]) {
+        if (row.blob_path) out.standard.push(row.blob_path);
+        if (row.quarantine_path) out.standard.push(row.quarantine_path);
+      }
+    }
+  } catch (error) {
+    console.error("[use-case] file da compilare non raccolti", error instanceof Error ? error.name : "errore");
+  }
   return out;
 }
 

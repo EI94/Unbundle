@@ -54,8 +54,11 @@ const TABLE_FILES = new Set([
   "src/lib/db/use-case-hub-referent-benefits-ddl.ts",
   // (0028) «Il filo con il referente»: il DDL dei messaggi e delle proposte dell'AI.
   "src/lib/db/use-case-hub-referent-thread-ddl.ts",
-  // (0040) «File da compilare»: il DDL dei file, dei legami con le esigenze e del primo download.
+  // (0040) «File da compilare»: il DDL dei file, dei legami con le esigenze e del primo download, e il modulo che li
+  // scrive e li legge (la scheda, la pagina del referente, l'email, l'MCP e le pulizie passano da lì).
   "src/lib/db/use-case-hub-template-files-ddl.ts",
+  "src/lib/db/queries/use-case-template-files.ts",
+  "src/lib/use-cases/referent/template-sql.ts",
   // (0029, rilascio 7) «Programma»: il CHECK della campanella allargato con «da_rivedere» e la riga che il cron scrive.
   "src/lib/db/use-case-hub-program-ddl.ts",
   // (0030, rilascio 8.0a) «Agent Factory»: il CHECK della campanella allargato con i tre tipi nuovi.
@@ -160,7 +163,7 @@ test("le rotte pubbliche importano solo i moduli ammessi", () => {
 const LOG_FILES = files.filter(
   (file) =>
     file.startsWith("src/lib/use-cases/referent/") ||
-    /^src\/lib\/db\/queries\/(use-case-referent|use-case-notifications|use-case-info-progress|use-case-alerts|bell-state)/.test(file) ||
+    /^src\/lib\/db\/queries\/(use-case-referent|use-case-template-files|use-case-notifications|use-case-info-progress|use-case-alerts|bell-state)/.test(file) ||
     file.startsWith("src/lib/use-cases/case-alerts/") ||
     file.startsWith("src/lib/notifications/bell") ||
     file === "src/lib/actions/use-case-referents.ts" ||
@@ -168,7 +171,9 @@ const LOG_FILES = files.filter(
     file.startsWith("src/app/api/rispondi/") ||
     file.startsWith("src/app/api/cron/use-case-referents/") ||
     file.startsWith("src/app/api/workspaces/[workspaceId]/bell/") ||
-    file.includes("/use-cases/[useCaseId]/allegati/"),
+    file.includes("/use-cases/[useCaseId]/allegati/") ||
+    // («File da compilare») Le rotte del team dei file da compilare.
+    file.includes("/use-cases/[useCaseId]/da-compilare/"),
 );
 const SENSITIVE = /\b(email|token|replyTo|recipient|body|answer|text|draft|message|fileName|link)\w*\b/i;
 

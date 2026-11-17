@@ -35,9 +35,16 @@ export const REFERENT_API = {
   edit: "edit",
   /** (Rilascio 6) La pagina ha mostrato le risposte del team: «viste». */
   seen: "seen",
+  /** («File da compilare») Il download del file da compilare di una domanda (`?file=<id>`), sempre come allegato. */
+  templateFile: "da-compilare",
 } as const;
+/** («File da compilare») Il link «Scarica il file da compilare» della pagina del referente. */
+export const referentTemplateHref = (token: string, fileId: string) => `${referentApiBase(token)}/${REFERENT_API.templateFile}?file=${encodeURIComponent(fileId)}`;
 export const reviewerFilesBase = (workspaceId: string, useCaseId: string) => `/dashboard/${workspaceId}/use-cases/${useCaseId}/allegati`;
 export const reviewerFileHref = (workspaceId: string, useCaseId: string, fileId: string) => `${reviewerFilesBase(workspaceId, useCaseId)}/${fileId}`;
+/** («File da compilare») Le rotte del team: caricamento (server, diretto) e download dalla scheda. */
+export const templateFilesBase = (workspaceId: string, useCaseId: string) => `/dashboard/${workspaceId}/use-cases/${useCaseId}/da-compilare`;
+export const templateFileHref = (workspaceId: string, useCaseId: string, fileId: string) => `${templateFilesBase(workspaceId, useCaseId)}/${fileId}`;
 export const subprocessorsSettingsHref = (workspaceId: string) => `/dashboard/${workspaceId}/settings#sub-responsabili`;
 export const REFERENT_CRON_PATH = "/api/cron/use-case-referents";
 // (Parte 2) Nessun tipo di segnale in `weekly_signals`: le righe della campanella sono use_case_notifications.
@@ -68,6 +75,15 @@ export const REFERENT_LIMITS = Object.freeze({
   linkDays: 30,
   retentionMonths: 12,
   accept: ".pdf,.docx,.xlsx,.pptx,.csv,.tsv,.txt,.md",
+});
+
+/**
+ * («File da compilare») Un file legato al massimo a 50 esigenze dello stesso use case, al massimo 5 file da compilare
+ * per esigenza (come i file per domanda). Tipi e dimensioni: quelli di `REFERENT_LIMITS`.
+ */
+export const TEMPLATE_LIMITS = Object.freeze({
+  needsPerFile: 50,
+  filesPerNeed: REFERENT_LIMITS.filesPerQuestion,
 });
 
 // ── Pagina pubblica (la legge PUBLIC; la produce BACKEND) ─────────────
@@ -196,6 +212,11 @@ export interface ReferentQuestionView {
   /** Quando è «inviata». (Rilascio 6) `editedAt`: il referente l'ha cambiata dopo l'invio. */
   answer: { text: string | null; dontKnow: boolean; alreadyAttached: boolean; comment: string | null; submittedAt: string; editedAt?: string | null } | null;
   files: ReferentFileView[];
+  /**
+   * («File da compilare») I file puliti che il team ha legato all'esigenza: «Scarica il file da compilare» sotto il
+   * titolo, sulle domande aperte e su quelle già inviate (mai su una «gestita»). Un file in controllo non c'è.
+   */
+  templates?: ReferentTemplateView[];
   /** (Rilascio 6) Una domanda arrivata dopo il primo invio («Nuove domande»). */
   followUp?: boolean;
   /**
@@ -203,6 +224,13 @@ export interface ReferentQuestionView {
    * l'informazione «A posto» (o «Non si applica»). Dopo resta «Aggiungi qualcosa».
    */
   editable?: boolean;
+}
+
+/** («File da compilare») Un file da scaricare dalla domanda: il nome e la dimensione, mai chi l'ha caricato. */
+export interface ReferentTemplateView {
+  id: string;
+  name: string;
+  sizeBytes: number | null;
 }
 
 export interface ReferentFileView {
@@ -504,6 +532,37 @@ export interface NeedReferentView {
   files: NeedFileView[];
   /** L'ultimo file dell'esigenza è un PDF non controllato in tempo: «File non controllato in tempo: …». */
   reviewExpired?: boolean;
+  /** («File da compilare») I file da compilare legati all'esigenza, dal più vecchio; [] senza la 0040. */
+  templates?: NeedTemplateView[];
+}
+
+/**
+ * («File da compilare») Un file da compilare sotto l'esigenza: «Da compilare: {nome} · Sostituisci · Togli». Non è una
+ * risposta: non conta in «Risposte e file». Un PDF con poco testo («in_revisione») non arriva al referente finché
+ * un'altra persona non lo accetta.
+ */
+export interface NeedTemplateView {
+  id: string;
+  name: string;
+  sizeLabel: string | null;
+  status: "pulito" | "in_revisione";
+  /** Il download dalla scheda; null quando chi guarda non lo può aprire (un PDF da controllare che ha caricato lui). */
+  href: string | null;
+  /** «Sostituisci» e «Togli»: chi modifica «Cosa serve». */
+  canEdit: boolean;
+  /** Un PDF da controllare che chi guarda può accettare o rifiutare (non l'ha caricato lui). */
+  canReview: boolean;
+  /** Con «Sostituisci»: la versione nuova, un PDF che aspetta il controllo; fino ad allora il referente ha la vecchia. */
+  pending: NeedTemplatePendingView | null;
+}
+
+/** («File da compilare») La versione nuova che aspetta il controllo: «Nuova versione da controllare: PDF con poco testo». */
+export interface NeedTemplatePendingView {
+  id: string;
+  name: string;
+  sizeLabel: string | null;
+  href: string | null;
+  canReview: boolean;
 }
 
 /**
@@ -611,6 +670,11 @@ export interface UseCaseReferentPanel {
   askableNeedIds: string[];
   /** Esigenze che accettano una risposta o un file del team (§3.9). */
   answerableNeedIds: string[];
+  /**
+   * («File da compilare») Le esigenze che accettano un file da compilare (`templateNeeds`), nell'ordine della scheda:
+   * «Aggiungi un file da compilare» e l'elenco della finestra. [] senza la 0040 o senza `canAsk`.
+   */
+  templateNeedIds?: string[];
   /** Cosa aggiungerebbe adesso «Prepara le domande». */
   preparable: PreparedQuestionKey[];
   /**

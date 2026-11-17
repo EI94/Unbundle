@@ -47,6 +47,11 @@ export const REFERENT_HISTORY_CODES = [
   "dubbio_risposto",
   "aggiunta",
   "risposta_cambiata",
+  // («File da compilare») Il file che il referente scarica e ricarica: mai il nome del file.
+  "da_compilare_aggiunto",
+  "da_compilare_sostituito",
+  "da_compilare_tolto",
+  "da_compilare_scaricato",
 ] as const;
 export type ReferentHistoryCode = (typeof REFERENT_HISTORY_CODES)[number];
 
@@ -87,6 +92,11 @@ export const REFERENT_HISTORY_TEXT: Readonly<Record<ReferentHistoryCode, string>
   dubbio_risposto: "risposta del team al referente",
   aggiunta: "il referente ha aggiunto qualcosa",
   risposta_cambiata: "il referente ha cambiato una risposta",
+  da_compilare_aggiunto: "file da compilare aggiunto",
+  da_compilare_sostituito: "file da compilare sostituito",
+  da_compilare_tolto: "file da compilare tolto",
+  // Una volta per richiesta e per versione (`use_case_template_downloads`).
+  da_compilare_scaricato: "file da compilare scaricato dal referente",
 });
 
 /** (Parte 2) Chi ha agito, per le righe automatiche di «Cosa serve» e di questa funzione. */

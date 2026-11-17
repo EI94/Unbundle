@@ -41,6 +41,9 @@ const ROUTES: Record<string, RouteSpec> = {
   "add/route.ts": { method: "POST", write: true, rate: "invio", command: "addToReferentAnswer" },
   "edit/route.ts": { method: "POST", write: true, rate: "invio", command: "editReferentAnswer" },
   "seen/route.ts": { method: "POST", write: true, rate: "bozza", command: "markReferentMessagesSeen" },
+  // («File da compilare») Il download: una GET che conta nei limiti del link («apertura») e per IP e registra il primo
+  // download; ogni rifiuto è il 404 del link non valido (`publicAttachmentResponse`).
+  "da-compilare/route.ts": { method: "GET", write: false, rate: "apertura", maxDuration: 60, command: "openReferentTemplateDownload" },
 };
 
 function walk(dir: string, out: string[] = []): string[] {
@@ -154,9 +157,13 @@ test("handler: i controlli nell'ordine della SPEC §4.2", () => {
     assert.ok(next > at, `«${step}» dopo il passo precedente`);
     at = next;
   }
-  // Le scritture sono le sole a controllare segreto, origine, corpo e limiti.
+  // Le scritture sono le sole a controllare segreto, origine e corpo; i limiti valgono per le scritture e per la sola
+  // GET con un limite, il download del file da compilare.
   assert.match(body, /if \(spec\.write\) \{\s*if \(!referentPublicWritesAvailable/);
-  assert.match(body, /if \(spec\.write && spec\.rate\)/);
+  assert.match(body, /if \(spec\.write \|\| spec\.rate\) \{\s*const ipRule/);
+  assert.match(body, /if \(spec\.rate\) \{\s*const rule = referentRateRule/);
+  const gets = Object.entries(ROUTES).filter(([, spec]) => !spec.write && spec.rate !== null).map(([file]) => file);
+  assert.deepEqual(gets, ["da-compilare/route.ts"], "una sola GET con un limite");
   // Ogni errore imprevisto: «errore», e nel log solo il tipo di chiamata.
   assert.match(body, /catch \(error\) \{\s*logReferentPublicError\(opOf\(request\), error\);\s*return publicError\("errore"\);/);
 });

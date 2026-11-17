@@ -86,6 +86,14 @@ export const REFERENT_UI_TEXT = Object.freeze({
   fileRejectConfirm: "Rifiuta",
   rowAddAnswer: "Aggiungi una risposta",
   rowAttachFile: "Allega un file",
+  /** («File da compilare») Un file che il referente scarica, compila e ricarica: non è una risposta. */
+  rowAddTemplate: "Aggiungi un file da compilare",
+  /** La riga sotto l'esigenza: «Da compilare: {nome} · Sostituisci · Togli»; il nome scarica il file. */
+  templateLabel: "Da compilare:",
+  templateReplace: "Sostituisci",
+  templateRemove: "Togli",
+  /** Una versione nuova (un PDF con poco testo) che aspetta il controllo di un'altra persona: la vecchia resta. */
+  templatePending: "Nuova versione da controllare: PDF con poco testo",
   // Blocco «Richieste»
   requestsHeading: "Richieste",
   /** Il titolo, chiuso di default, delle richieste di «Cosa serve» della scheda (rilascio 3). */
@@ -202,6 +210,8 @@ export const REFERENT_UI_TEXT = Object.freeze({
     subject: "Oggetto",
     toValue: "{Nome} · {email}",
     questionsOnLink: "Aprendo il link trova queste domande:",
+    /** («File da compilare») Accanto a una domanda con un file pulito da scaricare. */
+    withTemplate: "con file da compilare",
     replyNote: "Le risposte all'email arrivano a te ({tuaEmail}). Se serve, partono due promemoria dopo 3 e 7 giorni lavorativi.",
     newTab: " (si apre in una nuova scheda)",
     // Dopo l'ok sui fornitori dato in un'altra scheda, una volta sola.
@@ -232,6 +242,14 @@ export const REFERENT_UI_TEXT = Object.freeze({
     /** (Parte 2) */
     validate: "L'ho già verificata: segna l'informazione come «A posto»",
   }),
+  /** («File da compilare») La finestra: il file e le esigenze dello use case a cui legarlo; i tipi e i limiti di `fileDialog`. */
+  templateDialog: Object.freeze({
+    title: "Aggiungi un file da compilare",
+    replaceTitle: "Sostituisci il file da compilare",
+    needs: "Le esigenze a cui legarlo",
+    confirm: "Aggiungi",
+    replaceConfirm: "Sostituisci",
+  }),
   toasts: Object.freeze({
     prepareOne: "Aggiunta una domanda a «Cosa serve».",
     prepareMany: "Aggiunte {n} domande a «Cosa serve».",
@@ -257,6 +275,12 @@ export const REFERENT_UI_TEXT = Object.freeze({
     fileDeleted: "File eliminato.",
     fileAccepted: "File accettato.",
     fileRejected: "File rifiutato.",
+    // («File da compilare») Mai «risposta»: il file da compilare non cambia lo stato dell'esigenza.
+    templateAdded: "File da compilare aggiunto.",
+    templateAddedReview: "File da compilare aggiunto: è un PDF con poco testo, lo controlla un'altra persona prima che arrivi al referente.",
+    templateReplaced: "File da compilare sostituito.",
+    templateReplacedReview: "Nuova versione da controllare: PDF con poco testo.",
+    templateRemoved: "File da compilare tolto.",
   }),
 });
 
@@ -381,6 +405,8 @@ export const REFERENT_ASSIGN_TEXT = Object.freeze({
   preview: "Cosa riceve {Nome}",
   previewSomeone: "Cosa riceve",
   onPage: "Nella pagina trova:",
+  /** («File da compilare») Accanto a una domanda con un file pulito da scaricare. */
+  withTemplate: "con file da compilare",
   noTeamEstimate: "Nessuna stima del team: gli chiediamo quante volte al mese e quanti minuti.",
   send: "Invia a {Nome}",
   sendBare: "Invia",
@@ -476,6 +502,10 @@ export const REFERENT_PUBLIC_TEXT = Object.freeze({
   answerPlaceholder: "Scrivi qui. Bastano poche righe.",
   counter: "{n} di 4.000 caratteri",
   attach: "Allega un file",
+  /** («File da compilare») Il caricamento di sempre, quando la domanda ha un file da compilare. */
+  attachFilled: "Allega il file compilato",
+  /** («File da compilare») Sotto il titolo della domanda, senza aprire niente: il referente legge quasi solo il titolo. */
+  templateDownload: "Scarica il file da compilare",
   attachHelp: "PDF, Word, Excel, PowerPoint, CSV o testo. Fino a 20 MB. Niente foto.",
   attachHelpServerOnly: "PDF, Word, Excel, PowerPoint, CSV o testo. Fino a 4 MB. Niente foto.",
   fileStates: Object.freeze({
@@ -519,7 +549,13 @@ export const REFERENT_PUBLIC_TEXT = Object.freeze({
   loading: "Caricamento…",
   uploading: "Carico e controllo il file…",
   /** Etichette accessibili: «Togli preventivo.pdf», l'elenco dei file di una domanda. */
-  aria: Object.freeze({ removeFile: "Togli {file}", dismissRejected: "Nascondi {file}", files: "File allegati", closures: "Altri modi di chiudere la domanda" }),
+  aria: Object.freeze({
+    removeFile: "Togli {file}",
+    dismissRejected: "Nascondi {file}",
+    files: "File allegati",
+    closures: "Altri modi di chiudere la domanda",
+    templateDownload: "Scarica il file da compilare {file}",
+  }),
   // (Rilascio 5) Ogni domanda si chiude: una risposta, un file, «Non ce l'ho» o «È già allegato».
   alreadyAttached: "È già allegato",
   whoKnows: "Chi potrebbe saperlo? (facoltativo)",
