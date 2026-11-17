@@ -39,6 +39,7 @@ export function Attachments({
   allowUpload,
   disabled,
   tooSoon,
+  label,
 }: {
   token: string;
   needId: string;
@@ -50,6 +51,8 @@ export function Attachments({
   disabled: boolean;
   /** (Rilascio 5) Un clic subito dopo il cambio di passo: «Allega un file» lo ignora. */
   tooSoon?: (e: React.MouseEvent<HTMLButtonElement>) => boolean;
+  /** («File da compilare») «Allega il file compilato» quando la domanda ha un file da compilare (`attachLabel`). */
+  label?: string;
 }) {
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
@@ -173,7 +176,7 @@ export function Attachments({
             }}
           >
             {uploading ? <Loader2 className="animate-spin" aria-hidden /> : <Paperclip aria-hidden />}
-            {uploading ? T.uploading : T.attach}
+            {uploading ? T.uploading : (label ?? T.attach)}
           </Button>
         </div>
       ) : null}

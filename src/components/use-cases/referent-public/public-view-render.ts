@@ -19,7 +19,8 @@ import type {
   ReferentUploadResult,
   SubmitResult,
 } from "../../../lib/use-cases/referent/contract.ts";
-import { REFERENT_LIMITS } from "../../../lib/use-cases/referent/contract.ts";
+import { REFERENT_LIMITS, referentTemplateHref } from "../../../lib/use-cases/referent/contract.ts";
+import { formatFileSize } from "../../../lib/use-cases/referent/upload-transport.ts";
 import { REFERENT_CHECK_TEXT, REFERENT_ERROR_MESSAGES, REFERENT_IMPACT_TEXT, REFERENT_PRIVACY_NOTICE, REFERENT_PUBLIC_TEXT, companyLabel, fillText, privacyNoticeTexts } from "../../../lib/use-cases/referent/labels.ts";
 import { benefitSentLine } from "../../../lib/use-cases/referent/impact-text.ts";
 import { referentDateLabel } from "../../../lib/use-cases/referent/view.ts";
@@ -324,6 +325,40 @@ export function fileRow(f: PublicFile): FileRow {
     tone,
     removable: !f.submitted && f.status !== "rifiutato",
   };
+}
+
+// ─── File da compilare ───────────────────────────────────────────────
+
+/** («File da compilare») Un link «Scarica il file da compilare» sotto il titolo della domanda, con nome e dimensione. */
+export interface TemplateLink {
+  id: string;
+  href: string;
+  /** «Scarica il file da compilare». */
+  label: string;
+  /** «modello.xlsx · 48 KB». */
+  detail: string;
+  /** «Scarica il file da compilare modello.xlsx»: più link nella pagina, ognuno con il suo nome. */
+  ariaLabel: string;
+}
+
+/**
+ * I link dei file da compilare di una domanda: sulle domande aperte e su quelle già inviate, mai su una «gestita» (il
+ * team ci ha già pensato). Il download risponde solo per un file che la pagina offre.
+ */
+export function templateLinks(token: string, question: Pick<ReferentQuestionView, "state" | "templates">): TemplateLink[] {
+  if (question.state === "gestita") return [];
+  return (question.templates ?? []).map((t) => ({
+    id: t.id,
+    href: referentTemplateHref(token, t.id),
+    label: T.templateDownload,
+    detail: [t.name, formatFileSize(t.sizeBytes)].filter(Boolean).join(" · "),
+    ariaLabel: fillText(T.aria.templateDownload, { file: t.name }),
+  }));
+}
+
+/** Il caricamento di sempre: «Allega il file compilato» quando la domanda ha un file da compilare, altrimenti «Allega un file». */
+export function attachLabel(question: Pick<ReferentQuestionView, "templates">): string {
+  return (question.templates ?? []).length > 0 ? T.attachFilled : T.attach;
 }
 
 /** Si può inviare la domanda con questi file: nessun controllo in corso. (Rilascio 5.1) Niente da confermare. */

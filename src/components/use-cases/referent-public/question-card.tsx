@@ -11,7 +11,8 @@ import { REFERENT_ERROR_MESSAGES, REFERENT_PUBLIC_TEXT } from "@/lib/use-cases/r
 import { saveDraft } from "./api";
 import { Attachments } from "./attachments";
 import { autosaveLabelKey, autosaveReducer, dueDraft, initialAutosave, needsFlush, waitFor, type AutosaveState, type DraftValue } from "./autosave";
-import { attachHelp, closeHint, commentOffered, counterLabel, handledText, questionClosed, sentAnswerView, updatedLine, type PublicFile, type QuestionSection } from "./public-view-render";
+import { attachHelp, attachLabel, closeHint, commentOffered, counterLabel, handledText, questionClosed, sentAnswerView, updatedLine, type PublicFile, type QuestionSection } from "./public-view-render";
+import { TemplateDownloads } from "./template-downloads";
 
 /**
  * Una domanda della pagina `/rispondi/<token>` (SPEC §4.4 punto 4, Parte 3 §P3.7; rilascio 5 §7.5):
@@ -32,7 +33,22 @@ export const questionTitleId = (needId: string) => `ucq-domanda-${needId.toLower
 /** Salva quello che manca prima dell'invio: true se il server ha l'ultima versione della risposta. */
 export type FlushDraft = () => Promise<boolean>;
 
-function CardFrame({ section, children, invalid, missing, closed }: { section: QuestionSection; children?: React.ReactNode; invalid?: boolean; missing?: boolean; closed?: boolean }) {
+function CardFrame({
+  section,
+  token,
+  children,
+  invalid,
+  missing,
+  closed,
+}: {
+  section: QuestionSection;
+  /** («File da compilare») Con il token, sotto il titolo i link dei file da compilare della domanda. */
+  token?: string;
+  children?: React.ReactNode;
+  invalid?: boolean;
+  missing?: boolean;
+  closed?: boolean;
+}) {
   return (
     <section
       id={questionAnchor(section.needId)}
@@ -58,17 +74,18 @@ function CardFrame({ section, children, invalid, missing, closed }: { section: Q
           {section.title}
         </h3>
       </div>
+      {token ? <TemplateDownloads token={token} question={section.question} /> : null}
       {children}
     </section>
   );
 }
 
-export function SentQuestionCard({ section, today, extra }: { section: QuestionSection; today: string; extra?: React.ReactNode }) {
+export function SentQuestionCard({ section, today, extra, token }: { section: QuestionSection; today: string; extra?: React.ReactNode; token?: string }) {
   const sent = sentAnswerView(section.question, today);
   // (Rilascio 6) «Aggiornata il 08/11.»: il referente l'ha cambiata dopo l'invio.
   const updated = updatedLine(section.question, today);
   return (
-    <CardFrame section={section} closed>
+    <CardFrame section={section} token={token} closed>
       {sent ? (
         <div className="space-y-2 text-base">
           <p className="text-sm text-muted-foreground">
@@ -280,7 +297,7 @@ export function OpenQuestionCard({
   const showComment = value.dontKnow || (offerComment && (commentOpen || Boolean(value.comment?.trim())));
 
   return (
-    <CardFrame section={section} invalid={fieldErrors.length > 0} missing={missing && !closed} closed={closed}>
+    <CardFrame section={section} token={token} invalid={fieldErrors.length > 0} missing={missing && !closed} closed={closed}>
       {fileRequired ? (
         <p className="text-sm break-words text-muted-foreground">
           <span className="font-medium text-foreground">{T.fileRequired}</span> · {attachHelp(clientMode)}
@@ -309,7 +326,17 @@ export function OpenQuestionCard({
       ) : null}
 
       {!value.dontKnow && !attached ? (
-        <Attachments token={token} needId={needId} files={files} onFiles={setFiles} clientMode={clientMode} allowUpload disabled={blocked} tooSoon={tooSoon} />
+        <Attachments
+          token={token}
+          needId={needId}
+          files={files}
+          onFiles={setFiles}
+          clientMode={clientMode}
+          allowUpload
+          disabled={blocked}
+          tooSoon={tooSoon}
+          label={attachLabel(section.question)}
+        />
       ) : files.some((f) => f.status !== "rifiutato") ? (
         <Attachments token={token} needId={needId} files={files} onFiles={setFiles} clientMode={clientMode} allowUpload={false} disabled={blocked} />
       ) : null}
@@ -370,7 +397,7 @@ export function OpenQuestionCard({
 }
 
 export function QuestionCard(props: Parameters<typeof OpenQuestionCard>[0] & { today: string }) {
-  if (props.section.kind === "inviata") return <SentQuestionCard section={props.section} today={props.today} extra={props.extra} />;
+  if (props.section.kind === "inviata") return <SentQuestionCard section={props.section} today={props.today} extra={props.extra} token={props.token} />;
   if (props.section.kind === "gestita") return <HandledQuestionCard section={props.section} />;
   return <OpenQuestionCard {...props} />;
 }
