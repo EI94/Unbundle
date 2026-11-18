@@ -63,7 +63,7 @@ test("contextRead: la richiesta vera, con il prompt della lettura, e l'oggetto d
   });
   const answer = {
     proposte: [
-      { tipo: "nuovo", testo: "Il gestionale è SAP Business One.", citazione: "Il gestionale è SAP Business One.", base: "detto", sezione: "sistemi", visibilita: "tutti", fattoRif: null, domandaRif: null, useCase: [], parte: null, ruolo: null, entro: null, entita: [{ nome: "SAP Business One", tipo: "sistema" }], collegamenti: [] },
+      { tipo: "nuovo", testo: "Il gestionale è SAP Business One.", citazione: "Il gestionale è SAP Business One.", base: "detto", sezione: "sistemi", visibilita: "tutti", fattoRif: null, domandaRif: null, esigenzaRif: null, useCase: [], parte: null, ruolo: null, entro: null, entita: [{ nome: "SAP Business One", tipo: "sistema" }], collegamenti: [] },
     ],
     nonRiportati: { persone: 1, sanitari: 0, altriClienti: 0, clientiDelCliente: 0 },
   };

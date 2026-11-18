@@ -105,6 +105,9 @@ const TABLE_FILES = new Set([
   // (Rilascio 9b) «Una call risponde»: i legami aperti delle richieste aperte del cliente di uno use case, solo per i
   // revisori (`canSeeReviewerSources`, gli stessi ruoli di `canSeeNeeds`). Il testo che esce è quello del fatto «Per tutti».
   "src/lib/db/queries/context-needs.ts",
+  // (Rilascio 9b) La lettura di una call o di un documento riceve le richieste aperte del cliente (titolo e codici degli
+  // use case, al massimo 50) e lega le proposte a quelle che chiudono; la legge solo Lateral Space (`canAddNotes`) o la notte.
+  "src/lib/db/queries/context-read.ts",
 ]);
 
 const READS = /\b(listWorkspaceNeeds|getWorkspaceNeed|needUseCaseRefs)\b|queries\/use-case-needs/;

@@ -1387,6 +1387,7 @@ const modelProposal = (over: Record<string, unknown> = {}) => ({
   visibilita: "tutti",
   fattoRif: null,
   domandaRif: null,
+  esigenzaRif: null,
   useCase: [],
   parte: null,
   ruolo: null,
