@@ -13,9 +13,6 @@
   "src/app/(dashboard)/dashboard/[workspaceId]/learning/[programId]/manage/[attemptId]/page.tsx": {
     "palette": 12
   },
-  "src/app/(dashboard)/dashboard/[workspaceId]/page.tsx": {
-    "palette": 9
-  },
   "src/app/(dashboard)/dashboard/[workspaceId]/plan/page.tsx": {
     "palette": 8,
     "dark": 8

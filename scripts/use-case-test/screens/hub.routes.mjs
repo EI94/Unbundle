@@ -61,9 +61,9 @@ const MATRIX_ZONES = FULL_SEED
   : ["Subito\u00a0· 1\u00a0use\u00a0case", "Da pianificare\u00a0· 3\u00a0use\u00a0case", "Se avanza tempo\u00a0· 2\u00a0use\u00a0case", "Non ora\u00a0· 2\u00a0use\u00a0case"];
 
 const routes = [
-  // The starting view of each role (§4.2): reviewers «Da decidere», the client's sponsor and contributors the Panoramica.
-  { name: "partenza", path: "/dashboard/{ws:a}/use-cases", as: ["ls-lead", "function-lead"], present: ["Use case", "Nuovo use case", "In attesa di risposta"] },
-  { name: "partenza", path: "/dashboard/{ws:a}/use-cases", as: ["sponsor-cliente"], present: OVERVIEW_REVIEWER },
+  // The starting view (release 10, D3): the Panoramica for every role, even with proposals waiting; its next step
+  // («Decidi N use case») leads to «Da decidere».
+  { name: "partenza", path: "/dashboard/{ws:a}/use-cases", as: ["ls-lead", "function-lead", "sponsor-cliente"], present: OVERVIEW_REVIEWER, absent: ["In attesa di risposta"] },
   { name: "partenza", path: "/dashboard/{ws:a}/use-cases", as: CONTRIBUTOR, present: OVERVIEW_CONTRIBUTOR, absent: NOT_ON_CONTRIBUTOR_OVERVIEW },
 
   // The three views.

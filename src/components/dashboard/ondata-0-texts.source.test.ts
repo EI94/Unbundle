@@ -86,8 +86,13 @@ test("0.13 · the WhatsApp webhook button is an action, «Salva», shown only af
   assert.match(form, /\{isDirty \|\| pending \? \(\s*<Button type="submit" variant="outline" className="w-full" disabled=\{pending\}>\s*\{pending \? "Salvo…" : "Salva"\}/);
 });
 
-test("0.14 · the overview step has no participle to agree with the client's word for its units", () => {
-  const page = read("src/app/(dashboard)/dashboard/[workspaceId]/page.tsx");
-  assert.doesNotMatch(page, /\$\{term\.plural\} mappate/);
-  assert.ok(page.includes("`Mappatura: ${mappedDepts.length} su ${departments.length} ${term.plural}`"));
+test("0.14 · the start checklist has no participle or article to agree with the client's word for its units", () => {
+  // (Rilascio 10) Il «Percorso» dell'Overview è «Per partire» della Home: la riga nomina «una funzione» solo con la
+  // parola di oggi; con la parola del cliente («reparto», «area») non la nomina, e niente participio da accordare.
+  const texts = read("src/lib/home/text.ts");
+  assert.doesNotMatch(texts, /mappat[ei]\b/);
+  assert.ok(texts.includes('processi: "Mappa i processi di una funzione",') && texts.includes('processiOther: "Mappa i processi",'));
+  const start = read("src/lib/home/start.ts");
+  assert.ok(start.includes("label: ctx.defaultUnitTerm ? t.rows.processi : t.rows.processiOther"));
+  assert.ok(read("src/lib/db/queries/use-case-home.ts").includes('defaultUnitTerm: getUnitTerm(workspace).singular === "funzione"'));
 });

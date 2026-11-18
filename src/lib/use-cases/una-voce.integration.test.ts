@@ -88,7 +88,10 @@ let q: (text: string, params?: unknown[]) => Promise<Record<string, unknown>[]>;
 let renderToStaticMarkup: (element: unknown) => string;
 let createElement: typeof import("react").createElement;
 let pathnameContext: import("react").Context<string | null>;
-let pages: Record<"portfolio" | "review" | "submit" | "plan" | "settings" | "overview" | "intelligence" | "share" | "newUseCase", Page>;
+let pages: Record<"portfolio" | "review" | "submit" | "plan" | "settings" | "overview" | "program" | "intelligence" | "share" | "newUseCase", Page>;
+
+/** L'HTML con le entità più comuni tolte e gli spazi non separabili come spazi (`keepTogether`). */
+const readable = (page: string) => page.replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/\u00a0/g, " ");
 let notFounds: { useCases: unknown; newUseCase: unknown };
 let appSidebar: (props: Record<string, unknown>) => unknown;
 let workspaceNav: typeof import("../../components/shell/sidebar-model.ts").workspaceNav;
@@ -301,6 +304,7 @@ before(async () => {
     plan: await page(`${app}/plan/page.tsx`),
     settings: await page(`${app}/settings/page.tsx`),
     overview: await page(`${app}/page.tsx`),
+    program: await page(`${app}/programma/page.tsx`),
     intelligence: await page(`${app}/intelligence/page.tsx`),
     newUseCase: await page(`${app}/use-cases/nuovo/page.tsx`),
     share: await page("../../app/share/portfolio/[workspaceId]/[useCaseId]/page.tsx"),
@@ -655,32 +659,37 @@ test("Impostazioni: «Valutazione» e WhatsApp solo con l'area accesa e solo a c
   assert.deepEqual(off.anchors, ["#persone", "#integrazioni", "#valutazione", "#zona-pericolosa"]);
 });
 
-// ─── Overview (DESIGN §2.5) ───────────────────────────────────────────
+// ─── Home (rilascio 10, ondata 2b; al posto dell'Overview, DESIGN §2.5) ─
 
-test("Overview, area accesa: il passo «Use case» per ruolo e uno strumento «Use case»", opts, async () => {
+test("Home, area accesa: ai revisori «Per partire» in un workspace nuovo, ai contributori «I tuoi use case»", opts, async () => {
   areaOn();
-  const base = `/dashboard/${ids.on}/use-cases`;
-  const reviewer = await html(pages.overview, "builder", { workspaceId: ids.on });
-  // Le due dall'alto, anche quella nascosta alla ricerca; con il filtro dell'origine.
-  assert.ok(reviewer.includes("2 use case dall&#x27;alto") || reviewer.includes("2 use case dall'alto"), "2 use case dall'alto");
-  assert.ok(reviewer.includes(`href="${base}?origine=transformation"`));
-  assert.ok(reviewer.includes(`href="${base}"`), "lo strumento «Use case»");
-  for (const text of ["Raccolta &amp; ranking", ">Piano<", "Use cases", `/dashboard/${ids.on}/portfolio`, `/dashboard/${ids.on}/plan`]) {
+  // Nessuno use case ancora deciso: il workspace è nuovo, e la prima riga aperta di «Per partire» è il passo.
+  const reviewer = readable(await html(pages.overview, "builder", { workspaceId: ids.on }));
+  assert.match(reviewer, /<h1[^>]*>Home<\/h1>/);
+  assert.ok(reviewer.includes(">Per partire <span"), "«Per partire»");
+  assert.ok(reviewer.includes(`href="/dashboard/${ids.on}/setup/leadership"`), "«Racconta l'azienda»");
+  // Niente di quello che l'Overview diceva e la Home non dice più: il gergo dell'origine, le tessere, i nomi di prima.
+  for (const text of ["dall'alto", "origine=", "Percorso", "Strumenti", "Raccolta & ranking", ">Piano<", "Use cases", `/dashboard/${ids.on}/portfolio`, `/dashboard/${ids.on}/plan`]) {
     assert.ok(!reviewer.includes(text), `revisore: «${text}»`);
   }
-  // Il contributore conta quello che vede: la dall'alto visibile, quella dal basso e la sua nascosta.
-  const contributor = await html(pages.overview, "contributor", { workspaceId: ids.on });
-  assert.ok(contributor.includes(">3 use case<"), "3 use case");
-  assert.ok(!contributor.includes("dall&#x27;alto") && !contributor.includes("origine="), "niente origine al contributore");
-  // Il Percorso resta di 4 passi: nessun passo «Realizzazione».
-  assert.ok(!reviewer.includes("Realizzazione"), "nessun 5° passo");
+  // Il contributore vede i suoi, anche quello nascosto alla ricerca, mai quelli degli altri; nessun «Per partire».
+  const contributor = readable(await html(pages.overview, "contributor", { workspaceId: ids.on }));
+  assert.ok(contributor.includes("I tuoi use case (1)"), "«I tuoi use case (1)»");
+  assert.ok(contributor.includes(cards.ownHidden.title));
+  for (const card of [cards.top, cards.topHidden, cards.bottom, cards.othersHidden]) assert.ok(!contributor.includes(card.title), card.title);
+  assert.ok(contributor.includes(`href="/dashboard/${ids.on}/use-cases/nuovo"`), "«Proponi un use case»");
+  for (const text of ["Per partire", "Prossimo passo", "Valore all"]) assert.ok(!contributor.includes(text), `contributore: «${text}»`);
+  // `/programma` è la stessa Home.
+  assert.equal(readable(await html(pages.program, "builder", { workspaceId: ids.on })), reviewer);
 });
 
-test("Overview, area spenta: passo e strumenti di oggi", opts, async () => {
+test("Home, area spenta: niente Programma, «Proponi un use case» porta al modulo di prima", opts, async () => {
   areaOn();
-  const page = await html(pages.overview, "builder", { workspaceId: ids.off });
-  for (const text of ["Use cases", "1 use case identificati", "Raccolta &amp; ranking", ">Piano<", `/dashboard/${ids.off}/portfolio`, `/dashboard/${ids.off}/plan`]) {
-    assert.ok(page.includes(text), `manca «${text}»`);
-  }
-  assert.ok(!page.includes("dall&#x27;alto"));
+  // Uno use case di prima: il workspace non è nuovo, niente «Per partire»; e senza l'area niente da fare qui.
+  const page = readable(await html(pages.overview, "builder", { workspaceId: ids.off }));
+  assert.match(page, /<h1[^>]*>Home<\/h1>/);
+  assert.ok(page.includes("Tutto in ordine"));
+  for (const text of ["Per partire", "Valore all", "dall'alto"]) assert.ok(!page.includes(text), text);
+  const contributor = readable(await html(pages.overview, "contributor", { workspaceId: ids.off }));
+  assert.ok(contributor.includes(`href="/dashboard/${ids.off}/portfolio/submit"`), "il modulo dell'area spenta");
 });

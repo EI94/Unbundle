@@ -572,12 +572,14 @@ after(async () => {
 
 // ─── Vista di partenza (§4.2) ────────────────────────────────────────
 
-test("vista di partenza per ruolo: revisori «Da decidere» se c'è qualcosa, altrimenti la Panoramica; sponsor del cliente e contributori la Panoramica", opts, async () => {
-  assert.equal(viewOf(await html("ls", ids.wsA)), "da-decidere", "Lateral Space");
-  assert.equal(viewOf(await html("builder", ids.wsA)), "da-decidere", "AI Builder del cliente");
+test("vista di partenza (rilascio 10, D3): sempre la Panoramica, per ogni ruolo, anche con proposte da decidere", opts, async () => {
+  // In A ci sono proposte da decidere: la pagina si apre lo stesso sulla Panoramica, e il suo passo porta a «Da decidere».
+  assert.equal(viewOf(await html("ls", ids.wsA)), "panoramica", "Lateral Space");
+  assert.equal(viewOf(await html("builder", ids.wsA)), "panoramica", "AI Builder del cliente");
   assert.equal(viewOf(await html("manager", ids.wsA)), "panoramica", "sponsor del cliente");
   assert.equal(viewOf(await html("contributor", ids.wsA)), "panoramica", "contributore");
-  // Niente da decidere: i revisori partono dalla Panoramica.
+  assert.match(sectionOf(await html("ls", ids.wsA), "next-step"), new RegExp(`href="/dashboard/${ids.wsA}/use-cases\\?vista=da-decidere"`));
+  // Niente da decidere: la Panoramica, come prima.
   assert.equal(viewOf(await html("ls", ids.wsD)), "panoramica");
   assert.equal(viewOf(await html("builder", ids.wsE)), "panoramica");
   assert.equal(viewOf(await html("contributor", ids.wsD)), "panoramica");
@@ -626,12 +628,13 @@ test("«Cosa serve»: un solo pulsante pieno, «Tipo» è un filtro, niente matr
 });
 
 test("testata: H1, un solo pulsante pieno «Nuovo use case» (pannello rapido per Lateral Space), bordato con «Prossimo passo»; menu «⋯» solo ai revisori", opts, async () => {
-  const ls = await html("ls", ids.wsA);
+  const ls = await html("ls", ids.wsA, { vista: "da-decidere" });
   assert.match(ls, /<h1[^>]*>Use case<\/h1>/);
   assert.ok(ls.includes("Dal basso e dall&#x27;alto: quali use case realizzare e quando.") || ls.includes("Dal basso e dall'alto: quali use case realizzare e quando."));
   assert.match(ls, /href="\/dashboard\/[^"]+\/use-cases\?vista=da-decidere&amp;nuovo=1"/, "Lateral Space: pannello rapido");
+  assert.match(await html("ls", ids.wsA), /href="\/dashboard\/[^"]+\/use-cases\?vista=panoramica&amp;nuovo=1"/, "dalla Panoramica, la vista d'arrivo");
   assert.ok(ls.includes('aria-label="Altre azioni"'));
-  const builder = await html("builder", ids.wsA);
+  const builder = await html("builder", ids.wsA, { vista: "da-decidere" });
   assert.ok(builder.includes(`href="/dashboard/${ids.wsA}/use-cases/nuovo"`), "revisore del cliente: modulo completo");
   const contributor = await html("contributor", ids.wsA);
   assert.ok(contributor.includes(`href="/dashboard/${ids.wsA}/use-cases/nuovo"`));
@@ -639,14 +642,14 @@ test("testata: H1, un solo pulsante pieno «Nuovo use case» (pannello rapido pe
   for (const page of [ls, builder, contributor]) {
     assert.equal(filledButtons(page), 1, "un solo pulsante pieno");
   }
-  // Nella Panoramica con «Prossimo passo» (in A ci sono proposte da decidere) il pulsante pieno è il
-  // suo: «Nuovo use case» resta, bordato.
+  // Nella Panoramica con il prossimo passo (rilascio 10, D3: in A ci sono proposte da decidere) il pulsante pieno è
+  // il suo, «Decidi N use case»: «Nuovo use case» resta, bordato.
   for (const person of ["ls", "builder"] as const) {
     const overview = await html(person, ids.wsA, { vista: "panoramica" });
     assert.equal(filledButtons(overview), 1, `${person}: un solo pulsante pieno`);
     const box = sectionOf(overview, "next-step");
-    assert.equal(filledButtons(box), 1, `${person}: il pulsante pieno è in «Prossimo passo»`);
-    assert.ok(box.includes("aspettano una decisione.") && box.includes("Vedi le proposte"), box);
+    assert.equal(filledButtons(box), 1, `${person}: il pulsante pieno è nel prossimo passo`);
+    assert.ok(box.includes(">Prossimo passo</p>") && /Decidi \d+\u00a0use\u00a0case/.test(box), box);
     assert.match(box, new RegExp(`href="/dashboard/${ids.wsA}/use-cases\\?vista=da-decidere"`));
     const button = newUseCaseTag(overview);
     assert.ok(!/class="[^"]*\bbg-primary\b/.test(button), `${person}: «Nuovo use case» bordato`);

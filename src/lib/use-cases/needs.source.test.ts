@@ -121,6 +121,8 @@ const READ_FILES = new Set([
   "src/lib/use-cases/mcp/app-deps.ts",
   // Le dipendenze dei tool (`deps.reads.needs`, `deps.reads.needUseCaseRefs`), chiamate con `principal.viewer`.
   "src/lib/use-cases/mcp/tools.ts",
+  // (Rilascio 10) La Home dei revisori: il prossimo passo del workspace (D3) conta le informazioni, mai le mostra.
+  "src/lib/db/queries/use-case-home.ts",
 ]);
 
 const NEEDS_ANYWHERE = /use_case_need|useCaseNeed|use-case-needs|needs-service|lib\/use-cases\/needs|listWorkspaceNeeds|getWorkspaceNeed|NeedView\b/;
@@ -144,7 +146,7 @@ test("(9a) «Chiedi al contesto» nomina le esigenze in un posto solo, e solo pe
 test("le letture delle esigenze le chiamano solo le pagine dell'area, con canSeeNeeds", () => {
   const found = files.filter((file) => READS.test(read(file)));
   assert.deepEqual(found.filter((file) => !READ_FILES.has(file)), []);
-  for (const file of ["src/components/use-cases/hub.tsx", "src/app/(dashboard)/dashboard/[workspaceId]/use-cases/[useCaseId]/page.tsx"]) {
+  for (const file of ["src/components/use-cases/hub.tsx", "src/app/(dashboard)/dashboard/[workspaceId]/use-cases/[useCaseId]/page.tsx", "src/lib/db/queries/use-case-home.ts"]) {
     const source = read(file);
     const calls = [...source.matchAll(/([\w.]+) \? (listWorkspaceNeeds|getWorkspaceNeed)\(/g)];
     assert.equal(calls.length, (source.match(/\b(listWorkspaceNeeds|getWorkspaceNeed)\(/g) ?? []).length, `${file}: ogni lettura sotto una condizione`);

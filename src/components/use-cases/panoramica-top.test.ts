@@ -2,12 +2,14 @@ import test, { before } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import * as nodeModule from "node:module";
-import type { OverviewFigures, OverviewNextStep, OverviewStep, PortfolioLine } from "../../lib/use-cases/panoramica.ts";
+import { workspaceStepView, type StepView } from "../../lib/home/next-step.ts";
+import type { OverviewFigures, OverviewStep, PortfolioLine, WorkspaceStep } from "../../lib/use-cases/panoramica.ts";
 import type { RoadmapTile } from "../../lib/use-cases/views.ts";
 import { enableTsxImports } from "./detail/referent/tsx-test-loader.ts";
 
 // La testa della Panoramica resa in HTML (rilascio «Panoramica»): la striscia delle fasi, le cifre,
-// «Su tutto il portafoglio» e «Prossimo passo» con il solo pulsante pieno; i testi delle frasi.
+// «Su tutto il portafoglio» e, dal rilascio 10 (D3), il prossimo passo del workspace con il solo pulsante pieno,
+// lo stesso della Home (`workspaceStepView`).
 //
 // HUB_TEXT viene da hub-header.tsx, che porta con sé il menu «⋯» con le sue azioni del server (e il
 // database): qui il menu è un componente vuoto, il resto è quello vero.
@@ -51,7 +53,11 @@ const FIGURES: OverviewFigures = {
   pending: { amountEur: 23_400, count: 9, note: "su 9 use case" },
 };
 const LINE: PortfolioLine = { hours: 1_404, breakeven: { kind: "mese", month: "2027-08" } };
-const REQUIREMENTS: OverviewNextStep = { kind: "requisiti", quarter: "2026-Q4", toAsk: 60, toVerify: 0, blocked: 10 };
+const LINKS = { workspaceId: "ws", companyName: "Cliente Demo", salHref: "/dashboard/ws?apri=sal" };
+const view = (...steps: WorkspaceStep[]): StepView | null => workspaceStepView(steps, LINKS);
+const ASK: WorkspaceStep = { key: "chiedere", mine: true, count: 60, quarter: "2026-Q4" };
+const VERIFY: WorkspaceStep = { key: "verificare", mine: true, count: 2 };
+const REQUIREMENTS = view(ASK, VERIFY);
 
 function render(props: Record<string, unknown> = {}): string {
   return renderToStaticMarkup(
@@ -61,7 +67,7 @@ function render(props: Record<string, unknown> = {}): string {
       decideHref: DECIDE,
       figures: FIGURES,
       line: LINE,
-      nextStep: { step: REQUIREMENTS, href: NEEDS },
+      nextStep: { step: REQUIREMENTS },
       ...props,
     }),
   );
@@ -156,50 +162,51 @@ test("le cifre: valore, costo, trimestre, da misurare; prima la cifra, poi le pa
   assert.ok(!render({ figures: null, line: null }).includes("overview-figures"));
 });
 
-test("«Prossimo passo»: una frase e il solo pulsante pieno della testa", () => {
-  const html = render();
+test("il prossimo passo (D3): l'etichetta, il pulsante pieno con l'icona e il verbo, il «?» con il perché", () => {
+  // A schermo un numero resta con la sua parola (U+00A0): qui si leggono spazi normali.
+  const html = render().replace(/\u00a0/g, " ");
   const box = html.slice(html.indexOf('data-slot="next-step"'));
-  assert.match(html, /<section aria-labelledby="panoramica-prossimo-passo" data-slot="next-step" class="[^"]*@2xl\/hub:flex-row/);
-  assert.ok(box.includes('<h2 id="panoramica-prossimo-passo" class="text-sm font-semibold">Prossimo passo</h2>'));
-  // A schermo il numero resta con la sua parola: «T4 2026», «60 requisiti», «10 fermi».
-  assert.ok(box.includes("Per partire con il T4\u00a02026: 60\u00a0requisiti da chiedere e 10\u00a0fermi."), textOf(box));
-  assert.ok(!box.includes("60 requisiti"), "mai «60» / «requisiti» su due righe");
+  assert.match(html, /<section aria-labelledby="panoramica-prossimo-passo-etichetta" data-slot="next-step" class="space-y-2">/);
+  assert.ok(box.includes('<p id="panoramica-prossimo-passo-etichetta" class="text-xs text-muted-foreground">Prossimo passo</p>'));
   const filled = filledButtons(html);
   assert.equal(filled.length, 1, "un solo pulsante pieno");
-  assert.ok(filledButtons(box).length === 1, "dentro «Prossimo passo»");
+  assert.ok(filledButtons(box).length === 1, "dentro il prossimo passo");
   assert.match(filled[0], new RegExp(`href="${NEEDS.replace(/[?]/g, "\\?").replace(/&/g, "&amp;")}"`));
-  assert.ok(textOf(box).includes("Vedi cosa serve"));
-  const decisions = render({ nextStep: { step: { kind: "decisioni", count: 4 }, href: DECIDE } });
-  assert.ok(textOf(decisions).includes("4\u00a0use\u00a0case aspettano una decisione.Vedi le proposte"));
-  // Senza passo: nessun riquadro e nessun pulsante pieno.
+  assert.match(filled[0], /aria-describedby="panoramica-prossimo-passo-perche"/);
+  assert.ok(textOf(box).includes("Chiedi 60 informazioni"), textOf(box));
+  assert.match(box, /<svg[^>]*aria-hidden="true"[^>]*data-icon="inline-start"/, "l'icona accanto al verbo");
+  // Il «?»: il perché e, dopo, il passo che viene dopo.
+  assert.ok(box.includes('<span id="panoramica-prossimo-passo-perche" class="sr-only">Servono agli use case del T4 2026 per partire. Poi: 2 risposte da verificare.</span>'), box);
+  assert.match(box, /data-slot="why"[^>]*aria-label="Perché questo passo"|aria-label="Perché questo passo"[^>]*data-slot="why"/);
+  // Le decisioni portano a «Da decidere».
+  const decisions = render({ nextStep: { step: view({ key: "decidere", mine: true, count: 4, oldestDays: 9 }, ASK) } }).replace(/\u00a0/g, " ");
+  assert.ok(textOf(decisions).includes("Decidi 4 use case"));
+  assert.match(filledButtons(decisions)[0], new RegExp(`href="${DECIDE.replace(/[?]/g, "\\?")}"`));
+  assert.ok(decisions.includes("Il più vecchio aspetta da 9 giorni. Poi: 60 informazioni da chiedere per il T4 2026."));
+  // Niente da fare: «Tutto in ordine», senza pulsante pieno e senza «?».
+  const done = render({ nextStep: { step: null } });
+  assert.ok(done.includes('data-slot="next-step-done"') && textOf(done).includes("Tutto in ordine"));
+  assert.equal(filledButtons(done).length, 0);
+  assert.ok(!done.includes('data-slot="why"'));
+  // Un filtro (o un contributore): nessun passo.
   const none = render({ nextStep: null });
   assert.ok(!none.includes("next-step"));
   assert.equal(filledButtons(none).length, 0);
 });
 
-test("le frasi di «Prossimo passo», al singolare e al plurale", () => {
-  const q = "2026-Q4" as const;
-  const cases: Array<[OverviewNextStep, string]> = [
-    // Rondine il 29/10/2026: la riga di «Cosa serve» del trimestre dice «40 da chiedere · 17 in attesa · 2 da verificare · 8 fermi».
-    [{ kind: "requisiti", quarter: q, toAsk: 40, toVerify: 2, blocked: 8 }, "Per partire con il T4 2026: 40 requisiti da chiedere, 2 da verificare e 8 fermi."],
-    [{ kind: "requisiti", quarter: q, toAsk: 1, toVerify: 1, blocked: 1 }, "Per partire con il T4 2026: 1 requisito da chiedere, 1 da verificare e 1 fermo."],
-    [{ kind: "requisiti", quarter: q, toAsk: 60, toVerify: 0, blocked: 10 }, "Per partire con il T4 2026: 60 requisiti da chiedere e 10 fermi."],
-    [{ kind: "requisiti", quarter: q, toAsk: 1, toVerify: 0, blocked: 1 }, "Per partire con il T4 2026: 1 requisito da chiedere e 1 fermo."],
-    [{ kind: "requisiti", quarter: q, toAsk: 3, toVerify: 2, blocked: 0 }, "Per partire con il T4 2026: 3 requisiti da chiedere e 2 da verificare."],
-    [{ kind: "requisiti", quarter: q, toAsk: 0, toVerify: 1, blocked: 4 }, "Per partire con il T4 2026: 1 requisito da verificare e 4 fermi."],
-    [{ kind: "requisiti", quarter: q, toAsk: 1, toVerify: 0, blocked: 0 }, "Per partire con il T4 2026 serve ancora 1 requisito da chiedere."],
-    [{ kind: "requisiti", quarter: q, toAsk: 1_250, toVerify: 0, blocked: 0 }, "Per partire con il T4 2026 servono ancora 1.250 requisiti da chiedere."],
-    [{ kind: "requisiti", quarter: q, toAsk: 0, toVerify: 0, blocked: 1 }, "Per partire con il T4 2026 serve ancora 1 requisito fermo."],
-    [{ kind: "requisiti", quarter: q, toAsk: 0, toVerify: 0, blocked: 10 }, "Per partire con il T4 2026 servono ancora 10 requisiti fermi."],
-    [{ kind: "requisiti", quarter: q, toAsk: 0, toVerify: 1, blocked: 0 }, "Per partire con il T4 2026 c'è 1 requisito da verificare."],
-    [{ kind: "requisiti", quarter: "2027-Q1", toAsk: 0, toVerify: 5, blocked: 0 }, "Per partire con il T1 2027 ci sono 5 requisiti da verificare."],
-    [{ kind: "decisioni", count: 1 }, "1 use case aspetta una decisione."],
-    [{ kind: "decisioni", count: 4 }, "4 use case aspettano una decisione."],
-  ];
-  for (const [step, text] of cases) assert.equal(top.nextStepText(step), text);
-  assert.equal(top.nextStepAction({ kind: "decisioni", count: 1 }), "Vedi le proposte");
-  assert.equal(top.nextStepAction({ kind: "requisiti", quarter: q, toAsk: 1, toVerify: 0, blocked: 0 }), "Vedi cosa serve");
-  assert.equal(top.nextStepAction({ kind: "requisiti", quarter: q, toAsk: 0, toVerify: 1, blocked: 0 }), "Vedi cosa serve");
+test("il prossimo passo che non tocca a chi guarda: le parole dello stato e «Tocca a …», senza pulsante", () => {
+  const html = render({ nextStep: { step: view({ key: "fornitori", mine: false, waiting: 3 }) } }).replace(/\u00a0/g, " ");
+  const box = html.slice(html.indexOf('data-slot="next-step"'));
+  assert.equal(filledButtons(html).length, 0);
+  assert.ok(box.includes('data-slot="next-step-status"') && textOf(box).includes("Manca l'ok sui fornitori"), textOf(box));
+  assert.ok(box.includes('<p data-slot="next-step-turn" class="text-xs text-muted-foreground">Tocca a Cliente Demo.</p>'));
+  // Chi può dare l'ok: il pulsante porta a Impostazioni › fornitori, fuori dalla pagina.
+  const mine = render({ nextStep: { step: view({ key: "fornitori", mine: true, waiting: 3 }) } });
+  assert.match(filledButtons(mine)[0], /href="\/dashboard\/ws\/settings#sub-responsabili"/);
+  assert.ok(!mine.includes('data-slot="next-step-turn"'), "tocca a chi guarda: niente «Tocca a»");
+  // «Chiudi il SAL» dalla Panoramica: il pannello del SAL della Home.
+  const sal = render({ nextStep: { step: view({ key: "sal", mine: true, first: false, lastOn: "2026-10-01", days: 28 }) } });
+  assert.match(filledButtons(sal)[0], /href="\/dashboard\/ws\?apri=sal"/);
 });
 
 test("«Su tutto il portafoglio»: ore e pareggio, «ad» solo davanti ad aprile e agosto, una parte sola", () => {
@@ -219,7 +226,8 @@ test("il sorgente: solo forme sulla larghezza del riquadro, niente testo sbiadit
   assert.doesNotMatch(classes, /(?<![@\w/-])(?:max-)?(?:md|lg|xl|2xl):/, "nessuna forma sulla larghezza della finestra");
   assert.doesNotMatch(source, /\btext-[a-z-]+\/\d+/, "niente testo con l'opacità");
   assert.ok(!source.includes('"use client"'), "un componente del server");
-  // Il solo pulsante del file è quello pieno di «Prossimo passo».
-  assert.equal((source.match(/<Button\b/g) ?? []).length, 1);
+  // (Rilascio 10) Il pulsante pieno è quello del prossimo passo (`NextStep`): qui nessun altro pulsante.
+  assert.equal((source.match(/<Button\b/g) ?? []).length, 0);
+  assert.ok(source.includes("<NextStep "), "il passo con il pezzo comune");
   assert.doesNotMatch(source, /variant=/);
 });

@@ -30,6 +30,7 @@ import { INDEX_PILLARS, type IndexWeights } from "@/lib/programma/figures";
 import { formatEuro, formatInteger } from "@/lib/use-cases/format";
 import type { ServiceResult } from "@/lib/use-cases/types";
 import { cn } from "@/lib/utils";
+import { notifyDone } from "@/components/ui-10/toast";
 
 const T = PROGRAM_TEXT;
 
@@ -393,7 +394,7 @@ export function CloseSalButton({ workspaceId, filled }: { workspaceId: string; f
     <div className="space-y-2 rounded-lg border bg-muted/40 p-3" role="group" aria-label={T.closeSal}>
       <p className="text-sm">{T.closeSalHint}</p>
       <div className="flex gap-1.5">
-        <Button type="button" className="min-h-11 sm:min-h-8" disabled={pending} onClick={() => run(() => closeSalAction(workspaceId), (v) => { setConfirm(false); toast.success(T.salClosed(v.on)); })}>
+        <Button type="button" className="min-h-11 sm:min-h-8" disabled={pending} onClick={() => run(() => closeSalAction(workspaceId), (v) => { setConfirm(false); notifyDone(T.salClosed(v.on)); })}>
           {T.closeSal}
         </Button>
         <Button type="button" variant="ghost" className="min-h-11 sm:min-h-8" onClick={() => setConfirm(false)}>

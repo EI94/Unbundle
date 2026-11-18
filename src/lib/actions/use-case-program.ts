@@ -64,7 +64,11 @@ async function getCollaboratorAccessActor(workspaceId: string): Promise<ProgramA
 const str = (value: unknown): string => (typeof value === "string" ? value : "");
 
 function done<T>(workspaceId: string, result: Result<T>): Result<T> {
-  if (result.ok) revalidatePath(`/dashboard/${workspaceId}/programma`);
+  if (result.ok) {
+    // (Rilascio 10) Il Programma è la Home dei revisori: `/dashboard/<ws>`, con `/programma` come alias.
+    revalidatePath(`/dashboard/${workspaceId}`);
+    revalidatePath(`/dashboard/${workspaceId}/programma`);
+  }
   return result;
 }
 

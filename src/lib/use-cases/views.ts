@@ -292,16 +292,16 @@ export function hasActiveFilters(params: HubParams, opts: { ignoreKind?: boolean
 }
 
 /**
- * Vista di partenza quando `vista` manca (§4.2): Lateral Space e revisori del cliente «Da
- * decidere» se c'è qualcosa da decidere, altrimenti la Panoramica; uno sponsor del cliente
- * (`exec_sponsor` che non è di Lateral Space) e i contributori la Panoramica. «Cosa serve» non
- * è mai la vista di partenza.
+ * Vista di partenza quando `vista` manca (rilascio 10, decisione D3): sempre la Panoramica, per ogni
+ * ruolo e qualunque cosa ci sia da decidere. La pagina non cambia sotto le mani e non contraddice il
+ * suo prossimo passo (`workspaceSteps` di `panoramica.ts`), che porta a «Da decidere» quando le
+ * decisioni vengono prima. Una vista scelta nell'indirizzo vince sempre.
  */
-export function defaultHubView(viewer: UseCaseViewer, decideCount: number): HubView {
-  const abilities = abilitiesForUseCase(viewer);
-  if (!abilities.isReviewer) return "panoramica";
-  if (viewer.role === "exec_sponsor" && !abilities.isLateralSpace) return "panoramica";
-  return decideCount > 0 ? "da-decidere" : "panoramica";
+export const DEFAULT_HUB_VIEW: HubView = "panoramica";
+
+/** La vista di partenza (`DEFAULT_HUB_VIEW`): una funzione, per chi la chiama al posto della vista mancante. */
+export function defaultHubView(): HubView {
+  return DEFAULT_HUB_VIEW;
 }
 
 /**
