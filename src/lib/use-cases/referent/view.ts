@@ -18,6 +18,7 @@
  * Modulo puro.
  */
 import { parseCivilDate, romeDate } from "../../uc/calendar.ts";
+import { formatLongDayIt } from "../../uc/views/format.ts";
 import type { ReferentItemState, ReferentRequestStatus } from "../../db/use-case-hub-referents-ddl.ts";
 import {
   templateFileHref,
@@ -29,7 +30,7 @@ import {
   type ReferentTemplateView,
   type ReferentThreadView,
 } from "./contract.ts";
-import { REFERENT_PRIVACY_NOTICE, REFERENT_REQUEST_WORD, REFERENT_UI_TEXT, fillText } from "./labels.ts";
+import { REFERENT_PRIVACY_NOTICE, REFERENT_REQUEST_WORD, REFERENT_UI_TEXT, fillText, privacyNoticeView } from "./labels.ts";
 import { formatFileSize } from "./upload-transport.ts";
 import { nextReminderOn } from "./schedule.ts";
 import { privacyAccepted, reviewerStatus } from "./state.ts";
@@ -373,14 +374,22 @@ export function toPublicView(rows: PublicRows): ReferentAskView {
   const handled = shown.filter(isHandled).length;
   // (Parte 3) Tutto fatto dal team, niente dal referente: «vuota», mai «Hai risposto a tutte le domande».
   const state: ReferentAskView["state"] = open > 0 ? "aperta" : answered > 0 || (rows.request.status === "completata" && handled === 0) ? "completata" : "vuota";
+  const expiresOn = romeDate(rows.request.expiresAt);
   return {
     state,
-    privacy: { accepted: privacyAccepted(rows.request), version: REFERENT_PRIVACY_NOTICE.version, contact: rows.privacyContact },
+    privacy: {
+      accepted: privacyAccepted(rows.request),
+      version: REFERENT_PRIVACY_NOTICE.version,
+      contact: rows.privacyContact,
+      // (Rilascio 9b) Il testo da accettare, riempito qui come lo riempiva la pagina (`expiryLabel`): la pagina mostra
+      // questo, così una pagina di un altro rilascio non accetta mai una versione sotto un testo diverso.
+      notice: privacyNoticeView({ company: rows.company, expires: formatLongDayIt(expiresOn) ?? expiresOn, requester: rows.request.requesterName, contact: rows.privacyContact }),
+    },
     company: rows.company,
     useCase: { code: rows.useCase.code, title: rows.useCase.title },
     requester: { name: rows.request.requesterName },
     message: rows.request.message,
-    expiresOn: romeDate(rows.request.expiresAt),
+    expiresOn,
     questions: shown.map(questionView),
     upload: { clientMode: rows.clientMode },
     kind: check ? "referente" : "domande",
@@ -397,6 +406,18 @@ export const PUBLIC_VIEW_KEYS: readonly string[] = Object.freeze([
   "privacy.accepted",
   "privacy.version",
   "privacy.contact",
+  // (Rilascio 9b) Il testo dell'informativa da accettare, già riempito: nessun altro dato.
+  "privacy.notice",
+  "privacy.notice.version",
+  "privacy.notice.title",
+  "privacy.notice.lead",
+  "privacy.notice.summary",
+  "privacy.notice.summary[]",
+  "privacy.notice.fullTextLabel",
+  "privacy.notice.paragraphs",
+  "privacy.notice.paragraphs[]",
+  "privacy.notice.button",
+  "privacy.notice.footerLabel",
   "company",
   "useCase",
   "useCase.code",

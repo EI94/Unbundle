@@ -69,6 +69,8 @@ const PUBLIC_ERROR_CODES = new Set([
   "domanda_non_disponibile_pubblica", "pdf_in_revisione", "revisione_rifiutata", "revisione_scaduta", "nessun_altro_revisore",
   "quarantena_scaduta", "conferma_mancante", "stima_mancante", "stima_cambiata", "numero_non_valido", "nota_troppo_lunga",
   "commento_troppo_lungo", "domande_aperte", "domande_aperte_una", "domanda_aperta", "domanda_aperta_file", "domande_nuove",
+  // (Rilascio 9b) L'informativa letta in una versione vecchia.
+  "informativa_aggiornata",
 ]);
 const publicErrors = Object.entries(REFERENT_ERROR_MESSAGES).filter(([code]) => PUBLIC_ERROR_CODES.has(code)).map(([, text]) => text);
 const teamErrors = Object.entries(REFERENT_ERROR_MESSAGES).filter(([code]) => !PUBLIC_ERROR_CODES.has(code)).map(([, text]) => text);

@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Notice, SECONDARY_CLASS } from "@/components/uc/referente/screen";
 import type { CheckBody, ReferentAskView, ReferentBenefitView, ReferentCheckView, SubmitResult } from "@/lib/use-cases/referent/contract";
 import { REFERENT_ERROR_MESSAGES, REFERENT_PRIVACY_NOTICE, REFERENT_PUBLIC_TEXT, fillText } from "@/lib/use-cases/referent/labels";
+import { waitsForPrivacy } from "@/lib/use-cases/referent/state";
 import { acceptPrivacy, fetchAskView, markSeen, postReply, saveCheck, submitAnswers } from "./api";
-import { PrivacyCard, PrivacyFooter } from "./privacy-card";
+import { PRIVACY_TITLE_ID, PrivacyCard, PrivacyFooter } from "./privacy-card";
 import { QuestionCard, questionTitleId, type FlushDraft } from "./question-card";
 import {
   doneCountText,
@@ -21,11 +22,13 @@ import {
   newsEntries,
   newsLead,
   newsMissingText,
+  noticeOf,
   privacyTexts,
   questionSections,
   questionsHeading,
   savesItselfText,
   screenOf,
+  screenUnderNotice,
   sentCheckLines,
   thanksTexts,
   threadActionsOf,
@@ -48,9 +51,17 @@ import { ClarificationCard, SentDisclosure, TeamReplyCard, ThreadItem, newsTitle
  *
  * Non legge mai la sessione e non porta mai alla dashboard: vale uguale per chiunque abbia il link. Il
  * token serve solo per l'indirizzo delle chiamate: mai salvato sul dispositivo.
+ *
+ * (Rilascio 9b) L'informativa mostrata è quella della vista (`noticeOf`), e «Iniziamo» manda la sua versione come prova
+ * (`shown`). Se una scrittura aspetta l'informativa (cambiata con un rilascio mentre la pagina è aperta, o non letta),
+ * niente di scritto si perde: le domande, i passi e i campi restano montati e nascosti sotto l'informativa, che torna con
+ * il testo del server (senza quel testo, «Ricarica la pagina»); dopo «Iniziamo» le bozze in attesa partono da sole e si
+ * riprende da dove si era.
  */
 
 const THANKS_TITLE_ID = "ucq-grazie";
+/** (Rilascio 9b) Il fuoco va al campo aperto sotto una risposta (un solo campo alla volta). */
+const COMPOSER_FOCUS = "ucq-campo-aperto";
 const QUESTIONS_TITLE_ID = "ucq-domande";
 /** (Rilascio 6) «Da completare» e «Già inviato». */
 const NEWS_TITLE_ID = "ucq-novita";
@@ -62,11 +73,21 @@ function prefersReducedMotion(): boolean {
 const FINAL_TITLE_ID = "ucq-fine";
 
 function focusById(id: string, scroll = true) {
+  if (id === COMPOSER_FOCUS) {
+    document.querySelector<HTMLTextAreaElement>('[data-slot="referent-thread-composer"] textarea')?.focus();
+    return;
+  }
   const el = document.getElementById(id);
   if (!el) return;
   // Niente scorrimento animato con «riduci il movimento».
   if (scroll) el.scrollIntoView({ block: "start", behavior: prefersReducedMotion() ? "auto" : "smooth" });
   el.focus({ preventScroll: true });
+}
+
+/** (Rilascio 9b) La chiave di una bozza dei passi: il passo 1, la stima del tempo, oppure una riga dell'impatto. */
+function checkKeyOf(body: CheckBody): string {
+  if (body.step === 1) return "1";
+  return "benefit" in body ? `2:${body.benefit.key}` : "2";
 }
 
 export function ReferentAskPage({ token, initialView, today, initialStep = null }: { token: string; initialView: ReferentAskView; today: string; initialStep?: string | null }) {
@@ -94,6 +115,23 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
   const [newQuestions, setNewQuestions] = useState(false);
   const [privacyBusy, setPrivacyBusy] = useState(false);
   const [privacyError, setPrivacyError] = useState<string | null>(null);
+  /**
+   * (Rilascio 9b) Il testo dell'informativa sulla pagina non è più quello da accettare («Iniziamo» rifiutato con
+   * `informativa_cambiata`, o una vista che la dice letta mentre le scritture l'aspettano): il riquadro chiede di
+   * ricaricare la pagina.
+   */
+  const [noticeStale, setNoticeStale] = useState(false);
+  /** (Rilascio 9b) L'informativa è tornata perché una scrittura l'aspettava: il riquadro dice che quello che è scritto resta. */
+  const [noticeAgain, setNoticeAgain] = useState(false);
+  /** (Rilascio 9b) Una scrittura aspetta l'informativa: da qui a «Iniziamo» niente parte da solo. */
+  const waiting = useRef(false);
+  const waitRun = useRef<Promise<void> | null>(null);
+  /** (Rilascio 9b) Dove torna il fuoco dopo «Iniziamo», quando l'informativa è tornata a metà visita. */
+  const resumeFocus = useRef<string | null>(null);
+  /** (Rilascio 9b) Le bozze dei passi 1 e 2 che aspettano l'informativa, per chiave: partono dopo «Iniziamo». */
+  const heldChecks = useRef(new Map<string, CheckBody>());
+  /** (Rilascio 9b) Riprese da sole senza «Iniziamo» (la vista diceva «letta»): alla seconda si chiede di ricaricare. */
+  const autoResumes = useRef(0);
   const [submitBusy, setSubmitBusy] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [issues, setIssues] = useState<Map<string, string[]>>(() => new Map());
@@ -125,8 +163,17 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
   const seenSent = useRef(new Set<string>());
 
   const header = headerTexts(view);
-  const privacy = useMemo(() => privacyTexts(view), [view]);
+  // (Rilascio 9b) Il testo da accettare è quello della vista; nel piè di pagina, senza, quello di questa pagina.
+  const notice = useMemo(() => (noticeStale ? null : noticeOf(view)), [view, noticeStale]);
+  const privacy = useMemo(() => noticeOf(view) ?? privacyTexts(view), [view]);
   const screen = screenOf(view);
+  // (Rilascio 9b) Con l'informativa da leggere, la schermata che c'è sotto: se la visita l'ha già mostrata, resta montata
+  // e nascosta, così domande, passi e campi tengono quello che il referente ha scritto.
+  const onNotice = screen === "privacy";
+  const under = onNotice ? screenUnderNotice(view) : screen;
+  const [contentShown, setContentShown] = useState(!onNotice);
+  if (!onNotice && !contentShown) setContentShown(true);
+  const keep = onNotice && contentShown;
   const sections = useMemo(() => questionSections(view), [view]);
   const stepped = hasSteps(view);
   const steps = stepsOf(view);
@@ -180,6 +227,53 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
     [reload],
   );
 
+  /** (Rilascio 9b) La ripresa dopo l'informativa (`resume`): la funzione di adesso, letta solo dentro gli eventi. */
+  const resumeRef = useRef<() => void>(() => {});
+  /**
+   * (Rilascio 9b) Una scrittura aspetta l'informativa: subito il riquadro al posto di quello che c'era (che resta montato,
+   * nascosto), senza «Iniziamo» finché non arriva il testo di adesso dalla vista. Della vista nuova si prende solo
+   * l'informativa: bozze, passi e file restano quelli sulla pagina. Se la vista la dice già letta (un'altra finestra),
+   * quello che aspetta riparte da solo, una volta; poi si chiede di ricaricare.
+   */
+  const privacyWait = useCallback(
+    (returnTo?: string) => {
+      waiting.current = true;
+      if (returnTo && !resumeFocus.current) resumeFocus.current = returnTo;
+      setNoticeAgain(true);
+      setPrivacyError(null);
+      setPrivacyBusy(true);
+      setView((v) => (v.privacy.accepted ? { ...v, privacy: { ...v.privacy, accepted: false } } : v));
+      pendingFocus.current = PRIVACY_TITLE_ID;
+      if (waitRun.current) return;
+      const run = (async () => {
+        const r = await fetchAskView(token);
+        if (!r.ok) {
+          if (r.code === "link_non_valido") {
+            window.location.reload();
+            return;
+          }
+          // Senza rete resta il testo che la pagina ha: «Iniziamo» lo accetta solo se è ancora quello di adesso
+          // (il server lo controlla), altrimenti il riquadro chiede di ricaricare.
+        } else if (r.data.privacy.accepted && autoResumes.current < 1) {
+          autoResumes.current += 1;
+          setView((v) => ({ ...v, privacy: r.data.privacy }));
+          pendingFocus.current = resumeFocus.current;
+          resumeFocus.current = null;
+          resumeRef.current();
+        } else {
+          setView((v) => ({ ...v, privacy: { ...r.data.privacy, accepted: false } }));
+          if (r.data.privacy.accepted) setNoticeStale(true);
+        }
+        setPrivacyBusy(false);
+      })();
+      waitRun.current = run;
+      void run.finally(() => {
+        if (waitRun.current === run) waitRun.current = null;
+      });
+    },
+    [token],
+  );
+
   const onClosure = useCallback((needId: string, closed: boolean) => {
     const key = needId.toLowerCase();
     setClosedMap((current) => {
@@ -206,6 +300,11 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
   useEffect(() => {
     viewRef.current = view;
   }, [view]);
+  // (Rilascio 9b) Il passo sullo schermo, per tornarci dopo «Iniziamo» (una bozza del passo 1 arriva anche dal passo 2).
+  const stepRef = useRef(step);
+  useEffect(() => {
+    stepRef.current = step;
+  }, [step]);
   /** Va al passo `next`, con una voce nuova della cronologia: Indietro del browser torna al passo di prima. */
   const goTo = useCallback((next: CheckStep, mode: "push" | "replace" = "push") => {
     setStep(next);
@@ -258,14 +357,22 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
     );
   }, []);
 
-  /** Una bozza del passo 1 o 2; `stima_cambiata` rilegge la vista con la stima nuova. */
+  /**
+   * Una bozza del passo 1 o 2; `stima_cambiata` rilegge la vista con la stima nuova. (Rilascio 9b) Una bozza che aspetta
+   * l'informativa si tiene (`heldChecks`, una per passo o per riga) e parte dopo «Iniziamo».
+   */
   const saveStep = useCallback(
     async (body: CheckBody, keepalive = false): Promise<boolean> => {
+      if (waiting.current) {
+        heldChecks.current.set(checkKeyOf(body), body);
+        return false;
+      }
       setCheckSave("saving");
       setStepError(null);
       const run = (async () => {
         const r = await saveCheck(token, body, keepalive);
         if (r.ok) {
+          heldChecks.current.delete(checkKeyOf(body));
           setCheckSave("saved");
           // Una nota con un codice fiscale o una data di nascita si salva con un avviso (all'invio la
           // ferma; nomi, email e telefoni passano, rilascio 5.1): lo si dice subito sotto «Cosa
@@ -283,6 +390,12 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
             });
           return true;
         }
+        if (waitsForPrivacy(r.code)) {
+          setCheckSave(null);
+          heldChecks.current.set(checkKeyOf(body), body);
+          privacyWait(stepRef.current === 3 ? undefined : stepTitleId(stepRef.current));
+          return false;
+        }
         setCheckSave("error");
         if (r.code === "link_non_valido") {
           window.location.reload();
@@ -296,7 +409,7 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
           if (window.location.search !== stepSearch(2)) window.history.replaceState(null, "", stepSearch(2));
           return false;
         }
-        if (r.code === "gia_inviata" || r.code === "domanda_non_disponibile" || r.code === "informativa_da_leggere") void reload();
+        if (r.code === "gia_inviata" || r.code === "domanda_non_disponibile") void reload();
         setStepError({ step: body.step, message: r.message });
         return false;
       })();
@@ -306,8 +419,23 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
       });
       return run;
     },
-    [token, reload],
+    [token, reload, privacyWait],
   );
+
+  /**
+   * (Rilascio 9b) Dopo «Iniziamo»: partono le bozze che aspettavano l'informativa, quelle delle domande (ognuna salva
+   * quello che ha nel campo) e quelle dei passi, nell'ordine in cui sono arrivate.
+   */
+  const resume = useCallback(async () => {
+    waiting.current = false;
+    for (const flush of [...flushers.current.values()]) void flush();
+    const held = [...heldChecks.current.values()];
+    heldChecks.current.clear();
+    for (const body of held) await saveStep(body);
+  }, [saveStep]);
+  useEffect(() => {
+    resumeRef.current = () => void resume();
+  }, [resume]);
 
   const tooSoon = useCallback((e: React.MouseEvent<HTMLButtonElement>) => isRepeatActivation({ clickCount: e.detail, msSinceStep: Date.now() - stepChangedAt.current }), []);
 
@@ -329,15 +457,31 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
   );
 
   async function onAccept() {
+    // (Rilascio 9b) Si accetta solo il testo sullo schermo, e la sua versione va al server come prova (`shown`).
+    const shown = notice;
+    if (!shown || privacyBusy) return;
     setPrivacyBusy(true);
     setPrivacyError(null);
-    const r = await acceptPrivacy(token, view.privacy.version);
+    const r = await acceptPrivacy(token, { version: shown.version, shown: shown.version });
     setPrivacyBusy(false);
     if (r.ok) {
+      autoResumes.current = 0;
+      setNoticeAgain(false);
       setView((v) => ({ ...v, privacy: { ...v.privacy, accepted: true } }));
-      // (Rilascio 6) Il campo che il referente ha aperto prende il fuoco da sé; «Da completare» va al suo titolo.
-      if (composer) return;
-      if (screenOf({ ...view, privacy: { ...view.privacy, accepted: true } }) === "news") {
+      // (Rilascio 9b) Quello che aspettava l'informativa riparte; il fuoco torna dove il referente era.
+      void resume();
+      const back = resumeFocus.current;
+      resumeFocus.current = null;
+      if (back && (back === COMPOSER_FOCUS ? composer !== null : document.getElementById(back) !== null)) {
+        setFocusTarget(back);
+        return;
+      }
+      // (Rilascio 6) Il campo che il referente ha aperto prende il fuoco; «Da completare» va al suo titolo.
+      if (composer) {
+        setFocusTarget(COMPOSER_FOCUS);
+        return;
+      }
+      if (screenUnderNotice(view) === "news") {
         setFocusTarget(NEWS_TITLE_ID);
         return;
       }
@@ -353,7 +497,12 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
       window.location.reload();
       return;
     }
-    setPrivacyError(r.code === "informativa_cambiata" || r.code === "troppe_richieste" ? r.message : REFERENT_PRIVACY_NOTICE.error);
+    // (Rilascio 9b) Il server ha un'altra versione: il testo sullo schermo non è più quello, si ricarica la pagina.
+    if (r.code === "informativa_cambiata") {
+      setNoticeStale(true);
+      return;
+    }
+    setPrivacyError(r.code === "troppe_richieste" ? r.message : REFERENT_PRIVACY_NOTICE.error);
   }
 
   async function onSubmit() {
@@ -371,6 +520,11 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
     const order = sections.map((s) => s.needId);
     const flushed = await Promise.all(order.map(async (needId) => [needId, (await flushers.current.get(needId)?.()) ?? true] as const));
     const unsaved = flushed.filter(([, ok]) => !ok).map(([needId]) => needId);
+    // (Rilascio 9b) Una bozza aspetta l'informativa: è sullo schermo, niente da correggere. Dopo «Iniziamo» si invia di nuovo.
+    if (waiting.current) {
+      setSubmitBusy(false);
+      return;
+    }
     if (unsaved.length > 0) {
       setSubmitBusy(false);
       setSubmitError(REFERENT_ERROR_MESSAGES.risposte_da_correggere);
@@ -401,7 +555,12 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
       window.location.reload();
       return;
     }
-    if (r.code === "domanda_non_disponibile" || r.code === "informativa_da_leggere") void reload();
+    // (Rilascio 9b) L'invio aspetta l'informativa: tutto resta com'è, l'informativa torna sullo schermo.
+    if (waitsForPrivacy(r.code)) {
+      privacyWait();
+      return;
+    }
+    if (r.code === "domanda_non_disponibile") void reload();
     // (Rilascio 5) La conferma o la stima mancano, o la nota di «Correggi» va corretta: si torna al loro
     // passo, con il messaggio lì (mai «le trovi evidenziate» senza niente di evidenziato).
     const back = stepped ? stepOfSubmitRefusal(r) : null;
@@ -457,6 +616,10 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
     const openNow = sections.filter((q) => q.kind === "aperta").map((q) => q.needId.toLowerCase());
     const flushed = await Promise.all(openNow.map(async (needId) => [needId, (await flushers.current.get(needId)?.()) ?? true] as const));
     const unsaved = flushed.filter(([, ok]) => !ok).map(([needId]) => needId);
+    if (waiting.current) {
+      setSubmitBusy(false);
+      return;
+    }
     if (unsaved.length > 0) {
       setSubmitBusy(false);
       setSubmitError(REFERENT_ERROR_MESSAGES.risposte_da_correggere);
@@ -493,6 +656,12 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
       // Già risposto da un'altra finestra: niente da fare qui.
       if (r.code === "domanda_non_disponibile") continue;
       setSubmitBusy(false);
+      // (Rilascio 9b) Aspetta l'informativa: le risposte scritte restano nei loro campi, l'informativa torna sullo schermo.
+      if (waitsForPrivacy(r.code)) {
+        if (replied > 0) await reload();
+        privacyWait(newsTitleId(e.id));
+        return;
+      }
       setReplyErrors({ [e.id]: r.issues[0]?.message ?? r.message });
       setFocusTarget(newsTitleId(e.id));
       if (replied > 0) await reload();
@@ -505,6 +674,11 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
         setSubmitBusy(false);
         if (r.code === "link_non_valido") {
           window.location.reload();
+          return;
+        }
+        if (waitsForPrivacy(r.code)) {
+          if (replied > 0) await reload();
+          privacyWait();
           return;
         }
         if (replied > 0 || r.code === "domanda_non_disponibile" || r.code === "domande_nuove") await reload();
@@ -529,8 +703,12 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
     setFocusTarget(THANKS_TITLE_ID);
   }
 
-  /** (Rilascio 6) L'informativa da leggere prima di scrivere al team (una versione nuova), al posto del campo. */
-  const privacyGate = view.privacy.accepted ? null : <PrivacyCard texts={privacy} busy={privacyBusy} error={privacyError} onAccept={() => void onAccept()} />;
+  /**
+   * «Prima di iniziare» con il testo della vista (rilascio 9b: senza, «Ricarica la pagina»). (Rilascio 6) Anche al posto
+   * del campo, per scrivere al team con una versione nuova da leggere; non quando è già in cima alla pagina.
+   */
+  const noticeCard = <PrivacyCard texts={notice} again={noticeAgain} busy={privacyBusy} error={privacyError} onAccept={() => void onAccept()} />;
+  const privacyGate = view.privacy.accepted || onNotice ? null : noticeCard;
 
   /** (Rilascio 6) Il filo di un'ancora, con «Modifica», «Aggiungi qualcosa» e «Ho un dubbio». */
   const threadItem = (key: string, subject: string, actions: ThreadAction[], o: { primary: boolean; editText?: string }) => (
@@ -538,7 +716,7 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
       token={token}
       targetKey={key}
       subject={subject}
-      messages={messagesOf(view, key, { withFresh: screen !== "news" })}
+      messages={messagesOf(view, key, { withFresh: under !== "news" })}
       actions={actions}
       today={today}
       editText={o.editText}
@@ -558,6 +736,7 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
       }}
       onStale={() => void reload()}
       onDirty={onComposerDirty}
+      onPrivacyWait={() => privacyWait(COMPOSER_FOCUS)}
     />
   );
   const questionThread = (section: QuestionSection, primary: boolean) =>
@@ -618,16 +797,33 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
     );
   }
 
-  const readOnly = screen === "completed" || screen === "empty";
-  const newsScreen = screen === "news";
+  /**
+   * (Rilascio 9b) La pagina: in cima l'informativa, se c'è da leggerla; sotto quello che c'è da fare, che resta montato
+   * e nascosto mentre l'informativa è sullo schermo, se la visita l'ha già mostrato (`keep`). Alla prima apertura, solo
+   * l'informativa: niente domande, bozze o caricamenti prima di «Iniziamo».
+   */
+  const shell = (content: React.ReactNode) => (
+    <PublicShell footer={footer}>
+      {intro}
+      {onNotice ? noticeCard : null}
+      {!onNotice || keep ? (
+        <div hidden={onNotice || undefined} data-slot="referent-content">
+          {content}
+        </div>
+      ) : null}
+    </PublicShell>
+  );
+
+  const readOnly = under === "completed" || under === "empty";
+  const newsScreen = under === "news";
   const sentCheck = readOnly || newsScreen ? sentCheckLines(view) : null;
   const doneCount = sections.filter((q) => q.kind !== "aperta" || closedMap.get(q.needId.toLowerCase()) === true).length;
   const missingPositions = sections.map((q, i) => (missing.includes(q.needId.toLowerCase()) ? i + 1 : 0)).filter((n) => n > 0);
 
   // (Rilascio 5) I passi «Lo use case» e «Il tempo»; le domande del passo 3 dopo, nascoste qui una volta aperte.
-  const onCheckStep = stepped && screen === "questions" && step !== 3;
+  const onCheckStep = stepped && under === "questions" && step !== 3;
   const check = stepped ? view.check : null;
-  const questionsBlock = screen === "questions" || (readOnly && sections.length > 0);
+  const questionsBlock = under === "questions" || (readOnly && sections.length > 0);
   const renderQuestions = questionsBlock && (!onCheckStep || questionsOpened);
 
   // (Rilascio 6) La conferma e l'impatto già inviati, ognuno con il suo filo («Aggiungi qualcosa», «Ho un dubbio»).
@@ -693,14 +889,15 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
       onClosure={onClosure}
       tooSoon={stepped ? tooSoon : undefined}
       extra={questionThread(section, o.primary)}
+      paused={onNotice}
+      onPrivacyWait={() => privacyWait(questionTitleId(section.needId))}
     />
   );
 
   if (newsScreen) {
     const sentSections = sections.filter((q) => q.kind !== "aperta");
-    return (
-      <PublicShell footer={footer}>
-        {intro}
+    return shell(
+      <>
         <section aria-labelledby={NEWS_TITLE_ID} className="mt-6" data-slot="referent-news">
           <h2 id={NEWS_TITLE_ID} tabIndex={-1} className="text-xl font-semibold outline-none">
             {TT.newsTitle}
@@ -760,14 +957,13 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
             onSubmit={() => void onSubmitNews()}
           />
         ) : null}
-      </PublicShell>
+      </>,
     );
   }
 
-  return (
-    <PublicShell footer={footer}>
-      {intro}
-      {stepped && screen === "questions" ? <ReferentStepBar items={stepStates(view, step)} /> : null}
+  return shell(
+    <>
+      {stepped && under === "questions" ? <ReferentStepBar items={stepStates(view, step)} /> : null}
       {onCheckStep && check ? (
         <>
           <p role="status" aria-live="polite" className="mt-2 min-h-5 text-sm text-muted-foreground">
@@ -810,15 +1006,14 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
           )}
         </>
       ) : null}
-      {screen === "privacy" ? <PrivacyCard texts={privacy} busy={privacyBusy} error={privacyError} onAccept={() => void onAccept()} /> : null}
       {readOnly ? (
-        <MessageCard as="h2" titleId={FINAL_TITLE_ID} title={finalCardText(screen, view, today)}>
+        <MessageCard as="h2" titleId={FINAL_TITLE_ID} title={finalCardText(under === "completed" ? "completed" : "empty", view, today)}>
           {sentCheck ? <div className="mt-3">{sentCheckBlock(true)}</div> : null}
         </MessageCard>
       ) : null}
       {renderQuestions ? (
         <div hidden={onCheckStep} data-slot="referent-questions">
-          {screen === "questions" && sections.length > 0 ? (
+          {under === "questions" && sections.length > 0 ? (
             <div className="mt-6 space-y-2">
               <h2 id={QUESTIONS_TITLE_ID} tabIndex={-1} className="text-xl font-semibold outline-none">
                 {questionsHeading(sections.length)}
@@ -830,11 +1025,11 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
           {questionsBlock ? (
             <div className="mt-6 space-y-4" aria-labelledby={readOnly ? FINAL_TITLE_ID : QUESTIONS_TITLE_ID}>
               {sections.map((section) => questionCard(section, { primary: readOnly }))}
-              {screen === "questions" ? <p className="text-sm break-words text-muted-foreground">{savesItselfText(view)}</p> : null}
+              {under === "questions" ? <p className="text-sm break-words text-muted-foreground">{savesItselfText(view)}</p> : null}
             </div>
           ) : null}
-          {screen === "questions" ? generalBlock(false) : null}
-          {screen === "questions" ? (
+          {under === "questions" ? generalBlock(false) : null}
+          {under === "questions" ? (
             <SubmitBar
               status={doneCountText(doneCount, sections.length)}
               missing={missingPositions.length ? { text: missingText(missingPositions), goLabel: fillText(REFERENT_PUBLIC_TEXT.goToQuestion, { k: missingPositions[0] }), onGo: () => focusById(questionTitleId(missing[0])) } : null}
@@ -854,6 +1049,6 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
         </div>
       ) : null}
       {readOnly ? generalBlock(true) : null}
-    </PublicShell>
+    </>,
   );
 }

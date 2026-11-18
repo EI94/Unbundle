@@ -56,7 +56,7 @@ import {
   lockRequestSql,
   activeRequestSql,
 } from "@/lib/use-cases/referent/sql";
-import { HANDLED_NEED_STATUSES, privacyAccepted } from "@/lib/use-cases/referent/state";
+import { HANDLED_NEED_STATUSES, PRIVACY_NOT_SHOWN, linkPrivacyWait, privacyAccepted, privacyAcceptanceShown, privacyWaitOf } from "@/lib/use-cases/referent/state";
 import { REFERENT_EDIT_LOCKED_STATUSES, waitsForReferent, type ThreadMessageFact } from "@/lib/use-cases/referent/thread";
 import { threadRowOf } from "@/lib/db/queries/use-case-referent-thread";
 import { checkDraftText, checkSubmitText } from "@/lib/use-cases/referent/text";
@@ -139,6 +139,8 @@ WHERE t.token_hash = ${cast(hash, "text")}`),
       contactId: String(row.contact_id).toLowerCase(),
       status,
       privacyAccepted: privacyAccepted({ privacyAcceptedAt: rowDate(row.privacy_accepted_at), privacyNoticeVersion: rowString(row.privacy_notice_version) }),
+      // (Rilascio 9b) Mai letta, o letta in una versione vecchia: le scritture rispondono in due modi (`privacyWaitOf`).
+      privacyWait: privacyWaitOf({ privacyAcceptedAt: rowDate(row.privacy_accepted_at), privacyNoticeVersion: rowString(row.privacy_notice_version) }),
       expiresAt,
     },
   };
@@ -565,9 +567,14 @@ function writable(link: ReferentLink, now: Date): boolean {
   return link.status === "inviata" && link.expiresAt.getTime() > now.getTime();
 }
 
+/**
+ * «Iniziamo» di «Prima di iniziare»: l'accettazione della versione di adesso, sulla richiesta. (Rilascio 9b) Solo con la
+ * prova del testo che la pagina ha mostrato (`privacyAcceptanceShown`: `version` e `shown`). La pagina di prima del
+ * rilascio (49414cc9) mostra il suo testo e manda solo `version`, a volte quella del server dopo una vista riletta: ha
+ * `informativa_cambiata`, che mostra con il suo messaggio («ricarica la pagina»), e niente si registra.
+ */
 export async function acceptReferentPrivacy(link: ReferentLink, body: unknown, now: Date): Promise<PublicOutcome<{ accepted: true }>> {
-  const version = field(body, "version");
-  if (version !== REFERENT_PRIVACY_NOTICE.version) return pfail("informativa_cambiata");
+  if (!privacyAcceptanceShown(body, REFERENT_PRIVACY_NOTICE.version)) return pfail(PRIVACY_NOT_SHOWN);
   if (link.status !== "inviata" && link.status !== "completata") return pfail("link_non_valido");
   if (link.privacyAccepted) return { ok: true, value: { accepted: true } };
   void now;
@@ -588,7 +595,8 @@ WHERE id = ${cast(link.requestId, "uuid")} AND workspace_id = ${cast(link.worksp
  * con i test: nessun CHECK nuovo sulla tabella (la regola di §0 della SPEC).
  */
 export async function saveReferentDraft(link: ReferentLink, body: unknown, now: Date): Promise<PublicOutcome<DraftResult>> {
-  if (!link.privacyAccepted) return pfail("informativa_da_leggere");
+  const wait = linkPrivacyWait(link);
+  if (wait) return pfail(wait);
   if (!writable(link, now)) return notAvailable();
   const needId = field(body, "needId");
   const rawText = field(body, "text");
@@ -741,7 +749,8 @@ ON CONFLICT (request_id, component_key) DO UPDATE SET position = EXCLUDED.positi
  *   altrimenti un solo batch scrive la risposta, così un cambio dell'istantanea toglie sempre quella di prima.
  */
 export async function saveReferentCheck(link: ReferentLink, body: unknown, now: Date): Promise<PublicOutcome<CheckResult>> {
-  if (!link.privacyAccepted) return pfail("informativa_da_leggere");
+  const wait = linkPrivacyWait(link);
+  if (wait) return pfail(wait);
   if (!writable(link, now)) return notAvailable();
   const step = field(body, "step");
   if (step !== 1 && step !== 2) return pfail("dati_non_validi", "Dati non validi.");
@@ -816,7 +825,8 @@ const closureOf = submitClosureOf;
  * `domande_nuove` e la pagina si rilegge.
  */
 export async function submitReferentAnswers(link: ReferentLink, body: unknown, now: Date): Promise<PublicOutcome<SubmitResult>> {
-  if (!link.privacyAccepted) return pfail("informativa_da_leggere");
+  const wait = linkPrivacyWait(link);
+  if (wait) return pfail(wait);
   if (!writable(link, now)) return notAvailable();
   const idsOf = (raw: unknown): string[] | null | "x" => {
     if (raw === undefined || raw === null) return null;
@@ -829,7 +839,8 @@ export async function submitReferentAnswers(link: ReferentLink, body: unknown, n
   const executor = await getAppUcExecutor();
   const facts = await readRequestFacts(executor, link);
   if (!facts || facts.status !== "inviata") return notAvailable();
-  if (!privacyAccepted(facts)) return pfail("informativa_da_leggere");
+  const factsWait = privacyWaitOf(facts);
+  if (factsWait) return pfail(factsWait);
 
   const openItems = facts.items.filter((i) => i.open);
   const openIds = new Set(openItems.map((i) => i.needId));
@@ -1104,7 +1115,8 @@ WHERE id = ${cast(fileId.toLowerCase(), "uuid")} AND request_id = ${cast(link.re
 }
 
 export async function removeReferentFile(link: ReferentLink, body: unknown, env: Env): Promise<PublicOutcome<{ removed: true }>> {
-  if (!link.privacyAccepted) return pfail("informativa_da_leggere");
+  const wait = linkPrivacyWait(link);
+  if (wait) return pfail(wait);
   const executor = await getAppUcExecutor();
   const file = await ownFile(executor, link, field(body, "fileId"));
   if (!file) return pfail("file_non_trovato");
@@ -1129,7 +1141,8 @@ WHERE id = ${cast(file.id, "uuid")} AND request_id = ${cast(link.requestId, "uui
  * aspetta. Resta per una pagina aperta prima del rilascio, che lo chiede ancora prima di inviare.
  */
 export async function confirmReferentFile(link: ReferentLink, body: unknown): Promise<PublicOutcome<{ confirmed: true }>> {
-  if (!link.privacyAccepted) return pfail("informativa_da_leggere");
+  const wait = linkPrivacyWait(link);
+  if (wait) return pfail(wait);
   const executor = await getAppUcExecutor();
   const file = await ownFile(executor, link, field(body, "fileId"));
   if (!file || file.submitted || !file.personalWarning) return pfail("file_non_trovato");
@@ -1200,6 +1213,10 @@ export function scheduleReferentDispatch(requestId: string): void {
 export const REFERENT_PUBLIC_STATUS: Readonly<Record<string, number>> = Object.freeze({
   link_non_valido: 404,
   informativa_da_leggere: 409,
+  // (Rilascio 9b) L'informativa letta in una versione vecchia: niente si salva, come per `informativa_da_leggere`, ma con
+  // un codice che la pagina aperta da prima del rilascio (49414cc9) non tratta come una domanda da rileggere: tiene il
+  // testo scritto, mostra il messaggio («ricarica la pagina») o «Non salvato: riprova», e riprova. Come per `/r`, un 503.
+  informativa_aggiornata: 503,
   informativa_cambiata: 409,
   domanda_non_disponibile: 404,
   gia_inviata: 409,

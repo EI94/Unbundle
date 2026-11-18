@@ -413,7 +413,7 @@ test("con l'autorizzazione e le email accese: la richiesta, le righe sotto le es
   const now = new Date();
   const first = await pub.resolveReferentToken(flow.token, now);
   if (first.access !== "ok") assert.fail("link");
-  assert.ok((await pub.acceptReferentPrivacy(first.link, { version: labels.REFERENT_PRIVACY_NOTICE.version }, now)).ok);
+  assert.ok((await pub.acceptReferentPrivacy(first.link, { version: labels.REFERENT_PRIVACY_NOTICE.version, shown: labels.REFERENT_PRIVACY_NOTICE.version }, now)).ok);
   const link = await pub.resolveReferentToken(flow.token, now);
   if (link.access !== "ok") assert.fail("link");
   assert.ok((await pub.saveReferentDraft(link.link, { needId: n0, text: ANSWER, dontKnow: false }, now)).ok);
@@ -593,7 +593,7 @@ test("(rilascio 5.1) la risposta per beneficio sulla scheda: ogni voce con la ri
   assert.ok(token, "il link del referente");
   const first = await pub.resolveReferentToken(token!, new Date());
   if (first.access !== "ok") assert.fail("link");
-  ok(await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-3" }, new Date()) as never, "informativa");
+  ok(await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" }, new Date()) as never, "informativa");
   const resolved = await pub.resolveReferentToken(token!, new Date());
   if (resolved.access !== "ok") assert.fail("link");
   const link = resolved.link;

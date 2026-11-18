@@ -33,6 +33,7 @@ import {
 } from "@/lib/use-cases/referent/files";
 import { REFERENT_ERROR_MESSAGES } from "@/lib/use-cases/referent/labels";
 import { requestReferentUserSql } from "@/lib/use-cases/referent/people";
+import { linkPrivacyWait } from "@/lib/use-cases/referent/state";
 import {
   completeHandledRequestsStatements,
   lockRequestsOfNeedSql,
@@ -375,10 +376,14 @@ function needFromBody(body: unknown, key = "needId"): string | null {
   return isUuid(v) ? v.toLowerCase() : null;
 }
 
-/** Il link scrive? Informativa letta per la versione di adesso, richiesta viva. */
+/**
+ * Il link scrive? Informativa letta per la versione di adesso, richiesta viva. (Rilascio 9b) Letta in una versione
+ * vecchia: `informativa_aggiornata` (`privacyWaitOf`), come le altre scritture del link.
+ */
 function linkWritable(link: ReferentLink): Result<void> {
   if (link.status !== "inviata") return failCode("domanda_non_disponibile", REFERENT_ERROR_MESSAGES.domanda_non_disponibile_pubblica);
-  if (!link.privacyAccepted) return failCode("informativa_da_leggere");
+  const wait = linkPrivacyWait(link);
+  if (wait) return failCode(wait);
   return ok(undefined);
 }
 

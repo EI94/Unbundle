@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { ReferentAskView, ReferentFileView, ReferentQuestionView, ReferentThreadMessageView } from "../../../lib/use-cases/referent/contract.ts";
-import { REFERENT_PUBLIC_TEXT } from "../../../lib/use-cases/referent/labels.ts";
+import { REFERENT_PRIVACY_NOTICE, REFERENT_PUBLIC_TEXT, privacyNoticeView } from "../../../lib/use-cases/referent/labels.ts";
 import {
   attachHelp,
   counterLabel,
@@ -14,9 +14,11 @@ import {
   handledText,
   headerTexts,
   issuesByQuestion,
+  noticeOf,
   privacyTexts,
   questionSections,
   screenOf,
+  screenUnderNotice,
   sentAnswerView,
   stateCardKindOf,
   stateCardText,
@@ -444,4 +446,34 @@ test("(rilascio 6) che cosa si fa su una risposta inviata: «Modifica» fino ad 
   assert.equal(updatedLine(sentQuestion(0), "2026-11-09"), null);
   // «Hai risposto il …»: anche dopo una risposta nel filo.
   assert.equal(lastSentOn(followUpView([msg({ id: "x", side: "referente", kind: "aggiunta", createdAt: "2026-11-09T10:00:00.000Z" })])), "2026-11-09T10:00:00.000Z");
+});
+
+// ─── (Rilascio 9b) L'informativa della vista ─────────────────────────
+
+test("(rilascio 9b) il testo da accettare è quello della vista; senza, quello della pagina solo se è della stessa versione", () => {
+  const now = REFERENT_PRIVACY_NOTICE.version;
+  const values = { company: "Rondine", expires: "26 novembre 2026", requester: "Giulia Neri", contact: "x@y.it" };
+  const server = privacyNoticeView(values);
+  const contact = { accepted: false, contact: "x@y.it" };
+  // Il server nuovo manda il suo testo: la pagina mostra quello, con la sua versione (la prova di «Iniziamo»).
+  const next = { ...server, version: "ucq-2027-01-1", lead: "Abbiamo cambiato due cose." };
+  assert.deepEqual(noticeOf(view({ privacy: { ...contact, version: next.version, notice: next } })), next);
+  assert.deepEqual(noticeOf(view({ privacy: { ...contact, version: now, notice: server } })), server);
+  // Un server di prima (nessun testo): il testo di questa pagina, ma solo se la versione è la sua.
+  assert.deepEqual(noticeOf(view({ privacy: { ...contact, version: now } })), { version: now, ...privacyTexts(view({ privacy: { ...contact, version: now } })) });
+  assert.equal(noticeOf(view({ privacy: { ...contact, version: "ucq-2026-11-2" } })), null, "un'altra versione senza testo: si ricarica");
+  // Un testo di un'altra versione non vale per quella da accettare.
+  assert.equal(noticeOf(view({ privacy: { ...contact, version: "ucq-2027-01-1", notice: server } })), null);
+});
+
+test("(rilascio 9b) la schermata sotto l'informativa: quella che la pagina mostrerebbe con l'informativa letta", () => {
+  const unread = { accepted: false, version: "ucq-2026-11-3", contact: "x@y.it" };
+  assert.equal(screenOf(view({ privacy: unread })), "privacy");
+  assert.equal(screenUnderNotice(view({ privacy: unread })), "questions");
+  assert.equal(screenUnderNotice(view()), "questions");
+  const clar: ReferentThreadMessageView = { id: "m1", anchor: "generale", needId: null, componentKey: null, side: "team", kind: "chiarimento", text: "Quante?", createdAt: "2026-11-08T10:00:00.000Z", replyTo: null, waiting: true, fresh: false };
+  const followUp = view({ state: "completata", privacy: unread, questions: [question(0, { state: "inviata", answer: { text: "Sì", dontKnow: false, alreadyAttached: false, comment: null, submittedAt: "2026-11-05T10:00:00.000Z" } })], thread: { followUp: true, open: true, messages: [clar] } });
+  assert.equal(screenOf(followUp), "privacy", "un chiarimento chiede l'informativa");
+  assert.equal(screenUnderNotice(followUp), "news");
+  assert.equal(screenUnderNotice(view({ state: "completata", privacy: unread, questions: [] })), "completed");
 });

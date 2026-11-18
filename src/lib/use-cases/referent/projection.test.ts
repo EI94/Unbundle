@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { romeLocalToUtc } from "../../uc/calendar.ts";
-import { REFERENT_PRIVACY_NOTICE } from "./labels.ts";
+import { REFERENT_PRIVACY_NOTICE, privacyNoticeView } from "./labels.ts";
 import {
   PANEL_VIEW_KEYS,
   PUBLIC_VIEW_KEYS,
@@ -77,7 +77,12 @@ test("vista pubblica: solo le chiavi del contratto, nessun dato seminato", () =>
   assert.deepEqual(view.questions[0].answer, { text: "Excel", dontKnow: false, alreadyAttached: false, comment: null, submittedAt: at("2026-11-03").toISOString(), editedAt: null });
   assert.equal(view.state, "aperta");
   assert.equal(view.expiresOn, "2026-11-26");
-  assert.deepEqual(view.privacy, { accepted: true, version: REFERENT_PRIVACY_NOTICE.version, contact: "privacy@example.test" });
+  // (Rilascio 9b) Con il testo da accettare, già riempito: la pagina mostra questo, mai il suo.
+  const notice = privacyNoticeView({ company: "Rondine", expires: "26 novembre 2026", requester: "Giulia Neri", contact: "privacy@example.test" });
+  assert.deepEqual(view.privacy, { accepted: true, version: REFERENT_PRIVACY_NOTICE.version, contact: "privacy@example.test", notice });
+  assert.equal(notice.version, REFERENT_PRIVACY_NOTICE.version);
+  assert.ok(notice.summary.includes("Il link è solo tuo e vale fino al 26 novembre 2026."), "la data già scritta");
+  assert.ok(notice.paragraphs.every((p) => !/\{[A-Za-z]+\}/.test(p)) && notice.summary.every((p) => !/\{[A-Za-z]+\}/.test(p)), "nessun segnaposto");
 });
 
 test("vista pubblica: un'informativa vecchia si mostra di nuovo; senza domande aperte «completata» o «vuota»", () => {

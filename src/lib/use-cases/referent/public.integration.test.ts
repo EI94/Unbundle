@@ -206,13 +206,18 @@ test("un'informativa vecchia si mostra di nuovo e blocca le bozze; una domanda r
   const resolved = await pub.resolveReferentToken(state.token, new Date());
   assert.ok(resolved.access === "ok");
   if (resolved.access !== "ok") return;
-  assert.ok((await pub.acceptReferentPrivacy(resolved.link, { version: "ucq-2026-11-3" }, new Date())).ok);
+  assert.ok((await pub.acceptReferentPrivacy(resolved.link, { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" }, new Date())).ok);
   await q(`UPDATE use_case_referent_requests SET privacy_notice_version = 'ucq-2025-01-1' WHERE id = $1::uuid`, [state.requestId]);
   const old = await pub.resolveReferentToken(state.token, new Date());
   assert.ok(old.access === "ok" && !old.link.privacyAccepted);
   if (old.access !== "ok") return;
+  // (Rilascio 9b) Letta in una versione vecchia: «informativa_aggiornata» (503), non «da leggere», e niente si salva.
+  assert.equal(old.link.privacyWait, "informativa_aggiornata");
   const draft = await pub.saveReferentDraft(old.link, { needId: state.needs[2], text: "Excel", dontKnow: false }, new Date());
-  assert.ok(!draft.ok && draft.code === "informativa_da_leggere");
+  assert.ok(!draft.ok && draft.code === "informativa_aggiornata");
+  assert.equal(draft.message, "Abbiamo aggiornato l'informativa: ricarica la pagina per leggerla e continuare.");
+  const page = await pub.loadReferentAskPage(state.token, { env: ENV, now: new Date() });
+  assert.ok(page.access === "ok" && !page.view.privacy.accepted && page.view.privacy.notice?.version === "ucq-2026-11-3", "la vista porta il testo da rileggere");
   // Il revisore cambia lo stato dell'esigenza: la domanda esce dalla pagina.
   const needsService = await import("../needs-service.ts");
   const [n] = await q(`SELECT version FROM use_case_needs WHERE id = $1::uuid`, [state.needs[2]]);
@@ -241,6 +246,9 @@ test("i codici HTTP della pagina pubblica", opts, async () => {
   assert.equal(pub.REFERENT_PUBLIC_STATUS.link_non_valido, 404);
   assert.equal(pub.REFERENT_PUBLIC_STATUS.risposte_da_correggere, 422);
   assert.equal(pub.REFERENT_PUBLIC_STATUS.informativa_da_leggere, 409);
+  // (Rilascio 9b) Letta in una versione vecchia: un 503, che la pagina di produzione non tratta come una domanda da rileggere.
+  assert.equal(pub.REFERENT_PUBLIC_STATUS.informativa_aggiornata, 503);
+  assert.equal(pub.REFERENT_PUBLIC_STATUS.informativa_cambiata, 409);
   assert.equal(pub.REFERENT_PUBLIC_STATUS.file_non_trovato, 404);
 });
 

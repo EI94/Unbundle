@@ -80,11 +80,37 @@ export function headerTexts(view: ReferentAskView): HeaderTexts {
   };
 }
 
-/** L'informativa con i valori di questa richiesta. */
+/** L'informativa di questa pagina, con i valori di questa richiesta. */
 export function privacyTexts(view: ReferentAskView): { title: string; lead: string; summary: string[]; fullTextLabel: string; paragraphs: string[]; button: string; footerLabel: string } {
   const filled = privacyNoticeTexts({ company: view.company, expires: expiryLabel(view.expiresOn), requester: view.requester.name, contact: view.privacy.contact });
   const n = REFERENT_PRIVACY_NOTICE;
   return { title: n.title, lead: n.lead, summary: filled.summary, fullTextLabel: n.fullTextLabel, paragraphs: filled.paragraphs, button: n.button, footerLabel: n.footerLabel };
+}
+
+/** (Rilascio 9b) Il testo dell'informativa da mostrare, con la sua versione. */
+export type NoticeTexts = ReturnType<typeof privacyTexts> & { version: string };
+
+/**
+ * (Rilascio 9b) Il testo da mostrare per la versione che il server chiede di accettare (`privacy.version`): quello della
+ * vista (`privacy.notice`); senza (un server di prima), quello di questa pagina se è della stessa versione; altrimenti
+ * null, e il riquadro chiede di ricaricare la pagina. Mai «Iniziamo» sotto un testo diverso da quello che si accetta:
+ * «Iniziamo» manda come prova la versione di questo testo (`shown`).
+ */
+export function noticeOf(view: ReferentAskView): NoticeTexts | null {
+  const n = view.privacy.notice;
+  if (n && n.version === view.privacy.version) {
+    return { version: n.version, title: n.title, lead: n.lead, summary: [...n.summary], fullTextLabel: n.fullTextLabel, paragraphs: [...n.paragraphs], button: n.button, footerLabel: n.footerLabel };
+  }
+  return REFERENT_PRIVACY_NOTICE.version === view.privacy.version ? { version: REFERENT_PRIVACY_NOTICE.version, ...privacyTexts(view) } : null;
+}
+
+/**
+ * (Rilascio 9b) La schermata che c'è sotto l'informativa: quella che la pagina mostrerebbe con l'informativa letta.
+ * Quando l'informativa torna a metà visita la pagina la tiene aperta, nascosta, così niente di scritto si perde.
+ */
+export function screenUnderNotice(view: ReferentAskView): Exclude<ScreenKind, "privacy"> {
+  const under = screenOf({ ...view, privacy: { ...view.privacy, accepted: true } });
+  return under === "privacy" ? "questions" : under;
 }
 
 // ─── Cosa mostra la pagina ───────────────────────────────────────────

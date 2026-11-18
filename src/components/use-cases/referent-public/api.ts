@@ -6,6 +6,7 @@ import {
   type CheckResult,
   type DraftBody,
   type DraftResult,
+  type PrivacyBody,
   type ReferentAskView,
   type SubmitBody,
   type SubmitResult,
@@ -60,8 +61,12 @@ export function fetchAskView(token: string): Promise<ApiResult<ReferentAskView>>
   return call<ReferentAskView>(token, "", { method: "GET" });
 }
 
-export function acceptPrivacy(token: string, version: string): Promise<ApiResult<{ accepted: true }>> {
-  return call(token, REFERENT_API.privacy, { method: "POST", body: { version } });
+/**
+ * «Iniziamo»: la versione accettata e (rilascio 9b) quella del testo mostrato (`shown`), la prova che la pagina di prima
+ * del rilascio non manda. Il server registra l'accettazione solo se sono tutte e due quella di adesso.
+ */
+export function acceptPrivacy(token: string, body: PrivacyBody): Promise<ApiResult<{ accepted: true }>> {
+  return call(token, REFERENT_API.privacy, { method: "POST", body });
 }
 
 export function saveDraft(token: string, body: DraftBody, keepalive = false): Promise<ApiResult<DraftResult>> {
