@@ -22,7 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "AI Readiness Assessment",
+  title: "Questionario AI Readiness",
   robots: { index: false, follow: false, nocache: true },
 };
 
@@ -43,7 +43,7 @@ function InvalidInvite() {
             <CardTitle>Link non valido</CardTitle>
           </CardHeader>
           <CardContent className="text-sm leading-6 text-muted-foreground">
-            Il link dell&apos;assessment non è valido, è scaduto o è stato
+            Il link del questionario non è valido, è scaduto o è stato
             revocato. Chiedi al referente interno di generare un nuovo invito.
           </CardContent>
         </Card>
@@ -86,7 +86,7 @@ export default async function AiReadinessRespondentPage({
           </Link>
           <Card className="mt-8 rounded-[32px]">
             <CardHeader>
-              <CardTitle>Assessment già completato</CardTitle>
+              <CardTitle>Questionario già completato</CardTitle>
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground">
               Le tue risposte sono già state inviate una volta e non possono
@@ -116,7 +116,7 @@ export default async function AiReadinessRespondentPage({
           </Link>
           <Card className="mt-8 rounded-[32px]">
             <CardHeader>
-              <CardTitle>Assessment non aperto</CardTitle>
+              <CardTitle>Questionario non aperto</CardTitle>
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground">
               Il link è valido, ma il team non ha ancora aperto la raccolta o
@@ -146,9 +146,9 @@ export default async function AiReadinessRespondentPage({
               <SurveyThemeToggle />
             </div>
             <div className="mt-8 flex flex-wrap items-center gap-2">
-              <Badge variant="secondary">AI Readiness OS</Badge>
+              <Badge variant="secondary">AI Readiness</Badge>
               <Badge variant="outline">{displayName}</Badge>
-              <Badge variant="secondary">Raccolta use case</Badge>
+              <Badge variant="secondary">Raccolta casi d&apos;uso</Badge>
             </div>
             <h1 className="mt-5 max-w-3xl text-4xl font-semibold tracking-tight">
               Raccontaci un caso concreto 💡
@@ -160,7 +160,7 @@ export default async function AiReadinessRespondentPage({
             </p>
             <div className="mt-5 grid gap-2 sm:grid-cols-3">
               {[
-                { n: "1", t: "Il bisogno", d: "Qual e il problema e perché conta." },
+                { n: "1", t: "Il bisogno", d: "Qual è il problema e perché conta." },
                 { n: "2", t: "Com'è oggi", d: "Processo, persone, strumenti e dati, così come sono adesso." },
                 { n: "3", t: "Come cambierebbe", d: "La tua ipotesi su come l'AI può aiutare." },
               ].map((step) => (
@@ -230,7 +230,7 @@ export default async function AiReadinessRespondentPage({
             <SurveyThemeToggle />
           </div>
           <div className="mt-8 flex flex-wrap items-center gap-2">
-            <Badge variant="secondary">AI Readiness OS</Badge>
+            <Badge variant="secondary">AI Readiness</Badge>
             <Badge variant="outline">{displayName}</Badge>
             <Badge variant="secondary">{track.label}</Badge>
             <Badge variant="outline">~{estimatedMinutes} minuti</Badge>
@@ -242,7 +242,7 @@ export default async function AiReadinessRespondentPage({
           </h1>
           <p className="mt-2 max-w-3xl text-base text-muted-foreground">
             {isInternalTrack
-              ? "Questa scheda è per chi conosce sistemi, dati o organizzazione: le tue risposte completano il quadro raccolto con la survey."
+              ? "Questa scheda è per chi conosce sistemi, dati o organizzazione: le tue risposte completano il quadro raccolto con il questionario."
               : "Il tuo contributo è importante: aiuta la tua organizzazione a capire dove l'AI può dare una mano davvero."}
           </p>
           <div
@@ -283,14 +283,14 @@ export default async function AiReadinessRespondentPage({
               <>
                 Le risposte sono salvate con identificativo pseudonimo e vengono
                 aggregate. I risultati per area sono visibili solo se ci sono
-                almeno {found.assessment.aggregationThreshold} respondent.
+                almeno {found.assessment.aggregationThreshold} risposte.
               </>
             ) : (
               <>
-                Questa survey e nominativa: ti chiederemo nome e cognome, senza
-                bisogno di creare un account. I risultati per area vengono
+                Questo questionario è nominativo: ti chiederemo nome e cognome,
+                senza bisogno di creare un account. I risultati per area vengono
                 comunque aggregati (minimo {found.assessment.aggregationThreshold}{" "}
-                respondent).
+                risposte).
               </>
             )}
             <div className="mt-2 flex flex-wrap gap-4">
@@ -310,7 +310,7 @@ export default async function AiReadinessRespondentPage({
           <p className="mt-4 rounded-2xl border bg-background/60 p-3 text-xs leading-5 text-muted-foreground">
             🔗 Questo link è personale e riporta alle <em>tue</em> risposte: non
             inoltrarlo ai colleghi. Per invitarli, condividi il link generale
-            della survey.
+            del questionario.
           </p>
         </header>
 

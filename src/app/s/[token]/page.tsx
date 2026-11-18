@@ -36,7 +36,7 @@ export async function generateMetadata({
     ? `Questionario AI Readiness — ${company}`
     : "Questionario AI Readiness";
   const description =
-    "Bastano 10 minuti: raccontaci come lavori oggi e dove l'AI potrebbe darti una mano. Nessuna risposta e' giusta o sbagliata.";
+    "Bastano 10 minuti: raccontaci come lavori oggi e dove l'AI potrebbe darti una mano. Nessuna risposta è giusta o sbagliata.";
   return {
     title,
     description,

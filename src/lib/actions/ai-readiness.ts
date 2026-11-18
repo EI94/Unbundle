@@ -726,7 +726,7 @@ export async function startOpenSurveyAction(
     return errorState("Controlla i campi evidenziati.", fieldErrors);
   }
   if (named && (!parsed.data.firstName || !parsed.data.lastName)) {
-    return errorState("Questa survey e nominativa: inserisci nome e cognome.", {
+    return errorState("Questo questionario è nominativo: inserisci nome e cognome.", {
       ...(parsed.data.firstName ? {} : { firstName: "Richiesto." }),
       ...(parsed.data.lastName ? {} : { lastName: "Richiesto." }),
     });

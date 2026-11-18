@@ -193,7 +193,8 @@ export const AREA_SOURCE_DIRS: readonly string[] = [
 /**
  * (Rilascio 5.1) La pagina pubblica del referente: i suoi testi si controllano con l'ambito `esterno`
  * («caso d'uso», mai «use case»), anche se la cartella dei componenti sta dentro l'area. (Rilascio 10, §4.2)
- * Anche la pagina del link della realizzazione (`/r`) e l'invito.
+ * Anche la pagina del link della realizzazione (`/r`), l'invito e le pagine del questionario AI Readiness per chi
+ * risponde (`/a`, il link personale, e `/s`, il link aperto): «questionario», mai «Survey» né «Assessment».
  */
 export const OUTSIDE_SOURCE_DIRS: readonly string[] = [
   "src/components/use-cases/referent-public/",
@@ -201,6 +202,8 @@ export const OUTSIDE_SOURCE_DIRS: readonly string[] = [
   "src/components/uc/referente/",
   "src/app/r/",
   "src/app/invite/",
+  "src/app/a/",
+  "src/app/s/",
 ];
 
 /**

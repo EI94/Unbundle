@@ -77,14 +77,18 @@ test("no missing accent in what people read: «non è», «più», «già», «p
     "readiness e gestita", "} e il fattore", "passo e attivare", "} e attivo", "che e importante", "Con costanza: e un",
     "se e tecnicamente", "vincolo e ", "campione attuale e ", "ricorrente e ", "com'e oggi", "cosi come", "butta li ",
     "qualita output", "qualita e compliance",
+    // (Rilascio 10) Le pagine di chi risponde (/a, /s) e il messaggio del modulo nominativo.
+    "Qual e il", "survey e nominativa", "questionario e nominativo",
   ];
+  // L'accento a macchina da scrivere («e'» per «è»): mai in un testo.
+  const TYPEWRITER = /(?<![\p{L}'])[eE]'(?=\s)/u;
   const found: string[] = [];
   for (const file of sources()) {
     read(file)
       .split("\n")
       .forEach((line, i) => {
         if (/^\s*(\/\/|\*|\/\*)/.test(line) || /keywords:/.test(line)) return;
-        if (WORDS.test(line) || PHRASES.some((p) => line.includes(p))) found.push(`${file}:${i + 1}: ${line.trim().slice(0, 90)}`);
+        if (WORDS.test(line) || TYPEWRITER.test(line) || PHRASES.some((p) => line.includes(p))) found.push(`${file}:${i + 1}: ${line.trim().slice(0, 90)}`);
       });
   }
   assert.deepEqual(found, []);
@@ -105,6 +109,22 @@ test("(rilascio 10) what the page says about anonymity is true: no «anonymous q
   assert.match(read("src/components/ai-readiness/respondent-privacy-controls.tsx"), /<h2 className="font-semibold">Anonimizza risposte<\/h2>/);
   assert.ok(page.includes("togliere il consenso al confronto e rendere anonime le sue risposte dal suo link personale."));
   assert.doesNotMatch(page, /questionario anonimo|restare anonim/);
+});
+
+test("(rilascio 10, §4) the respondent pages say «questionario», never Survey or Assessment, with their accents", () => {
+  const a = read("src/app/a/[token]/page.tsx").replace(/\s+/g, " ");
+  assert.ok(a.includes('title: "Questionario AI Readiness"'), "the tab title, as on /s");
+  for (const title of ["Link non valido", "Questionario già completato", "Questionario non aperto"]) assert.ok(a.includes(`<CardTitle>${title}</CardTitle>`), title);
+  assert.ok(a.includes("Il link del questionario non è valido"));
+  assert.ok(a.includes("Questo questionario è nominativo: ti chiederemo nome e cognome, senza bisogno di creare un account."));
+  assert.ok(a.includes("le tue risposte completano il quadro raccolto con il questionario."));
+  assert.ok(a.includes("condividi il link generale del questionario."));
+  assert.ok(a.includes("<Badge variant=\"secondary\">AI Readiness</Badge>") && !a.includes("AI Readiness OS"), "the name of the view, without «OS»");
+  assert.match(read("src/lib/actions/ai-readiness.ts"), /errorState\("Questo questionario è nominativo: inserisci nome e cognome\.",/);
+  assert.match(read("src/app/s/[token]/page.tsx"), /Nessuna risposta è giusta o sbagliata\./);
+  // «Survey», «Assessment», «respondent» e «use case» li vieta il copy-guard di fuori, che controlla anche /a e /s.
+  const guard = read("src/lib/use-cases/copy-guard.ts");
+  assert.ok(guard.includes('  "src/app/a/",\n  "src/app/s/",'));
 });
 
 test("/s has no answers yet: its error page does not promise answers saved on the device, and «Riprova» re-reads the page", () => {

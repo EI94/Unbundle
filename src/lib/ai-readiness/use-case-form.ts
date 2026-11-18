@@ -47,7 +47,7 @@ export const USE_CASE_FORM_BLOCKS: UseCaseBlock[] = [
       {
         id: "painPoint",
         column: "pain_point",
-        label: "Qual e il problema o il bisogno?",
+        label: "Qual è il problema o il bisogno?",
         help: "Cosa oggi fa perdere tempo, crea errori o frustrazione? Dove ci si blocca di più?",
         type: "textarea",
         required: true,

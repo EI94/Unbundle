@@ -514,10 +514,11 @@ test(`vecchio nome fuori dall'area: pulito subito dove è già cambiato; nei fil
 
 // ─── (Rilascio 10, §4.2) Fuori dalla dashboard e nella CLI ───────────
 
-test("(rilascio 10) copy-guard verde sui testi delle pagine fuori dalla dashboard (/rispondi, /r, invito) e della CLI", () => {
+test("(rilascio 10) copy-guard verde sui testi delle pagine fuori dalla dashboard (/rispondi, /r, invito, /a, /s) e della CLI", () => {
   const outside = OUTSIDE_SOURCE_DIRS.flatMap(walk).filter((file) => copyScopeOfFile(file) === "esterno");
   const cli = CLI_SOURCE_DIRS.flatMap(walk).filter((file) => copyScopeOfFile(file) === "cli");
-  for (const piece of ["src/app/rispondi/[token]/page.tsx", "src/components/uc/referente/referente-page.tsx", "src/app/invite/[token]/page.tsx"]) assert.ok(outside.includes(piece), `${piece} si controlla`);
+  const pieces = ["src/app/rispondi/[token]/page.tsx", "src/components/uc/referente/referente-page.tsx", "src/app/invite/[token]/page.tsx", "src/app/a/[token]/page.tsx", "src/app/s/[token]/page.tsx"];
+  for (const piece of pieces) assert.ok(outside.includes(piece), `${piece} si controlla`);
   assert.ok(cli.includes("src/lib/use-cases/cli/brief.ts"), "la CLI si controlla");
   const found = [
     ...outside.flatMap((file) => matchesOf(file, "esterno").map((m) => `${file}: «${m.match}» in «${m.text}»`)),
