@@ -10,11 +10,11 @@ export const learningLeave = createLearningLeaveGuard();
 /**
  * Before an in-app step that would drop unsaved edits (refresh, another section, sign-out): true when nothing would be
  * lost and the caller goes ahead now. Otherwise the in-app dialog opens and the call returns false; after the
- * confirmation the edits are discarded and `proceed` runs the step. Without `proceed` the dialog only discards, and
- * the person repeats the step.
+ * confirmation the edits are discarded and `proceed` runs the step. Without `proceed` the dialog only discards and the
+ * person repeats the step, which then passes once (also when the session boundary still holds hidden edits).
  */
 export function confirmLearningNavigation(proceed?: () => void): boolean {
-  return learningLeave.request(proceed ? "continue" : "discard", proceed ?? null);
+  return learningLeave.request(proceed ? "continue" : "discard", proceed ?? learningLeave.passNext);
 }
 
 /** «Scarta modifiche»: asks in the dialog, then discards. */

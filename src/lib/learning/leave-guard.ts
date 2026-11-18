@@ -34,6 +34,11 @@ export interface LearningLeaveGuard {
   request(kind: LearningLeaveKind, proceed?: (() => void) | null): boolean;
   /** Il pulsante della finestra: scarta le modifiche e fa il passo chiesto; con «wait» chiude soltanto. */
   confirm(): void;
+  /**
+   * Per chi chiama senza un passo suo (lo ripete da sé, come «Esci»): dopo la conferma il prossimo passo passa una
+   * volta, anche se un modulo che non si può scartare resta da proteggere. Modifiche nuove lo annullano.
+   */
+  passNext(): void;
   /** «Resta», «Annulla», Esc o un clic fuori: niente cambia. */
   dismiss(): void;
   /** La chiusura della scheda chiede al browser di fermarsi. */
@@ -47,6 +52,7 @@ export function createLearningLeaveGuard(now: () => number = Date.now): Learning
   const listeners = new Set<() => void>();
   let ask: LearningLeaveAsk | null = null;
   let graceUntil = 0;
+  let passOnce = false;
 
   const show = (next: LearningLeaveAsk | null) => {
     ask = next;
@@ -56,17 +62,23 @@ export function createLearningLeaveGuard(now: () => number = Date.now): Learning
   return {
     register(key, guard) {
       guards.set(key, guard);
+      if (guard.dirty) passOnce = false;
     },
     unregister(key) {
       guards.delete(key);
       if (guards.size > 0) return;
       // L'ultimo modulo se ne va: niente più da proteggere, né una finestra rimasta aperta.
       graceUntil = 0;
+      passOnce = false;
       if (ask) show(null);
     },
     size: () => guards.size,
     request(kind, proceed = null) {
       if (now() < graceUntil) return true;
+      if (passOnce) {
+        passOnce = false;
+        return true;
+      }
       const active = [...guards.values()];
       // Senza la finestra montata non si blocca niente: nessuno potrebbe rispondere.
       if (active.length === 0 || listeners.size === 0) return true;
@@ -88,6 +100,9 @@ export function createLearningLeaveGuard(now: () => number = Date.now): Learning
       // non parte.
       graceUntil = now() + LEARNING_LEAVE_GRACE_MS;
       current.proceed?.();
+    },
+    passNext() {
+      passOnce = true;
     },
     dismiss() {
       if (ask) show(null);

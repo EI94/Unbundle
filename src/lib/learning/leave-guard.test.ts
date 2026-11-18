@@ -89,6 +89,23 @@ test("a save in progress: the dialog says to wait and closing it changes nothing
   assert.equal(guard.blocksUnload(), true);
 });
 
+test("a caller that repeats its own step («Esci»): after the confirmation the next step passes once; new edits ask again", () => {
+  const { clock, guard } = setup();
+  // The session boundary of a page whose access must be checked again: hidden edits, nothing to discard.
+  const boundary = {};
+  guard.register(boundary, { dirty: true });
+  assert.equal(guard.request("discard", guard.passNext), false);
+  guard.confirm();
+  clock.now += LEARNING_LEAVE_GRACE_MS;
+  assert.equal(guard.request("discard", guard.passNext), true, "the repeated step passes, without a loop of questions");
+  assert.equal(guard.request("discard", guard.passNext), false, "only once");
+
+  guard.confirm();
+  clock.now += LEARNING_LEAVE_GRACE_MS;
+  guard.register({}, { dirty: true });
+  assert.equal(guard.request("leave"), false, "edits made after the confirmation are protected again");
+});
+
 test("the last form leaving closes a dialog left open and ends the grace period", () => {
   const { guard } = setup();
   const first = {};
