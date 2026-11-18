@@ -10,6 +10,11 @@ import "server-only";
  * fuso di Roma, contato solo quando la chiamata parte); memoria di oggi; chiamata `contextRead`; regole; proposte e
  * stato in una transazione; evento `fonte_letta`.
  *
+ * (9b, RILASCIO-9b-COSTRUZIONE.md §2.11) Una fonte `risposta` (le risposte di un referente) non ha un testo salvato: si
+ * compone adesso dalle risposte inviate (`readAnswersSource`), il prompt parla di risposte, e ogni proposta si lega allo
+ * use case della richiesta. È una fonte del cliente: il prompt non riceve i fatti «Solo Lateral Space» e le proposte non
+ * sono mai preselezionate.
+ *
  * Non lancia: ogni esito è nel risultato. Nei log solo id, codici e numeri: mai un testo.
  */
 import { sql } from "drizzle-orm";
@@ -22,7 +27,7 @@ import { addSkipped, reconcile, type DraftProposal } from "@/lib/context/read/re
 import { splitForReading } from "@/lib/context/read/split";
 import { CONTEXT_TEXT } from "@/lib/context/text";
 import { isClientSource, type ContextActor } from "@/lib/context/visibility";
-import { CONTEXT_LIMITS, type ContextChannel, type ContextSection, type ContextVisibility, type ReadReason, type ReadStatus, type SkippedCounts, type SourceKind } from "@/lib/context/vocab";
+import { CONTEXT_LIMITS, type ContextChannel, type ContextSection, type ContextVisibility, type ReadReason, type ReadStatus, type SkippedCounts, type SourceKind, type SourceOrigin } from "@/lib/context/vocab";
 import { db } from "@/lib/db";
 import { contextProposals } from "@/lib/db/schema";
 import { logSafeError } from "@/lib/log/safe-error";
@@ -30,6 +35,7 @@ import { isEmailVerifiedValue, isLateralSpaceEmail, parseLsDomains } from "@/lib
 import type { ServiceResult } from "@/lib/use-cases/types";
 import { contextAiConsent, contextAiConsentNow } from "./context-consent";
 import { loadLiveDiscovery } from "./context-discovery";
+import { readAnswersSource } from "./context-referent";
 import { CONTEXT_DAY_TIME_ZONE, contextRateLimitExec, ctxErrorCode, eventStatement, gate, invalid, isUuid, notFound, ok, requireSql, retry, romeToday, rowsOf, toIsoDate } from "./context-shared";
 import { contextStoreReady } from "./context-store";
 import { getWorkspaceById } from "./workspaces";
@@ -66,6 +72,9 @@ interface ReadOptions {
 interface SourceRow {
   id: string;
   kind: SourceKind;
+  /** (9b) Da dove è entrata, e il suo id esterno: per una fonte `risposta`, l'id della richiesta del referente. */
+  origin: SourceOrigin;
+  external_id: string | null;
   visibility: ContextVisibility;
   /** L'e-mail di chi ha aggiunto la fonte, e se è verificata: per sapere se un documento l'ha caricato Lateral Space. */
   added_by_email: string | null;
@@ -88,7 +97,7 @@ const skippedOf = (value: unknown): SkippedCounts => (value !== null && typeof v
 async function loadSource(workspaceId: string, sourceId: string): Promise<SourceRow | null> {
   const rows = rowsOf<SourceRow>(
     await db.execute(sql`
-      SELECT s.id, s.kind, s.visibility, u.email AS added_by_email, u.email_verified AS added_by_verified, s.title, s.occurred_on, s.body,
+      SELECT s.id, s.kind, s.origin, s.external_id, s.visibility, u.email AS added_by_email, u.email_verified AS added_by_verified, s.title, s.occurred_on, s.body,
         d.extracted_text AS document_text, s.read_status, s.read_reason, s.read_attempts,
         (s.read_started_at IS NOT NULL AND s.read_started_at > now() - make_interval(secs => ${CONTEXT_LIMITS.readLeaseSeconds})) AS lease_fresh,
         s.parts_read, s.skipped, (s.text_purged_at IS NOT NULL) AS purged
@@ -307,8 +316,10 @@ async function readSource(reader: Reader, sourceId: string, opts: ReadOptions): 
     if (source.read_status === "in_lettura" && source.lease_fresh) return ok({ status: "in_lettura" });
     if (source.read_status === "letto" || source.read_status === "non_letto") return ok(await settledOutcome(ws, source));
 
+    // (9b) Le risposte di un referente: il testo si compone adesso dalle risposte inviate, e non si salva mai.
+    const answers = source.kind === "risposta" ? await readAnswersSource(ws, source.external_id) : null;
     // Senza testo niente modello: la fonte resta com'è, segnata «non letta».
-    const text = (source.kind === "documento" ? source.document_text : source.body) ?? "";
+    const text = (source.kind === "documento" ? source.document_text : answers ? answers.text : source.body) ?? "";
     if (!text.trim()) {
       await db.execute(sql`
         UPDATE context_sources SET read_status = 'non_letto', read_reason = 'vuoto', read_started_at = NULL, updated_at = now()
@@ -353,6 +364,7 @@ async function readSource(reader: Reader, sourceId: string, opts: ReadOptions): 
     const index = Math.max(0, Math.min(Number(source.parts_read), parts.length - 1));
     const part = parts[index];
     const { system, prompt } = buildReadPrompt({
+      sourceKind: source.kind === "risposta" ? "risposta" : source.kind === "documento" ? "documento" : "appunti",
       clientName: memory.clientName,
       today: romeToday(opts.now),
       occurredOn: toIsoDate(source.occurred_on),
@@ -401,6 +413,8 @@ async function readSource(reader: Reader, sourceId: string, opts: ReadOptions): 
       already: memory.already,
       editedQuotes: memory.editedQuotes,
       lsFacts: memory.lsFacts,
+      // (9b) Le risposte di un referente toccano lo use case della sua richiesta: ogni proposta ci si lega.
+      sourceUseCaseIds: answers?.useCaseId ? [answers.useCaseId] : [],
       occurredOn: toIsoDate(source.occurred_on),
     });
     if (reconciled.overCap > 0) console.warn(`[${LOG_SCOPE}] proposte_oltre_il_tetto`, JSON.stringify({ workspaceId: ws, sourceId, oltre: reconciled.overCap }));

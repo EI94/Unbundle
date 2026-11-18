@@ -366,3 +366,18 @@ test("addSkipped: i passaggi non riportati di più parti si sommano", () => {
   assert.deepEqual(addSkipped({ persone: 150 }, { persone: 150 }), { persone: 300 });
   assert.deepEqual(addSkipped({ persone: 900 }, { persone: 900 }), { persone: 999 });
 });
+
+test("(9b) le risposte di un referente: lo use case della richiesta sta su ogni proposta, una volta sola", () => {
+  const request = "00000000-0000-4000-8000-0000000000c2";
+  const { proposals } = run(
+    [
+      proposal({ useCase: ["NA-0001"] }),
+      proposal({ tipo: "impegno", testo: "Mandare l'elenco dei fornitori.", citazione: "", parte: "cliente", useCase: [] }),
+      proposal({ tipo: "domanda", testo: "Chi approva gli ordini grandi?", citazione: "", useCase: ["ZZ-9999"] }),
+    ],
+    { sourceUseCaseIds: [request, request] },
+  );
+  assert.deepEqual(proposals.map((p) => p.useCaseIds), [[IDS.useCase, request], [request], [request]]);
+  // Senza use case della fonte (appunti di una call), solo quelli dell'elenco.
+  assert.deepEqual(run([proposal({ useCase: ["NA-0001"] })]).proposals[0].useCaseIds, [IDS.useCase]);
+});

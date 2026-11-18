@@ -13,7 +13,8 @@
  *    e così una proposta con la frase di un fatto «Solo Lateral Space», anche di uno che il prompt non aveva;
  * 7. sezione nulla solo per impegni e domande;
  * 8. un impegno ha sempre una parte; una data è una data vera;
- * 9. codici, riferimenti ed entità che non stanno negli elenchi si scartano;
+ * 9. codici, riferimenti ed entità che non stanno negli elenchi si scartano; (9b) gli use case della fonte (le risposte
+ *    di un referente toccano lo use case della sua richiesta) stanno su ogni proposta;
  * 10. al massimo 25 proposte.
  *
  * Niente di quello che c'è scritto negli appunti cambia queste regole. Modulo puro.
@@ -56,6 +57,11 @@ export interface ReconcileInput {
    * del cliente non li riceve): una proposta con la stessa frase resta «Solo Lateral Space».
    */
   lsFacts?: Array<{ id: string; statement: string }>;
+  /**
+   * (9b) Gli use case che ogni proposta tocca, qualunque cosa dica il modello: quello della richiesta, per le risposte di un
+   * referente. Li sceglie Unbundle, non il testo.
+   */
+  sourceUseCaseIds?: readonly string[];
   occurredOn: string;
 }
 
@@ -301,7 +307,12 @@ export function reconcile(input: ReconcileInput): ReconcileResult {
     const roleLabel = loose ? roleOf(raw.ruolo) : null;
 
     // 9. Use case, domanda, entità, collegamenti.
-    const useCaseIds = [...new Set((Array.isArray(raw.useCase) ? raw.useCase : []).map((code) => lists.useCasesByCode.get(refKey(code))).filter((id): id is string => Boolean(id)))];
+    const useCaseIds = [
+      ...new Set([
+        ...(Array.isArray(raw.useCase) ? raw.useCase : []).map((code) => lists.useCasesByCode.get(refKey(code))).filter((id): id is string => Boolean(id)),
+        ...(Array.isArray(input.sourceUseCaseIds) ? input.sourceUseCaseIds : []),
+      ]),
+    ];
     const questionId = FACT_KINDS.includes(kind) && kind !== "conferma" ? (lists.questionsByRef.get(refKey(raw.domandaRif)) ?? null) : null;
     const named = loose || kind === "conferma" ? null : entitiesOf(raw.entita, lists, input.useCases);
     const entities = named ? named.entities : [];
