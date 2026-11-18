@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ChevronRight } from "lucide-react";
-import { PageContainer } from "@/components/dashboard/page-container";
+import { PAGE_TITLE_CLASS, PageContainer } from "@/components/dashboard/page-container";
 import { Button } from "@/components/ui/button";
 import { StartRealizationForm } from "@/components/uc/shell/create-wizard";
 import { SectionUnavailable } from "@/components/uc/shell/section-unavailable";
@@ -118,7 +118,7 @@ export default async function StartRealizationPage({
           {REALIZATION_TEXT.start}
         </span>
       </nav>
-      <h1 className="mb-6 text-2xl font-semibold tracking-tight sm:text-3xl">{REALIZATION_TEXT.start}</h1>
+      <h1 className={`${PAGE_TITLE_CLASS} mb-6`}>{REALIZATION_TEXT.start}</h1>
       {codeMissing ? (
         <EmptyState
           title={REALIZATION_TEXT.noPrefix}

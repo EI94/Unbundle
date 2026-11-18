@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronRight, ExternalLink, Factory, Inbox, Users, Wrench } from "lucide-react";
-import { PageContainer } from "@/components/dashboard/page-container";
+import { PAGE_TITLE_CLASS, PageContainer } from "@/components/dashboard/page-container";
 import { SettingsSection } from "@/components/dashboard/settings-section";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { factoryNavVisible, loadFactoryOverview, type FactoryCaseRow, type FactoryTodo } from "@/lib/db/queries/use-case-factory-line";
@@ -144,7 +144,7 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
   if (!factoryReady || !cliReady) {
     return (
       <PageContainer>
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Agent Factory</h1>
+        <h1 className={PAGE_TITLE_CLASS}>Agent Factory</h1>
         <p className="mt-2 text-sm text-muted-foreground">Non ancora disponibile: riprova tra qualche minuto.</p>
       </PageContainer>
     );
@@ -167,7 +167,7 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
   return (
     <PageContainer>
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Agent Factory</h1>
+        <h1 className={PAGE_TITLE_CLASS}>Agent Factory</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {view.cases.length === 1 ? "1 caso" : `${view.cases.length} casi`} dall&apos;impostazione all&apos;esercizio{lsManager ? "" : ", quelli dove sei nel team"}.
         </p>

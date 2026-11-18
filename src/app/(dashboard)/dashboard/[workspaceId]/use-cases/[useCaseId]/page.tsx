@@ -26,7 +26,7 @@ import type { PhaseInput } from "@/lib/use-cases/phase";
 import { romeToday } from "@/lib/use-cases/quarter";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { reviewTeamName } from "@/lib/review-team";
-import { PageContainer } from "@/components/dashboard/page-container";
+import { PAGE_TITLE_CLASS, PageContainer } from "@/components/dashboard/page-container";
 import { UseCaseDetailView, chapterFromParam, showsRealization } from "@/components/use-cases/detail/detail";
 import { guideLabels, type GuideLabels } from "@/components/use-cases/detail/intake-details";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -240,13 +240,13 @@ async function legacyUseCaseDetail(workspaceId: string, useCaseId: string) {
     );
     if (!item) notFound();
     return (
-      <div className="mx-auto w-full min-w-0 max-w-2xl flex-1 space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+      <PageContainer size="narrow" className="space-y-6">
         <Link href={`/dashboard/${workspaceId}/use-cases`} className="text-sm text-muted-foreground hover:text-foreground">
           ‹ Use Cases
         </Link>
         <div className="space-y-2">
           {item.own && item.code && <div className="font-mono text-sm text-muted-foreground">{item.code}</div>}
-          <h1 className="text-3xl font-bold tracking-tight break-words">{item.title}</h1>
+          <h1 className={`${PAGE_TITLE_CLASS} break-words`}>{item.title}</h1>
           <Badge variant="outline">{item.phaseLabel}</Badge>
         </div>
         {item.own && item.publicNote && (
@@ -259,7 +259,7 @@ async function legacyUseCaseDetail(workspaceId: string, useCaseId: string) {
             </CardContent>
           </Card>
         )}
-      </div>
+      </PageContainer>
     );
   }
 
@@ -303,7 +303,7 @@ async function legacyUseCaseDetail(workspaceId: string, useCaseId: string) {
   const hasEsg = esgItems.some((i) => (i.value ?? 0) > 0);
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-4xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
+    <PageContainer>
       <Link href={`/dashboard/${workspaceId}/use-cases`}>
         <Button variant="ghost" size="sm" className="mb-4">
           <ArrowLeft className="mr-2 h-4 w-4" />
@@ -326,7 +326,7 @@ async function legacyUseCaseDetail(workspaceId: string, useCaseId: string) {
             </Badge>
           )}
         </div>
-        <h1 className="text-3xl font-bold tracking-tight">{useCase.title}</h1>
+        <h1 className={PAGE_TITLE_CLASS}>{useCase.title}</h1>
         <p className="mt-2 text-muted-foreground">{useCase.description}</p>
       </div>
 
@@ -563,7 +563,7 @@ async function legacyUseCaseDetail(workspaceId: string, useCaseId: string) {
           </CardContent>
         </Card>
       )}
-    </div>
+    </PageContainer>
   );
 }
 

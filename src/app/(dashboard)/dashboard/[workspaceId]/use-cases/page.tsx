@@ -30,6 +30,7 @@ import { Lightbulb, ArrowRight, MessageSquare } from "lucide-react";
 import { EsgToggle } from "@/components/dashboard/esg-toggle";
 import { UseCaseHub, loadUseCaseHub } from "@/components/use-cases/hub";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
+import { PAGE_TITLE_CLASS, PageContainer } from "@/components/dashboard/page-container";
 
 const categoryLabels: Record<string, string> = {
   quick_win: "Quick Win",
@@ -122,9 +123,9 @@ export default async function UseCasesPage({
   if (!canReviewWorkspacePortfolio(access.role)) {
     const items = await contributorItems(workspaceId, session.user, await getUseCasesByWorkspace(workspaceId));
     return (
-      <div className="flex-1 p-6 lg:p-8">
+      <PageContainer>
         <div className="mb-8">
-          <h1 className="text-3xl font-bold tracking-tight">Use Cases</h1>
+          <h1 className={PAGE_TITLE_CLASS}>Use Cases</h1>
           <p className="mt-1 text-muted-foreground">
             Gli use case del workspace e a che punto sono.
           </p>
@@ -153,7 +154,7 @@ export default async function UseCasesPage({
             </CardContent>
           </Card>
         )}
-      </div>
+      </PageContainer>
     );
   }
 
@@ -175,10 +176,10 @@ export default async function UseCasesPage({
   const showEsgColumn = esgEnabled || hasAnyEsg;
 
   return (
-    <div className="flex-1 p-6 lg:p-8">
+    <PageContainer>
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Use Cases</h1>
+          <h1 className={PAGE_TITLE_CLASS}>Use Cases</h1>
           <p className="mt-1 text-muted-foreground">
             Portfolio di use case AI generati dall&apos;analisi delle attivita&apos;
           </p>
@@ -347,6 +348,6 @@ export default async function UseCasesPage({
           </TabsContent>
         </Tabs>
       )}
-    </div>
+    </PageContainer>
   );
 }

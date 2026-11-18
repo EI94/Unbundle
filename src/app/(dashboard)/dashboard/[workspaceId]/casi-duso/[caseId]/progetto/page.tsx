@@ -5,7 +5,7 @@ import { readEvalOverview } from "@/components/agent-factory/eval-load";
 import { EvalSection } from "@/components/agent-factory/eval-section";
 import { UseCaseContextView } from "@/components/context/use-case-context";
 import { packageDeltaLine, packageFilesShown } from "@/components/context/view-model";
-import { PageContainer } from "@/components/dashboard/page-container";
+import { PAGE_TITLE_CLASS, PageContainer } from "@/components/dashboard/page-container";
 import { SettingsSection } from "@/components/dashboard/settings-section";
 import { canWrite, openShellPage } from "@/components/uc/shell/case-data";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
@@ -191,7 +191,7 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
   if (!(await factoryStoreReady(executor))) {
     return (
       <PageContainer>
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Progetto dell&apos;agente</h1>
+        <h1 className={PAGE_TITLE_CLASS}>Progetto dell&apos;agente</h1>
         <p className="mt-4 text-sm text-muted-foreground">Non ancora disponibile: riprova tra qualche minuto.</p>
       </PageContainer>
     );
@@ -205,7 +205,7 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
   if (factory.blocked === "non_disponibile") {
     return (
       <PageContainer>
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Progetto dell&apos;agente</h1>
+        <h1 className={PAGE_TITLE_CLASS}>Progetto dell&apos;agente</h1>
         <p className="mt-4 text-sm text-muted-foreground">Non ancora disponibile: riprova tra qualche minuto.</p>
       </PageContainer>
     );
@@ -298,7 +298,7 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
     <PageContainer>
       <header className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h1 id="progetto-titolo" tabIndex={-1} className="text-2xl font-semibold tracking-tight outline-none sm:text-3xl">
+          <h1 id="progetto-titolo" tabIndex={-1} className={`${PAGE_TITLE_CLASS} outline-none`}>
             Progetto dell&apos;agente
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">{statusLine}</p>
