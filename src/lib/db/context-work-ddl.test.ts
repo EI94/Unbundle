@@ -270,4 +270,7 @@ test("RUNBOOK §10.22: la 0041 la applica l'app, a mano solo di riserva, il rito
   const people = runbook.slice(runbook.indexOf("### 7.2 "), runbook.indexOf("### 7.3 "));
   assert.match(people, /«Contesto» › «Appunti» › «Cerca una persona», con il nome e con l'e-mail; «Togli … da tutto»/);
   assert.match(people, /si cancellano solo su richiesta esplicita/);
+  // Il pacchetto non si rifà da solo: `CONTESTO.md` nel repository del caso tiene il testo vecchio.
+  assert.match(people, /Dopo «Togli … da tutto», per ogni use case con un dossier i cui fatti sono cambiati, premere «Aggiorna il pacchetto»/);
+  assert.match(people, /`CONTESTO\.md` nel repository del caso tiene il testo vecchio fino al pacchetto successivo/);
 });
