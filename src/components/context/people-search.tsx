@@ -22,6 +22,17 @@ export function erasableCount(hits: PersonHits): number {
   return hits.notes.total + hits.facts.total + hits.items.total + hits.granola.total + hits.chat.total;
 }
 
+/**
+ * Per quanto «Togli», nella conferma appena aperta, non vale: il secondo clic di un doppio clic su «Togli … da tutto» non
+ * toglie niente.
+ */
+export const CONFIRM_GUARD_MS = 600;
+
+/** Vero se «Togli» vale: la conferma è aperta da almeno `CONFIRM_GUARD_MS` (i tempi in millisecondi, come `performance.now()`). */
+export function confirmReady(openedAt: number, now: number): boolean {
+  return now - openedAt >= CONFIRM_GUARD_MS;
+}
+
 /** I numeri della conferma, dalla stessa ricerca: gli appunti che perdono il testo e i testi corretti, come dirà «Fatto: …». */
 export function eraseNumbers(hits: PersonHits): { notes: number; texts: number } {
   return { notes: hits.notes.total, texts: hits.facts.total + hits.items.total };
@@ -256,8 +267,10 @@ export function PeopleResults({ hits, today, onOpenDocument }: { hits: PersonHit
 
 /**
  * Il piede del pannello: «Togli «…» da tutto», non pieno; poi la conferma con i testi del piano e i numeri della stessa
- * ricerca, «Annulla» (con il fuoco) e «Togli», distruttivo ma non pieno. Una parola sola del nome del cliente non si
- * toglie: al posto del pulsante la frase che chiede nome e cognome, oppure l'e-mail.
+ * ricerca, «Togli», distruttivo ma non pieno, e «Annulla», con il fuoco. «Annulla» sta dove era il primo pulsante, in
+ * basso sul telefono e a destra sullo schermo largo, e per `CONFIRM_GUARD_MS` «Togli» non vale: un doppio clic non
+ * toglie niente. Una parola sola del nome del cliente non si toglie: al posto del pulsante la frase che chiede nome e
+ * cognome, oppure l'e-mail.
  */
 export function EraseFooter({
   term,
@@ -280,6 +293,8 @@ export function EraseFooter({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  // Quando si è aperta la conferma: prima di `CONFIRM_GUARD_MS` «Togli» non vale.
+  const openedAt = useRef(0);
   if (inClientName) {
     return (
       <p role="status" className="text-sm text-muted-foreground">
@@ -289,7 +304,16 @@ export function EraseFooter({
   }
   if (!asking) {
     return (
-      <Button type="button" variant="outline" className="h-auto min-h-11 w-full py-2 whitespace-normal break-words sm:min-h-8 sm:w-auto sm:self-end" disabled={busy} onClick={onAsk}>
+      <Button
+        type="button"
+        variant="outline"
+        className="h-auto min-h-11 w-full py-2 whitespace-normal break-words sm:min-h-8 sm:w-auto sm:self-end"
+        disabled={busy}
+        onClick={() => {
+          openedAt.current = performance.now();
+          onAsk();
+        }}
+      >
         {P.erase(term)}
       </Button>
     );
@@ -303,12 +327,21 @@ export function EraseFooter({
         {notes + texts > 0 ? <p>{P.eraseCount(notes, texts)}</p> : null}
         <p className="text-muted-foreground">{P.eraseBody}</p>
       </div>
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+      {/* «Togli» prima, «Annulla» ultimo: sotto sul telefono, a destra sullo schermo largo, dove era «Togli … da tutto». */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <Button
+          type="button"
+          variant="destructive"
+          className="min-h-11 sm:min-h-8"
+          disabled={busy}
+          onClick={() => {
+            if (confirmReady(openedAt.current, performance.now())) onConfirm();
+          }}
+        >
+          {P.eraseConfirm}
+        </Button>
         <Button type="button" variant="outline" className="min-h-11 sm:min-h-8" disabled={busy} onClick={onCancel} autoFocus>
           {P.cancel}
-        </Button>
-        <Button type="button" variant="destructive" className="min-h-11 sm:min-h-8" disabled={busy} onClick={onConfirm}>
-          {P.eraseConfirm}
         </Button>
       </div>
     </div>

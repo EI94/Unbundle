@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { installAppModules } from "../../lib/ai/claude-test-kit.ts";
@@ -28,7 +29,7 @@ await installAppModules({
   "@/lib/actions/uc-subprocessors": `export async function declareSubprocessorsAction() { return { ok: true, data: null, message: "" }; }`,
 });
 await enableTsxImports();
-const { PeopleSearch, PeopleResults, EraseFooter, erasableCount, eraseNumbers } = await import("./people-search.tsx");
+const { PeopleSearch, PeopleResults, EraseFooter, erasableCount, eraseNumbers, confirmReady, CONFIRM_GUARD_MS } = await import("./people-search.tsx");
 const { NotesView } = await import("./notes-view.tsx");
 
 const WS = "11111111-1111-4111-8111-111111111111";
@@ -127,13 +128,32 @@ test("il piede: «Togli «…» da tutto» non pieno; poi la conferma con i test
     "Togliere «Mario Rossi»?",
     "Si cancella il testo di 2 appunti e si correggono 10 testi.",
     "Il testo degli appunti trovati si cancella: restano data, fatti e un titolo generico. Nei fatti, anche nella storia, nelle citazioni, nelle proposte, negli impegni e nelle domande il nome diventa «una persona». Le regole di Granola e la memoria della chat lo perdono. I documenti restano. Non si torna indietro.",
-    "Annulla",
     "Togli",
+    "Annulla",
   ]);
   const erase = buttonClasses(confirm, "Togli");
   assert.equal(erase.length, 1);
   assert.equal(FILLED.test(erase[0]), false, "non pieno");
   assert.match(erase[0], /bg-destructive\/10/, "il tono distruttivo, leggero");
+});
+
+test("un doppio clic non toglie: «Annulla» sta dove era «Togli … da tutto» (a destra sullo schermo largo, sotto sul telefono) e «Togli» aspetta 600 ms", () => {
+  const confirm = footer({ asking: true });
+  const row = /<div class="([^"]*)"><button[^>]*>Togli<\/button><button[^>]*>Annulla<\/button><\/div>/.exec(confirm);
+  assert.ok(row, "«Togli» prima, «Annulla» ultimo");
+  const classes = row[1].split(/\s+/);
+  // Sul telefono una colonna nell'ordine dei pulsanti: «Annulla» in basso, come prima. Sullo schermo largo una riga: «Annulla» a destra.
+  assert.ok(classes.includes("flex-col") && classes.includes("sm:flex-row") && classes.includes("sm:justify-end"), row[1]);
+  assert.equal(classes.some((c) => /reverse/.test(c)), false, "nessun ordine rovesciato");
+  // Il primo pulsante sta a destra in basso, dove poi c'è «Annulla».
+  assert.match(buttonClasses(footer(), "Togli «Mario Rossi» da tutto")[0], /sm:self-end/);
+  // «Togli» non vale per 600 ms da quando la conferma si apre.
+  assert.equal(CONFIRM_GUARD_MS, 600);
+  assert.deepEqual([confirmReady(1000, 1000), confirmReady(1000, 1250), confirmReady(1000, 1599), confirmReady(1000, 1600), confirmReady(1000, 5000)], [false, false, false, true, true]);
+  const source = readFileSync(new URL("./people-search.tsx", import.meta.url), "utf8");
+  assert.match(source, /onClick=\{\(\) => \{\s*openedAt\.current = performance\.now\(\);\s*onAsk\(\);\s*\}\}/, "il primo clic segna quando si apre la conferma");
+  assert.match(source, /onClick=\{\(\) => \{\s*if \(confirmReady\(openedAt\.current, performance\.now\(\)\)\) onConfirm\(\);\s*\}\}/, "«Togli» passa da confirmReady");
+  assert.doesNotMatch(source, /onClick=\{onConfirm\}/);
 });
 
 test("la conferma dice i numeri prima di «Togli»: dalla stessa ricerca, al singolare e al plurale; senza appunti né testi nessuna riga", () => {
