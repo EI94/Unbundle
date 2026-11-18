@@ -406,7 +406,7 @@ export const CONTEXT_TEXT = Object.freeze({
     erase: (name: string) => `Togli «${name}» da tutto`,
     eraseTitle: (name: string) => `Togliere «${name}»?`,
     eraseBody:
-      "Il testo degli appunti trovati si cancella: restano data, fatti e un titolo generico. Nei fatti, anche nella storia, nelle citazioni, nelle proposte, negli impegni e nelle domande il nome diventa «una persona». Le regole di Granola e la memoria della chat lo perdono. I documenti restano. Non si torna indietro.",
+      "Il testo degli appunti trovati si cancella: restano data, fatti e un titolo generico. Nei fatti, anche nella storia, nelle citazioni, nelle proposte, negli impegni e nelle domande il nome diventa «una persona». Le regole di Granola e la memoria della chat lo perdono; i nodi della Mappa con quel nome si tolgono. I documenti restano. Non si torna indietro.",
     // I numeri della conferma, dalla stessa ricerca: gli appunti che perdono il testo e i testi che si correggono.
     eraseCount: (notes: number, texts: number) => {
       const many = notes === 1 ? "1 appunto" : `${notes} appunti`;
