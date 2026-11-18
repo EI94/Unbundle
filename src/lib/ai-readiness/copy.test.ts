@@ -96,6 +96,17 @@ test("the radar sentence is true: the profile uses every answer, the threshold i
   assert.ok(page.includes("Il profilo usa le risposte arrivate finora. Punteggi per area e confronto partono da {bundle.assessment.aggregationThreshold} risposte."));
 });
 
+test("(rilascio 10) what the page says about anonymity is true: no «anonymous questionnaire» in the header, and the privacy box names «Anonimizza risposte»", () => {
+  const page = read("src/app/(dashboard)/dashboard/[workspaceId]/ai-readiness/page.tsx").replace(/\s+/g, " ");
+  // Una rilevazione può essere nominativa: la testata non promette l'anonimato.
+  assert.match(read("src/components/ai-readiness/respondent-survey-form.tsx"), /Questo questionario è nominativo/);
+  assert.ok(page.includes("Una rilevazione su come l&apos;azienda usa l&apos;AI: inviti, questionario, punteggi e report."));
+  // Dal link personale chi risponde rende anonime le sue risposte («Anonimizza risposte»), non resta anonimo.
+  assert.match(read("src/components/ai-readiness/respondent-privacy-controls.tsx"), /<h2 className="font-semibold">Anonimizza risposte<\/h2>/);
+  assert.ok(page.includes("togliere il consenso al confronto e rendere anonime le sue risposte dal suo link personale."));
+  assert.doesNotMatch(page, /questionario anonimo|restare anonim/);
+});
+
 test("/s has no answers yet: its error page does not promise answers saved on the device, and «Riprova» re-reads the page", () => {
   const page = read("src/app/s/[token]/error.tsx");
   assert.doesNotMatch(page, /salvate su questo dispositivo/);

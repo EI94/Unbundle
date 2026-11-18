@@ -173,7 +173,7 @@ export default async function AiReadinessPage({
             AI Readiness
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
-            Una rilevazione su come l&apos;azienda usa l&apos;AI: inviti, questionario anonimo, punteggi e report.
+            Una rilevazione su come l&apos;azienda usa l&apos;AI: inviti, questionario, punteggi e report.
           </p>
         </div>
         {search.deleted === "1" && (
@@ -658,7 +658,7 @@ export default async function AiReadinessPage({
             <div className="rounded-2xl border p-3">
               <div className="text-xs text-muted-foreground">Privacy</div>
               <div className="mt-1 font-medium">
-                Chi risponde può scaricare i suoi dati, togliere il consenso al confronto e restare anonimo dal suo link personale.
+                Chi risponde può scaricare i suoi dati, togliere il consenso al confronto e rendere anonime le sue risposte dal suo link personale.
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
                 Valutazione d&apos;impatto, avvisi sui dati particolari e confronto restano scritti e verificabili.
