@@ -71,3 +71,14 @@ test("la scheda e il dossier leggono per chi guarda; l'MCP legge la memoria senz
   // «Da verificare» si conta solo per Lateral Space.
   assert.match(load, /lateralSpace\s+\? db\.execute\(sql`SELECT count\(\*\)::int AS n FROM context_facts WHERE workspace_id = \$\{ws\}::uuid AND status = 'attivo' AND needs_check`\)/);
 });
+
+test("la notte: dopo i passi della 9a segna i fatti da verificare e toglie i legami orfani, e lo dice nei conti", () => {
+  const nightly = readFileSync(new URL("../../db/queries/context-nightly.ts", import.meta.url), "utf8");
+  const body = topLevelFunction(nightly, "export async function runContextNightly(");
+  const order = ["await readPendingSources(", "await refreshStaleBriefs(", "await purgeExpiredNoteText(o.now)", "await markStaleFacts(o.now)", "await purgeOrphanNeedLinks()"].map((call) => body.indexOf(call));
+  assert.ok(order.every((at) => at > 0), String(order));
+  assert.deepEqual([...order].sort((a, b) => a - b), order, "nell'ordine");
+  assert.match(body, /return \{ \.\.\.reads, briefs, purged, toCheck, links \};/);
+  const cron = readFileSync(new URL("../../../app/api/cron/contesto/route.ts", import.meta.url), "utf8");
+  assert.match(cron, /toCheck: counts\.toCheck,\s+links: counts\.links,/);
+});

@@ -372,6 +372,8 @@ export const CONTEXT_TEXT = Object.freeze({
     button: (n: number) => `Ancora veri (${n})`,
     done: (n: number) => (n === 1 ? "Data aggiornata per 1 fatto." : `Data aggiornata per ${n} fatti.`),
     empty: "Niente da verificare.",
+    none: "Scegli almeno un fatto.",
+    tooMany: (max: number) => `Al massimo ${max} fatti alla volta.`,
   }),
   // (9b) «Cerca una persona», nella vista «Appunti», per Lateral Space (§2.13).
   people: Object.freeze({

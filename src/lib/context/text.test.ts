@@ -171,6 +171,8 @@ test("(9b) i testi dei gruppi nuovi sono quelli del piano, al singolare e al plu
   assert.equal(V.done(1), "Data aggiornata per 1 fatto.");
   assert.equal(V.done(5), "Data aggiornata per 5 fatti.");
   assert.deepEqual([V.title, V.back, V.lead, V.empty], ["Da verificare", "Contesto", "Questi fatti non sono stati riconfermati da più di 6 mesi. Sono ancora veri?", "Niente da verificare."]);
+  assert.equal(V.none, "Scegli almeno un fatto.");
+  assert.equal(V.tooMany(75), "Al massimo 75 fatti alla volta.");
 
   const P = CONTEXT_TEXT.people;
   assert.equal(P.link, "Cerca una persona");

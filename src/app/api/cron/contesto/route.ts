@@ -22,7 +22,8 @@ function plain(status: number, body: string): Response {
  * Il giro della notte di «Contesto» (rilascio 9a, docs/contesto/RILASCIO-9a-COSTRUZIONE.md §8.8), ogni giorno alle 2
  * UTC. In quest'ordine: anteprima di Vercel → 404 (le anteprime usano il database di produzione); `CRON_SECRET`
  * mancante o diverso → 401 (un segreto assente rifiuta sempre); archivio non pronto → 503; poi Granola, se è attivo, e
- * il giro: appunti in attesa, «In breve», testi più vecchi di 12 mesi.
+ * il giro: appunti in attesa, «In breve», testi più vecchi di 12 mesi; (9b) i fatti da verificare (`toCheck`, quelli
+ * appena segnati) e i legami con «Cosa serve» di proposte non più aperte (`links`, quelli tolti).
  *
  * Risponde e scrive nei log solo conteggi: mai un testo, un titolo, un nome. Se Granola non riesce il resto del giro
  * si fa lo stesso.
@@ -55,6 +56,8 @@ export async function GET(request: Request): Promise<Response> {
       left: counts.left,
       briefs: counts.briefs,
       purged: counts.purged,
+      toCheck: counts.toCheck,
+      links: counts.links,
     };
     console.info(`[${LOG_SCOPE}] giro`, JSON.stringify({ ...body, durationMs: Date.now() - started }));
     return Response.json({ job: "contesto", ...body }, { headers: NO_STORE });

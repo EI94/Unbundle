@@ -31,7 +31,7 @@ await installAppModules({
     export async function runContextNightly(o) {
       globalThis.__prova.calls.push("notte:" + o.budgetMs);
       if (globalThis.__prova.nightlyThrows) throw new Error("testo riservato di un appunto");
-      return { read: 4, failed: 1, left: 2, briefs: 3, purged: 5, ultimoTesto: "Appunto riservato" };
+      return { read: 4, failed: 1, left: 2, briefs: 3, purged: 5, toCheck: 6, links: 7, ultimoTesto: "Appunto riservato" };
     }`,
 });
 const route = await import("../../../app/api/cron/contesto/route.ts");
@@ -105,13 +105,14 @@ test("con Granola spento fa solo il giro di «Contesto», con 70 secondi, e risp
   const response = await call();
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("cache-control"), "no-store");
-  assert.deepEqual(await response.json(), { job: "contesto", granola: { users: 0, imported: 0, errors: 0 }, read: 4, failed: 1, left: 2, briefs: 3, purged: 5 });
+  // (9b) In più i fatti appena segnati «da verificare» e i legami con «Cosa serve» tolti.
+  assert.deepEqual(await response.json(), { job: "contesto", granola: { users: 0, imported: 0, errors: 0 }, read: 4, failed: 1, left: 2, briefs: 3, purged: 5, toCheck: 6, links: 7 });
   assert.deepEqual(prova.calls, ["archivio", "notte:70000"]);
   // Una riga di log, con gli stessi conteggi e la durata: nessun testo.
   assert.equal(info.length, 1);
   const [scope, payload] = [info[0].slice(0, info[0].indexOf("{")).trim(), JSON.parse(info[0].slice(info[0].indexOf("{")))];
   assert.equal(scope, "[context/cron] giro");
-  assert.deepEqual(Object.keys(payload), ["granola", "read", "failed", "left", "briefs", "purged", "durationMs"]);
+  assert.deepEqual(Object.keys(payload), ["granola", "read", "failed", "left", "briefs", "purged", "toCheck", "links", "durationMs"]);
   assert.equal(typeof payload.durationMs, "number");
   assert.doesNotMatch(info[0], /riservat/);
 });
@@ -121,7 +122,7 @@ test("con Granola attivo: prima Granola con 35 secondi, poi il giro; del giro di
   const response = await call();
   assert.equal(response.status, 200);
   const body = await response.json();
-  assert.deepEqual(body, { job: "contesto", granola: { users: 2, imported: 3, errors: 0 }, read: 4, failed: 1, left: 2, briefs: 3, purged: 5 });
+  assert.deepEqual(body, { job: "contesto", granola: { users: 2, imported: 3, errors: 0 }, read: 4, failed: 1, left: 2, briefs: 3, purged: 5, toCheck: 6, links: 7 });
   assert.deepEqual(prova.calls, ["archivio", "granola:35000", "notte:70000"]);
   assert.doesNotMatch(JSON.stringify(body), /riservat/i);
 });
