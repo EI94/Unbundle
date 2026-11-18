@@ -174,6 +174,64 @@ test("`settings#cli` e `settings#granola` aprono il foglio sulla parte giusta, a
   }
 });
 
+test("(§3.12) `settings` senza ancora: il link dell'e-mail «CLI collegata» apre il foglio su «Claude e terminale»; dall'app resta Impostazioni", () => {
+  const settings = `/dashboard/${W}/settings`;
+  const ORIGIN = "http://unbundle.test";
+  /** Una pagina caricata per `type` («navigate», «reload», «back_forward») con quel referrer, alla prima pagina del documento. */
+  const loaded = (type: string | null, referrer: string, at = settings) => {
+    const b = browserAt(at);
+    const page = {
+      ...b.page,
+      location: Object.defineProperties({ ...b.page.location }, {
+        pathname: { get: () => b.page.location.pathname },
+        search: { get: () => b.page.location.search },
+        hash: { get: () => b.page.location.hash },
+        origin: { value: ORIGIN },
+      }),
+      performance: { getEntriesByType: () => (type ? [{ type }] : []) } as unknown as Pick<Performance, "getEntriesByType">,
+      document: { referrer },
+    };
+    return { ...b, page };
+  };
+  // Dall'e-mail (nessun referrer, o quello del programma di posta): il foglio, sulla parte giusta, senza un passo nuovo.
+  for (const referrer of ["", "https://mail.esempio.test/"]) {
+    const email = loaded("navigate", referrer);
+    url.openAccountForSettingsAnchor(settings, W, email.page);
+    assert.deepEqual(email.calls, [`replace ${settings}?account=claude`], referrer || "senza referrer");
+    // Chiuso, resta la pagina; un'altra pagina dello stesso documento non riapre il foglio.
+    url.closeAccountSheet(email.page);
+    assert.equal(email.here(), settings);
+    email.navigate(`/dashboard/${W}`);
+    email.navigate(settings);
+    url.openAccountForSettingsAnchor(settings, W, email.page);
+    assert.deepEqual(email.calls.slice(1), [`replace ${settings}`], "dalla barra, dopo, è Impostazioni");
+  }
+  // Dall'app (un altro indirizzo prima, nello stesso documento): «Impostazioni» nella barra resta la pagina.
+  const app = loaded("navigate", "");
+  app.navigate(`/dashboard/${W}`);
+  url.openAccountForSettingsAnchor(`/dashboard/${W}`, W, app.page);
+  app.navigate(settings);
+  url.openAccountForSettingsAnchor(settings, W, app.page);
+  assert.deepEqual(app.calls, []);
+  // Ricaricando, tornando indietro, aprendo una nuova scheda dall'app, senza notizie della navigazione: Impostazioni.
+  for (const [type, referrer] of [["reload", ""], ["back_forward", ""], ["navigate", `${ORIGIN}/dashboard/${W}`], [null, ""]] as const) {
+    const b = loaded(type, referrer);
+    url.openAccountForSettingsAnchor(settings, W, b.page);
+    assert.deepEqual(b.calls, [], `${type} ${referrer}`);
+  }
+  // Un ritorno con parametri o un'ancora della pagina, anche da fuori, resta della pagina; `#cli` apre come prima.
+  for (const at of [`${settings}?slack=installed`, `${settings}#integrazioni`]) {
+    const b = loaded("navigate", "", at);
+    url.openAccountForSettingsAnchor(settings, W, b.page);
+    assert.deepEqual(b.calls, [], at);
+  }
+  const cli = loaded("navigate", "", `${settings}#cli`);
+  url.openAccountForSettingsAnchor(settings, W, cli.page);
+  assert.deepEqual(cli.calls, [`replace ${settings}?account=claude#cli`]);
+  // La pagina vera è `window`: il tipo della navigazione e il referrer vengono da lì.
+  assert.match(read("./account-url.ts"), /page\.performance\?\.getEntriesByType\("navigation"\)\[0\]/);
+});
+
 test("il cablaggio: il foglio chiama l'ancora a ogni pagina e chiude con `closeAccountSheet`; il menu apre con `openAccountSheet`", () => {
   const sheet = read("./account-sheet.tsx");
   assert.match(sheet, /useEffect\(\(\) => openAccountForSettingsAnchor\(pathname, workspaceId\), \[pathname, workspaceId\]\);/);

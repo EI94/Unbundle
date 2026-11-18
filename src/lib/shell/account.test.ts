@@ -5,6 +5,7 @@ import {
   ACCOUNT_PARTS,
   accountApiPath,
   accountPartForSettingsHash,
+  accountPartForSettingsLanding,
   accountPartOf,
   accountSectionId,
   claudeAiHeader,
@@ -73,6 +74,23 @@ test("le ancore personali delle Impostazioni aprono il foglio sulla parte giusta
   // Solo la pagina delle Impostazioni di questo workspace.
   assert.equal(accountPartForSettingsHash(`/dashboard/${ws}/agent-factory`, "#cli", ws), null);
   assert.equal(accountPartForSettingsHash("/dashboard/00000000-0000-4000-8000-0000000000f2/settings", "#cli", ws), null);
+});
+
+test("(§3.12) le Impostazioni senza ancora né parametri, arrivando da fuori: il link dell'e-mail «CLI collegata», su «Claude e terminale»", () => {
+  const ws = "00000000-0000-4000-8000-0000000000f1";
+  const settings = `/dashboard/${ws}/settings`;
+  assert.equal(accountPartForSettingsLanding(settings, "", "", ws), "claude");
+  assert.equal(accountPartForSettingsLanding(`${settings}/`, "", "", ws), "claude");
+  // Il ritorno da Slack o da Granola, un'ancora della pagina, un foglio già aperto: niente.
+  for (const [search, hash] of [["?slack=installed", ""], ["?granola=errore", "#granola"], ["", "#integrazioni"], ["?account=email", ""]]) {
+    assert.equal(accountPartForSettingsLanding(settings, search, hash, ws), null, `${search}${hash}`);
+  }
+  // Solo le Impostazioni di questo workspace.
+  assert.equal(accountPartForSettingsLanding(`/dashboard/${ws}/agent-factory`, "", "", ws), null);
+  assert.equal(accountPartForSettingsLanding("/dashboard/00000000-0000-4000-8000-0000000000f2/settings", "", "", ws), null);
+  // La riga di Granola in Contesto («Il tuo account», «Ricollega») porta a `settings#granola`: il foglio, su «Granola».
+  assert.match(read("src/components/context/granola/granola-inbox-panel.tsx"), /const settingsHref = `\/dashboard\/\$\{workspaceId\}\/settings#granola`;/);
+  assert.equal(accountPartForSettingsHash(settings, "#granola", ws), "granola");
 });
 
 test("«Regole delle call ›» porta alle regole di Impostazioni, a un'ancora che il foglio non intercetta", () => {

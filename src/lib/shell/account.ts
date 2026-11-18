@@ -37,6 +37,19 @@ export function accountPartForSettingsHash(pathname: string, hash: string, works
 }
 
 /**
+ * (§2.4, §3.12) L'indirizzo delle Impostazioni senza ancora né parametri, quando arriva da fuori dell'app: l'e-mail «CLI
+ * collegata» va alla persona e porta lì con «Apri il tuo account», perché il link di un'e-mail non ha né `#` né `?`
+ * (`checkEmailLink`). Si apre su «Claude e terminale», dove la persona riconosce o revoca il collegamento. Dentro l'app
+ * lo stesso indirizzo resta Impostazioni (la voce in fondo alla barra, per chi gestisce): chi guarda decide l'arrivo
+ * (`openAccountForSettingsAnchor`), qui c'è solo l'indirizzo.
+ */
+export function accountPartForSettingsLanding(pathname: string, search: string, hash: string, workspaceId: string): AccountPart | null {
+  const path = pathname.replace(/\/+$/, "");
+  if (path !== `/dashboard/${workspaceId}/settings`) return null;
+  return search === "" && hash === "" ? "claude" : null;
+}
+
+/**
  * «Regole delle call ›» (Granola, Lateral Space): le regole di questo cliente stanno nel blocco di Granola delle
  * Impostazioni, che ogni persona di Lateral Space apre anche senza gestire il workspace (senza la voce nella barra).
  * L'ancora non è `#granola`: quella riapre il foglio.
