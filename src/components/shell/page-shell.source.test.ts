@@ -41,8 +41,8 @@ const OWN_FRAME: Record<string, string> = {
   [`${W}/setup/leadership/page.tsx`]: "la chat dell'Intervista iniziale, alta quanto lo schermo, con la colonna laterale",
 };
 
-/** Le pagine dell'ondata 2b «Home» (in parallelo con questa): le rifà lei, con il suo contenitore. */
-const WAVE_HOME = [`${W}/page.tsx`, `${W}/programma/page.tsx`];
+/** La Home e il suo alias (ondata 2b): disegnano con `homePage`, i cui due rami stanno in `PageContainer`. */
+const HOME_PAGES = [`${W}/page.tsx`, `${W}/programma/page.tsx`];
 
 /** Le pagine che disegnano con un componente che sta in `PageContainer`. */
 const VIA: Array<[RegExp, string, string]> = [
@@ -52,7 +52,7 @@ const VIA: Array<[RegExp, string, string]> = [
 test("ogni pagina della dashboard sta in PageContainer, direttamente o con il componente che la disegna", () => {
   const all = pages(APP);
   assert.ok(all.length > 60, `pagine trovate: ${all.length}`);
-  for (const path of [...REDIRECTS, ...Object.keys(OWN_FRAME), ...WAVE_HOME]) assert.ok(existsSync(join(ROOT, path)), `elenco vecchio: ${path}`);
+  for (const path of [...REDIRECTS, ...Object.keys(OWN_FRAME), ...HOME_PAGES]) assert.ok(existsSync(join(ROOT, path)), `elenco vecchio: ${path}`);
   const missing: string[] = [];
   for (const path of all) {
     const source = read(path);
@@ -62,12 +62,20 @@ test("ogni pagina della dashboard sta in PageContainer, direttamente o con il co
       assert.doesNotMatch(source, /<(div|main|section|header|h1)\b/, `${path}: disegna qualcosa`);
       continue;
     }
-    if (path in OWN_FRAME || WAVE_HOME.includes(path)) continue;
+    if (path in OWN_FRAME) continue;
+    if (HOME_PAGES.includes(path) && /\bhomePage\(/.test(source)) continue;
     const via = VIA.find(([pattern]) => pattern.test(path));
     if (via && new RegExp(`<(${via[1]})\\b`).test(source)) continue;
     missing.push(path);
   }
   assert.deepEqual(missing, [], "pagine senza PageContainer");
+  // I due rami della Home stanno nel contenitore stretto, con il titolo di sempre.
+  for (const file of ["src/components/home/contributor-home.tsx", "src/components/programma/program-home.tsx"]) {
+    const source = read(file);
+    assert.match(source, /<PageContainer size="narrow">/, `${file}: PageContainer`);
+    assert.match(source, /<h1 className="text-2xl font-semibold tracking-tight">/, `${file}: il titolo della pagina`);
+  }
+  assert.match(read("src/components/home/home-route.tsx"), /<ContributorHome\b[\s\S]*<ProgramHome\b/);
   // I componenti che disegnano le pagine della Formazione stanno nel contenitore.
   assert.match(read("src/components/learning/learning-shell.tsx"), /return <PageContainer className="space-y-6">/);
   assert.match(read("src/components/learning/program-overview.tsx"), /<LearningShell\b/);
@@ -85,8 +93,10 @@ test("un solo stile di H1: 24/32 semibold, la classe comune o la stessa scritta,
     if (/\b(?:sm:|md:|lg:)?text-(?:lg|xl|3xl|4xl)\b|\bfont-(?:bold|medium)\b/.test(h1)) bad.push(`${path}: ${h1}`);
   };
   const files = [
-    ...pages(APP).filter((path) => !WAVE_HOME.includes(path) && !(path in OWN_FRAME)),
-    // Le testate che le pagine usano per il loro H1.
+    ...pages(APP).filter((path) => !(path in OWN_FRAME)),
+    // Le testate che le pagine usano per il loro H1, la Home compresa.
+    "src/components/home/contributor-home.tsx",
+    "src/components/programma/program-home.tsx",
     "src/components/learning/learning-shell.tsx",
     "src/components/uc/shell/case-header.tsx",
     "src/components/use-cases/hub-header.tsx",
@@ -105,7 +115,7 @@ test("un solo stile di H1: 24/32 semibold, la classe comune o la stessa scritta,
 
 test("nessun occhiello maiuscolo sopra il titolo della pagina", () => {
   const bad: string[] = [];
-  for (const path of pages(APP).filter((page) => !WAVE_HOME.includes(page))) {
+  for (const path of [...pages(APP), "src/components/home/contributor-home.tsx", "src/components/programma/program-home.tsx"]) {
     const source = read(path);
     for (const match of source.matchAll(/<h1\b/g)) {
       const before = source.slice(Math.max(0, match.index - 400), match.index);
