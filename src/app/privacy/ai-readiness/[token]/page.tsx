@@ -25,7 +25,7 @@ function InvalidPrivacyLink() {
             <CardTitle>Link privacy non valido</CardTitle>
           </CardHeader>
           <CardContent className="text-sm leading-6 text-muted-foreground">
-            Il link non e valido o i dati sono gia stati anonimizzati. Chiedi al
+            Il link non è valido o i dati sono già stati anonimizzati. Chiedi al
             referente interno se hai bisogno di supporto.
           </CardContent>
         </Card>
@@ -47,7 +47,7 @@ function AnonymizedSuccess() {
           </CardHeader>
           <CardContent className="text-sm leading-6 text-muted-foreground">
             I dati collegati a questo token sono stati anonimizzati. Il vecchio
-            link non puo piu mostrare dati personali.
+            link non può più mostrare dati personali.
           </CardContent>
         </Card>
       </div>
@@ -130,7 +130,7 @@ export default async function AiReadinessPrivacyPage({
         )}
         {error === "invalid" && (
           <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
-            Link privacy non valido o gia anonimizzato.
+            Link privacy non valido o già anonimizzato.
           </div>
         )}
 

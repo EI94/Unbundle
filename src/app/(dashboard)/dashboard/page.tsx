@@ -11,6 +11,8 @@ const SLACK_ERR: Record<string, string> = {
   invalid_workspace: "Link Slack non valido. Apri Impostazioni dal workspace e riprova.",
   forbidden: "Non hai permesso di installare Slack per quel workspace.",
 };
+/** (Ondata 0) Ogni altro motivo: una frase, mai la chiave dell'errore. */
+const SLACK_ERR_OTHER = "Non siamo riusciti a collegare Slack. Riprova da Impostazioni.";
 
 export default async function DashboardPage({
   searchParams,
@@ -21,7 +23,7 @@ export default async function DashboardPage({
 
   const sp = searchParams ? await searchParams : {};
   const slackErrKey = sp.slack_error?.trim() ?? "";
-  const slackErrMsg = SLACK_ERR[slackErrKey] ?? (slackErrKey ? `Slack: ${slackErrKey}` : "");
+  const slackErrMsg = Object.hasOwn(SLACK_ERR, slackErrKey) ? SLACK_ERR[slackErrKey] : slackErrKey ? SLACK_ERR_OTHER : "";
 
   const userOrgs = await getOrganizationsByUser(session.user.id);
 

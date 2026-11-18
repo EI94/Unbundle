@@ -39,7 +39,7 @@ const FIREBASE_MESSAGES: Record<string, string> = {
     "Questa email ha già un account. Usa la password che hai scelto allora, oppure entra con Google.",
   "auth/invalid-email": "Controlla l'indirizzo email.",
   "auth/weak-password": "Serve una password di almeno 6 caratteri.",
-  "auth/user-not-found": "Nessun account con questa email: usa «Crea un account».",
+  "auth/user-not-found": "Nessun account con questa email: tocca «Non ho un account: creane uno».",
   "auth/wrong-password": "Password errata.",
   "auth/invalid-credential": "Email o password non corrette. Se è la prima volta, tocca «Non ho un account: creane uno».",
   "auth/too-many-requests": "Troppi tentativi. Aspetta un minuto e riprova.",

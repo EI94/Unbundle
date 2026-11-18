@@ -237,9 +237,10 @@ export default async function CourseJoinPage({
                 nessun risultato è riconducibile a te.
               </li>
               <li>
+                {/* (Ondata 0) La cancellazione la fa chi tiene il corso, dopo la chiusura: la frase vera. */}
                 Le risposte restano conservate per {preview.retentionDays}{" "}
-                {preview.retentionDays === 1 ? "giorno" : "giorni"}, poi vengono
-                eliminate.
+                {preview.retentionDays === 1 ? "giorno" : "giorni"} dopo la
+                chiusura del corso.
               </li>
               <li>
                 {participantNotice}

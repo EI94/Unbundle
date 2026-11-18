@@ -33,7 +33,7 @@ export const USE_CASE_FORM_BLOCKS: UseCaseBlock[] = [
     id: "need",
     title: "1. Il bisogno",
     subtitle:
-      "Partiamo dal problema, non dalla tecnologia: cosa non funziona oggi e perche conta.",
+      "Partiamo dal problema, non dalla tecnologia: cosa non funziona oggi e perché conta.",
     fields: [
       {
         id: "title",
@@ -48,7 +48,7 @@ export const USE_CASE_FORM_BLOCKS: UseCaseBlock[] = [
         id: "painPoint",
         column: "pain_point",
         label: "Qual e il problema o il bisogno?",
-        help: "Cosa oggi fa perdere tempo, crea errori o frustrazione? Dove ci si blocca di piu?",
+        help: "Cosa oggi fa perdere tempo, crea errori o frustrazione? Dove ci si blocca di più?",
         type: "textarea",
         required: true,
         placeholder: "Descrivi il problema con parole tue",
@@ -73,7 +73,7 @@ export const USE_CASE_FORM_BLOCKS: UseCaseBlock[] = [
         id: "affectedUsers",
         column: "affected_users",
         label: "Quante persone coinvolge?",
-        help: "Quante persone fanno questa attivita o ne dipendono.",
+        help: "Quante persone fanno questa attività o ne dipendono.",
         type: "number",
         placeholder: "Numero indicativo",
       },
@@ -83,7 +83,7 @@ export const USE_CASE_FORM_BLOCKS: UseCaseBlock[] = [
     id: "as-is",
     title: "2. Com'e oggi",
     subtitle:
-      "Fotografiamo la situazione attuale: processo, persone, strumenti e dati, cosi come sono adesso.",
+      "Fotografiamo la situazione attuale: processo, persone, strumenti e dati, così come sono adesso.",
     fields: [
       {
         id: "currentProcess",
@@ -100,7 +100,7 @@ export const USE_CASE_FORM_BLOCKS: UseCaseBlock[] = [
         label: "Chi ci lavora e con che ruolo?",
         help: "Le persone o gli uffici coinvolti e cosa fa ciascuno (chi prepara, chi controlla, chi approva).",
         type: "textarea",
-        placeholder: "Ruoli e responsabilita",
+        placeholder: "Ruoli e responsabilità",
       },
       {
         id: "toolsUsed",
@@ -124,7 +124,7 @@ export const USE_CASE_FORM_BLOCKS: UseCaseBlock[] = [
     id: "to-be",
     title: "3. Come potrebbe cambiare con l'AI",
     subtitle:
-      "Non serve sapere se e tecnicamente possibile: butta li l'idea e cosa conta per te.",
+      "Non serve sapere se è tecnicamente possibile: butta lì l'idea e cosa conta per te.",
     fields: [
       {
         id: "aiSolutionHypothesis",
@@ -138,7 +138,7 @@ export const USE_CASE_FORM_BLOCKS: UseCaseBlock[] = [
         id: "impactEstimate",
         column: "impact_estimate",
         label: "Che beneficio ti aspetti?",
-        help: "Es. meno tempo, meno errori, risposte piu veloci ai clienti, meno lavoro noioso.",
+        help: "Es. meno tempo, meno errori, risposte più veloci ai clienti, meno lavoro noioso.",
         type: "textarea",
         placeholder: "Il beneficio atteso",
       },
@@ -161,7 +161,7 @@ export const USE_CASE_FORM_BLOCKS: UseCaseBlock[] = [
       {
         id: "riskLevel",
         column: "risk_level",
-        label: "Quanto e prioritario per te?",
+        label: "Quanto è prioritario per te?",
         help: "Una tua impressione, per aiutarci a mettere in ordine i casi.",
         type: "select",
         options: ["Bassa", "Media", "Alta"],

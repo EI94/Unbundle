@@ -60,9 +60,9 @@ export function DeleteWorkspaceForm({
             <h3 className="text-sm font-semibold">Elimina workspace</h3>
           </div>
           <p className="max-w-xl text-sm text-muted-foreground">
-            Elimina per sempre tutto il contenuto del workspace: discovery,
-            mappa delle attività, use case, documenti, classifiche, bozze
-            arrivate da Slack, notifiche, report e simulazioni.
+            Elimina per sempre il workspace e tutto quello che contiene: use
+            case, realizzazioni, Agent Factory, Contesto, Programma e documenti.
+            I repository su GitHub restano dove sono.
           </p>
           {!canDelete && (
             <p className="text-xs text-muted-foreground">

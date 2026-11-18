@@ -81,7 +81,7 @@ export default async function LoginPage({
             </a>{" "}
             e la{" "}
             <a href="/legal/privacy" className="underline hover:text-foreground">
-              Privacy Policy
+              Privacy
             </a>
           </p>
         </div>

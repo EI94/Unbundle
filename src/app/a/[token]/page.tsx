@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AI_READINESS_DEFAULT_COPY, brandCopy } from "@/lib/ai-readiness/copy";
 import { hashInviteToken } from "@/lib/ai-readiness/token";
 import { parseSupportContacts } from "@/lib/ai-readiness/support-contacts";
 import {
@@ -153,14 +154,14 @@ export default async function AiReadinessRespondentPage({
               Raccontaci un caso concreto 💡
             </h1>
             <p className="mt-2 max-w-3xl text-base text-muted-foreground">
-              Ci serve il tuo sguardo da esperto del business: descrivi una o piu
+              Ci serve il tuo sguardo da esperto del business: descrivi una o più
               situazioni di lavoro reali dove l&apos;AI potrebbe fare la differenza.
               Non serve essere tecnici, bastano la tua conoscenza e qualche esempio.
             </p>
             <div className="mt-5 grid gap-2 sm:grid-cols-3">
               {[
                 { n: "1", t: "Il bisogno", d: "Qual e il problema e perché conta." },
-                { n: "2", t: "Com'è oggi", d: "Processo, persone, strumenti e dati, cosi come sono adesso." },
+                { n: "2", t: "Com'è oggi", d: "Processo, persone, strumenti e dati, così come sono adesso." },
                 { n: "3", t: "Come cambierebbe", d: "La tua ipotesi su come l'AI può aiutare." },
               ].map((step) => (
                 <div key={step.n} className="rounded-2xl border bg-background/60 p-3">
@@ -260,11 +261,7 @@ export default async function AiReadinessRespondentPage({
             </p>
           </div>
           <p className="mt-4 max-w-3xl text-sm leading-6 text-muted-foreground">
-            {configString(
-              brand,
-              "introCopy",
-              "Questa diagnosi misura la readiness AI dell'organizzazione. Non è un esame: serve a capire dove aiutare meglio team, processi e tecnologia."
-            )}
+            {brandCopy(brand, "introCopy", AI_READINESS_DEFAULT_COPY.intro)}
           </p>
           <div className="mt-5 grid gap-2 sm:grid-cols-3" data-testid="survey-howto">
             {[

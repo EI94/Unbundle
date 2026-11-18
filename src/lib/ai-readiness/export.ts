@@ -522,7 +522,7 @@ export function buildSurveyPreviewPdfBuffer(payload: SurveyPreviewPdfPayload) {
     }
   }
   lines.push({
-    text: "* = risposta obbligatoria. Le risposte si salvano automaticamente: ogni persona puo interrompere e riprendere dal proprio link.",
+    text: "* = risposta obbligatoria. Le risposte si salvano automaticamente: ogni persona può interrompere e riprendere dal proprio link.",
     size: 8.5,
     spaceBefore: 14,
   });

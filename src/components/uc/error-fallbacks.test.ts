@@ -8,7 +8,9 @@ import { enableTsxImports } from "../use-cases/detail/referent/tsx-test-loader.t
 // Mappa. Next passa il valore lanciato così com'è (da 16.3 `ErrorInfo.error` è `unknown`): da un
 // Client Component può arrivare `null`, `undefined` o una stringa. Leggere `.digest` su `null` faceva
 // cadere il riquadro stesso, l'errore saliva al boundary di sopra e «Riprova» non compariva. Il
-// codice si mostra solo se è un `digest` vero.
+// codice si mostra solo se è un `digest` vero e (Ondata 0) solo a Lateral Space: la pagina lo sa dal
+// guscio del caso (`viewer-context`), il pannello delle persone da `showCode`; il grafo della Mappa
+// esiste solo nella vista di analisi, che è di Lateral Space.
 type ErrorInfo = { error: unknown; reset: () => void; retry: () => void };
 type ResolveResult = { url: string; shortCircuit?: boolean };
 const { registerHooks } = nodeModule as unknown as {
@@ -18,6 +20,8 @@ type Fallback = (value: unknown) => unknown;
 
 let renderToStaticMarkup: (element: unknown) => string;
 let fallbacks: Record<string, Fallback>;
+/** Gli stessi riquadri visti da chi non è di Lateral Space. */
+let clientFallbacks: Record<string, Fallback>;
 
 before(async () => {
   await enableTsxImports();
@@ -36,17 +40,24 @@ before(async () => {
   const people = await import("./people/widget-boundary.tsx");
   const map = await import("./map/graph-boundary.tsx");
   const page = await import("../../app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/error.tsx");
+  const viewer = await import("./shell/viewer-context.tsx");
   const info = (error: unknown): ErrorInfo => ({ error, reset() {}, retry() {} });
   // Il riquadro di `catchError` è una funzione (props, errorInfo): la si chiama dentro un componente,
   // come fa Next, così i suoi hook hanno dove stare.
   const asComponent = (render: () => unknown) => react.createElement(function Probe() {
     return render() as never;
   });
+  const inShell = (lateralSpace: boolean, element: unknown) => react.createElement(viewer.LateralSpaceViewerProvider, { value: lateralSpace, children: element as never });
   fallbacks = {
-    pagina: (error) => react.createElement(page.default, { error, retry() {} }),
+    pagina: (error) => inShell(true, react.createElement(page.default, { error, retry() {} })),
     kpi: (error) => asComponent(() => kpi.WidgetError({ title: "KPI" }, info(error))),
-    persone: (error) => asComponent(() => people.WidgetFallback({ title: "Persone" }, info(error))),
+    persone: (error) => asComponent(() => people.WidgetFallback({ title: "Persone", showCode: true }, info(error))),
     mappa: (error) => asComponent(() => map.GraphFallback({}, info(error))),
+  };
+  clientFallbacks = {
+    pagina: (error) => inShell(false, react.createElement(page.default, { error, retry() {} })),
+    "pagina fuori dal guscio": (error) => react.createElement(page.default, { error, retry() {} }),
+    persone: (error) => asComponent(() => people.WidgetFallback({ title: "Persone" }, info(error))),
   };
 });
 
@@ -75,6 +86,14 @@ test("riquadri d'errore del dossier: il codice compare solo con un digest vero",
     assert.match(renderToStaticMarkup(fallbacks[where](withDigest)), /Codice: 1234567890/, where);
     for (const [label, value] of VALUES.slice(0, 4)) assert.doesNotMatch(renderToStaticMarkup(fallbacks[where](value)), /Codice/, `${where}, ${label}`);
     assert.doesNotMatch(renderToStaticMarkup(fallbacks[where]({ digest: "<b>x</b>" })), /Codice/, `${where}: un digest che non è un codice`);
+  }
+});
+
+test("(Ondata 0) riquadri d'errore del dossier: chi non è di Lateral Space non vede il codice, solo «Riprova»", () => {
+  for (const [where, fallback] of Object.entries(clientFallbacks)) {
+    const html = renderToStaticMarkup(fallback(withDigest));
+    assert.match(html, /Riprova/, where);
+    assert.doesNotMatch(html, /Codice|1234567890/, where);
   }
 });
 

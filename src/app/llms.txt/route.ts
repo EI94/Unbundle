@@ -19,7 +19,7 @@ ${SITE_NAME} è una piattaforma SaaS in italiano. URL canonico: ${SITE_URL}.
 ## Documenti chiave
 
 - [Home](${SITE_URL}/): cosa fa Unbundle, come funziona in 4 fasi, i tre stream Automate / Differentiate / Innovate, FAQ.
-- [Privacy Policy](${SITE_URL}/legal/privacy): trattamento dati, integrazione Slack, base giuridica.
+- [Privacy](${SITE_URL}/legal/privacy): trattamento dati, integrazione Slack, base giuridica.
 - [Termini di servizio](${SITE_URL}/legal/terms): uso del servizio, limitazioni.
 - [Supporto](${SITE_URL}/legal/support): contatti per assistenza tecnica e onboarding.
 - [Contenuto completo (LLM-friendly)](${SITE_URL}/llms-full.txt): versione estesa di tutto il copy del sito.

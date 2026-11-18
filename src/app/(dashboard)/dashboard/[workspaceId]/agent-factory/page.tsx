@@ -30,7 +30,7 @@ import { AddBuilder, RemoveBuilder } from "./team-forms";
  * - La linea: quanti casi in ogni stazione.
  * - Le famiglie (i repository): ogni caso con la stazione, il prossimo passo, i compiti e le sessioni dei coding
  *   agent. Mai una cifra per persona.
- * - La coda della fabbrica, al posto dei turni: chi ci lavora la prende.
+ * - (Ondata 0) «Repository da aggiornare», al posto dei turni: chi ci lavora lo prende.
  * - (8.1b, 8.0c) «Chi costruisce», solo per il manager di Lateral Space: il team di Lateral Space del cliente (in tutti
  *   i casi, anche in quelli che si apriranno) e chi costruisce da fuori, «Sviluppatore esterno», con il suo «Dove». Ogni
  *   riga dice se la CLI è collegata, o perché da fuori oggi non costruisce. «Togli» chiede conferma con i casi e i
@@ -217,7 +217,7 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
 
       <div className="mt-6 space-y-6">
         {view.cases.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nessun caso ancora: un caso entra nella fabbrica con «Avvia la realizzazione», dalla pagina del suo use case.</p>
+          <p className="text-sm text-muted-foreground">Nessun caso ancora: un caso entra nell&apos;Agent Factory con «Avvia la realizzazione», dalla pagina del suo use case.</p>
         ) : (
           view.families.map((f) => (
             <SettingsSection
@@ -265,7 +265,7 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
         ) : null}
 
         {view.queue.length ? (
-          <SettingsSection id="coda" icon={Wrench} title="La coda della fabbrica" description="Il lavoro sulla fabbrica stessa. Chi ci lavora la prende: niente turni.">
+          <SettingsSection id="coda" icon={Wrench} title="Repository da aggiornare" description="Hanno un modello più vecchio dell'ultimo. Chi ci lavora li prende: niente turni.">
             <ul className="divide-y">
               {view.queue.map((q) => (
                 <li key={q.repo} className="py-2.5 text-sm">

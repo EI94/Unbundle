@@ -150,8 +150,8 @@ export function UseCaseExpertForm({
         <h1 className="text-2xl font-semibold">Grazie!</h1>
         <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
           Hai inviato {savedCount}{" "}
-          {savedCount === 1 ? "caso" : "casi"}. Il team li esaminera e li
-          trasformera in ipotesi concrete su dove l&apos;AI puo aiutare.
+          {savedCount === 1 ? "caso" : "casi"}. Il team li esaminerà e li
+          trasformerà in ipotesi concrete su dove l&apos;AI può aiutare.
         </p>
       </div>
     );

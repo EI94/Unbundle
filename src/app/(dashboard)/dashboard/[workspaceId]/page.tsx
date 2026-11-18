@@ -109,8 +109,9 @@ export default async function WorkspaceOverviewPage({
     },
     {
       label: "Activity mapping",
+      // (Ondata 0) Senza participio: il nome dell'unità lo sceglie il cliente («funzioni», «dipartimenti»…).
       sub: hasDepts
-        ? `${mappedDepts.length}/${departments.length} ${term.plural} mappate`
+        ? `Mappatura: ${mappedDepts.length} su ${departments.length} ${term.plural}`
         : `Scomponi il lavoro ${term.singular} per ${term.singular}`,
       href: `/dashboard/${workspaceId}/mapping`,
       icon: GitBranch,

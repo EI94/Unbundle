@@ -468,8 +468,9 @@ export default async function AiReadinessPage({
             />
             {!dashboard?.aggregationThresholdMet && (
               <p className="mt-2 text-center text-xs text-muted-foreground">
-                Il radar si popola quando le risposte raggiungono la soglia di
-                aggregazione ({bundle.assessment.aggregationThreshold}).
+                {/* (Ondata 0) Il profilo usa ogni risposta da subito: la soglia vale per le aree e il confronto. */}
+                Il profilo usa le risposte arrivate finora. Punteggi per area e
+                confronto partono da {bundle.assessment.aggregationThreshold} risposte.
               </p>
             )}
           </CardContent>

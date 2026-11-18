@@ -135,7 +135,7 @@ function build(): string {
   lines.push("## Pagine pubbliche");
   lines.push("");
   lines.push(`- Home: ${SITE_URL}/`);
-  lines.push(`- Privacy Policy: ${SITE_URL}/legal/privacy`);
+  lines.push(`- Privacy: ${SITE_URL}/legal/privacy`);
   lines.push(`- Termini di servizio: ${SITE_URL}/legal/terms`);
   lines.push(`- Supporto: ${SITE_URL}/legal/support`);
   lines.push("");

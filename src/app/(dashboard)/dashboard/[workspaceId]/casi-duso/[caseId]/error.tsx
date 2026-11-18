@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { PageContainer } from "@/components/dashboard/page-container";
+import { useLateralSpaceViewer } from "@/components/uc/shell/viewer-context";
 import { digestOf } from "@/lib/uc/log";
 
 /**
@@ -10,9 +11,11 @@ import { digestOf } from "@/lib/uc/log";
  * layout del caso: testata e schede restano. Si registra solo il codice
  * dell'errore (`digest`), mai il messaggio. Next passa il valore lanciato così
  * com'è: da un Client Component può non essere un `Error`, anche `null`.
+ * (Ondata 0) Il codice a schermo lo vede solo Lateral Space (`viewer-context`).
  */
 export default function CasePageError({ error, retry }: { error: unknown; retry: () => void }) {
   const digest = digestOf(error);
+  const lateralSpace = useLateralSpaceViewer();
   useEffect(() => {
     console.error("[uc] pagina del dossier non caricata", digest ?? "senza codice");
   }, [digest]);
@@ -24,7 +27,7 @@ export default function CasePageError({ error, retry }: { error: unknown; retry:
         <Button variant="outline" className="h-11 sm:h-8" onClick={() => retry()}>
           Riprova
         </Button>
-        {digest && <p className="text-xs text-muted-foreground">Codice: {digest}</p>}
+        {lateralSpace && digest && <p className="text-xs text-muted-foreground">Codice: {digest}</p>}
       </div>
     </PageContainer>
   );

@@ -13,7 +13,7 @@ export function RespondentPrivacyControls({ token }: { token: string }) {
         <h2 className="font-semibold">Revoca benchmark</h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           Manteniamo le risposte per l&apos;assessment interno, ma non le usiamo
-          piu in benchmark aggregati futuri.
+          più in benchmark aggregati futuri.
         </p>
         <Button className="mt-4" type="submit" variant="outline">
           Revoca consenso benchmark
@@ -28,7 +28,7 @@ export function RespondentPrivacyControls({ token }: { token: string }) {
         <h2 className="font-semibold">Anonimizza risposte</h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           Rimuove dati identificativi, risposte e testi liberi collegati a questo
-          token. L&apos;azione non e reversibile.
+          token. L&apos;azione non è reversibile.
         </p>
         <div className="mt-4 space-y-1.5">
           <Label htmlFor="confirmation">Scrivi ANONIMIZZA</Label>

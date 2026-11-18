@@ -31,7 +31,7 @@ export const MATURITY_LEVELS: AiReadinessMaturityLevel[] = [
   {
     level: 4,
     label: "Scalable",
-    description: "La readiness e gestita a livello operativo e scalabile.",
+    description: "La readiness è gestita a livello operativo e scalabile.",
   },
   {
     level: 5,

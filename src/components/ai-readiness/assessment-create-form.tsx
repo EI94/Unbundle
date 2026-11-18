@@ -3,6 +3,7 @@
 import { useActionState, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createAiReadinessAssessmentAction, type AiReadinessActionState } from "@/lib/actions/ai-readiness";
+import { AI_READINESS_DEFAULT_COPY } from "@/lib/ai-readiness/copy";
 import { AI_READINESS_SYSTEM_TEMPLATE } from "@/lib/ai-readiness/default-template";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -230,7 +231,7 @@ export function AssessmentCreateForm({ workspaceId, workspaceName }: { workspace
             <Textarea
               id="introCopy"
               name="introCopy"
-              defaultValue="Questa diagnosi misura la readiness AI dell'organizzazione. Non e un esame: serve a capire dove aiutare meglio team, processi e tecnologia."
+              defaultValue={AI_READINESS_DEFAULT_COPY.intro}
             />
           </div>
           <div className="space-y-2">

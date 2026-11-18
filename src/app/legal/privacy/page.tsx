@@ -5,12 +5,12 @@ import {
 } from "@/lib/seo/structured-data";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy",
+  title: "Privacy",
   description:
     "Informativa sulla privacy di Unbundle: dati trattati, integrazione Slack, base giuridica, conservazione e diritti degli interessati.",
   alternates: { canonical: "/legal/privacy" },
   openGraph: {
-    title: "Privacy Policy — Unbundle",
+    title: "Privacy — Unbundle",
     description:
       "Informativa sulla privacy di Unbundle e dell'integrazione Slack.",
     url: "/legal/privacy",
@@ -24,11 +24,11 @@ export default function PrivacyPage() {
         {...jsonLdScriptProps(
           breadcrumbJsonLd([
             { name: "Home", url: "/" },
-            { name: "Privacy Policy", url: "/legal/privacy" },
+            { name: "Privacy", url: "/legal/privacy" },
           ])
         )}
       />
-      <h1 className="text-2xl font-semibold tracking-tight">Privacy Policy</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">Privacy</h1>
       <p className="text-muted-foreground">
         Ultimo aggiornamento: aprile 2026. Documento di base per conformità
         all’installazione dell’app Slack Unbundle; integralo con i contenuti

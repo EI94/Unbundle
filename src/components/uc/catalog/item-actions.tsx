@@ -480,7 +480,7 @@ function RecordValueForm({
           {type === "tabella" || type === "testo" || type === "conferma_regola" || type === "conferma_formula" ? (
             <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={type === "tabella" ? 6 : 3} placeholder={type === "tabella" ? "Incolla la tabella da Excel, con l'intestazione" : undefined} />
           ) : (
-            <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Scrivilo come lo scriverebbe il referente, es. 1.200 € IVA esclusa a volo" />
+            <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Scrivilo come lo scriverebbe il referente, es. 1.200 € IVA esclusa a pezzo" />
           )}
         </label>
       )}

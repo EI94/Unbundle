@@ -154,7 +154,7 @@ function ActivityResults({ activity, enrolled, minimum, showAnswers }: { activit
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span className="font-medium uppercase tracking-wide">Domanda {index + 1}</span>
             {item.critical && <ImportantTag />}
-            <span className="ml-auto tabular-nums">{item.answered} risposte</span>
+            <span className="ml-auto tabular-nums">{item.answered} {item.answered === 1 ? "risposta" : "risposte"}</span>
           </div>
           <p className="font-medium leading-snug">{item.prompt}</p>
           {showAnswers && <p className="text-sm font-semibold text-emerald-300">{percent(item.correct, item.answered)}% ha risposto giusto</p>}
