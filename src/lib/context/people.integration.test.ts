@@ -480,6 +480,51 @@ test("«In breve» resta se non cita il nome", opts, async () => {
   assert.equal((await q(`SELECT count(*)::int AS n FROM context_facts WHERE workspace_id = $1 AND statement = 'una persona approva i preventivi.'`, [ids.wsA]))[0].n, 1);
 });
 
+test("«Togli» mentre una conferma è a metà: la conferma che scrive un fatto su quell'appunto passa, nessuno resta bloccato (40P01)", opts, async (t) => {
+  // Un appunto e una sua proposta aperta con un cognome inventato.
+  const [note] = await q(
+    `INSERT INTO context_sources (workspace_id, kind, origin, title, occurred_on, body, body_chars, visibility, read_status, parts_read)
+     VALUES ($1, 'appunti', 'web', 'Call sugli ordini', '2026-11-16', 'Moretti approva gli ordini sopra soglia.', 40, 'ls', 'letto', 1) RETURNING id`,
+    [ids.wsA],
+  );
+  const [proposal] = await q(
+    `INSERT INTO context_proposals (workspace_id, source_id, position, kind, statement, basis, section, visibility, status)
+     VALUES ($1, $2, 1, 'nuovo', 'Moretti approva gli ordini sopra soglia.', 'detto', 'lavoro', 'ls', 'aperta') RETURNING id`,
+    [ids.wsA, note.id],
+  );
+  const pg = (await import("pg")).default as unknown as { Client: new (o: { connectionString: string }) => { connect(): Promise<void>; query(t: string, v?: unknown[]): Promise<unknown>; end(): Promise<void> } };
+  const confirmation = new pg.Client({ connectionString: url! });
+  await confirmation.connect();
+  const waiting = async () => Number((await q(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`))[0].n);
+  const until = async (check: () => Promise<boolean>) => {
+    for (let i = 0; i < 100 && !(await check()); i++) await new Promise((resolve) => setTimeout(resolve, 20));
+  };
+  let erased: Awaited<ReturnType<typeof people.erasePerson>> | undefined;
+  const logs = await consoleOf(t, async () => {
+    try {
+      // La conferma prende la proposta, come il primo passo di confirmProposals…
+      await confirmation.query("BEGIN");
+      await confirmation.query("SELECT id FROM context_proposals WHERE id = $1 FOR UPDATE", [proposal.id]);
+      // …«Togli» prende l'appunto e aspetta la proposta…
+      const erasing = people.erasePerson(actor("ls"), "Moretti").then((result) => (erased = result));
+      await until(async () => (await waiting()) >= 1);
+      // …la conferma scrive il fatto con l'appunto come fonte (la chiave esterna prende FOR KEY SHARE sull'appunto) e chiude.
+      await confirmation.query(
+        `INSERT INTO context_facts (workspace_id, section, statement, basis, visibility, origin, source_id) VALUES ($1, 'lavoro', 'Moretti approva gli ordini sopra soglia.', 'detto', 'ls', 'fonte', $2)`,
+        [ids.wsA, note.id],
+      );
+      await confirmation.query("COMMIT");
+      await erasing;
+    } finally {
+      await confirmation.end().catch(() => undefined);
+    }
+  });
+  assert.doesNotMatch(logs, /40P01|deadlock/i, "nessuno si blocca a vicenda");
+  // «Togli» finisce dopo la conferma e vede anche il suo fatto: l'appunto, la proposta e il fatto perdono il nome.
+  assert.deepEqual(okValue(erased!), { notes: 1, texts: 2, rules: 0, chatMemory: 0 });
+  assert.equal((await q(`SELECT count(*)::int AS n FROM context_facts WHERE workspace_id = $1 AND statement ~* 'moretti'`, [ids.wsA]))[0].n, 0);
+});
+
 test("nei log mai il nome, anche quando il database non risponde; il messaggio di errore non lo ripete", opts, async (t) => {
   let result: { ok: boolean; error?: string; message?: string } | null = null;
   const logs = await consoleOf(t, async () => {

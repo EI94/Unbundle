@@ -19,7 +19,10 @@ import "server-only";
  *   sola che è nel nome del cliente («Alfa» per «Alfa Ricambi»), che la ricerca mostra lo stesso (`inClientName`).
  * - Prima di scrivere, la stessa transazione prende in ordine gli appunti, le proposte e i fatti che cambiano (come la
  *   lettura e la conferma): una lettura o una conferma in corso finisce prima, e la scrittura vede le sue righe; una
- *   che arriva dopo trova le righe cambiate (`versione_superata`, o la presa della lettura persa).
+ *   che arriva dopo trova le righe cambiate (`versione_superata`, o la presa della lettura persa). Le prende con
+ *   `FOR NO KEY UPDATE`, il lock dell'UPDATE che segue (nessuna chiave cambia): chi intanto aggiunge una riga che le
+ *   cita, come una conferma che scrive un fatto con la fonte di uno di quegli appunti (la chiave esterna prende solo
+ *   `FOR KEY SHARE`), passa e finisce, invece di bloccarsi a vicenda con «Togli» (40P01).
  * - L'espressione del nome (`personPattern`) passa sempre come parametro: mai SQL composto con il testo. Nei log e
  *   nella storia solo id, codici e numeri: mai il nome cercato.
  * Le tabelle `context_*` e `conversation_memory` si toccano qui, sempre con il workspace (src/lib/context/source-rules.test.ts).
@@ -266,8 +269,9 @@ export async function erasePerson(actor: ContextActor, raw: string): Promise<Ser
     }
     const results = await db.batch([
       // Le righe che cambiano, prese in ordine (appunti, proposte, fatti) prima di ogni scrittura: chi le sta già
-      // scrivendo finisce prima, e la scrittura qui sotto vede le sue righe.
-      db.execute(sql`SELECT s.id FROM context_sources s WHERE ${noteMatches("s", ws, p)} ORDER BY s.id FOR UPDATE OF s`),
+      // scrivendo finisce prima, e la scrittura qui sotto vede le sue righe. FOR NO KEY UPDATE, come l'UPDATE: non ferma
+      // la chiave esterna di una conferma che intanto scrive un fatto su uno di questi appunti (FOR KEY SHARE).
+      db.execute(sql`SELECT s.id FROM context_sources s WHERE ${noteMatches("s", ws, p)} ORDER BY s.id FOR NO KEY UPDATE OF s`),
       db.execute(sql`
         SELECT x.id FROM context_proposals x
         WHERE x.workspace_id = ${ws}::uuid
@@ -276,8 +280,8 @@ export async function erasePerson(actor: ContextActor, raw: string): Promise<Ser
               AND (x.source_id IN (SELECT n.id FROM context_sources n WHERE ${noteMatches("n", ws, p)})
                 OR x.target_fact_id IN (SELECT f.id FROM context_facts f WHERE ${factMatches}))))
         ORDER BY x.id
-        FOR UPDATE OF x`),
-      db.execute(sql`SELECT f.id FROM context_facts f WHERE ${factMatches} ORDER BY f.id FOR UPDATE OF f`),
+        FOR NO KEY UPDATE OF x`),
+      db.execute(sql`SELECT f.id FROM context_facts f WHERE ${factMatches} ORDER BY f.id FOR NO KEY UPDATE OF f`),
       // Tutto il resto in un solo statement: le parti vedono la stessa istantanea, i numeri si contano su quella.
       db.execute(sql`
         WITH notes AS (
