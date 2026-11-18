@@ -564,3 +564,26 @@ test("(rilascio 10, §4) copy-guard verde sui moduli dei testi di tutte le aree 
   assert.ok(outside.some((t) => t.includes("casi d'uso")));
   assert.deepEqual(findHubForbiddenIn(outside, "esterno"), []);
 });
+
+test("(rilascio 10, §4) le parole della dashboard anche nella Home, nel Programma, nella cornice e nella card di Claude", async () => {
+  // Le ondate 2a «Cornice» e 2b «Home» hanno scritto questi testi accanto all'ondata 1: le stesse regole, come i moduli
+  // dei testi delle altre aree. La card di Claude in Impostazioni resta nel controllo del vecchio nome (H6i); qui si
+  // controllano le altre parole della dashboard («dossier», «Discovery»…).
+  const files = [...walk("src/components/home"), ...walk("src/components/programma"), ...walk("src/components/shell"), "src/components/workspace/claude-mcp-card.tsx"].filter(
+    (file) => /\.(?:ts|tsx)$/.test(file) && !/\.test\./.test(file),
+  );
+  for (const piece of ["src/components/programma/program-panels.tsx", "src/components/home/home-route.tsx", "src/components/shell/workspace-shell.tsx"]) {
+    assert.ok(files.includes(piece), `${piece} si controlla`);
+  }
+  const found = files.flatMap((file) => matchesOf(file, "area").map((m) => `${file}: «${m.match}» in «${m.text}»`));
+  assert.deepEqual(found, []);
+  // I moduli dei testi della Home e della cornice. La barra di prima (area «Use case» spenta) tiene «Raccolta & ranking»
+  // fino all'ondata 8: fuori da qui.
+  const home = await import("../home/text.ts");
+  const { SHELL_TEXT } = await import("../shell/text.ts");
+  const { legacy, ...current } = SHELL_TEXT;
+  assert.ok(legacy.useCases === "Use case" && legacy.cases === "Realizzazioni");
+  const texts = [...exportedStrings(home), ...exportedStrings({ current })].filter((t) => !CODE_LIKE.test(t));
+  assert.ok(texts.length > 100, `${texts.length} testi controllati`);
+  assert.deepEqual(findHubForbiddenIn(texts, "area").map((m) => `«${m.match}» in «${m.text}»`), []);
+});
