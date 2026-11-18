@@ -12,7 +12,8 @@ export const DETAILS_TEXT = Object.freeze({
   channel: "Canale",
   arrivedOn: "Arrivato il",
   urgency: "Urgenza",
-  requirements: "Requisiti",
+  // (Rilascio 10, §4) Il dato raccolto da Claude: «Vincoli indicati», mai «Requisiti».
+  requirements: "Vincoli indicati",
   dataDependencies: "Dipendenze dai dati",
   possibleDuplicate: "Possibile doppione di",
   proposedBy: "Proposto da",

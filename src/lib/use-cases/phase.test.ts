@@ -68,9 +68,9 @@ const EXPECTED: Record<number, { phase: Phase; subState: SubState; label: string
   11: { phase: "approvato", subState: "trimestre", label: "Approvato · T3 2026" },
   12: { phase: "in_realizzazione", subState: "dossier", label: "In realizzazione · In preparazione" },
   13: { phase: "in_realizzazione", subState: "dossier", label: "In realizzazione · In sviluppo" },
-  14: { phase: "in_realizzazione", subState: "senza_dossier", label: "In realizzazione · Senza dossier" },
-  15: { phase: "realizzato", subState: "realizzato", label: "Realizzato" },
-  16: { phase: "realizzato", subState: "diffusa", label: "Realizzato · Diffusa" },
+  14: { phase: "in_realizzazione", subState: "senza_dossier", label: "In realizzazione · Senza realizzazione" },
+  15: { phase: "realizzato", subState: "realizzato", label: "In uso" },
+  16: { phase: "realizzato", subState: "diffusa", label: "In uso · Diffusa" },
   17: { phase: "chiuso", subState: "non_avviato", label: "Chiuso · Non avviato" },
   18: { phase: "da_valutare", subState: "nuova", label: "Da valutare · Nuova" },
   19: { phase: "chiuso", subState: "doppione", label: "Chiuso · Doppione di XX-0007" },
@@ -250,11 +250,12 @@ test("In realizzazione: l'etichetta del dossier per ogni stato; senza stato solo
 test("Realizzato: «Realizzato» per i da costruire (anche portfolio_kind NULL), «Diffusa» per le best practice", () => {
   const at = (portfolioKind: string | null) => phaseOfUseCase(input({ status: "implemented", portfolioReviewStatus: "scored", portfolioKind }));
   for (const kind of ["use_case_ai", null, "altro"]) {
-    assert.equal(at(kind).label, "Realizzato", String(kind));
+    // (Rilascio 10, §4, D4) Il ciclo di vita dice «In uso».
+    assert.equal(at(kind).label, "In uso", String(kind));
     assert.equal(at(kind).subState, "realizzato");
     assert.equal(at(kind).tone, "verde");
   }
-  assert.equal(at("best_practice").label, "Realizzato · Diffusa");
+  assert.equal(at("best_practice").label, "In uso · Diffusa");
   assert.equal(at("best_practice").subStateLabel, "Diffusa");
 });
 

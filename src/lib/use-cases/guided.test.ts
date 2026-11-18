@@ -176,7 +176,7 @@ test("percorso in realizzazione: con il dossier, senza, in uso, chiuso, dossier 
   const base = { phase: "in_realizzazione" as const, subState: "dossier" as const, targetQuarter: "2026-Q4" };
   const cases: Array<[string, Partial<GuidedItem>, "ok" | "errore", string[]]> = [
     ["con il dossier", { dossier: { status: "in_sviluppo" } }, "ok", ["informazioni:fatto", "realizzazione:adesso:In sviluppo", "in_uso:dopo"]],
-    ["senza dossier", { subState: "senza_dossier" }, "ok", ["informazioni:fatto", "realizzazione:adesso:senza dossier", "in_uso:dopo"]],
+    ["senza dossier", { subState: "senza_dossier" }, "ok", ["informazioni:fatto", "realizzazione:adesso:senza realizzazione", "in_uso:dopo"]],
     ["in uso", { dossier: { status: "in_esercizio" } }, "ok", ["informazioni:fatto", "realizzazione:fatto", "in_uso:adesso:da segnare"]],
     ["dossier chiuso", { dossier: { status: "chiuso" } }, "ok", ["informazioni:fatto", "realizzazione:adesso:Chiuso", "in_uso:dopo"]],
     ["dossier non letto", {}, "errore", ["informazioni:fatto", "realizzazione:adesso:non disponibile ora", "in_uso:dopo"]],
@@ -214,7 +214,7 @@ test("C: chiuso, «Fuori dal percorso», il titolo dopo «Chiuso · »; riaprire
   assert.deepEqual([duplicate.title, duplicate.line], ["Doppione di XX-0007", "Si può riaprire."], "senza `status`: non si sa dove torna");
   assert.equal(closed({ subState: "archiviato", phaseLabel: "Chiuso · Archiviato", status: "accepted" }).line, "Si può riaprire: torna alla fase di prima.");
   const stays = closed({ subState: "non_avviato", phaseLabel: "Chiuso · Non avviato", dossier: { status: "chiuso" } });
-  assert.deepEqual([stays.line, stays.action.type], ["Resta chiuso: ha un dossier collegato.", "none"]);
+  assert.deepEqual([stays.line, stays.action.type], ["Resta chiuso: ha una realizzazione collegata.", "none"]);
 });
 
 test("D1, D2: realizzato e diffusa, nessun passo da fare", () => {
@@ -255,7 +255,7 @@ test("E1-E7: in realizzazione; il dossier non letto viene prima di tutto", () =>
   assert.deepEqual(brief(inRealization({ subState: "senza_dossier" }, { dossierRead: "errore" })), {
     key: "E7",
     title: "Portare avanti la realizzazione",
-    line: "Il riepilogo del dossier non è disponibile ora.",
+    line: "Il riepilogo della realizzazione non è disponibile ora.",
     action: "decisione",
     mine: false,
     decisions: "compact",
@@ -263,15 +263,15 @@ test("E1-E7: in realizzazione; il dossier non letto viene prima di tutto", () =>
   assert.equal(inRealization({ dossier: { status: "in_sviluppo" } }, { realizationVariant: "non_disponibile" }).key, "E7");
   assert.deepEqual(brief(inRealization({ dossier: { status: "in_esercizio" } })), {
     key: "E1",
-    title: "Segnare come realizzato",
-    line: `${T} Il dossier dice che l'agente è in uso.`,
+    title: "Segnare «In uso»",
+    line: `${T} La realizzazione dice che l'agente è in uso.`,
     action: "decisione",
     mine: true,
     decisions: "compact",
   });
   assert.deepEqual(brief(inRealization({ subState: "senza_dossier" }, { dossierRead: "spenta" })), {
     key: "E2",
-    title: "Segnare come realizzato quando è in uso",
+    title: "Segnare «In uso» quando l'agente lavora",
     line: T,
     action: "decisione",
     mine: true,
@@ -280,7 +280,7 @@ test("E1-E7: in realizzazione; il dossier non letto viene prima di tutto", () =>
   assert.deepEqual(brief(inRealization({ dossier: { status: "chiuso" } }, { realizationVariant: "dossier" })), {
     key: "E3",
     title: "Decidere cosa farne",
-    line: `${T} Il dossier è chiuso.`,
+    line: `${T} La realizzazione è chiusa.`,
     action: "decisione",
     mine: false,
     decisions: "compact",
@@ -292,17 +292,17 @@ test("E1-E7: in realizzazione; il dossier non letto viene prima di tutto", () =>
   assert.deepEqual(brief(mine), {
     key: "E4",
     title: "Invia le domande",
-    line: "Tocca a te, nel dossier. Dossier in preparazione · 3 di 10 indispensabili a posto.",
+    line: "Il tuo prossimo passo è nella realizzazione. Realizzazione in preparazione · 3 di 10 indispensabili a posto.",
     action: "dossier",
     mine: true,
     decisions: "none",
   });
-  assert.deepEqual(mine.action, { type: "dossier", href: "/casi-duso/c1/domande", label: "Apri il dossier", variant: "default" });
+  assert.deepEqual(mine.action, { type: "dossier", href: "/casi-duso/c1/domande", label: "Apri la realizzazione", variant: "default" });
   const members = inRealization({ dossier: { status: "raccolta", caseId: "c1" } }, { realizationVariant: "riepilogo", realization: avviata() });
   assert.deepEqual(brief(members), {
     key: "E5",
     title: "Portare avanti la realizzazione",
-    line: "La seguono i membri del dossier. Dossier in preparazione · 3 di 10 indispensabili a posto · prossima tappa 15 nov.",
+    line: "La seguono le persone della realizzazione. Realizzazione in preparazione · 3 di 10 indispensabili a posto · prossima tappa 15 nov.",
     action: "dossier",
     mine: false,
     decisions: "none",
@@ -312,14 +312,14 @@ test("E1-E7: in realizzazione; il dossier non letto viene prima di tutto", () =>
   assert.deepEqual(brief(closedDoor), {
     key: "E6",
     title: "Portare avanti la realizzazione",
-    line: "La seguono i membri del dossier. Dossier in preparazione. Il dossier lo vedono i suoi membri e chi gestisce il workspace.",
+    line: "La seguono le persone della realizzazione. Realizzazione in preparazione. La realizzazione la vedono le sue persone e chi gestisce il workspace.",
     action: "none",
     mine: false,
     decisions: "none",
   });
   const manager = inRealization({ dossier: { status: "in_sviluppo", caseId: "c1" } }, { realizationVariant: "dossier", canOpenAnyDossier: true });
-  assert.equal(manager.line, "La seguono i membri del dossier. Dossier in sviluppo.");
-  assert.deepEqual(manager.action, { type: "dossier", href: `/dashboard/${WS}/casi-duso/c1`, label: "Apri il dossier", variant: "outline" });
+  assert.equal(manager.line, "La seguono le persone della realizzazione. Realizzazione in sviluppo.");
+  assert.deepEqual(manager.action, { type: "dossier", href: `/dashboard/${WS}/casi-duso/c1`, label: "Apri la realizzazione", variant: "outline" });
 });
 
 test("F1: best practice approvata, «Segna come diffusa» pieno", () => {
@@ -443,7 +443,7 @@ test("G7-G9: aspettare, sbloccare, avviare", () => {
     assert.deepEqual([client.key, client.action.type, client.mine, client.line], ["G9", "none", false, "Tocca a Lateral Space. Le informazioni ci sono tutte."], variant);
   }
   const unavailable = nextStepOf(input({ item: approved(), info: COMPLETE, realizationVariant: "non_disponibile" }));
-  assert.deepEqual([unavailable.key, unavailable.line, unavailable.action.type], ["G9", "Il riepilogo del dossier non è disponibile ora.", "none"]);
+  assert.deepEqual([unavailable.key, unavailable.line, unavailable.action.type], ["G9", "Il riepilogo della realizzazione non è disponibile ora.", "none"]);
   assert.equal(nextStepOf(input({ item: approved(), companyName: null, info: null, realizationVariant: "fase" })).line, "Tocca a Lateral Space. Da la tua azienda non serve nessuna informazione.");
 });
 
@@ -486,8 +486,8 @@ test("(Rilascio 6, B.1) il pulsante del passo: un verbo di due o tre parole, «T
   const referent = (state: "manca" | "in_attesa" | "nessuna_risposta" | "da_verificare" | "fatto", over: Partial<NonNullable<NextStepInput["referent"]>> = {}) => ({ state, review: null, canChoose: true, askableForReferent: null, canOpen: true, ...over });
   // «Indica il referente»: apre «Scegli il referente»; la spiegazione è la riga senza «Tocca a».
   const choose = nextStepOf(input({ item: approved(), info, referents: panel([]), askEntry: entry([]), referent: referent("manca") }));
-  assert.deepEqual([choose.key, choose.cta, choose.icon, choose.turn, choose.why, choose.mine], ["G5", "Indica il referente", "referente", T, "Il referente conferma lo use case e l'impatto, poi risponde alle domande.", true]);
-  assert.deepEqual(choose.action, { type: "referente", mode: "scegli", label: "Scegli il referente" });
+  assert.deepEqual([choose.key, choose.cta, choose.icon, choose.turn, choose.why, choose.mine], ["G5", "Indica il referente", "referente", T, "Il referente conferma lo use case e le stime, poi risponde alle domande.", true]);
+  assert.deepEqual(choose.action, { type: "referente", mode: "scegli", label: "Indica il referente" });
   // Le email spente fermano solo l'invio: il pulsante c'è, bordato, e la finestra dice il motivo.
   const gated = nextStepOf(input({ item: approved(), info, referents: panel([gate.email]), askEntry: entry([gate.email]), referent: referent("manca", { canChoose: false }) }));
   assert.deepEqual([gated.key, gated.cta, gated.action.type, gated.mine, gated.turn, gated.gate], ["G6", "Indica il referente", "referente", false, null, "email_non_configurata"]);
@@ -598,7 +598,7 @@ test("impactView A: ore contate, euro con la fonte, l'ora, il rientro, le voci",
   if (view.variant !== "A") return;
   assert.deepEqual([view.hoursText, view.unit, view.hourly, view.pending], ["300", "ore all'anno", "a 35 € l'ora", null]);
   assert.deepEqual(view.perYear, { amount: 10_500, source: "team" });
-  assert.equal(view.payback, "L'avvio rientra in meno di un mese a regime, senza contare i 4 giorni di sviluppo.");
+  assert.equal(view.payback, "Pareggio in meno di un mese a regime, senza contare i 4 giorni di sviluppo.");
   assert.deepEqual(view.items.lines, [{ label: "Pratiche in entrata", formula: "2.400 pratiche all'anno × 15 min × 50% ≈ 300 h · 10.500 €", confidence: "ipotesi" }]);
   assert.deepEqual(view.items.qualitative, ["Meno errori di smistamento", "Picchi di fine mese gestiti"]);
   assert.equal(view.items.toConfirm, true);
@@ -618,7 +618,7 @@ test("impactView A: ore contate, euro con la fonte, l'ora, il rientro, le voci",
 
 test("impactView B-G: solo euro, da misurare, qualitativo, euro senza modello (anche dal dossier), parola, niente", () => {
   const euroOnly = impactView({ value: { ...SAMPLE_VALUE, benefits: { ...SAMPLE_VALUE.benefits!, hours: 0 } }, cost: SAMPLE_COST, valueModel: SAMPLE_MODEL, params: PARAMS, unofficial: false });
-  assert.ok(euroOnly.variant === "B" && euroOnly.perYear.amount === 10_500 && euroOnly.payback?.startsWith("L'avvio rientra"));
+  assert.ok(euroOnly.variant === "B" && euroOnly.perYear.amount === 10_500 && euroOnly.payback?.startsWith("Pareggio"));
   const pending = impactView({ value: { score: null, word: null, source: "team", perYear: null, benefits: { state: "da_misurare", benefitEur: 0, pendingEur: 4200, hours: 0 } }, cost: SAMPLE_COST, valueModel: SAMPLE_MODEL, params: PARAMS, unofficial: false });
   assert.ok(pending.variant === "C");
   if (pending.variant === "C") assert.deepEqual([pending.big, pending.unit, pending.note], ["fino a 4.200 €", "all'anno, da misurare", "Entra nel conto quando c'è la misura di oggi."]);
@@ -643,16 +643,16 @@ test("paybackText: meno di un mese, circa 2 mesi, un mese, costi non coperti, ol
       valueModel: { ...SAMPLE_MODEL, costs: { devDays: opts.devDays ?? 0, internalHours: 0, runCostEurYear: run } },
       params: { ...PARAMS, dayCostEur: opts.dayCostEur ?? 0 },
     });
-  assert.equal(paybackText({ value: SAMPLE_VALUE, cost: SAMPLE_COST, valueModel: SAMPLE_MODEL, params: PARAMS }), "L'avvio rientra in meno di un mese a regime, senza contare i 4 giorni di sviluppo.");
-  assert.equal(at(1700, 0), "L'avvio rientra in circa 2 mesi a regime.", "1,7 mesi");
-  assert.equal(at(1000, 0), "L'avvio rientra in circa un mese a regime.", "un mese esatto");
-  assert.equal(at(1000, 0, { devDays: 1 }), "L'avvio rientra in circa un mese a regime, senza contare il giorno di sviluppo.");
-  assert.equal(at(1000, 0, { devDays: 2.5 }), "L'avvio rientra in circa un mese a regime, senza contare i 2,5 giorni di sviluppo.");
-  assert.equal(at(1000, 0, { devDays: 5, dayCostEur: 600 }), "L'avvio rientra in circa un mese a regime.", "con la giornata a pagamento i giorni sono già nel costo");
-  assert.equal(at(24_000, 0), "L'avvio rientra in circa 24 mesi a regime.");
-  assert.equal(at(30_000, 0), "L'avvio rientra in più di due anni a regime.");
-  assert.equal(at(1000, 12_000), "Il beneficio contato non copre i costi ricorrenti.");
-  assert.equal(at(1000, 15_000), "Il beneficio contato non copre i costi ricorrenti.");
+  assert.equal(paybackText({ value: SAMPLE_VALUE, cost: SAMPLE_COST, valueModel: SAMPLE_MODEL, params: PARAMS }), "Pareggio in meno di un mese a regime, senza contare i 4 giorni di sviluppo.");
+  assert.equal(at(1700, 0), "Pareggio in circa 2 mesi a regime.", "1,7 mesi");
+  assert.equal(at(1000, 0), "Pareggio in circa un mese a regime.", "un mese esatto");
+  assert.equal(at(1000, 0, { devDays: 1 }), "Pareggio in circa un mese a regime, senza contare il giorno di sviluppo.");
+  assert.equal(at(1000, 0, { devDays: 2.5 }), "Pareggio in circa un mese a regime, senza contare i 2,5 giorni di sviluppo.");
+  assert.equal(at(1000, 0, { devDays: 5, dayCostEur: 600 }), "Pareggio in circa un mese a regime.", "con la giornata a pagamento i giorni sono già nel costo");
+  assert.equal(at(24_000, 0), "Pareggio in circa 24 mesi a regime.");
+  assert.equal(at(30_000, 0), "Pareggio in più di due anni a regime.");
+  assert.equal(at(1000, 12_000), "Il valore all'anno non copre il costo all'anno.");
+  assert.equal(at(1000, 15_000), "Il valore all'anno non copre il costo all'anno.");
   assert.equal(at(0, 0), null, "avvio a 0 €");
   assert.equal(paybackText({ value: SAMPLE_VALUE, cost: { ...SAMPLE_COST, source: "team_importo" }, valueModel: SAMPLE_MODEL, params: PARAMS }), null, "costo non di «Benefici e costi»");
   assert.equal(paybackText({ value: { ...SAMPLE_VALUE, perYear: { amount: 10_500, source: "dossier" } }, cost: SAMPLE_COST, valueModel: SAMPLE_MODEL, params: PARAMS }), null, "euro del dossier: il pareggio è del dossier");
@@ -701,7 +701,7 @@ test("foldSummaries: valutazione, dettagli, realizzazione, storia", () => {
   assert.deepEqual(full, {
     valutazione: "stime non ufficiali · suggerimento AI · zona: Subito",
     dettagli: "impatto atteso · dati · area e altri 2",
-    realizzazione: "dossier in preparazione · 3 di 10 a posto",
+    realizzazione: "in preparazione · 3 di 10 a posto",
     contesto: "12 fatti sul cliente · 2 novità",
     storia: "ultimo cambiamento il 28 ott",
   });
@@ -719,8 +719,8 @@ test("foldSummaries: valutazione, dettagli, realizzazione, storia", () => {
   assert.equal(summary({ variant: "lo_avvia_ls", realization: null, dossier: null, realizedOn: null }), "la avvia Lateral Space");
   assert.equal(summary({ variant: "diffusa", realization: null, dossier: null, realizedOn: "2026-10-03" }), "diffusa il 3 ott");
   assert.equal(summary({ variant: "non_disponibile", realization: null, dossier: null, realizedOn: null }), "non disponibile ora");
-  assert.equal(summary({ variant: "dossier", realization: null, dossier: { status: "in_sviluppo", readiness: { ok: 1, required: 4 } }, realizedOn: null }), "dossier in sviluppo · 1 di 4 a posto");
-  assert.equal(summary({ variant: "dossier", realization: null, dossier: { status: "in_sviluppo", readiness: null }, realizedOn: null }), "dossier in sviluppo");
+  assert.equal(summary({ variant: "dossier", realization: null, dossier: { status: "in_sviluppo", readiness: { ok: 1, required: 4 } }, realizedOn: null }), "in sviluppo · 1 di 4 a posto");
+  assert.equal(summary({ variant: "dossier", realization: null, dossier: { status: "in_sviluppo", readiness: null }, realizedOn: null }), "in sviluppo");
 });
 
 test("detailTargetIds e arrivalTarget: le ancore che ci sono; «Realizzazione» senza piega va al riquadro", () => {
@@ -777,7 +777,7 @@ test("arrivalTarget: «Realizzazione» va al riquadro quando l'avvio è lì (G9)
   // Non più pronto (trimestre finito, informazioni da chiedere, già partito): la piega, con «Avvia» outline o il dossier.
   assert.equal(arrivalTarget("realizzazione", all, { key: "G3", action: { type: "none" } }), "realizzazione");
   assert.equal(arrivalTarget("realizzazione", all, { key: "G5", action: { type: "chiedi", label: "Chiedi al referente" } }), "realizzazione");
-  assert.equal(arrivalTarget("realizzazione", all, { key: "E5", action: { type: "dossier", href: "/x", label: "Apri il dossier", variant: "outline" } }), "realizzazione");
+  assert.equal(arrivalTarget("realizzazione", all, { key: "E5", action: { type: "dossier", href: "/x", label: "Apri la realizzazione", variant: "outline" } }), "realizzazione");
   assert.equal(arrivalTarget("realizzazione", all, null), "realizzazione");
   // Gli altri capitoli non cambiano.
   assert.equal(arrivalTarget("storia", all, avvia), "storia");
@@ -839,18 +839,18 @@ const referent = (over: Partial<RefInput> = {}): RefInput => ({ state: "manca", 
 test("rilascio 5: senza referente, «Scegliere il referente» prima di «Quando» e dopo G1, G2; uno use case pronto resta G9", () => {
   const info = progress({ received: 0, total: 10, toAsk: 7 });
   const g5 = nextStepOf(input({ item: approved(), info, referents: panel([]), askEntry: entry([]), referent: referent() }));
-  assert.deepEqual(brief(g5), { key: "G5", title: "Scegliere il referente", line: `${T} Il referente conferma lo use case e l'impatto, poi risponde alle domande.`, action: "referente", mine: true, decisions: "compact" });
-  assert.deepEqual(g5.action, { type: "referente", mode: "scegli", label: "Scegli il referente" });
+  assert.deepEqual(brief(g5), { key: "G5", title: "Indicare il referente", line: `${T} Il referente conferma lo use case e le stime, poi risponde alle domande.`, action: "referente", mine: true, decisions: "compact" });
+  assert.deepEqual(g5.action, { type: "referente", mode: "scegli", label: "Indica il referente" });
   // Senza un trimestre (il G3 di oggi su 15 card di Rondine): prima il referente.
   const later = nextStepOf(input({ item: approved({ subState: "piu_avanti", targetQuarter: null }), info, referents: panel([]), askEntry: entry([]), referent: referent() }));
   assert.equal(later.key, "G5");
-  assert.equal(later.title, "Scegliere il referente");
+  assert.equal(later.title, "Indicare il referente");
   // Nessuna domanda da chiedere: solo la conferma e la stima.
   const none = nextStepOf(input({ item: approved({ subState: "piu_avanti", targetQuarter: null }), info: null, referents: panel([]), askEntry: entry([]), referent: referent() }));
-  assert.equal(none.line, `${T} Il referente conferma lo use case e l'impatto.`);
+  assert.equal(none.line, `${T} Il referente conferma lo use case e le stime.`);
   // L'email non attiva (il harness): G6 con il motivo, nessun pulsante.
   const g6 = nextStepOf(input({ item: approved(), info, referents: panel([gate.email]), askEntry: entry([gate.email]), referent: referent({ canChoose: false }) }));
-  assert.deepEqual(brief(g6), { key: "G6", title: "Scegliere il referente", line: gate.email.message, action: "none", mine: false, decisions: "compact" });
+  assert.deepEqual(brief(g6), { key: "G6", title: "Indicare il referente", line: gate.email.message, action: "none", mine: false, decisions: "compact" });
   // L'ok sui fornitori: G4 come oggi.
   const g4 = nextStepOf(input({ item: approved(), info, referents: panel([gate.subprocessors(true)]), askEntry: entry([gate.subprocessors(true)]), referent: referent({ canChoose: false }) }));
   assert.deepEqual([g4.key, g4.action.type, g4.mine], ["G4", "impostazioni", true]);

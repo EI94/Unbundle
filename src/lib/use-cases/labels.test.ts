@@ -27,8 +27,8 @@ import { ARCHIVE_REASONS, KINDS, ORIGINS } from "./types.ts";
 
 test("origine (§3.2): etichetta lunga, chip con il testo, colore del punto", () => {
   assert.deepEqual(Object.keys(ORIGIN_LABEL), [...ORIGINS]);
-  assert.deepEqual(ORIGIN_LABEL.adoption, { long: "AI Adoption · dal basso", chip: "AI Adoption", color: "teal" });
-  assert.deepEqual(ORIGIN_LABEL.transformation, { long: "AI Transformation · dall'alto", chip: "AI Transformation", color: "indigo" });
+  assert.deepEqual(ORIGIN_LABEL.adoption, { long: "AI Adoption · dal basso", chip: "Dal basso", color: "teal" });
+  assert.deepEqual(ORIGIN_LABEL.transformation, { long: "AI Transformation · dall'alto", chip: "Dall'alto", color: "indigo" });
 });
 
 test("tipo (§3.3): best_practice è «Da diffondere», use_case_ai e NULL «Da costruire»", () => {
@@ -47,13 +47,13 @@ test("Valore (§7.1): Alto, Medio, Basso; fonti «team», «AI», «da stimare»
   assert.deepEqual(VALUE_WORD_LABEL, { alto: "Alto", medio: "Medio", basso: "Basso" });
   assert.deepEqual(VALUE_SOURCE_LABEL, { team: "team", ai: "AI" });
   assert.equal(NOT_ESTIMATED_LABEL, "da stimare");
-  assert.deepEqual(VALUE_EUR_SOURCE_LABEL.dossier, { short: "dossier", long: "dal dossier" });
+  assert.deepEqual(VALUE_EUR_SOURCE_LABEL.dossier, { short: "realizzazione", long: "dalla realizzazione" });
 });
 
 test("costo (§7.2): fonti corte e lunghe, nell'ordine in cui vincono; mai «da dossier»", () => {
   assert.deepEqual(COST_SOURCES, ["dossier", "stima", "team_importo", "team_fascia", "sforzo"]);
   assert.deepEqual(COST_SOURCE_LABEL, {
-    dossier: { short: "dossier", long: "dal dossier" },
+    dossier: { short: "realizzazione", long: "dalla realizzazione" },
     stima: { short: "team", long: "stima del team" },
     team_importo: { short: "team", long: "importo del team" },
     team_fascia: { short: "team", long: "fascia del team" },
@@ -83,8 +83,9 @@ test("canale da source (§4.7)", () => {
     ["web_proposed", "Modulo web"],
     ["ai_readiness_assessment", "AI Readiness"],
     ["learning", "Corsi"],
-    ["activity_mapping", "Activity mapping"],
-    [null, "Activity mapping"],
+    // (Rilascio 10, §4) La mappatura a schermo si chiama «Processi».
+    ["activity_mapping", "Processi"],
+    [null, "Processi"],
     ["manual", "A mano"],
     ["team_mcp", "MCP del team"],
   ];
@@ -102,7 +103,7 @@ test("campi di «Cosa è» per tipo (§6.2)", () => {
     flowDescription: "Come funziona",
     humanInTheLoop: "Chi controlla",
     guardrails: "Limiti",
-    businessCase: "Impatto atteso",
+    businessCase: "Valore atteso",
     dataRequirements: "Dati",
     area: "Area",
     aiLab: "AI Lab",

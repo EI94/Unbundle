@@ -68,7 +68,7 @@ const CHANNEL_TEXT: Readonly<Record<string, string>> = {
   web: "modulo web",
   corsi: "corsi",
   ai_readiness: "AI Readiness",
-  activity_mapping: "Activity mapping",
+  activity_mapping: "Processi",
   script: "script",
   ai: "AI",
   altro: "altro canale",
@@ -84,7 +84,7 @@ const CREATED_FROM: Readonly<Record<string, string>> = {
   web: "dal modulo web",
   corsi: "dai corsi",
   ai_readiness: "da AI Readiness",
-  activity_mapping: "da Activity mapping",
+  activity_mapping: "dai processi",
   script: "da uno script",
   ai: "dall'AI",
   altro: "da un altro canale",
@@ -128,7 +128,7 @@ export function decisionText(phaseBefore: string | null, phaseAfter: string | nu
       if (after.subState === "doppione") return "Doppione";
       return "Archiviato";
     case "realizzato":
-      return after.subState === "diffusa" ? "Diffusa" : "Realizzato";
+      return after.subState === "diffusa" ? "Diffusa" : PHASE_LABEL.realizzato;
     case "in_realizzazione":
       return PHASE_LABEL.in_realizzazione;
     default:

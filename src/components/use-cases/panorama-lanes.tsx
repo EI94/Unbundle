@@ -32,7 +32,7 @@ import { panelHref, type HubQuery } from "./use-case-row";
 /** Testi delle corsie della Panoramica (rilascio «Panoramica»). */
 export const LANES_TEXT = Object.freeze({
   inProgress: "In realizzazione",
-  done: "Realizzati",
+  done: "In uso",
   emptyLane: "Nessuno use case.",
   showLess: "Mostra meno",
   emptyTitle: "Niente in programma, per ora",

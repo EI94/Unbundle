@@ -20,7 +20,7 @@ export const HUB_TEXT = Object.freeze({
   contributorDecideView: "In valutazione",
   goToOverview: "Vai alla Panoramica",
   emptyTitle: "Nessuno use case, per ora",
-  emptyReviewer: "Aggiungine uno o proponili da Activity mapping.",
+  emptyReviewer: "Aggiungine uno o proponili dai processi.",
   emptyContributor: "Proponi il primo use case.",
   noResults: "Nessuno use case con questi filtri.",
   clearFilters: "Togli i filtri",

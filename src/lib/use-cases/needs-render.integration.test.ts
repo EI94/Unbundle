@@ -683,7 +683,7 @@ test("Cosa serve: la linea del tempo, «Prima di oggi» in testa, i primi cinque
     ),
   );
   // Senza requisiti: la riga dei conteggi resta in cima, poi «Niente da chiedere per ora.»; accanto i passi.
-  assert.equal(summaryOf(html), "Nessuno aperto");
+  assert.equal(summaryOf(html), "Nessuna aperta");
   assert.ok(html.includes('<p data-slot="needs-none" class="text-sm text-muted-foreground">Niente da chiedere per ora.</p>'));
   const aside = between(html, '<aside data-slot="needs-timeline"', "</aside>");
   // I primi cinque prima di «Mostra gli altri N»: «Prima di oggi» in testa, poi novembre.

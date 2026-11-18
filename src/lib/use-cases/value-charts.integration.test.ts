@@ -600,10 +600,10 @@ test("«Curva del valore» da «Grafici»: J-curve con entrata in uso e pareggio
     [cards.b.id, true],
   ]);
   assert.ok(tempo.includes("6.227 €"), "il totale contato, senza la parte da misurare");
-  assert.ok(tempo.includes(`aria-label="${cards.b.code} Fatture ${suffix}: da misurare, fino a 1.680 €, fuori dal totale · Risparmio di tempo · Gruppo Amministrazione"`));
+  assert.ok(tempo.includes(`aria-label="${cards.b.code} Fatture ${suffix}: da misurare, fino a 1.680 €, fuori dal totale · Meno tempo · Gruppo Amministrazione"`));
   assert.ok(itemOf(page, 'data-lever="nuove_capacita"').includes("(1 qualitativo)"));
   assert.ok(itemOf(page, 'data-lever="rischio"').includes("(1 qualitativo)"));
-  for (const label of ["Risparmio di tempo", "Più output", "Più qualità", "Nuove capacità", "Decisioni migliori", "Meno costi", "Più ricavi", "Meno rischio"]) {
+  for (const label of ["Meno tempo", "Più volume", "Più qualità", "Nuove capacità", "Decisioni migliori", "Meno costi", "Più ricavi", "Meno rischio"]) {
     assert.ok(page.includes(label), `la riga «${label}»`);
   }
   assert.ok(!page.includes(`data-segment="${cards.small.id}"`), "da decidere: non è nel piano");
@@ -648,7 +648,7 @@ test("con gli agenti nei titoli il grigio ha un nome solo, «Altri use case», n
     bubbles.includes(`aria-label="${code} Archivio delle ricevute ${suffix}. Facilità 4 · 4.043 €/anno · avvio 560 € · ricorrenti 600 €/anno · questo trimestre"`),
     itemOf(bubbles, `data-bubble="${agentCards.varie.id}"`),
   );
-  assert.ok(itemOf(curve, 'data-lever="tempo"').includes(`aria-label="${code} Archivio delle ricevute ${suffix}: 4.043 € all&#x27;anno · Risparmio di tempo"`));
+  assert.ok(itemOf(curve, 'data-lever="tempo"').includes(`aria-label="${code} Archivio delle ricevute ${suffix}: 4.043 € all&#x27;anno · Meno tempo"`));
   for (const page of [bubbles, curve, matrix]) {
     const chart = page.slice(page.indexOf('data-slot="hub-chart"'));
     for (const text of ["Altri gruppi", "Gruppo ", "Senza gruppo"]) assert.ok(!chart.includes(text), text);
@@ -691,7 +691,7 @@ test("con gli agenti nei titoli: ogni bolla, segmento e punto ha il tono dell'ag
     bubbles.includes(`aria-label="${titleCards.copy.code} Preventivi del catering ${suffix}. Facilità 4 · 4.043 €/anno · avvio 560 € · ricorrenti 600 €/anno · questo trimestre"`),
     itemOf(bubbles, `data-bubble="${titleCards.copy.id}"`),
   );
-  assert.ok(itemOf(curve, 'data-lever="tempo"').includes(`aria-label="${titleCards.libra.code} LIBRA L1 · Fatture ${suffix}: da misurare, fino a 1.680 €, fuori dal totale · Risparmio di tempo"`));
+  assert.ok(itemOf(curve, 'data-lever="tempo"').includes(`aria-label="${titleCards.libra.code} LIBRA L1 · Fatture ${suffix}: da misurare, fino a 1.680 €, fuori dal totale · Meno tempo"`));
   assert.ok(!/Gruppo (?:ORSA|Operazioni)|Altri gruppi/.test(bubbles + curve));
   assert.deepEqual(bubbleSectionLabels(bubbles), ["DENEB", "ORSA", "SIRIO", "Altri use case"]);
   assert.deepEqual(legendOf(curve, '<figcaption class="flex', "</figcaption>"), ["DENEB", "LIBRA", "ORSA", "SIRIO", "Altri use case", "da misurare"]);

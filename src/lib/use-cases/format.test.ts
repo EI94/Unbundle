@@ -147,9 +147,9 @@ test("date nelle righe: l'anno solo quando non è quello di oggi", () => {
 test("fonti (§7.2, §14.3): corte e lunghe, «dossier» e «dal dossier», mai «da dossier»", () => {
   const short = Object.fromEntries(COST_SOURCES.map((s) => [s, costSourceText(s, "corta")]));
   const long = Object.fromEntries(COST_SOURCES.map((s) => [s, costSourceText(s, "lunga")]));
-  assert.deepEqual(short, { dossier: "dossier", stima: "team", team_importo: "team", team_fascia: "team", sforzo: "stimato" });
+  assert.deepEqual(short, { dossier: "realizzazione", stima: "team", team_importo: "team", team_fascia: "team", sforzo: "stimato" });
   assert.deepEqual(long, {
-    dossier: "dal dossier",
+    dossier: "dalla realizzazione",
     stima: "stima del team",
     team_importo: "importo del team",
     team_fascia: "fascia del team",
@@ -157,8 +157,8 @@ test("fonti (§7.2, §14.3): corte e lunghe, «dossier» e «dal dossier», mai 
   });
   assert.equal(valueSourceText("team"), "team");
   assert.equal(valueSourceText("ai"), "AI");
-  assert.equal(valueEurSourceText("dossier", "corta"), "dossier");
-  assert.equal(valueEurSourceText("dossier", "lunga"), "dal dossier");
+  assert.equal(valueEurSourceText("dossier", "corta"), "realizzazione");
+  assert.equal(valueEurSourceText("dossier", "lunga"), "dalla realizzazione");
   assert.equal(valueEurSourceText("team", "corta"), "team");
   assert.equal(valueEurSourceText("team", "lunga"), "team");
   const every = [...Object.values(short), ...Object.values(long), valueEurSourceText("dossier", "corta"), valueEurSourceText("dossier", "lunga")];
@@ -179,7 +179,7 @@ test("forma corta del costo (§4.6, §7.2): le quattro fonti e «da stimare»", 
     [{ source: "team_importo", amount: 40_000, band: 2, fromBand: false }, "€€ · 40.000 € · team"],
     [{ source: "team_fascia", amount: null, band: 2, fromBand: true }, "€€ · fascia · team"],
     [{ source: "sforzo", amount: null, band: 3, fromBand: true }, "€€€ · fascia · stimato"],
-    [{ source: "dossier", amount: 18_500, band: 1, fromBand: false }, "€ · 18.500 € · dossier"],
+    [{ source: "dossier", amount: 18_500, band: 1, fromBand: false }, "€ · 18.500 € · realizzazione"],
     [null, "da stimare"],
   ];
   for (const [cost, text] of cases) assert.equal(costShortText(cost), text);
@@ -187,12 +187,12 @@ test("forma corta del costo (§4.6, §7.2): le quattro fonti e «da stimare»", 
   assert.deepEqual(costTextParts(cases[0][0], "corta"), { figure: "€€ · 40.000 €", figureParts: ["€€ · 40.000 €"], source: "team", estimated: false });
   // «Benefici e costi»: due pezzi che non si spezzano, uniti da « · » nella cifra intera.
   assert.deepEqual(costTextParts({ source: "stima", amount: 6_450, band: 1, fromBand: false, runEurYear: 1_200 }, "corta"), {
-    figure: "avvio 6.450 € · ricorrenti 1.200 €/anno",
-    figureParts: ["avvio 6.450 €", "ricorrenti 1.200 €/anno"],
+    figure: "Costo 6.450 € · costo all'anno 1.200 €",
+    figureParts: ["Costo 6.450 €", "costo all'anno 1.200 €"],
     source: null,
     estimated: false,
   });
-  assert.deepEqual(costTextParts({ source: "stima", amount: 280, band: 1, fromBand: false, runEurYear: 0 }, "corta").figureParts, ["avvio 280 €"]);
+  assert.deepEqual(costTextParts({ source: "stima", amount: 280, band: 1, fromBand: false, runEurYear: 0 }, "corta").figureParts, ["Costo 280 €"]);
 });
 
 test("forma corta del costo: la stessa stringa per la riga e per la card della Roadmap (§4.5, §4.6)", () => {
@@ -203,7 +203,7 @@ test("forma corta del costo: la stessa stringa per la riga e per la card della R
     "€€ · fascia · team": costFigure({ costBand: 2 }, MODEL),
     // Con le fasce predefinite lo sforzo 4 cade in €€€ (§7.2).
     "€€€ · fascia · stimato": costFigure({ customScores: { feasibility: { effort: 4 } } }, MODEL),
-    "€ · 18.500 € · dossier": costFigure({ dossierImplementationEur: 18_500, costEurOnce: 40_000 }, MODEL),
+    "€ · 18.500 € · realizzazione": costFigure({ dossierImplementationEur: 18_500, costEurOnce: 40_000 }, MODEL),
     "da stimare": costFigure({}, MODEL),
   };
   const fromRoadmapCard = ["€€ · 40.000 € · team", "€€ · fascia · team", "€€€ · fascia · stimato"];
@@ -223,7 +223,7 @@ test("forma lunga del costo (§6.3, §7.2): importo, oppure «fascia» con l'eti
     source: "fascia del team",
     estimated: false,
   });
-  assert.deepEqual(costTextParts({ source: "dossier", amount: 18_500, band: 1, fromBand: false }, "lunga").source, "dal dossier");
+  assert.deepEqual(costTextParts({ source: "dossier", amount: 18_500, band: 1, fromBand: false }, "lunga").source, "dalla realizzazione");
 });
 
 const CUSTOM_BANDS = resolveCostBands({
@@ -271,13 +271,13 @@ test("forma lunga di una fascia (D15): etichette predefinite e etichette diverse
 });
 
 test("costo d'avvio nelle card della Panoramica: «avvio 30.000 €» con la fonte, «avvio €€ · fascia»; senza costo niente", () => {
-  assert.deepEqual(startCostParts({ source: "stima", amount: 700, band: 1, fromBand: false, runEurYear: 1_200 }), { figure: "avvio 700 €", source: null }, "«Benefici e costi»: la fonte la dice la scheda");
-  assert.deepEqual(startCostParts({ source: "team_importo", amount: 30_000, band: 2, fromBand: false }), { figure: "avvio 30.000 €", source: "team" });
-  assert.deepEqual(startCostParts({ source: "dossier", amount: 18_500, band: 1, fromBand: false }), { figure: "avvio 18.500 €", source: "dossier" });
+  assert.deepEqual(startCostParts({ source: "stima", amount: 700, band: 1, fromBand: false, runEurYear: 1_200 }), { figure: "Costo 700 €", source: null }, "«Benefici e costi»: la fonte la dice la scheda");
+  assert.deepEqual(startCostParts({ source: "team_importo", amount: 30_000, band: 2, fromBand: false }), { figure: "Costo 30.000 €", source: "team" });
+  assert.deepEqual(startCostParts({ source: "dossier", amount: 18_500, band: 1, fromBand: false }), { figure: "Costo 18.500 €", source: "realizzazione" });
   // Una fascia con le fasce del workspace: il simbolo non cambia, l'etichetta non si scrive.
   const teamBand = costFigure({ costBand: 2 }, { ...MODEL, costBands: { limits: [15_000, 40_000, 90_000, 200_000], labels: CUSTOM_BANDS.map((b) => b.label), topReferenceEur: 300_000 } });
-  assert.deepEqual(startCostParts(teamBand, CUSTOM_BANDS), { figure: "avvio €€ · fascia", source: "team" });
-  assert.deepEqual(startCostParts({ source: "sforzo", amount: null, band: 3, fromBand: true }), { figure: "avvio €€€ · fascia", source: "stimato" });
+  assert.deepEqual(startCostParts(teamBand, CUSTOM_BANDS), { figure: "Costo €€ · fascia", source: "team" });
+  assert.deepEqual(startCostParts({ source: "sforzo", amount: null, band: 3, fromBand: true }), { figure: "Costo €€€ · fascia", source: "stimato" });
   assert.equal(startCostParts(null), null);
   assert.equal(startCostParts(undefined), null);
 });

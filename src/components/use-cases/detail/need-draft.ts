@@ -45,28 +45,32 @@ export interface NeedDraft {
   forLabel: string;
 }
 
+/**
+ * (Rilascio 10, §4) Ciò che serve a uno use case si chiama «informazione» (mai «esigenza» né
+ * «requisito»), le date da rispettare «Scadenze» (mai «Prossimi passi»).
+ */
 export const NEED_FORM_TEXT = Object.freeze({
   title: "Cosa serve",
   empty: "Niente per ora.",
-  requirements: "Requisiti",
-  steps: "Prossimi passi",
+  requirements: "Informazioni",
+  steps: "Scadenze",
   add: "Aggiungi",
-  link: "Collega un'esigenza",
+  link: "Collega un'informazione",
   edit: "Modifica",
   /** Il nome del menu «⋯» di una riga: «Azioni: Accesso al gestionale». */
   rowActions: "Azioni",
-  /** (Rilascio 6, B.1.5) I requisiti aperti della scheda dietro il loro conteggio: «Requisiti · 9». */
-  requirementsSummary: "Requisiti · {n}",
+  /** (Rilascio 6, B.1.5) Le informazioni aperte della scheda dietro il loro conteggio: «Informazioni · 9». */
+  requirementsSummary: "Informazioni · {n}",
   /** Le righe dei requisiti aperti oltre le prime cinque. */
   moreRowsOne: "Mostra l'altra",
   moreRowsMany: "Mostra le altre {n}",
-  /** «Prossimi passi · 2»: quanti passi restano da fare; senza, il titolo da solo. */
-  stepsSummary: "Prossimi passi · {n}",
+  /** «Scadenze · 2»: quante scadenze restano da rispettare; senza, il titolo da solo. */
+  stepsSummary: "Scadenze · {n}",
   addTitle: "Aggiungi a «Cosa serve»",
   editTitle: "Modifica",
-  linkTitle: "Collega un'esigenza che c'è già",
-  linkDescription: "La stessa esigenza può servire a più use case.",
-  linkChoice: "Esigenza",
+  linkTitle: "Collega un'informazione che c'è già",
+  linkDescription: "La stessa informazione può servire a più use case.",
+  linkChoice: "Informazione",
   linkConfirm: "Collega",
   save: "Salva",
   type: "Tipo",
@@ -86,7 +90,7 @@ export const NEED_FORM_TEXT = Object.freeze({
   forLabel: "Per, a parole",
   unlink: "Scollega da questo use case",
   archive: "Archivia",
-  archiveTitle: "Archivia l'esigenza",
+  archiveTitle: "Archivia l'informazione",
   archiveDescription: "Non si vede più in «Cosa serve», nel pannello e nelle schede. Non si cancella.",
   archiveReason: "Perché la archivi?",
 });

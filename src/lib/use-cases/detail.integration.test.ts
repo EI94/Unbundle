@@ -1571,7 +1571,7 @@ if (process.env.HUB_DETAIL_HARNESS === "1") {
             await sleep(600);
             const shown = await cdp.evaluate(tab, () => ({
               detail: Boolean(document.querySelector('[data-slot="use-case-detail"]')?.checkVisibility()),
-              broken: document.body.innerText.includes("Non riusciamo a caricare gli use case."),
+              broken: document.body.innerText.includes("Questa pagina non si è caricata."),
             }));
             assert.deepEqual(shown, { detail: true, broken: false }, `${width} px, #${hash}: la scheda, non l'errore`);
             const uriErrors = (tab as { errors: Array<{ text: string }> }).errors.filter((error) => /URIError/.test(error.text));

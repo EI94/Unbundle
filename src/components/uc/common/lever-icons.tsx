@@ -4,14 +4,15 @@ import { LEVERS, type Lever } from "@/lib/uc/vocab";
 
 /** Le 8 leve di valore: etichetta in italiano semplice e icona. */
 export const LEVER_META: Readonly<Record<Lever, { label: string; icon: LucideIcon }>> = {
-  tempo: { label: "Tempo", icon: Clock },
-  output: { label: "Output", icon: PackageCheck },
-  qualita: { label: "Qualità", icon: BadgeCheck },
+  // (Rilascio 10, §4) Le stesse parole in tutte le aree: «Meno tempo · Più volume · Meno costi».
+  tempo: { label: "Meno tempo", icon: Clock },
+  output: { label: "Più volume", icon: PackageCheck },
+  qualita: { label: "Più qualità", icon: BadgeCheck },
   nuove_capacita: { label: "Nuove capacità", icon: Sparkles },
-  decisioni: { label: "Decisioni", icon: Scale },
-  costi: { label: "Costi", icon: Coins },
-  ricavi: { label: "Ricavi", icon: TrendingUp },
-  rischio: { label: "Rischio", icon: ShieldAlert },
+  decisioni: { label: "Decisioni migliori", icon: Scale },
+  costi: { label: "Meno costi", icon: Coins },
+  ricavi: { label: "Più ricavi", icon: TrendingUp },
+  rischio: { label: "Meno rischio", icon: ShieldAlert },
 };
 
 /**

@@ -152,7 +152,7 @@ export const SERVICE_MESSAGES = {
 } as const satisfies Record<ServiceError, string>;
 
 export const NOTHING_TO_REDACT_ERROR = "Non c'è testo da oscurare nei campi scelti.";
-export const DOSSIER_NOT_LINKED_ERROR = "Il dossier non è collegato a questo use case.";
+export const DOSSIER_NOT_LINKED_ERROR = "La realizzazione non è collegata a questo use case.";
 export const TOO_MANY_ITEMS_ERROR = "Al massimo 100 use case per volta.";
 
 export type Failure = Extract<ServiceResult<never>, { ok: false }>;

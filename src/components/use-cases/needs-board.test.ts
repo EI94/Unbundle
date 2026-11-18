@@ -141,7 +141,7 @@ test("la vista: la riga dei conteggi in cima, i gruppi per organizzazione nell'o
   const root = between(html, '<div data-slot="needs-board"');
   // La riga dei conteggi è il primo <p> della vista.
   assert.ok(root.indexOf("<p") === root.indexOf('<p data-slot="needs-summary"'), "il primo <p> è la riga dei conteggi");
-  assert.equal(textOf(between(root, 'data-slot="needs-summary"', "</p>").replace(/^[^>]*>/, "")), "11 aperti · 8 da chiedere · 1 in attesa · 1 da verificare · 1 fermo · 2 a posto");
+  assert.equal(textOf(between(root, 'data-slot="needs-summary"', "</p>").replace(/^[^>]*>/, "")), "11 aperte · 8 da chiedere · 1 in attesa · 1 da verificare · 1 ferma · 2 a posto");
   const groups = [...html.matchAll(/<section aria-labelledby="(cosa-serve-gruppo-[a-z_]+)" data-need-group="([a-z_]+)"[^>]*><h2 id="\1" class="text-sm font-semibold">([^<]*)<\/h2>/g)].map((m) => [m[2], m[3]]);
   assert.deepEqual(groups, [
     ["cliente", "Alfa e Beta"],
@@ -225,7 +225,7 @@ test("«Prossimi passi»: accanto alla lista, «Prima di oggi» in testa, i prim
   // La griglia: la lista e la linea del tempo, sul riquadro della pagina.
   assert.ok(html.includes('<div data-slot="needs-layout" class="grid gap-8 @min-[58rem]/hub:grid-cols-[minmax(0,1fr)_18rem] @min-[58rem]/hub:gap-x-8">'));
   const aside = between(html, '<aside data-slot="needs-timeline" class="min-w-0 self-start">', "</aside>");
-  assert.ok(aside.includes('<section aria-labelledby="cosa-serve-passi" data-slot="needs-steps"') && aside.includes('<h2 id="cosa-serve-passi" class="text-sm font-semibold">Prossimi passi</h2>'));
+  assert.ok(aside.includes('<section aria-labelledby="cosa-serve-passi" data-slot="needs-steps"') && aside.includes('<h2 id="cosa-serve-passi" class="text-sm font-semibold">Scadenze</h2>'));
   const more = details(aside, "needs-steps-more");
   const visible = aside.slice(0, aside.indexOf('<details data-slot="needs-steps-more"'));
   const headings = (part: string) => [...part.matchAll(/<h3 id="([^"]+)" class="text-xs font-medium text-muted-foreground">([^<]*)<\/h3>/g)].map((m) => m[2]);
@@ -264,7 +264,7 @@ test("con una ricerca tutte le parti chiuse della vista sono aperte; con gli alt
   const filtered = render(build(list), { filtersActive: true, quarter: "T4 2026" });
   for (const slot of ["needs-group-more", "needs-done", "needs-steps-more", "needs-steps-done"]) assert.equal(details(filtered, slot).opening, `<details data-slot="${slot}">`, slot);
   // Il trimestre in testa alla riga dei conteggi.
-  assert.ok(textOf(between(filtered, 'data-slot="needs-summary"', "</p>").replace(/^[^>]*>/, "")).startsWith("T4 2026 · 11 aperti"));
+  assert.ok(textOf(between(filtered, 'data-slot="needs-summary"', "</p>").replace(/^[^>]*>/, "")).startsWith("T4 2026 · 11 aperte"));
 });
 
 test("i casi limite: senza passi niente colonna; solo passi la riga dei conteggi e «Niente da chiedere»; vuota", () => {
@@ -274,7 +274,7 @@ test("i casi limite: senza passi niente colonna; solo passi la riga dei conteggi
   const onlySteps = render(build(list.filter((n) => n.type === "passo")));
   const root = between(onlySteps, '<div data-slot="needs-board"');
   assert.ok(root.indexOf("<p") === root.indexOf('<p data-slot="needs-summary"'));
-  assert.equal(textOf(between(root, 'data-slot="needs-summary"', "</p>").replace(/^[^>]*>/, "")), "Nessuno aperto");
+  assert.equal(textOf(between(root, 'data-slot="needs-summary"', "</p>").replace(/^[^>]*>/, "")), "Nessuna aperta");
   assert.ok(onlySteps.includes('<p data-slot="needs-none" class="text-sm text-muted-foreground">Niente da chiedere per ora.</p>'));
   assert.ok(onlySteps.includes('data-slot="needs-timeline"'));
   const filteredSteps = render(build(list.filter((n) => n.type === "passo")), { filtersActive: true });

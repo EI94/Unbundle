@@ -96,13 +96,13 @@ export function formSubtitle(teamName: string): string {
   return `Racconta l'idea in modo semplice. La valuta ${teamName}: qui vedi come va.`;
 }
 
-/** Activity mapping (§8.5, §14.3). */
+/** La mappatura dei processi (§8.5, §14.3). (Rilascio 10, §4) A schermo «Processi», mai «Activity mapping». */
 export const ACTIVITY_MAPPING_TEXT = Object.freeze({
-  menuItem: "Proponi da Activity mapping",
-  classifyFirst: "Prima classifica le attività in Activity mapping.",
-  dialogTitle: "Proporre use case dalle attività mappate?",
+  menuItem: "Proponi dai processi",
+  classifyFirst: "Prima classifica i passi nei processi.",
+  dialogTitle: "Proporre use case dai processi mappati?",
   dialogBody:
-    "Claude legge le attività classificate e propone nuovi use case. Arrivano in «Da decidere», nascosti ai colleghi. Nessuno viene approvato da solo.",
+    "Claude legge i passi classificati e propone nuovi use case. Arrivano in «Da decidere», non visibili in azienda. Nessuno viene approvato da solo.",
   confirm: "Proponi",
   cancel: "Annulla",
   nothingProposed: "Claude non ha proposto nuovi use case.",
@@ -149,9 +149,9 @@ export function defaultOriginFor(entry: CreateEntry, viewer: { isLateralSpace: b
   return viewer.isLateralSpace && viewer.isReviewer ? "transformation" : "adoption";
 }
 
-/** Le due scelte dell'origine, con l'etichetta lunga (§3.2). */
+/** Le due scelte dell'origine (§3.2). (Rilascio 10, §4, D4) «Dal basso · Dall'alto»: i nomi lunghi solo tra i filtri. */
 export const ORIGIN_OPTIONS: readonly { value: Origin; label: string; chip: string }[] = Object.freeze(
-  ORIGINS.map((value) => ({ value, label: ORIGIN_LABEL[value].long, chip: ORIGIN_LABEL[value].chip })),
+  ORIGINS.map((value) => ({ value, label: ORIGIN_LABEL[value].chip, chip: ORIGIN_LABEL[value].chip })),
 );
 
 /** Le due scelte del tipo (§3.3). */

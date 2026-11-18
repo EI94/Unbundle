@@ -851,7 +851,7 @@ test("riga dell'export: colonne di §4.1, fasce del workspace, «da stimare» do
   const texts = { description: "Problema", flowDescription: "Come", humanInTheLoop: "Chi", guardrails: "Limiti", dataRequirements: "Dati" };
   const out = exportRow(it, texts);
   assert.deepEqual(Object.keys(out), [...EXPORT_COLUMNS]);
-  assert.equal(out.Origine, "AI Adoption");
+  assert.equal(out.Origine, "Dal basso");
   assert.equal(out.Tipo, "Da costruire");
   assert.equal(out.Fase, "Approvato · T1 2027");
   assert.equal(out.Quando, "T1 2027");

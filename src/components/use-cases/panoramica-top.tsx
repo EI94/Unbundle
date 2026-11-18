@@ -13,25 +13,25 @@ import { ViewFocusLink } from "./list-focus";
 /** Testi della testa della Panoramica (rilascio «Panoramica»). */
 export const OVERVIEW_TEXT = Object.freeze({
   stepsLabel: "Fasi degli use case",
-  steps: Object.freeze({ approvati: "Approvati", in_realizzazione: "In realizzazione", realizzati: "Realizzati" }),
+  steps: Object.freeze({ approvati: "Approvati", in_realizzazione: "In realizzazione", realizzati: "In uso" }),
   none: "nessuno",
   figuresLabel: "Cifre degli use case",
-  value: "valore contato all'anno",
-  cost: "costo di avvio",
+  value: "valore all'anno",
+  cost: "costo di realizzazione",
   quarter: "use case in questo trimestre",
   pending: "valore da misurare all'anno",
   upTo: "fino a",
   nextStep: "Prossimo passo",
   seeNeeds: "Vedi cosa serve",
-  seeProposals: "Vedi le proposte",
+  seeProposals: "Decidi gli use case",
 });
 
 /** L'id del titolo di «Prossimo passo», per `aria-labelledby`. */
 const NEXT_STEP_HEADING_ID = "panoramica-prossimo-passo";
 
 /**
- * La frase di «Prossimo passo»: «Per partire con il T4 2026: 40 requisiti da chiedere, 2 da verificare
- * e 8 fermi.», «… c'è 1 requisito da verificare.», «4 use case aspettano una decisione.». Nomina
+ * La frase di «Prossimo passo»: «Per partire con il T4 2026: 40 informazioni da chiedere, 2 da verificare
+ * e 8 ferme.», «… c'è 1 informazione da verificare.», «4 use case aspettano una decisione.». Nomina
  * ogni gruppo che conta e non è zero, con le parole e nell'ordine della riga dei conteggi di «Cosa
  * serve», dove porta il pulsante. Niente totale: quella riga conta anche quelli in attesa, e un
  * numero che lì non c'è non si ritrova.
@@ -43,19 +43,19 @@ export function nextStepText(step: OverviewNextStep): string {
   const groups = [
     { count: step.toAsk, label: "da chiedere" },
     { count: step.toVerify, label: "da verificare" },
-    { count: step.blocked, label: step.blocked === 1 ? "fermo" : "fermi" },
+    { count: step.blocked, label: step.blocked === 1 ? "ferma" : "ferme" },
   ].filter((group) => group.count > 0);
   if (groups.length > 1) {
-    // «40 requisiti da chiedere, 2 da verificare e 8 fermi»: il nome solo sul primo numero.
+    // «40 informazioni da chiedere, 2 da verificare e 8 ferme»: il nome solo sul primo numero.
     const pieces = groups.map((group, index) =>
-      index === 0 ? `${formatInteger(group.count)} ${group.count === 1 ? "requisito" : "requisiti"} ${group.label}` : `${formatInteger(group.count)} ${group.label}`,
+      index === 0 ? `${formatInteger(group.count)} ${group.count === 1 ? "informazione" : "informazioni"} ${group.label}` : `${formatInteger(group.count)} ${group.label}`,
     );
     return `${start}: ${pieces.slice(0, -1).join(", ")} e ${pieces[pieces.length - 1]}.`;
   }
   // Un gruppo solo: la frase corta.
-  if (step.toAsk) return n === 1 ? `${start} serve ancora 1 requisito da chiedere.` : `${start} servono ancora ${formatInteger(n)} requisiti da chiedere.`;
-  if (step.toVerify) return n === 1 ? `${start} c'è 1 requisito da verificare.` : `${start} ci sono ${formatInteger(n)} requisiti da verificare.`;
-  return n === 1 ? `${start} serve ancora 1 requisito fermo.` : `${start} servono ancora ${formatInteger(n)} requisiti fermi.`;
+  if (step.toAsk) return n === 1 ? `${start} serve ancora 1 informazione da chiedere.` : `${start} servono ancora ${formatInteger(n)} informazioni da chiedere.`;
+  if (step.toVerify) return n === 1 ? `${start} c'è 1 informazione da verificare.` : `${start} ci sono ${formatInteger(n)} informazioni da verificare.`;
+  return n === 1 ? `${start} serve ancora 1 informazione ferma.` : `${start} servono ancora ${formatInteger(n)} informazioni ferme.`;
 }
 
 /** Il pulsante di «Prossimo passo»: le proposte per le decisioni, «Cosa serve» per i requisiti. */

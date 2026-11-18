@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { INFO_PROGRESS_TEXT } from "@/lib/use-cases/info-progress";
+import { ORIGIN_LABEL } from "@/lib/use-cases/labels";
 import type { ReferentFilterMenu } from "@/lib/use-cases/referent/filter";
 import { SEARCH_MAX, SEARCH_MIN, type HubParamKey } from "@/lib/use-cases/views";
 import { cn } from "@/lib/utils";
@@ -79,8 +80,9 @@ export type { ReferentFilterMenu } from "@/lib/use-cases/referent/filter";
 
 const ORIGINS: FilterOption[] = [
   { value: "", label: FILTER_TEXT.originAll },
-  { value: "adoption", label: "AI Adoption" },
-  { value: "transformation", label: "AI Transformation" },
+  // (Rilascio 10, §4, D4) I nomi lunghi dell'origine stanno solo qui, tra i filtri.
+  { value: "adoption", label: ORIGIN_LABEL.adoption.long },
+  { value: "transformation", label: ORIGIN_LABEL.transformation.long },
 ];
 
 const KINDS: FilterOption[] = [

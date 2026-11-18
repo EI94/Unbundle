@@ -47,18 +47,18 @@ test("codici: lo stato di prima solo per una modifica che lo cambia; codici estr
 });
 
 test("righe: «Cosa serve: …», con il tipo e gli stati della pagina, mai un testo dell'esigenza", () => {
-  assert.equal(needHistoryText({ phaseBefore: null, phaseAfter: "aggiunta.requisito.da_chiedere" }), "Cosa serve: aggiunto un requisito");
-  assert.equal(needHistoryText({ phaseBefore: null, phaseAfter: "aggiunta.passo.proposta" }), "Cosa serve: aggiunto un prossimo passo");
-  assert.equal(needHistoryText({ phaseBefore: null, phaseAfter: "modificata.requisito.chiesta" }), "Cosa serve: modificato un requisito");
-  assert.equal(needHistoryText({ phaseBefore: null, phaseAfter: "collegata.requisito.chiesta" }), "Cosa serve: collegato un requisito");
-  assert.equal(needHistoryText({ phaseBefore: null, phaseAfter: "scollegata.passo.confermata" }), "Cosa serve: scollegato un prossimo passo");
-  assert.equal(needHistoryText({ phaseBefore: null, phaseAfter: "archiviata.requisito.mancante" }), "Cosa serve: archiviato un requisito");
+  assert.equal(needHistoryText({ phaseBefore: null, phaseAfter: "aggiunta.requisito.da_chiedere" }), "Cosa serve: aggiunta un'informazione");
+  assert.equal(needHistoryText({ phaseBefore: null, phaseAfter: "aggiunta.passo.proposta" }), "Cosa serve: aggiunta una scadenza");
+  assert.equal(needHistoryText({ phaseBefore: null, phaseAfter: "modificata.requisito.chiesta" }), "Cosa serve: modificata un'informazione");
+  assert.equal(needHistoryText({ phaseBefore: null, phaseAfter: "collegata.requisito.chiesta" }), "Cosa serve: collegata un'informazione");
+  assert.equal(needHistoryText({ phaseBefore: null, phaseAfter: "scollegata.passo.confermata" }), "Cosa serve: scollegata una scadenza");
+  assert.equal(needHistoryText({ phaseBefore: null, phaseAfter: "archiviata.requisito.mancante" }), "Cosa serve: archiviata un'informazione");
   assert.equal(
     needHistoryText({ phaseBefore: "requisito.da_chiedere", phaseAfter: "modificata.requisito.validata" }),
-    "Cosa serve: stato di un requisito, «Non ancora chiesta» → «A posto»",
+    "Cosa serve: stato di un'informazione, «Non ancora chiesta» → «A posto»",
   );
-  assert.equal(needHistoryText({ phaseBefore: "passo.proposta", phaseAfter: "modificata.passo.fatta" }), "Cosa serve: stato di un prossimo passo, «Proposto» → «Fatto»");
-  assert.equal(needHistoryText({ phaseBefore: "requisito.chiesta", phaseAfter: "modificata.passo.proposta" }), "Cosa serve: un requisito diventa un prossimo passo");
+  assert.equal(needHistoryText({ phaseBefore: "passo.proposta", phaseAfter: "modificata.passo.fatta" }), "Cosa serve: stato di una scadenza, «Proposto» → «Fatto»");
+  assert.equal(needHistoryText({ phaseBefore: "requisito.chiesta", phaseAfter: "modificata.passo.proposta" }), "Cosa serve: un'informazione diventa una scadenza");
   assert.equal(needHistoryText({ phaseBefore: null, phaseAfter: "approvato.trimestre" }), "Cosa serve", "codici sconosciuti");
   assert.ok(isNeedHistoryEvent({ fields: ["cosa_serve"] }));
   assert.ok(!isNeedHistoryEvent({ fields: ["titolo", "problema"] }));

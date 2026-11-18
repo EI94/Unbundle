@@ -15,7 +15,7 @@ export const REDACT_TEXT = Object.freeze({
   menu: "Oscura testo",
   title: "Oscura un testo",
   description:
-    "Il testo scelto si sostituisce con «[testo rimosso]» e non si conserva in Unbundle. Non si torna indietro. I messaggi già mandati su Slack o per email non cambiano. Il dossier, se avviato, e il questionario AI Readiness da cui è nato lo use case hanno una loro copia: questa azione non la cambia.",
+    "Il testo scelto si sostituisce con «[testo rimosso]» e non si conserva in Unbundle. Non si torna indietro. I messaggi già mandati su Slack o per email non cambiano. La realizzazione, se avviata, e il questionario AI Readiness da cui è nato lo use case hanno una loro copia: questa azione non la cambia.",
   confirm: "Oscura",
   cancel: "Annulla",
   missing: "Scegli almeno un testo.",

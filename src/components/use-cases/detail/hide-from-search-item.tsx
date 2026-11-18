@@ -7,8 +7,9 @@ import { useDecisionRunner } from "../decision-buttons";
 
 /** Le due voci del menu «⋯» della testata (§6.1, §8.6, §14.3). */
 export const HIDE_FROM_SEARCH_TEXT = Object.freeze({
-  hide: "Nascondi dalla ricerca",
-  show: "Mostra ai colleghi",
+  // (Rilascio 10, §4) La visibilità si dice «Visibile in azienda», con un genere neutro.
+  hide: "Nascondi in azienda",
+  show: "Rendi visibile in azienda",
 });
 
 /** La voce da mostrare: una scheda nascosta si mostra ai colleghi, una visibile si nasconde. */

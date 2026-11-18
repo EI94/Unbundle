@@ -20,7 +20,7 @@ export const JCURVE_TEXT = Object.freeze({
 
 /** «Da nov 26, per 24 mesi: prima l'avvio, poi benefici e costi ricorrenti.» */
 export function jCurveIntro(from: string, months: number): string {
-  return `Da ${from}, per ${months} mesi: prima l'avvio, poi benefici e costi ricorrenti.`;
+  return `Da ${from}, per ${months} mesi: prima il costo di realizzazione, poi valore e costo all'anno.`;
 }
 
 /** «Dopo 24 mesi». */

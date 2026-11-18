@@ -734,7 +734,7 @@ test("«Benefici e costi»: la REST dei revisori porta il modello (null se non �
   const exported = rows.find((row) => row.Codice === card.code)!;
   assert.deepEqual(
     [exported.Valore, exported["Valore all'anno"], exported["Ritorno principale"], exported["Ore all'anno"], exported["Da misurare all'anno"], exported.Costo, exported["Fonte del costo"], exported["Ricorrenti all'anno"], exported.Facilità],
-    ["Basso", 4042.5, "Risparmio di tempo", 115.5, 0, 560, "stima del team", 600, 4],
+    ["Basso", 4042.5, "Meno tempo", 115.5, 0, 560, "stima del team", 600, 4],
   );
   const plain = rows.find((row) => row.Codice === cards.othersVisible.code)!;
   assert.equal(plain["Ritorno principale"] ?? "", "", "senza modello le celle restano vuote");

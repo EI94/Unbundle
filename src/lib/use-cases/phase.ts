@@ -57,12 +57,15 @@ export interface UseCasePhase {
   contributorLabel: string;
 }
 
-/** Nome di ogni fase, come nella pillola. */
+/**
+ * Nome di ogni fase, come nella pillola. (Rilascio 10, §4, D4) Il ciclo di vita si dice «Da valutare ·
+ * Approvato · In realizzazione · In uso · Chiuso»: la chiave `realizzato` resta nel codice.
+ */
 export const PHASE_LABEL: Readonly<Record<Phase, string>> = Object.freeze({
   da_valutare: "Da valutare",
   approvato: "Approvato",
   in_realizzazione: "In realizzazione",
-  realizzato: "Realizzato",
+  realizzato: "In uso",
   chiuso: "Chiuso",
 });
 
@@ -78,8 +81,8 @@ export const SUB_STATE_LABEL: Readonly<Record<Exclude<SubState, "trimestre" | "d
   rimandata: "Rimandata",
   da_rivedere: "Da rivedere",
   piu_avanti: "Più avanti",
-  senza_dossier: "Senza dossier",
-  realizzato: "Realizzato",
+  senza_dossier: "Senza realizzazione",
+  realizzato: "In uso",
   diffusa: "Diffusa",
   non_avviato: "Non avviato",
   doppione: "Doppione",

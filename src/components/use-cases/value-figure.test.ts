@@ -46,7 +46,7 @@ test("forma corta con la fonte, senza modello: la fonte degli euro, «team» o �
   assert.match(team, /data-source="team"/);
   assert.equal(sourcesOf(team), 1);
   const dossier = render({ value: { score: 2, word: "basso", source: "ai", perYear: { amount: 12_250, source: "dossier" } }, withSource: true });
-  assert.equal(textOf(dossier), "12.250 €/anno\u00a0· dossier");
+  assert.equal(textOf(dossier), "12.250 €/anno\u00a0· realizzazione");
   assert.match(dossier, /data-source="dossier"/);
   assert.doesNotMatch(dossier, /data-source="ai"/, "la fonte è quella della cifra scritta");
 });
@@ -64,7 +64,7 @@ test("forma lunga con gli euro: una sola cifra grande con la sua fonte, senza pa
   const html = render({ value: { score: 2.2, word: "basso", source: "team", perYear: { amount: 12_250, source: "dossier" } }, form: "lunga", withLabel: true });
   assert.equal((html.match(/12\.250\u00a0€\u00a0all&#x27;anno/g) ?? []).length, 1, html);
   assert.equal(sourcesOf(html), 1);
-  assert.match(html, /data-source="dossier"[^>]*>dal dossier</);
+  assert.match(html, /data-source="dossier"[^>]*>dalla realizzazione</);
   assert.doesNotMatch(html, /Basso · 2,2/);
   assert.doesNotMatch(html, /Basso|2,2/);
   assert.match(html, /<span class="text-xl font-semibold tracking-tight">12\.250\u00a0€\u00a0all&#x27;anno<\/span>/, "non in grigio");

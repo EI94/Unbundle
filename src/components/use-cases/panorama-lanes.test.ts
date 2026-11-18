@@ -120,11 +120,11 @@ test("la card del revisore: il titolo intero prima di tag e cifre, il tag nascos
   assert.ok(!link.includes("XX-"), "niente codice accanto al tag");
   // L'avvio: un importo del team con la sua fonte; «Benefici e costi» senza.
   assert.match(card, /data-figure="costo" data-cost-source="team_importo"/);
-  assert.ok(textOf(card).includes(`avvio 30.000 €${N}· team`), textOf(card));
+  assert.ok(textOf(card).includes(`Costo 30.000 €${N}· team`), textOf(card));
   assert.match(card, /data-source="team_importo"/);
   const model = cardOf(html, stima.id);
   assert.match(model, /data-figure="costo" data-cost-source="stima"/);
-  assert.ok(textOf(model).includes("avvio 700 €") && !model.includes("data-source="), "«Benefici e costi»: niente fonte");
+  assert.ok(textOf(model).includes("Costo 700 €") && !model.includes("data-source="), "«Benefici e costi»: niente fonte");
   // Il Valore: gli euro con la barra piena sulla scala; il tetto da misurare tratteggiato.
   assert.ok(textOf(card).includes(`12.250${N}€${N}all'anno`) && !card.includes("Valore: "), textOf(card));
   assert.match(card, /<span aria-hidden="true" data-slot="value-bar" data-bar="contato" class="block h-1\.5 w-full rounded-full bg-muted"><span class="block h-full rounded-full bg-uc-agente-\d+" style="width:38\.9%"><\/span>/);
@@ -277,7 +277,7 @@ test("«Realizzati»: chiusi, con il conto, l'ancora, il mese e gli euro senza b
   const opening = /<details[^>]*>/.exec(html)?.[0] ?? "";
   assert.match(opening, /^<details id="panoramica-realizzati" data-slot="panoramica-realizzati" class="scroll-mt-24">$/);
   const summary = /<summary[^>]*>([\s\S]*?)<\/summary>/.exec(html)?.[1] ?? "";
-  assert.ok(summary.includes('Realizzati <span class="text-xs font-normal text-muted-foreground tabular-nums">2</span>'), summary);
+  assert.ok(summary.includes('In uso <span class="text-xs font-normal text-muted-foreground tabular-nums">2</span>'), summary);
   assert.ok(html.indexOf(`data-id="${recent.id}"`) < html.indexOf(`data-id="${old.id}"`), "dal più recente");
   const card = cardOf(html, recent.id);
   assert.ok(card.includes('data-lane="realizzati"') && textOf(card).includes(`Realizzato${N}· set${N}2026`) && textOf(card).includes(`8.000${N}€${N}all'anno`), textOf(card));

@@ -590,13 +590,13 @@ test("dialoghi: titoli, testi e pulsanti esatti di §14.3", () => {
   assert.equal(dialogText("riapri", "XX-0012", { reopensTo: null }).description, null);
   assert.deepEqual(dialogText("segna_diffusa", null), { title: "Segnare come diffusa?", description: "La best practice risulta realizzata.", confirm: "Segna come diffusa" });
   assert.deepEqual(dialogText("segna_realizzato", null), {
-    title: "Segnare come realizzato?",
-    description: "Lo use case risulta realizzato. Il dossier resta com'è.",
-    confirm: "Segna come realizzato",
+    title: "Segnare «In uso»?",
+    description: "Lo use case risulta in uso. La realizzazione resta com'è.",
+    confirm: "Segna «In uso»",
   });
   assert.deepEqual(dialogText("segna_in_realizzazione", null), {
     title: "Segnare come in realizzazione?",
-    description: "Senza dossier: la sezione Casi d'uso è spenta per questo workspace.",
+    description: "Senza realizzazione: le realizzazioni sono spente per questo workspace.",
     confirm: "Segna come in realizzazione",
   });
   assert.equal(dialogText("approva", null).title, "Approva", "senza codice, il solo verbo");
@@ -611,7 +611,7 @@ test("dialoghi: titoli, testi e pulsanti esatti di §14.3", () => {
   );
   assert.deepEqual(
     DECISION_KEYS.map((key) => DECISION_LABEL[key]),
-    ["Approva", "Rimanda", "Serve info", "Non avviare", "Doppione di…", "Archivia", "Riapri", "Segna come diffusa", "Segna come realizzato"],
+    ["Approva", "Rimanda", "Serve info", "Non avviare", "Doppione di…", "Archivia", "Riapri", "Segna come diffusa", "Segna «In uso»"],
   );
 });
 

@@ -16,7 +16,7 @@ import { isNextNavigation } from "./decision-buttons";
 export const HUB_MENU_TEXT = Object.freeze({
   label: "Altre azioni",
   export: "Esporta Excel",
-  openMapping: "Apri Activity mapping",
+  openMapping: "Apri i processi",
 });
 
 /** Una voce che apre una pagina dell'area: i grafici della Panoramica (`?mostra=matrice|benefici|curva`). */

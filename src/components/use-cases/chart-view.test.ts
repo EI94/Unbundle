@@ -271,7 +271,8 @@ test("«Matrice Valore × Costo» con gli agenti nei titoli: i punti nel tono de
   // Senza agenti nei titoli: l'origine, come sempre.
   const byOrigin = view({ items, agents: agentPalette([{ title: "Margine per commessa" }]) });
   assert.ok(byOrigin.includes("bg-indigo-500") && byOrigin.includes("border-teal-500") && !byOrigin.includes("uc-agente"));
-  assert.ok(byOrigin.includes(">AI Transformation<") && !byOrigin.includes("Altri use case"));
+  // (Rilascio 10, D4) L'origine si dice «Dal basso · Dall'alto».
+  assert.ok(byOrigin.includes(">Dall&#x27;alto<") && !byOrigin.includes("Altri use case"));
   assert.equal(view({ items }), byOrigin, "senza tavolozza come senza agenti");
 });
 
@@ -310,9 +311,9 @@ test("con gli agenti nei titoli il grigio ha un nome solo: «Altri use case» ne
     ["AUTO", "LIBRA", "Altri use case"],
   );
   // La bolla e il segmento grigi non dicono il loro colore, come il punto della matrice: lo dice la legenda.
-  assert.ok(bubbles.includes(`aria-label="${copy.code} ${copy.title}. Facilità 4 · 4.043 €/anno · avvio 560 € · ricorrenti 600 €/anno · questo trimestre"`), "bolla");
-  assert.ok(curve.includes(`aria-label="${copy.code} ${copy.title}: 4.043 € all&#x27;anno · Risparmio di tempo"`), "segmento");
-  assert.ok(bubbles.includes(`aria-label="${auto.code} ${auto.title}. Facilità 4 · 4.043 €/anno · avvio 560 € · ricorrenti 600 €/anno · questo trimestre"`), "nemmeno «· AUTO»");
+  assert.ok(bubbles.includes(`aria-label="${copy.code} ${copy.title}. Facilità 4 · 4.043 €/anno · Costo 560 € · costo all&#x27;anno 600 € · questo trimestre"`), "bolla");
+  assert.ok(curve.includes(`aria-label="${copy.code} ${copy.title}: 4.043 € all&#x27;anno · Meno tempo"`), "segmento");
+  assert.ok(bubbles.includes(`aria-label="${auto.code} ${auto.title}. Facilità 4 · 4.043 €/anno · Costo 560 € · costo all&#x27;anno 600 € · questo trimestre"`), "nemmeno «· AUTO»");
   for (const html of [bubbles, curve]) {
     for (const text of ["Altri gruppi", "Gruppo ", "Senza gruppo"]) assert.ok(!html.includes(text), text);
   }
@@ -349,9 +350,9 @@ test("«Matrice Facilità × Beneficio» e «Curva del valore» con gli agenti n
     if (it !== proposal) assert.equal(toneIn(classesAfter(curve, `data-segment="${it.id}"`)), expected[it.id], `segmento ${it.title}`);
   }
   // Nessun «Gruppo …» né il nome dell'agente in coda: l'agente è nel titolo.
-  assert.ok(bubbles.includes(`aria-label="${orsa.code} ${orsa.title}. Facilità 4 · 4.043 €/anno · avvio 560 € · ricorrenti 600 €/anno · questo trimestre"`), "bolla");
-  assert.ok(bubbles.includes(`aria-label="${copy.code} ${copy.title}. Facilità 4 · 4.043 €/anno · avvio 560 € · ricorrenti 600 €/anno · questo trimestre"`), "la copia senza prefisso");
-  assert.ok(curve.includes(`aria-label="${copy.code} ${copy.title}: 4.043 € all&#x27;anno · Risparmio di tempo"`), "segmento");
+  assert.ok(bubbles.includes(`aria-label="${orsa.code} ${orsa.title}. Facilità 4 · 4.043 €/anno · Costo 560 € · costo all&#x27;anno 600 € · questo trimestre"`), "bolla");
+  assert.ok(bubbles.includes(`aria-label="${copy.code} ${copy.title}. Facilità 4 · 4.043 €/anno · Costo 560 € · costo all&#x27;anno 600 € · questo trimestre"`), "la copia senza prefisso");
+  assert.ok(curve.includes(`aria-label="${copy.code} ${copy.title}: 4.043 € all&#x27;anno · Meno tempo"`), "segmento");
   assert.ok(!/Gruppo (?:ORSA|Operazioni)|· ORSA"/.test(bubbles + curve));
   // Le legende: gli agenti dei segni, IVA (senza tono) con il suo nome, poi «Altri use case», come la matrice.
   const legendOf = (html: string, at: string) => {
@@ -413,13 +414,13 @@ test("«Curva del valore» in una pagina stretta: un tipo di ritorno per sezione
   const items = Array.from({ length: 7 }, (_, i) => item({ title: i === 0 ? "LIBRA L1 · Lettura dei documenti esteri" : `Smistamento ${i}`, valueModel: COUNTED }));
   const html = view({ chart: "curva", items, planItems: items, query: { vista: "panoramica", mostra: "curva" }, clearHref: `${BASE}?vista=panoramica&mostra=curva` });
   const N = " ";
-  // La sola sezione, «Risparmio di tempo»: dalla sua apertura alla fine dell'elenco.
+  // La sola sezione, «Meno tempo»: dalla sua apertura alla fine dell'elenco.
   const start = html.indexOf('<details data-slot="lever-section"');
   const lever = /^<details[^>]*><summary[^>]*>([\s\S]*?)<\/summary>([\s\S]*)$/.exec(html.slice(start, html.indexOf("</figure>", start)));
-  assert.ok(start >= 0 && lever, "la sezione di «Risparmio di tempo»");
+  assert.ok(start >= 0 && lever, "la sezione di «Meno tempo»");
   assert.equal(html.indexOf('<details data-slot="lever-section"', start + 1), -1, "un tipo solo");
   // Il nome e il totale sono un testo solo: il «·» resta con il nome, la cifra intera.
-  assert.ok(lever[1].includes(`>Risparmio di tempo</span>${N}· <span class="whitespace-nowrap tabular-nums">28.301${N}€</span>`), lever[1]);
+  assert.ok(lever[1].includes(`>Meno tempo</span>${N}· <span class="whitespace-nowrap tabular-nums">28.301${N}€</span>`), lever[1]);
   // I primi cinque, poi «Mostra gli altri 2» con gli altri due.
   const [first, rest] = lever[2].split('<details data-slot="lever-more"');
   assert.equal([...first.matchAll(/data-slot="chart-use-case"/g)].length, 5);
