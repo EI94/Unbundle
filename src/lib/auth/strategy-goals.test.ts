@@ -5,7 +5,8 @@ import { PORTFOLIO_REVIEWER_ROLES } from "../workspace-permissions.ts";
 
 // Gli obiettivi strategici del cliente (Strategia › Obiettivi & OKR): l'azione vera `createGoalAction`, con sessione,
 // accesso e database finti. Li crea solo chi rivede il portfolio, come gli OKR suggeriti; il tipo è uno dei tre e il
-// padre è un obiettivo dello stesso workspace. Clienti e obiettivi inventati.
+// padre è un obiettivo dello stesso workspace. Un rifiuto torna come esito con il suo messaggio, mai come errore
+// lanciato (il modulo lo mostra e tiene il testo). Clienti e obiettivi inventati.
 
 type Goal = { id: string; workspaceId: string; type: string; title: string };
 type Prova = { role: string | null; goals: Goal[]; inserted: Array<Record<string, unknown>>; revalidated: string[] };
@@ -46,12 +47,14 @@ function form(fields: Record<string, string>): FormData {
   return data;
 }
 
+const REFUSED = { ok: false, message: "Gli obiettivi li aggiunge chi valuta gli use case." };
+
 test("chi non rivede il portfolio non crea obiettivi: un contributore del cliente è rifiutato e non si scrive niente", async () => {
   reset("contributor");
-  await assert.rejects(createGoalAction(form({})), /^Error: Non hai i permessi per creare obiettivi\.$/);
-  await assert.rejects(createGoalAction(form({ type: "goal", parentId: "obiettivo-prova" })), /Non hai i permessi per creare obiettivi\./);
+  assert.deepEqual(await createGoalAction(form({})), REFUSED);
+  assert.deepEqual(await createGoalAction(form({ type: "goal", parentId: "obiettivo-prova" })), REFUSED);
   reset(null);
-  await assert.rejects(createGoalAction(form({})), /^Error: Workspace non trovato$/);
+  assert.deepEqual(await createGoalAction(form({})), { ok: false, message: "Workspace non trovato." });
   assert.equal(prova.inserted.length, 0, "nessuna scrittura");
   assert.equal(prova.revalidated.length, 0);
 });
@@ -59,7 +62,7 @@ test("chi non rivede il portfolio non crea obiettivi: un contributore del client
 test("ogni ruolo che rivede il portfolio crea l'obiettivo, senza padre", async () => {
   for (const role of PORTFOLIO_REVIEWER_ROLES) {
     reset(role);
-    await createGoalAction(form({ type: "goal", title: "Consegne più rapide" }));
+    assert.deepEqual(await createGoalAction(form({ type: "goal", title: "Consegne più rapide" })), { ok: true }, role);
     assert.equal(prova.inserted.length, 1, role);
     assert.deepEqual(
       { table: prova.inserted[0].table, workspaceId: prova.inserted[0].workspaceId, parentId: prova.inserted[0].parentId, type: prova.inserted[0].type, title: prova.inserted[0].title },
@@ -72,12 +75,13 @@ test("ogni ruolo che rivede il portfolio crea l'obiettivo, senza padre", async (
 
 test("il tipo è uno dei tre: un altro valore, o nessuno, è rifiutato e non si scrive niente", async () => {
   reset();
+  const invalid = { ok: false, message: "Tipo di obiettivo non valido." };
   for (const type of ["missione", "", "GOAL", "key-result"]) {
-    await assert.rejects(createGoalAction(form({ type })), /^Error: Tipo di obiettivo non valido$/, type);
+    assert.deepEqual(await createGoalAction(form({ type })), invalid, type);
   }
   const missing = form({});
   missing.delete("type");
-  await assert.rejects(createGoalAction(missing), /^Error: Tipo di obiettivo non valido$/);
+  assert.deepEqual(await createGoalAction(missing), invalid);
   assert.equal(prova.inserted.length, 0, "nessuna scrittura");
   for (const type of ["goal", "objective", "key_result"]) await createGoalAction(form({ type }));
   assert.deepEqual(prova.inserted.map((row) => row.type), ["goal", "objective", "key_result"]);
@@ -86,7 +90,7 @@ test("il tipo è uno dei tre: un altro valore, o nessuno, è rifiutato e non si 
 test("il padre è un obiettivo dello stesso workspace: quello di un altro cliente, o uno che non c'è, è rifiutato", async () => {
   reset();
   for (const parentId of ["obiettivo-altro-cliente", "obiettivo-che-non-esiste"]) {
-    await assert.rejects(createGoalAction(form({ type: "key_result", parentId })), /^Error: Obiettivo padre non trovato$/, parentId);
+    assert.deepEqual(await createGoalAction(form({ type: "key_result", parentId })), { ok: false, message: "Obiettivo collegato non trovato: aggiorna la pagina." }, parentId);
   }
   assert.equal(prova.inserted.length, 0, "nessuna scrittura");
   await createGoalAction(form({ type: "objective", parentId: "obiettivo-prova" }));

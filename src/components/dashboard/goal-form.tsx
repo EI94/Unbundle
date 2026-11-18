@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,9 +20,24 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { createGoalAction } from "@/lib/actions/strategy";
+import { createGoalAction, type GoalActionResult } from "@/lib/actions/strategy";
 import type { StrategicGoal } from "@/lib/db/schema";
 import { Plus } from "lucide-react";
+
+/** Il salvataggio non è riuscito per un motivo che il server non dice (rete, errore): il testo resta nel modulo. */
+export const GOAL_SAVE_FAILED = "Salvataggio non riuscito. Il testo è ancora qui: riprova tra poco.";
+
+/**
+ * «Salva» senza mai lanciare: un rifiuto del server torna con il suo messaggio, un errore (rete, server) con
+ * `GOAL_SAVE_FAILED`. Niente arriva alla pagina d'errore del workspace.
+ */
+export async function saveGoal(action: (formData: FormData) => Promise<GoalActionResult>, formData: FormData): Promise<GoalActionResult> {
+  try {
+    return await action(formData);
+  } catch {
+    return { ok: false, message: GOAL_SAVE_FAILED };
+  }
+}
 
 interface GoalFormProps {
   workspaceId: string;
@@ -38,10 +53,32 @@ export function GoalForm({
   defaultParentId,
 }: GoalFormProps) {
   const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, startSaving] = useTransition();
+
+  // `onSubmit` e non `action`: dopo un'azione del modulo React svuota i campi anche quando il salvataggio non
+  // riesce. Così, dopo un rifiuto, la finestra resta aperta con il testo scritto e il messaggio.
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    setError(null);
+    startSaving(async () => {
+      const result = await saveGoal(createGoalAction, formData);
+      if (result.ok) setOpen(false);
+      else setError(result.message);
+    });
+  }
 
   return (
     <>
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => {
+          setError(null);
+          setOpen(true);
+        }}
+      >
         <Plus className="mr-2 h-3 w-3" />
         Aggiungi{" "}
         {defaultType === "key_result"
@@ -52,12 +89,7 @@ export function GoalForm({
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-lg">
-          <form
-            action={async (formData) => {
-              await createGoalAction(formData);
-              setOpen(false);
-            }}
-          >
+          <form onSubmit={submit}>
             <input type="hidden" name="workspaceId" value={workspaceId} />
             {defaultParentId && (
               <input type="hidden" name="parentId" value={defaultParentId} />
@@ -197,6 +229,12 @@ export function GoalForm({
               </div>
             </div>
 
+            {error ? (
+              <p role="alert" className="mt-4 text-sm text-destructive">
+                {error}
+              </p>
+            ) : null}
+
             <DialogFooter className="mt-6">
               <Button
                 type="button"
@@ -205,7 +243,9 @@ export function GoalForm({
               >
                 Annulla
               </Button>
-              <Button type="submit">Salva</Button>
+              <Button type="submit" disabled={saving}>
+                {saving ? "Salvataggio…" : "Salva"}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
