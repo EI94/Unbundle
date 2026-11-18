@@ -19,6 +19,13 @@ import "server-only";
  *
  * (9b) Dopo una conferma riuscita che scrive fatti (nuovi, versioni nuove, conflitti risolti con «Ora») parte «Il
  * contesto è cambiato» per chi costruisce gli use case toccati (`notifyContextChange`); una riconferma non è un cambio.
+ *
+ * (9b, RILASCIO-9b-COSTRUZIONE.md §2.2, §3.2) I legami con «Cosa serve»: una proposta che risponde a una richiesta ha un
+ * legame `proposta` (la lettura). Alla conferma il
+ * legame diventa `aperta`, con il fatto, solo se il fatto è attivo e «Per tutti» e la richiesta è ancora aperta
+ * (`needLinkAfterConfirm`): il testo di un fatto «Solo Lateral Space» non arriva al cliente; altrimenti `scartata`. Poi
+ * «Una risposta per «Cosa serve»» ai revisori (`notifyNeedAnswered`). Scartare la proposta scarta il legame. Solo con la
+ * 0041.
  */
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
@@ -29,6 +36,8 @@ import { isPreselected, realIsoDate } from "@/lib/context/read/reconcile";
 import { isHardIssue, issueMessage, scanPersonalData, scanStatement } from "@/lib/context/scan";
 import { CONTEXT_TEXT } from "@/lib/context/text";
 import { contextAbilities, isClientSource, isLearnedSource, stricterVisibility, type ContextActor } from "@/lib/context/visibility";
+import { planNeedLinks } from "@/lib/context/read/confirm-links";
+import { OPEN_NEED_STATUSES } from "@/lib/context/work/need-links";
 import {
   COMMITMENT_PARTIES,
   CONTEXT_LIMITS,
@@ -50,12 +59,13 @@ import {
   type SourceKind,
   type SourceOrigin,
 } from "@/lib/context/vocab";
+import { CLIENT_SIDE_SQL } from "@/lib/db/use-case-hub-referents-ddl";
 import { logSafeError } from "@/lib/log/safe-error";
 import { isEmailVerifiedValue, isLateralSpaceEmail, parseLsDomains } from "@/lib/uc/lateral-space";
 import type { ServiceResult } from "@/lib/use-cases/types";
 import { bumpProposalsOnFactsStatement, ctxErrorCode, dropBriefStatement, factChainCte, gate, invalid, isUniqueViolation, isUuid, knownUseCases, notFound, ok, requireSql, retry, romeToday, rowsOf, stale, toIsoDate, uuidArray } from "./context-shared";
-import { notifyContextChange } from "./context-notices";
-import { contextStoreReady } from "./context-store";
+import { notifyContextChange, notifyNeedAnswered } from "./context-notices";
+import { contextStoreReady, contextWorkReady } from "./context-store";
 
 const LOG_SCOPE = "context/proposals";
 
@@ -233,6 +243,9 @@ function viewOf(row: ProposalRow, ctx: ViewContext): ProposalView {
     closesQuestion: row.questionId && question !== undefined ? { id: row.questionId, question } : null,
   };
 }
+
+/** (9b) Gli stati aperti di una richiesta di «Cosa serve», come array di Postgres. */
+const OPEN_NEEDS = sql`${`{${OPEN_NEED_STATUSES.join(",")}}`}::text[]`;
 
 /** Le frasi (normalizzate) dei fatti «Solo Lateral Space» attivi del workspace. */
 async function lsOnlyStatements(workspaceId: string): Promise<Set<string>> {
@@ -419,7 +432,10 @@ export async function editProposal(actor: ContextActor, proposalId: string, expe
   }
 }
 
-/** Scarta le proposte aperte indicate: non entrano in memoria e la lettura non le ripropone. */
+/**
+ * Scarta le proposte aperte indicate: non entrano in memoria e la lettura non le ripropone. (9b) I loro legami con «Cosa
+ * serve» si scartano con loro.
+ */
 export async function discardProposals(actor: ContextActor, proposalIds: readonly string[]): Promise<ServiceResult<{ discarded: number }>> {
   const allowed = await gate(actor, "canConfirm");
   if (!allowed.ok) return allowed;
@@ -428,6 +444,7 @@ export async function discardProposals(actor: ContextActor, proposalIds: readonl
   if (ids.length > 500 || ids.some((id) => !isUuid(id))) return invalid();
   const ws = actor.workspaceId;
   try {
+    const linksReady = await contextWorkReady();
     const results = await db.batch([
       db.execute(sql`
         UPDATE context_proposals SET status = 'scartata', decided_at = now(), decided_by_user_id = ${actor.userId}::uuid, updated_at = now(), version = version + 1
@@ -438,6 +455,16 @@ export async function discardProposals(actor: ContextActor, proposalIds: readonl
         SELECT ${ws}::uuid, 'proposte_scartate', ${actor.channel}, ${actor.userId}::uuid, jsonb_build_object('n', count(*))
         FROM context_proposals WHERE workspace_id = ${ws}::uuid AND status = 'scartata' AND decided_at = now() AND id = ANY(${uuidArray(ids)})
         HAVING count(*) > 0`),
+      // (9b) Una proposta scartata non risponde a niente: il suo legame con «Cosa serve» si scarta con lei.
+      ...(linksReady
+        ? [
+            db.execute(sql`
+              UPDATE context_need_links l SET status = 'scartata', decided_at = now(), decided_by_user_id = ${actor.userId}::uuid, version = l.version + 1, updated_at = now()
+              FROM context_proposals p
+              WHERE l.workspace_id = ${ws}::uuid AND l.status = 'proposta' AND l.proposal_id = p.id
+                AND p.workspace_id = ${ws}::uuid AND p.id = ANY(${uuidArray(ids)}) AND p.status = 'scartata' AND p.decided_at = now()`),
+          ]
+        : []),
     ]);
     return ok({ discarded: rowsOf(results[0]).length });
   } catch (error) {
@@ -587,6 +614,8 @@ export async function confirmProposals(actor: ContextActor, items: readonly Conf
     const sameFact = new Map<string, string>();
     // Le frasi dei fatti «Solo Lateral Space» attivi: un fatto nuovo con la stessa frase nasce «Solo Lateral Space».
     const lsOnly = new Set<string>();
+    // (9b) Chi vede i fatti attivi che questa conferma può riconfermare: decide i legami con «Cosa serve».
+    const activeVisibility = new Map<string, ContextVisibility>([...heads.values()].filter((head) => head.status === "attivo").map((head) => [head.id, head.visibility]));
     if (plan.some((p) => p.kind !== "impegno" && p.kind !== "domanda")) {
       const active = rowsOf<{ id: string; statement: string; visibility: ContextVisibility }>(
         await db.execute(sql`SELECT id, statement, visibility FROM context_facts WHERE workspace_id = ${ws}::uuid AND status = 'attivo' ORDER BY last_confirmed_at DESC, id LIMIT 5000`),
@@ -595,6 +624,7 @@ export async function confirmProposals(actor: ContextActor, items: readonly Conf
         const key = normalizeStatement(fact.statement);
         if (key && !sameFact.has(key)) sameFact.set(key, fact.id);
         if (key && fact.visibility === "ls") lsOnly.add(key);
+        activeVisibility.set(fact.id, fact.visibility);
       }
     }
     /** Il fatto `factId` non è più attivo dopo questa conferma: la sua frase non indica più lui. */
@@ -740,6 +770,34 @@ export async function confirmProposals(actor: ContextActor, items: readonly Conf
       // Un fatto riconfermato perché due appunti lo dicono: prende anche gli use case della voce.
       ...reconfirmLinks.map((link) => ({ workspaceId: ws, ...link })),
     ];
+    // (9b) I legami con «Cosa serve» delle proposte confermate: `aperta` con il fatto, se il fatto resta attivo e «Per
+    // tutti» e la richiesta è ancora aperta; altrimenti `scartata`. Una richiesta e un fatto si legano una volta sola.
+    const linksReady = await contextWorkReady();
+    const proposedLinks = linksReady
+      ? rowsOf<{ id: string; proposal_id: string; need_id: string; need_open: boolean }>(
+          await db.execute(sql`
+            SELECT l.id, l.proposal_id, l.need_id,
+              (n.type = 'requisito' AND n.archived_at IS NULL AND ${sql.raw(CLIENT_SIDE_SQL("n"))} AND n.status = ANY(${OPEN_NEEDS})) AS need_open
+            FROM context_need_links l JOIN use_case_needs n ON n.id = l.need_id AND n.workspace_id = l.workspace_id
+            WHERE l.workspace_id = ${ws}::uuid AND l.status = 'proposta' AND l.proposal_id = ANY(${uuidArray(ids)})
+            ORDER BY l.created_at, l.id`),
+        )
+      : [];
+    const decidedById = new Map(decided.map((d) => [d.id, d]));
+    const linkPlan = planNeedLinks(
+      proposedLinks.map((link) => ({ id: link.id, proposalId: link.proposal_id, needId: link.need_id, needOpen: link.need_open === true })),
+      (proposalId) => {
+        const result = decidedById.get(proposalId);
+        const factId = result && result.status === "confermata" ? result.resultId : null;
+        if (!factId) return null;
+        // Un fatto nato qui (con la visibilità finale, dopo le altre voci), o uno attivo che questa conferma riconferma.
+        const born = newFacts.get(factId);
+        if (born) return { factId, visibility: born.visibility, active: !born.superseded };
+        const visibility = activeVisibility.get(factId);
+        return visibility ? { factId, visibility, active: !supersede.has(factId) } : null;
+      },
+    );
+
     const count = (n: number) => sql`${n}`;
     // I fatti che questa conferma riconferma o sostituisce: si prendono tutti insieme, in ordine di id, prima di toccarli.
     const touchedFacts = [...new Set([...reconfirm, ...supersede])];
@@ -868,15 +926,51 @@ export async function confirmProposals(actor: ContextActor, items: readonly Conf
         FROM jsonb_to_recordset(${JSON.stringify(decided.map((d) => ({ id: d.id, status: d.status, result_id: d.resultId })))}::jsonb) AS x(id uuid, status text, result_id uuid)
         WHERE p.id = x.id AND p.workspace_id = ${ws}::uuid AND p.status = 'aperta'`),
     ];
+    // (9b) I legami, dopo i fatti: un legame che apre una richiesta già legata allo stesso fatto si scarta. Restituisce le
+    // richieste che ora hanno una risposta, per la campanella.
+    const linkStatement = linkPlan.length > 0 ? statements.length : -1;
+    if (linkPlan.length > 0) {
+      statements.push(
+        db.execute(sql`
+          WITH x AS (
+            SELECT * FROM jsonb_to_recordset(${JSON.stringify(linkPlan)}::jsonb) AS x(id uuid, status text, fact_id uuid)
+          ), y AS (
+            SELECT x.id, x.fact_id,
+              CASE WHEN x.status = 'aperta' AND NOT EXISTS (
+                SELECT 1 FROM context_need_links o WHERE o.need_id = l.need_id AND o.fact_id = x.fact_id AND o.id <> l.id
+              ) THEN 'aperta' ELSE 'scartata' END AS status
+            FROM x JOIN context_need_links l ON l.id = x.id AND l.workspace_id = ${ws}::uuid AND l.status = 'proposta'
+          ), upd AS (
+            UPDATE context_need_links l SET status = y.status, fact_id = CASE WHEN y.status = 'aperta' THEN y.fact_id END,
+              decided_at = CASE WHEN y.status = 'scartata' THEN now() END, decided_by_user_id = CASE WHEN y.status = 'scartata' THEN ${actor.userId}::uuid END,
+              version = l.version + 1, updated_at = now()
+            FROM y WHERE l.id = y.id AND l.workspace_id = ${ws}::uuid AND l.status = 'proposta'
+            RETURNING l.need_id, l.fact_id, l.status
+          ), logged AS (
+            INSERT INTO context_events (workspace_id, action, channel, fact_id, detail)
+            SELECT ${ws}::uuid, 'richiesta_dalla_call', ${actor.channel}, upd.fact_id, jsonb_build_object('esigenza', upd.need_id)
+            FROM upd WHERE upd.status = 'aperta'
+            RETURNING id
+          )
+          SELECT DISTINCT need_id FROM upd WHERE status = 'aperta'`),
+      );
+    }
+    let results: unknown[];
     try {
-      await db.batch(statements as [(typeof statements)[number], ...Array<(typeof statements)[number]>]);
+      results = await db.batch(statements as [(typeof statements)[number], ...Array<(typeof statements)[number]>]);
     } catch (error) {
-      // Un'altra conferma è arrivata prima: su una proposta, o sul fatto che questa cambiava (l'indice unico della storia).
-      if (ctxErrorCode(error) === "versione_superata" || isUniqueViolation(error, "context_facts_supersedes_unique")) return stale();
+      // Un'altra conferma è arrivata prima: su una proposta, o sul fatto che questa cambiava (l'indice unico della storia),
+      // o (9b) ha appena legato lo stesso fatto alla stessa richiesta.
+      if (ctxErrorCode(error) === "versione_superata" || isUniqueViolation(error, "context_facts_supersedes_unique") || isUniqueViolation(error, "context_need_links_fact_unique")) {
+        return stale();
+      }
       throw error;
     }
     // (9b) Dopo il batch, senza far fallire la conferma: «Il contesto è cambiato» per gli use case dei fatti scritti.
     if (newFacts.size > 0) await notifyContextChange({ workspaceId: ws, actorUserId: actor.userId, factIds: [...newFacts.keys()] });
+    // (9b) «Una risposta per «Cosa serve»» ai revisori, per le richieste che questa conferma ha legato a un fatto.
+    const answeredNeeds = linkStatement >= 0 ? rowsOf<{ need_id: string }>(results[linkStatement]).map((row) => row.need_id) : [];
+    if (answeredNeeds.length > 0) await notifyNeedAnswered({ workspaceId: ws, actorUserId: actor.userId, needIds: answeredNeeds });
     const remaining = rowsOf<{ n: number }>(await db.execute(sql`SELECT count(*)::int AS n FROM context_proposals WHERE workspace_id = ${ws}::uuid AND status = 'aperta'`));
     return ok({ confirmed: list.length, ...counts, remaining: Number(remaining[0]?.n ?? 0) });
   } catch (error) {
