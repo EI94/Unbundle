@@ -23,6 +23,19 @@ export function accountPartOf(value: string | null | undefined): AccountPart | "
   return (ACCOUNT_PARTS as readonly string[]).includes(value) ? (value as AccountPart) : "tutto";
 }
 
+/**
+ * (§2.4) Le ancore personali delle Impostazioni portano al foglio, sulla parte giusta: `settings#cli` (i link della
+ * CLI e dell'Agent Factory) su «Claude e terminale», `settings#granola` (il ritorno da Granola) su «Granola». Le altre
+ * ancore restano della pagina.
+ */
+export function accountPartForSettingsHash(pathname: string, hash: string, workspaceId: string): AccountPart | null {
+  const path = pathname.replace(/\/+$/, "");
+  if (path !== `/dashboard/${workspaceId}/settings`) return null;
+  if (hash === "#cli") return "claude";
+  if (hash === "#granola") return "granola";
+  return null;
+}
+
 /** L'`id` della sezione di una parte: il foglio ci porta il fuoco quando si apre su di lei. */
 export const accountSectionId = (part: AccountPart) => `account-${part}`;
 

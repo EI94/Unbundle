@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import {
   ACCOUNT_PARTS,
   accountApiPath,
+  accountPartForSettingsHash,
   accountPartOf,
   accountSectionId,
   claudeAiHeader,
@@ -56,4 +57,17 @@ test("i comandi per Claude con l'accesso appena creato", () => {
   assert.equal(claudeCodeCommand(claude, "ub_prova"), 'claude mcp add --transport http unbundle-use-case https://esempio.test/api/mcp/team --header "Authorization: Bearer ub_prova"');
   assert.equal(claudeAiHeader("ub_prova"), "Authorization: Bearer ub_prova");
   assert.equal(accountApiPath("00000000-0000-4000-8000-0000000000f1"), "/api/workspaces/00000000-0000-4000-8000-0000000000f1/account");
+});
+
+test("le ancore personali delle Impostazioni aprono il foglio sulla parte giusta (§2.4); le altre restano della pagina", () => {
+  const ws = "00000000-0000-4000-8000-0000000000f1";
+  const settings = `/dashboard/${ws}/settings`;
+  assert.equal(accountPartForSettingsHash(settings, "#cli", ws), "claude");
+  assert.equal(accountPartForSettingsHash(`${settings}/`, "#granola", ws), "granola");
+  for (const hash of ["", "#integrazioni", "#persone", "#sub-responsabili", "#zona-pericolosa", "#valutazione-use-case"]) {
+    assert.equal(accountPartForSettingsHash(settings, hash, ws), null, hash);
+  }
+  // Solo la pagina delle Impostazioni di questo workspace.
+  assert.equal(accountPartForSettingsHash(`/dashboard/${ws}/agent-factory`, "#cli", ws), null);
+  assert.equal(accountPartForSettingsHash("/dashboard/00000000-0000-4000-8000-0000000000f2/settings", "#cli", ws), null);
 });

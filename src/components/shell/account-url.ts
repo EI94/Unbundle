@@ -10,8 +10,10 @@ function here(): string {
   return `${window.location.pathname}${window.location.search}${window.location.hash}`;
 }
 
-export function openAccountSheet(part?: AccountPart): void {
-  window.history.pushState(null, "", withAccount(here(), part));
+export function openAccountSheet(part?: AccountPart, opts: { replace?: boolean } = {}): void {
+  const url = withAccount(here(), part);
+  if (opts.replace) window.history.replaceState(null, "", url);
+  else window.history.pushState(null, "", url);
 }
 
 export function closeAccountSheet(): void {

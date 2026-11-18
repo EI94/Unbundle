@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -9,10 +9,10 @@ import { setBellEmailAlertsAction } from "@/lib/actions/notifications";
 import { createTeamMcpTokenAction, revokeTeamMcpTokenAction } from "@/lib/actions/team-mcp-tokens";
 import { revokeOwnCliTokenAction } from "@/lib/actions/cli-tokens";
 import { disconnectGranolaAction, startGranolaConnectAction } from "@/lib/actions/context-granola";
-import { ACCOUNT_PARAM, accountApiPath, accountPartOf, accountSectionId, type AccountSheetResponse } from "@/lib/shell/account";
+import { ACCOUNT_PARAM, accountApiPath, accountPartForSettingsHash, accountPartOf, accountSectionId, type AccountSheetResponse } from "@/lib/shell/account";
 import { SHELL_TEXT } from "@/lib/shell/text";
 import { AccountSheetBody, type AccountActions, type AccountSheetState } from "./account-sheet-body";
-import { closeAccountSheet } from "./account-url";
+import { closeAccountSheet, openAccountSheet } from "./account-url";
 
 const T = SHELL_TEXT.account;
 
@@ -43,6 +43,7 @@ export function AccountSheet({
   loadData?: boolean;
 }) {
   const params = useSearchParams();
+  const pathname = usePathname() ?? "";
   const part = accountPartOf(params?.get(ACCOUNT_PARAM) ?? null);
   const open = part !== null;
   const [state, setState] = useState<AccountSheetState>(loadData ? { status: "loading" } : { status: "none" });
@@ -66,6 +67,12 @@ export function AccountSheet({
   useEffect(() => {
     if (open) load();
   }, [open, load]);
+
+  // (§2.4) `settings#cli` e `settings#granola` aprono il foglio sulla parte giusta, al posto dell'indirizzo di prima.
+  useEffect(() => {
+    const target = accountPartForSettingsHash(pathname, window.location.hash, workspaceId);
+    if (target && !new URLSearchParams(window.location.search).has(ACCOUNT_PARAM)) openAccountSheet(target, { replace: true });
+  }, [pathname, workspaceId]);
 
   // Aperto su una parte: il fuoco va al suo titolo, quando la parte c'è.
   useEffect(() => {
