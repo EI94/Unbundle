@@ -248,6 +248,25 @@ test("con l'informativa di prima (ucq-2026-11-2), o con risposte date prima di a
   state.sourceId = String(again?.id);
 });
 
+test("«Chiedi al contesto» e ask_context: una risposta del referente arriva solo con l'informativa che lo permette, data dopo averla accettata", opts, async () => {
+  const asking = await import("../../db/queries/context-ask.ts");
+  const ANSWER = "Circa 200 ordini al mese, quasi tutti per e-mail.";
+  const found = async () => (await asking.searchContext(actor("rev"), "Quanti ordini al mese?")).filter((s) => s.kind === "referente").map((s) => s.excerpt);
+  assert.deepEqual(await found(), [ANSWER]);
+  const [original] = await q(`SELECT privacy_notice_version, privacy_accepted_at FROM use_case_referent_requests WHERE id = $1::uuid`, [state.requestId]);
+  try {
+    // L'informativa di prima («Le usiamo solo per questo»): la risposta resta nella scheda e non va al modello.
+    await q(`UPDATE use_case_referent_requests SET privacy_notice_version = 'ucq-2026-11-2' WHERE id = $1::uuid`, [state.requestId]);
+    assert.deepEqual(await found(), []);
+    // L'informativa nuova accettata dopo la risposta: nemmeno.
+    await q(`UPDATE use_case_referent_requests SET privacy_notice_version = 'ucq-2026-11-3', privacy_accepted_at = now() + interval '1 hour' WHERE id = $1::uuid`, [state.requestId]);
+    assert.deepEqual(await found(), []);
+  } finally {
+    await q(`UPDATE use_case_referent_requests SET privacy_notice_version = $2, privacy_accepted_at = $3::timestamptz WHERE id = $1::uuid`, [state.requestId, original.privacy_notice_version, original.privacy_accepted_at]);
+  }
+  assert.deepEqual(await found(), [ANSWER]);
+});
+
 // ─── La lettura con il Claude finto ──────────────────────────────────
 
 test("la lettura compone il testo dal vivo, senza «Non ce l'ho» né nomi; il prompt non ha i fatti «Solo Lateral Space»; le proposte sono dello use case e mai preselezionate", opts, async () => {

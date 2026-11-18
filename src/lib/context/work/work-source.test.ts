@@ -211,3 +211,13 @@ test("`nota` ammette l'origine «cli»; una fonte di risposte non ha «Togli» e
   const remove = topLevelFunction(sources, "export async function removeContextSource(");
   assert.match(remove, /if \(source\.kind === "risposta"\) return denied\(\);/);
 });
+
+// ─── (9b, D2) «Chiedi al contesto»: le risposte del referente ────────
+
+test("«Chiedi al contesto» e ask_context: una risposta del referente solo con l'informativa che lo permette e data dopo averla accettata", () => {
+  const ask = readFileSync(new URL("../../db/queries/context-ask.ts", import.meta.url), "utf8");
+  assert.match(ask, /LEFT JOIN use_case_referent_requests r ON r\.id = a\.request_id AND r\.workspace_id = a\.workspace_id/);
+  assert.match(ask, /r\.privacy_notice_version = ANY\(\$\{`\{\$\{REFERENT_CONTEXT_NOTICE_VERSIONS\.join\(","\)\}\}`\}::text\[\]\)/);
+  assert.match(ask, /AND coalesce\(a\.edited_at, a\.submitted_at\) >= r\.privacy_accepted_at\)\)/);
+  assert.match(ask, /rows\.filter\(\(row\) => row\.source === "revisore" \|\| noticeAllowsContext\(row\.notice\)\)/);
+});

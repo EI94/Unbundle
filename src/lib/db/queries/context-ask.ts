@@ -6,7 +6,8 @@ import "server-only";
  * («Non lo sappiamo ancora»), e la domanda può entrare tra le domande aperte.
  *
  * Chi vede che cosa: i fatti per visibilità; i dati della Discovery (le cifre solo ai revisori); gli appunti solo
- * Lateral Space; i documenti per la loro visibilità; le risposte dei referenti e le decisioni ai revisori.
+ * Lateral Space; i documenti per la loro visibilità; le risposte dei referenti e le decisioni ai revisori. (9b, D2) Le
+ * risposte di un referente solo se date con un'informativa che lo permette, dopo averla accettata.
  */
 import { sql } from "drizzle-orm";
 import { CONTEXT_ASK_TIMEOUT_MS, ClaudeRefusalError, logClaudeTimeout, stoppedByDeadline } from "@/lib/ai/models";
@@ -23,6 +24,7 @@ import { CONTEXT_LIMITS, type FactOrigin, type SourceKind, type SourceOrigin } f
 import { db } from "@/lib/db";
 import { logSafeError } from "@/lib/log/safe-error";
 import { romeDate } from "@/lib/uc/calendar";
+import { REFERENT_CONTEXT_NOTICE_VERSIONS, noticeAllowsContext } from "@/lib/use-cases/referent/labels";
 import type { ServiceResult } from "@/lib/use-cases/types";
 import { contextAiConsent } from "./context-consent";
 import { loadLiveDiscovery } from "./context-discovery";
@@ -156,19 +158,26 @@ export async function searchContext(actor: ContextActor, query: string, opts: { 
       );
       return rows.map((row): Found => ({ kind: "documento", label: oneLine(row.title ?? row.file_name), date: row.occurred_on ? toIsoDate(row.occurred_on) : null, excerpt: excerptOf(row.content) }));
     }),
-    // Le risposte dei referenti (inviate e non tolte) e le decisioni: per i revisori.
+    // Le risposte dei referenti (inviate e non tolte) e le decisioni: per i revisori. (9b, D2) Una risposta del referente
+    // arriva al modello solo se il referente ha accettato un'informativa che lo dice (`noticeAllowsContext`) e l'ha data, o
+    // cambiata, dopo averla accettata: l'informativa di prima dice «per valutare e preparare il caso d'uso. Le usiamo solo
+    // per questo.». Le risposte del team (`revisore`) non sono del referente e restano.
     abilities.canSeeReviewerSources
       ? safely("referente", ws, async () => {
-          const rows = rowsOf<{ body: string; title: string; code: string | null; submitted_at: unknown }>(
+          const rows = rowsOf<{ body: string; title: string; code: string | null; submitted_at: unknown; source: string; notice: string | null }>(
             await db.execute(sql`
-              SELECT a.body, n.title, u.code, a.submitted_at
+              SELECT a.body, n.title, u.code, a.submitted_at, a.source, r.privacy_notice_version AS notice
               FROM use_case_need_answers a JOIN use_case_needs n ON n.id = a.need_id JOIN use_cases u ON u.id = a.use_case_id
+                LEFT JOIN use_case_referent_requests r ON r.id = a.request_id AND r.workspace_id = a.workspace_id
               WHERE a.workspace_id = ${ws}::uuid AND a.status = 'inviata' AND a.removed_at IS NULL AND a.body IS NOT NULL
+                AND (a.source = 'revisore'
+                  OR (r.privacy_accepted_at IS NOT NULL AND r.privacy_notice_version = ANY(${`{${REFERENT_CONTEXT_NOTICE_VERSIONS.join(",")}}`}::text[])
+                      AND coalesce(a.edited_at, a.submitted_at) >= r.privacy_accepted_at))
                 AND to_tsvector('italian', a.body) @@ ${q}
               ORDER BY ts_rank_cd(to_tsvector('italian', a.body), ${q}) DESC, a.submitted_at DESC NULLS LAST
               LIMIT ${PER_KIND.referente}`),
           );
-          return rows.map((row): Found => {
+          return rows.filter((row) => row.source === "revisore" || noticeAllowsContext(row.notice)).map((row): Found => {
             const at = toDate(row.submitted_at);
             return { kind: "referente", label: oneLine(row.code ? `${row.code} · ${row.title}` : row.title), date: at ? romeDate(at) : null, excerpt: excerptOf(row.body) };
           });
