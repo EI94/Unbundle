@@ -553,6 +553,108 @@ test("le novità del pacchetto: un fatto allargato, legato, ristretto o slegato 
   assert.equal(await deltaFrom(k2), 1);
 });
 
+// ─── Il ritorno indietro e il ritorno in avanti (RUNBOOK §10.22) ─────
+
+test("il ritorno indietro: via la campanella nuova, «superate» le proposte aperte delle risposte e delle cose imparate; due volte non cambia niente", opts, async () => {
+  await clearMemory();
+  const answers = await insertSource({ kind: "risposta", origin: "rispondi", externalId: randomUUID() });
+  const learned = await insertSource({ origin: "cli", externalId: `impara:${randomUUID()}` });
+  const notes = await insertSource();
+  const proposal = async (sourceId: string) => {
+    const id = randomUUID();
+    await q(
+      `INSERT INTO context_proposals (id, workspace_id, source_id, position, kind, statement, basis, section, visibility, use_case_ids)
+       VALUES ($1::uuid, $2::uuid, $3::uuid, 1, 'nuovo', 'Una proposta di prova.', 'detto', 'sistemi', 'ls', '{}'::uuid[])`,
+      [id, ids.wsA, sourceId],
+    );
+    return id;
+  };
+  const fromAnswers = await proposal(answers);
+  const fromLearning = await proposal(learned);
+  const fromNotes = await proposal(notes);
+  await q(`INSERT INTO use_case_notifications (workspace_id, use_case_id, recipient_user_id, kind, rome_day) VALUES ($1::uuid, $2::uuid, $3::uuid, 'contesto_nuovo', CURRENT_DATE), ($1::uuid, $2::uuid, $3::uuid, 'dalla_call', CURRENT_DATE)`, [
+    ids.wsA,
+    ids.ucA,
+    ids.dev,
+  ]);
+  const sweep = async () => {
+    for (const statement of ddl.CONTEXT_WORK_ROLLBACK_SWEEP_STATEMENTS) await q(statement);
+  };
+  const state = async () => ({
+    proposals: Object.fromEntries((await q(`SELECT id, status, version, decided_at IS NOT NULL AS decided FROM context_proposals WHERE workspace_id = $1::uuid`, [ids.wsA])).map((r) => [String(r.id), [r.status, r.version, r.decided]])),
+    bells: Number((await q(`SELECT count(*)::int AS n FROM use_case_notifications WHERE workspace_id = $1::uuid`, [ids.wsA]))[0]?.n),
+  });
+  await sweep();
+  const once = await state();
+  assert.deepEqual(once.proposals, { [fromAnswers]: ["superata", 2, true], [fromLearning]: ["superata", 2, true], [fromNotes]: ["aperta", 1, false] }, "gli appunti restano da confermare");
+  assert.equal(once.bells, 0);
+  // Subito dopo il Promote si ripete: non cambia niente.
+  await sweep();
+  assert.deepEqual(await state(), once);
+});
+
+test("il ritorno in avanti: le citazioni nate dalle risposte di una richiesta cancellata dal codice di prima diventano nulle, la fonte non si legge più; due volte non cambia niente", opts, async () => {
+  await clearMemory();
+  const contact = randomUUID();
+  await q(`INSERT INTO uc_contacts (id, workspace_id, display_name, email) VALUES ($1::uuid, $2::uuid, 'Persona referente', $3)`, [contact, ids.wsA, `referente-${suffix}@cliente.test`]);
+  const purged = randomUUID();
+  const live = randomUUID();
+  await q(
+    `INSERT INTO use_case_referent_requests (id, workspace_id, use_case_id, contact_id, requester_name, status, expires_at, completed_at, purged_at)
+     VALUES ($1::uuid, $3::uuid, $4::uuid, $5::uuid, 'Il team', 'completata', now() + interval '30 days', now(), now()),
+            ($2::uuid, $3::uuid, $4::uuid, $5::uuid, 'Il team', 'completata', now() + interval '30 days', now(), NULL)`,
+    [purged, live, ids.wsA, ids.ucA, contact],
+  );
+  // Le fonti delle due richieste; quella cancellata con il codice di prima ha ancora le citazioni e niente `text_purged_at`.
+  const gone = await insertSource({ kind: "risposta", origin: "rispondi", externalId: purged });
+  const kept = await insertSource({ kind: "risposta", origin: "rispondi", externalId: live });
+  await q(`UPDATE context_sources SET read_status = 'non_letto', read_reason = 'vuoto' WHERE id = $1::uuid`, [kept]);
+  const fact = await insertFact({ statement: "Gli ordini arrivano via e-mail.", sourceId: gone, quote: "arrivano per e-mail" });
+  const keptFact = await insertFact({ statement: "Le fatture si esportano in CSV.", sourceId: kept, quote: "esportiamo in CSV" });
+  const open = randomUUID();
+  const decided = randomUUID();
+  await q(
+    `INSERT INTO context_proposals (id, workspace_id, source_id, position, kind, statement, quote, basis, section, visibility, use_case_ids, status, decided_at)
+     VALUES ($1::uuid, $3::uuid, $4::uuid, 1, 'nuovo', 'Gli ordini arrivano anche per PEC.', 'anche la PEC', 'detto', 'lavoro', 'ls', '{}'::uuid[], 'aperta', NULL),
+            ($2::uuid, $3::uuid, $4::uuid, 2, 'nuovo', 'Gli ordini arrivano via e-mail.', 'arrivano per e-mail', 'detto', 'lavoro', 'ls', '{}'::uuid[], 'confermata', now())`,
+    [open, decided, ids.wsA, gone],
+  );
+  await q(`INSERT INTO context_commitments (workspace_id, statement, party, visibility, origin, source_id, quote) VALUES ($1::uuid, 'Inviare l''elenco degli ordini', 'cliente', 'ls', 'fonte', $2::uuid, 'vi mando l''elenco')`, [ids.wsA, gone]);
+  await q(`INSERT INTO context_questions (workspace_id, question, visibility, origin, source_id, quote) VALUES ($1::uuid, 'Chi approva gli ordini?', 'ls', 'fonte', $2::uuid, 'chi li approva?')`, [ids.wsA, gone]);
+
+  const forward = async () => {
+    for (const statement of ddl.CONTEXT_WORK_ROLL_FORWARD_STATEMENTS) await q(statement);
+  };
+  const quotes = async () => ({
+    facts: (await q(`SELECT id, quote FROM context_facts WHERE workspace_id = $1::uuid ORDER BY statement`, [ids.wsA])).map((r) => [r.id, r.quote]),
+    proposals: (await q(`SELECT id, status, quote FROM context_proposals WHERE workspace_id = $1::uuid ORDER BY position`, [ids.wsA])).map((r) => [r.id, r.status, r.quote]),
+    commitments: (await q(`SELECT quote FROM context_commitments WHERE workspace_id = $1::uuid`, [ids.wsA])).map((r) => r.quote),
+    questions: (await q(`SELECT quote FROM context_questions WHERE workspace_id = $1::uuid`, [ids.wsA])).map((r) => r.quote),
+    sources: (await q(`SELECT id, text_purged_at IS NOT NULL AS purged, read_status FROM context_sources WHERE workspace_id = $1::uuid AND origin = 'rispondi' ORDER BY id`, [ids.wsA])).map((r) => [r.id, r.purged, r.read_status]),
+    events: Number((await q(`SELECT count(*)::int AS n FROM context_events WHERE workspace_id = $1::uuid AND action = 'testo_cancellato' AND source_id = $2::uuid`, [ids.wsA, gone]))[0]?.n),
+  });
+  await forward();
+  const once = await quotes();
+  assert.deepEqual(once.facts, [
+    [fact, null],
+    [keptFact, "esportiamo in CSV"],
+  ], "il fatto resta, senza la citazione; quello di una richiesta viva la tiene");
+  assert.deepEqual(once.proposals, [
+    [open, "superata", null],
+    [decided, "confermata", null],
+  ]);
+  assert.deepEqual([once.commitments, once.questions], [[null], [null]]);
+  assert.deepEqual(once.sources.sort(), [
+    [gone, true, "letto"],
+    [kept, false, "da_leggere"],
+  ].sort(), "la fonte cancellata non si legge più; quella letta vuota torna da leggere");
+  assert.equal(once.events, 1);
+  await forward();
+  assert.deepEqual(await quotes(), once, "una seconda volta non cambia niente");
+  await q(`DELETE FROM use_case_referent_requests WHERE id = ANY($1::uuid[])`, [[purged, live]]);
+  await q(`DELETE FROM uc_contacts WHERE id = $1::uuid`, [contact]);
+});
+
 // ─── Le letture: i prompt ────────────────────────────────────────────
 
 test("loadPromptContext: con l'ok il blocco con «In breve» e i fatti «Per tutti» del profilo; senza l'ok niente", opts, async () => {

@@ -764,12 +764,32 @@ Progetto: `docs/contesto/RILASCIO-9-CONTESTO.md` (la riga 9b del §13). Piano di
 
 **Ritorno indietro:**
 
-1. Prima del Promote: `DELETE FROM use_case_notifications WHERE kind IN ('contesto_nuovo', 'dalla_call');` (`CONTEXT_WORK_ROLLBACK_SWEEP_SQL`): il codice di prima mostrerebbe righe senza testo nella campanella.
+1. Prima del Promote: `CONTEXT_WORK_ROLLBACK_SWEEP_SQL` (in `src/lib/db/context-work-ddl.ts`), idempotente:
+
+   ```sql
+   DELETE FROM use_case_notifications WHERE kind IN ('contesto_nuovo', 'dalla_call');
+   UPDATE context_proposals p SET status = 'superata', decided_at = now(), updated_at = now(), version = p.version + 1 FROM context_sources s WHERE s.id = p.source_id AND s.workspace_id = p.workspace_id AND p.status = 'aperta' AND (s.kind = 'risposta' OR (s.origin = 'cli' AND s.external_id LIKE 'impara:%'));
+   ```
+
+   La prima riga toglie dalla campanella `contesto_nuovo` e `dalla_call`: il codice di prima li mostrerebbe senza testo. La seconda fa «superate» le proposte aperte delle risposte del referente e delle cose imparate (`impara:`): il codice di prima conta come fonte del cliente solo un documento (`isClientSource`) e in «Da confermare» le mostrerebbe già spuntate, come appunti di Lateral Space. Non tornano: una risposta cambiata dopo rimette la sua fonte da leggere, una cosa imparata si ripete con `unbundle impara`.
 2. Promote del deploy di prima, un passo su Vercel.
-3. Che cosa resta: la tabella, gli indici e i CHECK della 0041 (il codice di prima li ignora); i fatti segnati «da verificare» (il codice di prima mostra il segno e «Ancora vero» lo toglie); i pacchetti con `CONTESTO.md` (il codice di prima mostra i tre file e alla versione dopo li rifà senza); le cancellazioni di «Cerca una persona» (non si tornano indietro, per scelta).
-4. Le fonti delle risposte del referente: il codice di prima le mostra in «Appunti» senza etichetta d'origine e, leggendole senza testo, le segna «non letto». Al ritorno in avanti: `UPDATE context_sources SET read_status = 'da_leggere', read_reason = NULL, read_attempts = 0 WHERE origin = 'rispondi' AND read_reason = 'vuoto' AND text_purged_at IS NULL;` (`CONTEXT_WORK_ROLL_FORWARD_SQL`).
-5. I referenti che hanno accettato l'informativa `ucq-2026-11-3` rivedono il riquadro «Prima di iniziare» con il codice di prima, e di nuovo al ritorno in avanti.
-6. La CLI 1.6.0 resta: i comandi nuovi rispondono che Unbundle non li ha ancora.
+3. Subito dopo il Promote, di nuovo `CONTEXT_WORK_ROLLBACK_SWEEP_SQL`: fino a che il Promote non è attivo il deploy nuovo continua a scrivere campanelle e proposte. Una seconda volta non cambia niente.
+4. Che cosa resta: la tabella, gli indici e i CHECK della 0041 (il codice di prima li ignora); i fatti segnati «da verificare» (il codice di prima mostra il segno e «Ancora vero» lo toglie); i pacchetti con `CONTESTO.md` (il codice di prima mostra i tre file e alla versione dopo li rifà senza); le cancellazioni di «Cerca una persona» (non si tornano indietro, per scelta).
+5. Le fonti delle risposte del referente: il codice di prima le mostra in «Appunti» senza etichetta d'origine e, leggendole senza testo, le segna «non letto». E con il codice di prima «Cancella i dati di questa persona» e la conservazione dei 12 mesi non toccano «Contesto»: le citazioni nate dalle risposte di una richiesta cancellata restano. Al ritorno in avanti (subito dopo il deploy nuovo): `CONTEXT_WORK_ROLL_FORWARD_SQL`, idempotente, nell'ordine:
+
+   ```sql
+   WITH purged AS (UPDATE context_sources s SET text_purged_at = now(), read_started_at = NULL, updated_at = now(), version = s.version + 1, read_status = CASE WHEN s.read_status IN ('da_leggere', 'in_lettura') THEN 'non_letto' ELSE s.read_status END, read_reason = CASE WHEN s.read_status IN ('da_leggere', 'in_lettura') THEN 'vuoto' ELSE s.read_reason END WHERE s.text_purged_at IS NULL AND s.id IN (SELECT s.id FROM context_sources s JOIN use_case_referent_requests r ON r.workspace_id = s.workspace_id AND r.id::text = s.external_id WHERE s.origin = 'rispondi' AND s.kind = 'risposta' AND r.purged_at IS NOT NULL) RETURNING s.id, s.workspace_id) INSERT INTO context_events (workspace_id, action, channel, source_id) SELECT workspace_id, 'testo_cancellato', 'rispondi', id FROM purged;
+   UPDATE context_proposals p SET status = 'superata', decided_at = now(), quote = NULL, updated_at = now(), version = p.version + 1 WHERE p.status = 'aperta' AND p.source_id IN (SELECT s.id FROM context_sources s JOIN use_case_referent_requests r ON r.workspace_id = s.workspace_id AND r.id::text = s.external_id WHERE s.origin = 'rispondi' AND s.kind = 'risposta' AND r.purged_at IS NOT NULL);
+   UPDATE context_proposals x SET quote = NULL WHERE x.quote IS NOT NULL AND x.source_id IN (SELECT s.id FROM context_sources s JOIN use_case_referent_requests r ON r.workspace_id = s.workspace_id AND r.id::text = s.external_id WHERE s.origin = 'rispondi' AND s.kind = 'risposta' AND r.purged_at IS NOT NULL);
+   UPDATE context_facts x SET quote = NULL WHERE x.quote IS NOT NULL AND x.source_id IN (SELECT s.id FROM context_sources s JOIN use_case_referent_requests r ON r.workspace_id = s.workspace_id AND r.id::text = s.external_id WHERE s.origin = 'rispondi' AND s.kind = 'risposta' AND r.purged_at IS NOT NULL);
+   UPDATE context_commitments x SET quote = NULL WHERE x.quote IS NOT NULL AND x.source_id IN (SELECT s.id FROM context_sources s JOIN use_case_referent_requests r ON r.workspace_id = s.workspace_id AND r.id::text = s.external_id WHERE s.origin = 'rispondi' AND s.kind = 'risposta' AND r.purged_at IS NOT NULL);
+   UPDATE context_questions x SET quote = NULL WHERE x.quote IS NOT NULL AND x.source_id IN (SELECT s.id FROM context_sources s JOIN use_case_referent_requests r ON r.workspace_id = s.workspace_id AND r.id::text = s.external_id WHERE s.origin = 'rispondi' AND s.kind = 'risposta' AND r.purged_at IS NOT NULL);
+   UPDATE context_sources SET read_status = 'da_leggere', read_reason = NULL, read_attempts = 0 WHERE origin = 'rispondi' AND read_reason = 'vuoto' AND text_purged_at IS NULL;
+   ```
+
+   Le prime sei righe fanno quello che fa la cancellazione del codice nuovo per ogni richiesta con `purged_at`: la sua fonte non si legge più (`text_purged_at`, con la riga «testo cancellato» nella storia), le proposte aperte diventano «superate», le citazioni di proposte, fatti, impegni e domande nati da lei diventano nulle (i fatti restano: non hanno nomi). L'ultima rimette da leggere le fonti che il codice di prima ha letto vuote.
+6. I referenti che hanno accettato l'informativa `ucq-2026-11-3` rivedono il riquadro «Prima di iniziare» con il codice di prima, e di nuovo al ritorno in avanti.
+7. La CLI 1.6.0 resta: i comandi nuovi rispondono che Unbundle non li ha ancora.
 
 **Dopo il deploy, a mano** (su un workspace di prova, con un account di Lateral Space e uno del cliente; «AI» vuol dire che serve il credito del modello e l'ok del titolare):
 

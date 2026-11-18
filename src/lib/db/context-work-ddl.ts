@@ -128,20 +128,48 @@ END $$;`,
   notificationKindsWideningDdl(USE_CASE_NOTIFICATION_KINDS_0041),
 ]);
 
-// ─── Pulizia (RUNBOOK §10.22, ritorno indietro) ──────────────────────
+// ─── Pulizia (RUNBOOK §10.22, ritorno indietro e ritorno in avanti) ──
+
+/** Il prefisso dell'`external_id` di una cosa imparata costruendo (`LEARNED_SOURCE_PREFIX` di `context/vocab.ts`). */
+const LEARNED_PREFIX = "impara:";
 
 /**
- * Prima di tornare al deploy di prima: il codice di prima non conosce `contesto_nuovo` e `dalla_call` e li mostrerebbe
- * senza testo nella campanella. Idempotente; sul codice nuovo non serve.
+ * Il ritorno indietro, statement per statement: prima del Promote e di nuovo subito dopo (fino a che il Promote non è
+ * attivo il deploy nuovo continua a scrivere). Idempotenti; sul codice nuovo non servono.
+ * 1. La campanella: il codice di prima non conosce `contesto_nuovo` e `dalla_call` e li mostrerebbe senza testo.
+ * 2. Le proposte aperte delle risposte del referente (`risposta`) e delle cose imparate (`impara:`) diventano «superate»:
+ *    il codice di prima conta come fonte del cliente solo un documento (`isClientSource`) e in «Da confermare» le
+ *    mostrerebbe già spuntate, come appunti di Lateral Space.
  */
-export const CONTEXT_WORK_ROLLBACK_SWEEP_SQL = `DELETE FROM use_case_notifications WHERE kind IN (${quoted(CONTEXT_WORK_NOTICE_KINDS)});`;
+export const CONTEXT_WORK_ROLLBACK_SWEEP_STATEMENTS: readonly string[] = Object.freeze([
+  `DELETE FROM use_case_notifications WHERE kind IN (${quoted(CONTEXT_WORK_NOTICE_KINDS)});`,
+  `UPDATE context_proposals p SET status = 'superata', decided_at = now(), updated_at = now(), version = p.version + 1 FROM context_sources s WHERE s.id = p.source_id AND s.workspace_id = p.workspace_id AND p.status = 'aperta' AND (s.kind = 'risposta' OR (s.origin = 'cli' AND s.external_id LIKE '${LEARNED_PREFIX}%'));`,
+]);
+/** Gli stessi statement in un testo solo, da incollare in `psql` (RUNBOOK §10.22). */
+export const CONTEXT_WORK_ROLLBACK_SWEEP_SQL = CONTEXT_WORK_ROLLBACK_SWEEP_STATEMENTS.join("\n");
+
+/** Le fonti delle risposte di una richiesta cancellata (conservazione dei 12 mesi o «Cancella i dati di questa persona»). */
+const PURGED_ANSWER_SOURCES =
+  "SELECT s.id FROM context_sources s JOIN use_case_referent_requests r ON r.workspace_id = s.workspace_id AND r.id::text = s.external_id WHERE s.origin = 'rispondi' AND s.kind = 'risposta' AND r.purged_at IS NOT NULL";
 
 /**
- * Al ritorno in avanti: le fonti delle risposte del referente che il codice di prima ha letto senza testo (`vuoto`)
- * tornano da leggere. Idempotente.
+ * Il ritorno in avanti, statement per statement e nell'ordine. Idempotenti.
+ * 1-6. Con il codice di prima «Cancella i dati di questa persona» e la conservazione dei 12 mesi non toccano «Contesto»:
+ *    la fonte delle risposte di una richiesta cancellata (`purged_at`) prende `text_purged_at` (con la riga di storia),
+ *    le sue proposte aperte diventano «superate», e le citazioni (`quote`) delle proposte, dei fatti, degli impegni e delle
+ *    domande nati da lei diventano nulle, come fa il codice nuovo (`referentSourcesEraseStatements`). I fatti restano.
+ * 7. Le fonti delle risposte che il codice di prima ha letto senza testo (`vuoto`) tornano da leggere.
  */
-export const CONTEXT_WORK_ROLL_FORWARD_SQL =
-  "UPDATE context_sources SET read_status = 'da_leggere', read_reason = NULL, read_attempts = 0 WHERE origin = 'rispondi' AND read_reason = 'vuoto' AND text_purged_at IS NULL;";
+export const CONTEXT_WORK_ROLL_FORWARD_STATEMENTS: readonly string[] = Object.freeze([
+  `WITH purged AS (UPDATE context_sources s SET text_purged_at = now(), read_started_at = NULL, updated_at = now(), version = s.version + 1, read_status = CASE WHEN s.read_status IN ('da_leggere', 'in_lettura') THEN 'non_letto' ELSE s.read_status END, read_reason = CASE WHEN s.read_status IN ('da_leggere', 'in_lettura') THEN 'vuoto' ELSE s.read_reason END WHERE s.text_purged_at IS NULL AND s.id IN (${PURGED_ANSWER_SOURCES}) RETURNING s.id, s.workspace_id) INSERT INTO context_events (workspace_id, action, channel, source_id) SELECT workspace_id, 'testo_cancellato', 'rispondi', id FROM purged;`,
+  `UPDATE context_proposals p SET status = 'superata', decided_at = now(), quote = NULL, updated_at = now(), version = p.version + 1 WHERE p.status = 'aperta' AND p.source_id IN (${PURGED_ANSWER_SOURCES});`,
+  ...["context_proposals", "context_facts", "context_commitments", "context_questions"].map(
+    (table) => `UPDATE ${table} x SET quote = NULL WHERE x.quote IS NOT NULL AND x.source_id IN (${PURGED_ANSWER_SOURCES});`,
+  ),
+  "UPDATE context_sources SET read_status = 'da_leggere', read_reason = NULL, read_attempts = 0 WHERE origin = 'rispondi' AND read_reason = 'vuoto' AND text_purged_at IS NULL;",
+]);
+/** Gli stessi statement in un testo solo, da incollare in `psql` dopo il ritorno in avanti (RUNBOOK §10.22). */
+export const CONTEXT_WORK_ROLL_FORWARD_SQL = CONTEXT_WORK_ROLL_FORWARD_STATEMENTS.join("\n");
 
 // ─── Sonda ───────────────────────────────────────────────────────────
 

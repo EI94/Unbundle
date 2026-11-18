@@ -11,7 +11,9 @@ import {
   CONTEXT_WORK_NOTICE_KINDS,
   CONTEXT_WORK_PROBE_SQL,
   CONTEXT_WORK_ROLL_FORWARD_SQL,
+  CONTEXT_WORK_ROLL_FORWARD_STATEMENTS,
   CONTEXT_WORK_ROLLBACK_SWEEP_SQL,
+  CONTEXT_WORK_ROLLBACK_SWEEP_STATEMENTS,
   CONTEXT_WORK_TABLE,
   CONTEXT_WORK_WIDENED_CHECKS,
   MISSING_CONTEXT_FOR_WORK_MESSAGE,
@@ -20,7 +22,7 @@ import {
 } from "./context-work-ddl.ts";
 import { ALERTS_ADVISORY_LOCK, notificationKindsWideningDdl } from "./use-case-hub-alerts-ddl.ts";
 import { USE_CASE_NOTIFICATION_KINDS_0036 } from "./use-case-hub-evals-ddl.ts";
-import { CONTEXT_CHANNELS, NEED_LINK_STATUSES, SOURCE_KINDS, SOURCE_ORIGINS } from "../context/vocab.ts";
+import { CONTEXT_CHANNELS, LEARNED_SOURCE_PREFIX, NEED_LINK_STATUSES, SOURCE_KINDS, SOURCE_ORIGINS } from "../context/vocab.ts";
 import * as schema from "./schema.ts";
 
 // Migrazione 0041 e self-heal: «Contesto nel lavoro» (rilascio 9b, docs/contesto/RILASCIO-9b-COSTRUZIONE.md §3). Le
@@ -161,11 +163,32 @@ test("la campanella: i tipi della 0036 più contesto_nuovo e dalla_call, entro 1
   // Il lock della 0025 è il penultimo, l'allargamento della campanella l'ultimo: lo stesso blocco della 0025.
   assert.equal(CONTEXT_WORK_DDL[CONTEXT_WORK_DDL.length - 2], `SELECT pg_advisory_xact_lock(hashtext('${ALERTS_ADVISORY_LOCK}'));`);
   assert.equal(CONTEXT_WORK_DDL[CONTEXT_WORK_DDL.length - 1], notificationKindsWideningDdl(USE_CASE_NOTIFICATION_KINDS_0041));
-  assert.equal(CONTEXT_WORK_ROLLBACK_SWEEP_SQL, "DELETE FROM use_case_notifications WHERE kind IN ('contesto_nuovo', 'dalla_call');");
-  assert.equal(
-    CONTEXT_WORK_ROLL_FORWARD_SQL,
-    "UPDATE context_sources SET read_status = 'da_leggere', read_reason = NULL, read_attempts = 0 WHERE origin = 'rispondi' AND read_reason = 'vuoto' AND text_purged_at IS NULL;",
-  );
+});
+
+test("il ritorno indietro: la campanella nuova via, e «superate» le proposte aperte delle risposte e delle cose imparate; idempotente", () => {
+  assert.equal(CONTEXT_WORK_ROLLBACK_SWEEP_SQL, CONTEXT_WORK_ROLLBACK_SWEEP_STATEMENTS.join("\n"), "un testo solo da incollare");
+  assert.deepEqual(CONTEXT_WORK_ROLLBACK_SWEEP_STATEMENTS, [
+    "DELETE FROM use_case_notifications WHERE kind IN ('contesto_nuovo', 'dalla_call');",
+    "UPDATE context_proposals p SET status = 'superata', decided_at = now(), updated_at = now(), version = p.version + 1 FROM context_sources s WHERE s.id = p.source_id AND s.workspace_id = p.workspace_id AND p.status = 'aperta' AND (s.kind = 'risposta' OR (s.origin = 'cli' AND s.external_id LIKE 'impara:%'));",
+  ]);
+  // Il prefisso delle cose imparate è quello del vocabolario; solo le proposte aperte (una seconda volta non cambia niente).
+  assert.ok(CONTEXT_WORK_ROLLBACK_SWEEP_SQL.includes(`s.external_id LIKE '${LEARNED_SOURCE_PREFIX}%'`));
+  for (const statement of CONTEXT_WORK_ROLLBACK_SWEEP_STATEMENTS) assert.doesNotMatch(statement, /\b(DROP|TRUNCATE|ALTER)\b/, statement);
+});
+
+test("il ritorno in avanti: prima le citazioni delle risposte di una richiesta cancellata dal codice di prima, poi le fonti lette vuote", () => {
+  assert.equal(CONTEXT_WORK_ROLL_FORWARD_SQL, CONTEXT_WORK_ROLL_FORWARD_STATEMENTS.join("\n"));
+  const [purge, proposals, ...rest] = CONTEXT_WORK_ROLL_FORWARD_STATEMENTS;
+  const purged = "SELECT s.id FROM context_sources s JOIN use_case_referent_requests r ON r.workspace_id = s.workspace_id AND r.id::text = s.external_id WHERE s.origin = 'rispondi' AND s.kind = 'risposta' AND r.purged_at IS NOT NULL";
+  // La fonte non si legge più (con la riga di storia, come la cancellazione del codice nuovo), solo una volta.
+  assert.match(purge, /^WITH purged AS \(UPDATE context_sources s SET text_purged_at = now\(\), /);
+  assert.ok(purge.includes(`WHERE s.text_purged_at IS NULL AND s.id IN (${purged}) RETURNING s.id, s.workspace_id)`));
+  assert.ok(purge.endsWith("INSERT INTO context_events (workspace_id, action, channel, source_id) SELECT workspace_id, 'testo_cancellato', 'rispondi', id FROM purged;"));
+  assert.equal(proposals, `UPDATE context_proposals p SET status = 'superata', decided_at = now(), quote = NULL, updated_at = now(), version = p.version + 1 WHERE p.status = 'aperta' AND p.source_id IN (${purged});`);
+  assert.deepEqual(rest.slice(0, 4), ["context_proposals", "context_facts", "context_commitments", "context_questions"].map((table) => `UPDATE ${table} x SET quote = NULL WHERE x.quote IS NOT NULL AND x.source_id IN (${purged});`));
+  // Per ultimo, le fonti lette vuote dal codice di prima tornano da leggere: non quelle cancellate qui sopra.
+  assert.deepEqual(rest.slice(4), ["UPDATE context_sources SET read_status = 'da_leggere', read_reason = NULL, read_attempts = 0 WHERE origin = 'rispondi' AND read_reason = 'vuoto' AND text_purged_at IS NULL;"]);
+  for (const statement of CONTEXT_WORK_ROLL_FORWARD_STATEMENTS) assert.doesNotMatch(statement, /\b(DELETE|DROP|TRUNCATE|ALTER)\b/, statement);
 });
 
 test("context_need_links: le colonne e i CHECK del piano; si cancella con il workspace, con l'esigenza e con il fatto", () => {
@@ -262,8 +285,14 @@ test("RUNBOOK §10.22: la 0041 la applica l'app, a mano solo di riserva, il rito
   assert.match(section, /`migrazione0041: true`/);
   assert.match(section, /Mai drizzle-kit, mai `db:push`/);
   assert.match(section, /\*\*Ritorno indietro:\*\*/);
-  assert.ok(section.includes(CONTEXT_WORK_ROLLBACK_SWEEP_SQL), "la pulizia della campanella, prima del Promote");
-  assert.ok(section.includes(CONTEXT_WORK_ROLL_FORWARD_SQL), "le fonti delle risposte al ritorno in avanti");
+  // Gli statement nei blocchi di codice del RUNBOOK (rientrati nella lista), uno per riga, uguali a quelli del modulo.
+  for (const statement of CONTEXT_WORK_ROLLBACK_SWEEP_STATEMENTS) assert.ok(section.includes(`\n   ${statement}\n`), statement);
+  const back = section.slice(section.indexOf("**Ritorno indietro:**"), section.indexOf("**Dopo il deploy, a mano**"));
+  assert.match(back, /1\. Prima del Promote: `CONTEXT_WORK_ROLLBACK_SWEEP_SQL`/);
+  assert.match(back, /3\. Subito dopo il Promote, di nuovo `CONTEXT_WORK_ROLLBACK_SWEEP_SQL`/);
+  assert.match(back, /isClientSource/, "dice perché le proposte delle risposte e delle cose imparate diventano «superate»");
+  for (const statement of CONTEXT_WORK_ROLL_FORWARD_STATEMENTS) assert.ok(section.includes(`\n   ${statement}\n`), statement);
+  assert.match(back, /Al ritorno in avanti \(subito dopo il deploy nuovo\): `CONTEXT_WORK_ROLL_FORWARD_SQL`/);
   assert.ok(section.includes(`\`${CONTEXT_WORK_TABLE}\``));
   // Il numero del codice e quello del documento sono lo stesso.
   assert.equal(Number(ensureSchema.match(/const ENSURE_VERSION = (\d+);/)?.[1]), 35);
