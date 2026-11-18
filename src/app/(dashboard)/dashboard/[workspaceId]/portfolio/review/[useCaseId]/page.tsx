@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ReviewForm } from "@/components/portfolio/review-form";
+import { PAGE_TITLE_CLASS, PageContainer } from "@/components/dashboard/page-container";
 
 const kindLabels: Record<string, string> = {
   best_practice: "Best Practice",
@@ -77,13 +78,13 @@ export default async function PortfolioReviewPage({
     );
     if (!item) notFound();
     return (
-      <div className="mx-auto w-full max-w-2xl flex-1 space-y-6 p-6 lg:p-8">
+      <PageContainer size="narrow" className="space-y-6">
         <Link href={`/dashboard/${workspaceId}/portfolio`} className="text-sm text-muted-foreground hover:text-foreground">
           ‹ Raccolta & Ranking
         </Link>
         <div className="space-y-2">
           {item.own && item.code && <div className="font-mono text-sm text-muted-foreground">{item.code}</div>}
-          <h1 className="text-2xl font-bold tracking-tight break-words">{item.title}</h1>
+          <h1 className={`${PAGE_TITLE_CLASS} break-words`}>{item.title}</h1>
           <Badge variant="outline">{item.phaseLabel}</Badge>
         </div>
         {item.own && item.publicNote && (
@@ -96,18 +97,18 @@ export default async function PortfolioReviewPage({
             </CardContent>
           </Card>
         )}
-      </div>
+      </PageContainer>
     );
   }
 
   const esgEnabled = workspace.esgEnabled === true;
 
   return (
-    <div className="flex-1 p-6 lg:p-8 space-y-6">
+    <PageContainer className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-2xl font-bold tracking-tight">{useCase.title}</h1>
+            <h1 className={PAGE_TITLE_CLASS}>{useCase.title}</h1>
             <Badge variant="secondary" className="text-xs">
               {kindLabels[useCase.portfolioKind!] ?? useCase.portfolioKind}
             </Badge>
@@ -225,6 +226,6 @@ export default async function PortfolioReviewPage({
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageContainer>
   );
 }

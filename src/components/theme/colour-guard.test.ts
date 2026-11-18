@@ -12,8 +12,9 @@ const baseline = JSON.parse(readFileSync(new URL("./colour-baseline.json", impor
 const current = census.census() as Record<string, Record<string, number>>;
 
 // Dove la variante `light:` può stare: i pochi testi sbiaditi che i token non raggiungono.
+// (Rilascio 10) La barra laterale non ne ha più bisogno: l'e-mail e la freccia sotto il nome usano il grigio dei testi
+// secondari, che sulla barra basta nei due temi.
 const LIGHT_ALLOWED = [
-  "src/components/dashboard/app-sidebar.tsx",
   "src/components/agent/chat-interface.tsx",
   // L'interruttore spento dei risultati di Learning: al 40% del grigio secondario sarebbe 2:1 sulla card chiara.
   "src/components/learning/results-toggle.tsx",

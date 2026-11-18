@@ -16,6 +16,7 @@ import {
 import { QuestionEditor } from "@/components/ai-readiness/question-editor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PAGE_TITLE_CLASS, PageContainer } from "@/components/dashboard/page-container";
 
 /**
  * Editor domande: partendo dalla base core, ogni assessment può rimuovere,
@@ -65,7 +66,7 @@ export default async function AiReadinessQuestionsPage({
   ).length;
 
   return (
-    <div className="flex-1 space-y-6 p-6 lg:p-8">
+    <PageContainer className="space-y-6">
       <div>
         <Button
           variant="ghost"
@@ -90,7 +91,7 @@ export default async function AiReadinessQuestionsPage({
           <Badge variant="outline">{scored} domande a punteggio</Badge>
         </div>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-3xl font-semibold tracking-tight">
+          <h1 className={PAGE_TITLE_CLASS}>
             Domande e anteprima
           </h1>
         </div>
@@ -208,6 +209,6 @@ export default async function AiReadinessQuestionsPage({
         editedIds={Object.keys(overrides.edited ?? {})}
         hasResponses={hasResponses}
       />
-    </div>
+    </PageContainer>
   );
 }

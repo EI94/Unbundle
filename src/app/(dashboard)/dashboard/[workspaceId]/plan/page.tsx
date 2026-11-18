@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileText, ArrowRight } from "lucide-react";
 import Link from "next/link";
+import { PAGE_TITLE_CLASS, PageContainer } from "@/components/dashboard/page-container";
 
 const categoryLabels: Record<string, string> = {
   quick_win: "Quick Win",
@@ -86,9 +87,9 @@ export default async function PlanPage({
   if (!canReviewWorkspacePortfolio(access.role)) {
     const items = await contributorItems(workspaceId, session.user, useCases);
     return (
-      <div className="flex-1 p-6 lg:p-8">
+      <PageContainer size="wide">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold tracking-tight">Unbundle Plan</h1>
+          <h1 className={PAGE_TITLE_CLASS}>Unbundle Plan</h1>
           <p className="mt-1 text-muted-foreground">
             Gli use case del workspace e a che punto sono.
           </p>
@@ -117,7 +118,7 @@ export default async function PlanPage({
             </CardContent>
           </Card>
         )}
-      </div>
+      </PageContainer>
     );
   }
   const sorted = [...useCases].sort(
@@ -151,9 +152,9 @@ export default async function PlanPage({
   ];
 
   return (
-    <div className="flex-1 p-6 lg:p-8">
+    <PageContainer size="wide">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight">Unbundle Plan</h1>
+        <h1 className={PAGE_TITLE_CLASS}>Unbundle Plan</h1>
         <p className="mt-1 text-muted-foreground">
           Piano operativo di trasformazione con sequencing a 6 mesi
         </p>
@@ -249,6 +250,6 @@ export default async function PlanPage({
           </TabsContent>
         </Tabs>
       )}
-    </div>
+    </PageContainer>
   );
 }

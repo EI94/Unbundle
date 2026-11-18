@@ -3,6 +3,7 @@ import { getBellState, type BellState } from "@/lib/db/queries/bell-state";
 import { getSignalsForBell } from "@/lib/db/queries/signals";
 import { isUcEnabledFor } from "@/lib/db/queries/uc-access";
 import { listUseCaseBellRows } from "@/lib/db/queries/use-case-notifications";
+import { referentEmailChoice } from "@/lib/shell/account";
 import { referentAskEnabled } from "@/lib/use-cases/referent/availability";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import {
@@ -86,7 +87,8 @@ export async function loadBellPayload(i: {
     dossier,
     useCase,
     seenAt: state.seenAt,
-    emailAlerts: { shown: i.useCaseHub && reviewer && referentAskEnabled(i.workspaceId, env) && state.hasRequested, on: state.referentEmails },
+    // (Rilascio 10) La scelta sta nel foglio «Il tuo account»: la stessa regola, in un posto solo.
+    emailAlerts: referentEmailChoice({ useCaseHub: i.useCaseHub, reviewer, askEnabled: referentAskEnabled(i.workspaceId, env), hasRequested: state.hasRequested, on: state.referentEmails }),
     now,
   });
 }

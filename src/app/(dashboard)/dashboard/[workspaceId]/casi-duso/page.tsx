@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { PageContainer } from "@/components/dashboard/page-container";
+import { PAGE_TITLE_CLASS, PageContainer } from "@/components/dashboard/page-container";
 import { DossierCardList, DossierColumnEmpty, DossierReadOnlyNotice } from "@/components/uc/shell/case-card";
 import { SectionUnavailable } from "@/components/uc/shell/section-unavailable";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
@@ -39,7 +39,7 @@ export default async function CasesPage({ params }: { params: Promise<{ workspac
   return (
     <PageContainer>
       <div className="mb-6 min-w-0">
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Casi d&apos;uso</h1>
+        <h1 className={PAGE_TITLE_CLASS}>Casi d&apos;uso</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">I dossier in realizzazione: ognuno nasce dalla scheda di uno use case.</p>
       </div>
       {subprocessorsPending && <SubprocessorsLsNotice workspaceId={workspaceId} workspaceName={access.workspace.name} className="mb-4" />}

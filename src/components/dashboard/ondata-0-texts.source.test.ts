@@ -46,11 +46,17 @@ test("0.7 · the Agent Factory page never says «fabbrica»; the queue is «Repo
   assert.ok(page.includes("un caso entra nell&apos;Agent Factory con «Avvia la realizzazione»"));
 });
 
-test("0.8 · a Slack error is a sentence, never its key", () => {
+test("0.8 · a Slack error is a sentence, never its key", async () => {
   const page = read("src/app/(dashboard)/dashboard/page.tsx");
   assert.doesNotMatch(page, /`Slack: \$\{/);
-  assert.match(page, /const SLACK_ERR_OTHER = "Non siamo riusciti a collegare Slack\. Riprova da Impostazioni\.";/);
-  assert.match(page, /Object\.hasOwn\(SLACK_ERR, slackErrKey\) \? SLACK_ERR\[slackErrKey\] : slackErrKey \? SLACK_ERR_OTHER : ""/);
+  // (Rilascio 10) Le frasi stanno nel modulo dei testi della cornice; la pagina le chiede per chiave.
+  assert.match(page, /const slackErrMsg = slackErrorMessage\(sp\.slack_error\);/);
+  const { slackErrorMessage } = await import("../../lib/shell/workspaces.ts");
+  assert.equal(slackErrorMessage("invalid_state"), "Non siamo riusciti a collegare Slack. Riprova da Impostazioni.");
+  assert.equal(slackErrorMessage("forbidden"), "Non hai permesso di installare Slack per quel workspace.");
+  assert.equal(slackErrorMessage(""), "");
+  assert.equal(slackErrorMessage(undefined), "");
+  assert.doesNotMatch(slackErrorMessage("toString"), /toString/, "nessuna chiave, nemmeno di Object");
 });
 
 test("0.10 · the course link says what is true: kept N days after the course closes; the real name of the button", () => {

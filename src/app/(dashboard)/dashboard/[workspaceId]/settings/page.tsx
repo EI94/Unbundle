@@ -31,7 +31,7 @@ import { CliCard } from "@/components/workspace/cli-card";
 import { SubprocessorsCard } from "@/components/workspace/subprocessors-card";
 import { GranolaCard } from "@/components/context/granola/granola-card";
 import { MessageSquare, MessageCircle, CheckCircle, Leaf, Lock, AlertTriangle } from "lucide-react";
-import { PageContainer } from "@/components/dashboard/page-container";
+import { PAGE_TITLE_CLASS, PageContainer } from "@/components/dashboard/page-container";
 import { SettingsSection } from "@/components/dashboard/settings-section";
 import { DisableShareLinksButton } from "@/components/workspace/disable-share-links-button";
 import { roleLabel } from "@/lib/workspace-roles";
@@ -136,8 +136,7 @@ export default async function SettingsPage({
     <PageContainer>
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
-          <p className="truncate text-xs font-medium uppercase tracking-wide text-muted-foreground">{workspace.name}</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">Impostazioni</h1>
+          <h1 className={PAGE_TITLE_CLASS}>Impostazioni</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
             Chi ha accesso, le integrazioni e i criteri di valutazione di questo workspace.
           </p>
@@ -149,7 +148,7 @@ export default async function SettingsPage({
 
       <nav
         aria-label="Sezioni delle impostazioni"
-        className="-mx-4 mt-6 overflow-x-auto border-b px-4 sm:-mx-6 sm:px-6 md:sticky md:top-[53px] md:z-10 md:bg-background/90 md:backdrop-blur lg:-mx-8 lg:px-8"
+        className="-mx-4 mt-6 overflow-x-auto border-b px-4 sm:-mx-6 sm:px-6 md:sticky md:top-0 md:z-10 md:bg-background/90 md:backdrop-blur lg:-mx-8 lg:px-8"
       >
         <ul className="flex gap-1 py-2">
           {sections.map((section) => (

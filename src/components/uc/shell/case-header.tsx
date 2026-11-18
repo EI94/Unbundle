@@ -66,7 +66,7 @@ export function CaseHeader({ trail, overviewLinkable, title, oneLiner, status, r
       <div className="mt-1 grid min-w-0 gap-x-6 gap-y-3 sm:grid-cols-[minmax(0,1fr)_auto]">
         <div className="min-w-0">
           <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3">
-            <h1 id="uc-case-title" className="min-w-0 text-2xl font-semibold tracking-tight break-words sm:text-3xl">
+            <h1 id="uc-case-title" className="min-w-0 text-2xl font-semibold tracking-tight break-words">
               {title}
             </h1>
             <span className="flex items-center gap-2">

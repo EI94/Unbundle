@@ -5,6 +5,7 @@ import { getWorkspaceById, getStrategicGoalsByWorkspace } from "@/lib/db/queries
 import { GoalForm } from "@/components/dashboard/goal-form";
 import { SuggestOKRsButton } from "@/components/dashboard/suggest-okrs-button";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { PAGE_TITLE_CLASS, PageContainer } from "@/components/dashboard/page-container";
 
 export default async function StrategyPage({
   params,
@@ -38,12 +39,9 @@ export default async function StrategyPage({
   };
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-3xl flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
+    <PageContainer size="narrow">
       <div className="mb-8">
-        <span className="text-xs text-muted-foreground tracking-wide uppercase">
-          Strategia
-        </span>
-        <h1 className="mt-1 text-2xl font-medium tracking-tight">
+        <h1 className={PAGE_TITLE_CLASS}>
           Obiettivi & OKR
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -169,6 +167,6 @@ export default async function StrategyPage({
           })}
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

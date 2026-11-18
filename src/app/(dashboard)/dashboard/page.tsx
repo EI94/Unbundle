@@ -1,36 +1,44 @@
+import { redirect } from "next/navigation";
+import { Plus } from "lucide-react";
 import { requireSession } from "@/lib/auth/redirect-to-login";
 import { getOrganizationsByUser } from "@/lib/db/queries/organizations";
 import { getWorkspaceGroupsForUser } from "@/lib/db/queries/workspaces";
 import { CreateWorkspaceDialog } from "@/components/dashboard/create-workspace-dialog";
 import { WorkspaceCard } from "@/components/dashboard/workspace-card";
 import { DashboardListShell } from "@/components/dashboard/dashboard-list-shell";
-import { Plus } from "lucide-react";
+import { PageContainer, PageTitle } from "@/components/dashboard/page-container";
+import { ClickOnArrival } from "@/components/shell/click-on-arrival";
+import { Button } from "@/components/ui/button";
 import { CONTEXT_TEXT } from "@/lib/context/text";
+import { SHELL_TEXT } from "@/lib/shell/text";
+import { directWorkspaceId, slackErrorMessage, wantsNewWorkspace } from "@/lib/shell/workspaces";
 
-const SLACK_ERR: Record<string, string> = {
-  invalid_workspace: "Link Slack non valido. Apri Impostazioni dal workspace e riprova.",
-  forbidden: "Non hai permesso di installare Slack per quel workspace.",
-};
-/** (Ondata 0) Ogni altro motivo: una frase, mai la chiave dell'errore. */
-const SLACK_ERR_OTHER = "Non siamo riusciti a collegare Slack. Riprova da Impostazioni.";
+const T = SHELL_TEXT.picker;
 
+/**
+ * I tuoi workspace (rilascio 10, ondata 2a «Cornice», docs/ui-10/PROPOSTA-10.md §3.2): una card per workspace con il
+ * nome, il ruolo in parole e «Condiviso»; «Nuovo workspace» bordato, pieno solo quando non ce n'è nessuno. Con un solo
+ * workspace si entra diretti (D1), tranne quando si chiede l'elenco o c'è un avviso da leggere.
+ */
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ slack_error?: string; workspaceDeleted?: string; granola?: string }>;
+  searchParams?: Promise<{ slack_error?: string; workspaceDeleted?: string; granola?: string; tutti?: string; nuovo?: string }>;
 }) {
   const session = await requireSession();
 
   const sp = searchParams ? await searchParams : {};
-  const slackErrKey = sp.slack_error?.trim() ?? "";
-  const slackErrMsg = Object.hasOwn(SLACK_ERR, slackErrKey) ? SLACK_ERR[slackErrKey] : slackErrKey ? SLACK_ERR_OTHER : "";
+  const slackErrMsg = slackErrorMessage(sp.slack_error);
 
-  const userOrgs = await getOrganizationsByUser(session.user.id);
+  const [userOrgs, workspacesWithOrgs] = await Promise.all([getOrganizationsByUser(session.user.id), getWorkspaceGroupsForUser(session.user.id)]);
 
-  const workspacesWithOrgs = await getWorkspaceGroupsForUser(session.user.id);
+  const direct = directWorkspaceId(workspacesWithOrgs, sp);
+  if (direct) redirect(`/dashboard/${direct}`);
 
-  const hasWorkspaces = workspacesWithOrgs.some(
-    (o) => o.workspaces.length > 0
+  const hasWorkspaces = workspacesWithOrgs.some((o) => o.workspaces.length > 0);
+  const organizations = userOrgs.map((o) => o.organization);
+  const create = (button: React.ReactNode) => (
+    <CreateWorkspaceDialog organizations={organizations}>{wantsNewWorkspace(sp) ? <ClickOnArrival>{button}</ClickOnArrival> : button}</CreateWorkspaceDialog>
   );
 
   return (
@@ -41,83 +49,63 @@ export default async function DashboardPage({
         image: session.user.image,
       }}
     >
-      <div className="mx-auto w-full min-w-0 max-w-3xl flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
+      <PageContainer size="narrow">
         {sp.workspaceDeleted === "1" ? (
-          <div className="mb-6 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-500">
-            Workspace eliminato correttamente.
-          </div>
+          <p role="status" className="mb-6 rounded-lg border border-uc-verde/30 bg-uc-verde-bg px-4 py-3 text-sm text-uc-verde">
+            {T.deleted}
+          </p>
         ) : null}
         {sp.granola === "scaduto" ? (
           // Il ritorno da Granola con uno stato scaduto, senza un workspace da cui ripartire (rilascio 9a).
-          <div role="status" className="mb-6 rounded-lg border px-4 py-3 text-sm text-muted-foreground">
+          <p role="status" className="mb-6 rounded-lg border px-4 py-3 text-sm text-muted-foreground">
             {CONTEXT_TEXT.granola.stateExpiredSomewhere}
-          </div>
+          </p>
         ) : null}
         {slackErrMsg ? (
-          <div className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          <p role="alert" className="mb-6 rounded-lg border border-uc-giallo/30 bg-uc-giallo-bg px-4 py-3 text-sm text-uc-giallo">
             {slackErrMsg}
-          </div>
-        ) : null}
-      <div className="mb-10 flex items-center justify-between">
-        <div>
-          <span className="text-xs text-muted-foreground tracking-wide uppercase">
-            Dashboard
-          </span>
-          <h1 className="mt-1 text-2xl font-medium tracking-tight">
-            I tuoi workspace
-          </h1>
-        </div>
-        <CreateWorkspaceDialog
-          organizations={userOrgs.map((o) => o.organization)}
-        >
-          <button className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent transition-colors">
-            <Plus className="h-3.5 w-3.5" />
-            Nuovo
-          </button>
-        </CreateWorkspaceDialog>
-      </div>
-
-      {!hasWorkspaces ? (
-        <div className="mt-20 text-center max-w-md mx-auto">
-          <h2 className="text-lg font-medium">Nessun workspace</h2>
-          <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
-            Crea il tuo primo workspace per scomporre il lavoro della tua
-            organizzazione e capire dove l&apos;AI trasforma il valore.
           </p>
-          <CreateWorkspaceDialog
-            organizations={userOrgs.map((o) => o.organization)}
-          >
-            <button className="mt-6 inline-flex items-center gap-2 rounded-lg bg-foreground text-background px-4 py-2.5 text-sm font-medium hover:opacity-90 transition-opacity">
-              <Plus className="h-3.5 w-3.5" />
-              Crea workspace
-            </button>
-          </CreateWorkspaceDialog>
+        ) : null}
+
+        <div className="mb-8 flex items-center justify-between gap-4">
+          <PageTitle>{T.title}</PageTitle>
+          {hasWorkspaces
+            ? create(
+                <Button variant="outline">
+                  <Plus aria-hidden />
+                  {T.create}
+                </Button>,
+              )
+            : null}
         </div>
-      ) : (
-        <div className="space-y-8">
-          {workspacesWithOrgs.map(({ organization, workspaces }) =>
-            workspaces.length > 0 ? (
-              <div key={organization.id}>
-                <p className="text-xs text-muted-foreground mb-3 tracking-wide">
-                  {organization.name}
-                </p>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  {workspaces.map(({ workspace, accessRole, accessSource }) => (
-                    <WorkspaceCard
-                      key={workspace.id}
-                      workspace={workspace}
-                      orgSlug={organization.slug}
-                      accessRole={accessRole}
-                      accessSource={accessSource}
-                    />
-                  ))}
-                </div>
-              </div>
-            ) : null
-          )}
-        </div>
-      )}
-      </div>
+
+        {!hasWorkspaces ? (
+          <div className="mt-16 flex flex-col items-center gap-4 text-center">
+            <p className="text-sm text-muted-foreground">{T.empty}</p>
+            {create(
+              <Button>
+                <Plus aria-hidden />
+                {T.create}
+              </Button>,
+            )}
+          </div>
+        ) : (
+          <div className="space-y-8">
+            {workspacesWithOrgs.map(({ organization, workspaces }) =>
+              workspaces.length > 0 ? (
+                <section key={organization.id} aria-label={organization.name}>
+                  <p className="mb-3 text-xs text-muted-foreground">{organization.name}</p>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {workspaces.map(({ workspace, accessRole, accessSource }) => (
+                      <WorkspaceCard key={workspace.id} workspace={workspace} orgSlug={organization.slug} accessRole={accessRole} accessSource={accessSource} />
+                    ))}
+                  </div>
+                </section>
+              ) : null,
+            )}
+          </div>
+        )}
+      </PageContainer>
     </DashboardListShell>
   );
 }

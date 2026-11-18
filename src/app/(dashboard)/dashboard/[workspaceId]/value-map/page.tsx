@@ -8,6 +8,7 @@ import { GenerateValueMapButton } from "@/components/dashboard/generate-value-ma
 import { db } from "@/lib/db";
 import { valueMapNodes } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
+import { PAGE_TITLE_CLASS, PageContainer } from "@/components/dashboard/page-container";
 
 export default async function ValueMapPage({
   params,
@@ -40,12 +41,9 @@ export default async function ValueMapPage({
   const needsClassification =
     activities.length > 0 && classified.length < activities.length;
   return (
-    <div className="mx-auto w-full min-w-0 max-w-6xl flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
+    <PageContainer size="wide">
       <div className="mb-8">
-        <span className="text-xs text-muted-foreground tracking-wide uppercase">
-          Analisi
-        </span>
-        <h1 className="mt-1 text-2xl font-medium tracking-tight">Value map</h1>
+        <h1 className={PAGE_TITLE_CLASS}>Value map</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Wardley Map — valore strategico vs maturit&agrave; evolutiva
         </p>
@@ -87,6 +85,6 @@ export default async function ValueMapPage({
           )}
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

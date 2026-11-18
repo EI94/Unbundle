@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   TrendingUp,
 } from "lucide-react";
+import { PAGE_TITLE_CLASS, PageContainer } from "@/components/dashboard/page-container";
 
 export default async function IntelligencePage(props: {
   params: Promise<{ workspaceId: string }>;
@@ -44,14 +45,14 @@ export default async function IntelligencePage(props: {
   );
 
   return (
-    <div className="space-y-6 p-6">
+    <PageContainer className="space-y-6">
       <div>
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
             <Radar className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">
+            <h1 className={PAGE_TITLE_CLASS}>
               Competitive Intelligence
             </h1>
             <p className="text-sm text-muted-foreground">
@@ -129,6 +130,6 @@ export default async function IntelligencePage(props: {
         <SignalsFeed signals={signals} workspaceId={workspaceId} />
         <CompetitiveAnalysisViewer workspaceId={workspaceId} canGenerate={canReview} />
       </div>
-    </div>
+    </PageContainer>
   );
 }

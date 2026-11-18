@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { FileText, TrendingUp, Shield, Lightbulb, AlertTriangle, BarChart3 } from "lucide-react";
 import type { ReportContent } from "@/lib/ai/generate-report";
+import { PAGE_TITLE_CLASS, PageContainer } from "@/components/dashboard/page-container";
 
 export default async function ReportsPage({
   params,
@@ -32,10 +33,10 @@ export default async function ReportsPage({
   const reportContent = latestReport?.content as ReportContent | null;
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-4xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
+    <PageContainer>
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Report</h1>
+          <h1 className={PAGE_TITLE_CLASS}>Report</h1>
           <p className="mt-1 text-muted-foreground">
             Executive report e output dell&apos;analisi Unbundle
           </p>
@@ -234,6 +235,6 @@ export default async function ReportsPage({
           </Card>
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

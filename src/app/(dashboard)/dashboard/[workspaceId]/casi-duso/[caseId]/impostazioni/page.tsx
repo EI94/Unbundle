@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { Activity, FileText, ShieldAlert, Target, Users } from "lucide-react";
-import { PageContainer } from "@/components/dashboard/page-container";
+import { PAGE_TITLE_CLASS, PageContainer } from "@/components/dashboard/page-container";
 import { SettingsSection } from "@/components/dashboard/settings-section";
 import { LeverIcons } from "@/components/uc/common/lever-icons";
 import { MembersPanel } from "@/components/uc/people/members-panel";
@@ -64,7 +64,7 @@ export default async function CaseSettingsPage({ params }: { params: Promise<{ w
   return (
     <PageContainer>
       <header className="min-w-0">
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Impostazioni</h1>
+        <h1 className={PAGE_TITLE_CLASS}>Impostazioni</h1>
       </header>
 
       <div className="mt-6 space-y-6">

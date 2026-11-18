@@ -115,7 +115,7 @@ export function CaseStickyBar({ basePath, tabs, headId, title, status, progress,
   if (tabs.length === 0) return null;
   const count = progress && progress.required > 0 ? `${formatCountIt(progress.ok)}/${formatCountIt(progress.required)}` : null;
   return (
-    <div className="sticky top-[61px] z-20 h-0 md:top-[53px]">
+    <div className="sticky top-14 z-20 h-0 md:top-0">
       {visible && (
         <div className="absolute inset-x-0 top-0 border-b border-border bg-background/95 backdrop-blur">
           <div className="mx-auto flex w-full max-w-6xl min-w-0 flex-col px-4 sm:px-6 lg:flex-row lg:items-center lg:gap-4 lg:px-8">

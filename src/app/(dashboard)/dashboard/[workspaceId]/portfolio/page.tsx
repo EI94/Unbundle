@@ -23,6 +23,7 @@ import { RankingMatrix } from "@/components/portfolio/ranking-matrix";
 import { WavePlanner } from "@/components/portfolio/wave-planner";
 import { PortfolioSettingsSheet } from "@/components/portfolio/portfolio-settings-sheet";
 import { ParticipationCard } from "@/components/portfolio/participation-card";
+import { PAGE_TITLE_CLASS, PageContainer } from "@/components/dashboard/page-container";
 
 /**
  * Le proposte come le vede chi non valuta (D4 e D13, docs/use-case/DESIGN.md §11): titolo,
@@ -96,10 +97,10 @@ export default async function PortfolioPage({
   const teamName = reviewTeamName(workspace);
 
   return (
-    <div className="flex-1 p-6 lg:p-8 space-y-6">
+    <PageContainer size="wide" className="space-y-6">
       <div className="flex items-start justify-between gap-6 flex-wrap">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Raccolta & Ranking</h1>
+          <h1 className={PAGE_TITLE_CLASS}>Raccolta & Ranking</h1>
           {canReview ? (
             <p className="mt-1 text-muted-foreground max-w-2xl">
               Raccogli best practice e use case AI anche prima della discovery. Li
@@ -225,6 +226,6 @@ export default async function PortfolioPage({
       )}
 
       {participation && <ParticipationCard participation={participation} />}
-    </div>
+    </PageContainer>
   );
 }

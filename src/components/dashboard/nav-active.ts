@@ -1,15 +1,15 @@
 /**
- * Voce attiva della barra laterale (docs/use-case/DESIGN.md §2.1, D1).
+ * Voce attiva della barra laterale (docs/use-case/DESIGN.md §2.1, D1; rilascio 10, docs/ui-10/PROPOSTA-10.md §2.4).
  *
  * Ogni voce ha `match`, i segmenti sotto `/dashboard/<ws>` per cui resta accesa; il
  * predefinito è il segmento della voce stessa (`setup/leadership` per Discovery). Una voce
  * è attiva se l'indirizzo è `base/m` oppure inizia con `base/m/`, per un `m` di `match`:
- * così «Casi d'uso» resta accesa dentro un dossier e «Use case» su `/portfolio`, `/plan`
- * e `/casi-duso`. Overview, che punta alla base del workspace, è attiva solo
- * sull'indirizzo esatto. Il flag `nested` non serve più.
+ * così «Use case» resta accesa su `/portfolio`, `/plan` e `/casi-duso`, e «Contesto» su `/mapping` e `/setup`.
+ * La voce che punta alla base del workspace («Home», prima «Overview») è accesa sull'indirizzo esatto e, se ha un
+ * `match`, anche sui suoi alias (`/programma`, `/strategy`).
  *
- * Modulo puro, senza import: lo usa `app-sidebar.tsx` (componente client) e lo prova
- * `nav-active.test.ts` con `node --test`.
+ * Modulo puro, senza import: lo usano la barra laterale e il suo modello (src/components/shell/sidebar-model.ts) e lo
+ * prova `nav-active.test.ts` con `node --test`.
  */
 
 export interface NavItemMatch {
@@ -22,10 +22,19 @@ export interface NavItemMatch {
 export const USE_CASE_NAV_MATCH: readonly string[] = Object.freeze(["use-cases", "portfolio", "plan", "casi-duso"]);
 
 /**
- * I segmenti della voce «Contesto» (rilascio 9a): la pagina `/contesto` con «Da confermare» sotto, e il vecchio
- * indirizzo `/setup/context`, che reindirizza. Vale con l'area «Use case» accesa e spenta.
+ * I segmenti della voce «Contesto» della barra di prima (rilascio 9a), che vale ancora con l'area «Use case» spenta: la
+ * pagina `/contesto` con «Da confermare» sotto, e il vecchio indirizzo `/setup/context`, che reindirizza.
  */
 export const CONTEXT_NAV_MATCH: readonly string[] = Object.freeze(["contesto", "setup/context"]);
+
+/** (Rilascio 10, §2.4) «Home»: oltre all'indirizzo del workspace, il Programma e gli Obiettivi (oggi `/strategy`). */
+export const HOME_NAV_MATCH: readonly string[] = Object.freeze(["programma", "strategy"]);
+
+/** (Rilascio 10, §2.4) «Contesto»: la Memoria, i Processi (`/mapping`) e l'Intervista iniziale (`/setup`). */
+export const CONTEXT_SECTION_MATCH: readonly string[] = Object.freeze(["contesto", "mapping", "setup"]);
+
+/** (Rilascio 10, §2.4) «Persone»: AI Readiness e Formazione. */
+export const PEOPLE_NAV_MATCH: readonly string[] = Object.freeze(["ai-readiness", "learning"]);
 
 /** Senza barra finale (tranne la radice) e senza query o frammento. */
 function normalizePath(path: string): string {
@@ -52,10 +61,13 @@ export function isNavItemActive(pathname: string, basePath: string, item: NavIte
   const base = normalizePath(basePath);
   const href = normalizePath(item.href);
   const own = ownSegment(href, base);
-  // Una voce fuori dal workspace, o la base stessa (Overview): solo l'indirizzo esatto.
-  if (own === null || own === "") return path === href;
+  // Una voce fuori dal workspace: solo l'indirizzo esatto.
+  if (own === null) return path === href;
+  const prefix = base === "/" ? "" : base;
+  const under = (m: string) => path === `${prefix}/${m}` || path.startsWith(`${prefix}/${m}/`);
+  // La base stessa («Home»): l'indirizzo esatto, più gli alias del suo `match`.
+  if (own === "") return path === href || (item.match ?? []).map(trimSlashes).filter((m) => m !== "").some(under);
   const segments = (item.match ?? [own]).map(trimSlashes).filter((m) => m !== "");
   if (segments.length === 0) return path === href;
-  const prefix = base === "/" ? "" : base;
-  return segments.some((m) => path === `${prefix}/${m}` || path.startsWith(`${prefix}/${m}/`));
+  return segments.some(under);
 }

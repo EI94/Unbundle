@@ -342,7 +342,7 @@ before(async () => {
     intelligence: await page("../../app/(dashboard)/dashboard/[workspaceId]/intelligence/page.tsx"),
     share: await page("../../app/share/portfolio/[workspaceId]/[useCaseId]/page.tsx"),
   };
-  workspaceTopbar = (await import("../../components/portfolio/workspace-topbar.tsx")).WorkspaceTopbar as unknown as Topbar;
+  workspaceTopbar = (await import("../../components/portfolio/workspace-topbar.tsx")).WorkspaceBell as unknown as Topbar;
   const shareLink = await import("../portfolio/share-link.ts");
   createShareToken = (workspaceId) => shareLink.createPortfolioShareToken(workspaceId);
 
@@ -474,7 +474,7 @@ test("getUnreadSignals: stessa regola, solo i non letti", opts, async () => {
   assert.deepEqual(types(await signals.getUnreadSignals(ids.ws)), ["risk_alert"]);
 });
 
-test("campanella: la barra in alto passa alla campanella solo i segnali che il ruolo vede", opts, async () => {
+test("campanella: la cornice passa alla campanella solo i segnali che il ruolo vede", opts, async () => {
   const bell = async (role: string | null) => {
     // La campanella riceve il payload della persona (SPEC §P2.5): le righe «segnale» hanno la chiave `s:<id>`.
     const [initial] = findProp(await workspaceTopbar({ workspaceId: ids.ws, role }), "initial") as Array<{ entries: Array<{ key: string; source: string; title: string }> }>;

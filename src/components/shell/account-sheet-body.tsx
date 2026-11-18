@@ -1,0 +1,463 @@
+"use client";
+
+import { useId, useState, useTransition, type ReactNode } from "react";
+import { useTheme } from "next-themes";
+import { toast } from "sonner";
+import { Check, Copy, Monitor, Moon, Sun, type LucideIcon } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { THEME_OPTIONS, type ThemeChoice } from "@/components/theme/theme-config";
+import type { CreateTeamMcpTokenData, TeamMcpActionState } from "@/lib/actions/team-mcp-tokens";
+import { CONTEXT_TEXT } from "@/lib/context/text";
+import type { CliTokenView } from "@/lib/db/queries/use-case-cli-auth";
+import type { TeamMcpTokenView } from "@/lib/db/queries/team-mcp-tokens";
+import { accountSectionId, claudeAiHeader, claudeCodeCommand, type AccountClaude, type AccountPart, type AccountSheetData } from "@/lib/shell/account";
+import { SHELL_TEXT } from "@/lib/shell/text";
+import { cn } from "@/lib/utils";
+
+const T = SHELL_TEXT.account;
+const C = T.claude;
+const G = CONTEXT_TEXT.granola;
+
+/** Le azioni del foglio, con il workspace già dentro (le passa `AccountSheet`; nei test, finte). */
+export interface AccountActions {
+  setEmailAlerts(on: boolean): Promise<{ ok: true; on: boolean } | { ok: false; message: string }>;
+  createClaudeAccess(form: FormData): Promise<TeamMcpActionState<CreateTeamMcpTokenData>>;
+  revokeClaudeAccess(tokenId: string): Promise<{ ok: boolean; message: string }>;
+  revokeTerminalLink(tokenId: string): Promise<{ ok: boolean; message: string }>;
+  connectGranola(): Promise<{ ok: true; url: string } | { ok: false; message: string }>;
+  disconnectGranola(): Promise<{ ok: boolean; message: string }>;
+}
+
+/** Che cosa c'è da mostrare: niente da leggere (chi segue solo un corso), la lettura, un errore, i dati. */
+export type AccountSheetState = { status: "none" } | { status: "loading" } | { status: "error" } | { status: "ready"; account: AccountSheetData };
+
+const DAY = new Intl.DateTimeFormat("it-IT", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/Rome" });
+const day = (iso: string) => DAY.format(new Date(iso));
+
+const SECTION = "space-y-3 scroll-mt-4 border-t px-4 py-5 first:border-t-0";
+const H3 = "text-base font-semibold";
+
+/** Una riga della lista degli accessi: Claude (il token del MCP del team) o Terminale (la CLI). */
+export interface AccessRow {
+  kind: "claude" | "terminal";
+  id: string;
+  label: string;
+  facts: string[];
+  exposed: boolean;
+}
+
+/** Gli accessi attivi di chi guarda, in una lista sola: prima Claude, poi il terminale. */
+export function accessRows(claude: AccountClaude | null, terminal: { links: readonly CliTokenView[] } | null): AccessRow[] {
+  const claudeRows = (claude?.tokens ?? [])
+    .filter((token: TeamMcpTokenView) => token.active)
+    .map((token): AccessRow => ({
+      kind: "claude",
+      id: token.id,
+      label: token.label,
+      facts: [
+        token.readOnly ? C.readOnly : C.readWrite,
+        token.state === "in_scadenza" && token.expiresIn ? C.expiresIn(token.expiresIn) : token.expiresOn ? C.expiresOn(token.expiresOn) : null,
+        token.lastUsedOn ? C.usedOn(token.lastUsedOn) : C.neverUsed,
+      ].filter((fact): fact is string => Boolean(fact)),
+      exposed: token.exposed,
+    }));
+  const terminalRows = (terminal?.links ?? []).map((link): AccessRow => ({
+    kind: "terminal",
+    id: link.id,
+    label: link.label,
+    facts: [
+      link.caseCode ? C.onlyCase(link.caseCode) : C.allCases,
+      link.lastUsedAt ? C.usedOn(day(link.lastUsedAt)) : C.neverUsed,
+      link.expiresAt ? C.expiresOn(day(link.expiresAt)) : null,
+    ].filter((fact): fact is string => Boolean(fact)),
+    exposed: false,
+  }));
+  return [...claudeRows, ...terminalRows];
+}
+
+function Section({ part, title, children }: { part: AccountPart; title: string; children: ReactNode }) {
+  const id = accountSectionId(part);
+  return (
+    <section id={id} aria-labelledby={`${id}-title`} tabIndex={-1} className={cn(SECTION, "outline-none")}>
+      <h3 id={`${id}-title`} className={H3}>
+        {title}
+      </h3>
+      {children}
+    </section>
+  );
+}
+
+function CopyLine({ value, label }: { value: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error(C.copyFailed);
+    }
+  }
+  return (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+      <code className="min-w-0 flex-1 rounded-md bg-muted/60 px-2 py-1.5 font-mono text-xs break-all">{value}</code>
+      <Button type="button" variant="outline" className="self-start" onClick={() => void copy()}>
+        {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
+        {copied ? C.copied : label}
+      </Button>
+    </div>
+  );
+}
+
+/** «Notifiche via email»: l'interruttore che prima stava in fondo alla campanella. */
+function EmailSection({ on: initial, actions }: { on: boolean; actions: AccountActions }) {
+  const [on, setOn] = useState(initial);
+  // Un valore nuovo dal server (il foglio si è riletto) vince su quello di prima, come nel pannello degli use case.
+  const [seen, setSeen] = useState(initial);
+  if (seen !== initial) {
+    setSeen(initial);
+    setOn(initial);
+  }
+  const [pending, start] = useTransition();
+  const id = useId();
+  const change = (next: boolean) => {
+    setOn(next);
+    start(async () => {
+      const result = await actions.setEmailAlerts(next).catch(() => ({ ok: false as const, message: T.email.saveFailed }));
+      if (result.ok) setOn(result.on);
+      else {
+        setOn(!next);
+        toast.error(result.message || T.email.saveFailed);
+      }
+    });
+  };
+  return (
+    <Section part="email" title={T.email.title}>
+      <div className="flex min-h-11 items-center justify-between gap-4">
+        <Label htmlFor={id} className="font-normal leading-snug">
+          {T.email.toggle}
+        </Label>
+        <Switch id={id} checked={on} disabled={pending} onCheckedChange={(checked) => change(checked === true)} />
+      </div>
+    </Section>
+  );
+}
+
+function ClaudeGuide({ claude, actions, onChanged }: { claude: AccountClaude; actions: AccountActions; onChanged: () => void }) {
+  const [created, setCreated] = useState<CreateTeamMcpTokenData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [readOnly, setReadOnly] = useState(false);
+  const [pending, start] = useTransition();
+  const nameId = useId();
+  const readOnlyId = useId();
+  const submit = (form: FormData) =>
+    start(async () => {
+      if (readOnly) form.set("readOnly", "on");
+      const result = await actions.createClaudeAccess(form).catch(() => ({ ok: false, message: C.failed }) as TeamMcpActionState<CreateTeamMcpTokenData>);
+      if (result.ok && result.data) {
+        setCreated(result.data);
+        setError(null);
+        setReadOnly(false);
+        onChanged();
+      } else setError(result.fieldErrors?.label ?? result.message ?? C.failed);
+    });
+  if (claude.status === "errore") return <p className="text-sm text-muted-foreground">{C.claudeLoadFailed}</p>;
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">{C.claudeLead(claude.ttlDays)}</p>
+      {!claude.routeEnabled ? <p className="text-sm text-muted-foreground">{C.claudeOff}</p> : null}
+      {created ? (
+        <div className="space-y-3 rounded-lg border p-3" data-slot="account-new-access">
+          <p className="text-sm font-medium">{C.createdTitle}</p>
+          <CopyLine value={created.token} label={C.copy} />
+          <p className="text-xs text-muted-foreground">{C.claudeCode}</p>
+          <CopyLine value={claudeCodeCommand(claude, created.token)} label={C.copyCommand} />
+          <p className="text-xs text-muted-foreground">{C.claudeAi(claude.connectorName, claude.url)}</p>
+          <CopyLine value={claudeAiHeader(created.token)} label={C.copy} />
+          <p className="text-xs text-muted-foreground">{C.secret}</p>
+        </div>
+      ) : (
+        <form action={submit} className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor={nameId}>{C.nameLabel}</Label>
+            <Input id={nameId} name="label" defaultValue={claude.defaultLabel} maxLength={80} className="h-11 text-base sm:h-9 sm:text-sm" aria-describedby={`${nameId}-hint`} />
+            <p id={`${nameId}-hint`} className={cn("text-xs", error ? "text-destructive" : "text-muted-foreground")}>
+              {error ?? C.nameHint}
+            </p>
+          </div>
+          <div className="flex min-h-11 items-start gap-2.5">
+            <Checkbox id={readOnlyId} className="mt-0.5" checked={readOnly} onCheckedChange={(checked) => setReadOnly(checked === true)} />
+            <div className="min-w-0">
+              <Label htmlFor={readOnlyId}>{C.readOnlyLabel}</Label>
+              <p className="text-xs text-muted-foreground">{C.readOnlyHint}</p>
+            </div>
+          </div>
+          <Button type="submit" variant="outline" disabled={pending}>
+            {pending ? C.creating : C.create}
+          </Button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+/** «Claude e terminale»: gli accessi personali in una lista, «Revoca» con conferma, e la guida a due scelte. */
+function ClaudeSection({
+  claude,
+  terminal,
+  actions,
+  onChanged,
+}: {
+  claude: AccountClaude | null;
+  terminal: { links: readonly CliTokenView[] } | null;
+  actions: AccountActions;
+  onChanged: () => void;
+}) {
+  const rows = accessRows(claude, terminal);
+  const choices = [...(claude ? (["claude"] as const) : []), ...(terminal ? (["terminal"] as const) : [])];
+  const [choice, setChoice] = useState<"claude" | "terminal">(choices[0] ?? "claude");
+  const [revoking, setRevoking] = useState<AccessRow | null>(null);
+  const [pending, start] = useTransition();
+  const revoke = (row: AccessRow) =>
+    start(async () => {
+      const run = row.kind === "claude" ? actions.revokeClaudeAccess : actions.revokeTerminalLink;
+      const result = await run(row.id).catch(() => ({ ok: false, message: C.failed }));
+      if (result.ok) {
+        toast.success(C.revoked);
+        onChanged();
+      } else toast.error(result.message || C.failed);
+      setRevoking(null);
+    });
+  const shown = choices.includes(choice) ? choice : choices[0];
+
+  return (
+    <Section part="claude" title={C.title}>
+      {rows.length > 0 ? (
+        <ul aria-label={C.listLabel} className="divide-y rounded-lg border">
+          {rows.map((row) => (
+            <li key={`${row.kind}:${row.id}`} className="flex min-h-11 items-center justify-between gap-3 px-3 py-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm">
+                  <span className="font-medium">{row.kind === "claude" ? C.kindClaude : C.kindTerminal}</span>
+                  <span className="text-muted-foreground"> · </span>
+                  {row.label}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {row.facts.join(" · ")}
+                  {row.exposed ? <span className="text-destructive">{` · ${C.exposed}`}</span> : null}
+                </p>
+              </div>
+              <Button type="button" variant="ghost" className="shrink-0" disabled={pending} onClick={() => setRevoking(row)}>
+                {C.revoke}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {choices.length > 1 ? (
+        <div role="group" aria-label={C.connectLabel} className="inline-flex gap-1 rounded-xl border bg-muted/60 p-1">
+          {choices.map((value) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={shown === value}
+              onClick={() => setChoice(value)}
+              className={cn(
+                "min-h-11 rounded-lg px-3 text-sm font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-8",
+                shown === value ? "bg-background text-foreground shadow-sm ring-1 ring-input" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {value === "claude" ? C.choiceClaude : C.choiceTerminal}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {shown === "claude" && claude ? <ClaudeGuide claude={claude} actions={actions} onChanged={onChanged} /> : null}
+      {shown === "terminal" && terminal ? <p className="text-sm text-muted-foreground">{C.terminalLead}</p> : null}
+
+      <Dialog open={revoking !== null} onOpenChange={(open) => !open && setRevoking(null)}>
+        {revoking ? (
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{C.revokeTitle(revoking.label)}</DialogTitle>
+              <DialogDescription>{revoking.kind === "claude" ? C.revokeClaude : C.revokeTerminal}</DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setRevoking(null)}>
+                {C.cancel}
+              </Button>
+              <Button variant="destructive" disabled={pending} onClick={() => revoke(revoking)}>
+                {C.revoke}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        ) : null}
+      </Dialog>
+    </Section>
+  );
+}
+
+/** «Granola» (Lateral Space): collegare, scollegare, il piano. Le regole delle call stanno nelle Impostazioni. */
+function GranolaSection({ granola, actions, onChanged }: { granola: NonNullable<AccountSheetData["granola"]>; actions: AccountActions; onChanged: () => void }) {
+  const [pending, start] = useTransition();
+  const [confirming, setConfirming] = useState(false);
+  const connect = () =>
+    start(async () => {
+      const result = await actions.connectGranola().catch(() => ({ ok: false as const, message: C.failed }));
+      if (result.ok) window.location.assign(result.url);
+      else toast.error(result.message || C.failed);
+    });
+  const disconnect = () =>
+    start(async () => {
+      const result = await actions.disconnectGranola().catch(() => ({ ok: false, message: C.failed }));
+      setConfirming(false);
+      if (result.ok) {
+        toast.success(G.disconnected);
+        onChanged();
+      } else toast.error(result.message || C.failed);
+    });
+  return (
+    <Section part="granola" title={T.granola.title}>
+      {granola.state === "non_disponibile" ? <p className="text-sm text-muted-foreground">{G.unavailable}</p> : null}
+      {granola.state === "non_collegato" ? (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">{G.readOnly}</p>
+          <Button variant="outline" disabled={pending} onClick={connect}>
+            {G.connect}
+          </Button>
+        </div>
+      ) : null}
+      {granola.state === "da_ricollegare" ? (
+        <div className="space-y-3">
+          <p className="text-sm">{G.expired}</p>
+          <Button variant="outline" disabled={pending} onClick={connect}>
+            {G.reconnect}
+          </Button>
+        </div>
+      ) : null}
+      {granola.state === "collegato" ? (
+        <div className="flex min-h-11 items-center justify-between gap-3">
+          <div className="min-w-0">
+            {granola.accountEmail ? <p className="truncate text-sm font-medium">{G.connectedAs(granola.accountEmail)}</p> : null}
+            {granola.plan ? <p className="text-xs text-muted-foreground">{G.plan(granola.plan)}</p> : null}
+          </div>
+          <Button variant="ghost" className="shrink-0" disabled={pending} onClick={() => setConfirming(true)}>
+            {G.disconnect}
+          </Button>
+        </div>
+      ) : null}
+      <Dialog open={confirming} onOpenChange={(open) => !open && setConfirming(false)}>
+        {confirming ? (
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{G.disconnectConfirm}</DialogTitle>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setConfirming(false)}>
+                {C.cancel}
+              </Button>
+              <Button variant="destructive" disabled={pending} onClick={disconnect}>
+                {G.disconnect}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        ) : null}
+      </Dialog>
+    </Section>
+  );
+}
+
+const THEME_ICONS: Record<ThemeChoice, LucideIcon> = { dark: Moon, light: Sun, system: Monitor };
+const isThemeChoice = (value: unknown): value is ThemeChoice => THEME_OPTIONS.some((option) => option.value === value);
+
+/** «Tema»: Scuro · Chiaro · Come il sistema, la stessa scelta del menu sotto il nome. */
+function ThemeSection() {
+  const { theme, setTheme } = useTheme();
+  const value: ThemeChoice = isThemeChoice(theme) ? theme : "dark";
+  const name = useId();
+  return (
+    <Section part="tema" title={T.theme.title}>
+      <fieldset>
+        <legend className="sr-only">{T.theme.title}</legend>
+        <div className="grid grid-cols-3 gap-1 rounded-xl border bg-muted/60 p-1">
+          {THEME_OPTIONS.map((option) => {
+            const Icon = THEME_ICONS[option.value];
+            return (
+              <label
+                key={option.value}
+                className="flex min-h-11 cursor-pointer items-center justify-center gap-1.5 rounded-lg px-2 text-center text-sm text-muted-foreground transition-colors has-checked:bg-background has-checked:font-medium has-checked:text-foreground has-checked:shadow-sm has-checked:ring-1 has-checked:ring-input has-focus-visible:ring-3 has-focus-visible:ring-ring/50 sm:min-h-9"
+              >
+                <input type="radio" name={name} value={option.value} checked={value === option.value} onChange={() => setTheme(option.value)} className="sr-only" />
+                <Icon aria-hidden className="size-4 shrink-0" />
+                {option.label}
+              </label>
+            );
+          })}
+        </div>
+      </fieldset>
+    </Section>
+  );
+}
+
+/**
+ * Il contenuto del foglio «Il tuo account» (rilascio 10, PROPOSTA-10 §3.10): chi sei, poi le parti che ti riguardano,
+ * nell'ordine del foglio. Una parte che non ti riguarda non c'è (lo zero non si vede); il tema c'è sempre.
+ */
+export function AccountSheetBody({
+  user,
+  state,
+  actions,
+  onRetry,
+  onChanged,
+}: {
+  user: { name?: string | null; email?: string | null; image?: string | null };
+  state: AccountSheetState;
+  actions: AccountActions;
+  onRetry: () => void;
+  onChanged: () => void;
+}) {
+  const initials = user.name
+    ? user.name.split(" ").map((n) => n[0]).join("").toUpperCase()
+    : user.email?.[0]?.toUpperCase() ?? "U";
+  const account = state.status === "ready" ? state.account : null;
+  return (
+    <div data-slot="account-sheet-body">
+      <div className="flex items-center gap-3 px-4 py-4">
+        <Avatar className="size-10">
+          <AvatarImage src={user.image ?? undefined} />
+          <AvatarFallback className="text-sm">{initials}</AvatarFallback>
+        </Avatar>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium">{user.name ?? SHELL_TEXT.user.fallbackName}</p>
+          {user.email ? <p className="truncate text-xs text-muted-foreground">{user.email}</p> : null}
+        </div>
+      </div>
+      <div className="border-t">
+        {state.status === "loading" ? (
+          <p role="status" className="px-4 py-5 text-sm text-muted-foreground">
+            {T.loading}
+          </p>
+        ) : null}
+        {state.status === "error" ? (
+          <div role="alert" className="flex flex-wrap items-center justify-between gap-3 px-4 py-5">
+            <p className="text-sm">{T.loadFailed}</p>
+            <Button variant="outline" onClick={onRetry}>
+              {T.retry}
+            </Button>
+          </div>
+        ) : null}
+        {account?.email ? <EmailSection on={account.email.on} actions={actions} /> : null}
+        {account && (account.claude || account.terminal) ? <ClaudeSection claude={account.claude} terminal={account.terminal} actions={actions} onChanged={onChanged} /> : null}
+        {account?.granola ? <GranolaSection granola={account.granola} actions={actions} onChanged={onChanged} /> : null}
+        <ThemeSection />
+      </div>
+    </div>
+  );
+}

@@ -48,6 +48,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { PAGE_TITLE_CLASS, PageContainer } from "@/components/dashboard/page-container";
 
 function scoreLabel(score: number | null | undefined) {
   return typeof score === "number" && Number.isFinite(score)
@@ -155,10 +156,10 @@ export default async function AiReadinessPage({
 
   if (showCreateForm) {
     return (
-      <div className="flex-1 space-y-8 p-6 lg:p-8">
+      <PageContainer className="space-y-8">
         <div className="rounded-[32px] border bg-linear-to-br from-emerald-500/10 via-background to-sky-500/10 p-8">
           <Badge variant="secondary">Fase 1 - Assessment Core</Badge>
-          <h1 className="mt-4 max-w-3xl text-4xl font-semibold tracking-tight">
+          <h1 className={`${PAGE_TITLE_CLASS} mt-4 max-w-3xl`}>
             AI Readiness OS
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
@@ -185,7 +186,7 @@ export default async function AiReadinessPage({
             </CardContent>
           </Card>
         )}
-      </div>
+      </PageContainer>
     );
   }
 
@@ -244,7 +245,7 @@ export default async function AiReadinessPage({
   );
 
   return (
-    <div className="flex-1 space-y-6 p-6 lg:p-8">
+    <PageContainer className="space-y-6">
       {bundle.assessment.status === "open" && <AutoRefresh seconds={30} />}
       {search.deleted === "1" && (
         <p className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-sm" role="status">
@@ -269,7 +270,7 @@ export default async function AiReadinessPage({
                 </Badge>
               )}
             </div>
-            <h1 className="mt-4 text-3xl font-semibold tracking-tight">
+            <h1 className={`${PAGE_TITLE_CLASS} mt-4`}>
               {bundle.assessment.name}
             </h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
@@ -1021,6 +1022,6 @@ export default async function AiReadinessPage({
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageContainer>
   );
 }

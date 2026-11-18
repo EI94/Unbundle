@@ -4,6 +4,7 @@ import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import { notFound } from "next/navigation";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { BlueprintViewer } from "@/components/dashboard/blueprint-viewer";
+import { PAGE_TITLE_CLASS, PageContainer } from "@/components/dashboard/page-container";
 
 export default async function BlueprintsPage({
   params,
@@ -18,9 +19,9 @@ export default async function BlueprintsPage({
   if (!workspace) notFound();
 
   return (
-    <div className="flex-1 p-6 lg:p-8">
+    <PageContainer>
       <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight">
+        <h1 className={PAGE_TITLE_CLASS}>
           Agent Blueprinting
         </h1>
         <p className="mt-1 text-muted-foreground">
@@ -32,6 +33,6 @@ export default async function BlueprintsPage({
         canGenerate={canReviewWorkspacePortfolio(access.role)}
         initialBlueprints={(await getLatestBlueprints(workspaceId)) ?? []}
       />
-    </div>
+    </PageContainer>
   );
 }

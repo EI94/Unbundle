@@ -267,13 +267,15 @@ function sidebarOf(html) {
     active: /\sdata-active(?:="[^"]*")?(?=[\s>])/.test(attributes) && !/\sdata-active="false"/.test(attributes),
   }));
 }
-const HUB_BAR = ["Overview", "Programma", "AI Readiness", "Formazione", "Use case", "Discovery", "Contesto", "Strategia", "Activity mapping", "Value map", "Report", "Blueprints", "Simulazione", "Intelligence", "Impostazioni"];
+// (Release 10, docs/ui-10/PROPOSTA-10.md §2.1-§2.2) The five items, today's tools under a thin line, Impostazioni in
+// the footer for those who manage.
+const HUB_BAR = ["Home", "Use case", "Agent Factory", "Contesto", "Persone", "Realizzazioni", "Value map", "Report", "Blueprints", "Simulazione", "Intelligence", "Impostazioni"];
 const TODAY_BAR = ["Overview", "AI Readiness", "Formazione", "Raccolta & ranking", "Discovery", "Contesto", "Strategia", "Activity mapping", "Value map", "Use cases", "Casi d'uso", "Piano", "Report", "Blueprints", "Simulazione", "Intelligence", "Impostazioni"];
 /**
- * Formazione and «Casi d'uso» depend on sections the harness may have off; «Programma» (release 7) only
- * shows to reviewers with the area on: the rest is fixed, in order.
+ * Formazione and «Casi d'uso» (with the area on, «Realizzazioni» until P0-16) depend on sections the harness may have
+ * off; «Agent Factory» only shows to builders: the rest is fixed, in order.
  */
-const OPTIONAL = new Set(["Formazione", "Casi d'uso", "Programma"]);
+const OPTIONAL = new Set(["Formazione", "Casi d'uso", "Realizzazioni", "Agent Factory"]);
 const sameBar = (titles, expected) => {
   const kept = expected.filter((t) => !OPTIONAL.has(t) || titles.includes(t));
   return titles.length === kept.length && titles.every((t, i) => t === kept[i]);
@@ -291,7 +293,9 @@ const sameBar = (titles, expected) => {
 for (const rest of [`/use-cases?vista=panoramica`, `/use-cases?vista=roadmap`, `/use-cases/${onCard}`, `/use-cases/nuovo`, ...(caseId ? [`/casi-duso/${caseId}`] : [])]) {
   const res = await get(`/dashboard/${on}${rest}`);
   const active = sidebarOf(res.body).filter((entry) => entry.active).map((entry) => entry.title);
-  record(`area on   sidebar active on ${rest.replace(onCard, "{uc}").replace(caseId ?? "-", "{caseId}")}: ${active.join(", ") || "none"}`, active.join() === "Use case" ? [] : [`expected «Use case»`]);
+  // A realization stays under «Realizzazioni» while that item is there (P0-16), under «Use case» after.
+  const expected = rest.startsWith("/casi-duso") ? ["Use case", "Realizzazioni"] : ["Use case"];
+  record(`area on   sidebar active on ${rest.replace(onCard, "{uc}").replace(caseId ?? "-", "{caseId}")}: ${active.join(", ") || "none"}`, active.length === 1 && expected.includes(active[0]) ? [] : [`expected «${expected.join("» or «")}»`]);
 }
 {
   const bar = sidebarOf((await get(`/dashboard/${off}/settings`)).body);
