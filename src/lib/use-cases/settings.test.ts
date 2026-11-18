@@ -380,7 +380,10 @@ test("modulo del modello in Impostazioni: «use case», non «contributo»; nien
   assert.match(form, /help=\{copy\.valueHelp\}/);
   assert.match(form, /help=\{copy\.feasibilityHelp\}/);
   assert.equal(form.match(/directionLabel=\{copy\.direction\}/g)?.length, 3, "le tre dimensioni");
-  assert.match(form, /window\.confirm\(copy\.confirm\)/);
+  // (Rilascio 10) La domanda di conferma è quella del posto, nella finestra dell'app (non più `window.confirm`).
+  assert.match(form, /const savingAsk = splitQuestion\(copy\.confirm\);/);
+  assert.match(form, /title=\{savingAsk\.title\}\s+description=\{savingAsk\.description\}/);
+  assert.doesNotMatch(form, /window\.confirm/);
   assert.match(form, /copy=\{copy\}/);
   assert.match(form, /\{copy\.previewEyebrow && \(/);
   // Il salvataggio riuscito si riconosce dall'esito, non dal messaggio (le due action hanno testi diversi).

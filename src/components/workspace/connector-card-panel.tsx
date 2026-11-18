@@ -12,9 +12,11 @@ import {
   type RevokeConnectorTokenData,
 } from "@/lib/actions/connector-settings";
 import type { ConnectorConfigView, ConnectorSettingsView, ConnectorTokenView } from "@/lib/connector/settings-view";
+import { CONFIRM_TEXT } from "@/lib/confirm-text";
 import { SettingsSection } from "@/components/dashboard/settings-section";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog, useSubmitConfirmation } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -37,6 +39,7 @@ export type ConnectorTokenPolicy = {
 const INITIAL_CREATE: ConnectorSettingsActionState<CreateConnectorTokenData> = { ok: true };
 const INITIAL_REVOKE: ConnectorSettingsActionState<RevokeConnectorTokenData> = { ok: true };
 const COUNT = new Intl.NumberFormat("it-IT", { useGrouping: "always" });
+const ASK = CONFIRM_TEXT.claude;
 
 function Notice({ tone, icon, title, children }: { tone: "danger" | "warning" | "muted"; icon?: ReactNode; title?: string; children: ReactNode }) {
   return (
@@ -90,14 +93,10 @@ function CopyButton({ value, label, copiedLabel = "Copiato", className }: { valu
 function EnabledSwitch({ workspaceId, enabled, canEnable }: { workspaceId: string; enabled: boolean; canEnable: boolean }) {
   const [shown, setShown] = useOptimistic(enabled);
   const [pending, startTransition] = useTransition();
+  // Il nuovo stato aspetta la conferma nella finestra; l'interruttore intanto resta com'è.
+  const [asking, setAsking] = useState<boolean | null>(null);
 
   function change(checked: boolean) {
-    const confirmed = window.confirm(
-      checked
-        ? "Riattivare il connettore? Chi lo ha in Claude potrà di nuovo cercare, inviare e chiedere lo stato delle segnalazioni."
-        : "Sospendere il connettore? Per tutta l'organizzazione Claude risponderà che il servizio è sospeso e proporrà di inviare il riepilogo per email."
-    );
-    if (!confirmed) return;
     startTransition(async () => {
       setShown(checked);
       try {
@@ -119,10 +118,25 @@ function EnabledSwitch({ workspaceId, enabled, canEnable }: { workspaceId: strin
         id="connector-enabled"
         aria-label="Connettore Claude acceso per l'organizzazione"
         checked={shown}
-        onCheckedChange={change}
+        onCheckedChange={(checked) => setAsking(checked)}
         // Spegnere si può sempre; accendere solo con guida, profilo e modello (l'avviso dice cosa manca).
         disabled={pending || (!shown && !canEnable)}
       />
+      {asking !== null ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setAsking(null);
+          }}
+          title={asking ? ASK.resumeTitle : ASK.suspendTitle}
+          description={asking ? ASK.resumeBody : ASK.suspendBody}
+          confirmLabel={asking ? ASK.resume : ASK.suspend}
+          onConfirm={() => {
+            setAsking(null);
+            change(asking);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -251,6 +265,7 @@ function TokenRow({
     token.revokedOn ? `revocato il ${token.revokedOn}` : token.expiresOn ? `${token.state === "scaduto" ? "scaduto" : "scade"} il ${token.expiresOn}` : "senza scadenza",
     `ultimo uso ${token.lastUsedOn ?? "mai"}`,
   ];
+  const revoking = useSubmitConfirmation();
   return (
     <li className="flex flex-col gap-3 p-3 @lg:flex-row @lg:items-start @lg:justify-between" data-connector-token={token.state}>
       <div className="min-w-0">
@@ -272,20 +287,29 @@ function TokenRow({
         <p className="mt-1 break-words text-xs text-muted-foreground">{meta.join(" · ")}</p>
       </div>
       {token.active ? (
-        <form
-          action={revokeAction}
-          onSubmit={(event) => {
-            const ok = window.confirm(
-              `Revocare «${token.label}»? Se è il token inserito in Claude, il connettore si ferma per tutta l'organizzazione finché l'Owner non lo riaggiunge con un token nuovo.`
-            );
-            if (!ok) event.preventDefault();
-          }}
-        >
-          <input type="hidden" name="tokenId" value={token.id} />
-          <Button type="submit" variant="destructive" size="sm" disabled={revokePending}>
-            Revoca
-          </Button>
-        </form>
+        <>
+          <form
+            action={revokeAction}
+            onSubmit={(event) => {
+              revoking.ask(event, true);
+            }}
+          >
+            <input type="hidden" name="tokenId" value={token.id} />
+            {/* Bordato nella riga: il rosso solo nella finestra di conferma. */}
+            <Button type="submit" variant="outline" className="h-11 sm:h-8" disabled={revokePending}>
+              Revoca
+            </Button>
+          </form>
+          <ConfirmDialog
+            open={revoking.open}
+            onOpenChange={revoking.onOpenChange}
+            title={ASK.revokeTitle(token.label)}
+            description={ASK.connectorRevokeBody}
+            confirmLabel={ASK.revoke}
+            destructive
+            onConfirm={revoking.confirm}
+          />
+        </>
       ) : null}
     </li>
   );

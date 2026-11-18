@@ -21,9 +21,11 @@ import type {
   ScoringKpi,
   ScoringModelConfig,
 } from "@/lib/db/queries/scoring-model";
+import { CONFIRM_TEXT, splitQuestion } from "@/lib/confirm-text";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog, useSubmitConfirmation } from "@/components/ui/confirm-dialog";
 import { Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -180,6 +182,9 @@ export function ScoringModelForm({
   const advancedRef = useRef<HTMLDetailsElement>(null);
   const impactLabel = settingsPlacement ? MODEL_TEXT.valueDimension : dimLabels.impact;
   const copy = settingsPlacement ? SETTINGS_COPY : PANEL_COPY;
+  // «Salva modello» chiede nella finestra dell'app: la domanda di `copy.confirm` come titolo, il resto sotto.
+  const saving = useSubmitConfirmation();
+  const savingAsk = splitQuestion(copy.confirm);
   const [savedPayload, setSavedPayload] = useState(payload);
   const submittedPayloadRef = useRef(payload);
   const hasUnsavedChanges = payload !== savedPayload;
@@ -236,6 +241,7 @@ export function ScoringModelForm({
   };
 
   return (
+    <>
     <form
       action={formAction}
       className="space-y-6"
@@ -245,10 +251,8 @@ export function ScoringModelForm({
           if (advancedRef.current) advancedRef.current.open = true;
           return;
         }
-        if (!window.confirm(copy.confirm)) {
-          event.preventDefault();
-          return;
-        }
+        // Il primo invio apre la finestra dell'app con la domanda del modulo; la conferma lo rimanda.
+        if (!saving.ask(event, true)) return;
         submittedPayloadRef.current = payload;
       }}
     >
@@ -447,6 +451,15 @@ export function ScoringModelForm({
         </div>
       </div>
     </form>
+    <ConfirmDialog
+      open={saving.open}
+      onOpenChange={saving.onOpenChange}
+      title={savingAsk.title}
+      description={savingAsk.description}
+      confirmLabel={CONFIRM_TEXT.scoring.confirm}
+      onConfirm={saving.confirm}
+    />
+    </>
   );
 }
 

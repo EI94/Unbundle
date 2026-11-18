@@ -13,10 +13,12 @@ import {
   type TeamMcpActionState,
 } from "@/lib/actions/team-mcp-tokens";
 import type { TeamMcpCardData, TeamMcpTokenView } from "@/lib/db/queries/team-mcp-tokens";
+import { CONFIRM_TEXT } from "@/lib/confirm-text";
 import { SettingsSection } from "@/components/dashboard/settings-section";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ConfirmDialog, useSubmitConfirmation } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -164,6 +166,7 @@ function TokenRow({ token, revokeAction, revokePending }: { token: TeamMcpTokenV
     token.revokedOn ? `revocato il ${token.revokedOn}` : token.expiresOn ? `${token.state === "scaduto" ? "scaduto" : "scade"} il ${token.expiresOn}` : null,
     `ultimo uso ${token.lastUsedOn ?? "mai"}`,
   ].filter(Boolean);
+  const revoking = useSubmitConfirmation();
   return (
     <li className="flex flex-col gap-3 p-3 @lg:flex-row @lg:items-start @lg:justify-between" data-team-mcp-token={token.state}>
       <div className="min-w-0">
@@ -174,17 +177,28 @@ function TokenRow({ token, revokeAction, revokePending }: { token: TeamMcpTokenV
         <p className="mt-1 break-words text-xs text-muted-foreground">{meta.join(" · ")}</p>
       </div>
       {token.active ? (
-        <form
-          action={revokeAction}
-          onSubmit={(event) => {
-            if (!window.confirm(`Revocare «${token.label}»? Claude non potrà più usarlo.`)) event.preventDefault();
-          }}
-        >
-          <input type="hidden" name="tokenId" value={token.id} />
-          <Button type="submit" variant="outline" size="sm" disabled={revokePending}>
-            Revoca
-          </Button>
-        </form>
+        <>
+          <form
+            action={revokeAction}
+            onSubmit={(event) => {
+              revoking.ask(event, true);
+            }}
+          >
+            <input type="hidden" name="tokenId" value={token.id} />
+            <Button type="submit" variant="outline" className="h-11 sm:h-8" disabled={revokePending}>
+              Revoca
+            </Button>
+          </form>
+          <ConfirmDialog
+            open={revoking.open}
+            onOpenChange={revoking.onOpenChange}
+            title={CONFIRM_TEXT.claude.revokeTitle(token.label)}
+            description={CONFIRM_TEXT.claude.teamBody}
+            confirmLabel={CONFIRM_TEXT.claude.revoke}
+            destructive
+            onConfirm={revoking.confirm}
+          />
+        </>
       ) : null}
     </li>
   );
@@ -252,6 +266,7 @@ function ConnectSteps({ card }: { card: TeamMcpCardData }) {
 }
 
 function RevokeAll({ activeCount, action, pending }: { activeCount: number; action: (formData: FormData) => void; pending: boolean }) {
+  const revoking = useSubmitConfirmation();
   return (
     <div className="flex flex-col gap-3 border-t pt-4 @md:flex-row @md:items-center @md:justify-between" data-team-mcp-workspace>
       <div className="min-w-0">
@@ -263,16 +278,23 @@ function RevokeAll({ activeCount, action, pending }: { activeCount: number; acti
       <form
         action={action}
         onSubmit={(event) => {
-          const ok = window.confirm(
-            `Revocare tutti i ${activeCount === 1 ? "token" : `${activeCount} token`} del workspace? Claude smette di funzionare per tutte le persone che lo usano con Unbundle Use case.`
-          );
-          if (!ok) event.preventDefault();
+          revoking.ask(event, true);
         }}
       >
-        <Button type="submit" variant="destructive" size="sm" disabled={pending}>
+        {/* Bordato nella riga: il rosso solo nella finestra di conferma. */}
+        <Button type="submit" variant="outline" className="h-11 sm:h-8" disabled={pending}>
           Revoca tutti
         </Button>
       </form>
+      <ConfirmDialog
+        open={revoking.open}
+        onOpenChange={revoking.onOpenChange}
+        title={CONFIRM_TEXT.claude.revokeAllTitle(activeCount)}
+        description={CONFIRM_TEXT.claude.revokeAllBody}
+        confirmLabel={CONFIRM_TEXT.claude.revokeAll}
+        destructive
+        onConfirm={revoking.confirm}
+      />
     </div>
   );
 }

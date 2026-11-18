@@ -16,8 +16,10 @@ import {
   buildClaudeStarterPrompt,
 } from "@/lib/integrations/claude-onboarding";
 import { CASE_SCOPES, UC_CASE_SCOPE_PREFIX } from "@/lib/uc/mcp-access";
+import { CONFIRM_TEXT } from "@/lib/confirm-text";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog, useSubmitConfirmation } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -130,14 +132,16 @@ function TokenList({
   canManage,
   revokeFormAction,
   revokePending,
-  confirmText,
+  confirmBody,
 }: {
   tokens: TokenItem[];
   canManage: boolean;
   revokeFormAction: (formData: FormData) => void;
   revokePending: boolean;
-  confirmText: string;
+  /** La frase della finestra di «Revoca»: che cosa smette di funzionare. */
+  confirmBody: string;
 }) {
+  const revoking = useSubmitConfirmation<TokenItem>();
   return (
     <div className="divide-y rounded-2xl border">
       {tokens.map((token) => {
@@ -167,16 +171,15 @@ function TokenList({
               <form
                 action={revokeFormAction}
                 onSubmit={(event) => {
-                  if (!window.confirm(confirmText)) {
-                    event.preventDefault();
-                  }
+                  revoking.ask(event, token);
                 }}
               >
                 <input type="hidden" name="tokenId" value={token.id} />
+                {/* Nella riga resta bordato: il rosso solo nella finestra di conferma. */}
                 <Button
                   type="submit"
-                  variant="destructive"
-                  size="sm"
+                  variant="outline"
+                  className="h-11 sm:h-8"
                   disabled={revokePending}
                 >
                   Revoca
@@ -186,6 +189,17 @@ function TokenList({
           </div>
         );
       })}
+      {revoking.target ? (
+        <ConfirmDialog
+          open
+          onOpenChange={revoking.onOpenChange}
+          title={CONFIRM_TEXT.claude.revokeTitle(revoking.target.label)}
+          description={confirmBody}
+          confirmLabel={CONFIRM_TEXT.claude.revoke}
+          destructive
+          onConfirm={revoking.confirm}
+        />
+      ) : null}
     </div>
   );
 }
@@ -607,7 +621,7 @@ export function ClaudeMcpCard({
               canManage={canManage}
               revokeFormAction={revokeFormAction}
               revokePending={revokePending}
-              confirmText="Revocare questo setup? Claude non potrà più inviare contributi con questa configurazione."
+              confirmBody={CONFIRM_TEXT.claude.setupBody}
             />
           )}
         </section>
@@ -653,7 +667,7 @@ export function ClaudeMcpCard({
                 canManage={canManage}
                 revokeFormAction={revokeFormAction}
                 revokePending={revokePending}
-                confirmText="Revocare questo accesso? Claude Code non leggerà più il dossier con questa chiave."
+                confirmBody={CONFIRM_TEXT.claude.realizationBody}
               />
             </div>
           ))}
