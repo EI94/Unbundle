@@ -753,6 +753,58 @@ test("revisori: «Oscura testo» per Lateral Space e chi gestisce il workspace, 
   assert.deepEqual(findProp(plain.element, "initial"), ["decisione"], "«Realizzazione» senza la piega: il riquadro");
 });
 
+/** (Rilascio 9b) Un fatto attivo del contesto del workspace, legato allo use case (dati inventati, «Scritto a mano»). */
+async function seedContextFact(useCaseId: string, statement: string, visibility: "tutti" | "ls" = "tutti"): Promise<string> {
+  const id = randomUUID();
+  await q(
+    `INSERT INTO context_facts (id, workspace_id, section, statement, basis, visibility, status, origin) VALUES ($1::uuid, $2::uuid, 'sistemi', $3, 'detto', $4, 'attivo', 'manuale')`,
+    [id, ids.ws, statement, visibility],
+  );
+  await q(`INSERT INTO context_fact_links (workspace_id, fact_id, use_case_id) VALUES ($1::uuid, $2::uuid, $3::uuid)`, [ids.ws, id, useCaseId]);
+  return id;
+}
+
+test("(Rilascio 9b) la piega «Contesto»: ai revisori, chiusa, prima di «Storia»; `?capitolo=contesto` la apre dal server; il cliente senza i fatti «Solo Lateral Space»", opts, async () => {
+  const card = await seed({ description: "Un problema con il contesto" });
+  const shared = `Il gestionale esporta le fatture in CSV ${suffix}.`;
+  const lsOnly = `Il rinnovo del contratto è riservato ${suffix}.`;
+  await seedContextFact(card.id, shared);
+  await seedContextFact(card.id, lsOnly, "ls");
+
+  // Il revisore del cliente con `?capitolo=contesto`: l'ancora prima di «Storia», la piega aperta dal server, solo «Per tutti».
+  const builder = await detailHtml("builder", card.id, { capitolo: "contesto" });
+  const [builderIds] = findProp(builder.element, "ids") as Array<string[]>;
+  assert.deepEqual(builderIds.slice(-3), ["dettagli", "contesto", "storia"], "«Contesto» prima di «Storia», che resta l'ultima");
+  assert.deepEqual(findProp(builder.element, "initial"), ["contesto"], "?capitolo=contesto");
+  assert.match(builder.html, /<details id="contesto" open="" data-slot="fold"/, "la piega aperta dal server");
+  const fold = between(builder.html, 'id="contesto"', 'id="storia"');
+  assert.ok(fold.includes(shared), "il fatto «Per tutti»");
+  assert.ok(!builder.html.includes(lsOnly), "mai un fatto «Solo Lateral Space» al cliente");
+  // La riga grigia, con gli spazi che non vanno a capo (`keepTogether`).
+  const spaced = (html: string) => html.replace(/\u00a0/g, " ");
+  assert.ok(spaced(fold).includes("1 fatto sul cliente · 1 novità"), "la riga grigia");
+  assert.ok(builder.html.indexOf('id="contesto"') < builder.html.indexOf('id="storia"'));
+  assert.equal(duplicateIds(builder.html).length, 0, "nessun id doppio");
+
+  // Lateral Space senza `?capitolo=`: la piega c'è, chiusa, con il fatto «Solo Lateral Space» e il lucchetto.
+  const ls = await detailHtml("lsLead", card.id);
+  assert.match(ls.html, /<details id="contesto" data-slot="fold"/, "chiusa");
+  assert.ok(ls.html.includes(lsOnly) && ls.html.includes("Solo Lateral Space"));
+  assert.ok(spaced(ls.html).includes("2 fatti sul cliente · 2 novità"));
+
+  // Il contributore ha la sua scheda corta: niente piega.
+  const contributor = await open(pages.detail, "contributor", { workspaceId: ids.ws, useCaseId: card.id }, { capitolo: "contesto" });
+  if (contributor.html !== null) assert.ok(!contributor.html.includes('id="contesto"'), "nessuna piega al contributore");
+
+  // Una scheda senza contesto: niente piega, le ancore di prima; `?capitolo=contesto` va in cima alla pagina.
+  const plain = await seed({ description: "Senza contesto" });
+  const none = await detailHtml("builder", plain.id, { capitolo: "contesto" });
+  const [noneIds] = findProp(none.element, "ids") as Array<string[]>;
+  assert.equal(noneIds.includes("contesto"), false);
+  assert.deepEqual(findProp(none.element, "initial"), [null]);
+  assert.ok(!none.html.includes('id="contesto"'));
+});
+
 test("contributore: titolo e fase; delle sue proposte codice e nota pubblica, anche nascoste; nascosta altrui «non trovato»", opts, async () => {
   const note = `Nota pubblica mia ${suffix}`;
   const internal = `Nota interna ${suffix}`;
@@ -997,7 +1049,7 @@ test("capitoli: `?capitolo=` e i suoi alias; «Realizzazione» dalla fase Approv
   assert.equal(chapterFromParam(["storia"]), "storia");
   assert.equal(chapterFromParam("cosa"), "cosa-e");
   assert.equal(chapterFromParam("Cos'è"), "cosa-e");
-  for (const chapter of ["decisione", "impatto", "cosa-serve", "richieste", "valutazione", "dettagli"]) assert.equal(chapterFromParam(chapter), chapter);
+  for (const chapter of ["decisione", "impatto", "cosa-serve", "richieste", "valutazione", "dettagli", "contesto"]) assert.equal(chapterFromParam(chapter), chapter);
   assert.equal(chapterFromParam("proponente"), null);
   assert.equal(chapterFromParam(undefined), null);
   assert.equal(showsRealization({ phase: "da_valutare", kind: "da_costruire", dossier: null }), false);

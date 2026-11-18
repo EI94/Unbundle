@@ -1,4 +1,6 @@
 import { and, asc, eq, isNotNull } from "drizzle-orm";
+import { contextActorFor, type ContextActor } from "@/lib/context/server/actor";
+import { loadUseCaseContext, type UseCaseContext } from "@/lib/db/queries/context-work";
 import { ensureDbSchema } from "@/lib/db/ensure-schema";
 import { cliStoreReady } from "@/lib/db/queries/use-case-cli-auth";
 import { listAgentProposals, type AgentProposalView } from "@/lib/db/queries/use-case-agent-questions";
@@ -142,7 +144,7 @@ export default async function UseCaseDetailPage({
   const needLists = workspaceNeeds ? needListsOfUseCase(workspaceNeeds, result.useCase.id) : null;
   // «Cosa serve», «Chiedi al referente» e «Raccolta informazioni»: solo a chi vede le esigenze
   // (`canSeeNeeds`); le letture stesse rispondono null a tutti gli altri.
-  const [needRefs, referents, infoProgress, agentProposals] = await Promise.all([
+  const [needRefs, referents, infoProgress, agentProposals, context] = await Promise.all([
     needLists
       ? needUseCaseRefs(
           workspaceId,
@@ -166,6 +168,8 @@ export default async function UseCaseDetailPage({
       : null,
     // (Rilascio 8.0b) Le domande proposte dai coding agent, sopra «Cosa serve»: a chi vede le esigenze.
     abilities.canSeeNeeds ? loadAgentProposals(workspaceId, result.useCase.id) : [],
+    // (Rilascio 9b) La piega «Contesto»: solo ai revisori, con i fatti per chi guarda (il cliente solo «Per tutti»).
+    reviewer ? loadContextFold(contextActorFor(session.user, access, workspaceId), result.useCase.id) : null,
   ]);
 
   // (Rilascio 5, §9.1) Al contributore la sola parola dello stato del referente, dopo la pillola della fase.
@@ -195,6 +199,7 @@ export default async function UseCaseDetailPage({
         companyDisplayName={guideRow?.displayName ?? null}
         agentTone={await agentTone}
         contributorReferentState={contributorReferentState}
+        context={context}
       />
     </PageContainer>
   );
@@ -554,6 +559,19 @@ async function legacyUseCaseDetail(workspaceId: string, useCaseId: string) {
       )}
     </div>
   );
+}
+
+/**
+ * (Rilascio 9b) La piega «Contesto» della scheda: i fatti, gli impegni e le domande del cliente che toccano lo use case,
+ * per chi guarda. null senza l'archivio di «Contesto» o se la lettura non riesce: la scheda resta, senza la piega.
+ */
+async function loadContextFold(actor: ContextActor, useCaseId: string): Promise<UseCaseContext | null> {
+  try {
+    return await loadUseCaseContext(actor, useCaseId);
+  } catch (error) {
+    console.error("[use-case-detail] context_fold_failed", { error: { name: error instanceof Error ? error.name : "Error" } });
+    return null;
+  }
 }
 
 /** Le proposte dei coding agent da decidere; vuote senza la 0031 o se la lettura non riesce (la scheda resta). */

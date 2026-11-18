@@ -144,7 +144,7 @@ test("le pieghe nascono aperte dall'arrivo della navigazione, non da una prop de
   // La scheda non passa alle pieghe né a «Cosa serve» l'ancora risolta di adesso, che cambia con il passo.
   const detail = readFileSync(new URL("./detail.tsx", import.meta.url), "utf8");
   const foldTags = [...detail.matchAll(/<Fold\b[^>]*>/g)].map((m) => m[0]);
-  assert.equal(foldTags.length, 4, "valutazione, dettagli, realizzazione, storia");
+  assert.equal(foldTags.length, 5, "valutazione, dettagli, realizzazione, contesto (rilascio 9b), storia");
   assert.deepEqual(foldTags.filter((tag) => /\sopen=/.test(tag)), ['<Fold id="storia" title={t.storia} summary={summaries.storia} open={historyAll}>'], "solo «Mostra tutto», che sta nell'indirizzo");
   assert.doesNotMatch(detail, /requestsOpen=|opens\(/, "«Richieste inviate» legge l'arrivo da sé");
   const needs = readFileSync(new URL("./section-needs.tsx", import.meta.url), "utf8");

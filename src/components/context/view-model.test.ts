@@ -1,8 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { CONTEXT_TEXT } from "../../lib/context/text.ts";
-import type { FactView, MemorySection, MemoryView } from "../../lib/db/queries/context-memory.ts";
+import type { CommitmentView, FactView, MemorySection, MemoryView } from "../../lib/db/queries/context-memory.ts";
 import type { OpenProposals, ProposalView } from "../../lib/db/queries/context-proposals.ts";
+import type { UseCaseContext, UseCaseFact } from "../../lib/db/queries/context-work.ts";
 import type { SourceListItem } from "../../lib/db/queries/context-sources.ts";
 import {
   addNotesClose,
@@ -10,6 +11,7 @@ import {
   afterConfirm,
   askSourceMeta,
   briefMaterial,
+  CASE_NOVELTIES_MAX,
   chunkItems,
   confirmCount,
   confirmGroups,
@@ -28,6 +30,7 @@ import {
   isMemoryEmpty,
   noteDraftErrors,
   notReportedLines,
+  noveltyTag,
   proposalDraft,
   proposalPatch,
   proposalSource,
@@ -47,6 +50,11 @@ import {
   sourceStateLabel,
   titleFromFileName,
   uploadableDocument,
+  contextCommitmentGroups,
+  contextFoldShown,
+  contextFoldSummary,
+  contextFactGroups,
+  contextFoldNovelties,
   visibilityLabel,
   visibleSections,
 } from "./view-model.ts";
@@ -414,6 +422,89 @@ test("l'avviso dell'ok: con qualcosa da leggere, o con un «In breve» da scrive
   assert.equal(consentNoticeNeeded({ unreadSources: 0, brief: null, material: 3 }), true);
   assert.equal(consentNoticeNeeded({ unreadSources: 0, brief: { lines: ["Una riga."], updatedOn: TODAY }, material: 9 }), false);
   assert.equal(consentNoticeNeeded({ unreadSources: 1, brief: null, material: 0 }), true);
+});
+
+// ─── (9b) La piega «Contesto» della scheda e la sezione del dossier ──
+
+function caseFact(over: Partial<UseCaseFact> = {}): UseCaseFact {
+  return { ...fact(), tag: null, ...over };
+}
+function caseCommitment(over: Partial<CommitmentView> = {}): CommitmentView {
+  return { id: "c1", version: 1, statement: "Inviare l'esportazione delle fatture", party: "cliente", roleLabel: "Responsabile amministrativo", dueOn: "2026-11-25", overdue: false, visibility: "tutti", ...over };
+}
+function caseContext(over: Partial<UseCaseContext> = {}): UseCaseContext {
+  return { facts: [], more: 0, novelties: 0, commitments: [], questions: [], ...over };
+}
+const QUESTION = { id: "q1", version: 1, question: "Chi approva gli acquisti sopra soglia?", askWhom: "Direzione acquisti", visibility: "tutti" as const };
+
+test("la piega «Contesto» c'è solo con fatti, impegni o domande; senza lettura no", () => {
+  assert.equal(contextFoldShown(null), false);
+  assert.equal(contextFoldShown(undefined), false);
+  assert.equal(contextFoldShown(caseContext()), false, "niente da mostrare: la piega non c'è");
+  assert.equal(contextFoldShown(caseContext({ more: 3, novelties: 1 })), false, "senza righe a schermo non c'è niente da aprire");
+  assert.equal(contextFoldShown(caseContext({ facts: [caseFact()] })), true);
+  assert.equal(contextFoldShown(caseContext({ commitments: [caseCommitment()] })), true);
+  assert.equal(contextFoldShown(caseContext({ questions: [QUESTION] })), true);
+});
+
+test("la riga della piega chiusa: fatti, novità, impegni, al singolare e al plurale; i pezzi a zero non ci sono", () => {
+  const facts = (n: number) => Array.from({ length: n }, (_, i) => caseFact({ id: `f${i}` }));
+  assert.equal(contextFoldSummary(caseContext({ facts: facts(1) })), "1 fatto sul cliente");
+  assert.equal(contextFoldSummary(caseContext({ facts: facts(2) })), "2 fatti sul cliente");
+  // I fatti oltre i 40 a schermo contano: 40 a schermo e altri 12.
+  assert.equal(contextFoldSummary(caseContext({ facts: facts(40), more: 12, novelties: 1 })), "52 fatti sul cliente · 1 novità");
+  assert.equal(contextFoldSummary(caseContext({ facts: facts(3), novelties: 2, commitments: [caseCommitment()] })), "3 fatti sul cliente · 2 novità · 1 impegno aperto");
+  assert.equal(contextFoldSummary(caseContext({ facts: facts(1), commitments: [caseCommitment(), caseCommitment({ id: "c2" })] })), "1 fatto sul cliente · 2 impegni aperti");
+  // Senza fatti il primo pezzo è l'impegno, senza il separatore davanti.
+  assert.equal(contextFoldSummary(caseContext({ commitments: [caseCommitment()] })), "1 impegno aperto");
+  assert.equal(contextFoldSummary(caseContext({ questions: [QUESTION] })), "", "solo domande: niente riga grigia");
+});
+
+test("«Novità»: solo i fatti con «Nuovo» o «Cambiato», al massimo 5, i più recenti prima", () => {
+  const items = [
+    caseFact({ id: "a", tag: null, lastConfirmedOn: "2026-11-18" }),
+    caseFact({ id: "b", tag: "nuovo", lastConfirmedOn: "2026-11-10" }),
+    caseFact({ id: "c", tag: "cambiato", lastConfirmedOn: "2026-11-16" }),
+    caseFact({ id: "d", tag: "nuovo", lastConfirmedOn: "2026-11-12" }),
+    caseFact({ id: "e", tag: "nuovo", lastConfirmedOn: "2026-11-12" }),
+    caseFact({ id: "f", tag: "nuovo", lastConfirmedOn: "2026-11-05" }),
+    caseFact({ id: "g", tag: "cambiato", lastConfirmedOn: "2026-11-15" }),
+  ];
+  assert.deepEqual(contextFoldNovelties(items).map((f) => f.id), ["c", "g", "d", "e", "b"]);
+  assert.equal(CASE_NOVELTIES_MAX, 5);
+  assert.deepEqual(contextFoldNovelties([caseFact()]), []);
+  assert.deepEqual([noveltyTag("nuovo"), noveltyTag("cambiato"), noveltyTag(null)], [T.novelties.tagNew, T.novelties.tagChanged, null]);
+});
+
+test("«Che cosa sappiamo»: i fatti per sezione, nell'ordine fisso; dentro, l'ordine in cui arrivano", () => {
+  const groups = contextFactGroups([
+    caseFact({ id: "r", section: "regole" }),
+    caseFact({ id: "s1", section: "sistemi" }),
+    caseFact({ id: "a", section: "azienda" }),
+    caseFact({ id: "s2", section: "sistemi" }),
+  ]);
+  assert.deepEqual(
+    groups.map((g) => [g.section, g.label, g.facts.map((f) => f.id)]),
+    [
+      ["azienda", "Azienda", ["a"]],
+      ["sistemi", "Sistemi e dati", ["s1", "s2"]],
+      ["regole", "Regole e vincoli", ["r"]],
+    ],
+  );
+  assert.deepEqual(contextFactGroups([]), []);
+});
+
+test("«Impegni aperti»: «Nostri» e «Del cliente», solo i gruppi con righe, nell'ordine in cui arrivano", () => {
+  const groups = contextCommitmentGroups([caseCommitment({ id: "x" }), caseCommitment({ id: "y", party: "nostra" }), caseCommitment({ id: "z" })]);
+  assert.deepEqual(
+    groups.map((g) => [g.label, g.items.map((c) => c.id)]),
+    [
+      [T.nextSteps.ours, ["y"]],
+      [T.nextSteps.theirs, ["x", "z"]],
+    ],
+  );
+  assert.deepEqual(contextCommitmentGroups([caseCommitment()]).map((g) => g.label), ["Del cliente"]);
+  assert.deepEqual(contextCommitmentGroups([]), []);
 });
 
 // ─── «Aggiungi appunti» ──────────────────────────────────────────────
