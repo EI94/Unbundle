@@ -133,6 +133,10 @@ test("(rilascio 10, §3.12) l'oggetto: il titolo per ultimo, accorciato con «�
   assert.ok(bigCompany.length <= EMAIL_SUBJECT_MAX, bigCompany);
   assert.match(bigCompany, /^Una ragione soci.*: conferma «Preventivi/);
   assert.equal(emailSubject("Cliente Demo", "serve il tuo ok sui fornitori"), "Cliente Demo: serve il tuo ok sui fornitori");
+  // Senza titolo si accorcia il cliente, mai l'azione.
+  const noTitle = emailSubject("Una ragione sociale molto lunga di prova S.p.A.", "costruisci i suoi casi d'uso");
+  assert.ok(noTitle.length <= EMAIL_SUBJECT_MAX, noTitle);
+  assert.match(noTitle, /^Una ragione sociale mol\S*…: costruisci i suoi casi d'uso$/);
   // Mai uno spazio prima di «…».
   assert.doesNotMatch(emailSubject("Cliente Demo", "nuovo pacchetto per", "Smistamento delle richieste"), / …/);
 });

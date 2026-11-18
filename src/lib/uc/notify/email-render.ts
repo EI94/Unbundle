@@ -127,7 +127,12 @@ export function emailSubject(company: string, what: string, title?: string | nul
   const fullCompany = oneLine(company, 80);
   const head = oneLine(what, EMAIL_SUBJECT_MAX);
   const fullTitle = title ? oneLine(title, 200) : "";
-  if (!fullTitle) return oneLine(fullCompany ? `${fullCompany}: ${head}` : head, EMAIL_SUBJECT_MAX);
+  if (!fullTitle) {
+    if (!fullCompany) return head;
+    // Senza titolo si accorcia il nome del cliente, mai {cosa}: l'azione resta intera.
+    const companyRoom = EMAIL_SUBJECT_MAX - 2 - head.length;
+    return companyRoom >= 4 ? `${cut(fullCompany, companyRoom)}: ${head}` : cut(`${fullCompany}: ${head}`, EMAIL_SUBJECT_MAX);
+  }
   // ": " prima di {cosa}, " «" e "»" intorno al titolo.
   const fixed = 2 + head.length + 3;
   const wantedTitle = Math.min(SUBJECT_TITLE_MIN, fullTitle.length);
