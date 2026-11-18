@@ -73,10 +73,10 @@ export interface NeedsBoardViewProps {
  *   cinque gruppi con il suo dettaglio, poi «Chi», «Entro» e «Per» (uno use case per intero, o «Per
  *   N use case» con prima gli agenti serviti); niente dettaglio, che sta nella scheda. Dopo i gruppi
  *   «Già a posto · N», chiuso.
- * - «Prossimi passi»: dal riquadro di 58rem una colonna di 18rem accanto alla lista, sotto più
- *   stretto. «Prima di oggi» (gli scaduti), un mese per volta da quello di oggi, «Senza data»; i
- *   primi cinque in vista, gli altri sotto «Mostra gli altri N» (la sezione spezzata ripete il suo
- *   titolo), i fatti sotto «Fatti · N», chiusi.
+ * - «Scadenze» (prima «Prossimi passi»): dal riquadro di 58rem una colonna di 18rem accanto alla
+ *   lista, sotto più stretto. «Prima di oggi» (le scadute), un mese per volta da quello di oggi,
+ *   «Senza data»; le prime cinque in vista, le altre sotto «Mostra le altre N» (la sezione spezzata
+ *   ripete il suo titolo), le fatte sotto «Fatte · N», chiuse.
  * Gli use case in realizzazione stanno nella Panoramica: qui solo una riga con il link alla sua
  * sezione «In realizzazione». Nessun titolo visibile: la scheda attiva del selettore nomina la vista.
  * Si conta solo per stato, mai per persona: «Chi» è un testo della riga, mai contato né filtrato. Le
@@ -294,9 +294,9 @@ function MetaLine({ row, hrefOf, palette, status = false }: { row: NeedRow; href
 }
 
 /**
- * «Prossimi passi»: la linea del tempo. «Prima di oggi», un mese per volta, «Senza data»; i primi
- * cinque in vista, gli altri sotto «Mostra gli altri N» (`splitTimeline`: la sezione spezzata ripete
- * il suo titolo dentro), i fatti sotto «Fatti · N». Chiusi, aperti con una ricerca.
+ * «Scadenze»: la linea del tempo. «Prima di oggi», un mese per volta, «Senza data»; le prime
+ * cinque in vista, le altre sotto «Mostra le altre N» (`splitTimeline`: la sezione spezzata ripete
+ * il suo titolo dentro), le fatte sotto «Fatte · N». Chiuse, aperte con una ricerca.
  */
 function Timeline({
   sections,
@@ -359,8 +359,8 @@ function TimelineSection({ section, idOf, hrefOf, palette }: { section: NeedTime
 }
 
 /**
- * Un passo: la data su una riga sua («28 ott», `<time dateTime>`), il titolo, lo stato («Proposto»,
- * «Confermato») con «Chi», poi «Per» come nelle righe.
+ * Un passo: la data su una riga sua («28 ott», `<time dateTime>`), il titolo, lo stato («Proposta»,
+ * «Confermata», come «scadenza») con «Chi», poi «Per» come nelle righe.
  */
 function TimelineItem({ item, hrefOf, palette }: { item: NeedTimelineItem; hrefOf: (id: string) => string; palette: AgentPalette | null }) {
   return (

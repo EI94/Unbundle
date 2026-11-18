@@ -95,11 +95,14 @@ export const NEED_AVAILABILITY_LABEL: Readonly<Record<NeedAvailability, string>>
   dopo_a8: "Dopo la scheda privacy",
 });
 
-/** Gli stati di un passo, al maschile come «passo» e come «Fatti · 3» (i valori salvati restano proposta, confermata, fatta). */
+/**
+ * Gli stati di un passo, che a schermo si chiama «scadenza» (rilascio 10, §4: «Scadenze»): al femminile, come «Fatte ·
+ * 3». I valori salvati restano proposta, confermata, fatta.
+ */
 export const NEED_STEP_STATUS_LABEL: Readonly<Record<NeedStepStatus, string>> = Object.freeze({
-  proposta: "Proposto",
-  confermata: "Confermato",
-  fatta: "Fatto",
+  proposta: "Proposta",
+  confermata: "Confermata",
+  fatta: "Fatta",
 });
 
 const STEP_TONE: Readonly<Record<NeedStepStatus, SemaforoColor>> = { proposta: "grigio", confermata: "blu", fatta: "verde" };
@@ -376,13 +379,13 @@ export interface NeedRow {
   owner: string | null;
   /**
    * Lo stato a schermo: per un requisito il suo gruppo dei cinque («Da chiedere», «In attesa», «Da
-   * verificare», «Ferma», «A posto», `needRequestGroupView`), per un passo il suo stato («Proposto»).
+   * verificare», «Ferma», «A posto», `needRequestGroupView`), per un passo il suo stato («Proposta»).
    */
   status: { label: string; tone: SemaforoColor };
   /** Il dettaglio dello stato di un requisito nel suo gruppo: «manca il dato», «risposta parziale», «non si applica»; null senza o per un passo. */
   statusNote: string | null;
   done: boolean;
-  /** «15 nov», «entro fine mese»; con «(proposta)» se la data non è ancora confermata, tranne su un passo «Proposto». */
+  /** «15 nov», «entro fine mese»; con «(proposta)» se la data non è ancora confermata, tranne su un passo «Proposta». */
   due: string | null;
   availability: NeedAvailability | null;
   /** Gli use case collegati, per codice. */
@@ -481,8 +484,8 @@ export function needRow(need: NeedView, useCases: ReadonlyMap<string, NeedUseCas
     status: group ? { label: group.label, tone: group.tone } : needStatusView(need.type, need.status),
     statusNote: group?.note ?? null,
     done: isNeedDone(need.type, need.status),
-    // Un passo «Proposto» è da confermare tutto, data compresa: a schermo «(proposta)» ripeterebbe lo
-    // stato accanto («Proposto · 3 dic (proposta)»). Il MCP del team tiene `needDueText` com'è.
+    // Un passo «Proposta» è da confermare tutto, data compresa: a schermo «(proposta)» ripeterebbe lo
+    // stato accanto («Proposta · 3 dic (proposta)»). Il MCP del team tiene `needDueText` com'è.
     due: needDueText(need.type === "passo" && need.status === "proposta" ? { ...need, dueIsProposal: false } : need, today),
     availability: need.availability,
     useCases: linked.sort(byCode),
@@ -576,14 +579,14 @@ export interface NeedTimeline {
 
 const BEFORE_KEY = "prima";
 
-/** «Mostra l'altro», «Mostra gli altri 36»: i passi della linea del tempo oltre i primi. */
+/** «Mostra l'altra», «Mostra le altre 36»: le scadenze della linea del tempo oltre le prime. */
 export function moreStepsText(count: number): string {
-  return count === 1 ? "Mostra l'altro" : `Mostra gli altri ${formatInteger(count)}`;
+  return count === 1 ? "Mostra l'altra" : `Mostra le altre ${formatInteger(count)}`;
 }
 
 /**
- * La linea del tempo divisa dove si chiude: i primi `shown` passi in vista, gli altri sotto «Mostra gli
- * altri N». Una sezione spezzata ripete il suo titolo dentro la parte chiusa.
+ * La linea del tempo divisa dove si chiude: i primi `shown` passi in vista, gli altri sotto «Mostra le
+ * altre N». Una sezione spezzata ripete il suo titolo dentro la parte chiusa.
  */
 export function splitTimeline(sections: readonly NeedTimelineSection[], shown: number = NEED_ROWS_SHOWN): { visible: NeedTimelineSection[]; hidden: NeedTimelineSection[]; hiddenCount: number } {
   const visible: NeedTimelineSection[] = [];
@@ -723,9 +726,9 @@ export function buildNeedsBoard(
   return { groups, done, timeline: { sections, done: stepsDone }, counts };
 }
 
-/** «Già a posto · 3», «Fatti · 2»: il titolo delle righe chiuse di default. */
+/** «Già a posto · 3», «Fatte · 2» (le scadenze): il titolo delle righe chiuse di default. */
 export function needDoneSummaryText(type: NeedType, count: number): string {
-  return `${type === "requisito" ? "Già a posto" : count === 1 ? "Fatto" : "Fatti"} · ${count}`;
+  return `${type === "requisito" ? "Già a posto" : count === 1 ? "Fatta" : "Fatte"} · ${count}`;
 }
 
 /** «Per 3 use case»: nella vista «Cosa serve», gli use case di un'esigenza quando sono più di uno. */

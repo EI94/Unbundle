@@ -132,7 +132,9 @@ test("vocabolari: aree dai tipi, stati per tipo, fatto e colori", () => {
   assert.equal(isNeedDone("passo", "confermata"), false);
   assert.deepEqual(needStatusView("requisito", "mancante"), { label: "Manca il dato", tone: "rosso" });
   assert.deepEqual(needStatusView("requisito", "bloccata"), { label: "Bloccata", tone: "lucchetto" });
-  assert.deepEqual(needStatusView("passo", "confermata"), { label: "Confermato", tone: "blu" });
+  assert.deepEqual(needStatusView("passo", "confermata"), { label: "Confermata", tone: "blu" });
+  // (Rilascio 10, §4) A schermo un passo è una «scadenza»: gli stati al femminile, come «Fatte · N».
+  assert.deepEqual(needStatusChoices("passo").map((c) => c.label), ["Proposta", "Confermata", "Fatta"]);
 
   assert.equal(needOwnerText({ ownerLabel: "Giulia", ownerSide: "cliente" }), "Giulia · Cliente");
   assert.equal(needOwnerText({ ownerLabel: null, ownerSide: "lateral_space" }), "Lateral Space");
@@ -143,10 +145,10 @@ test("vocabolari: aree dai tipi, stati per tipo, fatto e colori", () => {
   assert.equal(needDueText({ dueOn: null, dueLabel: "a fine mese", dueIsProposal: false }, TODAY), "a fine mese");
   assert.equal(needDueText({ dueOn: null, dueLabel: null, dueIsProposal: true }, TODAY), null);
   assert.equal(monthHeading("2026-11"), "Novembre 2026");
-  // A schermo, su un passo «Proposto», la data non dice «(proposta)»: lo dice già lo stato accanto.
+  // A schermo, su un passo «Proposta», la data non dice «(proposta)»: lo dice già lo stato accanto.
   const proposedStep = need({ type: "passo", kind: "decisione", status: "proposta", dueOn: "2026-12-03", dueIsProposal: true });
   assert.equal(needRow(proposedStep, new Map(), TODAY).due, "3 dic");
-  assert.equal(needRow(proposedStep, new Map(), TODAY).status.label, "Proposto");
+  assert.equal(needRow(proposedStep, new Map(), TODAY).status.label, "Proposta");
   assert.equal(needDueText(proposedStep, TODAY), "3 dic (proposta)", "il MCP del team la tiene");
   assert.equal(needRow({ ...proposedStep, status: "confermata" }, new Map(), TODAY).due, "3 dic (proposta)", "un passo confermato con la data ancora da confermare");
   assert.equal(needRow(need({ dueOn: "2026-12-03", dueIsProposal: true }), new Map(), TODAY).due, "3 dic (proposta)", "un requisito");
@@ -437,7 +439,7 @@ test("la linea del tempo: «Prima di oggi», un mese per volta da quello di oggi
   );
   assert.equal(NEED_TIMELINE_TEXT.before, "Prima di oggi");
   const item = timeline.sections[0].items[0];
-  assert.deepEqual([item.dueOn, item.due, item.status.label], ["2026-09-30", "30 set", "Confermato"]);
+  assert.deepEqual([item.dueOn, item.due, item.status.label], ["2026-09-30", "30 set", "Confermata"]);
   assert.deepEqual([timeline.sections[4].items[1].dueOn, timeline.sections[4].items[1].due], [null, "entro fine anno"]);
   assert.deepEqual(timeline.done.map((row) => row.title), ["Fatto prima", "Fatto dopo"], "i fatti per data");
   // Solo passi senza data; nessun passo.
@@ -445,7 +447,7 @@ test("la linea del tempo: «Prima di oggi», un mese per volta da quello di oggi
   assert.deepEqual(buildNeedsBoard([needs[11]], ITEMS, { today: TODAY, params: PARAMS }).timeline, { sections: [], done: [] });
 });
 
-test("la linea del tempo si chiude dopo i primi cinque: la sezione spezzata ripete il titolo; «Mostra gli altri N»", () => {
+test("la linea del tempo si chiude dopo le prime cinque: la sezione spezzata ripete il titolo; «Mostra le altre N»", () => {
   const section = (key: string, n: number): NeedTimelineSection => ({
     key,
     label: key,
@@ -459,9 +461,9 @@ test("la linea del tempo si chiude dopo i primi cinque: la sezione spezzata ripe
   assert.deepEqual(splitTimeline([section("prima", 5)]).hidden, [], "cinque: niente da chiudere");
   assert.equal(splitTimeline([section("prima", 8)]).hiddenCount, 3);
   assert.deepEqual(splitTimeline([]), { visible: [], hidden: [], hiddenCount: 0 });
-  assert.equal(moreStepsText(1), "Mostra l'altro");
-  assert.equal(moreStepsText(36), "Mostra gli altri 36");
-  assert.equal(moreStepsText(1200), "Mostra gli altri 1.200");
+  assert.equal(moreStepsText(1), "Mostra l'altra");
+  assert.equal(moreStepsText(36), "Mostra le altre 36");
+  assert.equal(moreStepsText(1200), "Mostra le altre 1.200");
 });
 
 test("il nome del gruppo del cliente: quello del connettore, altrimenti il workspace; gli altri gruppi", () => {
@@ -477,10 +479,10 @@ test("il nome del gruppo del cliente: quello del connettore, altrimenti il works
   assert.deepEqual(findHubForbiddenIn(texts, "area"), []);
 });
 
-test("le righe chiuse di default: «Già a posto · n», «Fatto · 1», «Fatti · n»", () => {
+test("le righe chiuse di default: «Già a posto · n», «Fatta · 1», «Fatte · n» (le scadenze)", () => {
   assert.equal(needDoneSummaryText("requisito", 3), "Già a posto · 3");
-  assert.equal(needDoneSummaryText("passo", 1), "Fatto · 1");
-  assert.equal(needDoneSummaryText("passo", 2), "Fatti · 2");
+  assert.equal(needDoneSummaryText("passo", 1), "Fatta · 1");
+  assert.equal(needDoneSummaryText("passo", 2), "Fatte · 2");
 });
 
 test("Cosa serve con un filtro: le esigenze degli use case che lo passano, con tutti i loro use case in «Per»", () => {

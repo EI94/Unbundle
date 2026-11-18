@@ -57,7 +57,7 @@ test("righe: «Cosa serve: …», con il tipo e gli stati della pagina, mai un t
     needHistoryText({ phaseBefore: "requisito.da_chiedere", phaseAfter: "modificata.requisito.validata" }),
     "Cosa serve: stato di un'informazione, «Non ancora chiesta» → «A posto»",
   );
-  assert.equal(needHistoryText({ phaseBefore: "passo.proposta", phaseAfter: "modificata.passo.fatta" }), "Cosa serve: stato di una scadenza, «Proposto» → «Fatto»");
+  assert.equal(needHistoryText({ phaseBefore: "passo.proposta", phaseAfter: "modificata.passo.fatta" }), "Cosa serve: stato di una scadenza, «Proposta» → «Fatta»");
   assert.equal(needHistoryText({ phaseBefore: "requisito.chiesta", phaseAfter: "modificata.passo.proposta" }), "Cosa serve: un'informazione diventa una scadenza");
   assert.equal(needHistoryText({ phaseBefore: null, phaseAfter: "approvato.trimestre" }), "Cosa serve", "codici sconosciuti");
   assert.ok(isNeedHistoryEvent({ fields: ["cosa_serve"] }));

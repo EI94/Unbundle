@@ -219,7 +219,7 @@ test("«Per N use case»: il titolo della riga lo leggono come descrizione, senz
   assert.equal(new Set(all).size, all.length, "id unici");
 });
 
-test("«Prossimi passi»: accanto alla lista, «Prima di oggi» in testa, i primi cinque, la sezione spezzata ripete il titolo, «Fatti · N»", () => {
+test("«Scadenze»: accanto alla lista, «Prima di oggi» in testa, le prime cinque, la sezione spezzata ripete il titolo, «Fatta · 1», stati al femminile", () => {
   const list = fixture();
   const html = render(build(list));
   // La griglia: la lista e la linea del tempo, sul riquadro della pagina.
@@ -233,7 +233,7 @@ test("«Prossimi passi»: accanto alla lista, «Prima di oggi» in testa, i prim
   const byTitle = new Map(list.map((n) => [n.title, n.id]));
   assert.deepEqual(ids(visible), ["Scaduto", "Oggi", "Novembre 1", "Novembre 2", "Novembre 3"].map((t) => byTitle.get(t)), "i primi cinque, per data");
   assert.equal(more.opening, '<details data-slot="needs-steps-more">');
-  assert.equal(more.summary, "Mostra gli altri 3");
+  assert.equal(more.summary, "Mostra le altre 3");
   assert.deepEqual(headings(more.body), ["Novembre 2026", "Dicembre 2026", "Senza data"], "novembre spezzato: il titolo si ripete");
   assert.deepEqual(ids(more.body), ["Novembre 4", "Dicembre", "Da fissare"].map((t) => byTitle.get(t)));
   // Gli id dei titoli sono unici anche quando una sezione si ripete.
@@ -242,12 +242,12 @@ test("«Prossimi passi»: accanto alla lista, «Prima di oggi» in testa, i prim
   // La data su una riga sua, con <time>; lo stato e «Chi»; nessun numero nei titoli delle sezioni.
   const late = between(aside, `data-need="${byTitle.get("Scaduto")}"`, "</li>");
   assert.match(late, /<time dateTime="2026-10-20" class="block text-xs font-medium tabular-nums">20(?: | )ott<\/time>/);
-  assert.ok(late.includes(">Confermato<"));
+  assert.ok(late.includes(">Confermata<"), "la scadenza è confermata");
   assert.ok(between(more.body, `data-need="${byTitle.get("Dicembre")}"`, "</li>").includes('<span data-meta="chi" class="min-w-0">Lateral Space</span>'));
   assert.ok(!between(more.body, `data-need="${byTitle.get("Da fissare")}"`, "</li>").includes("<time"), "senza data, nessun <time>");
   const done = details(aside, "needs-steps-done");
   assert.equal(done.opening, '<details data-slot="needs-steps-done">');
-  assert.equal(done.summary, "Fatto · 1");
+  assert.equal(done.summary, "Fatta · 1");
   assert.ok(done.body.includes('<time dateTime="2026-10-01"'));
   // Ogni passo aperto una volta, fuori dai fatti.
   const open = ids(aside.slice(0, aside.indexOf('<details data-slot="needs-steps-done"')));

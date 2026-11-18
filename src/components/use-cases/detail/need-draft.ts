@@ -106,7 +106,7 @@ export function requirementsSummaryText(open: number): string {
   return NEED_FORM_TEXT.requirementsSummary.replace("{n}", formatInteger(open));
 }
 
-/** «Scadenze · 2» con le scadenze da rispettare; senza, «Scadenze» (le fatte stanno dentro, in «Fatti · N»). */
+/** «Scadenze · 2» con le scadenze da rispettare; senza, «Scadenze» (le fatte stanno dentro, in «Fatte · N»). */
 export function stepsSummaryText(open: number): string {
   return open > 0 ? NEED_FORM_TEXT.stepsSummary.replace("{n}", formatInteger(open)) : NEED_FORM_TEXT.steps;
 }

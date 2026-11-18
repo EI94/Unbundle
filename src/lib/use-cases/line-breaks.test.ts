@@ -28,7 +28,7 @@ test("keepTogether: numeri con la loro parola, nomi tra «…» interi, il «·�
     ["da misurare · fino a 5.840 €", `da misurare${N}· fino a 5.840${N}€`],
     ["Questo trimestre · T4 2026", `Questo trimestre${N}· T4${N}2026`],
     ["Già a posto · 2", `Già a posto${N}·${N}2`],
-    ["Fatti · 4", `Fatti${N}·${N}4`],
+    ["Fatte · 4", `Fatte${N}·${N}4`],
     ["Più avanti · 14 passi", `Più avanti${N}· 14${N}passi`],
     ["Cosa vi chiediamo questo trimestre · 17 use case", `Cosa vi chiediamo questo trimestre${N}· 17${N}use${N}case`],
     ["Sistemi informativi · Cliente", `Sistemi informativi${N}· Cliente`],

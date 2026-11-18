@@ -22,7 +22,7 @@ const { registerHooks } = nodeModule as unknown as {
 //   in cima la riga dei conteggi, poi i requisiti per chi deve muoversi (un gruppo per organizzazione,
 //   cinque righe in vista e «Mostra le altre N» chiuso, «Per N use case» chiuso con prima gli agenti
 //   dei titoli), «Già a posto» chiuso, e accanto la linea del tempo dei prossimi passi per data
-//   («Prima di oggi», i mesi, «Senza data»; i primi cinque, «Mostra gli altri N» e i fatti chiusi);
+//   («Prima di oggi», i mesi, «Senza data»; le prime cinque, «Mostra le altre N» e le fatte chiuse);
 //   una riga per gli use case in realizzazione con la Panoramica. Con un filtro, le esigenze degli use
 //   case che lo passano; con una ricerca le parti chiuse aperte, con il trimestre di «Prossimo passo»
 //   chiuse, il trimestre in testa ai conteggi. La Panoramica non le mostra: ne conta i
@@ -500,10 +500,11 @@ test("Cosa serve: «Prossimi passi» accanto alla lista, per data con la data so
   assert.ok(!steps.includes(">Prima di oggi<"), "nessun passo scaduto");
   const kickoff = between(steps, `data-need="${needIds.kickoff}"`, "</li>");
   assert.match(kickoff, new RegExp(`<time dateTime="${dueSoon}" class="block text-xs font-medium tabular-nums">`));
-  assert.ok(kickoff.includes(T.kickoff) && kickoff.includes(">Confermato<") && kickoff.includes('<span data-meta="chi" class="min-w-0">Lateral Space</span>'));
+  // (Rilascio 10, §4) Una «scadenza»: lo stato al femminile.
+  assert.ok(kickoff.includes(T.kickoff) && kickoff.includes(">Confermata<") && kickoff.includes('<span data-meta="chi" class="min-w-0">Lateral Space</span>'));
   const done = detailsAround(steps, T.demo);
   assert.match(done, /^<details data-slot="needs-steps-done">/);
-  assert.ok(done.includes(`Fatto${N}·${N}1`));
+  assert.ok(done.includes(`Fatta${N}·${N}1`));
   assertClosed(done);
   // Le schede del trimestre non ci sono più: il ritorno da confermare resta nella scheda di ogni use case.
   for (const gone of ["needs-quarter", "data-quarter-ask", "Cosa vi chiediamo questo trimestre", "Chi conferma i numeri", "Il ritorno da confermare", FIX_A.confirmBy, "Ci serve subito", "Dopo la scheda A.8", "4.043"]) {
@@ -663,9 +664,9 @@ test("Cosa serve: gli use case in realizzazione si leggono nella Panoramica, mai
   }
 });
 
-test("Cosa serve: la linea del tempo, «Prima di oggi» in testa, i primi cinque, «Mostra gli altri N» e «Fatti · N» chiusi; gli agenti in «Per»", opts, async () => {
+test("Cosa serve: la linea del tempo, «Prima di oggi» in testa, le prime cinque, «Mostra le altre N» e «Fatte · N» chiuse; gli agenti in «Per»", opts, async () => {
   const { agentPalette } = await import("./agents.ts");
-  const step = (title: string, useCases: Array<{ id: string; code: string | null; title: string }> = [], dueOn: string | null = null, status = { label: "Confermato", tone: "blu" }) => ({
+  const step = (title: string, useCases: Array<{ id: string; code: string | null; title: string }> = [], dueOn: string | null = null, status = { label: "Confermata", tone: "blu" }) => ({
     id: randomUUID(),
     type: "passo",
     kind: "altro",
@@ -693,7 +694,7 @@ test("Cosa serve: la linea del tempo, «Prima di oggi» in testa, i primi cinque
   const html = readable(
     renderToStaticMarkup(
       createElementOf(board.NeedsBoardView, {
-        board: { groups: [], done: [], timeline: { sections, done: [step("Fatto", [], "2026-10-01", { label: "Fatto", tone: "verde" })] }, counts: needs.emptyNeedAskCounts() },
+        board: { groups: [], done: [], timeline: { sections, done: [step("Fatta", [], "2026-10-01", { label: "Fatta", tone: "verde" })] }, counts: needs.emptyNeedAskCounts() },
         clientLabel: "Prova",
         agents: agentPalette([...agentsRefs, plainRef]),
         hrefOf: (id: string) => `?apri=${id}`,
@@ -704,18 +705,18 @@ test("Cosa serve: la linea del tempo, «Prima di oggi» in testa, i primi cinque
   assert.equal(summaryOf(html), "Nessuna aperta");
   assert.ok(html.includes('<p data-slot="needs-none" class="text-sm text-muted-foreground">Niente da chiedere per ora.</p>'));
   const aside = between(html, '<aside data-slot="needs-timeline"', "</aside>");
-  // I primi cinque prima di «Mostra gli altri N»: «Prima di oggi» in testa, poi novembre.
+  // Le prime cinque prima di «Mostra le altre N»: «Prima di oggi» in testa, poi novembre.
   const visible = aside.slice(0, aside.indexOf('<details data-slot="needs-steps-more"'));
   assert.deepEqual([...visible.matchAll(/<h3 [^>]*>([^<]*)<\/h3>/g)].map((m) => m[1]), ["Prima di oggi", "Novembre 2026"]);
   assert.equal(visible.split("<li data-need=").length - 1, 5);
-  // Gli altri sotto «Mostra gli altri 2», chiuso: novembre ripete il suo titolo, poi «Senza data».
+  // Le altre sotto «Mostra le altre 2», chiuso: novembre ripete il suo titolo, poi «Senza data».
   const more = detailsAround(aside, `Novembre quattro ${suffix}`);
   assert.match(more, /^<details data-slot="needs-steps-more">/);
   assertClosed(more);
-  assert.ok(more.includes(`Mostra gli altri 2`) && more.includes(">Novembre 2026</h3>") && more.includes(">Senza data</h3>") && more.includes(`Da fissare ${suffix}`));
-  const done = detailsAround(aside, `Fatto ${suffix}`);
+  assert.ok(more.includes(`Mostra le altre 2`) && more.includes(">Novembre 2026</h3>") && more.includes(">Senza data</h3>") && more.includes(`Da fissare ${suffix}`));
+  const done = detailsAround(aside, `Fatta ${suffix}`);
   assert.match(done, /^<details data-slot="needs-steps-done">/);
-  assert.ok(done.includes(`Fatto${N}·${N}1`));
+  assert.ok(done.includes(`Fatta${N}·${N}1`));
   // La data: un <time> su una riga sua.
   assert.match(aside, /<time dateTime="2026-10-20" class="block text-xs font-medium tabular-nums">20(?:\u00a0| )ott<\/time>/);
   // Gli agenti dei titoli, una volta ciascuno, prima di «Per 3 use case»; nessuno senza prefisso.
@@ -935,10 +936,10 @@ test("scheda compatta: (rilascio 6) «Requisiti · N» chiuso con tutti gli aper
   // Un solo «⋯» per riga, mai le tre icone.
   assert.equal(html.split('aria-label="Azioni: ').length - 1, open.length + 1 + steps.length);
   assert.ok(!html.includes('aria-label="Modifica: ') && !html.includes('aria-label="Aggiungi una risposta: '));
-  // Poi, chiusi: «Prossimi passi · 1» (con «Fatto · 1» dentro) e «Già a posto · 1»; niente «Richieste inviate» senza la funzione.
+  // Poi, chiusi: «Scadenze · 1» (con «Fatta · 1» dentro) e «Già a posto · 1»; niente «Richieste inviate» senza la funzione.
   const stepsBlock = detailsAround(html, `Passo aperto ${suffix}`);
   assertClosed(stepsBlock);
-  assert.ok(stepsBlock.includes(`Scadenze${N}·${N}1`) && stepsBlock.includes(`Fatto${N}·${N}1`));
+  assert.ok(stepsBlock.includes(`Scadenze${N}·${N}1`) && stepsBlock.includes(`Fatta${N}·${N}1`));
   const doneBlock = detailsAround(html, `Fatta ${suffix}`);
   assertClosed(doneBlock);
   assert.ok(doneBlock.includes(`Già a posto${N}·${N}1`));
@@ -1049,7 +1050,7 @@ test("Storia: i cambi di «Cosa serve» nelle righe della scheda per i revisori,
         "Persona ls · Cosa serve: scollegata una scadenza · pagina",
         "Persona ls · Cosa serve: collegata una scadenza · pagina",
         "Persona builder · Cosa serve: archiviata una scadenza · pagina",
-        "Persona builder · Cosa serve: stato di una scadenza, «Proposto» → «Fatto» · pagina",
+        "Persona builder · Cosa serve: stato di una scadenza, «Proposta» → «Fatta» · pagina",
         "Persona builder · Cosa serve: aggiunta una scadenza · pagina",
       ],
       person,

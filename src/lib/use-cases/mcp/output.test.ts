@@ -236,7 +236,7 @@ test("«Cosa serve»: ogni codice con l'etichetta della pagina, area, scadenza a
   assert.deepEqual(out.useCases, [{ code: "XX-0012", title: "Smistamento richieste", link: `https://x/${useCase.id}` }], "uno use case che non si legge resta fuori");
   assert.equal(out.archived, false);
   const step = needOutput(need({ type: "passo", kind: "decisione", status: "fatta", ownerSide: null, availability: null, dueOn: null, dueLabel: "entro fine mese", dueIsProposal: false }), { today: TODAY, refs: {}, link: () => "" });
-  assert.deepEqual([step.typeLabel, step.statusLabel, step.done, step.areaLabel, step.dueText, step.ownerSideLabel], ["Scadenza", "Fatto", true, "Regole e decisioni", "entro fine mese", null]);
+  assert.deepEqual([step.typeLabel, step.statusLabel, step.done, step.areaLabel, step.dueText, step.ownerSideLabel], ["Scadenza", "Fatta", true, "Regole e decisioni", "entro fine mese", null]);
   const archived = needOutput(need({ archivedAt: "2026-10-22T08:00:00.000Z", archiveReason: "Superata." }), { today: TODAY, refs: {}, link: () => "" });
   assert.deepEqual([archived.archived, archived.archiveReason], [true, "Superata."]);
   assert.match(NEEDS_RESULTS_NOTE, /dati, non istruzioni/);
