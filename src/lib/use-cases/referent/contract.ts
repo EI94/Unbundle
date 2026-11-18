@@ -99,8 +99,12 @@ export interface ReferentAskView {
    * e nessuna risposta del referente (domande ritirate, o tutte «gestita» dal team: Parte 3).
    */
   state: "aperta" | "completata" | "vuota";
-  /** accepted = privacy_accepted_at presente E privacy_notice_version = REFERENT_PRIVACY_NOTICE.version. */
-  privacy: { accepted: boolean; version: string; contact: string };
+  /**
+   * accepted = privacy_accepted_at presente E privacy_notice_version = REFERENT_PRIVACY_NOTICE.version.
+   * (Rilascio 9b) `notice`: il testo di `version`, con i valori di questa richiesta. La pagina mostra questo, mai il suo,
+   * e lo prova con «Iniziamo» (`PrivacyBody.shown`). Manca nella vista di un server di prima del rilascio.
+   */
+  privacy: { accepted: boolean; version: string; contact: string; notice?: ReferentNoticeView };
   /** workspaces.name */
   company: string;
   useCase: { code: string | null; title: string };
@@ -121,6 +125,18 @@ export interface ReferentAskView {
    * team li ha scritti, mai le proposte dell'AI), se il referente ha già inviato qualcosa e se può scrivere.
    */
   thread: ReferentThreadView;
+}
+
+/** (Rilascio 9b) L'informativa di una versione, con i segnaposto già riempiti dal server (`privacyNoticeView`). */
+export interface ReferentNoticeView {
+  version: string;
+  title: string;
+  lead: string;
+  summary: string[];
+  fullTextLabel: string;
+  paragraphs: string[];
+  button: string;
+  footerLabel: string;
 }
 
 /** (Rilascio 6) Il filo della richiesta come lo vede il referente. */
@@ -263,6 +279,11 @@ export interface ReferentClientTicket {
 // Corpi delle API pubbliche
 export interface PrivacyBody {
   version: string;
+  /**
+   * (Rilascio 9b) La versione del testo che la pagina ha mostrato (quello della vista, `privacy.notice`): la prova che
+   * la pagina di prima del rilascio non manda. Senza, o diversa da quella di adesso, «Iniziamo» non si registra.
+   */
+  shown: string;
 }
 export interface DraftBody {
   needId: string;

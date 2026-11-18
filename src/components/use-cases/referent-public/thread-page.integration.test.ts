@@ -150,7 +150,7 @@ async function answeredReferent(card: { id: string; needs: string[] }): Promise<
   const outbox = await send(sent.requestId);
   const token = /\/rispondi\/(ucq_[A-Za-z0-9_-]{32})/.exec(outbox[0]?.text ?? "")?.[1];
   assert.ok(token, "il link nell'email");
-  pok(await pub.acceptReferentPrivacy(await linkOf(token!), { version: "ucq-2026-11-3" }, new Date()) as never, "informativa");
+  pok(await pub.acceptReferentPrivacy(await linkOf(token!), { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" }, new Date()) as never, "informativa");
   const link = await linkOf(token!);
   pok(await pub.saveReferentCheck(link, { step: 1, confirm: "si", note: null }, new Date()) as never, "passo 1");
   pok(await pub.saveReferentCheck(link, { step: 2, benefit: { key: "tempo-1", seen: SEEN, answer: "meno", timesPerMonth: 200 } }, new Date()) as never, "passo 2");
@@ -406,10 +406,20 @@ test("«Modifica» finché il team non segna «A posto», poi «Aggiungi qualcos
   const after = await html(r.token);
   for (const text of ["Hai aggiunto: «Anche la PEC, da gennaio.»", "Hai aggiunto: «D'estate sono la metà.»", "Hai aggiunto: «Il caso d'uso vale anche per le note di credito.»"]) assert.ok(after.includes(text), text);
   // Un'informativa letta in una versione di prima: la pagina si legge, ma per scrivere al team serve «Iniziamo».
+  // (Rilascio 9b) Con un 503 «informativa_aggiornata»: la pagina aperta da prima del rilascio tiene il messaggio scritto.
   await q(`UPDATE use_case_referent_requests SET privacy_notice_version = 'ucq-2026-11-1' WHERE id = $1::uuid`, [r.requestId]);
   const old = await call("doubt", r.token, { anchor: "generale", text: "Una domanda" });
-  assert.equal(old.status, 409);
-  assert.equal(old.json.error, "informativa_da_leggere");
+  assert.equal(old.status, 503);
+  assert.equal(old.json.error, "informativa_aggiornata");
+  for (const [route, body] of [
+    ["add", { anchor: "generale", text: "Una cosa in più" }],
+    ["edit", { needId: card.needs[0], text: "Un'altra risposta" }],
+  ] as const) {
+    const refused = await call(route, r.token, body);
+    assert.deepEqual([refused.status, refused.json.error], [503, "informativa_aggiornata"], route);
+  }
+  const [{ n: messages }] = await q(`SELECT count(*)::int AS n FROM use_case_referent_messages WHERE request_id = $1::uuid AND body IN ('Una domanda', 'Una cosa in più')`, [r.requestId]);
+  assert.equal(messages, 0, "niente si scrive");
   const readOnly = await html(r.token);
   assert.ok(readOnly.includes("Hai risposto il") && !readOnly.includes("Prima di iniziare"), "la sola lettura non chiede l'informativa");
   await q(`UPDATE use_case_referent_requests SET privacy_notice_version = 'ucq-2026-11-3' WHERE id = $1::uuid`, [r.requestId]);

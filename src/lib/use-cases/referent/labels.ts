@@ -749,6 +749,26 @@ export function privacyNoticeTexts(v: PrivacyNoticeValues): { summary: string[];
   };
 }
 
+/**
+ * (Rilascio 9b) L'informativa intera di questa versione, con i valori della richiesta, come la vista la manda alla
+ * pagina (`privacy.notice`): la pagina mostra questo testo, mai quello che ha dentro, e con «Iniziamo» manda la sua
+ * versione come prova (`shown`).
+ */
+export function privacyNoticeView(v: PrivacyNoticeValues): {
+  version: string;
+  title: string;
+  lead: string;
+  summary: string[];
+  fullTextLabel: string;
+  paragraphs: string[];
+  button: string;
+  footerLabel: string;
+} {
+  const n = REFERENT_PRIVACY_NOTICE;
+  const filled = privacyNoticeTexts(v);
+  return { version: n.version, title: n.title, lead: n.lead, summary: filled.summary, fullTextLabel: n.fullTextLabel, paragraphs: filled.paragraphs, button: n.button, footerLabel: n.footerLabel };
+}
+
 const ADDRESS = /<([^<>\s@]+@[^<>\s@]+)>\s*$|^([^<>\s@]+@[^<>\s@]+)$/;
 
 /**
@@ -827,6 +847,10 @@ export const REFERENT_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.
   link_non_valido: "Questo link non è più valido. Chiedi a chi te l'ha mandato un link nuovo.",
   informativa_da_leggere: "Prima premi «Iniziamo».",
   informativa_cambiata: "L'informativa è cambiata: ricarica la pagina e leggila di nuovo.",
+  // (Rilascio 9b) L'informativa letta su questa richiesta è di una versione vecchia: niente si salva finché non si legge
+  // la nuova. Lo legge anche chi ha la pagina aperta da prima del rilascio, che l'informativa nuova non sa mostrarla:
+  // per questo dice di ricaricare e non nomina «Iniziamo».
+  informativa_aggiornata: "Abbiamo aggiornato l'informativa: ricarica la pagina per leggerla e continuare.",
   gia_inviata: "Hai già inviato questa risposta.",
   risposte_da_correggere: "Alcune risposte vanno corrette: le trovi evidenziate.",
   nessuna_risposta: "Scrivi almeno una risposta, oppure scegli «Non ce l'ho».",

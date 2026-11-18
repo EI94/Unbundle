@@ -127,7 +127,7 @@ async function answeredReferent(card: { id: string; needs: string[] }): Promise<
   assert.ok(token, "il link nell'email");
   const first = await pub.resolveReferentToken(token!, new Date());
   if (first.access !== "ok") assert.fail("link");
-  pok(await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-3" }, new Date()) as never, "informativa");
+  pok(await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" }, new Date()) as never, "informativa");
   const link = await linkOf(token!);
   pok(await pub.saveReferentCheck(link, { step: 1, confirm: "si", note: null }, new Date()) as never, "passo 1");
   pok(await pub.saveReferentCheck(link, { step: 2, benefit: { key: "tempo-1", seen: SEEN, answer: "meno", timesPerMonth: 200 } }, new Date()) as never, "passo 2");

@@ -16,6 +16,7 @@ import { LS_CASE_ROLES } from "@/lib/uc/vocab";
 import { silentNeedIds, type InfoAskFact } from "@/lib/use-cases/info-progress";
 import type { NeedKind, NeedOwnerSide, NeedStatus, NeedType, NeedView } from "@/lib/use-cases/needs";
 import { referentAskEnabled } from "@/lib/use-cases/referent/availability";
+import type { PrivacyWait } from "@/lib/use-cases/referent/state";
 import { REFERENT_ERROR_MESSAGES, referentErrorMessage } from "@/lib/use-cases/referent/labels";
 import {
   NO_PERSON,
@@ -479,5 +480,10 @@ export interface ReferentLink {
   contactId: string;
   status: "inviata" | "completata";
   privacyAccepted: boolean;
+  /**
+   * (Rilascio 9b) Perché le scritture aspettano l'informativa (`privacyWaitOf`): mai letta o letta in una versione
+   * vecchia; null quando è letta. Senza il campo, un'informativa non letta vale «mai letta» (`linkPrivacyWait`).
+   */
+  privacyWait?: PrivacyWait | null;
   expiresAt: Date;
 }

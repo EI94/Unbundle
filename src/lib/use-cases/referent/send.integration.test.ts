@@ -265,7 +265,13 @@ test("pagina pubblica: il link, l'informativa, le bozze e i loro controlli", opt
   if (!draft.ok) assert.equal(draft.code, "informativa_da_leggere");
   const wrong = await pub.acceptReferentPrivacy(resolved.link, { version: "ucq-2025-01-1" }, now);
   assert.ok(!wrong.ok && wrong.code === "informativa_cambiata");
-  assert.deepEqual(await pub.acceptReferentPrivacy(resolved.link, { version: "ucq-2026-11-3" }, now), { ok: true, value: { accepted: true } });
+  // (Rilascio 9b) Il corpo della pagina di produzione (49414cc9), senza la prova del testo mostrato: rifiutato con il
+  // codice che quella pagina mostra con «ricarica la pagina», e niente si registra.
+  const unproven = await pub.acceptReferentPrivacy(resolved.link, { version: "ucq-2026-11-3" }, now);
+  assert.ok(!unproven.ok && unproven.code === "informativa_cambiata" && /ricarica la pagina/.test(unproven.message));
+  const [unrecorded] = await q(`SELECT privacy_accepted_at, privacy_notice_version FROM use_case_referent_requests WHERE id = $1::uuid`, [state.requestId]);
+  assert.deepEqual([unrecorded.privacy_accepted_at, unrecorded.privacy_notice_version], [null, null], "nessun consenso senza la prova");
+  assert.deepEqual(await pub.acceptReferentPrivacy(resolved.link, { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" }, now), { ok: true, value: { accepted: true } });
   const [r] = await q(`SELECT status FROM use_case_referent_requests WHERE id = $1::uuid`, [state.requestId]);
   assert.equal(r.status, "inviata", "leggere l'informativa non cambia lo stato");
   const again = await pub.resolveReferentToken(state.token, now);

@@ -112,7 +112,7 @@ before(async () => {
   referents = await import("../../../lib/db/queries/use-case-referents.ts");
   dispatch = await import("../../../lib/db/queries/use-case-referent-dispatch.ts");
   handler = await import("../../../app/api/rispondi/[token]/handler.ts");
-  for (const route of ["", "privacy", "draft", "submit", "upload", "upload-token", "upload-complete", "file-remove", "file-confirm"]) {
+  for (const route of ["", "privacy", "draft", "submit", "upload", "upload-token", "upload-complete", "file-remove", "file-confirm", "check", "doubt"]) {
     routes[route] = (await import(`../../../app/api/rispondi/[token]/${route ? `${route}/` : ""}route.ts`)) as RouteModule;
   }
 
@@ -244,7 +244,7 @@ test("dalle rotte: informativa, bozza bloccata dal controllo del testo, bozza, f
   const early = await call("draft", state.token, { body: { needId: n0, text: "Ogni giorno", dontKnow: false } });
   assert.equal(early.status, 409);
   assert.equal(early.json.error, "informativa_da_leggere");
-  const accepted = await call("privacy", state.token, { body: { version: "ucq-2026-11-3" } });
+  const accepted = await call("privacy", state.token, { body: { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" } });
   assert.equal(accepted.status, 200);
   assert.deepEqual(accepted.json.data, { accepted: true });
 
@@ -318,12 +318,93 @@ test("dalle rotte: informativa, bozza bloccata dal controllo del testo, bozza, f
   assert.equal((await call("draft", state.token, { body: { needId: n0, text: "Altro", dontKnow: false } })).status, 404);
 });
 
+/** Un CSV da caricare su una domanda, come lo manda la pagina (modalità server). */
+function csvForm(needId: string, name = "volumi.csv"): FormData {
+  const form = new FormData();
+  form.set("file", new File(["mese;fatture\nottobre;420\nnovembre;390\n"], name, { type: "text/csv" }));
+  form.set("needId", needId);
+  form.set("declaration", "true");
+  return form;
+}
+
+test("(rilascio 9b) «Iniziamo» si registra solo con la prova del testo mostrato; letta in una versione vecchia, ogni scrittura risponde 503 e niente si salva", opts, async () => {
+  const [n2, n3] = state.needs.slice(2, 4);
+  const link = await sendLink(`anna.verdi.${suffix}@rondine.test`, [n2, n3]);
+  const requestRow = async () => (await q(`SELECT privacy_accepted_at, privacy_notice_version FROM use_case_referent_requests WHERE id = $1::uuid`, [link.requestId]))[0];
+  type Privacy = { accepted: boolean; version: string; notice?: { version: string; lead: string; summary: string[]; paragraphs: string[]; button: string } };
+  const privacyOf = async () => ((await call("", link.token, { method: "GET" })).json.data as { privacy: Privacy }).privacy;
+
+  // La vista porta il testo da accettare, già riempito: la pagina mostra quello.
+  const first = await privacyOf();
+  assert.deepEqual([first.accepted, first.version, first.notice?.version], [false, "ucq-2026-11-3", "ucq-2026-11-3"]);
+  assert.ok(first.notice?.summary.some((t) => t.includes("Rondine prova")) && first.notice.paragraphs.some((t) => t.includes("senza il tuo nome")));
+  assert.equal(first.notice?.button, "Iniziamo");
+
+  // La pagina di produzione (49414cc9) manda solo `{ version }`, quella della vista: 409 «informativa_cambiata», che
+  // mostra con il suo messaggio («ricarica la pagina»). Una prova di un'altra versione, lo stesso. Niente si registra.
+  for (const body of [{ version: "ucq-2026-11-3" }, { version: "ucq-2026-11-3", shown: "ucq-2026-11-2" }, { version: "ucq-2026-11-2", shown: "ucq-2026-11-3" }, { shown: "ucq-2026-11-3" }]) {
+    const r = await call("privacy", link.token, { body });
+    assert.deepEqual([r.status, r.json.error], [409, "informativa_cambiata"], JSON.stringify(body));
+    assert.match(String(r.json.message), /ricarica la pagina/);
+  }
+  assert.deepEqual(Object.values(await requestRow()), [null, null], "nessun consenso senza la prova");
+
+  // La pagina nuova: la versione del testo mostrato, con la prova.
+  const accepted = await call("privacy", link.token, { body: { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" } });
+  assert.deepEqual([accepted.status, accepted.json.data], [200, { accepted: true }]);
+  assert.equal((await requestRow()).privacy_notice_version, "ucq-2026-11-3");
+  assert.equal((await call("draft", link.token, { body: { needId: n2, text: "Circa 30 al mese.", dontKnow: false } })).status, 200);
+  const file = await call("upload", link.token, { form: csvForm(n3) });
+  assert.equal(file.json.data?.status, "pulito", JSON.stringify(file.json));
+
+  // Il referente l'aveva letta nella versione di prima (la pagina aperta prima del rilascio).
+  await q(`UPDATE use_case_referent_requests SET privacy_notice_version = 'ucq-2026-11-2' WHERE id = $1::uuid`, [link.requestId]);
+  const snapshot = async () =>
+    (
+      await q(
+        `SELECT (SELECT string_agg(coalesce(body, '-') || ':' || status, ',' ORDER BY need_id) FROM use_case_need_answers WHERE request_id = $1::uuid) AS answers,
+           (SELECT count(*)::int FROM use_case_need_files WHERE request_id = $1::uuid AND deleted_at IS NULL) AS files,
+           (SELECT count(*)::int FROM use_case_referent_messages WHERE request_id = $1::uuid) AS messages,
+           (SELECT status FROM use_case_referent_requests WHERE id = $1::uuid) AS status`,
+        [link.requestId],
+      )
+    )[0];
+  const before = await snapshot();
+  const fileId = file.json.data?.fileId;
+  const writes: [string, Parameters<typeof call>[2]][] = [
+    ["draft", { body: { needId: n2, text: "Testo da non salvare", dontKnow: false } }],
+    ["submit", { body: { shown: [n2, n3] } }],
+    ["check", { body: { step: 1, confirm: "si", note: null } }],
+    ["file-remove", { body: { fileId } }],
+    ["file-confirm", { body: { fileId } }],
+    ["upload-token", { body: { needId: n3, fileName: "grande.pdf", size: 5_000_000, declaration: true } }],
+    ["upload", { form: csvForm(n3, "altro.csv") }],
+    ["doubt", { body: { anchor: "generale", text: "Una domanda" } }],
+  ];
+  for (const [route, init] of writes) {
+    const r = await call(route, link.token, init);
+    assert.deepEqual([r.status, r.json.error], [503, "informativa_aggiornata"], route);
+    assert.equal(r.json.message, "Abbiamo aggiornato l'informativa: ricarica la pagina per leggerla e continuare.", route);
+  }
+  assert.deepEqual(await snapshot(), before, "niente si salva, niente si toglie, niente si invia");
+  // La pagina di produzione può ancora rimandare la sua accettazione: rifiutata, e il consenso resta quello di prima.
+  assert.equal((await call("privacy", link.token, { body: { version: "ucq-2026-11-3" } })).json.error, "informativa_cambiata");
+  assert.equal((await requestRow()).privacy_notice_version, "ucq-2026-11-2");
+
+  // La vista lo dice, con il testo da rileggere; un «Iniziamo» con la prova e si riprende da lì.
+  const again = await privacyOf();
+  assert.deepEqual([again.accepted, again.notice?.version], [false, "ucq-2026-11-3"]);
+  assert.equal((await call("privacy", link.token, { body: { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" } })).status, 200);
+  assert.equal((await requestRow()).privacy_notice_version, "ucq-2026-11-3");
+  assert.equal((await call("draft", link.token, { body: { needId: n2, text: "Circa 30 al mese, d'estate meno.", dontKnow: false } })).status, 200);
+});
+
 test("limite per link: la 31ª apertura in un minuto → 429 con Retry-After", opts, async () => {
   await alignToMinute();
   let last = 0;
   let retry: string | null = null;
   for (let i = 0; i < 31; i++) {
-    const r = await call("privacy", state.token, { body: { version: "ucq-2026-11-3" } });
+    const r = await call("privacy", state.token, { body: { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" } });
     last = r.status;
     retry = r.headers.get("retry-after");
   }

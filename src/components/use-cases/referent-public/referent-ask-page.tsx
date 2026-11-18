@@ -331,7 +331,8 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
   async function onAccept() {
     setPrivacyBusy(true);
     setPrivacyError(null);
-    const r = await acceptPrivacy(token, view.privacy.version);
+    // (Rilascio 9b) La prova del testo mostrato: la versione dell'informativa che questa pagina ha sullo schermo.
+    const r = await acceptPrivacy(token, { version: view.privacy.version, shown: REFERENT_PRIVACY_NOTICE.version });
     setPrivacyBusy(false);
     if (r.ok) {
       setView((v) => ({ ...v, privacy: { ...v.privacy, accepted: true } }));

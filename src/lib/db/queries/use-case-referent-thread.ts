@@ -47,7 +47,7 @@ import {
   validLinkSql,
   type ReferentActor,
 } from "@/lib/use-cases/referent/sql";
-import { privacyAccepted } from "@/lib/use-cases/referent/state";
+import { linkPrivacyWait, privacyAccepted } from "@/lib/use-cases/referent/state";
 import { checkReferentThreadText, checkThreadLine } from "@/lib/use-cases/referent/text";
 import {
   CLARIFY_FROM_STATUSES,
@@ -706,7 +706,8 @@ export interface ReferentThreadResult {
 
 /** «Ho un dubbio»: una domanda del referente al team, su una domanda, una voce o in generale. */
 export async function postReferentDoubt(link: ReferentLink, body: unknown, now: Date): Promise<PublicOutcome<ReferentThreadResult>> {
-  if (!link.privacyAccepted) return pfail("informativa_da_leggere");
+  const wait = linkPrivacyWait(link);
+  if (wait) return pfail(wait);
   if (!threadWritable(link, now)) return notAvailable();
   const b = record(body);
   const anchor = anchorOf(b);
@@ -731,7 +732,8 @@ export async function postReferentDoubt(link: ReferentLink, body: unknown, now: 
 
 /** La risposta del referente a un chiarimento del team. */
 export async function replyToReferentClarification(link: ReferentLink, body: unknown, now: Date): Promise<PublicOutcome<ReferentThreadResult>> {
-  if (!link.privacyAccepted) return pfail("informativa_da_leggere");
+  const wait = linkPrivacyWait(link);
+  if (wait) return pfail(wait);
   if (!threadWritable(link, now)) return notAvailable();
   const b = record(body);
   if (!isUuid(b.messageId)) return pfail("dati_non_validi", "Dati non validi.");
@@ -773,7 +775,8 @@ ${casTail("upd", 1, "domanda_non_disponibile")}`),
 
 /** «Aggiungi qualcosa» a una risposta già inviata: il team la vede di nuovo da verificare. */
 export async function addToReferentAnswer(link: ReferentLink, body: unknown, now: Date): Promise<PublicOutcome<ReferentThreadResult>> {
-  if (!link.privacyAccepted) return pfail("informativa_da_leggere");
+  const wait = linkPrivacyWait(link);
+  if (wait) return pfail(wait);
   if (!threadWritable(link, now)) return notAvailable();
   const b = record(body);
   const anchor = anchorOf(b);
@@ -806,7 +809,8 @@ export async function addToReferentAnswer(link: ReferentLink, body: unknown, now
  * Il testo nuovo prende il posto di quello di prima («Aggiornata»), l'informazione torna «Da verificare».
  */
 export async function editReferentAnswer(link: ReferentLink, body: unknown, now: Date): Promise<PublicOutcome<{ editedAt: string }>> {
-  if (!link.privacyAccepted) return pfail("informativa_da_leggere");
+  const wait = linkPrivacyWait(link);
+  if (wait) return pfail(wait);
   if (!threadWritable(link, now)) return notAvailable();
   const b = record(body);
   if (!isUuid(b.needId)) return pfail("dati_non_validi", "Dati non validi.");

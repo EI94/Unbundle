@@ -95,3 +95,46 @@ export function itemHandledByTeam(i: { state: ReferentItemState; needStatus: Nee
 export function privacyAccepted(r: { privacyAcceptedAt: Date | null; privacyNoticeVersion: string | null }): boolean {
   return r.privacyAcceptedAt !== null && r.privacyNoticeVersion === REFERENT_PRIVACY_NOTICE.version;
 }
+
+/**
+ * (Rilascio 9b) Perché una scrittura dal link aspetta l'informativa: mai letta (`informativa_da_leggere`, 409 come
+ * prima) oppure letta in una versione che non è più quella di adesso (`informativa_aggiornata`, 503). Niente si salva,
+ * in tutti e due i casi. Il codice nuovo è per le pagine aperte da prima del rilascio (Vercel Hobby, niente Skew
+ * Protection): quella di produzione (49414cc9) con `informativa_da_leggere` rilegge la vista e ricostruisce le domande
+ * dalla bozza del server, e perde il testo non ancora salvato; con `informativa_aggiornata` lo tiene nel campo.
+ */
+export type PrivacyWait = "informativa_da_leggere" | "informativa_aggiornata";
+
+export function privacyWaitOf(r: { privacyAcceptedAt: Date | null; privacyNoticeVersion: string | null }): PrivacyWait | null {
+  if (privacyAccepted(r)) return null;
+  return r.privacyAcceptedAt === null ? "informativa_da_leggere" : "informativa_aggiornata";
+}
+
+/** (Rilascio 9b) L'attesa di un link (`ReferentLink`): senza `privacyWait`, un'informativa non letta è «mai letta». */
+export function linkPrivacyWait(link: { privacyAccepted: boolean; privacyWait?: PrivacyWait | null }): PrivacyWait | null {
+  if (link.privacyAccepted) return null;
+  return link.privacyWait ?? "informativa_da_leggere";
+}
+
+/** (Rilascio 9b) Una scrittura rifiutata solo perché aspetta l'informativa: la pagina tiene quello che è scritto e la mostra di nuovo. */
+export function waitsForPrivacy(code: string): code is PrivacyWait {
+  return code === "informativa_da_leggere" || code === "informativa_aggiornata";
+}
+
+/**
+ * (Rilascio 9b) «Iniziamo» si registra solo se la pagina prova quale testo aveva sullo schermo: `version` (la versione
+ * accettata) e `shown` (la versione del testo mostrato, quello della vista: `privacy.notice`) sono tutte e due quella
+ * di adesso. La pagina di prima del rilascio mostra il testo che ha dentro e manda solo `version`, che dopo una vista
+ * riletta è quella del server: così non si registra mai un consenso a un testo che il referente non ha visto.
+ */
+/**
+ * (Rilascio 9b) Il codice di un «Iniziamo» senza la prova (o con un'altra versione): quello che la pagina di produzione
+ * (49414cc9) mostra con il messaggio del server, «ricarica la pagina»; la pagina nuova passa a «Ricarica la pagina».
+ */
+export const PRIVACY_NOT_SHOWN = "informativa_cambiata";
+
+export function privacyAcceptanceShown(body: unknown, current: string = REFERENT_PRIVACY_NOTICE.version): boolean {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return false;
+  const b = body as Record<string, unknown>;
+  return b.version === current && b.shown === current;
+}
