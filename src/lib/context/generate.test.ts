@@ -45,7 +45,7 @@ const READ = { proposte: [], nonRiportati: { persone: 0, sanitari: 0, altriClien
 
 test("contextRead: la richiesta vera, con il prompt della lettura, e l'oggetto di ritorno", async () => {
   const { system, prompt } = buildReadPrompt({
-    clientName: "Nardi Arredamenti",
+    clientName: "Alfa Arredamenti",
     today: "2026-11-16",
     occurredOn: "2026-11-14",
     title: "Call di avvio",

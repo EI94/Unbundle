@@ -45,12 +45,12 @@ const ids = {
 const EMAIL: Record<Person, string> = {
   ls: `paola-${suffix}@ls.test`,
   ls2: `marco-${suffix}@ls.test`,
-  cli: `giulia-${suffix}@nardi.test`,
-  top: `luca-${suffix}@topjet.test`,
+  cli: `giulia-${suffix}@alfa.test`,
+  top: `luca-${suffix}@beta.test`,
   out: `anna-${suffix}@altrove.test`,
   // Chi costruisce da fuori, con una casella pubblica; una persona del cliente che non è un contatto.
-  ext: `alessio-${suffix}@gmail.com`,
-  own: `marta-${suffix}@nardi.test`,
+  ext: `sandro-${suffix}@gmail.com`,
+  own: `marta-${suffix}@alfa.test`,
 };
 type Actor = import("../visibility.ts").ContextActor;
 const actor = (person: Person, workspace: "wsN" | "wsT" = "wsN", role = "transformation_lead"): Actor => ({
@@ -71,29 +71,29 @@ const slept: number[] = [];
 const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
 
 const MEETINGS: Record<string, FakeMeeting> = {
-  nardi: {
-    id: `m-nardi-${suffix}`,
+  alfa: {
+    id: `m-alfa-${suffix}`,
     title: "Allineamento ordini",
     meetingAt: ago(60 * 24),
     updatedAt: ago(60 * 23),
-    url: "https://note.esempio.test/d/nardi",
-    participants: `Paola Verdi (note creator) from Lateral Space (${EMAIL.ls}), Giulia Bianchi from Nardi (${EMAIL.cli})`,
+    url: "https://note.esempio.test/d/alfa",
+    participants: `Paola Verdi (note creator) from Lateral Space (${EMAIL.ls}), Giulia Bianchi from Alfa (${EMAIL.cli})`,
     summary: "Il gestionale è SAP Business One. Gli ordini arrivano via e-mail.",
     privateNotes: "Richiamare l'ufficio acquisti.",
   },
   both: {
     id: `m-both-${suffix}`,
-    title: `Nardi e TopJet a confronto ${suffix}`,
+    title: `Alfa e Beta a confronto ${suffix}`,
     meetingAt: ago(60 * 48),
     updatedAt: ago(60 * 47),
-    participants: `Paola Verdi (note creator) from Lateral Space (${EMAIL.ls}), Giulia Bianchi from Nardi (${EMAIL.cli}), ${EMAIL.out}`,
+    participants: `Paola Verdi (note creator) from Lateral Space (${EMAIL.ls}), Giulia Bianchi from Alfa (${EMAIL.cli}), ${EMAIL.out}`,
     summary: "Confronto tra due clienti.",
   },
   none: { id: `m-none-${suffix}`, title: `Riunione interna ${suffix}`, meetingAt: ago(60 * 50), updatedAt: ago(60 * 49), participants: `Paola (${EMAIL.ls})`, summary: "Organizzazione del lavoro interno." },
-  word: { id: `m-word-${suffix}`, title: `Revisione Ferrari ${suffix}`, meetingAt: ago(60 * 72), updatedAt: ago(60 * 71), participants: `Paola (${EMAIL.ls})`, summary: "Revisione del progetto con il cliente." },
+  word: { id: `m-word-${suffix}`, title: `Revisione Gamma ${suffix}`, meetingAt: ago(60 * 72), updatedAt: ago(60 * 71), participants: `Paola (${EMAIL.ls})`, summary: "Revisione del progetto con il cliente." },
   health: {
     id: `m-health-${suffix}`,
-    title: "Stato avanzamento TopJet",
+    title: "Stato avanzamento Beta",
     meetingAt: ago(60 * 30),
     updatedAt: ago(60 * 29),
     participants: `Luca Neri (${EMAIL.top})`,
@@ -101,12 +101,12 @@ const MEETINGS: Record<string, FakeMeeting> = {
   },
   folder: {
     id: `m-folder-${suffix}`,
-    title: "Manutenzione, nella cartella di TopJet",
+    title: "Manutenzione, nella cartella di Beta",
     meetingAt: ago(60 * 26),
     updatedAt: ago(60 * 25),
     participants: `Paola (${EMAIL.ls})`,
-    summary: "Questa call sta nella cartella di TopJet.",
-    folderIds: ["f-topjet"],
+    summary: "Questa call sta nella cartella di Beta.",
+    folderIds: ["f-beta"],
     transcript: `Parla il responsabile della manutenzione. ${"Una frase della trascrizione. ".repeat(40)}`,
   },
 };
@@ -127,7 +127,7 @@ before(async () => {
   callbackRoute = await import("../../../app/api/granola/callback/route.ts");
   metadataRoute = await import("../../../app/api/granola/client-metadata/route.ts");
 
-  fake = await startFakeGranola({ meetings: Object.values(MEETINGS), folders: [{ id: "f-topjet", name: "TopJet" }, { id: "f-nardi", name: "Nardi" }] });
+  fake = await startFakeGranola({ meetings: Object.values(MEETINGS), folders: [{ id: "f-beta", name: "Beta" }, { id: "f-alfa", name: "Alfa" }] });
   fake.account = { email: `paola-granola-${suffix}@ls.test`, plan: "Business" };
   // La fetch dell'app: solo 127.0.0.1. Le richieste al database le serve prima il trasporto locale.
   globalThis.fetch = ((original) => (input: string | URL | Request, init?: RequestInit) => {
@@ -145,8 +145,8 @@ before(async () => {
     },
   });
 
-  await q(`INSERT INTO organizations (id, name, slug) VALUES ($1, 'Nardi di prova', $2), ($3, 'TopJet di prova', $4)`, [ids.orgN, `org-gr-n-${suffix}`, ids.orgT, `org-gr-t-${suffix}`]);
-  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1, $2, 'Nardi Motorsport'), ($3, $4, 'TopJet Rosa')`, [ids.wsN, ids.orgN, ids.wsT, ids.orgT]);
+  await q(`INSERT INTO organizations (id, name, slug) VALUES ($1, 'Alfa di prova', $2), ($3, 'Beta di prova', $4)`, [ids.orgN, `org-gr-n-${suffix}`, ids.orgT, `org-gr-t-${suffix}`]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1, $2, 'Alfa Ricambi'), ($3, $4, 'Beta Rosa')`, [ids.wsN, ids.orgN, ids.wsT, ids.orgT]);
   for (const person of people) await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1, $2, $3, now())`, [ids[person], EMAIL[person], `Persona ${person}`]);
   const member = (ws: string, person: Person, role: string) => q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [ws, ids[person], role]);
   await member(ids.wsN, "ls", "transformation_lead");
@@ -356,8 +356,8 @@ test("il rinnovo cambia il refresh_token; due rinnovi insieme ne fanno uno", opt
   await q(`UPDATE context_granola_connections SET access_expires_at = now() + interval '30 seconds' WHERE user_id = $1`, [ids.ls]);
   const refreshesBefore = fake.tokenRequests.filter((r) => r.grantType === "refresh_token").length;
   assert.deepEqual(value(await granola.listGranolaFolders(actor("ls"))), [
-    { id: "f-topjet", name: "TopJet" },
-    { id: "f-nardi", name: "Nardi" },
+    { id: "f-beta", name: "Beta" },
+    { id: "f-alfa", name: "Alfa" },
   ]);
   const after = openGranolaTokens(KEY, ids.ls, String((await connection("ls")).tokens_sealed));
   assert.ok(after.ok);
@@ -407,23 +407,23 @@ test("un 401 dell'MCP: un rinnovo e di nuovo la chiamata; invalid_grant → da r
 // ─── Il giro ─────────────────────────────────────────────────────────
 
 test("il giro: una call di un solo cliente entra da leggere; quelle di due clienti o di nessuno non lasciano niente", opts, async () => {
-  // La cartella di TopJet per questo workspace: la cartella vince sul titolo.
-  value(await granola.saveGranolaRules(actor("ls", "wsT"), { folderId: "f-topjet", folderName: "TopJet", emails: [], domains: [], titleWords: ["TopJet"], wantTranscript: false }));
+  // La cartella di Beta per questo workspace: la cartella vince sul titolo.
+  value(await granola.saveGranolaRules(actor("ls", "wsT"), { folderId: "f-beta", folderName: "Beta", emails: [], domains: [], titleWords: ["Beta"], wantTranscript: false }));
   const calls = fake.toolCalls.length;
   const result = await granola.syncGranolaForUser(ids.ls, { force: true });
   assert.equal(result.status, "fatto");
   assert.deepEqual({ ...result, status: undefined }, { status: undefined, imported: 2, updated: 0, blocked: 1, unsorted: 3 });
 
-  // Nardi per i partecipanti, la call della cartella in TopJet.
-  const nardi = await sourceOf(MEETINGS.nardi.id);
-  assert.equal(nardi.workspace_id, ids.wsN);
-  assert.deepEqual([nardi.read_status, nardi.kind, nardi.visibility, nardi.added_by_user_id], ["da_leggere", "appunti", "ls", ids.ls]);
-  assert.match(String(nardi.body), /^\[Riassunto di Granola\]\nIl gestionale è SAP Business One\. Gli ordini arrivano via e-mail\.\n\n\[Note di chi ha registrato\]\nRichiamare l'ufficio acquisti\.$/);
-  assert.equal(nardi.link, "https://note.esempio.test/d/nardi");
-  assert.equal(nardi.title, "Allineamento ordini");
-  assert.match(String(nardi.participants), /Giulia Bianchi/);
+  // Alfa per i partecipanti, la call della cartella in Beta.
+  const alfa = await sourceOf(MEETINGS.alfa.id);
+  assert.equal(alfa.workspace_id, ids.wsN);
+  assert.deepEqual([alfa.read_status, alfa.kind, alfa.visibility, alfa.added_by_user_id], ["da_leggere", "appunti", "ls", ids.ls]);
+  assert.match(String(alfa.body), /^\[Riassunto di Granola\]\nIl gestionale è SAP Business One\. Gli ordini arrivano via e-mail\.\n\n\[Note di chi ha registrato\]\nRichiamare l'ufficio acquisti\.$/);
+  assert.equal(alfa.link, "https://note.esempio.test/d/alfa");
+  assert.equal(alfa.title, "Allineamento ordini");
+  assert.match(String(alfa.participants), /Giulia Bianchi/);
   assert.equal((await sourceOf(MEETINGS.folder.id)).workspace_id, ids.wsT);
-  const event = await q(`SELECT channel, detail FROM context_events WHERE source_id = $1`, [nardi.id]);
+  const event = await q(`SELECT channel, detail FROM context_events WHERE source_id = $1`, [alfa.id]);
   assert.deepEqual(event.map((e) => e.channel), ["granola"]);
   assert.equal(JSON.stringify(event).includes("SAP"), false, "nella storia nessun testo");
 
@@ -450,12 +450,12 @@ test("il giro: una call di un solo cliente entra da leggere; quelle di due clien
   assert.equal(row.unsorted_count, 3);
   assert.equal(row.last_error, null);
   assert.ok(row.last_sync_ok_at);
-  assert.equal(iso(row.synced_through), MEETINGS.nardi.updatedAt, "la call cambiata per ultima");
+  assert.equal(iso(row.synced_through), MEETINGS.alfa.updatedAt, "la call cambiata per ultima");
   assert.equal(row.syncing_until, null);
   // Il giro intero: gli ultimi 30 giorni, prima la cartella poi senza; e solo strumenti di lettura.
   const mine = fake.toolCalls.slice(calls);
   const searches = mine.filter((c) => c.tool === "search_meetings");
-  assert.equal(searches[0].args.folder_id, "f-topjet");
+  assert.equal(searches[0].args.folder_id, "f-beta");
   assert.equal(searches[1].args.folder_id, undefined);
   assert.ok(typeof searches[1].args.from_date === "string" && typeof searches[1].args.to_date === "string");
   assert.equal(searches[1].args.limit, 100);
@@ -524,29 +524,29 @@ function errorOf(result: { ok: boolean; error?: string }): string | null {
 test("le regole: si leggono con le parole predefinite; una parola aggiunta al titolo fa entrare al giro dopo una call di prima", opts, async () => {
   const rules = await granola.readGranolaRules(actor("ls"));
   // Due persone del cliente: i due contatti, anche quello in Gmail (conta per il suo indirizzo intero). Non i membri del workspace.
-  assert.deepEqual(rules, { folder: null, knownPeople: 2, emails: [], domains: [], titleWords: ["Nardi"], titleWordsAreDefault: true, wantTranscript: false, transcriptAvailable: true });
+  assert.deepEqual(rules, { folder: null, knownPeople: 2, emails: [], domains: [], titleWords: ["Alfa"], titleWordsAreDefault: true, wantTranscript: false, transcriptAvailable: true });
   // Una casella pubblica non vale come dominio: farebbe entrare le call di chiunque.
-  const publicDomain = await granola.saveGranolaRules(actor("ls"), { folderId: null, folderName: null, emails: [], domains: ["@Gmail.com"], titleWords: ["Nardi"], wantTranscript: false });
+  const publicDomain = await granola.saveGranolaRules(actor("ls"), { folderId: null, folderName: null, emails: [], domains: ["@Gmail.com"], titleWords: ["Alfa"], wantTranscript: false });
   assert.deepEqual([errorOf(publicDomain), !publicDomain.ok && publicDomain.fieldErrors], ["dati_non_validi", { domains: "Gmail, Outlook e le altre caselle pubbliche non valgono come dominio: aggiungi l'indirizzo intero della persona." }]);
   assert.equal(await granola.readGranolaRules(actor("cli", "wsN", "contributor")), null);
-  const topjet = await granola.readGranolaRules(actor("ls", "wsT"));
-  assert.deepEqual(topjet?.folder, { id: "f-topjet", name: "TopJet" });
-  assert.equal(topjet?.titleWordsAreDefault, true, "le parole uguali alle predefinite non si salvano");
+  const beta = await granola.readGranolaRules(actor("ls", "wsT"));
+  assert.deepEqual(beta?.folder, { id: "f-beta", name: "Beta" });
+  assert.equal(beta?.titleWordsAreDefault, true, "le parole uguali alle predefinite non si salvano");
 
   // Valori sbagliati: errori per campo, niente si salva.
-  const invalid = await granola.saveGranolaRules(actor("ls"), { folderId: null, folderName: null, emails: ["non è un'e-mail"], domains: ["nardi"], titleWords: [], wantTranscript: false });
+  const invalid = await granola.saveGranolaRules(actor("ls"), { folderId: null, folderName: null, emails: ["non è un'e-mail"], domains: ["alfa"], titleWords: [], wantTranscript: false });
   assert.equal(errorOf(invalid), "dati_non_validi");
   assert.deepEqual(!invalid.ok && invalid.fieldErrors, { emails: "Scrivi un'e-mail o un dominio.", domains: "Scrivi un'e-mail o un dominio." });
 
-  // Due call con una persona in Gmail, che nessuna regola riconosce ancora (Alessio è un membro del workspace, non un contatto).
-  const byAddress: FakeMeeting = { id: `m-gmail-${suffix}`, title: `Revisione disegni ${suffix}`, meetingAt: ago(60 * 20), updatedAt: ago(60 * 19), participants: `Alessio (${EMAIL.ext})`, summary: "Revisione dei disegni." };
+  // Due call con una persona in Gmail, che nessuna regola riconosce ancora (Sandro è un membro del workspace, non un contatto).
+  const byAddress: FakeMeeting = { id: `m-gmail-${suffix}`, title: `Revisione disegni ${suffix}`, meetingAt: ago(60 * 20), updatedAt: ago(60 * 19), participants: `Sandro (${EMAIL.ext})`, summary: "Revisione dei disegni." };
   const sameProvider: FakeMeeting = { id: `m-gmail2-${suffix}`, title: `Prova dei colori ${suffix}`, meetingAt: ago(60 * 21), updatedAt: ago(60 * 20), participants: `Chiara (chiara-${suffix}@gmail.com)`, summary: "Prova dei colori." };
   fake.meetings.push(byAddress, sameProvider);
 
   // Un indirizzo intero in una casella pubblica, scritto a mano, si accetta: nomina una persona sola.
-  value(await granola.saveGranolaRules(actor("ls"), { folderId: null, folderName: null, emails: ["Acquisti@Nardi.test", `p@ls.test`, EMAIL.ext.toUpperCase()], domains: ["@nardi-group.test"], titleWords: ["Nardi", "Ferrari"], wantTranscript: false }));
+  value(await granola.saveGranolaRules(actor("ls"), { folderId: null, folderName: null, emails: ["Acquisti@Alfa.test", `p@ls.test`, EMAIL.ext.toUpperCase()], domains: ["@alfa-group.test"], titleWords: ["Alfa", "Gamma"], wantTranscript: false }));
   const saved = (await q(`SELECT emails, domains, title_words, updated_by_user_id FROM context_granola_rules WHERE workspace_id = $1`, [ids.wsN]))[0];
-  assert.deepEqual([saved.emails, saved.domains, saved.title_words, saved.updated_by_user_id], [["acquisti@nardi.test", EMAIL.ext], ["nardi-group.test"], ["Nardi", "Ferrari"], ids.ls]);
+  assert.deepEqual([saved.emails, saved.domains, saved.title_words, saved.updated_by_user_id], [["acquisti@alfa.test", EMAIL.ext], ["alfa-group.test"], ["Alfa", "Gamma"], ids.ls]);
   assert.equal((await granola.readGranolaRules(actor("ls")))?.knownPeople, 2, "gli indirizzi scritti a mano non sono persone già note");
   const result = await granola.syncGranolaForUser(ids.ls, { force: true });
   assert.equal(result.status, "fatto");
@@ -560,31 +560,31 @@ test("le regole: si leggono con le parole predefinite; una parola aggiunta al ti
   assert.ok(value(await granola.listGranolaUnsorted(actor("ls"))).some((m) => m.id === sameProvider.id));
   // Salvare le stesse regole non cambia la data: il giro dopo non torna intero.
   const stamp = (await q(`SELECT updated_at FROM context_granola_rules WHERE workspace_id = $1`, [ids.wsN]))[0].updated_at;
-  value(await granola.saveGranolaRules(actor("ls"), { folderId: null, folderName: null, emails: ["acquisti@nardi.test", EMAIL.ext], domains: ["nardi-group.test"], titleWords: ["Nardi", "Ferrari"], wantTranscript: false }));
+  value(await granola.saveGranolaRules(actor("ls"), { folderId: null, folderName: null, emails: ["acquisti@alfa.test", EMAIL.ext], domains: ["alfa-group.test"], titleWords: ["Alfa", "Gamma"], wantTranscript: false }));
   assert.equal(iso((await q(`SELECT updated_at FROM context_granola_rules WHERE workspace_id = $1`, [ids.wsN]))[0].updated_at), iso(stamp));
 });
 
 test("una call cambiata su Granola torna da leggere, con le proposte aperte superate; il giro breve chiede solo le call cambiate", opts, async () => {
-  const source = await sourceOf(MEETINGS.nardi.id);
+  const source = await sourceOf(MEETINGS.alfa.id);
   await q(`UPDATE context_sources SET read_status = 'letto', read_at = now() WHERE id = $1`, [source.id]);
   const [proposal] = await q(
     `INSERT INTO context_proposals (workspace_id, source_id, position, kind, statement, basis, section, visibility) VALUES ($1, $2, 0, 'nuovo', 'Il gestionale è SAP Business One.', 'detto', 'sistemi', 'tutti') RETURNING id`,
     [ids.wsN, source.id],
   );
-  MEETINGS.nardi.summary = "Il gestionale diventa SAP S/4HANA da gennaio.";
-  MEETINGS.nardi.updatedAt = new Date().toISOString();
+  MEETINGS.alfa.summary = "Il gestionale diventa SAP S/4HANA da gennaio.";
+  MEETINGS.alfa.updatedAt = new Date().toISOString();
   const calls = fake.toolCalls.length;
   const result = await granola.syncGranolaForUser(ids.ls, { force: true });
   assert.deepEqual([result.status, result.imported, result.updated], ["fatto", 0, 1]);
   const search = fake.toolCalls.slice(calls).find((c) => c.tool === "search_meetings");
   assert.equal(typeof search?.args.updated_after, "string", "il giro breve");
   assert.equal(search?.args.from_date, undefined);
-  const changed = await sourceOf(MEETINGS.nardi.id);
+  const changed = await sourceOf(MEETINGS.alfa.id);
   assert.equal(changed.id, source.id, "la stessa fonte, aggiornata");
   assert.equal(changed.read_status, "da_leggere");
   assert.match(String(changed.body), /S\/4HANA/);
   assert.equal((await q(`SELECT status FROM context_proposals WHERE id = $1`, [proposal.id]))[0].status, "superata");
-  assert.equal(iso((await decisionOf(MEETINGS.nardi.id)).meeting_updated_at), MEETINGS.nardi.updatedAt);
+  assert.equal(iso((await decisionOf(MEETINGS.alfa.id)).meeting_updated_at), MEETINGS.alfa.updatedAt);
   // Lo stesso giro di nuovo: la call non è più cambiata e si salta.
   const again = await granola.syncGranolaForUser(ids.ls, { force: true });
   assert.deepEqual([again.imported, again.updated], [0, 0]);
@@ -656,16 +656,16 @@ test("Granola chiede di aspettare: poco, si aspetta e si riprova; tanto, il giro
 test("la trascrizione solo se il workspace la chiede e il piano la dà; una call omessa da Granola si chiede da sola", opts, async () => {
   const transcriptCall: FakeMeeting = {
     id: `m-trascr-${suffix}`,
-    title: "Riunione con TopJet sui turni",
+    title: "Riunione con Beta sui turni",
     meetingAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     participants: `Luca (${EMAIL.top})`,
     summary: "Si parla dei turni della manutenzione.",
     transcript: `Il responsabile dice che i turni sono tre. ${"Seguono dettagli sui turni. ".repeat(3000)}`,
   };
-  const second: FakeMeeting = { ...transcriptCall, id: `m-seconda-${suffix}`, title: "Seconda call con TopJet", transcript: null, summary: "Seconda sintesi per TopJet." };
+  const second: FakeMeeting = { ...transcriptCall, id: `m-seconda-${suffix}`, title: "Seconda call con Beta", transcript: null, summary: "Seconda sintesi per Beta." };
   fake.meetings.push(transcriptCall, second);
-  value(await granola.saveGranolaRules(actor("ls", "wsT"), { folderId: "f-topjet", folderName: "TopJet", emails: [], domains: [], titleWords: ["TopJet"], wantTranscript: true }));
+  value(await granola.saveGranolaRules(actor("ls", "wsT"), { folderId: "f-beta", folderName: "Beta", emails: [], domains: [], titleWords: ["Beta"], wantTranscript: true }));
   fake.notesPerResponse = 1;
   try {
     const result = await granola.syncGranolaForUser(ids.ls, { force: true });

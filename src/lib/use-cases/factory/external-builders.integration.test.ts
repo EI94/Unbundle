@@ -29,7 +29,7 @@ const suffix = randomBytes(3).toString("hex");
 const migration = readFileSync(new URL("../../../../drizzle/0037_costruttori_esterni.sql", import.meta.url), "utf8");
 
 /**
- * Le persone del workspace A (come Nardi). Ognuna è come E tranne un fatto: così ogni riga dice quale fatto chiude.
+ * Le persone del workspace A, di un cliente. Ognuna è come E tranne un fatto: così ogni riga dice quale fatto chiude.
  * - lead: Lateral Space, responsabile dei casi;
  * - e: esterno, Analista, gmail verificato, concessione «tutti», osservatore: costruisce;
  * - e2: esterno, Responsabile della trasformazione, concessione per un caso solo;

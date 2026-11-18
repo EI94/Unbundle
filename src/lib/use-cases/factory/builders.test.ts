@@ -79,12 +79,12 @@ test("U1: il filtro senza database apre la lettura solo a chi ha soltanto la rig
 });
 
 test("U1: chi è esterno ha osservatore più builder_esterno e scrive; senza domini resta in sola lettura", () => {
-  const alessio = accessToday(["osservatore"], "cliente", false, true)!;
-  assert.equal(alessio.readOnly, true, "oggi l'osservatore legge soltanto");
-  assert.deepEqual(factoryAccessOf(alessio, true), { roles: ["osservatore", "builder_esterno"], readOnly: false, external: true, blocked: null });
-  assert.equal(factoryAccessOf({ ...alessio, lsConfigured: false }, true).readOnly, true);
+  const sandro = accessToday(["osservatore"], "cliente", false, true)!;
+  assert.equal(sandro.readOnly, true, "oggi l'osservatore legge soltanto");
+  assert.deepEqual(factoryAccessOf(sandro, true), { roles: ["osservatore", "builder_esterno"], readOnly: false, external: true, blocked: null });
+  assert.equal(factoryAccessOf({ ...sandro, lsConfigured: false }, true).readOnly, true);
   // La 0037 non pronta e una concessione: legge come oggi, e le porte dicono «riprova».
-  assert.deepEqual(factoryAccessOf(alessio, false, "non_disponibile"), { roles: ["osservatore"], readOnly: true, external: false, blocked: "non_disponibile" });
+  assert.deepEqual(factoryAccessOf(sandro, false, "non_disponibile"), { roles: ["osservatore"], readOnly: true, external: false, blocked: "non_disponibile" });
 });
 
 test("U2: con osservatore e builder_esterno si scrive, ma non si approva, non si riapre, niente ok dell'AI Board né modifiche", () => {

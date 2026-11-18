@@ -277,7 +277,7 @@ export const CONTEXT_TEXT = Object.freeze({
     peopleKnown: (n: number) => (n === 1 ? "1 persona già nota a Unbundle" : `${n} persone già note a Unbundle`),
     peoplePlaceholder: "nome@azienda.it oppure azienda.it",
     words: "Parole nel titolo",
-    wordsPlaceholder: "Per esempio Nardi",
+    wordsPlaceholder: "Per esempio il nome del cliente",
     transcript: "Leggi anche la trascrizione",
     transcriptUnavailable: "Il tuo piano di Granola non dà le trascrizioni.",
     save: "Salva",

@@ -21,8 +21,8 @@ const codes = (n: number, from = 1) => Array.from({ length: n }, (_, i) => `NM-$
 
 test("«Aggiungi» in tutti i casi: quanti, i nuovi, il repository da aprire su GitHub", () => {
   assert.equal(
-    externalAddedText({ where: ALL, entered: codes(22), already: [], left: [], skipped: [], repos: ["Voltaen/nardi-esploso"], released: 0 }),
-    "Costruisce in 22 casi ed entrerà in quelli nuovi. Su GitHub dagli la scrittura su Voltaen/nardi-esploso.",
+    externalAddedText({ where: ALL, entered: codes(22), already: [], left: [], skipped: [], repos: ["Voltaen/alfa-esploso"], released: 0 }),
+    "Costruisce in 22 casi ed entrerà in quelli nuovi. Su GitHub dagli la scrittura su Voltaen/alfa-esploso.",
   );
   assert.equal(
     externalAddedText({ where: ALL, entered: [], already: [], left: [], skipped: [], repos: [], released: 0 }),
@@ -44,7 +44,7 @@ test("«Aggiungi»: i casi saltati con il motivo, e quelli da cui esce cambiando
       { code: "NM-0009", reason: "ruolo_cliente" },
       { code: "NM-0010", reason: "attore_non_ammesso" },
     ],
-    repos: ["Voltaen/nardi-esploso"],
+    repos: ["Voltaen/alfa-esploso"],
     released: 0,
   });
   assert.match(text, / Saltati: NM-0009 \(lì firma o approva per il cliente\), NM-0010 \(lì non sei responsabile\)\.$/);
@@ -78,13 +78,13 @@ test("«Togli» di chi non è in nessun dossier: la conferma e il messaggio dopo
 });
 
 test("«Togli»: la conferma con i casi e i repository, e il messaggio dopo", () => {
-  assert.deepEqual(externalRemoveConfirm({ name: "Alessio Laurito", openCases: 22, repos: ["Voltaen/nardi-esploso"] }), {
-    title: "Togliere Alessio Laurito da chi costruisce?",
-    text: "Da subito non scrive più nei casi del cliente e non entra in quelli nuovi. Esce da 22 casi e i compiti che ha in corso tornano da prendere. Su GitHub togli anche il suo accesso a Voltaen/nardi-esploso.",
+  assert.deepEqual(externalRemoveConfirm({ name: "Sandro Neri", openCases: 22, repos: ["Voltaen/alfa-esploso"] }), {
+    title: "Togliere Sandro Neri da chi costruisce?",
+    text: "Da subito non scrive più nei casi del cliente e non entra in quelli nuovi. Esce da 22 casi e i compiti che ha in corso tornano da prendere. Su GitHub togli anche il suo accesso a Voltaen/alfa-esploso.",
   });
   assert.equal(
-    externalRemovedText({ left: codes(22), skipped: [], repos: ["Voltaen/nardi-esploso"] }),
-    "Non costruisce più: esce da 22 casi. Ricorda GitHub (Voltaen/nardi-esploso) e la sua chiave dell'AI Gateway.",
+    externalRemovedText({ left: codes(22), skipped: [], repos: ["Voltaen/alfa-esploso"] }),
+    "Non costruisce più: esce da 22 casi. Ricorda GitHub (Voltaen/alfa-esploso) e la sua chiave dell'AI Gateway.",
   );
   assert.match(externalRemovedText({ left: [], skipped: [{ code: "NM-0010", reason: "attore_non_ammesso" }], repos: [] }), /In NM-0010 resta nel dossier da osservatore, senza poteri: lì non sei responsabile\.$/);
 });
@@ -111,10 +111,10 @@ test("i testi di «Chi costruisce» non dicono il genere della persona: niente �
   const texts = [
     EXTERNAL_ROLE_HINT,
     ...Object.values(SKIP_REASON),
-    externalAddedText({ where: ALL, entered: codes(2), already: [], left: codes(2, 5), skipped: ALL_SKIPS, repos: ["Voltaen/nardi-esploso"], released: 1 }),
+    externalAddedText({ where: ALL, entered: codes(2), already: [], left: codes(2, 5), skipped: ALL_SKIPS, repos: ["Voltaen/alfa-esploso"], released: 1 }),
     externalAddedText({ where: ALL, entered: [], already: [], left: [], skipped: ALL_SKIPS, repos: [], released: 0 }),
-    externalRemovedText({ left: codes(3), skipped: ALL_SKIPS, repos: ["Voltaen/nardi-esploso"] }),
-    externalRemoveConfirm({ name: "Prova Esterno", openCases: 3, repos: ["Voltaen/nardi-esploso"] }).text,
+    externalRemovedText({ left: codes(3), skipped: ALL_SKIPS, repos: ["Voltaen/alfa-esploso"] }),
+    externalRemoveConfirm({ name: "Prova Esterno", openCases: 3, repos: ["Voltaen/alfa-esploso"] }).text,
     lsAddedText({ done: codes(1), unchanged: codes(1), skipped: ALL_SKIPS }),
     lsRemovedText({ done: codes(1), skipped: ALL_SKIPS, released: 2 }),
     ...["ruolo_workspace", "email_non_verificata", "di_lateral_space", null].flatMap((blocked) => [builderStateText({ cli: true, blocked }), builderStateText({ cli: false, blocked })]),

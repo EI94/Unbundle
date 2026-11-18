@@ -29,7 +29,7 @@ function rendered(): Array<{ path: string; text: string }> {
       [2, 3, 5],
       [0, 0, 0],
       [7, 9, 2],
-      ["Nardi", "14 nov", "Call 14 nov"],
+      ["Alfa", "14 nov", "Call 14 nov"],
     ]) {
       const result = fn(...args);
       if (typeof result === "string") out.push({ path: `${leaf.path}(${args.join(", ")})`, text: result });
@@ -129,7 +129,7 @@ test("le fonti e la storia di un fatto, come nella pagina", () => {
 
 test("l'avviso dell'ok è calmo: nessun allarme, nessuna parola che spaventa", () => {
   for (const text of Object.values(CONTEXT_TEXT.consent)) {
-    const line = typeof text === "function" ? text("Nardi") : text;
+    const line = typeof text === "function" ? text("Alfa") : text;
     assert.doesNotMatch(line, /attenzione|pericolo|vietato|bloccat|errore grave|!/i, line);
   }
   assert.equal(CONTEXT_TEXT.consent.title, "Serve l'ok ai fornitori di AI");

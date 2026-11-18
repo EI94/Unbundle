@@ -5,7 +5,7 @@ import { contextTsQuery, searchWords, SEARCH_WORDS_MAX } from "./search.ts";
 // La ricerca per parole di «Chiedi al contesto» (RILASCIO-9a-COSTRUZIONE.md §4.4).
 
 test("parole corte e segni fuori; ogni parola con il prefisso, unite con |", () => {
-  assert.equal(contextTsQuery("Qual è il gestionale di Nardi?"), "qual:* | gestionale:* | nardi:*");
+  assert.equal(contextTsQuery("Qual è il gestionale di Alfa?"), "qual:* | gestionale:* | alfa:*");
   assert.deepEqual(searchWords("Che ERP usa l'ufficio acquisti?"), ["che", "erp", "usa", "ufficio", "acquisti"]);
   assert.equal(contextTsQuery("perché è così?"), "perché:* | così:*", "le lettere accentate restano");
   assert.equal(contextTsQuery("a di è"), "");

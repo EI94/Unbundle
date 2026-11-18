@@ -248,28 +248,28 @@ test("checkSignerEmail: never a Lateral Space domain nor a Lateral Space member 
 });
 
 test("U3 (8.0c): chi costruisce il caso da fuori non firma per il cliente e non fa il referente, anche con le maiuscole", () => {
-  const builders = ["Alessio@Gmail.test"];
-  assert.equal(code(checkSignerEmail("alessio@gmail.test", DOMAINS, [], builders)), "firmatario_costruttore");
-  assert.equal(code(checkSignerEmail(" ALESSIO@gmail.TEST ", DOMAINS, [], builders)), "firmatario_costruttore");
+  const builders = ["Sandro@Gmail.test"];
+  assert.equal(code(checkSignerEmail("sandro@gmail.test", DOMAINS, [], builders)), "firmatario_costruttore");
+  assert.equal(code(checkSignerEmail(" SANDRO@gmail.TEST ", DOMAINS, [], builders)), "firmatario_costruttore");
   assert.equal(code(checkSignerEmail("titolare@gmail.test", DOMAINS, [], builders)), "ok");
   // Lateral Space resta Lateral Space: il suo codice vince.
   assert.equal(code(checkSignerEmail("anna@ls.test", DOMAINS, [], ["anna@ls.test"])), "firmatario_lateral_space");
-  const signer = checkSignerEmail("ALESSIO@GMAIL.TEST", DOMAINS, [], builders);
+  const signer = checkSignerEmail("SANDRO@GMAIL.TEST", DOMAINS, [], builders);
   assert.equal(signer.ok ? "" : signer.message, "Il firmatario del cliente non può essere chi costruisce il caso.");
-  const contact = checkContactEmail({ email: "alessio@GMAIL.test", lsDomains: DOMAINS, lsMemberEmails: [], builderEmails: builders });
+  const contact = checkContactEmail({ email: "sandro@GMAIL.test", lsDomains: DOMAINS, lsMemberEmails: [], builderEmails: builders });
   assert.deepEqual([contact.ok, !contact.ok && contact.code, !contact.ok && contact.message], [
     false,
     "referente_costruttore",
     "Chi costruisce i casi di questo cliente non fa il referente: le risposte le dà un'altra persona.",
   ]);
   assert.equal(code(checkContactEmail({ email: "titolare@gmail.test", lsDomains: DOMAINS, lsMemberEmails: [], builderEmails: builders })), "ok");
-  assert.equal(code(checkAssignee({ contact: { email: "Alessio@gmail.test", isActive: true, anonymized: false }, lsDomains: DOMAINS, lsMemberEmails: [], builderEmails: builders })), "referente_costruttore");
+  assert.equal(code(checkAssignee({ contact: { email: "Sandro@gmail.test", isActive: true, anonymized: false }, lsDomains: DOMAINS, lsMemberEmails: [], builderEmails: builders })), "referente_costruttore");
   // Senza elenco (prima della 0037) come prima.
-  assert.equal(code(checkSignerEmail("alessio@gmail.test", DOMAINS, [])), "ok");
-  assert.equal(code(checkContactEmail({ email: "alessio@gmail.test", lsDomains: DOMAINS, lsMemberEmails: [] })), "ok");
+  assert.equal(code(checkSignerEmail("sandro@gmail.test", DOMAINS, [])), "ok");
+  assert.equal(code(checkContactEmail({ email: "sandro@gmail.test", lsDomains: DOMAINS, lsMemberEmails: [] })), "ok");
   // Il link di approvazione e la designazione leggono l'elenco dal contesto delle firme.
   const ctx: SignatureContext = { lsDomains: DOMAINS, lsMemberEmails: [], builderEmails: builders, designated: { owner: "c-owner", privacy: null } };
-  const linked = signatureRole({ kind: "link", contactId: "c-owner", designation: "owner", email: "alessio@gmail.test" }, "gate", ctx);
+  const linked = signatureRole({ kind: "link", contactId: "c-owner", designation: "owner", email: "sandro@gmail.test" }, "gate", ctx);
   assert.equal(linked.ok ? "ok" : linked.code, "firmatario_costruttore");
 });
 

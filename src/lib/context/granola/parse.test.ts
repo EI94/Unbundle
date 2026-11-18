@@ -7,15 +7,15 @@ import { decodeEntities, parseAccountInfo, parseFolders, parseGetMeetings, parse
 
 const SEARCH = `<meetings_data>
 <upcoming_meetings>
-<meeting id="evt_9f2" title="Call futura con Nardi" meeting_at="2026-11-20T09:00:00Z" />
+<meeting id="evt_9f2" title="Call futura con Alfa" meeting_at="2026-11-20T09:00:00Z" />
 </upcoming_meetings>
-<meeting id="m-001" title="Avvio progetto Nardi &amp; soci" meeting_at="2026-11-14T09:30:00Z" updated_at="2026-11-14T11:02:00Z" url="https://note.esempio.test/d/m-001" attachment_count="2">
-<known_participants total="3" omitted="0">Paola Verdi (note creator) from Lateral Space (paola@ls.test), Giulia Bianchi from Officina Nardi (giulia@nardi.test), ufficio@nardi.test</known_participants>
+<meeting id="m-001" title="Avvio progetto Alfa &amp; soci" meeting_at="2026-11-14T09:30:00Z" updated_at="2026-11-14T11:02:00Z" url="https://note.esempio.test/d/m-001" attachment_count="2">
+<known_participants total="3" omitted="0">Paola Verdi (note creator) from Lateral Space (paola@ls.test), Giulia Bianchi from Officina Alfa (giulia@alfa.test), ufficio@alfa.test</known_participants>
 <note_headers>Prossimi passi; Decisioni</note_headers>
 </meeting>
 <meeting updated_at="2026-11-12T08:00:00Z" id="m-002" url="https://note.esempio.test/d/m-002" meeting_at="2026-11-12T07:00:00+01:00" title='Revisione "SAP" > pianificazione'>
 <known_participants>Luca Neri &lt;luca@altro.test&gt;</known_participants>
-<folders><folder id="f-1" name="Nardi" /></folders>
+<folders><folder id="f-1" name="Alfa" /></folders>
 </meeting>
 <meeting title="Senza id" meeting_at="2026-11-10T09:00:00Z"></meeting>
 <pagination next_cursor="c-2" has_more="true" />
@@ -30,15 +30,15 @@ test("search_meetings: le call, senza quelle future, con attributi in qualunque 
     "la call futura (evt_…) e quella senza id non ci sono",
   );
   const [first, second] = page.meetings;
-  assert.equal(first.title, "Avvio progetto Nardi & soci");
+  assert.equal(first.title, "Avvio progetto Alfa & soci");
   assert.equal(first.meetingAt, "2026-11-14T09:30:00.000Z");
   assert.equal(first.updatedAt, "2026-11-14T11:02:00.000Z");
   assert.equal(first.url, "https://note.esempio.test/d/m-001");
-  assert.equal(first.participantsRaw, "Paola Verdi (note creator) from Lateral Space (paola@ls.test), Giulia Bianchi from Officina Nardi (giulia@nardi.test), ufficio@nardi.test");
+  assert.equal(first.participantsRaw, "Paola Verdi (note creator) from Lateral Space (paola@ls.test), Giulia Bianchi from Officina Alfa (giulia@alfa.test), ufficio@alfa.test");
   assert.deepEqual(first.participants, [
     { name: "Paola Verdi", email: "paola@ls.test", company: "Lateral Space", noteCreator: true },
-    { name: "Giulia Bianchi", email: "giulia@nardi.test", company: "Officina Nardi", noteCreator: false },
-    { name: null, email: "ufficio@nardi.test", company: null, noteCreator: false },
+    { name: "Giulia Bianchi", email: "giulia@alfa.test", company: "Officina Alfa", noteCreator: false },
+    { name: null, email: "ufficio@alfa.test", company: null, noteCreator: false },
   ]);
   // Un `>` tra virgolette non chiude l'etichetta; un fuso orario diverso diventa un istante ISO.
   assert.equal(second.title, 'Revisione "SAP" > pianificazione');
@@ -66,7 +66,7 @@ test("search_meetings: paginazione assente, finita, o con il solo cursore; una r
 
 const GET = `<meetings_data>
 <meeting id="m-001" title="Avvio progetto" meeting_at="2026-11-14T09:30:00Z" updated_at="2026-11-14T11:02:00Z" url="https://note.esempio.test/d/m-001">
-<known_participants>Giulia Bianchi from Officina Nardi (giulia@nardi.test)</known_participants>
+<known_participants>Giulia Bianchi from Officina Alfa (giulia@alfa.test)</known_participants>
 <summary>
 ## Decisioni
 - Il gestionale resta SAP Business One.
@@ -97,7 +97,7 @@ test("get_meetings: riassunto, note private piene e vuote, etichette sconosciute
   );
   assert.equal(notes[0].summary, "## Decisioni\n- Il gestionale resta SAP Business One.\n- Gli ordini arrivano via e-mail & telefono.");
   assert.equal(notes[0].privateNotes, "Richiamare l'ufficio acquisti giovedì.");
-  assert.equal(notes[0].participants[0].email, "giulia@nardi.test");
+  assert.equal(notes[0].participants[0].email, "giulia@alfa.test");
   assert.equal(notes[1].summary, "Breve sintesi della call.");
   assert.equal(notes[1].privateNotes, null);
   assert.equal(notes[1].meetingAt, null, "una data che manca vale null");
@@ -108,13 +108,13 @@ test("get_meetings: riassunto, note private piene e vuote, etichette sconosciute
 test("partecipanti: con e senza nome, azienda, parentesi, a capo e punto e virgola", () => {
   assert.deepEqual(parseParticipants(""), []);
   assert.deepEqual(parseParticipants("Anna Gialli (note creator) (anna@ls.test)"), [{ name: "Anna Gialli", email: "anna@ls.test", company: null, noteCreator: true }]);
-  assert.deepEqual(parseParticipants("Ufficio acquisti (acquisti@nardi.test); Marco Blu from Nardi, S.r.l. (marco@nardi.test)"), [
-    { name: "Ufficio acquisti", email: "acquisti@nardi.test", company: null, noteCreator: false },
-    { name: "Marco Blu", email: null, company: "Nardi", noteCreator: false },
-    { name: "S.r.l.", email: "marco@nardi.test", company: null, noteCreator: false },
+  assert.deepEqual(parseParticipants("Ufficio acquisti (acquisti@alfa.test); Marco Blu from Alfa, S.r.l. (marco@alfa.test)"), [
+    { name: "Ufficio acquisti", email: "acquisti@alfa.test", company: null, noteCreator: false },
+    { name: "Marco Blu", email: null, company: "Alfa", noteCreator: false },
+    { name: "S.r.l.", email: "marco@alfa.test", company: null, noteCreator: false },
   ]);
-  assert.deepEqual(parseParticipants("- Sara Rosa <SARA@Nardi.Test>\n- Solo Nome"), [
-    { name: "Sara Rosa", email: "sara@nardi.test", company: null, noteCreator: false },
+  assert.deepEqual(parseParticipants("- Sara Rosa <SARA@Alfa.Test>\n- Solo Nome"), [
+    { name: "Sara Rosa", email: "sara@alfa.test", company: null, noteCreator: false },
     { name: "Solo Nome", email: null, company: null, noteCreator: false },
   ]);
   assert.deepEqual(parseParticipants("Pietro (pietro@a.test, ufficio)"), [{ name: "Pietro", email: "pietro@a.test", company: null, noteCreator: false }], "la virgola tra parentesi non divide");
@@ -133,8 +133,8 @@ test("partecipanti lunghi e senza virgole (li scrive chi manda l'invito): il tem
     assert.equal(meeting.meetings[0].participants.length, 1);
   }
   // Un indirizzo vero dentro un partecipante lungo si trova ancora; una parte prima della chiocciola oltre 64 caratteri no.
-  assert.equal(parseParticipants(`Ufficio ${"x".repeat(200)} (ufficio@nardi.test)`)[0].email, "ufficio@nardi.test");
-  assert.equal(parseParticipants(`${"y".repeat(70)}@nardi.test`)[0].email, `${"y".repeat(64)}@nardi.test`);
+  assert.equal(parseParticipants(`Ufficio ${"x".repeat(200)} (ufficio@alfa.test)`)[0].email, "ufficio@alfa.test");
+  assert.equal(parseParticipants(`${"y".repeat(70)}@alfa.test`)[0].email, `${"y".repeat(64)}@alfa.test`);
 });
 
 test("testo rotto o inatteso: nessuna eccezione, si legge quello che c'è", () => {
@@ -165,8 +165,8 @@ test("testo rotto o inatteso: nessuna eccezione, si legge quello che c'è", () =
 });
 
 test("in riserva il JSON: call, note, paginazione", () => {
-  const page = parseSearchMeetings(JSON.stringify({ meetings: [{ id: "j1", title: "Da JSON", meeting_at: "2026-11-01T10:00:00Z", known_participants: "Ada (ada@nardi.test)" }], next_cursor: "n2" }));
-  assert.deepEqual(page.meetings.map((m) => [m.id, m.title, m.participants[0]?.email]), [["j1", "Da JSON", "ada@nardi.test"]]);
+  const page = parseSearchMeetings(JSON.stringify({ meetings: [{ id: "j1", title: "Da JSON", meeting_at: "2026-11-01T10:00:00Z", known_participants: "Ada (ada@alfa.test)" }], next_cursor: "n2" }));
+  assert.deepEqual(page.meetings.map((m) => [m.id, m.title, m.participants[0]?.email]), [["j1", "Da JSON", "ada@alfa.test"]]);
   assert.equal(page.hasMore, true);
   const notes = parseGetMeetings(JSON.stringify([{ id: "j1", title: "Da JSON", summary: "Sintesi &amp; resto", private_notes: { text: "Note" } }]));
   assert.equal(notes[0].summary, "Sintesi &amp; resto", "il JSON non si decodifica come XML");
@@ -174,18 +174,18 @@ test("in riserva il JSON: call, note, paginazione", () => {
 });
 
 test("cartelle: etichette, JSON e righe; id strani scartati", () => {
-  assert.deepEqual(parseFolders(`<folders><folder id="f-1" name="Nardi" /><folder title="TopJet" id="f-2"></folder><folder id="f 3" name="Spazi" /></folders>`), [
-    { id: "f-1", name: "Nardi" },
-    { id: "f-2", name: "TopJet" },
+  assert.deepEqual(parseFolders(`<folders><folder id="f-1" name="Alfa" /><folder title="Beta" id="f-2"></folder><folder id="f 3" name="Spazi" /></folders>`), [
+    { id: "f-1", name: "Alfa" },
+    { id: "f-2", name: "Beta" },
   ]);
   assert.deepEqual(parseFolders(`<folder id="f-9">Clienti &amp; partner\naltro</folder>`), [{ id: "f-9", name: "Clienti & partner" }]);
   assert.deepEqual(parseFolders(JSON.stringify({ folders: [{ id: "a", name: "Uno" }, { folder_id: "b", title: "Due" }, { name: "senza id" }] })), [
     { id: "a", name: "Uno" },
     { id: "b", name: "Due" },
   ]);
-  assert.deepEqual(parseFolders("Le tue cartelle:\n- Nardi (id: f-1)\n- TopJet [folder_id = f-2]"), [
-    { id: "f-1", name: "Nardi" },
-    { id: "f-2", name: "TopJet" },
+  assert.deepEqual(parseFolders("Le tue cartelle:\n- Alfa (id: f-1)\n- Beta [folder_id = f-2]"), [
+    { id: "f-1", name: "Alfa" },
+    { id: "f-2", name: "Beta" },
   ]);
   assert.deepEqual(parseFolders("niente da leggere"), []);
 });
