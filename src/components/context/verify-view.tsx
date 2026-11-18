@@ -114,8 +114,9 @@ export function VerifyView({ workspaceId, today, facts }: { workspaceId: string;
                   </span>
                 </span>
               </label>
+              {/* Sul telefono sotto la frase, allineato a lei (la casella e il suo spazio sono 56 px); a destra sullo schermo largo. */}
               {retiring === fact.id ? (
-                <div className="space-y-2 sm:max-w-xs">
+                <div className="ml-14 space-y-2 sm:ml-0 sm:max-w-xs">
                   <p className="text-sm">{T.fact.retireConfirm}</p>
                   <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                     <Button type="button" variant="outline" className="min-h-11 sm:min-h-8" disabled={pending} onClick={() => setRetiring(null)}>
@@ -127,7 +128,7 @@ export function VerifyView({ workspaceId, today, facts }: { workspaceId: string;
                   </div>
                 </div>
               ) : (
-                <Button type="button" variant="ghost" className="min-h-11 shrink-0 self-start sm:min-h-8" disabled={pending} onClick={() => setRetiring(fact.id)}>
+                <Button type="button" variant="ghost" className="ml-14 min-h-11 shrink-0 self-start sm:ml-0 sm:min-h-8" disabled={pending} onClick={() => setRetiring(fact.id)}>
                   {T.fact.noLongerTrue}
                 </Button>
               )}

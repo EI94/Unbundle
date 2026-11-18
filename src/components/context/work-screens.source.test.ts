@@ -13,6 +13,23 @@ const read = (path: string) => readFileSync(new URL(path, ROOT), "utf8");
 function withoutComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`\\])\/\/.*$/gm, "$1");
 }
+/** I tag di apertura di questi componenti, interi: fino al primo «>» fuori dalle graffe (non quello di «=>»). */
+function openingTags(source: string, names: readonly string[]): string[] {
+  const out: string[] = [];
+  for (const match of source.matchAll(new RegExp(`<(?:${names.join("|")})\\b`, "g"))) {
+    let depth = 0;
+    let end = match.index + match[0].length;
+    for (; end < source.length; end++) {
+      const char = source[end];
+      if (char === "{") depth++;
+      else if (char === "}") depth--;
+      else if (char === ">" && depth === 0 && source[end - 1] !== "=") break;
+    }
+    out.push(source.slice(match.index, end + 1));
+  }
+  return out;
+}
+
 /** Il corpo di una funzione del file, dalla sua firma alla graffa che la chiude in colonna zero. */
 function functionBody(source: string, name: string): string {
   const start = source.indexOf(`function ${name}(`);
@@ -81,7 +98,7 @@ test("la riga di «Cosa serve»: i testi di «Contesto», due pulsanti piccoli e
   assert.match(line, /\{T\.close\}/);
   assert.match(line, /\{T\.dismiss\}/);
   assert.match(line, /const T = CONTEXT_TEXT\.needLink;/);
-  const buttons = [...line.matchAll(/<Button\b[^>]*>/g)].map((match) => match[0]);
+  const buttons = openingTags(line, ["Button"]);
   assert.equal(buttons.length, 2);
   for (const button of buttons) {
     assert.match(button, /variant="(outline|ghost)"/, "mai pieno: il pulsante pieno della pagina è quello del riquadro");
@@ -166,7 +183,7 @@ test("«Da verificare»: notFound() per chi non è di Lateral Space, prima di le
 test("«Da verificare»: un solo pulsante pieno, fisso in fondo con il margine dell'area sicura; caselle mai spuntate all'inizio, da 44 px", () => {
   const view = withoutComments(read("src/components/context/verify-view.tsx"));
   assert.match(view, /^"use client";/);
-  const buttons = [...view.matchAll(/<Button\b[^>]*>/g)].map((match) => match[0]);
+  const buttons = openingTags(view, ["Button"]);
   const filled = buttons.filter((tag) => !/\bvariant="/.test(tag));
   assert.equal(filled.length, 1, "un solo pulsante pieno");
   assert.match(filled[0], /size="lg"/);
@@ -192,4 +209,47 @@ test("la Memoria: la riga «n fatti da verificare» porta a /contesto/verifica, 
   // Dentro le righe di servizio, che ci sono solo per Lateral Space.
   const rows = memory.slice(memory.indexOf("{lateralSpace ? ("), memory.indexOf("</ServiceRows>"));
   assert.ok(rows.includes("contesto/verifica"), "dentro il blocco di Lateral Space");
+});
+
+test("sul telefono e nel tema «Chiaro»: ogni cosa che si tocca è alta 44 px; solo i token del tema, niente colori fissi né `dark:`", () => {
+  const screens = ["src/components/context/use-case-context.tsx", "src/components/context/verify-view.tsx", "src/components/context/memory-view.tsx", VERIFY_PAGE];
+  for (const file of screens) {
+    const source = withoutComments(read(file));
+    // Ogni pulsante, link e casella sta in un'area da 44 px sul telefono (`min-h-11`, o la riga intera).
+    const tags = openingTags(source, ["button", "Button", "Link"]);
+    if (!file.endsWith("page.tsx")) assert.ok(tags.length > 0, `${file}: i controlli ci sono`);
+    for (const tag of tags) assert.match(tag, /\bmin-h-11\b|\bsize-11\b/, `${file}: ${tag.replace(/\s+/g, " ").slice(0, 100)}`);
+    // I colori dai token: valgono nel tema scuro e in «Chiaro».
+    assert.doesNotMatch(source, /(?<![\w-])(?:dark|light):/, `${file}: una variante dark: o light:`);
+    assert.doesNotMatch(source, /\b(?:text|bg|border|ring|fill|stroke)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|white|black)\b/, `${file}: un colore fisso`);
+    assert.doesNotMatch(source, /#[0-9a-fA-F]{3,8}\b|\b(?:rgb|hsl|oklch)a?\(/, `${file}: un colore scritto a mano`);
+  }
+  // La riga di «Cosa serve»: gli stessi due controlli.
+  const line = functionBody(withoutComments(read("src/components/use-cases/detail/section-needs.tsx")), "NeedLinkLine");
+  for (const tag of openingTags(line, ["Button"])) assert.match(tag, /\bmin-h-11\b/);
+  assert.doesNotMatch(line, /(?<![\w-])dark:|#[0-9a-fA-F]{3,8}\b/);
+  // «Da verificare» sul telefono: «Non più vero» sotto la frase, allineato a lei; il pulsante pieno in fondo, largo.
+  const verify = withoutComments(read("src/components/context/verify-view.tsx"));
+  assert.match(verify, /className="ml-14 min-h-11 shrink-0 self-start sm:ml-0 sm:min-h-8"/);
+  assert.match(verify, /<Button type="button" size="lg" className="min-h-11 w-full sm:w-auto sm:px-6"/);
+});
+
+test("nessun testo in italiano scritto a mano nelle schermate nuove: le parole vengono da CONTEXT_TEXT", () => {
+  const ITALIAN = /[àèéìíòóùÀÈÉÌÒÙ«»…]/;
+  const files = ["src/components/context/use-case-context.tsx", "src/components/context/verify-view.tsx", VERIFY_PAGE, "src/lib/actions/context-work.ts"];
+  const found: string[] = [];
+  for (const file of files) {
+    withoutComments(read(file))
+      .split("\n")
+      .forEach((line, index) => {
+        if (ITALIAN.test(line)) found.push(`${file}:${index + 1}: ${line.trim()}`);
+      });
+  }
+  assert.deepEqual(found, []);
+  for (const file of files) assert.match(read(file), /CONTEXT_TEXT/, `${file}: i testi da CONTEXT_TEXT`);
+  // Nella scheda la piega prende titolo e riga dalle regole e dai testi, mai scritti lì.
+  const detail = withoutComments(read("src/components/use-cases/detail/detail.tsx"));
+  const fold = detail.slice(detail.indexOf('<Fold id="contesto"'), detail.indexOf("</Fold>", detail.indexOf('<Fold id="contesto"')));
+  assert.match(fold, /title=\{t\.contesto\} summary=\{summaries\.contesto\}/);
+  assert.doesNotMatch(fold, ITALIAN);
 });
