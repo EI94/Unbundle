@@ -110,7 +110,8 @@ function Shell({ children }: { children: React.ReactNode }) {
   return (
     <main className="min-h-dvh bg-background px-4 py-10 sm:px-6">
       <div className="mx-auto flex min-h-[calc(100dvh-5rem)] w-full max-w-xl flex-col justify-center">
-        <Link href="/" className="mb-6 text-sm font-semibold tracking-wide">
+        {/* (Ondata 0) Il marchio porta ai workspace, non alla pagina pubblica. */}
+        <Link href="/dashboard" className="mb-6 text-sm font-semibold tracking-wide">
           Unbundle
         </Link>
         <Card className="gap-0 overflow-hidden py-0">

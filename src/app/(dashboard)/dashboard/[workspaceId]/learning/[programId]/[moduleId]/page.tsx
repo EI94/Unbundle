@@ -1,7 +1,17 @@
 import { notFound } from "next/navigation";
 import { ProgramOverview } from "@/components/learning/program-overview";
-export default async function ModulePage({ params }: { params: Promise<{ workspaceId: string; programId: string; moduleId: string }> }) {
+import { joinArrival } from "@/lib/learning/join-arrival";
+
+/** La lezione. (Ondata 0) Arrivando da un link (`?joined=1&outcome=…`), una riga dice com'è andata l'iscrizione. */
+export default async function ModulePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ workspaceId: string; programId: string; moduleId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const values = await params;
   if (!["m1", "m2", "m3"].includes(values.moduleId)) notFound();
-  return <ProgramOverview {...values} />;
+  const sp = await searchParams;
+  return <ProgramOverview {...values} arrival={joinArrival(sp.joined, sp.outcome)} />;
 }

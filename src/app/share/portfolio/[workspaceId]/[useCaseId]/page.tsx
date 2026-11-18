@@ -71,9 +71,9 @@ function InvalidShareLink({ reason, loginUrl }: { reason: "invalid" | "expired";
               Se hai un account Unbundle con accesso al workspace, accedi per
               aprire la scheda. Altrimenti chiedi al team un link nuovo.
             </p>
-            <Link href={loginUrl}>
-              <Button className="h-10">Accedi a Unbundle</Button>
-            </Link>
+            <Button render={<Link href={loginUrl} />} nativeButton={false} className="h-10">
+              Accedi a Unbundle
+            </Button>
           </CardContent>
         </Card>
       </div>
