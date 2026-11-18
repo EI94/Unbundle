@@ -73,16 +73,22 @@ test("ogni scritta delle viste rispetta lo stile della casa: «use case», nessu
 
 test("le forme del singolare: 1 passo, 1 processo, 1 ruolo, 1 strumento, 1 attrito, 1 confermato, 1 persona", () => {
   assert.deepEqual(
-    todayTileTexts({ steps: 1, processes: 1, hoursWeek: 0, decisions: 1, toValidate: 1 }).map((tile) => tile.label),
+    todayTileTexts({ steps: 1, processes: 1, hoursWeek: 2, decisions: 1, toValidate: 1 }).map((tile) => tile.label),
     ["passo in 1 processo", "ore a settimana", "passo dove decide una persona", "passo da validare"],
   );
+});
+
+test("(rilascio 10, §1 regola 5) lo zero non si vede: i riquadri e la riga dei conteggi solo con un numero", () => {
+  assert.deepEqual(todayTileTexts({ steps: 3, processes: 1, hoursWeek: 0, decisions: 0, toValidate: 0 }).map((tile) => tile.label), ["passi in 1 processo"]);
+  assert.deepEqual(unitsTileTexts({ complete: 0, total: 6, steps: 0, hoursWeek: 0, toValidate: 0 }, { singular: "funzione", plural: "funzioni" }).map((tile) => tile.value), ["0 di 6"]);
+  assert.equal(mapCountsLine(0, 4, 0), "4 confermati");
+  assert.equal(mapCountsLine(0, 0, 0), "");
+  assert.equal(mapCountsLine(2, 0, 1), "2 da validare · 1 attrito");
   assert.deepEqual(
     todayTileTexts({ steps: 3, processes: 1, hoursWeek: 12.5, decisions: 0, toValidate: 0 }).map((tile) => [tile.value, tile.label]),
     [
       ["3", "passi in 1 processo"],
       ["12,5 h", "ore a settimana"],
-      ["0", "passi dove decide una persona"],
-      ["0", "passi da validare"],
     ],
   );
   assert.equal(todayTileTexts({ steps: 1, processes: 2, hoursWeek: 0, decisions: 0, toValidate: 0 })[0].label, "passo in 2 processi");
@@ -95,7 +101,7 @@ test("le forme del singolare: 1 passo, 1 processo, 1 ruolo, 1 strumento, 1 attri
       ["1", "passo da validare"],
     ],
   );
-  assert.deepEqual(unitsTileTexts({ complete: 0, total: 2, steps: 4, hoursWeek: 0, toValidate: 3 }, REPARTI).map((tile) => tile.label), ["reparti con la mappatura completa", "passi mappati", "ore a settimana", "passi da validare"]);
+  assert.deepEqual(unitsTileTexts({ complete: 0, total: 2, steps: 4, hoursWeek: 0, toValidate: 3 }, REPARTI).map((tile) => tile.label), ["reparti con la mappatura completa", "passi mappati", "passi da validare"]);
   assert.equal(unitStepsLine(1, 1), "1 passo · 1 h a settimana");
   assert.equal(unitStepsLine(6, 28.5), "6 passi · 28,5 h a settimana");
   assert.equal(rolesToolsHint(1, 1), "1 ruolo · 1 strumento");
@@ -110,17 +116,17 @@ test("le forme del singolare: 1 passo, 1 processo, 1 ruolo, 1 strumento, 1 attri
 
 test("le scritte del piano, parola per parola; la parola dell'unità viene dal workspace", () => {
   assert.deepEqual(unitsTitle(FUNZIONI), { plain: "Il lavoro di oggi,", accent: "funzione per funzione" });
-  assert.equal(unitsLede(REPARTI), "Ogni reparto ha la sua board: i processi, i passi, chi li fa e dove decide una persona.");
+  assert.equal(unitsLede(REPARTI), "Ogni reparto ha la sua mappa: i processi, i passi, chi li fa e dove decide una persona.");
   assert.equal(unitsSectionTitle(REPARTI), "Reparti");
   assert.equal(capitalized(""), "");
   // Senza unità la frase non nomina la parola dell'unità: «Le reparti» non si può dire (§7, nessuna concordanza).
-  assert.equal(discoveryText(), "La mappatura comincia dalla Discovery. Completa quella fase per aprire le board.");
-  assert.equal(openBoardLabel("Magazzino"), "Apri la board di Magazzino");
+  assert.equal(discoveryText(), "La mappatura comincia dall'intervista iniziale. Completala per aprire le mappe.");
+  assert.equal(openBoardLabel("Magazzino"), "Apri la mappa di Magazzino");
   assert.equal(toValidateText(4), "4 da validare");
   assert.equal(toClassifyText(1), "1 da classificare");
   assert.equal(addStepLabel("Resi"), "Aggiungi un passo a Resi");
   assert.equal(addNoteLabel("Attriti"), "Aggiungi nota: Attriti");
-  assert.equal(noteLabel("Attività"), "Nota: Attività");
+  assert.equal(noteLabel("Cosa si fa"), "Nota: Cosa si fa");
   assert.equal(frictionGroupLabel("Forte"), "Attrito: Forte");
   assert.equal(drawerContext("Resi", "B2"), "Resi · B2");
   assert.equal(VIEW_TEXT.map.hint, "clicca un passo per aprire attività, persone, dati, attriti, tempi e volumi");

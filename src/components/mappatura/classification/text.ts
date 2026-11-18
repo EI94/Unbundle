@@ -2,9 +2,11 @@
  * «Mappatura board»: le scritte della scheda «Classificazione» e del completamento (docs/mappatura/MAPPATURA-BOARD-PIANO.md
  * §7.3).
  *
- * Stile della casa: frasi semplici e corte, genere neutro, maiuscola solo all'inizio, «use case». Gli stream sono nomi
- * di prodotto e non si traducono. I componenti importano le scritte da qui e non ne scrivono: così un test le legge
- * tutte. Le maiuscole che si vedono in etichette e badge le mette il CSS.
+ * Stile della casa: frasi semplici e corte, genere neutro, maiuscola solo all'inizio, «use case». (Rilascio 10, §4, D4)
+ * Gli stream si dicono in italiano («Automatizzare · Differenziare · Innovare», l'inglese nel suggerimento) e la parola
+ * «stream» non va a schermo: sono le tre «categorie». La scheda si chiama «Con l'AI». I componenti importano le
+ * scritte da qui e non ne scrivono: così un test le legge tutte. Le maiuscole che si vedono in etichette e badge le
+ * mette il CSS.
  *
  * Modulo puro.
  */
@@ -12,30 +14,30 @@ import { STREAM_LABEL, counted, formatCount, formatHours } from "../../../lib/ma
 import type { Stream } from "../../../lib/mappatura/vocab.ts";
 
 export const CLASSIFICATION_TEXT = Object.freeze({
-  eyebrow: "Classificazione",
-  /** «Stessi processi, *tre stream*». */
-  title: Object.freeze({ plain: "Stessi processi,", accent: "tre stream" }),
-  lede: "Ogni passo mostra lo stream in cui cade e il punto in cui decide una persona.",
-  reset: "Usa gli stream proposti",
-  resetDone: "Stream riportati alla proposta.",
-  exposureTile: "AI exposure media",
+  eyebrow: "Con l'AI",
+  /** «Stessi processi, *tre categorie*». */
+  title: Object.freeze({ plain: "Stessi processi,", accent: "tre categorie" }),
+  lede: "Ogni passo mostra la categoria in cui cade e il punto in cui decide una persona.",
+  reset: "Usa le categorie proposte",
+  resetDone: "Categorie riportate alla proposta.",
+  exposureTile: "Esposizione all'AI, media",
   legend: Object.freeze({ unclassified: "da classificare", decides: "decide una persona" }),
   filters: Object.freeze({ label: "Mostra i passi", all: "Tutti", unclassified: "Da classificare" }),
   card: Object.freeze({ unclassified: "da classificare" }),
   before: Object.freeze({
     title: "La classificazione arriva alla fine",
-    text: "Quando i processi sono a posto, completa la mappatura: ogni passo entra in uno dei tre stream.",
+    text: "Quando i processi sono a posto, completa la mappatura: ogni passo entra in una delle tre categorie.",
   }),
   button: Object.freeze({ complete: "Completa la mappatura", working: "Classificazione in corso…" }),
   after: Object.freeze({ failed: "Classificazione non riuscita. Riprova.", completed: "Mappatura completata.", open: "Apri" }),
   cases: Object.freeze({ title: "Use case nati da questa mappatura", none: "Ancora nessuno.", goTo: "Vai a Use case", open: "Apri" }),
   drawer: Object.freeze({
     today: "Oggi",
-    classification: "Classificazione",
-    stream: "Stream",
+    classification: "Con l'AI",
+    stream: "Categoria",
     potential: "Potenziale con l'AI",
     decides: "Decide una persona",
-    exposure: "AI exposure",
+    exposure: "Esposizione all'AI",
     tools: "Strumenti",
     frictions: "Attriti di oggi",
     ideas: "Idee del team",
@@ -44,14 +46,14 @@ export const CLASSIFICATION_TEXT = Object.freeze({
     addIdea: "+ idea",
     addIdeaLabel: "Aggiungi un'idea del team",
     ideaLabel: "Idea del team",
-    selector: "Stream del passo",
+    selector: "Categoria del passo",
     none: "—",
-    noneLabel: "Nessuno stream",
+    noneLabel: "Nessuna categoria",
     proposed: "Proposto dall'assistente",
   }),
 });
 
-/** Il riquadro di uno stream: «Automate · 12,5 h a settimana». */
+/** Il riquadro di uno stream: «Automatizzare · 12,5 h a settimana». */
 export const streamTileLabel = (stream: Stream, hoursWeek: number): string => `${STREAM_LABEL[stream]} · ${formatHours(hoursWeek)} h a settimana`;
 
 /** La media dell'esposizione all'AI, o «—» se nessun passo ha il match O*NET. */

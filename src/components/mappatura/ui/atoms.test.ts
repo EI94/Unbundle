@@ -59,8 +59,8 @@ test("tag, chip di ruoli e strumenti con la loro ×, punti della legenda, il rom
 });
 
 test("i badge: lo stream nel suo colore e con il suo nome (P23, P28); il grigio dell'esposizione; la pillola della decisione (P25)", () => {
-  assert.equal(html(h(StreamBadge, { stream: "automate" })), '<span class="b-abadge" data-stream="automate" data-b="stream-badge">Automate</span>');
-  assert.equal(html(h(StreamBadge, { stream: "differentiate", small: true })), '<span class="b-abadge b-small" data-stream="differentiate" data-b="stream-badge">Differentiate</span>');
+  assert.equal(html(h(StreamBadge, { stream: "automate" })), '<span class="b-abadge" data-stream="automate" data-b="stream-badge" title="Automate">Automatizzare</span>');
+  assert.equal(html(h(StreamBadge, { stream: "differentiate", small: true })), '<span class="b-abadge b-small" data-stream="differentiate" data-b="stream-badge" title="Differentiate">Differenziare</span>');
   assert.equal(html(h(ExposureBadge, { pct: 34.4 })), '<span class="b-abadge b-auto" data-b="exposure-badge">AI 34%</span>');
   assert.equal(html(h(ExposureBadge, { pct: 0, small: true })), '<span class="b-abadge b-auto b-small" data-b="exposure-badge">AI 0%</span>');
   assert.equal(html(h(GatePill, { label: "Conferma dell'ordine" })), '<span class="b-gate" data-b="gate">Conferma dell&#x27;ordine</span>');
@@ -108,8 +108,8 @@ test("la tabella che sul telefono diventa blocchi: le colonne prima dei valori (
     table,
     '<div class="b-tscroll" data-b="table"><table class="b-tbl b-stack"><thead><tr><th scope="col">Ruolo</th><th scope="col">Passi</th></tr></thead><tbody><tr><td>Buyer</td><td data-l="Passi">A1, A2</td></tr><tr><td>Magazzino</td><td data-l="Passi">B1</td></tr></tbody></table></div>',
   );
-  const row = html(h(RowLink, { href: "/dashboard/ws/mapping/u1", accent: "innovate", label: "Apri la board di Ufficio acquisti" }, "contenuto"));
-  assert.equal(row, '<a class="b-crow" data-accent="innovate" aria-label="Apri la board di Ufficio acquisti" data-b="row" href="/dashboard/ws/mapping/u1">contenuto</a>');
+  const row = html(h(RowLink, { href: "/dashboard/ws/mapping/u1", accent: "innovate", label: "Apri la mappa di Ufficio acquisti" }, "contenuto"));
+  assert.equal(row, '<a class="b-crow" data-accent="innovate" aria-label="Apri la mappa di Ufficio acquisti" data-b="row" href="/dashboard/ws/mapping/u1">contenuto</a>');
   assert.doesNotMatch(html(h(RowLink, { href: "/x", accent: null, label: "Apri" }, "c")), /data-accent/);
 });
 

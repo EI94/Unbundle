@@ -20,9 +20,9 @@ test("la testata della board senza schede né pillola, la testa della vista con 
   const html = render();
   // Senza schede: sotto il titolo resta lo spazio della loro riga (il serif non tocca la riga della testata).
   assert.match(html, /^<header class="b-top b-notabs" data-b="header">/);
-  assert.match(html, /<h1 class="b-title" style="margin-top:8px"><span data-b="title">Activity <i>mapping<\/i><\/span><\/h1>/);
+  assert.match(html, /<h1 class="b-title" style="margin-top:8px"><span data-b="title"><i>Processi<\/i><\/span><\/h1>/);
   assert.doesNotMatch(html, /role="tablist"|data-b="pill"|data-b="save-now"/, "qui non si modifica niente");
-  assert.match(html, /<p class="b-eyebrow">Activity mapping<\/p><h2 class="b-h">Il lavoro di oggi, <i>reparto per reparto<\/i><\/h2><p class="b-lede">Ogni reparto ha la sua board: i processi, i passi, chi li fa e dove decide una persona\.<\/p>/);
+  assert.match(html, /<p class="b-eyebrow">Processi<\/p><h2 class="b-h">Il lavoro di oggi, <i>reparto per reparto<\/i><\/h2><p class="b-lede">Ogni reparto ha la sua mappa: i processi, i passi, chi li fa e dove decide una persona\.<\/p>/);
   assert.doesNotMatch(html, /data-variant="primary"|b-primary/, "nessun bottone pieno");
 });
 
@@ -39,9 +39,9 @@ test("i numeri prima delle righe: quattro riquadri, poi la sezione con il conteg
   assert.match(html, /<h3 class="b-sh">Reparti<small>3<\/small><\/h3>/);
   const rows = [...html.matchAll(/<a class="b-crow" aria-label="([^"]+)" data-b="row" href="([^"]+)">/g)].map((match) => [match[1], match[2]]);
   assert.deepEqual(rows, [
-    ["Apri la board di Ufficio acquisti", `/dashboard/${WS}/mapping/${FIXTURE_IDS.unit}`],
-    ["Apri la board di Magazzino", `/dashboard/${WS}/mapping/dddddddd-0000-4000-8000-000000000002`],
-    ["Apri la board di Amministrazione", `/dashboard/${WS}/mapping/dddddddd-0000-4000-8000-000000000003`],
+    ["Apri la mappa di Ufficio acquisti", `/dashboard/${WS}/mapping/${FIXTURE_IDS.unit}`],
+    ["Apri la mappa di Magazzino", `/dashboard/${WS}/mapping/dddddddd-0000-4000-8000-000000000002`],
+    ["Apri la mappa di Amministrazione", `/dashboard/${WS}/mapping/dddddddd-0000-4000-8000-000000000003`],
   ]);
 });
 
@@ -53,9 +53,9 @@ test("una riga: lo stato, il nome con la descrizione, i punti degli stream dopo 
   // I tre stream, ognuno con il suo punto e i suoi passi; il nome dello stream nel title.
   const dots = [...acquisti.matchAll(/<span class="b-sdot" title="([^"]+)" data-stream="(\w+)"><i class="b-adot" data-tone="(\w+)"/g)].map((match) => [match[1], match[2], match[3]]);
   assert.deepEqual(dots, [
-    ["Automate: 3", "automate", "automate"],
-    ["Differentiate: 1", "differentiate", "differentiate"],
-    ["Innovate: 1", "innovate", "innovate"],
+    ["Automatizzare: 3", "automate", "automate"],
+    ["Differenziare: 1", "differentiate", "differentiate"],
+    ["Innovare: 1", "innovate", "innovate"],
   ]);
   assert.match(acquisti, /<span class="b-num2">6 passi · 28,5 h a settimana<small>2 da validare · 1 da classificare<\/small><\/span>/);
   // In corso: nessun punto (niente è classificato), solo quello che resta da validare.
@@ -75,8 +75,8 @@ test("un'unità con passi è «In corso» da sola, anche prima che qualcuno la s
   assert.match(html, /2 passi · 3 h a settimana<small>2 da validare<\/small>/);
 });
 
-test("senza unità: «Prima la Discovery», con un link solo e nessun bottone pieno", () => {
+test("senza unità: «Prima l'intervista iniziale», con un link solo e nessun bottone pieno", () => {
   const html = render([]);
-  assert.match(html, /<div class="b-empty" data-b="empty"><b>Prima la Discovery<\/b><p>La mappatura comincia dalla Discovery\. Completa quella fase per aprire le board\.<\/p><div class="b-empty-actions"><a class="b-btn" data-b="discovery" href="\/dashboard\/[^"]+\/setup\/leadership">Vai alla Discovery<\/a><\/div><\/div>/);
+  assert.match(html, /<div class="b-empty" data-b="empty"><b>Prima l&#x27;intervista iniziale<\/b><p>La mappatura comincia dall&#x27;intervista iniziale\. Completala per aprire le mappe\.<\/p><div class="b-empty-actions"><a class="b-btn" data-b="discovery" href="\/dashboard\/[^"]+\/setup\/leadership">Vai all&#x27;intervista iniziale<\/a><\/div><\/div>/);
   assert.doesNotMatch(html, /data-b="kpis"|data-b="units"|b-primary/);
 });

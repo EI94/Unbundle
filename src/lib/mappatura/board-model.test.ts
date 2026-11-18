@@ -164,7 +164,7 @@ test("la mappa come testo: per processo e per passo, una riga per corsia, i segn
   const lines = text.split("\n");
   assert.equal(lines[0], "A · Dalla richiesta all'ordine · Responsabile acquisti");
   assert.equal(lines[1], "  A1 · Raccolta delle richieste");
-  assert.ok(lines.includes("    Attività: Le richieste degli uffici arrivano per e-mail e si copiano in un foglio. · Si apre la casella condivisa · Si copia la richiesta nel foglio [ipotesi]"));
+  assert.ok(lines.includes("    Cosa si fa: Le richieste degli uffici arrivano per e-mail e si copiano in un foglio. · Si apre la casella condivisa · Si copia la richiesta nel foglio [ipotesi]"));
   assert.ok(lines.includes("    Chi: Buyer"));
   assert.ok(lines.includes("    Strumenti: E-mail, Foglio di calcolo"));
   assert.ok(lines.includes("    Entra: La richiesta di un ufficio."));

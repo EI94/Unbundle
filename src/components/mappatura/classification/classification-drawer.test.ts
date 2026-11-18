@@ -32,13 +32,13 @@ function drawer(board: MappingBoard, stepId: string) {
 test("il confronto: badge, «Oggi» (la riga grigia) accanto a «Classificazione» (il motivo e l'affidabilità)", () => {
   const out = drawer(fixtureBoard({ classified: true }), I.confronto);
   assert.match(out, /<div class="b-dr-sub">Dalla richiesta all'ordine · A2<\/div><h2 class="b-dr-t"[^>]*>Confronto delle offerte<\/h2>/);
-  assert.match(out, /<div class="b-ag" data-b="badges"><span class="b-abadge" data-stream="automate" data-b="stream-badge">Automate<\/span><span class="b-abadge b-auto" data-b="exposure-badge">AI 22%<\/span><\/div>/);
+  assert.match(out, /<div class="b-ag" data-b="badges"><span class="b-abadge" data-stream="automate" data-b="stream-badge" title="Automate">Automatizzare<\/span><span class="b-abadge b-auto" data-b="exposure-badge">AI 22%<\/span><\/div>/);
   assert.match(
     out,
-    /<div class="b-compare" data-b="compare"><div><p class="b-k">Oggi<\/p><div class="b-was"><p>Per ogni richiesta si chiedono tre offerte e si confrontano\.<\/p><\/div><\/div><div><p class="b-k">Classificazione<\/p><div class="b-now"><p>Il confronto è meccanico, ma la scelta dei criteri no\.<\/p><p class="b-muted">Affidabilità 61%<\/p><\/div><\/div><\/div>/,
+    /<div class="b-compare" data-b="compare"><div><p class="b-k">Oggi<\/p><div class="b-was"><p>Per ogni richiesta si chiedono tre offerte e si confrontano\.<\/p><\/div><\/div><div><p class="b-k">Con l'AI<\/p><div class="b-now"><p>Il confronto è meccanico, ma la scelta dei criteri no\.<\/p><p class="b-muted">Affidabilità 61%<\/p><\/div><\/div><\/div>/,
   );
   // Un passo senza stream: resta da classificare.
-  assert.match(drawer(fixtureBoard({ classified: true }), I.ordine), /<p class="b-k">Classificazione<\/p><div class="b-now"><p>Resta da classificare\.<\/p><\/div>/);
+  assert.match(drawer(fixtureBoard({ classified: true }), I.ordine), /<p class="b-k">Con l'AI<\/p><div class="b-now"><p>Resta da classificare\.<\/p><\/div>/);
 });
 
 test("il selettore dello stream: uno premuto, il punto ambra sulla proposta dell'assistente; spento per chi non rivede", () => {
@@ -46,13 +46,13 @@ test("il selettore dello stream: uno premuto, il punto ambra sulla proposta dell
   const out = drawer(board, I.confronto);
   assert.match(
     out,
-    /<p class="b-k">Stream<\/p><div class="b-wsel" role="group" aria-label="Stream del passo" data-b="segmented"><button type="button" aria-pressed="true">Automate<\/button><button type="button" class="b-rec" aria-pressed="false" title="Proposto dall'assistente">Differentiate<span class="b-sr"> Proposto dall'assistente<\/span><\/button><button type="button" aria-pressed="false">Innovate<\/button><button type="button" aria-label="Nessuno stream" aria-pressed="false">—<\/button><\/div>/,
+    /<p class="b-k">Categoria<\/p><div class="b-wsel" role="group" aria-label="Categoria del passo" data-b="segmented"><button type="button" aria-pressed="true">Automatizzare<\/button><button type="button" class="b-rec" aria-pressed="false" title="Proposto dall'assistente">Differenziare<span class="b-sr"> Proposto dall'assistente<\/span><\/button><button type="button" aria-pressed="false">Innovare<\/button><button type="button" aria-label="Nessuna categoria" aria-pressed="false">—<\/button><\/div>/,
   );
   const contributor = drawer({ ...board, can: { ...board.can, setStream: false } }, I.confronto);
-  assert.equal(contributor.match(/<button type="button"(?: class="b-rec")?(?: aria-label="Nessuno stream")? aria-pressed="(?:true|false)" disabled=""/g)?.length, 4, "spento dal primo disegno");
+  assert.equal(contributor.match(/<button type="button"(?: class="b-rec")?(?: aria-label="Nessuna categoria")? aria-pressed="(?:true|false)" disabled=""/g)?.length, 4, "spento dal primo disegno");
   // «—» premuto per un passo senza stream.
   // Il segno «—» ha un nome per chi usa uno screen reader: «Nessuno stream» (§7.3).
-  assert.match(drawer(board, I.ordine), /<button type="button" aria-label="Nessuno stream" aria-pressed="true">—<\/button>/);
+  assert.match(drawer(board, I.ordine), /<button type="button" aria-label="Nessuna categoria" aria-pressed="true">—<\/button>/);
 });
 
 test("la scelta nel selettore: un'operazione dei revisori con lo stream di adesso; la stessa scelta, niente", () => {
@@ -61,10 +61,10 @@ test("la scelta nel selettore: un'operazione dei revisori con lo stream di adess
   assert.equal(streamChoiceOp(I.confronto, "automate", "automate"), null);
   assert.equal(streamChoiceOp(I.ordine, null, "none"), null);
   assert.deepEqual(streamOptions(null).map((option) => [option.value, option.label, option.recommended === true, option.ariaLabel ?? null]), [
-    ["automate", "Automate", false, null],
-    ["differentiate", "Differentiate", false, null],
-    ["innovate", "Innovate", false, null],
-    ["none", "—", false, "Nessuno stream"],
+    ["automate", "Automatizzare", false, null],
+    ["differentiate", "Differenziare", false, null],
+    ["innovate", "Innovare", false, null],
+    ["none", "—", false, "Nessuna categoria"],
   ]);
 });
 
@@ -79,7 +79,7 @@ test("il resto del passo: potenziale, la decisione con il suo nome, l'esposizion
   const out = drawer(linked, I.richieste);
   assert.match(out, /<p class="b-k">Potenziale con l'AI<\/p><p>La richiesta si può leggere e completare da sola\.<\/p>/);
   assert.match(out, /<p class="b-k">Decide una persona<\/p><div class="b-human" data-b="human"><b>Richiesta completa<\/b>Chi compra decide se la richiesta è completa\.<\/div>/);
-  assert.match(out, /<p class="b-k">AI exposure<\/p><p class="b-cls-big">34%<\/p><p class="b-muted">O\*NET 13-1023\.00 · Purchasing agents<\/p>/);
+  assert.match(out, /<p class="b-k">Esposizione all'AI<\/p><p class="b-cls-big">34%<\/p><p class="b-muted">O\*NET 13-1023\.00 · Purchasing agents<\/p>/);
   assert.match(out, /<p class="b-k">Strumenti<\/p><div class="b-chips"><span class="b-chip b-tool" data-b="chip">E-mail<\/span><span class="b-chip b-tool" data-b="chip">Foglio di calcolo<\/span><\/div>/);
   assert.match(out, /<p class="b-k">Attriti di oggi<\/p><ul class="b-l"><li>Richieste incomplete<\/li><li>Nessun modulo unico<\/li><\/ul>/);
   assert.match(out, /<p class="b-k">Idee del team<\/p><div class="b-cell" data-lane="idee"><div class="b-note-w" data-status="validato" data-origin="board" data-b="note">/);
@@ -88,7 +88,7 @@ test("il resto del passo: potenziale, la decisione con il suo nome, l'esposizion
   // Senza nulla da dire, «—»; un passo senza decisione non ha il blocco.
   const plain = drawer(board, I.ordine);
   assert.match(plain, /<p class="b-k">Potenziale con l'AI<\/p><p class="b-muted">—<\/p>/);
-  assert.match(plain, /<p class="b-k">AI exposure<\/p><p class="b-muted">—<\/p>/);
+  assert.match(plain, /<p class="b-k">Esposizione all'AI<\/p><p class="b-muted">—<\/p>/);
   assert.match(plain, /<p class="b-k">Use case<\/p><p class="b-muted">—<\/p>/);
   assert.doesNotMatch(plain, /Decide una persona/);
   // Una decisione senza nome (i passi di prima della board, o l'assistente che non lo dà): «Decide una persona» una volta.

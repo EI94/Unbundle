@@ -266,7 +266,7 @@ test("i voti: ognuno i suoi, la board mostra la somma, nessuno abbassa quelli di
   assert.deepEqual(tooMany, { ok: false, code: "non_valida" });
 });
 
-test("gli stream: li corregge solo chi rivede; «Usa gli stream proposti» riporta alla proposta", opts, async () => {
+test("gli stream: li corregge solo chi rivede; «Usa le categorie proposte» riporta alla proposta", opts, async () => {
   await q(`UPDATE activities SET classification = 'automatable', confidence_score = 0.7 WHERE id = $1`, [S1]);
   await q(`UPDATE mapping_steps SET proposed_stream = 'automate', classification_reason = 'Lavoro ripetitivo con dati chiari.', ai_potential = 'Si può leggere la richiesta da sola.' WHERE activity_id = $1`, [S1]);
   await q(`UPDATE mapping_steps SET proposed_stream = 'differentiate' WHERE activity_id = $1`, [S2]);
@@ -290,7 +290,7 @@ test("gli stream: li corregge solo chi rivede; «Usa gli stream proposti» ripor
   board = await save([op({ t: "step.stream", stepId: S4, prev: "automate", next: null })]);
   assert.equal(step(board, S4).stream, null);
 
-  // «Usa gli stream proposti»: chi ha una proposta ci torna, chi non ce l'ha resta com'è.
+  // «Usa le categorie proposte»: chi ha una proposta ci torna, chi non ce l'ha resta com'è.
   board = await save([op({ t: "streams.reset" })]);
   assert.deepEqual([step(board, S1).stream, step(board, S2).stream, step(board, S4).stream], ["automate", "differentiate", null]);
 });
@@ -419,7 +419,7 @@ test("R1: un id di un'altra unità o di un altro workspace non tocca niente", op
   await save([...ops, quiet], lead(), Object.fromEntries(ops.map((item) => [item.id, "gone"])));
   assert.equal(await snapshot(), before, "l'altra unità e l'altro workspace sono come prima");
   assert.deepEqual(await boardCounts(q, [f.ws]), mine);
-  // «Usa gli stream proposti» vale solo per l'unità in cui si è.
+  // «Usa le categorie proposte» vale solo per l'unità in cui si è.
   await q(`UPDATE mapping_steps SET proposed_stream = 'innovate' WHERE activity_id = $1`, [theirs.step]);
   const proposed = await snapshot();
   await save([op({ t: "streams.reset" })]);

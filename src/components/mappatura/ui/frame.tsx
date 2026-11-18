@@ -90,6 +90,8 @@ export function BoardBrand(p: { workspaceName: string; areaHref: string }): JSX.
 
 /** Il testo di un titolo con la sua parte in corsivo, nel colore dell'accento (P7): «Activity *mapping*». */
 export function BoardTitle(p: { plain: string; accent: string; accentFirst?: boolean }): JSX.Element {
+  // (Rilascio 10, §3.7) Una parte può mancare (il titolo della board è solo il nome dell'unità): niente corsivo vuoto né spazio in più.
+  if (!p.accent || !p.plain) return <span data-b="title">{p.accent ? <i>{p.accent}</i> : p.plain}</span>;
   return (
     <span data-b="title">
       {p.accentFirst ? (

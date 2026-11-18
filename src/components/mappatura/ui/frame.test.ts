@@ -47,7 +47,7 @@ test("la testata: il marchio con la pillola a destra, il titolo con il corsivo, 
 test("il marchio: il segno, «lateral space», ×, il workspace, · e l'etichetta che porta all'elenco delle unità", () => {
   const out = html(h(BoardBrand, { workspaceName: "  Officina di prova ", areaHref: "/dashboard/ws/mapping" }));
   assert.match(out, /^<div class="b-brand" data-b="brand"><svg width="22" height="12" viewBox="0 0 24 12" aria-hidden="true" focusable="false">/);
-  assert.match(out, /<b>lateral <span class="b-mute">space<\/span><\/b><span class="b-x" aria-hidden="true">×<\/span><span>Officina di prova<\/span><span class="b-x" aria-hidden="true">·<\/span><a href="\/dashboard\/ws\/mapping">Activity mapping<\/a>/);
+  assert.match(out, /<b>lateral <span class="b-mute">space<\/span><\/b><span class="b-x" aria-hidden="true">×<\/span><span>Officina di prova<\/span><span class="b-x" aria-hidden="true">·<\/span><a href="\/dashboard\/ws\/mapping">Processi<\/a>/);
   // Il nome del link è la sua etichetta (il titolo della pagina dove porta): nessuna aria-label che dica altro.
   assert.doesNotMatch(out, /aria-label/);
   // Senza nome del workspace (la cornice di caricamento) niente «×».

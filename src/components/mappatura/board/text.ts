@@ -23,9 +23,9 @@ export const capitalized = (text: string): string => (text ? text.charAt(0).toLo
 
 export const VIEW_TEXT = Object.freeze({
   units: Object.freeze({
-    eyebrow: "Activity mapping",
+    eyebrow: "Processi",
     titlePlain: "Il lavoro di oggi,",
-    discovery: Object.freeze({ title: "Prima la Discovery", link: "Vai alla Discovery" }),
+    discovery: Object.freeze({ title: "Prima l'intervista iniziale", link: "Vai all'intervista iniziale" }),
   }),
   header: Object.freeze({ assistant: "Assistente" }),
   today: Object.freeze({
@@ -117,16 +117,19 @@ export function unitsTitle(words: UnitWords): { plain: string; accent: string } 
 }
 
 export function unitsLede(words: UnitWords): string {
-  return `Ogni ${words.singular} ha la sua board: i processi, i passi, chi li fa e dove decide una persona.`;
+  return `Ogni ${words.singular} ha la sua mappa: i processi, i passi, chi li fa e dove decide una persona.`;
 }
 
-/** I quattro riquadri dell'elenco: unità complete, passi, ore, passi da validare. */
+/**
+ * I riquadri dell'elenco: unità complete, passi, ore, passi da validare. (Rilascio 10, §1 regola 5) Lo zero non si
+ * vede: il primo riquadro resta sempre, gli altri solo con un numero che non è zero.
+ */
 export function unitsTileTexts(n: { complete: number; total: number; steps: number; hoursWeek: number; toValidate: number }, words: UnitWords): Array<{ value: string; label: string }> {
   return [
     { value: `${formatCount(n.complete)} di ${formatCount(n.total)}`, label: `${words.plural} con la mappatura completa` },
-    { value: formatCount(n.steps), label: n.steps === 1 ? "passo mappato" : "passi mappati" },
-    { value: `${formatHours(n.hoursWeek)} h`, label: VIEW_TEXT.today.hoursLabel },
-    { value: formatCount(n.toValidate), label: n.toValidate === 1 ? "passo da validare" : "passi da validare" },
+    ...(n.steps > 0 ? [{ value: formatCount(n.steps), label: n.steps === 1 ? "passo mappato" : "passi mappati" }] : []),
+    ...(n.hoursWeek > 0 ? [{ value: `${formatHours(n.hoursWeek)} h`, label: VIEW_TEXT.today.hoursLabel }] : []),
+    ...(n.toValidate > 0 ? [{ value: formatCount(n.toValidate), label: n.toValidate === 1 ? "passo da validare" : "passi da validare" }] : []),
   ];
 }
 
@@ -138,24 +141,27 @@ export const unitStepsLine = (steps: number, hoursWeek: number): string => `${co
 export const toValidateText = (n: number): string => `${formatCount(n)} da validare`;
 export const toClassifyText = (n: number): string => `${formatCount(n)} da classificare`;
 export const peopleText = (n: number): string => counted(n, "persona", "persone");
-export const openBoardLabel = (unitName: string): string => `Apri la board di ${unitName}`;
+export const openBoardLabel = (unitName: string): string => `Apri la mappa di ${unitName}`;
 /**
  * Senza unità. Il piano diceva «Le {plurale} nascono nella Discovery»: l'articolo concorda con la parola dell'unità («Le
  * reparti»), che §7 vieta. La frase dice la stessa cosa senza nominarla.
  */
-export const discoveryText = (): string => "La mappatura comincia dalla Discovery. Completa quella fase per aprire le board.";
+export const discoveryText = (): string => "La mappatura comincia dall'intervista iniziale. Completala per aprire le mappe.";
 
 // ─── S2 · «Processi di oggi» ─────────────────────────────────────────
 
-/** I quattro riquadri: passi (in quanti processi), ore, passi dove decide una persona, passi da validare. */
+/**
+ * I riquadri: passi (in quanti processi), ore, passi dove decide una persona, passi da validare. (Rilascio 10, §1
+ * regola 5) Lo zero non si vede: il primo riquadro resta sempre, gli altri solo con un numero che non è zero.
+ */
 export function todayTileTexts(n: { steps: number; processes: number; hoursWeek: number; decisions: number; toValidate: number }): Array<{ value: string; label: string }> {
   const steps = n.steps === 1 ? "passo" : "passi";
   const processes = n.processes === 1 ? "1 processo" : `${formatCount(n.processes)} processi`;
   return [
     { value: formatCount(n.steps), label: `${steps} in ${processes}` },
-    { value: `${formatHours(n.hoursWeek)} h`, label: VIEW_TEXT.today.hoursLabel },
-    { value: formatCount(n.decisions), label: n.decisions === 1 ? "passo dove decide una persona" : "passi dove decide una persona" },
-    { value: formatCount(n.toValidate), label: n.toValidate === 1 ? "passo da validare" : "passi da validare" },
+    ...(n.hoursWeek > 0 ? [{ value: `${formatHours(n.hoursWeek)} h`, label: VIEW_TEXT.today.hoursLabel }] : []),
+    ...(n.decisions > 0 ? [{ value: formatCount(n.decisions), label: n.decisions === 1 ? "passo dove decide una persona" : "passi dove decide una persona" }] : []),
+    ...(n.toValidate > 0 ? [{ value: formatCount(n.toValidate), label: n.toValidate === 1 ? "passo da validare" : "passi da validare" }] : []),
   ];
 }
 
@@ -164,7 +170,10 @@ export const rolesToolsHint = (roles: number, tools: number): string => `${count
 
 /** La riga dei conteggi sopra la mappa (P60): «2 da validare · 4 confermati · 5 attriti». */
 export const mapCountsLine = (toValidate: number, confirmed: number, frictions: number): string =>
-  `${formatCount(toValidate)} da validare · ${counted(confirmed, "confermato", "confermati")} · ${counted(frictions, "attrito", "attriti")}`;
+  // (Rilascio 10, §1 regola 5) Solo i numeri che non sono zero.
+  [toValidate > 0 ? `${formatCount(toValidate)} da validare` : null, confirmed > 0 ? counted(confirmed, "confermato", "confermati") : null, frictions > 0 ? counted(frictions, "attrito", "attriti") : null]
+    .filter((part): part is string => part !== null)
+    .join(" · ");
 
 /** Gli attriti di una riga, nell'etichetta: «3 attriti», «1 attrito». */
 export const rowFrictionsText = (n: number): string => counted(n, "attrito", "attriti");

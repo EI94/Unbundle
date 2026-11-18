@@ -96,8 +96,8 @@ test("le note di una corsia: si scrivono, si validano, si eliminano con «Annull
   const { tree, log } = body(board, I.richieste);
   const notes = ofType(tree, NoteItem, EXPAND);
   assert.deepEqual(notes.map((note) => [(note.props.note as { text: string }).text, note.props.label]), [
-    ["Si apre la casella condivisa", "Nota: Attività"],
-    ["Si copia la richiesta nel foglio", "Nota: Attività"],
+    ["Si apre la casella condivisa", "Nota: Cosa si fa"],
+    ["Si copia la richiesta nel foglio", "Nota: Cosa si fa"],
     ["Richieste incomplete", "Nota: Attriti"],
     ["Nessun modulo unico", "Nota: Attriti"],
     ["Elenco dei fornitori", "Nota: Dati e documenti"],
@@ -177,7 +177,7 @@ test("i collegamenti aprono gli altri passi; senza collegamenti la sezione non c
 test("l'ordine del drawer: descrizione, chip, «Entra» ed «Esce», le quattro corsie, «Decide una persona», «Eccezioni», «Collegamenti», «Altri dettagli», il fondo (P20)", () => {
   const out = html(body(fixtureBoard(), I.richieste).tree);
   const labels = [...out.matchAll(/<p class="b-k">([^<]+)<\/p>|<div class="b-human" data-b="human"><b>([^<]+)<\/b>|<summary>([^<]+)<small>|<summary>([^<]+)<\/summary>/g)].map((match) => match[1] ?? match[2] ?? match[3] ?? match[4]);
-  assert.deepEqual(labels, ["Entra", "Esce", "Attività", "Attriti", "Dati e documenti", "Tempi e volumi", "Decide una persona", "Eccezioni", "Collegamenti", "Altri dettagli"]);
+  assert.deepEqual(labels, ["Entra", "Esce", "Cosa si fa", "Attriti", "Dati e documenti", "Tempi e volumi", "Decide una persona", "Eccezioni", "Collegamenti", "Altri dettagli"]);
   assert.ok(out.indexOf('data-b="step-description"') < out.indexOf('data-b="step-chips"'));
   assert.ok(out.indexOf('data-b="step-chips"') < out.indexOf(">Entra<"));
   assert.ok(out.indexOf("Altri dettagli") < out.indexOf('data-b="step-foot"'));
