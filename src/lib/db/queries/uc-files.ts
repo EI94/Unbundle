@@ -60,8 +60,8 @@ import {
   type UploadRequest,
   type ZoneState,
 } from "../../uc/files/upload.ts";
-import { INVALID_LINK_MESSAGE, PAUSED_CASE_MESSAGE, PRIVACY_PENDING_MESSAGE, REFERENT_PRIVACY_NOTICE, referentCapabilities } from "../../uc/public-view.ts";
-import { privacyAcknowledged, type ResolvedLink } from "../../uc/public-rows.ts";
+import { INVALID_LINK_MESSAGE, PAUSED_CASE_MESSAGE, PRIVACY_PENDING_MESSAGE, PRIVACY_UPDATED_MESSAGE, REFERENT_PRIVACY_NOTICE, referentCapabilities } from "../../uc/public-view.ts";
+import { privacyWait, type ResolvedLink } from "../../uc/public-rows.ts";
 import {
   activeQuarantinePathsSql,
   datasetDecisionSql,
@@ -156,6 +156,7 @@ const MESSAGES: Readonly<Record<string, string>> = {
   link_non_valido: INVALID_LINK_MESSAGE,
   caso_sospeso: PAUSED_CASE_MESSAGE,
   informativa_da_leggere: PRIVACY_PENDING_MESSAGE,
+  informativa_aggiornata: PRIVACY_UPDATED_MESSAGE,
   attore_non_ammesso: "Non hai i permessi per questa operazione sui file.",
   zona_personale_negata: "Per i file della zona personale serve l'accesso firmato dall'approvatore privacy.",
   caricamento_non_trovato: "Caricamento non trovato o già concluso. Riprova a caricare il file.",
@@ -289,10 +290,14 @@ async function prepareUserUpload(executor: UcExecutor, u: UserUploader, input: u
   return ok({ target: target.value, request: request.value });
 }
 
-/** Il link può scrivere: caso non in pausa, informativa letta su questa richiesta, link di raccolta. */
+/**
+ * Il link può scrivere: caso non in pausa, informativa letta su questa richiesta (nella versione di adesso: (Ondata 0)
+ * `informativa_aggiornata` se è di una versione vecchia, come in `uc-public.ts`), link di raccolta.
+ */
 function checkReferentLink(link: ResolvedLink): Result<void> {
   if (!link.live) return failCode("caso_sospeso");
-  if (!privacyAcknowledged(link, REFERENT_PRIVACY_NOTICE.version)) return failCode("informativa_da_leggere");
+  const wait = privacyWait(link, REFERENT_PRIVACY_NOTICE.version);
+  if (wait) return failCode(wait);
   if (link.purpose !== "raccolta") return failCode("attore_non_ammesso", "Da questo link si danno solo approvazioni.");
   return ok(undefined);
 }

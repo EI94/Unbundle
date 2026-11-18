@@ -1,8 +1,8 @@
 import test, { before } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import type { ReferentItemView } from "../../../lib/uc/public-view.ts";
-import { PAUSED_CASE_MESSAGE } from "../../../lib/uc/public-view.ts";
+import type { ReferentItemView, ReferentNoticeText } from "../../../lib/uc/public-view.ts";
+import { PAUSED_CASE_MESSAGE, PRIVACY_UPDATED_MESSAGE, REFERENT_PRIVACY_NOTICE } from "../../../lib/uc/public-view.ts";
 import { enableTsxImports } from "../../use-cases/detail/referent/tsx-test-loader.ts";
 
 // (Ondata 0, privacy calma del 04/11) Niente casella di dichiarazione prima di un file: né sulla pagina del referente
@@ -15,6 +15,7 @@ const ITEM = "66666666-6666-4666-8666-666666666666";
 
 let attachment: typeof import("./attachment-field.tsx");
 let excel: typeof import("./excel-import.tsx");
+let gate: typeof import("./privacy-gate.tsx");
 let panel: typeof import("../documents/upload-panel-client.tsx");
 let render: (element: unknown) => string;
 let h: (type: unknown, props: unknown) => unknown;
@@ -23,6 +24,7 @@ before(async () => {
   await enableTsxImports();
   attachment = await import("./attachment-field.tsx");
   excel = await import("./excel-import.tsx");
+  gate = await import("./privacy-gate.tsx");
   panel = await import("../documents/upload-panel-client.tsx");
   const react = await import("react");
   h = (type, props) => react.createElement(type as never, props as never);
@@ -96,4 +98,19 @@ test("/r says «caso d'uso», not «caso»: the paused page, the paused message 
   }
   assert.ok(read("./more-options.tsx").includes("Lateral Space e chi segue il caso d'uso nella tua azienda"));
   assert.ok(read("../../../lib/uc/item-state.ts").includes(`fail("caso_sospeso", "Il caso d'uso è in pausa: per ora non serve rispondere.")`));
+});
+
+test("(Ondata 0) the notice comes back with the text of the version to accept; without it, «Ricarica la pagina» and no «Ho letto»", () => {
+  const next: ReferentNoticeText = { ...REFERENT_PRIVACY_NOTICE, version: "uc-2027-01-1", lead: "Tre cose da sapere, aggiornate.", summary: ["Primo punto nuovo.", "Secondo punto nuovo.", "Terzo punto nuovo."] };
+  const props = { clientLabel: "Cliente di prova", busy: false, error: null, disabled: false, onAcknowledge: noop };
+  const shown = render(h(gate.PrivacyGate, { ...props, notice: next }));
+  for (const text of [next.lead, ...next.summary, next.button]) assert.ok(shown.includes(text), text);
+  assert.ok(!shown.includes(REFERENT_PRIVACY_NOTICE.lead), "not the page's own text");
+  assert.doesNotMatch(button(shown, next.button), DISABLED);
+  const stale = render(h(gate.PrivacyGate, { ...props, notice: null })).replaceAll("&#x27;", "'");
+  assert.ok(stale.includes(PRIVACY_UPDATED_MESSAGE));
+  assert.ok(stale.includes("Ricarica la pagina"));
+  assert.ok(!stale.includes(REFERENT_PRIVACY_NOTICE.button) && !REFERENT_PRIVACY_NOTICE.summary.some((line) => stale.includes(line)), "no text to accept, no button to accept it");
+  const footer = render(h(gate.PrivacyFooter, { notice: next })).replaceAll("&#x27;", "'");
+  assert.ok(next.paragraphs.every((p) => footer.includes(p)) && footer.includes(next.footerLabel));
 });

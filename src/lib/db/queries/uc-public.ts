@@ -55,6 +55,7 @@ import {
   PAUSED_CASE_MESSAGE,
   PERSONAL_LOCKED_MESSAGE,
   PRIVACY_PENDING_MESSAGE,
+  PRIVACY_UPDATED_MESSAGE,
   REFERENT_ANSWER_KINDS,
   REFERENT_PRIVACY_NOTICE,
   SINGLE_SEND_MESSAGE,
@@ -82,6 +83,7 @@ import {
   parseLinkRow,
   parseModules,
   privacyAcknowledged,
+  privacyWait,
   referentItemsFromRows,
   referentMinutes,
   withQuestionCounts,
@@ -201,10 +203,15 @@ function guard(link: ResolvedLink): UcStatement {
   return linkGuardSql({ workspaceId: link.workspaceId, caseId: link.caseId, requestId: link.requestId, tokenId: link.tokenId });
 }
 
-/** Le scritture vogliono il link vivo (caso non in pausa) e l'informativa letta su questa richiesta. */
+/**
+ * Le scritture vogliono il link vivo (caso non in pausa) e l'informativa letta su questa richiesta, nella versione di
+ * adesso. (Ondata 0) Letta in una versione vecchia: `informativa_aggiornata`, che le pagine aperte da prima del
+ * rilascio non trattano come un rifiuto della bozza (`PUBLIC_ERRORS`); niente si salva comunque.
+ */
 function checkWritable(link: ResolvedLink): PublicOutcome<void> {
   if (!link.live) return publicFail("caso_sospeso", PAUSED_CASE_MESSAGE);
-  if (!privacyAcknowledged(link, REFERENT_PRIVACY_NOTICE.version)) return publicFail("informativa_da_leggere", PRIVACY_PENDING_MESSAGE);
+  const wait = privacyWait(link, REFERENT_PRIVACY_NOTICE.version);
+  if (wait) return publicFail(wait, wait === "informativa_aggiornata" ? PRIVACY_UPDATED_MESSAGE : PRIVACY_PENDING_MESSAGE);
   return { ok: true, value: undefined };
 }
 
@@ -317,7 +324,8 @@ export async function loadReferentView(executor: UcExecutor, link: ResolvedLink,
     caseTitle: link.caseTitle,
     paused: !link.live,
     expiresAt: link.expiresAt.toISOString(),
-    privacy: { acknowledged: privacyAcknowledged(link, REFERENT_PRIVACY_NOTICE.version), version: REFERENT_PRIVACY_NOTICE.version },
+    // (Ondata 0) Anche il testo: una pagina di un altro rilascio mostra questo, mai il suo (`noticeFor`).
+    privacy: { acknowledged: privacyAcknowledged(link, REFERENT_PRIVACY_NOTICE.version), version: REFERENT_PRIVACY_NOTICE.version, notice: REFERENT_PRIVACY_NOTICE },
     emailConfigured: opts.emailConfigured === true,
   };
   if (link.purpose === "approvazioni") {

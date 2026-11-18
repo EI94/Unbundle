@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { Check, ChevronRight, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import type { ReferentNoticeText } from "@/lib/uc/public-view";
 import { expiryNotice, homeProgressText, referentHash, type HomePlan, type ListRow, type TopicPlan } from "@/lib/uc/views/referente-plan";
 import { PrivacyFooter } from "./privacy-gate";
 import { ClientLine, Notice, PRIMARY_CLASS, ScreenTitle } from "./screen";
@@ -78,9 +79,11 @@ export interface ReferenteHomeProps {
   preview?: boolean;
   /** Il caso è in pausa: R9 «Per ora non serve rispondere». */
   paused?: boolean;
+  /** (Ondata 0) Il testo dell'informativa accettata, quello della vista (`noticeFor`); senza, quello di questa pagina. */
+  privacyNotice?: ReferentNoticeText;
 }
 
-export function ReferenteHome({ clientLabel, greetingName, plan, expiresAt, now, narrow, topicHref, notice, preview, paused }: ReferenteHomeProps) {
+export function ReferenteHome({ clientLabel, greetingName, plan, expiresAt, now, narrow, topicHref, notice, preview, paused, privacyNotice }: ReferenteHomeProps) {
   const expiry = expiryNotice(expiresAt, now);
   const hello = greetingName ? `Ciao ${greetingName}` : "Ciao";
   const finished = !paused && plan.finished && plan.primary === null;
@@ -180,7 +183,7 @@ export function ReferenteHome({ clientLabel, greetingName, plan, expiresAt, now,
       ) : null}
 
       <footer className="space-y-1 border-t border-border pt-4">
-        <PrivacyFooter />
+        <PrivacyFooter notice={privacyNotice} />
         <p className={cn("text-base text-muted-foreground")}>Il link è solo tuo: non inoltrarlo.</p>
         {expiry && !expiry.soon ? <p className="text-base text-muted-foreground">{expiry.text}</p> : null}
       </footer>
