@@ -43,6 +43,8 @@ await installAppModules({
   "@/lib/db/queries/value-thesis": `export async function getWorkspaceValueThesis() { return null; }`,
   "@/lib/db/queries/context-store": `export async function contextStoreState() { return "pronto"; } export async function contextStoreReady() { return true; }`,
   "@/lib/db/queries/context-sources": `export async function listContextSources() { return []; }`,
+  // (Rilascio 9b) Il blocco «Contesto» del prompt della chat: qui niente da dire.
+  "@/lib/db/queries/context-work": `export async function loadPromptContext() { return ""; }`,
   "@/lib/context/server/actor": `export function contextActorFor(user, access, workspaceId) {
     return { workspaceId, userId: user.id, role: access.role, isLateralSpace: false, channel: "web" };
   }`,
