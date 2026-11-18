@@ -20,7 +20,9 @@ import {
   type MailResult,
   type OutgoingEmail,
   type UcMailer,
+  type WeeklyContext,
 } from "./dispatch.ts";
+import { renderEmail, type EmailInput } from "./email-templates.ts";
 
 // Pure tests for the dispatch engine (PIANO §7.1): configuration, the decision
 // for each queued row (send, hold, cancel) and the dispatch loop on a fake store
@@ -316,6 +318,105 @@ test("weekly summary: the Owner gets bar and missing items without internal link
   assert.equal(ls.cases[0].link, `https://app.unbundle.test/dashboard/${WS}/casi-duso/${CASE}`);
   assert.equal(ls.cases[0].redItems, undefined, "Lateral Space gets counts, not the Owner's list");
   assert.deepEqual(planDelivery(lsN, { ...lsFacts, recipient: { ...lsFacts.recipient!, lateralSpace: false } }, OPTS), { action: "cancel", reason: "destinatario_non_lateral_space" });
+});
+
+// ── (9b) The «Contesto» block of the weekly summary (RILASCIO-9b-COSTRUZIONE.md §2.9, D6) ──
+
+const WEEK_SUMMARY = { caseId: CASE, code: "XX-0012", title: "Caso di prova", total: 10, counts: { validata: 4, chiesta: 6 }, greenPct: 40, g1: null, redItems: [], nextMilestone: null };
+const OWNER_ROW = claimed({ templateKey: "riepilogo_settimanale", caseId: null, requestId: null, recipientContactId: OWNER, payload: { week: "2026-W42" } });
+const LS_ROW = claimed({ templateKey: "riepilogo_settimanale", caseId: null, requestId: null, recipientContactId: null, recipientUserId: USER, payload: { week: "2026-W42" } });
+const OWNER_RECIPIENT = { kind: "contact", id: OWNER, email: "owner@cliente.test", reachable: true, digestOptOut: false, lateralSpace: false } as const;
+const LS_RECIPIENT = { kind: "user", id: USER, email: "lead@ls.test", reachable: true, digestOptOut: false, lateralSpace: true } as const;
+/** The numbers of a workspace, as `loadWeeklyContext` reads them: Lateral Space-only commitments are counted in `due`. */
+const WEEK_CONTEXT: WeeklyContext = {
+  novelties: { all: 4, shared: 3 },
+  toConfirm: 12,
+  toCheck: 3,
+  due: { ours: 2, theirs: 5 },
+  theirsShared: [
+    { statement: "Mandare l'organigramma aggiornato", dueOn: "2026-10-09", visibility: "tutti" },
+    { statement: "Solo per noi: ricontrollare il contratto", dueOn: "2026-10-10", visibility: "ls" },
+    { statement: "Inviare l'esportazione delle fatture", dueOn: "2026-10-15", visibility: "tutti" },
+    { statement: "Confermare la data del collaudo", dueOn: "2026-10-16", visibility: "tutti" },
+    { statement: "Indicare chi approva gli acquisti", dueOn: "2026-10-19", visibility: "tutti" },
+  ],
+};
+const ZERO_CONTEXT: WeeklyContext = { novelties: { all: 0, shared: 0 }, toConfirm: 0, toCheck: 0, due: { ours: 0, theirs: 0 }, theirsShared: [] };
+
+type WeeklyInput = Extract<EmailInput, { template: "riepilogo_settimanale" }>;
+
+function weeklyInput(n: ClaimedNotification, recipient: NonNullable<DeliveryFacts["recipient"]>, context: WeeklyContext | null | undefined): WeeklyInput {
+  const input = sendPlan(n, facts({ case: null, request: null, recipient, weekly: { cases: [WEEK_SUMMARY], context } })).build(null);
+  assert.equal(input.template, "riepilogo_settimanale");
+  return input as WeeklyInput;
+}
+
+/** The summary of the Lateral Space member, with its block (`WeeklyContextLs`). */
+function lsWeekly(context: WeeklyContext | null | undefined): Extract<WeeklyInput, { audience: "ls" }> {
+  const input = weeklyInput(LS_ROW, LS_RECIPIENT, context);
+  assert.equal(input.audience, "ls");
+  return input as Extract<WeeklyInput, { audience: "ls" }>;
+}
+
+/** The summary of the client's Owner, with its block (`WeeklyContextOwner`). */
+function ownerWeekly(context: WeeklyContext | null | undefined): Extract<WeeklyInput, { audience: "owner" }> {
+  const input = weeklyInput(OWNER_ROW, OWNER_RECIPIENT, context);
+  assert.equal(input.audience, "owner");
+  return input as Extract<WeeklyInput, { audience: "owner" }>;
+}
+
+test("(9b) weekly summary: Lateral Space gets the context numbers of the workspace and the link to «Contesto»", () => {
+  const ls = lsWeekly(WEEK_CONTEXT);
+  assert.equal(ls.audience, "ls");
+  assert.deepEqual(ls.context, { novelties: 4, toConfirm: 12, toCheck: 3, due: { ours: 2, theirs: 5 }, link: `https://app.unbundle.test/dashboard/${WS}/contesto` });
+  // Numbers only: no text of a fact or of a commitment.
+  assert.ok(!JSON.stringify(ls.context).includes("fatture") && !JSON.stringify(ls.context).includes("organigramma"));
+  const mail = renderEmail(ls);
+  assert.ok(mail.text.includes("Contesto del cliente:") && mail.text.includes(`Apri il contesto: https://app.unbundle.test/dashboard/${WS}/contesto`));
+});
+
+test("(9b) weekly summary: the Owner gets only what is «Per tutti»; never proposals to confirm, facts to check, Lateral Space commitments or links", () => {
+  const owner = ownerWeekly(WEEK_CONTEXT);
+  assert.equal(owner.audience, "owner");
+  assert.deepEqual(owner.context, {
+    novelties: 3,
+    commitments: [
+      { statement: "Mandare l'organigramma aggiornato", dueOn: "2026-10-09" },
+      { statement: "Inviare l'esportazione delle fatture", dueOn: "2026-10-15" },
+      { statement: "Confermare la data del collaudo", dueOn: "2026-10-16" },
+    ],
+    today: "2026-10-12",
+  });
+  assert.deepEqual(Object.keys(owner.context ?? {}).sort(), ["commitments", "novelties", "today"], "no toConfirm, toCheck, due or link for the Owner");
+  assert.ok(!JSON.stringify(owner).includes("ricontrollare il contratto"), "a Lateral Space-only commitment never reaches the Owner");
+  const mail = renderEmail(owner);
+  for (const internal of ["proposte da confermare", "da verificare", "nostri", "Contesto del cliente", "Apri il contesto", "/dashboard/", "/contesto"]) {
+    assert.ok(!mail.text.includes(internal), internal);
+  }
+  assert.ok(!mail.html.includes("href="), "the Owner's summary still has no link");
+  assert.ok(mail.text.includes("Che cosa sappiamo del vostro lavoro:") && mail.text.includes("Impegni del vostro team in scadenza:"));
+  // Only Lateral Space numbers in the week (facts «Solo Lateral Space», their commitments): nothing for the Owner.
+  const lsOnly: WeeklyContext = { ...WEEK_CONTEXT, novelties: { all: 4, shared: 0 }, theirsShared: [WEEK_CONTEXT.theirsShared[1]] };
+  assert.equal(ownerWeekly(lsOnly).context, null);
+  assert.deepEqual(lsWeekly(lsOnly).context?.novelties, 4);
+});
+
+test("(9b) weekly summary: all zeros, or no context, means no block for either audience; no case still means no e-mail", () => {
+  for (const context of [ZERO_CONTEXT, null, undefined]) {
+    assert.equal(lsWeekly(context).context, null, String(context));
+    assert.equal(ownerWeekly(context).context, null, String(context));
+  }
+  // Numbers that are not positive integers count as zero.
+  const odd = { ...ZERO_CONTEXT, novelties: { all: -2, shared: Number.NaN }, toConfirm: 1.5, toCheck: Number.POSITIVE_INFINITY } as WeeklyContext;
+  assert.equal(lsWeekly(odd).context, null);
+  assert.equal(ownerWeekly(odd).context, null);
+  // One number is enough for Lateral Space; one commitment due is enough for the Owner.
+  assert.deepEqual(lsWeekly({ ...ZERO_CONTEXT, due: { ours: 0, theirs: 1 } }).context?.due, { ours: 0, theirs: 1 });
+  assert.equal(ownerWeekly({ ...ZERO_CONTEXT, theirsShared: [WEEK_CONTEXT.theirsShared[0]] }).context?.commitments.length, 1);
+  // The rule of the e-mail does not change: a workspace with context but no case gets no summary.
+  for (const [row, recipient] of [[OWNER_ROW, OWNER_RECIPIENT], [LS_ROW, LS_RECIPIENT]] as const) {
+    assert.deepEqual(planDelivery(row, facts({ case: null, request: null, recipient, weekly: { cases: [], context: WEEK_CONTEXT } }), OPTS), { action: "cancel", reason: "nessun_caso" });
+  }
 });
 
 // ── Dispatch loop on a fake store ─────────────────────────────────────

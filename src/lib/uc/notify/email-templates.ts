@@ -54,6 +54,36 @@ export interface WeeklyCaseSummary {
   link?: string | null;
 }
 
+/** (9b) Gli impegni del cliente che l'Owner legge nel riepilogo: al massimo tre (RILASCIO-9b-COSTRUZIONE.md §2.9). */
+export const WEEKLY_CONTEXT_COMMITMENTS_MAX = 3;
+
+/**
+ * (9b) Il blocco «Contesto» del riepilogo per Lateral Space (RILASCIO-9b-COSTRUZIONE.md §2.9, D6): solo numeri del
+ * workspace e il link alla pagina «Contesto». Nessun testo di un fatto.
+ */
+export interface WeeklyContextLs {
+  /** Fatti nati negli ultimi 7 giorni (nuovi o aggiornati). */
+  novelties: number;
+  /** Proposte da confermare. */
+  toConfirm: number;
+  /** Fatti da verificare (fermi da più di 6 mesi). */
+  toCheck: number;
+  /** Impegni aperti scaduti o in scadenza nei 7 giorni. */
+  due: { ours: number; theirs: number };
+  /** La pagina «Contesto» del workspace: `/dashboard/<ws>/contesto`. */
+  link: string;
+}
+
+/** (9b) Il blocco «Contesto» del riepilogo per l'Owner del cliente: solo quello che è «Per tutti», nessun link. */
+export interface WeeklyContextOwner {
+  /** Fatti «Per tutti» nuovi o aggiornati negli ultimi 7 giorni. */
+  novelties: number;
+  /** Fino a tre impegni del cliente «Per tutti», scaduti o in scadenza nei 7 giorni: il testo e la scadenza (AAAA-MM-GG). */
+  commitments: readonly { statement: string; dueOn: string }[];
+  /** Il giorno di Roma dell'invio (AAAA-MM-GG): dice se un impegno è scaduto e se la sua data vuole l'anno. */
+  today: string;
+}
+
 export type EmailInput =
   | (CaseRef & { template: "richiesta_inviata"; questions: number; minutes: number | null; expiresAt: Date; link: string; message?: string | null })
   | (CaseRef & { template: "promemoria_1" | "promemoria_2"; questions: number; minutes: number | null; expiresAt: Date; link: string })
@@ -78,7 +108,10 @@ export type EmailInput =
     })
   | (CaseRef & { template: "delega"; audience: "delegante"; questions: number })
   | (CaseRef & { template: "richiesta_approvazione"; designation: "owner" | "privacy"; pending: number; expiresAt: Date; link: string })
-  | { template: "riepilogo_settimanale"; audience: "owner" | "ls"; clientName: string | null; week: string; cases: readonly WeeklyCaseSummary[] }
+  // (9b) `context`: il blocco «Contesto» di ogni pubblico (un tipo per pubblico: all'Owner non arrivano mai i numeri di
+  // Lateral Space né il link); null o assente, niente blocco.
+  | { template: "riepilogo_settimanale"; audience: "owner"; clientName: string | null; week: string; cases: readonly WeeklyCaseSummary[]; context?: WeeklyContextOwner | null }
+  | { template: "riepilogo_settimanale"; audience: "ls"; clientName: string | null; week: string; cases: readonly WeeklyCaseSummary[]; context?: WeeklyContextLs | null }
   | (CaseRef & { template: "progetto_da_approvare" | "strumento_da_approvare" | "pacchetto_aggiornato" | "modifica_richiesta" | "domanda_proposta"; version: number | null; link: string; tools?: number })
   // (8.0b) Alla persona: una CLI di Unbundle è collegata al suo account nel workspace. Il link porta a Impostazioni.
   | { template: "cli_collegata"; clientName: string; connectedAt: Date; expiresAt: Date | null; link: string }
@@ -104,12 +137,13 @@ export type EmailInput =
 
 const LOCAL_HOSTS = /^(localhost|127\.0\.0\.1|\[::1\]|[a-z0-9-]+\.localhost)$/;
 const REQUEST_PATH = /^\/r\/ucr_[A-Za-z0-9_-]{32}$/;
-const DASHBOARD_PATH = /^\/dashboard\/[0-9a-f-]{36}\/(casi-duso(\/[0-9a-f-]{36}(\/progetto)?)?|use-cases\/[0-9a-f-]{36}\/(proposte|progetto)|settings|agent-factory)$/;
+const DASHBOARD_PATH = /^\/dashboard\/[0-9a-f-]{36}\/(casi-duso(\/[0-9a-f-]{36}(\/progetto)?)?|use-cases\/[0-9a-f-]{36}\/(proposte|progetto)|settings|agent-factory|contesto)$/;
 
 /**
  * Il link è pulito? https (http solo in locale), nessuna credenziale, nessun
  * parametro né frammento, e il percorso atteso: `/r/<token>` per i referenti,
- * la pagina del caso per Lateral Space.
+ * la pagina del caso per Lateral Space. (9b) Anche la pagina «Contesto» del
+ * workspace (`/dashboard/<ws>/contesto`), e niente sotto di lei.
  */
 export function checkEmailLink(link: string, kind: "referente" | "dashboard"): string {
   let url: URL;
@@ -184,6 +218,65 @@ const SEMAFORO_ORDER: readonly ItemStatus[] = ["validata", "non_applicabile", "i
 function barText(c: WeeklyCaseSummary): string {
   const parts = SEMAFORO_ORDER.map((s) => `${STATUS_LABELS[s]} ${c.counts[s] ?? 0}`);
   return `${Math.round(c.greenPct)}% verde su ${c.total} voci (${parts.join(" · ")})`;
+}
+
+// ── (9b) Il blocco «Contesto» del riepilogo (RILASCIO-9b-COSTRUZIONE.md §2.9) ──
+// Dopo i casi, prima della chiusura. Una riga solo per un numero che non è zero; tutto a zero, niente blocco.
+
+/** Un numero da scrivere: un intero positivo. */
+function counted(n: number): boolean {
+  return Number.isInteger(n) && n > 0;
+}
+
+const CIVIL_DAY = /^(\d{4})-\d{2}-\d{2}$/;
+const SHORT_DAY_IT = new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "short", timeZone: "Europe/Rome" });
+const SHORT_DAY_YEAR_IT = new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/Rome" });
+
+/** Una scadenza (AAAA-MM-GG) come nelle pagine di «Contesto»: «25 nov», con l'anno se non è quello di oggi. Non valida: null. */
+function dueDay(dueOn: string, today: string): string | null {
+  const match = CIVIL_DAY.exec(dueOn);
+  if (!match) return null;
+  const noon = new Date(`${dueOn}T12:00:00Z`);
+  if (Number.isNaN(noon.getTime()) || noon.toISOString().slice(0, 10) !== dueOn) return null;
+  return (match[1] === today.slice(0, 4) ? SHORT_DAY_IT : SHORT_DAY_YEAR_IT).format(noon);
+}
+
+/** Per Lateral Space: «Contesto del cliente:», i numeri e «Apri il contesto». Nessun testo di un fatto. */
+function lsContextBlocks(c: WeeklyContextLs | null | undefined): Block[] {
+  if (!c) return [];
+  const lines: string[] = [];
+  if (counted(c.novelties)) lines.push(`${c.novelties} novità questa settimana`);
+  if (counted(c.toConfirm)) lines.push(plural(c.toConfirm, "proposta da confermare", "proposte da confermare"));
+  if (counted(c.toCheck)) lines.push(c.toCheck === 1 ? "1 fatto da verificare (fermo da più di 6 mesi)" : `${c.toCheck} fatti da verificare (fermi da più di 6 mesi)`);
+  const due = [counted(c.due.ours) ? plural(c.due.ours, "nostro", "nostri") : null, counted(c.due.theirs) ? `${c.due.theirs} del cliente` : null].filter(
+    (part): part is string => part !== null,
+  );
+  if (due.length > 0) lines.push(`Impegni in scadenza: ${due.join(", ")}`);
+  if (lines.length === 0) return [];
+  return [{ p: "Contesto del cliente:" }, { list: lines }, { link: { href: checkEmailLink(c.link, "dashboard"), label: "Apri il contesto" } }];
+}
+
+/**
+ * Per l'Owner del cliente: «Che cosa sappiamo del vostro lavoro:» con i fatti nuovi o aggiornati, e «Impegni del
+ * vostro team in scadenza:» con al massimo tre impegni. Ogni titolo solo con le sue righe; nessun link.
+ */
+function ownerContextBlocks(c: WeeklyContextOwner | null | undefined): Block[] {
+  if (!c) return [];
+  const blocks: Block[] = [];
+  if (counted(c.novelties)) {
+    blocks.push({ p: "Che cosa sappiamo del vostro lavoro:" }, { list: [`${plural(c.novelties, "fatto nuovo o aggiornato", "fatti nuovi o aggiornati")} questa settimana`] });
+  }
+  const lines: string[] = [];
+  for (const item of c.commitments.slice(0, WEEKLY_CONTEXT_COMMITMENTS_MAX)) {
+    const day = dueDay(item.dueOn, c.today);
+    const statement = oneLine(item.statement, 200);
+    if (!day || !statement) continue;
+    // «entro il 25 nov», ma «entro l'8 gen» (così l'1 e l'11); passata la data, «scaduto il …», come nella pagina.
+    const article = ["1", "8", "11"].includes(String(Number(item.dueOn.slice(8, 10)))) ? "l'" : "il ";
+    lines.push(`${statement} · ${item.dueOn < c.today ? "scaduto" : "entro"} ${article}${day}`);
+  }
+  if (lines.length > 0) blocks.push({ p: "Impegni del vostro team in scadenza:" }, { list: lines });
+  return blocks;
 }
 
 // ── Testi ─────────────────────────────────────────────────────────────
@@ -319,6 +412,8 @@ export function renderEmail(input: EmailInput): RenderedEmail {
         }
         if (!owner && c.link) blocks.push({ link: { href: checkEmailLink(c.link, "dashboard"), label: `Apri ${oneLine(c.code, 40)}` } });
       }
+      // (9b) Il blocco «Contesto», per pubblico: all'Owner solo quello che è «Per tutti».
+      blocks.push(...(input.audience === "owner" ? ownerContextBlocks(input.context) : lsContextBlocks(input.context)));
       blocks.push({ small: owner ? "Per non ricevere più questo riepilogo, scrivi a Lateral Space." : "Riepilogo interno di Lateral Space." });
       return render(subject, blocks);
     }
