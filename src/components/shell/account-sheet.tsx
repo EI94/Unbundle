@@ -9,10 +9,10 @@ import { setBellEmailAlertsAction } from "@/lib/actions/notifications";
 import { createTeamMcpTokenAction, revokeTeamMcpTokenAction } from "@/lib/actions/team-mcp-tokens";
 import { revokeOwnCliTokenAction } from "@/lib/actions/cli-tokens";
 import { disconnectGranolaAction, startGranolaConnectAction } from "@/lib/actions/context-granola";
-import { ACCOUNT_PARAM, accountApiPath, accountPartForSettingsHash, accountPartOf, accountSectionId, type AccountSheetResponse } from "@/lib/shell/account";
+import { ACCOUNT_PARAM, accountApiPath, accountPartOf, accountSectionId, type AccountSheetResponse } from "@/lib/shell/account";
 import { SHELL_TEXT } from "@/lib/shell/text";
 import { AccountSheetBody, type AccountActions, type AccountSheetState } from "./account-sheet-body";
-import { closeAccountSheet, openAccountSheet } from "./account-url";
+import { closeAccountSheet, openAccountForSettingsAnchor } from "./account-url";
 
 const T = SHELL_TEXT.account;
 
@@ -69,10 +69,7 @@ export function AccountSheet({
   }, [open, load]);
 
   // (§2.4) `settings#cli` e `settings#granola` aprono il foglio sulla parte giusta, al posto dell'indirizzo di prima.
-  useEffect(() => {
-    const target = accountPartForSettingsHash(pathname, window.location.hash, workspaceId);
-    if (target && !new URLSearchParams(window.location.search).has(ACCOUNT_PARAM)) openAccountSheet(target, { replace: true });
-  }, [pathname, workspaceId]);
+  useEffect(() => openAccountForSettingsAnchor(pathname, workspaceId), [pathname, workspaceId]);
 
   // Aperto su una parte: il fuoco va al suo titolo, quando la parte c'è.
   useEffect(() => {
