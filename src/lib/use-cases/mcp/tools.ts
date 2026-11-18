@@ -1,9 +1,10 @@
 /**
- * Gli 11 tool del MCP del team «Unbundle Use case» (docs/use-case/DESIGN.md §9.4, D3, D9; «Cosa
+ * I 14 tool del MCP del team «Unbundle Use case» (docs/use-case/DESIGN.md §9.4, D3, D9; «Cosa
  * serve» e «Benefici e costi» dalla spec di Pierpaolo, 25/10/2026; «Contesto» dal rilascio 9a,
- * docs/contesto/RILASCIO-9a-COSTRUZIONE.md §9): gli handler di `tools/call`. Le definizioni di
- * `tools/list` sono in `contract.ts`; i tre strumenti di «Contesto» in `context-tools.ts`, con i
- * passi comuni di qui (limiti, idempotenza).
+ * docs/contesto/RILASCIO-9a-COSTRUZIONE.md §9, e dal rilascio 9b, RILASCIO-9b-COSTRUZIONE.md §2.7):
+ * gli handler di `tools/call`. Le definizioni di `tools/list` sono in `contract.ts`; i sei
+ * strumenti di «Contesto» in `context-tools.ts`, con i passi comuni di qui (limiti, idempotenza,
+ * il codice di uno use case).
  *
  * Ogni tool risponde sempre nel formato del contratto (`structuredContent` più la copia JSON;
  * gli errori con `isError: true`), mai con il testo «Input validation error» dell'SDK.
@@ -12,7 +13,8 @@
  *  1. area accesa per il workspace del token (`USE_CASE_HUB_WORKSPACES`), altrimenti
  *     `area_spenta` a ogni tool, senza consumare il limite;
  *  2. scrittura con un token «Solo lettura» → `permesso_mancante`;
- *  2b. i tre strumenti di «Contesto»: solo Lateral Space (`permesso_mancante`), poi la 0038
+ *  2b. i sei strumenti di «Contesto»: appunti e proposte solo per Lateral Space
+ *     (`permesso_mancante`), le tre letture della memoria (9b) per ogni revisore; poi la 0038
  *     (`riprova`), poi gli stessi passi qui sotto (`context-tools.ts`);
  *  3. letture: limite delle letture, validazione, lettura;
  *  4. scritture: validazione (zod stretto, `confirmedByUser: true`), lettura della chiave di
@@ -263,7 +265,7 @@ export interface TeamToolDeps {
   reads: TeamReadDeps;
   service: TeamServiceDeps;
   requests: TeamRequestStore;
-  /** «Contesto» (rilascio 9a): le funzioni condivise dei tre strumenti, e la persona del token. */
+  /** «Contesto» (rilasci 9a e 9b): le funzioni condivise dei sei strumenti, e la persona del token. */
   context: TeamContextDeps;
   /** Notifiche delle schede nuove dopo la risposta (nella rotta: `after()`). Non deve lanciare. */
   notifyCreated(workspaceId: string, useCaseIds: readonly string[]): void;
@@ -367,7 +369,7 @@ export function teamWriteContext(principal: TeamPrincipal, now?: Date): WriteCon
 
 // ─── Ingresso ────────────────────────────────────────────────────────
 
-/** Esegue un tool. `name` deve essere uno degli 11 (`isTeamToolName`). Non lancia. */
+/** Esegue un tool. `name` deve essere uno dei 14 (`isTeamToolName`). Non lancia. */
 export async function callTeamTool(name: TeamToolName, args: unknown, principal: TeamPrincipal, deps: TeamToolDeps): Promise<TeamToolOutcome> {
   const log = deps.log ?? console;
   try {
@@ -380,6 +382,7 @@ export async function callTeamTool(name: TeamToolName, args: unknown, principal:
         saveProgress: (key, attempt, result) => deps.requests.progress(key, attempt, result),
         appOrigin: deps.appOrigin,
         now: () => deps.now?.() ?? new Date(),
+        findUseCaseId: (code) => deps.reads.findUseCaseId(principal.workspaceId, code),
       });
     }
     switch (name) {

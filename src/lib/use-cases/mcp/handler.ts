@@ -13,7 +13,7 @@
  *     arrivano a 300.000 caratteri, il connettore resta a 256 KB); autenticazione (`auth.ts`:
  *     token personale, ruolo riletto adesso) → altrimenti 401; corpo JSON letto a blocchi.
  *  2. Server MCP nuovo per questa richiesta (`serveStatelessMcp`), con le istruzioni del workspace
- *     (`instructions.ts`) e gli 11 tool (`contract.ts`, `tools.ts`, `context-tools.ts`). Il
+ *     (`instructions.ts`) e i 14 tool (`contract.ts`, `tools.ts`, `context-tools.ts`). Il
  *     workspace lo dà il token.
  *     Con l'area spenta handshake e `tools/list` funzionano e ogni tool risponde `area_spenta`.
  *  3. Una riga di log per ogni messaggio JSON-RPC (`logMcpCall`, area `team-mcp`): data e ora,
