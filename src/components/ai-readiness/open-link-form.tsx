@@ -6,11 +6,14 @@ import {
   type AiReadinessActionState,
 } from "@/lib/actions/ai-readiness";
 import { AI_READINESS_SURVEY_TRACKS } from "@/lib/ai-readiness/survey-track";
+import { CONFIRM_TEXT } from "@/lib/confirm-text";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog, useSubmitConfirmation } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Building2, Copy, Link2 } from "lucide-react";
 
 const INITIAL: AiReadinessActionState<{ openUrl: string }> = { ok: true };
+const ASK = CONFIRM_TEXT.aiReadiness;
 
 type SectionOption = {
   id: string;
@@ -37,6 +40,8 @@ export function OpenLinkForm({
     sections.map((section) => section.id)
   );
   const [localError, setLocalError] = useState<string | null>(null);
+  // Con un link già attivo, «Rigenera» chiede prima nella finestra dell'app.
+  const confirmation = useSubmitConfirmation();
   const url = state.ok ? state.data?.openUrl : undefined;
   const allSelected =
     sections.length > 0 && selectedSectionIds.length === sections.length;
@@ -85,14 +90,7 @@ export function OpenLinkForm({
             setLocalError("Scegli almeno un'area da mostrare nella survey.");
             return;
           }
-          if (
-            hasExisting &&
-            !window.confirm(
-              "Generare un nuovo link condivisibile? Quello precedente smetterà di funzionare per chi non ha ancora iniziato."
-            )
-          ) {
-            event.preventDefault();
-          }
+          if (hasExisting) confirmation.ask(event, true);
         }}
       >
         <input type="hidden" name="scopeConfigured" value="1" />
@@ -172,6 +170,14 @@ export function OpenLinkForm({
               : "Genera link organizzazione"}
         </Button>
       </form>
+      <ConfirmDialog
+        open={confirmation.open}
+        onOpenChange={confirmation.onOpenChange}
+        title={ASK.newLinkTitle}
+        description={ASK.newLinkBody}
+        confirmLabel={ASK.newLink}
+        onConfirm={confirmation.confirm}
+      />
       {url && (
         <div className="mt-4 rounded-2xl border bg-background/80 p-3">
           <div className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">

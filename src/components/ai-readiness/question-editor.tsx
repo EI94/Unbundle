@@ -6,14 +6,17 @@ import {
   type AiReadinessActionState,
 } from "@/lib/actions/ai-readiness";
 import type { AiReadinessQuestion } from "@/lib/ai-readiness/types";
+import { CONFIRM_TEXT } from "@/lib/confirm-text";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog, useSubmitConfirmation } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
 
 const INITIAL: AiReadinessActionState = { ok: true };
+const ASK = CONFIRM_TEXT.aiReadiness;
 
 type SectionView = {
   id: string;
@@ -46,6 +49,8 @@ export function QuestionEditor({
     assessmentId
   );
   const [state, formAction, pending] = useActionState(action, INITIAL);
+  // «Elimina domanda» chiede prima, nella finestra dell'app; la conferma rimanda il modulo di quella domanda.
+  const removal = useSubmitConfirmation();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [addingSection, setAddingSection] = useState<string | null>(null);
   const edited = new Set(editedIds);
@@ -215,12 +220,7 @@ export function QuestionEditor({
                       <form
                         action={formAction}
                         onSubmit={(event) => {
-                          if (
-                            !window.confirm(
-                              "Rimuovere questa domanda dalla survey di questo assessment?"
-                            )
-                          )
-                            event.preventDefault();
+                          removal.ask(event, true);
                         }}
                       >
                         <input type="hidden" name="op" value="remove" />
@@ -325,6 +325,15 @@ export function QuestionEditor({
           </div>
         </section>
       )}
+      <ConfirmDialog
+        open={removal.open}
+        onOpenChange={removal.onOpenChange}
+        title={ASK.removeQuestionTitle}
+        description={ASK.removeQuestionBody}
+        confirmLabel={ASK.removeQuestion}
+        destructive
+        onConfirm={removal.confirm}
+      />
     </div>
   );
 }

@@ -1,16 +1,20 @@
 "use client";
 
-import { useActionState } from "react";
-import { useRef } from "react";
+import { useActionState, useId, useState } from "react";
 import {
   deleteAiReadinessAssessmentAction,
   recomputeAiReadinessScoresAction,
   updateAiReadinessAssessmentStatusAction,
   type AiReadinessActionState,
 } from "@/lib/actions/ai-readiness";
+import { CONFIRM_TEXT, DELETE_WORD, matchesDeleteWord } from "@/lib/confirm-text";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog, useSubmitConfirmation } from "@/components/ui/confirm-dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 const INITIAL: AiReadinessActionState = { ok: true };
+const ASK = CONFIRM_TEXT.aiReadiness;
 
 export function AssessmentActions({
   workspaceId,
@@ -59,7 +63,13 @@ export function AssessmentActions({
     deleteAction,
     INITIAL
   );
-  const confirmationRef = useRef<HTMLInputElement>(null);
+  // «Chiudi survey» ed «Elimina» chiedono prima, nella finestra dell'app. Per eliminare una sola finestra: il
+  // riepilogo di quello che si cancella e il campo dove si scrive ELIMINA.
+  const closing = useSubmitConfirmation();
+  const deletion = useSubmitConfirmation();
+  const [typed, setTyped] = useState("");
+  const typedId = useId();
+  const deleteWordTyped = matchesDeleteWord(typed);
   const latestMessage =
     deleteState.message ??
     openState.message ??
@@ -87,13 +97,7 @@ export function AssessmentActions({
         <form
           action={closeFormAction}
           onSubmit={(event) => {
-            if (
-              !window.confirm(
-                "Chiudere la survey? I respondent non potranno più inviare risposte né riprendere le bozze finché non la riapri."
-              )
-            ) {
-              event.preventDefault();
-            }
+            closing.ask(event, true);
           }}
         >
           <Button type="submit" variant="outline" disabled={closePending}>
@@ -109,22 +113,11 @@ export function AssessmentActions({
       <form
         action={deleteFormAction}
         onSubmit={(event) => {
-          const summary = `Eliminare definitivamente l'assessment «${assessmentName ?? ""}»?\n\nVerranno cancellati per tutto il team:\n• ${respondentCount} inviti respondent (i link smetteranno di funzionare)\n• ${completedCount} risposte inviate\n• score, insight ed export\n\nL'operazione NON si può annullare.`;
-          if (!window.confirm(summary)) {
-            event.preventDefault();
-            return;
-          }
-          const typed = window.prompt(
-            "Per confermare, scrivi ELIMINA in maiuscolo:"
-          );
-          if ((typed ?? "").trim().toUpperCase() !== "ELIMINA") {
-            event.preventDefault();
-            return;
-          }
-          if (confirmationRef.current) confirmationRef.current.value = "ELIMINA";
+          deletion.ask(event, true);
         }}
       >
-        <input type="hidden" name="confirmation" ref={confirmationRef} />
+        {/* La parola che il server controlla: c'è solo dopo che chi elimina l'ha scritta nella finestra. */}
+        <input type="hidden" name="confirmation" value={deleteWordTyped ? DELETE_WORD : ""} />
         <Button
           type="submit"
           variant="destructive"
@@ -139,6 +132,45 @@ export function AssessmentActions({
           {latestMessage}
         </span>
       )}
+      <ConfirmDialog
+        open={closing.open}
+        onOpenChange={closing.onOpenChange}
+        title={ASK.closeTitle}
+        description={ASK.closeBody}
+        confirmLabel={ASK.close}
+        onConfirm={closing.confirm}
+      />
+      <ConfirmDialog
+        open={deletion.open}
+        onOpenChange={(open) => {
+          deletion.onOpenChange(open);
+          if (!open) setTyped("");
+        }}
+        title={ASK.deleteTitle(assessmentName ?? "")}
+        description={ASK.deleteBody(respondentCount, completedCount)}
+        confirmLabel={ASK.delete}
+        destructive
+        confirmDisabled={!deleteWordTyped}
+        onConfirm={() => {
+          deletion.confirm();
+          setTyped("");
+        }}
+        className="sm:max-w-md"
+      >
+        <div className="grid gap-2">
+          <Label htmlFor={typedId}>{ASK.deleteField}</Label>
+          <Input
+            id={typedId}
+            value={typed}
+            onChange={(event) => setTyped(event.target.value)}
+            autoComplete="off"
+            autoCapitalize="characters"
+            spellCheck={false}
+            className="h-11 text-base sm:h-8 sm:text-sm"
+            data-testid="assessment-delete-word"
+          />
+        </div>
+      </ConfirmDialog>
     </div>
   );
 }

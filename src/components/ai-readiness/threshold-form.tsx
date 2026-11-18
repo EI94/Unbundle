@@ -5,10 +5,13 @@ import {
   updateAiReadinessThresholdAction,
   type AiReadinessActionState,
 } from "@/lib/actions/ai-readiness";
+import { CONFIRM_TEXT } from "@/lib/confirm-text";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog, useSubmitConfirmation } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 
 const INITIAL: AiReadinessActionState = { ok: true };
+const ASK = CONFIRM_TEXT.aiReadiness;
 
 export function ThresholdForm({
   workspaceId,
@@ -29,52 +32,57 @@ export function ThresholdForm({
     assessmentId
   );
   const [state, formAction, pending] = useActionState(action, INITIAL);
+  const confirmation = useSubmitConfirmation();
 
   return (
-    <form
-      action={formAction}
-      className="mt-2 flex items-center gap-2"
-      onSubmit={(event) => {
-        if (
-          !window.confirm(
-            "Cambiare la soglia di aggregazione? Vale per tutto il team: score e insight verranno ricalcolati con la nuova soglia."
-          )
-        ) {
-          event.preventDefault();
-        }
-      }}
-      data-testid="threshold-form"
-    >
-      <Input
-        name="aggregationThreshold"
-        type="number"
-        min={min}
-        max={50}
-        defaultValue={current}
-        className="h-8 w-20"
-        aria-label="Soglia aggregazione"
+    <>
+      <form
+        action={formAction}
+        className="mt-2 flex items-center gap-2"
+        onSubmit={(event) => {
+          confirmation.ask(event, true);
+        }}
+        data-testid="threshold-form"
+      >
+        <Input
+          name="aggregationThreshold"
+          type="number"
+          min={min}
+          max={50}
+          defaultValue={current}
+          className="h-8 w-20"
+          aria-label="Soglia aggregazione"
+        />
+        <Input
+          name="expectedRespondents"
+          type="number"
+          min={1}
+          defaultValue={expectedRespondents ?? undefined}
+          placeholder="Attese"
+          className="h-8 w-24"
+          aria-label="Risposte attese"
+          title="Numero di risposte attese (per l'incontro di setup e il PDF)"
+        />
+        <Button type="submit" variant="outline" size="sm" disabled={pending}>
+          {pending ? "Salvo..." : "Aggiorna"}
+        </Button>
+        {state.message && (
+          <span
+            className={`text-xs ${state.ok ? "text-emerald-600" : "text-destructive"}`}
+            role="status"
+          >
+            {state.message}
+          </span>
+        )}
+      </form>
+      <ConfirmDialog
+        open={confirmation.open}
+        onOpenChange={confirmation.onOpenChange}
+        title={ASK.thresholdTitle}
+        description={ASK.thresholdBody}
+        confirmLabel={ASK.threshold}
+        onConfirm={confirmation.confirm}
       />
-      <Input
-        name="expectedRespondents"
-        type="number"
-        min={1}
-        defaultValue={expectedRespondents ?? undefined}
-        placeholder="Attese"
-        className="h-8 w-24"
-        aria-label="Risposte attese"
-        title="Numero di risposte attese (per l'incontro di setup e il PDF)"
-      />
-      <Button type="submit" variant="outline" size="sm" disabled={pending}>
-        {pending ? "Salvo..." : "Aggiorna"}
-      </Button>
-      {state.message && (
-        <span
-          className={`text-xs ${state.ok ? "text-emerald-600" : "text-destructive"}`}
-          role="status"
-        >
-          {state.message}
-        </span>
-      )}
-    </form>
+    </>
   );
 }
