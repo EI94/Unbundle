@@ -29,11 +29,19 @@
  * attraverso `DispatchStore`. Così il motore si prova senza rete né database.
  * L'unico I/O di questo modulo è il client Resend, caricato solo se serve.
  */
-import { inRomeSendWindow, isWorkingDay } from "../calendar.ts";
+import { inRomeSendWindow, isWorkingDay, romeDate } from "../calendar.ts";
 import { emailDomain } from "../lateral-space.ts";
 import type { Json, Result } from "../types.ts";
 import type { CaseStatus, RequestPurpose, RequestStatus } from "../vocab.ts";
-import { renderEmail, type EmailInput, type RenderedEmail, type WeeklyCaseSummary } from "./email-templates.ts";
+import {
+  WEEKLY_CONTEXT_COMMITMENTS_MAX,
+  renderEmail,
+  type EmailInput,
+  type RenderedEmail,
+  type WeeklyCaseSummary,
+  type WeeklyContextLs,
+  type WeeklyContextOwner,
+} from "./email-templates.ts";
 import { isoWeekRome, nextReminderAt, type WorkingCalendar } from "./schedule.ts";
 
 // ── Costanti ──────────────────────────────────────────────────────────
@@ -364,6 +372,25 @@ export interface DeliveryRequestFacts {
   roleLabel: string | null;
 }
 
+/**
+ * (9b) Il contesto della settimana di un workspace, per il blocco «Contesto» del riepilogo del lunedì
+ * (RILASCIO-9b-COSTRUZIONE.md §2.9, D6). Lo legge `loadWeeklyContext` (`queries/context-weekly.ts`) per il workspace,
+ * mai per persona; `planWeekly` sceglie che cosa ne vede ogni pubblico. Solo numeri, più fino a tre impegni del cliente
+ * «Per tutti»: nessun testo di un fatto.
+ */
+export interface WeeklyContext {
+  /** Fatti attivi nati negli ultimi 7 giorni (nuovi o versioni nuove): tutti, e solo quelli «Per tutti». */
+  novelties: { all: number; shared: number };
+  /** Proposte aperte in «Da confermare». */
+  toConfirm: number;
+  /** Fatti attivi «da verificare»: non riconfermati da più di 6 mesi. */
+  toCheck: number;
+  /** Impegni aperti scaduti o in scadenza nei 7 giorni, nostri e del cliente, anche «Solo Lateral Space». */
+  due: { ours: number; theirs: number };
+  /** Fino a tre impegni aperti del cliente «Per tutti», scaduti o in scadenza nei 7 giorni: il testo e la scadenza (AAAA-MM-GG). */
+  theirsShared: readonly { statement: string; dueOn: string; visibility: "tutti" | "ls" }[];
+}
+
 /** Quello che serve per decidere e comporre un'email: niente valori delle risposte. */
 export interface DeliveryFacts {
   /** Nome del cliente (workspace). */
@@ -386,8 +413,11 @@ export interface DeliveryFacts {
   openItemList?: readonly { key: string; title: string }[];
   /** Link di approvazione: firme in attesa e controllo dell'email del firmatario. */
   approvals?: { pending: number; signer: Result<void> };
-  /** Riepilogo settimanale: casi del destinatario. */
-  weekly?: { cases: readonly (WeeklyCaseSummary & { caseId: string })[] };
+  /**
+   * Riepilogo settimanale: casi del destinatario. (9b) `context`: i numeri di «Contesto» del workspace, null quando
+   * l'archivio non c'è o non si legge (il riepilogo parte lo stesso, senza il blocco).
+   */
+  weekly?: { cases: readonly (WeeklyCaseSummary & { caseId: string })[]; context?: WeeklyContext | null };
   /** CLI collegata: il token del login, della persona destinataria (anche se poi revocato). */
   cliToken?: { createdAt: Date; expiresAt: Date | null } | null;
   /**
@@ -746,23 +776,79 @@ function planWeekly(
 ): DeliveryPlan {
   const week = typeof n.payload.week === "string" && WEEK.test(n.payload.week) ? n.payload.week : isoWeekRome(o.now);
   const cases = f.weekly?.cases ?? [];
+  const context = f.weekly?.context ?? null;
   if (recipient.kind === "contact") {
     if (recipient.digestOptOut) return cancel("riepilogo_disattivato");
     const domain = emailDomain(recipient.email);
     if (domain && o.lsDomains.includes(domain)) return cancel("destinatario_lateral_space");
     if (cases.length === 0) return cancel("nessun_caso");
-    // All'Owner: barra, G1, voci mancanti e prossima tappa; nessun link interno.
+    // All'Owner: barra, G1, voci mancanti e prossima tappa; nessun link interno. (9b) Del contesto solo quello che è
+    // «Per tutti».
     const owned: WeeklyCaseSummary[] = cases.map((c) => ({ ...summaryCore(c), redItems: c.redItems ?? [], link: null }));
-    return { action: "send", to, link: null, build: () => ({ template: "riepilogo_settimanale", audience: "owner", clientName: f.clientName, week, cases: owned }), after: null };
+    const ownerContext = weeklyContextForOwner(context, o.now);
+    return {
+      action: "send",
+      to,
+      link: null,
+      build: () => ({ template: "riepilogo_settimanale", audience: "owner", clientName: f.clientName, week, cases: owned, context: ownerContext }),
+      after: null,
+    };
   }
   if (!recipient.lateralSpace) return cancel("destinatario_non_lateral_space");
   if (cases.length === 0) return cancel("nessun_caso");
-  // A Lateral Space: lo stato di tutti i suoi casi, con il link alla pagina del caso.
+  // A Lateral Space: lo stato di tutti i suoi casi, con il link alla pagina del caso. (9b) Del contesto i numeri del
+  // workspace, con il link alla pagina «Contesto».
   const internal: WeeklyCaseSummary[] = cases.map((c) => ({
     ...summaryCore(c),
     link: `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/casi-duso/${c.caseId.toLowerCase()}`,
   }));
-  return { action: "send", to, link: null, build: () => ({ template: "riepilogo_settimanale", audience: "ls", clientName: f.clientName, week, cases: internal }), after: null };
+  const lsContext = weeklyContextForLs(context, `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/contesto`);
+  return {
+    action: "send",
+    to,
+    link: null,
+    build: () => ({ template: "riepilogo_settimanale", audience: "ls", clientName: f.clientName, week, cases: internal, context: lsContext }),
+    after: null,
+  };
+}
+
+/** (9b) Un numero della settimana: un intero positivo, altrimenti zero. */
+function weeklyCount(value: unknown): number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : 0;
+}
+
+const CIVIL_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * (9b) Il blocco «Contesto» per Lateral Space (RILASCIO-9b-COSTRUZIONE.md §2.9): i numeri del workspace, anche quello che
+ * è «Solo Lateral Space», e il link alla pagina «Contesto». Nessun testo. Tutto a zero (o nessun contesto): niente blocco.
+ */
+function weeklyContextForLs(context: WeeklyContext | null, link: string): WeeklyContextLs | null {
+  if (!context) return null;
+  const block: WeeklyContextLs = {
+    novelties: weeklyCount(context.novelties?.all),
+    toConfirm: weeklyCount(context.toConfirm),
+    toCheck: weeklyCount(context.toCheck),
+    due: { ours: weeklyCount(context.due?.ours), theirs: weeklyCount(context.due?.theirs) },
+    link,
+  };
+  return block.novelties + block.toConfirm + block.toCheck + block.due.ours + block.due.theirs > 0 ? block : null;
+}
+
+/**
+ * (9b) Il blocco «Contesto» per l'Owner del cliente (§2.9): solo quello che è «Per tutti», cioè i fatti nuovi o
+ * aggiornati e fino a tre impegni del cliente, e nessun link (come il resto della sua e-mail). Mai le proposte da
+ * confermare, i fatti da verificare, i conti degli impegni (contano anche quelli «Solo Lateral Space»). Tutto a zero:
+ * niente blocco.
+ */
+function weeklyContextForOwner(context: WeeklyContext | null, now: Date): WeeklyContextOwner | null {
+  if (!context) return null;
+  const commitments = (Array.isArray(context.theirsShared) ? context.theirsShared : [])
+    .filter((c) => c && c.visibility === "tutti" && typeof c.statement === "string" && c.statement.trim() !== "" && typeof c.dueOn === "string" && CIVIL_DAY.test(c.dueOn))
+    .slice(0, WEEKLY_CONTEXT_COMMITMENTS_MAX)
+    .map((c) => ({ statement: c.statement, dueOn: c.dueOn }));
+  const novelties = weeklyCount(context.novelties?.shared);
+  return novelties > 0 || commitments.length > 0 ? { novelties, commitments, today: romeDate(now) } : null;
 }
 
 /**
