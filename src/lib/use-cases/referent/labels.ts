@@ -715,6 +715,19 @@ export const REFERENT_PRIVACY_NOTICE = Object.freeze({
   error: "Non riesco a registrarlo. Riprova tra poco.",
 });
 
+/**
+ * (Rilascio 9b, D2) Le versioni dell'informativa che dicono che le risposte tengono aggiornato quello che sappiamo del
+ * lavoro dell'azienda, senza il nome di chi risponde: solo le risposte date con una di queste diventano una fonte di
+ * «Contesto» (src/lib/db/queries/context-referent.ts). Chi cambia l'informativa e tiene la frase aggiunge qui la versione
+ * nuova.
+ */
+export const REFERENT_CONTEXT_NOTICE_VERSIONS: readonly string[] = Object.freeze(["ucq-2026-11-3"]);
+
+/** Le risposte date con questa versione dell'informativa possono diventare una fonte di «Contesto». */
+export function noticeAllowsContext(version: string | null | undefined): boolean {
+  return typeof version === "string" && REFERENT_CONTEXT_NOTICE_VERSIONS.includes(version);
+}
+
 /** I valori dei segnaposto dell'informativa. */
 export interface PrivacyNoticeValues {
   /** Nome dell'azienda (workspace). */
