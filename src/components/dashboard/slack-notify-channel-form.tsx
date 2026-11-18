@@ -53,7 +53,7 @@ export function SlackNotifyChannelForm({
           disabled={pending}
           onChange={(e) => setValue(e.target.value)}
         />
-        <Button type="button" className="h-10 sm:h-8" disabled={pending} onClick={save}>
+        <Button type="button" variant="outline" className="h-11 sm:h-8" disabled={pending} onClick={save}>
           {pending ? "Salvataggio…" : "Salva"}
         </Button>
       </div>

@@ -306,7 +306,7 @@ export function WorkspaceCollaborationCard({
                 <span className="font-medium text-foreground">Ogni link vale per una sola persona</span> e scade tra{" "}
                 {WORKSPACE_INVITE_EXPIRES_IN_DAYS} giorni. Per più colleghi, crea un link per ciascuno.
               </p>
-              <Button type="submit" className="mt-4 h-10 w-full sm:h-8 @lg:w-auto" disabled={createPending}>
+              <Button type="submit" variant="outline" className="mt-4 h-11 w-full sm:h-8 @lg:w-auto" disabled={createPending}>
                 {createPending ? "Creo il link…" : "Crea link"}
               </Button>
               {feedback ? (
