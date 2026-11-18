@@ -1,11 +1,14 @@
 // L'e-mail «CLI collegata» (rilascio 8.0b): alla persona che possiede il token, di qualunque dominio, senza caso; il
-// link porta a Impostazioni; niente etichetta della CLI (la sceglie chi avvia il login); parte anche se il token è già
-// revocato; data e ora di Roma, con «l'11» e «all'8».
+// link porta a `settings`, che arrivando da fuori apre «Il tuo account › Claude e terminale» (rilascio 10); niente
+// etichetta della CLI (la sceglie chi avvia il login); parte anche se il token è già revocato; data e ora di Roma, con
+// «l'11» e «all'8».
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EMAIL_TEMPLATES, WINDOWED_TEMPLATES, planDelivery, type ClaimedNotification, type DeliveryFacts } from "./dispatch.ts";
 import { checkEmailLink, renderEmail } from "./email-templates.ts";
 import { UC_NOTIFICATION_TEMPLATES } from "../../db/queries/uc-notifications.ts";
+import { accountPartForSettingsLanding } from "../../shell/account.ts";
+import { SHELL_TEXT } from "../../shell/text.ts";
 
 const WS = "11111111-1111-4111-8111-111111111111";
 const USER = "77777777-7777-4777-8777-777777777777";
@@ -79,6 +82,23 @@ test("il testo: workspace, data e ora di Roma, scadenza, come revocare; niente e
   const other = renderEmail({ template: "cli_collegata", clientName: "W", connectedAt: new Date("2026-11-12T22:30:00Z"), expiresAt: null, link: `https://app.unbundle.test/dashboard/${WS}/settings` });
   assert.match(other.text, /il 12 novembre 2026 alle 23:30/);
   assert.ok(!other.text.includes("vale fino"), "senza scadenza, niente frase");
+});
+
+test("(rilascio 10) il link e le parole portano a «Il tuo account › Claude e terminale», come le chiama il foglio", () => {
+  const plan = planDelivery(claimed(), facts(), OPTS);
+  assert.equal(plan.action, "send");
+  if (plan.action !== "send") return;
+  const input = plan.build(null);
+  assert.equal(input.template, "cli_collegata");
+  if (input.template !== "cli_collegata") return;
+  // Il link senza ancora delle Impostazioni: arrivando da fuori, il foglio si apre sulla parte di Claude e del terminale.
+  const link = new URL(input.link);
+  assert.equal(accountPartForSettingsLanding(link.pathname, link.search, link.hash, WS), "claude");
+  // Le parole dell'e-mail sono quelle del foglio e del menu sotto il nome.
+  const email = renderEmail(input);
+  const A = SHELL_TEXT.account;
+  assert.ok(email.text.includes(`«${A.title} › ${A.claude.title}»`), email.text);
+  assert.equal(SHELL_TEXT.user.account, A.title);
 });
 
 test("il link di Impostazioni è pulito: niente parametri, niente altri percorsi", () => {

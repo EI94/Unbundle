@@ -18,6 +18,7 @@ import {
   type RequesterAlertStore,
 } from "./alerts.ts";
 import { cardLinkTo, checkChapterLink } from "./links.ts";
+import { SHELL_TEXT } from "../../shell/text.ts";
 
 // L'avviso per email a chi ha chiesto (SPEC §P2.7). Dati inventati.
 const at = (d: string, h: number, m = 0) => romeLocalToUtc(d, h, m);
@@ -184,6 +185,15 @@ function safe(m: { subject: string; text: string; html: string }) {
   // (Rilascio 10, §3.10) La spunta è passata dalla campanella a «Il tuo account», nel menu sotto il nome.
   assert.doesNotMatch(m.text, /campanella/);
 }
+
+test("(rilascio 10) il piede cita le parole del foglio: l'interruttore comincia con «Avvisami per email», in «Il tuo account»", () => {
+  const quoted = /«([^»]+)»/.exec(REQUESTER_ALERT_FOOTER)?.[1];
+  assert.equal(quoted, "Avvisami per email");
+  const A = SHELL_TEXT.account;
+  assert.ok(A.email.toggle.startsWith(`${quoted} `), A.email.toggle);
+  assert.ok(REQUESTER_ALERT_FOOTER.includes(` in ${A.title} (menu sotto il tuo nome).`), REQUESTER_ALERT_FOOTER);
+  assert.equal(SHELL_TEXT.user.account, A.title, "la voce del menu sotto il nome");
+});
 
 test("testo: una scheda con risposte", () => {
   const m = renderRequesterAlert({ company: "Rondine", entries: [entry({ answers: 1 })] });
