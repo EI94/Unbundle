@@ -20,11 +20,8 @@ import { referentNewsParts, referentRequestParts, type ReferentRequestParts } fr
 /** Il link finto dell'anteprima: passa `checkReferentLink`, non si mostra mai. */
 export const PREVIEW_LINK = `https://unbundle.invalid/rispondi/ucq_${"x".repeat(32)}`;
 
-/** «Lateral Space via Unbundle»: il mittente dell'email, la riga «Da» dell'anteprima. */
+/** «Lateral Space via Unbundle»: il mittente dell'email, la riga «Da» dell'anteprima. (Rilascio 10, §3.12) Niente piè di pagina: il marchio sta una volta, nel mittente. */
 export const PREVIEW_SENDER = UC_EMAIL_SENDER_NAME;
-
-/** Il piè di pagina dell'email, come lo scrive `render`. */
-export const PREVIEW_FOOTER = `${UC_EMAIL_SENDER_NAME}.`;
 
 const DAY_MS = 86_400_000;
 

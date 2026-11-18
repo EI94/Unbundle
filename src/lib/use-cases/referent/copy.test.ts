@@ -117,7 +117,11 @@ test("(rilascio 5.1) pagina pubblica ed email: «caso d'uso», mai «use case» 
   assert.equal(REFERENT_CHECK_TEXT.steps.useCase, "Il caso d'uso");
   assert.equal(REFERENT_CHECK_TEXT.confirm.group, "Il caso d'uso è descritto bene?");
   for (const m of emails) assert.match(m.subject, /^Rondine: /, m.subject);
-  for (const m of emails.slice(0, 7)) assert.match(m.subject, /cas[oi] d'uso/, m.subject);
+  // (Rilascio 10, §3.12, D6) L'oggetto: il cliente, che cosa e il titolo, al massimo 55 caratteri, mai il codice.
+  for (const m of emails) {
+    assert.ok(m.subject.length <= 55, m.subject);
+    assert.doesNotMatch(m.subject, /RD-0004/, m.subject);
+  }
 });
 
 test("nessuna parola tecnica per i clienti", () => {

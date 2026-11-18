@@ -54,7 +54,9 @@ test("solo a Lateral Space, con il compito e il link al progetto; senza compito 
     if (plan.action !== "send") continue;
     const email = renderEmail(plan.build(null));
     assert.ok(email.text.includes(`https://app.unbundle.test/dashboard/${WS}/use-cases/${UC}/progetto`), kind);
-    assert.match(email.subject, /^Cliente prova · Smistamento di prova: /);
+    // (Rilascio 10, §3.12) «{Cliente}: {cosa} «{Titolo}»», al massimo 55 caratteri.
+    assert.match(email.subject, /^Cliente prova: .+ «Smistamento.*»$/);
+    assert.ok(email.subject.length <= 55, email.subject);
     if (kind !== "compiti_pronti") assert.ok(email.subject.includes("T-3") && email.text.includes("T-3"), kind);
     assert.match(email.text, /Email interna di Lateral Space\./);
     assert.deepEqual(planDelivery(claimed(kind), facts(false), OPTS), { action: "cancel", reason: "destinatario_non_lateral_space" });
@@ -85,7 +87,7 @@ test("il compito fermo: a chi lo ha, riprenderlo con «unbundle take»; al respo
   const asked = planDelivery(claimed("compito_chiesto", { useCase: UC, ref: "T-3", responsabile: true }), facts(), OPTS);
   assert.ok(asked.action === "send");
   const askedMail = renderEmail(asked.build(null));
-  assert.match(askedMail.subject, /qualcuno del team chiede il compito T-3/);
+  assert.match(askedMail.subject, /^Cliente prova: chiedono il compito T-3 «Smistamento.*»$/);
   for (const m of [toHolder, toLead, askedMail]) assert.doesNotMatch(m.text, /\bcolleg[ahi]\b/i);
 });
 
@@ -102,7 +104,7 @@ test("(8.1b) la PR da rivedere: nella coda, nel motore e nella campanella del te
   assert.equal(plan.action, "send");
   if (plan.action !== "send") return;
   const email = renderEmail(plan.build(null));
-  assert.match(email.subject, /^Cliente prova · Smistamento di prova: una pull request da rivedere$/);
+  assert.match(email.subject, /^Cliente prova: PR da rivedere «Smistamento.*»$/);
   assert.match(email.text, /la pull request #12 in Prova\/rondine-alcione del compito T-3/);
   assert.ok(email.text.includes(`https://app.unbundle.test/dashboard/${WS}/use-cases/${UC}/progetto`));
   assert.doesNotMatch(email.text, /\b(collega|lui|lei)\b/i);
@@ -124,7 +126,7 @@ test("(8.1b) la proposta di compito: nella coda, nel motore e nella campanella d
   assert.equal(plan.action, "send");
   if (plan.action !== "send") return;
   const email = renderEmail(plan.build(null));
-  assert.match(email.subject, /: una proposta di compito$/);
+  assert.match(email.subject, /^Cliente prova: proposta di compito «Smistamento.*»$/);
   assert.match(email.text, /la accetti \(nasce il compito, da prendere\) o la scarti/);
   assert.deepEqual(planDelivery(claimed(kind, { useCase: UC }), facts(false), OPTS), { action: "cancel", reason: "destinatario_non_lateral_space" });
   assert.deepEqual(planDelivery(claimed(kind, {}), facts(), OPTS), { action: "cancel", reason: "use_case_assente" });
@@ -148,7 +150,7 @@ test("(8.2a) il consiglio del banco: nella coda, nel motore e nella campanella d
   assert.equal(plan.action, "send");
   if (plan.action !== "send") return;
   const email = renderEmail(plan.build(null));
-  assert.equal(email.subject, "Cliente prova · Smistamento di prova: il banco di prova consiglia un altro modello");
+  assert.match(email.subject, /^Cliente prova: un altro modello «Smistamento.*»$/);
   assert.match(email.text, /per il ruolo «lettura» dell'agente del caso d'uso «Smistamento di prova», il banco di prova consiglia Claude Haiku 5\.5\./);
   assert.ok(email.text.includes(`https://app.unbundle.test/dashboard/${WS}/use-cases/${UC}/progetto`));
   assert.ok(!email.text.includes("#banco"), "il link dell'e-mail non ha frammenti");
@@ -206,10 +208,10 @@ test("(8.2a) le evals scese: sotto soglia o giù di 5 punti, con la qualità; ne
   assert.equal(below.action, "send");
   if (below.action !== "send") return;
   const belowEmail = renderEmail(below.build(null));
-  assert.equal(belowEmail.subject, "Cliente prova · Smistamento di prova: le evals di main sono sotto soglia");
+  assert.match(belowEmail.subject, /^Cliente prova: evals sotto soglia «Smistamento.*»$/);
   assert.match(belowEmail.text, /le evals di main del caso d'uso «Smistamento di prova» sono sotto soglia: 80%\./);
-  // La pagina ha i gruppi e l'andamento; le singole prove sono nel repository.
-  assert.match(belowEmail.text, /guarda quali gruppi non passano: nel progetto, in «Evals e banco di prova», ci sono i gruppi e l'andamento; prova per prova con «npm run eval» nel repository del caso\./);
+  // (Rilascio 10, §3.12) La metà delle parole: i gruppi e l'andamento sono nel progetto.
+  assert.match(belowEmail.text, /guarda quali gruppi non passano: sono nel progetto, in «Evals e banco di prova»\./);
   assert.ok(!/<id>|&lt;id&gt;/.test(belowEmail.text + belowEmail.html), "un comando vero, senza segnaposto");
   assert.doesNotMatch(belowEmail.text, /quali prove non passano/);
   assert.ok(belowEmail.text.includes(`https://app.unbundle.test/dashboard/${WS}/use-cases/${UC}/progetto`));
@@ -217,7 +219,7 @@ test("(8.2a) le evals scese: sotto soglia o giù di 5 punti, con la qualità; ne
   assert.equal(down.action, "send");
   if (down.action !== "send") return;
   const downEmail = renderEmail(down.build(null));
-  assert.equal(downEmail.subject, "Cliente prova · Smistamento di prova: le evals di main sono scese");
+  assert.match(downEmail.subject, /^Cliente prova: evals in calo «Smistamento.*»$/);
   assert.match(downEmail.text, /sono scese di 6,4 punti rispetto alle precedenti: ora sono al 91%\./);
   // La preposizione come si legge: «all'80%» (ottanta), «all'8%», «all'11%», «all'1%», «allo 0%»; «al 91%», «al 18%».
   const atQuality: [number, string][] = [

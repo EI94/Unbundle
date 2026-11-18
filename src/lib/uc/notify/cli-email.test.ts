@@ -64,7 +64,8 @@ test("il testo: workspace, data e ora di Roma, scadenza, come revocare; niente e
   assert.equal(plan.action, "send");
   if (plan.action !== "send") return;
   const email = renderEmail(plan.build(null));
-  assert.equal(email.subject, "Cliente <prova>: la CLI di Unbundle è collegata al tuo account");
+  // (Rilascio 10, §3.12) L'oggetto al massimo di 55 caratteri.
+  assert.equal(email.subject, "Cliente <prova>: CLI collegata al tuo account");
   assert.match(email.text, /l'11 novembre 2026 alle 10:30 la CLI di Unbundle è stata collegata al tuo account, nel workspace «Cliente <prova>»\./);
   assert.match(email.text, /Il collegamento vale fino all'8 febbraio 2027\./);
   assert.match(email.text, /Se l'hai collegata tu, non serve fare niente\./);

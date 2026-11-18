@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { scanPersonalData } from "../../context/scan.ts";
 import { findForbidden } from "../views/copy-guard.ts";
+import { EMAIL_BODY_MAX_WORDS, EMAIL_SUBJECT_MAX, emailBodyWords, emailBrand } from "./email-render.ts";
 import { checkEmailLink, clarificationLink, escapeHtml, formatDateIt, renderEmail, UC_EMAIL_SENDER_NAME, type EmailInput, type RenderedEmail } from "./email-templates.ts";
 
 const TOKEN = "ucr_" + "A".repeat(16) + "b_-9".repeat(4);
@@ -19,43 +20,62 @@ function assertClean(mail: RenderedEmail): void {
     assert.ok(!m[1].includes("#") || /#\/chiarimento\/[0-9a-f-]{36}$/.test(m[1]), m[1]);
   }
   assert.ok(!/[\r\n]/.test(mail.subject));
-  assert.ok(mail.subject.length <= 200);
-  assert.ok(mail.text.includes(UC_EMAIL_SENDER_NAME));
+  // (Rilascio 10, §3.12) L'oggetto al massimo di 55 caratteri, senza codice; il marchio una volta, senza piè di pagina.
+  assert.ok(mail.subject.length <= EMAIL_SUBJECT_MAX, mail.subject);
+  assert.doesNotMatch(mail.subject, /\b[A-Z]{2,4}-(?:UC-)?\d{2,4}\b/, mail.subject);
+  assert.ok(!mail.text.includes(UC_EMAIL_SENDER_NAME), "niente piè di pagina con il marchio");
+  // L'indirizzo in chiaro solo nel testo semplice: nell'HTML c'è solo come href.
+  for (const m of mail.html.matchAll(/href="([^"]*)"/g)) assert.equal(mail.html.split(m[1]).length - 1, mail.html.split(`href="${m[1]}"`).length - 1, m[1]);
   assert.match(mail.html, /^<!doctype html><html lang="it">/);
 }
 
-test("request email: clear subject with count and minutes, link, expiry and privacy note", () => {
+/** (Rilascio 10, §3.12) Il corpo al massimo di 60 parole, senza il messaggio di chi chiede. */
+function assertShort(mail: RenderedEmail): void {
+  const words = emailBodyWords(mail.text);
+  assert.ok(words <= EMAIL_BODY_MAX_WORDS, `${words} parole: ${mail.subject}\n${mail.text}`);
+}
+
+test("request email: subject with the count and the title, minutes in the text, link, expiry and privacy note", () => {
   const mail = renderEmail({ ...CASE, template: "richiesta_inviata", questions: 8, minutes: 15, expiresAt: EXPIRES, link: LINK, message: "Grazie!\nA presto" });
-  assert.equal(mail.subject, "Cliente A · Gestione richieste: 8 domande per te, circa 15 minuti");
+  assert.equal(mail.subject, "Cliente A: 8 domande su «Gestione richieste»");
+  assert.ok(mail.text.includes("ci servono alcune informazioni da te: 8 domande, circa 15 minuti."));
   assert.ok(mail.text.includes(`Apri le domande: ${LINK}`));
-  assert.ok(mail.text.includes("Il link scade il 4 novembre 2026."));
-  assert.ok(mail.text.includes("«Non lo so» è una risposta valida"));
+  assert.ok(mail.text.includes("Il link è solo tuo e vale fino al 4 novembre. Se le domande sono per un'altra persona, chiedile dalla pagina."));
+  assert.ok(mail.text.includes("Se non sai una cosa, scegli «Non lo so»."));
   assert.ok(mail.text.includes("> Grazie!\n> A presto"));
   assert.ok(mail.html.includes(`href="${LINK}"`));
   assertClean(mail);
   const one = renderEmail({ ...CASE, template: "richiesta_inviata", questions: 1, minutes: null, expiresAt: EXPIRES, link: LINK });
-  assert.equal(one.subject, "Cliente A · Gestione richieste: 1 domanda per te");
+  assert.equal(one.subject, "Cliente A: 1 domanda su «Gestione richieste»");
+  assertShort(one);
 });
 
 test("reminders: the second says it is the last one", () => {
   const first = renderEmail({ ...CASE, template: "promemoria_1", questions: 1, minutes: 2, expiresAt: EXPIRES, link: LINK });
-  assert.equal(first.subject, "Promemoria · Cliente A · Gestione richieste: 1 domanda aperta");
+  assert.equal(first.subject, "Cliente A: promemoria su «Gestione richieste»");
   assert.ok(first.text.includes("ti ricordiamo una domanda ancora aperta"));
+  // (Rilascio 10, §3.12) Genere neutro e un solo «Riprendi».
+  assert.ok(first.text.includes("Le risposte già scritte sono salvate: riprendi da lì."));
+  assert.ok(first.text.includes(`Riprendi: ${LINK}`) && !first.text.includes("Riprendi le domande"));
   const second = renderEmail({ ...CASE, template: "promemoria_2", questions: 3, minutes: null, expiresAt: EXPIRES, link: LINK });
-  assert.match(second.subject, /^Ultimo promemoria · /);
-  assert.ok(second.text.includes("È l'ultimo promemoria"));
+  assert.equal(second.subject, "Cliente A: ultimo promemoria su «Gestione richieste»");
+  assert.ok(second.text.includes("È l'ultimo promemoria: se non sai qualcosa, scegli «Non lo so»."));
   assert.ok(second.text.includes("3 domande ancora aperte"));
-  assertClean(first);
-  assertClean(second);
+  for (const mail of [first, second]) {
+    assertClean(mail);
+    assertShort(mail);
+  }
 });
 
-test("Owner escalation lists keys and titles, never answers or people, and has no link", () => {
+test("Owner escalation lists the titles (never the keys), never answers or people, and has no link", () => {
   const items = Array.from({ length: 33 }, (_, i) => ({ key: `q.esempio.${String(i + 1).padStart(2, "0")}`, title: `Domanda ${i + 1}` }));
   const mail = renderEmail({ ...CASE, template: "segnalazione_owner", roleLabel: "Commerciale", items });
-  assert.equal(mail.subject, "Cliente A · Gestione richieste: domande in attesa per il ruolo Commerciale");
+  assert.equal(mail.subject, "Cliente A: domande in attesa su «Gestione richieste»");
   assert.ok(mail.text.includes("33 domande per il ruolo «Commerciale» aspettano ancora una risposta, dopo due promemoria."));
-  assert.ok(mail.text.includes("- q.esempio.01 · Domanda 1"));
-  assert.ok(!mail.text.includes("q.esempio.31"));
+  // (Rilascio 10, §3.12) Niente chiavi («richiesta.durata») a una persona del cliente: solo i titoli.
+  assert.ok(mail.text.includes("- Domanda 1\n"));
+  assert.ok(!mail.text.includes("q.esempio."));
+  assert.ok(!mail.text.includes("Domanda 31"));
   assert.ok(mail.text.includes("E altre 3."));
   assert.ok(!mail.html.includes("href="));
   assertClean(mail);
@@ -63,19 +83,26 @@ test("Owner escalation lists keys and titles, never answers or people, and has n
 
 test("clarification, delegation and approval emails", () => {
   const clar = renderEmail({ ...CASE, template: "chiarimento", itemTitle: "Tempo medio", expiresAt: EXPIRES, link: LINK });
-  assert.equal(clar.subject, "Cliente A · Gestione richieste: ti chiediamo un chiarimento");
+  assert.equal(clar.subject, "Cliente A: un chiarimento su «Gestione richieste»");
+  assert.ok(clar.text.includes(`Rispondi: ${LINK}`));
   assertClean(clar);
   const colleague = renderEmail({ ...CASE, template: "delega", audience: "collega", fromRoleLabel: "Operativo", questions: 2, minutes: 4, expiresAt: EXPIRES, link: LINK });
-  assert.equal(colleague.subject, "Cliente A · Gestione richieste: 2 domande per te da un collega");
-  assert.ok(colleague.text.includes("un collega (Operativo) ti chiede"));
+  assert.equal(colleague.subject, "Cliente A: 2 domande per te su «Gestione richieste»");
+  // (Rilascio 10, §4) «un'altra persona», mai «un collega»: genere neutro.
+  assert.ok(colleague.text.includes("una persona (Operativo) di Cliente A ti chiede"));
   assertClean(colleague);
   const delegator = renderEmail({ ...CASE, template: "delega", audience: "delegante", questions: 2 });
   assert.ok(!delegator.html.includes("href="));
+  assert.equal(delegator.subject, "Cliente A: domande girate su «Gestione richieste»");
   assertClean(delegator);
   const approval = renderEmail({ ...CASE, template: "richiesta_approvazione", designation: "privacy", pending: 1, expiresAt: EXPIRES, link: LINK });
-  assert.equal(approval.subject, "Cliente A · Gestione richieste: 1 approvazione da dare");
-  assert.ok(approval.text.includes("responsabile dell'approvazione privacy"));
-  assertClean(approval);
+  // (Rilascio 10, §4) «Firma», come nella pagina.
+  assert.equal(approval.subject, "Cliente A: da firmare «Gestione richieste»");
+  assert.ok(approval.text.includes("responsabile della firma privacy") && approval.text.includes("aspetta la tua firma."));
+  for (const mail of [clar, colleague, delegator, approval]) {
+    assertClean(mail);
+    assertShort(mail);
+  }
 });
 
 test("weekly summary for the Owner and for Lateral Space", () => {
@@ -90,11 +117,13 @@ test("weekly summary for the Owner and for Lateral Space", () => {
     nextMilestone: { title: "Fase 1", label: "entro novembre", isProposal: true, toConfirm: false },
   };
   const owner = renderEmail({ template: "riepilogo_settimanale", audience: "owner", clientName: "Cliente A", week: "2026-W41", cases: [base] });
-  assert.equal(owner.subject, "Riepilogo settimanale · Cliente A: casi d'uso");
-  assert.ok(owner.text.includes("0% verde su 20 voci (A posto 0 · Non si applica 0 · Da verificare 4 · Risposta parziale 0 · Chiesta, in attesa 0 · Manca il dato 2 · Bloccata 0 · Non ancora chiesta 14)"));
-  assert.ok(owner.text.includes("Per avviare lo sviluppo: 0 di 10 voci obbligatorie a posto."));
-  assert.ok(owner.text.includes("Prossima tappa: Fase 1, entro novembre (proposta)."));
-  assert.ok(owner.text.includes("q.esempio.03 · Volumi"));
+  assert.equal(owner.subject, "Cliente A: riepilogo della settimana");
+  // (Rilascio 10, §3.12) Una riga per caso d'uso, senza il muro degli stati né le chiavi.
+  assert.ok(owner.text.includes("Gestione richieste — 0 % a posto · prossima tappa: Fase 1, entro novembre (proposta)"), owner.text);
+  assert.ok(!owner.text.includes("% verde") && !owner.text.includes("voci obbligatorie"));
+  assert.ok(owner.text.includes("Mancano ancora:\n\n- Volumi"));
+  assert.ok(!owner.text.includes("q.esempio.03"), "never the keys");
+  assert.ok(owner.text.includes("Per non riceverlo più, scrivi a Lateral Space."));
   assert.ok(!owner.html.includes("href="));
   assertClean(owner);
   const ls = renderEmail({
@@ -104,8 +133,9 @@ test("weekly summary for the Owner and for Lateral Space", () => {
     week: "2026-W41",
     cases: [{ ...base, link: "https://unbundle.example/dashboard/7c9e6679-7425-40de-944b-e07fc1f90ae7/casi-duso/16fd2706-8baf-433b-82eb-8c7fada847da" }],
   });
-  assert.equal(ls.subject, "Riepilogo settimanale dei casi d'uso · 2026-W41");
-  assert.ok(!ls.text.includes("q.esempio.03"), "red items only for the Owner");
+  assert.equal(ls.subject, "Riepilogo dei casi d'uso: settimana 2026-W41");
+  assert.ok(!ls.text.includes("Volumi"), "red items only for the Owner");
+  assert.ok(ls.text.includes("Apri ES-UC-01: https://unbundle.example/dashboard/"));
   assert.ok(ls.html.includes('href="https://unbundle.example/dashboard/'));
   assertClean(ls);
 });
@@ -153,11 +183,11 @@ test("(9b) weekly summary for Lateral Space: «Contesto del cliente» after the 
       `Apri il contesto: ${CONTEXT_LINK}`,
     ].join("\n"),
   );
-  assert.ok(mail.text.indexOf("XX-0012 · Gestione richieste") < mail.text.indexOf("Contesto del cliente:"), "after the cases");
+  assert.ok(mail.text.indexOf("Gestione richieste — ") < mail.text.indexOf("Contesto del cliente:"), "after the cases");
   assert.ok(mail.html.includes(`href="${CONTEXT_LINK}"`));
   assertClean(mail);
   // The subject does not change.
-  assert.equal(mail.subject, "Riepilogo settimanale dei casi d'uso · 2026-W47");
+  assert.equal(mail.subject, "Riepilogo dei casi d'uso: settimana 2026-W47");
 });
 
 test("(9b) weekly summary: one line per number that is not zero, with the singulars of the plan", () => {
@@ -199,7 +229,7 @@ test("(9b) weekly summary for the Owner: the novelties and at most three commitm
     },
   });
   assert.equal(
-    blockOf(mail, "Che cosa sappiamo del vostro lavoro:", "Per non ricevere più questo riepilogo"),
+    blockOf(mail, "Che cosa sappiamo del vostro lavoro:", "Per non riceverlo più"),
     [
       "Che cosa sappiamo del vostro lavoro:",
       "",
@@ -211,7 +241,7 @@ test("(9b) weekly summary for the Owner: the novelties and at most three commitm
     ].join("\n"),
   );
   assert.ok(!mail.text.includes("approva gli acquisti"), "at most three");
-  assert.ok(mail.text.indexOf("XX-0012 · Gestione richieste") < mail.text.indexOf("Che cosa sappiamo del vostro lavoro:"), "after the cases");
+  assert.ok(mail.text.indexOf("Gestione richieste — ") < mail.text.indexOf("Che cosa sappiamo del vostro lavoro:"), "after the cases");
   assert.ok(!mail.html.includes("href="), "no link for the Owner");
   assertClean(mail);
   // Only commitments: the second title alone. A commitment without a valid date is left out.
@@ -229,7 +259,7 @@ test("(9b) the «Contesto» block has no names and never says «use case»; the 
   const owner = blockOf(
     renderEmail({ ...OWNER_WEEK, context: { novelties: 4, commitments: [{ statement: "Inviare l'esportazione delle fatture", dueOn: "2026-11-25" }], today: "2026-11-16" } }),
     "Che cosa sappiamo del vostro lavoro:",
-    "Per non ricevere più questo riepilogo",
+    "Per non riceverlo più",
   );
   for (const block of [ls, owner]) {
     assert.doesNotMatch(block, /use[\s-]?case/i);
@@ -288,7 +318,8 @@ test("user-provided text is escaped and kept on one line where it must be", () =
   };
   const mail = renderEmail(input);
   assert.ok(!mail.subject.includes("\n"));
-  assert.ok(mail.subject.startsWith("Cliente <b>A</b> Bcc: x@y.z · "), "the subject is plain text, one line");
+  assert.ok(mail.subject.startsWith("Cliente <b>A</b> Bcc: x"), "the subject is plain text, one line");
+  assert.ok(mail.subject.length <= 55, mail.subject);
   assert.ok(mail.html.includes("&lt;script&gt;alert(1)&lt;/script&gt;"));
   assert.ok(mail.html.includes("Caso &quot;uno&quot; &amp; &#39;due&#39;"));
   assert.ok(!mail.html.includes("<script"));
@@ -323,4 +354,15 @@ test("every email to a referent or a link signer passes the copy-guard", () => {
     assert.deepEqual(findForbidden(text, "cliente"), [], mail.subject);
   }
   assert.ok(mails[6].text.includes("come responsabile del cliente"), "the client's role in the words of the page, not «Owner»");
+});
+
+test("(rilascio 10, §3.12) le email della realizzazione hanno l'intestazione come le altre: il marchio una volta, in cima", () => {
+  const brand = emailBrand("https://www.theunbundle.com");
+  const mail = renderEmail({ ...CASE, template: "richiesta_inviata", questions: 2, minutes: 4, expiresAt: EXPIRES, link: LINK }, brand);
+  const imgs = mail.html.match(/<img\b[^>]*>/g) ?? [];
+  assert.equal(imgs.length, 1);
+  assert.match(imgs[0], /src="https:\/\/www\.theunbundle\.com\/email\/unbundle-u\.png"/);
+  assert.ok(mail.html.indexOf("<img") < mail.html.indexOf("Buongiorno,"));
+  assert.ok(!mail.html.includes("Lateral Space via Unbundle"), "il marchio non si ripete in fondo");
+  assert.deepEqual(renderEmail({ ...CASE, template: "richiesta_inviata", questions: 2, minutes: 4, expiresAt: EXPIRES, link: LINK }).text, mail.text, "il testo semplice è lo stesso");
 });

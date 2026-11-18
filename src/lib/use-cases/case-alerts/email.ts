@@ -8,7 +8,8 @@
  * Resend è uno dei sub-responsabili).
  *
  * (Rilascio 5.1) Fuori dalla dashboard «caso d'uso», mai «use case»; l'oggetto comincia con il nome
- * del cliente. «Pronto da avviare» nomina il caso d'uso (codice, titolo, trimestre) e il cliente; il link apre la
+ * del cliente (rilascio 10, §3.12: al massimo 55 caratteri, mai il codice). «Pronto da avviare» nomina il
+ * caso d'uso (titolo, trimestre) e il cliente; il link apre la
  * scheda a `?capitolo=realizzazione`, che sulla scheda ancora pronta arriva al riquadro «Prossimo
  * passo» con «Avvia la realizzazione» (`arrivalTarget`). «Autorizza i fornitori» non porta nessun
  * dato degli use case: solo il nome del cliente e il link a Impostazioni › Sub-responsabili, e
@@ -29,11 +30,11 @@ import {
   type DispatchEnv,
   type UcMailer,
 } from "../../uc/notify/dispatch.ts";
-import { emailBrand, oneLine, render, type Block, type EmailBrand, type RenderedEmail } from "../../uc/notify/email-render.ts";
+import { emailBrand, emailSubject, oneLine, render, type Block, type EmailBrand, type RenderedEmail } from "../../uc/notify/email-render.ts";
 import type { CaseAlertKind } from "../../db/use-case-hub-alerts-ddl.ts";
 import { quarterLabel } from "../quarter.ts";
 import { isStaleAlert } from "../referent/alerts.ts";
-import { labelOfUseCase } from "../referent/email.ts";
+import { REFERENCE_WORD, titleOfUseCase } from "../referent/email.ts";
 import { companyLabel } from "../referent/labels.ts";
 import { cardLinkTo, settingsLink } from "../referent/links.ts";
 
@@ -158,31 +159,37 @@ export function renderReadyAlert(i: ReadyAlertInput, brand?: EmailBrand): Render
   const blocks: Block[] = [{ p: "Buongiorno," }];
   if (i.entries.length === 1) {
     const e = i.entries[0];
-    const uc = labelOfUseCase(e.useCase);
+    const uc = titleOfUseCase(e.useCase);
     blocks.push(
       { p: `il caso d'uso «${uc}» di ${company} è pronto da avviare: è approvato per ${quarterText(e.quarter)} e non manca niente dal cliente.` },
       { link: { href: e.link, label: "Apri il caso d'uso" } },
       { small: READY_FOOTER },
+      // (Rilascio 10, D6) Il codice in piccolo, in fondo: mai nell'oggetto.
+      ...(e.useCase.code?.trim() ? [{ small: `${REFERENCE_WORD} ${oneLine(e.useCase.code.trim(), 40)}` }] : []),
     );
-    return render(oneLine(`${company}: il caso d'uso «${uc}» è pronto da avviare`, 200), blocks, brand);
+    return render(emailSubject(company, "pronto da avviare", uc), blocks, brand);
   }
   blocks.push({ p: `ci sono ${i.entries.length} casi d'uso di ${company} pronti da avviare: sono approvati e non manca niente dal cliente.` });
   for (const e of i.entries) {
-    blocks.push({ p: `«${labelOfUseCase(e.useCase)}» · ${quarterText(e.quarter)}` }, { link: { href: e.link, label: "Apri il caso d'uso" } });
+    const code = e.useCase.code?.trim() ? ` · ${oneLine(e.useCase.code.trim(), 40)}` : "";
+    blocks.push({ p: `«${titleOfUseCase(e.useCase)}» · ${quarterText(e.quarter)}${code}` }, { link: { href: e.link, label: "Apri il caso d'uso" } });
   }
   blocks.push({ small: READY_FOOTER });
-  return render(oneLine(`${company}: ${i.entries.length} casi d'uso pronti da avviare`, 200), blocks, brand);
+  return render(emailSubject(company, `${i.entries.length} casi d'uso pronti da avviare`), blocks, brand);
 }
 
-/** «Autorizza i fornitori», parola per parola: il nome del cliente e il link, nessun dato degli use case. */
+/**
+ * «Autorizza i fornitori», parola per parola: il nome del cliente e il link, nessun dato degli use case.
+ * (Rilascio 10, §3.12) Il pulsante dice «Dai l'ok», mai il nome legale della pagina.
+ */
 export function renderSuppliersAlert(i: { company: string; link: string }, brand?: EmailBrand): RenderedEmail {
   const company = oneLine(companyLabel(i.company), 80);
-  return render(oneLine(`${company}: serve il tuo ok sui fornitori di Lateral Space`, 200), [
+  return render(emailSubject(company, "serve il tuo ok sui fornitori"), [
     { p: "Buongiorno," },
     {
       p: `per raccogliere le informazioni sui casi d'uso di ${company}, Lateral Space usa alcuni fornitori, per esempio quello delle email. Prima serve l'ok di una persona di ${company} con il tuo ruolo.`,
     },
-    { link: { href: i.link, label: "Apri Impostazioni › Sub-responsabili" } },
+    { link: { href: i.link, label: "Dai l'ok" } },
     { small: `Ricevi questa email perché puoi dare questa autorizzazione per ${company}. Quando qualcuno l'avrà data, non ne riceverai altre.` },
   ], brand);
 }

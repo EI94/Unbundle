@@ -5,8 +5,9 @@
  * lunedì a venerdì dalle 9 alle 18, feste escluse; con il trasporto Resend dei dossier e gli stessi
  * controlli (email configurata, autorizzazione ai sub-responsabili, funzione accesa).
  *
- * Il testo nomina il caso d'uso (codice e titolo) e i conteggi (rilascio 5.1: fuori dalla dashboard
- * «caso d'uso», mai «use case»; l'oggetto comincia con il nome dell'azienda): mai il testo delle risposte, i nomi
+ * Il testo nomina il caso d'uso (il titolo; rilascio 10, D6: il codice non c'è più) e i conteggi (rilascio 5.1:
+ * fuori dalla dashboard «caso d'uso», mai «use case»; l'oggetto comincia con il nome dell'azienda, al massimo
+ * 55 caratteri, rilascio 10 §3.12): mai il testo delle risposte, i nomi
  * dei file, il nome o l'email del referente, i titoli o i dettagli delle esigenze, punteggi o valori.
  * Il link porta alla scheda, a «Cosa serve»; una voce con il solo seguito («Nessuna risposta») a
  * «Richieste inviate», aperta, dove si chiede di nuovo.
@@ -33,10 +34,10 @@ import {
   type DispatchEnv,
   type UcMailer,
 } from "../../uc/notify/dispatch.ts";
-import { emailBrand, oneLine, render, type Block, type EmailBrand, type RenderedEmail } from "../../uc/notify/email-render.ts";
+import { emailBrand, emailSubject, oneLine, render, type Block, type EmailBrand, type RenderedEmail } from "../../uc/notify/email-render.ts";
 import type { FollowUpReason } from "../../db/use-case-hub-referents-ddl.ts";
 import { companyLabel } from "./labels.ts";
-import { labelOfUseCase } from "./email.ts";
+import { titleOfUseCase } from "./email.ts";
 import { cardLink, cardLinkTo } from "./links.ts";
 
 // ── Calendario ────────────────────────────────────────────────────────
@@ -238,16 +239,20 @@ function entryLine(lead: string, e: AlertEntry, single: boolean): string {
 
 function subjectOf(i: RequesterAlertInput): string {
   const company = oneLine(companyLabel(i.company), 80);
-  if (i.entries.length !== 1) return `${company}: novità su ${i.entries.length} casi d'uso`;
+  if (i.entries.length !== 1) return emailSubject(company, `novità su ${i.entries.length} casi d'uso`);
   const e = i.entries[0];
-  const uc = labelOfUseCase(e.useCase);
-  if ((e.questions ?? 0) > 0) return `${company}: il referente ha una domanda sul caso d'uso «${uc}»`;
-  if (e.answers > 0) return `${company}: risposte arrivate sul caso d'uso «${uc}»`;
-  if (e.documents > 0) return `${company}: nuovi documenti sul caso d'uso «${uc}»`;
-  // Con il link scaduto l'oggetto non dice «non sa rispondere»: restano domande senza risposta.
-  if (e.unknowns > 0 && e.followUp !== "scaduta") return `${company}: il referente non sa rispondere sul caso d'uso «${uc}»`;
-  return `${company}: nessuna risposta sul caso d'uso «${uc}»`;
+  const uc = titleOfUseCase(e.useCase);
+  if ((e.questions ?? 0) > 0) return emailSubject(company, "una domanda su", uc);
+  if (e.answers > 0) return emailSubject(company, "risposte su", uc);
+  if (e.documents > 0) return emailSubject(company, "documenti nuovi su", uc);
+  // (Rilascio 10, §3.12) Mai «non sa rispondere»: al referente mancano alcune informazioni. Con il link
+  // scaduto restano domande senza risposta.
+  if (e.unknowns > 0 && e.followUp !== "scaduta") return emailSubject(company, "mancano informazioni su", uc);
+  return emailSubject(company, "nessuna risposta su", uc);
 }
+
+/** (Rilascio 10, §3.12) Il piede: una riga sola, dove togliere l'avviso. */
+export const REQUESTER_ALERT_FOOTER = "Non vuoi queste email? Togli «Avvisami per email» in Il tuo account.";
 
 /** L'email a chi ha chiesto, parola per parola. (Rilascio 5.1) Con `brand` l'HTML ha in cima il marchio. */
 export function renderRequesterAlert(i: RequesterAlertInput, brand?: EmailBrand): RenderedEmail {
@@ -259,18 +264,16 @@ export function renderRequesterAlert(i: RequesterAlertInput, brand?: EmailBrand)
   const single = i.entries.length === 1;
   if (!single) blocks.push({ p: `ci sono novità su ${i.entries.length} casi d'uso di ${company}.` });
   for (const e of i.entries) {
-    const label = `«${labelOfUseCase(e.useCase)}»`;
+    const label = `«${titleOfUseCase(e.useCase)}»`;
     blocks.push({ p: entryLine(single ? `ci sono novità sul caso d'uso ${label} di ${company}` : label, e, single) });
-    if ((e.questions ?? 0) > 0) blocks.push({ small: "Rispondi dalla scheda, in «Cosa serve»." });
-    else if (e.answers > 0 || e.documents > 0) blocks.push({ small: "Da verificare in «Cosa serve»." });
-    if (e.unknowns > 0 && !e.followUp) blocks.push({ small: "Per i «Non ce l'ho» puoi chiedere a un'altra persona." });
+    if (e.unknowns > 0 && !e.followUp) blocks.push({ small: "Per i «Non lo so» puoi chiedere a un'altra persona." });
     if (e.followUp) blocks.push({ small: "Puoi chiedere di nuovo o chiedere a un'altra persona." });
-    blocks.push({ link: { href: e.link, label: "Apri «Cosa serve»" } });
+    // (Rilascio 10, §3.12) Il pulsante dice che cosa fare; «Cosa serve» non si ripete in una riga a parte.
+    const label2 = (e.questions ?? 0) > 0 ? "Rispondi al referente" : e.answers > 0 || e.documents > 0 ? "Verifica in «Cosa serve»" : "Apri «Cosa serve»";
+    blocks.push({ link: { href: e.link, label: label2 } });
   }
-  blocks.push({
-    small: "Ricevi questa email perché hai chiesto tu queste informazioni al referente. Per non riceverle più, togli la spunta «Avvisami per email» nella campanella di Unbundle.",
-  });
-  return render(oneLine(subjectOf(i), 200), blocks, brand);
+  blocks.push({ small: REQUESTER_ALERT_FOOTER });
+  return render(subjectOf(i), blocks, brand);
 }
 
 // ── Motore ────────────────────────────────────────────────────────────

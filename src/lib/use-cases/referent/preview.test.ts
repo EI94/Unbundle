@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { render } from "../../uc/notify/email-render.ts";
 import { REFERENT_LIMITS } from "./contract.ts";
 import { ACCOUNT_NOTICE_LINE, ACCOUNT_NOTICE_LINE_MANY, TEAM_ACCESS_LINE, TEAM_ACCESS_LINE_MANY, checkReferentLink, referentRequestParts, renderReferentEmail } from "./email.ts";
-import { PREVIEW_FOOTER, PREVIEW_LINK, PREVIEW_SENDER, previewBlocks, referentRequestPreview, requesterNameOf } from "./preview.ts";
+import { PREVIEW_LINK, PREVIEW_SENDER, previewBlocks, referentRequestPreview, requesterNameOf } from "./preview.ts";
 
 // «Controlla e invia» (rilascio 4, §9.2): l'anteprima è l'email vera. Dati inventati.
 const LINK = `https://app.example.test/rispondi/ucq_${"A".repeat(32)}`;
@@ -39,18 +39,17 @@ test("l'anteprima: oggetto e blocchi uguali all'email vera con il link finto e l
     assert.deepEqual(preview, real, `${questions} domande, messaggio ${message ?? "no"}`);
   }
   const one = referentRequestPreview({ company: "Alfa Jet (prova)", useCase: UC, requesterName: "Aldo Prova", questions: 1, message: null, today: TODAY });
-  assert.equal(one.subject, "Alfa Jet (prova): alcune domande sul caso d'uso «AJ-0002 · Lettura dei documenti esteri»");
+  // (Rilascio 10, §3.12, D6) L'oggetto al massimo di 55 caratteri, con il titolo e mai il codice.
+  assert.equal(one.subject, "Alfa Jet (prova): una domanda su «Lettura dei documen…»");
   // (Rilascio 5) La richiesta al referente: la stessa email dell'invio, con la conferma e la stima.
   const referent = referentRequestPreview({ kind: "referente", company: "Alfa Jet (prova)", useCase: UC, requesterName: "Aldo Prova", questions: 5, message: null, today: TODAY });
   assert.deepEqual(referent, referentRequestParts({ ...base, kind: "referente", questions: 5, message: null, link: PREVIEW_LINK }));
   // (Rilascio 5.1) L'anteprima nella dashboard mostra l'email com'è: «caso d'uso», come la legge il referente.
-  assert.equal(referent.subject, "Alfa Jet (prova): sei il referente per il caso d'uso «AJ-0002 · Lettura dei documenti esteri»");
-  assert.ok(one.blocks.some((b) => "small" in b && b.small === "Il link scade il 2 dicembre 2026."), "la scadenza: oggi più 30 giorni");
-  assert.ok(one.blocks.some((b) => "p" in b && b.p === "È una domanda sola."));
-  assert.ok(one.blocks.some((b) => "small" in b && b.small.endsWith("arriva a Aldo Prova.")), "la risposta all'email arriva a chi chiede");
+  assert.equal(referent.subject, "Alfa Jet (prova): conferma «Lettura dei documenti est…»");
+  assert.ok(one.blocks.some((b) => "small" in b && b.small === "Il link è solo tuo e vale fino al 2 dicembre. Per un dubbio, rispondi qui."), "la scadenza: oggi più 30 giorni");
+  assert.ok(one.blocks.some((b) => "p" in b && b.p.startsWith("Aldo Prova ti fa una domanda sul caso d'uso «Lettura dei documenti esteri»")));
   assert.equal(checkReferentLink(PREVIEW_LINK), PREVIEW_LINK, "il link finto passa i controlli dell'email");
   assert.equal(PREVIEW_SENDER, "Lateral Space via Unbundle");
-  assert.equal(PREVIEW_FOOTER, "Lateral Space via Unbundle.");
 });
 
 test("l'anteprima non ha mai la riga del team o dell'account", () => {
@@ -64,7 +63,8 @@ test("a schermo il link è solo «Apri le domande»: l'indirizzo finto non si mo
   const blocks = previewBlocks(preview);
   assert.deepEqual(
     blocks.map((b) => b.kind),
-    ["p", "p", "p", "p", "quote", "p", "link", "small", "small"],
+    // (Rilascio 10, §3.12) Il saluto, chi e che cosa, il messaggio, quanto ci vuole, il pulsante, la riga piccola, il riferimento.
+    ["p", "p", "quote", "p", "link", "small", "small"],
   );
   assert.deepEqual(blocks.find((b) => b.kind === "link"), { kind: "link", label: "Apri le domande" });
   const shown = JSON.stringify(blocks);
@@ -87,7 +87,7 @@ test("(rilascio 6) domande che entrano nella richiesta attiva: l'anteprima è l'
   const { renderReferentEmail } = await import("./email.ts");
   const today = new Date("2026-11-09T10:00:00Z");
   const parts = referentNewQuestionsPreview({ company: "Rondine", useCase: { code: "RD-0004", title: "Fatture fornitori" }, requesterName: "Giulia Neri", questions: 2, today });
-  assert.equal(parts.subject, "Rondine: nuove domande sul caso d'uso «RD-0004 · Fatture fornitori»");
+  assert.equal(parts.subject, "Rondine: nuove domande su «Fatture fornitori»");
   const real = renderReferentEmail({
     template: "promemoria",
     company: "Rondine",
@@ -98,6 +98,6 @@ test("(rilascio 6) domande che entrano nella richiesta attiva: l'anteprima è l'
   assert.equal(real.subject, parts.subject);
   const texts = parts.blocks.flatMap((b) => ("p" in b ? [b.p] : "small" in b ? [b.small] : []));
   for (const t of texts) assert.ok(real.text.includes(t), t);
-  assert.ok(texts.some((t) => t.includes("Giulia Neri ha aggiunto 2 domande sul caso d'uso «RD-0004 · Fatture fornitori»: le trovi insieme alle altre, con lo stesso link.")));
+  assert.ok(texts.some((t) => t.includes("Giulia Neri ha aggiunto 2 domande sul caso d'uso «Fatture fornitori»: le trovi insieme alle altre, con lo stesso link.")));
   assert.deepEqual(previewBlocks(parts).filter((b) => b.kind === "link"), [{ kind: "link", label: "Apri le domande" }]);
 });

@@ -42,6 +42,7 @@ import {
   type WeeklyContextLs,
   type WeeklyContextOwner,
 } from "./email-templates.ts";
+import { emailBrand } from "./email-render.ts";
 import { isoWeekRome, nextReminderAt, type WorkingCalendar } from "./schedule.ts";
 
 // ── Costanti ──────────────────────────────────────────────────────────
@@ -1045,7 +1046,8 @@ async function deliverOne(
 
   let rendered: RenderedEmail;
   try {
-    rendered = renderEmail(plan.build(issued ? `${config.origin}/r/${issued.token}` : null));
+    // (Rilascio 10, §3.12) Le email della realizzazione hanno l'intestazione come le altre.
+    rendered = renderEmail(plan.build(issued ? `${config.origin}/r/${issued.token}` : null), emailBrand(config.origin));
   } catch {
     if (issued && n.caseId) await store.revokeToken({ caseId: n.caseId, tokenId: issued.tokenId });
     await store.markFailed(n, "testo_non_valido");
