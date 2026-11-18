@@ -232,7 +232,7 @@ test("start: two starts at the same moment, the unique code stops the second one
     return [];
   });
   const r = await startRealization(ex, { workspaceId: WS, user: LEAD, canReviewWorkspacePortfolio: true, input });
-  assert.deepEqual(r, { ok: false, code: "dossier_esistente", message: "Questo use case ha già un dossier." });
+  assert.deepEqual(r, { ok: false, code: "dossier_esistente", message: "Questo use case ha già una realizzazione." });
 });
 
 /** A published template row as the database returns it: the synthetic example, canonical, with its hash. */

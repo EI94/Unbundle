@@ -99,12 +99,12 @@ export default async function CaseSettingsPage({ params }: { params: Promise<{ w
               <p>
                 Schema di partenza: {settings.templateName} · versione {settings.templateVersion}
               </p>
-              {settings.previousCode && <p>Codice precedente del dossier: {settings.previousCode}</p>}
+              {settings.previousCode && <p>Codice precedente della realizzazione: {settings.previousCode}</p>}
             </TechDetails>
           </div>
         </SettingsSection>
 
-        <SettingsSection id="perimetro" icon={Target} title="Perimetro e leve" description="Che cosa entra nel dossier e dove porta valore.">
+        <SettingsSection id="perimetro" icon={Target} title="Perimetro e leve" description="Che cosa entra nella realizzazione e dove porta valore.">
           {editable ? (
             <ScopeLeversForm workspaceId={workspaceId} caseId={caseId} perimeterLabel={settings.perimeterLabel} levers={settings.levers} />
           ) : (
@@ -116,7 +116,7 @@ export default async function CaseSettingsPage({ params }: { params: Promise<{ w
           )}
         </SettingsSection>
 
-        <SettingsSection id="accesso" icon={Users} title="Accesso al caso" description="Chi ha un account e il suo ruolo nel dossier. «Lateral Space» o «Cliente» dipende dal dominio dell'email verificata.">
+        <SettingsSection id="accesso" icon={Users} title="Accesso al caso" description="Chi ha un account e il suo ruolo nella realizzazione. «Lateral Space» o «Cliente» dipende dal dominio dell'email verificata.">
           <MembersPanel
             workspaceId={workspaceId}
             caseId={caseId}

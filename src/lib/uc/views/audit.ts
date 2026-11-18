@@ -97,8 +97,8 @@ export function auditWhoFor(clientView: boolean): { key: AuditWho; label: string
 
 /** Etichette degli eventi in italiano semplice (CSV, registro degli accessi della Privacy). */
 export const AUDIT_EVENT_LABEL: Readonly<Record<string, string>> = {
-  "caso.creato": "Dossier creato",
-  "caso.importato": "Dossier importato",
+  "caso.creato": "Realizzazione creata",
+  "caso.importato": "Realizzazione importata",
   "caso.stato_cambiato": "Stato del caso cambiato",
   "caso.descrizione_modificata": "Descrizione modificata",
   "caso.ambiente_ai": "Ambiente AI registrato",
@@ -564,9 +564,9 @@ function phraseOf(row: ActivityRow, audience: Audience): Phrase {
   const label = auditEventLabel(row.type);
   switch (row.type) {
     case "caso.creato":
-      return { one: "ha creato il dossier" };
+      return { one: "ha creato la realizzazione" };
     case "caso.importato":
-      return { one: "ha importato il dossier" };
+      return { one: "ha importato la realizzazione" };
     case "caso.stato_cambiato": {
       const to = caseStatusLabel(row.toState ?? payloadString(p, "to"));
       return to ? { one: `ha portato il caso a «${to}»`, auto: `Il caso è passato a «${to}».` } : { one: "ha cambiato lo stato del caso" };

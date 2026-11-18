@@ -87,7 +87,7 @@ test("break-even in months and value over the horizon, with discount and adoptio
   assert.equal(half.annualBenefit, 36000);
   const loss = computeRoi({ costLines: [cost({ value: 1000 }), cost({ key: "r", kind: "ricorrente", value: 5000 })], benefitLines: [benefit({ value: 4000 })] });
   assert.equal(loss.breakEvenMonths, null);
-  assert.match(loss.note, /non rientra/);
+  assert.match(loss.note, /non c'è pareggio/);
 });
 
 test("lines from the seed, from the example template and from saved models", () => {
@@ -219,7 +219,7 @@ test("the three figures say «da calcolare» or «non rientra», never a number 
     open.map((f) => [f.label, f.value, f.note]),
     [
       ["Costo di realizzazione", null, "da calcolare"],
-      ["Beneficio all'anno", null, "da calcolare"],
+      ["Valore all'anno", null, "da calcolare"],
       ["Pareggio", null, "da calcolare"],
     ],
   );
@@ -300,7 +300,7 @@ test("Valore: only the active levers, with their KPIs, description and euros a y
     [
       ["leva-tempo", "Tempo", "40.000 € all'anno", ["Attesa in coda", "Tempo medio di risposta"]],
       ["leva-leva_02", "Nuove capacità commerciali", null, []],
-      ["nuova-leva-decisioni", "Decisioni", null, ["Giorni per decidere"]],
+      ["nuova-leva-decisioni", "Decisioni migliori", null, ["Giorni per decidere"]],
     ],
   );
   const tempo = v.levers[0];
@@ -311,7 +311,8 @@ test("Valore: only the active levers, with their KPIs, description and euros a y
   assert.equal(v.levers[2].description, "Decisioni più rapide.");
   assert.deepEqual(
     v.inactiveLevers.map((l) => l.label),
-    ["Output", "Qualità", "Nuove capacità", "Costi", "Ricavi", "Rischio"],
+    // (Rilascio 10, §4) Le parole comuni delle leve.
+    ["Più volume", "Più qualità", "Nuove capacità", "Meno costi", "Più ricavi", "Meno rischio"],
   );
   assert.equal(v.kpiTotal, 4);
 });

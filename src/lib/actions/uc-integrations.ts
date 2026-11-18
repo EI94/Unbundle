@@ -61,7 +61,7 @@ const RevokeSchema = z.object({ tokenId: z.string().regex(UUID, "Accesso non val
 
 /** Nome proposto per l'accesso (DESIGN §8.3 WP6): «Dossier · XX-0012 · sola lettura». */
 function caseAccessLabel(code: string): string {
-  return `Dossier · ${code} · sola lettura`;
+  return `Realizzazione · ${code} · sola lettura`;
 }
 
 async function appBaseUrl(): Promise<string> {
@@ -94,7 +94,7 @@ export async function proposedCaseAccessLabelAction(workspaceId: string, caseId:
   if (!opened.ok) return opened.result;
   const { executor, caseAccess } = opened.value;
   const settings = await loadCaseSettings(executor, { workspaceId, caseId: caseAccess.caseId });
-  if (!settings) return ucFailure("non_trovato", "Dossier non trovato o non accessibile.");
+  if (!settings) return ucFailure("non_trovato", "Realizzazione non trovata o non accessibile.");
   return { ok: true, data: { label: caseAccessLabel(settings.displayCode) } };
 }
 
@@ -112,8 +112,8 @@ export async function createCaseReadTokenAction(workspaceId: string, caseId: str
   if (!scopes.ok) return ucFailure(scopes.code, scopes.message);
 
   const [core, settings] = await Promise.all([loadCaseCore(executor, workspaceId, caseAccess.caseId), loadCaseSettings(executor, { workspaceId, caseId: caseAccess.caseId })]);
-  if (!core) return ucFailure("non_trovato", "Dossier non trovato o non accessibile.");
-  if (core.status === "chiuso") return ucFailure("caso_chiuso", "Il dossier è chiuso: non si creano nuovi accessi.");
+  if (!core) return ucFailure("non_trovato", "Realizzazione non trovata o non accessibile.");
+  if (core.status === "chiuso") return ucFailure("caso_chiuso", "La realizzazione è chiusa: non si creano nuovi accessi.");
   if (core.catalogVersion < 1) return ucFailure("gate_non_approvato", "L'accesso per Claude si crea dopo il via allo sviluppo.");
 
   const label = parsed.data.label || caseAccessLabel(settings?.displayCode ?? core.code);
@@ -158,5 +158,5 @@ export async function revokeCaseReadTokenAction(workspaceId: string, caseId: str
   const revoked = await revokeCaseReadToken(opened.value.executor, { workspaceId, caseId: opened.value.caseAccess.caseId, tokenId: parsed.data.tokenId });
   if (!revoked) return ucFailure("non_trovato", "Accesso non trovato o già revocato.");
   refreshCasePages(workspaceId);
-  return { ok: true, data: { tokenId: parsed.data.tokenId }, message: "Accesso revocato: Claude non legge più il dossier con questa chiave." };
+  return { ok: true, data: { tokenId: parsed.data.tokenId }, message: "Accesso revocato: Claude non legge più la realizzazione con questa chiave." };
 }

@@ -215,10 +215,10 @@ export function QuestionSelectionBar({ workspaceId, caseId, selection, total, pe
         <DialogContent showCloseButton={false} className="sm:max-w-md">
           {mode === "assign" && (
             <DialogBody
-              title="Assegna a un referente"
+              title="Affida a un referente"
               note={appliesTo(eligible("assign"))}
               busy={busy}
-              submit={`Assegna ${questionsText(eligible("assign"))}`}
+              submit={`Affida ${questionsText(eligible("assign"))}`}
               ready={contactId !== null}
               onCancel={close}
               onSubmit={() =>
@@ -236,7 +236,7 @@ export function QuestionSelectionBar({ workspaceId, caseId, selection, total, pe
             >
               <Select items={assignable.map((c) => ({ value: c.id, label: c.roleLabel ? `${c.name} · ${c.roleLabel}` : c.name }))} value={contactId} onValueChange={(v) => setContactId(v ? String(v) : null)}>
                 <SelectTrigger className="min-h-11 w-full sm:min-h-8" aria-label="Referente">
-                  <SelectValue placeholder="Scegli il referente" />
+                  <SelectValue placeholder="Indica il referente" />
                 </SelectTrigger>
                 <SelectContent>
                   {assignable.map((c) => (

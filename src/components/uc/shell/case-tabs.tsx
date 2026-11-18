@@ -81,7 +81,7 @@ export function CaseTabs({ basePath, tabs }: { basePath: string; tabs: readonly 
   if (tabs.length === 0) return null;
   return (
     <div className="mt-4">
-      <TabRow basePath={basePath} tabs={tabs} ariaLabel="Sezioni del dossier" />
+      <TabRow basePath={basePath} tabs={tabs} ariaLabel="Sezioni della realizzazione" />
     </div>
   );
 }
@@ -126,7 +126,7 @@ export function CaseStickyBar({ basePath, tabs, headId, title, status, progress,
               <StatusDot tone={status.tone} label={status.label} hideLabel />
             </div>
             <div className="min-w-0 lg:flex-1">
-              <TabRow basePath={basePath} tabs={tabs} compact ariaLabel="Sezioni del dossier (barra fissa)" />
+              <TabRow basePath={basePath} tabs={tabs} compact ariaLabel="Sezioni della realizzazione (barra fissa)" />
             </div>
             <p className="truncate pb-1.5 text-xs text-muted-foreground tabular-nums lg:hidden">
               {title}

@@ -29,7 +29,7 @@ export const CASE_ROLE_LABEL: Readonly<Record<CaseRole, string>> = {
 
 /** Cosa fa ogni ruolo, in una frase senza codici (suggerimento nel modulo di «Accesso al caso»). */
 export const CASE_ROLE_HINT: Readonly<Record<CaseRole, string>> = {
-  ls_lead: "Gestisce il dossier, invia le domande e firma per Lateral Space.",
+  ls_lead: "Gestisce la realizzazione, invia le domande e firma per Lateral Space.",
   ls_analista: "Verifica le risposte e propone domande.",
   ls_sviluppatore: "Legge il catalogo validato per sviluppare.",
   owner_cliente: "Firma per il cliente il via allo sviluppo e aggiunge colleghi come referenti.",
@@ -180,7 +180,7 @@ export const EMAIL_NOT_CONFIGURED_TEXT = "Email non inviata: copia il link e man
 export const EMAIL_OFF_TEXT = "Le email non partono ancora: copia i link e mandali tu.";
 
 /** Riga di una richiesta con il dossier in pausa: il link si apre ancora, senza risposte nuove. */
-export const PAUSED_LINK_TEXT = "Dossier in pausa: il link si apre in sola lettura.";
+export const PAUSED_LINK_TEXT = "Realizzazione in pausa: il link si apre in sola lettura.";
 
 /** Promemoria automatici previsti per ogni richiesta (3 e 7 giorni lavorativi). */
 export const REMINDERS_PLANNED = 2;

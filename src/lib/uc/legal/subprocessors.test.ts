@@ -127,7 +127,7 @@ test("declared and waiting lines, with the date and time of Rome", () => {
   );
   assert.equal(
     subprocessorsLsNotice("Cliente Esempio"),
-    "Sub-responsabili non ancora autorizzati da Cliente Esempio: l'ok si dà in Impostazioni.",
+    "Fornitori non ancora autorizzati da Cliente Esempio: l'ok si dà in Impostazioni.",
   );
 });
 

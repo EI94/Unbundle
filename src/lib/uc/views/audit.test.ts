@@ -243,7 +243,7 @@ test("the timeline groups by day of Rome and joins the same person's consecutive
           ["23:20", "Paola Neri", "ha risposto a «F»", 1],
         ],
       ],
-      ["2026-10-01", "1 ott", [["11:00", "Luca Verdi (Lateral Space)", "ha creato il dossier", 1]]],
+      ["2026-10-01", "1 ott", [["11:00", "Luca Verdi (Lateral Space)", "ha creato la realizzazione", 1]]],
     ],
   );
 });

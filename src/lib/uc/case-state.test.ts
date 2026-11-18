@@ -75,7 +75,8 @@ test("case status labels follow the vocabulary of DESIGN §2.6", () => {
     pronto_sviluppo: "Pronto per lo sviluppo",
     in_sviluppo: "In sviluppo",
     backtest: "Prova sul passato",
-    collaudo: "In collaudo",
+    // (Rilascio 10, §4) «Prova», mai «collaudo».
+    collaudo: "In prova",
     stabilizzazione: "In rodaggio",
     in_esercizio: "In uso",
     misura_roi: "Misura del valore",

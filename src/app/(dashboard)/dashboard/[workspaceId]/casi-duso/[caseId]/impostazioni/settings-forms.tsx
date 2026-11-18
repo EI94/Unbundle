@@ -126,7 +126,7 @@ export function RevokeAllLinks({ workspaceId, caseId }: { workspaceId: string; c
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Revocare tutti i link?</DialogTitle>
-            <DialogDescription>Smettono di funzionare subito i link dei referenti, quelli per firmare e gli accessi di Claude al dossier. Le risposte arrivate restano.</DialogDescription>
+            <DialogDescription>Smettono di funzionare subito i link dei referenti, quelli per firmare e gli accessi di Claude alla realizzazione. Le risposte arrivate restano.</DialogDescription>
           </DialogHeader>
           <form
             id="uc-revoke-all"

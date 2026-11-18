@@ -228,7 +228,7 @@ export function dossierEntry(item: UcBellItem, useCaseHub: boolean): BellEntry {
     key: `uc:${item.id}`,
     source: "dossier",
     ref: { source: "dossier", id: item.id },
-    context: item.context ?? (useCaseHub ? null : "Casi d'uso"),
+    context: item.context ?? (useCaseHub ? null : "Realizzazioni"),
     title: item.title,
     description: item.description,
     href: item.href,

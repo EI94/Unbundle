@@ -174,7 +174,8 @@ export type CaseTrail =
  */
 export function caseTrail(i: CaseTrailInput): CaseTrail {
   const ws = `/dashboard/${i.workspaceId}`;
-  if (!i.parent) return { kind: "lista", back: { label: "Casi d'uso", href: `${ws}/casi-duso` } };
+  // (Rilascio 10, §4) Mai «Casi d'uso» a schermo: la lista delle realizzazioni è «In realizzazione».
+  if (!i.parent) return { kind: "lista", back: { label: "In realizzazione", href: `${ws}/casi-duso` } };
   const code = i.parent.code?.trim() || null;
   return {
     kind: "use_case",

@@ -403,7 +403,8 @@ export function valueFigures(c: RoiComputation): ValueFigure[] {
   const done = c.gaps.length === 0;
   return [
     figure("Costo di realizzazione", done ? formatEuro(c.implementation) : null, DA_CALCOLARE),
-    figure("Beneficio all'anno", done ? formatEuro(c.annualBenefit) : null, DA_CALCOLARE),
+    // (Rilascio 10, §4) Le parole comuni: «Costo di realizzazione», «Valore all'anno», «Pareggio».
+    figure("Valore all'anno", done ? formatEuro(c.annualBenefit) : null, DA_CALCOLARE),
     figure("Pareggio", done && c.breakEvenMonths !== null ? months(c.breakEvenMonths) : null, done ? "non rientra" : DA_CALCOLARE),
   ];
 }
@@ -486,11 +487,11 @@ function howView(roi: RoiView, keyTitles: ReadonlyMap<string, string>): HowView 
     roi.attributionMethod ? clean(`Metodo di attribuzione: ${roi.attributionMethod}`) : null,
     roi.adoptionRate !== null ? `Il beneficio conta solo il ${formatNumberIt(roi.adoptionRate * 100)}% delle proposte davvero usate.` : null,
     roi.discountRate !== null && roi.discountRate > 0 ? `I benefici degli anni dopo il primo sono scontati al ${formatNumberIt(roi.discountRate * 100)}% all'anno.` : null,
-    "Nel conto entrano sempre il tempo di verifica umana delle proposte e i costi di esercizio.",
+    "Nel conto entrano sempre il tempo di verifica umana delle proposte e il costo all'anno.",
   ].filter((t): t is string => t !== null);
   return {
     figures: [
-      figure("Esercizio all'anno", done ? formatEuro(c.annualRun) : null, DA_CALCOLARE),
+      figure("Costo all'anno", done ? formatEuro(c.annualRun) : null, DA_CALCOLARE),
       figure(`Valore a ${c.horizonYears} anni`, done ? formatEuro(c.value) : null, DA_CALCOLARE),
     ],
     note: done ? c.note : null,

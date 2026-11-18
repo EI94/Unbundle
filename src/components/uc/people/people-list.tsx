@@ -318,7 +318,7 @@ export function PeopleList(props: PeopleListProps) {
                 {can.clientAssign && others(row.id).length > 0 && (
                   <RowMenu label={`Altre azioni per ${row.name}`}>
                     <DropdownMenuItem className={ITEM} onClick={() => setDialog({ kind: "affida", row })}>
-                      Affida le sue domande a un altro collega
+                      {"Affida le sue domande a un'altra persona"}
                     </DropdownMenuItem>
                   </RowMenu>
                 )}
@@ -338,11 +338,11 @@ export function PeopleList(props: PeopleListProps) {
             <div className="flex shrink-0 items-center gap-2">
               {can.send ? (
                 <Button size="sm" variant="outline" className={BTN} render={<Link href={props.sendHref} scroll={false} />} nativeButton={false}>
-                  Assegna
+                  Affida a…
                 </Button>
               ) : can.clientAssign && contactOptions.length > 0 ? (
                 <Button size="sm" variant="outline" className={BTN} onClick={() => setDialog({ kind: "assegna", role: u })}>
-                  Assegna
+                  Affida a…
                 </Button>
               ) : null}
             </div>
@@ -451,7 +451,7 @@ export function PeopleList(props: PeopleListProps) {
         <ChooseContactDialog
           title={`Chi risponde per ${dialog.role.roleLabel}`}
           description="Le domande di questo ruolo ancora senza referente vanno alla persona che scegli. Le invia Lateral Space."
-          confirm="Assegna"
+          confirm="Affida"
           contacts={contactOptions}
           suggestedIds={dialog.role.suggestedContactIds}
           onClose={close}

@@ -26,30 +26,35 @@ import { computeRoi } from "./roi-edit.ts";
 
 // ── Testi (DESIGN §3.1, §3.2; `docs/use-case/DESIGN.md` §14.3) ────────
 
+/**
+ * (Rilascio 10, §4, D4) A schermo il dossier è la «Realizzazione» («Apri la realizzazione», «Realizzazione
+ * in pausa»); «dossier» resta nel codice. Il beneficio è il «Valore all'anno». «Tocca a …» solo quando tocca
+ * a un'altra persona: il passo di chi guarda è «Il tuo prossimo passo».
+ */
 export const REALIZATION_TEXT = {
   notStartedTitle: "La realizzazione non è ancora partita.",
-  notStartedBody: "Il dossier raccoglie i dati dal cliente e prepara lo sviluppo.",
+  notStartedBody: "La realizzazione raccoglie i dati dal cliente e prepara lo sviluppo.",
   start: "Avvia la realizzazione",
   onlyLateralSpace: "La realizzazione la avvia Lateral Space.",
-  dossier: "Dossier",
+  dossier: "Realizzazione",
   nextMilestone: "Prossima tappa",
   cost: "Costo di realizzazione",
-  benefit: "Beneficio all'anno",
+  benefit: "Valore all'anno",
   breakEven: "Pareggio",
   toCompute: "da calcolare",
-  open: "Apri il dossier",
-  membersOnly: "Il dossier lo vedono i suoi membri e chi gestisce il workspace.",
-  closed: "Il dossier è chiuso.",
-  unavailable: "Il riepilogo del dossier non è disponibile ora.",
-  myTurn: "Tocca a te",
+  open: "Apri la realizzazione",
+  membersOnly: "La realizzazione la vedono le sue persone e chi gestisce il workspace.",
+  closed: "La realizzazione è chiusa.",
+  unavailable: "Il riepilogo della realizzazione non è disponibile ora.",
+  myTurn: "Il tuo prossimo passo",
   emptyTitle: "Ancora nulla in realizzazione",
-  emptyBody: "Un dossier si avvia dalla scheda di uno use case approvato.",
-  readOnly: "Configurazione da completare: manca l'elenco dei domini di Lateral Space. Finché manca, i dossier sono in sola lettura.",
+  emptyBody: "Una realizzazione si avvia dalla scheda di uno use case approvato.",
+  readOnly: "Configurazione da completare: manca l'elenco dei domini di Lateral Space. Finché manca, le realizzazioni sono in sola lettura.",
   noTemplates: "Nessuno schema disponibile: chiedi a Lateral Space di pubblicarne uno.",
-  creating: "Stiamo preparando il dossier: ci vuole qualche secondo.",
-  footnote: "Il dossier nasce in bozza e ne sei il responsabile. Prende il codice e i testi dello use case.",
+  creating: "Stiamo preparando la realizzazione: ci vuole qualche secondo.",
+  footnote: "La realizzazione nasce in bozza e ne sei responsabile. Prende il codice e i testi dello use case.",
   noPrefix: "Questo workspace non ha ancora un prefisso per i codici. Impostalo in Impostazioni.",
-  alreadyStarted: "Questo use case ha già un dossier.",
+  alreadyStarted: "Questo use case ha già una realizzazione.",
 } as const;
 
 // ── Codice e titolo dello use case ────────────────────────────────────

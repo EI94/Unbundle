@@ -139,7 +139,7 @@ export function MembersPanel({
             />
           </div>
           <div className="min-w-0 space-y-1.5">
-            <Label htmlFor="uc-member-role">Ruolo nel dossier</Label>
+            <Label htmlFor="uc-member-role">Ruolo nella realizzazione</Label>
             <ChoiceSelect
               id="uc-member-role"
               value={role}

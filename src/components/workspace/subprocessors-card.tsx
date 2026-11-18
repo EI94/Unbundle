@@ -66,7 +66,7 @@ export async function SubprocessorsCard({
       id="sub-responsabili"
       icon={ShieldCheck}
       iconClassName="bg-sky-500/10 text-sky-400"
-      title="Sub-responsabili"
+      title="Fornitori"
       description="I fornitori a cui Lateral Space affida parte del trattamento dei dati."
     >
       <ul className="divide-y rounded-lg border" data-testid="subprocessors-list">

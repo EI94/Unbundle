@@ -79,7 +79,8 @@ test("the card: use case code and title, status, one progress number, my step or
     statusLabel: "In preparazione",
     statusTone: "giallo",
     progress: { ok: 12, required: 245, inReview: 30 },
-    context: { kind: "turno", text: "Tocca a te · Invia le domande" },
+    // (Rilascio 10) «Tocca a …» solo per un'altra persona: il passo di chi guarda è «Il tuo prossimo passo».
+    context: { kind: "turno", text: "Il tuo prossimo passo · Invia le domande" },
     href: `/dashboard/${WS}/casi-duso/${CASE}`,
     myTurn: true,
     updatedAt: "2026-10-13T08:00:00.000Z",

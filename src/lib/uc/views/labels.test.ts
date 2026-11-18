@@ -103,8 +103,9 @@ test("state of the go-ahead to development", () => {
 test("use case words for the Realization chapter", () => {
   assert.equal(USE_CASE_WORDS.realizzazione, "Realizzazione");
   assert.equal(USE_CASE_WORDS.avviaRealizzazione, "Avvia la realizzazione");
-  assert.equal(USE_CASE_WORDS.apriDossier, "Apri il dossier");
-  assert.equal(USE_CASE_WORDS.dossier, "dossier");
+  // (Rilascio 10, §4, D4) A schermo «realizzazione», mai «dossier».
+  assert.equal(USE_CASE_WORDS.apriDossier, "Apri la realizzazione");
+  assert.equal(USE_CASE_WORDS.dossier, "realizzazione");
   assert.equal(WORDS.via, "Via allo sviluppo");
   for (const word of [...Object.values(WORDS), ...Object.values(USE_CASE_WORDS)]) assert.doesNotMatch(word, /caso d'uso|Casi d'uso|Opportunità/i);
 });

@@ -188,7 +188,7 @@ export function subprocessorsWaitingLine(companyName: string | null | undefined)
 
 /** Avviso per Lateral Space nella lista dei Casi d'uso; «Impostazioni» diventa un link. */
 export function subprocessorsLsNoticeParts(companyName: string | null | undefined): { before: string; link: string; after: string } {
-  return { before: `Sub-responsabili non ancora autorizzati da ${company(companyName)}: l'ok si dà in `, link: "Impostazioni", after: "." };
+  return { before: `Fornitori non ancora autorizzati da ${company(companyName)}: l'ok si dà in `, link: "Impostazioni", after: "." };
 }
 
 export function subprocessorsLsNotice(companyName: string | null | undefined): string {
