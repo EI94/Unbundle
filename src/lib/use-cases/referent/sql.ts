@@ -513,8 +513,11 @@ const bounded = (n: number | undefined) => Math.max(0, Math.min(999, Math.floor(
 export function notifyReviewersSql(n: {
   workspaceId: string;
   useCaseId: string;
-  /** (Rilascio 6) Anche «domanda»: il referente ha chiesto qualcosa al team (riga senza conteggi). */
-  kind: Exclude<UseCaseNotificationKind, "complete"> | "domanda";
+  /**
+   * (Rilascio 6) Anche «domanda»: il referente ha chiesto qualcosa al team (riga senza conteggi). (Rilascio 9b) Anche
+   * «dalla_call»: una call risponde a una richiesta di «Cosa serve» (riga senza conteggi, `notifyNeedAnswered`).
+   */
+  kind: Exclude<UseCaseNotificationKind, "complete"> | "domanda" | "dalla_call";
   answers?: number;
   unknowns?: number;
   documents?: number;

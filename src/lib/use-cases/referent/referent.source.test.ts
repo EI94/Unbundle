@@ -114,6 +114,8 @@ const TABLE_FILES = new Set([
   // (0041, rilascio 9b) «Contesto nel lavoro»: il CHECK della campanella allargato con `contesto_nuovo` e `dalla_call`,
   // la sonda e la pulizia del ritorno indietro.
   "src/lib/db/context-work-ddl.ts",
+  // (Rilascio 9b) Le due righe nuove della campanella: «Il contesto è cambiato» e «Una risposta per «Cosa serve»».
+  "src/lib/db/queries/context-notices.ts",
 ]);
 
 test("le tabelle nuove si nominano solo nei moduli della funzione", () => {

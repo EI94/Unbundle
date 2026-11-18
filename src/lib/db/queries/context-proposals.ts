@@ -16,6 +16,9 @@ import "server-only";
  * vale come conflitto tra la versione di adesso e la frase che gli appunti dicevano. Quando un fatto cambia (una
  * conferma lo sostituisce, una persona lo riscrive o lo ritira) le proposte aperte che lo toccano alzano la versione:
  * chi le ha davanti come erano prima riceve `versione_superata` (`bumpProposalsOnFactsStatement`).
+ *
+ * (9b) Dopo una conferma riuscita che scrive fatti (nuovi, versioni nuove, conflitti risolti con «Ora») parte «Il
+ * contesto è cambiato» per chi costruisce gli use case toccati (`notifyContextChange`); una riconferma non è un cambio.
  */
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
@@ -51,6 +54,7 @@ import { logSafeError } from "@/lib/log/safe-error";
 import { isEmailVerifiedValue, isLateralSpaceEmail, parseLsDomains } from "@/lib/uc/lateral-space";
 import type { ServiceResult } from "@/lib/use-cases/types";
 import { bumpProposalsOnFactsStatement, ctxErrorCode, dropBriefStatement, factChainCte, gate, invalid, isUniqueViolation, isUuid, knownUseCases, notFound, ok, requireSql, retry, romeToday, rowsOf, stale, toIsoDate, uuidArray } from "./context-shared";
+import { notifyContextChange } from "./context-notices";
 import { contextStoreReady } from "./context-store";
 
 const LOG_SCOPE = "context/proposals";
@@ -842,6 +846,8 @@ export async function confirmProposals(actor: ContextActor, items: readonly Conf
       if (ctxErrorCode(error) === "versione_superata" || isUniqueViolation(error, "context_facts_supersedes_unique")) return stale();
       throw error;
     }
+    // (9b) Dopo il batch, senza far fallire la conferma: «Il contesto è cambiato» per gli use case dei fatti scritti.
+    if (newFacts.size > 0) await notifyContextChange({ workspaceId: ws, actorUserId: actor.userId, factIds: [...newFacts.keys()] });
     const remaining = rowsOf<{ n: number }>(await db.execute(sql`SELECT count(*)::int AS n FROM context_proposals WHERE workspace_id = ${ws}::uuid AND status = 'aperta'`));
     return ok({ confirmed: list.length, ...counts, remaining: Number(remaining[0]?.n ?? 0) });
   } catch (error) {

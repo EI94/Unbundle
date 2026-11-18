@@ -100,6 +100,8 @@ const TABLE_FILES = new Set([
   // (0041, rilascio 9b) «Contesto nel lavoro»: il DDL controlla che «Cosa serve» ci sia e lega un fatto a un'esigenza
   // (solo l'id, chiave esterna). Mai un testo delle esigenze.
   "src/lib/db/context-work-ddl.ts",
+  // (Rilascio 9b) «Una risposta per «Cosa serve»»: gli use case di una richiesta, solo gli id, per la campanella dei revisori.
+  "src/lib/db/queries/context-notices.ts",
 ]);
 
 const READS = /\b(listWorkspaceNeeds|getWorkspaceNeed|needUseCaseRefs)\b|queries\/use-case-needs/;

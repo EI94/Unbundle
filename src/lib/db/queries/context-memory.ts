@@ -10,6 +10,10 @@ import "server-only";
  *
  * Un fatto non si riscrive: un testo nuovo è una versione nuova, e quella di prima resta nella storia («Prima: …»).
  * Cambiare sezione, visibilità o use case aggiorna la riga.
+ *
+ * (9b) Dopo una scrittura riuscita che cambia un fatto legato a uno use case con un dossier («Scrivi un fatto», un testo
+ * nuovo, use case aggiunti, la visibilità allargata, «Non più vero») parte «Il contesto è cambiato» per chi costruisce
+ * (`notifyContextChange`): non fa mai fallire l'azione. Una riconferma non è un cambio.
  */
 import { sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
@@ -38,6 +42,7 @@ import type { ServiceResult } from "@/lib/use-cases/types";
 import { loadLiveDiscovery } from "./context-discovery";
 import { resolveHeads } from "./context-proposals";
 import { bumpProposalsOnFactsStatement, ctxErrorCode, dropBriefStatement, eventStatement, gate, invalid, isUniqueViolation, isUuid, knownUseCases, notFound, ok, requireSql, retry, romeToday, rowsOf, stale, toDate, toIsoDate, uuidArray } from "./context-shared";
+import { notifyContextChange } from "./context-notices";
 import { contextStoreReady } from "./context-store";
 import { getWorkspaceById } from "./workspaces";
 
@@ -477,11 +482,20 @@ export async function writeFact(actor: ContextActor, input: { statement: string;
       linkUseCasesStatement(ws, factId, fact.useCaseIds ?? []),
       eventStatement({ workspaceId: ws, action: "fatto_scritto", channel: actor.channel, actorUserId: actor.userId, factId }),
     ]);
+    await notifyContextChange({ workspaceId: ws, actorUserId: actor.userId, factIds: [factId] });
     return ok({ factId });
   } catch (error) {
     logSafeError(LOG_SCOPE, "fatto_non_scritto", error, { workspaceId: ws });
     return retry();
   }
+}
+
+/** Gli use case legati a un fatto di questo workspace. */
+async function linkedUseCases(workspaceId: string, factId: string): Promise<Set<string>> {
+  const rows = rowsOf<{ use_case_id: string }>(
+    await db.execute(sql`SELECT use_case_id FROM context_fact_links WHERE fact_id = ${factId}::uuid AND workspace_id = ${workspaceId}::uuid AND use_case_id IS NOT NULL`),
+  );
+  return new Set(rows.map((row) => row.use_case_id));
 }
 
 /** Un fatto attivo di questo workspace, con la sua versione e la sua fonte. */
@@ -558,12 +572,15 @@ export async function editFact(
               SELECT workspace_id, ${newId}::uuid, use_case_id FROM context_fact_links WHERE fact_id = ${factId}::uuid AND workspace_id = ${ws}::uuid AND use_case_id IS NOT NULL`),
         eventStatement({ workspaceId: ws, action: "fatto_cambiato", channel: actor.channel, actorUserId: actor.userId, factId: newId, detail: { modo: "a_mano" } }),
       ]);
+      await notifyContextChange({ workspaceId: ws, actorUserId: actor.userId, factIds: [newId] });
       return ok({ factId: newId });
     }
 
     const sectionChanged = next.section !== current.section;
     const visibilityChanged = next.visibility !== current.visibility;
     if (!sectionChanged && !visibilityChanged && next.useCaseIds === null) return ok({ factId });
+    // (9b) Gli use case di adesso, per dire se la modifica ne aggiunge uno (e allora «Il contesto è cambiato»).
+    const linkedBefore = next.useCaseIds !== null ? await linkedUseCases(ws, factId) : null;
     await db.batch([
       db.execute(sql`
         WITH kept AS (
@@ -582,6 +599,10 @@ export async function editFact(
       ...(sectionChanged ? [eventStatement({ workspaceId: ws, action: "sezione_cambiata", channel: actor.channel, actorUserId: actor.userId, factId, detail: { da: current.section, a: next.section } })] : []),
       ...(visibilityChanged ? [eventStatement({ workspaceId: ws, action: "visibilita_cambiata", channel: actor.channel, actorUserId: actor.userId, factId, detail: { da: current.visibility, a: next.visibility } })] : []),
     ]);
+    // Solo sezione, o la visibilità più stretta, o use case tolti: chi costruisce non ha niente di nuovo.
+    const widened = current.visibility === "ls" && next.visibility === "tutti";
+    const useCaseAdded = linkedBefore !== null && (next.useCaseIds ?? []).some((id) => !linkedBefore.has(id));
+    if (widened || useCaseAdded) await notifyContextChange({ workspaceId: ws, actorUserId: actor.userId, factIds: [factId] });
     return ok({ factId });
   } catch (error) {
     // Un'altra modifica è arrivata prima: sulla riga, o sulla storia del fatto (l'indice unico).
@@ -638,6 +659,7 @@ export async function retireFact(actor: ContextActor, factId: string, expectedVe
       // Un fatto «Per tutti» ritirato esce da «In breve».
       ...(current.visibility === "tutti" ? [dropBriefStatement(ws, retired)] : []),
     ]);
+    await notifyContextChange({ workspaceId: ws, actorUserId: actor.userId, factIds: [factId] });
     return ok(true);
   } catch (error) {
     if (ctxErrorCode(error) === "versione_superata") return stale();

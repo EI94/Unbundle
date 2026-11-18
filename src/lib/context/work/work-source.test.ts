@@ -82,3 +82,49 @@ test("la notte: dopo i passi della 9a segna i fatti da verificare e toglie i leg
   const cron = readFileSync(new URL("../../../app/api/cron/contesto/route.ts", import.meta.url), "utf8");
   assert.match(cron, /toCheck: counts\.toCheck,\s+links: counts\.links,/);
 });
+
+// ─── (9b) Gli avvisi in campanella (§2.8) ───────────────────────────
+
+const notices = readFileSync(new URL("../../db/queries/context-notices.ts", import.meta.url), "utf8");
+const proposals = readFileSync(new URL("../../db/queries/context-proposals.ts", import.meta.url), "utf8");
+
+test("«Il contesto è cambiato»: chi costruisce e il responsabile dei dossier aperti, mai chi ha agito; da fuori solo per «Per tutti»", () => {
+  assert.match(notices, /caseRecipientsSql\(FACTORY_BUILDER_ROLES, i\.scope\)/);
+  assert.match(notices, /AND c\.status <> 'chiuso' AND c\.archived_at IS NULL/);
+  assert.match(notices, /AND r\.user_id IS DISTINCT FROM \$\{cast\(i\.actorUserId, "uuid"\)\}/);
+  assert.match(notices, /ON CONFLICT \(recipient_user_id, use_case_id, kind, rome_day\) DO UPDATE SET last_event_at = now\(\), read_at = NULL/);
+  // Chi costruisce da fuori entra solo per gli use case toccati da un fatto «Per tutti».
+  assert.match(notices, /bool_or\(f\.visibility = 'tutti'\) AS shared/);
+  assert.match(notices, /useCaseIds: shared, scope: await loadBuilderScope\(executor, ucLsDomains\(\)\)/);
+  assert.match(notices, /useCaseIds: internal, scope: NO_EXTERNAL_BUILDERS/);
+  // «Una risposta per «Cosa serve»»: ai revisori, come «Risposte arrivate».
+  assert.match(notices, /notifyReviewersSql\(\{ workspaceId: ws, useCaseId, kind: "dalla_call", actorUserId \}\)/, "l'orologio è quello del database");
+  // Non lanciano: senza la 0041 niente, un errore nel log.
+  for (const signature of ["export async function notifyContextChange(", "export async function notifyNeedAnswered("]) {
+    const body = topLevelFunction(notices, signature);
+    assert.match(body, /if \(!\(await contextWorkReady\(\)\)\) return;/, signature);
+    assert.match(body, /\} catch \(error\) \{\s+logSafeError\(LOG_SCOPE, /, signature);
+    assert.ok(!/\bthrow\b/.test(body), signature);
+  }
+});
+
+test("le scritture che cambiano un fatto avvisano dopo il batch riuscito; una riconferma no", () => {
+  const after = (body: string, call: string) => {
+    const batch = body.lastIndexOf("await db.batch(", body.indexOf(call));
+    assert.ok(batch > 0 && body.indexOf(call) > batch, `${call}: dopo il batch`);
+  };
+  const write = topLevelFunction(memory, "export async function writeFact(");
+  after(write, "await notifyContextChange({ workspaceId: ws, actorUserId: actor.userId, factIds: [factId] });");
+  const edit = topLevelFunction(memory, "export async function editFact(");
+  after(edit, "await notifyContextChange({ workspaceId: ws, actorUserId: actor.userId, factIds: [newId] });");
+  assert.match(edit, /const widened = current\.visibility === "ls" && next\.visibility === "tutti";/);
+  assert.match(edit, /if \(widened \|\| useCaseAdded\) await notifyContextChange\(/);
+  const retire = topLevelFunction(memory, "export async function retireFact(");
+  after(retire, "await notifyContextChange({ workspaceId: ws, actorUserId: actor.userId, factIds: [factId] });");
+  const reconfirm = topLevelFunction(memory, "export async function reconfirmFact(");
+  assert.doesNotMatch(reconfirm, /notifyContextChange/, "una riconferma non è un cambio");
+  const confirm = topLevelFunction(proposals, "export async function confirmProposals(");
+  const batch = confirm.indexOf("await db.batch(statements");
+  const notify = confirm.indexOf("if (newFacts.size > 0) await notifyContextChange({ workspaceId: ws, actorUserId: actor.userId, factIds: [...newFacts.keys()] });");
+  assert.ok(batch > 0 && notify > batch, "la conferma avvisa dopo il batch, solo con fatti scritti");
+});
