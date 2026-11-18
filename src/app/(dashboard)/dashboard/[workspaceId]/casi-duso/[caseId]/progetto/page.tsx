@@ -398,7 +398,7 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
               ) : null}
               <p>
                 {project.estimateHours !== null ? `Costruzione: circa ${amount(project.estimateHours, 1)} ore.` : "Costruzione: non stimata."}{" "}
-                {project.monthlyCostEur !== null ? `Costo di uso: circa ${amount(project.monthlyCostEur, 0)} € al mese.` : "Costo di uso: non stimato."}
+                {project.monthlyCostEur !== null ? `Costo al mese: circa ${amount(project.monthlyCostEur, 0)} €.` : "Costo al mese: non stimato."}
               </p>
               {editable ? (
                 <div className="flex flex-wrap gap-2">

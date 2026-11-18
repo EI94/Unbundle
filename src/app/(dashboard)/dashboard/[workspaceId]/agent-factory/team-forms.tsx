@@ -129,7 +129,8 @@ export function AddBuilder({ workspaceId, candidates, choices }: { workspaceId: 
         </div>
       ) : null}
 
-      <Button type="submit" className="min-h-11 sm:min-h-9" disabled={pending || !ready}>
+      {/* (Rilascio 10, §3.6) «Aggiungi» è bordato: il pulsante pieno della pagina è il prossimo passo. */}
+      <Button type="submit" variant="outline" className="min-h-11 sm:min-h-9" disabled={pending || !ready}>
         Aggiungi
       </Button>
     </form>
