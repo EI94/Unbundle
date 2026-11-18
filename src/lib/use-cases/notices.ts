@@ -8,7 +8,7 @@
  * Modulo puro: import relativi `.ts`.
  */
 import type { FollowUpReason } from "../db/use-case-hub-referents-ddl.ts";
-import type { UseCaseNoticeKind0036 as UseCaseNoticeKind } from "../db/use-case-hub-evals-ddl.ts";
+import type { UseCaseNoticeKind0041 as UseCaseNoticeKind } from "../db/context-work-ddl.ts";
 
 export const USE_CASE_NOTICE_TEXT = Object.freeze({
   titles: Object.freeze({
@@ -45,6 +45,10 @@ export const USE_CASE_NOTICE_TEXT = Object.freeze({
     // giù di 5 punti: il titolo vale per tutti e due gli avvisi.
     banco_consiglio: "Il banco di prova consiglia un altro modello",
     evals_in_calo: "Le evals di main sono sotto soglia o in calo",
+    // (Rilascio 9b) «Contesto nel lavoro»: i fatti sul cliente che toccano lo use case sono cambiati (a chi costruisce);
+    // un fatto appena confermato può chiudere una richiesta di «Cosa serve» (ai revisori).
+    contesto_nuovo: "Il contesto è cambiato",
+    dalla_call: "Una risposta per «Cosa serve»",
   } satisfies Record<UseCaseNoticeKind, string>),
   answers: Object.freeze({ one: "1 risposta", many: "{n} risposte" }),
   documents: Object.freeze({ one: "1 documento", many: "{n} documenti" }),
@@ -79,6 +83,8 @@ export const USE_CASE_NOTICE_TEXT = Object.freeze({
   taskProposed: "Accettala come compito o scartala, nei compiti del progetto. Da sola non diventa un compito.",
   benchAdvice: "Per un ruolo dell'agente c'è un modello che conviene di più. Il confronto e la PR di una riga sono in «Evals e banco di prova», nel progetto.",
   evalsDown: "Le evals di main sono sotto soglia, o giù di almeno 5 punti rispetto alle precedenti. Guarda quali gruppi non passano in «Evals e banco di prova», nel progetto.",
+  contextChanged: "Ci sono fatti nuovi sul cliente che toccano questo use case.",
+  answerFromCall: "Una richiesta si può chiudere con un fatto appena confermato.",
   contextSeparator: " · ",
 });
 
@@ -116,6 +122,8 @@ export function noticeTextOf(n: {
   if (n.kind === "compito_proposto") return { title, description: t.taskProposed };
   if (n.kind === "banco_consiglio") return { title, description: t.benchAdvice };
   if (n.kind === "evals_in_calo") return { title, description: t.evalsDown };
+  if (n.kind === "contesto_nuovo") return { title, description: t.contextChanged };
+  if (n.kind === "dalla_call") return { title, description: t.answerFromCall };
   if (n.kind === "senza_risposta") return { title, description: t.followUp[n.followUp ?? "scaduta"] };
   const answers = safe(n.answers);
   const documents = safe(n.documents);

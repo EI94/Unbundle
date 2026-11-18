@@ -7,6 +7,7 @@ import {
   BELL_TEXT,
   bellAriaLabel,
   bellBadgeText,
+  CASE_TEAM_BELL_KINDS,
   dossierEntry,
   emptyBellPayload,
   FACTORY_BELL_KINDS,
@@ -180,4 +181,23 @@ test("dal client: riferimenti, corpi e istanti si controllano", () => {
   assert.equal(parseUpTo("ieri"), null);
   assert.equal(parseUpTo(12), null);
   assert.equal(parseUpTo("2026-10-27"), null, "serve un istante");
+});
+
+test("(9b) «Il contesto è cambiato» porta alla sezione «Contesto» del progetto ed è per il ruolo nel caso; «Una risposta per «Cosa serve»» porta a «Cosa serve» e no", () => {
+  assert.equal(noticeHref(WS, { kind: "contesto_nuovo", useCaseId: UC }), `/dashboard/${WS}/use-cases/${UC}/progetto#contesto`);
+  assert.ok(CASE_TEAM_BELL_KINDS.includes("contesto_nuovo"), "arriva per il ruolo nel caso: chi costruisce, anche da fuori");
+  assert.equal(noticeHref(WS, { kind: "dalla_call", useCaseId: UC }), `/dashboard/${WS}/use-cases/${UC}?capitolo=cosa-serve`);
+  assert.equal(CASE_TEAM_BELL_KINDS.includes("dalla_call"), false, "solo per chi rivede il portafoglio, come «Cosa serve»");
+  const entry = noticeEntry(
+    WS,
+    { id: ID(900), useCaseId: UC, code: "XX-0012", title: "Ordini automatici", kind: "contesto_nuovo", answers: 0, unknowns: 0, documents: 0, followUp: null, lastEventAt: new Date("2026-11-18T10:00:00.000Z"), readAt: null },
+    NOW,
+  );
+  assert.deepEqual([entry.context, entry.title, entry.description, entry.href, entry.unread], [
+    "XX-0012 · Ordini automatici",
+    "Il contesto è cambiato",
+    "Ci sono fatti nuovi sul cliente che toccano questo use case.",
+    `/dashboard/${WS}/use-cases/${UC}/progetto#contesto`,
+    true,
+  ]);
 });

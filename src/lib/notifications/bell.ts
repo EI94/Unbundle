@@ -18,7 +18,7 @@
 import type { UcBellItem } from "../uc/notify/bell.ts";
 import { formatRelativeIt } from "../uc/views/format.ts";
 import type { FollowUpReason } from "../db/use-case-hub-referents-ddl.ts";
-import type { UseCaseNoticeKind0036 as UseCaseNoticeKind } from "../db/use-case-hub-evals-ddl.ts";
+import type { UseCaseNoticeKind0041 as UseCaseNoticeKind } from "../db/context-work-ddl.ts";
 import { TASK_NOTICE_KINDS } from "../db/use-case-hub-tasks-ddl.ts";
 import { GITHUB_NOTICE_KINDS } from "../db/use-case-hub-github-ddl.ts";
 import { PROPOSAL_NOTICE_KINDS } from "../db/use-case-hub-proposals-ddl.ts";
@@ -248,9 +248,17 @@ const FACTORY_KINDS: ReadonlySet<UseCaseNoticeKind> = new Set(FACTORY_BELL_KINDS
 /**
  * (8.0b) I tipi che arrivano per il ruolo nel team del caso, non per il ruolo nel workspace: quelli dell'Agent
  * Factory. Li vede anche chi non rivede il portafoglio. `domanda_agente` no: porta a «Cosa serve», che vede e decide
- * solo chi rivede il portafoglio, come la sezione delle proposte.
+ * solo chi rivede il portafoglio, come la sezione delle proposte. (9b) «Il contesto è cambiato» sì, per chi costruisce;
+ * «Una risposta per «Cosa serve»» no, come `domanda_agente`.
  */
-export const CASE_TEAM_BELL_KINDS: readonly UseCaseNoticeKind[] = Object.freeze([...FACTORY_BELL_KINDS, ...TASK_NOTICE_KINDS, ...GITHUB_NOTICE_KINDS, ...PROPOSAL_NOTICE_KINDS, ...EVAL_NOTICE_KINDS]);
+export const CASE_TEAM_BELL_KINDS: readonly UseCaseNoticeKind[] = Object.freeze([
+  ...FACTORY_BELL_KINDS,
+  ...TASK_NOTICE_KINDS,
+  ...GITHUB_NOTICE_KINDS,
+  ...PROPOSAL_NOTICE_KINDS,
+  ...EVAL_NOTICE_KINDS,
+  "contesto_nuovo",
+]);
 
 /** (8.1a) I tipi dei compiti, e (8.1b) la PR da rivedere: portano ai compiti del progetto dell'agente. */
 const TASK_KINDS: ReadonlySet<UseCaseNoticeKind> = new Set([...TASK_NOTICE_KINDS, ...GITHUB_NOTICE_KINDS, ...PROPOSAL_NOTICE_KINDS]);
@@ -263,7 +271,8 @@ const EVAL_KINDS: ReadonlySet<UseCaseNoticeKind> = new Set(EVAL_NOTICE_KINDS);
  * (sulla scheda pronta il riquadro «Prossimo passo», dove si avvia; vedi `arrivalTarget`);
  * «Autorizza i fornitori» a Impostazioni › Sub-responsabili; «Nessuna risposta» a «Richieste
  * inviate», dove si chiede di nuovo; le altre (risposte, documenti, informazioni complete) a «Cosa
- * serve»; quelle dell'Agent Factory al progetto dell'agente del dossier.
+ * serve»; quelle dell'Agent Factory al progetto dell'agente del dossier. (9b) «Il contesto è cambiato» alla sezione
+ * «Contesto» del progetto dell'agente; «Una risposta per «Cosa serve»» a «Cosa serve», come le risposte.
  */
 export function noticeHref(workspaceId: string, n: Pick<BellUseCaseInput, "kind" | "useCaseId">): string {
   if (n.kind === "pronto") return realizzazioneHref(workspaceId, n.useCaseId);
@@ -279,6 +288,9 @@ export function noticeHref(workspaceId: string, n: Pick<BellUseCaseInput, "kind"
   }
   if (EVAL_KINDS.has(n.kind)) {
     return `/dashboard/${encodeURIComponent(workspaceId)}/use-cases/${encodeURIComponent(n.useCaseId)}/progetto#banco`;
+  }
+  if (n.kind === "contesto_nuovo") {
+    return `/dashboard/${encodeURIComponent(workspaceId)}/use-cases/${encodeURIComponent(n.useCaseId)}/progetto#contesto`;
   }
   return cosaServeHref(workspaceId, n.useCaseId);
 }

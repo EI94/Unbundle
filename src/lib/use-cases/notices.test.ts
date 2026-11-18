@@ -51,3 +51,18 @@ test("contesto: codice e titolo, o il titolo; al massimo 120 caratteri", () => {
   assert.ok(long.endsWith("…"));
   assert.equal(USE_CASE_NOTICE_TEXT.contextSeparator, " · ");
 });
+
+test("(9b) «Il contesto è cambiato» e «Una risposta per «Cosa serve»»: titolo e una frase, mai «caso d'uso», mai conteggi", () => {
+  assert.deepEqual(noticeTextOf(n({ kind: "contesto_nuovo" })), {
+    title: "Il contesto è cambiato",
+    description: "Ci sono fatti nuovi sul cliente che toccano questo use case.",
+  });
+  assert.deepEqual(noticeTextOf(n({ kind: "dalla_call" })), {
+    title: "Una risposta per «Cosa serve»",
+    description: "Una richiesta si può chiudere con un fatto appena confermato.",
+  });
+  assert.deepEqual(noticeTextOf(n({ kind: "contesto_nuovo", answers: 3, documents: 2 })), noticeTextOf(n({ kind: "contesto_nuovo" })), "i conteggi non contano");
+  for (const text of [USE_CASE_NOTICE_TEXT.titles.contesto_nuovo, USE_CASE_NOTICE_TEXT.titles.dalla_call, USE_CASE_NOTICE_TEXT.contextChanged, USE_CASE_NOTICE_TEXT.answerFromCall]) {
+    assert.doesNotMatch(text, /caso d'uso|casi d'uso/i, text);
+  }
+});
