@@ -51,6 +51,7 @@ import { templatePartsReader } from "../../uc/sql/template-parts.ts";
 import type { Json } from "../../uc/types.ts";
 import { CASE_STATUSES, ITEM_STATUSES, LS_CASE_ROLES, REQUEST_PURPOSES, REQUEST_STATUSES, type ItemStatus } from "../../uc/vocab.ts";
 import { getAppUcExecutor, type UcExecutor } from "../uc-executor.ts";
+import { loadWeeklyContext } from "./context-weekly.ts";
 import { isUuid, loadCaseCore, loadCaseReadiness, loadSignatureContext, loadUserContext } from "./uc-cases.ts";
 import { eventInsertFromSql } from "./uc-events.ts";
 import { loadApprovals } from "./uc-public.ts";
@@ -377,6 +378,18 @@ async function weeklyCases(executor: UcExecutor, n: ClaimedNotification, now: Da
 }
 
 /**
+ * Il riepilogo settimanale: i casi del destinatario e (9b, RILASCIO-9b-COSTRUZIONE.md §2.9) i numeri di «Contesto» del
+ * workspace, letti solo se l'e-mail parte (almeno un caso). Che cosa ne vede ogni pubblico lo decide `planWeekly`.
+ * Senza l'archivio di «Contesto», o se non si legge, `context` è null e l'e-mail parte senza il blocco.
+ */
+async function weeklyFacts(executor: UcExecutor, n: ClaimedNotification, now: Date): Promise<NonNullable<DeliveryFacts["weekly"]>> {
+  const cases = await weeklyCases(executor, n, now);
+  if (cases.length === 0) return { cases, context: null };
+  const context = (await loadWeeklyContext(executor, [n.workspaceId], now)).get(n.workspaceId.toLowerCase()) ?? null;
+  return { cases, context };
+}
+
+/**
  * Fatti di una riga email: caso, destinatario, richiesta e quello che serve al
  * modello. Nessun valore delle risposte; le email dei destinatari non escono da
  * qui se non verso il trasporto.
@@ -461,7 +474,7 @@ export async function loadDeliveryFacts(executor: UcExecutor, n: ClaimedNotifica
   }
 
   if (!facts.case) {
-    if (n.templateKey === "riepilogo_settimanale") facts.weekly = { cases: await weeklyCases(executor, n, o.now) };
+    if (n.templateKey === "riepilogo_settimanale") facts.weekly = await weeklyFacts(executor, n, o.now);
     if (n.templateKey === "cli_collegata") facts.cliToken = await cliTokenFacts(executor, n);
     return facts;
   }
@@ -518,7 +531,7 @@ export async function loadDeliveryFacts(executor: UcExecutor, n: ClaimedNotifica
       break;
     }
     case "riepilogo_settimanale":
-      facts.weekly = { cases: await weeklyCases(executor, n, o.now) };
+      facts.weekly = await weeklyFacts(executor, n, o.now);
       break;
   }
   return facts;
