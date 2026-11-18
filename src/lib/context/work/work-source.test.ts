@@ -221,3 +221,20 @@ test("«Chiedi al contesto» e ask_context: una risposta del referente solo con 
   assert.match(ask, /AND coalesce\(a\.edited_at, a\.submitted_at\) >= r\.privacy_accepted_at\)\)/);
   assert.match(ask, /rows\.filter\(\(row\) => row\.source === "revisore" \|\| noticeAllowsContext\(row\.notice\)\)/);
 });
+
+// ─── Una call di Granola cambiata dopo «Togli … da tutto» ────────────
+
+test("un appunto esterno cambiato non riscrive un testo cancellato nel frattempo: il testo, le proposte e la storia in un solo statement, solo con text_purged_at nullo", () => {
+  const sources = readFileSync(new URL("../../db/queries/context-sources.ts", import.meta.url), "utf8");
+  const body = topLevelFunction(sources, "export async function upsertExternalNote(");
+  const update = body.slice(body.indexOf("WITH up AS ("), body.indexOf("SELECT id FROM up`"));
+  assert.ok(update.length > 0, "un solo statement con la CTE");
+  // Il testo si riscrive solo se nessuno l'ha cancellato tra la lettura di `textPurgedAt` e la scrittura.
+  assert.match(update, /UPDATE context_sources SET kind = [\s\S]*?body = \$\{note\.body\}[\s\S]*?WHERE id = \$\{existing\.id\}::uuid AND workspace_id = \$\{ws\}::uuid AND text_purged_at IS NULL\s+RETURNING id, workspace_id/);
+  // Le proposte superate e la riga «fonte_aggiornata» solo se il testo si è riscritto (dalla CTE `up`).
+  assert.match(update, /UPDATE context_proposals p SET status = 'superata'[\s\S]*?FROM up WHERE p\.source_id = up\.id AND p\.workspace_id = up\.workspace_id AND p\.status = 'aperta' AND NOT p\.edited/);
+  assert.match(update, /INSERT INTO context_events \(workspace_id, action, channel, actor_user_id, source_id, detail\)\s+SELECT up\.workspace_id, 'fonte_aggiornata', [\s\S]*? FROM up/);
+  assert.doesNotMatch(body.slice(body.indexOf("WITH up AS (")), /db\.batch\(|eventStatement\(/, "niente fuori dallo statement");
+  // Nessuna riga riscritta: il testo resta cancellato e la risposta dice che non è cambiato.
+  assert.match(body, /if \(updated\.length === 0\) return ok\(\{ sourceId: existing\.id, created: false, readStatus: existing\.readStatus, changed: false \}\);/);
+});

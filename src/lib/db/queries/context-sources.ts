@@ -209,19 +209,32 @@ export async function upsertExternalNote(
         WHERE id = ${existing.id}::uuid AND workspace_id = ${ws}::uuid`);
       return ok({ sourceId: existing.id, created: false, readStatus: existing.readStatus, changed: false });
     }
-    await db.batch([
-      db.execute(sql`
-        UPDATE context_sources SET kind = ${note.kind}, title = ${note.title}, occurred_on = ${note.occurredOn}::date, participants = ${note.participants}, link = ${note.link},
-          body = ${note.body}, body_chars = ${note.body.length}, body_hash = ${note.hash}, external_updated_at = coalesce(${stamp}::timestamptz, external_updated_at),
-          read_status = 'da_leggere', read_reason = NULL, read_attempts = 0, read_started_at = NULL, read_at = NULL,
-          parts_total = ${partsFor(note.body.length)}, parts_read = 0, skipped = '{}'::jsonb, version = version + 1, updated_at = now()
-        WHERE id = ${existing.id}::uuid AND workspace_id = ${ws}::uuid`),
-      // Le proposte che nessuno ha toccato tornano, se il testo nuovo le dice ancora; quelle corrette dalla persona restano.
-      db.execute(sql`
-        UPDATE context_proposals SET status = 'superata', decided_at = now(), updated_at = now(), version = version + 1
-        WHERE source_id = ${existing.id}::uuid AND workspace_id = ${ws}::uuid AND status = 'aperta' AND NOT edited`),
-      eventStatement({ workspaceId: ws, action: "fonte_aggiornata", channel: actor.channel, actorUserId: actor.userId, sourceId: existing.id, detail: { origine: note.origin, caratteri: note.body.length } }),
-    ]);
+    // Il testo nuovo, le proposte superate e la riga di storia in un solo statement, e solo se il testo non è stato
+    // cancellato nel frattempo («Togli … da tutto», la conservazione dei 12 mesi): la lettura di `textPurgedAt` qui sopra è
+    // un'altra query, e un testo cancellato non torna mai.
+    const updated = rowsOf<{ id: string }>(
+      await db.execute(sql`
+        WITH up AS (
+          UPDATE context_sources SET kind = ${note.kind}, title = ${note.title}, occurred_on = ${note.occurredOn}::date, participants = ${note.participants}, link = ${note.link},
+            body = ${note.body}, body_chars = ${note.body.length}, body_hash = ${note.hash}, external_updated_at = coalesce(${stamp}::timestamptz, external_updated_at),
+            read_status = 'da_leggere', read_reason = NULL, read_attempts = 0, read_started_at = NULL, read_at = NULL,
+            parts_total = ${partsFor(note.body.length)}, parts_read = 0, skipped = '{}'::jsonb, version = version + 1, updated_at = now()
+          WHERE id = ${existing.id}::uuid AND workspace_id = ${ws}::uuid AND text_purged_at IS NULL
+          RETURNING id, workspace_id
+        ), superseded AS (
+          -- Le proposte che nessuno ha toccato tornano, se il testo nuovo le dice ancora; quelle corrette dalla persona restano.
+          UPDATE context_proposals p SET status = 'superata', decided_at = now(), updated_at = now(), version = p.version + 1
+          FROM up WHERE p.source_id = up.id AND p.workspace_id = up.workspace_id AND p.status = 'aperta' AND NOT p.edited
+          RETURNING p.id
+        ), logged AS (
+          INSERT INTO context_events (workspace_id, action, channel, actor_user_id, source_id, detail)
+          SELECT up.workspace_id, 'fonte_aggiornata', ${actor.channel}, ${actor.userId}::uuid, up.id, ${JSON.stringify({ origine: note.origin, caratteri: note.body.length })}::jsonb FROM up
+          RETURNING id
+        )
+        SELECT id FROM up`),
+    );
+    // Cancellato nel frattempo: resta cancellato, come se il testo fosse uguale.
+    if (updated.length === 0) return ok({ sourceId: existing.id, created: false, readStatus: existing.readStatus, changed: false });
     return ok({ sourceId: existing.id, created: false, readStatus: "da_leggere", changed: true });
   } catch (error) {
     logSafeError(LOG_SCOPE, "appunto_esterno_non_salvato", error, { workspaceId: ws });
