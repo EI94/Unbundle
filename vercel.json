@@ -32,7 +32,15 @@
       "feat/rilascio-9a-contesto": false,
       "feat/9a-granola": false,
       "feat/9a-mcp": false,
-      "feat/9a-pagina": false
+      "feat/9a-pagina": false,
+      "feat/rilascio-9b-contesto": false,
+      "feat/9b-schermi": false,
+      "feat/9b-agenti": false,
+      "feat/9b-lettura": false,
+      "feat/9b-mcp": false,
+      "feat/9b-ai": false,
+      "feat/9b-riepilogo": false,
+      "feat/9b-persone": false
     }
   }
 }

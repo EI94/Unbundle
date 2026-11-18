@@ -41,6 +41,24 @@ test("vercel.json: nessuna anteprima per i rami della 9a (le anteprime usano il 
   assert.equal(vercel.git.deploymentEnabled["codex/m1-ux-refinements"], false);
 });
 
+test("vercel.json: nessuna anteprima per i rami della 9b, l'integrazione e i sette pacchetti (le anteprime usano il database di produzione)", () => {
+  const vercel = JSON.parse(read("vercel.json")) as { git: { deploymentEnabled: Record<string, boolean> } };
+  for (const branch of [
+    "feat/rilascio-9b-contesto",
+    "feat/9b-schermi",
+    "feat/9b-agenti",
+    "feat/9b-lettura",
+    "feat/9b-mcp",
+    "feat/9b-ai",
+    "feat/9b-riepilogo",
+    "feat/9b-persone",
+  ]) {
+    assert.equal(vercel.git.deploymentEnabled[branch], false, branch);
+  }
+  // Le righe della 9a restano.
+  assert.equal(vercel.git.deploymentEnabled["feat/rilascio-9a-contesto"], false);
+});
+
 test("la lista dei workspace dice quando il ritorno da Granola è scaduto senza un workspace da cui ripartire", () => {
   const page = read("src/app/(dashboard)/dashboard/page.tsx");
   assert.match(page, /searchParams\?: Promise<\{[^}]*granola\?: string[^}]*\}>/);
