@@ -44,7 +44,10 @@ export interface AgentContext {
   commitments: Array<{ statement: string; party: CommitmentParty; role: string | null; dueOn: string | null }>;
   /** Le domande aperte dello use case. */
   questions: Array<{ question: string; askWhom: string | null }>;
-  /** Con `since`: da quando (`AAAA-MM-GG`) e quanti fatti sono nati, cambiati o tolti; i fatti qui sopra sono solo i nuovi e i cambiati. */
+  /**
+   * Con `since`: da quando (`AAAA-MM-GG`) e quanti fatti sono nuovi, cambiati o tolti per chi legge il caso, anche sul posto
+   * (allargati o legati sono nuovi, ristretti o slegati tolti); i fatti qui sopra sono solo i nuovi e i cambiati.
+   */
   since: { from: string; added: number; changed: number; retired: number } | null;
 }
 
@@ -254,8 +257,9 @@ export function formatAgentContext(ctx: AgentContext, i: { code: string }): stri
 
 /**
  * La riga del brief (§2.5), solo quando ci sono novità: «Contesto: 3 novità dopo il pacchetto k2 (unbundle context
- * XX-0012 --contesto).»; senza pacchetto e con fatti «Contesto: 12 fatti sul cliente (…).». `delta`: le novità dopo
- * l'ultimo pacchetto, o quanti fatti ci sono senza pacchetto (`contextDeltaSince`). null senza niente da dire.
+ * XX-0012 --contesto).»; senza pacchetto e con fatti «Contesto: 12 fatti sul cliente (…).». `delta`: le righe di
+ * `CONTESTO.md` che cambierebbero dall'ultimo pacchetto, o quanti fatti ci sono senza pacchetto (`packageContextDelta` di
+ * `factory/package.ts`). null senza niente da dire.
  */
 export function contextBriefLine(i: { code: string; delta: number; packageVersion: number | null }): string | null {
   const n = Number.isFinite(i.delta) ? Math.floor(i.delta) : 0;

@@ -25,7 +25,6 @@ type Prova = {
   note: unknown;
   read: unknown;
   agent: unknown;
-  delta: number;
   names: string[];
   latestPackage: Row | null;
   registry: Map<string, { status: string; hash: string; tool: string; result: Row | null }>;
@@ -56,7 +55,6 @@ const prova: Prova = {
   note: null,
   read: null,
   agent: null,
-  delta: 0,
   names: [],
   latestPackage: null,
   registry: new Map(),
@@ -119,8 +117,7 @@ await installAppModules({
   "@/lib/db/queries/context-learning": `export const addLearning = ${record("addLearning", `${P}.learn`)};`,
   "@/lib/db/queries/context-sources": `export const addContextNote = ${record("addContextNote", `${P}.note`)};`,
   "@/lib/db/queries/context-read": `export const readContextSource = ${record("readContextSource", `${P}.read`)};`,
-  "@/lib/db/queries/context-work": `export const loadAgentContext = ${record("loadAgentContext", `${P}.agent`)};
-    export const contextDeltaSince = ${record("contextDeltaSince", `${P}.delta`)};`,
+  "@/lib/db/queries/context-work": `export const loadAgentContext = ${record("loadAgentContext", `${P}.agent`)};`,
 });
 
 const nota = await import("../../../app/api/cli/nota/route.ts");
@@ -162,7 +159,6 @@ beforeEach(() => {
     note: { ok: true, value: { sourceId: "fonte-1", created: true, readStatus: "da_leggere" } },
     read: { ok: true, value: { status: "letto", proposals: 2, skipped: {} } },
     agent: null,
-    delta: 0,
     names: [],
     latestPackage: null,
     registry: new Map(),
@@ -439,19 +435,33 @@ test("context: lo strato `contesto` con l'archivio che non risponde è 503 da ri
   assert.deepEqual(await errorOf(response), { codice: "non_disponibile", messaggio: "Unbundle non risponde: riprova tra qualche minuto." });
 });
 
-test("context: il brief ha la riga del contesto; le novità contano dall'ultimo pacchetto solo se ha CONTESTO.md", async () => {
-  prova.delta = 3;
-  prova.latestPackage = { version: 2, createdAt: "2026-11-10T09:00:00.000Z", source: "generato", files: { "PACCHETTO.md": "#", "BRIEF.md": "#", VERSIONE: "k2", "CONTESTO.md": "#" } };
-  const brief = (await (await context.GET(get("caso=XX-0012"))).json()) as { testo: string; dati: Row };
-  assert.match(brief.testo, /\nPacchetto: k2 del 10\/11\/2026 \(«unbundle start» lo porta nel repository\)\.\nContesto: 3 novità dopo il pacchetto k2 \(unbundle context XX-0012 --contesto\)\.\n/);
-  assert.equal("contesto" in brief.dati, false);
-  assert.equal(((callsOf("contextDeltaSince")[0][0] as Row).since as Date).toISOString(), "2026-11-10T09:00:00.000Z");
-  // Un pacchetto senza CONTESTO.md: contano tutti i fatti (`since` nullo).
+test("context: il brief ha la riga del contesto: le righe di CONTESTO.md che cambierebbero dall'ultimo pacchetto; senza pacchetto quanti fatti", async () => {
+  const { formatContestoMd } = await import("../../context/work/agent-text.ts");
+  const { redactAgentContext } = await import("../factory/package.ts");
+  prova.names = ["Mario Rossi"];
+  prova.agent = AGENT;
+  const brief = async () => (await (await context.GET(get("caso=XX-0012"))).json()) as { testo: string; dati: Row };
+  // Senza pacchetto: quanti fatti ci sono («In breve» non conta).
+  const none = await brief();
+  assert.match(none.testo, /\nProssimo passo: [^\n]+\nContesto: 1 fatto sul cliente \(unbundle context XX-0012 --contesto\)\.\n/);
+  assert.equal("contesto" in none.dati, false, "il brief non è lo strato");
+  // Il pacchetto ha lo stesso CONTESTO.md (con i nomi coperti): niente riga, anche se è di un altro giorno.
+  const stored = formatContestoMd(redactAgentContext(AGENT as never, prova.names), { code: "XX-0012", version: 2, day: "2026-11-10" });
+  const files = { "PACCHETTO.md": "#", "BRIEF.md": "#", VERSIONE: "k2", "CONTESTO.md": stored };
+  prova.latestPackage = { version: 2, createdAt: "2026-11-10T09:00:00.000Z", source: "generato", files };
+  assert.doesNotMatch((await brief()).testo, /\nContesto:/);
+  // Un fatto in più: una riga che il prossimo «Aggiorna il pacchetto» aggiungerebbe.
+  prova.agent = { ...AGENT, caseFacts: [...AGENT.caseFacts, { statement: "Le quotazioni partono dal portale.", section: "lavoro", source: "call", on: "2026-11-15" }] };
+  assert.match((await brief()).testo, /\nPacchetto: k2 del 10\/11\/2026 \(«unbundle start» lo porta nel repository\)\.\nContesto: 1 novità dopo il pacchetto k2 \(unbundle context XX-0012 --contesto\)\.\n/);
+  // Un pacchetto senza CONTESTO.md: tutte le righe del file di adesso (In breve e due fatti).
   prova.latestPackage = { ...prova.latestPackage, files: { "PACCHETTO.md": "#", "BRIEF.md": "#", VERSIONE: "k2" } };
-  await context.GET(get("caso=XX-0012"));
-  assert.equal((callsOf("contextDeltaSince")[1][0] as Row).since, null);
-  // Gli altri strati non leggono il contesto.
+  assert.match((await brief()).testo, /\nContesto: 3 novità dopo il pacchetto k2 /);
+  // L'archivio che non risponde non è una novità.
+  prova.agent = null;
+  assert.doesNotMatch((await brief()).testo, /\nContesto:/);
+  // Il brief legge il contesto senza `since` e senza chi chiede; gli altri strati non lo leggono.
+  const reads = callsOf("loadAgentContext").length;
+  for (const [args] of callsOf("loadAgentContext") as Array<[Row]>) assert.deepEqual(Object.keys(args).sort(), ["useCaseId", "workspaceId"]);
   await context.GET(get("caso=XX-0012&strato=decisioni"));
-  assert.equal(callsOf("contextDeltaSince").length, 2);
-  assert.equal(callsOf("loadAgentContext").length, 0);
+  assert.equal(callsOf("loadAgentContext").length, reads);
 });

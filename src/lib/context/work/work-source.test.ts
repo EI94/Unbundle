@@ -25,9 +25,8 @@ function queriesOn(text: string, table: string): string[] {
 
 const AGENT_PARTS = [
   "async function agentFacts(",
-  "async function perimeterCounts(",
+  "function perimeterNow(",
   "export async function loadAgentContext(",
-  "export async function contextDeltaSince(",
   "export async function loadPromptContext(",
 ].map((signature) => [signature, topLevelFunction(source, signature)] as const);
 
@@ -42,7 +41,29 @@ test("agli agenti, al pacchetto e ai prompt solo «Per tutti»: ogni lettura di 
       }
     }
   }
-  assert.ok(checked >= 6, `${checked} letture controllate`);
+  assert.ok(checked >= 5, `${checked} letture controllate`);
+});
+
+test("`--dal` conta i fatti che chi legge il caso vede adesso e quelli che vedeva allora, anche cambiati sul posto: solo «Per tutti»", () => {
+  const now = topLevelFunction(source, "function perimeterNow(");
+  assert.match(now, /f\.status = 'attivo' AND f\.visibility = 'tutti' AND \(f\.section IN \('regole', 'parole'\) OR \$\{linkedTo\(workspaceId, useCaseId\)\}\)/);
+  const then = topLevelFunction(source, "function perimeterAt(");
+  // Com'era il fatto allora: la prima modifica sul posto dopo la data dice com'era (`da`), altrimenti com'è adesso.
+  assert.match(then, /AND coalesce\(\$\{firstChange\("visibilita_cambiata"\)\}, f\.visibility\) = 'tutti'/);
+  assert.match(then, /coalesce\(\$\{firstChange\("sezione_cambiata"\)\}, f\.section\) IN \('regole', 'parole'\)/);
+  assert.match(then, /e\.action IN \('use_case_aggiunto', 'use_case_tolto'\)/);
+  assert.match(then, /CASE \$\{linkChange\} WHEN 'use_case_tolto' THEN true WHEN 'use_case_aggiunto' THEN false/);
+  assert.doesNotMatch(then, /seesLateralSpace|isLateralSpace|contextAbilities|\bquote\b/);
+  // I conti passano solo da quei due perimetri: mai un fatto «Solo Lateral Space» contato come nuovo.
+  const counts = topLevelFunction(source, "async function perimeterCounts(");
+  assert.match(counts, /count\(\*\) FILTER \(WHERE \$\{now\} AND CASE WHEN f\.created_at >= \$\{after\} THEN f\.supersedes_id IS NULL ELSE NOT \$\{then\} END\)::int AS added/);
+  assert.match(counts, /count\(\*\) FILTER \(WHERE \$\{now\} AND f\.created_at >= \$\{after\} AND f\.supersedes_id IS NOT NULL\)::int AS changed/);
+  assert.match(counts, /count\(\*\) FILTER \(WHERE f\.status <> 'superato' AND \$\{then\} AND NOT \$\{now\}\)::int AS retired/);
+  // «Modifica» scrive nella storia ogni use case legato o slegato sul posto.
+  const edit = topLevelFunction(memory, "export async function editFact(");
+  assert.match(edit, /\["use_case_aggiunto", id\] as const/);
+  assert.match(edit, /\["use_case_tolto", id\] as const/);
+  assert.match(edit, /detail: \{ use_case: useCase \}/);
 });
 
 test("agli agenti e ai prompt mai una citazione, mai chi ha confermato", () => {

@@ -461,16 +461,9 @@ export function packageFilesShown(files: Readonly<Record<string, unknown>> | nul
 }
 
 /**
- * Da quando contare le novità del contesto per la riga del pacchetto: dalla data dell'ultimo pacchetto, se ha
- * `CONTESTO.md`; altrimenti null, e contano tutti i fatti del suo perimetro (`contextDeltaSince`).
+ * Sotto la versione del pacchetto: «Il contesto è cambiato dopo l'ultimo pacchetto (3 novità).»; null senza novità. Le
+ * novità sono le righe di `CONTESTO.md` che il prossimo «Aggiorna il pacchetto» cambierebbe (`packageContextDelta`).
  */
-export function packageContextSince(latest: { createdAt: string; files: Readonly<Record<string, unknown>> } | null | undefined): Date | null {
-  if (!latest || typeof latest.files?.[CONTEXT_PACKAGE_FILE] !== "string") return null;
-  const at = new Date(latest.createdAt);
-  return Number.isNaN(at.getTime()) ? null : at;
-}
-
-/** Sotto la versione del pacchetto: «Il contesto è cambiato dopo l'ultimo pacchetto (3 novità).»; null senza novità. */
 export function packageDeltaLine(delta: number): string | null {
   const n = Number.isFinite(delta) ? Math.trunc(delta) : 0;
   return n > 0 ? T.useCase.packageDelta(n) : null;

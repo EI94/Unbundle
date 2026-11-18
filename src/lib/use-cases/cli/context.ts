@@ -5,18 +5,19 @@ import "server-only";
  * `pacchetto`, `domande`, (9b) `contesto`). Il testo è pronto da leggere, senza nomi né e-mail; `dati` serve agli script.
  *
  * (9b, docs/contesto/RILASCIO-9b-COSTRUZIONE.md §2.5, §2.6) Lo strato `contesto` e la riga del brief vengono da
- * `loadAgentContext` e `contextDeltaSince`: **solo i fatti «Per tutti», anche a Lateral Space** (D1), perché i coding agent
- * scrivono in repository e PR che leggono anche chi costruisce da fuori e il cliente. I nomi che Unbundle conosce
- * diventano «una persona», come nel pacchetto.
+ * `loadAgentContext`: **solo i fatti «Per tutti», anche a Lateral Space** (D1), perché i coding agent scrivono in
+ * repository e PR che leggono anche chi costruisce da fuori e il cliente. I nomi che Unbundle conosce diventano «una
+ * persona», come nel pacchetto. Le novità della riga del brief si contano sul file: `CONTESTO.md` di adesso contro quello
+ * dell'ultima versione del pacchetto (`packageContextDelta`).
  */
 import type { AgentContext } from "@/lib/context/work/agent-text";
 import { formatAgentContext } from "@/lib/context/work/agent-text";
-import { contextDeltaSince, loadAgentContext } from "@/lib/db/queries/context-work";
+import { loadAgentContext } from "@/lib/db/queries/context-work";
 import { cliCaseExtras, namesToHide, readFactory } from "@/lib/db/queries/use-case-factory";
 import { listTasks, tasksStoreReady } from "@/lib/db/queries/use-case-tasks";
 import { tasksBriefLine } from "@/lib/use-cases/factory/tasks";
 import type { UcExecutor } from "@/lib/db/uc-executor";
-import { packageContextSince, redactAgentContext } from "@/lib/use-cases/factory/package";
+import { packageContextDelta, redactAgentContext } from "@/lib/use-cases/factory/package";
 import { canWriteFactory } from "@/lib/use-cases/factory/permissions";
 import { composeBrief, composeDecisionsLayer, composePackageLayer, composeProjectLayer, composeQuestionsLayer, nextStep, type ContextLayer } from "./brief";
 import { CLI_NOT_A_BUILDER, type CliCase } from "./case";
@@ -63,17 +64,24 @@ export async function loadCliContext(executor: UcExecutor, c: CliCase, input: { 
   if (!read.ok) return { ok: false, code: "non_trovato" };
   const view = read.value;
   const contextLayer = input.layer === "contesto";
-  const [extras, names, tasks, agent, contextDelta] = await Promise.all([
+  // (9b) La riga del contesto nel brief: il contesto di adesso, da confrontare con il CONTESTO.md dell'ultimo pacchetto.
+  const contextLine = input.layer === null;
+  const [extras, names, tasks, agent] = await Promise.all([
     cliCaseExtras(executor, c.target, { canSeeNeeds: c.canSeeNeeds }),
     namesToHide(executor, c.target),
     tasksStoreReady(executor).then((ready) => (ready ? listTasks(executor, c.target) : [])),
-    // (9b) Lo strato `contesto`: solo «Per tutti», per chiunque chieda (D1).
-    contextLayer ? loadAgentContext({ workspaceId: c.target.workspaceId, useCaseId: c.target.useCaseId, since: input.since }) : Promise.resolve(null),
-    // (9b) La riga del brief: le novità dopo l'ultimo pacchetto con CONTESTO.md, o quanti fatti ci sono.
-    input.layer === null ? contextDeltaSince({ workspaceId: c.target.workspaceId, useCaseId: c.target.useCaseId, since: packageContextSince(view.latestPackage) }) : Promise.resolve(0),
+    // (9b) Lo strato `contesto` (con `since`) e la riga del brief (senza): solo «Per tutti», per chiunque chieda (D1).
+    contextLayer
+      ? loadAgentContext({ workspaceId: c.target.workspaceId, useCaseId: c.target.useCaseId, since: input.since })
+      : contextLine
+        ? loadAgentContext({ workspaceId: c.target.workspaceId, useCaseId: c.target.useCaseId })
+        : Promise.resolve(null),
   ]);
   if (contextLayer && agent === null) return { ok: false, code: "non_disponibile" };
-  const shared = agent ? redactAgentContext(agent, names) : null;
+  // Le novità del brief: le righe di CONTESTO.md che il prossimo «Aggiorna il pacchetto» cambierebbe; senza pacchetto,
+  // quanti fatti ci sono. Senza archivio (agent null) nessuna riga.
+  const contextDelta = contextLine ? packageContextDelta({ context: agent, namesToHide: names, code: c.useCase.code, latest: view.latestPackage }) : 0;
+  const shared = contextLayer && agent ? redactAgentContext(agent, names) : null;
   const viewerId = c.actor.kind === "persona" ? c.actor.userId : "";
   const base = {
     code: c.useCase.code,

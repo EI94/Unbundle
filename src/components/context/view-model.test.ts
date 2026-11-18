@@ -39,7 +39,6 @@ import {
   noteDraftErrors,
   notReportedLines,
   noveltyTag,
-  packageContextSince,
   packageDeltaLine,
   packageFilesShown,
   proposalDraft,
@@ -525,13 +524,7 @@ test("il dossier, «Leggi i file»: i tre file di sempre, poi CONTESTO.md quando
   assert.deepEqual(packageFilesShown(null), []);
 });
 
-test("il dossier, la riga del pacchetto: le novità dalla data dell'ultimo pacchetto con CONTESTO.md, altrimenti tutti i fatti; niente senza novità", () => {
-  const files = { "PACCHETTO.md": "p", "BRIEF.md": "b", VERSIONE: "3" };
-  const at = "2026-11-10T09:30:00.000Z";
-  assert.equal(packageContextSince({ createdAt: at, files: { ...files, "CONTESTO.md": "c" } })?.toISOString(), at);
-  assert.equal(packageContextSince({ createdAt: at, files }), null, "senza CONTESTO.md contano tutti i fatti");
-  assert.equal(packageContextSince({ createdAt: "", files: { ...files, "CONTESTO.md": "c" } }), null, "una data che non si legge");
-  assert.equal(packageContextSince(null), null);
+test("il dossier, la riga del pacchetto: le novità (le righe di CONTESTO.md che cambierebbero, `packageContextDelta`); niente senza novità", () => {
   assert.equal(packageDeltaLine(0), null);
   assert.equal(packageDeltaLine(-2), null);
   assert.equal(packageDeltaLine(Number.NaN), null);

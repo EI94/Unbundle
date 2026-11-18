@@ -79,8 +79,9 @@ export interface BriefInput {
   /** (8.1a) La riga dei compiti (`tasksBriefLine`): «T-2 tuo, in corso · …», senza nomi; null senza compiti. */
   tasksLine?: string | null;
   /**
-   * (9b) Le novità del contesto del cliente dopo l'ultimo pacchetto con `CONTESTO.md`, o quanti fatti ci sono se il pacchetto
-   * non ce l'ha o non c'è (`contextDeltaSince`). Con zero, o senza, nessuna riga.
+   * (9b) Le novità del contesto del cliente dopo l'ultimo pacchetto: le righe di `CONTESTO.md` che il prossimo «Aggiorna il
+   * pacchetto» cambierebbe (tutte, se l'ultima versione non ce l'ha); senza pacchetto quanti fatti ci sono
+   * (`packageContextDelta`). Con zero, o senza, nessuna riga.
    */
   contextDelta?: number;
   namesToHide: readonly string[];

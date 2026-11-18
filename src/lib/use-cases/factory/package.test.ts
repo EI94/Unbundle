@@ -5,7 +5,21 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { givenNames, nameTokens, packageContent, packageContextSince, packageFiles, packageHash, PACKAGE_OPTIONAL_FILES, redact, redactAgentContext, type PackageSource } from "./package.ts";
+import {
+  contextFileDelta,
+  contextFileFacts,
+  contextSectionsFor,
+  givenNames,
+  nameTokens,
+  packageContent,
+  packageContextDelta,
+  packageFiles,
+  packageHash,
+  PACKAGE_OPTIONAL_FILES,
+  redact,
+  redactAgentContext,
+  type PackageSource,
+} from "./package.ts";
 import { PACKAGE_FILES } from "../../db/use-case-hub-factory-ddl.ts";
 import type { AgentContext, AgentFact } from "../../context/work/agent-text.ts";
 
@@ -227,10 +241,49 @@ test("(9b) chi genera il pacchetto prende il contesto solo da loadAgentContext, 
   assert.match(work, /f\.status = 'attivo' AND f\.visibility = 'tutti' AND \$\{where\}/);
 });
 
-test("(9b) da quando contano le novità del contesto: dalla nascita dell'ultimo pacchetto con CONTESTO.md; senza, tutti i fatti", () => {
-  const files = { "PACCHETTO.md": "#", "BRIEF.md": "#", VERSIONE: "k2" };
-  assert.equal(packageContextSince(null), null, "nessun pacchetto");
-  assert.equal(packageContextSince({ createdAt: "2026-11-10T09:00:00.000Z", files }), null, "un pacchetto senza CONTESTO.md");
-  assert.equal(packageContextSince({ createdAt: "2026-11-10T09:00:00.000Z", files: { ...files, "CONTESTO.md": "# Contesto" } })?.toISOString(), "2026-11-10T09:00:00.000Z");
-  assert.equal(packageContextSince({ createdAt: "non una data", files: { ...files, "CONTESTO.md": "# Contesto" } }), null);
+test("(9b) le novità del pacchetto si contano sul file: le righe di CONTESTO.md aggiunte più quelle tolte, senza l'intestazione", () => {
+  const stored = packageFiles(source({ context: CONTEXT }), { version: 2, day: "2026-11-10" })["CONTESTO.md"] ?? "";
+  const fresh = (context: AgentContext, names: readonly string[] = ["Mario Rossi", "Giulia Bianchi"]) => contextSectionsFor(context, names, "PX-0049");
+  assert.equal(fresh(CONTEXT), packageContent(source({ context: CONTEXT })).contesto, "la stessa strada dell'impronta");
+  // Lo stesso contesto in un altro giorno e con un'altra versione: zero, come l'impronta (nessuna versione nuova).
+  assert.equal(contextFileDelta(stored, fresh(CONTEXT)), 0);
+  assert.equal(contextFileDelta(packageFiles(source({ context: CONTEXT }), { version: 7, day: "2027-02-01" })["CONTESTO.md"], stored), 0, "l'intestazione con versione e giorno non conta");
+  // Un fatto in più: 1; uno tolto: 1; un testo corretto: una riga tolta e una aggiunta, 2.
+  const one = agentFact("Le quotazioni partono dal portale.");
+  assert.equal(contextFileDelta(stored, fresh({ ...CONTEXT, caseFacts: [...CONTEXT.caseFacts, one] })), 1);
+  assert.equal(contextFileDelta(stored, fresh({ ...CONTEXT, caseFacts: [] })), 1);
+  assert.equal(contextFileDelta(stored, fresh({ ...CONTEXT, caseFacts: [agentFact("Il gestionale esporta i preventivi in CSV e in PDF.")] })), 2);
+  // La stessa frase spostata in un'altra sezione è un'altra riga (tolta di là, aggiunta di qua); una riga di «In breve» conta.
+  assert.equal(contextFileDelta(stored, fresh({ ...CONTEXT, caseFacts: [], words: [agentFact("Il gestionale esporta i preventivi solo in CSV, ogni notte.", { section: "parole" })] })), 2);
+  assert.equal(contextFileDelta(stored, fresh({ ...CONTEXT, brief: [...CONTEXT.brief, "Vola soprattutto in Europa."] })), 1);
+  // Un nome che diventa noto cambia la riga, come cambia il file.
+  const named = { ...CONTEXT, caseFacts: [agentFact("Le eccezioni le approva Anna Neri.")] };
+  const namedStored = packageFiles(source({ context: named }), { version: 3, day: "2026-11-10" })["CONTESTO.md"];
+  assert.equal(contextFileDelta(namedStored, fresh(named)), 0);
+  assert.equal(contextFileDelta(namedStored, fresh(named, ["Mario Rossi", "Giulia Bianchi", "Anna Neri"])), 2);
+  // Senza CONTESTO.md nell'ultima versione contano tutte le righe di adesso; senza fatti adesso, tutte quelle salvate.
+  assert.equal(contextFileDelta(null, fresh(CONTEXT)), 3, "In breve, un fatto, una regola");
+  assert.equal(contextFileDelta(stored, fresh({ ...CONTEXT, caseFacts: [], rules: [] })), 3, "niente fatti: il file se ne va, con «In breve»");
+  assert.equal(contextFileDelta(null, null), 0);
+  // I fatti del file, per il brief senza pacchetto: «In breve» non conta.
+  assert.equal(contextFileFacts(stored), 2);
+  assert.equal(contextFileFacts(null), 0);
+});
+
+test("(9b) packageContextDelta: con un pacchetto le righe che cambierebbero, senza pacchetto quanti fatti; senza archivio zero", () => {
+  const names = ["Mario Rossi", "Giulia Bianchi"];
+  const files = packageFiles(source({ context: CONTEXT }), { version: 2, day: "2026-11-10" });
+  const delta = (context: AgentContext | null, latest: { files: Record<string, unknown> } | null) => packageContextDelta({ context, namesToHide: names, code: "PX-0049", latest });
+  assert.equal(delta(CONTEXT, { files }), 0, "subito dopo il pacchetto");
+  assert.equal(delta({ ...CONTEXT, caseFacts: [...CONTEXT.caseFacts, agentFact("Le quotazioni partono dal portale.")] }, { files }), 1);
+  // Un pacchetto di prima della 9b (o fatto a mano), senza CONTESTO.md: tutte le righe del file di adesso.
+  const { "CONTESTO.md": _dropped, ...withoutContext } = files;
+  assert.equal(typeof _dropped, "string");
+  assert.equal(delta(CONTEXT, { files: withoutContext }), 3);
+  // Senza pacchetto: quanti fatti, per «Contesto: 2 fatti sul cliente».
+  assert.equal(delta(CONTEXT, null), 2);
+  assert.equal(delta(EMPTY_CONTEXT, null), 0);
+  // L'archivio che non risponde non è una novità: zero, anche se il pacchetto ha CONTESTO.md.
+  assert.equal(delta(null, { files }), 0);
+  assert.equal(delta(null, null), 0);
 });

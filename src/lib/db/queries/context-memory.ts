@@ -589,6 +589,13 @@ export async function editFact(
     const sectionChanged = next.section !== current.section;
     const visibilityChanged = next.visibility !== current.visibility;
     if (!sectionChanged && !visibilityChanged && next.useCaseIds === null) return ok({ factId });
+    // (9b) Ogni use case legato o slegato sul posto resta nella storia: `--dal` lo conta tra i fatti nuovi o tolti del caso.
+    const before = new Set(linkedBefore.map((id) => id.toLowerCase()));
+    const after = next.useCaseIds === null ? before : new Set(next.useCaseIds.map((id) => id.toLowerCase()));
+    const linkEvents = [
+      ...[...after].filter((id) => !before.has(id)).map((id) => ["use_case_aggiunto", id] as const),
+      ...[...before].filter((id) => !after.has(id)).map((id) => ["use_case_tolto", id] as const),
+    ].map(([action, useCase]) => eventStatement({ workspaceId: ws, action, channel: actor.channel, actorUserId: actor.userId, factId, detail: { use_case: useCase } }));
     await db.batch([
       db.execute(sql`
         WITH kept AS (
@@ -606,6 +613,7 @@ export async function editFact(
         : []),
       ...(sectionChanged ? [eventStatement({ workspaceId: ws, action: "sezione_cambiata", channel: actor.channel, actorUserId: actor.userId, factId, detail: { da: current.section, a: next.section } })] : []),
       ...(visibilityChanged ? [eventStatement({ workspaceId: ws, action: "visibilita_cambiata", channel: actor.channel, actorUserId: actor.userId, factId, detail: { da: current.visibility, a: next.visibility } })] : []),
+      ...linkEvents,
     ]);
     // (9b) Solo gli use case la cui vista cambia: tutti con la visibilità cambiata (anche più stretta: chi costruisce ha un
     // CONTESTO.md da aggiornare), quelli aggiunti e quelli tolti; la sezione da sola nessuno.

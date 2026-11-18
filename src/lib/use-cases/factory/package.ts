@@ -75,17 +75,6 @@ export type PackageOptionalFile = (typeof PACKAGE_OPTIONAL_FILES)[number];
 /** I file di una versione: i tre di sempre (il CHECK della 0030) e, quando c'è, `CONTESTO.md`. */
 export type PackageFiles = Record<PackageFile, string> & Partial<Record<PackageOptionalFile, string>>;
 
-/**
- * (9b) Da quando contano le novità del contesto per l'ultimo pacchetto (`contextDeltaSince`, §2.3, §2.5): dalla sua nascita
- * se ha `CONTESTO.md`; null (contano tutti i fatti) se non ce l'ha o se non c'è un pacchetto. La stessa regola per la riga
- * del brief e per quella del dossier.
- */
-export function packageContextSince(latest: { createdAt: string; files: Partial<Record<string, string>> } | null): Date | null {
-  if (!latest || typeof latest.files["CONTESTO.md"] !== "string") return null;
-  const at = new Date(latest.createdAt);
-  return Number.isNaN(at.getTime()) ? null : at;
-}
-
 /** Le due (o tre) parti del pacchetto che contano per l'impronta. */
 export interface PackageContent {
   /** PACCHETTO.md senza intestazione. */
@@ -204,6 +193,86 @@ function contestoSections(ctx: AgentContext, code: string): string | null {
   return file.replace(/\n$/, "").split("\n\n").slice(2).join("\n\n");
 }
 
+/**
+ * (9b) Le sezioni di `CONTESTO.md` come le scriverebbe adesso il pacchetto: il contesto di `loadAgentContext` con i nomi
+ * coperti, senza l'intestazione. La stessa strada dell'impronta (`packageContent`). null senza fatti da scrivere.
+ */
+export function contextSectionsFor(ctx: AgentContext | null | undefined, namesToHide: readonly string[], code: string): string | null {
+  return ctx ? contestoSections(redactAgentContext(ctx, namesToHide), code) : null;
+}
+
+/** Il titolo della sezione di «In breve» in `CONTESTO.md`: le sue righe non sono fatti. */
+const BRIEF_HEADING = "## In breve";
+
+/**
+ * Le righe di `CONTESTO.md` che contano per le novità: le righe «- …» delle sezioni, ognuna con il titolo della sua
+ * sezione (la stessa frase spostata in un'altra sezione è un'altra riga). Titolo del file, riga d'apertura con il giorno,
+ * titoli delle sezioni e righe vuote non contano.
+ */
+function contextFileLines(text: string | null | undefined): Array<{ heading: string; key: string }> {
+  if (typeof text !== "string") return [];
+  const out: Array<{ heading: string; key: string }> = [];
+  let heading = "";
+  for (const raw of text.split("\n")) {
+    const line = raw.trimEnd();
+    if (line.startsWith("## ")) heading = line;
+    else if (line.startsWith("- ") && heading !== "") out.push({ heading, key: `${heading}\n${line}` });
+  }
+  return out;
+}
+
+/** Le righe tolte più quelle aggiunte tra due elenchi, come un diff riga per riga (la sottosequenza comune più lunga). */
+function lineChanges(before: readonly string[], after: readonly string[]): number {
+  const n = before.length;
+  const m = after.length;
+  let previous = new Array<number>(m + 1).fill(0);
+  for (let i = 1; i <= n; i++) {
+    const row = new Array<number>(m + 1).fill(0);
+    for (let j = 1; j <= m; j++) row[j] = before[i - 1] === after[j - 1] ? previous[j - 1] + 1 : Math.max(previous[j], row[j - 1]);
+    previous = row;
+  }
+  return n + m - 2 * previous[m];
+}
+
+/**
+ * (9b) Le novità del contesto per il pacchetto (§2.3, §2.5): quante righe di `CONTESTO.md` cambierebbero dal file salvato
+ * nell'ultima versione a quello di adesso, righe aggiunte più righe tolte. Lo stesso confronto dell'impronta: zero se e
+ * solo se «Aggiorna il pacchetto» non cambierebbe `CONTESTO.md`, così la riga del dossier e quella del brief se ne vanno
+ * con la versione nuova. Un fatto nato e tolto dopo il pacchetto non conta; uno allargato, ristretto, legato o slegato sì.
+ * Senza `CONTESTO.md` nell'ultima versione contano tutte le righe di adesso; senza fatti da scrivere adesso, tutte quelle
+ * salvate.
+ */
+export function contextFileDelta(stored: string | null | undefined, fresh: string | null | undefined): number {
+  return lineChanges(
+    contextFileLines(stored).map((line) => line.key),
+    contextFileLines(fresh).map((line) => line.key),
+  );
+}
+
+/** (9b) Quanti fatti ha `CONTESTO.md` (le righe fuori da «In breve»): «Contesto: 12 fatti sul cliente» del brief senza pacchetto. */
+export function contextFileFacts(text: string | null | undefined): number {
+  return contextFileLines(text).filter((line) => line.heading !== BRIEF_HEADING).length;
+}
+
+/**
+ * (9b) Il numero della riga del dossier («Il contesto è cambiato dopo l'ultimo pacchetto (n novità).») e di quella del brief:
+ * con un pacchetto, le righe di `CONTESTO.md` che il prossimo «Aggiorna il pacchetto» cambierebbe (`contextFileDelta`, dal
+ * file salvato nella sua ultima versione); senza pacchetto, quanti fatti ci sono. `context` è quello di `loadAgentContext`
+ * (solo «Per tutti»), con i nomi da coprire del pacchetto: null (l'archivio non risponde) vale zero, mai una novità finta.
+ */
+export function packageContextDelta(i: {
+  context: AgentContext | null | undefined;
+  namesToHide: readonly string[];
+  code: string;
+  latest: { files: Readonly<Record<string, unknown>> } | null | undefined;
+}): number {
+  if (!i.context) return 0;
+  const fresh = contextSectionsFor(i.context, i.namesToHide, i.code);
+  if (!i.latest) return contextFileFacts(fresh);
+  const stored = i.latest.files?.["CONTESTO.md"];
+  return contextFileDelta(typeof stored === "string" ? stored : null, fresh);
+}
+
 function clean(text: string | null | undefined, max: number, tokens: readonly string[], given: ReadonlySet<string> = new Set()): string | null {
   if (!text) return null;
   const flat = text.replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "").trim();
@@ -289,7 +358,7 @@ export function packageContent(source: PackageSource): PackageContent {
   const brief = [`# ${source.code} · ${oneLine(title)}`, "", [summary ? oneLine(summary) : null, limits ? `Limiti: ${oneLine(limits)}` : null].filter(Boolean).join(" ")]
     .join("\n")
     .trimEnd();
-  const contesto = source.context ? contestoSections(redactAgentContext(source.context, source.namesToHide), source.code) : null;
+  const contesto = contextSectionsFor(source.context, source.namesToHide, source.code);
   return { body, brief, contesto };
 }
 

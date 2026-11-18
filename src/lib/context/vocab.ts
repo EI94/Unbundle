@@ -92,8 +92,10 @@ export const CONTEXT_EVENT_ACTIONS = [
   "fatto_confermato", "fatto_cambiato", "fatto_riconfermato", "fatto_ritirato", "fatto_scritto",
   "visibilita_cambiata", "sezione_cambiata",
   "impegno_aggiunto", "impegno_chiuso", "impegno_riaperto", "domanda_aggiunta", "domanda_chiusa",
-  // (9b) La notte segna i fatti da verificare; `unbundle impara`; i legami con «Cosa serve»; «Cerca una persona».
+  // (9b) La notte segna i fatti da verificare; `unbundle impara`; i legami con «Cosa serve»; «Cerca una persona»; uno use
+  // case legato o slegato sul posto da «Modifica» (`detail.use_case`: lo strato `contesto` con `--dal` li conta).
   "fatti_da_verificare", "cosa_imparata", "richiesta_dalla_call", "richiesta_chiusa", "richiesta_scartata", "persona_tolta",
+  "use_case_aggiunto", "use_case_tolto",
 ] as const;
 export type ContextEventAction = (typeof CONTEXT_EVENT_ACTIONS)[number];
 

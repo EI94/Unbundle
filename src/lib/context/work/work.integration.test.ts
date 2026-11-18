@@ -2,6 +2,7 @@ import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import { formatContestoMd } from "./agent-text.ts";
+import { packageContent, packageContextDelta, packageFiles, packageHash, type PackageSource } from "../../use-cases/factory/package.ts";
 
 // «Contesto nel lavoro» sul database del pacchetto (rilascio 9b, RILASCIO-9b-COSTRUZIONE.md §5.1): la 0041 e la sua
 // sonda, i tre CHECK allargati, le letture per la scheda, il dossier, gli agenti e i prompt, la freschezza e la notte, gli
@@ -144,7 +145,10 @@ async function insertFact(f: {
       status === "attivo" ? null : (f.endedAt ?? new Date().toISOString()),
     ],
   );
-  for (const useCase of f.useCases ?? []) await q(`INSERT INTO context_fact_links (workspace_id, fact_id, use_case_id) VALUES ($1::uuid, $2::uuid, $3::uuid)`, [ws, id, useCase]);
+  // I legami nascono con il fatto, come nelle scritture vere (stessa transazione): `--dal` li legge così.
+  for (const useCase of f.useCases ?? []) {
+    await q(`INSERT INTO context_fact_links (workspace_id, fact_id, use_case_id, created_at) VALUES ($1::uuid, $2::uuid, $3::uuid, coalesce($4::timestamptz, now()))`, [ws, id, useCase, f.createdAt ?? null]);
+  }
   return id;
 }
 
@@ -427,7 +431,7 @@ test("CONTESTO.md non cambia con una riconferma: per sezione, poi dal più recen
   assert.deepEqual(await file(), before);
 });
 
-test("loadAgentContext con `since` e contextDeltaSince: nuovi, cambiati e tolti dopo una data, solo «Per tutti» e nel perimetro", opts, async () => {
+test("loadAgentContext con `since`: nuovi, cambiati e tolti dopo una data, solo «Per tutti» e nel perimetro", opts, async () => {
   await clearMemory();
   const before = "2026-10-01T10:00:00Z";
   const cut = new Date("2026-11-01T00:00:00Z");
@@ -443,11 +447,110 @@ test("loadAgentContext con `since` e contextDeltaSince: nuovi, cambiati e tolti 
   assert.ok(ctx);
   assert.deepEqual(ctx.since, { from: "2026-11-01", added: 1, changed: 1, retired: 1 });
   assert.deepEqual(ctx.caseFacts.map((f) => f.statement), ["Il magazzino è a Modena.", "Gli ordini arrivano via e-mail."]);
-  assert.equal(await work.contextDeltaSince({ workspaceId: ids.wsA, useCaseId: ids.ucA, since: cut }), 3);
-  // Senza pacchetto (since nullo): quanti fatti «Per tutti» ci sono nel perimetro.
-  assert.equal(await work.contextDeltaSince({ workspaceId: ids.wsA, useCaseId: ids.ucA, since: null }), 3);
-  assert.equal(await work.contextDeltaSince({ workspaceId: ids.wsA, useCaseId: ids.ucA, since: new Date() }), 0);
-  assert.equal(await work.contextDeltaSince({ workspaceId: ids.wsA, useCaseId: ids.ucX, since: null }), 0, "un altro workspace");
+  assert.deepEqual((await work.loadAgentContext({ workspaceId: ids.wsA, useCaseId: ids.ucA, since: new Date(Date.now() + 60_000) }))?.since?.added, 0);
+  assert.equal(await work.loadAgentContext({ workspaceId: ids.wsA, useCaseId: ids.ucX, since: cut }), null, "un altro workspace");
+});
+
+test("`--dal` conta anche le modifiche sul posto: allargato e legato sono nuovi, ristretto e slegato tolti; nato e tolto dopo la data no", opts, async () => {
+  await clearMemory();
+  const ls = actor("ls");
+  const old = "2026-10-01T10:00:00Z";
+  const reserved = await insertFact({ statement: "Le fatture si esportano solo in CSV.", visibility: "ls", useCases: [ids.ucA], createdAt: old, lastConfirmedAt: old });
+  const elsewhere = await insertFact({ statement: "Gli ordini si contano a mano.", section: "lavoro", useCases: [ids.ucB], createdAt: old, lastConfirmedAt: old });
+  const shared = await insertFact({ statement: "Il listino è riservato ai distributori.", section: "lavoro", useCases: [ids.ucA], createdAt: old, lastConfirmedAt: old });
+  const linked = await insertFact({ statement: "Le consegne partono il lunedì.", section: "lavoro", useCases: [ids.ucA], createdAt: old, lastConfirmedAt: old });
+  const kept = await insertFact({ statement: "Il gestionale è SAP Business One.", useCases: [ids.ucA], createdAt: old, lastConfirmedAt: old });
+  const since = new Date(Date.now() - 1000);
+  okValue(await memory.editFact(ls, reserved, 1, { visibility: "tutti" }));
+  okValue(await memory.editFact(ls, elsewhere, 1, { useCaseIds: [ids.ucB, ids.ucA] }));
+  okValue(await memory.editFact(ls, shared, 1, { visibility: "ls" }));
+  okValue(await memory.editFact(ls, linked, 1, { useCaseIds: [] }));
+  okValue(await memory.editFact(ls, kept, 1, { section: "lavoro" }));
+  // Nato e tolto dopo la data: chi legge il caso non l'ha mai visto.
+  const born = okValue(await memory.writeFact(ls, { statement: "Gli ordini arrivano via fax.", section: "lavoro", visibility: "tutti", useCaseIds: [ids.ucA] }));
+  okValue(await memory.retireFact(ls, born.factId, 1));
+  // Le righe della storia dicono ogni use case legato o slegato, senza testi.
+  const linkEvents = await q(`SELECT action, detail FROM context_events WHERE workspace_id = $1::uuid AND action IN ('use_case_aggiunto', 'use_case_tolto') ORDER BY action`, [ids.wsA]);
+  assert.deepEqual(linkEvents, [
+    { action: "use_case_aggiunto", detail: { use_case: ids.ucA } },
+    { action: "use_case_tolto", detail: { use_case: ids.ucA } },
+  ]);
+  const ctx = await work.loadAgentContext({ workspaceId: ids.wsA, useCaseId: ids.ucA, since });
+  assert.ok(ctx?.since);
+  assert.deepEqual([ctx.since.added, ctx.since.changed, ctx.since.retired], [2, 0, 2]);
+  assert.deepEqual(ctx.caseFacts.map((f) => f.statement), ["Gli ordini si contano a mano.", "Le fatture si esportano solo in CSV."], "solo i fatti entrati, mai quelli ristretti");
+  // Per lo use case B il fatto legato anche ad A c'era già: niente di nuovo.
+  const other = await work.loadAgentContext({ workspaceId: ids.wsA, useCaseId: ids.ucB, since });
+  assert.deepEqual(other?.since && [other.since.added, other.since.changed, other.since.retired], [0, 0, 0]);
+});
+
+/** Il pacchetto di adesso per lo use case A, come lo salverebbe «Aggiorna il pacchetto» (qui conta solo il contesto). */
+async function packageNow(version: number): Promise<{ files: Record<string, string>; hash: string }> {
+  const context = await work.loadAgentContext({ workspaceId: ids.wsA, useCaseId: ids.ucA });
+  assert.ok(context);
+  const card: PackageSource = {
+    code: CODE(1),
+    title: "Ordini automatici",
+    kindLabel: null,
+    origin: null,
+    targetQuarter: null,
+    texts: { oggi: null, comeCambia: null, persone: null, limiti: null, dati: null },
+    benefits: [],
+    costText: null,
+    answers: [],
+    openNeeds: [],
+    namesToHide: [],
+    context,
+  };
+  return { files: packageFiles(card, { version, day: "2026-11-18" }) as Record<string, string>, hash: packageHash(packageContent(card)) };
+}
+/** La riga del dossier e del brief per lo use case A: le righe di CONTESTO.md che cambierebbero dal pacchetto `latest`. */
+async function deltaFrom(latest: { files: Record<string, string> } | null): Promise<number> {
+  return packageContextDelta({ context: await work.loadAgentContext({ workspaceId: ids.wsA, useCaseId: ids.ucA }), namesToHide: [], code: CODE(1), latest });
+}
+
+test("le novità del pacchetto sono le righe di CONTESTO.md che cambierebbero: un fatto nato e tolto dopo il pacchetto non resta una novità", opts, async () => {
+  await clearMemory();
+  const old = "2026-10-01T10:00:00Z";
+  await insertFact({ statement: "Il gestionale è SAP Business One.", useCases: [ids.ucA], createdAt: old, lastConfirmedAt: old });
+  const k1 = await packageNow(1);
+  assert.ok(k1.files["CONTESTO.md"]);
+  assert.equal(await deltaFrom(k1), 0, "subito dopo il pacchetto");
+  const written = okValue(await memory.writeFact(actor("ls"), { statement: "Gli ordini arrivano via fax.", section: "lavoro", visibility: "tutti", useCaseIds: [ids.ucA] }));
+  assert.equal(await deltaFrom(k1), 1, "un fatto nuovo");
+  okValue(await memory.retireFact(actor("ls"), written.factId, 1));
+  assert.equal(await deltaFrom(k1), 0, "nato e tolto: CONTESTO.md è quello del pacchetto, la riga se ne va");
+  assert.equal((await packageNow(2)).hash, k1.hash, "e «Aggiorna il pacchetto» non farebbe una versione nuova");
+  // Senza pacchetto: quanti fatti; un pacchetto senza CONTESTO.md (di prima della 9b): tutte le righe di adesso.
+  assert.equal(await deltaFrom(null), 1);
+  const { "CONTESTO.md": _file, ...threeFiles } = k1.files;
+  assert.ok(_file);
+  assert.equal(await deltaFrom({ files: threeFiles }), 1);
+});
+
+test("le novità del pacchetto: un fatto allargato, legato, ristretto o slegato sul posto cambia CONTESTO.md e si conta", opts, async () => {
+  await clearMemory();
+  const ls = actor("ls");
+  const old = "2026-10-01T10:00:00Z";
+  await insertFact({ statement: "Il gestionale è SAP Business One.", useCases: [ids.ucA], createdAt: old, lastConfirmedAt: old });
+  const reserved = await insertFact({ statement: "Le fatture si esportano solo in CSV.", visibility: "ls", useCases: [ids.ucA], createdAt: old, lastConfirmedAt: old });
+  const elsewhere = await insertFact({ statement: "Gli ordini si contano a mano.", section: "lavoro", useCases: [ids.ucB], createdAt: old, lastConfirmedAt: old });
+  const shared = await insertFact({ statement: "Il listino è riservato ai distributori.", section: "lavoro", useCases: [ids.ucA], createdAt: old, lastConfirmedAt: old });
+  const k1 = await packageNow(1);
+  assert.equal(await deltaFrom(k1), 0);
+  okValue(await memory.editFact(ls, reserved, 1, { visibility: "tutti" }));
+  okValue(await memory.editFact(ls, elsewhere, 1, { useCaseIds: [ids.ucB, ids.ucA] }));
+  assert.equal(await deltaFrom(k1), 2, "allargato e legato: due righe nuove");
+  // Ristretto a «Solo Lateral Space»: il CONTESTO.md di chi costruisce lo ha ancora, ed è una novità da portare via.
+  okValue(await memory.editFact(ls, shared, 1, { visibility: "ls" }));
+  assert.equal(await deltaFrom(k1), 3);
+  assert.doesNotMatch(String((await packageNow(2)).files["CONTESTO.md"]), /listino/, "il pacchetto dopo non lo ha più");
+  const k2 = await packageNow(2);
+  assert.notEqual(k2.hash, k1.hash);
+  assert.equal(await deltaFrom(k2), 0);
+  // Slegato dallo use case: una riga tolta.
+  okValue(await memory.editFact(ls, elsewhere, 2, { useCaseIds: [ids.ucB] }));
+  assert.equal(await deltaFrom(k2), 1);
 });
 
 // ─── Le letture: i prompt ────────────────────────────────────────────

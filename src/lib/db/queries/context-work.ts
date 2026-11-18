@@ -5,9 +5,10 @@ import "server-only";
  *
  * - `loadUseCaseContext`: la piega «Contesto» della scheda dello use case e la sezione del dossier, **per chi guarda**:
  *   Lateral Space tutto, il cliente solo «Per tutti». Mai una citazione.
- * - `loadAgentContext`, `contextDeltaSince`: `CONTESTO.md`, lo strato `contesto` della CLI e dell'MCP del caso, la riga
- *   del brief e quella del dossier. **Sempre e solo «Per tutti»** (D1), qualunque sia chi chiede: i coding agent scrivono
- *   in repository e PR che leggono anche chi costruisce da fuori e il cliente.
+ * - `loadAgentContext`: `CONTESTO.md`, lo strato `contesto` della CLI e dell'MCP del caso, la riga del brief e quella del
+ *   dossier (le loro novità sono le righe di `CONTESTO.md` che cambierebbero: `packageContextDelta` di
+ *   `factory/package.ts`). **Sempre e solo «Per tutti»** (D1), qualunque sia chi chiede: i coding agent scrivono in
+ *   repository e PR che leggono anche chi costruisce da fuori e il cliente.
  * - `loadPromptContext`: il blocco «Contesto» per la chat della Discovery e per i generatori (§2.12), solo «Per tutti» e
  *   solo con l'ok ai sub-responsabili.
  *
@@ -160,17 +161,48 @@ function agentFactOf(row: AgentFactRow, today: string): AgentFact {
 }
 
 /**
+ * (9b) Il fatto `f` era nel perimetro di `CONTESTO.md` dello use case all'istante `since`: c'era già ed era attivo,
+ * «Per tutti», e legato allo use case o nelle sezioni «Regole e vincoli» e «Parole del cliente». Le modifiche sul posto
+ * («Modifica» senza un testo nuovo) si leggono nella storia: la prima `visibilita_cambiata` e la prima
+ * `sezione_cambiata` dopo `since` dicono com'era il fatto (`da`), la prima `use_case_aggiunto` o `use_case_tolto` per
+ * questo use case se era legato; senza storia, com'è adesso (un legame nato dopo `since` non c'era).
+ */
+function perimeterAt(workspaceId: string, useCaseId: string, since: string): SQL {
+  const at = sql`${since}::timestamptz`;
+  const firstChange = (action: "visibilita_cambiata" | "sezione_cambiata") => sql`(
+    SELECT e.detail->>'da' FROM context_events e
+    WHERE e.workspace_id = ${workspaceId}::uuid AND e.fact_id = f.id AND e.action = ${action} AND e.at >= ${at}
+    ORDER BY e.at, e.id LIMIT 1)`;
+  const linkChange = sql`(
+    SELECT e.action FROM context_events e
+    WHERE e.workspace_id = ${workspaceId}::uuid AND e.fact_id = f.id AND e.action IN ('use_case_aggiunto', 'use_case_tolto')
+      AND e.detail->>'use_case' = ${useCaseId.toLowerCase()} AND e.at >= ${at}
+    ORDER BY e.at, e.id LIMIT 1)`;
+  const linkedThen = sql`CASE ${linkChange} WHEN 'use_case_tolto' THEN true WHEN 'use_case_aggiunto' THEN false
+    ELSE EXISTS (SELECT 1 FROM context_fact_links l WHERE l.fact_id = f.id AND l.workspace_id = ${workspaceId}::uuid AND l.use_case_id = ${useCaseId}::uuid AND l.created_at < ${at}) END`;
+  return sql`(f.created_at < ${at} AND (f.status = 'attivo' OR f.ended_at >= ${at})
+    AND coalesce(${firstChange("visibilita_cambiata")}, f.visibility) = 'tutti'
+    AND (coalesce(${firstChange("sezione_cambiata")}, f.section) IN ('regole', 'parole') OR ${linkedThen}))`;
+}
+
+/** Il fatto `f` è adesso nel perimetro di `CONTESTO.md` dello use case: attivo, «Per tutti», legato o tra regole e parole. */
+function perimeterNow(workspaceId: string, useCaseId: string): SQL {
+  return sql`(f.status = 'attivo' AND f.visibility = 'tutti' AND (f.section IN ('regole', 'parole') OR ${linkedTo(workspaceId, useCaseId)}))`;
+}
+
+/**
  * I fatti attivi «Per tutti» per gli agenti, con un filtro: per sezione, poi dal più recente per nascita (`created_at`,
  * che una riconferma non cambia), poi per id. Così `CONTESTO.md` resta uguale finché i fatti non cambiano: una riconferma
- * non fa una versione nuova del pacchetto.
+ * non fa una versione nuova del pacchetto. Con `since`, solo quelli nuovi o cambiati per chi legge il caso: nati da quella
+ * data, o entrati nel perimetro sul posto (allargati a «Per tutti», legati allo use case, spostati tra le regole).
  */
-async function agentFacts(workspaceId: string, where: SQL, since: string | null, limit: number, today: string): Promise<AgentFact[]> {
+async function agentFacts(workspaceId: string, useCaseId: string, where: SQL, since: string | null, limit: number, today: string): Promise<AgentFact[]> {
   const rows = rowsOf<AgentFactRow>(
     await db.execute(sql`
       SELECT f.section, f.statement, f.origin, f.last_confirmed_at, s.kind AS source_kind, s.origin AS source_origin, s.external_id AS source_external_id, s.occurred_on AS source_day
       FROM context_facts f LEFT JOIN context_sources s ON s.id = f.source_id
       WHERE f.workspace_id = ${workspaceId}::uuid AND f.status = 'attivo' AND f.visibility = 'tutti' AND ${where}
-        ${since ? sql`AND f.created_at >= ${since}::timestamptz` : sql``}
+        ${since ? sql`AND (f.created_at >= ${since}::timestamptz OR NOT ${perimeterAt(workspaceId, useCaseId, since)})` : sql``}
       ORDER BY array_position(${SECTION_ORDER}, f.section::text), f.created_at DESC, f.id
       LIMIT ${limit}`),
   );
@@ -178,24 +210,26 @@ async function agentFacts(workspaceId: string, where: SQL, since: string | null,
 }
 
 /**
- * Il perimetro di `CONTESTO.md` (§2.4): i fatti «Per tutti» legati allo use case, e quelli delle sezioni «Regole e vincoli»
- * e «Parole del cliente» del workspace. Con `since`, i fatti nati (nuovi), le versioni nuove (cambiati) e i fatti ritirati
- * (tolti) da quella data; senza, quanti fatti attivi ci sono.
+ * Il perimetro di `CONTESTO.md` (§2.4) dopo `since`, per `--dal`: i fatti «Per tutti» legati allo use case, e quelli delle
+ * sezioni «Regole e vincoli» e «Parole del cliente» del workspace. Nuovi: nati da quella data, o entrati nel perimetro
+ * sul posto (allargati, legati, spostati tra le regole). Cambiati: le versioni nuove. Tolti: quelli che c'erano e non ci
+ * sono più (ritirati, ristretti a «Solo Lateral Space», slegati, spostati fuori). Un fatto nato e tolto dopo `since` non
+ * conta: chi legge il caso non l'ha mai visto.
  */
-async function perimeterCounts(workspaceId: string, useCaseId: string, since: string | null): Promise<{ active: number; added: number; changed: number; retired: number }> {
-  const after = since ? sql`${since}::timestamptz` : sql`'-infinity'::timestamptz`;
-  const [row] = rowsOf<{ active: number; added: number; changed: number; retired: number }>(
+async function perimeterCounts(workspaceId: string, useCaseId: string, since: string): Promise<{ added: number; changed: number; retired: number }> {
+  const after = sql`${since}::timestamptz`;
+  const now = perimeterNow(workspaceId, useCaseId);
+  const then = perimeterAt(workspaceId, useCaseId, since);
+  const [row] = rowsOf<{ added: number; changed: number; retired: number }>(
     await db.execute(sql`
       SELECT
-        count(*) FILTER (WHERE f.status = 'attivo')::int AS active,
-        count(*) FILTER (WHERE f.status = 'attivo' AND f.created_at >= ${after} AND f.supersedes_id IS NULL)::int AS added,
-        count(*) FILTER (WHERE f.status = 'attivo' AND f.created_at >= ${after} AND f.supersedes_id IS NOT NULL)::int AS changed,
-        count(*) FILTER (WHERE f.status = 'ritirato' AND f.ended_at >= ${after})::int AS retired
+        count(*) FILTER (WHERE ${now} AND CASE WHEN f.created_at >= ${after} THEN f.supersedes_id IS NULL ELSE NOT ${then} END)::int AS added,
+        count(*) FILTER (WHERE ${now} AND f.created_at >= ${after} AND f.supersedes_id IS NOT NULL)::int AS changed,
+        count(*) FILTER (WHERE f.status <> 'superato' AND ${then} AND NOT ${now})::int AS retired
       FROM context_facts f
-      WHERE f.workspace_id = ${workspaceId}::uuid AND f.visibility = 'tutti'
-        AND (f.section IN ('regole', 'parole') OR ${linkedTo(workspaceId, useCaseId)})`),
+      WHERE f.workspace_id = ${workspaceId}::uuid AND (f.status = 'attivo' OR f.ended_at >= ${after})`),
   );
-  return { active: Number(row?.active ?? 0), added: Number(row?.added ?? 0), changed: Number(row?.changed ?? 0), retired: Number(row?.retired ?? 0) };
+  return { added: Number(row?.added ?? 0), changed: Number(row?.changed ?? 0), retired: Number(row?.retired ?? 0) };
 }
 
 /** Un istante valido come ISO, o null. */
@@ -204,8 +238,9 @@ const isoOf = (value: Date | null | undefined): string | null => (value instance
 /**
  * Il contesto di un caso per gli agenti e per il pacchetto: **sempre e solo «Per tutti»** (D1), qualunque sia chi chiede;
  * mai citazioni, mai nomi di chi ha confermato. Chi chiama ha già controllato chi legge il caso (la rotta della CLI,
- * l'MCP del caso, chi genera il pacchetto). Con `since`: nei fatti solo quelli nati o cambiati da quella data, e i conti
- * di nuovi, cambiati e tolti. null senza archivio o con uno use case di un altro workspace.
+ * l'MCP del caso, chi genera il pacchetto). Con `since`: nei fatti solo quelli nuovi o cambiati da quella data (anche
+ * sul posto: allargati, legati), e i conti di nuovi, cambiati e tolti (anche ristretti e slegati). null senza archivio o
+ * con uno use case di un altro workspace.
  */
 export async function loadAgentContext(i: { workspaceId: string; useCaseId: string; since?: Date | null; now?: Date }): Promise<AgentContext | null> {
   if (!isUuid(i.workspaceId) || !isUuid(i.useCaseId) || !(await contextStoreReady())) return null;
@@ -217,9 +252,9 @@ export async function loadAgentContext(i: { workspaceId: string; useCaseId: stri
     const linked = linkedTo(ws, i.useCaseId);
     const [brief, caseFacts, rules, words, commitmentRows, questionRows, counts] = await Promise.all([
       briefLines(ws),
-      agentFacts(ws, linked, since, CONTEXT_LIMITS.caseFactsMax, today),
-      agentFacts(ws, sql`f.section = 'regole' AND NOT ${linked}`, since, CONTEXT_LIMITS.agentRulesMax, today),
-      agentFacts(ws, sql`f.section = 'parole' AND NOT ${linked}`, since, CONTEXT_LIMITS.agentWordsMax, today),
+      agentFacts(ws, i.useCaseId, linked, since, CONTEXT_LIMITS.caseFactsMax, today),
+      agentFacts(ws, i.useCaseId, sql`f.section = 'regole' AND NOT ${linked}`, since, CONTEXT_LIMITS.agentRulesMax, today),
+      agentFacts(ws, i.useCaseId, sql`f.section = 'parole' AND NOT ${linked}`, since, CONTEXT_LIMITS.agentWordsMax, today),
       db.execute(sql`
         SELECT statement, party, role_label, due_on FROM context_commitments
         WHERE workspace_id = ${ws}::uuid AND status = 'aperto' AND visibility = 'tutti' AND ${i.useCaseId}::uuid = ANY (use_case_ids)
@@ -247,24 +282,6 @@ export async function loadAgentContext(i: { workspaceId: string; useCaseId: stri
   } catch (error) {
     logSafeError(LOG_SCOPE, "contesto_agenti_non_letto", error, { workspaceId: ws, useCaseId: i.useCaseId });
     return null;
-  }
-}
-
-/**
- * Le novità del perimetro di `CONTESTO.md` dopo `since` (la data dell'ultimo pacchetto): fatti «Per tutti» nati, cambiati
- * o tolti. Con `since` nullo (nessun pacchetto, o un pacchetto senza `CONTESTO.md`), quanti fatti ci sono. Zero senza
- * archivio, con uno use case di un altro workspace o con un errore (nel log).
- */
-export async function contextDeltaSince(i: { workspaceId: string; useCaseId: string; since: Date | null }): Promise<number> {
-  if (!isUuid(i.workspaceId) || !isUuid(i.useCaseId) || !(await contextStoreReady())) return 0;
-  try {
-    if (!(await workspaceHasUseCase(i.workspaceId, i.useCaseId))) return 0;
-    const since = isoOf(i.since);
-    const counts = await perimeterCounts(i.workspaceId, i.useCaseId, since);
-    return since ? counts.added + counts.changed + counts.retired : counts.active;
-  } catch (error) {
-    logSafeError(LOG_SCOPE, "novita_non_contate", error, { workspaceId: i.workspaceId, useCaseId: i.useCaseId });
-    return 0;
   }
 }
 

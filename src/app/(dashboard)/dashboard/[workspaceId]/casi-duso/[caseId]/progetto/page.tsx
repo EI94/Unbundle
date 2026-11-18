@@ -4,19 +4,21 @@ import { EVAL_TEXT, evalSectionDescription } from "@/components/agent-factory/ev
 import { readEvalOverview } from "@/components/agent-factory/eval-load";
 import { EvalSection } from "@/components/agent-factory/eval-section";
 import { UseCaseContextView } from "@/components/context/use-case-context";
-import { contextFoldShown, packageContextSince, packageDeltaLine, packageFilesShown } from "@/components/context/view-model";
+import { contextFoldShown, packageDeltaLine, packageFilesShown } from "@/components/context/view-model";
 import { PageContainer } from "@/components/dashboard/page-container";
 import { SettingsSection } from "@/components/dashboard/settings-section";
 import { canWrite, openShellPage } from "@/components/uc/shell/case-data";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { contextActorFor, type ContextActor } from "@/lib/context/server/actor";
 import { CONTEXT_TEXT } from "@/lib/context/text";
-import { contextDeltaSince, loadUseCaseContext, type UseCaseContext } from "@/lib/db/queries/context-work";
-import { factoryStoreReady, readFactory, topicLabel, findUseCaseOfCase, type DecisionView, type FactoryView, type ProjectView } from "@/lib/db/queries/use-case-factory";
+import { loadAgentContext, loadUseCaseContext, type UseCaseContext } from "@/lib/db/queries/context-work";
+import { factoryStoreReady, readFactory, topicLabel, findUseCaseOfCase, namesToHide, type DecisionView, type FactoryTarget, type FactoryView, type ProjectView } from "@/lib/db/queries/use-case-factory";
 import { FACTORY_LIMITS, SETUP_TOPICS } from "@/lib/db/use-case-hub-factory-ddl";
 import { listTasks, tasksStoreReady, type TaskView } from "@/lib/db/queries/use-case-tasks";
 import { listOpenProposals, proposalsStoreReady, type ProposalView } from "@/lib/db/queries/use-case-task-proposals";
+import type { UcExecutor } from "@/lib/db/uc-executor";
 import { loadFactoryAccess } from "@/lib/use-cases/factory/access";
+import { packageContextDelta } from "@/lib/use-cases/factory/package";
 import { aiBoardOkRule, AI_BOARD_NOTE_MIN, canApproveProject, canRequestProjectChange, canWriteFactory } from "@/lib/use-cases/factory/permissions";
 import { romeToday } from "@/lib/use-cases/quarter";
 import { AiBoardOk, DecisionForm, DetailsEditor, PackageButton, ProjectPrimaryAction, ProposalButtons, ReopenProject, TopicEditor } from "./project-forms";
@@ -165,12 +167,14 @@ async function readContextSection(actor: ContextActor, useCaseId: string): Promi
 }
 
 /**
- * (9b) Le novità del contesto dopo l'ultimo pacchetto (i fatti «Per tutti» del perimetro di `CONTESTO.md` nati, cambiati
- * o tolti dopo la sua data); se il pacchetto non ha `CONTESTO.md`, quanti fatti ci sono. Zero se la lettura non riesce.
+ * (9b) Le novità del contesto dopo l'ultimo pacchetto: le righe di `CONTESTO.md` che il prossimo «Aggiorna il pacchetto»
+ * cambierebbe, dal file salvato nella versione a quello di adesso (con gli stessi nomi coperti); se la versione non ha
+ * `CONTESTO.md`, tutte le righe di adesso. Zero se la lettura non riesce.
  */
-async function readContextDelta(workspaceId: string, useCaseId: string, latest: NonNullable<FactoryView["latestPackage"]>): Promise<number> {
+async function readContextDelta(executor: UcExecutor, target: FactoryTarget, code: string, latest: NonNullable<FactoryView["latestPackage"]>): Promise<number> {
   try {
-    return await contextDeltaSince({ workspaceId, useCaseId, since: packageContextSince(latest) });
+    const [context, names] = await Promise.all([loadAgentContext(target), namesToHide(executor, target)]);
+    return packageContextDelta({ context, namesToHide: names, code, latest });
   } catch (error) {
     console.error("[agent-project] context_delta_failed", { error: { name: error instanceof Error ? error.name : "Error" } });
     return 0;
@@ -275,7 +279,7 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
     tasksReady ? listTasks(executor, target) : Promise.resolve<TaskView[]>([]),
     readEvalOverview(executor, target),
     readContextSection(contextActorFor(session.user, access, workspaceId), useCase.useCaseId),
-    builder && view.latestPackage ? readContextDelta(workspaceId, useCase.useCaseId, view.latestPackage) : Promise.resolve(0),
+    builder && view.latestPackage ? readContextDelta(executor, target, useCase.code ?? "", view.latestPackage) : Promise.resolve(0),
   ]);
   const deltaLine = packageDeltaLine(contextDelta);
   // Le proposte sono testi del team: le vede solo chi costruisce il caso (anche da fuori Lateral Space), e le decide chi

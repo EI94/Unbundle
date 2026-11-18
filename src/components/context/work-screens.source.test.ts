@@ -148,9 +148,13 @@ test("il dossier: «Contesto» dopo «Decisioni» e prima di «Pacchetto», con 
   // Per chi guarda: la persona di «Contesto» dalla sessione (Lateral Space per l'e-mail verificata), dentro un try.
   assert.match(source, /readContextSection\(contextActorFor\(session\.user, access, workspaceId\), useCase\.useCaseId\)/);
   assert.match(functionBody(source, "readContextSection"), /try \{\s*return await loadUseCaseContext\(actor, useCaseId\);\s*\} catch \(error\) \{[\s\S]*return null;\s*\}/);
-  // La riga del pacchetto: solo a chi vede «Pacchetto» e con una versione; le novità da `contextDeltaSince`, mai a mano.
-  assert.match(source, /builder && view\.latestPackage \? readContextDelta\(workspaceId, useCase\.useCaseId, view\.latestPackage\) : Promise\.resolve\(0\)/);
-  assert.match(functionBody(source, "readContextDelta"), /contextDeltaSince\(\{ workspaceId, useCaseId, since: packageContextSince\(latest\) \}\)/);
+  // La riga del pacchetto: solo a chi vede «Pacchetto» e con una versione; le novità sono le righe di CONTESTO.md che
+  // cambierebbero, dal file salvato nella versione a quello di adesso con gli stessi nomi coperti (`packageContextDelta`).
+  assert.match(source, /builder && view\.latestPackage \? readContextDelta\(executor, target, useCase\.code \?\? "", view\.latestPackage\) : Promise\.resolve\(0\)/);
+  const delta = functionBody(source, "readContextDelta");
+  assert.match(delta, /const \[context, names\] = await Promise\.all\(\[loadAgentContext\(target\), namesToHide\(executor, target\)\]\);/);
+  assert.match(delta, /return packageContextDelta\(\{ context, namesToHide: names, code, latest \}\);/);
+  assert.match(delta, /\} catch \(error\) \{[\s\S]*return 0;/);
   assert.match(source, /const deltaLine = packageDeltaLine\(contextDelta\);/);
   const pack = source.slice(section, source.indexOf("</SettingsSection>", at('<SettingsSection id="pacchetto"')));
   assert.match(pack, /\{deltaLine \? <p data-slot="package-context-delta">\{deltaLine\}<\/p> : null\}/);
