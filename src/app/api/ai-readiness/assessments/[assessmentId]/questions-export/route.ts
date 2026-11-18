@@ -92,7 +92,7 @@ export async function GET(
     displayName,
     anonymous: bundle.assessment.anonymousMode !== false,
     trackTitle:
-      track === "internal" ? "Assessment referenti" : "Survey organizzazione",
+      track === "internal" ? "Schede per i referenti" : "Questionario per l'organizzazione",
     trackSubtitle:
       track === "internal"
         ? "Le schede compilate dai referenti interni: infrastruttura e sistemi, dati e conoscenza, persone e processi."

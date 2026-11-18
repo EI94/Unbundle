@@ -60,7 +60,7 @@ export function QuestionEditor({
       {hasResponses && (
         <p className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
           ⚠️ Ci sono già risposte inviate: modificare le domande ora ricalcola
-          gli score solo sulle domande attuali. L&apos;ideale è chiudere la
+          i punteggi solo sulle domande attuali. L&apos;ideale è chiudere la
           personalizzazione prima di condividere i link.
         </p>
       )}
@@ -93,7 +93,7 @@ export function QuestionEditor({
               >
                 {section.audience === "internal"
                   ? "Scheda referenti (IT/HR/business)"
-                  : "Survey per tutta l'organizzazione"}
+                  : "Questionario per tutta l'organizzazione"}
               </Badge>
             </div>
             <h2 className="mt-1 text-lg font-semibold">{section.title}</h2>
@@ -262,7 +262,7 @@ export function QuestionEditor({
                   <div className="space-y-1.5">
                     <Label>Tipo di risposta</Label>
                     <select name="answerType" className="h-9 w-full rounded-lg border border-input bg-background px-2 text-sm">
-                      <option value="scale">Scala 0–5 (entra nello score)</option>
+                      <option value="scale">Scala 0–5 (entra nel punteggio)</option>
                       <option value="text">Testo libero (qualitativa)</option>
                     </select>
                   </div>

@@ -590,7 +590,7 @@ export function RespondentSurveyForm({
           </div>
           <h2 className="mt-2 text-xl font-semibold">Chi sei?</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Questa survey è nominativa: bastano nome e cognome, senza creare
+            Questo questionario è nominativo: bastano nome e cognome, senza creare
             nessun account.
           </p>
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
@@ -858,7 +858,7 @@ export function RespondentSurveyForm({
         </p>
       )}
       <Button type="submit" size="lg" disabled={pending}>
-        {pending ? "Invio risposte..." : "Invia assessment"}
+        {pending ? "Invio risposte..." : "Invia le risposte"}
       </Button>
     </form>
   );

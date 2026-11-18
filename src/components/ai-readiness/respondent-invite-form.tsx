@@ -158,7 +158,7 @@ export function RespondentInviteForm({
       </p>
       <div className="grid gap-3 md:grid-cols-2">
         <div className="space-y-1.5">
-          <Label htmlFor="email">Email respondent</Label>
+          <Label htmlFor="email">Email di chi risponde</Label>
           <Input
             id="email"
             name="email"

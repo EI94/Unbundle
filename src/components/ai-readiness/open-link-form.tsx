@@ -71,7 +71,7 @@ export function OpenLinkForm({
       </div>
       <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
         Un unico link da girare in chat, email o intranet: chi lo apre inserisce
-        la propria area e riceve la survey generale con salvataggio automatico.
+        la propria area e riceve il questionario generale, che si salva da solo.
       </p>
       <div className="mt-3 rounded-2xl border border-emerald-500/20 bg-background/80 p-3 text-xs leading-5">
         <span className="font-medium">Alimenta: {track.feeds}.</span>{" "}
@@ -87,7 +87,7 @@ export function OpenLinkForm({
         onSubmit={(event) => {
           if (selectedSectionIds.length === 0) {
             event.preventDefault();
-            setLocalError("Scegli almeno un'area da mostrare nella survey.");
+            setLocalError("Scegli almeno un'area da mostrare nel questionario.");
             return;
           }
           if (hasExisting) confirmation.ask(event, true);
@@ -99,8 +99,8 @@ export function OpenLinkForm({
             <div>
               <div className="text-sm font-medium">Domande da mostrare</div>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                Qui sono disponibili solo le aree della survey organizzazione.
-                Puoi partire da tutte e alleggerire il questionario.
+                Qui ci sono solo le aree del questionario per l&apos;organizzazione.
+                Puoi partire da tutte e alleggerirlo.
               </p>
             </div>
             <Button
@@ -181,7 +181,7 @@ export function OpenLinkForm({
       {url && (
         <div className="mt-4 rounded-2xl border bg-background/80 p-3">
           <div className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-            Link survey organizzazione
+            Link del questionario per l&apos;organizzazione
           </div>
           <div className="flex gap-2">
             <Input readOnly value={url} className="text-xs" />

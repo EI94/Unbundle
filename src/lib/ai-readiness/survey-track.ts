@@ -20,7 +20,7 @@ export const AI_READINESS_SURVEY_TRACKS: Record<
   SurveyTrackMeta
 > = {
   everyone: {
-    label: "Survey organizzazione",
+    label: "Questionario per l'organizzazione",
     shortLabel: "Organizzazione",
     audience: "Per tutte le persone",
     description:

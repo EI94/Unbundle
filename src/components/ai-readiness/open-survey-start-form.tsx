@@ -73,7 +73,7 @@ export function OpenSurveyStartForm({
           className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-sm"
           data-testid="open-resume-banner"
         >
-          <p className="font-medium">Hai già iniziato questa survey da questo dispositivo.</p>
+          <p className="font-medium">Hai già iniziato questo questionario da questo dispositivo.</p>
           <Button
             className="mt-3"
             type="button"
@@ -102,7 +102,7 @@ export function OpenSurveyStartForm({
           }
         }}
       >
-        <h2 className="text-lg font-semibold">Inizia la survey</h2>
+        <h2 className="text-lg font-semibold">Inizia il questionario</h2>
         {named && (
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
@@ -165,7 +165,7 @@ export function OpenSurveyStartForm({
           <p className="text-sm text-destructive" role="alert">{state.message}</p>
         )}
         <Button type="submit" size="lg" disabled={pending} data-testid="open-start-btn">
-          {pending ? "Preparo la tua survey..." : "Inizia →"}
+          {pending ? "Preparo il tuo questionario…" : "Inizia →"}
         </Button>
       </form>
     </div>

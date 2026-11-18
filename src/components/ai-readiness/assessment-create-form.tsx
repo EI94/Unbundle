@@ -155,19 +155,19 @@ export function AssessmentCreateForm({ workspaceId, workspaceName }: { workspace
             {state.fieldErrors?.name && <p className="text-xs text-destructive">{state.fieldErrors.name}</p>}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="displayName">Nome visibile ai respondent</Label>
+            <Label htmlFor="displayName">Nome visibile a chi risponde</Label>
             <Input id="displayName" name="displayName" defaultValue={workspaceName} />
           </div>
           <div className="space-y-2 lg:col-span-2">
             <Label htmlFor="description">Descrizione interna</Label>
-            <Textarea id="description" name="description" placeholder="Es. Assessment iniziale per misurare readiness e prioritizzare la roadmap AI." />
+            <Textarea id="description" name="description" placeholder="Es. Prima rilevazione per misurare la readiness e dare le priorità alla roadmap AI." />
           </div>
           <fieldset className="space-y-2 lg:col-span-2">
             <legend className="text-sm font-medium">Aree da misurare</legend>
             <p className="text-xs text-muted-foreground">
-              Scegli i pilastri per questo assessment: puoi creare assessment
-              mirati (es. solo Adoption per tutta l&apos;organizzazione, solo
-              Technology per l&apos;IT) e inviarli a persone diverse.
+              Scegli le aree di questa rilevazione: puoi creare rilevazioni
+              mirate (es. solo Adoption per tutta l&apos;organizzazione, solo
+              Technology per l&apos;IT) e inviarle a persone diverse.
             </p>
             <div className="grid gap-2 sm:grid-cols-2">
               {AI_READINESS_SYSTEM_TEMPLATE.pillars.map((pillar) => (
@@ -196,7 +196,7 @@ export function AssessmentCreateForm({ workspaceId, workspaceName }: { workspace
             )}
           </fieldset>
           <fieldset className="space-y-2 lg:col-span-2">
-            <legend className="text-sm font-medium">Modalità survey</legend>
+            <legend className="text-sm font-medium">Modalità del questionario</legend>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="flex cursor-pointer items-start gap-3 rounded-2xl border p-4 text-sm has-checked:border-emerald-500 has-checked:bg-emerald-500/5">
                 <input
@@ -227,7 +227,7 @@ export function AssessmentCreateForm({ workspaceId, workspaceName }: { workspace
             </div>
           </fieldset>
           <div className="space-y-2 lg:col-span-2">
-            <Label htmlFor="introCopy">Intro survey</Label>
+            <Label htmlFor="introCopy">Introduzione al questionario</Label>
             <Textarea
               id="introCopy"
               name="introCopy"
