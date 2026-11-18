@@ -95,3 +95,23 @@ test("«Non lo so»: il testo non conta", () => {
   s = autosaveReducer(s, { type: "edit", value: v("", true), now: 0 });
   assert.deepEqual(dueDraft(s, AUTOSAVE_DELAY_MS), v("", true));
 });
+
+test("(rilascio 9b) una bozza che aspetta l'informativa si tiene: il testo resta, nessuna riga, nessun tentativo da solo; poi parte", () => {
+  let s = autosaveReducer(initialAutosave(v("")), { type: "edit", value: v("Circa 40 al mese"), now: 0 });
+  s = autosaveReducer(s, { type: "start", value: s.value });
+  // Durante la chiamata il referente scrive ancora: aspetta anche quello.
+  s = autosaveReducer(s, { type: "edit", value: v("Circa 40 al mese, d'estate meno"), now: 500 });
+  s = autosaveReducer(s, { type: "held", value: v("Circa 40 al mese") });
+  assert.equal(s.status, "held");
+  assert.deepEqual(s.value, v("Circa 40 al mese, d'estate meno"), "il testo nel campo non cambia");
+  assert.deepEqual(s.saved, v(""), "niente è salvato");
+  assert.equal(label(s), null, "mai «Non salvato: riprova» per un'attesa");
+  assert.deepEqual(s.fieldError, [], "non è un errore del campo");
+  assert.equal(waitFor(s, 10_000), null, "nessun tentativo da solo");
+  assert.equal(dueDraft(s, 99_999), null);
+  assert.equal(needsFlush(s), true, "dopo «Iniziamo» la pagina lo fa partire");
+  s = autosaveReducer(s, { type: "start", value: s.value });
+  s = autosaveReducer(s, { type: "success", value: v("Circa 40 al mese, d'estate meno"), savedAt: "2026-11-18T20:00:00.000Z", warnings: [] });
+  assert.equal(label(s), "Salvato");
+  assert.equal(needsFlush(s), false);
+});

@@ -8,6 +8,7 @@ import { REFERENT_CHECK_LIMITS } from "@/lib/db/use-case-hub-referent-check-ddl"
 import { cn } from "@/lib/utils";
 import { REFERENT_LIMITS } from "@/lib/use-cases/referent/contract";
 import { REFERENT_ERROR_MESSAGES, REFERENT_PUBLIC_TEXT } from "@/lib/use-cases/referent/labels";
+import { waitsForPrivacy } from "@/lib/use-cases/referent/state";
 import { saveDraft } from "./api";
 import { Attachments } from "./attachments";
 import { autosaveLabelKey, autosaveReducer, dueDraft, initialAutosave, needsFlush, waitFor, type AutosaveState, type DraftValue } from "./autosave";
@@ -23,6 +24,10 @@ import { TemplateDownloads } from "./template-downloads";
  *   commento, i nomi dei file;
  * - «gestita»: ci ha già pensato il team dalla scheda. Solo il titolo e «Non serve più: ci ha già
  *   pensato il team.»: niente campi, niente file, mai cosa ha scritto il team né chi.
+ *
+ * (Rilascio 9b) Una bozza, un file o un «Togli» che aspettano l'informativa (mai letta, o cambiata con un rilascio
+ * mentre la pagina era aperta) non ricostruiscono la domanda: il testo resta nel campo (`held`), la pagina mostra di
+ * nuovo l'informativa (`onPrivacyWait`) e, dopo «Iniziamo», fa partire quello che aspetta.
  */
 
 const T = REFERENT_PUBLIC_TEXT;
@@ -132,6 +137,8 @@ export function OpenQuestionCard({
   tooSoon,
   extra,
   downloads = true,
+  paused = false,
+  onPrivacyWait,
 }: {
   token: string;
   section: QuestionSection;
@@ -158,6 +165,10 @@ export function OpenQuestionCard({
   tooSoon?: (e: React.MouseEvent<HTMLButtonElement>) => boolean;
   /** (Rilascio 6) Sotto la domanda: il filo con il team e «Ho un dubbio». */
   extra?: React.ReactNode;
+  /** (Rilascio 9b) L'informativa è sullo schermo al posto delle domande: nessun salvataggio parte da solo. */
+  paused?: boolean;
+  /** (Rilascio 9b) Una scrittura aspetta l'informativa: la pagina la mostra di nuovo, senza ricostruire la domanda. */
+  onPrivacyWait?: () => void;
 }) {
   const id = useId();
   const needId = section.needId;
@@ -176,6 +187,12 @@ export function OpenQuestionCard({
   const stateRef = useRef<AutosaveState>(state);
   const filesRef = useRef(files);
   const inFlight = useRef<Promise<boolean> | null>(null);
+  const pausedRef = useRef(paused);
+  const privacyWaitRef = useRef(onPrivacyWait);
+  useEffect(() => {
+    pausedRef.current = paused;
+    privacyWaitRef.current = onPrivacyWait;
+  }, [paused, onPrivacyWait]);
 
   useEffect(() => {
     stateRef.current = state;
@@ -216,8 +233,14 @@ export function OpenQuestionCard({
           dispatch({ type: "blocked", value: v, issues: r.issues.length > 0 ? r.issues : [{ code: r.code, message: r.message }] });
           return false;
         }
+        // (Rilascio 9b) Aspetta l'informativa: il testo resta qui, mai una domanda ricostruita dalla bozza del server.
+        if (waitsForPrivacy(r.code)) {
+          dispatch({ type: "held", value: v });
+          privacyWaitRef.current?.();
+          return false;
+        }
         dispatch({ type: "failure", value: v });
-        if (r.code === "link_non_valido" || r.code === "domanda_non_disponibile" || r.code === "gia_inviata" || r.code === "informativa_da_leggere") onStale(r.code);
+        if (r.code === "link_non_valido" || r.code === "domanda_non_disponibile" || r.code === "gia_inviata") onStale(r.code);
         return false;
       })();
       inFlight.current = run;
@@ -229,18 +252,20 @@ export function OpenQuestionCard({
     [token, needId, onStale],
   );
 
-  // Il salvataggio automatico: parte quando scade l'attesa, sempre da un timer (mai durante il render).
+  // Il salvataggio automatico: parte quando scade l'attesa, sempre da un timer (mai durante il render). (Rilascio 9b)
+  // Mai mentre l'informativa è sullo schermo, e mai con una chiamata ancora in corso (il flush dopo «Iniziamo»).
   useEffect(() => {
+    if (paused) return;
     const now = Date.now();
     const wait = waitFor(state, now);
     if (wait === null) return;
     const timer = setTimeout(() => {
-      const due = dueDraft(stateRef.current, Date.now());
+      const due = inFlight.current ? null : dueDraft(stateRef.current, Date.now());
       if (due) void save(due);
       else setTick((n) => n + 1);
     }, wait);
     return () => clearTimeout(timer);
-  }, [state, tick, save]);
+  }, [state, tick, save, paused]);
 
   // Prima dell'invio la pagina chiede a ogni domanda di salvare quello che manca.
   useEffect(() => {
@@ -259,6 +284,7 @@ export function OpenQuestionCard({
   useEffect(() => {
     const onHide = () => {
       const current = stateRef.current;
+      if (pausedRef.current) return;
       if (!current.inFlight && current.status !== "blocked" && needsFlush(current)) void save(current.value, true);
     };
     window.addEventListener("pagehide", onHide);
@@ -339,9 +365,10 @@ export function OpenQuestionCard({
           disabled={blocked}
           tooSoon={tooSoon}
           label={attachLabel(section.question)}
+          onPrivacyWait={onPrivacyWait}
         />
       ) : files.some((f) => f.status !== "rifiutato") ? (
-        <Attachments token={token} needId={needId} files={files} onFiles={setFiles} clientMode={clientMode} allowUpload={false} disabled={blocked} />
+        <Attachments token={token} needId={needId} files={files} onFiles={setFiles} clientMode={clientMode} allowUpload={false} disabled={blocked} onPrivacyWait={onPrivacyWait} />
       ) : null}
 
       <div role="group" aria-label={T.aria.closures} className="flex flex-wrap gap-2">

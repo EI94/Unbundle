@@ -8,6 +8,7 @@ import { SECONDARY_CLASS, TEXT_BUTTON_CLASS } from "@/components/uc/referente/sc
 import { cn } from "@/lib/utils";
 import { REFERENT_LIMITS, type ReferentThreadMessageView } from "@/lib/use-cases/referent/contract";
 import { REFERENT_PUBLIC_TEXT, fillText } from "@/lib/use-cases/referent/labels";
+import { waitsForPrivacy } from "@/lib/use-cases/referent/state";
 import { REFERENT_THREAD_RULES } from "@/lib/use-cases/referent/thread";
 import { postAddition, postDoubt, postEdit } from "./api";
 import { threadLineOf, threadTargetOf, type NewsEntry, type ThreadAction } from "./public-view-render";
@@ -20,6 +21,9 @@ import { threadLineOf, threadTargetOf, type NewsEntry, type ThreadAction } from 
  * - in «Da completare» il chiarimento del team con il campo della risposta (si invia con «Invia» in fondo)
  *   e la risposta del team a un suo dubbio, da leggere.
  * Mai chi del team ha scritto («il team»), mai un portale: la pagina vive in `.survey-light`.
+ *
+ * (Rilascio 9b) Un invio che aspetta l'informativa non perde il testo: il campo resta montato, nascosto, mentre
+ * l'informativa è sullo schermo (al suo posto o in cima alla pagina), e torna con quello che c'era scritto.
  */
 
 const TT = REFERENT_PUBLIC_TEXT.thread;
@@ -52,11 +56,14 @@ function ThreadComposer({
   onSent,
   onStale,
   onDirty,
+  onPrivacyWait,
 }: {
   token: string;
   mode: ThreadAction;
   targetKey: string;
   initial: string;
+  /** (Rilascio 9b) L'invio aspetta l'informativa: la pagina la mostra, il testo resta. */
+  onPrivacyWait?: () => void;
   /** Il campo ha un testo che il team non ha ancora ricevuto (l'«Invia» della pagina si ferma lì). */
   onDirty?: (dirty: boolean) => void;
   /** Il pulsante d'invio è pieno solo quando la schermata non ne ha già uno. */
@@ -99,8 +106,13 @@ function ThreadComposer({
       window.location.reload();
       return;
     }
+    // (Rilascio 9b) Aspetta l'informativa: niente messaggio qui sotto, il testo resta e la pagina mostra l'informativa.
+    if (waitsForPrivacy(r.code) && onPrivacyWait) {
+      onPrivacyWait();
+      return;
+    }
     setError(r.issues[0]?.message ?? r.message);
-    if (r.code === "risposta_chiusa" || r.code === "domanda_non_disponibile" || r.code === "informativa_da_leggere") onStale(r.code);
+    if (r.code === "risposta_chiusa" || r.code === "domanda_non_disponibile" || waitsForPrivacy(r.code)) onStale(r.code);
   }
 
   return (
@@ -171,6 +183,7 @@ export function ThreadItem({
   onSent,
   onStale,
   onDirty,
+  onPrivacyWait,
 }: {
   token: string;
   targetKey: string;
@@ -190,6 +203,8 @@ export function ThreadItem({
   onSent: () => void;
   onStale: (code: string) => void;
   onDirty?: (dirty: boolean) => void;
+  /** (Rilascio 9b) L'invio del campo aperto qui aspetta l'informativa. */
+  onPrivacyWait?: () => void;
 }) {
   if (messages.length === 0 && actions.length === 0 && !sent) return null;
   const aria = (mode: ThreadAction) => fillText(mode === "edit" ? TT.aria.editOn : mode === "add" ? TT.aria.addOn : TT.aria.doubtOn, { testo: subject });
@@ -204,19 +219,24 @@ export function ThreadItem({
         </p>
       ) : null}
       {composer ? (
-        privacyGate ?? (
-          <ThreadComposer
-            token={token}
-            mode={composer}
-            targetKey={targetKey}
-            initial={composer === "edit" ? editText : ""}
-            primary={primary}
-            onCancel={() => onComposer(null)}
-            onSent={onSent}
-            onStale={onStale}
-            onDirty={onDirty}
-          />
-        )
+        <>
+          {privacyGate}
+          {/* (Rilascio 9b) Il campo resta montato sotto l'informativa, nascosto: il testo scritto non si perde. */}
+          <div hidden={privacyGate ? true : undefined}>
+            <ThreadComposer
+              token={token}
+              mode={composer}
+              targetKey={targetKey}
+              initial={composer === "edit" ? editText : ""}
+              primary={primary}
+              onCancel={() => onComposer(null)}
+              onSent={onSent}
+              onStale={onStale}
+              onDirty={onDirty}
+              onPrivacyWait={onPrivacyWait}
+            />
+          </div>
+        </>
       ) : actions.length > 0 ? (
         <div className="-ml-2 flex flex-wrap gap-x-1">
           {actions.map((mode) => (

@@ -538,6 +538,11 @@ export const REFERENT_PUBLIC_TEXT = Object.freeze({
   // (Parte 3) Una domanda a cui ha già pensato il team dalla scheda: in sola lettura, mai cosa ha scritto.
   handledByTeam: "Non serve più: ci ha già pensato il team.",
   privacyFooterLabel: "Come usiamo le tue risposte",
+  /**
+   * (Rilascio 9b) L'informativa torna a metà visita (una versione nuova, uscita mentre la pagina era aperta): sopra il
+   * riquadro, una riga calma. Quello che il referente ha scritto resta sulla pagina e riparte dopo «{bottone}».
+   */
+  privacyAgain: "Abbiamo aggiornato l'informativa. Quello che hai scritto resta qui: leggila e premi «{bottone}» per continuare.",
   /** La scheda d'errore imprevisto (`error.tsx`). */
   error: Object.freeze({
     title: "Qualcosa non ha funzionato",

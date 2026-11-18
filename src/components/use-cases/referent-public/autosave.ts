@@ -8,6 +8,9 @@
  * - Esiti: «Salvato», «Salvataggio…», «Non salvato: riprova» (rete o server; si riprova alla
  *   prossima modifica o uscendo dal campo). Un blocco del testo (nomi, email, telefoni, dati
  *   sanitari) non salva niente e si mostra come errore del campo; gli avvisi stanno sotto il campo.
+ * - (Rilascio 9b) Una bozza che aspetta l'informativa («held»: mai letta, o cambiata con un rilascio
+ *   mentre la pagina era aperta) non è un rifiuto: il testo resta nel campo, nessuna riga sotto,
+ *   nessun nuovo tentativo da solo. Dopo «Iniziamo» la pagina la fa partire (`needsFlush`).
  *
  * Modulo puro: niente React, niente rete.
  */
@@ -31,7 +34,7 @@ export interface DraftIssue {
   field?: string;
 }
 
-export type AutosaveStatus = "idle" | "pending" | "saving" | "saved" | "error" | "blocked";
+export type AutosaveStatus = "idle" | "pending" | "saving" | "saved" | "error" | "blocked" | "held";
 
 export interface AutosaveState {
   /** Quello che c'è adesso nel campo. */
@@ -58,7 +61,9 @@ export type AutosaveEvent =
   | { type: "start"; value: DraftValue }
   | { type: "success"; value: DraftValue; savedAt: string; warnings: readonly DraftIssue[] }
   | { type: "blocked"; value: DraftValue; issues: readonly DraftIssue[] }
-  | { type: "failure"; value: DraftValue };
+  | { type: "failure"; value: DraftValue }
+  /** (Rilascio 9b) Il server non l'ha salvata perché aspetta l'informativa: si tiene, senza riprovare. */
+  | { type: "held"; value: DraftValue };
 
 /**
  * Lo stesso valore, per il server: testo e commento senza spazi ai bordi; con «Non ce l'ho» o «È già
@@ -113,6 +118,10 @@ export function autosaveReducer(state: AutosaveState, event: AutosaveEvent): Aut
     case "failure": {
       const again = !sameDraft(state.value, event.value);
       return { ...state, inFlight: null, status: again ? "pending" : "error", dueAt: again ? (state.dueAt ?? 0) : null };
+    }
+    case "held": {
+      // Quello che c'è nel campo aspetta, anche se è cambiato durante la chiamata: parte tutto dopo «Iniziamo».
+      return { ...state, inFlight: null, status: "held", dueAt: null };
     }
   }
 }

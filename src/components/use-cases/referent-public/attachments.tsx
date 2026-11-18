@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { REFERENT_LIMITS } from "@/lib/use-cases/referent/contract";
 import { REFERENT_ERROR_MESSAGES, REFERENT_PUBLIC_TEXT, fillText } from "@/lib/use-cases/referent/labels";
+import { waitsForPrivacy } from "@/lib/use-cases/referent/state";
 import { uploadReferentFile } from "@/lib/use-cases/referent/upload-transport";
 import { removeFile } from "./api";
 import { fileFromUpload, fileRow, type FileRow, type PublicFile } from "./public-view-render";
@@ -19,6 +20,9 @@ import { fileFromUpload, fileRow, type FileRow, type PublicFile } from "./public
  *
  * Stesso caricamento dei file del dossier (tipi, limiti, controlli, Blob privato), dalle API di questo
  * link. Aree di tocco di almeno 44 px, nomi lunghi che vanno a capo.
+ *
+ * (Rilascio 9b) Un caricamento o un «Togli» che aspettano l'informativa non dicono «Prima premi «Iniziamo».» sotto un
+ * pulsante che non c'è: la pagina mostra di nuovo l'informativa (`onPrivacyWait`), poi si riprova.
  */
 
 const T = REFERENT_PUBLIC_TEXT;
@@ -40,6 +44,7 @@ export function Attachments({
   disabled,
   tooSoon,
   label,
+  onPrivacyWait,
 }: {
   token: string;
   needId: string;
@@ -53,6 +58,8 @@ export function Attachments({
   tooSoon?: (e: React.MouseEvent<HTMLButtonElement>) => boolean;
   /** («File da compilare») «Allega il file compilato» quando la domanda ha un file da compilare (`attachLabel`). */
   label?: string;
+  /** (Rilascio 9b) Il caricamento o «Togli» aspettano l'informativa: la pagina la mostra di nuovo. */
+  onPrivacyWait?: () => void;
 }) {
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
@@ -73,7 +80,8 @@ export function Attachments({
     const result = await uploadReferentFile({ kind: "referente", token, needId }, file, { clientMode });
     setUploading(null);
     if (!result.ok) {
-      setError(result.message);
+      if (waitsForPrivacy(result.code) && onPrivacyWait) onPrivacyWait();
+      else setError(result.message);
       return;
     }
     const uploaded = fileFromUpload(result.file);
@@ -89,7 +97,8 @@ export function Attachments({
       onFiles((current) => current.filter((f) => f.id !== row.id));
       return;
     }
-    setError(r.message);
+    if (waitsForPrivacy(r.code) && onPrivacyWait) onPrivacyWait();
+    else setError(r.message);
   }
 
   const rows = files.map(fileRow);
