@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CLI_NEEDS_REVIEWER_ROLE, cliCaseAccessFailure, notBuilderMessage } from "./case-errors.ts";
+import { CLI_CONTEXT_UNAVAILABLE, CLI_NEEDS_REVIEWER_ROLE, cliCaseAccessFailure, notBuilderMessage } from "./case-errors.ts";
 
 // La CLI legge un guasto come 503, non come «caso non trovato» (rilascio 8.0c, RILASCIO-8.0c-ESTERNI.md §16).
 
@@ -22,4 +22,9 @@ test("(8.0c) a chi scende a Contributore il no dice che il ruolo si cambia da Im
   assert.equal(CLI_NEEDS_REVIEWER_ROLE, "Per costruire serve almeno il ruolo di Analista nel workspace: lo cambia chi gestisce il workspace, da Impostazioni › Persone.");
   assert.equal(notBuilderMessage("ruolo_workspace", "testo della porta"), CLI_NEEDS_REVIEWER_ROLE);
   for (const blocked of [null, "non_disponibile"]) assert.equal(notBuilderMessage(blocked, "testo della porta"), "testo della porta");
+});
+
+test("(9b) il contesto del cliente che non risponde è 503 con «Unbundle non risponde», da riprovare; mai «non trovato»", () => {
+  assert.deepEqual(CLI_CONTEXT_UNAVAILABLE, { status: 503, code: "non_disponibile", message: "Unbundle non risponde: riprova tra qualche minuto.", headers: { "Retry-After": "60" } });
+  assert.ok(Object.isFrozen(CLI_CONTEXT_UNAVAILABLE) && Object.isFrozen(CLI_CONTEXT_UNAVAILABLE.headers));
 });

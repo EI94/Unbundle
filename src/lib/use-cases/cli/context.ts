@@ -2,12 +2,21 @@ import "server-only";
 /**
  * Il contesto di un caso per un coding agent (rilascio 8.0b, standard §7), uguale per `unbundle context` e per
  * `get_case_context` dell'MCP del caso: il brief di al massimo 300 token, o uno strato (`progetto`, `decisioni`,
- * `pacchetto`, `domande`). Il testo è pronto da leggere, senza nomi né e-mail; `dati` serve agli script.
+ * `pacchetto`, `domande`, (9b) `contesto`). Il testo è pronto da leggere, senza nomi né e-mail; `dati` serve agli script.
+ *
+ * (9b, docs/contesto/RILASCIO-9b-COSTRUZIONE.md §2.5, §2.6) Lo strato `contesto` e la riga del brief vengono da
+ * `loadAgentContext` e `contextDeltaSince`: **solo i fatti «Per tutti», anche a Lateral Space** (D1), perché i coding agent
+ * scrivono in repository e PR che leggono anche chi costruisce da fuori e il cliente. I nomi che Unbundle conosce
+ * diventano «una persona», come nel pacchetto.
  */
+import type { AgentContext } from "@/lib/context/work/agent-text";
+import { formatAgentContext } from "@/lib/context/work/agent-text";
+import { contextDeltaSince, loadAgentContext } from "@/lib/db/queries/context-work";
 import { cliCaseExtras, namesToHide, readFactory } from "@/lib/db/queries/use-case-factory";
 import { listTasks, tasksStoreReady } from "@/lib/db/queries/use-case-tasks";
 import { tasksBriefLine } from "@/lib/use-cases/factory/tasks";
 import type { UcExecutor } from "@/lib/db/uc-executor";
+import { packageContextSince, redactAgentContext } from "@/lib/use-cases/factory/package";
 import { canWriteFactory } from "@/lib/use-cases/factory/permissions";
 import { composeBrief, composeDecisionsLayer, composePackageLayer, composeProjectLayer, composeQuestionsLayer, nextStep, type ContextLayer } from "./brief";
 import { CLI_NOT_A_BUILDER, type CliCase } from "./case";
@@ -38,20 +47,34 @@ export interface CliContext {
      * di toccare GitHub (a chi scende a Contributore: il ruolo si cambia da Impostazioni › Persone). Senza, null.
      */
     perche: string | null;
+    /** (9b) Solo nello strato `contesto`: i fatti «Per tutti», con i nomi coperti (lo stesso testo di `testo`, per gli script). */
+    contesto?: AgentContext;
   };
 }
 
-/** Il brief o lo strato chiesto; null se l'Agent Factory del caso non si legge (come «caso non trovato»). */
-export async function loadCliContext(executor: UcExecutor, c: CliCase, input: { layer: ContextLayer | null; since: Date | null }): Promise<CliContext | null> {
+/**
+ * Il brief o lo strato chiesto. `non_trovato`: l'Agent Factory del caso non si legge (come «caso non trovato»).
+ * `non_disponibile`: lo strato `contesto` non si è letto (l'archivio di «Contesto» non risponde): da riprovare.
+ */
+export type CliContextResult = { ok: true; value: CliContext } | { ok: false; code: "non_trovato" | "non_disponibile" };
+
+export async function loadCliContext(executor: UcExecutor, c: CliCase, input: { layer: ContextLayer | null; since: Date | null }): Promise<CliContextResult> {
   const read = await readFactory(executor, c.target, c.actor);
-  if (!read.ok) return null;
-  const [extras, names, tasks] = await Promise.all([
+  if (!read.ok) return { ok: false, code: "non_trovato" };
+  const view = read.value;
+  const contextLayer = input.layer === "contesto";
+  const [extras, names, tasks, agent, contextDelta] = await Promise.all([
     cliCaseExtras(executor, c.target, { canSeeNeeds: c.canSeeNeeds }),
     namesToHide(executor, c.target),
     tasksStoreReady(executor).then((ready) => (ready ? listTasks(executor, c.target) : [])),
+    // (9b) Lo strato `contesto`: solo «Per tutti», per chiunque chieda (D1).
+    contextLayer ? loadAgentContext({ workspaceId: c.target.workspaceId, useCaseId: c.target.useCaseId, since: input.since }) : Promise.resolve(null),
+    // (9b) La riga del brief: le novità dopo l'ultimo pacchetto con CONTESTO.md, o quanti fatti ci sono.
+    input.layer === null ? contextDeltaSince({ workspaceId: c.target.workspaceId, useCaseId: c.target.useCaseId, since: packageContextSince(view.latestPackage) }) : Promise.resolve(0),
   ]);
+  if (contextLayer && agent === null) return { ok: false, code: "non_disponibile" };
+  const shared = agent ? redactAgentContext(agent, names) : null;
   const viewerId = c.actor.kind === "persona" ? c.actor.userId : "";
-  const view = read.value;
   const base = {
     code: c.useCase.code,
     title: c.useCase.title,
@@ -64,11 +87,13 @@ export async function loadCliContext(executor: UcExecutor, c: CliCase, input: { 
     proposedQuestions: extras.proposals?.length ?? 0,
     repos: extras.repos,
     tasksLine: tasksBriefLine(tasks, viewerId),
+    contextDelta,
     namesToHide: names,
     since: input.since ? input.since.toISOString() : null,
   };
-  const testo =
-    input.layer === "progetto"
+  const testo = shared
+    ? formatAgentContext(shared, { code: c.useCase.code })
+    : input.layer === "progetto"
       ? composeProjectLayer(base)
       : input.layer === "decisioni"
         ? composeDecisionsLayer(base)
@@ -80,18 +105,22 @@ export async function loadCliContext(executor: UcExecutor, c: CliCase, input: { 
   const project = view.open ?? view.approved;
   const scrive = !c.factory.readOnly && canWriteFactory(c.factory.roles);
   return {
-    testo,
-    dati: {
-      caso: c.useCase.code,
-      dossier: c.access.status,
-      progetto: project ? { versione: project.version, stato: project.status, revisione: project.revision } : null,
-      pacchetto: view.latestPackage ? { versione: view.latestPackage.version } : null,
-      prossimoPasso: nextStep(base),
-      repository: extras.repos,
-      compiti: tasks.map((t) => ({ ref: t.ref, stato: t.status, tuo: t.holderUserId !== null && t.holderUserId === viewerId })),
-      ruoli: c.factory.roles,
-      scrive,
-      perche: scrive ? null : notBuilderMessage(c.factory.blocked, CLI_NOT_A_BUILDER),
+    ok: true,
+    value: {
+      testo,
+      dati: {
+        caso: c.useCase.code,
+        dossier: c.access.status,
+        progetto: project ? { versione: project.version, stato: project.status, revisione: project.revision } : null,
+        pacchetto: view.latestPackage ? { versione: view.latestPackage.version } : null,
+        prossimoPasso: nextStep(base),
+        repository: extras.repos,
+        compiti: tasks.map((t) => ({ ref: t.ref, stato: t.status, tuo: t.holderUserId !== null && t.holderUserId === viewerId })),
+        ruoli: c.factory.roles,
+        scrive,
+        perche: scrive ? null : notBuilderMessage(c.factory.blocked, CLI_NOT_A_BUILDER),
+        ...(shared ? { contesto: shared } : {}),
+      },
     },
   };
 }
