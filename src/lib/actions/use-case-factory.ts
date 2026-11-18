@@ -120,7 +120,7 @@ async function runOnCase<T>(
   if (o.caseAccess.status === "sospeso") return ucFailure("caso_sospeso", "Il caso è in pausa: riprendilo da Impostazioni del caso per cambiare il progetto.");
   if (!(await factoryStoreReady(o.executor))) return NOT_READY;
   const useCase = await findUseCaseOfCase(o.executor, workspaceId, o.ctx.caseId);
-  if (!useCase) return ucFailure("non_trovato", "Il dossier non è collegato a uno use case.");
+  if (!useCase) return ucFailure("non_trovato", "La realizzazione non è collegata a uno use case.");
   const actor: FactoryActor = { kind: "persona", userId: session.user.id, roles };
   const result = await run({ o, actor, target: { workspaceId, useCaseId: useCase.useCaseId }, session, access });
   if (result.ok) finishUcCommand({ workspaceId, caseId: o.ctx.caseId });

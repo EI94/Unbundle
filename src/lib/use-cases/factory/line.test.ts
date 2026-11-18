@@ -2,7 +2,7 @@
 // passo; i conteggi; la coda della fabbrica con i repository indietro con il modello.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AGENT_FACTORY_TEMPLATE_REPO, AGENT_FACTORY_TEMPLATE_VERSION, benchFacts, compareVersions, evalsFact, evalsTodoText, factoryQueue, isTemplateRepo, lineCounts, nextStepOf, stationOf, type LineCase } from "./line.ts";
+import { AGENT_FACTORY_TEMPLATE_REPO, AGENT_FACTORY_TEMPLATE_VERSION, STATIONS, STATION_LABEL, benchFacts, compareVersions, evalsFact, evalsTodoText, factoryQueue, isTemplateRepo, lineCounts, nextStepOf, stationOf, type LineCase } from "./line.ts";
 import { analyzeBench, type BenchResult } from "./benchmark.ts";
 
 const none = { total: 0, open: 0, inProgress: 0, inReview: 0, done: 0, cancelled: 0 };
@@ -21,18 +21,25 @@ test("la stazione: dalla fase del dossier quando è avanti, poi da progetto e co
 });
 
 test("il prossimo passo, in una frase", () => {
-  assert.equal(nextStepOf(c({})), "Impostare il caso con il coding agent.");
+  assert.equal(nextStepOf(c({})), "Impostare il progetto.");
   assert.equal(nextStepOf(c({ projectStatus: "da_approvare" })), "Il progetto aspetta l'approvazione.");
   assert.equal(nextStepOf(c({ projectStatus: "approvato" })), "Portare i compiti in Unbundle («compiti importa»).");
   assert.equal(nextStepOf(c({ projectStatus: "approvato", tasks: { ...none, total: 4, open: 3, done: 1 } })), "3 compiti da prendere.");
   assert.equal(nextStepOf(c({ projectStatus: "approvato", tasks: { ...none, total: 4, open: 1, done: 3 } })), "1 compito da prendere.");
   assert.equal(nextStepOf(c({ projectStatus: "approvato", tasks: { ...none, total: 2, inProgress: 1, done: 1 } })), "Compiti in corso.");
-  assert.equal(nextStepOf(c({ projectStatus: "approvato", tasks: { ...none, total: 2, done: 2 } })), "Compiti fatti: pronto per il collaudo.");
+  assert.equal(nextStepOf(c({ projectStatus: "approvato", tasks: { ...none, total: 2, done: 2 } })), "Compiti fatti: pronto per la prova.");
 });
 
-test("i conteggi seguono l'ordine della linea", () => {
+test("i conteggi seguono l'ordine della linea; (rilascio 10) lo zero non si vede", () => {
   const counts = lineCounts([c({}), c({ projectStatus: "in_corso" }), c({ projectStatus: "approvato", tasks: { ...none, total: 2, open: 2 } }), c({ dossierStatus: "in_esercizio" })]);
-  assert.deepEqual(counts.map((x) => [x.station, x.count]), [["dossier", 1], ["impostazione", 1], ["approvato", 0], ["costruzione", 1], ["collaudo", 0], ["esercizio", 1]]);
+  assert.deepEqual(counts.map((x) => [x.station, x.count]), [["dossier", 1], ["impostazione", 1], ["costruzione", 1], ["esercizio", 1]]);
+  assert.deepEqual(lineCounts([]), []);
+});
+
+test("(rilascio 10, §4) le stazioni: «Da impostare · In impostazione · Da costruire · In costruzione · In prova · In uso»", () => {
+  assert.deepEqual(STATIONS.map((s) => STATION_LABEL[s]), ["Da impostare", "In impostazione", "Da costruire", "In costruzione", "In prova", "In uso"]);
+  assert.equal(nextStepOf(c({ dossierStatus: "in_esercizio" })), "Tutto in ordine.");
+  assert.equal(nextStepOf(c({ dossierStatus: "collaudo" })), "Prova con il cliente.");
 });
 
 test("la coda della fabbrica: i repository indietro con il modello, o senza versione; mai quelli aggiornati", () => {

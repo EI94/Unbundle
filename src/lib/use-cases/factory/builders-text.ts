@@ -54,18 +54,18 @@ export function reposText(repos: readonly string[]): string {
 
 /** Sotto «Ruolo», per chi viene da fuori: che cosa fa «Sviluppatore esterno» e che cosa no. */
 export const EXTERNAL_ROLE_HINT =
-  "Costruisce come il team di Lateral Space: imposta il progetto, prende i compiti, apre le pull request, manda evals e banco. Non approva il progetto, non firma per il cliente e nel dossier legge come il cliente.";
+  "Costruisce come il team di Lateral Space: imposta il progetto, prende i compiti, apre le pull request, manda evals e banco. Non approva il progetto, non firma per il cliente e nella realizzazione legge come il cliente.";
 
 /** Il messaggio dopo «Aggiungi» di una persona di Lateral Space: il team del cliente, in tutti i casi aperti. */
 export function lsAddedText(r: { done: readonly string[]; unchanged: readonly string[]; skipped: readonly { code: string; reason: string }[] }): string {
   const already = r.unchanged.length ? `, c'era già in ${casesText(r.unchanged.length)}` : "";
-  return `Nel team del cliente: entrerà anche nei casi nuovi. Entra in ${casesText(r.done.length)}${already}.${skippedText(r.skipped, " Si cambia dal team del dossier.")}`;
+  return `Nel team del cliente: entrerà anche nei casi nuovi. Entra in ${casesText(r.done.length)}${already}.${skippedText(r.skipped, " Si cambia dal team della realizzazione.")}`;
 }
 
 /** Il messaggio dopo «Togli» di una persona di Lateral Space. */
 export function lsRemovedText(r: { done: readonly string[]; skipped: readonly { code: string; reason: string }[]; released: number }): string {
   const tasks = r.released ? ` I compiti che aveva lì tornano da prendere (${r.released}).` : "";
-  return `Fuori dal team del cliente: esce da ${casesText(r.done.length)} e non entra nei casi nuovi.${tasks}${skippedText(r.skipped, " Si cambia dal team del dossier.")}`;
+  return `Fuori dal team del cliente: esce da ${casesText(r.done.length)} e non entra nei casi nuovi.${tasks}${skippedText(r.skipped, " Si cambia dal team della realizzazione.")}`;
 }
 
 /**
@@ -92,7 +92,7 @@ export function externalAddedText(r: ExternalAddedFacts): string {
 /** Il messaggio dopo «Togli» di chi costruisce da fuori. I casi da cui esce solo se ce ne sono. */
 export function externalRemovedText(r: ExternalRemovedFacts): string {
   const github = r.repos.length ? `GitHub (${reposText(r.repos)}) e la sua chiave dell'AI Gateway` : "la sua chiave dell'AI Gateway";
-  const stays = r.skipped.length ? ` In ${r.skipped.slice(0, 5).map((s) => s.code).join(", ")} resta nel dossier da osservatore, senza poteri: lì non sei responsabile.` : "";
+  const stays = r.skipped.length ? ` In ${r.skipped.slice(0, 5).map((s) => s.code).join(", ")} resta nella realizzazione da osservatore, senza poteri: lì non sei responsabile.` : "";
   const left = r.left.length ? `: esce da ${casesText(r.left.length)}` : "";
   return `Non costruisce più${left}. Ricorda ${github}.${stays}`;
 }

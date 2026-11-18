@@ -162,14 +162,15 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
         lsDomains,
       )
     : new Map<string, string>();
-  const counts = STATIONS.map((station) => ({ station, n: view.cases.filter((c) => c.station === station).length }));
+  // (Rilascio 10, §1 regola 5) «La linea» senza gli zeri: solo le stazioni con almeno un caso.
+  const counts = STATIONS.map((station) => ({ station, n: view.cases.filter((c) => c.station === station).length })).filter(({ n }) => n > 0);
 
   return (
     <PageContainer>
       <header>
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Agent Factory</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {view.cases.length === 1 ? "1 caso" : `${view.cases.length} casi`} dall&apos;impostazione all&apos;esercizio{lsManager ? "" : ", quelli dove sei nel team"}.
+          {view.cases.length === 1 ? "1 caso" : `${view.cases.length} casi`} dall&apos;impostazione all&apos;uso{lsManager ? "" : ", quelli dove sei nel team"}.
         </p>
       </header>
 
@@ -206,14 +207,16 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
         </section>
       ) : null}
 
-      <section aria-label="La linea" className="mt-6 grid grid-cols-3 gap-2 sm:grid-cols-6">
-        {counts.map(({ station, n }) => (
-          <div key={station} className={`rounded-md border p-3 ${n ? "" : "opacity-60"}`}>
-            <p className="text-2xl font-semibold tabular-nums">{n}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">{STATION_LABEL[station]}</p>
-          </div>
-        ))}
-      </section>
+      {counts.length > 0 ? (
+        <section aria-label="La linea" className="mt-6 grid grid-cols-3 gap-2 sm:grid-cols-6">
+          {counts.map(({ station, n }) => (
+            <div key={station} className="rounded-md border p-3">
+              <p className="text-2xl font-semibold tabular-nums">{n}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{STATION_LABEL[station]}</p>
+            </div>
+          ))}
+        </section>
+      ) : null}
 
       <div className="mt-6 space-y-6">
         {view.cases.length === 0 ? (
@@ -224,7 +227,7 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
               key={f.repo ?? "senza"}
               id={f.repo ? `famiglia-${f.repo.split("/")[1]}` : "da-avviare"}
               icon={f.repo ? Factory : Inbox}
-              title={f.repo ? f.repo.split("/")[1] : "Da avviare"}
+              title={f.repo ? f.repo.split("/")[1] : "Senza repository"}
               description={
                 f.repo
                   ? `${f.repo}${f.templateVersion ? ` · modello ${f.templateVersion}${compareVersions(f.templateVersion, AGENT_FACTORY_TEMPLATE_VERSION) < 0 ? " (indietro)" : ""}` : ""}${f.commonVersion ? ` · comune ${f.commonVersion}` : ""}`
