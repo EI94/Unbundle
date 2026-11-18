@@ -8,7 +8,8 @@ import "server-only";
  *   è detta, legata allo use case. In «Da confermare» non è mai preselezionata (`isLearnedSource`): la conferma Lateral
  *   Space, come sempre.
  * - **La stessa frase** di un fatto attivo che chi impara vede (`normalizeStatement`) è una riconferma; la stessa frase
- *   di una proposta aperta è «già proposta» e non scrive niente.
+ *   di una proposta aperta che chi impara può conoscere è «già proposta» e non scrive niente: per Lateral Space ogni
+ *   proposta aperta, per chi costruisce da fuori solo le altre cose imparate (mai un oracolo sulle proposte riservate).
  * - **I controlli:** da 10 a 200 caratteri, `scanStatement` (nomi, contatti, dati sanitari); 30 al giorno per workspace
  *   (secchio `ctx:ws:<id>:impara:day`). Chi costruisce il caso lo controlla la rotta; qui `canOpen`.
  *
@@ -84,7 +85,13 @@ export async function addLearning(
 
     const key = normalizeStatement(text);
     const [openRows, factRows] = await Promise.all([
-      db.execute(sql`SELECT statement FROM context_proposals WHERE workspace_id = ${ws}::uuid AND status = 'aperta' ORDER BY created_at DESC LIMIT 1000`),
+      // Le proposte aperte con la stessa frase. A chi non è di Lateral Space solo quelle delle cose imparate (`impara:`):
+      // le proposte dagli appunti e dai documenti sono «Solo Lateral Space», e «È già tra le proposte» le rivelerebbe.
+      db.execute(sql`
+        SELECT p.statement FROM context_proposals p JOIN context_sources s ON s.id = p.source_id AND s.workspace_id = p.workspace_id
+        WHERE p.workspace_id = ${ws}::uuid AND p.status = 'aperta'
+          AND (${lateralSpace} OR (s.origin = 'cli' AND s.external_id LIKE ${`${LEARNED_SOURCE_PREFIX}%`}))
+        ORDER BY p.created_at DESC LIMIT 1000`),
       // Solo i fatti che chi impara vede: a chi costruisce da fuori un fatto «Solo Lateral Space» non si rivela.
       db.execute(sql`
         SELECT id, statement FROM context_facts

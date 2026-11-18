@@ -190,8 +190,11 @@ test("`impara`: una fonte «impara:» già letta e una proposta «Solo Lateral S
   assert.match(body, /INSERT INTO context_proposals \(id, workspace_id, source_id, position, kind, statement, basis, section, visibility, target_fact_id, use_case_ids\)/);
   assert.match(body, /\$\{kind\}, \$\{text\}, 'detto', \$\{section\}, 'ls'/);
   assert.doesNotMatch(body, /\bquote\b/, "nessuna citazione");
-  // Un fatto «Solo Lateral Space» non si rivela a chi non è di Lateral Space.
+  // Un fatto «Solo Lateral Space» non si rivela a chi non è di Lateral Space; nemmeno una proposta riservata.
   assert.match(body, /WHERE workspace_id = \$\{ws\}::uuid AND status = 'attivo' AND \(\$\{lateralSpace\} OR visibility = 'tutti'\)/);
+  assert.match(body, /AND \(\$\{lateralSpace\} OR \(s\.origin = 'cli' AND s\.external_id LIKE \$\{`\$\{LEARNED_SOURCE_PREFIX\}%`\}\)\)/);
+  // Il controllo dentro la transazione guarda già solo le cose imparate.
+  assert.match(body, /WHERE p\.workspace_id = \$\{ws\}::uuid AND p\.status = 'aperta' AND s\.origin = 'cli' AND s\.external_id LIKE \$\{`\$\{LEARNED_SOURCE_PREFIX\}%`\}/);
 });
 
 test("«Da confermare»: le proposte delle risposte del referente e delle cose imparate non sono mai preselezionate", () => {

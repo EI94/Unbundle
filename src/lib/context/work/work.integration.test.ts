@@ -971,6 +971,26 @@ test("addLearning: una proposta «Solo Lateral Space» mai preselezionata, la ri
   await q(`DELETE FROM connector_rate_limits WHERE bucket LIKE $1`, [`ctx:ws:${ids.wsA}:impara%`]);
 });
 
+test("addLearning: a chi costruisce da fuori «È già tra le proposte» non rivela le proposte riservate degli appunti; le cose imparate sì", opts, async () => {
+  await clearMemory();
+  await q(`DELETE FROM connector_rate_limits WHERE bucket LIKE $1`, [`ctx:ws:${ids.wsA}:impara%`]);
+  const learn = (person: Person, text: string) => learning.addLearning(actor(person, "cli"), { useCaseId: ids.ucA, code: CODE(1), text });
+  // Una proposta «Solo Lateral Space» da appunti di Lateral Space: chi costruisce da fuori non la deve poter indovinare.
+  const notes = await insertSource();
+  await q(
+    `INSERT INTO context_proposals (id, workspace_id, source_id, position, kind, statement, basis, section, visibility, use_case_ids)
+     VALUES ($1::uuid, $2::uuid, $3::uuid, 1, 'nuovo', 'Il cliente valuta di chiudere il magazzino di Verona.', 'detto', 'azienda', 'ls', '{}'::uuid[])`,
+    [randomUUID(), ids.wsA, notes],
+  );
+  const guess = okValue(await learn("ext", "il cliente valuta di chiudere il magazzino di verona"));
+  assert.equal(guess.esito, "proposta", "per chi costruisce da fuori è una proposta nuova, come una frase sbagliata");
+  assert.equal(okValue(await learn("ext", "Il cliente valuta di chiudere il magazzino di Padova.")).esito, "proposta");
+  // Le cose imparate restano «già proposte» per tutti; Lateral Space vede anche quelle degli appunti.
+  assert.deepEqual(okValue(await learn("ext", "Il cliente valuta di chiudere il magazzino di Padova.")), { esito: "gia_proposta" });
+  assert.deepEqual(okValue(await learn("dev", "Il cliente valuta di chiudere il magazzino di Verona.")), { esito: "gia_proposta" });
+  await q(`DELETE FROM connector_rate_limits WHERE bucket LIKE $1`, [`ctx:ws:${ids.wsA}:impara%`]);
+});
+
 test("`unbundle nota`: un appunto con l'origine «cli», solo per Lateral Space; le fonti di risposte non si tolgono", opts, async () => {
   await clearMemory();
   const note = okValue(await sources.addContextNote(actor("ls", "cli"), { title: "Call di avvio", occurredOn: "2026-11-18", body: "Appunti di prova della call di avvio con il cliente di prova.", origin: "cli" }));
