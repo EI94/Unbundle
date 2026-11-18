@@ -175,8 +175,8 @@ export function AppSidebar({ nav, workspaceId, workspaceName, user, bell }: AppS
         <SidebarMenu>
           <SidebarMenuItem>
             <DropdownMenu>
+              {/* Il nome e l'e-mail dicono che cosa apre: nessuna etichetta che li copra. */}
               <DropdownMenuTrigger
-                aria-label={T.user.menu}
                 className="flex min-h-11 w-full items-center gap-2.5 rounded-lg p-2 text-left text-sm outline-hidden hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring data-popup-open:bg-sidebar-accent"
               >
                 <Avatar className="size-8">

@@ -65,8 +65,10 @@ test("revisore di Lateral Space che gestisce, su una board: Contesto accesa con 
   assert.doesNotMatch(page, /Altri strumenti|>Strumenti</);
   // In cima il selettore del workspace; nel piede il menu sotto il nome.
   assert.match(page, /aria-label="Cliente Demo: cambia workspace"[^>]*>[\s\S]*?Cliente Demo/);
-  assert.match(page, /aria-label="Il tuo menu"/);
-  assert.ok(page.includes("Persona Prova") && page.includes("persona@esempio.test"));
+  // Il menu sotto il nome: il nome e l'e-mail sono il suo nome per i lettori di schermo.
+  const trigger = /<button[^>]*data-slot="dropdown-menu-trigger"[^>]*>(?:(?!<\/button>)[\s\S])*Persona Prova(?:(?!<\/button>)[\s\S])*<\/button>/.exec(page)?.[0] ?? "";
+  assert.ok(trigger.includes("persona@esempio.test"), "nome ed e-mail nel pulsante del menu");
+  assert.doesNotMatch(trigger, /aria-label=/);
 });
 
 test("le viste stanno sotto la voce solo mentre è accesa", () => {

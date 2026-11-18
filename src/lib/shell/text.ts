@@ -69,7 +69,6 @@ export const SHELL_TEXT = Object.freeze({
   /** Il menu sotto il nome, in fondo alla barra (§2.1). */
   user: Object.freeze({
     fallbackName: "Utente",
-    menu: "Il tuo menu",
     account: "Il tuo account",
     theme: "Tema",
     signOut: "Esci",
