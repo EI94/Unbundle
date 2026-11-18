@@ -6,7 +6,11 @@ import { GoalForm } from "@/components/dashboard/goal-form";
 import { SuggestOKRsButton } from "@/components/dashboard/suggest-okrs-button";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { PAGE_TITLE_CLASS, PageContainer } from "@/components/dashboard/page-container";
+import { HOME_TEXT } from "@/lib/home/text";
 
+export const metadata = { title: HOME_TEXT.goalsPage.title };
+
+/** (Rilascio 10, §2.4, §3.8) La pagina «Obiettivi», aperta da Home › Obiettivi: la barra accende «Home». */
 export default async function StrategyPage({
   params,
 }: {
@@ -41,9 +45,7 @@ export default async function StrategyPage({
   return (
     <PageContainer size="narrow">
       <div className="mb-8">
-        <h1 className={PAGE_TITLE_CLASS}>
-          Obiettivi & OKR
-        </h1>
+        <h1 className={PAGE_TITLE_CLASS}>{HOME_TEXT.goalsPage.title}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Definisci gli obiettivi che guideranno la prioritizzazione dei use case.
         </p>

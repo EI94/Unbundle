@@ -6,7 +6,7 @@ import { installAppModules } from "../../lib/ai/claude-test-kit.ts";
 import { PORTFOLIO_REVIEWER_ROLES } from "../../lib/workspace-permissions.ts";
 import { enableTsxImports } from "../use-cases/detail/referent/tsx-test-loader.ts";
 
-// Strategia › Obiettivi & OKR: gli obiettivi li scrive solo chi valuta gli use case (`createGoalAction`). La pagina
+// Home › Obiettivi (`/strategy`): gli obiettivi li scrive solo chi valuta gli use case (`createGoalAction`). La pagina
 // vera, resa sul server con accesso e database finti, mostra «Aggiungi Goal / Obiettivo / Key Result» e «Suggerisci
 // OKR con AI» solo a quei ruoli; il modulo non porta mai alla pagina d'errore e, dopo un rifiuto, tiene il testo.
 // Clienti e obiettivi inventati.
@@ -46,6 +46,16 @@ async function page(role: string, goals = GOALS): Promise<string> {
 }
 
 const count = (html: string, text: string) => html.split(text).length - 1;
+
+test("(rilascio 10, §2.4, §3.8) la pagina si chiama «Obiettivi», nel titolo e nella scheda del browser", async () => {
+  for (const role of ["analyst", "contributor"]) {
+    const html = await page(role);
+    assert.match(html, /<h1 class="text-2xl font-semibold tracking-tight">Obiettivi<\/h1>/, role);
+    assert.doesNotMatch(html, /OKR<\/h1>|Obiettivi &amp; OKR/, role);
+  }
+  const { metadata } = (await import("../../app/(dashboard)/dashboard/[workspaceId]/strategy/page.tsx")) as unknown as { metadata: { title: string } };
+  assert.equal(metadata.title, "Obiettivi");
+});
 
 test("chi valuta gli use case vede tutti i pulsanti per aggiungere obiettivi e «Suggerisci OKR con AI»", async () => {
   for (const role of PORTFOLIO_REVIEWER_ROLES) {
