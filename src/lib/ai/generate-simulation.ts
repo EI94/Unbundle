@@ -43,12 +43,20 @@ const simulationSchema = z.object({
 
 export type SimulationResult = z.infer<typeof simulationSchema>;
 
-export async function generateSimulation(data: {
-  useCases: UseCase[];
-  activities: Activity[];
-  departments: Department[];
-  companyValueThesis: unknown;
-}): Promise<SimulationResult> {
+/**
+ * Gli scenari «what if». (Rilascio 9b, docs/contesto/RILASCIO-9b-COSTRUZIONE.md §2.12) `contesto`: il blocco «Contesto»
+ * di `loadPromptContext` (profilo `simulation`), dopo i dati e prima delle richieste; "" e il prompt è quello di prima,
+ * byte per byte.
+ */
+export async function generateSimulation(
+  data: {
+    useCases: UseCase[];
+    activities: Activity[];
+    departments: Department[];
+    companyValueThesis: unknown;
+  },
+  contesto = "",
+): Promise<SimulationResult> {
   const { object } = await throwIfRefused("ai/generate-simulation", generateObject({
     model: anthropic(CLAUDE_MODEL),
     schema: simulationSchema,
@@ -65,7 +73,7 @@ ${data.activities.map((a) => `- "${a.title}" [${a.classification}] - ${a.timeSpe
 
 ## Use Cases (${data.useCases.length})
 ${data.useCases.map((uc) => `- "${uc.title}" [${uc.category}] Score: ${uc.overallScore?.toFixed(1)}`).join("\n")}
-
+${contesto}
 Genera 3 scenari:
 1. **Conservativo**: solo Quick Wins implementati nei prossimi 3 mesi
 2. **Moderato**: Quick Wins + Capability Builders nei prossimi 6 mesi

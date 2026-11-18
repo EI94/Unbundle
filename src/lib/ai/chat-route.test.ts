@@ -6,6 +6,7 @@ import { ev, hang, installAppModules, recordLogs, sse, fakeAppClaude } from "./c
 import { FIXTURE_IDS, fixtureBoard } from "../mappatura/board-fixture.ts";
 import type { MappingBoard } from "../mappatura/board-model.ts";
 import { boardContextBlock } from "./prompts/activity-mapping.ts";
+import { contextPromptBlock } from "../context/work/prompt-block.ts";
 
 // (Migrazione a Claude Sonnet 5.5) La rotta vera della chat (/api/ai/chat): che cosa salva, che cosa mette nella
 // memoria della chat (RAG) e che cosa manda al browser. Sessione, database, memoria e tool dei reparti finti; il
@@ -51,6 +52,11 @@ type Prova = {
   boardReads: unknown[][];
   /** Quante volte la rotta ha cercato o creato la conversazione. */
   conversations: number;
+  /** (Rilascio 9b) Il blocco «Contesto» che `loadPromptContext` restituisce, e con che cosa la rotta l'ha chiesto. */
+  promptContext?: string;
+  promptContextAsked: unknown[][];
+  /** (Rilascio 9b) Il perimetro del workspace, se c'è. */
+  systemBoundary?: unknown;
 };
 /** Un'unità del workspace della prova, e una di un altro workspace (rilascio 9a, §10.5). */
 const UNIT = "3b2a1c0d-9e8f-4a6b-8c5d-7e6f5a4b3c2d";
@@ -60,7 +66,7 @@ const boardOfUnit = (): MappingBoard => {
   const board = fixtureBoard();
   return { ...board, unit: { ...board.unit, id: UNIT } };
 };
-const prova: Prova = { saved: [], deleted: [], reads: 0, indexed: [], tools: {}, toolArgs: [], consentAsked: [], thesis: null, thesisAsked: [], unitsAsked: [], docs: [], forAll: [], retrieveOptions: [], listedFor: [], chunks: [], board: boardOfUnit(), boardReads: [], conversations: 0 };
+const prova: Prova = { saved: [], deleted: [], reads: 0, indexed: [], tools: {}, toolArgs: [], consentAsked: [], thesis: null, thesisAsked: [], unitsAsked: [], docs: [], forAll: [], retrieveOptions: [], listedFor: [], chunks: [], board: boardOfUnit(), boardReads: [], conversations: 0, promptContextAsked: [] };
 (globalThis as { __prova?: Prova }).__prova = prova;
 
 await installAppModules({
@@ -75,7 +81,13 @@ await installAppModules({
     return globalThis.__prova.forAll.map((id) => ({ id: "fonte-" + id, kind: "documento", visibility: "tutti", document: { id, fileName: "x", fileType: "x", fileSize: 1 } }));
   }`,
   "@/lib/workspace-access": `export async function getCollaboratorAccess() {
-    return { role: "transformation_lead", workspace: { id: "ws-prova", organizationId: "org-prova", unitTerminology: null, systemBoundary: null } };
+    return { role: "transformation_lead", workspace: { id: "ws-prova", organizationId: "org-prova", unitTerminology: null, systemBoundary: globalThis.__prova.systemBoundary ?? null } };
+  }`,
+  // (Rilascio 9b) Il blocco «Contesto» del prompt (src/lib/db/queries/context-work.ts): che cosa chiede la rotta, e il
+  // blocco che riceve ("" senza l'ok, senza archivio o senza niente da dire).
+  "@/lib/db/queries/context-work": `export async function loadPromptContext(workspaceId, i) {
+    globalThis.__prova.promptContextAsked.push([workspaceId, i]);
+    return globalThis.__prova.promptContext ?? "";
   }`,
   "@/lib/db/queries/use-case-program": `export function canEditProgram() { return false; }`,
   "@/lib/db/queries/use-case-hub": `export function viewerFromSession() { return { isLateralSpace: false }; }`,
@@ -190,6 +202,9 @@ function reset() {
   prova.board = boardOfUnit();
   prova.boardReads = [];
   prova.conversations = 0;
+  delete prova.promptContext;
+  prova.promptContextAsked = [];
+  delete prova.systemBoundary;
 }
 
 const HISTORY = [
@@ -337,6 +352,81 @@ test("(Rilascio 9a) con l'ok la chat risponde come prima", async (t) => {
   assert.equal(chunks.find((chunk) => chunk.type === "finish")?.finishReason, "stop");
   assert.deepEqual(prova.consentAsked, ["ws-prova"]);
   assert.equal(prova.saved.length, 2, "domanda e risposta");
+});
+
+// ─── (Rilascio 9b) Il blocco «Contesto» nella chat (RILASCIO-9b-COSTRUZIONE.md §2.12) ───
+
+/** Il blocco come lo restituisce `loadPromptContext` per la chat: «In breve», un fatto, la frase per la chat. */
+const CHAT_BLOCK = `\n${contextPromptBlock({
+  brief: ["Il cliente fa cucine su misura per i negozi."],
+  facts: [{ section: "sistemi", statement: "Le fatture escono dal gestionale ERP di prova." }],
+  nonce: "c4h7a2t9b5x1",
+  purpose: "chat",
+})}\n`;
+const BOUNDARY = { inScope: ["Fatturazione"], outOfScope: ["Magazzino"] };
+const systemText = (request: { body: Record<string, unknown> }) => (request.body.system as Array<{ text: string }>).map((part) => part.text).join("\n");
+
+test("(Rilascio 9b) con l'ok il blocco «Contesto» entra nel system, dopo il perimetro e prima dei documenti: profilo «chat», l'ultima domanda, l'ok della richiesta", async (t) => {
+  recordLogs(t);
+  for (const conversationType of ["leadership_setup", "activity_mapping"]) {
+    reset();
+    prova.systemBoundary = BOUNDARY;
+    prova.chunks = [{ content: "Frammento del documento sulle fatture.", source: "document" }];
+    prova.promptContext = CHAT_BLOCK;
+    const requests = fakeAppClaude([sse([ev.start("msg_1"), ...ev.text(0, "Bene."), ...ev.end("end_turn")])]);
+    const { status } = await chat(HISTORY, conversationType, conversationType === "activity_mapping" ? UNIT : undefined);
+    assert.equal(status, 200, conversationType);
+    // Una lettura, dopo l'ok: il workspace della richiesta, l'ultima domanda per cercare i fatti, l'ok già letto.
+    assert.deepEqual(prova.promptContextAsked, [["ws-prova", { profile: "chat", query: "Preparo le fatture dei clienti ogni mese.", consent: "request" }]], conversationType);
+    assert.deepEqual(prova.consentAsked, ["ws-prova"]);
+    const system = systemText(requests[0]);
+    assert.equal(system.split(CHAT_BLOCK).length - 1, 1, `${conversationType}: il blocco c'è, una volta`);
+    // Subito dopo il perimetro, prima dei frammenti dei documenti.
+    assert.ok(system.includes(`--- CONTESTO: SYSTEM BOUNDARY ---\n${JSON.stringify(BOUNDARY, null, 2)}\n${CHAT_BLOCK}\n--- CONTESTO RILEVANTE DAI DOCUMENTI (1 frammenti) ---`), conversationType);
+    assert.match(system, /Non chiedere di nuovo quello che dice; se la persona dice altro, chiedi se è cambiato\./);
+  }
+});
+
+test("(Rilascio 9b) senza niente da dire il system è quello di prima: il perimetro e subito i documenti", async (t) => {
+  recordLogs(t);
+  reset();
+  prova.systemBoundary = BOUNDARY;
+  prova.chunks = [{ content: "Frammento del documento sulle fatture.", source: "document" }];
+  const requests = fakeAppClaude([sse([ev.start("msg_1"), ...ev.text(0, "Bene."), ...ev.end("end_turn")])]);
+  const { status } = await chat(HISTORY);
+  assert.equal(status, 200);
+  assert.equal(prova.promptContextAsked.length, 1);
+  const system = systemText(requests[0]);
+  assert.equal(system.includes("<contesto-"), false);
+  assert.ok(system.includes(`--- CONTESTO: SYSTEM BOUNDARY ---\n${JSON.stringify(BOUNDARY, null, 2)}\n\n--- CONTESTO RILEVANTE DAI DOCUMENTI (1 frammenti) ---`));
+});
+
+test("(Rilascio 9b) il contesto si legge solo dopo i controlli: senza l'ok 403 come oggi e nessuna lettura; nemmeno con un'unità di un altro workspace o senza una domanda", async (t) => {
+  recordLogs(t);
+  for (const conversationType of ["leadership_setup", "activity_mapping"]) {
+    reset();
+    prova.consent = false;
+    prova.promptContext = CHAT_BLOCK;
+    const requests = fakeAppClaude([]);
+    const { status, raw } = await chat(HISTORY, conversationType, conversationType === "activity_mapping" ? UNIT : undefined);
+    assert.equal(status, 403, conversationType);
+    assert.deepEqual(JSON.parse(raw), { error: "ok_fornitori_mancante", message: "Serve l'ok ai fornitori di AI" });
+    assert.equal(requests.length, 0);
+    assert.deepEqual(prova.saved, []);
+    assert.deepEqual(prova.promptContextAsked, [], `${conversationType}: senza l'ok il contesto non si legge`);
+  }
+  for (const [messages, conversationType, departmentId, expected] of [
+    [HISTORY, "activity_mapping", OTHER_UNIT, 404],
+    [[...HISTORY, { role: "assistant", content: "Ogni quanto le prepari?" }], "leadership_setup", undefined, 400],
+  ] as const) {
+    reset();
+    prova.promptContext = CHAT_BLOCK;
+    const requests = fakeAppClaude([]);
+    const { status } = await chat([...messages], conversationType, departmentId);
+    assert.equal(status, expected, `${conversationType} ${departmentId}`);
+    assert.equal(requests.length, 0);
+    assert.deepEqual(prova.promptContextAsked, [], `${expected}: nessuna lettura del contesto`);
+  }
 });
 
 test("un rifiuto a metà risposta: niente salvato dell'assistente, niente nella memoria, il browser riceve «content-filter»", async (t) => {

@@ -29,9 +29,15 @@ const blueprintSchema = z.object({
 
 export type AgentBlueprint = z.infer<typeof blueprintSchema>["blueprints"][0];
 
+/**
+ * I blueprint degli agenti per gli use case da automatizzare. (Rilascio 9b, docs/contesto/RILASCIO-9b-COSTRUZIONE.md
+ * §2.12) `contesto`: il blocco «Contesto» di `loadPromptContext` (profilo `blueprints`), dopo le attività e prima delle
+ * richieste; "" e il prompt è quello di prima, byte per byte.
+ */
 export async function generateAgentBlueprints(
   useCases: UseCase[],
-  activities: Activity[]
+  activities: Activity[],
+  contesto = ""
 ) {
   const automatableUseCases = useCases.filter(
     (uc) =>
@@ -60,7 +66,7 @@ ${activities
       `[${a.id}] "${a.title}": tools=${a.toolsUsed?.join(",") ?? "N/A"}, input=${a.inputDescription ?? "N/A"}, output=${a.outputDescription ?? "N/A"}`
   )
   .join("\n")}
-
+${contesto}
 Per ogni blueprint specifica:
 1. Nome e descrizione dell'agente
 2. Input e output con tipi e fonti/destinazioni

@@ -37,6 +37,7 @@ import { retrieveRelevantContext, indexConversationMessage } from "@/lib/ai/rag/
 import { contextAiConsent } from "@/lib/db/queries/context-consent";
 import { listContextSources } from "@/lib/db/queries/context-sources";
 import { contextStoreState } from "@/lib/db/queries/context-store";
+import { loadPromptContext } from "@/lib/db/queries/context-work";
 import { contextActorFor } from "@/lib/context/server/actor";
 import { CONTEXT_TEXT } from "@/lib/context/text";
 import type { ContextActor } from "@/lib/context/visibility";
@@ -162,6 +163,8 @@ export async function POST(req: Request) {
   // workspace della stessa organizzazione.
   const valueThesis = await getWorkspaceValueThesis(workspaceId);
 
+  // L'ultima domanda dell'utente: la cercano il blocco «Contesto» e la memoria della chat.
+  const lastUserContent = messages[messages.length - 1]?.content ?? "";
   let contextBlock = "";
 
   const unitTerm = (workspace.unitTerminology as { singular: string; plural: string } | null);
@@ -177,7 +180,11 @@ export async function POST(req: Request) {
     contextBlock += `\n--- CONTESTO: SYSTEM BOUNDARY ---\n${JSON.stringify(workspace.systemBoundary, null, 2)}\n`;
   }
 
-  const lastUserContent = messages[messages.length - 1]?.content ?? "";
+  // (Rilascio 9b, docs/contesto/RILASCIO-9b-COSTRUZIONE.md §2.12) «In breve» e fino a 8 fatti «Per tutti» con le parole
+  // dell'ultima domanda, in un blocco che dice che è un dato: la chat non chiede di nuovo quello che si sa già. Solo «Per
+  // tutti», per chiunque scriva (la chat è una stanza comune); "" senza archivio o senza niente da dire.
+  contextBlock += await loadPromptContext(workspaceId, { profile: "chat", query: lastUserContent, consent: "request" });
+
   let ragChunks: { content: string; source: string }[] = [];
   try {
     if (lastUserContent.length > 10) {

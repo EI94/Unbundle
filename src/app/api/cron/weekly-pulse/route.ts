@@ -8,6 +8,7 @@ import { CLAUDE_MODEL, ClaudeRefusalError, claudeCallSettings, throwIfRefused } 
 import { logSafeError } from "@/lib/log/safe-error";
 import { z } from "zod";
 import { runUseCaseDigestStep } from "@/lib/db/queries/use-case-digest";
+import { loadPromptContext } from "@/lib/db/queries/context-work";
 import { checkCronAuthorization } from "@/lib/uc/notify/cron-auth";
 
 const signalsSchema = z.object({
@@ -63,6 +64,9 @@ export async function GET(req: Request) {
         (a) =>
           a.createdAt > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
       );
+      // (Rilascio 9b, docs/contesto/RILASCIO-9b-COSTRUZIONE.md §2.12) Solo «In breve», «Per tutti». Il giro è lungo: l'ok
+      // ai fornitori di AI si rilegge per ogni workspace ("now"). "" senza: il prompt di prima.
+      const contesto = await loadPromptContext(workspace.id, { profile: "weeklySignals", consent: "now" });
 
       const { object } = await throwIfRefused("cron/weekly-pulse", generateObject({
         model: anthropic(CLAUDE_MODEL),
@@ -74,7 +78,7 @@ Stato:
 - Non classificate: ${unclassified.length}
 - Aggiunte questa settimana: ${recentlyAdded.length}
 - Status workspace: ${workspace.status}
-
+${contesto}
 Genera 2-5 segnali rilevanti per il team di trasformazione. Segnali possibili:
 - new_task_detected: nuove attività emerse
 - classification_change: cambio nella classificazione consigliato

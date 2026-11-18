@@ -58,7 +58,8 @@ export function isCompletionRefusal(value: CompletionOutcome | CompletionRefusal
 }
 
 export interface CompleteDeps {
-  loadUnit(scope: BoardScope): Promise<{ unitName: string; activities: Activity[]; companyValueThesis: unknown; goals: StrategicGoal[] } | null>;
+  /** (Rilascio 9b) `contesto`: il blocco «Contesto» per il classificatore ("" o assente: il prompt di prima). */
+  loadUnit(scope: BoardScope): Promise<{ unitName: string; activities: Activity[]; companyValueThesis: unknown; goals: StrategicGoal[]; contesto?: string } | null>;
   markMapped(scope: BoardScope, signal: { title: string; description: string }): Promise<{ first: boolean }>;
   saveSummary(scope: BoardScope, summary: { headline?: string | null; analysis?: ReadonlyArray<{ title: string; text: string }> }): Promise<void>;
   /**
@@ -86,6 +87,16 @@ async function ensureSchema(): Promise<void> {
 async function workspaceValueThesis(workspaceId: string): Promise<unknown> {
   const { getWorkspaceValueThesis } = await import("@/lib/db/queries/value-thesis");
   return getWorkspaceValueThesis(workspaceId);
+}
+
+/**
+ * (Rilascio 9b, docs/contesto/RILASCIO-9b-COSTRUZIONE.md §2.12) Il blocco «Contesto» che il classificatore riceve: solo
+ * «In breve», «Per tutti», con l'ok della richiesta; "" senza. Chi chiama ha già controllato la sessione (la rotta con
+ * `boardRequest`, il tool della chat dopo i controlli della rotta). Si carica quando serve, come la tesi.
+ */
+async function classifyContext(workspaceId: string): Promise<string> {
+  const { loadPromptContext } = await import("@/lib/db/queries/context-work");
+  return loadPromptContext(workspaceId, { profile: "classify", consent: "request" });
 }
 
 /** Una riga di `activities` come la dà Drizzle: è il tipo che il classificatore e il match O*NET prendono. */
@@ -155,7 +166,8 @@ export function appCompleteDeps(executor: UcExecutor): CompleteDeps {
       const [units, goals, activities] = await executor.batch(completionReads(scope));
       if (units.length === 0) return null;
       const companyValueThesis = await workspaceValueThesis(scope.workspaceId);
-      return { unitName: text(units[0].name) ?? "", activities: activities.map(activityFromRow), companyValueThesis, goals: goals.map(goalFromRow) };
+      const contesto = await classifyContext(scope.workspaceId);
+      return { unitName: text(units[0].name) ?? "", activities: activities.map(activityFromRow), companyValueThesis, goals: goals.map(goalFromRow), contesto };
     },
     async markMapped(scope, signal) {
       const [rows] = await executor.batch([markMapped(scope, { type: MAPPING_COMPLETED_SIGNAL, ...signal })]);
@@ -225,7 +237,7 @@ export async function completeUnitMapping(
   if (unclassified.length > 0) {
     try {
       // Le classificazioni riuscite si scrivono; quelle rifiutate, fallite o fermate dalla scadenza restano da fare.
-      const results = await deps.classify(unclassified, { companyValueThesis: unit.companyValueThesis, goals: unit.goals }, { abortSignal: AbortSignal.timeout(timeUntil(deadline)) });
+      const results = await deps.classify(unclassified, { companyValueThesis: unit.companyValueThesis, goals: unit.goals, contesto: unit.contesto ?? "" }, { abortSignal: AbortSignal.timeout(timeUntil(deadline)) });
       const own = new Map([...results].filter(([id]) => unclassified.some((activity) => activity.id === id)));
       // Si conta quello che questo giro ha scritto: un passo che un altro giro (o una persona) ha classificato nel
       // frattempo non è suo. Se gli altri hanno fatto tutto, a questo giro non resta niente da fare.

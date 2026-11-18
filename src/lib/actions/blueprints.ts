@@ -4,6 +4,7 @@ import { requireWorkspaceAccess } from "@/lib/auth/require-workspace";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import { getUseCasesByWorkspace } from "@/lib/db/queries/use-cases";
 import { getActivitiesByWorkspace } from "@/lib/db/queries/activities";
+import { loadPromptContext } from "@/lib/db/queries/context-work";
 import { generateAgentBlueprints, type AgentBlueprint } from "@/lib/ai/generate-blueprints";
 import { db } from "@/lib/db";
 import { agentBlueprints } from "@/lib/db/schema";
@@ -28,7 +29,10 @@ export async function generateBlueprintsAction(
     throw new Error("Nessun use case disponibile. Genera prima i use case.");
   }
 
-  const result = await generateAgentBlueprints(useCases, activities);
+  // (Rilascio 9b, docs/contesto/RILASCIO-9b-COSTRUZIONE.md §2.12) Con il blocco «Contesto» («In breve» e i fatti «Per
+  // tutti» su sistemi e regole); "" senza l'ok ai fornitori di AI.
+  const contesto = await loadPromptContext(workspaceId, { profile: "blueprints", consent: "request" });
+  const result = await generateAgentBlueprints(useCases, activities, contesto);
 
   await db.insert(agentBlueprints).values({
     workspaceId,
