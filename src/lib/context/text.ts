@@ -395,6 +395,8 @@ export const CONTEXT_TEXT = Object.freeze({
       notes: "Appunti",
       facts: "Fatti",
       items: "Citazioni, proposte, impegni e domande",
+      // I nodi della Mappa (le entità che i fatti nominano): un gruppo corto, dopo quello che ne parla.
+      map: "Mappa",
       documents: "Documenti",
       granola: "Regole di Granola",
       chat: "Memoria della chat",

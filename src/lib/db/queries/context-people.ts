@@ -5,16 +5,19 @@ import "server-only";
  * cancellare i suoi dati. Solo Lateral Space (`canEditMemory`); nessun modello.
  *
  * - **La ricerca** guarda gli appunti (testo, titolo, «Con chi»), i fatti (anche le versioni della storia), le
- *   citazioni, le proposte (aperte e chiuse), gli impegni e le domande, i documenti (nome del file, titolo, «Con chi»,
- *   testo e riassunto, anche quelli di prima della 9a senza fonte), gli indirizzi delle regole di Granola e la memoria
- *   della chat (`conversation_memory`, l'indice dei messaggi). Agli appunti e ai fatti il pezzo di testo con il nome.
+ *   citazioni, le proposte (aperte e chiuse, anche le loro entità e i loro collegamenti), gli impegni e le domande, i
+ *   nodi della Mappa (`context_entities`: il nome e gli altri nomi), i documenti (nome del file, titolo, «Con chi», testo
+ *   e riassunto, anche quelli di prima della 9a senza fonte), gli indirizzi e le parole del titolo delle regole di
+ *   Granola e la memoria della chat (`conversation_memory`, l'indice dei messaggi). Agli appunti e ai fatti il pezzo di
+ *   testo con il nome.
  * - **«Togli … da tutto»** fa in una transazione, solo nel workspace, la lista del §2.13: gli appunti trovati perdono
  *   testo e «Con chi», prendono un titolo generico e `text_purged_at`, e le loro proposte aperte diventano «superate»;
  *   nei fatti (anche nella storia), nelle proposte di ogni stato (di quelle chiuse solo i testi: stato e `decided_at`
- *   restano), negli impegni e nelle domande il nome diventa «una persona» e le citazioni che lo contengono diventano
- *   nulle; «In breve» che lo contiene si cancella (lo riscrive la notte); le regole di Granola perdono l'indirizzo; le
- *   righe della memoria della chat che lo citano si cancellano. I documenti restano: si tolgono uno per uno dal loro
- *   pannello. Un evento `persona_tolta`, con i soli numeri.
+ *   restano; anche le entità e i collegamenti), negli impegni e nelle domande il nome diventa «una persona» e le
+ *   citazioni che lo contengono diventano nulle; un nodo della Mappa con il nome si toglie (con i suoi legami), uno che
+ *   lo ha tra gli altri nomi lo perde; «In breve» che lo contiene si cancella (lo riscrive la notte); le regole di
+ *   Granola perdono l'indirizzo e la parola del titolo; le righe della memoria della chat che lo citano si cancellano. I
+ *   documenti restano: si tolgono uno per uno dal loro pannello. Un evento `persona_tolta`, con i soli numeri.
  * - **Le guardie**: un termine di sole parole comuni («del») non si cerca né si toglie; «Togli» rifiuta anche una parola
  *   sola che è nel nome del cliente («Alfa» per «Alfa Ricambi»), che la ricerca mostra lo stesso (`inClientName`).
  * - Prima di scrivere, la stessa transazione prende in ordine gli appunti, le proposte e i fatti che cambiano (come la
@@ -46,7 +49,7 @@ const DOCUMENT_ROWS = 20;
 const NOTE_AROUND = { before: 60, after: 100 } as const;
 const FACT_AROUND = { before: 200, after: 200 } as const;
 /** Le lunghezze delle colonne che cambiano: dopo la sostituzione il testo resta dentro. */
-const MAX = { statement: 200, proposal: 400, role: 80 } as const;
+const MAX = { statement: 200, proposal: 400, role: 80, entity: 120 } as const;
 
 export interface PersonNoteHit {
   id: string;
@@ -74,20 +77,27 @@ export interface PersonHits {
   isEmail: boolean;
   notes: { total: number; rows: PersonNoteHit[] };
   facts: { total: number; rows: PersonFactHit[] };
-  /** Citazioni dei fatti, proposte di ogni stato, impegni e domande. */
+  /** Citazioni dei fatti, proposte di ogni stato (anche nelle loro entità e nei collegamenti), impegni e domande. */
   items: { total: number };
+  /** I nodi della Mappa con il nome, o con il nome tra gli altri nomi. */
+  map: { total: number };
   documents: { total: number; rows: PersonDocumentHit[] };
+  /** Gli indirizzi e le parole del titolo delle regole di Granola che lo contengono. */
   granola: { total: number };
   chat: { total: number };
   /** «Togli» non si può: una parola sola che è anche nel nome del cliente (`termInClientName`). La ricerca la mostra lo stesso. */
   inClientName: boolean;
 }
-/** Che cosa ha tolto «Togli … da tutto»: appunti cancellati, testi corretti, indirizzi di Granola, righe della memoria della chat. */
+/**
+ * Che cosa ha tolto «Togli … da tutto»: appunti cancellati, testi corretti, voci delle regole di Granola (indirizzi e
+ * parole del titolo), righe della memoria della chat, nodi della Mappa (tolti, o senza quell'altro nome).
+ */
 export interface PersonErased {
   notes: number;
   texts: number;
   rules: number;
   chatMemory: number;
+  map: number;
 }
 
 /** Il termine valido e la sua espressione, oppure l'errore da mostrare («Scrivi almeno 3 lettere.»). */
@@ -112,9 +122,25 @@ const clientNamesOf = (result: unknown) => {
   return [row?.workspace, row?.organization];
 };
 
-/** Una proposta (alias `x`), di qualunque stato, con il nome nella frase, nella citazione o nel ruolo. */
+/**
+ * Una proposta (alias `x`), di qualunque stato, con il nome nella frase, nella citazione o nel ruolo, nel nome di una
+ * sua entità o in un capo di un suo collegamento.
+ */
 function proposalNames(p: string): SQL {
-  return sql`(x.statement ~ ${p} OR x.quote ~ ${p} OR x.role_label ~ ${p})`;
+  return sql`(x.statement ~ ${p} OR x.quote ~ ${p} OR x.role_label ~ ${p}
+    OR EXISTS (SELECT 1 FROM jsonb_array_elements(x.entities) AS j(v) WHERE j.v ->> 'name' ~ ${p})
+    OR EXISTS (SELECT 1 FROM jsonb_array_elements(x.relations) AS j(v) WHERE j.v ->> 'from' ~ ${p} OR j.v ->> 'to' ~ ${p}))`;
+}
+
+/** Un nodo della Mappa (alias `e`) con il nome, o con il nome tra gli altri nomi (`aliases`). */
+function entityMatches(ws: string, p: string): SQL {
+  return sql`e.workspace_id = ${ws}::uuid AND (e.name ~ ${p} OR EXISTS (SELECT 1 FROM unnest(e.aliases) AS a(alias) WHERE a.alias ~ ${p}))`;
+}
+
+/** Quante voci delle regole di Granola contengono il nome: gli indirizzi e le parole del titolo. */
+function granolaHitsSql(ws: string, p: string): SQL {
+  return sql`((SELECT count(*) FROM context_granola_rules r CROSS JOIN LATERAL unnest(r.emails) AS e(email) WHERE r.workspace_id = ${ws}::uuid AND e.email ~ ${p})
+    + (SELECT count(*) FROM context_granola_rules r CROSS JOIN LATERAL unnest(r.title_words) AS w(word) WHERE r.workspace_id = ${ws}::uuid AND w.word ~ ${p}))::int`;
 }
 
 /**
@@ -169,7 +195,7 @@ export async function searchPerson(actor: ContextActor, raw: string): Promise<Se
   const ws = actor.workspaceId;
   const p = term.pattern;
   try {
-    const [notes, facts, items, documents, granola, chat, names] = await db.batch([
+    const [notes, facts, items, documents, granola, chat, names, map] = await db.batch([
       db.execute(sql`
         SELECT h.total, s.id, s.title, s.occurred_on,
           ${snippetSql(sql`(CASE WHEN s.body ~ ${p} THEN s.body WHEN s.title ~ ${p} THEN s.title ELSE s.participants END)`, p, NOTE_AROUND)} AS snippet
@@ -207,11 +233,10 @@ export async function searchPerson(actor: ContextActor, raw: string): Promise<Se
           AND (d.file_name ~ ${p} OR d.extracted_text ~ ${p} OR d.summary ~ ${p} OR s.title ~ ${p} OR s.participants ~ ${p})
         ORDER BY d.created_at DESC, d.id
         LIMIT ${DOCUMENT_ROWS}`),
-      db.execute(sql`
-        SELECT count(*)::int AS total FROM context_granola_rules r CROSS JOIN LATERAL unnest(r.emails) AS e(email)
-        WHERE r.workspace_id = ${ws}::uuid AND e.email ~ ${p}`),
+      db.execute(sql`SELECT ${granolaHitsSql(ws, p)} AS total`),
       db.execute(sql`SELECT count(*)::int AS total FROM conversation_memory m WHERE m.workspace_id = ${ws}::uuid AND m.content ~ ${p}`),
       db.execute(clientNamesSql(ws)),
+      db.execute(sql`SELECT count(*)::int AS total FROM context_entities e WHERE ${entityMatches(ws, p)}`),
     ]);
     const noteRows = rowsOf<{ total: unknown; id: string; title: string; occurred_on: unknown; snippet: unknown }>(notes);
     const factRows = rowsOf<{ total: unknown; id: string; status: string; statement: string; snippet: unknown }>(facts);
@@ -228,6 +253,7 @@ export async function searchPerson(actor: ContextActor, raw: string): Promise<Se
         rows: factRows.map((row) => ({ id: row.id, history: row.status !== "attivo", statement: row.statement, snippet: snippetOf(row.snippet) })),
       },
       items: { total: count(rowsOf<{ total: unknown }>(items)[0]?.total) },
+      map: { total: count(rowsOf<{ total: unknown }>(map)[0]?.total) },
       documents: {
         total: count(documentRows[0]?.total),
         rows: documentRows.map((row) => ({ sourceId: row.source_id, fileName: row.file_name ?? "" })),
@@ -248,9 +274,26 @@ function replacedSql(column: SQL, p: string, max: number): SQL {
 }
 
 /**
+ * Un elenco jsonb di oggetti (le entità o i collegamenti di una proposta) con il nome sostituito da «una persona» nei
+ * campi di testo `fields`, nello stesso ordine e dentro i 120 caratteri di un'entità; com'è se nessuna voce lo contiene.
+ * Il nome di un'entità e i capi dei collegamenti cambiano allo stesso modo: si ritrovano ancora alla conferma.
+ */
+function replacedJsonSql(column: SQL, fields: readonly string[], p: string): SQL {
+  const hit = sql.join(fields.map((field) => sql`j.v ->> ${field}::text ~ ${p}`), sql` OR `);
+  const patch = sql.join(
+    fields.map((field) => sql`${field}::text, CASE WHEN j.v ->> ${field}::text ~ ${p} THEN to_jsonb(left(regexp_replace(j.v ->> ${field}::text, ${p}, ${PERSON_PLACEHOLDER}, 'g'), ${MAX.entity}::int)) END`),
+    sql`, `,
+  );
+  return sql`CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(${column}) AS j(v) WHERE ${hit})
+    THEN (SELECT jsonb_agg(CASE WHEN jsonb_typeof(j.v) = 'object' THEN j.v || jsonb_strip_nulls(jsonb_build_object(${patch})) ELSE j.v END ORDER BY j.n)
+      FROM jsonb_array_elements(${column}) WITH ORDINALITY AS j(v, n))
+    ELSE ${column} END`;
+}
+
+/**
  * «Togli «…» da tutto» (§2.13): in una transazione, solo nel workspace. Solo Lateral Space: agli altri
  * `permesso_mancante`. Risponde con i numeri del messaggio («{a} appunti cancellati, {t} testi corretti») e quelli di
- * Granola e della memoria della chat. Scrive `persona_tolta` con i soli numeri, se ha tolto qualcosa. Non si torna
+ * Granola, della memoria della chat e della Mappa. Scrive `persona_tolta` con i soli numeri, se ha tolto qualcosa. Non si torna
  * indietro. Non chiama il modello: «In breve» lo riscrive la notte. Un termine di sole parole comuni (`personTerm`) o
  * una parola sola del nome del cliente (`termInClientName`): `dati_non_validi` con il messaggio, e niente cambia.
  */
@@ -308,6 +351,8 @@ export async function erasePerson(actor: ContextActor, raw: string): Promise<Ser
           SET statement = ${replacedSql(sql`x.statement`, p, MAX.proposal)},
             quote = CASE WHEN x.quote ~ ${p} THEN NULL ELSE x.quote END,
             role_label = ${replacedSql(sql`x.role_label`, p, MAX.role)},
+            entities = ${replacedJsonSql(sql`x.entities`, ["name"], p)},
+            relations = ${replacedJsonSql(sql`x.relations`, ["from", "to"], p)},
             status = CASE WHEN x.source_id IN (SELECT id FROM notes) THEN 'superata' ELSE x.status END,
             decided_at = CASE WHEN x.source_id IN (SELECT id FROM notes) THEN now() ELSE x.decided_at END,
             version = x.version + 1, updated_at = now()
@@ -323,6 +368,8 @@ export async function erasePerson(actor: ContextActor, raw: string): Promise<Ser
           SET statement = ${replacedSql(sql`x.statement`, p, MAX.proposal)},
             quote = CASE WHEN x.quote ~ ${p} THEN NULL ELSE x.quote END,
             role_label = ${replacedSql(sql`x.role_label`, p, MAX.role)},
+            entities = ${replacedJsonSql(sql`x.entities`, ["name"], p)},
+            relations = ${replacedJsonSql(sql`x.relations`, ["from", "to"], p)},
             version = x.version + 1, updated_at = now()
           WHERE x.workspace_id = ${ws}::uuid AND x.status <> 'aperta' AND ${proposalNames(p)}
         ), commitments AS (
@@ -341,15 +388,30 @@ export async function erasePerson(actor: ContextActor, raw: string): Promise<Ser
             version = q.version + 1, updated_at = now()
           WHERE q.workspace_id = ${ws}::uuid AND (q.question ~ ${p} OR q.ask_whom ~ ${p} OR q.quote ~ ${p})
           RETURNING q.id
+        ), map_nodes AS (
+          -- Un nodo della Mappa con il nome si toglie, e con lui i suoi legami con i fatti e i collegamenti (a cascata).
+          -- Rinominarlo «una persona» potrebbe scontrarsi con un nodo che ha già quel nome: il nome è unico per workspace,
+          -- tipo e chiave. Chi ha il nome solo tra gli altri nomi lo perde e resta (la chiave non cambia).
+          DELETE FROM context_entities e WHERE e.workspace_id = ${ws}::uuid AND e.name ~ ${p}
+          RETURNING e.id
+        ), map_aliases AS (
+          UPDATE context_entities e
+          SET aliases = ARRAY(SELECT a.alias FROM unnest(e.aliases) WITH ORDINALITY AS a(alias, n) WHERE NOT (a.alias ~ ${p}) ORDER BY a.n), updated_at = now()
+          WHERE e.workspace_id = ${ws}::uuid AND NOT (e.name ~ ${p}) AND EXISTS (SELECT 1 FROM unnest(e.aliases) AS a(alias) WHERE a.alias ~ ${p})
+          RETURNING e.id
         ), brief AS (
           DELETE FROM context_briefs b
           WHERE b.workspace_id = ${ws}::uuid AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(b.lines) AS l(line) WHERE l.line ~ ${p})
           RETURNING b.workspace_id
         ), granola AS (
+          -- L'indirizzo e la parola del titolo escono; senza parole salvate (null) restano quelle dal nome del workspace.
           UPDATE context_granola_rules r
           SET emails = ARRAY(SELECT e.email FROM unnest(r.emails) WITH ORDINALITY AS e(email, n) WHERE NOT (e.email ~ ${p}) ORDER BY e.n),
+            title_words = CASE WHEN r.title_words IS NULL THEN NULL
+              ELSE ARRAY(SELECT w.word FROM unnest(r.title_words) WITH ORDINALITY AS w(word, n) WHERE NOT (w.word ~ ${p}) ORDER BY w.n) END,
             updated_by_user_id = ${actor.userId}::uuid, updated_at = now()
-          WHERE r.workspace_id = ${ws}::uuid AND EXISTS (SELECT 1 FROM unnest(r.emails) AS e(email) WHERE e.email ~ ${p})
+          WHERE r.workspace_id = ${ws}::uuid
+            AND (EXISTS (SELECT 1 FROM unnest(r.emails) AS e(email) WHERE e.email ~ ${p}) OR EXISTS (SELECT 1 FROM unnest(r.title_words) AS w(word) WHERE w.word ~ ${p}))
           RETURNING r.workspace_id
         ), chat AS (
           DELETE FROM conversation_memory m WHERE m.workspace_id = ${ws}::uuid AND m.content ~ ${p}
@@ -364,26 +426,28 @@ export async function erasePerson(actor: ContextActor, raw: string): Promise<Ser
             (SELECT count(*) FROM questions)::int AS questions,
             (SELECT count(*) FROM proposals WHERE status = 'superata')::int AS superseded,
             (SELECT count(*) FROM brief)::int AS brief,
-            (SELECT count(*) FROM context_granola_rules r CROSS JOIN LATERAL unnest(r.emails) AS e(email) WHERE r.workspace_id = ${ws}::uuid AND e.email ~ ${p})::int AS rules,
-            (SELECT count(*) FROM chat)::int AS chat
+            ${granolaHitsSql(ws, p)} AS rules,
+            (SELECT count(*) FROM chat)::int AS chat,
+            (SELECT count(*) FROM context_entities e WHERE ${entityMatches(ws, p)})::int AS map
         ), logged AS (
           INSERT INTO context_events (workspace_id, action, channel, actor_user_id, detail)
           SELECT ${ws}::uuid, 'persona_tolta', ${actor.channel}, ${actor.userId}::uuid,
             jsonb_build_object('appunti', c.notes, 'fatti', c.facts, 'citazioni', c.quotes, 'proposte', c.proposals, 'impegni', c.commitments,
-              'domande', c.questions, 'superate', c.superseded, 'in_breve', c.brief, 'regole', c.rules, 'chat', c.chat)
+              'domande', c.questions, 'superate', c.superseded, 'in_breve', c.brief, 'regole', c.rules, 'chat', c.chat, 'mappa', c.map)
           FROM counts c
-          WHERE c.notes + c.facts + c.quotes + c.proposals + c.commitments + c.questions + c.brief + c.rules + c.chat > 0
+          WHERE c.notes + c.facts + c.quotes + c.proposals + c.commitments + c.questions + c.brief + c.rules + c.chat + c.map > 0
           RETURNING id
         )
         SELECT c.*, (SELECT count(*) FROM logged)::int AS logged FROM counts c`),
     ]);
-    const [row] = rowsOf<Record<"notes" | "facts" | "quotes" | "proposals" | "commitments" | "questions" | "rules" | "chat", unknown>>(results[3]);
+    const [row] = rowsOf<Record<"notes" | "facts" | "quotes" | "proposals" | "commitments" | "questions" | "rules" | "chat" | "map", unknown>>(results[3]);
     if (!row) return retry();
     return ok({
       notes: count(row.notes),
       texts: count(row.facts) + count(row.quotes) + count(row.proposals) + count(row.commitments) + count(row.questions),
       rules: count(row.rules),
       chatMemory: count(row.chat),
+      map: count(row.map),
     });
   } catch (error) {
     logSafeError(LOG_SCOPE, "persona_non_tolta", error, { workspaceId: ws });

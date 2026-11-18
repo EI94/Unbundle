@@ -325,9 +325,9 @@ test("«Togli … da tutto»: solo quel workspace; gli appunti senza testo, i fa
     const found = okValue(await people.searchPerson(actor("ls"), NAME));
     const erased = okValue(await people.erasePerson(actor("ls"), NAME));
     // 2 appunti; testi: 4 fatti + 2 citazioni + 4 proposte (2 aperte, 2 chiuse) + 2 impegni + 1 domanda.
-    assert.deepEqual(erased, { notes: 2, texts: 13, rules: 1, chatMemory: 1 });
+    assert.deepEqual(erased, { notes: 2, texts: 13, rules: 1, chatMemory: 1, map: 0 });
     // Gli stessi numeri della ricerca: i testi corretti sono i fatti più le citazioni, proposte, impegni e domande trovati.
-    assert.deepEqual([erased.notes, erased.texts, erased.rules, erased.chatMemory], [found.notes.total, found.facts.total + found.items.total, found.granola.total, found.chat.total]);
+    assert.deepEqual([erased.notes, erased.texts, erased.rules, erased.chatMemory, erased.map], [found.notes.total, found.facts.total + found.items.total, found.granola.total, found.chat.total, found.map.total]);
   });
   assert.doesNotMatch(logs, NAME_ANYWHERE, "nei log mai il nome");
 
@@ -389,8 +389,8 @@ test("«Togli … da tutto»: solo quel workspace; gli appunti senza testo, i fa
 
   // «In breve» lo citava: cancellato (lo riscrive la notte). Granola: l'indirizzo esce, il resto resta. La chat: la riga con il nome.
   assert.equal((await q(`SELECT count(*)::int AS n FROM context_briefs WHERE workspace_id = $1`, [ids.wsA]))[0].n, 0);
-  const [rules] = await q(`SELECT emails, domains FROM context_granola_rules WHERE workspace_id = $1`, [ids.wsA]);
-  assert.deepEqual([rules.emails, rules.domains], [["anna.bianchi@cliente.test"], ["cliente.test"]]);
+  const [rules] = await q(`SELECT emails, domains, title_words FROM context_granola_rules WHERE workspace_id = $1`, [ids.wsA]);
+  assert.deepEqual([rules.emails, rules.domains, rules.title_words], [["anna.bianchi@cliente.test"], ["cliente.test"], null], "senza parole del titolo salvate restano quelle dal nome");
   assert.deepEqual((await q(`SELECT content FROM conversation_memory WHERE workspace_id = $1`, [ids.wsA])).map((r) => r.content), ["Il gestionale è SAP Business One."]);
 
   // Un evento `persona_tolta` con i soli numeri; nella storia di A mai il nome.
@@ -402,7 +402,7 @@ test("«Togli … da tutto»: solo quel workspace; gli appunti senza testo, i fa
     actor_user_id: ids.ls,
     source_id: null,
     fact_id: null,
-    detail: { appunti: 2, fatti: 4, citazioni: 2, proposte: 4, impegni: 2, domande: 1, superate: 2, in_breve: 1, regole: 1, chat: 1 },
+    detail: { appunti: 2, fatti: 4, citazioni: 2, proposte: 4, impegni: 2, domande: 1, superate: 2, in_breve: 1, regole: 1, chat: 1, mappa: 0 },
   });
   assert.ok(Object.values(events[0].detail as Record<string, unknown>).every((v) => typeof v === "number"));
   assert.doesNotMatch(JSON.stringify(events), NAME_ANYWHERE);
@@ -416,7 +416,7 @@ test("dopo «Togli» la ricerca trova solo i documenti, che si tolgono uno per u
   assert.deepEqual([hits.notes.total, hits.facts.total, hits.items.total, hits.granola.total, hits.chat.total], [0, 0, 0, 0, 0]);
   assert.equal(hits.documents.total, 2);
   const versions = JSON.stringify(await q(`SELECT id, version FROM context_facts WHERE workspace_id = $1 ORDER BY id`, [ids.wsA]));
-  assert.deepEqual(okValue(await people.erasePerson(actor("ls"), NAME)), { notes: 0, texts: 0, rules: 0, chatMemory: 0 });
+  assert.deepEqual(okValue(await people.erasePerson(actor("ls"), NAME)), { notes: 0, texts: 0, rules: 0, chatMemory: 0, map: 0 });
   assert.equal(JSON.stringify(await q(`SELECT id, version FROM context_facts WHERE workspace_id = $1 ORDER BY id`, [ids.wsA])), versions);
   assert.equal((await q(`SELECT count(*)::int AS n FROM context_events WHERE workspace_id = $1`, [ids.wsA]))[0].n, 1, "niente da togliere: nessun evento");
 });
@@ -466,7 +466,7 @@ test("una parola sola del nome del cliente: la ricerca la trova, «Togli» la ri
   assert.equal(await workspaceA(), before, "niente cambia");
   // Nome e cognome: si toglie la persona; il fatto sul cliente resta com'è.
   assert.equal(okValue(await people.searchPerson(actor("ls"), "Mario Alfa")).inClientName, false);
-  assert.deepEqual(okValue(await people.erasePerson(actor("ls"), "Mario Alfa")), { notes: 1, texts: 0, rules: 0, chatMemory: 0 });
+  assert.deepEqual(okValue(await people.erasePerson(actor("ls"), "Mario Alfa")), { notes: 1, texts: 0, rules: 0, chatMemory: 0, map: 0 });
   assert.equal((await q(`SELECT body FROM context_sources WHERE id = $1`, [note.id]))[0].body, null);
   assert.deepEqual((await q(`SELECT statement, version FROM context_facts WHERE id = $1`, [fact.id]))[0], { statement: "Alfa Ricambi ha due magazzini.", version: 1 });
 });
@@ -475,9 +475,75 @@ test("«In breve» resta se non cita il nome", opts, async () => {
   await q(`INSERT INTO context_briefs (workspace_id, lines, facts_hash) VALUES ($1, $2::jsonb, $3)`, [ids.wsA, JSON.stringify(["Il gestionale è SAP Business One.", "Gli ordini arrivano via e-mail."]), "c".repeat(64)]);
   await q(`INSERT INTO context_facts (workspace_id, section, statement, basis, visibility, origin) VALUES ($1, 'lavoro', 'Verdi approva i preventivi.', 'detto', 'tutti', 'manuale')`, [ids.wsA]);
   const erased = okValue(await people.erasePerson(actor("ls"), "Verdi"));
-  assert.deepEqual(erased, { notes: 0, texts: 1, rules: 0, chatMemory: 0 });
+  assert.deepEqual(erased, { notes: 0, texts: 1, rules: 0, chatMemory: 0, map: 0 });
   assert.equal((await q(`SELECT count(*)::int AS n FROM context_briefs WHERE workspace_id = $1`, [ids.wsA]))[0].n, 1);
   assert.equal((await q(`SELECT count(*)::int AS n FROM context_facts WHERE workspace_id = $1 AND statement = 'una persona approva i preventivi.'`, [ids.wsA]))[0].n, 1);
+});
+
+test("la Mappa, le parole del titolo di Granola, le entità e i collegamenti delle proposte: la ricerca li trova, «Togli» li toglie senza scontrarsi con un nodo «una persona»", opts, async () => {
+  const A = ids.wsA;
+  const [fact] = await q(`INSERT INTO context_facts (workspace_id, section, statement, basis, visibility, origin) VALUES ($1, 'lavoro', 'Il cartone arriva da un fornitore di fiducia.', 'detto', 'tutti', 'manuale') RETURNING id`, [A]);
+  // I nodi della Mappa: «Bianchi» (un fornitore con il cognome inventato), uno che lo ha tra gli altri nomi, un «una
+  // persona» dello stesso tipo (rimasto da una cancellazione di prima: rinominare «Bianchi» si scontrerebbe con lui), un processo.
+  const entity = async (type: string, name: string, aliases: string[] = []) =>
+    String((await q(`INSERT INTO context_entities (workspace_id, type, name, name_key, aliases) VALUES ($1, $2, $3, $4, $5::text[]) RETURNING id`, [A, type, name, name.toLowerCase(), aliases]))[0].id);
+  const bianchi = await entity("fornitore", "Bianchi");
+  const storico = await entity("fornitore", "Fornitore storico", ["Bianchi", "Cartiera"]);
+  const placeholder = await entity("fornitore", "una persona");
+  const magazzino = await entity("processo", "Magazzino");
+  await q(`INSERT INTO context_fact_links (workspace_id, fact_id, entity_id) VALUES ($1, $2, $3), ($1, $2, $4)`, [A, fact.id, bianchi, magazzino]);
+  await q(`INSERT INTO context_relations (workspace_id, from_entity_id, verb, to_entity_id, fact_id) VALUES ($1, $2, 'fornisce', $3, $4)`, [A, bianchi, magazzino, fact.id]);
+  // Le parole del titolo di Granola: il cognome e una parola del cliente. L'indirizzo anna.bianchi@cliente.test c'è già.
+  await q(`UPDATE context_granola_rules SET title_words = '{Bianchi,Ricambi}' WHERE workspace_id = $1`, [A]);
+  // Una proposta aperta e una confermata con il nome solo nelle entità e nei collegamenti.
+  const [note] = await q(
+    `INSERT INTO context_sources (workspace_id, kind, origin, title, occurred_on, body, body_chars, visibility, read_status, parts_read)
+     VALUES ($1, 'appunti', 'web', 'Call sui fornitori', '2026-11-17', 'Il cartone arriva dal fornitore di sempre.', 41, 'ls', 'letto', 1) RETURNING id`,
+    [A],
+  );
+  const named = [JSON.stringify([{ name: "Bianchi", type: "fornitore" }, { name: "Magazzino", type: "processo" }]), JSON.stringify([{ from: "Bianchi", verb: "fornisce", to: "Magazzino" }])];
+  const proposal = async (status: string, position: number) =>
+    String(
+      (
+        await q(
+          `INSERT INTO context_proposals (workspace_id, source_id, position, kind, statement, basis, section, visibility, status, decided_at, entities, relations)
+           VALUES ($1, $2, $3, 'nuovo', 'Il cartone arriva dal fornitore di sempre.', 'detto', 'lavoro', 'ls', $4::text, CASE WHEN $4::text = 'aperta' THEN NULL ELSE now() END, $5::jsonb, $6::jsonb) RETURNING id`,
+          [A, note.id, position, status, ...named],
+        )
+      )[0].id,
+    );
+  const open = await proposal("aperta", 1);
+  const confirmed = await proposal("confermata", 2);
+
+  // Prima non li trovava nessuno (la sonda P3): ora 2 proposte, 2 nodi, l'indirizzo e la parola del titolo.
+  const hits = okValue(await people.searchPerson(actor("ls"), "Bianchi"));
+  assert.deepEqual([hits.notes.total, hits.facts.total, hits.items.total, hits.map.total, hits.granola.total], [0, 0, 2, 2, 2]);
+  assert.deepEqual(okValue(await people.erasePerson(actor("ls"), "Bianchi")), { notes: 0, texts: 2, rules: 2, chatMemory: 0, map: 2 });
+
+  // La Mappa: «Bianchi» non c'è più, con il suo legame e il suo collegamento; l'altro nodo perde solo quell'altro nome;
+  // «una persona» e il processo restano come erano.
+  const nodes = new Map((await q(`SELECT id, name, aliases FROM context_entities WHERE workspace_id = $1`, [A])).map((e) => [String(e.id), [e.name, e.aliases]]));
+  assert.equal(nodes.has(bianchi), false);
+  assert.deepEqual([nodes.get(storico), nodes.get(placeholder), nodes.get(magazzino)], [["Fornitore storico", ["Cartiera"]], ["una persona", []], ["Magazzino", []]]);
+  assert.deepEqual((await q(`SELECT entity_id FROM context_fact_links WHERE fact_id = $1`, [fact.id])).map((l) => String(l.entity_id)), [magazzino]);
+  assert.equal((await q(`SELECT count(*)::int AS n FROM context_relations WHERE fact_id = $1`, [fact.id]))[0].n, 0);
+  assert.deepEqual((await q(`SELECT statement FROM context_facts WHERE id = $1`, [fact.id]))[0].statement, "Il cartone arriva da un fornitore di fiducia.", "il fatto resta");
+  // Granola: l'indirizzo e la parola del titolo escono, la parola del cliente resta.
+  const [rules] = await q(`SELECT emails, title_words FROM context_granola_rules WHERE workspace_id = $1`, [A]);
+  assert.deepEqual([rules.emails, rules.title_words], [[], ["Ricambi"]]);
+  // Le proposte, aperta e confermata: le entità e i capi dei collegamenti con «una persona», allo stesso modo; il resto com'era.
+  for (const [id, status] of [[open, "aperta"], [confirmed, "confermata"]] as const) {
+    const [row] = await q(`SELECT statement, status, version, entities, relations FROM context_proposals WHERE id = $1`, [id]);
+    assert.deepEqual(row, {
+      statement: "Il cartone arriva dal fornitore di sempre.",
+      status,
+      version: 2,
+      entities: [{ name: "una persona", type: "fornitore" }, { name: "Magazzino", type: "processo" }],
+      relations: [{ from: "una persona", verb: "fornisce", to: "Magazzino" }],
+    }, status);
+  }
+  const again = okValue(await people.searchPerson(actor("ls"), "Bianchi"));
+  assert.deepEqual([again.items.total, again.map.total, again.granola.total], [0, 0, 0], "una seconda ricerca non trova più niente");
 });
 
 test("«Togli» mentre una conferma è a metà: la conferma che scrive un fatto su quell'appunto passa, nessuno resta bloccato (40P01)", opts, async (t) => {
@@ -521,7 +587,7 @@ test("«Togli» mentre una conferma è a metà: la conferma che scrive un fatto 
   });
   assert.doesNotMatch(logs, /40P01|deadlock/i, "nessuno si blocca a vicenda");
   // «Togli» finisce dopo la conferma e vede anche il suo fatto: l'appunto, la proposta e il fatto perdono il nome.
-  assert.deepEqual(okValue(erased!), { notes: 1, texts: 2, rules: 0, chatMemory: 0 });
+  assert.deepEqual(okValue(erased!), { notes: 1, texts: 2, rules: 0, chatMemory: 0, map: 0 });
   assert.equal((await q(`SELECT count(*)::int AS n FROM context_facts WHERE workspace_id = $1 AND statement ~* 'moretti'`, [ids.wsA]))[0].n, 0);
 });
 

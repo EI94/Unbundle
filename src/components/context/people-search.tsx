@@ -19,7 +19,7 @@ const P = CONTEXT_TEXT.people;
 
 /** Quanto toglie «Togli … da tutto»: tutto tranne i documenti, che restano e si tolgono uno per uno. */
 export function erasableCount(hits: PersonHits): number {
-  return hits.notes.total + hits.facts.total + hits.items.total + hits.granola.total + hits.chat.total;
+  return hits.notes.total + hits.facts.total + hits.items.total + hits.map.total + hits.granola.total + hits.chat.total;
 }
 
 /**
@@ -199,7 +199,7 @@ function Group({ label, total, children }: { label: string; total: number; child
 }
 
 /**
- * I risultati, a gruppi e nell'ordine del piano; un gruppo vuoto non c'è. Appunti e fatti con al massimo 5 righe e il
+ * I risultati, a gruppi e nell'ordine del piano («Mappa» dopo le citazioni e le proposte); un gruppo vuoto non c'è. Appunti e fatti con al massimo 5 righe e il
  * nome evidenziato; i documenti con il nome del file e «Apri» (un documento di prima della 9a non ha un pannello); gli
  * altri gruppi solo con il numero.
  */
@@ -241,6 +241,7 @@ export function PeopleResults({ hits, today, onOpenDocument }: { hits: PersonHit
         </Group>
       ) : null}
       {hits.items.total > 0 ? <Group label={P.groups.items} total={hits.items.total} /> : null}
+      {hits.map.total > 0 ? <Group label={P.groups.map} total={hits.map.total} /> : null}
       {hits.documents.total > 0 ? (
         <Group label={P.groups.documents} total={hits.documents.total}>
           <p className="text-xs text-muted-foreground">{P.documentHint}</p>

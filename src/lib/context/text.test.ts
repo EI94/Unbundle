@@ -177,7 +177,7 @@ test("(9b) i testi dei gruppi nuovi sono quelli del piano, al singolare e al plu
   const P = CONTEXT_TEXT.people;
   assert.equal(P.link, "Cerca una persona");
   assert.equal(P.title, "Cerca una persona");
-  assert.deepEqual(Object.values(P.groups), ["Appunti", "Fatti", "Citazioni, proposte, impegni e domande", "Documenti", "Regole di Granola", "Memoria della chat"]);
+  assert.deepEqual(Object.values(P.groups), ["Appunti", "Fatti", "Citazioni, proposte, impegni e domande", "Mappa", "Documenti", "Regole di Granola", "Memoria della chat"]);
   assert.equal(P.erase("Persona Inventata"), "Togli «Persona Inventata» da tutto");
   assert.equal(P.eraseTitle("Persona Inventata"), "Togliere «Persona Inventata»?");
   assert.equal(P.erased(3, 7), "Fatto: 3 appunti cancellati, 7 testi corretti.");

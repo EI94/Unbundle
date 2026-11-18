@@ -67,6 +67,7 @@ function hits(over: Partial<PersonHits> = {}): PersonHits {
       ],
     },
     items: { total: 7 },
+    map: { total: 2 },
     documents: { total: 2, rows: [{ sourceId: null, fileName: "listino.xlsx" }, { sourceId: "s1", fileName: "organigramma-rossi.pdf" }] },
     granola: { total: 1 },
     chat: { total: 1 },
@@ -74,7 +75,7 @@ function hits(over: Partial<PersonHits> = {}): PersonHits {
     ...over,
   };
 }
-const none = hits({ notes: { total: 0, rows: [] }, facts: { total: 0, rows: [] }, items: { total: 0 }, documents: { total: 0, rows: [] }, granola: { total: 0 }, chat: { total: 0 } });
+const none = hits({ notes: { total: 0, rows: [] }, facts: { total: 0, rows: [] }, items: { total: 0 }, map: { total: 0 }, documents: { total: 0, rows: [] }, granola: { total: 0 }, chat: { total: 0 } });
 const noop = () => undefined;
 
 test("il link «Cerca una persona» c'è nella vista «Appunti» di Lateral Space, non in quella «Documenti» del cliente", () => {
@@ -92,13 +93,13 @@ test("il link «Cerca una persona» c'è nella vista «Appunti» di Lateral Spac
 
 test("i risultati: i gruppi nell'ordine del piano, ognuno con il numero; i gruppi vuoti non ci sono", () => {
   const text = textOf(render(createElement(PeopleResults, { hits: hits(), today: TODAY, onOpenDocument: noop })));
-  const groups = ["Appunti", "Fatti", "Citazioni, proposte, impegni e domande", "Documenti", "Regole di Granola", "Memoria della chat"];
+  const groups = ["Appunti", "Fatti", "Citazioni, proposte, impegni e domande", "Mappa", "Documenti", "Regole di Granola", "Memoria della chat"];
   const at = groups.map((label) => text.indexOf(label));
   assert.ok(at.every((i) => i >= 0), JSON.stringify(text));
   assert.deepEqual([...at].sort((a, b) => a - b), at, "nell'ordine del piano");
-  assert.deepEqual(at.map((i) => text[i + 1]), ["2", "3", "7", "2", "1", "1"]);
-  const fewer = textOf(render(createElement(PeopleResults, { hits: hits({ granola: { total: 0 }, items: { total: 0 } }), today: TODAY, onOpenDocument: noop })));
-  assert.equal(fewer.includes("Regole di Granola") || fewer.includes("Citazioni, proposte, impegni e domande"), false);
+  assert.deepEqual(at.map((i) => text[i + 1]), ["2", "3", "7", "2", "2", "1", "1"]);
+  const fewer = textOf(render(createElement(PeopleResults, { hits: hits({ granola: { total: 0 }, items: { total: 0 }, map: { total: 0 } }), today: TODAY, onOpenDocument: noop })));
+  assert.equal(fewer.includes("Regole di Granola") || fewer.includes("Citazioni, proposte, impegni e domande") || fewer.includes("Mappa"), false);
   assert.deepEqual(textOf(render(createElement(PeopleResults, { hits: none, today: TODAY, onOpenDocument: noop }))), ["Non compare da nessuna parte."]);
 });
 
@@ -177,6 +178,7 @@ test("una parola sola del nome del cliente: al posto di «Togli … da tutto» l
 });
 
 test("«Togli … da tutto» conta tutto tranne i documenti, che restano", () => {
-  assert.equal(erasableCount(hits()), 2 + 3 + 7 + 1 + 1);
-  assert.equal(erasableCount(hits({ notes: { total: 0, rows: [] }, facts: { total: 0, rows: [] }, items: { total: 0 }, granola: { total: 0 }, chat: { total: 0 } })), 0, "solo documenti: niente da togliere");
+  assert.equal(erasableCount(hits()), 2 + 3 + 7 + 2 + 1 + 1);
+  assert.equal(erasableCount(hits({ notes: { total: 0, rows: [] }, facts: { total: 0, rows: [] }, items: { total: 0 }, map: { total: 0 }, granola: { total: 0 }, chat: { total: 0 } })), 0, "solo documenti: niente da togliere");
+  assert.equal(erasableCount(hits({ notes: { total: 0, rows: [] }, facts: { total: 0, rows: [] }, items: { total: 0 }, map: { total: 1 }, granola: { total: 0 }, chat: { total: 0 } })), 1, "un nodo della Mappa si toglie");
 });
