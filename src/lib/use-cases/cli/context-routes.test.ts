@@ -175,7 +175,9 @@ function post(path: string, body: unknown, opts: { key?: string | null; headers?
   if (key !== null) headers["idempotency-key"] = key;
   return new Request(`https://unbundle.test/api/cli/${path}`, { method: "POST", headers, body: typeof body === "string" ? body : JSON.stringify(body) });
 }
-const get = (query: string) => new Request(`https://unbundle.test/api/cli/context?${query}`, { headers: { authorization: TOKEN, accept: "application/json" } });
+/** Una GET di `unbundle context`: per le novità del contesto conta la versione della CLI (`user-agent`). */
+const get = (query: string, agent = "unbundle-cli/1.6.0") =>
+  new Request(`https://unbundle.test/api/cli/context?${query}`, { headers: { authorization: TOKEN, accept: "application/json", "user-agent": agent } });
 const callsOf = (name: string) => prova.calls.filter(([n]) => n === name).map(([, args]) => args);
 async function errorOf(response: Response): Promise<{ codice: string; messaggio: string }> {
   return ((await response.json()) as { errore: { codice: string; messaggio: string } }).errore;
@@ -464,4 +466,18 @@ test("context: il brief ha la riga del contesto: le righe di CONTESTO.md che cam
   for (const [args] of callsOf("loadAgentContext") as Array<[Row]>) assert.deepEqual(Object.keys(args).sort(), ["useCaseId", "workspaceId"]);
   await context.GET(get("caso=XX-0012&strato=decisioni"));
   assert.equal(callsOf("loadAgentContext").length, reads);
+});
+
+test("context: la CLI 1.5.0 (o un client che non è la CLI) non riceve la riga del contesto né `--contesto` tra gli strati, e non legge il contesto", async () => {
+  prova.agent = AGENT;
+  for (const agent of ["unbundle-cli/1.5.0", "curl/8.4.0", ""]) {
+    const response = await context.GET(get("caso=XX-0012", agent));
+    assert.equal(response.status, 200);
+    const text = String(((await response.json()) as { testo: string }).testo);
+    assert.doesNotMatch(text, /\nContesto:|--contesto/, agent);
+    assert.match(text, /\nStrati: --progetto, --decisioni, --pacchetto, --domande\.$/, agent);
+  }
+  assert.equal(callsOf("loadAgentContext").length, 0, "senza la riga non serve");
+  // La rotta resta per tutti: lo strato `contesto` si legge anche senza la CLI 1.6.0.
+  assert.equal((await context.GET(get("caso=XX-0012&strato=contesto", "curl/8.4.0"))).status, 200);
 });

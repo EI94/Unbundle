@@ -19,7 +19,7 @@ import { tasksBriefLine } from "@/lib/use-cases/factory/tasks";
 import type { UcExecutor } from "@/lib/db/uc-executor";
 import { packageContextDelta, redactAgentContext } from "@/lib/use-cases/factory/package";
 import { canWriteFactory } from "@/lib/use-cases/factory/permissions";
-import { composeBrief, composeDecisionsLayer, composePackageLayer, composeProjectLayer, composeQuestionsLayer, nextStep, type ContextLayer } from "./brief";
+import { cliKnowsContextLayer, composeBrief, composeDecisionsLayer, composePackageLayer, composeProjectLayer, composeQuestionsLayer, nextStep, type ContextLayer } from "./brief";
 import { CLI_NOT_A_BUILDER, type CliCase } from "./case";
 import { notBuilderMessage } from "./case-errors";
 
@@ -59,13 +59,19 @@ export interface CliContext {
  */
 export type CliContextResult = { ok: true; value: CliContext } | { ok: false; code: "non_trovato" | "non_disponibile" };
 
-export async function loadCliContext(executor: UcExecutor, c: CliCase, input: { layer: ContextLayer | null; since: Date | null }): Promise<CliContextResult> {
+/**
+ * `userAgent`: l'intestazione della richiesta. (9b) Solo la CLI che conosce `--contesto` (dalla 1.6.0) riceve nel brief la
+ * riga del contesto e lo strato tra gli «Strati»; l'MCP del caso non la passa.
+ */
+export async function loadCliContext(executor: UcExecutor, c: CliCase, input: { layer: ContextLayer | null; since: Date | null; userAgent?: string | null }): Promise<CliContextResult> {
   const read = await readFactory(executor, c.target, c.actor);
   if (!read.ok) return { ok: false, code: "non_trovato" };
   const view = read.value;
   const contextLayer = input.layer === "contesto";
-  // (9b) La riga del contesto nel brief: il contesto di adesso, da confrontare con il CONTESTO.md dell'ultimo pacchetto.
-  const contextLine = input.layer === null;
+  // (9b) La riga del contesto nel brief, solo per la CLI che conosce `--contesto`: il contesto di adesso, da confrontare
+  // con il CONTESTO.md dell'ultimo pacchetto.
+  const knowsContext = cliKnowsContextLayer(input.userAgent);
+  const contextLine = input.layer === null && knowsContext;
   const [extras, names, tasks, agent] = await Promise.all([
     cliCaseExtras(executor, c.target, { canSeeNeeds: c.canSeeNeeds }),
     namesToHide(executor, c.target),
@@ -96,6 +102,7 @@ export async function loadCliContext(executor: UcExecutor, c: CliCase, input: { 
     repos: extras.repos,
     tasksLine: tasksBriefLine(tasks, viewerId),
     contextDelta,
+    contextLayer: knowsContext,
     namesToHide: names,
     since: input.since ? input.since.toISOString() : null,
   };

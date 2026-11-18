@@ -24,7 +24,8 @@ export async function GET(request: Request): Promise<Response> {
   const sinceRaw = params.get("dal");
   const since = sinceRaw ? new Date(sinceRaw) : null;
   if (since && Number.isNaN(since.getTime())) return cliError(400, "dal", "«dal» vuole una data, per esempio 2026-11-10.");
-  const context = await loadCliContext(opened.value.executor, resolved.value, { layer: layer as ContextLayer | null, since });
+  // (9b) La riga del contesto e `--contesto` nel brief solo per la CLI che li conosce (dalla 1.6.0, dal suo user-agent).
+  const context = await loadCliContext(opened.value.executor, resolved.value, { layer: layer as ContextLayer | null, since, userAgent: request.headers.get("user-agent") });
   if (!context.ok) {
     if (context.code === "non_disponibile") return cliError(CLI_CONTEXT_UNAVAILABLE.status, CLI_CONTEXT_UNAVAILABLE.code, CLI_CONTEXT_UNAVAILABLE.message, CLI_CONTEXT_UNAVAILABLE.headers);
     return cliError(404, "non_trovato", CLI_CASE_NOT_FOUND);

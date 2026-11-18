@@ -50,7 +50,8 @@ async function call(path: string, init: { method?: "GET" | "POST"; token?: strin
   const [route, query] = path.split("?");
   const handler = routes[route]?.[init.method ?? "GET"];
   assert.ok(handler, `rotta ${route} ${init.method ?? "GET"}`);
-  const headers: Record<string, string> = { ...(init.headers ?? {}) };
+  // La CLI 1.6.0, come in produzione: le novità del contesto nel brief sono solo per lei (`cliKnowsContextLayer`).
+  const headers: Record<string, string> = { "user-agent": "unbundle-cli/1.6.0", ...(init.headers ?? {}) };
   if (init.token) headers.authorization = `Bearer ${init.token}`;
   if (init.body !== undefined) headers["content-type"] = "application/json";
   const response = await handler(new Request(`http://127.0.0.1:53110/api/cli/${route}${query ? `?${query}` : ""}`, { method: init.method ?? "GET", headers, body: init.body === undefined ? undefined : JSON.stringify(init.body) }));
@@ -211,6 +212,9 @@ test("lo strato `contesto`: solo «Per tutti», anche a Lateral Space; i nomi co
 test("il brief e il pacchetto: quanti fatti senza pacchetto; CONTESTO.md senza «Solo Lateral Space» né nomi; le novità dopo il pacchetto", opts, async () => {
   const before = await call("context?caso=XX-0012", { token: tokens.lead });
   assert.match(String(before.json.testo), /\nContesto: 2 fatti sul cliente \(unbundle context XX-0012 --contesto\)\.\n/);
+  // La CLI 1.5.0 non conosce `--contesto`: il suo brief non lo nomina.
+  const old = await call("context?caso=XX-0012", { token: tokens.lead, headers: { "user-agent": "unbundle-cli/1.5.0" } });
+  assert.doesNotMatch(String(old.json.testo), /\nContesto:|--contesto/);
   const target = { workspaceId: ids.ws, useCaseId: ids.useCase };
   const lead = { kind: "persona" as const, userId: ids.lead, roles: ["ls_lead" as const] };
   const card = { code: "XX-0012", title: "Preventivi dal portale", kindLabel: null, origin: null, targetQuarter: null, texts: { oggi: null, comeCambia: "Le quotazioni partono dal portale.", persone: null, limiti: null, dati: null }, benefits: [], costText: null };

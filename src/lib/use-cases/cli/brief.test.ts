@@ -3,7 +3,21 @@
 // del contesto del cliente dopo quella del pacchetto, e lo strato `contesto`.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { BRIEF_MAX_CHARS, BRIEF_MAX_TOKENS, composeBrief, composeDecisionsLayer, composeProjectLayer, composeQuestionsLayer, CONTEXT_LAYERS, estimateTokens, nextStep, SETUP_GUIDE, type BriefInput, type BriefProject } from "./brief.ts";
+import {
+  BRIEF_MAX_CHARS,
+  BRIEF_MAX_TOKENS,
+  cliKnowsContextLayer,
+  composeBrief,
+  composeDecisionsLayer,
+  composeProjectLayer,
+  composeQuestionsLayer,
+  CONTEXT_LAYERS,
+  estimateTokens,
+  nextStep,
+  SETUP_GUIDE,
+  type BriefInput,
+  type BriefProject,
+} from "./brief.ts";
 import { SETUP_TOPICS } from "../../db/use-case-hub-factory-ddl.ts";
 
 const topics = (n: number) => Object.fromEntries(SETUP_TOPICS.slice(0, n).map((t) => [t, { scelta: `Scelta per ${t}`, perche: "Il motivo", alternativa: null }]));
@@ -201,34 +215,51 @@ test("lo strato domande: le proposte a chi vede «Cosa serve», senza nomi; per 
 // ─── (9b) Il contesto del cliente (RILASCIO-9b-COSTRUZIONE.md §2.5) ───
 
 test("(9b) la riga del contesto sta subito dopo quella del pacchetto; senza novità non c'è", () => {
-  const lines = composeBrief(input({ contextDelta: 3, latestPackage: { version: 2, createdAt: "2026-11-09T10:00:00.000Z", source: "generato" } })).split("\n");
+  const lines = composeBrief(input({ contextLayer: true, contextDelta: 3, latestPackage: { version: 2, createdAt: "2026-11-09T10:00:00.000Z", source: "generato" } })).split("\n");
   const at = lines.findIndex((line) => line.startsWith("Pacchetto: k2 del 09/11/2026"));
   assert.ok(at > 0);
   assert.equal(lines[at + 1], "Contesto: 3 novità dopo il pacchetto k2 (unbundle context PX-0001 --contesto).");
-  for (const delta of [0, undefined, -2, Number.NaN]) assert.doesNotMatch(composeBrief(input({ contextDelta: delta })), /^Contesto:/m, String(delta));
+  for (const delta of [0, undefined, -2, Number.NaN]) assert.doesNotMatch(composeBrief(input({ contextLayer: true, contextDelta: delta })), /^Contesto:/m, String(delta));
 });
 
 test("(9b) senza pacchetto e con fatti: quanti fatti ci sono, dopo il prossimo passo", () => {
-  const lines = composeBrief(input({ latestPackage: null, contextDelta: 12 })).split("\n");
+  const lines = composeBrief(input({ contextLayer: true, latestPackage: null, contextDelta: 12 })).split("\n");
   const at = lines.findIndex((line) => line.startsWith("Prossimo passo: "));
   assert.equal(lines[at + 1], "Contesto: 12 fatti sul cliente (unbundle context PX-0001 --contesto).");
-  assert.match(composeBrief(input({ latestPackage: null, contextDelta: 1 })), /\nContesto: 1 fatto sul cliente \(unbundle context PX-0001 --contesto\)\.\n/);
+  assert.match(composeBrief(input({ contextLayer: true, latestPackage: null, contextDelta: 1 })), /\nContesto: 1 fatto sul cliente \(unbundle context PX-0001 --contesto\)\.\n/);
 });
 
 test("(9b) il tetto dei 1.200 caratteri resta: con il brief lungo escono le decisioni, non la riga del contesto", () => {
   const many = Array.from({ length: 100 }, (_, i) => decision(i, { choice: "x".repeat(400), topic: "y".repeat(80) }));
-  const text = composeBrief(input({ title: "t".repeat(500), decisions: many, contextDelta: 7, repos: Array.from({ length: 20 }, (_, i) => ({ repo: `Prova/r${i}`, folder: `casi/px-${i}` })) }));
+  const text = composeBrief(input({ contextLayer: true, title: "t".repeat(500), decisions: many, contextDelta: 7, repos: Array.from({ length: 20 }, (_, i) => ({ repo: `Prova/r${i}`, folder: `casi/px-${i}` })) }));
   assert.ok(text.length <= BRIEF_MAX_CHARS, String(text.length));
   assert.match(text, /\nContesto: 7 novità dopo il pacchetto k1 \(unbundle context PX-0001 --contesto\)\.\n/);
   assert.ok((text.match(/^- /gm) ?? []).length < 5, "le decisioni cedono il posto");
 });
 
 test("(9b) la riga del contesto porta il codice intero, anche quando contiene un nome da nascondere", () => {
-  const text = composeBrief(input({ code: "ROSA-0001", namesToHide: ["Maria Rosa"], contextDelta: 2 }));
+  const text = composeBrief(input({ contextLayer: true, code: "ROSA-0001", namesToHide: ["Maria Rosa"], contextDelta: 2 }));
   assert.match(text, /\nContesto: 2 novità dopo il pacchetto k1 \(unbundle context ROSA-0001 --contesto\)\.\n/);
 });
 
-test("(9b) lo strato `contesto` tra gli strati, e nella riga «Strati» del brief", () => {
+test("(9b) lo strato `contesto` tra gli strati, e nella riga «Strati» del brief per la CLI che lo conosce", () => {
   assert.deepEqual([...CONTEXT_LAYERS], ["progetto", "decisioni", "pacchetto", "domande", "contesto"]);
-  assert.match(composeBrief(input()), /\nStrati: --progetto, --decisioni, --pacchetto, --domande, --contesto\.$/);
+  assert.match(composeBrief(input({ contextLayer: true })), /\nStrati: --progetto, --decisioni, --pacchetto, --domande, --contesto\.$/);
+});
+
+test("(9b) la CLI 1.5.0 non conosce `--contesto`: nel brief niente riga del contesto e niente strato, anche con le novità", () => {
+  for (const contextLayer of [undefined, false]) {
+    const text = composeBrief(input({ contextLayer, contextDelta: 3 }));
+    assert.doesNotMatch(text, /^Contesto:|--contesto/m, String(contextLayer));
+    assert.match(text, /\nStrati: --progetto, --decisioni, --pacchetto, --domande\.$/);
+  }
+});
+
+test("(9b) chi conosce `--contesto`: la CLI del modello dalla 1.6.0 (il suo user-agent); le altre e gli altri client no", () => {
+  for (const agent of ["unbundle-cli/1.6.0", "unbundle-cli/1.6.1", "unbundle-cli/1.10.0", "unbundle-cli/2.0.0", " unbundle-cli/1.6.0 ", "unbundle-cli/1.6.0 (darwin)", "unbundle-cli/1.6.0-beta"]) {
+    assert.equal(cliKnowsContextLayer(agent), true, agent);
+  }
+  for (const agent of [null, undefined, "", "unbundle-cli/1.5.0", "unbundle-cli/1.5.9", "unbundle-cli/0.9.9", "unbundle-cli/1.6", "unbundle-cli/1.6.0.1", "Unbundle-CLI/1.6.0", "claude-code/2.0.0", "node", "x unbundle-cli/1.6.0"]) {
+    assert.equal(cliKnowsContextLayer(agent), false, String(agent));
+  }
 });

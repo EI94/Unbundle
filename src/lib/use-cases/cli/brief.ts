@@ -30,6 +30,23 @@ export const BRIEF_MAX_CHARS = 1200;
  */
 export const CONTEXT_LAYERS = ["progetto", "decisioni", "pacchetto", "domande", "contesto"] as const;
 export type ContextLayer = (typeof CONTEXT_LAYERS)[number];
+
+/** (9b) La prima versione della CLI del modello che conosce `--contesto` (RILASCIO-9b-COSTRUZIONE.md §5.4). */
+export const CONTEXT_LAYER_CLI_VERSION = Object.freeze([1, 6, 0] as const);
+
+/**
+ * (9b) La richiesta viene dalla CLI del modello (`user-agent: unbundle-cli/<versione>`) dalla 1.6.0 in su, l'unica che
+ * conosce `--contesto`: la 1.5.0 risponde «--contesto vuole un valore.» (e con `--dal` se lo mangia). Solo a lei il
+ * brief dice la riga del contesto e mette `--contesto` tra gli strati; le rotte restano per tutti. Un altro client (l'MCP
+ * del caso, uno script) o una versione che non si legge: no.
+ */
+export function cliKnowsContextLayer(userAgent: string | null | undefined): boolean {
+  const match = /^unbundle-cli\/(\d{1,4})\.(\d{1,4})\.(\d{1,4})(?![\d.])/.exec(String(userAgent ?? "").trim());
+  if (!match) return false;
+  const version = match.slice(1, 4).map(Number);
+  for (let i = 0; i < 3; i++) if (version[i] !== CONTEXT_LAYER_CLI_VERSION[i]) return version[i] > CONTEXT_LAYER_CLI_VERSION[i];
+  return true;
+}
 export const BRIEF_MAX_TOKENS = 300;
 /** Le decisioni nel brief: le ultime valide. */
 export const BRIEF_DECISIONS = 5;
@@ -84,6 +101,11 @@ export interface BriefInput {
    * (`packageContextDelta`). Con zero, o senza, nessuna riga.
    */
   contextDelta?: number;
+  /**
+   * (9b) Chi chiede conosce `--contesto` (la CLI dalla 1.6.0, `cliKnowsContextLayer`): solo allora la riga del contesto e
+   * lo strato nella riga «Strati». Assente o falso: il brief di prima della 9b.
+   */
+  contextLayer?: boolean;
   namesToHide: readonly string[];
   /** Le novità da questa data (ISO), se chiesta. */
   since?: string | null;
@@ -141,10 +163,10 @@ export function composeBrief(input: BriefInput): string {
   }
   lines.push(`Prossimo passo: ${nextStep(input)}`);
   if (input.latestPackage) lines.push(`Pacchetto: k${input.latestPackage.version} del ${day(input.latestPackage.createdAt)} («unbundle start» lo porta nel repository).`);
-  // (9b) La riga del contesto, subito dopo quella del pacchetto. Porta solo il codice e dei numeri: come il codice e i
-  // repository non passa dai nomi da nascondere («ROSA-0001» resterebbe «una persona-0001»). Non comincia con «- »: quando
-  // il brief è lungo cedono le decisioni, non lei.
-  const contextLine = contextBriefLine({ code: input.code, delta: input.contextDelta ?? 0, packageVersion: input.latestPackage?.version ?? null });
+  // (9b) La riga del contesto, subito dopo quella del pacchetto, solo per chi conosce `--contesto`. Porta solo il codice e
+  // dei numeri: come il codice e i repository non passa dai nomi da nascondere («ROSA-0001» resterebbe «una
+  // persona-0001»). Non comincia con «- »: quando il brief è lungo cedono le decisioni, non lei.
+  const contextLine = input.contextLayer === true ? contextBriefLine({ code: input.code, delta: input.contextDelta ?? 0, packageVersion: input.latestPackage?.version ?? null }) : null;
   if (contextLine) lines.push(cut(contextLine, 160));
   if (input.tasksLine) lines.push(cut(input.tasksLine, 200));
   if (project?.newTools.length) {
@@ -174,7 +196,7 @@ export function composeBrief(input: BriefInput): string {
     ].filter(Boolean);
     lines.push(`Dal ${day(since)}: ${changes.length ? changes.join(", ") : "niente di nuovo"}.`);
   }
-  lines.push(`Strati: ${CONTEXT_LAYERS.map((layer) => `--${layer}`).join(", ")}.`);
+  lines.push(`Strati: ${CONTEXT_LAYERS.filter((layer) => layer !== "contesto" || input.contextLayer === true).map((layer) => `--${layer}`).join(", ")}.`);
   let text = lines.join("\n");
   // Le righe delle decisioni sono le prime a cedere, se il brief è lungo.
   while (text.length > BRIEF_MAX_CHARS) {
