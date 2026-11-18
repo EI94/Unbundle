@@ -638,11 +638,11 @@ export function ClaudeMcpCard({
           </div>
           <div className="min-w-0">
             <h2 id="claude-dossier-title" className="text-base font-semibold">
-              Claude Code sui dossier
+              Claude Code sulle realizzazioni
             </h2>
             <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-              Claude Code legge il catalogo validato di un dossier, in sola lettura. Ogni lettura resta in Attività. Gli accessi si creano
-              dal dossier, in «Sviluppo con Claude»; qui si vedono e si revocano.
+              Claude Code legge il catalogo validato di una realizzazione, in sola lettura. Ogni lettura resta in Attività. Gli accessi si
+              creano dalla realizzazione, in «Sviluppo con Claude»; qui si vedono e si revocano.
             </p>
           </div>
         </div>
@@ -657,7 +657,7 @@ export function ClaudeMcpCard({
                       href={`/dashboard/${workspaceId}/casi-duso/${group.dossierId}`}
                       className="ml-auto inline-flex min-h-11 items-center text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline sm:min-h-0"
                     >
-                      Apri il dossier
+                      Apri la realizzazione
                     </Link>
                   ) : null}
                 </div>
