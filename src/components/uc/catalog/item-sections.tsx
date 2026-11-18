@@ -307,11 +307,11 @@ export function QuestionPanelBody({ model }: { model: QuestionDetailModel }) {
 
 /**
  * Al telefono le azioni della pagina intera restano fisse in alto, sotto la
- * barra del workspace (61 px) e la barra fissa del caso (66 px, `case-tabs`);
- * un modulo aperto scorre dentro la sua cornice.
+ * barra in alto del telefono (56 px, rilascio 10) e la barra fissa del caso
+ * (66 px, `case-tabs`); un modulo aperto scorre dentro la sua cornice.
  */
 const PHONE_STICKY_ACTIONS =
-  "max-sm:sticky max-sm:top-[127px] max-sm:z-10 max-sm:-mx-4 max-sm:max-h-[50dvh] max-sm:overflow-y-auto max-sm:border-b max-sm:bg-background max-sm:px-4 max-sm:py-2";
+  "max-sm:sticky max-sm:top-[122px] max-sm:z-10 max-sm:-mx-4 max-sm:max-h-[50dvh] max-sm:overflow-y-auto max-sm:border-b max-sm:bg-background max-sm:px-4 max-sm:py-2";
 
 /**
  * La pagina intera `/domande/<id>` (§3.6.5): da `lg` due colonne, a sinistra
