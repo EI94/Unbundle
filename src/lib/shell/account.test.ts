@@ -2,10 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
+  ACCOUNT_PARAM,
   ACCOUNT_PARTS,
   accountApiPath,
+  accountHref,
   accountPartForSettingsHash,
-  accountPartForSettingsLanding,
   accountPartOf,
   accountSectionId,
   claudeAiHeader,
@@ -76,18 +77,15 @@ test("le ancore personali delle Impostazioni aprono il foglio sulla parte giusta
   assert.equal(accountPartForSettingsHash("/dashboard/00000000-0000-4000-8000-0000000000f2/settings", "#cli", ws), null);
 });
 
-test("(§3.12) le Impostazioni senza ancora né parametri, arrivando da fuori: il link dell'e-mail «CLI collegata», su «Claude e terminale»", () => {
+test("(§3.12) l'indirizzo delle e-mail porta alla Home con il foglio su «Claude e terminale»: lo stesso indirizzo del foglio", () => {
   const ws = "00000000-0000-4000-8000-0000000000f1";
+  const href = accountHref(ws, "claude");
+  assert.equal(href, `/dashboard/${ws}?account=claude`);
+  assert.equal(accountPartOf(new URL(href, "http://unbundle.test").searchParams.get(ACCOUNT_PARAM)), "claude");
+  assert.equal(accountHref(ws), `/dashboard/${ws}?account=1`, "senza parte, in cima");
+  // `settings` senza ancora resta Impostazioni: il foglio si apre solo con `#cli` e `#granola`.
   const settings = `/dashboard/${ws}/settings`;
-  assert.equal(accountPartForSettingsLanding(settings, "", "", ws), "claude");
-  assert.equal(accountPartForSettingsLanding(`${settings}/`, "", "", ws), "claude");
-  // Il ritorno da Slack o da Granola, un'ancora della pagina, un foglio già aperto: niente.
-  for (const [search, hash] of [["?slack=installed", ""], ["?granola=errore", "#granola"], ["", "#integrazioni"], ["?account=email", ""]]) {
-    assert.equal(accountPartForSettingsLanding(settings, search, hash, ws), null, `${search}${hash}`);
-  }
-  // Solo le Impostazioni di questo workspace.
-  assert.equal(accountPartForSettingsLanding(`/dashboard/${ws}/agent-factory`, "", "", ws), null);
-  assert.equal(accountPartForSettingsLanding("/dashboard/00000000-0000-4000-8000-0000000000f2/settings", "", "", ws), null);
+  for (const hash of ["", "#", "#integrazioni"]) assert.equal(accountPartForSettingsHash(settings, hash, ws), null, hash || "senza ancora");
   // La riga di Granola in Contesto («Il tuo account», «Ricollega») porta a `settings#granola`: il foglio, su «Granola».
   assert.match(read("src/components/context/granola/granola-inbox-panel.tsx"), /const settingsHref = `\/dashboard\/\$\{workspaceId\}\/settings#granola`;/);
   assert.equal(accountPartForSettingsHash(settings, "#granola", ws), "granola");

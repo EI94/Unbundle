@@ -65,7 +65,7 @@ function singleCaseEmails(): Array<[string, RenderedEmail]> {
     { ...caseRef, template: "compito_proposto", link: PROJECT },
     { ...caseRef, template: "banco_consiglio", role: "lettura", model: "Claude Haiku 5.5", link: PROJECT },
     { ...caseRef, template: "evals_in_calo", alert: "in_calo", quality: "91%", drop: 0.064, link: PROJECT },
-    { template: "cli_collegata", clientName: "Cliente Demo", connectedAt: new Date("2026-11-11T09:30:00Z"), expiresAt: new Date("2027-02-08T09:30:00Z"), link: `${ORIGIN}/dashboard/${WS}/settings` },
+    { template: "cli_collegata", clientName: "Cliente Demo", connectedAt: new Date("2026-11-11T09:30:00Z"), expiresAt: new Date("2027-02-08T09:30:00Z"), link: `${ORIGIN}/dashboard/${WS}/account` },
     { template: "team_aggiunto", clientName: "Cliente Demo", cases: 3, link: `${ORIGIN}/dashboard/${WS}/agent-factory` },
     { template: "team_tolto", clientName: "Cliente Demo" },
   ];

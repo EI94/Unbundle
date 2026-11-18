@@ -1,4 +1,4 @@
-import { ACCOUNT_PARAM, accountPartForSettingsHash, accountPartForSettingsLanding, withAccount, withoutAccount, type AccountPart } from "@/lib/shell/account";
+import { ACCOUNT_PARAM, accountPartForSettingsHash, withAccount, withoutAccount, type AccountPart } from "@/lib/shell/account";
 
 /**
  * Aprire e chiudere il foglio «Il tuo account» (rilascio 10, PROPOSTA-10 §2.3): solo l'indirizzo cambia, con la
@@ -12,17 +12,15 @@ import { ACCOUNT_PARAM, accountPartForSettingsHash, accountPartForSettingsLandin
  * Il passo aggiunto si ricorda qui, con il suo indirizzo (apertura e chiusura stanno in due componenti, il menu e il
  * foglio): chiudere torna indietro solo se l'indirizzo di adesso è quello del passo aggiunto, anche quando ci si torna
  * con «Avanti» o «Indietro»; un foglio a un altro indirizzo non ha un passo suo. Nessun link dell'app porta a
- * `?account=`: lo stesso indirizzo è sempre quel passo.
+ * `?account=`: lo stesso indirizzo è sempre quel passo. (L'indirizzo delle e-mail, `/dashboard/<ws>/account`, ci arriva
+ * con un redirect del server: come un link, il foglio non ha un passo suo e chiuderlo lascia la Home.)
  */
 
 /** La pagina che i due gesti toccano: `window`, o una finta nei test. */
 export interface AccountPage {
-  location: Pick<Location, "pathname" | "search" | "hash"> & Partial<Pick<Location, "origin">>;
+  location: Pick<Location, "pathname" | "search" | "hash">;
   history: Pick<History, "pushState" | "replaceState" | "back">;
   addEventListener(type: "popstate", listener: () => void): void;
-  /** Come si è arrivati alla pagina (il tipo della navigazione, il referrer): `window` li ha; senza, l'arrivo è dall'app. */
-  performance?: Pick<Performance, "getEntriesByType">;
-  document?: Pick<Document, "referrer">;
 }
 
 const browser = (): AccountPage => window;
@@ -69,41 +67,12 @@ export function closeAccountSheet(page: AccountPage = browser()): void {
   page.history.replaceState(null, "", withoutAccount(current));
 }
 
-/** Le pagine che hanno già mostrato il loro primo indirizzo: dopo, ogni indirizzo nuovo è una navigazione dell'app. */
-const landed = new WeakSet<AccountPage>();
-
-/**
- * La pagina è arrivata da fuori dell'app: una navigazione nuova del documento (non «Ricarica», non «Indietro» o
- * «Avanti»), senza un referrer dell'app. Un link di un'e-mail, di un altro programma, un indirizzo scritto. Il login
- * (`router.push` dopo `/login?callbackUrl=`) resta nello stesso documento: conta l'arrivo di prima del login.
- */
-function arrivedFromOutside(page: AccountPage): boolean {
-  const entry = page.performance?.getEntriesByType("navigation")[0] as { type?: string } | undefined;
-  const origin = page.location.origin;
-  if (entry?.type !== "navigate" || !origin) return false;
-  const referrer = page.document?.referrer ?? "";
-  if (!referrer) return true;
-  try {
-    return new URL(referrer).origin !== origin;
-  } catch {
-    return true;
-  }
-}
-
 /**
  * (§2.4) `settings#cli` (i link della CLI e dell'Agent Factory) e `settings#granola` (il ritorno da Granola) aprono il
  * foglio sulla parte giusta, al posto dell'indirizzo di prima: senza un passo nuovo, e solo se non è già aperto.
- * (§3.12) Anche `settings` senza ancora né parametri, ma solo come primo indirizzo di una pagina arrivata da fuori
- * dell'app: è il link dell'e-mail «CLI collegata» alla persona, e si apre su «Claude e terminale». Dalla barra, da un
- * link dell'app, ricaricando o tornando indietro lo stesso indirizzo resta Impostazioni.
+ * `settings` senza ancora resta Impostazioni, da dovunque si arrivi: le e-mail portano a `/dashboard/<ws>/account`.
  */
 export function openAccountForSettingsAnchor(pathname: string, workspaceId: string, page: AccountPage = browser()): void {
-  const first = !landed.has(page);
-  landed.add(page);
-  const { search, hash } = page.location;
-  if (new URLSearchParams(search).has(ACCOUNT_PARAM)) return;
-  const target =
-    accountPartForSettingsHash(pathname, hash, workspaceId) ??
-    (first && arrivedFromOutside(page) ? accountPartForSettingsLanding(pathname, search, hash, workspaceId) : null);
-  if (target) openAccountSheet(target, { replace: true }, page);
+  const target = accountPartForSettingsHash(pathname, page.location.hash, workspaceId);
+  if (target && !new URLSearchParams(page.location.search).has(ACCOUNT_PARAM)) openAccountSheet(target, { replace: true }, page);
 }

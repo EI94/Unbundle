@@ -175,14 +175,14 @@ test("l'e-mail «CLI collegata»: una per token, alla persona, senza caso; parte
   const [{ n }] = await q(`SELECT count(*)::int AS n FROM uc_notifications WHERE template_key = 'cli_collegata' AND payload ->> 'tokenId' = $1`, [principal.tokenId]);
   assert.equal(n, 1, "una sola e-mail per token");
 
-  // Il giro di una riga sola: alla persona, con workspace e link a Impostazioni, mai l'etichetta scelta dalla CLI.
+  // Il giro di una riga sola: alla persona, con workspace e link a «Il tuo account», mai l'etichetta scelta dalla CLI.
   const summary = await dispatch.dispatchDue({ notificationId: delivered.noticeId, executor: exec, env, mailer });
   assert.equal(summary.sent, 1);
   assert.equal(sent.length, 1);
   assert.equal(sent[0].to, `prova-cli-persona-${suffix}@example.test`);
   // (Rilascio 10, §3.12) L'oggetto al massimo di 55 caratteri.
   assert.equal(sent[0].subject, "Workspace di prova CLI: CLI collegata al tuo account");
-  assert.ok(sent[0].text.includes(`https://app.example.test/dashboard/${ids.ws}/settings`));
+  assert.ok(sent[0].text.includes(`https://app.example.test/dashboard/${ids.ws}/account`));
   assert.ok(!sent[0].text.includes("esempio.test") && !sent[0].text.includes(LABEL), "niente etichetta");
   const [after1] = await q(`SELECT status, sent_at IS NOT NULL AS sent FROM uc_notifications WHERE id = $1`, [delivered.noticeId]);
   assert.deepEqual(after1, { status: "inviata", sent: true });

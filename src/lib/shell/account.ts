@@ -37,16 +37,13 @@ export function accountPartForSettingsHash(pathname: string, hash: string, works
 }
 
 /**
- * (§2.4, §3.12) L'indirizzo delle Impostazioni senza ancora né parametri, quando arriva da fuori dell'app: l'e-mail «CLI
- * collegata» va alla persona e porta lì con «Apri il tuo account», perché il link di un'e-mail non ha né `#` né `?`
- * (`checkEmailLink`). Si apre su «Claude e terminale», dove la persona riconosce o revoca il collegamento. Dentro l'app
- * lo stesso indirizzo resta Impostazioni (la voce in fondo alla barra, per chi gestisce): chi guarda decide l'arrivo
- * (`openAccountForSettingsAnchor`), qui c'è solo l'indirizzo.
+ * La Home del workspace con il foglio aperto (su una parte): lo stesso indirizzo che usa il foglio (`?account=claude`).
+ * (§3.12) Le e-mail alla persona («CLI collegata», «Apri il tuo account») non possono avere né `?` né `#`
+ * (`checkEmailLink`): portano a `/dashboard/<ws>/account`, che controlla l'accesso come le altre pagine e rimanda qui,
+ * su «Claude e terminale». `settings` resta Impostazioni.
  */
-export function accountPartForSettingsLanding(pathname: string, search: string, hash: string, workspaceId: string): AccountPart | null {
-  const path = pathname.replace(/\/+$/, "");
-  if (path !== `/dashboard/${workspaceId}/settings`) return null;
-  return search === "" && hash === "" ? "claude" : null;
+export function accountHref(workspaceId: string, part?: AccountPart): string {
+  return withAccount(`/dashboard/${encodeURIComponent(workspaceId)}`, part);
 }
 
 /**

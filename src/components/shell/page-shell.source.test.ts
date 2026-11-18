@@ -25,6 +25,7 @@ const W = "src/app/(dashboard)/dashboard/[workspaceId]";
 
 /** Le pagine che non disegnano niente: reindirizzano o rispondono «non trovato». */
 const REDIRECTS = [
+  `${W}/account/page.tsx`,
   `${W}/ai-readiness/preview/[assessmentId]/page.tsx`,
   `${W}/setup/context/page.tsx`,
   `${W}/use-cases/[useCaseId]/proposte/page.tsx`,

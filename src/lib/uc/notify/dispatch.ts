@@ -855,7 +855,8 @@ function weeklyContextForOwner(context: WeeklyContext | null, now: Date): Weekly
 /**
  * «CLI collegata»: solo alla persona che possiede il token, a qualunque dominio (anche del cliente), senza caso. Parte
  * anche se il token è già revocato: chi lo ha preso potrebbe averlo chiuso dopo aver creato token di un caso solo, e
- * la persona deve saperlo. Nessuna etichetta della CLI nell'e-mail: la sceglie chi avvia il login.
+ * la persona deve saperlo. Nessuna etichetta della CLI nell'e-mail: la sceglie chi avvia il login. (Rilascio 10) Il
+ * link porta a `/dashboard/<ws>/account`, che apre «Il tuo account» su «Claude e terminale».
  */
 function planCliConnected(
   n: ClaimedNotification,
@@ -867,7 +868,7 @@ function planCliConnected(
   if (recipient.kind !== "user") return cancel("destinatario_non_utente");
   const token = f.cliToken;
   if (!token) return cancel("collegamento_assente");
-  const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/settings`;
+  const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/account`;
   return {
     action: "send",
     to,

@@ -118,7 +118,8 @@ export type EmailInput =
   | { template: "riepilogo_settimanale"; audience: "owner"; clientName: string | null; week: string; cases: readonly WeeklyCaseSummary[]; context?: WeeklyContextOwner | null }
   | { template: "riepilogo_settimanale"; audience: "ls"; clientName: string | null; week: string; cases: readonly WeeklyCaseSummary[]; context?: WeeklyContextLs | null }
   | (CaseRef & { template: "progetto_da_approvare" | "strumento_da_approvare" | "pacchetto_aggiornato" | "modifica_richiesta" | "domanda_proposta"; version: number | null; link: string; tools?: number })
-  // (8.0b) Alla persona: una CLI di Unbundle è collegata al suo account nel workspace. Il link porta a «Il tuo account».
+  // (8.0b) Alla persona: una CLI di Unbundle è collegata al suo account nel workspace. Il link porta a «Il tuo account»
+  // (rilascio 10: `/dashboard/<ws>/account`, che apre il foglio su «Claude e terminale»).
   | { template: "cli_collegata"; clientName: string; connectedAt: Date; expiresAt: Date | null; link: string }
   // (8.1a) I compiti, a chi costruisce: il link porta al progetto dell'agente dello use case.
   // `responsabile`: il compito fermo detto al responsabile del caso, non a chi lo ha.
@@ -142,13 +143,14 @@ export type EmailInput =
 
 const LOCAL_HOSTS = /^(localhost|127\.0\.0\.1|\[::1\]|[a-z0-9-]+\.localhost)$/;
 const REQUEST_PATH = /^\/r\/ucr_[A-Za-z0-9_-]{32}$/;
-const DASHBOARD_PATH = /^\/dashboard\/[0-9a-f-]{36}\/(casi-duso(\/[0-9a-f-]{36}(\/progetto)?)?|use-cases\/[0-9a-f-]{36}\/(proposte|progetto)|settings|agent-factory|contesto)$/;
+const DASHBOARD_PATH = /^\/dashboard\/[0-9a-f-]{36}\/(casi-duso(\/[0-9a-f-]{36}(\/progetto)?)?|use-cases\/[0-9a-f-]{36}\/(proposte|progetto)|settings|account|agent-factory|contesto)$/;
 
 /**
  * Il link è pulito? https (http solo in locale), nessuna credenziale, nessun
  * parametro né frammento, e il percorso atteso: `/r/<token>` per i referenti,
  * la pagina del caso per Lateral Space. (9b) Anche la pagina «Contesto» del
- * workspace (`/dashboard/<ws>/contesto`), e niente sotto di lei.
+ * workspace (`/dashboard/<ws>/contesto`), e niente sotto di lei. (Rilascio 10) E
+ * `/dashboard/<ws>/account`, «Il tuo account › Claude e terminale» della persona.
  */
 export function checkEmailLink(link: string, kind: "referente" | "dashboard"): string {
   let url: URL;

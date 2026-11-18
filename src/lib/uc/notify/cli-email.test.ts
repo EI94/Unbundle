@@ -1,5 +1,5 @@
 // L'e-mail «CLI collegata» (rilascio 8.0b): alla persona che possiede il token, di qualunque dominio, senza caso; il
-// link porta a `settings`, che arrivando da fuori apre «Il tuo account › Claude e terminale» (rilascio 10); niente
+// link porta a `/dashboard/<ws>/account`, che apre «Il tuo account › Claude e terminale» (rilascio 10); niente
 // etichetta della CLI (la sceglie chi avvia il login); parte anche se il token è già revocato; data e ora di Roma, con
 // «l'11» e «all'8».
 import test from "node:test";
@@ -7,7 +7,6 @@ import assert from "node:assert/strict";
 import { EMAIL_TEMPLATES, WINDOWED_TEMPLATES, planDelivery, type ClaimedNotification, type DeliveryFacts } from "./dispatch.ts";
 import { checkEmailLink, renderEmail } from "./email-templates.ts";
 import { UC_NOTIFICATION_TEMPLATES } from "../../db/queries/uc-notifications.ts";
-import { accountPartForSettingsLanding } from "../../shell/account.ts";
 import { SHELL_TEXT } from "../../shell/text.ts";
 
 const WS = "11111111-1111-4111-8111-111111111111";
@@ -44,7 +43,7 @@ test("il modello è nella coda e nel motore, e parte a qualunque ora", () => {
   assert.ok(!(WINDOWED_TEMPLATES as readonly string[]).includes("cli_collegata"), "un avviso di sicurezza non aspetta la finestra");
 });
 
-test("alla persona stessa, anche del cliente e senza caso; il link porta a Impostazioni", () => {
+test("alla persona stessa, anche del cliente e senza caso; il link porta a «Il tuo account»", () => {
   const plan = planDelivery(claimed(), facts(), OPTS);
   assert.equal(plan.action, "send");
   if (plan.action !== "send") return;
@@ -52,7 +51,7 @@ test("alla persona stessa, anche del cliente e senza caso; il link porta a Impos
   assert.equal(plan.link, null, "nessun link dei referenti");
   const input = plan.build(null);
   assert.equal(input.template, "cli_collegata");
-  assert.equal((input as { link: string }).link, `https://app.unbundle.test/dashboard/${WS}/settings`);
+  assert.equal((input as { link: string }).link, `https://app.unbundle.test/dashboard/${WS}/account`);
 });
 
 test("mai a un contatto; senza il token (o di un'altra persona) si annulla", () => {
@@ -75,11 +74,11 @@ test("il testo: workspace, data e ora di Roma, scadenza, come revocare; niente e
   assert.match(email.text, /revocala in «Il tuo account › Claude e terminale»/);
   assert.match(email.text, /Apri il tuo account:/);
   assert.doesNotMatch(email.text, /Impostazioni/);
-  assert.ok(email.text.includes(`https://app.unbundle.test/dashboard/${WS}/settings`));
+  assert.ok(email.text.includes(`https://app.unbundle.test/dashboard/${WS}/account`));
   assert.ok(email.html.includes("Cliente &lt;prova&gt;"), "HTML con i caratteri protetti");
   assert.ok(!email.html.includes("<prova>"));
   assert.ok(!/<img|src=/i.test(email.html), "nessuna immagine");
-  const other = renderEmail({ template: "cli_collegata", clientName: "W", connectedAt: new Date("2026-11-12T22:30:00Z"), expiresAt: null, link: `https://app.unbundle.test/dashboard/${WS}/settings` });
+  const other = renderEmail({ template: "cli_collegata", clientName: "W", connectedAt: new Date("2026-11-12T22:30:00Z"), expiresAt: null, link: `https://app.unbundle.test/dashboard/${WS}/account` });
   assert.match(other.text, /il 12 novembre 2026 alle 23:30/);
   assert.ok(!other.text.includes("vale fino"), "senza scadenza, niente frase");
 });
@@ -91,9 +90,9 @@ test("(rilascio 10) il link e le parole portano a «Il tuo account › Claude e 
   const input = plan.build(null);
   assert.equal(input.template, "cli_collegata");
   if (input.template !== "cli_collegata") return;
-  // Il link senza ancora delle Impostazioni: arrivando da fuori, il foglio si apre sulla parte di Claude e del terminale.
+  // L'indirizzo pulito di «Il tuo account», non più `settings`: la pagina apre il foglio su «Claude e terminale».
   const link = new URL(input.link);
-  assert.equal(accountPartForSettingsLanding(link.pathname, link.search, link.hash, WS), "claude");
+  assert.deepEqual([link.pathname, link.search, link.hash], [`/dashboard/${WS}/account`, "", ""]);
   // Le parole dell'e-mail sono quelle del foglio e del menu sotto il nome.
   const email = renderEmail(input);
   const A = SHELL_TEXT.account;
@@ -101,9 +100,16 @@ test("(rilascio 10) il link e le parole portano a «Il tuo account › Claude e 
   assert.equal(SHELL_TEXT.user.account, A.title);
 });
 
-test("il link di Impostazioni è pulito: niente parametri, niente altri percorsi", () => {
+test("il link di «Il tuo account» è pulito: niente parametri né ancora, niente altri percorsi", () => {
+  const account = `https://app.unbundle.test/dashboard/${WS}/account`;
+  assert.equal(checkEmailLink(account, "dashboard"), account);
+  assert.equal(checkEmailLink(`http://localhost:3000/dashboard/${WS}/account`, "dashboard"), `http://localhost:3000/dashboard/${WS}/account`);
+  for (const bad of [`${account}?account=claude`, `${account}#cli`, `${account}/altro`, `http://app.unbundle.test/dashboard/${WS}/account`, `https://app.unbundle.test/dashboard/${WS}/accounts`]) {
+    assert.throws(() => checkEmailLink(bad, "dashboard"), bad);
+  }
+  assert.throws(() => checkEmailLink(account, "referente"), "mai un link dei referenti");
+  // Le Impostazioni restano ammesse, pulite come prima.
   assert.equal(checkEmailLink(`https://app.unbundle.test/dashboard/${WS}/settings`, "dashboard"), `https://app.unbundle.test/dashboard/${WS}/settings`);
   assert.throws(() => checkEmailLink(`https://app.unbundle.test/dashboard/${WS}/settings?x=1`, "dashboard"));
   assert.throws(() => checkEmailLink(`https://app.unbundle.test/dashboard/${WS}/settings/altro`, "dashboard"));
-  assert.throws(() => checkEmailLink(`http://app.unbundle.test/dashboard/${WS}/settings`, "dashboard"));
 });
