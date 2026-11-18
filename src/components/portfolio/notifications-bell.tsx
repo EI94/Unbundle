@@ -1,12 +1,12 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useReducer, useRef, useState, type MouseEvent } from "react";
+import { Suspense, useCallback, useEffect, useReducer, useRef, type MouseEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Menu } from "@base-ui/react/menu";
-import { Bell, Check } from "lucide-react";
+import { Bell } from "lucide-react";
 import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { markAllBellReadAction, setBellEmailAlertsAction } from "@/lib/actions/notifications";
+import { markAllBellReadAction } from "@/lib/actions/notifications";
 import {
   BELL_TEXT,
   bellApiPath,
@@ -31,7 +31,7 @@ import {
 
 export interface NotificationsBellProps {
   workspaceId: string;
-  /** Il payload della persona letto dalla barra in alto (`loadBellPayload`). */
+  /** Il payload della persona letto dalla cornice (`loadBellPayload`, in `workspace-topbar.tsx`). */
   initial: BellPayload;
 }
 
@@ -94,16 +94,17 @@ function NavigationWatch({ onNavigate }: { onNavigate: (key: string) => void }) 
 }
 
 /**
- * La campanella della barra in alto, per persona (SPEC §P2.5, R10): il numero rosso conta le righe
- * nuove dall'ultima apertura e si azzera aprendola; ogni riga resta evidenziata finché la persona non
- * la apre; aprire una riga la segna letta prima di navigare; «Segna tutte come lette» vale per tutte
- * le fonti che la persona vede, solo per lei. Si rilegge dopo ogni navigazione e ogni scrittura, e
- * adotta il payload nuovo che arriva dal server con la pagina.
+ * La campanella, per persona (SPEC §P2.5, R10): il numero conta le righe nuove dall'ultima apertura e
+ * si azzera aprendola; ogni riga resta evidenziata finché la persona non la apre; aprire una riga la
+ * segna letta prima di navigare; «Segna tutte come lette» vale per tutte le fonti che la persona vede,
+ * solo per lei. Si rilegge dopo ogni navigazione e ogni scrittura, e adotta il payload nuovo che arriva
+ * dal server con la pagina. (Rilascio 10, PROPOSTA-10 §2.1, §3.1) Sta nella testata della barra
+ * laterale su desktop e nella barra in alto del telefono; la scelta sulle email è andata nel foglio
+ * «Il tuo account».
  */
 export function NotificationsBell({ workspaceId, initial }: NotificationsBellProps) {
   const router = useRouter();
   const [state, dispatch] = useReducer(bellReducer, initial, initialBellState);
-  const [emailOverride, setEmailOverride] = useState<boolean | null>(null);
   const stateRef = useRef(state);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastVisibleFetch = useRef(0);
@@ -211,23 +212,9 @@ export function NotificationsBell({ workspaceId, initial }: NotificationsBellPro
     }
   }
 
-  async function onEmailAlerts(on: boolean) {
-    setEmailOverride(on);
-    let result: Awaited<ReturnType<typeof setBellEmailAlertsAction>>;
-    try {
-      result = await setBellEmailAlertsAction(workspaceId, on);
-    } catch {
-      result = { ok: false, code: "riprova", message: BELL_TEXT.errors.preference };
-    }
-    if (result.ok) dispatch({ type: "payload", payload: result.payload });
-    else toast.error(result.message || BELL_TEXT.errors.preference);
-    setEmailOverride(null);
-  }
-
   const model = bellMenuModel(state);
   const count = visibleNewCount(state);
   const badge = bellBadgeText(count);
-  const emailChecked = emailOverride ?? model.emailChecked;
 
   return (
     <>
@@ -237,7 +224,7 @@ export function NotificationsBell({ workspaceId, initial }: NotificationsBellPro
       <DropdownMenu open={state.open} onOpenChange={onOpenChange}>
         <DropdownMenuTrigger
           data-slot="notifications-bell"
-          className="relative inline-flex size-11 items-center justify-center rounded-md border outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 sm:size-9"
+          className="relative inline-flex size-11 shrink-0 items-center justify-center rounded-lg outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 aria-expanded:bg-accent sm:size-9"
           aria-label={bellAriaLabel(count)}
         >
           <Bell aria-hidden className="size-4" />
@@ -245,7 +232,7 @@ export function NotificationsBell({ workspaceId, initial }: NotificationsBellPro
             <span
               aria-hidden
               data-slot="notifications-badge"
-              className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium text-white"
+              className="absolute top-0.5 right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground"
             >
               {badge}
             </span>
@@ -310,24 +297,6 @@ export function NotificationsBell({ workspaceId, initial }: NotificationsBellPro
               })}
             </div>
           )}
-          {model.showEmailToggle ? (
-            <div className="sticky -bottom-2 -mx-2 -mb-2 mt-2 border-t bg-popover px-2 py-1.5">
-              <Menu.CheckboxItem
-                data-slot="dropdown-menu-checkbox-item"
-                checked={emailChecked}
-                closeOnClick={false}
-                onCheckedChange={(checked) => void onEmailAlerts(checked)}
-                className="flex min-h-11 w-full cursor-default items-start gap-2 rounded-md px-2 py-2 text-xs outline-hidden select-none data-highlighted:bg-accent sm:min-h-0"
-              >
-                <span aria-hidden className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[4px] border">
-                  <Menu.CheckboxItemIndicator>
-                    <Check className="size-3" />
-                  </Menu.CheckboxItemIndicator>
-                </span>
-                <span>{BELL_TEXT.emailAlerts}</span>
-              </Menu.CheckboxItem>
-            </div>
-          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
     </>

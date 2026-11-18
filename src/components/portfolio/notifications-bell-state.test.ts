@@ -156,9 +156,11 @@ test("il menu: righe con link e «non letta», «Segna tutte come lette» solo c
       [`s:${id(1)}`, true, true],
     ],
   );
-  assert.deepEqual([model.showReadAll, model.showEmailToggle, model.emailChecked, model.emptyText], [true, true, true, null]);
+  assert.deepEqual([model.showReadAll, model.emptyText], [true, null]);
+  // (Rilascio 10) La scelta sulle email non sta più nel menu: è nel foglio «Il tuo account».
+  assert.equal(Object.hasOwn(model, "showEmailToggle"), false);
   const read = bellMenuModel(initialBellState(payload([entry(1, 1, { unread: false })])));
-  assert.deepEqual([read.showReadAll, read.showEmailToggle], [false, false]);
+  assert.equal(read.showReadAll, false);
   assert.equal(bellMenuModel(initialBellState(payload([]))).emptyText, BELL_TEXT.empty);
 });
 

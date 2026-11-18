@@ -143,9 +143,6 @@ export interface BellMenuModel {
   rows: BellMenuRow[];
   /** Qualche riga non letta. */
   showReadAll: boolean;
-  /** La scelta sulle email (`payload.emailAlerts.shown`). */
-  showEmailToggle: boolean;
-  emailChecked: boolean;
   /** «Nessuna notifica.» senza righe. */
   emptyText: string | null;
   /** «Non riesco ad aggiornare le notifiche.» sopra le ultime righe. */
@@ -166,8 +163,6 @@ export function bellMenuModel(s: BellState): BellMenuModel {
   return {
     rows,
     showReadAll: rows.some((row) => row.unread),
-    showEmailToggle: s.payload.emailAlerts.shown,
-    emailChecked: s.payload.emailAlerts.on,
     emptyText: rows.length === 0 ? BELL_TEXT.empty : null,
     refreshText: s.error === "aggiornamento" ? BELL_TEXT.refreshFailed : null,
   };
