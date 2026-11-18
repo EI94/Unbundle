@@ -29,11 +29,7 @@ export default function PrivacyPage() {
         )}
       />
       <h1 className="text-2xl font-semibold tracking-tight">Privacy</h1>
-      <p className="text-muted-foreground">
-        Ultimo aggiornamento: aprile 2026. Documento di base per conformità
-        all’installazione dell’app Slack Unbundle; integralo con i contenuti
-        legali definitivi del tuo organismo.
-      </p>
+      <p className="text-muted-foreground">Ultimo aggiornamento: aprile 2026.</p>
 
       <h2 className="text-lg font-medium pt-6">Titolare e contatti</h2>
       <p>
@@ -43,8 +39,8 @@ export default function PrivacyPage() {
           className="text-primary underline underline-offset-2"
         >
           privacy@theunbundle.com
-        </a>{" "}
-        (sostituisci con l’indirizzo effettivo del titolare del trattamento).
+        </a>
+        .
       </p>
 
       <h2 className="text-lg font-medium pt-6">Dati trattati (prodotto Unbundle)</h2>

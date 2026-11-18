@@ -29,10 +29,7 @@ export default function TermsPage() {
         )}
       />
       <h1 className="text-2xl font-semibold tracking-tight">Termini di servizio</h1>
-      <p className="text-muted-foreground">
-        Ultimo aggiornamento: aprile 2026. Bozza di riferimento; sostituiscila con
-        i termini legali approvati dal titolare.
-      </p>
+      <p className="text-muted-foreground">Ultimo aggiornamento: aprile 2026.</p>
 
       <h2 className="text-lg font-medium pt-6">Uso del servizio</h2>
       <p>
