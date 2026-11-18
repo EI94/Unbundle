@@ -9,7 +9,7 @@
  */
 import type { TeamMcpTokenView } from "../db/queries/team-mcp-tokens.ts";
 import type { CliTokenView } from "../db/queries/use-case-cli-auth.ts";
-import type { GranolaCardState } from "../context/granola/view.ts";
+import { GRANOLA_RULES_ANCHOR, type GranolaCardState } from "../context/granola/view.ts";
 
 export const ACCOUNT_PARAM = "account";
 
@@ -35,6 +35,13 @@ export function accountPartForSettingsHash(pathname: string, hash: string, works
   if (hash === "#granola") return "granola";
   return null;
 }
+
+/**
+ * «Regole delle call ›» (Granola, Lateral Space): le regole di questo cliente stanno nel blocco di Granola delle
+ * Impostazioni, che ogni persona di Lateral Space apre anche senza gestire il workspace (senza la voce nella barra).
+ * L'ancora non è `#granola`: quella riapre il foglio.
+ */
+export const granolaRulesHref = (workspaceId: string) => `/dashboard/${workspaceId}/settings#${GRANOLA_RULES_ANCHOR}`;
 
 /** L'`id` della sezione di una parte: il foglio ci porta il fuoco quando si apre su di lei. */
 export const accountSectionId = (part: AccountPart) => `account-${part}`;

@@ -9,7 +9,7 @@ import { setBellEmailAlertsAction } from "@/lib/actions/notifications";
 import { createTeamMcpTokenAction, revokeTeamMcpTokenAction } from "@/lib/actions/team-mcp-tokens";
 import { revokeOwnCliTokenAction } from "@/lib/actions/cli-tokens";
 import { disconnectGranolaAction, startGranolaConnectAction } from "@/lib/actions/context-granola";
-import { ACCOUNT_PARAM, accountApiPath, accountPartOf, accountSectionId, type AccountSheetResponse } from "@/lib/shell/account";
+import { ACCOUNT_PARAM, accountApiPath, accountPartOf, accountSectionId, granolaRulesHref, type AccountSheetResponse } from "@/lib/shell/account";
 import { SHELL_TEXT } from "@/lib/shell/text";
 import { AccountSheetBody, type AccountActions, type AccountSheetState } from "./account-sheet-body";
 import { closeAccountSheet, openAccountForSettingsAnchor } from "./account-url";
@@ -30,7 +30,9 @@ async function readAccount(workspaceId: string): Promise<AccountSheetState> {
  * Il foglio «Il tuo account» (rilascio 10, ondata 2a, PROPOSTA-10 §2.3, §3.10): si apre con `?account=` (dal menu
  * sotto il nome, o da un link che lo porta, anche su una parte: `?account=claude`), a destra su desktop e a tutto
  * schermo al telefono; «Indietro» e ✕ lo chiudono. Quando si apre legge preferenze e accessi di chi guarda dalla rotta
- * del workspace, e li rilegge dopo ogni sua azione.
+ * del workspace, e li rilegge dopo ogni sua azione. Il ritorno da Granola (`settings?granola=…#granola`) lo apre su
+ * «Granola», che dice com'è andata (`?granola=`); le regole delle call restano in Impostazioni, a un'ancora che il
+ * foglio non intercetta (`granolaRulesHref`), e anche chi non gestisce il workspace ci arriva da qui.
  */
 export function AccountSheet({
   workspaceId,
@@ -124,7 +126,14 @@ export function AccountSheet({
             <X aria-hidden />
           </SheetClose>
         </SheetHeader>
-        <AccountSheetBody user={user} state={state} actions={actions} onRetry={load} onChanged={load} />
+        <AccountSheetBody
+          user={user}
+          state={state}
+          actions={actions}
+          onRetry={load}
+          onChanged={load}
+          granola={{ flash: params?.get("granola") ?? null, rulesHref: granolaRulesHref(workspaceId) }}
+        />
       </SheetContent>
     </Sheet>
   );

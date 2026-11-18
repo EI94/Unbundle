@@ -12,7 +12,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { THEME_OPTIONS, type ThemeChoice } from "@/components/theme/theme-config";
+import { TextAction } from "@/components/ui-10/row";
 import type { CreateTeamMcpTokenData, TeamMcpActionState } from "@/lib/actions/team-mcp-tokens";
+import { granolaFlashLine, type Line } from "@/lib/context/granola/view";
 import { CONTEXT_TEXT } from "@/lib/context/text";
 import type { CliTokenView } from "@/lib/db/queries/use-case-cli-auth";
 import type { TeamMcpTokenView } from "@/lib/db/queries/team-mcp-tokens";
@@ -304,8 +306,27 @@ function ClaudeSection({
   );
 }
 
-/** «Granola» (Lateral Space): collegare, scollegare, il piano. Le regole delle call stanno nelle Impostazioni. */
-function GranolaSection({ granola, actions, onChanged }: { granola: NonNullable<AccountSheetData["granola"]>; actions: AccountActions; onChanged: () => void }) {
+/** I toni della riga che dice com'è andato il ritorno da Granola, come nel blocco di Impostazioni. */
+const LINE_TONE: Record<Line["tone"], string> = { ok: "text-uc-verde", info: "text-muted-foreground", error: "text-destructive" };
+
+/**
+ * «Granola» (Lateral Space): collegare, scollegare, il piano. Dopo il ritorno da Granola (`?granola=…`) la riga che dice
+ * com'è andata (`granolaFlashLine`, la stessa del blocco di Impostazioni). Le regole delle call stanno nelle
+ * Impostazioni: con un collegamento, «Regole delle call ›» ci porta, anche chi non gestisce il workspace.
+ */
+function GranolaSection({
+  granola,
+  flash,
+  rulesHref,
+  actions,
+  onChanged,
+}: {
+  granola: NonNullable<AccountSheetData["granola"]>;
+  flash: string | null;
+  rulesHref: string | null;
+  actions: AccountActions;
+  onChanged: () => void;
+}) {
   const [pending, start] = useTransition();
   const [confirming, setConfirming] = useState(false);
   const connect = () =>
@@ -323,8 +344,14 @@ function GranolaSection({ granola, actions, onChanged }: { granola: NonNullable<
         onChanged();
       } else toast.error(result.message || C.failed);
     });
+  const line = granolaFlashLine(flash, granola.state);
   return (
     <Section part="granola" title={T.granola.title}>
+      {line ? (
+        <p role={line.tone === "error" ? "alert" : "status"} data-slot="granola-outcome" className={cn("text-sm", LINE_TONE[line.tone])}>
+          {line.text}
+        </p>
+      ) : null}
       {granola.state === "non_disponibile" ? <p className="text-sm text-muted-foreground">{G.unavailable}</p> : null}
       {granola.state === "non_collegato" ? (
         <div className="space-y-3">
@@ -353,6 +380,7 @@ function GranolaSection({ granola, actions, onChanged }: { granola: NonNullable<
           </Button>
         </div>
       ) : null}
+      {granola.state === "collegato" && rulesHref ? <TextAction href={rulesHref}>{T.granola.rules}</TextAction> : null}
       <Dialog open={confirming} onOpenChange={(open) => !open && setConfirming(false)}>
         {confirming ? (
           <DialogContent>
@@ -416,12 +444,15 @@ export function AccountSheetBody({
   actions,
   onRetry,
   onChanged,
+  granola,
 }: {
   user: { name?: string | null; email?: string | null; image?: string | null };
   state: AccountSheetState;
   actions: AccountActions;
   onRetry: () => void;
   onChanged: () => void;
+  /** Per «Granola»: `?granola=` dell'indirizzo (il ritorno da Granola) e il link alle regole delle call. */
+  granola?: { flash: string | null; rulesHref: string | null };
 }) {
   const initials = user.name
     ? user.name.split(" ").map((n) => n[0]).join("").toUpperCase()
@@ -455,7 +486,9 @@ export function AccountSheetBody({
         ) : null}
         {account?.email ? <EmailSection on={account.email.on} actions={actions} /> : null}
         {account && (account.claude || account.terminal) ? <ClaudeSection claude={account.claude} terminal={account.terminal} actions={actions} onChanged={onChanged} /> : null}
-        {account?.granola ? <GranolaSection granola={account.granola} actions={actions} onChanged={onChanged} /> : null}
+        {account?.granola ? (
+          <GranolaSection granola={account.granola} flash={granola?.flash ?? null} rulesHref={granola?.rulesHref ?? null} actions={actions} onChanged={onChanged} />
+        ) : null}
         <ThemeSection />
       </div>
     </div>

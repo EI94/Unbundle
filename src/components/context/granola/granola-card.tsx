@@ -12,7 +12,9 @@
  * | Da ricollegare | «Il collegamento è scaduto.», «Ricollega» |
  *
  * È già montato in `settings/page.tsx`, dentro «Integrazioni», in un contenitore con `id="granola"` (l'ancora a cui
- * tornano il collegamento e il link dalla pagina «Contesto»): il blocco non mette un altro `id`.
+ * tornano il collegamento e il link dalla pagina «Contesto»): il blocco non mette un altro `id="granola"`. (Rilascio 10)
+ * `#granola` apre il foglio «Il tuo account»; le regole delle call hanno la loro ancora, `#granola-regole`
+ * (`GRANOLA_RULES_ANCHOR`), dove le porta il foglio.
  */
 import { NotebookPen } from "lucide-react";
 import { SettingsSection } from "@/components/dashboard/settings-section";

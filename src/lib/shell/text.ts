@@ -137,6 +137,8 @@ export const SHELL_TEXT = Object.freeze({
     }),
     granola: Object.freeze({
       title: "Granola",
+      /** Il link alle regole di questo cliente («Quali call sono di …»), che stanno in Impostazioni. */
+      rules: "Regole delle call",
     }),
     theme: Object.freeze({
       title: "Tema",

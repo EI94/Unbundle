@@ -18,6 +18,12 @@ export interface Line {
 /** Lo stato del blocco in Impostazioni. */
 export type GranolaCardState = "non_disponibile" | "non_collegato" | "collegato" | "da_ricollegare";
 
+/**
+ * (Rilascio 10) L'ancora delle regole delle call («Quali call sono di …») nel blocco di Impostazioni. Il foglio «Il tuo
+ * account» ci porta con «Regole delle call ›»: non è `#granola`, che il foglio intercetta (src/lib/shell/account.ts).
+ */
+export const GRANOLA_RULES_ANCHOR = "granola-regole";
+
 export function granolaCardState(status: { available: boolean; connected: boolean; status: GranolaConnectionStatus | null }): GranolaCardState {
   if (!status.available) return "non_disponibile";
   if (!status.connected) return "non_collegato";

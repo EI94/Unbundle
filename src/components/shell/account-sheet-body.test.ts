@@ -1,5 +1,7 @@
 import test, { before } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { CONTEXT_TEXT } from "../../lib/context/text.ts";
 import type { AccountSheetData } from "../../lib/shell/account.ts";
 import { SHELL_TEXT } from "../../lib/shell/text.ts";
 import { enableTsxImports } from "../use-cases/detail/referent/tsx-test-loader.ts";
@@ -82,8 +84,8 @@ const everything: AccountSheetData = {
   granola: { state: "collegato", accountEmail: "persona@esempio.test", plan: "Business" },
 };
 
-function render(state: unknown): string {
-  return readable(renderToStaticMarkup(h(body.AccountSheetBody, { user: USER, state, actions, onRetry() {}, onChanged() {} })));
+function render(state: unknown, granola?: { flash: string | null; rulesHref: string | null }): string {
+  return readable(renderToStaticMarkup(h(body.AccountSheetBody, { user: USER, state, actions, onRetry() {}, onChanged() {}, granola })));
 }
 
 const SECTIONS = { email: T.email.title, claude: T.claude.title, granola: T.granola.title, tema: T.theme.title };
@@ -192,4 +194,39 @@ test("le parole del foglio: niente chiavi, niente «token» nel testo, «use cas
   // I testi della cornice, tolte le voci della barra di prima (area «Use case» spenta, fino all'ondata 8).
   const current = Object.fromEntries(Object.entries(SHELL_TEXT).filter(([key]) => key !== "legacy"));
   assert.doesNotMatch(JSON.stringify(current), /caso d'uso|casi d'uso|Altri strumenti|\btoken\b/i);
+});
+
+// ─── Granola per chi non gestisce il workspace (rifiniture dell'ondata 2a) ──
+// Il ritorno da Granola (`settings?granola=…#granola`) apre il foglio: la riga che dice com'è andata sta nel foglio. Le
+// regole delle call restano in Impostazioni, che senza la voce nella barra si raggiungono da qui.
+
+const RULES = "/dashboard/00000000-0000-4000-8000-0000000000f1/settings#granola-regole";
+const granolaIn = (state: string) => ({ status: "ready", account: { email: null, claude: null, terminal: null, granola: { state, accountEmail: state === "collegato" ? "persona@esempio.test" : null, plan: null } } });
+
+test("il ritorno da Granola: il foglio dice com'è andata, con la stessa riga del blocco di Impostazioni", () => {
+  const G = CONTEXT_TEXT.granola;
+  const outcome = (html: string) => /<p role="(status|alert)" data-slot="granola-outcome"[^>]*>([^<]*)<\/p>/.exec(html)?.slice(1) ?? null;
+  assert.deepEqual(outcome(render(granolaIn("collegato"), { flash: "collegato", rulesHref: RULES })), ["status", G.connected]);
+  for (const flash of ["errore", "annullato"]) assert.deepEqual(outcome(render(granolaIn("non_collegato"), { flash, rulesHref: RULES })), ["alert", G.connectFailed], flash);
+  assert.deepEqual(outcome(render(granolaIn("non_collegato"), { flash: "scaduto", rulesHref: RULES })), ["alert", G.stateExpired]);
+  // Solo quando dice la stessa cosa del foglio: «errore» con un collegamento attivo, o niente nell'indirizzo, tace.
+  assert.equal(outcome(render(granolaIn("collegato"), { flash: "errore", rulesHref: RULES })), null);
+  assert.equal(outcome(render(granolaIn("non_collegato"), { flash: null, rulesHref: RULES })), null);
+  assert.equal(outcome(render(granolaIn("non_collegato"))), null);
+  // La riga sta nella parte «Granola», sopra «Collega Granola».
+  const html = render(granolaIn("non_collegato"), { flash: "errore", rulesHref: RULES });
+  const section = /<section id="account-granola"[\s\S]*?<\/section>/.exec(html)?.[0] ?? "";
+  assert.ok(section.indexOf("granola-outcome") > 0 && section.indexOf("granola-outcome") < section.indexOf(">Collega Granola</button>"));
+});
+
+test("«Regole delle call ›»: con un collegamento, alle regole di Impostazioni, a un'ancora che non riapre il foglio", () => {
+  const html = render(granolaIn("collegato"), { flash: null, rulesHref: RULES });
+  assert.match(html, new RegExp(`<a data-slot="text-action"[^>]*href="${RULES.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"[^>]*>${T.granola.rules}<svg`));
+  // Senza collegamento le regole non ci sono (nemmeno in Impostazioni): niente link.
+  for (const state of ["non_collegato", "da_ricollegare", "non_disponibile"]) assert.doesNotMatch(render(granolaIn(state), { flash: null, rulesHref: RULES }), /Regole delle call/, state);
+  // Mai un pulsante pieno: il link è tranquillo.
+  assert.doesNotMatch(html, /class="[^"]*(?<![\w:-])bg-primary text-primary-foreground/);
+  // Il foglio passa `?granola=` dell'indirizzo e l'indirizzo delle regole di questo workspace.
+  const sheet = readFileSync(new URL("./account-sheet.tsx", import.meta.url), "utf8");
+  assert.match(sheet, /granola=\{\{ flash: params\?\.get\("granola"\) \?\? null, rulesHref: granolaRulesHref\(workspaceId\) \}\}/);
 });

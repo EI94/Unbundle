@@ -193,8 +193,10 @@ function GranolaRulesForm({ workspaceId, workspaceName, rules }: { workspaceId: 
     }
   };
 
+  // `id`: l'ancora `GRANOLA_RULES_ANCHOR` (src/lib/context/granola/view.ts), dove porta «Regole delle call ›» del foglio
+  // «Il tuo account».
   return (
-    <div className="space-y-5 border-t pt-4">
+    <div id="granola-regole" className="scroll-mt-28 space-y-5 border-t pt-4">
       <h3 className="text-sm font-semibold">{T.rulesTitle(workspaceName)}</h3>
 
       <div className="space-y-1.5">

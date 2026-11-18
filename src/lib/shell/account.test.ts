@@ -9,10 +9,13 @@ import {
   accountSectionId,
   claudeAiHeader,
   claudeCodeCommand,
+  granolaRulesHref,
   referentEmailChoice,
   withAccount,
   withoutAccount,
 } from "./account.ts";
+import { contextAbilities } from "../context/visibility.ts";
+import { canManageWorkspaceSettings } from "../workspace-permissions.ts";
 
 // (Rilascio 10, docs/ui-10/PROPOSTA-10.md §2.3, §3.10) «Il tuo account»: l'indirizzo `?account=`, la regola di chi vede
 // le email (spostata dalla campanella), i comandi per Claude. Id inventati.
@@ -70,4 +73,35 @@ test("le ancore personali delle Impostazioni aprono il foglio sulla parte giusta
   // Solo la pagina delle Impostazioni di questo workspace.
   assert.equal(accountPartForSettingsHash(`/dashboard/${ws}/agent-factory`, "#cli", ws), null);
   assert.equal(accountPartForSettingsHash("/dashboard/00000000-0000-4000-8000-0000000000f2/settings", "#cli", ws), null);
+});
+
+test("«Regole delle call ›» porta alle regole di Impostazioni, a un'ancora che il foglio non intercetta", () => {
+  const ws = "00000000-0000-4000-8000-0000000000f1";
+  const href = granolaRulesHref(ws);
+  assert.equal(href, `/dashboard/${ws}/settings#granola-regole`);
+  const url = new URL(href, "http://unbundle.test");
+  assert.equal(accountPartForSettingsHash(url.pathname, url.hash, ws), null, "non riapre il foglio");
+  assert.equal(url.searchParams.has("account"), false, "e lo chiude");
+  // L'ancora è quella del blocco delle regole in Impostazioni.
+  const panel = read("src/components/context/granola/granola-card-panel.tsx");
+  const rules = panel.slice(panel.indexOf("function GranolaRulesForm("));
+  assert.match(rules, /return \(\s*<div id="granola-regole" className="scroll-mt-28 [^"]*">\s*<h3 className="text-sm font-semibold">\{T\.rulesTitle\(workspaceName\)\}<\/h3>/);
+  assert.match(read("src/lib/context/granola/view.ts"), /export const GRANOLA_RULES_ANCHOR = "granola-regole";/);
+  assert.equal(panel.match(/id="granola-regole"/g)?.length, 1);
+});
+
+test("le regole delle call restano aperte, come prima, a chi è di Lateral Space e non gestisce il workspace", () => {
+  // Senza «Impostazioni» nella barra (solo chi gestisce), il foglio è la loro strada: Granola lo usa ogni ruolo di
+  // Lateral Space, e la pagina delle Impostazioni si apre a chiunque sia nel workspace, senza un controllo di ruolo.
+  for (const role of ["function_lead", "analyst", "contributor"]) {
+    assert.equal(canManageWorkspaceSettings(role), false, role);
+    assert.equal(contextAbilities({ role, isLateralSpace: true }).canUseGranola, true, role);
+    assert.equal(contextAbilities({ role, isLateralSpace: false }).canUseGranola, false, role);
+  }
+  const page = read("src/app/(dashboard)/dashboard/[workspaceId]/settings/page.tsx");
+  assert.match(page, /const \{ session, access \} = await requireWorkspacePage\(workspaceId\);/);
+  assert.doesNotMatch(page, /if \(!can[A-Za-z]+\) (?:notFound|redirect)\(/, "nessun ruolo chiude la pagina");
+  // Il blocco di Granola sta fuori da ogni condizione sul ruolo: decide da sé (solo Lateral Space).
+  assert.match(page, /<div id="granola" className="scroll-mt-28 empty:hidden">\s*<GranolaCard workspaceId=\{workspaceId\} workspaceName=\{workspace\.name\} userId=\{session\.user\.id\} role=\{access\.role\} flash=\{search\.granola\} \/>/);
+  assert.doesNotMatch(page, /can[A-Za-z]+ && \(?\s*<div id="granola"/);
 });
