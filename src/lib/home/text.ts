@@ -86,8 +86,10 @@ export const HOME_TEXT = Object.freeze({
         .filter(Boolean)
         .join(" · "),
     kpis: (n: number) => count(n, "KPI", "KPI"),
-    /** Nessun obiettivo né KPI, a chi può sceglierli: la riga è l'azione. */
-    chooseKpis: "Scegli i KPI da seguire",
+    /** Nessun risultato chiave né KPI: la riga è l'azione, per ogni revisore, con le parole di «Per partire». */
+    writeGoals: "Scrivi gli obiettivi",
+    /** In un workspace nuovo, con gli obiettivi già scritti in «Per partire» ma senza risultati chiave né KPI. */
+    addKeyResults: "Aggiungi i risultati chiave",
     /** «ultimo il 3 novembre · prossimo dal 1° dicembre». */
     sal: (lastOn: string, nextFrom: string) => `ultimo il ${dayMonth(lastOn)} · prossimo dal ${dayMonth(nextFrom)}`,
     salFirst: "il primo da chiudere",
@@ -109,6 +111,11 @@ export const HOME_TEXT = Object.freeze({
     settingsWeights: "Pesi dell'indice",
     /** Nel pannello «Impostazioni del programma»: le altre impostazioni, dove stanno. */
     settingsCaseDev: "Lo sviluppo di un singolo use case si cambia nel pannello della sua iniziativa.",
+  }),
+
+  /** La pagina «Obiettivi» (`/strategy`, §2.4, §3.8): si apre da Home › Obiettivi, e la barra accende «Home». */
+  goalsPage: Object.freeze({
+    title: "Obiettivi",
   }),
 
   /** Il programma non è pronto (senza la 0029): una riga. */

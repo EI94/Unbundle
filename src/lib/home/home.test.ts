@@ -301,7 +301,7 @@ test("la Home di un workspace nuovo (S1b): «Per partire» al posto del numero g
   assert.deepEqual(home.rows, [], "le quattro righe, a zero, non ci sono");
 });
 
-test("le righe: lo zero non si dice, e «Obiettivi» resta a chi può scegliere i KPI", () => {
+test("le righe: lo zero non si dice, ma «Obiettivi» c'è per ogni revisore, anche per chi non cambia il Programma", () => {
   const counts = countUseCases([hub(), hub({ phase: "chiuso", subState: "archiviato" }), hub({ phase: "in_realizzazione" })]);
   assert.deepEqual(counts, { total: 2, inProgress: 1, inUse: 0 });
   assert.equal(HOME_TEXT.facts.initiatives(2, 1, 0), "2 use case · 1 in realizzazione");
@@ -310,11 +310,27 @@ test("le righe: lo zero non si dice, e «Obiettivi» resta a chi può scegliere 
   const rows = homeRows(none, counts);
   assert.deepEqual(rows.map((row) => [row.key, row.fact]), [
     ["iniziative", "2 use case · 1 in realizzazione"],
-    ["obiettivi", "Scegli i KPI da seguire"],
+    ["obiettivi", "Scrivi gli obiettivi"],
     ["sal", "il primo da chiudere"],
   ]);
-  const reader = homeRows(demoView((v) => ({ objectives: [], kpis: [], viewer: { ...v.viewer, canEdit: false } })), counts);
-  assert.ok(!reader.some((row) => row.key === "obiettivi"), "chi legge soltanto: senza obiettivi niente riga");
+  // Un revisore del cliente che non gestisce il workspace (function_lead, analyst) non cambia il Programma, ma gli
+  // obiettivi li scrive (`/strategy`): senza la riga non avrebbe più una strada per arrivarci.
+  const reader = homeRows(demoView((v) => ({ objectives: [], kpis: [], viewer: { isLateralSpace: false, canEdit: false } })), counts);
+  assert.deepEqual(reader.find((row) => row.key === "obiettivi"), { key: "obiettivi", title: "Obiettivi", fact: "Scrivi gli obiettivi", panel: "obiettivi" });
+  assert.equal(HOME_TEXT.facts.writeGoals, HOME_TEXT.start.rows.obiettivi, "le parole di «Per partire»");
+  // In un workspace nuovo «Per partire» ha già «Scrivi gli obiettivi»: da fare, la Home non la ripete; fatta, la riga
+  // dice che cosa manca. Con risultati chiave o KPI, la riga è quella di sempre.
+  const ctx = { workspaceId: WS, isLateralSpace: false, defaultUnitTerm: true };
+  const open = startChecklist(NEW_FACTS, ctx);
+  const written = startChecklist({ ...NEW_FACTS, goals: 2 }, ctx);
+  assert.ok(!homeRows(none, counts, open).some((row) => row.key === "obiettivi"), "una riga sola per lo stesso passo");
+  assert.equal(homeRows(none, counts, written).find((row) => row.key === "obiettivi")?.fact, "Aggiungi i risultati chiave");
+  assert.equal(homeRows(demoView(), counts, open).find((row) => row.key === "obiettivi")?.fact, "5 risultati chiave · in media all'80 %");
+  const oneKpi = demoView(() => ({ objectives: [], kpis: [{ id: "kpi-1" } as ProgramView["kpis"][number]] }));
+  assert.equal(homeRows(oneKpi, counts, open).find((row) => row.key === "obiettivi")?.fact, "1 KPI");
+  // Anche dalla Home intera: un revisore che non cambia il Programma, in un workspace che lavora, ha la riga.
+  const home = reviewerHome(reviewerInput({ items: [hub()], program: demoView((v) => ({ objectives: [], kpis: [], viewer: { isLateralSpace: false, canEdit: false } })) }));
+  assert.ok(home.rows.some((row) => row.key === "obiettivi" && row.fact === "Scrivi gli obiettivi"));
   assert.deepEqual(keyResultsProgress([]), { total: 0, averagePct: null });
   assert.equal(HOME_TEXT.facts.keyResults(1, 42.4), "1 risultato chiave · al 42 %");
   assert.deepEqual([1, 8, 11, 42, 80, 89, 100].map(atPct), ["all'1 %", "all'8 %", "all'11 %", "al 42 %", "all'80 %", "all'89 %", "al 100 %"]);

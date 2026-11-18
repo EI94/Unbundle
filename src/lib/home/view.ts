@@ -5,8 +5,8 @@
  *
  * **Revisori** (S1): il prossimo passo del workspace (D3, `workspaceSteps`), il numero grande «Valore all'anno» con
  * «Tutti i numeri ›», poi quattro righe che aprono un pannello: Iniziative, Persone, Obiettivi, SAL. Una riga a zero
- * non c'è. In un workspace nuovo (S1b) «Per partire» prende il posto del numero grande, e la sua prima riga aperta è il
- * prossimo passo.
+ * non c'è, tranne «Obiettivi», la strada di ogni revisore per la pagina degli obiettivi. In un workspace nuovo (S1b)
+ * «Per partire» prende il posto del numero grande, e la sua prima riga aperta è il prossimo passo.
  *
  * **Contributori** (S1c): «Proponi un use case» pieno, «I tuoi use case (N)» con codice, titolo e fase, la piega «Chi
  * propone, per area» e la card del corso, se ne seguono uno.
@@ -82,8 +82,15 @@ function hasProgram(view: Pick<ProgramView, "initiatives">): boolean {
   return view.initiatives.some((row) => row.count > 0);
 }
 
-/** Le quattro righe, senza quelle a zero (§1, regola 5). Obiettivi resta, a chi può sceglierli, per scegliere i KPI. */
-export function homeRows(view: ProgramView, counts: UseCaseCounts): HomeRow[] {
+/**
+ * Le quattro righe, senza quelle a zero (§1, regola 5). «Obiettivi» c'è per ogni revisore: è la strada per la pagina
+ * degli obiettivi (`/strategy`, §3.8), che ogni revisore scrive, anche chi non cambia il Programma (un revisore del
+ * cliente che non gestisce il workspace). Senza risultati chiave né KPI la riga è l'azione, «Scrivi gli obiettivi», e
+ * il suo pannello porta alla pagina. In un workspace nuovo «Per partire» (`start`) ha già la riga «Scrivi gli
+ * obiettivi»: finché è da fare la Home non la ripete; fatta (gli obiettivi ci sono, i risultati chiave no), la riga
+ * dice che cosa manca.
+ */
+export function homeRows(view: ProgramView, counts: UseCaseCounts, start: Pick<StartChecklist, "rows"> | null = null): HomeRow[] {
   const t = HOME_TEXT;
   const rows: HomeRow[] = [];
   if (counts.total > 0) rows.push({ key: "iniziative", title: t.rows.initiatives, fact: t.facts.initiatives(counts.total, counts.inProgress, counts.inUse), panel: HOME_ROW_PANELS.iniziative });
@@ -91,7 +98,9 @@ export function homeRows(view: ProgramView, counts: UseCaseCounts): HomeRow[] {
   const peopleFact = people.training ? t.facts.trained(people.training.trained, view.company.employees) : people.levels ? t.facts.readiness(people.levels.total) : null;
   if (peopleFact) rows.push({ key: "persone", title: t.rows.people, fact: peopleFact, panel: HOME_ROW_PANELS.persone });
   const krs = keyResultsProgress(view.objectives);
-  const goalsFact = krs.total > 0 ? t.facts.keyResults(krs.total, krs.averagePct) : view.kpis.length > 0 ? t.facts.kpis(view.kpis.length) : view.viewer.canEdit ? t.facts.chooseKpis : null;
+  const startGoals = start?.rows.find((row) => row.key === "obiettivi") ?? null;
+  const emptyGoalsFact = !startGoals ? t.facts.writeGoals : startGoals.done ? t.facts.addKeyResults : null;
+  const goalsFact = krs.total > 0 ? t.facts.keyResults(krs.total, krs.averagePct) : view.kpis.length > 0 ? t.facts.kpis(view.kpis.length) : emptyGoalsFact;
   if (goalsFact) rows.push({ key: "obiettivi", title: t.rows.goals, fact: goalsFact, panel: HOME_ROW_PANELS.obiettivi });
   const lastOn = view.sal.lastOn;
   const salFact = lastOn ? t.facts.sal(lastOn, nextSalFrom(lastOn) ?? lastOn) : hasProgram(view) ? t.facts.salFirst : null;
@@ -142,7 +151,7 @@ export function reviewerHome(i: ReviewerHomeInput): ReviewerHome {
     step: start ? start.next : workspaceStep,
     start,
     bigNumber: start || !i.program ? null : homeBigNumber(i.program),
-    rows: i.program ? homeRows(i.program, countUseCases(i.items)) : [],
+    rows: i.program ? homeRows(i.program, countUseCases(i.items), start) : [],
   };
 }
 
