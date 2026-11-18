@@ -65,7 +65,8 @@ export function MemoryView({ workspaceId, today, lateralSpace, canEditMemory, me
         <section className="mx-auto max-w-md space-y-3 py-10 text-center">
           <h2 className="text-lg font-medium">{T.page.emptyTitle}</h2>
           <p className="text-sm leading-relaxed text-muted-foreground">{lateralSpace ? T.page.emptyBodyLs : T.page.emptyBodyClient}</p>
-          {lateralSpace ? <AddNotesButton className="w-full sm:w-auto" /> : null}
+          {/* (Rilascio 10, §3.7) Con proposte da confermare il pieno è «Conferma N proposte», nella testata: questo è bordato. */}
+          {lateralSpace ? <AddNotesButton className="w-full sm:w-auto" variant={memory.counts.openProposals > 0 ? "outline" : "default"} /> : null}
         </section>
       ) : null}
 

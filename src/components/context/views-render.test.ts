@@ -62,6 +62,12 @@ function textOf(html: string): string[] {
     .filter(Boolean);
 }
 const render = (element: ReactElement) => renderToStaticMarkup(element);
+/** I pulsanti pieni: `[data-slot=button]` con la classe `bg-primary`, come nell'harness delle schermate. */
+function filledButtons(html: string): string[] {
+  return [...html.matchAll(/<(?:a|button)\b[^>]*>/g)]
+    .map(([tag]) => tag)
+    .filter((tag) => tag.includes('data-slot="button"') && (/class="([^"]*)"/.exec(tag)?.[1].split(/\s+/) ?? []).includes("bg-primary"));
+}
 /** La pagina intorno a una vista: i figli come terzo argomento, come li passa React. */
 const pageWith = (props: Omit<ContextPageProps, "children">, child: ReactElement) => createElement(ContextPage, props as ContextPageProps, child);
 
@@ -161,6 +167,39 @@ test("la Memoria vuota: il titolo e la frase di chi guarda; per Lateral Space «
   const text = textOf(page);
   assert.ok(text.includes("Aggiungi gli appunti di una call: Unbundle li legge e propone i fatti. Confermi con un clic."));
   assert.equal(text.filter((t) => t === "Aggiungi appunti").length, 1, "un solo «Aggiungi appunti»: nella Memoria vuota, non nella testata");
+});
+
+test("(rilascio 10, §3.7) la Memoria vuota con proposte da confermare: un solo pulsante pieno, «Conferma N proposte»; «Aggiungi appunti» bordato", () => {
+  const empty = (openProposals: number) =>
+    memory({
+      sections: memory().sections.map((s) => ({ ...s, live: [], facts: [] })),
+      nextSteps: { nostri: [], cliente: [] },
+      questions: [],
+      brief: null,
+      novelties: null,
+      counts: { facts: 0, openProposals, unreadSources: 1, pendingSourceIds: [], toCheck: 0 },
+    });
+  const pageFor = (openProposals: number) =>
+    render(
+      pageWith(
+        { workspaceId: WS, workspaceName: "Cliente di prova", today: TODAY, tab: "memoria", lateralSpace: true, canEditMemory: true, addNotesInHeader: false, pendingProposals: openProposals, useCaseOptions: [], consentNotice: null },
+        createElement(MemoryView, memoryProps({ memory: empty(openProposals) })),
+      ),
+    );
+  const addNotes = (html: string) => [...html.matchAll(/<button\b[^>]*>Aggiungi appunti<\/button>/g)].map(([tag]) => tag);
+  const withProposals = pageFor(2);
+  const filled = filledButtons(withProposals);
+  assert.equal(filled.length, 1, "un solo pulsante pieno");
+  assert.match(filled[0], new RegExp(`href="/dashboard/${WS}/contesto/conferma"`));
+  assert.equal(addNotes(withProposals).length, 1, "«Aggiungi appunti» resta, nella Memoria vuota");
+  assert.match(addNotes(withProposals)[0], /\bbg-background\b/, "bordato");
+  assert.doesNotMatch(addNotes(withProposals)[0], /\bbg-primary\b/);
+  // Senza proposte, «Aggiungi appunti» della Memoria vuota è il pulsante pieno.
+  const none = pageFor(0);
+  assert.equal(filledButtons(none).length, 1);
+  assert.match(filledButtons(none)[0], /\bbg-primary\b/);
+  assert.equal(addNotes(none).length, 1);
+  assert.match(addNotes(none)[0], /\bbg-primary\b/);
 });
 
 // ─── La testata e le schede ──────────────────────────────────────────

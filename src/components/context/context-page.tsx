@@ -23,7 +23,8 @@ const AddNotesContext = createContext<(() => void) | null>(null);
 
 /**
  * «Aggiungi appunti»: c'è solo dove la pagina lo offre (Lateral Space). (Rilascio 10, §3.7) È pieno finché non ci sono
- * proposte da confermare; con le proposte il pieno è «Conferma N proposte» e questo è bordato.
+ * proposte da confermare; con le proposte il pieno è «Conferma N proposte» e questo è bordato, nella testata e nella
+ * Memoria vuota.
  */
 export function AddNotesButton({ className, variant = "default" }: { className?: string; variant?: "default" | "outline" }) {
   const open = useContext(AddNotesContext);
