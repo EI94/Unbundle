@@ -23,6 +23,7 @@ function functionBody(source: string, name: string): string {
 
 const DASHBOARD = "src/app/(dashboard)/dashboard/[workspaceId]";
 const CARD_PAGE = `${DASHBOARD}/use-cases/[useCaseId]/page.tsx`;
+const DOSSIER_PAGE = `${DASHBOARD}/casi-duso/[caseId]/progetto/page.tsx`;
 
 test("la scheda legge il contesto solo per i revisori, dentro un try che dà null: senza, la scheda resta", () => {
   const source = withoutComments(read(CARD_PAGE));
@@ -112,4 +113,37 @@ test("la piega: chiusa, prima di «Storia», con il pannello del fatto in sola l
   // Nessun pulsante nella piega: solo il link «Apri il contesto» e i fatti che aprono il pannello.
   assert.doesNotMatch(view, /<Button\b|from "@\/components\/ui\/button"/);
   assert.match(view, /href=\{`\/dashboard\/\$\{workspaceId\}\/contesto`\}/);
+});
+
+test("il dossier: «Contesto» dopo «Decisioni» e prima di «Pacchetto», con l'ancora della campanella; la riga del pacchetto senza pulsanti nuovi", () => {
+  const source = withoutComments(read(DOSSIER_PAGE));
+  const at = (needle: string) => {
+    const index = source.indexOf(needle);
+    assert.ok(index > 0, needle);
+    return index;
+  };
+  // La sezione: `id="contesto"` (l'ancora di «Il contesto è cambiato»), tra «Decisioni» e «Pacchetto», con i testi di «Contesto».
+  const section = at('<SettingsSection id="contesto"');
+  assert.ok(at('<SettingsSection id="decisioni"') < section && section < at('<SettingsSection id="pacchetto"'));
+  assert.match(source, /<SettingsSection id="contesto" icon=\{Building2\} title=\{CONTEXT_TEXT\.useCase\.title\} description=\{CONTEXT_TEXT\.useCase\.dossierDescription\}>/);
+  assert.match(source, /\{context && contextFoldShown\(context\) \? \(/, "senza niente da mostrare non c'è");
+  assert.match(source, /<UseCaseContextView workspaceId=\{workspaceId\} today=\{romeToday\(\)\} context=\{context\} \/>/, "lo stesso contenuto della piega");
+  // Per chi guarda: la persona di «Contesto» dalla sessione (Lateral Space per l'e-mail verificata), dentro un try.
+  assert.match(source, /readContextSection\(contextActorFor\(session\.user, access, workspaceId\), useCase\.useCaseId\)/);
+  assert.match(functionBody(source, "readContextSection"), /try \{\s*return await loadUseCaseContext\(actor, useCaseId\);\s*\} catch \(error\) \{[\s\S]*return null;\s*\}/);
+  // La riga del pacchetto: solo a chi vede «Pacchetto» e con una versione; le novità da `contextDeltaSince`, mai a mano.
+  assert.match(source, /builder && view\.latestPackage \? readContextDelta\(workspaceId, useCase\.useCaseId, view\.latestPackage\) : Promise\.resolve\(0\)/);
+  assert.match(functionBody(source, "readContextDelta"), /contextDeltaSince\(\{ workspaceId, useCaseId, since: packageContextSince\(latest\) \}\)/);
+  assert.match(source, /const deltaLine = packageDeltaLine\(contextDelta\);/);
+  const pack = source.slice(section, source.indexOf("</SettingsSection>", at('<SettingsSection id="pacchetto"')));
+  assert.match(pack, /\{deltaLine \? <p data-slot="package-context-delta">\{deltaLine\}<\/p> : null\}/);
+  assert.ok(pack.indexOf("{deltaLine ?") > pack.indexOf("Versione {view.latestPackage.version}"), "sotto la riga della versione");
+  // Nessun pulsante nuovo: l'azione resta «Aggiorna il pacchetto».
+  assert.equal((pack.match(/<Button\b/g) ?? []).length, 0);
+  assert.equal((pack.match(/<PackageButton\b/g) ?? []).length, 1);
+  // La descrizione nuova e «Leggi i file» dai file della versione (con CONTESTO.md quando c'è), non da un elenco scritto a mano.
+  assert.match(source, /description="I file che il repository del caso legge e non cambia: senza nomi di persona\."/);
+  assert.doesNotMatch(source, /I tre file/);
+  assert.match(pack, /\{packageFilesShown\(view\.latestPackage\.files\)\.map\(\(\{ name, text \}\) => \(/);
+  assert.doesNotMatch(source, /\["BRIEF\.md", "PACCHETTO\.md", "VERSIONE"\]/);
 });

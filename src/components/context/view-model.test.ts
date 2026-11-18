@@ -13,6 +13,7 @@ import {
   briefMaterial,
   CASE_NOVELTIES_MAX,
   chunkItems,
+  CONTEXT_PACKAGE_FILE,
   confirmCount,
   confirmGroups,
   confirmSubtitle,
@@ -32,6 +33,9 @@ import {
   noteDraftErrors,
   notReportedLines,
   noveltyTag,
+  packageContextSince,
+  packageDeltaLine,
+  packageFilesShown,
   proposalDraft,
   proposalPatch,
   proposalSource,
@@ -500,6 +504,33 @@ test("«Cosa serve»: «Una call del 14 nov risponde: «…»», o «Un document
   assert.equal(needLinkText(link), "Una call del 14 nov risponde: «Gli ordini arrivano via e-mail.»");
   assert.equal(needLinkText({ ...link, from: "documento", date: "3 ott 2025" }), "Un documento del 3 ott 2025 risponde: «Gli ordini arrivano via e-mail.»");
   assert.deepEqual([T.needLink.close, T.needLink.dismiss], ["Chiudi con questo", "Non risponde"]);
+});
+
+test("il dossier, «Leggi i file»: i tre file di sempre, poi CONTESTO.md quando c'è; mai un altro nome", () => {
+  const three = { "PACCHETTO.md": "p", "BRIEF.md": "b", VERSIONE: "3" };
+  assert.deepEqual(packageFilesShown(three).map((f) => f.name), ["BRIEF.md", "PACCHETTO.md", "VERSIONE"]);
+  assert.deepEqual(packageFilesShown({ ...three, "CONTESTO.md": "# Contesto del cliente per XX-0012 (k3)" }), [
+    { name: "BRIEF.md", text: "b" },
+    { name: "PACCHETTO.md", text: "p" },
+    { name: "VERSIONE", text: "3" },
+    { name: CONTEXT_PACKAGE_FILE, text: "# Contesto del cliente per XX-0012 (k3)" },
+  ]);
+  assert.deepEqual(packageFilesShown({ ...three, "ALTRO.md": "x", "CONTESTO.md": 12 }).map((f) => f.name), ["BRIEF.md", "PACCHETTO.md", "VERSIONE"], "un nome fuori elenco o un valore che non è testo no");
+  assert.deepEqual(packageFilesShown(null), []);
+});
+
+test("il dossier, la riga del pacchetto: le novità dalla data dell'ultimo pacchetto con CONTESTO.md, altrimenti tutti i fatti; niente senza novità", () => {
+  const files = { "PACCHETTO.md": "p", "BRIEF.md": "b", VERSIONE: "3" };
+  const at = "2026-11-10T09:30:00.000Z";
+  assert.equal(packageContextSince({ createdAt: at, files: { ...files, "CONTESTO.md": "c" } })?.toISOString(), at);
+  assert.equal(packageContextSince({ createdAt: at, files }), null, "senza CONTESTO.md contano tutti i fatti");
+  assert.equal(packageContextSince({ createdAt: "", files: { ...files, "CONTESTO.md": "c" } }), null, "una data che non si legge");
+  assert.equal(packageContextSince(null), null);
+  assert.equal(packageDeltaLine(0), null);
+  assert.equal(packageDeltaLine(-2), null);
+  assert.equal(packageDeltaLine(Number.NaN), null);
+  assert.equal(packageDeltaLine(1), "Il contesto è cambiato dopo l'ultimo pacchetto (1 novità).");
+  assert.equal(packageDeltaLine(3), "Il contesto è cambiato dopo l'ultimo pacchetto (3 novità).");
 });
 
 test("«Impegni aperti»: «Nostri» e «Del cliente», solo i gruppi con righe, nell'ordine in cui arrivano", () => {

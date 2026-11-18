@@ -426,6 +426,15 @@ export function contextFactGroups<F extends Pick<FactView, "section">>(facts: re
   return CONTEXT_SECTIONS.map((section) => ({ section, label: sectionLabel(section), facts: facts.filter((fact) => fact.section === section) })).filter((group) => group.facts.length > 0);
 }
 
+/** «Impegni aperti»: «Nostri» e «Del cliente», solo i gruppi con righe, ognuno nell'ordine in cui arriva (per scadenza). */
+export function contextCommitmentGroups(commitments: readonly CommitmentView[]): Array<{ party: CommitmentParty; label: string; items: CommitmentView[] }> {
+  const groups: Array<{ party: CommitmentParty; label: string }> = [
+    { party: "nostra", label: T.nextSteps.ours },
+    { party: "cliente", label: T.nextSteps.theirs },
+  ];
+  return groups.map((group) => ({ ...group, items: commitments.filter((commitment) => commitment.party === group.party) })).filter((group) => group.items.length > 0);
+}
+
 /**
  * (9b, §2.2) La riga sotto una richiesta di «Cosa serve»: «Una call del 14 nov risponde: «…»», o «Un documento del 14
  * nov risponde: «…»» quando il fatto viene da un documento.
@@ -434,13 +443,37 @@ export function needLinkText(link: Pick<NeedLinkView, "from" | "date" | "stateme
   return link.from === "documento" ? T.needLink.fromDocument(link.date, link.statement) : T.needLink.fromCall(link.date, link.statement);
 }
 
-/** «Impegni aperti»: «Nostri» e «Del cliente», solo i gruppi con righe, ognuno nell'ordine in cui arriva (per scadenza). */
-export function contextCommitmentGroups(commitments: readonly CommitmentView[]): Array<{ party: CommitmentParty; label: string; items: CommitmentView[] }> {
-  const groups: Array<{ party: CommitmentParty; label: string }> = [
-    { party: "nostra", label: T.nextSteps.ours },
-    { party: "cliente", label: T.nextSteps.theirs },
-  ];
-  return groups.map((group) => ({ ...group, items: commitments.filter((commitment) => commitment.party === group.party) })).filter((group) => group.items.length > 0);
+// ─── (9b) Il dossier: la riga del pacchetto e i suoi file (§2.3) ─────
+
+/** Il file facoltativo del pacchetto con il contesto del cliente (§2.4): c'è solo con fatti «Per tutti» da scrivere. */
+export const CONTEXT_PACKAGE_FILE = "CONTESTO.md";
+
+/** I file che «Leggi i file» mostra, nell'ordine: i tre di sempre, poi `CONTESTO.md` quando c'è. */
+const PACKAGE_FILES_SHOWN: readonly string[] = Object.freeze(["BRIEF.md", "PACCHETTO.md", "VERSIONE", CONTEXT_PACKAGE_FILE]);
+
+/** «Leggi i file»: i file di una versione del pacchetto, nell'ordine; uno che manca non c'è, e nessun altro nome. */
+export function packageFilesShown(files: Readonly<Record<string, unknown>> | null | undefined): Array<{ name: string; text: string }> {
+  if (!files || typeof files !== "object") return [];
+  return PACKAGE_FILES_SHOWN.flatMap((name) => {
+    const text = files[name];
+    return typeof text === "string" ? [{ name, text }] : [];
+  });
+}
+
+/**
+ * Da quando contare le novità del contesto per la riga del pacchetto: dalla data dell'ultimo pacchetto, se ha
+ * `CONTESTO.md`; altrimenti null, e contano tutti i fatti del suo perimetro (`contextDeltaSince`).
+ */
+export function packageContextSince(latest: { createdAt: string; files: Readonly<Record<string, unknown>> } | null | undefined): Date | null {
+  if (!latest || typeof latest.files?.[CONTEXT_PACKAGE_FILE] !== "string") return null;
+  const at = new Date(latest.createdAt);
+  return Number.isNaN(at.getTime()) ? null : at;
+}
+
+/** Sotto la versione del pacchetto: «Il contesto è cambiato dopo l'ultimo pacchetto (3 novità).»; null senza novità. */
+export function packageDeltaLine(delta: number): string | null {
+  const n = Number.isFinite(delta) ? Math.trunc(delta) : 0;
+  return n > 0 ? T.useCase.packageDelta(n) : null;
 }
 
 // ─── «Aggiungi appunti» ──────────────────────────────────────────────
