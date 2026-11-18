@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { strategicGoals } from "@/lib/db/schema";
 import { getWorkspaceValueThesis } from "@/lib/db/queries/value-thesis";
+import { getStrategicGoalsByWorkspace } from "@/lib/db/queries/workspaces";
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { CLAUDE_MODEL, claudeCallSettings, throwIfRefused } from "@/lib/ai/models";
@@ -12,16 +13,33 @@ import { z } from "zod";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 
+const GOAL_TYPES = ["goal", "objective", "key_result"] as const;
+type GoalType = (typeof GOAL_TYPES)[number];
+
+function isGoalType(value: unknown): value is GoalType {
+  return typeof value === "string" && (GOAL_TYPES as readonly string[]).includes(value);
+}
+
 export async function createGoalAction(formData: FormData) {
   const session = await requireSession();
 
   const workspaceId = formData.get("workspaceId") as string;
   const access = await getCollaboratorAccess(session.user.id, workspaceId);
   if (!access) throw new Error("Workspace non trovato");
-  const type = formData.get("type") as "goal" | "objective" | "key_result";
+  // Gli obiettivi strategici del cliente li scrive solo chi rivede il portfolio, come per gli OKR suggeriti.
+  if (!canReviewWorkspacePortfolio(access.role)) {
+    throw new Error("Non hai i permessi per creare obiettivi.");
+  }
+  const type = formData.get("type");
+  if (!isGoalType(type)) throw new Error("Tipo di obiettivo non valido");
   const title = formData.get("title") as string;
   const description = (formData.get("description") as string) || undefined;
   const parentId = (formData.get("parentId") as string) || undefined;
+  // Il padre è un obiettivo di questo workspace: mai quello di un altro cliente.
+  if (parentId) {
+    const goals = await getStrategicGoalsByWorkspace(workspaceId);
+    if (!goals.some((goal) => goal.id === parentId)) throw new Error("Obiettivo padre non trovato");
+  }
   const direction = (formData.get("direction") as string) || undefined;
   const owner = (formData.get("owner") as string) || undefined;
   const timeframe = (formData.get("timeframe") as string) || undefined;
