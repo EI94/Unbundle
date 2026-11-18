@@ -20,8 +20,11 @@ import { VISIBILITY_ITEMS } from "./write-fact-form";
 
 const T = CONTEXT_TEXT;
 
-/** Il dettaglio di una fonte come arriva dalla rotta: le date sono testo. */
-export type SourceDetailJson = Omit<SourceDetail, "createdAt" | "textPurgedAt"> & { createdAt: string; textPurgedAt: string | null };
+/**
+ * Il dettaglio di una fonte come arriva dalla rotta: le date sono testo. (9b) `useCaseId`: per le risposte di un referente,
+ * lo use case della richiesta, per «Apri lo use case».
+ */
+export type SourceDetailJson = Omit<SourceDetail, "createdAt" | "textPurgedAt"> & { createdAt: string; textPurgedAt: string | null; useCaseId?: string | null };
 
 type Loaded = { status: "caricamento" } | { status: "pronto"; source: SourceDetailJson } | { status: "errore"; message: string };
 
@@ -29,6 +32,8 @@ type Loaded = { status: "caricamento" } | { status: "pronto"; source: SourceDeta
  * Il pannello di un appunto o di un documento nella vista «Appunti» (rilascio 9a, docs/contesto/RILASCIO-9a-COSTRUZIONE.md
  * §7.5). Solo Lateral Space. Un appunto: il testo (o «cancellato dopo 12 mesi»), «Con chi», il link, «Aggiunto da …»,
  * e «Leggi» o «Rileggi», «Da confermare», «Togli». Un documento: nome, tipo, dimensione, chi lo vede, «Togli».
+ * (9b) Le risposte di un referente: niente testo e niente «Togli» (vivono nella scheda dello use case), una frase che lo
+ * dice e «Apri lo use case».
  */
 export function SourceSheet({ workspaceId, sourceId, today, onClose }: { workspaceId: string; sourceId: string | null; today: string; onClose: () => void }) {
   return <SourceSheetBody key={sourceId ?? "chiuso"} workspaceId={workspaceId} sourceId={sourceId} today={today} onClose={onClose} />;
@@ -54,6 +59,7 @@ function SourceSheetBody({ workspaceId, sourceId, today, onClose }: { workspaceI
 
   const source = loaded.status === "pronto" ? loaded.source : null;
   const isDocument = source?.kind === "documento";
+  const isAnswers = source?.kind === "risposta";
   const purged = source?.textPurgedAt != null;
   const readAction = source ? sourceReadAction(source, purged) : null;
 
@@ -181,6 +187,21 @@ function SourceSheetBody({ workspaceId, sourceId, today, onClose }: { workspaceI
             <Field id="fonte-chi-la-vede" label={T.writeFact.visibility}>
               <ChoiceSelect id="fonte-chi-la-vede" value={source.visibility} items={VISIBILITY_ITEMS} disabled={busy} onChange={setVisibility} />
             </Field>
+          ) : isAnswers ? (
+            purged ? null : (
+              <div className="space-y-2 text-sm">
+                <p className="text-muted-foreground">{T.notes.answerSource}</p>
+                {source.useCaseId ? (
+                  <Link
+                    href={`/dashboard/${workspaceId}/use-cases/${encodeURIComponent(source.useCaseId)}?capitolo=cosa-serve`}
+                    className="inline-flex min-h-11 items-center gap-0.5 font-medium underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-0"
+                  >
+                    {T.notes.openUseCase}
+                    <ChevronRight aria-hidden className="size-4" />
+                  </Link>
+                ) : null}
+              </div>
+            )
           ) : purged ? (
             <p className="text-sm text-muted-foreground">{T.notes.purged}</p>
           ) : source.body ? (

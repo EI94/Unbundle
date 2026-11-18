@@ -13,7 +13,9 @@
  *    e così una proposta con la frase di un fatto «Solo Lateral Space», anche di uno che il prompt non aveva;
  * 7. sezione nulla solo per impegni e domande;
  * 8. un impegno ha sempre una parte; una data è una data vera;
- * 9. codici, riferimenti ed entità che non stanno negli elenchi si scartano;
+ * 9. codici, riferimenti ed entità che non stanno negli elenchi si scartano; (9b) gli use case della fonte (le risposte
+ *    di un referente toccano lo use case della sua richiesta) stanno su ogni proposta; (9b) una richiesta di «Cosa serve»
+ *    (`esigenzaRif`) vale solo per un fatto nuovo, un cambiamento o una decisione, e i suoi use case si aggiungono;
  * 10. al massimo 25 proposte.
  *
  * Niente di quello che c'è scritto negli appunti cambia queste regole. Modulo puro.
@@ -56,6 +58,16 @@ export interface ReconcileInput {
    * del cliente non li riceve): una proposta con la stessa frase resta «Solo Lateral Space».
    */
   lsFacts?: Array<{ id: string; statement: string }>;
+  /**
+   * (9b) Gli use case che ogni proposta tocca, qualunque cosa dica il modello: quello della richiesta, per le risposte di un
+   * referente. Li sceglie Unbundle, non il testo.
+   */
+  sourceUseCaseIds?: readonly string[];
+  /**
+   * (9b) Le richieste aperte di «Cosa serve» del prompt (R1, R2…), con i loro use case. Un fatto che ne chiude una nasce
+   * con un legame `proposta` (`needId`).
+   */
+  needs?: Array<{ ref: string; id: string; useCaseIds: readonly string[] }>;
   occurredOn: string;
 }
 
@@ -76,6 +88,8 @@ export interface DraftProposal {
   entities: ProposalEntity[];
   relations: ProposalRelation[];
   issue: ProposalIssue | null;
+  /** (9b) La richiesta di «Cosa serve» a cui il fatto risponde: non è una colonna della proposta, è il suo legame. */
+  needId: string | null;
 }
 
 export interface ReconcileResult {
@@ -97,6 +111,8 @@ export function isPreselected(p: { basis: Basis; kind: ProposalKind; issue: Prop
 
 const FACT_KINDS: readonly ProposalKind[] = ["nuovo", "cambia", "conferma", "conflitto", "decisione"];
 const TARGET_KINDS: readonly ProposalKind[] = ["cambia", "conferma", "conflitto"];
+/** (9b) I tipi che possono rispondere a una richiesta di «Cosa serve»: un fatto che nasce o che cambia. */
+const NEED_KINDS: readonly ProposalKind[] = ["nuovo", "cambia", "decisione"];
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /** Una data vera `AAAA-MM-GG` (il 30 febbraio non lo è), oppure null. */
@@ -140,6 +156,7 @@ function roleOf(value: string | null): string | null {
 }
 
 interface Lists {
+  needsByRef: Map<string, { id: string; useCaseIds: readonly string[] }>;
   factsByRef: Map<string, ReconcileInput["facts"][number]>;
   factsByKey: Map<string, ReconcileInput["facts"][number]>;
   questionsByRef: Map<string, string>;
@@ -153,6 +170,7 @@ function listsOf(input: ReconcileInput): Lists {
   const useCasesByTitle = new Map<string, { id: string }>();
   for (const u of input.useCases) if (u.title) useCasesByTitle.set(entityKey(u.title), { id: u.id });
   return {
+    needsByRef: new Map((Array.isArray(input.needs) ? input.needs : []).map((n) => [refKey(n.ref), { id: n.id, useCaseIds: Array.isArray(n.useCaseIds) ? n.useCaseIds : [] }])),
     factsByRef: new Map(input.facts.map((f) => [refKey(f.ref), f])),
     factsByKey: new Map(input.facts.map((f) => [normalizeStatement(f.statement), f])),
     questionsByRef: new Map(input.questions.map((q) => [refKey(q.ref), q.id])),
@@ -300,8 +318,15 @@ export function reconcile(input: ReconcileInput): ReconcileResult {
     }
     const roleLabel = loose ? roleOf(raw.ruolo) : null;
 
-    // 9. Use case, domanda, entità, collegamenti.
-    const useCaseIds = [...new Set((Array.isArray(raw.useCase) ? raw.useCase : []).map((code) => lists.useCasesByCode.get(refKey(code))).filter((id): id is string => Boolean(id)))];
+    // 9. Use case, domanda, richiesta di «Cosa serve», entità, collegamenti.
+    const need = NEED_KINDS.includes(kind) ? (lists.needsByRef.get(refKey(raw.esigenzaRif)) ?? null) : null;
+    const useCaseIds = [
+      ...new Set([
+        ...(Array.isArray(raw.useCase) ? raw.useCase : []).map((code) => lists.useCasesByCode.get(refKey(code))).filter((id): id is string => Boolean(id)),
+        ...(Array.isArray(input.sourceUseCaseIds) ? input.sourceUseCaseIds : []),
+        ...(need ? need.useCaseIds : []),
+      ]),
+    ];
     const questionId = FACT_KINDS.includes(kind) && kind !== "conferma" ? (lists.questionsByRef.get(refKey(raw.domandaRif)) ?? null) : null;
     const named = loose || kind === "conferma" ? null : entitiesOf(raw.entita, lists, input.useCases);
     const entities = named ? named.entities : [];
@@ -325,6 +350,7 @@ export function reconcile(input: ReconcileInput): ReconcileResult {
       entities,
       relations,
       issue: kind === "conferma" ? null : issue,
+      needId: need ? need.id : null,
     });
   }
 

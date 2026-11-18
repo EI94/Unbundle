@@ -150,7 +150,7 @@ async function answeredReferent(card: { id: string; needs: string[] }): Promise<
   const outbox = await send(sent.requestId);
   const token = /\/rispondi\/(ucq_[A-Za-z0-9_-]{32})/.exec(outbox[0]?.text ?? "")?.[1];
   assert.ok(token, "il link nell'email");
-  pok(await pub.acceptReferentPrivacy(await linkOf(token!), { version: "ucq-2026-11-2" }, new Date()) as never, "informativa");
+  pok(await pub.acceptReferentPrivacy(await linkOf(token!), { version: "ucq-2026-11-3" }, new Date()) as never, "informativa");
   const link = await linkOf(token!);
   pok(await pub.saveReferentCheck(link, { step: 1, confirm: "si", note: null }, new Date()) as never, "passo 1");
   pok(await pub.saveReferentCheck(link, { step: 2, benefit: { key: "tempo-1", seen: SEEN, answer: "meno", timesPerMonth: 200 } }, new Date()) as never, "passo 2");
@@ -412,7 +412,7 @@ test("«Modifica» finché il team non segna «A posto», poi «Aggiungi qualcos
   assert.equal(old.json.error, "informativa_da_leggere");
   const readOnly = await html(r.token);
   assert.ok(readOnly.includes("Hai risposto il") && !readOnly.includes("Prima di iniziare"), "la sola lettura non chiede l'informativa");
-  await q(`UPDATE use_case_referent_requests SET privacy_notice_version = 'ucq-2026-11-2' WHERE id = $1::uuid`, [r.requestId]);
+  await q(`UPDATE use_case_referent_requests SET privacy_notice_version = 'ucq-2026-11-3' WHERE id = $1::uuid`, [r.requestId]);
 });
 
 test("le domande nuove alla stessa persona: «Nuova domanda» in «Da completare», poi «Invia» dalle rotte", opts, async () => {

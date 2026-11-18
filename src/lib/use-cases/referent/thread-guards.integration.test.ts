@@ -133,7 +133,7 @@ async function answeredReferent(card: { id: string; needs: string[] }): Promise<
   assert.ok(token, "il link nell'email");
   const first = await pub.resolveReferentToken(token!, new Date());
   if (first.access !== "ok") assert.fail("link");
-  pok(await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-2" }, new Date()) as never, "informativa");
+  pok(await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-3" }, new Date()) as never, "informativa");
   const link = await linkOf(token!);
   pok(await pub.saveReferentCheck(link, { step: 1, confirm: "si", note: null }, new Date()) as never, "passo 1");
   pok(await pub.saveReferentCheck(link, { step: 2, benefit: { key: "tempo-1", seen: SEEN, answer: "meno", timesPerMonth: 200 } }, new Date()) as never, "passo 2");
@@ -302,7 +302,7 @@ test("«Chiedi un chiarimento» su una richiesta completata mentre la stessa per
   assert.ok(token, "il link di R1");
   const first = await pub.resolveReferentToken(token!, new Date());
   if (first.access !== "ok") assert.fail("link");
-  pok(await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-2" }, new Date()) as never, "informativa");
+  pok(await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-3" }, new Date()) as never, "informativa");
   pok(await pub.saveReferentDraft(await linkOf(token!), { needId: card.needs[0], text: "Circa 200 al mese", dontKnow: false }, new Date()) as never, "bozza");
   pok(await pub.submitReferentAnswers(await linkOf(token!), {}, new Date()) as never, "invia");
   await send(r1.requestId);

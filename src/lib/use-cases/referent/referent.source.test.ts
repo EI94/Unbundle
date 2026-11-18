@@ -116,6 +116,9 @@ const TABLE_FILES = new Set([
   "src/lib/db/context-work-ddl.ts",
   // (Rilascio 9b) Le due righe nuove della campanella: «Il contesto è cambiato» e «Una risposta per «Cosa serve»».
   "src/lib/db/queries/context-notices.ts",
+  // (Rilascio 9b) Le risposte del referente come fonte di «Contesto»: la fonte nasce e torna da leggere nei batch del
+  // referente, il testo si compone dal vivo dalle risposte inviate, la conservazione e la cancellazione la svuotano.
+  "src/lib/db/queries/context-referent.ts",
 ]);
 
 test("le tabelle nuove si nominano solo nei moduli della funzione", () => {

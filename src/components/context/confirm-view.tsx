@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { confirmProposalsAction } from "@/lib/actions/context";
 import { CONTEXT_TEXT } from "@/lib/context/text";
 import type { OpenProposals } from "@/lib/db/queries/context-proposals";
+import { confirmHeading, workSourceLabel } from "./confirm-sources";
 import { Mark, type UseCaseOption } from "./fields";
 import { ProposalRow } from "./proposal-row";
 import {
@@ -37,6 +38,8 @@ const T = CONTEXT_TEXT;
  * riga delle riconferme e i passaggi non riportati. «Dedotto» e conflitti non sono mai spuntati da soli; un conflitto
  * entra solo con la scelta della persona. Le proposte arrivano sempre dal server: le scelte della persona restano
  * sopra (una correzione, uno scarto o un aggiornamento non le cancellano).
+ * (9b) Con una fonte sola nata dal lavoro la testata dice da dove vengono («Dalle risposte del referente per …», «Da chi
+ * costruisce …»), e la fonte di «Ora: …» non la scambia per una call (`confirm-sources.ts`).
  */
 export function ConfirmView({
   workspaceId,
@@ -66,7 +69,7 @@ export function ConfirmView({
   const again = reconfirmable(open);
   const toChoose = reconfirmationsToChoose(open);
   const notReported = notReportedLines(sources.map((source) => source.skipped));
-  const subtitle = confirmSubtitle(sources, today);
+  const subtitle = confirmHeading(sources, today, confirmSubtitle(sources, today));
   const memoryHref = `/dashboard/${workspaceId}/contesto`;
   const empty = open.proposals.length === 0 && open.reconfirmed.length === 0;
 
@@ -137,7 +140,7 @@ export function ConfirmView({
                 workspaceId={workspaceId}
                 today={today}
                 proposal={proposal}
-                sourceLabel={proposalSource(proposal, sources, today)}
+                sourceLabel={workSourceLabel(proposal, sources, today) ?? proposalSource(proposal, sources, today)}
                 checked={selection.checked[proposal.id] === true}
                 resolution={selection.resolutions[proposal.id] ?? null}
                 error={errors[proposal.id] ?? null}

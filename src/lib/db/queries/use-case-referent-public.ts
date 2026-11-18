@@ -13,6 +13,7 @@ import {
 import { dispatchRequesterAlerts } from "@/lib/db/queries/use-case-notifications";
 import { dispatchReferentEmails } from "@/lib/db/queries/use-case-referent-dispatch";
 import { processReferentSuggestions, suggestionQueueSql } from "@/lib/db/queries/use-case-referent-ai";
+import { referentSourceStatements } from "@/lib/db/queries/context-referent";
 import { deleteFileObjects, referentBeginClient, referentCompleteClient, referentUploadServer } from "@/lib/db/queries/use-case-referent-files";
 import type { Issue } from "@/lib/uc/answers/issues";
 import { romeDate } from "@/lib/uc/calendar";
@@ -913,6 +914,9 @@ export async function submitReferentAnswers(link: ReferentLink, body: unknown, n
   // (Parte 3) Chi risponde, se è anche una persona di Unbundle: non riceve la notifica né l'avviso di
   // quello che ha fatto lui. Si rilegge adesso (ruolo e account di questo momento); la Storia resta «Referente».
   const actorUserId = (await readReferentPerson(executor, link.workspaceId, link.contactId)).userId;
+  // (Rilascio 9b) Le risposte con un testo diventano una fonte di «Contesto», solo con l'informativa che lo dice: la
+  // legge la notte, o Lateral Space aprendo «Contesto». Vuoto se non serve: mai un errore in più per il referente.
+  const contextStatements = ready.length > 0 ? await referentSourceStatements({ workspaceId: link.workspaceId, requestId: link.requestId }) : [];
   const ws = cast(link.workspaceId, "uuid");
   const req = cast(link.requestId, "uuid");
   const all = ready.map((t) => t.needId);
@@ -1039,6 +1043,8 @@ ON CONFLICT (dedupe_key) DO NOTHING`),
         env: process.env,
       }),
     ].filter((x): x is UcStatement => x !== null),
+    // (Rilascio 9b) Dopo le risposte inviate: la fonte le vede.
+    ...contextStatements,
     // Le risposte del referente non chiudono mai un'esigenza («Da verificare», «Manca il dato»): niente
     // «Pronto da avviare» da controllare qui (`readiness: null`), solo «Informazioni complete».
     ...cardSyncStatements({ workspaceId: link.workspaceId, useCaseIds: [link.useCaseId], actorUserId, readiness: null }),

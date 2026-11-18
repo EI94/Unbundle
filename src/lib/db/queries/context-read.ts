@@ -10,6 +10,14 @@ import "server-only";
  * fuso di Roma, contato solo quando la chiamata parte); memoria di oggi; chiamata `contextRead`; regole; proposte e
  * stato in una transazione; evento `fonte_letta`.
  *
+ * (9b, RILASCIO-9b-COSTRUZIONE.md §2.11) Una fonte `risposta` (le risposte di un referente) non ha un testo salvato: si
+ * compone adesso dalle risposte inviate (`readAnswersSource`), il prompt parla di risposte, e ogni proposta si lega allo
+ * use case della richiesta. È una fonte del cliente: il prompt non riceve i fatti «Solo Lateral Space» e le proposte non
+ * sono mai preselezionate.
+ * (9b, §2.2) Gli appunti e i documenti si leggono con le richieste aperte di «Cosa serve» (al massimo 50, le più recenti):
+ * un fatto che ne chiude una nasce con un legame `proposta` (`context_need_links`), che la conferma apre o scarta. Solo
+ * con la 0041; mai per le risposte di un referente, che passano già dalla loro strada.
+ *
  * Non lancia: ogni esito è nel risultato. Nei log solo id, codici e numeri: mai un testo.
  */
 import { sql } from "drizzle-orm";
@@ -21,17 +29,20 @@ import { buildReadPrompt, readNonce, untrustedPromptText } from "@/lib/context/r
 import { addSkipped, reconcile, type DraftProposal } from "@/lib/context/read/reconcile";
 import { splitForReading } from "@/lib/context/read/split";
 import { CONTEXT_TEXT } from "@/lib/context/text";
+import { OPEN_NEED_STATUSES } from "@/lib/context/work/need-links";
 import { isClientSource, type ContextActor } from "@/lib/context/visibility";
-import { CONTEXT_LIMITS, type ContextChannel, type ContextSection, type ContextVisibility, type ReadReason, type ReadStatus, type SkippedCounts, type SourceKind } from "@/lib/context/vocab";
+import { CONTEXT_LIMITS, type ContextChannel, type ContextSection, type ContextVisibility, type ReadReason, type ReadStatus, type SkippedCounts, type SourceKind, type SourceOrigin } from "@/lib/context/vocab";
 import { db } from "@/lib/db";
 import { contextProposals } from "@/lib/db/schema";
+import { CLIENT_SIDE_SQL } from "@/lib/db/use-case-hub-referents-ddl";
 import { logSafeError } from "@/lib/log/safe-error";
 import { isEmailVerifiedValue, isLateralSpaceEmail, parseLsDomains } from "@/lib/uc/lateral-space";
 import type { ServiceResult } from "@/lib/use-cases/types";
 import { contextAiConsent, contextAiConsentNow } from "./context-consent";
 import { loadLiveDiscovery } from "./context-discovery";
-import { CONTEXT_DAY_TIME_ZONE, contextRateLimitExec, ctxErrorCode, eventStatement, gate, invalid, isUuid, notFound, ok, requireSql, retry, romeToday, rowsOf, toIsoDate } from "./context-shared";
-import { contextStoreReady } from "./context-store";
+import { readAnswersSource } from "./context-referent";
+import { CONTEXT_DAY_TIME_ZONE, contextRateLimitExec, ctxErrorCode, eventStatement, gate, invalid, isUuid, notFound, ok, requireSql, retry, romeToday, rowsOf, toIsoDate, toUuidArray } from "./context-shared";
+import { contextStoreReady, contextWorkReady } from "./context-store";
 import { getWorkspaceById } from "./workspaces";
 
 const LOG_SCOPE = "context/read";
@@ -66,6 +77,9 @@ interface ReadOptions {
 interface SourceRow {
   id: string;
   kind: SourceKind;
+  /** (9b) Da dove è entrata, e il suo id esterno: per una fonte `risposta`, l'id della richiesta del referente. */
+  origin: SourceOrigin;
+  external_id: string | null;
   visibility: ContextVisibility;
   /** L'e-mail di chi ha aggiunto la fonte, e se è verificata: per sapere se un documento l'ha caricato Lateral Space. */
   added_by_email: string | null;
@@ -88,7 +102,7 @@ const skippedOf = (value: unknown): SkippedCounts => (value !== null && typeof v
 async function loadSource(workspaceId: string, sourceId: string): Promise<SourceRow | null> {
   const rows = rowsOf<SourceRow>(
     await db.execute(sql`
-      SELECT s.id, s.kind, s.visibility, u.email AS added_by_email, u.email_verified AS added_by_verified, s.title, s.occurred_on, s.body,
+      SELECT s.id, s.kind, s.origin, s.external_id, s.visibility, u.email AS added_by_email, u.email_verified AS added_by_verified, s.title, s.occurred_on, s.body,
         d.extracted_text AS document_text, s.read_status, s.read_reason, s.read_attempts,
         (s.read_started_at IS NOT NULL AND s.read_started_at > now() - make_interval(secs => ${CONTEXT_LIMITS.readLeaseSeconds})) AS lease_fresh,
         s.parts_read, s.skipped, (s.text_purged_at IS NOT NULL) AS purged
@@ -154,20 +168,43 @@ interface ReadMemory {
   editedQuotes: string[];
   /** I fatti «Solo Lateral Space» attivi, anche quelli fuori dal prompt: per le regole, mai per il modello. */
   lsFacts: Array<{ id: string; statement: string }>;
+  /** (9b) Le richieste aperte di «Cosa serve» (R1, R2…): `useCase` sono i codici dei suoi use case, per il prompt. */
+  needs: Array<{ ref: string; id: string; useCaseIds: string[]; useCase: string; title: string }>;
   lastPosition: number;
 }
 
 /**
- * La memoria di oggi e gli elenchi per il prompt, con i loro riferimenti (F1, U1, O1, D1). `clientSource`: la fonte l'ha
- * scritta il cliente, e il prompt non riceve i fatti, gli impegni e le domande «Solo Lateral Space».
+ * (9b) Le richieste aperte di «Cosa serve» a cui una call o un documento può rispondere: requisiti non archiviati, dal lato
+ * del cliente («Chi» cliente, insieme o vuoto), in uno stato aperto, legati ad almeno uno use case. Al massimo 50, le più
+ * recenti.
  */
-async function loadReadMemory(reader: Reader, sourceId: string, clientSource: boolean): Promise<ReadMemory | null> {
+function openNeedsQuery(workspaceId: string) {
+  return db.execute(sql`
+    SELECT n.id, n.title,
+      array_agg(l.use_case_id::text ORDER BY u.code NULLS LAST, l.use_case_id) AS use_case_ids,
+      string_agg(coalesce(u.code, u.title), ', ' ORDER BY u.code NULLS LAST, l.use_case_id) AS use_cases
+    FROM use_case_needs n
+    JOIN use_case_need_links l ON l.need_id = n.id
+    JOIN use_cases u ON u.id = l.use_case_id AND u.workspace_id = n.workspace_id
+    WHERE n.workspace_id = ${workspaceId}::uuid AND n.type = 'requisito' AND n.archived_at IS NULL AND ${sql.raw(CLIENT_SIDE_SQL("n"))}
+      AND n.status = ANY(${`{${OPEN_NEED_STATUSES.join(",")}}`}::text[])
+    GROUP BY n.id, n.title, n.created_at
+    ORDER BY n.created_at DESC, n.id
+    LIMIT ${CONTEXT_LIMITS.needsInPrompt}`);
+}
+
+/**
+ * La memoria di oggi e gli elenchi per il prompt, con i loro riferimenti (F1, U1, O1, D1, R1). `clientSource`: la fonte
+ * l'ha scritta il cliente, e il prompt non riceve i fatti, gli impegni e le domande «Solo Lateral Space». `withNeeds`: le
+ * richieste aperte di «Cosa serve» (con la 0041, mai per le risposte di un referente).
+ */
+async function loadReadMemory(reader: Reader, sourceId: string, clientSource: boolean, withNeeds: boolean): Promise<ReadMemory | null> {
   const ws = reader.workspaceId;
   const workspace = await getWorkspaceById(ws);
   if (!workspace) return null;
   const L = CONTEXT_LIMITS;
   const shared = sql`(${!clientSource} OR visibility = 'tutti')`;
-  const [facts, useCases, units, goals, questions, commitments, already, live, lsFacts] = await Promise.all([
+  const [facts, useCases, units, goals, questions, commitments, already, live, lsFacts, needs] = await Promise.all([
     db.execute(sql`
       SELECT id, section, visibility, statement, count(*) OVER ()::int AS total FROM context_facts
       WHERE workspace_id = ${ws}::uuid AND status = 'attivo' AND ${shared}
@@ -192,6 +229,7 @@ async function loadReadMemory(reader: Reader, sourceId: string, clientSource: bo
     db.execute(sql`
       SELECT id, statement FROM context_facts
       WHERE workspace_id = ${ws}::uuid AND status = 'attivo' AND visibility = 'ls' ORDER BY last_confirmed_at DESC, id LIMIT 5000`),
+    withNeeds ? openNeedsQuery(ws) : Promise.resolve({ rows: [] }),
   ]);
   const factRows = rowsOf<{ id: string; section: ContextSection; visibility: ContextVisibility; statement: string; total: number }>(facts);
   const total = Number(factRows[0]?.total ?? 0);
@@ -214,6 +252,13 @@ async function loadReadMemory(reader: Reader, sourceId: string, clientSource: bo
     // Di una proposta corretta dalla persona resta la citazione: il modello la ritroverebbe con la sua frase di prima.
     editedQuotes: decidedOrOpen.flatMap((a) => (a.edited === true && a.quote ? [a.quote] : [])),
     lsFacts: rowsOf<{ id: string; statement: string }>(lsFacts),
+    needs: rowsOf<{ id: string; title: string; use_case_ids: unknown; use_cases: string | null }>(needs).map((n, i) => ({
+      ref: `R${i + 1}`,
+      id: n.id,
+      useCaseIds: toUuidArray(n.use_case_ids),
+      useCase: n.use_cases ?? "",
+      title: n.title,
+    })),
     lastPosition: Number(alreadyRows[0]?.last_position ?? 0),
   };
 }
@@ -237,17 +282,22 @@ async function resetForRereading(workspaceId: string, sourceId: string): Promise
   ]);
 }
 
-/** Le proposte di una parte e il nuovo stato della fonte, in una transazione, solo se la presa in carico è ancora la sua. */
+/**
+ * Le proposte di una parte e il nuovo stato della fonte, in una transazione, solo se la presa in carico è ancora la sua.
+ * (9b) Con `needLinks`, un fatto che risponde a una richiesta di «Cosa serve» nasce con il suo legame `proposta`: gli id
+ * delle proposte si generano qui, prima, e il legame vale solo per un'esigenza di questo workspace.
+ */
 async function saveReading(
   reader: Reader,
   sourceId: string,
   lease: string,
   drafts: readonly DraftProposal[],
-  state: { lastPosition: number; partsRead: number; partsTotal: number; skipped: SkippedCounts; overCap: number },
+  state: { lastPosition: number; partsRead: number; partsTotal: number; skipped: SkippedCounts; overCap: number; needLinks: boolean },
 ): Promise<void> {
   const ws = reader.workspaceId;
   const finished = state.partsRead >= state.partsTotal;
   const rows = drafts.map((draft, index) => ({
+    id: crypto.randomUUID(),
     workspaceId: ws,
     sourceId,
     position: state.lastPosition + index + 1,
@@ -267,6 +317,7 @@ async function saveReading(
     relations: draft.relations,
     issue: draft.issue,
   }));
+  const links = state.needLinks ? drafts.flatMap((draft, index) => (draft.needId && isUuid(draft.needId) ? [{ need_id: draft.needId, proposal_id: rows[index].id }] : [])) : [];
   await db.batch([
     // Prima lo stato della fonte: l'UPDATE prende la riga e vale solo con la nostra presa. Se non la tocca, tutto si annulla.
     db.execute(sql`
@@ -279,13 +330,23 @@ async function saveReading(
       )
       ${requireSql(sql`(SELECT count(*) FROM done) = 1`, "presa_persa")}`),
     ...(rows.length > 0 ? [db.insert(contextProposals).values(rows)] : []),
+    ...(links.length > 0
+      ? [
+          db.execute(sql`
+            INSERT INTO context_need_links (workspace_id, need_id, proposal_id, status)
+            SELECT ${ws}::uuid, x.need_id, x.proposal_id, 'proposta'
+            FROM jsonb_to_recordset(${JSON.stringify(links)}::jsonb) AS x(need_id uuid, proposal_id uuid)
+            JOIN use_case_needs n ON n.id = x.need_id AND n.workspace_id = ${ws}::uuid
+            ON CONFLICT DO NOTHING`),
+        ]
+      : []),
     eventStatement({
       workspaceId: ws,
       action: "fonte_letta",
       channel: reader.channel,
       actorUserId: reader.actorUserId,
       sourceId,
-      detail: { proposte: rows.length, parte: state.partsRead, parti: state.partsTotal, oltre_il_tetto: state.overCap },
+      detail: { proposte: rows.length, parte: state.partsRead, parti: state.partsTotal, oltre_il_tetto: state.overCap, ...(links.length > 0 ? { richieste: links.length } : {}) },
     }),
   ]);
 }
@@ -307,8 +368,10 @@ async function readSource(reader: Reader, sourceId: string, opts: ReadOptions): 
     if (source.read_status === "in_lettura" && source.lease_fresh) return ok({ status: "in_lettura" });
     if (source.read_status === "letto" || source.read_status === "non_letto") return ok(await settledOutcome(ws, source));
 
+    // (9b) Le risposte di un referente: il testo si compone adesso dalle risposte inviate, e non si salva mai.
+    const answers = source.kind === "risposta" ? await readAnswersSource(ws, source.external_id) : null;
     // Senza testo niente modello: la fonte resta com'è, segnata «non letta».
-    const text = (source.kind === "documento" ? source.document_text : source.body) ?? "";
+    const text = (source.kind === "documento" ? source.document_text : answers ? answers.text : source.body) ?? "";
     if (!text.trim()) {
       await db.execute(sql`
         UPDATE context_sources SET read_status = 'non_letto', read_reason = 'vuoto', read_started_at = NULL, updated_at = now()
@@ -344,7 +407,9 @@ async function readSource(reader: Reader, sourceId: string, opts: ReadOptions): 
       return ok({ status: "limite" });
     }
 
-    const memory = await loadReadMemory(reader, sourceId, fromClient(source));
+    // (9b) Le richieste aperte di «Cosa serve»: solo con la 0041, mai per le risposte di un referente.
+    const withNeeds = source.kind !== "risposta" && (await contextWorkReady());
+    const memory = await loadReadMemory(reader, sourceId, fromClient(source), withNeeds);
     if (!memory) {
       await release(ws, sourceId, lease, "da_leggere", null, true);
       return notFound();
@@ -353,6 +418,7 @@ async function readSource(reader: Reader, sourceId: string, opts: ReadOptions): 
     const index = Math.max(0, Math.min(Number(source.parts_read), parts.length - 1));
     const part = parts[index];
     const { system, prompt } = buildReadPrompt({
+      sourceKind: source.kind === "risposta" ? "risposta" : source.kind === "documento" ? "documento" : "appunti",
       clientName: memory.clientName,
       today: romeToday(opts.now),
       occurredOn: toIsoDate(source.occurred_on),
@@ -367,7 +433,8 @@ async function readSource(reader: Reader, sourceId: string, opts: ReadOptions): 
       questions: memory.questions,
       commitments: memory.commitments,
       already: memory.already,
-      nonce: readNonce(untrustedPromptText({ title: source.title, text: part, useCases: memory.useCases, questions: memory.questions })),
+      needs: memory.needs.map((n) => ({ ref: n.ref, useCase: n.useCase, title: n.title })),
+      nonce: readNonce(untrustedPromptText({ title: source.title, text: part, useCases: memory.useCases, questions: memory.questions, needs: memory.needs })),
     });
 
     const timeoutMs = opts.timeoutMs ?? CONTEXT_READ_TIMEOUT_MS;
@@ -401,12 +468,15 @@ async function readSource(reader: Reader, sourceId: string, opts: ReadOptions): 
       already: memory.already,
       editedQuotes: memory.editedQuotes,
       lsFacts: memory.lsFacts,
+      // (9b) Le risposte di un referente toccano lo use case della sua richiesta: ogni proposta ci si lega.
+      sourceUseCaseIds: answers?.useCaseId ? [answers.useCaseId] : [],
+      needs: memory.needs,
       occurredOn: toIsoDate(source.occurred_on),
     });
     if (reconciled.overCap > 0) console.warn(`[${LOG_SCOPE}] proposte_oltre_il_tetto`, JSON.stringify({ workspaceId: ws, sourceId, oltre: reconciled.overCap }));
     const skipped = addSkipped(index === 0 ? {} : skippedOf(source.skipped), reconciled.skipped);
     const partsRead = index + 1;
-    await saveReading(reader, sourceId, lease, reconciled.proposals, { lastPosition: memory.lastPosition, partsRead, partsTotal: parts.length, skipped, overCap: reconciled.overCap });
+    await saveReading(reader, sourceId, lease, reconciled.proposals, { lastPosition: memory.lastPosition, partsRead, partsTotal: parts.length, skipped, overCap: reconciled.overCap, needLinks: withNeeds });
     held = null;
     if (partsRead < parts.length) return ok({ status: "in_corso", partsRead, partsTotal: parts.length });
     return ok({ status: "letto", proposals: await openProposalCount(ws, sourceId), skipped });
