@@ -13,6 +13,7 @@ import {
   CONTEXT_THESIS_COLUMN,
   CONTEXT_UNIQUE_INDEXES,
 } from "./context-ddl.ts";
+import { CONTEXT_WORK_WIDENED_CHECKS } from "./context-work-ddl.ts";
 import * as schema from "./schema.ts";
 import {
   BASES,
@@ -159,6 +160,15 @@ test("ogni tabella si cancella con il workspace o con la persona; la storia non 
   for (const table of ["context_commitments", "context_questions"]) assert.doesNotMatch(statementOf(table), /user_id/, table);
 });
 
+/**
+ * (9b) La 0041 allarga tre di questi CHECK con lo stesso nome (`context-work-ddl.ts`): la 0038 elenca il vocabolario senza
+ * i valori che la 0041 aggiunge, nello stesso ordine.
+ */
+function in0038(constraint: string, values: readonly string[]): string[] {
+  const widened = CONTEXT_WORK_WIDENED_CHECKS.find((c) => c.constraint === constraint);
+  return widened ? values.filter((value) => !(widened.added as readonly string[]).includes(value)) : [...values];
+}
+
 /** I valori di un CHECK `colonna IN ('a', 'b')` con quel nome. */
 function checkValues(table: string, constraint: string): string[] {
   const match = statementOf(table).match(new RegExp(`CONSTRAINT ${constraint} CHECK \\((?:[a-z_]+ IS NULL OR )?[a-z_]+ IN \\(([^)]+)\\)\\)`));
@@ -197,7 +207,8 @@ test("i CHECK elencano gli stessi valori del vocabolario", () => {
     ["context_granola_connections", "context_granola_connections_status_check", GRANOLA_CONNECTION_STATUSES],
     ["context_granola_meetings", "context_granola_meetings_decision_check", GRANOLA_DECISIONS],
   ];
-  for (const [table, constraint, values] of pairs) assert.deepEqual(checkValues(table, constraint), [...values], constraint);
+  for (const [table, constraint, values] of pairs) assert.deepEqual(checkValues(table, constraint), in0038(constraint, values), constraint);
+  assert.deepEqual(in0038("context_events_channel_check", CONTEXT_CHANNELS), ["web", "claude", "granola", "cron"]);
   // I codici liberi stanno dentro la forma del loro CHECK e dentro la colonna.
   for (const reason of READ_REASONS) assert.match(reason, /^[a-z_]{2,16}$/, reason);
   for (const issue of PROPOSAL_ISSUES) assert.match(issue, /^[a-z_]{2,16}$/, issue);

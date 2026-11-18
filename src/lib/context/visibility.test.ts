@@ -2,7 +2,19 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { isLateralSpaceEmail, userContextFrom } from "../uc/lateral-space.ts";
 import { subprocessorDeclarerOf } from "../uc/legal/subprocessors.ts";
-import { canRemoveDocument, contextAbilities, documentVisibilityFor, questionVisibilityFor, visibleTo, type ContextAbilities } from "./visibility.ts";
+import {
+  AGENT_VIEWER,
+  canRemoveDocument,
+  contextAbilities,
+  contextActorForCli,
+  documentVisibilityFor,
+  isClientSource,
+  isLearnedSource,
+  questionVisibilityFor,
+  visibleTo,
+  type ContextAbilities,
+} from "./visibility.ts";
+import { LEARNED_SOURCE_PREFIX } from "./vocab.ts";
 
 // Chi vede e chi fa in «Contesto» (RILASCIO-9a-COSTRUZIONE.md §5.1): la tabella, riga per riga, per i cinque tipi di
 // persona. Persone inventate.
@@ -129,4 +141,46 @@ test("l'ok ai sub-responsabili: Lateral Space con un clic e il cliente con la ca
     assert.equal(declarer("ls", role), null, String(role));
     assert.equal(declarer("reviewer", role), null, String(role));
   }
+});
+
+// ─── (9b) La CLI, gli agenti, le fonti nuove (RILASCIO-9b-COSTRUZIONE.md §4.1) ───
+
+test("(9b) contextActorForCli: la persona della CLI, canale «cli», con il ruolo e Lateral Space riletti dalla rotta", () => {
+  const ls = contextActorForCli({ workspaceId: "ws-1", userId: "u-1", role: "transformation_lead", isLateralSpace: true });
+  assert.deepEqual(ls, { workspaceId: "ws-1", userId: "u-1", role: "transformation_lead", isLateralSpace: true, channel: "cli" });
+  assert.equal(contextAbilities(ls).canAddNotes, true);
+  const external = contextActorForCli({ workspaceId: "ws-1", userId: "u-2", role: "analyst", isLateralSpace: false });
+  assert.equal(external.channel, "cli");
+  assert.equal(contextAbilities(external).seesLateralSpace, false);
+  // Un valore che non è vero non fa diventare Lateral Space.
+  assert.equal(contextActorForCli({ workspaceId: "ws-1", userId: "u-3", role: "analyst", isLateralSpace: "sì" as unknown as boolean }).isLateralSpace, false);
+});
+
+test("(9b, D1) AGENT_VIEWER vede solo «Per tutti»: mai un fatto «Solo Lateral Space», nemmeno per Lateral Space", () => {
+  assert.deepEqual({ ...AGENT_VIEWER }, { role: "contributor", isLateralSpace: false });
+  assert.ok(Object.isFrozen(AGENT_VIEWER));
+  assert.equal(visibleTo(AGENT_VIEWER, "ls"), false);
+  assert.equal(visibleTo(AGENT_VIEWER, "tutti"), true);
+  const abilities = contextAbilities(AGENT_VIEWER);
+  assert.equal(abilities.canOpen, true);
+  assert.equal(abilities.seesLateralSpace, false);
+  assert.equal(abilities.canSeeCompanyFigures, false, "niente cifre dei revisori");
+  assert.equal(abilities.canSeeReviewerSources, false, "niente risposte dei referenti né decisioni");
+});
+
+test("(9b) una fonte `risposta` è sempre del cliente; una cosa imparata si riconosce da origine e prefisso", () => {
+  for (const visibility of ["ls", "tutti"] as const) {
+    for (const addedByLateralSpace of [true, false]) {
+      assert.equal(isClientSource({ kind: "risposta", visibility, addedByLateralSpace }), true, `${visibility} ${addedByLateralSpace}`);
+    }
+  }
+  // Le regole di prima non cambiano.
+  assert.equal(isClientSource({ kind: "appunti", visibility: "ls", addedByLateralSpace: true }), false);
+  assert.equal(isClientSource({ kind: "documento", visibility: "ls", addedByLateralSpace: true }), false);
+  assert.equal(isClientSource({ kind: "documento", visibility: "tutti", addedByLateralSpace: true }), true);
+  assert.equal(LEARNED_SOURCE_PREFIX, "impara:");
+  assert.equal(isLearnedSource({ origin: "cli", externalId: "impara:3f2a9c1e-0000-4000-8000-000000000001" }), true);
+  assert.equal(isLearnedSource({ origin: "cli", externalId: null }), false, "un appunto mandato con `unbundle nota`");
+  assert.equal(isLearnedSource({ origin: "web", externalId: "impara:3f2a9c1e-0000-4000-8000-000000000001" }), false);
+  assert.equal(isLearnedSource({ origin: null, externalId: undefined }), false);
 });

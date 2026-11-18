@@ -98,6 +98,9 @@ interface TargetFact {
   origin: FactOrigin;
   lastConfirmedAt: unknown;
   sourceKind: SourceKind | null;
+  /** (9b) Origine e id esterno della fonte: una cosa imparata costruendo si legge «Costruzione». */
+  sourceOrigin: SourceOrigin | null;
+  sourceExternalId: string | null;
   sourceDay: string | null;
 }
 
@@ -106,7 +109,21 @@ export async function resolveHeads(workspaceId: string, factIds: readonly string
   const out = new Map<string, TargetFact>();
   const ids = [...new Set(factIds.filter(isUuid))];
   if (ids.length === 0) return out;
-  const rows = rowsOf<{ start_id: string; id: string; kind: FactKind; section: ContextSection; statement: string; visibility: ContextVisibility; status: string; origin: FactOrigin; last_confirmed_at: unknown; source_kind: SourceKind | null; source_day: unknown }>(
+  const rows = rowsOf<{
+    start_id: string;
+    id: string;
+    kind: FactKind;
+    section: ContextSection;
+    statement: string;
+    visibility: ContextVisibility;
+    status: string;
+    origin: FactOrigin;
+    last_confirmed_at: unknown;
+    source_kind: SourceKind | null;
+    source_origin: SourceOrigin | null;
+    source_external_id: string | null;
+    source_day: unknown;
+  }>(
     await db.execute(sql`
       WITH RECURSIVE chain AS (
         SELECT f.id AS start_id, f.id, 0 AS depth FROM context_facts f WHERE f.workspace_id = ${workspaceId}::uuid AND f.id = ANY(${uuidArray(ids)})
@@ -115,7 +132,8 @@ export async function resolveHeads(workspaceId: string, factIds: readonly string
       ), head AS (
         SELECT DISTINCT ON (start_id) start_id, id FROM chain ORDER BY start_id, depth DESC
       )
-      SELECT h.start_id, f.id, f.kind, f.section, f.statement, f.visibility, f.status, f.origin, f.last_confirmed_at, s.kind AS source_kind, s.occurred_on AS source_day
+      SELECT h.start_id, f.id, f.kind, f.section, f.statement, f.visibility, f.status, f.origin, f.last_confirmed_at, s.kind AS source_kind, s.origin AS source_origin,
+        s.external_id AS source_external_id, s.occurred_on AS source_day
       FROM head h JOIN context_facts f ON f.id = h.id LEFT JOIN context_sources s ON s.id = f.source_id`),
   );
   for (const row of rows) {
@@ -129,6 +147,8 @@ export async function resolveHeads(workspaceId: string, factIds: readonly string
       origin: row.origin,
       lastConfirmedAt: row.last_confirmed_at,
       sourceKind: row.source_kind,
+      sourceOrigin: row.source_origin,
+      sourceExternalId: row.source_external_id,
       sourceDay: row.source_day ? toIsoDate(row.source_day) : null,
     });
   }
@@ -172,7 +192,10 @@ function viewOf(row: ProposalRow, ctx: ViewContext): ProposalView {
   const question = row.questionId ? ctx.questions.get(row.questionId) : undefined;
   let before: ProposalView["before"] = null;
   if (target) {
-    const source = factSourceLabel({ origin: target.origin, sourceKind: target.sourceKind, sourceOccurredOn: target.sourceDay }, ctx.today);
+    const source = factSourceLabel(
+      { origin: target.origin, sourceKind: target.sourceKind, sourceOrigin: target.sourceOrigin, sourceExternalId: target.sourceExternalId, sourceOccurredOn: target.sourceDay },
+      ctx.today,
+    );
     before = { factId: target.id, statement: target.statement, sourceLabel: source.word, date: source.day ?? dayLabel(target.lastConfirmedAt as Date | string | null, ctx.today) };
   }
   return {

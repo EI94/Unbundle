@@ -30,6 +30,7 @@ import {
   type FactKind,
   type FactOrigin,
   type SourceKind,
+  type SourceOrigin,
 } from "@/lib/context/vocab";
 import { logSafeError } from "@/lib/log/safe-error";
 import { romeDate } from "@/lib/uc/calendar";
@@ -134,6 +135,9 @@ interface FactRow {
   quote: string | null;
   source_id: string | null;
   source_kind: SourceKind | null;
+  /** (9b) Origine e id esterno della fonte: una cosa imparata costruendo si legge «Costruzione 14 nov». */
+  source_origin: SourceOrigin | null;
+  source_external_id: string | null;
   source_day: unknown;
   source_title: string | null;
   /** La versione nasce da «Modifica» su un fatto con una fonte: «Call 14 nov · corretto a mano». */
@@ -146,12 +150,15 @@ const CORRECTED_BY_HAND = (fact: SQL) => sql`EXISTS (
 )`;
 
 const FACT_COLUMNS = sql`f.id, f.version, f.kind, f.section, f.statement, f.basis, f.visibility, f.status, f.origin, f.needs_check, f.last_confirmed_at, f.created_at,
-  f.ended_at, f.supersedes_id, f.confirmed_by_user_id, f.quote, f.source_id, s.kind AS source_kind, s.occurred_on AS source_day, s.title AS source_title,
-  ${CORRECTED_BY_HAND(sql.raw("f"))} AS corrected`;
+  f.ended_at, f.supersedes_id, f.confirmed_by_user_id, f.quote, f.source_id, s.kind AS source_kind, s.origin AS source_origin, s.external_id AS source_external_id,
+  s.occurred_on AS source_day, s.title AS source_title, ${CORRECTED_BY_HAND(sql.raw("f"))} AS corrected`;
 
 /** La fonte a parole: «Call 14 nov», e se il testo l'ha corretto una persona «Call 14 nov · corretto a mano». */
-function sourceLabelOf(row: Pick<FactRow, "origin" | "source_kind" | "source_day" | "corrected">, today: string) {
-  const source = factSourceLabel({ origin: row.origin, sourceKind: row.source_kind, sourceOccurredOn: row.source_day ? toIsoDate(row.source_day) : null }, today);
+function sourceLabelOf(row: Pick<FactRow, "origin" | "source_kind" | "source_origin" | "source_external_id" | "source_day" | "corrected">, today: string) {
+  const source = factSourceLabel(
+    { origin: row.origin, sourceKind: row.source_kind, sourceOrigin: row.source_origin, sourceExternalId: row.source_external_id, sourceOccurredOn: row.source_day ? toIsoDate(row.source_day) : null },
+    today,
+  );
   return { ...source, label: row.corrected === true && source.kind !== "manuale" ? CONTEXT_TEXT.fact.correctedByHand(source.label) : source.label };
 }
 
@@ -346,7 +353,8 @@ export async function getFactDetail(actor: ContextActor, factId: string): Promis
         UNION ALL
         SELECT p.id, p.supersedes_id, b.depth + 1 FROM back b JOIN context_facts p ON p.id = b.supersedes_id AND p.workspace_id = ${ws}::uuid WHERE b.depth < 200
       )
-      SELECT f.statement, f.created_at, f.ended_at, f.origin, s.kind AS source_kind, s.occurred_on AS source_day, ${CORRECTED_BY_HAND(sql.raw("f"))} AS corrected
+      SELECT f.statement, f.created_at, f.ended_at, f.origin, s.kind AS source_kind, s.origin AS source_origin, s.external_id AS source_external_id, s.occurred_on AS source_day,
+        ${CORRECTED_BY_HAND(sql.raw("f"))} AS corrected
       FROM back b JOIN context_facts f ON f.id = b.id LEFT JOIN context_sources s ON s.id = f.source_id
       WHERE b.depth > 0 ORDER BY b.depth`),
     row.confirmed_by_user_id
@@ -355,7 +363,17 @@ export async function getFactDetail(actor: ContextActor, factId: string): Promis
   ]);
   view.quote = row.quote;
   view.source = row.source_id && row.source_title ? { id: row.source_id, title: row.source_title, occurredOn: toIsoDate(row.source_day) } : null;
-  view.history = rowsOf<{ statement: string; created_at: unknown; ended_at: unknown; origin: FactOrigin; source_kind: SourceKind | null; source_day: unknown; corrected: boolean }>(history).map((h) => {
+  view.history = rowsOf<{
+    statement: string;
+    created_at: unknown;
+    ended_at: unknown;
+    origin: FactOrigin;
+    source_kind: SourceKind | null;
+    source_origin: SourceOrigin | null;
+    source_external_id: string | null;
+    source_day: unknown;
+    corrected: boolean;
+  }>(history).map((h) => {
     const from = toDate(h.created_at);
     const to = toDate(h.ended_at);
     return {

@@ -26,3 +26,16 @@ test("le date: «14 nov», con l'anno se è un altro; mai «14/11»", () => {
   assert.equal(dayLabel("non una data", TODAY), "");
   assert.equal(factSourceLabel({ origin: "fonte", sourceKind: "appunti", sourceOccurredOn: null }, TODAY).label, "Call");
 });
+
+test("(9b) le risposte del referente si leggono «Referente 14 nov», le cose imparate «Costruzione 14 nov»: mai «Call»", () => {
+  assert.deepEqual(factSourceLabel({ origin: "fonte", sourceKind: "risposta", sourceOccurredOn: "2026-11-14" }, TODAY), { kind: "referente", label: "Referente 14 nov", word: "Referente", day: "14 nov" });
+  assert.deepEqual(
+    factSourceLabel({ origin: "fonte", sourceKind: "appunti", sourceOrigin: "cli", sourceExternalId: "impara:3f2a9c1e-0000-4000-8000-000000000001", sourceOccurredOn: "2026-11-14" }, TODAY),
+    { kind: "costruzione", label: "Costruzione 14 nov", word: "Costruzione", day: "14 nov" },
+  );
+  // Un appunto mandato con `unbundle nota` è una call come le altre.
+  assert.equal(factSourceLabel({ origin: "fonte", sourceKind: "appunti", sourceOrigin: "cli", sourceExternalId: null, sourceOccurredOn: "2026-11-14" }, TODAY).label, "Call 14 nov");
+  assert.equal(factSourceLabel({ origin: "fonte", sourceKind: "risposta", sourceOccurredOn: null }, TODAY).label, "Referente");
+  // Senza la fonte (tolta) resta «senza fonte», qualunque fosse.
+  assert.equal(factSourceLabel({ origin: "fonte", sourceKind: null, sourceOrigin: null, sourceExternalId: null, sourceOccurredOn: null }, TODAY).kind, "senza_fonte");
+});

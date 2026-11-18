@@ -1,6 +1,7 @@
 /**
- * Il vocabolario di «Contesto» (rilascio 9a, docs/contesto/RILASCIO-9a-COSTRUZIONE.md §3.2): gli elenchi dei valori
- * delle tabelle `context_*` (drizzle/0038, gli stessi dei CHECK) e i limiti. Nessuna regola qui: le regole stanno nei
+ * Il vocabolario di «Contesto» (rilascio 9a, docs/contesto/RILASCIO-9a-COSTRUZIONE.md §3.2; rilascio 9b,
+ * RILASCIO-9b-COSTRUZIONE.md §3.4): gli elenchi dei valori delle tabelle `context_*` (drizzle/0038 e 0041, gli stessi dei
+ * CHECK) e i limiti. Nessuna regola qui: le regole stanno nei
  * moduli puri accanto (`visibility.ts`, `scan.ts`, `read/reconcile.ts`), le scritture in `src/lib/db/queries/context-*.ts`.
  * Modulo puro: nessun import, si può importare anche dai componenti client.
  */
@@ -19,10 +20,17 @@ export type Basis = (typeof BASES)[number];
 
 // ─── Fonti ───────────────────────────────────────────────────────────
 
-export const SOURCE_KINDS = ["appunti", "trascrizione", "documento"] as const;
+/** (9b) `risposta`: le risposte di un referente a una richiesta, come fonte (una per richiesta, il testo letto dal vivo). */
+export const SOURCE_KINDS = ["appunti", "trascrizione", "documento", "risposta"] as const;
 export type SourceKind = (typeof SOURCE_KINDS)[number];
-export const SOURCE_ORIGINS = ["web", "granola", "claude", "cli"] as const; // «cli» arriva con la 9b
+/** (9b) `cli`: `unbundle nota` e `unbundle impara`; `rispondi`: le risposte del referente da `/rispondi`. */
+export const SOURCE_ORIGINS = ["web", "granola", "claude", "cli", "rispondi"] as const;
 export type SourceOrigin = (typeof SOURCE_ORIGINS)[number];
+/**
+ * (9b) `external_id` di una fonte nata da `unbundle impara` (origine `cli`): «impara:» e l'id della fonte. Distingue una
+ * cosa imparata costruendo da un appunto mandato con `unbundle nota` (stessa origine).
+ */
+export const LEARNED_SOURCE_PREFIX = "impara:";
 export const READ_STATUSES = ["da_leggere", "in_lettura", "letto", "non_letto"] as const;
 export type ReadStatus = (typeof READ_STATUSES)[number];
 export const READ_REASONS = ["ok_mancante", "rifiuto", "tempo", "errore", "limite", "vuoto"] as const;
@@ -75,7 +83,8 @@ export type RelationVerb = (typeof RELATION_VERBS)[number];
 
 // ─── Storia ──────────────────────────────────────────────────────────
 
-export const CONTEXT_CHANNELS = ["web", "claude", "granola", "cron"] as const;
+/** (9b) `cli`: la CLI della fabbrica; `rispondi`: la pagina del referente. */
+export const CONTEXT_CHANNELS = ["web", "claude", "granola", "cron", "cli", "rispondi"] as const;
 export type ContextChannel = (typeof CONTEXT_CHANNELS)[number];
 export const CONTEXT_EVENT_ACTIONS = [
   "fonte_aggiunta", "fonte_aggiornata", "fonte_letta", "fonte_tolta", "testo_cancellato", "documento_tolto",
@@ -83,6 +92,8 @@ export const CONTEXT_EVENT_ACTIONS = [
   "fatto_confermato", "fatto_cambiato", "fatto_riconfermato", "fatto_ritirato", "fatto_scritto",
   "visibilita_cambiata", "sezione_cambiata",
   "impegno_aggiunto", "impegno_chiuso", "impegno_riaperto", "domanda_aggiunta", "domanda_chiusa",
+  // (9b) La notte segna i fatti da verificare; `unbundle impara`; i legami con «Cosa serve»; «Cerca una persona».
+  "fatti_da_verificare", "cosa_imparata", "richiesta_dalla_call", "richiesta_chiusa", "richiesta_scartata", "persona_tolta",
 ] as const;
 export type ContextEventAction = (typeof CONTEXT_EVENT_ACTIONS)[number];
 
@@ -124,4 +135,17 @@ export const CONTEXT_LIMITS = Object.freeze({
   documentTextMax: 100_000,
   retentionMonths: 12,
   confirmMax: 75,
+  // (9b) «Contesto nel lavoro» (RILASCIO-9b-COSTRUZIONE.md §3.4).
+  staleMonths: 6,                          // un fatto non riconfermato da 6 mesi è «da verificare»
+  noveltyDays: 14,                         // «Nuovo» e «Cambiato» nella scheda dello use case
+  caseFactsMax: 40,                        // i fatti di uno use case nella scheda, nel dossier e in CONTESTO.md
+  agentRulesMax: 25, agentWordsMax: 25,    // «Regole e vincoli» e «Parole del cliente» per gli agenti
+  agentLineChars: 220,                     // una riga di CONTESTO.md e dello strato `contesto`
+  promptBlockMaxChars: 4000,               // il blocco «Contesto» nei prompt della chat e dei generatori
+  chatFacts: 8,                            // i fatti della chat, con le parole dell'ultimo messaggio
+  needsInPrompt: 50,                       // le richieste aperte di «Cosa serve» nella lettura
+  learnMin: 10, learnMax: 200, learnsPerDayWorkspace: 30, // `unbundle impara`
+  cliNoteMaxBytes: 600 * 1024,             // `unbundle nota`
+  personTermMin: 3, personTermMax: 80,     // «Cerca una persona»
+  weeklyDueDays: 7,                        // gli impegni in scadenza nel riepilogo del lunedì
 });

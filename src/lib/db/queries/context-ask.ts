@@ -19,7 +19,7 @@ import { scanNote } from "@/lib/context/scan";
 import { contextTsQuery } from "@/lib/context/search";
 import { CONTEXT_TEXT } from "@/lib/context/text";
 import { contextAbilities, type ContextActor } from "@/lib/context/visibility";
-import { CONTEXT_LIMITS, type FactOrigin, type SourceKind } from "@/lib/context/vocab";
+import { CONTEXT_LIMITS, type FactOrigin, type SourceKind, type SourceOrigin } from "@/lib/context/vocab";
 import { db } from "@/lib/db";
 import { logSafeError } from "@/lib/log/safe-error";
 import { romeDate } from "@/lib/uc/calendar";
@@ -79,9 +79,17 @@ export async function searchContext(actor: ContextActor, query: string, opts: { 
 
   const [facts, discovery, notes, documents, answers, decisions] = await Promise.all([
     safely("fatto", ws, async () => {
-      const rows = rowsOf<{ statement: string; origin: FactOrigin; last_confirmed_at: unknown; source_kind: SourceKind | null; source_day: unknown }>(
+      const rows = rowsOf<{
+        statement: string;
+        origin: FactOrigin;
+        last_confirmed_at: unknown;
+        source_kind: SourceKind | null;
+        source_origin: SourceOrigin | null;
+        source_external_id: string | null;
+        source_day: unknown;
+      }>(
         await db.execute(sql`
-          SELECT f.statement, f.origin, f.last_confirmed_at, s.kind AS source_kind, s.occurred_on AS source_day
+          SELECT f.statement, f.origin, f.last_confirmed_at, s.kind AS source_kind, s.origin AS source_origin, s.external_id AS source_external_id, s.occurred_on AS source_day
           FROM context_facts f LEFT JOIN context_sources s ON s.id = f.source_id
           WHERE f.workspace_id = ${ws}::uuid AND f.status = 'attivo' AND (${lateralSpace} OR f.visibility = 'tutti')
             AND to_tsvector('italian', f.statement) @@ ${q}
@@ -92,7 +100,10 @@ export async function searchContext(actor: ContextActor, query: string, opts: { 
         const confirmed = toDate(row.last_confirmed_at);
         return {
           kind: "fatto",
-          label: factSourceLabel({ origin: row.origin, sourceKind: row.source_kind, sourceOccurredOn: row.source_day ? toIsoDate(row.source_day) : null }, today).label,
+          label: factSourceLabel(
+            { origin: row.origin, sourceKind: row.source_kind, sourceOrigin: row.source_origin, sourceExternalId: row.source_external_id, sourceOccurredOn: row.source_day ? toIsoDate(row.source_day) : null },
+            today,
+          ).label,
           date: confirmed ? romeDate(confirmed) : null,
           excerpt: excerptOf(row.statement),
         };

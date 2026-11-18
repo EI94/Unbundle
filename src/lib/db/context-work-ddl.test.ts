@@ -20,7 +20,7 @@ import {
 } from "./context-work-ddl.ts";
 import { ALERTS_ADVISORY_LOCK, notificationKindsWideningDdl } from "./use-case-hub-alerts-ddl.ts";
 import { USE_CASE_NOTIFICATION_KINDS_0036 } from "./use-case-hub-evals-ddl.ts";
-import { NEED_LINK_STATUSES } from "../context/vocab.ts";
+import { CONTEXT_CHANNELS, NEED_LINK_STATUSES, SOURCE_KINDS, SOURCE_ORIGINS } from "../context/vocab.ts";
 import * as schema from "./schema.ts";
 
 // Migrazione 0041 e self-heal: «Contesto nel lavoro» (rilascio 9b, docs/contesto/RILASCIO-9b-COSTRUZIONE.md §3). Le
@@ -145,6 +145,13 @@ test("i tre CHECK allargati: la lista nuova è quella della 0038 con i valori nu
     const width = Number(table0038(c.table).match(new RegExp(`\\n  ${c.column} varchar\\((\\d+)\\)`))?.[1]);
     for (const value of c.values) assert.ok(value.length <= width, `${c.table}.${c.column}: «${value}» sta in varchar(${width})`);
   });
+});
+
+test("i tre CHECK allargati elencano gli stessi valori del vocabolario, nello stesso ordine", () => {
+  const byConstraint = new Map(CONTEXT_WORK_WIDENED_CHECKS.map((c) => [c.constraint, [...c.values]]));
+  assert.deepEqual(byConstraint.get("context_sources_kind_check"), [...SOURCE_KINDS]);
+  assert.deepEqual(byConstraint.get("context_sources_origin_check"), [...SOURCE_ORIGINS]);
+  assert.deepEqual(byConstraint.get("context_events_channel_check"), [...CONTEXT_CHANNELS]);
 });
 
 test("la campanella: i tipi della 0036 più contesto_nuovo e dalla_call, entro 16 caratteri, sotto il lock della 0025, e la pulizia del ritorno indietro", () => {

@@ -12,7 +12,7 @@
  * Modulo puro.
  */
 import { PORTFOLIO_REVIEWER_ROLES, canManageWorkspaceSettings } from "../workspace-permissions.ts";
-import type { ContextChannel, ContextVisibility, SourceKind } from "./vocab.ts";
+import { LEARNED_SOURCE_PREFIX, type ContextChannel, type ContextVisibility, type SourceKind, type SourceOrigin } from "./vocab.ts";
 
 /** Chi agisce, con il ruolo appena riletto. `isLateralSpace`: e-mail verificata in `UC_LS_EMAIL_DOMAINS`. */
 export interface ContextActor {
@@ -78,6 +78,21 @@ export function contextActorFromPrincipal(principal: {
   };
 }
 
+/**
+ * (9b) La persona della CLI della fabbrica, canale «cli» (RILASCIO-9b-COSTRUZIONE.md §4.1): ruolo nel workspace e
+ * Lateral Space riletti dalla rotta per la richiesta (`openCli`, l'e-mail verificata in `UC_LS_EMAIL_DOMAINS`).
+ */
+export function contextActorForCli(i: { workspaceId: string; userId: string; role: string | null; isLateralSpace: boolean }): ContextActor {
+  return { workspaceId: i.workspaceId, userId: i.userId, role: i.role, isLateralSpace: i.isLateralSpace === true, channel: "cli" };
+}
+
+/**
+ * (9b, D1) Chi guarda dagli agenti e dai prompt: la CLI, l'MCP del caso, il pacchetto (`CONTESTO.md`), la chat della
+ * Discovery, i generatori. Vede solo i fatti «Per tutti», anche quando a chiedere è Lateral Space: i coding agent
+ * scrivono in repository e PR che leggono anche chi costruisce da fuori e il cliente, e la chat è una stanza condivisa.
+ */
+export const AGENT_VIEWER: Readonly<Pick<ContextActor, "role" | "isLateralSpace">> = Object.freeze({ role: "contributor", isLateralSpace: false });
+
 /** Che cosa può fare chi guarda: la tabella del §5.1. */
 export function contextAbilities(viewer: Pick<ContextActor, "role" | "isLateralSpace">): ContextAbilities {
   const role = viewer.role;
@@ -121,9 +136,20 @@ export function stricterVisibility(a: ContextVisibility, b: ContextVisibility): 
  * Lateral Space» e caricati da una persona di Lateral Space). Gli appunti li aggiunge solo Lateral Space. La lettura di
  * una fonte del cliente non riceve i fatti, gli impegni e le domande «Solo Lateral Space», e le sue proposte non sono
  * mai preselezionate: un documento può contenere istruzioni scritte per il modello.
+ * (9b) Una fonte `risposta` (le risposte di un referente) è sempre del cliente, anche se è «Solo Lateral Space».
  */
 export function isClientSource(source: { kind: SourceKind; visibility: ContextVisibility; addedByLateralSpace: boolean }): boolean {
+  if (source.kind === "risposta") return true;
   return source.kind === "documento" && !(source.visibility === "ls" && source.addedByLateralSpace);
+}
+
+/**
+ * (9b) Una cosa imparata costruendo un caso (`unbundle impara`): origine `cli` e `external_id` che comincia con
+ * «impara:». La scrive chi costruisce, anche da fuori Lateral Space: le sue proposte non sono mai preselezionate, e la
+ * sua fonte si legge «Costruzione 14 nov».
+ */
+export function isLearnedSource(source: { origin: SourceOrigin | null; externalId: string | null | undefined }): boolean {
+  return source.origin === "cli" && typeof source.externalId === "string" && source.externalId.startsWith(LEARNED_SOURCE_PREFIX);
 }
 
 /** «Togli» su un documento: Lateral Space; chi gestisce il workspace; chi l'ha caricato. Mai chi segue solo un corso. */

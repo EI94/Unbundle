@@ -1,6 +1,8 @@
 /**
- * I testi di «Contesto» (rilascio 9a, docs/contesto/RILASCIO-9a-COSTRUZIONE.md §7.7): un posto solo. La pagina, le
- * rotte, le azioni, Granola e l'MCP del team leggono da qui; un testo che manca si aggiunge qui, non nel componente.
+ * I testi di «Contesto» (rilascio 9a, docs/contesto/RILASCIO-9a-COSTRUZIONE.md §7.7; rilascio 9b,
+ * RILASCIO-9b-COSTRUZIONE.md §2 e §4.2): un posto solo. La pagina, le rotte, le azioni, Granola, l'MCP del team, la
+ * scheda dello use case e il dossier leggono da qui; un testo che manca si aggiunge qui, non nel componente. I testi per
+ * i coding agent (CONTESTO.md, la CLI) stanno in `work/agent-text.ts` e dicono «caso».
  *
  * Regole (ui-less-is-more, external-copy): frasi brevi e semplici, genere neutro, «use case» come nel resto della
  * dashboard, nessuna chiave interna a schermo, le persone per ruolo. Le date nelle righe arrivano già scritte
@@ -70,6 +72,11 @@ export const CONTEXT_TEXT = Object.freeze({
     sourceCallWord: "Call",
     sourceDocumentWord: "Documento",
     sourceNotes: (date: string) => `Appunti ${date}`,
+    // (9b) Le risposte del referente e le cose imparate costruendo: nessuno le scambia per una call.
+    sourceAnswer: (date: string) => `Referente ${date}`,
+    sourceAnswerWord: "Referente",
+    sourceLearned: (date: string) => `Costruzione ${date}`,
+    sourceLearnedWord: "Costruzione",
     correctedByHand: (source: string) => `${source} · corretto a mano`,
     sourceNotesWord: "Appunti",
     quote: "Citazione",
@@ -171,6 +178,10 @@ export const CONTEXT_TEXT = Object.freeze({
     back: "Contesto",
     fromOne: (title: string, date: string) => `Dagli appunti «${title}» del ${date}`,
     fromMany: (n: number) => `Da ${n} appunti`,
+    // (9b) Le proposte dalle risposte del referente e da `unbundle impara`; un fatto che risponde a «Cosa serve».
+    fromAnswers: (code: string, date: string) => `Dalle risposte del referente per ${code}, ${date}`,
+    fromBuilding: (code: string, date: string) => `Da chi costruisce ${code}, ${date}`,
+    answersNeed: (title: string, code: string) => `Risponde a «Cosa serve»: ${title} (${code})`,
     groupNew: "Nuovi",
     groupChanged: "Cambiano",
     groupConflicts: "Conflitti",
@@ -214,7 +225,12 @@ export const CONTEXT_TEXT = Object.freeze({
   }),
   notes: Object.freeze({
     empty: "Nessun appunto ancora.",
-    origin: Object.freeze({ granola: "Granola", web: "Web", claude: "Claude", cli: "CLI", documento: "Documento" }),
+    origin: Object.freeze({ granola: "Granola", web: "Web", claude: "Claude", cli: "CLI", rispondi: "Referente", documento: "Documento" }),
+    // (9b) Le fonti nate dal lavoro: il titolo, e il pannello di una fonte di risposte (che non si toglie).
+    answersTitle: (code: string) => `Risposte del referente · ${code}`,
+    learnedTitle: (code: string) => `Imparato costruendo ${code}`,
+    answerSource: "Le risposte stanno nella scheda dello use case, in «Cosa serve».",
+    openUseCase: "Apri lo use case",
     state: Object.freeze({ da_leggere: "Da leggere", in_lettura: "Leggo…", da_confermare: (n: number) => `Da confermare (${n})`, confermato: "Confermato", letto: "Letto", non_letto: "Non letto" }),
     participants: "Con chi",
     link: "Link all'originale",
@@ -322,5 +338,69 @@ export const CONTEXT_TEXT = Object.freeze({
     useCaseUnknown: "Uno degli use case non è di questo workspace.",
     notesOnly: "Si può fare solo sugli appunti.",
     documentsOnly: "Si può fare solo sui documenti.",
+  }),
+  // (9b) La piega «Contesto» della scheda dello use case e la sezione «Contesto» del dossier (§2.1, §2.3).
+  useCase: Object.freeze({
+    title: "Contesto",
+    summaryFacts: (n: number) => (n === 1 ? "1 fatto sul cliente" : `${n} fatti sul cliente`),
+    summaryNew: (n: number) => (n === 1 ? " · 1 novità" : ` · ${n} novità`),
+    summaryCommitments: (n: number) => (n === 1 ? " · 1 impegno aperto" : ` · ${n} impegni aperti`),
+    novelties: "Novità",
+    known: "Che cosa sappiamo",
+    commitments: "Impegni aperti",
+    questions: "Domande aperte",
+    more: (n: number) => (n === 1 ? "e un altro nel contesto" : `e altri ${n} nel contesto`),
+    open: "Apri il contesto",
+    dossierDescription: "Quello che sappiamo del cliente e che tocca questo use case. Lo conferma Lateral Space.",
+    packageDelta: (n: number) => `Il contesto è cambiato dopo l'ultimo pacchetto (${n} novità).`,
+  }),
+  // (9b) Una call o un documento che risponde a una richiesta di «Cosa serve» (§2.2).
+  needLink: Object.freeze({
+    fromCall: (date: string, fact: string) => `Una call del ${date} risponde: «${fact}»`,
+    fromDocument: (date: string, fact: string) => `Un documento del ${date} risponde: «${fact}»`,
+    close: "Chiudi con questo",
+    dismiss: "Non risponde",
+    closed: "Richiesta chiusa: è a posto.",
+    dismissed: "Va bene: la richiesta resta aperta.",
+  }),
+  // (9b) «Da verificare»: i fatti non riconfermati da più di 6 mesi (§2.10).
+  verify: Object.freeze({
+    row: (n: number) => (n === 1 ? "1 fatto da verificare" : `${n} fatti da verificare`),
+    title: "Da verificare",
+    back: "Contesto",
+    lead: "Questi fatti non sono stati riconfermati da più di 6 mesi. Sono ancora veri?",
+    button: (n: number) => `Ancora veri (${n})`,
+    done: (n: number) => (n === 1 ? "Data aggiornata per 1 fatto." : `Data aggiornata per ${n} fatti.`),
+    empty: "Niente da verificare.",
+  }),
+  // (9b) «Cerca una persona», nella vista «Appunti», per Lateral Space (§2.13).
+  people: Object.freeze({
+    link: "Cerca una persona",
+    title: "Cerca una persona",
+    lead: "Trova dove compare un nome o un'e-mail in questo contesto: appunti, fatti, citazioni, documenti. Serve quando una persona chiede di vedere, correggere o cancellare i suoi dati.",
+    label: "Nome o e-mail",
+    placeholder: "Nome e cognome, oppure l'e-mail",
+    search: "Cerca",
+    searching: "Cerco…",
+    tooShort: "Scrivi almeno 3 lettere.",
+    none: "Non compare da nessuna parte.",
+    groups: Object.freeze({
+      notes: "Appunti",
+      facts: "Fatti",
+      items: "Citazioni, proposte, impegni e domande",
+      documents: "Documenti",
+      granola: "Regole di Granola",
+      chat: "Memoria della chat",
+    }),
+    documentHint: "I documenti restano: aprili e togli quelli che servono.",
+    open: "Apri",
+    erase: (name: string) => `Togli «${name}» da tutto`,
+    eraseTitle: (name: string) => `Togliere «${name}»?`,
+    eraseBody:
+      "Il testo degli appunti trovati si cancella: restano data, fatti e un titolo generico. Nei fatti, anche nella storia, nelle citazioni, nelle proposte, negli impegni e nelle domande il nome diventa «una persona». Le regole di Granola e la memoria della chat lo perdono. I documenti restano. Non si torna indietro.",
+    eraseConfirm: "Togli",
+    cancel: "Annulla",
+    erased: (notes: number, texts: number) =>
+      `Fatto: ${notes === 1 ? "1 appunto cancellato" : `${notes} appunti cancellati`}, ${texts === 1 ? "1 testo corretto" : `${texts} testi corretti`}.`,
   }),
 });

@@ -41,6 +41,8 @@ function rendered(): Array<{ path: string; text: string }> {
 test("ci sono tutti i gruppi, e i testi sono congelati", () => {
   assert.deepEqual(Object.keys(CONTEXT_TEXT), [
     "page", "sections", "brief", "live", "novelties", "fact", "writeFact", "nextSteps", "questions", "ask", "add", "read", "confirm", "notes", "documents", "consent", "granola", "errors",
+    // (9b) La scheda e il dossier, «Cosa serve», «Da verificare», «Cerca una persona».
+    "useCase", "needLink", "verify", "people",
   ]);
   assert.ok(ALL.length > 200, `${ALL.length} testi`);
   assert.ok(Object.isFrozen(CONTEXT_TEXT));
@@ -133,4 +135,73 @@ test("l'avviso dell'ok è calmo: nessun allarme, nessuna parola che spaventa", (
     assert.doesNotMatch(line, /attenzione|pericolo|vietato|bloccat|errore grave|!/i, line);
   }
   assert.equal(CONTEXT_TEXT.consent.title, "Serve l'ok ai fornitori di AI");
+});
+
+// ─── (9b) «Contesto nel lavoro» (RILASCIO-9b-COSTRUZIONE.md §2, §4.2) ───
+
+test("(9b) i testi dei gruppi nuovi sono quelli del piano, al singolare e al plurale", () => {
+  const U = CONTEXT_TEXT.useCase;
+  assert.equal(U.title, "Contesto");
+  assert.equal(U.summaryFacts(1), "1 fatto sul cliente");
+  assert.equal(U.summaryFacts(12), "12 fatti sul cliente");
+  assert.equal(U.summaryNew(1), " · 1 novità");
+  assert.equal(U.summaryNew(3), " · 3 novità");
+  assert.equal(U.summaryCommitments(1), " · 1 impegno aperto");
+  assert.equal(U.summaryCommitments(2), " · 2 impegni aperti");
+  assert.equal(`${U.summaryFacts(12)}${U.summaryNew(3)}${U.summaryCommitments(1)}`, "12 fatti sul cliente · 3 novità · 1 impegno aperto");
+  assert.equal(U.more(1), "e un altro nel contesto");
+  assert.equal(U.more(12), "e altri 12 nel contesto");
+  assert.deepEqual([U.novelties, U.known, U.commitments, U.questions, U.open], ["Novità", "Che cosa sappiamo", "Impegni aperti", "Domande aperte", "Apri il contesto"]);
+  assert.equal(U.dossierDescription, "Quello che sappiamo del cliente e che tocca questo use case. Lo conferma Lateral Space.");
+  assert.equal(U.packageDelta(1), "Il contesto è cambiato dopo l'ultimo pacchetto (1 novità).");
+  assert.equal(U.packageDelta(3), "Il contesto è cambiato dopo l'ultimo pacchetto (3 novità).");
+
+  const L = CONTEXT_TEXT.needLink;
+  assert.equal(L.fromCall("14 nov", "Il gestionale è SAP Business One."), "Una call del 14 nov risponde: «Il gestionale è SAP Business One.»");
+  assert.equal(L.fromDocument("14 nov", "Gli ordini arrivano via e-mail."), "Un documento del 14 nov risponde: «Gli ordini arrivano via e-mail.»");
+  assert.deepEqual([L.close, L.dismiss, L.closed, L.dismissed], ["Chiudi con questo", "Non risponde", "Richiesta chiusa: è a posto.", "Va bene: la richiesta resta aperta."]);
+  assert.equal(CONTEXT_TEXT.confirm.answersNeed("Esportazione delle fatture", "XX-0012"), "Risponde a «Cosa serve»: Esportazione delle fatture (XX-0012)");
+  assert.equal(CONTEXT_TEXT.confirm.fromAnswers("XX-0012", "14 nov"), "Dalle risposte del referente per XX-0012, 14 nov");
+  assert.equal(CONTEXT_TEXT.confirm.fromBuilding("XX-0012", "18 nov"), "Da chi costruisce XX-0012, 18 nov");
+
+  const V = CONTEXT_TEXT.verify;
+  assert.equal(V.row(1), "1 fatto da verificare");
+  assert.equal(V.row(3), "3 fatti da verificare");
+  assert.equal(V.button(4), "Ancora veri (4)");
+  assert.equal(V.done(1), "Data aggiornata per 1 fatto.");
+  assert.equal(V.done(5), "Data aggiornata per 5 fatti.");
+  assert.deepEqual([V.title, V.back, V.lead, V.empty], ["Da verificare", "Contesto", "Questi fatti non sono stati riconfermati da più di 6 mesi. Sono ancora veri?", "Niente da verificare."]);
+
+  const P = CONTEXT_TEXT.people;
+  assert.equal(P.link, "Cerca una persona");
+  assert.equal(P.title, "Cerca una persona");
+  assert.deepEqual(Object.values(P.groups), ["Appunti", "Fatti", "Citazioni, proposte, impegni e domande", "Documenti", "Regole di Granola", "Memoria della chat"]);
+  assert.equal(P.erase("Persona Inventata"), "Togli «Persona Inventata» da tutto");
+  assert.equal(P.eraseTitle("Persona Inventata"), "Togliere «Persona Inventata»?");
+  assert.equal(P.erased(3, 7), "Fatto: 3 appunti cancellati, 7 testi corretti.");
+  assert.equal(P.erased(1, 1), "Fatto: 1 appunto cancellato, 1 testo corretto.");
+  assert.match(P.eraseBody, /Non si torna indietro\.$/);
+});
+
+test("(9b) le fonti nuove: «Referente», «Costruzione», le risposte nel pannello della fonte", () => {
+  assert.equal(CONTEXT_TEXT.fact.sourceAnswer("14 nov"), "Referente 14 nov");
+  assert.equal(CONTEXT_TEXT.fact.sourceLearned("14 nov"), "Costruzione 14 nov");
+  assert.equal(CONTEXT_TEXT.notes.origin.rispondi, "Referente");
+  assert.equal(CONTEXT_TEXT.notes.answersTitle("XX-0012"), "Risposte del referente · XX-0012");
+  assert.equal(CONTEXT_TEXT.notes.learnedTitle("XX-0012"), "Imparato costruendo XX-0012");
+  assert.equal(CONTEXT_TEXT.notes.answerSource, "Le risposte stanno nella scheda dello use case, in «Cosa serve».");
+  assert.equal(CONTEXT_TEXT.notes.openUseCase, "Apri lo use case");
+});
+
+test("(9b) genere neutro e nessun «caso»: la dashboard dice «use case», le persone sono «una persona» o un ruolo", () => {
+  for (const group of [CONTEXT_TEXT.useCase, CONTEXT_TEXT.needLink, CONTEXT_TEXT.verify, CONTEXT_TEXT.people]) {
+    for (const { path, text } of leaves(group, "").flatMap((leaf) => {
+      if (typeof leaf.value === "string") return [{ path: leaf.path, text: leaf.value }];
+      const result = (leaf.value as (...args: unknown[]) => unknown)("14 nov", "Il fatto.");
+      return typeof result === "string" ? [{ path: leaf.path, text: result }] : [];
+    })) {
+      assert.doesNotMatch(text, /\bcas[oi]\b/i, `${path}: nella dashboard si dice «use case»`);
+      assert.doesNotMatch(text, /\b(benvenuto|sicuro|pronto|tutti i tuoi|caro)\b/i, `${path}: genere neutro`);
+    }
+  }
 });
