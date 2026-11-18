@@ -72,7 +72,7 @@ export function MoreOptions({
             label="Perché da voi non si applica?"
             htmlFor={`${id}-na`}
             issues={naIssues}
-            hint="Lateral Space e chi segue il caso nella tua azienda lo controllano prima di chiudere la domanda."
+            hint="Lateral Space e chi segue il caso d'uso nella tua azienda lo controllano prima di chiudere la domanda."
           >
             <TextAreaControl id={`${id}-na`} value={form.naReason} onChange={(v) => onForm({ naReason: v })} disabled={disabled} invalid={naIssues.length > 0} rows={3} />
           </Field>

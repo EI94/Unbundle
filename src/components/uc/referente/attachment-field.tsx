@@ -1,61 +1,29 @@
 "use client";
 
-import { createContext, useContext, useId, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { FileText, Loader2, Paperclip, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusDot } from "@/components/uc/ui/status-dot";
 import { ACCEPTED_FILE_TYPES, formatSize, uploadFile } from "@/components/uc/documents/upload-transport";
 import { cn } from "@/lib/utils";
-import { CheckRow } from "./inputs/fields";
 
 /**
  * Allegati di una risposta nella pagina del referente (`/r/[token]`, PIANO
- * §5.4, §6.2–6.3): dichiarazione «nessun dato sanitario», scelta del file,
- * caricamento in quarantena e controllo subito (tipo dal contenuto,
- * intestazioni, testo sanitario). Un file con dati sanitari viene cancellato e
- * qui lo diciamo in chiaro; un PDF poco leggibile aspetta il controllo di
- * Lateral Space. Solo i file «pronti» partono con la risposta.
+ * §5.4, §6.2–6.3): scelta del file, caricamento in quarantena e controllo
+ * subito (tipo dal contenuto, intestazioni, testo sanitario). Un file non
+ * accettato viene cancellato e qui lo diciamo in chiaro; un PDF poco leggibile
+ * aspetta il controllo di Lateral Space. Solo i file «pronti» partono con la
+ * risposta.
+ *
+ * (Ondata 0, privacy calma del 04/11) Niente casella da spuntare prima del
+ * file, come su `/rispondi` dal rilascio 5.1: il controllo automatico resta e
+ * l'informativa lo dice una volta (`REFERENT_PRIVACY_NOTICE`).
  *
  * Nessun componente con portale (la pagina è in `.survey-light`), aree di
  * tocco di almeno 44 px, nomi lunghi che vanno a capo. Il token serve solo per
  * l'indirizzo delle chiamate: mai salvato. Le voci personali passano sempre dal
  * server (cifratura prima della scrittura) e niente resta sul dispositivo.
  */
-/**
- * La dichiarazione sui file vale per tutta la visita (DESIGN §9.1 punto 16): la
- * pagina la tiene qui, e un riquadro aperto dopo non la chiede di nuovo. Senza
- * il contesto ogni riquadro la chiede per sé.
- */
-export interface FileDeclaration {
-  declared: boolean;
-  declare: (declared: boolean) => void;
-}
-
-export const FileDeclarationContext = createContext<FileDeclaration | null>(null);
-
-/**
- * La dichiarazione per un riquadro di caricamento: quella della visita se la
- * pagina la tiene, altrimenti la sua. `ask` dice se la casella va mostrata:
- * dove è già stata data prima, non torna.
- */
-export function useFileDeclaration(): { declared: boolean; setDeclared: (v: boolean) => void; ask: boolean } {
-  const shared = useContext(FileDeclarationContext);
-  const [own, setOwn] = useState(false);
-  const declared = shared ? shared.declared : own;
-  const [ask] = useState(() => !declared);
-  return { declared, setDeclared: shared ? shared.declare : setOwn, ask };
-}
-
-/** La casella della dichiarazione, oppure il promemoria se è già stata data in questa visita. */
-export function FileDeclarationRow({ id, declaration, disabled }: { id: string; declaration: ReturnType<typeof useFileDeclaration>; disabled: boolean }) {
-  if (!declaration.ask) return <p className="break-words text-muted-foreground">Come hai confermato: niente dati sanitari né dati personali che non ti abbiamo chiesto.</p>;
-  return (
-    <CheckRow id={id} checked={declaration.declared} onChange={declaration.setDeclared} disabled={disabled}>
-      Il file non contiene dati sanitari né dati personali che non mi avete chiesto.
-    </CheckRow>
-  );
-}
-
 export interface AttachmentRef {
   fileId: string;
   fileName: string;
@@ -90,8 +58,6 @@ interface Notice {
 export function AttachmentField({ token, itemId, value, onChange, hint, personal = false, disabled = false }: AttachmentFieldProps) {
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
-  const declaration = useFileDeclaration();
-  const { declared } = declaration;
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const blocked = disabled || busy !== null;
@@ -99,7 +65,7 @@ export function AttachmentField({ token, itemId, value, onChange, hint, personal
   async function onFile(file: File) {
     setNotice(null);
     setBusy(file.name);
-    const r = await uploadFile({ kind: "referente", token, itemId }, file, { declaration: declared, personal });
+    const r = await uploadFile({ kind: "referente", token, itemId }, file, { personal });
     setBusy(null);
     if (input.current) input.current.value = "";
     if (!r.ok) {
@@ -167,30 +133,26 @@ export function AttachmentField({ token, itemId, value, onChange, hint, personal
         ) : null
       ) : (
         <>
-          <FileDeclarationRow id={`${id}-declaration`} declaration={declaration} disabled={blocked} />
           <input
             ref={input}
             id={`${id}-file`}
             type="file"
             accept={ACCEPTED_FILE_TYPES}
             className="sr-only"
-            disabled={blocked || !declared}
+            disabled={blocked}
             onChange={(e) => {
               const file = e.currentTarget.files?.[0];
               if (file) void onFile(file);
             }}
           />
           <div className="flex min-w-0 flex-wrap items-center gap-3">
-            <Button type="button" variant="outline" className="min-h-11" disabled={blocked || !declared} onClick={() => input.current?.click()}>
+            <Button type="button" variant="outline" className="min-h-11" disabled={blocked} onClick={() => input.current?.click()}>
               {busy ? <Loader2 className="animate-spin" aria-hidden /> : <Paperclip aria-hidden />}
               {busy ? "Carico e controllo il file…" : "Scegli un file"}
             </Button>
-            {!declared ? <span className="text-sm text-muted-foreground">Prima spunta la casella qui sopra.</span> : null}
           </div>
           <p className="text-sm break-words text-muted-foreground">
-            {personal
-              ? "PDF, Word, Excel, PowerPoint, CSV o testo, fino a 4 MB. Il file viene cifrato."
-              : "PDF, Word, Excel, PowerPoint, CSV o testo, fino a 20 MB. Un file con dati sanitari viene cancellato."}
+            {personal ? "PDF, Word, Excel, PowerPoint, CSV o testo, fino a 4 MB. Il file viene cifrato." : "PDF, Word, Excel, PowerPoint, CSV o testo, fino a 20 MB."}
           </p>
         </>
       )}

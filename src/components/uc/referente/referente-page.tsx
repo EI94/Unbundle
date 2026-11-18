@@ -33,7 +33,7 @@ import {
 } from "@/lib/uc/views/referente-plan";
 import { getView, postAnswers, postJson } from "./api";
 import { ApprovalsView, type ApprovalOutcome } from "./approvals-view";
-import { FileDeclarationContext, type AttachmentRef } from "./attachment-field";
+import type { AttachmentRef } from "./attachment-field";
 import { ClarificationScreen } from "./clarification-screen";
 import { DelegateScreen, type DelegateResult } from "./delegate-screen";
 import { InvalidLinkCard, ReferentShell } from "./link-card";
@@ -139,9 +139,6 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
   const [announce, setAnnounce] = useState("");
   const [notice, setNotice] = useState<HomeNotice | null>(null);
   const [review, setReview] = useState<ReviewState | null>(null);
-  // La dichiarazione sui file si chiede una volta per visita (DESIGN §9.1 punto 16).
-  const [fileDeclared, setFileDeclared] = useState(false);
-  const fileDeclaration = useMemo(() => ({ declared: fileDeclared, declare: setFileDeclared }), [fileDeclared]);
   const savedAnnounced = useRef(false);
   const now = useMemo(() => new Date(nowIso), [nowIso]);
   const narrow = useNarrow();
@@ -569,7 +566,7 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
             <ClientLine clientLabel={view.clientLabel} />
             <ScreenTitle>{view.greetingName ? `Ciao ${view.greetingName}` : "Ciao"}</ScreenTitle>
           </div>
-          {view.paused ? <Notice tone="attenzione">Il caso è in pausa. Ti scriviamo quando riparte.</Notice> : null}
+          {view.paused ? <Notice tone="attenzione">Il caso d&apos;uso è in pausa. Ti scriviamo quando riparte.</Notice> : null}
           {homeNotice}
         </section>
         <ApprovalsView approvals={view.approvals} disabled={!writable} onDecide={decideApproval} />
@@ -739,7 +736,7 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
 
   return (
     <ReferentShell>
-      <FileDeclarationContext value={fileDeclaration}>{screen}</FileDeclarationContext>
+      {screen}
       {liveRegion}
     </ReferentShell>
   );

@@ -208,3 +208,35 @@ test("helpers: hard blocks, summaries, log view and messages", () => {
   for (const c of SCAN_CATEGORIES) assert.ok(findingMessage(c).length > 10, c);
   assert.match(findingMessage("discriminatorio"), /non si registrano/);
 });
+
+// (Ondata 0) La regola di `/r`: nomi, email e telefoni ammessi, come su `/rispondi` dal rilascio 5.1. Dati inventati.
+const allowed: ScanOptions = { context: "risposta", allowNamesAndContacts: true };
+
+test("allowNamesAndContacts: names, emails and phones give no finding; health, discrimination, birth dates and tax codes still do", () => {
+  const text = "Chiedere a Mario Rossi o al sig. Bianchi (mario.rossi@esempio.it, 333 1234567); ne parla anche Zebedeo, oppure Mario";
+  assert.deepEqual(scanText(text, { ...allowed, names: ["Zebedeo"] }), { blocking: [], warnings: [] });
+  assert.deepEqual(blocking("Serve la visita medica annuale", allowed), ["sanitario:visita medica"]);
+  assert.deepEqual(blocking("Il cliente preferisce solo piloti donne", allowed), ["discriminatorio:donne"]);
+  assert.deepEqual(blocking("nato il 12/03/1980", allowed), ["data_nascita:data di nascita"]);
+  assert.deepEqual(blocking("CF RSSMRA80A01H501U", allowed), ["codice_fiscale:codice fiscale"]);
+  // Un nome vicino a un termine sanitario della domanda sulla regola lo fa ancora bloccare.
+  const healthRuleQuestion = { questionText: "Quali dati sanitari escludete dai turni dell'equipaggio?" };
+  assert.deepEqual(blocking("I dati sanitari di Mario restano fuori", { ...allowed, healthRuleQuestion }), ["sanitario:sanitari"]);
+  assert.deepEqual(blocking("Escludiamo tutti i dati sanitari", { ...allowed, healthRuleQuestion }), []);
+  // In un payload vale per ogni foglia e ogni chiave.
+  const payload = scanPayload({ rows: [{ "Mario Rossi": "mario.rossi@esempio.it" }], note: "chiamare il 333 1234567" }, allowed);
+  assert.deepEqual(payload, { blocking: [], warnings: [], truncated: false });
+  assert.deepEqual(tags(scanPayload({ note: "Mario Rossi, visita medica" }, allowed).blocking), ["sanitario:visita medica"]);
+});
+
+test("without allowNamesAndContacts every context keeps its rules: names and contacts are found as before", () => {
+  const text = "Chiedere a Mario Rossi, ufficio@esempio.it o 333 1234567";
+  for (const context of SCAN_CONTEXTS) {
+    const before = scanText(text, { context });
+    assert.deepEqual(scanText(text, { context, allowNamesAndContacts: false }), before, `${context}: false is the default`);
+    assert.deepEqual(tags(before.blocking).filter((t) => t.startsWith("nome_persona")), ["nome_persona:nome e cognome"], context);
+    const contacts = context === "risposta" || context === "caso_prova" ? before.blocking : before.warnings;
+    assert.deepEqual(tags(contacts).filter((t) => t.startsWith("contatto")), ["contatto:email", "contatto:telefono"], context);
+  }
+  assert.deepEqual(warnings("Chiedere a Mario"), ["nome_persona:nome proprio"]);
+});

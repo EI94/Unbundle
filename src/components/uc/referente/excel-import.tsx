@@ -7,15 +7,15 @@ import { SERVER_MAX_BYTES } from "@/components/uc/documents/upload-transport";
 import type { ReferentItemView } from "@/lib/uc/public-view";
 import { gridFromRows, type TableGrid } from "@/lib/uc/views/referente-form";
 import { postTableFile } from "./api";
-import { FileDeclarationRow, useFileDeclaration, type AttachmentRef } from "./attachment-field";
+import type { AttachmentRef } from "./attachment-field";
 import { Notice } from "./screen";
 
 /**
  * «Carica un Excel» (DESIGN §4.3 R2c) su una domanda tabella: il referente
  * sceglie un Excel o un CSV, il file si carica e si controlla come ogni
  * allegato e resta con la risposta; le sue righe riempiono la tabella, che il
- * referente controlla nell'editor prima di andare avanti. La dichiarazione sui
- * file è quella della visita.
+ * referente controlla nell'editor prima di andare avanti. (Ondata 0) Niente
+ * casella da spuntare prima del file: il controllo automatico resta.
  */
 export interface ExcelImportResult {
   grid: TableGrid;
@@ -45,7 +45,6 @@ export function ExcelImport({
 }) {
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
-  const declaration = useFileDeclaration();
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ tone: "info" | "errore"; text: string } | null>(null);
   const blocked = disabled || busy;
@@ -57,7 +56,7 @@ export function ExcelImport({
       return;
     }
     setBusy(true);
-    const r = await postTableFile(token, item.id, file, declaration.declared);
+    const r = await postTableFile(token, item.id, file);
     setBusy(false);
     if (input.current) input.current.value = "";
     if (!r.ok) {
@@ -91,27 +90,23 @@ export function ExcelImport({
   return (
     <div className="min-w-0 space-y-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
       <p className="text-base break-words text-muted-foreground">Usa il modello o un file con le stesse colonne: riempiamo noi la tabella, poi la controlli.</p>
-      <div className="text-base">
-        <FileDeclarationRow id={`${id}-declaration`} declaration={declaration} disabled={blocked} />
-      </div>
       <input
         ref={input}
         id={`${id}-file`}
         type="file"
         accept={ACCEPT}
         className="sr-only"
-        disabled={blocked || !declaration.declared}
+        disabled={blocked}
         onChange={(e) => {
           const file = e.currentTarget.files?.[0];
           if (file) void onFile(file);
         }}
       />
       <div className="flex min-w-0 flex-wrap items-center gap-3">
-        <Button type="button" variant="outline" className="min-h-11 text-base" disabled={blocked || !declaration.declared} onClick={() => input.current?.click()}>
+        <Button type="button" variant="outline" className="min-h-11 text-base" disabled={blocked} onClick={() => input.current?.click()}>
           {busy ? <Loader2 className="animate-spin" aria-hidden /> : <FileSpreadsheet aria-hidden />}
           {busy ? "Carico e leggo il file…" : "Scegli il file Excel"}
         </Button>
-        {!declaration.declared ? <span className="text-sm text-muted-foreground">Prima spunta la casella qui sopra.</span> : null}
       </div>
       <p className="text-sm break-words text-muted-foreground">Excel (.xlsx) o CSV, fino a 4 MB. Il file resta allegato alla risposta.</p>
       {notice ? (

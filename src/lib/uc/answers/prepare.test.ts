@@ -143,3 +143,25 @@ test("draft: health text hidden in the keys of an unreadable payload is not save
   // Ordinary keys of a typed value do not block.
   assert.ok(prepareAnswer({ type: "durata", raw: { amount: "90", unit: "min" }, config: {}, ctx: draft }).ok);
 });
+
+test("(Ondata 0) with allowNamesAndContacts, as on /r: names, emails and phones pass; the rest is refused as before", () => {
+  const scan = { context: "risposta" as const, allowNamesAndContacts: true };
+  const name = prepareAnswer({ type: "testo", raw: "Chiedere a Mario Rossi, mario.rossi@esempio.it", config: {}, ctx: send, extras: { note: "o al 333 1234567" }, scan });
+  assert.ok(name.ok);
+  assert.deepEqual([name.errors, name.warnings], [[], []]);
+  const who = prepareUniversalAction({ action: "non_so", raw: { who_might_know: "Mario Rossi" }, activeItemIds: [], scan });
+  assert.ok(who.ok);
+  const tax = prepareAnswer({ type: "testo", raw: "Il codice è RSSMRA80A01H501U", config: {}, ctx: send, scan });
+  assert.ok(!tax.ok && tax.reason === "testo_bloccato");
+  assert.deepEqual(codes(tax.errors), ["testo_codice_fiscale"]);
+  // In bozza un codice fiscale si salva da correggere; un dato sanitario non si salva.
+  const taxDraft = prepareAnswer({ type: "testo", raw: "Il codice è RSSMRA80A01H501U", config: {}, ctx: draft, scan });
+  assert.ok(taxDraft.ok);
+  assert.deepEqual(codes(taxDraft.errors), ["testo_codice_fiscale"]);
+  const health = prepareAnswer({ type: "testo", raw: "Mario Rossi è in malattia", config: {}, ctx: draft, scan });
+  assert.ok(!health.ok && health.reason === "testo_bloccato");
+  assert.deepEqual(codes(health.errors), ["testo_sanitario"]);
+  // Senza l'opzione, come prima: il nome ferma l'invio.
+  const before = prepareAnswer({ type: "testo", raw: "Chiedere a Mario Rossi", config: {}, ctx: send, scan: { context: "risposta" } });
+  assert.ok(!before.ok && before.errors[0].code === "testo_nome_persona");
+});

@@ -96,7 +96,7 @@ export function ReferenteHome({ clientLabel, greetingName, plan, expiresAt, now,
       {notice}
 
       {paused ? (
-        <p className="text-base leading-6">Il caso è in pausa. Ti scriviamo quando riparte. Quello che hai scritto resta salvato.</p>
+        <p className="text-base leading-6">Il caso d&apos;uso è in pausa. Ti scriviamo quando riparte. Quello che hai scritto resta salvato.</p>
       ) : finished ? (
         <p className="text-base leading-6">Lateral Space controlla le risposte e ti scrive solo se serve un chiarimento. Puoi chiudere questa pagina.</p>
       ) : (

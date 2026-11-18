@@ -15,6 +15,11 @@ import { formatNumberIt } from "@/lib/uc/views/format";
  *
  * Il token del link sta solo nell'indirizzo della chiamata: mai salvato, mai
  * nei log. Le chiamate del referente partono senza cookie e senza `Referer`.
+ *
+ * (Ondata 0, privacy calma del 04/11) Niente casella da spuntare prima del
+ * file, come su `/rispondi` dal rilascio 5.1: le chiamate mandano sempre
+ * `declaration: true`, che il server dei dossier chiede ancora
+ * (`checkUploadRequest`). Il controllo automatico del contenuto resta.
  */
 
 export const SERVER_MAX_BYTES = 4 * 1024 * 1024;
@@ -98,10 +103,10 @@ async function postJson(dest: UploadDestination, path: string, body: unknown): P
   }
 }
 
-async function serverUpload(dest: UploadDestination, file: File, declaration: boolean): Promise<UploadOutcome> {
+async function serverUpload(dest: UploadDestination, file: File): Promise<UploadOutcome> {
   const form = new FormData();
   form.set("file", file, file.name);
-  form.set("declaration", declaration ? "true" : "false");
+  form.set("declaration", "true");
   if (dest.itemId) form.set("itemId", dest.itemId);
   let result: Awaited<ReturnType<typeof parse>>;
   try {
@@ -115,8 +120,8 @@ async function serverUpload(dest: UploadDestination, file: File, declaration: bo
   return uploaded ? { ok: true, file: uploaded } : { ok: false, code: "errore", message: GENERIC };
 }
 
-async function clientUpload(dest: UploadDestination, file: File, declaration: boolean): Promise<UploadOutcome> {
-  const ticket = await postJson(dest, "upload-token", { itemId: dest.itemId, fileName: file.name, size: file.size, declaration });
+async function clientUpload(dest: UploadDestination, file: File): Promise<UploadOutcome> {
+  const ticket = await postJson(dest, "upload-token", { itemId: dest.itemId, fileName: file.name, size: file.size, declaration: true });
   if (!ticket.ok) return ticket.code === "modalita_non_disponibile" ? { ok: false, code: "file_troppo_grande_server", message: TOO_BIG_SERVER } : ticket;
   const t = ticket.data as { fileId?: unknown; pathname?: unknown; clientToken?: unknown; contentType?: unknown } | null;
   if (!t || typeof t.fileId !== "string" || typeof t.pathname !== "string" || typeof t.clientToken !== "string") return { ok: false, code: "errore", message: GENERIC };
@@ -133,12 +138,12 @@ async function clientUpload(dest: UploadDestination, file: File, declaration: bo
 }
 
 /** Carica un file: modalità server fino a 4 MB (o nella zona personale), altrimenti diretta su Blob. */
-export function uploadFile(dest: UploadDestination, file: File, opts: { declaration: boolean; personal?: boolean }): Promise<UploadOutcome> {
+export function uploadFile(dest: UploadDestination, file: File, opts: { personal?: boolean } = {}): Promise<UploadOutcome> {
   if (file.size <= SERVER_MAX_BYTES || opts.personal) {
     if (file.size > SERVER_MAX_BYTES) return Promise.resolve({ ok: false, code: "file_troppo_grande_server", message: TOO_BIG_SERVER });
-    return serverUpload(dest, file, opts.declaration);
+    return serverUpload(dest, file);
   }
-  return clientUpload(dest, file, opts.declaration);
+  return clientUpload(dest, file);
 }
 
 /** «1,2 MB», «340 KB». */

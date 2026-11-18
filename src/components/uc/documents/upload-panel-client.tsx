@@ -5,16 +5,17 @@ import { useRouter } from "next/navigation";
 import { FileText, Loader2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusDot } from "@/components/uc/ui/status-dot";
-import { CHECKBOX_CLASS } from "@/components/uc/catalog/checkbox";
 import { refreshDossier } from "@/components/uc/shell/transition-retry";
 import { cn } from "@/lib/utils";
 import { ACCEPTED_FILE_TYPES, formatSize, uploadFile, type UploadedFile } from "./upload-transport";
 
 /**
- * Caricamento di Lateral Space nel pannello dei documenti: dichiarazione,
- * scelta del file, esito del controllo subito sotto (pronto, in revisione,
- * rifiutato e cancellato, già caricato). Dopo un caricamento la pagina si
- * aggiorna, così il file compare tra i file caricati.
+ * Caricamento di Lateral Space nel pannello dei documenti: scelta del file,
+ * esito del controllo subito sotto (pronto, in revisione, rifiutato e
+ * cancellato, già caricato). Dopo un caricamento la pagina si aggiorna, così il
+ * file compare tra i file caricati. (Ondata 0, privacy calma del 04/11) Niente
+ * casella da spuntare prima del file: il controllo automatico resta, e lo dice
+ * una riga calma.
  */
 export function UploadPanelClient({
   workspaceId,
@@ -33,7 +34,6 @@ export function UploadPanelClient({
   const id = useId();
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
-  const [declared, setDeclared] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<UploadedFile[]>([]);
@@ -41,7 +41,7 @@ export function UploadPanelClient({
   async function onFile(file: File) {
     setError(null);
     setBusy(true);
-    const r = await uploadFile({ kind: "interno", workspaceId, caseId, itemId }, file, { declaration: declared, personal });
+    const r = await uploadFile({ kind: "interno", workspaceId, caseId, itemId }, file, { personal });
     setBusy(false);
     if (input.current) input.current.value = "";
     if (!r.ok) {
@@ -56,32 +56,27 @@ export function UploadPanelClient({
 
   return (
     <div className="min-w-0 space-y-3">
-      <label htmlFor={`${id}-declaration`} className="flex min-h-11 cursor-pointer items-center gap-3 text-sm">
-        <input id={`${id}-declaration`} type="checkbox" className={CHECKBOX_CLASS} checked={declared} disabled={busy} onChange={(e) => setDeclared(e.target.checked)} />
-        <span className="min-w-0 break-words">Il file non contiene dati sanitari né dati personali che non servono.</span>
-      </label>
       <input
         ref={input}
+        id={`${id}-file`}
         type="file"
         accept={ACCEPTED_FILE_TYPES}
         className="sr-only"
         aria-label="Scegli il file da caricare"
-        disabled={busy || !declared}
+        disabled={busy}
         onChange={(e) => {
           const file = e.currentTarget.files?.[0];
           if (file) void onFile(file);
         }}
       />
       <div className="flex min-w-0 flex-wrap items-center gap-3">
-        <Button type="button" variant="outline" disabled={busy || !declared} onClick={() => input.current?.click()} className="min-h-11 sm:min-h-9">
+        <Button type="button" variant="outline" disabled={busy} onClick={() => input.current?.click()} className="min-h-11 sm:min-h-9">
           {busy ? <Loader2 className="animate-spin" aria-hidden /> : <Upload aria-hidden />}
           {busy ? "Carico e controllo il file…" : "Scegli un file"}
         </Button>
         <span className="text-xs text-muted-foreground">PDF, Word, Excel, PowerPoint, CSV o testo, fino a {limit}.</span>
       </div>
-      <p className="text-xs break-words text-muted-foreground">
-        Ogni file passa dalla quarantena: si controllano tipo, intestazioni e testo. Con dati sanitari (per esempio «visita medica») viene rifiutato e cancellato.
-      </p>
+      <p className="text-xs break-words text-muted-foreground">Ogni file passa da un controllo automatico.</p>
 
       {error ? (
         <p role="alert" className="rounded-lg bg-uc-rosso-bg px-3 py-2 text-sm break-words text-uc-rosso">

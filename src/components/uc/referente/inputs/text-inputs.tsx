@@ -7,7 +7,8 @@ import { Field, FieldErrors, SelectControl, TextAreaControl, TextControl, issues
  * Input di testo: `testo`, `codice` (maiuscolo, con il formato atteso),
  * `collegamento_sistema` (dove sta un dato e come si legge) e `caso_prova`
  * (richiesta d'esempio ed esito atteso). Il controllo dei testi (dati sanitari,
- * nomi di persone, preferenze discriminatorie) avviene prima dell'invio.
+ * preferenze discriminatorie, codici fiscali, date di nascita; (Ondata 0) nomi,
+ * email e telefoni passano) avviene prima dell'invio.
  */
 
 export function FreeTextInput({ id, config, value, onChange, issues, disabled, label }: InputProps) {

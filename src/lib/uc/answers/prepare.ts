@@ -38,6 +38,8 @@ export interface PrepareScanOptions {
   /** Solo per le voci con `spec.health_rule_question`. */
   healthRuleQuestion?: { questionText: string };
   names?: readonly string[];
+  /** (Ondata 0) Solo la pagina del referente `/r`: nomi, email e telefoni passano (`ScanOptions.allowNamesAndContacts`). */
+  allowNamesAndContacts?: boolean;
 }
 
 export type PreparedAnswer =
@@ -78,7 +80,7 @@ function dedupeIssues(list: readonly Issue[]): Issue[] {
 }
 
 function scanAll(value: unknown, extras: Record<string, unknown> | undefined, scan: PrepareScanOptions, exempt?: Record<string, readonly ScanCategory[]>): PayloadScanResult {
-  const opts = { context: scan.context ?? "risposta", healthRuleQuestion: scan.healthRuleQuestion, names: scan.names, exempt };
+  const opts = { context: scan.context ?? "risposta", healthRuleQuestion: scan.healthRuleQuestion, names: scan.names, allowNamesAndContacts: scan.allowNamesAndContacts, exempt };
   const a = scanPayload(value, opts);
   if (!extras) return a;
   const b = scanPayload(extras, opts);

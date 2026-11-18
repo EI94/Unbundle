@@ -381,8 +381,9 @@ test("«Non lo so» is a valid answer; a late answer still goes to verification;
   const late = await submitReferentAnswer(exec!, l, item("q.servizio.05"), { payload: "90 min" }, popts());
   assert.ok(late.ok, late.ok ? "" : late.message);
   assert.equal(await statusOf("q.servizio.05"), "in_verifica");
-  const noReason = await submitReferentAnswer(exec!, l, item("q.servizio.04"), { kind: "non_so", who_might_know: "Mario Rossi" }, popts());
-  assert.equal(noReason.ok ? null : noReason.code, "testo_nome_persona", "names are blocked in free text");
+  // (Ondata 0) Names, e-mails and phones pass on /r, as on /rispondi; a tax code in free text is still refused.
+  const noReason = await submitReferentAnswer(exec!, l, item("q.servizio.04"), { kind: "non_so", who_might_know: "RSSMRA80A01H501U" }, popts());
+  assert.equal(noReason.ok ? null : noReason.code, "testo_codice_fiscale", "tax codes are blocked in free text");
   const partial = await submitReferentAnswer(exec!, l, item("q.servizio.04"), { payload: "09:00-13:00", partial: true, note: "manca l'orario del sabato" }, popts());
   assert.ok(partial.ok, partial.ok ? "" : partial.message);
   assert.equal(await statusOf("q.servizio.04"), "parziale");
@@ -794,10 +795,10 @@ after(async () => {
 test("referent view: first name, two-level notice, question counts, minutes in proportion", opts, async () => {
   const v = await volumesCase();
   const l = await link(v.token);
-  const old = await acknowledgePrivacy(exec!, l, { version: "uc-2026-10-1" }, popts());
+  const old = await acknowledgePrivacy(exec!, l, { version: "uc-2026-10-2" }, popts());
   assert.equal(old.ok ? null : old.code, "informativa_cambiata", "the two-level notice is a new version");
   assert.ok((await acknowledgePrivacy(exec!, l, { version: REFERENT_PRIVACY_NOTICE.version }, popts())).ok);
-  assert.equal(REFERENT_PRIVACY_NOTICE.version, "uc-2026-10-2");
+  assert.equal(REFERENT_PRIVACY_NOTICE.version, "uc-2026-11-1");
   const view = await viewOf(v.token);
   assert.equal(view.greetingName, "Marco");
   assert.equal(view.greetingName, greetingNameFrom("Marco Volumi"));

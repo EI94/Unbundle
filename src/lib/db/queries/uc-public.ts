@@ -13,7 +13,8 @@
  * - **Scritture**: link vivo (`uc_request_live`, ripetuto nel batch), informativa
  *   letta su questa richiesta, scansione del testo prima di salvare
  *   (`prepareAnswer`: dati sanitari e discriminatori bloccati con un messaggio
- *   chiaro). Ogni cambio di stato passa da `applyItemTransitions`, cioè da
+ *   chiaro; (Ondata 0) nomi, email e telefoni passano, `referentLinkScan`).
+ *   Ogni cambio di stato passa da `applyItemTransitions`, cioè da
  *   `checkItemTransition` con `actorRequestItem`, CAS con `uc_require` ed evento
  *   nello stesso batch.
  * - **Voci personali**: solo con `a8` sciolto e la chiave della zona personale;
@@ -63,6 +64,7 @@ import {
   planReferentAnswer,
   publicFail,
   publicUnavailable,
+  referentLinkScan,
   referentProgress,
   referentStatusLabel,
   type ApprovalKind,
@@ -215,8 +217,9 @@ const TOO_LONG = "La risposta è troppo lunga o troppo annidata: allega un file.
 /**
  * Esito bloccante della scansione del testo. Dati sanitari e discriminatori
  * vengono sempre per primi (e da soli bloccano anche le bozze); con `all` anche
- * nomi di persona, date di nascita, codici fiscali e contatti. Null se il testo
- * si può salvare. Gli `issues` portano solo categoria e campo, mai il testo.
+ * date di nascita e codici fiscali. (Ondata 0) Nomi di persona e contatti non
+ * arrivano qui: la scansione di `/r` li ammette (`referentLinkScan`). Null se il
+ * testo si può salvare. Gli `issues` portano solo categoria e campo, mai il testo.
  */
 function scanFailure(findings: PayloadScanResult, all: boolean): PublicOutcome<never> | null {
   if (findings.truncated) return publicFail("testo_troppo_lungo", TOO_LONG);
@@ -228,15 +231,18 @@ function scanFailure(findings: PayloadScanResult, all: boolean): PublicOutcome<n
   return publicFail(`testo_${first.category}`, findingMessage(first.category), issues);
 }
 
-type ReferentScan = { context: "risposta"; healthRuleQuestion?: { questionText: string } };
+type ReferentScan = ReturnType<typeof referentLinkScan>;
 
-/** Opzioni di scansione per una voce: l'avviso al posto del blocco vale solo per le domande sulla regola sanitaria. */
+/**
+ * Opzioni di scansione per una voce (`referentLinkScan`): nomi, email e telefoni passano; l'avviso al posto del blocco
+ * dei termini sanitari vale solo per le domande sulla regola sanitaria.
+ */
 function scanOptionsFor(item: LoadedItem): ReferentScan {
-  return { context: "risposta", healthRuleQuestion: item.extra.healthRuleQuestion ? { questionText: item.extra.title } : undefined };
+  return referentLinkScan({ healthRuleQuestion: item.extra.healthRuleQuestion === true, title: item.extra.title });
 }
 
-/** Scansione di testi liberi del referente (note, motivi): sanitario, discriminatorio, nomi, contatti. */
-function scanReferentText(payload: Record<string, unknown>, opts: ReferentScan = { context: "risposta" }): PublicOutcome<void> {
+/** Scansione di testi liberi del referente (note, motivi): sanitario, discriminatorio, date di nascita, codici fiscali. */
+function scanReferentText(payload: Record<string, unknown>, opts: ReferentScan = referentLinkScan()): PublicOutcome<void> {
   return scanFailure(scanPayload(payload as Json, opts), true) ?? { ok: true, value: undefined };
 }
 
