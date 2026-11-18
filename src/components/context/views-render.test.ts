@@ -42,6 +42,8 @@ await installAppModules({
     .map((name) => `export async function ${name}() { return { ok: true, value: true }; }`)
     .join("\n"),
   "@/lib/actions/uc-subprocessors": `export async function declareSubprocessorsAction() { return { ok: true, data: null, message: "" }; }`,
+  // (9b) «Cerca una persona» nella vista «Appunti» (people-search.tsx).
+  "@/lib/actions/context-people": ["searchPersonAction", "erasePersonAction"].map((name) => `export async function ${name}() { return { ok: false, error: "riprova", message: "" }; }`).join("\n"),
 });
 await enableTsxImports();
 const { MemoryView } = await import("./memory-view.tsx");

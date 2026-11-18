@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { removeSourceAction } from "@/lib/actions/context";
 import { CONTEXT_TEXT } from "@/lib/context/text";
 import type { SourceListItem } from "@/lib/db/queries/context-sources";
+import { PeopleSearch } from "./people-search";
 import { SourceSheet } from "./source-sheet";
 import { UploadDocumentButton } from "./upload-document";
 import { sourceMeta } from "./view-model";
@@ -19,6 +20,8 @@ const T = CONTEXT_TEXT;
  *
  * - Lateral Space: in alto Granola (lo stato, «Aggiorna da Granola», «Da smistare»); poi l'elenco dal più recente:
  *   titolo, data, da dove viene, a che punto è la lettura e, per un documento, chi lo vede. Un tocco apre il pannello.
+ *   (9b) In fondo il link «Cerca una persona» (RILASCIO-9b-COSTRUZIONE.md §2.13): un documento trovato apre qui il suo
+ *   pannello, dove c'è «Togli».
  * - Il cliente: i documenti «Per tutti» (nome, data, dimensione), «Togli» a chi può, e «Carica documento».
  */
 export function NotesView({
@@ -93,6 +96,9 @@ export function NotesView({
           ))}
         </ul>
       )}
+      <div className="flex justify-end">
+        <PeopleSearch workspaceId={workspaceId} today={today} onOpenSource={setOpenSource} />
+      </div>
       <SourceSheet workspaceId={workspaceId} sourceId={openSource} today={today} onClose={closeSource} />
     </div>
   );
