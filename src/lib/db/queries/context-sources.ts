@@ -24,6 +24,7 @@ import { canRemoveDocument, contextAbilities, type ContextActor } from "@/lib/co
 import { CONTEXT_LIMITS, type ContextVisibility, type ReadReason, type ReadStatus, type SkippedCounts, type SourceKind, type SourceOrigin } from "@/lib/context/vocab";
 import { logSafeError } from "@/lib/log/safe-error";
 import type { ServiceResult } from "@/lib/use-cases/types";
+import { answerSourceUseCaseId } from "./context-referent";
 import { contextStoreReady } from "./context-store";
 import { denied, eventStatement, gate, invalid, isUniqueViolation, isUuid, notFound, ok, retry, rowsOf, toDate, toIsoDate } from "./context-shared";
 
@@ -362,6 +363,7 @@ interface SourceRow {
   parts_total: number;
   parts_read: number;
   skipped: unknown;
+  external_id: string | null;
 }
 
 /** Le colonne di una fonte per chi guarda. Chi non è di Lateral Space vede solo i documenti «Per tutti», senza lo stato della lettura. */
@@ -373,7 +375,7 @@ function sourcesQuery(actor: ContextActor, lateralSpace: boolean, where: SQL, li
       (SELECT count(*)::int FROM context_proposals p WHERE p.source_id = s.id AND p.status = 'confermata') AS confirmed_proposals,
       s.visibility, s.document_id, d.file_name, d.file_type, d.file_size, d.user_id AS uploaded_by,
       s.body, s.participants, s.link, coalesce(nullif(btrim(u.name), ''), u.email) AS added_by_name,
-      s.created_at, s.text_purged_at, s.parts_total, s.parts_read, s.skipped
+      s.created_at, s.text_purged_at, s.parts_total, s.parts_read, s.skipped, s.external_id
     FROM context_sources s
     LEFT JOIN uploaded_documents d ON d.id = s.document_id
     LEFT JOIN users u ON u.id = s.added_by_user_id
@@ -424,6 +426,8 @@ export interface SourceDetail extends SourceListItem {
   partsTotal: number;
   partsRead: number;
   skipped: SkippedCounts;
+  /** (9b) Solo per le risposte di un referente, solo a Lateral Space: lo use case della richiesta, per «Apri lo use case». */
+  useCaseId: string | null;
 }
 
 export async function getContextSource(actor: ContextActor, sourceId: string): Promise<SourceDetail | null> {
@@ -444,6 +448,7 @@ export async function getContextSource(actor: ContextActor, sourceId: string): P
     partsTotal: Number(row.parts_total),
     partsRead: Number(row.parts_read),
     skipped: lateralSpace ? skipped : {},
+    useCaseId: lateralSpace && row.kind === "risposta" ? await answerSourceUseCaseId(actor.workspaceId, row.external_id) : null,
   };
 }
 
@@ -539,6 +544,8 @@ export async function setDocumentVisibility(actor: ContextActor, sourceId: strin
 /**
  * Gli appunti con più di 12 mesi (`created_at`): `body`, `body_hash` e `participants` a null, `text_purged_at`,
  * proposte aperte `superata`. Restano fatti e citazioni. Un appunto ancora da leggere non si potrà più leggere.
+ * (9b) Non le fonti delle risposte di un referente: non hanno testo salvato, e le chiude la conservazione del referente
+ * (12 mesi dalla chiusura della richiesta o dall'ultimo messaggio, `referentSourcesEraseStatements`).
  */
 export async function purgeExpiredNoteText(now: Date = new Date()): Promise<number> {
   if (!(await contextStoreReady())) return 0;
@@ -549,7 +556,7 @@ export async function purgeExpiredNoteText(now: Date = new Date()): Promise<numb
         read_status = CASE WHEN read_status IN ('da_leggere', 'in_lettura') THEN 'non_letto' ELSE read_status END,
         read_reason = CASE WHEN read_status IN ('da_leggere', 'in_lettura') THEN 'vuoto' ELSE read_reason END,
         read_started_at = NULL
-      WHERE kind <> 'documento' AND text_purged_at IS NULL
+      WHERE kind NOT IN ('documento', 'risposta') AND text_purged_at IS NULL
         AND created_at < ${now.toISOString()}::timestamptz - make_interval(months => ${CONTEXT_LIMITS.retentionMonths})
       RETURNING id, workspace_id
     ), closed AS (

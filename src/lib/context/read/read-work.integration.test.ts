@@ -219,6 +219,10 @@ test("con l'informativa ucq-2026-11-3 l'invio delle risposte crea la fonte: una 
   assert.deepEqual(events, [{ action: "fonte_aggiunta", channel: "rispondi", actor_user_id: null }]);
   // La fonte non si toglie: le risposte vivono nella scheda dello use case.
   assert.equal((await sources.removeContextSource(actor("ls"), state.sourceId)).ok, false);
+  // Il pannello della fonte porta allo use case della richiesta («Apri lo use case»), solo per Lateral Space.
+  const detail = await sources.getContextSource(actor("ls"), state.sourceId);
+  assert.equal(detail?.useCaseId, ids.useCase);
+  assert.equal(await sources.getContextSource(actor("rev"), state.sourceId), null, "il cliente non vede la fonte");
 });
 
 test("con l'informativa di prima (ucq-2026-11-2), o con risposte date prima di accettarla, la fonte non nasce", opts, async () => {
@@ -426,4 +430,23 @@ test("una call risponde a «Cosa serve»: il legame nasce «proposta»; alla con
   const shown = await needLinks.listNeedLinks(actor("rev"), ids.useCase);
   assert.deepEqual(Object.keys(shown), [need.pec]);
   assert.deepEqual([shown[need.pec].statement, shown[need.pec].from], ["Gli ordini dei fornitori arrivano per PEC.", "call"]);
+});
+
+test("la pulizia dei 12 mesi degli appunti non tocca le fonti delle risposte: le chiude la conservazione del referente", opts, async () => {
+  // Due fonti di due anni fa, mai cancellate: un appunto e le risposte di una richiesta (inventata).
+  const [note] = await q(
+    `INSERT INTO context_sources (workspace_id, kind, origin, title, occurred_on, body, body_chars, visibility, read_status, parts_total, parts_read, created_at)
+     VALUES ($1::uuid, 'appunti', 'web', 'Appunti vecchi', '2024-11-14', 'Testo di prova.', 15, 'ls', 'letto', 1, 1, now() - interval '2 years') RETURNING id::text AS id`,
+    [ids.ws],
+  );
+  const [answers] = await q(
+    `INSERT INTO context_sources (workspace_id, kind, origin, title, occurred_on, body, body_chars, external_id, visibility, read_status, parts_total, parts_read, created_at)
+     VALUES ($1::uuid, 'risposta', 'rispondi', 'Risposte del referente · XX-0099', '2024-11-14', NULL, 0, $2, 'ls', 'letto', 1, 1, now() - interval '2 years') RETURNING id::text AS id`,
+    [ids.ws, randomUUID()],
+  );
+  await sources.purgeExpiredNoteText(new Date());
+  const rows = await q(`SELECT id::text AS id, text_purged_at FROM context_sources WHERE id = ANY($1::uuid[])`, [[note.id, answers.id]]);
+  const purged = new Map(rows.map((r) => [String(r.id), r.text_purged_at !== null]));
+  assert.equal(purged.get(String(note.id)), true, "l'appunto di due anni fa perde il testo");
+  assert.equal(purged.get(String(answers.id)), false, "la fonte delle risposte resta: la chiude la conservazione del referente");
 });
