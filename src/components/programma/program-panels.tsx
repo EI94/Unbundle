@@ -779,11 +779,11 @@ function SettingsPanel({ view }: { view: ProgramView }) {
       {view.viewer.canEdit ? <FactsEditor view={view} /> : null}
       {view.ls ? (
         <>
-          <Section title="Costi di Lateral Space">
+          <Section title={H.panels.settingsLsCosts}>
             <LsCostsForm view={view} />
             <Source>{H.panels.settingsCaseDev}</Source>
           </Section>
-          <Section title="Pesi dell'indice">
+          <Section title={H.panels.settingsWeights}>
             <WeightsForm workspaceId={view.workspaceId} weights={view.ls.weights} />
           </Section>
         </>

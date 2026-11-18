@@ -254,7 +254,7 @@ test("`/programma` è un alias della Home: la stessa pagina, con i suoi `?apri=`
   const home = readFileSync(new URL("page.tsx", app), "utf8");
   const alias = readFileSync(new URL("programma/page.tsx", app), "utf8");
   for (const source of [home, alias]) {
-    assert.match(source, /return homePage\(\{ workspaceId, searchParams: await searchParams \}\);/);
+    assert.match(source, /const \{ session, access \} = await requireWorkspacePage\(workspaceId\);\s*return homePage\(\{ session, access, searchParams: await searchParams \}\);/, "il learner va ai suoi corsi");
     assert.match(source, /import \{ homePage \} from "@\/components\/home\/home-route";/);
   }
   // I quattordici pannelli di prima restano tutti, con il loro nome; `scenari` porta alla curva.
@@ -275,7 +275,6 @@ test("`/programma` è un alias della Home: la stessa pagina, con i suoi `?apri=`
 
 test("la Home sceglie per ruolo: i revisori il Programma, gli altri «I tuoi use case»; chi segue un corso resta nei corsi", () => {
   const route = readFileSync(new URL("./home-route.tsx", import.meta.url), "utf8");
-  assert.match(route, /const \{ session, access \} = await requireWorkspacePage\(workspaceId\);/, "il learner va ai suoi corsi");
   assert.match(route, /if \(data\.kind === "contributore"\) return <ContributorHome data=\{data\} \/>;/);
   const loader = readFileSync(new URL("../../lib/db/queries/use-case-home.ts", import.meta.url), "utf8");
   assert.match(loader, /return abilitiesForUseCase\(viewer\)\.isReviewer \? loadReviewerHome\(/);

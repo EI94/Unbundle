@@ -104,6 +104,9 @@ export const HOME_TEXT = Object.freeze({
     salTurn: "Il SAL lo chiude chi gestisce il workspace.",
     /** Nel pannello del SAL, senza prossimi passi per la leadership. */
     salNothing: "Niente da fare adesso.",
+    /** Nel pannello «Impostazioni del programma», solo Lateral Space. */
+    settingsLsCosts: "Costi di Lateral Space",
+    settingsWeights: "Pesi dell'indice",
     /** Nel pannello «Impostazioni del programma»: le altre impostazioni, dove stanno. */
     settingsCaseDev: "Lo sviluppo di un singolo use case si cambia nel pannello della sua iniziativa.",
   }),
@@ -188,7 +191,6 @@ export const HOME_TEXT = Object.freeze({
     areaCount: " use case",
     toSpread: (n: number) => `di cui ${formatInteger(n)} da diffondere`,
     companies: (parts: string) => `Per società: ${parts}`,
-    noneYet: "Ancora nessuno use case dai colleghi.",
     course: "Il tuo corso",
   }),
 });

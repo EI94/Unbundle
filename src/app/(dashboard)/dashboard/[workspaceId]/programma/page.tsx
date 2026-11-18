@@ -1,4 +1,5 @@
 import { homePage } from "@/components/home/home-route";
+import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { HOME_TEXT } from "@/lib/home/text";
 
 export const metadata = { title: HOME_TEXT.title };
@@ -16,5 +17,7 @@ export default async function ProgramAliasPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { workspaceId } = await params;
-  return homePage({ workspaceId, searchParams: await searchParams });
+  // Chi segue solo un corso va ai suoi corsi; chi non è nel workspace riceve «non trovata».
+  const { session, access } = await requireWorkspacePage(workspaceId);
+  return homePage({ session, access, searchParams: await searchParams });
 }
