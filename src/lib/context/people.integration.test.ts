@@ -5,8 +5,9 @@ import { randomBytes, randomUUID } from "node:crypto";
 // «Cerca una persona» sul database del pacchetto (rilascio 9b, RILASCIO-9b-COSTRUZIONE.md §2.13, §5.9): la stessa
 // espressione in Postgres e in JavaScript; la ricerca trova appunti (testo, titolo, «Con chi»), fatti anche della storia,
 // citazioni, proposte, impegni, domande, documenti, regole di Granola e memoria della chat; «Togli … da tutto» cambia solo
-// quel workspace, tiene i fatti, cancella «In breve» solo se lo citava, toglie l'indirizzo dalle regole di Granola; chi
-// non è di Lateral Space riceve `permesso_mancante`; nei log e nella storia mai il nome.
+// quel workspace, tiene i fatti, toglie il nome anche dalle proposte chiuse (con il loro stato), conta come la ricerca,
+// cancella «In breve» solo se lo citava, toglie l'indirizzo dalle regole di Granola; chi non è di Lateral Space riceve
+// `permesso_mancante`; nei log e nella storia mai il nome.
 //
 // - Con scripts/use-case-test/run-db-tests.mjs (HUB_TEST_ISOLATED=true, database hub_<id> su 127.0.0.1). Dati
 //   sintetici e inventati (persone «Prova …», «Rossi» come cognome di prova), creati e cancellati qui. Nessun modello.
@@ -64,7 +65,7 @@ const NAME_ANYWHERE = /rossi/i;
 /** Le righe di prova, per id. */
 const rows = {
   n1: randomUUID(), n2: randomUUID(), n3: randomUUID(), nB: randomUUID(),
-  p1: randomUUID(), p2: randomUUID(), p3: randomUUID(), p4: randomUUID(), p5: randomUUID(),
+  p1: randomUUID(), p2: randomUUID(), p3: randomUUID(), p4: randomUUID(), p5: randomUUID(), p6: randomUUID(),
   f0: randomUUID(), f1: randomUUID(), f2: randomUUID(), f3: randomUUID(), f4: randomUUID(), f5: randomUUID(), fB: randomUUID(),
   c1: randomUUID(), c2: randomUUID(), c3: randomUUID(),
   q1: randomUUID(), q2: randomUUID(),
@@ -90,15 +91,16 @@ async function seed() {
      VALUES ($1, $2, 'appunti', 'web', 'Call del cliente B', '2026-11-14', 'Rossi è il responsabile del cliente B.', 38, 'ls', 'letto', 1)`,
     [rows.nB, ids.wsB],
   );
-  // Le proposte aperte (e una già confermata, che resta com'è).
+  // Le proposte aperte, e due chiuse con il nome: una confermata e una scartata (di un appunto che si toglie).
   await q(
     `INSERT INTO context_proposals (id, workspace_id, source_id, position, kind, statement, quote, basis, section, visibility, party, role_label, status, decided_at)
-     VALUES ($1, $6, $7, 1, 'nuovo', 'Rossi approva gli ordini sopra soglia.', 'lo dice Rossi', 'detto', 'lavoro', 'ls', NULL, NULL, 'aperta', NULL),
-            ($2, $6, $7, 2, 'nuovo', 'Il magazzino è a Bologna.', NULL, 'detto', 'azienda', 'tutti', NULL, NULL, 'aperta', NULL),
-            ($3, $6, $8, 1, 'nuovo', 'Il gestionale è SAP Business One.', NULL, 'detto', 'sistemi', 'tutti', NULL, NULL, 'aperta', NULL),
-            ($4, $6, $8, 2, 'impegno', 'Mandare il listino.', NULL, 'detto', NULL, 'ls', 'cliente', 'Ufficio di Rossi', 'aperta', NULL),
-            ($5, $6, $8, 3, 'nuovo', 'Rossi firma i contratti.', NULL, 'detto', 'regole', 'ls', NULL, NULL, 'confermata', now())`,
-    [rows.p1, rows.p2, rows.p3, rows.p4, rows.p5, A, rows.n1, rows.n2],
+     VALUES ($1, $7, $8, 1, 'nuovo', 'Rossi approva gli ordini sopra soglia.', 'lo dice Rossi', 'detto', 'lavoro', 'ls', NULL, NULL, 'aperta', NULL),
+            ($2, $7, $8, 2, 'nuovo', 'Il magazzino è a Bologna.', NULL, 'detto', 'azienda', 'tutti', NULL, NULL, 'aperta', NULL),
+            ($3, $7, $9, 1, 'nuovo', 'Il gestionale è SAP Business One.', NULL, 'detto', 'sistemi', 'tutti', NULL, NULL, 'aperta', NULL),
+            ($4, $7, $9, 2, 'impegno', 'Mandare il listino.', NULL, 'detto', NULL, 'ls', 'cliente', 'Ufficio di Rossi', 'aperta', NULL),
+            ($5, $7, $9, 3, 'nuovo', 'Rossi firma i contratti.', NULL, 'detto', 'regole', 'ls', NULL, NULL, 'confermata', now() - interval '2 days'),
+            ($6, $7, $8, 3, 'impegno', 'Richiamare Rossi per il listino.', 'lo richiama Rossi', 'detto', NULL, 'ls', 'nostra', 'Segreteria di Rossi', 'scartata', now() - interval '3 days')`,
+    [rows.p1, rows.p2, rows.p3, rows.p4, rows.p5, rows.p6, A, rows.n1, rows.n2],
   );
   // I fatti: una storia (f0 → f1), uno con il nome solo nella citazione, «Rossini», uno ritirato, uno lungo; uno in B.
   const fact = (id: string, ws: string, statement: string, o: { status?: string; quote?: string | null; source?: string | null; supersedes?: string | null; visibility?: string } = {}) =>
@@ -291,8 +293,8 @@ test("la ricerca trova appunti (testo, titolo, «Con chi»), fatti anche della s
   assert.deepEqual(hits.facts.rows.map((r) => r.history), [false, false, true, true]);
   const f1 = hits.facts.rows.find((r) => r.id === rows.f1)!;
   assert.deepEqual(f1.snippet, { before: "", match: "Rossi", after: " gestisce il magazzino." }, "la frase intera, senza «…»");
-  // Citazioni dei fatti (f1, f2), proposte aperte (p1, p4: non la confermata), impegni (c1, c2), domande (q1).
-  assert.equal(hits.items.total, 2 + 2 + 2 + 1);
+  // Citazioni dei fatti (f1, f2), proposte di ogni stato (p1, p4 aperte; p5 confermata, p6 scartata), impegni (c1, c2), domande (q1).
+  assert.equal(hits.items.total, 2 + 4 + 2 + 1);
   // I documenti: il nome del file (d1, con il suo pannello) e il testo di uno di prima della 9a (d2, senza pannello).
   assert.equal(hits.documents.total, 2);
   assert.deepEqual(hits.documents.rows, [
@@ -316,10 +318,14 @@ test("con l'e-mail: il testo esatto, senza maiuscole", opts, async () => {
 test("«Togli … da tutto»: solo quel workspace; gli appunti senza testo, i fatti tenuti con «una persona», «In breve» cancellato, Granola senza l'indirizzo", opts, async (t) => {
   const otherBefore = await workspaceB();
   const factsBefore = await q(`SELECT id, status, version FROM context_facts WHERE workspace_id = $1 ORDER BY id`, [ids.wsA]);
+  const decidedBefore = await q(`SELECT id, decided_at::text AS decided_at FROM context_proposals WHERE id = ANY($1::uuid[]) ORDER BY id`, [[rows.p5, rows.p6]]);
   const logs = await consoleOf(t, async () => {
+    const found = okValue(await people.searchPerson(actor("ls"), NAME));
     const erased = okValue(await people.erasePerson(actor("ls"), NAME));
-    // 2 appunti; testi: 4 fatti + 2 citazioni + 2 proposte + 2 impegni + 1 domanda.
-    assert.deepEqual(erased, { notes: 2, texts: 11, rules: 1, chatMemory: 1 });
+    // 2 appunti; testi: 4 fatti + 2 citazioni + 4 proposte (2 aperte, 2 chiuse) + 2 impegni + 1 domanda.
+    assert.deepEqual(erased, { notes: 2, texts: 13, rules: 1, chatMemory: 1 });
+    // Gli stessi numeri della ricerca: i testi corretti sono i fatti più le citazioni, proposte, impegni e domande trovati.
+    assert.deepEqual([erased.notes, erased.texts, erased.rules, erased.chatMemory], [found.notes.total, found.facts.total + found.items.total, found.granola.total, found.chat.total]);
   });
   assert.doesNotMatch(logs, NAME_ANYWHERE, "nei log mai il nome");
 
@@ -338,14 +344,20 @@ test("«Togli … da tutto»: solo quel workspace; gli appunti senza testo, i fa
   assert.deepEqual((await q(`SELECT file_name FROM uploaded_documents WHERE workspace_id = $1 ORDER BY file_name`, [ids.wsA])).map((r) => r.file_name), ["listino.xlsx", "organigramma-rossi.pdf", "procedure.pdf"]);
   assert.equal((await q(`SELECT count(*)::int AS n FROM context_sources WHERE workspace_id = $1 AND kind = 'documento'`, [ids.wsA]))[0].n, 2);
 
-  // Le proposte: il nome diventa «una persona»; quelle degli appunti tolti «superate»; la confermata resta com'è.
+  // Le proposte: il nome diventa «una persona»; quelle aperte degli appunti tolti «superate»; le chiuse perdono il nome
+  // e tengono stato e data della decisione.
   const proposals = new Map((await q(`SELECT id, statement, quote, role_label, status, decided_at, version FROM context_proposals WHERE workspace_id = $1`, [ids.wsA])).map((r) => [r.id, r]));
   assert.deepEqual([proposals.get(rows.p1)!.statement, proposals.get(rows.p1)!.quote, proposals.get(rows.p1)!.status], ["una persona approva gli ordini sopra soglia.", null, "superata"]);
   assert.ok(proposals.get(rows.p1)!.decided_at);
   assert.deepEqual([proposals.get(rows.p2)!.statement, proposals.get(rows.p2)!.status], ["Il magazzino è a Bologna.", "superata"]);
   assert.deepEqual([proposals.get(rows.p3)!.status, proposals.get(rows.p3)!.version], ["aperta", 1], "una proposta senza il nome, di un appunto che resta, non cambia");
   assert.deepEqual([proposals.get(rows.p4)!.role_label, proposals.get(rows.p4)!.status, proposals.get(rows.p4)!.version], ["Ufficio di una persona", "aperta", 2]);
-  assert.deepEqual([proposals.get(rows.p5)!.statement, proposals.get(rows.p5)!.status, proposals.get(rows.p5)!.version], ["Rossi firma i contratti.", "confermata", 1]);
+  const p5 = proposals.get(rows.p5)!;
+  assert.deepEqual([p5.statement, p5.status, p5.version], ["una persona firma i contratti.", "confermata", 2], "la confermata perde il nome, resta confermata");
+  const p6 = proposals.get(rows.p6)!;
+  assert.deepEqual([p6.statement, p6.quote, p6.role_label, p6.status, p6.version], ["Richiamare una persona per il listino.", null, "Segreteria di una persona", "scartata", 2], "la scartata perde il nome, resta scartata (non «superata»)");
+  assert.deepEqual(await q(`SELECT id, decided_at::text AS decided_at FROM context_proposals WHERE id = ANY($1::uuid[]) ORDER BY id`, [[rows.p5, rows.p6]]), decidedBefore, "la data della decisione non cambia");
+  assert.equal((await q(`SELECT count(*)::int AS n FROM context_proposals WHERE workspace_id = $1 AND (statement ~* 'rossi' OR quote ~* 'rossi' OR role_label ~* 'rossi')`, [ids.wsA]))[0].n, 0, "nessuna proposta, di nessuno stato, tiene il nome");
 
   // I fatti restano tutti, con lo stesso stato: nella frase (anche nella storia) «una persona», la citazione con il nome nulla.
   const facts = await q(`SELECT id, statement, quote, status, version FROM context_facts WHERE workspace_id = $1 ORDER BY id`, [ids.wsA]);
@@ -383,7 +395,7 @@ test("«Togli … da tutto»: solo quel workspace; gli appunti senza testo, i fa
     actor_user_id: ids.ls,
     source_id: null,
     fact_id: null,
-    detail: { appunti: 2, fatti: 4, citazioni: 2, proposte: 2, impegni: 2, domande: 1, superate: 2, in_breve: 1, regole: 1, chat: 1 },
+    detail: { appunti: 2, fatti: 4, citazioni: 2, proposte: 4, impegni: 2, domande: 1, superate: 2, in_breve: 1, regole: 1, chat: 1 },
   });
   assert.ok(Object.values(events[0].detail as Record<string, unknown>).every((v) => typeof v === "number"));
   assert.doesNotMatch(JSON.stringify(events), NAME_ANYWHERE);

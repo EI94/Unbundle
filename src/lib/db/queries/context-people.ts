@@ -5,15 +5,16 @@ import "server-only";
  * cancellare i suoi dati. Solo Lateral Space (`canEditMemory`); nessun modello.
  *
  * - **La ricerca** guarda gli appunti (testo, titolo, «Con chi»), i fatti (anche le versioni della storia), le
- *   citazioni, le proposte aperte, gli impegni e le domande, i documenti (nome del file, titolo, «Con chi», testo e
- *   riassunto, anche quelli di prima della 9a senza fonte), gli indirizzi delle regole di Granola e la memoria della
- *   chat (`conversation_memory`, l'indice dei messaggi). Agli appunti e ai fatti il pezzo di testo con il nome.
+ *   citazioni, le proposte (aperte e chiuse), gli impegni e le domande, i documenti (nome del file, titolo, «Con chi»,
+ *   testo e riassunto, anche quelli di prima della 9a senza fonte), gli indirizzi delle regole di Granola e la memoria
+ *   della chat (`conversation_memory`, l'indice dei messaggi). Agli appunti e ai fatti il pezzo di testo con il nome.
  * - **«Togli … da tutto»** fa in una transazione, solo nel workspace, la lista del §2.13: gli appunti trovati perdono
  *   testo e «Con chi», prendono un titolo generico e `text_purged_at`, e le loro proposte aperte diventano «superate»;
- *   nei fatti (anche nella storia), nelle proposte aperte, negli impegni e nelle domande il nome diventa «una persona» e
- *   le citazioni che lo contengono diventano nulle; «In breve» che lo contiene si cancella (lo riscrive la notte); le
- *   regole di Granola perdono l'indirizzo; le righe della memoria della chat che lo citano si cancellano. I documenti
- *   restano: si tolgono uno per uno dal loro pannello. Un evento `persona_tolta`, con i soli numeri.
+ *   nei fatti (anche nella storia), nelle proposte di ogni stato (di quelle chiuse solo i testi: stato e `decided_at`
+ *   restano), negli impegni e nelle domande il nome diventa «una persona» e le citazioni che lo contengono diventano
+ *   nulle; «In breve» che lo contiene si cancella (lo riscrive la notte); le regole di Granola perdono l'indirizzo; le
+ *   righe della memoria della chat che lo citano si cancellano. I documenti restano: si tolgono uno per uno dal loro
+ *   pannello. Un evento `persona_tolta`, con i soli numeri.
  * - Prima di scrivere, la stessa transazione prende in ordine gli appunti, le proposte e i fatti che cambiano (come la
  *   lettura e la conferma): una lettura o una conferma in corso finisce prima, e la scrittura vede le sue righe; una
  *   che arriva dopo trova le righe cambiate (`versione_superata`, o la presa della lettura persa).
@@ -67,7 +68,7 @@ export interface PersonHits {
   isEmail: boolean;
   notes: { total: number; rows: PersonNoteHit[] };
   facts: { total: number; rows: PersonFactHit[] };
-  /** Citazioni dei fatti, proposte aperte, impegni e domande. */
+  /** Citazioni dei fatti, proposte di ogni stato, impegni e domande. */
   items: { total: number };
   documents: { total: number; rows: PersonDocumentHit[] };
   granola: { total: number };
@@ -92,6 +93,11 @@ function patternOf(raw: string): { ok: true; term: string; isEmail: boolean; pat
 function noteMatches(alias: "s" | "n", ws: string, p: string): SQL {
   const a = sql.raw(alias);
   return sql`${a}.workspace_id = ${ws}::uuid AND ${a}.kind IN ('appunti', 'trascrizione') AND (${a}.body ~ ${p} OR ${a}.title ~ ${p} OR ${a}.participants ~ ${p})`;
+}
+
+/** Una proposta (alias `x`), di qualunque stato, con il nome nella frase, nella citazione o nel ruolo. */
+function proposalNames(p: string): SQL {
+  return sql`(x.statement ~ ${p} OR x.quote ~ ${p} OR x.role_label ~ ${p})`;
 }
 
 /**
@@ -171,7 +177,7 @@ export async function searchPerson(actor: ContextActor, raw: string): Promise<Se
       db.execute(sql`
         SELECT (
           (SELECT count(*) FROM context_facts f WHERE f.workspace_id = ${ws}::uuid AND f.quote ~ ${p})
-          + (SELECT count(*) FROM context_proposals x WHERE x.workspace_id = ${ws}::uuid AND x.status = 'aperta' AND (x.statement ~ ${p} OR x.quote ~ ${p} OR x.role_label ~ ${p}))
+          + (SELECT count(*) FROM context_proposals x WHERE x.workspace_id = ${ws}::uuid AND ${proposalNames(p)})
           + (SELECT count(*) FROM context_commitments c WHERE c.workspace_id = ${ws}::uuid AND (c.statement ~ ${p} OR c.quote ~ ${p} OR c.role_label ~ ${p}))
           + (SELECT count(*) FROM context_questions q WHERE q.workspace_id = ${ws}::uuid AND (q.question ~ ${p} OR q.quote ~ ${p} OR q.ask_whom ~ ${p}))
         )::int AS total`),
@@ -243,10 +249,11 @@ export async function erasePerson(actor: ContextActor, raw: string): Promise<Ser
       db.execute(sql`SELECT s.id FROM context_sources s WHERE ${noteMatches("s", ws, p)} ORDER BY s.id FOR UPDATE OF s`),
       db.execute(sql`
         SELECT x.id FROM context_proposals x
-        WHERE x.workspace_id = ${ws}::uuid AND x.status = 'aperta'
-          AND (x.statement ~ ${p} OR x.quote ~ ${p} OR x.role_label ~ ${p}
-            OR x.source_id IN (SELECT n.id FROM context_sources n WHERE ${noteMatches("n", ws, p)})
-            OR x.target_fact_id IN (SELECT f.id FROM context_facts f WHERE ${factMatches}))
+        WHERE x.workspace_id = ${ws}::uuid
+          AND (${proposalNames(p)}
+            OR (x.status = 'aperta'
+              AND (x.source_id IN (SELECT n.id FROM context_sources n WHERE ${noteMatches("n", ws, p)})
+                OR x.target_fact_id IN (SELECT f.id FROM context_facts f WHERE ${factMatches}))))
         ORDER BY x.id
         FOR UPDATE OF x`),
       db.execute(sql`SELECT f.id FROM context_facts f WHERE ${factMatches} ORDER BY f.id FOR UPDATE OF f`),
@@ -280,8 +287,19 @@ export async function erasePerson(actor: ContextActor, raw: string): Promise<Ser
             decided_at = CASE WHEN x.source_id IN (SELECT id FROM notes) THEN now() ELSE x.decided_at END,
             version = x.version + 1, updated_at = now()
           WHERE x.workspace_id = ${ws}::uuid AND x.status = 'aperta'
-            AND (x.statement ~ ${p} OR x.quote ~ ${p} OR x.role_label ~ ${p} OR x.source_id IN (SELECT id FROM notes) OR x.target_fact_id IN (SELECT id FROM facts))
+            AND (${proposalNames(p)} OR x.source_id IN (SELECT id FROM notes) OR x.target_fact_id IN (SELECT id FROM facts))
           RETURNING x.status
+        ), decided AS (
+          -- Le proposte chiuse (confermate, scartate, superate) tengono il testo letto: anche lì il nome diventa «una
+          -- persona» e la citazione che lo contiene nulla. Stato e decided_at restano. Un insieme distinto da quello
+          -- sopra (lo stato si legge sulla stessa istantanea): nessuna riga cambia due volte. Come ogni scrittura in un
+          -- WITH, gira anche se nessuno la legge; il numero lo dà counts, sull'istantanea.
+          UPDATE context_proposals x
+          SET statement = ${replacedSql(sql`x.statement`, p, MAX.proposal)},
+            quote = CASE WHEN x.quote ~ ${p} THEN NULL ELSE x.quote END,
+            role_label = ${replacedSql(sql`x.role_label`, p, MAX.role)},
+            version = x.version + 1, updated_at = now()
+          WHERE x.workspace_id = ${ws}::uuid AND x.status <> 'aperta' AND ${proposalNames(p)}
         ), commitments AS (
           UPDATE context_commitments c
           SET statement = ${replacedSql(sql`c.statement`, p, MAX.statement)},
@@ -316,7 +334,7 @@ export async function erasePerson(actor: ContextActor, raw: string): Promise<Ser
             (SELECT count(*) FROM notes)::int AS notes,
             (SELECT count(*) FROM context_facts f WHERE f.workspace_id = ${ws}::uuid AND f.statement ~ ${p})::int AS facts,
             (SELECT count(*) FROM context_facts f WHERE f.workspace_id = ${ws}::uuid AND f.quote ~ ${p})::int AS quotes,
-            (SELECT count(*) FROM context_proposals x WHERE x.workspace_id = ${ws}::uuid AND x.status = 'aperta' AND (x.statement ~ ${p} OR x.quote ~ ${p} OR x.role_label ~ ${p}))::int AS proposals,
+            (SELECT count(*) FROM context_proposals x WHERE x.workspace_id = ${ws}::uuid AND ${proposalNames(p)})::int AS proposals,
             (SELECT count(*) FROM commitments)::int AS commitments,
             (SELECT count(*) FROM questions)::int AS questions,
             (SELECT count(*) FROM proposals WHERE status = 'superata')::int AS superseded,
