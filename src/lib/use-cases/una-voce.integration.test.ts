@@ -140,8 +140,8 @@ async function open(
  */
 async function settled(element: unknown): Promise<unknown> {
   const node = element as { type?: unknown; props?: { children?: { type: (props: unknown) => unknown; props: unknown } } } | null;
-  if (node?.type !== suspense || !node.props?.children) return element;
-  return node.props.children.type(node.props.children.props);
+  const child = node && node.type === suspense ? node.props?.children : undefined;
+  return child ? child.type(child.props) : element;
 }
 
 async function html(page: Page, person: Person | null, params: Record<string, string>, searchParams: Record<string, string> = {}): Promise<string> {

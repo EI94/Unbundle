@@ -315,7 +315,7 @@ test("le righe: lo zero non si dice, ma «Obiettivi» c'è per ogni revisore, an
   ]);
   // Un revisore del cliente che non gestisce il workspace (function_lead, analyst) non cambia il Programma, ma gli
   // obiettivi li scrive (`/strategy`): senza la riga non avrebbe più una strada per arrivarci.
-  const reader = homeRows(demoView((v) => ({ objectives: [], kpis: [], viewer: { isLateralSpace: false, canEdit: false } })), counts);
+  const reader = homeRows(demoView(() => ({ objectives: [], kpis: [], viewer: { isLateralSpace: false, canEdit: false } })), counts);
   assert.deepEqual(reader.find((row) => row.key === "obiettivi"), { key: "obiettivi", title: "Obiettivi", fact: "Scrivi gli obiettivi", panel: "obiettivi" });
   assert.equal(HOME_TEXT.facts.writeGoals, HOME_TEXT.start.rows.obiettivi, "le parole di «Per partire»");
   // In un workspace nuovo «Per partire» ha già «Scrivi gli obiettivi»: da fare, la Home non la ripete; fatta, la riga
@@ -329,7 +329,7 @@ test("le righe: lo zero non si dice, ma «Obiettivi» c'è per ogni revisore, an
   const oneKpi = demoView(() => ({ objectives: [], kpis: [{ id: "kpi-1" } as ProgramView["kpis"][number]] }));
   assert.equal(homeRows(oneKpi, counts, open).find((row) => row.key === "obiettivi")?.fact, "1 KPI");
   // Anche dalla Home intera: un revisore che non cambia il Programma, in un workspace che lavora, ha la riga.
-  const home = reviewerHome(reviewerInput({ items: [hub()], program: demoView((v) => ({ objectives: [], kpis: [], viewer: { isLateralSpace: false, canEdit: false } })) }));
+  const home = reviewerHome(reviewerInput({ items: [hub()], program: demoView(() => ({ objectives: [], kpis: [], viewer: { isLateralSpace: false, canEdit: false } })) }));
   assert.ok(home.rows.some((row) => row.key === "obiettivi" && row.fact === "Scrivi gli obiettivi"));
   assert.deepEqual(keyResultsProgress([]), { total: 0, averagePct: null });
   assert.equal(HOME_TEXT.facts.keyResults(1, 42.4), "1 risultato chiave · al 42 %");
