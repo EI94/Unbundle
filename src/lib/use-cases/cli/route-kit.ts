@@ -26,10 +26,13 @@ import {
 } from "@/lib/connector/http-hygiene";
 import { consumeRateLimits, rateLimitBucket, type RateLimitRule } from "@/lib/connector/rate-limit";
 import { ensureDbSchema } from "@/lib/db/ensure-schema";
+import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { authenticateCli, cliStoreReady, type CliPrincipal } from "@/lib/db/queries/use-case-cli-auth";
 import { markIntegrationTokenExposed } from "@/lib/db/queries/workspace-integrations";
 import { getAppUcExecutor, type UcExecutor } from "@/lib/db/uc-executor";
 import { logSafeError } from "@/lib/log/safe-error";
+import { isEmailVerifiedValue, isLateralSpaceEmail } from "@/lib/uc/lateral-space";
+import { cast, toStatement, ucSql } from "@/lib/uc/sql/statement";
 import { getCollaboratorAccess, type WorkspaceAccess } from "@/lib/workspace-access";
 import { CLI_DEVICE_CODE_PREFIX, CLI_TOKEN_PREFIX, hashSecret } from "./codes";
 
@@ -146,4 +149,34 @@ export async function openCli(
     if (!limited.ok) return { ok: false, response: cliError(429, "troppe_richieste", "Troppe richieste: riprova tra poco.", { "Retry-After": String(limited.retryAfterSeconds) }) };
   }
   return { ok: true, value: { principal, access, executor } };
+}
+
+/**
+ * (9b) La persona del token è di Lateral Space? Dall'e-mail **verificata**, riletta adesso, nei domini di
+ * `UC_LS_EMAIL_DOMAINS` (`isLateralSpaceEmail`), come nelle pagine: `OpenedCli.access` dice il ruolo nel workspace, non
+ * questo. Falso se la persona non c'è più o se i domini non sono configurati.
+ */
+export async function isCliLateralSpace(opened: OpenedCli, lsDomains: readonly string[] = ucLsDomains()): Promise<boolean> {
+  const [rows] = await opened.executor.batch([
+    toStatement(ucSql`SELECT email, email_verified IS NOT NULL AS email_verified FROM users WHERE id = ${cast(opened.principal.userId, "uuid")}`),
+  ]);
+  const row = rows[0];
+  if (!row) return false;
+  return isLateralSpaceEmail({ email: typeof row.email === "string" ? row.email : null, emailVerified: isEmailVerifiedValue(row.email_verified) }, lsDomains);
+}
+
+/**
+ * (9b) L'indirizzo pubblico dell'app per i link nelle risposte (`NEXT_PUBLIC_APP_URL`, https o locale), altrimenti quello
+ * della richiesta: come il link di conferma del login.
+ */
+export function cliPublicOrigin(request: Request, configured: string | undefined = process.env.NEXT_PUBLIC_APP_URL): string {
+  if (configured) {
+    try {
+      const url = new URL(configured);
+      if (url.protocol === "https:" || /^(localhost|127\.0\.0\.1)$/.test(url.hostname)) return url.origin;
+    } catch {
+      // Un valore non valido non cambia niente: si usa l'indirizzo della richiesta.
+    }
+  }
+  return new URL(request.url).origin;
 }
