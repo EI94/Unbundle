@@ -43,13 +43,13 @@ const NOT_FOR_CONTRIBUTOR = ["{code:r05}", "{code:r06}", "{code:r09}", "{code:r1
 
 /**
  * The Panoramica of the reviewers: «Approvati» in the strip «Fasi degli use case», the big numbers,
- * «Prossimo passo» (proposals wait for a decision), the three lanes, «In realizzazione» and «Realizzati».
+ * «Prossimo passo» (proposals wait for a decision), the three lanes, «In realizzazione» and «In uso» (release 10, §4).
  */
-const OVERVIEW_REVIEWER = ["Panoramica", "Approvati", "valore contato all'anno", "costo di avvio", "Prossimo passo", "Questo trimestre", "In realizzazione", "Realizzati"];
+const OVERVIEW_REVIEWER = ["Panoramica", "Approvati", "valore all'anno", "costo di realizzazione", "Prossimo passo", "Questo trimestre", "In realizzazione", "In uso"];
 /** The contributor's Panoramica: the strip with «Approvati» and the same lanes, with title and phase only. */
 const OVERVIEW_CONTRIBUTOR = ["Approvati", "In valutazione"];
 /** Never on the contributor's Panoramica: figures, the box, the needs, the agent filter. */
-const NOT_ON_CONTRIBUTOR_OVERVIEW = [...NOT_FOR_CONTRIBUTOR, "€", "costo di avvio", "Prossimo passo", "Cosa serve", "Agente"];
+const NOT_ON_CONTRIBUTOR_OVERVIEW = [...NOT_FOR_CONTRIBUTOR, "€", "costo di realizzazione", "Prossimo passo", "Cosa serve", "Agente"];
 /**
  * The headers of the closed lists by zone under «Matrice Valore × Costo», as body.innerText has
  * them: the zone name and «N use case» kept whole by non-breaking spaces, the «·» after the name
@@ -149,7 +149,7 @@ const routes = [
     name: "cosa-serve",
     path: "/dashboard/{ws:a}/use-cases?vista=cosa-serve",
     as: REVIEWERS,
-    present: FULL_SEED ? ["aperti", "Vai alla Panoramica"] : ["Niente da chiedere per ora", "Vai alla Panoramica"],
+    present: FULL_SEED ? ["aperte", "Vai alla Panoramica"] : ["Niente da chiedere per ora", "Vai alla Panoramica"],
     absent: ["Cosa serve per far avanzare", "Requisiti", "Cosa vi chiediamo questo trimestre", "Il ritorno da confermare"],
   },
   // Not for contributors: the page falls back to the Panoramica.
@@ -226,7 +226,7 @@ if (emptyWorkspace) {
   const base = `/dashboard/${emptyWorkspace}/use-cases`;
   // The roles of «a» (the route's workspace for the role checks); the copy guard as on every area page.
   routes.push(
-    { name: "vuoto", path: base, workspace: "a", copyGuard: "area", as: [...REVIEWERS], present: ["Nessuno use case, per ora", "Aggiungine uno o proponili da Activity mapping."] },
+    { name: "vuoto", path: base, workspace: "a", copyGuard: "area", as: [...REVIEWERS], present: ["Nessuno use case, per ora", "Aggiungine uno o proponili dai processi."] },
     { name: "vuoto", path: base, workspace: "a", copyGuard: "area", as: CONTRIBUTOR, present: ["Nessuno use case, per ora", "Proponi il primo use case."] },
   );
 }

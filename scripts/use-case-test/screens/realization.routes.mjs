@@ -29,9 +29,9 @@ const routes = [
     name: "realizzazione-avviata",
     path: card("r12", "?capitolo=realizzazione"),
     as: REVIEWERS,
-    present: ["Dossier", "Costo di realizzazione", "Beneficio all'anno", "Pareggio"],
+    present: ["Realizzazione", "Costo di realizzazione", "Valore all'anno", "Pareggio"],
   },
-  { name: "realizzazione-avviata", path: card("r12"), as: CONTRIBUTOR, absent: ["Costo di realizzazione", "Apri il dossier", "Realizzazione"] },
+  { name: "realizzazione-avviata", path: card("r12"), as: CONTRIBUTOR, absent: ["Costo di realizzazione", "Apri la realizzazione", "Realizzazione"] },
   { name: "panoramica-in-realizzazione", path: "/dashboard/{ws:a}/use-cases?vista=panoramica", as: REVIEWERS, present: ["In realizzazione", "{code:r12}"] },
   { name: "panoramica-in-realizzazione", path: "/dashboard/{ws:a}/use-cases?vista=panoramica", as: CONTRIBUTOR, absent: ["indispensabili", "Tocca a te", "Prossima tappa"] },
   // «Avvia la realizzazione» (Lateral Space only): the form starts from the use case.

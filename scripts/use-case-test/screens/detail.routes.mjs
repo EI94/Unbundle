@@ -22,14 +22,14 @@ const CONTRIBUTOR = ["osservatore"];
 const card = (key, query = "") => `/dashboard/{ws:a}/use-cases/{uc:${key}}${query}`;
 
 const routes = [
-  // Reviewers (release 3): the path, «Prossimo passo», «Impatto», «Come cambia il lavoro» and the closed
+  // Reviewers (release 3): the path, «Prossimo passo», «Valore» (release 10: once «Impatto»), «Come cambia il lavoro» and the closed
   // folds; no chapter bar, no «Cos'è» and no «Decisione» chapter. The contributor: title and phase, no
   // code of someone else. H4p: il titolo una volta sola (nessun campo «Titolo» chiuso).
   {
     name: "scheda-da-valutare",
     path: card("r01"),
     as: REVIEWERS,
-    present: ["{code:r01}", "Prossimo passo", "Impatto", "Come cambia il lavoro", "Valutazione del team", "Dettagli", "Storia"],
+    present: ["{code:r01}", "Prossimo passo", "Valore", "Come cambia il lavoro", "Valutazione del team", "Dettagli", "Storia"],
     absent: ["Cos'è", "Cosa è", "Aggiungi dettagli", "Capitoli", "Decisione", "Da scrivere", "Vuoto."],
   },
   // The empty fields of «Dettagli» behind one «Aggiungi altri campi» (H7: non si confonde con «Dettagli»), in its fold.
@@ -44,9 +44,9 @@ const routes = [
   },
   // H7: the public note is optional next to «Approva»; no empty «Stime non ufficiali» box.
   { name: "scheda-nota-facoltativa", path: card("r06"), as: REVIEWERS, present: ["Nota pubblica (facoltativa)", "Approva"], absent: ["Stime non ufficiali"] },
-  // The risk chips in «Impatto», on the default view; one estimates box, in plain words (H4p), in the
+  // The risk chips in «Valore», on the default view; one estimates box, in plain words (H4p), in the
   // «Valutazione del team» fold.
-  { name: "scheda-connettore", path: card("r03"), as: REVIEWERS, present: ["Impatto", "Dati personali"], absent: ["semaforo", "da sforzo", "Stima di Claude"] },
+  { name: "scheda-connettore", path: card("r03"), as: REVIEWERS, present: ["Valore", "Dati personali"], absent: ["semaforo", "da sforzo", "Stima di Claude"] },
   {
     name: "scheda-connettore-valutazione",
     path: card("r03", "?capitolo=valutazione"),
@@ -65,7 +65,7 @@ const routes = [
   { name: "scheda-approvata", path: card("r09"), as: CONTRIBUTOR, absent: ["{code:r09}", "Realizzazione"] },
   { name: "scheda-capitolo", path: card("r09", "?capitolo=realizzazione"), as: ["ls-lead"], present: ["Avvia la realizzazione"] },
   { name: "scheda-capitolo", path: card("r09", "?capitolo=realizzazione"), as: ["function-lead", "sponsor-cliente"], present: ["La realizzazione la avvia Lateral Space."], absent: ["Avvia la realizzazione"] },
-  { name: "scheda-dossier", path: card("r12"), as: REVIEWERS, present: ["Dossier"] },
+  { name: "scheda-dossier", path: card("r12"), as: REVIEWERS, present: ["Realizzazione"], absent: ["Dossier"] },
   { name: "scheda-diffusa", path: card("r16"), as: REVIEWERS },
   { name: "scheda-chiusa", path: card("r17", "?capitolo=storia"), as: REVIEWERS, present: ["Riapri"] },
   { name: "scheda-nascosta", path: card("nascosta"), as: REVIEWERS, present: ["Questa scheda è nascosta alla ricerca: tramite Claude chi conosce il codice vede solo la fase."] },
