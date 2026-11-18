@@ -89,21 +89,32 @@ test("a save in progress: the dialog says to wait and closing it changes nothing
   assert.equal(guard.blocksUnload(), true);
 });
 
-test("a caller that repeats its own step («Esci»): after the confirmation the next step passes once; new edits ask again", () => {
+test("«Esci» with unsaved edits: one confirmation discards and signs out, also with the boundary's hidden edits", () => {
   const { clock, guard } = setup();
+  const discarded: string[] = [];
   // The session boundary of a page whose access must be checked again: hidden edits, nothing to discard.
-  const boundary = {};
-  guard.register(boundary, { dirty: true });
-  assert.equal(guard.request("discard", guard.passNext), false);
-  guard.confirm();
-  clock.now += LEARNING_LEAVE_GRACE_MS;
-  assert.equal(guard.request("discard", guard.passNext), true, "the repeated step passes, without a loop of questions");
-  assert.equal(guard.request("discard", guard.passNext), false, "only once");
-
-  guard.confirm();
-  clock.now += LEARNING_LEAVE_GRACE_MS;
   guard.register({}, { dirty: true });
-  assert.equal(guard.request("leave"), false, "edits made after the confirmation are protected again");
+  guard.register({}, { dirty: true, onDiscard: () => discarded.push("form") });
+  // As the sidebar: «Esci» asks with itself as the step, and signs out only when the request passes.
+  let signedOut = 0;
+  const logout = () => {
+    if (!guard.request("continue", logout)) return;
+    signedOut += 1;
+  };
+  logout();
+  assert.equal(guard.current()?.kind, "continue");
+  assert.equal(signedOut, 0, "nothing happens before the answer");
+  guard.confirm();
+  assert.deepEqual(discarded, ["form"]);
+  assert.equal(signedOut, 1, "the confirmation discards and signs out: one click, as with the browser box before");
+  assert.equal(guard.current(), null, "no second question, though the boundary still looks dirty");
+
+  // Later, the edits still there: «Esci» asks again, and «Resta» keeps the person signed in.
+  clock.now += LEARNING_LEAVE_GRACE_MS;
+  logout();
+  assert.equal(guard.current()?.kind, "continue");
+  guard.dismiss();
+  assert.equal(signedOut, 1);
 });
 
 test("the last form leaving closes a dialog left open and ends the grace period", () => {

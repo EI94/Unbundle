@@ -176,9 +176,9 @@ test("Learning: a guarded link, «Aggiorna» or another section ask in the app's
   assert.match(guard, /if \(!learningLeave\.request\("leave", \(\) => follow\(target, url\.href\)\)\) \{\s*event\.preventDefault\(\);\s*event\.stopPropagation\(\);/);
   assert.match(guard, /window\.setTimeout\(\(\) => \{\s*if \(anchor\.isConnected\) anchor\.click\(\);\s*else window\.location\.assign\(href\);/, "the same link again, after the dialog closed");
   assert.match(guard, /window\.addEventListener\("beforeunload", beforeUnload\);/, "closing the tab still asks the browser");
-  // «Esci» in the sidebar calls without a step of its own: after the confirmation its second click passes.
-  assert.match(guard, /learningLeave\.request\(proceed \? "continue" : "discard", proceed \?\? learningLeave\.passNext\)/);
-  assert.match(read("src/components/dashboard/app-sidebar.tsx"), /if \(!confirmLearningNavigation\(/);
+  // Every step goes on after the confirmation, «Esci» in the sidebar too: discarding signs out, with one click.
+  assert.match(guard, /export function confirmLearningNavigation\(proceed: \(\) => void\): boolean \{\s*return learningLeave\.request\("continue", proceed\);/);
+  assert.match(read("src/components/dashboard/app-sidebar.tsx"), /if \(!confirmLearningNavigation\(\(\) => void handleLogout\(\)\)\) return;/);
   // One dialog, outside the subtree that Activity hides, so it answers every form.
   const boundary = read("src/components/learning/session-boundary.tsx");
   assert.ok(boundary.indexOf("<LearningLeaveDialog />") > boundary.indexOf("</Activity>"));

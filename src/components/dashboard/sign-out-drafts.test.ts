@@ -15,7 +15,9 @@ test("«Esci»: la sessione si chiude con endAppSession, dopo la conferma dell'u
   const handler = sidebar.slice(sidebar.indexOf("const handleLogout = async () => {"), sidebar.indexOf("};", sidebar.indexOf("const handleLogout = async () => {")));
   const end = handler.indexOf("await endAppSession();");
   assert.ok(end > 0, "la sessione si chiude con endAppSession");
-  assert.ok(handler.indexOf("confirmLearningNavigation()") < end, "chi annulla l'uscita non perde la bozza");
+  // (Rilascio 10) Con modifiche della Formazione non salvate, la conferma scarta ed esce: «Esci» è il passo stesso.
+  const ask = handler.indexOf("if (!confirmLearningNavigation(() => void handleLogout())) return;");
+  assert.ok(ask >= 0 && ask < end, "chi annulla l'uscita non perde la bozza");
   assert.ok(end < handler.indexOf("await signOut(firebaseAuth)"), "Firebase dopo la sessione dell'app");
   assert.doesNotMatch(handler, /\/api\/auth\/session/, "nessun DELETE da solo");
 });

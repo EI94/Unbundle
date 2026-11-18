@@ -84,7 +84,8 @@ export function AppSidebar({ nav, workspaceId, workspaceName, user, bell }: AppS
   const basePath = navBase(workspaceId);
 
   const handleLogout = async () => {
-    if (!confirmLearningNavigation()) return;
+    // Con modifiche della Formazione non salvate si chiede prima; chi conferma le scarta ed esce, con un clic solo.
+    if (!confirmLearningNavigation(() => void handleLogout())) return;
     // La fine della sessione, la stessa di «Cambia account»: le board dell'activity mapping aperte mandano quello che
     // resta e le loro bozze lasciano il dispositivo, poi la sessione finisce.
     await endAppSession();
