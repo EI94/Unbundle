@@ -115,7 +115,7 @@ test("impara: gli esiti di §2.5 e quello che resta nel registro (solo esito e i
 });
 
 const SOURCES: AskSource[] = [
-  { n: 1, kind: "fatto", label: "Call 14 nov", date: "2026-11-15", excerpt: "Il gestionale esporta le fatture solo in CSV, ogni notte." },
+  { n: 1, kind: "fatto", label: "Call 14 nov", date: "2026-11-15", excerpt: "Il gestionale esporta le fatture solo in CSV, ogni notte.", fact: { source: "call", on: "2026-11-14" } },
   { n: 2, kind: "documento", label: "Procedura di Rossi.pdf", date: "2026-11-10", excerpt: "Le fatture le controlla Mario Rossi ogni mattina." },
   { n: 3, kind: "discovery", label: "Discovery", date: null, excerpt: "Organico: 42 persone" },
 ];
@@ -129,7 +129,7 @@ test("contesto: «Risposta:», il testo, «Fonti:» con una riga per fonte; i no
       "Risposta:",
       "Le esporta una persona in CSV [1] [2].",
       "Fonti:",
-      "[1] Fatto · Call 14 nov · Il gestionale esporta le fatture solo in CSV, ogni notte.",
+      "[1] Fatto · call del 14/11/2026 · Il gestionale esporta le fatture solo in CSV, ogni notte.",
       "[2] Documento · Procedura di una persona.pdf del 10/11/2026 · Le fatture le controlla una persona ogni mattina.",
     ].join("\n"),
   );
@@ -137,6 +137,17 @@ test("contesto: «Risposta:», il testo, «Fonti:» con una riga per fonte; i no
   assert.equal(r.dati.stato, "risposta");
   assert.equal(r.dati.risposta, "Le esporta una persona in CSV [1] [2].");
   assert.doesNotMatch(JSON.stringify(r), /Rossi|Mario/);
+});
+
+test("contesto: un fatto con la frase degli agenti, come in CONTESTO.md: il giorno della fonte con l'anno, il referente, la costruzione, a mano", () => {
+  const line = (fact: AskSource["fact"]) => askResponse({ status: "solo_ricerca", sources: [{ n: 1, kind: "fatto", label: "Call 14 nov", date: "2026-11-18", excerpt: "Il gestionale è SAP Business One.", fact }] }, hide).testo.split("\n")[1];
+  assert.equal(line({ source: "call", on: "2026-11-14" }), "[1] Fatto · call del 14/11/2026 · Il gestionale è SAP Business One.");
+  assert.equal(line({ source: "documento", on: "2026-11-10" }), "[1] Fatto · documento del 10/11/2026 · Il gestionale è SAP Business One.");
+  assert.equal(line({ source: "referente", on: "2026-11-12" }), "[1] Fatto · risposta del referente del 12/11/2026 · Il gestionale è SAP Business One.");
+  assert.equal(line({ source: "costruzione", on: "2026-11-18" }), "[1] Fatto · imparato costruendo il 18/11/2026 · Il gestionale è SAP Business One.");
+  assert.equal(line({ source: "manuale", on: "" }), "[1] Fatto · scritto a mano · Il gestionale è SAP Business One.");
+  assert.equal(line({ source: "senza_fonte", on: "" }), "[1] Fatto · senza fonte · Il gestionale è SAP Business One.");
+  assert.equal(line(undefined), "[1] Fatto · Call 14 nov · Il gestionale è SAP Business One.", "un brano senza la fonte del fatto: l'etichetta");
 });
 
 test("contesto: «Non lo sappiamo ancora.»; senza l'ok la frase dell'ok e i brani; niente trovato", () => {

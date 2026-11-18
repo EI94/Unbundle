@@ -13,7 +13,7 @@ import { CONTEXT_ASK_TIMEOUT_MS, ClaudeRefusalError, logClaudeTimeout, stoppedBy
 import { consumeRateLimits, rateLimitBucket } from "@/lib/connector/rate-limit";
 import { generateContextAsk } from "@/lib/context/ask/generate";
 import { buildAskPrompt, cleanAskAnswer } from "@/lib/context/ask/prompt";
-import { dayLabel, factSourceLabel } from "@/lib/context/labels";
+import { dayLabel, factSourceLabel, type SourceLabelKind } from "@/lib/context/labels";
 import { cut, oneLine } from "@/lib/context/normalize";
 import { scanNote } from "@/lib/context/scan";
 import { contextTsQuery } from "@/lib/context/search";
@@ -40,6 +40,11 @@ export interface AskSource {
   label: string;
   date: string | null;
   excerpt: string;
+  /**
+   * (9b) Solo per un fatto: il tipo della sua fonte e il giorno della fonte (`AAAA-MM-GG`, "" senza una fonte con la data),
+   * per la frase degli agenti in `unbundle contesto` («call del 14/11/2026», `agentSourcePhrase`). Il web usa `label`.
+   */
+  fact?: { source: SourceLabelKind; on: string };
 }
 export type AskAnswer =
   | { status: "risposta"; answer: string; sources: AskSource[] } // solo le fonti citate
@@ -98,14 +103,14 @@ export async function searchContext(actor: ContextActor, query: string, opts: { 
       );
       return rows.map((row): Found => {
         const confirmed = toDate(row.last_confirmed_at);
+        const sourceDay = row.source_day ? toIsoDate(row.source_day) : null;
+        const label = factSourceLabel({ origin: row.origin, sourceKind: row.source_kind, sourceOrigin: row.source_origin, sourceExternalId: row.source_external_id, sourceOccurredOn: sourceDay }, today);
         return {
           kind: "fatto",
-          label: factSourceLabel(
-            { origin: row.origin, sourceKind: row.source_kind, sourceOrigin: row.source_origin, sourceExternalId: row.source_external_id, sourceOccurredOn: row.source_day ? toIsoDate(row.source_day) : null },
-            today,
-          ).label,
+          label: label.label,
           date: confirmed ? romeDate(confirmed) : null,
           excerpt: excerptOf(row.statement),
+          fact: { source: label.kind, on: label.day && sourceDay ? sourceDay : "" },
         };
       });
     }),

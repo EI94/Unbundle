@@ -15,7 +15,7 @@
 import { CONTEXT_ASK_TIMEOUT_MS } from "../../ai/models.ts";
 import { CONTEXT_TEXT } from "../../context/text.ts";
 import { CONTEXT_LIMITS, CONTEXT_SECTIONS, type ContextSection } from "../../context/vocab.ts";
-import { AGENT_CONTEXT_TEXT, slashDay } from "../../context/work/agent-text.ts";
+import { AGENT_CONTEXT_TEXT, agentSourcePhrase, slashDay } from "../../context/work/agent-text.ts";
 import type { AskAnswer, AskSource } from "../../db/queries/context-ask.ts";
 import type { LearningOutcome } from "../../db/queries/context-learning.ts";
 import { CLI_CASE_NOT_FOUND, CLI_CONTEXT_UNAVAILABLE } from "./case-errors.ts";
@@ -102,8 +102,13 @@ export interface CliAskResponse {
   dati: { stato: Exclude<AskAnswer["status"], "limite">; risposta: string | null; fonti: CliAskSource[] };
 }
 
-/** Dove sta una fonte: l'etichetta di Unbundle («Call 14 nov»), con il giorno per chi non lo porta già nell'etichetta. */
+/**
+ * Dove sta una fonte. Un fatto con la frase degli agenti, come in `CONTESTO.md` e nello strato `contesto` («call del
+ * 14/11/2026», «risposta del referente del …», «scritto a mano»); gli altri con l'etichetta di Unbundle e il giorno, per
+ * chi non lo porta già nell'etichetta («Procedura.pdf del 10/11/2026»).
+ */
 function sourceWhere(source: AskSource, label: string): string {
+  if (source.kind === "fatto" && source.fact) return agentSourcePhrase(source.fact);
   const day = slashDay(source.date);
   if (source.kind === "fatto" || source.kind === "discovery" || !day) return label;
   return `${label} del ${day}`;
@@ -113,7 +118,7 @@ function cliSources(sources: readonly AskSource[], hide: (text: string) => strin
   return sources.map((source) => ({ n: source.n, tipo: source.kind, etichetta: hide(source.label), data: source.date, brano: hide(source.excerpt) }));
 }
 
-/** Le righe delle fonti: «[1] Fatto · Call 14 nov · Il gestionale è SAP Business One.». */
+/** Le righe delle fonti: «[1] Fatto · call del 14/11/2026 · Il gestionale è SAP Business One.». */
 function sourceLines(sources: readonly AskSource[], hide: (text: string) => string): string[] {
   return sources.map((source) => AGENT_CONTEXT_TEXT.ask.source(source.n, CONTEXT_TEXT.ask.kind[source.kind], sourceWhere(source, hide(source.label)), hide(source.excerpt)));
 }

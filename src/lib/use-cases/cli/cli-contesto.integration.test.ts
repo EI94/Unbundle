@@ -296,6 +296,8 @@ test("`contesto`: senza l'ok i brani, solo «Per tutti» anche a Lateral Space: 
   const dati = asked.json.dati as { stato: string; fonti: Array<{ tipo: string; brano: string }> };
   assert.equal(dati.stato, "solo_ricerca");
   assert.match(String(asked.json.testo), /^Per una risposta scritta serve l'ok del cliente ai fornitori di AI\. Ecco che cosa ho trovato:\n\[1\] Fatto · /);
+  // Un fatto dice la sua fonte come CONTESTO.md: «call del 14/11/2026», con l'anno.
+  assert.match(String(asked.json.testo), /\n\[\d+\] Fatto · call del 14\/11\/2026 · Il gestionale esporta i preventivi solo in CSV, ogni notte\./);
   assert.ok(dati.fonti.some((f) => f.brano === SHARED));
   assert.ok(dati.fonti.every((f) => f.tipo !== "appunti"), "mai gli appunti");
   assert.doesNotMatch(JSON.stringify(asked.json), /margine|Guida/, "mai un fatto «Solo Lateral Space», mai un nome");
