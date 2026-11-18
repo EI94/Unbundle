@@ -137,7 +137,7 @@ export const AUDIT_EVENT_LABEL: Readonly<Record<string, string>> = {
   "link.aperto": "Link aperto",
   "link.copiato": "Link copiato",
   "link.revocati_tutti": "Tutti i link revocati",
-  "delega.creata": "Domande girate a un collega",
+  "delega.creata": "Domande girate a un'altra persona",
   "delega.approvata": "Delega approvata",
   "informativa.vista": "Informativa privacy letta",
   "file.caricato": "File caricato",

@@ -170,12 +170,12 @@ export type CaseTrail =
 /**
  * Il percorso sopra il titolo (DESIGN §3.3): «Use case › XX-0012 ›
  * Realizzazione». Senza codice (ramo senza la colonna `code`) al posto del
- * codice c'è il titolo della scheda; senza scheda madre resta «‹ Casi d'uso».
+ * codice c'è il titolo della scheda; senza scheda madre «‹ Realizzazioni».
  */
 export function caseTrail(i: CaseTrailInput): CaseTrail {
   const ws = `/dashboard/${i.workspaceId}`;
-  // (Rilascio 10, §4) Mai «Casi d'uso» a schermo: la lista delle realizzazioni è «In realizzazione».
-  if (!i.parent) return { kind: "lista", back: { label: "In realizzazione", href: `${ws}/casi-duso` } };
+  // (Rilascio 10, §4) Mai «Casi d'uso» a schermo: la lista è «Realizzazioni», come nella barra del telefono.
+  if (!i.parent) return { kind: "lista", back: { label: "Realizzazioni", href: `${ws}/casi-duso` } };
   const code = i.parent.code?.trim() || null;
   return {
     kind: "use_case",

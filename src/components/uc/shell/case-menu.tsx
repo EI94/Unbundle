@@ -32,7 +32,7 @@ import { cn } from "@/lib/utils";
 /**
  * «Use case › XX-0012 › Realizzazione», su una riga anche a 400 px: il pezzo
  * di mezzo si accorcia con i puntini. «Realizzazione» porta alla Panoramica e,
- * in Panoramica, è la pagina corrente. Senza scheda madre resta «‹ Casi d'uso».
+ * in Panoramica, è la pagina corrente. Senza scheda madre «‹ Realizzazioni».
  */
 export function CaseTrailNav({ trail, overviewLinkable }: { trail: CaseTrail; overviewLinkable: boolean }) {
   const pathname = usePathname();
