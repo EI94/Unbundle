@@ -3,10 +3,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { CONTEXT_LAYERS } from "./brief.ts";
 import { parseBuildSession } from "./inputs.ts";
 import {
   buildSessionBody,
   CASE_MCP_TOOL_NAMES,
+  CASE_MCP_TOOL_TEXT,
   caseMcpErrorResult,
   caseMcpInstructions,
   caseMcpToolDefinitions,
@@ -114,4 +116,22 @@ test("istruzioni ed errori: il caso, dati non istruzioni; isError con codice e m
   assert.equal(err.isError, true);
   assert.deepEqual(err.structuredContent, { error: "rate_limited", message: "Troppe richieste.", retryAfterSeconds: 30 });
   assert.deepEqual(JSON.parse(err.content[0].text), err.structuredContent);
+});
+
+test("(9b) get_case_context: lo strato `contesto` nell'enum (da CONTEXT_LAYERS), con since; la descrizione lo dice; nessuno strumento nuovo", () => {
+  const def = caseMcpToolDefinitions().find((d) => d.name === "get_case_context");
+  assert.ok(def);
+  const layer = (def.inputSchema.properties as Record<string, { enum?: string[]; description?: string }>).layer;
+  assert.deepEqual(layer.enum, ["brief", ...CONTEXT_LAYERS]);
+  assert.ok(layer.enum?.includes("contesto"));
+  assert.match(layer.description ?? "", /domande o contesto\.$/);
+  const since = (def.inputSchema.properties as Record<string, { description?: string }>).since;
+  assert.match(since.description ?? "", /nello strato contesto, solo i fatti nuovi o cambiati/);
+  assert.ok(def.description.includes("Con layer uno strato: progetto, decisioni, pacchetto, domande o contesto (i fatti confermati sul cliente che toccano il caso)."));
+  assert.equal(def.description, CASE_MCP_TOOL_TEXT.get_case_context.description);
+  const parsed = parseCaseMcpArgs("get_case_context", { layer: "contesto", since: "2026-11-01" });
+  assert.ok(parsed.ok);
+  if (parsed.ok) assert.deepEqual(parsed.value, { layer: "contesto", since: "2026-11-01" });
+  assert.equal(CASE_MCP_TOOL_NAMES.length, 5, "impara resta una porta sola, la CLI (D15)");
+  assert.ok(!caseMcpToolDefinitions().some((d) => /impara|learn/i.test(d.name)));
 });
