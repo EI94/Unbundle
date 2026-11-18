@@ -115,7 +115,7 @@ test("«Da smistare»: le call, o l'errore con il messaggio da mostrare", async 
   const limited = await get();
   assert.equal(limited.status, 503);
   assert.deepEqual(await limited.json(), { error: "riprova", message: "Granola chiede di aspettare. Riprova tra qualche minuto." });
-  prova.results.unsorted = { ok: false, error: "non_trovato", message: "Collega Granola da Impostazioni per far entrare le call da sole." };
+  prova.results.unsorted = { ok: false, error: "non_trovato", message: "Collega Granola da «Il tuo account» per far entrare le call da sole." };
   assert.equal((await get()).status, 404);
   prova.available = false;
   prova.calls = [];

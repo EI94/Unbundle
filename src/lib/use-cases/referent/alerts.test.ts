@@ -167,7 +167,7 @@ const entry = (over: Partial<RequesterAlertInput["entries"][number]> = {}) => ({
 });
 const has = (text: string, line: string) => assert.ok(text.includes(line), `manca «${line}» in:\n${text}`);
 // (Rilascio 10, §3.12) Il piede in una riga; il marchio una volta (niente «Lateral Space via Unbundle.»).
-const FOOTER = "Non vuoi queste email? Togli «Avvisami per email» in Il tuo account.";
+const FOOTER = "Non vuoi queste email? Togli «Avvisami per email» in Il tuo account (menu sotto il tuo nome).";
 
 function safe(m: { subject: string; text: string; html: string }) {
   for (const part of [m.subject, m.text, m.html]) {
@@ -181,6 +181,8 @@ function safe(m: { subject: string; text: string; html: string }) {
   has(m.text, FOOTER);
   assert.ok(!m.text.includes("Lateral Space via Unbundle"));
   assert.equal(REQUESTER_ALERT_FOOTER, FOOTER);
+  // (Rilascio 10, §3.10) La spunta è passata dalla campanella a «Il tuo account», nel menu sotto il nome.
+  assert.doesNotMatch(m.text, /campanella/);
 }
 
 test("testo: una scheda con risposte", () => {
@@ -206,7 +208,7 @@ test("testo: solo documenti, solo «Non lo so», risposte e «Non lo so», solo 
   // (Rilascio 10, §3.12) Mai «non sa rispondere»: al referente mancano alcune informazioni.
   assert.equal(unknown.subject, "Rondine: mancano informazioni su «Fatture fornitori»");
   has(unknown.text, "il referente non ha l'informazione per 1 domanda.");
-  has(unknown.text, "Per i «Non lo so» puoi chiedere a un'altra persona.");
+  has(unknown.text, "Per i «Non lo so» chiedi a un'altra persona.");
   has(unknown.text, "Apri «Cosa serve»");
   assert.ok(!unknown.text.includes("Da verificare"));
   const mixed = renderRequesterAlert({ company: "Rondine", entries: [entry({ answers: 3, unknowns: 2 })] });

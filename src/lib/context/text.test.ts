@@ -210,3 +210,14 @@ test("(9b) genere neutro e nessun «caso»: la dashboard dice «use case», le p
     }
   }
 });
+
+test("(rilascio 10, §3.10) Granola è personale: le righe portano a «Il tuo account», non a Impostazioni", () => {
+  const G = CONTEXT_TEXT.granola;
+  for (const text of [G.notConnectedLine, G.stateExpiredSomewhere]) {
+    assert.match(text, /«Il tuo account»/, text);
+    assert.doesNotMatch(text, /Impostazioni/, text);
+  }
+  assert.equal(G.accountLink, "Il tuo account");
+  // L'ok sui fornitori resta nelle Impostazioni del workspace: lo dà chi gestisce.
+  assert.equal(G.settingsLink, "Impostazioni");
+});

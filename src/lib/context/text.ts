@@ -296,7 +296,8 @@ export const CONTEXT_TEXT = Object.freeze({
     connected: "Granola collegato.",
     connectFailed: "Granola non ha completato il collegamento. Riprova.",
     stateExpired: "Il collegamento è scaduto prima di finire. Riprova.",
-    stateExpiredSomewhere: "Il collegamento con Granola è scaduto prima di finire. Riprova dalle Impostazioni del workspace.",
+    // (Rilascio 10, §3.10) Granola è personale: sta in «Il tuo account», dal menu sotto il nome, non in Impostazioni.
+    stateExpiredSomewhere: "Il collegamento con Granola è scaduto prima di finire. Riprova da «Il tuo account», nel menu sotto il tuo nome.",
     rulesTitle: (company: string) => `Quali call sono di ${company}`,
     folder: "Cartella di Granola",
     folderNone: "Nessuna cartella",
@@ -329,7 +330,10 @@ export const CONTEXT_TEXT = Object.freeze({
     loadFailed: "Non riesco a leggere Granola adesso. Riprova tra poco.",
     rateLimited: "Granola chiede di aspettare. Riprova tra qualche minuto.",
     blocked: (n: number) => (n === 1 ? "1 call non è entrata: contiene dati sanitari." : `${n} call non sono entrate: contengono dati sanitari.`),
-    notConnectedLine: "Collega Granola da Impostazioni per far entrare le call da sole.",
+    notConnectedLine: "Collega Granola da «Il tuo account» per far entrare le call da sole.",
+    /** Il link della riga di Granola: il foglio personale (rilascio 10, §3.10). */
+    accountLink: "Il tuo account",
+    /** Il link all'ok sui fornitori, in Impostazioni del workspace (lo dà chi gestisce). */
     settingsLink: "Impostazioni",
   }),
   errors: Object.freeze({

@@ -115,7 +115,7 @@ export function GranolaInboxPanel({
       <p className="flex min-h-11 flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
         <span>{expired ? T.expired : T.notConnectedLine}</span>
         <Link className="text-foreground underline underline-offset-4" href={settingsHref}>
-          {expired ? T.reconnect : T.settingsLink}
+          {expired ? T.reconnect : T.accountLink}
         </Link>
       </p>
     );

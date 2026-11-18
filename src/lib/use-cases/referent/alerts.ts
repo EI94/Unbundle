@@ -252,7 +252,7 @@ function subjectOf(i: RequesterAlertInput): string {
 }
 
 /** (Rilascio 10, §3.12) Il piede: una riga sola, dove togliere l'avviso. */
-export const REQUESTER_ALERT_FOOTER = "Non vuoi queste email? Togli «Avvisami per email» in Il tuo account.";
+export const REQUESTER_ALERT_FOOTER = "Non vuoi queste email? Togli «Avvisami per email» in Il tuo account (menu sotto il tuo nome).";
 
 /** L'email a chi ha chiesto, parola per parola. (Rilascio 5.1) Con `brand` l'HTML ha in cima il marchio. */
 export function renderRequesterAlert(i: RequesterAlertInput, brand?: EmailBrand): RenderedEmail {
@@ -266,7 +266,7 @@ export function renderRequesterAlert(i: RequesterAlertInput, brand?: EmailBrand)
   for (const e of i.entries) {
     const label = `«${titleOfUseCase(e.useCase)}»`;
     blocks.push({ p: entryLine(single ? `ci sono novità sul caso d'uso ${label} di ${company}` : label, e, single) });
-    if (e.unknowns > 0 && !e.followUp) blocks.push({ small: "Per i «Non lo so» puoi chiedere a un'altra persona." });
+    if (e.unknowns > 0 && !e.followUp) blocks.push({ small: "Per i «Non lo so» chiedi a un'altra persona." });
     if (e.followUp) blocks.push({ small: "Puoi chiedere di nuovo o chiedere a un'altra persona." });
     // (Rilascio 10, §3.12) Il pulsante dice che cosa fare; «Cosa serve» non si ripete in una riga a parte.
     const label2 = (e.questions ?? 0) > 0 ? "Rispondi al referente" : e.answers > 0 || e.documents > 0 ? "Verifica in «Cosa serve»" : "Apri «Cosa serve»";

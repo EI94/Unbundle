@@ -118,7 +118,7 @@ export type EmailInput =
   | { template: "riepilogo_settimanale"; audience: "owner"; clientName: string | null; week: string; cases: readonly WeeklyCaseSummary[]; context?: WeeklyContextOwner | null }
   | { template: "riepilogo_settimanale"; audience: "ls"; clientName: string | null; week: string; cases: readonly WeeklyCaseSummary[]; context?: WeeklyContextLs | null }
   | (CaseRef & { template: "progetto_da_approvare" | "strumento_da_approvare" | "pacchetto_aggiornato" | "modifica_richiesta" | "domanda_proposta"; version: number | null; link: string; tools?: number })
-  // (8.0b) Alla persona: una CLI di Unbundle è collegata al suo account nel workspace. Il link porta a Impostazioni.
+  // (8.0b) Alla persona: una CLI di Unbundle è collegata al suo account nel workspace. Il link porta a «Il tuo account».
   | { template: "cli_collegata"; clientName: string; connectedAt: Date; expiresAt: Date | null; link: string }
   // (8.1a) I compiti, a chi costruisce: il link porta al progetto dell'agente dello use case.
   // `responsabile`: il compito fermo detto al responsabile del caso, non a chi lo ha.
@@ -559,10 +559,11 @@ export function renderEmail(input: EmailInput, brand?: EmailBrand): RenderedEmai
       const until = input.expiresAt ? ` Il collegamento vale fino ${onDate(input.expiresAt, "al")}.` : "";
       return out(emailSubject(workspace, "CLI collegata al tuo account"), [
         { p: "Buongiorno," },
-        { p: `${onDate(input.connectedAt, "il")} alle ${TIME_IT.format(input.connectedAt)} la CLI di Unbundle è stata collegata al tuo account, nel workspace «${workspace}».${until}` },
+        { p: `${onDate(input.connectedAt, "il")} alle ${TIME_IT.format(input.connectedAt)} la CLI è stata collegata al tuo account, nel workspace «${workspace}».${until}` },
         { p: "Se l'hai collegata tu, non serve fare niente." },
-        { p: "Se non la riconosci, revocala in Impostazioni › CLI di Unbundle." },
-        { link: { href: link, label: "Apri Impostazioni" } },
+        // (Rilascio 10, §3.10) Gli accessi personali stanno in «Il tuo account», dal menu sotto il nome.
+        { p: "Se non la riconosci, revocala in «Il tuo account › Claude e terminale»." },
+        { link: { href: link, label: "Apri il tuo account" } },
         { small: "Email automatica di Unbundle: arriva a ogni nuovo collegamento della CLI." },
       ]);
     }
