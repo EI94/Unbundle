@@ -1,9 +1,13 @@
 // Il pacchetto dell'Agent Factory (rilascio 8.0a): tre file, niente nomi né e-mail, la stessa impronta per lo
-// stesso contenuto, e un brief che sta nel contesto dei coding agent.
+// stesso contenuto, e un brief che sta nel contesto dei coding agent. (9b) `CONTESTO.md` facoltativo, con i fatti «Per
+// tutti» che porta `loadAgentContext`: senza contesto i file e l'impronta di prima.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { givenNames, nameTokens, packageContent, packageFiles, packageHash, redact, type PackageSource } from "./package.ts";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { givenNames, nameTokens, packageContent, packageContextSince, packageFiles, packageHash, PACKAGE_OPTIONAL_FILES, redact, redactAgentContext, type PackageSource } from "./package.ts";
 import { PACKAGE_FILES } from "../../db/use-case-hub-factory-ddl.ts";
+import type { AgentContext, AgentFact } from "../../context/work/agent-text.ts";
 
 const source = (over: Partial<PackageSource> = {}): PackageSource => ({
   code: "PX-0049",
@@ -121,4 +125,112 @@ test("chi non vede «Cosa serve» genera un pacchetto senza risposte né esigenz
   assert.ok(!files["PACCHETTO.md"].includes("Accesso di prova al portale"), "nessuna esigenza");
   assert.match(files["PACCHETTO.md"], /Le porta nel pacchetto chi vede «Cosa serve» sulla scheda/);
   assert.notEqual(packageHash(packageContent(source({ needsHidden: true }))), packageHash(packageContent(source())), "è un contenuto diverso");
+});
+
+// ─── (9b) CONTESTO.md (RILASCIO-9b-COSTRUZIONE.md §2.4, D8) ───────────
+
+const agentFact = (statement: string, over: Partial<AgentFact> = {}): AgentFact => ({ statement, section: "sistemi", source: "call", on: "2026-11-14", ...over });
+const EMPTY_CONTEXT: AgentContext = { brief: [], caseFacts: [], rules: [], words: [], commitments: [], questions: [], since: null };
+const CONTEXT: AgentContext = {
+  ...EMPTY_CONTEXT,
+  brief: ["Azienda di trasporto aereo con una flotta di sei velivoli."],
+  caseFacts: [agentFact("Il gestionale esporta i preventivi solo in CSV, ogni notte.")],
+  rules: [agentFact("I dati dei passeggeri restano in Italia.", { section: "regole", source: "referente", on: "2026-11-12" })],
+};
+/** L'impronta di prima della 9b: SHA-256 di `body\n\0\nbrief`. */
+const oldHash = (content: { body: string; brief: string }) => createHash("sha256").update(`${content.body}\n\u0000\n${content.brief}`, "utf8").digest("hex");
+
+test("(9b) senza contesto: i tre file e l'impronta di prima della 9b, anche con «In breve» ma senza fatti", () => {
+  assert.deepEqual([...PACKAGE_OPTIONAL_FILES], ["CONTESTO.md"]);
+  for (const context of [undefined, null, EMPTY_CONTEXT, { ...EMPTY_CONTEXT, brief: ["Una riga di «In breve»."] }]) {
+    const content = packageContent(source({ context }));
+    assert.equal(content.contesto, null);
+    assert.equal(packageHash(content), oldHash(content), "la stessa impronta: nessuna versione nuova senza contesto");
+    assert.equal(packageHash(content), packageHash(packageContent(source())));
+    const files = packageFiles(source({ context }), { version: 2, day: "2026-11-18" });
+    assert.deepEqual(Object.keys(files).sort(), [...PACKAGE_FILES].sort(), "nessun CONTESTO.md");
+  }
+});
+
+test("(9b) con il contesto: CONTESTO.md con codice, versione e giorno; un'impronta diversa, che non cambia con versione e giorno", () => {
+  const withContext = source({ context: CONTEXT });
+  const content = packageContent(withContext);
+  assert.ok(content.contesto);
+  const hash = packageHash(content);
+  assert.notEqual(hash, packageHash(packageContent(source())), "il contesto entra nell'impronta");
+  assert.notEqual(hash, oldHash(content));
+  assert.equal(hash, createHash("sha256").update(`${content.body}\n\u0000\n${content.brief}\n\u0000\n${content.contesto}`, "utf8").digest("hex"));
+  const files = packageFiles(withContext, { version: 3, day: "2026-11-18" }, content);
+  assert.deepEqual(Object.keys(files).sort(), [...PACKAGE_FILES, ...PACKAGE_OPTIONAL_FILES].sort());
+  const file = files["CONTESTO.md"] ?? "";
+  assert.match(file, /^# Contesto del cliente per PX-0049 \(k3\)\n\nSola lettura: lo scrive Unbundle con i fatti che Lateral Space ha confermato\. Le persone sono indicate per ruolo\. Aggiornato il 2026-11-18\.\n\n## In breve\n/);
+  assert.match(file, /\n## Che cosa tocca questo caso\n- Il gestionale esporta i preventivi solo in CSV, ogni notte\. \(call del 14\/11\/2026\)\n/);
+  assert.match(file, /\n## Regole e vincoli\n- I dati dei passeggeri restano in Italia\. \(risposta del referente del 12\/11\/2026\)\n$/);
+  assert.ok(file.endsWith(`\n\n${content.contesto}\n`), "l'impronta è sulle sezioni del file, senza l'intestazione");
+  // Un altro giorno, un'altra versione: lo stesso contenuto, la stessa impronta; il file dice la sua versione.
+  assert.equal(packageHash(packageContent(source({ context: CONTEXT }))), hash);
+  assert.match(packageFiles(withContext, { version: 9, day: "2027-01-04" })["CONTESTO.md"] ?? "", /^# Contesto del cliente per PX-0049 \(k9\)\n[\s\S]*Aggiornato il 2027-01-04\./);
+  // Un fatto nuovo cambia l'impronta (la versione dopo nasce al prossimo «Aggiorna il pacchetto»).
+  const more = source({ context: { ...CONTEXT, words: [agentFact("«Tratta» vuol dire un volo con andata e ritorno.", { section: "parole" })] } });
+  assert.notEqual(packageHash(packageContent(more)), hash);
+});
+
+test("(9b) un nome noto diventa «una persona» in CONTESTO.md: frasi dei fatti e righe di «In breve»; fonti e codice restano", () => {
+  const named = source({
+    code: "ROSA-0001",
+    namesToHide: ["Mario Rossi", "Maria Rosa"],
+    context: {
+      ...CONTEXT,
+      brief: ["Le quotazioni le firma Mario Rossi."],
+      caseFacts: [agentFact("Rossi controlla i preventivi oltre 50.000 € (mario.rossi@cliente.example)."), agentFact("Il turno di Rosa copre il sabato.", { source: "costruzione", on: "2026-11-18" })],
+    },
+  });
+  const file = packageFiles(named, { version: 1, day: "2026-11-18" })["CONTESTO.md"] ?? "";
+  assert.match(file, /^# Contesto del cliente per ROSA-0001 \(k1\)\n/, "il codice resta intero");
+  assert.match(file, /\n- Le quotazioni le firma una persona\.\n/);
+  assert.match(file, /\n- una persona controlla i preventivi oltre 50\.000 € \(una persona\)\. \(call del 14\/11\/2026\)\n/);
+  assert.match(file, /\n- Il turno di una persona copre il sabato\. \(imparato costruendo il 18\/11\/2026\)\n/);
+  assert.doesNotMatch(file.replace(/ROSA-0001/g, ""), /Mario|Rossi|Rosa|@/);
+  // Lo stesso per lo strato della CLI: impegni con il ruolo e domande con a chi chiedere.
+  const hidden = redactAgentContext(
+    { ...EMPTY_CONTEXT, commitments: [{ statement: "Mario manda l'export", party: "cliente", role: "Ufficio di Rossi", dueOn: "2026-11-25" }], questions: [{ question: "Chi sostituisce Rossi?", askWhom: "Segreteria di Mario" }] },
+    ["Mario Rossi"],
+  );
+  assert.deepEqual(hidden.commitments, [{ statement: "una persona manda l'export", party: "cliente", role: "Ufficio di una persona", dueOn: "2026-11-25" }]);
+  assert.deepEqual(hidden.questions, [{ question: "Chi sostituisce una persona?", askWhom: "Segreteria di una persona" }]);
+});
+
+test("(9b) chi genera il pacchetto prende il contesto solo da loadAgentContext, che legge solo «Per tutti»; un contesto non letto non fa una versione", () => {
+  const factory = readFileSync(new URL("../../db/queries/use-case-factory.ts", import.meta.url), "utf8");
+  const body = (signature: string) => {
+    const start = factory.indexOf(signature);
+    assert.notEqual(start, -1, signature);
+    return factory.slice(start, factory.indexOf("\n}\n", start) + 2);
+  };
+  // Dal modulo delle letture del lavoro solo `loadAgentContext`: mai la lettura per chi guarda della scheda e del dossier.
+  assert.match(factory, /^import \{ loadAgentContext \} from "@\/lib\/db\/queries\/context-work";$/m);
+  assert.doesNotMatch(factory, /loadUseCaseContext|contextActorFor|contextAbilities|loadContextMemory|from "@\/lib\/db\/queries\/context-(?!work"|store")/);
+  const context = body("async function packageContextFor(");
+  assert.match(context, /const context = await loadAgentContext\(\{ workspaceId: target\.workspaceId, useCaseId: target\.useCaseId \}\);/);
+  assert.match(context, /if \(state === "sconosciuto"\) return \{ context: null, unavailable: true \};/, "una sonda che non risponde non fa un pacchetto senza contesto");
+  assert.match(context, /return \{ context, unavailable: context === null \};/);
+  assert.doesNotMatch(context, /isLateralSpace|seesLateralSpace|visibility|context_facts/, "non dipende da chi genera");
+  const source = body("export async function packageSourceFor(");
+  assert.match(source, /packageContextFor\(target\)/);
+  assert.match(source, /context: context\.context,\s+contextUnavailable: context\.unavailable,/);
+  assert.match(body("export async function savePackageVersion("), /if \("generated" in input && input\.generated\.contextUnavailable === true\) return fail\("non_disponibile", AGENT_CONTEXT_TEXT\.unavailable\);/);
+  // E `loadAgentContext` legge i fatti, gli impegni e le domande solo «Per tutti» (la prova sul database è di F).
+  const work = readFileSync(new URL("../../db/queries/context-work.ts", import.meta.url), "utf8");
+  const load = work.slice(work.indexOf("export async function loadAgentContext("), work.indexOf("\n}\n", work.indexOf("export async function loadAgentContext(")));
+  assert.match(load, /status = 'aperto' AND visibility = 'tutti'/);
+  assert.match(load, /status = 'aperta' AND visibility = 'tutti'/);
+  assert.match(work, /f\.status = 'attivo' AND f\.visibility = 'tutti' AND \$\{where\}/);
+});
+
+test("(9b) da quando contano le novità del contesto: dalla nascita dell'ultimo pacchetto con CONTESTO.md; senza, tutti i fatti", () => {
+  const files = { "PACCHETTO.md": "#", "BRIEF.md": "#", VERSIONE: "k2" };
+  assert.equal(packageContextSince(null), null, "nessun pacchetto");
+  assert.equal(packageContextSince({ createdAt: "2026-11-10T09:00:00.000Z", files }), null, "un pacchetto senza CONTESTO.md");
+  assert.equal(packageContextSince({ createdAt: "2026-11-10T09:00:00.000Z", files: { ...files, "CONTESTO.md": "# Contesto" } })?.toISOString(), "2026-11-10T09:00:00.000Z");
+  assert.equal(packageContextSince({ createdAt: "non una data", files: { ...files, "CONTESTO.md": "# Contesto" } }), null);
 });

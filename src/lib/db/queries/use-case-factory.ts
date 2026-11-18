@@ -32,7 +32,10 @@ import type { BuildSessionInput, CaseRepoInput } from "@/lib/use-cases/cli/input
 import { cast, jsonb, raw, toStatement, ucSql, type UcStatement } from "@/lib/uc/sql/statement";
 import { fail, ok, type Result } from "@/lib/uc/types";
 import type { FactoryRole } from "@/lib/use-cases/factory/builders";
-import { packageContent, packageFiles, packageFilesHash, packageHash, type PackageSource } from "@/lib/use-cases/factory/package";
+import { packageContent, packageFiles, packageFilesHash, packageHash, type PackageFiles, type PackageSource } from "@/lib/use-cases/factory/package";
+import { AGENT_CONTEXT_TEXT, type AgentContext } from "@/lib/context/work/agent-text";
+import { contextStoreState } from "@/lib/db/queries/context-store";
+import { loadAgentContext } from "@/lib/db/queries/context-work";
 import { withSupersession } from "@/lib/use-cases/factory/decisions";
 import {
   aiBoardOkRule,
@@ -150,7 +153,8 @@ export interface DecisionView {
 
 export interface FactoryView {
   packages: PackageSummary[];
-  latestPackage: { version: number; files: Record<PackageFile, string>; createdAt: string; source: PackageOrigin } | null;
+  /** I file dell'ultima versione: i tre di sempre e (9b) `CONTESTO.md`, quando la versione ce l'ha. */
+  latestPackage: { version: number; files: PackageFiles; createdAt: string; source: PackageOrigin } | null;
   /** La versione in corso o da approvare, se c'è. */
   open: ProjectView | null;
   /** L'ultima approvata, se c'è. */
@@ -210,7 +214,7 @@ FROM use_case_decisions WHERE workspace_id = ${ws} AND use_case_id = ${uc} ORDER
   const last = latest[0];
   return ok({
     packages: packages.map((r) => ({ version: Number(r.version), source: String(r.source) as PackageOrigin, createdAt: iso(r.created_at) ?? "", contentHash: String(r.content_hash) })),
-    latestPackage: last ? { version: Number(last.version), files: last.files as Record<PackageFile, string>, createdAt: iso(last.created_at) ?? "", source: String(last.source) as PackageOrigin } : null,
+    latestPackage: last ? { version: Number(last.version), files: last.files as PackageFiles, createdAt: iso(last.created_at) ?? "", source: String(last.source) as PackageOrigin } : null,
     open: views.find((p) => p.status === "in_corso" || p.status === "da_approvare") ?? null,
     approved: views.find((p) => p.status === "approvato") ?? null,
     decisions: withSupersession(
@@ -321,7 +325,8 @@ export const importedPackageHash = packageFilesHash;
 
 /**
  * Salva una versione del pacchetto se il contenuto è cambiato. Con lo stesso contenuto dell'ultima versione non
- * scrive niente e risponde con quella (`created: false`). Notifica chi costruisce.
+ * scrive niente e risponde con quella (`created: false`). Notifica chi costruisce. (9b) Con il contesto del cliente che
+ * non si è letto (`contextUnavailable`) non salva niente: «riprova».
  */
 export async function savePackageVersion(
   executor: UcExecutor,
@@ -331,12 +336,13 @@ export async function savePackageVersion(
   now = new Date(),
 ): Promise<Result<{ version: number; created: boolean }>> {
   if (!mayWrite(actor)) return fail("permesso_negato", DENIED);
+  if ("generated" in input && input.generated.contextUnavailable === true) return fail("non_disponibile", AGENT_CONTEXT_TEXT.unavailable);
   const ws = cast(target.workspaceId, "uuid");
   const uc = cast(target.useCaseId, "uuid");
   const [last] = await executor.batch([toStatement(ucSql`SELECT version, content_hash FROM use_case_packages WHERE workspace_id = ${ws} AND use_case_id = ${uc} ORDER BY version DESC LIMIT 1`)]);
   const lastVersion = last[0] ? Number(last[0].version) : 0;
   const version = lastVersion + 1;
-  let files: Record<PackageFile, string>;
+  let files: PackageFiles;
   let hash: string;
   let source: PackageOrigin;
   if ("generated" in input) {
@@ -391,12 +397,28 @@ export async function namesToHide(executor: UcExecutor, target: FactoryTarget): 
 }
 
 /** Quello che il pacchetto prende dalla scheda: lo legge chi chiama, con i permessi di chi guarda. */
-export type PackageCard = Omit<PackageSource, "answers" | "openNeeds" | "namesToHide">;
+export type PackageCard = Omit<PackageSource, "answers" | "openNeeds" | "namesToHide" | "context" | "contextUnavailable">;
+
+/**
+ * (9b) Il contesto del cliente per `CONTESTO.md`: **solo da `loadAgentContext`**, che legge soltanto i fatti «Per tutti»
+ * (D1), qualunque sia chi genera il pacchetto: il pacchetto lo leggono chi costruisce da fuori e i coding agent, che
+ * scrivono in repository e PR. Senza l'archivio di «Contesto» (la 0038 assente) nessun contesto, come prima della 9b; con
+ * la sonda che non risponde, o con l'archivio e una lettura che non riesce, `unavailable`: il pacchetto non si salva
+ * (riprova), invece di nascere senza `CONTESTO.md`.
+ */
+async function packageContextFor(target: FactoryTarget): Promise<{ context: AgentContext | null; unavailable: boolean }> {
+  const state = await contextStoreState();
+  if (state === "assente") return { context: null, unavailable: false };
+  if (state === "sconosciuto") return { context: null, unavailable: true };
+  const context = await loadAgentContext({ workspaceId: target.workspaceId, useCaseId: target.useCaseId });
+  return { context, unavailable: context === null };
+}
 
 /**
  * Il resto del pacchetto, dal database: le risposte inviate del referente (la domanda è il titolo dell'esigenza),
  * le esigenze ancora aperte di «Cosa serve», e i nomi da coprire (persone del workspace e della sua
  * organizzazione, contatti, chi ha chiesto le informazioni al referente, chi ha proposto da Slack o dal connettore).
+ * (9b) E il contesto del cliente per `CONTESTO.md` (`packageContextFor`).
  *
  * Risposte ed esigenze solo con `canSeeNeeds` di chi genera il pacchetto (chi vede «Cosa serve» sulla scheda,
  * `abilitiesForUseCase`): senza, il pacchetto dice che le porta chi le può leggere, come la scheda.
@@ -413,10 +435,15 @@ ORDER BY a.submitted_at NULLS LAST, a.id LIMIT 30`);
   const needsSql = toStatement(ucSql`SELECT n.title, n.type, n.status FROM use_case_needs n JOIN use_case_need_links l ON l.need_id = n.id
 WHERE l.use_case_id = ${uc} AND n.workspace_id = ${ws} AND n.archived_at IS NULL
 ORDER BY n.type, n.sort_order, n.created_at, n.id LIMIT 80`);
-  const [answers, needs, names] = await executor.batch(opts.canSeeNeeds ? [answersSql, needsSql, namesToHideSql(target)] : [nothing, nothing, namesToHideSql(target)]);
+  const [[answers, needs, names], context] = await Promise.all([
+    executor.batch(opts.canSeeNeeds ? [answersSql, needsSql, namesToHideSql(target)] : [nothing, nothing, namesToHideSql(target)]),
+    packageContextFor(target),
+  ]);
   const label = (type: unknown, status: unknown) => needStatusView(String(type) as NeedType, String(status) as NeedStatus).label.toLowerCase();
   return {
     ...card,
+    context: context.context,
+    contextUnavailable: context.unavailable,
     answers: answers.map((r) => ({ question: String(r.title), answer: String(r.body), on: r.submitted_at ? new Date(String(r.submitted_at)).toISOString().slice(0, 10) : null, status: label(r.type, r.status) })),
     openNeeds: needs
       .filter((r) => !isNeedDone(String(r.type) as NeedType, String(r.status) as NeedStatus))
