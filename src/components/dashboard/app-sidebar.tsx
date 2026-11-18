@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "firebase/auth";
 import { firebaseAuth } from "@/lib/firebase/client";
@@ -10,89 +11,48 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   useSidebar,
 } from "@/components/ui/sidebar";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLinkItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { confirmLearningNavigation } from "@/components/learning/use-unsaved-changes";
 import { endAppSession } from "@/lib/auth/end-session";
-import { CONTEXT_NAV_MATCH, USE_CASE_NAV_MATCH, isNavItemActive } from "@/components/dashboard/nav-active";
+import { isNavItemActive } from "@/components/dashboard/nav-active";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ThemeMenuGroup } from "@/components/theme/theme-menu";
-import {
-  LayoutDashboard,
-  Building2,
-  Map,
-  Target,
-  Lightbulb,
-  Factory,
-  FileText,
-  Settings,
-  LayoutGrid,
-  LogOut,
-  ChevronUp,
-  Compass,
-  GitBranch,
-  Bot,
-  FlaskConical,
-  Radar,
-  Inbox,
-  ClipboardCheck,
-  GraduationCap,
-  ListChecks,
-  type LucideIcon,
-  TrendingUp,
-} from "lucide-react";
+import { NAV_ICONS } from "@/components/shell/nav-icons";
+import { WorkspaceSwitcher } from "@/components/shell/workspace-switcher";
+import { BellSlot } from "@/components/shell/bell-slot";
+import { navBase, type ShellNav, type ShellNavItem } from "@/components/shell/sidebar-model";
+import { openAccountSheet } from "@/components/shell/account-url";
+import { SHELL_TEXT } from "@/lib/shell/text";
+import { ChevronUp, LogOut, Palette, UserRound } from "lucide-react";
 
-interface NavItem {
-  title: string;
-  href: string;
-  icon: LucideIcon;
-  /** Segmenti sotto il workspace per cui la voce resta accesa (`isNavItemActive`); `[]`: solo il suo indirizzo. */
-  match?: readonly string[];
-}
+const T = SHELL_TEXT;
 
-/** Solo l'indirizzo della voce: come accendeva la barra prima dell'area «Use case». */
-const EXACT: readonly string[] = Object.freeze([]);
-
-/** «Use case» mentre la voce «Casi d'uso» resta nella barra (P0-16 non ancora fatto): `/casi-duso` è sua. */
-const USE_CASE_NAV_MATCH_WITHOUT_DOSSIERS: readonly string[] = Object.freeze(USE_CASE_NAV_MATCH.filter((segment) => segment !== "casi-duso"));
+/** Voci da 44 px nel foglio del telefono, 36 px da 768 px (PROPOSTA-10 §5.3, §9.0). */
+const ITEM_CLASS = "h-11 gap-2.5 px-2.5 md:h-9";
+/** Le voci del menu sotto il nome: 44 px al telefono. */
+const MENU_ITEM_CLASS = "min-h-11 gap-2 sm:min-h-8";
 
 interface AppSidebarProps {
-  learningAvailable?: boolean;
-  /**
-   * Voce «Casi d'uso»: sezione accesa e persona che vede i casi (mai chi segue solo un corso).
-   * Con l'area «Use case» accesa il layout la chiede solo finché `dossierLinksReady` non è vero
-   * (P0-16): allora la voce sta subito sotto «Use case», che lascia a lei `/casi-duso`.
-   */
-  casesAvailable?: boolean;
-  /** Entrato da un link di corso: la navigazione si riduce al corso. */
-  learnerOnly?: boolean;
-  /**
-   * Area «Use case» accesa per il workspace (`USE_CASE_HUB_WORKSPACES`, docs/use-case/DESIGN.md
-   * §2.1, §12.1; D1): una voce «Use case» al posto di «Raccolta & ranking», «Use cases»,
-   * «Casi d'uso» e «Piano», accesa anche sulle pagine che sostituisce (tranne `/casi-duso` finché
-   * la voce «Casi d'uso» resta, vedi `casesAvailable`). Spenta: la barra di oggi.
-   */
-  useCaseHub?: boolean;
-  /**
-   * Voce «Programma» (rilascio 7): area «Use case» accesa e chi guarda è un revisore (decisione 4). Subito
-   * sotto «Overview»: è il riepilogo della trasformazione.
-   */
-  programAvailable?: boolean;
-  /** (8.1a) «Agent Factory»: per chi costruisce in un caso del workspace, o lo guida da manager di Lateral Space. */
-  factoryAvailable?: boolean;
+  /** Le voci per chi guarda (`workspaceNav` nel layout del workspace, `listNav` su `/dashboard`). */
+  nav: ShellNav;
   workspaceId?: string;
   workspaceName?: string;
   user: {
@@ -100,25 +60,28 @@ interface AppSidebarProps {
     email?: string | null;
     image?: string | null;
   };
+  /** La campanella dal server (`WorkspaceBell`): nella testata, accanto al selettore, su desktop. */
+  bell?: ReactNode;
 }
 
-/** La memoria del dispositivo, se il browser la dà. */
-export function AppSidebar({
-  learningAvailable = false,
-  casesAvailable = false,
-  learnerOnly = false,
-  useCaseHub = false,
-  programAvailable = false,
-  factoryAvailable = false,
-  workspaceId,
-  workspaceName,
-  user,
-}: AppSidebarProps) {
+/**
+ * La barra laterale (rilascio 10, ondata 2a «Cornice», docs/ui-10/PROPOSTA-10.md §2.1, §3.1, §9.0).
+ *
+ * - **Testata**: il nome del workspace è un selettore («Tutti i workspace», «Nuovo workspace»); accanto, la campanella
+ *   (su desktop; al telefono sta nella barra in alto, `PhoneTopbar`). Fuori da un workspace, il marchio.
+ * - **Voci**: le principali (`nav.main`), con le viste della voce accesa sotto di lei; poi una linea sottile e gli altri
+ *   strumenti di oggi (`nav.tools`), senza titolo (D11 respinta). La voce resta accesa su tutte le sue pagine.
+ * - **Piede**: «Impostazioni» per chi gestisce il workspace; il nome, con il menu «Il tuo account» · «Tema ›» · «Esci».
+ *   Ogni voce del menu fa da sé la sua azione, con il mouse, il dito o Invio.
+ */
+export function AppSidebar({ nav, workspaceId, workspaceName, user, bell }: AppSidebarProps) {
   const { isMobile, setOpenMobile } = useSidebar();
-  const closeMobileNavigation = () => { if (isMobile) setOpenMobile(false); };
-  const pathname = usePathname();
+  const closeMobileNavigation = () => {
+    if (isMobile) setOpenMobile(false);
+  };
+  const pathname = usePathname() ?? "";
   const router = useRouter();
-  const basePath = workspaceId ? `/dashboard/${workspaceId}` : "/dashboard";
+  const basePath = navBase(workspaceId);
 
   const handleLogout = async () => {
     if (!confirmLearningNavigation()) return;
@@ -130,145 +93,123 @@ export function AppSidebar({
     router.push("/login");
   };
 
-  // Area spenta: la barra di oggi, voce per voce, e ogni voce accesa solo sul suo indirizzo
-  // (`EXACT`), tranne «Casi d'uso», che resta accesa dentro un dossier. Area accesa: ogni voce
-  // resta accesa anche sulle sue pagine annidate (il predefinito di `isNavItemActive`).
-  const own = useCaseHub ? undefined : EXACT;
-
-  const learnerNav: NavItem[] = workspaceId
-    ? [{ title: "Il mio corso", href: `${basePath}/learning`, icon: GraduationCap, match: own }]
-    : [];
-
-  const workspaceNav: NavItem[] = learnerOnly
-    ? learnerNav
-    : workspaceId
-    ? [
-        { title: "Overview", href: basePath, icon: LayoutDashboard },
-        ...(programAvailable && useCaseHub ? [{ title: "Programma", href: `${basePath}/programma`, icon: TrendingUp }] : []),
-        { title: "AI Readiness", href: `${basePath}/ai-readiness`, icon: ClipboardCheck, match: own },
-        ...(learningAvailable ? [{ title: "Formazione", href: `${basePath}/learning`, icon: GraduationCap, match: own }] : []),
-        ...(useCaseHub
-          ? [
-              { title: "Use case", href: `${basePath}/use-cases`, icon: Lightbulb, match: casesAvailable ? USE_CASE_NAV_MATCH_WITHOUT_DOSSIERS : USE_CASE_NAV_MATCH },
-              ...(casesAvailable ? [{ title: "Casi d'uso", href: `${basePath}/casi-duso`, icon: ListChecks }] : []),
-              ...(factoryAvailable ? [{ title: "Agent Factory", href: `${basePath}/agent-factory`, icon: Factory }] : []),
-            ]
-          : [{ title: "Raccolta & ranking", href: `${basePath}/portfolio`, icon: Inbox, match: EXACT }]),
-        { title: "Discovery", href: `${basePath}/setup/leadership`, icon: Compass, match: own },
-        { title: "Contesto", href: `${basePath}/contesto`, icon: Building2, match: CONTEXT_NAV_MATCH },
-        { title: "Strategia", href: `${basePath}/strategy`, icon: Target, match: own },
-        { title: "Activity mapping", href: `${basePath}/mapping`, icon: GitBranch, match: own },
-        { title: "Value map", href: `${basePath}/value-map`, icon: Map, match: own },
-        // Con l'area accesa queste tre pagine stanno sotto «Use case» (i vecchi indirizzi reindirizzano).
-        ...(useCaseHub
-          ? []
-          : [
-              { title: "Use cases", href: `${basePath}/use-cases`, icon: Lightbulb, match: EXACT },
-              ...(casesAvailable ? [{ title: "Casi d'uso", href: `${basePath}/casi-duso`, icon: ListChecks }] : []),
-              { title: "Piano", href: `${basePath}/plan`, icon: FileText, match: EXACT },
-            ]),
-        { title: "Report", href: `${basePath}/reports`, icon: FileText, match: own },
-        { title: "Blueprints", href: `${basePath}/blueprints`, icon: Bot, match: own },
-        { title: "Simulazione", href: `${basePath}/simulation`, icon: FlaskConical, match: own },
-        { title: "Intelligence", href: `${basePath}/intelligence`, icon: Radar, match: own },
-        { title: "Impostazioni", href: `${basePath}/settings`, icon: Settings, match: own },
-      ]
-    : [];
+  const openAccount = () => {
+    closeMobileNavigation();
+    openAccountSheet();
+  };
 
   const initials = user.name
     ? user.name.split(" ").map((n) => n[0]).join("").toUpperCase()
     : user.email?.[0]?.toUpperCase() ?? "U";
 
+  const item = (entry: ShellNavItem) => {
+    const Icon = NAV_ICONS[entry.icon];
+    const active = isNavItemActive(pathname, basePath, entry);
+    const children = active ? (entry.children ?? []) : [];
+    return (
+      <SidebarMenuItem key={entry.key}>
+        <SidebarMenuButton
+          render={<Link href={entry.href} onNavigate={closeMobileNavigation} />}
+          isActive={active}
+          aria-current={active && !children.some((child) => isNavItemActive(pathname, basePath, child)) ? "page" : undefined}
+          className={ITEM_CLASS}
+        >
+          <Icon className="size-4" aria-hidden />
+          <span>{entry.title}</span>
+        </SidebarMenuButton>
+        {children.length > 0 ? (
+          <SidebarMenuSub>
+            {children.map((child) => {
+              const childActive = isNavItemActive(pathname, basePath, child);
+              return (
+                <SidebarMenuSubItem key={child.key}>
+                  <SidebarMenuSubButton
+                    render={<Link href={child.href} onNavigate={closeMobileNavigation} />}
+                    isActive={childActive}
+                    aria-current={childActive ? "page" : undefined}
+                    className="h-11 md:h-8"
+                  >
+                    <span>{child.title}</span>
+                  </SidebarMenuSubButton>
+                </SidebarMenuSubItem>
+              );
+            })}
+          </SidebarMenuSub>
+        ) : null}
+      </SidebarMenuItem>
+    );
+  };
+
   return (
     <Sidebar>
-      <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
-        <Link onNavigate={closeMobileNavigation} href="/dashboard" className="flex flex-col gap-0.5">
-          <span className="text-sm font-medium text-sidebar-foreground tracking-wide">
-            Unbundle
-          </span>
-          {workspaceName && (
-            <span className="text-xs text-sidebar-foreground/50 light:text-sidebar-foreground/70 truncate max-w-[160px]">
-              {workspaceName}
-            </span>
-          )}
-        </Link>
+      <SidebarHeader className="h-14 flex-row items-center justify-between gap-1 border-b border-sidebar-border px-2 py-0">
+        {workspaceId && workspaceName ? (
+          <WorkspaceSwitcher workspaceName={workspaceName} onNavigate={closeMobileNavigation} />
+        ) : (
+          <span className="px-2 text-sm font-semibold tracking-wide text-sidebar-foreground">{T.brand}</span>
+        )}
+        {/* Al telefono la campanella sta nella barra in alto: una sola alla volta. */}
+        {bell && !isMobile ? <BellSlot bell={bell} /> : null}
       </SidebarHeader>
 
       <SidebarContent>
-        {workspaceId ? (
-          <SidebarGroup>
-            <SidebarGroupLabel>Workspace</SidebarGroupLabel>
+        <nav aria-label={T.nav.label} className="contents">
+          <SidebarGroup className="py-3">
             <SidebarGroupContent>
-              <SidebarMenu>
-                {workspaceNav.map((item) => (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton
-                      render={<Link href={item.href} onNavigate={closeMobileNavigation} />}
-                      isActive={isNavItemActive(pathname ?? "", basePath, item)}
-                    >
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
+              <SidebarMenu className="gap-0.5">{nav.main.map(item)}</SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
-        ) : (
-          <SidebarGroup>
-            <SidebarGroupLabel>Navigazione</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    render={<Link onNavigate={closeMobileNavigation} href="/dashboard" />}
-                    isActive={pathname === "/dashboard"}
-                  >
-                    <LayoutDashboard className="h-4 w-4" />
-                    <span>I miei Workspace</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
+          {nav.tools.length > 0 ? (
+            // Una linea sottile e nessun titolo: il nome del gruppo lo sentono solo i lettori di schermo.
+            <SidebarGroup role="group" aria-label={T.nav.toolsLabel} className="pt-0">
+              <SidebarGroupContent className="border-t border-sidebar-border pt-3">
+                <SidebarMenu className="gap-0.5">{nav.tools.map(item)}</SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          ) : null}
+        </nav>
       </SidebarContent>
 
-      <SidebarFooter>
+      <SidebarFooter className="gap-1 border-t border-sidebar-border">
+        {nav.settings ? <SidebarMenu>{item(nav.settings)}</SidebarMenu> : null}
         <SidebarMenu>
           <SidebarMenuItem>
             <DropdownMenu>
               <DropdownMenuTrigger
-                className="flex w-full items-center gap-2 rounded-lg p-2 text-left text-sm hover:bg-sidebar-accent"
+                aria-label={T.user.menu}
+                className="flex min-h-11 w-full items-center gap-2.5 rounded-lg p-2 text-left text-sm outline-hidden hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring data-popup-open:bg-sidebar-accent"
               >
-                <Avatar className="h-8 w-8">
+                <Avatar className="size-8">
                   <AvatarImage src={user.image ?? undefined} />
-                  <AvatarFallback className="text-xs">
-                    {initials}
-                  </AvatarFallback>
+                  <AvatarFallback className="text-xs">{initials}</AvatarFallback>
                 </Avatar>
-                <div className="flex flex-col text-left text-sm leading-tight flex-1 min-w-0">
-                  <span className="truncate font-medium text-sidebar-foreground">
-                    {user.name ?? "Utente"}
-                  </span>
-                  <span className="truncate text-xs text-sidebar-foreground/60 light:text-sidebar-foreground/70">
-                    {user.email}
-                  </span>
-                </div>
-                <ChevronUp className="h-4 w-4 text-sidebar-foreground/60 light:text-sidebar-foreground/70" />
+                <span className="flex min-w-0 flex-1 flex-col text-left text-sm leading-tight">
+                  <span className="truncate font-medium text-sidebar-foreground">{user.name ?? T.user.fallbackName}</span>
+                  <span className="truncate text-xs text-muted-foreground">{user.email}</span>
+                </span>
+                <ChevronUp className="size-4 text-muted-foreground" aria-hidden />
               </DropdownMenuTrigger>
               <DropdownMenuContent side="top" align="start" className="w-56">
                 {/* (Ondata 0) Le voci fanno loro stesse l'azione: con il mouse, il dito o Invio. */}
-                <DropdownMenuLinkItem render={<Link onNavigate={closeMobileNavigation} href="/dashboard" />}>
-                  <LayoutGrid className="mr-2 h-4 w-4" />
-                  I miei workspace
-                </DropdownMenuLinkItem>
+                {workspaceId ? (
+                  <DropdownMenuItem onClick={openAccount} className={MENU_ITEM_CLASS}>
+                    <UserRound aria-hidden />
+                    {T.user.account}
+                  </DropdownMenuItem>
+                ) : null}
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger className={MENU_ITEM_CLASS}>
+                    <Palette aria-hidden />
+                    {T.user.theme}
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="w-48">
+                    <ThemeMenuGroup />
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
                 <DropdownMenuSeparator />
-                <ThemeMenuGroup />
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout}>
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Esci
+                <DropdownMenuItem onClick={handleLogout} className={MENU_ITEM_CLASS}>
+                  <LogOut aria-hidden />
+                  {T.user.signOut}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

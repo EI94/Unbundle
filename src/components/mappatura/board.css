@@ -32,7 +32,7 @@
   --board-font-serif: var(--font-board-serif), "Times New Roman", Georgia, serif;
   --board-font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
   --board-radius: 8px;
-  --board-shell-top: 61px;   /* la barra del workspace: 61 px, 53 px da 48rem */
+  --board-shell-top: 56px;   /* la barra in alto del telefono: 56 px; da 48rem non c'è (rilascio 10) */
   --board-card: 188px;       /* la card di un passo: quella del riferimento a 1440 (188,7 px; BOARD-SPEC §6), in ogni riga */
 }
 :root[data-theme="light"]:has([data-theme-scope]) [data-board-root] {
@@ -62,7 +62,7 @@
   --border: var(--board-line); --input: var(--board-line-strong); --ring: var(--board-signal-deep);
 }
 @media (min-width: 48rem) {
-  [data-board-root] { --board-shell-top: 53px; }
+  [data-board-root] { --board-shell-top: 0px; }
 }
 
 /* ── Base: quello che il riferimento mette su body e su ogni elemento ── */

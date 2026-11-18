@@ -149,7 +149,7 @@ export default async function SettingsPage({
 
       <nav
         aria-label="Sezioni delle impostazioni"
-        className="-mx-4 mt-6 overflow-x-auto border-b px-4 sm:-mx-6 sm:px-6 md:sticky md:top-[53px] md:z-10 md:bg-background/90 md:backdrop-blur lg:-mx-8 lg:px-8"
+        className="-mx-4 mt-6 overflow-x-auto border-b px-4 sm:-mx-6 sm:px-6 md:sticky md:top-0 md:z-10 md:bg-background/90 md:backdrop-blur lg:-mx-8 lg:px-8"
       >
         <ul className="flex gap-1 py-2">
           {sections.map((section) => (

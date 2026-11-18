@@ -1,15 +1,16 @@
-import { SidebarTrigger } from "@/components/ui/sidebar";
 import { emptyBellPayload } from "@/lib/notifications/bell";
 import { loadBellPayload } from "@/lib/notifications/bell-data";
 import { NotificationsBell } from "./notifications-bell";
 
 /**
- * Topbar server component: legge la campanella di chi guarda (`loadBellPayload`: segnali letti per
- * persona, righe dei dossier, notifiche degli use case, «visto fino a») e la passa al componente
- * client. Viene renderizzato in `dashboard/[workspaceId]/layout`. Un errore non ferma la barra: la
- * campanella parte vuota e si aggiorna da sola.
+ * La campanella della cornice, componente server (rilascio 10, PROPOSTA-10 §2.1, §3.1): legge la campanella di chi
+ * guarda (`loadBellPayload`: segnali letti per persona, righe dei dossier, notifiche degli use case, «visto fino a») e
+ * la passa al componente client. Il layout del workspace la mette nella cornice, che la mostra nella testata della
+ * barra laterale su desktop e nella barra in alto del telefono (`WorkspaceShell`): la barra in alto su desktop non c'è
+ * più. Un errore non ferma la cornice: la campanella parte vuota e si aggiorna da sola. Chi segue solo un corso non la
+ * vede (mostra titoli e descrizioni del portfolio).
  */
-export async function WorkspaceTopbar({
+export async function WorkspaceBell({
   workspaceId,
   role,
   userId = null,
@@ -25,19 +26,7 @@ export async function WorkspaceTopbar({
   /** Area «Use case» accesa per il workspace (`isUseCaseHubWorkspace`, letta dal layout): decide i link. */
   useCaseHub?: boolean;
 }) {
-  if (!showNotifications) {
-    return (
-      <header className="sticky top-0 z-20 flex items-center border-b bg-background/80 px-4 py-2 backdrop-blur md:hidden">
-        <SidebarTrigger className="size-11" aria-label="Apri navigazione" title="Apri navigazione" />
-      </header>
-    );
-  }
+  if (!showNotifications) return null;
   const initial = await loadBellPayload({ workspaceId, userId: userId ?? null, role, useCaseHub }).catch(() => emptyBellPayload(workspaceId, new Date()));
-
-  return (
-    <header className="sticky top-0 z-20 flex items-center justify-between gap-2 md:justify-end border-b bg-background/80 backdrop-blur px-4 py-2">
-      <SidebarTrigger className="size-11 md:hidden" aria-label="Apri navigazione" title="Apri navigazione" />
-      <NotificationsBell workspaceId={workspaceId} initial={initial} />
-    </header>
-  );
+  return <NotificationsBell workspaceId={workspaceId} initial={initial} />;
 }

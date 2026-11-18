@@ -329,9 +329,9 @@ test("rotta POST: stessa origine, JSON, corpo valido, sessione; «seen» e «rea
   }
 });
 
-test("la barra in alto passa alla campanella il payload della persona", opts, async () => {
-  const { WorkspaceTopbar } = await import("../../../components/portfolio/workspace-topbar.tsx");
-  const tree = await WorkspaceTopbar({ workspaceId: ids.ws, role: ROLE.analyst, userId: ids.analyst, useCaseHub: true });
+test("la cornice passa alla campanella il payload della persona", opts, async () => {
+  const { WorkspaceBell } = await import("../../../components/portfolio/workspace-topbar.tsx");
+  const tree = await WorkspaceBell({ workspaceId: ids.ws, role: ROLE.analyst, userId: ids.analyst, useCaseHub: true });
   const found: unknown[] = [];
   const visit = (node: unknown) => {
     if (Array.isArray(node)) node.forEach(visit);

@@ -122,22 +122,22 @@ test("il menu «Tema»: «Scuro», «Chiaro», «Come il sistema», in quest'ord
   assert.ok(!menu.includes("closeOnClick"), "il menu resta aperto dopo la scelta");
 });
 
-test("il menu «Tema» sta sotto il nome, in fondo alla barra laterale, tra «I miei workspace» e «Esci»", () => {
+test("il menu «Tema» sta sotto il nome, in fondo alla barra laterale, tra «Il tuo account» e «Esci»", () => {
   const sidebar = readRepo("src/components/dashboard/app-sidebar.tsx");
   assert.ok(sidebar.includes('import { ThemeMenuGroup } from "@/components/theme/theme-menu";'));
-  const footer = sidebar.slice(sidebar.indexOf("<SidebarFooter>"), sidebar.indexOf("</SidebarFooter>"));
+  const footer = sidebar.slice(sidebar.indexOf("<SidebarFooter"), sidebar.indexOf("</SidebarFooter>"));
   const content = footer.slice(footer.indexOf("<DropdownMenuContent"), footer.indexOf("</DropdownMenuContent>"));
   assert.ok(content.length > 0, "il menu sotto il nome");
-  const order = ["I miei workspace", "<DropdownMenuSeparator />", "<ThemeMenuGroup />", "<DropdownMenuSeparator />", "Esci"].map((needle) => content.indexOf(needle));
+  // (Rilascio 10, PROPOSTA-10 §2.1) «Il tuo account» · «Tema ›» (un sottomenu) · «Esci».
+  const order = ["onClick={openAccount}", "<DropdownMenuSub>", "<ThemeMenuGroup />", "</DropdownMenuSub>", "<DropdownMenuSeparator />", "onClick={handleLogout}"].map((needle) => content.indexOf(needle));
   assert.ok(order.every((index) => index >= 0), String(order));
-  assert.ok(order[1] < order[2] && order[2] < content.lastIndexOf("<DropdownMenuSeparator />") && order[0] < order[1] && content.lastIndexOf("<DropdownMenuSeparator />") < order[4], "l'ordine delle voci");
+  assert.deepEqual([...order].sort((a, b) => a - b), order, "l'ordine delle voci");
   assert.equal(sidebar.match(/<ThemeMenuGroup \/>/g)?.length, 1);
-  // Il nome del workspace sotto «Unbundle»: al 50% sul grigio chiaro sarebbe 3,4:1, col tema chiaro va al 70%.
-  assert.ok(sidebar.includes("text-sidebar-foreground/50 light:text-sidebar-foreground/70"), "il nome del workspace nel tema chiaro");
-  // L'e-mail e la freccia sotto il nome: al 60% sul grigio della voce aperta sarebbero 4,4:1 nel chiaro.
-  assert.equal(sidebar.match(/text-sidebar-foreground\/60 light:text-sidebar-foreground\/70/g)?.length, 2, "e-mail e freccia nel tema chiaro");
+  // L'e-mail e la freccia sotto il nome nel grigio dei testi secondari, che sulla barra fa almeno 4,5:1 nei due temi
+  // (contrast-themes.test.ts): niente più testi sbiaditi né classi `light:` per rimediare.
+  assert.doesNotMatch(sidebar, /text-sidebar-foreground\/\d+|light:/);
   // La stessa barra (e lo stesso menu) per /dashboard e per ogni workspace.
-  for (const file of ["src/components/dashboard/dashboard-list-shell.tsx", "src/app/(dashboard)/dashboard/[workspaceId]/layout.tsx"]) assert.ok(readRepo(file).includes("<AppSidebar"), file);
+  for (const file of ["src/components/dashboard/dashboard-list-shell.tsx", "src/components/shell/workspace-shell.tsx"]) assert.ok(readRepo(file).includes("<AppSidebar"), file);
 });
 
 type FakeNode = { attributes: Record<string, string>; removed: boolean; setAttribute(name: string, value: string): void; remove(): void };

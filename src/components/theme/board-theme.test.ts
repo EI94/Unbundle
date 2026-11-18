@@ -131,9 +131,9 @@ test("i token della board: scuro per default, chiaro sotto il selettore del tema
     "--destructive": "var(--board-crit)",
     "--border": "var(--board-line)", "--input": "var(--board-line-strong)", "--ring": "var(--board-signal-deep)",
   });
-  // La barra del workspace: 61 px, 53 px da 48rem. La testata della board le sta sotto.
-  assert.equal(darkTokens["--board-shell-top"], "61px");
-  assert.match(board, /@media \(min-width: 48rem\) \{\s*\[data-board-root\] \{ --board-shell-top: 53px; \}\s*\}/);
+  // (Rilascio 10) La barra in alto del solo telefono: 56 px; da 48rem non c'è. La testata della board le sta sotto.
+  assert.equal(darkTokens["--board-shell-top"], "56px");
+  assert.match(board, /@media \(min-width: 48rem\) \{\s*\[data-board-root\] \{ --board-shell-top: 0px; \}\s*\}/);
 });
 
 test("i colori scritti a mano stanno solo nelle due regole dei token: tutto il resto è var(--board-…)", () => {

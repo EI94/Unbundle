@@ -3,10 +3,10 @@ import { headers } from "next/headers";
 import { after } from "next/server";
 import { redirect, notFound } from "next/navigation";
 import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
-import { AppSidebar } from "@/components/dashboard/app-sidebar";
+import { WorkspaceShell } from "@/components/shell/workspace-shell";
+import { workspaceNav } from "@/components/shell/sidebar-model";
 import { learnerRedirect } from "@/lib/learning/learner-scope";
-import { WorkspaceTopbar } from "@/components/portfolio/workspace-topbar";
+import { WorkspaceBell } from "@/components/portfolio/workspace-topbar";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import { legacyRouteRedirect, stubLogEntry } from "@/lib/use-cases/legacy-routes";
@@ -97,28 +97,27 @@ export default async function WorkspaceLayout({
     factoryAvailable = await factoryNavVisible(await getAppUcExecutor(), { workspaceId, userId: session.user.id, lsManager, lsDomains: ucLsDomains() });
   }
 
+  // (Rilascio 10, ondata 2a «Cornice», docs/ui-10/PROPOSTA-10.md §2.1-§2.2) Le voci della barra per chi guarda, e la
+  // campanella (non per chi segue solo un corso: mostra titoli e descrizioni del portfolio), che la cornice mette nella
+  // testata della barra su desktop e nella barra in alto del telefono. La campanella è un elemento del server: si legge
+  // insieme alla pagina, e la cornice non la aspetta.
+  const nav = workspaceNav({ workspaceId: workspace.id, role: access.role, useCaseHub, learningAvailable, casesAvailable, factoryAvailable });
+  const bell = learnerOnly ? null : <WorkspaceBell workspaceId={workspaceId} role={access.role} userId={session.user.id} useCaseHub={useCaseHub} />;
+
   return (
-    <SidebarProvider>
-      <AppSidebar
-        learnerOnly={learnerOnly}
-        learningAvailable={learningAvailable}
-        casesAvailable={casesAvailable}
-        useCaseHub={useCaseHub}
-        programAvailable={useCaseHub && !learnerOnly && canReviewWorkspacePortfolio(access.role)}
-        factoryAvailable={factoryAvailable}
-        workspaceId={workspace.id}
-        workspaceName={workspace.name}
-        user={{
-          name: session.user.name,
-          email: session.user.email,
-          image: session.user.image,
-        }}
-      />
-      <SidebarInset>
-        {/* La campanella mostra titoli e descrizioni del portfolio: non è per chi segue solo un corso. */}
-        <WorkspaceTopbar workspaceId={workspaceId} role={access.role} userId={session.user.id} showNotifications={!learnerOnly} useCaseHub={useCaseHub} />
-        {children}
-      </SidebarInset>
-    </SidebarProvider>
+    <WorkspaceShell
+      nav={nav}
+      workspaceId={workspace.id}
+      workspaceName={workspace.name}
+      user={{
+        name: session.user.name,
+        email: session.user.email,
+        image: session.user.image,
+      }}
+      bell={bell}
+      accountData={!learnerOnly}
+    >
+      {children}
+    </WorkspaceShell>
   );
 }

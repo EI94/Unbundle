@@ -7,13 +7,18 @@ import { readFileSync } from "node:fs";
 
 const read = (path: string) => readFileSync(new URL(`../../../${path}`, import.meta.url), "utf8");
 
-test("0.17 · the user menu items act themselves: a menu link item and an item with onClick, nothing nested", () => {
+test("0.17 · the user menu items act themselves: items with onClick, links as menu link items, nothing nested", () => {
   const sidebar = read("src/components/dashboard/app-sidebar.tsx");
   const menu = sidebar.slice(sidebar.indexOf('<DropdownMenuContent side="top"'), sidebar.indexOf("</DropdownMenuContent>"));
   assert.ok(menu.length > 0);
-  assert.match(menu, /<DropdownMenuLinkItem render=\{<Link onNavigate=\{closeMobileNavigation\} href="\/dashboard" \/>\}>/);
-  assert.match(menu, /<DropdownMenuItem onClick=\{handleLogout\}>/);
-  assert.doesNotMatch(menu, /<button|<DropdownMenuItem>\s*<Link/, "nessun link o pulsante dentro una voce");
+  // (Rilascio 10, PROPOSTA-10 §2.1) «Il tuo account» · «Tema ›» · «Esci»; «Tutti i workspace» è nel selettore in cima.
+  assert.match(menu, /<DropdownMenuItem onClick=\{openAccount\} className=\{MENU_ITEM_CLASS\}>/);
+  assert.match(menu, /<DropdownMenuSubTrigger className=\{MENU_ITEM_CLASS\}>/);
+  assert.match(menu, /<DropdownMenuItem onClick=\{handleLogout\} className=\{MENU_ITEM_CLASS\}>/);
+  assert.doesNotMatch(menu, /<button|<DropdownMenuItem>\s*<Link|<Link/, "nessun link o pulsante dentro una voce");
+  const switcher = read("src/components/shell/workspace-switcher.tsx");
+  assert.equal(switcher.match(/<DropdownMenuLinkItem render=\{<Link href=\{(WORKSPACE_LIST_HREF|NEW_WORKSPACE_HREF)\} onNavigate=\{onNavigate\} \/>\}/g)?.length, 2);
+  assert.doesNotMatch(switcher, /<DropdownMenuItem\b/);
   const ui = read("src/components/ui/dropdown-menu.tsx");
   assert.match(ui, /function DropdownMenuLinkItem\(\{ className, closeOnClick = true, \.\.\.props \}: MenuPrimitive\.LinkItem\.Props\)/);
   assert.match(ui, /<MenuPrimitive\.LinkItem\s+data-slot="dropdown-menu-item"\s+closeOnClick=\{closeOnClick\}/);

@@ -167,7 +167,7 @@ test("il pulsante: «Notifiche, 3 nuove» e «3»; «9+» da 10; niente numero c
   assert.doesNotMatch(three, /Riga 1|Segna tutte come lette/, "le righe stanno nel menu, che il server non rende");
 });
 
-test("la barra in alto: al contributore nessuna riga degli use case, al revisore sì", opts, async () => {
+test("la campanella della cornice: al contributore nessuna riga degli use case, al revisore sì", opts, async () => {
   for (const person of ["reviewer", "contributor"] as const) {
     await q(`INSERT INTO use_case_notifications (workspace_id, use_case_id, recipient_user_id, kind, rome_day, answers) VALUES ($1::uuid, $2::uuid, $3::uuid, 'risposte', current_date, 2)`, [
       ids.ws,
@@ -175,7 +175,7 @@ test("la barra in alto: al contributore nessuna riga degli use case, al revisore
       ids[person],
     ]);
   }
-  const element = async (person: "reviewer" | "contributor", role: string) => topbar.WorkspaceTopbar({ workspaceId: ids.ws, role, userId: ids[person], useCaseHub: true });
+  const element = async (person: "reviewer" | "contributor", role: string) => topbar.WorkspaceBell({ workspaceId: ids.ws, role, userId: ids[person], useCaseHub: true });
   const [forContributor] = findProp(await element("contributor", "contributor"), "initial") as BellPayload[];
   assert.ok(forContributor, "la campanella c'è");
   assert.equal(forContributor.entries.filter((e) => e.source === "use_case").length, 0);

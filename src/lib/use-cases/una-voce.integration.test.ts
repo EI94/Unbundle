@@ -18,8 +18,9 @@ const { registerHooks } = nodeModule as unknown as {
 // Integrazione «Una voce» (docs/use-case/PIANO-LAVORI.md H4i; docs/use-case/DESIGN.md §2.1,
 // §2.3-§2.5, §12.1, §12.5 criteri 1 e 2, §14.4; D1, D4). Un workspace con l'area accesa
 // (`USE_CASE_HUB_WORKSPACES`) e uno spento, sul database del pacchetto:
-// - la barra: 14 voci con tutte le sezioni accese e «Use case» accesa sulle pagine che
-//   sostituisce; spenta, le 17 voci di oggi, accese come oggi;
+// - la barra (rilascio 10, docs/ui-10/PROPOSTA-10.md §2.1-§2.4): le cinque voci, gli strumenti sotto e
+//   «Impostazioni» nel piede, con «Use case» accesa sulle pagine che sostituisce; spenta, le 17 voci di oggi, accese
+//   come oggi;
 // - i vecchi indirizzi: `redirect()` 307 verso il nuovo, query comprese, prima di ogni
 //   lettura; spenta, la pagina di oggi; il link di condivisione porta i membri alla scheda;
 // - campanella e Intelligence: i link e le etichette dei segnali delle schede, solo ai
@@ -90,6 +91,7 @@ let pathnameContext: import("react").Context<string | null>;
 let pages: Record<"portfolio" | "review" | "submit" | "plan" | "settings" | "overview" | "intelligence" | "share" | "newUseCase", Page>;
 let notFounds: { useCases: unknown; newUseCase: unknown };
 let appSidebar: (props: Record<string, unknown>) => unknown;
+let workspaceNav: typeof import("../../components/shell/sidebar-model.ts").workspaceNav;
 let sidebarProvider: (props: Record<string, unknown>) => unknown;
 let workspaceTopbar: Topbar;
 let intelligence: IntelligenceActions;
@@ -169,16 +171,16 @@ function sidebarEntries(page: string): Array<{ title: string; href: string; acti
 }
 
 /**
- * La barra laterale resa per `pathname`, con tutte le sezioni accese. Con l'area accesa il layout
- * chiede la voce «Casi d'uso» solo finché `dossierLinksReady` non è vero (P0-16): `casesAvailable`.
+ * La barra laterale resa per `pathname`, con tutte le sezioni accese, per il responsabile della trasformazione. Con
+ * l'area accesa il layout chiede la voce delle realizzazioni solo finché `dossierLinksReady` non è vero (P0-16):
+ * `casesAvailable`.
  */
 function renderSidebar(workspaceId: string, pathname: string, useCaseHub: boolean, casesAvailable = !useCaseHub) {
+  const nav = workspaceNav({ workspaceId, role: roles.lead, useCaseHub, learningAvailable: true, casesAvailable, factoryAvailable: false });
   const sidebar = createElement(appSidebar as never, {
+    nav,
     workspaceId,
     workspaceName: "Prova H4i",
-    learningAvailable: true,
-    casesAvailable,
-    useCaseHub,
     user: { name: "Persona lead", email: emails.lead, image: null },
   });
   const tree = createElement(pathnameContext.Provider, { value: pathname }, createElement(sidebarProvider as never, null, sidebar));
@@ -308,8 +310,9 @@ before(async () => {
     newUseCase: (await import(`${app}/use-cases/nuovo/not-found.tsx`)).default,
   };
   appSidebar = (await import("../../components/dashboard/app-sidebar.tsx")).AppSidebar as never;
+  ({ workspaceNav } = await import("../../components/shell/sidebar-model.ts"));
   sidebarProvider = (await import("../../components/ui/sidebar.tsx")).SidebarProvider as never;
-  workspaceTopbar = (await import("../../components/portfolio/workspace-topbar.tsx")).WorkspaceTopbar as unknown as Topbar;
+  workspaceTopbar = (await import("../../components/portfolio/workspace-topbar.tsx")).WorkspaceBell as unknown as Topbar;
   intelligence = await import("../actions/intelligence.ts");
   const shareLink = await import("../portfolio/share-link.ts");
   createShareToken = (workspaceId) => shareLink.createPortfolioShareToken(workspaceId);
@@ -382,24 +385,11 @@ const TODAY_ENTRIES = [
   "Intelligence",
   "Impostazioni",
 ];
-const HUB_ENTRIES = [
-  "Overview",
-  "AI Readiness",
-  "Formazione",
-  "Use case",
-  "Discovery",
-  "Contesto",
-  "Strategia",
-  "Activity mapping",
-  "Value map",
-  "Report",
-  "Blueprints",
-  "Simulazione",
-  "Intelligence",
-  "Impostazioni",
-];
+// (Rilascio 10) Le cinque voci (senza «Agent Factory» per chi non costruisce), gli strumenti di oggi sotto una linea, e
+// «Impostazioni» nel piede per chi gestisce.
+const HUB_ENTRIES = ["Home", "Use case", "Contesto", "Persone", "Value map", "Report", "Blueprints", "Simulazione", "Intelligence", "Impostazioni"];
 
-test("barra, area accesa: 14 voci e «Use case» accesa su use-cases, portfolio, plan e casi-duso", opts, () => {
+test("barra, area accesa: le voci del rilascio 10 e «Use case» accesa su use-cases, portfolio, plan e casi-duso", opts, () => {
   const base = `/dashboard/${ids.on}`;
   const entries = renderSidebar(ids.on, `${base}/use-cases`, true);
   assert.deepEqual(entries.map((entry) => entry.title), HUB_ENTRIES);
@@ -408,21 +398,23 @@ test("barra, area accesa: 14 voci e «Use case» accesa su use-cases, portfolio,
     const active = renderSidebar(ids.on, `${base}${rest}`, true).filter((entry) => entry.active).map((entry) => entry.title);
     assert.deepEqual(active, ["Use case"], rest);
   }
-  // Le altre voci restano accese anche sulle loro pagine annidate; Overview solo sulla base.
-  assert.deepEqual(renderSidebar(ids.on, `${base}/learning/programma`, true).filter((e) => e.active).map((e) => e.title), ["Formazione"]);
-  assert.deepEqual(renderSidebar(ids.on, base, true).filter((e) => e.active).map((e) => e.title), ["Overview"]);
+  // Le altre voci restano accese anche sulle loro pagine annidate; «Home» sulla base e sui suoi alias.
+  assert.deepEqual(renderSidebar(ids.on, `${base}/learning/programma`, true).filter((e) => e.active).map((e) => e.title), ["Persone"]);
+  for (const rest of ["", "/programma", "/strategy"]) {
+    assert.deepEqual(renderSidebar(ids.on, `${base}${rest}`, true).filter((e) => e.active).map((e) => e.title), ["Home"], rest || "base");
+  }
 });
 
-test("barra, area accesa prima di P0-16: «Casi d'uso» resta sotto «Use case» e tiene /casi-duso", opts, () => {
+test("barra, area accesa prima di P0-16: «Realizzazioni» apre gli strumenti e tiene /casi-duso", opts, () => {
   const base = `/dashboard/${ids.on}`;
   const entries = renderSidebar(ids.on, `${base}/use-cases`, true, true);
   const expected = [...HUB_ENTRIES];
-  expected.splice(expected.indexOf("Use case") + 1, 0, "Casi d'uso");
+  expected.splice(expected.indexOf("Value map"), 0, "Realizzazioni");
   assert.deepEqual(entries.map((entry) => entry.title), expected);
-  assert.equal(entries.find((entry) => entry.title === "Casi d'uso")?.href, `${base}/casi-duso`);
+  assert.equal(entries.find((entry) => entry.title === "Realizzazioni")?.href, `${base}/casi-duso`);
   const activeAt = (rest: string) => renderSidebar(ids.on, `${base}${rest}`, true, true).filter((e) => e.active).map((e) => e.title);
   for (const rest of ["/use-cases", `/use-cases/${cards.top.id}`, "/portfolio", "/plan"]) assert.deepEqual(activeAt(rest), ["Use case"], rest);
-  for (const rest of ["/casi-duso", `/casi-duso/${randomUUID()}/domande`]) assert.deepEqual(activeAt(rest), ["Casi d'uso"], rest);
+  for (const rest of ["/casi-duso", `/casi-duso/${randomUUID()}/domande`]) assert.deepEqual(activeAt(rest), ["Realizzazioni"], rest);
 });
 
 test("barra, area spenta: le 17 voci di oggi, accese come oggi", opts, () => {
