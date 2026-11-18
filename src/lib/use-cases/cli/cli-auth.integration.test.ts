@@ -180,7 +180,8 @@ test("l'e-mail «CLI collegata»: una per token, alla persona, senza caso; parte
   assert.equal(summary.sent, 1);
   assert.equal(sent.length, 1);
   assert.equal(sent[0].to, `prova-cli-persona-${suffix}@example.test`);
-  assert.equal(sent[0].subject, "Workspace di prova CLI: la CLI di Unbundle è collegata al tuo account");
+  // (Rilascio 10, §3.12) L'oggetto al massimo di 55 caratteri.
+  assert.equal(sent[0].subject, "Workspace di prova CLI: CLI collegata al tuo account");
   assert.ok(sent[0].text.includes(`https://app.example.test/dashboard/${ids.ws}/settings`));
   assert.ok(!sent[0].text.includes("esempio.test") && !sent[0].text.includes(LABEL), "niente etichetta");
   const [after1] = await q(`SELECT status, sent_at IS NOT NULL AS sent FROM uc_notifications WHERE id = $1`, [delivered.noticeId]);

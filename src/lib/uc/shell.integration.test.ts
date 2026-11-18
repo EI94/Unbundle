@@ -305,7 +305,7 @@ test("header: one round-trip with the cached readiness, the parent card and its 
   assert.equal(counted.calls(), 1, "one batch, one round-trip");
   assert.ok(head);
   assert.equal(head.case.title, "Caso del guscio");
-  assert.equal(head.parent, null, "without a parent card the trail keeps «‹ Casi d'uso»");
+  assert.equal(head.parent, null, "without a parent card the trail keeps «‹ Realizzazioni»");
   const [cached] = await q(`SELECT readiness FROM uc_cases WHERE id = $1::uuid`, [state.caseId]);
   const readiness = cached.readiness as { G1: { ok: number; required: number } };
   assert.deepEqual({ ok: head.progress?.ok, required: head.progress?.required }, { ok: readiness.G1.ok, required: readiness.G1.required }, "progress from the cache");

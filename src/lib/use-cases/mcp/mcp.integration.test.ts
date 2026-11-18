@@ -869,11 +869,11 @@ test("«Benefici e costi»: update_use_case salva valuation.model, la Storia dic
       assert.equal(computed[key], expected, key);
     }
     assert.equal(computed.valueText, "Basso · 4.043 €/anno");
-    assert.equal(computed.costText, "avvio 560 € · ricorrenti 600 €/anno");
+    assert.equal(computed.costText, "Costo 560 € · costo all'anno 600 €");
     assert.deepEqual(computed.costBand, { band: 1, symbol: "€", label: BAND_LABELS[0] });
     assert.deepEqual(computed.plan, { startMonth: "2026-11", goLiveMonth: "2027-01", startLabel: "nov 26", goLiveLabel: "gen 27", source: "piano", sourceLabel: "i mesi della scheda" });
     assert.equal((computed.assumptions as Structured).hourlyCostEur, 35, "le ipotesi predefinite del workspace");
-    assert.deepEqual(valuation.costo, { symbols: "€", amount: 560, band: 1, bandLabel: BAND_LABELS[0], source: "stima", sourceLabel: "stima del team", runEurYear: 600, text: "avvio 560 € · ricorrenti 600 €/anno" });
+    assert.deepEqual(valuation.costo, { symbols: "€", amount: 560, band: 1, bandLabel: BAND_LABELS[0], source: "stima", sourceLabel: "stima del team", runEurYear: 600, text: "Costo 560 € · costo all'anno 600 €" });
     assert.equal((valuation.valore as Structured).text, "Basso · 4.043 €/anno");
     const [hit] = (await call(client, "search_use_cases", { query: `Benefici e costi ${suffix}` })).content.results as Structured[];
     assert.equal((hit.valore as Structured).text, "Basso · 4.043 €/anno");
@@ -934,7 +934,7 @@ test("«Cosa serve»: save_needs crea e collega per codice o id, list_needs le l
     const listed = await call(client, "list_needs", { useCase: a.code });
     assert.equal(listed.content.total, 1);
     const [need] = listed.content.needs as Structured[];
-    assert.deepEqual([need.title, need.typeLabel, need.areaLabel, need.ownerLabel, need.ownerSideLabel, need.statusLabel], [`Accesso al gestionale ${suffix}`, "Requisito", "Accessi", "Ufficio IT", "Cliente", "Non ancora chiesta"]);
+    assert.deepEqual([need.title, need.typeLabel, need.areaLabel, need.ownerLabel, need.ownerSideLabel, need.statusLabel], [`Accesso al gestionale ${suffix}`, "Informazione", "Accessi", "Ufficio IT", "Cliente", "Non ancora chiesta"]);
     assert.deepEqual((need.useCases as Structured[]).map((u) => u.code), [a.code]);
     const page = await needsReads.listWorkspaceNeeds(ids.wsA, viewerOf("manager"));
     assert.deepEqual(page!.filter((n) => titles.includes(n.title)).map((n) => n.id).sort(), saved.map((entry) => entry.id).sort(), "la pagina legge le stesse esigenze");
@@ -964,7 +964,7 @@ test("«Cosa serve»: save_needs crea e collega per codice o id, list_needs le l
     assert.equal(((await call(client, "list_needs", {})).content.needs as Structured[]).some((n) => n.id === saved[0].id), false, "le archiviate restano fuori");
     assert.equal(((await call(client, "list_needs", { includeArchived: true })).content.needs as Structured[]).some((n) => n.id === saved[0].id), true);
     const edit = await call(client, "save_needs", write({ items: [{ importKey: key1, status: "chiesta" }] }));
-    assert.deepEqual(edit.content.fieldErrors, { "items.0.importKey": "Questa esigenza è archiviata." });
+    assert.deepEqual(edit.content.fieldErrors, { "items.0.importKey": "Questa informazione è archiviata." });
   } finally {
     await client.close();
   }
@@ -1374,7 +1374,7 @@ test("con un errore uc forzato le decisioni che dipendono dal dossier rispondono
   try {
     const card = await seed();
     const refused = await call(client, "decide_use_case", write({ code: card.code, expectedVersion: await versionOf(card.id), decision: { type: "non_avviare", publicNote: "Fuori perimetro." } }));
-    assert.deepEqual(refused.content, { error: "riprova", message: "Non riesco a leggere lo stato del dossier. Riprova tra poco." });
+    assert.deepEqual(refused.content, { error: "riprova", message: "Non riesco a leggere lo stato della realizzazione. Riprova tra poco." });
     assert.equal((await row(card.id)).status, "proposed");
     const reviewBy = new Date(Date.now() + 20 * 86_400_000).toISOString().slice(0, 10);
     const other = await call(client, "decide_use_case", write({ code: card.code, expectedVersion: await versionOf(card.id), decision: { type: "rimanda", reviewBy } }));

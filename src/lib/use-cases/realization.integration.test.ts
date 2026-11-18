@@ -249,7 +249,7 @@ test("avvio da una scheda del connettore: codice dello use case, dati raccolti d
   // Un secondo avvio sullo stesso use case è rifiutato; la Storia non cambia.
   const again = await start(ids.fromConnector);
   assert.equal(again.ok, false);
-  assert.equal(again.message, "Questo use case ha già un dossier.");
+  assert.equal(again.message, "Questo use case ha già una realizzazione.");
   assert.equal((await dossierOf(ids.fromConnector)).length, 1);
   assert.equal((await storyOf(ids.fromConnector)).filter((e) => e.action === "realizzazione_avviata").length, 1);
 });
@@ -280,14 +280,14 @@ test("capitolo «Realizzazione»: riepilogo per ogni revisore, «Apri il dossier
   const html = renderToStaticMarkup(page);
   const chapter = html.slice(html.indexOf('data-slot="section-realization"'));
   assert.match(chapter, /data-variant="riepilogo"/);
-  for (const text of ["Costo di realizzazione", "Beneficio all&#x27;anno", "Pareggio", "Il dossier lo vedono i suoi membri e chi gestisce il workspace."]) {
+  for (const text of ["Costo di realizzazione", "Valore all&#x27;anno", "Pareggio", "La realizzazione la vedono le sue persone e chi gestisce il workspace."]) {
     assert.ok(chapter.includes(text), text);
   }
-  assert.ok(!chapter.includes("Apri il dossier"), "niente link per chi non apre il dossier");
+  assert.ok(!chapter.includes("Apri la realizzazione"), "niente link per chi non apre il dossier");
 
   signIn("lsLead");
   const leadHtml = renderToStaticMarkup(await detailPage({ params: Promise.resolve({ workspaceId: ids.ws, useCaseId: ids.fromConnector }), searchParams: Promise.resolve({}) }));
-  assert.ok(leadHtml.slice(leadHtml.indexOf('data-slot="section-realization"')).includes("Apri il dossier"));
+  assert.ok(leadHtml.slice(leadHtml.indexOf('data-slot="section-realization"')).includes("Apri la realizzazione"));
 
   signIn("contributor");
   const own = renderToStaticMarkup(await detailPage({ params: Promise.resolve({ workspaceId: ids.ws, useCaseId: ids.fromConnector }), searchParams: Promise.resolve({}) }));
@@ -382,7 +382,7 @@ test("piega «Realizzazione» e riquadro: «Avvia» pieno nel riquadro quando è
   assert.ok(view, "la pagina monta UseCaseDetailView");
   const failed = renderToStaticMarkup(createElementOf(view.type, { ...view.props, result: { ...(view.props.result as object), dossierRead: "errore" }, realization: null }));
   assert.match(failed, /data-slot="next-step" data-key="E7"/);
-  assert.ok(failed.includes("Il riepilogo del dossier non è disponibile ora."));
+  assert.ok(failed.includes("Il riepilogo della realizzazione non è disponibile ora."));
   assert.deepEqual(filledIn(failed), [], "E7: niente di pieno");
   assert.match(failed, /data-step="realizzazione" data-state="adesso"[^>]*aria-current="step"/);
   await q(`DELETE FROM use_cases WHERE id = $1::uuid`, [ready]);
@@ -556,7 +556,7 @@ test("«Pronto da avviare»: la campanella e l'email arrivano al riquadro con «
     assert.doesNotMatch(started.box, /data-key="G9"/);
     assert.equal(started.target, "realizzazione");
     assert.deepEqual(started.opened, ["realizzazione"]);
-    assert.ok(started.fold.includes("Apri il dossier"));
+    assert.ok(started.fold.includes("Apri la realizzazione"));
   } finally {
     await q(`DELETE FROM use_cases WHERE id = $1::uuid`, [ready]);
   }

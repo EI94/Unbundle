@@ -370,7 +370,8 @@ test("il reply-to di un promemoria segue chi ha chiesto le voci che partono, anc
   const mail = mailer.outbox[0];
   assert.equal(mail.to, MARIO);
   assert.equal(mail.replyTo, emails.carlo, "le risposte arrivano a chi ha chiesto R2");
-  assert.ok(mail.text.includes("arriva a Persona carlo"), "il testo nomina la stessa persona dell'intestazione");
+  // (Rilascio 10, §3.12) La riga piccola non ripete il nome: lo dice la frase del promemoria.
+  assert.ok(mail.text.includes("ti ricordiamo che Persona carlo aspetta"), "il testo nomina la stessa persona dell'intestazione");
   assert.ok(!mail.text.includes("Persona fabio"));
   const items = await q(`SELECT request_id::text AS r, state, drop_reason FROM use_case_referent_email_items WHERE email_id = $1::uuid ORDER BY request_id`, [emailId]);
   const byRequest = Object.fromEntries(items.map((i) => [String(i.r), [i.state, i.drop_reason]]));

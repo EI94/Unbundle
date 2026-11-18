@@ -322,7 +322,8 @@ test("HTML: editor «Benefici e costi», cifre della riga e riquadro «Ipotesi d
   assert.match(editor, /Benefici e costi/);
   assert.match(editor, /116 h · 4\.043 €/, "la riga calcolata della voce a ore");
   assert.match(editor, /Contati: 116 h · 4\.043 € all&#x27;anno/);
-  assert.match(editor, /avvio 560\u00a0€\u00a0· ricorrenti 600\u00a0€\/anno/);
+  // (Rilascio 10, §4) «Costo» e «costo all'anno».
+  assert.match(editor, /Costo 560[\s\u00a0]€[\s\u00a0]· costo all&#x27;anno 600[\s\u00a0]€/);
   assert.match(editor, /Avanzate/);
   assert.equal((editor.match(/data-slot="value-component"/g) ?? []).length, 2);
 
@@ -336,12 +337,12 @@ test("HTML: editor «Benefici e costi», cifre della riga e riquadro «Ipotesi d
   assert.doesNotMatch(figures, /Basso/);
   // Nella riga stretta il Valore va a capo solo dopo «·»: la cifra resta intera.
   assert.ok(figures.includes('<span class="whitespace-nowrap">4.043 €/anno</span>'), figures);
-  assert.match(figures.replace(/<[^>]+>/g, ""), /avvio 560 €\u00a0· ricorrenti 600 €\/anno/);
-  // La cifra del modello va a capo solo dopo «·», che resta con «avvio …»: «avvio …» e «ricorrenti …» restano interi.
-  for (const part of ["avvio 560 €", "ricorrenti 600 €/anno"]) assert.ok(figures.includes(`<span class="whitespace-nowrap">${part}</span>`), part);
+  assert.match(figures.replace(/<[^>]+>/g, ""), /Costo 560 €\u00a0· costo all&#x27;anno 600 €/);
+  // La cifra del modello va a capo solo dopo «·», che resta con «Costo …»: «Costo …» e «costo all'anno …» restano interi.
+  for (const part of ["Costo 560 €", "costo all&#x27;anno 600 €"]) assert.ok(figures.includes(`<span class="whitespace-nowrap">${part}</span>`), part);
   // Nella colonna di «Priorità» e nel pannello le due parti stanno una sotto l'altra, senza «·».
   const stacked = renderToStaticMarkup(createElement(CostFigure, { cost: detail.useCase.cost, withLabel: true, stack: true }));
-  assert.match(stacked, /<span data-cost-parts="" class="inline-flex flex-col font-medium"><span class="whitespace-nowrap">avvio 560 €<\/span><span class="whitespace-nowrap">ricorrenti 600 €\/anno<\/span><\/span>/);
+  assert.match(stacked, /<span data-cost-parts="" class="inline-flex flex-col font-medium"><span class="whitespace-nowrap">Costo 560 €<\/span><span class="whitespace-nowrap">costo all&#x27;anno 600 €<\/span><\/span>/);
   assert.doesNotMatch(stacked, / · /);
   assert.match(figures, /data-cost-source="stima"/);
   assert.doesNotMatch(figures, /data-source="stima"/, "nella riga la cifra del modello va senza fonte");
@@ -371,7 +372,7 @@ test("HTML: editor «Benefici e costi», cifre della riga e riquadro «Ipotesi d
   assert.match(impactText, /a 35 € l'ora/);
   assert.ok(impactText.includes("Smistamento delle richieste · 6.600 all'anno × 1,5 min × 70% ≈ 116 h · 4.043 € · ipotesi"), impactText);
   assert.ok(impactText.includes("Meno errori di smistamento") && impactText.includes("Ipotesi da confermare"), "il chip della voce qualitativa e quello delle ipotesi");
-  assert.ok(impactText.includes("L'avvio rientra in circa 2 mesi a regime, senza contare i 4 giorni di sviluppo."), impactText);
+  assert.ok(impactText.includes("Pareggio in circa 2 mesi a regime, senza contare i 4 giorni di sviluppo."), impactText);
   assert.ok(impactText.includes("Da dove vengono i numeri") && impactText.includes("Chi conferma i numeri") && impactText.includes("Responsabile di prova"));
   assert.match(impact, /data-figure="costo" data-cost-source="stima"/);
   assert.ok(!impact.includes('data-slot="valuation-form"'), "fuori dall'editor");

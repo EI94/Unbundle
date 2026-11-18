@@ -157,7 +157,7 @@ async function answeredReferent(card: { id: string; needs: string[] }): Promise<
   pok(await pub.saveReferentDraft(link, { needId: card.needs[0], text: "Circa 200 al mese", dontKnow: false }, new Date()) as never, "bozza 1");
   pok(await pub.saveReferentDraft(link, { needId: card.needs[1], text: "Il gestionale", dontKnow: false }, new Date()) as never, "bozza 2");
   pok(await pub.submitReferentAnswers(link, {}, new Date()) as never, "invia");
-  assert.match((await send(sent.requestId)).map((m) => m.subject).join("|"), /grazie per le risposte/);
+  assert.match((await send(sent.requestId)).map((m) => m.subject).join("|"), /: grazie per «Fatture fornitori»/);
   return { requestId: sent.requestId, token: token!, email };
 }
 
@@ -458,11 +458,13 @@ test("un'email al giorno con tutte le novità: «Hai 2 novità sul caso d'uso �
   const mails = await send(r.requestId, new Date(NOW.getTime() + 60_000));
   assert.equal(mails.length, 1);
   assert.equal(mails[0].to, r.email);
-  assert.match(mails[0].subject, /^Rondine prova: 2 novità sul caso d'uso «FP-\d+ · Fatture fornitori»$/);
-  assert.match(mails[0].text, /Hai 2 novità sul caso d'uso «FP-\d+ · Fatture fornitori»: le trovi con lo stesso link\./);
+  assert.match(mails[0].subject, /^Rondine prova: 2 novità su «Fatture fornitori»$/);
+  assert.match(mails[0].text, /Hai 2 novità sul caso d'uso «Fatture fornitori»: le trovi con lo stesso link\./);
   assert.match(mails[0].text, /Apri le novità/);
   assert.match(mails[0].text, /\/rispondi\/ucq_[A-Za-z0-9_-]{32}/);
-  assert.match(mails[0].html, /Lateral Space via Unbundle/);
+  // (Rilascio 10, §3.12) Il marchio una volta, nell'intestazione: niente più «Lateral Space via Unbundle.» in fondo.
+  assert.match(mails[0].html, /font-weight:bold;color:#111827">Unbundle<\/td>/);
+  assert.doesNotMatch(mails[0].html, /Lateral Space via Unbundle/);
   for (const secret of ["Più o meno quante", "Esempio di pratica", OTHER_NAME]) assert.ok(!mails[0].text.includes(secret) && !mails[0].html.includes(secret), secret);
   assert.deepEqual(await send(r.requestId, new Date(NOW.getTime() + 120_000)), [], "lo stesso giorno niente altro");
   // La stessa giornata della prova (l'orologio del database è un altro): un'email è già partita oggi.
@@ -484,7 +486,7 @@ test("un'email al giorno con tutte le novità: «Hai 2 novità sul caso d'uso �
   await q(`UPDATE use_case_referent_emails SET sent_at = now() - interval '2 days' WHERE contact_id = (SELECT contact_id FROM use_case_referent_requests WHERE id = $1::uuid) AND status = 'inviata'`, [r.requestId]);
   const nextDay = await send(r.requestId, new Date(tomorrow.getTime() + 3_600_000));
   assert.equal(nextDay.length, 1);
-  assert.match(nextDay[0].subject, /^Rondine prova: un chiarimento sul caso d'uso «FP-\d+ · Fatture fornitori»$/);
+  assert.match(nextDay[0].subject, /^Rondine prova: un chiarimento su «Fatture fornitori»$/);
   const renewed = await requestOf(r.requestId);
   assert.ok(new Date(String(renewed.expires_at)).getTime() >= Date.now() + 29 * 86_400_000, "ogni novità rinnova il link per 30 giorni");
 });
@@ -542,8 +544,8 @@ test("dopo una riapertura i soliti due promemoria, contati da lì, che parlano d
   assert.equal(counts.errors, 0, JSON.stringify(counts));
   const mine = mailer.outbox.filter((x) => x.to === r.email);
   assert.equal(mine.length, 1, JSON.stringify(counts));
-  assert.match(mine[0].subject, /^Rondine prova: promemoria sul caso d'uso «FP-\d+ · Fatture fornitori»$/);
-  assert.match(mine[0].text, /ti ricordiamo che Giulia Neri aspetta la tua risposta a un chiarimento sul caso d'uso «FP-\d+ · Fatture fornitori»\./);
+  assert.match(mine[0].subject, /^Rondine prova: promemoria su «Fatture fornitori»$/);
+  assert.match(mine[0].text, /ti ricordiamo che Giulia Neri aspetta la tua risposta a un chiarimento sul caso d'uso «Fatture fornitori»\./);
   assert.doesNotMatch(mine[0].text, /domande aperte|0 domande/);
   assert.equal(Number((await requestOf(r.requestId)).reminder_count), 1);
 });
@@ -567,7 +569,7 @@ test("una novità dopo un'email dello stesso giorno annullata (la richiesta si e
   assert.deepEqual(items.map((i) => `${i.kind}:${i.status}:${i.replies}`), ["nuove:in_coda:1"]);
   const mails = await send(r.requestId, new Date(NOW.getTime() + 60_000));
   assert.equal(mails.length, 1);
-  assert.match(mails[0].subject, /^Rondine prova: una risposta sul caso d'uso «FP-\d+ · Fatture fornitori»$/);
+  assert.match(mails[0].subject, /^Rondine prova: una risposta su «Fatture fornitori»$/);
   assert.match(mails[0].text, /Leggi la risposta/);
   assert.ok(!mails[0].text.includes("Solo il team"), "mai il testo");
 });

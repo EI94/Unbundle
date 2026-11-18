@@ -234,7 +234,7 @@ test("primo promemoria al terzo giorno lavorativo; mai due email lo stesso giorn
   assert.equal(counts.errors, 0, JSON.stringify(counts));
   const mails = promemoria(mailer.outbox);
   assert.equal(mails.length, 1, JSON.stringify(counts));
-  assert.match(mails[0].subject, /^[^:]+: promemoria sul caso d'uso «/);
+  assert.match(mails[0].subject, /^[^:]+: promemoria su «/);
   assert.match(mails[0].text, /\/rispondi\/ucq_/);
   const [r] = await q(`SELECT reminder_count, last_reminder_at FROM use_case_referent_requests WHERE id = $1::uuid`, [requestId]);
   assert.equal(Number(r.reminder_count), 1);

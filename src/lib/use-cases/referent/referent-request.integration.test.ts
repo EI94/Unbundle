@@ -239,10 +239,10 @@ test("richiesta al referente senza domande: la riga della conferma, la Storia, l
   assert.deepEqual(open, { questions: 0, pending: 1 });
   const m = await mailOf(sent.requestId);
   assert.equal(m.to, ALDO);
-  assert.match(m.subject, /^Rondine prova: sei il referente per il caso d'uso «RC-\d+ · Fatture fornitori»$/);
-  assert.ok(m.text.includes("Persona builder ti ha indicato come referente per il caso d'uso «"), m.text);
-  assert.ok(m.text.includes("Ti chiediamo due cose: confermare che è descritto bene e aiutarci a stimarne l'impatto."), m.text);
-  assert.ok(m.text.includes("Bastano pochi minuti, anche dal telefono. Se un'informazione non ce l'hai, scegli «Non ce l'ho»."), m.text);
+  // (Rilascio 10, §3.12, §9.9) «{Cliente}: conferma «Titolo»»; il corpo corto, «Non lo so».
+  assert.equal(m.subject, "Rondine prova: conferma «Fatture fornitori»");
+  assert.ok(m.text.includes("Persona builder ti ha indicato come referente del caso d'uso «Fatture fornitori»"), m.text);
+  assert.ok(m.text.includes("Bastano pochi minuti: confermi la descrizione e alcune stime. Se non sai, scegli «Non lo so»."), m.text);
   assert.ok(m.text.includes("Inizia"), m.text);
   assert.ok(!/domand/.test(m.text.split("Bastano")[0]), "nessuna domanda");
 });
@@ -253,12 +253,12 @@ test("richiesta al referente con domande e «Serve un file»: l'email conta le d
   assert.deepEqual((await itemsOf(sent.requestId)).map((i) => [i.position, i.file_required]), [[1, false], [2, true], [3, false]]);
   for (const id of card.needs.slice(0, 3)) assert.equal(await statusOf(id), "chiesta");
   const m = await mailOf(sent.requestId);
-  assert.ok(m.text.includes("Ti chiediamo di confermare che è descritto bene, di aiutarci a stimarne l'impatto e di rispondere a 3 domande."), m.text);
+  assert.ok(m.text.includes("Bastano pochi minuti: confermi la descrizione, alcune stime e 3 domande. Se non sai, scegli «Non lo so»."), m.text);
   // «Serve un file» solo tra le domande della richiesta.
   const other = await newCard();
   refused(await sendReferent(other.id, { contact: await contactOf(BRUNA), needIds: other.needs.slice(0, 1), fileRequired: [other.needs[2]] }), "domande_cambiate");
   const one = ok(await sendReferent(other.id, { contact: await contactOf(BRUNA), needIds: other.needs.slice(0, 1) }), "una domanda");
-  assert.ok((await mailOf(one.requestId)).text.includes("e di rispondere a una domanda."));
+  assert.ok((await mailOf(one.requestId)).text.includes("confermi la descrizione, alcune stime e una domanda."));
   // Le richieste di sole domande restano quelle del rilascio 4: senza domande, «nessuna_domanda».
   refused(await referents.sendReferentRequest(as("builder"), other.id, { contact: await contactOf(ALDO), needIds: [] }, deps()), "nessuna_domanda");
 });
@@ -378,7 +378,7 @@ test("la conferma da inviare tiene aperta la richiesta: promemoria al terzo e al
   assert.equal(c1.errors, 0, JSON.stringify(c1));
   const p1 = m1.outbox.filter((m) => m.to === BRUNA);
   assert.equal(p1.length, 1, JSON.stringify(c1));
-  assert.match(p1[0].subject, /^Rondine prova: promemoria sul caso d'uso «RC-\d+ · Fatture fornitori»$/);
+  assert.match(p1[0].subject, /^Rondine prova: promemoria su «Fatture fornitori»$/);
   assert.ok(p1[0].text.includes("ti ricordiamo che Persona builder aspetta la tua conferma sul caso d'uso «"), p1[0].text);
   assert.ok(/aspetta la tua conferma sul caso d'uso «[^»]+»\./.test(p1[0].text), "senza domande, niente «e le risposte»");
   assert.ok(p1[0].text.includes("Riprendi"));
@@ -388,7 +388,7 @@ test("la conferma da inviare tiene aperta la richiesta: promemoria al terzo e al
   await referents.runReferentCron({ env: ENV, now: V, mailer: m2 });
   const p2 = m2.outbox.filter((m) => m.to === BRUNA);
   assert.equal(p2.length, 1);
-  assert.match(p2[0].subject, /^Rondine prova: ultimo promemoria sul caso d'uso «/);
+  assert.match(p2[0].subject, /^Rondine prova: ultimo promemoria su «/);
   assert.equal(Number((await requestOf(sent.requestId)).reminder_count), 2);
   assert.ok((await q(`SELECT 1 FROM use_case_notifications WHERE use_case_id = $1::uuid AND kind = 'senza_risposta'`, [card.id])).length >= 1);
   // Una risposta del team non la completa.

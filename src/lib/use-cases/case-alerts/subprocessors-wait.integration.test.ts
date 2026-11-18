@@ -301,8 +301,9 @@ test("l'email a chi può dare l'ok: il link a Impostazioni, nessun dato dello us
   const mine = outbox.filter((m) => m.text.includes(`/dashboard/${ws}/`));
   assert.deepEqual(mine.map((m) => m.to).sort(), DECLARERS.map((p) => PEOPLE[p].email).sort());
   for (const m of mine) {
-    assert.equal(m.subject, "Rondine: serve il tuo ok sui fornitori di Lateral Space");
-    assert.ok(m.text.includes(`Apri Impostazioni › Sub-responsabili: http://localhost:3000/dashboard/${ws}/settings#sub-responsabili`));
+    assert.equal(m.subject, "Rondine: serve il tuo ok sui fornitori");
+    // (Rilascio 10, §3.12) Il pulsante dice «Dai l'ok»; il link resta quello di Impostazioni.
+    assert.ok(m.text.includes(`Dai l'ok: http://localhost:3000/dashboard/${ws}/settings#sub-responsabili`));
     assert.doesNotMatch(m.text, /FO-\d+|Fatture fornitori|caso d'uso/);
     assert.equal(m.from, SEND_ENV.UC_EMAIL_FROM);
     assert.equal(m.replyTo, "persona@example.test");

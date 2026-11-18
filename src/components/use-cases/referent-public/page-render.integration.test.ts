@@ -209,7 +209,8 @@ test("prima l'informativa: nessuna domanda, bozza o caricamento prima di «Inizi
   const first = await html(link.token);
   for (const text of [
     "Rondine prova",
-    `${CODE} · Fatture fornitori`,
+    // (Rilascio 10, D6) Il titolo senza codice; il codice in piccolo in fondo, «Riferimento …».
+    `Riferimento ${CODE}`,
     "Giulia Neri ti chiede alcune informazioni.",
     "Il messaggio di Giulia Neri",
     "Ci serve per la stima di fine mese.",
@@ -227,7 +228,7 @@ test("prima l'informativa: nessuna domanda, bozza o caricamento prima di «Inizi
   assertNothingPrivate(first);
 });
 
-test("dopo l'informativa: le domande con risposta, «Non ce l'ho», «È già allegato», file e invio", opts, async () => {
+test("dopo l'informativa: le domande con risposta, «Non lo so», «È già allegato», file e invio", opts, async () => {
   pok(await pub.acceptReferentPrivacy(await linkOf(state.token), { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" }, new Date()), "informativa");
   const shown = await html(state.token);
   for (const text of [
@@ -237,11 +238,11 @@ test("dopo l'informativa: le domande con risposta, «Non ce l'ho», «È già al
     titles[1],
     "La tua risposta",
     "Scrivi qui. Bastano poche righe.",
-    "Non ce l'ho",
+    "Non lo so",
     "È già allegato",
     "Allega un file",
     "2 domande",
-    "Per ognuna: rispondi, allega un file o scegli «Non ce l'ho».",
+    "Per ognuna: rispondi, allega un file o scegli «Non lo so».",
     "0 di 2 fatte",
     "Invia",
     "Si salva da solo: puoi tornare fino al",
@@ -343,7 +344,7 @@ test("(rilascio 5) la richiesta al referente: «ti ha indicato come referente»,
   for (const passo of [undefined, "2", "3", "x"]) {
     const step1 = await html(token!, passo);
     assert.match(step1, /<ol aria-label="Passi"/);
-    for (const text of ["Il caso d'uso", "L'impatto", "Le domande", "È così?", "Sì, è così", "Correggi"]) assert.ok(step1.includes(text), `${passo}: ${text}`);
+    for (const text of ["Il caso d'uso", "Le stime", "Le domande", "È così?", "Sì, è così", "Correggi"]) assert.ok(step1.includes(text), `${passo}: ${text}`);
     const visible = step1.replace(/<script[\s\S]*?<\/script>/g, " ").replace(/<[^>]+>/g, " ");
     assert.ok(!/\buse[\s-]*cases?\b/i.test(visible), `${passo}: (rilascio 5.1) mai «use case» a schermo`);
     assert.equal((step1.match(/aria-current="step"/g) ?? []).length, 1);
@@ -367,7 +368,7 @@ test("(rilascio 5) la richiesta al referente: «ti ha indicato come referente»,
   assert.ok(step3.includes(titles[5]) && step3.includes("Indietro"));
   assert.deepEqual(filledButtons(step3), ["Invia"]);
   for (const forbidden of ["98765", "98.765", "NOTA-RISERVATA", PROPOSER]) assert.ok(!step3.includes(forbidden));
-  // (Rilascio 5.1) Con un modello del valore il passo 2 è «L'impatto»: una riga per voce, un tocco, un solo pulsante pieno.
+  // (Rilascio 5.1, rilascio 10 §4) Con un modello del valore il passo 2 sono «Le stime»: una riga per voce, un tocco, un solo pulsante pieno.
   const model = {
     v: 1,
     primary: "tempo",
@@ -381,14 +382,14 @@ test("(rilascio 5) la richiesta al referente: «ti ha indicato come referente»,
   try {
     const impact = await html(token!);
     for (const text of [
-      "L'impatto",
-      "Cosa cambia, secondo il team",
+      "Le stime",
+      "Ti tornano queste stime?",
       "Controllo delle fatture: circa 250 volte al mese, 12 minuti ogni volta. Ti torna?",
       "Meno solleciti: circa 4.321 € l'anno. Ti torna?",
       "Meno errori. Ti torna?",
       "È di meno",
       "È di più",
-      "Non so",
+      "Non lo so",
       "Aggiungi un commento",
       "Indietro",
     ]) {
@@ -396,7 +397,7 @@ test("(rilascio 5) la richiesta al referente: «ti ha indicato come referente»,
     }
     assert.deepEqual(filledButtons(impact), ["Avanti"], "le scelte sono a levetta, il pulsante pieno è il passo dopo");
     assert.equal((impact.match(/data-slot="referent-benefit"/g) ?? []).length, 3);
-    // (Decisione del titolare del 04/11/2026) «Non so» anche sulle cifre del team: quattro scelte a ore e in euro, tre sulla qualitativa.
+    // (Decisione del titolare del 04/11/2026) «Non lo so» anche sulle cifre del team: quattro scelte a ore e in euro, tre sulla qualitativa.
     assert.equal((impact.match(/aria-pressed="false"/g) ?? []).length, 11, "4 + 4 + 3 scelte, nessuna premuta");
     for (const forbidden of ["FONTE-RISERVATA", "automatable", "50%", "ipotesi", "da_misurare", titles[5]]) assert.ok(!impact.includes(forbidden), forbidden);
   } finally {

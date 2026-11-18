@@ -308,8 +308,16 @@ test("(rilascio 5, rilascio 6) approvata senza referente: il riquadro dice il mo
   signIn("builder");
   const element = await pageOfDetail({ params: Promise.resolve({ workspaceId: ids.ws, useCaseId: card }), searchParams: Promise.resolve({}) });
   const html = readable(renderToStaticMarkup(element));
-  const askCount = (part: string) => (part.match(new RegExp(`>${CHOOSE}</button>`, "g")) ?? []).length;
-  const boxCount = (part: string) => (part.match(new RegExp(`</svg>${INDICA}</button>`, "g")) ?? []).length;
+  // (Rilascio 10, §4) Il blocco e il riquadro dicono tutti e due «Indica il referente»: si distinguono dal pulsante,
+  // quello del riquadro è `data-action="next-step-referent"`.
+  const buttonsWith = (part: string, label: string) => {
+    const out: string[] = [];
+    for (let end = part.indexOf(`${label}</button>`); end !== -1; end = part.indexOf(`${label}</button>`, end + 1)) out.push(part.slice(part.lastIndexOf("<button", end), end));
+    return out;
+  };
+  const isBox = (button: string) => button.includes('data-action="next-step-referent"');
+  const askCount = (part: string) => buttonsWith(part, CHOOSE).filter((button) => !isBox(button)).length;
+  const boxCount = (part: string) => buttonsWith(part, INDICA).filter(isBox).length;
   // Senza l'autorizzazione dei fornitori (la persona di funzione la può dare): G4, con «Autorizza i fornitori»
   // pieno nel riquadro e il motivo nel «?»; il blocco ha «Scegli il referente» non pieno, che apre la finestra (l'ok è lì).
   const g4 = boxAndNeeds(html);
