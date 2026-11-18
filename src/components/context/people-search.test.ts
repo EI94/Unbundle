@@ -128,7 +128,7 @@ test("il piede: «Togli «…» da tutto» non pieno; poi la conferma con i test
   assert.deepEqual(textOf(confirm), [
     "Togliere «Mario Rossi»?",
     "Si cancella il testo di 2 appunti e si correggono 10 testi.",
-    "Il testo degli appunti trovati si cancella: restano data, fatti e un titolo generico. Nei fatti, anche nella storia, nelle citazioni, nelle proposte, negli impegni e nelle domande il nome diventa «una persona». Le regole di Granola e la memoria della chat lo perdono. I documenti restano. Non si torna indietro.",
+    "Il testo degli appunti trovati si cancella: restano data, fatti e un titolo generico. Nei fatti, anche nella storia, nelle citazioni, nelle proposte, negli impegni e nelle domande il nome diventa «una persona». Le regole di Granola e la memoria della chat lo perdono; i nodi della Mappa con quel nome si tolgono. I documenti restano. Non si torna indietro.",
     "Togli",
     "Annulla",
   ]);
