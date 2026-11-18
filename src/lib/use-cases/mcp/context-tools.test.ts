@@ -1080,6 +1080,32 @@ test("ask_context: un brano di appunti con un nome esce senza testo, con «Apri 
   for (const out of [found, named]) assert.doesNotMatch(JSON.stringify(out.content), /Mario|Rossi|Bianchi/);
 });
 
+test("ask_context: ogni brano con i dati di una persona esce senza testo, anche di un documento, di una risposta del referente o di una decisione", async () => {
+  const h = harness();
+  const who = principal();
+  const excerpt = "Per gli ordini chiamare Mario Rossi al 333 1234567 o scrivere a mario.rossi@cliente.it";
+  const sources: AskSource[] = [
+    { n: 1, kind: "referente", label: "XX-0012 · Come arrivano gli ordini?", date: "2026-11-14", excerpt },
+    { n: 2, kind: "documento", label: "ordini.pdf", date: "2026-11-10", excerpt },
+    { n: 3, kind: "decisione", label: "XX-0012 · Canale degli ordini", date: "2026-11-12", excerpt: "Si scrive a ordini@cliente.it, non al telefono." },
+    { n: 4, kind: "documento", label: "procedura.pdf", date: "2026-11-10", excerpt: "Gli ordini arrivano per e-mail ogni mattina." },
+  ];
+  h.context.asks.push(
+    { ok: true, value: { status: "risposta", answer: "Per gli ordini si chiama Mario Rossi al 333 1234567 [1].", sources: sources.slice(0, 2) } },
+    { ok: true, value: { status: "solo_ricerca", sources } },
+  );
+  const answered = await call(h, "ask_context", { question: "Come arrivano gli ordini?" }, who);
+  assert.deepEqual([answered.content.status, answered.content.answer], ["non_so", null], "la risposta con i dati di una persona non esce");
+  const found = await call(h, "ask_context", { question: "Come arrivano gli ordini?" }, who);
+  for (const out of [answered, found]) {
+    for (const source of out.content.sources as Array<{ n: number; excerpt: string | null; excerptNote: string | null }>) {
+      if (source.n === 4) assert.deepEqual([source.excerpt, source.excerptNote], ["Gli ordini arrivano per e-mail ogni mattina.", null], "un brano senza dati personali resta");
+      else assert.deepEqual([source.excerpt, source.excerptNote], [null, CONTEXT_EXCERPT_HIDDEN], `brano ${source.n}`);
+    }
+    assert.doesNotMatch(JSON.stringify(out.content), /Mario|Rossi|333|@cliente/);
+  }
+});
+
 test("nessuna lettura porta citazioni, «Con chi», chi ha confermato o aggiunto, anche se la vista li avesse", async () => {
   const h = harness();
   const who = principal();

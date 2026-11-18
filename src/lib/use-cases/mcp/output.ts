@@ -845,7 +845,7 @@ export interface McpAskSource {
   label: string;
   /** AAAA-MM-GG, o null. */
   date: string | null;
-  /** Il brano; null per un brano di appunti con i dati di una persona. */
+  /** Il brano; null per un brano con i dati di una persona (di qualunque tipo). */
   excerpt: string | null;
   /** Quando il brano non si manda: «Apri Unbundle per il brano.». */
   excerptNote: string | null;
@@ -853,13 +853,14 @@ export interface McpAskSource {
 
 /**
  * Un brano di «Chiedi al contesto» come lo riceve Claude (§2.7). Il titolo di appunti o di un documento esce solo senza i
- * dati di una persona (`mcpSourceTitle`: altrimenti «Appunti 14 nov», «Documento 14 nov»). Un brano di appunti con i dati
- * di una persona (`scanPersonalData`) esce senza testo, con «Apri Unbundle per il brano.».
+ * dati di una persona (`mcpSourceTitle`: altrimenti «Appunti 14 nov», «Documento 14 nov»). Un brano con i dati di una
+ * persona (`scanPersonalData`), di qualunque tipo (appunti, documento, risposta del referente, decisione, fatto), esce
+ * senza testo, con «Apri Unbundle per il brano.»: la risposta scritta con quei dati non esce, e nemmeno i suoi brani.
  */
 export function mcpAskSource(source: AskSource, today: Date | string): McpAskSource {
   const titled = source.kind === "appunti" || source.kind === "documento";
   const label = titled ? mcpSourceTitle({ title: source.label, kind: source.kind === "documento" ? "documento" : "appunti", origin: "web", occurredOn: source.date ?? "" }, today) : source.label;
-  const hidden = source.kind === "appunti" && !scanPersonalData(source.excerpt).ok;
+  const hidden = !scanPersonalData(source.excerpt).ok;
   return {
     n: source.n,
     kindLabel: CONTEXT_TEXT.ask.kind[source.kind],
