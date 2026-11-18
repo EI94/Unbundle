@@ -382,18 +382,20 @@ after(async () => {
 
 // ─── Barra laterale (DESIGN §2.1, §12.5 criterio 1) ──────────────────
 
+// (Rilascio 10, §4) Le voci di oggi con le parole della barra nuova dove sono la stessa cosa: «Intervista iniziale»,
+// «Processi», «Use case», «Realizzazioni».
 const TODAY_ENTRIES = [
   "Overview",
   "AI Readiness",
   "Formazione",
   "Raccolta & ranking",
-  "Discovery",
+  "Intervista iniziale",
   "Contesto",
   "Strategia",
-  "Activity mapping",
+  "Processi",
   "Value map",
-  "Use cases",
-  "Casi d'uso",
+  "Use case",
+  "Realizzazioni",
   "Piano",
   "Report",
   "Blueprints",
@@ -441,12 +443,12 @@ test("barra, area spenta: le 17 voci di oggi, accese come oggi", opts, () => {
   const activeAt = (rest: string) => renderSidebar(ids.off, `${base}${rest}`, false).filter((e) => e.active).map((e) => e.title);
   assert.deepEqual(activeAt("/portfolio"), ["Raccolta & ranking"]);
   assert.deepEqual(activeAt("/plan"), ["Piano"]);
-  assert.deepEqual(activeAt("/use-cases"), ["Use cases"]);
-  // Oggi solo l'indirizzo esatto, tranne «Casi d'uso», che resta accesa dentro un dossier.
+  assert.deepEqual(activeAt("/use-cases"), ["Use case"]);
+  // Oggi solo l'indirizzo esatto, tranne «Realizzazioni», che resta accesa dentro una realizzazione.
   assert.deepEqual(activeAt(`/portfolio/review/${cards.offCard.id}`), []);
   assert.deepEqual(activeAt(`/use-cases/${cards.offCard.id}`), []);
   assert.deepEqual(activeAt("/learning/programma"), []);
-  assert.deepEqual(activeAt(`/casi-duso/${randomUUID()}/domande`), ["Casi d'uso"]);
+  assert.deepEqual(activeAt(`/casi-duso/${randomUUID()}/domande`), ["Realizzazioni"]);
 });
 
 // ─── Vecchi indirizzi (DESIGN §2.3, §2.4; PIANO-LAVORI §5.5) ─────────
