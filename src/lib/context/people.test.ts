@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { ERASED_NOTE_TITLE, PERSON_PLACEHOLDER, erasedNoteTitle, personPattern, personSnippet, personTerm, purgedNoteText, replacePerson } from "./people.ts";
+import { ERASED_NOTE_TITLE, PERSON_PLACEHOLDER, erasedNoteTitle, personPattern, personSnippet, personTerm, purgedNoteText, replacePerson, termInClientName } from "./people.ts";
 import { CONTEXT_TEXT } from "./text.ts";
 import { CONTEXT_LIMITS } from "./vocab.ts";
 
@@ -31,6 +31,32 @@ test("il termine: almeno 3 lettere, al massimo 80 caratteri; gli spazi ridotti a
   assert.deepEqual(personTerm("x".repeat(81)), { ok: false, message: CONTEXT_TEXT.errors.tooLong(80) });
   // Un valore che non è testo non passa.
   assert.equal(personTerm(undefined as unknown as string).ok, false);
+});
+
+test("solo parole comuni non è un nome: «del», «il cliente», «Società», «una persona»; un nome con una preposizione sì", () => {
+  const COMMON = "Questa parola è troppo comune: scrivi nome e cognome, oppure l'e-mail.";
+  assert.equal(CONTEXT_TEXT.people.tooCommon, COMMON);
+  // Articoli, preposizioni (anche articolate ed elise), pronomi, titoli, le parole del lavoro; i numeri non contano.
+  for (const raw of ["del", "Del", "DELLA", "dell'", "nell’ufficio", "il cliente", "Società", "Azienda e cliente", "una persona", "persone", "loro", "Dottor", "del 3"]) {
+    assert.deepEqual(personTerm(raw), { ok: false, message: COMMON }, raw);
+  }
+  for (const raw of ["Rossi", "Lucia", "Del Piero", "Dell'Orto", "De Luca", "D'Angelo", "Mario del Monte", "Dottor Rossi", "Ufficio di Rossi"]) {
+    assert.equal(personTerm(raw).ok, true, raw);
+  }
+  // Un'e-mail resta un'e-mail.
+  assert.deepEqual(personTerm("del@cliente.it"), { ok: true, term: "del@cliente.it", isEmail: true });
+  // «Togli «del»» non tocca più gli appunti che non parlano di nessuno.
+  assert.equal(replacePerson("Il magazzino del cliente è a Bologna.", "del"), "Il magazzino del cliente è a Bologna.");
+});
+
+test("«Togli»: una parola sola del nome del cliente no, nome e cognome sì; un'e-mail sempre", () => {
+  assert.equal(CONTEXT_TEXT.people.inClientName, "Questa parola è anche nel nome del cliente: scrivi nome e cognome, oppure l'e-mail.");
+  // Il workspace «Alfa Ricambi», della organizzazione «Officine Beta»: nomi inventati.
+  const names = ["Alfa Ricambi", "Officine Beta"];
+  for (const term of ["Alfa", "ALFÀ", "di Alfa", "Alfa 3", "Ricambi", "Beta"]) assert.equal(termInClientName(term, names), true, term);
+  // Due parole che dicono chi è, una parola che non sta nel nome (parola intera), un'e-mail, un termine non valido.
+  for (const term of ["Mario Alfa", "Alfa Ricambi", "Alfredo", "Rossi", "alfa@ricambi.it", "Al", "del"]) assert.equal(termInClientName(term, names), false, term);
+  assert.equal(termInClientName("Alfa", [null, undefined]), false, "senza nomi niente da confrontare");
 });
 
 test("un nome si cerca come parola intera: «Rossi» non prende «Rossini»", () => {

@@ -30,7 +30,7 @@ let dbModule: typeof import("../db/index.ts");
 const LS = ["ls.test"];
 const suffix = randomBytes(3).toString("hex");
 
-/** Nel workspace A: ls (Lateral Space) e rev (cliente, revisore). Nel workspace B: lsb (Lateral Space). */
+/** Nel workspace A («Alfa Ricambi», dell'organizzazione «Officine Beta»: nomi inventati): ls (Lateral Space) e rev (cliente, revisore). Nel workspace B: lsb (Lateral Space). */
 const persons = ["ls", "rev", "lsb"] as const;
 type Person = (typeof persons)[number];
 const ids = {
@@ -175,13 +175,13 @@ before(async () => {
   sources = await import("../db/queries/context-sources.ts");
   pure = await import("./people.ts");
   dbModule = await import("../db/index.ts");
-  await q(`INSERT INTO organizations (id, name, slug) VALUES ($1, 'Organizzazione A di prova persone', $2), ($3, 'Organizzazione B di prova persone', $4)`, [
+  await q(`INSERT INTO organizations (id, name, slug) VALUES ($1, 'Officine Beta', $2), ($3, 'Organizzazione B di prova persone', $4)`, [
     ids.orgA,
     `org-persone-a-${suffix}`,
     ids.orgB,
     `org-persone-b-${suffix}`,
   ]);
-  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1, $2, 'Cliente A di prova persone'), ($3, $4, 'Cliente B di prova persone')`, [ids.wsA, ids.orgA, ids.wsB, ids.orgB]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1, $2, 'Alfa Ricambi'), ($3, $4, 'Cliente B di prova persone')`, [ids.wsA, ids.orgA, ids.wsB, ids.orgB]);
   for (const person of persons) {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1, $2, $3, now())`, [ids[person], EMAIL[person], `Prova ${person}`]);
     await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [ids[ROLE[person][0]], ids[person], ROLE[person][1]]);
@@ -419,6 +419,56 @@ test("dopo «Togli» la ricerca trova solo i documenti, che si tolgono uno per u
   assert.deepEqual(okValue(await people.erasePerson(actor("ls"), NAME)), { notes: 0, texts: 0, rules: 0, chatMemory: 0 });
   assert.equal(JSON.stringify(await q(`SELECT id, version FROM context_facts WHERE workspace_id = $1 ORDER BY id`, [ids.wsA])), versions);
   assert.equal((await q(`SELECT count(*)::int AS n FROM context_events WHERE workspace_id = $1`, [ids.wsA]))[0].n, 1, "niente da togliere: nessun evento");
+});
+
+/** Quello che il workspace A ha negli appunti e nei fatti: per vedere che un «Togli» rifiutato non cambia niente. */
+async function workspaceA(): Promise<string> {
+  return JSON.stringify(
+    await Promise.all([
+      q(`SELECT id, title, body, participants, version FROM context_sources WHERE workspace_id = $1 ORDER BY id`, [ids.wsA]),
+      q(`SELECT id, statement, quote, version FROM context_facts WHERE workspace_id = $1 ORDER BY id`, [ids.wsA]),
+      q(`SELECT count(*)::int AS n FROM context_events WHERE workspace_id = $1`, [ids.wsA]),
+    ]),
+  );
+}
+
+test("una parola comune non si cerca né si toglie: «del» non svuota gli appunti che non parlano di nessuno", opts, async () => {
+  await q(
+    `INSERT INTO context_sources (workspace_id, kind, origin, title, occurred_on, body, body_chars, visibility, read_status, parts_read)
+     VALUES ($1, 'appunti', 'web', 'Riunione operativa', '2026-11-13', 'Abbiamo parlato del gestionale e degli ordini aperti.', 52, 'ls', 'letto', 1)`,
+    [ids.wsA],
+  );
+  await q(`INSERT INTO context_facts (workspace_id, section, statement, basis, visibility, origin) VALUES ($1, 'azienda', 'Il magazzino del cliente è a Bologna.', 'detto', 'tutti', 'manuale')`, [ids.wsA]);
+  const before = await workspaceA();
+  for (const term of ["del", "Il cliente", "società", "una persona"]) {
+    for (const result of [await people.searchPerson(actor("ls"), term), await people.erasePerson(actor("ls"), term)]) {
+      assert.deepEqual(result.ok ? null : [result.error, result.message], ["dati_non_validi", "Questa parola è troppo comune: scrivi nome e cognome, oppure l'e-mail."], term);
+    }
+  }
+  assert.equal(await workspaceA(), before, "nessuna scrittura");
+});
+
+test("una parola sola del nome del cliente: la ricerca la trova, «Togli» la rifiuta con la frase; con nome e cognome si toglie la persona e il cliente resta", opts, async () => {
+  const [note] = await q(
+    `INSERT INTO context_sources (workspace_id, kind, origin, title, occurred_on, body, body_chars, visibility, read_status, parts_read)
+     VALUES ($1, 'appunti', 'web', 'Call con il cliente', '2026-11-15', 'Alfa Ricambi usa SAP. Mario Alfa segue gli acquisti.', 52, 'ls', 'letto', 1) RETURNING id`,
+    [ids.wsA],
+  );
+  const [fact] = await q(`INSERT INTO context_facts (workspace_id, section, statement, basis, visibility, origin) VALUES ($1, 'azienda', 'Alfa Ricambi ha due magazzini.', 'detto', 'tutti', 'manuale') RETURNING id`, [ids.wsA]);
+  const hits = okValue(await people.searchPerson(actor("ls"), "Alfa"));
+  assert.deepEqual([hits.inClientName, hits.notes.total, hits.facts.total], [true, 1, 1], "la ricerca resta larga e dice che «Togli» non si può");
+  const before = await workspaceA();
+  // Il nome del workspace e quello dell'organizzazione, senza maiuscole e accenti, anche con una parola comune davanti.
+  for (const term of ["Alfa", "alfà", "di Alfa", "Ricambi", "Beta"]) {
+    const refused = await people.erasePerson(actor("ls"), term);
+    assert.deepEqual(refused.ok ? null : [refused.error, refused.message], ["dati_non_validi", "Questa parola è anche nel nome del cliente: scrivi nome e cognome, oppure l'e-mail."], term);
+  }
+  assert.equal(await workspaceA(), before, "niente cambia");
+  // Nome e cognome: si toglie la persona; il fatto sul cliente resta com'è.
+  assert.equal(okValue(await people.searchPerson(actor("ls"), "Mario Alfa")).inClientName, false);
+  assert.deepEqual(okValue(await people.erasePerson(actor("ls"), "Mario Alfa")), { notes: 1, texts: 0, rules: 0, chatMemory: 0 });
+  assert.equal((await q(`SELECT body FROM context_sources WHERE id = $1`, [note.id]))[0].body, null);
+  assert.deepEqual((await q(`SELECT statement, version FROM context_facts WHERE id = $1`, [fact.id]))[0], { statement: "Alfa Ricambi ha due magazzini.", version: 1 });
 });
 
 test("«In breve» resta se non cita il nome", opts, async () => {

@@ -15,6 +15,8 @@ import "server-only";
  *   nulle; «In breve» che lo contiene si cancella (lo riscrive la notte); le regole di Granola perdono l'indirizzo; le
  *   righe della memoria della chat che lo citano si cancellano. I documenti restano: si tolgono uno per uno dal loro
  *   pannello. Un evento `persona_tolta`, con i soli numeri.
+ * - **Le guardie**: un termine di sole parole comuni («del») non si cerca né si toglie; «Togli» rifiuta anche una parola
+ *   sola che è nel nome del cliente («Alfa» per «Alfa Ricambi»), che la ricerca mostra lo stesso (`inClientName`).
  * - Prima di scrivere, la stessa transazione prende in ordine gli appunti, le proposte e i fatti che cambiano (come la
  *   lettura e la conferma): una lettura o una conferma in corso finisce prima, e la scrittura vede le sue righe; una
  *   che arriva dopo trova le righe cambiate (`versione_superata`, o la presa della lettura persa).
@@ -24,7 +26,8 @@ import "server-only";
  */
 import { sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { ERASED_NOTE_TITLE, PERSON_PLACEHOLDER, personPattern, personSnippet, personTerm, type PersonSnippet } from "@/lib/context/people";
+import { ERASED_NOTE_TITLE, PERSON_PLACEHOLDER, personPattern, personSnippet, personTerm, termInClientName, type PersonSnippet } from "@/lib/context/people";
+import { CONTEXT_TEXT } from "@/lib/context/text";
 import type { ContextActor } from "@/lib/context/visibility";
 import { logSafeError } from "@/lib/log/safe-error";
 import type { ServiceResult } from "@/lib/use-cases/types";
@@ -73,6 +76,8 @@ export interface PersonHits {
   documents: { total: number; rows: PersonDocumentHit[] };
   granola: { total: number };
   chat: { total: number };
+  /** «Togli» non si può: una parola sola che è anche nel nome del cliente (`termInClientName`). La ricerca la mostra lo stesso. */
+  inClientName: boolean;
 }
 /** Che cosa ha tolto «Togli … da tutto»: appunti cancellati, testi corretti, indirizzi di Granola, righe della memoria della chat. */
 export interface PersonErased {
@@ -94,6 +99,15 @@ function noteMatches(alias: "s" | "n", ws: string, p: string): SQL {
   const a = sql.raw(alias);
   return sql`${a}.workspace_id = ${ws}::uuid AND ${a}.kind IN ('appunti', 'trascrizione') AND (${a}.body ~ ${p} OR ${a}.title ~ ${p} OR ${a}.participants ~ ${p})`;
 }
+
+/** I nomi del cliente: del workspace e della sua organizzazione. */
+function clientNamesSql(ws: string): SQL {
+  return sql`SELECT w.name AS workspace, o.name AS organization FROM workspaces w LEFT JOIN organizations o ON o.id = w.organization_id WHERE w.id = ${ws}::uuid`;
+}
+const clientNamesOf = (result: unknown) => {
+  const [row] = rowsOf<{ workspace: string | null; organization: string | null }>(result);
+  return [row?.workspace, row?.organization];
+};
 
 /** Una proposta (alias `x`), di qualunque stato, con il nome nella frase, nella citazione o nel ruolo. */
 function proposalNames(p: string): SQL {
@@ -152,7 +166,7 @@ export async function searchPerson(actor: ContextActor, raw: string): Promise<Se
   const ws = actor.workspaceId;
   const p = term.pattern;
   try {
-    const [notes, facts, items, documents, granola, chat] = await db.batch([
+    const [notes, facts, items, documents, granola, chat, names] = await db.batch([
       db.execute(sql`
         SELECT h.total, s.id, s.title, s.occurred_on,
           ${snippetSql(sql`(CASE WHEN s.body ~ ${p} THEN s.body WHEN s.title ~ ${p} THEN s.title ELSE s.participants END)`, p, NOTE_AROUND)} AS snippet
@@ -194,6 +208,7 @@ export async function searchPerson(actor: ContextActor, raw: string): Promise<Se
         SELECT count(*)::int AS total FROM context_granola_rules r CROSS JOIN LATERAL unnest(r.emails) AS e(email)
         WHERE r.workspace_id = ${ws}::uuid AND e.email ~ ${p}`),
       db.execute(sql`SELECT count(*)::int AS total FROM conversation_memory m WHERE m.workspace_id = ${ws}::uuid AND m.content ~ ${p}`),
+      db.execute(clientNamesSql(ws)),
     ]);
     const noteRows = rowsOf<{ total: unknown; id: string; title: string; occurred_on: unknown; snippet: unknown }>(notes);
     const factRows = rowsOf<{ total: unknown; id: string; status: string; statement: string; snippet: unknown }>(facts);
@@ -216,6 +231,7 @@ export async function searchPerson(actor: ContextActor, raw: string): Promise<Se
       },
       granola: { total: count(rowsOf<{ total: unknown }>(granola)[0]?.total) },
       chat: { total: count(rowsOf<{ total: unknown }>(chat)[0]?.total) },
+      inClientName: termInClientName(term.term, clientNamesOf(names)),
     });
   } catch (error) {
     logSafeError(LOG_SCOPE, "persona_non_cercata", error, { workspaceId: ws });
@@ -232,7 +248,8 @@ function replacedSql(column: SQL, p: string, max: number): SQL {
  * «Togli «…» da tutto» (§2.13): in una transazione, solo nel workspace. Solo Lateral Space: agli altri
  * `permesso_mancante`. Risponde con i numeri del messaggio («{a} appunti cancellati, {t} testi corretti») e quelli di
  * Granola e della memoria della chat. Scrive `persona_tolta` con i soli numeri, se ha tolto qualcosa. Non si torna
- * indietro. Non chiama il modello: «In breve» lo riscrive la notte.
+ * indietro. Non chiama il modello: «In breve» lo riscrive la notte. Un termine di sole parole comuni (`personTerm`) o
+ * una parola sola del nome del cliente (`termInClientName`): `dati_non_validi` con il messaggio, e niente cambia.
  */
 export async function erasePerson(actor: ContextActor, raw: string): Promise<ServiceResult<PersonErased>> {
   const allowed = await gate(actor, "canEditMemory");
@@ -243,6 +260,10 @@ export async function erasePerson(actor: ContextActor, raw: string): Promise<Ser
   const p = term.pattern;
   const factMatches = sql`f.workspace_id = ${ws}::uuid AND (f.statement ~ ${p} OR f.quote ~ ${p})`;
   try {
+    // Una parola sola che è anche nel nome del cliente: «Togli» cancellerebbe il cliente ovunque. Nome e cognome, o l'e-mail.
+    if (termInClientName(term.term, clientNamesOf(await db.execute(clientNamesSql(ws))))) {
+      return invalid({ term: CONTEXT_TEXT.people.inClientName }, CONTEXT_TEXT.people.inClientName);
+    }
     const results = await db.batch([
       // Le righe che cambiano, prese in ordine (appunti, proposte, fatti) prima di ogni scrittura: chi le sta già
       // scrivendo finisce prima, e la scrittura qui sotto vede le sue righe.

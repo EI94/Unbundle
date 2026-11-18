@@ -4,6 +4,7 @@ import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { installAppModules } from "../../lib/ai/claude-test-kit.ts";
 import { enableTsxImports } from "../use-cases/detail/referent/tsx-test-loader.ts";
+import { CONTEXT_TEXT as T } from "../../lib/context/text.ts";
 import type { PersonHits } from "../../lib/db/queries/context-people.ts";
 import type { SourceListItem } from "../../lib/db/queries/context-sources.ts";
 
@@ -27,7 +28,7 @@ await installAppModules({
   "@/lib/actions/uc-subprocessors": `export async function declareSubprocessorsAction() { return { ok: true, data: null, message: "" }; }`,
 });
 await enableTsxImports();
-const { PeopleSearch, PeopleResults, EraseFooter, erasableCount } = await import("./people-search.tsx");
+const { PeopleSearch, PeopleResults, EraseFooter, erasableCount, eraseNumbers } = await import("./people-search.tsx");
 const { NotesView } = await import("./notes-view.tsx");
 
 const WS = "11111111-1111-4111-8111-111111111111";
@@ -68,6 +69,7 @@ function hits(over: Partial<PersonHits> = {}): PersonHits {
     documents: { total: 2, rows: [{ sourceId: null, fileName: "listino.xlsx" }, { sourceId: "s1", fileName: "organigramma-rossi.pdf" }] },
     granola: { total: 1 },
     chat: { total: 1 },
+    inClientName: false,
     ...over,
   };
 }
@@ -112,13 +114,18 @@ test("appunti e fatti con il nome evidenziato, «Storia» per le versioni di pri
   assert.match(html, /<mark class="[^"]*bg-primary\/15[^"]*text-foreground/);
 });
 
+/** Il piede per «Mario Rossi», con i numeri della ricerca di prova (2 appunti; 3 fatti e 7 altri testi). */
+const footer = (over: Partial<Parameters<typeof EraseFooter>[0]> = {}) =>
+  render(createElement(EraseFooter, { term: "Mario Rossi", ...eraseNumbers(hits()), inClientName: false, asking: false, busy: false, onAsk: noop, onCancel: noop, onConfirm: noop, ...over }));
+
 test("il piede: «Togli «…» da tutto» non pieno; poi la conferma con i testi del piano e «Togli» distruttivo ma non pieno", () => {
-  const first = render(createElement(EraseFooter, { term: "Mario Rossi", asking: false, busy: false, onAsk: noop, onCancel: noop, onConfirm: noop }));
+  const first = footer();
   assert.deepEqual(textOf(first), ["Togli «Mario Rossi» da tutto"]);
   assert.equal(buttonClasses(first, "Togli «Mario Rossi» da tutto").some((c) => FILLED.test(c)), false);
-  const confirm = render(createElement(EraseFooter, { term: "Mario Rossi", asking: true, busy: false, onAsk: noop, onCancel: noop, onConfirm: noop }));
+  const confirm = footer({ asking: true });
   assert.deepEqual(textOf(confirm), [
     "Togliere «Mario Rossi»?",
+    "Si cancella il testo di 2 appunti e si correggono 10 testi.",
     "Il testo degli appunti trovati si cancella: restano data, fatti e un titolo generico. Nei fatti, anche nella storia, nelle citazioni, nelle proposte, negli impegni e nelle domande il nome diventa «una persona». Le regole di Granola e la memoria della chat lo perdono. I documenti restano. Non si torna indietro.",
     "Annulla",
     "Togli",
@@ -127,6 +134,26 @@ test("il piede: «Togli «…» da tutto» non pieno; poi la conferma con i test
   assert.equal(erase.length, 1);
   assert.equal(FILLED.test(erase[0]), false, "non pieno");
   assert.match(erase[0], /bg-destructive\/10/, "il tono distruttivo, leggero");
+});
+
+test("la conferma dice i numeri prima di «Togli»: dalla stessa ricerca, al singolare e al plurale; senza appunti né testi nessuna riga", () => {
+  const P = T.people;
+  assert.deepEqual(eraseNumbers(hits()), { notes: 2, texts: 3 + 7 }, "i testi corretti: fatti, citazioni, proposte, impegni e domande, come «Fatto: …»");
+  assert.equal(P.eraseCount(3, 7), "Si cancella il testo di 3 appunti e si correggono 7 testi.");
+  assert.equal(P.eraseCount(1, 1), "Si cancella il testo di 1 appunto e si corregge 1 testo.");
+  assert.equal(P.eraseCount(1, 4), "Si cancella il testo di 1 appunto e si correggono 4 testi.");
+  assert.equal(P.eraseCount(2, 0), "Si cancella il testo di 2 appunti.");
+  assert.equal(P.eraseCount(0, 4), "Si correggono 4 testi.");
+  assert.equal(P.eraseCount(0, 1), "Si corregge 1 testo.");
+  const onlyGranola = textOf(footer({ notes: 0, texts: 0, asking: true }));
+  assert.equal(onlyGranola.some((t) => t.startsWith("Si c")), false, "solo Granola e chat: niente numeri da dire");
+});
+
+test("una parola sola del nome del cliente: al posto di «Togli … da tutto» la frase che chiede nome e cognome, nessun pulsante", () => {
+  const html = footer({ term: "Alfa", inClientName: true });
+  assert.deepEqual(textOf(html), ["Questa parola è anche nel nome del cliente: scrivi nome e cognome, oppure l'e-mail."]);
+  assert.doesNotMatch(html, /<button/);
+  assert.doesNotMatch(footer({ term: "Alfa", inClientName: true, asking: true }), /<button/, "nemmeno a conferma aperta");
 });
 
 test("«Togli … da tutto» conta tutto tranne i documenti, che restano", () => {

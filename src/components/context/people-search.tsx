@@ -22,6 +22,11 @@ export function erasableCount(hits: PersonHits): number {
   return hits.notes.total + hits.facts.total + hits.items.total + hits.granola.total + hits.chat.total;
 }
 
+/** I numeri della conferma, dalla stessa ricerca: gli appunti che perdono il testo e i testi corretti, come dirà «Fatto: …». */
+export function eraseNumbers(hits: PersonHits): { notes: number; texts: number } {
+  return { notes: hits.notes.total, texts: hits.facts.total + hits.items.total };
+}
+
 /**
  * «Cerca una persona» nella vista «Appunti», per Lateral Space (rilascio 9b, docs/contesto/RILASCIO-9b-COSTRUZIONE.md
  * §2.13): un link che apre il pannello (a tutto schermo sul telefono). Nel pannello il campo «Nome o e-mail» con il
@@ -103,7 +108,20 @@ export function PeopleSearch({ workspaceId, today, onOpenSource }: { workspaceId
         }}
         title={P.title}
         description={P.lead}
-        footer={hits && erasableCount(hits) > 0 ? <EraseFooter term={hits.term} asking={asking} busy={busy} onAsk={() => setAsking(true)} onCancel={() => setAsking(false)} onConfirm={erase} /> : undefined}
+        footer={
+          hits && erasableCount(hits) > 0 ? (
+            <EraseFooter
+              term={hits.term}
+              {...eraseNumbers(hits)}
+              inClientName={hits.inClientName}
+              asking={asking}
+              busy={busy}
+              onAsk={() => setAsking(true)}
+              onCancel={() => setAsking(false)}
+              onConfirm={erase}
+            />
+          ) : undefined
+        }
       >
         <form
           noValidate
@@ -237,10 +255,38 @@ export function PeopleResults({ hits, today, onOpenDocument }: { hits: PersonHit
 }
 
 /**
- * Il piede del pannello: «Togli «…» da tutto», non pieno; poi la conferma con i testi del piano, «Annulla» (con il fuoco)
- * e «Togli», distruttivo ma non pieno.
+ * Il piede del pannello: «Togli «…» da tutto», non pieno; poi la conferma con i testi del piano e i numeri della stessa
+ * ricerca, «Annulla» (con il fuoco) e «Togli», distruttivo ma non pieno. Una parola sola del nome del cliente non si
+ * toglie: al posto del pulsante la frase che chiede nome e cognome, oppure l'e-mail.
  */
-export function EraseFooter({ term, asking, busy, onAsk, onCancel, onConfirm }: { term: string; asking: boolean; busy: boolean; onAsk: () => void; onCancel: () => void; onConfirm: () => void }) {
+export function EraseFooter({
+  term,
+  notes,
+  texts,
+  inClientName,
+  asking,
+  busy,
+  onAsk,
+  onCancel,
+  onConfirm,
+}: {
+  term: string;
+  notes: number;
+  texts: number;
+  inClientName: boolean;
+  asking: boolean;
+  busy: boolean;
+  onAsk: () => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  if (inClientName) {
+    return (
+      <p role="status" className="text-sm text-muted-foreground">
+        {P.inClientName}
+      </p>
+    );
+  }
   if (!asking) {
     return (
       <Button type="button" variant="outline" className="h-auto min-h-11 w-full py-2 whitespace-normal break-words sm:min-h-8 sm:w-auto sm:self-end" disabled={busy} onClick={onAsk}>
@@ -253,9 +299,10 @@ export function EraseFooter({ term, asking, busy, onAsk, onCancel, onConfirm }: 
       <p id="persona-togli-titolo" className="text-sm font-medium break-words">
         {P.eraseTitle(term)}
       </p>
-      <p id="persona-togli-testo" className="text-sm text-muted-foreground">
-        {P.eraseBody}
-      </p>
+      <div id="persona-togli-testo" className="space-y-1 text-sm">
+        {notes + texts > 0 ? <p>{P.eraseCount(notes, texts)}</p> : null}
+        <p className="text-muted-foreground">{P.eraseBody}</p>
+      </div>
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <Button type="button" variant="outline" className="min-h-11 sm:min-h-8" disabled={busy} onClick={onCancel} autoFocus>
           {P.cancel}

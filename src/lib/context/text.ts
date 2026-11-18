@@ -387,6 +387,9 @@ export const CONTEXT_TEXT = Object.freeze({
     search: "Cerca",
     searching: "Cerco…",
     tooShort: "Scrivi almeno 3 lettere.",
+    // Un termine fatto solo di parole comuni («del», «il cliente»), e una parola sola del nome del cliente (solo «Togli»).
+    tooCommon: "Questa parola è troppo comune: scrivi nome e cognome, oppure l'e-mail.",
+    inClientName: "Questa parola è anche nel nome del cliente: scrivi nome e cognome, oppure l'e-mail.",
     none: "Non compare da nessuna parte.",
     groups: Object.freeze({
       notes: "Appunti",
@@ -402,6 +405,14 @@ export const CONTEXT_TEXT = Object.freeze({
     eraseTitle: (name: string) => `Togliere «${name}»?`,
     eraseBody:
       "Il testo degli appunti trovati si cancella: restano data, fatti e un titolo generico. Nei fatti, anche nella storia, nelle citazioni, nelle proposte, negli impegni e nelle domande il nome diventa «una persona». Le regole di Granola e la memoria della chat lo perdono. I documenti restano. Non si torna indietro.",
+    // I numeri della conferma, dalla stessa ricerca: gli appunti che perdono il testo e i testi che si correggono.
+    eraseCount: (notes: number, texts: number) => {
+      const many = notes === 1 ? "1 appunto" : `${notes} appunti`;
+      const fixed = texts === 1 ? "si corregge 1 testo" : `si correggono ${texts} testi`;
+      if (notes > 0 && texts > 0) return `Si cancella il testo di ${many} e ${fixed}.`;
+      if (notes > 0) return `Si cancella il testo di ${many}.`;
+      return `${fixed.charAt(0).toUpperCase()}${fixed.slice(1)}.`;
+    },
     eraseConfirm: "Togli",
     cancel: "Annulla",
     erased: (notes: number, texts: number) =>
