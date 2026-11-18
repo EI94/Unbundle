@@ -155,8 +155,8 @@ test("contesto: «Non lo sappiamo ancora.»; senza l'ok la frase dell'ok e i bra
   const search = askResponse({ status: "solo_ricerca", sources: SOURCES }, hide);
   assert.equal(search.testo.split("\n")[0], "Per una risposta scritta serve l'ok del cliente ai fornitori di AI. Ecco che cosa ho trovato:");
   assert.equal(search.testo.split("\n").length, 4);
-  // (Rilascio 10, §4) La Discovery si chiama «Intervista iniziale».
-  assert.match(search.testo, /\n\[3\] Intervista iniziale · Organico: 42 persone$/);
+  // (Rilascio 10, §4) La Discovery si chiama «Intervista iniziale»: il tipo e l'etichetta, come prima «Discovery · Discovery».
+  assert.match(search.testo, /\n\[3\] Intervista iniziale · Intervista iniziale · Organico: 42 persone$/);
   assert.deepEqual([search.dati.stato, search.dati.risposta, search.dati.fonti.length], ["solo_ricerca", null, 3]);
   assert.deepEqual(askResponse({ status: "niente" }, hide), { testo: "Non ho trovato niente su questo.", dati: { stato: "niente", risposta: null, fonti: [] } });
 });
