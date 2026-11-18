@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PAGE_TITLE_CLASS, PageContainer } from "@/components/dashboard/page-container";
+import { LEARNING_TEXT } from "@/lib/learning/text";
 
 /**
  * Cornice comune delle pagine della formazione. `back` sostituisce il link
@@ -26,6 +27,15 @@ export function LearningShell({ workspaceId, title, back, children }: {
 
 export function LearningUnavailable({ message = "La formazione non è disponibile per questo account o workspace. Contatta il responsabile del percorso." }: { message?: string }) {
   return <Card><CardHeader><CardTitle>Percorso non disponibile</CardTitle></CardHeader><CardContent><p>{message}</p></CardContent></Card>;
+}
+
+/**
+ * (Rilascio 10) Un corso che questo account non può aprire (`forbidden`: un altro account, nessuna iscrizione, un corso
+ * sospeso o nascosto): la spiegazione, nella cornice della Formazione, al posto della pagina che non si è caricata.
+ */
+export function ProgramUnavailable({ workspaceId }: { workspaceId: string }) {
+  const T = LEARNING_TEXT.programUnavailable;
+  return <LearningShell workspaceId={workspaceId} title={T.title}><LearningUnavailable message={T.body} /></LearningShell>;
 }
 
 export function outcomeLabel(status: string | null | undefined) {

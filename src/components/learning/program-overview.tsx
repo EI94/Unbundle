@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { CircleCheck, PartyPopper, RotateCcw } from "lucide-react";
-import { getLearningProgram } from "@/lib/learning/server";
+import { LearningError, getLearningProgram } from "@/lib/learning/server";
 import { participantNotice } from "@/lib/learning/register-legal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { LearningShell, outcomeLabel } from "./learning-shell";
+import { LearningShell, ProgramUnavailable, outcomeLabel } from "./learning-shell";
 import { LearningRefresh } from "./learning-refresh";
 
 /**
@@ -338,7 +338,15 @@ function Agenda({ module, sessionStart, now, base, canParticipate }: {
 }
 
 export async function ProgramOverview({ workspaceId, programId, moduleId, arrival = null }: { workspaceId: string; programId: string; moduleId?: string; arrival?: string | null }) {
-  const program = await getLearningProgram(workspaceId, programId);
+  let program: Program;
+  try {
+    program = await getLearningProgram(workspaceId, programId);
+  } catch (error) {
+    // Un altro account, nessuna iscrizione, un corso sospeso o nascosto: la spiegazione, non «Riprova». Gli errori veri
+    // restano a `learning/error.tsx`.
+    if (error instanceof LearningError && error.code === "forbidden") return <ProgramUnavailable workspaceId={workspaceId} />;
+    throw error;
+  }
   const base = `/dashboard/${workspaceId}/learning/${programId}`;
   const own = program.ownSession;
   const isTrainerView = !program.canParticipate;
