@@ -22,12 +22,15 @@ import { EmptyState, HUB_TEXT, NoResults, inRealizationText } from "./hub-header
 import { HashFocusLink } from "./list-focus";
 import { NeedUseCaseLink, NeedUseCasesDisclosure } from "./need-use-cases";
 
-/** Testi della vista «Cosa serve» (spec di Pierpaolo, 25/10/2026; rilascio 4, una lista sola). */
+/**
+ * Testi della vista «Cosa serve» (spec di Pierpaolo, 25/10/2026; rilascio 4, una lista sola). (Rilascio 10, §4) Il
+ * calendario si chiama «Scadenze»; ciò che serve, «informazioni».
+ */
 export const NEEDS_BOARD_TEXT = Object.freeze({
-  steps: "Prossimi passi",
+  steps: "Scadenze",
   none: "—",
   emptyTitle: "Niente da chiedere per ora",
-  emptyBody: "Le esigenze si aggiungono dalla scheda di uno use case, nel capitolo «Cosa serve».",
+  emptyBody: "Le informazioni si aggiungono dalla scheda di uno use case, nel capitolo «Cosa serve».",
   noResults: "Niente da chiedere con questi filtri.",
   nothingToAsk: "Niente da chiedere per ora.",
 });

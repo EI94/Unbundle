@@ -1,5 +1,8 @@
 "use client";
-import { Button } from "@/components/ui/button";
-export default function LearningErrorPage({ retry }: { retry: () => void }) {
-  return <main className="mx-auto max-w-3xl space-y-4 p-8"><h1 className="text-2xl font-semibold">Formazione non disponibile</h1><p>Il corso potrebbe essere sospeso, non assegnato a questo account o non raggiungibile in questo momento. Le risposte già inviate restano salvate.</p><p>Controlla di essere nel workspace giusto, oppure chiedi a chi tiene il corso.</p><Button onClick={retry}>Riprova</Button></main>;
+
+import { PageLoadError } from "@/components/dashboard/page-load-error";
+
+/** (Rilascio 10, §4) Le parole di ogni pagina che non si carica: «Questa pagina non si è caricata.» e «Riprova». */
+export default function LearningErrorPage({ error, retry }: { error: unknown; retry: () => void }) {
+  return <PageLoadError error={error} retry={retry} area="learning" />;
 }

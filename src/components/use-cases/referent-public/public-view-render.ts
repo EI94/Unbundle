@@ -59,8 +59,10 @@ export function expiryLabel(expiresOn: string): string {
 export interface HeaderTexts {
   /** Il nome dell'azienda (workspace), in piccolo. */
   company: string;
-  /** «RD-0004 · Fatture fornitori», o solo il titolo. */
+  /** (Rilascio 10, D6) Il titolo del caso d'uso, senza il codice. */
   title: string;
+  /** (Rilascio 10, D6) «Riferimento RD-0004», in piccolo in fondo alla pagina; null senza codice. */
+  reference: string | null;
   /** «Giulia Neri ti chiede alcune informazioni.» */
   requestedBy: string;
   /** Il messaggio di chi chiede, con il suo titolo; null senza messaggio. */
@@ -73,7 +75,8 @@ export function headerTexts(view: ReferentAskView): HeaderTexts {
   const message = view.message?.trim() ? view.message.trim() : null;
   return {
     company: companyLabel(view.company),
-    title: code ? `${code} · ${view.useCase.title}` : view.useCase.title,
+    title: view.useCase.title,
+    reference: code ? `${REFERENT_PUBLIC_TEXT.reference} ${code}` : null,
     // (Rilascio 5) La richiesta al referente lo dice subito: «{Nome} ti ha indicato come referente.»
     requestedBy: fillText(view.kind === "referente" ? REFERENT_CHECK_TEXT.requestedBy : T.requestedBy, { Nome: name }),
     message: message ? { title: fillText(T.messageTitle, { Nome: name }), text: message } : null,

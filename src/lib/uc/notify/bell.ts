@@ -116,12 +116,12 @@ export function bellText(templateKey: string, payload: Record<string, Json>, ext
     case "gate_approvato":
       return { title: "Via allo sviluppo approvato", description: "Il catalogo è pronto per lo sviluppo." };
     case "ls_lead_da_indicare":
-      return { title: "Il dossier non ha un responsabile", description: "Indicane uno in Impostazioni." };
+      return { title: "La realizzazione non ha un responsabile", description: "Indicane uno in Impostazioni." };
     case "owner_da_indicare":
       return { title: "Manca il responsabile del cliente", description: "Una richiesta è ferma dopo due promemoria." };
     case "delega":
       return {
-        title: "Domande girate a un collega",
+        title: "Domande girate a un'altra persona",
         description: items !== null && items > 0 ? `${questions(items)}: approva la delega in Persone.` : "Approva la delega in Persone.",
       };
     case "riepilogo_settimanale": {
@@ -129,7 +129,7 @@ export function bellText(templateKey: string, payload: Record<string, Json>, ext
       return { title: "Il riepilogo della settimana", description: week ? `Settimana ${Number(week[1])}` : null };
     }
     default:
-      return { title: "Novità sul dossier", description: null };
+      return { title: "Novità sulla realizzazione", description: null };
   }
 }
 

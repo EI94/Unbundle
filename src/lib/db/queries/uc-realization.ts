@@ -488,7 +488,7 @@ export const StartRealizationInputSchema = z
   .object({
     useCaseId: z.string().regex(UUID, "Use case non valido."),
     templateId: z.string().regex(UUID, "Scegli lo schema di partenza."),
-    title: z.string().trim().min(3, "Scrivi il nome del dossier.").max(255, "Nome troppo lungo: al massimo 255 caratteri."),
+    title: z.string().trim().min(3, "Scrivi il nome della realizzazione.").max(255, "Nome troppo lungo: al massimo 255 caratteri."),
     oneLiner: z.string().trim().max(500, "Frase troppo lunga: al massimo 500 caratteri.").nullish(),
   })
   .strip();
@@ -497,14 +497,14 @@ export type StartRealizationInput = z.input<typeof StartRealizationInputSchema>;
 /** Esiti del comando, in italiano semplice (§3.2). */
 export const START_MESSAGES = {
   use_case_non_trovato: "Use case non trovato in questo workspace.",
-  best_practice: "Una best practice non ha un dossier: si segna come diffusa.",
+  best_practice: "Una best practice non ha una realizzazione: si segna come diffusa.",
   non_approvato: "La realizzazione parte solo da uno use case «Da costruire» approvato.",
   dossier_esistente: REALIZATION_TEXT.alreadyStarted,
-  creazione_in_corso: "Stiamo già preparando il dossier di questo use case: riprova tra qualche minuto.",
+  creazione_in_corso: "Stiamo già preparando la realizzazione di questo use case: riprova tra qualche minuto.",
   codice_mancante: REALIZATION_TEXT.noPrefix,
-  codice_in_uso: "Nel workspace c'è già un dossier con il codice di questo use case.",
-  codice_appena_usato: "Codice appena usato da un altro dossier: riprova.",
-  testo_dallo_use_case: "Il testo dello use case contiene dati da non copiare nel dossier: correggilo nella scheda.",
+  codice_in_uso: "Nel workspace c'è già una realizzazione con il codice di questo use case.",
+  codice_appena_usato: "Codice appena usato da un'altra realizzazione: riprova.",
+  testo_dallo_use_case: "Il testo dello use case contiene dati da non copiare nella realizzazione: correggilo nella scheda.",
 } as const;
 
 /** Codici già usati nel workspace con lo stesso prefisso generato (anche dossier in creazione). */
@@ -570,7 +570,7 @@ export async function startRealization(
   if (!creator.ok) return fail(creator.code, "Solo Lateral Space avvia la realizzazione.");
   if (!isUuid(i.workspaceId)) return fail("use_case_non_trovato", START_MESSAGES.use_case_non_trovato);
   const parsed = StartRealizationInputSchema.safeParse(i.input);
-  if (!parsed.success) return fail("dati_non_validi", parsed.error.issues[0]?.message ?? "Controlla i dati del dossier.");
+  if (!parsed.success) return fail("dati_non_validi", parsed.error.issues[0]?.message ?? "Controlla i dati della realizzazione.");
   const v = parsed.data;
   const text = checkLsText({ title: v.title, one_liner: v.oneLiner ?? "" });
   if (!text.ok) return text;

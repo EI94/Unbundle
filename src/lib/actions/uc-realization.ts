@@ -87,5 +87,5 @@ export async function startRealizationAction(workspaceId: string, input: unknown
   finishUcCommand({ workspaceId, caseId });
   revalidatePath(`/dashboard/${workspaceId}/use-cases/${useCaseId}`);
   revalidatePath(`/dashboard/${workspaceId}/use-cases`);
-  return fromResult({ ok: true, value: { caseId, code } }, undefined, `Dossier ${code} avviato in bozza.`);
+  return fromResult({ ok: true, value: { caseId, code } }, undefined, `Realizzazione ${code} avviata in bozza.`);
 }

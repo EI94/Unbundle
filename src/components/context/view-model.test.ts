@@ -361,7 +361,8 @@ test("le scadenze: «entro il 30 nov», «scaduto il 30 nov», niente senza data
 test("un brano di «Chiedi al contesto»: il tipo, la fonte, la data, senza ripetere la data del fatto", () => {
   assert.equal(askSourceMeta({ kind: "fatto", label: "Call 14 nov", date: "2026-11-15" }, TODAY), "Fatto · Call 14 nov");
   assert.equal(askSourceMeta({ kind: "appunti", label: "Call di avvio", date: "2026-11-14" }, TODAY), "Appunti · Call di avvio · 14 nov");
-  assert.equal(askSourceMeta({ kind: "discovery", label: "Discovery", date: null }, TODAY), "Discovery");
+  // (Rilascio 10, §4) La Discovery si chiama «Intervista iniziale»: il tipo e la fonte dicono la stessa cosa una volta.
+  assert.equal(askSourceMeta({ kind: "discovery", label: "Intervista iniziale", date: null }, TODAY), "Intervista iniziale");
   assert.equal(askSourceMeta({ kind: "referente", label: "CX-0001", date: "2026-11-01" }, TODAY), "Risposta del referente · CX-0001 · 1 nov");
 });
 

@@ -28,7 +28,7 @@ export const metadata: Metadata = {
 const DONE: Record<string, { title: string; body: string }> = {
   scaduto: { title: "Il codice è scaduto", body: "I codici valgono 10 minuti. Nel terminale rifai «unbundle login»." },
   confermato: { title: "Già confermato", body: "Questo codice è già stato confermato: torna al terminale." },
-  consegnato: { title: "Già usato", body: "Questo codice è già stato usato. Se non sei stato tu, revoca il collegamento da Impostazioni › CLI di Unbundle." },
+  consegnato: { title: "Già usato", body: "Questo codice è già stato usato. Se non l'hai usato tu, revoca il collegamento da «Il tuo account › Claude e terminale»." },
   negato: { title: "Codice annullato", body: "Hai detto «Non l'ho chiesto io»: nessuna CLI è stata collegata." },
 };
 
@@ -99,7 +99,7 @@ export default async function CliConnectPage({ searchParams }: { searchParams: P
       <p className="text-sm text-muted-foreground">Conferma solo se questo è il codice che vedi adesso nel tuo terminale. Se non hai chiesto tu un collegamento, scegli {"«Non l'ho chiesto io»."}</p>
       <p className="rounded-md border bg-muted px-4 py-3 text-center font-mono text-2xl tracking-[0.3em]">{login.userCode}</p>
       <p className="text-sm text-muted-foreground">
-        Da: <span className="text-foreground">{login.clientLabel}</span>. La CLI potrà fare per 90 giorni quello che puoi fare tu nei casi dove sei nel team; si revoca da Impostazioni › CLI di Unbundle o con «unbundle logout».
+        Da: <span className="text-foreground">{login.clientLabel}</span>. La CLI potrà fare per 90 giorni quello che puoi fare tu nei casi dove sei nel team; si revoca da «Il tuo account › Claude e terminale» o con «unbundle logout».
       </p>
       <CliLoginConfirm userCode={login.userCode} workspaces={workspaces} />
     </Shell>

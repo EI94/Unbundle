@@ -28,6 +28,7 @@ import {
   type WorkspaceActionState,
 } from "@/lib/actions/workspace";
 import type { Organization } from "@/lib/db/schema";
+import { INVITABLE_ROLES, ROLE_INFO, roleLabel } from "@/lib/workspace-roles";
 import { Copy, Plus, Trash2, Users } from "lucide-react";
 
 type TeamRow = {
@@ -36,22 +37,16 @@ type TeamRow = {
   role: string;
 };
 
-const ROLE_OPTIONS = [
-  { value: "analyst", label: "Analyst — segnala e rankizza" },
-  { value: "contributor", label: "Contributor — solo raccolta" },
-  { value: "function_lead", label: "Function Lead — ranking e wave" },
-  {
-    value: "transformation_lead",
-    label: "Transformation Lead — gestione completa",
-  },
-] as const;
+/**
+ * (Rilascio 10, §3.2, §4) I ruoli di `workspace-roles.ts`, in italiano: «Analista · Contributore · Responsabile di
+ * funzione · Responsabile della trasformazione», con il riassunto di ognuno. Mai «ranking» né «wave».
+ */
+const ROLE_OPTIONS = (["analyst", "contributor", "function_lead", "transformation_lead"] as const).map((value) => ({
+  value,
+  label: `${ROLE_INFO[value].label} — ${ROLE_INFO[value].summary}`,
+}));
 
-const roleLabels: Record<string, string> = {
-  transformation_lead: "Transformation Lead",
-  function_lead: "Function Lead",
-  contributor: "Contributor",
-  analyst: "Analyst",
-};
+const roleLabels: Record<string, string> = Object.fromEntries(INVITABLE_ROLES.map((role) => [role, roleLabel(role)]));
 
 const INITIAL: WorkspaceActionState & { data?: CreateWorkspaceWithTeamData } = {
   ok: true,

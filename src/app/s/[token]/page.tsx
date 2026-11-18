@@ -33,8 +33,8 @@ export async function generateMetadata({
   const company =
     typeof brand?.displayName === "string" ? brand.displayName : null;
   const title = company
-    ? `Survey AI Readiness — ${company}`
-    : "Survey AI Readiness";
+    ? `Questionario AI Readiness — ${company}`
+    : "Questionario AI Readiness";
   const description =
     "Bastano 10 minuti: raccontaci come lavori oggi e dove l'AI potrebbe darti una mano. Nessuna risposta e' giusta o sbagliata.";
   return {
@@ -110,7 +110,7 @@ export default async function OpenSurveyLandingPage({
             <Badge variant="outline">{named ? "Nominativa" : "Anonima"}</Badge>
           </div>
           <h1 className="mt-5 text-3xl font-semibold tracking-tight">
-            Survey organizzazione «{found.assessment.name}»
+            Questionario per l&apos;organizzazione «{found.assessment.name}»
           </h1>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
             {brandCopy(

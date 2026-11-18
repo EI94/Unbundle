@@ -113,21 +113,21 @@ const memoryProps = (over: Record<string, unknown> = {}) => ({ workspaceId: WS, 
 test("la Memoria per Lateral Space: le righe di servizio, «In breve», «Novità», «Prossimi passi», le sezioni con qualcosa, «Domande aperte»", () => {
   const html = render(createElement(MemoryView, memoryProps({ consentNotice: NOTICE, granola: createElement("p", null, "riga di Granola"), reader: createElement("p", null, "riga di lettura") })));
   const text = textOf(html);
-  assert.ok(text.includes("12 proposte da confermare"));
-  assert.match(html, new RegExp(`href="/dashboard/${WS}/contesto/conferma"`));
+  // (Rilascio 10, §3.7) Le proposte da confermare sono il pulsante pieno della testata: qui non si ripetono.
+  assert.ok(!text.includes("12 proposte da confermare"));
   assert.ok(text.includes("riga di lettura") && text.includes("riga di Granola"));
   assert.match(html, /data-testid="ai-consent-notice"/);
   // «In breve» con la data, «Novità per te» con il segno e «e altre 3».
   assert.ok(text.includes("In breve") && text.includes("Aggiornato il 14 nov") && text.includes("Produce cucine su misura."));
   assert.ok(text.includes("Novità per te") && text.includes("Cambiato") && text.includes("e altre 3"));
-  // «Prossimi passi»: i due gruppi, le scadenze, «Fatto» per ogni riga.
-  assert.ok(text.includes("Prossimi passi") && text.includes("Nostri") && text.includes("Del cliente"));
+  // «Impegni» (rilascio 10, §4; prima «Prossimi passi»): i due gruppi, le scadenze, «Fatto» per ogni riga.
+  assert.ok(text.includes("Impegni") && text.includes("Nostri") && text.includes("Del cliente"));
   assert.ok(text.includes("entro il 30 nov") && text.includes("scaduto il 2 nov"));
   assert.equal(text.filter((t) => t === "Fatto").length, 2);
   // Le sezioni: solo quelle con qualcosa, nell'ordine; la Discovery prima dei fatti; i segni solo quando servono.
   const headings = [...html.matchAll(/<h2[^>]*>([^<]+)<\/h2>/g)].map((m) => m[1]);
-  assert.deepEqual(headings, ["In breve", "Novità per te", "Prossimi passi", "Azienda", "Sistemi e dati", "Domande aperte"]);
-  assert.ok(text.includes("Discovery") && text.includes("Call 14 nov") && text.includes("Scritto a mano"));
+  assert.deepEqual(headings, ["In breve", "Novità per te", "Impegni", "Azienda", "Sistemi e dati", "Domande aperte"]);
+  assert.ok(text.includes("Intervista iniziale") && text.includes("Call 14 nov") && text.includes("Scritto a mano"));
   assert.ok(text.includes("dedotto") && text.includes("da verificare"));
   assert.ok(text.includes("Solo Lateral Space"), "il lucchetto ha il testo per i lettori di schermo");
   // «Domande aperte» con a chi chiederle e «Chiusa».
@@ -171,15 +171,31 @@ test("la testata: per Lateral Space «Aggiungi appunti», «Scrivi un fatto» e 
   const ls = shell(true);
   const lsText = textOf(ls);
   assert.ok(lsText.includes("Cliente di prova") && lsText.includes("Contesto"));
-  assert.deepEqual([lsText.includes("Aggiungi appunti"), lsText.includes("Scrivi un fatto"), lsText.includes("Appunti"), lsText.includes("Documenti")], [true, true, true, false]);
+  // (Rilascio 10, §4) Le fonti si chiamano «Fonti», per Lateral Space e per il cliente.
+  assert.deepEqual([lsText.includes("Aggiungi appunti"), lsText.includes("Scrivi un fatto"), lsText.includes("Fonti"), lsText.includes("Documenti")], [true, true, true, false]);
   assert.match(ls, /placeholder="Fai una domanda sul cliente"/);
   assert.match(ls, new RegExp(`href="/dashboard/${WS}/contesto\\?vista=appunti"`));
   assert.match(ls, /aria-current="page"[^>]*>(<[^>]+>)*Memoria/);
   const client = shell(false);
   const clientText = textOf(client);
-  assert.deepEqual([clientText.includes("Aggiungi appunti"), clientText.includes("Scrivi un fatto"), clientText.includes("Appunti"), clientText.includes("Documenti")], [false, false, false, true]);
+  assert.deepEqual([clientText.includes("Aggiungi appunti"), clientText.includes("Scrivi un fatto"), clientText.includes("Appunti"), clientText.includes("Fonti")], [false, false, false, true]);
   assert.match(client, /placeholder="Fai una domanda"/);
   assert.ok(clientText.includes("Chiedi"));
+});
+
+test("(rilascio 10, §3.7) con proposte da confermare il pulsante pieno è «Conferma N proposte», e «Aggiungi appunti» è bordato", () => {
+  const props = { workspaceId: WS, workspaceName: "Cliente di prova", today: TODAY, tab: "memoria" as const, lateralSpace: true, canEditMemory: true, addNotesInHeader: true, useCaseOptions: [], consentNotice: null };
+  const withProposals = render(pageWith({ ...props, pendingProposals: 3 }, createElement("p", null, "vista")));
+  const text = textOf(withProposals).join(" | ");
+  assert.ok(text.includes("Conferma 3 proposte"), text);
+  assert.match(withProposals, new RegExp(`href="/dashboard/${WS}/contesto/conferma"`));
+  const one = textOf(render(pageWith({ ...props, pendingProposals: 1 }, createElement("p", null, "vista")))).join(" | ");
+  assert.ok(one.includes("Conferma 1 proposta"), one);
+  // Senza proposte: «Aggiungi appunti» resta il pulsante della testata, e «Conferma» non c'è.
+  const none = textOf(render(pageWith({ ...props, pendingProposals: 0 }, createElement("p", null, "vista")))).join(" | ");
+  assert.ok(none.includes("Aggiungi appunti") && !none.includes("Conferma"), none);
+  // Il cliente non conferma: niente pulsante.
+  assert.ok(!textOf(render(pageWith({ ...props, lateralSpace: false, canEditMemory: false, pendingProposals: 3 }, createElement("p", null, "vista")))).join(" | ").includes("Conferma"));
 });
 
 // ─── «Da confermare» ─────────────────────────────────────────────────

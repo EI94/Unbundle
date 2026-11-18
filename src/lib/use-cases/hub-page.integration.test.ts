@@ -706,15 +706,15 @@ test("fasce del workspace diverse dalle predefinite: matrice, linea del costo ba
   assert.match(approved, /data-slot="when-control"/);
 });
 
-test("fasce del workspace: «costo di avvio» con il riferimento della fascia, «su N use case · M da fascia»", opts, async () => {
+test("fasce del workspace: «costo di realizzazione» con il riferimento della fascia, «su N use case · M da fascia»", opts, async () => {
   const page = await html("builder", ids.wsA, { vista: "panoramica" });
   const figures = sectionOf(page, "overview-figures");
   // 30.000 € (importo) + 40.000 € (seconda fascia del workspace); con le predefinite sarebbe 95.000 €.
   const cost = figures.slice(figures.indexOf('data-figure="totale-costo"'));
-  assert.match(cost, /^data-figure="totale-costo"[^>]*><p[^>]*><span class="whitespace-nowrap">70\.000 €<\/span><\/p><p class="text-sm">costo di avvio<\/p><p[^>]*>su 2\u00a0use\u00a0case\u00a0· 1\u00a0da fascia</);
+  assert.match(cost, /^data-figure="totale-costo"[^>]*><p[^>]*><span class="whitespace-nowrap">70\.000 €<\/span><\/p><p class="text-sm">costo di realizzazione<\/p><p[^>]*>su 2\u00a0use\u00a0case\u00a0· 1\u00a0da fascia</);
   // 50.000 € + 25.000 €, «su 2 use case».
   const value = figures.slice(figures.indexOf('data-figure="totale-valore"'));
-  assert.match(value, /^data-figure="totale-valore"[^>]*><p[^>]*><span class="whitespace-nowrap">75\.000 €<\/span><\/p><p class="text-sm">valore contato all&#x27;anno<\/p><p[^>]*>su 2\u00a0use\u00a0case</);
+  assert.match(value, /^data-figure="totale-valore"[^>]*><p[^>]*><span class="whitespace-nowrap">75\.000 €<\/span><\/p><p class="text-sm">valore all&#x27;anno<\/p><p[^>]*>su 2\u00a0use\u00a0case</);
   assert.ok(page.includes(`su 2${N}use${N}case<`) && !page.includes("su 2 use case<"), "«su 2 use case» non va a capo");
   for (const text of ["Valore misurato", "Valore atteso all", "Costo impegnato"]) assert.ok(!page.includes(text), text);
   // Nessun numero resta da solo in fondo a una riga: nelle cifre, in «Prossimo passo» e nei riassunti
@@ -724,18 +724,18 @@ test("fasce del workspace: «costo di avvio» con il riferimento della fascia, �
   // Le fasi: le proposte da decidere, gli approvati delle corsie (con lo scaduto e la best practice),
   // quello in realizzazione e quello realizzato.
   const strip = sectionOf(page, "phase-strip").replace(/^[^>]*>|<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-  assert.match(strip, /^Da decidere \d+ → Approvati 4 → In realizzazione 1 → Realizzati 1$/);
+  assert.match(strip, /^Da decidere \d+ → Approvati 4 → In realizzazione 1 → In uso 1$/);
   // Lo use case di questo trimestre e lo scaduto, come nella corsia.
   assert.match(figures, /data-figure="totale-trimestre"[^>]*><p[^>]*><span class="whitespace-nowrap">2<\/span><\/p><p class="text-sm">use case in questo trimestre</);
   // La card della Panoramica: l'avvio con la sua fonte e gli euro all'anno, senza parola né «Valore:» e «Costo:».
   const amount = rowOf(page, cards.amount.id);
-  assert.ok(amount.includes("avvio 30.000 €"), amount);
+  assert.ok(amount.includes("Costo 30.000 €"), amount);
   assert.match(amount, /data-source="team_importo"/);
   assert.ok(amount.includes(`50.000${N}€${N}all&#x27;anno`), amount);
   assert.doesNotMatch(amount, />Alto</);
   assert.ok(!amount.includes("Valore: ") && !amount.includes("Costo: "), amount);
   const band = rowOf(page, cards.band.id);
-  assert.ok(band.includes("avvio €€ · fascia"), band);
+  assert.ok(band.includes("Costo €€ · fascia"), band);
   assert.match(band, /data-source="team_fascia"/);
   // Senza cifre: «Valore: da stimare»; il costo che manca non si scrive (lo dice il pannello).
   const overdue = rowOf(page, cards.overdue.id);
@@ -751,7 +751,7 @@ test("fasce del workspace: «costo di avvio» con il riferimento della fascia, �
   assert.ok(page.includes(`Prossimo trimestre${N}· T`));
   const done = page.slice(page.indexOf('data-slot="panoramica-realizzati"'), page.indexOf("</details>", page.indexOf('data-slot="panoramica-realizzati"')));
   assert.ok(done.includes(`data-id="${cards.realized.id}"`), "il realizzato dentro «Realizzati»");
-  assert.match(rowOf(page, cards.realized.id), />Realizzato</);
+  assert.match(rowOf(page, cards.realized.id), />In uso</);
 });
 
 test("fasce del workspace: la colonna «Fascia» dell'export usa le etichette del workspace", opts, async () => {
@@ -1353,7 +1353,7 @@ test("contributore: titolo, fase e «Quando»; solo «Cerca per titolo»; codice
   const evaluating = strip.slice(strip.indexOf('data-step="da_decidere"'), strip.indexOf("</li>", strip.indexOf('data-step="da_decidere"')));
   assert.ok(evaluating.includes(">In valutazione<"), evaluating);
   assert.ok(!evaluating.includes("tabular-nums") && !evaluating.includes("—"), "nessun numero su «In valutazione»");
-  for (const text of ['data-slot="overview-figures"', 'data-slot="next-step"', 'data-slot="portfolio-line"', "costo di avvio", "Su tutto il portafoglio", "Prossimo passo"]) {
+  for (const text of ['data-slot="overview-figures"', 'data-slot="next-step"', 'data-slot="portfolio-line"', "costo di realizzazione", "Su tutto il portafoglio", "Prossimo passo"]) {
     assert.ok(!overview.includes(text), `contributore: «${text}»`);
   }
   assert.equal(filledButtons(overview), 1, "il pulsante pieno resta «Nuovo use case»");
@@ -1387,7 +1387,7 @@ test("Panoramica: gli scaduti in cima a «Questo trimestre» con «Scaduto» ai 
 test("parte dossier non disponibile: «In realizzazione» mostra solo fase e titolo, mai «Senza dossier»", opts, async () => {
   // Sezione Casi d'uso spenta: nessun dossier, e «Senza dossier» è vero.
   const off = await html("ls", ids.wsA, { vista: "panoramica" });
-  assert.ok(rowOf(off, cards.building.id).includes("In realizzazione · Senza dossier"));
+  assert.ok(rowOf(off, cards.building.id).includes("In realizzazione · Senza realizzazione"));
   const flags = globalThis as { __hubH4aDossierError?: boolean };
   flags.__hubH4aDossierError = true;
   try {
@@ -1396,7 +1396,7 @@ test("parte dossier non disponibile: «In realizzazione» mostra solo fase e tit
       const card = rowOf(page, cards.building.id);
       assert.ok(card.includes(cards.building.title), person);
       assert.ok(card.includes(">In realizzazione<"), `${person}: ${card}`);
-      assert.ok(!page.includes("Senza dossier"), `${person}: niente «Senza dossier»`);
+      assert.ok(!page.includes("Senza realizzazione"), `${person}: niente «Senza realizzazione»`);
     }
     // Il pannello riceve lo stesso ripiego.
     for (const person of ["builder", "contributor"] as const) {
@@ -1493,7 +1493,7 @@ test("pannello rapido: solo per Lateral Space, con le voci di «AI Lab»", opts,
 test("vuoti: nessuno use case, niente da decidere, niente da mettere in ordine, Panoramica vuota", opts, async () => {
   const zReviewer = await html("ls", ids.wsZ);
   assert.ok(zReviewer.includes("Nessuno use case, per ora"));
-  assert.ok(zReviewer.includes("Aggiungine uno o proponili da Activity mapping."));
+  assert.ok(zReviewer.includes("Aggiungine uno o proponili dai processi."));
   assert.equal(filledButtons(zReviewer), 1, "un solo pulsante pieno anche nel vuoto");
   assert.ok(!zReviewer.includes('data-slot="panoramica-top"'), "nessuna testa senza use case");
   const zContributor = await html("contributor", ids.wsZ);

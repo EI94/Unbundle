@@ -31,7 +31,7 @@ export const COLLECTED_BLOCK_KEY = "dati_raccolti_da_Claude";
 
 export const PREFILL_TEXT = Object.freeze({
   title: "Dati raccolti da Claude",
-  hint: "Dallo use case arrivato dal connettore. Entrano nel dossier in sola lettura.",
+  hint: "Dallo use case arrivato dal connettore. Entrano nella realizzazione in sola lettura.",
   problem: "Problema",
   solution: "Soluzione",
   area: "Area",

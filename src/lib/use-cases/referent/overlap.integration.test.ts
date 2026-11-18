@@ -466,7 +466,7 @@ test("le due strade si incontrano: una risposta dalla scheda ferma il promemoria
   assert.equal(counts.errors, 0, JSON.stringify(counts));
   const toMario = mailer.outbox.filter((m) => m.to === MARIO);
   assert.equal(toMario.length, 1, JSON.stringify(counts));
-  assert.match(toMario[0].subject, /^[^:]+: promemoria sul caso d'uso «/);
+  assert.match(toMario[0].subject, /^[^:]+: promemoria su «/);
   // Anche la seconda dalla scheda: niente resta, la richiesta si chiude subito.
   ok(await referents.addReviewerAnswer(as("builder"), cards.mario, m1, { text: "Usano il gestionale e Excel." }), "seconda risposta del team");
   [req] = await q(`SELECT status, completed_at FROM use_case_referent_requests WHERE id = $1::uuid`, [flow.mario.requestId]);

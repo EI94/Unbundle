@@ -37,13 +37,17 @@ export function isTemplateRepo(repo: string): boolean {
 export const STATIONS = ["dossier", "impostazione", "approvato", "costruzione", "collaudo", "esercizio"] as const;
 export type Station = (typeof STATIONS)[number];
 
+/**
+ * (Rilascio 10, §4) Le stazioni della linea: «Da impostare · In impostazione · Da costruire · In costruzione · In
+ * prova · In uso». Le chiavi restano quelle di prima.
+ */
 export const STATION_LABEL: Readonly<Record<Station, string>> = {
   dossier: "Da impostare",
-  impostazione: "Impostazione",
-  approvato: "Approvato",
-  costruzione: "Costruzione",
-  collaudo: "Collaudo",
-  esercizio: "Esercizio",
+  impostazione: "In impostazione",
+  approvato: "Da costruire",
+  costruzione: "In costruzione",
+  collaudo: "In prova",
+  esercizio: "In uso",
 };
 
 export interface LineCase {
@@ -69,20 +73,23 @@ export function stationOf(c: LineCase): Station {
 /** Il prossimo passo di un caso, in una frase breve. */
 export function nextStepOf(c: LineCase): string {
   const station = stationOf(c);
-  if (station === "esercizio") return "In esercizio.";
-  if (station === "collaudo") return c.dossierStatus === "collaudo" || c.dossierStatus === "backtest" || c.dossierStatus === "stabilizzazione" ? "Collaudo con il cliente." : "Compiti fatti: pronto per il collaudo.";
-  if (station === "dossier") return "Impostare il caso con il coding agent.";
+  if (station === "esercizio") return "Tutto in ordine.";
+  if (station === "collaudo") return c.dossierStatus === "collaudo" || c.dossierStatus === "backtest" || c.dossierStatus === "stabilizzazione" ? "Prova con il cliente." : "Compiti fatti: pronto per la prova.";
+  if (station === "dossier") return "Impostare il progetto.";
   if (station === "impostazione") return c.projectStatus === "da_approvare" ? "Il progetto aspetta l'approvazione." : "Finire l'impostazione e mandarla in approvazione.";
   if (station === "approvato") return "Portare i compiti in Unbundle («compiti importa»).";
   if (c.tasks.open > 0) return c.tasks.open === 1 ? "1 compito da prendere." : `${c.tasks.open} compiti da prendere.`;
   return c.tasks.inReview > 0 ? "Compiti in revisione." : "Compiti in corso.";
 }
 
-/** Quanti casi in ogni stazione, nell'ordine della linea. */
+/**
+ * Quanti casi in ogni stazione, nell'ordine della linea. (Rilascio 10, §1 regola 5) Lo zero non si vede: solo le
+ * stazioni con almeno un caso.
+ */
 export function lineCounts(cases: readonly LineCase[]): { station: Station; count: number }[] {
   const counts = new Map<Station, number>(STATIONS.map((s) => [s, 0]));
   for (const c of cases) counts.set(stationOf(c), (counts.get(stationOf(c)) ?? 0) + 1);
-  return STATIONS.map((station) => ({ station, count: counts.get(station) ?? 0 }));
+  return STATIONS.map((station) => ({ station, count: counts.get(station) ?? 0 })).filter((s) => s.count > 0);
 }
 
 /** Confronto di due versioni `a.b.c`: negativo se `a` è più vecchia. */

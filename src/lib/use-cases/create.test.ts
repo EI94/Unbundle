@@ -78,8 +78,8 @@ test("origine predefinita per ruolo: modulo completo AI Transformation solo per 
 
 test("scelte dei chip e dei blocchi: due origini e due tipi, con le etichette di §3.2 e §3.3", () => {
   assert.deepEqual(ORIGIN_OPTIONS, [
-    { value: "adoption", label: "AI Adoption · dal basso", chip: "AI Adoption" },
-    { value: "transformation", label: "AI Transformation · dall'alto", chip: "AI Transformation" },
+    { value: "adoption", label: "Dal basso", chip: "Dal basso" },
+    { value: "transformation", label: "Dall'alto", chip: "Dall'alto" },
   ]);
   assert.deepEqual(KIND_OPTIONS, [
     { value: "da_costruire", label: "Da costruire" },
@@ -167,7 +167,7 @@ test("modulo completo: i campi di oggi con le etichette di §6.2 per tipo; Limit
       ["title", "Titolo", true, false, 200],
       ["description", "Problema", true, true, 4000],
       ["flowDescription", "Come funziona", true, true, 4000],
-      ["businessCase", "Impatto atteso", true, true, 2000],
+      ["businessCase", "Valore atteso", true, true, 2000],
       ["humanInTheLoop", "Chi controlla", true, true, 2000],
       ["guardrails", "Limiti", false, true, 2000],
       ["dataRequirements", "Dati", true, true, 2000],
@@ -385,12 +385,12 @@ test("Activity mapping: prima si classificano le attività; poi il dialogo", () 
 });
 
 test("Activity mapping: testi esatti di §8.5 e §14.3, toast con il numero", () => {
-  assert.equal(ACTIVITY_MAPPING_TEXT.menuItem, "Proponi da Activity mapping");
-  assert.equal(ACTIVITY_MAPPING_TEXT.classifyFirst, "Prima classifica le attività in Activity mapping.");
-  assert.equal(ACTIVITY_MAPPING_TEXT.dialogTitle, "Proporre use case dalle attività mappate?");
+  assert.equal(ACTIVITY_MAPPING_TEXT.menuItem, "Proponi dai processi");
+  assert.equal(ACTIVITY_MAPPING_TEXT.classifyFirst, "Prima classifica i passi nei processi.");
+  assert.equal(ACTIVITY_MAPPING_TEXT.dialogTitle, "Proporre use case dai processi mappati?");
   assert.equal(
     ACTIVITY_MAPPING_TEXT.dialogBody,
-    "Claude legge le attività classificate e propone nuovi use case. Arrivano in «Da decidere», nascosti ai colleghi. Nessuno viene approvato da solo.",
+    "Claude legge i passi classificati e propone nuovi use case. Arrivano in «Da decidere», non visibili in azienda. Nessuno viene approvato da solo.",
   );
   assert.equal(ACTIVITY_MAPPING_TEXT.confirm, "Proponi");
   assert.equal(ACTIVITY_MAPPING_TEXT.cancel, "Annulla");

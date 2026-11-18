@@ -125,7 +125,7 @@ test("le fasi del contributore: «In valutazione» senza numero e sempre aperta;
   const decide = stepOf(html, "da_decidere");
   assert.equal(textOf(decide), "In valutazione");
   assert.match(decide, /<a [^>]*href="[^"]*vista=da-decidere"/);
-  for (const text of ["data-figure", "overview-figures", "next-step", "portfolio-line", "€", "costo di avvio", "Su tutto il portafoglio", "Cosa serve", "cosa serve"]) {
+  for (const text of ["data-figure", "overview-figures", "next-step", "portfolio-line", "€", "costo di realizzazione", "Su tutto il portafoglio", "Cosa serve", "cosa serve"]) {
     assert.ok(!html.includes(text), `contributore: «${text}»`);
   }
   assert.ok(html.includes(">45<"), "gli approvati sì: sono use case, non persone");
@@ -142,8 +142,8 @@ test("le cifre: valore, costo, trimestre, da misurare; prima la cifra, poi le pa
     const start = figures.indexOf(`data-figure="${key}"`);
     return figures.slice(start, figures.indexOf("</div>", start));
   };
-  assert.match(tileText("totale-valore"), /<span class="whitespace-nowrap">50\.366 €<\/span><\/p><p class="text-sm">valore contato all&#x27;anno<\/p><p class="text-xs text-muted-foreground">su 17\u00a0use\u00a0case<\/p>/);
-  assert.match(tileText("totale-costo"), />75\.000 €<\/span><\/p><p class="text-sm">costo di avvio<\/p><p[^>]*>su 9\u00a0use\u00a0case\u00a0· 2\u00a0da fascia</);
+  assert.match(tileText("totale-valore"), /<span class="whitespace-nowrap">50\.366 €<\/span><\/p><p class="text-sm">valore all&#x27;anno<\/p><p class="text-xs text-muted-foreground">su 17\u00a0use\u00a0case<\/p>/);
+  assert.match(tileText("totale-costo"), />75\.000 €<\/span><\/p><p class="text-sm">costo di realizzazione<\/p><p[^>]*>su 9\u00a0use\u00a0case\u00a0· 2\u00a0da fascia</);
   assert.match(tileText("totale-trimestre"), />12<\/span><\/p><p class="text-sm">use case in questo trimestre<\/p><p[^>]*>T4\u00a02026</);
   assert.match(
     tileText("totale-da-misurare"),

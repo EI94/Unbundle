@@ -1008,7 +1008,7 @@ test("errore uc forzato: le decisioni che dipendono dal dossier rispondono «rip
   try {
     for (const [name, result] of Object.entries(await dependent(forced))) {
       err(result, "riprova", name);
-      assert.equal(!result.ok && result.message, "Non riesco a leggere lo stato del dossier. Riprova tra poco.", name);
+      assert.equal(!result.ok && result.message, "Non riesco a leggere lo stato della realizzazione. Riprova tra poco.", name);
     }
     // Le altre scritture passano.
     const f = forced.fresh;
@@ -1048,7 +1048,7 @@ test("dossier attivo: niente Archivia o Non avviare, «Segna come realizzato» s
     const v = await versionOf(id);
     const archive = await svc.decideUseCase(as("builder"), id, v, { type: "archivia", reason: "superato" });
     err(archive, "transizione_non_ammessa");
-    assert.equal(!archive.ok && archive.message, "Per archiviarlo, chiudi prima il dossier.");
+    assert.equal(!archive.ok && archive.message, "Per archiviarlo, chiudi prima la realizzazione.");
     err(await svc.decideUseCase(as("builder"), id, v, { type: "non_avviare", publicNote: "No." }), "transizione_non_ammessa");
     err(await svc.decideUseCase(as("builder"), id, v, { type: "segna_realizzato" }), "transizione_non_ammessa");
 

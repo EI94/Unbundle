@@ -101,7 +101,8 @@ test("intestazione: azienda, «CODICE · Titolo», chi chiede e il suo messaggio
   const h = headerTexts(view());
   assert.deepEqual(h, {
     company: "Rondine",
-    title: "RD-0004 · Fatture fornitori",
+    title: "Fatture fornitori",
+    reference: "Riferimento RD-0004",
     requestedBy: "Giulia Neri ti chiede alcune informazioni.",
     message: { title: "Il messaggio di Giulia Neri", text: "Ci serve per la stima di fine mese." },
   });
@@ -155,7 +156,7 @@ test("una domanda inviata: «Inviata il 27/10», il testo o «Non ce l'ho», i n
   const sent = question(0, { state: "inviata", answer: { text: "Ogni giorno", dontKnow: false, alreadyAttached: false, comment: null, submittedAt: "2026-10-27T09:00:00.000Z" }, files: [file({ submitted: true })] });
   assert.deepEqual(sentAnswerView(sent, "2026-10-28"), { sentOn: "Inviata il 27/10", text: "Ogni giorno", files: ["preventivo.pdf"] });
   const unknown = question(0, { state: "inviata", answer: { text: null, dontKnow: true, alreadyAttached: false, comment: null, submittedAt: "2025-12-30T09:00:00.000Z" } });
-  assert.deepEqual(sentAnswerView(unknown, "2026-10-28"), { sentOn: "Inviata il 30/12/2025", text: "Non ce l'ho", files: [] });
+  assert.deepEqual(sentAnswerView(unknown, "2026-10-28"), { sentOn: "Inviata il 30/12/2025", text: "Non lo so", files: [] });
   assert.equal(sentAnswerView(question(0), "2026-10-28"), null);
 });
 
@@ -279,8 +280,8 @@ test("(rilascio 5) il commento solo con una chiusura senza testo; i testi della 
   assert.equal(missingText([4]), "Manca ancora la domanda 4.");
   assert.equal(missingText([6, 2, 4]), "Mancano ancora le domande 2, 4 e 6.");
   assert.equal(missingText([2, 3]), "Mancano ancora le domande 2 e 3.");
-  assert.equal(closeHint(false), "Per chiudere: rispondi, allega un file o scegli «Non ce l'ho».");
-  assert.equal(closeHint(true), "Per chiudere: allega il file o scegli «Non ce l'ho».");
+  assert.equal(closeHint(false), "Per chiudere: rispondi, allega un file o scegli «Non lo so».");
+  assert.equal(closeHint(true), "Per chiudere: allega il file o scegli «Non lo so».");
   assert.equal(savesItselfText(view()), "Si salva da solo: puoi tornare fino al 26 novembre 2026.");
 });
 

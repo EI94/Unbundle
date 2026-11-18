@@ -11,6 +11,9 @@
  *
  * Il codice dello use case (es. XX-0012) non è un codice interno e passa.
  *
+ * (Rilascio 10, §4.2) Ai ruoli del cliente anche niente gergo da sviluppatori: «token», «PR», «p95», «commit»,
+ * «agent.yaml», «slug», «Bearer», «webhook», «O*NET», «AI exposure», «MIME».
+ *
  * Modulo puro e senza dipendenze di Node: lo importa anche uno script `.mjs`.
  */
 import { KIND_PREFIX } from "../template/ids.ts";
@@ -24,7 +27,7 @@ import type { Audience } from "./status-groups.ts";
 const KEY_PREFIXES = [...new Set([...Object.values(KIND_PREFIX), "q", "kpi", "ent", "src", "hc", "var", "frm", "qc", "reg", "ds", "tc"])].sort((a, b) => b.length - a.length);
 
 export interface ForbiddenRule {
-  id: "chiave" | "articolo" | "codice_via" | "priorita" | "codice_fatto" | "scheda_a8" | "versione" | "hash" | "gergo";
+  id: "chiave" | "articolo" | "codice_via" | "priorita" | "codice_fatto" | "scheda_a8" | "versione" | "hash" | "gergo" | "sviluppo";
   /** Perché è vietato, in italiano semplice. */
   reason: string;
   pattern: RegExp;
@@ -69,6 +72,13 @@ export const FORBIDDEN_RULES: readonly ForbiddenRule[] = [
   { id: "versione", reason: "versione dello schema", pattern: /\bv\d+\.\d+\.\d+\b/g },
   { id: "hash", reason: "impronta (hash)", pattern: /\b[0-9a-f]{16,}\b/g },
   { id: "gergo", reason: "gergo tecnico", pattern: /\btemplate\b|\bgate\b|% verde|verdi le/gi },
+  // (Rilascio 10, §4.2) Il gergo di chi sviluppa, mai ai ruoli del cliente.
+  {
+    id: "sviluppo",
+    reason: "gergo di chi sviluppa",
+    // «PR» e «MIME» solo in maiuscolo (una «pr» minuscola non è una sigla); le altre in ogni forma.
+    pattern: /\b[Tt][Oo][Kk][Ee][Nn]s?\b|\bPRs?\b|\b[pP]95\b|\b[Cc]ommits?\b|\bagent\.ya?ml\b|\b[Ss]lug\b|\b[Bb]earer\b|\b[Ww]ebhooks?\b|O\*NET|\bAI\s+[Ee]xposure\b|\bMIME\b/g,
+  },
 ];
 
 export interface ForbiddenMatch {

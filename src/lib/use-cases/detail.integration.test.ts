@@ -703,7 +703,7 @@ test("revisori: percorso, «Prossimo passo» e pieghe; «Proposto da» ed «Emai
     intake: { contractVersion: 2, frequency: "giornaliera", beneficiaries: 3, timeSavedMinutesPerRun: 15, submitterEmail: submitter, flags: { personalData: true } },
   });
   const sponsor = await detailHtml("sponsor", card.id);
-  for (const text of ["Prossimo passo", "Percorso dello use case", "Impatto", "Come cambia il lavoro", "Valutazione del team", "Realizzazione", "Storia", "Dettagli", "Proposto da", proposer, "Email indicata", submitter]) {
+  for (const text of ["Prossimo passo", "Percorso dello use case", "Valore", "Come cambia il lavoro", "Valutazione del team", "Realizzazione", "Storia", "Dettagli", "Proposto da", proposer, "Email indicata", submitter]) {
     assert.ok(sponsor.html.includes(text), `chi gestisce il workspace: manca «${text}»`);
   }
   // H4p: un solo riquadro di stime, con la frase che dice cosa conta.
@@ -1049,7 +1049,7 @@ test("«Cosa è»: un campo vuoto è solo «+ Aggiungi …», senza la riga dell
     assert.ok(details.indexOf('data-slot="what-empty-fields"') > details.indexOf(">Area</dt>"), "i campi vuoti dopo quelli pieni");
     for (const [part, labels] of [
       [what, ["Come funziona", "Chi controlla", "Limiti"]],
-      [details, ["Impatto atteso", "Dati", "AI Lab"]],
+      [details, ["Valore atteso", "Dati", "AI Lab"]],
     ] as const) {
       for (const label of labels) {
         assert.ok(part.includes(inlineModule.addLabelOf(label)), `manca «${inlineModule.addLabelOf(label)}»`);
@@ -1332,8 +1332,8 @@ test("pezzi del browser: tasti del campo, «+ Aggiungi …», voce del menu, var
   assert.equal(addLabelOf("Problema"), "+ Aggiungi problema");
   assert.equal(addLabelOf("AI Lab"), "+ Aggiungi AI Lab");
   assert.equal(sameFieldText(" testo ", "testo"), true);
-  assert.equal(hideModule.hideFromSearchLabel(true), "Mostra ai colleghi");
-  assert.equal(hideModule.hideFromSearchLabel(false), "Nascondi dalla ricerca");
+  assert.equal(hideModule.hideFromSearchLabel(true), "Rendi visibile in azienda");
+  assert.equal(hideModule.hideFromSearchLabel(false), "Nascondi in azienda");
   const { realizationVariant } = realizationModule;
   const approved = { phase: "approvato" as const, subState: "piu_avanti" as const, kind: "da_costruire" as const, dossier: null };
   assert.equal(realizationVariant(approved, { dossierRead: "ok", canStartRealization: true, canMarkInProgress: true }), "avvia");
@@ -1571,7 +1571,7 @@ if (process.env.HUB_DETAIL_HARNESS === "1") {
             await sleep(600);
             const shown = await cdp.evaluate(tab, () => ({
               detail: Boolean(document.querySelector('[data-slot="use-case-detail"]')?.checkVisibility()),
-              broken: document.body.innerText.includes("Non riusciamo a caricare gli use case."),
+              broken: document.body.innerText.includes("Questa pagina non si è caricata."),
             }));
             assert.deepEqual(shown, { detail: true, broken: false }, `${width} px, #${hash}: la scheda, non l'errore`);
             const uriErrors = (tab as { errors: Array<{ text: string }> }).errors.filter((error) => /URIError/.test(error.text));

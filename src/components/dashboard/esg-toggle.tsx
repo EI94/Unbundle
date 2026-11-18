@@ -1,9 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { toggleEsgAction } from "@/lib/actions/use-cases";
+import { CONFIRM_TEXT } from "@/lib/confirm-text";
+
+const ASK = CONFIRM_TEXT.esg;
 
 export function EsgToggle({
   workspaceId,
@@ -20,14 +24,10 @@ export function EsgToggle({
 }) {
   const [enabled, setEnabled] = useState(initialEnabled);
   const [isPending, startTransition] = useTransition();
+  // Il nuovo stato aspetta la conferma nella finestra; l'interruttore intanto resta com'è.
+  const [asking, setAsking] = useState<boolean | null>(null);
 
   const handleToggle = (checked: boolean) => {
-    const confirmed = window.confirm(
-      checked
-        ? "Attivare i criteri ESG? Vale per tutto il team: i prossimi use case saranno valutati anche su ambiente, impatto sociale e governance."
-        : "Disattivare i criteri ESG? Vale per tutto il team: i nuovi use case non saranno più valutati su questi criteri."
-    );
-    if (!confirmed) return;
     setEnabled(checked);
     startTransition(async () => {
       try {
@@ -49,9 +49,24 @@ export function EsgToggle({
         id="esg-toggle"
         aria-label="Criteri ESG nella valutazione degli use case"
         checked={enabled}
-        onCheckedChange={handleToggle}
+        onCheckedChange={(checked) => setAsking(checked)}
         disabled={!canManage || isPending}
       />
+      {asking !== null ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setAsking(null);
+          }}
+          title={asking ? ASK.onTitle : ASK.offTitle}
+          description={asking ? ASK.onBody : ASK.offBody}
+          confirmLabel={asking ? ASK.on : ASK.off}
+          onConfirm={() => {
+            setAsking(null);
+            handleToggle(asking);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

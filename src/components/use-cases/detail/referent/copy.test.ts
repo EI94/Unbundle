@@ -43,8 +43,15 @@ test("i file ci sono", () => {
   for (const file of FILES) assert.ok(texts(file).length > 0, file);
 });
 
+/** (Rilascio 10) Una chiave («requisito», «passo») o un id è codice, non un testo a schermo. */
+const CODE_LIKE = /^[a-z0-9_.:/#@\-[\]()=,*+?!&|<>%$]*$/;
+
 test("nessuna parola vietata dell'area nei testi dei componenti", () => {
-  const hits = FILES.flatMap((file) => texts(file).flatMap((text) => findHubForbidden(text, "area").map((m) => `${file}: ${m.rule} in «${text}»`)));
+  const hits = FILES.flatMap((file) =>
+    texts(file)
+      .filter((text) => !CODE_LIKE.test(text.trim()))
+      .flatMap((text) => findHubForbidden(text, "area").map((m) => `${file}: ${m.rule} in «${text}»`)),
+  );
   assert.deepEqual(hits, []);
 });
 

@@ -12,10 +12,14 @@ import type { ArchiveReason, Origin, PortfolioKind, UseCaseKind } from "./types.
 
 // ─── Origine (§3.2) ──────────────────────────────────────────────────
 
-/** Etichetta lunga, chip e colore del punto in matrice. Il chip ha sempre il testo. */
+/**
+ * Chip, nome lungo e colore del punto in matrice. Il chip ha sempre il testo. (Rilascio 10, §4, D4)
+ * A schermo l'origine è «Dal basso» o «Dall'alto»; il nome lungo («AI Adoption · dal basso») resta
+ * solo nel foglio dei filtri.
+ */
 export const ORIGIN_LABEL: Readonly<Record<Origin, { long: string; chip: string; color: "teal" | "indigo" }>> = {
-  adoption: { long: "AI Adoption · dal basso", chip: "AI Adoption", color: "teal" },
-  transformation: { long: "AI Transformation · dall'alto", chip: "AI Transformation", color: "indigo" },
+  adoption: { long: "AI Adoption · dal basso", chip: "Dal basso", color: "teal" },
+  transformation: { long: "AI Transformation · dall'alto", chip: "Dall'alto", color: "indigo" },
 };
 
 // ─── Tipo (§3.3) ─────────────────────────────────────────────────────
@@ -61,9 +65,12 @@ export const VALUE_MODEL_STATE_LABEL = Object.freeze({ da_misurare: "da misurare
 export const UP_TO_WORD = "fino a";
 /** «4.043 €/anno»: il beneficio all'anno nella forma corta. */
 export const PER_YEAR_SHORT_SUFFIX = "/anno";
-/** «avvio 560 € · ricorrenti 600 €/anno»: il costo di «Benefici e costi». */
-export const COST_ONEOFF_WORD = "avvio";
-export const COST_RUN_WORD = "ricorrenti";
+/**
+ * «Costo 560 € · costo all'anno 600 €»: il costo di «Benefici e costi». (Rilascio 10, §4) Il costo una
+ * tantum è il «Costo di realizzazione», in breve «Costo»; quello che si ripete è il «Costo all'anno».
+ */
+export const COST_ONEOFF_WORD = "Costo";
+export const COST_RUN_WORD = "costo all'anno";
 
 /** Da dove viene il punteggio del Valore (§7.1). Senza punteggio: «da stimare». */
 export const VALUE_SOURCES = ["team", "ai"] as const;
@@ -73,11 +80,14 @@ export const VALUE_SOURCE_LABEL: Readonly<Record<ValueSource, string>> = {
   ai: "AI",
 };
 
-/** Da dove vengono gli euro all'anno accanto al Valore (§7.1): dossier, poi team. */
+/**
+ * Da dove vengono gli euro all'anno accanto al Valore (§7.1): dossier, poi team. (Rilascio 10, §4) A
+ * schermo il dossier è la «realizzazione»; la chiave `dossier` resta nel codice (D4).
+ */
 export const VALUE_EUR_SOURCES = ["dossier", "team"] as const;
 export type ValueEurSource = (typeof VALUE_EUR_SOURCES)[number];
 export const VALUE_EUR_SOURCE_LABEL: Readonly<Record<ValueEurSource, { short: string; long: string }>> = {
-  dossier: { short: "dossier", long: "dal dossier" },
+  dossier: { short: "realizzazione", long: "dalla realizzazione" },
   team: { short: "team", long: "team" },
 };
 
@@ -85,14 +95,14 @@ export const VALUE_EUR_SOURCE_LABEL: Readonly<Record<ValueEurSource, { short: st
  * Le fonti del costo di realizzazione, nell'ordine in cui vincono (§7.2): il dossier, la stima
  * di «Benefici e costi» (avvio e ricorrenti), l'importo e la fascia del team, l'impegno.
  * Forma corta nella riga e nella card della Panoramica, lunga nella scheda.
- * Per il dossier: «dossier» e «dal dossier», mai «da dossier». Il costo che viene dal punteggio
+ * Per il dossier (rilascio 10, §4): «realizzazione» e «dalla realizzazione», mai «dossier» a schermo. Il costo che viene dal punteggio
  * di impegno (KPI `effort`) si dice in parole semplici, «stimato» e «stimato dall'impegno», non
  * «da sforzo» (H4p).
  */
 export const COST_SOURCES = ["dossier", "stima", "team_importo", "team_fascia", "sforzo"] as const;
 export type CostSource = (typeof COST_SOURCES)[number];
 export const COST_SOURCE_LABEL: Readonly<Record<CostSource, { short: string; long: string }>> = {
-  dossier: { short: "dossier", long: "dal dossier" },
+  dossier: { short: "realizzazione", long: "dalla realizzazione" },
   // «Benefici e costi» della scheda (`value_model.costs`): avvio e ricorrenti, stimati dal team.
   stima: { short: "team", long: "stima del team" },
   team_importo: { short: "team", long: "importo del team" },
@@ -147,12 +157,13 @@ const CHANNEL_BY_SOURCE: Readonly<Record<string, string>> = {
   web_proposed: "Modulo web",
   ai_readiness_assessment: "AI Readiness",
   learning: "Corsi",
-  activity_mapping: "Activity mapping",
+  // (Rilascio 10, §4) La mappatura a schermo si chiama «Processi».
+  activity_mapping: "Processi",
   manual: "A mano",
   team_mcp: "MCP del team",
 };
 
-/** «Canale» da `use_cases.source`. `NULL` sono le righe vecchie di Activity mapping. */
+/** «Canale» da `use_cases.source`. `NULL` sono le righe vecchie della mappatura dei processi. */
 export function channelLabel(source: string | null | undefined): string {
   if (source === null || source === undefined) return CHANNEL_BY_SOURCE.activity_mapping;
   return Object.prototype.hasOwnProperty.call(CHANNEL_BY_SOURCE, source) ? CHANNEL_BY_SOURCE[source] : "Altro";
@@ -185,7 +196,8 @@ export const WHAT_FIELD_LABEL: Readonly<Record<WhatField, Readonly<Record<UseCas
   flowDescription: { da_costruire: "Come funziona", da_diffondere: "Adesso" },
   humanInTheLoop: { da_costruire: "Chi controlla", da_diffondere: "Chi la usa" },
   guardrails: { da_costruire: "Limiti", da_diffondere: null },
-  businessCase: { da_costruire: "Impatto atteso", da_diffondere: "Risultato" },
+  // (Rilascio 10, §4, D4) «Valore», mai «Impatto»: «Impatto ambientale e sociale» è un'altra cosa (ESG).
+  businessCase: { da_costruire: "Valore atteso", da_diffondere: "Risultato" },
   dataRequirements: { da_costruire: "Dati", da_diffondere: "Cosa serve per copiarla" },
   area: { da_costruire: "Area", da_diffondere: "Area" },
   aiLab: { da_costruire: "AI Lab", da_diffondere: "AI Lab" },

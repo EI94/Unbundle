@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import type { ReferentGate } from "@/lib/use-cases/referent/contract";
 import type { ReferentRequestParts } from "@/lib/use-cases/referent/email";
 import { REFERENT_UI_TEXT, fillText } from "@/lib/use-cases/referent/labels";
-import { PREVIEW_FOOTER, PREVIEW_SENDER, previewBlocks } from "@/lib/use-cases/referent/preview";
+import { PREVIEW_SENDER, previewBlocks } from "@/lib/use-cases/referent/preview";
 
 const T = REFERENT_UI_TEXT.askDialog;
 
@@ -150,7 +150,6 @@ export function EmailPreview({ to, parts }: { to: string; parts: ReferentRequest
             </p>
           ),
         )}
-        <p className="text-xs text-muted-foreground">{PREVIEW_FOOTER}</p>
       </div>
     </section>
   );

@@ -105,8 +105,10 @@ test("U4: «Costruisci i casi d'uso di…» aspetta l'ok al massimo 14 giorni e 
   assert.equal(sent.action, "send");
   if (sent.action !== "send") return;
   const email = renderEmail(sent.build(null));
-  assert.equal(email.subject, "Costruisci i casi d'uso di Alfa di prova con l'Agent Factory");
-  assert.match(email.text, /Da oggi costruisci con Lateral Space i casi d'uso di Alfa di prova: tutti, anche quelli che si apriranno\. Un caso d'uso è un lavoro che un agente AI fa insieme alle persone\./);
+  // (Rilascio 10, §3.12) «{Cliente}: {cosa}», al massimo 55 caratteri; il corpo corto, senza la seconda definizione di «caso d'uso».
+  assert.equal(email.subject, "Alfa di prova: costruisci i suoi casi d'uso");
+  assert.match(email.text, /da oggi costruisci con Lateral Space i casi d'uso di Alfa di prova: tutti, anche quelli che si apriranno\./);
+  assert.doesNotMatch(email.text, /Un caso d'uso è/);
   assert.match(email.text, /Per cominciare: apri l'Agent Factory, collega Claude Code con «unbundle login» e prendi un compito\./);
   assert.match(email.text, /Il progetto di ogni caso lo approva il suo responsabile; l'accesso ai repository su GitHub te lo dà Lateral Space\./);
   assert.ok(email.text.includes(`Apri l'Agent Factory: https://app.unbundle.test/dashboard/${WS}/agent-factory`));
@@ -153,7 +155,7 @@ test("U4: «Non costruisci più…» solo con l'ok e solo se non costruisce più
   assert.equal(sent.action, "send");
   if (sent.action !== "send") return;
   const email = renderEmail(sent.build(null));
-  assert.equal(email.subject, "Non costruisci più i casi d'uso di Alfa di prova");
+  assert.equal(email.subject, "Alfa di prova: non costruisci più i suoi casi d'uso");
   assert.match(email.text, /da adesso non lavori più ai casi d'uso di Alfa di prova dall'Agent Factory\. I compiti che avevi in corso sono tornati da prendere\./);
   assert.match(email.text, /L'accesso ai repository su GitHub lo toglie Lateral Space\./);
 });

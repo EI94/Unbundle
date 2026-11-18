@@ -68,11 +68,11 @@ export const WEEKLY_USE_KPI = "uso_settimanale_ai";
 
 /** Il catalogo dei KPI pronti, nell'ordine del pannello. */
 export const KPI_CATALOG: readonly CatalogKpi[] = Object.freeze([
-  { key: "valore_in_uso", label: "Valore in uso all'anno", unit: "€", kind: "risultato", source: "automatico", direction: "su", metric: "valore_in_uso", hint: "Dagli use case realizzati." },
+  { key: "valore_in_uso", label: "Valore in uso all'anno", unit: "€", kind: "risultato", source: "automatico", direction: "su", metric: "valore_in_uso", hint: "Dagli use case in uso." },
   { key: "valore_per_dipendente", label: "Valore per dipendente", unit: "€", kind: "risultato", source: "automatico", direction: "su", metric: "valore_per_dipendente", hint: "Valore in uso diviso per i dipendenti." },
-  { key: "valore_misurato_pct", label: "Valore misurato sul totale", unit: "%", kind: "risultato", source: "automatico", direction: "su", metric: "valore_misurato_pct", hint: "Quanta parte del valore stimato viene dal dossier del caso." },
+  { key: "valore_misurato_pct", label: "Valore misurato sul totale", unit: "%", kind: "risultato", source: "automatico", direction: "su", metric: "valore_misurato_pct", hint: "Quanta parte del valore stimato viene dalla realizzazione." },
   { key: "indice_ai_native", label: "Indice AI-native", unit: "/100", kind: "risultato", source: "automatico", direction: "su", metric: "indice_ai_native", hint: "Persone, use case, valore e adozione." },
-  { key: "agenti_da_rivedere", label: "Use case in uso da rivedere", unit: "", kind: "risultato", source: "automatico", direction: "giu", metric: "agenti_da_rivedere", hint: "Rendono meno di 2 € per ogni euro di mantenimento." },
+  { key: "agenti_da_rivedere", label: "Use case in uso da rivedere", unit: "", kind: "risultato", source: "automatico", direction: "giu", metric: "agenti_da_rivedere", hint: "Rendono meno di 2 € per ogni euro di costo all'anno." },
   { key: WEEKLY_USE_KPI, label: "Uso settimanale dell'AI", unit: "%", kind: "risultato", source: "manuale", direction: "su", hint: "Persone che usano l'AI ogni settimana, da un sondaggio." },
   { key: "tempo_ciclo", label: "Tempo di ciclo di un processo", unit: "giorni", kind: "risultato", source: "manuale", direction: "giu", hint: "Dal via alla fine di una pratica tipo." },
   { key: "errori_100_pratiche", label: "Errori per 100 pratiche", unit: "", kind: "risultato", source: "manuale", direction: "giu", hint: "Pratiche da rifare, su 100." },

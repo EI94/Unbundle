@@ -27,6 +27,7 @@ import {
   listUseCaseSubmissionsByAssessment,
 } from "@/lib/db/queries/ai-readiness";
 import { getMaturityLevel } from "@/lib/ai-readiness/scoring";
+import { readinessPillarText } from "@/lib/programma/text";
 import { questionScopeFromUnknown } from "@/lib/ai-readiness/template-scope";
 import {
   findUncoveredInternalPillarIds,
@@ -94,6 +95,15 @@ function scoreFromUnknown(value: unknown) {
   return typeof value === "number" ? scoreLabel(value) : "N/D";
 }
 
+/** (Rilascio 10, §7.4) Lo stato dell'invito in italiano, mai la chiave salvata («invited», «opened»…). */
+const INVITE_STATUS_LABEL: Readonly<Record<string, string>> = {
+  invited: "Invito inviato",
+  opened: "Link aperto",
+  started: "In corso",
+  completed: "Ha risposto",
+  privacy_deleted: "Dati cancellati",
+};
+
 export default async function AiReadinessPage({
   params,
   searchParams,
@@ -148,7 +158,7 @@ export default async function AiReadinessPage({
             className="rounded-full border border-dashed px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted"
             data-testid="assessment-new-link"
           >
-            + Nuovo assessment
+            + Nuova rilevazione
           </Link>
         )}
       </div>
@@ -158,18 +168,17 @@ export default async function AiReadinessPage({
     return (
       <PageContainer className="space-y-8">
         <div className="rounded-[32px] border bg-linear-to-br from-emerald-500/10 via-background to-sky-500/10 p-8">
-          <Badge variant="secondary">Fase 1 - Assessment Core</Badge>
+          <Badge variant="secondary">AI Readiness</Badge>
           <h1 className={`${PAGE_TITLE_CLASS} mt-4 max-w-3xl`}>
-            AI Readiness OS
+            AI Readiness
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
-            La diagnostica Lateral Space dentro Unbundle: setup cliente, inviti,
-            survey privacy-safe, scoring, dashboard base ed export.
+            Una rilevazione su come l&apos;azienda usa l&apos;AI: inviti, questionario anonimo, punteggi e report.
           </p>
         </div>
         {search.deleted === "1" && (
           <p className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-sm" role="status">
-            Assessment eliminato: inviti, risposte e score sono stati rimossi definitivamente.
+            Rilevazione eliminata: inviti, risposte e punteggi sono stati tolti per sempre.
           </p>
         )}
         {assessmentSwitcher}
@@ -181,8 +190,8 @@ export default async function AiReadinessPage({
         ) : (
           <Card>
             <CardContent className="p-6 text-sm text-muted-foreground">
-              Serve un Executive Sponsor o Transformation Lead per creare il
-              primo assessment.
+              Serve uno Sponsor esecutivo o un Responsabile della trasformazione per creare la
+              prima rilevazione.
             </CardContent>
           </Card>
         )}
@@ -249,7 +258,7 @@ export default async function AiReadinessPage({
       {bundle.assessment.status === "open" && <AutoRefresh seconds={30} />}
       {search.deleted === "1" && (
         <p className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-sm" role="status">
-          Assessment eliminato: inviti, risposte e score sono stati rimossi definitivamente.
+          Rilevazione eliminata: inviti, risposte e punteggi sono stati tolti per sempre.
         </p>
       )}
       {assessmentSwitcher}
@@ -312,7 +321,7 @@ export default async function AiReadinessPage({
                 nativeButton={false}
                 data-testid="invite-respondents-cta"
               >
-                <Mail className="mr-1 size-4" /> Invita respondent
+                <Mail className="mr-1 size-4" /> Invita una persona
               </Button>
               {/* Anchor nativi (non <Link>): il prefetch di Next eseguirebbe
                   la GET di export a ogni visita, generando file e audit finti. */}
@@ -359,7 +368,7 @@ export default async function AiReadinessPage({
             },
             {
               n: 2,
-              title: "Invita i respondent",
+              title: "Invita le persone",
               desc: "Crea un link personale per ogni persona e invialo via email o chat.",
               done: respondents.length > 0,
               href: "#respondents",
@@ -429,7 +438,7 @@ export default async function AiReadinessPage({
               {scoreLabel(dashboard?.overallScore)}
             </div>
             <p className="text-xs text-muted-foreground">
-              readiness index - {maturity?.label ?? "insufficient data"}
+              indice di prontezza · {maturity?.label ?? "dati insufficienti"}
             </p>
           </CardContent>
         </Card>
@@ -437,10 +446,10 @@ export default async function AiReadinessPage({
           <CardContent className="p-5">
             <AlertTriangle className="mb-3 size-5 text-amber-500" />
             <div className="text-2xl font-semibold">
-              {dashboard?.bottleneckPillar ?? "N/D"}
+              {dashboard?.bottleneckPillar ? readinessPillarText(dashboard.bottleneckPillar) : "N/D"}
             </div>
             <p className="text-xs text-muted-foreground">
-              weakest AI Native enabler
+              {"l'area più debole"}
             </p>
           </CardContent>
         </Card>
@@ -448,7 +457,7 @@ export default async function AiReadinessPage({
           <CardContent className="p-5">
             <Sparkles className="mb-3 size-5 text-primary" />
             <div className="text-2xl font-semibold">{useCases.length}</div>
-            <p className="text-xs text-muted-foreground">use case proposti via survey</p>
+            <p className="text-xs text-muted-foreground">use case proposti dal questionario</p>
           </CardContent>
         </Card>
       </div>
@@ -547,7 +556,7 @@ export default async function AiReadinessPage({
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <Card className="rounded-[28px]">
           <CardHeader>
-            <CardTitle>Pillar score</CardTitle>
+            <CardTitle>Punteggi per area</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {missingInternalPillars.length > 0 && (
@@ -562,7 +571,7 @@ export default async function AiReadinessPage({
                     .join(" e ")}.
                 </div>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  La survey organizzazione non raccoglie dati, infrastruttura o
+                  Il questionario per tutti non raccoglie dati, infrastruttura o
                   processi interni. Crea una Scheda tecnica e organizzativa per
                   completare questi punteggi.
                 </p>
@@ -616,7 +625,7 @@ export default async function AiReadinessPage({
             <div className="rounded-2xl border p-3">
               <div className="text-xs text-muted-foreground">Soglia aggregazione</div>
               <div className="mt-1 font-medium">
-                {bundle.assessment.aggregationThreshold} respondent minimi
+                {bundle.assessment.aggregationThreshold} risposte minime
               </div>
               {canManage && (
                 <ThresholdForm
@@ -635,7 +644,7 @@ export default async function AiReadinessPage({
               )}
             </div>
             <div className="rounded-2xl border p-3">
-              <div className="text-xs text-muted-foreground">Controller</div>
+              <div className="text-xs text-muted-foreground">Titolare del trattamento</div>
               <div className="mt-1 font-medium">
                 {configString(privacyConfig, "controllerName", access.workspace.name)}
               </div>
@@ -647,12 +656,12 @@ export default async function AiReadinessPage({
               </div>
             </div>
             <div className="rounded-2xl border p-3">
-              <div className="text-xs text-muted-foreground">Privacy advanced</div>
+              <div className="text-xs text-muted-foreground">Privacy</div>
               <div className="mt-1 font-medium">
-                Export respondent, revoca benchmark e anonimizzazione via link personale.
+                Chi risponde può scaricare i suoi dati, togliere il consenso al confronto e restare anonimo dal suo link personale.
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                DPIA, special category warning e benchmark restano espliciti e auditabili.
+                Valutazione d&apos;impatto, avvisi sui dati particolari e confronto restano scritti e verificabili.
               </p>
             </div>
           </CardContent>
@@ -664,15 +673,14 @@ export default async function AiReadinessPage({
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Brain className="size-5" />
-              Intelligence review
+              Sintesi da rivedere
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {insights.length === 0 ? (
               <p className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
-                Genera intelligence per ottenere sintesi executive, rischi,
-                cluster use case, roadmap e benchmark. Ogni insight nasce in
-                draft e richiede review umana.
+                Genera la sintesi per avere riepilogo, rischi, gruppi di use case,
+                tappe e confronto. Ogni punto nasce in bozza e lo rivede una persona.
               </p>
             ) : (
               <ShowAll items={insights} visible={8}>
@@ -800,9 +808,9 @@ export default async function AiReadinessPage({
               <tr>
                 <th className="py-2">Area</th>
                 <th>Risposte</th>
-                <th>Privacy threshold</th>
-                <th>Score</th>
-                <th>Bottleneck</th>
+                <th>Soglia di riservatezza</th>
+                <th>Punteggio</th>
+                <th>Area più debole</th>
               </tr>
             </thead>
             <tbody>
@@ -812,13 +820,13 @@ export default async function AiReadinessPage({
                   <td>{unit.respondentCount}</td>
                   <td>
                     {unit.aggregationThresholdMet ? (
-                      <Badge variant="secondary">OK</Badge>
+                      <Badge variant="secondary">Raggiunta</Badge>
                     ) : (
-                      <Badge variant="outline">Insufficient data</Badge>
+                      <Badge variant="outline">Dati insufficienti</Badge>
                     )}
                   </td>
                   <td>{unit.aggregationThresholdMet ? scoreLabel(unit.overallScore) : "-"}</td>
-                  <td>{unit.aggregationThresholdMet ? unit.bottleneckPillar ?? "-" : "-"}</td>
+                  <td>{unit.aggregationThresholdMet && unit.bottleneckPillar ? readinessPillarText(unit.bottleneckPillar) : "-"}</td>
                 </tr>
               ))}
             </tbody>
@@ -868,7 +876,7 @@ export default async function AiReadinessPage({
           </Card>
           <Card className="rounded-[28px]">
             <CardHeader>
-              <CardTitle>Respondent</CardTitle>
+              <CardTitle>Persone</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
               {respondents.length === 0 ? (
@@ -930,7 +938,7 @@ export default async function AiReadinessPage({
                                 : "outline"
                             }
                           >
-                            {respondent.inviteStatus}
+                            {INVITE_STATUS_LABEL[respondent.inviteStatus] ?? "Invito inviato"}
                           </Badge>
                         </div>
                         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -957,7 +965,7 @@ export default async function AiReadinessPage({
           <CardContent className="space-y-3">
             {useCases.length === 0 ? (
               <p className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
-                I use case proposti dai respondent appariranno qui.
+                Qui compaiono gli use case proposti da chi risponde.
               </p>
             ) : (
               <ShowAll items={useCases} visible={8}>

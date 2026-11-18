@@ -258,7 +258,8 @@ export const DECISION_LABEL: Readonly<Record<DecisionKey | "segna_in_realizzazio
   archivia: "Archivia",
   riapri: "Riapri",
   segna_diffusa: "Segna come diffusa",
-  segna_realizzato: "Segna come realizzato",
+  // (Rilascio 10, §4) Il ciclo di vita dice «In uso», mai «realizzato».
+  segna_realizzato: "Segna «In uso»",
   segna_in_realizzazione: "Segna come in realizzazione",
 });
 
@@ -651,11 +652,11 @@ export function dialogText(
     case "segna_diffusa":
       return { title: "Segnare come diffusa?", description: "La best practice risulta realizzata.", confirm: "Segna come diffusa" };
     case "segna_realizzato":
-      return { title: "Segnare come realizzato?", description: "Lo use case risulta realizzato. Il dossier resta com'è.", confirm: "Segna come realizzato" };
+      return { title: "Segnare «In uso»?", description: "Lo use case risulta in uso. La realizzazione resta com'è.", confirm: "Segna «In uso»" };
     case "segna_in_realizzazione":
       return {
         title: "Segnare come in realizzazione?",
-        description: "Senza dossier: la sezione Casi d'uso è spenta per questo workspace.",
+        description: "Senza realizzazione: le realizzazioni sono spente per questo workspace.",
         confirm: "Segna come in realizzazione",
       };
   }

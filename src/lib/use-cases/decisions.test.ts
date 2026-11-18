@@ -385,9 +385,9 @@ test("Archivia · ogni fase tranne Chiuso: archived, archiveReason, target_quart
 });
 
 test("Archivia · con un dossier attivo: transizione_non_ammessa, «Per archiviarlo, chiudi prima il dossier.»", () => {
-  assert.equal(DECISION_MESSAGES.archiveActiveDossier, "Per archiviarlo, chiudi prima il dossier.");
+  assert.equal(DECISION_MESSAGES.archiveActiveDossier, "Per archiviarlo, chiudi prima la realizzazione.");
   for (const status of CASE_STATUSES.filter((s) => s !== "chiuso")) {
-    expectError(applyDecision(withDossier(status), { type: "archivia", reason: "superato" }, builder), "transizione_non_ammessa", "Per archiviarlo, chiudi prima il dossier.");
+    expectError(applyDecision(withDossier(status), { type: "archivia", reason: "superato" }, builder), "transizione_non_ammessa", "Per archiviarlo, chiudi prima la realizzazione.");
   }
 });
 
@@ -478,7 +478,7 @@ test("Riapri · da archived lo stato resta com'era: torna dov'era, non in «Da d
 });
 
 test("Riapri · con un dossier collegato non torna mai in «Da decidere»", () => {
-  assert.equal(DECISION_MESSAGES.reopenWithDossier, "Ha già un dossier: non può tornare in «Da decidere».");
+  assert.equal(DECISION_MESSAGES.reopenWithDossier, "Ha già una realizzazione: non può tornare in «Da decidere».");
   // Un «Non avviato» con il dossier, chiuso o riaperto nei Casi d'uso: resta chiuso. Con
   // status proposed e il dossier collegato sarebbe «In realizzazione», senza decisioni possibili.
   for (const dossierStatus of CASE_STATUSES) {
@@ -738,7 +738,7 @@ test("D3 · l'AI Builder del cliente prende tutte le decisioni tranne «Segna co
 test("dossier non leggibile: le decisioni che ne dipendono rispondono riprova, le altre proseguono", () => {
   const failed: DecisionContext = { ...withTarget, dossierReadFailed: true };
   const unreadable = DECISION_MESSAGES.dossierUnreadable;
-  assert.equal(unreadable, "Non riesco a leggere lo stato del dossier. Riprova tra poco.");
+  assert.equal(unreadable, "Non riesco a leggere lo stato della realizzazione. Riprova tra poco.");
   expectError(applyDecision(cards.nuova, reject, failed), "riprova", unreadable);
   expectError(applyDecision(cards.approvatoTrimestre, reject, failed), "riprova", unreadable);
   expectError(applyDecision(cards.nuova, duplicate, failed), "riprova", unreadable);

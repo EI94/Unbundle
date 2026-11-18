@@ -31,11 +31,11 @@ export const REFERENT_UI_TEXT = Object.freeze({
   ask: "Chiedi al referente",
   // Avvisi che bloccano «Chiedi al referente»
   gates: Object.freeze({
-    subprocessorsCanDeclare: "{Azienda} deve autorizzare i fornitori che usiamo, per esempio quello delle email: puoi farlo tu, in Impostazioni › Sub-responsabili.",
+    subprocessorsCanDeclare: "{Azienda} deve autorizzare i fornitori che usiamo, per esempio quello delle email: puoi farlo tu, in Impostazioni › Fornitori.",
     // (Rilascio 5.1) Lateral Space, con un ruolo da revisore che autorizza, registra l'ok per conto del cliente.
-    subprocessorsLsCanDeclare: "Manca l'ok di {Azienda} sui fornitori che usiamo, per esempio quello delle email: puoi registrarlo tu per conto di {Azienda}, in Impostazioni › Sub-responsabili.",
+    subprocessorsLsCanDeclare: "Manca l'ok di {Azienda} sui fornitori che usiamo, per esempio quello delle email: puoi registrarlo tu per conto di {Azienda}, in Impostazioni › Fornitori.",
     subprocessorsOther:
-      "{Azienda} deve autorizzare i fornitori che usiamo, per esempio quello delle email. La dà una persona di {Azienda} con ruolo Sponsor esecutivo, Responsabile della trasformazione o Responsabile di funzione, oppure Lateral Space per suo conto, in Impostazioni › Sub-responsabili.",
+      "{Azienda} deve autorizzare i fornitori che usiamo, per esempio quello delle email. La dà una persona di {Azienda} con ruolo Sponsor esecutivo, Responsabile della trasformazione o Responsabile di funzione, oppure Lateral Space per suo conto, in Impostazioni › Fornitori.",
     subprocessorsLink: "Apri Impostazioni",
     emailNotConfigured: "Le email non sono ancora attive: per ora non possiamo scrivere al referente.",
     publicWritesOff: "Le risposte dal link non sono attive in questo momento: per ora non possiamo scrivere al referente. Riprova più tardi.",
@@ -51,7 +51,7 @@ export const REFERENT_UI_TEXT = Object.freeze({
     reminded: " · Promemoria inviato il {data}",
     lastReminder: " · Ultimo promemoria il {data}",
     answered: " · Risposta ricevuta il {data}",
-    dontKnow: " · Risposta: «Non ce l'ho» ({data})",
+    dontKnow: " · Risposta: «Non lo so» ({data})",
     expired: "Link scaduto il {data} senza risposta",
     revoked: "Link revocato il {data}",
     notSent: "Email non ancora partita",
@@ -108,7 +108,7 @@ export const REFERENT_UI_TEXT = Object.freeze({
     expired: "Scaduta il {data}",
   }),
   notices: Object.freeze({
-    remindersStopped: "Promemoria fermi: serve l'autorizzazione dei fornitori in Impostazioni › Sub-responsabili.",
+    remindersStopped: "Promemoria fermi: serve l'autorizzazione dei fornitori in Impostazioni › Fornitori.",
     emailChanged: "L'email del referente è cambiata: il vecchio link non vale più. Con «Manda un promemoria» parte un link nuovo.",
   }),
   emailState: Object.freeze({ in_partenza: "Email in partenza", non_partita: "Email non partita: riprova l'invio" }),
@@ -136,7 +136,7 @@ export const REFERENT_UI_TEXT = Object.freeze({
   retry: "Riprova l'invio",
   more: "Altro",
   correctEmail: "Correggi l'email",
-  correctEmailInDossier: "Questo referente è anche in un dossier: l'email si corregge in «Persone» del dossier.",
+  correctEmailInDossier: "Questo referente è anche in una realizzazione: l'email si corregge in «Persone» della realizzazione.",
   erase: "Cancella i dati di questa persona",
   eraseConfirmTitle: "Cancellare i dati di {Nome}?",
   eraseConfirmText:
@@ -246,7 +246,7 @@ export const REFERENT_UI_TEXT = Object.freeze({
   templateDialog: Object.freeze({
     title: "Aggiungi un file da compilare",
     replaceTitle: "Sostituisci il file da compilare",
-    needs: "Le esigenze a cui legarlo",
+    needs: "Le informazioni a cui legarlo",
     confirm: "Aggiungi",
     replaceConfirm: "Sostituisci",
   }),
@@ -264,7 +264,7 @@ export const REFERENT_UI_TEXT = Object.freeze({
     retried: "Invio riprovato.",
     emailCorrected: "Email corretta. Con «Manda un promemoria» parte il link al nuovo indirizzo.",
     erased: "Dati cancellati.",
-    erasedHubOnly: "Abbiamo cancellato i dati raccolti con gli use case. La persona è anche in un dossier: lì i dati li cancella Lateral Space.",
+    erasedHubOnly: "Abbiamo cancellato i dati raccolti con gli use case. La persona è anche in una realizzazione: lì i dati li cancella Lateral Space.",
     answerAdded: "Risposta aggiunta.",
     answerAddedValidated: "Risposta aggiunta e informazione segnata «A posto».",
     answerRemoved: "Risposta eliminata.",
@@ -329,7 +329,8 @@ export const REFERENT_ESTIMATE_TEXT = Object.freeze({
  * la frase e riempie i numeri. Mai quote, ore liberate, fiducia, fonti o punteggi.
  */
 export const REFERENT_IMPACT_TEXT = Object.freeze({
-  title: "Cosa cambia, secondo il team",
+  // (Rilascio 10, §4) «Le stime» che il referente conferma.
+  title: "Ti tornano queste stime?",
   ore: "{label}: circa {volte} al mese, {minuti} ogni volta. Ti torna?",
   oreYear: "{label}: circa {volte} l'anno, {minuti} ogni volta. Ti torna?",
   oreNumbers: "{label}: quante volte al mese, e quanti minuti ogni volta?",
@@ -344,7 +345,8 @@ export const REFERENT_IMPACT_TEXT = Object.freeze({
   less: "È di meno",
   more: "È di più",
   no: "No",
-  dunno: "Non so",
+  // (Rilascio 10, D5) «Non lo so», la stessa parola per un numero e per un file.
+  dunno: "Non lo so",
   numbersLead: "Se vuoi, dacci i tuoi numeri:",
   euroLead: "Se vuoi, dacci la tua cifra:",
   perMonth: "Volte al mese",
@@ -352,7 +354,7 @@ export const REFERENT_IMPACT_TEXT = Object.freeze({
   eurYear: "Euro l'anno",
   numbersMissing: "Scrivi quante volte al mese e quanti minuti ogni volta.",
   /** (Rilascio 5.1) Una voce a ore senza i numeri del team: i due numeri, oppure «Non so». */
-  numbersOrDunno: "Scrivi i due numeri, oppure scegli «Non so».",
+  numbersOrDunno: "Scrivi i due numeri, oppure scegli «Non lo so».",
   invalid: "Scrivi un numero, per esempio 20 o 1,5.",
   pick: "Scegli una risposta.",
   missingOne: "Manca ancora una risposta: la trovi evidenziata.",
@@ -366,7 +368,7 @@ export const REFERENT_IMPACT_TEXT = Object.freeze({
   sentLess: "{label}: è di meno.",
   sentMore: "{label}: è di più.",
   sentNo: "{label}: no.",
-  sentDunno: "{label}: non so.",
+  sentDunno: "{label}: non lo so.",
   sentNothing: "{label}: nessuna risposta.",
   sentNumbers: "{label}: {n} volte al mese, {m} ogni volta.",
   sentTimesTail: " {n} volte al mese, {m} ogni volta.",
@@ -381,11 +383,11 @@ export const REFERENT_IMPACT_TEXT = Object.freeze({
  * compito: la conferma dello use case, la stima del tempo e poche domande.
  */
 export const REFERENT_ASSIGN_TEXT = Object.freeze({
-  title: Object.freeze({ scegli: "Scegli il referente", cambia: "Cambia referente", di_nuovo: "Chiedi di nuovo", chiedi: "Chiedi al referente" }),
+  title: Object.freeze({ scegli: "Indica il referente", cambia: "Cambia referente", di_nuovo: "Chiedi di nuovo", chiedi: "Chiedi al referente" }),
   // (Rilascio 5.1) L'impatto: ogni voce di «Benefici e costi», o il tempo senza modello del valore.
-  leadMany: "Riceve subito un'email: conferma lo use case e l'impatto, poi risponde a {n} domande.",
-  leadOne: "Riceve subito un'email: conferma lo use case e l'impatto, poi risponde a una domanda.",
-  leadNone: "Riceve subito un'email: conferma lo use case e l'impatto.",
+  leadMany: "Riceve subito un'email: conferma lo use case e le stime, poi risponde a {n} domande.",
+  leadOne: "Riceve subito un'email: conferma lo use case e le stime, poi risponde a una domanda.",
+  leadNone: "Riceve subito un'email: conferma lo use case e le stime.",
   askMany: "{Nome} riceve subito un'email con {n} domande.",
   askOne: "{Nome} riceve subito un'email con una domanda.",
   changeHint: "{Nome} non riceve più promemoria e il suo link smette di funzionare.",
@@ -401,7 +403,7 @@ export const REFERENT_ASSIGN_TEXT = Object.freeze({
   fileRequired: "Serve un file",
   restOne: "L'altra resta da chiedere.",
   restMany: "Le altre {k} restano da chiedere.",
-  questionsEmpty: "Nessuna domanda: conferma solo lo use case e l'impatto.",
+  questionsEmpty: "Nessuna domanda: conferma solo lo use case e le stime.",
   preview: "Cosa riceve {Nome}",
   previewSomeone: "Cosa riceve",
   onPage: "Nella pagina trova:",
@@ -410,7 +412,7 @@ export const REFERENT_ASSIGN_TEXT = Object.freeze({
   noTeamEstimate: "Nessuna stima del team: gli chiediamo quante volte al mese e quanti minuti.",
   send: "Invia a {Nome}",
   sendBare: "Invia",
-  chooseFirst: "Scegli il referente.",
+  chooseFirst: "Indica il referente.",
   sentReferent: "{Nome} è il referente: l'email parte adesso.",
   sent: "Richiesta inviata a {Nome}.",
   /** «Chiedi a un'altra persona» (§8.4): la finestra in tre passi per chi non è il referente. */
@@ -423,7 +425,7 @@ export const REFERENT_BLOCK_TEXT = Object.freeze({
   heading: "Referente",
   headerLine: "Referente: {Nome} · {stato}",
   missing: "Manca il referente.",
-  choose: "Scegli il referente",
+  choose: "Indica il referente",
   teamTag: "Fa parte del team",
   waitingLine: "{stato} · inviata il {inviata} · scade il {scade}",
   expiredLine: "{stato} · inviata il {inviata} · scaduta il {scade}",
@@ -496,8 +498,11 @@ export const REFERENT_PUBLIC_TEXT = Object.freeze({
     unavailable: Object.freeze({ title: "Non disponibile", text: "La pagina non è disponibile in questo momento. Riprova tra poco." }),
   }),
   questionOf: "Domanda {n} di {total}",
+  /** (Rilascio 10, D6) Il codice del caso d'uso, in piccolo in fondo alla pagina e alle email: «Riferimento RD-0004». */
+  reference: "Riferimento",
   sentOn: "Inviata il {data}",
-  dontKnow: "Non ce l'ho",
+  // (Rilascio 10, D5) «Non lo so» ovunque fuori dalla dashboard.
+  dontKnow: "Non lo so",
   answerLabel: "La tua risposta",
   answerPlaceholder: "Scrivi qui. Bastano poche righe.",
   counter: "{n} di 4.000 caratteri",
@@ -571,7 +576,7 @@ export const REFERENT_PUBLIC_TEXT = Object.freeze({
   fileRequired: "Serve un file",
   questionsOne: "Una domanda",
   questionsMany: "{n} domande",
-  questionsLead: "Per ognuna: rispondi, allega un file o scegli «Non ce l'ho».",
+  questionsLead: "Per ognuna: rispondi, allega un file o scegli «Non lo so».",
   savesItself: "Si salva da solo: puoi tornare fino al {data}.",
   doneCount: "{k} di {n} fatte",
   doneSuffix: " (fatta)",
@@ -659,7 +664,8 @@ export const REFERENT_PUBLIC_TEXT = Object.freeze({
 export const REFERENT_CHECK_TEXT = Object.freeze({
   requestedBy: "{Nome} ti ha indicato come referente.",
   // (Rilascio 5.1) Il passo 2 è l'impatto: ogni beneficio, non solo il tempo.
-  steps: Object.freeze({ label: "Passi", useCase: "Il caso d'uso", time: "L'impatto", questions: "Le domande", done: " (fatto)", current: " (adesso)" }),
+  // (Rilascio 10, §4) Il passo 2 sono «Le stime».
+  steps: Object.freeze({ label: "Passi", useCase: "Il caso d'uso", time: "Le stime", questions: "Le domande", done: " (fatto)", current: " (adesso)" }),
   confirm: Object.freeze({
     title: "È così?",
     group: "Il caso d'uso è descritto bene?",
@@ -801,7 +807,7 @@ export const REFERENT_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.
   permesso_mancante: "Non hai i permessi per farlo.",
   email_non_configurata: "Le email non sono ancora attive: per ora non possiamo scrivere al referente.",
   risposte_non_attive: "Le risposte dal link non sono attive in questo momento: per ora non possiamo scrivere al referente. Riprova più tardi.",
-  sub_responsabili_mancanti: "Prima {Azienda} deve autorizzare i fornitori che usiamo, in Impostazioni › Sub-responsabili.",
+  sub_responsabili_mancanti: "Prima {Azienda} deve autorizzare i fornitori che usiamo, in Impostazioni › Fornitori.",
   email_non_verificata: "Per chiedere serve un account con l'email verificata: le risposte all'email arrivano a te.",
   referente_non_valido: "Questo referente non è più attivo: scegline un altro.",
   // (Referente già iscritto) L'email scritta in «+ Nuovo referente» è di un referente disattivato.
@@ -817,7 +823,7 @@ export const REFERENT_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.
   // (8.0c) Non si riesce a leggere chi costruisce i casi del cliente: il referente non si sceglie alla cieca.
   non_disponibile: "Adesso non si riesce a controllare chi costruisce i casi: riprova tra poco.",
   email_in_uso: "C'è già un referente con questa email: sceglilo dall'elenco.",
-  referente_in_dossier: "Questo referente è anche in un dossier: l'email si corregge in «Persone» del dossier.",
+  referente_in_dossier: "Questo referente è anche in una realizzazione: l'email si corregge in «Persone» della realizzazione.",
   dati_non_validi: "Scrivi il nome del referente.",
   richiesta_aperta: "C'è già una richiesta aperta per questa persona su questo use case: usa «Aggiungi domande».",
   // (Parte 3) Chi chiede ha scelto se stesso.
@@ -838,7 +844,7 @@ export const REFERENT_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.
   nessuna_domanda_aperta: "Non ci sono più domande aperte in questa richiesta.",
   riprova_non_ammessa: "L'email è già partita, oppure hai già riprovato tre volte.",
   versione_superata: "Qualcuno ha appena cambiato questa richiesta. Ho ricaricato i dati: riprova.",
-  domanda_non_disponibile: "Questa esigenza non accetta risposte o file.",
+  domanda_non_disponibile: "Questa informazione non accetta risposte o file.",
   risposta_non_trovata: "Risposta non trovata.",
   risposta_vuota: "Scrivi la risposta.",
   testo_troppo_lungo: "Al massimo 4.000 caratteri.",
@@ -858,9 +864,9 @@ export const REFERENT_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.
   informativa_aggiornata: "Abbiamo aggiornato l'informativa: ricarica la pagina per leggerla e continuare.",
   gia_inviata: "Hai già inviato questa risposta.",
   risposte_da_correggere: "Alcune risposte vanno corrette: le trovi evidenziate.",
-  nessuna_risposta: "Scrivi almeno una risposta, oppure scegli «Non ce l'ho».",
-  risposta_vuota_pubblica: "Scrivi la risposta, scegli «Non ce l'ho» o allega un file.",
-  non_so_con_file: "Hai allegato un file: togli «Non ce l'ho» oppure togli il file.",
+  nessuna_risposta: "Scrivi almeno una risposta, oppure scegli «Non lo so».",
+  risposta_vuota_pubblica: "Scrivi la risposta, scegli «Non lo so» o allega un file.",
+  non_so_con_file: "Hai allegato un file: togli «Non lo so» oppure togli il file.",
   file_in_controllo: "Aspetta che finisca il controllo del file, poi invia.",
   file_gia_inviato: "Questo file è già stato inviato: non si può togliere.",
   modalita_non_disponibile: "Per questo file serve il caricamento diretto, che qui non è attivo: usa un file fino a 4 MB.",
@@ -874,7 +880,7 @@ export const REFERENT_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.
   // (Rilascio 5) La conferma dello use case e la stima del tempo.
   // Pagina pubblica: «caso d'uso» (rilascio 5.1).
   conferma_mancante: "Prima conferma il caso d'uso, o scrivi cosa cambieresti.",
-  stima_mancante: "Prima rispondi sull'impatto: manca ancora una risposta.",
+  stima_mancante: "Prima rispondi sulle stime: manca ancora una risposta.",
   stima_cambiata: "Il team ha appena cambiato la stima: controlla di nuovo.",
   numero_non_valido: "Scrivi un numero, per esempio 20 o 1,5.",
   nota_troppo_lunga: "Al massimo 1.000 caratteri.",
@@ -883,8 +889,8 @@ export const REFERENT_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.
   // (Rilascio 5) «Invia» solo con ogni domanda chiusa.
   domande_aperte: "Mancano ancora alcune domande: le trovi evidenziate.",
   domande_aperte_una: "Manca ancora una domanda: la trovi evidenziata.",
-  domanda_aperta: "Per chiudere: rispondi, allega un file o scegli «Non ce l'ho».",
-  domanda_aperta_file: "Per chiudere: allega il file o scegli «Non ce l'ho».",
+  domanda_aperta: "Per chiudere: rispondi, allega un file o scegli «Non lo so».",
+  domanda_aperta_file: "Per chiudere: allega il file o scegli «Non lo so».",
   domande_nuove: "Ci sono domande nuove: le trovi qui sotto.",
   // (Rilascio 6) «Il filo con il referente».
   testo_vuoto: "Scrivi la domanda.",

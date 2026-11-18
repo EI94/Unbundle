@@ -510,8 +510,10 @@ test("un contributore scelto dall'elenco: referente collegato, email con «Hai g
   assert.deepEqual([row?.display_name, row?.user_id], [NAME.contrib, ids.contrib], "il referente nasce collegato al suo account");
   assert.equal(sent.mail.to, emails.contrib);
   // (Rilascio 5, §8.4) Una richiesta di sole domande: «alcune domande su …».
-  assert.equal(sent.mail.subject, `Rondine iscritti: alcune domande sul caso d'uso «${(await q(`SELECT code FROM use_cases WHERE id = $1::uuid`, [cards.contrib]))[0].code} · Scheda contrib»`);
-  assert.ok(sent.mail.text.includes(`${NAME.builder} ti chiede alcune informazioni sul caso d'uso «`));
+  // (Rilascio 10, §3.12, D6) «{Cliente}: una domanda su «Titolo»», senza codice; il codice in fondo, «Riferimento …».
+  assert.equal(sent.mail.subject, "Rondine iscritti: una domanda su «Scheda contrib»");
+  assert.ok(sent.mail.text.includes(`Riferimento ${(await q(`SELECT code FROM use_cases WHERE id = $1::uuid`, [cards.contrib]))[0].code}`));
+  assert.ok(sent.mail.text.includes(`${NAME.builder} ti fa una domanda sul caso d'uso «`));
   assert.ok(sent.mail.text.includes(ACCOUNT_LINE));
   assert.ok(!sent.mail.text.includes(TEAM_LINE));
   assert.ok(sent.mail.text.includes(`/rispondi/${sent.token}`), "il link personale c'è sempre");

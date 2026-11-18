@@ -206,17 +206,17 @@ const richiesta = (over: Partial<{ accountNotice: boolean; cardLink: string | nu
     accountNotice: over.accountNotice,
   });
 
-test("richiesta di sole domande: dice chi chiede e su quale caso d'uso; il link, i 30 giorni e il piè di pagina restano", () => {
+test("richiesta di sole domande: dice chi chiede e su quale caso d'uso; il link e la scadenza restano", () => {
   const m = richiesta();
-  assert.equal(m.subject, "Rondine: alcune domande sul caso d'uso «RD-0004 · Fatture fornitori»");
+  // (Rilascio 10, §3.12, D6) L'oggetto con il titolo, mai il codice; il marchio una volta, senza piè di pagina.
+  assert.equal(m.subject, "Rondine: 2 domande su «Fatture fornitori»");
   const lines = m.text.split("\n").map((l) => l.trim()).filter(Boolean);
   assert.equal(lines[0], "Buongiorno,");
-  assert.equal(lines[1], "Fabio Esempio ti chiede alcune informazioni sul caso d'uso «RD-0004 · Fatture fornitori».");
-  assert.ok(m.text.includes("Le domande sono 2."));
-  assert.ok(richiesta({ questions: 1 }).text.includes("È una domanda sola."));
-  assert.ok(m.text.includes(LINK) && m.text.includes("Il link scade il 26 novembre 2026.") && m.text.includes("Lateral Space via Unbundle."));
+  assert.equal(lines[1], "Fabio Esempio ti fa 2 domande sul caso d'uso «Fatture fornitori», un lavoro che Rondine vuole semplificare con l'AI.");
+  assert.ok(richiesta({ questions: 1 }).text.includes("Fabio Esempio ti fa una domanda sul caso d'uso"));
+  assert.ok(m.text.includes(LINK) && m.text.includes("Il link è solo tuo e vale fino al 26 novembre.") && !m.text.includes("Lateral Space via Unbundle"));
   assert.ok(!m.text.includes(ACCOUNT_NOTICE_LINE) && !m.text.includes(TEAM_ACCESS_LINE), "senza account nel workspace: nessuna delle due righe");
-  assert.ok(richiesta({ title: "x".repeat(400) }).subject.length <= 200, "l'oggetto resta entro 200 caratteri");
+  assert.ok(richiesta({ title: "x".repeat(400) }).subject.length <= 55, "l'oggetto resta entro 55 caratteri");
   // (Rilascio 5.1) Fuori dalla dashboard «caso d'uso», mai «use case».
   for (const part of [m.subject, m.text, m.html]) assert.doesNotMatch(part, /\buse[\s-]*cases?\b|\bwave\b|\btoken\b|\bMCP\b|\bworkflow\b/i);
 });
@@ -224,7 +224,7 @@ test("richiesta di sole domande: dice chi chiede e su quale caso d'uso; il link,
 test("richiesta a chi ha già un account (corsista, contributore): la riga, mai un link alla dashboard", () => {
   const m = richiesta({ accountNotice: true });
   assert.ok(m.text.includes(ACCOUNT_NOTICE_LINE));
-  assert.ok(m.text.indexOf("Il link scade il") < m.text.indexOf(ACCOUNT_NOTICE_LINE), "dopo la scadenza del link");
+  assert.ok(m.text.indexOf("Il link è solo tuo") < m.text.indexOf(ACCOUNT_NOTICE_LINE), "dopo la scadenza del link");
   assert.ok(!m.text.includes("/dashboard/") && !m.html.includes("/dashboard/"));
   assert.ok(!m.text.includes(TEAM_ACCESS_LINE));
   // Un revisore ha la sua riga con il link alla scheda, non questa.

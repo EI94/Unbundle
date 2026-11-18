@@ -84,7 +84,7 @@ export function LearningAdminCatalog({ workspaceId, initial }: { workspaceId: st
     <AdminSection title="I corsi che gestisci">
       {catalog.programs.length === 0 ? <p>Nessun corso da gestire. {catalog.canCreate ? "Inizia importando il pacchetto didattico approvato." : "Un responsabile del corso deve assegnarti il permesso di gestione."}</p> : <ul className="grid gap-4 sm:grid-cols-2">{catalog.programs.map(program => <li key={program.id} className="space-y-3 rounded-lg border p-4">
         <h2 className="font-semibold">{program.title}</h2>
-        <p className="text-sm">Versione {program.version} · {program.featureEnabled ? "Visibile agli assegnatari" : "Nascosto ai partecipanti"} · {program.status === "published" ? "In corso" : "Chiuso"}</p>
+        <p className="text-sm">{program.featureEnabled ? "Visibile ai partecipanti assegnati" : "Nascosto ai partecipanti"} · {program.status === "published" ? "In corso" : "Chiuso"}</p>
         {!program.canManageAll && <p className="text-sm text-muted-foreground">Gestione limitata ai turni assegnati.</p>}
         <Link className="inline-block underline underline-offset-4" href={`${base}/${program.id}/admin`}>Gestisci {program.title}</Link>
       </li>)}</ul>}
@@ -105,7 +105,7 @@ export function LearningAdminCatalog({ workspaceId, initial }: { workspaceId: st
       </form>
       {packSummary && <div className="space-y-4 border-t pt-4">
         <div className="space-y-2 rounded-lg bg-muted/40 p-4"><h3 className="font-medium">Riepilogo della versione {packSummary.version}</h3><p className="text-sm">{packSummary.modules.length} moduli · {packSummary.sessionCount} turni · {packSummary.activityCount} attività · {packSummary.itemCount} domande</p>
-          <ul className="space-y-3 text-sm">{packSummary.modules.map(module => <li key={module.id}><strong>{module.title}</strong><ul>{module.sessions.map(session => <li key={session.cohortId}>{session.cohortId} · {adminDate(session.startsAt)} – {adminDate(session.endsAt)} · {session.timezone}</li>)}</ul></li>)}</ul>
+          <ul className="space-y-3 text-sm">{packSummary.modules.map(module => <li key={module.id}><strong>{module.title}</strong><ul>{module.sessions.map(session => <li key={session.cohortId}>{adminDate(session.startsAt)} – {adminDate(session.endsAt)}</li>)}</ul></li>)}</ul>
         </div>
         <form ref={form} onSubmit={importPack} onChange={() => setDirty(true)}>
           <fieldset disabled={busy} className="space-y-4">

@@ -755,7 +755,7 @@ function BenefitRow({
 }
 
 /**
- * (Rilascio 5.1) Il passo «L'impatto»: «Cosa cambia, secondo il team» e una riga per ogni voce di
+ * (Rilascio 5.1, rilascio 10 §4) Il passo «Le stime»: «Ti tornano queste stime?» e una riga per ogni voce di
  * «Benefici e costi», nell'ordine del modello. «Avanti» (o «Invia» senza domande) salva prima ogni riga;
  * con una riga senza risposta lo dice con garbo, la evidenzia e ci porta il fuoco.
  */

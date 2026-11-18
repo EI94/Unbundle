@@ -188,7 +188,7 @@ test("start: the dossier takes the use case code and texts, the form's code is i
 
 test("start: a second start on the same use case is refused", opts, async () => {
   const again = await start(ids.approved);
-  assert.deepEqual(again, { ok: false, code: "dossier_esistente", message: "Questo use case ha già un dossier." });
+  assert.deepEqual(again, { ok: false, code: "dossier_esistente", message: "Questo use case ha già una realizzazione." });
   const context = await readStartContext(exec!, { workspaceId: ids.ws, useCaseId: ids.approved });
   assert.equal(context?.existingCaseId, state.caseId, "the start page sends to the dossier");
   assert.equal(context?.existingCaseMember, false, "membership is read only with the viewer");
@@ -251,7 +251,7 @@ test("Roadmap cards: one per use case, linked by role; the fallback list shows w
   const card = forLead.byUseCase.get(ids.approved)!;
   assert.equal(card.title, "Smistamento richieste", "the use case title");
   assert.equal(card.code, state.code);
-  assert.equal(card.context?.text, "Tocca a te · Aggiungi i referenti");
+  assert.equal(card.context?.text, "Il tuo prossimo passo · Aggiungi i referenti");
 
   const forClient = await readDossierCards(exec!, { workspaceId: ids.ws, useCaseIds: [ids.approved], viewer: clientViewer(), lsDomains: LS_DOMAINS });
   assert.equal(forClient.byUseCase.get(ids.approved)?.href, `/dashboard/${ids.ws}/use-cases/${ids.approved}`, "other reviewers go to the use case card");
@@ -313,7 +313,7 @@ test("start: an incomplete dossier left on the use case by a failed creation, wi
   const rows = () => q(`SELECT id, setup_completed_at IS NOT NULL AS complete FROM uc_cases WHERE portfolio_use_case_id = $1::uuid ORDER BY created_at`, [card]);
   // Recent: it may still be running, so it stays.
   const early = await start(card);
-  assert.deepEqual(early, { ok: false, code: "creazione_in_corso", message: "Stiamo già preparando il dossier di questo use case: riprova tra qualche minuto." });
+  assert.deepEqual(early, { ok: false, code: "creazione_in_corso", message: "Stiamo già preparando la realizzazione di questo use case: riprova tra qualche minuto." });
   assert.deepEqual((await rows()).map((r) => r.id), [leftover]);
   // Over 10 minutes old: the start removes it in the same transaction and the dossier is made, with the unique index or without.
   await q(`UPDATE uc_cases SET created_at = now() - interval '1 hour' WHERE id = $1::uuid`, [leftover]);

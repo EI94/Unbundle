@@ -413,7 +413,7 @@ test("«Segna come in realizzazione» solo per Lateral Space, con la sezione Cas
   delete process.env.VERCEL_ENV;
   try {
     const refused = err(await actions.markRealizationAction(ids.ws, card.id, await versionOf(card.id)), "transizione_non_ammessa", "dossier accesi");
-    assert.equal(refused.message, "Con i dossier accesi per questo workspace si usa «Avvia la realizzazione».");
+    assert.equal(refused.message, "Con le realizzazioni accese per questo workspace si usa «Avvia la realizzazione».");
   } finally {
     delete process.env.UC_ENABLED;
     delete process.env.UC_WORKSPACE_IDS;
@@ -755,9 +755,9 @@ test("riquadro «Prossimo passo»: i pulsanti di §6.4 per fase, pieno solo il p
     // (Rilascio 6) «Più avanti»: «Scegli il trimestre» bordato porta a «Quando».
     ["approvato da costruire", { phase: "approvato", subState: "piu_avanti", phaseLabel: "Approvato · Più avanti" }, null, ["Scegli il trimestre", "Altre decisioni"]],
     ["approvato da diffondere", { phase: "approvato", subState: "piu_avanti", phaseLabel: "Approvato · Più avanti", kind: "da_diffondere" }, "Segna come diffusa", ["Altre decisioni"]],
-    ["in realizzazione senza dossier", { phase: "in_realizzazione", subState: "senza_dossier", phaseLabel: "In realizzazione · Senza dossier" }, "Segna come realizzato", ["Altre decisioni"]],
+    ["in realizzazione senza dossier", { phase: "in_realizzazione", subState: "senza_dossier", phaseLabel: "In realizzazione · Senza dossier" }, "Segna «In uso»", ["Altre decisioni"]],
     ["in realizzazione, dossier chiuso", { phase: "in_realizzazione", subState: "dossier", phaseLabel: "In realizzazione · Chiuso", dossier: { status: "chiuso" } }, null, ["Altre decisioni"]],
-    ["in realizzazione, dossier in uso", { phase: "in_realizzazione", subState: "dossier", phaseLabel: "In realizzazione · In uso", dossier: { status: "in_esercizio" } }, "Segna come realizzato", []],
+    ["in realizzazione, dossier in uso", { phase: "in_realizzazione", subState: "dossier", phaseLabel: "In realizzazione · In uso", dossier: { status: "in_esercizio" } }, "Segna «In uso»", []],
     ["in realizzazione, dossier attivo", { phase: "in_realizzazione", subState: "dossier", phaseLabel: "In realizzazione · In sviluppo", dossier: { status: "in_sviluppo" } }, null, []],
     ["realizzato", { phase: "realizzato", subState: "realizzato", phaseLabel: "Realizzato" }, null, ["Altre decisioni"]],
     // «Riapri» c'è, ma outline: fuori dal percorso nessun passo è di chi guarda.

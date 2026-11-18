@@ -5,16 +5,20 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { disconnectGranolaAction, listGranolaFoldersAction, saveGranolaRulesAction, startGranolaConnectAction } from "@/lib/actions/context-granola";
+import { splitQuestion } from "@/lib/confirm-text";
 import { folderOptions, splitPeopleEntries, splitTitleWords, type GranolaCardState, type Line } from "@/lib/context/granola/view";
 import { CONTEXT_TEXT } from "@/lib/context/text";
 import type { GranolaRulesView } from "@/lib/db/queries/context-granola";
 import { cn } from "@/lib/utils";
 
 const T = CONTEXT_TEXT.granola;
+/** «Scollega» chiede nella finestra dell'app: la domanda del testo di sempre come titolo, il resto sotto. */
+const DISCONNECT_ASK = splitQuestion(T.disconnectConfirm);
 const SELECT_CLASS = "h-11 w-full rounded-lg border border-input bg-background px-2 text-base sm:h-8 sm:max-w-sm sm:text-sm";
 const LINE_TONE: Record<Line["tone"], string> = { ok: "text-uc-verde", info: "text-muted-foreground", error: "text-destructive" };
 
@@ -41,6 +45,7 @@ export function GranolaCardPanel({
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const [askingDisconnect, setAskingDisconnect] = useState(false);
 
   const connect = () =>
     start(async () => {
@@ -53,7 +58,7 @@ export function GranolaCardPanel({
     });
 
   const disconnect = () => {
-    if (!window.confirm(T.disconnectConfirm)) return;
+    setAskingDisconnect(false);
     start(async () => {
       const result = await disconnectGranolaAction(workspaceId);
       if (!result.ok) {
@@ -97,11 +102,20 @@ export function GranolaCardPanel({
               {plan && <p className="text-xs text-muted-foreground">{T.plan(plan)}</p>}
               <p className="max-w-xl pt-1 text-xs leading-relaxed text-muted-foreground">{T.readOnly}</p>
             </div>
-            <Button variant="ghost" className="h-11 shrink-0 sm:h-8" disabled={pending} onClick={disconnect}>
+            <Button variant="ghost" className="h-11 shrink-0 sm:h-8" disabled={pending} onClick={() => setAskingDisconnect(true)}>
               {T.disconnect}
             </Button>
           </div>
           {rules && <GranolaRulesForm workspaceId={workspaceId} workspaceName={workspaceName} rules={rules} />}
+          <ConfirmDialog
+            open={askingDisconnect}
+            onOpenChange={setAskingDisconnect}
+            title={DISCONNECT_ASK.title}
+            description={DISCONNECT_ASK.description}
+            confirmLabel={T.disconnect}
+            destructive
+            onConfirm={disconnect}
+          />
         </>
       )}
     </div>

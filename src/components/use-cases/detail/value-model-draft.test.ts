@@ -124,7 +124,7 @@ test("righe calcolate: «116 h · 4.043 €» per voce, totali, da misurare e co
   assert.deepEqual(totalsLines(draft, PARAMS), {
     counted: "Contati: 116 h · 4.043 € all'anno",
     pending: null,
-    costs: "avvio 560 € · ricorrenti 600 €/anno",
+    costs: "Costo 560 € · costo all'anno 600 €",
   });
   const withPending = { ...draft, components: [...draft.components, { ...pending, key: "p" }] };
   assert.equal(totalsLines(withPending, PARAMS).pending, "Da misurare, fuori dal totale: fino a 4.043 €");

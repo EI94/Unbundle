@@ -43,23 +43,23 @@ function render(board: MappingBoard, extra: { assistantDefaultOpen?: boolean; in
 test("la testata: il marchio con il link all'elenco, la pillola, «Assistente», il titolo «{unità} board», le schede (P1–P3, P70)", () => {
   const html = render(fixtureBoard());
   assert.match(html, /<header class="b-top" data-b="header">/);
-  assert.match(html, /<div class="b-brand" data-b="brand">.*?lateral <span class="b-mute">space<\/span><\/b><span class="b-x" aria-hidden="true">×<\/span><span>Officina di prova<\/span><span class="b-x" aria-hidden="true">·<\/span><a href="\/dashboard\/[^/]+\/mapping">Activity mapping<\/a><\/div>/);
+  assert.match(html, /<div class="b-brand" data-b="brand">.*?lateral <span class="b-mute">space<\/span><\/b><span class="b-x" aria-hidden="true">×<\/span><span>Officina di prova<\/span><span class="b-x" aria-hidden="true">·<\/span><a href="\/dashboard\/[^/]+\/mapping">Processi<\/a><\/div>/);
   assert.match(html, /<span class="b-status" data-s="saved" role="status" aria-live="polite" tabindex="-1" data-b="pill"><span class="b-dot" aria-hidden="true"><\/span><span>Salvato 16\/11, 10:30<\/span><\/span>/);
   assert.doesNotMatch(html, /data-b="save-now"/, "«Salva ora» solo con modifiche da salvare");
   const toggle = html.match(/<button type="button" class="b-btn b-hide-phone b-assist-toggle" aria-expanded="false" aria-controls="([^"]+)" data-b="assistant-toggle">Assistente<\/button>/);
   assert.ok(toggle, "il bottone dell'assistente, contornato");
   assert.match(html, new RegExp(`<aside id="${toggle![1].replace(/[^\w-]/g, "\\$&")}" class="b-assist" hidden=""`), "il bottone controlla il pannello");
-  assert.match(html, /<h1 class="b-title" style="margin-top:8px"><span data-b="title">Ufficio acquisti <i>board<\/i><\/span><\/h1>/);
+  assert.match(html, /<h1 class="b-title" style="margin-top:8px"><span data-b="title">Ufficio acquisti<\/span><\/h1>/);
   // Le schede: il numero d'ordine, nessun conteggio; la scelta ha aria-selected e il suo pannello.
-  assert.match(html, /<div class="b-tabs" role="tablist" aria-label="Sezioni della board">/);
+  assert.match(html, /<div class="b-tabs" role="tablist" aria-label="Sezioni dell&#x27;unità">/);
   const tabs = [...html.matchAll(/<button type="button" role="tab" id="([^"]+)" class="b-tab" data-tab="(\w+)" aria-selected="(\w+)" aria-controls="([^"]+)" tabindex="(-?\d)"><span class="b-n" aria-hidden="true">(\d\d)<\/span>([^<]+)<\/button>/g)].map((match) => match.slice(1));
   assert.deepEqual(tabs, [
-    ["b-tab-oggi", "oggi", "true", "b-panel-oggi", "0", "01", "Processi di oggi"],
-    ["b-tab-classificazione", "classificazione", "false", "b-panel-classificazione", "-1", "02", "Classificazione"],
+    ["b-tab-oggi", "oggi", "true", "b-panel-oggi", "0", "01", "Oggi"],
+    ["b-tab-classificazione", "classificazione", "false", "b-panel-classificazione", "-1", "02", "Con l&#x27;AI"],
   ]);
 });
 
-test("una vista per volta, legata alla sua scheda: «Processi di oggi» per default, «Classificazione» con lo slot del compagno (P4, P6)", () => {
+test("una vista per volta, legata alla sua scheda: «Oggi» per default, «Con l'AI» con lo slot del compagno (P4, P6)", () => {
   const html = render(fixtureBoard());
   // Il pannello prende il fuoco senza entrare nel giro del Tab: è dove va chi lascia un campo con Escape.
   assert.match(html, /<section class="b-view b-on" role="tabpanel" id="b-panel-oggi" aria-labelledby="b-tab-oggi" tabindex="-1" data-b="view-oggi">.*?data-b="kpis"/);

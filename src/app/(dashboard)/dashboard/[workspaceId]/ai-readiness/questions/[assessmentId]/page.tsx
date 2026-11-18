@@ -78,7 +78,7 @@ export default async function AiReadinessQuestionsPage({
           }
           nativeButton={false}
         >
-          <ArrowLeft className="mr-1 size-4" /> Torna all&apos;assessment
+          <ArrowLeft className="mr-1 size-4" /> Torna alla rilevazione
         </Button>
       </div>
 
@@ -99,7 +99,7 @@ export default async function AiReadinessQuestionsPage({
             Anchor nativi: il prefetch di un Link eseguirebbe la GET. */}
         <div className="mt-4 grid gap-3 sm:grid-cols-3" data-testid="question-downloads">
           <div className="rounded-2xl border bg-muted/20 p-4">
-            <div className="text-sm font-semibold">Survey organizzazione</div>
+            <div className="text-sm font-semibold">Questionario per l&apos;organizzazione</div>
             <p className="mt-0.5 text-xs text-muted-foreground">
               Il questionario per tutte le persone.
             </p>
@@ -134,7 +134,7 @@ export default async function AiReadinessQuestionsPage({
             </div>
           </div>
           <div className="rounded-2xl border bg-muted/20 p-4">
-            <div className="text-sm font-semibold">Assessment referenti</div>
+            <div className="text-sm font-semibold">Schede per i referenti</div>
             <p className="mt-0.5 text-xs text-muted-foreground">
               Le schede per IT, HR e business.
             </p>
@@ -192,11 +192,11 @@ export default async function AiReadinessQuestionsPage({
         </div>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
           Questo è esattamente ciò che riceveranno le persone, diviso in due
-          binari: la <span className="font-medium text-foreground">survey per tutta
+          binari: il <span className="font-medium text-foreground">questionario per tutta
           l&apos;organizzazione</span> e le <span className="font-medium text-foreground">schede
           per i referenti</span> (IT, HR, business). Modifica il testo, i livelli
-          1–5, rimuovi o aggiungi domande: le modifiche valgono solo per questo
-          assessment e lo score resta sempre da 0 a 5 per pilastro.
+          1–5, rimuovi o aggiungi domande: le modifiche valgono solo per questa
+          rilevazione e il punteggio resta sempre da 0 a 5 per area.
         </p>
       </header>
 

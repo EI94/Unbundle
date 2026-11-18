@@ -33,10 +33,10 @@ export type ValueComponentKind = (typeof VALUE_COMPONENT_KINDS)[number];
 export const VALUE_CONFIDENCES = ["fonte", "ipotesi", "da_misurare", "misurato"] as const;
 export type ValueConfidence = (typeof VALUE_CONFIDENCES)[number];
 
-/** Le etichette degli 8 tipi di ritorno; le icone sono quelle di `LEVER_META`. */
+/** Le etichette degli 8 tipi di ritorno; le icone sono quelle di `LEVER_META`. (Rilascio 10, §4) Le stesse parole in tutte le aree: «Meno tempo · Più volume · Meno costi». */
 export const LEVER_LABELS: Readonly<Record<Lever, string>> = Object.freeze({
-  tempo: "Risparmio di tempo",
-  output: "Più output",
+  tempo: "Meno tempo",
+  output: "Più volume",
   qualita: "Più qualità",
   nuove_capacita: "Nuove capacità",
   decisioni: "Decisioni migliori",

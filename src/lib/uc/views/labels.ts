@@ -76,10 +76,11 @@ export const WORDS = {
 export const USE_CASE_WORDS = {
   useCase: "use case",
   useCaseTitle: "Use case",
-  dossier: "dossier",
+  // (Rilascio 10, §4, D4) A schermo il dossier è la «realizzazione».
+  dossier: "realizzazione",
   realizzazione: "Realizzazione",
   avviaRealizzazione: "Avvia la realizzazione",
-  apriDossier: "Apri il dossier",
+  apriDossier: "Apri la realizzazione",
   schedaUseCase: "la scheda dello use case",
 } as const;
 

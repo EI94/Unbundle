@@ -125,8 +125,8 @@ test("lo schema diventa JSON Schema per il MCP (lato ingresso), con i vocabolari
 test("etichette: gli 8 tipi di ritorno della spec, nell'ordine delle leve, senza parole vietate", () => {
   assert.deepEqual(Object.keys(LEVER_LABELS), [...LEVERS]);
   assert.deepEqual(Object.values(LEVER_LABELS), [
-    "Risparmio di tempo",
-    "Più output",
+    "Meno tempo",
+    "Più volume",
     "Più qualità",
     "Nuove capacità",
     "Decisioni migliori",

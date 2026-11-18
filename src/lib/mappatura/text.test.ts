@@ -77,24 +77,24 @@ test("ogni parola del vocabolario ha la sua scritta, e nessuna scritta è la chi
   for (const lane of LANES) assert.ok(LANE_LABEL[lane] && LANE_LABEL[lane] !== lane, lane);
   assert.deepEqual(Object.keys(LABELS).map((name) => Object.keys(LABELS[name as keyof typeof LABELS]).length), [3, 3, 4, 4, 4, 4, 2, 4, 4, 6]);
   // Le scritte del piano, parola per parola.
-  assert.deepEqual(STREAMS.map((stream) => STREAM_LABEL[stream]), ["Automate", "Differentiate", "Innovate"]);
+  assert.deepEqual(STREAMS.map((stream) => STREAM_LABEL[stream]), ["Automatizzare", "Differenziare", "Innovare"]);
   assert.deepEqual(STREAMS.map((stream) => STREAM_LINE[stream]), ["Non dovrebbe esistere così", "Concentrare l'energia umana", "Valore che prima non esisteva"]);
   assert.deepEqual(UNIT_STATUSES.map((status) => UNIT_STATUS_LABEL[status]), ["Da iniziare", "In corso", "Mappatura completa", "Mappatura completa"]);
   assert.deepEqual(WORK_TYPES.map((workType) => WORK_TYPE_LABEL[workType]), ["Raccolta dati", "Confronto", "Interpretazione", "Consegna"]);
   assert.deepEqual(FREQUENCIES.map((frequency) => FREQUENCY_LABEL[frequency]), ["Ogni giorno", "Ogni settimana", "Ogni mese", "Quando serve"]);
   assert.deepEqual(FRICTIONS.map((friction) => FRICTION_LABEL[friction]), ["Nessuno", "Lieve", "Medio", "Forte"]);
-  assert.deepEqual(ORIGINS.map((origin) => ORIGIN_LABEL[origin]), ["Dalla chat", "Dai documenti", "Aggiunto sulla board", "Da prima della board"]);
+  assert.deepEqual(ORIGINS.map((origin) => ORIGIN_LABEL[origin]), ["Dalla chat", "Dai documenti", "Aggiunto sulla mappa", "Da prima della mappa"]);
   assert.deepEqual([BOARD_TEXT.defaultProcessName, BOARD_TEXT.newProcessName], ["Processo principale", "Nuovo processo"]);
   assert.deepEqual([...BOARD_TABS], ["oggi", "classificazione"]);
-  assert.deepEqual(BOARD_TABS.map((tab) => BOARD_TEXT.tabs[tab]), ["Processi di oggi", "Classificazione"]);
+  assert.deepEqual(BOARD_TABS.map((tab) => BOARD_TEXT.tabs[tab]), ["Oggi", "Con l'AI"]);
   // Una frequenza scritta a parole da una persona si mostra com'è.
   assert.deepEqual([frequencyLabel("  Giornaliera "), frequencyLabel("ogni lunedì"), frequencyLabel("ad_hoc")], ["Ogni giorno", "ogni lunedì", "Quando serve"]);
 });
 
 test("le didascalie delle note: «ipotesi», «da fonti · …», niente per una nota validata", () => {
-  assert.deepEqual(ORIGINS.map((origin) => noteCaption("fonte", origin)), ["da fonti · chat", "da fonti · documenti", "da fonti", "da fonti · prima della board"]);
+  assert.deepEqual(ORIGINS.map((origin) => noteCaption("fonte", origin)), ["da fonti · chat", "da fonti · documenti", "da fonti", "da fonti · prima della mappa"]);
   assert.deepEqual([noteCaption("ipotesi", "chat"), noteCaption("ipotesi", "board"), noteCaption("validato", "chat")], ["ipotesi", "ipotesi", null]);
-  assert.deepEqual([noteMark("ipotesi", "board"), noteMark("fonte", "chat"), noteMark("fonte", "documenti"), noteMark("fonte", "prima"), noteMark("validato", "documenti")], ["[ipotesi]", "[fonte: chat]", "[fonte: documenti]", "[fonte: prima della board]", null]);
+  assert.deepEqual([noteMark("ipotesi", "board"), noteMark("fonte", "chat"), noteMark("fonte", "documenti"), noteMark("fonte", "prima"), noteMark("validato", "documenti")], ["[ipotesi]", "[fonte: chat]", "[fonte: documenti]", "[fonte: prima della mappa]", null]);
   assert.equal(BOARD_TEXT.marks.toValidate, "[da validare]");
 });
 

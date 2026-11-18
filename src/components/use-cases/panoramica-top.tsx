@@ -15,11 +15,11 @@ import { ViewFocusLink } from "./list-focus";
 /** Testi della testa della Panoramica (rilascio «Panoramica»). */
 export const OVERVIEW_TEXT = Object.freeze({
   stepsLabel: "Fasi degli use case",
-  steps: Object.freeze({ approvati: "Approvati", in_realizzazione: "In realizzazione", realizzati: "Realizzati" }),
+  steps: Object.freeze({ approvati: "Approvati", in_realizzazione: "In realizzazione", realizzati: "In uso" }),
   none: "nessuno",
   figuresLabel: "Cifre degli use case",
-  value: "valore contato all'anno",
-  cost: "costo di avvio",
+  value: "valore all'anno",
+  cost: "costo di realizzazione",
   quarter: "use case in questo trimestre",
   pending: "valore da misurare all'anno",
   upTo: "fino a",
@@ -143,7 +143,7 @@ function figureTiles(figures: OverviewFigures): FigureTile[] {
  * 1. le fasi, «Da decidere 4 → Approvati 45 → In realizzazione 1 → Realizzati —»: «Da decidere» apre
  *    la sua vista, le altre la loro sezione; lo zero è un trattino («nessuno» per i lettori di
  *    schermo) e non porta da nessuna parte. Ai contributori «In valutazione», senza numero;
- * 2. per i revisori le cifre, la cifra prima delle parole («50.367 €», «valore contato all'anno», «su
+ * 2. per i revisori le cifre, la cifra prima delle parole («50.367 €», «valore all'anno», «su
  *    17 use case»), e sotto «Su tutto il portafoglio: …»;
  * 3. per i revisori il prossimo passo del workspace (D3, `NextStep`): il pulsante pieno con l'icona e il verbo,
  *    il «?» con il perché; «Tocca a …» quando non tocca a chi guarda, «Tutto in ordine» quando non c'è niente

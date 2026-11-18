@@ -3,11 +3,15 @@
 import { useState } from "react";
 import { ChevronRight, KeyRound, ShieldCheck, UserMinus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useUcAction } from "@/components/uc/catalog/use-uc-action";
 import { DetailSheetFrame } from "@/components/uc/ui/detail-sheet";
 import { proposePersonalZoneAccessAction, revokePersonalZoneAccessAction, signPersonalZoneAccessAction } from "@/lib/actions/uc-cases";
+import { CONFIRM_TEXT } from "@/lib/confirm-text";
 import { personalZoneActions, type ZoneMemberRow, type ZoneViewer } from "@/lib/uc/views/privacy";
 import type { PersonalZoneMemberState } from "@/lib/uc/views/people";
+
+const ASK = CONFIRM_TEXT.personalZone;
 
 const STATE_TEXT: Readonly<Record<PersonalZoneMemberState, string>> = {
   attiva: "Ha accesso",
@@ -23,7 +27,10 @@ const STATE_TEXT: Readonly<Record<PersonalZoneMemberState, string>> = {
  */
 export function PersonalZonePanel({ workspaceId, caseId, members, viewer }: { workspaceId: string; caseId: string; members: readonly ZoneMemberRow[]; viewer: ZoneViewer }) {
   const { pending, run } = useUcAction();
+  // «Togli» chiede prima, nella finestra dell'app (regola 7: chi toglie conferma in una finestra dell'app).
+  const [removing, setRemoving] = useState<{ member: ZoneMemberRow; self: boolean } | null>(null);
   return (
+    <>
     <ul className="divide-y">
       {members.map((m) => {
         const a = personalZoneActions(m, viewer);
@@ -64,10 +71,7 @@ export function PersonalZonePanel({ workspaceId, caseId, members, viewer }: { wo
                   variant="ghost"
                   className="min-h-11 sm:min-h-8"
                   disabled={pending}
-                  onClick={() => {
-                    if (!window.confirm(a.self ? "Togliere il tuo accesso ai dati personali?" : `Togliere a ${m.name} l'accesso ai dati personali?`)) return;
-                    run(() => revokePersonalZoneAccessAction(workspaceId, caseId, { userId: m.userId }), { success: "Accesso tolto." });
-                  }}
+                  onClick={() => setRemoving({ member: m, self: a.self })}
                 >
                   <UserMinus aria-hidden />
                   Togli
@@ -78,6 +82,24 @@ export function PersonalZonePanel({ workspaceId, caseId, members, viewer }: { wo
         );
       })}
     </ul>
+    {removing ? (
+      <ConfirmDialog
+        open
+        onOpenChange={(open) => {
+          if (!open) setRemoving(null);
+        }}
+        title={ASK.title(removing.self ? null : removing.member.name)}
+        description={ASK.body}
+        confirmLabel={ASK.confirm}
+        destructive
+        onConfirm={() => {
+          const { member } = removing;
+          setRemoving(null);
+          run(() => revokePersonalZoneAccessAction(workspaceId, caseId, { userId: member.userId }), { success: "Accesso tolto." });
+        }}
+      />
+    ) : null}
+    </>
   );
 }
 

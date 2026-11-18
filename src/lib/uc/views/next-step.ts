@@ -18,6 +18,7 @@
  * I dati arrivano da `loadNextStepInput` di `src/lib/db/queries/uc-next-step.ts`
  * (WP1). Modulo puro e senza dipendenze di Node.
  */
+import type { NextStepIcon } from "../../use-cases/guided.ts";
 import { isCasePastG1 } from "../case-state.ts";
 import type { CaseRole, CaseStatus } from "../vocab.ts";
 import { formatCountIt, formatDayIt, formatRelativeIt } from "./format.ts";
@@ -52,6 +53,27 @@ export interface NextStep {
   /** Per i passi che si confermano in un dialogo: lo stato verso cui va il caso. */
   transition?: CaseStatus;
 }
+
+/**
+ * (Rilascio 10, §7.4) L'icona di ogni passo, la stessa dei passi dello use case (`NextStepIconView`): sempre
+ * accanto al verbo, mai da sola. La spiegazione del passo (`detail`) va nel «?» (`NextStepWhy`).
+ */
+export const NEXT_STEP_ICON: Readonly<Record<NextStepId, NextStepIcon>> = Object.freeze({
+  riprendi: "avvia",
+  riconferma_via: "decidi",
+  firma: "decidi",
+  proponi_via: "avvia",
+  avvia_sviluppo: "avvia",
+  aggiungi_referenti: "referente",
+  invia_domande: "chiedi",
+  verifica: "verifica",
+  sciogli_blocchi: "ferme",
+  manda_link_firma: "chiedi",
+  indica_firmatario_privacy: "referente",
+  scarica_catalogo: "dossier",
+  passo_avanti: "avvia",
+  risposte_referenti: "attesa",
+});
 
 /** Una firma che aspetta chi guarda. `otherSideSigned`: l'altra parte ha già firmato. */
 export interface PendingSignature {
@@ -110,7 +132,8 @@ export interface NextStepViewer {
 /** Passi avanti dopo lo sviluppo (riga 14), con `transitionHint` riscritto. */
 const FORWARD: Partial<Record<CaseStatus, { label: string; detail: string }>> = {
   backtest: { label: "Passa alla prova sul passato", detail: "Il modello rigioca i dati storici: si misura cosa avrebbe cambiato." },
-  collaudo: { label: "Passa al collaudo", detail: "Il cliente prova la soluzione con i criteri concordati." },
+  // (Rilascio 10, §4) «Prova», mai «collaudo».
+  collaudo: { label: "Passa alla prova con il cliente", detail: "Il cliente prova la soluzione con i criteri concordati." },
   stabilizzazione: { label: "Avvia il rodaggio", detail: "Per almeno 14 giorni si correggono i difetti prima dell'uso." },
   in_esercizio: { label: "Metti in uso", detail: "Dopo almeno 14 giorni di rodaggio senza anomalie bloccanti." },
   misura_roi: { label: "Misura il valore", detail: "Si confronta il valore stimato con quello misurato." },
@@ -149,7 +172,7 @@ export function caseNextSteps(input: NextStepInput, viewer: NextStepViewer): Nex
   // 2. In pausa: solo la ripresa.
   if (input.status === "sospeso") {
     const since = formatDayIt(input.statusChangedAt ?? null, { now: input.now });
-    steps.push({ id: "riprendi", label: "Riprendi il caso", detail: since ? `In pausa ${dayWithArticle("dal", since)}.` : null, href: "/impostazioni#stato", owner: forLead() });
+    steps.push({ id: "riprendi", label: "Riprendi la realizzazione", detail: since ? `In pausa ${dayWithArticle("dal", since)}.` : null, href: "/impostazioni#stato", owner: forLead() });
     return steps;
   }
 
@@ -187,7 +210,8 @@ export function caseNextSteps(input: NextStepInput, viewer: NextStepViewer): Nex
     steps.push({
       id: "avvia_sviluppo",
       label: "Avvia lo sviluppo",
-      detail: input.catalog ? `Il catalogo v${input.catalog.version} è pronto.` : "Il catalogo validato è pronto.",
+      // (Rilascio 10, §7.4) Niente «v3» a schermo: la versione sta in «Dettagli tecnici».
+      detail: "Il catalogo validato è pronto.",
       href: "?conferma=in_sviluppo",
       owner: forLead(),
       transition: "in_sviluppo",
@@ -265,7 +289,7 @@ export function caseNextSteps(input: NextStepInput, viewer: NextStepViewer): Nex
     steps.push({
       id: "scarica_catalogo",
       label: "Scarica il catalogo validato",
-      detail: input.catalog ? `Catalogo v${input.catalog.version}${frozen ? `, congelato ${dayWithArticle("il", frozen)}` : ""}.` : null,
+      detail: input.catalog && frozen ? `Catalogo congelato ${dayWithArticle("il", frozen)}.` : null,
       href: "?esporta=1",
       owner: "me",
     });
@@ -304,8 +328,8 @@ export function myNextSteps(steps: readonly NextStep[], max = 3): NextStep[] {
 
 /**
  * La riga «Tocca a …» per ciò che tocca ad altri (si usa il primo
- * applicabile). Se tocca anche a chi guarda dice «Tocca anche a …»; se non
- * tocca a nessun altro e chi guarda ha i suoi passi, non c'è riga.
+ * applicabile). (Rilascio 10, §1 regola 2) Compare solo quando non tocca a chi
+ * guarda: se chi guarda ha un passo suo, il pulsante pieno basta e non c'è riga.
  *
  * «Tutto in ordine» vale solo quando non resta un passo di nessuno, salvo il
  * passo avanti dopo lo sviluppo: un passo di altri senza una riga sua in §2.7
@@ -314,22 +338,18 @@ export function myNextSteps(steps: readonly NextStep[], max = 3): NextStep[] {
  * l'avviso della testata.
  */
 export function whoseTurn(steps: readonly NextStep[], input: NextStepInput): string | null {
-  if (input.status === "chiuso") return "Caso chiuso: si può solo leggere.";
+  if (input.status === "chiuso") return "Realizzazione chiusa: si può solo leggere.";
   if (input.status === "sospeso") return null;
-  const mine = steps.some((s) => s.owner === "me");
-  const also = mine ? "Tocca anche" : "Tocca";
-  // `toVerifyForMe` conta solo per chi verifica davvero (il passo «verifica» è suo).
-  const verifyingMine = steps.some((s) => s.owner === "me" && s.id === "verifica") ? input.toVerifyForMe : 0;
-  const othersToVerify = Math.max(0, input.toVerifyTotal - verifyingMine);
+  // (Rilascio 10) Mai «Tocca anche a …»: con un passo di chi guarda, nessuna riga.
+  if (steps.some((s) => s.owner === "me")) return null;
+  const othersToVerify = Math.max(0, input.toVerifyTotal);
   if (othersToVerify > 0) {
-    return `${also} a Lateral Space: stanno verificando ${othersToVerify === 1 ? "1 risposta" : `${n(othersToVerify)} risposte`}.`;
+    return `Tocca a Lateral Space: stanno verificando ${othersToVerify === 1 ? "1 risposta" : `${n(othersToVerify)} risposte`}.`;
   }
   const referents = steps.find((s) => s.owner === "referenti");
-  if (referents) return `${also} ai referenti: ${referents.detail}`;
+  if (referents) return `Tocca ai referenti: ${referents.detail}`;
   const review = input.pendingGateReview;
-  const signingIsMine = steps.some((s) => s.owner === "me" && s.id === "firma" && input.mySignaturesPending.some((p) => p.kind === "via"));
-  if (review && review.lsSigned && !review.clientSigned && !signingIsMine) return `${also} al cliente: manca la firma del responsabile del cliente.`;
-  if (mine) return null;
+  if (review && review.lsSigned && !review.clientSigned) return "Tocca al cliente: manca la firma del responsabile del cliente.";
   // Il passo avanti dopo lo sviluppo è un'opportunità, non un'attesa: resta «Tutto in ordine».
   if (steps.some((s) => s.id !== "passo_avanti")) return null;
   if (review && !(review.lsSigned && review.clientSigned)) return null;

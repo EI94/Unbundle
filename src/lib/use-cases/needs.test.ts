@@ -315,7 +315,7 @@ test("pannello: al massimo tre aperte, prima le più vicine; la scheda: per tipo
   assert.deepEqual(needsCountPieces(panel!.summary), ["3 da chiedere", "1 passo"]);
   assert.deepEqual(needsCountBar(panel!.summary).map((part) => [part.group, part.count, part.tone]), [["toAsk", 3, "grigio"], ["steps", 1, "grigio"], ["done", 1, "verde"]]);
   const mixed = needsCountSummaryOf([...withAnswer, need({ title: "Ferma", status: "bloccata", useCaseIds: [A] }), need({ title: "Chiesta", status: "chiesta", useCaseIds: [A] })], A)!;
-  assert.deepEqual(needsCountPieces(mixed), ["3 da chiedere", "1 in attesa", "1 da verificare", "1 fermo", "1 passo"]);
+  assert.deepEqual(needsCountPieces(mixed), ["3 da chiedere", "1 in attesa", "1 da verificare", "1 ferma", "1 passo"]);
   assert.deepEqual(needsCountBar(mixed).map((part) => part.group), ["toVerify", "toAsk", "waiting", "blocked", "steps", "done"], "prima da verificare, a posto in fondo");
   assert.equal(needsCountSummaryOf(needs, B)?.open, 1);
   assert.equal(needsCountSummaryOf(needs, "00000000-0000-4000-8000-00000000ffff"), null);
@@ -608,11 +608,11 @@ test("Cosa serve: i requisiti contati per gruppo di stato, di tutta la vista; ma
 test("i testi dei conteggi: «86 aperti · 60 da chiedere · …», senza gli zeri", () => {
   const counts = (o: Partial<NeedAskCounts>): NeedAskCounts => ({ ...emptyNeedAskCounts(), ...o });
   const line = (o: Partial<NeedAskCounts>) => needsSummaryPieces(counts(o)).join(FIGURE_SEPARATOR);
-  assert.equal(line({ open: 86, toAsk: 60, waiting: 12, toVerify: 4, blocked: 10, done: 31 }), "86 aperti · 60 da chiedere · 12 in attesa · 4 da verificare · 10 fermi · 31 a posto");
-  assert.equal(line({ open: 1, toAsk: 1 }), "1 aperto · 1 da chiedere");
-  assert.equal(line({ done: 3 }), "Nessuno aperto · 3 a posto");
-  assert.equal(line({}), "Nessuno aperto");
-  assert.deepEqual(needAskPieces(counts({ open: 1, blocked: 1 })), ["1 fermo"], "requisiti, al maschile come «aperti»");
+  assert.equal(line({ open: 86, toAsk: 60, waiting: 12, toVerify: 4, blocked: 10, done: 31 }), "86 aperte · 60 da chiedere · 12 in attesa · 4 da verificare · 10 ferme · 31 a posto");
+  assert.equal(line({ open: 1, toAsk: 1 }), "1 aperta · 1 da chiedere");
+  assert.equal(line({ done: 3 }), "Nessuna aperta · 3 a posto");
+  assert.equal(line({}), "Nessuna aperta");
+  assert.deepEqual(needAskPieces(counts({ open: 1, blocked: 1 })), ["1 ferma"], "informazioni, al femminile come «aperte»");
   assert.deepEqual(needAskPieces(counts({ open: 2, waiting: 2 })), ["2 in attesa"], "i gruppi a zero non ci sono");
   assert.deepEqual(needAskPieces(counts({ open: 1200, toAsk: 1200 })), ["1.200 da chiedere"]);
   const texts = [

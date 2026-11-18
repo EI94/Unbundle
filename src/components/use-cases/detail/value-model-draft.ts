@@ -63,7 +63,7 @@ export const VALUE_MODEL_EDITOR_TEXT = Object.freeze({
   costs: "Costi",
   devDays: "Giorni di sviluppo",
   internalHours: "Ore delle vostre persone",
-  runCostEurYear: "Costi ricorrenti",
+  runCostEurYear: "Costo all'anno",
   runCostNote: "Di che cosa sono fatti",
   ease: "Facilità",
   easeNone: "Non indicata",

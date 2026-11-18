@@ -200,7 +200,7 @@ export function phaseTone(phase: Phase, subState?: SubState | null): PhaseTone {
 /** Forma della fonte: corta nella riga, nel pannello e nella card; lunga nella scheda. */
 export type SourceForm = "corta" | "lunga";
 
-/** La fonte del costo: «team», «dossier», «stimato»; per esteso «importo del team», «fascia del team», «stimato dall'impegno», «dal dossier». */
+/** La fonte del costo: «team», «realizzazione», «stimato»; per esteso «importo del team», «fascia del team», «stimato dall'impegno», «dalla realizzazione». */
 export function costSourceText(source: CostSource, form: SourceForm): string {
   const label = COST_SOURCE_LABEL[source];
   return form === "lunga" ? label.long : label.short;
@@ -211,7 +211,7 @@ export function valueSourceText(source: ValueSource): string {
   return VALUE_SOURCE_LABEL[source];
 }
 
-/** La fonte degli euro all'anno: «dossier» o «team»; per esteso «dal dossier» o «team». */
+/** La fonte degli euro all'anno: «realizzazione» o «team»; per esteso «dalla realizzazione» o «team». */
 export function valueEurSourceText(source: ValueEurSource, form: SourceForm): string {
   const label = VALUE_EUR_SOURCE_LABEL[source];
   return form === "lunga" ? label.long : label.short;
@@ -421,15 +421,15 @@ export function qualitativeCountText(count: number): string {
 }
 
 /**
- * «avvio 560 €» e «ricorrenti 600 €/anno», le due parti che a schermo non si spezzano; i ricorrenti
- * a zero non si scrivono (solo «avvio 280 €»).
+ * «Costo 560 €» e «costo all'anno 600 €», le due parti che a schermo non si spezzano; il costo
+ * all'anno a zero non si scrive (solo «Costo 280 €»). (Rilascio 10, §4) Mai «avvio» né «ricorrenti».
  */
 export function oneoffRunParts(oneoffEur: number, runEurYear: number | null | undefined): string[] {
   const oneoff = `${COST_ONEOFF_WORD} ${formatEuro(oneoffEur)}`;
-  return typeof runEurYear === "number" && Number.isFinite(runEurYear) && runEurYear > 0 ? [oneoff, `${COST_RUN_WORD} ${perYearShortText(runEurYear)}`] : [oneoff];
+  return typeof runEurYear === "number" && Number.isFinite(runEurYear) && runEurYear > 0 ? [oneoff, `${COST_RUN_WORD} ${formatEuro(runEurYear)}`] : [oneoff];
 }
 
-/** «avvio 560 € · ricorrenti 600 €/anno»; i ricorrenti a zero non si scrivono («avvio 280 €»). */
+/** «Costo 560 € · costo all'anno 600 €»; il costo all'anno a zero non si scrive («Costo 280 €»). */
 export function oneoffRunText(oneoffEur: number, runEurYear: number | null | undefined): string {
   return oneoffRunParts(oneoffEur, runEurYear).join(FIGURE_SEPARATOR);
 }
@@ -489,11 +489,11 @@ export function costShortText(cost: CostParts | null | undefined, bands: readonl
 }
 
 /**
- * Il costo d'avvio nelle card della Panoramica (rilascio «Panoramica»), con la fonte corta a parte:
- * - un importo (dossier, «Benefici e costi», importo del team): «avvio 700 €», «avvio 30.000 €»,
- *   fonte «dossier» o «team»; per «Benefici e costi» nessuna fonte, come nella forma corta (la dice
+ * Il costo di realizzazione nelle card della Panoramica (rilascio «Panoramica»), con la fonte corta a parte:
+ * - un importo (dossier, «Benefici e costi», importo del team): «Costo 700 €», «Costo 30.000 €»,
+ *   fonte «realizzazione» o «team»; per «Benefici e costi» nessuna fonte, come nella forma corta (la dice
  *   la scheda);
- * - una fascia (del team o dall'impegno): «avvio €€ · fascia», fonte «team» o «stimato».
+ * - una fascia (del team o dall'impegno): «Costo €€ · fascia», fonte «team» o «stimato».
  * Senza costo null: la card non scrive «da stimare», lo dice il pannello.
  */
 export function startCostParts(cost: CostParts | null | undefined, bands: readonly CostBandInfo[] = COST_BANDS): { figure: string; source: string | null } | null {

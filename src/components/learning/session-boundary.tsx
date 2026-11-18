@@ -3,6 +3,7 @@
 import { Activity, useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { LearningLeaveDialog } from "./leave-dialog";
 import { useLearningUnsavedChanges } from "./use-unsaved-changes";
 
 type Phase = "checking" | "verified" | "session_changed" | "unauthenticated" | "forbidden" | "unavailable";
@@ -80,6 +81,8 @@ export function LearningSessionBoundary({ workspaceId, expectedUserId, children 
   });
   return <>
     <Activity mode={phase === "verified" ? "visible" : "hidden"}>{children}</Activity>
+    {/* The dialog of the unsaved-changes guard, outside the hidden subtree: it answers every Learning form. */}
+    <LearningLeaveDialog />
     {phase !== "verified" && <section className="mx-auto max-w-3xl space-y-4 p-6" aria-busy={phase === "checking"}>
     <h1 className="text-xl font-semibold">{phase === "session_changed" ? "L’account è cambiato" : phase === "checking" ? "Verifica dell’accesso…" : "Accesso da verificare"}</h1>
     <p role="status" aria-live="polite">{phase === "checking" ? "Controllo della sessione prima di mostrare il percorso."

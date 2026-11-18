@@ -82,7 +82,7 @@ test("la card della classificazione: i badge, «da classificare», il bordo dell
     }),
   );
   assert.match(classified, /^<button type="button" class="b-node b-tb" data-stream="differentiate" data-step="B1"/);
-  assert.match(classified, /<span class="b-nt">Confronto delle offerte<\/span><span class="b-ag"><span class="b-abadge b-small" data-stream="differentiate" data-b="stream-badge">Differentiate<\/span><span class="b-abadge b-auto b-small" data-b="exposure-badge">AI 22%<\/span><\/span><span class="b-ns2">/);
+  assert.match(classified, /<span class="b-nt">Confronto delle offerte<\/span><span class="b-ag"><span class="b-abadge b-small" data-stream="differentiate" data-b="stream-badge" title="Differentiate">Differenziare<\/span><span class="b-abadge b-auto b-small" data-b="exposure-badge">AI 22%<\/span><\/span><span class="b-ns2">/);
   const unclassified = html(h(StepCard, { code: "B2", title: "Archivio", accent: { kind: "stream", stream: null }, note: "da classificare", onOpen: noop }));
   assert.match(unclassified, /^<button type="button" class="b-node b-tb" data-step="B2"/, "senza stream il bordo resta quello di una linea");
   assert.match(unclassified, /<span class="b-none">da classificare<\/span>/);

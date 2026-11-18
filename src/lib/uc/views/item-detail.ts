@@ -593,7 +593,7 @@ export const QUESTION_ACTION_LABEL: Readonly<Record<QuestionActionKey, string>> 
   proposeNa: "Proponi “non si applica”",
   proposeWaiver: "Proponi di partire senza risposta",
   proposeFallback: "Proponi una soluzione provvisoria",
-  reassign: "Affida a un altro collega",
+  reassign: "Affida a…",
 };
 
 /** «Chiedi di nuovo»: la domanda torna al referente (`sendRequests`), da questi stati e solo con un referente. */
@@ -662,7 +662,7 @@ const PRIMARY_BY_STATUS: Readonly<Record<ItemStatus, readonly QuestionActionKey[
 
 /**
  * Primarie e menu della domanda. Il cliente (§3.6.8) ha una sola azione:
- * «Affida a un altro collega». Le firme non stanno qui: l'avviso in linea
+ * «Affida a un'altra persona». Le firme non stanno qui: l'avviso in linea
  * porta a `/firme`. Le azioni che il ruolo non ha non compaiono.
  */
 export function questionActionPlan(i: { status: ItemStatus; actions: ItemActions; askAgain: boolean; reassign: boolean; client: boolean }): QuestionActionPlan {

@@ -1891,7 +1891,7 @@ test("searchContext: Lateral Space trova fatti, Discovery, appunti e documenti; 
   assert.equal(forLs.filter((s) => s.kind === "fatto").length, 2);
   const fact = forLs.find((s) => s.kind === "fatto" && s.excerpt.includes("Udine"))!;
   assert.deepEqual([fact.label, /^\d{4}-\d{2}-\d{2}$/.test(fact.date ?? "")], ["Scritto a mano", true]);
-  assert.deepEqual(forLs.find((s) => s.kind === "discovery"), { n: forLs.find((s) => s.kind === "discovery")!.n, kind: "discovery", label: "Discovery", date: null, excerpt: `Acquisti: Compra per il ${WORD} · 5 persone · 2 attività mappate` });
+  assert.deepEqual(forLs.find((s) => s.kind === "discovery"), { n: forLs.find((s) => s.kind === "discovery")!.n, kind: "discovery", label: "Intervista iniziale", date: null, excerpt: `Acquisti: Compra per il ${WORD} · 5 persone · 2 attività mappate` });
   const found = forLs.find((s) => s.kind === "appunti")!;
   assert.deepEqual([found.label, found.date], [`Call sul ${WORD}`, "2026-11-10"]);
   assert.ok(found.excerpt.includes(`il ${WORD} chiude a dicembre`) && found.excerpt.length <= 600);

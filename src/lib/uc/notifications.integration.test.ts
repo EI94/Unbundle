@@ -308,7 +308,9 @@ test("clarification: the referent of the answer gets a fresh link and the item t
   assert.equal(summary.sent, 1);
   const email = m.emails[0].email;
   assert.equal(email.to, `not-costi-${suffix}@cliente.test`);
-  assert.match(email.subject, /ti chiediamo un chiarimento$/);
+  // (Rilascio 10, §3.12) «{Cliente}: un chiarimento su «Titolo»», senza codice.
+  assert.match(email.subject, /^Cliente notifiche: un chiarimento su «Caso delle/);
+  assert.ok(email.subject.length <= 55, email.subject);
   assert.ok(email.text.includes(String(row.title).slice(0, 40)), "the item title helps find the question");
   assert.ok(!email.text.includes("4242") && !email.text.includes("periodo di riferimento"), "neither the answer nor the comment text");
   const token = tokenOf(email.text)!;
@@ -343,7 +345,7 @@ test("reminders: the first after 3 working days, only with an email; a failed se
   const ok = mailer();
   assert.equal((await dispatchQueue(exec!, scoped(ok, WEEKDAY))).sent, 1);
   assert.equal(ok.emails[0].key, `promemoria_1:${state.reqCosts}:a2`, "a retry has its own idempotency key");
-  assert.match(ok.emails[0].email.subject, /^Promemoria · /);
+  assert.match(ok.emails[0].email.subject, /^Cliente notifiche: promemoria su «/);
   const req = await one(`SELECT reminder_count, last_reminder_at IS NOT NULL AS reminded, next_reminder_at FROM uc_requests WHERE id = $1::uuid`, [state.reqCosts]);
   assert.deepEqual([num(req.reminder_count), req.reminded], [1, true]);
   assert.ok(req.next_reminder_at, "the next reminder is scheduled");
@@ -359,7 +361,7 @@ test("reminders: the second after 7 working days, then the Owner after 10, never
   const run2 = await runRemindersCron(exec!, scoped(second, WEEKDAY));
   assert.equal(run2.reminders, 1);
   assert.equal(second.emails.length, 1);
-  assert.match(second.emails[0].email.subject, /^Ultimo promemoria · /);
+  assert.match(second.emails[0].email.subject, /^Cliente notific\S*: ultimo promemoria su «/);
   assert.equal(num((await one(`SELECT reminder_count FROM uc_requests WHERE id = $1::uuid`, [state.reqCosts])).reminder_count), 2);
 
   // 10 working days and no Owner on the case: the Lateral Space bell says so.
@@ -377,7 +379,9 @@ test("reminders: the second after 7 working days, then the Owner after 10, never
   assert.equal(ownerMail.emails.length, 1);
   const email = ownerMail.emails[0].email;
   assert.equal(email.to, `not-owner-${suffix}@cliente.test`);
-  assert.ok(email.text.includes("q.costi."), "the Owner sees which questions are waiting (keys and titles)");
+  // (Rilascio 10, §3.12) The Owner sees which questions are waiting by their titles, never by their keys.
+  assert.match(email.text, /\n- \S/, "the waiting questions, one per line");
+  assert.ok(!email.text.includes("q.costi."), "never the keys");
   assert.equal(tokenOf(email.text), null, "never the referent's link");
   assert.ok((await one(`SELECT escalated_at FROM uc_requests WHERE id = $1::uuid`, [state.reqCosts])).escalated_at);
   const quiet = await runRemindersCron(exec!, scoped(mailer(), WEEKDAY));
@@ -433,12 +437,13 @@ test("weekly summary: on the first working day, to the Owner (bar and missing it
   const byTo = new Map(m.emails.map((e) => [e.email.to, e.email]));
   const owner = byTo.get(`not-owner-${suffix}@cliente.test`);
   assert.ok(owner, "the Owner summary");
-  assert.match(owner!.subject, /^Riepilogo settimanale · Cliente notifiche/);
-  assert.ok(owner!.text.includes(state.code) && owner!.text.includes("Voci mancanti:"));
+  assert.equal(owner!.subject, "Cliente notifiche: riepilogo della settimana");
+  // (Rilascio 10, §3.12) One line per use case, with the title: «Titolo — 45 % a posto · prossima tappa: …».
+  assert.ok(owner!.text.includes("Caso delle notifiche — ") && owner!.text.includes("Mancano ancora:"));
   assert.ok(!owner!.text.includes("/dashboard/"), "no internal links for the client");
   const ls = byTo.get(`not-lead-${suffix}@ls.test`);
   assert.ok(ls && ls.text.includes(`${ORIGIN}/dashboard/${ids.ws}/casi-duso/${state.caseId}`));
-  assert.ok(!ls!.text.includes("Voci mancanti:"));
+  assert.ok(!ls!.text.includes("Mancano ancora:"));
   assert.ok(byTo.has(`not-analista-${suffix}@ls.test`));
   assert.ok(![...byTo.keys()].some((to) => to.startsWith("not-cliente-")), "no summary to client accounts");
   const bells = await q(`SELECT status FROM uc_notifications WHERE workspace_id = $1::uuid AND template_key = 'riepilogo_settimanale' AND channel = 'in_app'`, [ids.ws]);

@@ -39,8 +39,8 @@ export default async function CasesPage({ params }: { params: Promise<{ workspac
   return (
     <PageContainer>
       <div className="mb-6 min-w-0">
-        <h1 className={PAGE_TITLE_CLASS}>Casi d&apos;uso</h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">I dossier in realizzazione: ognuno nasce dalla scheda di uno use case.</p>
+        <h1 className={PAGE_TITLE_CLASS}>Realizzazioni</h1>
+        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Una per use case: ognuna nasce dalla sua scheda.</p>
       </div>
       {subprocessorsPending && <SubprocessorsLsNotice workspaceId={workspaceId} workspaceName={access.workspace.name} className="mb-4" />}
       {readOnlyNotice && <DossierReadOnlyNotice />}

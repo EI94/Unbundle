@@ -119,13 +119,14 @@ test("«Autorizza i fornitori»: configurazione, funzione, interruttore del clie
 
 test("«Autorizza i fornitori», parola per parola: il link a Impostazioni, nessun dato dei casi d'uso", () => {
   const r = renderSuppliersAlert({ company: "Rondine", link: `${ORIGIN}/dashboard/${WS}/settings#sub-responsabili` });
-  assert.equal(r.subject, "Rondine: serve il tuo ok sui fornitori di Lateral Space");
+  // (Rilascio 10, §3.12) L'oggetto corto e il pulsante «Dai l'ok», mai il nome legale della pagina.
+  assert.equal(r.subject, "Rondine: serve il tuo ok sui fornitori");
   assert.ok(
     r.text.startsWith(
       [
         "Buongiorno,",
         "per raccogliere le informazioni sui casi d'uso di Rondine, Lateral Space usa alcuni fornitori, per esempio quello delle email. Prima serve l'ok di una persona di Rondine con il tuo ruolo.",
-        `Apri Impostazioni › Sub-responsabili: ${ORIGIN}/dashboard/${WS}/settings#sub-responsabili`,
+        `Dai l'ok: ${ORIGIN}/dashboard/${WS}/settings#sub-responsabili`,
         "Ricevi questa email perché puoi dare questa autorizzazione per Rondine. Quando qualcuno l'avrà data, non ne riceverai altre.",
       ].join("\n\n"),
     ),
@@ -141,18 +142,19 @@ test("«Autorizza i fornitori», parola per parola: il link a Impostazioni, ness
 
 test("testo con un caso d'uso, parola per parola, con il link a «Realizzazione»", () => {
   const r = renderReadyAlert({ company: "Rondine", entries: [{ useCase: { code: "RD-0004", title: "Fatture fornitori" }, quarter: "2027-Q1", link: `${ORIGIN}/dashboard/${WS}/use-cases/${UC1}?capitolo=realizzazione` }] });
-  assert.equal(r.subject, "Rondine: il caso d'uso «RD-0004 · Fatture fornitori» è pronto da avviare");
-  assert.ok(
-    r.text.startsWith(
-      [
-        "Buongiorno,",
-        "il caso d'uso «RD-0004 · Fatture fornitori» di Rondine è pronto da avviare: è approvato per T1 2027 e non manca niente dal cliente.",
-        `Apri il caso d'uso: ${ORIGIN}/dashboard/${WS}/use-cases/${UC1}?capitolo=realizzazione`,
-        "Ricevi questa email perché sei di Lateral Space e puoi avviare la realizzazione.",
-      ].join("\n\n"),
-    ),
+  // (Rilascio 10, §3.12, D6) Il titolo nell'oggetto, mai il codice: il codice resta in piccolo, in fondo.
+  assert.equal(r.subject, "Rondine: pronto da avviare «Fatture fornitori»");
+  assert.equal(
     r.text,
+    [
+      "Buongiorno,",
+      "il caso d'uso «Fatture fornitori» di Rondine è pronto da avviare: è approvato per T1 2027 e non manca niente dal cliente.",
+      `Apri il caso d'uso: ${ORIGIN}/dashboard/${WS}/use-cases/${UC1}?capitolo=realizzazione`,
+      "Ricevi questa email perché sei di Lateral Space e puoi avviare la realizzazione.",
+      "Riferimento RD-0004",
+    ].join("\n\n") + "\n",
   );
+  assert.ok(!r.html.includes(`>${ORIGIN}/`), "(rilascio 10) l'indirizzo in chiaro solo nel testo semplice");
   assert.doesNotMatch((r.text + r.html + r.subject).replace(/https?:\/\/[^\s"<]+/g, ""), /\buse[\s-]*cases?\b/i, "(rilascio 5.1) fuori dalla dashboard mai «use case»");
 });
 
@@ -166,7 +168,7 @@ test("testo con più casi d'uso: uno per riga, ognuno con il suo link", () => {
     ],
   });
   assert.equal(r.subject, "Rondine: 3 casi d'uso pronti da avviare");
-  for (const line of ["ci sono 3 casi d'uso di Rondine pronti da avviare: sono approvati e non manca niente dal cliente.", "«RD-0004 · Fatture fornitori» · T1 2027", "«RD-0009 · Ordini» · T4 2026", "«Senza codice» · T4 2026"]) {
+  for (const line of ["ci sono 3 casi d'uso di Rondine pronti da avviare: sono approvati e non manca niente dal cliente.", "«Fatture fornitori» · T1 2027 · RD-0004", "«Ordini» · T4 2026 · RD-0009", "«Senza codice» · T4 2026"]) {
     assert.ok(r.text.includes(line), line);
   }
   assert.equal(r.text.match(/Apri il caso d'uso: /g)?.length, 3);

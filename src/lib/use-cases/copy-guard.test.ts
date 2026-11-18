@@ -8,8 +8,11 @@ import * as costInputState from "../../components/use-cases/cost-input-state.ts"
 import * as agents from "./agents.ts";
 import * as costBands from "./cost-bands.ts";
 import {
+  AREA_LEGACY_FILES,
   AREA_SOURCE_DIRS,
+  CLI_SOURCE_DIRS,
   HUB_COPY_RULES,
+  OUTSIDE_SOURCE_DIRS,
   OLD_NAME_GUARD_ENV,
   OLD_NAME_GUARD_MARKER,
   OLD_NAME_PENDING,
@@ -68,25 +71,78 @@ test("nell'area: ogni parola vietata di §14.5, senza distinguere maiuscole", ()
     assert.ok(found.some((m) => m.rule === rule), `${rule}: «${text}» → ${JSON.stringify(found)}`);
   }
   assert.deepEqual(
-    HUB_COPY_RULES.map((r) => r.word),
+    HUB_COPY_RULES.map((r) => r.word).slice(0, 11),
     ["caso d'uso", "use case", "Raccolta & ranking", "Quick Win", "Strategic Bet", "Capability Builder", "Not Yet", "wave", "Effort", "Impact", "Feasibility"],
   );
-  // «use case» vale solo fuori dalla dashboard (rilascio 5.1).
-  assert.deepEqual(HUB_COPY_RULES.find((r) => r.id === "use_case")?.scopes, ["esterno"]);
+  // «use case» vale solo fuori dalla dashboard (rilascio 5.1) e nella CLI (rilascio 10, «caso»).
+  assert.deepEqual(HUB_COPY_RULES.find((r) => r.id === "use_case")?.scopes, ["esterno", "cli"]);
 });
 
-test("nell'area passano i testi di §14.3, «Casi d'uso» come nome della sezione e il nome del team", () => {
+test("(rilascio 10, §4.2) nella dashboard: le parole ritirate dal vocabolario unico", () => {
+  const cases: Array<[string, string]> = [
+    ["casi_d_uso", "Casi d'uso"],
+    ["dossier", "Apri il dossier"],
+    ["sub_responsabili", "Impostazioni › Sub-responsabili"],
+    ["fabbrica", "La coda della fabbrica"],
+    ["requisito", "1 requisito da chiedere"],
+    ["esigenza", "Collega un'esigenza"],
+    ["ranking", "Raccolta e ranking"],
+    ["goal", "Goal"],
+    ["okr", "OKR e KPI"],
+    ["stream", "tre stream"],
+    ["activity_mapping", "Apri Activity mapping"],
+    ["discovery", "Prima la Discovery"],
+    ["privacy_policy", "Privacy Policy"],
+    ["realizzati", "Realizzati"],
+    ["tocca_anche", "Tocca anche ai referenti"],
+    ["impatto_titolo", "Impatto"],
+    ["impatto_titolo", "Impatto atteso"],
+    ["board_titolo", "board"],
+    ["non_ce_lho", "Scegli «Non ce l'ho»"],
+  ];
+  for (const [rule, text] of cases) {
+    const found = findHubForbidden(text, "area");
+    assert.ok(found.some((m) => m.rule === rule), `${rule}: «${text}» → ${JSON.stringify(found)}`);
+  }
+  // «Impatto ambientale e sociale» (ESG), «AI Board», «la realizzazione» e «Valore» passano.
+  for (const ok of ["Impatto ambientale e sociale", "Serve decisione AI Board", "Apri la realizzazione", "Valore all'anno", "Informazioni · 9", "Scadenze", "Dal basso", "Automatizzare"]) {
+    assert.deepEqual(findHubForbidden(ok, "area"), [], ok);
+  }
+});
+
+test("(rilascio 10, §4.2) fuori dalla dashboard e nella CLI", () => {
+  for (const [rule, text] of [
+    ["survey", "Apri la survey"],
+    ["assessment", "Invia assessment"],
+    ["respondent", "Invita i respondent"],
+    ["retention", "Retention dati"],
+    ["controller", "Controller"],
+    ["json", "un file JSON"],
+    ["login", "Fai il login"],
+    ["reset", "reset della password"],
+    ["non_ce_lho", "Non ce l'ho"],
+    ["use_case", "use case"],
+    ["dossier", "il dossier"],
+  ] as const) {
+    assert.ok(findHubForbidden(text, "esterno").some((m) => m.rule === rule), `${rule}: «${text}»`);
+  }
+  assert.deepEqual(findHubForbidden("Il caso d'uso «Preventivi ai clienti». Se non sai, scegli «Non lo so».", "esterno"), []);
+  // La CLI: «caso», mai «caso d'uso» né «use case».
+  assert.deepEqual(findHubForbidden("Il caso non ha ancora una realizzazione.", "cli"), []);
+  assert.deepEqual(findHubForbidden("Lo use case e il caso d'uso", "cli").map((m) => m.rule), ["use_case", "caso_d_uso"]);
+});
+
+test("nell'area passano i testi di §14.3 e il nome del team", () => {
   const ok = [
     "Use case",
     "Dal basso e dall'alto: quali use case realizzare e quando.",
-    "Senza dossier: la sezione Casi d'uso è spenta per questo workspace.",
+    "Senza realizzazione: le realizzazioni sono spente per questo workspace.",
     "Le zone sono un suggerimento, non la decisione.",
     "Subito · Da pianificare · Se avanza tempo · Non ora",
     "Valore · Costo di realizzazione",
     "La valuta AI Builder: qui vedi come va.",
-    "Impatto atteso · Fattibilità",
+    "Valore atteso · Fattibilità",
     "Costo impegnato · su 7 use case · 2 da fascia",
-    "Raccolta delle idee e ranking",
     "Una wavelength non è una wave? No: «wavelength» passa.",
   ];
   for (const text of ok.slice(0, -1)) assert.deepEqual(findHubForbidden(text, "area"), [], text);
@@ -230,7 +286,8 @@ function visibleTexts(file: string, source: string): string[] {
   const out: string[] = [];
   const push = (text: string, rendered = false) => {
     const t = text.replace(/\s+/g, " ").trim();
-    if (t && (rendered || !CODE_LIKE.test(t))) out.push(t);
+    // Un indirizzo («/dashboard/… /settings#sub-responsabili») non è testo da leggere.
+    if (t && (rendered || (!CODE_LIKE.test(t) && !/^[/?#]/.test(t)))) out.push(t);
   };
   const visit = (node: ts.Node): void => {
     if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) return;
@@ -281,7 +338,8 @@ test("testi visibili di un sorgente: JSX e stringhe sì, commenti, classi e codi
   );
   assert.deepEqual(
     findHubForbiddenIn(texts, "area").map((m) => m.rule),
-    ["vecchio_nome", "vecchio_nome", "wave", "effort", "vecchio_nome", "not_yet"],
+    // (Rilascio 10) «ranking» da solo è ritirato: il vecchio nome lo trova due volte.
+    ["vecchio_nome", "ranking", "vecchio_nome", "ranking", "wave", "effort", "vecchio_nome", "ranking", "not_yet"],
   );
 });
 
@@ -402,7 +460,8 @@ test("copy-guard verde sulle etichette dell'area", () => {
     offMatrixLabel({ count: 3, withoutBenefit: 2 }),
   ];
   assert.ok(texts.length > 400, `${texts.length} testi controllati`);
-  assert.deepEqual(findHubForbiddenIn(texts, "area"), []);
+  // Le chiavi e le ancore esportate («dossier», «realizzato», «panoramica-realizzati») sono codice, non testi.
+  assert.deepEqual(findHubForbiddenIn(texts.filter((t) => !CODE_LIKE.test(t)), "area"), []);
 });
 
 test("copy-guard verde sui testi dei componenti dell'area (src/components/use-cases)", () => {
@@ -451,4 +510,57 @@ test(`vecchio nome fuori dall'area: pulito subito dove è già cambiato; nei fil
     else failures.push(...lines);
   }
   assert.deepEqual(failures, []);
+});
+
+// ─── (Rilascio 10, §4.2) Fuori dalla dashboard e nella CLI ───────────
+
+test("(rilascio 10) copy-guard verde sui testi delle pagine fuori dalla dashboard (/rispondi, /r, invito) e della CLI", () => {
+  const outside = OUTSIDE_SOURCE_DIRS.flatMap(walk).filter((file) => copyScopeOfFile(file) === "esterno");
+  const cli = CLI_SOURCE_DIRS.flatMap(walk).filter((file) => copyScopeOfFile(file) === "cli");
+  for (const piece of ["src/app/rispondi/[token]/page.tsx", "src/components/uc/referente/referente-page.tsx", "src/app/invite/[token]/page.tsx"]) assert.ok(outside.includes(piece), `${piece} si controlla`);
+  assert.ok(cli.includes("src/lib/use-cases/cli/brief.ts"), "la CLI si controlla");
+  const found = [
+    ...outside.flatMap((file) => matchesOf(file, "esterno").map((m) => `${file}: «${m.match}» in «${m.text}»`)),
+    ...cli.flatMap((file) => matchesOf(file, "cli").map((m) => `${file}: «${m.match}» in «${m.text}»`)),
+  ];
+  assert.deepEqual(found, []);
+});
+
+test("(rilascio 10) le pagine con il ramo «area spenta» non si controllano finché c'è il ramo", () => {
+  for (const file of AREA_LEGACY_FILES) {
+    assert.ok(existsSync(join(ROOT, file)), `${file} esiste`);
+    assert.equal(copyScopeOfFile(file), null, file);
+  }
+  assert.equal(copyScopeOfFile("src/components/uc/shell/case-menu.tsx"), "area");
+  assert.equal(copyScopeOfFile("src/components/uc/referente/referente-page.tsx"), "esterno");
+  assert.equal(copyScopeOfFile("src/lib/use-cases/cli/brief.ts"), "cli");
+});
+
+test("(rilascio 10, §4) copy-guard verde sui moduli dei testi di tutte le aree della dashboard", async () => {
+  const modules = await Promise.all([
+    import("../programma/text.ts"),
+    import("../context/text.ts"),
+    import("../mappatura/text.ts"),
+    import("../../components/mappatura/board/text.ts"),
+    import("../../components/mappatura/classification/text.ts"),
+    import("./factory/line.ts"),
+    import("./factory/builders-text.ts"),
+    import("./notices.ts"),
+    import("../uc/views/realization.ts"),
+    import("../uc/views/labels.ts"),
+    import("../uc/views/people.ts"),
+    import("../uc/views/audit.ts"),
+    import("../uc/views/next-step.ts"),
+    import("../uc/views/bulk.ts"),
+    import("../uc/views/progress.ts"),
+    import("../../components/use-cases/detail/need-draft.ts"),
+  ]);
+  const roles = await import("../workspace-roles.ts");
+  const texts = [...modules, { ROLE_INFO: roles.ROLE_INFO }].flatMap((mod) => exportedStrings(mod as Record<string, unknown>)).filter((t) => !CODE_LIKE.test(t));
+  assert.ok(texts.length > 400, `${texts.length} testi controllati`);
+  assert.deepEqual(findHubForbiddenIn(texts, "area").map((m) => `«${m.match}» in «${m.text}»`), []);
+  // L'invito è fuori dalla dashboard: i suoi ruoli dicono «caso d'uso».
+  const outside = exportedStrings({ ROLE_INFO_OUTSIDE: roles.ROLE_INFO_OUTSIDE }).filter((t) => !CODE_LIKE.test(t));
+  assert.ok(outside.some((t) => t.includes("casi d'uso")));
+  assert.deepEqual(findHubForbiddenIn(outside, "esterno"), []);
 });

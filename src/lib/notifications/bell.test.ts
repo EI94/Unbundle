@@ -115,7 +115,7 @@ test("righe: segnale, dossier, use case", () => {
   assert.equal(s.when, "27 ott, 10:30");
   const item: UcBellItem = { id: ID(2), ids: [ID(2)], workspaceId: WS, caseId: null, templateKey: "x", createdAt: "2026-10-27T09:00:00.000Z", when: "3 ore fa", context: null, title: "Riepilogo", description: null, href: null } as UcBellItem;
   assert.equal(dossierEntry(item, true).context, null);
-  assert.equal(dossierEntry(item, false).context, "Casi d'uso");
+  assert.equal(dossierEntry(item, false).context, "Realizzazioni");
   assert.equal(dossierEntry({ ...item, context: "XX-0012 · Smistamento" }, false).context, "XX-0012 · Smistamento");
   assert.equal(dossierEntry(item, true).unread, true);
   const n = noticeEntry(WS, { id: ID(3), useCaseId: UC, code: "RD-0004", title: "Fatture fornitori", kind: "risposte", answers: 2, unknowns: 0, documents: 0, followUp: null, lastEventAt: new Date("2026-10-27T11:00:00.456Z"), readAt: null }, NOW);
@@ -141,7 +141,7 @@ test("(0025) «Pronto da avviare» porta a «Realizzazione», «Autorizza i forn
   assert.deepEqual([suppliers.context, suppliers.title, suppliers.description, suppliers.href], [
     "RD-0004 · Fatture fornitori",
     "Autorizza i fornitori",
-    "Serve il tuo ok sui sub-responsabili, in Impostazioni, per chiedere le informazioni di questo use case.",
+    "Serve il tuo ok sui fornitori, in Impostazioni, per chiedere le informazioni di questo use case.",
     `/dashboard/${WS}/settings#sub-responsabili`,
   ]);
   for (const kind of ["risposte", "documenti", "complete"] as const) {

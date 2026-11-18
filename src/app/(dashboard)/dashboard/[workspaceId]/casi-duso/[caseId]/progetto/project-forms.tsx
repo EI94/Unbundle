@@ -271,7 +271,7 @@ export function DetailsEditor({
                 ) : null}
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="stima-costo">Esercizio, € al mese</Label>
+                <Label htmlFor="stima-costo">Costo al mese, €</Label>
                 <Input
                   id="stima-costo"
                   inputMode="decimal"
@@ -454,7 +454,8 @@ export function ProposalButtons({ workspaceId, caseId, proposalId }: Ids & { pro
   const { pending, run } = useUcAction();
   return (
     <div className="flex shrink-0 flex-wrap gap-2">
-      <Button size="sm" className={BUTTON} disabled={pending} onClick={() => run(() => decideTaskProposalAction(workspaceId, caseId, proposalId, "accetta"))}>
+      {/* (Rilascio 10, §7.4) Bordato: una proposta per riga non è il prossimo passo della pagina. */}
+      <Button size="sm" variant="outline" className={BUTTON} disabled={pending} onClick={() => run(() => decideTaskProposalAction(workspaceId, caseId, proposalId, "accetta"))}>
         Accetta come compito
       </Button>
       <Button size="sm" variant="outline" className={BUTTON} disabled={pending} onClick={() => run(() => decideTaskProposalAction(workspaceId, caseId, proposalId, "scarta"))}>

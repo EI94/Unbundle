@@ -19,7 +19,7 @@ import {
   type AiReadinessDraftIdentity,
   type AiReadinessDraftPayload,
 } from "@/lib/ai-readiness/draft";
-import { AI_READINESS_DEFAULT_COPY, brandCopy } from "@/lib/ai-readiness/copy";
+import { AI_READINESS_DEFAULT_COPY, brandCopy, surveyPillarTitle } from "@/lib/ai-readiness/copy";
 import { validateSurveyPayload } from "@/lib/ai-readiness/form-validation";
 import { parseSupportContacts } from "@/lib/ai-readiness/support-contacts";
 import type {
@@ -590,7 +590,7 @@ export function RespondentSurveyForm({
           </div>
           <h2 className="mt-2 text-xl font-semibold">Chi sei?</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Questa survey è nominativa: bastano nome e cognome, senza creare
+            Questo questionario è nominativo: bastano nome e cognome, senza creare
             nessun account.
           </p>
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
@@ -738,7 +738,7 @@ export function RespondentSurveyForm({
       {sections.map((section) => (
         <section key={section.id} className="rounded-[32px] border bg-card p-6">
           <div className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
-            {template.pillars.find((pillar) => pillar.id === section.pillarId)?.title}
+            {surveyPillarTitle(section.pillarId)}
           </div>
           <h2 className="mt-2 text-xl font-semibold">{section.title}</h2>
           {section.description && (
@@ -858,7 +858,7 @@ export function RespondentSurveyForm({
         </p>
       )}
       <Button type="submit" size="lg" disabled={pending}>
-        {pending ? "Invio risposte..." : "Invia assessment"}
+        {pending ? "Invio risposte..." : "Invia le risposte"}
       </Button>
     </form>
   );

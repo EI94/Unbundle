@@ -232,7 +232,7 @@ test("start: two starts at the same moment, the unique code stops the second one
     return [];
   });
   const r = await startRealization(ex, { workspaceId: WS, user: LEAD, canReviewWorkspacePortfolio: true, input });
-  assert.deepEqual(r, { ok: false, code: "dossier_esistente", message: "Questo use case ha già un dossier." });
+  assert.deepEqual(r, { ok: false, code: "dossier_esistente", message: "Questo use case ha già una realizzazione." });
 });
 
 /** A published template row as the database returns it: the synthetic example, canonical, with its hash. */
@@ -279,19 +279,19 @@ test("start: a code just taken by another use case's dossier is never «già un 
   assert.equal(complete.ok ? complete.value.code : null, "SR-UC-02");
   // The second code clashes too: a neutral message, never a false «già un dossier».
   const twice = await run(clashExecutor({ context: {}, clashing: "SR-UC-01", taken: [] }));
-  assert.deepEqual(twice, { ok: false, code: "codice_appena_usato", message: "Codice appena usato da un altro dossier: riprova." });
+  assert.deepEqual(twice, { ok: false, code: "codice_appena_usato", message: "Codice appena usato da un'altra realizzazione: riprova." });
 
   // With use_cases.code the code cannot change: say so, without blaming this use case.
   const withColumn = { has_code_column: true, use_case_code: "XX-0012" };
   assert.deepEqual(await run(clashExecutor({ context: withColumn, clashing: "XX-0012" })), {
     ok: false,
     code: "codice_appena_usato",
-    message: "Codice appena usato da un altro dossier: riprova.",
+    message: "Codice appena usato da un'altra realizzazione: riprova.",
   });
   assert.deepEqual(await run(clashExecutor({ context: withColumn, clashing: "XX-0012", complete: true })), {
     ok: false,
     code: "codice_in_uso",
-    message: "Nel workspace c'è già un dossier con il codice di questo use case.",
+    message: "Nel workspace c'è già una realizzazione con il codice di questo use case.",
   });
 
   // The clash is this use case's own dossier: then the messages about it are right.
@@ -324,7 +324,7 @@ test("start: a clash on the unique dossier index is about this use case, never �
   // The other row is already gone at the re-read (a creation that just failed): one more try, then «in preparazione».
   for (const context of [{}, { has_code_column: true, use_case_code: "XX-0012" }]) {
     const gone = cardIndexExecutor([], context);
-    assert.deepEqual(await run(gone), { ok: false, code: "creazione_in_corso", message: "Stiamo già preparando il dossier di questo use case: riprova tra qualche minuto." });
+    assert.deepEqual(await run(gone), { ok: false, code: "creazione_in_corso", message: "Stiamo già preparando la realizzazione di questo use case: riprova tra qualche minuto." });
     assert.equal(gone.contextReads(), 3, "read again after each of the two clashes");
   }
 });

@@ -12,7 +12,7 @@ export function RespondentPrivacyControls({ token }: { token: string }) {
       >
         <h2 className="font-semibold">Revoca benchmark</h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          Manteniamo le risposte per l&apos;assessment interno, ma non le usiamo
+          Manteniamo le risposte per la rilevazione interna, ma non le usiamo
           più in benchmark aggregati futuri.
         </p>
         <Button className="mt-4" type="submit" variant="outline">

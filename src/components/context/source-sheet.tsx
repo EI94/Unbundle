@@ -113,7 +113,7 @@ function SourceSheetBody({ workspaceId, sourceId, today, onClose }: { workspaceI
     <ContextSheet
       open={sourceId !== null}
       onOpenChange={(open) => (open ? undefined : onClose())}
-      title={source?.title ?? T.page.tabNotes}
+      title={source?.title ?? T.fact.sourceNotesWord}
       description={source ? sourceMeta(source, today, true).join(" · ") : undefined}
       footer={
         source ? (
@@ -179,7 +179,7 @@ function SourceSheetBody({ workspaceId, sourceId, today, onClose }: { workspaceI
           {isDocument && source.document ? (
             <dl className="space-y-3 text-sm">
               <div>
-                <dt className="sr-only">{T.page.tabDocuments}</dt>
+                <dt className="sr-only">{T.fact.sourceDocumentWord}</dt>
                 <dd className="break-words">{source.document.fileName}</dd>
                 <dd className="text-xs text-muted-foreground">{[fileTypeText(source.document.fileName), fileSizeText(source.document.fileSize)].filter(Boolean).join(" · ")}</dd>
               </div>

@@ -34,7 +34,7 @@ export const APPROVAL_MESSAGES: Readonly<Record<string, string>> = {
   dati_non_validi: "Dati non validi. Aggiorna la pagina e riprova.",
   non_letto: "Conferma di aver letto il testo prima di decidere.",
   ruolo_non_ammesso: "Questa decisione non spetta al tuo ruolo.",
-  non_trovato: "Dossier non trovato.",
+  non_trovato: "Realizzazione non trovata.",
   caso_in_pausa: "Il caso è in pausa: si firma di nuovo quando riprende.",
   caso_chiuso: "Il caso è chiuso: non si firma più.",
   approvazione_non_trovata: "Questa decisione non aspetta più la tua firma. Aggiorna la pagina.",

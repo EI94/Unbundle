@@ -13,14 +13,18 @@ import {
   type WorkspaceInvitationMutationData,
   type WorkspaceMemberMutationData,
 } from "@/lib/actions/workspace-collaboration";
+import { CONFIRM_TEXT } from "@/lib/confirm-text";
 import { WORKSPACE_INVITE_EXPIRES_IN_DAYS } from "@/lib/workspace-invite-config";
 import { INVITABLE_ROLES, ROLE_INFO, roleLabel } from "@/lib/workspace-roles";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog, useSubmitConfirmation } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SettingsSection } from "@/components/dashboard/settings-section";
 import { Users, Link2, Copy, Share2, RotateCcw, GraduationCap, MessageSquareText } from "lucide-react";
+
+const ASK = CONFIRM_TEXT.people;
 
 /**
  * Persone del workspace: chi ha accesso e i link per invitarne altre.
@@ -174,6 +178,10 @@ export function WorkspaceCollaborationCard({
 
   const [lastAction, setLastAction] = useState<"create" | "recreate" | "revoke" | null>(null);
   const [lastMemberAction, setLastMemberAction] = useState<"role" | "remove" | null>(null);
+  // Il ruolo scelto nel menu aspetta la conferma; il menu intanto resta sul ruolo di oggi.
+  const [roleChange, setRoleChange] = useState<{ email: string; role: string } | null>(null);
+  const roleSelect = useRef<HTMLSelectElement | null>(null);
+  const removal = useSubmitConfirmation<Member>();
   const [now] = useState(() => Date.now());
   const canShare = useCanShare();
   const linkBoxRef = useRef<HTMLDivElement>(null);
@@ -298,7 +306,7 @@ export function WorkspaceCollaborationCard({
                 <span className="font-medium text-foreground">Ogni link vale per una sola persona</span> e scade tra{" "}
                 {WORKSPACE_INVITE_EXPIRES_IN_DAYS} giorni. Per più colleghi, crea un link per ciascuno.
               </p>
-              <Button type="submit" className="mt-4 h-10 w-full sm:h-8 @lg:w-auto" disabled={createPending}>
+              <Button type="submit" variant="outline" className="mt-4 h-11 w-full sm:h-8 @lg:w-auto" disabled={createPending}>
                 {createPending ? "Creo il link…" : "Crea link"}
               </Button>
               {feedback ? (
@@ -372,12 +380,9 @@ export function WorkspaceCollaborationCard({
                               className={`${SELECT_CLASS} @xl:w-56`}
                               onChange={(event) => {
                                 const nextRole = event.target.value;
-                                if (!window.confirm(`Cambiare il ruolo di ${member.email} in «${roleLabel(nextRole)}»? Vale da subito.`)) {
-                                  event.target.value = member.role;
-                                  return;
-                                }
-                                setLastMemberAction("role");
-                                event.target.form?.requestSubmit();
+                                event.target.value = member.role;
+                                roleSelect.current = event.target;
+                                setRoleChange({ email: member.email, role: nextRole });
                               }}
                             >
                               {!knownRole && (
@@ -395,10 +400,7 @@ export function WorkspaceCollaborationCard({
                           <form
                             action={memberRemoveFormAction}
                             onSubmit={(event) => {
-                              if (!window.confirm(`Rimuovere ${member.email} dal workspace? Perde subito l'accesso a tutti i dati di questo workspace.`)) {
-                                event.preventDefault();
-                                return;
-                              }
+                              if (!removal.ask(event, member)) return;
                               setLastMemberAction("remove");
                             }}
                           >
@@ -406,7 +408,7 @@ export function WorkspaceCollaborationCard({
                             <Button
                               type="submit"
                               variant="ghost"
-                              className="h-10 text-destructive hover:text-destructive sm:h-8"
+                              className="h-11 text-destructive hover:text-destructive sm:h-8"
                               disabled={memberRemovePending}
                               aria-label={`Rimuovi ${member.email}`}
                               data-testid="workspace-member-remove"
@@ -424,6 +426,36 @@ export function WorkspaceCollaborationCard({
                 );
               })}
             </ul>
+            {roleChange ? (
+              <ConfirmDialog
+                open
+                onOpenChange={(open) => {
+                  if (!open) setRoleChange(null);
+                }}
+                title={ASK.roleTitle(roleChange.email, roleLabel(roleChange.role))}
+                description={ASK.roleBody}
+                confirmLabel={ASK.roleConfirm}
+                onConfirm={() => {
+                  const select = roleSelect.current;
+                  setRoleChange(null);
+                  if (!select) return;
+                  select.value = roleChange.role;
+                  setLastMemberAction("role");
+                  select.form?.requestSubmit();
+                }}
+              />
+            ) : null}
+            {removal.target ? (
+              <ConfirmDialog
+                open
+                onOpenChange={removal.onOpenChange}
+                title={ASK.removeTitle(removal.target.email)}
+                description={ASK.removeBody}
+                confirmLabel={ASK.removeConfirm}
+                destructive
+                onConfirm={removal.confirm}
+              />
+            ) : null}
             {memberMessage?.message ? (
               <p className={`text-sm ${memberMessage.ok ? "text-emerald-400" : "text-red-300"}`} role={memberMessage.ok ? "status" : "alert"}>
                 {memberMessage.message}
@@ -532,6 +564,8 @@ function InviteRow({
         : status === "expired"
           ? `Scaduto il ${formatDate(invite.expiresAt)}`
           : `Scade il ${formatDate(invite.expiresAt)}`;
+  const revoking = useSubmitConfirmation();
+  const recreating = useSubmitConfirmation();
   return (
     <li
       className="flex flex-col gap-3 p-3 @xl:flex-row @xl:items-center @xl:justify-between"
@@ -559,10 +593,7 @@ function InviteRow({
             <form
               action={revokeFormAction}
               onSubmit={(event) => {
-                if (!window.confirm(`Disattivare il link ${invite.email ? `per ${invite.email}` : "senza email"}? Chi lo apre non potrà più entrare.`)) {
-                  event.preventDefault();
-                  return;
-                }
+                if (!revoking.ask(event, true)) return;
                 onRevoke();
               }}
             >
@@ -570,7 +601,7 @@ function InviteRow({
               <Button
                 type="submit"
                 variant="outline"
-                className="h-10 sm:h-8"
+                className="h-11 sm:h-8"
                 disabled={revokePending}
                 aria-label={`Disattiva il link ${invite.email ? `per ${invite.email}` : "senza email"}`}
                 data-testid="workspace-invite-revoke"
@@ -582,10 +613,7 @@ function InviteRow({
           <form
             action={recreateFormAction}
             onSubmit={(event) => {
-              if (!window.confirm("Creare un nuovo link per questo invito? Quello vecchio smetterà di funzionare.")) {
-                event.preventDefault();
-                return;
-              }
+              if (!recreating.ask(event, true)) return;
               onRecreate();
             }}
           >
@@ -593,7 +621,7 @@ function InviteRow({
             <Button
               type="submit"
               variant="outline"
-              className="h-10 sm:h-8"
+              className="h-11 sm:h-8"
               disabled={recreatePending}
               aria-label={`Nuovo link ${invite.email ? `per ${invite.email}` : "senza email"}`}
               data-testid="workspace-invite-recreate"
@@ -602,6 +630,23 @@ function InviteRow({
               Nuovo link
             </Button>
           </form>
+          <ConfirmDialog
+            open={revoking.open}
+            onOpenChange={revoking.onOpenChange}
+            title={ASK.revokeLinkTitle(invite.email)}
+            description={ASK.revokeLinkBody}
+            confirmLabel={ASK.revokeLinkConfirm}
+            destructive
+            onConfirm={revoking.confirm}
+          />
+          <ConfirmDialog
+            open={recreating.open}
+            onOpenChange={recreating.onOpenChange}
+            title={ASK.recreateLinkTitle}
+            description={ASK.recreateLinkBody}
+            confirmLabel={ASK.recreateLinkConfirm}
+            onConfirm={recreating.confirm}
+          />
         </div>
       ) : null}
     </li>

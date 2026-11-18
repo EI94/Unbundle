@@ -94,8 +94,8 @@ export function PrivacyCard({
 }
 
 /** Nel piè di pagina: «▸ Come usiamo le tue risposte», con l'informativa completa. */
-export function PrivacyFooter({ texts }: { texts: Pick<PrivacyTexts, "footerLabel" | "paragraphs"> }) {
-  return (
+export function PrivacyFooter({ texts, reference = null }: { texts: Pick<PrivacyTexts, "footerLabel" | "paragraphs">; reference?: string | null }) {
+  const notice = (
     <Disclosure summary={texts.footerLabel}>
       <div className="space-y-2 text-base leading-6 break-words text-muted-foreground">
         {texts.paragraphs.map((p) => (
@@ -103,5 +103,15 @@ export function PrivacyFooter({ texts }: { texts: Pick<PrivacyTexts, "footerLabe
         ))}
       </div>
     </Disclosure>
+  );
+  if (!reference) return notice;
+  // (Rilascio 10, D6) Il codice del caso d'uso in piccolo, sotto il link all'informativa: mai nel titolo.
+  return (
+    <>
+      {notice}
+      <p data-slot="referent-reference" className="mt-2 text-xs text-muted-foreground">
+        {reference}
+      </p>
+    </>
   );
 }

@@ -56,14 +56,14 @@ test("each bell template has the title and detail of the spec table", () => {
   assert.equal(bellText("blocco_sciolto", {}).title, "Domande sbloccate");
   assert.deepEqual(bellText("gate_pronto", { gate: "G1" }), { title: "Via allo sviluppo proposto", description: "Manca la firma del cliente." });
   assert.deepEqual(bellText("gate_approvato", { version: 2 }), { title: "Via allo sviluppo approvato", description: "Il catalogo è pronto per lo sviluppo." });
-  assert.deepEqual(bellText("ls_lead_da_indicare", {}), { title: "Il dossier non ha un responsabile", description: "Indicane uno in Impostazioni." });
+  assert.deepEqual(bellText("ls_lead_da_indicare", {}), { title: "La realizzazione non ha un responsabile", description: "Indicane uno in Impostazioni." });
   assert.deepEqual(bellText("owner_da_indicare", {}), { title: "Manca il responsabile del cliente", description: "Una richiesta è ferma dopo due promemoria." });
-  assert.deepEqual(bellText("delega", { items: 3 }), { title: "Domande girate a un collega", description: "3 domande: approva la delega in Persone." });
+  assert.deepEqual(bellText("delega", { items: 3 }), { title: "Domande girate a un'altra persona", description: "3 domande: approva la delega in Persone." });
   assert.equal(bellText("delega", { items: 1 }).description, "1 domanda: approva la delega in Persone.");
   assert.equal(bellText("delega", {}).description, "Approva la delega in Persone.");
   assert.deepEqual(bellText("riepilogo_settimanale", { week: "2026-W41" }), { title: "Il riepilogo della settimana", description: "Settimana 41" });
   assert.deepEqual(bellText("riepilogo_settimanale", { week: "2026-W05" }).description, "Settimana 5");
-  assert.deepEqual(bellText("qualcosa_di_nuovo", { case_code: "UC-1" }), { title: "Novità sul dossier", description: null });
+  assert.deepEqual(bellText("qualcosa_di_nuovo", { case_code: "UC-1" }), { title: "Novità sulla realizzazione", description: null });
 });
 
 test("no text has keys, gate codes, ISO dates, the case code or the old section names", () => {

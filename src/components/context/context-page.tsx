@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import Link from "next/link";
 import { PenLine } from "lucide-react";
 import { SegmentedNav } from "@/components/dashboard/segmented-nav";
 import { Button } from "@/components/ui/button";
@@ -20,12 +21,15 @@ export type ContextTab = "memoria" | "appunti";
 /** Apre «Aggiungi appunti» da qualunque punto della pagina (la testata, la Memoria vuota). */
 const AddNotesContext = createContext<(() => void) | null>(null);
 
-/** Il pulsante pieno «Aggiungi appunti»: c'è solo dove la pagina lo offre (Lateral Space). */
-export function AddNotesButton({ className }: { className?: string }) {
+/**
+ * «Aggiungi appunti»: c'è solo dove la pagina lo offre (Lateral Space). (Rilascio 10, §3.7) È pieno finché non ci sono
+ * proposte da confermare; con le proposte il pieno è «Conferma N proposte» e questo è bordato.
+ */
+export function AddNotesButton({ className, variant = "default" }: { className?: string; variant?: "default" | "outline" }) {
   const open = useContext(AddNotesContext);
   if (!open) return null;
   return (
-    <Button type="button" size="lg" className={cn("min-h-11 px-4", className)} onClick={open}>
+    <Button type="button" size="lg" variant={variant} className={cn("min-h-11 px-4", className)} onClick={open}>
       {T.page.addNotes}
     </Button>
   );
@@ -41,6 +45,8 @@ export interface ContextPageProps {
   canEditMemory: boolean;
   /** «Aggiungi appunti» nella testata: no quando la Memoria è vuota (il pulsante sta lì, uno solo per schermata). */
   addNotesInHeader: boolean;
+  /** (Rilascio 10, §3.7) Le proposte da confermare (solo Lateral Space, nella Memoria): il pulsante pieno «Conferma N proposte». */
+  pendingProposals?: number;
   /** Gli use case del workspace, per collegarli a un fatto (solo Lateral Space). */
   useCaseOptions: readonly UseCaseOption[];
   /** L'avviso dell'ok ai fornitori, se manca l'ok: «Aggiungi appunti» lo mostra dopo il salvataggio. */
@@ -54,7 +60,7 @@ export interface ContextPageProps {
  * cliente «Documenti») con «Scrivi un fatto», poi la vista. Sul telefono la testata si impila: titolo, domanda,
  * «Aggiungi appunti» su tutta la larghezza.
  */
-export function ContextPage({ workspaceId, workspaceName, today, tab, lateralSpace, canEditMemory, addNotesInHeader, useCaseOptions, consentNotice, children }: ContextPageProps) {
+export function ContextPage({ workspaceId, workspaceName, today, tab, lateralSpace, canEditMemory, addNotesInHeader, pendingProposals = 0, useCaseOptions, consentNotice, children }: ContextPageProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [writing, setWriting] = useState(false);
   const openAdd = useCallback(() => setAddOpen(true), []);
@@ -75,9 +81,14 @@ export function ContextPage({ workspaceId, workspaceName, today, tab, lateralSpa
             <p className="truncate text-xs text-muted-foreground">{workspaceName}</p>
             <h1 className="mt-0.5 text-2xl font-semibold tracking-tight">{T.page.title}</h1>
           </div>
-          {lateralSpace && addNotesInHeader ? (
-            <div className="order-3 sm:order-2">
-              <AddNotesButton className="w-full sm:w-auto" />
+          {lateralSpace && (addNotesInHeader || pendingProposals > 0) ? (
+            <div className="order-3 flex flex-col gap-2 sm:order-2 sm:flex-row">
+              {pendingProposals > 0 ? (
+                <Button size="lg" className="min-h-11 w-full px-4 sm:w-auto" render={<Link href={`${base}/conferma`} />} nativeButton={false}>
+                  {T.page.confirmProposals(pendingProposals)}
+                </Button>
+              ) : null}
+              {addNotesInHeader ? <AddNotesButton className="w-full sm:w-auto" variant={pendingProposals > 0 ? "outline" : "default"} /> : null}
             </div>
           ) : null}
           <div className="order-2 sm:order-3 sm:col-span-2">

@@ -627,14 +627,14 @@ export function RankingMatrix({
                     <DetailBlock label="Guardrail" value={selected.guardrails} />
                   )}
                   <DetailBlock
-                    label="Impatto atteso / business case"
+                    label="Valore atteso"
                     value={selected.businessCase}
                   />
                   <DetailBlock
                     label={
                       selected.portfolioKind === "best_practice"
-                        ? "Requisiti per replicarla"
-                        : "Dati necessari / replicabilita"
+                        ? "Cosa serve per replicarla"
+                        : "Dati necessari / replicabilità"
                     }
                     value={selected.dataRequirements}
                   />

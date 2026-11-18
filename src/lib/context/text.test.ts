@@ -119,7 +119,7 @@ test("le fonti e la storia di un fatto, come nella pagina", () => {
   assert.equal(CONTEXT_TEXT.fact.sourceCall("14 nov"), "Call 14 nov");
   assert.equal(CONTEXT_TEXT.fact.sourceDocument("14 nov"), "Documento 14 nov");
   assert.equal(CONTEXT_TEXT.fact.sourceManual, "Scritto a mano");
-  assert.equal(CONTEXT_TEXT.fact.sourceDiscovery, "Discovery");
+  assert.equal(CONTEXT_TEXT.fact.sourceDiscovery, "Intervista iniziale");
   assert.equal(CONTEXT_TEXT.fact.noSource, "senza fonte");
   assert.equal(CONTEXT_TEXT.fact.before("Il gestionale è SAP."), "Prima: Il gestionale è SAP.");
   assert.equal(CONTEXT_TEXT.confirm.before("X", "Discovery", "21 ott"), "Prima: X (Discovery, 21 ott)");
@@ -209,4 +209,15 @@ test("(9b) genere neutro e nessun «caso»: la dashboard dice «use case», le p
       assert.doesNotMatch(text, /\b(benvenuto|sicuro|pronto|tutti i tuoi|caro)\b/i, `${path}: genere neutro`);
     }
   }
+});
+
+test("(rilascio 10, §3.10) Granola è personale: le righe portano a «Il tuo account», non a Impostazioni", () => {
+  const G = CONTEXT_TEXT.granola;
+  for (const text of [G.notConnectedLine, G.stateExpiredSomewhere]) {
+    assert.match(text, /«Il tuo account»/, text);
+    assert.doesNotMatch(text, /Impostazioni/, text);
+  }
+  assert.equal(G.accountLink, "Il tuo account");
+  // L'ok sui fornitori resta nelle Impostazioni del workspace: lo dà chi gestisce.
+  assert.equal(G.settingsLink, "Impostazioni");
 });

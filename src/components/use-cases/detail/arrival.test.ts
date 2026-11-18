@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { enableTsxImports } from "./referent/tsx-test-loader.ts";
 
 // L'arrivo sulla scheda da un `#ancora` dell'indirizzo (rilascio 3): un link copiato a metà o
-// storpiato («#%», «#100%») apriva il confine d'errore «Non riusciamo a caricare gli use case.» al
+// storpiato («#%», «#100%») apriva il confine d'errore «Questa pagina non si è caricata.» al
 // posto della scheda, perché `decodeURIComponent` lanciava `URIError` nell'effetto di `Arrival`, e
 // «Riprova» non serviva: l'ancora restava nell'indirizzo. Ora l'ancora si legge con `knownAnchorOf`.
 //

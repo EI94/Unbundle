@@ -432,7 +432,7 @@ test("coalesce: più modifiche dello stesso campo diventano una, con il prev del
   // Campi diversi, o bersagli diversi, non si uniscono; aggiunte, spostamenti ed eliminazioni restano come sono.
   const untouched = [op({ t: "process.set", processId: I.processA, field: "name", prev: "A", next: "B" }), op({ t: "process.set", processId: I.processA, field: "owner", prev: null, next: "B" }), op({ t: "process.set", processId: I.processB, field: "name", prev: "A", next: "B" }), move, op({ t: "step.move", stepId: I.richieste, processId: I.processA, beforeId: null }), op({ t: "note.remove", noteId: I.unit })];
   assert.deepEqual(coalesce(untouched), untouched);
-  // «Usa gli stream proposti» in mezzo separa: lo stream scelto prima e quello scelto dopo restano due operazioni.
+  // «Usa le categorie proposte» in mezzo separa: lo stream scelto prima e quello scelto dopo restano due operazioni.
   const before = op({ t: "step.stream", stepId: I.richieste, prev: "automate", next: "innovate" });
   const reset = op({ t: "streams.reset" });
   const after = op({ t: "step.stream", stepId: I.richieste, prev: "automate", next: "differentiate" });

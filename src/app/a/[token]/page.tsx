@@ -238,7 +238,7 @@ export default async function AiReadinessRespondentPage({
           <h1 className="mt-5 max-w-3xl text-4xl font-semibold tracking-tight">
             {isInternalTrack
               ? `Scheda referenti «${surveyName}»`
-              : `Survey organizzazione «${surveyName}»`}
+              : `Questionario per l'organizzazione «${surveyName}»`}
           </h1>
           <p className="mt-2 max-w-3xl text-base text-muted-foreground">
             {isInternalTrack
@@ -267,7 +267,7 @@ export default async function AiReadinessRespondentPage({
             {[
               { n: "1", t: "Scegli il livello che ti somiglia", d: "Ogni voto da 1 a 5 è spiegato. Se non sai, c'è l'opzione «Non so»." },
               { n: "2", t: "Tutto si salva da solo", d: "Puoi chiudere e riprendere quando vuoi da questo stesso link." },
-              { n: "3", t: "Invia alla fine", d: "Controlla la barra di avanzamento e premi Invia assessment." },
+              { n: "3", t: "Invia alla fine", d: "Controlla la barra di avanzamento e premi «Invia le risposte»." },
             ].map((step) => (
               <div key={step.n} className="rounded-2xl border bg-background/60 p-3">
                 <div className="flex items-center gap-2 text-sm font-medium">

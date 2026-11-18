@@ -18,7 +18,7 @@ export const BUBBLES_TEXT = Object.freeze({
   ease: "Facilità",
   hard: "difficile",
   easy: "facile",
-  size: "Bolla più grande: costo di avvio più alto.",
+  size: "Bolla più grande: costo di realizzazione più alto.",
   /** La striscia sotto lo zero: le bolle senza un beneficio contato (da misurare o qualitativo). */
   notCounted: "non contato",
   empty: "Nessuno use case della vista ha la facilità in «Benefici e costi».",

@@ -8,7 +8,7 @@ import type { AdminMutate } from "./admin-program";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AdminSection, AdminSelect, AdminUnsavedNotice, ConfirmAdminAction, LearningLinkCopy, adminDate } from "./admin-shared";
+import { AdminSection, AdminSelect, AdminUnsavedNotice, ConfirmAdminAction, LearningLinkCopy, adminDate, cohortLabel } from "./admin-shared";
 
 import { useLearningUnsavedChanges } from "./use-unsaved-changes";
 
@@ -47,7 +47,7 @@ export function AdminParticipants({ workspaceId, data, busy, mutate }: {
           </label>)}
         </div>
         <p className="text-sm">{selectedAvailable.length} persone selezionate, anche fuori dalla ricerca corrente. Massimo 100 per assegnazione.</p>
-        <div className="space-y-2"><Label htmlFor="assign-cohort">Turno M1</Label><AdminSelect id="assign-cohort" name="cohortId" value={cohortId} onChange={event => setCohortId(event.target.value)} required><option value="" disabled>Scegli la replica</option>{sessions.map(session => <option key={session.id} value={session.cohortId}>{session.cohortId} · {adminDate(session.startsAt)}</option>)}</AdminSelect></div>
+        <div className="space-y-2"><Label htmlFor="assign-cohort">Lezione</Label><AdminSelect id="assign-cohort" name="cohortId" value={cohortId} onChange={event => setCohortId(event.target.value)} required><option value="" disabled>Scegli la lezione</option>{sessions.map(session => <option key={session.id} value={session.cohortId}>{adminDate(session.startsAt)}</option>)}</AdminSelect></div>
         <AdminUnsavedNotice dirty={dirty} onDiscard={confirmDiscard} />
         <Button type="submit" disabled={selectedAvailable.length === 0 || sessions.length === 0}>Assegna alle persone selezionate</Button>
       </fieldset></form>
@@ -57,7 +57,7 @@ export function AdminParticipants({ workspaceId, data, busy, mutate }: {
       <p className="text-sm text-muted-foreground">Il turno può essere cambiato soltanto prima che la persona inizi a lavorare. Sospendere l’assegnazione conserva quanto già salvato; riattivandola la persona lo ritrova.</p>
       {data.enrollments.length === 0 && <p>Nessun partecipante assegnato.</p>}
       <ul className="space-y-3">{data.enrollments.map(enrollment => <li key={enrollment.id} className="space-y-3 rounded-lg border p-4">
-        <div><h3 className="font-medium">{enrollment.name || enrollment.email}</h3><p className="break-words text-sm text-muted-foreground">{enrollment.email}</p><p className="mt-1 text-sm">{enrollment.cohortId} · {enrollment.status === "active" ? "Assegnazione attiva" : "Assegnazione sospesa"}{enrollment.hasWork ? " · Attività già iniziata" : " · Non ancora iniziato"}</p></div>
+        <div><h3 className="font-medium">{enrollment.name || enrollment.email}</h3><p className="break-words text-sm text-muted-foreground">{enrollment.email}</p><p className="mt-1 text-sm">{cohortLabel(sessions, enrollment.cohortId)} · {enrollment.status === "active" ? "Assegnazione attiva" : "Assegnazione sospesa"}{enrollment.hasWork ? " · Attività già iniziata" : " · Non ancora iniziato"}</p></div>
         {!enrollment.hasWork && <AdminMoveParticipant enrollment={enrollment} sessions={sessions} workspaceId={workspaceId} programId={data.program.id} busy={busy} mutate={mutate} />}
         <ConfirmAdminAction busy={busy} label={enrollment.status === "active" ? "Sospendi assegnazione" : "Riattiva assegnazione"} description={enrollment.status === "active" ? `Sospendere l’accesso di ${enrollment.name || enrollment.email} al percorso? Le risposte salvate saranno conservate.` : `Restituire a ${enrollment.name || enrollment.email} l’accesso al percorso e ai progressi salvati?`} onConfirm={() => mutate({ operation: "enrollment", input: { ...scope, enrollmentId: enrollment.id, cohortId: enrollment.cohortId, status: enrollment.status === "active" ? "revoked" : "active" } })} />
       </li>)}</ul>
@@ -74,5 +74,5 @@ function AdminMoveParticipant({ enrollment, sessions, workspaceId, programId, bu
   return <form className="space-y-3" onSubmit={async event => {
     event.preventDefault(); const cohortId = form.selected;
     if (await mutate({ operation: "enrollment", input: { workspaceId, programId, enrollmentId: enrollment.id, status: enrollment.status as "active" | "revoked", cohortId } })) setForm({ saved: cohortId, selected: cohortId });
-  }}><fieldset disabled={busy} className="flex flex-wrap items-end gap-3"><div className="min-w-0 flex-1 space-y-2"><Label htmlFor={`turn-${enrollment.id}`}>Modifica turno di {enrollment.name || enrollment.email}</Label><AdminSelect id={`turn-${enrollment.id}`} name="cohortId" value={form.selected} onChange={event => setForm({ ...form, selected: event.target.value })}>{sessions.map(session => <option key={session.id} value={session.cohortId}>{session.cohortId} · {adminDate(session.startsAt)}</option>)}</AdminSelect></div><Button disabled={!dirty} type="submit" variant="outline">Salva turno</Button></fieldset><AdminUnsavedNotice dirty={dirty} onDiscard={confirmDiscard} /></form>;
+  }}><fieldset disabled={busy} className="flex flex-wrap items-end gap-3"><div className="min-w-0 flex-1 space-y-2"><Label htmlFor={`turn-${enrollment.id}`}>Cambia la lezione di {enrollment.name || enrollment.email}</Label><AdminSelect id={`turn-${enrollment.id}`} name="cohortId" value={form.selected} onChange={event => setForm({ ...form, selected: event.target.value })}>{sessions.map(session => <option key={session.id} value={session.cohortId}>{adminDate(session.startsAt)}</option>)}</AdminSelect></div><Button disabled={!dirty} type="submit" variant="outline">Salva la lezione</Button></fieldset><AdminUnsavedNotice dirty={dirty} onDiscard={confirmDiscard} /></form>;
 }

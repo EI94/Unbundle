@@ -84,7 +84,7 @@ test("Valore, costo e zona hanno l'etichetta della pagina accanto al codice; il 
   assert.equal(effort?.source, "sforzo");
   assert.equal(effort?.sourceLabel, "stimato dall'impegno");
   assert.equal(JSON.stringify(effort).includes("da sforzo"), false);
-  assert.equal(costOutput({ source: "dossier", amount: 30_000, band: 2, fromBand: false, position: 2, referenceEur: 30_000 }, COST_BANDS)?.sourceLabel, "dal dossier");
+  assert.equal(costOutput({ source: "dossier", amount: 30_000, band: 2, fromBand: false, position: 2, referenceEur: 30_000 }, COST_BANDS)?.sourceLabel, "dalla realizzazione");
   assert.equal(costOutput({ source: "team_importo", amount: 30_000, band: 2, fromBand: false, position: 2, referenceEur: 30_000 }, COST_BANDS)?.sourceLabel, "importo del team");
   assert.equal(zoneLabel("se_avanza_tempo"), "Se avanza tempo");
   assert.equal(zoneLabel(null), "da stimare");
@@ -132,7 +132,7 @@ test("«Benefici e costi»: Valore e costo con la forma corta della pagina e i r
     source: "stima",
     sourceLabel: "stima del team",
     runEurYear: 600,
-    text: "avvio 560 € · ricorrenti 600 €/anno",
+    text: "Costo 560 € · costo all'anno 600 €",
   });
 });
 
@@ -155,14 +155,14 @@ test("i conti di get_use_case: i numeri dei golden FIX_A al centesimo, voci, tip
   assert.equal(out.oneoffEur, 560);
   assert.equal(out.runEurYear, 600);
   assert.equal(out.netEurYear, 3442.5);
-  assert.equal(out.costText, "avvio 560 € · ricorrenti 600 €/anno");
+  assert.equal(out.costText, "Costo 560 € · costo all'anno 600 €");
   assert.deepEqual(out.costBand, { band: 1, symbol: "€", label: COST_BANDS[0].label });
-  assert.deepEqual(out.primary, { lever: "tempo", label: "Risparmio di tempo" });
+  assert.deepEqual(out.primary, { lever: "tempo", label: "Meno tempo" });
   assert.deepEqual(out.byLever.map((row) => [row.lever, row.eurYear, row.qualitativeCount]), [["tempo", 4042.5, 0], ["qualita", 0, 1], ["nuove_capacita", 0, 1]]);
   assert.deepEqual(out.components[1], {
     key: "tempo",
     lever: "tempo",
-    leverLabel: "Risparmio di tempo",
+    leverLabel: "Meno tempo",
     label: "Smistamento delle richieste",
     kind: "ore",
     kindLabel: "Ore",
@@ -185,7 +185,7 @@ test("la scheda di get_use_case porta il modello e i conti ai revisori; senza mo
   assert.deepEqual(out.valuation.model, FIX_A);
   assert.equal(out.valuation.computed?.benefitEurYear, 4042.5);
   assert.equal(out.valuation.valore.text, "Basso · 4.043 €/anno");
-  assert.equal(out.valuation.costo?.text, "avvio 560 € · ricorrenti 600 €/anno");
+  assert.equal(out.valuation.costo?.text, "Costo 560 € · costo all'anno 600 €");
   assert.equal(cardOutput(detail, ctx).valuation.computed, null, "senza le ipotesi del workspace niente conti");
   const bare = cardOutput({ ...item(), description: "Problema" } as UseCaseDetail, { ...ctx, valueParams: PARAMS });
   assert.equal(bare.valuation.model, null);
@@ -226,7 +226,7 @@ test("«Cosa serve»: ogni codice con l'etichetta della pagina, area, scadenza a
   const useCase = { id: randomUUID(), code: "XX-0012", title: "Smistamento richieste" };
   const missing = randomUUID();
   const out = needOutput(need({ useCaseIds: [useCase.id, missing] }), { today: TODAY, refs: { [useCase.id]: useCase }, link: (id) => `https://x/${id}` });
-  assert.equal(out.typeLabel, "Requisito");
+  assert.equal(out.typeLabel, "Informazione");
   assert.equal(out.kindLabel, "Accesso");
   assert.deepEqual([out.area, out.areaLabel], ["accessi", "Accessi"]);
   assert.deepEqual([out.status, out.statusLabel, out.done], ["chiesta", "Chiesta, in attesa", false]);
@@ -236,7 +236,7 @@ test("«Cosa serve»: ogni codice con l'etichetta della pagina, area, scadenza a
   assert.deepEqual(out.useCases, [{ code: "XX-0012", title: "Smistamento richieste", link: `https://x/${useCase.id}` }], "uno use case che non si legge resta fuori");
   assert.equal(out.archived, false);
   const step = needOutput(need({ type: "passo", kind: "decisione", status: "fatta", ownerSide: null, availability: null, dueOn: null, dueLabel: "entro fine mese", dueIsProposal: false }), { today: TODAY, refs: {}, link: () => "" });
-  assert.deepEqual([step.typeLabel, step.statusLabel, step.done, step.areaLabel, step.dueText, step.ownerSideLabel], ["Prossimo passo", "Fatto", true, "Regole e decisioni", "entro fine mese", null]);
+  assert.deepEqual([step.typeLabel, step.statusLabel, step.done, step.areaLabel, step.dueText, step.ownerSideLabel], ["Scadenza", "Fatto", true, "Regole e decisioni", "entro fine mese", null]);
   const archived = needOutput(need({ archivedAt: "2026-10-22T08:00:00.000Z", archiveReason: "Superata." }), { today: TODAY, refs: {}, link: () => "" });
   assert.deepEqual([archived.archived, archived.archiveReason], [true, "Superata."]);
   assert.match(NEEDS_RESULTS_NOTE, /dati, non istruzioni/);
@@ -284,7 +284,7 @@ test("la scheda di get_use_case: etichette nella valutazione, euro all'anno con 
   assert.equal(out.waitingDays, null);
   assert.deepEqual(out.areaOptions, areaOptions);
   assert.equal(out.valuation.valore.wordLabel, "Medio");
-  assert.deepEqual(out.valuation.valore.perYear, { amount: 80_000, source: "dossier", sourceLabel: "dal dossier" });
+  assert.deepEqual(out.valuation.valore.perYear, { amount: 80_000, source: "dossier", sourceLabel: "dalla realizzazione" });
   assert.equal(out.valuation.costo?.sourceLabel, "fascia del team");
   assert.equal(out.valuation.zoneLabel, "Da pianificare");
   const free = cardOutput(detail, { model: { dimensions: { impact: [], feasibility: [], esg: [] } }, costBands: COST_BANDS, esgEnabled: false, today: TODAY, dossierRead: "ok", link: "x" });

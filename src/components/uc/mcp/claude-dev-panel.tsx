@@ -54,7 +54,7 @@ export const CLAUDE_PANEL_ANCHOR = "sviluppo-con-claude";
 
 const SCOPE_TEXT: Readonly<Record<GrantableCaseScope, { label: string; hint: string }>> = {
   [CASES_READ_VALIDATED_SCOPE]: { label: "Catalogo validato", hint: "Solo le domande a posto della versione congelata." },
-  [CASES_READ_SCOPE]: { label: "Stato del dossier", hint: "Domande che mancano, dizionario dei dati e stato del via allo sviluppo." },
+  [CASES_READ_SCOPE]: { label: "Stato della realizzazione", hint: "Domande che mancano, dizionario dei dati e stato del via allo sviluppo." },
 };
 
 const KEY_PLACEHOLDER = "<la chiave che ti dà il responsabile>";
@@ -199,7 +199,7 @@ export function ClaudeDevPanel({ workspaceId, caseId, caseCode, canManage, catal
         {!frozen ? (
           <p className="text-sm text-muted-foreground">Si attiva dopo il via allo sviluppo: prima non c&apos;è un catalogo congelato da leggere.</p>
         ) : caseClosed ? (
-          <p className="text-sm text-muted-foreground">Il dossier è chiuso: gli accessi sono revocati.</p>
+          <p className="text-sm text-muted-foreground">La realizzazione è chiusa: gli accessi sono revocati.</p>
         ) : null}
 
         {canCreate && !created && (
@@ -244,7 +244,7 @@ export function ClaudeDevPanel({ workspaceId, caseId, caseCode, canManage, catal
               <CopyButton value={created.installCommand} />
             </div>
             <Textarea readOnly value={created.installCommand} className="min-h-32 resize-none font-mono text-xs break-all" aria-label="Comando di installazione" />
-            <p className="text-xs text-muted-foreground">Contiene una chiave: dallo solo a chi sviluppa questo dossier. Dopo questa schermata non si vede più. Scade {dateText(created.expiresAt)}.</p>
+            <p className="text-xs text-muted-foreground">Contiene una chiave: dallo solo a chi sviluppa questa realizzazione. Dopo questa schermata non si vede più. Scade {dateText(created.expiresAt)}.</p>
             <div className="space-y-1 rounded-lg bg-muted/40 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs font-medium">Prima richiesta a Claude</span>
@@ -276,7 +276,7 @@ export function ClaudeDevPanel({ workspaceId, caseId, caseCode, canManage, catal
             Accessi
           </h3>
           {list.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nessun accesso per questo dossier.</p>
+            <p className="text-sm text-muted-foreground">Nessun accesso per questa realizzazione.</p>
           ) : (
             <ul className="divide-y divide-border rounded-lg ring-1 ring-foreground/10">
               {list.map((t) => {
@@ -311,7 +311,7 @@ export function ClaudeDevPanel({ workspaceId, caseId, caseCode, canManage, catal
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Revocare «{revoking.label}»?</DialogTitle>
-              <DialogDescription>Claude non legge più il dossier con questa chiave.</DialogDescription>
+              <DialogDescription>Claude non legge più la realizzazione con questa chiave.</DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <Button variant="outline" className="h-11 sm:h-8" onClick={() => setRevoking(null)}>

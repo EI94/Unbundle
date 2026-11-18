@@ -291,7 +291,8 @@ test("testi della Parte 3: italiano semplice, «use case», nessuna parola tecni
     ["(sei tu)", "Fa parte del team", "Non serve più: ci ha già pensato il team.", "Hai già accesso a Unbundle: puoi rispondere anche dalla scheda."],
   );
   for (const t of texts) {
-    assert.deepEqual(findHubForbidden(t, "area"), [], t);
+    // (Rilascio 10) Le righe delle email («… dalle schede dei casi d'uso.») sono fuori dalla dashboard.
+    assert.deepEqual(findHubForbidden(t, /d'uso/.test(t) ? "esterno" : "area"), [], t);
     assert.doesNotMatch(t, /\b(token|MCP|workflow)\b/i, t);
     assert.doesNotMatch(t, /cors[oi]|formazione|partecipant/i, `${t}: nessun riferimento ai corsi`);
   }

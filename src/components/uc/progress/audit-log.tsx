@@ -101,7 +101,7 @@ export function ActivityCsvLink({ href }: { href: string }) {
   return (
     <a href={href} download className={cn(buttonVariants({ variant: "outline" }), "min-h-11 sm:min-h-8")}>
       <Download aria-hidden />
-      Scarica CSV
+      {"Scarica l'elenco"}
     </a>
   );
 }

@@ -69,7 +69,8 @@ export type NeedAvailability = UseCaseNeedAvailability;
 export type NeedStatus = UseCaseNeedStatus;
 export type NeedStepStatus = (typeof USE_CASE_NEED_STEP_STATUSES)[number];
 
-export const NEED_TYPE_LABEL: Readonly<Record<NeedType, string>> = Object.freeze({ requisito: "Requisito", passo: "Prossimo passo" });
+/** (Rilascio 10, §4) A schermo: «Informazione» (mai «requisito» né «esigenza») e «Scadenza» (mai «prossimo passo»). */
+export const NEED_TYPE_LABEL: Readonly<Record<NeedType, string>> = Object.freeze({ requisito: "Informazione", passo: "Scadenza" });
 
 export const NEED_KIND_LABEL: Readonly<Record<NeedKind, string>> = Object.freeze({
   accesso: "Accesso",
@@ -91,7 +92,7 @@ export const NEED_OWNER_SIDE_LABEL: Readonly<Record<NeedOwnerSide, string>> = Ob
 
 export const NEED_AVAILABILITY_LABEL: Readonly<Record<NeedAvailability, string>> = Object.freeze({
   subito: "Subito",
-  dopo_a8: "Dopo la scheda A.8",
+  dopo_a8: "Dopo la scheda privacy",
 });
 
 /** Gli stati di un passo, al maschile come «passo» e come «Fatti · 3» (i valori salvati restano proposta, confermata, fatta). */
@@ -176,7 +177,7 @@ export const NEED_ERRORS = Object.freeze({
   archiveReason: "Scrivi perché la archivi.",
   importKeyTaken: "Questa chiave è già usata in questo workspace.",
   useCase: "Use case non trovato.",
-  archived: "Questa esigenza è archiviata.",
+  archived: "Questa informazione è archiviata.",
   invalid: "Controlla questo valore.",
 });
 
@@ -739,7 +740,7 @@ export function needAlsoForText(count: number): string {
 
 /**
  * I gruppi di stato a parole, in quest'ordine e senza gli zeri: «60 da chiedere», «12 in attesa»,
- * «4 da verificare», «1 fermo» o «10 fermi» (requisiti, al maschile come «aperti»), «31 a posto».
+ * «4 da verificare», «1 ferma» o «10 ferme» (informazioni, al femminile come «aperte»), «31 a posto».
  * La riga chiusa di un'area.
  */
 export function needAskPieces(counts: NeedAskCounts): string[] {
@@ -747,14 +748,14 @@ export function needAskPieces(counts: NeedAskCounts): string[] {
   if (counts.toAsk) pieces.push(`${formatInteger(counts.toAsk)} da chiedere`);
   if (counts.waiting) pieces.push(`${formatInteger(counts.waiting)} in attesa`);
   if (counts.toVerify) pieces.push(`${formatInteger(counts.toVerify)} da verificare`);
-  if (counts.blocked) pieces.push(counts.blocked === 1 ? "1 fermo" : `${formatInteger(counts.blocked)} fermi`);
+  if (counts.blocked) pieces.push(counts.blocked === 1 ? "1 ferma" : `${formatInteger(counts.blocked)} ferme`);
   if (counts.done) pieces.push(`${formatInteger(counts.done)} a posto`);
   return pieces;
 }
 
-/** La riga dei conteggi in cima a «Cosa serve»: «86 aperti», «1 aperto» o «Nessuno aperto», poi i gruppi di `needAskPieces`. */
+/** La riga dei conteggi in cima a «Cosa serve»: «86 aperte», «1 aperta» o «Nessuna aperta», poi i gruppi di `needAskPieces`. */
 export function needsSummaryPieces(counts: NeedAskCounts): string[] {
-  const open = counts.open === 0 ? "Nessuno aperto" : counts.open === 1 ? "1 aperto" : `${formatInteger(counts.open)} aperti`;
+  const open = counts.open === 0 ? "Nessuna aperta" : counts.open === 1 ? "1 aperta" : `${formatInteger(counts.open)} aperte`;
   return [open, ...needAskPieces(counts)];
 }
 

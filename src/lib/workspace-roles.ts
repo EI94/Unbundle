@@ -5,7 +5,7 @@
  * cambia deve cambiare anche quelli.
  *
  * Use case (docs/use-case/DESIGN.md §14.4): decidono tutti i revisori (D3); i
- * contributori vedono la fase delle proposte e, delle proprie, codice e nota
+ * contributori vedono la fase delle proposte e, dei propri use case, codice e nota
  * pubblica, mai valutazioni, costi e note interne (D4, D13), in ogni workspace.
  */
 
@@ -37,7 +37,7 @@ export const ROLE_INFO: Record<string, RoleInfo> = {
   contributor: {
     label: "Contributore",
     summary: "vede il workspace e propone idee",
-    can: ["Vede il workspace", "Propone nuovi use case e ne vede la fase; delle proprie vede anche codice e nota pubblica"],
+    can: ["Vede il workspace", "Propone nuovi use case e ne vede la fase; dei propri vede anche codice e nota pubblica"],
     cannot: ["Non vede valutazioni, costi e note interne"],
   },
   learner: {
@@ -45,6 +45,38 @@ export const ROLE_INFO: Record<string, RoleInfo> = {
     summary: "vede solo i propri corsi",
     can: ["Segue i corsi a cui è iscritto"],
   },
+};
+
+/**
+ * (Rilascio 10, §4, §3.11) Gli stessi ruoli come li legge chi apre un invito, fuori dalla dashboard: «caso d'uso», mai
+ * «use case». I nomi sono gli stessi di `ROLE_INFO`.
+ */
+export const ROLE_INFO_OUTSIDE: Record<string, RoleInfo> = {
+  exec_sponsor: ROLE_INFO.exec_sponsor,
+  transformation_lead: {
+    label: ROLE_INFO.transformation_lead.label,
+    summary: ROLE_INFO.transformation_lead.summary,
+    can: ["Vede e modifica tutto il workspace", "Valuta e decide i casi d'uso", "Invita e rimuove le persone"],
+  },
+  function_lead: {
+    label: ROLE_INFO.function_lead.label,
+    summary: "valuta e decide i casi d'uso",
+    can: ["Vede tutto il workspace", "Propone e valuta i casi d'uso", "Decide se e quando fare i casi d'uso"],
+    cannot: ROLE_INFO.function_lead.cannot,
+  },
+  analyst: {
+    label: ROLE_INFO.analyst.label,
+    summary: "propone, valuta e decide i casi d'uso",
+    can: ["Vede tutto il workspace", "Propone, valuta e decide i casi d'uso", "Genera analisi e report"],
+    cannot: ROLE_INFO.analyst.cannot,
+  },
+  contributor: {
+    label: ROLE_INFO.contributor.label,
+    summary: ROLE_INFO.contributor.summary,
+    can: ["Vede il workspace", "Propone nuovi casi d'uso e ne vede la fase; dei propri vede anche codice e nota pubblica"],
+    cannot: ROLE_INFO.contributor.cannot,
+  },
+  learner: ROLE_INFO.learner,
 };
 
 /** Ruoli che un invito può assegnare, dal più limitato al più ampio. */

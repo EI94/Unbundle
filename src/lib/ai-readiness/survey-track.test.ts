@@ -26,8 +26,8 @@ test("ogni percorso dichiara in modo distinto cosa alimenta", () => {
 });
 
 test("track legacy o non riconosciuto resta survey organizzazione", () => {
-  assert.equal(surveyTrackMeta(undefined).label, "Survey organizzazione");
-  assert.equal(surveyTrackMeta("legacy").label, "Survey organizzazione");
+  assert.equal(surveyTrackMeta(undefined).label, "Questionario per l'organizzazione");
+  assert.equal(surveyTrackMeta("legacy").label, "Questionario per l'organizzazione");
 });
 
 const coverageSections = [

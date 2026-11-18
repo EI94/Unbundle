@@ -43,7 +43,7 @@ test("la testata che carica: la pillola «Caricamento», il titolo che tiene la 
     ["classificazione", "false"],
   ]);
   // Il link all'elenco delle unità resta: si può tornare indietro mentre la board arriva.
-  assert.match(html, /<a href="\/dashboard\/[^"]+\/mapping">Activity mapping<\/a>/);
+  assert.match(html, /<a href="\/dashboard\/[^"]+\/mapping">Processi<\/a>/);
   assert.doesNotMatch(html, /×/, "il nome del workspace non si sa ancora");
 });
 
@@ -77,7 +77,7 @@ test("con i nomi letti sul server: il marchio con il workspace e il titolo vero,
   // Il marchio e il titolo sono gli stessi, carattere per carattere: vanno a capo nello stesso punto, a ogni larghezza.
   const brand = (markup: string) => /<div class="b-brand" data-b="brand">[\s\S]*?<\/div>/.exec(markup)?.[0];
   const title = (markup: string) => /<h1 class="b-title"[^>]*>[\s\S]*?<\/h1>/.exec(markup)?.[0];
-  assert.equal(title(loading), `<h1 class="b-title" style="margin-top:8px"><span data-b="title">${long} <i>board</i></span></h1>`);
+  assert.equal(title(loading), `<h1 class="b-title" style="margin-top:8px"><span data-b="title">${long}</span></h1>`);
   assert.equal(title(loading), title(loaded));
   assert.equal(brand(loading), brand(loaded));
   assert.match(loading, /<span class="b-x" aria-hidden="true">×<\/span><span>Officina di prova<\/span>/);

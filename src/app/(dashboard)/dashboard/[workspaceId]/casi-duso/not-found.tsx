@@ -15,8 +15,8 @@ export default function CaseNotFound() {
   return (
     <PageContainer size="narrow">
       <div className="space-y-3 rounded-xl bg-card p-6 ring-1 ring-foreground/10">
-        <h1 className="text-lg font-semibold">Dossier non trovato</h1>
-        <p className="text-sm text-muted-foreground">Il dossier non esiste o non hai accesso. Chiedi a chi lo gestisce di aggiungerti.</p>
+        <h1 className="text-lg font-semibold">Realizzazione non trovata</h1>
+        <p className="text-sm text-muted-foreground">La realizzazione non esiste o non hai accesso. Chiedi a chi la gestisce di aggiungerti.</p>
         {useCases && (
           <Button variant="outline" className="h-11 sm:h-8" render={<Link href={useCases} />} nativeButton={false}>
             Torna agli use case

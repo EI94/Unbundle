@@ -123,7 +123,7 @@ test("the trail: use case, code, Realizzazione; the title without a code; the ol
   const noCode = caseTrail({ workspaceId: ws, caseBase, parent: { id: "u1", code: "  ", title: "Smistamento richieste" } });
   assert.equal(noCode.kind === "use_case" && noCode.parent.label, "Smistamento richieste");
   assert.equal(noCode.kind === "use_case" && noCode.parent.isCode, false);
-  assert.deepEqual(caseTrail({ workspaceId: ws, caseBase, parent: null }), { kind: "lista", back: { label: "Casi d'uso", href: "/dashboard/w1/casi-duso" } });
+  assert.deepEqual(caseTrail({ workspaceId: ws, caseBase, parent: null }), { kind: "lista", back: { label: "Realizzazioni", href: "/dashboard/w1/casi-duso" } });
 });
 
 test("one alert at most, in the order of DESIGN §3.3", () => {

@@ -358,7 +358,7 @@ function Contents({ register }: { register: TrainingRegister }) {
     {register.programs.length === 0 && <p className="text-sm text-muted-foreground">Nessun percorso pubblicato.</p>}
     {register.programs.map((program) => <div key={program.id} className="space-y-3">
       <div><h3 className="font-semibold">{program.title}</h3>
-        <p className="text-sm text-muted-foreground">Versione {program.contentVersion} · pubblicato il {longDate(program.publishedAt)}</p>
+        <p className="text-sm text-muted-foreground">Pubblicato il {longDate(program.publishedAt)}</p>
         <p className="break-all font-mono text-xs text-muted-foreground">Impronta del contenuto: {program.packHash}</p></div>
       <ul className="space-y-2">{program.modules.map((m) => <li key={m.id} className="rounded-lg border p-3 text-sm">
         <p className="font-medium">{m.title}{m.subtitle ? ` — ${m.subtitle}` : ""}</p>

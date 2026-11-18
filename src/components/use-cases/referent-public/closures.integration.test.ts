@@ -180,7 +180,7 @@ test("la bozza: «Non ce l'ho» ed «È già allegato» si escludono e tolgono i
   );
 });
 
-test("«Serve un file»: un testo non la chiude; un file, «È già allegato» o «Non ce l'ho» sì; l'invio dice quali mancano", opts, async () => {
+test("«Serve un file»: un testo non la chiude; un file, «È già allegato» o «Non lo so» sì; l'invio dice quali mancano", opts, async () => {
   const { link, needIds, requestId, token } = await closedLink(3, [0]);
   const [f, t, x] = needIds;
   const now = new Date();
@@ -192,8 +192,8 @@ test("«Serve un file»: un testo non la chiude; un file, «È già allegato» o
   assert.ok(!open.ok && open.code === "domande_aperte", JSON.stringify(open));
   if (!open.ok) {
     assert.deepEqual(open.issues?.map((i) => [i.field, i.message]), [
-      [f, "Per chiudere: allega il file o scegli «Non ce l'ho»."],
-      [x, "Per chiudere: rispondi, allega un file o scegli «Non ce l'ho»."],
+      [f, "Per chiudere: allega il file o scegli «Non lo so»."],
+      [x, "Per chiudere: rispondi, allega un file o scegli «Non lo so»."],
     ]);
     assert.equal(open.message, "Mancano ancora alcune domande: le trovi evidenziate.");
   }

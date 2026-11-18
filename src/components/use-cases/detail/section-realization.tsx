@@ -11,19 +11,19 @@ import type { HubDossier, UseCaseDetail } from "@/lib/use-cases/views";
 import { cn } from "@/lib/utils";
 import { MarkInProgressButton } from "../decision-buttons";
 
-/** I testi del capitolo (§6.5, §14.3). */
+/** I testi del capitolo (§6.5, §14.3). (Rilascio 10, §4, D4) A schermo «Realizzazione», mai «dossier». */
 export const SECTION_REALIZATION_TEXT = Object.freeze({
   title: "Realizzazione",
   notStarted: "La realizzazione non è ancora partita.",
-  notStartedHint: "Il dossier raccoglie i dati dal cliente e prepara lo sviluppo.",
+  notStartedHint: "La realizzazione raccoglie i dati dal cliente e prepara lo sviluppo.",
   start: "Avvia la realizzazione",
   startedByLs: "La realizzazione la avvia Lateral Space.",
-  dossier: "Dossier",
+  dossier: "Stato",
   readiness: "indispensabili a posto",
-  openDossier: "Apri il dossier",
-  dossierAudience: "Il dossier lo vedono i suoi membri e chi gestisce il workspace.",
-  dossierClosed: "Il dossier è chiuso.",
-  unavailable: "Il riepilogo del dossier non è disponibile ora.",
+  openDossier: "Apri la realizzazione",
+  dossierAudience: "La realizzazione la vedono le sue persone e chi gestisce il workspace.",
+  dossierClosed: "La realizzazione è chiusa.",
+  unavailable: "Il riepilogo della realizzazione non è disponibile ora.",
   diffusedOn: "Diffusa il",
   /** «Avvia» e «Segna come in realizzazione» nella piega quando il riquadro «Prossimo passo» non li ha. */
   notReady: "Le informazioni non sono ancora tutte a posto.",

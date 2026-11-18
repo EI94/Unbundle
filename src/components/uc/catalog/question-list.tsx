@@ -155,20 +155,24 @@ export function QuestionList(props: QuestionListProps) {
         <p className="text-sm text-muted-foreground">
           {questionsText(props.unassigned.count)} senza referente ·{" "}
           <Link href={props.unassigned.href} className="inline-flex min-h-11 items-center font-medium text-foreground underline-offset-4 hover:underline sm:min-h-0">
-            Assegna ›
+            Affida a… ›
           </Link>
         </p>
       )}
 
+      {/* (Rilascio 10, §7.4) Un solo pulsante per «Verifica»: quello pieno della testata. Qui un link nella riga, non un secondo pulsante. */}
       {reviewing && total > 0 && (
-        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-          <p className="text-sm">{answersText(total)} da verificare, dalla più vecchia.</p>
+        <p className="text-sm">
+          {answersText(total)} da verificare, dalla più vecchia.
           {props.reviewHref && (
-            <Button variant="outline" className="min-h-11 sm:min-h-8" render={<Link href={props.reviewHref} />} nativeButton={false}>
-              Verifica una alla volta
-            </Button>
+            <>
+              {" "}
+              <Link href={props.reviewHref} data-slot="review-one-by-one" className="inline-flex min-h-11 items-center font-medium underline-offset-4 hover:underline sm:min-h-0">
+                Verifica una alla volta ›
+              </Link>
+            </>
           )}
-        </div>
+        </p>
       )}
 
       <div aria-busy={pending} className={cn("min-w-0 transition-opacity", pending && "opacity-60")}>

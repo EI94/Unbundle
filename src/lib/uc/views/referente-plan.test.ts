@@ -341,7 +341,8 @@ function referentComponentTexts(): { file: string; text: string }[] {
       .replace(/^\s*import .*$/gm, "");
     const add = (text: string) => {
       const t = text.replace(/\s+/g, " ").trim();
-      if (!/[A-Za-zÀ-ÿ]/.test(t) || /^[./@#]/.test(t) || /^\)|\($|=>/.test(t)) return;
+      // (Rilascio 10) Anche i tipi tra `<…>` («token: string; …») non sono testi a schermo.
+      if (!/[A-Za-zÀ-ÿ]/.test(t) || /^[./@#]/.test(t) || /^\)|\($|=>/.test(t) || /\w\??:\s*(?:string|number|boolean)\b/.test(t)) return;
       out.push({ file, text: t });
     };
     for (const m of source.matchAll(/>([^<>{}]+)</g)) add(m[1]);

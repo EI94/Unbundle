@@ -41,7 +41,7 @@ test("i tre modelli sono nella coda e nel motore", () => {
   }
 });
 
-test("a una persona di Lateral Space parte, con il link al progetto del dossier e la versione", () => {
+test("a una persona di Lateral Space parte, con il link al progetto della realizzazione; (rilascio 10) mai «k3» né il codice nell'oggetto", () => {
   for (const t of TEMPLATES) {
     const plan = planDelivery(claimed(t), facts(), OPTS);
     assert.equal(plan.action, "send", t);
@@ -49,13 +49,20 @@ test("a una persona di Lateral Space parte, con il link al progetto del dossier 
     assert.equal(plan.to, "persona@ls.test");
     const email = renderEmail(plan.build("") as Parameters<typeof renderEmail>[0]);
     assert.match(email.text, new RegExp(`https://app\\.unbundle\\.test/dashboard/${WS}/casi-duso/${CASE}/progetto`), t);
-    assert.match(email.subject, /^Cliente prova · Quotazioni di prova: /, t);
+    // (Rilascio 10, §3.12) «{Cliente}: {cosa} «{Titolo}»», al massimo 55 caratteri.
+    assert.match(email.subject, /^Cliente prova: .+ «Quotazioni.*»$/, t);
+    assert.ok(email.subject.length <= 55, email.subject);
     assert.match(email.text, /caso d'uso «Quotazioni di prova»/, `fuori dalla dashboard si dice «caso d'uso»: ${t}`);
     assert.doesNotMatch(email.text, /use case/i, t);
   }
   const k = planDelivery(claimed("pacchetto_aggiornato", 3), facts(), OPTS);
   assert.ok(k.action === "send");
-  if (k.action === "send") assert.match(renderEmail(k.build("") as Parameters<typeof renderEmail>[0]).subject, /pacchetto k3$/);
+  if (k.action === "send") {
+    const mail = renderEmail(k.build("") as Parameters<typeof renderEmail>[0]);
+    assert.equal(mail.subject, "Cliente prova: nuovo pacchetto «Quotazioni di prova»");
+    assert.doesNotMatch(mail.subject + mail.text, /\bk3\b/);
+    assert.match(mail.text, /c'è una nuova versione del pacchetto del caso d'uso «Quotazioni di prova»/);
+  }
 });
 
 test("«progetto da approvare» dice degli strumenti nuovi, così il responsabile riceve una email sola", () => {
@@ -72,8 +79,10 @@ test("«l'AI Board chiede una modifica» dice di riaprire il progetto, senza la 
   assert.ok(plan.action === "send");
   if (plan.action !== "send") return;
   const email = renderEmail(plan.build("") as Parameters<typeof renderEmail>[0]);
-  assert.match(email.subject, /: l'AI Board chiede una modifica$/);
-  assert.match(email.text, /\(versione 2\)/);
+  assert.equal(email.subject, "Cliente prova: modifica chiesta «Quotazioni di prova»");
+  // (Rilascio 10) Niente «versione 2»: la pagina dice quale progetto.
+  assert.doesNotMatch(email.text, /versione 2/);
+  assert.match(email.text, /l'AI Board del cliente non ha dato l'ok/);
   assert.match(email.text, /Riapri il progetto, cambialo con il team e rimandalo in approvazione\./);
 });
 
@@ -105,7 +114,9 @@ test("«un coding agent propone una domanda»: al responsabile di Lateral Space,
   assert.ok(plan.action === "send");
   if (plan.action !== "send") return;
   const email = renderEmail(plan.build("") as Parameters<typeof renderEmail>[0]);
-  assert.match(email.subject, /^Cliente prova · Quotazioni di prova: un coding agent propone una domanda$/);
+  // (Rilascio 10, §3.12) Senza «coding agent» dove non serve: la domanda è per il referente.
+  assert.equal(email.subject, "Cliente prova: domanda proposta «Quotazioni di prova»");
+  assert.doesNotMatch(email.subject + email.text, /coding agent/);
   assert.match(email.text, new RegExp(`https://app\\.unbundle\\.test/dashboard/${WS}/use-cases/${UC}/proposte`));
   assert.match(email.text, /Non parte da sola/);
   assert.doesNotMatch(email.text, /use case/i);

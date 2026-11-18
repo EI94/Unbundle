@@ -66,7 +66,7 @@ export function InsightValidationActions({
       {status !== "reviewed" && status !== "approved" && (
         <form action={reviewedFormAction}>
           <Button type="submit" variant="outline" size="sm" disabled={reviewedPending}>
-            Reviewed
+            Rivisto
           </Button>
         </form>
       )}

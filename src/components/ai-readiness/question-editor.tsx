@@ -6,14 +6,17 @@ import {
   type AiReadinessActionState,
 } from "@/lib/actions/ai-readiness";
 import type { AiReadinessQuestion } from "@/lib/ai-readiness/types";
+import { CONFIRM_TEXT } from "@/lib/confirm-text";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog, useSubmitConfirmation } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
 
 const INITIAL: AiReadinessActionState = { ok: true };
+const ASK = CONFIRM_TEXT.aiReadiness;
 
 type SectionView = {
   id: string;
@@ -46,6 +49,8 @@ export function QuestionEditor({
     assessmentId
   );
   const [state, formAction, pending] = useActionState(action, INITIAL);
+  // «Elimina domanda» chiede prima, nella finestra dell'app; la conferma rimanda il modulo di quella domanda.
+  const removal = useSubmitConfirmation();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [addingSection, setAddingSection] = useState<string | null>(null);
   const edited = new Set(editedIds);
@@ -55,7 +60,7 @@ export function QuestionEditor({
       {hasResponses && (
         <p className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
           ⚠️ Ci sono già risposte inviate: modificare le domande ora ricalcola
-          gli score solo sulle domande attuali. L&apos;ideale è chiudere la
+          i punteggi solo sulle domande attuali. L&apos;ideale è chiudere la
           personalizzazione prima di condividere i link.
         </p>
       )}
@@ -88,7 +93,7 @@ export function QuestionEditor({
               >
                 {section.audience === "internal"
                   ? "Scheda referenti (IT/HR/business)"
-                  : "Survey per tutta l'organizzazione"}
+                  : "Questionario per tutta l'organizzazione"}
               </Badge>
             </div>
             <h2 className="mt-1 text-lg font-semibold">{section.title}</h2>
@@ -215,12 +220,7 @@ export function QuestionEditor({
                       <form
                         action={formAction}
                         onSubmit={(event) => {
-                          if (
-                            !window.confirm(
-                              "Rimuovere questa domanda dalla survey di questo assessment?"
-                            )
-                          )
-                            event.preventDefault();
+                          removal.ask(event, true);
                         }}
                       >
                         <input type="hidden" name="op" value="remove" />
@@ -262,7 +262,7 @@ export function QuestionEditor({
                   <div className="space-y-1.5">
                     <Label>Tipo di risposta</Label>
                     <select name="answerType" className="h-9 w-full rounded-lg border border-input bg-background px-2 text-sm">
-                      <option value="scale">Scala 0–5 (entra nello score)</option>
+                      <option value="scale">Scala 0–5 (entra nel punteggio)</option>
                       <option value="text">Testo libero (qualitativa)</option>
                     </select>
                   </div>
@@ -325,6 +325,15 @@ export function QuestionEditor({
           </div>
         </section>
       )}
+      <ConfirmDialog
+        open={removal.open}
+        onOpenChange={removal.onOpenChange}
+        title={ASK.removeQuestionTitle}
+        description={ASK.removeQuestionBody}
+        confirmLabel={ASK.removeQuestion}
+        destructive
+        onConfirm={removal.confirm}
+      />
     </div>
   );
 }

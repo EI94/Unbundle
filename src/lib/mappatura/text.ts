@@ -19,15 +19,19 @@ export const BOARD_TEXT = Object.freeze({
     company: "lateral space",
     times: "×",
     dot: "·",
-    /** L'etichetta in mono, che è anche il link all'elenco delle unità. */
-    area: "Activity mapping",
+    /**
+     * L'etichetta in mono, che è anche il link all'elenco delle unità. (Rilascio 10, §4) A schermo la mappatura si
+     * chiama «Processi»: la grafica della board resta (scelta del titolare del 15/11), cambiano le parole.
+     */
+    area: "Processi",
   }),
-  /** Il titolo dell'elenco delle unità: «Activity *mapping*». */
-  unitsTitle: Object.freeze({ plain: "Activity", accent: "mapping" }),
-  /** La parola in corsivo nel titolo della board di un'unità: «{Nome dell'unità} *board*». */
-  boardTitleAccent: "board",
-  tabsLabel: "Sezioni della board",
-  tabs: Object.freeze({ oggi: "Processi di oggi", classificazione: "Classificazione" } satisfies Record<BoardTab, string>),
+  /** Il titolo dell'elenco delle unità: «*Processi*». */
+  unitsTitle: Object.freeze({ plain: "", accent: "Processi" }),
+  /** (Rilascio 10, §3.7) Il titolo della board di un'unità è il nome dell'unità: niente parola in corsivo («board»). */
+  boardTitleAccent: "",
+  tabsLabel: "Sezioni dell'unità",
+  // (Rilascio 10, §3.7) Le schede «Oggi» e «Con l'AI», senza numeri.
+  tabs: Object.freeze({ oggi: "Oggi", classificazione: "Con l'AI" } satisfies Record<BoardTab, string>),
   pill: Object.freeze({
     loading: "Caricamento",
     ready: "Pronto",
@@ -39,24 +43,25 @@ export const BOARD_TEXT = Object.freeze({
   buttons: Object.freeze({ saveNow: "Salva ora", close: "Chiudi", undo: "Annulla", details: "Dettagli", retry: "Riprova" }),
   toast: Object.freeze({
     readonly: "Questa vista è in sola lettura: le modifiche restano su questo dispositivo.",
-    conflict: "Qualcun altro ha salvato: la board si aggiorna alla versione più recente.",
+    conflict: "Qualcun altro ha salvato: la mappa si aggiorna alla versione più recente.",
     failure: "Salvataggio non riuscito. Riprova con «Salva ora».",
     noteRemoved: "Nota eliminata.",
     stepRemoved: "Passo eliminato.",
     processRemoved: "Processo eliminato.",
     linked: "Questo passo è collegato a uno use case: non si elimina.",
     limitStepsInProcess: "Un processo tiene al massimo 40 passi.",
-    limitStepsInBoard: "Una board tiene al massimo 200 passi.",
-    limitProcesses: "Una board tiene al massimo 26 processi.",
+    limitStepsInBoard: "Una mappa tiene al massimo 200 passi.",
+    limitProcesses: "Una mappa tiene al massimo 26 processi.",
     limitNotes: "Una corsia tiene al massimo 30 note.",
-    limitAnalysis: "Una board tiene al massimo 6 punti di analisi.",
+    limitAnalysis: "Una mappa tiene al massimo 6 punti di analisi.",
     copied: "Mappa copiata.",
     /** «Completa la mappatura» su un'unità senza passi: lo dicono il bottone e l'assistente. */
     noSteps: "Aggiungi almeno un passo prima di completare la mappatura.",
   }),
   /** Senza le tabelle della 0039: la board si legge e basta, per qualche minuto. */
-  storeMissing: "La board è in sola lettura per qualche minuto: si sta aggiornando.",
-  errorPage: Object.freeze({ title: "La board non si apre.", text: "Riprova tra poco.", retry: "Riprova" }),
+  storeMissing: "La mappa è in sola lettura per qualche minuto: si sta aggiornando.",
+  // (Rilascio 10, §4) Le parole di ogni pagina che non si carica.
+  errorPage: Object.freeze({ title: "Questa pagina non si è caricata.", text: "Quello che hai già salvato resta salvato.", retry: "Riprova" }),
   empty: "—",
   /** I nomi che dà il server. */
   defaultProcessName: "Processo principale",
@@ -100,8 +105,12 @@ export const exposureBadgeLabel = (pct: number): string => `AI ${formatCount(Mat
 
 // ─── Il vocabolario, in parole ───────────────────────────────────────
 
-/** Gli stream sono nomi di prodotto: non si traducono. */
-export const STREAM_LABEL: Readonly<Record<Stream, string>> = Object.freeze({ automate: "Automate", differentiate: "Differentiate", innovate: "Innovate" });
+/**
+ * (Rilascio 10, §4, D4) Gli stream in italiano: «Automatizzare · Differenziare · Innovare». Il nome inglese del
+ * metodo resta nel suggerimento (`STREAM_ENGLISH`, l'attributo `title`).
+ */
+export const STREAM_LABEL: Readonly<Record<Stream, string>> = Object.freeze({ automate: "Automatizzare", differentiate: "Differenziare", innovate: "Innovare" });
+export const STREAM_ENGLISH: Readonly<Record<Stream, string>> = Object.freeze({ automate: "Automate", differentiate: "Differentiate", innovate: "Innovate" });
 export const STREAM_LINE: Readonly<Record<Stream, string>> = Object.freeze({
   automate: "Non dovrebbe esistere così",
   differentiate: "Concentrare l'energia umana",
@@ -138,20 +147,21 @@ export const STEP_STATUS_LABEL: Readonly<Record<StepStatus, string>> = Object.fr
 export const ORIGIN_LABEL: Readonly<Record<Origin, string>> = Object.freeze({
   chat: "Dalla chat",
   documenti: "Dai documenti",
-  board: "Aggiunto sulla board",
-  prima: "Da prima della board",
+  board: "Aggiunto sulla mappa",
+  prima: "Da prima della mappa",
 });
 
 /** Da dove viene una nota «da fonti», in una parola o due (la didascalia e il segno nella mappa come testo). */
 export const ORIGIN_SOURCE: Readonly<Record<Origin, string>> = Object.freeze({
   chat: "chat",
   documenti: "documenti",
-  board: "board",
-  prima: "prima della board",
+  board: "mappa",
+  prima: "prima della mappa",
 });
 
 export const LANE_LABEL: Readonly<Record<Lane, string>> = Object.freeze({
-  attivita: "Attività",
+  // (Rilascio 10, §4) La corsia dei passi si chiama «Cosa si fa».
+  attivita: "Cosa si fa",
   attriti: "Attriti",
   dati: "Dati e documenti",
   tempi: "Tempi e volumi",

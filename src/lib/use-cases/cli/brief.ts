@@ -231,7 +231,7 @@ export function composeProjectLayer(input: Pick<BriefInput, "code" | "open" | "a
   lines.push("## Strumenti nuovi e stima");
   lines.push(project.newTools.length ? project.newTools.map((t) => `- ${hide(t.nome)}${t.perche ? `: ${hide(t.perche)}` : ""}`).join("\n") : "Nessuno strumento nuovo per il cliente.");
   lines.push(
-    `Costruzione: ${project.estimateHours === null ? "non stimata" : `circa ${project.estimateHours} ore`}. Esercizio: ${project.monthlyCostEur === null ? "non stimato" : `circa ${project.monthlyCostEur} € al mese`}.`,
+    `Costruzione: ${project.estimateHours === null ? "non stimata" : `circa ${project.estimateHours} ore`}. Costo al mese: ${project.monthlyCostEur === null ? "non stimato" : `circa ${project.monthlyCostEur} €`}.`,
   );
   if (project.changeRequest) lines.push(`L'AI Board chiede una modifica: ${hide(oneLine(project.changeRequest))}`);
   return lines.join("\n");
@@ -273,14 +273,15 @@ export function composeQuestionsLayer(input: {
 }): string {
   const hide = hider(input.namesToHide);
   const lines = [`${input.code} · domande`];
-  if (input.openNeeds === null) lines.push("«Cosa serve»: le esigenze le vede chi valuta lo use case.");
-  else if (!input.openNeeds.length) lines.push("«Cosa serve»: nessuna esigenza aperta.");
+  // (Rilascio 10, §4.2) Nella CLI si dice «caso», mai «use case» né «caso d'uso»; ciò che serve è un'«informazione».
+  if (input.openNeeds === null) lines.push("«Cosa serve»: le informazioni le vede chi valuta il caso.");
+  else if (!input.openNeeds.length) lines.push("«Cosa serve»: nessuna informazione aperta.");
   else {
     lines.push(`«Cosa serve», aperte (${input.openNeeds.length}):`);
     for (const n of input.openNeeds) lines.push(`- ${hide(oneLine(n.title))} (${n.status})`);
   }
   if (input.proposals === null) {
-    lines.push("Proposte dei coding agent: le vede chi valuta lo use case.");
+    lines.push("Proposte dei coding agent: le vede chi valuta il caso.");
     return lines.join("\n");
   }
   if (!input.proposals.length) lines.push("Proposte dei coding agent: nessuna da decidere.");

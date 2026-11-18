@@ -64,7 +64,7 @@ test("la nota: i tre stati del riferimento (P51), la spunta che dice dove torna 
   const source = html(h(NoteItem, { note: note("fonte", "chat"), label: "Nota: Attriti", onText() {}, onToggle() {}, onRemove() {} }));
   assert.match(source, /data-status="fonte" data-origin="chat"/);
   assert.match(source, /<span class="b-note-cap">da fonti · chat<\/span>/);
-  assert.match(html(h(NoteItem, { note: note("fonte", "prima"), label: "Nota", onText() {}, onToggle() {}, onRemove() {} })), /da fonti · prima della board/);
+  assert.match(html(h(NoteItem, { note: note("fonte", "prima"), label: "Nota", onText() {}, onToggle() {}, onRemove() {} })), /da fonti · prima della mappa/);
   const validated = html(h(NoteItem, { note: note("validato", "documenti"), label: "Nota: Attriti", onText() {}, onToggle() {}, onRemove() {} }));
   assert.match(validated, /data-status="validato"/);
   assert.match(validated, /<span class="b-sr">validata<\/span>/, "la spunta è un segno: per gli screen reader c'è la parola");
@@ -153,7 +153,7 @@ test("i livelli e i segmenti: uno solo premuto, aria-pressed; il punto ambra su 
     createElement(Segmented, {
       label: "Stream del passo",
       options: [
-        { value: "none", label: "—", ariaLabel: "Nessuno stream" },
+        { value: "none", label: "—", ariaLabel: "Nessuna categoria" },
         { value: "mark", label: "◆", ariaLabel: "Segno", recommended: true },
       ],
       value: "none",
@@ -161,7 +161,7 @@ test("i livelli e i segmenti: uno solo premuto, aria-pressed; il punto ambra su 
       onChange() {},
     }),
   );
-  assert.match(named, /<button type="button" aria-label="Nessuno stream" aria-pressed="true">—<\/button>/);
+  assert.match(named, /<button type="button" aria-label="Nessuna categoria" aria-pressed="true">—<\/button>/);
   assert.match(named, /<button type="button" class="b-rec" aria-label="Segno, Proposto dall&#x27;assistente" aria-pressed="false" title="Proposto dall&#x27;assistente">◆/);
 });
 

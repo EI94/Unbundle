@@ -13,6 +13,7 @@ import {
   AdminSelect,
   ConfirmAdminAction,
   adminDate,
+  cohortLabel,
 } from "./admin-shared";
 
 /**
@@ -127,7 +128,7 @@ export function AdminJoinLinks({
                 </option>
                 {sessions.map((session) => (
                   <option key={session.id} value={session.cohortId}>
-                    {session.cohortId} · {adminDate(session.startsAt)}
+                    {adminDate(session.startsAt)}
                   </option>
                 ))}
               </AdminSelect>
@@ -249,7 +250,7 @@ export function AdminJoinLinks({
               <li key={link.id} className="space-y-3 rounded-lg border p-4">
                 <div>
                   <h3 className="font-medium">
-                    {link.cohortId}
+                    {cohortLabel(sessions, link.cohortId)}
                     {link.label ? ` · ${link.label}` : ""}
                   </h3>
                   <p className={`mt-1 text-sm font-medium ${state.tone}`}>
@@ -308,7 +309,7 @@ export function AdminJoinLinks({
                     <ConfirmAdminAction
                       busy={busy}
                       label="Disattiva il link"
-                      description={`Disattivare questo link per ${link.cohortId}? Chi è già entrato mantiene l'accesso al corso; chi riceve il link da ora non potrà più iscriversi.`}
+                      description={`Disattivare questo link per la ${cohortLabel(sessions, link.cohortId).toLowerCase()}? Chi è già entrato mantiene l'accesso al corso; chi riceve il link da ora non potrà più iscriversi.`}
                       onConfirm={() =>
                         mutate({
                           operation: "revokeJoinLink",

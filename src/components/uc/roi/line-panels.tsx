@@ -347,7 +347,7 @@ export function LeverPanel({
   const canEdit = save !== null && (line !== null || !hasLine);
   const [editing, setEditing] = useState(canEdit && startEditing);
   return (
-    <DetailSheet title={row.label} closeHref={baseHref} description={editing ? "Beneficio all'anno della leva, in euro." : undefined}>
+    <DetailSheet title={row.label} closeHref={baseHref} description={editing ? "Valore all'anno della leva, in euro." : undefined}>
       {editing && save ? (
         <LeverForm line={line ?? newBenefitLine(row.lever ?? "tempo", save.benefitLines)} existing={hasLine} save={save} baseHref={baseHref} onDone={() => setEditing(false)} />
       ) : (

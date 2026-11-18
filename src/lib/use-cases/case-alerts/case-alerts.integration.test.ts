@@ -185,7 +185,8 @@ test("con l'ok: parte, dal mittente delle notifiche con il reply-to; senza gli u
   const analyst = byTo.get(PEOPLE.lsAnalyst.email);
   assert.ok(lead && analyst);
   assert.equal(lead.mail.subject, "Rondine: 2 casi d'uso pronti da avviare");
-  assert.match(analyst.mail.subject, /^Rondine: il caso d'uso «CO-\d+ · Ordini clienti» è pronto da avviare$/);
+  // (Rilascio 10, §3.12, D6) Il titolo, mai il codice, nell'oggetto.
+  assert.equal(analyst.mail.subject, "Rondine: pronto da avviare «Ordini clienti»");
   for (const m of [lead, analyst]) {
     assert.equal(m.mail.from, SEND_ENV.UC_EMAIL_FROM);
     assert.equal(m.mail.replyTo, "persona@example.test");

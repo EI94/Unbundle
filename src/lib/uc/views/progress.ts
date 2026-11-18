@@ -408,7 +408,7 @@ export const CASE_STATUS_HELP: Readonly<Record<CaseStatus, { meaning: string; ne
   pronto_sviluppo: { meaning: "Via approvato: il catalogo è congelato e il team può partire.", next: "Lateral Space avvia lo sviluppo." },
   in_sviluppo: { meaning: "Il team costruisce la soluzione sul catalogo validato, all'inizio con dati inventati.", next: "La soluzione è pronta per la prova sul passato." },
   backtest: { meaning: "La soluzione rigioca i dati storici e si misura cosa avrebbe cambiato.", next: "Il cliente approva i risultati." },
-  collaudo: { meaning: "Il cliente prova la soluzione con i criteri concordati.", next: "Collaudo positivo, con il verbale." },
+  collaudo: { meaning: "Il cliente prova la soluzione con i criteri concordati.", next: "Prova positiva, con il verbale." },
   stabilizzazione: { meaning: "Per 14 giorni si correggono i difetti e si controlla che non ci siano anomalie bloccanti.", next: "Finiti i 14 giorni senza anomalie bloccanti." },
   in_esercizio: { meaning: "La soluzione è in uso; i KPI si misurano ogni mese.", next: "Arriva la revisione del valore in programma." },
   misura_roi: { meaning: "Si confronta il valore stimato con quello misurato e si decide come andare avanti.", next: "Decisione: continuare, evolvere o chiudere." },

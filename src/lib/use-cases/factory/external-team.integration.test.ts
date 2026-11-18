@@ -565,18 +565,19 @@ test("le e-mail: «Costruisci i casi d'uso di…» aspetta l'ok ai sub-responsab
   assert.equal((await row(welcome)).status, "inviata");
   const mail = outbox.find((m) => m.to === EMAIL.fresh);
   assert.ok(mail);
-  assert.equal(mail!.subject, "Costruisci i casi d'uso di Cliente di prova chi costruisce con l'Agent Factory");
+  // (Rilascio 10, §3.12) «{Cliente}: costruisci i suoi casi d'uso», al massimo 55 caratteri: si accorcia il cliente.
+  assert.equal(mail!.subject, "Cliente di prova chi cos…: costruisci i suoi casi d'uso");
   assert.match(mail!.text, /tutti, anche quelli che si apriranno/);
   await exec.batch(notices.notifyTask({ workspaceId: ids.ws, useCaseId: uc.u1 }, "compito_passato", { userId: ids.fresh }, ids.lead, new Date(), "T-1"));
   await send({ caseId: dossier.d1 });
-  assert.ok(outbox.some((m) => m.to === EMAIL.fresh && /ti hanno passato il compito T-1/.test(m.subject)), "con l'ok, le e-mail di chi costruisce partono");
+  assert.ok(outbox.some((m) => m.to === EMAIL.fresh && /: il compito T-1 è tuo «/.test(m.subject)), "con l'ok, le e-mail di chi costruisce partono");
   // «Togli»: «Non costruisci più…», con l'ok.
   const removed = await team.removeExternalBuilder(exec, { workspaceId: ids.ws, actorUserId: ids.lead, userId: ids.fresh, lsDomains: LS });
   assert.ok(removed.ok && removed.value.noticeId);
   if (!removed.ok || !removed.value.noticeId) return;
   await send({ notificationId: removed.value.noticeId });
   assert.equal((await row(removed.value.noticeId)).status, "inviata");
-  assert.ok(outbox.some((m) => m.to === EMAIL.fresh && m.subject === "Non costruisci più i casi d'uso di Cliente di prova chi costruisce"));
+  assert.ok(outbox.some((m) => m.to === EMAIL.fresh && m.subject === "Cliente di prova…: non costruisci più i suoi casi d'uso"));
   // Un benvenuto in coda di chi nel frattempo è stato tolto non parte.
   const back = await add("fresh", [uc.u1]);
   assert.ok(back.ok && back.value.noticeId);
@@ -643,7 +644,7 @@ test("la coda con la sonda della 0037 che non risponde: le e-mail a chi costruis
     assert.ok(back.ok, back.ok ? "" : back.message);
     await send(probeDown, goodbye);
     assert.deepEqual(await row(goodbye), held);
-    assert.equal(toRacer().some((subject) => subject.startsWith("Non costruisci più")), false, "niente «Non costruisci più…» a chi costruisce ancora");
+    assert.equal(toRacer().some((subject) => subject.includes("non costruisci più")), false, "niente «…non costruisci più…» a chi costruisce ancora");
     await send(exec, goodbye);
     assert.deepEqual(await row(goodbye), { status: "annullata", hold_reason: null, error: "concessione_ancora_presente" });
   } finally {

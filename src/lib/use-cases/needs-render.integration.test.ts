@@ -423,7 +423,7 @@ test("Cosa serve: la vista dei revisori, una lista per chi deve muoversi, «Già
   const page = await hubHtml("builder", ids.ws, { vista: "cosa-serve" });
   const board = between(page, '<div data-slot="needs-board"');
   // In cima, primo <p> della vista, la riga dei conteggi: i requisiti per stato, mai per persona.
-  assert.equal(summaryOf(page), "4 aperti · 3 da chiedere · 1 in attesa · 1 a posto");
+  assert.equal(summaryOf(page), "4 aperte · 3 da chiedere · 1 in attesa · 1 a posto");
   assert.equal(board.indexOf("<p"), board.indexOf('<p data-slot="needs-summary"'));
   // I gruppi per organizzazione: il cliente con il nome del workspace (nessun nome del connettore),
   // le cose da fare «Insieme» dentro; senza parte «Da assegnare». Nessun numero nei titoli.
@@ -494,7 +494,7 @@ test("Cosa serve: «Prossimi passi» accanto alla lista, per data con la data so
   assert.ok(page.includes('<div data-slot="needs-layout" class="grid gap-8 @min-[58rem]/hub:grid-cols-[minmax(0,1fr)_18rem] @min-[58rem]/hub:gap-x-8">'));
   assert.ok(page.indexOf('data-slot="needs-groups"') < page.indexOf('data-slot="needs-timeline"'), "la linea del tempo dopo la lista");
   const steps = between(page, '<aside data-slot="needs-timeline"', "</aside>");
-  assert.ok(steps.includes('<h2 id="cosa-serve-passi" class="text-sm font-semibold">Prossimi passi</h2>'));
+  assert.ok(steps.includes('<h2 id="cosa-serve-passi" class="text-sm font-semibold">Scadenze</h2>'));
   // Il passo fra venti giorni: nel suo mese (oggi non è scaduto), la data su una riga sua, lo stato e «Chi».
   assert.ok(steps.includes(`>${needs.monthHeading(dueSoon.slice(0, 7))}</h3>`), "il mese della scadenza");
   assert.ok(!steps.includes(">Prima di oggi<"), "nessun passo scaduto");
@@ -522,7 +522,7 @@ test("Cosa serve: la sua vista, non nella Panoramica né nei vecchi link; senza 
   const empty = await hubHtml("manager", ids.wsEmpty, { vista: "cosa-serve" });
   const blank = between(empty, 'data-slot="needs-board"');
   assert.ok(blank.includes('data-slot="hub-empty"') && blank.includes("Niente da chiedere per ora"));
-  assert.ok(blank.includes(`Le esigenze si aggiungono dalla scheda di uno use case, nel capitolo «Cosa${N}serve».`));
+  assert.ok(blank.includes(`Le informazioni si aggiungono dalla scheda di uno use case, nel capitolo «Cosa${N}serve».`));
   assert.ok(!empty.includes('data-slot="needs-summary"') && !empty.includes('data-slot="needs-groups"') && !empty.includes('data-slot="needs-timeline"'), "nessun blocco vuoto");
   const overview = await hubHtml("builder", ids.ws, { vista: "panoramica" });
   assert.ok(!overview.includes('data-slot="needs-board"'), "solo nella sua vista");
@@ -584,8 +584,8 @@ test("Panoramica: il prossimo passo del workspace (rilascio 10, D3), lo stesso d
   const targetText = target.replaceAll(N, " ");
   assert.ok(targetText.includes(START.shared) && targetText.includes(START.blocked) && targetText.includes(START.verify));
   assert.ok(!targetText.includes(START.progress) && !targetText.includes(START.next));
-  assert.equal(summaryOf(target), `${quarter.quarterLabel(thisQuarter)} · 3 aperti · 1 da chiedere · 1 da verificare · 1 fermo`);
-  for (const piece of ["1 da chiedere", "1 da verificare", "1 fermo"]) assert.ok(summaryOf(target).includes(piece), piece);
+  assert.equal(summaryOf(target), `${quarter.quarterLabel(thisQuarter)} · 3 aperte · 1 da chiedere · 1 da verificare · 1 ferma`);
+  for (const piece of ["1 da chiedere", "1 da verificare", "1 ferma"]) assert.ok(summaryOf(target).includes(piece), piece);
   // Le righe: il requisito bloccato si legge «Ferma», quello da verificare «Da verificare»; mai «Bloccata».
   assert.ok(target.includes(">Ferma<") && target.includes(">Da verificare<"));
   assert.ok(!target.includes(">Bloccata<") && !/bloccat/i.test(summaryOf(target)));
@@ -656,7 +656,7 @@ test("Cosa serve: gli use case in realizzazione si leggono nella Panoramica, mai
   assert.ok(two.indexOf('data-slot="needs-in-progress"') > two.indexOf('data-slot="needs-layout"'), "dopo la lista e la linea del tempo");
   assert.ok(line.includes(`2${N}use${N}case sono già in realizzazione.`) && /href="\/p#panoramica-in-realizzazione"[^>]*>Vai alla Panoramica</.test(line));
   assert.ok(!two.includes('data-slot="dossier-card"'));
-  assert.equal(summaryOf(two), "1 aperto · 1 da chiedere");
+  assert.equal(summaryOf(two), "1 aperta · 1 da chiedere");
   for (const props of [{ inRealization: 0, realizationHref }, { inRealization: 2, realizationHref: null }]) {
     const html = render({ board: filled, ...props });
     assert.ok(!html.includes('data-slot="needs-in-progress"') && !html.includes("Vai alla Panoramica"), JSON.stringify(props));
@@ -701,7 +701,7 @@ test("Cosa serve: la linea del tempo, «Prima di oggi» in testa, i primi cinque
     ),
   );
   // Senza requisiti: la riga dei conteggi resta in cima, poi «Niente da chiedere per ora.»; accanto i passi.
-  assert.equal(summaryOf(html), "Nessuno aperto");
+  assert.equal(summaryOf(html), "Nessuna aperta");
   assert.ok(html.includes('<p data-slot="needs-none" class="text-sm text-muted-foreground">Niente da chiedere per ora.</p>'));
   const aside = between(html, '<aside data-slot="needs-timeline"', "</aside>");
   // I primi cinque prima di «Mostra gli altri N»: «Prima di oggi» in testa, poi novembre.
@@ -757,7 +757,7 @@ test("Cosa serve con i filtri: le esigenze degli use case che passano, la ricerc
   assert.ok(byCode.includes(T.access), "collegata allo use case cercato");
   for (const title of [T.extract, T.procedure, T.kickoff]) assert.ok(!byCode.includes(title), title);
   // Con una ricerca i conteggi seguono il filtro; il gruppo è quello del requisito trovato.
-  assert.equal(summaryOf(byCode), "1 aperto · 1 in attesa");
+  assert.equal(summaryOf(byCode), "1 aperta · 1 in attesa");
   assert.deepEqual(groupsOf(byCode).map((group) => group.key), ["cliente"]);
   // «Per» nomina comunque tutti gli use case dell'esigenza.
   assert.ok(detailsAround(byCode, `Per 2${N}use${N}case`).includes(`>${cards.quarter.code}<`));
@@ -834,7 +834,7 @@ test("scheda: il capitolo «Cosa serve» con le esigenze collegate, le righe a p
   // (Rilascio 6, B.1.5) I requisiti aperti dietro il loro conteggio, chiusi; aperti arrivando a «Cosa serve».
   const requirements = section.slice(section.lastIndexOf("<details", section.indexOf('data-slot="needs-requirements"')));
   assertClosed(requirements);
-  assert.ok(requirements.includes(`Requisiti${N}·${N}4`), "«Requisiti · 4»");
+  assert.ok(requirements.includes(`Informazioni${N}·${N}4`), "«Informazioni · 4»");
   assert.match(requirements, /data-arrival-open=""/);
   assert.match(needsSectionOf(await detailHtml("builder", cards.quarter.id, { capitolo: "cosa-serve" })), /<details data-slot="needs-requirements" data-arrival-open="" open=""/, "aperti con ?capitolo=cosa-serve");
   for (const key of ["access", "decide", "procedure", "other", "extract"] as const) assert.ok(section.includes(T[key]), key);
@@ -858,7 +858,7 @@ test("scheda: il capitolo «Cosa serve» con le esigenze collegate, le righe a p
   // Quattro aperte: nessun «Mostra le altre»; nessuna richiesta: niente «Richieste inviate».
   assert.ok(!section.includes("Mostra le altre") && !section.includes("Mostra l'altra"));
   assert.ok(!section.includes("Richieste inviate") && !section.includes('id="richieste"'));
-  assert.ok(section.includes(">Aggiungi<") && section.includes(">Collega un'esigenza<"));
+  assert.ok(section.includes(">Aggiungi<") && section.includes(">Collega un'informazione<"));
   const other = await detailHtml("builder", cards.progress.id);
   assert.ok(needsSectionOf(other).includes("Niente per ora."));
 });
@@ -924,7 +924,7 @@ test("scheda compatta: (rilascio 6) «Requisiti · N» chiuso con tutti gli aper
   // (Rilascio 6, B.1.5) Il conteggio al posto delle voci: tutti gli aperti dietro «Requisiti · 7», chiuso, prima quella da verificare.
   const requirements = html.slice(html.lastIndexOf("<details", html.indexOf('data-slot="needs-requirements"')), html.indexOf('data-slot="needs-steps"'));
   assertClosed(requirements);
-  assert.ok(requirements.includes(`Requisiti${N}·${N}${open.length}`), "«Requisiti · N»");
+  assert.ok(requirements.includes(`Informazioni${N}·${N}${open.length}`), "«Informazioni · N»");
   const shown = [...requirements.matchAll(/data-need="([^"]+)"/g)].map((match) => match[1]);
   assert.deepEqual(shown, [open[6], ...open.slice(0, 6)].map((need) => need.id), "tutti, prima quella da verificare");
   assert.ok(!html.includes("Mostra le altre") && !html.includes("Mostra l'altra"), "nessun «Mostra»: il tocco apre l'elenco intero");
@@ -938,14 +938,14 @@ test("scheda compatta: (rilascio 6) «Requisiti · N» chiuso con tutti gli aper
   // Poi, chiusi: «Prossimi passi · 1» (con «Fatto · 1» dentro) e «Già a posto · 1»; niente «Richieste inviate» senza la funzione.
   const stepsBlock = detailsAround(html, `Passo aperto ${suffix}`);
   assertClosed(stepsBlock);
-  assert.ok(stepsBlock.includes(`Prossimi passi${N}·${N}1`) && stepsBlock.includes(`Fatto${N}·${N}1`));
+  assert.ok(stepsBlock.includes(`Scadenze${N}·${N}1`) && stepsBlock.includes(`Fatto${N}·${N}1`));
   const doneBlock = detailsAround(html, `Fatta ${suffix}`);
   assertClosed(doneBlock);
   assert.ok(doneBlock.includes(`Già a posto${N}·${N}1`));
-  assert.ok(html.indexOf("Requisiti") < html.indexOf("Prossimi passi") && html.indexOf("Prossimi passi") < html.indexOf("Già a posto"), "l'ordine della scheda");
+  assert.ok(html.indexOf("Informazioni") < html.indexOf("Scadenze") && html.indexOf("Scadenze") < html.indexOf("Già a posto"), "l'ordine della scheda");
   assert.ok(!html.includes("Richieste inviate"));
   // Un aperto solo: «Requisiti · 1», anche lui dietro il conteggio.
-  assert.ok(render(open.slice(0, 1)).includes(`Requisiti${N}·${N}1`));
+  assert.ok(render(open.slice(0, 1)).includes(`Informazioni${N}·${N}1`));
   // (Rilascio 4) «Prossimi passi» dalla scadenza più vicina, anche contro l'ordine del team; quelli
   // senza data in fondo: lo stesso ordine del pannello e della linea del tempo di «Cosa serve».
   const dated = [
@@ -960,7 +960,7 @@ test("scheda compatta: (rilascio 6) «Requisiti · N» chiuso con tutti gli aper
   );
   const at = [`Passo di novembre ${suffix}`, `Passo di dicembre ${suffix}`, `Passo senza data ${suffix}`].map((title) => datedHtml.indexOf(title));
   assert.ok(at.every((index, i) => index > 0 && (i === 0 || index > at[i - 1])), `l'ordine per data: ${JSON.stringify(at)}`);
-  assert.ok(detailsAround(datedHtml, `Passo senza data ${suffix}`).includes(`Prossimi passi${N}·${N}3`));
+  assert.ok(detailsAround(datedHtml, `Passo senza data ${suffix}`).includes(`Scadenze${N}·${N}3`));
 });
 
 test("chi non è revisore: niente esigenze in «Cosa serve», Panoramica, pannello, scheda e dati della pagina", opts, async () => {
@@ -1006,7 +1006,7 @@ test("action: scrive solo un revisore, rilegge la pagina; versione vecchia e mot
   assert.ok(updated.ok);
   const stale = await actions.updateNeedAction(ids.ws, cards.progress.id, created.id, created.version, { title: "Vecchia" });
   assert.equal(!stale.ok && stale.error, "versione_superata");
-  assert.equal(stale.message, "Qualcuno ha appena modificato questa esigenza. Ho ricaricato i dati: rifai la modifica.");
+  assert.equal(stale.message, "Qualcuno ha appena modificato questa informazione. Ho ricaricato i dati: rifai la modifica.");
   const noReason = await actions.archiveNeedAction(ids.ws, cards.progress.id, created.id, updated.ok ? updated.version : 0, " ");
   assert.equal(!noReason.ok && noReason.fieldErrors?.archiveReason, "Scrivi perché la archivi.");
   const archived = await actions.archiveNeedAction(ids.ws, cards.progress.id, created.id, updated.ok ? updated.version : 0, "Fatta in un altro modo");
@@ -1046,29 +1046,29 @@ test("Storia: i cambi di «Cosa serve» nelle righe della scheda per i revisori,
     assert.deepEqual(
       rows.filter((text) => text.includes("Cosa serve")),
       [
-        "Persona ls · Cosa serve: scollegato un prossimo passo · pagina",
-        "Persona ls · Cosa serve: collegato un prossimo passo · pagina",
-        "Persona builder · Cosa serve: archiviato un prossimo passo · pagina",
-        "Persona builder · Cosa serve: stato di un prossimo passo, «Proposto» → «Fatto» · pagina",
-        "Persona builder · Cosa serve: aggiunto un prossimo passo · pagina",
+        "Persona ls · Cosa serve: scollegata una scadenza · pagina",
+        "Persona ls · Cosa serve: collegata una scadenza · pagina",
+        "Persona builder · Cosa serve: archiviata una scadenza · pagina",
+        "Persona builder · Cosa serve: stato di una scadenza, «Proposto» → «Fatto» · pagina",
+        "Persona builder · Cosa serve: aggiunta una scadenza · pagina",
       ],
       person,
     );
     assert.equal(rows.at(-1), "Creato · dal modulo web", "la creazione resta la prima riga");
   }
   const quarter = historyRows(await detailHtml("manager", cards.quarter.id));
-  assert.equal(quarter.filter((text) => text === "Persona ls · Cosa serve: aggiunto un requisito · pagina").length, 6, "una per esigenza collegata");
-  assert.ok(quarter.includes("Persona ls · Cosa serve: archiviato un requisito · pagina"));
+  assert.equal(quarter.filter((text) => text === "Persona ls · Cosa serve: aggiunta un'informazione · pagina").length, 6, "una per esigenza collegata");
+  assert.ok(quarter.includes("Persona ls · Cosa serve: archiviata un'informazione · pagina"));
   const page = await detailHtml("builder", cards.quarter.id);
   const history = between(page, 'data-slot="section-history"', "</section>");
   for (const text of [T.access, T.archived, "Non serve più", "Ufficio IT"]) assert.ok(!history.includes(text), `nessun testo dell'esigenza: ${text}`);
 
   // La proposta del contributore riceve una riga «Cosa serve»: lui non vede né la Storia né la riga.
   ok(await svc.linkNeed(as("ls"), needIds.decide, cards.own.id));
-  assert.ok(historyRows(await detailHtml("builder", cards.own.id)).includes("Persona ls · Cosa serve: collegato un requisito · pagina"));
+  assert.ok(historyRows(await detailHtml("builder", cards.own.id)).includes("Persona ls · Cosa serve: collegata un'informazione · pagina"));
   const own = await detailHtml("contributor", cards.own.id);
   assert.ok(!own.includes('data-slot="section-history"'), "il contributore non ha la Storia");
-  assert.ok(!own.includes("Cosa serve") && !own.includes("collegato un requisito") && !own.includes(T.decide));
+  assert.ok(!own.includes("Cosa serve") && !own.includes("collegata un'informazione") && !own.includes(T.decide));
   const [stored] = await q(`SELECT count(*)::int AS n FROM use_case_events WHERE use_case_id = $1::uuid AND 'cosa_serve' = ANY(fields)`, [cards.own.id]);
   assert.equal(stored.n, 1, "la riga c'è, e resta ai revisori");
 });

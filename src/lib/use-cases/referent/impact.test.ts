@@ -68,10 +68,11 @@ test("le forme: con i numeri del team, senza, in euro, qualitativa (anche in eur
   assert.deepEqual(impactRowsOf(model(fatto("g")))?.map((r) => r.form), ["fatto"]);
   assert.equal(benefitFormOf({ kind: "euro", volumeYear: null, minutes: null, eurYear: 0.004 }), "fatto");
   // (Decisione del titolare del 04/11/2026) «Non so» su ogni forma, per ultimo; da solo accanto ai due numeri.
-  assert.deepEqual(benefitChoices("ore").map((c) => c.label), ["Sì", "È di meno", "È di più", "Non so"]);
+  // (Rilascio 10, D5) La parola è «Non lo so», la stessa per un numero e per un file.
+  assert.deepEqual(benefitChoices("ore").map((c) => c.label), ["Sì", "È di meno", "È di più", "Non lo so"]);
   assert.deepEqual(benefitChoices("euro").map((c) => c.answer), ["si", "meno", "piu", "non_so"]);
-  assert.deepEqual(benefitChoices("fatto").map((c) => c.label), ["Sì", "No", "Non so"]);
-  assert.deepEqual(benefitChoices("ore_numeri"), [{ answer: "non_so", label: "Non so" }]);
+  assert.deepEqual(benefitChoices("fatto").map((c) => c.label), ["Sì", "No", "Non lo so"]);
+  assert.deepEqual(benefitChoices("ore_numeri"), [{ answer: "non_so", label: "Non lo so" }]);
 });
 
 test("le domande: ore al mese o l'anno, singolare e plurale, i decimali, gli euro, il qualitativo", () => {
@@ -223,10 +224,10 @@ test("in sola lettura dopo l'invio: la risposta di ogni riga, con i numeri dati"
   assert.equal(benefitSentLine(rows[1], draft({ timesPerMonth: 20, minutesEach: 1 })), "Archiviazione: 20 volte al mese, 1 minuto ogni volta.");
   assert.equal(benefitSentLine(rows[2], draft({ answer: "meno", eurYear: 3500 })), "Meno solleciti: è di meno. Circa 3.500 € l'anno.");
   assert.equal(benefitSentLine(rows[3], draft({ answer: "no" })), "Meno errori nelle registrazioni: no.");
-  assert.equal(benefitSentLine(rows[3], draft({ answer: "non_so" })), "Meno errori nelle registrazioni: non so.");
-  assert.equal(benefitSentLine(rows[0], draft({ answer: "non_so" })), "Controllo delle fatture: non so.");
-  assert.equal(benefitSentLine(rows[1], draft({ answer: "non_so" })), "Archiviazione: non so.", "al posto dei due numeri");
-  assert.equal(benefitSentLine(rows[2], draft({ answer: "non_so" })), "Meno solleciti: non so.");
+  assert.equal(benefitSentLine(rows[3], draft({ answer: "non_so" })), "Meno errori nelle registrazioni: non lo so.");
+  assert.equal(benefitSentLine(rows[0], draft({ answer: "non_so" })), "Controllo delle fatture: non lo so.");
+  assert.equal(benefitSentLine(rows[1], draft({ answer: "non_so" })), "Archiviazione: non lo so.", "al posto dei due numeri");
+  assert.equal(benefitSentLine(rows[2], draft({ answer: "non_so" })), "Meno solleciti: non lo so.");
   // Una riga senza risposta: «nessuna risposta», mai «sì».
   assert.equal(benefitSentLine(rows[0], draft({ answer: null })), "Controllo delle fatture: nessuna risposta.");
   assert.equal(benefitSentLine(rows[2], draft({ answer: null })), "Meno solleciti: nessuna risposta.");
@@ -237,5 +238,6 @@ test("i testi del passo: italiano semplice, nessuna parola tecnica, «use case»
   for (const text of Object.values(REFERENT_IMPACT_TEXT)) {
     assert.doesNotMatch(text, /use case|caso d'uso|\b(token|MCP|workflow|automatable|ROI|score)\b/i, text);
   }
-  assert.equal(REFERENT_IMPACT_TEXT.title, "Cosa cambia, secondo il team");
+  // (Rilascio 10, §3.11, §4) Il passo delle stime: «Ti tornano queste stime?».
+  assert.equal(REFERENT_IMPACT_TEXT.title, "Ti tornano queste stime?");
 });

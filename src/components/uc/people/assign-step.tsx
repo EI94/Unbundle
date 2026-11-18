@@ -94,7 +94,7 @@ export function AssignStep({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <label htmlFor="uc-assign-overwrite" className="flex min-h-11 items-center gap-2 text-sm sm:min-h-8">
           <Switch id="uc-assign-overwrite" checked={includeAssigned} onCheckedChange={(v) => onIncludeAssigned(v)} />
-          Riassegna anche quelle già assegnate
+          Affida anche quelle già affidate
         </label>
         {addHref && (
           <Button variant="ghost" className="min-h-11 sm:min-h-8" render={<Link href={addHref} scroll={false} />} nativeButton={false}>
@@ -127,7 +127,7 @@ function RoleRow({ workspaceId, caseId, group, contacts }: { workspaceId: string
           ariaLabel={`Referente per ${group.roleLabel}`}
           value={contactId}
           onChange={setContactId}
-          placeholder="Scegli il referente"
+          placeholder="Indica il referente"
           groups={contactGroupsFor(group.suggestedContactIds, options)}
         />
         <label className="flex min-h-11 items-center gap-2 text-xs text-muted-foreground md:min-h-0">
@@ -140,7 +140,7 @@ function RoleRow({ workspaceId, caseId, group, contacts }: { workspaceId: string
           disabled={!contactId || target === 0 || pending}
           onClick={() => run(() => assignRoleQuestionsAction(workspaceId, caseId, { roleKey: group.roleKey, contactId, includeAssigned }))}
         >
-          Assegna {formatCountIt(target)}
+          Affida {formatCountIt(target)}
         </Button>
       </div>
     </li>

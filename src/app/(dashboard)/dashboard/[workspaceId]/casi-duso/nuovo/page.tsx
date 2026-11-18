@@ -82,7 +82,7 @@ export default async function StartRealizationPage({
             </Button>
           }
         >
-          Un dossier parte da uno use case approvato, dal capitolo «Realizzazione» della sua scheda.
+          Una realizzazione parte da uno use case approvato, dal capitolo «Realizzazione» della sua scheda.
         </EmptyState>
       </PageContainer>
     );

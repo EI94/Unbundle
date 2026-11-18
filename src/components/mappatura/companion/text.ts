@@ -24,7 +24,7 @@ export const COMPANION_TEXT = Object.freeze({
     "Tanti passaggi si fanno a mano",
   ]),
   field: Object.freeze({ label: "Messaggio per l'assistente", placeholder: "Scrivi qui…", waiting: "Attendi la risposta…", send: "Invia" }),
-  nudge: "Tocca a te: rispondi per continuare la mappatura.",
+  nudge: "Rispondi per continuare la mappatura.",
   errors: Object.freeze({
     title: "Errore",
     network: "Connessione persa. Controlla la rete e riprova.",

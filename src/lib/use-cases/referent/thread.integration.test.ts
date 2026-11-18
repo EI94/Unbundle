@@ -135,7 +135,7 @@ async function answeredReferent(card: { id: string; needs: string[] }): Promise<
   pok(await pub.saveReferentDraft(link, { needId: card.needs[1], text: "Il gestionale", dontKnow: false }, new Date()) as never, "bozza 2");
   pok(await pub.submitReferentAnswers(link, {}, new Date()) as never, "invia");
   // Il grazie dopo l'invio parte subito: le email dopo sono quelle del filo.
-  assert.match((await send(sent.requestId)).map((m) => m.subject).join("|"), /grazie per le risposte/);
+  assert.match((await send(sent.requestId)).map((m) => m.subject).join("|"), /: grazie per «Fatture fornitori»/);
   const [row] = await q(`SELECT contact_id, status FROM use_case_referent_requests WHERE id = $1::uuid`, [sent.requestId]);
   assert.equal(row.status, "completata");
   return { requestId: sent.requestId, contactId: String(row.contact_id), link: await linkOf(token!), token: token! };
@@ -264,7 +264,7 @@ test("«Chiedi un chiarimento» su una risposta: stessa richiesta riaperta, link
   assert.deepEqual([item.kind, item.new_questions, item.clarifications, item.replies], ["nuove", 1, 1, 0]);
   const mails = await send(r.requestId, new Date(NOW.getTime() + 60_000));
   assert.equal(mails.length, 1);
-  assert.match(mails[0].subject, /^Rondine prova: un chiarimento sul caso d'uso «FL-\d+ · Fatture fornitori»$/);
+  assert.match(mails[0].subject, /^Rondine prova: un chiarimento su «Fatture fornitori»$/);
   assert.match(mails[0].text, /Il team ti chiede un chiarimento sul caso d'uso/);
   assert.ok(!mails[0].text.includes("Mario Rossi") && !mails[0].text.includes("fine mese"), "mai il testo del messaggio nell'email");
   assert.ok((await story(card.id)).includes("chiarimento"));
@@ -355,7 +355,7 @@ test("«Ho un dubbio» e «Rispondi»: «Il referente ha chiesto qualcosa», la 
   assert.ok(answered.messageId);
   const mails = await send(r.requestId, new Date(NOW.getTime() + 60_000));
   assert.equal(mails.length, 1, "l'email della risposta parte anche con la richiesta completata");
-  assert.match(mails[0].subject, /^Rondine prova: una risposta sul caso d'uso «FL-\d+ · Fatture fornitori»$/);
+  assert.match(mails[0].subject, /^Rondine prova: una risposta su «Fatture fornitori»$/);
   assert.ok(!mails[0].text.includes("estere"), "mai il testo nell'email");
 });
 

@@ -58,12 +58,12 @@ test("una riga senza Valore né Costo dice che cosa è da stimare", () => {
 test("il costo del modello: mai spezzato dentro un importo; nel pannello una parte per riga", () => {
   const model = { source: "stima", amount: 22_200, band: 1, fromBand: false, runEurYear: 6_000 } as const;
   const inline = renderToStaticMarkup(createElement(cost.CostFigure, { cost: model, withLabel: true }));
-  assert.equal(textOf(inline), "Costo: avvio 22.200 €\u00a0· ricorrenti 6.000 €/anno");
-  for (const part of ["avvio 22.200 €", "ricorrenti 6.000 €/anno"]) assert.ok(inline.includes(`<span class="whitespace-nowrap">${part}</span>`), part);
+  assert.equal(textOf(inline), "Costo: Costo 22.200 €\u00a0· costo all&#x27;anno 6.000 €");
+  for (const part of ["Costo 22.200 €", "costo all&#x27;anno 6.000 €"]) assert.ok(inline.includes(`<span class="whitespace-nowrap">${part}</span>`), part);
   assert.ok(!inline.includes("data-cost-parts"), "in riga le due parti con « · »");
   // Nel pannello sempre una sotto l'altra.
   const panel = renderToStaticMarkup(createElement(cost.CostFigure, { cost: model, withLabel: true, stack: true }));
-  assert.equal(textOf(panel), "Costo: avvio 22.200 €ricorrenti 6.000 €/anno");
+  assert.equal(textOf(panel), "Costo: Costo 22.200 €costo all&#x27;anno 6.000 €");
   assert.ok(!panel.includes(" · "));
   // Una cifra di una parte sola non cambia.
   const single = renderToStaticMarkup(createElement(cost.CostFigure, { cost: { source: "team_importo", amount: 40_000, band: 2, fromBand: false }, stack: true }));

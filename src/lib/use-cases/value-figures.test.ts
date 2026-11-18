@@ -197,7 +197,7 @@ test("FIX_B: beneficio 2.719 €, 1.680 € da misurare fuori dal totale, ricorr
   near(b.value.perYear?.amount, 2719, "all'anno");
   assert.equal(b.cost?.amount, 280);
   assert.equal(b.cost?.runEurYear, 0);
-  assert.equal(costShortText(b.cost), "avvio 280 €");
+  assert.equal(costShortText(b.cost), "Costo 280 €");
 });
 
 test("modello senza beneficio contato: «da misurare · fino a X €» o «qualitativo»; mai da stimare, nessun punto in matrice", () => {
@@ -275,11 +275,11 @@ test("forme corte e lunghe: «Medio · 4.043 €/anno», «avvio 560 € · rico
   assert.equal(valueLongText(medium), "Medio · 2,6");
   assert.equal(valueShortText({ word: null, perYear: null }), "da stimare");
   assert.equal(valueShortText({ word: "alto", perYear: { amount: 60_000, source: "team" } }), "Alto", "senza modello la parola sola");
-  assert.equal(oneoffRunText(560, 600), "avvio 560 € · ricorrenti 600 €/anno");
-  assert.equal(oneoffRunText(1_250, 0), "avvio 1.250 €");
+  assert.equal(oneoffRunText(560, 600), "Costo 560 € · costo all'anno 600 €");
+  assert.equal(oneoffRunText(1_250, 0), "Costo 1.250 €");
   const cost = { source: "stima" as const, amount: 560, band: 1 as const, fromBand: false, runEurYear: 600 };
-  assert.equal(costShortText(cost), "avvio 560 € · ricorrenti 600 €/anno", "corta: senza fonte, come la spec");
-  assert.equal(costLongText(cost), "avvio 560 € · ricorrenti 600 €/anno");
+  assert.equal(costShortText(cost), "Costo 560 € · costo all'anno 600 €", "corta: senza fonte, come la spec");
+  assert.equal(costLongText(cost), "Costo 560 € · costo all'anno 600 €");
 });
 
 test("a schermo: con una cifra in euro solo la cifra, senza parola né zona; il MCP e l'export tengono la parola", () => {
@@ -374,7 +374,7 @@ test("export: Valore, valore all'anno, costo e fonte del costo con un modello, p
   const out = exportRow(detail, detail);
   assert.equal(out.Valore, "Basso");
   assert.equal(out["Valore all'anno"], 4042.5);
-  assert.equal(out["Ritorno principale"], "Risparmio di tempo");
+  assert.equal(out["Ritorno principale"], "Meno tempo");
   assert.equal(out["Ore all'anno"], 115.5);
   assert.equal(out["Da misurare all'anno"], 0);
   assert.equal(out.Costo, 560);

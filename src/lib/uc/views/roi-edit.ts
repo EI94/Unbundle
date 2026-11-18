@@ -26,14 +26,15 @@ export const LINE_STATUS_LABEL: Readonly<Record<LineStatus, string>> = { da_racc
  * (`components/uc/common/lever-icons.tsx`), per i testi dei moduli puri.
  */
 export const LEVER_LABEL: Readonly<Record<Lever, string>> = {
-  tempo: "Tempo",
-  output: "Output",
-  qualita: "Qualità",
+  // (Rilascio 10, §4) Le stesse parole dell'area «Use case»: «Meno tempo · Più volume · Meno costi».
+  tempo: "Meno tempo",
+  output: "Più volume",
+  qualita: "Più qualità",
   nuove_capacita: "Nuove capacità",
-  decisioni: "Decisioni",
-  costi: "Costi",
-  ricavi: "Ricavi",
-  rischio: "Rischio",
+  decisioni: "Decisioni migliori",
+  costi: "Meno costi",
+  ricavi: "Più ricavi",
+  rischio: "Meno rischio",
 };
 
 /** Valori di `?apri=` della pagina Valore: «Dati che mancano», una leva, una riga di costo. */
@@ -100,14 +101,19 @@ export interface BenefitLine extends BenefitExtras {
 /** Leva dal testo («Nuove capacità» → `nuove_capacita`). */
 export function leverFromLabel(label: string | null | undefined): Lever | null {
   if (!label) return null;
-  const k = label
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_|_$/g, "");
-  return (LEVERS as readonly string[]).includes(k) ? (k as Lever) : null;
+  const slug = (text: string) =>
+    text
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_|_$/g, "");
+  const k = slug(label);
+  if ((LEVERS as readonly string[]).includes(k)) return k as Lever;
+  // (Rilascio 10, §4) Anche i nomi di oggi a schermo: «Meno tempo» è `tempo`.
+  const named = (Object.entries(LEVER_LABEL) as [Lever, string][]).find(([, shown]) => slug(shown) === k);
+  return named ? named[0] : null;
 }
 
 /** Tipo di costo dal testo («una tantum …», «ricorrente …», «escluso …»). */
@@ -216,7 +222,7 @@ export function computeRoi(i: {
     gaps: [],
     note:
       net <= 0
-        ? "Con questi valori il beneficio annuo non copre i costi di esercizio: il caso non rientra."
+        ? "Con questi valori il valore all'anno non copre il costo all'anno: non c'è pareggio."
         : rate > 0
           ? `Valore a ${horizonYears} anni con i benefici netti scontati al ${round(rate * 100, 1)}% all'anno.`
           : `Valore a ${horizonYears} anni senza sconto: il tasso non è ancora indicato.`,

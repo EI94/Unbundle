@@ -131,7 +131,7 @@ test("i modi: «scegli» senza referente, «di_nuovo» con «Nessuna risposta»,
   assert.equal(assignModeOf(panel({ referent: referentView({ state: "in_attesa" }) })), null);
   assert.equal(assignModeOf(panel({ referent: referentView({ state: "fatto", live: false, askableForReferent: [Q[0]] }) })), "chiedi");
   assert.equal(assignModeOf(panel({ referent: referentView({ state: "fatto", live: false, askableForReferent: [] }) })), null);
-  assert.deepEqual([assignTitle("scegli"), assignTitle("cambia"), assignTitle("di_nuovo"), assignTitle("chiedi")], ["Scegli il referente", "Cambia referente", "Chiedi di nuovo", "Chiedi al referente"]);
+  assert.deepEqual([assignTitle("scegli"), assignTitle("cambia"), assignTitle("di_nuovo"), assignTitle("chiedi")], ["Indica il referente", "Cambia referente", "Chiedi di nuovo", "Chiedi al referente"]);
 });
 
 test("l'elenco: il referente non si sceglie («(è il referente)»); chi ha già delle domande aperte sì (D49)", () => {
@@ -175,9 +175,9 @@ test("le spunte: 5 di 7 (D31), le portate prima; «Serve un file» per i documen
 });
 
 test("le frasi: il numero vero di domande; «chiedi» e «Chiedi di nuovo» di sole domande dicono il nome", () => {
-  assert.equal(assignLeadFor("scegli", "referente", 5, "Aldo"), "Riceve subito un'email: conferma lo use case e l'impatto, poi risponde a 5 domande.");
-  assert.equal(assignLeadFor("scegli", "referente", 1, "Aldo"), "Riceve subito un'email: conferma lo use case e l'impatto, poi risponde a una domanda.");
-  assert.equal(assignLeadFor("cambia", "referente", 0, "Aldo"), "Riceve subito un'email: conferma lo use case e l'impatto.");
+  assert.equal(assignLeadFor("scegli", "referente", 5, "Aldo"), "Riceve subito un'email: conferma lo use case e le stime, poi risponde a 5 domande.");
+  assert.equal(assignLeadFor("scegli", "referente", 1, "Aldo"), "Riceve subito un'email: conferma lo use case e le stime, poi risponde a una domanda.");
+  assert.equal(assignLeadFor("cambia", "referente", 0, "Aldo"), "Riceve subito un'email: conferma lo use case e le stime.");
   assert.equal(assignLeadFor("chiedi", "domande", 2, "Aldo"), "Aldo riceve subito un'email con 2 domande.");
   assert.equal(assignLeadFor("di_nuovo", "domande", 1, "Aldo"), "Aldo riceve subito un'email con una domanda.");
   assert.equal(droppedLine(0), null);
@@ -209,7 +209,7 @@ test("il contenuto dell'action: il tipo, la richiesta vista, «Cambia referente�
 
 test("i controlli prima dell'invio e dove va un errore del server", () => {
   const p = panel();
-  assert.deepEqual(assignDraftErrors(draft(), p, "scegli", []), { contact: "Scegli il referente." });
+  assert.deepEqual(assignDraftErrors(draft(), p, "scegli", []), { contact: "Indica il referente." });
   assert.deepEqual(assignDraftErrors(draft({ choice: id(1) }), p, "scegli", []), {}, "zero domande: la conferma e la stima bastano");
   assert.ok(assignDraftErrors(draft({ choice: NEW_CONTACT, name: "A", email: "x" }), p, "scegli", []).email);
   assert.ok(assignDraftErrors(draft({ needIds: [] }), p, "chiedi", []).needIds);

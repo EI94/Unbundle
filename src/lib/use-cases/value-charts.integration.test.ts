@@ -270,7 +270,7 @@ function figuresOf(page: string, name: string): number[] {
 
 /** Gli euro dell'avvio che le card scrivono («avvio 560 €»), nell'ordine della pagina. */
 function startCostsOf(page: string): number[] {
-  return [...page.matchAll(/data-figure="costo"[^>]*><span class="whitespace-nowrap">avvio ([^<]*)</g)].map((match) => euros(match[1]));
+  return [...page.matchAll(/data-figure="costo"[^>]*><span class="whitespace-nowrap">Costo ([^<]*)</g)].map((match) => euros(match[1]));
 }
 
 /** I pulsanti pieni della pagina: `[data-slot=button]` con la classe `bg-primary` (§5.7). */
@@ -440,7 +440,7 @@ test("(rilascio 5) «Grafici»: «Matrice Valore × Costo», «Matrice Facilità
   assert.equal(count(page, "data-bubble="), 2);
   const a = itemOf(page, `data-bubble="${cards.a.id}"`);
   assert.match(a, /data-when="questo_trimestre"/);
-  assert.ok(a.includes(`aria-label="${cards.a.code} Smistamento ${suffix}. Facilità 4 · 4.043 €/anno · avvio 560 € · ricorrenti 600 €/anno · questo trimestre · Gruppo Servizio clienti"`), a);
+  assert.ok(a.includes(`aria-label="${cards.a.code} Smistamento ${suffix}. Facilità 4 · 4.043 €/anno · Costo 560 € · costo all&#x27;anno 600 € · questo trimestre · Gruppo Servizio clienti"`), a);
   assert.ok(a.includes(`apri=${cards.a.id}`), "il clic apre il pannello");
   assert.match(a, /width:26px;height:26px/, "avvio massimo: raggio 13 px");
   const small = itemOf(page, `data-bubble="${cards.small.id}"`);
@@ -456,7 +456,7 @@ test("(rilascio 5) «Grafici»: «Matrice Valore × Costo», «Matrice Facilità
   assert.equal(count(phoneList, 'data-slot="bubbles-section"'), 2, "una sezione chiusa per gruppo: Servizio clienti e Senza gruppo");
   // Un testo solo, con le parti intere e il «·» che resta con la parte prima: la riga va a capo dopo il «·».
   // Il gruppo non c'è: lo dice il titolo della sezione.
-  const parts = ["Facilità 4", "4.043 €/anno", "avvio 560 €", "ricorrenti 600 €/anno", "questo trimestre"].map((part) => part.replace(/ /g, "\u00a0"));
+  const parts = ["Facilità 4", "4.043 €/anno", "Costo 560 €", "costo all&#x27;anno 600 €", "questo trimestre"].map((part) => part.replace(/ /g, "\u00a0"));
   assert.ok(phoneList.includes(`<span data-slot="bubble-summary">${parts.join("\u00a0· ")}</span>`), phoneList.slice(0, 1200));
   assert.ok(page.includes("Servizio clienti"), "la legenda dei gruppi");
   assert.ok(page.includes(">Senza gruppo<"), "il grigio dice che sono schede senza gruppo, non «Altro»");
@@ -501,7 +501,7 @@ test("Panoramica: quattro cifre e «Su tutto il portafoglio»; i grafici di «Be
     assert.match(page, /@3xl\/hub:grid-cols-4/, `${person}: quattro cifre`);
     // Le parti a schermo fanno la cifra in testa: A (4.043 €) e la scheda senza modello (30.000 €)
     // nelle corsie, B in realizzazione (2.719 €), che lo dice accanto al conto.
-    assert.match(tileOf(page, "valore"), /36\.762 €\s+valore contato all&#x27;anno\s+su 3\u00a0use\u00a0case/, person);
+    assert.match(tileOf(page, "valore"), /36\.762 €\s+valore all&#x27;anno\s+su 3\u00a0use\u00a0case/, person);
     assert.deepEqual(figuresOf(page, "corsia"), [4_043, 30_000], person);
     assert.ok(page.includes("1\u00a0use\u00a0case\u00a0· <span data-figure=\"corsia\">4.043\u00a0€ contati all&#x27;anno</span>"), person);
     assert.ok(page.includes("1\u00a0use\u00a0case\u00a0· <span data-figure=\"corsia\">30.000\u00a0€ contati all&#x27;anno</span>"), person);
@@ -515,7 +515,7 @@ test("Panoramica: quattro cifre e «Su tutto il portafoglio»; i grafici di «Be
     // modello (20.000 €). B, in realizzazione, è già partita: la sua card non scrive l'avvio e i suoi
     // 280 € non entrano (prima 20.840 € su 3 use case).
     assert.deepEqual(startCostsOf(page), [560, 20_000], person);
-    assert.match(tileOf(page, "costo"), /20\.560 €\s+costo di avvio\s+su 2\u00a0use\u00a0case/, person);
+    assert.match(tileOf(page, "costo"), /20\.560 €\s+costo di realizzazione\s+su 2\u00a0use\u00a0case/, person);
   }
   // Il contributore: nessun euro.
   const theirs = await html("contributor", ids.wsV, { vista: "panoramica" });
@@ -528,14 +528,14 @@ test("le cifre della Panoramica si sommano: le card fanno la corsia, le corsie e
   for (const person of ["ls", "builder", "manager"] as const) {
     // 4.043 + 4.043 + 12.250 + 2.719: 23.055 € (sommando prima e arrotondando dopo, 23.054 €).
     const page = await html(person, ids.wsS, { vista: "panoramica" });
-    assert.match(tileOf(page, "valore"), /23\.055 €\s+valore contato all&#x27;anno\s+su 4\u00a0use\u00a0case/, person);
+    assert.match(tileOf(page, "valore"), /23\.055 €\s+valore all&#x27;anno\s+su 4\u00a0use\u00a0case/, person);
     assert.deepEqual(figuresOf(page, "corsia"), [16_293, 4_043], person);
     assert.deepEqual(figuresOf(page, "in-realizzazione"), [2_719], person);
     assert.equal(sum([...figuresOf(page, "corsia"), ...figuresOf(page, "in-realizzazione")]), 23_055, person);
     // L'avvio: 560 + 560, le due FIX_A di LIBRA nelle corsie, come le loro card lo scrivono; ORSA O1
     // è in realizzazione, già partita, e i suoi 280 € non ci sono più (prima 1.400 € su 3 use case).
     assert.deepEqual(startCostsOf(page), [560, 560], person);
-    assert.match(tileOf(page, "costo"), /1\.120 €\s+costo di avvio\s+su 2\u00a0use\u00a0case/, person);
+    assert.match(tileOf(page, "costo"), /1\.120 €\s+costo di realizzazione\s+su 2\u00a0use\u00a0case/, person);
     assert.equal(sum(startCostsOf(page)), euros(tileOf(page, "costo")), person);
 
     // «Per agente»: la card di LIBRA è la somma delle sue card, 20.336 € (prima 20.335 €).
@@ -547,7 +547,7 @@ test("le cifre della Panoramica si sommano: le card fanno la corsia, le corsie e
 
     // Le corsie di LIBRA, dopo il clic sulla sua card: la cifra in testa, le corsie e la card sono la stessa.
     const own = await html(person, ids.wsS, { vista: "panoramica", agente: "LIBRA" });
-    assert.match(tileOf(own, "valore"), /20\.336 €\s+valore contato all&#x27;anno\s+su 3\u00a0use\u00a0case/, person);
+    assert.match(tileOf(own, "valore"), /20\.336 €\s+valore all&#x27;anno\s+su 3\u00a0use\u00a0case/, person);
     assert.deepEqual(figuresOf(own, "corsia"), [16_293, 4_043], person);
     assert.ok(!own.includes('data-figure="in-realizzazione"'), `${person}: ORSA non è di LIBRA`);
 
@@ -600,10 +600,10 @@ test("«Curva del valore» da «Grafici»: J-curve con entrata in uso e pareggio
     [cards.b.id, true],
   ]);
   assert.ok(tempo.includes("6.227 €"), "il totale contato, senza la parte da misurare");
-  assert.ok(tempo.includes(`aria-label="${cards.b.code} Fatture ${suffix}: da misurare, fino a 1.680 €, fuori dal totale · Risparmio di tempo · Gruppo Amministrazione"`));
+  assert.ok(tempo.includes(`aria-label="${cards.b.code} Fatture ${suffix}: da misurare, fino a 1.680 €, fuori dal totale · Meno tempo · Gruppo Amministrazione"`));
   assert.ok(itemOf(page, 'data-lever="nuove_capacita"').includes("(1 qualitativo)"));
   assert.ok(itemOf(page, 'data-lever="rischio"').includes("(1 qualitativo)"));
-  for (const label of ["Risparmio di tempo", "Più output", "Più qualità", "Nuove capacità", "Decisioni migliori", "Meno costi", "Più ricavi", "Meno rischio"]) {
+  for (const label of ["Meno tempo", "Più volume", "Più qualità", "Nuove capacità", "Decisioni migliori", "Meno costi", "Più ricavi", "Meno rischio"]) {
     assert.ok(page.includes(label), `la riga «${label}»`);
   }
   assert.ok(!page.includes(`data-segment="${cards.small.id}"`), "da decidere: non è nel piano");
@@ -645,10 +645,10 @@ test("con gli agenti nei titoli il grigio ha un nome solo, «Altri use case», n
   // La bolla e il segmento grigi finiscono con il quando e il tipo di ritorno, come il punto della matrice.
   const { code } = agentCards.varie;
   assert.ok(
-    bubbles.includes(`aria-label="${code} Archivio delle ricevute ${suffix}. Facilità 4 · 4.043 €/anno · avvio 560 € · ricorrenti 600 €/anno · questo trimestre"`),
+    bubbles.includes(`aria-label="${code} Archivio delle ricevute ${suffix}. Facilità 4 · 4.043 €/anno · Costo 560 € · costo all&#x27;anno 600 € · questo trimestre"`),
     itemOf(bubbles, `data-bubble="${agentCards.varie.id}"`),
   );
-  assert.ok(itemOf(curve, 'data-lever="tempo"').includes(`aria-label="${code} Archivio delle ricevute ${suffix}: 4.043 € all&#x27;anno · Risparmio di tempo"`));
+  assert.ok(itemOf(curve, 'data-lever="tempo"').includes(`aria-label="${code} Archivio delle ricevute ${suffix}: 4.043 € all&#x27;anno · Meno tempo"`));
   for (const page of [bubbles, curve, matrix]) {
     const chart = page.slice(page.indexOf('data-slot="hub-chart"'));
     for (const text of ["Altri gruppi", "Gruppo ", "Senza gruppo"]) assert.ok(!chart.includes(text), text);
@@ -688,10 +688,10 @@ test("con gli agenti nei titoli: ogni bolla, segmento e punto ha il tono dell'ag
   }
   // Il gruppo non si scrive: l'agente è nel titolo, il grigio lo spiega la legenda.
   assert.ok(
-    bubbles.includes(`aria-label="${titleCards.copy.code} Preventivi del catering ${suffix}. Facilità 4 · 4.043 €/anno · avvio 560 € · ricorrenti 600 €/anno · questo trimestre"`),
+    bubbles.includes(`aria-label="${titleCards.copy.code} Preventivi del catering ${suffix}. Facilità 4 · 4.043 €/anno · Costo 560 € · costo all&#x27;anno 600 € · questo trimestre"`),
     itemOf(bubbles, `data-bubble="${titleCards.copy.id}"`),
   );
-  assert.ok(itemOf(curve, 'data-lever="tempo"').includes(`aria-label="${titleCards.libra.code} LIBRA L1 · Fatture ${suffix}: da misurare, fino a 1.680 €, fuori dal totale · Risparmio di tempo"`));
+  assert.ok(itemOf(curve, 'data-lever="tempo"').includes(`aria-label="${titleCards.libra.code} LIBRA L1 · Fatture ${suffix}: da misurare, fino a 1.680 €, fuori dal totale · Meno tempo"`));
   assert.ok(!/Gruppo (?:ORSA|Operazioni)|Altri gruppi/.test(bubbles + curve));
   assert.deepEqual(bubbleSectionLabels(bubbles), ["DENEB", "ORSA", "SIRIO", "Altri use case"]);
   assert.deepEqual(legendOf(curve, '<figcaption class="flex', "</figcaption>"), ["DENEB", "LIBRA", "ORSA", "SIRIO", "Altri use case", "da misurare"]);

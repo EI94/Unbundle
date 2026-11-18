@@ -15,9 +15,9 @@ export default async function LearningHome({ params }: { params: Promise<{ works
       <Link className="inline-block rounded-lg border px-4 py-2 text-sm font-medium" href={`/dashboard/${workspaceId}/learning/register`}>Registro formazione IA</Link>
     </div>}
     {!home.enabled ? <LearningUnavailable message="La formazione non è ancora attiva in questo ambiente. Le altre sezioni del workspace restano disponibili." /> : home.programs.length === 0 ? <LearningUnavailable message="Non hai ancora un percorso assegnato in questo workspace. Rivolgiti al responsabile della formazione." /> : <div className="grid gap-4 sm:grid-cols-2">{home.programs.map((program) => <Card key={program.id}><CardHeader><CardTitle>{program.title}</CardTitle></CardHeader><CardContent className="space-y-3">
-      {program.cohortId && <p className="text-sm text-muted-foreground">Turno {program.cohortId}</p>}
+      {/* (Rilascio 10, §7.4) Niente codice del turno a schermo: la data della lezione sta nel corso. */}
       <div className="flex flex-wrap gap-2">
-        <Link className="inline-flex min-h-10 items-center rounded-lg bg-primary px-4 py-2 text-primary-foreground" href={`/dashboard/${workspaceId}/learning/${program.id}`}>Apri percorso</Link>
+        <Link className="inline-flex min-h-10 items-center rounded-lg bg-primary px-4 py-2 text-primary-foreground" href={`/dashboard/${workspaceId}/learning/${program.id}`}>Apri il corso</Link>
         {(program.canReview || program.canAggregate || program.canExport || program.canManage) && <Link data-testid="program-results-link" className="inline-flex min-h-10 items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted" href={`/dashboard/${workspaceId}/learning/${program.id}/results`}>
           <ChartColumn aria-hidden className="size-4" /> Risultati
         </Link>}

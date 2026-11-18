@@ -59,7 +59,7 @@ test("dall'alto: la testa con il bottone della vista, i riquadri, i punti di ana
   assert.ok(at('data-b="legend"') < at('data-b="map-tools"'));
   assert.ok(at('data-b="map-tools"') < at('data-b="map"'), "i riquadri prima della mappa");
   // La testa: l'occhiello, il titolo di sempre con il nome dell'unità in corsivo, la descrizione, a destra il bottone della vista.
-  assert.match(html, /<p class="b-eyebrow">Processi di oggi<\/p><h2 class="b-h">Come lavora oggi <i>Ufficio acquisti<\/i><\/h2><p class="b-lede">Compra materiali e servizi per gli altri uffici\.<\/p><\/div><div class="b-head-action"><button type="button" class="b-btn b-primary" data-b="button" data-variant="primary">Completa la mappatura<\/button><\/div>/);
+  assert.match(html, /<p class="b-eyebrow">Oggi<\/p><h2 class="b-h">Come lavora oggi <i>Ufficio acquisti<\/i><\/h2><p class="b-lede">Compra materiali e servizi per gli altri uffici\.<\/p><\/div><div class="b-head-action"><button type="button" class="b-btn b-primary" data-b="button" data-variant="primary">Completa la mappatura<\/button><\/div>/);
   const tiles = [...html.matchAll(/<div class="b-kv">([^<]*)<\/div><div class="b-kl">([^<]*)<\/div>/g)].map((match) => `${match[1]} ${match[2]}`);
   assert.deepEqual(tiles, ["6 passi in 2 processi", "28,5 h ore a settimana", "3 passi dove decide una persona", "2 passi da validare"]);
   // La legenda: i tre attriti, il rombo, «da validare»; la riga dei conteggi; i due strumenti della mappa.
@@ -100,7 +100,7 @@ test("una board in sola lettura disegna i suoi controlli spenti, o non li disegn
   for (const button of html.match(/<button[^>]*aria-label="(Togli un tuo voto|Aggiungi un voto)"[^>]*>/g) ?? []) assert.match(button, /disabled=""/);
   // Senza le tabelle della 0039: lo dice una riga, e la board si legge e basta.
   const missing = render({ ...fixtureBoard(), store: "mancante" });
-  assert.match(missing, /<p class="b-notice">La board è in sola lettura per qualche minuto: si sta aggiornando\.<\/p>/);
+  assert.match(missing, /<p class="b-notice">La mappa è in sola lettura per qualche minuto: si sta aggiornando\.<\/p>/);
   assert.doesNotMatch(missing, /<textarea|\+ passo/);
 });
 

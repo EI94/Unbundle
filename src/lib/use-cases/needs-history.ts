@@ -68,13 +68,14 @@ export function parseNeedHistory(phaseBefore: string | null, phaseAfter: string 
 /** I testi delle righe (§6.6: azione e nomi, mai i testi dell'esigenza). */
 export const NEED_HISTORY_TEXT = Object.freeze({
   label: "Cosa serve",
-  item: Object.freeze({ requisito: "un requisito", passo: "un prossimo passo" } satisfies Record<NeedType, string>),
+  // (Rilascio 10, §4) «informazione» e «scadenza»: mai «requisito» né «prossimo passo».
+  item: Object.freeze({ requisito: "un'informazione", passo: "una scadenza" } satisfies Record<NeedType, string>),
   change: Object.freeze({
-    aggiunta: "aggiunto",
-    modificata: "modificato",
-    collegata: "collegato",
-    scollegata: "scollegato",
-    archiviata: "archiviato",
+    aggiunta: "aggiunta",
+    modificata: "modificata",
+    collegata: "collegata",
+    scollegata: "scollegata",
+    archiviata: "archiviata",
   } satisfies Record<NeedHistoryChange, string>),
   status: "stato di",
   becomes: "diventa",
@@ -86,9 +87,9 @@ export function isNeedHistoryEvent(event: { fields: readonly string[] }): boolea
 }
 
 /**
- * La riga come si legge: «Cosa serve: aggiunto un requisito», «Cosa serve: archiviato un prossimo
- * passo», «Cosa serve: stato di un requisito, «Non ancora chiesta» → «A posto»», «Cosa serve: un
- * requisito diventa un prossimo passo». Con codici sconosciuti, «Cosa serve».
+ * La riga come si legge: «Cosa serve: aggiunta un'informazione», «Cosa serve: archiviata una
+ * scadenza», «Cosa serve: stato di un'informazione, «Non ancora chiesta» → «A posto»», «Cosa serve:
+ * un'informazione diventa una scadenza». Con codici sconosciuti, «Cosa serve».
  */
 export function needHistoryText(event: { phaseBefore: string | null; phaseAfter: string | null }): string {
   const entry = parseNeedHistory(event.phaseBefore, event.phaseAfter);

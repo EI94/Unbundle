@@ -23,7 +23,7 @@ export type AgentQuestionActionResult = { ok: true; message: string } | { ok: fa
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const GONE: AgentQuestionActionResult = { ok: false, message: "Questa proposta è già stata decisa: ho ricaricato la pagina." };
-const DENIED: AgentQuestionActionResult = { ok: false, message: "Le proposte le decide chi può aggiungere esigenze in «Cosa serve»." };
+const DENIED: AgentQuestionActionResult = { ok: false, message: "Le proposte le decide chi può aggiungere informazioni in «Cosa serve»." };
 
 async function open(guard: Awaited<ReturnType<typeof requireWorkspaceAccess>>, workspaceId: string, useCaseId: string, questionId: string) {
   const { session, access } = guard;

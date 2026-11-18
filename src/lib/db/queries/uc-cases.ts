@@ -335,9 +335,9 @@ export async function createCase(
   if (v.portfolioUseCaseId) {
     const card = await getPortfolioCardForCase(executor, i.workspaceId, v.portfolioUseCaseId);
     if (!card) return fail("scheda_non_trovata", "La scheda di portafoglio non è di questo workspace.");
-    if (card.kind === "best_practice") return fail("best_practice", "Una best practice non ha un dossier: si segna come diffusa.");
+    if (card.kind === "best_practice") return fail("best_practice", "Una best practice non ha una realizzazione: si segna come diffusa.");
     if (card.status !== "accepted" || card.kind !== "use_case_ai") return fail("scheda_non_accettata", "La realizzazione parte solo da uno use case «Da costruire» approvato.");
-    if (card.existingCase) return fail("caso_gia_avviato", `Questa scheda ha già il caso d'uso ${card.existingCase.code}.`);
+    if (card.existingCase) return fail("caso_gia_avviato", `Questa scheda ha già la realizzazione ${card.existingCase.code}.`);
   }
   const template: TemplateRef = { templateId: v.templateId };
   const created = await createCaseFromTemplate(executor, {
@@ -880,7 +880,7 @@ WHERE to_regclass('public.' || t.name) IS NOT NULL`),
  * Rimozione di una persona dal workspace (`removeWorkspaceMemberAction`): perde
  * ogni ruolo nei casi del workspace, i link dei referenti che aveva copiato si
  * revocano e le sue firme in attesa si tolgono. Restituisce i casi non chiusi
- * rimasti senza ls_lead («Caso <codice>: ls_lead da indicare»): per loro la
+ * rimasti senza ls_lead («Realizzazione <codice>: manca il responsabile di Lateral Space.»): per loro la
  * campanella avvisa gli altri membri Lateral Space.
  */
 export async function removeUserFromWorkspaceCases(

@@ -61,7 +61,7 @@ test("senza cifre (chi non è un revisore) le due righe non ci sono; i pezzi che
   const partial = buildLiveRows(data({ thesis: { coreValueProposition: "  ", strategicNodes: [], keyRisks: "non un elenco" }, boundary: { includedFunctions: ["Vendite"] }, goals: [{ id: G1, type: "objective", title: "Crescere" }, { id: U2, type: "goal", title: "Qualità" }] }));
   assert.deepEqual(
     partial.filter((r) => r.section !== "lavoro").map((r) => [r.tag, r.text]),
-    [[null, "Dipendenti: 420"], [null, "Ricavo dell'ultimo anno: 12 mln €"], ["Obiettivo", "Crescere"], ["Goal", "Qualità"], [null, "Perimetro: incluse Vendite"]],
+    [[null, "Dipendenti: 420"], [null, "Ricavo dell'ultimo anno: 12 mln €"], ["Obiettivo", "Crescere"], ["Obiettivo", "Qualità"], [null, "Perimetro: incluse Vendite"]],
   );
   // Una persona, un'attività: al singolare.
   const one = buildLiveRows(data({ departments: [{ id: U1, name: "Acquisti", description: null, teamSize: 1 }], activityCounts: new Map([[U1, 1]]) }));

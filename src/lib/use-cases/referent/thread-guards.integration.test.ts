@@ -141,7 +141,7 @@ async function answeredReferent(card: { id: string; needs: string[] }): Promise<
   pok(await pub.saveReferentDraft(link, { needId: card.needs[1], text: "Il gestionale", dontKnow: false }, new Date()) as never, "bozza 2");
   pok(await pub.submitReferentAnswers(link, {}, new Date()) as never, "invia");
   // Il grazie dopo l'invio parte subito: le email dopo sono quelle del filo.
-  assert.match((await send(sent.requestId)).map((m) => m.subject).join("|"), /grazie per le risposte/);
+  assert.match((await send(sent.requestId)).map((m) => m.subject).join("|"), /: grazie per «Fatture fornitori»/);
   const [row] = await q(`SELECT contact_id, status FROM use_case_referent_requests WHERE id = $1::uuid`, [sent.requestId]);
   assert.equal(row.status, "completata");
   return { requestId: sent.requestId, contactId: String(row.contact_id), link: await linkOf(token!), token: token! };
@@ -332,7 +332,7 @@ test("«Chiedi un chiarimento» su una richiesta completata mentre la stessa per
   assert.equal(view.thread.messages.filter((m) => m.waiting).length, 1, "il chiarimento aspetta il referente sulla pagina di R1");
   const mails = await send(r1.requestId, new Date(NOW.getTime() + 60_000));
   assert.equal(mails.length, 1, "l'email del chiarimento parte");
-  assert.match(mails[0].subject, /^Rondine prova: un chiarimento sul caso d'uso «FL-\d+ · Fatture fornitori»$/);
+  assert.match(mails[0].subject, /^Rondine prova: un chiarimento su «Fatture fornitori»$/);
   assert.match(mails[0].text, /Il team ti chiede un chiarimento/);
   assert.ok(mails[0].text.includes(`/rispondi/`));
   pok((await thread.replyToReferentClarification(await linkOf(token!), { messageId: c.messageId, text: "Circa 220." }, new Date())) as never, "la risposta");
@@ -450,7 +450,7 @@ test("l'email di un chiarimento chiesto da un altro revisore dice «Il team», m
   ok(await thread.askReferentClarification(ctx("builder2"), card.id, { requestId: r.requestId, anchor: "domanda", needId: card.needs[0], text: "Quante, più o meno?" }, { env: ENV, now: NOW }), "chiarimento di Bruna");
   const mails = await send(r.requestId, new Date(NOW.getTime() + 60_000));
   assert.equal(mails.length, 1);
-  assert.match(mails[0].text, /Il team ti chiede un chiarimento sul caso d'uso «FL-\d+ · Fatture fornitori»: lo trovi con lo stesso link\./);
+  assert.match(mails[0].text, /Il team ti chiede un chiarimento sul caso d'uso «Fatture fornitori»: lo trovi con lo stesso link\./);
   assert.ok(!/Giulia Neri ti chiede|Bruna Esempio ti chiede|Bruna Esempio/.test(mails[0].text), "nessun nome come autore del chiarimento");
   assert.ok(!mails[0].text.includes("Quante, più o meno?"), "mai il testo del messaggio nell'email");
 });

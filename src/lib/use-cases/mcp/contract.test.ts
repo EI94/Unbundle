@@ -299,7 +299,8 @@ test("i testi del contratto rispettano le parole di §14.5 (niente «caso d'uso�
   };
   for (const def of teamToolDefinitions()) walk(def.inputSchema);
   assert.ok(descriptions.length > 20);
-  for (const text of [...texts, ...descriptions]) assert.deepEqual(findHubForbidden(text, "area"), [], text);
+  // (Rilascio 10) I valori del contratto tra apici inversi («`requisito`») sono nomi dell'API, non parole del testo.
+  for (const text of [...texts, ...descriptions]) assert.deepEqual(findHubForbidden(text.replace(/`[^`]*`/g, "``"), "area"), [], text);
   assert.equal(Object.keys(TEAM_MCP_INPUT_SCHEMAS).length, 14);
 });
 

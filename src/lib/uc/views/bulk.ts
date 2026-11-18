@@ -116,7 +116,8 @@ export function skippedText(groups: readonly SkipGroup[], unlisted = 0): string 
 
 /** Le azioni della selezione in Domande: con quale parola si chiamano (§3.6.2). */
 export const BULK_ACTION_LABEL: Readonly<Record<BulkActionKey, string>> = {
-  assign: "Assegna a…",
+  // (Rilascio 10, §4) «Affida a…», la stessa parola nella selezione e in Persone.
+  assign: "Affida a…",
   send: "Invia",
   confirm: "Chiedi conferma",
   due: "Imposta la scadenza",

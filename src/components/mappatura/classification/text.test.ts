@@ -46,8 +46,8 @@ test("ogni scritta della classificazione rispetta lo stile della casa", () => {
 });
 
 test("i numeri e i plurali per uno", () => {
-  assert.equal(streamTileLabel("automate", 19.5), "Automate · 19,5 h a settimana");
-  assert.equal(streamTileLabel("innovate", 4), "Innovate · 4 h a settimana");
+  assert.equal(streamTileLabel("automate", 19.5), "Automatizzare · 19,5 h a settimana");
+  assert.equal(streamTileLabel("innovate", 4), "Innovare · 4 h a settimana");
   assert.deepEqual([exposureTileValue(32), exposureTileValue(null)], ["32%", "—"]);
   assert.deepEqual([toClassifyLine(1), toClassifyLine(2)], ["1 passo da classificare.", "2 passi da classificare."]);
   assert.deepEqual([classifyButtonLabel(1), classifyButtonLabel(2)], ["Classifica 1 passo", "Classifica 2 passi"]);

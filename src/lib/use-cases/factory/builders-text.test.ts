@@ -86,7 +86,7 @@ test("«Togli»: la conferma con i casi e i repository, e il messaggio dopo", ()
     externalRemovedText({ left: codes(22), skipped: [], repos: ["Voltaen/alfa-esploso"] }),
     "Non costruisce più: esce da 22 casi. Ricorda GitHub (Voltaen/alfa-esploso) e la sua chiave dell'AI Gateway.",
   );
-  assert.match(externalRemovedText({ left: [], skipped: [{ code: "NM-0010", reason: "attore_non_ammesso" }], repos: [] }), /In NM-0010 resta nel dossier da osservatore, senza poteri: lì non sei responsabile\.$/);
+  assert.match(externalRemovedText({ left: [], skipped: [{ code: "NM-0010", reason: "attore_non_ammesso" }], repos: [] }), /In NM-0010 resta nella realizzazione da osservatore, senza poteri: lì non sei responsabile\.$/);
 });
 
 test("la riga: «CLI collegata», «CLI da collegare», o perché da fuori oggi non costruisce; dove", () => {
@@ -101,7 +101,7 @@ test("la riga: «CLI collegata», «CLI da collegare», o perché da fuori oggi 
 test("Lateral Space: «Aggiungi» e «Togli» dicono dove entra ed esce, senza dire il genere della persona", () => {
   assert.equal(
     lsAddedText({ done: codes(3), unchanged: codes(1, 4), skipped: [{ code: "NM-0010", reason: "attore_non_ammesso" }] }),
-    "Nel team del cliente: entrerà anche nei casi nuovi. Entra in 3 casi, c'era già in 1 caso. Saltati: NM-0010 (lì non sei responsabile). Si cambia dal team del dossier.",
+    "Nel team del cliente: entrerà anche nei casi nuovi. Entra in 3 casi, c'era già in 1 caso. Saltati: NM-0010 (lì non sei responsabile). Si cambia dal team della realizzazione.",
   );
   assert.equal(lsRemovedText({ done: codes(2), skipped: [], released: 1 }), "Fuori dal team del cliente: esce da 2 casi e non entra nei casi nuovi. I compiti che aveva lì tornano da prendere (1).");
 });

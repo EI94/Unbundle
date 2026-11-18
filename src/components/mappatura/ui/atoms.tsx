@@ -13,7 +13,7 @@
 import Link from "next/link";
 import type { ButtonHTMLAttributes, JSX, ReactNode } from "react";
 import { firstSentence } from "../../../lib/mappatura/board-model.ts";
-import { BOARD_TEXT, exposureBadgeLabel, removeChipLabel, streamLabel } from "../../../lib/mappatura/text.ts";
+import { BOARD_TEXT, STREAM_ENGLISH, exposureBadgeLabel, removeChipLabel, streamLabel } from "../../../lib/mappatura/text.ts";
 import type { Stream } from "../../../lib/mappatura/vocab.ts";
 import { focusBeforeRemoving, type FocusNode } from "./focus.ts";
 
@@ -104,7 +104,7 @@ export function Dot(p: { tone: "crit" | "amber" | "neutral" | Stream | "auto"; d
 /** Il badge di uno stream, nel suo colore (P23, P28). `small`: la forma che sta nelle card. */
 export function StreamBadge(p: { stream: Stream; small?: boolean }): JSX.Element {
   return (
-    <span className={cx("b-abadge", p.small && "b-small")} data-stream={p.stream} data-b="stream-badge">
+    <span className={cx("b-abadge", p.small && "b-small")} data-stream={p.stream} data-b="stream-badge" title={STREAM_ENGLISH[p.stream]}>
       {streamLabel(p.stream)}
     </span>
   );
