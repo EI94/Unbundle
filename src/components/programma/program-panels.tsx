@@ -227,7 +227,7 @@ function StagePanel({ view, stage }: { view: ProgramView; stage: "in_uso" | "in_
           </ul>
         </Section>
       ))}
-      <Source>Valore e costi dalle schede degli use case. Il costo di avvio conta per gli use case da costruire.</Source>
+      <Source>Valore e costi dalle schede degli use case. Il costo di realizzazione conta per gli use case da costruire.</Source>
     </div>
   );
 }
@@ -326,7 +326,7 @@ function SupportPanel({ view }: { view: ProgramView }) {
         <Section title="Costi di Lateral Space">
           <Source>{"Solo Lateral Space vede questa parte. Il canone di ogni mese si divide tra gli use case in realizzazione o in uso quel mese, in proporzione al loro valore all'anno: la parte di ognuno è nei pannelli delle iniziative."}</Source>
           <LsCostsForm view={view} />
-          <Source>{"Lo sviluppo di un singolo use case si accende nel pannello della sua iniziativa e prende il posto del suo costo di avvio, tranne le ore interne."}</Source>
+          <Source>{"Lo sviluppo di un singolo use case si accende nel pannello della sua iniziativa e prende il posto del suo costo di realizzazione, tranne le ore interne."}</Source>
         </Section>
       ) : null}
     </div>
@@ -761,7 +761,7 @@ function InitiativesPanel({ view, open }: { view: ProgramView; open: Open }) {
           <ChevronRight aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground group-hover:text-foreground" />
         </button>
       ) : null}
-      <Source>Valore e costi dalle schede degli use case. Il costo di avvio conta per gli use case da costruire.</Source>
+      <Source>Valore e costi dalle schede degli use case. Il costo di realizzazione conta per gli use case da costruire.</Source>
     </div>
   );
 }
@@ -772,8 +772,8 @@ function SettingsPanel({ view }: { view: ProgramView }) {
     <div className="space-y-6">
       <Pairs
         rows={[
-          ["Dipendenti", view.company.employees === null ? "—" : `${formatInteger(view.company.employees)} · ${view.company.employeesSource === "discovery" ? "dalla Discovery" : "scritto a mano"}`],
-          ["Ricavo dell'ultimo anno", view.company.revenueEur === null ? "—" : `${formatEuro(view.company.revenueEur)} · ${view.company.revenueSource === "discovery" ? "dalla Discovery" : "scritto a mano"}`],
+          ["Dipendenti", view.company.employees === null ? "—" : `${formatInteger(view.company.employees)} · ${view.company.employeesSource === "discovery" ? "dall'intervista iniziale" : "scritto a mano"}`],
+          ["Ricavo dell'ultimo anno", view.company.revenueEur === null ? "—" : `${formatEuro(view.company.revenueEur)} · ${view.company.revenueSource === "discovery" ? "dall'intervista iniziale" : "scritto a mano"}`],
         ]}
       />
       {view.viewer.canEdit ? <FactsEditor view={view} /> : null}
@@ -803,11 +803,11 @@ function PanelBody({ panel, view, open }: { panel: ProgramPanel; view: ProgramVi
           <Pairs
             rows={[
               ...view.initiatives.map((row) => [T.stage[row.stage], formatEuro(row.value)] as [string, ReactNode]),
-              ...(view.metrics.valore_misurato_pct !== null ? ([["Di cui misurato nel dossier", formatPct(view.metrics.valore_misurato_pct)]] as Array<[string, ReactNode]>) : []),
+              ...(view.metrics.valore_misurato_pct !== null ? ([["Di cui misurato nella realizzazione", formatPct(view.metrics.valore_misurato_pct)]] as Array<[string, ReactNode]>) : []),
             ]}
           />
           <Trend rows={view.trend.map((t) => [t.period, t.estimated === null ? "—" : formatEuro(t.estimated)])} />
-          <Source>Le cifre delle schede degli use case approvati, in realizzazione e realizzati, {T.onUseCases(r.estimatedCount)}.</Source>
+          <Source>Le cifre delle schede degli use case approvati, in realizzazione e in uso, {T.onUseCases(r.estimatedCount)}.</Source>
         </div>
       );
     case "in-uso":
@@ -825,8 +825,8 @@ function PanelBody({ panel, view, open }: { panel: ProgramPanel; view: ProgramVi
           <Source>{"Il valore già in uso all'anno diviso per i dipendenti."}{r.perEmployeeOfRevenuePct !== null && r.perEmployeeOfRevenuePct > 0 ? ` È ${T.ofRevenue(r.perEmployeeOfRevenuePct)}.` : ""}</Source>
           <Pairs
             rows={[
-              ["Dipendenti", view.company.employees === null ? "—" : `${formatInteger(view.company.employees)} · ${view.company.employeesSource === "discovery" ? "dalla Discovery" : "scritto a mano"}`],
-              ["Ricavo dell'ultimo anno", view.company.revenueEur === null ? "—" : `${formatEuro(view.company.revenueEur)} · ${view.company.revenueSource === "discovery" ? "dalla Discovery" : "scritto a mano"}`],
+              ["Dipendenti", view.company.employees === null ? "—" : `${formatInteger(view.company.employees)} · ${view.company.employeesSource === "discovery" ? "dall'intervista iniziale" : "scritto a mano"}`],
+              ["Ricavo dell'ultimo anno", view.company.revenueEur === null ? "—" : `${formatEuro(view.company.revenueEur)} · ${view.company.revenueSource === "discovery" ? "dall'intervista iniziale" : "scritto a mano"}`],
             ]}
           />
           {view.viewer.canEdit ? <FactsEditor view={view} /> : null}
