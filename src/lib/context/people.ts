@@ -3,7 +3,10 @@
  * Lateral Space cerca nel contesto di un workspace quando una persona chiede di vedere, correggere o cancellare i suoi
  * dati, e come quel nome sparisce dai testi che restano.
  *
- * - `personTerm`: da 3 a 80 caratteri, con almeno 3 lettere. Un'e-mail o un nome.
+ * - `personTerm`: da 3 a 80 caratteri, con almeno 3 lettere. Un'e-mail o un nome, mai solo parole comuni («del», «il
+ *   cliente»: `COMMON_WORDS`).
+ * - `termInClientName`: per «Togli … da tutto», una parola sola che sta anche nel nome del cliente («Alfa» per «Alfa
+ *   Ricambi»): si chiede nome e cognome, oppure l'e-mail.
  * - `personPattern`: l'espressione regolare, la stessa per Postgres (`~`, `regexp_replace`, `regexp_instr`) e per
  *   JavaScript, senza flag. Un nome si cerca come parola intera, senza badare a maiuscole e accenti: «Rossi» non prende
  *   «Rossini», «rossì» prende «Rossi», «De Luca» prende «de  luca» e «De Luca» a capo. Un'e-mail come testo esatto, senza
@@ -12,6 +15,8 @@
  *   confini di parola sono scritti per esteso nell'espressione: non dipendono dalla lingua del database.
  * - `replacePerson`: il nome diventa «una persona», come nel pacchetto (`redact`, src/lib/use-cases/factory/package.ts).
  * - `personSnippet`: il pezzo di testo intorno al nome trovato, con il nome a parte per evidenziarlo.
+ * - `purgedNoteText`: la frase al posto del testo di un appunto cancellato, «dopo 12 mesi» solo se l'ha cancellato la
+ *   conservazione e non «Togli … da tutto».
  *
  * Nel database l'espressione passa sempre come parametro, mai dentro l'SQL. Mai il termine nei log o nella storia.
  * Modulo puro: nessun modulo del server, lo usa anche il browser.
@@ -31,6 +36,23 @@ export const ERASED_NOTE_TITLE = "Appunti del {data}";
 export function erasedNoteTitle(occurredOn: string): string {
   const day = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(occurredOn ?? ""));
   return ERASED_NOTE_TITLE.replace("{data}", day ? `${day[3]}/${day[2]}/${day[1]}` : String(occurredOn ?? ""));
+}
+
+/**
+ * La frase al posto del testo di un appunto cancellato (`textPurgedAt`), nel pannello della fonte. «Il testo è stato
+ * cancellato dopo 12 mesi.» solo se l'ha fatto la conservazione (`purgeExpiredNoteText`: un appunto con più di 12 mesi
+ * da `createdAt`, il titolo com'era). Dopo «Togli … da tutto» la frase neutra. Basta uno di due segni: il titolo
+ * generico, che «Togli» scrive sempre (e il titolo di un appunto senza testo non cambia più), o il testo sparito prima
+ * dei 12 mesi, che la conservazione non fa mai. Nel dubbio, o con una data che non si legge, la frase neutra: è sempre
+ * vera.
+ */
+export function purgedNoteText(note: { title: string; occurredOn: string; createdAt: string | Date; textPurgedAt: string | Date | null }): string {
+  const created = new Date(note.createdAt ?? Number.NaN).getTime();
+  // La regola della conservazione, sul giorno in cui il testo è sparito: `created_at` prima di 12 mesi fa.
+  const limit = new Date(note.textPurgedAt ?? Number.NaN);
+  limit.setUTCMonth(limit.getUTCMonth() - CONTEXT_LIMITS.retentionMonths);
+  const byRetention = note.title !== erasedNoteTitle(note.occurredOn) && created < limit.getTime();
+  return byRetention ? CONTEXT_TEXT.notes.purged : CONTEXT_TEXT.notes.textErased;
 }
 
 // ─── Il termine ──────────────────────────────────────────────────────
@@ -53,13 +75,16 @@ function cleanTerm(raw: string): string {
 
 /**
  * Il nome o l'e-mail da cercare: da 3 a 80 caratteri, con almeno 3 lettere («Scrivi almeno 3 lettere.»). Un'e-mail
- * è un indirizzo intero (`nome@dominio.it`); tutto il resto è un nome.
+ * è un indirizzo intero (`nome@dominio.it`); tutto il resto è un nome, che non può essere fatto solo di parole comuni
+ * («Questa parola è troppo comune: …»).
  */
 export function personTerm(raw: string): PersonTerm {
   const term = cleanTerm(typeof raw === "string" ? raw : "");
   if ((term.match(LETTER)?.length ?? 0) < CONTEXT_LIMITS.personTermMin) return { ok: false, message: CONTEXT_TEXT.people.tooShort };
   if (term.length > CONTEXT_LIMITS.personTermMax) return { ok: false, message: CONTEXT_TEXT.errors.tooLong(CONTEXT_LIMITS.personTermMax) };
-  return { ok: true, term, isEmail: EMAIL.test(term) };
+  const isEmail = EMAIL.test(term);
+  if (!isEmail && nameWords(term).length === 0) return { ok: false, message: CONTEXT_TEXT.people.tooCommon };
+  return { ok: true, term, isEmail };
 }
 
 // ─── L'espressione ───────────────────────────────────────────────────
@@ -163,6 +188,48 @@ export function personPattern(term: string): string {
 export function replacePerson(text: string, term: string): string {
   if (typeof text !== "string" || !text || !personTerm(term).ok) return text;
   return text.replace(new RegExp(personPattern(term), "g"), PERSON_PLACEHOLDER);
+}
+
+// ─── Le parole che non dicono chi è ──────────────────────────────────
+
+/**
+ * Le parole che da sole non indicano mai una persona: articoli, preposizioni (anche articolate ed elise: «dell'»,
+ * «all'»), pronomi, congiunzioni, i titoli e le parole più comuni del lavoro con un cliente, «persona» compresa (il nome
+ * tolto diventa «una persona»). Un termine fatto solo di queste, e di numeri, non si cerca: «Togli «del» da tutto»
+ * svuoterebbe ogni appunto. Senza accenti e in minuscolo, come le confronta `nameWords`.
+ */
+const COMMON_WORDS: ReadonlySet<string> = new Set(
+  [
+    "il lo la i gli le l un uno una d di a ad da in con su per tra fra",
+    "del dello della dei degli delle dell al allo alla ai agli alle all dal dallo dalla dai dagli dalle dall",
+    "nel nello nella nei negli nelle nell sul sullo sulla sui sugli sulle sull col coi",
+    "io tu lui lei noi voi loro me te se si ci vi mi ti ne li chi che cui quale quali",
+    "mio mia miei mie tuo tua tuoi tue suo sua suoi sue nostro nostra nostri nostre vostro vostra vostri vostre",
+    "questo questa questi queste quello quella quelli quelle e ed o od ma non come anche",
+    "signor signore signora dott dottor dottore dottoressa ing avv",
+    "cliente clienti azienda aziende societa ufficio uffici ditta gruppo persona persone referente responsabile",
+  ]
+    .join(" ")
+    .split(" "),
+);
+
+/** Le parole di un nome che dicono chi è: le lettere tra spazi, apostrofi e trattini, senza le parole comuni e i numeri. */
+function nameWords(term: string): string[] {
+  return (cleanTerm(term).match(/[\p{L}\p{M}]+/gu) ?? []).filter((word) => !COMMON_WORDS.has(fold(word)));
+}
+
+/**
+ * Vero se il termine, tolte le parole comuni, è una parola sola che sta anche nel nome del cliente (del workspace o
+ * dell'organizzazione), come parola intera e senza badare a maiuscole e accenti: «Togli «Alfa» da tutto» per il cliente
+ * «Alfa Ricambi» cancellerebbe il cliente ovunque. Vale solo per «Togli»: la ricerca resta larga. Un'e-mail mai.
+ */
+export function termInClientName(term: string, names: ReadonlyArray<string | null | undefined>): boolean {
+  const checked = personTerm(term);
+  if (!checked.ok || checked.isEmail) return false;
+  const words = nameWords(checked.term);
+  if (words.length !== 1) return false;
+  const word = new RegExp(personPattern(words[0]));
+  return names.some((name) => typeof name === "string" && word.test(name));
 }
 
 // ─── Il pezzo di testo trovato ───────────────────────────────────────

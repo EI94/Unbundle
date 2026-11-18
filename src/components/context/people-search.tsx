@@ -19,7 +19,23 @@ const P = CONTEXT_TEXT.people;
 
 /** Quanto toglie «Togli … da tutto»: tutto tranne i documenti, che restano e si tolgono uno per uno. */
 export function erasableCount(hits: PersonHits): number {
-  return hits.notes.total + hits.facts.total + hits.items.total + hits.granola.total + hits.chat.total;
+  return hits.notes.total + hits.facts.total + hits.items.total + hits.map.total + hits.granola.total + hits.chat.total;
+}
+
+/**
+ * Per quanto «Togli», nella conferma appena aperta, non vale: il secondo clic di un doppio clic su «Togli … da tutto» non
+ * toglie niente.
+ */
+export const CONFIRM_GUARD_MS = 600;
+
+/** Vero se «Togli» vale: la conferma è aperta da almeno `CONFIRM_GUARD_MS` (i tempi in millisecondi, come `performance.now()`). */
+export function confirmReady(openedAt: number, now: number): boolean {
+  return now - openedAt >= CONFIRM_GUARD_MS;
+}
+
+/** I numeri della conferma, dalla stessa ricerca: gli appunti che perdono il testo e i testi corretti, come dirà «Fatto: …». */
+export function eraseNumbers(hits: PersonHits): { notes: number; texts: number } {
+  return { notes: hits.notes.total, texts: hits.facts.total + hits.items.total };
 }
 
 /**
@@ -103,7 +119,20 @@ export function PeopleSearch({ workspaceId, today, onOpenSource }: { workspaceId
         }}
         title={P.title}
         description={P.lead}
-        footer={hits && erasableCount(hits) > 0 ? <EraseFooter term={hits.term} asking={asking} busy={busy} onAsk={() => setAsking(true)} onCancel={() => setAsking(false)} onConfirm={erase} /> : undefined}
+        footer={
+          hits && erasableCount(hits) > 0 ? (
+            <EraseFooter
+              term={hits.term}
+              {...eraseNumbers(hits)}
+              inClientName={hits.inClientName}
+              asking={asking}
+              busy={busy}
+              onAsk={() => setAsking(true)}
+              onCancel={() => setAsking(false)}
+              onConfirm={erase}
+            />
+          ) : undefined
+        }
       >
         <form
           noValidate
@@ -170,7 +199,7 @@ function Group({ label, total, children }: { label: string; total: number; child
 }
 
 /**
- * I risultati, a gruppi e nell'ordine del piano; un gruppo vuoto non c'è. Appunti e fatti con al massimo 5 righe e il
+ * I risultati, a gruppi e nell'ordine del piano («Mappa» dopo le citazioni e le proposte); un gruppo vuoto non c'è. Appunti e fatti con al massimo 5 righe e il
  * nome evidenziato; i documenti con il nome del file e «Apri» (un documento di prima della 9a non ha un pannello); gli
  * altri gruppi solo con il numero.
  */
@@ -212,6 +241,7 @@ export function PeopleResults({ hits, today, onOpenDocument }: { hits: PersonHit
         </Group>
       ) : null}
       {hits.items.total > 0 ? <Group label={P.groups.items} total={hits.items.total} /> : null}
+      {hits.map.total > 0 ? <Group label={P.groups.map} total={hits.map.total} /> : null}
       {hits.documents.total > 0 ? (
         <Group label={P.groups.documents} total={hits.documents.total}>
           <p className="text-xs text-muted-foreground">{P.documentHint}</p>
@@ -237,13 +267,54 @@ export function PeopleResults({ hits, today, onOpenDocument }: { hits: PersonHit
 }
 
 /**
- * Il piede del pannello: «Togli «…» da tutto», non pieno; poi la conferma con i testi del piano, «Annulla» (con il fuoco)
- * e «Togli», distruttivo ma non pieno.
+ * Il piede del pannello: «Togli «…» da tutto», non pieno; poi la conferma con i testi del piano e i numeri della stessa
+ * ricerca, «Togli», distruttivo ma non pieno, e «Annulla», con il fuoco. «Annulla» sta dove era il primo pulsante, in
+ * basso sul telefono e a destra sullo schermo largo, e per `CONFIRM_GUARD_MS` «Togli» non vale: un doppio clic non
+ * toglie niente. Una parola sola del nome del cliente non si toglie: al posto del pulsante la frase che chiede nome e
+ * cognome, oppure l'e-mail.
  */
-export function EraseFooter({ term, asking, busy, onAsk, onCancel, onConfirm }: { term: string; asking: boolean; busy: boolean; onAsk: () => void; onCancel: () => void; onConfirm: () => void }) {
+export function EraseFooter({
+  term,
+  notes,
+  texts,
+  inClientName,
+  asking,
+  busy,
+  onAsk,
+  onCancel,
+  onConfirm,
+}: {
+  term: string;
+  notes: number;
+  texts: number;
+  inClientName: boolean;
+  asking: boolean;
+  busy: boolean;
+  onAsk: () => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  // Quando si è aperta la conferma: prima di `CONFIRM_GUARD_MS` «Togli» non vale.
+  const openedAt = useRef(0);
+  if (inClientName) {
+    return (
+      <p role="status" className="text-sm text-muted-foreground">
+        {P.inClientName}
+      </p>
+    );
+  }
   if (!asking) {
     return (
-      <Button type="button" variant="outline" className="h-auto min-h-11 w-full py-2 whitespace-normal break-words sm:min-h-8 sm:w-auto sm:self-end" disabled={busy} onClick={onAsk}>
+      <Button
+        type="button"
+        variant="outline"
+        className="h-auto min-h-11 w-full py-2 whitespace-normal break-words sm:min-h-8 sm:w-auto sm:self-end"
+        disabled={busy}
+        onClick={() => {
+          openedAt.current = performance.now();
+          onAsk();
+        }}
+      >
         {P.erase(term)}
       </Button>
     );
@@ -253,15 +324,25 @@ export function EraseFooter({ term, asking, busy, onAsk, onCancel, onConfirm }: 
       <p id="persona-togli-titolo" className="text-sm font-medium break-words">
         {P.eraseTitle(term)}
       </p>
-      <p id="persona-togli-testo" className="text-sm text-muted-foreground">
-        {P.eraseBody}
-      </p>
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+      <div id="persona-togli-testo" className="space-y-1 text-sm">
+        {notes + texts > 0 ? <p>{P.eraseCount(notes, texts)}</p> : null}
+        <p className="text-muted-foreground">{P.eraseBody}</p>
+      </div>
+      {/* «Togli» prima, «Annulla» ultimo: sotto sul telefono, a destra sullo schermo largo, dove era «Togli … da tutto». */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <Button
+          type="button"
+          variant="destructive"
+          className="min-h-11 sm:min-h-8"
+          disabled={busy}
+          onClick={() => {
+            if (confirmReady(openedAt.current, performance.now())) onConfirm();
+          }}
+        >
+          {P.eraseConfirm}
+        </Button>
         <Button type="button" variant="outline" className="min-h-11 sm:min-h-8" disabled={busy} onClick={onCancel} autoFocus>
           {P.cancel}
-        </Button>
-        <Button type="button" variant="destructive" className="min-h-11 sm:min-h-8" disabled={busy} onClick={onConfirm}>
-          {P.eraseConfirm}
         </Button>
       </div>
     </div>

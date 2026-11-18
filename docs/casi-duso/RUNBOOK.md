@@ -180,7 +180,7 @@ Il cron `uc-freshness` toglie ogni notte i file dei casi **chiusi da oltre 30 gi
    ```
    Rifiuti: `richieste_aperte` (revocare prima i link), `firmatario_designato` (firmatario di un caso non chiuso: cambiare prima la designazione), `conflitto` (referente di un altro workspace o già anonimizzato).
 5. **Cancellazione di tutto il caso** (fine del rapporto, richiesta del titolare): §7.3.
-6. **Contesto**: «Contesto» › «Appunti» › «Cerca una persona», con il nome e con l'e-mail; «Togli … da tutto»; i documenti trovati si tolgono uno per uno; i messaggi della chat di Discovery che la citano si trovano con l'SQL di sola lettura su `conversations` e `messages` del workspace e si cancellano solo su richiesta esplicita.
+6. **Contesto**: «Contesto» › «Appunti» › «Cerca una persona», con il nome e con l'e-mail; «Togli … da tutto»; i documenti trovati si tolgono uno per uno; i messaggi della chat di Discovery che la citano si trovano con l'SQL di sola lettura su `conversations` e `messages` del workspace e si cancellano solo su richiesta esplicita. Dopo «Togli … da tutto», per ogni use case con un dossier i cui fatti sono cambiati, premere «Aggiorna il pacchetto» in «Progetto dell'agente»: `CONTESTO.md` nel repository del caso tiene il testo vecchio fino al pacchetto successivo.
 7. Registrare la risposta data (data, cosa si è fatto) fuori dall'app, senza copiare i dati.
 
 ### 7.3 Cancellazione di un caso (`uc-case-admin purge-case`)

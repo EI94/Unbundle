@@ -1,13 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ERASED_NOTE_TITLE, PERSON_PLACEHOLDER, erasedNoteTitle, personPattern, personSnippet, personTerm, replacePerson } from "./people.ts";
+import { readFileSync } from "node:fs";
+import { ERASED_NOTE_TITLE, PERSON_PLACEHOLDER, erasedNoteTitle, personPattern, personSnippet, personTerm, purgedNoteText, replacePerson, termInClientName } from "./people.ts";
 import { CONTEXT_TEXT } from "./text.ts";
 import { CONTEXT_LIMITS } from "./vocab.ts";
 
 // «Cerca una persona» (rilascio 9b, RILASCIO-9b-COSTRUZIONE.md §2.13, §5.9), le regole senza database: che cosa si può
 // cercare, come si riconosce un nome (parola intera, senza maiuscole e accenti) e un'e-mail (testo esatto), i caratteri
-// speciali che restano caratteri, la sostituzione con «una persona», il pezzo di testo da evidenziare. L'espressione è la
-// stessa che usa Postgres: people.integration.test.ts prova che i due danno lo stesso risultato.
+// speciali che restano caratteri, la sostituzione con «una persona», il pezzo di testo da evidenziare, la frase al posto
+// del testo di un appunto cancellato. L'espressione è la stessa che usa Postgres: people.integration.test.ts prova che i
+// due danno lo stesso risultato.
 
 /** Vero se `text` contiene `term`, con l'espressione che userà anche Postgres. */
 const finds = (term: string, text: string) => new RegExp(personPattern(term)).test(text);
@@ -29,6 +31,32 @@ test("il termine: almeno 3 lettere, al massimo 80 caratteri; gli spazi ridotti a
   assert.deepEqual(personTerm("x".repeat(81)), { ok: false, message: CONTEXT_TEXT.errors.tooLong(80) });
   // Un valore che non è testo non passa.
   assert.equal(personTerm(undefined as unknown as string).ok, false);
+});
+
+test("solo parole comuni non è un nome: «del», «il cliente», «Società», «una persona»; un nome con una preposizione sì", () => {
+  const COMMON = "Questa parola è troppo comune: scrivi nome e cognome, oppure l'e-mail.";
+  assert.equal(CONTEXT_TEXT.people.tooCommon, COMMON);
+  // Articoli, preposizioni (anche articolate ed elise), pronomi, titoli, le parole del lavoro; i numeri non contano.
+  for (const raw of ["del", "Del", "DELLA", "dell'", "nell’ufficio", "il cliente", "Società", "Azienda e cliente", "una persona", "persone", "loro", "Dottor", "del 3"]) {
+    assert.deepEqual(personTerm(raw), { ok: false, message: COMMON }, raw);
+  }
+  for (const raw of ["Rossi", "Lucia", "Del Piero", "Dell'Orto", "De Luca", "D'Angelo", "Mario del Monte", "Dottor Rossi", "Ufficio di Rossi"]) {
+    assert.equal(personTerm(raw).ok, true, raw);
+  }
+  // Un'e-mail resta un'e-mail.
+  assert.deepEqual(personTerm("del@cliente.it"), { ok: true, term: "del@cliente.it", isEmail: true });
+  // «Togli «del»» non tocca più gli appunti che non parlano di nessuno.
+  assert.equal(replacePerson("Il magazzino del cliente è a Bologna.", "del"), "Il magazzino del cliente è a Bologna.");
+});
+
+test("«Togli»: una parola sola del nome del cliente no, nome e cognome sì; un'e-mail sempre", () => {
+  assert.equal(CONTEXT_TEXT.people.inClientName, "Questa parola è anche nel nome del cliente: scrivi nome e cognome, oppure l'e-mail.");
+  // Il workspace «Alfa Ricambi», della organizzazione «Officine Beta»: nomi inventati.
+  const names = ["Alfa Ricambi", "Officine Beta"];
+  for (const term of ["Alfa", "ALFÀ", "di Alfa", "Alfa 3", "Ricambi", "Beta"]) assert.equal(termInClientName(term, names), true, term);
+  // Due parole che dicono chi è, una parola che non sta nel nome (parola intera), un'e-mail, un termine non valido.
+  for (const term of ["Mario Alfa", "Alfa Ricambi", "Alfredo", "Rossi", "alfa@ricambi.it", "Al", "del"]) assert.equal(termInClientName(term, names), false, term);
+  assert.equal(termInClientName("Alfa", [null, undefined]), false, "senza nomi niente da confrontare");
 });
 
 test("un nome si cerca come parola intera: «Rossi» non prende «Rossini»", () => {
@@ -118,6 +146,36 @@ test("il titolo generico degli appunti tolti: «Appunti del 14/11/2026»", () =>
   assert.equal(ERASED_NOTE_TITLE, "Appunti del {data}");
   assert.equal(erasedNoteTitle("2026-11-14"), "Appunti del 14/11/2026");
   assert.equal(erasedNoteTitle("2026-01-05T00:00:00.000Z"), "Appunti del 05/01/2026");
+});
+
+test("un appunto senza testo: «dopo 12 mesi» solo per la conservazione; dopo «Togli … da tutto» la frase neutra", () => {
+  const RETENTION = "Il testo è stato cancellato dopo 12 mesi. Restano i fatti.";
+  const NEUTRAL = "Il testo è stato cancellato. Restano i fatti.";
+  assert.deepEqual([CONTEXT_TEXT.notes.purged, CONTEXT_TEXT.notes.textErased], [RETENTION, NEUTRAL]);
+  const note = (over: Partial<Parameters<typeof purgedNoteText>[0]> = {}) =>
+    purgedNoteText({ title: "Call di avvio", occurredOn: "2025-11-10", createdAt: "2025-11-10T09:00:00.000Z", textPurgedAt: "2026-11-11T02:00:00.000Z", ...over });
+  // La conservazione: più di 12 mesi da quando è stato aggiunto, il titolo com'era. Anche con le date del server.
+  assert.equal(note(), RETENTION);
+  assert.equal(note({ createdAt: new Date("2025-11-10T09:00:00.000Z"), textPurgedAt: new Date("2026-11-11T02:00:00.000Z") }), RETENTION);
+  // «Togli … da tutto» entro i 12 mesi: il titolo generico e la data, tutti e due.
+  const erased = { title: erasedNoteTitle("2026-11-14"), occurredOn: "2026-11-14", createdAt: "2026-11-14T10:00:00.000Z", textPurgedAt: "2026-11-18T15:00:00.000Z" };
+  assert.equal(note(erased), NEUTRAL);
+  // Basta uno dei due segni: il titolo generico su un appunto di più di 12 mesi che la notte non aveva ancora cancellato…
+  assert.equal(note({ title: "Appunti del 10/11/2025", textPurgedAt: "2026-11-10T20:00:00.000Z" }), NEUTRAL);
+  // …o il testo sparito prima dei 12 mesi, anche con un altro titolo: la conservazione non lo fa mai.
+  assert.equal(note({ ...erased, title: "Call di avvio" }), NEUTRAL);
+  // Il confine della conservazione (`created_at` prima di 12 mesi fa, in senso stretto).
+  assert.equal(note({ createdAt: "2025-11-18T10:00:00.000Z", textPurgedAt: "2026-11-18T10:00:00.000Z" }), NEUTRAL);
+  assert.equal(note({ createdAt: "2025-11-18T09:59:59.999Z", textPurgedAt: "2026-11-18T10:00:00.000Z" }), RETENTION);
+  // Nel dubbio la frase neutra, che è sempre vera: date che non si leggono, nessuna data.
+  for (const over of [{ textPurgedAt: null }, { textPurgedAt: "non una data" }, { createdAt: "" }]) assert.equal(note(over), NEUTRAL, JSON.stringify(over));
+});
+
+test("il pannello della fonte prende la frase da purgedNoteText, non più sempre quella dei 12 mesi", () => {
+  const sheet = readFileSync(new URL("../../components/context/source-sheet.tsx", import.meta.url), "utf8");
+  assert.match(sheet, /import \{ purgedNoteText \} from "@\/lib\/context\/people";/);
+  assert.match(sheet, /\) : purged \? \(\s*<p className="text-sm text-muted-foreground">\{purgedNoteText\(source\)\}<\/p>/);
+  assert.doesNotMatch(sheet, /T\.notes\.purged\b/);
 });
 
 test("il pezzo di testo intorno al nome: posizioni come Postgres, spazi ridotti, parole tagliate ai bordi tolte", () => {
