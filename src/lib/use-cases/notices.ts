@@ -83,7 +83,7 @@ export const USE_CASE_NOTICE_TEXT = Object.freeze({
   taskProposed: "Accettala come compito o scartala, nei compiti del progetto. Da sola non diventa un compito.",
   benchAdvice: "Per un ruolo dell'agente c'è un modello che conviene di più. Il confronto e la PR di una riga sono in «Evals e banco di prova», nel progetto.",
   evalsDown: "Le evals di main sono sotto soglia, o giù di almeno 5 punti rispetto alle precedenti. Guarda quali gruppi non passano in «Evals e banco di prova», nel progetto.",
-  contextChanged: "Ci sono fatti nuovi sul cliente che toccano questo use case.",
+  contextChanged: "Sono cambiati i fatti sul cliente che toccano questo use case.",
   answerFromCall: "Una richiesta si può chiudere con un fatto appena confermato.",
   contextSeparator: " · ",
 });

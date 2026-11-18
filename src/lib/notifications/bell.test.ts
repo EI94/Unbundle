@@ -196,7 +196,7 @@ test("(9b) «Il contesto è cambiato» porta alla sezione «Contesto» del proge
   assert.deepEqual([entry.context, entry.title, entry.description, entry.href, entry.unread], [
     "XX-0012 · Ordini automatici",
     "Il contesto è cambiato",
-    "Ci sono fatti nuovi sul cliente che toccano questo use case.",
+    "Sono cambiati i fatti sul cliente che toccano questo use case.",
     `/dashboard/${WS}/use-cases/${UC}/progetto#contesto`,
     true,
   ]);

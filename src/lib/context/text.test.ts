@@ -153,6 +153,7 @@ test("(9b) i testi dei gruppi nuovi sono quelli del piano, al singolare e al plu
   assert.equal(U.more(12), "e altri 12 nel contesto");
   assert.deepEqual([U.novelties, U.known, U.commitments, U.questions, U.open], ["Novità", "Che cosa sappiamo", "Impegni aperti", "Domande aperte", "Apri il contesto"]);
   assert.equal(U.dossierDescription, "Quello che sappiamo del cliente e che tocca questo use case. Lo conferma Lateral Space.");
+  assert.equal(U.empty, "Ancora niente nella memoria del cliente per questo use case.");
   assert.equal(U.packageDelta(1), "Il contesto è cambiato dopo l'ultimo pacchetto (1 novità).");
   assert.equal(U.packageDelta(3), "Il contesto è cambiato dopo l'ultimo pacchetto (3 novità).");
 

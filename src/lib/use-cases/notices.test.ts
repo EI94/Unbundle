@@ -55,7 +55,7 @@ test("contesto: codice e titolo, o il titolo; al massimo 120 caratteri", () => {
 test("(9b) «Il contesto è cambiato» e «Una risposta per «Cosa serve»»: titolo e una frase, mai «caso d'uso», mai conteggi", () => {
   assert.deepEqual(noticeTextOf(n({ kind: "contesto_nuovo" })), {
     title: "Il contesto è cambiato",
-    description: "Ci sono fatti nuovi sul cliente che toccano questo use case.",
+    description: "Sono cambiati i fatti sul cliente che toccano questo use case.",
   });
   assert.deepEqual(noticeTextOf(n({ kind: "dalla_call" })), {
     title: "Una risposta per «Cosa serve»",

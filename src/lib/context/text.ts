@@ -352,6 +352,8 @@ export const CONTEXT_TEXT = Object.freeze({
     more: (n: number) => (n === 1 ? "e un altro nel contesto" : `e altri ${n} nel contesto`),
     open: "Apri il contesto",
     dossierDescription: "Quello che sappiamo del cliente e che tocca questo use case. Lo conferma Lateral Space.",
+    /** La sezione del dossier senza fatti, impegni e domande: c'è lo stesso (l'ancora della campanella la apre). */
+    empty: "Ancora niente nella memoria del cliente per questo use case.",
     packageDelta: (n: number) => `Il contesto è cambiato dopo l'ultimo pacchetto (${n} novità).`,
   }),
   // (9b) Una call o un documento che risponde a una richiesta di «Cosa serve» (§2.2).

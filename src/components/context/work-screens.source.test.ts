@@ -130,6 +130,8 @@ test("la piega: chiusa, prima di «Storia», con il pannello del fatto in sola l
   // Nessun pulsante nella piega: solo il link «Apri il contesto» e i fatti che aprono il pannello.
   assert.doesNotMatch(view, /<Button\b|from "@\/components\/ui\/button"/);
   assert.match(view, /href=\{`\/dashboard\/\$\{workspaceId\}\/contesto`\}/);
+  // Senza niente da mostrare (la sezione del dossier) una riga dal modulo dei testi, sopra il link.
+  assert.match(view, /\{contextFoldShown\(context\) \? null : <p className="text-sm text-muted-foreground">\{T\.useCase\.empty\}<\/p>\}/);
 });
 
 test("il dossier: «Contesto» dopo «Decisioni» e prima di «Pacchetto», con l'ancora della campanella; la riga del pacchetto senza pulsanti nuovi", () => {
@@ -143,7 +145,9 @@ test("il dossier: «Contesto» dopo «Decisioni» e prima di «Pacchetto», con 
   const section = at('<SettingsSection id="contesto"');
   assert.ok(at('<SettingsSection id="decisioni"') < section && section < at('<SettingsSection id="pacchetto"'));
   assert.match(source, /<SettingsSection id="contesto" icon=\{Building2\} title=\{CONTEXT_TEXT\.useCase\.title\} description=\{CONTEXT_TEXT\.useCase\.dossierDescription\}>/);
-  assert.match(source, /\{context && contextFoldShown\(context\) \? \(/, "senza niente da mostrare non c'è");
+  // Con la lettura riuscita la sezione c'è sempre (l'ancora della campanella), anche senza niente: lo dice il contenuto.
+  assert.match(source, /\{context \? \(\s*<SettingsSection id="contesto"/, "la sezione con l'ancora, anche vuota");
+  assert.doesNotMatch(source, /contextFoldShown/);
   assert.match(source, /<UseCaseContextView workspaceId=\{workspaceId\} today=\{romeToday\(\)\} context=\{context\} \/>/, "lo stesso contenuto della piega");
   // Per chi guarda: la persona di «Contesto» dalla sessione (Lateral Space per l'e-mail verificata), dentro un try.
   assert.match(source, /readContextSection\(contextActorFor\(session\.user, access, workspaceId\), useCase\.useCaseId\)/);

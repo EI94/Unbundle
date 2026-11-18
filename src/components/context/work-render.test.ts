@@ -138,6 +138,17 @@ test("la piega «Contesto» senza novità, impegni o domande: i blocchi vuoti no
   assert.equal(new Set(ids).size, ids.length, "nessun id doppio");
 });
 
+test("la sezione «Contesto» del dossier senza fatti, impegni e domande: una riga che lo dice e «Apri il contesto»; con un fatto la riga non c'è", () => {
+  const html = render(createElement(UseCaseContextView, { workspaceId: WS, today: TODAY, context: context({ facts: [], more: 0, novelties: 0, commitments: [], questions: [] }) }));
+  assert.deepEqual(textOf(html), ["Ancora niente nella memoria del cliente per questo use case.", "Apri il contesto"]);
+  assert.match(html, new RegExp(`<a href="/dashboard/${WS}/contesto"[^>]*>Apri il contesto`));
+  const full = render(createElement(UseCaseContextView, { workspaceId: WS, today: TODAY, context: context() }));
+  assert.equal(textOf(full).includes("Ancora niente nella memoria del cliente per questo use case."), false);
+  // Solo domande aperte: c'è qualcosa da mostrare, la riga non c'è.
+  const questionsOnly = render(createElement(UseCaseContextView, { workspaceId: WS, today: TODAY, context: context({ facts: [], more: 0, novelties: 0, commitments: [] }) }));
+  assert.equal(textOf(questionsOnly).includes("Ancora niente nella memoria del cliente per questo use case."), false);
+});
+
 // ─── «Da verificare» ─────────────────────────────────────────────────
 
 const stale = (over: Partial<FactView> = {}): FactView => ({

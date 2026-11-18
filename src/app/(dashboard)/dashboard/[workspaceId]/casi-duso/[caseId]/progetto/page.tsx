@@ -4,7 +4,7 @@ import { EVAL_TEXT, evalSectionDescription } from "@/components/agent-factory/ev
 import { readEvalOverview } from "@/components/agent-factory/eval-load";
 import { EvalSection } from "@/components/agent-factory/eval-section";
 import { UseCaseContextView } from "@/components/context/use-case-context";
-import { contextFoldShown, packageDeltaLine, packageFilesShown } from "@/components/context/view-model";
+import { packageDeltaLine, packageFilesShown } from "@/components/context/view-model";
 import { PageContainer } from "@/components/dashboard/page-container";
 import { SettingsSection } from "@/components/dashboard/settings-section";
 import { canWrite, openShellPage } from "@/components/uc/shell/case-data";
@@ -154,8 +154,9 @@ function DecisionLine({ d }: { d: DecisionView }) {
 }
 
 /**
- * (9b) La sezione «Contesto»: i fatti, gli impegni e le domande del cliente che toccano lo use case, per chi guarda. null
- * senza l'archivio di «Contesto», per chi non apre «Contesto» o se la lettura non riesce: la pagina resta, senza sezione.
+ * (9b) La sezione «Contesto»: i fatti, gli impegni e le domande del cliente che toccano lo use case, per chi guarda (anche
+ * nessuno: la sezione resta, con una riga che lo dice, ed è l'ancora della campanella). null senza l'archivio di
+ * «Contesto», per chi non apre «Contesto» o se la lettura non riesce: la pagina resta, senza sezione.
  */
 async function readContextSection(actor: ContextActor, useCaseId: string): Promise<UseCaseContext | null> {
   try {
@@ -480,7 +481,8 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
           </div>
         </SettingsSection>
 
-        {context && contextFoldShown(context) ? (
+        {/* (9b) Con la lettura riuscita la sezione c'è sempre, anche vuota: la campanella «Il contesto è cambiato» porta qui. */}
+        {context ? (
           <SettingsSection id="contesto" icon={Building2} title={CONTEXT_TEXT.useCase.title} description={CONTEXT_TEXT.useCase.dossierDescription}>
             <UseCaseContextView workspaceId={workspaceId} today={romeToday()} context={context} />
           </SettingsSection>

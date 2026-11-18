@@ -9,7 +9,7 @@ import type { UseCaseContext } from "@/lib/db/queries/context-work";
 import { FactRow, LsLock } from "./fact-row";
 import { FactSheet } from "./fact-sheet";
 import { Mark, type UseCaseOption } from "./fields";
-import { dueText, noveltyTag, contextCommitmentGroups, contextFactGroups, contextFoldNovelties } from "./view-model";
+import { dueText, noveltyTag, contextCommitmentGroups, contextFactGroups, contextFoldNovelties, contextFoldShown } from "./view-model";
 
 const T = CONTEXT_TEXT;
 
@@ -25,6 +25,7 @@ const NO_USE_CASE_OPTIONS: readonly UseCaseOption[] = Object.freeze([]);
  *
  * Un tocco su un fatto apre il pannello in sola lettura (`canEdit` falso): fonte, ultima conferma, use case, e per
  * Lateral Space citazione e storia. Si modifica solo da «Contesto». Nessun pulsante: impegni e domande si chiudono là.
+ * Senza niente da mostrare (solo nel dossier: la piega della scheda allora non c'è) una riga lo dice, sopra il link.
  */
 export function UseCaseContextView({ workspaceId, today, context }: { workspaceId: string; today: string; context: UseCaseContext }) {
   const [openFact, setOpenFact] = useState<string | null>(null);
@@ -107,6 +108,9 @@ export function UseCaseContextView({ workspaceId, today, context }: { workspaceI
           </ul>
         </section>
       ) : null}
+
+      {/* La sezione del dossier c'è anche vuota (l'ancora della campanella): una riga che lo dice. */}
+      {contextFoldShown(context) ? null : <p className="text-sm text-muted-foreground">{T.useCase.empty}</p>}
 
       <Link
         href={`/dashboard/${workspaceId}/contesto`}
