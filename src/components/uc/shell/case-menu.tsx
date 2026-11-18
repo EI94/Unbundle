@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -7,10 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useUcAction } from "@/components/uc/catalog/use-uc-action";
+import { NextStepIconView, NextStepWhy } from "@/components/use-cases/detail/next-step-box";
 import { ActionMenu, type ActionMenuItem } from "@/components/uc/ui/action-menu";
 import { transitionCaseAction } from "@/lib/actions/uc-cases";
 import { stepHiddenOn, type CaseMenuKey, type CaseTrail } from "@/lib/uc/views/case-shell";
 import type { CaseStatus } from "@/lib/uc/vocab";
+import type { NextStepIcon } from "@/lib/use-cases/guided";
 import { cn } from "@/lib/utils";
 
 /**
@@ -90,6 +93,10 @@ export interface CaseStepView {
   caseBase: string;
   /** Il passo apre un pannello della testata invece di cambiare pagina. */
   panel?: { name: "conferma" | "esporta"; value: string };
+  /** (Rilascio 10, §7.4) L'icona accanto al verbo, come nei passi dello use case (`NEXT_STEP_ICON`). */
+  icon?: NextStepIcon;
+  /** (Rilascio 10, §7.4) Il perché del passo, nel «?» accanto al pulsante (`NextStepWhy`); null senza niente da dire. */
+  why?: string | null;
 }
 
 function withParam(pathname: string, current: URLSearchParams, name: string, value: string): string {
@@ -101,22 +108,35 @@ function withParam(pathname: string, current: URLSearchParams, name: string, val
 /**
  * Il pulsante pieno (DESIGN §2.7, `nextStepFor`). Si nasconde sulla pagina in
  * cui porta e su Impostazioni; resta sulle ancore di Panoramica e sui passi
- * che aprono un pannello (`stepHiddenOn`).
+ * che aprono un pannello (`stepHiddenOn`). (Rilascio 10, §7.4) Come il passo
+ * dello use case: l'icona accanto al verbo e, nella testata, il «?» con il
+ * perché (`NextStepWhy`); nella barra fissa (`size="sm"`) solo icona e verbo.
  */
 export function CaseStepButton({ step, size = "default", className }: { step: CaseStepView; size?: "default" | "sm"; className?: string }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const whyId = useId();
   if (stepHiddenOn({ href: step.href, caseBase: step.caseBase, panel: !!step.panel }, pathname)) return null;
   const href = step.panel ? withParam(pathname, searchParams, step.panel.name, step.panel.value) : step.href;
-  return (
+  const why = size === "default" && step.why ? step.why : null;
+  const button = (
     <Button
       size={size}
-      className={cn(size === "default" ? "h-11 px-4 sm:h-8 sm:px-2.5" : "min-h-8", className)}
-      render={<Link href={href} scroll={!step.panel} />}
+      data-slot="case-step"
+      className={cn(size === "default" ? "h-11 px-4 sm:h-8 sm:px-2.5" : "min-h-8", why ? "min-w-0 flex-1 sm:flex-none" : className)}
+      render={<Link href={href} scroll={!step.panel} aria-describedby={why ? whyId : undefined} />}
       nativeButton={false}
     >
+      {step.icon ? <NextStepIconView icon={step.icon} /> : null}
       {step.label}
     </Button>
+  );
+  if (!why) return button;
+  return (
+    <span className={cn("flex min-w-0 items-center gap-1", className)}>
+      {button}
+      <NextStepWhy id={whyId} text={why} />
+    </span>
   );
 }
 
@@ -137,7 +157,7 @@ export function CaseMenu({ items, className }: { items: readonly CaseMenuEntry[]
   const entries: ActionMenuItem[] = items.map((item) =>
     item.href ? { label: item.label, href: item.href } : { label: item.label, onSelect: () => router.push(withParam(pathname, searchParams, "esporta", "1"), { scroll: false }) },
   );
-  return <ActionMenu items={entries} label="Altre azioni sul dossier" className={className} />;
+  return <ActionMenu items={entries} label="Altre azioni sulla realizzazione" className={className} />;
 }
 
 // ── Pannelli dall'indirizzo ───────────────────────────────────────────
@@ -184,7 +204,7 @@ export function CaseUrlPanels({
   function confirm() {
     if (!transition) return;
     run(() => transitionCaseAction(workspaceId, caseId, { to: transition.to, reason: null }), {
-      success: `Il caso ora è «${transition.statusLabel}».`,
+      success: `La realizzazione ora è «${transition.statusLabel}».`,
       onSuccess: () => close("conferma"),
     });
   }

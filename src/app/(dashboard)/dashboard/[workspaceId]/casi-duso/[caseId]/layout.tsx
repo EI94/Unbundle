@@ -13,7 +13,7 @@ import { UcAccessError } from "@/lib/db/queries/uc-access";
 import { CASE_STATUS_LABEL, isCasePastG1 } from "@/lib/uc/case-state";
 import { exportChoices } from "@/lib/uc/export/request";
 import { CASE_STATUS_TONE, canOpenShellPage, caseHeadAlert, caseMenuFor, caseTabsFor, caseTrail, showsReadOnlyBadge, transitionHint } from "@/lib/uc/views/case-shell";
-import { caseNextSteps, nextStepFor, resolveStepHref, type NextStep } from "@/lib/uc/views/next-step";
+import { NEXT_STEP_ICON, caseNextSteps, nextStepFor, resolveStepHref, type NextStep } from "@/lib/uc/views/next-step";
 import { isLsViewer } from "@/lib/uc/views/status-groups";
 import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
 
@@ -64,6 +64,9 @@ export default async function CaseLayout({ children, params }: { children: React
         href: resolveStepHref(base, primary.href),
         caseBase: base,
         panel: primary.transition ? { name: "conferma", value: primary.transition } : primary.id === "scarica_catalogo" ? { name: "esporta", value: "1" } : undefined,
+        // (Rilascio 10, §7.4) L'icona e il «?» come il passo dello use case.
+        icon: NEXT_STEP_ICON[primary.id],
+        why: primary.detail,
       }
     : null;
   const transitionStep = steps.find((s) => s.owner === "me" && s.transition && usable(s));

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { CaseRole } from "../vocab.ts";
-import { caseNextSteps, myNextSteps, nextStepFor, resolveStepHref, whoseTurn, type NextStep, type NextStepInput } from "./next-step.ts";
+import { NEXT_STEP_ICON, caseNextSteps, myNextSteps, nextStepFor, resolveStepHref, whoseTurn, type NextStep, type NextStepInput } from "./next-step.ts";
 
 const NOW = new Date("2026-10-14T10:00:00Z");
 
@@ -50,12 +50,12 @@ test("row 1: a closed case has no step for anyone", () => {
   for (const roles of [LEAD, AN, OWN, PRIV, DEV]) {
     assert.deepEqual(steps({ status: "chiuso", unsentMust: 10, toVerifyForMe: 5, mySignaturesPending: [{ kind: "via", otherSideSigned: true }] }, roles), []);
   }
-  assert.equal(whoseTurn([], input({ status: "chiuso" })), "Caso chiuso: si può solo leggere.");
+  assert.equal(whoseTurn([], input({ status: "chiuso" })), "Realizzazione chiusa: si può solo leggere.");
 });
 
 test("row 2: a paused case only resumes, for the lead", () => {
   const paused = { status: "sospeso" as const, statusBeforeSuspension: "raccolta" as const, statusChangedAt: "2026-10-03T09:00:00Z", unsentMust: 10, toVerifyForMe: 5 };
-  assert.deepEqual(brief(primary(paused, LEAD)), { label: "Riprendi il caso", detail: "In pausa dal 3 ott.", href: "/impostazioni#stato", owner: "me" });
+  assert.deepEqual(brief(primary(paused, LEAD)), { label: "Riprendi la realizzazione", detail: "In pausa dal 3 ott.", href: "/impostazioni#stato", owner: "me" });
   assert.equal(primary(paused, AN), null, "nothing to verify while paused");
   assert.deepEqual(steps(paused, OWN).map((s) => s.owner), ["ls"]);
   assert.equal(whoseTurn(steps(paused, OWN), input(paused)), null, "the header notice explains the pause");
@@ -100,7 +100,8 @@ test("row 6: ready for development, confirmed in a dialog", () => {
   const s = primary({ status: "pronto_sviluppo", catalog: { version: 1, frozenAt: "2026-10-03" } }, LEAD);
   assert.deepEqual(s && { ...brief(s), transition: s.transition }, {
     label: "Avvia lo sviluppo",
-    detail: "Il catalogo v1 è pronto.",
+    // (Rilascio 10, §7.4) Niente «v1» a schermo.
+    detail: "Il catalogo validato è pronto.",
     href: "?conferma=in_sviluppo",
     owner: "me",
     transition: "in_sviluppo",
@@ -160,7 +161,8 @@ test("row 11: Lateral Space signed the proposal, the client did not", () => {
   const review = { pendingGateReview: { lsSigned: true, clientSigned: false, lsSignedAt: "2026-10-03T09:00:00Z" } };
   assert.deepEqual(brief(primary(review, LEAD)), { label: "Manda il link per firmare", detail: "Hai firmato il 3 ott. Manca il responsabile del cliente.", href: "/via", owner: "me" });
   assert.equal(whoseTurn(steps(review, AN), input(review)), "Tocca al cliente: manca la firma del responsabile del cliente.");
-  assert.equal(whoseTurn(steps(review, LEAD), input(review)), "Tocca anche al cliente: manca la firma del responsabile del cliente.");
+  // (Rilascio 10, §1 regola 2) Chi ha un passo suo non vede «Tocca anche a …»: basta il pulsante pieno.
+  assert.equal(whoseTurn(steps(review, LEAD), input(review)), null);
   // The client owner who must sign sees their own step, not «Tocca al cliente».
   const ownerView = { ...review, mySignaturesPending: [{ kind: "via" as const, otherSideSigned: true }] };
   assert.equal(primary(ownerView, OWN)?.label, "Firma il via allo sviluppo");
@@ -174,7 +176,7 @@ test("row 12: the client owner names the privacy signer", () => {
 
 test("row 13: the developer downloads the validated catalog after the go-ahead", () => {
   const after = { status: "in_sviluppo" as const, catalog: { version: 1, frozenAt: "2026-10-03" } };
-  assert.deepEqual(brief(primary(after, DEV)), { label: "Scarica il catalogo validato", detail: "Catalogo v1, congelato il 3 ott.", href: "?esporta=1", owner: "me" });
+  assert.deepEqual(brief(primary(after, DEV)), { label: "Scarica il catalogo validato", detail: "Catalogo congelato il 3 ott.", href: "?esporta=1", owner: "me" });
   assert.equal(primary({ status: "raccolta" }, DEV), null, "nothing before the go-ahead");
   assert.equal(primary({ status: "sospeso", statusBeforeSuspension: "in_sviluppo" }, DEV), null, "a paused case only resumes");
 });
@@ -182,7 +184,7 @@ test("row 13: the developer downloads the validated catalog after the go-ahead",
 test("row 14: the forward steps after development, confirmed in a dialog", () => {
   const cases = [
     ["backtest", "Passa alla prova sul passato"],
-    ["collaudo", "Passa al collaudo"],
+    ["collaudo", "Passa alla prova con il cliente"],
     ["stabilizzazione", "Avvia il rodaggio"],
     ["in_esercizio", "Metti in uso"],
     ["misura_roi", "Misura il valore"],
@@ -220,7 +222,7 @@ test("the first rule wins: sending and signing come before verifying", () => {
   assert.equal(primary(seeded, AN)?.label, "Verifica 160 risposte");
   assert.deepEqual(myNextSteps(steps(seeded, LEAD)).map((s) => s.label), ["Invia le domande", "Verifica 160 risposte", "Sciogli 2 blocchi"]);
   assert.deepEqual(myNextSteps(steps(seeded, AN)).map((s) => s.label), ["Verifica 160 risposte"], "the analyst only has their own steps");
-  assert.equal(whoseTurn(steps(seeded, LEAD), input(seeded)), "Tocca anche ai referenti: 40 domande sono da loro. I promemoria partono da soli.");
+  assert.equal(whoseTurn(steps(seeded, LEAD), input(seeded)), null, "(rilascio 10) mai «Tocca anche a …»");
   assert.equal(whoseTurn(steps(seeded, OWN), input(seeded)), "Tocca a Lateral Space: stanno verificando 160 risposte.");
 });
 
@@ -235,8 +237,8 @@ test("days 1, 8 and 11 take the elided article", () => {
   assert.equal(signed("2026-10-08", LEAD), "Hai firmato l'8 ott. Manca il responsabile del cliente.");
   assert.equal(signed("2026-10-11", AN), "Lateral Space ha firmato l'11 ott. Manca il responsabile del cliente.");
   const catalog = (day: string) => primary({ status: "in_sviluppo", catalog: { version: 1, frozenAt: day } }, DEV)?.detail;
-  assert.equal(catalog("2026-10-01"), "Catalogo v1, congelato l'1 ott.");
-  assert.equal(catalog("2026-10-23"), "Catalogo v1, congelato il 23 ott.");
+  assert.equal(catalog("2026-10-01"), "Catalogo congelato l'1 ott.");
+  assert.equal(catalog("2026-10-23"), "Catalogo congelato il 23 ott.");
   assert.equal(primary({ toVerifyForMe: 3, toVerifyMust: 0, toVerifyTotal: 3, oldestToVerifyAt: "2026-10-01T08:00:00Z" }, AN)?.detail, "La più vecchia è dell'1 ott.");
 });
 
@@ -281,4 +283,21 @@ test("hrefs are relative to the dossier root", () => {
   assert.equal(resolveStepHref(base, "?conferma=in_sviluppo"), `${base}?conferma=in_sviluppo`);
   assert.equal(resolveStepHref(base, "/"), base);
   assert.equal(resolveStepHref(base, "/impostazioni#stato"), `${base}/impostazioni#stato`);
+});
+
+test("(rilascio 10, §7.4) ogni passo ha la sua icona, la stessa dei passi dello use case", () => {
+  const ids = ["riprendi", "riconferma_via", "firma", "proponi_via", "avvia_sviluppo", "aggiungi_referenti", "invia_domande", "verifica", "sciogli_blocchi", "manda_link_firma", "indica_firmatario_privacy", "scarica_catalogo", "passo_avanti", "risposte_referenti"] as const;
+  assert.deepEqual(Object.keys(NEXT_STEP_ICON).sort(), [...ids].sort());
+  assert.equal(NEXT_STEP_ICON.verifica, "verifica");
+  assert.equal(NEXT_STEP_ICON.invia_domande, "chiedi");
+});
+
+test("(rilascio 10, §1 regola 2) «Tocca a …» solo quando non tocca a chi guarda, mai «Tocca anche»", () => {
+  const busy = { unsentMust: 4, toVerifyForMe: 2, toVerifyTotal: 5, waitingOnReferents: 3, pendingGateReview: { lsSigned: true, clientSigned: false } };
+  for (const roles of [LEAD, AN, OWN, PRIV, DEV, BOARD, OBS]) {
+    const s = steps(busy, roles);
+    const line = whoseTurn(s, input(busy));
+    if (myNextSteps(s).length > 0) assert.equal(line, null, roles.join());
+    assert.doesNotMatch(line ?? "", /Tocca anche/, roles.join());
+  }
 });
