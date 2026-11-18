@@ -87,6 +87,7 @@ type IntelligenceActions = typeof import("../actions/intelligence.ts");
 let q: (text: string, params?: unknown[]) => Promise<Record<string, unknown>[]>;
 let renderToStaticMarkup: (element: unknown) => string;
 let createElement: typeof import("react").createElement;
+let suspense: unknown;
 let pathnameContext: import("react").Context<string | null>;
 let pages: Record<"portfolio" | "review" | "submit" | "plan" | "settings" | "overview" | "program" | "intelligence" | "share" | "newUseCase", Page>;
 
@@ -133,10 +134,20 @@ async function open(
   }
 }
 
+/**
+ * (Rilascio 10) La Home sta in un `Suspense` con il suo scheletro, che `renderToStaticMarkup` mostrerebbe da solo: qui
+ * si legge quello che il `Suspense` aspetta, la Home vera.
+ */
+async function settled(element: unknown): Promise<unknown> {
+  const node = element as { type?: unknown; props?: { children?: { type: (props: unknown) => unknown; props: unknown } } } | null;
+  if (node?.type !== suspense || !node.props?.children) return element;
+  return node.props.children.type(node.props.children.props);
+}
+
 async function html(page: Page, person: Person | null, params: Record<string, string>, searchParams: Record<string, string> = {}): Promise<string> {
   const result = await open(page, person, params, searchParams);
   assert.equal(result.digest, null, `atteso HTML, non ${result.digest}`);
-  return renderToStaticMarkup(result.element);
+  return renderToStaticMarkup(await settled(result.element));
 }
 
 /** Il redirect atteso: `redirect()` di Next, 307, mai `permanentRedirect()` (308). */
@@ -285,6 +296,7 @@ before(async () => {
   q = (text, params = []) => sql.query(text, params) as Promise<Record<string, unknown>[]>;
   const react = await import("react");
   createElement = react.createElement;
+  suspense = react.Suspense;
   const { renderToStaticMarkup: toHtml } = (await import("react-dom/server")) as unknown as { renderToStaticMarkup: (element: unknown) => string };
   const { AppRouterContext } = (await import("next/dist/shared/lib/app-router-context.shared-runtime.js")) as unknown as {
     AppRouterContext: import("react").Context<object | null>;

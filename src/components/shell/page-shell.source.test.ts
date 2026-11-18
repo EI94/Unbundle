@@ -41,7 +41,7 @@ const OWN_FRAME: Record<string, string> = {
   [`${W}/setup/leadership/page.tsx`]: "la chat dell'Intervista iniziale, alta quanto lo schermo, con la colonna laterale",
 };
 
-/** La Home e il suo alias (ondata 2b): disegnano con `homePage`, i cui due rami stanno in `PageContainer`. */
+/** La Home e il suo alias (ondata 2b): disegnano con `homePage` (o `HomeRoute`, che la chiama), i cui due rami stanno in `PageContainer`. */
 const HOME_PAGES = [`${W}/page.tsx`, `${W}/programma/page.tsx`];
 
 /** Le pagine che disegnano con un componente che sta in `PageContainer`. */
@@ -63,7 +63,7 @@ test("ogni pagina della dashboard sta in PageContainer, direttamente o con il co
       continue;
     }
     if (path in OWN_FRAME) continue;
-    if (HOME_PAGES.includes(path) && /\bhomePage\(/.test(source)) continue;
+    if (HOME_PAGES.includes(path) && /\bhomePage\(|<HomeRoute\b/.test(source)) continue;
     const via = VIA.find(([pattern]) => pattern.test(path));
     if (via && new RegExp(`<(${via[1]})\\b`).test(source)) continue;
     missing.push(path);

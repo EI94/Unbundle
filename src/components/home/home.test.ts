@@ -253,10 +253,13 @@ test("`/programma` è un alias della Home: la stessa pagina, con i suoi `?apri=`
   const app = new URL("../../app/(dashboard)/dashboard/[workspaceId]/", import.meta.url);
   const home = readFileSync(new URL("page.tsx", app), "utf8");
   const alias = readFileSync(new URL("programma/page.tsx", app), "utf8");
-  for (const source of [home, alias]) {
-    assert.match(source, /const \{ session, access \} = await requireWorkspacePage\(workspaceId\);\s*return homePage\(\{ session, access, searchParams: await searchParams \}\);/, "il learner va ai suoi corsi");
-    assert.match(source, /import \{ homePage \} from "@\/components\/home\/home-route";/);
-  }
+  // La Home e il suo alias controllano l'accesso prima di tutto (il learner va ai suoi corsi), poi disegnano la Home:
+  // la Home dentro un Suspense con il suo scheletro (home-page.test.ts), l'alias con il suo `loading.tsx`.
+  assert.match(home, /const \{ session, access \} = await requireWorkspacePage\(workspaceId\);[^\n]*\n?\s*return \(\s*<Suspense fallback=\{<HomeSkeleton \/>\}>\s*<HomeRoute session=\{session\} access=\{access\} searchParams=\{searchParams\} \/>\s*<\/Suspense>\s*\);/);
+  assert.match(home, /import \{ HomeRoute \} from "@\/components\/home\/home-route";/);
+  assert.match(alias, /const \{ session, access \} = await requireWorkspacePage\(workspaceId\);\s*return homePage\(\{ session, access, searchParams: await searchParams \}\);/, "il learner va ai suoi corsi");
+  assert.match(alias, /import \{ homePage \} from "@\/components\/home\/home-route";/);
+  assert.match(readFileSync(new URL("./home-route.tsx", import.meta.url), "utf8"), /export async function HomeRoute\([\s\S]*?\) \{\s*return homePage\(\{ session, access, searchParams: await searchParams \}\);\s*\}/);
   // I quattordici pannelli di prima restano tutti, con il loro nome; `scenari` porta alla curva.
   const before = ["valore", "in-uso", "dipendente", "indice", "curva", "in_uso", "in_realizzazione", "da_avviare", "supporto", "formazione", "rivedere", "persone", "obiettivi", "sal"];
   for (const name of before) assert.equal(panels.programPanelOf(name), name, name);

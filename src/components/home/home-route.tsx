@@ -17,3 +17,19 @@ export async function homePage({ session, access, searchParams }: { session: Ses
   const apri = searchParams.apri;
   return <ProgramHome data={data} initialPanel={typeof apri === "string" ? apri : null} />;
 }
+
+/**
+ * La Home come componente server, per la pagina che la mette in un `Suspense` con lo scheletro (`HomeSkeleton`): la
+ * cornice e lo scheletro arrivano subito, la Home quando è letta.
+ */
+export async function HomeRoute({
+  session,
+  access,
+  searchParams,
+}: {
+  session: Session;
+  access: WorkspaceAccess;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  return homePage({ session, access, searchParams: await searchParams });
+}
