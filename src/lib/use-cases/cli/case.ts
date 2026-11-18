@@ -77,7 +77,7 @@ LIMIT 1`),
   if (!row.case_id) {
     // Che il codice esista lo dice solo a chi vede tutti i codici nella pagina: per gli altri è «non trovato».
     if (!abilities.canSeeAllCodes) return { ok: false, response: cliError(404, "non_trovato", NOT_FOUND) };
-    return { ok: false, response: cliError(409, "senza_dossier", "Lo use case non ha ancora un dossier: si avvia dalla sua pagina in Unbundle.") };
+    return { ok: false, response: cliError(409, "senza_dossier", "Il caso non ha ancora una realizzazione: si avvia dalla sua pagina in Unbundle.") };
   }
   let caseAccess: CaseAccess | null;
   try {

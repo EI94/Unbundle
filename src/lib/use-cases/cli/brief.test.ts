@@ -188,7 +188,7 @@ test("lo strato progetto: i 10 argomenti nell'ordine, «Da scegliere» dove manc
   const text = composeProjectLayer(input({ open: project({ status: "in_corso", topics: topics(8) }) }));
   assert.equal((text.match(/^## /gm) ?? []).length, 11);
   assert.equal((text.match(/^Da scegliere\.$/gm) ?? []).length, 2);
-  assert.match(text, /Costruzione: circa 90 ore\. Esercizio: circa 60 € al mese\./);
+  assert.match(text, /Costruzione: circa 90 ore\. Costo al mese: circa 60 €\./);
   assert.equal(composeProjectLayer(input({ approved: null })), "PX-0001: il progetto non è ancora impostato.");
   for (const topic of SETUP_TOPICS) assert.ok(SETUP_GUIDE[topic].endsWith("."), topic);
 });
@@ -209,7 +209,7 @@ test("lo strato domande: le proposte a chi vede «Cosa serve», senza nomi; per 
   assert.match(reasoned, /\n- 11\/11\/2026 · Chi copre il turno di una persona\? \(perché: una persona è in ferie ad agosto\)\n/);
   assert.doesNotMatch(reasoned, /Olga|Cliente/);
   const hidden = composeQuestionsLayer({ code: "PX-0042", openNeeds: null, proposals: null, namesToHide: [] });
-  assert.equal(hidden, "PX-0042 · domande\n«Cosa serve»: le esigenze le vede chi valuta lo use case.\nProposte dei coding agent: le vede chi valuta lo use case.");
+  assert.equal(hidden, "PX-0042 · domande\n«Cosa serve»: le informazioni le vede chi valuta il caso.\nProposte dei coding agent: le vede chi valuta il caso.");
 });
 
 // ─── (9b) Il contesto del cliente (RILASCIO-9b-COSTRUZIONE.md §2.5) ───

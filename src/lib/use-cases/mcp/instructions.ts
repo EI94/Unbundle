@@ -29,7 +29,7 @@ export const TEAM_MCP_BENEFITS_LINE =
 
 /** La riga 8: «Cosa serve» con list_needs e save_needs, senza doppioni e senza cancellare. */
 export const TEAM_MCP_NEEDS_LINE =
-  "8. «Cosa serve» (requisiti e prossimi passi): leggi con list_needs, salva con save_needs, fino a 50 per volta. Usa importKey per non creare doppioni. Le esigenze non si cancellano: si archiviano con il motivo.";
+  "8. «Cosa serve» (informazioni e scadenze): leggi con list_needs, salva con save_needs, fino a 50 per volta. Usa importKey per non creare doppioni. Le informazioni non si cancellano: si archiviano con il motivo.";
 
 /**
  * La riga 9, riscritta nel rilascio 9b (docs/contesto/RILASCIO-9b-COSTRUZIONE.md §2.7): la memoria del cliente si legge

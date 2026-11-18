@@ -1269,11 +1269,11 @@ test("save_needs: ogni errore si trova prima di scrivere; nessuna scrittura e la
     "items.2.useCases.0": "Use case non trovato.",
     "items.2.useCases.1": "Scrivi un codice come XX-0012 oppure l'id di uno use case.",
     "items.3.status": "Questo stato non vale per questo tipo.",
-    "items.4.importKey": "Questa esigenza è archiviata.",
+    "items.4.importKey": "Questa informazione è archiviata.",
     "items.5.id": NEED_TWICE_MESSAGE,
     "items.6.importKey": "Nessuna esigenza con questa chiave da archiviare.",
     "items.7.importKey": NEED_TWICE_MESSAGE,
-    "items.8.type": "Obbligatorio per un'esigenza nuova.",
+    "items.8.type": "Obbligatorio per un'informazione nuova.",
   });
   for (const name of ["createNeed", "updateNeed", "archiveNeed", "linkNeed", "unlinkNeed"]) assert.equal(h.service[name], undefined, name);
   assert.equal(h.requests.rows.size, 0, "chiave liberata");

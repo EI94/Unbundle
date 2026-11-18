@@ -260,7 +260,7 @@ test("il responsabile del cliente legge e non scrive; chi non è nel team non ve
   assert.equal((await call("context?caso=PX-0042", { token: tokens.owner })).status, 200);
   // Come nella scheda: chi non vede «Cosa serve» non vede nemmeno le proposte dei coding agent.
   const domande = String((await call("context?caso=PX-0042&strato=domande", { token: tokens.owner })).json.testo);
-  assert.match(domande, /Proposte dei coding agent: le vede chi valuta lo use case\./);
+  assert.match(domande, /Proposte dei coding agent: le vede chi valuta il caso\./);
   assert.ok(!domande.includes("Chi approva le eccezioni di prezzo?"));
   assert.doesNotMatch(String((await call("context?caso=PX-0042", { token: tokens.owner })).json.testo), /proposte? da un coding agent/);
   assert.equal((await call("setup?caso=PX-0042", { token: tokens.owner })).status, 403, "la guida dell'impostazione è del team che scrive");

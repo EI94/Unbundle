@@ -93,7 +93,7 @@ export function cleanClientLabel(input: unknown): string {
 /** Gli ambiti di un token: `cli`, più il caso per il token di un caso solo. */
 export function cliScopes(useCaseId?: string | null): string[] {
   if (!useCaseId) return [CLI_SCOPE];
-  if (!UUID.test(useCaseId)) throw new Error("Use case non valido");
+  if (!UUID.test(useCaseId)) throw new Error("Caso non valido");
   return [CLI_SCOPE, `${CLI_CASE_SCOPE_PREFIX}${useCaseId}`];
 }
 
