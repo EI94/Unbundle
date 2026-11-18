@@ -156,11 +156,11 @@ test("i testi della Home: «use case» e mai «caso d'uso», «proposta», codic
   assert.equal(HOME_TEXT.rows.sal, "SAL (stato di avanzamento)", "la prima volta in pagina, per esteso");
 });
 
-test("le date e «Tocca a»: «1° dicembre», «Tocca ad AI Builder.»", () => {
+test("le date e «Tocca a»: «1° dicembre», «Tocca ad Azienda Prova.»", () => {
   assert.equal(dayMonth("2026-11-03"), "3 novembre");
   assert.equal(dayMonth("2026-12-01"), "1° dicembre");
   assert.equal(turnTo("Cliente Demo"), "Tocca a Cliente Demo.");
-  assert.equal(turnTo("  AI   Builder "), "Tocca ad AI Builder.");
+  assert.equal(turnTo("  Azienda   Prova "), "Tocca ad Azienda Prova.");
   assert.deepEqual([0, 1, 2, 3, 4].map(startOrdinal), ["primo", "secondo", "terzo", "quarto", "quinto"]);
 });
 
