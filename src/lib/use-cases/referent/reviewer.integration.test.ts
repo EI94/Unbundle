@@ -307,8 +307,11 @@ test("«Correggi l'email» di un referente solo dell'hub: il vecchio link non va
 
   // Lo stesso giorno dell'email al vecchio indirizzo «Manda un promemoria» parte: è l'unico modo di
   // dare il link al nuovo indirizzo. Un orario fisso nella finestra di Roma, con l'email di prima alle 9:40.
-  const { nextRomeSendWindowStart } = await import("../../uc/calendar.ts");
-  const at = new Date(nextRomeSendWindowStart(new Date()).getTime() + 60 * 60_000);
+  const { inRomeSendWindow, nextRomeSendWindowStart } = await import("../../uc/calendar.ts");
+  // Un'ora dopo l'apertura della finestra; se adesso è l'ultima ora della finestra (17-18), l'ora dopo è fuori:
+  // allora la finestra del giorno lavorativo dopo. Così la prova non dipende dall'ora in cui gira.
+  let at = new Date(nextRomeSendWindowStart(new Date()).getTime() + 60 * 60_000);
+  if (!inRomeSendWindow(at)) at = new Date(nextRomeSendWindowStart(at).getTime() + 60 * 60_000);
   await q(`UPDATE use_case_referent_requests SET last_email_at = $2::timestamptz WHERE id = $1::uuid`, [state.requestId, new Date(at.getTime() - 20 * 60_000).toISOString()]);
   ok(await referents.remindReferentRequest(as("builder"), ids.useCase, state.requestId, await versionOf(state.requestId), { env: ENV, now: at }), "promemoria al nuovo indirizzo");
   const mailer = fakeMailer();
