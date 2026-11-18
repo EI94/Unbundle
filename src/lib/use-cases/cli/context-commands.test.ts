@@ -117,7 +117,7 @@ test("impara: gli esiti di §2.5 e quello che resta nel registro (solo esito e i
 const SOURCES: AskSource[] = [
   { n: 1, kind: "fatto", label: "Call 14 nov", date: "2026-11-15", excerpt: "Il gestionale esporta le fatture solo in CSV, ogni notte.", fact: { source: "call", on: "2026-11-14" } },
   { n: 2, kind: "documento", label: "Procedura di Rossi.pdf", date: "2026-11-10", excerpt: "Le fatture le controlla Mario Rossi ogni mattina." },
-  { n: 3, kind: "discovery", label: "Discovery", date: null, excerpt: "Organico: 42 persone" },
+  { n: 3, kind: "discovery", label: "Intervista iniziale", date: null, excerpt: "Organico: 42 persone" },
 ];
 const hide = (text: string) => text.replace(/Mario Rossi|Rossi/g, "una persona");
 
@@ -155,7 +155,8 @@ test("contesto: «Non lo sappiamo ancora.»; senza l'ok la frase dell'ok e i bra
   const search = askResponse({ status: "solo_ricerca", sources: SOURCES }, hide);
   assert.equal(search.testo.split("\n")[0], "Per una risposta scritta serve l'ok del cliente ai fornitori di AI. Ecco che cosa ho trovato:");
   assert.equal(search.testo.split("\n").length, 4);
-  assert.match(search.testo, /\n\[3\] Discovery · Discovery · Organico: 42 persone$/);
+  // (Rilascio 10, §4) La Discovery si chiama «Intervista iniziale».
+  assert.match(search.testo, /\n\[3\] Intervista iniziale · Organico: 42 persone$/);
   assert.deepEqual([search.dati.stato, search.dati.risposta, search.dati.fonti.length], ["solo_ricerca", null, 3]);
   assert.deepEqual(askResponse({ status: "niente" }, hide), { testo: "Non ho trovato niente su questo.", dati: { stato: "niente", risposta: null, fonti: [] } });
 });

@@ -88,7 +88,7 @@ export default async function ContextRoute({
 
   return (
     <PageContainer size="narrow">
-      <ContextPage {...shell} tab="memoria" addNotesInHeader={!isMemoryEmpty(memory)}>
+      <ContextPage {...shell} tab="memoria" addNotesInHeader={!isMemoryEmpty(memory)} pendingProposals={lateralSpace ? memory.counts.openProposals : 0}>
         <MemoryView
           workspaceId={workspaceId}
           today={today}

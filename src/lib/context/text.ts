@@ -13,18 +13,22 @@ export const CONTEXT_TEXT = Object.freeze({
   page: Object.freeze({
     title: "Contesto",
     tabMemory: "Memoria",
-    tabNotes: "Appunti",
-    tabDocuments: "Documenti",
+    // (Rilascio 10, §4) Le fonti del contesto si chiamano «Fonti», per Lateral Space e per il cliente.
+    tabNotes: "Fonti",
+    tabDocuments: "Fonti",
     addNotes: "Aggiungi appunti",
     writeFact: "Scrivi un fatto",
     notReady: "Il contesto si sta preparando. Riprova tra qualche minuto.",
     emptyTitle: "Ancora niente in memoria",
     emptyBodyLs: "Aggiungi gli appunti di una call: Unbundle li legge e propone i fatti. Confermi con un clic.",
     emptyBodyClient: "Qui compare quello che sappiamo dell'azienda, con la fonte di ogni cosa.",
-    errorTitle: "Contesto non disponibile",
-    errorBody: "La pagina non si è caricata. Riprova tra poco: quello che è già salvato resta salvato.",
+    // (Rilascio 10, §4) Le parole di ogni pagina che non si carica.
+    errorTitle: "Questa pagina non si è caricata.",
+    errorBody: "Quello che hai già salvato resta salvato.",
     retry: "Riprova",
     pending: (n: number) => (n === 1 ? "1 proposta da confermare" : `${n} proposte da confermare`),
+    // (Rilascio 10, §3.7) Il pulsante pieno della testata quando ci sono proposte: «Conferma N proposte».
+    confirmProposals: (n: number) => (n === 1 ? "Conferma 1 proposta" : `Conferma ${n} proposte`),
     open: "Apri",
     reading: "Leggo gli appunti…",
     readingOf: (i: number, n: number) => `Leggo gli appunti… ${i} di ${n}`,
@@ -38,7 +42,8 @@ export const CONTEXT_TEXT = Object.freeze({
     regole: "Regole e vincoli",
     parole: "Parole del cliente",
     domande: "Domande aperte",
-    prossimiPassi: "Prossimi passi",
+    // (Rilascio 10, §4) Le promesse di una call sono «Impegni», come nella 9b.
+    prossimiPassi: "Impegni",
   }),
   brief: Object.freeze({ title: "In breve", updated: (date: string) => `Aggiornato il ${date}` }),
   // I dati della Discovery, letti dal vivo: le righe che la Memoria mostra con la fonte «Discovery».
@@ -56,7 +61,8 @@ export const CONTEXT_TEXT = Object.freeze({
     boundaryExcluded: (items: string) => `escluse ${items}`,
     boundary: (parts: string) => `Perimetro: ${parts}`,
     horizon: (value: string) => `Orizzonte: ${value}`,
-    goalTag: Object.freeze({ goal: "Goal", objective: "Obiettivo", key_result: "Risultato chiave" }),
+    // (Rilascio 10, §4) Obiettivo · Risultato chiave · KPI: mai «Goal».
+    goalTag: Object.freeze({ goal: "Obiettivo", objective: "Obiettivo", key_result: "Risultato chiave" }),
   }),
   novelties: Object.freeze({ title: "Novità per te", tagNew: "Nuovo", tagChanged: "Cambiato", more: (n: number) => (n === 1 ? "e un'altra" : `e altre ${n}`) }),
   fact: Object.freeze({
@@ -68,7 +74,8 @@ export const CONTEXT_TEXT = Object.freeze({
     sourceCall: (date: string) => `Call ${date}`,
     sourceDocument: (date: string) => `Documento ${date}`,
     sourceManual: "Scritto a mano",
-    sourceDiscovery: "Discovery",
+    // (Rilascio 10, §4) La Discovery a schermo è l'«Intervista iniziale».
+    sourceDiscovery: "Intervista iniziale",
     sourceCallWord: "Call",
     sourceDocumentWord: "Documento",
     sourceNotes: (date: string) => `Appunti ${date}`,
@@ -134,7 +141,7 @@ export const CONTEXT_TEXT = Object.freeze({
     limit: "Troppe domande in poco tempo. Riprova tra qualche minuto.",
     tooShort: "Scrivi una domanda.",
     close: "Chiudi",
-    kind: Object.freeze({ fatto: "Fatto", discovery: "Discovery", appunti: "Appunti", documento: "Documento", referente: "Risposta del referente", decisione: "Decisione" }),
+    kind: Object.freeze({ fatto: "Fatto", discovery: "Intervista iniziale", appunti: "Appunti", documento: "Documento", referente: "Risposta del referente", decisione: "Decisione" }),
   }),
   add: Object.freeze({
     title: "Aggiungi appunti",

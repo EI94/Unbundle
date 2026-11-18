@@ -46,7 +46,6 @@ export function MemoryView({ workspaceId, today, lateralSpace, canEditMemory, me
   const [openFact, setOpenFact] = useState<string | null>(null);
   const sections = visibleSections(memory.sections);
   const empty = isMemoryEmpty(memory);
-  const pendingProposals = lateralSpace ? memory.counts.openProposals : 0;
   // (9b) «3 fatti da verificare»: i fatti che la notte ha segnato, fermi da più di 6 mesi.
   const toCheck = toCheckRow(memory.counts.toCheck, lateralSpace);
 
@@ -54,7 +53,7 @@ export function MemoryView({ workspaceId, today, lateralSpace, canEditMemory, me
     <div className="space-y-8">
       {lateralSpace ? (
         <ServiceRows>
-          {pendingProposals > 0 ? <ServiceLink label={T.page.pending(pendingProposals)} href={`/dashboard/${workspaceId}/contesto/conferma`} /> : null}
+          {/* (Rilascio 10, §3.7) Le proposte da confermare sono il pulsante pieno della testata: qui non si ripetono. */}
           {toCheck ? <ServiceLink label={toCheck} href={`/dashboard/${workspaceId}/contesto/verifica`} /> : null}
           {reader ?? null}
           {consentNotice ? <AiConsentNotice notice={consentNotice} variant="inline" /> : null}

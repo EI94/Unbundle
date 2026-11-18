@@ -119,7 +119,7 @@ test("le fonti e la storia di un fatto, come nella pagina", () => {
   assert.equal(CONTEXT_TEXT.fact.sourceCall("14 nov"), "Call 14 nov");
   assert.equal(CONTEXT_TEXT.fact.sourceDocument("14 nov"), "Documento 14 nov");
   assert.equal(CONTEXT_TEXT.fact.sourceManual, "Scritto a mano");
-  assert.equal(CONTEXT_TEXT.fact.sourceDiscovery, "Discovery");
+  assert.equal(CONTEXT_TEXT.fact.sourceDiscovery, "Intervista iniziale");
   assert.equal(CONTEXT_TEXT.fact.noSource, "senza fonte");
   assert.equal(CONTEXT_TEXT.fact.before("Il gestionale è SAP."), "Prima: Il gestionale è SAP.");
   assert.equal(CONTEXT_TEXT.confirm.before("X", "Discovery", "21 ott"), "Prima: X (Discovery, 21 ott)");
