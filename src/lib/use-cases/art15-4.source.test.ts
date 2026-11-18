@@ -60,6 +60,10 @@ const SCAN_DIRS = [
   "src/components/programma",
   "src/app/(dashboard)/dashboard/[workspaceId]/programma",
   "src/app/api/workspaces/[workspaceId]/programma",
+  // (Rilascio 10) La Home e i pezzi comuni: il passo del workspace, «Per partire», i propri use case.
+  "src/lib/home",
+  "src/components/home",
+  "src/components/ui-10",
 ];
 const SCAN_FILES: Array<{ dir: string; name: RegExp }> = [
   { dir: "src/lib/db/queries", name: /^(use-case-|team-mcp-|bell-state)[^/]*\.ts$/ },

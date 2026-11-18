@@ -2,27 +2,78 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { DetailSheetFrame } from "@/components/uc/ui/detail-sheet";
+import { ChevronRight } from "lucide-react";
+import { Row, RowList, TextAction } from "@/components/ui-10/row";
+import { SideSheet } from "@/components/ui-10/side-sheet";
 import { Button } from "@/components/ui/button";
 import { formatEuro, formatInteger } from "@/lib/use-cases/format";
+import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { quarterLabel } from "@/lib/use-cases/quarter";
 import { monthLabel, monthLongLabel } from "@/lib/use-cases/value-calc";
+import { HOME_TEXT } from "@/lib/home/text";
 import type { Scenario } from "@/lib/programma/curve";
 import { REVIEW_RATIO } from "@/lib/programma/figures";
-import { GAP_TEXT, PILLAR_HOW, PILLAR_TEXT, PROGRAM_TEXT, formatHours, formatPct, kpiValueText, longDate, readinessPillarText, salChangeText } from "@/lib/programma/text";
+import {
+  GAP_TEXT,
+  PILLAR_HOW,
+  PILLAR_TEXT,
+  PROGRAM_TEXT,
+  formatHours,
+  formatPct,
+  kpiValueText,
+  longDate,
+  nextStepText,
+  readinessPillarText,
+  salChangeText,
+  signedEuro,
+  signedInteger,
+} from "@/lib/programma/text";
 import type { ProgramView, ViewCard } from "@/lib/programma/view";
 import { cn } from "@/lib/utils";
-import { CaseDevControl, CustomKpiForm, FactsEditor, KeyResultEditor, KpiCatalog, KpiEditor, LsCostsForm, WeightsForm } from "./program-forms";
+import { AsksEditor, CaseDevControl, CloseSalButton, CustomKpiForm, FactAsk, FactsEditor, KeyResultEditor, KpiCatalog, KpiEditor, LsCostsForm, WeightsForm } from "./program-forms";
 import { ValueCostChart, breakevenText } from "./value-cost-chart";
 
 const T = PROGRAM_TEXT;
+const H = HOME_TEXT;
 
-/** I pannelli della pagina, per `?apri=`. */
-export const PROGRAM_PANELS = ["valore", "in-uso", "dipendente", "indice", "curva", "in_uso", "in_realizzazione", "da_avviare", "supporto", "formazione", "rivedere", "persone", "obiettivi", "sal"] as const;
+/**
+ * I pannelli della Home dei revisori (rilascio 10; prima della pagina «Programma», rilascio 7), per `?apri=`. I
+ * quattordici di prima restano tutti, con i loro indirizzi (la campanella apre `?apri=rivedere`); in più «Tutti i
+ * numeri» (i quattro risultati e la curva), «Iniziative» (la tabella) e «Impostazioni del programma». Unirne due
+ * (`in-uso` con `in_uso`, `formazione` con `persone`) è dell'ondata 6b.
+ */
+export const PROGRAM_PANELS = [
+  "valore",
+  "in-uso",
+  "dipendente",
+  "indice",
+  "curva",
+  "in_uso",
+  "in_realizzazione",
+  "da_avviare",
+  "supporto",
+  "formazione",
+  "rivedere",
+  "persone",
+  "obiettivi",
+  "sal",
+  "numeri",
+  "iniziative",
+  "impostazioni",
+] as const;
 export type ProgramPanel = (typeof PROGRAM_PANELS)[number];
+
+/** I nomi nuovi che portano a un pannello di oggi: `?apri=scenari` è la curva con gli scenari (§2.4). */
+export const PROGRAM_PANEL_ALIASES: Readonly<Record<string, ProgramPanel>> = Object.freeze({ scenari: "curva" });
 
 export function isProgramPanel(value: string | null | undefined): value is ProgramPanel {
   return typeof value === "string" && (PROGRAM_PANELS as readonly string[]).includes(value);
+}
+
+/** Il pannello di un valore di `?apri=`, con gli alias; null per un valore sconosciuto (il pannello resta chiuso). */
+export function programPanelOf(value: string | null | undefined): ProgramPanel | null {
+  if (isProgramPanel(value)) return value;
+  return typeof value === "string" && Object.hasOwn(PROGRAM_PANEL_ALIASES, value) ? PROGRAM_PANEL_ALIASES[value] : null;
 }
 
 const PANEL_TITLE: Record<ProgramPanel, string> = {
@@ -37,10 +88,20 @@ const PANEL_TITLE: Record<ProgramPanel, string> = {
   supporto: T.support,
   formazione: T.training,
   rivedere: "Use case da rivedere",
-  persone: T.people,
-  obiettivi: T.goalsMore,
-  sal: T.sal,
+  persone: H.rows.people,
+  obiettivi: H.rows.goals,
+  sal: H.rows.sal,
+  numeri: H.panels.numbers,
+  iniziative: H.panels.initiatives,
+  impostazioni: H.panels.settings,
 };
+
+/** Il titolo di un pannello, per i test e per chi lo apre. */
+export function programPanelTitle(panel: ProgramPanel): string {
+  return PANEL_TITLE[panel];
+}
+
+type Open = (panel: ProgramPanel) => void;
 
 function Section({ title, children, className }: { title?: string; children: ReactNode; className?: string }) {
   return (
@@ -82,6 +143,17 @@ function Source({ children }: { children: ReactNode }) {
 function formatRatio(n: number): string {
   return n.toLocaleString("it-IT", { maximumFractionDigits: 1 });
 }
+
+/** «+12.000 € dal SAL del 3 novembre»: il cambiamento dall'ultimo SAL; null il giorno del SAL o senza SAL. */
+function deltaOf(now: number | null, then: number | null | undefined, kind: "euro" | "int", on: string | undefined): string | null {
+  if (now === null || then === null || then === undefined || !on) return null;
+  const diff = now - then;
+  if (Math.round(diff) === 0) return null;
+  return `${kind === "euro" ? signedEuro(diff) : signedInteger(diff)} ${T.sinceSal(on)}`;
+}
+
+/** Le parti di un fatto, senza quelle vuote: «412.000 € · su 20 use case». */
+const joinFact = (...parts: Array<string | null | undefined | false>) => parts.filter(Boolean).join(" · ");
 
 /** La riga di uno use case nei pannelli: codice e titolo che aprono la scheda, poi le cifre su colonne separate. */
 function CardRow({ card, view, withDev }: { card: ViewCard; view: ProgramView; withDev: boolean }) {
@@ -338,6 +410,7 @@ function PeoplePanel({ view }: { view: ProgramView }) {
           </Source>
         ) : null}
       </Section>
+      {p.weeklyUsePct !== null ? <p className="text-sm tabular-nums">{T.weeklyUse(p.weeklyUsePct)}</p> : null}
       {p.readiness ? (
         <Section title="AI Readiness">
           <Pairs rows={[["Media", `${p.readiness.overall.toLocaleString("it-IT", { maximumFractionDigits: 1 })} su 5`], ...Object.entries(p.readiness.pillars).map(([k, v]) => [readinessPillarText(k), v === null ? "—" : v.toLocaleString("it-IT", { maximumFractionDigits: 1 })] as [string, ReactNode])]} />
@@ -386,6 +459,7 @@ function GoalsPanel({ view }: { view: ProgramView }) {
   const cards = view.initiatives.flatMap((r) => r.cards).map((c) => ({ id: c.id, code: c.code, title: c.title }));
   const keyResults = view.objectives.flatMap((o) => o.keyResults.map((kr) => ({ id: kr.id, title: kr.title })));
   const [open, setOpen] = useState<string | null>(null);
+  const strategyHref = `/dashboard/${view.workspaceId}/strategy`;
   return (
     <div className="space-y-6">
       <Section title="Risultati chiave">
@@ -428,7 +502,7 @@ function GoalsPanel({ view }: { view: ProgramView }) {
         ) : (
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">{T.noGoals}</p>
-            <Button render={<Link href={`/dashboard/${view.workspaceId}/strategy`} />} nativeButton={false} variant="outline" size="sm">
+            <Button render={<Link href={strategyHref} />} nativeButton={false} variant="outline" size="sm" className="min-h-11 sm:min-h-8">
               {T.addInStrategy}
             </Button>
           </div>
@@ -479,13 +553,16 @@ function GoalsPanel({ view }: { view: ProgramView }) {
           </div>
         ) : null}
       </Section>
+      {/* (Rilascio 10, §2.3) La pagina «Obiettivi» (`/strategy`) si apre da qui. */}
+      {view.objectives.length ? <TextAction href={strategyHref}>{H.panels.openGoals}</TextAction> : null}
     </div>
   );
 }
 
+/** Il SAL: cosa è cambiato, i prossimi passi e le decisioni per la leadership (prima la sezione «Per il SAL»). */
 function SalPanel({ view }: { view: ProgramView }) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {view.sal.lastOn ? (
         <Section title={T.changedSince(view.sal.lastOn)}>
           {view.sal.changes.length ? (
@@ -501,13 +578,222 @@ function SalPanel({ view }: { view: ProgramView }) {
       ) : (
         <p className="text-sm text-muted-foreground">{T.noSalYet}</p>
       )}
+      <Section title={T.nextSteps}>
+        {view.nextSteps.length ? (
+          <ul className="space-y-1.5 text-sm">
+            {view.nextSteps.map((s, i) => (
+              <li key={i} className="flex gap-2">
+                <span aria-hidden className="text-muted-foreground">
+                  →
+                </span>
+                <span className="min-w-0">{nextStepText(s, view.companyName)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-muted-foreground">{H.panels.salNothing}</p>
+        )}
+      </Section>
+      <Section title={T.asks}>
+        <AsksEditor workspaceId={view.workspaceId} asks={view.asks} canEdit={view.viewer.canEdit} />
+      </Section>
       <Source>Ogni mese il sistema fotografa i numeri da solo; un SAL chiuso li fotografa quel giorno.</Source>
     </div>
   );
 }
 
+/** «Tutti i numeri»: i quattro risultati, ognuno con il suo pannello, e la curva del valore e del costo. */
+function NumbersPanel({ view, open }: { view: ProgramView; open: Open }) {
+  // Subito dopo i dipendenti, una volta sola, la domanda sul ricavo (facoltativa).
+  const [askRevenue, setAskRevenue] = useState(false);
+  const r = view.results;
+  const sal = view.lastSal;
+  const curve = view.curve.base;
+  const hasCurve = Math.max(...curve.value, ...curve.cost) > 0;
+  const countedPillars = view.index.pillars.filter((p) => p.score !== null && p.weight > 0).length;
+  const employees = view.company.employees;
+  const perEmployeeFact =
+    r.inUseCount === 0
+      ? joinFact("—", T.perEmployeeLater)
+      : joinFact(
+          r.perEmployee === null ? "—" : formatEuro(r.perEmployee),
+          deltaOf(r.perEmployee, sal?.perEmployee, "euro", sal?.on) ??
+            (r.perEmployeeOfRevenuePct !== null && r.perEmployeeOfRevenuePct > 0 ? T.ofRevenue(r.perEmployeeOfRevenuePct) : employees ? `su ${formatInteger(employees)} dipendenti` : null),
+        );
+  return (
+    <div className="space-y-6">
+      <RowList label={T.results}>
+        <li>
+          <Row data-row="valore" title={T.estimated} fact={keepTogether(joinFact(formatEuro(r.estimated), deltaOf(r.estimated, sal?.estimated, "euro", sal?.on) ?? T.onUseCases(r.estimatedCount)))} onClick={() => open("valore")} />
+        </li>
+        <li>
+          <Row
+            data-row="in-uso"
+            title={T.inUse}
+            fact={keepTogether(r.inUseCount ? joinFact(formatEuro(r.inUse), deltaOf(r.inUse, sal?.inUse, "euro", sal?.on) ?? T.onUseCases(r.inUseCount)) : joinFact(T.noneInUse, r.firstGoLive ? T.firstGoLive(r.firstGoLive) : null))}
+            onClick={() => open("in-uso")}
+          />
+        </li>
+        <li>
+          {employees && !(askRevenue && view.company.revenueEur === null) ? (
+            <Row data-row="dipendente" title={T.perEmployee} fact={keepTogether(perEmployeeFact)} onClick={() => open("dipendente")} />
+          ) : (
+            <div data-row="dipendente" className="space-y-2 px-4 py-3">
+              <p className="text-sm font-medium">{T.perEmployee}</p>
+              {employees ? (
+                <FactAsk workspaceId={view.workspaceId} company={view.companyName} canEdit={view.viewer.canEdit} step="ricavo" onDone={() => setAskRevenue(false)} />
+              ) : (
+                <FactAsk workspaceId={view.workspaceId} company={view.companyName} canEdit={view.viewer.canEdit} step="dipendenti" onEmployeesSaved={() => setAskRevenue(true)} />
+              )}
+            </div>
+          )}
+        </li>
+        <li>
+          <Row
+            data-row="indice"
+            title={T.index}
+            fact={keepTogether(joinFact(view.index.value === null ? "—" : `${view.index.value}/100`, deltaOf(view.index.value, sal?.index, "int", sal?.on) ?? (countedPillars > 0 && countedPillars < 4 ? T.onPillars(countedPillars) : null)))}
+            onClick={() => open("indice")}
+          />
+        </li>
+      </RowList>
+      <Section title={T.chart}>
+        {hasCurve ? (
+          <>
+            <p className="text-sm text-muted-foreground">{breakevenText(curve, T.programBreakeven)}</p>
+            <div className="rounded-xl border bg-card p-3">
+              <ValueCostChart curve={curve} compact />
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground">{T.noValueYet}</p>
+        )}
+        <TextAction onClick={() => open("curva")}>{T.chartMore}</TextAction>
+      </Section>
+      <Source>{T.sources}</Source>
+    </div>
+  );
+}
+
+/** Una riga della tabella delle iniziative: il nome, poi valore, avvio e mantenimento su colonne separate. */
+function InitiativeRow({ name, sub, value, oneoff, run, onClick }: { name: string; sub: string; value: string | null; oneoff: string | null; run: string | null; onClick: () => void }) {
+  const cell = (label: string, text: string | null) => (
+    <span className="flex items-baseline justify-between gap-2 text-sm tabular-nums sm:block sm:text-right">
+      <span className="text-xs text-muted-foreground sm:sr-only">{label}</span>
+      {text === null ? (
+        <span className="text-muted-foreground">
+          <span aria-hidden>—</span>
+          <span className="sr-only">nessuno</span>
+        </span>
+      ) : (
+        <span>{text}</span>
+      )}
+    </span>
+  );
+  return (
+    <button type="button" onClick={onClick} className="group grid min-h-11 w-full grid-cols-[minmax(0,1fr)_1rem] gap-x-3 gap-y-1 px-4 py-3 text-left outline-none hover:bg-muted/40 focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/50 sm:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))_1rem] sm:items-center">
+      <span className="min-w-0">
+        <span className="block text-sm font-medium">{name}</span>
+        <span className="block text-xs text-muted-foreground">{sub}</span>
+      </span>
+      <span className="col-start-1 space-y-0.5 sm:contents">
+        {cell(T.colValue, value)}
+        {cell(T.colOneoff, oneoff)}
+        {cell(T.colRun, run)}
+      </span>
+      <span className="col-start-2 row-start-1 self-center sm:col-start-auto sm:row-start-auto">
+        <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground" />
+      </span>
+    </button>
+  );
+}
+
+/** «Iniziative»: la formazione, le fasi del programma con valore e costi, il supporto, e gli use case da rivedere. */
+function InitiativesPanel({ view, open }: { view: ProgramView; open: Open }) {
+  const people = view.people;
+  const supportRow = view.costs.support;
+  const reviewNames = view.review.map((x) => x.title).join(", ");
+  return (
+    <div className="space-y-4">
+      <div className="overflow-hidden rounded-xl border bg-card">
+        <div className="hidden grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))_1rem] gap-3 border-b px-4 py-2 text-xs text-muted-foreground sm:grid" aria-hidden>
+          <span />
+          <span className="text-right">{T.colValue}</span>
+          <span className="text-right">{T.colOneoff}</span>
+          <span className="text-right">{T.colRun}</span>
+          <span />
+        </div>
+        <ul className="divide-y">
+          {people.training ? (
+            <li>
+              <InitiativeRow name={T.training} sub={T.trainingLine(people.training.trained, people.training.hours)} value={null} oneoff={null} run={null} onClick={() => open("formazione")} />
+            </li>
+          ) : null}
+          {view.initiatives.map((row) => (
+            <li key={row.stage}>
+              <InitiativeRow
+                name={T.stage[row.stage]}
+                sub={row.count === 1 ? "1 use case" : `${formatInteger(row.count)} use case`}
+                value={formatEuro(row.value)}
+                oneoff={formatEuro(row.oneoff)}
+                run={formatEuro(row.run)}
+                onClick={() => open(row.stage)}
+              />
+            </li>
+          ))}
+          {supportRow ? (
+            <li>
+              <InitiativeRow name={T.support} sub={T.supportMonth(supportRow.monthNow)} value={null} oneoff={null} run={formatEuro(supportRow.perYear)} onClick={() => open("supporto")} />
+            </li>
+          ) : view.ls ? (
+            <li>
+              <InitiativeRow name={T.support} sub="Nessun canone impostato" value={null} oneoff={null} run={null} onClick={() => open("supporto")} />
+            </li>
+          ) : null}
+        </ul>
+      </div>
+      {view.review.length ? (
+        <button type="button" onClick={() => open("rivedere")} className="group flex min-h-11 w-full items-start gap-2 rounded-xl border bg-uc-giallo-bg p-3 text-left text-sm outline-none hover:bg-muted/40 focus-visible:ring-3 focus-visible:ring-ring/50" data-slot="review-alert">
+          <span aria-hidden className="mt-1.5 size-2 shrink-0 rounded-full bg-uc-giallo" />
+          <span className="min-w-0 flex-1">
+            <b className="font-semibold">{T.review(view.review.length)}</b> · {reviewNames} {view.review.length === 1 ? T.reviewWhy : T.reviewWhyMany}
+          </span>
+          <ChevronRight aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground group-hover:text-foreground" />
+        </button>
+      ) : null}
+      <Source>Valore e costi dalle schede degli use case. Il costo di avvio conta per gli use case da costruire.</Source>
+    </div>
+  );
+}
+
+/** «Impostazioni del programma»: dipendenti e ricavo; per Lateral Space anche canone, sviluppo e pesi dell'indice. */
+function SettingsPanel({ view }: { view: ProgramView }) {
+  return (
+    <div className="space-y-6">
+      <Pairs
+        rows={[
+          ["Dipendenti", view.company.employees === null ? "—" : `${formatInteger(view.company.employees)} · ${view.company.employeesSource === "discovery" ? "dalla Discovery" : "scritto a mano"}`],
+          ["Ricavo dell'ultimo anno", view.company.revenueEur === null ? "—" : `${formatEuro(view.company.revenueEur)} · ${view.company.revenueSource === "discovery" ? "dalla Discovery" : "scritto a mano"}`],
+        ]}
+      />
+      {view.viewer.canEdit ? <FactsEditor view={view} /> : null}
+      {view.ls ? (
+        <>
+          <Section title="Costi di Lateral Space">
+            <LsCostsForm view={view} />
+            <Source>{H.panels.settingsCaseDev}</Source>
+          </Section>
+          <Section title="Pesi dell'indice">
+            <WeightsForm workspaceId={view.workspaceId} weights={view.ls.weights} />
+          </Section>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 /** Il contenuto di un pannello. */
-function PanelBody({ panel, view }: { panel: ProgramPanel; view: ProgramView }) {
+function PanelBody({ panel, view, open }: { panel: ProgramPanel; view: ProgramView; open: Open }) {
   const r = view.results;
   switch (panel) {
     case "valore":
@@ -562,19 +848,21 @@ function PanelBody({ panel, view }: { panel: ProgramPanel; view: ProgramView }) 
     case "rivedere":
       return (
         <div className="space-y-3">
-          <ul className="divide-y rounded-lg border">
-            {view.review.map((x) => (
-              <li key={x.id} className="space-y-1 px-3 py-2.5">
-                <Link href={x.href} className="text-sm font-medium hover:underline">
-                  {x.code ? <span className="mr-1 font-mono text-xs text-muted-foreground">{x.code}</span> : null}
-                  {x.title}
-                </Link>
-                <p className="text-xs text-muted-foreground tabular-nums">
-                  {formatEuro(x.value)} {"all'anno per"} {formatEuro(x.run)} di mantenimento: {x.ratio.toLocaleString("it-IT", { maximumFractionDigits: 1 })} € per ogni euro.
-                </p>
-              </li>
-            ))}
-          </ul>
+          {view.review.length ? (
+            <ul className="divide-y rounded-lg border">
+              {view.review.map((x) => (
+                <li key={x.id} className="space-y-1 px-3 py-2.5">
+                  <Link href={x.href} className="text-sm font-medium hover:underline">
+                    {x.code ? <span className="mr-1 font-mono text-xs text-muted-foreground">{x.code}</span> : null}
+                    {x.title}
+                  </Link>
+                  <p className="text-xs text-muted-foreground tabular-nums">
+                    {formatEuro(x.value)} {"all'anno per"} {formatEuro(x.run)} di mantenimento: {x.ratio.toLocaleString("it-IT", { maximumFractionDigits: 1 })} € per ogni euro.
+                  </p>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <Source>Uno use case in uso è da rivedere se rende meno di {REVIEW_RATIO} € per ogni euro che costa tenerlo acceso.</Source>
         </div>
       );
@@ -582,15 +870,32 @@ function PanelBody({ panel, view }: { panel: ProgramPanel; view: ProgramView }) 
       return <GoalsPanel view={view} />;
     case "sal":
       return <SalPanel view={view} />;
+    case "numeri":
+      return <NumbersPanel view={view} open={open} />;
+    case "iniziative":
+      return <InitiativesPanel view={view} open={open} />;
+    case "impostazioni":
+      return <SettingsPanel view={view} />;
   }
 }
 
-/** Il pannello aperto: da destra sul computer, dal basso sul telefono; si chiude con Esc o toccando fuori. */
-export function ProgramPanelSheet({ panel, view, onClose }: { panel: ProgramPanel | null; view: ProgramView; onClose: () => void }) {
+/**
+ * Il pannello aperto (`SideSheet`): a destra da 640 px, a tutto schermo al telefono; si chiude con ✕, Esc, un tocco
+ * fuori o «Indietro». Il pannello del SAL ha il suo pulsante pieno, «Chiudi il SAL», a chi lo può chiudere.
+ */
+export function ProgramPanelSheet({ panel, view, onOpen, onClose }: { panel: ProgramPanel | null; view: ProgramView; onOpen: Open; onClose: () => void }) {
+  const footer =
+    panel === "sal" ? (
+      view.viewer.canEdit ? (
+        <CloseSalButton workspaceId={view.workspaceId} filled />
+      ) : (
+        <p className="text-sm text-muted-foreground">{H.panels.salTurn}</p>
+      )
+    ) : null;
   return (
-    <DetailSheetFrame open={panel !== null} onOpenChange={(next) => (next ? undefined : onClose())} title={panel ? PANEL_TITLE[panel] : ""} size="xl">
-      {panel ? <PanelBody panel={panel} view={view} /> : null}
+    <SideSheet open={panel !== null} onClose={onClose} title={panel ? PANEL_TITLE[panel] : ""} footer={footer}>
+      {panel ? <PanelBody panel={panel} view={view} open={onOpen} /> : null}
       {panel ? <p className="pt-2 text-xs text-muted-foreground">Aggiornato al {longDate(view.today)}.</p> : null}
-    </DetailSheetFrame>
+    </SideSheet>
   );
 }

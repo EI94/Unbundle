@@ -34,8 +34,8 @@ const MANAGER_SETTINGS = ["Nome del team che valuta", "Codici degli use case", "
 const RAW_SIGNAL_KEYS = ["new_portfolio_item", "use_case_digest", "use_case_quarter"];
 
 const routes = [
-  // Overview: the «Use case» step and one «Use case» tool (§2.5); the sidebar of the area.
-  { name: "overview", path: "/dashboard/{ws:a}", present: ["Use case", "Percorso"], absent: OLD_ENTRIES },
+  // The Home (release 10, wave 2b) in place of the Overview: H1 «Home», the next step, no «Percorso»; the sidebar of the area.
+  { name: "overview", path: "/dashboard/{ws:a}", present: ["Home", "Use case"], absent: [...OLD_ENTRIES, "Percorso", "Three streams"] },
   { name: "overview", path: "/dashboard/{ws:b}", as: ["ls-lead", "osservatore"], present: ["Raccolta & ranking", "Use cases", "Piano"] },
 
   // Settings with the area on: «Valutazione» and WhatsApp in «Integrazioni» for managers only.

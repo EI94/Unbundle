@@ -27,6 +27,7 @@ import { abilitiesForUseCase, type UseCaseViewer } from "@/lib/use-cases/permiss
 import { romeToday } from "@/lib/use-cases/quarter";
 import { hubWorkspacesAmong, isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import type { ServiceResult } from "@/lib/use-cases/types";
+import type { HubItem } from "@/lib/use-cases/views";
 import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
 import type { Workspace } from "@/lib/db/schema";
 import type { CaseDevCost, ProgramCosts } from "@/lib/programma/curve";
@@ -302,7 +303,11 @@ async function programInput(workspace: Workspace, viewer: UseCaseViewer, opts: {
   };
 }
 
-export type ProgramPageRead = { status: "ok"; view: ProgramView } | { status: "non_pronto" } | { status: "nessuno" };
+/**
+ * `items`: le schede dei revisori lette per la pagina (`listHubItems`, senza filtri), per il prossimo passo della
+ * Home (rilascio 10, D3) senza una seconda lettura; il PDF del SAL e la pagina usano solo `view`.
+ */
+export type ProgramPageRead = { status: "ok"; view: ProgramView; items: readonly HubItem[] } | { status: "non_pronto" } | { status: "nessuno" };
 
 /**
  * La pagina per chi guarda. «nessuno»: non è un revisore, il workspace non ha l'area accesa o non esiste
@@ -315,7 +320,7 @@ export async function loadProgramPage(i: { workspace: Workspace; user: { id: str
   if (!(await programStoreReady())) return { status: "non_pronto" };
   const input = await programInput(i.workspace, viewer, { now: i.now ?? new Date(), canEdit: canEditProgram({ role: i.role, isLateralSpace: viewer.isLateralSpace }) });
   if (!input) return { status: "nessuno" };
-  return { status: "ok", view: buildProgramView(input) };
+  return { status: "ok", view: buildProgramView(input), items: input.items };
 }
 
 /** Chi guarda il cron e il SAL: un gestore senza nome, che non è Lateral Space (nessuna impostazione di Lateral Space nel calcolo). */
