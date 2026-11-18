@@ -159,7 +159,11 @@ function agentFactOf(row: AgentFactRow, today: string): AgentFact {
   return { statement: row.statement, section: row.section, source: label.kind, on: label.day && sourceDay ? sourceDay : confirmed ? romeDate(confirmed) : "" };
 }
 
-/** I fatti attivi «Per tutti» per gli agenti, con un filtro, per sezione e dal più recente. */
+/**
+ * I fatti attivi «Per tutti» per gli agenti, con un filtro: per sezione, poi dal più recente per nascita (`created_at`,
+ * che una riconferma non cambia), poi per id. Così `CONTESTO.md` resta uguale finché i fatti non cambiano: una riconferma
+ * non fa una versione nuova del pacchetto.
+ */
 async function agentFacts(workspaceId: string, where: SQL, since: string | null, limit: number, today: string): Promise<AgentFact[]> {
   const rows = rowsOf<AgentFactRow>(
     await db.execute(sql`
@@ -167,7 +171,7 @@ async function agentFacts(workspaceId: string, where: SQL, since: string | null,
       FROM context_facts f LEFT JOIN context_sources s ON s.id = f.source_id
       WHERE f.workspace_id = ${workspaceId}::uuid AND f.status = 'attivo' AND f.visibility = 'tutti' AND ${where}
         ${since ? sql`AND f.created_at >= ${since}::timestamptz` : sql``}
-      ORDER BY array_position(${SECTION_ORDER}, f.section::text), f.last_confirmed_at DESC, f.id
+      ORDER BY array_position(${SECTION_ORDER}, f.section::text), f.created_at DESC, f.id
       LIMIT ${limit}`),
   );
   return rows.map((row) => agentFactOf(row, today));

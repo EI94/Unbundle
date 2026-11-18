@@ -1,6 +1,7 @@
 import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
+import { formatContestoMd } from "./agent-text.ts";
 
 // «Contesto nel lavoro» sul database del pacchetto (rilascio 9b, RILASCIO-9b-COSTRUZIONE.md §5.1): la 0041 e la sua
 // sonda, i tre CHECK allargati, le letture per la scheda, il dossier, gli agenti e i prompt, la freschezza e la notte, gli
@@ -404,6 +405,26 @@ test("loadAgentContext: solo «Per tutti», per tutti; regole e parole del works
   assert.doesNotMatch(text, /riservat|rinnovo|preventivo|usiamo SAP B1/, "mai «Solo Lateral Space», mai citazioni");
   assert.equal(await work.loadAgentContext({ workspaceId: ids.wsA, useCaseId: ids.ucX }), null, "uno use case di un altro workspace");
   assert.equal(await work.loadAgentContext({ workspaceId: ids.wsB, useCaseId: ids.ucA }), null);
+});
+
+test("CONTESTO.md non cambia con una riconferma: per sezione, poi dal più recente per nascita, poi per id", opts, async () => {
+  await clearMemory();
+  const older = "2026-09-01T10:00:00Z";
+  const newer = "2026-10-01T10:00:00Z";
+  const first = await insertFact({ statement: "Il gestionale è SAP Business One.", useCases: [ids.ucA], createdAt: older, lastConfirmedAt: older });
+  await insertFact({ statement: "Il magazzino usa codici a barre.", useCases: [ids.ucA], createdAt: newer, lastConfirmedAt: newer });
+  await insertFact({ statement: "Nessun dato personale nei test.", section: "regole", createdAt: older, lastConfirmedAt: older });
+  const file = async () => {
+    const ctx = await work.loadAgentContext({ workspaceId: ids.wsA, useCaseId: ids.ucA });
+    assert.ok(ctx);
+    return { order: ctx.caseFacts.map((f) => f.statement), text: formatContestoMd(ctx, { code: CODE(1), version: 1, day: "2026-11-18" }) };
+  };
+  const before = await file();
+  assert.deepEqual(before.order, ["Il magazzino usa codici a barre.", "Il gestionale è SAP Business One."], "dal più recente per nascita");
+  // «Ancora vero» sul fatto più vecchio: l'ultima conferma cambia, il file no (e il pacchetto non fa una versione nuova).
+  okValue(await freshness.reconfirmFacts(actor("ls"), [first]));
+  okValue(await memory.reconfirmFact(actor("ls"), first));
+  assert.deepEqual(await file(), before);
 });
 
 test("loadAgentContext con `since` e contextDeltaSince: nuovi, cambiati e tolti dopo una data, solo «Per tutti» e nel perimetro", opts, async () => {
