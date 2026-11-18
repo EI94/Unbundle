@@ -20,11 +20,15 @@ const buttonVariants = cva(
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
+        // (Rilascio 10, docs/ui-10/PROPOSTA-10.md §5.5) 44 px al telefono, 36 px da 640 px. L'altezza passa da una
+        // variabile: un `h-…` dato da chi usa il pulsante (anche `h-12` o `h-auto`, senza `sm:`) vale a ogni larghezza,
+        // perché tailwind-merge toglie `h-(--btn-h)` e la variabile resta senza effetto.
         default:
-          "h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
+          "h-(--btn-h) [--btn-h:2.75rem] sm:[--btn-h:2.25rem] gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
         xs: "h-6 gap-1 rounded-[min(var(--radius-md),10px)] px-2 text-xs in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
         sm: "h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
-        lg: "h-9 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
+        // Mai più piccolo del predefinito: 44 px al telefono, 40 px da 640 px.
+        lg: "h-(--btn-h) [--btn-h:2.75rem] sm:[--btn-h:2.5rem] gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
         icon: "size-8",
         "icon-xs":
           "size-6 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",

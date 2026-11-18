@@ -94,13 +94,13 @@
   --secondary: oklch(0.15 0.008 260);
   --secondary-foreground: oklch(0.85 0.01 260);
   --muted: oklch(0.15 0.008 260);
-  --muted-foreground: oklch(0.55 0.01 260);
+  --muted-foreground: oklch(0.68 0.01 260);
   --accent: oklch(0.18 0.01 260);
   --accent-foreground: oklch(0.9 0.01 260);
   --destructive: oklch(0.65 0.2 25);
   --border: oklch(1 0 0 / 8%);
-  --input: oklch(1 0 0 / 10%);
-  --ring: oklch(0.7 0 0);
+  --input: oklch(1 0 0 / 38%);
+  --ring: oklch(0.85 0 0);
   --chart-1: oklch(0.7 0.15 260);
   --chart-2: oklch(0.65 0.12 180);
   --chart-3: oklch(0.7 0.15 140);
@@ -225,69 +225,29 @@
 }
 
 /* Casi d'uso, dossier (DESIGN §5.4): le ancore e il focus della tastiera non
-   finiscono sotto la barra del workspace (61 px, da md 53 px) e la barra fissa
-   del dossier (schede e riga del titolo; da lg una riga sola). */
+   finiscono sotto la barra in alto del telefono (56 px; dal rilascio 10 da md
+   non c'è più) e la barra fissa del dossier (schede e riga del titolo; da lg una
+   riga sola). */
 html:has([data-uc-case-head]) {
-  scroll-padding-top: 8.5rem;
+  scroll-padding-top: 8.25rem;
+}
+@media (min-width: 48rem) {
+  html:has([data-uc-case-head]) {
+    scroll-padding-top: 5.25rem;
+  }
 }
 @media (min-width: 64rem) {
   html:has([data-uc-case-head]) {
-    scroll-padding-top: 6.5rem;
+    scroll-padding-top: 3.25rem;
   }
 }
-/* Il grigio dei testi secondari nel dossier: 4,22:1 su --card era sotto AA per
-   il testo piccolo (DESIGN §7.2); così è 5,6:1. Vale nel layout del dossier e,
-   mentre una sua pagina è aperta, nei pannelli, nelle finestre e nei menu che
-   si aprono sopra (vivono fuori dal layout), anche quelli della barra del
-   workspace. La barra laterale, la barra in alto e il resto di Unbundle tengono
-   il token globale. */
-[data-uc-case-root],
-html:has([data-uc-case-head])
-  :is(
-    [data-slot="sheet-content"],
-    [data-slot="dialog-content"],
-    [data-slot="popover-content"],
-    [data-slot="dropdown-menu-content"],
-    [data-slot="dropdown-menu-sub-content"],
-    [data-slot="select-content"]
-  ) {
-  --muted-foreground: oklch(0.62 0.01 260);
-}
-/* Use case (pagina, scheda, «Nuovo use case»; vedi use-cases/layout.tsx), tema scuro «molto
-   chiaro»: il grigio dei testi secondari a 0,68 (con 0,55 era 3,9–4,3:1 sulle superfici
-   dell'area, sotto AA; così 6,5–7,2:1), i bordi dei campi al 38% (al 10% erano 1,2:1; così
-   3,4:1) e il fuoco a 0,85 (l'alone era 2,6:1; così 3,7:1). Vale nel layout dell'area e,
-   mentre una sua pagina è aperta, nei pannelli, nelle finestre e nei menu che si aprono sopra
-   (vivono fuori dal layout), anche quelli della barra del workspace. Le finestre e i pannelli
-   dell'area che danno a `DialogContent`/`SheetContent` un loro `data-slot` (le decisioni e
-   «Chiedi al referente», «Oscura», il pannello laterale, «Nuovo use case») lo sostituiscono a
-   quello di base: per questo sono nell'elenco anche loro. Il dossier tiene il suo blocco qui
-   sopra. */
-[data-use-case-root],
-html:has([data-use-case-root])
-  :is(
-    [data-slot="sheet-content"],
-    [data-slot="dialog-content"],
-    [data-slot="popover-content"],
-    [data-slot="dropdown-menu-content"],
-    [data-slot="dropdown-menu-sub-content"],
-    [data-slot="select-content"],
-    [data-slot="decision-dialog"],
-    [data-slot="redact-dialog"],
-    [data-slot="use-case-panel"],
-    [data-slot="quick-create-sheet"]
-  ) {
-  --muted-foreground: oklch(0.68 0.01 260);
-  --input: oklch(1 0 0 / 38%);
-  --ring: oklch(0.85 0 0);
-}
-/* Use case, il segmento scelto delle viste («Panoramica | Da decidere | Cosa serve»): con
-   il grigio a 0,68 il testo scelto e quello degli altri distano solo 2,5:1, e il fondo del segmento
-   (1,04:1) e l'anello `ring-border` (1,1:1) non si vedono sul tema scuro. L'anello prende il colore
-   dei bordi dei campi (3,4:1 sul segmento): si vede quale vista è aperta anche senza leggere il
-   colore del testo. `SegmentedNav` è anche del dossier, che resta com'era; con il fuoco della
-   tastiera vale l'alone di sempre. */
-[data-use-case-root] [data-slot="segmented-nav"] [aria-current="page"]:not(:focus-visible) {
+/* Il segmento scelto di un controllo segmentato (le viste di «Use case», le schede del dossier, le viste del
+   Contesto): dal rilascio 10 il grigio dei testi secondari è 0,68 ovunque (PROPOSTA-10 §5.1, prima solo nell'area
+   «Use case» e nel dossier), e il testo scelto e quello degli altri distano solo 2,5:1; il fondo del segmento (1,04:1)
+   e l'anello `ring-border` (1,1:1) non si vedono sul tema scuro. L'anello prende il colore dei bordi dei campi (3,4:1
+   sul segmento): si vede quale vista è aperta anche senza leggere il colore del testo. Con il fuoco della tastiera
+   vale l'alone di sempre. */
+[data-slot="segmented-nav"] [aria-current="page"]:not(:focus-visible) {
   --tw-ring-color: var(--input);
 }
 
@@ -367,28 +327,6 @@ html:has([data-use-case-root])
   --uc-agente-8: oklch(0.47 0.08 117);
   --uc-agente-9: oklch(0.47 0.08 217);
   --uc-agente-10: oklch(0.47 0.08 317);
-}
-/* Nel tema chiaro l'area «Use case» e il dossier non hanno bisogno dei loro valori (sono per il
-   tema scuro, qui sopra): i token globali chiari superano già le loro soglie. Così i loro blocchi
-   restano come sono e qui tornano ai valori della pagina, anche nei pannelli che si aprono sopra. */
-:root[data-theme="light"]:has([data-theme-scope])
-  :is(
-    [data-use-case-root],
-    [data-uc-case-root],
-    [data-slot="sheet-content"],
-    [data-slot="dialog-content"],
-    [data-slot="popover-content"],
-    [data-slot="dropdown-menu-content"],
-    [data-slot="dropdown-menu-sub-content"],
-    [data-slot="select-content"],
-    [data-slot="decision-dialog"],
-    [data-slot="redact-dialog"],
-    [data-slot="use-case-panel"],
-    [data-slot="quick-create-sheet"]
-  ) {
-  --muted-foreground: inherit;
-  --input: inherit;
-  --ring: inherit;
 }
 /* Il bordo del tag di un agente: al 55% del tono resterebbe 2,4:1 sul chiaro; all'80% del colore
    del testo (il tono) è almeno 3,9:1. Il tag neutro tiene il bordo dei campi. */

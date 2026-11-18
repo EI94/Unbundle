@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 
 // «Molto molto chiare», sui due temi: l'area «Use case» nel tema scuro del dashboard
-// (il blocco `[data-use-case-root]` di globals.css, sopra `:root`) e le pagine pubbliche chiare
+// (dal rilascio 10 i token globali di `:root`, che hanno preso i valori dell'area, PROPOSTA-10 §5.1) e le pagine pubbliche chiare
 // (`.survey-light`: /rispondi, /r, /a, /s). Qui i rapporti di contrasto WCAG calcolati dai token
 // oklch del CSS, e nei sorgenti le classi che li abbassavano (testo sbiadito, codici della matrice
 // più tenui, avvisi in ambra fissa), perché non tornino. Il tema «Chiaro» del dashboard, che chi
@@ -57,9 +57,8 @@ function on(token: Token, surface: number[]): number[] {
 }
 
 const root = tokens(block(":root {").body);
-const areaBlock = block("[data-use-case-root],");
-const area: Tokens = { ...root, ...tokens(areaBlock.body) };
-const dossierBlock = block("[data-uc-case-root],");
+// (Rilascio 10) L'area non ha più un suo blocco: i suoi valori sono quelli di tutta la dashboard.
+const area: Tokens = root;
 const lightTokens = tokens(block(".survey-light {").body);
 const light: Tokens = { ...root, ...lightTokens };
 
@@ -100,47 +99,14 @@ test("nell'area «Use case» bordi dei campi e fuoco almeno 3:1", () => {
   }
 });
 
-/** I `data-slot` scritti a mano su un contenuto con portale (`<DialogContent data-slot="…">`): sostituiscono quello di base. */
-function portalSlots(source: string): string[] {
-  const out: string[] = [];
-  for (const match of source.matchAll(/<(DialogContent|SheetContent|PopoverContent|DropdownMenuContent|DropdownMenuSubContent|SelectContent)\b/g)) {
-    // Il tag di apertura, fino al primo «>» fuori dalle graffe (non quello di «=>»).
-    let depth = 0;
-    let end = match.index + match[0].length;
-    for (; end < source.length; end++) {
-      const char = source[end];
-      if (char === "{") depth++;
-      else if (char === "}") depth--;
-      else if (char === ">" && depth === 0 && source[end - 1] !== "=") break;
-    }
-    const slot = /\bdata-slot="([^"]+)"/.exec(source.slice(match.index, end));
-    if (slot) out.push(slot[1]);
+test("i valori dell'area valgono ovunque, portali compresi: nessun blocco d'area li ridefinisce", () => {
+  // Prima l'area e il dossier li alzavano con due blocchi propri, ripetuti per i pannelli, le finestre e i menu che si
+  // aprono sopra (vivono fuori dal layout): con i token globali li prendono tutti da :root, senza elenchi da tenere.
+  assert.equal(css.includes("[data-use-case-root],"), false, "il blocco dell'area");
+  assert.equal(css.includes("[data-uc-case-root],"), false, "il blocco del dossier");
+  for (const [name, value] of [["--muted-foreground", "oklch(0.68 0.01 260)"], ["--input", "oklch(1 0 0 / 38%)"], ["--ring", "oklch(0.85 0 0)"]]) {
+    assert.ok(block(":root {").body.includes(`${name}: ${value};`), `${name} in :root`);
   }
-  return out;
-}
-
-test("il blocco dell'area vale anche nei portali, come quello del dossier", () => {
-  assert.ok(areaBlock.selector.includes("[data-use-case-root]"));
-  assert.ok(areaBlock.selector.includes("html:has([data-use-case-root])"));
-  const slots = (selector: string) => new Set([...selector.matchAll(/data-slot="([^"]+)"/g)].map((match) => match[1]));
-  const areaSlots = slots(areaBlock.selector);
-  assert.ok(areaSlots.size > 0, "nessun portale nel selettore dell'area");
-  // Tutti i portali del dossier, e in più quelli dell'area con un loro `data-slot`.
-  for (const slot of slots(dossierBlock.selector)) assert.ok(areaSlots.has(slot), `portale del dossier: ${slot}`);
-  // Il dossier tiene il suo blocco com'era: solo il grigio dei testi secondari.
-  assert.deepEqual([...dossierBlock.body.matchAll(/--[\w-]+:[^;]*;/g)].map((match) => match[0]), ["--muted-foreground: oklch(0.62 0.01 260);"]);
-});
-
-test("ogni finestra, pannello e menu dell'area con un suo `data-slot` è nel blocco dell'area", () => {
-  const areaSlots = new Set([...areaBlock.selector.matchAll(/data-slot="([^"]+)"/g)].map((match) => match[1]));
-  const found = new Map<string, string>();
-  for (const file of tsxFiles("src/components/use-cases")) for (const slot of portalSlots(read(file))) found.set(slot, file);
-  // Quelli di oggi: le decisioni (e «Chiedi al referente»), «Oscura», il pannello laterale, «Nuovo use case».
-  for (const slot of ["decision-dialog", "redact-dialog", "use-case-panel", "quick-create-sheet"]) assert.ok(found.has(slot), `atteso nei sorgenti: ${slot}`);
-  const missing = [...found].filter(([slot]) => !areaSlots.has(slot)).map(([slot, file]) => `${slot} (${file})`);
-  assert.deepEqual(missing, [], "portali dell'area senza i token dell'area");
-  // La prova legge davvero il tag su più righe e salta «=>».
-  assert.deepEqual(portalSlots('<SheetContent\n  side="right"\n  onKeyDown={(e) => e}\n  data-slot="prova"\n>'), ["prova"]);
 });
 
 test("nell'area «Use case» il segmento scelto si vede anche senza il colore del testo", () => {
@@ -152,7 +118,8 @@ test("nell'area «Use case» il segmento scelto si vede anche senza il colore de
   atLeast(ratio(on(t.input, chip), chip), 3, "anello del segmento scelto sul segmento");
   atLeast(ratio(on(t.input, track), track), 3, "anello del segmento scelto sulla cornice");
   atLeast(ratio(on(t.input, t.muted.rgb), t.muted.rgb), 3, "anello di «Quando» su muted");
-  assert.match(css, /\[data-use-case-root\] \[data-slot="segmented-nav"\] \[aria-current="page"\]:not\(:focus-visible\) \{\s*--tw-ring-color: var\(--input\);/);
+  // (Rilascio 10) Con il grigio a 0,68 ovunque, l'anello vale per ogni controllo segmentato, non più solo nell'area.
+  assert.match(css, /\n\[data-slot="segmented-nav"\] \[aria-current="page"\]:not\(:focus-visible\) \{\s*--tw-ring-color: var\(--input\);/);
   // (Rilascio 5, D25) L'origine non è più un segmento della barra: sta in «Altri filtri», come scelta.
   assert.ok(!read("src/components/use-cases/filter-bar.tsx").includes("ring-1 ring-input"), "origine: in «Altri filtri», non più un segmento");
   assert.ok(read("src/components/use-cases/when-control.tsx").includes("data-checked:inset-ring data-checked:inset-ring-input"), "«Quando»: anello della scelta");

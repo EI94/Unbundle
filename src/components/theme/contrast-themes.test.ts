@@ -43,21 +43,24 @@ const light = { ...dark, ...palette(lightValues) };
 
 // I blocchi di globals.css prima del tema chiaro, testo per testo (senza commenti): nessuno cambia,
 // nessuno si sposta. Così il tema scuro e le pagine pubbliche (.survey-light) restano come erano.
+// (Rilascio 10, docs/ui-10/PROPOSTA-10.md §5.1, decisione del titolare del 18/11) Tre cambi decisi: il grigio dei
+// testi secondari, i bordi dei campi e il fuoco dell'area «Use case» diventano i token globali di :root, e i blocchi
+// dell'area e del dossier spariscono; l'anello del segmento scelto vale per ogni controllo segmentato; la barra in alto
+// è solo del telefono (56 px), quindi lo spazio sopra le ancore del dossier cambia da 48rem e da 64rem.
 const FROZEN_BLOCKS: Array<[string, string]> = [
   ['@import "tailwindcss"', "944e6e12c0067a6767836a78ad6c4095b829f966b44f33bc95cfef1401ab3c10"],
   ['@import "tw-animate-css"', "42bf33c3f671299b72a7b2fd942da2f6b99707528120ca8772e2247e075e37b3"],
   ['@import "shadcn/tailwind.css"', "1612ad7a63b414169f0c69c233209d67cc1765da5443ed4776c407eeda9c66bb"],
   ["@custom-variant dark", "193c32249dee60279ddca5d637c924bb13c1b56c9a4b0cb9ca60158f42ed8eaa"],
   ["@theme inline", "c445a893efd73aa36ece0f8f929ebc059fa35571022209a41d69415917a0ec83"],
-  [":root", "9b6ea9a96537ba7526f60b230b03c16bfa7f50f27c5544ed4100d85d36b92979"],
+  [":root", "7b3d8e938d03acd45a0ec41506fcb8f9ee2674b7c13441683166e3fad88815cb"],
   ["@layer base", "de12d63509d7735374d2218bdcd7a4a53dec90fb1ce2dbdc7d7f35586086fa99"],
   [".survey-light", "f3cf6bcd0f1caa91dfe961ae39fc3b8d9447c9029f611b83a3d9539d1c08dd93"],
   [".survey-light :focus-visible", "18e168213e949c0c849d8a9b5aec33eba6a2d224989ce14318a36d2ce17a5440"],
-  ["html:has([data-uc-case-head])", "bd912e0618370aadda3e2fd803631fde48e120c0c362264c89aac3248132a48f"],
-  ["@media (min-width: 64rem)", "74ae572cf4697ff1a9a420445b896405a05b9eef84393634c4782168f6bd191d"],
-  ["[data-uc-case-root]", "7feaceb65acdf6aa4db30aa53c146842148b848ac029c73d7bc709e687d4e417"],
-  ["[data-use-case-root]", "25c03e85a1989e14711c4a180e80dc4af50fdfd493a4b1fa3c6d73677f9a0dda"],
-  ["segmented-nav", "aef9673ba0a47a3d8f02f76b78f068692612946cd1cfe1b37279bd14779ce2db"],
+  ["html:has([data-uc-case-head])", "4faeb1cd425e6b051839342353b03f5581ba920f25c3caf542cddcbe7155e285"],
+  ["@media (min-width: 48rem)", "e22cef0adb7832a6f69bdc1bb5b4aa3ca6975790b1b8568052e5c34b8c095db8"],
+  ["@media (min-width: 64rem)", "bf08224c1e737c55461a8bdbca02234a67d130b98be750edbd3fa1aea990ed2e"],
+  ["segmented-nav", "c96b2b37d6fbe503fb1424b0e130dc768b121d46bd04dbdd808f1e98e6fff0bd"],
 ];
 // Le sole aggiunte prima del tema chiaro: i due file importati e la variante `light:`.
 const ADDED_BEFORE_LIGHT = ['@import "./theme-palette.css"', '@import "./theme-viz.css"', "@custom-variant light"];
@@ -79,13 +82,14 @@ test("i blocchi di prima restano identici e nello stesso ordine; il tema chiaro 
   );
 });
 
-// I 57 colori del tema scuro, valore per valore: cambiarne uno è una decisione, non un effetto.
+// I 57 colori del tema scuro, valore per valore: cambiarne uno è una decisione, non un effetto. (Rilascio 10, §5.1)
+// Decisi: `muted-foreground` a 0,68, `input` al 38%, `ring` a 0,85, i valori che l'area «Use case» aveva già.
 const DARK_FROZEN: Record<string, string> = {
   background: "oklch(0.07 0.005 260)", foreground: "oklch(0.95 0.005 260)", card: "oklch(0.11 0.008 260)", "card-foreground": "oklch(0.95 0.005 260)",
   popover: "oklch(0.11 0.008 260)", "popover-foreground": "oklch(0.95 0.005 260)", primary: "oklch(0.95 0 0)", "primary-foreground": "oklch(0.07 0 0)",
-  secondary: "oklch(0.15 0.008 260)", "secondary-foreground": "oklch(0.85 0.01 260)", muted: "oklch(0.15 0.008 260)", "muted-foreground": "oklch(0.55 0.01 260)",
+  secondary: "oklch(0.15 0.008 260)", "secondary-foreground": "oklch(0.85 0.01 260)", muted: "oklch(0.15 0.008 260)", "muted-foreground": "oklch(0.68 0.01 260)",
   accent: "oklch(0.18 0.01 260)", "accent-foreground": "oklch(0.9 0.01 260)", destructive: "oklch(0.65 0.2 25)", border: "oklch(1 0 0 / 8%)",
-  input: "oklch(1 0 0 / 10%)", ring: "oklch(0.7 0 0)",
+  input: "oklch(1 0 0 / 38%)", ring: "oklch(0.85 0 0)",
   "chart-1": "oklch(0.7 0.15 260)", "chart-2": "oklch(0.65 0.12 180)", "chart-3": "oklch(0.7 0.15 140)", "chart-4": "oklch(0.65 0.15 320)", "chart-5": "oklch(0.75 0.12 60)",
   sidebar: "oklch(0.09 0.006 260)", "sidebar-foreground": "oklch(0.85 0.008 260)", "sidebar-primary": "oklch(0.95 0 0)", "sidebar-primary-foreground": "oklch(0.07 0 0)",
   "sidebar-accent": "oklch(0.14 0.01 260)", "sidebar-accent-foreground": "oklch(0.9 0.008 260)", "sidebar-border": "oklch(1 0 0 / 6%)", "sidebar-ring": "oklch(0.7 0 0)",
@@ -108,22 +112,22 @@ test("il tema scuro tiene i suoi 57 colori", () => {
 
 const f2 = (value: number) => value.toFixed(2);
 
-test("i limiti noti del tema scuro restano quelli di oggi (si cambiano solo con una decisione)", () => {
+test("i limiti del tema scuro: dal rilascio 10 i valori dell'area «Use case» valgono ovunque (si cambiano solo con una decisione)", () => {
   const t = dark;
   const surfaces = { background: t.background.rgb, card: t.card.rgb, muted: t.muted.rgb, accent: t.accent.rgb };
-  // Fuori dall'area «Use case» e dal dossier: il grigio dei testi secondari, i bordi dei campi, il fuoco.
-  assert.deepEqual(Object.values(surfaces).map((surface) => f2(contrast(t["muted-foreground"], surface))), ["4.30", "4.22", "4.05", "3.88"]);
-  assert.equal(f2(contrast(t.input, surfaces.background)), "1.20");
-  assert.equal(f2(contrast(t.ring, surfaces.background, 0.5)), "2.57");
+  // Il grigio dei testi secondari, i bordi dei campi, il fuoco: prima 4,30/4,22/4,05/3,88, 1,20 e 2,57 fuori dall'area.
+  assert.deepEqual(Object.values(surfaces).map((surface) => f2(contrast(t["muted-foreground"], surface))), ["7.24", "7.10", "6.83", "6.53"]);
+  assert.equal(f2(contrast(t.input, surfaces.background)), "3.40");
+  assert.equal(f2(contrast(t.ring, surfaces.background, 0.5)), "3.71");
   assert.equal(f2(contrast(t["sidebar-foreground"], t.sidebar.rgb, 0.5)), "3.71");
   assert.equal(f2(contrast(t["sidebar-foreground"], t.sidebar.rgb, 0.6)), "4.98");
-  // L'area «Use case» e il dossier con i loro valori.
-  const area = (name: string) => parseColor(declarations(rules.find((rule) => rule.selector.startsWith("[data-use-case-root],"))!.body)[name]);
-  assert.deepEqual([surfaces.background, surfaces.card, surfaces.muted].map((surface) => f2(contrast(area("--muted-foreground"), surface))), ["7.24", "7.10", "6.83"]);
-  assert.equal(f2(contrast(area("--input"), surfaces.background)), "3.40");
-  assert.equal(f2(contrast(area("--ring"), surfaces.background, 0.5)), "3.71");
-  const dossier = parseColor(declarations(rules.find((rule) => rule.selector.startsWith("[data-uc-case-root],"))!.body)["--muted-foreground"]);
-  assert.deepEqual([surfaces.background, surfaces.card].map((surface) => f2(contrast(dossier, surface))), ["5.73", "5.62"]);
+  // Nessun blocco d'area li ridefinisce più: né l'area «Use case», né il dossier, né i loro pannelli.
+  for (const rule of rules) {
+    const names = Object.keys(declarations(rule.body));
+    if (rule.selector === ":root" || rule.selector.startsWith(".survey-light") || isLight(rule.selector)) continue;
+    for (const name of ["--muted-foreground", "--input", "--ring"]) assert.ok(!names.includes(name), `${rule.selector.slice(0, 50)} ridefinisce ${name}`);
+  }
+  assert.ok(!/\[data-use-case-root\][^{]*\{[^}]*--muted-foreground/.test(css) && !/\[data-uc-case-root\],/.test(css), "niente più blocchi dell'area e del dossier");
 });
 
 test("il tema chiaro ridefinisce ogni colore del tema scuro, dentro la gamma dello schermo", () => {
@@ -270,17 +274,11 @@ test("tema chiaro: i dieci agenti con gli stessi toni, nello stesso ordine, legg
   }
 });
 
-test("tema chiaro: l'area «Use case» e il dossier tornano ai token della pagina, anche nei pannelli sopra", () => {
-  const reset = rules.find((rule) => rule.selector.startsWith(`${LIGHT}\n  :is(`) || rule.selector.startsWith(`${LIGHT} :is(`));
-  assert.ok(reset, "il blocco che azzera l'area e il dossier");
-  assert.deepEqual(declarations(reset.body), { "--muted-foreground": "inherit", "--input": "inherit", "--ring": "inherit" });
-  const slots = (selector: string) => [...selector.matchAll(/data-slot="([^"]+)"/g)].map((match) => match[1]);
-  const area = rules.find((rule) => rule.selector.startsWith("[data-use-case-root],"))!;
-  const dossier = rules.find((rule) => rule.selector.startsWith("[data-uc-case-root],"))!;
-  for (const slot of [...slots(area.selector), ...slots(dossier.selector)]) assert.ok(slots(reset.selector).includes(slot), `portale ${slot}`);
-  for (const root of ["[data-use-case-root]", "[data-uc-case-root]"]) assert.ok(reset.selector.includes(root), root);
-  // Ogni token che i blocchi scuri cambiano è azzerato.
-  for (const name of [...Object.keys(declarations(area.body)), ...Object.keys(declarations(dossier.body))]) assert.ok(name in declarations(reset.body), name);
+test("tema chiaro: niente da azzerare per l'area «Use case» e il dossier, che usano i token della pagina", () => {
+  // (Rilascio 10) Senza i blocchi scuri dell'area e del dossier il blocco che li riportava ai token chiari non serve.
+  for (const name of ["--muted-foreground", "--input", "--ring"]) {
+    assert.equal(rules.some((rule) => isLight(rule.selector) && new RegExp(`${name}:\\s*inherit`).test(rule.body)), false, name);
+  }
 });
 
 test("tema chiaro: le righe delle liste del dossier dicono il fuoco con un contorno pieno", () => {
