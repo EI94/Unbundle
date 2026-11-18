@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { PageContainer } from "@/components/dashboard/page-container";
+import { PAGE_ERROR_TEXT } from "@/components/dashboard/page-load-error";
 import { useLateralSpaceViewer } from "@/components/uc/shell/viewer-context";
 import { digestOf } from "@/lib/uc/log";
 
@@ -17,15 +18,16 @@ export default function CasePageError({ error, retry }: { error: unknown; retry:
   const digest = digestOf(error);
   const lateralSpace = useLateralSpaceViewer();
   useEffect(() => {
-    console.error("[uc] pagina del dossier non caricata", digest ?? "senza codice");
+    console.error("[uc] pagina della realizzazione non caricata", digest ?? "senza codice");
   }, [digest]);
   return (
     <PageContainer>
       <div role="alert" className="max-w-3xl space-y-3">
-        <h2 className="text-lg font-semibold">Questa sezione non si è caricata</h2>
-        <p className="text-sm text-muted-foreground">Ciò che hai salvato resta salvato.</p>
+        {/* (Rilascio 10, §4) Le parole di ogni pagina che non si carica. */}
+        <h2 className="text-lg font-semibold">{PAGE_ERROR_TEXT.title}</h2>
+        <p className="text-sm text-muted-foreground">{PAGE_ERROR_TEXT.body}</p>
         <Button variant="outline" className="h-11 sm:h-8" onClick={() => retry()}>
-          Riprova
+          {PAGE_ERROR_TEXT.retry}
         </Button>
         {lateralSpace && digest && <p className="text-xs text-muted-foreground">Codice: {digest}</p>}
       </div>
