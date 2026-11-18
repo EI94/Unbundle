@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { WORKSPACE_NAME_FALLBACK } from "../../connector/instructions.ts";
 import { findHubForbidden } from "../copy-guard.ts";
+import { TEAM_MCP_TOOL_NAMES } from "./contract.ts";
 import {
   TEAM_MCP_BENEFITS_LINE,
   TEAM_MCP_CONTEXT_LINE,
@@ -14,8 +15,9 @@ import {
 
 // Istruzioni del server (docs/use-case/DESIGN.md §9.4): testo di §9.4, al massimo 2.048
 // caratteri dopo la sostituzione, con la riga 6 sul costo (D5), le righe 7 e 8 della spec di
-// Pierpaolo (25/10/2026) su «Benefici e costi» e «Cosa serve», e la riga 9 del rilascio 9a su
-// «Contesto» (docs/contesto/RILASCIO-9a-COSTRUZIONE.md §9.1).
+// Pierpaolo (25/10/2026) su «Benefici e costi» e «Cosa serve», e la riga 9 su «Contesto» del
+// rilascio 9a (docs/contesto/RILASCIO-9a-COSTRUZIONE.md §9.1), riscritta nel 9b con le tre letture
+// della memoria (docs/contesto/RILASCIO-9b-COSTRUZIONE.md §2.7).
 
 test("le istruzioni sono il testo di §9.4, riga per riga, con il nome del workspace", () => {
   const text = teamMcpInstructions("Alfa e Beta");
@@ -43,12 +45,29 @@ test("le righe 7 e 8: «Benefici e costi» con i numeri della persona; «Cosa se
   assert.match(TEAM_MCP_NEEDS_LINE, /non si cancellano: si archiviano con il motivo/);
 });
 
-test("la riga 9: «Contesto» con add_context_notes, ogni proposta mostrata, conferma solo dopo il sì; dedotte e conflitti una per una", () => {
+test("la riga 9 (9b): la memoria con get_context, ask_context e list_context_commitments; gli appunti con add_context_notes, conferma solo dopo il sì", () => {
   assert.equal(
     TEAM_MCP_CONTEXT_LINE,
-    "9. «Contesto»: manda gli appunti di una call con add_context_notes, mostra alla persona ogni proposta (testo, citazione, detto o dedotto) e conferma con confirm_context_proposals solo quelle a cui dice sì. Per le dedotte e i conflitti chiedi una per una.",
+    "9. «Contesto»: leggi la memoria del cliente con get_context (domande: ask_context; impegni: list_context_commitments). Appunti di una call: add_context_notes, mostra ogni proposta e conferma con confirm_context_proposals solo dopo il sì; dedotte e conflitti una per una.",
   );
   assert.ok(teamMcpInstructions("Alfa e Beta").includes(TEAM_MCP_CONTEXT_LINE));
+  // Ogni strumento che la riga nomina c'è davvero, e ci sono tutti e sei quelli di «Contesto».
+  const named = TEAM_MCP_CONTEXT_LINE.match(/\b[a-z]+(?:_[a-z]+)+\b/g) ?? [];
+  assert.deepEqual(named, ["get_context", "ask_context", "list_context_commitments", "add_context_notes", "confirm_context_proposals"]);
+  for (const name of named) assert.ok((TEAM_MCP_TOOL_NAMES as readonly string[]).includes(name), name);
+  assert.match(TEAM_MCP_CONTEXT_LINE, /solo dopo il sì; dedotte e conflitti una per una\.$/);
+  // Una riga sola: non c'è spazio per una riga 10.
+  assert.equal(teamMcpInstructions("Alfa e Beta").split("\n").filter((line) => /^\d+\. /.test(line)).length, 9);
+});
+
+test("con un nome di workspace di 120 caratteri il testo resta sotto i 2.048 caratteri", () => {
+  for (const name of ["N".repeat(120), "Società Cooperativa Agricola di Trasformazione e Distribuzione dei Prodotti del Territorio Alto Adriatico e Basso Veneto"]) {
+    assert.equal(name.length <= 120 && name.length >= 119, true, `${name.length}`);
+    const text = teamMcpInstructions(name);
+    assert.ok(text.includes(name), "il nome intero, senza tagli");
+    assert.ok(text.length < TEAM_MCP_INSTRUCTIONS_MAX_CHARS, `${text.length} caratteri`);
+  }
+  assert.ok(teamMcpInstructions("N".repeat(120)).length <= 1990, "circa 1.990 su 2.048, come dice il piano");
 });
 
 test("la riga 6 sul costo c'è sempre: prima un importo in euro, poi le 5 fasce del workspace (D5)", () => {
