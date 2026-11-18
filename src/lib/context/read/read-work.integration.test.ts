@@ -201,7 +201,7 @@ test("con l'informativa ucq-2026-11-3 l'invio delle risposte crea la fonte: una 
   state.questions = (await q(`SELECT question FROM use_case_referent_request_items WHERE request_id = $1::uuid ORDER BY position`, [request.requestId])).map((r) => String(r.question));
   const { REFERENT_PRIVACY_NOTICE } = await import("../../use-cases/referent/labels.ts");
   assert.equal(REFERENT_PRIVACY_NOTICE.version, "ucq-2026-11-3");
-  pok(await pub.acceptReferentPrivacy(await linkOf(), { version: REFERENT_PRIVACY_NOTICE.version }, new Date()), "informativa");
+  pok(await pub.acceptReferentPrivacy(await linkOf(), { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version }, new Date()), "informativa");
   // La prima risposta con un testo; la seconda «Non ce l'ho», con un commento che fa un nome.
   pok(await pub.saveReferentDraft(await linkOf(), { needId: state.needs[0], text: "Circa 200 ordini al mese, quasi tutti per e-mail.", dontKnow: false }, new Date()), "bozza 1");
   pok(await pub.saveReferentDraft(await linkOf(), { needId: state.needs[1], text: null, dontKnow: true, comment: "Chiedete a Giulia Neri dell'amministrazione." }, new Date()), "bozza 2");
