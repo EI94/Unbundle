@@ -1,35 +1,44 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { createLearningLeaveGuard, type LearningGuard } from "@/lib/learning/leave-guard";
 
-type Guard = { dirty: boolean; pending?: boolean; onDiscard?: () => void };
 // Only mounted Learning forms register here. No answers or identifiers are stored.
-const guards = new Map<object, Guard>();
-let allowUnloadUntil = 0;
+// The in-app dialog that answers is `LearningLeaveDialog`, mounted by `LearningSessionBoundary`.
+export const learningLeave = createLearningLeaveGuard();
 
-export function confirmLearningNavigation(): boolean {
-  const active = [...guards.values()];
-  if (active.some(guard => guard.pending)) {
-    window.alert("Operazione in corso. Attendi la conferma prima di lasciare questa pagina.");
-    return false;
-  }
-  const dirty = active.filter(guard => guard.dirty);
-  if (!dirty.length) return true;
-  if (!window.confirm("Ci sono modifiche non salvate. Premi Annulla per restare e salvarle, oppure OK per scartarle e continuare.")) return false;
-  for (const guard of dirty) guard.onDiscard?.();
-  // A confirmed ordinary link must not cause a second native unload prompt.
-  // The short grace period expires even if navigation fails.
-  allowUnloadUntil = Date.now() + 500;
-  return true;
+/**
+ * Before an in-app step that would drop unsaved edits (refresh, another section, sign-out): true when nothing would be
+ * lost and the caller goes ahead now. Otherwise the in-app dialog opens and the call returns false; after the
+ * confirmation the edits are discarded and `proceed` runs the step. Without `proceed` the dialog only discards, and
+ * the person repeats the step.
+ */
+export function confirmLearningNavigation(proceed?: () => void): boolean {
+  return learningLeave.request(proceed ? "continue" : "discard", proceed ?? null);
+}
+
+/** «Scarta modifiche»: asks in the dialog, then discards. */
+export function confirmLearningDiscard(): boolean {
+  return learningLeave.request("discard");
 }
 
 function beforeUnload(event: BeforeUnloadEvent) {
-  if (Date.now() < allowUnloadUntil) return;
-  if ([...guards.values()].some(guard => guard.dirty || guard.pending)) {
-    event.preventDefault();
-    event.returnValue = "";
-  }
+  if (!learningLeave.blocksUnload()) return;
+  event.preventDefault();
+  event.returnValue = "";
 }
+
+/**
+ * After «Esci senza salvare»: the same link again once the dialog has closed (the grace period lets it through, so a
+ * Next link keeps its own navigation); a link no longer on the page opens its address.
+ */
+function follow(anchor: HTMLAnchorElement, href: string) {
+  window.setTimeout(() => {
+    if (anchor.isConnected) anchor.click();
+    else window.location.assign(href);
+  }, 0);
+}
+
 function linkClick(event: MouseEvent) {
   if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
   const target = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>("a[href]") : null;
@@ -37,30 +46,29 @@ function linkClick(event: MouseEvent) {
   const url = new URL(target.href, window.location.href);
   if (!["http:", "https:"].includes(url.protocol)) return;
   if (url.origin === window.location.origin && url.pathname === window.location.pathname && url.search === window.location.search && url.hash) return;
-  if (!confirmLearningNavigation()) {
+  if (!learningLeave.request("leave", () => follow(target, url.href))) {
     event.preventDefault();
     event.stopPropagation();
   }
 }
 
-export function useLearningUnsavedChanges({ dirty, pending, onDiscard }: Guard) {
+export function useLearningUnsavedChanges({ dirty, pending, onDiscard }: LearningGuard) {
   const id = useRef<object>({});
   // Register committed state before the browser can handle a navigation event.
   useEffect(() => {
     const key = id.current;
-    guards.set(key, { dirty, pending, onDiscard });
-    if (guards.size === 1) {
+    learningLeave.register(key, { dirty, pending, onDiscard });
+    if (learningLeave.size() === 1) {
       document.addEventListener("click", linkClick, true);
       window.addEventListener("beforeunload", beforeUnload);
     }
     return () => {
-      guards.delete(key);
-      if (guards.size === 0) {
+      learningLeave.unregister(key);
+      if (learningLeave.size() === 0) {
         document.removeEventListener("click", linkClick, true);
         window.removeEventListener("beforeunload", beforeUnload);
-        allowUnloadUntil = 0;
       }
     };
   }, [dirty, pending, onDiscard]);
-  return { confirmDiscard: confirmLearningNavigation };
+  return { confirmDiscard: confirmLearningDiscard };
 }

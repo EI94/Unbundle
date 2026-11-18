@@ -8,6 +8,7 @@ export function LearningRefresh({ label = "Aggiorna vista", className }: { label
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   return <Button type="button" variant="outline" className={className ?? "h-10"} disabled={pending} aria-busy={pending} onClick={() => {
-    if (confirmLearningNavigation()) startTransition(() => router.refresh());
+    const refresh = () => startTransition(() => router.refresh());
+    if (confirmLearningNavigation(refresh)) refresh();
   }}>{pending ? "Aggiornamento…" : label}</Button>;
 }

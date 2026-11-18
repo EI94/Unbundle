@@ -72,7 +72,8 @@ export function LearningAdminProgram({ workspaceId, initial }: { workspaceId: st
   }
 
   async function refresh() {
-    if (inFlight.current || !confirmLearningNavigation()) return;
+    // With unsaved edits the dialog asks first; after the confirmation the edits are discarded and the refresh runs.
+    if (inFlight.current || !confirmLearningNavigation(() => void refresh())) return;
     inFlight.current = true;
     setBusy(true); setError(false); setMessage("");
     try {
@@ -89,7 +90,7 @@ export function LearningAdminProgram({ workspaceId, initial }: { workspaceId: st
     {busy && <p role="status" className="text-sm text-muted-foreground">Operazione in corso. Attendi la conferma prima di lasciare la pagina.</p>}
     {!accessLost && <>
       <div className="rounded-lg border p-4"><p className="font-medium">{data.program.title}</p><p className="mt-1 text-sm">Versione {data.program.version} · {data.program.featureEnabled ? "Visibile ai partecipanti assegnati" : "Nascosto ai partecipanti"} · {data.program.status === "published" ? "In corso" : "Chiuso alle nuove risposte"}</p>{!data.program.canManageAll && <p className="mt-2 text-sm text-muted-foreground">Puoi gestire i turni: {data.program.managedCohorts.join(", ")}.</p>}</div>
-      <nav aria-label="Gestione del corso" className="flex flex-wrap gap-2">{Object.entries(sections).map(([key, label]) => <Button key={key} type="button" variant={section === key ? "default" : "outline"} aria-pressed={section === key} disabled={busy} onClick={() => { if (key !== section && confirmLearningNavigation()) { setSection(key as Section); setMessage(""); } }}>{label}</Button>)}</nav>
+      <nav aria-label="Gestione del corso" className="flex flex-wrap gap-2">{Object.entries(sections).map(([key, label]) => <Button key={key} type="button" variant={section === key ? "default" : "outline"} aria-pressed={section === key} disabled={busy} onClick={() => { const open = () => { setSection(key as Section); setMessage(""); }; if (key !== section && confirmLearningNavigation(open)) open(); }}>{label}</Button>)}</nav>
       <div key={formVersion}>
       {section === "overview" && <div className="space-y-6">
         <AdminSection title="Preparazione del percorso">
