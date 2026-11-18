@@ -596,7 +596,7 @@ test("notifyContextChange: chi costruisce e il responsabile sì, chi ha agito no
   assert.equal((await q(`SELECT count(*)::int AS n FROM use_case_notifications WHERE workspace_id = ANY($1::uuid[])`, [[ids.wsA, ids.wsB]]))[0]?.n, 0);
 });
 
-test("le scritture avvisano: «Scrivi un fatto», un testo nuovo, use case aggiunti, «Non più vero», la conferma; la sezione e la riconferma no", opts, async () => {
+test("le scritture avvisano: «Scrivi un fatto», un testo nuovo, use case aggiunti e tolti (solo quelli), la visibilità allargata o ristretta, «Non più vero», la conferma; la sezione e la riconferma no", opts, async () => {
   await clearMemory();
   const ls = actor("ls");
   const written = okValue(await memory.writeFact(ls, { statement: "Gli ordini arrivano via e-mail.", section: "lavoro", visibility: "tutti", useCaseIds: [ids.ucA] }));
@@ -624,14 +624,25 @@ test("le scritture avvisano: «Scrivi un fatto», un testo nuovo, use case aggiu
   okValue(await memory.editFact(ls, hidden.factId, 1, { visibility: "tutti" }));
   assert.deepEqual(await notified(ids.ucA), who("dev", "ext"));
   await clearNotices();
-  // Use case aggiunti: avvisa; use case tolti e basta: no.
+  // Un fatto «Per tutti» ristretto a «Solo Lateral Space»: chi costruisce ha un CONTESTO.md da aggiornare, anche da fuori.
+  const narrowed = okValue(await memory.writeFact(ls, { statement: "Il listino segue i volumi.", section: "lavoro", visibility: "tutti", useCaseIds: [ids.ucA] }));
+  await clearNotices();
+  okValue(await memory.editFact(ls, narrowed.factId, 1, { visibility: "ls" }));
+  assert.deepEqual(await notified(ids.ucA), who("dev", "ext"));
+  await clearNotices();
+  // Use case aggiunti o tolti: avvisano solo gli use case che cambiano.
   const loose = okValue(await memory.writeFact(ls, { statement: "Le consegne partono il lunedì.", section: "lavoro", visibility: "tutti" }));
   assert.deepEqual(await notified(ids.ucA), [], "senza use case nessuno da avvisare");
   okValue(await memory.editFact(ls, loose.factId, 1, { useCaseIds: [ids.ucA] }));
   assert.deepEqual(await notified(ids.ucA), who("dev", "ext"));
   await clearNotices();
-  okValue(await memory.editFact(ls, loose.factId, 2, { useCaseIds: [] }));
-  assert.deepEqual(await notified(ids.ucA), []);
+  // Lo use case B in più: per lo use case A niente è cambiato, e chi lo costruisce non riceve niente.
+  okValue(await memory.editFact(ls, loose.factId, 2, { useCaseIds: [ids.ucA, ids.ucB] }));
+  assert.deepEqual(await notified(ids.ucA), [], "lo use case A vede lo stesso fatto");
+  // Tolto dallo use case A: chi lo costruisce lo perde, anche da fuori.
+  okValue(await memory.editFact(ls, loose.factId, 3, { useCaseIds: [ids.ucB] }));
+  assert.deepEqual(await notified(ids.ucA), who("dev", "ext"));
+  await clearNotices();
   // La conferma di una proposta nuova legata allo use case.
   const source = await insertSource();
   const proposal = randomUUID();

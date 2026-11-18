@@ -11,9 +11,10 @@ import "server-only";
  * Un fatto non si riscrive: un testo nuovo è una versione nuova, e quella di prima resta nella storia («Prima: …»).
  * Cambiare sezione, visibilità o use case aggiorna la riga.
  *
- * (9b) Dopo una scrittura riuscita che cambia un fatto legato a uno use case con un dossier («Scrivi un fatto», un testo
- * nuovo, use case aggiunti, la visibilità allargata, «Non più vero») parte «Il contesto è cambiato» per chi costruisce
- * (`notifyContextChange`): non fa mai fallire l'azione. Una riconferma non è un cambio.
+ * (9b) Dopo una scrittura riuscita che cambia un fatto legato a uno use case con un dossier («Scrivi un fatto», «Non più
+ * vero», e «Modifica» per gli use case la cui vista cambia: tutti con un testo nuovo o la visibilità cambiata, anche più
+ * stretta, quelli aggiunti e quelli tolti) parte «Il contesto è cambiato» per chi costruisce (`notifyContextChange`,
+ * `notifyUseCasesContextChange`): non fa mai fallire l'azione. Una riconferma non è un cambio, la sezione da sola nemmeno.
  */
 import { sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
@@ -23,6 +24,7 @@ import { oneLine } from "@/lib/context/normalize";
 import { scanPersonalData, scanStatement } from "@/lib/context/scan";
 import { CONTEXT_TEXT } from "@/lib/context/text";
 import { contextAbilities, questionVisibilityFor, type ContextActor } from "@/lib/context/visibility";
+import { editNoticeTargets } from "@/lib/context/work/notice-targets";
 import {
   CONTEXT_LIMITS,
   CONTEXT_SECTIONS,
@@ -42,7 +44,7 @@ import type { ServiceResult } from "@/lib/use-cases/types";
 import { loadLiveDiscovery } from "./context-discovery";
 import { resolveHeads } from "./context-proposals";
 import { bumpProposalsOnFactsStatement, ctxErrorCode, dropBriefStatement, eventStatement, gate, invalid, isUniqueViolation, isUuid, knownUseCases, notFound, ok, requireSql, retry, romeToday, rowsOf, stale, toDate, toIsoDate, uuidArray } from "./context-shared";
-import { notifyContextChange } from "./context-notices";
+import { notifyContextChange, notifyUseCasesContextChange } from "./context-notices";
 import { contextStoreReady } from "./context-store";
 import { getWorkspaceById } from "./workspaces";
 
@@ -553,6 +555,14 @@ export async function editFact(
 
     // Un fatto «Per tutti» che cambia testo o diventa «Solo Lateral Space» esce da «In breve» (`dropBriefStatement`).
     const leavesBrief = current.visibility === "tutti" && (next.statement !== current.statement || next.visibility !== "tutti");
+    // (9b) Gli use case di adesso: «Il contesto è cambiato» va a quelli la cui vista cambia, anche a quelli tolti.
+    const linkedBefore = [...(await linkedUseCases(ws, factId))];
+    const noticeTargets = (textChanged: boolean) =>
+      editNoticeTargets({
+        before: { visibility: current.visibility, useCaseIds: linkedBefore },
+        after: { visibility: next.visibility, useCaseIds: next.useCaseIds ?? linkedBefore },
+        textChanged,
+      });
     if (next.statement !== current.statement) {
       // Un testo nuovo è una versione nuova, corretta a mano: tiene la fonte e la citazione; quella di prima resta nella storia.
       const newId = crypto.randomUUID();
@@ -572,15 +582,13 @@ export async function editFact(
               SELECT workspace_id, ${newId}::uuid, use_case_id FROM context_fact_links WHERE fact_id = ${factId}::uuid AND workspace_id = ${ws}::uuid AND use_case_id IS NOT NULL`),
         eventStatement({ workspaceId: ws, action: "fatto_cambiato", channel: actor.channel, actorUserId: actor.userId, factId: newId, detail: { modo: "a_mano" } }),
       ]);
-      await notifyContextChange({ workspaceId: ws, actorUserId: actor.userId, factIds: [newId] });
+      await notifyUseCasesContextChange({ workspaceId: ws, actorUserId: actor.userId, targets: noticeTargets(true) });
       return ok({ factId: newId });
     }
 
     const sectionChanged = next.section !== current.section;
     const visibilityChanged = next.visibility !== current.visibility;
     if (!sectionChanged && !visibilityChanged && next.useCaseIds === null) return ok({ factId });
-    // (9b) Gli use case di adesso, per dire se la modifica ne aggiunge uno (e allora «Il contesto è cambiato»).
-    const linkedBefore = next.useCaseIds !== null ? await linkedUseCases(ws, factId) : null;
     await db.batch([
       db.execute(sql`
         WITH kept AS (
@@ -599,10 +607,9 @@ export async function editFact(
       ...(sectionChanged ? [eventStatement({ workspaceId: ws, action: "sezione_cambiata", channel: actor.channel, actorUserId: actor.userId, factId, detail: { da: current.section, a: next.section } })] : []),
       ...(visibilityChanged ? [eventStatement({ workspaceId: ws, action: "visibilita_cambiata", channel: actor.channel, actorUserId: actor.userId, factId, detail: { da: current.visibility, a: next.visibility } })] : []),
     ]);
-    // Solo sezione, o la visibilità più stretta, o use case tolti: chi costruisce non ha niente di nuovo.
-    const widened = current.visibility === "ls" && next.visibility === "tutti";
-    const useCaseAdded = linkedBefore !== null && (next.useCaseIds ?? []).some((id) => !linkedBefore.has(id));
-    if (widened || useCaseAdded) await notifyContextChange({ workspaceId: ws, actorUserId: actor.userId, factIds: [factId] });
+    // (9b) Solo gli use case la cui vista cambia: tutti con la visibilità cambiata (anche più stretta: chi costruisce ha un
+    // CONTESTO.md da aggiornare), quelli aggiunti e quelli tolti; la sezione da sola nessuno.
+    await notifyUseCasesContextChange({ workspaceId: ws, actorUserId: actor.userId, targets: noticeTargets(false) });
     return ok({ factId });
   } catch (error) {
     // Un'altra modifica è arrivata prima: sulla riga, o sulla storia del fatto (l'indice unico).

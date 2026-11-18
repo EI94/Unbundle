@@ -100,7 +100,7 @@ test("«Il contesto è cambiato»: chi costruisce e il responsabile dei dossier 
   // «Una risposta per «Cosa serve»»: ai revisori, come «Risposte arrivate».
   assert.match(notices, /notifyReviewersSql\(\{ workspaceId: ws, useCaseId, kind: "dalla_call", actorUserId \}\)/, "l'orologio è quello del database");
   // Non lanciano: senza la 0041 niente, un errore nel log.
-  for (const signature of ["export async function notifyContextChange(", "export async function notifyNeedAnswered("]) {
+  for (const signature of ["export async function notifyContextChange(", "export async function notifyUseCasesContextChange(", "export async function notifyNeedAnswered("]) {
     const body = topLevelFunction(notices, signature);
     assert.match(body, /if \(!\(await contextWorkReady\(\)\)\) return;/, signature);
     assert.match(body, /\} catch \(error\) \{\s+logSafeError\(LOG_SCOPE, /, signature);
@@ -116,9 +116,12 @@ test("le scritture che cambiano un fatto avvisano dopo il batch riuscito; una ri
   const write = topLevelFunction(memory, "export async function writeFact(");
   after(write, "await notifyContextChange({ workspaceId: ws, actorUserId: actor.userId, factIds: [factId] });");
   const edit = topLevelFunction(memory, "export async function editFact(");
-  after(edit, "await notifyContextChange({ workspaceId: ws, actorUserId: actor.userId, factIds: [newId] });");
-  assert.match(edit, /const widened = current\.visibility === "ls" && next\.visibility === "tutti";/);
-  assert.match(edit, /if \(widened \|\| useCaseAdded\) await notifyContextChange\(/);
+  // «Modifica»: solo gli use case la cui vista cambia, letti prima del batch (anche quelli che la modifica toglie).
+  after(edit, "await notifyUseCasesContextChange({ workspaceId: ws, actorUserId: actor.userId, targets: noticeTargets(true) });");
+  after(edit, "await notifyUseCasesContextChange({ workspaceId: ws, actorUserId: actor.userId, targets: noticeTargets(false) });");
+  assert.ok(edit.indexOf("const linkedBefore = [...(await linkedUseCases(ws, factId))];") < edit.indexOf("await db.batch("), "i legami di prima, prima del batch");
+  assert.match(edit, /editNoticeTargets\(\{\s+before: \{ visibility: current\.visibility, useCaseIds: linkedBefore \},\s+after: \{ visibility: next\.visibility, useCaseIds: next\.useCaseIds \?\? linkedBefore \},\s+textChanged,/);
+  assert.doesNotMatch(edit, /notifyContextChange\(/, "mai tutti gli use case del fatto");
   const retire = topLevelFunction(memory, "export async function retireFact(");
   after(retire, "await notifyContextChange({ workspaceId: ws, actorUserId: actor.userId, factIds: [factId] });");
   const reconfirm = topLevelFunction(memory, "export async function reconfirmFact(");
