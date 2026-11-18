@@ -1,7 +1,7 @@
 /* Generato da scripts/theme/palette-roles.mjs: non modificare a mano (node scripts/theme/palette-roles.mjs
    lo riscrive, --check dice se è allineato ai sorgenti). I colori fissi di Tailwind scelti per il
    fondo scuro: nel tema scuro il valore di sempre, nel tema «Chiaro» del dashboard un passo più
-   scuro della stessa tinta. 66 voci. */
+   scuro della stessa tinta. 63 voci. */
 @theme inline {
   --text-color-red-200: var(--palette-text-red-200, oklch(88.5% 0.062 18.334));
   --text-color-red-300: var(--palette-text-red-300, oklch(80.8% 0.114 19.571));
@@ -13,7 +13,6 @@
   --text-color-amber-100: var(--palette-text-amber-100, oklch(96.2% 0.059 95.617));
   --text-color-amber-200: var(--palette-text-amber-200, oklch(92.4% 0.12 95.746));
   --text-color-amber-300: var(--palette-text-amber-300, oklch(87.9% 0.169 91.605));
-  --text-color-amber-400: var(--palette-text-amber-400, oklch(82.8% 0.189 84.429));
   --text-color-amber-500: var(--palette-text-amber-500, oklch(76.9% 0.188 70.08));
   --text-color-amber-600: var(--palette-text-amber-600, oklch(66.6% 0.179 58.318));
   --text-color-green-300: var(--palette-text-green-300, oklch(87.1% 0.15 154.449));
@@ -50,7 +49,6 @@
   --background-color-sky-600: var(--palette-background-sky-600, oklch(58.8% 0.158 241.966));
   --background-color-blue-500: var(--palette-background-blue-500, oklch(62.3% 0.214 259.815));
   --background-color-indigo-500: var(--palette-background-indigo-500, oklch(58.5% 0.233 277.117));
-  --background-color-violet-500: var(--palette-background-violet-500, oklch(60.6% 0.25 292.717));
   --background-color-purple-500: var(--palette-background-purple-500, oklch(62.7% 0.265 303.9));
   --background-color-slate-500: var(--palette-background-slate-500, oklch(55.4% 0.046 257.417));
   --background-color-slate-600: var(--palette-background-slate-600, oklch(44.6% 0.043 257.281));
@@ -64,7 +62,6 @@
   --border-color-teal-500: var(--palette-border-teal-500, oklch(70.4% 0.14 182.503));
   --border-color-sky-500: var(--palette-border-sky-500, oklch(68.5% 0.169 237.323));
   --border-color-indigo-500: var(--palette-border-indigo-500, oklch(58.5% 0.233 277.117));
-  --border-color-violet-500: var(--palette-border-violet-500, oklch(60.6% 0.25 292.717));
   --border-color-purple-500: var(--palette-border-purple-500, oklch(62.7% 0.265 303.9));
   --border-color-slate-500: var(--palette-border-slate-500, oklch(55.4% 0.046 257.417));
   --ring-color-red-500: var(--palette-ring-red-500, oklch(63.7% 0.237 25.331));
@@ -82,7 +79,6 @@
   --palette-text-amber-100: oklch(27.9% 0.077 45.635); /* amber-950 */
   --palette-text-amber-200: oklch(47.3% 0.137 46.201); /* amber-800 */
   --palette-text-amber-300: oklch(47.3% 0.137 46.201); /* amber-800 */
-  --palette-text-amber-400: oklch(47.3% 0.137 46.201); /* amber-800 */
   --palette-text-amber-500: oklch(47.3% 0.137 46.201); /* amber-800 */
   --palette-text-amber-600: oklch(47.3% 0.137 46.201); /* amber-800 */
   --palette-text-green-300: oklch(44.8% 0.119 151.328); /* green-800 */
@@ -119,7 +115,6 @@
   --palette-background-sky-600: oklch(44.3% 0.11 240.79); /* sky-800 */
   --palette-background-blue-500: oklch(48.8% 0.243 264.376); /* blue-700 */
   --palette-background-indigo-500: oklch(45.7% 0.24 277.023); /* indigo-700 */
-  --palette-background-violet-500: oklch(49.1% 0.27 292.581); /* violet-700 */
   --palette-background-purple-500: oklch(49.6% 0.265 301.924); /* purple-700 */
   --palette-background-slate-500: oklch(37.2% 0.044 257.287); /* slate-700 */
   --palette-background-slate-600: oklch(27.9% 0.041 260.031); /* slate-800 */
@@ -133,7 +128,6 @@
   --palette-border-teal-500: oklch(51.1% 0.096 186.391); /* teal-700 */
   --palette-border-sky-500: oklch(50% 0.134 242.749); /* sky-700 */
   --palette-border-indigo-500: oklch(45.7% 0.24 277.023); /* indigo-700 */
-  --palette-border-violet-500: oklch(49.1% 0.27 292.581); /* violet-700 */
   --palette-border-purple-500: oklch(49.6% 0.265 301.924); /* purple-700 */
   --palette-border-slate-500: oklch(37.2% 0.044 257.287); /* slate-700 */
   --palette-ring-red-500: oklch(50.5% 0.213 27.518); /* red-700 */
