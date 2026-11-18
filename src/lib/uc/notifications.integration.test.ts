@@ -233,7 +233,13 @@ test("with email: the link is issued at send time, stored only as a hash, and go
     assert.equal(email.from, EMAIL_ENV.UC_EMAIL_FROM);
     assert.match(email.to, /^not-(costi|servizio)-[0-9a-f]{6}@cliente\.test$/);
     assert.match(key, /^richiesta:[0-9a-f-]{36}:0:\d{4}-\d{2}-\d{2}:a1$/);
-    assert.ok(!/<img|src=|utm_/i.test(email.html), "no pixel, no tracking parameters");
+    // (Release 10, §3.12) The header like the other e-mails: the static brand of the app's own origin, once, and
+    // nothing else (no pixel, no other image or resource, no tracking parameters).
+    const images = email.html.match(/<img\b[^>]*>/gi) ?? [];
+    assert.equal(images.length, 1, "the brand once");
+    assert.match(images[0], new RegExp(`src="${ORIGIN.replace(/[.]/g, "\\.")}/email/unbundle-u\\.png"`));
+    assert.equal((email.html.match(/\bsrc=/gi) ?? []).length, 1, "no other resource");
+    assert.ok(!/utm_/i.test(email.html), "no tracking parameters");
     const token = tokenOf(email.text);
     assert.ok(token, "a referent link in the email");
     assert.ok(email.html.includes(`${ORIGIN}/r/${token}`));
