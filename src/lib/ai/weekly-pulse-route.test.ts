@@ -1,13 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { installAppModules, message, recordLogs, refusal, THINKING, fakeAppClaude, type Reply } from "./claude-test-kit.ts";
+import { installAppModules, message, recordLogs, refusal, THINKING, fakeAppClaude, type Captured, type Reply } from "./claude-test-kit.ts";
+import { contextPromptBlock } from "../context/work/prompt-block.ts";
 
 // (Migrazione a Claude Sonnet 5.5) Il cron weekly-pulse, la rotta vera: un rifiuto o un errore del modello su un
 // workspace non ferma gli altri, e nel log del workspace va solo l'id, niente del nome o dei segnali. Database finto; il
 // modello è il Claude finto di claude-test-kit.ts, che risponde secondo il nome del workspace nel prompt.
+// (Rilascio 9b, RILASCIO-9b-COSTRUZIONE.md §2.12) Nel prompt di ogni workspace «In breve», con l'ok riletto ora.
 
-type Prova = { workspaces: Array<Record<string, unknown>>; inserted: Array<Record<string, unknown>> };
-const prova: Prova = { workspaces: [], inserted: [] };
+type Prova = {
+  workspaces: Array<Record<string, unknown>>;
+  inserted: Array<Record<string, unknown>>;
+  /** (Rilascio 9b) Il blocco «Contesto» di ogni workspace ("" se manca), e con che cosa la rotta l'ha chiesto. */
+  contexts: Record<string, string>;
+  contextAsked: unknown[][];
+};
+const prova: Prova = { workspaces: [], inserted: [], contexts: {}, contextAsked: [] };
 (globalThis as { __prova?: Prova }).__prova = prova;
 
 await installAppModules({
@@ -20,6 +28,10 @@ await installAppModules({
     insert: () => ({ values: async (row) => { globalThis.__prova.inserted.push(row); } }),
   };`,
   "@/lib/db/queries/use-case-digest": `export async function runUseCaseDigestStep() { return { workspaces: 0, signals: 0, failed: 0 }; }`,
+  "@/lib/db/queries/context-work": `export async function loadPromptContext(workspaceId, i) {
+    globalThis.__prova.contextAsked.push([workspaceId, i]);
+    return globalThis.__prova.contexts[workspaceId] ?? "";
+  }`,
 });
 const { GET } = await import("../../app/api/cron/weekly-pulse/route.ts");
 
@@ -115,8 +127,38 @@ test("nessun workspace in mapping: 200, niente da fare", async () => {
 });
 
 test("senza il segreto del cron: 401 e nessuna chiamata al modello", async () => {
+  prova.contextAsked = [];
   const requests = fakeAppClaude([]);
   const response = await GET(new Request("http://localhost/api/cron/weekly-pulse"));
   assert.equal(response.status, 401);
   assert.equal(requests.length, 0);
+  assert.deepEqual(prova.contextAsked, [], "(Rilascio 9b) nemmeno il contesto si legge");
+});
+
+/** Il prompt che il modello ha ricevuto per un workspace. */
+const promptOf = (request: Captured) => (request.body.messages as Array<{ content: Array<{ text: string }> }>)[0].content[0].text;
+
+test("(Rilascio 9b) ogni workspace riceve il suo «In breve», con l'ok riletto ora; senza, il prompt di prima", async (t) => {
+  recordLogs(t);
+  const brief = `\n${contextPromptBlock({ brief: ["Il cliente fa cucine su misura per i negozi."], facts: [], nonce: "w5e8k2l7p3d9", purpose: "generatore" })}\n`;
+  prova.workspaces = [
+    { id: "ws-con", name: "Cliente con contesto", status: "mapping" },
+    { id: "ws-senza", name: "Cliente senza contesto", status: "mapping" },
+  ];
+  prova.inserted = [];
+  prova.contexts = { "ws-con": brief };
+  prova.contextAsked = [];
+  const requests = fakeAppClaude([message([THINKING, { type: "text", text: JSON.stringify(SIGNALS) }]), message([THINKING, { type: "text", text: JSON.stringify(SIGNALS) }])]);
+  const response = await GET(cron());
+  assert.equal(response.status, 200);
+  assert.deepEqual(prova.contextAsked, [
+    ["ws-con", { profile: "weeklySignals", consent: "now" }],
+    ["ws-senza", { profile: "weeklySignals", consent: "now" }],
+  ]);
+  const [withBlock, without] = requests.map(promptOf);
+  assert.ok(withBlock.includes(`- Status workspace: mapping\n${brief}\nGenera 2-5 segnali rilevanti`), "dopo lo stato, prima delle richieste");
+  assert.ok(without.includes("- Status workspace: mapping\n\nGenera 2-5 segnali rilevanti"), "il prompt di prima");
+  assert.equal(without.includes("<contesto-"), false);
+  assert.equal(withBlock.replace(brief, "").replace("Cliente con contesto", "Cliente senza contesto"), without, "il resto non cambia");
+  prova.contexts = {};
 });
