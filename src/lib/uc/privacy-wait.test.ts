@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { publicError, publicStatusFor } from "./http.ts";
 import { privacyAcknowledged, privacyWait } from "./public-rows.ts";
 import { PRIVACY_PENDING_MESSAGE, PRIVACY_UPDATED_MESSAGE, REFERENT_PRIVACY_NOTICE, noticeFor, waitsForPrivacy, type ReferentNoticeText } from "./public-view.ts";
@@ -13,6 +14,7 @@ import { isRetryableStatus, parseApiResponse } from "./views/referente-form.ts";
 
 await import(new URL("../../../scripts/use-case-test/test-hooks.mjs", import.meta.url).href);
 const { uploadResponse } = await import("../../app/api/r/[token]/upload-response.ts");
+const { acknowledgePrivacy } = await import("../db/queries/uc-public.ts");
 
 const at = new Date("2026-11-10T09:00:00Z");
 
@@ -63,6 +65,47 @@ test("il testo da accettare è sempre quello della versione chiesta: della vista
   assert.equal(noticeFor({ version: own.version }), own, "un server di prima, della stessa versione della pagina");
   assert.equal(noticeFor({ version: "uc-2026-10-2" }), null, "un server di prima, di un'altra versione: si ricarica");
   assert.equal(noticeFor({ version: next.version, notice: own }), null, "un testo di un'altra versione non vale");
+});
+
+/** Un link vivo, inventato, e un esecutore che tiene ogni batch e risponde come la SQL di «Ho letto» (`privacyAckSql`). */
+function ackOn() {
+  const batches: (readonly { text: string; params: readonly unknown[] }[])[] = [];
+  const executor = {
+    batch: async (statements: readonly { text: string; params: readonly unknown[] }[]) => {
+      batches.push(statements);
+      return [[{ live: 1, updated: 1 }]];
+    },
+  };
+  const link = { live: true, tokenId: randomUUID(), workspaceId: randomUUID(), caseId: randomUUID(), requestId: randomUUID(), contactId: randomUUID(), privacyAckAt: null, privacyNoticeVersion: null };
+  return { batches, ack: (body: unknown) => acknowledgePrivacy(executor as never, link as never, body, {} as never) };
+}
+const codeOf = (r: { ok: boolean; code?: string }) => (r.ok ? null : r.code);
+
+test("«Ho letto, iniziamo» si registra solo con la prova del testo mostrato: la pagina di prima manda solo `version`", async () => {
+  const now = REFERENT_PRIVACY_NOTICE.version;
+  const { batches, ack } = ackOn();
+  // Una pagina di produzione (49414cc9) non ancora accettata mostra il testo che ha dentro, `uc-2026-10-2` («nomi di
+  // persone: il sistema li blocca»). Il primo tocco manda la versione della sua vista: 409 `informativa_cambiata`, che
+  // quella pagina mostra con il messaggio del server, e poi rilegge la vista (`refresh()`).
+  const first = await ack({ version: "uc-2026-10-2" });
+  assert.equal(codeOf(first), "informativa_cambiata");
+  assert.equal(publicStatusFor("informativa_cambiata"), 409);
+  assert.match(first.ok ? "" : first.message, /aggiorna la pagina/, "il messaggio chiede di ricaricare la pagina");
+  // Il secondo tocco, dopo `refresh()`: la versione della vista è quella del server, il testo sullo schermo no.
+  const second = await ack({ version: now });
+  assert.equal(codeOf(second), "informativa_cambiata", "nessun consenso a un testo che il referente non ha visto");
+  assert.match(second.ok ? "" : second.message, /aggiorna la pagina/);
+  // Una prova di un'altra versione, lo stesso.
+  for (const body of [{ version: now, shown: "uc-2026-10-2" }, { version: "uc-2026-10-2", shown: now }]) assert.equal(codeOf(await ack(body)), "informativa_cambiata", JSON.stringify(body));
+  assert.equal(batches.length, 0, "niente si registra: né la data, né la versione, né l'evento «informativa.vista»");
+  // La pagina nuova: la versione del testo che ha mostrato (`noticeFor`), come prova.
+  assert.deepEqual(await ack({ version: now, shown: now }), { ok: true, value: { version: now } });
+  assert.equal(batches.length, 1);
+  assert.match(batches[0][0].text, /privacy_ack_at/);
+  assert.ok(batches[0][0].params.includes(now), "registra la versione di adesso");
+  // Un corpo che non è quello della pagina resta «Dati non validi».
+  for (const body of [null, "uc-2026-11-1", { shown: now }, { version: now, shown: now, altro: true }, { version: now, shown: 1 }]) assert.equal(codeOf(await ack(body)), "dati_non_validi", JSON.stringify(body));
+  assert.equal(batches.length, 1);
 });
 
 test("il messaggio per le pagine di prima: calmo, dice cosa fare, nessun codice", () => {

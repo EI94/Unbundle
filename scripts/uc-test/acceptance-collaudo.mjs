@@ -341,7 +341,7 @@ export async function step5(f) {
   const link = ok(await f.m.copyRequestLink(f.exec, lead, { requestId }), "the referent's link").path;
   if (requestId === f.requests?.marco) f.marcoLink = link;
   // The referent reads the privacy notice first («Ho letto, iniziamo»), as on the link's first screen.
-  const ack = await referentApi(link, "privacy-ack", { version: f.m.publicView.REFERENT_PRIVACY_NOTICE.version });
+  const ack = await referentApi(link, "privacy-ack", { version: f.m.publicView.REFERENT_PRIVACY_NOTICE.version, shown: f.m.publicView.REFERENT_PRIVACY_NOTICE.version });
   check(ack.status === 200 && ack.json?.ok, `privacy notice ${ack.status} ${JSON.stringify(ack.json)}`);
   const confirm = await referentApi(link, "answers", { answers: [{ item_id: f.item(key), kind: "conferma", supersedes_answer_id: entered.answerId }] });
   check(confirm.status === 200 && confirm.json?.ok && confirm.json.data.results.every((r) => r.ok), `«È così» from the link ${confirm.status} ${JSON.stringify(confirm.json?.data?.results ?? confirm.json)}`);
@@ -502,7 +502,7 @@ async function personalSentinel(f) {
   const sent = ok(await f.m.sendRequests(f.exec, lead, { itemIds: [f.item(key)] }), "send the personal question");
   check(sent.requests.length === 1, `${sent.requests.length} requests for the personal question`);
   const link = ok(await f.m.copyRequestLink(f.exec, lead, { requestId: sent.requests[0].requestId }), "the referent's link").path;
-  const ack = await referentApi(link, "privacy-ack", { version: f.m.publicView.REFERENT_PRIVACY_NOTICE.version });
+  const ack = await referentApi(link, "privacy-ack", { version: f.m.publicView.REFERENT_PRIVACY_NOTICE.version, shown: f.m.publicView.REFERENT_PRIVACY_NOTICE.version });
   check(ack.status === 200 && ack.json?.ok, `privacy notice ${ack.status} ${JSON.stringify(ack.json)}`);
   const sentinel = `Turno inventato ${f.tag} ${randomBytes(6).toString("hex")}`;
   const answered = await referentApi(link, `items/${f.item(key)}/answer`, { payload: sentinel });

@@ -203,7 +203,7 @@ export async function step3(f) {
     check(Array.isArray(look.rgb) && look.rgb.every((c) => c > 200), `light background (${look.bg} → rgb ${look.rgb?.join(",")})`);
 
     // The notice through the API, as the button does; then every screen of the link.
-    const ack = await api(f.token, "privacy-ack", { body: { version: f.m.REFERENT_PRIVACY_NOTICE.version } });
+    const ack = await api(f.token, "privacy-ack", { body: { version: f.m.REFERENT_PRIVACY_NOTICE.version, shown: f.m.REFERENT_PRIVACY_NOTICE.version } });
     check(ack.status === 200 && ack.json?.ok, `privacy ack ${ack.status}`);
     const view = await api(f.token, "", { method: "GET" });
     check(view.status === 200 && view.json?.ok, `view ${view.status}`);
@@ -229,7 +229,7 @@ export async function step3(f) {
 /** Step 4: the answers through the public API, as the page sends them. */
 export async function step4(f) {
   const it = (k) => f.items.get(k);
-  const ack = await api(f.token, "privacy-ack", { body: { version: f.m.REFERENT_PRIVACY_NOTICE.version } });
+  const ack = await api(f.token, "privacy-ack", { body: { version: f.m.REFERENT_PRIVACY_NOTICE.version, shown: f.m.REFERENT_PRIVACY_NOTICE.version } });
   check(ack.status === 200 && ack.json?.ok, `privacy ack ${ack.status}`);
   check(f.m.REFERENT_PRIVACY_NOTICE.version === "uc-2026-11-1", "notice version");
   const view = await api(f.token, "", { method: "GET" });

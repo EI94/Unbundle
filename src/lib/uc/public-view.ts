@@ -95,6 +95,26 @@ export function noticeFor(privacy: { version: string; notice?: ReferentNoticeTex
   return own.version === privacy.version ? own : null;
 }
 
+/**
+ * Il corpo di «Ho letto, iniziamo» (`POST /api/r/[token]/privacy-ack`): la versione accettata e (rilascio del 19/11)
+ * `shown`, la versione del testo che la pagina aveva sullo schermo (`noticeFor`). La pagina di produzione (49414cc9)
+ * non lo manda.
+ */
+export interface PrivacyAckBody {
+  version: string;
+  shown: string;
+}
+
+/**
+ * (Rilascio del 19/11) «Ho letto, iniziamo» si registra solo con la prova del testo mostrato: `version` e `shown` sono
+ * tutte e due la versione di adesso. La pagina di produzione (49414cc9) mostra il testo che ha dentro (`uc-2026-10-2`)
+ * e manda solo `version`: al primo tocco ha `informativa_cambiata` e rilegge la vista, che porta la versione del server;
+ * senza la prova, il secondo tocco registrerebbe un consenso a un testo che il referente non ha visto.
+ */
+export function privacyAckShown(body: { version?: unknown; shown?: unknown }, current: string = REFERENT_PRIVACY_NOTICE.version): boolean {
+  return body.version === current && body.shown === current;
+}
+
 // ── Messaggi uniformi ─────────────────────────────────────────────────
 
 /** Token sbagliato, scaduto, revocato o sezione spenta: sempre lo stesso testo. */
