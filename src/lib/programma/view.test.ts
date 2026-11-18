@@ -160,7 +160,7 @@ test("il SAL: delta dei riquadri e cosa è cambiato, dalle fotografie", () => {
   const keys = view.sal.changes.map((c) => c.key);
   assert.ok(keys.includes("valore_stimato") && keys.includes("use_case_in_uso"));
   assert.ok(!keys.includes("persone_formate"), "uguale: non è un cambiamento");
-  assert.equal(salChangeText(view.sal.changes.find((c) => c.key === "valore_stimato")!), "Valore stimato all'anno: +18.600 €");
+  assert.equal(salChangeText(view.sal.changes.find((c) => c.key === "valore_stimato")!), "Valore all'anno: +18.600 €");
   assert.equal(salChangeText({ key: "use_case_in_uso", from: 0, to: 1 }), "Use case in uso: da 0 a 1");
   assert.ok(!view.nextSteps.some((s) => s.kind === "primo_sal"));
 });

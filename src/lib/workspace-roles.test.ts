@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { INVITABLE_ROLES, ROLE_INFO, roleLabel } from "./workspace-roles.ts";
+import { INVITABLE_ROLES, ROLE_INFO, ROLE_INFO_OUTSIDE, roleLabel } from "./workspace-roles.ts";
 import { canManageWorkspaceCollaborators, canReviewWorkspacePortfolio } from "./workspace-permissions.ts";
 
 test("ogni ruolo ha un nome in italiano, anche il partecipante ai corsi", () => {
@@ -37,10 +37,19 @@ test("i testi degli use case sono quelli di docs/use-case/DESIGN.md §14.4", () 
   assert.equal(ROLE_INFO.function_lead.summary, "valuta e decide gli use case");
   assert.ok(ROLE_INFO.function_lead.can.includes("Decide se e quando fare gli use case"));
   assert.ok(ROLE_INFO.analyst.can.includes("Propone, valuta e decide gli use case"));
-  assert.ok(ROLE_INFO.contributor.can.includes("Propone nuovi use case e ne vede la fase; delle proprie vede anche codice e nota pubblica"));
+  assert.ok(ROLE_INFO.contributor.can.includes("Propone nuovi use case e ne vede la fase; dei propri vede anche codice e nota pubblica"));
   assert.deepEqual(ROLE_INFO.contributor.cannot, ["Non vede valutazioni, costi e note interne"]);
   // Le wave escono con l'area (D1): nessun ruolo le promette più.
   for (const [role, info] of Object.entries(ROLE_INFO)) {
     assert.doesNotMatch([info.summary, ...info.can, ...(info.cannot ?? [])].join(" "), /\bwave\b/i, role);
   }
+});
+
+test("fuori dalla dashboard (invito) gli stessi ruoli dicono «casi d'uso», mai «use case» (rilascio 10, §4)", () => {
+  assert.deepEqual(Object.keys(ROLE_INFO_OUTSIDE).sort(), Object.keys(ROLE_INFO).sort());
+  for (const [role, info] of Object.entries(ROLE_INFO_OUTSIDE)) {
+    assert.equal(info.label, ROLE_INFO[role].label, role);
+    assert.doesNotMatch([info.summary, ...info.can, ...(info.cannot ?? [])].join(" "), /\buse case\b/i, role);
+  }
+  assert.ok(ROLE_INFO_OUTSIDE.function_lead.can.includes("Decide se e quando fare i casi d'uso"));
 });

@@ -3,7 +3,9 @@
  *
  * Regole (ui-less-is-more, external-copy): poche parole, la cifra prima delle parole, mai «wave» o
  * «ondata» (decisione 2: solo il trimestre), mai «quota», «fee» o «proposta a valore» (la pagina la vede
- * il cliente), mai una persona. «use case» come nel resto della dashboard.
+ * il cliente), mai una persona. «use case» come nel resto della dashboard. (Rilascio 10, §4) Le parole
+ * comuni: «Valore all'anno», «Costo di realizzazione», «Costo all'anno», «Approvato», «Obiettivi»,
+ * «Scadenze»; mai «pilastri», «OKR», «Strategia».
  * Modulo puro: import relativi `.ts`.
  */
 import { formatEuro, formatInteger } from "../use-cases/format.ts";
@@ -21,7 +23,7 @@ export const PROGRAM_TEXT = Object.freeze({
   closeSalHint: "Fotografa i numeri di oggi: il prossimo SAL mostrerà cosa è cambiato da qui.",
   salClosed: (on: string) => `SAL del ${longDate(on)} chiuso.`,
   results: "Risultati",
-  estimated: "Valore stimato all'anno",
+  estimated: "Valore all'anno",
   inUse: "Valore già in uso",
   perEmployee: "Valore per dipendente",
   index: "Indice AI-native",
@@ -49,15 +51,15 @@ export const PROGRAM_TEXT = Object.freeze({
   programBreakeven: "Pareggio del programma",
   noValueYet: "Ancora nessun valore o costo da disegnare: arrivano con le stime degli use case.",
   perEmployeeLater: "dal primo use case in uso",
-  onPillars: (n: number) => `su ${n} pilastri di 4`,
+  onPillars: (n: number) => `su ${n} misure di 4`,
   breakevenNow: "Pareggio subito",
   breakevenBeyond: (month: string) => `Pareggio oltre ${monthLabel(month)}`,
   noBreakeven: "Nessun valore o costo ancora.",
   initiatives: "Iniziative",
   colValue: "Valore all'anno",
-  colOneoff: "Costo di avvio",
-  colRun: "Mantenimento all'anno",
-  stage: Object.freeze({ in_uso: "In uso", in_realizzazione: "In realizzazione", da_avviare: "Da avviare" } satisfies Record<ProgramStage, string>),
+  colOneoff: "Costo di realizzazione",
+  colRun: "Costo all'anno",
+  stage: Object.freeze({ in_uso: "In uso", in_realizzazione: "In realizzazione", da_avviare: "Approvato" } satisfies Record<ProgramStage, string>),
   support: "Supporto Lateral Space",
   supportMonth: (eur: number) => `${formatEuro(eur)} al mese`,
   training: "Formazione",
@@ -76,15 +78,15 @@ export const PROGRAM_TEXT = Object.freeze({
   lessThanFive: "meno di 5",
   levelsHidden: "I livelli si vedono quando le risposte all'AI Readiness superano la soglia del questionario (almeno 5).",
   goals: "Obiettivi",
-  goalsMore: "OKR e KPI",
+  goalsMore: "Risultati chiave e KPI",
   noGoals: "Nessun risultato chiave ancora.",
-  addInStrategy: "Aggiungi nella Strategia",
+  addInStrategy: "Aggiungi negli Obiettivi",
   chooseKpis: "Scegli i KPI",
   sal: "Per il SAL",
   changedSince: (on: string | null) => (on ? `Cosa è cambiato dal ${longDate(on)}` : "Cosa è cambiato"),
   noSalYet: "Dopo il primo SAL, qui trovi cosa è cambiato.",
   nothingChanged: "Niente di nuovo dai numeri dell'ultimo SAL.",
-  nextSteps: "Prossimi passi",
+  nextSteps: "Scadenze",
   asks: "Decisioni per la leadership",
   noAsks: "Nessuna decisione da chiedere.",
   addAsk: "Aggiungi una decisione",
@@ -98,8 +100,8 @@ export const PILLAR_TEXT: Readonly<Record<IndexPillar, string>> = Object.freeze(
 export const PILLAR_HOW: Readonly<Record<IndexPillar, string>> = Object.freeze({
   persone: "Persone formate sui dipendenti.",
   use_case: "Avanzamento delle fasi: approvato vale un terzo, in realizzazione due terzi, in uso tutto.",
-  valore: "Valore in uso sul valore stimato.",
-  adozione: "Chi usa l'AI ogni settimana; senza, il pilastro «Adozione» dell'AI Readiness.",
+  valore: "Valore in uso sul valore all'anno.",
+  adozione: "Chi usa l'AI ogni settimana; senza, la misura «Adozione» dell'AI Readiness.",
 });
 
 /** I pilastri dell'AI Readiness, in italiano (le chiavi del questionario). */
@@ -119,12 +121,12 @@ export const GAP_TEXT: Readonly<Record<PillarGap, string>> = Object.freeze({
   dipendenti: "Non conta: manca il numero di dipendenti.",
   formazione: "Non conta: nessuna formazione registrata.",
   use_case: "Non conta: nessuno use case approvato.",
-  valore: "Non conta: nessun valore stimato.",
+  valore: "Non conta: nessuna stima del valore.",
   adozione: "Non conta: manca l'uso settimanale e l'AI Readiness è sotto soglia.",
 });
 
 export const SAL_CHANGE_TEXT: Readonly<Record<SalChange["key"], string>> = Object.freeze({
-  valore_stimato: "Valore stimato all'anno",
+  valore_stimato: "Valore all'anno",
   valore_in_uso: "Valore già in uso",
   indice_ai_native: "Indice AI-native",
   use_case_in_uso: "Use case in uso",
@@ -135,7 +137,7 @@ export const SAL_CHANGE_TEXT: Readonly<Record<SalChange["key"], string>> = Objec
 
 const EURO_KEYS: ReadonlySet<SalChange["key"]> = new Set(["valore_stimato", "valore_in_uso"]);
 
-/** «Valore stimato all'anno: +122.000 €», «Use case in uso: da 0 a 3». */
+/** «Valore all'anno: +122.000 €», «Use case in uso: da 0 a 3». */
 export function salChangeText(change: SalChange): string {
   const label = SAL_CHANGE_TEXT[change.key];
   if (EURO_KEYS.has(change.key)) return `${label}: ${signedEuro(change.to - change.from)}`;

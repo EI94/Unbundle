@@ -11,7 +11,7 @@ import {
   maskInviteEmail,
   normalizeInviteEmail,
 } from "@/lib/workspace-invite-token";
-import { ROLE_INFO, roleLabel } from "@/lib/workspace-roles";
+import { ROLE_INFO_OUTSIDE, roleLabel } from "@/lib/workspace-roles";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -108,7 +108,8 @@ export default async function WorkspaceInvitePage({ params }: { params: Promise<
   const lifecycle = getWorkspaceInvitationLifecycle(invitation);
   if (lifecycle !== "active") return <Unavailable reason={lifecycle} workspaceName={workspace.name} />;
 
-  const role = ROLE_INFO[invitation.role];
+  // (Rilascio 10, §3.11) Fuori dalla dashboard i ruoli dicono «caso d'uso».
+  const role = ROLE_INFO_OUTSIDE[invitation.role];
   const needsVerification = Boolean(session && invitedEmail && !wrongAccount && !session.user.emailVerified);
 
   return (
