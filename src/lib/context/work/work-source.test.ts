@@ -159,14 +159,20 @@ test("«Una call risponde»: solo i revisori, solo un fatto «Per tutti» attivo
   const needs = readFileSync(new URL("../../db/queries/context-needs.ts", import.meta.url), "utf8");
   const list = topLevelFunction(needs, "export async function listNeedLinks(");
   assert.match(list, /if \(!contextAbilities\(actor\)\.canSeeReviewerSources /);
-  assert.match(list, /JOIN context_facts f ON f\.id = l\.fact_id AND f\.workspace_id = l\.workspace_id AND f\.status = 'attivo' AND f\.visibility = 'tutti'/);
+  // Il fatto è la versione attiva in testa alla sua storia (un testo corretto non fa sparire la riga), sempre «Per tutti».
+  assert.match(list, /\$\{headsCte\(ws, sql`SELECT link_id, fact_id FROM open_links`\)\}/);
+  assert.match(list, /JOIN context_facts f ON f\.id = h\.fact_id AND f\.workspace_id = \$\{ws\}::uuid AND f\.status = 'attivo' AND f\.visibility = 'tutti'/);
   assert.match(list, /WHERE l\.workspace_id = \$\{ws\}::uuid AND l\.status = 'aperta'/);
+  const heads = topLevelFunction(needs, "function headsCte(");
+  assert.match(heads, /JOIN context_facts f ON f\.supersedes_id = c\.fact_id AND f\.workspace_id = \$\{workspaceId\}::uuid WHERE c\.depth < 500/);
+  assert.match(heads, /JOIN context_facts h ON h\.id = c\.fact_id AND h\.workspace_id = \$\{workspaceId\}::uuid AND h\.status = 'attivo'/);
   assert.match(list, /n\.type = 'requisito' AND n\.archived_at IS NULL AND \$\{sql\.raw\(CLIENT_SIDE_SQL\("n"\)\)\}/);
   assert.match(list, /n\.status = ANY\(\$\{`\{\$\{OPEN_NEED_STATUSES\.join\(","\)\}\}`\}::text\[\]\)/);
   const decide = topLevelFunction(needs, "async function decideNeedLink(");
   assert.match(decide, /const allowed = await gate\(actor, "canSeeReviewerSources"\);/);
   assert.match(decide, /if \(!\(await contextWorkReady\(\)\)\) return notReady\(\);/);
-  assert.match(decide, /WHERE id = \$\{linkId\}::uuid AND workspace_id = \$\{ws\}::uuid AND status = 'aperta'/);
+  assert.match(decide, /WHERE l\.id = \$\{linkId\}::uuid AND l\.workspace_id = \$\{ws\}::uuid AND l\.status = 'aperta'/);
+  assert.match(decide, /const factId = link\.head_id \?\? link\.fact_id;/, "chi decide decide sulla versione attiva");
   assert.match(decide, /actorUserId: null/, "nella storia senza chi ha deciso");
 });
 

@@ -864,6 +864,39 @@ test("«Cosa serve»: la scheda vede solo i legami aperti di richieste aperte de
   await q(`DELETE FROM uploaded_documents WHERE id = $1::uuid`, [documentId]);
 });
 
+test("«Cosa serve»: il legame segue la versione attiva del fatto: un testo corretto resta la risposta, alla lettura e alla chiusura", opts, async () => {
+  await clearMemory();
+  const ls = actor("ls");
+  const call = await insertSource({ occurredOn: "2026-11-14" });
+  const fact = await insertFact({ statement: "Gli ordini arrivano via e-mail.", section: "lavoro", useCases: [ids.ucA], sourceId: call });
+  const need = randomUUID();
+  await q(`INSERT INTO use_case_needs (id, workspace_id, type, title, status, owner_side) VALUES ($1::uuid, $2::uuid, 'requisito', 'Come arrivano gli ordini?', 'chiesta', 'cliente')`, [need, ids.wsA]);
+  await q(`INSERT INTO use_case_need_links (need_id, use_case_id) VALUES ($1::uuid, $2::uuid)`, [need, ids.ucA]);
+  const link = randomUUID();
+  await q(`INSERT INTO context_need_links (id, workspace_id, need_id, fact_id, status) VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'aperta')`, [link, ids.wsA, need, fact]);
+  assert.equal((await needs.listNeedLinks(actor("rev"), ids.ucA))[need]?.statement, "Gli ordini arrivano via e-mail.");
+  // Un testo corretto a mano è una versione nuova: la riga resta, con il testo di adesso e la stessa call.
+  const v2 = okValue(await memory.editFact(ls, fact, 1, { statement: "Gli ordini arrivano via e-mail e via PEC." }));
+  assert.deepEqual(await needs.listNeedLinks(actor("rev"), ids.ucA), { [need]: { id: link, needId: need, statement: "Gli ordini arrivano via e-mail e via PEC.", from: "call", date: "14 nov" } });
+  // E poi un'altra versione ancora: sempre l'ultima.
+  const v3 = okValue(await memory.editFact(ls, v2.factId, 1, { statement: "Gli ordini arrivano via e-mail, via PEC e dal portale." }));
+  assert.equal((await needs.listNeedLinks(actor("rev"), ids.ucA))[need]?.statement, "Gli ordini arrivano via e-mail, via PEC e dal portale.");
+  // «Chiudi con questo»: il legame e la sua riga di storia prendono la versione che la persona ha letto.
+  okValue(await needs.markNeedLinkUsed(actor("rev"), link));
+  assert.deepEqual((await q(`SELECT status, fact_id FROM context_need_links WHERE id = $1::uuid`, [link]))[0], { status: "usata", fact_id: v3.factId });
+  assert.equal((await q(`SELECT fact_id FROM context_events WHERE workspace_id = $1::uuid AND action = 'richiesta_chiusa'`, [ids.wsA]))[0]?.fact_id, v3.factId);
+  // Una versione ristretta a «Solo Lateral Space», o ritirata, non risponde più nella scheda.
+  const other = randomUUID();
+  await q(`INSERT INTO context_need_links (id, workspace_id, need_id, fact_id, status) VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'aperta')`, [other, ids.wsA, need, fact]);
+  okValue(await memory.editFact(ls, v3.factId, 1, { visibility: "ls" }));
+  assert.deepEqual(await needs.listNeedLinks(actor("rev"), ids.ucA), {}, "ristretta: il suo testo non arriva al cliente");
+  okValue(await memory.editFact(ls, v3.factId, 2, { visibility: "tutti" }));
+  assert.equal((await needs.listNeedLinks(actor("rev"), ids.ucA))[need]?.id, other);
+  okValue(await memory.retireFact(ls, v3.factId, 3));
+  assert.deepEqual(await needs.listNeedLinks(actor("rev"), ids.ucA), {}, "ritirata: niente risponde");
+  await q(`DELETE FROM use_case_needs WHERE id = $1::uuid`, [need]);
+});
+
 // ─── `unbundle impara`, `unbundle nota`, le fonti nuove ──────────────
 
 test("addLearning: una proposta «Solo Lateral Space» mai preselezionata, la riconferma, «già proposta», il nome fermato, la frase lunga, il tetto del giorno", opts, async () => {

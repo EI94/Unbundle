@@ -6,7 +6,9 @@ import "server-only";
  * - `proposta`: nasce con la lettura e vale solo finché la sua proposta è aperta (ogni lettura lo controlla); la notte
  *   cancella quelli di proposte non più aperte (`purgeOrphanNeedLinks`).
  * - `aperta`: nasce alla conferma, solo con un fatto «Per tutti» e l'esigenza ancora aperta. La scheda lo mostra sotto
- *   la richiesta (`listNeedLinks`) solo se il fatto è ancora attivo e «Per tutti» e l'esigenza ancora aperta.
+ *   la richiesta (`listNeedLinks`) solo se il fatto è ancora attivo e «Per tutti» e l'esigenza ancora aperta. Il fatto è
+ *   la versione in testa alla sua storia: un testo corretto a mano o un «cambia» confermato dopo fanno una versione nuova
+ *   (`supersedes_id`), e il legame segue quella, alla lettura e alla decisione.
  * - `usata` («Chiudi con questo»: l'esigenza passa ad «A posto» con `updateNeed`, poi `markNeedLinkUsed`) e `scartata`
  *   («Non risponde», `dismissNeedLink`): decise da una persona, con la data.
  *
@@ -14,7 +16,7 @@ import "server-only";
  * Nessun modello. Ogni query porta `workspace_id`: un legame di un altro workspace è «non trovato». Nei log solo id e
  * numeri. Senza la 0041 (`contextWorkReady` falso) niente legami.
  */
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { dayLabel } from "@/lib/context/labels";
 import { contextAbilities, type ContextActor } from "@/lib/context/visibility";
 import { OPEN_NEED_STATUSES } from "@/lib/context/work/need-links";
@@ -63,28 +65,49 @@ export interface NeedLinkView {
 }
 
 /**
+ * La versione in testa alla storia di ogni fatto di `links` (una CTE `heads(link_id, fact_id)` da mettere dopo
+ * `WITH RECURSIVE`): il fatto del legame, poi ogni sua versione dopo (`supersedes_id`), e di queste quella attiva. Un
+ * fatto ha una versione dopo al massimo (l'indice unico della storia): la catena è una riga sola.
+ */
+function headsCte(workspaceId: string, links: SQL): SQL {
+  return sql`chain AS (
+    SELECT x.link_id, x.fact_id, 0 AS depth FROM (${links}) x WHERE x.fact_id IS NOT NULL
+    UNION ALL
+    SELECT c.link_id, f.id, c.depth + 1 FROM chain c JOIN context_facts f ON f.supersedes_id = c.fact_id AND f.workspace_id = ${workspaceId}::uuid WHERE c.depth < 500
+  ), heads AS (
+    SELECT c.link_id, c.fact_id FROM chain c JOIN context_facts h ON h.id = c.fact_id AND h.workspace_id = ${workspaceId}::uuid AND h.status = 'attivo'
+  )`;
+}
+
+/**
  * I legami aperti delle richieste aperte di questo use case, per esigenza (l'ultimo nato, se ce n'è più di uno): solo
- * requisiti del cliente non archiviati, in uno stato aperto, con un fatto attivo «Per tutti». A chi non è un revisore,
- * senza la 0041 o con un errore (nel log): niente.
+ * requisiti del cliente non archiviati, in uno stato aperto, con la versione attiva del fatto «Per tutti» (anche dopo un
+ * testo corretto: la riga dice il testo di adesso). A chi non è un revisore, senza la 0041 o con un errore (nel log):
+ * niente.
  */
 export async function listNeedLinks(actor: ContextActor, useCaseId: string): Promise<Record<string, NeedLinkView>> {
   if (!contextAbilities(actor).canSeeReviewerSources || !isUuid(actor.workspaceId) || !isUuid(useCaseId)) return {};
   const ws = actor.workspaceId;
   try {
     if (!(await contextWorkReady())) return {};
+    const openLinks = sql`
+      SELECT l.id AS link_id, l.need_id, l.fact_id, l.created_at
+      FROM context_need_links l
+      JOIN use_case_needs n ON n.id = l.need_id AND n.workspace_id = l.workspace_id
+      JOIN use_case_need_links nl ON nl.need_id = n.id AND nl.use_case_id = ${useCaseId}::uuid
+      WHERE l.workspace_id = ${ws}::uuid AND l.status = 'aperta'
+        AND n.type = 'requisito' AND n.archived_at IS NULL AND ${sql.raw(CLIENT_SIDE_SQL("n"))}
+        AND n.status = ANY(${`{${OPEN_NEED_STATUSES.join(",")}}`}::text[])`;
     const rows = rowsOf<{ id: string; need_id: string; statement: string; source_kind: string | null; day: unknown }>(
       await db.execute(sql`
-        SELECT DISTINCT ON (l.need_id) l.id, l.need_id, f.statement, s.kind AS source_kind,
+        WITH RECURSIVE open_links AS (${openLinks}), ${headsCte(ws, sql`SELECT link_id, fact_id FROM open_links`)}
+        SELECT DISTINCT ON (o.need_id) o.link_id AS id, o.need_id, f.statement, s.kind AS source_kind,
           coalesce(s.occurred_on, (f.created_at AT TIME ZONE 'Europe/Rome')::date) AS day
-        FROM context_need_links l
-        JOIN context_facts f ON f.id = l.fact_id AND f.workspace_id = l.workspace_id AND f.status = 'attivo' AND f.visibility = 'tutti'
-        JOIN use_case_needs n ON n.id = l.need_id AND n.workspace_id = l.workspace_id
-        JOIN use_case_need_links nl ON nl.need_id = n.id AND nl.use_case_id = ${useCaseId}::uuid
+        FROM open_links o
+        JOIN heads h ON h.link_id = o.link_id
+        JOIN context_facts f ON f.id = h.fact_id AND f.workspace_id = ${ws}::uuid AND f.status = 'attivo' AND f.visibility = 'tutti'
         LEFT JOIN context_sources s ON s.id = f.source_id AND s.workspace_id = f.workspace_id
-        WHERE l.workspace_id = ${ws}::uuid AND l.status = 'aperta'
-          AND n.type = 'requisito' AND n.archived_at IS NULL AND ${sql.raw(CLIENT_SIDE_SQL("n"))}
-          AND n.status = ANY(${`{${OPEN_NEED_STATUSES.join(",")}}`}::text[])
-        ORDER BY l.need_id, l.created_at DESC, l.id`),
+        ORDER BY o.need_id, o.created_at DESC, o.link_id`),
     );
     const out: Record<string, NeedLinkView> = {};
     for (const row of rows) {
@@ -97,7 +120,11 @@ export async function listNeedLinks(actor: ContextActor, useCaseId: string): Pro
   }
 }
 
-/** Un legame aperto passa a `usata` o `scartata`, con la data e chi l'ha deciso; una riga di storia senza attore. */
+/**
+ * Un legame aperto passa a `usata` o `scartata`, con la data e chi l'ha deciso; una riga di storia senza attore. Il legame
+ * prende la versione attiva del fatto, quella che la persona ha letto nella scheda (se un altro legame della stessa
+ * richiesta non ce l'ha già: allora resta com'era).
+ */
 async function decideNeedLink(actor: ContextActor, linkId: string, to: "usata" | "scartata"): Promise<ServiceResult<true>> {
   const allowed = await gate(actor, "canSeeReviewerSources");
   if (!allowed.ok) return allowed;
@@ -105,20 +132,26 @@ async function decideNeedLink(actor: ContextActor, linkId: string, to: "usata" |
   const ws = actor.workspaceId;
   try {
     if (!(await contextWorkReady())) return notReady();
-    const [link] = rowsOf<{ status: string; need_id: string; fact_id: string | null }>(
-      await db.execute(sql`SELECT status, need_id, fact_id FROM context_need_links WHERE id = ${linkId}::uuid AND workspace_id = ${ws}::uuid`),
+    const [link] = rowsOf<{ status: string; need_id: string; fact_id: string | null; head_id: string | null }>(
+      await db.execute(sql`
+        WITH RECURSIVE ${headsCte(ws, sql`SELECT id AS link_id, fact_id FROM context_need_links WHERE id = ${linkId}::uuid AND workspace_id = ${ws}::uuid`)}
+        SELECT l.status, l.need_id, l.fact_id, (SELECT h.fact_id FROM heads h LIMIT 1) AS head_id
+        FROM context_need_links l WHERE l.id = ${linkId}::uuid AND l.workspace_id = ${ws}::uuid`),
     );
     if (!link) return notFound();
     if (link.status !== "aperta") return stale();
+    const factId = link.head_id ?? link.fact_id;
     const decided = sql`EXISTS (SELECT 1 FROM context_need_links x WHERE x.id = ${linkId}::uuid AND x.status = ${to} AND x.decided_at = now())`;
     const results = await db.batch([
       db.execute(sql`
-        UPDATE context_need_links SET status = ${to}, decided_at = now(), decided_by_user_id = ${actor.userId}::uuid, version = version + 1, updated_at = now()
-        WHERE id = ${linkId}::uuid AND workspace_id = ${ws}::uuid AND status = 'aperta'
-        RETURNING id`),
+        UPDATE context_need_links l SET status = ${to}, decided_at = now(), decided_by_user_id = ${actor.userId}::uuid, version = l.version + 1, updated_at = now(),
+          fact_id = CASE WHEN NOT EXISTS (SELECT 1 FROM context_need_links o WHERE o.need_id = l.need_id AND o.fact_id = ${factId}::uuid AND o.id <> l.id)
+            THEN coalesce(${factId}::uuid, l.fact_id) ELSE l.fact_id END
+        WHERE l.id = ${linkId}::uuid AND l.workspace_id = ${ws}::uuid AND l.status = 'aperta'
+        RETURNING l.id`),
       // Nella storia senza chi l'ha deciso: il legame lo dice, e nessuno si misura per persona.
       eventStatement(
-        { workspaceId: ws, action: to === "usata" ? "richiesta_chiusa" : "richiesta_scartata", channel: actor.channel, actorUserId: null, factId: link.fact_id, detail: { esigenza: link.need_id } },
+        { workspaceId: ws, action: to === "usata" ? "richiesta_chiusa" : "richiesta_scartata", channel: actor.channel, actorUserId: null, factId, detail: { esigenza: link.need_id } },
         decided,
       ),
     ]);
