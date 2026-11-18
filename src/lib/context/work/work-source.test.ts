@@ -128,3 +128,20 @@ test("le scritture che cambiano un fatto avvisano dopo il batch riuscito; una ri
   const notify = confirm.indexOf("if (newFacts.size > 0) await notifyContextChange({ workspaceId: ws, actorUserId: actor.userId, factIds: [...newFacts.keys()] });");
   assert.ok(batch > 0 && notify > batch, "la conferma avvisa dopo il batch, solo con fatti scritti");
 });
+
+// ─── (9b) I legami con «Cosa serve» (§2.2, §3.2) ─────────────────────
+
+test("«Una call risponde»: solo i revisori, solo un fatto «Per tutti» attivo, solo richieste aperte del cliente; si decide solo un legame aperto", () => {
+  const needs = readFileSync(new URL("../../db/queries/context-needs.ts", import.meta.url), "utf8");
+  const list = topLevelFunction(needs, "export async function listNeedLinks(");
+  assert.match(list, /if \(!contextAbilities\(actor\)\.canSeeReviewerSources /);
+  assert.match(list, /JOIN context_facts f ON f\.id = l\.fact_id AND f\.workspace_id = l\.workspace_id AND f\.status = 'attivo' AND f\.visibility = 'tutti'/);
+  assert.match(list, /WHERE l\.workspace_id = \$\{ws\}::uuid AND l\.status = 'aperta'/);
+  assert.match(list, /n\.type = 'requisito' AND n\.archived_at IS NULL AND \$\{sql\.raw\(CLIENT_SIDE_SQL\("n"\)\)\}/);
+  assert.match(list, /n\.status = ANY\(\$\{`\{\$\{OPEN_NEED_STATUSES\.join\(","\)\}\}`\}::text\[\]\)/);
+  const decide = topLevelFunction(needs, "async function decideNeedLink(");
+  assert.match(decide, /const allowed = await gate\(actor, "canSeeReviewerSources"\);/);
+  assert.match(decide, /if \(!\(await contextWorkReady\(\)\)\) return notReady\(\);/);
+  assert.match(decide, /WHERE id = \$\{linkId\}::uuid AND workspace_id = \$\{ws\}::uuid AND status = 'aperta'/);
+  assert.match(decide, /actorUserId: null/, "nella storia senza chi ha deciso");
+});

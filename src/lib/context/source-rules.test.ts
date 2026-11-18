@@ -88,7 +88,8 @@ function isDbSchemaImport(file: string, specifier: string): boolean {
   const resolved = new URL(specifier, new URL(file, "file:///repo/")).pathname.replace(/^\/repo\//, "").replace(/\.ts$/, "");
   return resolved === "src/lib/db/schema";
 }
-const CONTEXT_TABLE_SQL = /\bcontext_(?:sources|facts|fact_links|entities|relations|commitments|questions|proposals|events|seen|briefs|granola_[a-z_]+)\b/;
+// (9b) Anche `context_need_links` (drizzle/0041): i legami con «Cosa serve» li scrive solo context-needs.ts.
+const CONTEXT_TABLE_SQL = /\bcontext_(?:sources|facts|fact_links|need_links|entities|relations|commitments|questions|proposals|events|seen|briefs|granola_[a-z_]+)\b/;
 
 test("le tabelle `context*` dello schema le importano solo le funzioni di src/lib/db/queries/context-*.ts", () => {
   let checked = 0;
@@ -110,6 +111,7 @@ test("le tabelle `context*` dello schema le importano solo le funzioni di src/li
 test("pagine, rotte, azioni, componenti e MCP non scrivono SQL sulle tabelle `context_*`", () => {
   const outer = CODE.filter((file) => /^src\/(app|components|lib\/actions|lib\/use-cases)\//.test(file));
   assert.ok(outer.length > 300);
+  assert.ok(CONTEXT_TABLE_SQL.test("FROM context_need_links l"), "(9b) anche i legami con «Cosa serve»");
   for (const file of outer) {
     const code = read(file).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
     assert.equal(CONTEXT_TABLE_SQL.test(code), false, `${file}: le tabelle di «Contesto» si leggono e si scrivono dalle funzioni di context-*.ts`);

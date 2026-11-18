@@ -102,6 +102,9 @@ const TABLE_FILES = new Set([
   "src/lib/db/context-work-ddl.ts",
   // (Rilascio 9b) «Una risposta per «Cosa serve»»: gli use case di una richiesta, solo gli id, per la campanella dei revisori.
   "src/lib/db/queries/context-notices.ts",
+  // (Rilascio 9b) «Una call risponde»: i legami aperti delle richieste aperte del cliente di uno use case, solo per i
+  // revisori (`canSeeReviewerSources`, gli stessi ruoli di `canSeeNeeds`). Il testo che esce è quello del fatto «Per tutti».
+  "src/lib/db/queries/context-needs.ts",
 ]);
 
 const READS = /\b(listWorkspaceNeeds|getWorkspaceNeed|needUseCaseRefs)\b|queries\/use-case-needs/;
