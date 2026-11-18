@@ -15,12 +15,12 @@ const INITIAL: AiReadinessActionState<{ assessmentId: string }> = { ok: true };
 
 
 const FIELD_LABELS: Record<string, string> = {
-  name: "Nome assessment",
+  name: "Nome della rilevazione",
   controllerName: "Titolare del trattamento",
   processorName: "Responsabile / processore",
   legalBasis: "Base giuridica",
   supportEmail: "Email supporto",
-  dataRetentionDays: "Retention dati",
+  dataRetentionDays: "Conservazione dei dati",
   aggregationThreshold: "Soglia aggregazione",
   pillars: "Aree da misurare",
 };
@@ -150,7 +150,7 @@ export function AssessmentCreateForm({ workspaceId, workspaceName }: { workspace
             </div>
           )}
           <div className="space-y-2">
-            <Label htmlFor="name">Nome assessment</Label>
+            <Label htmlFor="name">Nome della rilevazione</Label>
             <Input id="name" name="name" defaultValue={`AI Readiness - ${workspaceName}`} />
             {state.fieldErrors?.name && <p className="text-xs text-destructive">{state.fieldErrors.name}</p>}
           </div>
@@ -263,7 +263,7 @@ export function AssessmentCreateForm({ workspaceId, workspaceName }: { workspace
             <Input id="dpoEmail" name="dpoEmail" type="email" placeholder="privacy@azienda.com" />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="dataRetentionDays">Retention dati</Label>
+            <Label htmlFor="dataRetentionDays">Conservazione dei dati</Label>
             <Input id="dataRetentionDays" name="dataRetentionDays" type="number" min={30} max={3650} defaultValue={365} />
           </div>
           <div className="space-y-2">
@@ -277,7 +277,7 @@ export function AssessmentCreateForm({ workspaceId, workspaceName }: { workspace
               </p>
             )}
             <Button type="submit" disabled={pending}>
-              {pending ? "Creo assessment..." : "Crea Assessment Core"}
+              {pending ? "Creo la rilevazione…" : "Crea la rilevazione"}
             </Button>
           </div>
         </form>

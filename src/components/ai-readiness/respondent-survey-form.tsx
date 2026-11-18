@@ -19,7 +19,7 @@ import {
   type AiReadinessDraftIdentity,
   type AiReadinessDraftPayload,
 } from "@/lib/ai-readiness/draft";
-import { AI_READINESS_DEFAULT_COPY, brandCopy } from "@/lib/ai-readiness/copy";
+import { AI_READINESS_DEFAULT_COPY, brandCopy, surveyPillarTitle } from "@/lib/ai-readiness/copy";
 import { validateSurveyPayload } from "@/lib/ai-readiness/form-validation";
 import { parseSupportContacts } from "@/lib/ai-readiness/support-contacts";
 import type {
@@ -738,7 +738,7 @@ export function RespondentSurveyForm({
       {sections.map((section) => (
         <section key={section.id} className="rounded-[32px] border bg-card p-6">
           <div className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
-            {template.pillars.find((pillar) => pillar.id === section.pillarId)?.title}
+            {surveyPillarTitle(section.pillarId)}
           </div>
           <h2 className="mt-2 text-xl font-semibold">{section.title}</h2>
           {section.description && (

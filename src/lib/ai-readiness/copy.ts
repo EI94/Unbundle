@@ -42,3 +42,20 @@ export function withSavedAccents<T>(value: T): T {
   }
   return value;
 }
+
+/**
+ * (Rilascio 10, §7.4, §3.11) Il nome di un'area del questionario come lo legge chi risponde: in italiano, mai l'id del
+ * pilastro («use_cases») né il titolo inglese salvato nel modello («Technology», «Use Cases»). Fuori dalla dashboard
+ * «caso d'uso», mai «use case». Un'area che non si conosce non ha titolo.
+ */
+export const SURVEY_PILLAR_TITLE: Readonly<Record<string, string>> = Object.freeze({
+  technology: "Tecnologia",
+  context: "Contesto",
+  workflow: "Processi",
+  adoption: "Adozione",
+  use_cases: "Casi d'uso",
+});
+
+export function surveyPillarTitle(pillarId: string | null | undefined): string | null {
+  return pillarId && Object.hasOwn(SURVEY_PILLAR_TITLE, pillarId) ? SURVEY_PILLAR_TITLE[pillarId] : null;
+}

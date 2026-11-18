@@ -89,7 +89,7 @@ export function AssessmentActions({
       {status !== "open" && (
         <form action={openFormAction}>
           <Button type="submit" disabled={openPending}>
-            {openPending ? "Apro..." : "Apri survey"}
+            {openPending ? "Apro…" : "Apri la raccolta"}
           </Button>
         </form>
       )}
@@ -101,13 +101,13 @@ export function AssessmentActions({
           }}
         >
           <Button type="submit" variant="outline" disabled={closePending}>
-            {closePending ? "Chiudo..." : "Chiudi survey"}
+            {closePending ? "Chiudo…" : "Chiudi la raccolta"}
           </Button>
         </form>
       )}
       <form action={scoreFormAction}>
         <Button type="submit" variant="outline" disabled={scorePending}>
-          {scorePending ? "Ricalcolo..." : "Ricalcola score"}
+          {scorePending ? "Ricalcolo…" : "Ricalcola i punteggi"}
         </Button>
       </form>
       <form
