@@ -1,13 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ERASED_NOTE_TITLE, PERSON_PLACEHOLDER, erasedNoteTitle, personPattern, personSnippet, personTerm, replacePerson } from "./people.ts";
+import { readFileSync } from "node:fs";
+import { ERASED_NOTE_TITLE, PERSON_PLACEHOLDER, erasedNoteTitle, personPattern, personSnippet, personTerm, purgedNoteText, replacePerson } from "./people.ts";
 import { CONTEXT_TEXT } from "./text.ts";
 import { CONTEXT_LIMITS } from "./vocab.ts";
 
 // «Cerca una persona» (rilascio 9b, RILASCIO-9b-COSTRUZIONE.md §2.13, §5.9), le regole senza database: che cosa si può
 // cercare, come si riconosce un nome (parola intera, senza maiuscole e accenti) e un'e-mail (testo esatto), i caratteri
-// speciali che restano caratteri, la sostituzione con «una persona», il pezzo di testo da evidenziare. L'espressione è la
-// stessa che usa Postgres: people.integration.test.ts prova che i due danno lo stesso risultato.
+// speciali che restano caratteri, la sostituzione con «una persona», il pezzo di testo da evidenziare, la frase al posto
+// del testo di un appunto cancellato. L'espressione è la stessa che usa Postgres: people.integration.test.ts prova che i
+// due danno lo stesso risultato.
 
 /** Vero se `text` contiene `term`, con l'espressione che userà anche Postgres. */
 const finds = (term: string, text: string) => new RegExp(personPattern(term)).test(text);
@@ -118,6 +120,36 @@ test("il titolo generico degli appunti tolti: «Appunti del 14/11/2026»", () =>
   assert.equal(ERASED_NOTE_TITLE, "Appunti del {data}");
   assert.equal(erasedNoteTitle("2026-11-14"), "Appunti del 14/11/2026");
   assert.equal(erasedNoteTitle("2026-01-05T00:00:00.000Z"), "Appunti del 05/01/2026");
+});
+
+test("un appunto senza testo: «dopo 12 mesi» solo per la conservazione; dopo «Togli … da tutto» la frase neutra", () => {
+  const RETENTION = "Il testo è stato cancellato dopo 12 mesi. Restano i fatti.";
+  const NEUTRAL = "Il testo è stato cancellato. Restano i fatti.";
+  assert.deepEqual([CONTEXT_TEXT.notes.purged, CONTEXT_TEXT.notes.textErased], [RETENTION, NEUTRAL]);
+  const note = (over: Partial<Parameters<typeof purgedNoteText>[0]> = {}) =>
+    purgedNoteText({ title: "Call di avvio", occurredOn: "2025-11-10", createdAt: "2025-11-10T09:00:00.000Z", textPurgedAt: "2026-11-11T02:00:00.000Z", ...over });
+  // La conservazione: più di 12 mesi da quando è stato aggiunto, il titolo com'era. Anche con le date del server.
+  assert.equal(note(), RETENTION);
+  assert.equal(note({ createdAt: new Date("2025-11-10T09:00:00.000Z"), textPurgedAt: new Date("2026-11-11T02:00:00.000Z") }), RETENTION);
+  // «Togli … da tutto» entro i 12 mesi: il titolo generico e la data, tutti e due.
+  const erased = { title: erasedNoteTitle("2026-11-14"), occurredOn: "2026-11-14", createdAt: "2026-11-14T10:00:00.000Z", textPurgedAt: "2026-11-18T15:00:00.000Z" };
+  assert.equal(note(erased), NEUTRAL);
+  // Basta uno dei due segni: il titolo generico su un appunto di più di 12 mesi che la notte non aveva ancora cancellato…
+  assert.equal(note({ title: "Appunti del 10/11/2025", textPurgedAt: "2026-11-10T20:00:00.000Z" }), NEUTRAL);
+  // …o il testo sparito prima dei 12 mesi, anche con un altro titolo: la conservazione non lo fa mai.
+  assert.equal(note({ ...erased, title: "Call di avvio" }), NEUTRAL);
+  // Il confine della conservazione (`created_at` prima di 12 mesi fa, in senso stretto).
+  assert.equal(note({ createdAt: "2025-11-18T10:00:00.000Z", textPurgedAt: "2026-11-18T10:00:00.000Z" }), NEUTRAL);
+  assert.equal(note({ createdAt: "2025-11-18T09:59:59.999Z", textPurgedAt: "2026-11-18T10:00:00.000Z" }), RETENTION);
+  // Nel dubbio la frase neutra, che è sempre vera: date che non si leggono, nessuna data.
+  for (const over of [{ textPurgedAt: null }, { textPurgedAt: "non una data" }, { createdAt: "" }]) assert.equal(note(over), NEUTRAL, JSON.stringify(over));
+});
+
+test("il pannello della fonte prende la frase da purgedNoteText, non più sempre quella dei 12 mesi", () => {
+  const sheet = readFileSync(new URL("../../components/context/source-sheet.tsx", import.meta.url), "utf8");
+  assert.match(sheet, /import \{ purgedNoteText \} from "@\/lib\/context\/people";/);
+  assert.match(sheet, /\) : purged \? \(\s*<p className="text-sm text-muted-foreground">\{purgedNoteText\(source\)\}<\/p>/);
+  assert.doesNotMatch(sheet, /T\.notes\.purged\b/);
 });
 
 test("il pezzo di testo intorno al nome: posizioni come Postgres, spazi ridotti, parole tagliate ai bordi tolte", () => {

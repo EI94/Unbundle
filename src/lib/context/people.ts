@@ -12,6 +12,8 @@
  *   confini di parola sono scritti per esteso nell'espressione: non dipendono dalla lingua del database.
  * - `replacePerson`: il nome diventa «una persona», come nel pacchetto (`redact`, src/lib/use-cases/factory/package.ts).
  * - `personSnippet`: il pezzo di testo intorno al nome trovato, con il nome a parte per evidenziarlo.
+ * - `purgedNoteText`: la frase al posto del testo di un appunto cancellato, «dopo 12 mesi» solo se l'ha cancellato la
+ *   conservazione e non «Togli … da tutto».
  *
  * Nel database l'espressione passa sempre come parametro, mai dentro l'SQL. Mai il termine nei log o nella storia.
  * Modulo puro: nessun modulo del server, lo usa anche il browser.
@@ -31,6 +33,23 @@ export const ERASED_NOTE_TITLE = "Appunti del {data}";
 export function erasedNoteTitle(occurredOn: string): string {
   const day = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(occurredOn ?? ""));
   return ERASED_NOTE_TITLE.replace("{data}", day ? `${day[3]}/${day[2]}/${day[1]}` : String(occurredOn ?? ""));
+}
+
+/**
+ * La frase al posto del testo di un appunto cancellato (`textPurgedAt`), nel pannello della fonte. «Il testo è stato
+ * cancellato dopo 12 mesi.» solo se l'ha fatto la conservazione (`purgeExpiredNoteText`: un appunto con più di 12 mesi
+ * da `createdAt`, il titolo com'era). Dopo «Togli … da tutto» la frase neutra. Basta uno di due segni: il titolo
+ * generico, che «Togli» scrive sempre (e il titolo di un appunto senza testo non cambia più), o il testo sparito prima
+ * dei 12 mesi, che la conservazione non fa mai. Nel dubbio, o con una data che non si legge, la frase neutra: è sempre
+ * vera.
+ */
+export function purgedNoteText(note: { title: string; occurredOn: string; createdAt: string | Date; textPurgedAt: string | Date | null }): string {
+  const created = new Date(note.createdAt ?? Number.NaN).getTime();
+  // La regola della conservazione, sul giorno in cui il testo è sparito: `created_at` prima di 12 mesi fa.
+  const limit = new Date(note.textPurgedAt ?? Number.NaN);
+  limit.setUTCMonth(limit.getUTCMonth() - CONTEXT_LIMITS.retentionMonths);
+  const byRetention = note.title !== erasedNoteTitle(note.occurredOn) && created < limit.getTime();
+  return byRetention ? CONTEXT_TEXT.notes.purged : CONTEXT_TEXT.notes.textErased;
 }
 
 // ─── Il termine ──────────────────────────────────────────────────────

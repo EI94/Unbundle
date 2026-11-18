@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { removeSourceAction, setDocumentVisibilityAction } from "@/lib/actions/context";
 import { dayLabel } from "@/lib/context/labels";
+import { purgedNoteText } from "@/lib/context/people";
 import { CONTEXT_TEXT } from "@/lib/context/text";
 import type { ContextVisibility } from "@/lib/context/vocab";
 import type { SourceDetail } from "@/lib/db/queries/context-sources";
@@ -30,8 +31,9 @@ type Loaded = { status: "caricamento" } | { status: "pronto"; source: SourceDeta
 
 /**
  * Il pannello di un appunto o di un documento nella vista «Appunti» (rilascio 9a, docs/contesto/RILASCIO-9a-COSTRUZIONE.md
- * §7.5). Solo Lateral Space. Un appunto: il testo (o «cancellato dopo 12 mesi»), «Con chi», il link, «Aggiunto da …»,
- * e «Leggi» o «Rileggi», «Da confermare», «Togli». Un documento: nome, tipo, dimensione, chi lo vede, «Togli».
+ * §7.5). Solo Lateral Space. Un appunto: il testo (o «cancellato dopo 12 mesi», o soltanto «cancellato» dopo «Togli …
+ * da tutto», `purgedNoteText`), «Con chi», il link, «Aggiunto da …», e «Leggi» o «Rileggi», «Da confermare», «Togli».
+ * Un documento: nome, tipo, dimensione, chi lo vede, «Togli».
  * (9b) Le risposte di un referente: niente testo e niente «Togli» (vivono nella scheda dello use case), una frase che lo
  * dice e «Apri lo use case».
  */
@@ -203,7 +205,7 @@ function SourceSheetBody({ workspaceId, sourceId, today, onClose }: { workspaceI
               </div>
             )
           ) : purged ? (
-            <p className="text-sm text-muted-foreground">{T.notes.purged}</p>
+            <p className="text-sm text-muted-foreground">{purgedNoteText(source)}</p>
           ) : source.body ? (
             <div className="max-h-[50dvh] overflow-y-auto rounded-lg border bg-muted/20 p-3 text-sm leading-relaxed break-words whitespace-pre-wrap">{source.body}</div>
           ) : null}

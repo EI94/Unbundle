@@ -242,6 +242,8 @@ export const CONTEXT_TEXT = Object.freeze({
     removeConfirm: "Togliere questi appunti? I fatti confermati restano, segnati «senza fonte».",
     removed: "Appunti tolti.",
     purged: "Il testo è stato cancellato dopo 12 mesi. Restano i fatti.",
+    // (9b) Un appunto tolto con «Cerca una persona» › «Togli … da tutto»: il testo non è sparito per i 12 mesi.
+    textErased: "Il testo è stato cancellato. Restano i fatti.",
     cancel: "Annulla",
   }),
   documents: Object.freeze({

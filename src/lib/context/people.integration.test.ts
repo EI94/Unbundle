@@ -23,6 +23,7 @@ const opts = { skip: !enabled };
 type Row = Record<string, unknown>;
 let q: (text: string, params?: unknown[]) => Promise<Row[]>;
 let people: typeof import("../db/queries/context-people.ts");
+let sources: typeof import("../db/queries/context-sources.ts");
 let pure: typeof import("./people.ts");
 let dbModule: typeof import("../db/index.ts");
 
@@ -171,6 +172,7 @@ before(async () => {
   q = (text, params = []) => client.query(text, params) as Promise<Row[]>;
   await (await import("../db/ensure-schema.ts")).ensureDbSchema();
   people = await import("../db/queries/context-people.ts");
+  sources = await import("../db/queries/context-sources.ts");
   pure = await import("./people.ts");
   dbModule = await import("../db/index.ts");
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1, 'Organizzazione A di prova persone', $2), ($3, 'Organizzazione B di prova persone', $4)`, [
@@ -340,6 +342,11 @@ test("«Togli … da tutto»: solo quel workspace; gli appunti senza testo, i fa
   assert.deepEqual([notes.get(rows.n1)!.read_status, notes.get(rows.n1)!.read_reason], ["letto", null], "una nota già letta resta letta");
   assert.deepEqual([notes.get(rows.n3)!.read_status, notes.get(rows.n3)!.read_reason, notes.get(rows.n3)!.read_started_at], ["non_letto", "vuoto", null]);
   assert.deepEqual([notes.get(rows.n2)!.title, notes.get(rows.n2)!.version, notes.get(rows.n2)!.text_purged_at], ["Call sui sistemi", 1, null], "gli altri appunti non cambiano");
+  // Il pannello della fonte non dice «dopo 12 mesi»: il testo l'ha tolto «Togli … da tutto».
+  for (const id of [rows.n1, rows.n3]) {
+    const detail = await sources.getContextSource(actor("ls"), id);
+    assert.equal(detail && pure.purgedNoteText(detail), "Il testo è stato cancellato. Restano i fatti.", id);
+  }
   // I documenti restano, anche con il nome.
   assert.deepEqual((await q(`SELECT file_name FROM uploaded_documents WHERE workspace_id = $1 ORDER BY file_name`, [ids.wsA])).map((r) => r.file_name), ["listino.xlsx", "organigramma-rossi.pdf", "procedure.pdf"]);
   assert.equal((await q(`SELECT count(*)::int AS n FROM context_sources WHERE workspace_id = $1 AND kind = 'documento'`, [ids.wsA]))[0].n, 2);
