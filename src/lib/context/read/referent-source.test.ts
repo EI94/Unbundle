@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { answersSourceTitle, referentSourceSql, referentSourcesEraseStatements } from "../../db/queries/context-referent.ts";
+import { referentEraseStatements, referentPurgeStatements } from "../../use-cases/referent/erase.ts";
 import { REFERENT_CONTEXT_NOTICE_VERSIONS, noticeAllowsContext } from "../../use-cases/referent/labels.ts";
 import { CONTEXT_LIMITS } from "../vocab.ts";
 
@@ -81,4 +82,23 @@ test("conservazione e cancellazione: la fonte non si legge più, le proposte ape
   assert.throws(() => referentSourcesEraseStatements({ workspaceId: WS }));
   assert.throws(() => referentSourcesEraseStatements({ workspaceId: WS, requestId: REQ, contactId: CONTACT }));
   assert.throws(() => referentSourcesEraseStatements({ workspaceId: WS, contactId: "mario@example.test" }));
+});
+
+test("le citazioni si tolgono con le risposte: nella cancellazione del referente e nella conservazione dei 12 mesi", () => {
+  const erase = referentEraseStatements({ workspaceId: WS, contactId: CONTACT, actorUserId: null, reason: "cancellazione" }).map((s) => flat(s.text));
+  const at = (texts: string[], re: RegExp) => texts.findIndex((t) => re.test(t));
+  const purgedRequests = at(erase, /UPDATE use_case_referent_requests r SET message = NULL, purged_at/);
+  const sources = at(erase, /UPDATE context_sources s SET text_purged_at = now\(\)/);
+  const facts = at(erase, /UPDATE context_facts x SET quote = NULL/);
+  const history = at(erase, /'dati_cancellati'/);
+  assert.ok(purgedRequests >= 0 && purgedRequests < sources && sources < facts && facts < history, JSON.stringify([purgedRequests, sources, facts, history]));
+  assert.match(erase[sources], /r\.contact_id = \$\d+::uuid/, "tutte le richieste della persona");
+  const purgeStatements = referentPurgeStatements({ workspaceId: WS, requestId: REQ });
+  const purge = purgeStatements.map((s) => flat(s.text));
+  const purgeSources = at(purge, /UPDATE context_sources s SET text_purged_at = now\(\)/);
+  // La riga «risposte e file cancellati dopo 12 mesi» nella Storia resta l'ultima.
+  assert.ok(purgeStatements.at(-1)?.params.includes("conservazione"));
+  assert.ok(purgeSources > 0 && purgeSources < purge.length - 1, String(purgeSources));
+  assert.match(purge[purgeSources], /r\.id = \$\d+::uuid/, "solo la richiesta finita da 12 mesi");
+  assert.ok(at(purge, /UPDATE context_questions x SET quote = NULL/) > purgeSources);
 });

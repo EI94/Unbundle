@@ -11,9 +11,13 @@
  *   `uc_contacts` va nello stesso batch; altrimenti la riga resta alla procedura dei dossier.
  * - Gli oggetti dell'archivio si cancellano **dopo** le righe (l'action con `after()`, il cron dopo):
  *   un oggetto non si perde mai di vista.
+ * - (Rilascio 9b) Le risposte lette da «Contesto»: la loro fonte non si legge più, le proposte aperte diventano
+ *   «superate» e le citazioni nate da lei si cancellano con le risposte (`referentSourcesEraseStatements`). I fatti
+ *   restano: non hanno nomi.
  *
  * Modulo puro: import relativi `.ts`.
  */
+import { referentSourcesEraseStatements } from "../../db/queries/context-referent.ts";
 import { contactRefsSql } from "../../db/queries/uc-retention.ts";
 import { contactAnonymizeSql, contactHasNoOpenRequestsSql, contactNotDesignatedSql } from "../../uc/sql/request-commands.ts";
 import { cast, toStatement, ucSql, type SqlFragment, type UcStatement } from "../../uc/sql/statement.ts";
@@ -50,7 +54,8 @@ function contactRequests(workspaceId: string, contactId: string): SqlFragment {
  * 2. ogni suo link cancellato (con l'impronta dell'email), ogni email in coda per lui annullata;
  * 3. risposte (anche bozze) senza testo né commento, file segnati cancellati con il nome tolto,
  *    messaggi delle richieste e note della conferma tolti (`purged_at`); (rilascio 6) i testi del filo
- *    tolti e le proposte dell'AI cancellate;
+ *    tolti e le proposte dell'AI cancellate; (rilascio 9b) le fonti di «Contesto» delle sue risposte
+ *    senza testo, le loro proposte aperte superate, le citazioni nate da loro tolte;
  * 4. con `anonymizeContact` (il referente è solo degli use case e non è già anonimizzato: lo legge
  *    chi chiama prima del batch): le guardie dei dossier e l'anonimizzazione della riga `uc_contacts`;
  *    un dossier che nel frattempo lo usa fa fallire il batch con `referente_in_dossier`;
@@ -109,6 +114,8 @@ WHERE m.request_id = r.id AND ${mine} AND m.removed_at IS NULL`),
 WHERE s.request_id = r.id AND ${mine}`),
     toStatement(ucSql`UPDATE use_case_referent_requests r SET message = NULL, purged_at = coalesce(r.purged_at, now())
 WHERE ${mine} AND r.status <> 'inviata' AND (r.purged_at IS NULL OR r.message IS NOT NULL)`),
+    // (Rilascio 9b) Quello che «Contesto» ha letto dalle sue risposte: niente più lettura, niente citazioni.
+    ...referentSourcesEraseStatements({ workspaceId: i.workspaceId, contactId: i.contactId }),
   ];
   if (i.anonymizeContact) {
     statements.push(
@@ -134,7 +141,8 @@ WHERE ${mine} AND r.purged_at = now()`),
 /**
  * La conservazione (cron, 12 mesi dopo la fine): risposte senza testo, file cancellati con il nome
  * tolto, messaggio tolto, link cancellati, `purged_at`; restano date, stati e id delle esigenze, così «Cosa serve»
- * conserva la sua storia. Una riga «risposte e file cancellati dopo 12 mesi» nella Storia.
+ * conserva la sua storia. Una riga «risposte e file cancellati dopo 12 mesi» nella Storia. (Rilascio 9b) La fonte di
+ * «Contesto» della richiesta non si legge più e le citazioni nate da lei si cancellano; i fatti restano.
  */
 export function referentPurgeStatements(i: { workspaceId: string; requestId: string }): UcStatement[] {
   const ws = cast(uuidOf(i.workspaceId, "workspace"), "uuid");
@@ -160,6 +168,8 @@ WHERE request_id = ${req()} AND workspace_id = ${ws} AND removed_at IS NULL`),
     // I link della richiesta chiusa, con l'impronta dell'email del destinatario: non resta niente.
     toStatement(ucSql`DELETE FROM use_case_referent_tokens WHERE request_id = ${req()} AND workspace_id = ${ws}
   AND EXISTS (SELECT 1 FROM use_case_referent_requests r WHERE r.id = ${req()} AND r.workspace_id = ${ws} AND r.status <> 'inviata')`),
+    // (Rilascio 9b) La fonte di «Contesto» delle risposte e le sue citazioni, con le risposte.
+    ...referentSourcesEraseStatements({ workspaceId: i.workspaceId, requestId: i.requestId }),
     referentEventsForRequestsSql({ filter, code: "conservazione", actor: { kind: "sistema" } }),
   ];
 }

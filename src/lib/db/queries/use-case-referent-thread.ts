@@ -16,6 +16,7 @@ import {
 import { loadSubprocessorAck } from "@/lib/db/queries/uc-subprocessors";
 import { readinessSyncFor } from "@/lib/db/queries/use-case-alerts";
 import { latestSuggestionSql, suggestionQueueSql } from "@/lib/db/queries/use-case-referent-ai";
+import { referentSourceStatements } from "@/lib/db/queries/context-referent";
 import { referentAiSuggestionsOn } from "@/lib/use-cases/referent/ai-followup";
 import type { Issue } from "@/lib/uc/answers/issues";
 import { romeDate } from "@/lib/uc/calendar";
@@ -758,6 +759,8 @@ ${casTail("upd", 1, "domanda_non_disponibile")}`),
   // (Decisione 2) L'aiuto dell'AI guarda la risposta, dopo: mai qui dentro.
   const suggest = suggestionQueueSql({ workspaceId: link.workspaceId, requestId: link.requestId, anchors: [anchor], env: process.env });
   if (suggest) statements.push(suggest);
+  // (Rilascio 9b) Una risposta su una domanda di «Cosa serve» rimette da leggere la fonte di «Contesto».
+  if (anchor.anchor === "domanda") statements.push(...(await referentSourceStatements({ workspaceId: link.workspaceId, requestId: link.requestId })));
   statements.push(
     ...completeIfDoneStatements(link),
     ...referentNewsStatements(link, actorUserId, { answers: 1, questions: 0, code: "chiarimento_risposto", now }),
@@ -786,6 +789,8 @@ export async function addToReferentAnswer(link: ReferentLink, body: unknown, now
   if (anchor.anchor === "domanda") statements.push(needToVerifySql(link, anchor.needId!));
   const suggest = suggestionQueueSql({ workspaceId: link.workspaceId, requestId: link.requestId, anchors: [anchor], env: process.env });
   if (suggest) statements.push(suggest);
+  // (Rilascio 9b) Un'aggiunta su una domanda di «Cosa serve» rimette da leggere la fonte di «Contesto».
+  if (anchor.anchor === "domanda") statements.push(...(await referentSourceStatements({ workspaceId: link.workspaceId, requestId: link.requestId })));
   statements.push(
     ...referentNewsStatements(link, actorUserId, { answers: 1, questions: 0, code: "aggiunta", now }),
     ...cardSyncStatements({ workspaceId: link.workspaceId, useCaseIds: [link.useCaseId], actorUserId, readiness: null }),
@@ -824,6 +829,8 @@ export async function editReferentAnswer(link: ReferentLink, body: unknown, now:
   ]);
   const prevEdited = rowDate(prev?.edited_at);
   const again = prevEdited !== null && romeDate(prevEdited) === romeDate(now);
+  // (Rilascio 9b) La risposta cambiata rimette da leggere la fonte di «Contesto», con le proposte aperte superate.
+  const contextStatements = await referentSourceStatements({ workspaceId: link.workspaceId, requestId: link.requestId });
   const run = await referentBatch(executor, [
     lockRequestSql(link.workspaceId, link.requestId),
     toStatement(ucSql`WITH upd AS (
@@ -841,6 +848,7 @@ SELECT (SELECT edited_at FROM upd) AS edited_at, uc_require((SELECT count(*) FRO
     toStatement(ucSql`UPDATE use_case_referent_request_items SET state = 'risposta' WHERE request_id = ${req} AND need_id = ${cast(needId, "uuid")} AND state = 'non_so'`),
     needToVerifySql(link, needId),
     ...[suggestionQueueSql({ workspaceId: link.workspaceId, requestId: link.requestId, anchors: [{ anchor: "domanda", needId, componentKey: null }], env: process.env })].filter((x): x is UcStatement => x !== null),
+    ...contextStatements,
     ...(again ? [] : referentNewsStatements(link, actorUserId, { answers: 1, questions: 0, code: "risposta_cambiata", now })),
     ...cardSyncStatements({ workspaceId: link.workspaceId, useCaseIds: [link.useCaseId], actorUserId, readiness: null }),
   ]);
