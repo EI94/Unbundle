@@ -283,7 +283,8 @@ test("informativa nuova (503 «informativa_aggiornata»): la bozza resta sul dis
   await settle();
   tree = page.render();
   assert.deepEqual(s.writes.map((c) => c.route), [DRAFT, "POST /privacy-ack", DRAFT], "un tocco, e la bozza in attesa parte da sola");
-  assert.deepEqual(s.writes[1].body, { version: NEXT_NOTICE.version }, "si accetta la versione del testo mostrato");
+  // (Rilascio del 19/11) Con la prova: la versione del testo che il riquadro ha mostrato, quello del server.
+  assert.deepEqual(s.writes[1].body, { version: NEXT_NOTICE.version, shown: NEXT_NOTICE.version }, "si accetta la versione del testo mostrato");
   assert.deepEqual(s.writes[2].body, s.writes[0].body, "la stessa bozza di prima");
   assert.match(JSON.stringify(s.writes[2].body), /"value":"120"/);
   assert.equal(deviceCopy(), null, "salvata sul server: la copia sul dispositivo non serve più");
@@ -301,9 +302,12 @@ test("un server di prima (409 «informativa_da_leggere», versione vecchia e nes
   assert.ok(gate, "l'informativa torna sullo schermo");
   assert.equal(gate.props.notice, null, "la pagina non ha il testo di quella versione: chiede di ricaricarsi");
   assert.ok(deviceCopy()?.includes("120"), "la copia sul dispositivo resta, per dopo il ricaricamento");
+  // (Rilascio del 19/11) Senza un testo sullo schermo non c'è prova da mandare: «Ho letto» non parte nemmeno.
+  (gate.props.onAcknowledge as () => void)();
+  await settle();
   t.mock.timers.tick(120_000);
   await settle();
-  assert.deepEqual(s.writes.map((c) => c.route), [DRAFT], "nessun nuovo tentativo");
+  assert.deepEqual(s.writes.map((c) => c.route), [DRAFT], "nessun nuovo tentativo, nessuna accettazione");
 });
 
 test("«Invia» di una domanda da sola: la copia sul dispositivo resta finché la risposta non è partita", async (t) => {

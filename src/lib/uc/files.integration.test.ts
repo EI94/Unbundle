@@ -281,7 +281,7 @@ test("referent upload: only after the privacy notice, only on its own open items
   const l = await link(state.tokenSystems);
   const early = await uploadFromReferent(exec!, l, { itemId: item("q.sistemi.03"), fileName: "schema.csv", declaration: true, bytes: CLEAN_CSV }, {}, ENV);
   assert.equal(code(early), "informativa_da_leggere");
-  value(await acknowledgePrivacy(exec!, l, { version: REFERENT_PRIVACY_NOTICE.version }, popts()));
+  value(await acknowledgePrivacy(exec!, l, { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version }, popts()));
   const l2 = await link(state.tokenSystems);
   const notMine = await uploadFromReferent(exec!, l2, { itemId: item("q.servizio.02"), fileName: "a.csv", declaration: true, bytes: CLEAN_CSV }, {}, ENV);
   assert.equal(code(notMine), "voce_non_disponibile");
@@ -316,7 +316,7 @@ test("client-Blob completion accepts only the file id issued to the same user or
   await ucStore("standard", ENV)!.put(path, csv("colonna;valore\nA;1\n"));
   assert.equal(code(await completeUserUpload(exec!, await uploader(ids.lead), { fileId }, ENV)), "caricamento_non_trovato", "another user");
   const l = await link(state.tokenService);
-  value(await acknowledgePrivacy(exec!, l, { version: REFERENT_PRIVACY_NOTICE.version }, popts()));
+  value(await acknowledgePrivacy(exec!, l, { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version }, popts()));
   assert.equal(code(await completeReferentUpload(exec!, await link(state.tokenService), { fileId }, {}, ENV)), "caricamento_non_trovato", "a referent link");
   const done = value(await completeUserUpload(exec!, analyst, { fileId }, ENV));
   assert.equal(done.status, "pulito");

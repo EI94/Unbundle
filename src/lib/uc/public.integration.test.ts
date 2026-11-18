@@ -86,6 +86,8 @@ const num = (v: unknown) => Number(v);
 
 const LS_DOMAINS = ["ls.test"];
 const IP_HASH = "a".repeat(32);
+/** «Ho letto, iniziamo» come lo manda la pagina: la versione accettata e quella del testo mostrato (`PrivacyAckBody`). */
+const ACK = { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version };
 const ZONE_KEY = randomBytes(32).toString("base64");
 // Files go to a temporary local folder (UC_LOCAL_STORAGE_DIR), never to a real store. Invented content only.
 const storeDir = mkdtempSync(join(tmpdir(), "uc-public-it-"));
@@ -266,7 +268,25 @@ test("opened and privacy notice: POST only, once a day, version on the request; 
   const stale = await acknowledgePrivacy(exec!, l, { version: "vecchia" }, popts());
   assert.equal(stale.ok ? null : stale.code, "informativa_cambiata");
   assert.ok(!stale.ok && stale.message.includes(`«${REFERENT_PRIVACY_NOTICE.button}»`), "the message names the button as it is on the page");
-  const ack = await acknowledgePrivacy(exec!, l, { version: REFERENT_PRIVACY_NOTICE.version }, popts());
+  // (Release of 19/11) A production tab (49414cc9) not yet accepted shows its built-in uc-2026-10-2 text and sends only
+  // `{ version }`: its own version on the first click, the server's on the second (after refresh() re-read the view).
+  // Neither is recorded, nor a proof of another version: no date, no version, no «informativa.vista», the contact as it
+  // was; the message, which that tab shows, asks to reload the page.
+  const consent = async () => ({
+    request: await one(`SELECT privacy_ack_at, privacy_notice_version FROM uc_requests WHERE id = $1::uuid`, [state.requestService]),
+    contact: await one(`SELECT privacy_notice_version, privacy_notice_seen_at FROM uc_contacts WHERE id = $1::uuid`, [state.contactService]),
+    seen: num((await one(`SELECT count(*) AS n FROM uc_events WHERE case_id = $1::uuid AND event_type = 'informativa.vista'`, [state.caseId])).n),
+  });
+  const unread = await consent();
+  assert.deepEqual([unread.request.privacy_ack_at, unread.request.privacy_notice_version, unread.seen], [null, null, 0]);
+  for (const body of [{ version: "uc-2026-10-2" }, { version: REFERENT_PRIVACY_NOTICE.version }, { version: REFERENT_PRIVACY_NOTICE.version, shown: "uc-2026-10-2" }, { version: "uc-2026-10-2", shown: REFERENT_PRIVACY_NOTICE.version }]) {
+    const refused = await acknowledgePrivacy(exec!, await link(state.tokenService), body, popts());
+    assert.equal(refused.ok ? null : refused.code, "informativa_cambiata", JSON.stringify(body));
+    assert.match(refused.ok ? "" : refused.message, /aggiorna la pagina/, JSON.stringify(body));
+  }
+  assert.deepEqual(await consent(), unread, "no consent without the proof of the text shown");
+  assert.equal((await viewOf(state.tokenService)).privacy.acknowledged, false);
+  const ack = await acknowledgePrivacy(exec!, l, ACK, popts());
   assert.ok(ack.ok, ack.ok ? "" : ack.message);
   const r = await one(`SELECT privacy_ack_at IS NOT NULL AS ack, privacy_notice_version FROM uc_requests WHERE id = $1::uuid`, [state.requestService]);
   assert.deepEqual([r.ack, r.privacy_notice_version], [true, REFERENT_PRIVACY_NOTICE.version]);
@@ -328,7 +348,12 @@ test("(Ondata 0) notice read in an old version: every write waits with «informa
   assert.equal(await one(`SELECT id FROM uc_contacts WHERE workspace_id = $1::uuid AND email = $2`, [ids.ws, `collega-informativa-${suffix}@cliente.test`]), undefined, "no colleague");
   // The page reads the notice again, with the text of the version to accept.
   assert.deepEqual((await viewOf(state.tokenService)).privacy, { acknowledged: false, version: REFERENT_PRIVACY_NOTICE.version, notice: REFERENT_PRIVACY_NOTICE });
-  assert.ok((await acknowledgePrivacy(exec!, l, { version: REFERENT_PRIVACY_NOTICE.version }, popts())).ok);
+  // (Release of 19/11) The tab opened before the release, after re-reading that view, still shows its own text: its
+  // `{ version }` is refused and the consent stays the old one.
+  const oldTab = await acknowledgePrivacy(exec!, l, { version: REFERENT_PRIVACY_NOTICE.version }, popts());
+  assert.equal(oldTab.ok ? null : oldTab.code, "informativa_cambiata");
+  assert.equal(String((await one(`SELECT privacy_notice_version FROM uc_requests WHERE id = $1::uuid`, [state.requestService])).privacy_notice_version), "uc-2026-10-2");
+  assert.ok((await acknowledgePrivacy(exec!, l, ACK, popts())).ok);
   assert.equal((await viewOf(state.tokenService)).privacy.acknowledged, true);
   const again = await saveReferentDraft(exec!, await link(state.tokenService), item("q.servizio.02"), { payload: { value: "1.200" }, estimate: true }, popts());
   assert.ok(again.ok, again.ok ? "" : again.message);
@@ -435,7 +460,7 @@ test("rule confirmation: «Confermo» records the confirming referent; the role 
 
 test("declared value: shown to confirm, prose is retyped, the confirmation supersedes the declared answer", opts, async () => {
   const l = await link(state.tokenSystems);
-  assert.ok((await acknowledgePrivacy(exec!, l, { version: REFERENT_PRIVACY_NOTICE.version }, popts())).ok);
+  assert.ok((await acknowledgePrivacy(exec!, l, ACK, popts())).ok);
   const view = await viewOf(state.tokenSystems);
   const v = itemView(view, "q.sistemi.07");
   assert.ok(v.toConfirm);
@@ -515,7 +540,7 @@ test("delegation: a colleague of a known domain gets a new link right away; dept
   const childToken = tokenFromPath(done.value.link);
   const lc = await link(childToken);
   assert.equal(lc.delegationDepth, 1);
-  assert.ok((await acknowledgePrivacy(exec!, lc, { version: REFERENT_PRIVACY_NOTICE.version }, popts())).ok);
+  assert.ok((await acknowledgePrivacy(exec!, lc, ACK, popts())).ok);
   const childView = await viewOf(childToken);
   assert.deepEqual(childView.modules.flatMap((m) => m.items.map((i) => i.key)), ["q.sistemi.02"]);
   const deeper = await delegateItems(exec!, await link(childToken), { nome: "Terzo", email: `terzo-${suffix}@cliente.test`, voci: [item("q.sistemi.02")] }, popts({ emailConfigured: true }));
@@ -527,7 +552,7 @@ test("delegation: a colleague of a known domain gets a new link right away; dept
   const thirdToken = await issueRequestToken(exec!, { workspaceId: ids.ws, caseId: state.caseId, requestId: String(third.id), issuedFor: "invio" });
   assert.ok(thirdToken.ok);
   const lt = await link(thirdToken.value.token);
-  assert.ok((await acknowledgePrivacy(exec!, lt, { version: REFERENT_PRIVACY_NOTICE.version }, popts())).ok);
+  assert.ok((await acknowledgePrivacy(exec!, lt, ACK, popts())).ok);
   const tooDeep = await delegateItems(exec!, await link(thirdToken.value.token), { nome: "Quarto", email: `quarto-${suffix}@cliente.test`, voci: [item("q.sistemi.02")] }, popts());
   assert.equal(tooDeep.ok ? null : tooDeep.code, "delega_troppo_profonda");
 });
@@ -625,7 +650,7 @@ test("approval link: the designated Owner signs a «non applicabile» and a fall
   assert.ok(token.ok);
   const unacked = await link(token.value.token);
   assert.equal(unacked.purpose, "approvazioni");
-  assert.ok((await acknowledgePrivacy(exec!, unacked, { version: REFERENT_PRIVACY_NOTICE.version }, popts())).ok);
+  assert.ok((await acknowledgePrivacy(exec!, unacked, ACK, popts())).ok);
   // Every call resolves the link again, as the route handlers do.
   const l = await link(token.value.token);
   const view = await loadReferentView(exec!, l, popts());
@@ -683,7 +708,7 @@ test("privacy approver: signs A.8 from the link; then a personal item is answere
   assert.ok(req.ok, req.ok ? "" : req.message);
   const token = await issueRequestToken(exec!, { workspaceId: ids.ws, caseId: state.caseId, requestId: req.value.requestId, issuedFor: "invio" });
   assert.ok(token.ok);
-  assert.ok((await acknowledgePrivacy(exec!, await link(token.value.token), { version: REFERENT_PRIVACY_NOTICE.version }, popts())).ok);
+  assert.ok((await acknowledgePrivacy(exec!, await link(token.value.token), ACK, popts())).ok);
   const l = await link(token.value.token);
   const view = await loadReferentView(exec!, l, popts());
   const sheet = view.approvals.find((a) => a.kind === "a8");
@@ -720,7 +745,7 @@ test("privacy approver: signs A.8 from the link; then a personal item is answere
   const personalReq = sent.value.requests[0].requestId;
   const pt = await issueRequestToken(exec!, { workspaceId: ids.ws, caseId: state.caseId, requestId: personalReq, issuedFor: "invio" });
   assert.ok(pt.ok);
-  assert.ok((await acknowledgePrivacy(exec!, await link(pt.value.token), { version: REFERENT_PRIVACY_NOTICE.version }, popts())).ok);
+  assert.ok((await acknowledgePrivacy(exec!, await link(pt.value.token), ACK, popts())).ok);
   const lp = await link(pt.value.token);
   const closed = await submitReferentAnswer(exec!, lp, item("q.sistemi.05"), { payload: "turno A" }, popts());
   assert.equal(closed.ok ? null : closed.code, "zona_personale_chiusa", "without the key the personal zone stays closed");
@@ -826,7 +851,7 @@ test("referent view: first name, two-level notice, question counts, minutes in p
   const l = await link(v.token);
   const old = await acknowledgePrivacy(exec!, l, { version: "uc-2026-10-2" }, popts());
   assert.equal(old.ok ? null : old.code, "informativa_cambiata", "the two-level notice is a new version");
-  assert.ok((await acknowledgePrivacy(exec!, l, { version: REFERENT_PRIVACY_NOTICE.version }, popts())).ok);
+  assert.ok((await acknowledgePrivacy(exec!, l, ACK, popts())).ok);
   assert.equal(REFERENT_PRIVACY_NOTICE.version, "uc-2026-11-1");
   const view = await viewOf(v.token);
   assert.equal(view.greetingName, "Marco");
@@ -952,7 +977,7 @@ test("delegation carries more than 100 questions in one call (P0-13)", opts, asy
   assert.equal(num(moved.n), open.length);
   assert.ok(r.value.link);
   const colleague = await link(tokenFromPath(r.value.link));
-  assert.ok((await acknowledgePrivacy(exec!, colleague, { version: REFERENT_PRIVACY_NOTICE.version }, popts())).ok);
+  assert.ok((await acknowledgePrivacy(exec!, colleague, ACK, popts())).ok);
   const theirs = await loadReferentView(exec!, await link(tokenFromPath(r.value.link)), popts());
   assert.equal(theirs.modules.flatMap((m) => m.items).length, open.length);
   assert.equal(theirs.greetingName, "Giulia");

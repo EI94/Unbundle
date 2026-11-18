@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Issue } from "@/lib/uc/answers/issues";
-import { noticeFor, waitsForPrivacy, type BatchAnswersResult, type ReferentItemView, type ReferentModuleView, type ReferentView } from "@/lib/uc/public-view";
+import { noticeFor, waitsForPrivacy, type BatchAnswersResult, type PrivacyAckBody, type ReferentItemView, type ReferentModuleView, type ReferentView } from "@/lib/uc/public-view";
 import {
   answerBody,
   answerSummary,
@@ -558,9 +558,14 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
   }
 
   async function acknowledge() {
+    // (Rilascio del 19/11) La prova del testo mostrato: la versione del testo che il riquadro ha sullo schermo, la stessa
+    // `noticeFor` che lo disegna. Senza un testo il riquadro chiede di ricaricare e non offre «Ho letto, iniziamo».
+    const shown = noticeFor(view.privacy);
+    if (!shown) return;
     setPrivacyBusy(true);
     setPrivacyError(null);
-    const r = await postJson<{ version: string }>(token, "privacy-ack", { version: view.privacy.version });
+    const body: PrivacyAckBody = { version: shown.version, shown: shown.version };
+    const r = await postJson<{ version: string }>(token, "privacy-ack", body);
     setPrivacyBusy(false);
     if (r.ok) {
       setPrivacyAck(true);

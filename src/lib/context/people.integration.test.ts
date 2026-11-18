@@ -471,6 +471,36 @@ test("una parola sola del nome del cliente: la ricerca la trova, «Togli» la ri
   assert.deepEqual((await q(`SELECT statement, version FROM context_facts WHERE id = $1`, [fact.id]))[0], { statement: "Alfa Ricambi ha due magazzini.", version: 1 });
 });
 
+test("(rilascio del 19/11) il nome intero del workspace o dell'organizzazione, e un dominio da solo: la ricerca li trova, «Togli» li rifiuta con la frase e niente cambia; un'e-mail del dominio si toglie", opts, async () => {
+  const [kickoff] = await q(
+    `INSERT INTO context_sources (workspace_id, kind, origin, title, occurred_on, body, body_chars, visibility, read_status, parts_read)
+     VALUES ($1, 'appunti', 'web', 'Kickoff', '2026-11-16', 'Alfa Ricambi usa SAP e ha due magazzini.', 40, 'ls', 'letto', 1) RETURNING id`,
+    [ids.wsA],
+  );
+  const [visit] = await q(
+    `INSERT INTO context_sources (workspace_id, kind, origin, title, occurred_on, body, body_chars, visibility, read_status, parts_read)
+     VALUES ($1, 'appunti', 'web', 'Visita alle Officine Beta', '2026-11-17', 'Officine Beta compra i ricambi. Gli ordini da anna.neri@alfaricambi.test, le fatture da ufficio@alfaricambi.test.', 113, 'ls', 'letto', 1) RETURNING id`,
+    [ids.wsA],
+  );
+  // Prima passavano e svuotavano gli appunti del cliente (la sonda P1 della verifica finale): ora la ricerca dice che
+  // «Togli» non si può e «Togli» risponde con la frase.
+  const full = okValue(await people.searchPerson(actor("ls"), "Alfa Ricambi"));
+  assert.deepEqual([full.inClientName, full.notes.total], [true, 1], "la ricerca resta larga");
+  assert.equal(okValue(await people.searchPerson(actor("ls"), "alfaricambi.test")).notes.total, 1, "il dominio è negli indirizzi dell'appunto");
+  const before = await workspaceA();
+  for (const term of ["Alfa Ricambi", "ALFA ricambì", "l'Alfa Ricambi", "Ricambi Alfa", "Alfa-Ricambi", "Officine Beta", "alfaricambi.test", "www.alfaricambi.test", "@alfaricambi.test"]) {
+    assert.equal(okValue(await people.searchPerson(actor("ls"), term)).inClientName, true, term);
+    const refused = await people.erasePerson(actor("ls"), term);
+    assert.deepEqual(refused.ok ? null : [refused.error, refused.message], ["dati_non_validi", "Questa parola è anche nel nome del cliente: scrivi nome e cognome, oppure l'e-mail."], term);
+  }
+  assert.equal(await workspaceA(), before, "niente cambia");
+  // Un'e-mail del dominio è una persona: si toglie, con l'appunto che la contiene; l'altro appunto resta com'è.
+  assert.equal(okValue(await people.searchPerson(actor("ls"), "anna.neri@alfaricambi.test")).inClientName, false);
+  assert.deepEqual(okValue(await people.erasePerson(actor("ls"), "anna.neri@alfaricambi.test")), { notes: 1, texts: 0, rules: 0, chatMemory: 0, map: 0 });
+  assert.equal((await q(`SELECT body FROM context_sources WHERE id = $1`, [visit.id]))[0].body, null);
+  assert.equal((await q(`SELECT body FROM context_sources WHERE id = $1`, [kickoff.id]))[0].body, "Alfa Ricambi usa SAP e ha due magazzini.");
+});
+
 test("«In breve» resta se non cita il nome", opts, async () => {
   await q(`INSERT INTO context_briefs (workspace_id, lines, facts_hash) VALUES ($1, $2::jsonb, $3)`, [ids.wsA, JSON.stringify(["Il gestionale è SAP Business One.", "Gli ordini arrivano via e-mail."]), "c".repeat(64)]);
   await q(`INSERT INTO context_facts (workspace_id, section, statement, basis, visibility, origin) VALUES ($1, 'lavoro', 'Verdi approva i preventivi.', 'detto', 'tutti', 'manuale')`, [ids.wsA]);

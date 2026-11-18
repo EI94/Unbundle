@@ -63,6 +63,7 @@ import {
   greetingNameFrom,
   isPersonalClass,
   planReferentAnswer,
+  privacyAckShown,
   publicFail,
   publicUnavailable,
   referentLinkScan,
@@ -421,14 +422,20 @@ export async function markLinkOpened(executor: UcExecutor, link: ResolvedLink, o
   return { ok: true, value: { recorded: (rowNumber(row?.updated) ?? 0) > 0 || (rowNumber(row?.logged) ?? 0) > 0 } };
 }
 
-const PrivacyAckSchema = z.strictObject({ version: z.string().min(1).max(20) });
+/** `{ version, shown }` (`PrivacyAckBody`); `shown` può mancare, come nel corpo della pagina di produzione, ma allora non si registra niente. */
+const PrivacyAckSchema = z.strictObject({ version: z.string().min(1).max(20), shown: z.string().min(1).max(20).optional() });
 
-/** «Ho letto» sull'informativa di questa richiesta (versione corrente). */
+/**
+ * «Ho letto» sull'informativa di questa richiesta (versione corrente). (Rilascio del 19/11) Solo con la prova del testo
+ * mostrato (`privacyAckShown`: `version` e `shown` sono la versione di adesso). La pagina di produzione (49414cc9) manda
+ * solo `{ version }`, dopo una vista riletta quella del server, sotto il testo che ha dentro: `informativa_cambiata`, che
+ * mostra con il messaggio («aggiorna la pagina»), e niente si registra (né la data, né la versione, né l'evento).
+ */
 export async function acknowledgePrivacy(executor: UcExecutor, link: ResolvedLink, input: unknown, opts: PublicOptions): Promise<PublicOutcome<{ version: string }>> {
   if (!link.live) return publicFail("caso_sospeso", PAUSED_CASE_MESSAGE);
   const parsed = PrivacyAckSchema.safeParse(input);
   if (!parsed.success) return publicFail("dati_non_validi", "Dati non validi. Aggiorna la pagina e riprova.");
-  if (parsed.data.version !== REFERENT_PRIVACY_NOTICE.version) {
+  if (!privacyAckShown(parsed.data, REFERENT_PRIVACY_NOTICE.version)) {
     return publicFail("informativa_cambiata", `L'informativa è stata aggiornata: aggiorna la pagina, rileggila e premi di nuovo «${REFERENT_PRIVACY_NOTICE.button}».`);
   }
   const [[row]] = await executor.batch([

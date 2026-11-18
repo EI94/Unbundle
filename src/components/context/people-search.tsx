@@ -270,8 +270,8 @@ export function PeopleResults({ hits, today, onOpenDocument }: { hits: PersonHit
  * Il piede del pannello: «Togli «…» da tutto», non pieno; poi la conferma con i testi del piano e i numeri della stessa
  * ricerca, «Togli», distruttivo ma non pieno, e «Annulla», con il fuoco. «Annulla» sta dove era il primo pulsante, in
  * basso sul telefono e a destra sullo schermo largo, e per `CONFIRM_GUARD_MS` «Togli» non vale: un doppio clic non
- * toglie niente. Una parola sola del nome del cliente non si toglie: al posto del pulsante la frase che chiede nome e
- * cognome, oppure l'e-mail.
+ * toglie niente. Il nome del cliente, o un dominio, non si toglie (`inClientName`): al posto del pulsante la frase che
+ * chiede nome e cognome, oppure l'e-mail.
  */
 export function EraseFooter({
   term,

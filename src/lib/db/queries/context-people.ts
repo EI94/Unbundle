@@ -18,8 +18,9 @@ import "server-only";
  *   lo ha tra gli altri nomi lo perde; «In breve» che lo contiene si cancella (lo riscrive la notte); le regole di
  *   Granola perdono l'indirizzo e la parola del titolo; le righe della memoria della chat che lo citano si cancellano. I
  *   documenti restano: si tolgono uno per uno dal loro pannello. Un evento `persona_tolta`, con i soli numeri.
- * - **Le guardie**: un termine di sole parole comuni («del») non si cerca né si toglie; «Togli» rifiuta anche una parola
- *   sola che è nel nome del cliente («Alfa» per «Alfa Ricambi»), che la ricerca mostra lo stesso (`inClientName`).
+ * - **Le guardie**: un termine di sole parole comuni («del») non si cerca né si toglie; «Togli» rifiuta anche un termine
+ *   fatto solo di parole del nome del cliente («Alfa» o «Alfa Ricambi» per «Alfa Ricambi»; lo stesso per il nome
+ *   dell'organizzazione) e un dominio senza la chiocciola («cliente.test»), che la ricerca mostra lo stesso (`inClientName`).
  * - Prima di scrivere, la stessa transazione prende in ordine gli appunti, le proposte e i fatti che cambiano (come la
  *   lettura e la conferma): una lettura o una conferma in corso finisce prima, e la scrittura vede le sue righe; una
  *   che arriva dopo trova le righe cambiate (`versione_superata`, o la presa della lettura persa). Le prende con
@@ -85,7 +86,7 @@ export interface PersonHits {
   /** Gli indirizzi e le parole del titolo delle regole di Granola che lo contengono. */
   granola: { total: number };
   chat: { total: number };
-  /** «Togli» non si può: una parola sola che è anche nel nome del cliente (`termInClientName`). La ricerca la mostra lo stesso. */
+  /** «Togli» non si può: solo parole del nome del cliente, o un dominio senza la chiocciola (`termInClientName`). La ricerca la mostra lo stesso. */
   inClientName: boolean;
 }
 /**
@@ -295,7 +296,8 @@ function replacedJsonSql(column: SQL, fields: readonly string[], p: string): SQL
  * `permesso_mancante`. Risponde con i numeri del messaggio («{a} appunti cancellati, {t} testi corretti») e quelli di
  * Granola, della memoria della chat e della Mappa. Scrive `persona_tolta` con i soli numeri, se ha tolto qualcosa. Non si torna
  * indietro. Non chiama il modello: «In breve» lo riscrive la notte. Un termine di sole parole comuni (`personTerm`) o
- * una parola sola del nome del cliente (`termInClientName`): `dati_non_validi` con il messaggio, e niente cambia.
+ * un termine fatto solo del nome del cliente o un dominio (`termInClientName`): `dati_non_validi` con il messaggio, e niente
+ * cambia.
  */
 export async function erasePerson(actor: ContextActor, raw: string): Promise<ServiceResult<PersonErased>> {
   const allowed = await gate(actor, "canEditMemory");
@@ -306,7 +308,7 @@ export async function erasePerson(actor: ContextActor, raw: string): Promise<Ser
   const p = term.pattern;
   const factMatches = sql`f.workspace_id = ${ws}::uuid AND (f.statement ~ ${p} OR f.quote ~ ${p})`;
   try {
-    // Una parola sola che è anche nel nome del cliente: «Togli» cancellerebbe il cliente ovunque. Nome e cognome, o l'e-mail.
+    // Solo parole del nome del cliente, o un dominio: «Togli» cancellerebbe il cliente ovunque. Nome e cognome, o l'e-mail.
     if (termInClientName(term.term, clientNamesOf(await db.execute(clientNamesSql(ws))))) {
       return invalid({ term: CONTEXT_TEXT.people.inClientName }, CONTEXT_TEXT.people.inClientName);
     }
