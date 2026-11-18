@@ -76,7 +76,7 @@ import type { AgentQuestionChannel, AgentQuestionStatus, BuildHarness, BuildOutc
 import type { FactoryRepoKind, TaskNoteKind, TaskSource, TaskStatus } from "./use-case-hub-tasks-ddl.ts";
 import type { GithubDeliveryOutcome, PullRequestState } from "./use-case-hub-github-ddl.ts";
 import type { ProposalSource, ProposalStatus } from "./use-case-hub-proposals-ddl.ts";
-import type { UseCaseNoticeKind0036 } from "./use-case-hub-evals-ddl.ts";
+import type { UseCaseNoticeKind0041 } from "./context-work-ddl.ts";
 import type { EvalGroup, EvalRunKind } from "../use-cases/factory/benchmark.ts";
 import type { Lane, NoteStatus, OpOutcome, Origin, StepStatus, Stream } from "../mappatura/vocab.ts";
 import type { WorkspaceTeamRole } from "./use-case-hub-team-ddl.ts";
@@ -96,6 +96,7 @@ import type {
   GranolaConnectionStatus,
   GranolaDecidedBy,
   GranolaDecision,
+  NeedLinkStatus,
   ProposalEntity,
   ProposalIssue,
   ProposalKind,
@@ -1998,7 +1999,7 @@ export const useCaseNotifications = pgTable(
     workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
     recipientUserId: uuid("recipient_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-    kind: varchar("kind", { length: 16 }).$type<UseCaseNoticeKind0036>().notNull(),
+    kind: varchar("kind", { length: 16 }).$type<UseCaseNoticeKind0041>().notNull(),
     romeDay: date("rome_day", { mode: "string" }).notNull(),
     answers: smallint("answers").notNull().default(0),
     unknowns: smallint("unknowns").notNull().default(0),
@@ -2762,6 +2763,28 @@ export const contextGranolaMeetings = pgTable(
     decidedAt: tz("decided_at").defaultNow().notNull(),
   },
   (t) => [primaryKey({ name: "context_granola_meetings_pkey", columns: [t.userId, t.meetingId] })]
+);
+
+// ─── Contesto nel lavoro (drizzle/0041, rilascio 9b) ────────────────
+// CHECK e indici parziali stanno solo nella migrazione e in context-work-ddl.ts (self-heal): mai drizzle-kit push.
+
+/** Un fatto che risponde a una richiesta di «Cosa serve»: proposto alla lettura, aperto alla conferma, usato o scartato. */
+export const contextNeedLinks = pgTable(
+  "context_need_links",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    needId: uuid("need_id").notNull().references(() => useCaseNeeds.id, { onDelete: "cascade" }),
+    proposalId: uuid("proposal_id").references(() => contextProposals.id, { onDelete: "set null" }),
+    factId: uuid("fact_id").references(() => contextFacts.id, { onDelete: "cascade" }),
+    status: varchar("status", { length: 9 }).$type<NeedLinkStatus>().notNull().default("proposta"),
+    decidedByUserId: uuid("decided_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    decidedAt: tz("decided_at"),
+    version: integer("version").notNull().default(1),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "context_need_links_pkey", columns: [t.id] })]
 );
 
 // ─── Slack Installations (multi-tenant OAuth) ──────────────────────

@@ -66,8 +66,11 @@ const takenBy = (file: string): string[] =>
     .filter(([name, script]) => /^test:[a-z-]+$/.test(name) && script.includes("--test") && patternsOf(script).some((glob) => globToRegExp(glob).test(file)))
     .map(([name]) => name);
 
-test("package.json: `test:contesto` c'è, prende i tre posti di «Contesto» ed è dentro `test`", () => {
-  assert.equal(scripts["test:contesto"], 'node --no-warnings --test "src/lib/context/**/*.test.ts" "src/components/context/**/*.test.ts" src/lib/db/context-ddl.test.ts');
+test("package.json: `test:contesto` c'è, prende i posti di «Contesto» e le due migrazioni (0038, 0041) ed è dentro `test`", () => {
+  assert.equal(
+    scripts["test:contesto"],
+    'node --no-warnings --test "src/lib/context/**/*.test.ts" "src/components/context/**/*.test.ts" src/lib/db/context-ddl.test.ts src/lib/db/context-work-ddl.test.ts',
+  );
   assert.ok(scripts.test.split("&&").map((step) => step.trim()).includes("npm run test:contesto"), scripts.test);
   assert.ok(scripts.check.includes("npm run test"), "`check` passa da `test`");
 });
@@ -84,6 +87,9 @@ test("ogni test di «Contesto», e ogni test che la 9a aggiunge altrove, è pres
   assert.ok(here.length >= 15, `${here.length} file di test di «Contesto»`);
   for (const file of here) assert.ok(takenBy(file).includes("test:contesto"), file);
   assert.ok(takenBy("src/lib/db/context-ddl.test.ts").includes("test:contesto"));
+  // (9b) La 0041 e le funzioni pure del lavoro.
+  assert.ok(takenBy("src/lib/db/context-work-ddl.test.ts").includes("test:contesto"));
+  assert.deepEqual(takenBy("src/lib/context/work/agent-text.test.ts"), ["test:contesto"]);
 
   // I test della 9a fuori da «Contesto» (fondazione e pacchetti, §11.2-§11.5): li prende `test:use-cases`.
   for (const file of [

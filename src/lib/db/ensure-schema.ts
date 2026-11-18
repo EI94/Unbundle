@@ -22,6 +22,7 @@ import { EXTERNAL_BUILDERS_DDL, EXTERNAL_BUILDERS_PROBE_SQL } from "./use-case-h
 import { CONTEXT_DDL, CONTEXT_PROBE_SQL } from "./context-ddl.ts";
 import { MAPPING_BOARD_DDL, MAPPING_BOARD_PROBE_SQL } from "./mapping-board-ddl.ts";
 import { TEMPLATE_FILES_ADVISORY_LOCK, TEMPLATE_FILES_DDL, TEMPLATE_FILES_PROBE_SQL } from "./use-case-hub-template-files-ddl.ts";
+import { CONTEXT_WORK_ADVISORY_LOCK, CONTEXT_WORK_DDL, CONTEXT_WORK_PROBE_SQL } from "./context-work-ddl.ts";
 
 /**
  * Self-heal dello schema.
@@ -41,7 +42,7 @@ import { TEMPLATE_FILES_ADVISORY_LOCK, TEMPLATE_FILES_DDL, TEMPLATE_FILES_PROBE_
  */
 
 /** Incrementa ad ogni modifica a `runOnce`: così i worker warm ri-eseguono il catch-up. */
-const ENSURE_VERSION = 34;
+const ENSURE_VERSION = 35;
 
 let ensurePromise: Promise<void> | null = null;
 let ensureVersionApplied = 0;
@@ -736,6 +737,13 @@ async function runOnce(): Promise<void> {
   // Dopo la 0039, ma dipende solo dalla 0024. Non blocca il resto dell'app: senza la 0040 «Aggiungi un file da compilare»
   // non si vede, la pagina del referente non ha link e niente legge le tabelle nuove (`templateFilesStoreReady`).
   await runTemplateFilesDdlSafely();
+
+  // «Contesto nel lavoro»: tre CHECK di «Contesto» allargati, i legami con «Cosa serve», i fatti da verificare, due tipi
+  // nuovi in campanella (drizzle/0041_contesto_nel_lavoro.sql) ─────
+  // Dopo la 0040 (allarga ancora il CHECK dei tipi della campanella, sotto il lock della 0025). Non blocca il resto
+  // dell'app: senza la 0041 niente legami con «Cosa serve», niente fonti dalle risposte, niente campanella nuova, e la CLI
+  // risponde «riprova» a `nota` e `impara` (`contextWorkReady`); quello che legge solo la 0038 funziona.
+  await runContextWorkDdlSafely();
 }
 
 /** Dopo un errore della 0024, un nuovo tentativo al massimo ogni 5 minuti per processo, mai a ogni richiesta. */
@@ -977,6 +985,25 @@ async function runTemplateFilesDdlSafely(): Promise<void> {
   } catch (err) {
     templateFilesDdlFailedAt = Date.now();
     console.error("[db/ensure-schema] 0040 self-heal failed, the app keeps serving without «File da compilare» (apply drizzle/0040 by hand):", err);
+  }
+}
+
+/** Dopo un errore della 0041, come la 0024: un nuovo tentativo al massimo ogni 5 minuti per processo. */
+let contextWorkDdlFailedAt: number | null = null;
+
+/**
+ * La 0041 senza far fallire `ensureDbSchema()`, come `runUseCaseReferentsDdlSafely`. Mai da un'anteprima di Vercel, come la
+ * 0038 e la 0040: le anteprime usano il database di produzione, e la 0041 la applica solo il deploy di produzione (o il
+ * file a mano). Senza, l'anteprima serve come prima e «Contesto» resta quello della 9a.
+ */
+async function runContextWorkDdlSafely(): Promise<void> {
+  if (process.env.VERCEL_ENV === "preview") return;
+  try {
+    await runContextWorkDdl();
+    contextWorkDdlFailedAt = null;
+  } catch (err) {
+    contextWorkDdlFailedAt = Date.now();
+    console.error("[db/ensure-schema] 0041 self-heal failed, the app keeps serving «Contesto» without its work links (apply drizzle/0041 by hand):", err);
   }
 }
 
@@ -1293,6 +1320,20 @@ export async function runTemplateFilesDdl(statements: readonly string[] = TEMPLA
   ]);
 }
 
+/**
+ * Applica il DDL della 0041 in una sola transazione, con lo stesso advisory lock del file e `lock_timeout` di 3s, come la
+ * 0040. Dentro, prima di allargare la campanella, prende anche il lock della 0025 (sempre dopo il suo, come la 0036). In
+ * produzione la applica questo self-heal, al primo avvio dopo il deploy; il file a mano resta la strada di riserva.
+ */
+export async function runContextWorkDdl(statements: readonly string[] = CONTEXT_WORK_DDL): Promise<void> {
+  const client = db.$client;
+  await client.transaction([
+    client.query("SELECT set_config('lock_timeout', '3s', true)"),
+    client.query(`SELECT pg_advisory_xact_lock(hashtext('${CONTEXT_WORK_ADVISORY_LOCK}'))`),
+    ...statements.map((statement) => client.query(statement)),
+  ]);
+}
+
 async function schemaLooksCurrent(): Promise<boolean> {
   try {
     const result = (await db.execute(sql`
@@ -1420,6 +1461,7 @@ async function schemaLooksCurrent(): Promise<boolean> {
         AND ${sql.raw(CONTEXT_PROBE_SQL)}
         AND ${sql.raw(MAPPING_BOARD_PROBE_SQL)}
         AND ${sql.raw(TEMPLATE_FILES_PROBE_SQL)}
+        AND ${sql.raw(CONTEXT_WORK_PROBE_SQL)}
       ) AS current;
     `)) as unknown as { rows?: Array<{ current?: unknown }> };
     return result.rows?.[0]?.current === true;
@@ -1524,6 +1566,11 @@ export async function ensureDbSchema(): Promise<void> {
     if (templateFilesDdlFailedAt !== null && Date.now() - templateFilesDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
       templateFilesDdlFailedAt = Date.now();
       ensurePromise = ensurePromise.then(runTemplateFilesDdlSafely);
+    }
+    // La 0041 era fallita (non fatale): come la 0024, un tentativo alla volta, dopo la pausa.
+    if (contextWorkDdlFailedAt !== null && Date.now() - contextWorkDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
+      contextWorkDdlFailedAt = Date.now();
+      ensurePromise = ensurePromise.then(runContextWorkDdlSafely);
     }
     return ensurePromise;
   }

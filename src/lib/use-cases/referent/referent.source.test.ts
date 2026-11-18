@@ -111,6 +111,9 @@ const TABLE_FILES = new Set([
   "scripts/use-case-test/case-alerts-acceptance.mjs",
   // (Rilascio 9a) «Chiedi al contesto»: le risposte inviate e non tolte dei referenti tra i brani, solo per i revisori.
   "src/lib/db/queries/context-ask.ts",
+  // (0041, rilascio 9b) «Contesto nel lavoro»: il CHECK della campanella allargato con `contesto_nuovo` e `dalla_call`,
+  // la sonda e la pulizia del ritorno indietro.
+  "src/lib/db/context-work-ddl.ts",
 ]);
 
 test("le tabelle nuove si nominano solo nei moduli della funzione", () => {

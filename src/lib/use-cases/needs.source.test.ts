@@ -97,6 +97,9 @@ const TABLE_FILES = new Set([
   // file, i controlli su un'esigenza dello use case (requisito, collegata, non archiviata). Mai un testo delle esigenze.
   "src/lib/db/use-case-hub-template-files-ddl.ts",
   "src/lib/use-cases/referent/template-sql.ts",
+  // (0041, rilascio 9b) «Contesto nel lavoro»: il DDL controlla che «Cosa serve» ci sia e lega un fatto a un'esigenza
+  // (solo l'id, chiave esterna). Mai un testo delle esigenze.
+  "src/lib/db/context-work-ddl.ts",
 ]);
 
 const READS = /\b(listWorkspaceNeeds|getWorkspaceNeed|needUseCaseRefs)\b|queries\/use-case-needs/;

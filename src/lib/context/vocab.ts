@@ -86,6 +86,15 @@ export const CONTEXT_EVENT_ACTIONS = [
 ] as const;
 export type ContextEventAction = (typeof CONTEXT_EVENT_ACTIONS)[number];
 
+// ─── «Cosa serve» (9b) ───────────────────────────────────────────────
+
+/**
+ * Un fatto che risponde a una richiesta di «Cosa serve» (`context_need_links`, drizzle/0041): `proposta` alla lettura,
+ * `aperta` alla conferma di un fatto «Per tutti», `usata` con «Chiudi con questo», `scartata` con «Non risponde».
+ */
+export const NEED_LINK_STATUSES = ["proposta", "aperta", "usata", "scartata"] as const;
+export type NeedLinkStatus = (typeof NEED_LINK_STATUSES)[number];
+
 // ─── Granola ─────────────────────────────────────────────────────────
 
 export const GRANOLA_CONNECTION_STATUSES = ["attiva", "da_ricollegare"] as const;

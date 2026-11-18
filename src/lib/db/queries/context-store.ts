@@ -9,6 +9,7 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { CONTEXT_PROBE_SQL } from "@/lib/db/context-ddl";
+import { CONTEXT_WORK_PROBE_SQL } from "@/lib/db/context-work-ddl";
 import { ensureDbSchema } from "@/lib/db/ensure-schema";
 import { logSafeError } from "@/lib/log/safe-error";
 
@@ -40,4 +41,25 @@ export async function contextStoreState(): Promise<ContextStoreState> {
 /** Vero se la 0038 è applicata. Falso anche quando la sonda non risponde: chi lo usa per aprire, usi `contextStoreState`. */
 export async function contextStoreReady(): Promise<boolean> {
   return (await contextStoreState()) === "pronto";
+}
+
+let workReady = false;
+
+/**
+ * Vero se la 0041 («Contesto nel lavoro», RILASCIO-9b-COSTRUZIONE.md §3.3) è applicata: la sua sonda, dopo
+ * `ensureDbSchema()`, come `contextStoreState`; una volta vera resta così nel processo. Falso anche quando la sonda non
+ * risponde. Senza la 0041: niente legami con «Cosa serve», niente fonti dalle risposte, niente campanella nuova, e `nota`
+ * e `impara` rispondono «riprova»; quello che legge solo la 0038 funziona.
+ */
+export async function contextWorkReady(): Promise<boolean> {
+  if (workReady) return true;
+  try {
+    await ensureDbSchema();
+    const result = (await db.execute(sql`SELECT ${sql.raw(CONTEXT_WORK_PROBE_SQL)} AS ready`)) as unknown as { rows?: Array<{ ready?: unknown }> };
+    workReady = result.rows?.[0]?.ready === true;
+    return workReady;
+  } catch (error) {
+    logSafeError("context/store", "sonda_0041_non_riuscita", error);
+    return false;
+  }
 }

@@ -194,6 +194,6 @@ test("RUNBOOK §10.21: la 0040 la applica l'app, a mano solo di riserva, e il ri
   assert.match(section, /`migrazione0040: true`/);
   assert.match(section, /\*\*Ritorno indietro:\*\*/);
   for (const name of TEMPLATE_FILES_TABLES) assert.ok(section.includes(`\`${name}\``), name);
-  // Il numero del codice e quello del documento sono lo stesso.
-  assert.equal(Number(ensureSchema.match(/const ENSURE_VERSION = (\d+);/)?.[1]), 34);
+  // Il numero del codice non torna mai sotto quello del documento (la 0041, «Contesto nel lavoro», lo porta a 35: §10.22).
+  assert.ok(Number(ensureSchema.match(/const ENSURE_VERSION = (\d+);/)?.[1]) >= 34);
 });

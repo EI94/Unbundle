@@ -180,7 +180,8 @@ Il cron `uc-freshness` toglie ogni notte i file dei casi **chiusi da oltre 30 gi
    ```
    Rifiuti: `richieste_aperte` (revocare prima i link), `firmatario_designato` (firmatario di un caso non chiuso: cambiare prima la designazione), `conflitto` (referente di un altro workspace o già anonimizzato).
 5. **Cancellazione di tutto il caso** (fine del rapporto, richiesta del titolare): §7.3.
-6. Registrare la risposta data (data, cosa si è fatto) fuori dall'app, senza copiare i dati.
+6. **Contesto**: «Contesto» › «Appunti» › «Cerca una persona», con il nome e con l'e-mail; «Togli … da tutto»; i documenti trovati si tolgono uno per uno; i messaggi della chat di Discovery che la citano si trovano con l'SQL di sola lettura su `conversations` e `messages` del workspace e si cancellano solo su richiesta esplicita.
+7. Registrare la risposta data (data, cosa si è fatto) fuori dall'app, senza copiare i dati.
 
 ### 7.3 Cancellazione di un caso (`uc-case-admin purge-case`)
 
@@ -734,3 +735,54 @@ Il team allega a una o più esigenze di «Cosa serve» un file che il referente 
 **Ritorno indietro:** un passo su Vercel (Promote del deploy di prima). Le tre tabelle restano e il codice di prima non le legge: i file da compilare spariscono dalla scheda e dalla pagina del referente (il download risponde 404), i file già ricaricati dal referente restano risposte come le altre. Gli oggetti dei file da compilare restano nell'archivio privato finché il codice nuovo non torna (la cancellazione di un workspace con il codice di prima non li vede). Niente da cancellare.
 
 **Dopo il deploy, a mano** (in anteprima prima, se c'è un database di prova): un Excel legato a tre domande, chiesto a un referente di prova; dal suo link scaricato («Scaricato dal referente» nella Storia, una volta), ricaricato su una domanda con «Allega il file compilato» (l'esigenza passa a «Da verificare») e le altre due chiuse con «È già allegato».
+
+### 10.22 Rilascio 9b: «Contesto nel lavoro» (0041)
+
+Progetto: `docs/contesto/RILASCIO-9-CONTESTO.md` (la riga 9b del §13). Piano di costruzione: `docs/contesto/RILASCIO-9b-COSTRUZIONE.md`. Il contesto confermato da Lateral Space arriva dove si lavora: nella scheda dello use case, nel dossier, nel pacchetto, nella CLI e negli MCP. Le call possono chiudere una richiesta di «Cosa serve», i fatti vecchi tornano da verificare, le risposte del referente propongono fatti.
+
+**Che cosa cambia:**
+
+- **Scheda dello use case**: la piega «Contesto», chiusa, prima di «Storia», per i revisori: i fatti che toccano lo use case, le novità degli ultimi 14 giorni, gli impegni e le domande aperte. Il cliente vede solo quello «Per tutti».
+- **«Cosa serve»**: quando una call (o un documento) risponde a una richiesta aperta del cliente, sotto la richiesta compare «Una call del 14 nov risponde: …» con «Chiudi con questo» (la richiesta passa ad «A posto», come a mano, e la «Storia» lo scrive) e «Non risponde». Solo con fatti «Per tutti».
+- **Dossier › «Progetto dell'agente»**: la sezione «Contesto» e, quando serve, «Il contesto è cambiato dopo l'ultimo pacchetto (3 novità).». Il pacchetto ha un file in più, `CONTESTO.md`, solo con fatti «Per tutti», senza nomi né citazioni.
+- **CLI e MCP del caso**: lo strato `contesto` (`unbundle context <ID> --contesto`, `get_case_context` con `layer: "contesto"`), la domanda `unbundle contesto <ID> "…"`, `unbundle nota` (solo Lateral Space) e `unbundle impara` (chi costruisce, dopo il sì della persona; diventa una proposta da confermare). Agli agenti solo fatti «Per tutti», anche per Lateral Space.
+- **MCP del team**: tre letture in più, `get_context`, `ask_context`, `list_context_commitments` (14 strumenti).
+- **Campanella**: «Il contesto è cambiato» (`contesto_nuovo`, a chi costruisce e al responsabile dei dossier aperti degli use case toccati; a chi costruisce da fuori solo per i fatti «Per tutti») e «Una risposta per «Cosa serve»» (`dalla_call`, ai revisori). Mai a chi ha agito. Nessuna e-mail nuova: le novità arrivano anche nel riepilogo del lunedì, che ha un blocco «Contesto» (solo numeri).
+- **Freschezza**: ogni notte il cron `/api/cron/contesto` segna «da verificare» i fatti attivi non riconfermati da 6 mesi (anche quelli scritti a mano), senza cambiarne la versione. La pagina «Da verificare» (solo Lateral Space) li riconferma con «Ancora veri (n)». La risposta del cron ha in più `toCheck` e `links`.
+- **Risposte del referente**: diventano una fonte di «Contesto» («Solo Lateral Space», una per richiesta) solo con l'informativa `ucq-2026-11-3` accettata e l'ok ai sub-responsabili; le proposte non sono mai preselezionate.
+- **«Cerca una persona»** in «Appunti», per Lateral Space (§7.2).
+- **Chat della Discovery e generatori**: «In breve» e i fatti «Per tutti» utili entrano nel prompt, solo con l'ok ai sub-responsabili. Nessuna chiamata nuova al modello.
+- **I log** portano solo id, codici e numeri: mai un fatto, una citazione, un nome cercato.
+
+**Migrazione 0041 (la applica l'app, al primo avvio dopo il deploy):**
+
+1. `ENSURE_VERSION` 35. Al primo avvio a freddo il self-heal trova falsa la sonda della 0041 e applica gli stessi statement di `drizzle/0041_contesto_nel_lavoro.sql` (`CONTEXT_WORK_DDL`), in una transazione con l'advisory lock del file e `lock_timeout` 3s: allarga con lo stesso nome tre CHECK di «Contesto» (`context_sources.kind` con `risposta`, `context_sources.origin` con `rispondi`, `context_events.channel` con `cli` e `rispondi`), crea `context_need_links` (un fatto che risponde a una richiesta di «Cosa serve») con i suoi indici, aggiunge l'indice dei fatti da verificare e, sotto il lock della 0025, allarga il CHECK dei tipi della campanella con `contesto_nuovo` e `dalla_call`. Non scrive dati, non cambia colonne, non restringe niente. Allargare un CHECK prende per un attimo un lock esclusivo sulla tabella: tabelle piccole, e al massimo 3 secondi di attesa.
+2. Subito dopo il deploy: aprire una pagina, poi `use-case-admin doctor` deve dire `migrazione0041: true` (oppure, in sola lettura, `SELECT <CONTEXT_WORK_PROBE_SQL>` da `src/lib/db/context-work-ddl.ts` dà `true`); `migrazione0038` e `migrazione0040` restano `true`.
+3. Se la sonda resta `false` (nel log «0041 self-heal failed…»): l'app serve senza i legami con «Cosa serve», senza le fonti dalle risposte e senza la campanella nuova; `unbundle nota` e `unbundle impara` rispondono 503 «Unbundle non risponde: riprova tra qualche minuto»; tutto quello che legge solo la 0038 (piega, dossier, `CONTESTO.md`, strato `contesto`, MCP, chat, generatori, «Da verificare», «Cerca una persona») funziona. Il self-heal riprova al massimo ogni 5 minuti. Solo allora, a mano: `psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 -f drizzle/0041_contesto_nel_lavoro.sql`. Mai drizzle-kit, mai `db:push`.
+4. Prima del deploy: un restore point su Neon (la 0041 è additiva, ma allarga quattro CHECK). Nessuna variabile nuova su Vercel.
+5. Il ramo non si pubblica: le anteprime usano il database di produzione. Il self-heal della 0041 non parte da un'anteprima (`VERCEL_ENV=preview`) e `vercel.json` spegne le anteprime di `feat/rilascio-9b-contesto` e dei pacchetti `feat/9b-*`, ma la regola resta.
+
+**Ritorno indietro:**
+
+1. Prima del Promote: `DELETE FROM use_case_notifications WHERE kind IN ('contesto_nuovo', 'dalla_call');` (`CONTEXT_WORK_ROLLBACK_SWEEP_SQL`): il codice di prima mostrerebbe righe senza testo nella campanella.
+2. Promote del deploy di prima, un passo su Vercel.
+3. Che cosa resta: la tabella, gli indici e i CHECK della 0041 (il codice di prima li ignora); i fatti segnati «da verificare» (il codice di prima mostra il segno e «Ancora vero» lo toglie); i pacchetti con `CONTESTO.md` (il codice di prima mostra i tre file e alla versione dopo li rifà senza); le cancellazioni di «Cerca una persona» (non si tornano indietro, per scelta).
+4. Le fonti delle risposte del referente: il codice di prima le mostra in «Appunti» senza etichetta d'origine e, leggendole senza testo, le segna «non letto». Al ritorno in avanti: `UPDATE context_sources SET read_status = 'da_leggere', read_reason = NULL, read_attempts = 0 WHERE origin = 'rispondi' AND read_reason = 'vuoto' AND text_purged_at IS NULL;` (`CONTEXT_WORK_ROLL_FORWARD_SQL`).
+5. I referenti che hanno accettato l'informativa `ucq-2026-11-3` rivedono il riquadro «Prima di iniziare» con il codice di prima, e di nuovo al ritorno in avanti.
+6. La CLI 1.6.0 resta: i comandi nuovi rispondono che Unbundle non li ha ancora.
+
+**Dopo il deploy, a mano** (su un workspace di prova, con un account di Lateral Space e uno del cliente; «AI» vuol dire che serve il credito del modello e l'ok del titolare):
+
+1. `doctor`: `migrazione0041: true`; «Contesto» e la campanella si aprono.
+2. «Scrivi un fatto» legato a uno use case con un dossier: chi costruisce (non chi ha scritto) riceve «Il contesto è cambiato»; il link apre il progetto su «Contesto».
+3. La scheda dello use case: la piega «Contesto» chiusa, il riassunto, aperta con il fatto e «Nuovo». Con l'account del cliente: niente fatti «Solo Lateral Space».
+4. Il dossier: la sezione «Contesto»; «Il contesto è cambiato dopo l'ultimo pacchetto (1 novità).»; «Aggiorna il pacchetto»: la versione nuova ha `CONTESTO.md`, senza nomi e senza fatti «Solo Lateral Space».
+5. CLI 1.6.0: `unbundle context <ID> --contesto` e `--dal`; la riga del brief; `unbundle impara <ID> "…" --si` porta la proposta in «Da confermare» («Da chi costruisce …»); senza `--si` non parte niente. MCP del caso: `get_case_context` con `layer: "contesto"`.
+6. MCP del team: `tools/list` con 14 strumenti; `get_context` con il token di Lateral Space e con quello del cliente; `list_context_commitments`.
+7. «Da verificare»: sul database di prova, un fatto con l'ultima conferma di sette mesi fa, il cron, la riga «1 fatto da verificare», «Ancora veri (1)» e «Non più vero». In produzione non si spostano date.
+8. «Cerca una persona» con un nome inventato messo in un appunto di prova: i risultati, «Togli … da tutto», l'appunto senza testo, i fatti con «una persona».
+9. Il riepilogo del lunedì (il primo dopo il deploy): il blocco «Contesto» nell'e-mail interna e in quella all'Owner del workspace di prova.
+10. AI: `unbundle nota` con un appunto di prova e le proposte; una call che risponde a una richiesta aperta di «Cosa serve», la conferma, «Una risposta per «Cosa serve»» a un altro revisore, «Chiudi con questo» (la richiesta «A posto», la riga nella «Storia») e «Non risponde».
+11. AI: un referente di prova con l'informativa nuova, una risposta, la fonte «Risposte del referente · …», le proposte non preselezionate; poi «Cancella i dati di questa persona» e le citazioni spariscono.
+12. AI: `unbundle contesto <ID> "…"` e `ask_context`: la risposta con le fonti; nel workspace senza l'ok, solo i brani. La chat della Discovery non richiede quello che il contesto sa già.
+13. Telefono e tema «Chiaro»: la piega, la riga di «Cosa serve», «Da verificare», «Cerca una persona».
