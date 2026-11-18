@@ -753,16 +753,100 @@ test("revisori: «Oscura testo» per Lateral Space e chi gestisce il workspace, 
   assert.deepEqual(findProp(plain.element, "initial"), ["decisione"], "«Realizzazione» senza la piega: il riquadro");
 });
 
-/** (Rilascio 9b) Un fatto attivo del contesto del workspace, legato allo use case (dati inventati, «Scritto a mano»). */
-async function seedContextFact(useCaseId: string, statement: string, visibility: "tutti" | "ls" = "tutti"): Promise<string> {
+/**
+ * (Rilascio 9b) Un fatto attivo del contesto del workspace, legato allo use case (dati inventati): «Scritto a mano», o
+ * con la sua fonte.
+ */
+async function seedContextFact(useCaseId: string, statement: string, visibility: "tutti" | "ls" = "tutti", sourceId: string | null = null): Promise<string> {
   const id = randomUUID();
   await q(
-    `INSERT INTO context_facts (id, workspace_id, section, statement, basis, visibility, status, origin) VALUES ($1::uuid, $2::uuid, 'sistemi', $3, 'detto', $4, 'attivo', 'manuale')`,
-    [id, ids.ws, statement, visibility],
+    `INSERT INTO context_facts (id, workspace_id, section, statement, basis, visibility, status, origin, source_id) VALUES ($1::uuid, $2::uuid, 'sistemi', $3, 'detto', $4, 'attivo', $5, $6::uuid)`,
+    [id, ids.ws, statement, visibility, sourceId ? "fonte" : "manuale", sourceId],
   );
   await q(`INSERT INTO context_fact_links (workspace_id, fact_id, use_case_id) VALUES ($1::uuid, $2::uuid, $3::uuid)`, [ids.ws, id, useCaseId]);
   return id;
 }
+
+/** (Rilascio 9b) Gli appunti di una call di prova del 14 nov, già letti («Solo Lateral Space», come ogni appunto). */
+async function seedCallNotes(): Promise<string> {
+  const id = randomUUID();
+  await q(
+    `INSERT INTO context_sources (id, workspace_id, kind, origin, title, occurred_on, body, body_chars, visibility, read_status, parts_read)
+     VALUES ($1::uuid, $2::uuid, 'appunti', 'web', 'Call di prova', '2026-11-14', 'Testo di prova.', 15, 'ls', 'letto', 1)`,
+    [id, ids.ws],
+  );
+  return id;
+}
+
+/** (Rilascio 9b) Un requisito del cliente collegato allo use case, e il legame aperto con il fatto che gli risponde. */
+async function seedAnsweredNeed(useCaseId: string, title: string, status: string, factId: string): Promise<{ needId: string; linkId: string }> {
+  const needId = randomUUID();
+  const linkId = randomUUID();
+  await q(`INSERT INTO use_case_needs (id, workspace_id, type, title, status, owner_side) VALUES ($1::uuid, $2::uuid, 'requisito', $3, $4, 'cliente')`, [needId, ids.ws, title, status]);
+  await q(`INSERT INTO use_case_need_links (need_id, use_case_id) VALUES ($1::uuid, $2::uuid)`, [needId, useCaseId]);
+  await q(`INSERT INTO context_need_links (id, workspace_id, need_id, fact_id, status) VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'aperta')`, [linkId, ids.ws, needId, factId]);
+  return { needId, linkId };
+}
+
+test("(Rilascio 9b) «Cosa serve»: «Una call risponde» con «Chiudi con questo» e «Non risponde» a chi modifica; chiudere porta ad «A posto» come a mano", opts, async () => {
+  const work = await import("../actions/context-work.ts");
+  const card = await seed({ description: "Una richiesta a cui risponde una call" });
+  const statement = `Gli ordini arrivano via e-mail ${suffix}.`;
+  const fact = await seedContextFact(card.id, statement, "tutti", await seedCallNotes());
+  const toClose = await seedAnsweredNeed(card.id, `Come arrivano gli ordini? ${suffix}`, "chiesta", fact);
+  const toKeep = await seedAnsweredNeed(card.id, `In che formato arrivano? ${suffix}`, "da_chiedere", fact);
+  const needVersion = async (needId: string) => Number((await q(`SELECT version FROM use_case_needs WHERE id = $1::uuid`, [needId]))[0]?.version);
+  const linkStatus = async (linkId: string) => (await q(`SELECT status, decided_by_user_id FROM context_need_links WHERE id = $1::uuid`, [linkId]))[0];
+
+  // La scheda: la riga sotto ognuna delle due richieste, con i due pulsanti non pieni.
+  const page = await detailHtml("builder", card.id, { capitolo: "cosa-serve" });
+  const needs = between(page.html, 'data-slot="section-needs"', 'data-slot="scheda-aside"').replace(/ /g, " ");
+  assert.equal(needs.split(`Una call del 14 nov risponde: «${statement}»`).length - 1, 2, "una riga per richiesta");
+  assert.equal(needs.split(">Chiudi con questo<").length - 1, 2);
+  assert.equal(needs.split(">Non risponde<").length - 1, 2);
+  assert.deepEqual(filledButtons(needs), [], "nessun pulsante pieno nella riga");
+
+  // Chi non modifica «Cosa serve» non può: il contributore.
+  signIn("contributor");
+  const denied = await work.closeNeedFromCallAction(ids.ws, card.id, toClose.linkId, await needVersion(toClose.needId));
+  assert.deepEqual([denied.ok, denied.ok ? null : denied.error], [false, "permesso_mancante"]);
+  assert.deepEqual([(await work.dismissNeedLinkAction(ids.ws, card.id, toKeep.linkId)).ok], [false]);
+
+  // Una versione vecchia: «versione superata», la richiesta resta aperta e il legame anche.
+  signIn("builder");
+  const version = await needVersion(toClose.needId);
+  const stale = await work.closeNeedFromCallAction(ids.ws, card.id, toClose.linkId, version + 3);
+  assert.deepEqual([stale.ok, stale.ok ? null : stale.error], [false, "versione_superata"]);
+  assert.equal((await linkStatus(toClose.linkId))?.status, "aperta");
+
+  // «Chiudi con questo»: «A posto» con la strada di sempre (la riga della Storia), poi il legame «usato».
+  revalidated();
+  const closed = await work.closeNeedFromCallAction(ids.ws, card.id, toClose.linkId, version);
+  assert.deepEqual(closed, { ok: true, message: "Richiesta chiusa: è a posto." });
+  const [need] = await q(`SELECT status, version FROM use_case_needs WHERE id = $1::uuid`, [toClose.needId]);
+  assert.deepEqual([need?.status, need?.version], ["validata", version + 1]);
+  assert.deepEqual(await linkStatus(toClose.linkId), { status: "usata", decided_by_user_id: ids.builder });
+  const [event] = (await storia(card.id)).slice(-1);
+  assert.deepEqual([event.action, event.actor_kind, event.actor_user_id, event.phase_before, event.phase_after], ["modificato", "persona", ids.builder, "requisito.chiesta", "modificata.requisito.validata"]);
+  assert.ok(revalidated().includes(`/dashboard/${ids.ws}/use-cases/${card.id}`), "la scheda si rilegge");
+  // Di nuovo: il legame non è più aperto.
+  const again = await work.closeNeedFromCallAction(ids.ws, card.id, toClose.linkId, version + 1);
+  assert.deepEqual([again.ok, again.ok ? null : again.error], [false, "versione_superata"]);
+
+  // «Non risponde»: il legame «scartato», la richiesta resta aperta.
+  const dismissed = await work.dismissNeedLinkAction(ids.ws, card.id, toKeep.linkId);
+  assert.deepEqual(dismissed, { ok: true, message: "Va bene: la richiesta resta aperta." });
+  assert.equal((await linkStatus(toKeep.linkId))?.status, "scartata");
+  assert.equal((await q(`SELECT status FROM use_case_needs WHERE id = $1::uuid`, [toKeep.needId]))[0]?.status, "da_chiedere");
+
+  // La scheda dopo: nessuna riga.
+  const after = await detailHtml("builder", card.id, { capitolo: "cosa-serve" });
+  assert.ok(!after.html.includes("risponde: «"), "le righe decise spariscono");
+  // Un id che non è un uuid, o di un altro workspace: «non trovato».
+  const bad = await work.dismissNeedLinkAction(ids.ws, card.id, "non-un-uuid");
+  assert.deepEqual([bad.ok, bad.ok ? null : bad.error], [false, "non_trovato"]);
+  await q(`DELETE FROM use_case_needs WHERE id = ANY($1::uuid[])`, [[toClose.needId, toKeep.needId]]);
+});
 
 test("(Rilascio 9b) la piega «Contesto»: ai revisori, chiusa, prima di «Storia»; `?capitolo=contesto` la apre dal server; il cliente senza i fatti «Solo Lateral Space»", opts, async () => {
   const card = await seed({ description: "Un problema con il contesto" });

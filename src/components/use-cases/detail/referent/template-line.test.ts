@@ -38,6 +38,8 @@ before(async () => {
   const stubs: Record<string, string> = {
     "@/lib/actions/use-case-referents": stubOf("../../../../lib/actions/use-case-referents.ts"),
     "@/lib/actions/use-case-needs": stubOf("../../../../lib/actions/use-case-needs.ts"),
+    // (Rilascio 9b) «Chiudi con questo» e «Non risponde» sotto una richiesta di «Cosa serve».
+    "@/lib/actions/context-work": stubOf("../../../../lib/actions/context-work.ts"),
   };
   registerHooks({
     resolve(specifier, context, nextResolve) {

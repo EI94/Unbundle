@@ -22,6 +22,7 @@ import { CONTEXT_TEXT } from "../../lib/context/text.ts";
 import { CONTEXT_LIMITS, CONTEXT_SECTIONS, type CommitmentParty, type ContextSection, type ContextVisibility, type ProposalKind, type SkippedCounts, type SourceKind, type SourceOrigin } from "../../lib/context/vocab.ts";
 import type { AskSource } from "../../lib/db/queries/context-ask.ts";
 import type { CommitmentView, FactView, MemorySection, MemoryView } from "../../lib/db/queries/context-memory.ts";
+import type { NeedLinkView } from "../../lib/db/queries/context-needs.ts";
 import type { UseCaseContext, UseCaseFact } from "../../lib/db/queries/context-work.ts";
 import type { ConfirmItem, OpenProposals, ProposalPatch, ProposalView } from "../../lib/db/queries/context-proposals.ts";
 import type { ReadOutcome } from "../../lib/db/queries/context-read.ts";
@@ -423,6 +424,14 @@ export function noveltyTag(tag: UseCaseFact["tag"]): string | null {
 /** «Che cosa sappiamo»: i fatti per sezione, nell'ordine fisso delle sezioni; dentro, nell'ordine in cui arrivano. */
 export function contextFactGroups<F extends Pick<FactView, "section">>(facts: readonly F[]): Array<{ section: ContextSection; label: string; facts: F[] }> {
   return CONTEXT_SECTIONS.map((section) => ({ section, label: sectionLabel(section), facts: facts.filter((fact) => fact.section === section) })).filter((group) => group.facts.length > 0);
+}
+
+/**
+ * (9b, §2.2) La riga sotto una richiesta di «Cosa serve»: «Una call del 14 nov risponde: «…»», o «Un documento del 14
+ * nov risponde: «…»» quando il fatto viene da un documento.
+ */
+export function needLinkText(link: Pick<NeedLinkView, "from" | "date" | "statement">): string {
+  return link.from === "documento" ? T.needLink.fromDocument(link.date, link.statement) : T.needLink.fromCall(link.date, link.statement);
 }
 
 /** «Impegni aperti»: «Nostri» e «Del cliente», solo i gruppi con righe, ognuno nell'ordine in cui arriva (per scadenza). */

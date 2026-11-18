@@ -1,5 +1,6 @@
 import { UseCaseContextView } from "@/components/context/use-case-context";
 import { contextFoldShown, contextFoldSummary } from "@/components/context/view-model";
+import type { NeedLinkView } from "@/lib/db/queries/context-needs";
 import type { UseCaseContext } from "@/lib/db/queries/context-work";
 import type { UseCaseDetailResult } from "@/lib/db/queries/use-case-hub";
 import type { UseCaseRealization } from "@/lib/uc/views/realization";
@@ -211,6 +212,11 @@ export interface UseCaseDetailViewProps {
    * cliente che toccano lo use case, già filtrati per chi guarda. null, o niente da mostrare: la piega non c'è.
    */
   context?: UseCaseContext | null;
+  /**
+   * (Rilascio 9b) «Una call risponde» sotto le richieste di «Cosa serve» (`listNeedLinks`, per id dell'esigenza): solo
+   * a chi modifica le esigenze (`canEditNeeds`).
+   */
+  needLinks?: Readonly<Record<string, NeedLinkView>> | null;
   className?: string;
 }
 
@@ -252,6 +258,7 @@ export function UseCaseDetailView({
   agentTone = null,
   contributorReferentState = null,
   context = null,
+  needLinks = null,
   className,
 }: UseCaseDetailViewProps) {
   if (result.projection === "contributore") {
@@ -423,6 +430,7 @@ export function UseCaseDetailView({
                       boxOwnsChoose={step.action.type === "referente" && step.action.mode === "scegli"}
                       canEditValuation={abilities.canEditValuation}
                       useCaseVersion={detail.version}
+                      needLinks={abilities.canEditNeeds ? needLinks : null}
                     />
                   ) : null}
                 </div>

@@ -26,6 +26,7 @@ import {
   fileSizeText,
   fileTypeText,
   initialSelection,
+  needLinkText,
   isCheckable,
   isMemoryEmpty,
   noteDraftErrors,
@@ -492,6 +493,13 @@ test("«Che cosa sappiamo»: i fatti per sezione, nell'ordine fisso; dentro, l'o
     ],
   );
   assert.deepEqual(contextFactGroups([]), []);
+});
+
+test("«Cosa serve»: «Una call del 14 nov risponde: «…»», o «Un documento del …» quando il fatto viene da un documento", () => {
+  const link = { id: "l1", needId: "n1", statement: "Gli ordini arrivano via e-mail.", from: "call" as const, date: "14 nov" };
+  assert.equal(needLinkText(link), "Una call del 14 nov risponde: «Gli ordini arrivano via e-mail.»");
+  assert.equal(needLinkText({ ...link, from: "documento", date: "3 ott 2025" }), "Un documento del 3 ott 2025 risponde: «Gli ordini arrivano via e-mail.»");
+  assert.deepEqual([T.needLink.close, T.needLink.dismiss], ["Chiudi con questo", "Non risponde"]);
 });
 
 test("«Impegni aperti»: «Nostri» e «Del cliente», solo i gruppi con righe, nell'ordine in cui arrivano", () => {

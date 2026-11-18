@@ -1,5 +1,6 @@
 import { and, asc, eq, isNotNull } from "drizzle-orm";
 import { contextActorFor, type ContextActor } from "@/lib/context/server/actor";
+import { listNeedLinks, type NeedLinkView } from "@/lib/db/queries/context-needs";
 import { loadUseCaseContext, type UseCaseContext } from "@/lib/db/queries/context-work";
 import { ensureDbSchema } from "@/lib/db/ensure-schema";
 import { cliStoreReady } from "@/lib/db/queries/use-case-cli-auth";
@@ -142,9 +143,11 @@ export default async function UseCaseDetailPage({
     : [null, [], null, null, null];
   const guide = guideRow?.labels ?? null;
   const needLists = workspaceNeeds ? needListsOfUseCase(workspaceNeeds, result.useCase.id) : null;
+  // (Rilascio 9b) Chi guarda «Contesto»: solo un revisore; Lateral Space per l'e-mail verificata, il cliente «Per tutti».
+  const contextActor = reviewer ? contextActorFor(session.user, access, workspaceId) : null;
   // «Cosa serve», «Chiedi al referente» e «Raccolta informazioni»: solo a chi vede le esigenze
   // (`canSeeNeeds`); le letture stesse rispondono null a tutti gli altri.
-  const [needRefs, referents, infoProgress, agentProposals, context] = await Promise.all([
+  const [needRefs, referents, infoProgress, agentProposals, context, needLinks] = await Promise.all([
     needLists
       ? needUseCaseRefs(
           workspaceId,
@@ -169,7 +172,9 @@ export default async function UseCaseDetailPage({
     // (Rilascio 8.0b) Le domande proposte dai coding agent, sopra «Cosa serve»: a chi vede le esigenze.
     abilities.canSeeNeeds ? loadAgentProposals(workspaceId, result.useCase.id) : [],
     // (Rilascio 9b) La piega «Contesto»: solo ai revisori, con i fatti per chi guarda (il cliente solo «Per tutti»).
-    reviewer ? loadContextFold(contextActorFor(session.user, access, workspaceId), result.useCase.id) : null,
+    contextActor ? loadContextFold(contextActor, result.useCase.id) : null,
+    // (Rilascio 9b) «Una call risponde» sotto le richieste di «Cosa serve»: a chi modifica le esigenze.
+    contextActor && abilities.canEditNeeds && needLists ? loadNeedLinks(contextActor, result.useCase.id) : {},
   ]);
 
   // (Rilascio 5, §9.1) Al contributore la sola parola dello stato del referente, dopo la pillola della fase.
@@ -200,6 +205,7 @@ export default async function UseCaseDetailPage({
         agentTone={await agentTone}
         contributorReferentState={contributorReferentState}
         context={context}
+        needLinks={needLinks}
       />
     </PageContainer>
   );
@@ -571,6 +577,19 @@ async function loadContextFold(actor: ContextActor, useCaseId: string): Promise<
   } catch (error) {
     console.error("[use-case-detail] context_fold_failed", { error: { name: error instanceof Error ? error.name : "Error" } });
     return null;
+  }
+}
+
+/**
+ * (Rilascio 9b) «Una call risponde»: i legami aperti delle richieste aperte di questo use case, per esigenza. Vuoti
+ * senza la 0041 o se la lettura non riesce: «Cosa serve» resta com'era.
+ */
+async function loadNeedLinks(actor: ContextActor, useCaseId: string): Promise<Record<string, NeedLinkView>> {
+  try {
+    return await listNeedLinks(actor, useCaseId);
+  } catch (error) {
+    console.error("[use-case-detail] need_links_failed", { error: { name: error instanceof Error ? error.name : "Error" } });
+    return {};
   }
 }
 
