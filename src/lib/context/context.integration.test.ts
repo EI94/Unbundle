@@ -1626,7 +1626,8 @@ test("loadContextMemory: Lateral Space vede tutto con la fonte; il cliente mai u
     assert.equal(view.nextSteps.nostri.some((c) => c.id === ours.id), false);
     assert.ok(view.questions.every((x) => x.visibility === "tutti"));
     assert.ok(view.questions.some((x) => x.question === `Quanti magazzini ci sono nella memoria ${suffix}?`));
-    assert.deepEqual({ ...view.counts, facts: 0 }, { facts: 0, openProposals: 0, unreadSources: 0, pendingSourceIds: [] }, `${person}: niente di interno`);
+    // (9b) Anche «da verificare»: lo conta solo Lateral Space.
+    assert.deepEqual({ ...view.counts, facts: 0 }, { facts: 0, openProposals: 0, unreadSources: 0, pendingSourceIds: [], toCheck: 0 }, `${person}: niente di interno`);
   }
   // Chi segue solo un corso, chi non è nel workspace, e Lateral Space di un altro workspace: una memoria vuota.
   for (const who of [actor("lrn"), actor("out"), actor("ls", "wsB")]) {
