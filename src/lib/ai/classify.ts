@@ -24,11 +24,17 @@ const classificationSchema = z.object({
 /** La classificazione per l'app: la motivazione torna in `reasoning`, come sempre. */
 export type ClassificationResult = Omit<z.infer<typeof classificationSchema>, "motivazione"> & { reasoning: string };
 
+/**
+ * Classifica un'attività. (Rilascio 9b, docs/contesto/RILASCIO-9b-COSTRUZIONE.md §2.12) `strategicContext.contesto`: il
+ * blocco «Contesto» di `loadPromptContext` (profilo `classify`, solo «In breve»), tra gli obiettivi e i tre stream; ""
+ * o assente (senza l'ok ai fornitori di AI, o niente da dire) e il prompt è quello di prima, byte per byte.
+ */
 export async function classifyActivity(
   activity: Activity,
   strategicContext: {
     companyValueThesis: unknown;
     goals: StrategicGoal[];
+    contesto?: string;
   },
   abortSignal?: AbortSignal
 ): Promise<ClassificationResult> {
@@ -55,7 +61,7 @@ ${JSON.stringify(strategicContext.companyValueThesis ?? {}, null, 2)}
 
 ## Obiettivi strategici
 ${strategicContext.goals.map((g) => `- [${g.type}] ${g.title}`).join("\n")}
-
+${strategicContext.contesto ?? ""}
 ## I 3 STREAM
 
 ### AUTOMATE — "Questo lavoro non dovrebbe esistere nella sua forma attuale."
@@ -94,12 +100,14 @@ Classifica con rigore. Se l'attività è palesemente operativa e ripetitiva → 
  * le altre: quell'attività resta senza classificazione (chi chiama conta quante ne mancano) e si riprova dopo.
  * Con `abortSignal` (la scadenza dei tool della chat, src/lib/ai/models.ts) le chiamate in corso si interrompono e le attività
  * non ancora iniziate restano da classificare, senza chiamate: il tempo scaduto va nel log una volta, con i conteggi.
+ * (Rilascio 9b) Lo stesso `strategicContext`, con il suo blocco «Contesto», va a ogni attività.
  */
 export async function classifyActivitiesBatch(
   activities: Activity[],
   strategicContext: {
     companyValueThesis: unknown;
     goals: StrategicGoal[];
+    contesto?: string;
   },
   { abortSignal }: { abortSignal?: AbortSignal } = {}
 ): Promise<Map<string, ClassificationResult>> {

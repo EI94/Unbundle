@@ -1,5 +1,6 @@
 import "server-only";
 import { getActivitiesByWorkspace } from "@/lib/db/queries/activities";
+import { loadPromptContext } from "@/lib/db/queries/context-work";
 import { getWorkspaceValueThesis } from "@/lib/db/queries/value-thesis";
 import { getStrategicGoalsByWorkspace } from "@/lib/db/queries/workspaces";
 import type { Activity, StrategicGoal, UseCase } from "@/lib/db/schema";
@@ -170,11 +171,14 @@ export async function createQuickUseCase(
 
 // ─── Activity mapping (§8.5) ─────────────────────────────────────────
 
-/** Il generatore di oggi (`generateUseCases`): le attività classificate e il contesto strategico. */
+/**
+ * Il generatore di oggi (`generateUseCases`): le attività classificate e il contesto strategico. (Rilascio 9b)
+ * `contesto`: il blocco «Contesto» del prompt, "" senza l'ok ai fornitori di AI.
+ */
 export interface ActivityMappingDeps {
   generate: (
     activities: Activity[],
-    context: { companyValueThesis: unknown; goals: StrategicGoal[] },
+    context: { companyValueThesis: unknown; goals: StrategicGoal[]; contesto?: string },
     includeEsg: boolean,
   ) => Promise<readonly unknown[]>;
 }
@@ -222,12 +226,18 @@ export async function proposeFromActivityMapping(
 
   const workspace = access.workspace;
   const includeEsg = workspace.esgEnabled === true;
-  // (9a) La tesi del valore del workspace, non più quella dell'organizzazione.
-  const [goals, thesis] = await Promise.all([getStrategicGoalsByWorkspace(ctx.workspaceId), getWorkspaceValueThesis(ctx.workspaceId)]);
+  // (9a) La tesi del valore del workspace, non più quella dell'organizzazione. (Rilascio 9b,
+  // docs/contesto/RILASCIO-9b-COSTRUZIONE.md §2.12) Con «In breve» e i fatti «Per tutti» del lavoro, dei sistemi, degli
+  // obiettivi e delle regole: le proposte non contraddicono quello che si sa già. "" senza l'ok ai fornitori di AI.
+  const [goals, thesis, contesto] = await Promise.all([
+    getStrategicGoalsByWorkspace(ctx.workspaceId),
+    getWorkspaceValueThesis(ctx.workspaceId),
+    loadPromptContext(ctx.workspaceId, { profile: "useCases", consent: "request" }),
+  ]);
 
   let generated: readonly unknown[];
   try {
-    generated = await deps.generate(classified, { companyValueThesis: thesis, goals }, includeEsg);
+    generated = await deps.generate(classified, { companyValueThesis: thesis, goals, contesto }, includeEsg);
   } catch (error) {
     logSafeError(LOG_SCOPE, "activity_mapping_generate_failed", error, { workspaceId: ctx.workspaceId });
     return { ok: false, error: "riprova", message: ACTIVITY_MAPPING_TEXT.error };

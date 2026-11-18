@@ -39,6 +39,8 @@ await installAppModules({
   "drizzle-orm": `export const eq = (column, value) => ({ column, value });`,
   // (Rilascio 9a) La tesi del valore viene dal workspace: quella dell'organizzazione, qui sotto, non si legge più.
   "@/lib/db/queries/value-thesis": `export async function getWorkspaceValueThesis(workspaceId) { globalThis.__prova.thesisAsked.push(workspaceId); return globalThis.__prova.thesis; }`,
+  // (Rilascio 9b) Il blocco «Contesto» del prompt (context-in-prompts.test.ts lo prova): qui niente da dire.
+  "@/lib/db/queries/context-work": `export async function loadPromptContext() { return ""; }`,
   "@/lib/db": `export const db = {
     select: () => ({ from: () => ({ where: () => ({ limit: async () => [{ id: "org-prova", companyValueThesis: { coreValueProposition: "Tesi di un altro workspace della stessa organizzazione" } }] }) }) }),
   };`,

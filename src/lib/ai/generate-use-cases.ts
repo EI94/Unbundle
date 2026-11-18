@@ -54,11 +54,17 @@ const esgExtension = z.object({
     ),
 });
 
+/**
+ * Propone use case dalle attività classificate. (Rilascio 9b, docs/contesto/RILASCIO-9b-COSTRUZIONE.md §2.12)
+ * `strategicContext.contesto`: il blocco «Contesto» di `loadPromptContext` (profilo `useCases`), tra gli obiettivi e le
+ * regole; "" o assente (senza l'ok ai fornitori di AI, o niente da dire) e il prompt è quello di prima, byte per byte.
+ */
 export async function generateUseCases(
   activities: Activity[],
   strategicContext: {
     companyValueThesis: unknown;
     goals: StrategicGoal[];
+    contesto?: string;
   },
   includeEsg: boolean = false
 ) {
@@ -102,7 +108,7 @@ ${JSON.stringify(strategicContext.companyValueThesis ?? {}, null, 2)}
 
 ## Obiettivi strategici / OKR
 ${goalsSummary}
-
+${strategicContext.contesto ?? ""}
 ## Regole per la generazione
 
 1. **Ogni use case deve essere concreto e implementabile**: non idee vaghe ma progetti con scope chiaro

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { getActivitiesByWorkspace } from "@/lib/db/queries/activities";
 import { getStrategicGoalsByWorkspace } from "@/lib/db/queries/workspaces";
 import { getWorkspaceValueThesis } from "@/lib/db/queries/value-thesis";
+import { loadPromptContext } from "@/lib/db/queries/context-work";
 import { classifyActivitiesBatch, skippedClassificationsText } from "@/lib/ai/classify";
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
 import { recordClassifications } from "@/lib/mappatura/complete";
@@ -32,10 +33,15 @@ export async function runClassificationAction(workspaceId: string) {
     return { classified: 0, skipped: 0, skippedText: "", total: allActivities.length };
   }
 
+  // (Rilascio 9b, docs/contesto/RILASCIO-9b-COSTRUZIONE.md §2.12) Solo «In breve», «Per tutti»: la classificazione
+  // gira per ogni attività. "" senza l'ok ai fornitori di AI: si classifica come prima.
+  const contesto = await loadPromptContext(workspaceId, { profile: "classify", consent: "request" });
+
   // Le classificazioni riuscite si scrivono; quelle rifiutate o fallite restano da fare (si riprovano con un altro clic).
   const results = await classifyActivitiesBatch(unclassified, {
     companyValueThesis: thesis,
     goals,
+    contesto,
   });
 
   // (Mappatura board) Lo stream e la confidenza come sempre, più la proposta, il motivo e il potenziale sulla board:
