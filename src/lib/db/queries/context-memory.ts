@@ -101,8 +101,11 @@ export interface MemoryView {
   brief: { lines: string[]; updatedOn: string } | null;
   /** null alla prima visita o senza novità. */
   novelties: { items: NoveltyItem[]; more: number } | null;
-  /** Gli ultimi tre a zero per chi non è di Lateral Space. */
-  counts: { facts: number; openProposals: number; unreadSources: number; pendingSourceIds: string[] };
+  /**
+   * Gli ultimi tre a zero per chi non è di Lateral Space. (9b) `toCheck`: i fatti attivi segnati «da verificare» dalla
+   * notte (`needs_check`), zero per chi non è di Lateral Space.
+   */
+  counts: { facts: number; openProposals: number; unreadSources: number; pendingSourceIds: string[]; toCheck: number };
 }
 
 const emptyMemory = (): MemoryView => ({
@@ -111,12 +114,13 @@ const emptyMemory = (): MemoryView => ({
   questions: [],
   brief: null,
   novelties: null,
-  counts: { facts: 0, openProposals: 0, unreadSources: 0, pendingSourceIds: [] },
+  counts: { facts: 0, openProposals: 0, unreadSources: 0, pendingSourceIds: [], toCheck: 0 },
 });
 
 // ─── Leggere ─────────────────────────────────────────────────────────
 
-interface FactRow {
+/** Una riga di `FACT_COLUMNS` (un fatto e la sua fonte). (9b) La leggono anche context-work.ts e context-freshness.ts. */
+export interface FactRow {
   id: string;
   version: number;
   kind: FactKind;
@@ -149,7 +153,8 @@ const CORRECTED_BY_HAND = (fact: SQL) => sql`EXISTS (
   SELECT 1 FROM context_events e WHERE e.fact_id = ${fact}.id AND e.workspace_id = ${fact}.workspace_id AND e.action = 'fatto_cambiato' AND e.detail->>'modo' = 'a_mano'
 )`;
 
-const FACT_COLUMNS = sql`f.id, f.version, f.kind, f.section, f.statement, f.basis, f.visibility, f.status, f.origin, f.needs_check, f.last_confirmed_at, f.created_at,
+/** Le colonne di un fatto (`f`) e della sua fonte (`s`, LEFT JOIN): per `factViewOf`. */
+export const FACT_COLUMNS = sql`f.id, f.version, f.kind, f.section, f.statement, f.basis, f.visibility, f.status, f.origin, f.needs_check, f.last_confirmed_at, f.created_at,
   f.ended_at, f.supersedes_id, f.confirmed_by_user_id, f.quote, f.source_id, s.kind AS source_kind, s.origin AS source_origin, s.external_id AS source_external_id,
   s.occurred_on AS source_day, s.title AS source_title, ${CORRECTED_BY_HAND(sql.raw("f"))} AS corrected`;
 
@@ -162,7 +167,8 @@ function sourceLabelOf(row: Pick<FactRow, "origin" | "source_kind" | "source_ori
   return { ...source, label: row.corrected === true && source.kind !== "manuale" ? CONTEXT_TEXT.fact.correctedByHand(source.label) : source.label };
 }
 
-function factViewOf(row: FactRow, today: string, disputed: ReadonlySet<string>): FactView {
+/** Un fatto per chi guarda: la fonte a parole, il segno «da verificare» (anche per un conflitto aperto). */
+export function factViewOf(row: FactRow, today: string, disputed: ReadonlySet<string>): FactView {
   const source = sourceLabelOf(row, today);
   const confirmed = toDate(row.last_confirmed_at);
   return {
@@ -181,7 +187,7 @@ function factViewOf(row: FactRow, today: string, disputed: ReadonlySet<string>):
 }
 
 /** I fatti attivi con un conflitto aperto: «da verificare». I conflitti sono proposte, e le vede solo Lateral Space. */
-async function disputedFacts(workspaceId: string): Promise<Set<string>> {
+export async function disputedFacts(workspaceId: string): Promise<Set<string>> {
   const targets = rowsOf<{ target_fact_id: string }>(
     await db.execute(sql`
       SELECT DISTINCT target_fact_id FROM context_proposals
@@ -190,6 +196,20 @@ async function disputedFacts(workspaceId: string): Promise<Set<string>> {
   if (targets.length === 0) return new Set();
   const heads = await resolveHeads(workspaceId, targets.map((t) => t.target_fact_id));
   return new Set([...heads.values()].filter((h) => h.status === "attivo").map((h) => h.id));
+}
+
+/** Un impegno aperto per chi guarda (le colonne di `context_commitments` lette a mano). */
+export function commitmentViewOf(
+  row: { id: string; version: number; statement: string; party: CommitmentParty; role_label: string | null; due_on: unknown; visibility: ContextVisibility },
+  today: string,
+): CommitmentView {
+  const dueOn = row.due_on ? toIsoDate(row.due_on) : null;
+  return { id: row.id, version: Number(row.version), statement: row.statement, party: row.party, roleLabel: row.role_label, dueOn, overdue: dueOn !== null && dueOn < today, visibility: row.visibility };
+}
+
+/** Una domanda aperta per chi guarda (le colonne di `context_questions` lette a mano). */
+export function questionViewOf(row: { id: string; version: number; question: string; ask_whom: string | null; visibility: ContextVisibility }): QuestionView {
+  return { id: row.id, version: Number(row.version), question: row.question, askWhom: row.ask_whom, visibility: row.visibility };
 }
 
 /**
@@ -212,8 +232,11 @@ export async function touchContextSeen(actor: ContextActor, now: Date = new Date
   return toDate(rows[0]?.previous_seen_at);
 }
 
-/** La Memoria per chi guarda: ogni lista è già filtrata per visibilità. Chiama `touchContextSeen`. */
-export async function loadContextMemory(actor: ContextActor, opts: { now?: Date } = {}): Promise<MemoryView> {
+/**
+ * La Memoria per chi guarda: ogni lista è già filtrata per visibilità. Chiama `touchContextSeen`, tranne con
+ * `touchSeen: false` (9b: l'MCP del team, perché leggere da Claude non è una visita): allora «Novità per te» è null.
+ */
+export async function loadContextMemory(actor: ContextActor, opts: { now?: Date; touchSeen?: boolean } = {}): Promise<MemoryView> {
   const abilities = contextAbilities(actor);
   if (!abilities.canOpen || !isUuid(actor.workspaceId) || !isUuid(actor.userId) || !(await contextStoreReady())) return emptyMemory();
   const ws = actor.workspaceId;
@@ -223,9 +246,9 @@ export async function loadContextMemory(actor: ContextActor, opts: { now?: Date 
   const workspace = await getWorkspaceById(ws);
   if (!workspace) return emptyMemory();
   const visible = sql`(${lateralSpace} OR visibility = 'tutti')`;
-  const previous = await touchContextSeen(actor, now);
+  const previous = opts.touchSeen === false ? null : await touchContextSeen(actor, now);
 
-  const [factRows, commitmentRows, questionRows, briefRows, live, disputed, pending, openProposals] = await Promise.all([
+  const [factRows, commitmentRows, questionRows, briefRows, live, disputed, pending, openProposals, toCheck] = await Promise.all([
     db.execute(sql`
       SELECT ${FACT_COLUMNS} FROM context_facts f LEFT JOIN context_sources s ON s.id = f.source_id
       WHERE f.workspace_id = ${ws}::uuid AND f.status = 'attivo' AND (${lateralSpace} OR f.visibility = 'tutti')
@@ -251,6 +274,10 @@ export async function loadContextMemory(actor: ContextActor, opts: { now?: Date 
     lateralSpace
       ? db.execute(sql`SELECT count(*)::int AS n FROM context_proposals WHERE workspace_id = ${ws}::uuid AND status = 'aperta'`)
       : Promise.resolve({ rows: [] }),
+    // (9b) «3 fatti da verificare»: solo Lateral Space li riconferma.
+    lateralSpace
+      ? db.execute(sql`SELECT count(*)::int AS n FROM context_facts WHERE workspace_id = ${ws}::uuid AND status = 'attivo' AND needs_check`)
+      : Promise.resolve({ rows: [] }),
   ]);
 
   const facts = rowsOf<FactRow>(factRows);
@@ -262,14 +289,9 @@ export async function loadContextMemory(actor: ContextActor, opts: { now?: Date 
   }));
 
   const commitments = rowsOf<{ id: string; version: number; statement: string; party: CommitmentParty; role_label: string | null; due_on: unknown; visibility: ContextVisibility }>(commitmentRows).map(
-    (row): CommitmentView => {
-      const dueOn = row.due_on ? toIsoDate(row.due_on) : null;
-      return { id: row.id, version: Number(row.version), statement: row.statement, party: row.party, roleLabel: row.role_label, dueOn, overdue: dueOn !== null && dueOn < today, visibility: row.visibility };
-    },
+    (row) => commitmentViewOf(row, today),
   );
-  const questions = rowsOf<{ id: string; version: number; question: string; ask_whom: string | null; visibility: ContextVisibility }>(questionRows).map(
-    (row): QuestionView => ({ id: row.id, version: Number(row.version), question: row.question, askWhom: row.ask_whom, visibility: row.visibility }),
-  );
+  const questions = rowsOf<{ id: string; version: number; question: string; ask_whom: string | null; visibility: ContextVisibility }>(questionRows).map(questionViewOf);
 
   const [briefRow] = rowsOf<{ lines: unknown; generated_at: unknown }>(briefRows);
   const briefLines = Array.isArray(briefRow?.lines) ? briefRow.lines.filter((line): line is string => typeof line === "string" && line.trim() !== "") : [];
@@ -304,6 +326,7 @@ export async function loadContextMemory(actor: ContextActor, opts: { now?: Date 
       openProposals: Number(rowsOf<{ n: number }>(openProposals)[0]?.n ?? 0),
       unreadSources: Number(pendingRows[0]?.total ?? 0),
       pendingSourceIds: pendingRows.map((row) => row.id),
+      toCheck: Number(rowsOf<{ n: number }>(toCheck)[0]?.n ?? 0),
     },
   };
 }

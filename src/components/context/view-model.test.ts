@@ -372,7 +372,7 @@ function memory(sections: MemorySection[], over: Partial<MemoryView> = {}): Memo
     questions: [],
     brief: null,
     novelties: null,
-    counts: { facts: 0, openProposals: 0, unreadSources: 0, pendingSourceIds: [] },
+    counts: { facts: 0, openProposals: 0, unreadSources: 0, pendingSourceIds: [], toCheck: 0 },
     ...over,
   };
 }

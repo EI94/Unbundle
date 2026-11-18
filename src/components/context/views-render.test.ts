@@ -90,7 +90,7 @@ function memory(over: Partial<MemoryData> = {}): MemoryData {
     questions: [{ id: "q1", version: 1, question: "Chi approva gli ordini sopra i 10.000 euro?", askWhom: "Direttore operativo", visibility: "tutti" }],
     brief: { lines: ["Produce cucine su misura.", "Usa SAP Business One."], updatedOn: "2026-11-14" },
     novelties: { items: [{ factId: "f1", statement: "Il gestionale è SAP Business One.", section: "sistemi", tag: "cambiato" }], more: 3 },
-    counts: { facts: 2, openProposals: 12, unreadSources: 2, pendingSourceIds: ["s1", "s2"] },
+    counts: { facts: 2, openProposals: 12, unreadSources: 2, pendingSourceIds: ["s1", "s2"], toCheck: 0 },
     ...over,
   };
 }
@@ -149,7 +149,7 @@ test("la Memoria vuota: il titolo e la frase di chi guarda; per Lateral Space «
     questions: [],
     brief: null,
     novelties: null,
-    counts: { facts: 0, openProposals: 0, unreadSources: 0, pendingSourceIds: [] },
+    counts: { facts: 0, openProposals: 0, unreadSources: 0, pendingSourceIds: [], toCheck: 0 },
   });
   const forClient = textOf(render(createElement(MemoryView, memoryProps({ lateralSpace: false, canEditMemory: false, memory: empty }))));
   assert.ok(forClient.includes("Ancora niente in memoria") && forClient.includes("Qui compare quello che sappiamo dell'azienda, con la fonte di ogni cosa."));
