@@ -56,7 +56,7 @@ export function TemplateDialog({
 }) {
   const baseId = useId();
   const fileId = `${baseId}-file`;
-  const needsId = `${baseId}-esigenze`;
+  const needsId = `${baseId}-informazioni`;
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [busy, setBusy] = useState(false);

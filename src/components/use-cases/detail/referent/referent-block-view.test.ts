@@ -66,7 +66,7 @@ test("manca: «Manca il referente.» e «Scegli il referente» non pieno, salvo 
   const m = referentBlockModel({ ...base, referent: null, request: null });
   assert.equal(m.state, "manca");
   assert.deepEqual(m.lines, [{ kind: "text", text: "Manca il referente." }]);
-  assert.deepEqual(m.buttons, [{ key: "choose", label: "Scegli il referente", variant: "outline" }]);
+  assert.deepEqual(m.buttons, [{ key: "choose", label: "Indica il referente", variant: "outline" }]);
   assert.deepEqual(referentBlockModel({ ...base, referent: null, request: null, boxOwnsChoose: true }).buttons, []);
   assert.deepEqual(referentBlockModel({ ...base, referent: null, request: null, canAssign: false }).buttons, []);
   assert.equal(referentHeaderLine(null), null, "in «Manca il referente» niente riga sotto il titolo (D37)");

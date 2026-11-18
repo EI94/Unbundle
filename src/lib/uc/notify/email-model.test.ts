@@ -117,7 +117,8 @@ test("(rilascio 10, §3.12) il marchio una volta: l'intestazione in cima, niente
 
 test("(rilascio 10, §4.2) fuori dalla dashboard: mai «use case» né le parole vietate; «Non lo so», mai «Non ce l'ho»", () => {
   for (const [label, m] of singleCaseEmails()) {
-    const text = `${m.subject}\n${m.text}`.replace(/https?:\/\/\S+/g, "");
+    // I comandi tra « » per chi costruisce («unbundle login») sono nomi di comandi, non parole del testo.
+    const text = `${m.subject}\n${m.text}`.replace(/https?:\/\/\S+/g, "").replace(/«(?:unbundle|npm run) [^»]*»/g, "«…»");
     assert.deepEqual(findHubForbidden(text, "esterno"), [], label);
     assert.doesNotMatch(text, /Non ce l'ho|non sa rispondere|In questa email non ci sono|\bk\d\b/, label);
   }

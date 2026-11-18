@@ -745,7 +745,7 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
       editText: editableText(section.question),
     });
 
-  const footer = <PrivacyFooter texts={privacy} />;
+  const footer = <PrivacyFooter texts={privacy} reference={header.reference} />;
   const intro = (
     <header className="mt-4 space-y-2">
       <p className="text-sm break-words text-muted-foreground">{header.company}</p>

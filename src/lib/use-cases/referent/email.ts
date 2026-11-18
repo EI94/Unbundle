@@ -21,7 +21,7 @@
  */
 import { byDayIt, emailSubject, multiLine, oneLine, render, untilDayIt, type Block, type EmailBrand, type RenderedEmail } from "../../uc/notify/email-render.ts";
 import type { ReferentReminderKind } from "../../db/use-case-hub-referents-ddl.ts";
-import { companyLabel } from "./labels.ts";
+import { REFERENT_PUBLIC_TEXT, companyLabel } from "./labels.ts";
 import { checkCardLink } from "./links.ts";
 
 type UcRef = { code: string | null; title: string };
@@ -115,7 +115,7 @@ const name = (s: string) => oneLine(s, 120);
 const company = (s: string) => oneLine(companyLabel(s), 80);
 
 /** (Rilascio 10, D6) «Riferimento RD-0004»: il codice resta, in piccolo, in fondo all'email. */
-export const REFERENCE_WORD = "Riferimento";
+export const REFERENCE_WORD = REFERENT_PUBLIC_TEXT.reference;
 
 function referenceBlocks(uc: UcRef): Block[] {
   const code = uc.code?.trim();
