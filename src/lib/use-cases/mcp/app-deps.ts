@@ -7,11 +7,14 @@ import { USE_CASE_NEEDS_EVENT_FIELD } from "@/lib/db/use-case-hub-ddl";
 import { appExposedTokenAlertDeps, appRateLimitExecutor } from "@/lib/connector/app-deps";
 import { CONNECTOR_PUBLIC_ORIGIN } from "@/lib/connector/auth";
 import { alertExposedToken, type ExposedTokenAlertDeps } from "@/lib/connector/exposed-token-alert";
+import { askContext } from "@/lib/db/queries/context-ask";
 import { refreshContextBrief } from "@/lib/db/queries/context-brief";
+import { loadContextMemory } from "@/lib/db/queries/context-memory";
 import { confirmProposals, discardProposals, listOpenProposals } from "@/lib/db/queries/context-proposals";
 import { readContextSource } from "@/lib/db/queries/context-read";
 import { addContextNote } from "@/lib/db/queries/context-sources";
 import { contextStoreReady } from "@/lib/db/queries/context-store";
+import { loadContextLinks } from "@/lib/db/queries/context-team";
 import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { getUseCaseDetail, listHubItems } from "@/lib/db/queries/use-case-hub";
 import { listWorkspaceNeeds, needUseCaseRefs } from "@/lib/db/queries/use-case-needs";
@@ -263,7 +266,9 @@ const appNotifyDeps: TeamNotifyDeps = {
  * `src/lib/db/queries/context-*.ts`, che rifanno da sé il controllo di chi chiama, e la persona del token
  * (`contextActorFromPrincipal`, canale «claude», dal modulo puro: senza caricare la sessione di Firebase, che al MCP
  * non serve). «In breve» si riscrive dopo la risposta, con lo scheduler della rotta, come dopo
- * «Conferma» nella pagina.
+ * «Conferma» nella pagina. (9b, RILASCIO-9b-COSTRUZIONE.md §2.7) Le letture della memoria: `loadContextMemory` con le
+ * opzioni dell'handler (`touchSeen: false`: leggere da Claude non è una visita), gli use case di ogni riga
+ * (`loadContextLinks`) e «Chiedi al contesto» (`askContext`, che rilegge l'ok ai sub-responsabili prima del modello).
  */
 export function appTeamContextDeps(schedule: (task: () => Promise<void>) => void): TeamContextDeps {
   return {
@@ -274,6 +279,9 @@ export function appTeamContextDeps(schedule: (task: () => Promise<void>) => void
     listOpen: (actor, opts) => listOpenProposals(actor, opts ?? {}),
     confirm: (actor, items) => confirmProposals(actor, items),
     discard: (actor, ids) => discardProposals(actor, ids),
+    memory: (actor, opts) => loadContextMemory(actor, opts),
+    links: (actor, ids) => loadContextLinks(actor, ids),
+    ask: (actor, question) => askContext(actor, question),
     refreshBrief(workspaceId) {
       schedule(async () => {
         try {

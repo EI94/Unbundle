@@ -4,8 +4,10 @@
  *
  * Il testo è quello di DESIGN §9.4, riga per riga, più le righe 7 e 8 della spec di Pierpaolo
  * (25/10/2026): «Benefici e costi» in `update_use_case` e «Cosa serve» con `list_needs` e
- * `save_needs`; e la riga 9 del rilascio 9a (docs/contesto/RILASCIO-9a-COSTRUZIONE.md §9.1):
- * «Contesto» con `add_context_notes` e `confirm_context_proposals`. Un solo segnaposto, `{{workspaceName}}`, con il nome del workspace ripulito come
+ * `save_needs`; e la riga 9 su «Contesto» (rilascio 9a, docs/contesto/RILASCIO-9a-COSTRUZIONE.md §9.1,
+ * riscritta nel 9b, RILASCIO-9b-COSTRUZIONE.md §2.7): leggere la memoria con `get_context`, `ask_context` e
+ * `list_context_commitments`, mandare gli appunti con `add_context_notes` e confermare con
+ * `confirm_context_proposals`. Un solo segnaposto, `{{workspaceName}}`, con il nome del workspace ripulito come
  * nel connettore (`instructionsWorkspaceName`: una riga, niente parentesi graffe, al massimo 120
  * caratteri). Dopo la sostituzione non supera 2.048 caratteri e contiene la riga 6 sul costo
  * (D5): `instructions.test.ts` lo controlla.
@@ -30,11 +32,13 @@ export const TEAM_MCP_NEEDS_LINE =
   "8. «Cosa serve» (requisiti e prossimi passi): leggi con list_needs, salva con save_needs, fino a 50 per volta. Usa importKey per non creare doppioni. Le esigenze non si cancellano: si archiviano con il motivo.";
 
 /**
- * La riga 9 (rilascio 9a): gli appunti di una call con add_context_notes; in memoria entra solo ciò a cui la persona
- * dice sì, e per le dedotte e i conflitti si chiede una per una.
+ * La riga 9, riscritta nel rilascio 9b (docs/contesto/RILASCIO-9b-COSTRUZIONE.md §2.7): la memoria del cliente si legge
+ * con get_context, le domande con ask_context, gli impegni con list_context_commitments; gli appunti di una call con
+ * add_context_notes, e in memoria entra solo ciò a cui la persona dice sì, le dedotte e i conflitti una per una. Una riga
+ * 10 non ci sta: con un nome di workspace di 120 caratteri il testo arriva a circa 1.990 su 2.048.
  */
 export const TEAM_MCP_CONTEXT_LINE =
-  "9. «Contesto»: manda gli appunti di una call con add_context_notes, mostra alla persona ogni proposta (testo, citazione, detto o dedotto) e conferma con confirm_context_proposals solo quelle a cui dice sì. Per le dedotte e i conflitti chiedi una per una.";
+  "9. «Contesto»: leggi la memoria del cliente con get_context (domande: ask_context; impegni: list_context_commitments). Appunti di una call: add_context_notes, mostra ogni proposta e conferma con confirm_context_proposals solo dopo il sì; dedotte e conflitti una per una.";
 
 /** Il modello, come in DESIGN §9.4, con le righe 7, 8 e 9. */
 export const TEAM_MCP_INSTRUCTIONS_TEMPLATE = [

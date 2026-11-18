@@ -24,17 +24,33 @@
  * i dati di una persona non escono: al posto del titolo «Call 14 nov», «Documento 14 nov» o «Appunti 14 nov»; al posto
  * della citazione null, con «Apri Unbundle per la citazione.».
  *
+ * (Rilascio 9b, docs/contesto/RILASCIO-9b-COSTRUZIONE.md §2.7, §5.7) Tre letture della memoria, per ogni revisore con
+ * un token, anche «Solo lettura» (`CONTEXT_MEMORY_TOOL_NAMES`):
+ * - `get_context` legge la Memoria per chi guarda (`loadContextMemory` con `touchSeen: false`: leggere da Claude non è
+ *   una visita, e «Novità per te» non cambia), con gli use case di ogni riga (`loadContextLinks`). Filtri: use case,
+ *   sezione, `since` (i fatti nati da quel giorno: nuovi o versioni nuove). Al massimo 200 fatti, i più recenti, poi `more`.
+ * - `ask_context` fa la domanda di «Chiedi al contesto» (`askContext`, che rilegge l'ok ai sub-responsabili prima del
+ *   modello e ha i suoi limiti). Un brano di appunti con i dati di una persona esce senza testo; una risposta scritta con
+ *   i dati di una persona vale «non lo sappiamo», come `askContext` fa con i dati sanitari.
+ * - `list_context_commitments` elenca gli impegni aperti, per parte, use case e scadenza: mai per persona.
+ * Il cliente riceve solo righe «Per tutti» e mai la chiave `visibilityLabel`; nessuno riceve citazioni, «Con chi» o chi
+ * ha confermato. Ognuna conta una lettura nei secchi di oggi; senza la 0038 `riprova`.
+ *
  * Modulo puro: le funzioni condivise, la persona del token e la programmazione arrivano da fuori (`TeamContextDeps`;
  * nell'app `app-deps.ts`); `tools.ts` passa i suoi passi comuni (`ContextToolKit`). Gira con `node --test`.
  */
+import { scanPersonalData } from "../../context/scan.ts";
 import { CONTEXT_TEXT } from "../../context/text.ts";
-import type { ContextActor } from "../../context/visibility.ts";
-import { CONTEXT_LIMITS, type SkippedCounts } from "../../context/vocab.ts";
+import { contextAbilities, visibleTo, type ContextActor } from "../../context/visibility.ts";
+import { CONTEXT_LIMITS, CONTEXT_SECTIONS, type ContextSection, type ContextVisibility, type SkippedCounts } from "../../context/vocab.ts";
+import type { AskAnswer } from "../../db/queries/context-ask.ts";
+import type { CommitmentView, FactView, MemoryView, QuestionView } from "../../db/queries/context-memory.ts";
 import type { ConfirmItem, ConfirmResult, OpenProposals, ProposalView } from "../../db/queries/context-proposals.ts";
 import type { ReadOutcome } from "../../db/queries/context-read.ts";
 import type { AddedSource, NewNoteInput } from "../../db/queries/context-sources.ts";
+import type { ContextLinks } from "../../db/queries/context-team.ts";
 import type { TeamRequestKey } from "../../db/queries/team-mcp-requests.ts";
-import { romeToday } from "../quarter.ts";
+import { isIsoDate, romeToday } from "../quarter.ts";
 import type { ServiceError, ServiceResult } from "../types.ts";
 import type { TeamPrincipal } from "./auth.ts";
 import {
@@ -46,16 +62,45 @@ import {
   type ConfirmContextProposalsInput,
   type TeamMcpError,
 } from "./contract.ts";
-import { CONTEXT_PROPOSALS_NOTE, linkToContext, linkToContextProposals, mcpProposal, mcpSourceTitle, notReportedLines, type McpProposal } from "./output.ts";
+import {
+  CONTEXT_MEMORY_NOTE,
+  CONTEXT_PROPOSALS_NOTE,
+  linkToContext,
+  linkToContextProposals,
+  mcpAskSource,
+  mcpCommitment,
+  mcpFact,
+  mcpProposal,
+  mcpQuestion,
+  mcpSourceTitle,
+  notReportedLines,
+  linkedUseCaseCodes,
+  type McpProposal,
+} from "./output.ts";
 import type { Execution, TeamToolOutcome, WritePlan } from "./tools.ts";
 
 // ─── Nomi, tempi e messaggi ──────────────────────────────────────────
 
-export const CONTEXT_TOOL_NAMES = ["add_context_notes", "list_context_proposals", "confirm_context_proposals"] as const;
+export const CONTEXT_TOOL_NAMES = [
+  "add_context_notes",
+  "list_context_proposals",
+  "confirm_context_proposals",
+  "get_context",
+  "ask_context",
+  "list_context_commitments",
+] as const;
 export type ContextToolName = (typeof CONTEXT_TOOL_NAMES)[number];
 
 export function isContextToolName(name: string): name is ContextToolName {
   return (CONTEXT_TOOL_NAMES as readonly string[]).includes(name);
+}
+
+/** (9b) Le letture della memoria: ogni revisore con un token, anche «Solo lettura». Le altre tre sono di Lateral Space. */
+export const CONTEXT_MEMORY_TOOL_NAMES = ["get_context", "ask_context", "list_context_commitments"] as const satisfies readonly ContextToolName[];
+export type ContextMemoryToolName = (typeof CONTEXT_MEMORY_TOOL_NAMES)[number];
+
+export function isContextMemoryToolName(name: string): name is ContextMemoryToolName {
+  return (CONTEXT_MEMORY_TOOL_NAMES as readonly string[]).includes(name);
 }
 
 /** La lettura di un appunto dall'MCP: dentro i 120 secondi della rotta, con il margine per salvare e rispondere. */
@@ -75,6 +120,9 @@ export const CONTEXT_TWICE_MESSAGE = "Questa proposta è già in un'altra voce d
 export const CONTEXT_NOT_FOUND_MESSAGE = "Non trovato in questo workspace: rileggi con list_context_proposals.";
 const PARTIAL_CONFIRM_NOTE = "Le proposte confermate restano: richiama con lo stesso idempotencyKey per scartare le altre.";
 
+/** (9b) I fatti al massimo in una risposta di `get_context` (§5.7): i più recenti; gli altri si contano in `more`. */
+export const CONTEXT_MCP_FACTS_MAX = 200;
+
 // ─── Dipendenze ──────────────────────────────────────────────────────
 
 /** Le funzioni condivise di «Contesto» (§3.4) che i tre strumenti usano, e la persona del token. */
@@ -90,6 +138,15 @@ export interface TeamContextDeps {
   discard(actor: ContextActor, ids: readonly string[]): Promise<ServiceResult<{ discarded: number }>>;
   /** «In breve» riscritto dopo la risposta (nella rotta: `after()`). Non deve lanciare. */
   refreshBrief(workspaceId: string): void;
+  /**
+   * (9b) La Memoria per chi guarda (`loadContextMemory`), già filtrata per visibilità. L'MCP passa sempre
+   * `touchSeen: false`: leggere da Claude non è una visita, e «Novità per te» resta com'è.
+   */
+  memory(actor: ContextActor, opts: { touchSeen: false }): Promise<MemoryView>;
+  /** (9b) Gli use case di fatti, impegni e domande, e il giorno in cui è nato ogni fatto (`loadContextLinks`); null se non riesce. */
+  links(actor: ContextActor, ids: { factIds: readonly string[]; commitmentIds: readonly string[]; questionIds: readonly string[] }): Promise<ContextLinks | null>;
+  /** (9b) «Chiedi al contesto» (`askContext`): i suoi limiti, e l'ok ai sub-responsabili riletto prima del modello. */
+  ask(actor: ContextActor, question: string): Promise<ServiceResult<AskAnswer>>;
 }
 
 /** I passi comuni degli strumenti che `tools.ts` presta a questi tre. */
@@ -100,6 +157,8 @@ export interface ContextToolKit {
   saveProgress(key: TeamRequestKey, attempt: number, result: Record<string, unknown>): Promise<boolean>;
   appOrigin: string;
   now(): Date;
+  /** (9b) L'id dello use case con questo codice nel workspace del token; null se non c'è. */
+  findUseCaseId(code: string): Promise<string | null>;
 }
 
 function succeeded<T extends object>(data: T): TeamToolOutcome {
@@ -112,9 +171,12 @@ function failed(error: TeamMcpError): TeamToolOutcome {
 
 // ─── Ingresso ────────────────────────────────────────────────────────
 
-/** Esegue uno dei tre strumenti, dopo i controlli comuni di `callTeamTool`. Solo Lateral Space; con la 0038. */
+/**
+ * Esegue uno dei sei strumenti, dopo i controlli comuni di `callTeamTool`. Appunti e proposte solo per Lateral Space;
+ * le tre letture della memoria (9b) per ogni revisore. Tutti con la 0038.
+ */
 export async function callContextTool(name: ContextToolName, args: unknown, principal: TeamPrincipal, deps: TeamContextDeps, kit: ContextToolKit): Promise<TeamToolOutcome> {
-  if (principal.viewer.isLateralSpace !== true) return failed(teamError("permesso_mancante", { message: CONTEXT_LS_ONLY_MESSAGE }));
+  if (!isContextMemoryToolName(name) && principal.viewer.isLateralSpace !== true) return failed(teamError("permesso_mancante", { message: CONTEXT_LS_ONLY_MESSAGE }));
   if (!(await deps.ready())) return failed(teamError("riprova", { message: CONTEXT_TEXT.errors.notReady }));
   switch (name) {
     case "add_context_notes":
@@ -123,6 +185,12 @@ export async function callContextTool(name: ContextToolName, args: unknown, prin
       return listContextProposals(args, principal, deps, kit);
     case "confirm_context_proposals":
       return confirmContextProposals(args, principal, deps, kit);
+    case "get_context":
+      return getContext(args, principal, deps, kit);
+    case "ask_context":
+      return askContextTool(args, principal, deps, kit);
+    case "list_context_commitments":
+      return listContextCommitments(args, principal, deps, kit);
   }
 }
 
@@ -521,4 +589,199 @@ async function confirmContextProposals(args: unknown, principal: TeamPrincipal, 
       };
     },
   });
+}
+
+// ═══ (9b) Le letture della memoria ═══════════════════════════════════
+
+/** Una riga con gli id dei suoi use case (in minuscolo). */
+export interface Linked<T> {
+  view: T;
+  useCaseIds: string[];
+}
+
+/** Quello che `get_context` e `list_context_commitments` leggono: la Memoria per chi guarda, con gli use case di ogni riga. */
+export interface MemoryRead {
+  lateralSpace: boolean;
+  brief: string[];
+  /** Nell'ordine di `loadContextMemory`: per sezione, e in ogni sezione dal più recente. Con il giorno in cui è nato. */
+  facts: Array<Linked<FactView> & { createdOn: string }>;
+  /** Aperti, per scadenza (senza scadenza in fondo); a pari scadenza prima i nostri. */
+  commitments: Array<Linked<CommitmentView>>;
+  questions: Array<Linked<QuestionView>>;
+}
+
+/** Il giorno di una scadenza per l'ordine: senza scadenza in fondo. */
+const dueKey = (dueOn: string | null) => dueOn ?? "9999-12-31";
+
+/**
+ * La Memoria per chi guarda, con gli use case di ogni riga (§2.7). Quello che chi guarda non vede si toglie anche qui, se
+ * mai una lettura lo restituisse (`visibleTo`): al cliente solo «Per tutti». Ogni riga si costruisce campo per campo
+ * dopo (`mcpFact`, `mcpCommitment`, `mcpQuestion`), così niente di quello che la vista porta in più esce.
+ */
+export function joinMemory(memory: MemoryView, links: ContextLinks, viewer: Pick<ContextActor, "isLateralSpace">): MemoryRead {
+  const visible = (view: { visibility: ContextVisibility }) => visibleTo(viewer, view.visibility);
+  const facts = memory.sections
+    .flatMap((section) => section.facts)
+    .filter(visible)
+    .map((view) => {
+      const link = links.facts[view.id.toLowerCase()];
+      // Una riga che la lettura degli use case non ha trovato (cambiata in mezzo): nessuno use case, e il giorno
+      // dell'ultima conferma, che non viene mai prima di quello in cui il fatto è nato.
+      return { view, useCaseIds: link?.useCaseIds ?? [], createdOn: link?.createdOn || view.lastConfirmedOn };
+    });
+  const commitments = [...memory.nextSteps.nostri, ...memory.nextSteps.cliente]
+    .filter(visible)
+    .map((view) => ({ view, useCaseIds: links.commitments[view.id.toLowerCase()] ?? [] }))
+    .sort((a, b) => dueKey(a.view.dueOn).localeCompare(dueKey(b.view.dueOn)));
+  const questions = memory.questions.filter(visible).map((view) => ({ view, useCaseIds: links.questions[view.id.toLowerCase()] ?? [] }));
+  return { lateralSpace: viewer.isLateralSpace === true, brief: memory.brief?.lines ?? [], facts, commitments, questions };
+}
+
+/** I filtri di `get_context`: lo use case (id in minuscolo), la sezione, il giorno da cui contano i fatti nuovi o cambiati. */
+export interface ContextFilter {
+  useCaseId?: string | null;
+  section?: ContextSection | null;
+  since?: string | null;
+}
+
+/** Una riga tocca lo use case? Senza filtro, sì. */
+const touches = (useCaseIds: readonly string[], useCaseId: string | null | undefined) => !useCaseId || useCaseIds.includes(useCaseId.toLowerCase());
+
+/**
+ * `get_context` (§5.7): i filtri e il tetto. Lo use case vale per fatti, impegni e domande; la sezione e `since` solo per
+ * i fatti («In breve» resta sempre). I fatti oltre i 200 sono i meno recenti (ultima conferma): li conta `more`. Le
+ * sezioni nell'ordine della Memoria, solo quelle con fatti.
+ */
+export function contextOutputOf(read: MemoryRead, filter: ContextFilter, refs: ContextLinks["useCases"], link: string) {
+  const ctx = (useCaseIds: readonly string[]) => ({ lateralSpace: read.lateralSpace, useCases: linkedUseCaseCodes(useCaseIds, refs) });
+  const matching = read.facts.filter(
+    (fact) => touches(fact.useCaseIds, filter.useCaseId) && (!filter.section || fact.view.section === filter.section) && (!filter.since || fact.createdOn >= filter.since),
+  );
+  // I più recenti prima (a pari giorno vale l'ordine della Memoria), poi di nuovo per sezione.
+  const shown = new Set([...matching].sort((a, b) => b.view.lastConfirmedOn.localeCompare(a.view.lastConfirmedOn)).slice(0, CONTEXT_MCP_FACTS_MAX));
+  const kept = matching.filter((fact) => shown.has(fact));
+  const commitments = read.commitments.filter((c) => touches(c.useCaseIds, filter.useCaseId));
+  const questions = read.questions.filter((q) => touches(q.useCaseIds, filter.useCaseId));
+  return {
+    brief: [...read.brief],
+    sections: CONTEXT_SECTIONS.flatMap((section) => {
+      const facts = kept.filter((fact) => fact.view.section === section);
+      return facts.length > 0 ? [{ section, sectionLabel: CONTEXT_TEXT.sections[section], facts: facts.map((fact) => mcpFact(fact.view, ctx(fact.useCaseIds))) }] : [];
+    }),
+    more: matching.length - kept.length,
+    commitments: commitments.map((c) => mcpCommitment(c.view, ctx(c.useCaseIds))),
+    questions: questions.map((q) => mcpQuestion(q.view, ctx(q.useCaseIds))),
+    counts: { facts: matching.length, commitments: commitments.length, questions: questions.length },
+    link,
+    note: CONTEXT_MEMORY_NOTE,
+  };
+}
+
+/** I filtri di `list_context_commitments`: la parte, lo use case (id in minuscolo), solo gli scaduti. Mai la persona. */
+export interface CommitmentFilter {
+  party?: "nostra" | "cliente" | null;
+  useCaseId?: string | null;
+  overdueOnly?: boolean;
+}
+
+/** `list_context_commitments` (§5.7): gli impegni aperti dopo i filtri, per scadenza, con il totale. */
+export function commitmentsOutputOf(read: MemoryRead, filter: CommitmentFilter, refs: ContextLinks["useCases"], link: string) {
+  const commitments = read.commitments.filter(
+    (c) => (!filter.party || c.view.party === filter.party) && touches(c.useCaseIds, filter.useCaseId) && (filter.overdueOnly !== true || c.view.overdue === true),
+  );
+  return {
+    commitments: commitments.map((c) => mcpCommitment(c.view, { lateralSpace: read.lateralSpace, useCases: linkedUseCaseCodes(c.useCaseIds, refs) })),
+    total: commitments.length,
+    link,
+  };
+}
+
+type Loaded = { ok: true; read: MemoryRead; refs: ContextLinks["useCases"]; useCaseId: string | null } | { ok: false; error: TeamMcpError };
+
+/**
+ * La Memoria per chi ha il token, senza contare una visita, con gli use case delle righe che servono. Uno use case che non
+ * c'è in questo workspace: `not_found`. Chi non apre «Contesto»: `permesso_mancante`. La lettura degli use case che non
+ * riesce: `riprova`.
+ */
+async function loadMemory(principal: TeamPrincipal, deps: TeamContextDeps, kit: ContextToolKit, opts: { useCase?: string; facts: boolean }): Promise<Loaded> {
+  const actor = deps.actor(principal);
+  if (!contextAbilities(actor).canOpen) return { ok: false, error: teamError("permesso_mancante") };
+  let useCaseId: string | null = null;
+  if (opts.useCase !== undefined) {
+    useCaseId = (await kit.findUseCaseId(opts.useCase.toUpperCase()))?.toLowerCase() ?? null;
+    if (!useCaseId) return { ok: false, error: teamError("not_found") };
+  }
+  const memory = await deps.memory(actor, { touchSeen: false });
+  const ids = (list: ReadonlyArray<{ id: string }>) => list.map((row) => row.id);
+  const links = await deps.links(actor, {
+    factIds: opts.facts ? ids(memory.sections.flatMap((section) => section.facts)) : [],
+    commitmentIds: ids([...memory.nextSteps.nostri, ...memory.nextSteps.cliente]),
+    questionIds: opts.facts ? ids(memory.questions) : [],
+  });
+  if (!links) return { ok: false, error: teamError("riprova", { message: CONTEXT_TEXT.errors.retry }) };
+  const read = joinMemory(opts.facts ? memory : { ...memory, sections: [], questions: [] }, links, actor);
+  return { ok: true, read, refs: links.useCases, useCaseId };
+}
+
+// ═══ get_context ═════════════════════════════════════════════════════
+
+async function getContext(args: unknown, principal: TeamPrincipal, deps: TeamContextDeps, kit: ContextToolKit): Promise<TeamToolOutcome> {
+  const limited = await kit.consumeLimit("read");
+  if (limited) return failed(limited);
+  const input = validateTeamToolInput("get_context", args);
+  if (!input.ok) return failed(input.error);
+  const { useCase, section, since } = input.data;
+  // Lo schema vuole AAAA-MM-GG; il giorno deve anche esistere (non il 2026-02-30).
+  if (since !== undefined && !isIsoDate(since)) return failed(teamError("invalid_payload", { fieldErrors: { since: CONTEXT_TEXT.errors.dateInvalid } }));
+  const loaded = await loadMemory(principal, deps, kit, { useCase, facts: true });
+  if (!loaded.ok) return failed(loaded.error);
+  return succeeded(contextOutputOf(loaded.read, { useCaseId: loaded.useCaseId, section, since }, loaded.refs, linkToContext(kit.appOrigin, principal.workspaceId)));
+}
+
+// ═══ list_context_commitments ════════════════════════════════════════
+
+async function listContextCommitments(args: unknown, principal: TeamPrincipal, deps: TeamContextDeps, kit: ContextToolKit): Promise<TeamToolOutcome> {
+  const limited = await kit.consumeLimit("read");
+  if (limited) return failed(limited);
+  const input = validateTeamToolInput("list_context_commitments", args);
+  if (!input.ok) return failed(input.error);
+  const { party, useCase, overdueOnly } = input.data;
+  const loaded = await loadMemory(principal, deps, kit, { useCase, facts: false });
+  if (!loaded.ok) return failed(loaded.error);
+  return succeeded(commitmentsOutputOf(loaded.read, { party, useCaseId: loaded.useCaseId, overdueOnly }, loaded.refs, linkToContext(kit.appOrigin, principal.workspaceId)));
+}
+
+// ═══ ask_context ═════════════════════════════════════════════════════
+
+/** Un esito non riuscito di `askContext`: la domanda non valida su `question`, il resto come le altre funzioni. */
+function askFailure(failure: { error: ServiceError; message?: string; fieldErrors?: Record<string, string> }): TeamMcpError {
+  if (failure.error === "riprova") return teamError("riprova", { message: CONTEXT_TEXT.ask.failed });
+  if (failure.error === "permesso_mancante") return teamError("permesso_mancante");
+  return contextFailure(failure, { question: "question" });
+}
+
+/**
+ * La risposta di `ask_context` (§5.7) dall'esito di `askContext`: lo stato, la risposta scritta solo con lo stato
+ * «risposta», i brani (`mcpAskSource`) e la nota. Una risposta con i dati di una persona non si manda: vale «non lo
+ * sappiamo», con i brani che la persona può aprire in Unbundle (`askContext` fa così con i dati sanitari).
+ */
+export function askOutputOf(answer: Exclude<AskAnswer, { status: "limite" }>, today: Date | string) {
+  const sources = answer.status === "niente" ? [] : answer.sources.map((source) => mcpAskSource(source, today));
+  if (answer.status === "risposta" && scanPersonalData(answer.answer).ok) return { status: answer.status, answer: answer.answer, sources, note: CONTEXT_MEMORY_NOTE };
+  return { status: answer.status === "risposta" ? ("non_so" as const) : answer.status, answer: null, sources, note: CONTEXT_MEMORY_NOTE };
+}
+
+async function askContextTool(args: unknown, principal: TeamPrincipal, deps: TeamContextDeps, kit: ContextToolKit): Promise<TeamToolOutcome> {
+  const limited = await kit.consumeLimit("read");
+  if (limited) return failed(limited);
+  const input = validateTeamToolInput("ask_context", args);
+  if (!input.ok) return failed(input.error);
+  const actor = deps.actor(principal);
+  if (!contextAbilities(actor).canAsk) return failed(teamError("permesso_mancante"));
+  // `askContext` controlla i suoi limiti, cerca solo tra quello che chi chiede può vedere e chiama il modello solo con l'ok.
+  const asked = await deps.ask(actor, input.data.question);
+  if (!asked.ok) return failed(askFailure(asked));
+  const answer = asked.value;
+  if (answer.status === "limite") return failed(teamError("rate_limited", { message: CONTEXT_TEXT.ask.limit, retryAfterSeconds: answer.retryAfterSeconds }));
+  return succeeded(askOutputOf(answer, kit.now()));
 }

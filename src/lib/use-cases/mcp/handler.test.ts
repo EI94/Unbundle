@@ -134,7 +134,7 @@ test("gli appunti di una call fino a 300.000 caratteri passano: il corpo del MCP
   assert.equal(json.result.structuredContent.error, "area_spenta", "le dipendenze finte hanno l'area spenta");
 });
 
-test("con l'SDK: initialize con nome e istruzioni del workspace, tools/list con 11 tool e annotazioni; area spenta su ogni tool", async () => {
+test("con l'SDK: initialize con nome e istruzioni del workspace, tools/list con 14 tool e annotazioni; area spenta su ogni tool", async () => {
   const { deps: d, lines } = deps();
   const transport = new StreamableHTTPClientTransport(new URL(URL_BASE), {
     fetch: async (input, init) => handleTeamMcpRequest(new Request(input, init), d),

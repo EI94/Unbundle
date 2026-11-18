@@ -486,6 +486,16 @@ function harness(
       confirm: async () => ({ ok: false, error: "riprova", message: "x" }),
       discard: async () => ({ ok: false, error: "riprova", message: "x" }),
       refreshBrief() {},
+      memory: async () => ({
+        sections: [],
+        nextSteps: { nostri: [], cliente: [] },
+        questions: [],
+        brief: null,
+        novelties: null,
+        counts: { facts: 0, openProposals: 0, unreadSources: 0, pendingSourceIds: [], toCheck: 0 },
+      }),
+      links: async () => ({ useCases: {}, facts: {}, commitments: {}, questions: {} }),
+      ask: async () => ({ ok: true, value: { status: "niente" } }),
     },
     notifyCreated(_ws, ids) {
       notified.push([...ids]);
@@ -530,6 +540,15 @@ test("token «Solo lettura»: le scritture rispondono permesso_mancante, le lett
   assert.equal((await call(h, "search_use_cases", {}, reader)).isError, false);
   assert.equal((await call(h, "list_needs", {}, reader)).isError, false);
   assert.equal((await call(h, "list_context_proposals", {}, principal({ scopes: [TEAM_MCP_READ_SCOPE], isLateralSpace: true }))).isError, false);
+  // (9b) Le tre letture della memoria: anche un token «Solo lettura» di una persona del cliente.
+  for (const [name, args] of [
+    ["get_context", {}],
+    ["ask_context", { question: "Che gestionale usano?" }],
+    ["list_context_commitments", {}],
+  ] as const) {
+    const out = await call(h, name, args, reader);
+    assert.equal(out.isError, false, `${name}: ${JSON.stringify(out.content)}`);
+  }
   assert.deepEqual(h.requests.calls, []);
 });
 

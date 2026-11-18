@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import type { MemoryView } from "../db/queries/context-memory.ts";
+import type { ContextLinks } from "../db/queries/context-team.ts";
 import { COST_BANDS } from "./cost-bands.ts";
+import { askOutputOf, commitmentsOutputOf, contextOutputOf, joinMemory } from "./mcp/context-tools.ts";
 import { TEAM_MCP_TOOL_NAMES, teamToolDefinitions, validateTeamToolInput } from "./mcp/contract.ts";
 import { COLLECTED_INTAKE_KEYS, cardOutput, needOutput, searchItemOutput } from "./mcp/output.ts";
 import { filterSearchItems } from "./mcp/tools.ts";
@@ -51,10 +54,10 @@ const NEED_OWNER_FIELDS = ["ownerLabel", "ownerSide"];
 /** «(proposta)» accanto alla scadenza: la data è da confermare. Non parla di chi ha proposto. */
 const DUE_IS_PROPOSAL = "dueIsProposal";
 
-test("ingressi degli 11 tool: nessun campo o filtro sulla persona; «Chi» di un'esigenza solo in save_needs", () => {
+test("ingressi dei 14 tool: nessun campo o filtro sulla persona; «Chi» di un'esigenza solo in save_needs", () => {
   const defs = teamToolDefinitions();
   assert.equal(defs.length, TEAM_MCP_TOOL_NAMES.length);
-  assert.equal(defs.length, 11);
+  assert.equal(defs.length, 14);
   for (const def of defs) {
     const fields = inputFieldNames(def.inputSchema);
     assert.ok(fields.length > 0, def.name);
@@ -78,6 +81,65 @@ test("«Contesto»: participants è «Con chi» della call, solo in add_context_
   for (const def of defs.filter((d) => d.name !== "add_context_notes")) assert.equal(inputFieldNames(def.inputSchema).includes("participants"), false, def.name);
   for (const key of ["participants", "addedBy", "confirmedBy", "persona", "userId", "email"]) {
     assert.equal(validateTeamToolInput("list_context_proposals", { [key]: "chiunque" }).ok, false, key);
+  }
+});
+
+/**
+ * (Rilascio 9b, RILASCIO-9b-COSTRUZIONE.md §2.7, §2.14) Le tre letture della memoria: un impegno vale per parte e ruolo,
+ * mai per persona; nessuno strumento filtra per chi ha confermato un fatto, chi ha aggiunto gli appunti o «Con chi», e
+ * nessuna uscita li restituisce, nemmeno se la vista letta li portasse.
+ */
+test("«Contesto» nel lavoro: get_context, ask_context e list_context_commitments non filtrano né restituiscono per persona", () => {
+  const defs = teamToolDefinitions();
+  const fieldsOf = (name: string) => inputFieldNames(defs.find((def) => def.name === name)!.inputSchema);
+  assert.deepEqual(fieldsOf("get_context"), ["useCase", "section", "since"]);
+  assert.deepEqual(fieldsOf("ask_context"), ["question"]);
+  assert.deepEqual(fieldsOf("list_context_commitments"), ["party", "useCase", "overdueOnly"]);
+  for (const name of ["get_context", "ask_context", "list_context_commitments"] as const) {
+    for (const key of ["persona", "owner", "ownerUserId", "userId", "email", "confirmedBy", "addedBy", "participants", "assignee", "role"]) {
+      assert.equal(validateTeamToolInput(name, { question: "Che gestionale usano?", [key]: "Mario Rossi" }).ok, false, `${name}: ${key}`);
+    }
+  }
+
+  // Righe con campi in più sulla persona, come una vista futura: non escono.
+  const who = { confirmedBy: { name: "Persona che ha confermato", on: "2026-11-14" }, confirmedByUserId: randomUUID(), addedBy: PROPOSER_EMAIL, participants: "Persona della call", ownerUserId: randomUUID(), email: PROPOSER_EMAIL, quote: "Citazione della call" };
+  const factId = randomUUID();
+  const commitmentId = randomUUID();
+  const questionId = randomUUID();
+  const useCaseId = randomUUID();
+  const memory = {
+    sections: [
+      {
+        section: "sistemi",
+        live: [],
+        facts: [{ id: factId, version: 1, kind: "fatto", section: "sistemi", statement: "Il gestionale è SAP Business One.", basis: "detto", visibility: "tutti", needsCheck: false, sourceKind: "call", sourceLabel: "Call 14 nov", lastConfirmedOn: "2026-11-14", ...who }],
+      },
+    ],
+    nextSteps: { nostri: [{ id: commitmentId, version: 1, statement: "Mandare il preventivo.", party: "nostra", roleLabel: "Responsabile del progetto", dueOn: "2026-11-20", overdue: false, visibility: "tutti", ...who }], cliente: [] },
+    questions: [{ id: questionId, version: 1, question: "Chi approva gli acquisti?", askWhom: "Direzione acquisti", visibility: "tutti", ...who }],
+    brief: { lines: ["Distributore di ricambi."], updatedOn: "2026-11-15" },
+    novelties: null,
+    counts: { facts: 1, openProposals: 0, unreadSources: 0, pendingSourceIds: [], toCheck: 0 },
+  } as unknown as MemoryView;
+  const links: ContextLinks = {
+    useCases: { [useCaseId]: { code: "XX-0042", title: "Smistamento richieste" } },
+    facts: { [factId]: { useCaseIds: [useCaseId], createdOn: "2026-11-14" } },
+    commitments: { [commitmentId]: [useCaseId] },
+    questions: { [questionId]: [] },
+  };
+  for (const lateralSpace of [true, false]) {
+    const read = joinMemory(memory, links, { isLateralSpace: lateralSpace });
+    const outputs = [
+      contextOutputOf(read, {}, links.useCases, "https://www.theunbundle.com/dashboard/x/contesto"),
+      commitmentsOutputOf(read, {}, links.useCases, "https://www.theunbundle.com/dashboard/x/contesto"),
+      askOutputOf({ status: "risposta", answer: "Usano SAP Business One [1].", sources: [{ n: 1, kind: "fatto", label: "Call 14 nov", date: "2026-11-14", excerpt: "Il gestionale è SAP Business One." }] }, "2026-11-16"),
+    ];
+    for (const output of outputs) {
+      const text = JSON.stringify(output);
+      assert.equal(text.includes(PROPOSER_EMAIL), false);
+      assert.equal(/Persona che ha confermato|Persona della call|Citazione della call/.test(text), false);
+      assert.deepEqual(keysOf(output).filter((key) => PERSON_KEY.test(key) || /^(quote|participants|addedBy|confirmedBy)$/.test(key)), [], `Lateral Space ${lateralSpace}`);
+    }
   }
 });
 
