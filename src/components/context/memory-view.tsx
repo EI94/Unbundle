@@ -13,7 +13,7 @@ import { FactRow, LiveRowItem } from "./fact-row";
 import { FactSheet } from "./fact-sheet";
 import { Mark, type UseCaseOption } from "./fields";
 import { NextSteps, OpenQuestions } from "./next-steps";
-import { isMemoryEmpty, sectionLabel, visibleSections } from "./view-model";
+import { isMemoryEmpty, sectionLabel, toCheckRow, visibleSections } from "./view-model";
 
 const T = CONTEXT_TEXT;
 
@@ -38,31 +38,24 @@ export interface MemoryViewProps {
 
 /**
  * La vista «Memoria» (rilascio 9a, docs/contesto/RILASCIO-9a-COSTRUZIONE.md §7.2), dall'alto: le righe di servizio
- * (solo Lateral Space, solo quando servono), «In breve», «Novità per te», «Prossimi passi», le sette sezioni (prima i
- * dati della Discovery, poi i fatti dal più recente), «Domande aperte». Un blocco senza contenuto non si vede.
+ * (solo Lateral Space, solo quando servono: le proposte da confermare, (9b) i fatti da verificare, la lettura, l'ok,
+ * Granola), «In breve», «Novità per te», «Prossimi passi», le sette sezioni (prima i dati della Discovery, poi i fatti
+ * dal più recente), «Domande aperte». Un blocco senza contenuto non si vede.
  */
 export function MemoryView({ workspaceId, today, lateralSpace, canEditMemory, memory, useCaseOptions, consentNotice, granola, reader }: MemoryViewProps) {
   const [openFact, setOpenFact] = useState<string | null>(null);
   const sections = visibleSections(memory.sections);
   const empty = isMemoryEmpty(memory);
   const pendingProposals = lateralSpace ? memory.counts.openProposals : 0;
+  // (9b) «3 fatti da verificare»: i fatti che la notte ha segnato, fermi da più di 6 mesi.
+  const toCheck = toCheckRow(memory.counts.toCheck, lateralSpace);
 
   return (
     <div className="space-y-8">
       {lateralSpace ? (
         <ServiceRows>
-          {pendingProposals > 0 ? (
-            <div className="flex min-h-11 items-center justify-between gap-3 rounded-lg border px-3 py-1.5 text-sm">
-              <span>{T.page.pending(pendingProposals)}</span>
-              <Link
-                href={`/dashboard/${workspaceId}/contesto/conferma`}
-                className="inline-flex min-h-11 items-center gap-0.5 rounded-md px-1 font-medium outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-8"
-              >
-                {T.page.open}
-                <ChevronRight aria-hidden className="size-4" />
-              </Link>
-            </div>
-          ) : null}
+          {pendingProposals > 0 ? <ServiceLink label={T.page.pending(pendingProposals)} href={`/dashboard/${workspaceId}/contesto/conferma`} /> : null}
+          {toCheck ? <ServiceLink label={toCheck} href={`/dashboard/${workspaceId}/contesto/verifica`} /> : null}
           {reader ?? null}
           {consentNotice ? <AiConsentNotice notice={consentNotice} variant="inline" /> : null}
           {granola ?? null}
@@ -145,4 +138,17 @@ export function MemoryView({ workspaceId, today, lateralSpace, canEditMemory, me
 /** Le righe di servizio: una riga l'una, solo quelle che servono. Senza nessuna, niente. */
 function ServiceRows({ children }: { children: ReactNode }) {
   return <div className="space-y-2 empty:hidden">{children}</div>;
+}
+
+/** Una riga di servizio con la sua pagina: «12 proposte da confermare», «3 fatti da verificare», e «Apri». */
+function ServiceLink({ label, href }: { label: string; href: string }) {
+  return (
+    <div className="flex min-h-11 items-center justify-between gap-3 rounded-lg border px-3 py-1.5 text-sm">
+      <span>{label}</span>
+      <Link href={href} className="inline-flex min-h-11 items-center gap-0.5 rounded-md px-1 font-medium outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-8">
+        {T.page.open}
+        <ChevronRight aria-hidden className="size-4" />
+      </Link>
+    </div>
+  );
 }

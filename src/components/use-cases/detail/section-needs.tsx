@@ -12,6 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { needLinkText } from "@/components/context/view-model";
+import { closeNeedFromCallAction, dismissNeedLinkAction, type NeedLinkActionResult } from "@/lib/actions/context-work";
 import {
   archiveNeedAction,
   createNeedAction,
@@ -20,6 +22,8 @@ import {
   updateNeedAction,
   type NeedActionResult,
 } from "@/lib/actions/use-case-needs";
+import { CONTEXT_TEXT } from "@/lib/context/text";
+import type { NeedLinkView } from "@/lib/db/queries/context-needs";
 import { ACTION_FAILED_MESSAGE } from "@/lib/use-cases/decision-ui";
 import { formatInteger } from "@/lib/use-cases/format";
 import type { InfoProgressView } from "@/lib/use-cases/info-progress";
@@ -106,6 +110,11 @@ export interface SectionNeedsProps {
   canEditValuation?: boolean;
   /** (Rilascio 5) La versione dello use case letta, per «Usa la stima di {Nome}». */
   useCaseVersion?: number;
+  /**
+   * (Rilascio 9b) «Una call risponde» (`listNeedLinks`, per id dell'esigenza in minuscolo): il fatto «Per tutti» che
+   * risponde a una richiesta aperta, con «Chiudi con questo» e «Non risponde». Solo a chi modifica («canEdit»).
+   */
+  needLinks?: Readonly<Record<string, NeedLinkView>> | null;
   className?: string;
 }
 
@@ -145,6 +154,7 @@ export function SectionNeeds({
   boxOwnsChoose = false,
   canEditValuation = false,
   useCaseVersion,
+  needLinks = null,
   className,
 }: SectionNeedsProps) {
   const id = "cosa-serve";
@@ -214,6 +224,8 @@ export function SectionNeeds({
       detailHrefOf={detailHrefOf}
       today={today}
       canEdit={canEdit}
+      needLinks={canEdit ? needLinks : null}
+      workspaceId={workspaceId}
       onEdit={(need) => setDialog({ mode: "modifica", need })}
       referent={
         feature
@@ -430,6 +442,8 @@ function NeedList({
   detailHrefOf,
   today,
   canEdit,
+  needLinks = null,
+  workspaceId,
   onEdit,
   referent = null,
 }: {
@@ -440,6 +454,9 @@ function NeedList({
   detailHrefOf: (id: string) => string;
   today: string;
   canEdit: boolean;
+  /** (Rilascio 9b) «Una call risponde», per id dell'esigenza in minuscolo; null per chi non modifica. */
+  needLinks?: Readonly<Record<string, NeedLinkView>> | null;
+  workspaceId: string;
   onEdit: (need: NeedView) => void;
   referent?: NeedListReferent | null;
 }) {
@@ -459,6 +476,7 @@ function NeedList({
           onOpen: referent?.onOpen ?? null,
           onEdit: () => onEdit(need),
         });
+        const answeredBy = canEdit ? (needLinks?.[need.id.toLowerCase()] ?? null) : null;
         return (
           <li key={need.id} data-need={need.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 px-3 py-2.5">
             <div className="min-w-0 space-y-1">
@@ -469,6 +487,7 @@ function NeedList({
                 {meta ? <span>{keepTogether(meta)}</span> : null}
                 {others.length ? <NeedUseCasesDisclosure summary={needAlsoForText(others.length)} context={row.title} useCases={others} hrefOf={detailHrefOf} /> : null}
               </div>
+              {answeredBy ? <NeedLinkLine workspaceId={workspaceId} useCaseId={useCaseId} needVersion={need.version} link={answeredBy} /> : null}
               {referent ? (
                 <NeedReferentBlock
                   workspaceId={referent.workspaceId}
@@ -487,6 +506,46 @@ function NeedList({
         );
       })}
     </ul>
+  );
+}
+
+/**
+ * (Rilascio 9b, §2.2) Sotto una richiesta di «Cosa serve» a cui risponde un fatto confermato: «Una call del 14 nov
+ * risponde: «…»» (o «Un documento del …»), con due pulsanti piccoli e non pieni. «Chiudi con questo»: la richiesta va
+ * ad «A posto» come quando la si cambia a mano, e la «Storia» lo dice. «Non risponde»: la riga sparisce e la richiesta
+ * resta aperta. Niente modello: la lettura che l'ha proposto aveva già l'ok.
+ */
+function NeedLinkLine({ workspaceId, useCaseId, needVersion, link }: { workspaceId: string; useCaseId: string; needVersion: number; link: NeedLinkView }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const T = CONTEXT_TEXT.needLink;
+  const run = (call: () => Promise<NeedLinkActionResult>) =>
+    startTransition(async () => {
+      let result: NeedLinkActionResult;
+      try {
+        result = await call();
+      } catch {
+        result = { ok: false, error: "riprova", message: ACTION_FAILED_MESSAGE };
+      }
+      if (result.ok) {
+        toast.success(result.message);
+        return;
+      }
+      toast.error(result.message);
+      if (result.error === "versione_superata" || result.error === "non_trovato" || result.error === "transizione_non_ammessa") router.refresh();
+    });
+  return (
+    <div data-slot="need-link" className="space-y-1.5 rounded-md border border-dashed px-2.5 py-2">
+      <p className="text-xs leading-relaxed break-words">{needLinkText(link)}</p>
+      <div className="flex flex-wrap gap-x-2 gap-y-1">
+        <Button type="button" variant="outline" size="sm" className="min-h-11 sm:min-h-7" disabled={pending} onClick={() => run(() => closeNeedFromCallAction(workspaceId, useCaseId, link.id, needVersion))}>
+          {T.close}
+        </Button>
+        <Button type="button" variant="ghost" size="sm" className="min-h-11 sm:min-h-7" disabled={pending} onClick={() => run(() => dismissNeedLinkAction(workspaceId, useCaseId, link.id))}>
+          {T.dismiss}
+        </Button>
+      </div>
+    </div>
   );
 }
 

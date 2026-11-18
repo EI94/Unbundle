@@ -4,9 +4,11 @@ import { DEFAULT_REVIEW_TEAM_NAME } from "../review-team.ts";
 import type { UseCaseRealization } from "../uc/views/realization.ts";
 import { findHubForbiddenIn } from "./copy-guard.ts";
 import {
+  DETAIL_CHAPTERS,
   GUIDED_TEXT,
   arrivalTarget,
   arrivalTargetIn,
+  chapterFromParam,
   detailTargetIds,
   foldSummaries,
   impactView,
@@ -687,11 +689,12 @@ test("foldSummaries: valutazione, dettagli, realizzazione, storia", () => {
     events: null,
     today: TODAY,
   };
-  assert.deepEqual(foldSummaries(base), { valutazione: "modifica benefici e costi", dettagli: "da completare", realizzazione: null, storia: null });
+  assert.deepEqual(foldSummaries(base), { valutazione: "modifica benefici e costi", dettagli: "da completare", realizzazione: null, contesto: null, storia: null });
   const full = foldSummaries({
     valuation: { estimates: true, aiSuggestion: true, value: { perYear: null, benefits: null }, zone: "subito" },
     filledDetails: ["Impatto atteso", "Dati", "Area", "AI Lab", "Impatto ambientale e sociale"],
     realization: { variant: "riepilogo", realization: avviata(), dossier: { status: "raccolta", readiness: null }, realizedOn: null },
+    context: "12 fatti sul cliente · 2 novità",
     events: [{ at: "2026-10-28T09:00:00.000Z" }, { at: "2026-10-01T09:00:00.000Z" }],
     today: TODAY,
   });
@@ -699,8 +702,12 @@ test("foldSummaries: valutazione, dettagli, realizzazione, storia", () => {
     valutazione: "stime non ufficiali · suggerimento AI · zona: Subito",
     dettagli: "impatto atteso · dati · area e altri 2",
     realizzazione: "dossier in preparazione · 3 di 10 a posto",
+    contesto: "12 fatti sul cliente · 2 novità",
     storia: "ultimo cambiamento il 28 ott",
   });
+  // (Rilascio 9b) «Contesto»: la riga arriva già scritta; "" (solo domande) tiene la piega senza riga grigia, null la toglie.
+  assert.equal(foldSummaries({ ...base, context: "" }).contesto, "");
+  assert.equal(foldSummaries({ ...base, context: null }).contesto, null);
   // La zona solo per un Valore senza euro.
   assert.equal(foldSummaries({ ...base, valuation: { ...base.valuation, value: { perYear: { amount: 10, source: "team" }, benefits: null }, zone: "subito" } }).valutazione, "modifica benefici e costi");
   assert.equal(foldSummaries({ ...base, filledDetails: ["AI Lab"] }).dettagli, "AI Lab");
@@ -727,6 +734,35 @@ test("detailTargetIds e arrivalTarget: le ancore che ci sono; «Realizzazione» 
   assert.equal(arrivalTarget("realizzazione", all), "realizzazione");
   assert.equal(arrivalTarget("quando", few), null);
   assert.equal(arrivalTarget(null, few), null);
+});
+
+test("(Rilascio 9b) «Contesto» tra i capitoli, prima di «Storia» che resta l'ultima; `?capitolo=contesto` apre la piega", () => {
+  const chapters = DETAIL_CHAPTERS.map((chapter) => chapter.id);
+  assert.deepEqual(chapters.slice(-3), ["realizzazione", "contesto", "storia"]);
+  assert.equal(chapters.at(-1), "storia", "«Storia» resta l'ultima");
+  assert.equal(new Set(chapters).size, chapters.length, "nessun capitolo doppio");
+  assert.equal(DETAIL_CHAPTERS.find((chapter) => chapter.id === "contesto")?.label, "Contesto");
+  assert.equal(GUIDED_TEXT.folds.contesto, "Contesto");
+  assert.equal(chapterFromParam("contesto"), "contesto");
+  assert.equal(chapterFromParam(" Contesto "), "contesto");
+  assert.equal(chapterFromParam(["contesto", "storia"]), "contesto");
+  // I capitoli di prima restano, con gli alias.
+  for (const chapter of ["decisione", "impatto", "cosa-serve", "richieste", "valutazione", "dettagli", "realizzazione", "storia"]) assert.equal(chapterFromParam(chapter), chapter);
+  assert.equal(chapterFromParam("cos'è"), "cosa-e");
+  assert.equal(chapterFromParam("contesti"), null);
+
+  // L'ancora c'è solo con la piega, dopo «Realizzazione» e prima di «Storia».
+  const all = detailTargetIds({ phase: "approvato", needs: true, requests: true, realization: true, context: true, history: true });
+  assert.deepEqual(all, ["decisione", "impatto", "cosa-e", "cosa-serve", "richieste", "quando", "nota-pubblica", "valutazione", "dettagli", "realizzazione", "contesto", "storia"]);
+  const early = detailTargetIds({ phase: "da_valutare", needs: true, requests: false, realization: false, context: true, history: true });
+  assert.deepEqual(early.slice(-3), ["dettagli", "contesto", "storia"]);
+  const without = detailTargetIds({ phase: "da_valutare", needs: true, requests: false, realization: false, context: false, history: true });
+  assert.equal(without.includes("contesto"), false);
+  assert.deepEqual(detailTargetIds({ phase: "da_valutare", needs: true, requests: false, realization: false, history: true }), without, "senza `context` la piega non c'è");
+  // `?capitolo=contesto` (e `#contesto`) arriva alla piega se c'è; altrimenti in cima alla pagina.
+  assert.equal(arrivalTarget("contesto", all), "contesto");
+  assert.equal(arrivalTargetIn("contesto", all, true), "contesto", "l'avvio nel riquadro non cambia «Contesto»");
+  assert.equal(arrivalTarget("contesto", without), null);
 });
 
 test("arrivalTarget: «Realizzazione» va al riquadro quando l'avvio è lì (G9), anche dai link già mandati", () => {

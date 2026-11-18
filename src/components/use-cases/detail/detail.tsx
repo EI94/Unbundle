@@ -1,3 +1,7 @@
+import { UseCaseContextView } from "@/components/context/use-case-context";
+import { contextFoldShown, contextFoldSummary } from "@/components/context/view-model";
+import type { NeedLinkView } from "@/lib/db/queries/context-needs";
+import type { UseCaseContext } from "@/lib/db/queries/context-work";
 import type { UseCaseDetailResult } from "@/lib/db/queries/use-case-hub";
 import type { UseCaseRealization } from "@/lib/uc/views/realization";
 import type { AgentTone } from "@/lib/use-cases/agents";
@@ -5,7 +9,7 @@ import { answersOf } from "@/lib/use-cases/answers";
 import type { UseCaseEventList } from "@/lib/db/queries/use-case-events";
 import { DIALOG_COMMON_TEXT, PUBLIC_NOTE_TEXT, toDecisionItem, toDuplicateCandidates, type DuplicateCandidate } from "@/lib/use-cases/decision-ui";
 import { unofficialEstimateLines } from "@/lib/use-cases/estimates";
-import { GUIDED_TEXT, arrivalTarget, detailTargetIds, foldSummaries, impactView, nextStepOf, pathOfUseCase, quarterHolding, startsInBox, type NextStep } from "@/lib/use-cases/guided";
+import { GUIDED_TEXT, arrivalTarget, detailTargetIds, foldSummaries, impactView, nextStepOf, pathOfUseCase, quarterHolding, startsInBox, type DetailChapter, type NextStep } from "@/lib/use-cases/guided";
 import type { InfoProgressView } from "@/lib/use-cases/info-progress";
 import { TEXT_LIMITS } from "@/lib/use-cases/inputs";
 import { WHAT_FIELD_LABEL } from "@/lib/use-cases/labels";
@@ -47,40 +51,9 @@ import { WorkFlow } from "./work-flow";
 
 // ═══ Capitoli (§6.1, §6.7) ═══════════════════════════════════════════
 
-/** Un'ancora della scheda: l'`id` del blocco e il suo nome. */
-export interface ChapterLink {
-  /** L'ancora (`id` del blocco o della piega), es. «valutazione». */
-  id: string;
-  label: string;
-}
-
-/** I `?capitolo=` della scheda, nell'ordine della pagina (§6.1, §14.3; rilascio 3). */
-export const DETAIL_CHAPTERS = [
-  { id: "decisione", label: "Prossimo passo" },
-  { id: "impatto", label: "Impatto" },
-  { id: "cosa-e", label: "Come cambia il lavoro" },
-  { id: "cosa-serve", label: "Cosa serve" },
-  // La piega delle richieste ai referenti dentro «Cosa serve»: «Nessuna risposta» (campanella, email) la apre.
-  { id: "richieste", label: "Richieste inviate" },
-  { id: "valutazione", label: "Valutazione del team" },
-  { id: "dettagli", label: "Dettagli" },
-  { id: "realizzazione", label: "Realizzazione" },
-  { id: "storia", label: "Storia" },
-] as const satisfies readonly ChapterLink[];
-
-export type DetailChapter = (typeof DETAIL_CHAPTERS)[number]["id"];
-
-/** Altri modi di scrivere un capitolo in `?capitolo=` (email, campanella). */
-const CHAPTER_ALIASES: Readonly<Record<string, DetailChapter>> = { cosa: "cosa-e", "cosa-è": "cosa-e", "cos-e": "cosa-e", "cos'è": "cosa-e" };
-
-/** `?capitolo=` → il capitolo, oppure null per un valore fuori elenco. */
-export function chapterFromParam(raw: unknown): DetailChapter | null {
-  const value = Array.isArray(raw) ? raw[0] : raw;
-  if (typeof value !== "string") return null;
-  const key = value.trim().toLowerCase();
-  if (DETAIL_CHAPTERS.some((chapter) => chapter.id === key)) return key as DetailChapter;
-  return CHAPTER_ALIASES[key] ?? null;
-}
+// I capitoli e `?capitolo=` stanno nelle regole pure della scheda guidata (guided.ts), dove li prova
+// `node --test`; la pagina e le prove li prendono anche da qui.
+export { DETAIL_CHAPTERS, chapterFromParam, type ChapterLink, type DetailChapter } from "@/lib/use-cases/guided";
 
 /**
  * Il capitolo «Realizzazione» c'è (§6.5): per gli use case «Da costruire» dalla fase Approvato in
@@ -234,6 +207,16 @@ export interface UseCaseDetailViewProps {
   agentTone?: AgentTone | null;
   /** (Rilascio 5, §9.1) Al contributore: lo stato del referente, solo la parola. */
   contributorReferentState?: ReferentStateKey | null;
+  /**
+   * (Rilascio 9b) La piega «Contesto» (`loadUseCaseContext`, solo ai revisori): i fatti, gli impegni e le domande del
+   * cliente che toccano lo use case, già filtrati per chi guarda. null, o niente da mostrare: la piega non c'è.
+   */
+  context?: UseCaseContext | null;
+  /**
+   * (Rilascio 9b) «Una call risponde» sotto le richieste di «Cosa serve» (`listNeedLinks`, per id dell'esigenza): solo
+   * a chi modifica le esigenze (`canEditNeeds`).
+   */
+  needLinks?: Readonly<Record<string, NeedLinkView>> | null;
   className?: string;
 }
 
@@ -248,7 +231,8 @@ function boxAskOf(step: NextStep): "ask" | "gate" | null {
  * guidata»). Ai revisori: la testata, il percorso dello use case, il riquadro «Prossimo passo» con
  * il solo pulsante pieno della pagina quando il passo è loro, poi su due colonne (dai 58rem della
  * scheda) il contenuto, «Quando» e la nota pubblica accanto, e le pieghe «Valutazione del team»,
- * «Dettagli», «Realizzazione» (quando c'è) e «Storia». Chi gestisce il workspace vede anche
+ * «Dettagli», «Realizzazione» (quando c'è), «Contesto» (rilascio 9b, quando c'è qualcosa da
+ * mostrare) e «Storia», che resta l'ultima. Chi gestisce il workspace vede anche
  * «Proposto da» ed «Email indicata» e può oscurare un testo. Il contributore vede la scheda di
  * prima: titolo e fase, e delle sue proposte codice e nota pubblica (D4, D13), con i dati già
  * proiettati dal server.
@@ -273,6 +257,8 @@ export function UseCaseDetailView({
   companyDisplayName = null,
   agentTone = null,
   contributorReferentState = null,
+  context = null,
+  needLinks = null,
   className,
 }: UseCaseDetailViewProps) {
   if (result.projection === "contributore") {
@@ -337,11 +323,14 @@ export function UseCaseDetailView({
   });
   const path = pathOfUseCase({ item: detail, today, info, dossierRead: result.dossierRead });
   const historyShown = abilities.canSeeHistory && Boolean(events);
+  // (Rilascio 9b) La piega «Contesto», chiusa, prima di «Storia»: solo con fatti, impegni o domande da mostrare.
+  const contextFold = context && contextFoldShown(context) ? context : null;
   const targets = detailTargetIds({
     phase: detail.phase,
     needs: needsShown,
     requests: Boolean(feature && requestsShown(feature).length > 0),
     realization: realizationFold,
+    context: contextFold !== null,
     history: historyShown,
   });
   // «Avvia la realizzazione» o «Segna come in realizzazione» nel riquadro (G9): la piega non li
@@ -364,6 +353,7 @@ export function UseCaseDetailView({
       .filter((row) => hasFieldText(row.value))
       .map((row) => row.label),
     realization: realizationFold && variant ? { variant, realization, dossier: detail.dossier, realizedOn: detail.realizedOn } : null,
+    context: contextFold ? contextFoldSummary(contextFold) : null,
     events: historyShown && events ? events.events : null,
     today,
   });
@@ -440,6 +430,7 @@ export function UseCaseDetailView({
                       boxOwnsChoose={step.action.type === "referente" && step.action.mode === "scegli"}
                       canEditValuation={abilities.canEditValuation}
                       useCaseVersion={detail.version}
+                      needLinks={abilities.canEditNeeds ? needLinks : null}
                     />
                   ) : null}
                 </div>
@@ -501,6 +492,11 @@ export function UseCaseDetailView({
                         boxOwnsStart={startInBox}
                         startHint={step.key === "G3" || (referentInput !== null && !quarterHolding(detail, today)) ? "trimestre" : "informazioni"}
                       />
+                    </Fold>
+                  ) : null}
+                  {contextFold ? (
+                    <Fold id="contesto" title={t.contesto} summary={summaries.contesto}>
+                      <UseCaseContextView workspaceId={workspaceId} today={today} context={contextFold} />
                     </Fold>
                   ) : null}
                   {abilities.canSeeHistory && events ? (

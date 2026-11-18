@@ -12,8 +12,9 @@
  * - **Impatto** (`impactView`, `paybackText`): la cifra grande in testa alla pagina, con il
  *   costo, le voci di «Benefici e costi» e la frase su quando rientra l'avvio.
  * - **Come cambia il lavoro** (`workFlowLabels`, `limitsSummary`), **pieghe** (`foldSummaries`),
- *   **ancore** (`detailTargetIds`, `arrivalTarget`) e i **cinque gruppi** delle richieste
- *   (`requestGroupView`).
+ *   **capitoli e ancore** (`DETAIL_CHAPTERS`, `chapterFromParam`, `detailTargetIds`, `arrivalTarget`) e
+ *   i **cinque gruppi** delle richieste (`requestGroupView`). (Rilascio 9b) La piega «Contesto», con
+ *   la memoria del cliente che tocca lo use case, sta prima di «Storia», che resta l'ultima.
  * - **Pronto da avviare** (`isReadyToStart`): la regola di G9, una sola per la pagina e per chi
  *   la userà altrove.
  *
@@ -25,6 +26,7 @@
  * componenti (la variante di «Realizzazione», `askEntry` della finestra «Chiedi al referente»)
  * arriva già calcolato.
  */
+import { CONTEXT_TEXT } from "../context/text.ts";
 import { CASE_STATUS_LABEL } from "../uc/case-state.ts";
 import type { CaseStatus } from "../uc/vocab.ts";
 import type { UseCaseRealization } from "../uc/views/realization.ts";
@@ -267,6 +269,8 @@ export const GUIDED_TEXT = Object.freeze({
     valutazione: "Valutazione del team",
     dettagli: "Dettagli",
     realizzazione: "Realizzazione",
+    // (Rilascio 9b) Il titolo e la riga della piega stanno con i testi di «Contesto» (`CONTEXT_TEXT.useCase`).
+    contesto: CONTEXT_TEXT.useCase.title,
     storia: "Storia",
     estimates: "stime non ufficiali",
     aiSuggestion: "suggerimento AI",
@@ -700,6 +704,7 @@ const ANCHOR = Object.freeze({
   valutazione: "valutazione",
   dettagli: "dettagli",
   realizzazione: "realizzazione",
+  contesto: "contesto",
   storia: "storia",
   referente: "referente",
 });
@@ -1266,6 +1271,12 @@ export interface FoldSummaryInput {
   /** Le etichette dei campi di «Dettagli» che hanno un testo, nell'ordine. */
   filledDetails: readonly string[];
   realization: { variant: GuidedRealizationVariant; realization: UseCaseRealization | null; dossier: { status: CaseStatus; readiness: { ok: number; required: number } | null } | null; realizedOn: string | null } | null;
+  /**
+   * (Rilascio 9b) La riga della piega «Contesto», già scritta con i testi di «Contesto»
+   * (`contextFoldSummary` di src/components/context/view-model.ts): «12 fatti sul cliente · 2 novità».
+   * null o assente: la piega non c'è (chi guarda non è un revisore, o non c'è niente da mostrare).
+   */
+  context?: string | null;
   /** Le righe della Storia, dalla più recente. */
   events: readonly { at: Date | string }[] | null;
   today: string;
@@ -1276,6 +1287,8 @@ export interface FoldSummaries {
   dettagli: string;
   /** null: la piega non c'è. */
   realizzazione: string | null;
+  /** (Rilascio 9b) null: la piega non c'è; "" quando c'è solo con domande aperte (nessuna riga grigia). */
+  contesto: string | null;
   storia: string | null;
 }
 
@@ -1298,6 +1311,7 @@ export function foldSummaries(input: FoldSummaryInput): FoldSummaries {
     valutazione: valuationPieces.length ? valuationPieces.join(FIGURE_SEPARATOR) : t.editValuation,
     dettagli,
     realizzazione: input.realization ? realizationSummary(input.realization, input.today) : null,
+    contesto: typeof input.context === "string" ? input.context : null,
     storia: input.events ? (latestDay ? fill(t.lastChange, { giorno: latestDay }) : t.noChange) : null,
   };
 }
@@ -1330,6 +1344,48 @@ function realizationSummary(r: NonNullable<FoldSummaryInput["realization"]>, tod
   }
 }
 
+// ═══ I capitoli (§6.1, §6.7) ═════════════════════════════════════════
+
+/** Un'ancora della scheda: l'`id` del blocco e il suo nome. */
+export interface ChapterLink {
+  /** L'ancora (`id` del blocco o della piega), es. «valutazione». */
+  id: string;
+  label: string;
+}
+
+/**
+ * I `?capitolo=` della scheda, nell'ordine della pagina (§6.1, §14.3; rilascio 3). (Rilascio 9b)
+ * «Contesto», la piega con la memoria del cliente: `?capitolo=contesto` la apre; sta prima di
+ * «Storia», che resta l'ultima.
+ */
+export const DETAIL_CHAPTERS = [
+  { id: "decisione", label: "Prossimo passo" },
+  { id: "impatto", label: "Impatto" },
+  { id: "cosa-e", label: "Come cambia il lavoro" },
+  { id: "cosa-serve", label: "Cosa serve" },
+  // La piega delle richieste ai referenti dentro «Cosa serve»: «Nessuna risposta» (campanella, email) la apre.
+  { id: "richieste", label: "Richieste inviate" },
+  { id: "valutazione", label: GUIDED_TEXT.folds.valutazione },
+  { id: "dettagli", label: GUIDED_TEXT.folds.dettagli },
+  { id: "realizzazione", label: GUIDED_TEXT.folds.realizzazione },
+  { id: "contesto", label: GUIDED_TEXT.folds.contesto },
+  { id: "storia", label: GUIDED_TEXT.folds.storia },
+] as const satisfies readonly ChapterLink[];
+
+export type DetailChapter = (typeof DETAIL_CHAPTERS)[number]["id"];
+
+/** Altri modi di scrivere un capitolo in `?capitolo=` (email, campanella). */
+const CHAPTER_ALIASES: Readonly<Record<string, DetailChapter>> = { cosa: "cosa-e", "cosa-è": "cosa-e", "cos-e": "cosa-e", "cos'è": "cosa-e" };
+
+/** `?capitolo=` → il capitolo, oppure null per un valore fuori elenco. */
+export function chapterFromParam(raw: unknown): DetailChapter | null {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof value !== "string") return null;
+  const key = value.trim().toLowerCase();
+  if (DETAIL_CHAPTERS.some((chapter) => chapter.id === key)) return key as DetailChapter;
+  return CHAPTER_ALIASES[key] ?? null;
+}
+
 // ═══ Le ancore ═══════════════════════════════════════════════════════
 
 export interface TargetInput {
@@ -1340,6 +1396,8 @@ export interface TargetInput {
   requests: boolean;
   /** La piega «Realizzazione» c'è. */
   realization: boolean;
+  /** (Rilascio 9b) La piega «Contesto» c'è: un revisore, e fatti, impegni o domande da mostrare. */
+  context?: boolean;
   /** La «Storia» c'è (`canSeeHistory` e le righe lette). */
   history: boolean;
 }
@@ -1352,6 +1410,7 @@ export function detailTargetIds(input: TargetInput): string[] {
   if (input.phase === "approvato") ids.push(ANCHOR.quando);
   ids.push(ANCHOR.notaPubblica, ANCHOR.valutazione, ANCHOR.dettagli);
   if (input.realization) ids.push(ANCHOR.realizzazione);
+  if (input.context) ids.push(ANCHOR.contesto);
   if (input.history) ids.push(ANCHOR.storia);
   return ids;
 }

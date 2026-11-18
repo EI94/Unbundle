@@ -9,15 +9,21 @@
  * - La Memoria (§7.2): le sezioni vuote non si vedono; le scadenze degli impegni.
  * - Gli appunti e i documenti (§7.5): da dove vengono, a che punto è la lettura, chi li vede.
  * - «Aggiungi appunti» (§7.3): il titolo proposto, i file che si leggono nel browser e quelli che si caricano.
+ * - (Rilascio 9b, RILASCIO-9b-COSTRUZIONE.md §2.1, §2.3, §2.10) La piega «Contesto» della scheda dello use case e la
+ *   sezione del dossier: c'è solo con qualcosa da mostrare, la riga grigia, «Novità», i fatti per sezione, gli impegni;
+ *   la riga del pacchetto e i suoi file; «Da verificare»: la riga di servizio, nessuna casella spuntata all'inizio, il
+ *   conto di «Ancora veri (n)».
  *
  * Nessun testo scritto qui: ogni parola viene da `CONTEXT_TEXT`. Modulo puro, senza `node:` (lo usano i componenti
  * client).
  */
 import { dayLabel } from "../../lib/context/labels.ts";
 import { CONTEXT_TEXT } from "../../lib/context/text.ts";
-import { CONTEXT_LIMITS, type ContextSection, type ContextVisibility, type ProposalKind, type SkippedCounts, type SourceKind, type SourceOrigin } from "../../lib/context/vocab.ts";
+import { CONTEXT_LIMITS, CONTEXT_SECTIONS, type CommitmentParty, type ContextSection, type ContextVisibility, type ProposalKind, type SkippedCounts, type SourceKind, type SourceOrigin } from "../../lib/context/vocab.ts";
 import type { AskSource } from "../../lib/db/queries/context-ask.ts";
-import type { FactView, MemorySection, MemoryView } from "../../lib/db/queries/context-memory.ts";
+import type { CommitmentView, FactView, MemorySection, MemoryView } from "../../lib/db/queries/context-memory.ts";
+import type { NeedLinkView } from "../../lib/db/queries/context-needs.ts";
+import type { UseCaseContext, UseCaseFact } from "../../lib/db/queries/context-work.ts";
 import type { ConfirmItem, OpenProposals, ProposalPatch, ProposalView } from "../../lib/db/queries/context-proposals.ts";
 import type { ReadOutcome } from "../../lib/db/queries/context-read.ts";
 import type { SourceListItem, SourceState } from "../../lib/db/queries/context-sources.ts";
@@ -370,6 +376,133 @@ export function briefMaterial(sections: readonly MemorySection[]): number {
  */
 export function consentNoticeNeeded(i: { unreadSources: number; brief: MemoryView["brief"]; material: number }): boolean {
   return i.unreadSources > 0 || (i.brief === null && i.material >= CONTEXT_LIMITS.briefMinItems);
+}
+
+// ─── (9b) La piega «Contesto» della scheda e la sezione del dossier ──
+
+/**
+ * La piega «Contesto» (e la sezione del dossier) c'è solo con qualcosa da mostrare a chi guarda: fatti, impegni o
+ * domande che toccano lo use case. Senza (o senza lettura: `loadUseCaseContext` dà null) non c'è.
+ */
+export function contextFoldShown(ctx: Pick<UseCaseContext, "facts" | "commitments" | "questions"> | null | undefined): boolean {
+  return Boolean(ctx) && ctx!.facts.length + ctx!.commitments.length + ctx!.questions.length > 0;
+}
+
+/**
+ * La riga grigia della piega chiusa: «12 fatti sul cliente · 2 novità · 1 impegno aperto». I fatti contano anche quelli
+ * oltre i 40 a schermo («e altri … nel contesto»); un pezzo a zero non c'è. "" con le sole domande aperte.
+ */
+export function contextFoldSummary(ctx: Pick<UseCaseContext, "facts" | "more" | "novelties" | "commitments">): string {
+  const facts = ctx.facts.length + Math.max(0, Math.trunc(ctx.more) || 0);
+  const novelties = Math.max(0, Math.trunc(ctx.novelties) || 0);
+  const head = facts > 0 ? T.useCase.summaryFacts(facts) : "";
+  const rest = `${novelties > 0 && facts > 0 ? T.useCase.summaryNew(novelties) : ""}${ctx.commitments.length > 0 ? T.useCase.summaryCommitments(ctx.commitments.length) : ""}`;
+  // I pezzi dopo il primo cominciano con « · »: senza fatti il separatore in testa cade.
+  return head ? `${head}${rest}` : rest.replace(/^[\s·]+/, "");
+}
+
+/** Quante novità mostra la piega, al massimo (§2.1). */
+export const CASE_NOVELTIES_MAX = 5;
+
+/** «Novità»: i fatti con «Nuovo» o «Cambiato» (nati negli ultimi 14 giorni), al massimo 5, i più recenti prima. */
+export function contextFoldNovelties(facts: readonly UseCaseFact[]): UseCaseFact[] {
+  return facts
+    .map((fact, index) => ({ fact, index }))
+    .filter(({ fact }) => fact.tag === "nuovo" || fact.tag === "cambiato")
+    .sort((a, b) => (a.fact.lastConfirmedOn === b.fact.lastConfirmedOn ? a.index - b.index : a.fact.lastConfirmedOn < b.fact.lastConfirmedOn ? 1 : -1))
+    .slice(0, CASE_NOVELTIES_MAX)
+    .map(({ fact }) => fact);
+}
+
+/** Il segno davanti a una novità: «Nuovo» o «Cambiato». */
+export function noveltyTag(tag: UseCaseFact["tag"]): string | null {
+  if (tag === "nuovo") return T.novelties.tagNew;
+  if (tag === "cambiato") return T.novelties.tagChanged;
+  return null;
+}
+
+/** «Che cosa sappiamo»: i fatti per sezione, nell'ordine fisso delle sezioni; dentro, nell'ordine in cui arrivano. */
+export function contextFactGroups<F extends Pick<FactView, "section">>(facts: readonly F[]): Array<{ section: ContextSection; label: string; facts: F[] }> {
+  return CONTEXT_SECTIONS.map((section) => ({ section, label: sectionLabel(section), facts: facts.filter((fact) => fact.section === section) })).filter((group) => group.facts.length > 0);
+}
+
+/** «Impegni aperti»: «Nostri» e «Del cliente», solo i gruppi con righe, ognuno nell'ordine in cui arriva (per scadenza). */
+export function contextCommitmentGroups(commitments: readonly CommitmentView[]): Array<{ party: CommitmentParty; label: string; items: CommitmentView[] }> {
+  const groups: Array<{ party: CommitmentParty; label: string }> = [
+    { party: "nostra", label: T.nextSteps.ours },
+    { party: "cliente", label: T.nextSteps.theirs },
+  ];
+  return groups.map((group) => ({ ...group, items: commitments.filter((commitment) => commitment.party === group.party) })).filter((group) => group.items.length > 0);
+}
+
+/**
+ * (9b, §2.2) La riga sotto una richiesta di «Cosa serve»: «Una call del 14 nov risponde: «…»», o «Un documento del 14
+ * nov risponde: «…»» quando il fatto viene da un documento.
+ */
+export function needLinkText(link: Pick<NeedLinkView, "from" | "date" | "statement">): string {
+  return link.from === "documento" ? T.needLink.fromDocument(link.date, link.statement) : T.needLink.fromCall(link.date, link.statement);
+}
+
+// ─── (9b) Il dossier: la riga del pacchetto e i suoi file (§2.3) ─────
+
+/** Il file facoltativo del pacchetto con il contesto del cliente (§2.4): c'è solo con fatti «Per tutti» da scrivere. */
+export const CONTEXT_PACKAGE_FILE = "CONTESTO.md";
+
+/** I file che «Leggi i file» mostra, nell'ordine: i tre di sempre, poi `CONTESTO.md` quando c'è. */
+const PACKAGE_FILES_SHOWN: readonly string[] = Object.freeze(["BRIEF.md", "PACCHETTO.md", "VERSIONE", CONTEXT_PACKAGE_FILE]);
+
+/** «Leggi i file»: i file di una versione del pacchetto, nell'ordine; uno che manca non c'è, e nessun altro nome. */
+export function packageFilesShown(files: Readonly<Record<string, unknown>> | null | undefined): Array<{ name: string; text: string }> {
+  if (!files || typeof files !== "object") return [];
+  return PACKAGE_FILES_SHOWN.flatMap((name) => {
+    const text = files[name];
+    return typeof text === "string" ? [{ name, text }] : [];
+  });
+}
+
+/**
+ * Da quando contare le novità del contesto per la riga del pacchetto: dalla data dell'ultimo pacchetto, se ha
+ * `CONTESTO.md`; altrimenti null, e contano tutti i fatti del suo perimetro (`contextDeltaSince`).
+ */
+export function packageContextSince(latest: { createdAt: string; files: Readonly<Record<string, unknown>> } | null | undefined): Date | null {
+  if (!latest || typeof latest.files?.[CONTEXT_PACKAGE_FILE] !== "string") return null;
+  const at = new Date(latest.createdAt);
+  return Number.isNaN(at.getTime()) ? null : at;
+}
+
+/** Sotto la versione del pacchetto: «Il contesto è cambiato dopo l'ultimo pacchetto (3 novità).»; null senza novità. */
+export function packageDeltaLine(delta: number): string | null {
+  const n = Number.isFinite(delta) ? Math.trunc(delta) : 0;
+  return n > 0 ? T.useCase.packageDelta(n) : null;
+}
+
+// ─── (9b) «Da verificare» (§2.10) ─────────────────────────────────────
+
+/** La riga di servizio della Memoria: «3 fatti da verificare», solo per Lateral Space e solo quando ce ne sono. */
+export function toCheckRow(toCheck: number, lateralSpace: boolean): string | null {
+  const n = Number.isFinite(toCheck) ? Math.trunc(toCheck) : 0;
+  return lateralSpace && n > 0 ? T.verify.row(n) : null;
+}
+
+/** Sotto la frase di un fatto da verificare: «Call 14 nov · Ultima conferma: 14 mag». */
+export function toCheckMeta(fact: Pick<FactView, "sourceLabel" | "lastConfirmedOn">, today: string): string {
+  const confirmed = dayLabel(fact.lastConfirmedOn, today);
+  return [fact.sourceLabel, confirmed ? T.fact.lastConfirmed(confirmed) : ""].filter(Boolean).join(" · ");
+}
+
+/** All'inizio nessuna casella è spuntata: chi verifica sceglie i fatti uno per uno. */
+export function initialVerifyChoice(): Set<string> {
+  return new Set<string>();
+}
+
+/** I fatti spuntati che sono ancora in pagina, nell'ordine della pagina: quelli che manda «Ancora veri (n)». */
+export function verifyChosen(facts: readonly Pick<FactView, "id">[], chosen: ReadonlySet<string>): string[] {
+  return facts.filter((fact) => chosen.has(fact.id)).map((fact) => fact.id);
+}
+
+/** «Ancora veri (n)»: n sono i fatti spuntati in pagina (uno tolto con «Non più vero» esce anche dal conto). */
+export function verifyButtonLabel(facts: readonly Pick<FactView, "id">[], chosen: ReadonlySet<string>): string {
+  return T.verify.button(verifyChosen(facts, chosen).length);
 }
 
 // ─── «Aggiungi appunti» ──────────────────────────────────────────────

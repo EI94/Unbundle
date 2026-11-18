@@ -1,18 +1,24 @@
 import { notFound } from "next/navigation";
-import { ClipboardList, FlaskConical, Gavel, ListTodo, Package, Wrench } from "lucide-react";
+import { Building2, ClipboardList, FlaskConical, Gavel, ListTodo, Package, Wrench } from "lucide-react";
 import { EVAL_TEXT, evalSectionDescription } from "@/components/agent-factory/eval-format";
 import { readEvalOverview } from "@/components/agent-factory/eval-load";
 import { EvalSection } from "@/components/agent-factory/eval-section";
+import { UseCaseContextView } from "@/components/context/use-case-context";
+import { contextFoldShown, packageContextSince, packageDeltaLine, packageFilesShown } from "@/components/context/view-model";
 import { PageContainer } from "@/components/dashboard/page-container";
 import { SettingsSection } from "@/components/dashboard/settings-section";
 import { canWrite, openShellPage } from "@/components/uc/shell/case-data";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
-import { factoryStoreReady, readFactory, topicLabel, findUseCaseOfCase, type DecisionView, type ProjectView } from "@/lib/db/queries/use-case-factory";
+import { contextActorFor, type ContextActor } from "@/lib/context/server/actor";
+import { CONTEXT_TEXT } from "@/lib/context/text";
+import { contextDeltaSince, loadUseCaseContext, type UseCaseContext } from "@/lib/db/queries/context-work";
+import { factoryStoreReady, readFactory, topicLabel, findUseCaseOfCase, type DecisionView, type FactoryView, type ProjectView } from "@/lib/db/queries/use-case-factory";
 import { FACTORY_LIMITS, SETUP_TOPICS } from "@/lib/db/use-case-hub-factory-ddl";
 import { listTasks, tasksStoreReady, type TaskView } from "@/lib/db/queries/use-case-tasks";
 import { listOpenProposals, proposalsStoreReady, type ProposalView } from "@/lib/db/queries/use-case-task-proposals";
 import { loadFactoryAccess } from "@/lib/use-cases/factory/access";
 import { aiBoardOkRule, AI_BOARD_NOTE_MIN, canApproveProject, canRequestProjectChange, canWriteFactory } from "@/lib/use-cases/factory/permissions";
+import { romeToday } from "@/lib/use-cases/quarter";
 import { AiBoardOk, DecisionForm, DetailsEditor, PackageButton, ProjectPrimaryAction, ProposalButtons, ReopenProject, TopicEditor } from "./project-forms";
 
 /**
@@ -27,7 +33,7 @@ import { AiBoardOk, DecisionForm, DetailsEditor, PackageButton, ProjectPrimaryAc
  *   Con una versione nuova aperta resta da leggere quella approvata.
  * - Strumenti nuovi e stima, con l'ok o la modifica chiesta dall'AI Board.
  * - Le decisioni che valgono, oltre alle scelte; lo storico completo, con quelle sostituite, su richiesta.
- * - Il pacchetto, solo per chi costruisce: la versione di oggi, i suoi tre file, «Aggiorna il pacchetto».
+ * - Il pacchetto, solo per chi costruisce: la versione di oggi, i suoi file, «Aggiorna il pacchetto».
  * - (8.1a) I compiti (`#compiti`): stato e chi li ha, le aree e le prove a richiesta. Si prendono e si passano dal
  *   coding agent, con la CLI; qui si leggono.
  * - (8.1b) Le proposte di compito da GitHub (un'issue, un commento `/compito`), solo per chi costruisce: le accetta
@@ -38,6 +44,12 @@ import { AiBoardOk, DecisionForm, DetailsEditor, PackageButton, ProjectPrimaryAc
  * - (8.2a) Evals e banco di prova (`#banco`), per tutti quelli che vedono la pagina: le ultime evals con l'andamento,
  *   l'ultimo banco per ruolo con il grafico qualità contro costo e la raccomandazione, o i comandi per cominciare.
  *   Si lanciano dalla CLI; qui si leggono. Una lettura che fallisce non fa cadere la pagina.
+ * - (9b) «Contesto» (`#contesto`, l'ancora di «Il contesto è cambiato» in campanella), dopo «Decisioni»: quello che
+ *   sappiamo del cliente e che tocca lo use case, lo stesso della piega della scheda, con i fatti per chi guarda (Lateral
+ *   Space per l'e-mail verificata; chi costruisce da fuori, il responsabile del cliente e l'AI Board solo «Per tutti»).
+ *   Senza niente da mostrare non c'è. In «Pacchetto», a chi lo vede, la riga «Il contesto è cambiato dopo l'ultimo
+ *   pacchetto (n novità).» sotto la versione, solo quando serve: l'azione resta «Aggiorna il pacchetto». «Leggi i file»
+ *   mostra anche `CONTESTO.md` quando c'è.
  *
  * Il dialogo dell'impostazione si fa anche dal coding agent (skill `/agent-factory:imposta`): qui si rilegge, si
  * corregge e si approva.
@@ -139,6 +151,32 @@ function DecisionLine({ d }: { d: DecisionView }) {
   );
 }
 
+/**
+ * (9b) La sezione «Contesto»: i fatti, gli impegni e le domande del cliente che toccano lo use case, per chi guarda. null
+ * senza l'archivio di «Contesto», per chi non apre «Contesto» o se la lettura non riesce: la pagina resta, senza sezione.
+ */
+async function readContextSection(actor: ContextActor, useCaseId: string): Promise<UseCaseContext | null> {
+  try {
+    return await loadUseCaseContext(actor, useCaseId);
+  } catch (error) {
+    console.error("[agent-project] context_failed", { error: { name: error instanceof Error ? error.name : "Error" } });
+    return null;
+  }
+}
+
+/**
+ * (9b) Le novità del contesto dopo l'ultimo pacchetto (i fatti «Per tutti» del perimetro di `CONTESTO.md` nati, cambiati
+ * o tolti dopo la sua data); se il pacchetto non ha `CONTESTO.md`, quanti fatti ci sono. Zero se la lettura non riesce.
+ */
+async function readContextDelta(workspaceId: string, useCaseId: string, latest: NonNullable<FactoryView["latestPackage"]>): Promise<number> {
+  try {
+    return await contextDeltaSince({ workspaceId, useCaseId, since: packageContextSince(latest) });
+  } catch (error) {
+    console.error("[agent-project] context_delta_failed", { error: { name: error instanceof Error ? error.name : "Error" } });
+    return 0;
+  }
+}
+
 export default async function AgentProjectPage({ params }: { params: Promise<{ workspaceId: string; caseId: string }> }) {
   const { workspaceId, caseId } = await params;
   const { session, access } = await requireWorkspacePage(workspaceId);
@@ -231,7 +269,15 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
   const teamDecisions = view.decisions.filter((d) => d.source !== "impostazione" && d.supersededOn === null);
   const tasksReady = await tasksStoreReady(executor);
   // Le evals e i banchi insieme ai compiti; `readEvalOverview` non rifiuta mai (un errore va nel log e nella sezione).
-  const [tasks, evals] = await Promise.all([tasksReady ? listTasks(executor, target) : Promise.resolve<TaskView[]>([]), readEvalOverview(executor, target)]);
+  // (9b) Insieme anche il contesto per chi guarda e, per chi vede il pacchetto, le novità dopo l'ultimo: nessuna delle
+  // due letture fa cadere la pagina.
+  const [tasks, evals, context, contextDelta] = await Promise.all([
+    tasksReady ? listTasks(executor, target) : Promise.resolve<TaskView[]>([]),
+    readEvalOverview(executor, target),
+    readContextSection(contextActorFor(session.user, access, workspaceId), useCase.useCaseId),
+    builder && view.latestPackage ? readContextDelta(workspaceId, useCase.useCaseId, view.latestPackage) : Promise.resolve(0),
+  ]);
+  const deltaLine = packageDeltaLine(contextDelta);
   // Le proposte sono testi del team: le vede solo chi costruisce il caso (anche da fuori Lateral Space), e le decide chi
   // tra loro può scrivere nel caso.
   const proposals = tasksReady && builder && (await proposalsStoreReady(executor)) ? await listOpenProposals(executor, target) : [];
@@ -430,8 +476,14 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
           </div>
         </SettingsSection>
 
+        {context && contextFoldShown(context) ? (
+          <SettingsSection id="contesto" icon={Building2} title={CONTEXT_TEXT.useCase.title} description={CONTEXT_TEXT.useCase.dossierDescription}>
+            <UseCaseContextView workspaceId={workspaceId} today={romeToday()} context={context} />
+          </SettingsSection>
+        ) : null}
+
         {builder ? (
-          <SettingsSection id="pacchetto" icon={Package} title="Pacchetto" description="I tre file che il repository del caso legge e non cambia: senza nomi di persona.">
+          <SettingsSection id="pacchetto" icon={Package} title="Pacchetto" description="I file che il repository del caso legge e non cambia: senza nomi di persona.">
             <div className="space-y-3 text-sm">
               {view.latestPackage ? (
                 <>
@@ -442,12 +494,13 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
                       · {view.latestPackage.source === "importato" ? "preparata a mano" : "generata dalla scheda dello use case"} il {day(view.latestPackage.createdAt)}
                     </span>
                   </p>
+                  {deltaLine ? <p data-slot="package-context-delta">{deltaLine}</p> : null}
                   <details className="rounded-md border px-3">
                     <summary className="flex min-h-11 cursor-pointer items-center text-sm">Leggi i file</summary>
-                    {(["BRIEF.md", "PACCHETTO.md", "VERSIONE"] as const).map((name) => (
+                    {packageFilesShown(view.latestPackage.files).map(({ name, text }) => (
                       <div key={name} className="mb-3">
                         <p className="text-xs font-medium text-muted-foreground">{name}</p>
-                        <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-words rounded bg-muted p-2 text-xs">{view.latestPackage!.files[name]}</pre>
+                        <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-words rounded bg-muted p-2 text-xs">{text}</pre>
                       </div>
                     ))}
                   </details>

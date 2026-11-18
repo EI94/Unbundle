@@ -1,20 +1,28 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { CONTEXT_TEXT } from "../../lib/context/text.ts";
-import type { FactView, MemorySection, MemoryView } from "../../lib/db/queries/context-memory.ts";
+import type { CommitmentView, FactView, MemorySection, MemoryView } from "../../lib/db/queries/context-memory.ts";
 import type { OpenProposals, ProposalView } from "../../lib/db/queries/context-proposals.ts";
+import type { UseCaseContext, UseCaseFact } from "../../lib/db/queries/context-work.ts";
 import type { SourceListItem } from "../../lib/db/queries/context-sources.ts";
 import {
   addNotesClose,
-  afterUpload,
   afterConfirm,
+  afterUpload,
   askSourceMeta,
   briefMaterial,
+  CASE_NOVELTIES_MAX,
   chunkItems,
   confirmCount,
   confirmGroups,
   confirmSubtitle,
   consentNoticeNeeded,
+  CONTEXT_PACKAGE_FILE,
+  contextCommitmentGroups,
+  contextFactGroups,
+  contextFoldNovelties,
+  contextFoldShown,
+  contextFoldSummary,
   droppedFileKind,
   droppedText,
   dueText,
@@ -24,10 +32,16 @@ import {
   fileSizeText,
   fileTypeText,
   initialSelection,
+  initialVerifyChoice,
   isCheckable,
   isMemoryEmpty,
+  needLinkText,
   noteDraftErrors,
   notReportedLines,
+  noveltyTag,
+  packageContextSince,
+  packageDeltaLine,
+  packageFilesShown,
   proposalDraft,
   proposalPatch,
   proposalSource,
@@ -46,14 +60,19 @@ import {
   sourceReadAction,
   sourceStateLabel,
   titleFromFileName,
+  toCheckMeta,
+  toCheckRow,
   uploadableDocument,
+  verifyButtonLabel,
+  verifyChosen,
   visibilityLabel,
   visibleSections,
 } from "./view-model.ts";
 
 // Le regole della pagina «Contesto» (rilascio 9a, RILASCIO-9a-COSTRUZIONE.md §7, §11.3): i gruppi di «Da confermare» e
 // il loro ordine, la preselezione, il conto di «Conferma (n)», i conflitti senza scelta, le etichette di stato e di
-// fonte, le sezioni vuote saltate, «Aggiungi appunti».
+// fonte, le sezioni vuote saltate, «Aggiungi appunti». (9b, RILASCIO-9b-COSTRUZIONE.md §5.2) La piega «Contesto» (il
+// riassunto, i singolari, assente senza contenuto), la riga di «Cosa serve», il dossier, «Da verificare».
 
 const T = CONTEXT_TEXT;
 const TODAY = "2026-11-16";
@@ -414,6 +433,149 @@ test("l'avviso dell'ok: con qualcosa da leggere, o con un «In breve» da scrive
   assert.equal(consentNoticeNeeded({ unreadSources: 0, brief: null, material: 3 }), true);
   assert.equal(consentNoticeNeeded({ unreadSources: 0, brief: { lines: ["Una riga."], updatedOn: TODAY }, material: 9 }), false);
   assert.equal(consentNoticeNeeded({ unreadSources: 1, brief: null, material: 0 }), true);
+});
+
+// ─── (9b) La piega «Contesto» della scheda e la sezione del dossier ──
+
+function caseFact(over: Partial<UseCaseFact> = {}): UseCaseFact {
+  return { ...fact(), tag: null, ...over };
+}
+function caseCommitment(over: Partial<CommitmentView> = {}): CommitmentView {
+  return { id: "c1", version: 1, statement: "Inviare l'esportazione delle fatture", party: "cliente", roleLabel: "Responsabile amministrativo", dueOn: "2026-11-25", overdue: false, visibility: "tutti", ...over };
+}
+function caseContext(over: Partial<UseCaseContext> = {}): UseCaseContext {
+  return { facts: [], more: 0, novelties: 0, commitments: [], questions: [], ...over };
+}
+const QUESTION = { id: "q1", version: 1, question: "Chi approva gli acquisti sopra soglia?", askWhom: "Direzione acquisti", visibility: "tutti" as const };
+
+test("la piega «Contesto» c'è solo con fatti, impegni o domande; senza lettura no", () => {
+  assert.equal(contextFoldShown(null), false);
+  assert.equal(contextFoldShown(undefined), false);
+  assert.equal(contextFoldShown(caseContext()), false, "niente da mostrare: la piega non c'è");
+  assert.equal(contextFoldShown(caseContext({ more: 3, novelties: 1 })), false, "senza righe a schermo non c'è niente da aprire");
+  assert.equal(contextFoldShown(caseContext({ facts: [caseFact()] })), true);
+  assert.equal(contextFoldShown(caseContext({ commitments: [caseCommitment()] })), true);
+  assert.equal(contextFoldShown(caseContext({ questions: [QUESTION] })), true);
+});
+
+test("la riga della piega chiusa: fatti, novità, impegni, al singolare e al plurale; i pezzi a zero non ci sono", () => {
+  const facts = (n: number) => Array.from({ length: n }, (_, i) => caseFact({ id: `f${i}` }));
+  assert.equal(contextFoldSummary(caseContext({ facts: facts(1) })), "1 fatto sul cliente");
+  assert.equal(contextFoldSummary(caseContext({ facts: facts(2) })), "2 fatti sul cliente");
+  // I fatti oltre i 40 a schermo contano: 40 a schermo e altri 12.
+  assert.equal(contextFoldSummary(caseContext({ facts: facts(40), more: 12, novelties: 1 })), "52 fatti sul cliente · 1 novità");
+  assert.equal(contextFoldSummary(caseContext({ facts: facts(3), novelties: 2, commitments: [caseCommitment()] })), "3 fatti sul cliente · 2 novità · 1 impegno aperto");
+  assert.equal(contextFoldSummary(caseContext({ facts: facts(1), commitments: [caseCommitment(), caseCommitment({ id: "c2" })] })), "1 fatto sul cliente · 2 impegni aperti");
+  // Senza fatti il primo pezzo è l'impegno, senza il separatore davanti.
+  assert.equal(contextFoldSummary(caseContext({ commitments: [caseCommitment()] })), "1 impegno aperto");
+  assert.equal(contextFoldSummary(caseContext({ questions: [QUESTION] })), "", "solo domande: niente riga grigia");
+});
+
+test("«Novità»: solo i fatti con «Nuovo» o «Cambiato», al massimo 5, i più recenti prima", () => {
+  const items = [
+    caseFact({ id: "a", tag: null, lastConfirmedOn: "2026-11-18" }),
+    caseFact({ id: "b", tag: "nuovo", lastConfirmedOn: "2026-11-10" }),
+    caseFact({ id: "c", tag: "cambiato", lastConfirmedOn: "2026-11-16" }),
+    caseFact({ id: "d", tag: "nuovo", lastConfirmedOn: "2026-11-12" }),
+    caseFact({ id: "e", tag: "nuovo", lastConfirmedOn: "2026-11-12" }),
+    caseFact({ id: "f", tag: "nuovo", lastConfirmedOn: "2026-11-05" }),
+    caseFact({ id: "g", tag: "cambiato", lastConfirmedOn: "2026-11-15" }),
+  ];
+  assert.deepEqual(contextFoldNovelties(items).map((f) => f.id), ["c", "g", "d", "e", "b"]);
+  assert.equal(CASE_NOVELTIES_MAX, 5);
+  assert.deepEqual(contextFoldNovelties([caseFact()]), []);
+  assert.deepEqual([noveltyTag("nuovo"), noveltyTag("cambiato"), noveltyTag(null)], [T.novelties.tagNew, T.novelties.tagChanged, null]);
+});
+
+test("«Che cosa sappiamo»: i fatti per sezione, nell'ordine fisso; dentro, l'ordine in cui arrivano", () => {
+  const groups = contextFactGroups([
+    caseFact({ id: "r", section: "regole" }),
+    caseFact({ id: "s1", section: "sistemi" }),
+    caseFact({ id: "a", section: "azienda" }),
+    caseFact({ id: "s2", section: "sistemi" }),
+  ]);
+  assert.deepEqual(
+    groups.map((g) => [g.section, g.label, g.facts.map((f) => f.id)]),
+    [
+      ["azienda", "Azienda", ["a"]],
+      ["sistemi", "Sistemi e dati", ["s1", "s2"]],
+      ["regole", "Regole e vincoli", ["r"]],
+    ],
+  );
+  assert.deepEqual(contextFactGroups([]), []);
+});
+
+test("«Cosa serve»: «Una call del 14 nov risponde: «…»», o «Un documento del …» quando il fatto viene da un documento", () => {
+  const link = { id: "l1", needId: "n1", statement: "Gli ordini arrivano via e-mail.", from: "call" as const, date: "14 nov" };
+  assert.equal(needLinkText(link), "Una call del 14 nov risponde: «Gli ordini arrivano via e-mail.»");
+  assert.equal(needLinkText({ ...link, from: "documento", date: "3 ott 2025" }), "Un documento del 3 ott 2025 risponde: «Gli ordini arrivano via e-mail.»");
+  assert.deepEqual([T.needLink.close, T.needLink.dismiss], ["Chiudi con questo", "Non risponde"]);
+});
+
+test("il dossier, «Leggi i file»: i tre file di sempre, poi CONTESTO.md quando c'è; mai un altro nome", () => {
+  const three = { "PACCHETTO.md": "p", "BRIEF.md": "b", VERSIONE: "3" };
+  assert.deepEqual(packageFilesShown(three).map((f) => f.name), ["BRIEF.md", "PACCHETTO.md", "VERSIONE"]);
+  assert.deepEqual(packageFilesShown({ ...three, "CONTESTO.md": "# Contesto del cliente per XX-0012 (k3)" }), [
+    { name: "BRIEF.md", text: "b" },
+    { name: "PACCHETTO.md", text: "p" },
+    { name: "VERSIONE", text: "3" },
+    { name: CONTEXT_PACKAGE_FILE, text: "# Contesto del cliente per XX-0012 (k3)" },
+  ]);
+  assert.deepEqual(packageFilesShown({ ...three, "ALTRO.md": "x", "CONTESTO.md": 12 }).map((f) => f.name), ["BRIEF.md", "PACCHETTO.md", "VERSIONE"], "un nome fuori elenco o un valore che non è testo no");
+  assert.deepEqual(packageFilesShown(null), []);
+});
+
+test("il dossier, la riga del pacchetto: le novità dalla data dell'ultimo pacchetto con CONTESTO.md, altrimenti tutti i fatti; niente senza novità", () => {
+  const files = { "PACCHETTO.md": "p", "BRIEF.md": "b", VERSIONE: "3" };
+  const at = "2026-11-10T09:30:00.000Z";
+  assert.equal(packageContextSince({ createdAt: at, files: { ...files, "CONTESTO.md": "c" } })?.toISOString(), at);
+  assert.equal(packageContextSince({ createdAt: at, files }), null, "senza CONTESTO.md contano tutti i fatti");
+  assert.equal(packageContextSince({ createdAt: "", files: { ...files, "CONTESTO.md": "c" } }), null, "una data che non si legge");
+  assert.equal(packageContextSince(null), null);
+  assert.equal(packageDeltaLine(0), null);
+  assert.equal(packageDeltaLine(-2), null);
+  assert.equal(packageDeltaLine(Number.NaN), null);
+  assert.equal(packageDeltaLine(1), "Il contesto è cambiato dopo l'ultimo pacchetto (1 novità).");
+  assert.equal(packageDeltaLine(3), "Il contesto è cambiato dopo l'ultimo pacchetto (3 novità).");
+});
+
+test("«Da verificare»: la riga di servizio solo per Lateral Space e solo con fatti da verificare, al singolare e al plurale", () => {
+  assert.equal(toCheckRow(0, true), null);
+  assert.equal(toCheckRow(1, true), "1 fatto da verificare");
+  assert.equal(toCheckRow(3, true), "3 fatti da verificare");
+  assert.equal(toCheckRow(3, false), null, "il cliente non la vede");
+  assert.equal(toCheckRow(Number.NaN, true), null);
+  assert.equal(toCheckMeta({ sourceLabel: "Call 14 nov", lastConfirmedOn: "2026-05-14" }, TODAY), "Call 14 nov · Ultima conferma: 14 mag");
+  assert.equal(toCheckMeta({ sourceLabel: "Scritto a mano", lastConfirmedOn: "2025-04-02" }, TODAY), "Scritto a mano · Ultima conferma: 2 apr 2025");
+  assert.equal(toCheckMeta({ sourceLabel: "senza fonte", lastConfirmedOn: "" }, TODAY), "senza fonte");
+});
+
+test("«Da verificare»: nessuna casella spuntata all'inizio; «Ancora veri (n)» conta le spuntate ancora in pagina", () => {
+  const facts = [fact({ id: "a" }), fact({ id: "b" }), fact({ id: "c" })];
+  const start = initialVerifyChoice();
+  assert.equal(start.size, 0, "niente di spuntato all'inizio");
+  assert.notEqual(initialVerifyChoice(), start, "ogni pagina parte da una scelta sua");
+  assert.deepEqual(verifyChosen(facts, start), []);
+  assert.equal(verifyButtonLabel(facts, start), "Ancora veri (0)");
+  const chosen = new Set(["c", "a"]);
+  assert.deepEqual(verifyChosen(facts, chosen), ["a", "c"], "nell'ordine della pagina");
+  assert.equal(verifyButtonLabel(facts, chosen), "Ancora veri (2)");
+  // Un fatto tolto con «Non più vero» (o già riconfermato da qualcun altro) esce dalla pagina e dal conto.
+  assert.equal(verifyButtonLabel(facts.filter((f) => f.id !== "a"), chosen), "Ancora veri (1)");
+  assert.equal(verifyButtonLabel(facts, new Set(["x"])), "Ancora veri (0)");
+});
+
+test("«Impegni aperti»: «Nostri» e «Del cliente», solo i gruppi con righe, nell'ordine in cui arrivano", () => {
+  const groups = contextCommitmentGroups([caseCommitment({ id: "x" }), caseCommitment({ id: "y", party: "nostra" }), caseCommitment({ id: "z" })]);
+  assert.deepEqual(
+    groups.map((g) => [g.label, g.items.map((c) => c.id)]),
+    [
+      [T.nextSteps.ours, ["y"]],
+      [T.nextSteps.theirs, ["x", "z"]],
+    ],
+  );
+  assert.deepEqual(contextCommitmentGroups([caseCommitment()]).map((g) => g.label), ["Del cliente"]);
+  assert.deepEqual(contextCommitmentGroups([]), []);
 });
 
 // ─── «Aggiungi appunti» ──────────────────────────────────────────────
