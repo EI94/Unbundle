@@ -116,20 +116,20 @@ test("«Realizzazioni» finché non ogni realizzazione ha la sua scheda (P0-16):
   assert.equal(activeNavItem(workspaceNav(viewer({ role: "analyst" })), at("/casi-duso/00000000-0000-4000-8000-000000000c01"), base)?.item.title, "Use case");
 });
 
-test("area «Use case» spenta: la barra di prima, voce per voce, accesa come prima", () => {
+test("area «Use case» spenta: la barra di prima, voce per voce, accesa come prima, con le parole di §4", () => {
   const nav = workspaceNav(viewer({ role: "transformation_lead", useCaseHub: false, casesAvailable: true, factoryAvailable: true }));
   assert.deepEqual(titles(nav.main), [
     "Overview",
     "AI Readiness",
     "Formazione",
     "Raccolta & ranking",
-    "Discovery",
+    "Intervista iniziale",
     "Contesto",
     "Strategia",
-    "Activity mapping",
+    "Processi",
     "Value map",
-    "Use cases",
-    "Casi d'uso",
+    "Use case",
+    "Realizzazioni",
     "Piano",
     "Report",
     "Blueprints",
@@ -143,7 +143,12 @@ test("area «Use case» spenta: la barra di prima, voce per voce, accesa come pr
   const activeAt = (rest: string) => topLevelItems(nav).filter((item) => isNavItemActive(at(rest), base, item)).map((item) => item.title);
   assert.deepEqual(activeAt("/portfolio"), ["Raccolta & ranking"]);
   assert.deepEqual(activeAt("/portfolio/review/x"), []);
-  assert.deepEqual(activeAt("/casi-duso/x/domande"), ["Casi d'uso"]);
+  assert.deepEqual(activeAt("/casi-duso/x/domande"), ["Realizzazioni"]);
+  // Le voci che hanno la stessa cosa della barra nuova la chiamano allo stesso modo.
+  assert.doesNotMatch(titles(nav.main).join(" | "), /casi d'uso|Discovery|Activity mapping|Use cases/i);
+  for (const [key, title] of [["discovery", "Intervista iniziale"], ["mapping", "Processi"], ["use-cases", "Use case"], ["cases", "Realizzazioni"]] as const) {
+    assert.equal(nav.main.find((item) => item.key === key)?.title, title, key);
+  }
   assert.deepEqual(activeAt("/setup/context"), ["Contesto"]);
   assert.deepEqual(activeAt("/learning/programma"), []);
 });

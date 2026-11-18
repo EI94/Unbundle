@@ -36,7 +36,7 @@ const RAW_SIGNAL_KEYS = ["new_portfolio_item", "use_case_digest", "use_case_quar
 const routes = [
   // The Home (release 10, wave 2b) in place of the Overview: H1 «Home», the next step, no «Percorso»; the sidebar of the area.
   { name: "overview", path: "/dashboard/{ws:a}", present: ["Home", "Use case"], absent: [...OLD_ENTRIES, "Percorso", "Three streams"] },
-  { name: "overview", path: "/dashboard/{ws:b}", as: ["ls-lead", "osservatore"], present: ["Raccolta & ranking", "Use cases", "Piano"] },
+  { name: "overview", path: "/dashboard/{ws:b}", as: ["ls-lead", "osservatore"], present: ["Raccolta & ranking", "Use case", "Piano"], absent: ["Use cases", "Casi d'uso", "Activity mapping"] },
 
   // Settings with the area on: «Valutazione» and WhatsApp in «Integrazioni» for managers only.
   // The screenshot is the whole page: «Integrazioni» with the webhook, then «Valutazione».

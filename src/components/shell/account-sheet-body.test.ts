@@ -191,9 +191,8 @@ test("Granola negli altri stati: «Collega Granola», «Ricollega», non ancora 
 test("le parole del foglio: niente chiavi, niente «token» nel testo, «use case» nella dashboard", () => {
   const html = text(render({ status: "ready", account: everything }));
   assert.doesNotMatch(html, /\btoken\b|caso d'uso|casi d'uso|in_scadenza|non_collegato|collegato,|pronta/i);
-  // I testi della cornice, tolte le voci della barra di prima (area «Use case» spenta, fino all'ondata 8).
-  const current = Object.fromEntries(Object.entries(SHELL_TEXT).filter(([key]) => key !== "legacy"));
-  assert.doesNotMatch(JSON.stringify(current), /caso d'uso|casi d'uso|Altri strumenti|\btoken\b/i);
+  // I testi della cornice, anche le voci della barra di prima (area «Use case» spenta, fino all'ondata 8).
+  assert.doesNotMatch(JSON.stringify(SHELL_TEXT), /caso d'uso|casi d'uso|Altri strumenti|\btoken\b/i);
 });
 
 // ─── Granola per chi non gestisce il workspace (rifiniture dell'ondata 2a) ──

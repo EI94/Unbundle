@@ -270,12 +270,13 @@ function sidebarOf(html) {
 // (Release 10, docs/ui-10/PROPOSTA-10.md §2.1-§2.2) The five items, today's tools under a thin line, Impostazioni in
 // the footer for those who manage.
 const HUB_BAR = ["Home", "Use case", "Agent Factory", "Contesto", "Persone", "Realizzazioni", "Value map", "Report", "Blueprints", "Simulazione", "Intelligence", "Impostazioni"];
-const TODAY_BAR = ["Overview", "AI Readiness", "Formazione", "Raccolta & ranking", "Discovery", "Contesto", "Strategia", "Activity mapping", "Value map", "Use cases", "Casi d'uso", "Piano", "Report", "Blueprints", "Simulazione", "Intelligence", "Impostazioni"];
+// With the area off, today's bar in today's order, with the §4 words where an item is the same thing as in the new bar.
+const TODAY_BAR = ["Overview", "AI Readiness", "Formazione", "Raccolta & ranking", "Intervista iniziale", "Contesto", "Strategia", "Processi", "Value map", "Use case", "Realizzazioni", "Piano", "Report", "Blueprints", "Simulazione", "Intelligence", "Impostazioni"];
 /**
- * Formazione and «Casi d'uso» (with the area on, «Realizzazioni» until P0-16) depend on sections the harness may have
- * off; «Agent Factory» only shows to builders: the rest is fixed, in order.
+ * Formazione and «Realizzazioni» (with the area on until P0-16) depend on sections the harness may have off;
+ * «Agent Factory» only shows to builders: the rest is fixed, in order.
  */
-const OPTIONAL = new Set(["Formazione", "Casi d'uso", "Realizzazioni", "Agent Factory"]);
+const OPTIONAL = new Set(["Formazione", "Realizzazioni", "Agent Factory"]);
 const sameBar = (titles, expected) => {
   const kept = expected.filter((t) => !OPTIONAL.has(t) || titles.includes(t));
   return titles.length === kept.length && titles.every((t, i) => t === kept[i]);

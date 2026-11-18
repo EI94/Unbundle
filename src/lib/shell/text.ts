@@ -38,19 +38,23 @@ export const SHELL_TEXT = Object.freeze({
     workspaces: "I tuoi workspace",
   }),
 
-  /** La barra dei workspace con l'area «Use case» spenta: le voci di prima, come prima (vanno via con l'ondata 8). */
+  /**
+   * La barra dei workspace con l'area «Use case» spenta: le voci di prima, come prima (vanno via con l'ondata 8), con
+   * le parole di §4 dove una voce ha la stessa cosa della barra nuova: «Intervista iniziale», «Processi», «Use case»,
+   * «Realizzazioni».
+   */
   legacy: Object.freeze({
     overview: "Overview",
     readiness: "AI Readiness",
     learning: "Formazione",
     portfolio: "Raccolta & ranking",
-    discovery: "Discovery",
+    discovery: "Intervista iniziale",
     context: "Contesto",
     strategy: "Strategia",
-    mapping: "Activity mapping",
+    mapping: "Processi",
     valueMap: "Value map",
-    useCases: "Use cases",
-    cases: "Casi d'uso",
+    useCases: "Use case",
+    cases: "Realizzazioni",
     plan: "Piano",
     reports: "Report",
     blueprints: "Blueprints",
