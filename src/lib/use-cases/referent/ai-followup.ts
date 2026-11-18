@@ -24,12 +24,17 @@ import { REFERENT_THREAD_RULES } from "./thread.ts";
 
 type Env = Readonly<Record<string, string | undefined>>;
 
-/** Le versioni dell'informativa del referente che dicono dell'aiuto dell'AI (la frase `REFERENT_AI_NOTICE_LINE`). */
-export const REFERENT_AI_NOTICE_VERSIONS: readonly string[] = Object.freeze(["ucq-2026-11-2"]);
+/**
+ * Le versioni dell'informativa del referente che dicono dell'aiuto dell'AI (la frase `REFERENT_AI_NOTICE_LINE`).
+ * (Rilascio 9b) Anche `ucq-2026-11-3`: la sua frase dice la domanda in più e, in più, che le risposte tengono aggiornato
+ * quello che sappiamo del lavoro (REFERENT_CONTEXT_NOTICE_VERSIONS in labels.ts). L'aiuto di oggi continua per chi ha
+ * accettato `ucq-2026-11-2`.
+ */
+export const REFERENT_AI_NOTICE_VERSIONS: readonly string[] = Object.freeze(["ucq-2026-11-2", "ucq-2026-11-3"]);
 
-/** La frase dell'informativa sull'aiuto dell'AI: deve esserci nella versione di adesso. */
+/** La frase dell'informativa sull'aiuto dell'AI: deve esserci nella versione di adesso (`ucq-2026-11-3`). */
 export const REFERENT_AI_NOTICE_LINE =
-  "Per farti solo le domande che servono, un sistema di intelligenza artificiale può leggere le tue risposte e suggerire al team una domanda in più. Non decide niente e non scrive a nessuno: la domanda, se serve, la manda una persona del team.";
+  "Un sistema di intelligenza artificiale può leggere le tue risposte per suggerire al team una domanda in più e per tenere aggiornato quello che sappiamo del lavoro di {Azienda}, senza il tuo nome. Non decide niente e non scrive a nessuno: ogni proposta la controlla una persona del team.";
 
 /** Il tag che delimita i testi del referente nel prompt. */
 export const REFERENT_AI_TEXT_TAG = "risposta";

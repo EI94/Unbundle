@@ -14,7 +14,7 @@ import {
   referentAiSuggestionsOn,
   resolveReferentAiModel,
 } from "./ai-followup.ts";
-import { REFERENT_PRIVACY_NOTICE } from "./labels.ts";
+import { REFERENT_PRIVACY_NOTICE, noticeAllowsContext, privacyNoticeTexts } from "./labels.ts";
 import { PORTFOLIO_RANKING_DEFAULT_MODEL, portfolioRankingCallSettings } from "../../portfolio/ai-ranking-contract.ts";
 import { CLAUDE_TASKS } from "../../ai/models.ts";
 import { findHubForbidden } from "../copy-guard.ts";
@@ -31,10 +31,11 @@ test("accesa di default, `USE_CASE_REFERENT_AI=off` la spegne; senza chiave ness
 });
 
 test("solo con un'informativa che lo dice; quella di adesso lo dice, con una frase calma", () => {
-  assert.deepEqual([...REFERENT_AI_NOTICE_VERSIONS], ["ucq-2026-11-2"]);
+  assert.deepEqual([...REFERENT_AI_NOTICE_VERSIONS], ["ucq-2026-11-2", "ucq-2026-11-3"]);
   assert.equal(noticeAllowsAi("ucq-2026-11-1"), false, "la versione del rilascio 5.1 non parlava dell'AI");
+  assert.equal(noticeAllowsAi("ucq-2026-11-2"), true, "(9b) l'aiuto di oggi continua per chi ha accettato la versione di prima");
   assert.equal(noticeAllowsAi(null), false);
-  assert.equal(REFERENT_PRIVACY_NOTICE.version, "ucq-2026-11-2");
+  assert.equal(REFERENT_PRIVACY_NOTICE.version, "ucq-2026-11-3");
   // Chi cambia l'informativa (la parte del referente) tiene la frase e mette la versione nuova nell'elenco.
   assert.equal(currentNoticeMentionsAi(), true);
   assert.ok(REFERENT_PRIVACY_NOTICE.paragraphs.includes(REFERENT_AI_NOTICE_LINE));
@@ -117,3 +118,32 @@ test("nel cron l'AI viene per ultima, dopo le pulizie, con un tempo massimo", ()
   const route = readFileSync(new URL("../../../app/api/cron/use-case-referents/route.ts", import.meta.url), "utf8");
   assert.match(route, /maxDuration = 120\b/);
 });
+
+test("(9b, D2) l'informativa ucq-2026-11-3: i tre paragrafi del piano, parola per parola; «casi d'uso»; senza il nome di chi risponde", () => {
+  const paragraphs = [...REFERENT_PRIVACY_NOTICE.paragraphs];
+  const changed = [
+    "Lateral Space raccoglie queste informazioni per conto di {Azienda}, per valutare e preparare i casi d'uso. Le usiamo solo per questo.",
+    "Un sistema di intelligenza artificiale può leggere le tue risposte per suggerire al team una domanda in più e per tenere aggiornato quello che sappiamo del lavoro di {Azienda}, senza il tuo nome. Non decide niente e non scrive a nessuno: ogni proposta la controlla una persona del team.",
+    "Teniamo risposte, messaggi e file per 12 mesi dopo la chiusura della richiesta o l'ultimo messaggio, poi li cancelliamo. Restano solo le informazioni sul lavoro, senza il tuo nome.",
+  ];
+  // Al posto dei tre di prima, negli stessi punti; il resto resta.
+  assert.deepEqual([paragraphs[0], paragraphs[3], paragraphs[6]], changed);
+  assert.equal(paragraphs.length, 9);
+  assert.ok(paragraphs.some((p) => p.startsWith("Ti chiediamo informazioni sul lavoro, non su di te.")));
+  assert.ok(paragraphs.some((p) => p.startsWith("Puoi chiedere di vedere, correggere o cancellare i tuoi dati scrivendo a {contatto}.")));
+  for (const text of changed) {
+    assert.deepEqual(findHubForbidden(text, "esterno"), [], text);
+    assert.doesNotMatch(text, /\{(?!Azienda\})[A-Za-z]+\}/, "nessun segnaposto di una persona");
+    assert.doesNotMatch(text, /attenzion|rischi|obblig|vietat|use case/i, "frasi calme, «caso d'uso» fuori dalla dashboard");
+  }
+  assert.match(changed[0], /i casi d'uso/);
+  // L'AI e la memoria del lavoro: la stessa frase, che fa leggere le risposte a «Contesto» solo con questa versione.
+  assert.equal(REFERENT_AI_NOTICE_LINE, changed[1]);
+  assert.equal(noticeAllowsContext(REFERENT_PRIVACY_NOTICE.version), true);
+  assert.equal(noticeAllowsContext("ucq-2026-11-2"), false, "le risposte date con l'informativa di prima non si leggono");
+  // I segnaposto si riempiono come prima: il nome dell'azienda, mai quello della persona.
+  const filled = privacyNoticeTexts({ company: "Rondine", expires: "26 novembre 2026", requester: "Giulia Neri", contact: "privacy@example.test" });
+  assert.equal(filled.paragraphs[3].includes("del lavoro di Rondine, senza il tuo nome."), true);
+  assert.equal(filled.paragraphs.filter((p) => p.includes("Giulia Neri")).length, 1, "chi ha chiesto compare solo dove compariva già");
+});
+

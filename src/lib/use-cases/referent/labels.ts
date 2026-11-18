@@ -682,15 +682,17 @@ export const REFERENT_CHECK_TEXT = Object.freeze({
 // ─── Informativa (§5.3) ──────────────────────────────────────────────
 
 /**
- * L'informativa a due livelli della pagina pubblica, versione `ucq-2026-11-2` (rilascio 6: l'aiuto dell'AI; rilascio 5.1: nomi,
+ * L'informativa a due livelli della pagina pubblica, versione `ucq-2026-11-3` (rilascio 9b, D2: le risposte tengono
+ * aggiornato quello che sappiamo del lavoro dell'azienda, senza il nome; rilascio 6: l'aiuto dell'AI; rilascio 5.1: nomi,
  * email e telefoni non si bloccano più, «basta che lo diciamo prima nelle informative», decisione del
  * titolare del 04/11/2026). Sopra due righe calme; il testo completo, intero, a un tocco. L'accettazione
- * si registra sulla richiesta con questa versione; una versione nuova mostra di nuovo il riquadro.
+ * si registra sulla richiesta con questa versione; una versione nuova mostra di nuovo il riquadro, una volta.
  * Testo legale da confermare con il titolare (indirizzo di contatto, 12 mesi).
  */
 export const REFERENT_PRIVACY_NOTICE = Object.freeze({
-  // (Rilascio 6) `ucq-2026-11-2`: una frase calma sull'aiuto dell'AI (decisione 2 del titolare dell'08/11/2026).
-  version: "ucq-2026-11-2",
+  // (Rilascio 9b, D2) `ucq-2026-11-3`: cambiano tre paragrafi (i casi d'uso, l'AI che tiene aggiornato quello che sappiamo
+  // del lavoro, che cosa resta dopo 12 mesi); il resto è quello di `ucq-2026-11-2`.
+  version: "ucq-2026-11-3",
   title: "Prima di iniziare",
   lead: "Ti chiediamo del tuo lavoro, non di te.",
   summary: Object.freeze([
@@ -699,13 +701,13 @@ export const REFERENT_PRIVACY_NOTICE = Object.freeze({
   ]),
   fullTextLabel: "Leggi l'informativa completa",
   paragraphs: Object.freeze([
-    "Lateral Space raccoglie queste informazioni per conto di {Azienda}, per valutare e preparare il caso d'uso. Le usiamo solo per questo.",
+    "Lateral Space raccoglie queste informazioni per conto di {Azienda}, per valutare e preparare i casi d'uso. Le usiamo solo per questo.",
     "Ti chiediamo informazioni sul lavoro, non su di te. Se scrivi il nome di un collega o alleghi un file con nomi, email o telefoni, li usiamo solo per questo caso d'uso. Non servono dati sanitari, codici fiscali, date di nascita o preferenze su genere, età, origine o religione: se ne troviamo, ti chiediamo di toglierli.",
     "Ogni file passa da un controllo automatico prima di essere usato.",
-    "Per farti solo le domande che servono, un sistema di intelligenza artificiale può leggere le tue risposte e suggerire al team una domanda in più. Non decide niente e non scrive a nessuno: la domanda, se serve, la manda una persona del team.",
+    "Un sistema di intelligenza artificiale può leggere le tue risposte per suggerire al team una domanda in più e per tenere aggiornato quello che sappiamo del lavoro di {Azienda}, senza il tuo nome. Non decide niente e non scrive a nessuno: ogni proposta la controlla una persona del team.",
     "Salviamo le tue risposte, i file che alleghi, il tuo nome, l'email con cui ti abbiamo scritto e quando hai premuto «Iniziamo». Dell'indirizzo IP teniamo solo un'impronta cifrata, mai il numero, per due giorni.",
     "{Richiedente} e le altre persone di {Azienda} che valutano i casi d'uso vedono le tue risposte e quando sono arrivate. Non misuriamo i tuoi tempi e non facciamo classifiche tra persone.",
-    "Teniamo risposte, messaggi e file per 12 mesi dopo la chiusura della richiesta o l'ultimo messaggio, poi li cancelliamo.",
+    "Teniamo risposte, messaggi e file per 12 mesi dopo la chiusura della richiesta o l'ultimo messaggio, poi li cancelliamo. Restano solo le informazioni sul lavoro, senza il tuo nome.",
     "Puoi chiedere di vedere, correggere o cancellare i tuoi dati scrivendo a {contatto}. Puoi anche fare reclamo al Garante per la protezione dei dati personali.",
     // (Rilascio 6) Ogni novità del team rinnova il link per 30 giorni.
     "Il link è personale e scade 30 giorni dopo l'ultima novità. Non inoltrarlo.",
