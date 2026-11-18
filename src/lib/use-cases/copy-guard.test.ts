@@ -136,7 +136,7 @@ test("nell'area passano i testi di §14.3 e il nome del team", () => {
   const ok = [
     "Use case",
     "Dal basso e dall'alto: quali use case realizzare e quando.",
-    "Senza realizzazione: le realizzazioni sono spente per questo workspace.",
+    "Senza pagina di realizzazione: in questo workspace le realizzazioni non sono attive.",
     "Le zone sono un suggerimento, non la decisione.",
     "Subito · Da pianificare · Se avanza tempo · Non ora",
     "Valore · Costo di realizzazione",

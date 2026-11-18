@@ -68,7 +68,7 @@ const EXPECTED: Record<number, { phase: Phase; subState: SubState; label: string
   11: { phase: "approvato", subState: "trimestre", label: "Approvato · T3 2026" },
   12: { phase: "in_realizzazione", subState: "dossier", label: "In realizzazione · In preparazione" },
   13: { phase: "in_realizzazione", subState: "dossier", label: "In realizzazione · In sviluppo" },
-  14: { phase: "in_realizzazione", subState: "senza_dossier", label: "In realizzazione · Senza realizzazione" },
+  14: { phase: "in_realizzazione", subState: "senza_dossier", label: "In realizzazione · Senza pagina di realizzazione" },
   15: { phase: "realizzato", subState: "realizzato", label: "In uso" },
   16: { phase: "realizzato", subState: "diffusa", label: "In uso · Diffusa" },
   17: { phase: "chiuso", subState: "non_avviato", label: "Chiuso · Non avviato" },

@@ -656,7 +656,7 @@ export function dialogText(
     case "segna_in_realizzazione":
       return {
         title: "Segnare come in realizzazione?",
-        description: "Senza realizzazione: le realizzazioni sono spente per questo workspace.",
+        description: "Senza pagina di realizzazione: in questo workspace le realizzazioni non sono attive.",
         confirm: "Segna come in realizzazione",
       };
   }

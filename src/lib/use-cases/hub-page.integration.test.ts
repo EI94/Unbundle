@@ -1387,7 +1387,7 @@ test("Panoramica: gli scaduti in cima a «Questo trimestre» con «Scaduto» ai 
 test("parte dossier non disponibile: «In realizzazione» mostra solo fase e titolo, mai «Senza dossier»", opts, async () => {
   // Sezione Casi d'uso spenta: nessun dossier, e «Senza dossier» è vero.
   const off = await html("ls", ids.wsA, { vista: "panoramica" });
-  assert.ok(rowOf(off, cards.building.id).includes("In realizzazione · Senza realizzazione"));
+  assert.ok(rowOf(off, cards.building.id).includes("In realizzazione · Senza pagina di realizzazione"));
   const flags = globalThis as { __hubH4aDossierError?: boolean };
   flags.__hubH4aDossierError = true;
   try {
@@ -1396,7 +1396,7 @@ test("parte dossier non disponibile: «In realizzazione» mostra solo fase e tit
       const card = rowOf(page, cards.building.id);
       assert.ok(card.includes(cards.building.title), person);
       assert.ok(card.includes(">In realizzazione<"), `${person}: ${card}`);
-      assert.ok(!page.includes("Senza realizzazione"), `${person}: niente «Senza realizzazione»`);
+      assert.ok(!page.includes("Senza pagina di realizzazione"), `${person}: niente «Senza pagina di realizzazione»`);
     }
     // Il pannello riceve lo stesso ripiego.
     for (const person of ["builder", "contributor"] as const) {

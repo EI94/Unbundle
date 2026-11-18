@@ -81,7 +81,7 @@ export const SUB_STATE_LABEL: Readonly<Record<Exclude<SubState, "trimestre" | "d
   rimandata: "Rimandata",
   da_rivedere: "Da rivedere",
   piu_avanti: "Più avanti",
-  senza_dossier: "Senza realizzazione",
+  senza_dossier: "Senza pagina di realizzazione",
   realizzato: "In uso",
   diffusa: "Diffusa",
   non_avviato: "Non avviato",

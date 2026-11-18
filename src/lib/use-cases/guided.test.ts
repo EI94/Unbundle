@@ -176,7 +176,7 @@ test("percorso in realizzazione: con il dossier, senza, in uso, chiuso, dossier 
   const base = { phase: "in_realizzazione" as const, subState: "dossier" as const, targetQuarter: "2026-Q4" };
   const cases: Array<[string, Partial<GuidedItem>, "ok" | "errore", string[]]> = [
     ["con il dossier", { dossier: { status: "in_sviluppo" } }, "ok", ["informazioni:fatto", "realizzazione:adesso:In sviluppo", "in_uso:dopo"]],
-    ["senza dossier", { subState: "senza_dossier" }, "ok", ["informazioni:fatto", "realizzazione:adesso:senza realizzazione", "in_uso:dopo"]],
+    ["senza dossier", { subState: "senza_dossier" }, "ok", ["informazioni:fatto", "realizzazione:adesso:senza pagina di realizzazione", "in_uso:dopo"]],
     ["in uso", { dossier: { status: "in_esercizio" } }, "ok", ["informazioni:fatto", "realizzazione:fatto", "in_uso:adesso:da segnare"]],
     ["dossier chiuso", { dossier: { status: "chiuso" } }, "ok", ["informazioni:fatto", "realizzazione:adesso:Chiuso", "in_uso:dopo"]],
     ["dossier non letto", {}, "errore", ["informazioni:fatto", "realizzazione:adesso:non disponibile ora", "in_uso:dopo"]],

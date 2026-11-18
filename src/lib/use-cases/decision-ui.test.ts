@@ -596,7 +596,7 @@ test("dialoghi: titoli, testi e pulsanti esatti di §14.3", () => {
   });
   assert.deepEqual(dialogText("segna_in_realizzazione", null), {
     title: "Segnare come in realizzazione?",
-    description: "Senza realizzazione: le realizzazioni sono spente per questo workspace.",
+    description: "Senza pagina di realizzazione: in questo workspace le realizzazioni non sono attive.",
     confirm: "Segna come in realizzazione",
   });
   assert.equal(dialogText("approva", null).title, "Approva", "senza codice, il solo verbo");

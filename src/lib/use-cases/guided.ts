@@ -76,7 +76,7 @@ export const GUIDED_TEXT = Object.freeze({
     infoNone: "nessuna da chiedere",
     toStart: "da avviare",
     unavailable: "non disponibile ora",
-    noDossier: "senza realizzazione",
+    noDossier: "senza pagina di realizzazione",
     toMark: "da segnare",
     inUseSince: "dal {giorno}",
     diffusedOn: "il {giorno}",
