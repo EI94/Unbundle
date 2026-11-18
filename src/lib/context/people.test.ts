@@ -49,14 +49,28 @@ test("solo parole comuni non è un nome: «del», «il cliente», «Società», 
   assert.equal(replacePerson("Il magazzino del cliente è a Bologna.", "del"), "Il magazzino del cliente è a Bologna.");
 });
 
-test("«Togli»: una parola sola del nome del cliente no, nome e cognome sì; un'e-mail sempre", () => {
+test("«Togli»: il nome del cliente no, anche intero, né un dominio; nome e cognome sì; un'e-mail sempre", () => {
   assert.equal(CONTEXT_TEXT.people.inClientName, "Questa parola è anche nel nome del cliente: scrivi nome e cognome, oppure l'e-mail.");
   // Il workspace «Alfa Ricambi», della organizzazione «Officine Beta»: nomi inventati.
   const names = ["Alfa Ricambi", "Officine Beta"];
-  for (const term of ["Alfa", "ALFÀ", "di Alfa", "Alfa 3", "Ricambi", "Beta"]) assert.equal(termInClientName(term, names), true, term);
-  // Due parole che dicono chi è, una parola che non sta nel nome (parola intera), un'e-mail, un termine non valido.
-  for (const term of ["Mario Alfa", "Alfa Ricambi", "Alfredo", "Rossi", "alfa@ricambi.it", "Al", "del"]) assert.equal(termInClientName(term, names), false, term);
+  // Una parola sola del nome, come prima; (rilascio del 19/11) anche il nome intero del workspace o dell'organizzazione,
+  // in un altro ordine, con una parola comune o un trattino: ogni parola, tolte quelle comuni, sta nei nomi del cliente.
+  for (const term of ["Alfa", "ALFÀ", "di Alfa", "Alfa 3", "Ricambi", "Beta", "Alfa Ricambi", "alfa ricambì", "l'Alfa Ricambi", "Ricambi di Alfa", "Alfa-Ricambi", "Officine Beta", "OFFICINE  BETA", "Alfa Beta"]) {
+    assert.equal(termInClientName(term, names), true, term);
+  }
+  // Un dominio senza la chiocciola si troverebbe in ogni indirizzo del dominio: mai, anche senza i nomi del cliente. Un
+  // nome scritto come un dominio, senza spazi e con il punto, gli somiglia: si chiede l'e-mail intera.
+  for (const term of ["alfaricambi.it", "cliente.test", "CLIENTE.TEST", "@cliente.test", "www.alfa-ricambi.it", "posta.cliente.co.uk", "caffè.it", "mario.rossi"]) {
+    assert.equal(termInClientName(term, names), true, term);
+    assert.equal(termInClientName(term, [null, undefined]), true, `${term} senza i nomi`);
+  }
+  // Una parola che dice chi è, una parola che non sta nel nome (parola intera), un'e-mail anche del dominio, un termine
+  // non valido, un punto con lo spazio.
+  for (const term of ["Mario Alfa", "Alfa Romeo", "Alfredo", "Rossi", "Mario Rossi", "M. Rossi", "alfa@ricambi.it", "ordini@alfaricambi.it", "Al", "del"]) {
+    assert.equal(termInClientName(term, names), false, term);
+  }
   assert.equal(termInClientName("Alfa", [null, undefined]), false, "senza nomi niente da confrontare");
+  assert.equal(termInClientName("Alfa Ricambi", [null, ""]), false);
 });
 
 test("un nome si cerca come parola intera: «Rossi» non prende «Rossini»", () => {

@@ -5,8 +5,9 @@
  *
  * - `personTerm`: da 3 a 80 caratteri, con almeno 3 lettere. Un'e-mail o un nome, mai solo parole comuni («del», «il
  *   cliente»: `COMMON_WORDS`).
- * - `termInClientName`: per «Togli … da tutto», una parola sola che sta anche nel nome del cliente («Alfa» per «Alfa
- *   Ricambi»): si chiede nome e cognome, oppure l'e-mail.
+ * - `termInClientName`: per «Togli … da tutto», un termine fatto solo di parole del nome del cliente («Alfa» o «Alfa
+ *   Ricambi» per «Alfa Ricambi»), oppure un dominio senza la chiocciola («cliente.test»): si chiede nome e cognome,
+ *   oppure l'e-mail.
  * - `personPattern`: l'espressione regolare, la stessa per Postgres (`~`, `regexp_replace`, `regexp_instr`) e per
  *   JavaScript, senza flag. Un nome si cerca come parola intera, senza badare a maiuscole e accenti: «Rossi» non prende
  *   «Rossini», «rossì» prende «Rossi», «De Luca» prende «de  luca» e «De Luca» a capo. Un'e-mail come testo esatto, senza
@@ -219,17 +220,33 @@ function nameWords(term: string): string[] {
 }
 
 /**
- * Vero se il termine, tolte le parole comuni, è una parola sola che sta anche nel nome del cliente (del workspace o
- * dell'organizzazione), come parola intera e senza badare a maiuscole e accenti: «Togli «Alfa» da tutto» per il cliente
- * «Alfa Ricambi» cancellerebbe il cliente ovunque. Vale solo per «Togli»: la ricerca resta larga. Un'e-mail mai.
+ * Un dominio da solo, senza la parte prima della chiocciola («cliente.test», «@cliente.test», «www.alfa-ricambi.it»):
+ * pezzi di lettere, cifre e trattini separati da punti, l'ultimo di almeno 2 lettere, nessuno spazio. Come nome si
+ * troverebbe dentro ogni indirizzo del dominio. Anche un nome scritto così («mario.rossi») gli somiglia: per lui si
+ * chiede l'e-mail intera, oppure nome e cognome.
+ */
+const DOMAIN = /^@?(?:[\p{L}\p{N}](?:[\p{L}\p{N}-]*[\p{L}\p{N}])?\.)+\p{L}{2,}\.?$/u;
+
+/**
+ * Vero se «Togli … da tutto» toglierebbe il cliente invece di una persona: il termine, tolte le parole comuni, è fatto
+ * solo di parole del nome del cliente (del workspace o dell'organizzazione), ognuna come parola intera e senza badare a
+ * maiuscole e accenti («Alfa», «Alfa Ricambi», «Officine Beta» per il cliente «Alfa Ricambi» dell'organizzazione «Officine
+ * Beta»), oppure è un dominio senza la chiocciola (`DOMAIN`), che svuoterebbe ogni appunto con un indirizzo di quel
+ * dominio. Vale solo per «Togli»: la ricerca resta larga. Un'e-mail mai.
  */
 export function termInClientName(term: string, names: ReadonlyArray<string | null | undefined>): boolean {
   const checked = personTerm(term);
   if (!checked.ok || checked.isEmail) return false;
+  if (DOMAIN.test(checked.term)) return true;
   const words = nameWords(checked.term);
-  if (words.length !== 1) return false;
-  const word = new RegExp(personPattern(words[0]));
-  return names.some((name) => typeof name === "string" && word.test(name));
+  const client = names.filter((name): name is string => typeof name === "string" && name.length > 0);
+  return (
+    words.length > 0 &&
+    words.every((w) => {
+      const word = new RegExp(personPattern(w));
+      return client.some((name) => word.test(name));
+    })
+  );
 }
 
 // ─── Il pezzo di testo trovato ───────────────────────────────────────

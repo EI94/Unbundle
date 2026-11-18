@@ -391,7 +391,7 @@ export const CONTEXT_TEXT = Object.freeze({
     search: "Cerca",
     searching: "Cerco…",
     tooShort: "Scrivi almeno 3 lettere.",
-    // Un termine fatto solo di parole comuni («del», «il cliente»), e una parola sola del nome del cliente (solo «Togli»).
+    // Un termine fatto solo di parole comuni («del», «il cliente»), e uno fatto solo del nome del cliente o un dominio (solo «Togli»).
     tooCommon: "Questa parola è troppo comune: scrivi nome e cognome, oppure l'e-mail.",
     inClientName: "Questa parola è anche nel nome del cliente: scrivi nome e cognome, oppure l'e-mail.",
     none: "Non compare da nessuna parte.",
