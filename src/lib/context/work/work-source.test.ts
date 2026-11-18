@@ -145,3 +145,36 @@ test("«Una call risponde»: solo i revisori, solo un fatto «Per tutti» attivo
   assert.match(decide, /WHERE id = \$\{linkId\}::uuid AND workspace_id = \$\{ws\}::uuid AND status = 'aperta'/);
   assert.match(decide, /actorUserId: null/, "nella storia senza chi ha deciso");
 });
+
+// ─── (9b) `unbundle impara`, `unbundle nota`, le fonti nuove (§2.5, §3.2, §4.5) ──
+
+test("`impara`: una fonte «impara:» già letta e una proposta «Solo Lateral Space», detta, senza citazione; il tetto del giorno per workspace", () => {
+  const learning = readFileSync(new URL("../../db/queries/context-learning.ts", import.meta.url), "utf8");
+  const body = topLevelFunction(learning, "export async function addLearning(");
+  assert.match(body, /const allowed = await gate\(actor, "canOpen"\);/);
+  assert.match(body, /const scan = scanStatement\(text\);\s+if \(!scan\.ok\) return invalid\(/);
+  assert.match(body, /const section = input\.section \?\? "sistemi";/);
+  assert.match(body, /rateLimitBucket\("ctx", "ws", ws, "impara", "day"\), window: "day", limit: CONTEXT_LIMITS\.learnsPerDayWorkspace/);
+  assert.match(body, /'appunti', 'cli', \$\{title\}/);
+  assert.match(body, /\$\{`\$\{LEARNED_SOURCE_PREFIX\}\$\{sourceId\}`\}, 'ls', 'letto'/);
+  assert.match(body, /INSERT INTO context_proposals \(id, workspace_id, source_id, position, kind, statement, basis, section, visibility, target_fact_id, use_case_ids\)/);
+  assert.match(body, /\$\{kind\}, \$\{text\}, 'detto', \$\{section\}, 'ls'/);
+  assert.doesNotMatch(body, /\bquote\b/, "nessuna citazione");
+  // Un fatto «Solo Lateral Space» non si rivela a chi non è di Lateral Space.
+  assert.match(body, /WHERE workspace_id = \$\{ws\}::uuid AND status = 'attivo' AND \(\$\{lateralSpace\} OR visibility = 'tutti'\)/);
+});
+
+test("«Da confermare»: le proposte delle risposte del referente e delle cose imparate non sono mai preselezionate", () => {
+  const view = topLevelFunction(proposals, "async function loadViewContext(");
+  assert.match(view, /isClientSource\(\{ kind: src\.kind, visibility: src\.visibility, addedByLateralSpace: [\s\S]*?\}\) \|\|\s+isLearnedSource\(\{ origin: src\.origin, externalId: src\.external_id \}\)/);
+  assert.match(proposals, /learned: isLearnedSource\(\{ origin: j\.origin, externalId: j\.externalId \}\),/);
+});
+
+test("`nota` ammette l'origine «cli»; una fonte di risposte non ha «Togli» e non si toglie", () => {
+  const sources = readFileSync(new URL("../../db/queries/context-sources.ts", import.meta.url), "utf8");
+  assert.match(sources, /origin: "web" \| "claude" \| "granola" \| "cli";/);
+  assert.match(sources, /if \(origin !== "web" && origin !== "claude" && origin !== "granola" && origin !== "cli"\) fieldErrors\.origin/);
+  assert.match(sources, /: row\.kind === "risposta" \? false : lateralSpace,/);
+  const remove = topLevelFunction(sources, "export async function removeContextSource(");
+  assert.match(remove, /if \(source\.kind === "risposta"\) return denied\(\);/);
+});

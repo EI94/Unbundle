@@ -28,7 +28,7 @@ import { entityKey, entityName, normalizeStatement, oneLine } from "@/lib/contex
 import { isPreselected, realIsoDate } from "@/lib/context/read/reconcile";
 import { isHardIssue, issueMessage, scanPersonalData, scanStatement } from "@/lib/context/scan";
 import { CONTEXT_TEXT } from "@/lib/context/text";
-import { contextAbilities, isClientSource, stricterVisibility, type ContextActor } from "@/lib/context/visibility";
+import { contextAbilities, isClientSource, isLearnedSource, stricterVisibility, type ContextActor } from "@/lib/context/visibility";
 import {
   COMMITMENT_PARTIES,
   CONTEXT_LIMITS,
@@ -82,8 +82,12 @@ export interface ProposalView {
   closesQuestion: { id: string; question: string } | null;
 }
 export interface OpenProposals {
-  /** `kind`: «Call 14 nov» o «Documento 14 nov» nel «Ora: …» dei conflitti. `origin`: da dove è entrata la fonte. */
-  sources: Array<{ id: string; kind: SourceKind; origin: SourceOrigin; title: string; occurredOn: string; skipped: SkippedCounts }>;
+  /**
+   * `kind`: «Call 14 nov» o «Documento 14 nov» nel «Ora: …» dei conflitti. `origin`: da dove è entrata la fonte.
+   * (9b) `learned`: una cosa imparata costruendo un caso (`unbundle impara`): «Da chi costruisce XX-0012, 18 nov».
+   * `listOpenProposals` lo dà sempre; nel tipo è facoltativo per le viste costruite a mano (assente vale falso).
+   */
+  sources: Array<{ id: string; kind: SourceKind; origin: SourceOrigin; title: string; occurredOn: string; skipped: SkippedCounts; learned?: boolean }>;
   /** Tutte tranne «conferma», nell'ordine: appunto più recente, poi `position`. */
   proposals: ProposalView[];
   /** Le «conferma». */
@@ -180,7 +184,10 @@ interface ViewContext {
   heads: ReadonlyMap<string, TargetFact>;
   useCases: ReadonlyMap<string, { id: string; code: string | null; title: string }>;
   questions: ReadonlyMap<string, string>;
-  /** Le fonti scritte dal cliente (`isClientSource`): le loro proposte non sono mai preselezionate. */
+  /**
+   * Le fonti scritte dal cliente (`isClientSource`, anche le risposte del referente) e (9b) le cose imparate costruendo
+   * (`isLearnedSource`): le loro proposte non sono mai preselezionate.
+   */
   clientSources: ReadonlySet<string>;
   /** Le frasi (normalizzate) dei fatti «Solo Lateral Space» attivi. */
   lsOnly: ReadonlySet<string>;
@@ -251,15 +258,19 @@ async function loadViewContext(workspaceId: string, rows: readonly ProposalRow[]
       : Promise.resolve({ rows: [] }),
     sourceIds.length > 0
       ? db.execute(sql`
-          SELECT s.id, s.kind, s.visibility, u.email, u.email_verified FROM context_sources s LEFT JOIN users u ON u.id = s.added_by_user_id
+          SELECT s.id, s.kind, s.origin, s.external_id, s.visibility, u.email, u.email_verified FROM context_sources s LEFT JOIN users u ON u.id = s.added_by_user_id
           WHERE s.workspace_id = ${workspaceId}::uuid AND s.id = ANY(${uuidArray(sourceIds)})`)
       : Promise.resolve({ rows: [] }),
     rows.length > 0 ? lsOnlyStatements(workspaceId) : Promise.resolve(new Set<string>()),
   ]);
   const ls = parseLsDomains(process.env.UC_LS_EMAIL_DOMAINS);
   const clientSources = new Set(
-    rowsOf<{ id: string; kind: SourceKind; visibility: ContextVisibility; email: string | null; email_verified: unknown }>(sources)
-      .filter((src) => isClientSource({ kind: src.kind, visibility: src.visibility, addedByLateralSpace: isLateralSpaceEmail({ email: src.email, emailVerified: isEmailVerifiedValue(src.email_verified) }, ls) }))
+    rowsOf<{ id: string; kind: SourceKind; origin: SourceOrigin; external_id: string | null; visibility: ContextVisibility; email: string | null; email_verified: unknown }>(sources)
+      .filter(
+        (src) =>
+          isClientSource({ kind: src.kind, visibility: src.visibility, addedByLateralSpace: isLateralSpaceEmail({ email: src.email, emailVerified: isEmailVerifiedValue(src.email_verified) }, ls) }) ||
+          isLearnedSource({ origin: src.origin, externalId: src.external_id }),
+      )
       .map((src) => src.id),
   );
   return {
@@ -278,7 +289,15 @@ export async function listOpenProposals(actor: ContextActor, opts: { sourceId?: 
   if (opts.sourceId !== undefined && !isUuid(opts.sourceId)) return { sources: [], proposals: [], reconfirmed: [] };
   const ws = actor.workspaceId;
   const joined = await db
-    .select({ proposal: contextProposals, kind: contextSources.kind, origin: contextSources.origin, title: contextSources.title, occurredOn: contextSources.occurredOn, skipped: contextSources.skipped })
+    .select({
+      proposal: contextProposals,
+      kind: contextSources.kind,
+      origin: contextSources.origin,
+      externalId: contextSources.externalId,
+      title: contextSources.title,
+      occurredOn: contextSources.occurredOn,
+      skipped: contextSources.skipped,
+    })
     .from(contextProposals)
     .innerJoin(contextSources, eq(contextSources.id, contextProposals.sourceId))
     .where(
@@ -295,7 +314,17 @@ export async function listOpenProposals(actor: ContextActor, opts: { sourceId?: 
   const ctx = await loadViewContext(ws, rows);
   const sources = new Map<string, OpenProposals["sources"][number]>();
   for (const j of joined) {
-    if (!sources.has(j.proposal.sourceId)) sources.set(j.proposal.sourceId, { id: j.proposal.sourceId, kind: j.kind, origin: j.origin, title: j.title, occurredOn: toIsoDate(j.occurredOn), skipped: j.skipped ?? {} });
+    if (!sources.has(j.proposal.sourceId)) {
+      sources.set(j.proposal.sourceId, {
+        id: j.proposal.sourceId,
+        kind: j.kind,
+        origin: j.origin,
+        title: j.title,
+        occurredOn: toIsoDate(j.occurredOn),
+        skipped: j.skipped ?? {},
+        learned: isLearnedSource({ origin: j.origin, externalId: j.externalId }),
+      });
+    }
   }
   const views = rows.map((row) => viewOf(row, ctx));
   return {

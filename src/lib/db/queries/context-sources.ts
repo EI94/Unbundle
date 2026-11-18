@@ -6,7 +6,9 @@ import "server-only";
  * - Gli appunti li vede e li scrive solo Lateral Space; sono sempre «Solo Lateral Space» (lo garantisce anche il CHECK).
  * - Un documento ha la sua riga di `uploaded_documents` e la sua fonte, nate nella stessa transazione; chi non è di
  *   Lateral Space vede solo i documenti «Per tutti».
- * - Togliere una fonte lascia i fatti confermati, segnati «senza fonte»; le sue proposte spariscono.
+ * - Togliere una fonte lascia i fatti confermati, segnati «senza fonte»; le sue proposte spariscono. (9b) Una fonte di
+ *   risposte del referente non si toglie: le risposte vivono nella scheda dello use case.
+ * - (9b) Gli appunti arrivano anche dalla CLI (`unbundle nota`, origine `cli`).
  * - Salvare non chiama mai il modello: la lettura è `readContextSource` (context-read.ts).
  * Nei log e nella storia solo id, codici e numeri: mai un titolo o un testo.
  */
@@ -40,7 +42,8 @@ export interface NewNoteInput {
   participants?: string | null;
   /** Solo https. */
   link?: string | null;
-  origin: "web" | "claude" | "granola";
+  /** (9b) `cli`: `unbundle nota`, solo Lateral Space (lo controlla `canAddNotes`). */
+  origin: "web" | "claude" | "granola" | "cli";
   kind?: "appunti" | "trascrizione";
 }
 export interface AddedSource {
@@ -55,7 +58,7 @@ interface CleanNote {
   body: string;
   participants: string | null;
   link: string | null;
-  origin: "web" | "claude" | "granola";
+  origin: "web" | "claude" | "granola" | "cli";
   kind: "appunti" | "trascrizione";
   hash: string;
 }
@@ -89,7 +92,7 @@ function checkNote(input: NewNoteInput): { ok: true; note: CleanNote } | { ok: f
   const link = cleanLink(input?.link);
   if (!link.ok) fieldErrors.link = T.add.linkInvalid;
   const origin = input?.origin;
-  if (origin !== "web" && origin !== "claude" && origin !== "granola") fieldErrors.origin = T.errors.invalid;
+  if (origin !== "web" && origin !== "claude" && origin !== "granola" && origin !== "cli") fieldErrors.origin = T.errors.invalid;
   const kind = input?.kind ?? "appunti";
   if (kind !== "appunti" && kind !== "trascrizione") fieldErrors.kind = T.errors.invalid;
   // Il controllo dei testi: dati sanitari e discriminatori fermano il salvataggio, con la parola trovata e il campo
@@ -395,7 +398,8 @@ function listItemOf(actor: ContextActor, lateralSpace: boolean, row: SourceRow):
     openProposals: lateralSpace ? Number(row.open_proposals) : 0,
     visibility: row.visibility,
     document: isDocument && row.document_id ? { id: row.document_id, fileName: row.file_name ?? "", fileType: row.file_type ?? "", fileSize: Number(row.file_size ?? 0) } : null,
-    canRemove: isDocument ? canRemoveDocument(actor, { uploadedByUserId: row.uploaded_by }) : lateralSpace,
+    // (9b) Le risposte del referente non si tolgono da qui: vivono nella scheda dello use case, in «Cosa serve».
+    canRemove: isDocument ? canRemoveDocument(actor, { uploadedByUserId: row.uploaded_by }) : row.kind === "risposta" ? false : lateralSpace,
   };
 }
 
@@ -474,6 +478,8 @@ export async function removeContextSource(actor: ContextActor, sourceId: string,
     if (!source || (!abilities.seesLateralSpace && (source.kind !== "documento" || source.visibility !== "tutti"))) return notFound();
     const isDocument = source.kind === "documento";
     if (isDocument ? !canRemoveDocument(actor, { uploadedByUserId: source.uploadedBy }) : !abilities.canAddNotes) return denied();
+    // (9b) Una fonte di risposte del referente non si toglie: le risposte vivono nella scheda dello use case.
+    if (source.kind === "risposta") return denied();
     const results = await db.batch([
       // La call di Granola non rientra al prossimo giro: resta solo il suo id, «fuori».
       db.execute(sql`
