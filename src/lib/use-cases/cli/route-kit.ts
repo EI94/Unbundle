@@ -9,6 +9,8 @@ import "server-only";
  * - **il token, poi l'accesso al workspace riletto a ogni richiesta** (chi è uscito dal workspace non entra più,
  *   anche con un token ancora valido); i ruoli nel caso li controlla ogni rotta;
  * - **limiti per token** (600 letture e 120 scritture l'ora) e, per il login, per indirizzo e per codice.
+ * - (9b) **un corpo più grande solo per `unbundle nota`** (`maxBytes`): gli appunti di una call arrivano dentro il JSON;
+ *   tutte le altre rotte restano a 64 KB.
  *
  * Le risposte sono `{ errore: { codice, messaggio } }` con il messaggio in italiano, da mostrare così com'è.
  */
@@ -24,10 +26,13 @@ import {
 } from "@/lib/connector/http-hygiene";
 import { consumeRateLimits, rateLimitBucket, type RateLimitRule } from "@/lib/connector/rate-limit";
 import { ensureDbSchema } from "@/lib/db/ensure-schema";
+import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { authenticateCli, cliStoreReady, type CliPrincipal } from "@/lib/db/queries/use-case-cli-auth";
 import { markIntegrationTokenExposed } from "@/lib/db/queries/workspace-integrations";
 import { getAppUcExecutor, type UcExecutor } from "@/lib/db/uc-executor";
 import { logSafeError } from "@/lib/log/safe-error";
+import { isEmailVerifiedValue, isLateralSpaceEmail } from "@/lib/uc/lateral-space";
+import { cast, toStatement, ucSql } from "@/lib/uc/sql/statement";
 import { getCollaboratorAccess, type WorkspaceAccess } from "@/lib/workspace-access";
 import { CLI_DEVICE_CODE_PREFIX, CLI_TOKEN_PREFIX, hashSecret } from "./codes";
 
@@ -52,8 +57,13 @@ export function cliError(status: number, codice: string, messaggio: string, extr
   return hygieneJson({ errore: { codice, messaggio } }, status, extra);
 }
 
-/** I controlli prima di leggere il token e il corpo: token nell'indirizzo, metodo, `Origin`, JSON, lunghezza. */
-export async function screenCliRequest(request: Request, method: "GET" | "POST"): Promise<Response | null> {
+const TOO_LARGE = "La richiesta è troppo grande.";
+
+/**
+ * I controlli prima di leggere il token e il corpo: token nell'indirizzo, metodo, `Origin`, JSON, lunghezza dichiarata
+ * (al massimo `maxBytes`, 64 KB se non è detto).
+ */
+export async function screenCliRequest(request: Request, method: "GET" | "POST", maxBytes: number = CLI_ROUTE_LIMITS.bodyBytes): Promise<Response | null> {
   const finding = findTokenInUrl(request.url, { tokenPrefixes: TOKEN_PREFIXES });
   if (finding.found) {
     for (const candidate of finding.candidates) {
@@ -70,14 +80,18 @@ export async function screenCliRequest(request: Request, method: "GET" | "POST")
   if (request.headers.get("origin")) return cliError(403, "origine", "La CLI non si usa da un browser.");
   if (method === "POST") {
     if (!isJsonContentType(request.headers.get("content-type"))) return cliError(415, "json", "Serve un corpo JSON.");
-    if (declaredBodyTooLarge(request.headers, CLI_ROUTE_LIMITS.bodyBytes)) return cliError(413, "troppo_grande", "La richiesta è troppo grande.");
+    if (declaredBodyTooLarge(request.headers, maxBytes)) return cliError(413, "troppo_grande", TOO_LARGE);
   }
   return null;
 }
 
-/** Il corpo JSON di una scrittura, o la risposta d'errore. */
-export async function readCliBody(request: Request): Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; response: Response }> {
-  const read = await readJsonBodyLimited(request, CLI_ROUTE_LIMITS.bodyBytes);
+/**
+ * Il corpo JSON di una scrittura (al massimo `maxBytes`, 64 KB se non è detto), o la risposta d'errore: 413 oltre il
+ * limite, anche quando la lunghezza non era dichiarata; 400 per un JSON che non va.
+ */
+export async function readCliBody(request: Request, maxBytes: number = CLI_ROUTE_LIMITS.bodyBytes): Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; response: Response }> {
+  const read = await readJsonBodyLimited(request, maxBytes);
+  if (!read.ok && read.code === "payload_too_large") return { ok: false, response: cliError(413, "troppo_grande", TOO_LARGE) };
   if (!read.ok) return { ok: false, response: cliError(400, "json", "Il corpo non è un JSON valido o è troppo grande.") };
   const body = read.value;
   if (body === null || typeof body !== "object" || Array.isArray(body)) return { ok: false, response: cliError(400, "json", "Serve un oggetto JSON.") };
@@ -114,13 +128,14 @@ export async function consumeCliTokenLimit(tokenId: string, write: boolean): Pro
 /**
  * Apre una richiesta della CLI con il token: lo schema, il token, l'accesso al workspace riletto adesso, il
  * limite del token. Il resto (ruoli nel caso, regole dell'Agent Factory) lo fa la rotta. L'MCP del caso passa
- * `limit: false` e consuma il limite per ogni strumento chiamato, come il MCP del team.
+ * `limit: false` e consuma il limite per ogni strumento chiamato, come il MCP del team. (9b) `maxBytes`: il corpo più
+ * grande di `unbundle nota`; le altre rotte restano a 64 KB.
  */
 export async function openCli(
   request: Request,
-  input: { method: "GET" | "POST"; write: boolean; limit?: boolean },
+  input: { method: "GET" | "POST"; write: boolean; limit?: boolean; maxBytes?: number },
 ): Promise<{ ok: true; value: OpenedCli } | { ok: false; response: Response }> {
-  const screened = await screenCliRequest(request, input.method);
+  const screened = await screenCliRequest(request, input.method, input.maxBytes);
   if (screened) return { ok: false, response: screened };
   await ensureDbSchema();
   const executor = await getAppUcExecutor();
@@ -134,4 +149,34 @@ export async function openCli(
     if (!limited.ok) return { ok: false, response: cliError(429, "troppe_richieste", "Troppe richieste: riprova tra poco.", { "Retry-After": String(limited.retryAfterSeconds) }) };
   }
   return { ok: true, value: { principal, access, executor } };
+}
+
+/**
+ * (9b) La persona del token è di Lateral Space? Dall'e-mail **verificata**, riletta adesso, nei domini di
+ * `UC_LS_EMAIL_DOMAINS` (`isLateralSpaceEmail`), come nelle pagine: `OpenedCli.access` dice il ruolo nel workspace, non
+ * questo. Falso se la persona non c'è più o se i domini non sono configurati.
+ */
+export async function isCliLateralSpace(opened: OpenedCli, lsDomains: readonly string[] = ucLsDomains()): Promise<boolean> {
+  const [rows] = await opened.executor.batch([
+    toStatement(ucSql`SELECT email, email_verified IS NOT NULL AS email_verified FROM users WHERE id = ${cast(opened.principal.userId, "uuid")}`),
+  ]);
+  const row = rows[0];
+  if (!row) return false;
+  return isLateralSpaceEmail({ email: typeof row.email === "string" ? row.email : null, emailVerified: isEmailVerifiedValue(row.email_verified) }, lsDomains);
+}
+
+/**
+ * (9b) L'indirizzo pubblico dell'app per i link nelle risposte (`NEXT_PUBLIC_APP_URL`, https o locale), altrimenti quello
+ * della richiesta: come il link di conferma del login.
+ */
+export function cliPublicOrigin(request: Request, configured: string | undefined = process.env.NEXT_PUBLIC_APP_URL): string {
+  if (configured) {
+    try {
+      const url = new URL(configured);
+      if (url.protocol === "https:" || /^(localhost|127\.0\.0\.1)$/.test(url.hostname)) return url.origin;
+    } catch {
+      // Un valore non valido non cambia niente: si usa l'indirizzo della richiesta.
+    }
+  }
+  return new URL(request.url).origin;
 }

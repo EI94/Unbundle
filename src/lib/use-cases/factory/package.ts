@@ -16,10 +16,17 @@
  * **Una versione nuova nasce solo se il contenuto cambia:** l'impronta è sul contenuto (non sul numero di
  * versione né sul giorno), e la tabella non accetta due versioni con la stessa impronta.
  *
+ * **(9b) `CONTESTO.md`, facoltativo** (docs/contesto/RILASCIO-9b-COSTRUZIONE.md §2.4, D8): i fatti «Per tutti» che Lateral
+ * Space ha confermato sul cliente, che `loadAgentContext` porta (mai un fatto «Solo Lateral Space», mai una citazione), con
+ * i nomi coperti come negli altri file. C'è solo quando ci sono fatti da scrivere: senza, i file e l'impronta sono quelli di
+ * prima della 9b, e un pacchetto senza contesto non diventa una versione nuova. Con il contesto l'impronta comprende anche
+ * le sue sezioni (non l'intestazione, che porta versione e giorno).
+ *
  * Modulo puro: import relativi `.ts`.
  */
 import { createHash } from "node:crypto";
 import type { PackageFile } from "../../db/use-case-hub-factory-ddl.ts";
+import { formatContestoMd, type AgentContext, type AgentFact } from "../../context/work/agent-text.ts";
 
 /** Quello che serve al pacchetto, già letto con i permessi di chi lo genera (`queries/use-case-factory.ts`). */
 export interface PackageSource {
@@ -50,6 +57,42 @@ export interface PackageSource {
   namesToHide: readonly string[];
   /** Vero se chi genera il pacchetto non vede «Cosa serve»: risposte ed esigenze restano fuori, e il pacchetto lo dice. */
   needsHidden?: boolean;
+  /**
+   * (9b) Il contesto del cliente per il caso, solo da `loadAgentContext` (fatti «Per tutti», senza citazioni). Assente o
+   * null: nessun `CONTESTO.md`, come prima della 9b (archivio di «Contesto» non pronto).
+   */
+  context?: AgentContext | null;
+  /**
+   * (9b) Vero se l'archivio c'è ma il contesto non si è letto (un errore del database): il pacchetto non si salva, perché
+   * senza `CONTESTO.md` nascerebbe una versione nuova e il suo avviso a chi costruisce. Si riprova.
+   */
+  contextUnavailable?: boolean;
+}
+
+/** (9b) I file facoltativi del pacchetto: `CONTESTO.md`, solo con fatti «Per tutti» da scrivere (§2.4). */
+export const PACKAGE_OPTIONAL_FILES = ["CONTESTO.md"] as const;
+export type PackageOptionalFile = (typeof PACKAGE_OPTIONAL_FILES)[number];
+/** I file di una versione: i tre di sempre (il CHECK della 0030) e, quando c'è, `CONTESTO.md`. */
+export type PackageFiles = Record<PackageFile, string> & Partial<Record<PackageOptionalFile, string>>;
+
+/**
+ * (9b) Da quando contano le novità del contesto per l'ultimo pacchetto (`contextDeltaSince`, §2.3, §2.5): dalla sua nascita
+ * se ha `CONTESTO.md`; null (contano tutti i fatti) se non ce l'ha o se non c'è un pacchetto. La stessa regola per la riga
+ * del brief e per quella del dossier.
+ */
+export function packageContextSince(latest: { createdAt: string; files: Partial<Record<string, string>> } | null): Date | null {
+  if (!latest || typeof latest.files["CONTESTO.md"] !== "string") return null;
+  const at = new Date(latest.createdAt);
+  return Number.isNaN(at.getTime()) ? null : at;
+}
+
+/** Le due (o tre) parti del pacchetto che contano per l'impronta. */
+export interface PackageContent {
+  /** PACCHETTO.md senza intestazione. */
+  body: string;
+  brief: string;
+  /** (9b) Le sezioni di CONTESTO.md, senza l'intestazione (codice, versione, giorno); null senza fatti da scrivere. */
+  contesto: string | null;
 }
 
 export interface PackageVersionInfo {
@@ -129,6 +172,38 @@ export function redact(text: string, tokens: readonly string[], given: ReadonlyS
   return out;
 }
 
+/**
+ * (9b) Il contesto del cliente con i nomi coperti, come i testi degli altri file: le righe di «In breve», le frasi dei
+ * fatti, gli impegni con il loro ruolo, le domande con a chi chiederle. Fonti, date e conti restano. Lo usano
+ * `CONTESTO.md` e lo strato `contesto` della CLI e dell'MCP del caso.
+ */
+export function redactAgentContext(ctx: AgentContext, names: readonly string[]): AgentContext {
+  const tokens = nameTokens(names);
+  const given = givenNames(names);
+  const hide = (text: string) => redact(text, tokens, given);
+  const fact = (f: AgentFact): AgentFact => ({ ...f, statement: hide(f.statement) });
+  return {
+    brief: ctx.brief.map(hide),
+    caseFacts: ctx.caseFacts.map(fact),
+    rules: ctx.rules.map(fact),
+    words: ctx.words.map(fact),
+    commitments: ctx.commitments.map((c) => ({ ...c, statement: hide(c.statement), role: c.role === null ? null : hide(c.role) })),
+    questions: ctx.questions.map((q) => ({ ...q, question: hide(q.question), askWhom: q.askWhom === null ? null : hide(q.askWhom) })),
+    since: ctx.since,
+  };
+}
+
+/**
+ * (9b) Le sezioni di `CONTESTO.md` senza l'intestazione (il titolo con codice e versione, la riga con il giorno): la parte
+ * che conta per l'impronta. null senza fatti «Per tutti» da scrivere.
+ */
+function contestoSections(ctx: AgentContext, code: string): string | null {
+  const file = formatContestoMd(ctx, { code, version: 1, day: "" });
+  if (file === null) return null;
+  // Il file è «titolo, riga d'apertura, sezioni», separati da una riga vuota; nessuna riga ha un a capo dentro.
+  return file.replace(/\n$/, "").split("\n\n").slice(2).join("\n\n");
+}
+
 function clean(text: string | null | undefined, max: number, tokens: readonly string[], given: ReadonlySet<string> = new Set()): string | null {
   if (!text) return null;
   const flat = text.replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "").trim();
@@ -147,8 +222,11 @@ function dayLabel(day: string | null): string | null {
   return `${day.slice(8, 10)}/${day.slice(5, 7)}/${day.slice(0, 4)}`;
 }
 
-/** Le due parti del pacchetto che contano per l'impronta: il testo di PACCHETTO.md senza intestazione e il brief. */
-export function packageContent(source: PackageSource): { body: string; brief: string } {
+/**
+ * Le parti del pacchetto che contano per l'impronta: il testo di PACCHETTO.md senza intestazione, il brief e (9b) le
+ * sezioni di CONTESTO.md, se ci sono fatti «Per tutti» da scrivere.
+ */
+export function packageContent(source: PackageSource): PackageContent {
   const L = PACKAGE_LIMITS;
   const t = nameTokens(source.namesToHide);
   const g = givenNames(source.namesToHide);
@@ -211,12 +289,18 @@ export function packageContent(source: PackageSource): { body: string; brief: st
   const brief = [`# ${source.code} · ${oneLine(title)}`, "", [summary ? oneLine(summary) : null, limits ? `Limiti: ${oneLine(limits)}` : null].filter(Boolean).join(" ")]
     .join("\n")
     .trimEnd();
-  return { body, brief };
+  const contesto = source.context ? contestoSections(redactAgentContext(source.context, source.namesToHide), source.code) : null;
+  return { body, brief, contesto };
 }
 
-/** L'impronta del contenuto: SHA-256 del testo e del brief, senza versione né giorno. */
-export function packageHash(content: { body: string; brief: string }): string {
-  return createHash("sha256").update(`${content.body}\n\u0000\n${content.brief}`, "utf8").digest("hex");
+/**
+ * L'impronta del contenuto: SHA-256 del testo e del brief, senza versione né giorno. (9b) Con `CONTESTO.md` anche le sue
+ * sezioni (`body\n\0\nbrief\n\0\ncontesto`); senza, l'impronta di prima della 9b, così un pacchetto senza contesto non
+ * diventa una versione nuova.
+ */
+export function packageHash(content: { body: string; brief: string; contesto?: string | null }): string {
+  const text = content.contesto ? `${content.body}\n\u0000\n${content.brief}\n\u0000\n${content.contesto}` : `${content.body}\n\u0000\n${content.brief}`;
+  return createHash("sha256").update(text, "utf8").digest("hex");
 }
 
 /** L'impronta di un pacchetto importato (fatto a mano): PACCHETTO.md e BRIEF.md, senza VERSIONE (numero e giorno). */
@@ -224,11 +308,11 @@ export function packageFilesHash(files: Record<PackageFile, string>): string {
   return createHash("sha256").update(`${files["PACCHETTO.md"]}\n\u0000\n${files["BRIEF.md"]}`, "utf8").digest("hex");
 }
 
-/** I tre file di una versione. */
-export function packageFiles(source: PackageSource, info: PackageVersionInfo, content = packageContent(source)): Record<PackageFile, string> {
+/** I tre file di una versione e (9b) `CONTESTO.md`, quando ci sono fatti «Per tutti» da scrivere. */
+export function packageFiles(source: PackageSource, info: PackageVersionInfo, content = packageContent(source)): PackageFiles {
   const k = `k${info.version}`;
   const day = dayLabel(info.day) ?? info.day;
-  return {
+  const files: PackageFiles = {
     "PACCHETTO.md": [
       `# Pacchetto del caso ${source.code} (${k})`,
       "",
@@ -241,4 +325,9 @@ export function packageFiles(source: PackageSource, info: PackageVersionInfo, co
     "BRIEF.md": `${content.brief}\n`,
     VERSIONE: `${k} · ${source.code} · ${info.day} · generato da Unbundle\n`,
   };
+  if (content.contesto && source.context) {
+    const contesto = formatContestoMd(redactAgentContext(source.context, source.namesToHide), { code: source.code, version: info.version, day: info.day });
+    if (contesto) files["CONTESTO.md"] = contesto;
+  }
+  return files;
 }

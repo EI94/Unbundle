@@ -9,20 +9,26 @@
  * - **Solo le decisioni che valgono:** quelle sostituite da una scelta rifatta restano fuori (`currentDecisions`).
  * - **Corto:** il brief sta in 1.200 caratteri (≈ 300 token); le righe lunghe si tagliano.
  * - **`dal`:** con una data, il brief dice anche che cosa è cambiato da allora.
+ * - **(9b) Il contesto del cliente:** lo strato `contesto` (il testo lo compone `formatAgentContext`, src/lib/context/work/
+ *   agent-text.ts) e, nel brief, una riga sola dopo quella del pacchetto quando ci sono novità (`contextBriefLine`).
  *
  * Modulo puro: import relativi `.ts`.
  */
 import { CASE_STATUS_LABEL } from "../../uc/case-state.ts";
 import type { CaseStatus } from "../../uc/vocab.ts";
 import { SETUP_TOPICS, SETUP_TOPIC_LABELS, type ProjectNewTool, type ProjectStatus, type ProjectTopics, type SetupTopic } from "../../db/use-case-hub-factory-ddl.ts";
+import { contextBriefLine } from "../../context/work/agent-text.ts";
 import { currentDecisions } from "../factory/decisions.ts";
 import { givenNames, nameTokens, redact } from "../factory/package.ts";
 
 /** Quanto può essere lungo il brief: 300 token, a circa 4 caratteri l'uno. */
 export const BRIEF_MAX_CHARS = 1200;
 
-/** Gli strati del contesto oltre al brief: `unbundle context --<strato>` e `get_case_context` con `layer`. */
-export const CONTEXT_LAYERS = ["progetto", "decisioni", "pacchetto", "domande"] as const;
+/**
+ * Gli strati del contesto oltre al brief: `unbundle context --<strato>` e `get_case_context` con `layer`. (9b) `contesto`:
+ * i fatti confermati sul cliente che toccano il caso, solo «Per tutti».
+ */
+export const CONTEXT_LAYERS = ["progetto", "decisioni", "pacchetto", "domande", "contesto"] as const;
 export type ContextLayer = (typeof CONTEXT_LAYERS)[number];
 export const BRIEF_MAX_TOKENS = 300;
 /** Le decisioni nel brief: le ultime valide. */
@@ -72,6 +78,11 @@ export interface BriefInput {
   repos: { repo: string; folder: string }[];
   /** (8.1a) La riga dei compiti (`tasksBriefLine`): «T-2 tuo, in corso · …», senza nomi; null senza compiti. */
   tasksLine?: string | null;
+  /**
+   * (9b) Le novità del contesto del cliente dopo l'ultimo pacchetto con `CONTESTO.md`, o quanti fatti ci sono se il pacchetto
+   * non ce l'ha o non c'è (`contextDeltaSince`). Con zero, o senza, nessuna riga.
+   */
+  contextDelta?: number;
   namesToHide: readonly string[];
   /** Le novità da questa data (ISO), se chiesta. */
   since?: string | null;
@@ -129,6 +140,11 @@ export function composeBrief(input: BriefInput): string {
   }
   lines.push(`Prossimo passo: ${nextStep(input)}`);
   if (input.latestPackage) lines.push(`Pacchetto: k${input.latestPackage.version} del ${day(input.latestPackage.createdAt)} («unbundle start» lo porta nel repository).`);
+  // (9b) La riga del contesto, subito dopo quella del pacchetto. Porta solo il codice e dei numeri: come il codice e i
+  // repository non passa dai nomi da nascondere («ROSA-0001» resterebbe «una persona-0001»). Non comincia con «- »: quando
+  // il brief è lungo cedono le decisioni, non lei.
+  const contextLine = contextBriefLine({ code: input.code, delta: input.contextDelta ?? 0, packageVersion: input.latestPackage?.version ?? null });
+  if (contextLine) lines.push(cut(contextLine, 160));
   if (input.tasksLine) lines.push(cut(input.tasksLine, 200));
   if (project?.newTools.length) {
     lines.push(cut(`Strumenti nuovi: ${project.newTools.map((t) => hide(t.nome)).join(", ")}${project.aiBoardOkAt ? ` (ok AI Board ${day(project.aiBoardOkAt)})` : " (manca l'ok dell'AI Board)"}.`, 160));
@@ -157,7 +173,7 @@ export function composeBrief(input: BriefInput): string {
     ].filter(Boolean);
     lines.push(`Dal ${day(since)}: ${changes.length ? changes.join(", ") : "niente di nuovo"}.`);
   }
-  lines.push("Strati: --progetto, --decisioni, --pacchetto, --domande.");
+  lines.push(`Strati: ${CONTEXT_LAYERS.map((layer) => `--${layer}`).join(", ")}.`);
   let text = lines.join("\n");
   // Le righe delle decisioni sono le prime a cedere, se il brief è lungo.
   while (text.length > BRIEF_MAX_CHARS) {

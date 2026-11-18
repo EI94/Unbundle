@@ -8,7 +8,9 @@ import "server-only";
  * 2. Solo il token di un caso solo (`unbundle mcp <ID>`): un token di tutti i casi riceve 403. Il caso lo dà il
  *    token, con i ruoli nel caso riletti a ogni richiesta (`resolveCliCase`): chi esce dal team non entra più.
  * 3. I 5 strumenti (`mcp-contract.ts`). Il limite orario del token lo consumano solo le chiamate agli strumenti
- *    (600 letture, 120 scritture), come il MCP del team. Le scritture passano dal registro con l'idempotenza.
+ *    (600 letture, 120 scritture), come il MCP del team. Le scritture passano dal registro con l'idempotenza. (9b)
+ *    `get_case_context` ha anche lo strato `contesto`, lo stesso testo della CLI: solo «Per tutti». `impara` resta una
+ *    porta sola, la CLI (D15).
  * 4. Una riga di log per ogni messaggio JSON-RPC (area `case-mcp`): strumento o metodo, esito, durata, i primi 8
  *    caratteri dell'id del token. Mai token, argomenti, testi, nomi o e-mail.
  */
@@ -18,6 +20,7 @@ import { serveStatelessMcp } from "@/lib/connector/mcp-server";
 import { addTeamDecision, proposeAgentQuestion, recordBuildSession } from "@/lib/db/queries/use-case-factory";
 import { logSafeError } from "@/lib/log/safe-error";
 import { cliWriteDenial, executeCliWrite, proposalsDenial, resolveCliCase, type CliCase, type CliWriteOutcome } from "./case";
+import { CLI_CONTEXT_UNAVAILABLE } from "./case-errors";
 import { loadCliContext } from "./context";
 import { parseBuildSession } from "./inputs";
 import {
@@ -65,8 +68,12 @@ async function callTool(name: CaseMcpToolName, args: unknown, opened: OpenedCli,
     const value = parsed.value as { layer?: string; since?: string };
     const layer = name === "list_decisions" ? "decisioni" : value.layer && value.layer !== "brief" ? value.layer : null;
     const context = await loadCliContext(executor, c, { layer: layer as Parameters<typeof loadCliContext>[2]["layer"], since: value.since ? new Date(value.since) : null });
-    if (!context) return done(caseMcpErrorResult("non_trovato", NOT_FOUND));
-    return done(caseMcpResult({ caso: c.useCase.code, testo: context.testo, dati: context.dati }, context.testo));
+    if (!context.ok) {
+      // (9b) Lo strato `contesto` con l'archivio di «Contesto» che non risponde: da riprovare, non «caso non trovato».
+      if (context.code === "non_disponibile") return done(caseMcpErrorResult("non_disponibile", CLI_CONTEXT_UNAVAILABLE.message, { retryAfterSeconds: 60 }));
+      return done(caseMcpErrorResult("non_trovato", NOT_FOUND));
+    }
+    return done(caseMcpResult({ caso: c.useCase.code, testo: context.value.testo, dati: context.value.dati }, context.value.testo));
   }
 
   const denial = cliWriteDenial(c);
