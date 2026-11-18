@@ -413,10 +413,11 @@ async function removeFromUseCaseSection(params: { workspaceId: string; userId: s
     // (8.1b) Fuori anche dal team di Lateral Space del cliente: se torna, non rientra da solo nei casi nuovi. (8.0c) E da
     // chi costruisce da fuori; i compiti che aveva tornano da prendere.
     await leaveWorkspaceFactory(executor, { workspaceId: params.workspaceId, userId: params.userId, lsDomains: ucLsDomains() });
-    return result.casesWithoutLead.map((c) => ` Caso ${c.code}: ls_lead da indicare.`).join("");
+    // (Rilascio 10, §4) Mai una chiave a schermo: «Realizzazione XX-0001: manca il responsabile di Lateral Space.»
+    return result.casesWithoutLead.map((c) => ` Realizzazione ${c.code}: manca il responsabile di Lateral Space.`).join("");
   } catch (error) {
     console.error("[uc] rimozione dai casi d'uso non riuscita", error instanceof Error ? error.message : "errore");
-    return " Controlla i ruoli nei casi d'uso: l'aggiornamento non è riuscito.";
+    return " Controlla i ruoli nelle realizzazioni: l'aggiornamento non è riuscito.";
   }
 }
 

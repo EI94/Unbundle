@@ -32,7 +32,7 @@ const isVersion = (value: unknown): value is number => typeof value === "number"
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
 /** La versione superata di un'esigenza: il testo del servizio parla dello use case. */
-const NEED_STALE_MESSAGE = "Qualcuno ha appena modificato questa esigenza. Ho ricaricato i dati: rifai la modifica.";
+const NEED_STALE_MESSAGE = "Qualcuno ha appena modificato questa informazione. Ho ricaricato i dati: rifai la modifica.";
 
 /** I toast dopo una scrittura riuscita. */
 const TOAST = Object.freeze({

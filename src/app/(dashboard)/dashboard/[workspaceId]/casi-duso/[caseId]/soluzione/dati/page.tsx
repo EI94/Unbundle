@@ -73,7 +73,7 @@ export default async function SolutionDataPage({
 
       {data.view === "prova" && (
         <div className="mb-5 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="max-w-2xl text-sm text-muted-foreground">Casi con dati inventati o pseudonimizzati, per provare il modello sul passato prima del collaudo.</p>
+          <p className="max-w-2xl text-sm text-muted-foreground">Casi con dati inventati o pseudonimizzati, per provare il modello sul passato prima della prova con il cliente.</p>
           {canImport && <TestCasesImportButton importHref={testCasesImportHref(workspaceId, caseId)} />}
         </div>
       )}

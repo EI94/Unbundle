@@ -372,7 +372,7 @@ export async function revokeIssuedToken(executor: UcExecutor, i: { caseId: strin
 async function checkTemplateRole(executor: UcExecutor, ctx: UcCommandContext, roleKey: string | null | undefined): Promise<Result<void>> {
   if (!roleKey) return ok(undefined);
   const info = await loadTemplateInfo(executor, ctx);
-  return info.roles.some((r) => r.key === roleKey) ? ok(undefined) : fail("ruolo_non_previsto", "Questo ruolo non è previsto dallo schema del dossier.");
+  return info.roles.some((r) => r.key === roleKey) ? ok(undefined) : fail("ruolo_non_previsto", "Questo ruolo non è previsto dallo schema della realizzazione.");
 }
 
 /** Aggiunge un referente del cliente (Responsabile del caso o Owner del cliente). */
@@ -562,7 +562,7 @@ export async function assignItems(executor: UcExecutor, ctx: UcCommandContext, i
     itemIds: data.itemIds ?? null,
     roleKey: data.mode === "ruolo" ? data.roleKey : null,
   });
-  if (data.mode === "voci" && items.length !== new Set(data.itemIds).size) return fail("voce_non_trovata", "Domanda non trovata in questo dossier.");
+  if (data.mode === "voci" && items.length !== new Set(data.itemIds).size) return fail("voce_non_trovata", "Domanda non trovata in questa realizzazione.");
   // Su tutto il caso la proposta riguarda solo le voci con un ruolo del titolare: le altre non sono «saltate».
   const considered = data.mode === "proposta" && !data.itemIds ? items.filter((i) => i.ownerRoleKey) : items;
   if (considered.length === 0) return fail("nessuna_voce", data.mode === "ruolo" ? "Nessuna domanda ha questo ruolo." : "Nessuna domanda da assegnare.");
@@ -690,7 +690,7 @@ export async function createRequest(executor: UcExecutor, ctx: UcCommandContext,
   const loaded = await loadItems(executor, ctx.workspaceId, ctx.caseId, candidateIds);
   if (!loaded) return fail("non_trovato", CASE_NOT_FOUND);
   const list = candidateIds.map((id) => loaded.items.get(id)).filter((l): l is LoadedItem => l !== undefined);
-  if (explicit && list.length !== new Set(explicit).size) return fail("voce_non_trovata", "Domanda non trovata in questo dossier.");
+  if (explicit && list.length !== new Set(explicit).size) return fail("voce_non_trovata", "Domanda non trovata in questa realizzazione.");
   const split = splitRequestable(list.map((l) => ({ ...l, activeRequestId: l.extra.activeRequestId })), { contactId });
   if (explicit && split.skipped.length > 0) return firstSkipFailure(split.skipped, "Nessuna domanda da inviare.");
   if (split.eligible.length === 0) return firstSkipFailure(split.skipped, "Il referente non ha domande da inviare.");
@@ -825,7 +825,7 @@ export async function sendRequests(executor: UcExecutor, ctx: UcCommandContext, 
   const core = opened.value;
   const explicit = parsed.data.itemIds;
   const candidates = await lightItems(executor, { caseId: ctx.caseId, contactIds: parsed.data.contactIds ?? null, itemIds: explicit ?? null });
-  if (explicit && !parsed.data.contactIds && candidates.length !== new Set(explicit).size) return fail("voce_non_trovata", "Domanda non trovata in questo dossier.");
+  if (explicit && !parsed.data.contactIds && candidates.length !== new Set(explicit).size) return fail("voce_non_trovata", "Domanda non trovata in questa realizzazione.");
   // Senza scelta esplicita si considerano solo le voci che si possono chiedere: le altre non sono «saltate».
   const considered = explicit ? candidates : candidates.filter((i) => isLightRequestable(i));
   if (considered.length === 0) return fail("nessuna_voce", "Nessuna domanda assegnata da inviare.");
@@ -912,7 +912,7 @@ export async function requestConfirmation(executor: UcExecutor, ctx: UcCommandCo
   const loaded = await loadItems(executor, ctx.workspaceId, ctx.caseId, parsed.data.itemIds);
   if (!loaded) return fail("non_trovato", CASE_NOT_FOUND);
   const list = [...new Set(parsed.data.itemIds)].map((id) => loaded.items.get(id));
-  if (list.some((l) => !l)) return fail("voce_non_trovata", "Domanda non trovata in questo dossier.");
+  if (list.some((l) => !l)) return fail("voce_non_trovata", "Domanda non trovata in questa realizzazione.");
   const items = list as LoadedItem[];
   const contacts = await loadContacts(executor, ctx.workspaceId, items.map((l) => l.snapshot.assigneeContactId).filter((c): c is string => c !== null));
   const emails = await lsMemberEmails(executor, core, ctx.lsDomains);

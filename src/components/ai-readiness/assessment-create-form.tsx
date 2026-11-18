@@ -62,7 +62,7 @@ const PILLAR_HINTS: Record<string, string> = {
   context: "Conoscenza condivisa, documentazione, contesto organizzativo.",
   workflow: "Processi, automazioni, flussi operativi dei team.",
   adoption: "Uso reale dell'AI da parte delle persone. Tipico per tutta l'organizzazione.",
-  use_cases: "Raccolta di casi d'uso concreti proposti dai dipendenti.",
+  use_cases: "Raccolta di use case concreti proposti dai dipendenti.",
 };
 
 export function AssessmentCreateForm({ workspaceId, workspaceName }: { workspaceId: string; workspaceName: string }) {

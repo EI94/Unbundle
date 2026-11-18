@@ -374,7 +374,7 @@ const FIELD_BLOCK = { title: "nome", oneLiner: "in_una_frase", perimeterLabel: "
 
 const SETTINGS_MESSAGES: Readonly<Record<string, string>> = {
   conflitto: "Qualcuno ha appena cambiato queste impostazioni. Aggiorna la pagina e riprova.",
-  caso_chiuso: "Il dossier è chiuso: non si modifica più.",
+  caso_chiuso: "La realizzazione è chiusa: non si modifica più.",
 };
 
 /**
@@ -385,11 +385,11 @@ const SETTINGS_MESSAGES: Readonly<Record<string, string>> = {
  * l'evento nello stesso batch.
  */
 export async function updateCaseSettings(executor: UcExecutor, ctx: UcCommandContext, input: unknown): Promise<Result<{ fields: string[] }>> {
-  if (!can(actorRoles(ctx), "gestire_membri")) return fail("attore_non_ammesso", "Solo il responsabile Lateral Space cambia le impostazioni del dossier.");
+  if (!can(actorRoles(ctx), "gestire_membri")) return fail("attore_non_ammesso", "Solo il responsabile Lateral Space cambia le impostazioni della realizzazione.");
   const parsed = SettingsSchema.safeParse(input);
   if (!parsed.success) return fail("dati_non_validi", parsed.error.issues[0]?.message ?? "Controlla i campi.");
   const current = await loadCaseSettings(executor, ctx);
-  if (!current) return fail("non_trovato", "Dossier non trovato.");
+  if (!current) return fail("non_trovato", "Realizzazione non trovata.");
   if (current.status === "chiuso") return fail("caso_chiuso", SETTINGS_MESSAGES.caso_chiuso);
   const v = parsed.data;
   const next = {
