@@ -5,8 +5,8 @@ import { enableTsxImports } from "./detail/referent/tsx-test-loader.ts";
 
 // «‹ Torna alla Panoramica» (prima «‹ Torna alla lista», rilascio «Pulizia»), sopra i grafici del menu
 // «⋯»: il pulsante sparisce con il grafico; il fuoco va al titolo della Panoramica, non sul <body>, e
-// solo dopo quel clic. Lo stesso per «Vedi cosa serve», «Vedi le proposte» e «Da decidere» delle fasi
-// (rilascio «Panoramica»): il fuoco va al titolo di «Cosa serve» o di «Da decidere».
+// solo dopo quel clic. Lo stesso per il pulsante del prossimo passo che cambia vista (rilascio 10, D3) e per «Da
+// decidere» delle fasi (rilascio «Panoramica»): il fuoco va al titolo di «Cosa serve» o di «Da decidere».
 let focus: typeof import("./list-focus.tsx");
 let renderToStaticMarkup: (element: unknown) => string;
 let createElement: (type: unknown, props: unknown, ...children: unknown[]) => unknown;
@@ -60,9 +60,11 @@ test("la Panoramica, «Cosa serve» e «Da decidere» hanno il loro titolo; «�
   assert.match(hub, /<ListFocusTarget key="cosa-serve" title="Cosa serve" \/>\s*<NeedsBoardView\b/);
   assert.match(hub, /<ListFocusTarget key="da-decidere" title=\{reviewer \? HUB_TEXT\.decideView : HUB_TEXT\.contributorDecideView\} \/>\s*<DecideView\b/);
   assert.equal(hub.split("<ListFocusTarget").length - 1, 3, "un titolo per vista");
-  // «Vedi cosa serve» / «Vedi le proposte» e «Da decidere» delle fasi lasciano il segno.
+  // Il pulsante del prossimo passo che cambia vista (rilascio 10, D3: «Decidi», «Chiedi», «Verifica») e «Da decidere»
+  // delle fasi lasciano il segno.
   const top = readFileSync(new URL("./panoramica-top.tsx", import.meta.url), "utf8");
-  assert.ok(top.includes("render={<ViewFocusLink href={nextStep.href} />}"), "il pulsante di «Prossimo passo»");
+  assert.ok(top.includes("IN_HUB_STEPS.has(step.key) ? <ViewFocusLink href={href} /> : null"), "il pulsante del prossimo passo");
+  assert.match(top, /const IN_HUB_STEPS: ReadonlySet<string> = new Set\(\["decidere", "chiedere", "verificare"\]\);/);
   assert.ok(top.includes("<ViewFocusLink href={decideHref} className={STEP_LINK}>"), "«Da decidere» delle fasi");
   assert.ok(!/from "next\/link"/.test(top), "nessun altro link che cambia vista");
   // I grafici del menu «⋯» stanno in chart-view.tsx: il ritorno sopra, mai un titolo da mettere a fuoco.

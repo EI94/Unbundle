@@ -31,7 +31,9 @@ import { laneBarScale, PANORAMA_SECTION_ID } from "@/lib/use-cases/lanes";
 import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { nextStepOf, type NextStep } from "@/lib/use-cases/guided";
 import { buildNeedsBoard, clientGroupLabel, needListsOfUseCase, needOwnerText, panelNeeds, type NeedView } from "@/lib/use-cases/needs";
-import { overviewFigures, overviewNextStep, overviewSteps, portfolioLine } from "@/lib/use-cases/panoramica";
+import { overviewFigures, overviewSteps, portfolioLine, workspaceSteps, type WorkspaceStepInput } from "@/lib/use-cases/panoramica";
+import { loadWorkspaceStepFacts } from "@/lib/db/queries/use-case-workspace-step";
+import { workspaceStepView } from "@/lib/home/next-step";
 import { abilitiesForUseCase, type UseCaseAbilities } from "@/lib/use-cases/permissions";
 import { compareQuarters, quarterLabel, WHEN_LATER_LABEL } from "@/lib/use-cases/quarter";
 import { USE_CASE_SOURCES } from "@/lib/use-cases/types";
@@ -177,6 +179,11 @@ export interface UseCaseHubData {
   charts: HubChartParam[];
   /** Il grafico aperto nella Panoramica al posto delle corsie (`shownChart`); null senza. */
   chart: HubChartParam | null;
+  /**
+   * (Rilascio 10, D3) Le due letture in più del prossimo passo del workspace, lo stesso della Home: l'ok sui fornitori
+   * e l'ultimo SAL (`loadWorkspaceStepFacts`). Solo per un revisore sulle corsie senza filtri, dove c'è il passo; null altrove.
+   */
+  stepFacts: Pick<WorkspaceStepInput, "suppliers" | "sal"> | null;
 }
 
 /** (Rilascio 6) Quello che le finestre del referente del pannello ricevono, come nella scheda. */
@@ -204,7 +211,8 @@ export async function loadUseCaseHub({ workspaceId, session, access, searchParam
   ]);
   if (!list) return null;
   const items: readonly AnyHubItem[] = list.items;
-  const view = params.vista ?? defaultHubView(viewer, decideCount(items));
+  // (Rilascio 10, D3) Senza `vista` sempre la Panoramica, per ogni ruolo.
+  const view = params.vista ?? defaultHubView();
   // I grafici del menu «⋯» dei revisori, su tutte le schede: un filtro non toglie una voce.
   const charts = reviewer && abilities.canSeePriority ? hubCharts(list.items as HubItem[]) : [];
   const chart = view === "panoramica" && reviewer ? shownChart(params.mostra, charts) : null;
@@ -219,7 +227,9 @@ export async function loadUseCaseHub({ workspaceId, session, access, searchParam
   // della Panoramica, solo ai revisori. «Prossimo passo» c'è solo sulle corsie senza filtri: con un
   // filtro le corsie non le leggono.
   const readsNeeds = reviewer && abilities.canSeeNeeds && (view === "cosa-serve" || (lanes && !hasActiveFilters(params)) || Boolean(params.apri));
-  const [dossierColumn, participation, subprocessorsPending, needs, info, connectorDisplayName, referents] = await Promise.all([
+  // (Rilascio 10, D3) Il prossimo passo del workspace, sulle corsie senza filtri: le sue due letture in più.
+  const readsStep = reviewer && lanes && !hasActiveFilters(params);
+  const [dossierColumn, participation, subprocessorsPending, needs, info, connectorDisplayName, referents, stepFacts] = await Promise.all([
     inProgress.length ? dossierColumnOf(workspaceId, { userId: session.user.id, role: access.role }, inProgress) : null,
     // (Rilascio 5, §12, D29) «Partecipazione per area» in fondo alla Panoramica (le corsie, non un grafico), per ogni ruolo.
     lanes ? getPortfolioParticipation(workspaceId) : null,
@@ -233,6 +243,7 @@ export async function loadUseCaseHub({ workspaceId, session, access, searchParam
     reviewer ? connectorGuideOf(workspaceId) : null,
     // (Rilascio 5) Lo stato del referente degli use case che chi guarda vede: per tutti i ruoli.
     listReferentStates(workspaceId, viewer, items, { now }),
+    readsStep ? loadWorkspaceStepFacts({ workspaceId, userId: session.user.id, role: access.role, isLateralSpace: viewer.isLateralSpace }) : null,
   ]);
   // (Rilascio 6, B.2) Il referente dello use case aperto: la stessa lettura della scheda, dopo le esigenze.
   const openedReviewer = opened && opened.projection !== "contributore" ? opened.useCase : null;
@@ -292,6 +303,7 @@ export async function loadUseCaseHub({ workspaceId, session, access, searchParam
     subprocessorsPending,
     charts,
     chart,
+    stepFacts,
   };
 }
 
@@ -509,16 +521,20 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
             reviewer && abilities.canSeeFigures && !filtersActive && valueParams
               ? portfolioLine(buildRoadmapValue(reviewerItems, valueParams, { plan: roadmapPlan(reviewerItems, valueParams) }))
               : null,
-          nextStep: reviewer && !filtersActive ? overviewNextStep({ items: reviewerItems, needs: data.needs, today: list.today }) : null,
+          // (Rilascio 10, D3) Il passo del workspace, lo stesso della Home: «Chiudi il SAL» porta al pannello del SAL della Home.
+          nextStep:
+            reviewer && !filtersActive
+              ? {
+                  step: workspaceStepView(
+                    workspaceSteps({ items: reviewerItems, needs: data.needs, today: list.today, suppliers: data.stepFacts?.suppliers ?? null, sal: data.stepFacts?.sal ?? null }),
+                    { workspaceId, companyName: data.workspaceName, salHref: `/dashboard/${workspaceId}?apri=sal` },
+                  ),
+                }
+              : null,
         }
       : null;
-  // Dove porta «Prossimo passo», senza i filtri di adesso: la vista mostra proprio quello che si è contato.
-  const nextStep = overview?.nextStep ?? null;
-  const nextStepHref = nextStep
-    ? nextStep.kind === "decisioni"
-      ? hubHref(basePath, {}, { vista: "da-decidere" })
-      : hubHref(basePath, {}, { vista: "cosa-serve", trimestre: nextStep.quarter })
-    : null;
+  // Il pulsante pieno del passo, quando c'è: allora «Nuovo use case» è bordato.
+  const stepFilled = Boolean(overview?.nextStep?.step?.mine);
 
   // «Cosa serve»: tutte le esigenze del workspace; con un filtro quelle degli use case che lo
   // passano (e quelle con la ricerca nel titolo). I codici in «Per» restano quelli di tutte le schede.
@@ -571,7 +587,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
         <HubHeader
           workspaceId={workspaceId}
           newHref={newHref}
-          newUseCaseVariant={nextStep ? "outline" : "default"}
+          newUseCaseVariant={stepFilled ? "outline" : "default"}
           menu={
             abilities.canExport && data.activityMapping
               ? {
@@ -644,7 +660,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
                   decideHref={viewHref("da-decidere")}
                   figures={overview.figures}
                   line={overview.line}
-                  nextStep={nextStep && nextStepHref ? { step: nextStep, href: nextStepHref } : null}
+                  nextStep={overview.nextStep}
                 />
               ) : null}
               <PanoramaLanes

@@ -32,15 +32,16 @@ test("il riquadro accanto alla barra laterale si stringe con la finestra (min-w-
 
 test("la pagina «Use case» è un contenitore: righe, corsie e tabelle guardano la sua larghezza", () => {
   assert.match(read("src/components/use-cases/hub.tsx"), /data-slot="use-case-hub" data-view=\{view\} className="@container\/hub /);
-  for (const [file, variant] of [
-    ["src/components/use-cases/use-case-row.tsx", "@min-[58rem]/hub:"],
-    // La testa della Panoramica: le fasi in fila e «Prossimo passo» su una riga dal riquadro di 42rem.
-    ["src/components/use-cases/panoramica-top.tsx", "@2xl/hub:"],
+  for (const [file, variant, columns] of [
+    ["src/components/use-cases/use-case-row.tsx", "@min-[58rem]/hub:", ["grid", "flex-row"]],
+    // La testa della Panoramica: le fasi in fila dal riquadro di 42rem. (Rilascio 10) Il prossimo passo è il pezzo
+    // comune `NextStep`, che va a capo da sé.
+    ["src/components/use-cases/panoramica-top.tsx", "@2xl/hub:", ["grid", "flex-row", "flex "]],
   ] as const) {
     // Ogni stringa del file (className, cn(…), costanti delle classi).
     const classes = [...read(file).matchAll(/["`]([^"`\n]*)["`]/g)].map((match) => match[1]).join(" ");
     assert.doesNotMatch(classes, VIEWPORT_VARIANT, `${file}: una forma sulla larghezza della finestra`);
-    assert.ok(classes.includes(`${variant}grid`) || classes.includes(`${variant}flex-row`), `${file}: le colonne sulla larghezza del riquadro (${variant})`);
+    assert.ok(columns.some((shape) => classes.includes(`${variant}${shape}`)), `${file}: le colonne sulla larghezza del riquadro (${variant})`);
   }
   // «Cosa serve» (rilascio 4): la lista e accanto la linea del tempo dai 58rem del riquadro, mai sulla
   // finestra; le righe sono un elenco a ogni larghezza (la tabella non c'è più).

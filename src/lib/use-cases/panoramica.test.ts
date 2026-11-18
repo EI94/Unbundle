@@ -6,10 +6,17 @@ import { buildNeedsBoard, needsSummaryPieces, type NeedView } from "./needs.ts";
 import {
   OVERVIEW_STEP_KEYS,
   OVERVIEW_STEP_TARGET,
+  SAL_EVERY_DAYS,
+  WORKSPACE_STEP_KEYS,
+  addDays,
+  nextSalFrom,
   overviewFigures,
-  overviewNextStep,
   overviewSteps,
   portfolioLine,
+  salDue,
+  workspaceNextStep,
+  workspaceSteps,
+  type WorkspaceStepInput,
 } from "./panoramica.ts";
 import type { ContributorUseCase, UseCaseViewer } from "./permissions.ts";
 import type { CostFigure } from "./valuation.ts";
@@ -216,50 +223,121 @@ test("«Su tutto il portafoglio»: le ore se qualcuna ne libera, il pareggio nel
   assert.equal(portfolioLine(null), null);
 });
 
-// ─── Prossimo passo ──────────────────────────────────────────────────
+// ─── Prossimo passo del workspace (rilascio 10, D3) ──────────────────
 
-test("prossimo passo: i requisiti degli approvati di questo trimestre prima delle decisioni, ognuno una volta", () => {
+/** Il passo con tutto acceso: l'ok sui fornitori, le esigenze, il SAL. */
+function stepInput(o: Partial<WorkspaceStepInput> = {}): WorkspaceStepInput {
+  return { items: [], needs: [], today: TODAY, suppliers: { authorized: true, canAuthorize: true }, sal: { lastOn: "2026-10-20", canClose: true }, ...o };
+}
+
+const keysOf = (i: WorkspaceStepInput) => workspaceSteps(i).map((step) => step.key);
+
+test("D3: le cinque regole nell'ordine fornitori · decidere · chiedere · verificare · SAL", () => {
+  assert.deepEqual(WORKSPACE_STEP_KEYS, ["fornitori", "decidere", "chiedere", "verificare", "sal"]);
+  const current = hub();
+  const items = [current, toDecide({ waitingSince: "2026-10-20" }), toDecide({ waitingSince: "2026-10-26" })];
+  const needs = [need({ useCaseIds: [current.id] }), need({ status: "in_verifica", useCaseIds: [current.id] })];
+  const all = stepInput({ items, needs, suppliers: { authorized: false, canAuthorize: true }, sal: { lastOn: "2026-09-01", canClose: true } });
+  assert.deepEqual(keysOf(all), ["fornitori", "decidere", "chiedere", "verificare", "sal"]);
+  assert.equal(workspaceNextStep(all)?.key, "fornitori", "prima ciò che blocca altre persone");
+  // Tolto un passo, il successivo sale: la regola non cambia ordine.
+  assert.deepEqual(keysOf({ ...all, suppliers: { authorized: true, canAuthorize: true } }), ["decidere", "chiedere", "verificare", "sal"]);
+  assert.deepEqual(keysOf({ ...all, suppliers: null, items: [current] }), ["chiedere", "verificare", "sal"]);
+  assert.deepEqual(keysOf({ ...all, suppliers: null, items: [current], needs: [need({ status: "in_verifica", useCaseIds: [current.id] })] }), ["verificare", "sal"]);
+  assert.deepEqual(keysOf({ ...all, suppliers: null, items: [current], needs: [] }), ["sal"]);
+  // Niente da fare: «Tutto in ordine».
+  assert.equal(workspaceNextStep(stepInput({ items: [current], sal: { lastOn: TODAY, canClose: true } })), null);
+  assert.deepEqual(workspaceSteps(stepInput()), []);
+});
+
+test("D3 · fornitori: solo se manca l'ok e ci sono informazioni da chiedere, che l'ok tiene ferme", () => {
+  const current = hub();
+  const later = hub({ targetQuarter: "2027-Q2" });
+  const missing = { authorized: false, canAuthorize: true };
+  // Un'informazione da chiedere di un altro trimestre: anche lei aspetta l'ok.
+  assert.deepEqual(workspaceSteps(stepInput({ items: [later], needs: [need({ useCaseIds: [later.id] })], suppliers: missing, sal: null }))[0], { key: "fornitori", mine: true, waiting: 1 });
+  // Niente da chiedere (solo in attesa o da verificare): l'ok non ferma nessuno, nessun passo.
+  assert.deepEqual(keysOf(stepInput({ items: [current], needs: [need({ status: "chiesta", useCaseIds: [current.id] })], suppliers: missing, sal: null })), []);
+  // Chi non può dare l'ok: lo stato, non il pulsante.
+  assert.deepEqual(workspaceNextStep(stepInput({ items: [current], needs: [need({ useCaseIds: [current.id] })], suppliers: { authorized: false, canAuthorize: false }, sal: null })), { key: "fornitori", mine: false, waiting: 1 });
+  // L'ok c'è, la funzione è spenta o le esigenze non si leggono: la regola non vale.
+  for (const o of [{ suppliers: { authorized: true, canAuthorize: false } }, { suppliers: null }, { needs: null }]) {
+    assert.notEqual(workspaceNextStep(stepInput({ items: [current], needs: [need({ useCaseIds: [current.id] })], sal: null, ...o }))?.key, "fornitori", JSON.stringify(o));
+  }
+});
+
+test("D3 · decidere: gli use case che aspettano una decisione, «Serve info» no, con i giorni del più vecchio", () => {
+  const items = [toDecide({ waitingSince: "2026-10-20" }), toDecide({ waitingSince: "2026-10-27" }), toDecide({ subState: "serve_info", waitingSince: "2026-09-01" }), hub()];
+  assert.deepEqual(workspaceNextStep(stepInput({ items, sal: null })), { key: "decidere", mine: true, count: 2, oldestDays: 9 });
+  assert.deepEqual(workspaceNextStep(stepInput({ items: [toDecide({ waitingSince: TODAY })], sal: null })), { key: "decidere", mine: true, count: 1, oldestDays: 0 });
+});
+
+test("D3 · chiedere: le informazioni da chiedere degli approvati di questo trimestre, ognuna una volta", () => {
   const a = hub();
   const b = hub();
   const started = hub({ phase: "in_realizzazione", subState: "senza_dossier", targetQuarter: "2026-Q4" });
   const next = hub({ targetQuarter: "2027-Q1" });
   const overdue = hub({ targetQuarter: "2026-Q3" });
-  const items = [a, b, started, next, overdue, toDecide(), toDecide()];
+  const items = [a, b, started, next, overdue];
   const needs = [
-    // Per i due use case del trimestre: una volta sola.
     need({ useCaseIds: [a.id, b.id] }),
-    need({ status: "bloccata", useCaseIds: [b.id.toUpperCase()] }),
+    need({ status: "mancante", useCaseIds: [b.id.toUpperCase()] }),
     // Già partito, del trimestre dopo, scaduto: non contano.
     need({ useCaseIds: [started.id] }),
-    need({ status: "bloccata", useCaseIds: [next.id] }),
+    need({ useCaseIds: [next.id] }),
     need({ useCaseIds: [overdue.id] }),
-    // Né i passi, né le archiviate, né quelle a posto o in attesa.
+    // Né i passi, né le archiviate, né quelle ferme, a posto o in attesa.
     need({ type: "passo", status: "proposta", useCaseIds: [a.id] }),
-    need({ status: "bloccata", archivedAt: "2026-10-20T10:00:00.000Z", useCaseIds: [a.id] }),
+    need({ archivedAt: "2026-10-20T10:00:00.000Z", useCaseIds: [a.id] }),
+    need({ status: "bloccata", useCaseIds: [a.id] }),
     need({ status: "validata", useCaseIds: [a.id] }),
     need({ status: "chiesta", useCaseIds: [a.id] }),
   ];
-  assert.deepEqual(overviewNextStep({ items, needs, today: TODAY }), { kind: "requisiti", quarter: "2026-Q4", toAsk: 1, toVerify: 0, blocked: 1 });
-  // Quelli da verificare contano con gli altri, non solo quando non c'è altro.
-  const withVerify = [...needs, need({ status: "in_verifica", useCaseIds: [a.id, b.id] }), need({ status: "in_verifica", useCaseIds: [next.id] })];
-  assert.deepEqual(overviewNextStep({ items, needs: withVerify, today: TODAY }), { kind: "requisiti", quarter: "2026-Q4", toAsk: 1, toVerify: 1, blocked: 1 });
-  // Tutto chiesto: quelli da verificare da soli.
-  const verify = [need({ status: "in_verifica", useCaseIds: [a.id] }), need({ status: "chiesta", useCaseIds: [b.id] })];
-  assert.deepEqual(overviewNextStep({ items, needs: verify, today: TODAY }), { kind: "requisiti", quarter: "2026-Q4", toAsk: 0, toVerify: 1, blocked: 0 });
-  // Niente da chiedere né da verificare: le decisioni.
-  assert.deepEqual(overviewNextStep({ items, needs: [need({ status: "chiesta", useCaseIds: [a.id] })], today: TODAY }), { kind: "decisioni", count: 2 });
+  assert.deepEqual(workspaceNextStep(stepInput({ items, needs, suppliers: null, sal: null })), { key: "chiedere", mine: true, count: 2, quarter: "2026-Q4" });
+  // Senza esigenze lette: la regola non vale.
+  assert.equal(workspaceNextStep(stepInput({ items, needs: null, suppliers: null, sal: null })), null);
+  // A gennaio il T4 2026 è scaduto: le sue informazioni non sono più «per il trimestre».
+  assert.equal(workspaceNextStep(stepInput({ items: [a], needs: [need({ useCaseIds: [a.id] })], today: "2027-01-05", suppliers: null, sal: null })), null);
 });
 
-test("prossimo passo e «Cosa serve» del trimestre, dove porta il pulsante: gli stessi requisiti, contati allo stesso modo", () => {
-  // La forma di Rondine il 29/10/2026, in piccolo: requisiti di più use case del trimestre, uno già
-  // partito, uno del trimestre dopo, uno scaduto; ogni gruppo di stato, archiviate e passi.
+test("D3 · verificare: le risposte da verificare in tutto il workspace, ognuna una volta", () => {
+  const a = hub();
+  const later = hub({ targetQuarter: "2027-Q2" });
+  const shared = need({ status: "in_verifica", useCaseIds: [a.id, later.id] });
+  const needs = [shared, { ...shared }, need({ status: "in_verifica", useCaseIds: [later.id] }), need({ status: "in_verifica", useCaseIds: [] }), need({ status: "in_verifica", archivedAt: "2026-10-01T10:00:00.000Z" })];
+  assert.deepEqual(workspaceNextStep(stepInput({ items: [a, later], needs, suppliers: null, sal: null })), { key: "verificare", mine: true, count: 3 });
+});
+
+test("D3 · SAL: il primo appena il Programma ha uno use case, poi ogni 28 giorni; lo chiude chi gestisce", () => {
+  assert.equal(SAL_EVERY_DAYS, 28);
+  const approved = hub();
+  // Il primo SAL: dovuto con uno use case approvato, in realizzazione o realizzato; non con soli da valutare.
+  assert.deepEqual(workspaceNextStep(stepInput({ items: [approved], sal: { lastOn: null, canClose: true } })), { key: "sal", mine: true, first: true, lastOn: null, days: null });
+  assert.equal(workspaceNextStep(stepInput({ items: [hub({ phase: "da_valutare", subState: "rimandata" })], sal: { lastOn: null, canClose: true } })), null);
+  assert.equal(salDue(null, TODAY, []), false);
+  // Dal 28° giorno dopo l'ultimo.
+  assert.equal(salDue("2026-10-01", TODAY, [approved]), true, "dal 1° al 29 ottobre: 28 giorni");
+  assert.equal(salDue("2026-10-02", TODAY, [approved]), false, "27 giorni");
+  assert.equal(salDue("2026-09-01", TODAY, []), true, "dopo il primo, il SAL è dovuto anche senza use case");
+  assert.deepEqual(workspaceNextStep(stepInput({ items: [approved], sal: { lastOn: "2026-10-01", canClose: false } })), { key: "sal", mine: false, first: false, lastOn: "2026-10-01", days: 28 });
+  // Senza Programma (area spenta, 0029 assente): nessun SAL.
+  assert.equal(workspaceNextStep(stepInput({ items: [approved], sal: null })), null);
+  // «ultimo il 3 novembre · prossimo dal 1° dicembre».
+  assert.equal(nextSalFrom("2026-11-03"), "2026-12-01");
+  assert.equal(nextSalFrom(null), null);
+  assert.equal(addDays("2026-12-20", 28), "2027-01-17");
+});
+
+test("D3 e «Cosa serve», dove porta il pulsante: gli stessi numeri, contati allo stesso modo", () => {
+  // La forma di un cliente in piccolo: informazioni di più use case del trimestre, uno già partito, uno del
+  // trimestre dopo, uno scaduto; ogni gruppo di stato, archiviate e passi.
   const a = hub({ title: "LIBRA L1 · Lettura dei documenti esteri" });
   const b = hub({ title: "SIRIO S3 · File F24 delle imposte locali" });
   const c = hub({ title: "AUTO X2 · Bonifici massivi" });
   const started = hub({ phase: "in_realizzazione", subState: "senza_dossier", targetQuarter: "2026-Q4" });
   const next = hub({ targetQuarter: "2027-Q1" });
   const overdue = hub({ targetQuarter: "2026-Q3" });
-  const items = [a, b, c, started, next, overdue, toDecide()];
+  const items = [a, b, c, started, next, overdue];
   const needs = [
     need({ useCaseIds: [a.id, b.id] }),
     need({ status: "mancante", useCaseIds: [c.id] }),
@@ -274,33 +352,21 @@ test("prossimo passo e «Cosa serve» del trimestre, dove porta il pulsante: gli
     need({ status: "bloccata", archivedAt: "2026-10-20T10:00:00.000Z", useCaseIds: [a.id] }),
     need({ type: "passo", status: "proposta", useCaseIds: [a.id] }),
   ];
-  const step = overviewNextStep({ items, needs, today: TODAY });
-  assert.deepEqual(step, { kind: "requisiti", quarter: "2026-Q4", toAsk: 3, toVerify: 2, blocked: 1 });
-  // La pagina del pulsante (`?vista=cosa-serve&trimestre=2026-Q4`), come la compone hub.tsx.
+  const steps = workspaceSteps(stepInput({ items, needs, suppliers: null, sal: null }));
+  assert.deepEqual(steps.map((step) => step.key), ["chiedere", "verificare"]);
+  const ask = steps[0];
+  const verify = steps[1];
+  assert.ok(ask.key === "chiedere" && verify.key === "verificare");
+  // «Chiedi 3 informazioni» porta a «Cosa serve» del trimestre (`?vista=cosa-serve&trimestre=2026-Q4`), come la compone hub.tsx.
   const viewer: UseCaseViewer = { userId: uuid(9000), email: "persona.prova@cliente.test", emailVerified: true, role: "function_lead", isLateralSpace: false };
   const params = parseHubParams(new URLSearchParams("vista=cosa-serve&trimestre=2026-Q4"), viewer);
   assert.ok(hasActiveFilters(params));
   const filtered = applyHubFilters(items, params);
-  const board = buildNeedsBoard(needs, items, {
-    today: TODAY,
-    params: DEFAULT_VALUE_PARAMS,
-    only: { useCaseIds: new Set(filtered.map((item) => item.id.toLowerCase())), q: params.q },
-  });
-  assert.ok(step?.kind === "requisiti");
-  assert.deepEqual({ toAsk: board.counts.toAsk, toVerify: board.counts.toVerify, blocked: board.counts.blocked }, { toAsk: step.toAsk, toVerify: step.toVerify, blocked: step.blocked });
-  // I numeri del riquadro si leggono nella riga sotto «Requisiti», con le stesse parole.
-  assert.deepEqual(needsSummaryPieces(board.counts), ["7 aperti", "3 da chiedere", "1 in attesa", "2 da verificare", "1 fermo", "1 a posto"]);
-});
-
-test("prossimo passo: le decisioni senza approvati di questo trimestre o senza esigenze; altrimenti niente", () => {
-  const next = hub({ targetQuarter: "2027-Q1" });
-  const items = [next, toDecide(), toDecide({ subState: "serve_info" })];
-  const needs = [need({ useCaseIds: [next.id] })];
-  assert.deepEqual(overviewNextStep({ items, needs, today: TODAY }), { kind: "decisioni", count: 1 }, "«Serve info» non conta");
-  const current = hub();
-  assert.deepEqual(overviewNextStep({ items: [current, toDecide()], needs: null, today: TODAY }), { kind: "decisioni", count: 1 }, "senza esigenze");
-  assert.equal(overviewNextStep({ items: [current], needs: [need({ status: "chiesta", useCaseIds: [current.id] })], today: TODAY }), null);
-  assert.equal(overviewNextStep({ items: [], needs: [], today: TODAY }), null);
-  // A gennaio il T4 2026 è scaduto: i suoi requisiti non dicono più «per partire con il T1».
-  assert.deepEqual(overviewNextStep({ items: [current, toDecide()], needs: [need({ useCaseIds: [current.id] })], today: "2027-01-05" }), { kind: "decisioni", count: 1 });
+  const quarterBoard = buildNeedsBoard(needs, items, { today: TODAY, params: DEFAULT_VALUE_PARAMS, only: { useCaseIds: new Set(filtered.map((item) => item.id.toLowerCase())), q: params.q } });
+  assert.equal(ask.count, quarterBoard.counts.toAsk);
+  assert.equal(ask.count, 3);
+  // «Verifica 3 risposte» porta a «Cosa serve» senza filtri: la sua riga dei conteggi dice lo stesso numero.
+  const board = buildNeedsBoard(needs, items, { today: TODAY, params: DEFAULT_VALUE_PARAMS });
+  assert.equal(verify.count, board.counts.toVerify);
+  assert.ok(needsSummaryPieces(board.counts).includes("3 da verificare"), needsSummaryPieces(board.counts).join(" · "));
 });

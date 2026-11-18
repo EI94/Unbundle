@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
-import { Button } from "@/components/ui/button";
+import { stepItem } from "@/components/home/step-icons";
+import { NextStep } from "@/components/ui-10/next-step";
+import type { StepView } from "@/lib/home/next-step";
 import { formatEuro, formatInteger } from "@/lib/use-cases/format";
 import { keepTogether } from "@/lib/use-cases/line-breaks";
-import { OVERVIEW_STEP_TARGET, type OverviewFigures, type OverviewNextStep, type OverviewStep, type PortfolioLine } from "@/lib/use-cases/panoramica";
+import { OVERVIEW_STEP_TARGET, type OverviewFigures, type OverviewStep, type PortfolioLine } from "@/lib/use-cases/panoramica";
 import { quarterLabel } from "@/lib/use-cases/quarter";
 import { monthLongLabel } from "@/lib/use-cases/value-calc";
 import type { MonthCode } from "@/lib/use-cases/value-model";
@@ -21,47 +23,14 @@ export const OVERVIEW_TEXT = Object.freeze({
   quarter: "use case in questo trimestre",
   pending: "valore da misurare all'anno",
   upTo: "fino a",
-  nextStep: "Prossimo passo",
-  seeNeeds: "Vedi cosa serve",
-  seeProposals: "Vedi le proposte",
 });
 
-/** L'id del titolo di «Prossimo passo», per `aria-labelledby`. */
-const NEXT_STEP_HEADING_ID = "panoramica-prossimo-passo";
-
 /**
- * La frase di «Prossimo passo»: «Per partire con il T4 2026: 40 requisiti da chiedere, 2 da verificare
- * e 8 fermi.», «… c'è 1 requisito da verificare.», «4 use case aspettano una decisione.». Nomina
- * ogni gruppo che conta e non è zero, con le parole e nell'ordine della riga dei conteggi di «Cosa
- * serve», dove porta il pulsante. Niente totale: quella riga conta anche quelli in attesa, e un
- * numero che lì non c'è non si ritrova.
+ * (Rilascio 10, D3) I passi che cambiano vista dentro «Use case» («Decidi», «Chiedi», «Verifica»): il loro link porta
+ * il fuoco al titolo della vista nuova (`ViewFocusLink`). Gli altri («Autorizza i fornitori», «Chiudi il SAL») escono
+ * dalla pagina con un link normale.
  */
-export function nextStepText(step: OverviewNextStep): string {
-  if (step.kind === "decisioni") return step.count === 1 ? "1 use case aspetta una decisione." : `${formatInteger(step.count)} use case aspettano una decisione.`;
-  const start = `Per partire con il ${quarterLabel(step.quarter)}`;
-  const n = step.toAsk + step.toVerify + step.blocked;
-  const groups = [
-    { count: step.toAsk, label: "da chiedere" },
-    { count: step.toVerify, label: "da verificare" },
-    { count: step.blocked, label: step.blocked === 1 ? "fermo" : "fermi" },
-  ].filter((group) => group.count > 0);
-  if (groups.length > 1) {
-    // «40 requisiti da chiedere, 2 da verificare e 8 fermi»: il nome solo sul primo numero.
-    const pieces = groups.map((group, index) =>
-      index === 0 ? `${formatInteger(group.count)} ${group.count === 1 ? "requisito" : "requisiti"} ${group.label}` : `${formatInteger(group.count)} ${group.label}`,
-    );
-    return `${start}: ${pieces.slice(0, -1).join(", ")} e ${pieces[pieces.length - 1]}.`;
-  }
-  // Un gruppo solo: la frase corta.
-  if (step.toAsk) return n === 1 ? `${start} serve ancora 1 requisito da chiedere.` : `${start} servono ancora ${formatInteger(n)} requisiti da chiedere.`;
-  if (step.toVerify) return n === 1 ? `${start} c'è 1 requisito da verificare.` : `${start} ci sono ${formatInteger(n)} requisiti da verificare.`;
-  return n === 1 ? `${start} serve ancora 1 requisito fermo.` : `${start} servono ancora ${formatInteger(n)} requisiti fermi.`;
-}
-
-/** Il pulsante di «Prossimo passo»: le proposte per le decisioni, «Cosa serve» per i requisiti. */
-export function nextStepAction(step: OverviewNextStep): string {
-  return step.kind === "decisioni" ? OVERVIEW_TEXT.seeProposals : OVERVIEW_TEXT.seeNeeds;
-}
+const IN_HUB_STEPS: ReadonlySet<string> = new Set(["decidere", "chiedere", "verificare"]);
 
 /** «ad agosto 2027», «a ottobre 2027»: «ad» solo davanti ad aprile e agosto. */
 function monthWithPreposition(month: MonthCode): string {
@@ -96,8 +65,11 @@ export interface PanoramicaTopProps {
   figures: OverviewFigures | null;
   /** «Su tutto il portafoglio» (`portfolioLine`): solo revisori, senza filtri; null senza. */
   line: PortfolioLine | null;
-  /** «Prossimo passo» (`overviewNextStep`) con dove porta: solo revisori, senza filtri; null senza. */
-  nextStep: { step: OverviewNextStep; href: string } | null;
+  /**
+   * (Rilascio 10, D3) Il prossimo passo del workspace, lo stesso della Home (`workspaceSteps` e `workspaceStepView`):
+   * solo revisori, senza filtri; `step` null è «Tutto in ordine». null: niente passo (un filtro, un contributore).
+   */
+  nextStep: { step: StepView | null } | null;
 }
 
 /** Il riquadro di una fase con un link: bordo dei campi (3:1), fuoco visibile, un bersaglio da dito al telefono. */
@@ -173,8 +145,9 @@ function figureTiles(figures: OverviewFigures): FigureTile[] {
  *    schermo) e non porta da nessuna parte. Ai contributori «In valutazione», senza numero;
  * 2. per i revisori le cifre, la cifra prima delle parole («50.367 €», «valore contato all'anno», «su
  *    17 use case»), e sotto «Su tutto il portafoglio: …»;
- * 3. per i revisori «Prossimo passo», con una frase e il solo pulsante pieno della pagina (la testata
- *    rende «Nuovo use case» bordato).
+ * 3. per i revisori il prossimo passo del workspace (D3, `NextStep`): il pulsante pieno con l'icona e il verbo,
+ *    il «?» con il perché; «Tocca a …» quando non tocca a chi guarda, «Tutto in ordine» quando non c'è niente
+ *    (con il pulsante pieno, la testata rende «Nuovo use case» bordato).
  * «Da decidere» e il pulsante cambiano vista: il fuoco va al titolo della vista nuova (`ViewFocusLink`).
  * Conteggi di use case e di esigenze, mai di persone (art. 15.4).
  */
@@ -225,24 +198,15 @@ export function PanoramicaTop({ steps, reviewer, decideHref, figures, line, next
         </section>
       ) : null}
 
-      {nextStep ? (
-        <section
-          aria-labelledby={NEXT_STEP_HEADING_ID}
-          data-slot="next-step"
-          className="flex flex-col gap-3 rounded-xl border bg-card p-4 @2xl/hub:flex-row @2xl/hub:items-center @2xl/hub:justify-between"
-        >
-          <div className="min-w-0 space-y-1">
-            <h2 id={NEXT_STEP_HEADING_ID} className="text-sm font-semibold">
-              {OVERVIEW_TEXT.nextStep}
-            </h2>
-            <p className="text-sm">{keepTogether(nextStepText(nextStep.step))}</p>
-          </div>
-          {/* Il solo pulsante pieno della pagina: con il riquadro, «Nuovo use case» è bordato. Porta il fuoco al titolo della vista che apre. */}
-          <Button className="min-h-11 shrink-0 self-start sm:min-h-8 @2xl/hub:self-center" render={<ViewFocusLink href={nextStep.href} />} nativeButton={false}>
-            {nextStepAction(nextStep.step)}
-          </Button>
-        </section>
-      ) : null}
+      {nextStep ? <PanoramicaNextStep step={nextStep.step} /> : null}
     </div>
   );
+}
+
+/** Il passo del workspace sulla Panoramica: dentro «Use case» il link porta il fuoco al titolo della vista che apre. */
+function PanoramicaNextStep({ step }: { step: StepView | null }) {
+  const item = stepItem(step);
+  const href = step?.href ?? null;
+  const link = step && href && IN_HUB_STEPS.has(step.key) ? <ViewFocusLink href={href} /> : null;
+  return <NextStep id="panoramica-prossimo-passo" step={item ? { ...item, link } : null} />;
 }

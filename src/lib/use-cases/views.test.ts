@@ -5,6 +5,7 @@ import type { ContributorUseCase, UseCaseViewer } from "./permissions.ts";
 import type { ValuationModel } from "./valuation.ts";
 import { DEFAULT_VALUE_PARAMS, valueModelSchema } from "./value-model.ts";
 import {
+  DEFAULT_HUB_VIEW,
   EXPORT_COLUMNS,
   HUB_PARAM_KEYS,
   HUB_SHOW_PARAMS,
@@ -342,22 +343,15 @@ test("shownChart: il grafico del menu «⋯» che la Panoramica apre", () => {
   assert.equal(shownChart("curva", ["matrice", "curva"]), "curva");
 });
 
-test("defaultHubView: revisori «Da decidere» se c'è qualcosa, altrimenti la Panoramica; sponsor del cliente e contributori la Panoramica", () => {
-  assert.equal(defaultHubView(viewer("transformation_lead", true), 3), "da-decidere");
-  assert.equal(defaultHubView(viewer("transformation_lead", true), 0), "panoramica");
-  assert.equal(defaultHubView(viewer("function_lead"), 2), "da-decidere");
-  assert.equal(defaultHubView(viewer("analyst"), 0), "panoramica");
-  assert.equal(defaultHubView(viewer("exec_sponsor"), 5), "panoramica", "sponsor del cliente");
-  assert.equal(defaultHubView(viewer("exec_sponsor", true), 5), "da-decidere", "sponsor di Lateral Space");
-  assert.equal(defaultHubView(viewer("contributor"), 5), "panoramica");
-  // «Cosa serve» non è mai la vista di partenza, un vecchio nome nemmeno.
-  for (const role of ["exec_sponsor", "transformation_lead", "function_lead", "analyst", "contributor", "learner", null]) {
+test("defaultHubView (rilascio 10, D3): «Use case» si apre sempre sulla Panoramica, per ogni ruolo", () => {
+  assert.equal(DEFAULT_HUB_VIEW, "panoramica");
+  assert.equal(defaultHubView(), "panoramica");
+  assert.ok(!Object.hasOwn(HUB_VIEW_ALIASES, defaultHubView()), "mai un vecchio nome");
+  // Una vista scelta nell'indirizzo vince: la partenza vale solo quando `vista` manca.
+  for (const role of ["exec_sponsor", "transformation_lead", "function_lead", "analyst", "contributor"]) {
     for (const lateral of [false, true]) {
-      for (const count of [0, 4]) {
-        const view = defaultHubView(viewer(role, lateral), count);
-        assert.notEqual(view, "cosa-serve", `${role} ${lateral} ${count}`);
-        assert.ok(!Object.hasOwn(HUB_VIEW_ALIASES, view), `${role} ${lateral} ${count}`);
-      }
+      assert.equal(parseHubParams(new URLSearchParams(""), viewer(role, lateral)).vista, null, `${role} ${lateral}: nessuna vista nell'indirizzo`);
+      assert.equal(parseHubParams(new URLSearchParams("vista=da-decidere"), viewer(role, lateral)).vista, "da-decidere", `${role} ${lateral}`);
     }
   }
 });

@@ -528,24 +528,41 @@ test("Cosa serve: la sua vista, non nella Panoramica né nei vecchi link; senza 
   assert.ok(!overview.includes('data-slot="needs-board"'), "solo nella sua vista");
 });
 
-test("Panoramica: il prossimo passo conta i requisiti degli use case di questo trimestre", opts, async () => {
+test("Panoramica: il prossimo passo del workspace (rilascio 10, D3), lo stesso della Home: fornitori, decisioni, informazioni del trimestre", opts, async () => {
   const quarter = await import("./quarter.ts");
+  const { SUBPROCESSORS_VERSION } = await import("../uc/legal/subprocessors.ts");
   const thisQuarter = quarter.currentQuarter();
-  // Ogni gruppo che conta, con il suo nome: da chiedere, da verificare e fermi (i «bloccata» si leggono fermi).
-  const sentence = `Per partire con il ${quarter.quarterLabel(thisQuarter).replace(" ", N)}: 1${N}requisito da chiedere, 1${N}da verificare e 1${N}fermo.`;
+  const plain = (text: string) => readable(text).replaceAll(N, " ");
   const href = `/dashboard/${ids.wsStart}/use-cases?vista=cosa-serve&trimestre=${thisQuarter}`;
+  const nextStepOf = (page: string) => between(page, 'data-slot="next-step"', "</section>");
+  // 1. Manca l'ok sui fornitori e ci sono informazioni da chiedere: le domande al referente non partono, il passo è
+  //    darlo. Chi guarda lo può dare (il ruolo lo permette): il pulsante pieno porta a Impostazioni.
   for (const person of REVIEWERS) {
     const page = await hubHtml(person, ids.wsStart, { vista: "panoramica" });
-    const box = between(page, 'data-slot="next-step"', "</section>");
-    assert.ok(box.includes(">Prossimo passo</h2>"), person);
-    // Il requisito in comune una volta, il bloccato anche se è di Lateral Space; non quelli dello use
-    // case già partito né del trimestre dopo; i requisiti prima della proposta da decidere.
-    assert.ok(box.includes(`<p class="text-sm">${sentence}</p>`), `${person}: ${box}`);
-    assert.match(box, new RegExp(`<a [^>]*href="${href.replace(/[?]/g, "\\?")}"[^>]*>Vedi cosa serve</a>`), person);
+    const box = nextStepOf(page);
+    assert.ok(box.includes(">Prossimo passo</p>"), person);
+    assert.ok(plain(box).includes("Autorizza i fornitori"), `${person}: ${plain(box)}`);
+    assert.ok(plain(box).includes("Senza l'ok le domande al referente non partono: 3 informazioni aspettano. Poi: 1 use case da decidere."), `${person}: ${plain(box)}`);
+    const filled = filledButtons(page);
+    assert.equal(filled.length, 1, person);
+    assert.ok(filled[0].includes(`href="/dashboard/${ids.wsStart}/settings#sub-responsabili"`), filled[0]);
+  }
+  // 2. Con l'ok: prima le decisioni (la proposta da decidere), e il «?» dice il passo dopo, le informazioni del trimestre.
+  await q(`INSERT INTO uc_subprocessor_acks (workspace_id, list_version, statement_text, declared_by_user_id, declared_by_role) VALUES ($1::uuid, $2, 'Autorizzazione di prova', $3::uuid, 'exec_sponsor')`, [
+    ids.wsStart,
+    SUBPROCESSORS_VERSION,
+    ids.manager,
+  ]);
+  for (const person of REVIEWERS) {
+    const page = await hubHtml(person, ids.wsStart, { vista: "panoramica" });
+    const box = nextStepOf(page);
+    assert.ok(plain(box).includes("Decidi 1 use case"), `${person}: ${plain(box)}`);
+    // Il requisito in comune una volta; non quelli dello use case già partito né del trimestre dopo.
+    assert.ok(plain(box).includes(`Poi: 1 informazione da chiedere per il ${quarter.quarterLabel(thisQuarter)}.`), `${person}: ${plain(box)}`);
     // Il solo pulsante pieno è il suo; «Nuovo use case» è bordato.
     const filled = filledButtons(page);
     assert.equal(filled.length, 1, person);
-    assert.ok(filled[0].includes(`href="${href}"`), filled[0]);
+    assert.ok(filled[0].includes(`href="/dashboard/${ids.wsStart}/use-cases?vista=da-decidere"`), filled[0]);
     const header = between(page, 'data-slot="hub-header"', "</header>");
     const newUseCase = [...header.matchAll(/<a\b[^>]*>/g)].map(([tag]) => tag).find((tag) => /href="[^"]*(?:nuovo=1|\/use-cases\/nuovo)"/.test(tag));
     assert.ok(newUseCase && !/class="[^"]*\bbg-primary\b/.test(newUseCase), `${person}: «Nuovo use case» bordato`);
@@ -557,9 +574,10 @@ test("Panoramica: il prossimo passo conta i requisiti degli use case di questo t
   const manager = await hubHtml("manager", ids.wsStart, { vista: "panoramica" });
   assert.ok(manager.includes('data-slot="overview-figures"'));
   assert.match(manager, /data-figure="totale-trimestre"[^>]*><p[^>]*><span class="whitespace-nowrap">2<\/span><\/p><p class="text-sm">use case in questo trimestre</);
-  // Il link porta a «Cosa serve» del trimestre: proprio i requisiti contati, non gli altri, con gli
-  // stessi numeri del riquadro nella riga sotto «Requisiti», che comincia dal trimestre: ogni numero
-  // della frase si ritrova con la sua parola.
+  // «Chiedi 1 informazione», quando tocca a lui, porta a «Cosa serve» del trimestre: proprio i requisiti contati, non
+  // gli altri, con gli stessi numeri nella riga sotto «Requisiti», che comincia dal trimestre.
+  const { workspaceStepHref } = await import("../home/next-step.ts");
+  assert.equal(workspaceStepHref({ key: "chiedere", mine: true, count: 1, quarter: thisQuarter }, { workspaceId: ids.wsStart, companyName: "Prova prossimo passo", salHref: null }), href);
   const target = await hubHtml("builder", ids.wsStart, { vista: "cosa-serve", trimestre: thisQuarter });
   // I titoli in pagina vanno a capo solo dove si può (`keepTogether`, spazi non separabili): si cercano
   // nel testo con gli spazi normali.
@@ -589,7 +607,7 @@ test("Panoramica: il prossimo passo conta i requisiti degli use case di questo t
   // Il contributore: le fasi, nessun riquadro, nessuna esigenza.
   const contributor = await hubHtml("contributor", ids.wsStart, { vista: "panoramica" });
   assert.ok(contributor.includes('data-slot="phase-strip"'));
-  for (const text of ['data-slot="next-step"', 'data-slot="overview-figures"', "Per partire con", "requisit", ...Object.values(START)]) {
+  for (const text of ['data-slot="next-step"', 'data-slot="overview-figures"', "Prossimo passo", "requisit", "informazion", ...Object.values(START)]) {
     assert.ok(!contributor.includes(text), `contributore: «${text}»`);
   }
   const { data } = await hubTree("contributor", ids.wsStart, { vista: "panoramica" });
