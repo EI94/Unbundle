@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { strategicGoals } from "@/lib/db/schema";
 import { getWorkspaceValueThesis } from "@/lib/db/queries/value-thesis";
+import { loadPromptContext } from "@/lib/db/queries/context-work";
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { CLAUDE_MODEL, claudeCallSettings, throwIfRefused } from "@/lib/ai/models";
@@ -78,6 +79,9 @@ export async function suggestOKRsAction(
       "Completa prima la Discovery per avere la Value Thesis."
     );
   }
+  // (Rilascio 9b, docs/contesto/RILASCIO-9b-COSTRUZIONE.md §2.12) Il blocco «Contesto» («In breve» e i fatti «Per tutti»
+  // sugli obiettivi), dopo la tesi; "" senza l'ok ai fornitori di AI: il messaggio di prima.
+  const contesto = await loadPromptContext(workspaceId, { profile: "okr", consent: "request" });
 
   const { object } = await throwIfRefused("actions/strategy", generateObject({
     model: anthropic(CLAUDE_MODEL),
@@ -98,7 +102,7 @@ Scrivi tutto in italiano. Sii concreto e specifico per questo business.`,
     messages: [
       {
         role: "user",
-        content: `Value Thesis dell'azienda:\n${JSON.stringify(thesis, null, 2)}`,
+        content: `Value Thesis dell'azienda:\n${JSON.stringify(thesis, null, 2)}${contesto}`,
       },
     ],
     schema: z.object({

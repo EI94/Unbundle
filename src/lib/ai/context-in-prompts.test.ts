@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { fakeAppClaude, installAppModules, message, THINKING, type Captured } from "./claude-test-kit.ts";
 import { contextPromptBlock } from "../context/work/prompt-block.ts";
-import type { Activity, StrategicGoal } from "../db/schema.ts";
+import type { Activity, Department, StrategicGoal, UseCase } from "../db/schema.ts";
 
 // (Rilascio 9b, docs/contesto/RILASCIO-9b-COSTRUZIONE.md §2.12, §5.5) Il blocco «Contesto» nei prompt dei generatori: con
 // `contesto` il blocco c'è, una volta, dopo i dati e prima delle richieste; con "" (senza l'ok ai fornitori di AI, o
@@ -10,8 +10,11 @@ import type { Activity, StrategicGoal } from "../db/schema.ts";
 // i dati sono inventati. Quali punti leggono il blocco, e dopo quali controlli: context-in-prompts.source.test.ts.
 
 await installAppModules({});
+const { generateReport } = await import("./generate-report.ts");
 const { generateUseCases } = await import("./generate-use-cases.ts");
 const { classifyActivity, classifyActivitiesBatch } = await import("./classify.ts");
+const { generateAgentBlueprints } = await import("./generate-blueprints.ts");
+const { generateSimulation } = await import("./generate-simulation.ts");
 const { completeUnitMapping } = await import("../mappatura/complete.ts");
 
 // ─── I dati ──────────────────────────────────────────────────────────
@@ -29,6 +32,13 @@ const activity = (over: Partial<Activity> = {}): Activity =>
 const goals = (): StrategicGoal[] => [
   { id: "goal-1", workspaceId: "ws-prova", parentId: null, type: "goal", title: "Ridurre i tempi di fatturazione", description: null, direction: "decrease", targetValue: 2, currentValue: 5, owner: "Amministrazione", timeframe: null, kpiName: null, kpiUnit: null, createdAt: AT } as StrategicGoal,
 ];
+const reportData = () => ({
+  companyValueThesis: THESIS,
+  departments: [{ name: "Amministrazione", mappingStatus: "mapped", description: "Fatture e incassi" }] as unknown as Department[],
+  activities: [activity()],
+  useCases: [{ title: "Fatture automatiche", category: "quick_win", overallScore: 4.25, description: "Le fatture partono da sole dagli ordini chiusi." }] as unknown as UseCase[],
+  goals: goals(),
+});
 
 /** Il blocco come lo restituisce `loadPromptContext`: con un a capo prima e dopo, pronto da mettere nel prompt. */
 const asLoaded = (block: string) => `\n${block}\n`;
@@ -40,6 +50,7 @@ const BLOCK = asLoaded(
 const BRIEF_BLOCK = asLoaded(contextPromptBlock({ brief: ["Il cliente fa cucine su misura per i negozi."], facts: [], nonce: "q8w2e6r4t1y5", purpose: "generatore" }));
 
 const reply = (value: unknown) => message([THINKING, { type: "text", text: JSON.stringify(value) }]);
+const REPORT = { executiveSummary: "Sintesi.", valueThesisSummary: "Valore.", topAutomate: [], topDifferentiate: [], topInnovate: [], operatingModelImplications: [], governanceBlockers: [], sequencingRecommendation: "Prima le fatture.", kpiBaseline: [] };
 const CLASSIFICATION = { classification: "automate", confidenceScore: 0.9, motivazione: "Lavoro ripetitivo.", aiPotential: "Alto" };
 
 /** Il prompt che il modello ha ricevuto: un solo messaggio dell'utente, con un solo testo. */
@@ -60,6 +71,40 @@ function assertBlockBefore(prompt: string, block: string, before: string, withou
 }
 
 // ─── I prompt di prima (per i dati qui sopra) ────────────────────────
+
+const TODAY_REPORT = `Genera un report esecutivo completo per la trasformazione AI di questa organizzazione. Scrivi in italiano, professionale e orientato all'azione.
+
+## Value Thesis
+{
+  "coreValueProposition": "Cucine su misura",
+  "strategicNodes": [
+    "Progettazione"
+  ]
+}
+
+## Dipartimenti mappati (1)
+- Amministrazione (mapped): Fatture e incassi
+
+## Attività mappate (1)
+- "Fatture mensili" [delivery] [automate] - Ogni mese si preparano le fatture dei clienti.
+
+## Use Cases generati (1)
+- "Fatture automatiche" [quick_win] Score: 4.3 - Le fatture partono da sole dagli ordini chiusi.
+
+## Obiettivi Strategici
+- [goal] "Ridurre i tempi di fatturazione" → decrease
+
+## Output richiesti
+
+1. **Executive Summary**: 3-5 paragrafi che sintetizzano findings, opportunità e raccomandazioni
+2. **Value Thesis Summary**: sintesi di dove si concentra il valore
+3. **Top 3 Automate**: stream principali da automatizzare
+4. **Top 3 Differentiate**: domini dove concentrare energia umana
+5. **Top 3 Innovate**: nuove opportunità possibili con AI
+6. **Operating Model Implications**: cosa cambia in ruoli, ownership, governance
+7. **Governance Blockers**: impedimenti da risolvere
+8. **Sequencing Recommendation**: priorità e ordine di esecuzione
+9. **KPI Baseline**: metriche chiave con valori attuali e target`;
 
 const TODAY_USE_CASES = `Sei un esperto di AI transformation. Analizza le attività classificate e il contesto strategico per generare use case AI concreti e azionabili.
 
@@ -147,7 +192,18 @@ Opportunità nuove che emergono dai pattern cross-organizzativi. Revenue stream,
 
 Classifica con rigore. Se l'attività è palesemente operativa e ripetitiva → AUTOMATE. Se è il cuore del valore → DIFFERENTIATE. Se nasconde un'opportunità di innovazione → INNOVATE. In caso di dubbio, scegli AUTOMATE (è il default per il lavoro che "c'è ma non dovrebbe esserci così").`;
 
-// ─── Use case e classificazione ──────────────────────────────────────
+// ─── Report, use case, classificazione ───────────────────────────────
+
+test("report: con \"\" (o senza `contesto`) il prompt di prima, byte per byte; con il blocco, dopo gli obiettivi e prima delle richieste", async () => {
+  for (const contesto of [undefined, ""]) {
+    const requests = fakeAppClaude([reply(REPORT)]);
+    await generateReport(reportData(), contesto);
+    assert.equal(promptOf(requests), TODAY_REPORT, JSON.stringify(contesto));
+  }
+  const requests = fakeAppClaude([reply(REPORT)]);
+  await generateReport(reportData(), BLOCK);
+  assertBlockBefore(promptOf(requests), BLOCK, "## Output richiesti", TODAY_REPORT);
+});
 
 test("use case: con \"\" (o senza `contesto`) il prompt di prima, byte per byte; con il blocco, dopo gli obiettivi e prima delle regole, anche con l'ESG", async () => {
   for (const contesto of [undefined, ""]) {
@@ -228,4 +284,29 @@ test("«Completa la mappatura»: il blocco che legge `loadUnit` arriva al prompt
     assert.equal(prompts.senza[title].includes("<contesto-"), false, `${title}: senza il blocco`);
     assertBlockBefore(prompt, BRIEF_BLOCK, "## I 3 STREAM", prompts.senza[title]);
   }
+});
+
+// ─── Blueprint e simulazione ─────────────────────────────────────────
+
+test("blueprint: con \"\" il prompt di prima; con il blocco, dopo le attività e prima delle richieste", async () => {
+  const useCases = [{ id: "uc-1", title: "Fatture automatiche", category: "quick_win", description: "Le fatture partono da sole.", businessCase: "Meno ore di lavoro.", requirements: ["Accesso al gestionale"] }] as unknown as UseCase[];
+  const requests = fakeAppClaude([reply({ blueprints: [] }), reply({ blueprints: [] }), reply({ blueprints: [] })]);
+  await generateAgentBlueprints(useCases, [activity()]);
+  await generateAgentBlueprints(useCases, [activity()], "");
+  await generateAgentBlueprints(useCases, [activity()], BLOCK);
+  assert.equal(promptOf(requests, 1), promptOf(requests, 0));
+  assert.equal(promptOf(requests, 0).includes("<contesto-"), false);
+  assertBlockBefore(promptOf(requests, 2), BLOCK, "Per ogni blueprint specifica:", promptOf(requests, 0));
+});
+
+test("simulazione: con \"\" il prompt di prima; con il blocco, dopo gli use case e prima delle richieste", async () => {
+  const data = () => ({ ...reportData(), departments: [{ name: "Amministrazione", teamSize: 4 }] as unknown as Department[] });
+  const empty = { scenarios: [], aiOsSummary: Object.fromEntries(["knowledgeBase", "agentOrchestration", "dataPipelines", "monitoring", "governance"].map((key) => [key, { needed: false, recommendation: "Non serve." }])) };
+  const requests = fakeAppClaude([reply(empty), reply(empty), reply(empty)]);
+  await generateSimulation(data());
+  await generateSimulation(data(), "");
+  await generateSimulation(data(), BLOCK);
+  assert.equal(promptOf(requests, 1), promptOf(requests, 0));
+  assert.equal(promptOf(requests, 0).includes("<contesto-"), false);
+  assertBlockBefore(promptOf(requests, 2), BLOCK, "Genera 3 scenari:", promptOf(requests, 0));
 });

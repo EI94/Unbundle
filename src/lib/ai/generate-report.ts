@@ -26,13 +26,21 @@ const reportSchema = z.object({
 
 export type ReportContent = z.infer<typeof reportSchema>;
 
-export async function generateReport(data: {
-  companyValueThesis: unknown;
-  departments: Department[];
-  activities: Activity[];
-  useCases: UseCase[];
-  goals: StrategicGoal[];
-}): Promise<ReportContent> {
+/**
+ * Il report esecutivo. (Rilascio 9b, docs/contesto/RILASCIO-9b-COSTRUZIONE.md §2.12) `contesto`: il blocco «Contesto» di
+ * `loadPromptContext` (profilo `report`), dopo i dati e prima delle richieste; "" (senza l'ok ai fornitori di AI, o niente
+ * da dire) e il prompt è quello di prima, byte per byte.
+ */
+export async function generateReport(
+  data: {
+    companyValueThesis: unknown;
+    departments: Department[];
+    activities: Activity[];
+    useCases: UseCase[];
+    goals: StrategicGoal[];
+  },
+  contesto = "",
+): Promise<ReportContent> {
   const { object } = await throwIfRefused("ai/generate-report", generateObject({
     model: anthropic(CLAUDE_MODEL),
     schema: reportSchema,
@@ -62,7 +70,7 @@ ${data.useCases
 
 ## Obiettivi Strategici
 ${data.goals.map((g) => `- [${g.type}] "${g.title}" → ${g.direction ?? "N/A"}`).join("\n")}
-
+${contesto}
 ## Output richiesti
 
 1. **Executive Summary**: 3-5 paragrafi che sintetizzano findings, opportunità e raccomandazioni

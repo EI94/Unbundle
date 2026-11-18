@@ -6,6 +6,7 @@ import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import { weeklySignals, activities, workspaces, useCases } from "@/lib/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { markSignalsReadForUser } from "@/lib/db/queries/signals";
+import { loadPromptContext } from "@/lib/db/queries/context-work";
 import { logSafeError } from "@/lib/log/safe-error";
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
@@ -126,6 +127,9 @@ export async function generateCompetitiveAnalysis(
   const strategicBets = allUseCases.filter(
     (uc) => uc.category === "strategic_bet"
   );
+  // (Rilascio 9b, docs/contesto/RILASCIO-9b-COSTRUZIONE.md §2.12) Solo «In breve», «Per tutti», prima delle richieste;
+  // "" senza l'ok ai fornitori di AI: il prompt di prima.
+  const contesto = await loadPromptContext(workspaceId, { profile: "intelligence", consent: "request" });
 
   const { object } = await throwIfRefused("actions/intelligence", generateObject({
     model: anthropic(CLAUDE_MODEL),
@@ -158,7 +162,7 @@ ${allUseCases
   .slice(0, 10)
   .map((uc) => `- ${uc.title} (${uc.category}): impatto=${uc.overallImpactScore}, fattibilita'=${uc.overallFeasibilityScore}`)
   .join("\n")}
-
+${contesto}
 Genera:
 1. 3-5 trend di mercato rilevanti per questa organizzazione (basandoti sulle attivita' e il settore)
 2. 3-5 opportunita' di automazione con stima del guadagno potenziale

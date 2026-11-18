@@ -23,6 +23,8 @@ await installAppModules({
     globalThis.__prova.thesisAsked.push(workspaceId);
     return { coreValueProposition: "Cucine su misura del workspace di prova" };
   }`,
+  // (Rilascio 9b) Il blocco «Contesto» del prompt (context-in-prompts.test.ts lo prova): qui niente da dire.
+  "@/lib/db/queries/context-work": `export async function loadPromptContext() { return ""; }`,
   "drizzle-orm": `export const eq = (column, value) => ({ column, value });`,
   "@/lib/db": `export const db = {
     select: () => ({ from: () => ({ where: () => ({ limit: async () => [] }) }) }),

@@ -11,6 +11,7 @@ import { getUseCasesByWorkspace } from "@/lib/db/queries/use-cases";
 import { db } from "@/lib/db";
 import { reports } from "@/lib/db/schema";
 import { getWorkspaceValueThesis } from "@/lib/db/queries/value-thesis";
+import { loadPromptContext } from "@/lib/db/queries/context-work";
 import { generateReport } from "@/lib/ai/generate-report";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
@@ -28,20 +29,26 @@ export async function generateReportAction(workspaceId: string) {
   // (9a) La tesi del valore del workspace, non più quella dell'organizzazione.
   const thesis = await getWorkspaceValueThesis(workspaceId);
 
-  const [departments, activities, useCases, goals] = await Promise.all([
+  // (Rilascio 9b, docs/contesto/RILASCIO-9b-COSTRUZIONE.md §2.12) Con il blocco «Contesto»: «In breve» e i fatti «Per
+  // tutti» confermati, perché il report non contraddica quello che si sa già. "" senza l'ok ai fornitori di AI.
+  const [departments, activities, useCases, goals, contesto] = await Promise.all([
     getDepartmentsByWorkspace(workspaceId),
     getActivitiesByWorkspace(workspaceId),
     getUseCasesByWorkspace(workspaceId),
     getStrategicGoalsByWorkspace(workspaceId),
+    loadPromptContext(workspaceId, { profile: "report", consent: "request" }),
   ]);
 
-  const reportContent = await generateReport({
-    companyValueThesis: thesis,
-    departments,
-    activities,
-    useCases,
-    goals,
-  });
+  const reportContent = await generateReport(
+    {
+      companyValueThesis: thesis,
+      departments,
+      activities,
+      useCases,
+      goals,
+    },
+    contesto,
+  );
 
   const [report] = await db
     .insert(reports)

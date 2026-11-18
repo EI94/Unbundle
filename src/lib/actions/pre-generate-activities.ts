@@ -15,6 +15,7 @@ import { contextActorFor } from "@/lib/context/server/actor";
 import type { ContextActor } from "@/lib/context/visibility";
 import { contextAiConsent } from "@/lib/db/queries/context-consent";
 import { listContextSources } from "@/lib/db/queries/context-sources";
+import { loadPromptContext } from "@/lib/db/queries/context-work";
 import { contextStoreState } from "@/lib/db/queries/context-store";
 import { opsForNewStep, type BoardOp } from "@/lib/mappatura/board-ops";
 import { resolveProcess, saveBoardOps } from "@/lib/mappatura/board-store";
@@ -116,6 +117,9 @@ export async function preGenerateActivitiesFromDocuments(
   if (docs.length === 0) {
     return { activities: [] };
   }
+  // (Rilascio 9b, docs/contesto/RILASCIO-9b-COSTRUZIONE.md §2.12) Il blocco «Contesto» («In breve» e i fatti «Per tutti»
+  // su lavoro e sistemi, per chiunque chieda), dopo i documenti e prima delle richieste.
+  const contesto = await loadPromptContext(workspaceId, { profile: "activities", consent: "request" });
 
   const documentContent = docs
     .map(
@@ -131,7 +135,7 @@ export async function preGenerateActivitiesFromDocuments(
 
 ## DOCUMENTI
 ${documentContent}
-
+${contesto}
 ## COSA FARE
 Identifica le attività lavorative ricorrenti e strutturali descritte nei documenti. Per ogni attività:
 1. **Titolo**: nome chiaro e conciso
