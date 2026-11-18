@@ -155,7 +155,7 @@ function AdminSettings({ data, workspaceId, busy, mutate }: { data: AdminDetailD
   const changedElsewhere = JSON.stringify(current) !== JSON.stringify(form.baseline);
   const { confirmDiscard } = useLearningUnsavedChanges({ dirty, onDiscard: () => setForm({ baseline: current, title: current.title, policy: current.visibilityPolicy, retention: String(current.retentionDays) }) });
   return <AdminSection title="Impostazioni del corso">
-    {changedElsewhere && <p role="status" className="text-sm text-amber-700 dark:text-amber-300">Il riepilogo contiene impostazioni più recenti. Le tue modifiche sono conservate: aggiorna il riepilogo per caricare la versione salvata prima di riprovare.</p>}
+    {changedElsewhere && <p role="status" className="text-sm text-uc-giallo">Il riepilogo contiene impostazioni più recenti. Le tue modifiche sono conservate: aggiorna il riepilogo per caricare la versione salvata prima di riprovare.</p>}
     <form onSubmit={async event => {
       event.preventDefault();
       const submitted = { title: form.title.trim(), visibilityPolicy: form.policy.trim(), retentionDays: Number(form.retention) };

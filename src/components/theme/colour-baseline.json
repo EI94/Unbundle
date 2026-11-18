@@ -123,14 +123,12 @@
     "palette": 36
   },
   "src/components/learning/admin-join-links.tsx": {
-    "palette": 7,
-    "whiteBlack": 1,
-    "dark": 2
+    "palette": 5,
+    "whiteBlack": 1
   },
   "src/components/learning/admin-program.tsx": {
-    "palette": 3,
-    "whiteBlack": 1,
-    "dark": 1
+    "palette": 2,
+    "whiteBlack": 1
   },
   "src/components/learning/admin-shared.tsx": {
     "palette": 1
@@ -148,8 +146,7 @@
     "whiteBlack": 1
   },
   "src/components/learning/register-console.tsx": {
-    "palette": 6,
-    "dark": 1
+    "palette": 5
   },
   "src/components/learning/results-auto-refresh.tsx": {
     "palette": 1

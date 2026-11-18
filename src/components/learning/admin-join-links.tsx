@@ -34,8 +34,8 @@ function linkState(link: AdminDetailDTO["joinLinks"][number]) {
   if (link.revokedAt) return { label: "Disattivato", tone: "text-muted-foreground" };
   if (new Date(link.expiresAt) <= new Date())
     return { label: "Scaduto", tone: "text-muted-foreground" };
-  if (!link.doorOpen) return { label: "Ingresso chiuso", tone: "text-amber-700 dark:text-amber-400" };
-  return { label: "Ingresso aperto", tone: "text-emerald-700 dark:text-emerald-400" };
+  if (!link.doorOpen) return { label: "Ingresso chiuso", tone: "text-uc-giallo" };
+  return { label: "Ingresso aperto", tone: "text-uc-verde" };
 }
 
 export function AdminJoinLinks({

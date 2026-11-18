@@ -184,7 +184,7 @@ export function RegisterConsole({ workspaceId, userId, canEditSettings, register
           <td className="px-3 py-2">{sessionStateLabel[s.state]}</td>
           <td className="px-3 py-2">{s.state === "in_programma" ? `${s.enrolled} iscritti` : s.participants + s.manualParticipants}
             {s.manualParticipants > 0 && <span className="block text-xs text-muted-foreground">di cui {s.manualParticipants} registrati dal formatore</span>}
-            {s.undocumented > 0 && <span className="block text-xs text-amber-700 dark:text-amber-400">+ {s.undocumented} senza partecipazione documentata</span>}</td>
+            {s.undocumented > 0 && <span className="block text-xs text-uc-giallo">+ {s.undocumented} senza partecipazione documentata</span>}</td>
           <td className="px-3 py-2 text-xs">{s.article4 === "modificato" ? "Testo modificato (Reg. UE 2026/1744)" : "Testo originario"}</td>
         </tr>)}
       </Table>}
