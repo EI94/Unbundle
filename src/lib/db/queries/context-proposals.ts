@@ -21,7 +21,7 @@ import "server-only";
  * contesto è cambiato» per chi costruisce gli use case toccati (`notifyContextChange`); una riconferma non è un cambio.
  *
  * (9b, RILASCIO-9b-COSTRUZIONE.md §2.2, §3.2) I legami con «Cosa serve»: una proposta che risponde a una richiesta ha un
- * legame `proposta` (la lettura). Alla conferma il
+ * legame `proposta` (la lettura). In «Da confermare» la riga lo dice («Risponde a «Cosa serve»: …»). Alla conferma il
  * legame diventa `aperta`, con il fatto, solo se il fatto è attivo e «Per tutti» e la richiesta è ancora aperta
  * (`needLinkAfterConfirm`): il testo di un fatto «Solo Lateral Space» non arriva al cliente; altrimenti `scartata`. Poi
  * «Una risposta per «Cosa serve»» ai revisori (`notifyNeedAnswered`). Scartare la proposta scarta il legame. Solo con la
@@ -90,6 +90,11 @@ export interface ProposalView {
   roleLabel: string | null;
   dueOn: string | null;
   closesQuestion: { id: string; question: string } | null;
+  /**
+   * (9b) La richiesta aperta di «Cosa serve» a cui la proposta risponde: il titolo e i codici dei suoi use case
+   * («Risponde a «Cosa serve»: …»). `listOpenProposals` lo dà sempre; nel tipo è facoltativo per le viste costruite a mano.
+   */
+  answersNeed?: { needId: string; title: string; code: string } | null;
 }
 export interface OpenProposals {
   /**
@@ -201,6 +206,8 @@ interface ViewContext {
   clientSources: ReadonlySet<string>;
   /** Le frasi (normalizzate) dei fatti «Solo Lateral Space» attivi. */
   lsOnly: ReadonlySet<string>;
+  /** (9b) Per proposta: la richiesta aperta di «Cosa serve» del suo legame `proposta`. */
+  needs: ReadonlyMap<string, { needId: string; title: string; code: string }>;
   today: string;
 }
 
@@ -241,11 +248,34 @@ function viewOf(row: ProposalRow, ctx: ViewContext): ProposalView {
     roleLabel: row.roleLabel,
     dueOn: row.dueOn,
     closesQuestion: row.questionId && question !== undefined ? { id: row.questionId, question } : null,
+    answersNeed: ctx.needs.get(row.id) ?? null,
   };
 }
 
 /** (9b) Gli stati aperti di una richiesta di «Cosa serve», come array di Postgres. */
 const OPEN_NEEDS = sql`${`{${OPEN_NEED_STATUSES.join(",")}}`}::text[]`;
+
+/**
+ * (9b) Le richieste di «Cosa serve» dei legami `proposta` di queste proposte, ancora aperte (requisiti del cliente non
+ * archiviati, in uno stato aperto), con i codici dei loro use case. Vuoto senza la 0041.
+ */
+async function proposedNeeds(workspaceId: string, proposalIds: readonly string[]): Promise<Map<string, { needId: string; title: string; code: string }>> {
+  const out = new Map<string, { needId: string; title: string; code: string }>();
+  if (proposalIds.length === 0 || !(await contextWorkReady())) return out;
+  const rows = rowsOf<{ proposal_id: string; need_id: string; title: string; codes: string | null }>(
+    await db.execute(sql`
+      SELECT l.proposal_id, n.id AS need_id, n.title,
+        (SELECT string_agg(coalesce(u.code, u.title), ', ' ORDER BY u.code NULLS LAST, u.id)
+         FROM use_case_need_links nl JOIN use_cases u ON u.id = nl.use_case_id AND u.workspace_id = n.workspace_id
+         WHERE nl.need_id = n.id) AS codes
+      FROM context_need_links l
+      JOIN use_case_needs n ON n.id = l.need_id AND n.workspace_id = l.workspace_id
+      WHERE l.workspace_id = ${workspaceId}::uuid AND l.status = 'proposta' AND l.proposal_id = ANY(${uuidArray(proposalIds)})
+        AND n.type = 'requisito' AND n.archived_at IS NULL AND ${sql.raw(CLIENT_SIDE_SQL("n"))} AND n.status = ANY(${OPEN_NEEDS})`),
+  );
+  for (const row of rows) if (row.codes) out.set(row.proposal_id, { needId: row.need_id, title: oneLine(row.title), code: row.codes });
+  return out;
+}
 
 /** Le frasi (normalizzate) dei fatti «Solo Lateral Space» attivi del workspace. */
 async function lsOnlyStatements(workspaceId: string): Promise<Set<string>> {
@@ -261,7 +291,7 @@ async function loadViewContext(workspaceId: string, rows: readonly ProposalRow[]
   const questionIds = [...new Set(rows.flatMap((r) => (r.questionId ? [r.questionId] : [])))];
   const factIds = rows.flatMap((r) => (r.targetFactId ? [r.targetFactId] : []));
   const sourceIds = [...new Set(rows.map((r) => r.sourceId))].filter(isUuid);
-  const [heads, useCases, questions, sources, lsOnly] = await Promise.all([
+  const [heads, useCases, questions, sources, lsOnly, needs] = await Promise.all([
     resolveHeads(workspaceId, factIds),
     useCaseIds.length > 0
       ? db.execute(sql`SELECT id, code, title FROM use_cases WHERE workspace_id = ${workspaceId}::uuid AND id = ANY(${uuidArray(useCaseIds)})`)
@@ -275,6 +305,7 @@ async function loadViewContext(workspaceId: string, rows: readonly ProposalRow[]
           WHERE s.workspace_id = ${workspaceId}::uuid AND s.id = ANY(${uuidArray(sourceIds)})`)
       : Promise.resolve({ rows: [] }),
     rows.length > 0 ? lsOnlyStatements(workspaceId) : Promise.resolve(new Set<string>()),
+    proposedNeeds(workspaceId, rows.map((r) => r.id)),
   ]);
   const ls = parseLsDomains(process.env.UC_LS_EMAIL_DOMAINS);
   const clientSources = new Set(
@@ -292,6 +323,7 @@ async function loadViewContext(workspaceId: string, rows: readonly ProposalRow[]
     questions: new Map(rowsOf<{ id: string; question: string }>(questions).map((x) => [x.id, x.question])),
     clientSources,
     lsOnly,
+    needs,
     today: romeToday(now),
   };
 }

@@ -28,6 +28,7 @@ const PARTY_ITEMS: ReadonlyArray<{ value: CommitmentParty; label: string }> = [
  * «Cambiano» sopra «Prima: …»; per un conflitto «Prima» e «Ora» con le due scelte); la citazione; «dedotto» e il
  * messaggio di ciò che va corretto; la sezione, chi la vede, gli use case; per un impegno di chi è, il ruolo e la data.
  * «Modifica» apre i campi sul posto; «Scarta» toglie la riga. Una riga da correggere non si spunta finché non è corretta.
+ * (9b) Sotto la frase, quando la lettura l'ha visto: «Risponde a «Cosa serve»: {titolo} ({codice})».
  */
 export function ProposalRow({
   workspaceId,
@@ -100,6 +101,7 @@ export function ProposalRow({
               {proposal.statement}
             </p>
           )}
+          {proposal.answersNeed ? <p className="text-xs leading-relaxed break-words">{T.confirm.answersNeed(proposal.answersNeed.title, proposal.answersNeed.code)}</p> : null}
           {proposal.quote ? (
             <p className="text-xs leading-relaxed break-words text-muted-foreground">
               <q>{proposal.quote}</q>
