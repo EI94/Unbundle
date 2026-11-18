@@ -18,12 +18,22 @@ before(async () => {
 const W = "00000000-0000-4000-8000-0000000000f1";
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 
-/** Una cronologia del browser finta: i passi fino a quello di adesso, e ogni gesto del foglio (`push`, `replace`, `back`). */
+/**
+ * Una cronologia del browser finta: i passi fino a quello di adesso, e ogni gesto del foglio (`push`, `replace`,
+ * `back`). Come nel browser, «Indietro» chiesto da `history.back()` arriva dopo (`land`), con il suo «popstate».
+ */
 function browserAt(...visited: string[]) {
   const entries = [...visited];
   let index = entries.length - 1;
+  let queued = 0;
   const calls: string[] = [];
+  const listeners: Array<() => void> = [];
   const now = () => new URL(entries[index], "http://unbundle.test");
+  const traverse = (delta: number) => {
+    index = Math.min(entries.length - 1, Math.max(0, index + delta));
+    for (const listener of listeners) listener();
+    return entries[index];
+  };
   const page = {
     location: {
       get pathname() {
@@ -48,8 +58,11 @@ function browserAt(...visited: string[]) {
       },
       back() {
         calls.push("back");
-        index = Math.max(0, index - 1);
+        queued += 1;
       },
+    },
+    addEventListener(type: "popstate", listener: () => void) {
+      if (type === "popstate") listeners.push(listener);
     },
   };
   return {
@@ -57,16 +70,14 @@ function browserAt(...visited: string[]) {
     calls,
     /** L'indirizzo di adesso. */
     here: () => entries[index],
-    /** «Indietro» premuto da chi guarda (non dal foglio). */
-    userBack: () => {
-      index = Math.max(0, index - 1);
+    /** Il browser compie gli «Indietro» chiesti dal foglio. */
+    land: () => {
+      for (; queued > 0; queued -= 1) traverse(-1);
       return entries[index];
     },
-    /** «Avanti» premuto da chi guarda. */
-    userForward: () => {
-      index = Math.min(entries.length - 1, index + 1);
-      return entries[index];
-    },
+    /** «Indietro» e «Avanti» premuti da chi guarda. */
+    userBack: () => traverse(-1),
+    userForward: () => traverse(1),
     /** Una navigazione dell'app (un link di Next): un passo nuovo, che il foglio non ha aggiunto. */
     navigate: (to: string) => {
       entries.splice(index + 1, entries.length, to);
@@ -81,7 +92,7 @@ test("dal menu sotto il nome: aprire aggiunge un passo, ✕ torna indietro, e il
   assert.equal(b.here(), `/dashboard/${W}/use-cases?vista=da-decidere&account=1#cosa-serve`);
   url.closeAccountSheet(b.page);
   assert.deepEqual(b.calls, [`push /dashboard/${W}/use-cases?vista=da-decidere&account=1#cosa-serve`, "back"]);
-  assert.equal(b.here(), `/dashboard/${W}/use-cases?vista=da-decidere#cosa-serve`, "il foglio è chiuso, la pagina è quella di prima");
+  assert.equal(b.land(), `/dashboard/${W}/use-cases?vista=da-decidere#cosa-serve`, "il foglio è chiuso, la pagina è quella di prima");
   // Prima (replaceState) restavano due passi uguali, e il primo «Indietro» non cambiava niente a schermo.
   assert.equal(b.userBack(), `/dashboard/${W}/contesto`);
 });
@@ -91,10 +102,27 @@ test("aperto su una parte, chiuso con Esc: lo stesso; e riaperto con «Avanti»,
   url.openAccountSheet("claude", {}, b.page);
   url.closeAccountSheet(b.page);
   assert.deepEqual(b.calls, [`push /dashboard/${W}?account=claude`, "back"]);
+  b.land();
   assert.equal(b.userForward(), `/dashboard/${W}?account=claude`, "«Avanti» riapre il foglio");
   url.closeAccountSheet(b.page);
   assert.deepEqual(b.calls.slice(2), ["back"]);
-  assert.equal(b.here(), `/dashboard/${W}`);
+  assert.equal(b.land(), `/dashboard/${W}`);
+});
+
+test("un doppio clic su ✕ (o Esc due volte) prima che «Indietro» arrivi torna indietro di un passo solo", () => {
+  const b = browserAt(`/dashboard/${W}/agent-factory`, `/dashboard/${W}/contesto`);
+  url.openAccountSheet(undefined, {}, b.page);
+  url.closeAccountSheet(b.page);
+  url.closeAccountSheet(b.page);
+  url.closeAccountSheet(b.page);
+  assert.deepEqual(b.calls, [`push /dashboard/${W}/contesto?account=1`, "back"]);
+  assert.equal(b.land(), `/dashboard/${W}/contesto`, "resta sulla pagina, il foglio chiuso");
+  // Arrivato «Indietro», il passo torna a valere: «Avanti» e ✕ tornano indietro di nuovo.
+  b.userForward();
+  url.closeAccountSheet(b.page);
+  assert.deepEqual(b.calls.slice(2), ["back"]);
+  assert.equal(b.land(), `/dashboard/${W}/contesto`);
+  assert.equal(b.userBack(), `/dashboard/${W}/agent-factory`);
 });
 
 test("un foglio che non ha un passo suo (aperto da un link): ✕ lo chiude sostituendo l'indirizzo, la pagina resta", () => {
@@ -115,7 +143,7 @@ test("un foglio che non ha un passo suo (aperto da un link): ✕ lo chiude sosti
   assert.equal(c.userBack(), `/dashboard/${W}/contesto?account=1`);
   url.closeAccountSheet(c.page);
   assert.equal(c.calls.at(-1), "back");
-  assert.equal(c.here(), `/dashboard/${W}/contesto`);
+  assert.equal(c.land(), `/dashboard/${W}/contesto`);
 });
 
 test("`settings#cli` e `settings#granola` aprono il foglio sulla parte giusta, al posto dell'indirizzo, senza un passo nuovo", () => {

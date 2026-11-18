@@ -19,6 +19,7 @@ import { ACCOUNT_PARAM, accountPartForSettingsHash, withAccount, withoutAccount,
 export interface AccountPage {
   location: Pick<Location, "pathname" | "search" | "hash">;
   history: Pick<History, "pushState" | "replaceState" | "back">;
+  addEventListener(type: "popstate", listener: () => void): void;
 }
 
 const browser = (): AccountPage => window;
@@ -29,6 +30,12 @@ function here(page: AccountPage): string {
 
 /** L'indirizzo del passo che l'ultima apertura dal menu ha aggiunto alla cronologia (null prima della prima). */
 let pushed: string | null = null;
+/**
+ * «Indietro» chiesto e non ancora arrivato: il foglio resta aperto finché l'indirizzo non cambia, e un secondo ✕ o Esc
+ * in quel momento (un doppio clic) non deve tornare indietro di un altro passo, fuori dalla pagina.
+ */
+let leaving = false;
+const watched = new WeakSet<AccountPage>();
 
 export function openAccountSheet(part?: AccountPart, opts: { replace?: boolean } = {}, page: AccountPage = browser()): void {
   const url = withAccount(here(page), part);
@@ -38,13 +45,25 @@ export function openAccountSheet(part?: AccountPart, opts: { replace?: boolean }
   }
   page.history.pushState(null, "", url);
   pushed = url;
+  leaving = false;
 }
 
 export function closeAccountSheet(page: AccountPage = browser()): void {
   const current = here(page);
-  // L'apertura aveva aggiunto questo passo: chiudere è tornare indietro (Next segue il «popstate»).
-  if (pushed !== null && pushed === current) page.history.back();
-  else page.history.replaceState(null, "", withoutAccount(current));
+  if (pushed !== null && pushed === current) {
+    // L'apertura aveva aggiunto questo passo: chiudere è tornare indietro (Next segue il «popstate», e così il foglio).
+    if (leaving) return;
+    if (!watched.has(page)) {
+      watched.add(page);
+      page.addEventListener("popstate", () => {
+        leaving = false;
+      });
+    }
+    leaving = true;
+    page.history.back();
+    return;
+  }
+  page.history.replaceState(null, "", withoutAccount(current));
 }
 
 /**
