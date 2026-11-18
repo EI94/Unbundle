@@ -5,12 +5,12 @@ import {
 } from "@/lib/seo/structured-data";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy",
+  title: "Privacy",
   description:
     "Informativa sulla privacy di Unbundle: dati trattati, integrazione Slack, base giuridica, conservazione e diritti degli interessati.",
   alternates: { canonical: "/legal/privacy" },
   openGraph: {
-    title: "Privacy Policy — Unbundle",
+    title: "Privacy — Unbundle",
     description:
       "Informativa sulla privacy di Unbundle e dell'integrazione Slack.",
     url: "/legal/privacy",
@@ -24,16 +24,12 @@ export default function PrivacyPage() {
         {...jsonLdScriptProps(
           breadcrumbJsonLd([
             { name: "Home", url: "/" },
-            { name: "Privacy Policy", url: "/legal/privacy" },
+            { name: "Privacy", url: "/legal/privacy" },
           ])
         )}
       />
-      <h1 className="text-2xl font-semibold tracking-tight">Privacy Policy</h1>
-      <p className="text-muted-foreground">
-        Ultimo aggiornamento: aprile 2026. Documento di base per conformità
-        all’installazione dell’app Slack Unbundle; integralo con i contenuti
-        legali definitivi del tuo organismo.
-      </p>
+      <h1 className="text-2xl font-semibold tracking-tight">Privacy</h1>
+      <p className="text-muted-foreground">Ultimo aggiornamento: aprile 2026.</p>
 
       <h2 className="text-lg font-medium pt-6">Titolare e contatti</h2>
       <p>
@@ -43,8 +39,8 @@ export default function PrivacyPage() {
           className="text-primary underline underline-offset-2"
         >
           privacy@theunbundle.com
-        </a>{" "}
-        (sostituisci con l’indirizzo effettivo del titolare del trattamento).
+        </a>
+        .
       </p>
 
       <h2 className="text-lg font-medium pt-6">Dati trattati (prodotto Unbundle)</h2>

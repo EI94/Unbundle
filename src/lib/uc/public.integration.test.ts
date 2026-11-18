@@ -40,7 +40,7 @@ import {
 import { answerContext, normalizeAnswer } from "./answers/normalize.ts";
 import { deriveWorkspaceKek, envelopeAad, openJson } from "./crypto.ts";
 import { tokenRateLimitRule } from "./http.ts";
-import { MAX_BATCH_ANSWERS, PUBLIC_UNAVAILABLE_MESSAGE, REFERENT_PRIVACY_NOTICE, greetingNameFrom, type ReferentItemView, type ReferentView } from "./public-view.ts";
+import { MAX_BATCH_ANSWERS, PRIVACY_UPDATED_MESSAGE, PUBLIC_UNAVAILABLE_MESSAGE, REFERENT_PRIVACY_NOTICE, greetingNameFrom, type ReferentItemView, type ReferentView } from "./public-view.ts";
 import { planTemplateLoad } from "./template/load.ts";
 import { newRequestToken } from "./tokens.ts";
 import { batchEntry, chunkBatch, gridFromRows, initialForm, isReadyToSend } from "./views/referente-form.ts";
@@ -306,6 +306,35 @@ test("drafts: saved on the request item, health and discriminatory text never re
   assert.equal(foreign.ok ? null : foreign.code, "voce_non_disponibile");
 });
 
+test("(Ondata 0) notice read in an old version: every write waits with «informativa_aggiornata» and saves nothing; the view brings the notice back with its text; after «Ho letto» writes go through", opts, async () => {
+  // The referent read the notice before the release that changed it (uc-2026-10-2 → uc-2026-11-1).
+  await q(`UPDATE uc_requests SET privacy_notice_version = 'uc-2026-10-2' WHERE id = $1::uuid`, [state.requestService]);
+  const l = await link(state.tokenService);
+  assert.ok(l.privacyAckAt !== null && l.privacyNoticeVersion === "uc-2026-10-2");
+  const draftOf = async () => (await one(`SELECT state, draft FROM uc_request_items WHERE request_id = $1::uuid AND item_id = $2::uuid`, [state.requestService, item("q.servizio.02")])) as Record<string, unknown>;
+  const count = async (table: string) => num((await one(`SELECT count(*) AS n FROM ${table} WHERE case_id = $1::uuid`, [state.caseId])).n);
+  const before = { draft: await draftOf(), answers: await count("uc_answers"), files: await count("uc_files") };
+  const bytes = new Uint8Array(Buffer.from("Canale;Su 100\nposta;60\nsportello;40\n", "utf8"));
+  const outcomes = {
+    draft: await saveReferentDraft(exec!, l, item("q.servizio.02"), { payload: { value: "1.300" } }, popts()),
+    answer: await submitReferentAnswer(exec!, l, item("q.servizio.02"), { payload: { value: "1.300" } }, popts()),
+    batch: await submitReferentAnswers(exec!, l, { answers: [{ item_id: item("q.servizio.02"), kind: "valore", payload: { value: "1.300" } }] }, popts()),
+    delegation: await delegateItems(exec!, l, { nome: "Collega", email: `collega-informativa-${suffix}@cliente.test`, voci: [item("q.servizio.02")] }, popts()),
+    upload: await tableFromReferentFile(exec!, l, { itemId: item("q.servizio.01"), fileName: "canali.csv", declaration: true, bytes }, { ipHash: IP_HASH, userAgent: "prova" }, { UC_LOCAL_STORAGE_DIR: storeDir }, popts()),
+  };
+  for (const [name, r] of Object.entries(outcomes)) assert.deepEqual(r.ok ? null : [r.code, r.message], ["informativa_aggiornata", PRIVACY_UPDATED_MESSAGE], name);
+  assert.deepEqual(await draftOf(), before.draft, "the draft is the one saved before");
+  assert.deepEqual([await count("uc_answers"), await count("uc_files")], [before.answers, before.files], "no answer, no file");
+  assert.equal(await one(`SELECT id FROM uc_contacts WHERE workspace_id = $1::uuid AND email = $2`, [ids.ws, `collega-informativa-${suffix}@cliente.test`]), undefined, "no colleague");
+  // The page reads the notice again, with the text of the version to accept.
+  assert.deepEqual((await viewOf(state.tokenService)).privacy, { acknowledged: false, version: REFERENT_PRIVACY_NOTICE.version, notice: REFERENT_PRIVACY_NOTICE });
+  assert.ok((await acknowledgePrivacy(exec!, l, { version: REFERENT_PRIVACY_NOTICE.version }, popts())).ok);
+  assert.equal((await viewOf(state.tokenService)).privacy.acknowledged, true);
+  const again = await saveReferentDraft(exec!, await link(state.tokenService), item("q.servizio.02"), { payload: { value: "1.200" }, estimate: true }, popts());
+  assert.ok(again.ok, again.ok ? "" : again.message);
+  assert.deepEqual(await draftOf(), before.draft, "the same draft as before, saved again");
+});
+
 test("«Carica un Excel» on a table question: the file is checked and stays attached, its rows come back; other questions refuse it", opts, async () => {
   const l = await link(state.tokenService);
   const env = { UC_LOCAL_STORAGE_DIR: storeDir };
@@ -381,8 +410,9 @@ test("«Non lo so» is a valid answer; a late answer still goes to verification;
   const late = await submitReferentAnswer(exec!, l, item("q.servizio.05"), { payload: "90 min" }, popts());
   assert.ok(late.ok, late.ok ? "" : late.message);
   assert.equal(await statusOf("q.servizio.05"), "in_verifica");
-  const noReason = await submitReferentAnswer(exec!, l, item("q.servizio.04"), { kind: "non_so", who_might_know: "Mario Rossi" }, popts());
-  assert.equal(noReason.ok ? null : noReason.code, "testo_nome_persona", "names are blocked in free text");
+  // (Ondata 0) Names, e-mails and phones pass on /r, as on /rispondi; a tax code in free text is still refused.
+  const noReason = await submitReferentAnswer(exec!, l, item("q.servizio.04"), { kind: "non_so", who_might_know: "RSSMRA80A01H501U" }, popts());
+  assert.equal(noReason.ok ? null : noReason.code, "testo_codice_fiscale", "tax codes are blocked in free text");
   const partial = await submitReferentAnswer(exec!, l, item("q.servizio.04"), { payload: "09:00-13:00", partial: true, note: "manca l'orario del sabato" }, popts());
   assert.ok(partial.ok, partial.ok ? "" : partial.message);
   assert.equal(await statusOf("q.servizio.04"), "parziale");
@@ -794,10 +824,10 @@ after(async () => {
 test("referent view: first name, two-level notice, question counts, minutes in proportion", opts, async () => {
   const v = await volumesCase();
   const l = await link(v.token);
-  const old = await acknowledgePrivacy(exec!, l, { version: "uc-2026-10-1" }, popts());
+  const old = await acknowledgePrivacy(exec!, l, { version: "uc-2026-10-2" }, popts());
   assert.equal(old.ok ? null : old.code, "informativa_cambiata", "the two-level notice is a new version");
   assert.ok((await acknowledgePrivacy(exec!, l, { version: REFERENT_PRIVACY_NOTICE.version }, popts())).ok);
-  assert.equal(REFERENT_PRIVACY_NOTICE.version, "uc-2026-10-2");
+  assert.equal(REFERENT_PRIVACY_NOTICE.version, "uc-2026-11-1");
   const view = await viewOf(v.token);
   assert.equal(view.greetingName, "Marco");
   assert.equal(view.greetingName, greetingNameFrom("Marco Volumi"));

@@ -14,3 +14,6 @@ export const firebaseApp =
   getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
 export const firebaseAuth = getAuth(firebaseApp);
+// (Ondata 0) Le e-mail di Firebase (verifica dell'indirizzo, nuova password) e i suoi messaggi in italiano, non nella
+// lingua del browser. I modelli delle e-mail si scrivono nel pannello di Firebase.
+firebaseAuth.languageCode = "it";

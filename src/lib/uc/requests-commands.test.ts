@@ -438,11 +438,11 @@ test("a referent with a Lateral Space address, or the address of an LS member, i
 });
 
 test("(8.0c) a referent with the address of who builds the case from outside is refused, and nothing is written", async () => {
-  const db = new FakeDb(state({ builderEmails: ["alessio@gmail.test"] }));
-  const r = await createContact(db, ctx(), { displayName: "Persona", email: "Alessio@Gmail.test" });
+  const db = new FakeDb(state({ builderEmails: ["sandro@gmail.test"] }));
+  const r = await createContact(db, ctx(), { displayName: "Persona", email: "Sandro@Gmail.test" });
   assert.equal(r.ok ? null : r.code, "referente_costruttore");
   assert.equal(db.writes.length, 0);
-  const other = await createContact(new FakeDb(state({ builderEmails: ["alessio@gmail.test"] })), ctx(), { displayName: "Persona", email: "titolare@cliente.test" });
+  const other = await createContact(new FakeDb(state({ builderEmails: ["sandro@gmail.test"] })), ctx(), { displayName: "Persona", email: "titolare@cliente.test" });
   assert.ok(other.ok, other.ok ? "" : other.message);
 });
 

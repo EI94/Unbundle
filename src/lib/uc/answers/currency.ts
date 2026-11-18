@@ -44,8 +44,11 @@ const WORDS: Readonly<Record<string, CurrencyCode>> = {
   fr: "CHF",
 };
 
-/** Suggerimenti per «a cosa si riferisce l'importo». */
-export const CURRENCY_PER_SUGGESTIONS = ["volo", "ora", "notte", "persona", "tratta", "giorno", "mese", "anno", "una tantum"] as const;
+/**
+ * Suggerimenti per «a cosa si riferisce l'importo». (Ondata 0) Niente più parole di un settore solo («volo», «notte»,
+ * «tratta»): il testo libero le accetta ancora.
+ */
+export const CURRENCY_PER_SUGGESTIONS = ["pezzo", "ora", "persona", "giorno", "mese", "anno", "una tantum"] as const;
 
 /** Valuta da un simbolo, un codice o una parola, altrimenti null. */
 export function currencyFromToken(token: string): CurrencyCode | null {
@@ -230,7 +233,7 @@ export function normalizeValuta(raw: unknown, config: ResponseConfig, ctx: Pick<
   if (money.amount < 0) errors.push(issue("importo_negativo", "L'importo non può essere negativo.", "amount"));
   if (vat === null) errors.push(issue("iva_mancante", "Indica se l'IVA è inclusa o esclusa.", "vat"));
   if (per === null) {
-    errors.push(issue("per_mancante", "Indica a cosa si riferisce l'importo: a volo, a ora, a notte, a persona…", "per"));
+    errors.push(issue("per_mancante", "Indica a cosa si riferisce l'importo: a pezzo, a ora, a persona…", "per"));
   }
   const fx = readFx(fxRaw, ctx.today, errors);
   if (currency !== "EUR" && fx === null && !errors.some((e) => e.field?.startsWith("fx"))) {

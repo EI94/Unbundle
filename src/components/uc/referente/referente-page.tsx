@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Issue } from "@/lib/uc/answers/issues";
-import type { BatchAnswersResult, ReferentItemView, ReferentModuleView, ReferentView } from "@/lib/uc/public-view";
+import { noticeFor, waitsForPrivacy, type BatchAnswersResult, type ReferentItemView, type ReferentModuleView, type ReferentView } from "@/lib/uc/public-view";
 import {
   answerBody,
   answerSummary,
@@ -33,7 +33,7 @@ import {
 } from "@/lib/uc/views/referente-plan";
 import { getView, postAnswers, postJson } from "./api";
 import { ApprovalsView, type ApprovalOutcome } from "./approvals-view";
-import { FileDeclarationContext, type AttachmentRef } from "./attachment-field";
+import type { AttachmentRef } from "./attachment-field";
 import { ClarificationScreen } from "./clarification-screen";
 import { DelegateScreen, type DelegateResult } from "./delegate-screen";
 import { InvalidLinkCard, ReferentShell } from "./link-card";
@@ -67,6 +67,11 @@ import { useDeviceMemory, useHashRoute, useNarrow, useReducedMotion } from "./us
  *
  * Avvisi in linea, niente toast né portali: il `Toaster` di radice è fuori da
  * `.survey-light`. Dopo ogni invio la vista si rilegge dal server.
+ *
+ * (Ondata 0) Se una scrittura aspetta l'informativa (cambiata con un rilascio,
+ * o non risulta letta), niente di scritto si perde: le bozze restano, anche sul
+ * dispositivo, la vista si rilegge e l'informativa torna sullo schermo, con il
+ * testo del server. Un tocco su «Ho letto, iniziamo» e si riprende da lì.
  */
 
 export interface ReferentePageProps {
@@ -139,9 +144,6 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
   const [announce, setAnnounce] = useState("");
   const [notice, setNotice] = useState<HomeNotice | null>(null);
   const [review, setReview] = useState<ReviewState | null>(null);
-  // La dichiarazione sui file si chiede una volta per visita (DESIGN §9.1 punto 16).
-  const [fileDeclared, setFileDeclared] = useState(false);
-  const fileDeclaration = useMemo(() => ({ declared: fileDeclared, declare: setFileDeclared }), [fileDeclared]);
   const savedAnnounced = useRef(false);
   const now = useMemo(() => new Date(nowIso), [nowIso]);
   const narrow = useNarrow();
@@ -168,8 +170,11 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
     // «Salvato» solo la prima volta, e mai sopra un annuncio appena fatto («Confermato.»).
     if (Date.now() - lastSaid.current > 2000) say("Salvato.");
   }, [say]);
-  const autosave = useAutosave({ token, enabled: writable, onBlocked, onInvalidLink, onSaved });
-  const { schedule, forget, flush, readDevice } = autosave;
+  // (Ondata 0) Una bozza aspetta l'informativa: la vista si rilegge (con `refresh`, più sotto) e l'informativa torna.
+  const privacyWait = useRef<() => void>(() => undefined);
+  const onPrivacyWait = useCallback(() => privacyWait.current(), []);
+  const autosave = useAutosave({ token, enabled: writable, onBlocked, onInvalidLink, onSaved, onPrivacyWait });
+  const { schedule, hold, forget, flush, readDevice } = autosave;
 
   // Apertura del link: una volta dopo l'idratazione (mai su GET, così prefetch e scanner non contano).
   const opened = useRef(false);
@@ -216,24 +221,48 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
       setForms(nextForms);
       setAttachments(files);
       setView(next);
-      if (next.privacy.acknowledged) setPrivacyAck(true);
+      // (Ondata 0) Anche indietro: un'informativa cambiata, o che non risulta letta, torna sullo schermo.
+      setPrivacyAck(next.privacy.acknowledged);
     },
     [forget],
   );
 
+  /** Rilegge la vista dal server: la vista applicata, oppure null (link non più valido, rete, servizio). */
   const refresh = useCallback(
-    async (reset: readonly string[] = []) => {
+    async (reset: readonly string[] = []): Promise<ReferentView | null> => {
       const r = await getView<ReferentView>(token);
       if (!r.ok) {
         if (r.code === "link_non_valido") setInvalid(true);
         else setNotice({ tone: "errore", text: "Non riesco ad aggiornare la pagina. Ricaricala tra poco: le risposte inviate sono salve." });
-        return false;
+        return null;
       }
       applyView(r.data, reset);
-      return true;
+      return r.data;
     },
     [applyView, token],
   );
+
+  // Una rilettura alla volta, anche quando più bozze aspettano l'informativa insieme.
+  const rereading = useRef(false);
+  useEffect(() => {
+    privacyWait.current = () => {
+      if (rereading.current) return;
+      rereading.current = true;
+      void refresh().finally(() => {
+        rereading.current = false;
+      });
+    };
+  }, [refresh]);
+
+  /**
+   * (Ondata 0) Un invio aspetta l'informativa: si rilegge la vista. true se l'informativa è di nuovo sullo schermo
+   * (niente è partito, e dopo «Ho letto, iniziamo» la risposta è ancora qui); false se no (rete, o già letta), e chi
+   * chiama mostra il messaggio del server.
+   */
+  async function privacyAgain(): Promise<boolean> {
+    const next = await refresh();
+    return next !== null && !next.privacy.acknowledged;
+  }
 
   // ── Stato derivato ──────────────────────────────────────────────────
 
@@ -356,7 +385,8 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
       say(check.errors[0]?.message ?? "Controlla i campi segnati.");
       return false;
     }
-    forget(item.id);
+    // (Ondata 0) Niente salvataggi automatici in mezzo, ma la copia sul dispositivo resta finché la risposta non è partita.
+    hold(item.id);
     setBusy(true);
     const r = await postJson<SubmittedAnswer>(token, `items/${encodeURIComponent(item.id)}/answer`, answerBody(item, form, action, files));
     setBusy(false);
@@ -365,11 +395,13 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
         setInvalid(true);
         return false;
       }
+      if (waitsForPrivacy(r.code) && (await privacyAgain())) return false;
       setIssues((f) => ({ ...f, [item.id]: r.issues.length > 0 ? r.issues : [{ code: r.code, message: r.message }] }));
       say(r.message);
       if (r.code === "conflitto" || r.code === "voce_non_disponibile" || r.code === "stato_non_ammesso") await refresh();
       return false;
     }
+    forget(item.id);
     memory.unskip([item.id]);
     say("Inviata.");
     await refresh([item.id]);
@@ -438,13 +470,15 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
       say("Sei offline: per inviare serve la connessione.");
       return;
     }
-    // Le risposte sostituiscono le bozze: nessun salvataggio automatico deve partire in mezzo.
-    for (const item of toSend) forget(item.id);
+    // Le risposte sostituiscono le bozze: nessun salvataggio automatico deve partire in mezzo. (Ondata 0) La copia sul
+    // dispositivo resta finché ciascuna non è partita.
+    for (const item of toSend) hold(item.id);
     setBusy(true);
     setReview(null);
     const entries = toSend.map((item) => batchEntry(item, formsRef.current[item.id] ?? initialForm(item), usableIds(attachmentsRef.current[item.id])));
     const failures: Record<string, string> = {};
     const sent: string[] = [];
+    let privacyWaited = false;
     for (const chunk of chunkBatch(entries)) {
       const r = await postAnswers<BatchAnswersResult>(token, chunk);
       if (!r.ok) {
@@ -455,6 +489,11 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
         }
         for (const e of chunk) failures[String(e.item_id)] = r.message;
         if (r.status === 0) break;
+        // (Ondata 0) L'informativa da leggere ferma anche le altre chiamate: si legge prima.
+        if (waitsForPrivacy(r.code)) {
+          privacyWaited = true;
+          break;
+        }
         continue;
       }
       for (const result of r.data.results) {
@@ -463,12 +502,15 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
       }
     }
     memory.unskip(sent);
-    // Quelle non partite restano bozze: di nuovo in salvataggio, sul server e sul telefono.
+    // Quelle partite lasciano la bozza; le altre restano bozze, di nuovo in salvataggio, sul server e sul telefono.
     for (const item of toSend) {
-      if (failures[item.id] !== undefined) schedule({ item, form: formsRef.current[item.id] ?? initialForm(item), fileIds: usableIds(attachmentsRef.current[item.id]) });
+      if (sent.includes(item.id)) forget(item.id);
+      else schedule({ item, form: formsRef.current[item.id] ?? initialForm(item), fileIds: usableIds(attachmentsRef.current[item.id]) });
     }
-    await refresh(sent);
+    const next = await refresh(sent);
     setBusy(false);
+    // (Ondata 0) L'informativa è di nuovo sullo schermo: dopo «Ho letto, iniziamo» il riepilogo è ancora qui, da inviare.
+    if (privacyWaited && next !== null && !next.privacy.acknowledged) return;
     const failed = Object.keys(failures).length;
     if (failed === 0) {
       say("Inviate.");
@@ -485,6 +527,7 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
     const r = await postJson<DelegationResult>(token, "delegate", delegateBody(f));
     if (!r.ok) {
       if (r.code === "link_non_valido") setInvalid(true);
+      else if (waitsForPrivacy(r.code)) await privacyAgain();
       return { ok: false, message: r.message, issues: r.issues };
     }
     for (const id of f.voci) forget(id);
@@ -506,6 +549,7 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
     if (!r.ok) {
       if (r.code === "link_non_valido") setInvalid(true);
       if (r.code === "testo_cambiato" || r.code === "approvazione_non_trovata") await refresh();
+      else if (waitsForPrivacy(r.code)) await privacyAgain();
       return { ok: false, message: r.message };
     }
     // L'esito lo scrive il passo della firma con le frasi di `/firme` (anche dopo «Non approvo»): niente avviso sopra.
@@ -520,6 +564,8 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
     setPrivacyBusy(false);
     if (r.ok) {
       setPrivacyAck(true);
+      // (Ondata 0) Gli esiti di un invio fermato dall'informativa non valgono più: si invia di nuovo.
+      setReview(null);
       return;
     }
     if (r.code === "link_non_valido") {
@@ -549,7 +595,7 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
   if (live && !privacyAck) {
     return (
       <ReferentShell>
-        <PrivacyGate clientLabel={view.clientLabel} busy={privacyBusy} error={privacyError} disabled={!live} onAcknowledge={() => void acknowledge()} />
+        <PrivacyGate notice={noticeFor(view.privacy)} clientLabel={view.clientLabel} busy={privacyBusy} error={privacyError} disabled={!live} onAcknowledge={() => void acknowledge()} />
         {liveRegion}
       </ReferentShell>
     );
@@ -569,7 +615,7 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
             <ClientLine clientLabel={view.clientLabel} />
             <ScreenTitle>{view.greetingName ? `Ciao ${view.greetingName}` : "Ciao"}</ScreenTitle>
           </div>
-          {view.paused ? <Notice tone="attenzione">Il caso è in pausa. Ti scriviamo quando riparte.</Notice> : null}
+          {view.paused ? <Notice tone="attenzione">Il caso d&apos;uso è in pausa. Ti scriviamo quando riparte.</Notice> : null}
           {homeNotice}
         </section>
         <ApprovalsView approvals={view.approvals} disabled={!writable} onDecide={decideApproval} />
@@ -590,6 +636,7 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
       notice={homeNotice}
       preview={readOnly}
       paused={view.paused}
+      privacyNotice={noticeFor(view.privacy) ?? undefined}
     />
   );
 
@@ -739,7 +786,7 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
 
   return (
     <ReferentShell>
-      <FileDeclarationContext value={fileDeclaration}>{screen}</FileDeclarationContext>
+      {screen}
       {liveRegion}
     </ReferentShell>
   );

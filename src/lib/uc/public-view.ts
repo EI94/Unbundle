@@ -26,6 +26,20 @@ import type {
 
 // ── Informativa privacy ───────────────────────────────────────────────
 
+/** Il testo dell'informativa di una versione, come `REFERENT_PRIVACY_NOTICE` e come il server lo manda nella vista. */
+export interface ReferentNoticeText {
+  version: string;
+  title: string;
+  lead: string;
+  summary: readonly string[];
+  fullTextLabel: string;
+  footerLabel: string;
+  contact: string;
+  button: string;
+  error: string;
+  paragraphs: readonly string[];
+}
+
 /**
  * Informativa a due livelli (DESIGN §4.3 R0), mostrata al primo accesso di ogni
  * richiesta: tre punti da sapere e il testo completo in un riquadro chiuso. La
@@ -33,14 +47,25 @@ import type {
  * letto, iniziamo»: se il testo cambia, cambia anche la versione e
  * l'informativa torna a comparire. I testi stanno tutti qui, così si cambiano
  * in un commit (testo legale da confermare: DESIGN §9.2 domanda 2).
+ *
+ * (Ondata 0) Versione `uc-2026-11-1`, come quella di `/rispondi` dal rilascio
+ * 5.1: nomi, email e telefoni non si bloccano più (`referentLinkScan`), la
+ * casella sui file non c'è più e il controllo automatico dei file lo dice una
+ * riga; «caso d'uso» al posto di «caso». Chi aveva letto `uc-2026-10-2` la
+ * rivede una volta. Testo da approvare dal titolare prima del rilascio.
+ *
+ * Quando la versione cambia, le scritture di chi aveva letto la vecchia
+ * aspettano con `informativa_aggiornata` (un 503: la pagina aperta da prima
+ * del rilascio tiene così le bozze e riprova) e la vista manda il testo nuovo,
+ * che la pagina mostra al posto del suo (`noticeFor`).
  */
 export const REFERENT_PRIVACY_NOTICE = {
-  version: "uc-2026-10-2",
+  version: "uc-2026-11-1",
   title: "Prima di iniziare",
   lead: "Tre cose da sapere sulle tue risposte.",
   summary: [
-    "Ti chiediamo del lavoro, non di te. Non scrivere dati sanitari né nomi di persone: il sistema li blocca.",
-    "Le risposte le vedono Lateral Space e chi segue il caso nella tua azienda. Non misuriamo i tuoi tempi.",
+    "Ti chiediamo del lavoro, non di te. Non servono dati sanitari: se ne troviamo, ti chiediamo di toglierli.",
+    "Le risposte le vedono Lateral Space e chi segue il caso d'uso nella tua azienda. Non misuriamo i tuoi tempi.",
     "Il link è solo tuo e vale 30 giorni.",
   ],
   fullTextLabel: "Leggi l'informativa completa",
@@ -51,23 +76,76 @@ export const REFERENT_PRIVACY_NOTICE = {
   error: "Non riesco a registrarlo. Riprova tra poco.",
   paragraphs: [
     "Lateral Space raccoglie queste informazioni per conto della tua azienda, per preparare il caso d'uso. Le usiamo solo per questo.",
-    "Ti chiediamo informazioni sul lavoro, non su di te. Non scrivere dati sanitari, nomi di persone, date di nascita o preferenze su genere, età, origine o religione: il sistema li blocca.",
+    "Ti chiediamo informazioni sul lavoro, non su di te. Se scrivi il nome di un collega, un'email o un telefono, li usiamo solo per questo caso d'uso. Non servono dati sanitari, codici fiscali, date di nascita o preferenze su genere, età, origine o religione: se ne troviamo, ti chiediamo di toglierli.",
+    "Ogni file passa da un controllo automatico prima di essere usato.",
     "Salviamo le tue risposte, il tuo nome, il ruolo e l'email che ci ha dato la tua azienda. Dell'indirizzo IP teniamo solo un'impronta cifrata, mai il numero.",
-    "Non misuriamo i tuoi tempi e non facciamo classifiche tra persone. Le risposte le vedono Lateral Space e le persone della tua azienda che seguono il caso.",
+    "Non misuriamo i tuoi tempi e non facciamo classifiche tra persone. Le risposte le vedono Lateral Space e le persone della tua azienda che seguono il caso d'uso.",
     "Il link è personale e scade dopo 30 giorni. Non inoltrarlo: se serve, usa «Chiedi a un collega». Per domande o per cancellare i tuoi dati scrivi a chi ti ha mandato il link.",
   ],
-} as const;
+} as const satisfies ReferentNoticeText;
+
+/**
+ * (Ondata 0) Il testo da mostrare per la versione che il server chiede di accettare (`privacy.version`): quello della
+ * vista, che il server manda da Ondata 0, oppure quello di questa pagina se è della stessa versione. null se nessuno
+ * dei due lo è (una pagina e un server di rilasci diversi, senza Skew Protection): la pagina chiede di ricaricarsi,
+ * perché non si accetta mai una versione di cui si è letto un altro testo.
+ */
+export function noticeFor(privacy: { version: string; notice?: ReferentNoticeText }, own: ReferentNoticeText = REFERENT_PRIVACY_NOTICE): ReferentNoticeText | null {
+  if (privacy.notice && privacy.notice.version === privacy.version) return privacy.notice;
+  return own.version === privacy.version ? own : null;
+}
 
 // ── Messaggi uniformi ─────────────────────────────────────────────────
 
 /** Token sbagliato, scaduto, revocato o sezione spenta: sempre lo stesso testo. */
 export const INVALID_LINK_MESSAGE = "Questo link non è più valido. Chiedi a chi te l'ha mandato un link nuovo.";
-export const PAUSED_CASE_MESSAGE = "Il caso è in pausa: per ora non serve rispondere.";
+export const PAUSED_CASE_MESSAGE = "Il caso d'uso è in pausa: per ora non serve rispondere.";
 export const PRIVACY_PENDING_MESSAGE = "Prima leggi l'informativa e premi «Ho letto, iniziamo».";
+/**
+ * (Ondata 0) L'informativa letta su questa richiesta è di una versione vecchia (`informativa_aggiornata`): le
+ * scritture aspettano «Ho letto, iniziamo» sulla nuova. Il testo è per chi ha la pagina aperta da prima del rilascio,
+ * che l'informativa non sa mostrarla di nuovo.
+ */
+export const PRIVACY_UPDATED_MESSAGE = "Abbiamo aggiornato l'informativa: ricarica la pagina per leggerla e continuare.";
+
+/**
+ * (Ondata 0) Una scrittura aspetta l'informativa: mai letta (`informativa_da_leggere`), oppure letta in una versione
+ * vecchia (`informativa_aggiornata`). Non rifiuta quello che il referente ha scritto: la pagina lo tiene, anche sul
+ * dispositivo, e mostra di nuovo l'informativa.
+ */
+export function waitsForPrivacy(code: string): boolean {
+  return code === "informativa_da_leggere" || code === "informativa_aggiornata";
+}
 /** Domanda personale con la zona personale chiusa (DESIGN §4.3, «Si apriranno più avanti»). */
 export const PERSONAL_LOCKED_MESSAGE = "Riguarda dati personali: si apre quando la tua azienda approva la scheda privacy.";
 /** Le risposte personali, ai chiarimenti e le deleghe partono da sole, mai in un invio a gruppi (DESIGN §4.2). */
 export const SINGLE_SEND_MESSAGE = "Questa risposta parte da sola: aprila e premi «Invia».";
+
+// ── Scansione dei testi del referente ─────────────────────────────────
+
+/** Le opzioni di scansione dei testi scritti su `/r` (`ScanOptions` di `text/scan.ts`). */
+export interface ReferentLinkScan {
+  context: "risposta";
+  allowNamesAndContacts: true;
+  healthRuleQuestion?: { questionText: string };
+}
+
+/**
+ * (Ondata 0) La scansione dei testi del referente su `/r`, come su `/rispondi`
+ * dal rilascio 5.1 (decisione del titolare del 04/11/2026, «basta che lo
+ * diciamo prima nelle informative»): nomi di persone, email e telefoni
+ * passano; dati sanitari e preferenze discriminatorie si fermano sempre, anche
+ * in bozza; codici fiscali e date di nascita all'invio. Vale per ogni testo
+ * della pagina: risposte, note, motivi, «Chi potrebbe saperlo», la delega e
+ * «Non approvo». La usano il server (`uc-public.ts`) e il controllo prima
+ * dell'invio nel browser (`views/referente-form.ts`). Con una domanda sulla
+ * regola sanitaria, i termini del suo testo danno solo un avviso.
+ */
+export function referentLinkScan(question?: { healthRuleQuestion: boolean; title: string }): ReferentLinkScan {
+  return question?.healthRuleQuestion
+    ? { context: "risposta", allowNamesAndContacts: true, healthRuleQuestion: { questionText: question.title } }
+    : { context: "risposta", allowNamesAndContacts: true };
+}
 
 /** Risposte al massimo per ogni `POST /api/r/[token]/answers` (DESIGN §7.1 P0-11). */
 export const MAX_BATCH_ANSWERS = 50;
@@ -450,7 +528,12 @@ export interface ReferentView {
   paused: boolean;
   /** Scadenza del link (ISO). */
   expiresAt: string;
-  privacy: { acknowledged: boolean; version: string };
+  privacy: {
+    acknowledged: boolean;
+    version: string;
+    /** (Ondata 0) Il testo di `version`: la pagina mostra questo, non il suo, se non è lo stesso. Manca da un server di prima. */
+    notice?: ReferentNoticeText;
+  };
   /**
    * Avanzamento = fatte / rispondibili adesso (DESIGN §4.4 punto 6): le domande
    * personali ancora chiuse non contano e stanno in un elenco a parte.

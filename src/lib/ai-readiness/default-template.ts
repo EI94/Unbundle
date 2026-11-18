@@ -342,7 +342,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       sectionId: "workflow-people",
       label: "Ruoli e responsabilità sono chiari e scritti?",
       description:
-        "Chi decide, chi esegue, chi controlla: e definito da qualche parte o si va a consuetudine?",
+        "Chi decide, chi esegue, chi controlla: è definito da qualche parte o si va a consuetudine?",
       answerType: "scale",
       required: true,
       min: 0,
@@ -441,7 +441,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       pillarId: "workflow",
       sectionId: "workflow-people",
       label:
-        "C'è qualcosa su ruoli, competenze o processi che e importante sapere?",
+        "C'è qualcosa su ruoli, competenze o processi che è importante sapere?",
       description:
         "Es. un'area in forte crescita, un pensionamento chiave in arrivo, un reparto già molto digitale.",
       answerType: "text",
@@ -549,7 +549,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
         { value: "rarely", label: "Raramente, se mi capita sotto gli occhi", score: 1 },
         { value: "sometimes", label: "Ogni tanto, quando esce qualcosa di grosso", score: 3 },
         { value: "often", label: "Spesso: cerco di tenermi aggiornato", score: 4 },
-        { value: "always", label: "Con costanza: e un tema che seguo davvero", score: 5 },
+        { value: "always", label: "Con costanza: è un tema che seguo davvero", score: 5 },
       ],
     },
     {
@@ -877,7 +877,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       allowUnsure: true,
       levels: [
         { value: 1, label: "Mai provato niente" },
-        { value: 2, label: "Se ne e parlato, ma nulla di fatto" },
+        { value: 2, label: "Se ne è parlato, ma nulla di fatto" },
         { value: 3, label: "Un piccolo esperimento" },
         { value: 4, label: "Qualche esperimento, con risultati" },
         { value: 5, label: "Più esperimenti già entrati nel lavoro quotidiano" },

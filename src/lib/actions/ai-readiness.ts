@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth/redirect-to-login";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
+import { AI_READINESS_DEFAULT_COPY } from "@/lib/ai-readiness/copy";
 import {
   canManageWorkspaceSettings,
   canReviewWorkspacePortfolio,
@@ -311,12 +312,8 @@ export async function createAiReadinessAssessmentAction(
     language: "it",
     brandConfig: {
       displayName: parsed.data.displayName || manager.access.workspace.name,
-      introCopy:
-        parsed.data.introCopy ||
-        "Questa diagnosi misura la readiness AI dell'organizzazione. Non e un esame: serve a capire dove aiutare meglio team, processi e tecnologia.",
-      completionCopy:
-        parsed.data.completionCopy ||
-        "Grazie. Le risposte saranno aggregate e usate per costruire una roadmap AI piu concreta e sicura.",
+      introCopy: parsed.data.introCopy || AI_READINESS_DEFAULT_COPY.intro,
+      completionCopy: parsed.data.completionCopy || AI_READINESS_DEFAULT_COPY.completion,
     },
     terminologyConfig: {
       organizationUnitLabel: "Area / team",
@@ -639,7 +636,7 @@ export async function customizeAssessmentQuestionAction(
     ok: true,
     message:
       submitted > 0
-        ? "Domande aggiornate. Attenzione: ci sono gia risposte inviate, gli score sono stati ricalcolati sulle domande attuali."
+        ? "Domande aggiornate. Attenzione: ci sono già risposte inviate, gli score sono stati ricalcolati sulle domande attuali."
         : "Domande aggiornate.",
     fieldErrors: {},
   };
@@ -682,7 +679,7 @@ export async function generateAiReadinessOpenLinkAction(
   revalidatePath(`/dashboard/${workspaceId}/ai-readiness`);
   return {
     ok: true,
-    message: "Link condivisibile pronto: chiunque lo riceve puo iniziare la survey.",
+    message: "Link condivisibile pronto: chiunque lo riceve può iniziare la survey.",
     fieldErrors: {},
     data: { openUrl: `${baseUrl}/s/${encodeURIComponent(token)}` },
   };
@@ -711,7 +708,7 @@ export async function startOpenSurveyAction(
   const found = await getAssessmentByOpenLinkTokenHash(hashInviteToken(openToken));
   if (!found) return errorState("Link non valido o revocato.");
   if (found.assessment.status !== "open") {
-    return errorState("La raccolta non e aperta in questo momento.");
+    return errorState("La raccolta non è aperta in questo momento.");
   }
   const openScope = questionScopeFromUnknown(
     found.assessment.scoringConfig?.openLinkQuestionScope
@@ -898,17 +895,17 @@ export async function submitUseCaseExpertCaseAction(
   if (!found) return errorState("Invito non valido o revocato.");
   const { respondent, assessment } = found;
   if (respondent.surveyTrack !== "use_case_expert") {
-    return errorState("Questo link non e per la raccolta use case.");
+    return errorState("Questo link non è per la raccolta use case.");
   }
   if (
     respondent.inviteStatus === "revoked" ||
     respondent.inviteStatus === "expired" ||
     respondent.inviteStatus === "privacy_deleted"
   ) {
-    return errorState("Questo invito non e piu valido.");
+    return errorState("Questo invito non è più valido.");
   }
   if (assessment.status !== "open") {
-    return errorState("La raccolta non e aperta in questo momento.");
+    return errorState("La raccolta non è aperta in questo momento.");
   }
 
   const values = collectUseCaseValues((name) => {
@@ -969,7 +966,7 @@ export async function finishUseCaseExpertAction(
   if (!found) return errorState("Invito non valido o revocato.");
   const { respondent } = found;
   if (respondent.surveyTrack !== "use_case_expert") {
-    return errorState("Questo link non e per la raccolta use case.");
+    return errorState("Questo link non è per la raccolta use case.");
   }
   await completeAiReadinessRespondent({
     respondentId: respondent.id,
@@ -992,13 +989,13 @@ export async function saveAiReadinessSurveyDraftAction(
     respondent.inviteStatus === "expired" ||
     respondent.inviteStatus === "privacy_deleted"
   ) {
-    return errorState("Questo invito non e piu valido.");
+    return errorState("Questo invito non è più valido.");
   }
   if (respondent.inviteStatus === "completed") {
-    return errorState("Le risposte sono gia state inviate.");
+    return errorState("Le risposte sono già state inviate.");
   }
   if (assessment.status !== "open") {
-    return errorState("L'assessment non e aperto.");
+    return errorState("L'assessment non è aperto.");
   }
 
   const normalized = normalizeDraftPayload(found.templateDefinition, payload);
@@ -1044,20 +1041,20 @@ export async function submitAiReadinessResponseAction(
     respondent.inviteStatus === "expired" ||
     respondent.inviteStatus === "privacy_deleted"
   ) {
-    return errorState("Questo invito non e piu valido.");
+    return errorState("Questo invito non è più valido.");
   }
   if (respondent.inviteStatus === "completed") {
     // Idempotenza: un secondo submit (doppio click, replay) non deve
     // sovrascrivere le risposte né duplicare gli use case proposti.
     return {
       ok: true,
-      message: "Risposte gia inviate in precedenza.",
+      message: "Risposte già inviate in precedenza.",
       fieldErrors: {},
       data: { completed: true },
     };
   }
   if (assessment.status !== "open") {
-    return errorState("L'assessment non e aperto. Contatta il team Unbundle.");
+    return errorState("L'assessment non è aperto. Contatta il team Unbundle.");
   }
 
   const acceptedPrivacy = formData.get("privacyAccepted") === "on";
@@ -1359,7 +1356,7 @@ export async function promoteAiReadinessUseCaseToPortfolioAction(
   if (submission.linkedUseCaseId) {
     return {
       ok: true,
-      message: "Questo use case e gia collegato al Portfolio.",
+      message: "Questo use case è già collegato al Portfolio.",
       fieldErrors: {},
       data: { useCaseId: submission.linkedUseCaseId },
     };
@@ -1474,7 +1471,7 @@ export async function anonymizeAiReadinessRespondentAction(
   });
   return {
     ok: true,
-    message: "Dati respondent anonimizzati. Il vecchio link privacy non sara piu utilizzabile.",
+    message: "Dati respondent anonimizzati. Il vecchio link privacy non sarà più utilizzabile.",
     fieldErrors: {},
   };
 }

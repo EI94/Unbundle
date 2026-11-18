@@ -21,6 +21,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLinkItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -257,23 +258,17 @@ export function AppSidebar({
                 <ChevronUp className="h-4 w-4 text-sidebar-foreground/60 light:text-sidebar-foreground/70" />
               </DropdownMenuTrigger>
               <DropdownMenuContent side="top" align="start" className="w-56">
-                <DropdownMenuItem>
-                  <Link onNavigate={closeMobileNavigation} href="/dashboard" className="flex items-center w-full">
-                    <LayoutGrid className="mr-2 h-4 w-4" />
-                    I miei workspace
-                  </Link>
-                </DropdownMenuItem>
+                {/* (Ondata 0) Le voci fanno loro stesse l'azione: con il mouse, il dito o Invio. */}
+                <DropdownMenuLinkItem render={<Link onNavigate={closeMobileNavigation} href="/dashboard" />}>
+                  <LayoutGrid className="mr-2 h-4 w-4" />
+                  I miei workspace
+                </DropdownMenuLinkItem>
                 <DropdownMenuSeparator />
                 <ThemeMenuGroup />
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>
-                  <button
-                    onClick={handleLogout}
-                    className="flex w-full items-center text-sm"
-                  >
-                    <LogOut className="mr-2 h-4 w-4" />
-                    Esci
-                  </button>
+                <DropdownMenuItem onClick={handleLogout}>
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Esci
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

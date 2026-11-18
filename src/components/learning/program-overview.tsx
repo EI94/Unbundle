@@ -337,7 +337,7 @@ function Agenda({ module, sessionStart, now, base, canParticipate }: {
   );
 }
 
-export async function ProgramOverview({ workspaceId, programId, moduleId }: { workspaceId: string; programId: string; moduleId?: string }) {
+export async function ProgramOverview({ workspaceId, programId, moduleId, arrival = null }: { workspaceId: string; programId: string; moduleId?: string; arrival?: string | null }) {
   const program = await getLearningProgram(workspaceId, programId);
   const base = `/dashboard/${workspaceId}/learning/${programId}`;
   const own = program.ownSession;
@@ -348,6 +348,11 @@ export async function ProgramOverview({ workspaceId, programId, moduleId }: { wo
 
   return (
     <LearningShell workspaceId={workspaceId} title={program.title}>
+      {arrival && (
+        <p role="status" className="rounded-2xl border bg-muted/40 px-4 py-3 text-sm" data-testid="join-arrival">
+          {arrival}
+        </p>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <nav aria-label="Pagine del corso" className="flex flex-wrap gap-x-5 text-sm">
           <Link className={navLink} href={base}>Il percorso</Link>

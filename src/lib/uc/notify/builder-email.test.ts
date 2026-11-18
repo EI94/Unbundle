@@ -22,7 +22,7 @@ const PAYLOAD: Record<string, Record<string, string | number | boolean>> = {
   compito_passato: { useCase: UC, ref: "T-3" },
   compito_fermo: { useCase: UC, ref: "T-3" },
   compiti_pronti: { useCase: UC },
-  pr_da_rivedere: { useCase: UC, repo: "Voltaen/nardi-esploso", pr: 7 },
+  pr_da_rivedere: { useCase: UC, repo: "Voltaen/alfa-esploso", pr: 7 },
   compito_proposto: { useCase: UC },
   banco_consiglio: { useCase: UC, role: "lettura", model: "anthropic/claude-haiku-5-5", label: "Claude Haiku 5.5" },
   evals_in_calo: { useCase: UC, alert: "sotto_soglia", qualityText: "80%" },
@@ -44,9 +44,9 @@ const claimed = (templateKey: string, payload: Record<string, string | number | 
 type BuilderFacts = NonNullable<DeliveryFacts["builder"]>;
 /** I fatti di una persona che non è di Lateral Space. `ready` (le concessioni lette) vale sì, se la prova non dice altro. */
 const external = (builder: (Omit<BuilderFacts, "ready"> & { ready?: boolean }) | undefined, withCase = true): DeliveryFacts => ({
-  clientName: "Nardi di prova",
+  clientName: "Alfa di prova",
   case: withCase ? { id: CASE, code: "NM-0009", title: "Esploso dei ricambi", status: "in_sviluppo", ownerContactId: null, designated: { owner: null, privacy: null } } : null,
-  recipient: { kind: "user", id: USER, email: "alessio@gmail.test", reachable: true, digestOptOut: false, lateralSpace: false },
+  recipient: { kind: "user", id: USER, email: "sandro@gmail.test", reachable: true, digestOptOut: false, lateralSpace: false },
   request: null,
   ...(builder ? { builder: { ready: true, ...builder } } : {}),
 });
@@ -105,14 +105,14 @@ test("U4: «Costruisci i casi d'uso di…» aspetta l'ok al massimo 14 giorni e 
   assert.equal(sent.action, "send");
   if (sent.action !== "send") return;
   const email = renderEmail(sent.build(null));
-  assert.equal(email.subject, "Costruisci i casi d'uso di Nardi di prova con l'Agent Factory");
-  assert.match(email.text, /Da oggi costruisci con Lateral Space i casi d'uso di Nardi di prova: tutti, anche quelli che si apriranno\. Un caso d'uso è un lavoro che un agente AI fa insieme alle persone\./);
+  assert.equal(email.subject, "Costruisci i casi d'uso di Alfa di prova con l'Agent Factory");
+  assert.match(email.text, /Da oggi costruisci con Lateral Space i casi d'uso di Alfa di prova: tutti, anche quelli che si apriranno\. Un caso d'uso è un lavoro che un agente AI fa insieme alle persone\./);
   assert.match(email.text, /Per cominciare: apri l'Agent Factory, collega Claude Code con «unbundle login» e prendi un compito\./);
   assert.match(email.text, /Il progetto di ogni caso lo approva il suo responsabile; l'accesso ai repository su GitHub te lo dà Lateral Space\./);
   assert.ok(email.text.includes(`Apri l'Agent Factory: https://app.unbundle.test/dashboard/${WS}/agent-factory`));
-  assert.ok(!/@|alessio/i.test(email.text), "nessun nome né indirizzo");
+  assert.ok(!/@|sandro/i.test(email.text), "nessun nome né indirizzo");
   const some = planDelivery(added(yesterday, { tutti: false, casi: 3 }), external({ buildsCase: false, workspaceAck: true, grant: true }, false), OPTS);
-  assert.ok(some.action === "send" && renderEmail(some.build(null)).text.includes("di Nardi di prova: 3 casi d'uso."));
+  assert.ok(some.action === "send" && renderEmail(some.build(null)).text.includes("di Alfa di prova: 3 casi d'uso."));
   // A una persona di Lateral Space non parte mai (non si mette in coda, ma la regola lo dice).
   const ls = { ...external({ buildsCase: false, workspaceAck: true, grant: true }, false), recipient: { kind: "user" as const, id: USER, email: "leo@ls.test", reachable: true, digestOptOut: false, lateralSpace: true } };
   assert.equal(action(planDelivery(added(yesterday), ls, OPTS)), "cancel:destinatario_lateral_space");
@@ -153,8 +153,8 @@ test("U4: «Non costruisci più…» solo con l'ok e solo se non costruisce più
   assert.equal(sent.action, "send");
   if (sent.action !== "send") return;
   const email = renderEmail(sent.build(null));
-  assert.equal(email.subject, "Non costruisci più i casi d'uso di Nardi di prova");
-  assert.match(email.text, /da adesso non lavori più ai casi d'uso di Nardi di prova dall'Agent Factory\. I compiti che avevi in corso sono tornati da prendere\./);
+  assert.equal(email.subject, "Non costruisci più i casi d'uso di Alfa di prova");
+  assert.match(email.text, /da adesso non lavori più ai casi d'uso di Alfa di prova dall'Agent Factory\. I compiti che avevi in corso sono tornati da prendere\./);
   assert.match(email.text, /L'accesso ai repository su GitHub lo toglie Lateral Space\./);
 });
 

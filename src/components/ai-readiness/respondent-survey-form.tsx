@@ -19,6 +19,7 @@ import {
   type AiReadinessDraftIdentity,
   type AiReadinessDraftPayload,
 } from "@/lib/ai-readiness/draft";
+import { AI_READINESS_DEFAULT_COPY, brandCopy } from "@/lib/ai-readiness/copy";
 import { validateSurveyPayload } from "@/lib/ai-readiness/form-validation";
 import { parseSupportContacts } from "@/lib/ai-readiness/support-contacts";
 import type {
@@ -493,11 +494,7 @@ export function RespondentSurveyForm({
         </div>
         <h1 className="text-2xl font-semibold">Risposte inviate</h1>
         <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
-          {configString(
-            brandConfig,
-            "completionCopy",
-            "Grazie. Le risposte saranno aggregate e usate per costruire una roadmap AI più concreta e sicura."
-          )}
+          {brandCopy(brandConfig, "completionCopy", AI_READINESS_DEFAULT_COPY.completion)}
         </p>
       </div>
     );

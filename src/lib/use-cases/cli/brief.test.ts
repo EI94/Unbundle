@@ -101,7 +101,7 @@ test("(8.0c) gli identificativi tecnici non passano dai nomi da nascondere: codi
     title: "Il riordino che prepara Rosa",
     repos: [
       { repo: "Voltaen/prova-esterni", folder: "casi/rosa-0001" },
-      { repo: "Voltaen/topjet-rosa", folder: "casi/rosa-0001" },
+      { repo: "Voltaen/beta-rosa", folder: "casi/rosa-0001" },
     ],
     namesToHide: names,
     decisions: [decision(1, { topic: "Chi approva", choice: "Lo approva Rosa ogni lunedì" })],
@@ -109,7 +109,7 @@ test("(8.0c) gli identificativi tecnici non passano dai nomi da nascondere: codi
   });
   const brief = composeBrief(named);
   assert.match(brief, /^ROSA-0001 · Il riordino che prepara una persona\n/);
-  assert.match(brief, /Repository: Voltaen\/prova-esterni \(casi\/rosa-0001\), Voltaen\/topjet-rosa \(casi\/rosa-0001\)\./);
+  assert.match(brief, /Repository: Voltaen\/prova-esterni \(casi\/rosa-0001\), Voltaen\/beta-rosa \(casi\/rosa-0001\)\./);
   assert.match(brief, /Lo approva una persona ogni lunedì/);
   const project_ = composeProjectLayer(named);
   assert.match(project_, /^ROSA-0001 · progetto versione 1/);
@@ -121,7 +121,7 @@ test("(8.0c) gli identificativi tecnici non passano dai nomi da nascondere: codi
   assert.match(questions, /unbundle ask ROSA-0001 /);
   // Il nome non resta mai nel testo libero.
   for (const text of [brief, project_, composeDecisionsLayer(named), questions]) {
-    assert.doesNotMatch(text.replace(/ROSA-0001|casi\/rosa-0001|Voltaen\/topjet-rosa|Voltaen\/prova-esterni/g, ""), /\b(Rosa|Prova)\b/i, text);
+    assert.doesNotMatch(text.replace(/ROSA-0001|casi\/rosa-0001|Voltaen\/beta-rosa|Voltaen\/prova-esterni/g, ""), /\b(Rosa|Prova)\b/i, text);
   }
 });
 

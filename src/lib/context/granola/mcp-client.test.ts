@@ -13,7 +13,7 @@ const seen: string[] = [];
 before(async () => {
   fake = await startFakeGranola({
     meetings: [
-      { id: "m-1", title: "Avvio", meetingAt: "2026-11-14T09:00:00Z", updatedAt: "2026-11-14T10:00:00Z", participants: "Giulia (giulia@nardi.test)", summary: "Sintesi breve.", transcript: "Parla il direttore." },
+      { id: "m-1", title: "Avvio", meetingAt: "2026-11-14T09:00:00Z", updatedAt: "2026-11-14T10:00:00Z", participants: "Giulia (giulia@alfa.test)", summary: "Sintesi breve.", transcript: "Parla il direttore." },
     ],
   });
   deps = {

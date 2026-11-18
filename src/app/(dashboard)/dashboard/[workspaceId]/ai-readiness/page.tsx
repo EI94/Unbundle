@@ -42,6 +42,7 @@ import { ThresholdForm } from "@/components/ai-readiness/threshold-form";
 import { OpenLinkForm } from "@/components/ai-readiness/open-link-form";
 import { AutoRefresh } from "@/components/ai-readiness/auto-refresh";
 import { PillarRadar } from "@/components/ai-readiness/pillar-radar";
+import { ShowAll } from "@/components/ai-readiness/show-all";
 import { UseCasePromoteButton } from "@/components/ai-readiness/use-case-promote-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -468,8 +469,9 @@ export default async function AiReadinessPage({
             />
             {!dashboard?.aggregationThresholdMet && (
               <p className="mt-2 text-center text-xs text-muted-foreground">
-                Il radar si popola quando le risposte raggiungono la soglia di
-                aggregazione ({bundle.assessment.aggregationThreshold}).
+                {/* (Ondata 0) Il profilo usa ogni risposta da subito: la soglia vale per le aree e il confronto. */}
+                Il profilo usa le risposte arrivate finora. Punteggi per area e
+                confronto partono da {bundle.assessment.aggregationThreshold} risposte.
               </p>
             )}
           </CardContent>
@@ -672,50 +674,52 @@ export default async function AiReadinessPage({
                 draft e richiede review umana.
               </p>
             ) : (
-              insights.slice(0, 8).map((insight) => (
-                <div key={insight.id} className="rounded-2xl border p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="outline">{insight.insightType}</Badge>
-                        <Badge
-                          variant={
-                            insight.validationStatus === "approved"
-                              ? "secondary"
-                              : insight.validationStatus === "rejected"
-                                ? "destructive"
-                                : "outline"
-                          }
-                        >
-                          {insight.validationStatus === "draft"
-                            ? "AI suggested"
-                            : insight.validationStatus}
-                        </Badge>
+              <ShowAll items={insights} visible={8}>
+                {(insight) => (
+                  <div key={insight.id} className="rounded-2xl border p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="outline">{insight.insightType}</Badge>
+                          <Badge
+                            variant={
+                              insight.validationStatus === "approved"
+                                ? "secondary"
+                                : insight.validationStatus === "rejected"
+                                  ? "destructive"
+                                  : "outline"
+                            }
+                          >
+                            {insight.validationStatus === "draft"
+                              ? "AI suggested"
+                              : insight.validationStatus}
+                          </Badge>
+                        </div>
+                        <h3 className="mt-2 font-medium">{insight.title}</h3>
                       </div>
-                      <h3 className="mt-2 font-medium">{insight.title}</h3>
+                      <div className="text-xs text-muted-foreground">
+                        {insight.generatedAt.toLocaleDateString("it-IT")}
+                      </div>
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      {insight.generatedAt.toLocaleDateString("it-IT")}
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                      {insight.body}
+                    </p>
+                    <div className="mt-3 rounded-xl bg-muted/40 p-3 text-xs text-muted-foreground">
+                      Evidence: {textValue(evidenceRecord(insight.evidence).privacyGuardrail, "aggregated only")}
                     </div>
+                    {canManage && (
+                      <div className="mt-3">
+                        <InsightValidationActions
+                          workspaceId={workspaceId}
+                          assessmentId={bundle.assessment.id}
+                          insightId={insight.id}
+                          status={insight.validationStatus}
+                        />
+                      </div>
+                    )}
                   </div>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    {insight.body}
-                  </p>
-                  <div className="mt-3 rounded-xl bg-muted/40 p-3 text-xs text-muted-foreground">
-                    Evidence: {textValue(evidenceRecord(insight.evidence).privacyGuardrail, "aggregated only")}
-                  </div>
-                  {canManage && (
-                    <div className="mt-3">
-                      <InsightValidationActions
-                        workspaceId={workspaceId}
-                        assessmentId={bundle.assessment.id}
-                        insightId={insight.id}
-                        status={insight.validationStatus}
-                      />
-                    </div>
-                  )}
-                </div>
-              ))
+                )}
+              </ShowAll>
             )}
           </CardContent>
         </Card>
@@ -871,71 +875,73 @@ export default async function AiReadinessPage({
                   Nessun invito creato.
                 </p>
               ) : (
-                respondents.slice(0, 12).map((respondent) => {
-                  const track = surveyTrackMeta(respondent.surveyTrack);
-                  const scope = questionScopeFromUnknown(respondent.questionScope);
-                  const availableSections = sectionOptions.filter((section) =>
-                    respondent.surveyTrack === "internal"
-                      ? section.audience === "internal"
-                      : section.audience !== "internal"
-                  );
-                  const selectedSections = scope?.sectionIds?.length
-                    ? availableSections.filter((section) =>
-                        scope.sectionIds?.includes(section.id)
-                      )
-                    : availableSections;
-                  const pillarTitles =
-                    respondent.surveyTrack === "use_case_expert"
-                      ? ["Use Cases"]
-                      : [
-                          ...new Set(
-                            selectedSections.map((section) => section.pillarTitle)
-                          ),
-                        ];
+                <ShowAll items={respondents} visible={12}>
+                  {(respondent) => {
+                    const track = surveyTrackMeta(respondent.surveyTrack);
+                    const scope = questionScopeFromUnknown(respondent.questionScope);
+                    const availableSections = sectionOptions.filter((section) =>
+                      respondent.surveyTrack === "internal"
+                        ? section.audience === "internal"
+                        : section.audience !== "internal"
+                    );
+                    const selectedSections = scope?.sectionIds?.length
+                      ? availableSections.filter((section) =>
+                          scope.sectionIds?.includes(section.id)
+                        )
+                      : availableSections;
+                    const pillarTitles =
+                      respondent.surveyTrack === "use_case_expert"
+                        ? ["Use Cases"]
+                        : [
+                            ...new Set(
+                              selectedSections.map((section) => section.pillarTitle)
+                            ),
+                          ];
 
-                  return (
-                    <div
-                      key={respondent.id}
-                      className="rounded-2xl border p-3 text-sm"
-                      data-respondent-track={respondent.surveyTrack}
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <div className="font-medium">
-                            {[respondent.name, respondent.surname]
-                              .filter(Boolean)
-                              .join(" ") ||
-                              respondent.email ||
-                              respondent.pseudonymousId}
+                    return (
+                      <div
+                        key={respondent.id}
+                        className="rounded-2xl border p-3 text-sm"
+                        data-respondent-track={respondent.surveyTrack}
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <div className="font-medium">
+                              {[respondent.name, respondent.surname]
+                                .filter(Boolean)
+                                .join(" ") ||
+                                respondent.email ||
+                                respondent.pseudonymousId}
+                            </div>
+                            <div className="mt-0.5 text-xs text-muted-foreground">
+                              {respondent.email &&
+                              (respondent.name || respondent.surname)
+                                ? `${respondent.email} · `
+                                : ""}
+                              {respondent.organizationUnit ?? "Area non indicata"} ·{" "}
+                              {respondent.role ?? "ruolo n/d"}
+                            </div>
                           </div>
-                          <div className="mt-0.5 text-xs text-muted-foreground">
-                            {respondent.email &&
-                            (respondent.name || respondent.surname)
-                              ? `${respondent.email} · `
-                              : ""}
-                            {respondent.organizationUnit ?? "Area non indicata"} ·{" "}
-                            {respondent.role ?? "ruolo n/d"}
-                          </div>
+                          <Badge
+                            variant={
+                              respondent.inviteStatus === "completed"
+                                ? "secondary"
+                                : "outline"
+                            }
+                          >
+                            {respondent.inviteStatus}
+                          </Badge>
                         </div>
-                        <Badge
-                          variant={
-                            respondent.inviteStatus === "completed"
-                              ? "secondary"
-                              : "outline"
-                          }
-                        >
-                          {respondent.inviteStatus}
-                        </Badge>
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <Badge variant="outline">{track.label}</Badge>
+                          <span className="text-xs text-muted-foreground">
+                            Alimenta: {pillarTitles.join(", ") || track.feeds}
+                          </span>
+                        </div>
                       </div>
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <Badge variant="outline">{track.label}</Badge>
-                        <span className="text-xs text-muted-foreground">
-                          Alimenta: {pillarTitles.join(", ") || track.feeds}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })
+                    );
+                  }}
+                </ShowAll>
               )}
             </CardContent>
           </Card>
@@ -953,33 +959,36 @@ export default async function AiReadinessPage({
                 I use case proposti dai respondent appariranno qui.
               </p>
             ) : (
-              useCases.slice(0, 8).map((item) => (
-                <div key={item.id} className="rounded-2xl border p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="font-medium">{item.title}</div>
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        {item.linkedUseCaseId ? "Collegato al Portfolio" : "Da valutare"}
+              <ShowAll items={useCases} visible={8}>
+                {(item) => (
+                  <div key={item.id} className="rounded-2xl border p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="font-medium">{item.title}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {item.linkedUseCaseId ? "Collegato al Portfolio" : "Da valutare"}
+                        </div>
                       </div>
+                      {canManage && (
+                        <UseCasePromoteButton
+                          workspaceId={workspaceId}
+                          assessmentId={bundle.assessment.id}
+                          submissionId={item.id}
+                          linkedUseCaseId={item.linkedUseCaseId}
+                        />
+                      )}
                     </div>
-                    {canManage && (
-                      <UseCasePromoteButton
-                        workspaceId={workspaceId}
-                        assessmentId={bundle.assessment.id}
-                        submissionId={item.id}
-                        linkedUseCaseId={item.linkedUseCaseId}
-                      />
-                    )}
+                    <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                      {item.desiredOutcome || item.painPoint || item.currentProcess}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                      <span>{item.frequency ?? "frequenza n/d"}</span>
+                      {/* (Ondata 0) Il campo `riskLevel` raccoglie «Quanto è prioritario per te?»: è la priorità. */}
+                      <span>{item.riskLevel ? `Priorità: ${item.riskLevel.toLowerCase()}` : "Priorità non indicata"}</span>
+                    </div>
                   </div>
-                  <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                    {item.desiredOutcome || item.painPoint || item.currentProcess}
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                    <span>{item.frequency ?? "frequenza n/d"}</span>
-                    <span>{item.riskLevel ?? "rischio n/d"}</span>
-                  </div>
-                </div>
-              ))
+                )}
+              </ShowAll>
             )}
           </CardContent>
         </Card>
@@ -993,19 +1002,21 @@ export default async function AiReadinessPage({
                 Nessun export generato.
               </p>
             ) : (
-              exports.slice(0, 8).map((item) => (
-                <div key={item.id} className="flex items-center justify-between rounded-2xl border p-3 text-sm">
-                  <div>
-                    <div className="font-medium">{item.exportType}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {item.createdAt.toLocaleString("it-IT")}
+              <ShowAll items={exports} visible={8}>
+                {(item) => (
+                  <div key={item.id} className="flex items-center justify-between rounded-2xl border p-3 text-sm">
+                    <div>
+                      <div className="font-medium">{item.exportType}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {item.createdAt.toLocaleString("it-IT")}
+                      </div>
                     </div>
+                    <Badge variant={item.includedPersonalData ? "destructive" : "secondary"}>
+                      {item.includedPersonalData ? "personal data" : "anonymized"}
+                    </Badge>
                   </div>
-                  <Badge variant={item.includedPersonalData ? "destructive" : "secondary"}>
-                    {item.includedPersonalData ? "personal data" : "anonymized"}
-                  </Badge>
-                </div>
-              ))
+                )}
+              </ShowAll>
             )}
           </CardContent>
         </Card>

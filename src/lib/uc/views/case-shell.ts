@@ -255,6 +255,17 @@ export function transitionNeedsReason(to: CaseStatus): boolean {
   return to === "sospeso" || to === "chiuso";
 }
 
+/**
+ * I cambi di stato delle Impostazioni del caso, divisi per sezione: in «Stato del caso» pausa, ripresa e il ritorno
+ * allo sviluppo; (Ondata 0) la chiusura solo in «Zona pericolosa», non due volte nella stessa pagina. Il passo avanti
+ * resta il primario della testata. `allowed` sono gli stati ammessi adesso (`loadStatusOptions`).
+ */
+export function settingsTransitions(current: CaseStatus, allowed: readonly CaseStatus[]): { state: CaseStatus[]; danger: CaseStatus[] } {
+  const paused = current === "sospeso";
+  const shown = allowed.filter((to) => to === "sospeso" || to === "chiuso" || paused || (to === "in_sviluppo" && current !== "pronto_sviluppo"));
+  return { state: shown.filter((to) => to !== "chiuso"), danger: shown.filter((to) => to === "chiuso") };
+}
+
 /** Spiegazione breve di un cambio di stato, per «Stato del caso» e il dialogo di conferma. */
 export function transitionHint(from: CaseStatus, to: CaseStatus): string {
   if (to === "chiuso") return "Il caso si chiude per sempre: i link dei referenti e gli accessi di Claude si revocano. Si può solo duplicare.";

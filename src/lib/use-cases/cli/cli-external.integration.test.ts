@@ -38,7 +38,7 @@ const routes: Record<string, { GET?: Handler; POST?: Handler }> = {};
 const suffix = randomBytes(3).toString("hex");
 const SUFFIX = suffix.toUpperCase();
 /**
- * Workspace A come Nardi, B come TopJet.
+ * Due clienti diversi: il workspace A e il workspace B.
  * - lead: Lateral Space, responsabile dei casi di A e di B;
  * - e: esterno, Analista in A, gmail verificato, «in tutti i casi»: costruisce A1, A2, A3;
  * - e2: esterno, Responsabile della trasformazione in A, «solo in alcuni casi»: A2. In A1 osservatore dato a mano; gestisce
@@ -67,12 +67,12 @@ const ids = {
 };
 const EMAIL: Record<Person, string> = {
   lead: `lead-${suffix}@ls.test`,
-  e: `alessio-${suffix}@gmail.test`,
+  e: `sandro-${suffix}@gmail.test`,
   e2: `e2-${suffix}@gmail.test`,
   e3: `e3-${suffix}@gmail.test`,
   p: `p-${suffix}@cliente.test`,
   m: `m-${suffix}@cliente.test`,
-  b: `b-${suffix}@topjet.test`,
+  b: `b-${suffix}@beta.test`,
 };
 const NAME: Record<Person, string> = { lead: "Lucia Guida", e: "Ettore Esterno", e2: "Elena Seconda", e3: "Enzo Terzo", p: "Paolo Analisi", m: "Marta Gestione", b: "Bruno Altrove" };
 const tokens: Partial<Record<Person, string>> = {};
@@ -249,7 +249,7 @@ test("D4: E costruisce dalla CLI: il contesto dice builder_esterno e scrive; imp
   assert.equal(decided.status, 200, JSON.stringify(decided.json));
   assert.equal((await post("domande", tokens.e!, { caso: "NM-0001", domanda: "Chi aggiorna l'esploso dei ricambi?" })).status, 200);
   // La famiglia la crea e la registra Lateral Space; chi costruisce da fuori ci aggiunge i suoi casi.
-  const family = `Prova/nardi-esploso-${suffix}`;
+  const family = `Prova/alfa-esploso-${suffix}`;
   assert.equal((await post("repository", tokens.lead!, { caso: "NM-0002", repository: family, cartella: "casi/nm-0002", profilo: "codice" })).status, 200);
   const repo = await post("repository", tokens.e!, { caso: "NM-0001", repository: family, cartella: "casi/nm-0001", profilo: "codice" });
   assert.equal(repo.status, 200, JSON.stringify(repo.json));
@@ -533,7 +533,7 @@ test("D12: E riceve la campanella e le e-mail in coda di chi costruisce; mai que
   const pr = await github.applyGithubEvent(exec, {
     deliveryId: randomUUID(),
     event: "pull_request",
-    parsed: { kind: "pr", repo: `Prova/nardi-esploso-${suffix}`, number: 7, branch: "nm-0001/t-3-ricerca", state: "aperta", draft: false, openedAt: at, mergedAt: null, closedAt: null, updatedAt: at, action: "opened", reopened: false, signal: true, ready: true },
+    parsed: { kind: "pr", repo: `Prova/alfa-esploso-${suffix}`, number: 7, branch: "nm-0001/t-3-ricerca", state: "aperta", draft: false, openedAt: at, mergedAt: null, closedAt: null, updatedAt: at, action: "opened", reopened: false, signal: true, ready: true },
   });
   assert.equal(pr.esito, "applicato");
   assert.deepEqual(await received("e", "pr_da_rivedere"), { bell: 1, mail: 1 });
@@ -754,7 +754,7 @@ test("D7: nel caso che «Aggiungi» salta perché lì la persona firma o approva
 });
 
 test("D15: il repository di un altro cliente si rifiuta; nello stesso cliente un repository di famiglia vale per più casi", opts, async () => {
-  const repo = `Prova/nardi-esploso-${suffix}`;
+  const repo = `Prova/alfa-esploso-${suffix}`;
   const leadInB = await tokenFor("lead", ids.wsB);
   for (const name of [repo, repo.toUpperCase()]) {
     const r = await post("repository", leadInB, { caso: "TB-0001", repository: name, cartella: "casi/tb-0001" });
@@ -769,7 +769,7 @@ test("D15: il repository di un altro cliente si rifiuta; nello stesso cliente un
 
 test("D15: chi costruisce da fuori registra solo un repository dei casi del cliente; per uno nuovo o di un altro cliente la stessa risposta; il modello mai, per nessuno", opts, async () => {
   const github = await import("../../db/queries/use-case-github.ts");
-  const family = `Prova/nardi-esploso-${suffix}`;
+  const family = `Prova/alfa-esploso-${suffix}`;
   const ofB = `Prova/quotazioni-${suffix}`;
   const fresh = `Prova/mai-registrato-${suffix}`;
   const leadInB = await tokenFor("lead", ids.wsB);
@@ -963,7 +963,7 @@ test("D9: dopo «Togli» lo stesso token non scrive più, i token sono revocati,
   assert.ok(held, "E ha un compito in corso (T-2, D12)");
   const removed = await as("lead", () => team.removeBuilderAction(ids.wsA, ids.e));
   assert.equal(removed.ok, true, removed.ok ? "" : removed.message);
-  assert.match(removed.ok ? (removed.message ?? "") : "", /^Non costruisce più: esce da 3 casi\. Ricorda GitHub \(Prova\/nardi-esploso-[0-9a-f]+\) e la sua chiave dell'AI Gateway\.$/);
+  assert.match(removed.ok ? (removed.message ?? "") : "", /^Non costruisce più: esce da 3 casi\. Ricorda GitHub \(Prova\/alfa-esploso-[0-9a-f]+\) e la sua chiave dell'AI Gateway\.$/);
   // Lo stesso token: revocato nella stessa transazione delle concessioni, ogni chiamata si ferma.
   for (const token of [tokens.e!, caseToken]) {
     const r = await post("decisioni", token, { caso: "NM-0001", argomento: "Prova", decisione: "Non dovrebbe passare" });

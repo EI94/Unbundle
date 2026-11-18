@@ -583,7 +583,7 @@ test("«Impegni aperti»: «Nostri» e «Del cliente», solo i gruppi con righe,
 // ─── «Aggiungi appunti» ──────────────────────────────────────────────
 
 test("il titolo proposto: la prima riga non vuota, senza segni di elenco, al massimo 80 caratteri", () => {
-  assert.equal(proposedTitle("\n\n  ## Call di avvio con Nardi  \nAltro"), "Call di avvio con Nardi");
+  assert.equal(proposedTitle("\n\n  ## Call di avvio con Alfa  \nAltro"), "Call di avvio con Alfa");
   assert.equal(proposedTitle("- primo punto\n- secondo"), "primo punto");
   assert.equal(proposedTitle("   \n "), "");
   const long = `${"parola ".repeat(20)}fine`;

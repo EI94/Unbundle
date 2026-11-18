@@ -54,10 +54,10 @@ test("la coda della fabbrica: i repository indietro con il modello, o senza vers
 test("(8.0c) il modello di oggi è la 1.5.0 (decide da `scrive`): i repository con la 1.4.x vanno in coda per «unbundle aggiorna»", () => {
   assert.equal(AGENT_FACTORY_TEMPLATE_VERSION, "1.5.0");
   const queue = factoryQueue([
-    { repo: "Voltaen/topjet-rosa", templateVersion: "1.4.1" },
-    { repo: "Voltaen/nardi-esploso", templateVersion: "1.5.0" },
+    { repo: "Voltaen/beta-rosa", templateVersion: "1.4.1" },
+    { repo: "Voltaen/alfa-esploso", templateVersion: "1.5.0" },
   ]);
-  assert.deepEqual(queue, [{ repo: "Voltaen/topjet-rosa", text: "Ha il modello 1.4.1, c'è il 1.5.0: «unbundle aggiorna» apre la pull request." }]);
+  assert.deepEqual(queue, [{ repo: "Voltaen/beta-rosa", text: "Ha il modello 1.4.1, c'è il 1.5.0: «unbundle aggiorna» apre la pull request." }]);
 });
 
 test("(8.2a) le evals e il banco nella riga del caso: «evals 96%», «sotto soglia», «il banco consiglia …»", () => {
@@ -89,5 +89,5 @@ test("(8.2a) le evals e il banco nella riga del caso: «evals 96%», «sotto sog
 test("(8.0c) il repository modello si riconosce con ogni maiuscola e con .git; un repository di un cliente no", () => {
   assert.equal(AGENT_FACTORY_TEMPLATE_REPO, "Voltaen/agent-factory-modello");
   for (const repo of ["Voltaen/agent-factory-modello", "voltaen/AGENT-FACTORY-MODELLO", "Voltaen/agent-factory-modello.git", " Voltaen/agent-factory-modello "]) assert.equal(isTemplateRepo(repo), true, repo);
-  for (const repo of ["Voltaen/agent-factory-modello-2", "Voltaen/nardi-esploso", "Altri/agent-factory-modello"]) assert.equal(isTemplateRepo(repo), false, repo);
+  for (const repo of ["Voltaen/agent-factory-modello-2", "Voltaen/alfa-esploso", "Altri/agent-factory-modello"]) assert.equal(isTemplateRepo(repo), false, repo);
 });

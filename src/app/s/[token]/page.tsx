@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { brandCopy } from "@/lib/ai-readiness/copy";
 import { hashInviteToken } from "@/lib/ai-readiness/token";
 import { parseSupportContacts } from "@/lib/ai-readiness/support-contacts";
 import { getAssessmentByOpenLinkTokenHash } from "@/lib/db/queries/ai-readiness";
@@ -112,7 +113,7 @@ export default async function OpenSurveyLandingPage({
             Survey organizzazione «{found.assessment.name}»
           </h1>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
-            {configString(
+            {brandCopy(
               brand,
               "introCopy",
               "Il tuo contributo è importante: aiuta la tua organizzazione a capire dove l'AI può dare una mano davvero. Non è un esame e non ci sono risposte sbagliate."

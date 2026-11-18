@@ -4,9 +4,12 @@ import { catchError, type ErrorInfo } from "next/error";
 import { Button } from "@/components/ui/button";
 import { digestOf } from "@/lib/uc/log";
 
-/** Il riquadro al posto del widget; il valore lanciato può non essere un `Error`, anche `null`. */
-export function WidgetFallback({ title }: { title: string }, { error, retry }: ErrorInfo) {
-  const digest = digestOf(error);
+/**
+ * Il riquadro al posto del widget; il valore lanciato può non essere un `Error`, anche `null`. (Ondata 0) Il codice
+ * dell'errore solo con `showCode`, cioè a Lateral Space.
+ */
+export function WidgetFallback({ title, showCode = false }: { title: string; showCode?: boolean }, { error, retry }: ErrorInfo) {
+  const digest = showCode ? digestOf(error) : null;
   return (
     <div role="alert" className="space-y-2 rounded-xl p-4 ring-1 ring-foreground/10">
       <p className="text-sm font-medium">{title} non si è caricato.</p>

@@ -76,25 +76,25 @@ test("la riga compatta della Memoria: mentre aggiorna, quello che è entrato, «
 });
 
 test("persone e domini: e-mail, domini (anche con @ davanti), separatori diversi, doppioni e valori sbagliati", () => {
-  assert.deepEqual(splitPeopleEntries(" Giulia@Nardi.test, @nardi.test; nardi-group.test  giulia@nardi.test ciao a@b"), {
-    emails: ["giulia@nardi.test"],
-    domains: ["nardi.test", "nardi-group.test"],
+  assert.deepEqual(splitPeopleEntries(" Giulia@Alfa.test, @alfa.test; alfa-group.test  giulia@alfa.test ciao a@b"), {
+    emails: ["giulia@alfa.test"],
+    domains: ["alfa.test", "alfa-group.test"],
     invalid: ["ciao", "a@b"],
   });
   assert.deepEqual(splitPeopleEntries(""), { emails: [], domains: [], invalid: [] });
 });
 
 test("le parole nel titolo: separate da virgole, senza doppioni, con le frasi di più parole", () => {
-  assert.deepEqual(splitTitleWords("Ferrari, nardi ;  Officina   Nardi", ["Nardi"]), ["Nardi", "Ferrari", "Officina Nardi"]);
-  assert.deepEqual(splitTitleWords("  ", ["Nardi"]), ["Nardi"]);
+  assert.deepEqual(splitTitleWords("Gamma, alfa ;  Officina   Alfa", ["Alfa"]), ["Alfa", "Gamma", "Officina Alfa"]);
+  assert.deepEqual(splitTitleWords("  ", ["Alfa"]), ["Alfa"]);
 });
 
 test("il menu delle cartelle: prima solo quella scelta; poi quelle di Granola, e quella scelta se su Granola non c'è più", () => {
-  const nardi = { id: "f-nardi", name: "Nardi" };
-  const topjet = { id: "f-topjet", name: "TopJet" };
+  const alfa = { id: "f-alfa", name: "Alfa" };
+  const beta = { id: "f-beta", name: "Beta" };
   assert.deepEqual(folderOptions(null, null), []);
-  assert.deepEqual(folderOptions(null, nardi), [nardi]);
-  assert.deepEqual(folderOptions([topjet, nardi], nardi), [topjet, nardi]);
-  assert.deepEqual(folderOptions([topjet], nardi), [nardi, topjet], "tolta su Granola: resta in testa");
-  assert.deepEqual(folderOptions([topjet], null), [topjet]);
+  assert.deepEqual(folderOptions(null, alfa), [alfa]);
+  assert.deepEqual(folderOptions([beta, alfa], alfa), [beta, alfa]);
+  assert.deepEqual(folderOptions([beta], alfa), [alfa, beta], "tolta su Granola: resta in testa");
+  assert.deepEqual(folderOptions([beta], null), [beta]);
 });

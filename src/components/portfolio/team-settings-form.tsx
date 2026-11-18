@@ -99,14 +99,12 @@ export function WhatsappWebhookForm({
         nuovo contributo. Usalo con un relay verso il gruppo WhatsApp del team
         (Zapier, Make, Twilio, o un tuo endpoint).
       </p>
-      <Button
-        type="submit"
-        variant="outline"
-        className="w-full"
-        disabled={pending || !isDirty}
-      >
-        {pending ? "Salvo…" : isDirty ? "Salva webhook" : "Webhook salvato"}
-      </Button>
+      {/* (Ondata 0) Il pulsante è un'azione, non uno stato: «Salva» compare solo dopo una modifica. */}
+      {isDirty || pending ? (
+        <Button type="submit" variant="outline" className="w-full" disabled={pending}>
+          {pending ? "Salvo…" : "Salva"}
+        </Button>
+      ) : null}
       {state.message && (
         <p
           className={`text-xs ${state.ok ? "text-green-500" : "text-red-500"}`}

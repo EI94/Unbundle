@@ -28,7 +28,7 @@
  */
 import type { Issue } from "./answers/issues.ts";
 import { parseLsDomains } from "./lateral-space.ts";
-import { INVALID_LINK_MESSAGE, PAUSED_CASE_MESSAGE, PRIVACY_PENDING_MESSAGE, PUBLIC_UNAVAILABLE_MESSAGE } from "./public-view.ts";
+import { INVALID_LINK_MESSAGE, PAUSED_CASE_MESSAGE, PRIVACY_PENDING_MESSAGE, PRIVACY_UPDATED_MESSAGE, PUBLIC_UNAVAILABLE_MESSAGE } from "./public-view.ts";
 import type { RateLimitHit } from "./sql/public.ts";
 import { ipHashFromSecret } from "./tokens.ts";
 import type { AnswerDevice } from "./vocab.ts";
@@ -68,6 +68,11 @@ export const PUBLIC_ERRORS: Readonly<Record<string, ErrorSpec>> = {
   troppe_richieste: { status: 429, message: "Troppe richieste in poco tempo. Aspetta un minuto e riprova." },
   caso_sospeso: { status: 409, message: PAUSED_CASE_MESSAGE },
   informativa_da_leggere: { status: 409, message: PRIVACY_PENDING_MESSAGE },
+  // (Ondata 0) Informativa letta in una versione vecchia: niente si salva, come per `informativa_da_leggere`, ma con
+  // un 503. Il salvataggio automatico delle pagine aperte da prima del rilascio (Vercel Hobby, niente Skew Protection)
+  // cancella la copia sul dispositivo dopo ogni rifiuto, salvo `link_non_valido` e gli stati da riprovare (rete, 408,
+  // 429, 5xx): così la tiene e riprova finché il referente non ricarica la pagina e legge l'informativa nuova.
+  informativa_aggiornata: { status: 503, message: PRIVACY_UPDATED_MESSAGE },
   non_disponibile: { status: 503, message: PUBLIC_UNAVAILABLE_MESSAGE },
   errore: { status: 500, message: "Qualcosa non ha funzionato. Riprova tra poco." },
 };

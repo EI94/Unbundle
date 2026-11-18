@@ -81,13 +81,14 @@ export interface TableFileData {
 /**
  * «Carica un Excel» su una domanda tabella (DESIGN §4.3 R2c): multipart, come
  * il caricamento di un allegato in modalità server (≤ 4 MB), con le stesse
- * regole di rete delle altre chiamate.
+ * regole di rete delle altre chiamate. (Ondata 0) Niente casella da spuntare:
+ * `declaration=true` parte sempre, perché il server lo chiede ancora.
  */
-export async function postTableFile(token: string, itemId: string, file: File, declaration: boolean): Promise<ApiResult<TableFileData>> {
+export async function postTableFile(token: string, itemId: string, file: File): Promise<ApiResult<TableFileData>> {
   const form = new FormData();
   form.set("file", file, file.name);
   form.set("itemId", itemId);
-  form.set("declaration", declaration ? "true" : "false");
+  form.set("declaration", "true");
   let response: Response;
   try {
     response = await fetch(url(token, "upload-table"), {

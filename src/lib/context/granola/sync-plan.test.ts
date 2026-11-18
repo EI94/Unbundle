@@ -25,8 +25,8 @@ const note = (over: Partial<GranolaMeetingNote> = {}): GranolaMeetingNote => ({
   meetingAt: "2026-11-14T23:30:00Z",
   updatedAt: "2026-11-15T08:00:00Z",
   url: "https://note.esempio.test/d/m-1",
-  participantsRaw: "Giulia Bianchi (giulia@nardi.test)",
-  participants: [{ name: "Giulia Bianchi", email: "giulia@nardi.test", company: null, noteCreator: false }],
+  participantsRaw: "Giulia Bianchi (giulia@alfa.test)",
+  participants: [{ name: "Giulia Bianchi", email: "giulia@alfa.test", company: null, noteCreator: false }],
   summary: "Il gestionale è SAP.",
   privateNotes: "Richiamare giovedì.",
   ...over,
@@ -66,7 +66,7 @@ test("una nota come appunto: riassunto e note sotto le loro etichette; il giorno
     body: "[Riassunto di Granola]\nIl gestionale è SAP.\n\n[Note di chi ha registrato]\nRichiamare giovedì.",
     kind: "appunti",
     occurredOn: "2026-11-15",
-    participants: "Giulia Bianchi (giulia@nardi.test)",
+    participants: "Giulia Bianchi (giulia@alfa.test)",
     link: "https://note.esempio.test/d/m-1",
     transcriptCut: false,
   });
@@ -98,9 +98,9 @@ test("la trascrizione: sotto la sua etichetta; oltre 300.000 caratteri si accorc
 });
 
 test("«Con chi» in «Da smistare»: i nomi, o l'e-mail senza nome; senza chi ha registrato, «(note creator)» e «from …»", () => {
-  const raw = "Paola Verdi (note creator) from Lateral Space (paola@ls.test), Giulia Bianchi from Nardi (giulia@nardi.test), luca@topjet.test, Paola (paola.granola@altro.test), Giulia Bianchi from Nardi (giulia@nardi.test)";
-  assert.equal(unsortedParticipants(parseParticipants(raw), "PAOLA.granola@altro.test"), "Giulia Bianchi, luca@topjet.test");
-  assert.equal(unsortedParticipants(parseParticipants(raw), null), "Giulia Bianchi, luca@topjet.test, Paola");
+  const raw = "Paola Verdi (note creator) from Lateral Space (paola@ls.test), Giulia Bianchi from Alfa (giulia@alfa.test), luca@beta.test, Paola (paola.granola@altro.test), Giulia Bianchi from Alfa (giulia@alfa.test)";
+  assert.equal(unsortedParticipants(parseParticipants(raw), "PAOLA.granola@altro.test"), "Giulia Bianchi, luca@beta.test");
+  assert.equal(unsortedParticipants(parseParticipants(raw), null), "Giulia Bianchi, luca@beta.test, Paola");
   assert.equal(unsortedParticipants([], null), "");
   assert.equal(unsortedParticipants(parseParticipants(Array.from({ length: 80 }, (_, i) => `Persona Numero ${i}`).join(", ")), null).length <= GRANOLA_LIMITS.participantsMax, true);
 });
@@ -111,13 +111,13 @@ test("le e-mail che contano: senza chi ha registrato e senza l'account collegato
       [
         { name: "Paola", email: "paola@ls.test", company: null, noteCreator: true },
         { name: "Paola", email: "paola.granola@altro.test", company: null, noteCreator: false },
-        { name: "Giulia", email: "giulia@nardi.test", company: null, noteCreator: false },
-        { name: "Giulia", email: "giulia@nardi.test", company: null, noteCreator: false },
+        { name: "Giulia", email: "giulia@alfa.test", company: null, noteCreator: false },
+        { name: "Giulia", email: "giulia@alfa.test", company: null, noteCreator: false },
         { name: "Senza e-mail", email: null, company: null, noteCreator: false },
       ],
       "PAOLA.granola@altro.test",
     ),
-    ["giulia@nardi.test"],
+    ["giulia@alfa.test"],
   );
 });
 
@@ -133,34 +133,34 @@ test("il piano gratuito non dà le trascrizioni; un piano sconosciuto si prova",
 test("le regole pulite: minuscole, senza doppioni, senza Lateral Space; valori sbagliati o troppi, errori per campo", () => {
   const ls = ["ls.test"];
   assert.deepEqual(
-    cleanGranolaRules({ folderId: " f-1 ", folderName: "  Nardi   clienti ", emails: ["Giulia@Nardi.test", "giulia@nardi.test", "paola@ls.test", " "], domains: ["@Nardi.test", "sub.ls.test", "nardi.test"], titleWords: [" Nardi ", "nardi", "Ferràri", "ferrari"], wantTranscript: true }, ls),
-    { ok: true, value: { folderId: "f-1", folderName: "Nardi clienti", emails: ["giulia@nardi.test"], domains: ["nardi.test"], titleWords: ["Nardi", "Ferràri"], wantTranscript: true } },
+    cleanGranolaRules({ folderId: " f-1 ", folderName: "  Alfa   clienti ", emails: ["Giulia@Alfa.test", "giulia@alfa.test", "paola@ls.test", " "], domains: ["@Alfa.test", "sub.ls.test", "alfa.test"], titleWords: [" Alfa ", "alfa", "Gàmma", "gamma"], wantTranscript: true }, ls),
+    { ok: true, value: { folderId: "f-1", folderName: "Alfa clienti", emails: ["giulia@alfa.test"], domains: ["alfa.test"], titleWords: ["Alfa", "Gàmma"], wantTranscript: true } },
   );
   assert.deepEqual(cleanGranolaRules({ folderId: null, folderName: "resta fuori", emails: [], domains: [], titleWords: [], wantTranscript: "sì" as unknown as boolean }, ls), {
     ok: true,
     value: { folderId: null, folderName: null, emails: [], domains: [], titleWords: [], wantTranscript: false },
   });
   assert.deepEqual(cleanGranolaRules(null, ls), { ok: true, value: { folderId: null, folderName: null, emails: [], domains: [], titleWords: [], wantTranscript: false } });
-  const wrong = cleanGranolaRules({ emails: ["non-email", "a@b"], domains: ["nardi", "a..b.it"], titleWords: ["x".repeat(61)], folderId: "cartella con spazi" }, ls);
+  const wrong = cleanGranolaRules({ emails: ["non-email", "a@b"], domains: ["alfa", "a..b.it"], titleWords: ["x".repeat(61)], folderId: "cartella con spazi" }, ls);
   assert.deepEqual(wrong, {
     ok: false,
     fieldErrors: { emails: "Scrivi un'e-mail o un dominio.", domains: "Scrivi un'e-mail o un dominio.", titleWords: "Al massimo 60 caratteri.", folderId: "Controlla i campi indicati." },
   });
-  const many = cleanGranolaRules({ emails: Array.from({ length: 101 }, (_, i) => `p${i}@nardi.test`), domains: Array.from({ length: 31 }, (_, i) => `d${i}.test`), titleWords: Array.from({ length: 21 }, (_, i) => `parola${i}`) }, ls);
+  const many = cleanGranolaRules({ emails: Array.from({ length: 101 }, (_, i) => `p${i}@alfa.test`), domains: Array.from({ length: 31 }, (_, i) => `d${i}.test`), titleWords: Array.from({ length: 21 }, (_, i) => `parola${i}`) }, ls);
   assert.deepEqual(!many.ok && Object.keys(many.fieldErrors).sort(), ["domains", "emails", "titleWords"]);
   // Una casella pubblica non vale come dominio; un indirizzo intero lì sì, perché nomina una persona sola.
   const publicDomain = "Gmail, Outlook e le altre caselle pubbliche non valgono come dominio: aggiungi l'indirizzo intero della persona.";
-  assert.deepEqual(cleanGranolaRules({ emails: ["alessio@gmail.com"], domains: ["@Libero.it"] }, ls), { ok: false, fieldErrors: { domains: publicDomain } });
-  assert.deepEqual(cleanGranolaRules({ emails: ["acquisti@nardi.test"], domains: ["mail.hotmail.com"] }, ls), { ok: false, fieldErrors: { domains: publicDomain } });
-  assert.deepEqual(cleanGranolaRules({ emails: ["Alessio@Gmail.com", "giulia@libero.it"] }, ls), {
+  assert.deepEqual(cleanGranolaRules({ emails: ["sandro@gmail.com"], domains: ["@Libero.it"] }, ls), { ok: false, fieldErrors: { domains: publicDomain } });
+  assert.deepEqual(cleanGranolaRules({ emails: ["acquisti@alfa.test"], domains: ["mail.hotmail.com"] }, ls), { ok: false, fieldErrors: { domains: publicDomain } });
+  assert.deepEqual(cleanGranolaRules({ emails: ["Sandro@Gmail.com", "giulia@libero.it"] }, ls), {
     ok: true,
-    value: { folderId: null, folderName: null, emails: ["alessio@gmail.com", "giulia@libero.it"], domains: [], titleWords: [], wantTranscript: false },
+    value: { folderId: null, folderName: null, emails: ["sandro@gmail.com", "giulia@libero.it"], domains: [], titleWords: [], wantTranscript: false },
   });
 });
 
 test("le parole uguali alle predefinite, maiuscole e accenti a parte", () => {
-  assert.equal(sameWords(["nardi"], ["Nardi"]), true);
-  assert.equal(sameWords(["Nardi", "Ferrari"], ["Nardi"]), false);
+  assert.equal(sameWords(["alfa"], ["Alfa"]), true);
+  assert.equal(sameWords(["Alfa", "Gamma"], ["Alfa"]), false);
   assert.equal(sameWords([], []), true);
   assert.equal(sameWords(["Àlfa"], ["alfa"]), true);
 });

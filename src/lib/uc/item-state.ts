@@ -535,7 +535,7 @@ function caseAllows(i: ItemTransitionInput): Result<void> {
   }
   if (i.case.status === "sospeso") {
     if (i.actor.type === "referente" || i.actor.type === "owner_link") {
-      return fail("caso_sospeso", "Il caso è in pausa: per ora non serve rispondere.");
+      return fail("caso_sospeso", "Il caso d'uso è in pausa: per ora non serve rispondere.");
     }
     if (i.trigger === "invio_richiesta" || i.trigger === "scadenza" || i.trigger === "richiesta_conferma" || i.trigger === "chiarimento") {
       return fail("caso_sospeso", "Il caso è in pausa: niente invii né scadenze finché non riprende.");

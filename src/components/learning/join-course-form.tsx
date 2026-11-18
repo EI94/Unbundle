@@ -12,7 +12,8 @@ import {
   updateProfile,
 } from "firebase/auth";
 import { firebaseAuth } from "@/lib/firebase/client";
-import { joinCourseByLinkAction } from "@/lib/actions/learning-join";
+import { joinCourseByLinkAction, requestCohortReopenAction } from "@/lib/actions/learning-join";
+import { KEPT_OTHER_COHORT_TEXT } from "@/lib/learning/join-arrival";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,6 +25,11 @@ import { Label } from "@/components/ui/label";
  * intermedie, niente bottone «Accetta», nessun campo da compilare per chi usa
  * Google. Le tre spunte servono a far capire che qualcosa sta accadendo: uno
  * spinner nudo per due secondi, su un telefono in aula, sembra un blocco.
+ *
+ * (Ondata 0) Un solo bivio: con `kept_other_cohort` la persona resta nel turno
+ * di prima, dove ha già delle risposte. Prima di aprire il corso la pagina lo
+ * dice e offre «Chiedi di riaprire il turno» (`requestCohortReopenAction`, con
+ * il token di questo link); «Apri il corso» porta alla lezione.
  */
 
 type Step = "account" | "enroll" | "open";
@@ -39,7 +45,7 @@ const FIREBASE_MESSAGES: Record<string, string> = {
     "Questa email ha già un account. Usa la password che hai scelto allora, oppure entra con Google.",
   "auth/invalid-email": "Controlla l'indirizzo email.",
   "auth/weak-password": "Serve una password di almeno 6 caratteri.",
-  "auth/user-not-found": "Nessun account con questa email: usa «Crea un account».",
+  "auth/user-not-found": "Nessun account con questa email: tocca «Non ho un account: creane uno».",
   "auth/wrong-password": "Password errata.",
   "auth/invalid-credential": "Email o password non corrette. Se è la prima volta, tocca «Non ho un account: creane uno».",
   "auth/too-many-requests": "Troppi tentativi. Aspetta un minuto e riprova.",
@@ -74,6 +80,9 @@ export function JoinCourseForm({
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [browserHint, setBrowserHint] = useState(false);
   const [copied, setCopied] = useState(false);
+  // (Ondata 0) Con `kept_other_cohort`: l'indirizzo della lezione, aperto solo con «Apri il corso».
+  const [kept, setKept] = useState<string | null>(null);
+  const [reopen, setReopen] = useState<{ pending: boolean; sent: boolean; message: string | null }>({ pending: false, sent: false, message: null });
   const inFlight = useRef(false);
 
   /** Al rientro da signInWithRedirect la pagina riparte da zero. */
@@ -135,6 +144,11 @@ export function JoinCourseForm({
       if (result.status !== "done") {
         setError("Non è stato possibile completare l'iscrizione. Riprova.");
         setDone([]);
+        return;
+      }
+      if (result.outcome === "kept_other_cohort") {
+        setDone([]);
+        setKept(result.path);
         return;
       }
       setDone(["account", "enroll"]);
@@ -231,6 +245,41 @@ export function JoinCourseForm({
     } catch {
       setError("Copia non riuscita: seleziona l'indirizzo dalla barra del browser.");
     }
+  }
+
+  async function askReopen() {
+    setReopen({ pending: true, sent: false, message: null });
+    try {
+      const result = await requestCohortReopenAction(token);
+      setReopen({ pending: false, sent: result.ok, message: result.message });
+    } catch {
+      setReopen({ pending: false, sent: false, message: KEPT_OTHER_COHORT_TEXT.failed });
+    }
+  }
+
+  if (kept) {
+    const T = KEPT_OTHER_COHORT_TEXT;
+    return (
+      <div className="space-y-3 rounded-2xl border p-4" data-testid="join-kept">
+        <p className="text-sm font-medium">{T.title}</p>
+        <p className="text-sm text-muted-foreground">{T.body}</p>
+        {reopen.message && (
+          <p role="status" className="text-sm">
+            {reopen.message}
+          </p>
+        )}
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button type="button" className="min-h-11" onClick={() => router.replace(kept)}>
+            {T.open}
+          </Button>
+          {!reopen.sent && (
+            <Button type="button" variant="outline" className="min-h-11" disabled={reopen.pending} onClick={() => void askReopen()}>
+              {T.reopen}
+            </Button>
+          )}
+        </div>
+      </div>
+    );
   }
 
   if (busy || done.length > 0) {

@@ -213,7 +213,7 @@ export default async function PeoplePage({
       </div>
 
       {first(sp.invia) === "1" && can.send && (
-        <WidgetBoundary title="Il pannello «Invia le domande»">
+        <WidgetBoundary title="Il pannello «Invia le domande»" showCode={ls}>
           <SendSheet
             workspaceId={workspaceId}
             caseId={caseId}

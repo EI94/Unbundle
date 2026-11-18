@@ -68,7 +68,7 @@ export function foldWord(text: string): string {
 
 const LETTER_OR_DIGIT = /[\p{L}\p{N}]/u;
 
-/** Vero se `word` (una o più parole) compare in `title` come parola intera, senza maiuscole e accenti: «Nardi» non è in «Bernardini». */
+/** Vero se `word` (una o più parole) compare in `title` come parola intera, senza maiuscole e accenti: «Alfa» non è in «Malfatti». */
 export function titleHasWord(title: string, word: string): boolean {
   const haystack = foldWord(title).replace(/\s+/g, " ");
   const needle = foldWord(word).replace(/\s+/g, " ").trim();
@@ -91,7 +91,7 @@ const GENERIC_WORDS = new Set(
 
 /**
  * Le parole predefinite per il titolo: la prima parola del nome del workspace con almeno 4 lettere che non è una parola
- * generica. Una sola: una parola in più farebbe entrare le call di un altro cliente. «Nardi Motorsport» → «Nardi».
+ * generica. Una sola: una parola in più farebbe entrare le call di un altro cliente. «Alfa Ricambi» → «Alfa».
  */
 export function defaultTitleWords(workspaceName: string): string[] {
   for (const word of String(workspaceName ?? "").split(/[^\p{L}\p{N}]+/u)) {

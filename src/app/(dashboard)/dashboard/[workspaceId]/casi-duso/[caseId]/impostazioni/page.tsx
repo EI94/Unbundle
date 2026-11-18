@@ -13,7 +13,7 @@ import { loadCaseSettings, loadStatusOptions } from "@/lib/db/queries/uc-people-
 import { loadCaseMembers, loadMemberCandidates } from "@/lib/db/queries/uc-shell";
 import { caseGrantUserIds } from "@/lib/db/queries/use-case-builders";
 import { CASE_STATUS_LABEL } from "@/lib/uc/case-state";
-import { transitionHint, transitionNeedsReason } from "@/lib/uc/views/case-shell";
+import { settingsTransitions, transitionHint, transitionNeedsReason } from "@/lib/uc/views/case-shell";
 import { groupMembers } from "@/lib/uc/views/people";
 import type { CaseStatus } from "@/lib/uc/vocab";
 import { CaseIdentityForm, RevokeAllLinks, ScopeLeversForm } from "./settings-forms";
@@ -30,8 +30,8 @@ import { CaseIdentityForm, RevokeAllLinks, ScopeLeversForm } from "./settings-fo
  *   con lo schema di partenza.
  * - «Perimetro e leve»: il testo del perimetro e le 8 leve come interruttori.
  * - «Accesso al caso»: membri e ruoli (prima in Persone).
- * - «Stato del caso» (`#stato`): pausa, ripresa, chiusura, con il motivo.
- * - «Zona pericolosa»: «Revoca tutti i link dei referenti», «Chiudi il caso».
+ * - «Stato del caso» (`#stato`): pausa e ripresa, con il motivo.
+ * - «Zona pericolosa»: «Revoca tutti i link dei referenti», «Chiudi il caso» (solo qui, Ondata 0).
  *
  * In pausa restano solo «Riprendi», la chiusura e la revoca dei link; a caso
  * chiuso la pagina si legge soltanto.
@@ -56,11 +56,10 @@ export default async function CaseSettingsPage({ params }: { params: Promise<{ w
   const paused = current === "sospeso";
   const editable = write && !paused;
   const option = (to: CaseStatus): StatusOption => ({ to, label: CASE_STATUS_LABEL[to], hint: transitionHint(current, to), needsReason: transitionNeedsReason(to) });
-  // Il passo avanti è il primario della testata; qui pausa, ripresa, chiusura e il ritorno allo sviluppo.
-  const stateOptions = (status?.allowed ?? [])
-    .filter((to) => to === "sospeso" || to === "chiuso" || paused || (to === "in_sviluppo" && current !== "pronto_sviluppo"))
-    .map(option);
-  const closeOption = stateOptions.filter((o) => o.to === "chiuso");
+  // Il passo avanti è il primario della testata; qui pausa, ripresa e il ritorno allo sviluppo, la chiusura in «Zona pericolosa».
+  const transitions = settingsTransitions(current, status?.allowed ?? []);
+  const stateOptions = transitions.state.map(option);
+  const closeOption = transitions.danger.map(option);
 
   return (
     <PageContainer>
@@ -132,7 +131,7 @@ export default async function CaseSettingsPage({ params }: { params: Promise<{ w
           id="stato"
           icon={Activity}
           title="Stato del caso"
-          description={`Adesso: ${CASE_STATUS_LABEL[current]}. Il passo avanti è il pulsante in alto; qui ci sono pausa, ripresa e chiusura.`}
+          description={`Adesso: ${CASE_STATUS_LABEL[current]}. Il passo avanti è il pulsante in alto; qui ci sono pausa e ripresa.`}
         >
           {stateOptions.length > 0 ? (
             <CaseStatusControl workspaceId={workspaceId} caseId={caseId} current={current} transitions={stateOptions} />

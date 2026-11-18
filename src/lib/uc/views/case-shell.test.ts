@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   CASE_STATUS_TONE,
   PAGES_WITHOUT_PRIMARY,
@@ -13,12 +14,13 @@ import {
   landingSegment,
   seesFilteredAudit,
   showsReadOnlyBadge,
+  settingsTransitions,
   solutionSegmentsFor,
   stepHiddenOn,
   transitionNeedsReason,
 } from "./case-shell.ts";
 import { CASE_STATUS_TONE as LABELS_TONE } from "./labels.ts";
-import { CASE_ROLES, type CaseRole } from "../vocab.ts";
+import { CASE_ROLES, CASE_STATUSES, type CaseRole } from "../vocab.ts";
 
 const tabs = (role: CaseRole) => caseTabsFor([role]).map((t) => t.label);
 const menu = (role: CaseRole, i: Partial<Parameters<typeof caseMenuFor>[1]> = {}) =>
@@ -174,4 +176,19 @@ test("suspension and closing ask for the reason", () => {
   assert.equal(transitionNeedsReason("sospeso"), true);
   assert.equal(transitionNeedsReason("chiuso"), true);
   assert.equal(transitionNeedsReason("in_sviluppo"), false);
+});
+
+test("(Ondata 0) Impostazioni del caso: «Chiudi il caso» una volta sola, in «Zona pericolosa»", () => {
+  for (const current of CASE_STATUSES) {
+    const all = settingsTransitions(current, CASE_STATUSES);
+    assert.ok(!all.state.includes("chiuso"), `${current}: la chiusura non sta in «Stato del caso»`);
+    assert.deepEqual(all.danger, ["chiuso"], `${current}: sta in «Zona pericolosa»`);
+  }
+  assert.deepEqual(settingsTransitions("in_sviluppo", ["sospeso", "chiuso", "backtest"]), { state: ["sospeso"], danger: ["chiuso"] }, "il passo avanti resta in testata");
+  assert.deepEqual(settingsTransitions("sospeso", ["in_sviluppo", "chiuso"]), { state: ["in_sviluppo"], danger: ["chiuso"] }, "in pausa: la ripresa");
+  assert.deepEqual(settingsTransitions("pronto_sviluppo", ["in_sviluppo", "sospeso"]), { state: ["sospeso"], danger: [] }, "da «pronto» lo sviluppo è il passo avanti");
+  assert.deepEqual(settingsTransitions("collaudo", ["in_sviluppo"]), { state: ["in_sviluppo"], danger: [] }, "il ritorno allo sviluppo per correggere");
+  const page = readFileSync(new URL("../../../app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/impostazioni/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /const stateOptions = transitions\.state\.map\(option\);/);
+  assert.match(page, /const closeOption = transitions\.danger\.map\(option\);/);
 });

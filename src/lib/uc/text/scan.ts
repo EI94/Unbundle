@@ -11,6 +11,12 @@
  * - `contatto` (email, telefono): bloccano nelle risposte e nei casi di prova,
  *   altrove sono un avviso.
  *
+ * (Ondata 0) Con `allowNamesAndContacts` nomi di persone, email e telefoni non
+ * danno esiti: è la regola della pagina del referente `/r`, come su `/rispondi`
+ * dal rilascio 5.1. Senza l'opzione, cioè per ogni altro chiamante («Contesto»,
+ * i testi di Lateral Space, i casi di prova, il seed, i file), valgono le
+ * categorie qui sopra.
+ *
  * Nessuna esenzione generica. Solo per le voci con `spec.health_rule_question`
  * (le domande che chiedono la regola di esclusione dei dati sanitari) i termini
  * sanitari già presenti nel testo della domanda danno un avviso invece di
@@ -62,6 +68,16 @@ export interface ScanOptions {
   healthRuleQuestion?: { questionText: string };
   /** Nomi da riconoscere sempre (file privato di redazione del seed). */
   names?: readonly string[];
+  /**
+   * (Ondata 0, `/r`) Nomi di persone, email e telefoni ammessi: nessun blocco e
+   * nessun avviso, come per il referente di `/rispondi` dal rilascio 5.1
+   * (decisione del titolare del 04/11/2026, «basta che lo diciamo prima nelle
+   * informative»). Un nome conta ancora per la vicinanza di un termine
+   * sanitario. Dati sanitari, preferenze discriminatorie, date di nascita e
+   * codici fiscali restano come sopra. Assente vuol dire «no»: ogni altro
+   * chiamante resta com'era.
+   */
+  allowNamesAndContacts?: boolean;
 }
 
 export interface ScanResult {
@@ -125,6 +141,7 @@ function scanWith(text: string, opts: ScanOptions, questionIds: Set<string> | nu
   const nameWords = new Set<number>();
   for (const m of names) {
     for (let i = m.first; i <= m.last; i++) nameWords.add(i);
+    if (opts.allowNamesAndContacts) continue;
     const f: Finding = { category: "nome_persona", term: NAME_TERMS[m.kind], ...span(t, m.first, m.last) };
     push(m.kind === "nome" ? warnings : blocking, f);
   }
@@ -157,13 +174,15 @@ function scanWith(text: string, opts: ScanOptions, questionIds: Set<string> | nu
   for (const s of findBirthDates(t)) push(blocking, { category: "data_nascita", term: "data di nascita", ...s });
   for (const s of findTaxCodes(t.text)) push(blocking, { category: "codice_fiscale", term: "codice fiscale", ...s });
 
-  // Contatti.
-  const contactList = CONTACT_BLOCKING_CONTEXTS.has(opts.context) ? blocking : warnings;
-  const emails = findEmails(t.text);
-  for (const s of emails) push(contactList, { category: "contatto", term: "email", ...s });
-  for (const s of findPhones(t.text)) {
-    if (emails.some((e) => s.start < e.end && e.start < s.end)) continue;
-    push(contactList, { category: "contatto", term: "telefono", ...s });
+  // Contatti (niente, con `allowNamesAndContacts`).
+  if (!opts.allowNamesAndContacts) {
+    const contactList = CONTACT_BLOCKING_CONTEXTS.has(opts.context) ? blocking : warnings;
+    const emails = findEmails(t.text);
+    for (const s of emails) push(contactList, { category: "contatto", term: "email", ...s });
+    for (const s of findPhones(t.text)) {
+      if (emails.some((e) => s.start < e.end && e.start < s.end)) continue;
+      push(contactList, { category: "contatto", term: "telefono", ...s });
+    }
   }
 
   const byPosition = (a: Finding, b: Finding) => a.start - b.start || a.end - b.end;

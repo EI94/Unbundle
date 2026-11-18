@@ -96,6 +96,25 @@ function DropdownMenuItem({
   )
 }
 
+/**
+ * (Ondata 0) Una voce del menu che porta a un indirizzo (`Menu.LinkItem`): clic e Invio aprono il link e chiudono il
+ * menu. Con `render={<Link href="…" />}` per le pagine dell'app. Al posto di un `Link` dentro un `DropdownMenuItem`,
+ * dove con la tastiera non succedeva niente.
+ */
+function DropdownMenuLinkItem({ className, closeOnClick = true, ...props }: MenuPrimitive.LinkItem.Props) {
+  return (
+    <MenuPrimitive.LinkItem
+      data-slot="dropdown-menu-item"
+      closeOnClick={closeOnClick}
+      className={cn(
+        "group/dropdown-menu-item relative flex cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
 function DropdownMenuSub({ ...props }: MenuPrimitive.SubmenuRoot.Props) {
   return <MenuPrimitive.SubmenuRoot data-slot="dropdown-menu-sub" {...props} />
 }
@@ -257,6 +276,7 @@ export {
   DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuItem,
+  DropdownMenuLinkItem,
   DropdownMenuCheckboxItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,

@@ -1,4 +1,5 @@
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
+import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import { notFound } from "next/navigation";
 import { getWorkspaceById, getStrategicGoalsByWorkspace } from "@/lib/db/queries/workspaces";
 import { GoalForm } from "@/components/dashboard/goal-form";
@@ -13,9 +14,12 @@ export default async function StrategyPage({
 
   const { workspaceId } = await params;
 
-  await requireWorkspacePage(workspaceId);
+  const { access } = await requireWorkspacePage(workspaceId);
   const workspace = await getWorkspaceById(workspaceId);
   if (!workspace) notFound();
+  // Gli obiettivi li scrive solo chi valuta gli use case (`createGoalAction`, `suggestOKRsAction`): gli altri ruoli
+  // li leggono, senza pulsanti che finirebbero in un rifiuto.
+  const canEdit = canReviewWorkspacePortfolio(access.role);
 
   const goals = await getStrategicGoalsByWorkspace(workspaceId);
   const topLevelGoals = goals.filter((g) => !g.parentId);
@@ -47,21 +51,29 @@ export default async function StrategyPage({
         </p>
       </div>
 
-      <div className="flex items-center gap-3 mb-6">
-        <GoalForm
-          workspaceId={workspaceId}
-          parentGoals={goals}
-          defaultType="goal"
-        />
-        <SuggestOKRsButton workspaceId={workspaceId} />
-      </div>
+      {canEdit ? (
+        <div className="flex items-center gap-3 mb-6">
+          <GoalForm
+            workspaceId={workspaceId}
+            parentGoals={goals}
+            defaultType="goal"
+          />
+          <SuggestOKRsButton workspaceId={workspaceId} />
+        </div>
+      ) : null}
 
       {goals.length === 0 ? (
         <div className="mt-16 text-center max-w-md mx-auto">
           <h2 className="text-lg font-medium">Nessun obiettivo</h2>
           <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
-            Aggiungi goal strategici, obiettivi e key result.
-            Oppure lascia che l&apos;AI suggerisca un framework OKR basato sulla tua Value Thesis.
+            {canEdit ? (
+              <>
+                Aggiungi goal strategici, obiettivi e key result.
+                Oppure lascia che l&apos;AI suggerisca un framework OKR basato sulla tua Value Thesis.
+              </>
+            ) : (
+              "Gli obiettivi li aggiunge chi valuta gli use case."
+            )}
           </p>
         </div>
       ) : (
@@ -117,15 +129,17 @@ export default async function StrategyPage({
                                   </div>
                                 </div>
                               ))}
-                              <GoalForm
-                                workspaceId={workspaceId}
-                                parentGoals={goals}
-                                defaultType="key_result"
-                                defaultParentId={obj.id}
-                              />
+                              {canEdit ? (
+                                <GoalForm
+                                  workspaceId={workspaceId}
+                                  parentGoals={goals}
+                                  defaultType="key_result"
+                                  defaultParentId={obj.id}
+                                />
+                              ) : null}
                             </div>
                           )}
-                          {krs.length === 0 && (
+                          {canEdit && krs.length === 0 && (
                             <div className="pl-3 mt-1">
                               <GoalForm
                                 workspaceId={workspaceId}
@@ -140,14 +154,16 @@ export default async function StrategyPage({
                     })}
                   </div>
                 )}
-                <div className="mt-3">
-                  <GoalForm
-                    workspaceId={workspaceId}
-                    parentGoals={goals}
-                    defaultType="objective"
-                    defaultParentId={goal.id}
-                  />
-                </div>
+                {canEdit ? (
+                  <div className="mt-3">
+                    <GoalForm
+                      workspaceId={workspaceId}
+                      parentGoals={goals}
+                      defaultType="objective"
+                      defaultParentId={goal.id}
+                    />
+                  </div>
+                ) : null}
               </div>
             );
           })}

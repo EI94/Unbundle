@@ -42,7 +42,7 @@ import { isPlainObject } from "../answers/strings.ts";
 import { buildTable, pasteOptionsFromConfig, parsePastedTable, type PasteResult } from "../answers/table-paste.ts";
 import type { IntervalKind, ResponseConfig } from "../answers/types.ts";
 import { UNITS, lookupUnit, parseUnitHint, type UnitDef } from "../answers/units.ts";
-import type { ApprovalView, ReferentAnswerKind, ReferentItemView } from "../public-view.ts";
+import { referentLinkScan, type ApprovalView, type ReferentAnswerKind, type ReferentItemView } from "../public-view.ts";
 import type { Json } from "../types.ts";
 import { csvCell } from "../../learning/policy.ts";
 import { findingMessage, hasHardBlock, scanPayload } from "../text/scan.ts";
@@ -728,8 +728,9 @@ export interface SubmitCheck {
   warnings: Issue[];
 }
 
+/** (Ondata 0) Le regole del server per i testi di `/r` (`referentLinkScan`): nomi, email e telefoni passano. */
 function scanOptions(item: Pick<ReferentItemView, "healthRuleQuestion" | "title">) {
-  return { context: "risposta" as const, healthRuleQuestion: item.healthRuleQuestion ? { questionText: item.title } : undefined };
+  return referentLinkScan(item);
 }
 
 function fromPrepared(p: PreparedAnswer): SubmitCheck {
@@ -738,9 +739,10 @@ function fromPrepared(p: PreparedAnswer): SubmitCheck {
 
 /**
  * Controllo prima dell'invio, con la normalizzazione stretta e la scansione
- * del testo del server (dati sanitari, preferenze discriminatorie, nomi,
- * contatti). Gli errori hanno il campo (`value`, `amount`, `valid_from`…) per
- * mostrarli accanto all'input.
+ * del testo del server (dati sanitari, preferenze discriminatorie, date di
+ * nascita, codici fiscali; (Ondata 0) nomi, email e telefoni passano). Gli
+ * errori hanno il campo (`value`, `amount`, `valid_from`…) per mostrarli
+ * accanto all'input.
  */
 export function checkSubmit(item: ReferentItemView, form: ReferentForm, action: SubmitAction, fileIds: readonly string[], now: Date): SubmitCheck {
   const kind = kindFor(item, form, action);
@@ -1051,7 +1053,7 @@ export function prepareDelegation(raw: unknown, activeItemIds: readonly string[]
     back.set(`voce${i + 1}`, id);
   });
   const input = isPlainObject(raw) && Array.isArray(raw.voci) ? { ...raw, voci: raw.voci.map((v) => (typeof v === "string" ? (alias.get(v.toLowerCase()) ?? "sconosciuta") : v)) } : raw;
-  const p = prepareUniversalAction({ action: "delega", raw: input, activeItemIds: [...back.keys()], scan: { context: "risposta" } });
+  const p = prepareUniversalAction({ action: "delega", raw: input, activeItemIds: [...back.keys()], scan: referentLinkScan() });
   if (!p.ok || !isPlainObject(p.value) || !Array.isArray(p.value.voci)) return p;
   const value = { ...p.value, voci: p.value.voci.map((a) => (typeof a === "string" ? (back.get(a) ?? a) : a)) } as Obj;
   return { ...p, value, normalized: value };

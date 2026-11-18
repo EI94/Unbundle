@@ -243,7 +243,8 @@ export const PRIORITY_LABEL: Readonly<Record<Priority, string>> = { must: WORDS.
 
 export const PRIVACY_LABEL: Readonly<Record<PrivacyClass, string>> = {
   escluso_sanitario: "Sanitario: mai",
-  personale_equipaggio: "Personale equipaggio",
+  // (Ondata 0) La chiave resta `personale_equipaggio`; a schermo, una parola che vale in ogni settore.
+  personale_equipaggio: "Personale operativo",
   personale: "Personale",
   riservato_azienda: "Riservato azienda",
   nessuna: "Nessuna",

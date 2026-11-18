@@ -74,7 +74,8 @@ function snap(status: ItemStatus, riState: RequestItemState): ItemSnapshot {
 
 test("privacy notice: versioned, short enough for the request column and the ack SQL", () => {
   assert.match(REFERENT_PRIVACY_NOTICE.version, /^[A-Za-z0-9_.:-]{1,20}$/);
-  assert.equal(REFERENT_PRIVACY_NOTICE.version, "uc-2026-10-2", "the two-level notice is a new version: it is shown again");
+  // (Ondata 0) `uc-2026-11-1`: names, emails and phones pass on /r as on /rispondi; the notice is shown again.
+  assert.equal(REFERENT_PRIVACY_NOTICE.version, "uc-2026-11-1", "the calm notice is a new version: it is shown again");
   assert.ok(REFERENT_PRIVACY_NOTICE.paragraphs.length >= 3);
   const text = REFERENT_PRIVACY_NOTICE.paragraphs.join(" ");
   assert.match(text, /30 giorni/);

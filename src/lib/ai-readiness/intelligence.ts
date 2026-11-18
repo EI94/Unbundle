@@ -132,7 +132,7 @@ function clusterForUseCase(item: AiReadinessIntelligenceUseCase) {
     {
       id: "risk_compliance",
       label: "Risk, compliance e controllo",
-      description: "Controlli, policy, privacy, sicurezza, qualita e compliance.",
+      description: "Controlli, policy, privacy, sicurezza, qualità e compliance.",
       keywords: ["risk", "compliance", "privacy", "sicurezza", "controll", "qualita", "policy", "legal"],
     },
     {
@@ -251,7 +251,7 @@ export function buildAiReadinessRoadmap(params: {
       id: "wave-1-foundation",
       title: "Wave 1 - Stabilizzare la readiness",
       horizon: "0-90 giorni",
-      focus: `Sbloccare il pillar piu debole: ${bottleneckTitle}.`,
+      focus: `Sbloccare il pillar più debole: ${bottleneckTitle}.`,
       actions: [
         bottleneckAction(params.dashboard.bottleneckPillar),
         "Definire owner, guardrail privacy e criteri minimi per approvare sperimentazioni AI.",
@@ -267,11 +267,11 @@ export function buildAiReadinessRoadmap(params: {
       focus:
         quickClusters.length > 0
           ? `Portare in produzione ${quickClusters.slice(0, 2).map((cluster) => cluster.label).join(" e ")}.`
-          : "Selezionare 2 use case ad alta fattibilita dal portfolio.",
+          : "Selezionare 2 use case ad alta fattibilità dal portfolio.",
       actions: [
         "Trasformare i migliori use case in backlog con owner, effort, rischi e metriche di outcome.",
         "Connettere i use case selezionati al Portfolio Unbundle per review e wave planning.",
-        "Misurare adoption reale: utenti attivi, tempo risparmiato dichiarato, qualita output e incidenti.",
+        "Misurare adoption reale: utenti attivi, tempo risparmiato dichiarato, qualità output e incidenti.",
       ],
       successMetric: "2 use case validati, almeno 1 live pilot e metriche di impatto tracciate.",
       linkedClusterIds: quickClusters.slice(0, 3).map((cluster) => cluster.id),
@@ -286,7 +286,7 @@ export function buildAiReadinessRoadmap(params: {
           : "Trasformare i pattern validati in capability riusabili.",
       actions: [
         "Creare playbook replicabili: prompt, policy, dati, ruoli, controlli e change plan.",
-        "Collegare Discovery, Mapping e Portfolio per dare priorita ai flussi con maggiore leva strategica.",
+        "Collegare Discovery, Mapping e Portfolio per dare priorità ai flussi con maggiore leva strategica.",
         "Portare gli insight approvati nel piano di AI Transformation e nel report executive.",
       ],
       successMetric: "Roadmap approvata dal team, portfolio prioritizzato e governance operativa ricorrente.",
@@ -313,7 +313,7 @@ export function buildBenchmarkComparison(params: {
   if (!params.dashboard.aggregationThresholdMet) {
     return {
       enabled: false,
-      reason: "Servono piu risposte aggregate prima di mostrare un benchmark.",
+      reason: "Servono più risposte aggregate prima di mostrare un benchmark.",
       referenceName: REFERENCE_BENCHMARK.name,
       overallDelta: null,
       pillarDeltas: {},
@@ -403,8 +403,8 @@ export function generateAiReadinessIntelligence(
     return [
       insightBase(
         "risk",
-        "Servono piu risposte prima degli insight completi",
-        `Il campione attuale e ${input.dashboard.responseCount}/${input.aggregationThreshold}. Unbundle mantiene visibili solo segnali aggregati affidabili: invita altri respondent prima di usare benchmark, heatmap o diagnosi per area.`,
+        "Servono più risposte prima degli insight completi",
+        `Il campione attuale è ${input.dashboard.responseCount}/${input.aggregationThreshold}. Unbundle mantiene visibili solo segnali aggregati affidabili: invita altri respondent prima di usare benchmark, heatmap o diagnosi per area.`,
         {
           status: "needs_data",
           responseCount: input.dashboard.responseCount,
@@ -418,7 +418,7 @@ export function generateAiReadinessIntelligence(
     insightBase(
       "executive_summary",
       "Sintesi readiness AI",
-      `Readiness index ${scoreText(input.dashboard.overallScore)}. Il principale vincolo e ${bottleneckTitle}; la priorita e trasformare il portfolio use case in wave operative senza perdere governance, privacy e controllo umano.`,
+      `Readiness index ${scoreText(input.dashboard.overallScore)}. Il principale vincolo è ${bottleneckTitle}; la priorità è trasformare il portfolio use case in wave operative senza perdere governance, privacy e controllo umano.`,
       {
         overallScore: input.dashboard.overallScore,
         maturitySignal: scoreText(input.dashboard.overallScore),
@@ -430,7 +430,7 @@ export function generateAiReadinessIntelligence(
     insightBase(
       "bottleneck",
       `Bottleneck: ${bottleneckTitle}`,
-      `${bottleneckTitle} e il fattore da trattare per primo. Se non viene sbloccato, anche i use case ad alto potenziale rischiano di restare proof of concept isolate.`,
+      `${bottleneckTitle} è il fattore da trattare per primo. Se non viene sbloccato, anche i use case ad alto potenziale rischiano di restare proof of concept isolate.`,
       {
         weakestPillars: weakest,
         recommendedAction: bottleneckAction(input.dashboard.bottleneckPillar),
@@ -440,8 +440,8 @@ export function generateAiReadinessIntelligence(
       "use_case",
       "Cluster use case emersi",
       clusters.length > 0
-        ? `Sono emersi ${clusters.length} cluster di opportunita. Il cluster piu ricorrente e ${clusters[0]?.label}, con ${clusters[0]?.count ?? 0} proposte.`
-        : "Non sono ancora emersi use case dal survey. Il prossimo passo e attivare intake guidato da survey, Slack o Portfolio.",
+        ? `Sono emersi ${clusters.length} cluster di opportunità. Il cluster più ricorrente è ${clusters[0]?.label}, con ${clusters[0]?.count ?? 0} proposte.`
+        : "Non sono ancora emersi use case dal survey. Il prossimo passo è attivare intake guidato da survey, Slack o Portfolio.",
       {
         clusters,
         unlinkedUseCaseCount: input.useCases.filter((item) => !item.linkedUseCaseId).length,
@@ -467,7 +467,7 @@ export function generateAiReadinessIntelligence(
       "benchmark",
       benchmark.enabled ? "Benchmark disponibile" : "Benchmark non ancora disponibile",
       benchmark.enabled
-        ? `Il confronto con ${benchmark.referenceName} e attivo. Delta overall: ${scoreText(benchmark.overallDelta)}.`
+        ? `Il confronto con ${benchmark.referenceName} è attivo. Delta overall: ${scoreText(benchmark.overallDelta)}.`
         : benchmark.reason ?? "Benchmark non disponibile.",
       { benchmark }
     ),

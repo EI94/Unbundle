@@ -44,10 +44,6 @@ export default function SupportPage() {
           support@theunbundle.com
         </a>
       </p>
-      <p className="text-sm text-muted-foreground">
-        Sostituisci l’indirizzo con quello reale del team commerciale / IT che
-        gestisce Unbundle per i clienti.
-      </p>
 
       <h2 className="text-lg font-medium pt-6">Installazione Slack per un’azienda</h2>
       <p>

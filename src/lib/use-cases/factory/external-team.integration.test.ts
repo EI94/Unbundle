@@ -46,7 +46,7 @@ const ids = {
 const EMAIL: Record<Person, string> = {
   lead: `lead-${suffix}@ls.test`,
   other: `altro-${suffix}@ls.test`,
-  e: `alessio-${suffix}@gmail.test`,
+  e: `sandro-${suffix}@gmail.test`,
   e2: `e2-${suffix}@gmail.test`,
   unverified: `nonverificata-${suffix}@gmail.test`,
   lsperson: `ls-${suffix}@ls.test`,
@@ -150,7 +150,7 @@ before(async () => {
   await openDossier(dossier.d3, uc.u3, "other");
   await openDossier(dossier.d4, uc.u4, "lead", "chiuso");
   await q(`INSERT INTO uc_case_members (case_id, user_id, role) VALUES ($1, $2, 'ai_board')`, [dossier.d2, ids.e2]);
-  await q(`INSERT INTO use_case_repos (use_case_id, workspace_id, repo, folder) VALUES ($1, $3, $4, 'casi/nx-0001'), ($2, $3, $4, 'casi/nx-0002')`, [uc.u1, uc.u2, ids.ws, `Prova/nardi-esploso-${suffix}`]);
+  await q(`INSERT INTO use_case_repos (use_case_id, workspace_id, repo, folder) VALUES ($1, $3, $4, 'casi/nx-0001'), ($2, $3, $4, 'casi/nx-0002')`, [uc.u1, uc.u2, ids.ws, `Prova/alfa-esploso-${suffix}`]);
 });
 
 after(async () => {
@@ -205,7 +205,7 @@ test("«Aggiungi» in tutti i casi: entra nei dossier aperti dove chi agisce è 
   assert.deepEqual(await grantsOf("e"), [null], "una riga «tutti»");
   assert.deepEqual([...r.value.entered].sort(), [CODE.u1, CODE.u2].sort());
   assert.deepEqual(r.value.skipped, [{ code: CODE.u3, reason: "attore_non_ammesso" }], "lì non è responsabile");
-  assert.deepEqual(r.value.repos, [`Prova/nardi-esploso-${suffix}`]);
+  assert.deepEqual(r.value.repos, [`Prova/alfa-esploso-${suffix}`]);
   assert.deepEqual(await rolesOf(dossier.d1, "e"), ["osservatore"]);
   assert.deepEqual(await rolesOf(dossier.d4, "e"), [], "un dossier chiuso non cambia");
   // La stessa aggiunta di nuovo non cambia niente.
@@ -324,7 +324,7 @@ test("D9: «Togli»: prima i poteri (concessioni, token, compiti), poi esce dai 
   assert.equal(r.value.released, 1, "il compito che aveva in U1 torna da prendere");
   assert.deepEqual(r.value.left.sort(), [CODE.u1].sort());
   assert.deepEqual(await rolesOf(dossier.d1, "e"), []);
-  assert.deepEqual(r.value.repos, [`Prova/nardi-esploso-${suffix}`]);
+  assert.deepEqual(r.value.repos, [`Prova/alfa-esploso-${suffix}`]);
   assert.equal(await builders.isExternalBuilderOfCase(exec, { caseId: dossier.d1, userId: ids.e, lsDomains: LS }), false);
   const none = await team.removeExternalBuilder(exec, { workspaceId: ids.ws, actorUserId: ids.lead, userId: ids.e, lsDomains: LS });
   assert.deepEqual([none.ok, !none.ok && none.code], [false, "non_trovato"]);

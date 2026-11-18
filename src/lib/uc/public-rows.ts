@@ -108,6 +108,15 @@ export function privacyAcknowledged(link: Pick<ResolvedLink, "privacyAckAt" | "p
   return link.privacyAckAt !== null && link.privacyNoticeVersion === version;
 }
 
+/**
+ * (Ondata 0) Perché le scritture del link aspettano l'informativa, oppure null: mai letta (`informativa_da_leggere`),
+ * oppure letta in una versione che non è più quella di adesso (`informativa_aggiornata`).
+ */
+export function privacyWait(link: Pick<ResolvedLink, "privacyAckAt" | "privacyNoticeVersion">, version: string): "informativa_da_leggere" | "informativa_aggiornata" | null {
+  if (privacyAcknowledged(link, version)) return null;
+  return link.privacyAckAt === null ? "informativa_da_leggere" : "informativa_aggiornata";
+}
+
 // ── Moduli ────────────────────────────────────────────────────────────
 
 export interface ModuleInfo {

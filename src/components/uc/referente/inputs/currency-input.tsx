@@ -6,7 +6,7 @@ import { Field, FieldErrors, RadioRows, SelectControl, TextControl, issuesFor, o
 
 /**
  * Input `valuta`: importo, valuta (EUR proposta), IVA inclusa o esclusa,
- * a cosa si riferisce («a volo», «a notte»…) e, fuori dall'euro, il cambio con
+ * a cosa si riferisce («a pezzo», «a ora»…) e, fuori dall'euro, il cambio con
  * data e fonte. «Valido dal» è sotto, tra i campi comuni della voce.
  */
 export function CurrencyInput({ id, config, value, onChange, issues, disabled, label }: InputProps) {
@@ -64,7 +64,7 @@ export function CurrencyInput({ id, config, value, onChange, issues, disabled, l
           />
         </div>
       )}
-      <Field label="A cosa si riferisce l'importo" htmlFor={`${id}-per`} issues={issuesFor(issues, "per")} hint="Per esempio a volo, a ora, a notte, a persona, all'anno.">
+      <Field label="A cosa si riferisce l'importo" htmlFor={`${id}-per`} issues={issuesFor(issues, "per")} hint="Per esempio a pezzo, a ora, a persona, all'anno.">
         <TextControl id={`${id}-per`} value={text(v.per)} onChange={(x) => set({ per: x })} disabled={disabled} invalid={issuesFor(issues, "per").length > 0} list={listId} />
         <datalist id={listId}>
           {CURRENCY_PER_SUGGESTIONS.map((s) => (

@@ -41,7 +41,7 @@ await installAppModules({
   "@/lib/db/queries/uc-access": `export const getUcUserContext = async () => globalThis.__prova.user;
     export const ucLsDomains = () => ["ls.test"];
     export const isUcEnabledFor = () => globalThis.__prova.dossiers;`,
-  "@/lib/db/queries/workspaces": `export const getWorkspaceById = async () => ({ id: "${WS}", name: "Nardi Arredamenti" });`,
+  "@/lib/db/queries/workspaces": `export const getWorkspaceById = async () => ({ id: "${WS}", name: "Alfa Arredamenti" });`,
   "@/lib/db/queries/use-case-referent-base": `export const referentStoreReady = async () => true;`,
   "@/lib/use-cases/referent/availability": `export const referentAskEnabled = () => globalThis.__prova.referents;`,
   "@/lib/auth/require-workspace": `export async function requireWorkspaceAccess() { return { session: { user: { id: "${USER}" } }, access: { role: "transformation_lead" } }; }`,
@@ -106,22 +106,22 @@ test("l'avviso per chi guarda: Lateral Space con un clic, il cliente verso Impos
   const ls = await consent.loadAiConsentNotice({ workspaceId: WS, userId: USER, role: "transformation_lead" });
   assert.deepEqual(ls, {
     workspaceId: WS,
-    companyName: "Nardi Arredamenti",
+    companyName: "Alfa Arredamenti",
     declarer: "lateral_space",
     listVersion: SUBPROCESSORS_VERSION,
     statement: ls?.statement,
     suppliers: SUBPROCESSORS.map((s) => s.nome),
-    buttonLabel: "Registra l'ok di Nardi Arredamenti",
+    buttonLabel: "Registra l'ok di Alfa Arredamenti",
     settingsHref: `/dashboard/${WS}/settings#sub-responsabili`,
   });
-  assert.match(ls?.statement ?? "", /^Per conto di Nardi Arredamenti: .* L'ok lo registra Lateral Space\./);
+  assert.match(ls?.statement ?? "", /^Per conto di Alfa Arredamenti: .* L'ok lo registra Lateral Space\./);
   assert.ok(ls?.suppliers.includes("Anthropic"));
 
   reset({ table: true, user: CLIENT });
   const client = await consent.loadAiConsentNotice({ workspaceId: WS, userId: USER, role: "function_lead" });
   assert.equal(client?.declarer, "cliente");
   assert.equal(client?.buttonLabel, null, "il cliente autorizza in Impostazioni, con la casella dei poteri");
-  assert.match(client?.statement ?? "", /^Per conto di Nardi Arredamenti, titolare del trattamento, autorizzo Lateral Space/);
+  assert.match(client?.statement ?? "", /^Per conto di Alfa Arredamenti, titolare del trattamento, autorizzo Lateral Space/);
 
   for (const [user, role] of [[LS, "analyst"], [LS, "contributor"], [CLIENT, "analyst"], [CLIENT, "contributor"], [null, "transformation_lead"], [LS, null]] as const) {
     reset({ table: true, user });

@@ -106,7 +106,7 @@ test("«Da smistare»: le call, o l'errore con il messaggio da mostrare", async 
   prova.who = { ok: true, actor: CLIENT_ACTOR };
   assert.equal((await get()).status, 404);
   prova.who = { ok: true, actor: LS_ACTOR };
-  const meetings = [{ id: "m-1", title: "Call", date: "2026-11-14", participants: "Giulia (giulia@nardi.test)" }];
+  const meetings = [{ id: "m-1", title: "Call", date: "2026-11-14", participants: "Giulia (giulia@alfa.test)" }];
   prova.results.unsorted = { ok: true, value: meetings };
   const ok = await get();
   assert.equal(ok.status, 200);

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { Issue } from "@/lib/uc/answers/issues";
-import type { ReferentItemView } from "@/lib/uc/public-view";
+import { waitsForPrivacy, type ReferentItemView } from "@/lib/uc/public-view";
 import {
   AUTOSAVE_DEBOUNCE_MS,
   decodeDeviceDraft,
@@ -33,6 +33,13 @@ import { putDraft } from "./api";
  *
  * Il server ricontrolla tutto: un rifiuto (per esempio la domanda non è più nel
  * link) ferma i tentativi e arriva alla pagina con `onBlocked`.
+ *
+ * (Ondata 0) L'informativa da leggere (cambiata con un rilascio, o non
+ * risulta letta) non è un rifiuto della bozza: niente è salvato, ma la bozza
+ * resta in attesa, anche sul dispositivo; la pagina mostra di nuovo
+ * l'informativa (`onPrivacyWait`) e, quando torna scrivibile, le bozze in
+ * attesa partono. Prima di un invio la copia sul dispositivo resta (`hold`):
+ * si toglie solo quando l'invio è riuscito (`forget`).
  */
 
 export interface AutosaveBlock {
@@ -51,6 +58,8 @@ export interface AutosaveOptions {
   onInvalidLink: () => void;
   /** Bozza salvata sul server (la pagina annuncia «Salvato» solo la prima volta). */
   onSaved?: (itemId: string) => void;
+  /** (Ondata 0) Una bozza aspetta l'informativa: la pagina rilegge la vista e la mostra di nuovo. La bozza resta. */
+  onPrivacyWait?: () => void;
 }
 
 export interface AutosaveTarget {
@@ -76,7 +85,7 @@ function storage(): Storage | null {
   }
 }
 
-export function useAutosave({ token, enabled, onBlocked, onInvalidLink, onSaved }: AutosaveOptions) {
+export function useAutosave({ token, enabled, onBlocked, onInvalidLink, onSaved, onPrivacyWait }: AutosaveOptions) {
   const [states, setStates] = useState<Record<string, SaveState>>({});
   const online = useSyncExternalStore(
     subscribeOnline,
@@ -88,10 +97,10 @@ export function useAutosave({ token, enabled, onBlocked, onInvalidLink, onSaved 
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const inflight = useRef(new Set<string>());
   const attempts = useRef(new Map<string, number>());
-  const callbacks = useRef({ onBlocked, onInvalidLink, onSaved });
+  const callbacks = useRef({ onBlocked, onInvalidLink, onSaved, onPrivacyWait });
   useEffect(() => {
-    callbacks.current = { onBlocked, onInvalidLink, onSaved };
-  }, [onBlocked, onInvalidLink, onSaved]);
+    callbacks.current = { onBlocked, onInvalidLink, onSaved, onPrivacyWait };
+  }, [onBlocked, onInvalidLink, onSaved, onPrivacyWait]);
 
   const setState = useCallback((itemId: string, state: SaveState) => {
     setStates((s) => (s[itemId] === state ? s : { ...s, [itemId]: state }));
@@ -160,6 +169,15 @@ export function useAutosave({ token, enabled, onBlocked, onInvalidLink, onSaved 
         callbacks.current.onInvalidLink();
         return;
       }
+      if (waitsForPrivacy(res.code)) {
+        // (Ondata 0) Prima degli stati da riprovare (`informativa_aggiornata` è un 503): niente è salvato, ma la bozza
+        // non è rifiutata. Resta in attesa, anche sul dispositivo, senza nuovi tentativi; riparte quando la pagina torna
+        // scrivibile, dopo l'informativa.
+        attempts.current.delete(itemId);
+        setState(itemId, "pending");
+        callbacks.current.onPrivacyWait?.();
+        return;
+      }
       if (isRetryableStatus(res.status)) {
         const attempt = attempts.current.get(itemId) ?? 0;
         attempts.current.set(itemId, attempt + 1);
@@ -213,6 +231,20 @@ export function useAutosave({ token, enabled, onBlocked, onInvalidLink, onSaved 
     [clearTimer, enabled, removeDevice, setState, writeDevice],
   );
 
+  /**
+   * (Ondata 0) Un invio sta per partire: niente salvataggi automatici in mezzo, ma la copia sul dispositivo resta
+   * finché l'invio non riesce (`forget`). Se non riesce, la copia c'è ancora; l'invio a gruppi rimette anche la bozza
+   * in salvataggio (`schedule`).
+   */
+  const hold = useCallback(
+    (itemId: string) => {
+      clearTimer(itemId);
+      pending.current.delete(itemId);
+      attempts.current.delete(itemId);
+    },
+    [clearTimer],
+  );
+
   /** La risposta è partita (o la voce è uscita dal link): niente più bozza da salvare. */
   const forget = useCallback(
     (itemId: string) => {
@@ -256,6 +288,12 @@ export function useAutosave({ token, enabled, onBlocked, onInvalidLink, onSaved 
 
   useEffect(() => {
     if (!enabled) return;
+    // (Ondata 0) Di nuovo scrivibile (per esempio dopo «Ho letto, iniziamo» su un'informativa cambiata): le bozze in
+    // attesa partono subito. Al primo montaggio non ce ne sono.
+    for (const itemId of [...pending.current.keys()]) {
+      attempts.current.delete(itemId);
+      void saveRef.current(itemId);
+    }
     const onVisibility = () => {
       if (document.visibilityState === "hidden") flushAll(true);
     };
@@ -278,5 +316,5 @@ export function useAutosave({ token, enabled, onBlocked, onInvalidLink, onSaved 
     };
   }, [enabled, flushAll]);
 
-  return { states, online, schedule, forget, flush, flushAll, readDevice };
+  return { states, online, schedule, hold, forget, flush, flushAll, readDevice };
 }

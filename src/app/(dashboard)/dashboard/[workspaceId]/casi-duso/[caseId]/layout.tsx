@@ -6,6 +6,7 @@ import { CaseUrlPanels, type CaseMenuEntry, type CaseStepView, type CaseTransiti
 import { CaseStickyBar, CaseTabs } from "@/components/uc/shell/case-tabs";
 import { SectionUnavailable } from "@/components/uc/shell/section-unavailable";
 import { DossierTransitionRetry } from "@/components/uc/shell/transition-retry";
+import { LateralSpaceViewerProvider } from "@/components/uc/shell/viewer-context";
 import { SkipLink, UC_CONTENT_ID } from "@/components/uc/ui/skip-link";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { UcAccessError } from "@/lib/db/queries/uc-access";
@@ -125,7 +126,8 @@ export default async function CaseLayout({ children, params }: { children: React
         }
       />
       <div id={UC_CONTENT_ID} tabIndex={-1} className="flex min-w-0 flex-1 flex-col outline-none">
-        {children}
+        {/* (Ondata 0) Anche per la pagina d'errore del caso: il codice dell'errore solo a Lateral Space. */}
+        <LateralSpaceViewerProvider value={ls}>{children}</LateralSpaceViewerProvider>
       </div>
       <DossierTransitionRetry />
     </div>

@@ -27,7 +27,7 @@ export const command: AdminCommand = {
     if (ctx.scope.kind !== "workspace") throw new AdminStop("opzioni", "Serve --workspace <uuid>: la registrazione si toglie dai casi di un workspace.");
     const workspaceId = ctx.scope.workspaceId;
     const repo = parseRepoOption(ctx.value("repo"));
-    if (!repo) throw new AdminStop("opzioni", "Serve --repo owner/nome (per esempio Voltaen/nardi-esploso).");
+    if (!repo) throw new AdminStop("opzioni", "Serve --repo owner/nome (per esempio Voltaen/alfa-esploso).");
     const rawCode = ctx.value("use-case");
     const code = rawCode === null ? null : parseUseCaseCode(rawCode);
     if (rawCode !== null && code === null) throw new AdminStop("opzioni", "--use-case vuole il codice di uno use case, per esempio NM-0009.");

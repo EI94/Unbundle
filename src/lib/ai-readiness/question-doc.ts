@@ -56,7 +56,7 @@ export function buildQuestionDocPdf(payload: QuestionDocPayload) {
   // ── Guida rapida ──
   doc.text("Come si risponde", { size: 9, font: "B", color: ACCENT, after: 1 });
   doc.text(
-    "Per ogni domanda a punteggio si sceglie il livello da 1 a 5 che descrive meglio la situazione: ogni livello e spiegato. Se non si conosce la risposta e disponibile l'opzione «Non so / non applicabile». Le risposte si salvano automaticamente e si puo riprendere in qualsiasi momento.",
+    "Per ogni domanda a punteggio si sceglie il livello da 1 a 5 che descrive meglio la situazione: ogni livello è spiegato. Se non si conosce la risposta è disponibile l'opzione «Non so / non applicabile». Le risposte si salvano automaticamente e si può riprendere in qualsiasi momento.",
     { size: 8.5, color: GRAY, after: 10 }
   );
 
@@ -197,13 +197,13 @@ export function buildUseCaseFormPdf(payload: UseCaseFormDocPayload) {
     `BT /F2 8.5 Tf ${[0.62, 0.75, 0.72].join(" ")} rg ${MARGIN} ${PAGE_H - 40} Td (${esc(payload.displayName.toUpperCase())}  ·  RACCOLTA USE CASE) Tj ET`,
     `BT /F2 21 Tf 1 1 1 rg ${MARGIN} ${PAGE_H - 66} Td (Modulo use case) Tj ET`,
     `BT /F1 9.5 Tf ${[0.78, 0.82, 0.86].join(" ")} rg ${MARGIN} ${PAGE_H - 84} Td (${esc("Come raccogliamo i casi d'uso con gli esperti di business, in tre passaggi.")}) Tj ET`,
-    `BT /F1 8 Tf ${[0.62, 0.67, 0.73].join(" ")} rg ${MARGIN} ${PAGE_H - 102} Td (${esc(`${payload.assessmentName}   ·   ${totalFields} domande in 3 blocchi   ·   piu casi per esperto   ·   ${dateLabel}`)}) Tj ET`
+    `BT /F1 8 Tf ${[0.62, 0.67, 0.73].join(" ")} rg ${MARGIN} ${PAGE_H - 102} Td (${esc(`${payload.assessmentName}   ·   ${totalFields} domande in 3 blocchi   ·   più casi per esperto   ·   ${dateLabel}`)}) Tj ET`
   );
   doc.y = PAGE_H - headH - 22;
 
   doc.text("Come funziona", { size: 9, font: "B", color: ACCENT, after: 1 });
   doc.text(
-    "Chiediamo agli esperti di business di descrivere situazioni di lavoro reali dove l'AI potrebbe aiutare. Ogni caso si racconta in tre blocchi: il bisogno, com'e oggi (processo, persone, strumenti, dati) e come potrebbe cambiare. Non serve essere tecnici. Ogni persona puo inviare piu casi, uno alla volta.",
+    "Chiediamo agli esperti di business di descrivere situazioni di lavoro reali dove l'AI potrebbe aiutare. Ogni caso si racconta in tre blocchi: il bisogno, com'è oggi (processo, persone, strumenti, dati) e come potrebbe cambiare. Non serve essere tecnici. Ogni persona può inviare più casi, uno alla volta.",
     { size: 8.5, color: GRAY, after: 12 }
   );
 
@@ -353,7 +353,7 @@ export function buildQuestionDocXlsx(payload: QuestionDocPayload) {
     [],
     [
       bodyCell(
-        "Scala di risposta: per ogni domanda a punteggio si sceglie il livello 1-5 che descrive meglio la situazione (ogni livello e spiegato nel foglio Domande). E sempre disponibile l'opzione «Non so / non applicabile».",
+        "Scala di risposta: per ogni domanda a punteggio si sceglie il livello 1-5 che descrive meglio la situazione (ogni livello è spiegato nel foglio Domande). È sempre disponibile l'opzione «Non so / non applicabile».",
         { gray: true }
       ),
     ],

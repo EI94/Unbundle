@@ -34,6 +34,7 @@ import type {
   AiReadinessTemplateDefinition,
 } from "@/lib/ai-readiness/types";
 import { aggregateScores } from "@/lib/ai-readiness/scoring";
+import { withSavedAccents } from "@/lib/ai-readiness/copy";
 import {
   applyTemplateOverrides,
   filterTemplateDefinition,
@@ -50,16 +51,17 @@ export type AiReadinessAssessmentBundle = {
   templateDefinition: AiReadinessTemplateDefinition;
 };
 
+/** (Ondata 0) Le frasi del modello salvate senza accenti tornano con gli accenti (`withSavedAccents`). */
 export function templateDefinitionFromRow(
   row: AiReadinessAssessmentTemplate
 ): AiReadinessTemplateDefinition {
-  return {
+  return withSavedAccents({
     pillars: row.pillars as AiReadinessTemplateDefinition["pillars"],
     sections: row.sections as AiReadinessTemplateDefinition["sections"],
     questions: row.questions as AiReadinessTemplateDefinition["questions"],
     scoringSchema:
       row.scoringSchema as AiReadinessTemplateDefinition["scoringSchema"],
-  };
+  });
 }
 
 /** Template ristretto ai pilastri selezionati per lo specifico assessment. */
