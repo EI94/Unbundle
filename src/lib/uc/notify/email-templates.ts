@@ -6,7 +6,9 @@
  *   Resend (nota in `AMBIENTE.md`): riscriverebbe i link `/r/`.
  * - Nessun valore delle risposte, nessun dato riservato, nessun nome di persona:
  *   cliente, caso, conteggi, minuti stimati, scadenza, etichette di ruolo,
- *   chiavi e titoli delle voci (solo per l'Owner).
+ *   chiavi e titoli delle voci (solo per l'Owner). (9b) Nel riepilogo i numeri
+ *   di «Contesto» e, solo per l'Owner, fino a tre impegni del cliente «Per
+ *   tutti»: mai il testo di un fatto.
  * - Il link arriva al momento dell'invio (`dispatch`), mai dalla coda: qui si
  *   controlla solo che sia un link pulito, senza parametri. L'unico frammento
  *   ammesso è `#/chiarimento/<id>`, che apre il chiarimento (DESIGN §4.3 R8).
