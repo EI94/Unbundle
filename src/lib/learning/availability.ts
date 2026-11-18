@@ -26,7 +26,7 @@ export function activityAvailability({ enabled, programStatus, activity, session
   if (session.status === "closed") return blocked("session_closed", "Il tuo turno è chiuso. Le risposte salvate restano consultabili, ma non sono modificabili.");
   const opens = new Date(session.startsAt).getTime() + minutes * 60_000;
   if (!Number.isFinite(opens) || !Number.isFinite(now) || !["open", "scheduled"].includes(session.status)) return blocked("session_missing", "La disponibilità del turno richiede una verifica del responsabile del corso.");
-  if (session.status === "scheduled" && now < opens) return blocked("scheduled", `L’attività sarà disponibile dal ${formatLearningDate(new Date(opens))} (Europe/Rome), oppure quando il formatore aprirà il turno.`, new Date(opens).toISOString());
+  if (session.status === "scheduled" && now < opens) return blocked("scheduled", `L’attività sarà disponibile dal ${formatLearningDate(new Date(opens))}, oppure quando chi tiene il corso aprirà la lezione.`, new Date(opens).toISOString());
   return { state: "available", readAccess: true, writeAccess: true, opensAt: new Date(opens).toISOString(), reason: null };
 }
 

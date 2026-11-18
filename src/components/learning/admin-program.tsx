@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { AdminNotice, AdminSection, AdminSelect, AdminUnsavedNotice, ConfirmAdminAction, LearningLinkCopy, adminDate, sessionLabels } from "./admin-shared";
+import { AdminNotice, AdminSection, AdminSelect, AdminUnsavedNotice, ConfirmAdminAction, LearningLinkCopy, adminDate, cohortLabel, sessionLabels } from "./admin-shared";
 import { AdminParticipants } from "./admin-participants";
 import { AdminJoinLinks } from "./admin-join-links";
 import { AdminMaterials } from "./admin-materials";
@@ -89,7 +89,7 @@ export function LearningAdminProgram({ workspaceId, initial }: { workspaceId: st
     <AdminNotice message={message} error={error} />
     {busy && <p role="status" className="text-sm text-muted-foreground">Operazione in corso. Attendi la conferma prima di lasciare la pagina.</p>}
     {!accessLost && <>
-      <div className="rounded-lg border p-4"><p className="font-medium">{data.program.title}</p><p className="mt-1 text-sm">Versione {data.program.version} · {data.program.featureEnabled ? "Visibile ai partecipanti assegnati" : "Nascosto ai partecipanti"} · {data.program.status === "published" ? "In corso" : "Chiuso alle nuove risposte"}</p>{!data.program.canManageAll && <p className="mt-2 text-sm text-muted-foreground">Puoi gestire i turni: {data.program.managedCohorts.join(", ")}.</p>}</div>
+      <div className="rounded-lg border p-4"><p className="font-medium">{data.program.title}</p><p className="mt-1 text-sm">{data.program.featureEnabled ? "Visibile ai partecipanti assegnati" : "Nascosto ai partecipanti"} · {data.program.status === "published" ? "In corso" : "Chiuso alle nuove risposte"}</p>{!data.program.canManageAll && <p className="mt-2 text-sm text-muted-foreground">{data.program.managedCohorts.length === 1 ? "Puoi gestire una lezione:" : `Puoi gestire ${data.program.managedCohorts.length} lezioni:`} {data.program.managedCohorts.map(cohort => cohortLabel(data.sessions, cohort).replace(/^Lezione del /, "")).join(", ")}.</p>}</div>
       <nav aria-label="Gestione del corso" className="flex flex-wrap gap-2">{Object.entries(sections).map(([key, label]) => <Button key={key} type="button" variant={section === key ? "default" : "outline"} aria-pressed={section === key} disabled={busy} onClick={() => { const open = () => { setSection(key as Section); setMessage(""); }; if (key !== section && confirmLearningNavigation(open)) open(); }}>{label}</Button>)}</nav>
       <div key={formVersion}>
       {section === "overview" && <div className="space-y-6">
@@ -112,15 +112,15 @@ export function LearningAdminProgram({ workspaceId, initial }: { workspaceId: st
       {section === "participants" && <AdminParticipants workspaceId={workspaceId} data={data} busy={busy} mutate={mutate} />}
       {section === "sessions" && <AdminSection title="Apertura dei turni">
         <p className="text-sm">Con il programma automatico, M1 apre le attività dopo 30, 78 e 105 minuti dall’inizio del turno. La fine dell’incontro non interrompe il lavoro. “Tutte le attività aperte” permette di anticiparle; “Nuove risposte sospese” interrompe salvataggi e consegne.</p>
-        <p className="text-sm text-muted-foreground">Le date sono visualizzate nell’ora italiana (Europe/Rome). M2 e M3 restano in programma: questo pannello rende operativo M1.</p>
-        <ul className="space-y-4">{data.sessions.map(session => <li key={session.id} className="space-y-3 rounded-lg border p-4"><h3 className="font-medium">{session.moduleId.toUpperCase()} · {session.cohortId}</h3><p className="text-sm">{adminDate(session.startsAt)} – {adminDate(session.endsAt)}</p>{session.moduleId === "m1" ? <AdminSessionForm session={session} workspaceId={workspaceId} programId={data.program.id} busy={busy} mutate={mutate} /> : <p className="text-sm text-muted-foreground">In programma · Attività non ancora disponibili</p>}</li>)}</ul>
+        <p className="text-sm text-muted-foreground">Le date sono nell’ora italiana. Gli altri moduli restano in programma: questo pannello rende operativo il primo.</p>
+        <ul className="space-y-4">{data.sessions.map(session => <li key={session.id} className="space-y-3 rounded-lg border p-4"><h3 className="font-medium">Lezione del {adminDate(session.startsAt)}</h3><p className="text-sm">{adminDate(session.startsAt)} – {adminDate(session.endsAt)}</p>{session.moduleId === "m1" ? <AdminSessionForm session={session} workspaceId={workspaceId} programId={data.program.id} busy={busy} mutate={mutate} /> : <p className="text-sm text-muted-foreground">In programma · Attività non ancora disponibili</p>}</li>)}</ul>
       </AdminSection>}
       {section === "permissions" && <AdminGrants workspaceId={workspaceId} data={data} busy={busy} mutate={mutate} />}
       {section === "history" && <div className="space-y-6">
         {data.program.canManageAll && data.retention && <AdminRetention key={`${data.program.closedAt}:${data.program.retentionDays}:${data.retention.attempts}:${data.retention.ideaDrafts}`} data={data} workspaceId={workspaceId} busy={busy} mutate={mutate} />}
         <AdminSection title="Registro delle operazioni">
           <p className="text-sm text-muted-foreground">Operazioni recenti nel tuo perimetro. Questo registro non contiene risposte o voti.</p>
-          {data.audit.length === 0 ? <p>Nessuna operazione registrata.</p> : <ol className="space-y-3">{data.audit.map(event => <li key={event.id} className="rounded-lg border p-3"><p className="text-sm font-medium">{auditLabels[event.eventType] || "Operazione sul percorso"}</p><p className="text-sm text-muted-foreground">{adminDate(event.createdAt)} · {event.actorName || "Responsabile del percorso"}{event.cohortId ? ` · ${event.cohortId}` : ""}</p></li>)}</ol>}
+          {data.audit.length === 0 ? <p>Nessuna operazione registrata.</p> : <ol className="space-y-3">{data.audit.map(event => <li key={event.id} className="rounded-lg border p-3"><p className="text-sm font-medium">{auditLabels[event.eventType] || "Operazione sul percorso"}</p><p className="text-sm text-muted-foreground">{adminDate(event.createdAt)} · {event.actorName || "Responsabile del percorso"}{event.cohortId ? ` · ${cohortLabel(data.sessions, event.cohortId).toLowerCase()}` : ""}</p></li>)}</ol>}
         </AdminSection>
       </div>}
       </div>
@@ -181,5 +181,5 @@ function AdminSessionForm({ session, workspaceId, programId, busy, mutate }: { s
   return <form className="space-y-3" onSubmit={async event => {
     event.preventDefault(); const status = form.selected as "scheduled" | "open" | "closed";
     if (await mutate({ operation: "session", input: { workspaceId, programId, sessionId: session.id, status } })) setForm({ saved: status, selected: status });
-  }}><fieldset disabled={busy} className="flex flex-wrap items-end gap-3"><div className="min-w-0 flex-1 space-y-2"><Label htmlFor={`session-${session.id}`}>Stato del turno {session.cohortId}</Label><AdminSelect id={`session-${session.id}`} name="status" value={form.selected} onChange={event => setForm({ ...form, selected: event.target.value })}>{Object.entries(sessionLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</AdminSelect></div><Button type="submit" variant="outline" disabled={!dirty}>Salva apertura</Button></fieldset><AdminUnsavedNotice dirty={dirty} onDiscard={confirmDiscard} /></form>;
+  }}><fieldset disabled={busy} className="flex flex-wrap items-end gap-3"><div className="min-w-0 flex-1 space-y-2"><Label htmlFor={`session-${session.id}`}>Stato della lezione</Label><AdminSelect id={`session-${session.id}`} name="status" value={form.selected} onChange={event => setForm({ ...form, selected: event.target.value })}>{Object.entries(sessionLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</AdminSelect></div><Button type="submit" variant="outline" disabled={!dirty}>Salva apertura</Button></fieldset><AdminUnsavedNotice dirty={dirty} onDiscard={confirmDiscard} /></form>;
 }

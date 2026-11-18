@@ -16,6 +16,14 @@ export const sessionLabels: Record<string, string> = {
 export function adminDate(value: string | null) {
   return value ? new Intl.DateTimeFormat("it-IT", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Rome" }).format(new Date(value)) : "—";
 }
+/**
+ * (Rilascio 10, §7.4) Una lezione si dice con la sua data e ora, mai con il codice del turno (`cohortId`): «Lezione
+ * del 5 ott 2026, 14:30». Senza la lezione tra quelle note, solo «Lezione».
+ */
+export function cohortLabel(sessions: ReadonlyArray<{ cohortId: string; startsAt: string }>, cohortId: string | null | undefined): string {
+  const session = cohortId ? sessions.find(entry => entry.cohortId === cohortId) : undefined;
+  return session ? `Lezione del ${adminDate(session.startsAt)}` : "Lezione";
+}
 export function AdminSection({ title, children }: { title: string; children: ReactNode }) {
   return <Card><CardHeader><CardTitle>{title}</CardTitle></CardHeader><CardContent className="space-y-4">{children}</CardContent></Card>;
 }
