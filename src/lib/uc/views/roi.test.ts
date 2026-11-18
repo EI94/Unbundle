@@ -66,7 +66,7 @@ const benefit = (over: Partial<BenefitLine>): BenefitLine => ({
 test("the ROI stays «to compute» until every value is there", () => {
   const r = computeRoi({ costLines: [cost({ label: "Progetto" }), cost({ key: "x", label: "Licenze", kind: null })], benefitLines: [benefit({})] });
   assert.equal(r.value, null);
-  assert.deepEqual(r.missing, ["Costo da stimare: Progetto", "Tipo di costo da indicare: Licenze", "Beneficio da stimare: Tempo"]);
+  assert.deepEqual(r.missing, ["Costo da stimare: Progetto", "Tipo di costo da indicare: Licenze", "Beneficio da stimare: Meno tempo"]);
   assert.match(r.note, /Da calcolare/);
   assert.deepEqual(computeRoi({ costLines: [], benefitLines: [] }).missing, ["Nessuna riga di costo", "Nessuna riga di beneficio"]);
 });
@@ -105,6 +105,9 @@ test("lines from the seed, from the example template and from saved models", () 
   assert.equal(example[0].status, "da_raccogliere");
   assert.deepEqual(example[0].inputs, ["kpi.servizio.tempo"]);
   assert.equal(leverFromLabel("Qualità"), "qualita");
+  // (Rilascio 10, §4) I nomi a schermo di oggi tornano alla loro leva.
+  assert.equal(leverFromLabel("Meno tempo"), "tempo");
+  assert.equal(leverFromLabel("Più qualità"), "qualita");
   assert.equal(leverFromLabel("Altro"), null);
   assert.equal(costKindFromText("Escluso: a carico del cliente"), "escluso");
 });
@@ -298,7 +301,7 @@ test("Valore: only the active levers, with their KPIs, description and euros a y
   assert.deepEqual(
     v.levers.map((l) => [l.id, l.label, sp(l.value), l.kpis.map((k) => k.title)]),
     [
-      ["leva-tempo", "Tempo", "40.000 € all'anno", ["Attesa in coda", "Tempo medio di risposta"]],
+      ["leva-tempo", "Meno tempo", "40.000 € all'anno", ["Attesa in coda", "Tempo medio di risposta"]],
       ["leva-leva_02", "Nuove capacità commerciali", null, []],
       ["nuova-leva-decisioni", "Decisioni migliori", null, ["Giorni per decidere"]],
     ],
@@ -434,7 +437,7 @@ test("a new benefit line for an active lever takes a free key", () => {
   assert.equal(newBenefitLine("tempo", []).key, "tempo");
   assert.equal(newBenefitLine("tempo", [{ key: "tempo" }, { key: "tempo_2" }]).key, "tempo_3");
   const line = newBenefitLine("decisioni", []);
-  assert.equal(line.leverLabel, "Decisioni");
+  assert.equal(line.leverLabel, "Decisioni migliori");
   assert.equal(line.value, null);
   assert.equal(line.status, "stima");
 });

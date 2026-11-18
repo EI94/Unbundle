@@ -101,14 +101,19 @@ export interface BenefitLine extends BenefitExtras {
 /** Leva dal testo («Nuove capacità» → `nuove_capacita`). */
 export function leverFromLabel(label: string | null | undefined): Lever | null {
   if (!label) return null;
-  const k = label
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_|_$/g, "");
-  return (LEVERS as readonly string[]).includes(k) ? (k as Lever) : null;
+  const slug = (text: string) =>
+    text
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_|_$/g, "");
+  const k = slug(label);
+  if ((LEVERS as readonly string[]).includes(k)) return k as Lever;
+  // (Rilascio 10, §4) Anche i nomi di oggi a schermo: «Meno tempo» è `tempo`.
+  const named = (Object.entries(LEVER_LABEL) as [Lever, string][]).find(([, shown]) => slug(shown) === k);
+  return named ? named[0] : null;
 }
 
 /** Tipo di costo dal testo («una tantum …», «ricorrente …», «escluso …»). */
