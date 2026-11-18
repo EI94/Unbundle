@@ -147,3 +147,49 @@ test("il dossier: «Contesto» dopo «Decisioni» e prima di «Pacchetto», con 
   assert.match(pack, /\{packageFilesShown\(view\.latestPackage\.files\)\.map\(\(\{ name, text \}\) => \(/);
   assert.doesNotMatch(source, /\["BRIEF\.md", "PACCHETTO\.md", "VERSIONE"\]/);
 });
+
+const VERIFY_PAGE = `${DASHBOARD}/contesto/verifica/page.tsx`;
+
+test("«Da verificare»: notFound() per chi non è di Lateral Space, prima di leggere i fatti; 60 secondi per «In breve» dopo «Non più vero»", () => {
+  const source = withoutComments(read(VERIFY_PAGE));
+  assert.match(source, /await requireWorkspacePage\(workspaceId\)/);
+  assert.match(source, /const actor = contextActorFor\(session\.user, access, workspaceId\);/);
+  const gate = source.indexOf("if (!contextAbilities(actor).canEditMemory) notFound();");
+  assert.ok(gate > 0, "il controllo c'è");
+  assert.ok(gate < source.indexOf("contextStoreReady()") && gate < source.indexOf("listFactsToCheck("), "prima di tutto il resto");
+  assert.match(source, /const facts = await listFactsToCheck\(actor\);\s*if \(!facts\) notFound\(\);/, "e se la lettura dice che non è per chi guarda");
+  assert.match(source, /export const metadata = \{ title: CONTEXT_TEXT\.verify\.title \};/);
+  assert.match(source, /export const maxDuration = 60;/, "«Non più vero» riscrive «In breve» con after()");
+  assert.doesNotMatch(source, /generateText|generateObject|askContext/, "nessun modello");
+});
+
+test("«Da verificare»: un solo pulsante pieno, fisso in fondo con il margine dell'area sicura; caselle mai spuntate all'inizio, da 44 px", () => {
+  const view = withoutComments(read("src/components/context/verify-view.tsx"));
+  assert.match(view, /^"use client";/);
+  const buttons = [...view.matchAll(/<Button\b[^>]*>/g)].map((match) => match[0]);
+  const filled = buttons.filter((tag) => !/\bvariant="/.test(tag));
+  assert.equal(filled.length, 1, "un solo pulsante pieno");
+  assert.match(filled[0], /size="lg"/);
+  assert.match(view, /\{verifyButtonLabel\(shown, chosen\)\}/, "«Ancora veri (n)»");
+  for (const tag of buttons.filter((t) => t !== filled[0])) assert.match(tag, /variant="(outline|ghost|destructive)"/);
+  // Fisso in fondo, con il margine dell'area sicura del telefono.
+  assert.match(view, /<div className="sticky bottom-0 [^"]*pb-\[max\(0\.75rem,env\(safe-area-inset-bottom\)\)\][^"]*">\s*<Button type="button" size="lg"/);
+  // Nessuna casella spuntata all'inizio; ogni casella in un'area di 44 px sul telefono.
+  assert.match(view, /useState<ReadonlySet<string>>\(initialVerifyChoice\)/);
+  assert.match(view, /<Checkbox checked=\{chosen\.has\(fact\.id\)\}/);
+  assert.equal((view.match(/<Checkbox\b/g) ?? []).length, 1);
+  assert.match(view, /<label className="flex min-h-11 [^"]*">\s*<span className="[^"]*\bmin-h-11\b[^"]*\bmin-w-11\b[^"]*">\s*<Checkbox/);
+  // «Ancora veri (n)» a gruppi di al massimo 75, «Non più vero» con la conferma.
+  assert.match(view, /for \(const chunk of chunkItems\(selected\)\) \{\s*const result = await reconfirmFactsAction\(workspaceId, chunk\);/);
+  assert.match(view, /retireFactAction\(workspaceId, fact\.id, fact\.version\)/);
+  assert.match(view, /\{T\.fact\.retireConfirm\}/);
+});
+
+test("la Memoria: la riga «n fatti da verificare» porta a /contesto/verifica, solo per Lateral Space", () => {
+  const memory = withoutComments(read("src/components/context/memory-view.tsx"));
+  assert.match(memory, /const toCheck = toCheckRow\(memory\.counts\.toCheck, lateralSpace\);/);
+  assert.match(memory, /\{toCheck \? <ServiceLink label=\{toCheck\} href=\{`\/dashboard\/\$\{workspaceId\}\/contesto\/verifica`\} \/> : null\}/);
+  // Dentro le righe di servizio, che ci sono solo per Lateral Space.
+  const rows = memory.slice(memory.indexOf("{lateralSpace ? ("), memory.indexOf("</ServiceRows>"));
+  assert.ok(rows.includes("contesto/verifica"), "dentro il blocco di Lateral Space");
+});

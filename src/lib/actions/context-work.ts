@@ -11,20 +11,25 @@
  *   diventa «usato» (`markNeedLinkUsed`). Chi: chi modifica «Cosa serve» (`canEditNeeds`).
  * - «Non risponde» (`dismissNeedLinkAction`): il legame diventa «scartato» e la riga sparisce; la richiesta resta
  *   aperta. Stesso permesso.
+ * - «Ancora veri (n)» (`reconfirmFactsAction`, §2.10): la data dell'ultima conferma dei fatti scelti si rinfresca e il
+ *   segno «da verificare» si toglie. Solo Lateral Space (`reconfirmFacts` lo ricontrolla). Non è un cambio: «In breve»
+ *   non si riscrive e nessuno riceve un avviso.
  *
  * Nei log solo id e codici, mai un testo.
  */
 import { revalidatePath } from "next/cache";
 import type { Session } from "@/lib/auth";
 import { requireSession } from "@/lib/auth/redirect-to-login";
-import { contextActorFor, type ContextActor } from "@/lib/context/server/actor";
+import { contextActorFor, contextActorFromSession, type ContextActor } from "@/lib/context/server/actor";
 import { CONTEXT_TEXT } from "@/lib/context/text";
+import { reconfirmFacts } from "@/lib/db/queries/context-freshness";
 import { dismissNeedLink, listNeedLinks, markNeedLinkUsed } from "@/lib/db/queries/context-needs";
 import { viewerFromSession } from "@/lib/db/queries/use-case-hub";
 import { logSafeError } from "@/lib/log/safe-error";
 import { abilitiesForUseCase } from "@/lib/use-cases/permissions";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { SERVICE_MESSAGES, type ServiceError } from "@/lib/use-cases/service";
+import type { ServiceResult } from "@/lib/use-cases/types";
 import { getCollaboratorAccess, type WorkspaceAccess } from "@/lib/workspace-access";
 import { updateNeedAction } from "./use-case-needs";
 
@@ -92,4 +97,22 @@ export async function dismissNeedLinkAction(workspaceId: string, useCaseId: stri
   const result = await dismissNeedLink(page.actor, linkId);
   if (result.ok || result.error === "versione_superata" || result.error === "non_trovato") revalidateCard(workspaceId, useCaseId);
   return result.ok ? { ok: true, message: CONTEXT_TEXT.needLink.dismissed } : { ok: false, error: result.error, message: result.message };
+}
+
+/**
+ * «Ancora veri (n)» di «Da verificare»: i fatti scelti (da 1 a 75 per volta: la pagina manda gruppi) tornano freschi.
+ * Chi chiama dalla sessione (`contextActorFromSession`: senza accesso `permesso_mancante`); solo se riesce si rilegge
+ * «Contesto», con la sua riga di servizio e la pagina stessa.
+ */
+export async function reconfirmFactsAction(workspaceId: string, factIds: string[]): Promise<ServiceResult<{ reconfirmed: number }>> {
+  try {
+    const who = await contextActorFromSession(workspaceId);
+    if (!who.ok) return { ok: false, error: "permesso_mancante", message: CONTEXT_TEXT.errors.denied };
+    const result = await reconfirmFacts(who.actor, Array.isArray(factIds) ? factIds : []);
+    if (result.ok) revalidatePath(`/dashboard/${workspaceId}/contesto`, "layout");
+    return result;
+  } catch (error) {
+    logSafeError(LOG_SCOPE, "riconferma_non_riuscita", error, { workspaceId });
+    return { ok: false, error: "riprova", message: CONTEXT_TEXT.errors.retry };
+  }
 }

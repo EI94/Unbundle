@@ -476,6 +476,35 @@ export function packageDeltaLine(delta: number): string | null {
   return n > 0 ? T.useCase.packageDelta(n) : null;
 }
 
+// ─── (9b) «Da verificare» (§2.10) ─────────────────────────────────────
+
+/** La riga di servizio della Memoria: «3 fatti da verificare», solo per Lateral Space e solo quando ce ne sono. */
+export function toCheckRow(toCheck: number, lateralSpace: boolean): string | null {
+  const n = Number.isFinite(toCheck) ? Math.trunc(toCheck) : 0;
+  return lateralSpace && n > 0 ? T.verify.row(n) : null;
+}
+
+/** Sotto la frase di un fatto da verificare: «Call 14 nov · Ultima conferma: 14 mag». */
+export function toCheckMeta(fact: Pick<FactView, "sourceLabel" | "lastConfirmedOn">, today: string): string {
+  const confirmed = dayLabel(fact.lastConfirmedOn, today);
+  return [fact.sourceLabel, confirmed ? T.fact.lastConfirmed(confirmed) : ""].filter(Boolean).join(" · ");
+}
+
+/** All'inizio nessuna casella è spuntata: chi verifica sceglie i fatti uno per uno. */
+export function initialVerifyChoice(): Set<string> {
+  return new Set<string>();
+}
+
+/** I fatti spuntati che sono ancora in pagina, nell'ordine della pagina: quelli che manda «Ancora veri (n)». */
+export function verifyChosen(facts: readonly Pick<FactView, "id">[], chosen: ReadonlySet<string>): string[] {
+  return facts.filter((fact) => chosen.has(fact.id)).map((fact) => fact.id);
+}
+
+/** «Ancora veri (n)»: n sono i fatti spuntati in pagina (uno tolto con «Non più vero» esce anche dal conto). */
+export function verifyButtonLabel(facts: readonly Pick<FactView, "id">[], chosen: ReadonlySet<string>): string {
+  return T.verify.button(verifyChosen(facts, chosen).length);
+}
+
 // ─── «Aggiungi appunti» ──────────────────────────────────────────────
 
 /** Il titolo proposto: la prima riga non vuota degli appunti, al massimo 80 caratteri, senza segni di elenco in testa. */

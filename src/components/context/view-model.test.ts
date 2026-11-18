@@ -7,17 +7,22 @@ import type { UseCaseContext, UseCaseFact } from "../../lib/db/queries/context-w
 import type { SourceListItem } from "../../lib/db/queries/context-sources.ts";
 import {
   addNotesClose,
-  afterUpload,
   afterConfirm,
+  afterUpload,
   askSourceMeta,
   briefMaterial,
   CASE_NOVELTIES_MAX,
   chunkItems,
-  CONTEXT_PACKAGE_FILE,
   confirmCount,
   confirmGroups,
   confirmSubtitle,
   consentNoticeNeeded,
+  CONTEXT_PACKAGE_FILE,
+  contextCommitmentGroups,
+  contextFactGroups,
+  contextFoldNovelties,
+  contextFoldShown,
+  contextFoldSummary,
   droppedFileKind,
   droppedText,
   dueText,
@@ -27,9 +32,10 @@ import {
   fileSizeText,
   fileTypeText,
   initialSelection,
-  needLinkText,
+  initialVerifyChoice,
   isCheckable,
   isMemoryEmpty,
+  needLinkText,
   noteDraftErrors,
   notReportedLines,
   noveltyTag,
@@ -54,19 +60,19 @@ import {
   sourceReadAction,
   sourceStateLabel,
   titleFromFileName,
+  toCheckMeta,
+  toCheckRow,
   uploadableDocument,
-  contextCommitmentGroups,
-  contextFoldShown,
-  contextFoldSummary,
-  contextFactGroups,
-  contextFoldNovelties,
+  verifyButtonLabel,
+  verifyChosen,
   visibilityLabel,
   visibleSections,
 } from "./view-model.ts";
 
 // Le regole della pagina «Contesto» (rilascio 9a, RILASCIO-9a-COSTRUZIONE.md §7, §11.3): i gruppi di «Da confermare» e
 // il loro ordine, la preselezione, il conto di «Conferma (n)», i conflitti senza scelta, le etichette di stato e di
-// fonte, le sezioni vuote saltate, «Aggiungi appunti».
+// fonte, le sezioni vuote saltate, «Aggiungi appunti». (9b, RILASCIO-9b-COSTRUZIONE.md §5.2) La piega «Contesto» (il
+// riassunto, i singolari, assente senza contenuto), la riga di «Cosa serve», il dossier, «Da verificare».
 
 const T = CONTEXT_TEXT;
 const TODAY = "2026-11-16";
@@ -531,6 +537,32 @@ test("il dossier, la riga del pacchetto: le novità dalla data dell'ultimo pacch
   assert.equal(packageDeltaLine(Number.NaN), null);
   assert.equal(packageDeltaLine(1), "Il contesto è cambiato dopo l'ultimo pacchetto (1 novità).");
   assert.equal(packageDeltaLine(3), "Il contesto è cambiato dopo l'ultimo pacchetto (3 novità).");
+});
+
+test("«Da verificare»: la riga di servizio solo per Lateral Space e solo con fatti da verificare, al singolare e al plurale", () => {
+  assert.equal(toCheckRow(0, true), null);
+  assert.equal(toCheckRow(1, true), "1 fatto da verificare");
+  assert.equal(toCheckRow(3, true), "3 fatti da verificare");
+  assert.equal(toCheckRow(3, false), null, "il cliente non la vede");
+  assert.equal(toCheckRow(Number.NaN, true), null);
+  assert.equal(toCheckMeta({ sourceLabel: "Call 14 nov", lastConfirmedOn: "2026-05-14" }, TODAY), "Call 14 nov · Ultima conferma: 14 mag");
+  assert.equal(toCheckMeta({ sourceLabel: "Scritto a mano", lastConfirmedOn: "2025-04-02" }, TODAY), "Scritto a mano · Ultima conferma: 2 apr 2025");
+  assert.equal(toCheckMeta({ sourceLabel: "senza fonte", lastConfirmedOn: "" }, TODAY), "senza fonte");
+});
+
+test("«Da verificare»: nessuna casella spuntata all'inizio; «Ancora veri (n)» conta le spuntate ancora in pagina", () => {
+  const facts = [fact({ id: "a" }), fact({ id: "b" }), fact({ id: "c" })];
+  const start = initialVerifyChoice();
+  assert.equal(start.size, 0, "niente di spuntato all'inizio");
+  assert.notEqual(initialVerifyChoice(), start, "ogni pagina parte da una scelta sua");
+  assert.deepEqual(verifyChosen(facts, start), []);
+  assert.equal(verifyButtonLabel(facts, start), "Ancora veri (0)");
+  const chosen = new Set(["c", "a"]);
+  assert.deepEqual(verifyChosen(facts, chosen), ["a", "c"], "nell'ordine della pagina");
+  assert.equal(verifyButtonLabel(facts, chosen), "Ancora veri (2)");
+  // Un fatto tolto con «Non più vero» (o già riconfermato da qualcun altro) esce dalla pagina e dal conto.
+  assert.equal(verifyButtonLabel(facts.filter((f) => f.id !== "a"), chosen), "Ancora veri (1)");
+  assert.equal(verifyButtonLabel(facts, new Set(["x"])), "Ancora veri (0)");
 });
 
 test("«Impegni aperti»: «Nostri» e «Del cliente», solo i gruppi con righe, nell'ordine in cui arrivano", () => {
