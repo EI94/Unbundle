@@ -24,6 +24,8 @@ await installAppModules({
     return globalThis.__obiettivi.goals.filter((goal) => goal.workspaceId === workspaceId);
   }`,
   "@/lib/db/queries/value-thesis": `export async function getWorkspaceValueThesis() { return null; }`,
+  // (9b) La proposta di OKR legge il contesto del cliente: qui non serve.
+  "@/lib/db/queries/context-work": `export async function loadPromptContext() { return ""; }`,
   "@/lib/db/schema": `export const strategicGoals = { table: "strategic_goals" };`,
   "@/lib/db": `export const db = {
     insert: (table) => ({ values: async (row) => { globalThis.__obiettivi.inserted.push({ table: table.table, ...row }); } }),
