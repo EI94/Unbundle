@@ -124,3 +124,13 @@ test("nessun occhiello maiuscolo sopra il titolo della pagina", () => {
   }
   assert.deepEqual(bad, []);
 });
+
+test("«I tuoi workspace» al telefono: il titolo resta su una riga, «Nuovo workspace» va sotto quando non c'è posto", () => {
+  // A 375 px il titolo (24 px) e il pulsante bordato non stanno insieme: la riga va a capo, come la testata di «Use case».
+  const source = read("src/app/(dashboard)/dashboard/page.tsx");
+  const row = /<div className="([^"]*)">\s*<PageTitle>\{T\.title\}<\/PageTitle>\s*\{hasWorkspaces/.exec(source);
+  assert.ok(row, "la riga del titolo con «Nuovo workspace»");
+  const classes = row[1].split(/\s+/);
+  for (const name of ["flex", "flex-wrap", "justify-between", "gap-x-4", "gap-y-3"]) assert.ok(classes.includes(name), name);
+  assert.match(read("src/components/use-cases/hub-header.tsx"), /className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3"/, "lo stesso modo della testata di «Use case»");
+});

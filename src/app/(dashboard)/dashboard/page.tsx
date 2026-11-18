@@ -67,7 +67,8 @@ export default async function DashboardPage({
           </p>
         ) : null}
 
-        <div className="mb-8 flex items-center justify-between gap-4">
+        {/* Al telefono (375 px) il titolo e «Nuovo workspace» non stanno su una riga: il pulsante va sotto, il titolo resta intero. */}
+        <div className="mb-8 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
           <PageTitle>{T.title}</PageTitle>
           {hasWorkspaces
             ? create(
