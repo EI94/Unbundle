@@ -13,7 +13,7 @@ import type { ProposalView } from "@/lib/db/queries/context-proposals";
 import { cn } from "@/lib/utils";
 import { LsLock } from "./fact-row";
 import { ChoiceSelect, Field, Mark, UseCasePicker, nameOfUseCase, type UseCaseOption } from "./fields";
-import { dueText, editableFields, isCheckable, proposalDraft, proposalPatch, sectionLabel, visibilityLabel, type ProposalDraft, type Resolution } from "./view-model";
+import { answersNeedLine, dueText, editableFields, isCheckable, proposalDraft, proposalPatch, sectionLabel, visibilityLabel, type ProposalDraft, type Resolution } from "./view-model";
 import { SECTION_ITEMS, VISIBILITY_ITEMS } from "./write-fact-form";
 
 const T = CONTEXT_TEXT;
@@ -28,7 +28,9 @@ const PARTY_ITEMS: ReadonlyArray<{ value: CommitmentParty; label: string }> = [
  * «Cambiano» sopra «Prima: …»; per un conflitto «Prima» e «Ora» con le due scelte); la citazione; «dedotto» e il
  * messaggio di ciò che va corretto; la sezione, chi la vede, gli use case; per un impegno di chi è, il ruolo e la data.
  * «Modifica» apre i campi sul posto; «Scarta» toglie la riga. Una riga da correggere non si spunta finché non è corretta.
- * (9b) Sotto la frase, quando la lettura l'ha visto: «Risponde a «Cosa serve»: {titolo} ({codice})».
+ * (9b) Sotto la frase, quando la lettura l'ha visto: «Risponde a «Cosa serve»: {titolo} ({codice})», solo per una
+ * proposta «Per tutti»; per una «Solo Lateral Space», che non chiude la richiesta, «Solo un fatto «Per tutti» chiude una
+ * richiesta.» (`answersNeedLine`).
  */
 export function ProposalRow({
   workspaceId,
@@ -65,6 +67,7 @@ export function ProposalRow({
   const [pending, startTransition] = useTransition();
   const conflict = proposal.kind === "conflitto";
   const checkable = isCheckable(proposal);
+  const needLine = answersNeedLine(proposal);
 
   const discard = () =>
     startTransition(async () => {
@@ -101,7 +104,7 @@ export function ProposalRow({
               {proposal.statement}
             </p>
           )}
-          {proposal.answersNeed ? <p className="text-xs leading-relaxed break-words">{T.confirm.answersNeed(proposal.answersNeed.title, proposal.answersNeed.code)}</p> : null}
+          {needLine ? <p className="text-xs leading-relaxed break-words">{needLine}</p> : null}
           {proposal.quote ? (
             <p className="text-xs leading-relaxed break-words text-muted-foreground">
               <q>{proposal.quote}</q>

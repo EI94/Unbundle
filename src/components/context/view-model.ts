@@ -436,6 +436,17 @@ export function contextCommitmentGroups(commitments: readonly CommitmentView[]):
 }
 
 /**
+ * (9b, §2.2) In «Da confermare», sotto la frase di una proposta che risponde a una richiesta di «Cosa serve»: «Risponde a
+ * «Cosa serve»: {titolo} ({codice})» se la proposta è «Per tutti» (alla conferma nasce il legame che la scheda mostra).
+ * Una proposta «Solo Lateral Space» non chiude la richiesta (`needLinkAfterConfirm`): al posto della riga, «Solo un fatto
+ * «Per tutti» chiude una richiesta.», e la riga torna se la persona la rende «Per tutti». null senza una richiesta.
+ */
+export function answersNeedLine(proposal: Pick<ProposalView, "answersNeed" | "visibility">): string | null {
+  if (!proposal.answersNeed) return null;
+  return proposal.visibility === "tutti" ? T.confirm.answersNeed(proposal.answersNeed.title, proposal.answersNeed.code) : T.confirm.answersNeedLsOnly;
+}
+
+/**
  * (9b, §2.2) La riga sotto una richiesta di «Cosa serve»: «Una call del 14 nov risponde: «…»», o «Un documento del 14
  * nov risponde: «…»» quando il fatto viene da un documento.
  */

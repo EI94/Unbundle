@@ -35,6 +35,7 @@ import {
   initialVerifyChoice,
   isCheckable,
   isMemoryEmpty,
+  answersNeedLine,
   needLinkText,
   noteDraftErrors,
   notReportedLines,
@@ -502,6 +503,14 @@ test("«Che cosa sappiamo»: i fatti per sezione, nell'ordine fisso; dentro, l'o
     ],
   );
   assert.deepEqual(contextFactGroups([]), []);
+});
+
+test("«Da confermare»: «Risponde a «Cosa serve»» solo per una proposta «Per tutti»; «Solo Lateral Space» non chiude una richiesta, e lo dice", () => {
+  const answersNeed = { needId: "n1", title: "L'elenco dei fornitori", code: "XX-0012" };
+  assert.equal(answersNeedLine({ answersNeed, visibility: "tutti" }), "Risponde a «Cosa serve»: L'elenco dei fornitori (XX-0012)");
+  assert.equal(answersNeedLine({ answersNeed, visibility: "ls" }), "Solo un fatto «Per tutti» chiude una richiesta.");
+  assert.equal(answersNeedLine({ answersNeed: null, visibility: "tutti" }), null);
+  assert.equal(answersNeedLine({ visibility: "ls" }), null);
 });
 
 test("«Cosa serve»: «Una call del 14 nov risponde: «…»», o «Un documento del …» quando il fatto viene da un documento", () => {

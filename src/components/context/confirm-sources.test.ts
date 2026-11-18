@@ -46,7 +46,9 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf
 test("la riga di una proposta dice a quale richiesta di «Cosa serve» risponde; la pagina usa le testate e le fonti nuove", () => {
   assert.equal(T.confirm.answersNeed("L'elenco dei fornitori", "XX-0012"), "Risponde a «Cosa serve»: L'elenco dei fornitori (XX-0012)");
   const row = read("./proposal-row.tsx");
-  assert.match(row, /\{proposal\.answersNeed \? <p className="[^"]*">\{T\.confirm\.answersNeed\(proposal\.answersNeed\.title, proposal\.answersNeed\.code\)\}<\/p> : null\}/);
+  assert.match(row, /const needLine = answersNeedLine\(proposal\);/);
+  assert.match(row, /\{needLine \? <p className="[^"]*">\{needLine\}<\/p> : null\}/);
+  assert.doesNotMatch(row, /T\.confirm\.answersNeed\(/, "la riga la decide answersNeedLine, con la visibilità");
   const view = read("./confirm-view.tsx");
   assert.match(view, /const subtitle = confirmHeading\(sources, today, confirmSubtitle\(sources, today\)\);/);
   assert.match(view, /sourceLabel=\{workSourceLabel\(proposal, sources, today\) \?\? proposalSource\(proposal, sources, today\)\}/);

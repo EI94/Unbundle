@@ -162,6 +162,7 @@ test("(9b) i testi dei gruppi nuovi sono quelli del piano, al singolare e al plu
   assert.equal(L.fromDocument("14 nov", "Gli ordini arrivano via e-mail."), "Un documento del 14 nov risponde: «Gli ordini arrivano via e-mail.»");
   assert.deepEqual([L.close, L.dismiss, L.closed, L.dismissed], ["Chiudi con questo", "Non risponde", "Richiesta chiusa: è a posto.", "Va bene: la richiesta resta aperta."]);
   assert.equal(CONTEXT_TEXT.confirm.answersNeed("Esportazione delle fatture", "XX-0012"), "Risponde a «Cosa serve»: Esportazione delle fatture (XX-0012)");
+  assert.equal(CONTEXT_TEXT.confirm.answersNeedLsOnly, "Solo un fatto «Per tutti» chiude una richiesta.");
   assert.equal(CONTEXT_TEXT.confirm.fromAnswers("XX-0012", "14 nov"), "Dalle risposte del referente per XX-0012, 14 nov");
   assert.equal(CONTEXT_TEXT.confirm.fromBuilding("XX-0012", "18 nov"), "Da chi costruisce XX-0012, 18 nov");
 

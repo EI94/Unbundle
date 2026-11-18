@@ -182,6 +182,8 @@ export const CONTEXT_TEXT = Object.freeze({
     fromAnswers: (code: string, date: string) => `Dalle risposte del referente per ${code}, ${date}`,
     fromBuilding: (code: string, date: string) => `Da chi costruisce ${code}, ${date}`,
     answersNeed: (title: string, code: string) => `Risponde a «Cosa serve»: ${title} (${code})`,
+    // Una proposta «Solo Lateral Space» non chiude la richiesta a cui risponde: il suo testo non deve arrivare al cliente.
+    answersNeedLsOnly: "Solo un fatto «Per tutti» chiude una richiesta.",
     groupNew: "Nuovi",
     groupChanged: "Cambiano",
     groupConflicts: "Conflitti",
