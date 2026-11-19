@@ -1,12 +1,13 @@
 "use client";
 
 import { useRef } from "react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import type { CostBandInfo } from "@/lib/use-cases/cost-bands";
-import { QUICK_CREATE_TEXT, defaultOriginFor } from "@/lib/use-cases/create";
+import { QUICK_CREATE_TEXT, defaultOriginFor, fullFormPath } from "@/lib/use-cases/create";
 import { UseCaseForm } from "./use-case-form";
 
 export interface QuickCreateSheetProps {
@@ -50,7 +51,8 @@ function urlWith(pathname: string, params: URLSearchParams, change: Record<strin
  * - Errore: «Non riusciamo a salvare. Riprova.», i campi restano compilati.
  *
  * Lo monta la pagina «Use case» quando c'è `?nuovo=1`; il salvataggio passa da `createQuickUseCaseAction`
- * (`source = manual`: nessuna valutazione dell'AI, nessuna notifica, come prima).
+ * (`source = manual`: nessuna valutazione dell'AI, nessuna notifica, come prima). In fondo il link alla pagina
+ * `/use-cases/nuovo` (`FullFormLink`), che invia lo use case come gli altri, con la valutazione e le notifiche.
  */
 export function QuickCreateSheet({ workspaceId, aiLabs = [], lastAiLab = null, esgEnabled = false, costBands, open: openProp, onOpenChange, onSaved }: QuickCreateSheetProps) {
   const router = useRouter();
@@ -96,7 +98,27 @@ export function QuickCreateSheet({ workspaceId, aiLabs = [], lastAiLab = null, e
             }}
           />
         </div>
+        <div data-slot="quick-create-footer" className="border-t px-4 py-3">
+          <FullFormLink workspaceId={workspaceId} />
+        </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+/**
+ * (Rilascio 10, §3.4; audit, riga 68) Il link del pannello rapido alla pagina `/use-cases/nuovo`, un link e non un
+ * pulsante: lì lo use case entra come tutti gli altri (`web_proposed`), con la valutazione di Claude, la campanella e
+ * le notifiche e chi l'ha proposto. Solo nel pannello, cioè solo per Lateral Space.
+ */
+export function FullFormLink({ workspaceId }: { workspaceId: string }) {
+  return (
+    <Link
+      href={fullFormPath(workspaceId)}
+      data-slot="full-form-link"
+      className="inline-flex min-h-11 items-center rounded-md text-sm text-muted-foreground underline underline-offset-4 outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-8"
+    >
+      {QUICK_CREATE_TEXT.fullForm}
+    </Link>
   );
 }

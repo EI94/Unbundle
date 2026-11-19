@@ -152,6 +152,7 @@ test("pannello rapido: testi esatti (rilascio 10, §3.4: lo stesso modulo della 
     save: "Salva",
     saveAndAdd: "Salva e aggiungi un altro",
     saving: "Salvo…",
+    fullForm: "Invia come proposta, con la valutazione di Claude e le notifiche",
     close: "Chiudi",
     error: "Non riusciamo a salvare. Riprova.",
   });
