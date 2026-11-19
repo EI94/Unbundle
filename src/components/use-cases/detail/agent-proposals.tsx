@@ -51,10 +51,11 @@ export function AgentProposals({ workspaceId, useCaseId, proposals, canDecide }:
             </div>
             {canDecide ? (
               <div className="flex shrink-0 gap-2">
-                <Button variant="outline" className="h-11 sm:h-8" disabled={pending} onClick={() => run(() => dismissAgentQuestionAction(workspaceId, useCaseId, p.id))}>
+                <Button variant="ghost" className="h-11 sm:h-8" disabled={pending} onClick={() => run(() => dismissAgentQuestionAction(workspaceId, useCaseId, p.id))}>
                   Lascia stare
                 </Button>
-                <Button className="h-11 sm:h-8" disabled={pending} onClick={() => run(() => addAgentQuestionAction(workspaceId, useCaseId, p.id))}>
+                {/* (Rilascio 10, §5.5) Bordato: il solo pulsante pieno della scheda è il prossimo passo. */}
+                <Button variant="outline" className="h-11 sm:h-8" disabled={pending} onClick={() => run(() => addAgentQuestionAction(workspaceId, useCaseId, p.id))}>
                   Aggiungi a Cosa serve
                 </Button>
               </div>

@@ -827,16 +827,19 @@ function needsSectionOf(html: string): string {
 
 test("scheda: il capitolo «Cosa serve» con le esigenze collegate, le righe a posto chiuse e la modifica", opts, async () => {
   const page = await detailHtml("builder", cards.quarter.id);
-  // Nessuna barra delle ancore: `?capitolo=cosa-serve` arriva alla sezione, sempre aperta, e al suo titolo.
+  // Nessuna barra delle ancore: `?capitolo=cosa-serve` arriva alla sezione e al suo titolo.
   assert.ok(!page.includes('href="#cosa-serve"') && page.includes('<section id="cosa-serve"'), "l'ancora è la sezione");
-  assert.match(page, /<h2 id="cosa-serve-titolo" tabindex="-1"/);
+  // (Rilascio 10, §3.4) Una riga sola, chiusa: «Cosa serve · 4» e i conteggi, nel pulsante del titolo H2.
+  assert.match(page, /<section id="cosa-serve" data-slot="section-needs" data-arrival-host="" class="[^"]*"><h2 class="text-base font-semibold"><button type="button" data-arrival-toggle="" aria-expanded="false" aria-controls="cosa-serve-contenuto"/);
+  const row = textOf(page.slice(page.indexOf('<section id="cosa-serve"'), page.indexOf("</button>", page.indexOf('<section id="cosa-serve"'))));
+  assert.ok(row.startsWith("Cosa serve · 4"), row);
   const section = needsSectionOf(page);
-  // (Rilascio 6, B.1.5) I requisiti aperti dietro il loro conteggio, chiusi; aperti arrivando a «Cosa serve».
-  const requirements = section.slice(section.lastIndexOf("<details", section.indexOf('data-slot="needs-requirements"')));
-  assertClosed(requirements);
-  assert.ok(requirements.includes(`Informazioni${N}·${N}4`), "«Informazioni · 4»");
-  assert.match(requirements, /data-arrival-open=""/);
-  assert.match(needsSectionOf(await detailHtml("builder", cards.quarter.id, { capitolo: "cosa-serve" })), /<details data-slot="needs-requirements" data-arrival-open="" open=""/, "aperti con ?capitolo=cosa-serve");
+  // Le informazioni aperte in vista dentro la riga aperta: fino a cinque, senza un conteggio a parte.
+  const requirements = section.slice(section.indexOf('data-slot="needs-requirements"'));
+  assert.equal([...requirements.slice(0, requirements.indexOf('data-slot="needs-done"')).matchAll(/data-need="/g)].length, 4, "le quattro aperte");
+  assert.ok(!requirements.includes(`Informazioni${N}·${N}4`), "niente «Informazioni · N»: la riga dice già il numero");
+  assert.match(await detailHtml("builder", cards.quarter.id, { capitolo: "cosa-serve" }), /<section id="cosa-serve" data-slot="section-needs" data-arrival-host="" data-open=""/, "aperta con ?capitolo=cosa-serve");
+  assert.match(await detailHtml("builder", cards.quarter.id, { capitolo: "scadenze" }), /<section id="cosa-serve" data-slot="section-needs" data-arrival-host="" data-open=""/, "aperta anche con l'alias ?capitolo=scadenze");
   for (const key of ["access", "decide", "procedure", "other", "extract"] as const) assert.ok(section.includes(T[key]), key);
   assert.ok(!section.includes(T.kickoff), "i passi non collegati non ci sono");
   assert.ok(!section.includes(T.archived));
@@ -858,9 +861,10 @@ test("scheda: il capitolo «Cosa serve» con le esigenze collegate, le righe a p
   // Quattro aperte: nessun «Mostra le altre»; nessuna richiesta: niente «Richieste inviate».
   assert.ok(!section.includes("Mostra le altre") && !section.includes("Mostra l'altra"));
   assert.ok(!section.includes("Richieste inviate") && !section.includes('id="richieste"'));
-  assert.ok(section.includes(">Aggiungi<") && section.includes(">Collega un'informazione<"));
+  // (Rilascio 10, §3.4) «Aggiungi» e «Collega un'informazione» in un solo pulsante, «Aggiungi ▾».
+  assert.match(section, /aria-haspopup="menu"[^>]*>Aggiungi<svg/);
   const other = await detailHtml("builder", cards.progress.id);
-  assert.ok(needsSectionOf(other).includes("Niente per ora."));
+  assert.ok(needsSectionOf(other).includes("Niente per ora."), "senza informazioni: la riga lo dice");
 });
 
 test("scheda compatta: (rilascio 6) «Requisiti · N» chiuso con tutti gli aperti, prima da verificare; «Prossimi passi», «Già a posto», chiusi", opts, () => {
@@ -921,13 +925,16 @@ test("scheda compatta: (rilascio 6) «Requisiti · N» chiuso con tutti gli aper
       ),
     );
   const html = render([...open, done]);
-  // (Rilascio 6, B.1.5) Il conteggio al posto delle voci: tutti gli aperti dietro «Requisiti · 7», chiuso, prima quella da verificare.
-  const requirements = html.slice(html.lastIndexOf("<details", html.indexOf('data-slot="needs-requirements"')), html.indexOf('data-slot="needs-steps"'));
-  assertClosed(requirements);
-  assert.ok(requirements.includes(`Informazioni${N}·${N}${open.length}`), "«Informazioni · N»");
+  // (Rilascio 10, §3.4) La riga «Cosa serve · N» si apre sulle aperte, prima quella da verificare: le prime cinque in vista,
+  // le altre dietro «Mostra le altre 2», chiuso, che si apre arrivando a «Cosa serve».
+  assert.ok(textOf(html.slice(0, html.indexOf("</button>"))).startsWith(`Cosa serve · ${open.length + 1}`), "le aperte, con la scadenza da fare");
+  const requirements = html.slice(html.indexOf('data-slot="needs-requirements"'), html.indexOf('data-slot="needs-steps"'));
   const shown = [...requirements.matchAll(/data-need="([^"]+)"/g)].map((match) => match[1]);
-  assert.deepEqual(shown, [open[6], ...open.slice(0, 6)].map((need) => need.id), "tutti, prima quella da verificare");
-  assert.ok(!html.includes("Mostra le altre") && !html.includes("Mostra l'altra"), "nessun «Mostra»: il tocco apre l'elenco intero");
+  assert.deepEqual(shown, [open[6], ...open.slice(0, 6)].map((need) => need.id), "tutte, prima quella da verificare");
+  const more = detailsAround(requirements, "Mostra le altre 2");
+  assertClosed(more);
+  assert.match(more, /data-arrival-open=""/);
+  assert.deepEqual([...more.matchAll(/data-need="([^"]+)"/g)].map((match) => match[1]), open.slice(4, 6).map((need) => need.id), "dietro «Mostra le altre», le ultime due");
   // I gruppi dei cinque con il dettaglio dello stato; mai le etichette del modulo.
   for (const label of [">Da verificare<", ">In attesa<", ">Da chiedere<", ">Ferma<", ">A posto<"]) assert.ok(html.includes(label), label);
   for (const note of ["manca il dato", "risposta parziale", "non si applica"]) assert.ok(html.includes(note), note);
@@ -944,8 +951,9 @@ test("scheda compatta: (rilascio 6) «Requisiti · N» chiuso con tutti gli aper
   assert.ok(doneBlock.includes(`Già a posto${N}·${N}1`));
   assert.ok(html.indexOf("Informazioni") < html.indexOf("Scadenze") && html.indexOf("Scadenze") < html.indexOf("Già a posto"), "l'ordine della scheda");
   assert.ok(!html.includes("Richieste inviate"));
-  // Un aperto solo: «Requisiti · 1», anche lui dietro il conteggio.
-  assert.ok(render(open.slice(0, 1)).includes(`Informazioni${N}·${N}1`));
+  // Un'aperta sola: in vista, senza «Mostra».
+  const one = render(open.slice(0, 1));
+  assert.ok(!one.includes("Mostra l'altra") && !one.includes("Mostra le altre"));
   // (Rilascio 4) «Prossimi passi» dalla scadenza più vicina, anche contro l'ordine del team; quelli
   // senza data in fondo: lo stesso ordine del pannello e della linea del tempo di «Cosa serve».
   const dated = [

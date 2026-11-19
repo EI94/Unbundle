@@ -2,9 +2,10 @@
 
 import { useId, useMemo, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Link2, Plus, Send } from "lucide-react";
+import { Plus, Send } from "lucide-react";
 import { toast } from "sonner";
 import { ActionMenu, type ActionMenuItem } from "@/components/uc/ui/action-menu";
+import { SEMAFORO_TONE } from "@/components/uc/common/semaforo-tone";
 import { StatusDot } from "@/components/uc/ui/status-dot";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -25,8 +26,8 @@ import {
 import { CONTEXT_TEXT } from "@/lib/context/text";
 import type { NeedLinkView } from "@/lib/db/queries/context-needs";
 import { ACTION_FAILED_MESSAGE } from "@/lib/use-cases/decision-ui";
-import { formatInteger } from "@/lib/use-cases/format";
-import type { InfoProgressView } from "@/lib/use-cases/info-progress";
+import { FIGURE_SEPARATOR, formatInteger } from "@/lib/use-cases/format";
+import { GUIDED_TEXT } from "@/lib/use-cases/guided";
 import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { cosaServeHref, type NeedReferentView, type UseCaseReferentPanel } from "@/lib/use-cases/referent/contract";
 import { REFERENT_ASSIGN_TEXT, REFERENT_UI_TEXT, fillText } from "@/lib/use-cases/referent/labels";
@@ -35,14 +36,19 @@ import {
   NEED_KIND_LABEL,
   NEED_LIMITS,
   NEED_OWNER_SIDE_LABEL,
+  NEED_ROWS_SHOWN,
   NEED_TYPE_LABEL,
   compareStepsByDate,
   isNeedDone,
   needAlsoForText,
+  needAskPieces,
   needDoneSummaryText,
   needRow,
   needStatusChoices,
   needsActionFirst,
+  needsCountBar,
+  needsCountPieces,
+  needsCountSummaryOf,
   validateArchiveReason,
   type NeedType,
   type NeedUseCaseRef,
@@ -53,7 +59,7 @@ import { Disclosure } from "../disclosure";
 import { NeedUseCasesDisclosure } from "../need-use-cases";
 import { DecisionChoiceGroup, DecisionDialog } from "../reopen-dialog";
 import { useLanding } from "./arrival";
-import { InfoSummary } from "./info-summary";
+import { Fold } from "./fold";
 import { askDialogEntry } from "./referent/ask-dialog-state";
 import { requestsShown } from "./referent/assign-dialog-state";
 import { ReferentBlock } from "./referent/referent-block";
@@ -65,7 +71,7 @@ import {
   NEED_FORM_CHOICES,
   NEED_FORM_TEXT as TEXT,
   draftFromNeed,
-  requirementsSummaryText,
+  moreRowsText,
   stepsSummaryText,
   emptyNeedDraft,
   needCreatePayload,
@@ -95,8 +101,6 @@ export interface SectionNeedsProps {
    * e file. null o non `available`: il capitolo è quello di prima.
    */
   referents?: UseCaseReferentPanel | null;
-  /** «Raccolta informazioni» della scheda (`loadUseCaseInfoProgress`, solo revisori): la riga dei conteggi in cima al capitolo. */
-  infoProgress?: InfoProgressView | null;
   /**
    * Il riquadro «Prossimo passo» parla già di «Chiedi al referente» (rilascio 3): `ask` quando ha il
    * pulsante (G5), e allora qui non si ripete; `gate` quando la sua riga è il motivo che lo blocca
@@ -127,17 +131,20 @@ type Dialog =
 
 /**
  * Il capitolo «Cosa serve» della scheda, solo per i revisori (spec di Pierpaolo, 25/10/2026;
- * rilascio 3, compatto): la riga dei conteggi, poi i requisiti aperti collegati a questo use case,
- * prima quelli da verificare e poi l'ordine del team (`needsActionFirst`), (rilascio 6, B.1.5) dietro
- * il loro conteggio «Requisiti · N», chiusi, aperti quando la pagina arriva a «Cosa serve» (un link
- * del pannello, «Verifica le risposte», `?capitolo=cosa-serve`); poi, chiusi, «Prossimi passi · N» (dalla scadenza più vicina), «Già a posto · N» e
- * «Richieste inviate · N». Ogni riga dice il gruppo dello stato («Da chiedere», «In attesa», «Da
- * verificare», «Ferma», «A posto») con tipo, chi, scadenza e il dettaglio dello stato, e ha un solo
- * menu «⋯» con «Aggiungi una risposta», «Allega un file» e «Modifica». «Aggiungi» apre il modulo
- * (l'esigenza nasce collegata a questo use case); «Modifica» lo apre sull'esigenza, con
- * «Scollega da questo use case» e «Archivia» (con il motivo: non si cancella niente); «Collega
- * un'esigenza» sceglie una delle altre del workspace. Ogni modifica porta la versione letta: se
- * qualcuno l'ha appena cambiata, il toast lo dice e la pagina si rilegge.
+ * rilascio 3, compatto; rilascio 10, §3.4): una riga sola, chiusa, come nel pannello: «Cosa serve · 5»,
+ * i conteggi per gruppo («2 da verificare · 3 in attesa») e la barra; si apre al tocco, e arriva aperta
+ * con `?capitolo=cosa-serve` o `richieste` e con i link della pagina («Verifica le risposte»). Aperta:
+ * in cima il blocco «Referente», perché è l'azione; poi le informazioni aperte collegate a questo use
+ * case, prima quelle da verificare e poi l'ordine del team (`needsActionFirst`), le prime cinque in
+ * vista e le altre dietro «Mostra le altre N»; poi, chiusi, «Scadenze · N» (dalla scadenza più
+ * vicina), «Già a posto · N» e «Richieste inviate · N». Ogni riga dice il gruppo dello stato («Da
+ * chiedere», «In attesa», «Da verificare», «Ferma», «A posto») con tipo, chi, scadenza e il dettaglio
+ * dello stato, e ha un solo menu «⋯» con «Aggiungi una risposta», «Allega un file» e «Modifica».
+ * «Aggiungi ▾» apre il modulo (l'informazione nasce collegata a questo use case) o «Collega
+ * un'informazione», che sceglie una delle altre del workspace; «Modifica» apre il modulo
+ * sull'informazione, con «Scollega da questo use case» e «Archivia» (con il motivo: non si cancella
+ * niente). Ogni modifica porta la versione letta: se qualcuno l'ha appena cambiata, il toast lo dice
+ * e la pagina si rilegge.
  */
 export function SectionNeeds({
   workspaceId,
@@ -149,7 +156,6 @@ export function SectionNeeds({
   today,
   canEdit,
   referents = null,
-  infoProgress = null,
   boxAsk = null,
   boxOwnsChoose = false,
   canEditValuation = false,
@@ -158,7 +164,6 @@ export function SectionNeeds({
   className,
 }: SectionNeedsProps) {
   const id = "cosa-serve";
-  const headingId = `${id}-titolo`;
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -167,7 +172,6 @@ export function SectionNeeds({
   const setReferentDialog = (next: ReferentDialog) => openReferent?.(next);
   const refMap = useMemo(() => new Map(Object.entries(refs)), [refs]);
   const detailHrefOf = (id: string) => cosaServeHref(workspaceId, id);
-  const empty = !requirements.length && !steps.length;
   // «Chiedi al referente»: solo con la funzione accesa per il workspace e gli archivi pronti.
   const feature = referents?.available ? referents : null;
   const answerable = useMemo(() => new Set((feature?.answerableNeedIds ?? []).map((needId) => needId.toLowerCase())), [feature]);
@@ -252,11 +256,62 @@ export function SectionNeeds({
   const eligible = Boolean(feature?.eligible);
   const hasReferent = Boolean(feature?.referent);
 
+  // (Rilascio 10, §3.4) Il capitolo è una riga, «Cosa serve · 5», con i conteggi e la barra, come nel pannello: si apre
+  // al tocco, e arriva aperto con `?capitolo=cosa-serve` (o `richieste`) e con i link della pagina che lo chiedono.
+  const count = needsCountSummaryOf([...requirements, ...steps], useCaseId);
+  const title = count && count.open > 0 ? fillText(GUIDED_TEXT.scheda.needsCount, { n: formatInteger(count.open) }) : TEXT.title;
+  const bar = count ? needsCountBar(count) : [];
+  // I conteggi nell'ordine della barra, prima quello che chiede di agire: «2 da verificare · 3 in attesa».
+  const zero = { open: 0, toAsk: 0, waiting: 0, toVerify: 0, blocked: 0, done: 0 };
+  const pieces = count
+    ? count.open > 0
+      ? bar.filter((part) => part.group !== "done").flatMap((part) => (part.group === "steps" ? needsCountPieces({ open: 0, counts: zero, steps: part.count }) : needAskPieces({ ...zero, [part.group]: part.count })))
+      : needAskPieces({ ...zero, done: count.counts.done })
+    : [];
+  const barTotal = bar.reduce((sum, part) => sum + part.count, 0);
+  // Le righe aperte: le prime cinque in vista, le altre dietro «Mostra le altre N», aperte quando la pagina arriva a «Cosa serve».
+  const shownRequirements = openRequirements.slice(0, NEED_ROWS_SHOWN);
+  const moreRequirements = openRequirements.slice(NEED_ROWS_SHOWN);
+  const add = canEdit
+    ? linkable.length
+      ? (
+          <ActionMenu
+            trigger="altro"
+            label={TEXT.add}
+            align="start"
+            items={[
+              { label: GUIDED_TEXT.scheda.addNeed, onSelect: () => setDialog({ mode: "aggiungi" }) },
+              { label: TEXT.link, onSelect: () => setDialog({ mode: "collega" }) },
+            ]}
+          />
+        )
+      : (
+          <Button type="button" variant="outline" className="min-h-11 sm:min-h-8" onClick={() => setDialog({ mode: "aggiungi" })}>
+            <Plus aria-hidden />
+            {TEXT.add}
+          </Button>
+        )
+    : null;
+
   return (
-    <section id={id} aria-labelledby={headingId} data-slot="section-needs" className={cn("scroll-mt-20 space-y-4", className)}>
-      <h2 id={headingId} tabIndex={-1} className="text-base font-semibold outline-none">
-        {TEXT.title}
-      </h2>
+    <Fold
+      id={id}
+      slot="section-needs"
+      look="riquadro"
+      title={title}
+      summary={pieces.length ? pieces.join(FIGURE_SEPARATOR) : TEXT.empty}
+      within={["richieste"]}
+      extra={
+        barTotal > 0 ? (
+          <span aria-hidden data-slot="needs-bar" className="hidden h-1 w-16 shrink-0 gap-0.5 overflow-hidden rounded-full bg-muted sm:flex">
+            {bar.map((part) => (
+              <span key={part.group} data-group={part.group} className={cn("h-full rounded-full", SEMAFORO_TONE[part.tone].fill)} style={{ width: `${(part.count / barTotal) * 100}%` }} />
+            ))}
+          </span>
+        ) : null
+      }
+      className={className}
+    >
       {feature && eligible ? (
         <ReferentBlock
           workspaceId={workspaceId}
@@ -271,18 +326,15 @@ export function SectionNeeds({
           withReview
         />
       ) : null}
-      <InfoSummary view={infoProgress} />
-      {empty ? <p className="text-sm text-muted-foreground">{TEXT.empty}</p> : null}
-      {openRequirements.length ? (
-        // (Rilascio 6, B.1.5) Un conteggio al posto delle voci: «Requisiti · 9»; un tocco apre l'elenco intero.
-        <Disclosure
-          slot="needs-requirements"
-          summary={<span className="font-medium text-foreground">{keepTogether(requirementsSummaryText(openRequirements.length))}</span>}
-          defaultOpen={requirementsOpen}
-          arrivalOpen
-        >
-          {list(openRequirements)}
-        </Disclosure>
+      {shownRequirements.length ? (
+        <div data-slot="needs-requirements" className="space-y-1">
+          {list(shownRequirements)}
+          {moreRequirements.length ? (
+            <Disclosure slot="needs-requirements-more" summary={moreRowsText(moreRequirements.length)} defaultOpen={requirementsOpen} arrivalOpen>
+              {list(moreRequirements)}
+            </Disclosure>
+          ) : null}
+        </div>
       ) : null}
       {steps.length || doneRequirements.length || requests.length ? (
         <div className="space-y-1">
@@ -317,19 +369,11 @@ export function SectionNeeds({
       ) : null}
       {canEdit ? (
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="outline" className="min-h-11 sm:min-h-8" onClick={() => setDialog({ mode: "aggiungi" })}>
-            <Plus aria-hidden />
-            {TEXT.add}
-          </Button>
-          {linkable.length ? (
-            <Button type="button" variant="ghost" className="min-h-11 sm:min-h-8" onClick={() => setDialog({ mode: "collega" })}>
-              <Link2 aria-hidden />
-              {TEXT.link}
-            </Button>
-          ) : null}
+          {/* (Rilascio 10, §3.4) «Aggiungi» e «Collega un'informazione» in un solo pulsante, «Aggiungi ▾». */}
+          {add}
           {/*
-            L'azione principale del capitolo, ma non della pagina: un solo pulsante pieno per pagina (la
-            decisione). «secondary» la distingue da «Aggiungi»; con G5 il riquadro ha già quello pieno.
+            L'azione principale del capitolo, ma non della pagina: un solo pulsante pieno per pagina (il
+            passo). «secondary» la distingue da «Aggiungi»; con G5 il riquadro ha già quello pieno.
           */}
           {/*
             (Rilascio 5, §8.4) Su uno use case con il referente da scegliere il referente si sceglie nel
@@ -343,7 +387,6 @@ export function SectionNeeds({
           ) : null}
         </div>
       ) : null}
-
       {canEdit && (dialog?.mode === "aggiungi" || dialog?.mode === "modifica") ? (
         <NeedFormDialog
           key={dialog.mode === "modifica" ? `${dialog.need.id}-${dialog.need.version}` : "nuova"}
@@ -384,7 +427,7 @@ export function SectionNeeds({
           onSubmit={(needId) => send(() => linkNeedAction(workspaceId, useCaseId, needId, useCaseId))}
         />
       ) : null}
-    </section>
+    </Fold>
   );
 }
 

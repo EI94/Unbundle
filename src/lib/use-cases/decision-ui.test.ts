@@ -26,6 +26,7 @@ import {
   draftFollowsSavedNote,
   followPageNote,
   lastSavedNote,
+  menuDecisions,
   dossierSituation,
   duplicateCandidates,
   futureDayLabel,
@@ -346,6 +347,32 @@ test("pulsanti per fase: la tabella di §6.4", () => {
   assert.deepEqual(decisionLayout(item("chiuso"), can), L("riapri", [], []));
   assert.deepEqual(decisionLayout(item("chiuso", "da_costruire", null, "doppione"), can), L("riapri", [], []));
   assert.deepEqual(decisionLayout(item("chiuso", "da_costruire", null, "archiviato"), can), L("riapri", [], []));
+});
+
+test("(Rilascio 10, §3.4) il gruppo «Decisione» del «⋯» della scheda: le decisioni della fase tranne il pulsante del passo", () => {
+  const can = { canDecide: true, primaryInStep: true };
+  // Da valutare: «Approva» è il passo; nel «⋯» Rimanda · Serve info · Non avviare · Doppione di… · Archivia.
+  assert.deepEqual(menuDecisions(item("da_valutare"), can), ["rimanda", "serve_info", "non_avviare", "doppione", "archivia"]);
+  assert.deepEqual(menuDecisions(item("approvato"), can), ["non_avviare", "doppione", "archivia"]);
+  assert.deepEqual(menuDecisions(item("approvato", "da_diffondere"), can), ["non_avviare", "archivia"], "«Segna come diffusa» è il passo");
+  assert.deepEqual(menuDecisions(item("in_realizzazione"), can), ["non_avviare", "archivia"], "senza dossier: «Segna «In uso»» è il passo");
+  assert.deepEqual(menuDecisions(item("in_realizzazione", "da_costruire", "in_sviluppo"), can), [], "realizzazione attiva: nessuna decisione");
+  assert.deepEqual(menuDecisions(item("realizzato"), can), ["archivia"]);
+  assert.deepEqual(menuDecisions(item("chiuso"), can), [], "«Riapri» è il passo");
+  // Quando il passo non è una decisione, il pulsante principale va nel «⋯»: nessuna decisione si perde.
+  assert.deepEqual(menuDecisions(item("chiuso"), { canDecide: true, primaryInStep: false }), ["riapri"]);
+  assert.deepEqual(menuDecisions(item("da_valutare"), { canDecide: true, primaryInStep: false }), ["approva", "rimanda", "serve_info", "non_avviare", "doppione", "archivia"]);
+  // Chi non decide non ha voci: mai voci spente.
+  for (const phase of ["da_valutare", "approvato", "in_realizzazione", "realizzato", "chiuso"] as const) {
+    assert.deepEqual(menuDecisions(item(phase), { canDecide: false, primaryInStep: true }), [], phase);
+  }
+  // Ogni decisione di `decisionLayout` sta o nel passo o nel «⋯».
+  for (const phase of ["da_valutare", "approvato", "in_realizzazione", "realizzato", "chiuso"] as const) {
+    const layout = decisionLayout(item(phase), { canDecide: true });
+    const all = [...(layout.primary ? [layout.primary] : []), ...layout.outline, ...layout.menu].sort();
+    const covered = [...(layout.primary ? [layout.primary] : []), ...menuDecisions(item(phase), can)].sort();
+    assert.deepEqual(covered, all, phase);
+  }
 });
 
 test("«Chiuso · Non avviato» con un dossier collegato (§6.5): nessun «Riapri», che il servizio rifiuta", () => {

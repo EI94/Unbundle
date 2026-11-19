@@ -559,14 +559,16 @@ test("«Salva la valutazione»: KPI, valore all'anno e fascia; «valutata»; Sto
   const [event] = (await storia(card.id)).slice(-1);
   assert.equal(event.action, "valutato");
   assert.deepEqual([...(event.fields as string[])].sort(), ["costo", "kpi", "valore"]);
-  // Con una cifra in euro «Impatto» scrive solo la cifra, con la fonte; la «Valutazione» niente parola, punteggio né zona.
+  // Con una cifra in euro «Valore» scrive solo la cifra, con la fonte; la «Valutazione» niente parola, punteggio né zona.
   const page = (await detailHtml("builder", card.id)).html;
-  const impact = sectionOf(page, "impatto");
+  const impact = sectionOf(page, "valore");
   assert.match(impact, /data-variant="E"/);
-  assert.ok(impact.includes("60.000 € <span") && impact.includes("all&#x27;anno") && impact.includes('data-source="team"'), impact);
+  // (Rilascio 10, §3.4) Il numero grande e «Valore all'anno»; sotto, una riga con il costo, la sua fonte e il pareggio.
+  assert.ok(impact.includes(">60.000 €</p>") && impact.includes(">Valore all&#x27;anno</p>") && impact.includes('data-source="team"'), impact);
   assert.ok(impact.includes('data-figure="costo"') && impact.includes('data-cost-source="team_fascia"'), "il costo con la sua fonte");
+  assert.match(impact, /data-action="valore-modifica"[^>]*href="#valutazione"|href="#valutazione"[^>]*data-action="valore-modifica"/, "«Modifica» apre «Valutazione del team»");
   const valuation = sectionOf(page, "section-valuation");
-  assert.ok(!valuation.includes('data-figure="valore"') && !valuation.includes('data-figure="costo"'), "le cifre stanno in «Impatto»");
+  assert.ok(!valuation.includes('data-figure="valore"') && !valuation.includes('data-figure="costo"'), "le cifre stanno in «Valore»");
   assert.ok(!valuation.includes("Zona:"), "senza zona");
   assert.ok(!valuation.includes("un suggerimento, non la decisione"));
   assert.ok(!valuation.includes("Alto · 4"));
@@ -710,7 +712,7 @@ test("revisori: percorso, «Prossimo passo» e pieghe; «Proposto da» ed «Emai
   assert.ok(sponsor.html.includes("Stime non ufficiali") && sponsor.html.includes("Conta la valutazione del team."));
   assert.ok(!sponsor.html.includes("Stima di Claude, non ufficiale"));
   assert.ok(sponsor.html.includes("Circa 180 ore all&#x27;anno (15 minuti × 240 volte × 3 persone)."));
-  assert.ok(sectionOf(sponsor.html, "impatto").includes("Dati personali"), "chip di rischio, in «Impatto»");
+  assert.ok(sectionOf(sponsor.html, "valore").includes("Dati personali"), "chip di rischio, in «Valore»");
   assert.ok(!sponsor.html.includes("Cos&#x27;è"), "niente più «Cos'è»");
   for (const person of ["builder", "lsAnalyst"] as const) {
     const { html } = await detailHtml(person, card.id);
@@ -736,19 +738,19 @@ test("revisori: «Oscura testo» per Lateral Space e chi gestisce il workspace, 
     assert.ok(!Object.hasOwn(reviewer ?? {}, "canArchive"), `${person}: «Archivia» non sta più nella testata`);
   }
   const { element, html } = await detailHtml("builder", card.id, { capitolo: "valutazione" });
-  // «Archivia» sta nel menu «⋯ Altre decisioni» del riquadro, per le fasi di `decisionLayout`.
+  // (Rilascio 10, §3.4) «Approva» è il passo; «Archivia» e le altre decisioni stanno nel solo «⋯» della testata, gruppo «Decisione».
   const [step] = findProp(element, "step") as Array<{ key: string; decisions: string }>;
-  const [boxItem] = findProp(element, "item").filter((value) => (value as { phaseLabel?: string })?.phaseLabel) as Array<Parameters<typeof import("./decision-ui.ts").decisionLayout>[0]>;
-  // (Rilascio 6, B.1.7) «Approva» in vista, le altre decisioni nel «⋯».
   assert.deepEqual([step.key, step.decisions], ["H7", "compact"]);
-  const { decisionLayout } = await import("./decision-ui.ts");
-  assert.ok(decisionLayout(boxItem, { canDecide: true }).menu.includes("archivia"));
-  assert.ok(html.includes('aria-label="Altre decisioni"'), "il menu delle decisioni nel riquadro");
+  const [reviewer] = findProp(element, "reviewer") as Array<{ decisions: { keys: string[] } | null }>;
+  assert.deepEqual(reviewer.decisions?.keys, ["rimanda", "serve_info", "non_avviare", "doppione", "archivia"]);
+  assert.ok(!html.includes('aria-label="Altre decisioni"'), "nessun secondo «⋯» nel riquadro");
+  assert.equal(html.split('aria-label="Altre azioni"').length - 1, 1, "un solo «⋯» nella testata");
+  assert.deepEqual(filledButtons(between(html, 'data-slot="next-step"', 'data-slot="scheda-body"')), ["Approva"]);
   const [ids] = findProp(element, "ids") as Array<string[]>;
-  assert.deepEqual(ids, ["decisione", "impatto", "cosa-e", "cosa-serve", "nota-pubblica", "valutazione", "dettagli", "storia"], "senza «Realizzazione» e «Quando» prima dell'approvazione");
+  assert.deepEqual(ids, ["decisione", "nota-pubblica", "valore", "cosa-e", "cosa-serve", "valutazione", "dettagli", "storia"], "senza «Realizzazione» e «Quando» prima dell'approvazione");
   assert.deepEqual(findProp(element, "initial"), ["valutazione"], "?capitolo=");
-  assert.match(html, /<details id="valutazione" open="" data-slot="fold"/, "la piega aperta dal server");
-  assert.doesNotMatch(html, /<details id="storia" open=""/);
+  assert.match(html, /<section id="valutazione" data-slot="fold" data-arrival-host="" data-open=""/, "la piega aperta dal server");
+  assert.match(html, /<section id="storia" data-slot="fold" data-arrival-host="" class=/, "le altre chiuse");
   const plain = await detailHtml("builder", card.id, { capitolo: "realizzazione" });
   assert.deepEqual(findProp(plain.element, "initial"), ["decisione"], "«Realizzazione» senza la piega: il riquadro");
 });
@@ -860,7 +862,7 @@ test("(Rilascio 9b) la piega «Contesto»: ai revisori, chiusa, prima di «Stori
   const [builderIds] = findProp(builder.element, "ids") as Array<string[]>;
   assert.deepEqual(builderIds.slice(-3), ["dettagli", "contesto", "storia"], "«Contesto» prima di «Storia», che resta l'ultima");
   assert.deepEqual(findProp(builder.element, "initial"), ["contesto"], "?capitolo=contesto");
-  assert.match(builder.html, /<details id="contesto" open="" data-slot="fold"/, "la piega aperta dal server");
+  assert.match(builder.html, /<section id="contesto" data-slot="fold" data-arrival-host="" data-open=""/, "la piega aperta dal server");
   const fold = between(builder.html, 'id="contesto"', 'id="storia"');
   assert.ok(fold.includes(shared), "il fatto «Per tutti»");
   assert.ok(!builder.html.includes(lsOnly), "mai un fatto «Solo Lateral Space» al cliente");
@@ -872,7 +874,7 @@ test("(Rilascio 9b) la piega «Contesto»: ai revisori, chiusa, prima di «Stori
 
   // Lateral Space senza `?capitolo=`: la piega c'è, chiusa, con il fatto «Solo Lateral Space» e il lucchetto.
   const ls = await detailHtml("lsLead", card.id);
-  assert.match(ls.html, /<details id="contesto" data-slot="fold"/, "chiusa");
+  assert.match(ls.html, /<section id="contesto" data-slot="fold" data-arrival-host="" class=/, "chiusa");
   assert.ok(ls.html.includes(lsOnly) && ls.html.includes("Solo Lateral Space"));
   assert.ok(spaced(ls.html).includes("2 fatti sul cliente · 2 novità"));
 
@@ -1057,7 +1059,7 @@ test("«Cosa è»: un campo vuoto è solo «+ Aggiungi …», senza la riga dell
       }
     }
     assert.ok(details.includes("+ Aggiungi possibile doppione di") && !details.includes(">Possibile doppione di<"), "«Dettagli»: lo stesso");
-    assert.match(html, /<details id="dettagli" data-slot="fold"[\s\S]*?<h2 class="text-base font-semibold">Dettagli<\/h2><span[^>]*>area<\/span>/, "la riga della piega: i campi pieni");
+    assert.match(html, /<section id="dettagli" data-slot="fold"[\s\S]*?<h2 class="text-base font-semibold"><button[^>]*><span[^>]*><span[^>]*>Dettagli<\/span><span[^>]*>area<\/span>/, "la riga della piega: i campi pieni");
   } finally {
     await q(`DELETE FROM workspace_connector_configs WHERE workspace_id = $1::uuid`, [ids.ws]);
   }
@@ -1133,7 +1135,10 @@ test("capitoli: `?capitolo=` e i suoi alias; «Realizzazione» dalla fase Approv
   assert.equal(chapterFromParam(["storia"]), "storia");
   assert.equal(chapterFromParam("cosa"), "cosa-e");
   assert.equal(chapterFromParam("Cos'è"), "cosa-e");
-  for (const chapter of ["decisione", "impatto", "cosa-serve", "richieste", "valutazione", "dettagli", "contesto"]) assert.equal(chapterFromParam(chapter), chapter);
+  for (const chapter of ["decisione", "valore", "cosa-serve", "richieste", "valutazione", "dettagli", "contesto"]) assert.equal(chapterFromParam(chapter), chapter);
+  // (Rilascio 10, §8.2) I capitoli rinominati: gli indirizzi di prima arrivano al capitolo di adesso.
+  assert.equal(chapterFromParam("impatto"), "valore");
+  assert.equal(chapterFromParam("scadenze"), "cosa-serve");
   assert.equal(chapterFromParam("proponente"), null);
   assert.equal(chapterFromParam(undefined), null);
   assert.equal(showsRealization({ phase: "da_valutare", kind: "da_costruire", dossier: null }), false);

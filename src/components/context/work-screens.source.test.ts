@@ -116,7 +116,8 @@ test("la piega: chiusa, prima di «Storia», con il pannello del fatto in sola l
   const detail = withoutComments(read("src/components/use-cases/detail/detail.tsx"));
   const fold = detail.indexOf('<Fold id="contesto"');
   assert.ok(fold > 0, "la piega c'è");
-  assert.ok(fold > detail.indexOf('<Fold id="realizzazione"') && fold < detail.indexOf('<Fold id="storia"'), "dopo «Realizzazione», prima di «Storia»");
+  // (Rilascio 10, §3.4) Le pieghe: Valutazione del team · Dettagli · Contesto · Realizzazione · Storia.
+  assert.ok(fold > detail.indexOf('<Fold id="dettagli"') && fold < detail.indexOf('<Fold id="realizzazione"') && fold < detail.indexOf('<Fold id="storia"'), "dopo «Dettagli», prima di «Realizzazione» e di «Storia»");
   assert.doesNotMatch(detail.slice(fold, detail.indexOf(">", fold)), /\bopen=/, "chiusa: la apre solo l'arrivo (`?capitolo=contesto`)");
   assert.match(detail, /const contextFold = context && contextFoldShown\(context\) \? context : null;/, "senza niente da mostrare non c'è");
   assert.match(detail, /context: contextFold !== null,/, "l'ancora c'è solo con la piega");

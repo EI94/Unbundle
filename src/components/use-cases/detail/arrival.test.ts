@@ -26,9 +26,9 @@ before(async () => {
   ({ renderToStaticMarkup } = (await import("react-dom/server")) as unknown as { renderToStaticMarkup: (element: unknown) => string });
 });
 
-const IDS = ["decisione", "impatto", "cosa-e", "cosa-serve", "storia"] as const;
+const IDS = ["decisione", "nota-pubblica", "valore", "cosa-e", "cosa-serve", "storia"] as const;
 /** Una scheda approvata con la piega «Realizzazione» e le richieste ai referenti. */
-const READY_IDS = ["decisione", "impatto", "cosa-e", "cosa-serve", "richieste", "quando", "nota-pubblica", "valutazione", "dettagli", "realizzazione", "storia"] as const;
+const READY_IDS = ["decisione", "quando", "nota-pubblica", "valore", "cosa-e", "cosa-serve", "richieste", "valutazione", "dettagli", "realizzazione", "storia"] as const;
 
 test("knownAnchorOf: un'ancora della scheda arriva; una malformata non lancia e non arriva da nessuna parte", () => {
   assert.equal(arrival.knownAnchorOf("#storia", IDS), "storia");
@@ -125,32 +125,81 @@ test("Indietro e Avanti tra due `?capitolo=` della stessa scheda: la chiave vien
 });
 
 test("le pieghe nascono aperte dall'arrivo della navigazione, non da una prop del passo di adesso", () => {
-  const html = (initial: string | null, ...folds: Array<{ id: string; open?: boolean }>) =>
+  const html = (initial: string | null, ...folds: Array<{ id: string; open?: boolean; within?: string[] }>) =>
     renderToStaticMarkup(
       createElement(
         arrival.Arrival,
         { initial, ids: READY_IDS, startInBox: false },
-        ...folds.map((f) => createElement(fold.Fold, { key: f.id, id: f.id, title: f.id, open: f.open }, "contenuto")),
+        ...folds.map((f) => createElement(fold.Fold, { key: f.id, id: f.id, title: f.id, open: f.open, within: f.within }, "contenuto")),
       ),
     );
-  const opened = (markup: string) => [...markup.matchAll(/<details id="([a-z-]+)"[^>]*\sopen=""/g)].map((m) => m[1]);
+  const opened = (markup: string) => [...markup.matchAll(/<section id="([a-z-]+)" data-slot="[a-z-]+" data-arrival-host="" data-open=""/g)].map((m) => m[1]);
   // L'HTML del server, come al caricamento: la piega dell'arrivo aperta, le altre chiuse.
   assert.deepEqual(opened(html("realizzazione", { id: "valutazione" }, { id: "realizzazione" }, { id: "storia" })), ["realizzazione"]);
-  assert.match(html("valutazione", { id: "valutazione" }), /^<details id="valutazione" open="" data-slot="fold"/);
+  assert.match(html("valutazione", { id: "valutazione" }), /^<section id="valutazione" data-slot="fold" data-arrival-host="" data-open=""/);
   assert.deepEqual(opened(html("decisione", { id: "valutazione" }, { id: "realizzazione" })), [], "al riquadro: nessuna piega aperta");
   assert.deepEqual(opened(html(null, { id: "storia", open: true })), ["storia"], "«Mostra tutto» della Storia");
+  // (Rilascio 10) Un'ancora dentro la piega la apre anche lei: `?capitolo=richieste` apre «Cosa serve».
+  assert.deepEqual(opened(html("richieste", { id: "cosa-serve", within: ["richieste"] }, { id: "storia" })), ["cosa-serve"]);
   // Fuori da Arrival nessun arrivo: la piega è chiusa.
   assert.deepEqual(opened(renderToStaticMarkup(createElement(fold.Fold, { id: "realizzazione", title: "Realizzazione" }, "x"))), []);
   // La scheda non passa alle pieghe né a «Cosa serve» l'ancora risolta di adesso, che cambia con il passo.
   const detail = readFileSync(new URL("./detail.tsx", import.meta.url), "utf8");
   const foldTags = [...detail.matchAll(/<Fold\b[^>]*>/g)].map((m) => m[0]);
-  assert.equal(foldTags.length, 5, "valutazione, dettagli, realizzazione, contesto (rilascio 9b), storia");
+  assert.equal(foldTags.length, 5, "valutazione, dettagli, contesto (rilascio 9b), realizzazione, storia");
   assert.deepEqual(foldTags.filter((tag) => /\sopen=/.test(tag)), ['<Fold id="storia" title={t.storia} summary={summaries.storia} open={historyAll}>'], "solo «Mostra tutto», che sta nell'indirizzo");
   assert.doesNotMatch(detail, /requestsOpen=|opens\(/, "«Richieste inviate» legge l'arrivo da sé");
   const needs = readFileSync(new URL("./section-needs.tsx", import.meta.url), "utf8");
   assert.match(needs, /const landing = useLanding\(\);\n  const requestsOpen = landing === "richieste";/);
-  // (Rilascio 6) I requisiti dietro il loro conteggio: aperti dall'arrivo a «Cosa serve», mai dal passo di adesso.
+  // (Rilascio 6) Le righe oltre le prime cinque: aperte dall'arrivo a «Cosa serve», mai dal passo di adesso.
   assert.match(needs, /const requirementsOpen = landing === id;/);
-  assert.match(needs, /defaultOpen=\{requirementsOpen\}\n\s+arrivalOpen/);
+  assert.match(needs, /defaultOpen=\{requirementsOpen\} arrivalOpen/);
   assert.match(needs, /<Disclosure id="richieste" defaultOpen=\{requestsOpen\}/);
+  // (Rilascio 10) «Cosa serve» è una piega anche lei, aperta da `?capitolo=richieste`.
+  assert.match(needs, /within=\{\["richieste"\]\}/);
+});
+
+test("(Rilascio 10, §5.4) la piega della scheda: un vero H2 con il pulsante aria-expanded, il contenuto nascosto finché è chiusa", () => {
+  const closed = renderToStaticMarkup(createElement(fold.Fold, { id: "dettagli", title: "Dettagli", summary: "dall'alto" }, createElement("p", null, "Dentro")));
+  assert.match(closed, /^<section id="dettagli" data-slot="fold" data-arrival-host="" class="[^"]*"><h2 class="text-base font-semibold"><button type="button" data-arrival-toggle="" aria-expanded="false" aria-controls="dettagli-contenuto"/);
+  assert.match(closed, /<div id="dettagli-contenuto" data-slot="fold-content" hidden=""/);
+  assert.ok(closed.includes("<p>Dentro</p>"), "il contenuto c'è già nell'HTML del server, nascosto");
+  assert.doesNotMatch(closed, /<summary|<details/, "il titolo non sta più dentro un <summary>");
+  const open = renderToStaticMarkup(createElement(fold.Fold, { id: "storia", title: "Storia", open: true }, "x"));
+  assert.match(open, /aria-expanded="true"/);
+  assert.doesNotMatch(open, /hidden=""/);
+  // «Cosa serve · N»: lo stesso pezzo, in un riquadro, con il suo `data-slot`.
+  const card = renderToStaticMarkup(createElement(fold.Fold, { id: "cosa-serve", title: "Cosa serve · 2", slot: "section-needs", look: "riquadro" }, "x"));
+  assert.match(card, /^<section id="cosa-serve" data-slot="section-needs" data-arrival-host="" class="scroll-mt-20 rounded-xl border bg-card"/);
+  assert.equal(fold.foldLanded("cosa-serve", "richieste", ["richieste"]), true);
+  assert.equal(fold.foldLanded("cosa-serve", "storia", ["richieste"]), false);
+  assert.equal(fold.foldLanded("cosa-serve", null), false);
+});
+
+test("(Rilascio 10) l'arrivo apre l'ancora e ogni piega che la contiene: `<details>` da sé, le pieghe della scheda con l'evento", () => {
+  const source = readFileSync(new URL("./arrival.tsx", import.meta.url), "utf8");
+  const open = source.slice(source.indexOf("function openAround("), source.indexOf("export function arriveAt("));
+  assert.match(open, /for \(let node: HTMLElement \| null = el; node; node = node\.parentElement\)/, "dall'ancora in su");
+  assert.match(open, /node instanceof HTMLDetailsElement/);
+  assert.match(open, /node\.hasAttribute\("data-arrival-host"\)\) node\.dispatchEvent\(new Event\(ARRIVAL_OPEN_EVENT\)\)/);
+  const arrive = source.slice(source.indexOf("export function arriveAt("), source.indexOf("export function knownAnchorOf("));
+  assert.match(arrive, /openAround\(el\);/);
+  assert.match(arrive, /requestAnimationFrame\(\(\) =>\n\s+requestAnimationFrame\(/, "scorre quando la piega aperta dall'evento si vede");
+  // Le pieghe della scheda ascoltano l'evento: le pieghe, il percorso compatto (con «Quando» dentro).
+  for (const file of ["./fold.tsx", "./path-disclosure.tsx"]) {
+    const piece = readFileSync(new URL(file, import.meta.url), "utf8");
+    assert.match(piece, /data-arrival-host=""/, file);
+    assert.match(piece, /data-arrival-toggle=""/, file);
+    assert.match(piece, /useArrivalOpen\(ref, \(\) => set(Shown|Open)\(true\)\);/, file);
+  }
+});
+
+test("(Rilascio 10, §8.2) un `#ancora` con il nome di prima arriva al capitolo di adesso: «#impatto» a «Valore», «#scadenze» a «Cosa serve»", () => {
+  assert.equal(arrival.knownAnchorOf("#impatto", IDS), "valore");
+  assert.equal(arrival.knownAnchorOf("#valore", IDS), "valore");
+  assert.equal(arrival.knownAnchorOf("#scadenze", IDS), "cosa-serve");
+  assert.equal(arrival.knownAnchorOf("#cosa", IDS), "cosa-e");
+  // Un'ancora dentro una piega della scheda: «Quando» nel percorso, «Nota pubblica» dentro «Dettagli».
+  assert.equal(arrival.knownAnchorOf("#quando", READY_IDS), "quando");
+  assert.equal(arrival.knownAnchorOf("#nota-pubblica", READY_IDS), "nota-pubblica");
 });

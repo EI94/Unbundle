@@ -346,6 +346,21 @@ export function decisionLayout(
 }
 
 /**
+ * (Rilascio 10, §3.4) Le decisioni del gruppo «Decisione» del solo «⋯» della scheda: quelle di
+ * `decisionLayout` per la fase, tranne il pulsante principale quando è già il pulsante del passo
+ * (`primaryInStep`). Nell'ordine di `DECISION_KEYS`: Rimanda · Serve info · Non avviare · Doppione
+ * di… · Archivia · Riapri. Chi non decide non ne ha: mai voci spente.
+ */
+export function menuDecisions(
+  item: Pick<DecisionItem, "phase" | "subState" | "kind" | "dossier" | "status">,
+  opts: { canDecide: boolean; primaryInStep: boolean },
+): DecisionKey[] {
+  const shown = decisionLayout(item, { canDecide: opts.canDecide });
+  const keys = new Set<DecisionKey>([...(shown.primary && !opts.primaryInStep ? [shown.primary] : []), ...shown.outline, ...shown.menu]);
+  return DECISION_KEYS.filter((key) => keys.has(key));
+}
+
+/**
  * «Segna come in realizzazione» nel capitolo «Realizzazione» (§6.5, §3.7): solo Lateral Space
  * con ruolo da revisore, use case approvato «Da costruire» senza dossier, sezione Casi d'uso
  * spenta per il workspace. Con i dossier accesi c'è «Avvia la realizzazione».

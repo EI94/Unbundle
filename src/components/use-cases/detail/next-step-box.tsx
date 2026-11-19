@@ -139,6 +139,13 @@ export interface NextStepRowProps {
   targetOf?: (id: string) => NextStepTarget | null;
   /** L'id della spiegazione nascosta (`aria-describedby`). */
   whyId: string;
+  /**
+   * (Rilascio 10, §3.4) Le altre decisioni nel menu «⋯» della riga (il pannello, come prima). La scheda le mette nel
+   * solo «⋯» della testata: qui resta il pulsante del passo.
+   */
+  decisionsMenu?: boolean;
+  /** (Rilascio 10, §5.7) Al telefono il pulsante del passo è largo quanto la colonna, meno il «?» (la scheda). */
+  wide?: boolean;
 }
 
 /**
@@ -148,11 +155,11 @@ export interface NextStepRowProps {
  * parole dello stato. Accanto il «?» con la spiegazione, «Tocca a …» piccolo solo quando non tocca a
  * chi guarda, il link tranquillo del passo e le altre decisioni nel menu «⋯».
  */
-export function NextStepRow({ workspaceId, step, item, today, canDecide, candidates, canMarkInProgress, filled, targetOf, whyId }: NextStepRowProps) {
+export function NextStepRow({ workspaceId, step, item, today, canDecide, candidates, canMarkInProgress, filled, targetOf, whyId, decisionsMenu = true, wide = false }: NextStepRowProps) {
   const openReferent = useReferentDialog();
   const variant = filled ? "default" : "outline";
   const action = step.action;
-  const touch = "min-h-11 sm:min-h-8";
+  const touch = cn("min-h-11 sm:min-h-8", wide && "max-sm:flex-1");
   const icon = <NextStepIconView icon={step.icon} />;
   const describedBy = step.why ? whyId : undefined;
   const target = (id: string): NextStepTarget => targetOf?.(id) ?? { kind: "page", id };
@@ -227,6 +234,7 @@ export function NextStepRow({ workspaceId, step, item, today, canDecide, candida
           variant={variant}
           icon={icon}
           describedBy={describedBy}
+          className={wide ? "max-sm:flex-1" : undefined}
         />
       );
       break;
@@ -259,6 +267,8 @@ export function NextStepRow({ workspaceId, step, item, today, canDecide, candida
         outlineInMenu={step.decisions === "compact"}
         primaryIcon={action.type === "decisione" ? icon : null}
         primaryDescribedBy={action.type === "decisione" ? describedBy : undefined}
+        onlyPrimary={!decisionsMenu}
+        primaryClassName={wide ? "max-sm:flex-1" : undefined}
         className="contents"
       />
     );
@@ -304,18 +314,21 @@ export interface NextStepBoxProps {
   candidates?: readonly DuplicateCandidate[];
   /** «Segna come in realizzazione»: solo Lateral Space con la sezione Casi d'uso spenta. */
   canMarkInProgress: boolean;
+  /** (Rilascio 10, §3.4) Le altre decisioni nel «⋯» del riquadro; la scheda le mette nel «⋯» della testata (`false`). */
+  decisionsMenu?: boolean;
   className?: string;
 }
 
 /**
- * «Prossimo passo» della scheda (rilascio 3; rilascio 6, B.1): sotto il percorso, una riga sola
- * (`NextStepRow`): il pulsante del passo, pieno solo quando il passo è di chi guarda (`step.mine`) e
- * nessun altro pezzo della pagina ha il pulsante pieno, il «?» con la spiegazione, «Tocca a …» solo
- * quando non tocca a chi guarda, le altre decisioni nel menu «⋯». Il titolo «Prossimo passo» resta
- * per i lettori di schermo e per le ancore. Un motivo che blocca il passo (le email spente) si legge
- * sotto, una riga (`role="status"`).
+ * «Prossimo passo» della scheda (rilascio 3; rilascio 6, B.1; rilascio 10, §3.4 e §5.4): subito dopo la
+ * testata, l'etichetta «Prossimo passo» (12 px, grigia; «Fuori dal percorso» per uno use case chiuso), poi una
+ * riga sola (`NextStepRow`): il pulsante del passo, pieno solo quando il passo è di chi guarda (`step.mine`) e
+ * nessun altro pezzo della pagina ha il pulsante pieno, il «?» con la spiegazione, «Tocca a …» solo quando non
+ * tocca a chi guarda. Le altre decisioni nel menu «⋯» del riquadro, o (`decisionsMenu={false}`) nel «⋯» della
+ * testata. L'etichetta è il titolo della sezione, anche per le ancore. Un motivo che blocca il passo (le email
+ * spente) si legge sotto, una riga (`role="status"`).
  */
-export function NextStepBox({ workspaceId, step, item, today, canDecide, candidates, canMarkInProgress, className }: NextStepBoxProps) {
+export function NextStepBox({ workspaceId, step, item, today, canDecide, candidates, canMarkInProgress, decisionsMenu = true, className }: NextStepBoxProps) {
   const claimed = usePagePrimaryClaimed();
   const whyId = useId();
   // Un motivo che nessuno nel workspace toglie (email spente, risposte dal link spente): si dice a schermo.
@@ -327,9 +340,9 @@ export function NextStepBox({ workspaceId, step, item, today, canDecide, candida
       data-slot="next-step"
       data-key={step.key}
       data-gate={step.gate ?? undefined}
-      className={cn("flex scroll-mt-20 flex-col gap-1 rounded-xl border bg-card px-3 py-2", className)}
+      className={cn("flex scroll-mt-20 flex-col gap-2", className)}
     >
-      <h2 id={NEXT_STEP_IDS.heading} tabIndex={-1} className="sr-only">
+      <h2 id={NEXT_STEP_IDS.heading} tabIndex={-1} className="text-xs font-normal text-muted-foreground outline-none">
         {step.heading}
       </h2>
       <NextStepRow
@@ -342,6 +355,8 @@ export function NextStepBox({ workspaceId, step, item, today, canDecide, candida
         canMarkInProgress={canMarkInProgress}
         filled={step.mine && !claimed}
         whyId={whyId}
+        decisionsMenu={decisionsMenu}
+        wide
       />
       {blocking ? (
         <p id={NEXT_STEP_IDS.line} role="status" data-gate={step.gate ?? undefined} className="text-sm break-words text-muted-foreground">
