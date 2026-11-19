@@ -309,8 +309,9 @@ async function schedaOf(person: Person, useCaseId: string) {
   return {
     element,
     html,
-    box: html.slice(html.indexOf('data-slot="next-step"'), html.indexOf('data-slot="scheda-grid"')),
-    fold: html.includes('id="realizzazione"') ? html.slice(html.indexOf('<details id="realizzazione"'), html.indexOf("</details>", html.indexOf('<details id="realizzazione"'))) : "",
+    // (Rilascio 10) Il riquadro è la sua `<section>`; la piega «Realizzazione» è una `<section>` con il titolo H2 vero.
+    box: html.slice(html.indexOf('data-slot="next-step"'), html.indexOf("</section>", html.indexOf('data-slot="next-step"'))),
+    fold: html.includes('id="realizzazione"') ? html.slice(html.indexOf('<section id="realizzazione"'), html.indexOf("</section>", html.indexOf('<section id="realizzazione"'))) : "",
   };
 }
 
@@ -497,12 +498,16 @@ async function landingOf(person: Person, useCaseId: string, href: string) {
   const searchParams = Object.fromEntries(new URL(href, "https://app.example.test").searchParams);
   const element = await detailPage({ params: Promise.resolve({ workspaceId: ids.ws, useCaseId }), searchParams: Promise.resolve(searchParams) });
   const html = renderToStaticMarkup(element);
-  const foldAt = html.indexOf('<details id="realizzazione"');
+  const foldAt = html.indexOf('<section id="realizzazione"');
   return {
-    box: html.slice(html.indexOf('data-slot="next-step"'), html.indexOf('data-slot="scheda-grid"')),
-    fold: foldAt === -1 ? "" : html.slice(foldAt, html.indexOf("</details>", foldAt)),
+    box: html.slice(html.indexOf('data-slot="next-step"'), html.indexOf("</section>", html.indexOf('data-slot="next-step"'))),
+    fold: foldAt === -1 ? "" : html.slice(foldAt, html.indexOf("</section>", foldAt)),
     target: arrivalOf(element),
-    opened: [...html.matchAll(/<details id="([a-z-]+)"[^>]*\sopen=""/g)].map((m) => m[1]),
+    // Le pieghe aperte dal server: quelle della scheda (`data-open`) e i `<details>` con un'ancora.
+    opened: [
+      ...[...html.matchAll(/<section id="([a-z-]+)" data-slot="[a-z-]+" data-arrival-host="" data-open=""/g)].map((m) => m[1]),
+      ...[...html.matchAll(/<details id="([a-z-]+)"[^>]*\sopen=""/g)].map((m) => m[1]),
+    ],
   };
 }
 

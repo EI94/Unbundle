@@ -146,22 +146,28 @@ test("lo script delle schermate controlla lo scorrimento orizzontale e le colonn
   assert.match(screens, /failures\.push\(`horizontal scroll at \$\{width\} px/);
 });
 
-test("la scheda guidata: un contenitore, due colonne da 58rem della scheda, il percorso in riga da 40rem, mai la finestra", () => {
+test("la scheda guidata: una colonna di 768 px, il percorso in riga da 40rem della scheda, mai la finestra", () => {
   const detail = read("src/components/use-cases/detail/detail.tsx");
-  assert.match(detail, /data-slot="use-case-detail" data-projection=\{result\.projection\} className=\{cn\("@container\/scheda mx-auto w-full max-w-5xl min-w-0", className\)\}/);
-  assert.ok(detail.includes('data-slot="scheda-grid" className="mt-8 grid gap-8 @min-[58rem]/scheda:grid-cols-[minmax(0,1fr)_18rem] @min-[58rem]/scheda:gap-x-8"'));
+  // (Rilascio 10, §3.4) Una colonna, larga al massimo 768 px, come le board: niente più colonna di destra.
+  assert.match(detail, /data-slot="use-case-detail" data-projection=\{result\.projection\} className=\{cn\("@container\/scheda mx-auto w-full max-w-3xl min-w-0", className\)\}/);
+  assert.ok(detail.includes('data-slot="scheda-body" className="mt-8 min-w-0 space-y-10"'));
+  for (const gone of ["scheda-grid", "scheda-aside", "grid-cols-[minmax(0,1fr)_18rem]"]) assert.ok(!detail.includes(gone), gone);
   // Il contributore tiene la sua colonna di lettura.
   assert.match(detail, /data-projection="contributore" className=\{cn\("mx-auto w-full max-w-3xl min-w-0 space-y-6", className\)\}/);
   const path = read("src/components/use-cases/detail/use-case-path.tsx");
   assert.ok(path.includes('"grid-cols-3 @min-[40rem]/scheda:grid-cols-6"') && path.includes('"grid-cols-2 @min-[40rem]/scheda:grid-cols-4"'));
   // (Rilascio 6, B.1) Il passo è una riga sola, che va a capo tra i controlli, mai dentro un pulsante.
-  assert.ok(read("src/components/use-cases/detail/next-step-box.tsx").includes('data-slot="next-step-actions" className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1"'));
-  // «Impatto»: la cifra grande accanto alle altre da 28rem della scheda; «Come cambia il lavoro»: i tre passi in riga da 40rem.
-  assert.ok(read("src/components/use-cases/detail/impact-block.tsx").includes('"grid gap-x-8 gap-y-2 @md/scheda:grid-cols-[auto_minmax(0,1fr)] @md/scheda:items-end"'));
+  const box = read("src/components/use-cases/detail/next-step-box.tsx");
+  assert.ok(box.includes('data-slot="next-step-actions" className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1"'));
+  // (Rilascio 10, §5.7) Al telefono il pulsante pieno del passo è largo quanto la colonna, meno il «?».
+  assert.ok(box.includes('const touch = cn("min-h-11 sm:min-h-8", wide && "max-sm:flex-1");'));
+  // «Valore»: il numero grande (`BigNumber`), poi una riga; «Come cambia il lavoro»: i tre passi in riga da 40rem.
+  assert.ok(read("src/components/use-cases/detail/impact-block.tsx").includes('<p data-slot="valore-riga" className={NOTE}>'));
   assert.ok(read("src/components/use-cases/detail/work-flow.tsx").includes("@min-[40rem]/scheda:grid-cols-[minmax(0,1fr)_1.25rem_minmax(0,1fr)_1.25rem_minmax(0,1fr)]"));
   for (const file of [
     "src/components/use-cases/detail/detail.tsx",
     "src/components/use-cases/detail/use-case-path.tsx",
+    "src/components/use-cases/detail/path-disclosure.tsx",
     "src/components/use-cases/detail/next-step-box.tsx",
     "src/components/use-cases/detail/fold.tsx",
     "src/components/use-cases/detail/arrival.tsx",

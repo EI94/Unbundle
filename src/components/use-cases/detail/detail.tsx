@@ -7,9 +7,25 @@ import type { UseCaseRealization } from "@/lib/uc/views/realization";
 import type { AgentTone } from "@/lib/use-cases/agents";
 import { answersOf } from "@/lib/use-cases/answers";
 import type { UseCaseEventList } from "@/lib/db/queries/use-case-events";
-import { DIALOG_COMMON_TEXT, PUBLIC_NOTE_TEXT, toDecisionItem, toDuplicateCandidates, type DuplicateCandidate } from "@/lib/use-cases/decision-ui";
+import { PUBLIC_NOTE_TEXT, menuDecisions, toDecisionItem, toDuplicateCandidates, type DuplicateCandidate } from "@/lib/use-cases/decision-ui";
 import { unofficialEstimateLines } from "@/lib/use-cases/estimates";
-import { GUIDED_TEXT, arrivalTarget, detailTargetIds, foldSummaries, impactView, nextStepOf, pathOfUseCase, quarterHolding, startsInBox, type DetailChapter, type NextStep } from "@/lib/use-cases/guided";
+import {
+  GUIDED_TEXT,
+  arrivalTarget,
+  compactPathOf,
+  detailTargetIds,
+  foldSummaries,
+  impactView,
+  nextStepOf,
+  othersDetailsNote,
+  pathOfUseCase,
+  publicNoteInView,
+  quarterHolding,
+  realizationAccountOf,
+  startsInBox,
+  type DetailChapter,
+  type NextStep,
+} from "@/lib/use-cases/guided";
 import type { InfoProgressView } from "@/lib/use-cases/info-progress";
 import { TEXT_LIMITS } from "@/lib/use-cases/inputs";
 import { WHAT_FIELD_LABEL } from "@/lib/use-cases/labels";
@@ -21,7 +37,7 @@ import type { UseCaseDetail } from "@/lib/use-cases/views";
 import { cn } from "@/lib/utils";
 import { PublicNoteDraftProvider } from "../decision-buttons";
 import { ProposerAnswers } from "../proposer-answers";
-import { OwnMarker, othersCardNote } from "../use-case-row";
+import { OwnMarker } from "../use-case-row";
 import { ReferentChip } from "../referent-chip";
 import type { ReferentStateKey } from "@/lib/use-cases/referent/use-case-state";
 import { WhenControl } from "../when-control";
@@ -31,6 +47,7 @@ import { Fold } from "./fold";
 import { ImpactBlock } from "./impact-block";
 import { IntakeDetails, type GuideLabels } from "./intake-details";
 import { NextStepBox, PagePrimaryProvider } from "./next-step-box";
+import { PathDisclosure } from "./path-disclosure";
 import { PublicNoteField } from "./public-note-field";
 import type { RedactOption } from "./redact-dialog";
 import { askEntry } from "./referent/ask-dialog-state";
@@ -228,13 +245,16 @@ function boxAskOf(step: NextStep): "ask" | "gate" | null {
 
 /**
  * La scheda `/use-cases/[id]` con l'area accesa (docs/use-case/DESIGN.md §6; rilascio 3 «Scheda
- * guidata»). Ai revisori: la testata, il percorso dello use case, il riquadro «Prossimo passo» con
- * il solo pulsante pieno della pagina quando il passo è loro, poi su due colonne (dai 58rem della
- * scheda) il contenuto, «Quando» e la nota pubblica accanto, e le pieghe «Valutazione del team»,
- * «Dettagli», «Realizzazione» (quando c'è), «Contesto» (rilascio 9b, quando c'è qualcosa da
- * mostrare) e «Storia», che resta l'ultima. Chi gestisce il workspace vede anche
- * «Proposto da» ed «Email indicata» e può oscurare un testo. Il contributore vede la scheda di
- * prima: titolo e fase, e delle sue proposte codice e nota pubblica (D4, D13), con i dati già
+ * guidata»; rilascio 10, §3.4, una colonna). Ai revisori, in quest'ordine: la testata con il solo «⋯»
+ * (gruppi «Decisione» e «Scheda») e la pillola della fase; il passo, con il solo pulsante pieno della
+ * pagina quando il passo è loro; il percorso in una riga, che si apre sui passi e, per uno use case
+ * approvato, su «Quando»; «Nota pubblica» solo quando ha un testo o serve (altrimenti in «Dettagli»);
+ * «Valore» (D10: il conto della realizzazione quando c'è e chi guarda la legge); «Come cambia il
+ * lavoro»; le proposte dei coding agent quando ci sono; «Cosa serve · N» in una riga; poi le pieghe
+ * chiuse «Valutazione del team», «Dettagli», «Contesto» (rilascio 9b, quando c'è qualcosa da
+ * mostrare), «Realizzazione» (quando c'è) e «Storia», che resta l'ultima. Chi gestisce il workspace
+ * vede anche «Proposto da» ed «Email indicata» e può oscurare un testo. Il contributore vede la scheda
+ * di prima: titolo e fase, e delle sue proposte codice e nota pubblica (D4, D13), con i dati già
  * proiettati dal server.
  */
 export function UseCaseDetailView({
@@ -278,8 +298,8 @@ export function UseCaseDetailView({
           marker={useCase.own ? <OwnMarker /> : null}
           referentState={<ReferentChip state={contributorReferentState} />}
         />
-        {/* Delle proposte altrui solo titolo e fase (D4, D13): una riga dice perché (H7). */}
-        {useCase.own ? null : <p className="text-sm text-muted-foreground">{othersCardNote(teamName)}</p>}
+        {/* Delle proposte altrui solo titolo e fase (D4, D13): una riga dice perché (H7; rilascio 10, §3.4). */}
+        {useCase.own ? null : <p className="text-sm text-muted-foreground">{othersDetailsNote(teamName)}</p>}
         <ContributorDecisionSection workspaceId={workspaceId} useCase={useCase} answer={result.answer} teamName={teamName} />
       </div>
     );
@@ -323,7 +343,7 @@ export function UseCaseDetailView({
   });
   const path = pathOfUseCase({ item: detail, today, info, dossierRead: result.dossierRead });
   const historyShown = abilities.canSeeHistory && Boolean(events);
-  // (Rilascio 9b) La piega «Contesto», chiusa, prima di «Storia»: solo con fatti, impegni o domande da mostrare.
+  // (Rilascio 9b) La piega «Contesto», chiusa, prima di «Realizzazione» e «Storia»: solo con fatti, impegni o domande da mostrare.
   const contextFold = context && contextFoldShown(context) ? context : null;
   const targets = detailTargetIds({
     phase: detail.phase,
@@ -342,6 +362,8 @@ export function UseCaseDetailView({
   const estimates = unofficialEstimateLines(detail.intake).length > 0;
   const aiShown = aiSuggestionShown(detail.aiSuggestion, groups);
   const impact = impactView({ value: detail.value, cost: detail.cost, valueModel: detail.valueModel, params: result.valueParams, unofficial: estimates || aiShown });
+  // (D10) Una sola cifra del valore: il conto della realizzazione, se è avviata e chi guarda la legge; altrimenti la stima del team.
+  const account = realizationAccountOf(realization);
   const summaries = foldSummaries({
     valuation: {
       estimates,
@@ -359,32 +381,51 @@ export function UseCaseDetailView({
   });
   // Al browser solo le parti delle decisioni, non la scheda intera; dei candidati solo id, codice e titolo.
   const decisionItem = toDecisionItem(detail);
+  const duplicateCandidates = toDuplicateCandidates(candidates);
+  // (Rilascio 10, §3.4) Le decisioni che non sono il pulsante del passo stanno nel solo «⋯» della testata.
+  const menuKeys = menuDecisions(decisionItem, { canDecide: abilities.canDecide, primaryInStep: step.action.type === "decisione" && step.decisions !== "none" });
   // Delle esigenze della scheda alle finestre di «Chiedi al referente»: titolo, «Chi» come lo mostra la riga e il testo libero «Chi».
   const needInfo = needs
     ? Object.fromEntries([...needs.lists.requirements, ...needs.lists.steps].map((need) => [need.id.toLowerCase(), { title: need.title, owner: needOwnerText(need), ownerLabel: need.ownerLabel, kind: need.kind }]))
     : {};
   const t = GUIDED_TEXT.folds;
+  const answers = answersOf(detail.intake);
+  // (Rilascio 10, §3.4) «Nota pubblica» in vista solo con un testo o in «Serve info»; altrimenti in «Dettagli», con la stessa ancora.
+  const noteInView = publicNoteInView(detail, answers.length);
+  const publicNote = (
+    <section
+      id="nota-pubblica"
+      aria-label={PUBLIC_NOTE_TEXT.label}
+      tabIndex={-1}
+      data-slot="nota-pubblica"
+      className={cn("scroll-mt-20 space-y-4 outline-none", noteInView && "rounded-xl border bg-card p-4")}
+    >
+      <PublicNoteField workspaceId={workspaceId} item={decisionItem} canEdit={abilities.canDecide} />
+      <ProposerAnswers answers={answers} />
+    </section>
+  );
 
   return (
-    <div data-slot="use-case-detail" data-projection={result.projection} className={cn("@container/scheda mx-auto w-full max-w-5xl min-w-0", className)}>
-      <DetailHeader
-        workspaceId={workspaceId}
-        card={{ id: detail.id, title: detail.title, code: detail.code, phase: detail.phase, subState: detail.subState, phaseLabel: detail.phaseLabel }}
-        titleEdit={abilities.canEditWhat ? { item: { id: detail.id, version: detail.version }, label: WHAT_FIELD_LABEL.title[detail.kind] ?? "Titolo", max: TEXT_LIMITS.title } : null}
-        reviewer={{
-          item: { id: detail.id, code: detail.code, version: detail.version, hiddenFromSearch: detail.hiddenFromSearch },
-          agentTone,
-          canSetHidden: abilities.canSetHiddenFromSearch,
-          canRedact: abilities.canRedact,
-          redactOptions: abilities.canRedact ? redactOptions(detail) : [],
-          // (Rilascio 6, B.1.2) Lo stato del referente si dice una volta, nel suo blocco: niente riga sotto il titolo.
-          referentLine: null,
-        }}
-      />
-      <Arrival initial={arrival} chapter={chapter ?? null} ids={targets} startInBox={startInBox}>
-        {path ? <UseCasePath path={path} tone={agentTone} className="mt-4" /> : null}
-        {/* «Serve info» e «Non avviare» si aprono con il testo del campo «Nota pubblica»; un solo pulsante pieno per pagina. */}
-        <PublicNoteDraftProvider>
+    <div data-slot="use-case-detail" data-projection={result.projection} className={cn("@container/scheda mx-auto w-full max-w-3xl min-w-0", className)}>
+      {/* «Serve info» e «Non avviare» si aprono con il testo del campo «Nota pubblica», anche dal «⋯» della testata. */}
+      <PublicNoteDraftProvider>
+        <DetailHeader
+          workspaceId={workspaceId}
+          card={{ id: detail.id, title: detail.title, code: detail.code, phase: detail.phase, subState: detail.subState, phaseLabel: detail.phaseLabel }}
+          titleEdit={abilities.canEditWhat ? { item: { id: detail.id, version: detail.version }, label: WHAT_FIELD_LABEL.title[detail.kind] ?? "Titolo", max: TEXT_LIMITS.title } : null}
+          reviewer={{
+            item: { id: detail.id, code: detail.code, version: detail.version, hiddenFromSearch: detail.hiddenFromSearch },
+            agentTone,
+            canSetHidden: abilities.canSetHiddenFromSearch,
+            canRedact: abilities.canRedact,
+            redactOptions: abilities.canRedact ? redactOptions(detail) : [],
+            // (Rilascio 6, B.1.2) Lo stato del referente si dice una volta, nel suo blocco: niente riga sotto il titolo.
+            referentLine: null,
+            decisions: { item: decisionItem, today, candidates: duplicateCandidates, keys: menuKeys },
+          }}
+        />
+        <Arrival initial={arrival} chapter={chapter ?? null} ids={targets} startInBox={startInBox}>
+          {/* Un solo pulsante pieno per pagina: il passo. */}
           <PagePrimaryProvider>
             <ReferentDialogHost
               workspaceId={workspaceId}
@@ -403,59 +444,50 @@ export function UseCaseDetailView({
                 item={decisionItem}
                 today={today}
                 canDecide={abilities.canDecide}
-                candidates={toDuplicateCandidates(candidates)}
+                candidates={duplicateCandidates}
                 canMarkInProgress={abilities.canMarkInProgress}
-                className="mt-4"
+                decisionsMenu={false}
+                className="mt-6"
               />
-              <div data-slot="scheda-grid" className="mt-8 grid gap-8 @min-[58rem]/scheda:grid-cols-[minmax(0,1fr)_18rem] @min-[58rem]/scheda:gap-x-8">
-                <div data-slot="scheda-main" className="min-w-0 space-y-10 @min-[58rem]/scheda:col-start-1 @min-[58rem]/scheda:row-start-1">
-                  <ImpactBlock view={impact} value={detail.value} cost={detail.cost} costBands={result.costBands} risks={detail.risks} />
-                  <WorkFlow workspaceId={workspaceId} detail={detail} canEdit={abilities.canEditWhat} tone={agentTone} />
-                  {abilities.canSeeNeeds && agentProposals?.length ? (
-                    <AgentProposals workspaceId={workspaceId} useCaseId={detail.id} proposals={agentProposals} canDecide={abilities.canEditNeeds} />
-                  ) : null}
-                  {abilities.canSeeNeeds && needs ? (
-                    <SectionNeeds
-                      workspaceId={workspaceId}
-                      useCaseId={detail.id}
-                      requirements={needs.lists.requirements}
-                      steps={needs.lists.steps}
-                      linkable={needs.lists.linkable}
-                      refs={needs.refs}
-                      today={today}
-                      canEdit={abilities.canEditNeeds}
-                      referents={referents}
-                      infoProgress={infoProgress}
-                      boxAsk={boxAskOf(step)}
-                      boxOwnsChoose={step.action.type === "referente" && step.action.mode === "scegli"}
-                      canEditValuation={abilities.canEditValuation}
-                      useCaseVersion={detail.version}
-                      needLinks={abilities.canEditNeeds ? needLinks : null}
-                    />
-                  ) : null}
-                </div>
-                <aside data-slot="scheda-aside" className="min-w-0 space-y-4 self-start @min-[58rem]/scheda:col-start-2 @min-[58rem]/scheda:row-span-2 @min-[58rem]/scheda:row-start-1">
+              {path ? (
+                <PathDisclosure compact={compactPathOf(path, info)} className="mt-3">
+                  <UseCasePath path={path} tone={agentTone} />
                   {detail.phase === "approvato" ? (
-                    <section id="quando" aria-labelledby="quando-titolo" className="scroll-mt-20 space-y-3 rounded-xl border bg-card p-4">
-                      <h2 id="quando-titolo" tabIndex={-1} className="text-sm font-semibold outline-none">
-                        {DIALOG_COMMON_TEXT.when}
-                      </h2>
-                      <WhenControl
-                        workspaceId={workspaceId}
-                        item={decisionItem}
-                        today={today}
-                        canDecide={abilities.canDecide}
-                        labelledBy="quando-titolo"
-                        className="@min-[58rem]/scheda:max-w-none @min-[58rem]/scheda:grid-cols-1"
-                      />
-                    </section>
+                    <div id="quando" data-slot="quando" className="scroll-mt-20 space-y-2 border-t px-2 pt-4">
+                      <p id="quando-titolo" tabIndex={-1} data-arrival-focus="" className="text-sm font-medium outline-none">
+                        {GUIDED_TEXT.path.when}
+                      </p>
+                      <WhenControl workspaceId={workspaceId} item={decisionItem} today={today} canDecide={abilities.canDecide} labelledBy="quando-titolo" />
+                    </div>
                   ) : null}
-                  <section id="nota-pubblica" aria-label={PUBLIC_NOTE_TEXT.label} tabIndex={-1} className="scroll-mt-20 space-y-4 rounded-xl border bg-card p-4 outline-none">
-                    <PublicNoteField workspaceId={workspaceId} item={decisionItem} canEdit={abilities.canDecide} />
-                    <ProposerAnswers answers={answersOf(detail.intake)} />
-                  </section>
-                </aside>
-                <div data-slot="detail-folds" className="min-w-0 @min-[58rem]/scheda:col-start-1 @min-[58rem]/scheda:row-start-2">
+                </PathDisclosure>
+              ) : null}
+              <div data-slot="scheda-body" className="mt-8 min-w-0 space-y-10">
+                {noteInView ? publicNote : null}
+                <ImpactBlock view={impact} value={detail.value} cost={detail.cost} costBands={result.costBands} risks={detail.risks} account={account} canEdit={abilities.canEditValuation} />
+                <WorkFlow workspaceId={workspaceId} detail={detail} canEdit={abilities.canEditWhat} tone={agentTone} />
+                {abilities.canSeeNeeds && agentProposals?.length ? (
+                  <AgentProposals workspaceId={workspaceId} useCaseId={detail.id} proposals={agentProposals} canDecide={abilities.canEditNeeds} />
+                ) : null}
+                {abilities.canSeeNeeds && needs ? (
+                  <SectionNeeds
+                    workspaceId={workspaceId}
+                    useCaseId={detail.id}
+                    requirements={needs.lists.requirements}
+                    steps={needs.lists.steps}
+                    linkable={needs.lists.linkable}
+                    refs={needs.refs}
+                    today={today}
+                    canEdit={abilities.canEditNeeds}
+                    referents={referents}
+                    boxAsk={boxAskOf(step)}
+                    boxOwnsChoose={step.action.type === "referente" && step.action.mode === "scegli"}
+                    canEditValuation={abilities.canEditValuation}
+                    useCaseVersion={detail.version}
+                    needLinks={abilities.canEditNeeds ? needLinks : null}
+                  />
+                ) : null}
+                <div data-slot="detail-folds" className="min-w-0">
                   <Fold id="valutazione" title={t.valutazione} summary={summaries.valutazione}>
                     <SectionValuation
                       workspaceId={workspaceId}
@@ -477,7 +509,13 @@ export function UseCaseDetailView({
                       areaOptions={guide?.areas ?? null}
                       intake={<IntakeDetails workspaceId={workspaceId} detail={detail} canEdit={abilities.canEditWhat} proposer={proposer} labels={guide} bare />}
                     />
+                    {noteInView ? null : publicNote}
                   </Fold>
+                  {contextFold ? (
+                    <Fold id="contesto" title={t.contesto} summary={summaries.contesto}>
+                      <UseCaseContextView workspaceId={workspaceId} today={today} context={contextFold} />
+                    </Fold>
+                  ) : null}
                   {realizationFold ? (
                     <Fold id="realizzazione" title={t.realizzazione} summary={summaries.realizzazione}>
                       <SectionRealization
@@ -494,11 +532,6 @@ export function UseCaseDetailView({
                       />
                     </Fold>
                   ) : null}
-                  {contextFold ? (
-                    <Fold id="contesto" title={t.contesto} summary={summaries.contesto}>
-                      <UseCaseContextView workspaceId={workspaceId} today={today} context={contextFold} />
-                    </Fold>
-                  ) : null}
                   {abilities.canSeeHistory && events ? (
                     <Fold id="storia" title={t.storia} summary={summaries.storia} open={historyAll}>
                       <SectionHistory events={events} kind={detail.kind} today={today} showAllHref={historyAll ? null : historyAllHref} />
@@ -508,8 +541,8 @@ export function UseCaseDetailView({
               </div>
             </ReferentDialogHost>
           </PagePrimaryProvider>
-        </PublicNoteDraftProvider>
-      </Arrival>
+        </Arrival>
+      </PublicNoteDraftProvider>
     </div>
   );
 }
