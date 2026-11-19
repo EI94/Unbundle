@@ -8,7 +8,9 @@ import {
   DEFAULT_HUB_VIEW,
   EXPORT_COLUMNS,
   HUB_PARAM_KEYS,
+  HUB_CHART_MENU,
   HUB_SHOW_PARAMS,
+  MATRIX_SIDES,
   HUB_VIEWS,
   HUB_VIEW_ALIASES,
   RUNS_PER_YEAR,
@@ -33,6 +35,8 @@ import {
   roadmapTotals,
   romeDay,
   shownChart,
+  hubChartMenu,
+  matrixSides,
   toEstimateLabel,
   totalsNote,
   waitingDays,
@@ -341,6 +345,33 @@ test("shownChart: il grafico del menu «⋯» che la Panoramica apre", () => {
   assert.equal(shownChart("benefici", ["matrice", "benefici"]), "benefici");
   assert.equal(shownChart("curva", ["matrice"]), null, "senza curva le corsie");
   assert.equal(shownChart("curva", ["matrice", "curva"]), "curva");
+});
+
+test("(rilascio 10, §3.4) «⋯» › «Grafici ›»: una sola «Matrice», poi «Curva del valore»; i due lati della matrice", () => {
+  assert.deepEqual([...HUB_CHART_MENU], ["matrice", "curva"]);
+  assert.deepEqual(hubChartMenu([]), [], "nessun grafico: niente «Grafici»");
+  assert.deepEqual(hubChartMenu(["matrice"]), ["matrice"]);
+  assert.deepEqual(hubChartMenu(["matrice", "benefici"]), ["matrice"], "una sola matrice, anche con i due lati");
+  assert.deepEqual(hubChartMenu(["matrice", "benefici", "curva"]), ["matrice", "curva"]);
+  assert.deepEqual(hubChartMenu(["curva"]), ["curva"]);
+  assert.deepEqual([...MATRIX_SIDES], ["matrice", "benefici"]);
+  assert.deepEqual(matrixSides(["matrice", "benefici", "curva"]), ["matrice", "benefici"]);
+  assert.equal(matrixSides(["matrice", "curva"]), null, "senza «Benefici e costi» un lato solo");
+  assert.equal(matrixSides([]), null);
+});
+
+test("(rilascio 10) i vecchi indirizzi dei grafici restano: `mostra=matrice|benefici|curva` aprono il loro grafico", () => {
+  const lead = viewer("transformation_lead", true);
+  const all = ["matrice", "benefici", "curva"] as const;
+  for (const mostra of all) {
+    const params = parseHubParams(new URLSearchParams(`vista=panoramica&mostra=${mostra}`), lead);
+    assert.equal(params.mostra, mostra, mostra);
+    assert.equal(shownChart(params.mostra, [...all]), mostra, `${mostra}: il suo contenuto`);
+  }
+  // «Matrice Facilità × Beneficio» è il secondo lato della matrice: lo stesso indirizzo, lo stesso grafico.
+  assert.equal(shownChart(parseHubParams(new URLSearchParams("mostra=benefici"), lead).mostra, ["matrice", "benefici"]), "benefici");
+  // I contributori non vedono grafici: `mostra` non vale.
+  assert.equal(parseHubParams(new URLSearchParams("mostra=matrice"), viewer("contributor", false)).mostra, null);
 });
 
 test("defaultHubView (rilascio 10, D3): «Use case» si apre sempre sulla Panoramica, per ogni ruolo", () => {

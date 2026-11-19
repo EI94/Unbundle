@@ -34,9 +34,6 @@ test("la pagina «Use case» è un contenitore: righe, corsie e tabelle guardano
   assert.match(read("src/components/use-cases/hub.tsx"), /data-slot="use-case-hub" data-view=\{view\} className="@container\/hub /);
   for (const [file, variant, columns] of [
     ["src/components/use-cases/use-case-row.tsx", "@min-[58rem]/hub:", ["grid", "flex-row"]],
-    // La testa della Panoramica: le fasi in fila dal riquadro di 42rem. (Rilascio 10) Il prossimo passo è il pezzo
-    // comune `NextStep`, che va a capo da sé.
-    ["src/components/use-cases/panoramica-top.tsx", "@2xl/hub:", ["grid", "flex-row", "flex "]],
   ] as const) {
     // Ogni stringa del file (className, cn(…), costanti delle classi).
     const classes = [...read(file).matchAll(/["`]([^"`\n]*)["`]/g)].map((match) => match[1]).join(" ");
@@ -45,6 +42,10 @@ test("la pagina «Use case» è un contenitore: righe, corsie e tabelle guardano
   }
   // «Cosa serve» (rilascio 4): la lista e accanto la linea del tempo dai 58rem del riquadro, mai sulla
   // finestra; le righe sono un elenco a ogni larghezza (la tabella non c'è più).
+  // (Rilascio 10, §3.4) La testa della Panoramica è il prossimo passo e il numero grande, pezzi comuni che vanno a capo
+  // da sé: nessuna colonna, e nessuna forma sulla larghezza della finestra.
+  const top = [...read("src/components/use-cases/panoramica-top.tsx").matchAll(/["`]([^"`\n]*)["`]/g)].map((match) => match[1]).join(" ");
+  assert.doesNotMatch(top, VIEWPORT_VARIANT, "panoramica-top.tsx: una forma sulla larghezza della finestra");
   const needs = read("src/components/use-cases/needs-board.tsx");
   assert.ok(needs.includes('"grid gap-8 @min-[58rem]/hub:grid-cols-[minmax(0,1fr)_18rem] @min-[58rem]/hub:gap-x-8"'), "la griglia della vista");
   assert.match(needs, /data-slot="needs-list" className="divide-y rounded-lg border"/);
@@ -71,7 +72,7 @@ test("la «Panoramica»: tre corsie da 58rem del riquadro, prima una sotto l'alt
   // Affiancate da 58rem (928 px, a 1280 px di finestra), con le card una sotto l'altra; più stretto le
   // corsie una sotto l'altra, con le card in due colonne da 36rem.
   assert.ok(lanes.includes('data-slot="lanes" className="grid gap-6 @min-[58rem]/hub:grid-cols-3 @min-[58rem]/hub:gap-4"'));
-  assert.ok(lanes.includes('<ul className="grid gap-2 @xl/hub:grid-cols-2 @min-[58rem]/hub:grid-cols-1">'));
+  assert.ok(lanes.includes('const LANE_GRID = "grid gap-2 @xl/hub:grid-cols-2 @min-[58rem]/hub:grid-cols-1";'));
   for (const file of [
     "src/components/use-cases/panorama-lanes.tsx",
     "src/components/use-cases/lane-card.tsx",
@@ -83,9 +84,10 @@ test("la «Panoramica»: tre corsie da 58rem del riquadro, prima una sotto l'alt
     const classes = [...read(file).matchAll(/["`]([^"`\n]*)["`]/g)].map((match) => match[1]).join(" ");
     assert.doesNotMatch(classes, VIEWPORT_VARIANT, `${file}: una forma sulla larghezza della finestra`);
   }
-  // La card: il titolo prende quel che resta accanto al costo e va a capo dentro una parola lunga.
+  // La card (rilascio 10, D7): il titolo prende tutta la riga e va a capo dentro una parola lunga; il Valore e il costo
+  // stanno nella riga sotto la barra e vanno a capo invece di scrivere uno sopra l'altro.
   const card = read("src/components/use-cases/lane-card.tsx");
-  assert.ok(card.includes("grid-cols-[minmax(0,1fr)_auto]"));
+  assert.ok(card.includes('"flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5"'));
   assert.match(card, /className="line-clamp-2 min-w-0 text-sm font-semibold break-words text-foreground"/);
   assert.match(card, /<li data-slot="lane-card" data-id=\{item\.id\} data-lane=\{place\} data-agent=\{agent\?\.agent\} className="min-w-0">/);
   // Lo script delle schermate controlla le colonne delle corsie dallo stesso riquadro.

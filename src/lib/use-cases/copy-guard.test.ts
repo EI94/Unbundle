@@ -415,7 +415,10 @@ test("copy-guard verde sulle etichette dell'area", () => {
     lanes.laneSummaryText(3, 24_500),
     lanes.laneMoreLabel(1),
     lanes.laneMoreLabel(3),
-    // La testa della Panoramica: le chiavi e le ancore delle fasi (i testi nel componente).
+    // (Rilascio 10) «Vedi tutti (N)» e il riepilogo della piega «In uso».
+    lanes.laneSeeAllLabel(5),
+    lanes.doneSummaryText(1, 38_000),
+    // La testa della Panoramica: le chiavi del passo (i testi nel componente).
     ...exportedStrings(panoramica),
     ...Object.values(PHASE_LABEL),
     ...Object.values(SUB_STATE_LABEL),

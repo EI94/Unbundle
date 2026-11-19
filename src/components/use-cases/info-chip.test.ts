@@ -66,6 +66,8 @@ test("(rilascio 5) lo stato del referente arriva nelle card della Panoramica e n
   assert.equal(cards.length, 3, "corsie, «In realizzazione» e «Realizzati»");
   for (const card of cards) assert.match(card, /\breferentState=\{stateOf\(/, card);
   const laneCard = flat("./lane-card.tsx");
-  assert.equal((laneCard.match(/<ReferentChip state=\{referentState\}/g) ?? []).length, 2, "revisori e contributori");
+  // (Rilascio 10, D7) Un chip solo, per revisori e contributori, e solo quando chiede un'azione.
+  assert.ok(laneCard.includes("const chip = cardReferentState(referentState);"));
+  assert.equal((laneCard.match(/<ReferentChip state=\{chip\} form="puntino"/g) ?? []).length, 1, "revisori e contributori");
   assert.ok(!laneCard.includes("InfoChip") && !flat("./use-case-row.tsx").includes("InfoChip"), "il chip corto di «Raccolta informazioni» non c'è più");
 });

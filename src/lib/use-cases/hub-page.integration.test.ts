@@ -28,8 +28,8 @@ const { registerHooks } = nodeModule as unknown as {
 //   costo basso, zone, cifre della Panoramica, etichette delle fasce ed export le usano.
 // - Il contributore: titolo, fase e «Quando», solo «Cerca per titolo», codice e nota pubblica
 //   delle sole proprie proposte; nessun «€», nessun `[data-figure]`.
-// - La testa della Panoramica: le fasi, le cifre ai revisori e «Prossimo passo» con il solo pulsante
-//   pieno («Nuovo use case» bordato); con un filtro solo fasi e cifre, ai contributori solo le fasi.
+// - La testa della Panoramica (rilascio 10, §3.4): ai revisori «Prossimo passo» con il solo pulsante pieno e il
+//   numero grande («Nuovo» bordato); con un filtro solo il numero grande; ai contributori niente testa.
 // - Vuoti, filtri senza risultati, i grafici del menu «⋯» (sotto la matrice gli elenchi chiusi «N da
 //   stimare», che `stima` apre; «Tipo» solo dove filtra), pannello laterale e pannello rapido.
 // - «Agente» (rilascio «Panoramica»): il workspace P ha titoli con il prefisso dell'agente
@@ -347,13 +347,14 @@ async function panelOf(person: Person, workspaceId: string, searchParams: Record
   return when + renderToStaticMarkup(panelParts.createElement(panelParts.NextStepRow, { ...props, step: panel.nextStep, candidates: panel.candidates, canMarkInProgress: false, filled: panel.nextStep.mine, whyId: "perche" }));
 }
 
-/** Le voci dei grafici nel menu «⋯» (`HubHeader.menu.charts`): il contenuto del menu non è nell'HTML finché è chiuso. */
-/** (Rilascio 5, §12) I grafici di «Grafici» nella Panoramica (null senza il menu «⋯»), e se il «⋯» ne ha ancora. */
+/**
+ * (Rilascio 10, §3.4) Le voci di «⋯» › «Grafici ›» (`HubHeader.menu.charts`): il contenuto del menu non è nell'HTML
+ * finché è chiuso. null senza il menu «⋯».
+ */
 async function menuCharts(person: Person, workspaceId: string, searchParams: Record<string, string>) {
   const { tree } = await hubTree(person, workspaceId, searchParams);
-  const [menu] = findProp(tree, "menu") as Array<Record<string, unknown> | null>;
-  const [charts] = findProp(tree, "charts") as Array<Array<{ label: string; href: string }>>;
-  return menu ? { charts: charts ?? [], inMenu: Object.hasOwn(menu, "charts") } : null;
+  const [menu] = findProp(tree, "menu") as Array<{ charts?: Array<{ label: string; href: string }> } | null>;
+  return menu ? (menu.charts ?? []) : null;
 }
 
 before(async () => {
@@ -615,10 +616,12 @@ test("selettore delle viste: ai revisori «Panoramica», «Da decidere» e «Cos
   assert.deepEqual(contributor.map((segment) => segment.label), ["Panoramica", "In valutazione"]);
 });
 
-test("«Cosa serve»: un solo pulsante pieno, «Tipo» è un filtro, niente matrice né corsie", opts, async () => {
+test("«Cosa serve»: al massimo un pulsante pieno, «Tipo» è un filtro, niente matrice né corsie", opts, async () => {
   const page = await html("ls", ids.wsA, { vista: "cosa-serve" });
   assert.equal(viewOf(page), "cosa-serve");
-  assert.equal(filledButtons(page), 1, "un solo pulsante pieno");
+  // (Rilascio 10, §3.4) «Nuovo» è bordato in ogni vista: il pulsante pieno è il passo della vista.
+  assert.ok(filledButtons(page) <= 1, "al massimo un pulsante pieno");
+  assert.ok(!/class="[^"]*\bbg-primary\b/.test(newUseCaseTag(page)), "«Nuovo» bordato");
   // (Rilascio 5, D25) «Tipo» è un filtro dentro «Altri filtri»; nella prima riga «Referente».
   assert.ok(page.includes('aria-label="Referente: Tutti"') && page.includes('aria-label="Altri filtri"'), "la prima riga");
   assert.deepEqual(filterKinds((await hubTree("ls", ids.wsA, { vista: "cosa-serve" })).tree), ["filtro"], "«Tipo» come filtro");
@@ -627,10 +630,10 @@ test("«Cosa serve»: un solo pulsante pieno, «Tipo» è un filtro, niente matr
   assert.ok(!page.includes('data-slot="show-toggle"') && !page.includes('data-slot="chart-header"'), "nessun interruttore e nessun grafico");
 });
 
-test("testata: H1, un solo pulsante pieno «Nuovo use case» (pannello rapido per Lateral Space), bordato con «Prossimo passo»; menu «⋯» solo ai revisori", opts, async () => {
+test("(rilascio 10, §3.4) testata: H1 senza sottotitolo, «Nuovo» bordato (pannello rapido per Lateral Space), pieno solo al contributore; menu «⋯» solo ai revisori", opts, async () => {
   const ls = await html("ls", ids.wsA, { vista: "da-decidere" });
   assert.match(ls, /<h1[^>]*>Use case<\/h1>/);
-  assert.ok(ls.includes("Dal basso e dall&#x27;alto: quali use case realizzare e quando.") || ls.includes("Dal basso e dall'alto: quali use case realizzare e quando."));
+  assert.ok(!ls.includes("Dal basso e dall"), "nessun sottotitolo");
   assert.match(ls, /href="\/dashboard\/[^"]+\/use-cases\?vista=da-decidere&amp;nuovo=1"/, "Lateral Space: pannello rapido");
   assert.match(await html("ls", ids.wsA), /href="\/dashboard\/[^"]+\/use-cases\?vista=panoramica&amp;nuovo=1"/, "dalla Panoramica, la vista d'arrivo");
   assert.ok(ls.includes('aria-label="Altre azioni"'));
@@ -639,23 +642,27 @@ test("testata: H1, un solo pulsante pieno «Nuovo use case» (pannello rapido pe
   const contributor = await html("contributor", ids.wsA);
   assert.ok(contributor.includes(`href="/dashboard/${ids.wsA}/use-cases/nuovo"`));
   assert.ok(!contributor.includes('aria-label="Altre azioni"'), "niente menu «⋯» per il contributore");
+  // «Nuovo» a schermo, «Nuovo use case» per i lettori di schermo.
   for (const page of [ls, builder, contributor]) {
-    assert.equal(filledButtons(page), 1, "un solo pulsante pieno");
+    assert.match(newUseCaseTag(page), /aria-label="Nuovo use case"/);
+    assert.ok(filledButtons(page) <= 1, "al massimo un pulsante pieno");
   }
-  // Nella Panoramica con il prossimo passo (rilascio 10, D3: in A ci sono proposte da decidere) il pulsante pieno è
-  // il suo, «Decidi N use case»: «Nuovo use case» resta, bordato.
+  // Ai revisori «Nuovo» è bordato in ogni vista: il pulsante pieno è il passo della vista. Nella Panoramica con il
+  // prossimo passo (D3: in A ci sono proposte da decidere) è il suo, «Decidi N use case».
+  for (const page of [ls, builder]) assert.ok(!/class="[^"]*\bbg-primary\b/.test(newUseCaseTag(page)), "«Nuovo» bordato");
   for (const person of ["ls", "builder"] as const) {
     const overview = await html(person, ids.wsA, { vista: "panoramica" });
     assert.equal(filledButtons(overview), 1, `${person}: un solo pulsante pieno`);
     const box = sectionOf(overview, "next-step");
     assert.equal(filledButtons(box), 1, `${person}: il pulsante pieno è nel prossimo passo`);
-    assert.ok(box.includes(">Prossimo passo</p>") && /Decidi \d+\u00a0use\u00a0case/.test(box), box);
+    assert.ok(box.includes(">Prossimo passo</p>") && /Decidi \d+ use case/.test(box), box);
     assert.match(box, new RegExp(`href="/dashboard/${ids.wsA}/use-cases\\?vista=da-decidere"`));
     const button = newUseCaseTag(overview);
-    assert.ok(!/class="[^"]*\bbg-primary\b/.test(button), `${person}: «Nuovo use case» bordato`);
+    assert.ok(!/class="[^"]*\bbg-primary\b/.test(button), `${person}: «Nuovo» bordato`);
     assert.match(button, /class="[^"]*\bdark:border-input\b/);
   }
-  // Senza riquadro (il contributore) «Nuovo use case» resta pieno.
+  // Il contributore non ha un prossimo passo: «Nuovo» resta pieno, il suo modo di proporre.
+  assert.equal(filledButtons(contributor), 1);
   assert.match(newUseCaseTag(await html("contributor", ids.wsA, { vista: "panoramica" })), /class="[^"]*\bbg-primary\b/);
 });
 
@@ -668,7 +675,7 @@ test("fasce del workspace diverse dalle predefinite: matrice, linea del costo ba
   assert.ok(page.includes('data-slot="value-cost-matrix"'));
   assert.ok(!page.includes('data-slot="lanes"'), "la matrice al posto delle corsie");
   // Dal menu «⋯»: sopra la matrice «‹ Torna alla Panoramica», che torna alle corsie, e il nome del grafico.
-  assert.deepEqual(chartHeaderOf(page), { href: `/dashboard/${ids.wsA}/use-cases?vista=panoramica`, text: "Torna alla Panoramica", title: "Matrice Valore × Costo" });
+  assert.deepEqual(chartHeaderOf(page), { href: `/dashboard/${ids.wsA}/use-cases?vista=panoramica`, text: "Torna alla Panoramica", title: "Matrice" });
   assert.ok(page.includes('data-chart="matrice"'));
   // 30.000 € nella seconda fascia del workspace (15.001-40.000): 1,5 + 14.999/24.999 ≈ 2,1 → 32 %.
   // Con le fasce predefinite (25.001-65.000) sarebbe 1,625 → 22,5 %.
@@ -706,51 +713,48 @@ test("fasce del workspace diverse dalle predefinite: matrice, linea del costo ba
   assert.match(approved, /data-slot="when-control"/);
 });
 
-test("fasce del workspace: «costo di realizzazione» con il riferimento della fascia, «su N use case · M da fascia»", opts, async () => {
+test("(rilascio 10, §3.4) Panoramica: il numero grande «su N use case», il costo delle card con la fascia del workspace e senza la fonte (D7)", opts, async () => {
   const page = await html("builder", ids.wsA, { vista: "panoramica" });
-  const figures = sectionOf(page, "overview-figures");
-  // 30.000 € (importo) + 40.000 € (seconda fascia del workspace); con le predefinite sarebbe 95.000 €.
-  const cost = figures.slice(figures.indexOf('data-figure="totale-costo"'));
-  assert.match(cost, /^data-figure="totale-costo"[^>]*><p[^>]*><span class="whitespace-nowrap">70\.000 €<\/span><\/p><p class="text-sm">costo di realizzazione<\/p><p[^>]*>su 2\u00a0use\u00a0case\u00a0· 1\u00a0da fascia</);
-  // 50.000 € + 25.000 €, «su 2 use case».
-  const value = figures.slice(figures.indexOf('data-figure="totale-valore"'));
-  assert.match(value, /^data-figure="totale-valore"[^>]*><p[^>]*><span class="whitespace-nowrap">75\.000 €<\/span><\/p><p class="text-sm">valore all&#x27;anno<\/p><p[^>]*>su 2\u00a0use\u00a0case</);
-  assert.ok(page.includes(`su 2${N}use${N}case<`) && !page.includes("su 2 use case<"), "«su 2 use case» non va a capo");
-  for (const text of ["Valore misurato", "Valore atteso all", "Costo impegnato"]) assert.ok(!page.includes(text), text);
-  // Nessun numero resta da solo in fondo a una riga: nelle cifre, in «Prossimo passo» e nei riassunti
-  // delle corsie mai uno spazio normale dopo una cifra (le cifre grandi non vanno a capo per intero).
-  const lines = [figures, page.includes('data-slot="next-step"') ? sectionOf(page, "next-step") : "", ...[...page.matchAll(/<p class="text-xs text-muted-foreground tabular-nums">([\s\S]*?)<\/p>/g)].map((match) => match[1])];
-  for (const line of lines) assert.doesNotMatch(line.replace(/^[^<>]*>/, "").replace(/<span class="whitespace-nowrap">[^<]*<\/span>/g, "").replace(/<[^>]+>/g, ""), /\d /, line);
-  // Le fasi: le proposte da decidere, gli approvati delle corsie (con lo scaduto e la best practice),
-  // quello in realizzazione e quello realizzato.
-  const strip = sectionOf(page, "phase-strip").replace(/^[^>]*>|<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-  assert.match(strip, /^Da decidere \d+ → Approvati 4 → In realizzazione 1 → In uso 1$/);
-  // Lo use case di questo trimestre e lo scaduto, come nella corsia.
-  assert.match(figures, /data-figure="totale-trimestre"[^>]*><p[^>]*><span class="whitespace-nowrap">2<\/span><\/p><p class="text-sm">use case in questo trimestre</);
-  // La card della Panoramica: l'avvio con la sua fonte e gli euro all'anno, senza parola né «Valore:» e «Costo:».
+  // Un solo numero grande: 50.000 € + 25.000 €, «su 2 use case»; le altre cifre stanno nella Home.
+  assert.ok(page.includes('data-figure="totale-valore"'), "il numero grande");
+  const big = page.slice(page.indexOf('data-figure="totale-valore"'));
+  assert.match(big, /^data-figure="totale-valore"><div data-slot="big-number"[^>]*><p data-slot="big-number-value"[^>]*>75\.000 €<\/p><p data-slot="big-number-label"[^>]*>Valore all&#x27;anno<\/p><p data-slot="big-number-note"[^>]*>su 2 use case<\/p>/);
+  assert.equal((page.match(/data-slot="big-number"/g) ?? []).length, 1, "un solo numero grande");
+  assert.match(big, new RegExp(`<a [^>]*href="/dashboard/${ids.wsA}\\?apri=numeri"[^>]*>Tutti i numeri`), "«Tutti i numeri ›» porta alla Home");
+  for (const text of ["Valore misurato", "Valore atteso all", "Costo impegnato", "costo di realizzazione", "use case in questo trimestre", "Su tutto il portafoglio", 'data-slot="phase-strip"', 'data-slot="overview-figures"']) {
+    assert.ok(!page.includes(text), text);
+  }
+  // Nessun numero resta da solo in fondo a una riga: nel numero grande e in «Prossimo passo» mai uno spazio normale
+  // dopo una cifra (le cifre grandi non vanno a capo per intero).
+  const note = /<p data-slot="big-number-note"[^>]*>([\s\S]*?)<\/p>/.exec(page)?.[1] ?? "";
+  for (const line of [note, sectionOf(page, "next-step")]) assert.doesNotMatch(line.replace(/^[^<>]*>/, "").replace(/<[^>]+>/g, ""), /\d /, line);
+  // Le corsie: «T4 2026» e le altre con il loro conteggio; gli approvati sono quattro (con lo scaduto e la best practice).
+  const counts = [...page.matchAll(/<h2 id="lane-[a-z_]+"[^>]*>[^<]*<span[^>]*>(\d+)<\/span><\/h2>/g)].map((match) => Number(match[1]));
+  const later = /<section id="panoramica-piu-avanti"[\s\S]*?<span class="min-w-0 text-sm font-normal text-muted-foreground">(\d+) use case<\/span>/.exec(page);
+  assert.equal(counts.reduce((sum, n) => sum + n, 0) + Number(later?.[1] ?? 0), 4, `${counts} ${later?.[1]}`);
+  // La card: «Costo 30.000 €» e gli euro all'anno, senza la fonte, la parola o «Valore:» e «Costo:».
   const amount = rowOf(page, cards.amount.id);
   assert.ok(amount.includes("Costo 30.000 €"), amount);
-  assert.match(amount, /data-source="team_importo"/);
+  assert.ok(!amount.includes("data-source=") && amount.includes('data-source-in="pannello"'), "la fonte sta nel pannello");
   assert.ok(amount.includes(`50.000${N}€${N}all&#x27;anno`), amount);
   assert.doesNotMatch(amount, />Alto</);
   assert.ok(!amount.includes("Valore: ") && !amount.includes("Costo: "), amount);
+  // La fascia del workspace (D15): il suo simbolo, senza la fonte.
   const band = rowOf(page, cards.band.id);
-  assert.ok(band.includes("Costo €€ · fascia"), band);
-  assert.match(band, /data-source="team_fascia"/);
+  assert.ok(band.includes("Costo €€ · fascia") && !band.includes("data-source="), band);
   // Senza cifre: «Valore: da stimare»; il costo che manca non si scrive (lo dice il pannello).
   const overdue = rowOf(page, cards.overdue.id);
   assert.ok(!overdue.includes('data-figure="costo"'), overdue);
   assert.match(overdue, /Valore: <\/span><span[^>]*>da stimare</);
-  // Best practice approvata: «Da diffondere», il Valore e senza costo.
+  // Best practice approvata: il Valore, senza costo; «Da diffondere» lo dicono il pannello e il filtro «Tipo».
   const best = rowOf(page, cards.bestPractice.id);
-  assert.ok(best.includes("Da diffondere"));
+  assert.ok(!best.includes("Da diffondere"));
   assert.match(best, /data-figure="valore"/);
   assert.ok(!best.includes('data-figure="costo"'));
-  // Le corsie per trimestre; «Realizzati» chiusi, con il mese.
-  assert.ok(page.includes(`Questo trimestre${N}· T`));
-  assert.ok(page.includes(`Prossimo trimestre${N}· T`));
-  const done = page.slice(page.indexOf('data-slot="panoramica-realizzati"'), page.indexOf("</details>", page.indexOf('data-slot="panoramica-realizzati"')));
-  assert.ok(done.includes(`data-id="${cards.realized.id}"`), "il realizzato dentro «Realizzati»");
+  // «In uso» chiusa, con il riepilogo e il mese nella card.
+  const done = page.slice(page.indexOf('data-slot="panoramica-realizzati"'), page.indexOf("</section>", page.indexOf('data-slot="panoramica-realizzati"')));
+  assert.ok(done.includes(`data-id="${cards.realized.id}"`), "il realizzato dentro «In uso»");
+  assert.match(done, /aria-expanded="false"/);
   assert.match(rowOf(page, cards.realized.id), />In uso</);
 });
 
@@ -865,27 +869,27 @@ test("Panoramica: letture solo dove servono", opts, async () => {
   assert.deepEqual(contributor.data.charts, []);
   assert.equal(contributor.data.chart, null);
   assert.equal(contributor.data.needs, null);
-  // I sub-responsabili sono un avviso di Lateral Space: il revisore del cliente non li legge.
-  assert.equal(lanes.data.subprocessorsPending, false);
+  // (Rilascio 10, §3.4) Niente avviso sui fornitori sulla Panoramica, e nessuna lettura: lo dice il passo «Autorizza i
+  // fornitori». «Chi propone, per area» solo ai revisori: il contributore la trova nella sua Home.
+  assert.ok(!Object.hasOwn(lanes.data, "subprocessorsPending"));
+  assert.equal(contributor.data.participation, null);
 });
 
-test("(rilascio 5) «Grafici»: i grafici con i filtri di adesso a vista nella Panoramica, non più nel «⋯»; mai ai contributori", opts, async () => {
+test("(rilascio 10, §3.4) «⋯» › «Grafici ›»: una sola «Matrice» con i filtri di adesso; nella Panoramica nessun «Grafici» a vista; mai ai contributori", opts, async () => {
   // Con un pannello aperto e «da stimare»: la Panoramica con l'origine di adesso, senza `stima` né
-  // `apri`. Nessuna scheda di A ha «Benefici e costi»: solo la matrice.
+  // `apri`. Nessuna scheda di A ha «Benefici e costi»: solo la matrice, sul lato «Valore × Costo».
   for (const person of ["ls", "builder", "manager"] as const) {
-    const menu = await menuCharts(person, ids.wsA, { vista: "panoramica", origine: "transformation", stima: "mancante", apri: cards.amount.id });
-    assert.ok(menu, person);
-    assert.deepEqual(
-      menu.charts,
-      [{ label: "Matrice Valore × Costo", href: `/dashboard/${ids.wsA}/use-cases?vista=panoramica&mostra=matrice&origine=transformation` }],
-      person,
-    );
-    assert.equal(menu.inMenu, false, `${person}: il «⋯» ha solo «Esporta Excel» e «Proponi da Activity mapping»`);
+    const charts = await menuCharts(person, ids.wsA, { vista: "panoramica", origine: "transformation", stima: "mancante", apri: cards.amount.id });
+    assert.deepEqual(charts, [{ label: "Matrice", href: `/dashboard/${ids.wsA}/use-cases?vista=panoramica&mostra=matrice&origine=transformation` }], person);
+    const page = await html(person, ids.wsA, { vista: "panoramica" });
+    assert.ok(!page.includes('data-action="charts-menu"') && !page.includes(">Grafici<"), `${person}: niente «Grafici» a vista`);
   }
   assert.equal(await menuCharts("contributor", ids.wsA, { vista: "panoramica" }), null, "niente menu «⋯» per il contributore");
   // Nessuno use case da mettere in ordine (D: solo una best practice; E: una scheda chiusa): nessun grafico.
-  assert.deepEqual((await menuCharts("ls", ids.wsD, { vista: "panoramica" }))?.charts, []);
-  assert.deepEqual((await menuCharts("builder", ids.wsE, { vista: "panoramica" }))?.charts, []);
+  assert.deepEqual(await menuCharts("ls", ids.wsD, { vista: "panoramica" }), []);
+  assert.deepEqual(await menuCharts("builder", ids.wsE, { vista: "panoramica" }), []);
+  // Senza «Benefici e costi» la matrice ha un lato solo: niente interruttore sopra.
+  assert.ok(!(await html("ls", ids.wsA, { vista: "panoramica", mostra: "matrice" })).includes('aria-label="Lato della matrice"'));
 });
 
 /**
@@ -937,7 +941,7 @@ test("grafici del menu «⋯»: tengono i filtri; «Torna alla Panoramica» li t
 
   // Nessuna scheda con questi filtri: «Torna alla Panoramica» resta sopra il vuoto.
   const none = await html("ls", ids.wsA, { vista: "priorita", mostra: "matrice", q: "nessuna-corrispondenza" });
-  assert.equal(chartHeaderOf(none).title, "Matrice Valore × Costo");
+  assert.equal(chartHeaderOf(none).title, "Matrice");
   assert.ok(none.includes("Nessuno use case con questi filtri."));
   assert.ok(none.includes('data-chart="matrice"'));
 
@@ -955,9 +959,10 @@ test("grafici del menu «⋯»: tengono i filtri; «Torna alla Panoramica» li t
   const oldList = await html("ls", ids.wsA, { vista: "priorita", mostra: "lista" });
   assert.ok(!oldList.includes('data-slot="chart-header"') && !oldList.includes('data-slot="value-cost-matrix"'));
 
-  // «Torna alla Panoramica» è un contorno: la pagina tiene un solo pulsante pieno, con le corsie e con il grafico.
+  // «Torna alla Panoramica» è un contorno: con le corsie il solo pulsante pieno è il prossimo passo; sul grafico,
+  // che non ha un passo, nessuno («Nuovo» è bordato, rilascio 10).
   assert.equal(filledButtons(await html("ls", ids.wsA, { vista: "panoramica" })), 1, "corsie");
-  assert.equal(filledButtons(page), 1, "matrice");
+  assert.equal(filledButtons(page), 0, "matrice");
 });
 
 /** Il `<details>` con quel `data-slot`: la sua apertura e il contenuto fino alla chiusura. */
@@ -1103,12 +1108,12 @@ test("filtri: origine, tipo e «Altri filtri» ai revisori; senza risultati «Ne
   assert.ok(transformation.includes(`data-id="${cards.band.id}"`));
   assert.ok(!transformation.includes(`data-id="${cards.amount.id}"`));
   assert.ok(transformation.includes("Togli i filtri"));
-  // Con un filtro le fasi e le cifre seguono il filtro; «Su tutto il portafoglio» e «Prossimo passo»
-  // dicono tutto il workspace e non ci sono: il pulsante pieno torna «Nuovo use case».
-  assert.ok(transformation.includes('data-slot="phase-strip"') && transformation.includes('data-slot="overview-figures"'));
-  assert.ok(!transformation.includes('data-slot="next-step"') && !transformation.includes('data-slot="portfolio-line"'));
-  assert.equal(filledButtons(transformation), 1);
-  assert.match(newUseCaseTag(transformation), /class="[^"]*\bbg-primary\b/);
+  // (Rilascio 10) Con un filtro il numero grande segue il filtro; il «Prossimo passo» dice tutto il workspace e non
+  // c'è. «Nuovo» resta bordato: nessun pulsante pieno.
+  assert.ok(transformation.includes('data-slot="big-number"') && !transformation.includes('data-slot="phase-strip"'));
+  assert.ok(!transformation.includes('data-slot="next-step"'));
+  assert.equal(filledButtons(transformation), 0);
+  assert.ok(!/class="[^"]*\bbg-primary\b/.test(newUseCaseTag(transformation)));
   // Nessuno use case con questi filtri: niente testa, solo il vuoto delle corsie.
   const nothing = await html("ls", ids.wsA, { vista: "panoramica", q: "nessuna-corrispondenza" });
   assert.ok(nothing.includes("Nessuno use case con questi filtri.") && !nothing.includes('data-slot="panoramica-top"'));
@@ -1243,19 +1248,19 @@ test("Panoramica «Per agente»: una card per agente, poi le corsie del solo age
   assert.match(libraCard, /<span data-figure="valore" [^>]*>17\.250\u00a0€\u00a0all&#x27;anno<\/span>/);
   assert.match(libraCard, /<span data-slot="agent-in-progress" class="text-xs text-muted-foreground tabular-nums">\+\u00a04\.043\u00a0€ in realizzazione<\/span>/);
   assert.equal(grid.split('data-slot="agent-in-progress"').length - 1, 1, "solo LIBRA: SIRIO, solo in realizzazione, non ha una card");
-  // La pagina fa ancora la cifra in testa: le card e «In realizzazione» (4.043 €), la nota non conta due volte.
+  // La pagina fa ancora il numero grande: le card e la nota in realizzazione (4.043 €), che non conta due volte.
   const figureOf = (page: string) => {
-    const tile = sectionOf(page, "overview-figures");
-    const amount = /^data-figure="totale-valore"[^>]*><p[^>]*><span class="whitespace-nowrap">([\d.]+) €<\/span>/.exec(tile.slice(tile.indexOf('data-figure="totale-valore"')))?.[1];
-    assert.ok(amount, "«valore contato all'anno»");
+    const amount = /<p data-slot="big-number-value"[^>]*>([\d.]+) €<\/p>/.exec(page)?.[1];
+    assert.ok(amount, "«Valore all'anno»");
     return Number(amount.replace(/\./g, ""));
   };
   const eurOf = (text: string) => Number(text.replace(/\./g, ""));
   const agentGrid = grid.slice(grid.indexOf('data-slot="agent-grid"'), grid.indexOf("</ul>", grid.indexOf('data-slot="agent-grid"')));
   const cardsEur = [...agentGrid.matchAll(/<span data-figure="valore" [^>]*>([\d.]+)\u00a0€/g)].reduce((sum, match) => sum + eurOf(match[1]), 0);
-  const inProgressEur = eurOf(/<span data-figure="in-realizzazione">([\d.]+)\u00a0€/.exec(grid)?.[1] ?? "0");
+  const inProgressEur = [...agentGrid.matchAll(/data-slot="agent-in-progress"[^>]*>\+\u00a0([\d.]+)\u00a0€/g)].reduce((sum, match) => sum + eurOf(match[1]), 0);
   assert.deepEqual([cardsEur, inProgressEur, figureOf(grid)], [20_250, 4_043, 24_293]);
-  assert.equal(filledButtons(grid), 1, "un solo pulsante pieno");
+  // Con un filtro (l'origine) niente prossimo passo, e «Nuovo» resta bordato: nessun pulsante pieno.
+  assert.equal(filledButtons(grid), 0, "nessun pulsante pieno");
   // Aperto dall'indirizzo, «Per agente» viene in vista al caricamento: il segno nel gruppo, prima delle card.
   const MARK = 'data-slot="reveal-on-load"';
   assert.equal(grid.split(MARK).length - 1, 1);
@@ -1300,8 +1305,8 @@ test("Panoramica «Per agente»: una card per agente, poi le corsie del solo age
   assert.ok(!contributor.includes("agent-in-progress") && !contributor.includes("€"), "nessuna cifra al contributore");
   // Senza agenti nei titoli niente scelta, e un vecchio `mostra=agenti` mostra le corsie.
   const plain = await html("ls", ids.wsA, { vista: "panoramica", mostra: "agenti" });
-  // (Rilascio 5) La riga resta per «Grafici», senza «Per trimestre | Per agente».
-  assert.ok(!plain.includes('aria-label="Raggruppa"') && !plain.includes("agent-grid") && plain.includes('data-slot="lanes"'));
+  // (Rilascio 10) Senza la scelta niente riga sopra le corsie: «Grafici» sta nel «⋯».
+  assert.ok(!plain.includes('aria-label="Raggruppa"') && !plain.includes("agent-grid") && !plain.includes("plan-grouping") && plain.includes('data-slot="lanes"'));
   for (const page of [contributor, plain]) assert.ok(!page.includes(MARK), "nessun segno senza «Per agente»");
 });
 
@@ -1348,12 +1353,9 @@ test("contributore: titolo, fase e «Quando»; solo «Cerca per titolo»; codice
   assert.ok(!(await html("ls", ids.wsA, { vista: "da-decidere" })).includes('data-slot="answer-notice"'));
   const overview = await html("contributor", ids.wsA, { vista: "panoramica" });
   assert.ok(overview.includes(cards.amount.title) && overview.includes("Approvato · T"));
-  // In testa solo le fasi: «In valutazione» senza numero; né cifre, né riga, né «Prossimo passo».
-  const strip = sectionOf(overview, "phase-strip");
-  const evaluating = strip.slice(strip.indexOf('data-step="da_decidere"'), strip.indexOf("</li>", strip.indexOf('data-step="da_decidere"')));
-  assert.ok(evaluating.includes(">In valutazione<"), evaluating);
-  assert.ok(!evaluating.includes("tabular-nums") && !evaluating.includes("—"), "nessun numero su «In valutazione»");
-  for (const text of ['data-slot="overview-figures"', 'data-slot="next-step"', 'data-slot="portfolio-line"', "costo di realizzazione", "Su tutto il portafoglio", "Prossimo passo"]) {
+  // (Rilascio 10) Nessuna testa: né numero grande, né «Prossimo passo», né fasi; «In valutazione» sta nelle viste.
+  assert.ok(overview.includes("<span>In valutazione</span>"));
+  for (const text of ['data-slot="panoramica-top"', 'data-slot="phase-strip"', 'data-slot="big-number"', 'data-slot="next-step"', "costo di realizzazione", "Prossimo passo", "Chi propone, per area"]) {
     assert.ok(!overview.includes(text), `contributore: «${text}»`);
   }
   assert.equal(filledButtons(overview), 1, "il pulsante pieno resta «Nuovo use case»");
@@ -1368,16 +1370,16 @@ test("Panoramica: gli scaduti in cima a «Questo trimestre» con «Scaduto» ai 
   assert.match(overdue, /data-lane="questo_trimestre"/);
   const lane = reviewer.slice(reviewer.indexOf('data-slot="lane" data-lane="questo_trimestre"'));
   assert.equal(/data-slot="lane-card" data-id="([^"]+)"/.exec(lane)?.[1], cards.overdue.id, "il primo della corsia");
-  // Il tema dell'app è scuro senza la classe `.dark`: il rosso è quello che si legge lì (H4p).
-  assert.ok(overdue.includes(">Scaduto<") && overdue.includes("text-red-300"), overdue);
-  assert.ok(overdue.includes(">T1 2020<"), "il trimestre passato accanto a «Scaduto»");
+  // (Rilascio 10) «Scaduto» è uno stato: puntino rosso più parola; il trimestre passato lo dice il pannello.
+  assert.ok(overdue.includes(">Scaduto<") && overdue.includes("bg-uc-rosso"), overdue);
+  assert.ok(!overdue.includes(">T1 2020<"), "il trimestre passato sta nel pannello");
   assert.ok(!reviewer.includes(">Scaduti<"), "nessun gruppo «Scaduti»");
   // Al contributore niente tag, niente rosso e niente trimestre a parte: lo dice la sua pillola, nessun giudizio sul team.
   const contributor = await html("contributor", ids.wsA, { vista: "panoramica" });
   const card = rowOf(contributor, cards.overdue.id);
   assert.ok(card.includes(cards.overdue.title));
   assert.ok(!contributor.includes(">Scaduto<"), "niente tag «Scaduto» al contributore");
-  assert.ok(!contributor.includes("text-red-300"), "niente rosso al contributore");
+  assert.ok(!contributor.includes('data-slot="expired-tag"'), "niente rosso al contributore");
   assert.ok(!card.includes(">T1 2020<"), "niente trimestre a parte");
   assert.ok(card.includes(">Approvato · T1 2020<"), "la pillola della fase");
 });
@@ -1519,7 +1521,7 @@ test("vuoti: nessuno use case, niente da decidere, niente da mettere in ordine, 
   const hReviewer = await html("ls", ids.wsH, { vista: "panoramica" });
   assert.ok(hReviewer.includes(`data-id="${cards.hHidden.id}"`) && !hReviewer.includes("Niente in programma"), "il revisore vede l'approvato");
   const hContributor = await html("contributor", ids.wsH, { vista: "panoramica" });
-  assert.ok(hContributor.includes('data-slot="phase-strip"'), "la sua proposta c'è: la pagina non è vuota");
+  assert.ok(!hContributor.includes("Nessuno use case, per ora") && hContributor.includes('data-slot="segmented-nav"'), "la sua proposta c'è: la pagina non è vuota");
   assert.ok(hContributor.includes("Niente in programma, per ora"), "le corsie vuote");
   assert.ok(hContributor.includes(`Qui trovi gli use case approvati visibili a tutti. Le proposte sono in «In${N}valutazione».`));
   for (const text of ["Nessuno use case è ancora approvato", "Approva uno use case", cards.hHidden.title, cards.hHidden.id]) assert.ok(!hContributor.includes(text), text);

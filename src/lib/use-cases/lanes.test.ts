@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { agentParamOf } from "./agents.ts";
 import { formatEuro, shownPerYearEur, type ValueParts } from "./format.ts";
 import {
+  CARD_REFERENT_STATES,
   LANE_BAR_MIN,
   LANE_KEYS,
   LANE_PREVIEW,
@@ -11,12 +12,15 @@ import {
   agentGroups,
   agentInProgressText,
   buildLanes,
+  cardReferentState,
   compareLaneItems,
   countedEurOf,
+  doneSummaryText,
   laneBarScale,
   laneBarWidth,
   laneCountedText,
   laneMoreLabel,
+  laneSeeAllLabel,
   laneSummaryText,
   laneValueAmount,
   laneValueRank,
@@ -81,12 +85,13 @@ test("tre corsie: gli scaduti in cima a «Questo trimestre» con il loro trimest
   const lanes = buildLanes([decide, q3, none, q2, next, current, past, best, building, building2, doneOld, doneNew], TODAY);
 
   assert.deepEqual(
-    lanes.lanes.map((lane) => [lane.key, lane.label, lane.short]),
+    lanes.lanes.map((lane) => [lane.key, lane.label, lane.title, lane.short]),
     [
-      ["questo_trimestre", "Questo trimestre · T4 2026", "T4"],
-      ["prossimo_trimestre", "Prossimo trimestre · T1 2027", "T1"],
-      ["piu_avanti", "Più avanti", "Più avanti"],
+      ["questo_trimestre", "Questo trimestre · T4 2026", "T4 2026", "T4"],
+      ["prossimo_trimestre", "Prossimo trimestre · T1 2027", "T1 2027", "T1"],
+      ["piu_avanti", "Più avanti", "Più avanti", "Più avanti"],
     ],
+    "(rilascio 10) a schermo il trimestre, «T4 2026»",
   );
   const [now, soon, later] = lanes.lanes;
   assert.deepEqual(
@@ -110,6 +115,7 @@ test("tre corsie: gli scaduti in cima a «Questo trimestre» con il loro trimest
   assert.ok(!lanes.lanes.some((lane) => lane.entries.some((entry) => entry.item === decide)), "solo gli approvati");
   assert.deepEqual(lanes.inProgress, [building2, building], "per titolo");
   assert.deepEqual(lanes.done, [doneNew, doneOld], "dal più recente");
+  assert.equal(lanes.doneCountedEurYear, 0, "«In uso» senza euro contati");
   assert.equal(now.countedEurYear, 12_250);
   assert.equal(soon.countedEurYear, 0);
 });
@@ -123,14 +129,20 @@ test("le tre corsie ci sono sempre; a gennaio il T4 2026 è scaduto in «Questo 
   const q4 = hub({ title: "Del T4", targetQuarter: "2026-Q4" });
   const january = buildLanes([q4], "2027-01-02");
   assert.equal(january.lanes[0].label, "Questo trimestre · T1 2027");
+  assert.equal(january.lanes[0].title, "T1 2027");
   assert.equal(january.lanes[1].label, "Prossimo trimestre · T2 2027");
   assert.deepEqual(
     january.lanes[0].entries.map((entry) => [entry.item, entry.expired, entry.quarterNote]),
     [[q4, true, "T4 2026"]],
   );
-  assert.deepEqual(PANORAMA_SECTION_ID, { approvati: "panoramica-approvati", inRealizzazione: "panoramica-in-realizzazione", realizzati: "panoramica-realizzati" });
+  assert.deepEqual(PANORAMA_SECTION_ID, {
+    approvati: "panoramica-approvati",
+    piuAvanti: "panoramica-piu-avanti",
+    inRealizzazione: "panoramica-in-realizzazione",
+    realizzati: "panoramica-realizzati",
+  });
   assert.ok(Object.isFrozen(PANORAMA_SECTION_ID));
-  assert.equal(LANE_PREVIEW, 5);
+  assert.equal(LANE_PREVIEW, 3, "(rilascio 10) tre card, poi «Vedi tutti (N)»");
 });
 
 test("l'ordine della corsia: euro contati, poi «fino a», poi il Valore in parola, poi il resto; a pari cifra il codice", () => {
@@ -188,12 +200,34 @@ test("contributori: le stesse corsie per titolo, senza «Scaduto», trimestre a 
   assert.equal(lanes.inProgressCountedEurYear, null);
 });
 
-test("testi della corsia: «1 use case · 12.250 € contati all'anno», «Mostra l'altro», «Mostra gli altri 4»", () => {
+test("testi della corsia: «1 use case · 12.250 € contati all'anno», «Vedi tutti (N)», la piega «In uso»", () => {
   assert.equal(laneSummaryText(1, 12_250), "1 use case · 12.250 € contati all'anno");
   assert.equal(laneSummaryText(3, 0), "3 use case");
   assert.equal(laneSummaryText(3, null), "3 use case");
+  // «Valore per tipo di ritorno» dice ancora quanti ne restano.
   assert.equal(laneMoreLabel(1), "Mostra l'altro");
   assert.equal(laneMoreLabel(4), "Mostra gli altri 4");
+  // (Rilascio 10) Le card della Panoramica: il conto di tutto l'elenco, non di quelli nascosti.
+  assert.equal(laneSeeAllLabel(5), "Vedi tutti (5)");
+  assert.equal(laneSeeAllLabel(1_204), "Vedi tutti (1.204)");
+  assert.equal(doneSummaryText(1, 38_000), "1 use case · 38.000 € all'anno");
+  assert.equal(doneSummaryText(2, 0), "2 use case");
+  assert.equal(doneSummaryText(2, null), "2 use case");
+});
+
+test("(rilascio 10, D7) il chip del referente sulla card solo quando chiede un'azione", () => {
+  assert.deepEqual([...CARD_REFERENT_STATES], ["manca", "nessuna_risposta", "da_verificare"]);
+  assert.ok(Object.isFrozen(CARD_REFERENT_STATES));
+  for (const state of ["manca", "nessuna_risposta", "da_verificare"] as const) assert.equal(cardReferentState(state), state);
+  for (const state of ["in_attesa", "chiarimento", "ha_chiesto", "fatto"] as const) assert.equal(cardReferentState(state), null, state);
+  assert.equal(cardReferentState(null), null);
+  assert.equal(cardReferentState(undefined), null);
+});
+
+test("«In uso»: gli euro contati come una corsia, ai soli revisori", () => {
+  const done = [hub({ phase: "realizzato", realizedOn: "2026-05-10", value: counted(38_000.4) }), hub({ phase: "realizzato", realizedOn: "2026-06-10", value: counted(1_000) })];
+  assert.equal(buildLanes(done, TODAY).doneCountedEurYear, 39_000);
+  assert.equal(buildLanes([contributor({ title: "In uso", phase: "realizzato" })], TODAY).doneCountedEurYear, null);
 });
 
 test("il Valore della card: euro con la barra piena, «fino a» con la tratteggiata, «ritorno qualitativo», altrimenti la parola", () => {

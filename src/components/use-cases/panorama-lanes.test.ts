@@ -7,12 +7,14 @@ import { findHubForbiddenIn } from "../../lib/use-cases/copy-guard.ts";
 import type { ValueParts } from "../../lib/use-cases/format.ts";
 import { infoProgressView } from "../../lib/use-cases/info-progress.ts";
 import type { ContributorUseCase } from "../../lib/use-cases/permissions.ts";
+import type { ReferentStateKey } from "../../lib/use-cases/referent/use-case-state.ts";
 import type { CostFigure } from "../../lib/use-cases/valuation.ts";
 import type { AnyHubItem, HubItem } from "../../lib/use-cases/views.ts";
 import { enableTsxImports } from "./detail/referent/tsx-test-loader.ts";
 
-// Le corsie della Panoramica resi in HTML (rilascio «Panoramica»): la card con il tag dell'agente,
-// il costo d'avvio, il Valore con la barra, «Mostra gli altri», «In realizzazione», «Realizzati» e la
+// Le corsie della Panoramica rese in HTML (rilascio «Panoramica»; rilascio 10, §3.4, D7, prototipo S2): la card
+// con il tag dell'agente, il Valore con la barra e «Costo» senza la fonte, il chip del referente solo quando chiede
+// un'azione, tre card e poi «Vedi tutti (N)», «Più avanti» e «In uso» in pieghe chiuse, «In realizzazione», e la
 // forma dei contributori, senza cifre.
 //
 // I vuoti vengono da hub-header.tsx, che porta con sé il menu «⋯» con le sue azioni del server (e il
@@ -106,7 +108,7 @@ const textOf = (html: string) => html.replace(/<[^>]+>/g, "").replace(/&#x27;/g,
 /** Lo spazio non separabile (`keepTogether`): un numero resta con la sua parola, il «·» con la parte prima. */
 const N = "\u00a0";
 
-test("la card del revisore: il titolo intero prima di tag e cifre, il tag nascosto ai lettori di schermo, l'avvio con la fonte", () => {
+test("(D7) la card del revisore: il titolo intero prima di tag e cifre, il tag nascosto ai lettori di schermo, la barra, il Valore e «Costo» senza la fonte", () => {
   const libra = hub({ title: "LIBRA L1 · Lettura dei documenti esteri", value: counted(12_250), cost: TEAM_30K });
   const stima = hub({ title: "LIBRA L2 · Riconciliazione", value: pending(5_840), cost: STIMA_700 });
   const html = render([libra, stima], { barScale: 31_500 });
@@ -118,16 +120,17 @@ test("la card del revisore: il titolo intero prima di tag e cifre, il tag nascos
   assert.ok(title < link.indexOf('data-figure="valore"') && title < link.indexOf('data-figure="costo"'), "il titolo prima del Valore e del costo");
   assert.match(link, /<span data-slot="agent-tag" data-tone="\d+" aria-hidden="true"/);
   assert.ok(!link.includes("XX-"), "niente codice accanto al tag");
-  // L'avvio: un importo del team con la sua fonte; «Benefici e costi» senza.
-  assert.match(card, /data-figure="costo" data-cost-source="team_importo"/);
-  assert.ok(textOf(card).includes(`Costo 30.000 €${N}· team`), textOf(card));
-  assert.match(card, /data-source="team_importo"/);
+  // Dall'alto: la barra, poi il Valore e, a destra, il costo; la fonte del costo sta nel pannello (D7).
+  assert.ok(link.indexOf('data-slot="value-bar"') < link.indexOf('data-figure="valore"') && link.indexOf('data-figure="valore"') < link.indexOf('data-figure="costo"'));
+  assert.match(card, /data-figure="costo" data-cost-source="team_importo" data-source-in="pannello"/);
+  assert.ok(textOf(card).includes("Costo 30.000 €") && !textOf(card).includes("team"), textOf(card));
+  assert.ok(!card.includes("data-source="), "nessuna fonte sulla card");
   const model = cardOf(html, stima.id);
-  assert.match(model, /data-figure="costo" data-cost-source="stima"/);
+  assert.match(model, /data-figure="costo" data-cost-source="stima" data-source-in="pannello"/);
   assert.ok(textOf(model).includes("Costo 700 €") && !model.includes("data-source="), "«Benefici e costi»: niente fonte");
   // Il Valore: gli euro con la barra piena sulla scala; il tetto da misurare tratteggiato.
   assert.ok(textOf(card).includes(`12.250${N}€${N}all'anno`) && !card.includes("Valore: "), textOf(card));
-  assert.match(card, /<span aria-hidden="true" data-slot="value-bar" data-bar="contato" class="block h-1\.5 w-full rounded-full bg-muted"><span class="block h-full rounded-full bg-uc-agente-\d+" style="width:38\.9%"><\/span>/);
+  assert.match(card, /<span aria-hidden="true" data-slot="value-bar" data-bar="contato" class="block h-1 w-full rounded-full bg-muted"><span class="block h-full rounded-full bg-uc-agente-\d+" style="width:38\.9%"><\/span>/);
   assert.ok(textOf(model).includes(`da misurare${N}· fino a 5.840${N}€`));
   assert.match(model, /data-bar="da_misurare"[^>]*><span class="block h-full rounded-full border border-dashed border-uc-agente-\d+" style="width:18\.5%"/);
   // Senza agente: il codice e la barra grigia.
@@ -137,66 +140,77 @@ test("la card del revisore: il titolo intero prima di tag e cifre, il tag nascos
   assert.match(neutral, /class="block h-full rounded-full bg-muted-foreground" style="width:25\.0%"/);
 });
 
-test("la card: «Scaduto» e il trimestre a parte, «Da diffondere» senza costo, «Valore: da stimare», lo stato del referente", () => {
+test("(D7) la card: «Scaduto» come stato, niente trimestre a parte né «Da diffondere», «Valore: da stimare»; il chip del referente solo quando chiede un'azione", () => {
   const overdue = hub({ title: "ORSA O1 · Solleciti", targetQuarter: "2026-Q3" });
   const best = hub({ title: "Buone pratiche", kind: "da_diffondere", targetQuarter: "2027-Q1", cost: TEAM_30K });
   const later = hub({ title: "Più tardi", targetQuarter: "2027-Q3", value: QUALITATIVE });
-  const info = infoProgressView({
-    state: "senza_risposta",
-    since: null,
-    reminded: false,
-    until: null,
-    silentReason: "scaduta",
-    blocked: false,
-    received: 0,
-    total: 3,
-    toAsk: 0,
-    toVerify: 0,
-    waiting: 0,
-    unanswered: 3,
-    blockedCount: 0,
-  });
-  void info;
-  // (Rilascio 5) Lo stato del referente al posto del chip corto di «Raccolta informazioni».
-  const html = render([overdue, best, later], { referentStates: { [overdue.id.toLowerCase()]: "nessuna_risposta" } });
+  const waiting = hub({ title: "In attesa", targetQuarter: "2027-Q1" });
+  const states: Record<string, ReferentStateKey> = {
+    [overdue.id.toLowerCase()]: "nessuna_risposta",
+    [best.id.toLowerCase()]: "da_verificare",
+    [later.id.toLowerCase()]: "manca",
+    [waiting.id.toLowerCase()]: "in_attesa",
+  };
+  const html = render([overdue, best, later, waiting], { referentStates: states });
   const late = cardOf(html, overdue.id);
-  assert.ok(late.includes(">Scaduto<") && late.includes(">T3 2026<"), late);
+  // «Scaduto»: puntino rosso più parola; il trimestre passato lo dice il pannello.
+  assert.match(late, /<span data-slot="expired-tag"[^>]*><span aria-hidden="true" class="size-1\.5 shrink-0 rounded-full bg-uc-rosso"><\/span><span class="font-medium text-foreground">Scaduto<\/span><\/span>/);
+  assert.ok(!late.includes(">T3 2026<") && !late.includes("text-red-300"), late);
   assert.match(late, /Valore: <\/span><span[^>]*>da stimare</);
   assert.ok(!late.includes('data-figure="costo"'), "senza costo niente «da stimare» del costo");
-  assert.ok(late.includes('data-slot="referent-chip" data-state="nessuna_risposta"') && late.includes(">Nessuna risposta<") && !late.includes('data-slot="info-chip"'));
+  // Il chip: puntino più parola, solo per «Nessuna risposta», «Risposte da verificare» e «Manca il referente».
+  assert.match(late, /data-slot="referent-chip" data-state="nessuna_risposta" data-form="puntino"/);
+  assert.ok(late.includes(">Nessuna risposta<") && late.includes("bg-uc-rosso") && !late.includes('data-slot="info-chip"'));
   const diffuse = cardOf(html, best.id);
-  assert.ok(diffuse.includes("Da diffondere") && !diffuse.includes('data-figure="costo"'), "le best practice senza costo");
+  assert.ok(!diffuse.includes("Da diffondere") && !diffuse.includes('data-figure="costo"'), "le best practice senza costo, e il tipo sta nel pannello");
+  assert.ok(diffuse.includes('data-state="da_verificare"') && diffuse.includes(">Risposte da verificare<"));
   const after = cardOf(html, later.id);
-  assert.ok(after.includes('data-lane="piu_avanti"') && after.includes(">T3 2027<") && after.includes(">ritorno qualitativo<") && !after.includes("value-bar"));
+  assert.ok(after.includes('data-lane="piu_avanti"') && !after.includes(">T3 2027<") && after.includes(">ritorno qualitativo<") && !after.includes("value-bar"));
+  assert.ok(after.includes('data-state="manca"') && after.includes(">Manca il referente<"));
+  // «In attesa del referente» non chiede niente a chi guarda: sulla card non c'è.
+  assert.ok(!cardOf(html, waiting.id).includes("referent-chip"), "solo gli stati che chiedono un'azione");
 });
 
-test("una corsia: «7 use case · … contati all'anno», le prime 5 card, poi «Mostra gli altri 2» con «Mostra meno»", () => {
+test("(rilascio 10) una corsia: «T4 2026» con il conteggio, le prime 3 card, poi «Vedi tutti (7)» con «Mostra meno»; le corsie vuote non ci sono", () => {
   const seven = Array.from({ length: 7 }, (_, index) => hub({ title: `Corsia ${index}`, value: counted(1_000 * (index + 1)) }));
   const html = render(seven, { barScale: 7_000 });
-  const lane = html.slice(html.indexOf('data-lane="questo_trimestre"'), html.indexOf('data-lane="prossimo_trimestre"'));
-  assert.match(lane, /<h2 id="lane-questo_trimestre" class="text-sm font-semibold">Questo trimestre\u00a0· T4\u00a02026<\/h2>/);
-  assert.ok(textOf(lane).includes(`7${N}use${N}case${N}· 28.000${N}€ contati all'anno`), textOf(lane));
-  assert.ok(!textOf(lane).includes("7 use case · 28.000 €"), "mai il «·» o «€» in testa a una riga");
-  assert.match(lane, /data-figure="corsia"/);
+  const lane = html.slice(html.indexOf('data-lane="questo_trimestre"'));
+  assert.match(lane, /<h2 id="lane-questo_trimestre" class="flex items-baseline gap-2 text-base font-semibold">T4 2026 <span class="text-sm font-normal text-muted-foreground tabular-nums">7<\/span><\/h2>/);
+  assert.ok(!textOf(lane).includes("contati all'anno") && !lane.includes('data-figure="corsia"'), "nessuna somma in testa alla corsia");
   const more = lane.indexOf('<details data-slot="lane-more"');
   assert.ok(more > 0, "le altre dietro un <details>");
-  assert.equal((lane.slice(0, more).match(/data-slot="lane-card"/g) ?? []).length, 5);
-  assert.equal((lane.slice(more).match(/data-slot="lane-card"/g) ?? []).length, 2);
+  assert.equal((lane.slice(0, more).match(/data-slot="lane-card"/g) ?? []).length, 3);
+  assert.equal((lane.slice(more).match(/data-slot="lane-card"/g) ?? []).length, 4);
   const details = lane.slice(more);
   assert.doesNotMatch(/<details[^>]*>/.exec(details)![0].replace(/="[^"]*"/g, ""), /\sopen\b/);
-  assert.ok(details.includes('<span class="[[open]&gt;summary&gt;&amp;]:hidden">Mostra gli altri 2</span>'), details);
+  assert.ok(details.includes('<span class="[[open]&gt;summary&gt;&amp;]:hidden">Vedi tutti (7)</span>'), details);
   assert.ok(details.includes('<span class="hidden [[open]&gt;summary&gt;&amp;]:inline">Mostra meno</span>'));
-  // Le altre due corsie ci sono, vuote.
-  for (const key of ["prossimo_trimestre", "piu_avanti"]) {
-    const empty = html.slice(html.indexOf(`data-lane="${key}"`));
-    assert.ok(empty.slice(0, empty.indexOf("</section>")).includes("Nessuno use case."), key);
-  }
+  // Tre card o meno: nessun «Vedi tutti».
+  assert.ok(!render(seven.slice(0, 3)).includes("lane-more"));
+  // Le corsie vuote non ci sono: niente «T1 2027» né «Più avanti».
+  for (const key of ["prossimo_trimestre", "piu_avanti"]) assert.ok(!html.includes(`data-lane="${key}"`), key);
+  assert.ok(!html.includes("Nessuno use case."), "lo zero non si vede");
   // La sezione delle corsie: l'ancora e il fuoco dopo «Per agente».
   assert.match(html, /<section id="panoramica-approvati" tabindex="-1" aria-label="Use case per trimestre" data-slot="panorama-plan"/);
   assert.match(html, /<div data-slot="lanes" class="grid gap-6 @min-\[58rem\]\/hub:grid-cols-3 @min-\[58rem\]\/hub:gap-4">/);
 });
 
-test("«In realizzazione»: la card del dossier se c'è, altrimenti «Senza dossier»; con il dossier in errore solo la fase", () => {
+test("(rilascio 10) «Più avanti»: una piega chiusa con il riepilogo «4 use case», le sue card dentro; un link a `#panoramica-piu-avanti` la apre", () => {
+  const four = Array.from({ length: 4 }, (_, index) => hub({ title: `Dopo ${index}`, targetQuarter: index ? "2027-Q3" : null }));
+  const next = hub({ title: "Il prossimo", targetQuarter: "2027-Q1" });
+  const html = render([...four, next]);
+  assert.ok(html.includes('<section id="panoramica-piu-avanti" data-slot="fold"'), "la piega");
+  const fold = html.slice(html.indexOf('<section id="panoramica-piu-avanti"'));
+  assert.match(fold, /<h2 class="text-base font-semibold"><button type="button" aria-expanded="false" aria-controls="panoramica-piu-avanti-contenuto"/);
+  assert.ok(textOf(fold).startsWith(`Più avanti4${N}use${N}case`), textOf(fold).slice(0, 40));
+  assert.match(fold, /<div id="panoramica-piu-avanti-contenuto" data-slot="fold-content" hidden=""/);
+  assert.equal((fold.match(/data-slot="lane-card"/g) ?? []).length, 4, "le card stanno dentro la piega");
+  assert.ok(fold.includes(">Vedi tutti (4)<"));
+  // «T1 2027» resta una corsia aperta, accanto.
+  assert.match(html, /<h2 id="lane-prossimo_trimestre"[^>]*>T1 2027 <span[^>]*>1<\/span><\/h2>/);
+});
+
+test("«In realizzazione»: la card del dossier se c'è, altrimenti «Senza dossier»; con il dossier in errore solo la fase; tre card, poi «Vedi tutti»", () => {
   const withDossier = hub({ title: "Con dossier", phase: "in_realizzazione", subState: "dossier", phaseLabel: "In realizzazione · Bozza" });
   const without = hub({ title: "Senza", phase: "in_realizzazione", subState: "senza_dossier", phaseLabel: "In realizzazione · Senza dossier" });
   const dossier = {
@@ -215,8 +229,8 @@ test("«In realizzazione»: la card del dossier se c'è, altrimenti «Senza doss
   const column = { state: "pronta", cards: [dossier], byUseCase: new Map([[withDossier.id, dossier]]), readOnlyNotice: false };
   const html = render([without, withDossier], { dossierColumn: column });
   const section = html.slice(html.indexOf('aria-labelledby="panoramica-in-realizzazione"'));
-  // L'ancora prende il fuoco (le fasi, «Vai alla Panoramica» da «Cosa serve»): `tabindex="-1"`, senza contorno.
-  assert.match(section, /<h2 id="panoramica-in-realizzazione" tabindex="-1" class="flex scroll-mt-24 items-baseline gap-2 text-sm font-semibold outline-none">In realizzazione <span[^>]*>2<\/span><\/h2>/);
+  // L'ancora prende il fuoco («Vai alla Panoramica» da «Cosa serve»): `tabindex="-1"`, senza contorno.
+  assert.match(section, /<h2 id="panoramica-in-realizzazione" tabindex="-1" class="flex scroll-mt-24 items-baseline gap-2 text-base font-semibold outline-none">In realizzazione <span[^>]*>2<\/span><\/h2>/);
   assert.ok(section.indexOf(`data-id="${withDossier.id}"`) < section.indexOf(`data-id="${without.id}"`), "prima quelli con la card del dossier");
   const card = cardOf(section, withDossier.id);
   assert.match(card, /data-slot="dossier-card"/);
@@ -228,25 +242,32 @@ test("«In realizzazione»: la card del dossier se c'è, altrimenti «Senza doss
   const down = render([without], { dossierDown: true });
   assert.ok(cardOf(down, without.id).includes(">In realizzazione<") && !down.includes("Senza dossier"));
   assert.ok(!cardOf(down, without.id).includes("data-figure"), "in realizzazione nessuna cifra");
+  // (Rilascio 10) Tre card, poi «Vedi tutti (5)».
+  const five = Array.from({ length: 5 }, (_, index) => hub({ title: `Avviato ${index}`, phase: "in_realizzazione", subState: "senza_dossier", phaseLabel: "In realizzazione · Senza dossier" }));
+  const many = render(five);
+  const list = many.slice(many.indexOf('aria-labelledby="panoramica-in-realizzazione"'));
+  assert.equal((list.slice(0, list.indexOf('data-slot="lane-more"')).match(/data-slot="lane-card"/g) ?? []).length, 3);
+  assert.ok(list.includes(">Vedi tutti (5)<"));
 });
 
-test("le cifre si sommano: le card fanno la corsia, «In realizzazione» dice i suoi euro, «Per agente» le corsie dell'agente", () => {
-  // Tre card da 1.000,5 €: ognuna «1.001 € all'anno», la corsia 3.003 € (sommando prima e arrotondando dopo, 3.002 €).
+test("le cifre si sommano: le card scrivono le loro cifre arrotondate, «In uso» ne dice la somma, «Per agente» le corsie dell'agente", () => {
+  // Tre card da 1.000,5 €: ognuna «1.001 € all'anno»; in testa alle corsie nessuna somma (il numero grande la dice).
   const three = Array.from({ length: 3 }, (_, index) => hub({ title: `Centesimi ${index}`, value: counted(1_000.5) }));
   const html = render(three, { barScale: 1_000.5 });
   for (const item of three) assert.ok(textOf(cardOf(html, item.id)).includes(`1.001${N}€${N}all'anno`), item.title);
-  const lane = html.slice(html.indexOf('data-lane="questo_trimestre"'), html.indexOf('data-lane="prossimo_trimestre"'));
-  assert.ok(textOf(lane).includes(`3${N}use${N}case${N}· 3.003${N}€ contati all'anno`), textOf(lane));
-  // «In realizzazione»: i suoi euro contati dopo il conto, come una corsia; senza euro solo il conto.
+  // «In realizzazione»: solo il conto, senza euro.
   const building = hub({ title: "Avviato", phase: "in_realizzazione", subState: "senza_dossier", phaseLabel: "In realizzazione · Senza dossier", value: counted(2_719) });
   const quiet = hub({ title: "Avviato senza cifra", phase: "in_realizzazione", subState: "senza_dossier", phaseLabel: "In realizzazione · Senza dossier" });
   const progress = render([building, quiet]);
-  assert.match(
-    progress,
-    /<h2 id="panoramica-in-realizzazione"[^>]*>In realizzazione <span[^>]*>2\u00a0· <span data-figure="in-realizzazione">2\.719\u00a0€ contati all&#x27;anno<\/span><\/span><\/h2>/,
-  );
-  assert.match(render([quiet]), /In realizzazione <span[^>]*>1<\/span><\/h2>/);
+  assert.match(progress, /<h2 id="panoramica-in-realizzazione"[^>]*>In realizzazione <span[^>]*>2<\/span><\/h2>/);
+  assert.ok(!progress.includes('data-figure="in-realizzazione"'));
   assert.deepEqual(findHubForbiddenIn([textOf(progress)], "area"), []);
+  // «In uso»: la somma delle cifre delle sue card, arrotondate una a una.
+  const used = [
+    hub({ title: "Usato", phase: "realizzato", subState: "realizzato", phaseLabel: "Realizzato", realizedOn: "2026-05-10", value: counted(1_000.5) }),
+    hub({ title: "Usato 2", phase: "realizzato", subState: "realizzato", phaseLabel: "Realizzato", realizedOn: "2026-06-10", value: counted(1_000.5) }),
+  ];
+  assert.ok(textOf(render(used)).includes(`In uso2${N}use${N}case${N}· 2.002${N}€${N}all'anno`), textOf(render(used)));
   // Ai contributori nessun euro, neanche in «In realizzazione».
   const theirs = render([contributor({ title: "ORSA O1 · Solleciti", phase: "in_realizzazione", subState: "senza_dossier", phaseLabel: "In realizzazione", quando: null })]);
   assert.ok(theirs.includes("In realizzazione") && !theirs.includes("€") && !theirs.includes("data-figure"), theirs);
@@ -267,21 +288,26 @@ test("le cifre si sommano: le card fanno la corsia, «In realizzazione» dice i 
   const agentCard = grid.slice(grid.indexOf('data-agent="LIBRA"'));
   assert.ok(textOf(agentCard).includes(`27.336${N}€${N}all'anno`), textOf(agentCard));
   const lanesOfLibra = render(libra, { agentFilter: "LIBRA" });
-  assert.ok(textOf(lanesOfLibra).includes(`16.293${N}€ contati all'anno`) && textOf(lanesOfLibra).includes(`11.043${N}€ contati all'anno`));
+  assert.ok(textOf(lanesOfLibra).includes(`16.293${N}€${N}all'anno`) && textOf(lanesOfLibra).includes(`11.043${N}€${N}all'anno`));
 });
 
-test("«Realizzati»: chiusi, con il conto, l'ancora, il mese e gli euro senza barra", () => {
+test("(rilascio 10) «In uso»: una piega chiusa con il riepilogo, l'ancora di prima, il mese e gli euro senza barra", () => {
   const old = hub({ title: "Prima", phase: "realizzato", subState: "realizzato", phaseLabel: "Realizzato", realizedOn: "2026-05-10" });
   const recent = hub({ title: "Dopo", phase: "realizzato", subState: "realizzato", phaseLabel: "Realizzato", realizedOn: "2026-09-10", value: counted(8_000) });
   const html = render([old, recent], { barScale: 8_000 });
-  const opening = /<details[^>]*>/.exec(html)?.[0] ?? "";
-  assert.match(opening, /^<details id="panoramica-realizzati" data-slot="panoramica-realizzati" class="scroll-mt-24">$/);
-  const summary = /<summary[^>]*>([\s\S]*?)<\/summary>/.exec(html)?.[1] ?? "";
-  assert.ok(summary.includes('In uso <span class="text-xs font-normal text-muted-foreground tabular-nums">2</span>'), summary);
+  // L'ancora di prima (`#panoramica-realizzati`) apre la piega: i link che girano ancora valgono.
+  assert.match(html, /<div data-slot="panoramica-realizzati"><section id="panoramica-realizzati" data-slot="fold"/);
+  const fold = html.slice(html.indexOf('<section id="panoramica-realizzati"'));
+  assert.match(fold, /aria-expanded="false" aria-controls="panoramica-realizzati-contenuto"/);
+  assert.ok(textOf(fold).startsWith(`In uso2${N}use${N}case${N}· 8.000${N}€${N}all'anno`), textOf(fold).slice(0, 60));
+  assert.match(fold, /data-slot="fold-content" hidden=""/);
   assert.ok(html.indexOf(`data-id="${recent.id}"`) < html.indexOf(`data-id="${old.id}"`), "dal più recente");
   const card = cardOf(html, recent.id);
   assert.ok(card.includes('data-lane="realizzati"') && textOf(card).includes(`Realizzato${N}· set${N}2026`) && textOf(card).includes(`8.000${N}€${N}all'anno`), textOf(card));
   assert.ok(!card.includes("value-bar") && !card.includes('data-figure="costo"'));
+  // Ai contributori il riepilogo senza euro.
+  const theirs = render([contributor({ title: "In uso", phase: "realizzato", subState: "realizzato", phaseLabel: "Realizzato", quando: null })], { contributor: true });
+  assert.ok(textOf(theirs).includes(`In uso1${N}use${N}case`) && !theirs.includes("€"), textOf(theirs));
 });
 
 test("vuoti: «Niente in programma, per ora»; con i filtri «Niente in programma con questi filtri.», o «Nessuno use case con questi filtri.» senza schede", () => {
@@ -323,14 +349,16 @@ test("contributori: tag, titolo e la pillola della fase, per titolo; nessuna cif
     blockedCount: 0,
   });
   void info;
-  // (Rilascio 5) Ai contributori lo stato del referente, solo la parola, sotto la pillola.
-  const html = render([zeta, overdue, alfa], { referentStates: { [zeta.id.toLowerCase()]: "in_attesa" }, barScale: 0 });
-  assert.ok(cardOf(html, zeta.id).includes('data-slot="referent-chip" data-state="in_attesa"') && cardOf(html, zeta.id).includes(">In attesa del referente<"));
+  // (Rilascio 5) Ai contributori lo stato del referente, solo la parola, sotto la pillola; (rilascio 10, D7) solo
+  // quando chiede un'azione: «In attesa del referente» sulla card non c'è, lo dice il pannello.
+  const html = render([zeta, overdue, alfa], { referentStates: { [zeta.id.toLowerCase()]: "manca", [alfa.id.toLowerCase()]: "in_attesa" }, barScale: 0 });
+  assert.ok(cardOf(html, zeta.id).includes('data-slot="referent-chip" data-state="manca"') && cardOf(html, zeta.id).includes(">Manca il referente<"));
+  assert.ok(!cardOf(html, alfa.id).includes("referent-chip"));
   for (const text of ["data-figure", "€", "value-bar", "info-chip", "Scaduto", "text-red-300", ">T3 2026<", "avvio"]) assert.ok(!html.includes(text), text);
   assert.ok((html.match(/data-slot="agent-tag"/g) ?? []).length === 3, "i tag dell'agente");
   assert.ok(html.includes("Approvato · T1 2027") && html.includes("Approvato · T3 2026"), "la pillola dice il trimestre");
   const next = html.slice(html.indexOf('data-lane="prossimo_trimestre"'));
-  assert.ok(next.includes(`<p class="text-xs text-muted-foreground tabular-nums">2${N}use${N}case</p>`));
+  assert.match(next, /<h2 id="lane-prossimo_trimestre"[^>]*>T1 2027 <span[^>]*>2<\/span><\/h2>/);
   assert.ok(next.indexOf(alfa.id) < next.indexOf(zeta.id), "per titolo");
 });
 
@@ -350,12 +378,13 @@ test("«Per trimestre | Per agente»: le card degli agenti al posto delle corsie
   assert.match(byAgent, /aria-current="page"[^>]*><span>Per agente<\/span>/);
   assert.ok(byAgent.includes('data-slot="agent-grid"') && !byAgent.includes('data-slot="lanes"'));
   assert.ok(!byAgent.includes("agent-in-progress"));
-  // Un use case di LIBRA in realizzazione: la sua card lo dice sotto la cifra, «In realizzazione» sotto lo conta.
+  // Un use case di LIBRA in realizzazione: la sua card lo dice sotto la cifra.
   const building = hub({ title: "LIBRA L3 · Scadenzario", phase: "in_realizzazione", value: counted(4_042.5) });
   const withBuilding = render([libra, plain, building], { grouping: grouping("agente") });
   const libraCard = withBuilding.slice(withBuilding.indexOf('data-agent="LIBRA"'), withBuilding.indexOf("</li>", withBuilding.indexOf('data-agent="LIBRA"')));
   assert.ok(textOf(libraCard).includes(`12.250${N}€${N}all'anno+${N}4.043${N}€ in realizzazione`), textOf(libraCard));
-  assert.match(withBuilding, /<span data-figure="in-realizzazione">4\.043\u00a0€ contati all&#x27;anno<\/span>/);
+  // «In realizzazione» sotto lo conta, senza euro in testa (rilascio 10).
+  assert.match(withBuilding, /<h2 id="panoramica-in-realizzazione"[^>]*>In realizzazione <span[^>]*>1<\/span><\/h2>/);
   assert.equal(withBuilding.split('data-slot="agent-in-progress"').length - 1, 1, "solo la card di LIBRA");
   const byQuarter = render([libra, plain], { grouping: grouping("trimestre") });
   assert.ok(byQuarter.includes('data-slot="lanes"') && !byQuarter.includes('data-slot="agent-grid"'));
@@ -391,18 +420,18 @@ test("«Per trimestre | Per agente»: le card degli agenti al posto delle corsie
   assert.ok(!render(theirs, { grouping: { ...grouping("agente"), landOnLoad: true } }).includes(MARK), "il contributore: le corsie");
 });
 
-test("(rilascio 5, §12) «Grafici» a vista nella riga di «Per trimestre | Per agente», anche da solo; mai ai contributori", () => {
+test("(rilascio 10, §3.4) i grafici stanno nel «⋯» della testata: nella riga di «Per trimestre | Per agente» nessun «Grafici»", () => {
   const item = hub({ title: "LIBRA L1 · Fatture", targetQuarter: "2026-Q4" });
-  const charts = [{ label: "Matrice Valore × Costo", href: `${BASE}?vista=panoramica&mostra=matrice` }];
-  const alone = render([item], { charts });
-  assert.match(alone, /<div data-slot="plan-grouping"[^>]*><span aria-hidden="true"><\/span><button[^>]*data-action="charts-menu"/);
-  assert.ok(alone.includes(">Grafici<"));
-  assert.ok(!render([item], {}).includes("Grafici"), "senza grafici (i contributori) niente");
+  assert.ok(!render([item], {}).includes("Grafici") && !render([item], {}).includes("charts-menu"));
+  const source = readFileSync(new URL("./panorama-lanes.tsx", import.meta.url), "utf8");
+  assert.ok(!source.includes("ChartsMenu") && !/\bcharts\b/.test(source), "la prop dei grafici non c'è più");
 });
 
-test("(rilascio 5, §12, D29) «Partecipazione per area» in fondo alla Panoramica con le corsie, per ogni ruolo; non su «Da decidere» né su un grafico", () => {
+test("(rilascio 10, §3.4) «Chi propone, per area» in fondo alla Panoramica, chiusa, solo ai revisori (i contributori la trovano nella loro Home); non su un grafico", () => {
   const source = readFileSync(new URL("./hub.tsx", import.meta.url), "utf8").replace(/\s+/g, " ");
-  assert.match(source, /lanes \? getPortfolioParticipation\(workspaceId\) : null/);
-  assert.match(source, /\{view === "panoramica" && !chart && data\.participation \? <ParticipationCard participation=\{data\.participation\} \/> : null\}/);
+  assert.match(source, /reviewer && lanes \? getPortfolioParticipation\(workspaceId\) : null/);
+  assert.match(source, /\{view === "panoramica" && !chart && reviewer && data\.participation && data\.participation\.rows\.length > 0 \? \(/);
+  assert.match(source, /<Fold id=\{PARTICIPATION_FOLD_ID\} title=\{HOME_TEXT\.contributor\.byArea\}> <ParticipationList participation=\{data\.participation\} \/> <\/Fold>/);
+  assert.ok(!source.includes("ParticipationCard"), "la card di prima non c'è più");
   assert.doesNotMatch(source, /view === "da-decidere" && data\.participation/);
 });

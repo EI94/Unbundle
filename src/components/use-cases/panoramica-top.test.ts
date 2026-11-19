@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import * as nodeModule from "node:module";
 import { workspaceStepView, type StepView } from "../../lib/home/next-step.ts";
-import type { OverviewFigures, OverviewStep, PortfolioLine, WorkspaceStep } from "../../lib/use-cases/panoramica.ts";
-import type { RoadmapTile } from "../../lib/use-cases/views.ts";
+import { findHubForbiddenIn } from "../../lib/use-cases/copy-guard.ts";
+import type { OverviewNumber, WorkspaceStep } from "../../lib/use-cases/panoramica.ts";
 import { enableTsxImports } from "./detail/referent/tsx-test-loader.ts";
 
-// La testa della Panoramica resa in HTML (rilascio «Panoramica»): la striscia delle fasi, le cifre,
-// «Su tutto il portafoglio» e, dal rilascio 10 (D3), il prossimo passo del workspace con il solo pulsante pieno,
-// lo stesso della Home (`workspaceStepView`).
+// La testa della Panoramica resa in HTML (rilascio 10, docs/ui-10/PROPOSTA-10.md §3.4, prototipo S2): il prossimo
+// passo del workspace (D3) con il solo pulsante pieno, lo stesso della Home (`workspaceStepView`), poi un numero
+// grande, «Valore all'anno · su N use case», con «Tutti i numeri ›» verso la Home.
 //
 // HUB_TEXT viene da hub-header.tsx, che porta con sé il menu «⋯» con le sue azioni del server (e il
 // database): qui il menu è un componente vuoto, il resto è quello vero.
@@ -39,20 +39,8 @@ const BASE = "/dashboard/ws/use-cases";
 const DECIDE = `${BASE}?vista=da-decidere`;
 const NEEDS = `${BASE}?vista=cosa-serve&trimestre=2026-Q4`;
 
-const STEPS: OverviewStep[] = [
-  { key: "da_decidere", count: 4 },
-  { key: "approvati", count: 45 },
-  { key: "in_realizzazione", count: 1 },
-  { key: "realizzati", count: 0 },
-];
-const tile = (amountEur: number, note: string): RoadmapTile => ({ amountEur, count: 0, fromBand: 0, share: { adoption: 100, transformation: 0 }, note });
-const FIGURES: OverviewFigures = {
-  value: tile(50_366, "su 17 use case"),
-  cost: tile(75_000, "su 9 use case · 2 da fascia"),
-  quarter: { count: 12, quarter: "2026-Q4" },
-  pending: { amountEur: 23_400, count: 9, note: "su 9 use case" },
-};
-const LINE: PortfolioLine = { hours: 1_404, breakeven: { kind: "mese", month: "2027-08" } };
+const NUMBER: OverviewNumber = { value: { amountEur: 412_000, count: 20 }, pending: null };
+const NUMBERS = "/dashboard/ws?apri=numeri";
 const LINKS = { workspaceId: "ws", companyName: "Cliente Demo", salHref: "/dashboard/ws?apri=sal" };
 const view = (...steps: WorkspaceStep[]): StepView | null => workspaceStepView(steps, LINKS);
 const ASK: WorkspaceStep = { key: "chiedere", mine: true, count: 60, quarter: "2026-Q4" };
@@ -62,25 +50,15 @@ const REQUIREMENTS = view(ASK, VERIFY);
 function render(props: Record<string, unknown> = {}): string {
   return renderToStaticMarkup(
     createElement(top.PanoramicaTop, {
-      steps: STEPS,
-      reviewer: true,
-      decideHref: DECIDE,
-      figures: FIGURES,
-      line: LINE,
       nextStep: { step: REQUIREMENTS },
+      number: NUMBER,
+      numbersHref: NUMBERS,
       ...props,
     }),
   );
 }
 
 const textOf = (html: string) => html.replace(/<[^>]+>/g, "").replace(/&#x27;/g, "'").replace(/&amp;/g, "&");
-
-/** Il pezzo di HTML di una fase, dal suo `<li>` alla chiusura. */
-function stepOf(html: string, key: string): string {
-  const start = html.indexOf(`<li data-step="${key}"`);
-  assert.ok(start >= 0, `fase ${key}`);
-  return html.slice(start, html.indexOf("</li>", start));
-}
 
 /** I pulsanti pieni: `[data-slot=button]` con la classe `bg-primary`, come nelle prove della pagina. */
 function filledButtons(html: string): string[] {
@@ -89,77 +67,44 @@ function filledButtons(html: string): string[] {
     .filter((tag) => tag.includes('data-slot="button"') && (/class="([^"]*)"/.exec(tag)?.[1].split(/\s+/) ?? []).includes("bg-primary"));
 }
 
-test("le fasi: quattro passi, «Da decidere» apre la sua vista, le altre la loro sezione; lo zero è un trattino", () => {
+test("(rilascio 10, §3.4) in cima il prossimo passo, poi il numero grande; niente fasi, niente altre cifre, niente «Su tutto il portafoglio»", () => {
   const html = render();
-  const strip = html.slice(html.indexOf('data-slot="phase-strip"'), html.indexOf("</section>"));
-  assert.match(html, /<section aria-label="Fasi degli use case" data-slot="phase-strip">/);
-  assert.deepEqual([...strip.matchAll(/data-step="([a-z_]+)"/g)].map((match) => match[1]), ["da_decidere", "approvati", "in_realizzazione", "realizzati"]);
-  const decide = stepOf(html, "da_decidere");
-  assert.match(decide, new RegExp(`<a [^>]*href="${DECIDE.replace(/[?]/g, "\\?")}"`));
-  assert.equal(textOf(decide), "Da decidere4");
-  assert.ok(!decide.includes("→"), "nessuna freccia prima del primo passo");
-  const approved = stepOf(html, "approvati");
-  assert.ok(approved.includes('<a href="#panoramica-approvati"'), approved);
-  assert.ok(approved.includes('<span class="font-semibold tabular-nums">45</span>'));
-  assert.match(approved, /<span aria-hidden="true" class="hidden text-muted-foreground @2xl\/hub:inline">→<\/span>/);
-  assert.ok(stepOf(html, "in_realizzazione").includes('<a href="#panoramica-in-realizzazione"'));
-  // Nessuno: il trattino, «nessuno» per i lettori di schermo, e niente link.
-  const done = stepOf(html, "realizzati");
-  assert.ok(done.includes('<span aria-hidden="true">—</span><span class="sr-only">nessuno</span>'), done);
-  assert.ok(!done.includes("<a "), "lo zero non porta da nessuna parte");
-  assert.match(done, /<span class="[^"]*\bborder bg-card[^"]*text-muted-foreground/);
-  // Un link ha il bordo dei campi (3:1); «Da decidere 0» non è un link.
-  assert.match(approved, /<a href="[^"]*" class="[^"]*\bborder border-input\b/);
-  const none = render({ steps: [{ key: "da_decidere", count: 0 }, ...STEPS.slice(1)] });
-  assert.ok(!stepOf(none, "da_decidere").includes("<a "));
-});
-
-test("le fasi del contributore: «In valutazione» senza numero e sempre aperta; nessuna cifra, niente riquadro", () => {
-  const html = render({
-    reviewer: false,
-    steps: [{ key: "da_decidere", count: null }, ...STEPS.slice(1)],
-    figures: null,
-    line: null,
-    nextStep: null,
-  });
-  const decide = stepOf(html, "da_decidere");
-  assert.equal(textOf(decide), "In valutazione");
-  assert.match(decide, /<a [^>]*href="[^"]*vista=da-decidere"/);
-  for (const text of ["data-figure", "overview-figures", "next-step", "portfolio-line", "€", "costo di realizzazione", "Su tutto il portafoglio", "Cosa serve", "cosa serve"]) {
-    assert.ok(!html.includes(text), `contributore: «${text}»`);
+  const step = html.indexOf('data-slot="next-step"');
+  const big = html.indexOf('data-slot="big-number"');
+  assert.ok(step >= 0 && big > step, "prima il passo, poi il numero");
+  for (const gone of ["phase-strip", "overview-figures", "portfolio-line", "Su tutto il portafoglio", "Approvati", "costo di realizzazione", "use case in questo trimestre"]) {
+    assert.ok(!html.includes(gone), gone);
   }
-  assert.ok(html.includes(">45<"), "gli approvati sì: sono use case, non persone");
-  assert.equal(filledButtons(html).length, 0);
+  assert.equal((html.match(/data-slot="big-number"/g) ?? []).length, 1, "un solo numero grande");
+  assert.equal(filledButtons(html).length, 1, "un solo pulsante pieno, il passo");
 });
 
-test("le cifre: valore, costo, trimestre, da misurare; prima la cifra, poi le parole, poi «su N use case»", () => {
+test("il numero grande: «412.000 €», «Valore all'anno», «su 20 use case» e «Tutti i numeri ›» verso la Home", () => {
   const html = render();
-  const figures = html.slice(html.indexOf('data-slot="overview-figures"'));
-  assert.match(html, /<section aria-label="Cifre degli use case" data-slot="overview-figures" class="space-y-2">/);
-  assert.deepEqual([...figures.matchAll(/data-figure="([a-z-]+)"/g)].map((match) => match[1]), ["totale-valore", "totale-costo", "totale-trimestre", "totale-da-misurare"]);
-  assert.match(figures, /class="grid grid-cols-2 gap-2 @3xl\/hub:gap-3 @3xl\/hub:grid-cols-4"/);
-  const tileText = (key: string) => {
-    const start = figures.indexOf(`data-figure="${key}"`);
-    return figures.slice(start, figures.indexOf("</div>", start));
-  };
-  assert.match(tileText("totale-valore"), /<span class="whitespace-nowrap">50\.366 €<\/span><\/p><p class="text-sm">valore all&#x27;anno<\/p><p class="text-xs text-muted-foreground">su 17\u00a0use\u00a0case<\/p>/);
-  assert.match(tileText("totale-costo"), />75\.000 €<\/span><\/p><p class="text-sm">costo di realizzazione<\/p><p[^>]*>su 9\u00a0use\u00a0case\u00a0· 2\u00a0da fascia</);
-  assert.match(tileText("totale-trimestre"), />12<\/span><\/p><p class="text-sm">use case in questo trimestre<\/p><p[^>]*>T4\u00a02026</);
-  assert.match(
-    tileText("totale-da-misurare"),
-    /<p class="text-2xl font-semibold tracking-tight tabular-nums"><span class="text-sm font-normal text-muted-foreground">fino a<\/span> <span class="whitespace-nowrap">23\.400 €<\/span><\/p><p class="text-sm">valore da misurare all&#x27;anno<\/p><p[^>]*>su 9\u00a0use\u00a0case</,
-  );
-  assert.ok(!tileText("totale-valore").includes("fino a"), "«fino a» solo sul da misurare");
-  assert.ok(!figures.includes("AI Adoption"), "niente quota delle origini");
-  assert.match(figures, /<p data-slot="portfolio-line" class="text-sm text-muted-foreground">Su tutto il portafoglio: 1\.404\u00a0ore liberate all&#x27;anno, pareggio previsto ad agosto\u00a02027\.<\/p>/);
-  // Tre e due cifre: le colonne che servono.
-  const three = render({ figures: { ...FIGURES, pending: null } });
-  assert.match(three, /class="grid grid-cols-2 gap-2 @3xl\/hub:gap-3 @3xl\/hub:grid-cols-3"/);
-  const two = render({ figures: { ...FIGURES, quarter: null, pending: null }, line: null });
-  assert.match(two, /class="grid grid-cols-2 gap-2 @3xl\/hub:gap-3"/);
-  assert.ok(!two.includes("portfolio-line"));
-  // Senza cifre e senza la riga: nessuna sezione.
-  assert.ok(!render({ figures: null, line: null }).includes("overview-figures"));
+  const big = html.slice(html.indexOf('data-figure="totale-valore"'));
+  assert.match(big, /<p data-slot="big-number-value"[^>]*>412\.000 €<\/p>/);
+  assert.match(big, /<p data-slot="big-number-label"[^>]*>Valore all&#x27;anno<\/p>/);
+  assert.ok(textOf(big).includes("su 20\u00a0use\u00a0case"), textOf(big));
+  assert.match(big, /<a [^>]*data-slot="text-action"[^>]*href="\/dashboard\/ws\?apri=numeri"|<a [^>]*href="\/dashboard\/ws\?apri=numeri"[^>]*data-slot="text-action"/);
+  assert.ok(textOf(big).includes("Tutti i numeri"));
+  // Il tetto da misurare, che la Home non dice: nella riga grigia, dopo il conto.
+  const pending = textOf(render({ number: { value: { amountEur: 412_000, count: 20 }, pending: { amountEur: 23_400, count: 9 } } })).replace(/\u00a0/g, " ");
+  assert.ok(pending.includes("su 20 use case · fino a 23.400 € da misurare"), pending);
+  // Solo il da misurare: è lui il numero grande.
+  const only = textOf(render({ number: { value: null, pending: { amountEur: 23_400, count: 9 } } })).replace(/\u00a0/g, " ");
+  assert.ok(only.includes("23.400 €") && only.includes("Valore da misurare all'anno") && only.includes("al massimo · su 9 use case"), only);
+  // Senza cifre: niente numero; senza numero e senza passo (un filtro senza cifre): niente.
+  assert.ok(!render({ number: null }).includes("big-number"));
+  assert.equal(render({ number: null, nextStep: null }), "");
+  assert.equal(top.overviewNumberView(null), null);
+  assert.deepEqual(top.overviewNumberView({ value: null, pending: null }), null);
+});
+
+test("i testi della testa passano la guardia delle parole", () => {
+  const t = top.OVERVIEW_TEXT;
+  assert.deepEqual(findHubForbiddenIn([t.value, t.pendingOnly, t.onUseCases(20), t.pending(23_400), t.upTo, t.allNumbers], "area"), []);
+  // Il numero grande: etichetta di 4 parole al massimo (BigNumber).
+  for (const label of [t.value, t.pendingOnly]) assert.ok(label.split(/\s+/).length <= 4, label);
 });
 
 test("il prossimo passo (D3): l'etichetta, il pulsante pieno con l'icona e il verbo, il «?» con il perché", () => {
@@ -209,17 +154,6 @@ test("il prossimo passo che non tocca a chi guarda: le parole dello stato e «To
   assert.match(filledButtons(sal)[0], /href="\/dashboard\/ws\?apri=sal"/);
 });
 
-test("«Su tutto il portafoglio»: ore e pareggio, «ad» solo davanti ad aprile e agosto, una parte sola", () => {
-  const line = (hours: number | null, breakeven: PortfolioLine["breakeven"]) => top.portfolioLineText({ hours, breakeven });
-  assert.equal(line(1_404, { kind: "mese", month: "2027-08" }), "Su tutto il portafoglio: 1.404 ore liberate all'anno, pareggio previsto ad agosto 2027.");
-  assert.equal(line(177.9, { kind: "mese", month: "2027-04" }), "Su tutto il portafoglio: 178 ore liberate all'anno, pareggio previsto ad aprile 2027.");
-  assert.equal(line(12, { kind: "mese", month: "2027-10" }), "Su tutto il portafoglio: 12 ore liberate all'anno, pareggio previsto a ottobre 2027.");
-  assert.equal(line(1.2, { kind: "subito" }), "Su tutto il portafoglio: 1 ora liberata all'anno, pareggio subito.");
-  assert.equal(line(null, { kind: "oltre", month: "2028-10" }), "Su tutto il portafoglio: pareggio previsto oltre ottobre 2028.");
-  assert.equal(line(250, null), "Su tutto il portafoglio: 250 ore liberate all'anno.");
-  assert.equal(line(null, { kind: "mese", month: "2027-05" }), "Su tutto il portafoglio: pareggio previsto a maggio 2027.");
-});
-
 test("il sorgente: solo forme sulla larghezza del riquadro, niente testo sbiadito, il componente del server", () => {
   const source = readFileSync(new URL("./panoramica-top.tsx", import.meta.url), "utf8");
   const classes = [...source.matchAll(/["`]([^"`\n]*)["`]/g)].map((match) => match[1]).join(" ");
@@ -229,5 +163,6 @@ test("il sorgente: solo forme sulla larghezza del riquadro, niente testo sbiadit
   // (Rilascio 10) Il pulsante pieno è quello del prossimo passo (`NextStep`): qui nessun altro pulsante.
   assert.equal((source.match(/<Button\b/g) ?? []).length, 0);
   assert.ok(source.includes("<NextStep "), "il passo con il pezzo comune");
+  assert.ok(source.includes("<BigNumber"), "il numero grande con il pezzo comune");
   assert.doesNotMatch(source, /variant=/);
 });

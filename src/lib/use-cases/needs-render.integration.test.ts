@@ -484,8 +484,8 @@ test("Cosa serve: la vista dei revisori, una lista per chi deve muoversi, «Già
   assert.deepEqual(openFolds(page), [], "niente aperto di default");
   // I link restano nella vista: `?vista=cosa-serve&apri=<id>`.
   assert.ok(page.includes(`href="/dashboard/${ids.ws}/use-cases?vista=cosa-serve&apri=${cards.proposed.id}"`));
-  // Il solo pulsante pieno della pagina è «Nuovo use case» della testata.
-  assert.equal(filledButtons(page).length, 1);
+  // (Rilascio 10, §3.4) «Nuovo» è bordato: il pulsante pieno della pagina è il passo della vista, al massimo uno.
+  assert.ok(filledButtons(page).length <= 1);
 });
 
 test("Cosa serve: «Prossimi passi» accanto alla lista, per data con la data sopra, i fatti chiusi; niente più schede del trimestre", opts, async () => {
@@ -560,21 +560,20 @@ test("Panoramica: il prossimo passo del workspace (rilascio 10, D3), lo stesso d
     assert.ok(plain(box).includes("Decidi 1 use case"), `${person}: ${plain(box)}`);
     // Il requisito in comune una volta; non quelli dello use case già partito né del trimestre dopo.
     assert.ok(plain(box).includes(`Poi: 1 informazione da chiedere per il ${quarter.quarterLabel(thisQuarter)}.`), `${person}: ${plain(box)}`);
-    // Il solo pulsante pieno è il suo; «Nuovo use case» è bordato.
+    // Il solo pulsante pieno è il suo; «Nuovo» è bordato.
     const filled = filledButtons(page);
     assert.equal(filled.length, 1, person);
     assert.ok(filled[0].includes(`href="/dashboard/${ids.wsStart}/use-cases?vista=da-decidere"`), filled[0]);
     const header = between(page, 'data-slot="hub-header"', "</header>");
     const newUseCase = [...header.matchAll(/<a\b[^>]*>/g)].map(([tag]) => tag).find((tag) => /href="[^"]*(?:nuovo=1|\/use-cases\/nuovo)"/.test(tag));
-    assert.ok(newUseCase && !/class="[^"]*\bbg-primary\b/.test(newUseCase), `${person}: «Nuovo use case» bordato`);
+    assert.ok(newUseCase && !/class="[^"]*\bbg-primary\b/.test(newUseCase), `${person}: «Nuovo» bordato`);
     // La Panoramica conta le esigenze ma non le mostra.
     assert.ok(!page.includes('data-slot="needs-board"'), person);
     for (const title of Object.values(START)) assert.ok(!page.includes(title), `${person}: ${title}`);
   }
-  // Lo sponsor del cliente (gestore) vede le cifre: i due use case di questo trimestre.
+  // Lo sponsor del cliente (gestore): i due use case di questo trimestre, nel conteggio della loro corsia (rilascio 10).
   const manager = await hubHtml("manager", ids.wsStart, { vista: "panoramica" });
-  assert.ok(manager.includes('data-slot="overview-figures"'));
-  assert.match(manager, /data-figure="totale-trimestre"[^>]*><p[^>]*><span class="whitespace-nowrap">2<\/span><\/p><p class="text-sm">use case in questo trimestre</);
+  assert.match(manager, new RegExp(`<h2 id="lane-questo_trimestre"[^>]*>${quarter.quarterLabel(thisQuarter).replace(" ", N)} <span[^>]*>2</span></h2>`));
   // «Chiedi 1 informazione», quando tocca a lui, porta a «Cosa serve» del trimestre: proprio i requisiti contati, non
   // gli altri, con gli stessi numeri nella riga sotto «Requisiti», che comincia dal trimestre.
   const { workspaceStepHref } = await import("../home/next-step.ts");
@@ -602,13 +601,13 @@ test("Panoramica: il prossimo passo del workspace (rilascio 10, D3), lo stesso d
   const blocked = between(target, START.blocked, "</li>");
   assert.ok(!blocked.includes('data-slot="need-agents"'), blocked);
   assert.ok(blocked.includes(`LIBRA L2 · Pagamenti ${suffix}`));
-  // Con un filtro il riquadro non c'è: dice tutto il workspace.
+  // Con un filtro il riquadro non c'è: dice tutto il workspace. Le corsie restano.
   const filtered = await hubHtml("builder", ids.wsStart, { vista: "panoramica", agente: "LIBRA" });
-  assert.ok(!filtered.includes('data-slot="next-step"') && filtered.includes('data-slot="phase-strip"'));
-  // Il contributore: le fasi, nessun riquadro, nessuna esigenza.
+  assert.ok(!filtered.includes('data-slot="next-step"') && filtered.includes('data-slot="lanes"'));
+  // Il contributore: nessuna testa, nessun riquadro, nessuna esigenza.
   const contributor = await hubHtml("contributor", ids.wsStart, { vista: "panoramica" });
-  assert.ok(contributor.includes('data-slot="phase-strip"'));
-  for (const text of ['data-slot="next-step"', 'data-slot="overview-figures"', "Prossimo passo", "requisit", "informazion", ...Object.values(START)]) {
+  assert.ok(!contributor.includes('data-slot="panoramica-top"') && contributor.includes('data-slot="lanes"'));
+  for (const text of ['data-slot="next-step"', 'data-slot="big-number"', "Prossimo passo", "requisit", "informazion", ...Object.values(START)]) {
     assert.ok(!contributor.includes(text), `contributore: «${text}»`);
   }
   const { data } = await hubTree("contributor", ids.wsStart, { vista: "panoramica" });

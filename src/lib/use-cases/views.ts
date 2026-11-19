@@ -317,6 +317,28 @@ export function shownChart(mostra: HubShowParam | null, charts: readonly HubChar
   return null;
 }
 
+/**
+ * (Rilascio 10, §3.4) Le voci di «⋯» › «Grafici ›», nell'ordine del menu: «Matrice» (una sola: si apre sul lato
+ * «Valore × Costo», `mostra=matrice`, e il suo interruttore porta all'altro lato) e «Curva del valore». Solo quelle che
+ * il workspace offre (`hubCharts`); vuoto: niente «Grafici». I vecchi indirizzi restano: `mostra=benefici` apre la
+ * matrice sul lato «Facilità × Beneficio» (`shownChart`).
+ */
+export const HUB_CHART_MENU = ["matrice", "curva"] as const;
+export type HubChartMenuKey = (typeof HUB_CHART_MENU)[number];
+
+export function hubChartMenu(charts: readonly HubChartParam[]): HubChartMenuKey[] {
+  return HUB_CHART_MENU.filter((key) => charts.includes(key));
+}
+
+/** I due lati della «Matrice», nell'ordine dell'interruttore: «Valore × Costo» (`matrice`) e «Facilità × Beneficio» (`benefici`). */
+export const MATRIX_SIDES = ["matrice", "benefici"] as const;
+export type MatrixSide = (typeof MATRIX_SIDES)[number];
+
+/** L'interruttore della «Matrice»: i due lati quando il workspace ha «Benefici e costi» (`hubCharts`), altrimenti null (un lato solo). */
+export function matrixSides(charts: readonly HubChartParam[]): readonly MatrixSide[] | null {
+  return charts.includes("benefici") ? MATRIX_SIDES : null;
+}
+
 // ═══ Proiezione dei revisori (§4.6, §4.8, §6, §7) ════════════════════
 
 /** Il riepilogo minimo del dossier («In realizzazione» della Panoramica; il ricco arriva in H6a). */
@@ -1070,7 +1092,7 @@ export function byRealizedDesc<T extends AnyHubItem>(a: T, b: T): number {
   return byTitle(a, b);
 }
 
-/** Una cifra in testa alla Panoramica (solo revisori, `overviewFigures` di `panoramica.ts`). */
+/** Una cifra della Panoramica (solo revisori): il numero grande è `overviewNumber` di `panoramica.ts`. */
 export interface RoadmapTile {
   /**
    * La somma delle cifre delle card, ognuna arrotondata all'euro; le corsie, «In realizzazione» e
@@ -1115,7 +1137,7 @@ function shareOf(parts: Array<{ origin: Origin; amount: number }>): Record<Origi
 }
 
 /**
- * Le cifre in testa alla Panoramica (§4.5; `overviewFigures` di `panoramica.ts`). «valore contato
+ * Le cifre della Panoramica (§4.5; il numero grande di `overviewNumber` in `panoramica.ts`). «valore contato
  * all'anno»: somma sugli approvati e in realizzazione del miglior valore annuo (dossier, poi team),
  * solo gli euro che le card scrivono (`shownPerYearEur`). «costo di avvio»: somma sugli approvati «Da
  * costruire» del costo di §7.2, cioè l'avvio che le loro card scrivono nelle corsie; una fascia vale
