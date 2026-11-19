@@ -271,10 +271,14 @@ export const GUIDED_TEXT = Object.freeze({
     edit: "Modifica",
     editLabel: "Modifica la valutazione del team",
     costLine: "Costo di realizzazione {costo}",
+    /** Una fascia, non un importo: «Costo di realizzazione: da 25.000 a 65.000 € · fascia del team». */
+    costBandLine: "Costo di realizzazione: {fascia}",
     breakEven: "pareggio in {mesi}",
     /** (D10) Con la realizzazione avviata la cifra è il conto della realizzazione, non più la stima del team. */
     fromRealization: "dalla realizzazione",
     realizationAccount: "Il conto viene dalla realizzazione.",
+    /** (D10) In «Valutazione del team», con il conto della realizzazione in «Valore»: le righe della stima del team, in sola lettura. */
+    teamEstimate: "La stima del team",
   }),
   payback: Object.freeze({
     notCovered: "Il valore all'anno non copre il costo all'anno.",

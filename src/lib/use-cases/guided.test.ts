@@ -1071,5 +1071,5 @@ test("(Rilascio 10, §3.4) la riga «Cosa serve · N»: le senza risposta escono
   const done = needsRowOf(summary({ done: 4 }));
   assert.deepEqual([done?.open, done?.pieces], [0, ["4 a posto"]]);
   assert.equal(needsRowOf(null), null);
-  assert.deepEqual(findHubForbiddenIn([GUIDED_TEXT.scheda.stepsOne, GUIDED_TEXT.scheda.stepsMany], "area"), []);
+  assert.deepEqual(findHubForbiddenIn([GUIDED_TEXT.scheda.stepsOne, GUIDED_TEXT.scheda.stepsMany, GUIDED_TEXT.impact.costBandLine, GUIDED_TEXT.impact.teamEstimate], "area"), []);
 });

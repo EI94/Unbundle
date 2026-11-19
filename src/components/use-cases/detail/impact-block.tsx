@@ -5,7 +5,7 @@ import { BigNumber } from "@/components/ui-10/big-number";
 import { Button } from "@/components/ui/button";
 import { REALIZATION_TEXT } from "@/lib/uc/views/realization";
 import type { CostBandInfo } from "@/lib/use-cases/cost-bands";
-import { FIGURE_SEPARATOR, costTextParts, formatEuro, lowerFirst } from "@/lib/use-cases/format";
+import { FIGURE_SEPARATOR, costTextParts, formatEuro, lowerFirst, panelCostParts } from "@/lib/use-cases/format";
 import { GUIDED_TEXT, type ImpactItems, type ImpactView, type RealizationAccount } from "@/lib/use-cases/guided";
 import type { RiskChip } from "@/lib/use-cases/labels";
 import { keepTogether } from "@/lib/use-cases/line-breaks";
@@ -19,9 +19,6 @@ import { VALUE_MODEL_EDITOR_TEXT } from "./value-model-draft";
 
 const NOTE = "text-sm text-muted-foreground";
 
-/** Il simbolo della fascia in testa alla cifra lunga del costo («€€ · 30.000 €»). */
-const BAND_SYMBOL = new RegExp(`^€+${FIGURE_SEPARATOR}`);
-
 /** `{x}` → il valore. */
 const fill = (template: string, values: Readonly<Record<string, string>>): string => template.replace(/\{([a-z]+)\}/g, (whole, key: string) => values[key] ?? whole);
 
@@ -30,57 +27,107 @@ function paybackPiece(payback: string | null): string | null {
   return payback ? lowerFirst(payback).replace(/\.$/, "") : null;
 }
 
-/** Le voci di «Benefici e costi» fuori dall'editor: conti, chip, come si misura e da dove vengono i numeri. */
-function Items({ items }: { items: ImpactItems }) {
+/** C'è qualcosa da dire sulle voci di «Benefici e costi»? */
+function hasItems(items: ImpactItems): boolean {
+  return Boolean(items.lines.length || items.qualitative.length || items.toConfirm || items.measuredBy || items.origin.length);
+}
+
+/**
+ * Le voci di «Benefici e costi» fuori dall'editor: conti, chip, come si misura e, sotto un titolo, da dove vengono i
+ * numeri. Il contenuto di «Come si calcola», e (D10) della stima del team in «Valutazione del team».
+ */
+function ItemsBody({ items }: { items: ImpactItems }) {
   const t = GUIDED_TEXT.impact;
   const term = (row: ImpactItems["origin"][number]) => ("key" in row.term ? VALUE_MODEL_EDITOR_TEXT[row.term.key] : row.term.text);
   const chips = [...items.qualitative.map((label) => ({ label, strong: false })), ...(items.toConfirm ? [{ label: t.toConfirm, strong: true }] : [])];
-  if (!items.lines.length && !chips.length && !items.measuredBy && !items.origin.length) return null;
-  // (Rilascio 10, §3.4) Una piega sola, «Come si calcola»: le voci con il loro conto, i chip, come si misura e, sotto un
-  // titolo, da dove vengono i numeri. Niente piega dentro la piega.
   return (
-    <Disclosure summary={t.howCounted} slot="impatto-come">
-      <div data-slot="impatto-voci-blocco" className="space-y-3">
-        {items.lines.length ? (
-          <ul data-slot="impatto-voci" className="space-y-1.5 text-sm">
-            {items.lines.map((line, index) => (
-              <li key={`${line.label}-${index}`} data-slot="impatto-voce" className="break-words">
-                <span className="font-medium">{line.label}</span>
-                <span className="text-muted-foreground">{FIGURE_SEPARATOR}</span>
-                {keepTogether(line.formula)}
-                <span className="text-muted-foreground">
-                  {FIGURE_SEPARATOR}
-                  {line.confidence}
-                </span>
-              </li>
+    <div data-slot="impatto-voci-blocco" className="space-y-3">
+      {items.lines.length ? (
+        <ul data-slot="impatto-voci" className="space-y-1.5 text-sm">
+          {items.lines.map((line, index) => (
+            <li key={`${line.label}-${index}`} data-slot="impatto-voce" className="break-words">
+              <span className="font-medium">{line.label}</span>
+              <span className="text-muted-foreground">{FIGURE_SEPARATOR}</span>
+              {keepTogether(line.formula)}
+              <span className="text-muted-foreground">
+                {FIGURE_SEPARATOR}
+                {line.confidence}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {chips.length ? (
+        <ul data-slot="impatto-chip" className="flex flex-wrap gap-1.5">
+          {chips.map((chip) => (
+            <li key={chip.label} className={cn("inline-flex max-w-full items-center rounded-full border border-input px-2 py-0.5 text-xs break-words text-foreground", chip.strong && "font-medium")}>
+              {chip.label}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {items.measuredBy ? <p className="min-w-0 text-sm break-words">{items.measuredBy}</p> : null}
+      {items.origin.length ? (
+        <div data-slot="impatto-origine" className="min-w-0 space-y-2">
+          <h3 className="text-sm font-medium">{t.origin}</h3>
+          <dl className="grid gap-2 text-sm">
+            {items.origin.map((row, index) => (
+              <div key={index} className="grid min-w-0 gap-0.5">
+                <dt className="text-muted-foreground">{term(row)}</dt>
+                <dd className="min-w-0 break-words whitespace-pre-line">{row.detail}</dd>
+              </div>
             ))}
-          </ul>
-        ) : null}
-        {chips.length ? (
-          <ul data-slot="impatto-chip" className="flex flex-wrap gap-1.5">
-            {chips.map((chip) => (
-              <li key={chip.label} className={cn("inline-flex max-w-full items-center rounded-full border border-input px-2 py-0.5 text-xs break-words text-foreground", chip.strong && "font-medium")}>
-                {chip.label}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        {items.measuredBy ? <p className="min-w-0 text-sm break-words">{items.measuredBy}</p> : null}
-        {items.origin.length ? (
-          <div data-slot="impatto-origine" className="min-w-0 space-y-2">
-            <h3 className="text-sm font-medium">{t.origin}</h3>
-            <dl className="grid gap-2 text-sm">
-              {items.origin.map((row, index) => (
-                <div key={index} className="grid min-w-0 gap-0.5">
-                  <dt className="text-muted-foreground">{term(row)}</dt>
-                  <dd className="min-w-0 break-words whitespace-pre-line">{row.detail}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-        ) : null}
-      </div>
+          </dl>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** (Rilascio 10, §3.4) Una piega sola, «Come si calcola», con le voci: niente piega dentro la piega. */
+function Items({ items }: { items: ImpactItems }) {
+  if (!hasItems(items)) return null;
+  return (
+    <Disclosure summary={GUIDED_TEXT.impact.howCounted} slot="impatto-come">
+      <ItemsBody items={items} />
     </Disclosure>
+  );
+}
+
+/** Le righe grigie sotto il numero grande della stima del team: le ore all'ora, «e fino a … da misurare», le note. */
+function estimateNotes(view: ImpactView): string[] {
+  switch (view.variant) {
+    case "A":
+      return [view.perYear ? `${view.hoursText} ${view.unit} ${view.hourly}` : view.hourly, ...(view.pending ? [view.pending] : [])];
+    case "C":
+      return [view.note];
+    case "D":
+      return [view.note];
+    default:
+      return [];
+  }
+}
+
+/**
+ * (Rilascio 10, D10) Con il conto della realizzazione in «Valore», la stima del team resta da leggere qui, in «Valutazione
+ * del team», per ogni revisore (anche per chi non apre la realizzazione): le ore all'ora, «fino a … da misurare» e le
+ * voci di «Benefici e costi» con da dove vengono i numeri, in sola lettura. Senza niente da dire non c'è.
+ */
+export function TeamEstimate({ view }: { view: ImpactView }) {
+  const t = GUIDED_TEXT.impact;
+  const lines = view.variant === "C" ? [`${view.big} ${view.unit}`, ...estimateNotes(view)] : view.variant === "D" ? [view.big, ...estimateNotes(view)] : estimateNotes(view);
+  const items = "items" in view && hasItems(view.items) ? view.items : null;
+  if (!lines.length && !items) return null;
+  return (
+    <div data-slot="stima-del-team" className="min-w-0 space-y-3 rounded-lg border p-3">
+      <h3 className="text-sm font-medium">{t.teamEstimate}</h3>
+      {lines.map((line) => (
+        <p key={line} className={NOTE}>
+          {keepTogether(line)}
+        </p>
+      ))}
+      {items ? <ItemsBody items={items} /> : null}
+    </div>
   );
 }
 
@@ -151,7 +198,7 @@ export function ImpactBlock({ view, value, cost, costBands, risks, account = nul
         ? []
         : [
             // Con «Benefici e costi» la cifra dice già «Costo 560 € · costo all'anno 600 €»: niente «Costo di realizzazione» davanti.
-            // Il simbolo della fascia («€€») resta per la matrice: qui l'importo, o la fascia a parole.
+            // Il simbolo della fascia («€€») resta per la matrice: qui l'importo, o la fascia a parole dopo i due punti.
             <span key="costo" data-figure="costo" data-estimated={parts.estimated ? "true" : undefined} data-cost-source={source ?? undefined}>
               {cost?.source === "stima" && !parts.estimated
                 ? parts.figureParts.map((part, index) => (
@@ -160,7 +207,9 @@ export function ImpactBlock({ view, value, cost, costBands, risks, account = nul
                       <span className="whitespace-nowrap">{part}</span>
                     </span>
                   ))
-                : keepTogether(fill(t.costLine, { costo: parts.figure.replace(BAND_SYMBOL, "") }))}
+                : keepTogether(
+                    cost?.fromBand && !parts.estimated ? fill(t.costBandLine, { fascia: panelCostParts(cost, costBands).figure }) : fill(t.costLine, { costo: panelCostParts(cost, costBands).figure }),
+                  )}
             </span>,
             source ? parts.source : null,
           ];
@@ -178,12 +227,11 @@ export function ImpactBlock({ view, value, cost, costBands, risks, account = nul
             <BigNumber value={view.hoursText} label={view.unit} />
           </div>
         );
-        notes = (
-          <>
-            <p className={NOTE}>{keepTogether(view.perYear ? `${view.hoursText} ${view.unit} ${view.hourly}` : view.hourly)}</p>
-            {view.pending ? <p className={NOTE}>{keepTogether(view.pending)}</p> : null}
-          </>
-        );
+        notes = estimateNotes(view).map((line) => (
+          <p key={line} className={NOTE}>
+            {keepTogether(line)}
+          </p>
+        ));
         pieces.push(paybackPiece(view.payback));
         how = <Items items={view.items} />;
         break;
