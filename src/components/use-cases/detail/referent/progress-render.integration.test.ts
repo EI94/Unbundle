@@ -311,7 +311,11 @@ test("la scheda: niente chip delle informazioni nella testata; il passo «Inform
   assert.ok(seeRequests && /\shref="#richieste"/.test(seeRequests[1]) && /\sclass="[^"]*\bbg-primary\b/.test(seeRequests[1]), "G2: «Sollecita le risposte» pieno, verso #richieste");
   assert.match(silent, /<details id="richieste"/, "l'ancora c'è");
   assert.ok(!silent.includes("Informazioni: senza risposta"));
-  assert.equal(needsRowOf(silent), `Cosa serve · ${silentTotal}${silentTotal - 2} da chiedere · 2 in attesa`);
+  // Le richieste scadute senza risposta non sono «in attesa»: «2 senza risposta», rosse, in testa, come le dice il passo.
+  assert.equal(needsRowOf(silent), `Cosa serve · ${silentTotal}2 senza risposta · ${silentTotal - 2} da chiedere`);
+  const silentBar = silent.slice(silent.indexOf('data-slot="needs-bar"'), silent.indexOf("</span></span>", silent.indexOf('data-slot="needs-bar"')));
+  assert.match(silentBar, /data-group="unanswered" class="[^"]*bg-uc-rosso/, "il tratto rosso di «senza risposta»");
+  assert.doesNotMatch(silentBar, /data-group="waiting"/, "nessuna «in attesa»: sono tutte senza risposta");
   // (Rilascio 4) Una parola sola, la stessa della campanella: «Nessuna risposta».
   assert.ok(silent.includes('data-slot="referent-request-word" class="text-xs font-medium">Nessuna risposta</p>'), "la richiesta scaduta senza risposta, in una parola, nelle «Richieste»");
   const done = await detailHtml("builder", cards.done);

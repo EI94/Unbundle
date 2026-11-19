@@ -32,14 +32,25 @@
  */
 import { CONTEXT_TEXT } from "../context/text.ts";
 import { CASE_STATUS_LABEL } from "../uc/case-state.ts";
-import type { CaseStatus } from "../uc/vocab.ts";
+import type { CaseStatus, SemaforoColor } from "../uc/vocab.ts";
 import type { UseCaseRealization } from "../uc/views/realization.ts";
 import { REALIZATION_TEXT } from "../uc/views/realization.ts";
 import { titleAgent } from "./agents.ts";
 import { decisionLayout, decisionNote, dossierSituation, instantOfDay, reopenDestination, type DecisionItem } from "./decision-ui.ts";
 import { FIGURE_SEPARATOR, formatDayInYear, formatEuro, formatInteger, lowerFirst, shownPerYear, showsZone, zoneText } from "./format.ts";
-import type { InfoProgressView } from "./info-progress.ts";
-import { NEED_REQUEST_GROUP_TEXT, componentFormulaText, needRequestGroupView, returnsToConfirm, type NeedRequestGroup, type NeedRequestGroupView, type NeedStatus } from "./needs.ts";
+import { INFO_PROGRESS_TEXT, type InfoProgressView } from "./info-progress.ts";
+import {
+  NEED_REQUEST_GROUP_TEXT,
+  componentFormulaText,
+  needAskPieces,
+  needRequestGroupView,
+  needsCountBar,
+  returnsToConfirm,
+  type NeedRequestGroup,
+  type NeedRequestGroupView,
+  type NeedStatus,
+  type NeedsCountSummary,
+} from "./needs.ts";
 import { isPastQuarter, parseQuarter, quarterLabel } from "./quarter.ts";
 import type { ReferentGate } from "./referent/contract.ts";
 import { companyLabel } from "./referent/labels.ts";
@@ -324,6 +335,9 @@ export const GUIDED_TEXT = Object.freeze({
     cardGroup: "Scheda",
     visible: "Visibile in azienda",
     needsCount: "Cosa serve · {n}",
+    /** Nella riga «Cosa serve · N»: le scadenze da fare, come «Scadenze · N» dentro. */
+    stepsOne: "1 scadenza",
+    stepsMany: "{n} scadenze",
     /** La prima voce di «Aggiungi ▾»: il modulo di un'informazione nuova (o di una scadenza); la seconda è «Collega un'informazione». */
     addNeed: "Nuova informazione",
     othersNote: "Dettagli visibili a chi l'ha proposto e a {team}.",
@@ -604,6 +618,52 @@ export function realizationAccountOf(realization: UseCaseRealization | null | un
   const { figures, href } = realization.dossier;
   if (!figures.benefit) return null;
   return { benefit: figures.benefit, cost: figures.cost, breakEven: figures.breakEven, href: href ? `${href}/valore` : null };
+}
+
+// ═══ «Cosa serve · N» ════════════════════════════════════════════════
+
+/** I gruppi della riga «Cosa serve · N»: quelli dei requisiti, quelli senza risposta e le scadenze. */
+export type NeedsRowGroup = NeedRequestGroup | "unanswered" | "steps";
+
+/** (Rilascio 10, §3.4) La riga chiusa di «Cosa serve» nella scheda: il numero delle aperte, i gruppi e la barra. */
+export interface NeedsRow {
+  /** Le aperte: requisiti non a posto e scadenze da fare. */
+  open: number;
+  /** «2 da verificare · 3 in attesa»: i gruppi aperti, prima quello che chiede di agire; senza aperte, «N a posto». */
+  pieces: string[];
+  /** La barra: un tratto per gruppo, nello stesso ordine, con il colore del suo stato; «a posto» in fondo. */
+  bar: Array<{ group: NeedsRowGroup; count: number; tone: SemaforoColor }>;
+}
+
+/**
+ * La riga «Cosa serve · N» della scheda (rilascio 10, §3.4), dai conteggi delle esigenze dello use case
+ * (`needsCountSummaryOf`) e da quante richieste chieste sono senza risposta (`InfoProgressView.counts.unanswered`:
+ * scadute, o dopo l'ultimo promemoria). Quelle senza risposta escono da «in attesa» (blu) e hanno il loro gruppo,
+ * «N senza risposta», rosso, subito dopo «da verificare»: il passo dice di sollecitarle. Le scadenze si dicono
+ * «scadenze», come dentro la piega. null senza esigenze.
+ */
+export function needsRowOf(summary: NeedsCountSummary | null, unanswered = 0): NeedsRow | null {
+  if (!summary) return null;
+  const silent = Math.min(Math.max(0, Math.floor(unanswered)), summary.counts.waiting);
+  const bar: NeedsRow["bar"] = [];
+  for (const part of needsCountBar(summary)) {
+    if (part.group === "waiting") {
+      if (part.count - silent > 0) bar.push({ ...part, count: part.count - silent });
+      continue;
+    }
+    bar.push(part);
+    if (part.group === "toVerify" && silent > 0) bar.push({ group: "unanswered", count: silent, tone: "rosso" });
+  }
+  if (silent > 0 && !bar.some((part) => part.group === "unanswered")) bar.unshift({ group: "unanswered", count: silent, tone: "rosso" });
+  const ZERO = { open: 0, toAsk: 0, waiting: 0, toVerify: 0, blocked: 0, done: 0 };
+  const t = GUIDED_TEXT.scheda;
+  const pieceOf = (part: NeedsRow["bar"][number]): string[] => {
+    if (part.group === "unanswered") return [fill(INFO_PROGRESS_TEXT.next.unanswered, { n: formatInteger(part.count) })];
+    if (part.group === "steps") return [part.count === 1 ? t.stepsOne : fill(t.stepsMany, { n: formatInteger(part.count) })];
+    return needAskPieces({ ...ZERO, [part.group]: part.count });
+  };
+  const pieces = summary.open > 0 ? bar.filter((part) => part.group !== "done").flatMap(pieceOf) : bar.filter((part) => part.group === "done").flatMap(pieceOf);
+  return { open: summary.open, pieces, bar };
 }
 
 // ═══ «Prossimo passo» ════════════════════════════════════════════════

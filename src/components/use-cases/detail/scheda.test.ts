@@ -220,6 +220,34 @@ test("«Cosa serve · N»: una riga chiusa con le aperte, i gruppi prima quello 
   assert.equal((html.match(/data-need="/g) ?? []).length, 5, "le cinque in vista, una volta aperta");
   assert.match(html, /aria-haspopup="menu"[^>]*>Aggiungi<svg/, "«Aggiungi ▾»: aggiungere o collegare");
   assert.ok(!html.includes("informazioni ricevute"), "il conteggio delle arrivate sta nel percorso");
+  // Il pulsante del titolo ha l'id del titolo di prima: il fuoco ci torna dopo una finestra del referente.
+  assert.match(html, /<button type="button" id="cosa-serve-titolo" data-arrival-toggle=""/);
+  // Le richieste senza risposta («Raccolta informazioni»): rosse, fuori da «in attesa»; le scadenze si dicono «scadenze».
+  const step = { ...need("7f000000-0000-4000-8000-000000000006", "Prova sul gestionale entro fine mese", "proposta"), type: "passo" };
+  const silent = render(
+    h(sectionNeeds.SectionNeeds, {
+      workspaceId: WS,
+      useCaseId: UC,
+      requirements,
+      steps: [step],
+      linkable: [],
+      refs: {},
+      today: "2026-11-01",
+      canEdit: true,
+      infoProgress: { counts: { toAsk: 0, toVerify: 2, waiting: 1, unanswered: 2, blockedCount: 0, since: null, reminded: true } },
+    }),
+  );
+  assert.equal(text(silent.slice(0, silent.indexOf("</button>"))), "Cosa serve · 6 2 da verificare · 2 senza risposta · 1 in attesa · 1 scadenza");
+  assert.match(silent, /data-group="unanswered" class="[^"]*bg-uc-rosso/);
+});
+
+test("dopo una finestra del referente, senza il pulsante di partenza, il fuoco va al blocco «Referente» o alla riga «Cosa serve», aperta", () => {
+  const host = readFileSync(new URL("./referent/dialog-host.tsx", import.meta.url), "utf8");
+  assert.match(host, /if \(!arriveAt\(FOCUS_BACK_IDS\.referent\)\) arriveAt\(FOCUS_BACK_IDS\.needs\);/);
+  assert.match(host, /const FOCUS_BACK_IDS = Object\.freeze\(\{ referent: "referente", needs: "cosa-serve" \}\);/);
+  assert.doesNotMatch(host, /getElementById\(/, "mai un titolo nascosto dentro una piega chiusa");
+  const needs = readFileSync(new URL("./section-needs.tsx", import.meta.url), "utf8");
+  assert.match(needs, /toggleId=\{COSA_SERVE_HEADING_ID\}/);
 });
 
 test("l'ordine della scheda: passo, percorso, nota quando serve, Valore, Come cambia il lavoro, Cosa serve, poi le pieghe", () => {

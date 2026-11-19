@@ -482,6 +482,7 @@ export function UseCaseDetailView({
                     today={today}
                     canEdit={abilities.canEditNeeds}
                     referents={referents}
+                    infoProgress={infoProgress}
                     boxAsk={boxAskOf(step)}
                     boxOwnsChoose={step.action.type === "referente" && step.action.mode === "scegli"}
                     canEditValuation={abilities.canEditValuation}

@@ -16,6 +16,7 @@ import {
   impactView,
   isReadyToStart,
   limitsSummary,
+  needsRowOf,
   nextStepOf,
   othersDetailsNote,
   paybackText,
@@ -1038,4 +1039,37 @@ test("(Rilascio 10, §3.4) la scheda del contributore su uno use case di altri: 
   assert.equal(othersDetailsNote(DEFAULT_REVIEW_TEAM_NAME), `Dettagli visibili a chi l'ha proposto e ad ${DEFAULT_REVIEW_TEAM_NAME}.`);
   assert.equal(othersDetailsNote("  Digital   Factory "), "Dettagli visibili a chi l'ha proposto e a Digital Factory.");
   assert.deepEqual(findHubForbiddenIn([othersDetailsNote(TEAM), ...Object.values(GUIDED_TEXT.scheda)], "area"), []);
+});
+
+test("(Rilascio 10, §3.4) la riga «Cosa serve · N»: le senza risposta escono da «in attesa», rosse, dopo «da verificare»; le scadenze si dicono «scadenze»", () => {
+  const summary = (counts: Partial<{ toAsk: number; waiting: number; toVerify: number; blocked: number; done: number }>, steps = 0) => {
+    const c = { toAsk: 0, waiting: 0, toVerify: 0, blocked: 0, done: 0, ...counts };
+    return { open: c.toAsk + c.waiting + c.toVerify + c.blocked + steps, counts: { open: c.toAsk + c.waiting + c.toVerify + c.blocked, ...c }, steps };
+  };
+  // Il prototipo: «Cosa serve · 5» con «2 da verificare · 3 in attesa».
+  const plain = needsRowOf(summary({ toVerify: 2, waiting: 3 }));
+  assert.equal(plain?.open, 5);
+  assert.deepEqual(plain?.pieces, ["2 da verificare", "3 in attesa"]);
+  // Due delle tre in attesa sono scadute o dopo l'ultimo promemoria: «2 senza risposta», rosse, dopo «da verificare».
+  const silent = needsRowOf(summary({ toVerify: 1, waiting: 3, toAsk: 4 }), 2);
+  assert.deepEqual(silent?.pieces, ["1 da verificare", "2 senza risposta", "4 da chiedere", "1 in attesa"]);
+  assert.deepEqual(silent?.bar.map((part) => [part.group, part.count, part.tone]), [
+    ["toVerify", 1, "giallo"],
+    ["unanswered", 2, "rosso"],
+    ["toAsk", 4, "grigio"],
+    ["waiting", 1, "blu"],
+  ]);
+  assert.equal(silent?.open, 8, "le aperte non cambiano: sono sempre da chiudere");
+  // Tutte senza risposta, nessuna da verificare: in testa, e nessuna «in attesa».
+  assert.deepEqual(needsRowOf(summary({ waiting: 2, toAsk: 3 }), 2)?.pieces, ["2 senza risposta", "3 da chiedere"]);
+  // Più senza risposta che in attesa (un conteggio vecchio): non oltre le chieste.
+  assert.deepEqual(needsRowOf(summary({ waiting: 1 }), 5)?.pieces, ["1 senza risposta"]);
+  // Le scadenze da fare: «1 scadenza», «3 scadenze», mai «passi».
+  assert.deepEqual(needsRowOf(summary({ toAsk: 1 }, 1))?.pieces, ["1 da chiedere", "1 scadenza"]);
+  assert.deepEqual(needsRowOf(summary({}, 3))?.pieces, ["3 scadenze"]);
+  // Niente aperte: le a posto, senza numero nel titolo (lo decide la riga: `open` 0).
+  const done = needsRowOf(summary({ done: 4 }));
+  assert.deepEqual([done?.open, done?.pieces], [0, ["4 a posto"]]);
+  assert.equal(needsRowOf(null), null);
+  assert.deepEqual(findHubForbiddenIn([GUIDED_TEXT.scheda.stepsOne, GUIDED_TEXT.scheda.stepsMany], "area"), []);
 });
