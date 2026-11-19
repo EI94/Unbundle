@@ -27,7 +27,8 @@ import { CONTEXT_TEXT } from "@/lib/context/text";
 import type { NeedLinkView } from "@/lib/db/queries/context-needs";
 import { ACTION_FAILED_MESSAGE } from "@/lib/use-cases/decision-ui";
 import { FIGURE_SEPARATOR, formatInteger } from "@/lib/use-cases/format";
-import { GUIDED_TEXT } from "@/lib/use-cases/guided";
+import { GUIDED_TEXT, needsRowOf } from "@/lib/use-cases/guided";
+import type { InfoProgressView } from "@/lib/use-cases/info-progress";
 import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { cosaServeHref, type NeedReferentView, type UseCaseReferentPanel } from "@/lib/use-cases/referent/contract";
 import { REFERENT_ASSIGN_TEXT, REFERENT_UI_TEXT, fillText } from "@/lib/use-cases/referent/labels";
@@ -41,13 +42,10 @@ import {
   compareStepsByDate,
   isNeedDone,
   needAlsoForText,
-  needAskPieces,
   needDoneSummaryText,
   needRow,
   needStatusChoices,
   needsActionFirst,
-  needsCountBar,
-  needsCountPieces,
   needsCountSummaryOf,
   validateArchiveReason,
   type NeedType,
@@ -63,7 +61,7 @@ import { Fold } from "./fold";
 import { askDialogEntry } from "./referent/ask-dialog-state";
 import { requestsShown } from "./referent/assign-dialog-state";
 import { ReferentBlock } from "./referent/referent-block";
-import { useReferentDialog } from "./referent/dialog-host";
+import { COSA_SERVE_HEADING_ID, useReferentDialog } from "./referent/dialog-host";
 import type { ReferentDialog } from "./referent/dialogs";
 import { NeedReferentBlock } from "./referent/need-referent-block";
 import { RequestsList } from "./referent/requests-list";
@@ -101,6 +99,11 @@ export interface SectionNeedsProps {
    * e file. null o non `available`: il capitolo è quello di prima.
    */
   referents?: UseCaseReferentPanel | null;
+  /**
+   * «Raccolta informazioni» della scheda (`loadUseCaseInfoProgress`, solo revisori): quante richieste sono senza
+   * risposta, per il gruppo «N senza risposta» della riga «Cosa serve · N».
+   */
+  infoProgress?: InfoProgressView | null;
   /**
    * Il riquadro «Prossimo passo» parla già di «Chiedi al referente» (rilascio 3): `ask` quando ha il
    * pulsante (G5), e allora qui non si ripete; `gate` quando la sua riga è il motivo che lo blocca
@@ -156,6 +159,7 @@ export function SectionNeeds({
   today,
   canEdit,
   referents = null,
+  infoProgress = null,
   boxAsk = null,
   boxOwnsChoose = false,
   canEditValuation = false,
@@ -258,16 +262,12 @@ export function SectionNeeds({
 
   // (Rilascio 10, §3.4) Il capitolo è una riga, «Cosa serve · 5», con i conteggi e la barra, come nel pannello: si apre
   // al tocco, e arriva aperto con `?capitolo=cosa-serve` (o `richieste`) e con i link della pagina che lo chiedono.
-  const count = needsCountSummaryOf([...requirements, ...steps], useCaseId);
-  const title = count && count.open > 0 ? fillText(GUIDED_TEXT.scheda.needsCount, { n: formatInteger(count.open) }) : TEXT.title;
-  const bar = count ? needsCountBar(count) : [];
-  // I conteggi nell'ordine della barra, prima quello che chiede di agire: «2 da verificare · 3 in attesa».
-  const zero = { open: 0, toAsk: 0, waiting: 0, toVerify: 0, blocked: 0, done: 0 };
-  const pieces = count
-    ? count.open > 0
-      ? bar.filter((part) => part.group !== "done").flatMap((part) => (part.group === "steps" ? needsCountPieces({ open: 0, counts: zero, steps: part.count }) : needAskPieces({ ...zero, [part.group]: part.count })))
-      : needAskPieces({ ...zero, done: count.counts.done })
-    : [];
+  // I conteggi nell'ordine della barra, prima quello che chiede di agire («2 da verificare · 3 in attesa»); le richieste
+  // scadute o dopo l'ultimo promemoria sono «senza risposta», rosse, come le dice «Raccolta informazioni».
+  const row = needsRowOf(needsCountSummaryOf([...requirements, ...steps], useCaseId), infoProgress?.counts.unanswered ?? 0);
+  const title = row && row.open > 0 ? fillText(GUIDED_TEXT.scheda.needsCount, { n: formatInteger(row.open) }) : TEXT.title;
+  const pieces = row?.pieces ?? [];
+  const bar = row?.bar ?? [];
   const barTotal = bar.reduce((sum, part) => sum + part.count, 0);
   // Le righe aperte: le prime cinque in vista, le altre dietro «Mostra le altre N», aperte quando la pagina arriva a «Cosa serve».
   const shownRequirements = openRequirements.slice(0, NEED_ROWS_SHOWN);
@@ -301,6 +301,7 @@ export function SectionNeeds({
       title={title}
       summary={pieces.length ? pieces.join(FIGURE_SEPARATOR) : TEXT.empty}
       within={["richieste"]}
+      toggleId={COSA_SERVE_HEADING_ID}
       extra={
         barTotal > 0 ? (
           <span aria-hidden data-slot="needs-bar" className="hidden h-1 w-16 shrink-0 gap-0.5 overflow-hidden rounded-full bg-muted sm:flex">

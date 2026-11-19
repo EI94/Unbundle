@@ -59,8 +59,6 @@ export const NEED_FORM_TEXT = Object.freeze({
   edit: "Modifica",
   /** Il nome del menu «⋯» di una riga: «Azioni: Accesso al gestionale». */
   rowActions: "Azioni",
-  /** (Rilascio 6, B.1.5) Le informazioni aperte della scheda dietro il loro conteggio: «Informazioni · 9». */
-  requirementsSummary: "Informazioni · {n}",
   /** Le righe dei requisiti aperti oltre le prime cinque. */
   moreRowsOne: "Mostra l'altra",
   moreRowsMany: "Mostra le altre {n}",
@@ -99,11 +97,6 @@ export const NEED_FORM_TEXT = Object.freeze({
 /** «Mostra le altre 9», «Mostra l'altra»: le righe dei requisiti aperti oltre le prime cinque. */
 export function moreRowsText(count: number): string {
   return count === 1 ? NEED_FORM_TEXT.moreRowsOne : NEED_FORM_TEXT.moreRowsMany.replace("{n}", formatInteger(count));
-}
-
-/** (Rilascio 6) «Requisiti · 9»: i requisiti aperti della scheda, dietro il loro conteggio. */
-export function requirementsSummaryText(open: number): string {
-  return NEED_FORM_TEXT.requirementsSummary.replace("{n}", formatInteger(open));
 }
 
 /** «Scadenze · 2» con le scadenze da rispettare; senza, «Scadenze» (le fatte stanno dentro, in «Fatte · N»). */

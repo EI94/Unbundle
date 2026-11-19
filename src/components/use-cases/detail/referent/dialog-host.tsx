@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ReferentMemberOption, UseCaseReferentPanel } from "@/lib/use-cases/referent/contract";
+import { arriveAt } from "../arrival";
 import type { AskNeedInfo, AskSession } from "./ask-steps-state";
 import type { AssignContext } from "./assign-dialog";
 import { ReferentDialogs, type ReferentDialog } from "./dialogs";
@@ -16,10 +17,17 @@ export function useReferentDialog(): OpenReferentDialog | null {
   return useContext(ReferentDialogContext);
 }
 
-/** Il titolo di «Cosa serve» (`section-needs.tsx`, tabIndex -1): il fuoco ci va quando il pulsante di partenza non c'è più. */
+/**
+ * (Rilascio 10, §3.4) Il pulsante del titolo della riga «Cosa serve · N» (la piega di `section-needs.tsx`), con l'id del
+ * titolo di prima: quando il pulsante di partenza non c'è più e il blocco «Referente» non c'è, il fuoco arriva lì
+ * (`arriveAt` apre la piega).
+ */
 export const COSA_SERVE_HEADING_ID = "cosa-serve-titolo";
-/** (Rilascio 5) Il titolo del blocco «Referente»: il fuoco ci va quando il pulsante di partenza non c'è più. */
-export const REFERENT_HEADING_ID = "referente-titolo";
+/**
+ * Le ancore a cui torna il fuoco, in quest'ordine: il blocco «Referente» (rilascio 5, dentro «Cosa serve»: `arriveAt` dà
+ * il fuoco al suo titolo), poi la riga «Cosa serve».
+ */
+const FOCUS_BACK_IDS = Object.freeze({ referent: "referente", needs: "cosa-serve" });
 
 export interface ReferentDialogHostProps {
   workspaceId: string;
@@ -45,7 +53,8 @@ export interface ReferentDialogHostProps {
  * Le finestre di «Chiedi al referente» della scheda, una alla volta, per tutta la pagina: le apre
  * il riquadro «Prossimo passo» («Chiedi al referente»), le righe e le richieste di «Cosa serve».
  * Chiusa la finestra, il fuoco torna al controllo che l'ha aperta; se non c'è più (dopo l'ok sui
- * fornitori la riga perde il pulsante), al titolo di «Cosa serve». (Rilascio 4) La bozza di «Chiedi al
+ * fornitori la riga perde il pulsante, dopo l'invio il passo non ha più un pulsante), al blocco «Referente»
+ * o alla riga «Cosa serve», aprendo la piega che li contiene (rilascio 10). (Rilascio 4) La bozza di «Chiedi al
  * referente» chiusa senza inviare resta per la vita della pagina (solo qui, mai nel browser) e
  * l'ultimo elenco delle persone del workspace serve mentre arriva di nuovo.
  */
@@ -66,10 +75,13 @@ export function ReferentDialogHost({ workspaceId, useCaseId, panel, canEdit, nee
     const { element: back, ask } = trigger.current;
     trigger.current = { element: null, ask: false };
     // Dopo la chiusura della finestra (che rimette il fuoco dove vuole), al controllo di partenza; per
-    // «Chiedi al referente», se il pulsante non c'è più, al titolo di «Cosa serve» (mai sul fondo della pagina).
+    // «Chiedi al referente», se il pulsante non c'è più, al blocco «Referente» o alla riga «Cosa serve», con la
+    // piega aperta (mai sul fondo della pagina né su un titolo nascosto).
     requestAnimationFrame(() => {
       if (back?.isConnected) back.focus({ preventScroll: true });
-      else if (ask) (document.getElementById(REFERENT_HEADING_ID) ?? document.getElementById(COSA_SERVE_HEADING_ID))?.focus({ preventScroll: true });
+      else if (ask) {
+        if (!arriveAt(FOCUS_BACK_IDS.referent)) arriveAt(FOCUS_BACK_IDS.needs);
+      }
     });
   }, []);
   const onPeople = useCallback((members: readonly ReferentMemberOption[]) => setPeopleCache(members), []);

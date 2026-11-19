@@ -16,6 +16,7 @@ let pathDisclosure: typeof import("./path-disclosure.tsx");
 let useCasePath: typeof import("./use-case-path.tsx");
 let detailHeader: typeof import("./detail-header.tsx");
 let sectionNeeds: typeof import("./section-needs.tsx");
+let notePlacement: typeof import("./note-placement.tsx");
 let render: (element: unknown) => string;
 let h: (type: unknown, props: unknown, ...children: unknown[]) => unknown;
 
@@ -45,6 +46,7 @@ before(async () => {
   useCasePath = await import("./use-case-path.tsx");
   detailHeader = await import("./detail-header.tsx");
   sectionNeeds = await import("./section-needs.tsx");
+  notePlacement = await import("./note-placement.tsx");
   const react = await import("react");
   h = (type, props, ...children) => react.createElement(type as never, props as never, ...(children as never[]));
   const { renderToStaticMarkup } = (await import("react-dom/server")) as unknown as { renderToStaticMarkup: (element: unknown) => string };
@@ -90,6 +92,17 @@ test("«Valore»: il numero grande, una riga con il costo, la sua fonte e il par
   assert.doesNotMatch(valore(teamValue, estimateCost, { canEdit: false }), /valore-modifica/);
 });
 
+test("«Valore» con una fascia: «Costo di realizzazione: da 25.000 a 65.000 € · fascia del team», «fascia» una volta sola", () => {
+  const band: CostFigure = { source: "team_fascia", amount: null, band: 2, bandLabel: "Da 25.000 a 65.000 €", fromBand: true, position: 2, referenceEur: 65_000 };
+  const line = text(/<p data-slot="valore-riga"[\s\S]*?<\/p>/.exec(valore({ ...teamValue, benefits: null }, band))?.[0] ?? "");
+  assert.equal(line, "Costo di realizzazione: da 25.000 a 65.000 € · fascia del team");
+  assert.equal(line.split("fascia").length - 1, 1, "«fascia» una volta");
+  // Anche la fascia che viene dall'impegno, e l'ultima, aperta in alto.
+  const effort: CostFigure = { ...band, source: "sforzo", band: 5, bandLabel: "250.000 € e oltre", referenceEur: 400_000 };
+  assert.equal(text(/<p data-slot="valore-riga"[\s\S]*?<\/p>/.exec(valore({ ...teamValue, benefits: null }, effort))?.[0] ?? ""), "Costo di realizzazione: 250.000 € e oltre · stimato dall'impegno");
+  assert.equal(GUIDED_TEXT.impact.costBandLine, "Costo di realizzazione: {fascia}");
+});
+
 test("«Valore» (D10): con la realizzazione avviata la cifra, il costo e il pareggio sono il suo conto, senza «Modifica»", () => {
   const account: RealizationAccount = { benefit: "52.000 €", cost: "34.000 €", breakEven: "9 mesi", href: `/dashboard/${WS}/casi-duso/caso-1/valore` };
   const html = valore(teamValue, estimateCost, { account });
@@ -106,6 +119,50 @@ test("«Valore» (D10): con la realizzazione avviata la cifra, il costo e il par
   const partial = valore(teamValue, estimateCost, { account: { benefit: "52.000 €", cost: null, breakEven: null, href: null } });
   assert.equal(text(/<p data-slot="valore-riga"[\s\S]*?<\/p>/.exec(partial)?.[0] ?? ""), "Costo di realizzazione da calcolare · dalla realizzazione");
   assert.doesNotMatch(partial, /casi-duso/);
+});
+
+test("(D10) un revisore che non è nella realizzazione: in «Valore» il conto senza link, in «Valutazione del team» la stima del team", () => {
+  // La stima del team con «Benefici e costi»: ore all'ora, da misurare, voci, chip, come si misura, da dove vengono i numeri.
+  const view: import("../../../lib/use-cases/guided.ts").ImpactView = {
+    variant: "A",
+    hours: 116,
+    hoursText: "116",
+    unit: "ore all'anno",
+    perYear: { amount: 4_043, source: "team" },
+    hourly: "a 35 € l'ora",
+    payback: "Pareggio in circa 2 mesi a regime.",
+    pending: "e fino a 1.200 € da misurare",
+    items: {
+      lines: [{ label: "Smistamento delle richieste", formula: "6.600 all'anno × 1,5 min ≈ 116 h · 4.043 €", confidence: "ipotesi" }],
+      qualitative: ["Meno errori di smistamento"],
+      toConfirm: true,
+      measuredBy: "Si misura con: richieste smistate al giorno",
+      origin: [{ term: { text: "Ipotesi di calcolo" }, detail: "35 € l'ora · 0 € a giornata" }],
+    },
+  };
+  const account: RealizationAccount = { benefit: "52.000 €", cost: "34.000 €", breakEven: "9 mesi", href: null };
+  const block = render(h(impactBlock.ImpactBlock, { view, value: teamValue, cost: estimateCost, costBands: COST_BANDS, risks: [], account, canEdit: true }));
+  assert.match(block, /data-slot="big-number-value"[^>]*>52\.000 €<\/p>/);
+  assert.doesNotMatch(block, /casi-duso|href="\/dashboard/, "chi non apre la realizzazione non ha il link");
+  for (const gone of ["116 ore", "fino a 1.200", "Smistamento delle richieste", "Si misura con"]) assert.ok(!text(block).includes(gone), `in «Valore» solo il conto: ${gone}`);
+  // In «Valutazione del team», per ogni revisore, la stima del team in sola lettura: niente si perde.
+  const team = text(render(h(impactBlock.TeamEstimate, { view })));
+  for (const kept of [
+    GUIDED_TEXT.impact.teamEstimate,
+    "116 ore all'anno a 35 € l'ora",
+    "e fino a 1.200 € da misurare",
+    "Smistamento delle richieste · 6.600 all'anno × 1,5 min ≈ 116 h · 4.043 € · ipotesi",
+    "Meno errori di smistamento",
+    GUIDED_TEXT.impact.toConfirm,
+    "Si misura con: richieste smistate al giorno",
+    GUIDED_TEXT.impact.origin,
+    "Ipotesi di calcolo",
+  ]) assert.ok(team.includes(kept), `stima del team: ${kept}`);
+  assert.doesNotMatch(render(h(impactBlock.TeamEstimate, { view })), /<details/, "niente piega dentro la piega");
+  // La scheda la mette in «Valutazione del team» solo con il conto della realizzazione; senza niente da dire non c'è.
+  const detail = readFileSync(new URL("./detail.tsx", import.meta.url), "utf8");
+  assert.match(detail, /<Fold id="valutazione"[^>]*>\n\s+\{\/\*[^*]*\*\/\}\n\s+\{account \? <TeamEstimate view=\{impact\} \/> : null\}/);
+  assert.equal(render(h(impactBlock.TeamEstimate, { view: { variant: "E", perYear: { amount: 4_043, source: "team" } } })), "");
 });
 
 test("«Valore» da stimare: niente riga del costo da stimare né «Modifica»; c'è il link alla valutazione", () => {
@@ -220,6 +277,49 @@ test("«Cosa serve · N»: una riga chiusa con le aperte, i gruppi prima quello 
   assert.equal((html.match(/data-need="/g) ?? []).length, 5, "le cinque in vista, una volta aperta");
   assert.match(html, /aria-haspopup="menu"[^>]*>Aggiungi<svg/, "«Aggiungi ▾»: aggiungere o collegare");
   assert.ok(!html.includes("informazioni ricevute"), "il conteggio delle arrivate sta nel percorso");
+  // Il pulsante del titolo ha l'id del titolo di prima: il fuoco ci torna dopo una finestra del referente.
+  assert.match(html, /<button type="button" id="cosa-serve-titolo" data-arrival-toggle=""/);
+  // Le richieste senza risposta («Raccolta informazioni»): rosse, fuori da «in attesa»; le scadenze si dicono «scadenze».
+  const step = { ...need("7f000000-0000-4000-8000-000000000006", "Prova sul gestionale entro fine mese", "proposta"), type: "passo" };
+  const silent = render(
+    h(sectionNeeds.SectionNeeds, {
+      workspaceId: WS,
+      useCaseId: UC,
+      requirements,
+      steps: [step],
+      linkable: [],
+      refs: {},
+      today: "2026-11-01",
+      canEdit: true,
+      infoProgress: { counts: { toAsk: 0, toVerify: 2, waiting: 1, unanswered: 2, blockedCount: 0, since: null, reminded: true } },
+    }),
+  );
+  assert.equal(text(silent.slice(0, silent.indexOf("</button>"))), "Cosa serve · 6 2 da verificare · 2 senza risposta · 1 in attesa · 1 scadenza");
+  assert.match(silent, /data-group="unanswered" class="[^"]*bg-uc-rosso/);
+});
+
+test("dopo una finestra del referente, senza il pulsante di partenza, il fuoco va al blocco «Referente» o alla riga «Cosa serve», aperta", () => {
+  const host = readFileSync(new URL("./referent/dialog-host.tsx", import.meta.url), "utf8");
+  assert.match(host, /if \(!arriveAt\(FOCUS_BACK_IDS\.referent\)\) arriveAt\(FOCUS_BACK_IDS\.needs\);/);
+  assert.match(host, /const FOCUS_BACK_IDS = Object\.freeze\(\{ referent: "referente", needs: "cosa-serve" \}\);/);
+  assert.doesNotMatch(host, /getElementById\(/, "mai un titolo nascosto dentro una piega chiusa");
+  const needs = readFileSync(new URL("./section-needs.tsx", import.meta.url), "utf8");
+  assert.match(needs, /toggleId=\{COSA_SERVE_HEADING_ID\}/);
+});
+
+test("«Nota pubblica»: il posto si decide una volta per navigazione; la rilettura dopo la prima nota non la sposta", () => {
+  const { notePlaceFor } = notePlacement;
+  const first = notePlaceFor(null, "/dashboard/w/use-cases/u?capitolo=", "dettagli");
+  assert.deepEqual(first, { navigation: "/dashboard/w/use-cases/u?capitolo=", place: "dettagli" });
+  // La prima nota scritta in «Dettagli» si salva, la pagina si rilegge e direbbe «in vista»: il campo resta dov'è.
+  assert.equal(notePlaceFor(first, "/dashboard/w/use-cases/u?capitolo=", "vista"), first);
+  // Una navigazione nuova (un altro `?capitolo=`, un'altra scheda) decide di nuovo.
+  assert.deepEqual(notePlaceFor(first, "/dashboard/w/use-cases/u?capitolo=dettagli", "vista").place, "vista");
+  // Il riquadro sta con il posto «in vista»; in «Dettagli» la nota è senza riquadro.
+  const slots = (inView: boolean) =>
+    render(h(notePlacement.NotePlacement, { inView }, h("div", { id: "su" }, h(notePlacement.NoteSlot, { place: "vista" }, "NOTA")), h("div", { id: "giu" }, h(notePlacement.NoteSlot, { place: "dettagli" }, "NOTA"))));
+  assert.equal(slots(true), '<div id="su"><div data-slot="nota-in-vista" class="rounded-xl border bg-card p-4">NOTA</div></div><div id="giu"></div>');
+  assert.equal(slots(false), '<div id="su"></div><div id="giu">NOTA</div>');
 });
 
 test("l'ordine della scheda: passo, percorso, nota quando serve, Valore, Come cambia il lavoro, Cosa serve, poi le pieghe", () => {
@@ -234,7 +334,7 @@ test("l'ordine della scheda: passo, percorso, nota quando serve, Valore, Come ca
     "<DetailHeader",
     "<NextStepBox",
     "<PathDisclosure",
-    "{noteInView ? publicNote : null}",
+    '<NoteSlot place="vista">{publicNote}</NoteSlot>',
     "<ImpactBlock",
     "<WorkFlow",
     "<SectionNeeds",
@@ -246,7 +346,8 @@ test("l'ordine della scheda: passo, percorso, nota quando serve, Valore, Come ca
   ].map(at);
   assert.deepEqual([...order].sort((a, b) => a - b), order, "l'ordine di §3.4");
   // «Nota pubblica» fuori vista sta in «Dettagli»; «Quando» nel percorso; nessuna colonna di destra.
-  assert.ok(at("{noteInView ? null : publicNote}") > at('<Fold id="dettagli"') && at("{noteInView ? null : publicNote}") < at('<Fold id="contesto"'));
+  assert.ok(at('<NoteSlot place="dettagli">{publicNote}</NoteSlot>') > at('<Fold id="dettagli"') && at('<NoteSlot place="dettagli">{publicNote}</NoteSlot>') < at('<Fold id="contesto"'));
+  assert.match(detail, /<NotePlacement inView=\{noteInView\} chapter=\{chapter \?\? null\}>/, "il posto della nota per navigazione, come l'arrivo");
   assert.ok(at('<div id="quando"') > at("<PathDisclosure") && at('<div id="quando"') < at("</PathDisclosure>"));
   assert.ok(!detail.includes("scheda-aside") && !detail.includes("scheda-grid"));
   // La scheda del contributore: la riga corta sugli use case di altri.

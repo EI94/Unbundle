@@ -7,18 +7,6 @@ import { GUIDED_TEXT } from "@/lib/use-cases/guided";
 import { useDecisionRunner } from "../decision-buttons";
 import type { SchedaMenuItem } from "./scheda-menu";
 
-/** Le due azioni dell'interruttore, come le dice il servizio (§6.1, §8.6, §14.3). */
-export const HIDE_FROM_SEARCH_TEXT = Object.freeze({
-  // (Rilascio 10, §4) La visibilità si dice «Visibile in azienda», con un genere neutro.
-  hide: "Nascondi in azienda",
-  show: "Rendi visibile in azienda",
-});
-
-/** Che cosa fa l'interruttore adesso: una scheda nascosta si rende visibile, una visibile si nasconde. */
-export function hideFromSearchLabel(hiddenFromSearch: boolean): string {
-  return hiddenFromSearch ? HIDE_FROM_SEARCH_TEXT.show : HIDE_FROM_SEARCH_TEXT.hide;
-}
-
 export interface VisibilityToggleOptions {
   workspaceId: string;
   item: Pick<DecisionItem, "id" | "version" | "hiddenFromSearch">;

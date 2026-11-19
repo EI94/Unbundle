@@ -44,9 +44,10 @@ import { WhenControl } from "../when-control";
 import { Arrival } from "./arrival";
 import { DetailHeader } from "./detail-header";
 import { Fold } from "./fold";
-import { ImpactBlock } from "./impact-block";
+import { ImpactBlock, TeamEstimate } from "./impact-block";
 import { IntakeDetails, type GuideLabels } from "./intake-details";
 import { NextStepBox, PagePrimaryProvider } from "./next-step-box";
+import { NotePlacement, NoteSlot } from "./note-placement";
 import { PathDisclosure } from "./path-disclosure";
 import { PublicNoteField } from "./public-note-field";
 import type { RedactOption } from "./redact-dialog";
@@ -400,7 +401,7 @@ export function UseCaseDetailView({
       aria-label={PUBLIC_NOTE_TEXT.label}
       tabIndex={-1}
       data-slot="nota-pubblica"
-      className={cn("scroll-mt-20 space-y-4 outline-none", noteInView && "rounded-xl border bg-card p-4")}
+      className="scroll-mt-20 space-y-4 outline-none"
     >
       <PublicNoteField workspaceId={workspaceId} item={decisionItem} canEdit={abilities.canDecide} />
       <ProposerAnswers answers={answers} />
@@ -464,83 +465,89 @@ export function UseCaseDetailView({
                   ) : null}
                 </PathDisclosure>
               ) : null}
-              <div data-slot="scheda-body" className="mt-8 min-w-0 space-y-10">
-                {noteInView ? publicNote : null}
-                <ImpactBlock view={impact} value={detail.value} cost={detail.cost} costBands={result.costBands} risks={detail.risks} account={account} canEdit={abilities.canEditValuation} />
-                <WorkFlow workspaceId={workspaceId} detail={detail} canEdit={abilities.canEditWhat} tone={agentTone} />
-                {abilities.canSeeNeeds && agentProposals?.length ? (
-                  <AgentProposals workspaceId={workspaceId} useCaseId={detail.id} proposals={agentProposals} canDecide={abilities.canEditNeeds} />
-                ) : null}
-                {abilities.canSeeNeeds && needs ? (
-                  <SectionNeeds
-                    workspaceId={workspaceId}
-                    useCaseId={detail.id}
-                    requirements={needs.lists.requirements}
-                    steps={needs.lists.steps}
-                    linkable={needs.lists.linkable}
-                    refs={needs.refs}
-                    today={today}
-                    canEdit={abilities.canEditNeeds}
-                    referents={referents}
-                    boxAsk={boxAskOf(step)}
-                    boxOwnsChoose={step.action.type === "referente" && step.action.mode === "scegli"}
-                    canEditValuation={abilities.canEditValuation}
-                    useCaseVersion={detail.version}
-                    needLinks={abilities.canEditNeeds ? needLinks : null}
-                  />
-                ) : null}
-                <div data-slot="detail-folds" className="min-w-0">
-                  <Fold id="valutazione" title={t.valutazione} summary={summaries.valutazione}>
-                    <SectionValuation
-                      workspaceId={workspaceId}
-                      detail={detail}
-                      model={result.model}
-                      costBands={result.costBands}
-                      valueParams={result.valueParams}
-                      today={today}
-                      esgEnabled={result.esgEnabled}
-                      canEdit={abilities.canEditValuation}
-                    />
-                  </Fold>
-                  <Fold id="dettagli" title={t.dettagli} summary={summaries.dettagli}>
-                    <DetailsFields
-                      workspaceId={workspaceId}
-                      detail={detail}
-                      canEdit={abilities.canEditWhat}
-                      esgEnabled={result.esgEnabled}
-                      areaOptions={guide?.areas ?? null}
-                      intake={<IntakeDetails workspaceId={workspaceId} detail={detail} canEdit={abilities.canEditWhat} proposer={proposer} labels={guide} bare />}
-                    />
-                    {noteInView ? null : publicNote}
-                  </Fold>
-                  {contextFold ? (
-                    <Fold id="contesto" title={t.contesto} summary={summaries.contesto}>
-                      <UseCaseContextView workspaceId={workspaceId} today={today} context={contextFold} />
-                    </Fold>
+              {/* Dove sta la nota lo decide la navigazione, una volta: la rilettura dopo la prima nota non la sposta. */}
+              <NotePlacement inView={noteInView} chapter={chapter ?? null}>
+                <div data-slot="scheda-body" className="mt-8 min-w-0 space-y-10">
+                  <NoteSlot place="vista">{publicNote}</NoteSlot>
+                  <ImpactBlock view={impact} value={detail.value} cost={detail.cost} costBands={result.costBands} risks={detail.risks} account={account} canEdit={abilities.canEditValuation} />
+                  <WorkFlow workspaceId={workspaceId} detail={detail} canEdit={abilities.canEditWhat} tone={agentTone} />
+                  {abilities.canSeeNeeds && agentProposals?.length ? (
+                    <AgentProposals workspaceId={workspaceId} useCaseId={detail.id} proposals={agentProposals} canDecide={abilities.canEditNeeds} />
                   ) : null}
-                  {realizationFold ? (
-                    <Fold id="realizzazione" title={t.realizzazione} summary={summaries.realizzazione}>
-                      <SectionRealization
+                  {abilities.canSeeNeeds && needs ? (
+                    <SectionNeeds
+                      workspaceId={workspaceId}
+                      useCaseId={detail.id}
+                      requirements={needs.lists.requirements}
+                      steps={needs.lists.steps}
+                      linkable={needs.lists.linkable}
+                      refs={needs.refs}
+                      today={today}
+                      canEdit={abilities.canEditNeeds}
+                      referents={referents}
+                      infoProgress={infoProgress}
+                      boxAsk={boxAskOf(step)}
+                      boxOwnsChoose={step.action.type === "referente" && step.action.mode === "scegli"}
+                      canEditValuation={abilities.canEditValuation}
+                      useCaseVersion={detail.version}
+                      needLinks={abilities.canEditNeeds ? needLinks : null}
+                    />
+                  ) : null}
+                  <div data-slot="detail-folds" className="min-w-0">
+                    <Fold id="valutazione" title={t.valutazione} summary={summaries.valutazione}>
+                      {/* (D10) Con il conto della realizzazione in «Valore», la stima del team si legge qui, per ogni revisore. */}
+                      {account ? <TeamEstimate view={impact} /> : null}
+                      <SectionValuation
                         workspaceId={workspaceId}
-                        item={detail}
+                        detail={detail}
+                        model={result.model}
+                        costBands={result.costBands}
+                        valueParams={result.valueParams}
                         today={today}
-                        dossierRead={result.dossierRead}
-                        canStartRealization={abilities.canStartRealization}
-                        canMarkInProgress={abilities.canMarkInProgress}
-                        canOpenAnyDossier={abilities.canOpenAnyDossier}
-                        realization={realization}
-                        boxOwnsStart={startInBox}
-                        startHint={step.key === "G3" || (referentInput !== null && !quarterHolding(detail, today)) ? "trimestre" : "informazioni"}
+                        esgEnabled={result.esgEnabled}
+                        canEdit={abilities.canEditValuation}
                       />
                     </Fold>
-                  ) : null}
-                  {abilities.canSeeHistory && events ? (
-                    <Fold id="storia" title={t.storia} summary={summaries.storia} open={historyAll}>
-                      <SectionHistory events={events} kind={detail.kind} today={today} showAllHref={historyAll ? null : historyAllHref} />
+                    <Fold id="dettagli" title={t.dettagli} summary={summaries.dettagli}>
+                      <DetailsFields
+                        workspaceId={workspaceId}
+                        detail={detail}
+                        canEdit={abilities.canEditWhat}
+                        esgEnabled={result.esgEnabled}
+                        areaOptions={guide?.areas ?? null}
+                        intake={<IntakeDetails workspaceId={workspaceId} detail={detail} canEdit={abilities.canEditWhat} proposer={proposer} labels={guide} bare />}
+                      />
+                      <NoteSlot place="dettagli">{publicNote}</NoteSlot>
                     </Fold>
-                  ) : null}
+                    {contextFold ? (
+                      <Fold id="contesto" title={t.contesto} summary={summaries.contesto}>
+                        <UseCaseContextView workspaceId={workspaceId} today={today} context={contextFold} />
+                      </Fold>
+                    ) : null}
+                    {realizationFold ? (
+                      <Fold id="realizzazione" title={t.realizzazione} summary={summaries.realizzazione}>
+                        <SectionRealization
+                          workspaceId={workspaceId}
+                          item={detail}
+                          today={today}
+                          dossierRead={result.dossierRead}
+                          canStartRealization={abilities.canStartRealization}
+                          canMarkInProgress={abilities.canMarkInProgress}
+                          canOpenAnyDossier={abilities.canOpenAnyDossier}
+                          realization={realization}
+                          boxOwnsStart={startInBox}
+                          startHint={step.key === "G3" || (referentInput !== null && !quarterHolding(detail, today)) ? "trimestre" : "informazioni"}
+                        />
+                      </Fold>
+                    ) : null}
+                    {abilities.canSeeHistory && events ? (
+                      <Fold id="storia" title={t.storia} summary={summaries.storia} open={historyAll}>
+                        <SectionHistory events={events} kind={detail.kind} today={today} showAllHref={historyAll ? null : historyAllHref} />
+                      </Fold>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
+              </NotePlacement>
             </ReferentDialogHost>
           </PagePrimaryProvider>
         </Arrival>

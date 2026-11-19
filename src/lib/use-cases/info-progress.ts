@@ -155,8 +155,6 @@ export const INFO_PROGRESS_TEXT = Object.freeze({
     oneDone: "a posto",
     allDone: "tutte a posto",
   }),
-  // Solo l'etichetta del blocco in cima a «Cosa serve», per i lettori di schermo.
-  summaryHeading: "Raccolta informazioni",
   filterLabel: "Informazioni",
   filterAny: "Tutte",
 });

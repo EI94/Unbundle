@@ -56,7 +56,6 @@ let pageOfUseCases: Page;
 let referents: typeof import("../../../../lib/db/queries/use-case-referents.ts");
 let hub: typeof import("../../hub.tsx");
 let access: typeof import("../../../../lib/workspace-access.ts");
-let progress: typeof import("../../../../lib/use-cases/info-progress.ts");
 
 const suffix = randomBytes(3).toString("hex");
 const ids = { org: randomUUID(), ws: randomUUID(), builder: randomUUID(), contributor: randomUUID() };
@@ -182,7 +181,6 @@ before(async () => {
   referents = await import("../../../../lib/db/queries/use-case-referents.ts");
   hub = await import("../../hub.tsx");
   access = await import("../../../../lib/workspace-access.ts");
-  progress = await import("../../../../lib/use-cases/info-progress.ts");
   const quarter = await import("../../../../lib/use-cases/quarter.ts");
 
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione raccolta informazioni', $2)`, [ids.org, `hub-info-${ids.org}`]);
@@ -279,7 +277,7 @@ test("la scheda: niente chip delle informazioni nella testata; il passo «Inform
   // «Cosa serve · N»: le aperte e i gruppi, niente riepilogo a parte e niente «informazioni ricevute».
   const total = (await needsOf(cards.wait)).length;
   assert.equal(needsRowOf(page), `Cosa serve · ${total}${total - 2} da chiedere · 2 in attesa`);
-  for (const text of ['data-slot="info-summary"', "informazioni ricevute", progress.INFO_PROGRESS_TEXT.summaryHeading]) assert.ok(!page.includes(text), `scheda: ${text}`);
+  for (const text of ['data-slot="info-summary"', "informazioni ricevute", "Raccolta informazioni"]) assert.ok(!page.includes(text), `scheda: ${text}`);
   // Da verificare: i conteggi giusti; la fase non cambia mai da sola.
   const verify = await detailHtml("builder", cards.verify);
   const verifyTotal = (await needsOf(cards.verify)).length;
@@ -313,7 +311,11 @@ test("la scheda: niente chip delle informazioni nella testata; il passo «Inform
   assert.ok(seeRequests && /\shref="#richieste"/.test(seeRequests[1]) && /\sclass="[^"]*\bbg-primary\b/.test(seeRequests[1]), "G2: «Sollecita le risposte» pieno, verso #richieste");
   assert.match(silent, /<details id="richieste"/, "l'ancora c'è");
   assert.ok(!silent.includes("Informazioni: senza risposta"));
-  assert.equal(needsRowOf(silent), `Cosa serve · ${silentTotal}${silentTotal - 2} da chiedere · 2 in attesa`);
+  // Le richieste scadute senza risposta non sono «in attesa»: «2 senza risposta», rosse, in testa, come le dice il passo.
+  assert.equal(needsRowOf(silent), `Cosa serve · ${silentTotal}2 senza risposta · ${silentTotal - 2} da chiedere`);
+  const silentBar = silent.slice(silent.indexOf('data-slot="needs-bar"'), silent.indexOf("</span></span>", silent.indexOf('data-slot="needs-bar"')));
+  assert.match(silentBar, /data-group="unanswered" class="[^"]*bg-uc-rosso/, "il tratto rosso di «senza risposta»");
+  assert.doesNotMatch(silentBar, /data-group="waiting"/, "nessuna «in attesa»: sono tutte senza risposta");
   // (Rilascio 4) Una parola sola, la stessa della campanella: «Nessuna risposta».
   assert.ok(silent.includes('data-slot="referent-request-word" class="text-xs font-medium">Nessuna risposta</p>'), "la richiesta scaduta senza risposta, in una parola, nelle «Richieste»");
   const done = await detailHtml("builder", cards.done);
@@ -332,7 +334,7 @@ test("la scheda: niente chip delle informazioni nella testata; il passo «Inform
 test("il contributore non vede né il chip né il riepilogo né il testo dello stato", opts, async () => {
   for (const key of CARDS) {
     const page = await detailHtml("contributor", cards[key]);
-    for (const text of ["data-slot=\"info-chip\"", "data-slot=\"info-summary\"", "Informazioni:", "informazioni ricevute", progress.INFO_PROGRESS_TEXT.summaryHeading]) assert.ok(!page.includes(text), `${key}: ${text}`);
+    for (const text of ["data-slot=\"info-chip\"", "data-slot=\"info-summary\"", "Informazioni:", "informazioni ricevute", "Raccolta informazioni"]) assert.ok(!page.includes(text), `${key}: ${text}`);
   }
   for (const vista of ["da-decidere", "panoramica"]) {
     const page = await hubHtml("contributor", { vista });

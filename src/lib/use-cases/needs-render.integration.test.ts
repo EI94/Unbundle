@@ -847,7 +847,7 @@ test("scheda: il capitolo «Cosa serve» con le esigenze collegate, le righe a p
   // Nessuna barra delle ancore: `?capitolo=cosa-serve` arriva alla sezione e al suo titolo.
   assert.ok(!page.includes('href="#cosa-serve"') && page.includes('<section id="cosa-serve"'), "l'ancora è la sezione");
   // (Rilascio 10, §3.4) Una riga sola, chiusa: «Cosa serve · 4» e i conteggi, nel pulsante del titolo H2.
-  assert.match(page, /<section id="cosa-serve" data-slot="section-needs" data-arrival-host="" class="[^"]*"><h2 class="text-base font-semibold"><button type="button" data-arrival-toggle="" aria-expanded="false" aria-controls="cosa-serve-contenuto"/);
+  assert.match(page, /<section id="cosa-serve" data-slot="section-needs" data-arrival-host="" class="[^"]*"><h2 class="text-base font-semibold"><button type="button" id="cosa-serve-titolo" data-arrival-toggle="" aria-expanded="false" aria-controls="cosa-serve-contenuto"/);
   const row = textOf(page.slice(page.indexOf('<section id="cosa-serve"'), page.indexOf("</button>", page.indexOf('<section id="cosa-serve"'))));
   assert.ok(row.startsWith("Cosa serve · 4"), row);
   const section = needsSectionOf(page);

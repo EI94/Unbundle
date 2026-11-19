@@ -22,6 +22,8 @@ export interface FoldProps {
   look?: "riga" | "riquadro";
   /** `data-slot` della piega; predefinito `fold`. */
   slot?: string;
+  /** L'id del pulsante del titolo, quando altri lo cercano (`cosa-serve-titolo`). */
+  toggleId?: string;
   children: ReactNode;
   className?: string;
 }
@@ -42,7 +44,7 @@ export function foldLanded(id: string, landing: string | null, within: readonly 
  * (`useLanding` di `Arrival`), non il passo di adesso: la rilettura dopo un'azione (il passo che cambia con
  * «Quando», un requisito aggiunto) non la apre né la chiude da sé.
  */
-export function Fold({ id, title, summary, open = false, within, extra, look = "riga", slot = "fold", children, className }: FoldProps) {
+export function Fold({ id, title, summary, open = false, within, extra, look = "riga", slot = "fold", toggleId, children, className }: FoldProps) {
   const ref = useRef<HTMLElement>(null);
   const wanted = foldLanded(id, useLanding(), within) || open;
   const [shown, setShown] = useState(wanted);
@@ -67,6 +69,7 @@ export function Fold({ id, title, summary, open = false, within, extra, look = "
       <h2 className="text-base font-semibold">
         <button
           type="button"
+          id={toggleId}
           data-arrival-toggle=""
           aria-expanded={shown}
           aria-controls={contentId}

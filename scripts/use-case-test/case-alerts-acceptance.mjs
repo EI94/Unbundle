@@ -221,20 +221,21 @@ function state(page) {
     };
     // The «Prossimo passo» box (`<section id="decisione" data-slot="next-step">`): on a ready card
     // (G9) `?capitolo=realizzazione` brings it to the top and focuses its heading; the «Realizzazione»
-    // fold (`<details id="realizzazione" data-slot="fold">`) stays closed.
+    // fold (release 10: `<section id="realizzazione" data-slot="fold">`, open with `data-open`) stays closed.
     const box = document.getElementById("decisione");
     const start = box ? [...box.querySelectorAll("a, button")].find((el) => el.textContent.replace(/\s+/g, " ").trim() === "Avvia la realizzazione") : null;
     const fold = document.getElementById("realizzazione");
     const active = document.activeElement;
-    const isFold = fold instanceof HTMLDetailsElement && fold.dataset.slot === "fold";
+    const isFold = fold instanceof HTMLElement && fold.tagName === "SECTION" && fold.dataset.slot === "fold";
     // «Richieste inviate» (`<details id="richieste" data-slot="needs-requests">` in «Cosa serve»):
     // `?capitolo=richieste` opens it from the server, brings it to the top and focuses its summary.
     const requests = document.getElementById("richieste");
     const isRequests = requests instanceof HTMLDetailsElement && requests.dataset.slot === "needs-requests";
     const summary = isRequests ? requests.querySelector(":scope > summary") : null;
     const askAgain = isRequests ? [...requests.querySelectorAll("a, button")].find((el) => el.textContent.replace(/\s+/g, " ").trim() === "Chiedi di nuovo") : null;
-    // «Cosa serve» (`<section id="cosa-serve">`): `?capitolo=cosa-serve` focuses its heading.
-    const needsHeading = document.getElementById("cosa-serve-titolo");
+    // «Cosa serve» (release 10: the fold `<section id="cosa-serve">`, one row): `?capitolo=cosa-serve` opens it and
+    // focuses the button of its title (`[data-arrival-toggle]`, id «cosa-serve-titolo»).
+    const needsHeading = document.querySelector("#cosa-serve [data-arrival-toggle]");
     return {
       open,
       rows: rows.map((el) => ({ href: el.getAttribute("href"), text: el.textContent.replace(/\s+/g, " ").trim() })),
@@ -247,7 +248,7 @@ function state(page) {
       startWhole: whole(start),
       startFilled: Boolean(start?.classList.contains("bg-primary")),
       realizationFold: isFold,
-      realizationOpen: isFold && fold.open,
+      realizationOpen: isFold && fold.hasAttribute("data-open"),
       requests: isRequests,
       requestsOpen: isRequests && requests.open,
       requestsFocus: Boolean(summary && active === summary),
@@ -339,14 +340,23 @@ function whenState(page, label) {
       top: r ? Math.round(r.top) : null,
       whole: Boolean(r && r.width > 0 && r.top >= 0 && r.bottom <= window.innerHeight && r.left >= 0 && r.right <= window.innerWidth),
       focusOnRadio: Boolean(radio && active === radio),
-      focused: active && active !== document.body ? `${active.tagName.toLowerCase()}${active.id ? `#${active.id}` : ""}${active.getAttribute("aria-label") ? `[${active.getAttribute("aria-label")}]` : ""}${active.closest("details[id]") ? ` in #${active.closest("details[id]").id}` : ""}` : "body",
+      focused: active && active !== document.body ? `${active.tagName.toLowerCase()}${active.id ? `#${active.id}` : ""}${active.getAttribute("aria-label") ? `[${active.getAttribute("aria-label")}]` : ""}${active.closest("details[id], section[data-slot=fold][id]") ? ` in #${active.closest("details[id], section[data-slot=fold][id]").id}` : ""}` : "body",
       box: document.getElementById("decisione")?.dataset.key ?? null,
-      foldOpen: fold instanceof HTMLDetailsElement ? fold.open : null,
+      // (Release 10) The scheda's folds are a `<section data-slot="fold">`, open with `data-open`.
+      foldOpen: fold?.dataset?.slot === "fold" ? fold.hasAttribute("data-open") : null,
       scrollY: Math.round(window.scrollY),
       url: location.pathname + location.search + location.hash,
       overflow: document.documentElement.scrollWidth > window.innerWidth,
     };
   }, label);
+}
+
+/** (Release 10) «Quando» lives inside the compact path of the card (`#percorso`, closed): open it before using the radios. */
+async function openPath(page) {
+  const open = await evaluate(page, () => document.getElementById("percorso")?.hasAttribute("data-open") ?? null);
+  if (open !== false) return;
+  await clickAt(page, "#percorso [data-arrival-toggle]");
+  await sleep(300);
 }
 
 /** The choice of «Quando» whose label starts with `label`, brought to the middle of the window as a person scrolls to it: its centre. */
@@ -413,7 +423,7 @@ function silentLanding(s, chapter) {
   if (chapter === "richieste") {
     failures.push(...(s.requestsOpen ? [] : ["«Richieste inviate» is closed"]), ...(s.requestsFocus ? [] : [`focus not on the summary of «Richieste inviate» (on ${s.focused})`]), ...(s.requestsInView ? [] : ["«Richieste inviate» not in view"]));
   } else {
-    failures.push(...(s.requestsOpen ? ["«Richieste inviate» is open"] : []), ...(s.needsFocus ? [] : [`focus not on the heading of «Cosa serve» (on ${s.focused})`]), ...(s.needsInView ? [] : ["«Cosa serve» not in view"]));
+    failures.push(...(s.requestsOpen ? ["«Richieste inviate» is open"] : []), ...(s.needsFocus ? [] : [`focus not on the «Cosa serve» row (on ${s.focused})`]), ...(s.needsInView ? [] : ["«Cosa serve» not in view"]));
   }
   return [...failures, ...(s.overflow ? ["horizontal scroll"] : [])];
 }
@@ -469,10 +479,11 @@ try {
         if (s.box === "G9") {
           // (Release 5, §9.6 D51) No longer ready and without a referent, the card asks for the referent
           // before «Quando»: workspace «a» has no sub-processor ok, so the box is G4.
+          await openPath(page);
           await whenChange(page, tag, "Più avanti", "G4", false);
           const fold = await whenState(page, "Più avanti");
           if (fold.foldOpen === false) {
-            await clickAt(page, "details#realizzazione > summary");
+            await clickAt(page, "#realizzazione [data-arrival-toggle]");
             await sleep(500);
           }
           const opened = await whenState(page, "Più avanti");
