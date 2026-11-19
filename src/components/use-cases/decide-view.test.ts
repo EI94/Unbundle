@@ -170,11 +170,8 @@ test("i vuoti e i testi: «Le nuove idee arrivano qui.», niente «proposte»; l
   assert.deepEqual(findHubForbiddenIn([textOf(html)], "area"), []);
 });
 
-test("(rilascio 10, §3.4) la riga sulle proposte altrui del contributore: la stessa frase della scheda, «ad» davanti a una «a»", async () => {
+test("(rilascio 10, §3.4) la frase sugli use case di altri del contributore non è della riga: la scrive `othersDetailsNote` (guided.ts)", async () => {
   const row = await import("./use-case-row.tsx");
-  assert.equal(row.othersCardNote(DEFAULT_REVIEW_TEAM_NAME), `Dettagli visibili a chi l'ha proposto e ad ${DEFAULT_REVIEW_TEAM_NAME}.`);
-  assert.equal(row.othersCardNote("  CoE   AI "), "Dettagli visibili a chi l'ha proposto e a CoE AI.");
-  // Il nome entra com'è: «$&», «$'» e «$1» non sono schemi di sostituzione.
-  assert.equal(row.othersCardNote("Team $& $' $1"), "Dettagli visibili a chi l'ha proposto e a Team $& $' $1.");
-  assert.deepEqual(findHubForbiddenIn([row.othersCardNote("CoE AI"), row.ROW_TEXT.othersNote, row.ROW_TEXT.othersNoteVowel], "area"), []);
+  assert.ok(!("othersCardNote" in row), "una fonte sola, quella della scheda");
+  assert.deepEqual(Object.keys(row.ROW_TEXT), ["own", "answer"]);
 });

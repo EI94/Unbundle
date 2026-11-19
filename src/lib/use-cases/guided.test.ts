@@ -1038,6 +1038,9 @@ test("(Rilascio 10, §3.4) «Nota pubblica» in vista solo con un testo, in «Se
 test("(Rilascio 10, §3.4) la scheda del contributore su uno use case di altri: «Dettagli visibili a chi l'ha proposto e ad {team}.», con il nome del workspace", () => {
   assert.equal(othersDetailsNote(DEFAULT_REVIEW_TEAM_NAME), `Dettagli visibili a chi l'ha proposto e ad ${DEFAULT_REVIEW_TEAM_NAME}.`);
   assert.equal(othersDetailsNote("  Digital   Factory "), "Dettagli visibili a chi l'ha proposto e a Digital Factory.");
+  // Il nome entra com'è: «$&», «$'» e «$1» non sono schemi di sostituzione. È la frase del pannello e della scheda.
+  assert.equal(othersDetailsNote("Team $& $' $1"), "Dettagli visibili a chi l'ha proposto e a Team $& $' $1.");
+  assert.equal(othersDetailsNote("Alfa $&"), "Dettagli visibili a chi l'ha proposto e ad Alfa $&.");
   assert.deepEqual(findHubForbiddenIn([othersDetailsNote(TEAM), ...Object.values(GUIDED_TEXT.scheda)], "area"), []);
 });
 

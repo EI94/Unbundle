@@ -121,22 +121,7 @@ export const ROW_TEXT = Object.freeze({
   own: "Proposto da te",
   /** Una propria proposta in «Serve info»: si risponde dal pannello (D17). */
   answer: "Rispondi",
-  /**
-   * (Rilascio 10, §3.4) La riga sulle proposte altrui del contributore, nel pannello: la stessa frase della scheda
-   * («ad» davanti a un nome che comincia per «a»: «ad AI Builder»).
-   */
-  othersNote: "Dettagli visibili a chi l'ha proposto e a {team}.",
-  othersNoteVowel: "Dettagli visibili a chi l'ha proposto e ad {team}.",
 });
-
-/**
- * La riga sulle proposte altrui del contributore (pannello e scheda; H7): perché vede solo titolo
- * e fase. Il nome del team da solo (§14.2).
- */
-export function othersCardNote(teamName: string): string {
-  const team = teamName.replace(/\s+/g, " ").trim();
-  return (/^[aA]/.test(team) ? ROW_TEXT.othersNoteVowel : ROW_TEXT.othersNote).replace("{team}", () => team);
-}
 
 /** Una riga di «Da decidere» (§4.6). Il link è tutta la riga: dentro non ci sono altri controlli. */
 export function UseCaseRow({ item, href, today, agents = null }: UseCaseRowProps) {

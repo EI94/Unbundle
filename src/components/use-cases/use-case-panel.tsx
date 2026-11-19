@@ -14,7 +14,7 @@ import { ESTIMATES_TEXT } from "@/lib/use-cases/estimates";
 import type { PanelNeeds } from "@/lib/use-cases/needs";
 import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { FIGURE_SEPARATOR, PANEL_FIGURE_TEXT, panelCostParts, panelValueText } from "@/lib/use-cases/format";
-import { needsRowOf, type NextStep } from "@/lib/use-cases/guided";
+import { needsRowOf, othersDetailsNote, type NextStep } from "@/lib/use-cases/guided";
 import { SEMAFORO_TONE } from "@/components/uc/common/semaforo-tone";
 import { agentToneOf, titleAgent, type AgentPalette } from "@/lib/use-cases/agents";
 import type { ContributorUseCase } from "@/lib/use-cases/permissions";
@@ -32,7 +32,7 @@ import { ReferentChip } from "./referent-chip";
 import type { ReferentStateKey } from "@/lib/use-cases/referent/use-case-state";
 import { ProposerAnswers } from "./proposer-answers";
 import { OwnAnswer } from "./proposer-answers";
-import { OwnMarker, othersCardNote, shownPhaseLabel } from "./use-case-row";
+import { OwnMarker, shownPhaseLabel } from "./use-case-row";
 import { focusPanelStart } from "./panel-focus";
 import { WhenControl } from "./when-control";
 
@@ -474,8 +474,8 @@ function ContributorBody({
           <PhasePill label={shownPhaseLabel(item, dossierDown)} phase={item.phase} subState={item.subState} />
           <ReferentChip state={referentState} />
         </div>
-        {/* Delle proposte altrui solo titolo e fase (D4, D13): una riga dice perché (H7). */}
-        {item.own ? null : <p className="text-xs text-muted-foreground">{othersCardNote(teamName)}</p>}
+        {/* Delle proposte altrui solo titolo e fase (D4, D13): una riga dice perché (H7), la stessa frase della scheda. */}
+        {item.own ? null : <p className="text-xs text-muted-foreground">{othersDetailsNote(teamName)}</p>}
       </Block>
       {asked ? (
         <Block>

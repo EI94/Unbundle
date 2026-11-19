@@ -58,6 +58,13 @@ test("(rilascio 10, §3.4) una best practice: «Da diffondere» accanto alla fas
   assert.ok(icon.includes("lucide-megaphone") && icon.includes('aria-hidden="true"'), icon);
 });
 
+test("(rilascio 10, §3.4) gli use case di altri del contributore: la frase della scheda (`othersDetailsNote`), scritta una volta sola", () => {
+  const contributor = PANEL.slice(PANEL.indexOf("function ContributorBody("));
+  assert.match(contributor, /\{item\.own \? null : <p className="text-xs text-muted-foreground">\{othersDetailsNote\(teamName\)\}<\/p>\}/);
+  assert.match(PANEL, /import \{ needsRowOf, othersDetailsNote, type NextStep \} from "@\/lib\/use-cases\/guided";/);
+  assert.ok(!PANEL.includes("Dettagli visibili"), "il testo sta in guided.ts");
+});
+
 test("il resto resta: il passo con il «?», «Cosa serve · N», «Quando» e «Apri la scheda»", () => {
   for (const piece of ["<NextStepRow", "<PanelNeedsBlock needs={needs} unanswered={unanswered} href={needsHref} />", "<WhenControl", "{PANEL_TEXT.openDetail}", "focusPanelStart("]) assert.ok(PANEL.includes(piece), piece);
 });
