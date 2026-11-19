@@ -138,6 +138,14 @@ export const SEARCH_MAX = 100;
 const AREA_MAX = 80;
 const LAB_MAX = 120;
 
+/**
+ * (Rilascio 10, §3.4) «Cosa serve»: le informazioni in uno stato (`stato=`). I tre conteggi in vista filtrano «Da
+ * chiedere», «In attesa» e «Da verificare»; il foglio «Filtri» ha anche «Ferme», «A posto» e «Aperte». Filtra le righe
+ * della vista, non gli use case: per questo non è tra i filtri di `hasActiveFilters`, e fuori da «Cosa serve» non vale.
+ */
+export const NEED_STATE_PARAMS = ["da-chiedere", "in-attesa", "da-verificare", "ferme", "a-posto", "aperte"] as const;
+export type NeedStateParam = (typeof NEED_STATE_PARAMS)[number];
+
 /** I soli parametri della pagina, nell'ordine di §4.2. Ogni altro parametro si ignora. */
 export const HUB_PARAM_KEYS = [
   "vista",
@@ -153,6 +161,8 @@ export const HUB_PARAM_KEYS = [
   "trimestre",
   "stima",
   "info",
+  "stato",
+  "calendario",
   "apri",
   "nuovo",
   "thanks",
@@ -184,6 +194,10 @@ export interface HubParams {
   stima: HubEstimateParam | null;
   /** «Raccolta informazioni» (`info-progress.ts`): solo per i revisori, come `stima`. */
   info: InfoProgressState | null;
+  /** (Rilascio 10, §3.4) «Cosa serve»: le informazioni in uno stato (`NEED_STATE_PARAMS`); solo per chi vede la vista. */
+  stato: NeedStateParam | null;
+  /** (Rilascio 10, §3.4) «Cosa serve»: «Calendario» (`calendario=1`) al posto di «Elenco», cioè le «Scadenze». */
+  calendario: boolean;
   apri: string | null;
   /** Pannello rapido: solo Lateral Space (§5.1). */
   nuovo: boolean;
@@ -262,6 +276,8 @@ export function parseHubParams(raw: RawHubParams, viewer: UseCaseViewer): HubPar
     trimestre: filters ? trimestre : null,
     stima,
     info: filters && abilities.canSeeNeeds ? parseInfoParam(readParam(raw, "info")) : null,
+    stato: filters && abilities.canSeeNeeds ? oneOf(NEED_STATE_PARAMS, readParam(raw, "stato")) : null,
+    calendario: filters && abilities.canSeeNeeds && readParam(raw, "calendario") === "1",
     apri: apri !== null && UUID.test(apri) ? apri.toLowerCase() : null,
     nuovo: abilities.newUseCase === "pannello_rapido" && readParam(raw, "nuovo") === "1",
     thanks: readParam(raw, "thanks") === "1",

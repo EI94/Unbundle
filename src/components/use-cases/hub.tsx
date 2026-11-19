@@ -322,6 +322,8 @@ function queryOf(params: HubParams, view: HubView): HubQuery {
   if (params.trimestre) query.trimestre = params.trimestre;
   if (params.stima) query.stima = params.stima;
   if (params.info) query.info = INFO_PROGRESS_PARAM[params.info];
+  if (params.stato) query.stato = params.stato;
+  if (params.calendario) query.calendario = "1";
   if (params.apri) query.apri = params.apri;
   if (params.nuovo) query.nuovo = "1";
   if (params.thanks) query.thanks = "1";

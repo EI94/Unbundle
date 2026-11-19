@@ -3,6 +3,13 @@ import assert from "node:assert/strict";
 import { findHubForbiddenIn } from "./copy-guard.ts";
 import { FIGURE_SEPARATOR } from "./format.ts";
 import {
+  BOARD_ROWS_SHOWN,
+  NEED_STATE_COUNTED,
+  NEED_STATE_GROUPS,
+  NEED_STATE_TEXT,
+  boardForState,
+  firstUseCaseFor,
+  needStateCounts,
   needAgents,
   needAlsoForText,
   needAskPieces,
@@ -55,6 +62,7 @@ import {
   type NeedView,
 } from "./needs.ts";
 import { DEFAULT_VALUE_PARAMS, type ValueModel } from "./value-model.ts";
+import { NEED_STATE_PARAMS } from "./views.ts";
 
 // «Cosa serve» (spec di Pierpaolo, 25/10/2026): vocabolari, validazione e i blocchi della sua vista,
 // del pannello e della scheda, da un elenco già letto. Dati sintetici.
@@ -389,6 +397,66 @@ test("Cosa serve per chi deve muoversi: un gruppo per organizzazione, ogni requi
     ["cliente", "cliente", "fornitore", "lateral_space", "nessuno"],
   );
   assert.deepEqual([...NEED_GROUP_KEYS], ["cliente", "fornitore", "lateral_space", "nessuno"]);
+});
+
+test("(rilascio 10, §3.4) gli stati che filtrano «Cosa serve»: i tre conteggi, «Ferme», «A posto», «Aperte»; i gruppi e i conteggi restano", () => {
+  const needs = [
+    need({ title: "Del cliente", ownerSide: "cliente", useCaseIds: [B] }),
+    need({ title: "Risposta da guardare", ownerSide: "cliente", status: "in_verifica", sortOrder: 9, useCaseIds: [A] }),
+    need({ title: "Manca il dato", ownerSide: "fornitore", status: "mancante", useCaseIds: [A] }),
+    need({ title: "In attesa", ownerSide: "fornitore", status: "chiesta", useCaseIds: [B] }),
+    need({ title: "Ferma", ownerSide: "lateral_space", status: "bloccata", useCaseIds: [A] }),
+    need({ title: "A posto del cliente", ownerSide: "cliente", status: "validata", useCaseIds: [A] }),
+    need({ title: "A posto senza parte", ownerSide: null, status: "non_applicabile" }),
+    need({ type: "passo", status: "proposta", title: "Un passo", dueOn: "2026-11-20", useCaseIds: [A] }),
+  ];
+  const board = buildNeedsBoard(needs, ITEMS, { today: TODAY, params: PARAMS });
+  // Ogni riga di un requisito porta il suo gruppo di stato; un passo nessuno.
+  assert.deepEqual(board.groups.flatMap((g) => g.open).map((row) => [row.title, row.group]), [
+    ["Risposta da guardare", "toVerify"],
+    ["Del cliente", "toAsk"],
+    ["In attesa", "waiting"],
+    ["Manca il dato", "toAsk"],
+    ["Ferma", "blocked"],
+  ]);
+  assert.equal(board.timeline.sections[0].items[0].group, null);
+  // «A posto» per organizzazione, nello stesso ordine di «Già a posto».
+  assert.deepEqual(board.doneGroups.map((g) => [g.key, g.open.map((row) => row.title)]), [["cliente", ["A posto del cliente"]], ["nessuno", ["A posto senza parte"]]]);
+  assert.deepEqual(board.done.map((row) => row.title), board.doneGroups.flatMap((g) => g.open.map((row) => row.title)));
+  // I tre conteggi in vista, senza gli zeri, con il tono del loro stato.
+  assert.deepEqual(needStateCounts(board.counts), [
+    { state: "da-chiedere", label: "Da chiedere", count: 2, tone: "grigio" },
+    { state: "in-attesa", label: "In attesa", count: 1, tone: "blu" },
+    { state: "da-verificare", label: "Da verificare", count: 1, tone: "giallo" },
+  ]);
+  assert.deepEqual(needStateCounts({ ...emptyNeedAskCounts(), toAsk: 3, open: 3 }).map((c) => c.state), ["da-chiedere"], "lo zero non si vede");
+  assert.deepEqual([...NEED_STATE_COUNTED], ["da-chiedere", "in-attesa", "da-verificare"]);
+  // Uno stato: le sole righe di quello stato, per organizzazione; senza «Già a posto»; conteggi e scadenze uguali.
+  const titles = (b: typeof board) => b.groups.map((g) => [g.key, g.open.map((row) => row.title)]);
+  assert.deepEqual(titles(boardForState(board, "da-chiedere")), [["cliente", ["Del cliente"]], ["fornitore", ["Manca il dato"]]]);
+  assert.deepEqual(titles(boardForState(board, "in-attesa")), [["fornitore", ["In attesa"]]]);
+  assert.deepEqual(titles(boardForState(board, "da-verificare")), [["cliente", ["Risposta da guardare"]]]);
+  assert.deepEqual(titles(boardForState(board, "ferme")), [["lateral_space", ["Ferma"]]]);
+  assert.deepEqual(titles(boardForState(board, "a-posto")), [["cliente", ["A posto del cliente"]], ["nessuno", ["A posto senza parte"]]]);
+  assert.deepEqual(titles(boardForState(board, "aperte")), titles(board), "«Aperte»: tutte tranne «A posto»");
+  for (const state of NEED_STATE_PARAMS) {
+    const shown = boardForState(board, state);
+    assert.deepEqual(shown.done, [], `${state}: niente «Già a posto»`);
+    assert.deepEqual(shown.counts, board.counts, `${state}: i conteggi di tutta la vista`);
+    assert.deepEqual(shown.timeline, board.timeline, `${state}: le scadenze restano`);
+  }
+  assert.equal(boardForState(board, null), board, "senza stato la vista com'è");
+  assert.deepEqual(Object.keys(NEED_STATE_GROUPS), [...NEED_STATE_PARAMS]);
+  assert.deepEqual(NEED_STATE_PARAMS.map((state) => NEED_STATE_TEXT.options[state]), ["Da chiedere", "In attesa", "Da verificare", "Ferme", "A posto", "Aperte"], "al femminile, come «informazioni»");
+  assert.equal(NEED_STATE_TEXT.label, "Stato");
+  assert.deepEqual(findHubForbiddenIn([NEED_STATE_TEXT.label, ...Object.values(NEED_STATE_TEXT.options)], "area"), []);
+  // Dove portano i pulsanti della vista: il primo use case con una risposta da verificare, o con informazioni da chiedere.
+  assert.equal(firstUseCaseFor(board, "toVerify")?.id, A);
+  assert.equal(firstUseCaseFor(board, "toAsk")?.id, B, "la prima riga da chiedere, nell'ordine della vista");
+  assert.equal(firstUseCaseFor(boardForState(board, "in-attesa"), "toAsk"), null);
+  const loose = buildNeedsBoard([need({ title: "Senza use case", ownerSide: "cliente", useCaseIds: [] })], ITEMS, { today: TODAY });
+  assert.equal(firstUseCaseFor(loose, "toAsk"), null, "una riga senza use case non porta da nessuna parte");
+  assert.equal(BOARD_ROWS_SHOWN, 3);
 });
 
 test("i gruppi seguono i filtri della pagina e la ricerca nel titolo, mai «Chi» né la parte", () => {
