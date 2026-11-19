@@ -14,6 +14,7 @@
 
 import { DEFAULT_REVIEW_TEAM_NAME } from "../../../src/lib/review-team.ts";
 import { ANSWER_TEXT, questionLabel } from "../../../src/lib/use-cases/answers.ts";
+import { othersDetailsNote } from "../../../src/lib/use-cases/guided.ts";
 
 const REVIEWERS = ["ls-lead", "function-lead", "sponsor-cliente"];
 /** Workspace «a» has no team name of its own: the texts use the default one (DESIGN §14.2). */
@@ -34,16 +35,17 @@ const routes = [
   },
   // The empty fields of «Dettagli» behind one «Aggiungi altri campi» (H7: non si confonde con «Dettagli»), in its fold.
   { name: "scheda-dettagli", path: card("r01", "?capitolo=dettagli"), as: REVIEWERS, present: ["Aggiungi altri campi", "Tipo", "Origine"], absent: ["Aggiungi dettagli"] },
-  // H7: on someone else's card one line says why only title and phase.
+  // H7: on someone else's card one line says why only title and phase (release 10: «Dettagli visibili a chi l'ha proposto e ad …»).
   {
     name: "scheda-da-valutare",
     path: card("r01"),
     as: CONTRIBUTOR,
-    present: [`Vedi titolo e fase: i dettagli li vedono chi l'ha proposto e ${TEAM}.`],
+    present: [othersDetailsNote(TEAM)],
     absent: ["{code:r01}", "Cos'è", "Storia", "Impatto", "Prossimo passo", "Percorso dello use case"],
   },
-  // H7: the public note is optional next to «Approva»; no empty «Stime non ufficiali» box.
-  { name: "scheda-nota-facoltativa", path: card("r06"), as: REVIEWERS, present: ["Nota pubblica (facoltativa)", "Approva"], absent: ["Stime non ufficiali"] },
+  // H7: the public note is optional next to «Approva»; no empty «Stime non ufficiali» box. Release 10: without a note the
+  // field sits in the «Dettagli» fold, which the driver reads open (innerText skips a closed fold).
+  { name: "scheda-nota-facoltativa", path: card("r06", "?capitolo=dettagli"), as: REVIEWERS, present: ["Nota pubblica (facoltativa)", "Approva"], absent: ["Stime non ufficiali"] },
   // The risk chips in «Valore», on the default view; one estimates box, in plain words (H4p), in the
   // «Valutazione del team» fold.
   { name: "scheda-connettore", path: card("r03"), as: REVIEWERS, present: ["Valore", "Dati personali"], absent: ["semaforo", "da sforzo", "Stima di Claude"] },
