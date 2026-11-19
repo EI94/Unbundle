@@ -694,12 +694,15 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
                 clientLabel={clientGroupLabel(data.connectorDisplayName, data.workspaceName)}
                 agents={agents}
                 hrefOf={(id) => panelHref(basePath, query, id)}
+                basePath={basePath}
+                query={query}
+                state={params.stato}
+                calendar={params.calendario}
                 inRealization={(filtered as HubItem[]).filter((item) => item.phase === "in_realizzazione").length}
                 realizationHref={`${viewHref("panoramica")}#${PANORAMA_SECTION_ID.inRealizzazione}`}
                 filtersActive={filtersActive}
                 clearHref={clearHref}
                 searched={Boolean(params.q)}
-                quarter={params.trimestre ? (params.trimestre === LATER_QUARTER_PARAM ? WHEN_LATER_LABEL : quarterLabel(params.trimestre)) : null}
               />
             </>
           ) : null

@@ -43,10 +43,11 @@ test("la pagina «Use case» è un contenitore: righe, corsie e tabelle guardano
     assert.doesNotMatch(classes, VIEWPORT_VARIANT, `${file}: una forma sulla larghezza della finestra`);
     assert.ok(columns.some((shape) => classes.includes(`${variant}${shape}`)), `${file}: le colonne sulla larghezza del riquadro (${variant})`);
   }
-  // «Cosa serve» (rilascio 4): la lista e accanto la linea del tempo dai 58rem del riquadro, mai sulla
-  // finestra; le righe sono un elenco a ogni larghezza (la tabella non c'è più).
+  // «Cosa serve» (rilascio 4; rilascio 10, §3.4): l'elenco o il calendario («Elenco | Calendario»), una colonna a
+  // ogni larghezza, mai due colonne impilate al telefono; le righe sono un elenco (la tabella non c'è più).
   const needs = read("src/components/use-cases/needs-board.tsx");
-  assert.ok(needs.includes('"grid gap-8 @min-[58rem]/hub:grid-cols-[minmax(0,1fr)_18rem] @min-[58rem]/hub:gap-x-8"'), "la griglia della vista");
+  assert.ok(!needs.includes("grid-cols-[minmax(0,1fr)_18rem]") && !needs.includes("<aside"), "niente più colonna accanto");
+  assert.match(needs, /showCalendar \? \(\s*<Timeline /);
   assert.match(needs, /data-slot="needs-list" className="divide-y rounded-lg border"/);
   assert.ok(!needs.includes("<table") && !needs.includes("@4xl/hub:"), "nessuna tabella e nessuna forma da 56rem");
   const classes = [...needs.matchAll(/["`]([^"`\n]*)["`]/g)].map((match) => match[1]).join(" ");
@@ -116,23 +117,21 @@ test("i grafici del menu «⋯»: grafico o elenco sulla larghezza del riquadro 
   assert.match(levers, /data-slot="value-by-lever-list" className="space-y-1 @xl\/hub:hidden"/);
 });
 
-test("(rilascio 5) la barra dei filtri: i revisori con i pulsanti nella prima riga e la ricerca sotto al telefono, una riga dai 42rem; i contributori una riga al telefono", () => {
+test("(rilascio 10, §3.4) la barra dei filtri è il pezzo comune: «Cerca» (un'icona al telefono) e «Filtri (n)» in una riga, i chip sotto", () => {
   const bar = read("src/components/use-cases/filter-bar.tsx");
-  assert.match(bar, /data-slot="filter-bar"[^>]*className=\{cn\("flex min-w-0 items-center gap-2", reviewer \? FILTER_ROW_REVIEWER : FILTER_ROW_CONTRIBUTOR\)\}/);
-  assert.match(bar, /export const FILTER_ROW_REVIEWER = "flex-wrap";/);
-  assert.match(bar, /export const FILTER_ROW_CONTRIBUTOR = "flex-nowrap sm:flex-wrap";/);
-  assert.match(bar, /export const SEARCH_REVIEWER = "order-last basis-full sm:@2xl\/hub:order-none sm:@2xl\/hub:max-w-xs sm:@2xl\/hub:basis-56";/);
+  assert.match(bar, /<div data-slot="filter-bar" className="min-w-0">\s*<FilterChips /);
+  const chips = read("src/components/ui-10/filter-chips.tsx");
+  assert.ok(chips.includes('"flex min-w-0 items-center gap-2"') && chips.includes("size-11 sm:hidden"), "una riga, la lente da 44 px al telefono");
+  assert.ok(chips.includes('data-slot="filter-chips-active" className="flex flex-wrap items-center gap-2"'), "i chip vanno a capo, mai di lato");
+  const classes = [...bar.matchAll(/["`]([^"`\n]*)["`]/g)].map((match) => match[1]).join(" ");
+  assert.doesNotMatch(classes, VIEWPORT_VARIANT, "filter-bar.tsx: una forma sulla larghezza della finestra");
 });
 
-test("(rilascio 5, D25) «Tipo» e l'origine stanno sempre dentro «Altri filtri»; nella prima riga «Referente» e «Area»", () => {
+test("(rilascio 10, §3.4) tutti e nove i filtri in un foglio, nell'ordine della proposta: niente più prima riga né «Altri filtri»", () => {
   const bar = read("src/components/use-cases/filter-bar.tsx");
-  assert.doesNotMatch(bar, /ORIGIN_INLINE|originNav|<KindMenu/);
-  const more = bar.slice(bar.indexOf("function MoreFilters("), bar.indexOf("function MoreField("));
-  assert.match(more, /key: "tipo" as const, label: FILTER_TEXT\.kindLabel/);
-  assert.match(more, /\{ key: "origine", label: FILTER_TEXT\.originLabel/);
-  assert.doesNotMatch(more, /key: "area"/, "l'area è nella prima riga");
-  const row = bar.slice(bar.indexOf("<div ref={bar}"), bar.indexOf("</div>", bar.indexOf("<div ref={bar}")));
-  assert.ok(row.indexOf("<ReferentMenu") < row.indexOf("<AreaMenu") && row.indexOf("<AreaMenu") < row.indexOf("<SearchField"), "«Referente», «Area», poi la ricerca");
+  assert.doesNotMatch(bar, /ORIGIN_INLINE|originNav|<KindMenu|function MoreFilters|<ReferentMenu|<AreaMenu/);
+  const order = ["\"referente\"", "\"area\"", "\"tipo\"", "\"origine\"", "\"canale\"", "\"agente\"", "\"trimestre\"", "\"info\"", "\"lab\""].map((key) => bar.indexOf(`push(${key}`));
+  assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), order.join(", "));
 });
 
 test("lo script delle schermate controlla lo scorrimento orizzontale e le colonne a 768, 900, 1024 e 1280 px", () => {
