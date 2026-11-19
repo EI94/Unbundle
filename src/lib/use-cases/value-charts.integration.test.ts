@@ -18,12 +18,13 @@ const { registerHooks } = nodeModule as unknown as {
 // I grafici di «Benefici e costi» nella pagina vera (`use-cases/page.tsx`), resa in questo processo
 // con la sessione scelta dalla prova (spec di Pierpaolo, 25/10/2026):
 //
-// - Il menu «⋯»: le voci «Matrice Valore × Costo», «Matrice Facilità × Beneficio» e «Curva del
-//   valore». Con `mostra=benefici` la matrice a bolle nella Panoramica (facilità, beneficio, raggio,
-//   bordo per il quando, link al pannello) con «Ipotesi di calcolo» sotto; con `mostra=curva` la
-//   J-curve (entrata in uso, pareggio), «Valore per tipo di ritorno» (un segmento per use case, la
-//   parte da misurare tratteggiata, «(n qualitativi)») e «Ipotesi di calcolo», al posto delle corsie.
-// - La Panoramica: quattro cifre in testa e «Su tutto il portafoglio»; la curva non c'è più.
+// - Il menu «⋯» › «Grafici ›» (rilascio 10, §3.4): «Matrice» (una sola, con l'interruttore «Valore × Costo |
+//   Facilità × Beneficio») e «Curva del valore». Con `mostra=benefici` la matrice sul lato delle bolle nella
+//   Panoramica (facilità, beneficio, raggio, bordo per il quando, link al pannello) con «Ipotesi di calcolo» sotto;
+//   con `mostra=curva` la J-curve (entrata in uso, pareggio), «Valore per tipo di ritorno» (un segmento per use case,
+//   la parte da misurare tratteggiata, «(n qualitativi)») e «Ipotesi di calcolo», al posto delle corsie.
+// - La Panoramica: un numero grande, «Valore all'anno · su N use case», con il tetto da misurare nella riga grigia;
+//   niente altre cifre né «Su tutto il portafoglio» (nella Home e in «Curva del valore»).
 // - Un workspace senza modelli resta com'è: solo la matrice nel menu, niente grafici di «Benefici e
 //   costi»; il contributore non vede nulla di tutto questo.
 //
@@ -211,18 +212,12 @@ function findProp(node: unknown, name: string): unknown[] {
   return out;
 }
 
-/** Le voci dei grafici nel menu «⋯» (`HubHeader.menu.charts`). */
-/**
- * (Rilascio 5, §12) I grafici di «Grafici», a vista nella Panoramica (non più nel menu «⋯», che resta
- * con «Esporta Excel» e «Proponi da Activity mapping»).
- */
+/** (Rilascio 10, §3.4) Le voci di «⋯» › «Grafici ›» (`HubHeader.menu.charts`): il contenuto del menu non è nell'HTML finché è chiuso. */
 async function menuCharts(person: Person, workspaceId: string, searchParams: Record<string, string> = {}) {
   const { tree } = await hubTree(person, workspaceId, { vista: "panoramica", ...searchParams });
-  const [menu] = findProp(tree, "menu") as Array<Record<string, unknown> | null>;
+  const [menu] = findProp(tree, "menu") as Array<{ charts?: Array<{ label: string; href: string }> } | null>;
   assert.ok(menu, `${person}: il menu «⋯»`);
-  assert.ok(!Object.hasOwn(menu, "charts"), `${person}: il menu «⋯» senza grafici`);
-  const [charts] = findProp(tree, "charts") as Array<Array<{ label: string; href: string }>>;
-  return charts ?? [];
+  return menu.charts ?? [];
 }
 
 /** (Rilascio 5, D25) «Tipo» della barra dei filtri (`kind` di FilterBar): «filtro», o «nessuno» sulle due matrici; è in «Altri filtri». */
@@ -251,17 +246,16 @@ function itemOf(page: string, marker: string): string {
   return page.slice(start, page.indexOf("</li>", at));
 }
 
-/** Il testo di una cifra in testa alla Roadmap (`data-figure="totale-…"`). */
-function tileOf(page: string, key: string): string {
-  const start = page.indexOf(`data-figure="totale-${key}"`);
-  assert.ok(start >= 0, `manca la cifra ${key}`);
-  return page.slice(start, page.indexOf("</div>", page.indexOf("</p>", page.indexOf("</p>", start) + 4) + 4)).replace(/<[^>]+>/g, " ");
-}
-
 const count = (page: string, needle: string) => page.split(needle).length - 1;
 
 /** Gli euro di un intero italiano («16.293 € contati all'anno» → 16293). */
 const euros = (text: string) => Number(/(\d[\d.]*)\s*€/.exec(text)?.[1].replace(/\./g, "") ?? Number.NaN);
+
+/** (Rilascio 10) Il numero grande della Panoramica, in euro; NaN senza. */
+const bigOf = (page: string) => euros(/<p data-slot="big-number-value"[^>]*>([^<]*)<\/p>/.exec(page)?.[1] ?? "");
+
+/** La riga grigia del numero grande, con gli spazi normali. */
+const bigNoteOf = (page: string) => (/<p data-slot="big-number-note"[^>]*>([^<]*)<\/p>/.exec(page)?.[1] ?? "").replace(/\u00a0/g, " ");
 
 /** Gli euro degli elementi con `data-figure="name"`, nell'ordine della pagina. */
 function figuresOf(page: string, name: string): number[] {
@@ -414,21 +408,21 @@ after(async () => {
 
 // ─── I grafici del menu «⋯» ──────────────────────────────────────────
 
-test("(rilascio 5) «Grafici»: «Matrice Valore × Costo», «Matrice Facilità × Beneficio» e «Curva del valore»; le bolle con facilità, beneficio, quando e il link al pannello", opts, async () => {
+test("(rilascio 10) «⋯» › «Grafici ›»: «Matrice» (con l'interruttore dei due lati) e «Curva del valore»; le bolle con facilità, beneficio, quando e il link al pannello", opts, async () => {
   for (const person of ["ls", "builder", "manager"] as const) {
     const charts = await menuCharts(person, ids.wsV);
     assert.deepEqual(
       charts.map((chart) => chart.label),
-      ["Matrice Valore × Costo", "Matrice Facilità × Beneficio", "Curva del valore"],
+      ["Matrice", "Curva del valore"],
       person,
     );
-    assert.ok(charts[1].href.endsWith("?vista=panoramica&mostra=benefici"), `${person}: ${charts[1].href}`);
-    assert.ok(charts[2].href.endsWith("?vista=panoramica&mostra=curva"), `${person}: ${charts[2].href}`);
+    assert.ok(charts[0].href.endsWith("?vista=panoramica&mostra=matrice"), `${person}: ${charts[0].href}`);
+    assert.ok(charts[1].href.endsWith("?vista=panoramica&mostra=curva"), `${person}: ${charts[1].href}`);
     // Un filtro non toglie una voce: il menu dice il workspace.
     const filtered = await menuCharts(person, ids.wsV, { vista: "panoramica", q: `Senza modello ${suffix}` });
     assert.deepEqual(
       filtered.map((chart) => chart.label),
-      ["Matrice Valore × Costo", "Matrice Facilità × Beneficio", "Curva del valore"],
+      ["Matrice", "Curva del valore"],
       person,
     );
   }
@@ -461,16 +455,20 @@ test("(rilascio 5) «Grafici»: «Matrice Valore × Costo», «Matrice Facilità
   assert.ok(page.includes("Servizio clienti"), "la legenda dei gruppi");
   assert.ok(page.includes(">Senza gruppo<"), "il grigio dice che sono schede senza gruppo, non «Altro»");
   assert.ok(page.includes('data-slot="value-params-summary"') && page.includes("Ipotesi di calcolo"));
-  // Sopra le bolle «‹ Torna alla Panoramica», che torna alle corsie, e il nome del grafico.
-  assert.deepEqual(chartHeaderOf(page), { href: `/dashboard/${ids.wsV}/use-cases?vista=panoramica`, text: "Torna alla Panoramica", title: "Matrice Facilità × Beneficio" });
+  // Sopra le bolle «‹ Torna alla Panoramica», che torna alle corsie, il nome del grafico e l'interruttore dei due lati,
+  // acceso sul secondo: il vecchio `mostra=benefici` apre la matrice su «Facilità × Beneficio».
+  assert.deepEqual(chartHeaderOf(page), { href: `/dashboard/${ids.wsV}/use-cases?vista=panoramica`, text: "Torna alla Panoramica", title: "Matrice" });
   assert.ok(page.includes('data-chart="benefici"'));
+  assert.ok(page.includes('aria-label="Lato della matrice"'));
+  assert.match(page, new RegExp(`<a aria-current="page"[^>]*href="/dashboard/${ids.wsV}/use-cases\\?vista=panoramica&amp;mostra=benefici"[^>]*><span>Facilità × Beneficio</span>`));
+  assert.match(page, new RegExp(`<a [^>]*href="/dashboard/${ids.wsV}/use-cases\\?vista=panoramica&amp;mostra=matrice"[^>]*><span>Valore × Costo</span>`));
 });
 
 test("bolle: con «Benefici e costi» nel workspace e un filtro che li esclude, le bolle restano, vuote", opts, async () => {
   // La voce del menu dipende dal workspace, non dalla vista filtrata: una ricerca che trova solo la
   // scheda senza modello non riporta alla matrice.
   const page = await html("builder", ids.wsV, { vista: "panoramica", mostra: "benefici", q: `Senza modello ${suffix}` });
-  assert.equal(chartHeaderOf(page).title, "Matrice Facilità × Beneficio");
+  assert.equal(chartHeaderOf(page).title, "Matrice");
   assert.ok(page.includes('data-chart="benefici"'));
   assert.ok(page.includes("Nessuno use case della vista ha la facilità in «Benefici\u00a0e\u00a0costi»."));
   assert.ok(!page.includes('data-slot="value-cost-matrix"'), "non la matrice");
@@ -479,82 +477,70 @@ test("bolle: con «Benefici e costi» nel workspace e un filtro che li esclude, 
 
 // ─── La Panoramica e «Curva del valore» ──────────────────────────────
 
-test("Panoramica: quattro cifre e «Su tutto il portafoglio»; i grafici di «Benefici e costi» stanno in «Grafici»", opts, async () => {
+test("(rilascio 10, §3.4) Panoramica: un numero grande con il tetto da misurare, niente altre cifre né «Su tutto il portafoglio»; i grafici stanno in «Grafici ›»", opts, async () => {
   for (const person of ["ls", "builder", "manager"] as const) {
     const page = await html(person, ids.wsV, { vista: "panoramica" });
     for (const text of ['data-slot="roadmap-value"', 'data-slot="value-jcurve"', 'data-slot="value-by-lever"', 'data-slot="value-params-summary"']) {
       assert.ok(!page.includes(text), `${person}: ${text} è in «Curva del valore»`);
     }
     assert.deepEqual(await filterKind(person, ids.wsV, { vista: "panoramica" }), ["filtro"], `${person}: «Tipo» è un filtro`);
-    // 115,5 h + 62,4 h = 177,9 h; FIX_A + FIX_B: pareggio al mese 5 da nov 26, aprile 2027. Una riga
-    // sotto le cifre, al posto delle due cifre di prima.
-    assert.match(
-      page,
-      /<p data-slot="portfolio-line" class="text-sm text-muted-foreground">Su tutto il portafoglio: 178\u00a0ore liberate all&#x27;anno, pareggio previsto ad aprile\u00a02027\.<\/p>/,
-      person,
-    );
-    assert.ok(!page.includes('data-figure="totale-ore"') && !page.includes('data-figure="totale-pareggio"'), person);
-    assert.ok(page.includes('data-figure="totale-valore"') && page.includes('data-figure="totale-costo"'), person);
-    // B è in realizzazione: i suoi 1.680 € da misurare, fuori dal valore contato.
-    assert.match(tileOf(page, "da-misurare"), /fino a\s+1\.680 €\s+valore da misurare all&#x27;anno\s+su 1\u00a0use\u00a0case/, person);
-    assert.match(tileOf(page, "trimestre"), /1\s+use case in questo trimestre\s+T\d\u00a0\d{4}/, person);
-    assert.match(page, /@3xl\/hub:grid-cols-4/, `${person}: quattro cifre`);
-    // Le parti a schermo fanno la cifra in testa: A (4.043 €) e la scheda senza modello (30.000 €)
-    // nelle corsie, B in realizzazione (2.719 €), che lo dice accanto al conto.
-    assert.match(tileOf(page, "valore"), /36\.762 €\s+valore all&#x27;anno\s+su 3\u00a0use\u00a0case/, person);
-    assert.deepEqual(figuresOf(page, "corsia"), [4_043, 30_000], person);
-    assert.ok(page.includes("1\u00a0use\u00a0case\u00a0· <span data-figure=\"corsia\">4.043\u00a0€ contati all&#x27;anno</span>"), person);
-    assert.ok(page.includes("1\u00a0use\u00a0case\u00a0· <span data-figure=\"corsia\">30.000\u00a0€ contati all&#x27;anno</span>"), person);
-    assert.match(page, /In realizzazione <span[^>]*>1\u00a0· <span data-figure="in-realizzazione">2\.719\u00a0€ contati all&#x27;anno<\/span><\/span><\/h2>/, person);
-    assert.equal(
-      [...figuresOf(page, "corsia"), ...figuresOf(page, "in-realizzazione")].reduce((sum, eur) => sum + eur, 0),
-      euros(tileOf(page, "valore")),
-      person,
-    );
-    // «costo di avvio» è l'avvio che le card delle corsie scrivono: A (560 €) e la scheda senza
-    // modello (20.000 €). B, in realizzazione, è già partita: la sua card non scrive l'avvio e i suoi
-    // 280 € non entrano (prima 20.840 € su 3 use case).
+    // Ore e pareggio stanno nella Home («Tutti i numeri») e in «Curva del valore»; costo e trimestre nella Home e
+    // nelle corsie: sulla Panoramica un numero solo.
+    for (const text of ['data-slot="portfolio-line"', "Su tutto il portafoglio", 'data-figure="totale-costo"', 'data-figure="totale-trimestre"', 'data-figure="totale-da-misurare"', "costo di realizzazione"]) {
+      assert.ok(!page.includes(text), `${person}: ${text}`);
+    }
+    assert.equal(count(page, 'data-slot="big-number"'), 1, person);
+    // Il numero grande: A (4.043 €) e la scheda senza modello (30.000 €) nelle corsie, B in realizzazione (2.719 €),
+    // «su 3 use case»; i 1.680 € da misurare di B nella riga grigia, fuori dal valore contato.
+    assert.equal(bigOf(page), 36_762, person);
+    assert.equal(bigNoteOf(page), "su 3 use case · fino a 1.680 € da misurare", person);
+    // Le card scrivono le loro cifre: le corsie e B (che in realizzazione scrive solo la fase) fanno il numero grande.
+    assert.deepEqual(figuresOf(page, "valore"), [4_043, 30_000], person);
+    assert.equal(figuresOf(page, "valore").reduce((sum, eur) => sum + eur, 0) + 2_719, bigOf(page), person);
+    // Le corsie hanno il loro conteggio, senza somme in testa.
+    assert.ok(!page.includes('data-figure="corsia"') && !page.includes('data-figure="in-realizzazione"'), person);
+    // Il costo delle card, senza la fonte (D7): A (560 €) e la scheda senza modello (20.000 €). B, in realizzazione, è
+    // già partita: la sua card non scrive l'avvio.
     assert.deepEqual(startCostsOf(page), [560, 20_000], person);
-    assert.match(tileOf(page, "costo"), /20\.560 €\s+costo di realizzazione\s+su 2\u00a0use\u00a0case/, person);
   }
   // Il contributore: nessun euro.
   const theirs = await html("contributor", ids.wsV, { vista: "panoramica" });
-  assert.ok(!theirs.includes("€") && !theirs.includes('data-figure="in-realizzazione"'));
+  assert.ok(!theirs.includes("€") && !theirs.includes('data-slot="big-number"'));
 });
 
-test("le cifre della Panoramica si sommano: le card fanno la corsia, le corsie e «In realizzazione» la cifra in testa, «Per agente» le corsie dell'agente", opts, async () => {
+test("(rilascio 10) le cifre della Panoramica si sommano: le card fanno il numero grande, «Per agente» le corsie dell'agente", opts, async () => {
   const quarter = await import("./quarter.ts");
   const sum = (list: number[]) => list.reduce((total, eur) => total + eur, 0);
   for (const person of ["ls", "builder", "manager"] as const) {
     // 4.043 + 4.043 + 12.250 + 2.719: 23.055 € (sommando prima e arrotondando dopo, 23.054 €).
     const page = await html(person, ids.wsS, { vista: "panoramica" });
-    assert.match(tileOf(page, "valore"), /23\.055 €\s+valore all&#x27;anno\s+su 4\u00a0use\u00a0case/, person);
-    assert.deepEqual(figuresOf(page, "corsia"), [16_293, 4_043], person);
-    assert.deepEqual(figuresOf(page, "in-realizzazione"), [2_719], person);
-    assert.equal(sum([...figuresOf(page, "corsia"), ...figuresOf(page, "in-realizzazione")]), 23_055, person);
+    assert.equal(bigOf(page), 23_055, person);
+    assert.ok(bigNoteOf(page).startsWith("su 4 use case"), `${person}: ${bigNoteOf(page)}`);
+    // Le card delle corsie; ORSA O1, in realizzazione (2.719 €), scrive solo la fase.
+    assert.equal(sum(figuresOf(page, "valore")) + 2_719, 23_055, person);
     // L'avvio: 560 + 560, le due FIX_A di LIBRA nelle corsie, come le loro card lo scrivono; ORSA O1
-    // è in realizzazione, già partita, e i suoi 280 € non ci sono più (prima 1.400 € su 3 use case).
+    // è in realizzazione, già partita, e i suoi 280 € non ci sono.
     assert.deepEqual(startCostsOf(page), [560, 560], person);
-    assert.match(tileOf(page, "costo"), /1\.120 €\s+costo di realizzazione\s+su 2\u00a0use\u00a0case/, person);
-    assert.equal(sum(startCostsOf(page)), euros(tileOf(page, "costo")), person);
 
-    // «Per agente»: la card di LIBRA è la somma delle sue card, 20.336 € (prima 20.335 €).
+    // «Per agente»: la card di LIBRA è la somma delle sue card, 20.336 € (prima 20.335 €); con ORSA in realizzazione,
+    // che non ha una card, fanno il numero grande.
     const grid = await html(person, ids.wsS, { vista: "panoramica", mostra: "agenti" });
     const libra = itemOf(grid, 'data-slot="agent-card" data-agent="LIBRA"');
     assert.equal(figuresOf(libra, "valore")[0], 20_336, person);
-    assert.ok(libra.includes("20.336\u00a0€\u00a0all&#x27;anno"), person);
-    assert.equal(sum(figuresOf(grid, "valore")) + sum(figuresOf(grid, "in-realizzazione")), 23_055, `${person}: gli agenti e «In realizzazione» fanno la cifra in testa`);
+    assert.ok(libra.includes("20.336 € all&#x27;anno"), person);
+    assert.equal(sum(figuresOf(grid, "valore")) + 2_719, bigOf(grid), `${person}: gli agenti e «In realizzazione» fanno il numero grande`);
 
-    // Le corsie di LIBRA, dopo il clic sulla sua card: la cifra in testa, le corsie e la card sono la stessa.
+    // Le corsie di LIBRA, dopo il clic sulla sua card: il numero grande e le card sono la stessa cifra.
     const own = await html(person, ids.wsS, { vista: "panoramica", agente: "LIBRA" });
-    assert.match(tileOf(own, "valore"), /20\.336 €\s+valore all&#x27;anno\s+su 3\u00a0use\u00a0case/, person);
-    assert.deepEqual(figuresOf(own, "corsia"), [16_293, 4_043], person);
-    assert.ok(!own.includes('data-figure="in-realizzazione"'), `${person}: ORSA non è di LIBRA`);
+    assert.equal(bigOf(own), 20_336, person);
+    assert.ok(bigNoteOf(own).startsWith("su 3 use case"), person);
+    assert.equal(sum(figuresOf(own, "valore")), 20_336, person);
+    assert.ok(!own.includes('aria-labelledby="panoramica-in-realizzazione"'), `${person}: ORSA non è di LIBRA`);
 
-    // Un trimestre solo: una corsia, la cifra in testa.
+    // Un trimestre solo: una corsia, il numero grande.
     const current = await html(person, ids.wsS, { vista: "panoramica", trimestre: quarter.currentQuarter() });
-    assert.equal(euros(tileOf(current, "valore")), 16_293, person);
-    assert.deepEqual(figuresOf(current, "corsia"), [16_293], person);
+    assert.equal(bigOf(current), 16_293, person);
+    assert.equal(sum(figuresOf(current, "valore")), 16_293, person);
   }
 
   // «Valore per tipo di ritorno»: il totale della riga è la somma delle cifre dei segmenti, 4.043 + 4.043 + 2.184 (prima 10.269 €).
@@ -573,7 +559,8 @@ test("«Curva del valore» da «Grafici»: J-curve con entrata in uso e pareggio
     assert.ok(page.includes('<section aria-label="Curva del valore" data-slot="roadmap-value"'), person);
     // Al posto delle corsie e della testa, che hanno il titolo per i lettori di schermo.
     for (const text of ['data-slot="panoramica"', 'data-slot="list-focus"', 'data-slot="lanes"', 'data-slot="overview-figures"']) assert.ok(!page.includes(text), `${person}: ${text}`);
-    assert.equal(filledButtons(page), 1, `${person}: un solo pulsante pieno`);
+    // Un grafico non ha un prossimo passo, e «Nuovo» è bordato (rilascio 10): nessun pulsante pieno.
+    assert.equal(filledButtons(page), 0, `${person}: nessun pulsante pieno`);
     // Sulla curva «Tipo» resta un filtro (solo le due matrici sono «Da costruire»).
     assert.deepEqual(await filterKind(person, ids.wsV, { vista: "panoramica", mostra: "curva" }), ["filtro"], person);
     // Impostazioni › Valutazione solo a chi gestisce il workspace (exec_sponsor, transformation_lead).
@@ -700,17 +687,18 @@ test("con gli agenti nei titoli: ogni bolla, segmento e punto ha il tono dell'ag
 
 // ─── Come oggi ───────────────────────────────────────────────────────
 
-test("senza modelli: in «Grafici» solo «Matrice Valore × Costo» e le cifre di oggi; `mostra=benefici` vale la matrice", opts, async () => {
+test("senza modelli: in «Grafici ›» solo «Matrice», con un lato solo; `mostra=benefici` vale la matrice", opts, async () => {
   assert.deepEqual(
     (await menuCharts("builder", ids.wsN)).map((chart) => chart.label),
-    ["Matrice Valore × Costo"],
+    ["Matrice"],
   );
   // Un vecchio link di «Priorità» con le bolle, in un workspace senza «Benefici e costi».
   const forced = await html("builder", ids.wsN, { vista: "priorita", mostra: "benefici" });
   assert.ok(forced.includes('data-slot="value-cost-matrix"'), "la matrice di oggi");
   assert.ok(!forced.includes('data-slot="benefit-bubbles"'));
-  assert.equal(chartHeaderOf(forced).title, "Matrice Valore × Costo");
+  assert.equal(chartHeaderOf(forced).title, "Matrice");
   assert.ok(forced.includes('data-chart="matrice"'));
+  assert.ok(!forced.includes('aria-label="Lato della matrice"'), "un lato solo: niente interruttore");
   assert.ok(!forced.includes("Ipotesi di calcolo"));
   // Senza «Benefici e costi» tra gli approvati e in realizzazione la curva non c'è: `mostra=curva` mostra le corsie.
   const curve = await html("builder", ids.wsN, { vista: "panoramica", mostra: "curva" });
