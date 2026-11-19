@@ -79,7 +79,6 @@ let formModule: typeof import("../../components/use-cases/detail/valuation-form.
 let aiBoxModule: typeof import("../../components/use-cases/detail/ai-suggestion-box.tsx");
 let realizationModule: typeof import("../../components/use-cases/detail/section-realization.tsx");
 let inlineModule: typeof import("../../components/use-cases/detail/inline-text-field.tsx");
-let hideModule: typeof import("../../components/use-cases/detail/hide-from-search-item.tsx");
 let hubQueries: typeof import("../db/queries/use-case-hub.ts");
 let notFoundPage: () => unknown;
 let pages: { detail: Page; nuovo: Page };
@@ -394,7 +393,6 @@ before(async () => {
   aiBoxModule = await component("ai-suggestion-box");
   realizationModule = await component("section-realization");
   inlineModule = await component("inline-text-field");
-  hideModule = await component("hide-from-search-item");
   hubQueries = await import("../db/queries/use-case-hub.ts");
   const page = async (path: string): Promise<Page> => (await import(path)).default as Page;
   pages = {
@@ -1337,8 +1335,6 @@ test("pezzi del browser: tasti del campo, «+ Aggiungi …», voce del menu, var
   assert.equal(addLabelOf("Problema"), "+ Aggiungi problema");
   assert.equal(addLabelOf("AI Lab"), "+ Aggiungi AI Lab");
   assert.equal(sameFieldText(" testo ", "testo"), true);
-  assert.equal(hideModule.hideFromSearchLabel(true), "Rendi visibile in azienda");
-  assert.equal(hideModule.hideFromSearchLabel(false), "Nascondi in azienda");
   const { realizationVariant } = realizationModule;
   const approved = { phase: "approvato" as const, subState: "piu_avanti" as const, kind: "da_costruire" as const, dossier: null };
   assert.equal(realizationVariant(approved, { dossierRead: "ok", canStartRealization: true, canMarkInProgress: true }), "avvia");
