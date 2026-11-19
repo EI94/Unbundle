@@ -257,11 +257,11 @@ function ReviewerRow({
 
 /**
  * (Rilascio 10, §3.4) La riga di «Da decidere»: l'origine (un punto), tag e titolo (il prefisso dell'agente resta per i
- * lettori di schermo), il codice piccolo, poi il sotto-stato, il Valore in parole e i giorni. In una riga sola dai 58rem
- * del riquadro; più stretto, prima riga con titolo, codice e giorni, sotto il resto. Il costo sta nel pannello.
+ * lettori di schermo), poi il codice piccolo, il sotto-stato, i giorni di attesa e il Valore in parole. Dai 58rem del
+ * riquadro una riga sola, con il titolo a sinistra e le altre quattro in colonne della stessa larghezza in ogni riga;
+ * più stretto, sotto il titolo una seconda riga che va a capo se non ci sta. Il costo sta nel pannello.
  */
 function DecideRow({ item, href, today, agents }: { item: HubItem; href: string; today: string; agents: AgentPalette | null }) {
-  const days = waitingLabel(waitingDays(item.waitingSince, today));
   const agent = titleAgent(item.title);
   return (
     <li data-slot="use-case-row" data-id={item.id} data-variant="decide">
@@ -285,13 +285,12 @@ function DecideRow({ item, href, today, agents }: { item: HubItem; href: string;
               item.title
             )}
           </span>
-          <CodeLabel code={item.code} className="leading-6" />
-          <span className="shrink-0 text-xs leading-6 whitespace-nowrap text-muted-foreground @min-[58rem]/hub:hidden">{days}</span>
         </span>
         <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 @min-[58rem]/hub:shrink-0 @min-[58rem]/hub:flex-nowrap">
-          <StatusDot tone={item.tone} label={reviewerSubStateText(item)} />
-          <ValueFigure value={item.value} withLabel />
-          <span className="hidden w-24 shrink-0 text-right text-xs whitespace-nowrap text-muted-foreground @min-[58rem]/hub:inline">{days}</span>
+          <CodeLabel code={item.code} className="@min-[58rem]/hub:w-16" />
+          <StatusDot tone={item.tone} label={reviewerSubStateText(item)} className="@min-[58rem]/hub:w-40" />
+          <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground @min-[58rem]/hub:w-24">{waitingLabel(waitingDays(item.waitingSince, today))}</span>
+          <ValueFigure value={item.value} withLabel className="@min-[58rem]/hub:w-44" />
         </span>
       </Link>
     </li>

@@ -364,6 +364,6 @@ test("i testi nuovi della vista passano la guardia delle parole e non contano pe
     assert.deepEqual(findHubForbiddenIn(texts, "area"), []);
     assert.ok(!/Aldo Prova[^<]*\d/.test(html));
   }
-  assert.deepEqual(findHubForbiddenIn(Object.values(board.NEEDS_BOARD_TEXT).filter((v): v is string => typeof v === "string"), "area"), []);
+  assert.deepEqual(findHubForbiddenIn(Object.values(board.NEEDS_BOARD_TEXT).flatMap((v) => (typeof v === "string" ? [v] : [])), "area"), []);
   assert.equal(board.NEEDS_BOARD_TEXT.seeAll(12), "Vedi tutte (12)");
 });

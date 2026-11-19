@@ -63,7 +63,7 @@ test("il link che non vale: una scheda sola, una frase; scaduto dice perché", (
 
 test("i testi: «caso d'uso» fuori dalla dashboard, mai «use case» né il nome del team; 30 giorni come il link", () => {
   const texts = [
-    ...Object.values(SHARE_PAGE_TEXT).filter((value): value is string => typeof value === "string"),
+    ...Object.values(SHARE_PAGE_TEXT).flatMap((value) => (typeof value === "string" ? [value] : [])),
     SHARE_PAGE_TEXT.validity(PORTFOLIO_SHARE_TTL_DAYS, "19 dicembre"),
     SHARE_PAGE_TEXT.expired(PORTFOLIO_SHARE_TTL_DAYS),
   ];

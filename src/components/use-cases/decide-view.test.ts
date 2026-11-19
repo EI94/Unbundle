@@ -101,7 +101,7 @@ function render(items: readonly unknown[], props: Record<string, unknown> = {}) 
   );
 }
 
-test("la riga dei revisori: tag e titolo, codice piccolo, sotto-stato, Valore in parole e giorni; l'origine è un punto; niente costo né referente", () => {
+test("la riga dei revisori: tag e titolo, codice piccolo, sotto-stato, giorni e Valore in parole; l'origine è un punto; niente costo né referente", () => {
   const tagged = item({ title: "LIBRA L1 · Smistamento delle richieste", origin: "transformation", value: { score: 4, word: "alto", source: "team", perYear: null }, waitingSince: "2026-11-10" });
   const plain = item({ title: "Verbali delle riunioni", subState: "possibile_doppione", phaseLabel: "Da valutare · Possibile doppione" });
   const palette = agents.agentPalette([tagged]);
@@ -112,7 +112,8 @@ test("la riga dei revisori: tag e titolo, codice piccolo, sotto-stato, Valore in
   const row = rowsOf(html).find((r) => r.id === tagged.id)!.html;
   assert.ok(row.includes('data-slot="agent-tag"') && row.includes(">LIBRA L1</span>"), row);
   assert.ok(row.includes('<span class="sr-only">LIBRA L1 · </span>Smistamento delle richieste'));
-  assert.equal(textOf(row), "LIBRA L1 Smistamento delle richieste XX-0001 da 9 giorni Nuova Valore: Alto da 9 giorni");
+  // Nell'ordine della proposta: tag e titolo, codice, sotto-stato, giorni, Valore; ognuno una volta.
+  assert.equal(textOf(row), "LIBRA L1 Smistamento delle richieste XX-0001 Nuova da 9 giorni Valore: Alto");
   // L'origine: un punto con le parole per i lettori di schermo e al passaggio del mouse, mai il chip a schermo.
   assert.match(row, /<span data-slot="origin-dot" data-origin="transformation" title="Origine: Dall'alto"[^>]*><span aria-hidden="true" class="size-2 rounded-full bg-indigo-500"><\/span><span class="sr-only">Origine: Dall'alto<\/span><\/span>/);
   assert.ok(!row.includes('data-slot="origin-chip"'));
