@@ -14,7 +14,8 @@ const TARGET = "min-h-11 sm:min-h-6";
  * gli altri link dell'area: nel tema scuro --primary è chiaro come il testo e sta dentro righe grigie
  * («Ufficio IT · 30/11 · RD-0012 · …»), dove il solo colore non basta a dire dove inizia il link.
  * (Rilascio 10, §3.4) Con `agentTag` (la vista «Cosa serve») un titolo con l'agente ha il tag nel suo colore al posto
- * del prefisso, come le card della Panoramica: «[LIBRA L1] Smistamento»; il prefisso resta per i lettori di schermo.
+ * del prefisso, come le card della Panoramica, dopo il codice piccolo: «RD-0012 · [LIBRA L1] Smistamento»; il prefisso
+ * resta per i lettori di schermo.
  */
 export function NeedUseCaseLink({
   useCase,
@@ -26,7 +27,7 @@ export function NeedUseCaseLink({
   useCase: NeedUseCaseRef;
   href: string;
   scroll?: boolean;
-  /** (Rilascio 10) Il tag dell'agente al posto del prefisso e del codice. */
+  /** (Rilascio 10) Il tag dell'agente al posto del prefisso del titolo; il codice resta. */
   agentTag?: boolean;
   /** I colori degli agenti del workspace, per il tag. */
   palette?: AgentPalette | null;
@@ -45,17 +46,17 @@ export function NeedUseCaseLink({
     >
       {/* Righe da 20 px e la sottolineatura a 2 px: sta dentro la riga, e `line-clamp` (overflow nascosto) non la taglia. */}
       <span className="line-clamp-2 leading-5 break-words">
+        {useCase.code ? (
+          <>
+            <span className="font-mono">{useCase.code}</span>
+            {SCREEN_SEPARATOR}
+          </>
+        ) : null}
         {agent ? (
           <>
             <AgentTag label={agent.label} tone={agentToneOf(palette, agent.agent)} decorative className="mr-1.5 align-[1px]" />
             <span className="sr-only">{agent.prefix}</span>
             {agent.rest}
-          </>
-        ) : useCase.code ? (
-          <>
-            <span className="font-mono">{useCase.code}</span>
-            {SCREEN_SEPARATOR}
-            {useCase.title}
           </>
         ) : (
           useCase.title

@@ -605,10 +605,12 @@ test("Panoramica: il prossimo passo del workspace (rilascio 10, D3), lo stesso d
   const tags = [...between(shared, 'data-slot="need-agents"', `Per 2${N}use${N}case`).matchAll(/data-slot="agent-tag"[^>]*><span class="truncate">([^<]*)</g)].map((match) => match[1]);
   assert.deepEqual(tags, ["LIBRA"]);
   assert.ok(shared.indexOf('data-slot="need-agents"') < shared.indexOf(`Per 2${N}use${N}case`));
-  // Il requisito di un solo use case: nessun tag, il link dice già «LIBRA L2».
+  // Il requisito di un solo use case: nessun tag, il link dice già «LIBRA L2», dopo il codice piccolo.
   const blocked = between(target, START.blocked, "</li>");
   assert.ok(!blocked.includes('data-slot="need-agents"'), blocked);
   assert.ok(blocked.includes(`<span class="sr-only">LIBRA L2 · </span>Pagamenti ${suffix}`) && blocked.includes(">LIBRA L2</span>"), "il tag al posto del prefisso");
+  const code = blocked.indexOf(`<span class="font-mono">${startCards.b.code}</span>${N}· `);
+  assert.ok(code >= 0 && code < blocked.indexOf('data-slot="agent-tag"'), "il codice prima del tag");
   // Con un filtro il riquadro non c'è: dice tutto il workspace.
   const filtered = await hubHtml("builder", ids.wsStart, { vista: "panoramica", agente: "LIBRA" });
   assert.ok(!filtered.includes('data-slot="next-step"') && filtered.includes('data-slot="phase-strip"'));

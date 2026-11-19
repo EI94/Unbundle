@@ -227,11 +227,12 @@ test("un gruppo: le prime tre righe, prima da verificare, poi «Vedi tutte (N)»
   const first = between(client, `data-need="${byTitle.get("Cliente 1")}"`, "</li>");
   assert.match(first, new RegExp(`<span data-meta="chi" class="inline-flex min-w-0 items-center gap-x-2"><span class="min-w-0">Aldo Prova, ufficio acquisti${N}· Cliente</span>`));
   assert.ok(first.includes(">Da chiedere<") && first.includes('href="?vista=cosa-serve&apri=' + A + '"'), "lo stato dei cinque e «Per» che apre il pannello");
-  // «Per» con il tag dell'agente al posto del prefisso, il prefisso solo per i lettori di schermo; niente codice.
+  // «Per»: il codice piccolo, poi il tag dell'agente al posto del prefisso, il prefisso solo per i lettori di schermo.
   const per = between(first, 'data-meta="per"', "</a>");
   assert.ok(per.includes('data-slot="agent-tag"') && per.includes(">LIBRA L1</span>"), per);
   assert.ok(per.includes('<span class="sr-only">LIBRA L1 · </span>Smistamento'), per);
-  assert.ok(!textOf(per.replace(/<span class="sr-only">[^<]*<\/span>/g, "")).includes("XV-0001"), "il tag al posto del codice");
+  assert.equal(textOf(per.replace(/<span class="sr-only">[^<]*<\/span>/g, "")).replace(/^[^>]*>/, ""), "XV-0001 · LIBRA L1Smistamento", "il codice prima del tag");
+  assert.ok(per.indexOf('<span class="font-mono">XV-0001</span>') < per.indexOf('data-slot="agent-tag"'), per);
   // Più use case: «Per 2 use case» chiuso, con prima gli agenti dei titoli.
   const two = between(client, `data-need="${byTitle.get("Insieme 2")}"`, "</li>");
   assert.ok(two.indexOf('data-slot="need-agents"') < two.indexOf(`Per 2${N}use${N}case`));
