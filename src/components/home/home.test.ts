@@ -263,7 +263,7 @@ test("(rilascio 10) «Tutti i numeri» ha il valore da misurare; «Persone» ha 
   const open = () => {};
   const body = (panel: string, extras: Record<string, unknown> = {}) => render(h(panels.PanelBody, { panel, view: view(), open, extras }));
   // Il valore da misurare, sotto il valore stimato, quando c'è: una riga senza pannello.
-  const numbers = body("numeri", { pendingValue: { amountEur: 23_400, count: 9, note: "su 9 use case" } });
+  const numbers = body("numeri", { pendingValue: { amountEur: 23_400, count: 9 } });
   assert.ok(numbers.indexOf('data-row="valore"') < numbers.indexOf('data-row="da-misurare"') && numbers.indexOf('data-row="da-misurare"') < numbers.indexOf('data-row="in-uso"'), "sotto il valore stimato");
   assert.ok(textOf(numbers).includes("Valore da misurare all'anno fino a 23.400 € · su 9 use case"), textOf(numbers));
   assert.match(numbers, /<div data-slot="row" data-row="da-misurare"/, "una riga ferma, senza pannello né freccia");

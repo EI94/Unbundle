@@ -15,7 +15,6 @@ import {
   needAskPieces,
   needDoneSummaryText,
   needForText,
-  needsSummaryPieces,
   NEED_AREAS,
   NEED_ERRORS,
   NEED_REQUIREMENT_STATUSES,
@@ -698,21 +697,17 @@ test("Cosa serve: i requisiti contati per gruppo di stato, di tutta la vista; ma
   assert.deepEqual(buildNeedsBoard([], ITEMS, { today: TODAY, params: PARAMS }).counts, emptyNeedAskCounts());
 });
 
-test("i testi dei conteggi: «86 aperti · 60 da chiedere · …», senza gli zeri", () => {
+test("i testi dei conteggi: «60 da chiedere · 12 in attesa · …», senza gli zeri", () => {
   const counts = (o: Partial<NeedAskCounts>): NeedAskCounts => ({ ...emptyNeedAskCounts(), ...o });
-  const line = (o: Partial<NeedAskCounts>) => needsSummaryPieces(counts(o)).join(FIGURE_SEPARATOR);
-  assert.equal(line({ open: 86, toAsk: 60, waiting: 12, toVerify: 4, blocked: 10, done: 31 }), "86 aperte · 60 da chiedere · 12 in attesa · 4 da verificare · 10 ferme · 31 a posto");
-  assert.equal(line({ open: 1, toAsk: 1 }), "1 aperta · 1 da chiedere");
-  assert.equal(line({ done: 3 }), "Nessuna aperta · 3 a posto");
-  assert.equal(line({}), "Nessuna aperta");
+  const line = (o: Partial<NeedAskCounts>) => needAskPieces(counts(o)).join(FIGURE_SEPARATOR);
+  assert.equal(line({ open: 86, toAsk: 60, waiting: 12, toVerify: 4, blocked: 10, done: 31 }), "60 da chiedere · 12 in attesa · 4 da verificare · 10 ferme · 31 a posto");
+  assert.equal(line({ open: 1, toAsk: 1 }), "1 da chiedere");
+  assert.equal(line({ done: 3 }), "3 a posto");
+  assert.equal(line({}), "");
   assert.deepEqual(needAskPieces(counts({ open: 1, blocked: 1 })), ["1 ferma"], "informazioni, al femminile come «aperte»");
   assert.deepEqual(needAskPieces(counts({ open: 2, waiting: 2 })), ["2 in attesa"], "i gruppi a zero non ci sono");
   assert.deepEqual(needAskPieces(counts({ open: 1200, toAsk: 1200 })), ["1.200 da chiedere"]);
-  const texts = [
-    ...needsSummaryPieces(counts({ open: 86, toAsk: 60, waiting: 12, toVerify: 4, blocked: 10, done: 31 })),
-    ...needsSummaryPieces(counts({ open: 1, blocked: 1 })),
-    ...needsSummaryPieces(counts({})),
-  ];
+  const texts = [...needAskPieces(counts({ open: 86, toAsk: 60, waiting: 12, toVerify: 4, blocked: 10, done: 31 })), ...needAskPieces(counts({ open: 1, blocked: 1 }))];
   assert.deepEqual(findHubForbiddenIn(texts, "area"), []);
 });
 

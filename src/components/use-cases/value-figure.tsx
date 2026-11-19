@@ -1,6 +1,4 @@
-import { Fragment } from "react";
 import {
-  FIGURE_SEPARATOR,
   formatEuro,
   hasValueText,
   perYearText,
@@ -32,12 +30,6 @@ export interface ValueFigureProps {
    * sempre.
    */
   withSource?: boolean;
-  /**
-   * Nella forma corta, nelle colonne strette (la riga di «Da decidere»): la cifra
-   * va a capo dopo «·» se non ci sta, mai dentro una parte («da misurare ·» / «fino a 5.840 €»).
-   * Senza, resta su una riga.
-   */
-  wrap?: boolean;
   className?: string;
 }
 
@@ -54,7 +46,7 @@ const PENDING_TEXT = (amount: number) => `e fino a ${formatEuro(amount)} da misu
  * `data-figure="valore"` permette alle schermate di controllare che la pagina del contributore non
  * ne abbia (PIANO-LAVORI §5.4).
  */
-export function ValueFigure({ value, form = "corta", withLabel = false, withSource = false, wrap = false, className }: ValueFigureProps) {
+export function ValueFigure({ value, form = "corta", withLabel = false, withSource = false, className }: ValueFigureProps) {
   const estimated = !hasValueText(value);
   // Gli euro all'anno che vanno a schermo (mai 0 €): con loro niente parola, niente punteggio.
   const euro = shownPerYear(value);
@@ -96,7 +88,7 @@ export function ValueFigure({ value, form = "corta", withLabel = false, withSour
   return (
     <span data-figure="valore" data-estimated={estimated ? "true" : undefined} className={cn("text-sm", className)}>
       {withLabel && <span className="text-muted-foreground">{VALUE_LABEL}: </span>}
-      <span className={cn(!wrap && "whitespace-nowrap", grey ? "text-muted-foreground" : "font-medium")}>{wrap ? <WrapAfterSeparator text={text} /> : text}</span>
+      <span className={cn("whitespace-nowrap", grey ? "text-muted-foreground" : "font-medium")}>{text}</span>
       {withSource && !value?.benefits && (euro || value?.source) ? (
         <>
           <span className="text-muted-foreground">{SCREEN_SEPARATOR}</span>
@@ -105,19 +97,4 @@ export function ValueFigure({ value, form = "corta", withLabel = false, withSour
       ) : null}
     </span>
   );
-}
-
-/**
- * «da misurare · fino a 5.840 €» con un solo punto dove andare a capo, dopo «·»: ogni parte, con il
- * suo «·», resta intera («da misurare ·» / «fino a 5.840 €»). Lo stesso testo della forma su una riga.
- */
-function WrapAfterSeparator({ text }: { text: string }) {
-  const parts = text.split(FIGURE_SEPARATOR);
-  const mark = FIGURE_SEPARATOR.trimEnd();
-  return parts.map((part, index) => (
-    <Fragment key={index}>
-      {index > 0 ? " " : null}
-      <span className="whitespace-nowrap">{index < parts.length - 1 ? `${part}${mark}` : part}</span>
-    </Fragment>
-  ));
 }

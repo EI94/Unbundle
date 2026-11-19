@@ -5,7 +5,7 @@ import { findHubForbidden } from "./copy-guard.ts";
 import { formatEuro, perYearText } from "./format.ts";
 import { agentInProgressText, laneSummaryText } from "./lanes.ts";
 import { NBSP, QUOTED_NAME_MAX, SCREEN_SEPARATOR, joinPieces, keepTogether, wholePiece } from "./line-breaks.ts";
-import { needsSummaryPieces } from "./needs.ts";
+import { needAskPieces } from "./needs.ts";
 import { quarterLabel } from "./quarter.ts";
 import { totalsNote } from "./views.ts";
 
@@ -95,7 +95,7 @@ test("solo la pagina: il MCP del team, l'export e i testi condivisi non usano li
   ];
   for (const file of files) assert.ok(!read(file).includes("line-breaks"), file);
   // I testi condivisi: spazi normali, come li leggono il MCP e l'export.
-  for (const text of [formatEuro(40_000), perYearText({ amount: 12_250 }), laneSummaryText(3), agentInProgressText(4_043), ...needsSummaryPieces({ open: 4, toAsk: 3, waiting: 1, toVerify: 0, blocked: 0, done: 1 }), totalsNote(9, 2), quarterLabel("2026-Q4")]) {
+  for (const text of [formatEuro(40_000), perYearText({ amount: 12_250 }), laneSummaryText(3), agentInProgressText(4_043), ...needAskPieces({ open: 4, toAsk: 3, waiting: 1, toVerify: 0, blocked: 0, done: 1 }), totalsNote(9, 2), quarterLabel("2026-Q4")]) {
     assert.ok(text && !text.includes(N), JSON.stringify(text));
   }
 });

@@ -852,12 +852,6 @@ export function needAskPieces(counts: NeedAskCounts): string[] {
   return pieces;
 }
 
-/** La riga dei conteggi in cima a «Cosa serve»: «86 aperte», «1 aperta» o «Nessuna aperta», poi i gruppi di `needAskPieces`. */
-export function needsSummaryPieces(counts: NeedAskCounts): string[] {
-  const open = counts.open === 0 ? "Nessuna aperta" : counts.open === 1 ? "1 aperta" : `${formatInteger(counts.open)} aperte`;
-  return [open, ...needAskPieces(counts)];
-}
-
 /**
  * Gli agenti che un'esigenza serve, dal titolo dei suoi use case («LIBRA L1 · …» → «LIBRA»): uno
  * per agente, in ordine alfabetico; nessuno senza prefisso. Un nome in testa al titolo, mai una persona.

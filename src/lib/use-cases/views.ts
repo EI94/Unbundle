@@ -1158,8 +1158,6 @@ export interface PendingValueTotal {
   amountEur: number;
   /** Su quanti use case è calcolata (solo quelli con una parte da misurare). */
   count: number;
-  /** «su 9 use case». */
-  note: string;
 }
 
 /**
@@ -1179,7 +1177,7 @@ export function pendingValueTotal(items: readonly HubItem[]): PendingValueTotal 
     amountEur += roundAmount(pending);
     count += 1;
   }
-  return count ? { amountEur, count, note: totalsNote(count) } : null;
+  return count ? { amountEur, count } : null;
 }
 
 // ═══ Export «Use case» (§4.1) ════════════════════════════════════════

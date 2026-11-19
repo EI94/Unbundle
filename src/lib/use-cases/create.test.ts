@@ -14,7 +14,6 @@ import {
   ACTIVITY_MAPPING_TEXT,
   FORM_FIELD_NAMES,
   FORM_TEXT,
-  KIND_OPTIONS,
   ORIGIN_OPTIONS,
   QUICK_CREATE_MAX,
   QUICK_CREATE_TEXT,
@@ -75,14 +74,10 @@ test("origine predefinita per ruolo: modulo completo AI Transformation solo per 
   assert.equal(abilitiesForUseCase(viewer(null, false)).newUseCase, null);
 });
 
-test("scelte dei chip e dei blocchi: due origini e due tipi, con le etichette di §3.2 e §3.3", () => {
+test("scelte dei chip: due origini, con le etichette di §3.2", () => {
   assert.deepEqual(ORIGIN_OPTIONS, [
     { value: "adoption", label: "Dal basso", chip: "Dal basso" },
     { value: "transformation", label: "Dall'alto", chip: "Dall'alto" },
-  ]);
-  assert.deepEqual(KIND_OPTIONS, [
-    { value: "da_costruire", label: "Da costruire" },
-    { value: "da_diffondere", label: "Da diffondere" },
   ]);
 });
 
@@ -523,7 +518,6 @@ test("copy-guard: nessuna parola vietata di §14.5 nei testi di Nuovo use case e
       formFields(kind, { esgEnabled: true }).flatMap((field) => [field.label, field.placeholder]),
     ),
     ...ORIGIN_OPTIONS.flatMap((option) => [option.label, option.chip]),
-    ...KIND_OPTIONS.map((option) => option.label),
     formSubtitle(DEFAULT_REVIEW_TEAM_NAME),
     savedToast("XX-0031"),
     proposedToast(6),

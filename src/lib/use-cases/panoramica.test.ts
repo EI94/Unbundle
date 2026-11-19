@@ -5,7 +5,7 @@ import { workspaceStepHref } from "../home/next-step.ts";
 import { NO_PROGRAM_COSTS, programCards } from "../programma/curve.ts";
 import { programResults } from "../programma/figures.ts";
 import { buildLanes, countedEurOf } from "./lanes.ts";
-import { buildNeedsBoard, needsSummaryPieces, type NeedView } from "./needs.ts";
+import { buildNeedsBoard, needStateCounts, type NeedView } from "./needs.ts";
 import {
   SAL_EVERY_DAYS,
   WORKSPACE_STEP_KEYS,
@@ -306,5 +306,8 @@ test("D3 e «Cosa serve», dove porta il pulsante: gli stessi numeri, contati al
   assert.ok(!hasActiveFilters(verifyParams));
   const board = buildNeedsBoard(needs, items, { today: TODAY, params: DEFAULT_VALUE_PARAMS });
   assert.equal(verify.count, board.counts.toVerify);
-  assert.ok(needsSummaryPieces(board.counts).includes("3 da verificare"), needsSummaryPieces(board.counts).join(" · "));
+  assert.deepEqual(
+    needStateCounts(board.counts).find((count) => count.state === "da-verificare"),
+    { state: "da-verificare", label: "Da verificare", count: 3, tone: "giallo" },
+  );
 });

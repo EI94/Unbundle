@@ -772,7 +772,7 @@ test("cifre della Panoramica: la somma delle cifre delle card, arrotondate una a
   });
   const pendingTwo = [item({ status: "accepted", valueModel: half }, ctx), item({ status: "in_progress", valueModel: half }, ctx)];
   assert.equal(pendingTwo[0].value.benefits?.pendingEur, 4_042.5);
-  assert.deepEqual(pendingValueTotal(pendingTwo), { amountEur: 8_086, count: 2, note: "su 2 use case" });
+  assert.deepEqual(pendingValueTotal(pendingTwo), { amountEur: 8_086, count: 2 });
 });
 
 test("(rilascio 10) «fino a» della Home: i «da misurare» delle card approvate, in realizzazione e in uso con un modello; null senza", () => {
@@ -799,7 +799,7 @@ test("(rilascio 10) «fino a» della Home: i «da misurare» delle card approvat
   // In uso con una parte ancora da misurare: conta, come il suo valore nella cifra della Home.
   const inUse = item({ status: "implemented", valueModel: partly }, ctx);
   const ignored = [item({ valueModel: onlyPending }, ctx), item({ status: "accepted", valueEurYear: 5_000 }, ctx)];
-  assert.deepEqual(pendingValueTotal([approved, building, inUse, ...ignored]), { amountEur: 5_200, count: 3, note: "su 3 use case" });
+  assert.deepEqual(pendingValueTotal([approved, building, inUse, ...ignored]), { amountEur: 5_200, count: 3 });
   assert.equal(pendingValueTotal(ignored), null, "da valutare e senza modello non contano");
   assert.equal(pendingValueTotal([]), null);
   // Il workspace conta anche le voci da misurare: non ne resta nessuna.

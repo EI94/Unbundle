@@ -32,7 +32,7 @@ import {
   tooLongMessage,
   type FieldErrors,
 } from "./inputs.ts";
-import { KIND_LABEL, ORIGIN_LABEL, WHAT_FIELD_LABEL } from "./labels.ts";
+import { ORIGIN_LABEL, WHAT_FIELD_LABEL } from "./labels.ts";
 import type { NewUseCaseItem } from "./service.ts";
 import { KINDS, ORIGINS, type NewUseCaseInput, type Origin, type UseCaseKind } from "./types.ts";
 
@@ -155,11 +155,6 @@ export function defaultOriginFor(entry: CreateEntry, viewer: { isLateralSpace: b
 /** Le due scelte dell'origine (§3.2). (Rilascio 10, §4, D4) «Dal basso · Dall'alto»: i nomi lunghi solo tra i filtri. */
 export const ORIGIN_OPTIONS: readonly { value: Origin; label: string; chip: string }[] = Object.freeze(
   ORIGINS.map((value) => ({ value, label: ORIGIN_LABEL[value].chip, chip: ORIGIN_LABEL[value].chip })),
-);
-
-/** Le due scelte del tipo (§3.3). */
-export const KIND_OPTIONS: readonly { value: UseCaseKind; label: string }[] = Object.freeze(
-  KINDS.map((value) => ({ value, label: KIND_LABEL[value].label })),
 );
 
 // ─── Pannello rapido (§5.2) ──────────────────────────────────────────
