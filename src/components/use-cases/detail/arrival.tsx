@@ -1,14 +1,38 @@
 "use client";
 
-import { createContext, useContext, useEffect, useRef, useState, type ComponentProps, type MouseEvent, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ComponentProps, type MouseEvent, type ReactNode, type RefObject } from "react";
 import { usePathname } from "next/navigation";
 import { arrivalTargetIn } from "@/lib/use-cases/guided";
 import { hashTargetOf } from "../list-focus";
 
 /**
+ * (Rilascio 10, §3.4) L'evento con cui l'arrivo apre una piega della scheda che non è un `<details>`: «Cosa serve · N»,
+ * le pieghe con il titolo H2 vero e il percorso compatto. Le segna `data-arrival-host`; lo ascoltano con `useArrivalOpen`.
+ */
+export const ARRIVAL_OPEN_EVENT = "scheda:apri";
+
+/**
+ * Una piega che l'arrivo apre (`data-arrival-host`): quando un link della pagina, un `#ancora` o un `?capitolo=` porta
+ * a lei o a qualcosa dentro di lei, `arriveAt` le manda `ARRIVAL_OPEN_EVENT` e lei si apre.
+ */
+export function useArrivalOpen(ref: RefObject<HTMLElement | null>, open: () => void): void {
+  const latest = useRef(open);
+  useEffect(() => {
+    latest.current = open;
+  });
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const onOpen = () => latest.current();
+    node.addEventListener(ARRIVAL_OPEN_EVENT, onOpen);
+    return () => node.removeEventListener(ARRIVAL_OPEN_EVENT, onOpen);
+  }, [ref]);
+}
+
+/**
  * Il punto dentro un'ancora che prende il fuoco: quello segnato (`data-arrival-focus`), il
- * `<summary>` di una piega, il suo titolo con `tabIndex={-1}`, oppure l'ancora stessa se si può
- * mettere a fuoco.
+ * `<summary>` di una piega, il pulsante del titolo di una piega della scheda (rilascio 10), il suo
+ * titolo con `tabIndex={-1}`, oppure l'ancora stessa se si può mettere a fuoco.
  */
 function focusTargetOf(el: HTMLElement): HTMLElement | null {
   const marked = el.querySelector<HTMLElement>("[data-arrival-focus]");
@@ -17,27 +41,47 @@ function focusTargetOf(el: HTMLElement): HTMLElement | null {
     const summary = el.querySelector<HTMLElement>(":scope > summary");
     if (summary) return summary;
   }
+  if (el.hasAttribute("data-arrival-host")) {
+    const toggle = el.querySelector<HTMLElement>("[data-arrival-toggle]");
+    if (toggle) return toggle;
+  }
   const heading = el.querySelector<HTMLElement>(":is(h2, h3)[tabindex='-1']");
   if (heading) return heading;
   return el.getAttribute("tabindex") === "-1" ? el : null;
 }
 
 /**
- * Porta la pagina a un'ancora della scheda: apre la piega se l'ancora è un `<details>` e, dentro, gli
- * elenchi segnati `data-arrival-open` (rilascio 6: i requisiti di «Cosa serve»), la porta in cima e le
- * dà il fuoco senza scorrere di nuovo. Non cambia l'indirizzo.
+ * Apre l'ancora e ogni piega che la contiene: un `<details>` si apre da sé, una piega della scheda (`data-arrival-host`)
+ * riceve `ARRIVAL_OPEN_EVENT`. Così «Quando» dentro il percorso, «Nota pubblica» dentro «Dettagli» e le richieste
+ * dentro «Cosa serve» si vedono quando un link le chiede.
+ */
+function openAround(el: HTMLElement): void {
+  for (let node: HTMLElement | null = el; node; node = node.parentElement) {
+    if (node instanceof HTMLDetailsElement) {
+      if (!node.open) node.open = true;
+    } else if (node.hasAttribute("data-arrival-host")) node.dispatchEvent(new Event(ARRIVAL_OPEN_EVENT));
+  }
+}
+
+/**
+ * Porta la pagina a un'ancora della scheda: apre la piega se l'ancora è una piega, e quelle che la contengono
+ * (`openAround`), e dentro gli elenchi segnati `data-arrival-open` (rilascio 6: i requisiti di «Cosa serve»), la porta
+ * in cima e le dà il fuoco senza scorrere di nuovo. Lo scorrimento aspetta due fotogrammi, il tempo che una piega della
+ * scheda aperta dall'evento si mostri. Non cambia l'indirizzo.
  * Vero se l'ancora c'è.
  */
 export function arriveAt(id: string): boolean {
   const el = document.getElementById(id);
   if (!el) return false;
-  if (el instanceof HTMLDetailsElement && !el.open) el.open = true;
-  // (Rilascio 6, B.1.5) L'elenco intero dietro un conteggio («Requisiti · 9») si apre con l'arrivo.
+  openAround(el);
+  // (Rilascio 6, B.1.5) L'elenco intero dietro un conteggio («Informazioni · 9») si apre con l'arrivo.
   for (const inner of el.querySelectorAll<HTMLDetailsElement>("details[data-arrival-open]")) inner.open = true;
-  requestAnimationFrame(() => {
-    el.scrollIntoView({ block: "start" });
-    focusTargetOf(el)?.focus({ preventScroll: true });
-  });
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      el.scrollIntoView({ block: "start" });
+      focusTargetOf(el)?.focus({ preventScroll: true });
+    }),
+  );
   return true;
 }
 
