@@ -5,7 +5,8 @@ import "server-only";
  *
  * - **Revisori**: la pagina del Programma (`loadProgramPage`, con le schede dei revisori), le esigenze di «Cosa
  *   serve», l'ok sui fornitori dove «Chiedi al referente» è acceso e, solo in un workspace nuovo, i fatti di «Per
- *   partire». Con l'area «Use case» spenta, solo «Per partire».
+ *   partire». Con l'area «Use case» spenta, solo «Per partire». (Rilascio 10) In più, prima sulla Panoramica: il
+ *   valore da misurare all'anno («Tutti i numeri») e «Chi propone, per area» (il pannello «Persone»).
  * - **Contributori**: i propri use case (la proiezione del contributore: titolo, fase e, dei propri, il codice), la
  *   partecipazione per area (numeri per area, mai chi propone) e i corsi che seguono.
  *
@@ -30,7 +31,7 @@ import { fullFormPath } from "@/lib/use-cases/create";
 import { abilitiesForUseCase } from "@/lib/use-cases/permissions";
 import { romeToday } from "@/lib/use-cases/quarter";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
-import { decideCount, type HubItem } from "@/lib/use-cases/views";
+import { decideCount, pendingValueTotal, type HubItem, type PendingValueTotal } from "@/lib/use-cases/views";
 import { getUnitTerm } from "@/lib/utils/unit-terminology";
 
 const LOG_SCOPE = "home";
@@ -53,6 +54,10 @@ export interface ReviewerHomeData {
   program: ProgramView | null;
   /** `spento`: area «Use case» spenta; `non_pronto`: manca la 0029. */
   programState: "ok" | "non_pronto" | "spento";
+  /** (Rilascio 10) «Valore da misurare all'anno» di «Tutti i numeri» (`pendingValueTotal`); null senza o senza Programma. */
+  pendingValue: PendingValueTotal | null;
+  /** (Rilascio 10) «Chi propone, per area» del pannello «Persone»: numeri per area, mai chi propone; null senza. */
+  participation: Participation | null;
 }
 
 export interface ContributorHomeData {
@@ -118,10 +123,12 @@ async function loadReviewerHome(workspace: Workspace, user: HomeViewer, role: st
   // Le informazioni di «Cosa serve» si contano per il passo, mai si mostrano; solo a chi le vede.
   const abilities = abilitiesForUseCase(viewer);
   const readsNeeds = area && abilities.canSeeNeeds;
-  const [needs, suppliers, start] = await Promise.all([
+  const [needs, suppliers, start, participation] = await Promise.all([
     readsNeeds ? listWorkspaceNeeds(workspace.id, viewer) : Promise.resolve(null),
     area ? supplierState({ workspaceId: workspace.id, userId: user.id, role }) : Promise.resolve(null),
     decided || (legacy ?? 0) > 0 ? Promise.resolve(null) : startFacts(workspace, items, legacy),
+    // «Chi propone, per area» sta nel pannello «Persone», che c'è solo con il Programma.
+    program ? readParticipation(workspace.id) : Promise.resolve(null),
   ]);
   const home = reviewerHome({
     workspaceId: workspace.id,
@@ -134,6 +141,7 @@ async function loadReviewerHome(workspace: Workspace, user: HomeViewer, role: st
     suppliers,
     program,
     start,
+    participation,
   });
   return {
     kind: "revisore",
@@ -143,7 +151,17 @@ async function loadReviewerHome(workspace: Workspace, user: HomeViewer, role: st
     home,
     program,
     programState: !area ? "spento" : program ? "ok" : "non_pronto",
+    pendingValue: program ? pendingValueTotal(items) : null,
+    participation,
   };
+}
+
+/** «Chi propone, per area»: solo numeri per area e società (`getPortfolioParticipation`); null se la lettura non riesce. */
+function readParticipation(workspaceId: string): Promise<Participation | null> {
+  return getPortfolioParticipation(workspaceId).catch((error: unknown) => {
+    logSafeError(LOG_SCOPE, "partecipazione_non_letta", error, { workspaceId });
+    return null;
+  });
 }
 
 /** I corsi che chi guarda segue; [] con la formazione spenta o se la lettura non riesce. */
@@ -163,10 +181,7 @@ async function loadContributorHome(workspace: Workspace, user: HomeViewer, role:
   const area = isUseCaseHubWorkspace(workspace.id);
   const [list, participation, courses] = await Promise.all([
     area ? listHubItems(workspace.id, viewer) : Promise.resolve(null),
-    getPortfolioParticipation(workspace.id).catch((error: unknown) => {
-      logSafeError(LOG_SCOPE, "partecipazione_non_letta", error, { workspaceId: workspace.id });
-      return null;
-    }),
+    readParticipation(workspace.id),
     followedCourses(workspace.id),
   ]);
   return {

@@ -101,5 +101,6 @@ test("la pagina: «Nuovo» bordato per i revisori, pieno per il contributore e n
   assert.ok(hub.includes("newUseCaseVariant={newVariant}"));
   assert.ok(hub.includes("charts: chartLinks,"), "i grafici nel menu della testata");
   assert.ok(hub.includes("const chartLinks = hubChartMenu(data.charts).map((key) => ({ label: CHART_MENU_LABEL[key], href: chartHref(key) }));"));
-  assert.ok(!hub.includes("SubprocessorsLsNotice") && !hub.includes("subprocessorsPendingForLs"), "niente avviso sui fornitori: c'è il passo «Autorizza i fornitori»");
+  // Niente più l'avviso di prima: il passo «Autorizza i fornitori» e, a Lateral Space quando il passo non c'è, una riga senza pulsante.
+  assert.ok(!hub.includes("SubprocessorsLsNotice") && hub.includes("<SuppliersLine href={suppliersHref} />"));
 });

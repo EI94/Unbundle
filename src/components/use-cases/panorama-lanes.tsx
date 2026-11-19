@@ -102,7 +102,7 @@ export interface PanoramaLanesProps {
   contributor?: boolean;
 }
 
-/** Il titolo di un elenco della Panoramica, con il suo conteggio accanto: «T4 2026 5», «In realizzazione 3». */
+/** Il titolo di un elenco della Panoramica, con il suo conteggio accanto: «T4 2026 5», «In realizzazione 3» («… 3 use case» per i lettori di schermo). */
 function ListTitle({ id, title, count, anchor = false }: { id: string; title: string; count: number; anchor?: boolean }) {
   return (
     <h2
@@ -111,7 +111,10 @@ function ListTitle({ id, title, count, anchor = false }: { id: string; title: st
       className={anchor ? "flex scroll-mt-24 items-baseline gap-2 text-base font-semibold outline-none" : "flex items-baseline gap-2 text-base font-semibold"}
     >
       {`${keepTogether(title)} `}
-      <span className="text-sm font-normal text-muted-foreground tabular-nums">{formatInteger(count)}</span>
+      <span className="text-sm font-normal text-muted-foreground tabular-nums">
+        {formatInteger(count)}
+        <span className="sr-only"> use case</span>
+      </span>
     </h2>
   );
 }
@@ -249,7 +252,7 @@ export function PanoramaLanes({
             <p data-slot="agent-filter-line" className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
               <span>
                 <span className="font-semibold">{agentLine.name}</span>
-                <span className="text-muted-foreground tabular-nums">{keepTogether(`${FIGURE_SEPARATOR}${laneSummaryText(agentLine.count, null)}`)}</span>
+                <span className="text-muted-foreground tabular-nums">{keepTogether(`${FIGURE_SEPARATOR}${laneSummaryText(agentLine.count)}`)}</span>
               </span>
               {agentLine.backHref ? (
                 <HashFocusLink
@@ -272,7 +275,7 @@ export function PanoramaLanes({
                   // «Più avanti»: una piega chiusa con il riepilogo; un link a `#panoramica-piu-avanti` la apre.
                   return (
                     <div key={lane.key} data-slot="lane" data-lane={lane.key} className="min-w-0">
-                      <Fold id={PANORAMA_SECTION_ID.piuAvanti} title={lane.title} summary={keepTogether(laneSummaryText(lane.entries.length, null))}>
+                      <Fold id={PANORAMA_SECTION_ID.piuAvanti} title={lane.title} summary={keepTogether(laneSummaryText(lane.entries.length))}>
                         <CardList cards={cards} total={lane.entries.length} className={LANE_GRID} />
                       </Fold>
                     </div>

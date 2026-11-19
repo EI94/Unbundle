@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
+import { ParticipationList } from "@/components/home/participation-list";
 import { Row, RowList, TextAction } from "@/components/ui-10/row";
 import { SideSheet } from "@/components/ui-10/side-sheet";
 import { Button } from "@/components/ui/button";
@@ -28,7 +29,9 @@ import {
   signedEuro,
   signedInteger,
 } from "@/lib/programma/text";
+import type { Participation } from "@/lib/portfolio/participation";
 import type { ProgramView, ViewCard } from "@/lib/programma/view";
+import type { PendingValueTotal } from "@/lib/use-cases/views";
 import { cn } from "@/lib/utils";
 import { AsksEditor, CaseDevControl, CloseSalButton, CustomKpiForm, FactAsk, FactsEditor, KeyResultEditor, KpiCatalog, KpiEditor, LsCostsForm, WeightsForm } from "./program-forms";
 import { ValueCostChart, breakevenText } from "./value-cost-chart";
@@ -102,6 +105,15 @@ export function programPanelTitle(panel: ProgramPanel): string {
 }
 
 type Open = (panel: ProgramPanel) => void;
+
+/**
+ * (Rilascio 10, §3.4) Quello che la Home dà ai pannelli oltre al Programma, prima sulla Panoramica di «Use case»: il
+ * valore da misurare all'anno («Tutti i numeri») e «Chi propone, per area» («Persone»). Solo ai revisori, come la Home.
+ */
+export interface ProgramPanelExtras {
+  pendingValue?: PendingValueTotal | null;
+  participation?: Participation | null;
+}
 
 function Section({ title, children, className }: { title?: string; children: ReactNode; className?: string }) {
   return (
@@ -371,8 +383,9 @@ function IndexPanel({ view }: { view: ProgramView }) {
   );
 }
 
-function PeoplePanel({ view }: { view: ProgramView }) {
+function PeoplePanel({ view, participation = null }: { view: ProgramView; participation?: Participation | null }) {
   const p = view.people;
+  const byArea = participation && participation.rows.length > 0 ? participation : null;
   return (
     <div className="space-y-5">
       {p.training ? (
@@ -449,6 +462,12 @@ function PeoplePanel({ view }: { view: ProgramView }) {
             </table>
           </div>
           <Source>{"Un'area con meno di 5 risposte non si mostra."}</Source>
+        </Section>
+      ) : null}
+      {byArea ? (
+        // (Rilascio 10) Prima in fondo alla Panoramica di «Use case»: solo numeri per area e società, mai chi propone.
+        <Section title={H.contributor.byArea}>
+          <ParticipationList participation={byArea} />
         </Section>
       ) : null}
     </div>
@@ -602,8 +621,11 @@ function SalPanel({ view }: { view: ProgramView }) {
   );
 }
 
-/** «Tutti i numeri»: i quattro risultati, ognuno con il suo pannello, e la curva del valore e del costo. */
-function NumbersPanel({ view, open }: { view: ProgramView; open: Open }) {
+/**
+ * «Tutti i numeri»: i quattro risultati, ognuno con il suo pannello, e la curva del valore e del costo. (Rilascio 10)
+ * Sotto il valore stimato, il valore da misurare all'anno (prima sulla Panoramica), quando c'è.
+ */
+function NumbersPanel({ view, open, pendingValue = null }: { view: ProgramView; open: Open; pendingValue?: PendingValueTotal | null }) {
   // Subito dopo i dipendenti, una volta sola, la domanda sul ricavo (facoltativa).
   const [askRevenue, setAskRevenue] = useState(false);
   const r = view.results;
@@ -626,6 +648,11 @@ function NumbersPanel({ view, open }: { view: ProgramView; open: Open }) {
         <li>
           <Row data-row="valore" title={T.estimated} fact={keepTogether(joinFact(formatEuro(r.estimated), deltaOf(r.estimated, sal?.estimated, "euro", sal?.on) ?? T.onUseCases(r.estimatedCount)))} onClick={() => open("valore")} />
         </li>
+        {pendingValue ? (
+          <li>
+            <Row data-row="da-misurare" title={H.panels.pending} fact={keepTogether(H.panels.pendingFact(pendingValue.amountEur, pendingValue.count))} />
+          </li>
+        ) : null}
         <li>
           <Row
             data-row="in-uso"
@@ -793,7 +820,8 @@ function SettingsPanel({ view }: { view: ProgramView }) {
 }
 
 /** Il contenuto di un pannello. */
-function PanelBody({ panel, view, open }: { panel: ProgramPanel; view: ProgramView; open: Open }) {
+/** Il contenuto di un pannello (esportato per le prove: il `SideSheet` vive in un portale). */
+export function PanelBody({ panel, view, open, extras = {} }: { panel: ProgramPanel; view: ProgramView; open: Open; extras?: ProgramPanelExtras }) {
   const r = view.results;
   switch (panel) {
     case "valore":
@@ -843,8 +871,10 @@ function PanelBody({ panel, view, open }: { panel: ProgramPanel; view: ProgramVi
     case "supporto":
       return <SupportPanel view={view} />;
     case "formazione":
-    case "persone":
       return <PeoplePanel view={view} />;
+    case "persone":
+      // «Chi propone, per area» solo in «Persone»: «Formazione» resta com'era.
+      return <PeoplePanel view={view} participation={extras.participation ?? null} />;
     case "rivedere":
       return (
         <div className="space-y-3">
@@ -871,7 +901,7 @@ function PanelBody({ panel, view, open }: { panel: ProgramPanel; view: ProgramVi
     case "sal":
       return <SalPanel view={view} />;
     case "numeri":
-      return <NumbersPanel view={view} open={open} />;
+      return <NumbersPanel view={view} open={open} pendingValue={extras.pendingValue ?? null} />;
     case "iniziative":
       return <InitiativesPanel view={view} open={open} />;
     case "impostazioni":
@@ -883,7 +913,19 @@ function PanelBody({ panel, view, open }: { panel: ProgramPanel; view: ProgramVi
  * Il pannello aperto (`SideSheet`): a destra da 640 px, a tutto schermo al telefono; si chiude con ✕, Esc, un tocco
  * fuori o «Indietro». Il pannello del SAL ha il suo pulsante pieno, «Chiudi il SAL», a chi lo può chiudere.
  */
-export function ProgramPanelSheet({ panel, view, onOpen, onClose }: { panel: ProgramPanel | null; view: ProgramView; onOpen: Open; onClose: () => void }) {
+export function ProgramPanelSheet({
+  panel,
+  view,
+  onOpen,
+  onClose,
+  extras = {},
+}: {
+  panel: ProgramPanel | null;
+  view: ProgramView;
+  onOpen: Open;
+  onClose: () => void;
+  extras?: ProgramPanelExtras;
+}) {
   const footer =
     panel === "sal" ? (
       view.viewer.canEdit ? (
@@ -894,7 +936,7 @@ export function ProgramPanelSheet({ panel, view, onOpen, onClose }: { panel: Pro
     ) : null;
   return (
     <SideSheet open={panel !== null} onClose={onClose} title={panel ? PANEL_TITLE[panel] : ""} footer={footer}>
-      {panel ? <PanelBody panel={panel} view={view} open={onOpen} /> : null}
+      {panel ? <PanelBody panel={panel} view={view} open={onOpen} extras={extras} /> : null}
       {panel ? <p className="pt-2 text-xs text-muted-foreground">Aggiornato al {longDate(view.today)}.</p> : null}
     </SideSheet>
   );

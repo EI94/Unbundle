@@ -339,6 +339,23 @@ test("le righe: lo zero non si dice, ma «Obiettivi» c'è per ogni revisore, an
   assert.deepEqual(homeBigNumber({ results: { ...none.results, estimated: 5_000, estimatedCount: 1, inUse: 0, inUseCount: 0 } }), { value: "5.000 €", label: "Valore all'anno", note: "su 1 use case" });
 });
 
+test("(rilascio 10) «Persone» c'è anche con la sola «Chi propone, per area», che prima stava sulla Panoramica", () => {
+  const counts = countUseCases([hub()]);
+  const participation = { rows: [{ label: "Amministrazione", count: 4, bestPractices: 1 }, { label: "Vendite", count: 2, bestPractices: 0 }], companies: [] };
+  const none = demoView((v) => ({ people: { ...v.people, training: null, levels: null } }));
+  // Senza formazione né AI Readiness la riga non c'era; con chi propone c'è, con quanti use case e quante aree.
+  assert.ok(!homeRows(none, counts).some((row) => row.key === "persone"));
+  assert.deepEqual(homeRows(none, counts, null, participation).find((row) => row.key === "persone"), { key: "persone", title: "Persone", fact: "6 use case da 2 aree", panel: "persone" });
+  assert.equal(HOME_TEXT.facts.byArea(1, 1), "1 use case da 1 area");
+  // Con la formazione la riga dice la formazione, come prima.
+  assert.equal(homeRows(demoView(), counts, null, participation).find((row) => row.key === "persone")?.fact, homeRows(demoView(), counts).find((row) => row.key === "persone")?.fact);
+  // Senza righe nessuna riga in più; anche dalla Home intera.
+  assert.ok(!homeRows(none, counts, null, { rows: [], companies: [] }).some((row) => row.key === "persone"));
+  assert.ok(reviewerHome(reviewerInput({ items: [hub()], program: none, participation })).rows.some((row) => row.key === "persone"));
+  assert.equal(HOME_TEXT.panels.pendingFact(23_400, 9), "fino a 23.400 € · su 9 use case");
+  assert.equal(HOME_TEXT.panels.pendingFact(500, 1), "fino a 500 € · su 1 use case");
+});
+
 test("senza il Programma (0029 assente) o con l'area spenta: il passo resta, il numero e le righe no", () => {
   const home = reviewerHome(reviewerInput({ items: [toDecide("2026-11-15")], program: null }));
   assert.deepEqual([home.step?.label, home.bigNumber, home.rows], ["Decidi 1 use case", null, []]);

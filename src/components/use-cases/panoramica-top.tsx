@@ -3,7 +3,8 @@ import { BigNumber } from "@/components/ui-10/big-number";
 import { NextStep } from "@/components/ui-10/next-step";
 import { TextAction } from "@/components/ui-10/row";
 import type { StepView } from "@/lib/home/next-step";
-import { FIGURE_SEPARATOR, formatEuro, formatInteger } from "@/lib/use-cases/format";
+import { HOME_TEXT } from "@/lib/home/text";
+import { formatEuro, formatInteger } from "@/lib/use-cases/format";
 import { keepTogether } from "@/lib/use-cases/line-breaks";
 import type { OverviewNumber } from "@/lib/use-cases/panoramica";
 import { ViewFocusLink } from "./list-focus";
@@ -12,16 +13,14 @@ import { ViewFocusLink } from "./list-focus";
 export const OVERVIEW_TEXT = Object.freeze({
   /** L'etichetta del numero grande. */
   value: "Valore all'anno",
-  /** Senza euro contati, il numero grande è il tetto da misurare. */
-  pendingOnly: "Valore da misurare all'anno",
   /** «su 20 use case». */
   onUseCases: (count: number) => `su ${formatInteger(count)} use case`,
-  /** «fino a 23.400 € da misurare»: il tetto delle voci da misurare, che la Home non dice ancora. */
-  pending: (eur: number) => `fino a ${formatEuro(eur)} da misurare`,
-  /** Davanti al tetto, quando è lui il numero grande. */
-  upTo: "al massimo",
   /** Il link alla Home, al pannello «Tutti i numeri». */
   allNumbers: "Tutti i numeri",
+  /** La riga senza pulsante sull'ok ai fornitori (Lateral Space), con le parole del passo della Home. */
+  suppliers: HOME_TEXT.steps.fornitori.status,
+  /** Il link della riga: Impostazioni › Fornitori. */
+  suppliersLink: "Impostazioni",
 });
 
 /**
@@ -34,13 +33,7 @@ const IN_HUB_STEPS: ReadonlySet<string> = new Set(["decidere", "chiedere", "veri
 /** Il numero grande già scritto: la cifra, l'etichetta e la riga grigia. null senza numero. */
 export function overviewNumberView(number: OverviewNumber | null): { value: string; label: string; note: string } | null {
   if (!number) return null;
-  const t = OVERVIEW_TEXT;
-  if (number.value) {
-    const note = [t.onUseCases(number.value.count), number.pending ? t.pending(number.pending.amountEur) : null].filter(Boolean).join(FIGURE_SEPARATOR);
-    return { value: formatEuro(number.value.amountEur), label: t.value, note };
-  }
-  if (number.pending) return { value: formatEuro(number.pending.amountEur), label: t.pendingOnly, note: `${t.upTo}${FIGURE_SEPARATOR}${t.onUseCases(number.pending.count)}` };
-  return null;
+  return { value: formatEuro(number.amountEur), label: OVERVIEW_TEXT.value, note: OVERVIEW_TEXT.onUseCases(number.count) };
 }
 
 export interface PanoramicaTopProps {
@@ -60,10 +53,12 @@ export interface PanoramicaTopProps {
  * 1. il prossimo passo del workspace (D3, `NextStep`): il solo pulsante pieno della pagina, con l'icona, il verbo e
  *    il «?» con il perché; «Tocca a …» quando non tocca a chi guarda, «Tutto in ordine» quando non c'è niente. Al
  *    telefono sta nella prima schermata;
- * 2. un numero grande, «412.000 € · Valore all'anno · su 20 use case», con «Tutti i numeri ›» che porta alla Home.
- *    Il tetto da misurare sta nella riga grigia, perché la Home non lo dice ancora.
+ * 2. un numero grande, «412.000 € · Valore all'anno · su 20 use case» (approvati, in realizzazione e in uso, la stessa
+ *    cifra della Home), con «Tutti i numeri ›» che porta alla Home.
  * La striscia delle fasi, le altre cifre e «Su tutto il portafoglio» non ci sono più: i numeri delle fasi stanno nelle
  * viste e nelle sezioni, il resto nella Home e in «Curva del valore». Conteggi di use case, mai di persone (art. 15.4).
+ * A Lateral Space, quando manca l'ok ai fornitori e il passo non lo dice già, sopra c'è una riga senza pulsante
+ * (`SuppliersLine`).
  */
 export function PanoramicaTop({ nextStep, number, numbersHref }: PanoramicaTopProps) {
   const big = overviewNumberView(number);
@@ -91,4 +86,20 @@ function PanoramicaNextStep({ step }: { step: StepView | null }) {
   const href = step?.href ?? null;
   const link = step && href && IN_HUB_STEPS.has(step.key) ? <ViewFocusLink href={href} /> : null;
   return <NextStep id="panoramica-prossimo-passo" step={item ? { ...item, link } : null} />;
+}
+
+/**
+ * (Rilascio 10) La riga senza pulsante «Manca l'ok sui fornitori · Impostazioni ›», per Lateral Space (le stesse persone
+ * dell'avviso di prima, `subprocessorsPendingForLs`) quando l'ok manca e il passo «Autorizza i fornitori» non c'è: il
+ * passo vale solo quando l'ok ferma le domande al referente, la riga lo dice sempre. Il link porta a Impostazioni ›
+ * Fornitori, dove l'ok si dà.
+ */
+export function SuppliersLine({ href }: { href: string }) {
+  return (
+    <p data-slot="suppliers-line" className="flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
+      <span>{OVERVIEW_TEXT.suppliers}</span>
+      <span aria-hidden>·</span>
+      <TextAction href={href}>{OVERVIEW_TEXT.suppliersLink}</TextAction>
+    </p>
+  );
 }

@@ -104,7 +104,9 @@ export function ProgramHome({ data, initialPanel }: { data: ReviewerHomeData; in
         ) : null}
         {data.programState === "non_pronto" ? <p className="text-sm text-muted-foreground">{HOME_TEXT.notReady}</p> : null}
       </div>
-      {view ? <ProgramPanelSheet panel={panel} view={view} onOpen={open} onClose={() => setPanel(null)} /> : null}
+      {view ? (
+        <ProgramPanelSheet panel={panel} view={view} onOpen={open} onClose={() => setPanel(null)} extras={{ pendingValue: data.pendingValue, participation: data.participation }} />
+      ) : null}
     </PageContainer>
   );
 }

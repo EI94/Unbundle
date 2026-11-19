@@ -39,7 +39,7 @@ const BASE = "/dashboard/ws/use-cases";
 const DECIDE = `${BASE}?vista=da-decidere`;
 const NEEDS = `${BASE}?vista=cosa-serve&trimestre=2026-Q4`;
 
-const NUMBER: OverviewNumber = { value: { amountEur: 412_000, count: 20 }, pending: null };
+const NUMBER: OverviewNumber = { amountEur: 412_000, count: 20 };
 const NUMBERS = "/dashboard/ws?apri=numeri";
 const LINKS = { workspaceId: "ws", companyName: "Cliente Demo", salHref: "/dashboard/ws?apri=sal" };
 const view = (...steps: WorkspaceStep[]): StepView | null => workspaceStepView(steps, LINKS);
@@ -87,24 +87,35 @@ test("il numero grande: «412.000 €», «Valore all'anno», «su 20 use case»
   assert.ok(textOf(big).includes("su 20\u00a0use\u00a0case"), textOf(big));
   assert.match(big, /<a [^>]*data-slot="text-action"[^>]*href="\/dashboard\/ws\?apri=numeri"|<a [^>]*href="\/dashboard\/ws\?apri=numeri"[^>]*data-slot="text-action"/);
   assert.ok(textOf(big).includes("Tutti i numeri"));
-  // Il tetto da misurare, che la Home non dice: nella riga grigia, dopo il conto.
-  const pending = textOf(render({ number: { value: { amountEur: 412_000, count: 20 }, pending: { amountEur: 23_400, count: 9 } } })).replace(/\u00a0/g, " ");
-  assert.ok(pending.includes("su 20 use case · fino a 23.400 € da misurare"), pending);
-  // Solo il da misurare: è lui il numero grande.
-  const only = textOf(render({ number: { value: null, pending: { amountEur: 23_400, count: 9 } } })).replace(/\u00a0/g, " ");
-  assert.ok(only.includes("23.400 €") && only.includes("Valore da misurare all'anno") && only.includes("al massimo · su 9 use case"), only);
+  // Il valore da misurare sta nella Home («Tutti i numeri»): qui la riga grigia dice solo su quanti use case.
+  assert.ok(!html.includes("da misurare") && !html.includes("fino a"));
   // Senza cifre: niente numero; senza numero e senza passo (un filtro senza cifre): niente.
   assert.ok(!render({ number: null }).includes("big-number"));
   assert.equal(render({ number: null, nextStep: null }), "");
   assert.equal(top.overviewNumberView(null), null);
-  assert.deepEqual(top.overviewNumberView({ value: null, pending: null }), null);
+  assert.deepEqual(top.overviewNumberView({ amountEur: 1_204, count: 1 }), { value: "1.204 €", label: "Valore all'anno", note: "su 1 use case" });
+});
+
+test("(rilascio 10) la riga sull'ok ai fornitori: senza pulsante, le parole del passo e «Impostazioni ›»", () => {
+  const html = renderToStaticMarkup(createElement(top.SuppliersLine, { href: "/dashboard/ws/settings#sub-responsabili" }));
+  assert.match(html, /^<p data-slot="suppliers-line" class="flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">/);
+  assert.equal(textOf(html).trim(), "Manca l'ok sui fornitori·Impostazioni");
+  assert.match(html, /<a data-slot="text-action" class="[^"]*\bmin-h-11\b[^"]*" href="\/dashboard\/ws\/settings#sub-responsabili">Impostazioni<svg/);
+  assert.equal(filledButtons(html).length, 0, "non è un pulsante pieno");
+  // Le parole del passo «Autorizza i fornitori» quando non tocca a chi guarda: una sola voce per la stessa cosa.
+  assert.equal(top.OVERVIEW_TEXT.suppliers, "Manca l'ok sui fornitori");
+  // La pagina la mostra a Lateral Space quando manca l'ok e il passo non lo dice già.
+  const hub = readFileSync(new URL("./hub.tsx", import.meta.url), "utf8").replace(/\s+/g, " ");
+  assert.ok(hub.includes('const suppliersHref = data.suppliersPending && overview?.nextStep?.step?.key !== "fornitori" ? `/dashboard/${workspaceId}/settings#sub-responsabili` : null;'));
+  assert.ok(hub.includes('{view === "panoramica" && !chart && suppliersHref ? <SuppliersLine href={suppliersHref} /> : null}'));
+  assert.ok(hub.includes("reviewer && abilities.isLateralSpace && lanes ? subprocessorsPendingForLs(workspaceId, session.user.id) : false"), "le stesse persone dell'avviso di prima");
 });
 
 test("i testi della testa passano la guardia delle parole", () => {
   const t = top.OVERVIEW_TEXT;
-  assert.deepEqual(findHubForbiddenIn([t.value, t.pendingOnly, t.onUseCases(20), t.pending(23_400), t.upTo, t.allNumbers], "area"), []);
+  assert.deepEqual(findHubForbiddenIn([t.value, t.onUseCases(20), t.allNumbers, t.suppliers, t.suppliersLink], "area"), []);
   // Il numero grande: etichetta di 4 parole al massimo (BigNumber).
-  for (const label of [t.value, t.pendingOnly]) assert.ok(label.split(/\s+/).length <= 4, label);
+  assert.ok(t.value.split(/\s+/).length <= 4, t.value);
 });
 
 test("il prossimo passo (D3): l'etichetta, il pulsante pieno con l'icona e il verbo, il «?» con il perché", () => {
