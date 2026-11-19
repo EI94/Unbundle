@@ -13,13 +13,13 @@ import {
   FORM_TEXT,
   QUICK_CREATE_TEXT,
   activityMappingPath,
+  parseQuickUseCaseForm,
   parseUseCaseForm,
   proposedToast,
   receiptPath,
   savedToast,
 } from "@/lib/use-cases/create";
 import {
-  createQuickUseCase,
   createUseCaseWithFollowUps,
   proposeFromActivityMapping,
   writeContextFor,
@@ -95,16 +95,20 @@ export type QuickCreateActionResult =
 /**
  * «Salva» e «Salva e aggiungi un altro» del pannello rapido (solo Lateral Space con ruolo da
  * revisore): `source = manual`, nessun proponente, codice subito, nessuna valutazione dell'AI
- * e nessuna notifica. `input`: `{ title, problem, aiLab, origin, kind }`.
+ * e nessuna notifica. (Rilascio 10, §3.4, D8) Lo stesso modulo della pagina (`parseQuickUseCaseForm`: obbligatori
+ * solo Titolo e Problema, gli altri campi in «Aggiungi dettagli», più «AI Lab»); il servizio ricontrolla chi scrive.
  */
-export async function createQuickUseCaseAction(workspaceId: string, input: unknown): Promise<QuickCreateActionResult> {
+export async function createQuickUseCaseAction(workspaceId: string, formData: FormData): Promise<QuickCreateActionResult> {
   const session = await requireSession();
   const access = UUID.test(workspaceId) ? await getCollaboratorAccess(session.user.id, workspaceId) : null;
   const actor = pageActor(session, workspaceId, access);
   if (!actor.ok) return { ok: false, message: actor.message, fieldErrors: {} };
-  const result = await createQuickUseCase(writeContextFor(workspaceId, actor.writer), input, followUpDeps(), actor.writer);
+  const parsed = parseQuickUseCaseForm((name) => formData.get(name), { esgEnabled: actor.esgEnabled, isReviewer: actor.abilities.isReviewer });
+  if (!parsed.ok) return { ok: false, message: parsed.message, fieldErrors: parsed.fieldErrors };
+  const result = await createUseCaseWithFollowUps(writeContextFor(workspaceId, actor.writer), parsed.item, followUpDeps(), actor.writer);
   if (!result.ok) {
-    return { ok: false, message: result.error === "riprova" ? QUICK_CREATE_TEXT.error : result.message, fieldErrors: result.fieldErrors };
+    const message = result.error === "riprova" ? QUICK_CREATE_TEXT.error : result.error === "dati_non_validi" ? FORM_TEXT.fixFields : result.message;
+    return { ok: false, message, fieldErrors: result.fieldErrors ?? {} };
   }
   revalidateUseCases(workspaceId, result.value.id);
   return { ok: true, id: result.value.id, code: result.value.code, message: savedToast(result.value.code) };

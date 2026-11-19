@@ -9,6 +9,9 @@
  *   «Valutazione iniziale» solo per i revisori; il costo arriva dal campo di §5.4 (importo,
  *   oppure una fascia del workspace). La stessa lettura (`parseUseCaseForm`) vale nel browser,
  *   prima di inviare, e nell'action: i messaggi coincidono.
+ * - (Rilascio 10, §3.4, D8) **Un modulo solo**, anche nel pannello rapido: obbligatori solo Titolo e Problema; il
+ *   tipo parte da «Da costruire». Nel pannello di Lateral Space la stessa lettura più «AI Lab»
+ *   (`parseQuickUseCaseForm`), salvata come prima con `source = manual`.
  * - **Activity mapping** (§8.5): le proposte del generatore diventano bozze «AI
  *   Transformation», nascoste ai colleghi, in «Da decidere». Mai approvate da sole.
  *
@@ -37,21 +40,16 @@ import { KINDS, ORIGINS, type NewUseCaseInput, type Origin, type UseCaseKind } f
 
 // ─── Testi (§5.2, §5.3, §8.5, §14.3) ─────────────────────────────────
 
-/** Pannello rapido (§5.2). */
+/** Pannello rapido (§5.2). (Rilascio 10, §3.4) Lo stesso modulo della pagina, con «AI Lab» e i suoi due pulsanti. */
 export const QUICK_CREATE_TEXT = Object.freeze({
   heading: "Nuovo use case",
-  titleLabel: "Titolo",
-  problemLabel: "Problema in una riga",
   aiLabLabel: "AI Lab",
   aiLabPlaceholder: "es. AI Lab Finanza · 12 ott",
-  originLabel: "Origine",
-  kindLabel: "Tipo",
-  /** Accanto al chip: «Cambia» per lo screen reader. */
-  change: "Cambia",
-  hint: "I dettagli si completano dopo.",
+  /** Il pulsante pieno di Lateral Space: salva e apre lo use case nel pannello. */
   save: "Salva",
+  /** Bordato: salva, svuota i campi e tiene tipo, origine e AI Lab. */
   saveAndAdd: "Salva e aggiungi un altro",
-  fullForm: "Usa il modulo completo",
+  saving: "Salvo…",
   close: "Chiudi",
   /** Errore di salvataggio: i campi restano compilati. */
   error: "Non riusciamo a salvare. Riprova.",
@@ -67,21 +65,20 @@ export const FORM_TEXT = Object.freeze({
   heading: "Nuovo use case",
   back: "Use case",
   kindQuestion: "Che cosa proponi?",
+  /** (Rilascio 10, §3.4) La riga grigia sotto le due scelte grandi («Da costruire», «Da diffondere»). */
   kindOptions: Object.freeze({
     da_costruire: "Un'idea da costruire con l'AI",
     da_diffondere: "Una cosa che fai già con l'AI e che altri possono copiare",
   } satisfies Record<UseCaseKind, string>),
+  /** (Rilascio 10, §3.4) La piega chiusa con gli altri campi, nello stesso ordine: tutti facoltativi. */
+  details: "Aggiungi dettagli",
   originBlock: "Origine",
-  valuationBlock: "Valutazione iniziale (facoltativa)",
+  valuationBlock: "Valutazione iniziale",
   valueLabel: "Valore all'anno",
   valuePlaceholder: "es. 60000",
   submit: "Invia lo use case",
   submitting: "Invio…",
   required: "Campo richiesto.",
-  /** Accanto all'etichetta di un campo che si può lasciare vuoto (H4p). */
-  optional: "facoltativo",
-  /** Sopra i campi: quali sono obbligatori (H4p). */
-  requiredNote: "I campi sono obbligatori, tranne quelli segnati «facoltativo».",
   tooShort: `Scrivi almeno ${TITLE_MIN_LENGTH} caratteri.`,
   titleTooShort: `Il titolo deve avere almeno ${TITLE_MIN_LENGTH} caratteri.`,
   chooseKind: "Scegli che cosa proponi.",
@@ -91,9 +88,12 @@ export const FORM_TEXT = Object.freeze({
   error: "Non riusciamo a salvare. Riprova.",
 });
 
-/** Sottotitolo del modulo, il testo esatto di §5.3: il nome del team da solo, senza articolo e senza «team» (§14.2). */
+/**
+ * Sottotitolo del modulo: il nome del team da solo, senza articolo e senza «team» (§14.2). (Rilascio 10, §5.4) Un
+ * fatto in meno di dieci parole: chi la valuta e dove si segue.
+ */
 export function formSubtitle(teamName: string): string {
-  return `Racconta l'idea in modo semplice. La valuta ${teamName}: qui vedi come va.`;
+  return `La valuta ${teamName}: qui vedi come va.`;
 }
 
 /** La mappatura dei processi (§8.5, §14.3). (Rilascio 10, §4) A schermo «Processi», mai «Activity mapping». */
@@ -230,16 +230,11 @@ const TIMELINE_MAX = 255;
 /** I testi su una riga sola; gli altri vanno a capo. */
 const SINGLE_LINE: ReadonlySet<FormTextField> = new Set(["title", "timeline"]);
 
-/** Obbligatori come oggi; «Limiti» e «Urgenza» restano facoltativi, «Impatto ambientale e sociale» solo con ESG. */
-const REQUIRED_TEXT: ReadonlySet<FormTextField> = new Set([
-  "title",
-  "description",
-  "flowDescription",
-  "businessCase",
-  "humanInTheLoop",
-  "dataRequirements",
-  "sustainabilityImpact",
-]);
+/**
+ * (Rilascio 10, D8) Obbligatori solo Titolo e Problema («Prima» per «Da diffondere»): tutti gli altri campi stanno in
+ * «Aggiungi dettagli» e si possono lasciare vuoti (vuoto = nessun valore, come oggi per «Limiti» e «Urgenza»).
+ */
+export const REQUIRED_TEXT: ReadonlySet<FormTextField> = new Set(["title", "description"]);
 
 const PLACEHOLDER: Readonly<Record<FormTextField, Readonly<Record<UseCaseKind, string>>>> = {
   title: { da_costruire: "Dai un nome chiaro allo use case", da_diffondere: "Dai un nome chiaro alla best practice" },
@@ -322,6 +317,8 @@ export const FORM_FIELD_NAMES = Object.freeze({
   origin: "origin",
   valueEurYear: "valueEurYear",
   cost: "cost",
+  /** (Rilascio 10, §3.4) Solo nel pannello rapido di Lateral Space. */
+  aiLab: "aiLab",
 });
 
 /** Una scheda del modulo completo, come la riceve il servizio (il proponente lo aggiunge l'action). */
@@ -357,8 +354,9 @@ function isOrigin(value: unknown): value is Origin {
 
 /**
  * Legge il modulo completo (dal browser prima di inviare, e nell'action). `read` dà il valore
- * di un campo (`FormData.get`). Il tipo viene da «Che cosa proponi?»; i testi sono quelli del
- * tipo (`formFields`), con gli stessi obbligatori di oggi; spazi tolti, vuoto = nessun valore.
+ * di un campo (`FormData.get`). Il tipo viene da «Che cosa proponi?» e, se manca, è «Da costruire», come la scelta
+ * di partenza del modulo; un valore sconosciuto è un errore. I testi sono quelli del tipo (`formFields`): (rilascio 10,
+ * D8) obbligatori solo Titolo e Problema; spazi tolti, vuoto = nessun valore.
  * Origine, valore all'anno e costo si leggono solo per i revisori (`isReviewer`): per gli altri
  * il modulo non li ha, e se arrivano si ignorano.
  */
@@ -368,10 +366,11 @@ export function parseUseCaseForm(
 ): FormReadResult {
   const fieldErrors: FieldErrors = {};
   const kindRaw = read(FORM_FIELD_NAMES.kind);
-  if (!isKind(kindRaw)) {
+  const kindMissing = kindRaw === null || kindRaw === undefined || kindRaw === "";
+  if (!kindMissing && !isKind(kindRaw)) {
     return { ok: false, message: FORM_TEXT.fixFields, fieldErrors: { kind: FORM_TEXT.chooseKind } };
   }
-  const kind = kindRaw;
+  const kind: UseCaseKind = isKind(kindRaw) ? kindRaw : "da_costruire";
   const texts: Partial<Record<FormTextField, string | null>> = {};
   for (const field of formFields(kind, opts)) {
     const raw = read(field.name);
@@ -419,6 +418,30 @@ export function parseUseCaseForm(
 
   if (Object.keys(fieldErrors).length) return { ok: false, message: FORM_TEXT.fixFields, fieldErrors };
   return { ok: true, item };
+}
+
+/** (Rilascio 10, §3.4) Una scheda del modulo nel pannello rapido: `manual`, con «AI Lab», senza proponente. */
+export type QuickFormUseCaseItem = Omit<FormUseCaseItem, "source"> & Pick<NewUseCaseInput, "aiLab"> & { source: "manual" };
+
+export type QuickFormReadResult =
+  | { ok: true; item: QuickFormUseCaseItem }
+  | { ok: false; message: string; fieldErrors: FieldErrors };
+
+/**
+ * (Rilascio 10, §3.4) Il modulo nel pannello rapido di Lateral Space: la lettura del modulo completo
+ * (`parseUseCaseForm`, gli stessi obbligatori e gli stessi messaggi) più «AI Lab», fino a 120 caratteri, spazi tolti,
+ * vuoto = nessun valore. Si salva come il pannello di prima: `source = manual`, nessun proponente, nessuna
+ * valutazione dell'AI e nessuna notifica (`creationFollowUps`).
+ */
+export function parseQuickUseCaseForm(read: (name: string) => unknown, opts: { esgEnabled: boolean; isReviewer: boolean }): QuickFormReadResult {
+  const parsed = parseUseCaseForm(read, opts);
+  const raw = read(FORM_FIELD_NAMES.aiLab);
+  const aiLab = typeof raw === "string" ? raw.trim().replace(/\s+/g, " ") : "";
+  const aiLabError = [...aiLab].length > QUICK_CREATE_LIMITS.aiLab.max ? tooLongMessage(QUICK_CREATE_LIMITS.aiLab.max) : null;
+  if (!parsed.ok || aiLabError) {
+    return { ok: false, message: FORM_TEXT.fixFields, fieldErrors: { ...(parsed.ok ? {} : parsed.fieldErrors), ...(aiLabError ? { [FORM_FIELD_NAMES.aiLab]: aiLabError } : {}) } };
+  }
+  return { ok: true, item: { ...parsed.item, source: "manual", aiLab: aiLab || null } };
 }
 
 // ─── Activity mapping (§8.5) ─────────────────────────────────────────

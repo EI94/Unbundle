@@ -745,9 +745,18 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
           canMarkInProgress={abilities.canMarkInProgress}
           companyName={data.workspaceName}
           referent={panelData.projection === "revisore" ? data.panelReferent : null}
+          agents={agents}
         />
       ) : null}
-      {data.quickCreate ? <QuickCreateSheet workspaceId={workspaceId} aiLabs={data.quickCreate.aiLabs} lastAiLab={data.quickCreate.lastAiLab} /> : null}
+      {data.quickCreate ? (
+        <QuickCreateSheet
+          workspaceId={workspaceId}
+          aiLabs={data.quickCreate.aiLabs}
+          lastAiLab={data.quickCreate.lastAiLab}
+          esgEnabled={list.projection !== "contributore" && list.esgEnabled}
+          costBands={bands}
+        />
+      ) : null}
     </PageContainer>
   );
 }
