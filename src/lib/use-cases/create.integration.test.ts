@@ -176,6 +176,25 @@ const FORM = {
   dataRequirements: "Le richieste dell'ultimo anno",
 };
 
+type QuickValues = { title: string; description: string; aiLab?: string; origin?: string; kind?: string };
+type QuickOutcome =
+  | { ok: true; value: import("./service.ts").CreatedUseCase }
+  | { ok: false; error: string; message: string; fieldErrors: Record<string, string> };
+
+/**
+ * «Salva» del pannello rapido come lo fa `createQuickUseCaseAction`: il modulo della pagina con «AI Lab», letto da
+ * `parseQuickUseCaseForm` (tipo «Da costruire» e origine «Dall'alto» di partenza, come nel pannello), poi
+ * `createUseCaseWithFollowUps` con `source = manual`. Il servizio decide chi può.
+ */
+async function quickCreate(person: Person, values: QuickValues, deps: FollowUpDeps, extra: Partial<Ctx> = {}): Promise<QuickOutcome> {
+  const fields = formData({ kind: "da_costruire", origin: "transformation", ...values });
+  const isReviewer = perms.abilitiesForUseCase(viewerOf(person)).isReviewer;
+  const parsed = create.parseQuickUseCaseForm((name) => fields.get(name), { esgEnabled: false, isReviewer });
+  if (!parsed.ok) return { ok: false, error: "dati_non_validi", message: parsed.message, fieldErrors: parsed.fieldErrors };
+  const result = await flow.createUseCaseWithFollowUps(as(person, extra), parsed.item, deps, { isLateralSpace: person === "ls" });
+  return result.ok ? result : { ok: false, error: result.error, message: result.message, fieldErrors: result.fieldErrors ?? {} };
+}
+
 async function insertActivity(title: string, classification: string | null, workspaceId = ids.wsA): Promise<string> {
   const id = randomUUID();
   await q(
@@ -237,9 +256,7 @@ after(async () => {
 test("pannello rapido: source manual, nessun proponente, AI Transformation nascosta, codice subito, nessuna notifica", opts, async () => {
   const t = fakeTransports();
   const lab = `AI Lab Prova ${suffix} · 12 ott`;
-  const first = ok(
-    await flow.createQuickUseCase(as("ls"), { title: `Prova rapida uno ${suffix}`, problem: "Un problema in una riga", aiLab: lab }, t.deps, { isLateralSpace: true }),
-  );
+  const first = ok(await quickCreate("ls", { title: `Prova rapida uno ${suffix}`, description: "Un problema in una riga", aiLab: lab }, t.deps));
   assert.match(String(first.code), /^XX-\d{4}$/, "codice subito");
   const r = await row(first.id);
   assert.equal(r.code, first.code);
@@ -257,15 +274,8 @@ test("pannello rapido: source manual, nessun proponente, AI Transformation nasco
   assert.equal(r.custom_scores, null, "nessuna valutazione dell'AI");
   assert.deepEqual(await storia(first.id), [{ action: "creato", channel: "pagina", actor_kind: "proponente", actor_user_id: null }]);
 
-  // «Salva e aggiungi un altro»: stesso AI Lab, codice nuovo; tipo e origine cambiati dai chip.
-  const second = ok(
-    await flow.createQuickUseCase(
-      as("ls"),
-      { title: `Prova rapida due ${suffix}`, problem: "Un altro problema", aiLab: lab, origin: "adoption", kind: "da_diffondere" },
-      t.deps,
-      { isLateralSpace: true },
-    ),
-  );
+  // «Salva e aggiungi un altro»: stesso AI Lab, codice nuovo; tipo e origine cambiati nel modulo.
+  const second = ok(await quickCreate("ls", { title: `Prova rapida due ${suffix}`, description: "Un altro problema", aiLab: lab, origin: "adoption", kind: "da_diffondere" }, t.deps));
   assert.notEqual(second.code, first.code);
   const r2 = await row(second.id);
   assert.equal(r2.origin, "adoption");
@@ -281,7 +291,7 @@ test("pannello rapido: source manual, nessun proponente, AI Transformation nasco
 
   // «AI Lab»: i valori del workspace, dal più recente; il campo parte dall'ultimo usato.
   const later = `AI Lab Dopo ${suffix}`;
-  ok(await flow.createQuickUseCase(as("ls"), { title: `Prova rapida tre ${suffix}`, problem: "Terzo problema", aiLab: later }, t.deps, { isLateralSpace: true }));
+  ok(await quickCreate("ls", { title: `Prova rapida tre ${suffix}`, description: "Terzo problema", aiLab: later }, t.deps));
   const options = await data.quickCreateOptions(ids.wsA);
   assert.equal(options.lastAiLab, later);
   assert.deepEqual(options.aiLabs.slice(0, 2), [later, lab]);
@@ -292,10 +302,8 @@ test("pannello rapido: «AI Lab» non propone il segnaposto di «Oscura testo»,
   const t = fakeTransports();
   const earlier = `AI Lab Prima ${suffix}`;
   const secret = `AI Lab Da oscurare ${suffix}`;
-  ok(await flow.createQuickUseCase(as("ls"), { title: `Prova prima ${suffix}`, problem: "Un problema", aiLab: earlier }, t.deps, { isLateralSpace: true }));
-  const newest = ok(
-    await flow.createQuickUseCase(as("ls"), { title: `Prova da oscurare ${suffix}`, problem: "Un problema", aiLab: secret }, t.deps, { isLateralSpace: true }),
-  );
+  ok(await quickCreate("ls", { title: `Prova prima ${suffix}`, description: "Un problema", aiLab: earlier }, t.deps));
+  const newest = ok(await quickCreate("ls", { title: `Prova da oscurare ${suffix}`, description: "Un problema", aiLab: secret }, t.deps));
   assert.equal((await data.quickCreateOptions(ids.wsA)).lastAiLab, secret);
 
   // «Oscura testo» sull'AI Lab della scheda più recente: `ai_lab` diventa il segnaposto, `created_at` resta.
@@ -308,18 +316,19 @@ test("pannello rapido: «AI Lab» non propone il segnaposto di «Oscura testo»,
   assert.ok(options.aiLabs.includes(earlier));
 });
 
-test("pannello rapido: solo Lateral Space con ruolo da revisore, area accesa, campi validi; errori con i nomi del pannello", opts, async () => {
+test("pannello rapido: solo Lateral Space con ruolo da revisore, area accesa, campi validi; errori con i nomi del modulo", opts, async () => {
   const t = fakeTransports();
-  const input = { title: `Prova vietata ${suffix}`, problem: "Problema" };
-  err(await flow.createQuickUseCase(as("builder"), input, t.deps, { isLateralSpace: false }), "permesso_mancante", "AI Builder del cliente");
-  err(await flow.createQuickUseCase(as("contributor"), input, t.deps, { isLateralSpace: false }), "permesso_mancante", "contributore");
-  err(await flow.createQuickUseCase(as("learner"), input, t.deps, { isLateralSpace: false }), "permesso_mancante", "learner");
-  err(await flow.createQuickUseCase(as("ls", { workspaceId: ids.wsB }), input, t.deps, { isLateralSpace: true }), "area_spenta", "area spenta");
+  const input = { title: `Prova vietata ${suffix}`, description: "Problema" };
+  err(await quickCreate("builder", input, t.deps), "permesso_mancante", "AI Builder del cliente");
+  err(await quickCreate("contributor", input, t.deps), "permesso_mancante", "contributore");
+  err(await quickCreate("learner", input, t.deps), "permesso_mancante", "learner");
+  err(await quickCreate("ls", input, t.deps, { workspaceId: ids.wsB }), "area_spenta", "area spenta");
   assert.equal(await countByTitle(input.title), 0);
 
-  const invalid = await flow.createQuickUseCase(as("ls"), { title: "ab", problem: "x".repeat(301), aiLab: "" }, t.deps, { isLateralSpace: true });
+  // Gli errori del modulo della pagina, con i suoi nomi (`description` è «Problema»), più «AI Lab».
+  const invalid = await quickCreate("ls", { title: "ab", description: "", aiLab: "a".repeat(121) }, t.deps);
   err(invalid, "dati_non_validi");
-  assert.ok(!invalid.ok && invalid.fieldErrors.title && invalid.fieldErrors.problem);
+  assert.ok(!invalid.ok && invalid.fieldErrors.title && invalid.fieldErrors.description && invalid.fieldErrors.aiLab, JSON.stringify(invalid));
   assert.equal(t.scheduled.length, 0);
 });
 
@@ -486,10 +495,8 @@ async function connectorSearchCodes(word: string): Promise<string[]> {
 test("§8.6: le schede dall'alto nascono nascoste alla ricerca del connettore, quelle dal basso no", opts, async () => {
   const t = fakeTransports();
   const word = `magazzino${suffix}`;
-  const hiddenQuick = ok(await flow.createQuickUseCase(as("ls"), { title: `Inventario ${word}`, problem: "Conteggi a mano" }, t.deps, { isLateralSpace: true }));
-  const visibleQuick = ok(
-    await flow.createQuickUseCase(as("ls"), { title: `Inventario ${word} bis`, problem: "Conteggi a mano", origin: "adoption" }, t.deps, { isLateralSpace: true }),
-  );
+  const hiddenQuick = ok(await quickCreate("ls", { title: `Inventario ${word}`, description: "Conteggi a mano" }, t.deps));
+  const visibleQuick = ok(await quickCreate("ls", { title: `Inventario ${word} bis`, description: "Conteggi a mano", origin: "adoption" }, t.deps));
   const fromBelow = ok(
     await flow.createUseCaseWithFollowUps(as("contributor"), { source: "web_proposed", kind: "da_costruire", title: `Inventario ${word} ter`, description: "Conteggi", proposedBy: emails.contributor }, t.deps, {
       isLateralSpace: false,

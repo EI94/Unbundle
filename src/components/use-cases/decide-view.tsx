@@ -106,7 +106,7 @@ export function DecideView({ items, teamName, today, basePath, query, overviewHr
       {list.waiting.length ? (
         <ul className="divide-y divide-border/70">
           {list.waiting.map((item) => (
-            <UseCaseRow key={item.id} item={item} href={panelHref(basePath, query, item.id)} variant="decide" today={today} agents={agents} />
+            <UseCaseRow key={item.id} item={item} href={panelHref(basePath, query, item.id)} today={today} agents={agents} />
           ))}
         </ul>
       ) : null}
@@ -118,7 +118,7 @@ export function DecideView({ items, teamName, today, basePath, query, overviewHr
           </h2>
           <ul className="divide-y divide-border/70">
             {list.needInfo.map((item) => (
-              <UseCaseRow key={item.id} item={item} href={panelHref(basePath, query, item.id)} variant="decide" today={today} agents={agents} />
+              <UseCaseRow key={item.id} item={item} href={panelHref(basePath, query, item.id)} today={today} agents={agents} />
             ))}
           </ul>
         </section>

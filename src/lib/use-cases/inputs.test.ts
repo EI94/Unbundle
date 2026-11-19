@@ -22,7 +22,6 @@ import {
   VALUE_EUR_YEAR_MAX,
   VALUE_MODEL_FIELD_ERROR,
   validatePublicNote,
-  validateQuickCreate,
   validateUseCaseChanges,
   validateValuation,
 } from "./inputs.ts";
@@ -287,24 +286,9 @@ test("valutazione: punteggi fuori scala, KPI fuori modello, importi non validi",
 
 // ─── §5.2: pannello rapido ───────────────────────────────────────────
 
-test("pannello rapido: titolo 3-200, problema in una riga 3-300, AI Lab fino a 120; AI Transformation e Da costruire predefiniti", () => {
+test("pannello rapido: titolo 3-200, problema in una riga 3-300, AI Lab fino a 120", () => {
+  // (Rilascio 10, D8) Il pannello legge il modulo della pagina (`parseQuickUseCaseForm`, create.test.ts); qui i limiti.
   assert.deepEqual(QUICK_CREATE_LIMITS, { title: { min: 3, max: 200 }, problem: { min: 3, max: 300 }, aiLab: { max: 120 } });
-  assert.deepEqual(validateQuickCreate({ title: " Smistamento richieste ", problem: "Le richieste arrivano in tre caselle." }), {
-    ok: true,
-    value: { title: "Smistamento richieste", problem: "Le richieste arrivano in tre caselle.", origin: "transformation", kind: "da_costruire" },
-  });
-  const full = validateQuickCreate({ title: text(200), problem: text(300), aiLab: text(120), origin: "adoption", kind: "da_diffondere" });
-  assert.equal(full.ok, true);
-  for (const bad of [
-    { title: "ab", problem: "abc" },
-    { title: text(201), problem: "abc" },
-    { title: "abc", problem: "ab" },
-    { title: "abc", problem: text(301) },
-    { title: "abc", problem: "abc", aiLab: text(121) },
-    { title: "abc", problem: "abc", source: "manual" },
-  ]) {
-    assert.equal(validateQuickCreate(bad).ok, false, JSON.stringify(bad).slice(0, 60));
-  }
 });
 
 // ─── «Benefici e costi» in «Salva la valutazione» ────────────────────

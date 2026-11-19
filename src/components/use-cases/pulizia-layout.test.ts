@@ -1,14 +1,13 @@
 import test, { before } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { VALUE_COST_NOT_ESTIMATED_LABEL } from "../../lib/use-cases/labels.ts";
 import { enableTsxImports } from "./detail/referent/tsx-test-loader.ts";
 
 // Le correzioni visive del rilascio «Pulizia», nei componenti dell'area: le viste in due colonne al
-// telefono, la riga senza Valore né Costo, il costo del modello che non si spezza dentro un importo,
-// le etichette dei punti vicini nella matrice.
+// telefono, il costo del modello che non si spezza dentro un importo, le etichette dei punti vicini
+// nella matrice. (Rilascio 10, §3.4) La riga con Valore e Costo non c'è più: in «Da decidere» il Valore,
+// il costo nel pannello.
 let nav: typeof import("../dashboard/segmented-nav.tsx");
-let row: typeof import("./use-case-row.tsx");
 let cost: typeof import("./cost-figure.tsx");
 let matrix: typeof import("./value-cost-matrix.tsx");
 let renderToStaticMarkup: (element: unknown) => string;
@@ -16,7 +15,6 @@ let createElement: (type: unknown, props: unknown) => unknown;
 before(async () => {
   await enableTsxImports();
   nav = await import("../dashboard/segmented-nav.tsx");
-  row = await import("./use-case-row.tsx");
   cost = await import("./cost-figure.tsx");
   matrix = await import("./value-cost-matrix.tsx");
   const react = await import("react");
@@ -46,13 +44,6 @@ test("le tre viste: al telefono una griglia di due colonne, tutte in vista, l'ul
   // La pagina «Use case» la chiede quando le viste sono più di due.
   const hub = readFileSync(new URL("./hub.tsx", import.meta.url), "utf8");
   assert.ok(hub.includes("<SegmentedNav ariaLabel={HUB_TEXT.viewsLabel} active={view} items={navItems} gridOnPhone={navItems.length > 2} />"));
-});
-
-test("una riga senza Valore né Costo dice che cosa è da stimare", () => {
-  assert.equal(VALUE_COST_NOT_ESTIMATED_LABEL, "Valore e costo: da stimare");
-  const html = renderToStaticMarkup(createElement(row.RowFigures, { item: { value: null, cost: null } }));
-  assert.equal(textOf(html), "Valore e costo: da stimare");
-  assert.match(html, /data-figure="stima" data-estimated="true"/);
 });
 
 test("il costo del modello: mai spezzato dentro un importo; nel pannello una parte per riga", () => {

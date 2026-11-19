@@ -7,15 +7,7 @@ import type { Activity, StrategicGoal, UseCase } from "@/lib/db/schema";
 import { logSafeError } from "@/lib/log/safe-error";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
-import {
-  ACTIVITY_MAPPING_TEXT,
-  activityMappingItems,
-  activityMappingState,
-  quickCreateItem,
-  quickFieldErrors,
-  readQuickCreate,
-} from "./create";
-import type { FieldErrors } from "./inputs";
+import { ACTIVITY_MAPPING_TEXT, activityMappingItems, activityMappingState } from "./create";
 import {
   MAX_CREATE_ITEMS,
   SERVICE_MESSAGES,
@@ -140,33 +132,6 @@ export async function createUseCaseWithFollowUps(
   const [created] = result.value;
   scheduleFollowUps(ctx.workspaceId, item.source, created.id, writer, deps);
   return { ok: true, value: created };
-}
-
-// ─── Pannello rapido (§5.2) ──────────────────────────────────────────
-
-export type QuickCreateOutcome =
-  | { ok: true; value: CreatedUseCase }
-  | { ok: false; error: ServiceError; message: string; fieldErrors: FieldErrors };
-
-/**
- * «Salva» e «Salva e aggiungi un altro» del pannello rapido: `source = manual`, nessun
- * proponente, codice subito; nascosta ai colleghi se l'origine è «AI Transformation». Solo
- * Lateral Space con ruolo da revisore (lo decide il servizio). Gli errori per campo hanno i
- * nomi dei campi del pannello.
- */
-export async function createQuickUseCase(
-  ctx: WriteContext,
-  input: unknown,
-  deps: CreateFollowUpDeps,
-  writer: Pick<PageWriter, "isLateralSpace">,
-): Promise<QuickCreateOutcome> {
-  const checked = readQuickCreate(input);
-  if (!checked.ok) {
-    return { ok: false, error: "dati_non_validi", message: SERVICE_MESSAGES.dati_non_validi, fieldErrors: checked.fieldErrors };
-  }
-  const result = await createUseCaseWithFollowUps(ctx, quickCreateItem(checked.value), deps, writer);
-  if (!result.ok) return { ok: false, error: result.error, message: result.message, fieldErrors: quickFieldErrors(result.fieldErrors) };
-  return result;
 }
 
 // ─── Activity mapping (§8.5) ─────────────────────────────────────────
