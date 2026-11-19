@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import Form from "next/form";
 import Link from "next/link";
 import { Search, SlidersHorizontal, XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -29,8 +30,8 @@ export interface FilterChipsProps {
   basePath: string;
   /** I parametri di adesso da tenere (la vista, i filtri, la ricerca). */
   query: Readonly<Record<string, string>>;
-  /** La ricerca, con il suo parametro (`q`); null: niente «Cerca». */
-  search?: { param: string } | null;
+  /** La ricerca, con il suo parametro (`q`) e, se c'è, la lunghezza che la pagina legge; null: niente «Cerca». */
+  search?: { param: string; maxLength?: number } | null;
   fields: readonly FilterField[];
   className?: string;
 }
@@ -72,18 +73,30 @@ function Hidden({ query, except }: { query: Readonly<Record<string, string>>; ex
   );
 }
 
-/** Un modulo GET non manda i campi vuoti: «Tutti» non scrive niente nell'indirizzo. */
+/**
+ * Un modulo GET non manda i campi vuoti: «Tutti» non scrive niente nell'indirizzo. `<Form>` di Next fa l'indirizzo
+ * dai campi subito dopo questo gestore e ci va senza ricaricare la pagina: il modulo resta in pagina, e i campi spenti
+ * si riaccendono appena l'indirizzo è fatto.
+ */
 function dropEmpty(event: FormEvent<HTMLFormElement>) {
+  const emptied: Array<HTMLSelectElement | HTMLInputElement> = [];
   for (const element of Array.from(event.currentTarget.elements)) {
-    if ((element instanceof HTMLSelectElement || element instanceof HTMLInputElement) && element.name && element.value === "") element.disabled = true;
+    if ((element instanceof HTMLSelectElement || element instanceof HTMLInputElement) && element.name && element.value === "") {
+      element.disabled = true;
+      emptied.push(element);
+    }
   }
+  window.setTimeout(() => {
+    for (const element of emptied) element.disabled = false;
+  }, 0);
 }
 
 /**
  * `FilterChips` (rilascio 10, docs/ui-10/PROPOSTA-10.md §5.4, §8.3): «Cerca» (al telefono un'icona che apre il campo),
- * «Filtri (n)» che apre un foglio con tutti i filtri, sotto i chip dei filtri attivi con ✕ e «Togli tutti». I filtri
- * stanno sempre nell'indirizzo: i chip e «Togli tutti» sono link, la ricerca e il foglio moduli GET (si condivide un
- * link e si torna indietro). Sostituisce `use-cases/filter-bar.tsx`, i chip del catalogo e `uc/ui/filter-popover.tsx`.
+ * «Filtri (n)» che apre un foglio con tutti i filtri, sotto i chip dei filtri attivi con ✕ e «Togli tutti» (anche con
+ * la sola ricerca). I filtri stanno sempre nell'indirizzo: i chip e «Togli tutti» sono link, la ricerca e il foglio
+ * moduli GET (`<Form>` di Next: si va all'indirizzo nel client, la pagina resta dov'è; si condivide un link e si torna
+ * indietro). Sostituisce `use-cases/filter-bar.tsx`, i chip del catalogo e `uc/ui/filter-popover.tsx`.
  */
 export function FilterChips({ basePath, query, search = null, fields, className }: FilterChipsProps) {
   const [sheet, setSheet] = useState(false);
@@ -100,20 +113,31 @@ export function FilterChips({ basePath, query, search = null, fields, className 
             <Button type="button" variant="outline" size="icon" aria-label={t.search} className={cn("size-11 sm:hidden", searching && "hidden")} onClick={() => setSearching(true)}>
               <Search aria-hidden />
             </Button>
-            <form role="search" method="get" action={basePath} onSubmit={dropEmpty} className={cn("min-w-0 flex-1 items-center sm:flex sm:max-w-sm", searching ? "flex" : "hidden")}>
+            {/* La pagina è già quella: niente da caricare prima (`prefetch={false}`). */}
+            <Form
+              role="search"
+              action={basePath}
+              scroll={false}
+              prefetch={false}
+              onSubmit={dropEmpty}
+              className={cn("min-w-0 flex-1 items-center sm:flex sm:max-w-sm", searching ? "flex" : "hidden")}
+            >
               <Hidden query={query} except={new Set([search.param])} />
               <label className="relative block w-full">
                 <span className="sr-only">{t.search}</span>
                 <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                {/* Con la ricerca cambiata nell'indirizzo (un chip, «Togli tutti») il campo riparte dal valore nuovo. */}
                 <input
+                  key={searched}
                   type="search"
                   name={search.param}
                   defaultValue={searched}
+                  maxLength={search.maxLength}
                   placeholder={t.search}
                   className="h-11 w-full min-w-0 rounded-lg border border-input bg-transparent pr-3 pl-9 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 sm:h-9 sm:text-sm"
                 />
               </label>
-            </form>
+            </Form>
           </>
         ) : null}
         {/* Senza filtri da scegliere niente «Filtri»: un foglio vuoto non serve (resta la ricerca). */}
@@ -124,7 +148,7 @@ export function FilterChips({ basePath, query, search = null, fields, className 
           </Button>
         ) : null}
       </div>
-      {chips.length ? (
+      {chips.length || searched ? (
         <ul data-slot="filter-chips-active" className="flex flex-wrap items-center gap-2">
           {chips.map((chip) => (
             <li key={chip.key} className="inline-flex min-h-8 items-center gap-1 rounded-full border bg-muted/40 py-0.5 pr-1 pl-3 text-xs font-medium">
@@ -148,7 +172,16 @@ export function FilterChips({ basePath, query, search = null, fields, className 
       ) : null}
       <Sheet open={sheet} onOpenChange={setSheet}>
         <SheetContent side="right" showCloseButton={false} className="gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-lg">
-          <form method="get" action={basePath} onSubmit={dropEmpty} className="flex min-h-0 flex-1 flex-col">
+          <Form
+            action={basePath}
+            scroll={false}
+            prefetch={false}
+            onSubmit={(event) => {
+              dropEmpty(event);
+              setSheet(false);
+            }}
+            className="flex min-h-0 flex-1 flex-col"
+          >
             <SheetHeader className="flex-row items-start gap-3 border-b px-4 py-2 sm:px-6">
               <SheetTitle className="min-w-0 flex-1 py-2.5 text-base font-semibold">{t.title}</SheetTitle>
               <SheetClose render={<Button type="button" variant="ghost" size="icon" className="-mr-2 size-11 shrink-0 sm:size-9" />}>
@@ -181,7 +214,7 @@ export function FilterChips({ basePath, query, search = null, fields, className 
                 {t.apply}
               </Button>
             </SheetFooter>
-          </form>
+          </Form>
         </SheetContent>
       </Sheet>
     </div>

@@ -783,9 +783,11 @@ test("Cosa serve con i filtri: le esigenze degli use case che passano, la ricerc
   const byTitle = await hubHtml("builder", ids.ws, { vista: "cosa-serve", q: T.kickoff, calendario: "1" });
   assert.ok(between(byTitle, 'data-slot="needs-steps"').includes(T.kickoff), "un passo senza use case, per il titolo");
   assert.ok(!byTitle.includes(T.access));
-  // La ricerca resta nel campo «Cerca», con la vista e il calendario: non è un chip.
+  // La ricerca resta nel campo «Cerca», con la vista e il calendario: non è un chip, ma «Togli tutti» la toglie.
   assert.match(byTitle, /<input type="hidden" name="calendario" value="1"\/>/);
-  assert.ok(!byTitle.includes('data-slot="filter-chips-active"'));
+  const active = /<ul data-slot="filter-chips-active"[\s\S]*?<\/ul>/.exec(byTitle)?.[0] ?? "";
+  assert.ok(!active.includes('aria-label="Togli '), active);
+  assert.match(active, /href="[^"]*\/use-cases\?vista=cosa-serve&(?:amp;)?calendario=1"[^>]*>Togli tutti<\/a>/);
 
   // Nessuno use case ha questa origine: niente da chiedere, con «Togli i filtri».
   const none = await hubHtml("builder", ids.ws, { vista: "cosa-serve", origine: "transformation" });
