@@ -327,7 +327,9 @@ test("la bozza del referente resta sua fino a «Invia»: il pannello del team no
   );
   // Niente della bozza in tutto il pannello, che la scheda passa a un componente client.
   const json = JSON.stringify(before);
-  for (const token of ["RK-NOTA-7781", "mario.rossi", "123.5", "7.25"]) assert.ok(!json.includes(token), token);
+  // Le date ISO non contano: «…:07.250Z» contiene «7.25» una volta ogni tanto. Si cercano i numeri della bozza.
+  const values = json.replace(/"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z"/g, '""');
+  for (const token of ["RK-NOTA-7781", "mario.rossi", "123.5", "7.25"]) assert.ok(!values.includes(token), token);
   // Il referente toglie l'email dalla nota e invia: il team vede la correzione e la stima.
   const CLEAN = "Arrivano anche via PEC.";
   pok(await pub.saveReferentCheck(links.get(draft)!, { step: 1, confirm: "correggi", note: CLEAN }, new Date()) as never, "nota corretta");

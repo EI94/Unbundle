@@ -619,8 +619,9 @@ test("selettore delle viste: ai revisori «Panoramica», «Da decidere» e «Cos
 test("«Cosa serve»: al massimo un pulsante pieno, «Tipo» è un filtro, niente matrice né corsie", opts, async () => {
   const page = await html("ls", ids.wsA, { vista: "cosa-serve" });
   assert.equal(viewOf(page), "cosa-serve");
-  // (Rilascio 10, §3.4) «Nuovo» è bordato in ogni vista: il pulsante pieno è il passo della vista.
-  assert.equal(filledButtons(page), 1, "un solo pulsante pieno");
+  // (Rilascio 10, §3.4) «Nuovo» è bordato in ogni vista: il pulsante pieno è il passo della vista, quando c'è qualcosa
+  // da verificare o da chiedere; qui niente, quindi nessuno.
+  assert.ok(filledButtons(page) <= 1, "al massimo un pulsante pieno");
   assert.ok(!/class="[^"]*\bbg-primary\b/.test(newUseCaseTag(page)), "«Nuovo» bordato");
   // (Rilascio 10, §3.4) «Cerca» e «Filtri»: «Tipo», «Referente» e gli altri stanno nel foglio.
   assert.ok(page.includes('<form role="search"') && page.includes(">Filtri</button>"), "«Cerca» e «Filtri»");
