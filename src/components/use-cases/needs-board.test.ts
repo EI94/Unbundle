@@ -197,6 +197,13 @@ test("il prossimo passo: «Verifica N risposte» se ce ne sono; altrimenti «Chi
   // Una risposta da verificare senza use case collegato: il pulsante porta alle righe «Da verificare».
   const loose = render(build([need({ title: "Risposta libera", ownerSide: "cliente", status: "in_verifica", useCaseIds: [], forLabel: "Tutto il programma" })]));
   assert.ok(filled(loose)[0]?.includes(`href="${BASE}?vista=cosa-serve&stato=da-verificare"`), filled(loose)[0]);
+  // Con i filtri della pagina che tengono solo B, i due pulsanti aprono B, anche se la riga nomina prima A (XV-0001).
+  const shared = [need({ title: "Di tutti e due", ownerSide: "cliente", useCaseIds: [A, B] })];
+  const onlyB = { useCaseIds: new Set([B]), q: null };
+  assert.ok(filled(render(build(shared, onlyB)))[0]?.includes(`href="?vista=cosa-serve&apri=${B}"`), "«Chiedi le informazioni» su B");
+  const verifyB = render(build([...shared, need({ title: "Risposta di tutti e due", ownerSide: "cliente", status: "in_verifica", useCaseIds: [A, B] })], onlyB));
+  assert.ok(filled(verifyB)[0]?.includes(`href="?vista=cosa-serve&apri=${B}"`), "«Verifica 1 risposta» su B");
+  assert.ok(filled(render(build(shared)))[0]?.includes(`href="?vista=cosa-serve&apri=${A}"`), "senza filtri il codice più basso");
   // Solo attese e ferme: niente da fare per chi guarda, nessun pulsante pieno né «Prossimo passo».
   const waiting = render(build([need({ title: "In attesa", ownerSide: "fornitore", status: "chiesta" }), need({ title: "Ferma", ownerSide: "lateral_space", status: "bloccata" })]));
   assert.equal(filled(waiting).length, 0);

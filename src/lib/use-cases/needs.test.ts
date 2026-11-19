@@ -459,6 +459,31 @@ test("(rilascio 10, §3.4) gli stati che filtrano «Cosa serve»: i tre conteggi
   assert.equal(BOARD_ROWS_SHOWN, 3);
 });
 
+test("(rilascio 10, §3.4) con i filtri della pagina i pulsanti della vista aprono uno use case che li passa, anche se la riga ne nomina uno con il codice più basso", () => {
+  // Un'informazione e una risposta di A (XV-0001) e di B (XV-0002); i filtri tengono solo B.
+  const shared = [need({ title: "Accesso al gestionale", ownerSide: "cliente", useCaseIds: [A, B] }), need({ title: "Risposta", ownerSide: "cliente", status: "in_verifica", useCaseIds: [A, B] })];
+  const onlyB = buildNeedsBoard(shared, ITEMS, { today: TODAY, only: { useCaseIds: new Set([B]), q: null } });
+  assert.equal(firstUseCaseFor(onlyB, "toAsk")?.id, B);
+  assert.equal(firstUseCaseFor(onlyB, "toVerify")?.id, B);
+  // «Per» nomina comunque tutti e due, nell'ordine dei codici.
+  assert.deepEqual(onlyB.groups[0].open.map((row) => row.useCases.map((ref) => ref.code)), [["XV-0001", "XV-0002"], ["XV-0001", "XV-0002"]]);
+  // Lo stato del foglio tiene i filtri; senza filtri, o chiedendo senza, il codice più basso.
+  assert.equal(firstUseCaseFor(boardForState(onlyB, "da-chiedere"), "toAsk")?.id, B);
+  assert.equal(firstUseCaseFor(buildNeedsBoard(shared, ITEMS, { today: TODAY }), "toAsk")?.id, A);
+  assert.equal(firstUseCaseFor(onlyB, "toAsk", null)?.id, A);
+  // Prima una riga più in basso con uno use case che passa i filtri, poi una riga trovata dalla ricerca nel titolo.
+  const later = [need({ title: "Gestionale di A", ownerSide: "cliente", sortOrder: 0, useCaseIds: [A] }), need({ title: "Di B", ownerSide: "cliente", sortOrder: 1, useCaseIds: [B] })];
+  const searched = buildNeedsBoard(later, ITEMS, { today: TODAY, only: { useCaseIds: new Set([B]), q: "gestionale" } });
+  assert.deepEqual(searched.groups[0].open.map((row) => row.title), ["Gestionale di A", "Di B"]);
+  assert.equal(firstUseCaseFor(searched, "toAsk")?.id, B);
+  // Solo righe trovate dalla ricerca: il primo use case della prima, come prima.
+  const onlySearched = buildNeedsBoard([later[0]], ITEMS, { today: TODAY, only: { useCaseIds: new Set([B]), q: "gestionale" } });
+  assert.equal(firstUseCaseFor(onlySearched, "toAsk")?.id, A);
+  // Gli id dei filtri sono in minuscolo, quelli delle righe in qualunque forma.
+  const upper = buildNeedsBoard([need({ title: "Maiuscole", ownerSide: "cliente", useCaseIds: [A.toUpperCase(), B.toUpperCase()] })], ITEMS, { today: TODAY, only: { useCaseIds: new Set([B]), q: null } });
+  assert.equal(firstUseCaseFor(upper, "toAsk")?.code, "XV-0002");
+});
+
 test("i gruppi seguono i filtri della pagina e la ricerca nel titolo, mai «Chi» né la parte", () => {
   const needs = [
     need({ title: "Accesso al gestionale", ownerSide: "cliente", ownerLabel: "Giulia", useCaseIds: [A] }),

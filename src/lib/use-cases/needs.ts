@@ -613,6 +613,11 @@ export interface NeedsBoard {
   done: NeedRow[];
   /** (Rilascio 10, §3.4) Gli stessi requisiti a posto, per organizzazione (in `open` le loro righe): «A posto» del foglio «Filtri». */
   doneGroups: NeedGroup[];
+  /**
+   * (Rilascio 10, §3.4) Gli use case che passano i filtri della pagina (`only.useCaseIds`, id in minuscolo); null senza
+   * filtri. «Per» nomina comunque tutti gli use case di una riga; i pulsanti della vista aprono prima uno di questi.
+   */
+  scope?: ReadonlySet<string> | null;
   /** I prossimi passi per data (`compareStepsByDate`) e quelli fatti. */
   timeline: NeedTimeline;
   /** Tutti i requisiti della vista, con i filtri, per gruppo di stato: la riga dei conteggi in cima. */
@@ -733,7 +738,7 @@ export function buildNeedsBoard(
     section.items.push({ ...rowOf.get(need.id)!, dueOn: need.dueOn });
   }
   const stepsDone = doneSteps.sort(compareStepsByDate).map((need) => ({ ...rowOf.get(need.id)!, dueOn: need.dueOn }));
-  return { groups, done, doneGroups, timeline: { sections, done: stepsDone }, counts };
+  return { groups, done, doneGroups, timeline: { sections, done: stepsDone }, counts, scope: opts.only?.useCaseIds ?? null };
 }
 
 // ─── (Rilascio 10, §3.4) Gli stati che filtrano «Cosa serve» ─────────
@@ -797,13 +802,21 @@ export function boardForState(board: NeedsBoard, state: NeedStateParam | null): 
 /**
  * Il primo use case con un'informazione in quel gruppo di stato, nell'ordine della vista (organizzazione, poi le righe:
  * prima quelle da verificare, poi l'ordine del team): dove portano «Verifica N risposte» e «Chiedi le informazioni».
- * null se nessuna riga di quel gruppo ha uno use case.
+ * Con i filtri della pagina (`scope`, predefinito quello della vista) prima uno use case che li passa, anche se la riga
+ * ne nomina altri con il codice più basso; solo se nessuna riga ne ha uno, il primo use case della prima riga (una
+ * riga trovata dalla ricerca nel suo titolo). null se nessuna riga di quel gruppo ha uno use case.
  */
-export function firstUseCaseFor(board: NeedsBoard, group: NeedRequestGroup): NeedUseCaseRef | null {
+export function firstUseCaseFor(board: NeedsBoard, group: NeedRequestGroup, scope: ReadonlySet<string> | null = board.scope ?? null): NeedUseCaseRef | null {
+  let fallback: NeedUseCaseRef | null = null;
   for (const each of board.groups) {
-    for (const row of each.open) if (row.group === group && row.useCases.length) return row.useCases[0];
+    for (const row of each.open) {
+      if (row.group !== group || !row.useCases.length) continue;
+      const kept = scope ? row.useCases.find((ref) => scope.has(ref.id.toLowerCase())) : row.useCases[0];
+      if (kept) return kept;
+      fallback ??= row.useCases[0];
+    }
   }
-  return null;
+  return fallback;
 }
 
 /** (Rilascio 10, §5.4) Le righe di un gruppo in vista: tre, poi «Vedi tutte (N)». */
