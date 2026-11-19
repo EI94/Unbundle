@@ -13,6 +13,7 @@ import {
   MATRIX_SIDES,
   HUB_VIEWS,
   HUB_VIEW_ALIASES,
+  NEED_STATE_PARAMS,
   RUNS_PER_YEAR,
   applyHubFilters,
   bandText,
@@ -164,6 +165,8 @@ test("parseHubParams: solo le chiavi dell'elenco, con valori validi; ogni altro 
       trimestre: "2027-Q1",
       stima: "mancante",
       info: "da-verificare",
+      stato: "in-attesa",
+      calendario: "1",
       apri: uuid(1).toUpperCase(),
       nuovo: "1",
       thanks: "1",
@@ -194,6 +197,8 @@ test("parseHubParams: solo le chiavi dell'elenco, con valori validi; ogni altro 
     trimestre: "2027-Q1",
     stima: null,
     info: "da_verificare",
+    stato: "in-attesa",
+    calendario: true,
     apri: uuid(1),
     nuovo: true,
     thanks: true,
@@ -205,11 +210,11 @@ test("parseHubParams: solo le chiavi dell'elenco, con valori validi; ogni altro 
 test("parseHubParams: valori fuori elenco diventano null, anche da URLSearchParams e con parametri ripetuti", () => {
   const lead = viewer("function_lead");
   const params = parseHubParams(
-    new URLSearchParams("vista=tutte&tipo=altro&mostra=griglia&origine=entrambe&q=a&canale=email&agente=libra&trimestre=2027-Q5&stima=si&info=bloccate&apri=12&nuovo=1&thanks=2&created=x&joined=0"),
+    new URLSearchParams("vista=tutte&tipo=altro&mostra=griglia&origine=entrambe&q=a&canale=email&agente=libra&trimestre=2027-Q5&stima=si&info=bloccate&stato=fermi&calendario=si&apri=12&nuovo=1&thanks=2&created=x&joined=0"),
     lead,
   );
   for (const key of HUB_PARAM_KEYS) {
-    if (key === "nuovo" || key === "thanks") assert.equal(params[key], false, key);
+    if (key === "nuovo" || key === "thanks" || key === "calendario") assert.equal(params[key], false, key);
     else assert.equal(params[key], null, key);
   }
   // `nuovo=1` è solo del pannello rapido di Lateral Space: l'AI Builder del cliente apre il modulo completo.
@@ -223,11 +228,12 @@ test("parseHubParams: valori fuori elenco diventano null, anche da URLSearchPara
 test("parseHubParams: al contributore restano vista (non «Cosa serve»), ricerca, apri e ricevute", () => {
   const contributor = viewer("contributor");
   const params = parseHubParams(
-    { vista: "priorita", tipo: "costruire", mostra: "matrice", origine: "adoption", q: "prezzi", canale: "learning", area: "Finanza", agente: "LIBRA", lab: "Lab", trimestre: "2027-Q1", stima: "mancante", info: "senza-risposta", nuovo: "1", thanks: "1", created: uuid(3), apri: uuid(4) },
+    { vista: "priorita", tipo: "costruire", mostra: "matrice", origine: "adoption", q: "prezzi", canale: "learning", area: "Finanza", agente: "LIBRA", lab: "Lab", trimestre: "2027-Q1", stima: "mancante", info: "senza-risposta", stato: "da-chiedere", calendario: "1", nuovo: "1", thanks: "1", created: uuid(3), apri: uuid(4) },
     contributor,
   );
   assert.equal(params.vista, "panoramica", "i vecchi nomi valgono la Panoramica");
-  for (const key of ["tipo", "mostra", "origine", "canale", "area", "agente", "lab", "trimestre", "stima", "info"] as const) assert.equal(params[key], null, key);
+  for (const key of ["tipo", "mostra", "origine", "canale", "area", "agente", "lab", "trimestre", "stima", "info", "stato"] as const) assert.equal(params[key], null, key);
+  assert.equal(params.calendario, false, "«Cosa serve» non è per i contributori");
   assert.equal(params.nuovo, false);
   assert.equal(params.q, "prezzi");
   assert.equal(params.thanks, true);
@@ -240,6 +246,22 @@ test("parseHubParams: al contributore restano vista (non «Cosa serve»), ricerc
   // Chi non entra nell'area non ha filtri.
   assert.equal(parseHubParams({ origine: "adoption" }, viewer("learner")).origine, null);
   assert.equal(parseHubParams({ vista: "cosa-serve" }, viewer("learner")).vista, null);
+});
+
+test("(rilascio 10, §3.4) «Cosa serve»: lo stato delle informazioni (`stato`) e «Calendario» (`calendario=1`), non filtri degli use case", () => {
+  const lead = viewer("transformation_lead", true);
+  for (const state of NEED_STATE_PARAMS) assert.equal(parseHubParams({ vista: "cosa-serve", stato: state }, lead).stato, state, state);
+  assert.deepEqual([...NEED_STATE_PARAMS], ["da-chiedere", "in-attesa", "da-verificare", "ferme", "a-posto", "aperte"]);
+  for (const wrong of ["Da-chiedere", "fermi", "aperti", "toAsk", "__proto__", ""]) assert.equal(parseHubParams({ stato: wrong }, lead).stato, null, wrong);
+  assert.equal(parseHubParams({ calendario: "1" }, lead).calendario, true);
+  for (const wrong of ["0", "true", "si", ""]) assert.equal(parseHubParams({ calendario: wrong }, lead).calendario, false, wrong);
+  // Filtrano le righe di «Cosa serve», non gli use case: il passo della Panoramica e «Togli i filtri» non li contano.
+  const params = parseHubParams({ vista: "cosa-serve", stato: "da-verificare", calendario: "1" }, lead);
+  assert.equal(hasActiveFilters(params), false);
+  assert.equal(hasActiveFilters({ ...params, q: "fatture" }), true);
+  // I vecchi indirizzi restano: senza i due parametri la vista è quella di prima.
+  assert.deepEqual([parseHubParams({ vista: "cosa-serve" }, lead).stato, parseHubParams({ vista: "cosa-serve" }, lead).calendario], [null, false]);
+  assert.ok(HUB_PARAM_KEYS.indexOf("stato") === HUB_PARAM_KEYS.indexOf("info") + 1 && HUB_PARAM_KEYS.indexOf("calendario") === HUB_PARAM_KEYS.indexOf("stato") + 1);
 });
 
 test("parseHubParams: «Cosa serve» resta ai revisori", () => {

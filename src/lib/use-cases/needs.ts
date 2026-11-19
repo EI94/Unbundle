@@ -53,6 +53,7 @@ import { isIsoDate } from "./quarter.ts";
 import type { IsoDate } from "./types.ts";
 import { componentResult } from "./value-calc.ts";
 import { VALUE_CONFIDENCE_LABELS, type ValueComponent, type ValueModel, type ValueParams } from "./value-model.ts";
+import type { NeedStateParam } from "./views.ts";
 
 // ─── Vocabolari ──────────────────────────────────────────────────────
 
@@ -384,6 +385,8 @@ export interface NeedRow {
   status: { label: string; tone: SemaforoColor };
   /** Il dettaglio dello stato di un requisito nel suo gruppo: «manca il dato», «risposta parziale», «non si applica»; null senza o per un passo. */
   statusNote: string | null;
+  /** (Rilascio 10, §3.4) Il gruppo di stato di un requisito (`askGroupOf`), per i conteggi che filtrano; null per un passo. */
+  group?: NeedRequestGroup | null;
   done: boolean;
   /** «15 nov», «entro fine mese»; con «(proposta)» se la data non è ancora confermata, tranne su un passo «Proposta». */
   due: string | null;
@@ -483,6 +486,7 @@ export function needRow(need: NeedView, useCases: ReadonlyMap<string, NeedUseCas
     owner: needOwnerText(need),
     status: group ? { label: group.label, tone: group.tone } : needStatusView(need.type, need.status),
     statusNote: group?.note ?? null,
+    group: group?.group ?? null,
     done: isNeedDone(need.type, need.status),
     // Un passo «Proposta» è da confermare tutto, data compresa: a schermo «(proposta)» ripeterebbe lo
     // stato accanto («Proposta · 3 dic (proposta)»). Il MCP del team tiene `needDueText` com'è.
@@ -607,6 +611,8 @@ export interface NeedsBoard {
   groups: NeedGroup[];
   /** I requisiti a posto, nell'ordine dei gruppi: chiusi di default. */
   done: NeedRow[];
+  /** (Rilascio 10, §3.4) Gli stessi requisiti a posto, per organizzazione (in `open` le loro righe): «A posto» del foglio «Filtri». */
+  doneGroups: NeedGroup[];
   /** I prossimi passi per data (`compareStepsByDate`) e quelli fatti. */
   timeline: NeedTimeline;
   /** Tutti i requisiti della vista, con i filtri, per gruppo di stato: la riga dei conteggi in cima. */
@@ -711,7 +717,11 @@ export function buildNeedsBoard(
     const open = byGroup.get(key)!.open.sort(needsActionFirst);
     return open.length ? [{ key, open: open.map((need) => rowOf.get(need.id)!) }] : [];
   });
-  const done = NEED_GROUP_KEYS.flatMap((key) => byGroup.get(key)!.done.sort(needsActionFirst).map((need) => rowOf.get(need.id)!));
+  const doneGroups = NEED_GROUP_KEYS.flatMap((key): NeedGroup[] => {
+    const rows = byGroup.get(key)!.done.sort(needsActionFirst).map((need) => rowOf.get(need.id)!);
+    return rows.length ? [{ key, open: rows }] : [];
+  });
+  const done = doneGroups.flatMap((group) => group.open);
   const sections: NeedTimelineSection[] = [];
   for (const need of openSteps.sort(compareStepsByDate)) {
     const key = !need.dueOn ? NO_DATE_KEY : need.dueOn < opts.today ? BEFORE_KEY : need.dueOn.slice(0, 7);
@@ -723,8 +733,81 @@ export function buildNeedsBoard(
     section.items.push({ ...rowOf.get(need.id)!, dueOn: need.dueOn });
   }
   const stepsDone = doneSteps.sort(compareStepsByDate).map((need) => ({ ...rowOf.get(need.id)!, dueOn: need.dueOn }));
-  return { groups, done, timeline: { sections, done: stepsDone }, counts };
+  return { groups, done, doneGroups, timeline: { sections, done: stepsDone }, counts };
 }
+
+// ─── (Rilascio 10, §3.4) Gli stati che filtrano «Cosa serve» ─────────
+
+/** I gruppi di stato di ogni valore di `stato=` (`NEED_STATE_PARAMS` di views.ts): «Aperte» sono tutte tranne «A posto». */
+export const NEED_STATE_GROUPS: Readonly<Record<NeedStateParam, readonly NeedRequestGroup[]>> = Object.freeze({
+  "da-chiedere": Object.freeze(["toAsk"] as const),
+  "in-attesa": Object.freeze(["waiting"] as const),
+  "da-verificare": Object.freeze(["toVerify"] as const),
+  ferme: Object.freeze(["blocked"] as const),
+  "a-posto": Object.freeze(["done"] as const),
+  aperte: Object.freeze(["toAsk", "waiting", "toVerify", "blocked"] as const),
+});
+
+/** Il campo «Stato» del foglio «Filtri» di «Cosa serve» e le sue voci, al femminile come «informazioni». */
+export const NEED_STATE_TEXT = Object.freeze({
+  label: "Stato",
+  options: Object.freeze({
+    "da-chiedere": "Da chiedere",
+    "in-attesa": "In attesa",
+    "da-verificare": "Da verificare",
+    ferme: "Ferme",
+    "a-posto": "A posto",
+    aperte: "Aperte",
+  }) satisfies Readonly<Record<NeedStateParam, string>>,
+});
+
+/** I tre conteggi in cima a «Cosa serve», che filtrano: in quest'ordine, senza gli zeri. */
+export const NEED_STATE_COUNTED: readonly NeedStateParam[] = Object.freeze(["da-chiedere", "in-attesa", "da-verificare"]);
+
+/** I conteggi in vista: «Da chiedere 12 · In attesa 7 · Da verificare 2», senza gli zeri, con il tono del loro stato. */
+export function needStateCounts(counts: NeedAskCounts): Array<{ state: NeedStateParam; label: string; count: number; tone: SemaforoColor }> {
+  return NEED_STATE_COUNTED.flatMap((state) => {
+    const group = NEED_STATE_GROUPS[state][0];
+    const count = counts[group];
+    return count > 0 ? [{ state, label: NEED_STATE_TEXT.options[state], count, tone: REQUEST_GROUP_TONE[group] }] : [];
+  });
+}
+
+/** Le righe di un gruppo che passano lo stato. */
+function inState(row: NeedRow, groups: readonly NeedRequestGroup[]): boolean {
+  return Boolean(row.group) && groups.includes(row.group as NeedRequestGroup);
+}
+
+/**
+ * La vista con le sole informazioni di uno stato: i gruppi per organizzazione con le righe di quello stato (per «A
+ * posto» le righe a posto), senza «Già a posto». I conteggi e le scadenze restano quelli di tutta la vista. Senza stato
+ * la vista com'è.
+ */
+export function boardForState(board: NeedsBoard, state: NeedStateParam | null): NeedsBoard {
+  if (!state) return board;
+  if (state === "a-posto") return { ...board, groups: board.doneGroups, done: [] };
+  const groups = NEED_STATE_GROUPS[state];
+  const kept = board.groups.flatMap((group): NeedGroup[] => {
+    const open = group.open.filter((row) => inState(row, groups));
+    return open.length ? [{ key: group.key, open }] : [];
+  });
+  return { ...board, groups: kept, done: [] };
+}
+
+/**
+ * Il primo use case con un'informazione in quel gruppo di stato, nell'ordine della vista (organizzazione, poi le righe:
+ * prima quelle da verificare, poi l'ordine del team): dove portano «Verifica N risposte» e «Chiedi le informazioni».
+ * null se nessuna riga di quel gruppo ha uno use case.
+ */
+export function firstUseCaseFor(board: NeedsBoard, group: NeedRequestGroup): NeedUseCaseRef | null {
+  for (const each of board.groups) {
+    for (const row of each.open) if (row.group === group && row.useCases.length) return row.useCases[0];
+  }
+  return null;
+}
+
+/** (Rilascio 10, §5.4) Le righe di un gruppo in vista: tre, poi «Vedi tutte (N)». */
+export const BOARD_ROWS_SHOWN = 3;
 
 /** «Già a posto · 3», «Fatte · 2» (le scadenze): il titolo delle righe chiuse di default. */
 export function needDoneSummaryText(type: NeedType, count: number): string {

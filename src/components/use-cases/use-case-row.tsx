@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { StatusDot } from "@/components/uc/ui/status-dot";
+import { agentToneOf, titleAgent, type AgentPalette } from "@/lib/use-cases/agents";
 import { ANSWER_TEXT } from "@/lib/use-cases/answers";
 import { hasValueText } from "@/lib/use-cases/format";
 import { VALUE_COST_NOT_ESTIMATED_LABEL } from "@/lib/use-cases/labels";
@@ -8,10 +10,11 @@ import { HUB_PARAM_KEYS, isContributorItem, waitingDays, waitingLabel, type AnyH
 import type { CostBandInfo } from "@/lib/use-cases/cost-bands";
 import type { ReferentStateKey } from "@/lib/use-cases/referent/use-case-state";
 import { cn } from "@/lib/utils";
+import { AgentTag } from "./agent-tag";
 import { CostFigure } from "./cost-figure";
 import { ReferentChip } from "./referent-chip";
 import { KindLabel } from "./kind-label";
-import { OriginChip } from "./origin-chip";
+import { OriginChip, OriginDot } from "./origin-chip";
 import { PhasePill } from "./phase-pill";
 import { ValueFigure } from "./value-figure";
 
@@ -37,6 +40,11 @@ import { ValueFigure } from "./value-figure";
  * valutazione», la pillola della fase (con «Quando» se approvato); delle proprie proposte anche
  * il codice, «Proposto da te» e la pillola, e in «Serve info» «Rispondi» (D4, D13, D17). Un
  * clic apre il pannello laterale (`?apri=<id>`).
+ *
+ * (Rilascio 10, §3.4) In «Da decidere» la riga dei revisori ha cinque cose: tag e titolo, il codice piccolo, il
+ * sotto-stato (puntino e parola), il Valore in parole e i giorni di attesa; l'origine è un punto con le parole per i
+ * lettori di schermo. Il costo sta nel pannello, il chip del referente fuori da questa vista (anche ai contributori:
+ * lo stato resta nel pannello e nella scheda, D7).
  */
 
 /** I parametri della pagina come testo (solo chiavi di `HUB_PARAM_KEYS`). */
@@ -120,8 +128,10 @@ export interface UseCaseRowProps {
   today: string;
   /** Le fasce del costo del workspace (D15). */
   bands?: readonly CostBandInfo[];
-  /** (Rilascio 5, §10.3) Lo stato del referente (tutti i ruoli; ai contributori solo la parola). */
+  /** (Rilascio 5, §10.3) Lo stato del referente nella riga semplice; «Da decidere» non lo mostra (rilascio 10, §3.4). */
   referentState?: ReferentStateKey | null;
+  /** (Rilascio 10) I colori degli agenti del workspace, per il tag della riga di «Da decidere». */
+  agents?: AgentPalette | null;
 }
 
 /** Testi della riga (§4.6, §14.3; D17). */
@@ -133,6 +143,12 @@ export const ROW_TEXT = Object.freeze({
   own: "Proposto da te",
   /** Una propria proposta in «Serve info»: si risponde dal pannello (D17). */
   answer: "Rispondi",
+  /**
+   * (Rilascio 10, §3.4) La riga sulle proposte altrui del contributore, nel pannello: la stessa frase della scheda
+   * («ad» davanti a un nome che comincia per «a»: «ad AI Builder»).
+   */
+  othersNote: "Dettagli visibili a chi l'ha proposto e a {team}.",
+  othersNoteVowel: "Dettagli visibili a chi l'ha proposto e ad {team}.",
 });
 
 /**
@@ -140,12 +156,14 @@ export const ROW_TEXT = Object.freeze({
  * e fase. Il nome del team da solo (§14.2).
  */
 export function othersCardNote(teamName: string): string {
-  return `Vedi titolo e fase: i dettagli li vedono chi l'ha proposto e ${teamName}.`;
+  const team = teamName.replace(/\s+/g, " ").trim();
+  return (/^[aA]/.test(team) ? ROW_TEXT.othersNoteVowel : ROW_TEXT.othersNote).replace("{team}", team);
 }
 
 /** Una riga della lista (§4.6). Il link è tutta la riga: dentro non ci sono altri controlli. */
-export function UseCaseRow({ item, href, variant = "plain", today, bands, referentState = null }: UseCaseRowProps) {
-  if (isContributorItem(item)) return <ContributorRow item={item} href={href} referentState={referentState} />;
+export function UseCaseRow({ item, href, variant = "plain", today, bands, referentState = null, agents = null }: UseCaseRowProps) {
+  if (isContributorItem(item)) return <ContributorRow item={item} href={href} />;
+  if (variant === "decide") return <DecideRow item={item} href={href} today={today} agents={agents} />;
   return <ReviewerRow item={item} href={href} variant={variant} today={today} bands={bands} referentState={referentState} />;
 }
 
@@ -237,6 +255,48 @@ function ReviewerRow({
   );
 }
 
+/**
+ * (Rilascio 10, §3.4) La riga di «Da decidere»: l'origine (un punto), tag e titolo (il prefisso dell'agente resta per i
+ * lettori di schermo), poi il codice piccolo, il sotto-stato, i giorni di attesa e il Valore in parole. Dai 58rem del
+ * riquadro una riga sola, con il titolo a sinistra e le altre quattro in colonne della stessa larghezza in ogni riga;
+ * più stretto, sotto il titolo una seconda riga che va a capo se non ci sta. Il costo sta nel pannello.
+ */
+function DecideRow({ item, href, today, agents }: { item: HubItem; href: string; today: string; agents: AgentPalette | null }) {
+  const agent = titleAgent(item.title);
+  return (
+    <li data-slot="use-case-row" data-id={item.id} data-variant="decide">
+      <Link href={href} scroll={false} className={REVIEWER_ROW_LINK}>
+        <span className="flex min-w-0 items-start gap-2 @min-[58rem]/hub:min-w-56 @min-[58rem]/hub:flex-1">
+          <span className="flex h-6 shrink-0 items-center">
+            <OriginDot origin={item.origin} />
+          </span>
+          {agent ? (
+            <span className="flex h-6 shrink-0 items-center">
+              <AgentTag label={agent.label} tone={agentToneOf(agents, agent.agent)} decorative />
+            </span>
+          ) : null}
+          <span className={cn("min-w-0 flex-1 leading-6 font-semibold text-foreground", TITLE_CLAMP_REVIEWER)}>
+            {agent ? (
+              <>
+                <span className="sr-only">{agent.prefix}</span>
+                {agent.rest}
+              </>
+            ) : (
+              item.title
+            )}
+          </span>
+        </span>
+        <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 @min-[58rem]/hub:shrink-0 @min-[58rem]/hub:flex-nowrap">
+          <CodeLabel code={item.code} className="@min-[58rem]/hub:w-16" />
+          <StatusDot tone={item.tone} label={reviewerSubStateText(item)} className="@min-[58rem]/hub:w-40" />
+          <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground @min-[58rem]/hub:w-24">{waitingLabel(waitingDays(item.waitingSince, today))}</span>
+          <ValueFigure value={item.value} withLabel className="@min-[58rem]/hub:w-44" />
+        </span>
+      </Link>
+    </li>
+  );
+}
+
 /** «Proposto da te»: le proprie proposte del contributore (D13), in riga, nel pannello e nella card. */
 export function OwnMarker({ className }: { className?: string }) {
   return (
@@ -251,12 +311,12 @@ export function isAskedOfViewer(item: ContributorUseCase): item is Extract<Contr
   return item.own && item.phase === "da_valutare" && item.subState === "serve_info";
 }
 
-function ContributorRow({ item, href, referentState }: { item: ContributorUseCase; href: string; referentState: ReferentStateKey | null }) {
+function ContributorRow({ item, href }: { item: ContributorUseCase; href: string }) {
   const asked = isAskedOfViewer(item);
   // La scheda «In valutazione» dice già la fase: delle proposte altrui in «Da valutare» la
   // pillola ripeterebbe il nome della scheda su ogni riga. Le proprie la tengono (con il
-  // sotto-stato, D13), e così si vedono.
-  const showPhase = item.own || item.phase !== "da_valutare" || Boolean(referentState);
+  // sotto-stato, D13), e così si vedono. (Rilascio 10, §3.4) Lo stato del referente sta nel pannello e nella scheda.
+  const showPhase = item.own || item.phase !== "da_valutare";
   return (
     <li data-slot="use-case-row" data-id={item.id} data-own={item.own ? "true" : undefined}>
       <Link href={href} scroll={false} className={CONTRIBUTOR_ROW_LINK}>
@@ -268,7 +328,6 @@ function ContributorRow({ item, href, referentState }: { item: ContributorUseCas
           <span className="flex min-w-0 flex-wrap items-center gap-2 @2xl/hub:shrink-0">
             {item.own ? <OwnMarker /> : null}
             {item.own || item.phase !== "da_valutare" ? <PhasePill label={item.phaseLabel} phase={item.phase} subState={item.subState} /> : null}
-            <ReferentChip state={referentState} />
             {asked ? <span className="text-xs font-medium text-primary underline underline-offset-4">{ROW_TEXT.answer}</span> : null}
           </span>
         ) : null}

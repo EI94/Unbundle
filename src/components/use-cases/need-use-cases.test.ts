@@ -114,13 +114,15 @@ test("i testi della vista «Cosa serve» passano la guardia delle parole", () =>
   // Rilascio «Panoramica»: niente parole della vecchia Roadmap.
   assert.ok(!source.includes("Roadmap"));
   const block = /export const NEEDS_BOARD_TEXT = Object\.freeze\(\{([\s\S]*?)\n\}\);/.exec(source)?.[1] ?? "";
+  const lines = block.split("\n").filter((line) => line.trim() && !/^\s*(?:\/\*\*|\*)/.test(line));
   const texts = [...block.matchAll(/^\s+\w+: "([^"]*)",$/gm)].map((match) => match[1]);
   // Rilascio 4: la lista sola non ha più «Requisiti» né le schede del trimestre.
-  // (Rilascio 10, §4) Il calendario si chiama «Scadenze».
-  assert.ok(texts.includes("Scadenze") && texts.includes("Niente da chiedere con questi filtri."), block);
+  // (Rilascio 10, §4) Il calendario si chiama «Scadenze»; (§3.4) «Elenco | Calendario» e «Vedi tutte (N)».
+  assert.ok(texts.includes("Scadenze") && texts.includes("Niente da chiedere con questi filtri.") && texts.includes("Calendario"), block);
   for (const gone of ["Requisiti", "Cosa vi chiediamo", "Il ritorno da confermare", "Dopo la scheda A.8", "Chi conferma i numeri"]) assert.ok(!texts.some((text) => text.includes(gone)), gone);
-  assert.equal(texts.length, block.split("\n").filter((line) => line.trim()).length, "ogni voce è una stringa su una riga");
-  assert.deepEqual(findHubForbiddenIn(texts, "area"), []);
+  // Ogni voce è una stringa su una riga, tranne «Vedi tutte (N)», l'unica funzione.
+  assert.deepEqual(lines.filter((line) => !/^\s+\w+: "[^"]*",$/.test(line)).map((line) => line.trim()), ["seeAll: (count: number) => `Vedi tutte (${formatInteger(count)})`,"]);
+  assert.deepEqual(findHubForbiddenIn([...texts, "Vedi tutte (3)"], "area"), []);
 });
 
 test("needs-board.tsx si rende sul server: dai moduli «use client» importa solo componenti; need-draft.ts non ha la direttiva", () => {
@@ -147,8 +149,22 @@ test("needs-board.tsx si rende sul server: dai moduli «use client» importa sol
     for (const name of entry.names) assert.match(name.replace(/^type\s+/, ""), /^[A-Z]/, `${entry.from}: «${name}» da un modulo client non è un componente`);
   }
   assert.ok(clientModules >= 1, "almeno list-focus.tsx (HashFocusLink)");
-  // moreRowsText e NEED_ROWS_SHOWN arrivano da moduli senza direttiva: si possono chiamare sul server.
-  assert.match(board, /import \{ moreRowsText \} from "\.\/detail\/need-draft";/);
+  // (Rilascio 10) Le righe in vista e «Vedi tutte (N)» arrivano da needs.ts e dai testi della vista: moduli senza direttiva.
+  assert.ok(!board.includes("./detail/need-draft"), "la vista non usa più «Mostra le altre» della scheda");
   assert.ok(!/^\s*["']use client["']/.test(read("./detail/need-draft.ts")), "need-draft.ts senza direttiva");
   assert.ok(!/^\s*["']use client["']/.test(readFileSync(new URL("../../lib/use-cases/needs.ts", import.meta.url), "utf8")), "needs.ts senza direttiva");
+});
+
+test("(rilascio 10, §3.4) con `agentTag` il tag dell'agente al posto del prefisso e del codice; senza, come prima (la scheda)", () => {
+  const ref = { id: "dddddddd-0000-4000-8000-000000000004", code: "XV-0004", title: "LIBRA L1 · Lettura dei documenti" };
+  const tagged = renderToStaticMarkup(createElement(needUseCases.NeedUseCaseLink, { useCase: ref, href: "/x", agentTag: true, palette: null }));
+  assert.ok(tagged.includes('data-slot="agent-tag"') && tagged.includes(">LIBRA L1</span>"), tagged);
+  assert.ok(tagged.includes('<span class="sr-only">LIBRA L1 · </span>Lettura dei documenti'), "il prefisso resta per i lettori di schermo");
+  assert.ok(!tagged.includes('class="font-mono"'), "niente codice accanto al tag");
+  assert.ok(tagged.includes('title="XV-0004 · LIBRA L1 · Lettura dei documenti"'), "il titolo del link resta intero");
+  const plain = renderToStaticMarkup(createElement(needUseCases.NeedUseCaseLink, { useCase: ref, href: "/x" }));
+  assert.ok(!plain.includes("agent-tag") && plain.includes('<span class="font-mono">XV-0004</span> · LIBRA L1 · Lettura dei documenti'), plain);
+  // Un titolo senza agente: il codice, come prima, anche con `agentTag`.
+  const noAgent = renderToStaticMarkup(createElement(needUseCases.NeedUseCaseLink, { useCase: REFS[0], href: "/x", agentTag: true }));
+  assert.ok(noAgent.includes('<span class="font-mono">XV-0001</span> · Smistamento') && !noAgent.includes("agent-tag"));
 });

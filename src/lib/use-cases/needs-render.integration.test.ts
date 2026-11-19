@@ -259,9 +259,11 @@ function detailsAround(page: string, marker: string): string {
 /** Il testo che si legge di un pezzo di HTML: senza tag (anche con «>» nelle classi, già senza entità), gli spazi uniti. */
 const textOf = (html: string) => html.replace(/<(?:[^>"]|"[^"]*")*>/g, "").replace(/\s+/g, " ").trim();
 
-/** La riga dei conteggi sotto «Requisiti» (`data-slot="needs-summary"`), come si legge. */
+/** (Rilascio 10, §3.4) I conteggi che filtrano in cima a «Cosa serve» (`data-slot="needs-counts"`), come si leggono: «Da chiedere 3 · In attesa 1»; "" senza. */
 function summaryOf(page: string): string {
-  return textOf(between(page, 'data-slot="needs-summary"', "</p>").replace(/^[^>]*>/, ""));
+  if (!page.includes('data-slot="needs-counts"')) return "";
+  const list = between(page, 'data-slot="needs-counts"', "</ul>");
+  return [...list.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/g)].map((match) => textOf(match[1])).join(" · ");
 }
 
 /** I gruppi di «Cosa serve» (rilascio 4): la chiave e il titolo, nell'ordine della pagina. */
@@ -422,16 +424,16 @@ test("Cosa serve: la vista dei revisori, una lista per chi deve muoversi, «Già
   }
   const page = await hubHtml("builder", ids.ws, { vista: "cosa-serve" });
   const board = between(page, '<div data-slot="needs-board"');
-  // In cima, primo <p> della vista, la riga dei conteggi: i requisiti per stato, mai per persona.
-  assert.equal(summaryOf(page), "4 aperte · 3 da chiedere · 1 in attesa · 1 a posto");
-  assert.equal(board.indexOf("<p"), board.indexOf('<p data-slot="needs-summary"'));
+  // (Rilascio 10, §3.4) In cima il prossimo passo e i tre conteggi che filtrano: i requisiti per stato, mai per persona.
+  assert.equal(summaryOf(page), "Da chiedere 3 · In attesa 1");
+  assert.ok(board.indexOf('data-slot="next-step"') < board.indexOf('data-slot="needs-counts"') && board.indexOf('data-slot="needs-counts"') < board.indexOf('data-slot="needs-groups"'));
   // I gruppi per organizzazione: il cliente con il nome del workspace (nessun nome del connettore),
   // le cose da fare «Insieme» dentro; senza parte «Da assegnare». Nessun numero nei titoli.
   assert.deepEqual(groupsOf(page), [
     { key: "cliente", heading: "Prova cosa serve" },
     { key: "nessuno", heading: "Da assegnare" },
   ]);
-  const groups = between(page, 'data-slot="needs-groups"', 'data-slot="needs-timeline"');
+  const groups = between(page, 'data-slot="needs-groups"');
   const rowIds = (html: string) => [...html.matchAll(/<li data-need="([^"]+)"/g)].map((match) => match[1]);
   assert.deepEqual(rowIds(between(groups, 'data-need-group="cliente"', 'data-need-group="nessuno"')), [needIds.access, needIds.decide]);
   assert.deepEqual(rowIds(between(groups, 'data-need-group="nessuno"', 'data-slot="needs-done"')), [needIds.procedure, needIds.other]);
@@ -484,16 +486,22 @@ test("Cosa serve: la vista dei revisori, una lista per chi deve muoversi, «Già
   assert.deepEqual(openFolds(page), [], "niente aperto di default");
   // I link restano nella vista: `?vista=cosa-serve&apri=<id>`.
   assert.ok(page.includes(`href="/dashboard/${ids.ws}/use-cases?vista=cosa-serve&apri=${cards.proposed.id}"`));
-  // (Rilascio 10, §3.4) «Nuovo» è bordato: il pulsante pieno della pagina è il passo della vista, al massimo uno.
-  assert.ok(filledButtons(page).length <= 1);
+  // (Rilascio 10, §3.4) «Nuovo» è bordato: il pulsante pieno della pagina è il passo della vista, «Chiedi le
+  // informazioni», sul primo use case da chiedere.
+  assert.equal(filledButtons(page).length, 1);
+  const viewButtons = filledButtons(board);
+  assert.equal(viewButtons.length, 1);
+  assert.ok(viewButtons[0].includes("apri=") && textOf(between(board, 'data-slot="next-step"', "</section>")).includes("Chiedi le informazioni"), viewButtons[0]);
 });
 
-test("Cosa serve: «Prossimi passi» accanto alla lista, per data con la data sopra, i fatti chiusi; niente più schede del trimestre", opts, async () => {
-  const page = await hubHtml("ls", ids.ws, { vista: "cosa-serve" });
-  // La lista e accanto la linea del tempo, sul riquadro della pagina.
-  assert.ok(page.includes('<div data-slot="needs-layout" class="grid gap-8 @min-[58rem]/hub:grid-cols-[minmax(0,1fr)_18rem] @min-[58rem]/hub:gap-x-8">'));
-  assert.ok(page.indexOf('data-slot="needs-groups"') < page.indexOf('data-slot="needs-timeline"'), "la linea del tempo dopo la lista");
-  const steps = between(page, '<aside data-slot="needs-timeline"', "</aside>");
+test("(rilascio 10, §3.4) Cosa serve: «Scadenze» a un tocco, nel «Calendario» di «Elenco | Calendario»; per data con la data sopra, i fatti chiusi", opts, async () => {
+  const list = await hubHtml("ls", ids.ws, { vista: "cosa-serve" });
+  // Nell'elenco le scadenze non ci sono: l'interruttore porta al calendario, e torna indietro con i filtri di adesso.
+  assert.ok(!list.includes('data-slot="needs-steps"') && list.includes('aria-label="Elenco o calendario"'));
+  assert.ok(list.includes(`href="/dashboard/${ids.ws}/use-cases?vista=cosa-serve&calendario=1"`));
+  const page = await hubHtml("ls", ids.ws, { vista: "cosa-serve", calendario: "1" });
+  assert.ok(!page.includes('data-slot="needs-groups"') && page.includes('data-mode="calendario"'), "il calendario al posto dell'elenco");
+  const steps = between(page, 'data-slot="needs-steps"');
   assert.ok(steps.includes('<h2 id="cosa-serve-passi" class="text-sm font-semibold">Scadenze</h2>'));
   // Il passo fra venti giorni: nel suo mese (oggi non è scaduto), la data su una riga sua, lo stato e «Chi».
   assert.ok(steps.includes(`>${needs.monthHeading(dueSoon.slice(0, 7))}</h3>`), "il mese della scadenza");
@@ -584,11 +592,12 @@ test("Panoramica: il prossimo passo del workspace (rilascio 10, D3), lo stesso d
   const targetText = target.replaceAll(N, " ");
   assert.ok(targetText.includes(START.shared) && targetText.includes(START.blocked) && targetText.includes(START.verify));
   assert.ok(!targetText.includes(START.progress) && !targetText.includes(START.next));
-  assert.equal(summaryOf(target), `${quarter.quarterLabel(thisQuarter)} · 3 aperte · 1 da chiedere · 1 da verificare · 1 ferma`);
-  for (const piece of ["1 da chiedere", "1 da verificare", "1 ferma"]) assert.ok(summaryOf(target).includes(piece), piece);
+  // (Rilascio 10, §3.4) I tre conteggi che filtrano, senza gli zeri; il trimestre è un chip del filtro; «Ferme» sta nel foglio.
+  assert.equal(summaryOf(target), "Da chiedere 1 · Da verificare 1");
+  assert.ok(target.includes(`Trimestre: ${quarter.quarterLabel(thisQuarter)}`), "il trimestre nel chip");
   // Le righe: il requisito bloccato si legge «Ferma», quello da verificare «Da verificare»; mai «Bloccata».
   assert.ok(target.includes(">Ferma<") && target.includes(">Da verificare<"));
-  assert.ok(!target.includes(">Bloccata<") && !/bloccat/i.test(summaryOf(target)));
+  assert.ok(!target.includes(">Bloccata<"));
   // Il filtro del trimestre non apre le parti chiuse: si arriva sui conteggi e sui primi requisiti di ogni gruppo.
   assert.deepEqual(groupsOf(target).map((group) => group.key), ["cliente", "lateral_space", "nessuno"]);
   assert.deepEqual(openFolds(target), []);
@@ -600,7 +609,7 @@ test("Panoramica: il prossimo passo del workspace (rilascio 10, D3), lo stesso d
   // Il requisito di un solo use case: nessun tag, il link dice già «LIBRA L2».
   const blocked = between(target, START.blocked, "</li>");
   assert.ok(!blocked.includes('data-slot="need-agents"'), blocked);
-  assert.ok(blocked.includes(`LIBRA L2 · Pagamenti ${suffix}`));
+  assert.ok(blocked.includes(`<span class="sr-only">LIBRA L2 · </span>Pagamenti ${suffix}`) && blocked.includes(">LIBRA L2</span>"), "il tag al posto del prefisso");
   // Con un filtro il riquadro non c'è: dice tutto il workspace. Le corsie restano.
   const filtered = await hubHtml("builder", ids.wsStart, { vista: "panoramica", agente: "LIBRA" });
   assert.ok(!filtered.includes('data-slot="next-step"') && filtered.includes('data-slot="lanes"'));
@@ -653,10 +662,10 @@ test("Cosa serve: gli use case in realizzazione si leggono nella Panoramica, mai
   const filled = { ...emptyBoard, groups: [{ key: "cliente", open: [row] }], counts: oneToAsk };
   const two = render({ board: filled, inRealization: 2, realizationHref });
   const line = between(two, 'data-slot="needs-in-progress"');
-  assert.ok(two.indexOf('data-slot="needs-in-progress"') > two.indexOf('data-slot="needs-layout"'), "dopo la lista e la linea del tempo");
+  assert.ok(two.indexOf('data-slot="needs-in-progress"') > two.indexOf('data-slot="needs-groups"'), "dopo la lista");
   assert.ok(line.includes(`2${N}use${N}case sono già in realizzazione.`) && /href="\/p#panoramica-in-realizzazione"[^>]*>Vai alla Panoramica</.test(line));
   assert.ok(!two.includes('data-slot="dossier-card"'));
-  assert.equal(summaryOf(two), "1 aperta · 1 da chiedere");
+  assert.equal(summaryOf(two), "Da chiedere 1");
   for (const props of [{ inRealization: 0, realizationHref }, { inRealization: 2, realizationHref: null }]) {
     const html = render({ board: filled, ...props });
     assert.ok(!html.includes('data-slot="needs-in-progress"') && !html.includes("Vai alla Panoramica"), JSON.stringify(props));
@@ -697,13 +706,14 @@ test("Cosa serve: la linea del tempo, «Prima di oggi» in testa, le prime cinqu
         clientLabel: "Prova",
         agents: agentPalette([...agentsRefs, plainRef]),
         hrefOf: (id: string) => `?apri=${id}`,
+        calendar: true,
       }),
     ),
   );
-  // Senza requisiti: la riga dei conteggi resta in cima, poi «Niente da chiedere per ora.»; accanto i passi.
-  assert.equal(summaryOf(html), "Nessuna aperta");
-  assert.ok(html.includes('<p data-slot="needs-none" class="text-sm text-muted-foreground">Niente da chiedere per ora.</p>'));
-  const aside = between(html, '<aside data-slot="needs-timeline"', "</aside>");
+  // Senza requisiti: nessun conteggio (lo zero non si vede); il «Calendario» con le scadenze.
+  assert.equal(summaryOf(html), "");
+  assert.ok(html.includes('data-mode="calendario"') && !html.includes('data-slot="needs-groups"'));
+  const aside = between(html, 'data-slot="needs-steps"');
   // Le prime cinque prima di «Mostra le altre N»: «Prima di oggi» in testa, poi novembre.
   const visible = aside.slice(0, aside.indexOf('<details data-slot="needs-steps-more"'));
   assert.deepEqual([...visible.matchAll(/<h3 [^>]*>([^<]*)<\/h3>/g)].map((m) => m[1]), ["Prima di oggi", "Novembre 2026"]);
@@ -725,11 +735,14 @@ test("Cosa serve: la linea del tempo, «Prima di oggi» in testa, le prime cinqu
   assert.deepEqual(names, ["LIBRA", "ORSA"]);
   assert.ok(withAgents.indexOf('data-meta="agenti"') < withAgents.indexOf(`Per 3${N}use${N}case`), "prima gli agenti");
   assert.ok(!between(aside, `Il mese prossimo ${suffix}`, "</li>").includes('data-slot="need-agents"'), "senza prefisso, nessun tag");
-  // Con un solo use case il link dice già l'agente: nessun tag, l'agente una volta sola, anche per i lettori di schermo.
+  // (Rilascio 10, §3.4) Con un solo use case il link ha il tag dell'agente al posto del prefisso: nessun altro tag;
+  // l'agente una volta per i lettori di schermo (il tag è decorativo, il prefisso resta nascosto alla vista).
   const single = between(aside, `Un solo agente ${suffix}`, "</li>");
-  assert.ok(!single.includes('data-slot="need-agents"') && !single.includes('data-slot="agent-tag"'), single);
-  assert.equal(readable(single.replace(/<[^>]+>/g, "")).split("ORSA").length - 1, 1, "«ORSA» una volta");
-  assert.ok(single.includes("RD-0002") && single.includes("ORSA O1 · Solleciti ai clienti"));
+  assert.ok(!single.includes('data-slot="need-agents"'), single);
+  assert.ok(single.includes('data-slot="agent-tag"') && single.includes('aria-hidden="true"'), single);
+  const spoken = readable(single.replace(/<span data-slot="agent-tag"[^>]*aria-hidden="true"[^>]*>[\s\S]*?<\/span><\/span>/g, "").replace(/<[^>]+>/g, ""));
+  assert.equal(spoken.split("ORSA").length - 1, 1, "«ORSA» una volta");
+  assert.ok(single.includes("<span class=\"sr-only\">ORSA O1 · </span>Solleciti ai clienti"));
 });
 
 test("una richiesta con «(12 €/mese)»: a schermo non va a capo dentro, in «Cosa serve» e nel pannello; il dato salvato resta com'è", opts, async () => {
@@ -757,17 +770,21 @@ test("Cosa serve con i filtri: le esigenze degli use case che passano, la ricerc
   assert.ok(byCode.includes(T.access), "collegata allo use case cercato");
   for (const title of [T.extract, T.procedure, T.kickoff]) assert.ok(!byCode.includes(title), title);
   // Con una ricerca i conteggi seguono il filtro; il gruppo è quello del requisito trovato.
-  assert.equal(summaryOf(byCode), "1 aperta · 1 in attesa");
+  assert.equal(summaryOf(byCode), "In attesa 1");
   assert.deepEqual(groupsOf(byCode).map((group) => group.key), ["cliente"]);
   // «Per» nomina comunque tutti gli use case dell'esigenza.
   assert.ok(detailsAround(byCode, `Per 2${N}use${N}case`).includes(`>${cards.quarter.code}<`));
 
   // (La ricerca resta anche nel campo «Cerca»: il passo si cerca nei blocchi.)
-  const byTitle = await hubHtml("builder", ids.ws, { vista: "cosa-serve", q: T.kickoff });
+  // (Rilascio 10, §3.4) Le scadenze stanno nel «Calendario»: l'interruttore dice quante ne ha trovate la ricerca.
+  const byTitleList = await hubHtml("builder", ids.ws, { vista: "cosa-serve", q: T.kickoff });
+  assert.match(byTitleList, /Calendario<\/span><span class="text-xs text-muted-foreground tabular-nums">1</);
+  const byTitle = await hubHtml("builder", ids.ws, { vista: "cosa-serve", q: T.kickoff, calendario: "1" });
   assert.ok(between(byTitle, 'data-slot="needs-steps"').includes(T.kickoff), "un passo senza use case, per il titolo");
   assert.ok(!byTitle.includes(T.access));
-  // La ✕ «Togli i filtri» della barra, al telefono nella riga: torna a «Cosa serve» senza filtri.
-  assert.match(byTitle, new RegExp(`aria-label="Togli i filtri"[^>]*href="/dashboard/${ids.ws}/use-cases\\?vista=cosa-serve"`));
+  // La ricerca resta nel campo «Cerca», con la vista e il calendario: non è un chip.
+  assert.match(byTitle, /<input type="hidden" name="calendario" value="1"\/>/);
+  assert.ok(!byTitle.includes('data-slot="filter-chips-active"'));
 
   // Nessuno use case ha questa origine: niente da chiedere, con «Togli i filtri».
   const none = await hubHtml("builder", ids.ws, { vista: "cosa-serve", origine: "transformation" });

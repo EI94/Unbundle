@@ -604,8 +604,8 @@ test("«Curva del valore» da «Grafici»: J-curve con entrata in uso e pareggio
   assert.equal(chartHeaderOf(none).title, "Curva del valore");
   assert.ok(none.includes('data-chart="curva"') && none.includes("Nessuno use case con questi filtri."));
   assert.match(none, new RegExp(`href="/dashboard/${ids.wsV}/use-cases\\?vista=panoramica&amp;mostra=curva"[^>]*>Togli i filtri<`));
-  // La ✕ della barra tiene la curva anche lei, accanto al pulsante del vuoto.
-  assert.match(none, new RegExp(`aria-label="Togli i filtri"[^>]*href="/dashboard/${ids.wsV}/use-cases\\?vista=panoramica&amp;mostra=curva"`));
+  // (Rilascio 10, §3.4) La ricerca resta nel campo «Cerca», che tiene la curva: non è un chip.
+  assert.ok(none.includes('<input type="hidden" name="mostra" value="curva"/>') && !none.includes('data-slot="filter-chips-active"'));
   assert.ok(!none.includes('data-slot="roadmap-value"'));
 });
 

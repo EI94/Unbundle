@@ -5,11 +5,11 @@ import { findHubForbiddenIn } from "../../lib/use-cases/copy-guard.ts";
 import type { NeedUseCaseRef, NeedView, NeedsBoard } from "../../lib/use-cases/needs.ts";
 import { enableTsxImports } from "./detail/referent/tsx-test-loader.ts";
 
-// «Cosa serve» come una lista sola (rilascio 4, spec §13): la vista resa sul server da un elenco
-// sintetico, senza database. Ogni requisito una volta sotto chi deve muoversi (per organizzazione,
-// mai per persona), cinque righe in vista per gruppo, «Già a posto» chiuso, la linea del tempo dei
-// prossimi passi accanto, i primi cinque in vista. Le prove nella pagina vera, con i dati di Rondine
-// (prova), sono quelle del banco di prova (probe-r4b) e di needs-render.integration.test.ts.
+// «Cosa serve» come una lista sola (rilascio 4, spec §13; rilascio 10, §3.4): la vista resa sul server da un elenco
+// sintetico, senza database. In cima il prossimo passo e tre conteggi che filtrano; ogni requisito una volta sotto chi
+// deve muoversi (per organizzazione, mai per persona), tre righe in vista per gruppo e «Vedi tutte (N)», «Già a posto»
+// chiuso; le «Scadenze» a un tocco, con «Elenco | Calendario». Le prove nella pagina vera sono quelle di
+// needs-render.integration.test.ts.
 
 let board: typeof import("./needs-board.tsx");
 let needs: typeof import("../../lib/use-cases/needs.ts");
@@ -101,14 +101,36 @@ function fixture(): NeedView[] {
 }
 
 const build = (list: NeedView[], only: import("../../lib/use-cases/needs.ts").NeedsBoardFilter | null = null): NeedsBoard => needs.buildNeedsBoard(list, ITEMS, { today: TODAY, only });
+const BASE = "/dashboard/ws/use-cases";
 const render = (b: NeedsBoard, props: Record<string, unknown> = {}) =>
-  readable(renderToStaticMarkup(createElement(board.NeedsBoardView, { board: b, clientLabel: "Alfa e Beta", hrefOf: (id: string) => `?vista=cosa-serve&apri=${id}`, ...props })));
+  readable(
+    renderToStaticMarkup(
+      createElement(board.NeedsBoardView, {
+        board: b,
+        clientLabel: "Alfa e Beta",
+        hrefOf: (id: string) => `?vista=cosa-serve&apri=${id}`,
+        basePath: BASE,
+        query: { vista: "cosa-serve" },
+        ...props,
+      }),
+    ),
+  );
+/** I pulsanti pieni: `[data-slot=button]` con la classe `bg-primary`. */
+const filled = (html: string) =>
+  [...html.matchAll(/<(?:a|button)\b[^>]*>/g)].map((m) => m[0]).filter((tag) => tag.includes('data-slot="button"') && (/class="([^"]*)"/.exec(tag)?.[1].split(/\s+/) ?? []).includes("bg-primary"));
 
 function readable(page: string): string {
   return page.replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
 }
 const N = " ";
 const textOf = (html: string) => html.replace(/<(?:[^>"]|"[^"]*")*>/g, "").replace(/\s+/g, " ").replace(/ /g, " ").trim();
+/** I link `<a>` di un pezzo di pagina: gli attributi (in qualunque ordine) e il testo. */
+function anchors(html: string): Array<{ attrs: Record<string, string>; text: string }> {
+  return [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].map((m) => ({
+    attrs: Object.fromEntries([...m[1].matchAll(/([\w-]+)="([^"]*)"/g)].map((a) => [a[1], a[2]])),
+    text: textOf(m[2]),
+  }));
+}
 function between(page: string, from: string, to?: string): string {
   const start = page.indexOf(from);
   assert.ok(start >= 0, `manca ${from}`);
@@ -135,13 +157,24 @@ function details(page: string, slot: string): { opening: string; summary: string
 }
 const ids = (html: string) => [...html.matchAll(/<li data-need="([^"]+)"/g)].map((match) => match[1]);
 
-test("la vista: la riga dei conteggi in cima, i gruppi per organizzazione nell'ordine, senza numeri nei titoli", () => {
+test("la vista: il prossimo passo, i tre conteggi che filtrano, i gruppi per organizzazione nell'ordine, senza numeri nei titoli", () => {
   const list = fixture();
   const html = render(build(list));
   const root = between(html, '<div data-slot="needs-board"');
-  // La riga dei conteggi è il primo <p> della vista.
-  assert.ok(root.indexOf("<p") === root.indexOf('<p data-slot="needs-summary"'), "il primo <p> è la riga dei conteggi");
-  assert.equal(textOf(between(root, 'data-slot="needs-summary"', "</p>").replace(/^[^>]*>/, "")), "11 aperte · 8 da chiedere · 1 in attesa · 1 da verificare · 1 ferma · 2 a posto");
+  // Il solo pulsante pieno: «Verifica 1 risposta», che apre il pannello del primo use case con una risposta da verificare.
+  const buttons = filled(html);
+  assert.equal(buttons.length, 1);
+  assert.ok(buttons[0].includes(`href="?vista=cosa-serve&apri=${A}"`), buttons[0]);
+  assert.ok(textOf(between(root, 'data-slot="next-step"', "</section>")).includes("Verifica 1 risposta"));
+  assert.ok(root.indexOf('data-slot="next-step"') < root.indexOf('data-slot="needs-counts"'), "il passo prima dei conteggi");
+  // Tre conteggi, senza gli zeri, ognuno un link che filtra (e torna all'elenco).
+  const counts = anchors(between(root, 'data-slot="needs-counts"', "</ul>")).map((a) => [a.attrs["data-state"], a.text, a.attrs.href]);
+  assert.deepEqual(counts, [
+    ["da-chiedere", "Da chiedere 8", `${BASE}?vista=cosa-serve&stato=da-chiedere`],
+    ["in-attesa", "In attesa 1", `${BASE}?vista=cosa-serve&stato=in-attesa`],
+    ["da-verificare", "Da verificare 1", `${BASE}?vista=cosa-serve&stato=da-verificare`],
+  ]);
+  assert.ok(!root.includes("aperte") && !root.includes("ferma ·") && !root.includes('data-slot="needs-summary"'), "«Ferme», «A posto» e «Aperte» stanno nel foglio «Filtri»");
   const groups = [...html.matchAll(/<section aria-labelledby="(cosa-serve-gruppo-[a-z_]+)" data-need-group="([a-z_]+)"[^>]*><h2 id="\1" class="text-sm font-semibold">([^<]*)<\/h2>/g)].map((m) => [m[2], m[3]]);
   assert.deepEqual(groups, [
     ["cliente", "Alfa e Beta"],
@@ -152,43 +185,63 @@ test("la vista: la riga dei conteggi in cima, i gruppi per organizzazione nell'o
   for (const gone of [">Requisiti<", "<table", "Cosa vi chiediamo", "Il ritorno da confermare", "Dopo la scheda A.8", "Chi conferma i numeri", "€", "Dettaglio lungo", "data-need-area", "data-quarter-ask"]) {
     assert.ok(!html.includes(gone), gone);
   }
-  // Nessun pulsante pieno nella vista: quello pieno è «Nuovo use case» della testata.
-  assert.ok(!/class="[^"]*\bbg-primary\b/.test(html));
 });
 
-test("un gruppo: le prime cinque righe, prima da verificare, poi «Mostra le altre N» chiuso; «Insieme» con il cliente", () => {
+test("il prossimo passo: «Verifica N risposte» se ce ne sono; altrimenti «Chiedi le informazioni», sul primo use case da chiedere; niente da fare, nessun pulsante", () => {
+  const list = fixture();
+  const noVerify = list.filter((n) => n.status !== "in_verifica");
+  const ask = render(build(noVerify));
+  const [button] = filled(ask);
+  assert.ok(button && button.includes(`href="?vista=cosa-serve&apri=${A}"`), button);
+  assert.ok(textOf(between(ask, 'data-slot="next-step"', "</section>")).includes("Chiedi le informazioni"));
+  // Una risposta da verificare senza use case collegato: il pulsante porta alle righe «Da verificare».
+  const loose = render(build([need({ title: "Risposta libera", ownerSide: "cliente", status: "in_verifica", useCaseIds: [], forLabel: "Tutto il programma" })]));
+  assert.ok(filled(loose)[0]?.includes(`href="${BASE}?vista=cosa-serve&stato=da-verificare"`), filled(loose)[0]);
+  // Solo attese e ferme: niente da fare per chi guarda, nessun pulsante pieno né «Prossimo passo».
+  const waiting = render(build([need({ title: "In attesa", ownerSide: "fornitore", status: "chiesta" }), need({ title: "Ferma", ownerSide: "lateral_space", status: "bloccata" })]));
+  assert.equal(filled(waiting).length, 0);
+  assert.ok(!waiting.includes('data-slot="next-step"'));
+});
+
+test("un gruppo: le prime tre righe, prima da verificare, poi «Vedi tutte (N)» chiuso; «Insieme» con il cliente", () => {
   const list = fixture();
   const html = render(build(list));
   const client = between(html, 'data-need-group="cliente"', 'data-need-group="fornitore"');
   const more = details(client, "needs-group-more");
   assert.equal(more.opening, '<details data-slot="needs-group-more">', "chiuso di default");
-  assert.equal(more.summary, "Mostra le altre 4");
+  assert.equal(more.summary, "Vedi tutte (9)");
   const shown = ids(client.slice(0, client.indexOf('<details data-slot="needs-group-more"')));
   const byTitle = new Map(list.map((n) => [n.title, n.id]));
-  assert.deepEqual(shown, ["Risposta da guardare", "Cliente 1", "Cliente 2", "Cliente 3", "Cliente 4"].map((t) => byTitle.get(t)), "cinque, prima quella da verificare");
-  assert.deepEqual(ids(more.body), ["Cliente 5", "Cliente 6", "Insieme 1", "Insieme 2"].map((t) => byTitle.get(t)));
+  assert.deepEqual(shown, ["Risposta da guardare", "Cliente 1", "Cliente 2"].map((t) => byTitle.get(t)), "tre, prima quella da verificare");
+  assert.deepEqual(ids(more.body), ["Cliente 3", "Cliente 4", "Cliente 5", "Cliente 6", "Insieme 1", "Insieme 2"].map((t) => byTitle.get(t)));
   // «Insieme» lo dice nel suo «Chi»; la riga: titolo, stato, «Chi», «Per».
   const together = between(client, `data-need="${byTitle.get("Insieme 1")}"`, "</li>");
   assert.ok(textOf(together).includes("Insieme"));
   const first = between(client, `data-need="${byTitle.get("Cliente 1")}"`, "</li>");
   assert.match(first, new RegExp(`<span data-meta="chi" class="inline-flex min-w-0 items-center gap-x-2"><span class="min-w-0">Aldo Prova, ufficio acquisti${N}· Cliente</span>`));
   assert.ok(first.includes(">Da chiedere<") && first.includes('href="?vista=cosa-serve&apri=' + A + '"'), "lo stato dei cinque e «Per» che apre il pannello");
+  // «Per» con il tag dell'agente al posto del prefisso, il prefisso solo per i lettori di schermo; niente codice.
+  const per = between(first, 'data-meta="per"', "</a>");
+  assert.ok(per.includes('data-slot="agent-tag"') && per.includes(">LIBRA L1</span>"), per);
+  assert.ok(per.includes('<span class="sr-only">LIBRA L1 · </span>Smistamento'), per);
+  assert.ok(!textOf(per.replace(/<span class="sr-only">[^<]*<\/span>/g, "")).includes("XV-0001"), "il tag al posto del codice");
   // Più use case: «Per 2 use case» chiuso, con prima gli agenti dei titoli.
   const two = between(client, `data-need="${byTitle.get("Insieme 2")}"`, "</li>");
   assert.ok(two.indexOf('data-slot="need-agents"') < two.indexOf(`Per 2${N}use${N}case`));
   // Il gruppo di Lateral Space: «Ferma», mai «Bloccata».
   const ls = between(html, 'data-need-group="lateral_space"', "</section>");
   assert.ok(ls.includes(">Ferma<") && !ls.includes("Bloccata"));
-  assert.ok(!between(html, 'data-need-group="fornitore"', "</section>").includes("needs-group-more"), "uno solo: nessun «Mostra»");
-  // Sei righe: «Mostra l'altra».
-  const six = render(build(list.filter((n) => n.ownerSide === "cliente" && n.type === "requisito").slice(0, 6)));
-  assert.equal(details(six, "needs-group-more").summary, "Mostra l'altra");
+  assert.ok(!between(html, 'data-need-group="fornitore"', "</section>").includes("needs-group-more"), "uno solo: nessun «Vedi tutte»");
+  // Quattro righe: «Vedi tutte (4)», con l'ultima dentro.
+  const four = render(build(list.filter((n) => n.ownerSide === "cliente" && n.type === "requisito" && n.status === "da_chiedere").slice(0, 4)));
+  assert.equal(details(four, "needs-group-more").summary, "Vedi tutte (4)");
+  assert.equal(ids(details(four, "needs-group-more").body).length, 1);
 });
 
-test("ogni requisito una volta; «Già a posto · N» chiuso dopo i gruppi, nella colonna della lista", () => {
+test("ogni requisito una volta; «Già a posto · N» chiuso dopo i gruppi", () => {
   const list = fixture();
   const html = render(build(list));
-  const groupsColumn = between(html, '<div data-slot="needs-groups"', '<aside data-slot="needs-timeline"');
+  const groupsColumn = between(html, '<div data-slot="needs-groups"');
   const done = details(groupsColumn, "needs-done");
   assert.equal(done.opening, '<details data-slot="needs-done">');
   assert.equal(done.summary, "Già a posto · 2");
@@ -198,36 +251,47 @@ test("ogni requisito una volta; «Già a posto · N» chiuso dopo i gruppi, nell
   assert.equal(new Set(shown).size, shown.length, "nessuno due volte");
   assert.ok(requirementIds.every((id) => shown.includes(id)));
   assert.ok(groupsColumn.lastIndexOf('data-need-group="') < groupsColumn.indexOf('data-slot="needs-done"'), "dopo i gruppi");
+  // Nell'elenco le scadenze non ci sono: sono a un tocco, nel «Calendario».
+  assert.ok(!html.includes('data-slot="needs-steps"') && !html.includes("<aside"));
 });
 
-test("«Per N use case»: il titolo della riga lo leggono come descrizione, senza ripeterlo in ogni riga", () => {
+test("(rilascio 10, §3.4) un conteggio scelto: le sole righe di quello stato, il conteggio acceso che si toglie con un altro tocco", () => {
   const list = fixture();
-  const html = render(build(list));
-  const shared = list.find((n) => n.title === "Insieme 2");
-  assert.ok(shared);
-  // Il riassunto rimanda al titolo della sua riga, che c'è una volta sola nella pagina.
-  assert.match(html, new RegExp(`<summary aria-describedby="cosa-serve-titolo-${shared.id}"[^>]*>`));
-  assert.equal(html.split(`id="cosa-serve-titolo-${shared.id}"`).length - 1, 1);
-  assert.match(html, new RegExp(`<p id="cosa-serve-titolo-${shared.id}"[^>]*>Insieme[ ${N}]2</p>`));
-  // Niente più copia del titolo per i lettori di schermo («Per 2 use case: Insieme 2»).
-  assert.ok(!html.includes('class="sr-only">: '), "il titolo non si ripete");
-  // Ogni descrizione rimanda a un id che c'è, e ogni id della vista è unico.
-  const described = [...html.matchAll(/aria-describedby="([^"]+)"/g)].flatMap((m) => m[1].split(" "));
-  assert.ok(described.length > 0);
-  for (const id of described) assert.ok(html.includes(`id="${id}"`), id);
-  const all = [...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]);
-  assert.equal(new Set(all).size, all.length, "id unici");
+  const byTitle = new Map(list.map((n) => [n.title, n.id]));
+  const html = render(build(list), { state: "da-verificare", query: { vista: "cosa-serve", stato: "da-verificare" } });
+  assert.deepEqual(ids(between(html, '<div data-slot="needs-groups"')), [byTitle.get("Risposta da guardare")]);
+  assert.ok(!html.includes('data-slot="needs-done"'), "niente «Già a posto» con uno stato");
+  const active = anchors(between(html, 'data-slot="needs-counts"', "</ul>")).find((a) => a.attrs["aria-current"] === "true");
+  assert.equal(active?.attrs["data-state"], "da-verificare", "il conteggio scelto è acceso");
+  assert.equal(active?.attrs.href, `${BASE}?vista=cosa-serve`, "un altro tocco lo toglie");
+  assert.ok(textOf(between(html, 'data-slot="needs-counts"', "</ul>")).includes("Da chiedere 8"), "i conteggi restano quelli di tutta la vista");
+  // «A posto» (dal foglio): le righe a posto per organizzazione.
+  const done = render(build(list), { state: "a-posto" });
+  assert.deepEqual(ids(between(done, '<div data-slot="needs-groups"')), ["A posto 1", "A posto 2"].map((t) => byTitle.get(t)));
+  // «Ferme» senza righe: una frase e «Togli i filtri», che toglie solo lo stato.
+  const none = render(build(list.filter((n) => n.status !== "bloccata")), { state: "ferme", query: { vista: "cosa-serve", stato: "ferme", q: "es" } });
+  assert.ok(none.includes("Nessuna informazione in questo stato."));
+  assert.match(none, new RegExp(`href="${BASE}\\?vista=cosa-serve&q=es"[^>]*>Togli i filtri<`));
 });
 
-test("«Scadenze»: accanto alla lista, «Prima di oggi» in testa, le prime cinque, la sezione spezzata ripete il titolo, «Fatta · 1», stati al femminile", () => {
+test("«Elenco | Calendario»: le «Scadenze» a un tocco, «Prima di oggi» in testa, le prime cinque, la sezione spezzata ripete il titolo, «Fatta · 1»", () => {
   const list = fixture();
-  const html = render(build(list));
-  // La griglia: la lista e la linea del tempo, sul riquadro della pagina.
-  assert.ok(html.includes('<div data-slot="needs-layout" class="grid gap-8 @min-[58rem]/hub:grid-cols-[minmax(0,1fr)_18rem] @min-[58rem]/hub:gap-x-8">'));
-  const aside = between(html, '<aside data-slot="needs-timeline" class="min-w-0 self-start">', "</aside>");
-  assert.ok(aside.includes('<section aria-labelledby="cosa-serve-passi" data-slot="needs-steps"') && aside.includes('<h2 id="cosa-serve-passi" class="text-sm font-semibold">Scadenze</h2>'));
-  const more = details(aside, "needs-steps-more");
-  const visible = aside.slice(0, aside.indexOf('<details data-slot="needs-steps-more"'));
+  const listView = render(build(list));
+  const toggle = anchors(between(listView, 'aria-label="Elenco o calendario"', "</nav>"));
+  assert.deepEqual(
+    toggle.map((a) => [a.text, a.attrs.href, a.attrs["aria-current"] ?? null]),
+    [
+      ["Elenco", `${BASE}?vista=cosa-serve`, "page"],
+      ["Calendario8", `${BASE}?vista=cosa-serve&calendario=1`, null],
+    ],
+    "con il numero delle scadenze aperte",
+  );
+  const html = render(build(list), { calendar: true, query: { vista: "cosa-serve", calendario: "1" } });
+  assert.ok(html.includes('data-mode="calendario"') && !html.includes('data-slot="needs-groups"'), "il calendario al posto dell'elenco");
+  const steps = between(html, '<section aria-labelledby="cosa-serve-passi" data-slot="needs-steps"');
+  assert.ok(steps.includes('<h2 id="cosa-serve-passi" class="text-sm font-semibold">Scadenze</h2>'));
+  const more = details(steps, "needs-steps-more");
+  const visible = steps.slice(0, steps.indexOf('<details data-slot="needs-steps-more"'));
   const headings = (part: string) => [...part.matchAll(/<h3 id="([^"]+)" class="text-xs font-medium text-muted-foreground">([^<]*)<\/h3>/g)].map((m) => m[2]);
   assert.deepEqual(headings(visible), ["Prima di oggi", "Novembre 2026"], "gli scaduti prima; oggi è di novembre");
   const byTitle = new Map(list.map((n) => [n.title, n.id]));
@@ -236,67 +300,70 @@ test("«Scadenze»: accanto alla lista, «Prima di oggi» in testa, le prime cin
   assert.equal(more.summary, "Mostra le altre 3");
   assert.deepEqual(headings(more.body), ["Novembre 2026", "Dicembre 2026", "Senza data"], "novembre spezzato: il titolo si ripete");
   assert.deepEqual(ids(more.body), ["Novembre 4", "Dicembre", "Da fissare"].map((t) => byTitle.get(t)));
-  // Gli id dei titoli sono unici anche quando una sezione si ripete.
-  const headingIds = [...aside.matchAll(/<h3 id="([^"]+)"/g)].map((m) => m[1]);
+  const headingIds = [...steps.matchAll(/<h3 id="([^"]+)"/g)].map((m) => m[1]);
   assert.equal(new Set(headingIds).size, headingIds.length);
-  // La data su una riga sua, con <time>; lo stato e «Chi»; nessun numero nei titoli delle sezioni.
-  const late = between(aside, `data-need="${byTitle.get("Scaduto")}"`, "</li>");
-  assert.match(late, /<time dateTime="2026-10-20" class="block text-xs font-medium tabular-nums">20(?: | )ott<\/time>/);
+  const late = between(steps, `data-need="${byTitle.get("Scaduto")}"`, "</li>");
+  assert.match(late, /<time dateTime="2026-10-20" class="block text-xs font-medium tabular-nums">20[\s\u00a0\u202f]ott<\/time>/);
   assert.ok(late.includes(">Confermata<"), "la scadenza è confermata");
   assert.ok(between(more.body, `data-need="${byTitle.get("Dicembre")}"`, "</li>").includes('<span data-meta="chi" class="min-w-0">Lateral Space</span>'));
   assert.ok(!between(more.body, `data-need="${byTitle.get("Da fissare")}"`, "</li>").includes("<time"), "senza data, nessun <time>");
-  const done = details(aside, "needs-steps-done");
-  assert.equal(done.opening, '<details data-slot="needs-steps-done">');
+  const done = details(steps, "needs-steps-done");
   assert.equal(done.summary, "Fatta · 1");
-  assert.ok(done.body.includes('<time dateTime="2026-10-01"'));
-  // Ogni passo aperto una volta, fuori dai fatti.
-  const open = ids(aside.slice(0, aside.indexOf('<details data-slot="needs-steps-done"')));
-  assert.equal(open.length, 8);
-  assert.equal(new Set(open).size, 8);
-  // Le liste hanno la linea a sinistra, solo per decorazione.
-  assert.ok(aside.includes('<ol class="space-y-3 border-l border-border pl-3">'));
+  // Senza scadenze l'interruttore non c'è, e `calendario=1` mostra l'elenco.
+  const onlyRequirements = render(build(list.filter((n) => n.type === "requisito")), { calendar: true });
+  assert.ok(!onlyRequirements.includes("Elenco o calendario") && onlyRequirements.includes('data-slot="needs-groups"'));
+});
+
+test("«Per N use case»: il titolo della riga lo leggono come descrizione, senza ripeterlo in ogni riga", () => {
+  const list = fixture();
+  const html = render(build(list));
+  const shared = list.find((n) => n.title === "Insieme 2");
+  assert.ok(shared);
+  assert.match(html, new RegExp(`<summary aria-describedby="cosa-serve-titolo-${shared.id}"[^>]*>`));
+  assert.equal(html.split(`id="cosa-serve-titolo-${shared.id}"`).length - 1, 1);
+  assert.ok(!html.includes('class="sr-only">: '), "il titolo non si ripete");
+  const described = [...html.matchAll(/aria-describedby="([^"]+)"/g)].flatMap((m) => m[1].split(" "));
+  assert.ok(described.length > 0);
+  for (const id of described) assert.ok(html.includes(`id="${id}"`), id);
+  const all = [...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]);
+  assert.equal(new Set(all).size, all.length, "id unici");
 });
 
 test("con una ricerca tutte le parti chiuse della vista sono aperte; con gli altri filtri no", () => {
   const list = fixture();
   const searched = render(build(list), { searched: true });
-  for (const slot of ["needs-group-more", "needs-done", "needs-steps-more", "needs-steps-done"]) assert.equal(details(searched, slot).opening, `<details data-slot="${slot}" open="">`, slot);
-  const filtered = render(build(list), { filtersActive: true, quarter: "T4 2026" });
-  for (const slot of ["needs-group-more", "needs-done", "needs-steps-more", "needs-steps-done"]) assert.equal(details(filtered, slot).opening, `<details data-slot="${slot}">`, slot);
-  // Il trimestre in testa alla riga dei conteggi.
-  assert.ok(textOf(between(filtered, 'data-slot="needs-summary"', "</p>").replace(/^[^>]*>/, "")).startsWith("T4 2026 · 11 aperte"));
+  for (const slot of ["needs-group-more", "needs-done"]) assert.equal(details(searched, slot).opening, `<details data-slot="${slot}" open="">`, slot);
+  const calendar = render(build(list), { searched: true, calendar: true });
+  for (const slot of ["needs-steps-more", "needs-steps-done"]) assert.equal(details(calendar, slot).opening, `<details data-slot="${slot}" open="">`, slot);
+  const filtered = render(build(list), { filtersActive: true });
+  for (const slot of ["needs-group-more", "needs-done"]) assert.equal(details(filtered, slot).opening, `<details data-slot="${slot}">`, slot);
 });
 
-test("i casi limite: senza passi niente colonna; solo passi la riga dei conteggi e «Niente da chiedere»; vuota", () => {
+test("i casi limite: solo passi, «Niente da chiedere» e il calendario a un tocco; vuota", () => {
   const list = fixture();
-  const onlyRequirements = render(build(list.filter((n) => n.type === "requisito")));
-  assert.ok(onlyRequirements.includes('<div data-slot="needs-layout">') && !onlyRequirements.includes("needs-timeline"), "la lista prende la larghezza");
   const onlySteps = render(build(list.filter((n) => n.type === "passo")));
-  const root = between(onlySteps, '<div data-slot="needs-board"');
-  assert.ok(root.indexOf("<p") === root.indexOf('<p data-slot="needs-summary"'));
-  assert.equal(textOf(between(root, 'data-slot="needs-summary"', "</p>").replace(/^[^>]*>/, "")), "Nessuna aperta");
   assert.ok(onlySteps.includes('<p data-slot="needs-none" class="text-sm text-muted-foreground">Niente da chiedere per ora.</p>'));
-  assert.ok(onlySteps.includes('data-slot="needs-timeline"'));
+  assert.ok(onlySteps.includes("Elenco o calendario") && !onlySteps.includes('data-slot="needs-counts"'), "nessun conteggio a zero");
   const filteredSteps = render(build(list.filter((n) => n.type === "passo")), { filtersActive: true });
   assert.ok(filteredSteps.includes(">Niente da chiedere con questi filtri.</p>"));
-  // Vuota: il vuoto di sempre, con «Vai alla Panoramica» se qualcosa è in realizzazione.
   const empty = render(build([]), { inRealization: 1, realizationHref: "/p#panoramica-in-realizzazione" });
-  assert.ok(empty.includes('data-slot="hub-empty"') && empty.includes("Niente da chiedere per ora") && !empty.includes("needs-summary"));
+  assert.ok(empty.includes('data-slot="hub-empty"') && empty.includes("Niente da chiedere per ora") && !empty.includes("needs-counts"));
   assert.match(empty, /<a [^>]*href="\/p#panoramica-in-realizzazione"[^>]*>Vai alla Panoramica<\/a>/);
   const none = render(build([]), { filtersActive: true, clearHref: "/h?vista=cosa-serve" });
   assert.ok(none.includes("Niente da chiedere con questi filtri.") && none.includes(">Togli i filtri<"));
-  // Un requisito senza use case: nel suo gruppo, con il suo «Per» a parole.
   const loose = render(build([need({ title: "Per tutti", ownerSide: "cliente", useCaseIds: [], forLabel: "Tutto il programma" })]));
   assert.ok(between(loose, 'data-need-group="cliente"').includes("Tutto il programma"));
-  // In realizzazione: la riga con il link, dopo la lista.
   const progress = render(build(list), { inRealization: 2, realizationHref: "/p#panoramica-in-realizzazione" });
-  assert.ok(progress.indexOf('data-slot="needs-in-progress"') > progress.indexOf('data-slot="needs-layout"'));
+  assert.ok(progress.indexOf('data-slot="needs-in-progress"') > progress.indexOf('data-slot="needs-groups"'));
 });
 
 test("i testi nuovi della vista passano la guardia delle parole e non contano persone", () => {
-  const html = render(build(fixture()));
-  const texts = [...html.matchAll(/>([^<>]+)</g)].map((m) => m[1].trim()).filter(Boolean);
-  assert.deepEqual(findHubForbiddenIn(texts, "area"), []);
-  // Nessun numero accanto a un nome: «Chi» è un testo della riga.
-  assert.ok(!/Aldo Prova[^<]*\d/.test(html));
+  for (const props of [{}, { calendar: true }, { state: "a-posto" }]) {
+    const html = render(build(fixture()), props);
+    const texts = [...html.matchAll(/>([^<>]+)</g)].map((m) => m[1].trim()).filter(Boolean);
+    assert.deepEqual(findHubForbiddenIn(texts, "area"), []);
+    assert.ok(!/Aldo Prova[^<]*\d/.test(html));
+  }
+  assert.deepEqual(findHubForbiddenIn(Object.values(board.NEEDS_BOARD_TEXT).flatMap((v) => (typeof v === "string" ? [v] : [])), "area"), []);
+  assert.equal(board.NEEDS_BOARD_TEXT.seeAll(12), "Vedi tutte (12)");
 });

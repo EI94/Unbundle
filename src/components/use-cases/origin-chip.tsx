@@ -36,3 +36,23 @@ export function OriginChip({ origin, variant = "chip", className }: OriginChipPr
     </span>
   );
 }
+
+/** (Rilascio 10, §3.4) Il nome dell'origine per i lettori di schermo, accanto al punto. */
+export const ORIGIN_DOT_TEXT = Object.freeze({
+  label: (origin: Origin) => `Origine: ${ORIGIN_LABEL[origin].chip}`,
+});
+
+/**
+ * (Rilascio 10, §3.4) L'origine come un punto, nelle righe di «Da decidere»: il colore della matrice e, per chi legge lo
+ * schermo e al passaggio del mouse, le parole («Origine: Dal basso»). Il colore non è mai il solo segno: la parola c'è
+ * sempre, nascosta alla vista e letta dai lettori di schermo.
+ */
+export function OriginDot({ origin, className }: { origin: Origin; className?: string }) {
+  const text = ORIGIN_DOT_TEXT.label(origin);
+  return (
+    <span data-slot="origin-dot" data-origin={origin} title={text} className={cn("inline-flex size-3 shrink-0 items-center justify-center", className)}>
+      <span aria-hidden className={cn("size-2 rounded-full", ORIGIN_DOT_CLASS[origin])} />
+      <span className="sr-only">{text}</span>
+    </span>
+  );
+}

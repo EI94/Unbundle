@@ -37,7 +37,10 @@ test("0.19 · revoking a CLI connection asks first, in a dialog of the app", () 
 test("0.20 · the share page has no button inside a link: the button renders the link", () => {
   const page = read("src/app/share/portfolio/[workspaceId]/[useCaseId]/page.tsx");
   assert.doesNotMatch(page, /<Link[^>]*>\s*<Button/);
-  assert.match(page, /<Button render=\{<Link href=\{loginUrl\} \/>\} nativeButton=\{false\} className="h-10">\s*Accedi a Unbundle/);
+  // (Rilascio 10, §3.4) The views moved to share-view.tsx, with the full-width 48 px buttons of the public pages.
+  const view = read("src/app/share/portfolio/[workspaceId]/[useCaseId]/share-view.tsx");
+  assert.doesNotMatch(view, /<Link[^>]*>\s*<Button/);
+  assert.match(view, /<Button render=\{<Link href=\{loginHref\} \/>\} nativeButton=\{false\} className="h-12 w-full text-base">\s*\{SHARE_PAGE_TEXT\.invalidLogin\}/);
 });
 
 test("0.21 · on /cli/collega the brand goes to the workspaces", () => {

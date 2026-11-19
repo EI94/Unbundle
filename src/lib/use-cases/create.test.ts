@@ -25,7 +25,9 @@ import {
   formFields,
   formSubtitle,
   fullFormPath,
+  REQUIRED_TEXT,
   URGENCY_LABEL,
+  parseQuickUseCaseForm,
   parseUseCaseForm,
   proposedToast,
   quickCreateItem,
@@ -142,16 +144,17 @@ test("pannello rapido: limiti di §5.2 e nomi dei campi del pannello negli error
   assert.ok(!readQuickCreate({ title: "Titolo valido", problem: "Problema valido", source: "web_proposed" }).ok);
 });
 
-test("pannello rapido: testi esatti di §5.2 e toast «XX-0031 salvato.»", () => {
-  assert.equal(QUICK_CREATE_TEXT.heading, "Nuovo use case");
-  assert.equal(QUICK_CREATE_TEXT.titleLabel, "Titolo");
-  assert.equal(QUICK_CREATE_TEXT.problemLabel, "Problema in una riga");
-  assert.equal(QUICK_CREATE_TEXT.aiLabLabel, "AI Lab");
-  assert.equal(QUICK_CREATE_TEXT.hint, "I dettagli si completano dopo.");
-  assert.equal(QUICK_CREATE_TEXT.save, "Salva");
-  assert.equal(QUICK_CREATE_TEXT.saveAndAdd, "Salva e aggiungi un altro");
-  assert.equal(QUICK_CREATE_TEXT.fullForm, "Usa il modulo completo");
-  assert.equal(QUICK_CREATE_TEXT.error, "Non riusciamo a salvare. Riprova.");
+test("pannello rapido: testi esatti (rilascio 10, §3.4: lo stesso modulo della pagina) e toast «XX-0031 salvato.»", () => {
+  assert.deepEqual(QUICK_CREATE_TEXT, {
+    heading: "Nuovo use case",
+    aiLabLabel: "AI Lab",
+    aiLabPlaceholder: "es. AI Lab Finanza · 12 ott",
+    save: "Salva",
+    saveAndAdd: "Salva e aggiungi un altro",
+    saving: "Salvo…",
+    close: "Chiudi",
+    error: "Non riusciamo a salvare. Riprova.",
+  });
   assert.equal(savedToast("XX-0031"), "XX-0031 salvato.");
   assert.equal(savedToast(null), "Use case salvato.");
   assert.equal(fullFormPath(WS), `/dashboard/${WS}/use-cases/nuovo`);
@@ -166,11 +169,12 @@ test("modulo completo: i campi di oggi con le etichette di §6.2 per tipo; Limit
     [
       ["title", "Titolo", true, false, 200],
       ["description", "Problema", true, true, 4000],
-      ["flowDescription", "Come funziona", true, true, 4000],
-      ["businessCase", "Valore atteso", true, true, 2000],
-      ["humanInTheLoop", "Chi controlla", true, true, 2000],
+      // (Rilascio 10, D8) Gli altri campi restano, nello stesso ordine, ma si possono lasciare vuoti.
+      ["flowDescription", "Come funziona", false, true, 4000],
+      ["businessCase", "Valore atteso", false, true, 2000],
+      ["humanInTheLoop", "Chi controlla", false, true, 2000],
       ["guardrails", "Limiti", false, true, 2000],
-      ["dataRequirements", "Dati", true, true, 2000],
+      ["dataRequirements", "Dati", false, true, 2000],
       // «Urgenza» come oggi (`submit-form.tsx`), in fondo: facoltativa, una riga, colonna `timeline`.
       ["timeline", "Urgenza", false, false, 255],
     ],
@@ -183,13 +187,14 @@ test("modulo completo: i campi di oggi con le etichette di §6.2 per tipo; Limit
     [
       ["title", "Titolo", true],
       ["description", "Prima", true],
-      ["flowDescription", "Adesso", true],
-      ["businessCase", "Risultato", true],
-      ["humanInTheLoop", "Chi la usa", true],
-      ["dataRequirements", "Cosa serve per copiarla", true],
-      ["sustainabilityImpact", "Impatto ambientale e sociale", true],
+      ["flowDescription", "Adesso", false],
+      ["businessCase", "Risultato", false],
+      ["humanInTheLoop", "Chi la usa", false],
+      ["dataRequirements", "Cosa serve per copiarla", false],
+      ["sustainabilityImpact", "Impatto ambientale e sociale", false],
     ],
   );
+  assert.deepEqual([...REQUIRED_TEXT], ["title", "description"], "D8: solo Titolo e Problema");
   // Le etichette vengono da WHAT_FIELD_LABEL, non scritte una seconda volta; «Urgenza» sta in
   // «Dettagli» (§6.2), non in «Cosa è».
   for (const kind of ["da_costruire", "da_diffondere"] as const) {
@@ -207,12 +212,11 @@ test("modulo completo: testi esatti di §5.3, nome del team senza articolo né �
     da_costruire: "Un'idea da costruire con l'AI",
     da_diffondere: "Una cosa che fai già con l'AI e che altri possono copiare",
   });
+  assert.equal(FORM_TEXT.details, "Aggiungi dettagli");
   assert.equal(FORM_TEXT.originBlock, "Origine");
-  assert.equal(FORM_TEXT.valuationBlock, "Valutazione iniziale (facoltativa)");
+  assert.equal(FORM_TEXT.valuationBlock, "Valutazione iniziale");
   assert.equal(FORM_TEXT.valueLabel, "Valore all'anno");
   assert.equal(FORM_TEXT.submit, "Invia lo use case");
-  assert.equal(FORM_TEXT.optional, "facoltativo");
-  assert.equal(FORM_TEXT.requiredNote, "I campi sono obbligatori, tranne quelli segnati «facoltativo».");
   // §14.3: i testi del modulo sono quelli di §5.3-§5.5, niente di più. Nessun aiuto sotto
   // «Valore all'anno» e nessun avviso sulle schede nascoste: quello sta sotto la nota pubblica
   // (§6.4, §8.6), non nel modulo.
@@ -221,6 +225,8 @@ test("modulo completo: testi esatti di §5.3, nome del team senza articolo né �
     "back",
     "kindQuestion",
     "kindOptions",
+    // (Rilascio 10, §3.4) Gli altri campi, tutti facoltativi, in una piega chiusa: niente più «facoltativo» accanto a ognuno.
+    "details",
     "originBlock",
     "valuationBlock",
     "valueLabel",
@@ -228,9 +234,6 @@ test("modulo completo: testi esatti di §5.3, nome del team senza articolo né �
     "submit",
     "submitting",
     "required",
-    // H4p: il modulo dice quali campi sono facoltativi.
-    "optional",
-    "requiredNote",
     "tooShort",
     "titleTooShort",
     "chooseKind",
@@ -241,9 +244,10 @@ test("modulo completo: testi esatti di §5.3, nome del team senza articolo né �
   const formStrings = Object.values(FORM_TEXT).flatMap((value) => (typeof value === "string" ? [value] : Object.values(value)));
   assert.deepEqual(formStrings.filter((text) => /nascost|beneficio/i.test(text)), []);
   const subtitle = formSubtitle(DEFAULT_REVIEW_TEAM_NAME);
-  assert.equal(subtitle, `Racconta l'idea in modo semplice. La valuta ${DEFAULT_REVIEW_TEAM_NAME}: qui vedi come va.`);
+  assert.equal(subtitle, `La valuta ${DEFAULT_REVIEW_TEAM_NAME}: qui vedi come va.`);
   assert.doesNotMatch(subtitle, new RegExp(`\\b(il|lo|team) ${DEFAULT_REVIEW_TEAM_NAME}`, "i"));
-  assert.equal(formSubtitle("CoE AI"), "Racconta l'idea in modo semplice. La valuta CoE AI: qui vedi come va.");
+  assert.equal(formSubtitle("CoE AI"), "La valuta CoE AI: qui vedi come va.");
+  assert.ok(formSubtitle("CoE AI").split(" ").length <= 10, "un fatto in al più dieci parole (§5.4)");
   assert.equal(receiptPath(WS, UC), `/dashboard/${WS}/use-cases?vista=panoramica&thanks=1&created=${UC}`);
 });
 
@@ -305,24 +309,41 @@ test("modulo completo: un contributore propone; testi puliti, Limiti e ESG solo 
   assert.equal(noLimits.item.guardrails, null);
 });
 
-test("modulo completo: obbligatori come oggi, tipo da scegliere, testi corti e lunghi", () => {
-  const noKind = parseUseCaseForm(formOf({ title: "Titolo" }), { esgEnabled: false, isReviewer: false });
-  assert.ok(!noKind.ok);
-  assert.deepEqual(noKind.fieldErrors, { kind: FORM_TEXT.chooseKind });
-  assert.equal(noKind.message, FORM_TEXT.fixFields);
+test("modulo completo (rilascio 10, D8): obbligatori solo Titolo e Problema, il tipo parte da «Da costruire», testi corti e lunghi", () => {
+  // Il tipo che manca è «Da costruire», la scelta di partenza del modulo; un valore sconosciuto è un errore.
+  const noKind = parseUseCaseForm(formOf({ title: "Titolo", description: "Il problema" }), { esgEnabled: false, isReviewer: false });
+  assert.ok(noKind.ok);
+  assert.equal(noKind.item.kind, "da_costruire");
+  const wrongKind = parseUseCaseForm(formOf({ kind: "altro", title: "Titolo" }), { esgEnabled: false, isReviewer: false });
+  assert.ok(!wrongKind.ok);
+  assert.deepEqual(wrongKind.fieldErrors, { kind: FORM_TEXT.chooseKind });
+  assert.equal(wrongKind.message, FORM_TEXT.fixFields);
 
   const empty = parseUseCaseForm(formOf({ kind: "da_costruire" }), { esgEnabled: true, isReviewer: true });
   assert.ok(!empty.ok);
-  assert.deepEqual(Object.keys(empty.fieldErrors).sort(), [
-    "businessCase",
-    "dataRequirements",
-    "description",
-    "flowDescription",
-    "humanInTheLoop",
-    "sustainabilityImpact",
-    "title",
-  ]);
+  assert.deepEqual(Object.keys(empty.fieldErrors).sort(), ["description", "title"]);
   assert.ok(Object.values(empty.fieldErrors).every((message) => message === FORM_TEXT.required));
+
+  // Solo Titolo e Problema: va bene, e i campi vuoti si salvano come oggi un campo lasciato vuoto (null).
+  const minimal = parseUseCaseForm(formOf({ kind: "da_costruire", title: "  Smistamento  ", description: " Le richieste arrivano sparse " }), { esgEnabled: true, isReviewer: false });
+  assert.ok(minimal.ok);
+  assert.deepEqual(minimal.item, {
+    source: "web_proposed",
+    kind: "da_costruire",
+    title: "Smistamento",
+    description: "Le richieste arrivano sparse",
+    flowDescription: null,
+    humanInTheLoop: null,
+    guardrails: null,
+    businessCase: null,
+    dataRequirements: null,
+    sustainabilityImpact: null,
+    timeline: null,
+  });
+  // Un campo facoltativo corto va bene: il minimo vale solo per Titolo e Problema.
+  const shortOptional = parseUseCaseForm(formOf({ ...FILLED, flowDescription: "AI", humanInTheLoop: "Io" }), { esgEnabled: false, isReviewer: false });
+  assert.ok(shortOptional.ok);
+  assert.equal(shortOptional.item.flowDescription, "AI");
 
   const short = parseUseCaseForm(formOf({ ...FILLED, title: "ab", description: "x" }), { esgEnabled: false, isReviewer: false });
   assert.ok(!short.ok);
@@ -371,7 +392,8 @@ test("modulo completo, revisori: origine, valore all'anno e costo dal campo di �
   const both = parseUseCaseForm(formOf({ ...FILLED, cost: '{"eurOnce":40000,"band":2}' }), opts);
   assert.ok(!both.ok);
   assert.equal(both.fieldErrors.cost, COST_BOTH_ERROR);
-  assert.deepEqual(Object.values(FORM_FIELD_NAMES).sort(), ["cost", "kind", "origin", "valueEurYear"]);
+  // (Rilascio 10) «aiLab» solo nel pannello rapido di Lateral Space (`parseQuickUseCaseForm`).
+  assert.deepEqual(Object.values(FORM_FIELD_NAMES).sort(), ["aiLab", "cost", "kind", "origin", "valueEurYear"]);
 });
 
 // ─── Activity mapping (§8.5) ─────────────────────────────────────────
@@ -499,6 +521,43 @@ test("Activity mapping: testi accorciati ai limiti, proposte senza titolo scarta
   assert.equal(first.generatorDetails?.sequenceOrder, 1);
   assert.equal(second.generatorDetails?.sequenceOrder, 2, "l'ordine conta solo le proposte tenute");
   assert.deepEqual(activityMappingItems([], { includeEsg: true }), []);
+});
+
+// ─── (Rilascio 10, §3.4) Il modulo nel pannello rapido ───────────────
+
+test("pannello rapido (rilascio 10): lo stesso modulo della pagina, più «AI Lab»; si salva come prima, `manual`, senza proponente", () => {
+  const opts = { esgEnabled: false, isReviewer: true };
+  const read = parseQuickUseCaseForm(formOf({ kind: "da_costruire", title: "  Bozze di risposta ", description: "Tre risposte uguali al giorno", aiLab: "  AI Lab  Finanza · 12 ott ", origin: "transformation" }), opts);
+  assert.ok(read.ok);
+  assert.deepEqual(read.item, {
+    source: "manual",
+    kind: "da_costruire",
+    title: "Bozze di risposta",
+    description: "Tre risposte uguali al giorno",
+    flowDescription: null,
+    humanInTheLoop: null,
+    guardrails: null,
+    businessCase: null,
+    dataRequirements: null,
+    sustainabilityImpact: null,
+    timeline: null,
+    origin: "transformation",
+    aiLab: "AI Lab Finanza · 12 ott",
+  });
+  assert.ok(!("proposedBy" in read.item), "nessun proponente");
+  // «AI Lab» vuoto: nessun valore; i dettagli e la valutazione iniziale arrivano come nel modulo della pagina.
+  const full = parseQuickUseCaseForm(formOf({ ...FILLED, aiLab: "   ", valueEurYear: "60.000", cost: '{"band":2}' }), opts);
+  assert.ok(full.ok);
+  assert.equal(full.item.aiLab, null);
+  assert.equal(full.item.flowDescription, "Claude legge e smista");
+  assert.equal(full.item.valueEurYear, 60000);
+  assert.deepEqual(full.item.cost, { band: 2 });
+  // Gli stessi obbligatori e gli stessi messaggi; «AI Lab» fino a 120 caratteri.
+  const wrong = parseQuickUseCaseForm(formOf({ kind: "da_costruire", title: "ab", aiLab: "a".repeat(121) }), opts);
+  assert.ok(!wrong.ok);
+  assert.deepEqual(wrong.fieldErrors, { title: FORM_TEXT.titleTooShort, description: FORM_TEXT.required, aiLab: tooLongMessage(120) });
+  assert.equal(wrong.message, FORM_TEXT.fixFields);
+  assert.equal(FORM_FIELD_NAMES.aiLab, "aiLab");
 });
 
 // ─── Testi dell'area (§14.5) ─────────────────────────────────────────

@@ -317,6 +317,8 @@ function queryOf(params: HubParams, view: HubView): HubQuery {
   if (params.trimestre) query.trimestre = params.trimestre;
   if (params.stima) query.stima = params.stima;
   if (params.info) query.info = INFO_PROGRESS_PARAM[params.info];
+  if (params.stato) query.stato = params.stato;
+  if (params.calendario) query.calendario = "1";
   if (params.apri) query.apri = params.apri;
   if (params.nuovo) query.nuovo = "1";
   if (params.thanks) query.thanks = "1";
@@ -602,8 +604,6 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
                 kind={ignoreKind ? "nessuno" : "filtro"}
                 more={reviewer ? moreFilterOptions(reviewerItems, params, data.info, data.areaLabels) : undefined}
                 referent={data.referentStates ? referentMenu : null}
-                active={filtersActive}
-                clearHref={clearHref}
               />
             </div>
           ) : null}
@@ -676,12 +676,15 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
                 clientLabel={clientGroupLabel(data.connectorDisplayName, data.workspaceName)}
                 agents={agents}
                 hrefOf={(id) => panelHref(basePath, query, id)}
+                basePath={basePath}
+                query={query}
+                state={params.stato}
+                calendar={params.calendario}
                 inRealization={(filtered as HubItem[]).filter((item) => item.phase === "in_realizzazione").length}
                 realizationHref={`${viewHref("panoramica")}#${PANORAMA_SECTION_ID.inRealizzazione}`}
                 filtersActive={filtersActive}
                 clearHref={clearHref}
                 searched={Boolean(params.q)}
-                quarter={params.trimestre ? (params.trimestre === LATER_QUARTER_PARAM ? WHEN_LATER_LABEL : quarterLabel(params.trimestre)) : null}
               />
             </>
           ) : null
@@ -695,11 +698,11 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
               today={list.today}
               basePath={basePath}
               query={query}
-              bands={bands}
               overviewHref={abilities.canSeePriority ? viewHref("panoramica") : null}
-              referentStates={data.referentStates}
               filtersActive={filtersActive}
               clearHref={clearHref}
+              agents={agents}
+              canDecide={abilities.canDecide}
             />
           </>
         )}
@@ -731,9 +734,18 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
           canMarkInProgress={abilities.canMarkInProgress}
           companyName={data.workspaceName}
           referent={panelData.projection === "revisore" ? data.panelReferent : null}
+          agents={agents}
         />
       ) : null}
-      {data.quickCreate ? <QuickCreateSheet workspaceId={workspaceId} aiLabs={data.quickCreate.aiLabs} lastAiLab={data.quickCreate.lastAiLab} /> : null}
+      {data.quickCreate ? (
+        <QuickCreateSheet
+          workspaceId={workspaceId}
+          aiLabs={data.quickCreate.aiLabs}
+          lastAiLab={data.quickCreate.lastAiLab}
+          esgEnabled={list.projection !== "contributore" && list.esgEnabled}
+          costBands={bands}
+        />
+      ) : null}
     </PageContainer>
   );
 }

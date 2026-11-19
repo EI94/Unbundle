@@ -620,10 +620,10 @@ test("«Cosa serve»: al massimo un pulsante pieno, «Tipo» è un filtro, nient
   const page = await html("ls", ids.wsA, { vista: "cosa-serve" });
   assert.equal(viewOf(page), "cosa-serve");
   // (Rilascio 10, §3.4) «Nuovo» è bordato in ogni vista: il pulsante pieno è il passo della vista.
-  assert.ok(filledButtons(page) <= 1, "al massimo un pulsante pieno");
+  assert.equal(filledButtons(page), 1, "un solo pulsante pieno");
   assert.ok(!/class="[^"]*\bbg-primary\b/.test(newUseCaseTag(page)), "«Nuovo» bordato");
-  // (Rilascio 5, D25) «Tipo» è un filtro dentro «Altri filtri»; nella prima riga «Referente».
-  assert.ok(page.includes('aria-label="Referente: Tutti"') && page.includes('aria-label="Altri filtri"'), "la prima riga");
+  // (Rilascio 10, §3.4) «Cerca» e «Filtri»: «Tipo», «Referente» e gli altri stanno nel foglio.
+  assert.ok(page.includes('<form role="search"') && page.includes(">Filtri</button>"), "«Cerca» e «Filtri»");
   assert.deepEqual(filterKinds((await hubTree("ls", ids.wsA, { vista: "cosa-serve" })).tree), ["filtro"], "«Tipo» come filtro");
   assert.ok(page.includes('data-slot="needs-board"'));
   assert.ok(!page.includes('data-slot="value-cost-matrix"') && !page.includes('data-slot="lanes"'));
@@ -642,10 +642,13 @@ test("(rilascio 10, §3.4) testata: H1 senza sottotitolo, «Nuovo» bordato (pan
   const contributor = await html("contributor", ids.wsA);
   assert.ok(contributor.includes(`href="/dashboard/${ids.wsA}/use-cases/nuovo"`));
   assert.ok(!contributor.includes('aria-label="Altre azioni"'), "niente menu «⋯» per il contributore");
-  // «Nuovo» a schermo, «Nuovo use case» per i lettori di schermo.
+  // «Nuovo» a schermo, «Nuovo use case» per i lettori di schermo. (Rilascio 10, §3.4) In «Da decidere» il pulsante
+  // pieno della vista è «Inizia dal più vecchio», nel suo passo; fuori dal passo nessun altro ai revisori.
   for (const page of [ls, builder, contributor]) {
     assert.match(newUseCaseTag(page), /aria-label="Nuovo use case"/);
     assert.ok(filledButtons(page) <= 1, "al massimo un pulsante pieno");
+    const own = page.includes('data-slot="next-step"') ? filledButtons(sectionOf(page, "next-step")) : 0;
+    assert.ok(own <= 1 && filledButtons(page) - own <= 1, "un solo pulsante pieno, oltre al passo della vista");
   }
   // Ai revisori «Nuovo» è bordato in ogni vista: il pulsante pieno è il passo della vista. Nella Panoramica con il
   // prossimo passo (D3: in A ci sono proposte da decidere) è il suo, «Decidi N use case».
@@ -773,36 +776,38 @@ test("fasce del workspace: la colonna «Fascia» dell'export usa le etichette de
 
 // ─── Le tre viste ────────────────────────────────────────────────────
 
-test("«Da decidere»: righe con Valore e Costo con la fonte, giorni di attesa, «Serve info» sotto «In attesa di risposta»", opts, async () => {
+test("(rilascio 10, §3.4) «Da decidere»: righe con tag e titolo, codice, sotto-stato, Valore e giorni; il costo nel pannello; «Inizia dal più vecchio»", opts, async () => {
   const page = await html("ls", ids.wsA, { vista: "da-decidere" });
   const row = rowOf(page, cards.toDecideScored.id);
   assert.ok(row.includes(cards.toDecideScored.code));
-  assert.ok(row.includes("120.000 €"));
-  assert.match(row, /data-cost-source="team_importo"/);
-  assert.match(row, /data-source="team_importo"/);
   assert.ok(row.includes("Valutata"));
   assert.ok(row.includes("da 3 giorni"));
+  assert.match(row, /data-figure="valore"/);
+  // Il costo sta nel pannello, con la sua fonte (D7): nella riga né cifra né fonte.
+  assert.ok(!row.includes('data-figure="costo"') && !row.includes("data-cost-source") && !row.includes("Costo: "), row);
+  // L'origine è un punto con le parole per i lettori di schermo.
+  assert.match(row, /data-slot="origin-dot" data-origin="[a-z]+" title="Origine: [^"]+"/);
+  assert.ok(!row.includes('data-slot="origin-chip"') && !row.includes('data-slot="referent-chip"'));
   const divider = page.indexOf("In attesa di risposta");
   assert.ok(divider > 0);
   assert.ok(page.indexOf(`data-id="${cards.serveInfo.id}"`) > divider, "«Serve info» sotto il divisore");
   assert.ok(page.indexOf(`data-id="${cards.newIdea.id}"`) < divider);
   // Il contatore non conta «Serve info»: Idea nuova, Da decidere valutata, Solo Valore con risposta, Mia proposta, Altrui, Altrui nascosta.
   assert.match(page, /Da decidere<\/span><span class="text-xs text-muted-foreground tabular-nums">6</);
-  // Telefono (§4.6, D5): la seconda riga va a capo, il costo non si accorcia mai e la sua fonte
-  // resta a schermo; «Valore:» e «Costo:» a ogni larghezza, così ogni riga dice lo stesso (H7).
-  const tagOf = (html: string, figure: string) => new RegExp(`<span data-figure="${figure}"[^>]*>`).exec(html)?.[0] ?? "";
-  assert.match(row, /<span class="flex min-w-0 flex-wrap /);
-  assert.ok(!tagOf(row, "costo").includes("truncate"), tagOf(row, "costo"));
-  assert.ok(!tagOf(row, "costo").includes("first-child]:hidden") && !tagOf(row, "valore").includes("first-child]:hidden"));
-  assert.ok(row.includes("Valore: ") && row.includes("Costo: "));
+  // «Valore:» a ogni larghezza, così ogni riga dice lo stesso (H7); senza Valore «da stimare».
   const valueOnly = rowOf(page, cards.answered.id);
-  assert.match(valueOnly, /Costo: <\/span><span[^>]*>da stimare</);
-  assert.ok(!tagOf(valueOnly, "valore").includes("first-child]:hidden"), "«Valore: Alto» anche sul telefono");
+  assert.match(valueOnly, /Valore: <\/span><span[^>]*>/);
   // D17 (H7): una risposta non ancora decisa si legge «Risposta ricevuta», non «Nuova».
   assert.ok(valueOnly.includes(">Risposta ricevuta<") && !valueOnly.includes(">Nuova<"), "risposta ricevuta");
   // Approvate e realizzate non ci sono.
   assert.ok(!page.includes(`data-id="${cards.amount.id}"`));
   assert.ok(!page.includes(`data-id="${cards.realized.id}"`));
+  // Il pulsante pieno della vista: «Inizia dal più vecchio», che apre il pannello della prima riga.
+  const step = sectionOf(page, "next-step");
+  assert.ok(step.includes(">Inizia dal più vecchio<") || step.includes("Inizia dal più vecchio</a>"), step);
+  const first = /data-slot="use-case-row" data-id="([^"]+)"/.exec(page)?.[1];
+  assert.match(step, new RegExp(`href="/dashboard/${ids.wsA}/use-cases\\?vista=da-decidere&amp;apri=${first}"`));
+  assert.equal(filledButtons(step), 1);
 });
 
 test("vecchi link di «Priorità»: la Panoramica", opts, async () => {
@@ -817,14 +822,14 @@ test("vecchi link di «Priorità»: la Panoramica", opts, async () => {
   assert.equal((page.match(/data-slot="filter-bar"/g) ?? []).length, 1, "una sola riga di filtri");
   const diffuse = await html("ls", ids.wsA, { vista: "priorita", tipo: "diffondere" });
   assert.equal(viewOf(diffuse), "panoramica");
-  // (Rilascio 5) «Tipo» sta in «Altri filtri»: la scelta si vede nel numero e in «Togli i filtri».
-  assert.ok(diffuse.includes("Togli i filtri"));
+  // (Rilascio 10, §3.4) «Tipo» sta nel foglio «Filtri»: la scelta si vede nel chip e in «Togli tutti».
+  assert.ok(diffuse.includes("Tipo: Da diffondere") && diffuse.includes(">Togli tutti</a>"));
   assert.ok(rowOf(diffuse, cards.bestPractice.id).includes(cards.bestPractice.title), "la best practice nella Panoramica");
   // Il chip «N da stimare» di prima (`tipo=costruire&stima=mancante`) apre la matrice: lì «da stimare» non filtra.
   const toEstimate = await html("ls", ids.wsA, { vista: "priorita", tipo: "costruire", stima: "mancante" });
   assert.ok(toEstimate.includes('data-chart="matrice"'));
   assert.ok(toEstimate.includes(`data-point="${cards.amount.id}"`), "lo use case con importo ha il suo punto");
-  assert.ok(!toEstimate.includes("Togli i filtri"));
+  assert.ok(!toEstimate.includes(">Togli tutti</a>"));
   // `stima` non passa alle altre viste, e il contatore di «Da decidere» conta come loro.
   const withEstimate = await html("ls", ids.wsA, { vista: "panoramica", stima: "mancante" });
   assert.deepEqual(
@@ -841,7 +846,7 @@ test("vecchi link: ?vista=priorita e ?vista=roadmap aprono la Panoramica con gli
     const page = await html(person, ids.wsA, { vista: "roadmap", origine: "adoption", apri: cards.amount.id });
     assert.equal(viewOf(page), "panoramica", person);
     assert.match(page, /<a [^>]*aria-current="page"[^>]*><span>Panoramica<\/span>/, `${person}: «Panoramica» è la vista scelta`);
-    assert.ok(page.includes("Togli i filtri"), `${person}: l'origine resta un filtro`);
+    assert.ok(page.includes("Origine: Dal basso") && page.includes(">Togli tutti</a>"), `${person}: l'origine resta un filtro`);
     const { data } = await hubTree(person, ids.wsA, { vista: "roadmap", origine: "adoption", apri: cards.amount.id });
     assert.equal(data.params.apri, cards.amount.id, `${person}: il pannello resta aperto`);
     assert.equal(data.params.origine, "adoption");
@@ -892,50 +897,43 @@ test("(rilascio 10, §3.4) «⋯» › «Grafici ›»: una sola «Matrice» con
   assert.ok(!(await html("ls", ids.wsA, { vista: "panoramica", mostra: "matrice" })).includes('aria-label="Lato della matrice"'));
 });
 
-/**
- * La ✕ «Togli i filtri» della barra dei revisori: quante (il nome per i lettori di schermo), l'indirizzo
- * della prima e se è l'ultimo controllo della riga (dopo il suo `</svg>` la parola dal tablet, poi la
- * fine della barra).
- */
-function barClearOf(page: string): { count: number; href: string | null; last: boolean } {
-  const tags = [...page.matchAll(/<a\b[^>]*aria-label="Togli i filtri"[^>]*>/g)];
-  const first = tags[0];
-  const href = first ? (/href="([^"]*)"/.exec(first[0])?.[1] ?? null) : null;
-  const after = first ? page.slice(first.index + first[0].length) : "";
-  const last = Boolean(first) && after.slice(after.indexOf("</svg>") + 6).startsWith('<span class="hidden sm:inline">Togli i filtri</span></a></span></div>');
-  return { count: tags.length, href, last };
+/** (Rilascio 10, §3.4) I chip dei filtri attivi (il testo e l'indirizzo del ✕) e l'indirizzo di «Togli tutti». */
+function chipsOf(page: string): { chips: Array<{ text: string; href: string }>; clearAll: string | null } {
+  const list = /<ul data-slot="filter-chips-active"[\s\S]*?<\/ul>/.exec(page)?.[0] ?? "";
+  const chips = [...list.matchAll(/<li class="inline-flex[^"]*"><span>([^<]*)<\/span><a\b[^>]*href="([^"]*)"/g)].map((m) => ({ text: m[1], href: m[2] }));
+  return { chips, clearAll: /<a\b[^>]*href="([^"]*)"[^>]*>Togli tutti<\/a>/.exec(list)?.[1] ?? null };
 }
 
-test("«Togli i filtri» nella riga dei filtri anche al telefono: la ✕ dei revisori in ogni vista, la parola dei contributori", opts, async () => {
+test("(rilascio 10, §3.4) i filtri attivi come chip con ✕ e «Togli tutti», in ogni vista; la vista e il grafico restano", opts, async () => {
   const base = (workspaceId: string) => `/dashboard/${workspaceId}/use-cases`;
-  const views: Array<[string, Record<string, string>, string]> = [
-    [ids.wsA, { vista: "panoramica", origine: "adoption" }, `${base(ids.wsA)}?vista=panoramica`],
-    [ids.wsP, { vista: "panoramica", mostra: "agenti", origine: "adoption" }, `${base(ids.wsP)}?vista=panoramica&amp;mostra=agenti`],
-    [ids.wsA, { vista: "panoramica", mostra: "matrice", origine: "adoption" }, `${base(ids.wsA)}?vista=panoramica&amp;mostra=matrice`],
-    [ids.wsA, { vista: "da-decidere", tipo: "costruire" }, `${base(ids.wsA)}?vista=da-decidere`],
-    [ids.wsA, { vista: "cosa-serve", origine: "adoption" }, `${base(ids.wsA)}?vista=cosa-serve`],
+  const views: Array<[string, Record<string, string>, string, string]> = [
+    [ids.wsA, { vista: "panoramica", origine: "adoption" }, "Origine: Dal basso", `${base(ids.wsA)}?vista=panoramica`],
+    [ids.wsP, { vista: "panoramica", mostra: "agenti", origine: "adoption" }, "Origine: Dal basso", `${base(ids.wsP)}?vista=panoramica&amp;mostra=agenti`],
+    [ids.wsA, { vista: "panoramica", mostra: "matrice", origine: "adoption" }, "Origine: Dal basso", `${base(ids.wsA)}?vista=panoramica&amp;mostra=matrice`],
+    [ids.wsA, { vista: "da-decidere", tipo: "costruire" }, "Tipo: Da costruire", `${base(ids.wsA)}?vista=da-decidere`],
+    [ids.wsA, { vista: "cosa-serve", origine: "adoption" }, "Origine: Dal basso", `${base(ids.wsA)}?vista=cosa-serve`],
   ];
   for (const person of ["ls", "builder", "manager"] as const) {
-    for (const [workspaceId, params, href] of views) {
+    for (const [workspaceId, params, text, href] of views) {
       const page = await html(person, workspaceId, params);
       const label = `${person} ${JSON.stringify(params)}`;
-      assert.deepEqual(barClearOf(page), { count: 1, href, last: true }, label);
-      assert.ok(!page.includes("hidden sm:inline-flex"), `${label}: mai nascosta al telefono`);
+      assert.deepEqual(chipsOf(page), { chips: [{ text, href }], clearAll: href }, label);
+      assert.ok(page.includes(">Filtri (1)</button>"), `${label}: «Filtri (1)»`);
     }
-    assert.equal(barClearOf(await html(person, ids.wsA, { vista: "panoramica" })).count, 0, `${person}: senza filtri niente ✕`);
+    assert.deepEqual(chipsOf(await html(person, ids.wsA, { vista: "panoramica" })), { chips: [], clearAll: null }, `${person}: senza filtri niente chip`);
   }
-  // Il contributore ha solo la ricerca: «Togli i filtri» resta la parola, anche al telefono.
+  // Il contributore ha la ricerca (e «Referente», quando serve): la ricerca non è un chip, si toglie dal campo.
   for (const vista of ["da-decidere", "panoramica"]) {
     const page = await html("contributor", ids.wsA, { vista, q: cards.ownByEmail.code });
-    assert.equal(barClearOf(page).count, 0, vista);
-    assert.match(page, new RegExp(`<span class="shrink-0"><a [^>]*href="${base(ids.wsA)}\\?vista=${vista}"[^>]*>Togli i filtri</a></span></div>`), vista);
+    assert.deepEqual(chipsOf(page).chips, [], vista);
+    assert.match(page, new RegExp(`<input type="search"[^>]*name="q" value="${cards.ownByEmail.code}"`), vista);
   }
 });
 
 test("grafici del menu «⋯»: tengono i filtri; «Torna alla Panoramica» li tiene, «Togli i filtri» tiene il grafico", opts, async () => {
   const page = await html("ls", ids.wsA, { vista: "panoramica", mostra: "matrice", origine: "adoption" });
   assert.equal(chartHeaderOf(page).href, `/dashboard/${ids.wsA}/use-cases?vista=panoramica&amp;origine=adoption`);
-  assert.match(page, new RegExp(`aria-label="Togli i filtri"[^>]*href="/dashboard/${ids.wsA}/use-cases\\?vista=panoramica&amp;mostra=matrice"`));
+  assert.equal(chipsOf(page).clearAll, `/dashboard/${ids.wsA}/use-cases?vista=panoramica&amp;mostra=matrice`, "«Togli tutti» tiene il grafico");
   assert.ok(page.includes('data-slot="value-cost-matrix"'));
   assert.ok(!page.includes('data-slot="lanes"'), "il grafico al posto delle corsie");
 
@@ -950,7 +948,7 @@ test("grafici del menu «⋯»: tengono i filtri; «Torna alla Panoramica» li t
   assert.ok(diffuse.includes(`data-point="${cards.amount.id}"`), "la matrice con i suoi punti");
   assert.ok(!diffuse.includes('aria-label="Tipo:'), "niente «Tipo» sulla matrice");
   assert.ok(chartHeaderOf(diffuse).href.includes("&amp;tipo=diffondere"), chartHeaderOf(diffuse).href);
-  assert.ok(!diffuse.includes("Togli i filtri"), "il tipo non è un filtro sulla matrice");
+  assert.ok(!diffuse.includes(">Togli tutti</a>"), "il tipo non è un filtro sulla matrice");
 
   // I vecchi link: «Da diffondere» con `mostra` e `mostra=lista` aprono le corsie, senza grafico.
   const oldDiffuse = await html("ls", ids.wsA, { vista: "priorita", tipo: "diffondere", mostra: "matrice" });
@@ -1099,15 +1097,15 @@ test("niente si perde senza la lista di «Priorità»: nel pannello «Quando», 
 
 test("filtri: origine, tipo e «Altri filtri» ai revisori; senza risultati «Nessuno use case con questi filtri.»", opts, async () => {
   const page = await html("ls", ids.wsA, { vista: "da-decidere" });
-  // (Rilascio 5, §11.2) La prima riga: «Referente», la ricerca, «Altri filtri» (con «Tipo» e l'origine).
-  for (const text of ['aria-label="Referente: Tutti"', "Cerca per titolo o codice", "Altri filtri"]) {
+  // (Rilascio 10, §3.4) «Cerca» e «Filtri»: i nove filtri stanno nel foglio, che si apre con un tocco.
+  for (const text of ['<form role="search"', 'placeholder="Cerca"', ">Filtri</button>"]) {
     assert.ok(page.includes(text), text);
   }
-  assert.ok(!page.includes(">Tipo:<") && !page.includes('aria-label="Tipo:'), "«Tipo»: dentro «Altri filtri»");
+  assert.ok(!page.includes("Altri filtri") && !page.includes('aria-label="Tipo:') && !page.includes('aria-label="Referente:'), "niente più prima riga");
   const transformation = await html("ls", ids.wsA, { vista: "panoramica", origine: "transformation" });
   assert.ok(transformation.includes(`data-id="${cards.band.id}"`));
   assert.ok(!transformation.includes(`data-id="${cards.amount.id}"`));
-  assert.ok(transformation.includes("Togli i filtri"));
+  assert.ok(transformation.includes("Origine: Dall&#x27;alto") && transformation.includes(">Togli tutti</a>"));
   // (Rilascio 10) Con un filtro il numero grande segue il filtro; il «Prossimo passo» dice tutto il workspace e non
   // c'è. «Nuovo» resta bordato: nessun pulsante pieno.
   assert.ok(transformation.includes('data-slot="big-number"') && !transformation.includes('data-slot="phase-strip"'));
@@ -1146,7 +1144,7 @@ test("filtro «Agente»: il prefisso del titolo, solo ai revisori", opts, async 
   const libra = await html("ls", ids.wsP, { vista: "panoramica", agente: "LIBRA" });
   assert.equal(viewOf(libra), "panoramica");
   assert.deepEqual(shown(libra), [agentCards.libraL1.title, agentCards.libraL2.title, agentCards.libraL3.title], "anche «In realizzazione»");
-  assert.ok(libra.includes("Togli i filtri"));
+  assert.ok(libra.includes("Agente: LIBRA") && libra.includes(">Togli tutti</a>"));
   const others = await html("ls", ids.wsP, { vista: "panoramica", agente: "altri" });
   assert.deepEqual(shown(others), [agentCards.plain.title], "«Altri use case»: i titoli senza prefisso");
   // Le voci di «Agente», da tutte le schede del workspace (anche quelle da decidere), «Altri use case» in fondo.
@@ -1170,7 +1168,7 @@ test("filtro «Agente»: il prefisso del titolo, solo ai revisori", opts, async 
   for (const card of [agentCards.libraL1, agentCards.libraL2, agentCards.autoH1, agentCards.orsaO1, agentCards.plain]) {
     assert.ok(contributor.includes(`data-id="${card.id}"`), card.title);
   }
-  assert.ok(!contributor.includes("Agente") && !contributor.includes("Togli i filtri"));
+  assert.ok(!contributor.includes("Agente") && !contributor.includes(">Togli tutti</a>"));
   const forContributor = await hubTree("contributor", ids.wsP, { vista: "panoramica", agente: "LIBRA" });
   assert.equal(forContributor.data.params.agente, null);
   assert.deepEqual(findProp(forContributor.tree, "more"), [undefined]);
@@ -1318,7 +1316,7 @@ test("contributore: titolo, fase e «Quando»; solo «Cerca per titolo»; codice
     assert.ok(!page.includes("€"), `${vista}: «€»`);
     assert.ok(!page.includes("data-figure"), `${vista}: [data-figure]`);
     assert.ok(!page.includes('data-slot="value-bar"'), `${vista}: barre del valore`);
-    assert.ok(page.includes('placeholder="Cerca per titolo"'), vista);
+    assert.ok(page.includes('placeholder="Cerca"'), vista);
     for (const text of ["Cerca per titolo o codice", "Altri filtri", "AI Adoption", "AI Transformation", ">Tipo:<", "Priorità", "Cosa serve", "Requisiti", cards.othersHidden.title]) {
       assert.ok(!page.includes(text), `${vista}: «${text}»`);
     }
@@ -1502,7 +1500,7 @@ test("vuoti: nessuno use case, niente da decidere, niente da mettere in ordine, 
   assert.ok(zContributor.includes("Proponi il primo use case.") && !zContributor.includes('data-slot="panoramica-top"'));
 
   const eDecide = await html("ls", ids.wsE, { vista: "da-decidere" });
-  assert.ok(eDecide.includes("Niente da decidere") && eDecide.includes("Le nuove proposte arrivano qui.") && eDecide.includes("Vai alla Panoramica"));
+  assert.ok(eDecide.includes("Niente da decidere") && eDecide.includes("Le nuove idee arrivano qui.") && eDecide.includes("Vai alla Panoramica"));
   assert.match(eDecide, new RegExp(`href="/dashboard/${ids.wsE}/use-cases\\?vista=panoramica"[^>]*>Vai alla Panoramica<`));
   const eContributor = await html("contributor", ids.wsE, { vista: "da-decidere" });
   // H4p: per i contributori «In valutazione».
