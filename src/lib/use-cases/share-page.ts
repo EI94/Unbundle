@@ -17,10 +17,11 @@ export const SHARE_PAGE_TEXT = Object.freeze({
   login: "Accedi per aprire la scheda",
   /** Sotto il pulsante: quanto vale il link e fino a quando. */
   validity: (days: number, until: string) => `Il link vale ${days} giorni: fino al ${until}.`,
-  /** Il link che non vale (disattivato, copiato in parte, scaduto): una scheda sola. */
+  /**
+   * Il link che non vale (disattivato, copiato in parte, scaduto): una scheda sola e la stessa frase, così chi ha il
+   * link non sa se è scaduto o se il team l'ha tolto.
+   */
   invalidTitle: "Questo link non vale più.",
-  /** Il link scaduto dice perché, prima della frase di sempre. */
-  expired: (days: number) => `Il link vale ${days} giorni.`,
   invalidBody: "Accedi per aprire la scheda, o chiedi un link nuovo al team.",
   invalidLogin: "Accedi a Unbundle",
 });

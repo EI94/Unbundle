@@ -52,20 +52,21 @@ test("una scheda nascosta alla ricerca: solo la fase, con «Caso d'uso» come ti
   assert.ok(textOf(html).includes("Fase Da valutare") && !html.includes("Quando"));
 });
 
-test("il link che non vale: una scheda sola, una frase; scaduto dice perché", () => {
-  const invalid = readable(renderToStaticMarkup(h(view.ShareInvalid, { expiredNote: null, loginHref: LOGIN })));
+test("il link che non vale: una scheda sola, la stessa frase scaduto o tolto", () => {
+  const invalid = readable(renderToStaticMarkup(h(view.ShareInvalid, { loginHref: LOGIN })));
   assert.equal(textOf(invalid), "Unbundle Questo link non vale più. Accedi per aprire la scheda, o chiedi un link nuovo al team. Accedi a Unbundle");
   assert.match(invalid, /^<div data-slot="share-page" class="survey-light /);
-  const expired = readable(renderToStaticMarkup(h(view.ShareInvalid, { expiredNote: SHARE_PAGE_TEXT.expired(PORTFOLIO_SHARE_TTL_DAYS), loginHref: LOGIN })));
-  assert.ok(textOf(expired).includes("Questo link non vale più. Il link vale 30 giorni. Accedi per aprire la scheda"), textOf(expired));
-  assert.ok(expired.includes(`href="${LOGIN}"`));
+  assert.ok(invalid.includes(`href="${LOGIN}"`));
+  // Nessun motivo: chi ha il link non sa se è scaduto o se il team l'ha tolto.
+  assert.ok(!/giorni|scadut/i.test(textOf(invalid)), textOf(invalid));
+  assert.ok(!("expired" in SHARE_PAGE_TEXT), "nessun testo per il link scaduto");
+  assert.ok(!/expiredNote|reason/.test(VIEW.replace(/\/\*[\s\S]*?\*\//g, "")), "ShareInvalid non riceve il motivo");
 });
 
 test("i testi: «caso d'uso» fuori dalla dashboard, mai «use case» né il nome del team; 30 giorni come il link", () => {
   const texts = [
     ...Object.values(SHARE_PAGE_TEXT).flatMap((value) => (typeof value === "string" ? [value] : [])),
     SHARE_PAGE_TEXT.validity(PORTFOLIO_SHARE_TTL_DAYS, "19 dicembre"),
-    SHARE_PAGE_TEXT.expired(PORTFOLIO_SHARE_TTL_DAYS),
   ];
   assert.deepEqual(findHubForbiddenIn(texts, "esterno"), []);
   assert.equal(SHARE_PAGE_TEXT.title, "Caso d'uso");
@@ -85,7 +86,10 @@ test("i testi: «caso d'uso» fuori dalla dashboard, mai «use case» né il nom
 test("la pagina: i membri vanno alla scheda, il token si verifica prima di leggere i dati, il link che non vale ha la sua scheda", () => {
   assert.match(PAGE, /if \(access && access\.role !== "learner"\) \{\s*redirect\(memberCardPath\(workspaceId, useCaseId\)\);/);
   assert.ok(PAGE.indexOf("verifyPortfolioShareToken(") < PAGE.indexOf("getUseCaseById("), "prima il token, poi i dati");
-  assert.match(PAGE, /return <InvalidShareLink reason=\{check\.ok \? "invalid" : check\.reason\} loginUrl=\{loginHref\(workspaceId, useCaseId\)\} \/>;/);
+  // Scaduto o tolto, la stessa scheda: un solo ritorno, senza il motivo.
+  assert.match(PAGE, /if \(!workspace \|\| !check\.ok\) return <ShareInvalid loginHref=\{loginHref\(workspaceId, useCaseId\)\} \/>;/);
+  assert.equal((PAGE.match(/<ShareInvalid\b/g) ?? []).length, 1);
+  assert.ok(!/check\.reason|InvalidShareLink/.test(PAGE));
   assert.match(PAGE, /export const viewport: Viewport = \{\s*themeColor: "#f9fafb",\s*colorScheme: "light",\s*\};/);
   assert.match(PAGE, /robots: \{ index: false, follow: false \}/);
 });

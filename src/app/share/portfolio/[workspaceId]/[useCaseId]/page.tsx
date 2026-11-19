@@ -41,8 +41,8 @@ export const viewport: Viewport = {
  * ogni scheda (docs/use-case/DESIGN.md §2.3, §2.5); spenta, come oggi, la pagina di revisione.
  *
  * (Rilascio 10, §3.4) Una pagina fuori dalla dashboard (`share-view.tsx`): tema chiaro, il marchio piccolo in alto;
- * l'H1 è il titolo del caso d'uso, sotto la fase e «Quando»; «Il link vale 30 giorni». Il link che non vale (anche
- * scaduto) ha una scheda sola, con una frase. I testi stanno in `src/lib/use-cases/share-page.ts`.
+ * l'H1 è il titolo del caso d'uso, sotto la fase e «Quando»; «Il link vale 30 giorni». Il link che non vale, scaduto o
+ * tolto, ha una scheda sola con la stessa frase. I testi stanno in `src/lib/use-cases/share-page.ts`.
  */
 
 /** Chi apre il link senza essere membro: nessuna proposta è sua. */
@@ -61,10 +61,6 @@ function memberCardPath(workspaceId: string, useCaseId: string) {
 
 function loginHref(workspaceId: string, useCaseId: string) {
   return `/login?callbackUrl=${encodeURIComponent(memberCardPath(workspaceId, useCaseId))}`;
-}
-
-function InvalidShareLink({ reason, loginUrl }: { reason: "invalid" | "expired"; loginUrl: string }) {
-  return <ShareInvalid expiredNote={reason === "expired" ? SHARE_PAGE_TEXT.expired(PORTFOLIO_SHARE_TTL_DAYS) : null} loginHref={loginUrl} />;
 }
 
 export default async function PublicPortfolioSharePage({
@@ -93,9 +89,8 @@ export default async function PublicPortfolioSharePage({
   const check = workspace
     ? verifyPortfolioShareToken(workspaceId, token, { epoch: workspace.portfolioShareEpoch })
     : ({ ok: false, reason: "invalid" } as const);
-  if (!workspace || !check.ok) {
-    return <InvalidShareLink reason={check.ok ? "invalid" : check.reason} loginUrl={loginHref(workspaceId, useCaseId)} />;
-  }
+  // Scaduto o tolto, la stessa scheda: chi ha il link non sa quale dei due.
+  if (!workspace || !check.ok) return <ShareInvalid loginHref={loginHref(workspaceId, useCaseId)} />;
 
   if (!/^[0-9a-f-]{36}$/i.test(useCaseId)) notFound();
   const selected = await getUseCaseById(useCaseId);
