@@ -16,8 +16,10 @@ import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { FIGURE_SEPARATOR, PANEL_FIGURE_TEXT, panelCostParts, panelValueText } from "@/lib/use-cases/format";
 import type { NextStep } from "@/lib/use-cases/guided";
 import { SEMAFORO_TONE } from "@/components/uc/common/semaforo-tone";
+import { agentToneOf, titleAgent, type AgentPalette } from "@/lib/use-cases/agents";
 import type { ContributorUseCase } from "@/lib/use-cases/permissions";
 import type { HubItem } from "@/lib/use-cases/views";
+import { AgentTag } from "./agent-tag";
 import { AnswerForm } from "./answer-form";
 import { RiskChips } from "./detail/risk-chips";
 import { NextStepRow, type NextStepTarget } from "./detail/next-step-box";
@@ -85,7 +87,7 @@ export interface UseCasePanelProps {
   dossierDown?: boolean;
   /** Il nome del team che valuta, da solo (§14.2): «La domanda di AI Builder». */
   teamName: string;
-  /** (Rilascio 5, §10.3) Lo stato del referente dello use case (tutti i ruoli; solo la parola): ai contributori. */
+  /** (Rilascio 5, §10.3) Lo stato del referente dello use case, solo la parola: (rilascio 10, D7) per tutti i ruoli. */
   referentState?: ReferentStateKey | null;
   /** (Rilascio 6) `canEditNeeds`: le finestre del referente si aprono solo per chi modifica le esigenze. */
   canEditNeeds?: boolean;
@@ -95,6 +97,8 @@ export interface UseCasePanelProps {
   companyName?: string | null;
   /** (Rilascio 6, B.2) Il referente dello use case aperto (`loadUseCaseHub`), per le sue finestre; null senza. */
   referent?: PanelReferent | null;
+  /** (Rilascio 10, §3.4) I colori degli agenti del workspace: il tag al posto del prefisso del titolo. */
+  agents?: AgentPalette | null;
 }
 
 const NO_ASSIGN = Object.freeze({ description: Object.freeze({ text: null, dropped: 0 }), benefits: null });
@@ -114,6 +118,10 @@ const NO_ASSIGN = Object.freeze({ description: Object.freeze({ text: null, dropp
  * nota pubblica in sola lettura, in «Serve info» «Rispondi» (D17) e «Apri la scheda ›». Delle
  * proposte altrui niente link alla scheda (D4, D13). All'apertura il fuoco va a «Chiudi» senza far
  * scorrere il pannello (`focusPanelStart`).
+ *
+ * (Rilascio 10, §3.4) È già il modello e resta. Cambiano due cose: tag e titolo senza prefisso (il prefisso resta per
+ * i lettori di schermo); le stime non ufficiali in una riga grigia. La fonte del costo sta qui (D7), e lo stato del
+ * referente si legge qui per tutti, revisori compresi, accanto alla fase.
  */
 export function UseCasePanel({
   workspaceId,
@@ -130,6 +138,7 @@ export function UseCasePanel({
   canMarkInProgress = false,
   companyName = null,
   referent = null,
+  agents = null,
 }: UseCasePanelProps) {
   const router = useRouter();
   const [open, setOpen] = useState(true);
@@ -152,6 +161,7 @@ export function UseCasePanel({
   const code = data.projection === "revisore" ? data.item.code : data.item.own ? data.item.code : null;
   // La scheda di una proposta altrui, per un contributore, direbbe solo titolo e fase: il pannello basta.
   const showDetailLink = data.projection === "revisore" || data.item.own;
+  const agent = titleAgent(item.title);
 
   return (
     <Sheet open={open} onOpenChange={(next) => (next ? undefined : close())}>
@@ -164,8 +174,22 @@ export function UseCasePanel({
       >
         <SheetHeader className="flex-row items-start justify-between gap-3 border-b px-4 py-3">
           <div className="min-w-0 space-y-1">
-            {code ? <p className="font-mono text-xs text-muted-foreground">{code}</p> : null}
-            <SheetTitle className="text-base leading-snug font-semibold">{item.title}</SheetTitle>
+            {agent || code ? (
+              <div data-slot="panel-id" className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                {agent ? <AgentTag label={agent.label} tone={agentToneOf(agents, agent.agent)} decorative /> : null}
+                {code ? <p className="font-mono text-xs text-muted-foreground">{code}</p> : null}
+              </div>
+            ) : null}
+            <SheetTitle className="text-base leading-snug font-semibold">
+              {agent ? (
+                <>
+                  <span className="sr-only">{agent.prefix}</span>
+                  {agent.rest}
+                </>
+              ) : (
+                item.title
+              )}
+            </SheetTitle>
             <SheetDescription className="sr-only">{shownPhaseLabel(item, dossierDown)}</SheetDescription>
           </div>
           <SheetClose ref={closeRef} render={<Button variant="ghost" size="icon" className="size-11 shrink-0 sm:size-8" aria-label={PANEL_TEXT.close} />}>
@@ -199,6 +223,7 @@ export function UseCasePanel({
               bands={bands}
               dossierDown={dossierDown}
               teamName={teamName}
+              referentState={referentState}
             />
           </ReferentDialogHost>
         ) : (
@@ -246,6 +271,7 @@ function ReviewerBody({
   bands,
   dossierDown,
   teamName,
+  referentState,
 }: {
   workspaceId: string;
   item: HubItem;
@@ -261,6 +287,8 @@ function ReviewerBody({
   bands?: readonly CostBandInfo[];
   dossierDown: boolean;
   teamName: string;
+  /** (Rilascio 10, D7) Lo stato del referente, per tutti: le card lo mostrano solo quando chiede un'azione. */
+  referentState: ReferentStateKey | null;
 }) {
   const decisionItem = toDecisionItem(item);
   const whenId = `pannello-quando-${item.id}`;
@@ -282,6 +310,7 @@ function ReviewerBody({
       <Block>
         <div className="flex flex-wrap items-center gap-2">
           <PhasePill label={shownPhaseLabel(item, dossierDown)} tone={item.tone} />
+          <ReferentChip state={referentState} />
         </div>
         {nextStep ? (
           <div data-slot="panel-next-step" data-key={nextStep.key} aria-label={PANEL_TEXT.nextStep} role="group">
@@ -312,12 +341,17 @@ function ReviewerBody({
       {estimate.length || item.risks.length ? (
         <Block>
           {estimate.length ? (
-            <div data-slot="claude-estimate" className="space-y-1 rounded-lg bg-muted px-3 py-2 text-sm">
-              <p className="text-xs font-medium text-muted-foreground">{keepTogether(`${ESTIMATES_TEXT.title} · ${ESTIMATES_TEXT.note}`)}</p>
-              {estimate.map((line) => (
-                <p key={line}>{keepTogether(line)}</p>
+            // (Rilascio 10, §3.4) Una riga grigia, non un riquadro: non attira l'occhio più del passo.
+            <p data-slot="claude-estimate" className="text-xs break-words text-muted-foreground">
+              <span className="font-medium">{ESTIMATES_TEXT.title}</span>
+              {FIGURE_SEPARATOR}
+              {estimate.map((line, index) => (
+                <span key={line}>
+                  {index > 0 ? " " : null}
+                  {keepTogether(line)}
+                </span>
               ))}
-            </div>
+            </p>
           ) : null}
           <RiskChips risks={item.risks} />
         </Block>
