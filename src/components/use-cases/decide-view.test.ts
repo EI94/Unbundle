@@ -174,5 +174,7 @@ test("(rilascio 10, §3.4) la riga sulle proposte altrui del contributore: la st
   const row = await import("./use-case-row.tsx");
   assert.equal(row.othersCardNote(DEFAULT_REVIEW_TEAM_NAME), `Dettagli visibili a chi l'ha proposto e ad ${DEFAULT_REVIEW_TEAM_NAME}.`);
   assert.equal(row.othersCardNote("  CoE   AI "), "Dettagli visibili a chi l'ha proposto e a CoE AI.");
+  // Il nome entra com'è: «$&», «$'» e «$1» non sono schemi di sostituzione.
+  assert.equal(row.othersCardNote("Team $& $' $1"), "Dettagli visibili a chi l'ha proposto e a Team $& $' $1.");
   assert.deepEqual(findHubForbiddenIn([row.othersCardNote("CoE AI"), row.ROW_TEXT.othersNote, row.ROW_TEXT.othersNoteVowel], "area"), []);
 });

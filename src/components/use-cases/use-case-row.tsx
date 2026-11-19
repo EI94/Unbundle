@@ -157,7 +157,7 @@ export const ROW_TEXT = Object.freeze({
  */
 export function othersCardNote(teamName: string): string {
   const team = teamName.replace(/\s+/g, " ").trim();
-  return (/^[aA]/.test(team) ? ROW_TEXT.othersNoteVowel : ROW_TEXT.othersNote).replace("{team}", team);
+  return (/^[aA]/.test(team) ? ROW_TEXT.othersNoteVowel : ROW_TEXT.othersNote).replace("{team}", () => team);
 }
 
 /** Una riga della lista (§4.6). Il link è tutta la riga: dentro non ci sono altri controlli. */
