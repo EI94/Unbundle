@@ -16,7 +16,6 @@ const FILES = [
     .filter((name) => /\.(ts|tsx)$/.test(name) && !/\.test\.ts$/.test(name) && name !== "tsx-test-loader.ts")
     .map((name) => `${here}/${name}`),
   "src/components/use-cases/detail/section-needs.tsx",
-  "src/components/use-cases/detail/info-summary.tsx",
   "src/components/use-cases/info-chip.tsx",
   "src/components/portfolio/notifications-bell.tsx",
   "src/components/portfolio/notifications-bell-state.ts",

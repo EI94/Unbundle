@@ -242,11 +242,21 @@ test("preparazione: una scheda per stato, con richieste, risposte e scadenze ver
 
 /** Il testo di un pezzo di HTML, senza i tag. */
 const textOf = (html: string) => html.replace(/<[^>]+>/g, "");
-/** Il blocco in cima a «Cosa serve»: dal suo `<div>` al primo `</div>`. */
-function summaryOf(page: string): string {
-  const start = page.lastIndexOf("<div", page.indexOf('data-slot="info-summary"'));
-  assert.ok(start >= 0, "il riepilogo in cima a «Cosa serve»");
-  return page.slice(start, page.indexOf("</div>", start) + "</div>".length);
+/**
+ * (Rilascio 10, §3.4) La riga di «Cosa serve»: il titolo con il numero delle aperte e i conteggi per gruppo, nel
+ * pulsante della piega. Il testo, con gli spazi che non vanno a capo letti come spazi.
+ */
+function needsRowOf(page: string): string {
+  const start = page.indexOf('<section id="cosa-serve" data-slot="section-needs"');
+  assert.ok(start >= 0, "la riga «Cosa serve»");
+  return textOf(page.slice(start, page.indexOf("</button>", start))).replace(/\u00a0/g, " ");
+}
+
+/** Il percorso compatto della scheda, la riga che si apre sui passi. */
+function compactPathOf(page: string): string {
+  const start = page.indexOf('data-slot="path-disclosure"');
+  assert.ok(start >= 0, "il percorso compatto");
+  return textOf(page.slice(start, page.indexOf("</button>", start))).replace(/\u00a0/g, " ").replace(/^[^>]*>/, "");
 }
 
 /** Il passo «Informazioni» del percorso della scheda: dal suo `<li>` al successivo. */
@@ -255,29 +265,27 @@ function infoStepOf(page: string): string {
   return start === -1 ? "" : page.slice(start, page.indexOf("</li>", start));
 }
 
-test("la scheda: niente chip nella testata; il passo «Informazioni» del percorso; in cima a «Cosa serve» una riga con i conteggi", opts, async () => {
+test("la scheda: niente chip delle informazioni nella testata; il passo «Informazioni» del percorso; la riga «Cosa serve · N» con i conteggi", opts, async () => {
   const page = await detailHtml("builder", cards.wait);
   const header = page.slice(page.indexOf('data-slot="detail-header"'), page.indexOf("</header>"));
-  // La testata dei revisori non dice più fase e informazioni: lo dicono il percorso e «Prossimo passo».
-  for (const slot of ["phase-pill", "info-chip"]) assert.ok(!header.includes(`data-slot="${slot}"`), slot);
+  // (Rilascio 10, §3.4) La testata dice la fase con la pillola, perché il percorso è una riga; mai il chip delle informazioni.
+  assert.ok(header.includes('data-slot="phase-pill"'), "la pillola della fase");
+  assert.ok(!header.includes('data-slot="info-chip"'), "nessun chip delle informazioni");
   assert.ok(!page.includes("Informazioni: in attesa"), "nessun chip, in nessun punto della scheda");
   // Da valutare: il passo «Informazioni» viene dopo, senza conteggi.
   assert.match(infoStepOf(page), /data-state="dopo"/);
   assert.doesNotMatch(textOf(infoStepOf(page)), /\d di \d|a posto/, "nessun conteggio prima dell'approvazione");
-  // In cima a «Cosa serve»: una riga, i conteggi e che cosa resta; niente titolo, chip o maiuscolo.
-  const summary = summaryOf(page);
+  assert.equal(compactPathOf(page), "Passo 2 di 6 · Valutazione");
+  // «Cosa serve · N»: le aperte e i gruppi, niente riepilogo a parte e niente «informazioni ricevute».
   const total = (await needsOf(cards.wait)).length;
-  // A schermo ogni gruppo resta intero e il «·» con il gruppo prima (U+00A0).
-  const N = "\u00a0";
-  assert.equal(textOf(summary), `0${N}di ${total}${N}informazioni ricevute${N}· 2${N}in${N}attesa${N}· ${total - 2}${N}da${N}chiedere`);
-  assert.match(summary, new RegExp(`aria-label="${progress.INFO_PROGRESS_TEXT.summaryHeading}"`));
-  for (const text of ["Informazioni:", 'data-slot="info-chip"', "uppercase"]) assert.ok(!summary.includes(text), `riepilogo: ${text}`);
-  // Da verificare e senza risposta: i conteggi giusti; la fase non cambia mai da sola.
+  assert.equal(needsRowOf(page), `Cosa serve · ${total}${total - 2} da chiedere · 2 in attesa`);
+  for (const text of ['data-slot="info-summary"', "informazioni ricevute", progress.INFO_PROGRESS_TEXT.summaryHeading]) assert.ok(!page.includes(text), `scheda: ${text}`);
+  // Da verificare: i conteggi giusti; la fase non cambia mai da sola.
   const verify = await detailHtml("builder", cards.verify);
   const verifyTotal = (await needsOf(cards.verify)).length;
   assert.ok(!verify.includes("Informazioni: da verificare") && !verify.includes('data-slot="info-chip"'));
-  // La da verificare è tra le ricevute: tra parentesi, così ricevute e «da chiedere» fanno il totale.
-  assert.equal(textOf(summaryOf(verify)), `1${N}di ${verifyTotal}${N}informazioni ricevute (1 da verificare)${N}· ${verifyTotal - 1}${N}da${N}chiedere`);
+  // Prima quello che chiede di agire, come nella barra: «1 da verificare» in testa.
+  assert.equal(needsRowOf(verify), `Cosa serve · ${verifyTotal}1 da verificare · ${verifyTotal - 1} da chiedere`);
   // La stessa, approvata per questo trimestre (G1): «Vedi le risposte» è il pulsante pieno del riquadro
   // e porta a «Cosa serve». Poi torna una proposta, come la vogliono le prove della pagina «Use case».
   const { currentQuarter } = await import("../../../../lib/use-cases/quarter.ts");
@@ -285,35 +293,39 @@ test("la scheda: niente chip nella testata; il passo «Informazioni» del percor
   const verifyApproved = await detailHtml("builder", cards.verify);
   await q(`UPDATE use_cases SET status = 'proposed', portfolio_review_status = 'in_review', target_quarter = NULL WHERE id = $1::uuid`, [cards.verify]);
   assert.match(verifyApproved, /data-slot="next-step" data-key="G1"/);
-  const verifyBox = verifyApproved.slice(verifyApproved.indexOf('data-slot="next-step"'), verifyApproved.indexOf('data-slot="scheda-grid"'));
+  const verifyBox = verifyApproved.slice(verifyApproved.indexOf('data-slot="next-step"'), verifyApproved.indexOf("</section>", verifyApproved.indexOf('data-slot="next-step"')));
   // (Rilascio 6, B.1) Il passo è un pulsante con l'icona e il verbo: «Verifica le risposte».
   const seeAnswers = /<a\b([^>]*)><svg\b[\s\S]*?<\/svg>Verifica le risposte<\/a>/.exec(verifyBox);
   assert.ok(seeAnswers && /\shref="#cosa-serve"/.test(seeAnswers[1]) && /\sclass="[^"]*\bbg-primary\b/.test(seeAnswers[1]), "G1: «Verifica le risposte» pieno, verso #cosa-serve");
   assert.match(verifyApproved, /id="cosa-serve"/, "l'ancora c'è");
+  // (Rilascio 10) Il percorso dice quante informazioni sono arrivate.
+  assert.equal(compactPathOf(verifyApproved), `Passo 4 di 6 · Informazioni: 1 di ${verifyTotal} arrivate`);
   const silent = await detailHtml("builder", cards.silent);
   const silentTotal = (await needsOf(cards.silent)).length;
   // Approvata per questo trimestre: «Informazioni» è il passo di adesso, con «0 di N»; il riquadro dice di sollecitare.
   assert.match(infoStepOf(silent), /data-state="adesso"/);
   assert.ok(textOf(infoStepOf(silent)).endsWith(`0 di ${silentTotal}`), textOf(infoStepOf(silent)));
+  assert.equal(compactPathOf(silent), `Passo 4 di 6 · Informazioni: 0 di ${silentTotal} arrivate`);
   assert.match(silent, /data-slot="next-step" data-key="G2"/);
   // Con una richiesta inviata «Sollecita le risposte» è il pulsante pieno del riquadro e porta a «Richieste inviate».
-  const silentBox = silent.slice(silent.indexOf('data-slot="next-step"'), silent.indexOf('data-slot="scheda-grid"'));
+  const silentBox = silent.slice(silent.indexOf('data-slot="next-step"'), silent.indexOf("</section>", silent.indexOf('data-slot="next-step"')));
   const seeRequests = /<a\b([^>]*)><svg\b[\s\S]*?<\/svg>Sollecita le risposte<\/a>/.exec(silentBox);
   assert.ok(seeRequests && /\shref="#richieste"/.test(seeRequests[1]) && /\sclass="[^"]*\bbg-primary\b/.test(seeRequests[1]), "G2: «Sollecita le risposte» pieno, verso #richieste");
   assert.match(silent, /<details id="richieste"/, "l'ancora c'è");
   assert.ok(!silent.includes("Informazioni: senza risposta"));
-  assert.equal(textOf(summaryOf(silent)), `0${N}di ${silentTotal}${N}informazioni ricevute${N}· 2${N}senza${N}risposta${N}· ${silentTotal - 2}${N}da${N}chiedere`);
+  assert.equal(needsRowOf(silent), `Cosa serve · ${silentTotal}${silentTotal - 2} da chiedere · 2 in attesa`);
   // (Rilascio 4) Una parola sola, la stessa della campanella: «Nessuna risposta».
   assert.ok(silent.includes('data-slot="referent-request-word" class="text-xs font-medium">Nessuna risposta</p>'), "la richiesta scaduta senza risposta, in una parola, nelle «Richieste»");
   const done = await detailHtml("builder", cards.done);
   assert.match(infoStepOf(done), /data-state="fatto"/);
   assert.ok(textOf(infoStepOf(done)).endsWith("a posto"), textOf(infoStepOf(done)));
   assert.match(done, /data-slot="next-step" data-key="G9"/, "complete: avviare la realizzazione");
-  assert.ok(textOf(summaryOf(done)).endsWith(`${N}· tutte${N}a${N}posto`), textOf(summaryOf(done)));
+  const doneTotal = (await needsOf(cards.done)).length;
+  assert.equal(needsRowOf(done), `Cosa serve${doneTotal} a posto`, "niente aperte: il titolo senza numero, le informazioni a posto");
   const ask = await detailHtml("builder", cards.ask);
   const askTotal = (await needsOf(cards.ask)).length;
   assert.ok(!ask.includes("Informazioni: da chiedere"));
-  assert.ok(textOf(summaryOf(ask)).endsWith(`${N}· ${askTotal}${N}da${N}chiedere`), textOf(summaryOf(ask)));
+  assert.equal(needsRowOf(ask), `Cosa serve · ${askTotal}${askTotal} da chiedere`);
   for (const key of CARDS) assert.equal(String((await q(`SELECT status FROM use_cases WHERE id = $1::uuid`, [cards[key]]))[0]?.status), phases[key], `${key}: la fase resta`);
 });
 
