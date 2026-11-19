@@ -392,7 +392,9 @@ export function UseCaseDetailView({
   const answers = answersOf(detail.intake);
   // (Rilascio 10, §3.4) «Nota pubblica» in vista solo con un testo o in «Serve info»; altrimenti in «Dettagli», con la stessa ancora.
   const noteInView = publicNoteInView(detail, answers.length);
-  const publicNote = (
+  // Chi non decide legge la nota solo se c'è: senza testo e senza risposte, niente sezione vuota.
+  const noteShown = abilities.canDecide || noteInView;
+  const publicNote = !noteShown ? null : (
     <section
       id="nota-pubblica"
       aria-label={PUBLIC_NOTE_TEXT.label}
