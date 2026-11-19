@@ -320,13 +320,10 @@ export const GUIDED_TEXT = Object.freeze({
    * «Cosa serve · N» in una riga che si apre, e la riga del contributore sugli use case di altri.
    */
   scheda: Object.freeze({
-    menu: "Altre azioni",
     decisionGroup: "Decisione",
     cardGroup: "Scheda",
     visible: "Visibile in azienda",
-    needs: "Cosa serve",
     needsCount: "Cosa serve · {n}",
-    add: "Aggiungi",
     /** La prima voce di «Aggiungi ▾»: il modulo di un'informazione nuova (o di una scadenza); la seconda è «Collega un'informazione». */
     addNeed: "Nuova informazione",
     othersNote: "Dettagli visibili a chi l'ha proposto e a {team}.",

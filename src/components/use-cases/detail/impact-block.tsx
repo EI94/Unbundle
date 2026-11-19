@@ -153,7 +153,7 @@ export function ImpactBlock({ view, value, cost, costBands, risks, account = nul
             // Con «Benefici e costi» la cifra dice già «Costo 560 € · costo all'anno 600 €»: niente «Costo di realizzazione» davanti.
             // Il simbolo della fascia («€€») resta per la matrice: qui l'importo, o la fascia a parole.
             <span key="costo" data-figure="costo" data-estimated={parts.estimated ? "true" : undefined} data-cost-source={source ?? undefined}>
-              {parts.figureParts.length > 1
+              {cost?.source === "stima" && !parts.estimated
                 ? parts.figureParts.map((part, index) => (
                     <span key={part}>
                       {index > 0 ? FIGURE_SEPARATOR : null}
@@ -244,7 +244,7 @@ export function ImpactBlock({ view, value, cost, costBands, risks, account = nul
             nativeButton={false}
             variant="ghost"
             size="sm"
-            data-slot="valore-modifica"
+            data-action="valore-modifica"
             className="min-h-11 shrink-0 text-muted-foreground sm:min-h-8"
           >
             <Pencil aria-hidden />

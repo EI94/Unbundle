@@ -109,7 +109,7 @@ function MenuWithDecisions({ workspaceId, decisions, card }: { workspaceId: stri
   ];
   return (
     <>
-      <SchedaMenu groups={groups} label={t.menu} className="shrink-0" />
+      <SchedaMenu groups={groups} label={DETAIL_HEADER_TEXT.moreActions} className="shrink-0" />
       {dialogs}
     </>
   );
@@ -169,7 +169,7 @@ export function DetailHeader({ workspaceId, card, reviewer, titleEdit, marker, r
   const menu = decisions ? (
     <MenuWithDecisions workspaceId={workspaceId} decisions={decisions} card={cardItems} />
   ) : (
-    <SchedaMenu groups={[{ label: GUIDED_TEXT.scheda.cardGroup, items: cardItems }]} label={GUIDED_TEXT.scheda.menu} className="shrink-0" />
+    <SchedaMenu groups={[{ label: GUIDED_TEXT.scheda.cardGroup, items: cardItems }]} label={DETAIL_HEADER_TEXT.moreActions} className="shrink-0" />
   );
   return (
     <header data-slot="detail-header" className={cn("space-y-2", className)}>

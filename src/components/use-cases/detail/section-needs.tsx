@@ -259,7 +259,7 @@ export function SectionNeeds({
   // (Rilascio 10, §3.4) Il capitolo è una riga, «Cosa serve · 5», con i conteggi e la barra, come nel pannello: si apre
   // al tocco, e arriva aperto con `?capitolo=cosa-serve` (o `richieste`) e con i link della pagina che lo chiedono.
   const count = needsCountSummaryOf([...requirements, ...steps], useCaseId);
-  const title = count && count.open > 0 ? fillText(GUIDED_TEXT.scheda.needsCount, { n: formatInteger(count.open) }) : GUIDED_TEXT.scheda.needs;
+  const title = count && count.open > 0 ? fillText(GUIDED_TEXT.scheda.needsCount, { n: formatInteger(count.open) }) : TEXT.title;
   const bar = count ? needsCountBar(count) : [];
   // I conteggi nell'ordine della barra, prima quello che chiede di agire: «2 da verificare · 3 in attesa».
   const zero = { open: 0, toAsk: 0, waiting: 0, toVerify: 0, blocked: 0, done: 0 };
@@ -277,7 +277,7 @@ export function SectionNeeds({
       ? (
           <ActionMenu
             trigger="altro"
-            label={GUIDED_TEXT.scheda.add}
+            label={TEXT.add}
             align="start"
             items={[
               { label: GUIDED_TEXT.scheda.addNeed, onSelect: () => setDialog({ mode: "aggiungi" }) },

@@ -566,7 +566,7 @@ test("«Salva la valutazione»: KPI, valore all'anno e fascia; «valutata»; Sto
   // (Rilascio 10, §3.4) Il numero grande e «Valore all'anno»; sotto, una riga con il costo, la sua fonte e il pareggio.
   assert.ok(impact.includes(">60.000 €</p>") && impact.includes(">Valore all&#x27;anno</p>") && impact.includes('data-source="team"'), impact);
   assert.ok(impact.includes('data-figure="costo"') && impact.includes('data-cost-source="team_fascia"'), "il costo con la sua fonte");
-  assert.match(impact, /data-slot="valore-modifica"[^>]*href="#valutazione"|href="#valutazione"[^>]*data-slot="valore-modifica"/, "«Modifica» apre «Valutazione del team»");
+  assert.match(impact, /data-action="valore-modifica"[^>]*href="#valutazione"|href="#valutazione"[^>]*data-action="valore-modifica"/, "«Modifica» apre «Valutazione del team»");
   const valuation = sectionOf(page, "section-valuation");
   assert.ok(!valuation.includes('data-figure="valore"') && !valuation.includes('data-figure="costo"'), "le cifre stanno in «Valore»");
   assert.ok(!valuation.includes("Zona:"), "senza zona");
