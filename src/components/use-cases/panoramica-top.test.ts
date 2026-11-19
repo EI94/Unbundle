@@ -37,7 +37,7 @@ before(async () => {
 
 const BASE = "/dashboard/ws/use-cases";
 const DECIDE = `${BASE}?vista=da-decidere`;
-const NEEDS = `${BASE}?vista=cosa-serve&trimestre=2026-Q4`;
+const NEEDS = `${BASE}?vista=cosa-serve&trimestre=2026-Q4&stato=da-chiedere`;
 
 const NUMBER: OverviewNumber = { amountEur: 412_000, count: 20 };
 const NUMBERS = "/dashboard/ws?apri=numeri";

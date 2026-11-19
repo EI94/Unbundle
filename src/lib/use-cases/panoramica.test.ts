@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { ValueParts } from "./format.ts";
+import { workspaceStepHref } from "../home/next-step.ts";
 import { NO_PROGRAM_COSTS, programCards } from "../programma/curve.ts";
 import { programResults } from "../programma/figures.ts";
 import { buildLanes, countedEurOf } from "./lanes.ts";
@@ -286,15 +287,23 @@ test("D3 e «Cosa serve», dove porta il pulsante: gli stessi numeri, contati al
   const ask = steps[0];
   const verify = steps[1];
   assert.ok(ask.key === "chiedere" && verify.key === "verificare");
-  // «Chiedi 3 informazioni» porta a «Cosa serve» del trimestre (`?vista=cosa-serve&trimestre=2026-Q4`), come la compone hub.tsx.
+  // «Chiedi 3 informazioni» porta a «Cosa serve» del trimestre, su «Da chiedere» (`workspaceStepHref`), come la legge hub.tsx.
   const viewer: UseCaseViewer = { userId: uuid(9000), email: "persona.prova@cliente.test", emailVerified: true, role: "function_lead", isLateralSpace: false };
-  const params = parseHubParams(new URLSearchParams("vista=cosa-serve&trimestre=2026-Q4"), viewer);
+  const links = { workspaceId: "ws", companyName: "Cliente Prova", salHref: null };
+  const askUrl = new URL(workspaceStepHref(ask, links)!, "https://unbundle.test");
+  assert.equal(askUrl.search, "?vista=cosa-serve&trimestre=2026-Q4&stato=da-chiedere");
+  const params = parseHubParams(askUrl.searchParams, viewer);
+  assert.equal(params.stato, "da-chiedere", "il pulsante pieno della vista chiede");
   assert.ok(hasActiveFilters(params));
   const filtered = applyHubFilters(items, params);
   const quarterBoard = buildNeedsBoard(needs, items, { today: TODAY, params: DEFAULT_VALUE_PARAMS, only: { useCaseIds: new Set(filtered.map((item) => item.id.toLowerCase())), q: params.q } });
   assert.equal(ask.count, quarterBoard.counts.toAsk);
   assert.equal(ask.count, 3);
-  // «Verifica 3 risposte» porta a «Cosa serve» senza filtri: la sua riga dei conteggi dice lo stesso numero.
+  // «Verifica 3 risposte» porta a «Cosa serve» su «Da verificare», senza filtri (lo stato filtra le righe, non gli use
+  // case): la sua riga dei conteggi dice lo stesso numero.
+  const verifyParams = parseHubParams(new URL(workspaceStepHref(verify, links)!, "https://unbundle.test").searchParams, viewer);
+  assert.equal(verifyParams.stato, "da-verificare");
+  assert.ok(!hasActiveFilters(verifyParams));
   const board = buildNeedsBoard(needs, items, { today: TODAY, params: DEFAULT_VALUE_PARAMS });
   assert.equal(verify.count, board.counts.toVerify);
   assert.ok(needsSummaryPieces(board.counts).includes("3 da verificare"), needsSummaryPieces(board.counts).join(" · "));

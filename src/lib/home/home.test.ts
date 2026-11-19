@@ -195,11 +195,12 @@ test("il passo del workspace: ogni regola con le sue parole e il suo indirizzo",
   assert.deepEqual([waiting.label, waiting.mine, waiting.turn], ["Manca l'ok sui fornitori", false, "Tocca a Cliente Demo."]);
   assert.equal(waiting.why, "Senza l'ok le domande al referente non partono: 1 informazione aspetta.");
   const ask = view(ASK, { key: "verificare", mine: true, count: 1 });
-  assert.deepEqual([ask.label, ask.href], ["Chiedi 12 informazioni", `${BASE}/use-cases?vista=cosa-serve&trimestre=2026-Q4`]);
+  // (D3) «Chiedi» e «Verifica» aprono «Cosa serve» sul loro stato: il pulsante pieno della vista è lo stesso passo.
+  assert.deepEqual([ask.label, ask.href], ["Chiedi 12 informazioni", `${BASE}/use-cases?vista=cosa-serve&trimestre=2026-Q4&stato=da-chiedere`]);
   assert.equal(ask.why, "Servono agli use case del T4 2026 per partire. Poi: 1 risposta da verificare.");
   assert.equal(view({ key: "chiedere", mine: true, count: 1, quarter: "2027-Q1" }).label, "Chiedi 1 informazione");
   const verify = view({ key: "verificare", mine: true, count: 2 }, { key: "sal", mine: true, first: true, lastOn: null, days: null });
-  assert.deepEqual([verify.label, verify.icon, verify.href], ["Verifica 2 risposte", "verifica", `${BASE}/use-cases?vista=cosa-serve`]);
+  assert.deepEqual([verify.label, verify.icon, verify.href], ["Verifica 2 risposte", "verifica", `${BASE}/use-cases?vista=cosa-serve&stato=da-verificare`]);
   assert.equal(verify.why, "I referenti hanno risposto: controlla le risposte prima di usarle. Poi: il SAL da chiudere.");
   // Sulla Home «Chiudi il SAL» apre il pannello del SAL; dalla Panoramica porta lì con `?apri=sal`.
   const sal = view({ key: "sal", mine: true, first: false, lastOn: "2026-10-20", days: 29 });
@@ -208,7 +209,7 @@ test("il passo del workspace: ogni regola con le sue parole e il suo indirizzo",
   assert.deepEqual([fromHub.href, fromHub.panel, fromHub.why], [`${BASE}?apri=sal`, null, HOME_TEXT.steps.sal.whyFirst]);
   const salTurn = view({ key: "sal", mine: false, first: true, lastOn: null, days: null });
   assert.deepEqual([salTurn.label, salTurn.turn], ["SAL da chiudere", "Tocca a chi gestisce il workspace."]);
-  assert.equal(workspaceStepHref(ASK, LINKS), `${BASE}/use-cases?vista=cosa-serve&trimestre=2026-Q4`);
+  assert.equal(workspaceStepHref(ASK, LINKS), `${BASE}/use-cases?vista=cosa-serve&trimestre=2026-Q4&stato=da-chiedere`);
 });
 
 // ─── «Per partire» ───────────────────────────────────────────────────

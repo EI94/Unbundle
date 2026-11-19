@@ -42,7 +42,10 @@ export interface StepLinks {
 /** La radice del workspace: `/dashboard/<ws>`. */
 export const workspaceBase = (workspaceId: string) => `/dashboard/${workspaceId}`;
 
-/** Dove porta ogni passo del workspace (D3). */
+/**
+ * Dove porta ogni passo del workspace (D3). «Chiedi» e «Verifica» aprono «Cosa serve» sullo stato che dicono
+ * (`stato=`): il pulsante pieno della vista segue lo stato, così la pagina non contraddice il pulsante che l'ha aperta.
+ */
 export function workspaceStepHref(step: WorkspaceStep, links: StepLinks): string | null {
   const base = workspaceBase(links.workspaceId);
   switch (step.key) {
@@ -51,9 +54,9 @@ export function workspaceStepHref(step: WorkspaceStep, links: StepLinks): string
     case "decidere":
       return `${base}/use-cases?vista=da-decidere`;
     case "chiedere":
-      return `${base}/use-cases?vista=cosa-serve&trimestre=${encodeURIComponent(step.quarter)}`;
+      return `${base}/use-cases?vista=cosa-serve&trimestre=${encodeURIComponent(step.quarter)}&stato=da-chiedere`;
     case "verificare":
-      return `${base}/use-cases?vista=cosa-serve`;
+      return `${base}/use-cases?vista=cosa-serve&stato=da-verificare`;
     case "sal":
       return links.salHref;
   }

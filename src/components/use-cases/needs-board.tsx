@@ -93,25 +93,33 @@ export interface NeedsBoardViewProps {
  * Il prossimo passo della vista (rilascio 10, §3.4), il solo pulsante pieno: «Verifica N risposte» se ce ne sono,
  * altrimenti «Chiedi le informazioni»; apre il pannello del primo use case che ne ha (`firstUseCaseFor`). Una risposta
  * da verificare senza use case collegato porta alle righe «Da verificare». null: niente da fare per chi guarda.
+ * (D3) Con uno stato scelto (`state`) il passo è il suo: «Da chiedere» solo «Chiedi le informazioni», «Da verificare»
+ * solo «Verifica N risposte». Così «Chiedi 12 informazioni» della Home e della Panoramica, che apre la vista su «Da
+ * chiedere», non arriva su un «Verifica 2 risposte».
  */
-export function needsBoardStep(board: NeedsBoard, hrefOf: (id: string) => string, verifyHref: string | null): NextStepItem | null {
-  const verify = board.counts.toVerify;
-  if (verify > 0) {
+export function needsBoardStep(board: NeedsBoard, hrefOf: (id: string) => string, verifyHref: string | null, state: NeedStateParam | null = null): NextStepItem | null {
+  const verifyStep = (): NextStepItem | null => {
+    const verify = board.counts.toVerify;
+    if (verify <= 0) return null;
     const target = firstUseCaseFor(board, "toVerify");
     const href = target ? hrefOf(target.id) : verifyHref;
-    if (href) return { label: HOME_TEXT.steps.verificare.cta(verify), icon: Check, why: HOME_TEXT.steps.verificare.why(verify), mine: true, link: <Link href={href} scroll={false} /> };
-  }
-  const ask = firstUseCaseFor(board, "toAsk");
-  if (ask) return { label: NEEDS_BOARD_TEXT.ask, icon: MessageCircle, why: NEEDS_BOARD_TEXT.askWhy, mine: true, link: <Link href={hrefOf(ask.id)} scroll={false} /> };
-  return null;
+    return href ? { label: HOME_TEXT.steps.verificare.cta(verify), icon: Check, why: HOME_TEXT.steps.verificare.why(verify), mine: true, link: <Link href={href} scroll={false} /> } : null;
+  };
+  const askStep = (): NextStepItem | null => {
+    const ask = firstUseCaseFor(board, "toAsk");
+    return ask ? { label: NEEDS_BOARD_TEXT.ask, icon: MessageCircle, why: NEEDS_BOARD_TEXT.askWhy, mine: true, link: <Link href={hrefOf(ask.id)} scroll={false} /> } : null;
+  };
+  if (state === "da-chiedere") return askStep();
+  if (state === "da-verificare") return verifyStep();
+  return verifyStep() ?? askStep();
 }
 
 /**
  * La vista «Cosa serve», solo per i revisori e in sola lettura (spec di Pierpaolo, 25/10/2026; rilascio 4, «Referente
  * e Cosa serve»; rilascio 10, §3.4): ogni richiesta una volta, sotto chi deve muoversi.
- * - In cima il prossimo passo (`needsBoardStep`), poi i tre conteggi che filtrano, «Da chiedere 12 · In attesa 7 · Da
- *   verificare 2» (senza gli zeri; uno scelto si toglie con un altro tocco), e l'interruttore «Elenco | Calendario».
- *   «Ferme», «A posto» e «Aperte» stanno nel foglio «Filtri» (`stato=`).
+ * - In cima il prossimo passo (`needsBoardStep`, che segue lo stato scelto), poi i tre conteggi che filtrano, «Da
+ *   chiedere 12 · In attesa 7 · Da verificare 2» (senza gli zeri; uno scelto si toglie con un altro tocco), e
+ *   l'interruttore «Elenco | Calendario». «Ferme», «A posto» e «Aperte» stanno nel foglio «Filtri» (`stato=`).
  * - «Elenco»: i gruppi per organizzazione e mai per persona (il cliente con le cose da fare «Insieme», «Fornitori»,
  *   «Lateral Space», «Da assegnare»), solo quelli con righe, senza numeri nel titolo. In ogni gruppo prima quelli da
  *   verificare, poi l'ordine del team (`needsActionFirst`); le prime tre righe in vista (`BOARD_ROWS_SHOWN`), le altre
@@ -162,7 +170,8 @@ export function NeedsBoardView({
   const hasSteps = stepCount > 0 || board.timeline.done.length > 0;
   const showCalendar = calendar && hasSteps;
   const shown = boardForState(board, state);
-  const step = needsBoardStep(board, hrefOf, hrefWith({ stato: "da-verificare", calendario: null }));
+  // Il passo segue lo stato acceso, come i conteggi: nel «Calendario» nessuno.
+  const step = needsBoardStep(board, hrefOf, hrefWith({ stato: "da-verificare", calendario: null }), showCalendar ? null : state);
   const counts = needStateCounts(board.counts);
   return (
     <div data-slot="needs-board" data-mode={showCalendar ? "calendario" : "elenco"} className="space-y-6">

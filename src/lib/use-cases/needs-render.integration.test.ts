@@ -542,7 +542,7 @@ test("Panoramica: il prossimo passo del workspace (rilascio 10, D3), lo stesso d
   const { SUBPROCESSORS_VERSION } = await import("../uc/legal/subprocessors.ts");
   const thisQuarter = quarter.currentQuarter();
   const plain = (text: string) => readable(text).replaceAll(N, " ");
-  const href = `/dashboard/${ids.wsStart}/use-cases?vista=cosa-serve&trimestre=${thisQuarter}`;
+  const href = `/dashboard/${ids.wsStart}/use-cases?vista=cosa-serve&trimestre=${thisQuarter}&stato=da-chiedere`;
   const nextStepOf = (page: string) => between(page, 'data-slot="next-step"', "</section>");
   // 1. Manca l'ok sui fornitori e ci sono informazioni da chiedere: le domande al referente non partono, il passo è
   //    darlo. Chi guarda lo può dare (il ruolo lo permette): il pulsante pieno porta a Impostazioni.
@@ -582,10 +582,22 @@ test("Panoramica: il prossimo passo del workspace (rilascio 10, D3), lo stesso d
   // Lo sponsor del cliente (gestore): i due use case di questo trimestre, nel conteggio della loro corsia (rilascio 10).
   const manager = await hubHtml("manager", ids.wsStart, { vista: "panoramica" });
   assert.match(manager, new RegExp(`<h2 id="lane-questo_trimestre"[^>]*>${quarter.quarterLabel(thisQuarter).replace(" ", N)} <span[^>]*>2<span class="sr-only"> use case</span></span></h2>`));
-  // «Chiedi 1 informazione», quando tocca a lui, porta a «Cosa serve» del trimestre: proprio i requisiti contati, non
-  // gli altri, con gli stessi numeri nella riga sotto «Requisiti», che comincia dal trimestre.
+  // «Chiedi 1 informazione», quando tocca a lui, porta a «Cosa serve» del trimestre, su «Da chiedere»: proprio i
+  // requisiti contati, non gli altri, con gli stessi numeri nella riga dei conteggi, che comincia dal trimestre.
   const { workspaceStepHref } = await import("../home/next-step.ts");
   assert.equal(workspaceStepHref({ key: "chiedere", mine: true, count: 1, quarter: thisQuarter }, { workspaceId: ids.wsStart, companyName: "Prova prossimo passo", salHref: null }), href);
+  // (D3) La pagina d'arrivo non contraddice il pulsante: il suo solo pulsante pieno chiede, anche con una risposta da
+  // verificare nel trimestre, e apre uno use case del trimestre; in vista le sole righe da chiedere.
+  const landing = await hubHtml("builder", ids.wsStart, Object.fromEntries(new URL(href, "https://unbundle.test").searchParams));
+  const landingStep = plain(nextStepOf(landing));
+  assert.ok(landingStep.includes("Chiedi le informazioni") && !landingStep.includes("Verifica"), landingStep);
+  const landingFilled = filledButtons(landing);
+  assert.equal(landingFilled.length, 1);
+  assert.match(landingFilled[0], new RegExp(`apri=(?:${startCards.a.id}|${startCards.b.id})"`));
+  assert.equal(summaryOf(landing), "Da chiedere 1 · Da verificare 1");
+  const landingText = landing.replaceAll(N, " ");
+  assert.ok(landingText.includes(START.shared) && !landingText.includes(START.verify) && !landingText.includes(START.blocked), "le sole righe da chiedere");
+  // Senza lo stato, la vista del trimestre con tutte le sue righe.
   const target = await hubHtml("builder", ids.wsStart, { vista: "cosa-serve", trimestre: thisQuarter });
   // I titoli in pagina vanno a capo solo dove si può (`keepTogether`, spazi non separabili): si cercano
   // nel testo con gli spazi normali.

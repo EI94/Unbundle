@@ -210,6 +210,40 @@ test("il prossimo passo: «Verifica N risposte» se ce ne sono; altrimenti «Chi
   assert.ok(!waiting.includes('data-slot="next-step"'));
 });
 
+test("(D3) il passo segue lo stato scelto: «Da chiedere» chiede, «Da verificare» verifica; senza stato prima le risposte", () => {
+  const list = fixture();
+  const stepText = (html: string) => textOf(between(html, 'data-slot="next-step"', "</section>"));
+  // Senza stato, e con uno stato che non è un passo, l'ordine di sempre: prima «Verifica 1 risposta».
+  for (const state of [null, "in-attesa", "ferme", "aperte"]) {
+    assert.ok(stepText(render(build(list), { state })).includes("Verifica 1 risposta"), String(state));
+  }
+  // «Chiedi 12 informazioni» (Home e Panoramica) apre la vista su «Da chiedere»: il solo pulsante pieno chiede, non
+  // verifica, e apre il primo use case con informazioni da chiedere.
+  const ask = render(build(list), { state: "da-chiedere", query: { vista: "cosa-serve", stato: "da-chiedere" } });
+  const askButtons = filled(ask);
+  assert.equal(askButtons.length, 1);
+  assert.ok(askButtons[0].includes(`href="?vista=cosa-serve&apri=${A}"`), askButtons[0]);
+  assert.ok(stepText(ask).includes("Chiedi le informazioni") && !stepText(ask).includes("Verifica"), stepText(ask));
+  // «Verifica N risposte» apre la vista su «Da verificare»: lo stesso passo.
+  const verify = render(build(list), { state: "da-verificare", query: { vista: "cosa-serve", stato: "da-verificare" } });
+  assert.equal(filled(verify).length, 1);
+  assert.ok(stepText(verify).includes("Verifica 1 risposta"));
+  // Uno stato senza niente da fare per chi guarda: nessun pulsante pieno, mai il passo dell'altro stato.
+  const noVerify = render(build(list.filter((n) => n.status !== "in_verifica")), { state: "da-verificare" });
+  assert.equal(filled(noVerify).length, 0);
+  assert.ok(!noVerify.includes('data-slot="next-step"'));
+  const noAsk = render(build(list.filter((n) => n.status !== "da_chiedere")), { state: "da-chiedere" });
+  assert.equal(filled(noAsk).length, 0);
+  assert.ok(!noAsk.includes('data-slot="next-step"'));
+  // Nel «Calendario» lo stato non è acceso (i conteggi non lo segnano): l'ordine di sempre.
+  assert.ok(stepText(render(build(list), { state: "da-chiedere", calendar: true })).includes("Verifica 1 risposta"));
+  // La regola da sola.
+  const whole = build(list);
+  assert.equal(board.needsBoardStep(whole, (id) => id, null, "da-chiedere")?.label, "Chiedi le informazioni");
+  assert.equal(board.needsBoardStep(whole, (id) => id, null, "da-verificare")?.label, "Verifica 1 risposta");
+  assert.equal(board.needsBoardStep(whole, (id) => id, null)?.label, "Verifica 1 risposta");
+});
+
 test("un gruppo: le prime tre righe, prima da verificare, poi «Vedi tutte (N)» chiuso; «Insieme» con il cliente", () => {
   const list = fixture();
   const html = render(build(list));
