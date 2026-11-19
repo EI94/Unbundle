@@ -59,5 +59,14 @@ test("(rilascio 10, §3.4) una best practice: «Da diffondere» accanto alla fas
 });
 
 test("il resto resta: il passo con il «?», «Cosa serve · N», «Quando» e «Apri la scheda»", () => {
-  for (const piece of ["<NextStepRow", "<PanelNeedsBlock needs={needs} href={needsHref} />", "<WhenControl", "{PANEL_TEXT.openDetail}", "focusPanelStart("]) assert.ok(PANEL.includes(piece), piece);
+  for (const piece of ["<NextStepRow", "<PanelNeedsBlock needs={needs} unanswered={unanswered} href={needsHref} />", "<WhenControl", "{PANEL_TEXT.openDetail}", "focusPanelStart("]) assert.ok(PANEL.includes(piece), piece);
+});
+
+test("(rilascio 10, §3.4) «Cosa serve · N»: la riga della scheda (`needsRowOf`), con le richieste senza risposta della pagina", () => {
+  const block = PANEL.slice(PANEL.indexOf("export function PanelNeedsBlock("), PANEL.indexOf("function ContributorBody("));
+  assert.match(block, /const row = needsRowOf\(needs\.summary, unanswered\);/);
+  assert.match(block, /\{keepTogether\(row\.title\)\}/);
+  assert.ok(!PANEL.includes("needsCountPieces") && !PANEL.includes("needsCountTitle"), "una riga sola, quella della scheda");
+  // La pagina passa le senza risposta di «Raccolta informazioni», la stessa lettura dei chip e del passo del pannello.
+  assert.ok(HUB.includes("unanswered: data.info?.[panelItem.id.toLowerCase()]?.counts.unanswered ?? 0,"), "hub.tsx");
 });

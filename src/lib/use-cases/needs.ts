@@ -1023,13 +1023,6 @@ export interface NeedsCountSummary {
   steps: number;
 }
 
-/** (Rilascio 6) Le parti della riga sotto «Cosa serve · 9»: i gruppi dei requisiti aperti, poi i passi. */
-export function needsCountPieces(summary: NeedsCountSummary): string[] {
-  const pieces = needAskPieces({ ...summary.counts, done: 0 });
-  if (summary.steps) pieces.push(summary.steps === 1 ? "1 passo" : `${formatInteger(summary.steps)} passi`);
-  return pieces;
-}
-
 /** (Rilascio 6) La barra sottile di «Cosa serve»: un tratto per gruppo, nell'ordine dei conteggi, senza gli zeri. */
 export function needsCountBar(summary: NeedsCountSummary): Array<{ group: NeedRequestGroup | "steps"; count: number; tone: SemaforoColor }> {
   const c = summary.counts;

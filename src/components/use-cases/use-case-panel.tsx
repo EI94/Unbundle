@@ -11,10 +11,10 @@ import { questionLabel, type InfoAnswer } from "@/lib/use-cases/answers";
 import type { CostBandInfo } from "@/lib/use-cases/cost-bands";
 import { DIALOG_COMMON_TEXT, PUBLIC_NOTE_TEXT, toDecisionItem, type DuplicateCandidate } from "@/lib/use-cases/decision-ui";
 import { ESTIMATES_TEXT } from "@/lib/use-cases/estimates";
-import { needsCountBar, needsCountPieces, type PanelNeeds } from "@/lib/use-cases/needs";
+import type { PanelNeeds } from "@/lib/use-cases/needs";
 import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { FIGURE_SEPARATOR, PANEL_FIGURE_TEXT, panelCostParts, panelValueText } from "@/lib/use-cases/format";
-import type { NextStep } from "@/lib/use-cases/guided";
+import { needsRowOf, type NextStep } from "@/lib/use-cases/guided";
 import { SEMAFORO_TONE } from "@/components/uc/common/semaforo-tone";
 import { agentToneOf, titleAgent, type AgentPalette } from "@/lib/use-cases/agents";
 import type { ContributorUseCase } from "@/lib/use-cases/permissions";
@@ -45,11 +45,6 @@ export const PANEL_TEXT = Object.freeze({
   nextStep: "Prossimo passo",
 });
 
-/** (Rilascio 6, B.1.5) «Cosa serve · 9»: il conteggio al posto delle voci; il tocco apre «Cosa serve» nella scheda. */
-export function needsCountTitle(open: number): string {
-  return `${PANEL_TEXT.needs}${FIGURE_SEPARATOR}${open}`;
-}
-
 export type UseCasePanelData =
   | {
       projection: "revisore";
@@ -61,6 +56,11 @@ export type UseCasePanelData =
       answers: InfoAnswer[];
       /** «Cosa serve»: il conteggio delle esigenze dello use case (`panelNeeds`); null senza. */
       needs?: PanelNeeds | null;
+      /**
+       * (Rilascio 10, §3.4) Le richieste dello use case senza risposta («Raccolta informazioni», `counts.unanswered`):
+       * la riga «Cosa serve · N» le dice come la scheda (`needsRowOf`). 0 senza.
+       */
+      unanswered?: number;
       /** «Prossimo passo» (`panelNextStep`): la regola della scheda; null senza. */
       nextStep?: NextStep | null;
     }
@@ -216,6 +216,7 @@ export function UseCasePanel({
               estimate={data.estimate}
               answers={data.answers}
               needs={data.needs ?? null}
+              unanswered={data.unanswered ?? 0}
               nextStep={data.nextStep ?? null}
               detailHref={detailHref}
               today={today}
@@ -264,6 +265,7 @@ function ReviewerBody({
   estimate,
   answers,
   needs,
+  unanswered,
   nextStep,
   detailHref,
   today,
@@ -280,6 +282,7 @@ function ReviewerBody({
   estimate: string[];
   answers: readonly InfoAnswer[];
   needs: PanelNeeds | null;
+  unanswered: number;
   nextStep: NextStep | null;
   detailHref: string;
   today: string;
@@ -370,7 +373,7 @@ function ReviewerBody({
           <ProposerAnswers answers={answers} show="ultima" />
         </Block>
       ) : null}
-      {needs ? <PanelNeedsBlock needs={needs} href={needsHref} /> : null}
+      {needs ? <PanelNeedsBlock needs={needs} unanswered={unanswered} href={needsHref} /> : null}
       {when ? (
         <Block className="space-y-1.5 px-4 py-3" id={PANEL_IDS.when}>
           <p id={whenId} className="text-sm font-medium">
@@ -414,12 +417,13 @@ function PanelCostLine({ cost, bands }: { cost: HubItem["cost"]; bands?: readonl
 /**
  * «Cosa serve · 9» nel pannello (rilascio 6, B.1.5): il conteggio al posto delle voci, i gruppi per
  * stato in una riga e una barra sottile, nascosta ai lettori di schermo (i numeri li dice la riga). Il
- * tocco apre «Cosa serve» nella scheda.
+ * tocco apre «Cosa serve» nella scheda. (Rilascio 10, §3.4) La stessa riga della scheda (`needsRowOf`):
+ * le richieste senza risposta a parte, rosse, e le scadenze.
  */
-export function PanelNeedsBlock({ needs, href }: { needs: PanelNeeds; href: string }) {
-  const summary = needs.summary;
-  const pieces = needsCountPieces(summary);
-  const bar = needsCountBar(summary);
+export function PanelNeedsBlock({ needs, unanswered = 0, href }: { needs: PanelNeeds; unanswered?: number; href: string }) {
+  const row = needsRowOf(needs.summary, unanswered);
+  if (!row) return null;
+  const { pieces, bar } = row;
   const total = bar.reduce((sum, part) => sum + part.count, 0);
   return (
     <Block>
@@ -429,7 +433,7 @@ export function PanelNeedsBlock({ needs, href }: { needs: PanelNeeds; href: stri
         className="group block space-y-1.5 rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
       >
         <span className="flex items-center justify-between gap-2">
-          <span className="text-sm font-medium underline-offset-4 group-hover:underline">{keepTogether(needsCountTitle(summary.open))}</span>
+          <span className="text-sm font-medium underline-offset-4 group-hover:underline">{keepTogether(row.title)}</span>
           <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground" />
         </span>
         {pieces.length ? <span className="block text-xs text-muted-foreground tabular-nums">{keepTogether(pieces.join(FIGURE_SEPARATOR))}</span> : null}

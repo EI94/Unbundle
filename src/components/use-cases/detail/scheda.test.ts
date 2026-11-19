@@ -5,6 +5,7 @@ import * as nodeModule from "node:module";
 import { enableTsxImports } from "./referent/tsx-test-loader.ts";
 import { COST_BANDS } from "../../../lib/use-cases/cost-bands.ts";
 import { GUIDED_TEXT, compactPathOf, impactView, pathOfUseCase, type GuidedItem, type RealizationAccount } from "../../../lib/use-cases/guided.ts";
+import { panelNeeds, type NeedView } from "../../../lib/use-cases/needs.ts";
 import type { CostFigure, ValueFigure } from "../../../lib/use-cases/valuation.ts";
 
 // (Rilascio 10, §3.4) La scheda dello use case in una colonna, resa in HTML senza database: «Valore» con una cifra sola
@@ -17,6 +18,7 @@ let useCasePath: typeof import("./use-case-path.tsx");
 let detailHeader: typeof import("./detail-header.tsx");
 let sectionNeeds: typeof import("./section-needs.tsx");
 let notePlacement: typeof import("./note-placement.tsx");
+let panel: typeof import("../use-case-panel.tsx");
 let render: (element: unknown) => string;
 let h: (type: unknown, props: unknown, ...children: unknown[]) => unknown;
 
@@ -47,6 +49,7 @@ before(async () => {
   detailHeader = await import("./detail-header.tsx");
   sectionNeeds = await import("./section-needs.tsx");
   notePlacement = await import("./note-placement.tsx");
+  panel = await import("../use-case-panel.tsx");
   const react = await import("react");
   h = (type, props, ...children) => react.createElement(type as never, props as never, ...(children as never[]));
   const { renderToStaticMarkup } = (await import("react-dom/server")) as unknown as { renderToStaticMarkup: (element: unknown) => string };
@@ -296,6 +299,64 @@ test("«Cosa serve · N»: una riga chiusa con le aperte, i gruppi prima quello 
   );
   assert.equal(text(silent.slice(0, silent.indexOf("</button>"))), "Cosa serve · 6 2 da verificare · 2 senza risposta · 1 in attesa · 1 scadenza");
   assert.match(silent, /data-group="unanswered" class="[^"]*bg-uc-rosso/);
+});
+
+test("(rilascio 10, §3.4) il pannello e la scheda dicono la stessa riga «Cosa serve · N» con gli stessi dati", () => {
+  const needOf = (id: string, title: string, status: NeedView["status"], type: NeedView["type"] = "requisito"): NeedView => ({
+    id,
+    type,
+    kind: "dato",
+    title,
+    detail: null,
+    ownerLabel: null,
+    ownerSide: "cliente",
+    status,
+    availability: null,
+    dueOn: null,
+    dueLabel: null,
+    dueIsProposal: false,
+    forLabel: null,
+    sortOrder: 1,
+    version: 1,
+    importKey: null,
+    createdAt: "2026-10-01T10:00:00.000Z",
+    updatedAt: "2026-10-01T10:00:00.000Z",
+    doneAt: null,
+    archivedAt: null,
+    archiveReason: null,
+    useCaseIds: [UC],
+  });
+  const list = [
+    needOf("7f000000-0000-4000-8000-000000000011", "Preventivi al mese", "in_verifica"),
+    needOf("7f000000-0000-4000-8000-000000000012", "Chi controlla prima dell'invio", "chiesta"),
+    needOf("7f000000-0000-4000-8000-000000000013", "Come si preparano oggi", "chiesta"),
+    needOf("7f000000-0000-4000-8000-000000000014", "Sconto massimo senza approvazione", "chiesta"),
+    needOf("7f000000-0000-4000-8000-000000000015", "Un preventivo di esempio", "da_chiedere"),
+    needOf("7f000000-0000-4000-8000-000000000016", "Listino in vigore", "bloccata"),
+    needOf("7f000000-0000-4000-8000-000000000017", "Il modello dell'offerta", "validata"),
+    needOf("7f000000-0000-4000-8000-000000000018", "Prova sul gestionale entro fine mese", "proposta", "passo"),
+  ];
+  const requirements = list.filter((need) => need.type === "requisito");
+  const steps = list.filter((need) => need.type === "passo");
+  const needs = panelNeeds(list, { id: UC, code: "XX-0024", title: "Preventivi in giornata" }, "2026-11-01");
+  assert.ok(needs);
+  /** I tratti della barra, nell'ordine: gruppo, colore e larghezza. */
+  const bar = (html: string) => [...html.matchAll(/<span data-group="[^"]*"[^>]*>/g)].map((match) => match[0]);
+  const rows: string[] = [];
+  for (const unanswered of [0, 2]) {
+    const infoProgress = { counts: { toAsk: 1, toVerify: 1, waiting: 3, unanswered, blockedCount: 1, since: null, reminded: unanswered > 0 } };
+    const scheda = render(h(sectionNeeds.SectionNeeds, { workspaceId: WS, useCaseId: UC, requirements, steps, linkable: [], refs: {}, today: "2026-11-01", canEdit: true, infoProgress }));
+    const head = scheda.slice(0, scheda.indexOf("</button>"));
+    const side = render(h(panel.PanelNeedsBlock, { needs, unanswered, href: `/dashboard/${WS}/use-cases/${UC}?capitolo=cosa-serve` }));
+    assert.equal(text(side), text(head), `${unanswered} senza risposta: la stessa riga`);
+    assert.deepEqual(bar(side), bar(head), `${unanswered} senza risposta: la stessa barra`);
+    rows.push(text(side));
+  }
+  // Le scadenze si dicono «scadenze», mai «passo»; le senza risposta escono da «in attesa».
+  assert.deepEqual(rows, [
+    "Cosa serve · 7 1 da verificare · 1 da chiedere · 3 in attesa · 1 ferma · 1 scadenza",
+    "Cosa serve · 7 1 da verificare · 2 senza risposta · 1 da chiedere · 1 in attesa · 1 ferma · 1 scadenza",
+  ]);
 });
 
 test("dopo una finestra del referente, senza il pulsante di partenza, il fuoco va al blocco «Referente» o alla riga «Cosa serve», aperta", () => {

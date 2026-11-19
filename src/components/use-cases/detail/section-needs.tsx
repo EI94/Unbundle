@@ -260,12 +260,13 @@ export function SectionNeeds({
   const eligible = Boolean(feature?.eligible);
   const hasReferent = Boolean(feature?.referent);
 
-  // (Rilascio 10, §3.4) Il capitolo è una riga, «Cosa serve · 5», con i conteggi e la barra, come nel pannello: si apre
-  // al tocco, e arriva aperto con `?capitolo=cosa-serve` (o `richieste`) e con i link della pagina che lo chiedono.
-  // I conteggi nell'ordine della barra, prima quello che chiede di agire («2 da verificare · 3 in attesa»); le richieste
-  // scadute o dopo l'ultimo promemoria sono «senza risposta», rosse, come le dice «Raccolta informazioni».
+  // (Rilascio 10, §3.4) Il capitolo è una riga, «Cosa serve · 5», con i conteggi e la barra, la stessa del pannello
+  // (`needsRowOf`): si apre al tocco, e arriva aperto con `?capitolo=cosa-serve` (o `richieste`) e con i link della
+  // pagina che lo chiedono. I conteggi nell'ordine della barra, prima quello che chiede di agire («2 da verificare · 3 in
+  // attesa»); le richieste scadute o dopo l'ultimo promemoria sono «senza risposta», rosse, come le dice «Raccolta
+  // informazioni».
   const row = needsRowOf(needsCountSummaryOf([...requirements, ...steps], useCaseId), infoProgress?.counts.unanswered ?? 0);
-  const title = row && row.open > 0 ? fillText(GUIDED_TEXT.scheda.needsCount, { n: formatInteger(row.open) }) : TEXT.title;
+  const title = row?.title ?? TEXT.title;
   const pieces = row?.pieces ?? [];
   const bar = row?.bar ?? [];
   const barTotal = bar.reduce((sum, part) => sum + part.count, 0);

@@ -549,6 +549,8 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
           estimate: data.panelEstimate,
           answers: data.panelAnswers,
           needs: data.needs ? panelNeeds(data.needs, panelItem, list.today) : null,
+          // (Rilascio 10, §3.4) Le richieste senza risposta: la riga «Cosa serve · N» è quella della scheda.
+          unanswered: data.info?.[panelItem.id.toLowerCase()]?.counts.unanswered ?? 0,
           nextStep: panelNextStep(panelItem, data),
         }
     : null;

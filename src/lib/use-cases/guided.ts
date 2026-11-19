@@ -339,6 +339,8 @@ export const GUIDED_TEXT = Object.freeze({
     cardGroup: "Scheda",
     visible: "Visibile in azienda",
     needsCount: "Cosa serve · {n}",
+    /** Il titolo della riga senza aperte, senza numero. */
+    needsTitle: "Cosa serve",
     /** Nella riga «Cosa serve · N»: le scadenze da fare, come «Scadenze · N» dentro. */
     stepsOne: "1 scadenza",
     stepsMany: "{n} scadenze",
@@ -629,8 +631,13 @@ export function realizationAccountOf(realization: UseCaseRealization | null | un
 /** I gruppi della riga «Cosa serve · N»: quelli dei requisiti, quelli senza risposta e le scadenze. */
 export type NeedsRowGroup = NeedRequestGroup | "unanswered" | "steps";
 
-/** (Rilascio 10, §3.4) La riga chiusa di «Cosa serve» nella scheda: il numero delle aperte, i gruppi e la barra. */
+/**
+ * (Rilascio 10, §3.4) La riga chiusa di «Cosa serve»: il titolo, il numero delle aperte, i gruppi e la barra. La stessa
+ * nella scheda e nel pannello.
+ */
 export interface NeedsRow {
+  /** «Cosa serve · 5»; senza aperte «Cosa serve», senza numero. */
+  title: string;
   /** Le aperte: requisiti non a posto e scadenze da fare. */
   open: number;
   /** «2 da verificare · 3 in attesa»: i gruppi aperti, prima quello che chiede di agire; senza aperte, «N a posto». */
@@ -640,7 +647,7 @@ export interface NeedsRow {
 }
 
 /**
- * La riga «Cosa serve · N» della scheda (rilascio 10, §3.4), dai conteggi delle esigenze dello use case
+ * La riga «Cosa serve · N» della scheda e del pannello (rilascio 10, §3.4), dai conteggi delle esigenze dello use case
  * (`needsCountSummaryOf`) e da quante richieste chieste sono senza risposta (`InfoProgressView.counts.unanswered`:
  * scadute, o dopo l'ultimo promemoria). Quelle senza risposta escono da «in attesa» (blu) e hanno il loro gruppo,
  * «N senza risposta», rosso, subito dopo «da verificare»: il passo dice di sollecitarle. Le scadenze si dicono
@@ -667,7 +674,8 @@ export function needsRowOf(summary: NeedsCountSummary | null, unanswered = 0): N
     return needAskPieces({ ...ZERO, [part.group]: part.count });
   };
   const pieces = summary.open > 0 ? bar.filter((part) => part.group !== "done").flatMap(pieceOf) : bar.filter((part) => part.group === "done").flatMap(pieceOf);
-  return { open: summary.open, pieces, bar };
+  const title = summary.open > 0 ? fill(t.needsCount, { n: formatInteger(summary.open) }) : t.needsTitle;
+  return { title, open: summary.open, pieces, bar };
 }
 
 // ═══ «Prossimo passo» ════════════════════════════════════════════════
