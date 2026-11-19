@@ -14,11 +14,7 @@ import { eligibleForReferent } from "@/lib/use-cases/referent/use-case-state";
 import { REFERENT_STATE_PARAM, type ReferentReview, type ReferentStateKey } from "@/lib/use-cases/referent/use-case-state";
 import { referentFilterOptions } from "@/lib/use-cases/referent/filter";
 import type { DossierColumn } from "@/lib/db/queries/uc-nav";
-import { getPortfolioParticipation } from "@/lib/db/queries/portfolio-participation";
-import type { Participation } from "@/lib/portfolio/participation";
-import { ParticipationList } from "@/components/home/participation-list";
-import { Fold } from "@/components/ui-10/fold";
-import { HOME_TEXT } from "@/lib/home/text";
+import { subprocessorsPendingForLs } from "@/components/workspace/subprocessors-notice";
 import { reviewTeamName } from "@/lib/review-team";
 import { activityMappingPath, fullFormPath, type ActivityMappingState } from "@/lib/use-cases/create";
 import { activityMappingReadiness, quickCreateOptions, type QuickCreateOptions } from "@/lib/use-cases/create-data";
@@ -70,7 +66,7 @@ import { NeedsBoardView } from "./needs-board";
 import { EmptyState, HUB_TEXT, HubHeader, HubNotice, receiptText } from "./hub-header";
 import { HashFocusOnCommit, ListFocusTarget } from "./list-focus";
 import { LANES_TEXT, PanoramaLanes, type LanesGrouping } from "./panorama-lanes";
-import { PanoramicaTop } from "./panoramica-top";
+import { PanoramicaTop, SuppliersLine } from "./panoramica-top";
 import { QuickCreateSheet } from "./quick-create-sheet";
 import { UseCasePanel, type UseCasePanelData } from "./use-case-panel";
 import { askEntry } from "./detail/referent/ask-dialog-state";
@@ -153,12 +149,6 @@ export interface UseCaseHubData {
   /** (Rilascio 5, §11.2) id → titolo delle aree della guida del connettore, per il filtro «Area» (solo revisori). */
   areaLabels: Record<string, string> | null;
   /**
-   * «Chi propone, per area» (prima «Partecipazione per area»): solo etichette e numeri per area e società, mai chi
-   * propone (art. 15.4). (Rilascio 10, §3.4) Solo ai revisori, in una piega chiusa in fondo alla Panoramica con le
-   * corsie, finché la Home (Persone) non la ha; i contributori la trovano nella loro Home. null altrove.
-   */
-  participation: Participation | null;
-  /**
    * «Raccolta informazioni» di ogni scheda con requisiti del cliente (chiave: id in minuscolo), solo
    * per i revisori che vedono «Cosa serve» (`listInfoProgress`); null ai contributori. Il chip nelle
    * righe e il filtro «Informazioni».
@@ -171,6 +161,12 @@ export interface UseCaseHubData {
   referentStates: Record<string, ReferentStateKey> | null;
   /** (Rilascio 5) Solo ai revisori: che cosa aspetta il team dalla risposta del referente. */
   referentReview: Record<string, ReferentReview> | null;
+  /**
+   * (Rilascio 10) Manca l'ok del cliente ai fornitori: solo per Lateral Space, sulla Panoramica senza grafico, con la
+   * sezione dei dossier accesa (`subprocessorsPendingForLs`, le stesse persone dell'avviso di prima). La pagina lo dice
+   * con una riga senza pulsante quando il passo «Autorizza i fornitori» non c'è.
+   */
+  suppliersPending: boolean;
   /** Le voci dei grafici del menu «⋯» (`hubCharts`, su tutte le schede); [] ai contributori. */
   charts: HubChartParam[];
   /** Il grafico aperto nella Panoramica al posto delle corsie (`shownChart`); null senza. */
@@ -225,12 +221,13 @@ export async function loadUseCaseHub({ workspaceId, session, access, searchParam
   const readsNeeds = reviewer && abilities.canSeeNeeds && (view === "cosa-serve" || (lanes && !hasActiveFilters(params)) || Boolean(params.apri));
   // (Rilascio 10, D3) Il prossimo passo del workspace, sulle corsie senza filtri: le sue due letture in più.
   const readsStep = reviewer && lanes && !hasActiveFilters(params);
-  // (Rilascio 10, §3.4) Niente più avviso sui fornitori sulla Panoramica: lo dice il passo «Autorizza i fornitori»
-  // (`workspaceSteps`, regola 1), con la riga della campanella a chi può dare l'ok.
-  const [dossierColumn, participation, needs, info, connectorDisplayName, referents, stepFacts] = await Promise.all([
+  // (Rilascio 10, §3.4) «Chi propone, per area» sta nella Home (Persone). L'ok sui fornitori lo dice il passo «Autorizza i
+  // fornitori» (`workspaceSteps`, regola 1), con la riga della campanella a chi può darlo; a Lateral Space, quando il passo
+  // non c'è, una riga senza pulsante.
+  const [dossierColumn, suppliersPending, needs, info, connectorDisplayName, referents, stepFacts] = await Promise.all([
     inProgress.length ? dossierColumnOf(workspaceId, { userId: session.user.id, role: access.role }, inProgress) : null,
-    // (Rilascio 10) «Chi propone, per area» in fondo alla Panoramica (le corsie, non un grafico), solo ai revisori.
-    reviewer && lanes ? getPortfolioParticipation(workspaceId) : null,
+    // Solo a Lateral Space (la stessa regola di `getUcUserContext`): ai revisori del cliente nessuna lettura.
+    reviewer && abilities.isLateralSpace && lanes ? subprocessorsPendingForLs(workspaceId, session.user.id) : false,
     readsNeeds ? listWorkspaceNeeds(workspaceId, viewer) : null,
     // «Raccolta informazioni»: solo a chi vede «Cosa serve»; la lettura stessa risponde null agli altri.
     abilities.canSeeNeeds ? listInfoProgress(workspaceId, viewer, { now }) : null,
@@ -292,10 +289,10 @@ export async function loadUseCaseHub({ workspaceId, session, access, searchParam
     needs,
     connectorDisplayName: view === "cosa-serve" && readsNeeds ? (connectorDisplayName?.displayName ?? null) : null,
     areaLabels: connectorDisplayName ? Object.fromEntries(guideAreaLabels(connectorDisplayName.areas)) : null,
-    participation,
     info,
     referentStates: referents?.states ?? null,
     referentReview: referents?.review ?? null,
+    suppliersPending,
     charts,
     chart,
     stepFacts,
@@ -331,9 +328,6 @@ const byLabel = (a: FilterOption, b: FilterOption) => a.label.localeCompare(b.la
 
 /** (Rilascio 10) Le voci di «⋯» › «Grafici ›»: una sola «Matrice» e «Curva del valore». */
 const CHART_MENU_LABEL = Object.freeze({ matrice: CHART_TEXT.matrix, curva: CHART_TEXT.curva });
-
-/** L'ancora della piega «Chi propone, per area» in fondo alla Panoramica (la stessa della Home dei contributori). */
-const PARTICIPATION_FOLD_ID = "chi-propone";
 
 /**
  * Le voci di «Altri filtri» dagli use case del workspace: canali, aree, agenti (il prefisso del
@@ -530,6 +524,8 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
   // (Rilascio 10, §3.4) «Nuovo» è bordato: il pulsante pieno è il prossimo passo della vista. Resta pieno dove la
   // pagina non ne ha un altro: per il contributore, che propone, e nell'area ancora vuota.
   const newVariant = reviewer && items.length > 0 ? "outline" : "default";
+  // A Lateral Space, senza l'ok ai fornitori: la riga senza pulsante, quando il passo «Autorizza i fornitori» non lo dice già.
+  const suppliersHref = data.suppliersPending && overview?.nextStep?.step?.key !== "fornitori" ? `/dashboard/${workspaceId}/settings#sub-responsabili` : null;
 
   // «Cosa serve»: tutte le esigenze del workspace; con un filtro quelle degli use case che lo
   // passano (e quelle con la ricerca nel titolo). I codici in «Per» restano quelli di tutte le schede.
@@ -615,6 +611,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
           </HubNotice>
         ) : null}
         <Welcome joined={params.joined} workspaceName={data.workspaceName} roleName={data.roleName} />
+        {view === "panoramica" && !chart && suppliersHref ? <SuppliersLine href={suppliersHref} /> : null}
 
         {items.length === 0 ? (
           // «Nuovo use case» c'è già nella testata: il vuoto non ne aggiunge un secondo.
@@ -706,15 +703,6 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
             />
           </>
         )}
-
-        {/* (Rilascio 10, §3.4) «Chi propone, per area», chiusa: finché la Home (Persone) non la ha, ai revisori resta qui. */}
-        {view === "panoramica" && !chart && reviewer && data.participation && data.participation.rows.length > 0 ? (
-          <div data-slot="panoramica-participation">
-            <Fold id={PARTICIPATION_FOLD_ID} title={HOME_TEXT.contributor.byArea}>
-              <ParticipationList participation={data.participation} />
-            </Fold>
-          </div>
-        ) : null}
       </div>
 
       {panelData ? (

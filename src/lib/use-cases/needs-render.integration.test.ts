@@ -581,7 +581,7 @@ test("Panoramica: il prossimo passo del workspace (rilascio 10, D3), lo stesso d
   }
   // Lo sponsor del cliente (gestore): i due use case di questo trimestre, nel conteggio della loro corsia (rilascio 10).
   const manager = await hubHtml("manager", ids.wsStart, { vista: "panoramica" });
-  assert.match(manager, new RegExp(`<h2 id="lane-questo_trimestre"[^>]*>${quarter.quarterLabel(thisQuarter).replace(" ", N)} <span[^>]*>2</span></h2>`));
+  assert.match(manager, new RegExp(`<h2 id="lane-questo_trimestre"[^>]*>${quarter.quarterLabel(thisQuarter).replace(" ", N)} <span[^>]*>2<span class="sr-only"> use case</span></span></h2>`));
   // «Chiedi 1 informazione», quando tocca a lui, porta a «Cosa serve» del trimestre: proprio i requisiti contati, non
   // gli altri, con gli stessi numeri nella riga sotto «Requisiti», che comincia dal trimestre.
   const { workspaceStepHref } = await import("../home/next-step.ts");

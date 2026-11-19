@@ -403,6 +403,13 @@ test("«Curva del valore»: J-curve, «Valore per tipo di ritorno» e «Ipotesi 
   assert.ok(html.includes(">Curva del valore</h2>"));
   assert.ok(html.includes('aria-label="Curva del valore" data-slot="roadmap-value"'), "la sezione dei grafici");
   for (const slot of ["value-jcurve", "value-by-lever", "value-params-summary"]) assert.ok(html.includes(`data-slot="${slot}"`), slot);
+  // (Rilascio 10) Le ore liberate all'anno, prima nella riga «Su tutto il portafoglio» della Panoramica: 6.600 richieste
+  // × 1,5 minuti × 70 % ≈ 115,5 ore, a ogni larghezza sotto il titolo della J-curve.
+  assert.match(html, /<p data-slot="jcurve-hours" class="pt-1 text-sm"><span class="text-muted-foreground">Ore liberate all&#x27;anno<\/span> <span class="font-medium tabular-nums">116<\/span><\/p>/);
+  // Senza ore (un ritorno solo qualitativo) la riga non c'è: lo zero non si dice.
+  const noHours = item({ valueModel: QUALITATIVE });
+  const qualitative = view({ chart: "curva", items: [noHours], planItems: [noHours], query, clearHref: `${BASE}?vista=panoramica&mostra=curva` });
+  assert.ok(!qualitative.includes('data-slot="jcurve-hours"'));
   assert.ok(html.includes(`apri=${approved.id}`), "i segmenti aprono il pannello");
   assert.ok(!html.includes('data-slot="list-focus"'));
   const none = view({ chart: "curva", items: [plain], planItems: [approved, plain], query, filtersActive: true, clearHref: `${BASE}?vista=panoramica&mostra=curva` });

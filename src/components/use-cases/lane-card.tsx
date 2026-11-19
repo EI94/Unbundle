@@ -35,7 +35,8 @@ export interface LaneCardProps {
   bands?: readonly CostBandInfo[];
   /**
    * (Rilascio 5, §10.3) Lo stato del referente (tutti i ruoli). (Rilascio 10, D7) La card lo scrive solo quando chiede
-   * un'azione (`cardReferentState`): «Manca il referente», «Nessuna risposta», «Risposte da verificare».
+   * un'azione (`cardReferentState`): «Manca il referente», «Nessuna risposta», «Risposte da verificare», «Il referente
+   * ha chiesto qualcosa».
    */
   referentState?: ReferentStateKey | null;
 }
@@ -51,7 +52,8 @@ export interface LaneCardProps {
  *   senza la fonte: la dicono il pannello e la scheda (D7). Senza cifra «Valore: Alto», «Valore: da stimare»;
  * - in «In realizzazione» la fase con lo stato del dossier, o «Senza pagina di realizzazione»; con la lettura del
  *   dossier in errore solo la fase (§4.9); in «In uso» «Realizzato» o «Diffusa», il mese e gli euro all'anno;
- * - lo stato del referente solo quando chiede un'azione (D7).
+ * - lo stato del referente solo quando chiede un'azione (D7): «Manca il referente», «Nessuna risposta», «Risposte da
+ *   verificare», «Il referente ha chiesto qualcosa».
  * Il trimestre a parte, «Da diffondere» e la fonte del costo non ci sono più: li dicono il pannello (la pillola
  * «Approvato · T2 2027»), il filtro «Tipo» e la scheda. Nell'HTML il titolo viene prima della riga in alto (la
  * griglia la mette sopra): un lettore di schermo sente il titolo intero, prefisso compreso, prima di tag e cifre; il

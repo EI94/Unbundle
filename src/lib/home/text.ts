@@ -80,6 +80,8 @@ export const HOME_TEXT = Object.freeze({
       employees ? `${formatInteger(trained)} ${trained === 1 ? "formata" : "formate"} su ${formatInteger(employees)}` : `${formatInteger(trained)} ${trained === 1 ? "formata" : "formate"}`,
     /** Senza formazione, i livelli dell'AI Readiness: «46 risposte all'AI Readiness». */
     readiness: (answers: number) => `${count(answers, "risposta", "risposte")} all'AI Readiness`,
+    /** (Rilascio 10) Senza formazione né AI Readiness, chi propone: «24 use case da 5 aree». */
+    byArea: (useCases: number, areas: number) => `${count(useCases, "use case", "use case")} da ${count(areas, "area", "aree")}`,
     /** «5 risultati chiave · in media al 42 %»: l'avanzamento medio di quelli con base, valore e traguardo. */
     keyResults: (total: number, averagePct: number | null) =>
       [count(total, "risultato chiave", "risultati chiave"), averagePct === null ? null : total === 1 ? atPct(averagePct) : `in media ${atPct(averagePct)}`]
@@ -111,6 +113,10 @@ export const HOME_TEXT = Object.freeze({
     settingsWeights: "Pesi dell'indice",
     /** Nel pannello «Impostazioni del programma»: le altre impostazioni, dove stanno. */
     settingsCaseDev: "Lo sviluppo di un singolo use case si cambia nel pannello della sua iniziativa.",
+    /** (Rilascio 10) In «Tutti i numeri»: il tetto delle voci da misurare di «Benefici e costi» (prima sulla Panoramica). */
+    pending: "Valore da misurare all'anno",
+    /** «fino a 23.400 € · su 9 use case». */
+    pendingFact: (eur: number, useCases: number) => `fino a ${formatEuro(eur)} · su ${count(useCases, "use case", "use case")}`,
   }),
 
   /** La pagina «Obiettivi» (`/strategy`, §2.4, §3.8): si apre da Home › Obiettivi, e la barra accende «Home». */

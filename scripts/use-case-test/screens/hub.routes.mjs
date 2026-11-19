@@ -24,6 +24,7 @@
 // offered, their addresses open the lanes, and «Cosa serve» is empty.
 
 import { DEFAULT_REVIEW_TEAM_NAME } from "../../../src/lib/review-team.ts";
+import { currentQuarter, quarterLabel } from "../../../src/lib/use-cases/quarter.ts";
 import { ANSWER_TEXT, askedTitle, questionLabel } from "../../../src/lib/use-cases/answers.ts";
 
 const DECIDE = "/dashboard/{ws:a}/use-cases?vista=da-decidere";
@@ -42,14 +43,19 @@ const OTHERS_NOTES = ["Quante note spese arrivano ogni mese?", "Servono esempi d
 const NOT_FOR_CONTRIBUTOR = ["{code:r05}", "{code:r06}", "{code:r09}", "{code:r12}", ...OTHERS_NOTES, "Previsione della domanda", "Altri filtri", "Cerca per titolo o codice"];
 
 /**
- * The Panoramica of the reviewers: «Approvati» in the strip «Fasi degli use case», the big numbers,
- * «Prossimo passo» (proposals wait for a decision), the three lanes, «In realizzazione» and «In uso» (release 10, §4).
+ * The lane of this quarter as body.innerText has it, «T4 2026» with a non-breaking space: in workspace «a» it always has
+ * r11 (an approved card of a past quarter, «Scaduto») and, for reviewers, the hidden card of this quarter.
  */
-const OVERVIEW_REVIEWER = ["Panoramica", "Approvati", "valore all'anno", "costo di realizzazione", "Prossimo passo", "Questo trimestre", "In realizzazione", "In uso"];
-/** The contributor's Panoramica: the strip with «Approvati» and the same lanes, with title and phase only. */
-const OVERVIEW_CONTRIBUTOR = ["Approvati", "In valutazione"];
+const THIS_QUARTER_LANE = quarterLabel(currentQuarter()).replace(" ", "\u00a0");
+/**
+ * The Panoramica of the reviewers (release 10, §3.4): «Prossimo passo» (proposals wait for a decision), then one big
+ * number «Valore all'anno» with «Tutti i numeri», the lane of this quarter, «In realizzazione» and the closed «In uso».
+ */
+const OVERVIEW_REVIEWER = ["Panoramica", "Prossimo passo", "Valore all'anno", "Tutti i numeri", THIS_QUARTER_LANE, "In realizzazione", "In uso"];
+/** The contributor's Panoramica: the same lanes, with title and phase only, and «In valutazione» among the views. */
+const OVERVIEW_CONTRIBUTOR = ["Panoramica", "In valutazione"];
 /** Never on the contributor's Panoramica: figures, the box, the needs, the agent filter. */
-const NOT_ON_CONTRIBUTOR_OVERVIEW = [...NOT_FOR_CONTRIBUTOR, "€", "costo di realizzazione", "Prossimo passo", "Cosa serve", "Agente"];
+const NOT_ON_CONTRIBUTOR_OVERVIEW = [...NOT_FOR_CONTRIBUTOR, "€", "Valore all'anno", "costo di realizzazione", "Prossimo passo", "Cosa serve", "Agente"];
 /**
  * The headers of the closed lists by zone under «Matrice Valore × Costo», as body.innerText has
  * them: the zone name and «N use case» kept whole by non-breaking spaces, the «·» after the name
@@ -99,7 +105,7 @@ const routes = [
   // only, when an approved title has an agent prefix (without one the address opens the lanes).
   FULL_SEED
     ? { name: "panoramica-agenti", path: `${OVERVIEW}&mostra=agenti`, as: REVIEWERS, present: ["Per trimestre", "Per agente", "Altri use case"] }
-    : { name: "panoramica-agenti", path: `${OVERVIEW}&mostra=agenti`, as: REVIEWERS, present: ["Approvati", "Questo trimestre"], absent: ["Per agente"] },
+    : { name: "panoramica-agenti", path: `${OVERVIEW}&mostra=agenti`, as: REVIEWERS, present: ["Panoramica", THIS_QUARTER_LANE], absent: ["Per agente"] },
   { name: "panoramica-agenti", path: `${OVERVIEW}&mostra=agenti`, as: CONTRIBUTOR, present: OVERVIEW_CONTRIBUTOR, absent: [...NOT_ON_CONTRIBUTOR_OVERVIEW, "Per agente"] },
   // H4p: i scaduti marcati; legenda corta. Opened from the «⋯» menu, in place of the lanes, with
   // «Torna alla Panoramica» above. Since 07aad144 the codes are no longer on the chart (only a tag
@@ -111,8 +117,8 @@ const routes = [
     as: REVIEWERS,
     present: ["Torna alla Panoramica", "Subito", "Da pianificare", "Se avanza tempo", "Non ora", "Le zone sono un suggerimento, non la decisione.", ...MATRIX_ZONES, "da decidere"],
   },
-  // «Matrice Facilità × Beneficio» from the «⋯» menu (the bubbles, only with a «Benefici e costi»
-  // model in the workspace; otherwise the page falls back to the matrix), with «Torna alla Panoramica».
+  // The «Matrice» on its «Facilità × Beneficio» side, the old `mostra=benefici` (the bubbles, only with a «Benefici e
+  // costi» model in the workspace; otherwise the page falls back to the «Valore × Costo» side), with «Torna alla Panoramica».
   {
     name: "panoramica-benefici",
     path: `${OVERVIEW}&mostra=benefici`,
@@ -120,8 +126,8 @@ const routes = [
     present: ["Torna alla Panoramica"],
     absent: ["Cosa serve per far avanzare", "Requisiti"],
   },
-  // «Curva del valore» from the «⋯» menu: the J-curve, «Valore per tipo di ritorno» and «Ipotesi di
-  // calcolo» in place of the lanes, with «Torna alla Panoramica». The menu offers it only when an
+  // «Curva del valore» from «⋯» › «Grafici ›»: the J-curve with the hours freed per year, «Valore per tipo di ritorno»
+  // and «Ipotesi di calcolo» in place of the lanes, with «Torna alla Panoramica». The menu offers it only when an
   // approved or in-progress use case has a «Benefici e costi» model; without one ?mostra=curva opens the lanes.
   FULL_SEED
     ? {
@@ -131,7 +137,7 @@ const routes = [
         present: ["Curva del valore", "Torna alla Panoramica", "Ipotesi di calcolo"],
         absent: ["Cosa serve per far avanzare", "Requisiti"],
       }
-    : { name: "panoramica-curva", path: `${OVERVIEW}&mostra=curva`, as: REVIEWERS, present: ["Approvati", "Questo trimestre"], absent: ["Torna alla Panoramica", "Ipotesi di calcolo"] },
+    : { name: "panoramica-curva", path: `${OVERVIEW}&mostra=curva`, as: REVIEWERS, present: ["Panoramica", THIS_QUARTER_LANE], absent: ["Torna alla Panoramica", "Ipotesi di calcolo"] },
   { name: "panoramica-curva", path: `${OVERVIEW}&mostra=curva`, as: CONTRIBUTOR, present: OVERVIEW_CONTRIBUTOR, absent: [...NOT_ON_CONTRIBUTOR_OVERVIEW, "Curva del valore", "Ipotesi di calcolo", "Torna alla Panoramica"] },
   // The old names of the Panoramica (bookmarks, e-mails already sent, the bell): they open it, with every other parameter.
   { name: "alias-priorita", path: "/dashboard/{ws:a}/use-cases?vista=priorita", as: REVIEWERS, present: OVERVIEW_REVIEWER, absent: ["Torna alla Panoramica"] },

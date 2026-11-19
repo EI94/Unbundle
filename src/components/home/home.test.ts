@@ -122,7 +122,17 @@ function reviewer(o: { items?: HubItem[]; program?: ProgramView | null; start?: 
     program: programView,
     start: o.start ?? null,
   });
-  return { kind: "revisore", workspaceId: WS, companyName: "Cliente Demo", description: o.description ?? null, home, program: programView, programState: o.state ?? (programView ? "ok" : "non_pronto") };
+  return {
+    kind: "revisore",
+    workspaceId: WS,
+    companyName: "Cliente Demo",
+    description: o.description ?? null,
+    home,
+    program: programView,
+    programState: o.state ?? (programView ? "ok" : "non_pronto"),
+    pendingValue: null,
+    participation: null,
+  };
 }
 
 // ─── Revisori ────────────────────────────────────────────────────────
@@ -248,6 +258,27 @@ test("Home dei contributori: oltre tre «Vedi tutti (N)»; senza use case un vuo
 });
 
 // ─── Gli indirizzi di prima ──────────────────────────────────────────
+
+test("(rilascio 10) «Tutti i numeri» ha il valore da misurare; «Persone» ha «Chi propone, per area» (prima sulla Panoramica)", () => {
+  const open = () => {};
+  const body = (panel: string, extras: Record<string, unknown> = {}) => render(h(panels.PanelBody, { panel, view: view(), open, extras }));
+  // Il valore da misurare, sotto il valore stimato, quando c'è: una riga senza pannello.
+  const numbers = body("numeri", { pendingValue: { amountEur: 23_400, count: 9, note: "su 9 use case" } });
+  assert.ok(numbers.indexOf('data-row="valore"') < numbers.indexOf('data-row="da-misurare"') && numbers.indexOf('data-row="da-misurare"') < numbers.indexOf('data-row="in-uso"'), "sotto il valore stimato");
+  assert.ok(textOf(numbers).includes("Valore da misurare all'anno fino a 23.400 € · su 9 use case"), textOf(numbers));
+  assert.match(numbers, /<div data-slot="row" data-row="da-misurare"/, "una riga ferma, senza pannello né freccia");
+  assert.ok(!body("numeri").includes('data-row="da-misurare"'), "lo zero non si dice");
+  // «Chi propone, per area» in «Persone», con le aree e la riga delle società; mai in «Formazione».
+  const participation = { rows: [{ label: "Amministrazione", count: 4, bestPractices: 1 }], companies: [{ label: "Cliente Demo", count: 4 }] };
+  const people = body("persone", { participation });
+  assert.ok(textOf(people).includes("Chi propone, per area") && textOf(people).includes("Amministrazione 4") && textOf(people).includes("di cui 1 da diffondere"), textOf(people));
+  assert.ok(people.includes('data-slot="participation"'));
+  assert.ok(!body("formazione", { participation }).includes("Chi propone, per area"));
+  assert.ok(!body("persone", { participation: { rows: [], companies: [] } }).includes("Chi propone, per area"), "senza aree niente");
+  // La Home passa ai pannelli quello che legge, a ogni revisore.
+  const home = readFileSync(new URL("../programma/program-home.tsx", import.meta.url), "utf8");
+  assert.ok(home.includes("extras={{ pendingValue: data.pendingValue, participation: data.participation }}"));
+});
 
 test("`/programma` è un alias della Home: la stessa pagina, con i suoi `?apri=`; la campanella apre ancora `?apri=rivedere`", () => {
   const app = new URL("../../app/(dashboard)/dashboard/[workspaceId]/", import.meta.url);

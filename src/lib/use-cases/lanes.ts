@@ -14,16 +14,16 @@
  *   workspace (`laneBarScale`): un filtro non accorcia né allunga nessuna barra. Piena per gli euro
  *   contati, tratteggiata per quelli da misurare; mai sotto il 4%.
  * - **Il chip del referente** (D7, `cardReferentState`): sulla card solo quando chiede un'azione («Manca il
- *   referente», «Nessuna risposta», «Risposte da verificare»); gli altri stati restano nel pannello e nella scheda.
+ *   referente», «Nessuna risposta», «Risposte da verificare», «Il referente ha chiesto qualcosa»); gli altri stati
+ *   restano nel pannello e nella scheda.
  * - **Contributori.** Le stesse corsie, per titolo: nessuna cifra, niente «Scaduto» né trimestre a
  *   parte (la pillola «Approvato · T1 2027» lo dice già), nessun giudizio sul team.
  * - **Per agente.** Gli stessi use case delle corsie per agente del titolo (`agentGroups`): quanti,
  *   gli euro contati e in che corsie stanno; sotto, a parte, gli euro contati dei suoi use case «In
  *   realizzazione» («+ 4.043 € in realizzazione»), che la sezione sotto conta già.
- * - **Somme.** Gli euro di una corsia, di «In realizzazione», di «In uso» e di un gruppo «Per agente» sono la
- *   somma delle cifre delle loro card, ognuna già arrotondata all'euro come la scrive la card
- *   (`shownPerYearEur`); così anche il numero grande in testa (`roadmapTotals`). La cifra di un agente più i suoi
- *   «in realizzazione» fanno il numero grande delle sue corsie (`?agente=LIBRA`).
+ * - **Somme.** Gli euro di «In uso» e di un gruppo «Per agente» sono la somma delle cifre delle loro card, ognuna
+ *   già arrotondata all'euro come la scrive la card (`shownPerYearEur`); così anche il numero grande in testa
+ *   (`roadmapTotals`: approvati, in realizzazione e in uso, come la Home).
  *
  * Art. 15.4: corsie, ordini, gruppi e colori non leggono mai chi ha proposto; l'agente è il prefisso
  * del titolo, mai una persona.
@@ -62,10 +62,11 @@ export const PANORAMA_SECTION_ID = Object.freeze({
 
 /**
  * (Rilascio 10, D7) Gli stati del referente che sulla card chiedono un'azione: «Manca il referente», «Nessuna
- * risposta», «Risposte da verificare». Gli altri (in attesa, chiarimento, ha chiesto, ha risposto) la card non li
- * dice: restano nel pannello, nella scheda e nel filtro «Referente».
+ * risposta», «Risposte da verificare» e «Il referente ha chiesto qualcosa» (una domanda che aspetta il team, e che
+ * vince su «da verificare»). Gli altri (in attesa, chiarimento, ha risposto) la card non li dice: restano nel pannello,
+ * nella scheda e nel filtro «Referente».
  */
-export const CARD_REFERENT_STATES: readonly ReferentStateKey[] = Object.freeze(["manca", "nessuna_risposta", "da_verificare"]);
+export const CARD_REFERENT_STATES: readonly ReferentStateKey[] = Object.freeze(["manca", "nessuna_risposta", "da_verificare", "ha_chiesto"]);
 
 /** Lo stato del referente da scrivere sulla card (D7): solo quando chiede un'azione, altrimenti null. */
 export function cardReferentState(state: ReferentStateKey | null | undefined): ReferentStateKey | null {
@@ -86,8 +87,6 @@ export interface LaneEntry<T> {
   item: T;
   /** Trimestre passato senza avvio: «Scaduto». Solo per i revisori. */
   expired: boolean;
-  /** «T3 2026» di uno scaduto, «T2 2027» di un trimestre dopo il prossimo; null altrimenti e ai contributori. */
-  quarterNote: string | null;
 }
 
 export interface Lane<T> {
@@ -99,8 +98,6 @@ export interface Lane<T> {
   /** «T4», «T1», «Più avanti»: i chip dei gruppi «Per agente». */
   short: string;
   entries: LaneEntry<T>[];
-  /** Gli euro contati all'anno della corsia (revisori), la somma delle cifre delle card (`countedEurOf`); null ai contributori. */
-  countedEurYear: number | null;
 }
 
 export interface PanoramaLanes<T> {
@@ -108,11 +105,9 @@ export interface PanoramaLanes<T> {
   lanes: Lane<T>[];
   /** «In realizzazione», per titolo. */
   inProgress: T[];
-  /** Gli euro contati all'anno di «In realizzazione» (revisori), come una corsia; null ai contributori. */
-  inProgressCountedEurYear: number | null;
   /** «In uso» (realizzati e diffuse), dal più recente. */
   done: T[];
-  /** Gli euro contati all'anno di «In uso» (revisori), come una corsia; null ai contributori. */
+  /** Gli euro contati all'anno di «In uso» (revisori), la somma delle cifre delle card (`countedEurOf`); null ai contributori. */
   doneCountedEurYear: number | null;
 }
 
@@ -166,18 +161,18 @@ export function compareLaneItems(a: HubItem, b: HubItem): number {
   return byCode(a.code, b.code) || byTitle(a, b);
 }
 
-/** La corsia di un trimestre rispetto a oggi, con «Scaduto» e il trimestre da scrivere sulla card. */
-function laneOf(quarter: QuarterCode | null, today: string): { key: LaneKey; expired: boolean; quarterNote: string | null } {
+/** La corsia di un trimestre rispetto a oggi, con «Scaduto» (il trimestre lo dice il pannello). */
+function laneOf(quarter: QuarterCode | null, today: string): { key: LaneKey; expired: boolean } {
   const group = roadmapGroupKey(quarter, today);
   switch (group) {
     case "scaduti":
-      return { key: "questo_trimestre", expired: true, quarterNote: quarter ? quarterLabel(quarter) : null };
+      return { key: "questo_trimestre", expired: true };
     case "questo_trimestre":
     case "prossimo_trimestre":
     case "piu_avanti":
-      return { key: group, expired: false, quarterNote: null };
+      return { key: group, expired: false };
     default:
-      return { key: "piu_avanti", expired: false, quarterNote: quarterLabel(group) };
+      return { key: "piu_avanti", expired: false };
   }
 }
 
@@ -197,7 +192,7 @@ export function buildLanes<T extends AnyHubItem>(items: readonly T[], today: str
   for (const item of items) {
     if (item.phase !== "approvato") continue;
     const place = laneOf(quarterOfItem(item), today);
-    entries[place.key].push(reviewers ? { item, expired: place.expired, quarterNote: place.quarterNote } : { item, expired: false, quarterNote: null });
+    entries[place.key].push({ item, expired: reviewers && place.expired });
   }
   const current = quarterOfDate(today);
   const shorts: Record<LaneKey, string> = {
@@ -223,33 +218,21 @@ export function buildLanes<T extends AnyHubItem>(items: readonly T[], today: str
       title: titles[key],
       short: shorts[key],
       entries: list,
-      countedEurYear: reviewers ? countedEurOf(list.map((entry) => entry.item as HubItem)) : null,
     };
   });
   const inProgress = items.filter((item) => item.phase === "in_realizzazione").sort(byTitle);
   const done = items.filter((item) => item.phase === "realizzato").sort(byRealizedDesc);
-  return {
-    lanes,
-    inProgress,
-    inProgressCountedEurYear: reviewers ? countedEurOf(inProgress.map((item) => item as HubItem)) : null,
-    done,
-    doneCountedEurYear: reviewers ? countedEurOf(done.map((item) => item as HubItem)) : null,
-  };
+  return { lanes, inProgress, done, doneCountedEurYear: reviewers ? countedEurOf(done.map((item) => item as HubItem)) : null };
 }
 
 /**
  * Gli euro contati all'anno di un gruppo di card: la somma delle cifre come le scrive ogni card,
  * arrotondate all'euro una a una (`shownPerYearEur`), non la somma arrotondata alla fine. Così le
- * card fanno la loro corsia, le corsie e «In realizzazione» la cifra in testa, «Per agente» le
- * corsie dell'agente. Solo gli euro a schermo; 0 senza.
+ * card fanno «In uso» e il numero grande in testa, «Per agente» le corsie dell'agente. Solo gli euro
+ * a schermo; 0 senza.
  */
 export function countedEurOf(items: readonly Pick<HubItem, "value">[]): number {
   return items.reduce((sum, item) => sum + (shownPerYearEur(item.value) ?? 0), 0);
-}
-
-/** «24.500 € contati all'anno»: gli euro contati di una corsia. */
-export function laneCountedText(eur: number): string {
-  return `${formatEuro(eur)} contati all'anno`;
 }
 
 /** «+ 4.043 € in realizzazione»: in «Per agente», sotto la cifra dell'agente, gli euro contati dei suoi use case in realizzazione. */
@@ -257,10 +240,9 @@ export function agentInProgressText(eur: number): string {
   return `+ ${formatEuro(eur)} in realizzazione`;
 }
 
-/** «3 use case · 24.500 € contati all'anno»; «3 use case» senza euro contati (e ai contributori). */
-export function laneSummaryText(count: number, eur: number | null): string {
-  const cases = `${formatInteger(count)} use case`;
-  return eur ? `${cases}${FIGURE_SEPARATOR}${laneCountedText(eur)}` : cases;
+/** «3 use case»: il riepilogo della piega «Più avanti» e della riga di un agente. */
+export function laneSummaryText(count: number): string {
+  return `${formatInteger(count)} use case`;
 }
 
 /** «Mostra l'altro», «Mostra gli altri 3»: le voci dietro le prime cinque di «Valore per tipo di ritorno» (`value-by-lever.tsx`). */

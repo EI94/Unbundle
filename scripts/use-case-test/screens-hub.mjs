@@ -55,8 +55,9 @@
 // non-members of the route's workspace (art. 15.4, D4, D14): no [data-figure] element and no «€»
 // in the visible text; `absent` and `present`. Strict checks (failures, warnings with --smoke or
 // --warn-only): at most one filled button outside dialogs; every cost shown
-// ([data-figure="costo"]) has its source ([data-source]) unless it is «da stimare» or a short
-// «Benefici e costi» cost (data-cost-source="stima"); for
+// ([data-figure="costo"]) has its source ([data-source]) unless it is «da stimare», a short
+// «Benefici e costi» cost (data-cost-source="stima") or a Panoramica card's cost, whose source is in
+// the panel (data-source-in, release 10 D7); for
 // contributors and non-members no «€» in the page's payload (inline RSC data included); the hub
 // copy guard of the page's scope, and on area pages for client accounts (not of the Lateral Space
 // domain, and «anonimo») also the dossier copy guard of docs/casi-duso/DESIGN.md §6.2
@@ -296,11 +297,14 @@ function hubMeasures(page) {
   return evaluate(page, () => {
     const costs = [...document.querySelectorAll('[data-figure="costo"]')];
     // «Benefici e costi» («avvio 560 € · ricorrenti 600 €/anno», data-cost-source="stima") has no
-    // source in the short form, as the spec writes it: the detail page says «stima del team».
+    // source in the short form, as the spec writes it: the detail page says «stima del team». The
+    // Panoramica's cards (release 10, D7) write «Costo 30.000 €» without it, by design: the panel and the
+    // detail page say it (data-source-in="pannello").
     const withoutSource = costs.filter(
       (el) =>
         el.getAttribute("data-estimated") !== "true" &&
         el.getAttribute("data-cost-source") !== "stima" &&
+        !el.hasAttribute("data-source-in") &&
         !(el.querySelector("[data-source]")?.textContent ?? "").trim(),
     );
     const html = document.documentElement.outerHTML;

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { shortRefOf } from "@/lib/use-cases/agents";
-import { formatEuro } from "@/lib/use-cases/format";
+import { formatEuro, formatInteger } from "@/lib/use-cases/format";
 import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { monthLabel } from "@/lib/use-cases/value-calc";
 import { curveScale, type RoadmapValue } from "@/lib/use-cases/value-charts";
@@ -13,6 +13,8 @@ export const JCURVE_TEXT = Object.freeze({
   goLive: "Entra in uso",
   goLiveLegend: "entrata in uso",
   breakeven: "Pareggio",
+  /** (Rilascio 10) Le ore che gli use case della curva liberano ogni anno: prima la riga «Su tutto il portafoglio». */
+  hours: "Ore liberate all'anno",
   low: "Punto più basso",
   month: "Mese",
   net: "Netto cumulato",
@@ -43,7 +45,9 @@ export interface ValueJCurveProps {
  * entra in uso. In una pagina più stretta di 36rem (il telefono, il tablet accanto alla barra) le
  * tappe al posto del grafico: punto più basso, pareggio e valore a fine orizzonte, poi un mese di
  * entrata in uso per sezione chiusa («Entra in uso · gen 27 · 17 use case»), con gli use case su
- * due righe come nelle card. Per i lettori di schermo, da 36rem in su, la tabella mese per mese.
+ * due righe come nelle card. Per i lettori di schermo, da 36rem in su, la tabella mese per mese. Sotto il titolo, a ogni
+ * larghezza, le ore liberate all'anno, quando qualche use case ne libera (rilascio 10: prima stavano nella riga «Su
+ * tutto il portafoglio» della Panoramica).
  */
 export function ValueJCurve({ value, hrefs = {} }: ValueJCurveProps) {
   const { curve, goLives, low } = value;
@@ -63,6 +67,8 @@ export function ValueJCurve({ value, hrefs = {} }: ValueJCurveProps) {
   const showEnd = breakeven === null || x(breakeven) < 75;
   const goLiveAt = new Map(goLives.map((mark) => [mark.index, mark]));
   const from = monthLabel(curve.months[0]);
+  // Le ore liberate all'anno: solo se qualche use case della curva ne libera, arrotondate all'ora.
+  const hours = value.cards.some((card) => card.hours > 0) ? Math.round(value.hours) : null;
   return (
     <figure data-slot="value-jcurve" aria-labelledby="value-jcurve-title" className="min-w-0 space-y-3">
       <div className="space-y-0.5">
@@ -70,6 +76,11 @@ export function ValueJCurve({ value, hrefs = {} }: ValueJCurveProps) {
           {JCURVE_TEXT.title}
         </h3>
         <p className="text-xs text-muted-foreground">{keepTogether(jCurveIntro(from, horizon))}</p>
+        {hours !== null ? (
+          <p data-slot="jcurve-hours" className="pt-1 text-sm">
+            <span className="text-muted-foreground">{JCURVE_TEXT.hours}</span> <span className="font-medium tabular-nums">{formatInteger(hours)}</span>
+          </p>
+        ) : null}
       </div>
 
       <div data-slot="value-jcurve-chart" aria-hidden className="hidden grid-cols-[4.5rem_minmax(0,1fr)] gap-x-2 @xl/hub:grid">

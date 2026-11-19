@@ -32,6 +32,9 @@ const routes = [
     present: ["Realizzazione", "Costo di realizzazione", "Valore all'anno", "Pareggio"],
   },
   { name: "realizzazione-avviata", path: card("r12"), as: CONTRIBUTOR, absent: ["Costo di realizzazione", "Apri la realizzazione", "Realizzazione"] },
+  // (Release 10) «In realizzazione» shows three cards, then «Vedi tutti (N)» (a closed list, not in body.innerText). In
+  // workspace «a» it has three use cases, r12 and r13 with a dossier (their cards come first) and r14: r12 is always
+  // among the first three. A seed with more of them must keep r12's dossier card first, or open the list.
   { name: "panoramica-in-realizzazione", path: "/dashboard/{ws:a}/use-cases?vista=panoramica", as: REVIEWERS, present: ["In realizzazione", "{code:r12}"] },
   { name: "panoramica-in-realizzazione", path: "/dashboard/{ws:a}/use-cases?vista=panoramica", as: CONTRIBUTOR, absent: ["indispensabili", "Tocca a te", "Prossima tappa"] },
   // «Avvia la realizzazione» (Lateral Space only): the form starts from the use case.

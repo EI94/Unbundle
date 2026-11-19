@@ -15,6 +15,7 @@
  * Modulo puro: import relativi `.ts`.
  */
 import { formatEuro } from "../use-cases/format.ts";
+import type { Participation } from "../portfolio/participation.ts";
 import type { NeedView } from "../use-cases/needs.ts";
 import { nextSalFrom, workspaceSteps, type WorkspaceStepInput } from "../use-cases/panoramica.ts";
 import type { ContributorUseCase } from "../use-cases/permissions.ts";
@@ -82,20 +83,36 @@ function hasProgram(view: Pick<ProgramView, "initiatives">): boolean {
   return view.initiatives.some((row) => row.count > 0);
 }
 
+/** Quanti use case e quante aree in «Chi propone, per area»; null senza righe. */
+export function participationTotals(participation: Participation | null | undefined): { useCases: number; areas: number } | null {
+  const rows = participation?.rows ?? [];
+  if (!rows.length) return null;
+  return { useCases: rows.reduce((sum, row) => sum + row.count, 0), areas: rows.length };
+}
+
 /**
- * Le quattro righe, senza quelle a zero (§1, regola 5). «Obiettivi» c'è per ogni revisore: è la strada per la pagina
+ * Le quattro righe, senza quelle a zero (§1, regola 5). «Persone» c'è con la formazione, con l'AI Readiness o, senza
+ * nessuna delle due, con «Chi propone, per area» (rilascio 10: prima in fondo alla Panoramica), che il suo pannello
+ * mostra sotto il resto. «Obiettivi» c'è per ogni revisore: è la strada per la pagina
  * degli obiettivi (`/strategy`, §3.8), che ogni revisore scrive, anche chi non cambia il Programma (un revisore del
  * cliente che non gestisce il workspace). Senza risultati chiave né KPI la riga è l'azione, «Scrivi gli obiettivi», e
  * il suo pannello porta alla pagina. In un workspace nuovo «Per partire» (`start`) ha già la riga «Scrivi gli
  * obiettivi»: finché è da fare la Home non la ripete; fatta (gli obiettivi ci sono, i risultati chiave no), la riga
  * dice che cosa manca.
  */
-export function homeRows(view: ProgramView, counts: UseCaseCounts, start: Pick<StartChecklist, "rows"> | null = null): HomeRow[] {
+export function homeRows(view: ProgramView, counts: UseCaseCounts, start: Pick<StartChecklist, "rows"> | null = null, participation: Participation | null = null): HomeRow[] {
   const t = HOME_TEXT;
   const rows: HomeRow[] = [];
   if (counts.total > 0) rows.push({ key: "iniziative", title: t.rows.initiatives, fact: t.facts.initiatives(counts.total, counts.inProgress, counts.inUse), panel: HOME_ROW_PANELS.iniziative });
   const people = view.people;
-  const peopleFact = people.training ? t.facts.trained(people.training.trained, view.company.employees) : people.levels ? t.facts.readiness(people.levels.total) : null;
+  const byArea = participationTotals(participation);
+  const peopleFact = people.training
+    ? t.facts.trained(people.training.trained, view.company.employees)
+    : people.levels
+      ? t.facts.readiness(people.levels.total)
+      : byArea
+        ? t.facts.byArea(byArea.useCases, byArea.areas)
+        : null;
   if (peopleFact) rows.push({ key: "persone", title: t.rows.people, fact: peopleFact, panel: HOME_ROW_PANELS.persone });
   const krs = keyResultsProgress(view.objectives);
   const startGoals = start?.rows.find((row) => row.key === "obiettivi") ?? null;
@@ -124,6 +141,8 @@ export interface ReviewerHomeInput {
   program: ProgramView | null;
   /** «Per partire»: i fatti del workspace, letti solo quando nessuno use case è deciso; null altrimenti. */
   start: StartFacts | null;
+  /** (Rilascio 10) «Chi propone, per area», per il pannello «Persone» e la sua riga; null senza. */
+  participation?: Participation | null;
 }
 
 export interface ReviewerHome {
@@ -151,7 +170,7 @@ export function reviewerHome(i: ReviewerHomeInput): ReviewerHome {
     step: start ? start.next : workspaceStep,
     start,
     bigNumber: start || !i.program ? null : homeBigNumber(i.program),
-    rows: i.program ? homeRows(i.program, countUseCases(i.items), start) : [],
+    rows: i.program ? homeRows(i.program, countUseCases(i.items), start, i.participation ?? null) : [],
   };
 }
 

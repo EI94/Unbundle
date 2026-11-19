@@ -25,9 +25,10 @@ export async function subprocessorsPendingForLs(workspaceId: string, userId: str
 }
 
 /**
- * L'avviso discreto con il link a «Impostazioni › Sub-responsabili», da mostrare quando
- * `subprocessorsPendingForLs` è vero: con l'area «Use case» accesa sta sulla Panoramica, dove stanno
- * i dossier in realizzazione (la lista dei Casi d'uso ha il suo, uguale).
+ * L'avviso discreto con il link a «Impostazioni › Fornitori», da mostrare quando `subprocessorsPendingForLs` è vero:
+ * sulla lista dei dossier (`/casi-duso`). Con l'area «Use case» accesa la Panoramica lo dice a modo suo (rilascio 10):
+ * il passo «Autorizza i fornitori» quando l'ok ferma le domande al referente, altrimenti una riga senza pulsante
+ * (`SuppliersLine` di src/components/use-cases/panoramica-top.tsx).
  */
 export function SubprocessorsLsNotice({
   workspaceId,

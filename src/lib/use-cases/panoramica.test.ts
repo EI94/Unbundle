@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { ValueParts } from "./format.ts";
-import { buildLanes } from "./lanes.ts";
+import { NO_PROGRAM_COSTS, programCards } from "../programma/curve.ts";
+import { programResults } from "../programma/figures.ts";
+import { buildLanes, countedEurOf } from "./lanes.ts";
 import { buildNeedsBoard, needsSummaryPieces, type NeedView } from "./needs.ts";
 import {
   SAL_EVERY_DAYS,
@@ -17,7 +19,7 @@ import {
 import type { UseCaseViewer } from "./permissions.ts";
 import type { CostFigure } from "./valuation.ts";
 import { DEFAULT_VALUE_PARAMS } from "./value-model.ts";
-import { applyHubFilters, hasActiveFilters, parseHubParams, pendingValueTotal, roadmapTotals, type HubItem } from "./views.ts";
+import { applyHubFilters, hasActiveFilters, parseHubParams, roadmapTotals, type HubItem } from "./views.ts";
 
 // La testa della Panoramica (rilascio 10, §3.4): il numero grande e il prossimo passo del workspace (D3).
 // Dati inventati: codici XX-0000.
@@ -92,7 +94,7 @@ function need(o: Partial<NeedView> = {}): NeedView {
 
 // ─── Il numero grande (rilascio 10, §3.4) ────────────────────────────
 
-test("il numero grande: gli euro contati degli approvati e in realizzazione, come `roadmapTotals`, con il tetto da misurare a parte", () => {
+test("il numero grande: gli euro contati degli approvati, in realizzazione e in uso, come `roadmapTotals`", () => {
   const items = [
     hub({ value: counted(12_250), cost: TEAM_30K }),
     hub({ targetQuarter: "2026-Q3", value: pending(5_840) }),
@@ -101,30 +103,43 @@ test("il numero grande: gli euro contati degli approvati e in realizzazione, com
     hub({ phase: "realizzato", subState: "realizzato", value: counted(9_000) }),
     toDecide({ value: counted(50_000) }),
   ];
-  const number = overviewNumber(items);
-  const totals = roadmapTotals(items);
-  assert.deepEqual(number?.value, { amountEur: totals.expectedValue?.amountEur, count: totals.expectedValue?.count });
-  assert.deepEqual(number?.value, { amountEur: 17_250, count: 2 }, "né gli in uso né quelli da decidere");
-  assert.deepEqual(number?.pending, { amountEur: pendingValueTotal(items)?.amountEur, count: pendingValueTotal(items)?.count });
-  assert.deepEqual(number?.pending, { amountEur: 8_840, count: 3 });
-  // Con i centesimi: le corsie e «In realizzazione» fanno la cifra, come le card la scrivono.
+  assert.deepEqual(overviewNumber(items), roadmapTotals(items).expectedValue);
+  assert.deepEqual(overviewNumber(items), { amountEur: 26_250, count: 3 }, "l'in uso sì, quello da decidere e i soli «da misurare» no");
+  // Con i centesimi: le card fanno la cifra, come la scrivono.
   const cents = [
     hub({ value: counted(1_000.5) }),
     hub({ value: counted(1_000.5) }),
     hub({ targetQuarter: "2027-Q1", value: counted(4_042.5) }),
     hub({ phase: "in_realizzazione", subState: "senza_dossier", value: counted(2_719.5) }),
+    hub({ phase: "realizzato", subState: "realizzato", value: counted(0.5) }),
   ];
   const centsLanes = buildLanes(cents, TODAY);
-  assert.equal(overviewNumber(cents)?.value?.amountEur, 1_001 + 1_001 + 4_043 + 2_720);
+  assert.equal(overviewNumber(cents)?.amountEur, 1_001 + 1_001 + 4_043 + 2_720 + 1);
   assert.equal(
-    centsLanes.lanes.reduce((sum, lane) => sum + (lane.countedEurYear ?? 0), 0) + (centsLanes.inProgressCountedEurYear ?? 0),
-    overviewNumber(cents)?.value?.amountEur,
+    centsLanes.lanes.reduce((sum, lane) => sum + countedEurOf(lane.entries.map((entry) => entry.item)), 0) + countedEurOf(centsLanes.inProgress) + (centsLanes.doneCountedEurYear ?? 0),
+    overviewNumber(cents)?.amountEur,
   );
-  // Solo il da misurare: il numero c'è, senza euro contati.
-  assert.deepEqual(overviewNumber([hub({ value: pending(4_000) })]), { value: null, pending: { amountEur: 4_000, count: 1 } });
-  // Senza cifre: niente numero (lo zero non si mostra).
+  // Senza cifre: niente numero (lo zero non si mostra); il solo «da misurare» sta nella Home.
   assert.equal(overviewNumber([]), null);
-  assert.equal(overviewNumber([toDecide(), hub({ phase: "realizzato", subState: "realizzato", value: counted(1) })]), null);
+  assert.equal(overviewNumber([toDecide({ value: counted(1) }), hub({ value: pending(4_000) })]), null);
+});
+
+test("(rilascio 10) il numero grande della Panoramica è il «Valore stimato all'anno» della Home, sugli stessi use case", () => {
+  const items = [
+    hub({ value: counted(12_250.5) }),
+    hub({ targetQuarter: "2027-Q1", value: counted(4_042.5) }),
+    hub({ targetQuarter: "2026-Q3", value: counted(3_000) }),
+    hub({ phase: "in_realizzazione", subState: "senza_dossier", value: counted(2_719.5) }),
+    hub({ phase: "realizzato", subState: "realizzato", realizedOn: "2026-06-10", value: counted(38_000) }),
+    hub({ phase: "realizzato", subState: "diffusa", realizedOn: "2026-07-10", kind: "da_diffondere", value: counted(1_200) }),
+    hub({ value: pending(5_840) }),
+    hub({ value: counted(0) }),
+    toDecide({ value: counted(50_000) }),
+    hub({ phase: "chiuso", subState: "non_avviato", value: counted(9_000) }),
+  ];
+  const home = programResults(programCards(items, { ...DEFAULT_VALUE_PARAMS, originMonth: "2026-10" }, NO_PROGRAM_COSTS, TODAY).cards, { employees: null, revenueEur: null });
+  assert.deepEqual(overviewNumber(items), { amountEur: home.estimated, count: home.estimatedCount });
+  assert.deepEqual(overviewNumber(items), { amountEur: 12_251 + 4_043 + 3_000 + 2_720 + 38_000 + 1_200, count: 6 });
 });
 
 test("il numero grande segue i filtri, come le corsie", () => {
@@ -133,8 +148,8 @@ test("il numero grande segue i filtri, come le corsie", () => {
   const transformation = hub({ origin: "transformation", value: counted(4_000) });
   const params = parseHubParams(new URLSearchParams("origine=transformation"), lead);
   assert.ok(hasActiveFilters(params));
-  assert.deepEqual(overviewNumber(applyHubFilters([adoption, transformation], params))?.value, { amountEur: 4_000, count: 1 });
-  assert.deepEqual(overviewNumber([adoption, transformation])?.value, { amountEur: 14_000, count: 2 });
+  assert.deepEqual(overviewNumber(applyHubFilters([adoption, transformation], params)), { amountEur: 4_000, count: 1 });
+  assert.deepEqual(overviewNumber([adoption, transformation]), { amountEur: 14_000, count: 2 });
 });
 
 // ─── Prossimo passo del workspace (rilascio 10, D3) ──────────────────
