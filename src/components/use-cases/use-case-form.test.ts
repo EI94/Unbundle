@@ -107,14 +107,14 @@ test("il pannello rapido di Lateral Space: lo stesso modulo, «Salva» pieno e �
   assert.match(html, /<input[^>]*name="aiLab"[^>]*value="AI Lab Finanza · 12 ott"/);
   assert.ok(html.includes('<option value="AI Lab Vendite"></option>'));
   assert.match(visible, /Aggiungi dettagli<\/span><span class="min-w-0 text-sm font-normal text-muted-foreground">AI Lab Finanza · 12 ott<\/span>/);
-  // Niente più «Problema in una riga» né il vecchio link: il modulo è lo stesso (il link nuovo sta nel piede del pannello).
+  // Niente più «Problema in una riga» né il link dentro il modulo: il modulo è lo stesso (il link sta nel piede del pannello).
   for (const gone of ["Problema in una riga", "Usa il modulo completo", "I dettagli si completano dopo", "Invia lo use case"]) assert.ok(!html.includes(gone), gone);
 });
 
-test("(audit, riga 68) in fondo al pannello rapido, solo per Lateral Space, un link alla pagina che invia lo use case come proposta", () => {
+test("(audit, riga 68) in fondo al pannello rapido, solo per Lateral Space, un link al modulo completo, che invia lo use case come gli altri", () => {
   const html = readable(renderPlain(sheet.FullFormLink, { workspaceId: "ws" }));
-  // Un link e non un pulsante, grigio e sottolineato, alto 44 px sul telefono.
-  assert.match(html, /^<a\b[^>]*>Invia come proposta, con la valutazione di Claude e le notifiche<\/a>$/);
+  // Un link e non un pulsante, grigio e sottolineato, alto 44 px sul telefono; mai «proposta» per uno use case (§4).
+  assert.match(html, /^<a\b[^>]*>Usa il modulo completo, con la valutazione di Claude e le notifiche<\/a>$/);
   assert.ok(html.includes('href="/dashboard/ws/use-cases/nuovo"') && !html.includes('data-slot="button"'), html);
   const classes = /class="([^"]*)"/.exec(html)?.[1].split(/\s+/) ?? [];
   for (const cls of ["text-muted-foreground", "underline", "min-h-11", "sm:min-h-8"]) assert.ok(classes.includes(cls), cls);

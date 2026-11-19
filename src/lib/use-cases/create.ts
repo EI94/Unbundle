@@ -50,9 +50,10 @@ export const QUICK_CREATE_TEXT = Object.freeze({
   saving: "Salvo…",
   /**
    * In fondo al pannello, un link e non un pulsante: la pagina `/use-cases/nuovo`, che invia lo use case come tutti
-   * gli altri (`web_proposed`: la valutazione di Claude, la campanella e le notifiche, chi l'ha proposto).
+   * gli altri (`web_proposed`: la valutazione di Claude, la campanella e le notifiche, chi l'ha proposto). (§4) Mai
+   * «proposta» per uno use case: il link nomina il modulo.
    */
-  fullForm: "Invia come proposta, con la valutazione di Claude e le notifiche",
+  fullForm: "Usa il modulo completo, con la valutazione di Claude e le notifiche",
   close: "Chiudi",
   /** Errore di salvataggio: i campi restano compilati. */
   error: "Non riusciamo a salvare. Riprova.",
