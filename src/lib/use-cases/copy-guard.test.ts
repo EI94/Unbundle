@@ -412,7 +412,7 @@ test("copy-guard verde sulle etichette dell'area", () => {
     ...exportedStrings(agents),
     // Le corsie della Panoramica: «ritorno qualitativo» e i testi delle corsie.
     ...exportedStrings(lanes),
-    lanes.laneSummaryText(3, 24_500),
+    lanes.laneSummaryText(3),
     lanes.laneMoreLabel(1),
     lanes.laneMoreLabel(3),
     // (Rilascio 10) «Vedi tutti (N)» e il riepilogo della piega «In uso».

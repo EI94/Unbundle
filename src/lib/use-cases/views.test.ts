@@ -708,7 +708,7 @@ test("trimestri rispetto a oggi: «Scaduti», questo, il prossimo, i successivi,
   assert.equal(item({ status: "implemented", realizedOn: "2026-10-02" }).realizedOn, "2026-10-02");
 });
 
-test("cifre della Panoramica: «su N use case · M da fascia», quota delle origini; nessuna cifra senza use case", () => {
+test("(rilascio 10) il valore all'anno della Panoramica: approvati, in realizzazione e in uso, come la Home; nessuna cifra senza use case", () => {
   const items = [
     item({ status: "accepted", targetQuarter: "2026-Q4", valueEurYear: 60_000, costEurOnce: 40_000 }),
     item({ status: "accepted", origin: "transformation", valueEurYear: 40_000, costBand: 2 }),
@@ -718,31 +718,15 @@ test("cifre della Panoramica: «su N use case · M da fascia», quota delle orig
     item({ valueEurYear: 500_000, costEurOnce: 500_000 }),
     item({ status: "implemented", valueEurYear: 500_000, costEurOnce: 500_000 }),
   ];
-  const totals = roadmapTotals(items);
-  assert.deepEqual(totals.expectedValue, {
-    amountEur: 101_000,
-    count: 3,
-    fromBand: 0,
-    share: { adoption: 60, transformation: 40 },
-    note: "su 3 use case",
-  });
-  // 40.000 (importo) + 65.000 (fascia 2) + 130.000 (sforzo 4): gli approvati «Da costruire», l'avvio
-  // che le card scrivono nelle corsie. La best practice approvata no, e nemmeno quella in realizzazione.
-  assert.deepEqual(totals.committedCost, {
-    amountEur: 235_000,
-    count: 3,
-    fromBand: 2,
-    share: { adoption: 72, transformation: 28 },
-    note: "su 3 use case · 2 da fascia",
-  });
-  assert.deepEqual(roadmapTotals([item({}), item({ status: "implemented", valueEurYear: 1 })]), { expectedValue: null, committedCost: null });
-  // Uno use case «Da costruire» che apre il suo dossier è già partito: il suo avvio esce dalla cifra,
-  // come esce dalla sua card, e il suo valore resta contato.
+  // 60.000 + 40.000 + 1.000 degli approvati e 500.000 dell'in uso; da valutare e senza cifra non contano.
+  assert.deepEqual(roadmapTotals(items), { expectedValue: { amountEur: 601_000, count: 4 } });
+  assert.deepEqual(roadmapTotals([item({}), item({ status: "accepted" })]), { expectedValue: null });
+  assert.deepEqual(roadmapTotals([]), { expectedValue: null });
+  // Uno use case che apre il suo dossier, poi entra in uso: il suo valore resta contato.
   const approved = item({ status: "accepted", valueEurYear: 9_000, costEurOnce: 560 });
   const started = item({ status: "in_progress", valueEurYear: 9_000, costEurOnce: 560 });
-  assert.equal(roadmapTotals([approved]).committedCost?.amountEur, 560);
-  assert.deepEqual(roadmapTotals([started]), { expectedValue: roadmapTotals([approved]).expectedValue, committedCost: null });
-  assert.equal(roadmapTotals([approved, started]).committedCost?.note, "su 1 use case");
+  const inUse = item({ status: "implemented", valueEurYear: 9_000, costEurOnce: 560 });
+  for (const one of [started, inUse]) assert.deepEqual(roadmapTotals([one]), roadmapTotals([approved]), one.phase);
   assert.equal(totalsNote(9), "su 9 use case");
   assert.equal(totalsNote(7, 2), "su 7 use case · 2 da fascia");
 });
@@ -756,9 +740,7 @@ test("cifre della Panoramica: la somma delle cifre delle card, arrotondate una a
   ];
   // 11 € + 1 €, come le due card li scrivono; lo zero e il negativo non sono cifre (non lo sono neanche nelle corsie).
   const value = roadmapTotals(items).expectedValue;
-  assert.deepEqual([value?.amountEur, value?.count, value?.note], [12, 2, "su 2 use case"]);
-  const cost = roadmapTotals([item({ status: "accepted", costEurOnce: 0.5 }), item({ status: "accepted", costEurOnce: 1.5 })]).committedCost;
-  assert.equal(cost?.amountEur, 3, "1 € + 2 €, non 2 €");
+  assert.deepEqual([value?.amountEur, value?.count], [12, 2]);
   // «fino a»: due «fino a 4.043 €» fanno 8.086 €, non 8.085 €.
   const ctx: HubContext = { ...CTX, valueParams: { ...DEFAULT_VALUE_PARAMS, originMonth: "2026-10" } };
   const half = valueModelSchema.parse({
@@ -771,7 +753,7 @@ test("cifre della Panoramica: la somma delle cifre delle card, arrotondate una a
   assert.deepEqual(pendingValueTotal(pendingTwo), { amountEur: 8_086, count: 2, note: "su 2 use case" });
 });
 
-test("«fino a» della Panoramica: i «da misurare» delle card approvate e in realizzazione con un modello; null senza", () => {
+test("(rilascio 10) «fino a» della Home: i «da misurare» delle card approvate, in realizzazione e in uso con un modello; null senza", () => {
   const ctx: HubContext = { ...CTX, valueParams: { ...DEFAULT_VALUE_PARAMS, originMonth: "2026-10" } };
   // Solo da misurare: «da misurare · fino a 1.200 €».
   const onlyPending = valueModelSchema.parse({
@@ -792,13 +774,11 @@ test("«fino a» della Panoramica: i «da misurare» delle card approvate e in r
   const building = item({ status: "in_progress", valueModel: partly }, ctx);
   assert.equal(approved.value.benefits?.state, "da_misurare");
   assert.equal(building.value.benefits?.state, "contato");
-  const ignored = [
-    item({ valueModel: onlyPending }, ctx),
-    item({ status: "implemented", valueModel: partly }, ctx),
-    item({ status: "accepted", valueEurYear: 5_000 }, ctx),
-  ];
-  assert.deepEqual(pendingValueTotal([approved, building, ...ignored]), { amountEur: 3_200, count: 2, note: "su 2 use case" });
-  assert.equal(pendingValueTotal(ignored), null, "da valutare, realizzate e senza modello non contano");
+  // In uso con una parte ancora da misurare: conta, come il suo valore nella cifra della Home.
+  const inUse = item({ status: "implemented", valueModel: partly }, ctx);
+  const ignored = [item({ valueModel: onlyPending }, ctx), item({ status: "accepted", valueEurYear: 5_000 }, ctx)];
+  assert.deepEqual(pendingValueTotal([approved, building, inUse, ...ignored]), { amountEur: 5_200, count: 3, note: "su 3 use case" });
+  assert.equal(pendingValueTotal(ignored), null, "da valutare e senza modello non contano");
   assert.equal(pendingValueTotal([]), null);
   // Il workspace conta anche le voci da misurare: non ne resta nessuna.
   const counted: HubContext = { ...ctx, valueParams: { ...DEFAULT_VALUE_PARAMS, originMonth: "2026-10", includeUnmeasured: true } };

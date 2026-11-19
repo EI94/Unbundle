@@ -355,18 +355,16 @@ test("con un modello: valutazione del team (Riapri, Approva)", () => {
   assert.equal(teamValuationMissing({ value: null, cost: counted.cost ? { source: counted.cost.source } : null }), false);
 });
 
-test("cifre della Panoramica: beneficio contato e avvio entrano nei totali", () => {
+test("cifre della Panoramica: il beneficio contato entra nel numero grande", () => {
   const a = item({ valueModel: FIX_A });
   const b = item({ valueModel: FIX_B, status: "in_progress" });
   const words = item({ valueModel: WORDS_ONLY });
   const totals = roadmapTotals([a, b, words]);
-  // Le cifre delle card, arrotondate una a una: 4.043 € + 2.719 €.
+  // Le cifre delle card, arrotondate una a una: 4.043 € + 2.719 €. (Rilascio 10) Il costo di realizzazione non è più una
+  // cifra della Panoramica: lo dicono le card («Costo 560 €») e la Home («Iniziative»).
   assert.equal(totals.expectedValue?.amountEur, 4_043 + 2_719, "valore atteso");
   assert.equal(totals.expectedValue?.count, 2);
-  // L'avvio solo di A, approvata «Da costruire»: B è in realizzazione, già partita, e la sua card non lo scrive.
-  assert.equal(totals.committedCost?.amountEur, 560);
-  assert.equal(totals.committedCost?.count, 1);
-  assert.equal(totals.committedCost?.fromBand, 0);
+  assert.deepEqual(Object.keys(totals), ["expectedValue"]);
 });
 
 test("export: Valore, valore all'anno, costo e fonte del costo con un modello, più le cifre di «Benefici e costi»", () => {

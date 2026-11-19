@@ -3,12 +3,12 @@
  * (decisione D3): il numero grande e la regola unica del passo. Qui solo numeri; i testi in `panoramica-top.tsx` e,
  * per il passo, in `src/lib/home/text.ts`.
  *
- * - **Numero grande** (`overviewNumber`): «Valore all'anno · su N use case», gli euro contati degli approvati e in
- *   realizzazione (`roadmapTotals`, le cifre delle card sommate come le scrivono), con a parte il tetto «da
- *   misurare» (`pendingValueTotal`), che nella Home non c'è ancora. La striscia delle fasi, le altre tre cifre e
- *   «Su tutto il portafoglio» escono dalla pagina: i numeri delle fasi stanno nelle viste e nelle sezioni, il costo
- *   di realizzazione nella Home («Iniziative»), gli use case del trimestre nella sua corsia, ore e pareggio nella
- *   Home («Tutti i numeri») e in «Curva del valore».
+ * - **Numero grande** (`overviewNumber`): «Valore all'anno · su N use case», gli euro contati degli approvati, in
+ *   realizzazione e in uso (`roadmapTotals`, le cifre delle card sommate come le scrivono): la stessa cifra del
+ *   «Valore stimato all'anno» della Home, dove porta «Tutti i numeri ›». La striscia delle fasi, le altre cifre e «Su
+ *   tutto il portafoglio» escono dalla pagina: i numeri delle fasi stanno nelle viste e nelle sezioni; il costo di
+ *   realizzazione nella Home («Iniziative»), con il valore da misurare («Tutti i numeri»); gli use case del trimestre
+ *   nella sua corsia; il pareggio nella Home e, con le ore liberate all'anno, in «Curva del valore».
  * - **Prossimo passo del workspace** (`workspaceSteps`, D3): una regola sola per la Home e per la
  *   Panoramica, in quest'ordine: fornitori da autorizzare · use case da decidere · informazioni da
  *   chiedere per il trimestre · risposte da verificare · SAL dovuto. Prima ciò che blocca altre
@@ -21,37 +21,23 @@
 import { askGroupOf, needAskCountsOf, type NeedView } from "./needs.ts";
 import { quarterOfDate } from "./quarter.ts";
 import type { Phase, QuarterCode } from "./types.ts";
-import { isToDecide, pendingValueTotal, roadmapGroupKey, roadmapTotals, waitingDays, type HubItem } from "./views.ts";
+import { isToDecide, roadmapGroupKey, roadmapTotals, waitingDays, type HubItem } from "./views.ts";
 
 // ─── Il numero grande ────────────────────────────────────────────────
 
-/** Una cifra del numero grande: gli euro e su quanti use case. */
-export interface OverviewAmount {
+/** Il numero grande della Panoramica (solo revisori): gli euro e su quanti use case. */
+export interface OverviewNumber {
   amountEur: number;
   count: number;
 }
 
-/** Il numero grande della Panoramica (solo revisori), dagli use case della pagina (già filtrati, come le corsie). */
-export interface OverviewNumber {
-  /** «Valore all'anno»: `roadmapTotals().expectedValue`; null senza use case con una cifra contata. */
-  value: OverviewAmount | null;
-  /** «fino a X € da misurare»: `pendingValueTotal`; null senza voci da misurare. */
-  pending: OverviewAmount | null;
-}
-
 /**
- * Il numero grande: gli euro contati all'anno e il tetto da misurare, sugli approvati e in realizzazione. Le cifre
- * sono quelle delle card, ognuna arrotondata all'euro: le corsie e «In realizzazione» le scrivono una a una. null
- * senza nessuna delle due: lo zero non si mostra.
+ * Il numero grande, dagli use case della pagina (già filtrati, come le corsie): gli euro contati all'anno degli
+ * approvati, in realizzazione e in uso, ognuno arrotondato all'euro come lo scrive la sua card. Sugli stessi use case
+ * la Home dà la stessa cifra (`programResults`). null senza cifre: lo zero non si mostra.
  */
 export function overviewNumber(items: readonly HubItem[]): OverviewNumber | null {
-  const value = roadmapTotals(items).expectedValue;
-  const pending = pendingValueTotal(items);
-  if (!value && !pending) return null;
-  return {
-    value: value ? { amountEur: value.amountEur, count: value.count } : null,
-    pending: pending ? { amountEur: pending.amountEur, count: pending.count } : null,
-  };
+  return roadmapTotals(items).expectedValue;
 }
 
 // ─── Prossimo passo del workspace (D3) ───────────────────────────────
