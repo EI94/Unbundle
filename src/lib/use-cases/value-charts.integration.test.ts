@@ -477,23 +477,24 @@ test("bolle: con «Benefici e costi» nel workspace e un filtro che li esclude, 
 
 // ─── La Panoramica e «Curva del valore» ──────────────────────────────
 
-test("(rilascio 10, §3.4) Panoramica: un numero grande con il tetto da misurare, niente altre cifre né «Su tutto il portafoglio»; i grafici stanno in «Grafici ›»", opts, async () => {
+test("(rilascio 10, §3.4) Panoramica: un numero grande, niente altre cifre né «Su tutto il portafoglio»; i grafici stanno in «Grafici ›»", opts, async () => {
   for (const person of ["ls", "builder", "manager"] as const) {
     const page = await html(person, ids.wsV, { vista: "panoramica" });
     for (const text of ['data-slot="roadmap-value"', 'data-slot="value-jcurve"', 'data-slot="value-by-lever"', 'data-slot="value-params-summary"']) {
       assert.ok(!page.includes(text), `${person}: ${text} è in «Curva del valore»`);
     }
     assert.deepEqual(await filterKind(person, ids.wsV, { vista: "panoramica" }), ["filtro"], `${person}: «Tipo» è un filtro`);
-    // Ore e pareggio stanno nella Home («Tutti i numeri») e in «Curva del valore»; costo e trimestre nella Home e
-    // nelle corsie: sulla Panoramica un numero solo.
+    // Il pareggio sta nella Home («Tutti i numeri») e, con le ore liberate all'anno, in «Curva del valore»; costo,
+    // valore da misurare e trimestre nella Home e nelle corsie: sulla Panoramica un numero solo.
     for (const text of ['data-slot="portfolio-line"', "Su tutto il portafoglio", 'data-figure="totale-costo"', 'data-figure="totale-trimestre"', 'data-figure="totale-da-misurare"', "costo di realizzazione"]) {
       assert.ok(!page.includes(text), `${person}: ${text}`);
     }
     assert.equal(count(page, 'data-slot="big-number"'), 1, person);
     // Il numero grande: A (4.043 €) e la scheda senza modello (30.000 €) nelle corsie, B in realizzazione (2.719 €),
-    // «su 3 use case»; i 1.680 € da misurare di B nella riga grigia, fuori dal valore contato.
+    // «su 3 use case». I 1.680 € da misurare di B stanno nella Home («Tutti i numeri»), fuori dal valore contato.
     assert.equal(bigOf(page), 36_762, person);
-    assert.equal(bigNoteOf(page), "su 3 use case · fino a 1.680 € da misurare", person);
+    assert.equal(bigNoteOf(page), "su 3 use case", person);
+    assert.ok(!page.includes("da misurare<"), person);
     // Le card scrivono le loro cifre: le corsie e B (che in realizzazione scrive solo la fase) fanno il numero grande.
     assert.deepEqual(figuresOf(page, "valore"), [4_043, 30_000], person);
     assert.equal(figuresOf(page, "valore").reduce((sum, eur) => sum + eur, 0) + 2_719, bigOf(page), person);
@@ -572,6 +573,8 @@ test("«Curva del valore» da «Grafici»: J-curve con entrata in uso e pareggio
 
   const page = await html("builder", ids.wsV, { vista: "panoramica", mostra: "curva" });
   assert.ok(page.includes('data-slot="value-jcurve"'));
+  // (Rilascio 10) Le ore liberate all'anno, prima nella riga «Su tutto il portafoglio» della Panoramica: 115,5 h + 62,4 h.
+  assert.match(page, /<p data-slot="jcurve-hours"[^>]*><span class="text-muted-foreground">Ore liberate all&#x27;anno<\/span> <span class="font-medium tabular-nums">178<\/span><\/p>/);
   assert.equal(count(page, 'data-go-live="2027-01"'), 1, "una linea tratteggiata per mese di entrata in uso");
   assert.ok(page.includes("Pareggio · apr 27"));
   assert.ok(page.includes("Da nov\u00a026, per 24\u00a0mesi"));

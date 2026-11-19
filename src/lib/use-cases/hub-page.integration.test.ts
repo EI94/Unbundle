@@ -715,10 +715,11 @@ test("fasce del workspace diverse dalle predefinite: matrice, linea del costo ba
 
 test("(rilascio 10, §3.4) Panoramica: il numero grande «su N use case», il costo delle card con la fascia del workspace e senza la fonte (D7)", opts, async () => {
   const page = await html("builder", ids.wsA, { vista: "panoramica" });
-  // Un solo numero grande: 50.000 € + 25.000 €, «su 2 use case»; le altre cifre stanno nella Home.
+  // Un solo numero grande: 50.000 € + 25.000 € degli approvati e 30.000 € di quello in uso, «su 3 use case», come la
+  // Home; le altre cifre stanno nella Home.
   assert.ok(page.includes('data-figure="totale-valore"'), "il numero grande");
   const big = page.slice(page.indexOf('data-figure="totale-valore"'));
-  assert.match(big, /^data-figure="totale-valore"><div data-slot="big-number"[^>]*><p data-slot="big-number-value"[^>]*>75\.000 €<\/p><p data-slot="big-number-label"[^>]*>Valore all&#x27;anno<\/p><p data-slot="big-number-note"[^>]*>su 2 use case<\/p>/);
+  assert.match(big, /^data-figure="totale-valore"><div data-slot="big-number"[^>]*><p data-slot="big-number-value"[^>]*>105\.000 €<\/p><p data-slot="big-number-label"[^>]*>Valore all&#x27;anno<\/p><p data-slot="big-number-note"[^>]*>su 3 use case<\/p>/);
   assert.equal((page.match(/data-slot="big-number"/g) ?? []).length, 1, "un solo numero grande");
   assert.match(big, new RegExp(`<a [^>]*href="/dashboard/${ids.wsA}\\?apri=numeri"[^>]*>Tutti i numeri`), "«Tutti i numeri ›» porta alla Home");
   for (const text of ["Valore misurato", "Valore atteso all", "Costo impegnato", "costo di realizzazione", "use case in questo trimestre", "Su tutto il portafoglio", 'data-slot="phase-strip"', 'data-slot="overview-figures"']) {
@@ -729,7 +730,7 @@ test("(rilascio 10, §3.4) Panoramica: il numero grande «su N use case», il co
   const note = /<p data-slot="big-number-note"[^>]*>([\s\S]*?)<\/p>/.exec(page)?.[1] ?? "";
   for (const line of [note, sectionOf(page, "next-step")]) assert.doesNotMatch(line.replace(/^[^<>]*>/, "").replace(/<[^>]+>/g, ""), /\d /, line);
   // Le corsie: «T4 2026» e le altre con il loro conteggio; gli approvati sono quattro (con lo scaduto e la best practice).
-  const counts = [...page.matchAll(/<h2 id="lane-[a-z_]+"[^>]*>[^<]*<span[^>]*>(\d+)<\/span><\/h2>/g)].map((match) => Number(match[1]));
+  const counts = [...page.matchAll(/<h2 id="lane-[a-z_]+"[^>]*>[^<]*<span[^>]*>(\d+)<span class="sr-only"> use case<\/span><\/span><\/h2>/g)].map((match) => Number(match[1]));
   const later = /<section id="panoramica-piu-avanti"[\s\S]*?<span class="min-w-0 text-sm font-normal text-muted-foreground">(\d+) use case<\/span>/.exec(page);
   assert.equal(counts.reduce((sum, n) => sum + n, 0) + Number(later?.[1] ?? 0), 4, `${counts} ${later?.[1]}`);
   // La card: «Costo 30.000 €» e gli euro all'anno, senza la fonte, la parola o «Valore:» e «Costo:».
@@ -869,10 +870,11 @@ test("Panoramica: letture solo dove servono", opts, async () => {
   assert.deepEqual(contributor.data.charts, []);
   assert.equal(contributor.data.chart, null);
   assert.equal(contributor.data.needs, null);
-  // (Rilascio 10, §3.4) Niente avviso sui fornitori sulla Panoramica, e nessuna lettura: lo dice il passo «Autorizza i
-  // fornitori». «Chi propone, per area» solo ai revisori: il contributore la trova nella sua Home.
-  assert.ok(!Object.hasOwn(lanes.data, "subprocessorsPending"));
-  assert.equal(contributor.data.participation, null);
+  // (Rilascio 10, §3.4) L'ok sui fornitori: una lettura solo per Lateral Space (la riga senza pulsante quando il passo non
+  // c'è); il revisore del cliente non la fa. «Chi propone, per area» sta nella Home: la Panoramica non la legge.
+  assert.equal(lanes.data.suppliersPending, false);
+  assert.equal(contributor.data.suppliersPending, false);
+  assert.ok(!Object.hasOwn(lanes.data, "participation") && !Object.hasOwn(contributor.data, "participation"));
 });
 
 test("(rilascio 10, §3.4) «⋯» › «Grafici ›»: una sola «Matrice» con i filtri di adesso; nella Panoramica nessun «Grafici» a vista; mai ai contributori", opts, async () => {
@@ -1258,7 +1260,13 @@ test("Panoramica «Per agente»: una card per agente, poi le corsie del solo age
   const agentGrid = grid.slice(grid.indexOf('data-slot="agent-grid"'), grid.indexOf("</ul>", grid.indexOf('data-slot="agent-grid"')));
   const cardsEur = [...agentGrid.matchAll(/<span data-figure="valore" [^>]*>([\d.]+)\u00a0€/g)].reduce((sum, match) => sum + eurOf(match[1]), 0);
   const inProgressEur = [...agentGrid.matchAll(/data-slot="agent-in-progress"[^>]*>\+\u00a0([\d.]+)\u00a0€/g)].reduce((sum, match) => sum + eurOf(match[1]), 0);
-  assert.deepEqual([cardsEur, inProgressEur, figureOf(grid)], [20_250, 4_043, 24_293]);
+  // (Rilascio 10) Il numero grande conta anche gli use case in uso, come la Home: il riepilogo della piega «In uso».
+  const inUseOf = (page: string) => {
+    const summary = /<section id="panoramica-realizzati"[\s\S]*?<span class="min-w-0 text-sm font-normal text-muted-foreground">([^<]*)<\/span>/.exec(page)?.[1] ?? "";
+    return eurOf(/([\d.]+)\u00a0€/.exec(summary)?.[1] ?? "0");
+  };
+  assert.deepEqual([cardsEur, inProgressEur, figureOf(grid)], [20_250, 4_043, 24_293 + inUseOf(grid)]);
+  assert.ok(inUseOf(grid) > 0, "un use case di P in uso, con la sua cifra");
   // Con un filtro (l'origine) niente prossimo passo, e «Nuovo» resta bordato: nessun pulsante pieno.
   assert.equal(filledButtons(grid), 0, "nessun pulsante pieno");
   // Aperto dall'indirizzo, «Per agente» viene in vista al caricamento: il segno nel gruppo, prima delle card.
@@ -1286,8 +1294,8 @@ test("Panoramica «Per agente»: una card per agente, poi le corsie del solo age
       .map((card) => card.id),
     [agentCards.libraL1.id, agentCards.libraL2.id, agentCards.libraL3.id],
   );
-  // La cifra in testa dove porta il clic: la cifra della card più la sua nota, 17.250 € + 4.043 €.
-  assert.equal(figureOf(libra), 21_293);
+  // Il numero grande dove porta il clic: la cifra della card più la sua nota, 17.250 € + 4.043 €, e i suoi in uso.
+  assert.equal(figureOf(libra), 21_293 + inUseOf(libra));
   // «Per trimestre» tiene ogni filtro; «Per agente» toglie solo l'agente.
   const [byQuarter, byAgent] = groupingOf(libra);
   assert.deepEqual([byQuarter.current, byAgent.current], [true, false]);
