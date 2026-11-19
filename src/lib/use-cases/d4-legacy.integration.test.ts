@@ -32,7 +32,7 @@ const { registerHooks } = nodeModule as unknown as {
 //   pacchetto, fixture di scripts/uc-test/seed-fixtures.mjs): `fetch` dell'HTML con la
 //   sessione di `osservatore` e senza sessione, nel workspace «b», che ha l'area spenta.
 //   L'app del harness non ha un segreto per i link di condivisione: lì il link senza
-//   sessione risponde «Link non più valido», e la vista ridotta la prova il primo modo.
+//   sessione risponde «Questo link non vale più.», e la vista ridotta la prova il primo modo.
 // Dentro `npm run check` si salta: in testa solo moduli di Node; i moduli dell'app
 // arrivano con `await import()` dentro `before()`. Dati sintetici, creati e cancellati qui.
 const url = process.env.DATABASE_URL;
@@ -650,7 +650,8 @@ test("link di condivisione senza sessione: la sola proposta del link, senza codi
   const token = createShareToken(ids.ws);
   const approved = await html(pages.share, null, { workspaceId: ids.ws, useCaseId: cards.approved.id }, { token });
   assertReduced(approved, "condivisione", {
-    has: ["<h1", ">Use case</h1>", cards.approved.title, "Approvato", "Quando", "T1 2027", "Accedi per aprire la scheda"],
+    // (Rilascio 10, §3.4) L'H1 è il titolo del caso d'uso, sotto la fase e «Quando»; tema chiaro, il marchio in alto.
+    has: ["<h1", `>${cards.approved.title}</h1>`, "Approvato", "Quando", "T1 2027", "Accedi per aprire la scheda", "survey-light", "Il link vale 30 giorni"],
     // Solo ciò che elenca D14: niente riga «lo valuta» sotto una proposta già approvata.
     lacks: [codes.approved, cards.scored.title, cards.ownByEmail.title, "Raccolta", "Matrice", "Quick win", "Strategic bet", "valuta"],
   });
@@ -680,7 +681,7 @@ test("link di condivisione: chi non è membro o segue un corso vede la vista rid
   }
   // Un token non valido: nessun dato del portfolio.
   const invalid = await html(pages.share, null, { workspaceId: ids.ws, useCaseId: cards.scored.id }, { token: "1.x" });
-  assertReduced(invalid, "token non valido", { has: ["Link non più valido"], lacks: [cards.scored.title] });
+  assertReduced(invalid, "token non valido", { has: ["Questo link non vale più."], lacks: [cards.scored.title] });
 });
 
 // ═══ Secondo modo: HTML sul harness ═════════════════════════════════
@@ -801,7 +802,7 @@ if (process.env.HUB_D4_HARNESS === "1") {
     });
 
     test("link di condivisione senza sessione: nessun codice, nessun numero, nessun'altra scheda", async () => {
-      // Un token ben formato. L'app del harness non ha il segreto dei link: risponde «Link non più valido».
+      // Un token ben formato. L'app del harness non ha il segreto dei link: risponde «Questo link non vale più.».
       const exp = Math.floor(Date.now() / 1000) + 86_400;
       const token = `${exp}.${createHmac("sha256", randomBytes(32)).update(`portfolio-share:v2:${ws}:0:${exp}`).digest("base64url")}`;
       for (const card of Object.values(seeded)) {

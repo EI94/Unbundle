@@ -333,8 +333,9 @@ test("la pagina «Use case»: (rilascio 5) nelle righe e nelle card lo stato del
   const decide = await hubHtml("builder", { vista: "da-decidere" });
   // (Rilascio 5, §10.3) Il chip corto di «Raccolta informazioni» non c'è più: c'è lo stato del referente.
   assert.ok(!itemHtml(decide, "use-case-row", cards.verify).includes('data-slot="info-chip"'));
-  // Le richieste qui sono di sole domande: nessun referente, quindi «Manca il referente» (vince su «da verificare», D21).
-  assert.ok(itemHtml(decide, "use-case-row", cards.verify).includes('data-slot="referent-chip" data-state="manca"'));
+  // (Rilascio 10, §3.4, D7) Il chip del referente non sta più nelle righe di «Da decidere»: lo stato si legge nel pannello
+  // e nella scheda, e le card lo mostrano quando chiede un'azione.
+  assert.ok(!itemHtml(decide, "use-case-row", cards.verify).includes('data-slot="referent-chip"'));
   for (const key of ["ask", "wait"] as const) assert.ok(!itemHtml(decide, "use-case-row", cards[key]).includes('data-slot="info-chip"'), key);
   // Le card delle corsie della Panoramica.
   const overview = await hubHtml("builder", { vista: "panoramica" });
