@@ -611,8 +611,6 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
                 kind={ignoreKind ? "nessuno" : "filtro"}
                 more={reviewer ? moreFilterOptions(reviewerItems, params, data.info, data.areaLabels) : undefined}
                 referent={data.referentStates ? referentMenu : null}
-                active={filtersActive}
-                clearHref={clearHref}
               />
             </div>
           ) : null}

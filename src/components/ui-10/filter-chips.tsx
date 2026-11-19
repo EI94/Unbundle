@@ -11,6 +11,8 @@ import { UI10_TEXT } from "./text";
 export interface FilterOption {
   value: string;
   label: string;
+  /** Il testo del chip, se diverso dalla voce del foglio (la voce con un conteggio, un nome lungo); senza, la voce. */
+  chip?: string;
 }
 
 export interface FilterField {
@@ -50,7 +52,7 @@ export function activeChips(p: Pick<FilterChipsProps, "basePath" | "query" | "fi
   return p.fields.flatMap((field) => {
     if (!field.value) return [];
     const option = field.options.find((o) => o.value === field.value);
-    return [{ key: field.key, text: `${field.label}: ${option?.label ?? field.value}`, removeHref: filterHref(p.basePath, p.query, { [field.key]: null }) }];
+    return [{ key: field.key, text: `${field.label}: ${option?.chip ?? option?.label ?? field.value}`, removeHref: filterHref(p.basePath, p.query, { [field.key]: null }) }];
   });
 }
 
@@ -114,10 +116,13 @@ export function FilterChips({ basePath, query, search = null, fields, className 
             </form>
           </>
         ) : null}
-        <Button type="button" variant="outline" className="min-h-11 shrink-0 sm:min-h-9" onClick={() => setSheet(true)} aria-haspopup="dialog">
-          <SlidersHorizontal aria-hidden data-icon="inline-start" />
-          {t.open(chips.length)}
-        </Button>
+        {/* Senza filtri da scegliere niente «Filtri»: un foglio vuoto non serve (resta la ricerca). */}
+        {fields.length ? (
+          <Button type="button" variant="outline" className="min-h-11 shrink-0 sm:min-h-9" onClick={() => setSheet(true)} aria-haspopup="dialog">
+            <SlidersHorizontal aria-hidden data-icon="inline-start" />
+            {t.open(chips.length)}
+          </Button>
+        ) : null}
       </div>
       {chips.length ? (
         <ul data-slot="filter-chips-active" className="flex flex-wrap items-center gap-2">
