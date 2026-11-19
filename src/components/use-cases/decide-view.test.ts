@@ -168,3 +168,10 @@ test("i vuoti e i testi: «Le nuove idee arrivano qui.», niente «proposte»; l
   const html = render([item({ title: "Titolo di prova" })]);
   assert.deepEqual(findHubForbiddenIn([textOf(html)], "area"), []);
 });
+
+test("(rilascio 10, §3.4) la riga sulle proposte altrui del contributore: la stessa frase della scheda, «ad» davanti a una «a»", async () => {
+  const row = await import("./use-case-row.tsx");
+  assert.equal(row.othersCardNote(DEFAULT_REVIEW_TEAM_NAME), `Dettagli visibili a chi l'ha proposto e ad ${DEFAULT_REVIEW_TEAM_NAME}.`);
+  assert.equal(row.othersCardNote("  CoE   AI "), "Dettagli visibili a chi l'ha proposto e a CoE AI.");
+  assert.deepEqual(findHubForbiddenIn([row.othersCardNote("CoE AI"), row.ROW_TEXT.othersNote, row.ROW_TEXT.othersNoteVowel], "area"), []);
+});

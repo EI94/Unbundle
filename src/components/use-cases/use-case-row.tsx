@@ -143,6 +143,12 @@ export const ROW_TEXT = Object.freeze({
   own: "Proposto da te",
   /** Una propria proposta in «Serve info»: si risponde dal pannello (D17). */
   answer: "Rispondi",
+  /**
+   * (Rilascio 10, §3.4) La riga sulle proposte altrui del contributore, nel pannello: la stessa frase della scheda
+   * («ad» davanti a un nome che comincia per «a»: «ad AI Builder»).
+   */
+  othersNote: "Dettagli visibili a chi l'ha proposto e a {team}.",
+  othersNoteVowel: "Dettagli visibili a chi l'ha proposto e ad {team}.",
 });
 
 /**
@@ -150,8 +156,8 @@ export const ROW_TEXT = Object.freeze({
  * e fase. Il nome del team da solo (§14.2).
  */
 export function othersCardNote(teamName: string): string {
-  // (Rilascio 10, §3.4) Più corta; «ad» davanti a un nome che comincia per «a» («ad AI Builder»).
-  return `Dettagli visibili a chi l'ha proposto e ${/^a/i.test(teamName.trim()) ? "ad" : "a"} ${teamName}.`;
+  const team = teamName.replace(/\s+/g, " ").trim();
+  return (/^[aA]/.test(team) ? ROW_TEXT.othersNoteVowel : ROW_TEXT.othersNote).replace("{team}", team);
 }
 
 /** Una riga della lista (§4.6). Il link è tutta la riga: dentro non ci sono altri controlli. */
