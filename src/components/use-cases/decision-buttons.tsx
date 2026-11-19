@@ -163,28 +163,39 @@ export interface DecisionButtonsProps {
   primaryIcon?: ReactNode;
   /** (Rilascio 6) L'id della spiegazione del passo, letta dai lettori di schermo con il pulsante principale. */
   primaryDescribedBy?: string;
+  /**
+   * (Rilascio 10, §3.4) Solo il pulsante principale: le altre decisioni stanno nel solo «⋯» della testata della
+   * scheda (`menuDecisions`). Senza, come prima (il pannello laterale).
+   */
+  onlyPrimary?: boolean;
+  /** Le classi in più del pulsante principale (al telefono largo quanto la colonna, nel passo della scheda). */
+  primaryClassName?: string;
   className?: string;
 }
 
+/** Quello che serve per aprire i dialoghi delle decisioni di uno use case. */
+export interface DecisionDialogsOptions {
+  workspaceId: string;
+  item: DecisionItem;
+  /** Oggi a Roma (`AAAA-MM-GG`), letto sul server. */
+  today: string;
+  /** Gli use case dello stesso workspace, per «Doppione di…». */
+  candidates?: readonly DuplicateCandidate[];
+}
+
 /**
- * I pulsanti delle decisioni (docs/use-case/DESIGN.md §6.4, §4.8; D3): nel capitolo «Decisione»
- * della scheda e nel pannello laterale. Tabella di §6.4 (`decisionLayout`): un solo pulsante
- * pieno, gli altri `outline`, il resto nel menu «⋯» («Altre decisioni»: «Altre azioni» è il
- * menu della testata). Ogni pulsante apre il suo dialogo; il dialogo manda la decisione con la
- * `version` letta con la pagina (o lasciata dall'ultima scrittura). Chi non decide non vede
- * niente: mai pulsanti spenti.
+ * I dialoghi delle decisioni (§6.4, §14.3): `openDialog` apre quello di una decisione, `dialogs` va reso dove sta il
+ * pulsante o la voce del menu. Ogni dialogo manda la decisione con la `version` letta con la pagina (o lasciata
+ * dall'ultima scrittura). Lo usano i pulsanti delle decisioni e (rilascio 10) il gruppo «Decisione» del «⋯» della
+ * testata della scheda.
  */
-export function DecisionButtons({ workspaceId, item, today, canDecide, candidates, primaryVariant = "default", outlineInMenu = false, primaryIcon = null, primaryDescribedBy, className }: DecisionButtonsProps) {
+export function useDecisionDialogs({ workspaceId, item, today, candidates }: DecisionDialogsOptions): { openDialog: (key: DecisionKey) => void; dialogs: ReactNode } {
   const [open, setOpen] = useState<DecisionKey | null>(null);
   const [notePrefill, setNotePrefill] = useState<string | null>(null);
   /** Dopo una risposta a «Serve info» (D17): la nota pubblica da aggiornare nel dialogo; null se il dialogo non la propone. */
   const [answeredNote, setAnsweredNote] = useState<string | null>(null);
   const noteDraft = usePublicNoteDraft();
   const { run, pending } = useDecisionRunner();
-  const layout = decisionLayout(item, { canDecide });
-  const primary = layout.primary;
-  if (!primary && layout.outline.length === 0 && layout.menu.length === 0) return null;
-  const buttons = outlineInMenu ? { outline: [], menu: [...layout.outline, ...layout.menu] } : layout;
 
   function openDialog(key: DecisionKey) {
     // La nota appena scritta nel campo del capitolo, anche se il suo salvataggio è in corso.
@@ -217,10 +228,56 @@ export function DecisionButtons({ workspaceId, item, today, canDecide, candidate
   const extra = answeredNote !== null ? <AnsweredNoteField value={answeredNote} onChange={setAnsweredNote} /> : null;
   const dialog = { open: true, onOpenChange, pending, onSubmit: submit };
 
+  const dialogs = (
+    <>
+      {open === "approva" ? <ApproveDialog {...dialog} item={item} today={today} extra={extra} /> : null}
+      {open === "rimanda" ? <PostponeDialog {...dialog} code={item.code} today={today} extra={extra} /> : null}
+      {open === "serve_info" || open === "non_avviare" ? (
+        <PublicNoteDialog {...dialog} decision={open} publicNote={notePrefill} hiddenFromSearch={item.hiddenFromSearch} />
+      ) : null}
+      {open === "doppione" ? <DuplicateDialog {...dialog} self={item} candidates={candidates} extra={extra} /> : null}
+      {open === "archivia" ? <ArchiveDialog {...dialog} code={item.code} extra={extra} /> : null}
+      {open === "riapri" ? <ReopenDialog {...dialog} code={item.code} reopensTo={reopenDestination(item)} /> : null}
+      {open === "segna_diffusa" || open === "segna_realizzato" ? (
+        <ConfirmDecisionDialog {...dialog} decision={open} code={item.code} onSubmit={() => submit({ type: open })} />
+      ) : null}
+    </>
+  );
+  return { openDialog, dialogs };
+}
+
+/**
+ * I pulsanti delle decisioni (docs/use-case/DESIGN.md §6.4, §4.8; D3): nel riquadro «Prossimo passo»
+ * della scheda e nel pannello laterale. Tabella di §6.4 (`decisionLayout`): un solo pulsante
+ * pieno, gli altri `outline`, il resto nel menu «⋯» («Altre decisioni»: «Altre azioni» è il
+ * menu della testata). Ogni pulsante apre il suo dialogo (`useDecisionDialogs`). Chi non decide non
+ * vede niente: mai pulsanti spenti. (Rilascio 10) Con `onlyPrimary` solo il pulsante principale: nella
+ * scheda le altre decisioni stanno nel «⋯» della testata.
+ */
+export function DecisionButtons({
+  workspaceId,
+  item,
+  today,
+  canDecide,
+  candidates,
+  primaryVariant = "default",
+  outlineInMenu = false,
+  primaryIcon = null,
+  primaryDescribedBy,
+  onlyPrimary = false,
+  primaryClassName,
+  className,
+}: DecisionButtonsProps) {
+  const { openDialog, dialogs } = useDecisionDialogs({ workspaceId, item, today, candidates });
+  const layout = decisionLayout(item, { canDecide });
+  const primary = layout.primary;
+  const buttons = onlyPrimary ? { outline: [], menu: [] } : outlineInMenu ? { outline: [], menu: [...layout.outline, ...layout.menu] } : layout;
+  if (!primary && buttons.outline.length === 0 && buttons.menu.length === 0) return null;
+
   return (
     <div data-slot="decision-buttons" className={cn("flex flex-wrap items-center gap-2", className)}>
       {primary ? (
-        <Button type="button" variant={primaryVariant} className="min-h-11 sm:min-h-8" aria-describedby={primaryDescribedBy} onClick={() => openDialog(primary)}>
+        <Button type="button" variant={primaryVariant} className={cn("min-h-11 sm:min-h-8", primaryClassName)} aria-describedby={primaryDescribedBy} onClick={() => openDialog(primary)}>
           {primaryIcon}
           {DECISION_LABEL[primary]}
         </Button>
@@ -234,18 +291,7 @@ export function DecisionButtons({ workspaceId, item, today, canDecide, candidate
         label={DIALOG_COMMON_TEXT.moreDecisions}
         items={buttons.menu.map((key) => ({ label: DECISION_LABEL[key], onSelect: () => openDialog(key) }))}
       />
-
-      {open === "approva" ? <ApproveDialog {...dialog} item={item} today={today} extra={extra} /> : null}
-      {open === "rimanda" ? <PostponeDialog {...dialog} code={item.code} today={today} extra={extra} /> : null}
-      {open === "serve_info" || open === "non_avviare" ? (
-        <PublicNoteDialog {...dialog} decision={open} publicNote={notePrefill} hiddenFromSearch={item.hiddenFromSearch} />
-      ) : null}
-      {open === "doppione" ? <DuplicateDialog {...dialog} self={item} candidates={candidates} extra={extra} /> : null}
-      {open === "archivia" ? <ArchiveDialog {...dialog} code={item.code} extra={extra} /> : null}
-      {open === "riapri" ? <ReopenDialog {...dialog} code={item.code} reopensTo={reopenDestination(item)} /> : null}
-      {open === "segna_diffusa" || open === "segna_realizzato" ? (
-        <ConfirmDecisionDialog {...dialog} decision={open} code={item.code} onSubmit={() => submit({ type: open })} />
-      ) : null}
+      {dialogs}
     </div>
   );
 }
