@@ -1,12 +1,14 @@
+import type { ReactNode } from "react";
 import { ChevronLeft } from "lucide-react";
 import { SegmentedNav, type SegmentedNavItem } from "@/components/dashboard/segmented-nav";
 import { DossierCard, DossierReadOnlyNotice } from "@/components/uc/shell/case-card";
+import { Fold } from "@/components/ui-10/fold";
 import type { DossierColumn } from "@/lib/db/queries/uc-nav";
 import type { DossierCardView } from "@/lib/uc/views/realization";
 import { agentLabel, NO_AGENT_PARAM, type AgentPalette } from "@/lib/use-cases/agents";
 import type { CostBandInfo } from "@/lib/use-cases/cost-bands";
-import { FIGURE_SEPARATOR } from "@/lib/use-cases/format";
-import { SCREEN_SEPARATOR, keepTogether } from "@/lib/use-cases/line-breaks";
+import { FIGURE_SEPARATOR, formatInteger } from "@/lib/use-cases/format";
+import { keepTogether } from "@/lib/use-cases/line-breaks";
 import type { ReferentStateKey } from "@/lib/use-cases/referent/use-case-state";
 import {
   LANE_PREVIEW,
@@ -14,8 +16,8 @@ import {
   agentCardId,
   agentGroups,
   buildLanes,
-  laneCountedText,
-  laneMoreLabel,
+  doneSummaryText,
+  laneSeeAllLabel,
   laneSummaryText,
   type Lane,
   type LaneEntry,
@@ -24,16 +26,14 @@ import { isContributorItem, type AnyHubItem, type HubItem } from "@/lib/use-case
 import { AgentGrid } from "./agent-grid";
 import { Disclosure } from "./disclosure";
 import { EmptyState, HUB_TEXT, NoResults } from "./hub-header";
-import { ChartsMenu, type ChartsMenuLink } from "./charts-menu";
 import { LaneCard } from "./lane-card";
 import { HashFocusLink, RevealOnLoad } from "./list-focus";
 import { panelHref, type HubQuery } from "./use-case-row";
 
-/** Testi delle corsie della Panoramica (rilascio «Panoramica»). */
+/** Testi delle corsie della Panoramica (rilascio «Panoramica»; rilascio 10, §3.4). */
 export const LANES_TEXT = Object.freeze({
   inProgress: "In realizzazione",
   done: "In uso",
-  emptyLane: "Nessuno use case.",
   showLess: "Mostra meno",
   emptyTitle: "Niente in programma, per ora",
   emptyBody: "Approva uno use case e scegli quando farlo.",
@@ -86,7 +86,7 @@ export interface PanoramaLanesProps {
    * le card dello use case.
    */
   dossierColumn?: DossierColumn | null;
-  /** (Rilascio 5) Lo stato del referente per scheda (id in minuscolo), per tutti i ruoli: il chip delle card. */
+  /** (Rilascio 5) Lo stato del referente per scheda (id in minuscolo), per tutti i ruoli: il chip delle card (D7: solo quando chiede un'azione). */
   referentStates?: Readonly<Record<string, ReferentStateKey>> | null;
   basePath: string;
   query: HubQuery;
@@ -94,8 +94,6 @@ export interface PanoramaLanesProps {
   clearHref: string;
   /** «Per trimestre | Per agente»; null senza (contributori, workspace senza prefissi, grafici). */
   grouping: LanesGrouping | null;
-  /** (Rilascio 5, §12) I grafici, a vista nella riga di «Per trimestre | Per agente»: solo ai revisori. */
-  charts?: readonly ChartsMenuLink[];
   /** Le corsie di un agente da «Per agente» (`?agente=…#panoramica-approvati`). */
   agentHref: (param: string) => string;
   /** L'agente del filtro «Agente», per il nome della sezione; null senza. */
@@ -104,22 +102,65 @@ export interface PanoramaLanesProps {
   contributor?: boolean;
 }
 
+/** Il titolo di un elenco della Panoramica, con il suo conteggio accanto: «T4 2026 5», «In realizzazione 3». */
+function ListTitle({ id, title, count, anchor = false }: { id: string; title: string; count: number; anchor?: boolean }) {
+  return (
+    <h2
+      id={id}
+      tabIndex={anchor ? -1 : undefined}
+      className={anchor ? "flex scroll-mt-24 items-baseline gap-2 text-base font-semibold outline-none" : "flex items-baseline gap-2 text-base font-semibold"}
+    >
+      {`${keepTogether(title)} `}
+      <span className="text-sm font-normal text-muted-foreground tabular-nums">{formatInteger(count)}</span>
+    </h2>
+  );
+}
+
 /**
- * Le corsie della Panoramica (rilascio «Panoramica»). In una sezione con l'ancora
- * `#panoramica-approvati` (prende il fuoco dopo un clic in «Per agente») gli approvati in tre corsie,
- * «Questo trimestre · T4 2026», «Prossimo trimestre · T1 2027» e «Più avanti», sempre tutte e tre:
- * ognuna con «3 use case · 24.500 € contati all'anno», le prime 5 card e le altre dietro «Mostra gli
- * altri N». Le corsie stanno affiancate da 58rem del riquadro (`@container/hub`), prima una sotto
- * l'altra. Ai revisori di un workspace con gli agenti nel titolo, sopra, «Per trimestre | Per agente»:
- * per agente una card per agente al posto delle corsie (`AgentGrid`). Aperta dall'indirizzo, «Per
- * agente» viene in vista e prende il fuoco (`RevealOnLoad`); dopo un clic su «Per agente» la pagina
- * resta dov'è. Sotto «In realizzazione», aperta, con le card dei dossier e, ai revisori, i suoi euro
- * contati come una corsia («In realizzazione 1 · 2.719 € contati all'anno»), e «Realizzati», chiusa,
- * con il conto. I contributori vedono le stesse corsie
- * con «N use case» e card con tag, titolo e fase, senza cifre. Con il filtro «Agente» (anche dopo un
- * clic in «Per agente») sopra le corsie una riga dice di chi sono, «LIBRA · 7 use case», con
- * «‹ Tutti gli agenti» quando c'è «Per agente», che torna alla card dell'agente e le dà il fuoco
- * (`HashFocusLink`).
+ * Un elenco di card (rilascio 10, §1 regola 4): le prime `LANE_PREVIEW` a vista, poi «Vedi tutti (N)», che apre le
+ * altre sul posto; aperto dice «Mostra meno», e il fuoco resta sul riassunto.
+ */
+function CardList({ cards, total, className }: { cards: readonly ReactNode[]; total: number; className: string }) {
+  const first = cards.slice(0, LANE_PREVIEW);
+  const rest = cards.slice(LANE_PREVIEW);
+  return (
+    <>
+      <ul className={className}>{first}</ul>
+      {rest.length ? (
+        <Disclosure
+          slot="lane-more"
+          summary={
+            <>
+              <span className="[[open]>summary>&]:hidden">{laneSeeAllLabel(total)}</span>
+              <span className="hidden [[open]>summary>&]:inline">{LANES_TEXT.showLess}</span>
+            </>
+          }
+        >
+          <ul className={className}>{rest}</ul>
+        </Disclosure>
+      ) : null}
+    </>
+  );
+}
+
+/** Le card di una corsia (una colonna da 58rem del riquadro, prima due da 36rem). */
+const LANE_GRID = "grid gap-2 @xl/hub:grid-cols-2 @min-[58rem]/hub:grid-cols-1";
+/** Le card di «In realizzazione» e «In uso»: fino a tre colonne. */
+const ROW_GRID = "grid gap-2 @xl/hub:grid-cols-2 @min-[58rem]/hub:grid-cols-3";
+
+/**
+ * Le corsie della Panoramica (rilascio «Panoramica»; rilascio 10, §3.4 e prototipo S2). In una sezione con l'ancora
+ * `#panoramica-approvati` (prende il fuoco dopo un clic in «Per agente») gli approvati per trimestre: «T4 2026» e
+ * «T1 2027» con il loro conteggio, e «Più avanti» in una piega chiusa con il riepilogo «4 use case»; a schermo solo
+ * quelle con almeno uno use case. Ogni elenco mostra tre card, poi «Vedi tutti (N)». Le corsie stanno affiancate da
+ * 58rem del riquadro (`@container/hub`), prima una sotto l'altra. Ai revisori di un workspace con gli agenti nel
+ * titolo, sopra, «Per trimestre | Per agente»: per agente una card per agente al posto delle corsie (`AgentGrid`).
+ * Aperta dall'indirizzo, «Per agente» viene in vista e prende il fuoco (`RevealOnLoad`); dopo un clic su «Per agente»
+ * la pagina resta dov'è. Sotto «In realizzazione», aperta, con le card dei dossier, e «In uso», chiusa, con il
+ * riepilogo «1 use case · 38.000 € all'anno». I contributori vedono le stesse corsie, con card con tag, titolo e
+ * fase, senza cifre. Con il filtro «Agente» (anche dopo un clic in «Per agente») sopra le corsie una riga dice di chi
+ * sono, «LIBRA · 7 use case», con «‹ Tutti gli agenti» quando c'è «Per agente», che torna alla card dell'agente e le
+ * dà il fuoco (`HashFocusLink`). I grafici stanno nel «⋯» della testata.
  * Senza niente in programma il vuoto chiede ai revisori di approvare uno use case, e dice ai
  * contributori che cosa trovano qui e dove sono le proposte.
  */
@@ -137,7 +178,6 @@ export function PanoramaLanes({
   filtersActive,
   clearHref,
   grouping,
-  charts = [],
   agentHref,
   agentFilter,
   contributor = false,
@@ -184,7 +224,6 @@ export function PanoramaLanes({
       place={place}
       href={href(entry.item.id)}
       agents={agents}
-      quarterNote={entry.quarterNote}
       expired={entry.expired}
       barScale={barScale}
       dossierDown={dossierDown}
@@ -192,17 +231,18 @@ export function PanoramaLanes({
       referentState={stateOf(entry.item.id)}
     />
   );
+  // A schermo solo le corsie con almeno uno use case (lo zero non si vede); «Più avanti» in una piega chiusa.
+  const shownLanes = lanes.lanes.filter((lane) => lane.entries.length > 0);
   return (
     <div data-slot="panorama-lanes" className="space-y-6">
       {planned ? (
         // L'ancora delle corsie: «Per agente» ci porta con `?agente=…#panoramica-approvati`, Next ci scorre e `HashFocusLink` le dà il fuoco.
-        <section id={PANORAMA_SECTION_ID.approvati} tabIndex={-1} aria-label={planLabel} data-slot="panorama-plan" className="scroll-mt-24 space-y-3 outline-none">
-          {grouping || charts.length ? (
+        <section id={PANORAMA_SECTION_ID.approvati} tabIndex={-1} aria-label={planLabel} data-slot="panorama-plan" className="scroll-mt-24 space-y-4 outline-none">
+          {grouping ? (
             <div data-slot="plan-grouping" className="flex flex-wrap items-center justify-between gap-2">
-              {grouping ? <SegmentedNav size="sm" ariaLabel={LANES_TEXT.groupingLabel} active={grouping.active} items={grouping.items} /> : <span aria-hidden />}
-              <ChartsMenu links={charts} />
-              {/* Qui e non in fondo alla sezione: con `space-y-3` un ultimo figlio in più darebbe un margine sotto le card. */}
-              {grouping && byAgent && grouping.landOnLoad ? <RevealOnLoad /> : null}
+              <SegmentedNav size="sm" ariaLabel={LANES_TEXT.groupingLabel} active={grouping.active} items={grouping.items} />
+              {/* Qui e non in fondo alla sezione: con `space-y-4` un ultimo figlio in più darebbe un margine sotto le card. */}
+              {byAgent && grouping.landOnLoad ? <RevealOnLoad /> : null}
             </div>
           ) : null}
           {agentLine ? (
@@ -226,44 +266,22 @@ export function PanoramaLanes({
             <AgentGrid groups={agentGroups(lanes.lanes as Lane<HubItem>[], lanes.inProgress as HubItem[])} hrefOf={agentHref} agents={agents} />
           ) : (
             <div data-slot="lanes" className="grid gap-6 @min-[58rem]/hub:grid-cols-3 @min-[58rem]/hub:gap-4">
-              {lanes.lanes.map((lane) => {
-                const first = lane.entries.slice(0, LANE_PREVIEW);
-                const rest = lane.entries.slice(LANE_PREVIEW);
+              {shownLanes.map((lane) => {
+                const cards = lane.entries.map((entry) => card(entry, lane.key));
+                if (lane.key === "piu_avanti") {
+                  // «Più avanti»: una piega chiusa con il riepilogo; un link a `#panoramica-piu-avanti` la apre.
+                  return (
+                    <div key={lane.key} data-slot="lane" data-lane={lane.key} className="min-w-0">
+                      <Fold id={PANORAMA_SECTION_ID.piuAvanti} title={lane.title} summary={keepTogether(laneSummaryText(lane.entries.length, null))}>
+                        <CardList cards={cards} total={lane.entries.length} className={LANE_GRID} />
+                      </Fold>
+                    </div>
+                  );
+                }
                 return (
-                  <section key={lane.key} data-slot="lane" data-lane={lane.key} aria-labelledby={`lane-${lane.key}`} className="min-w-0 space-y-2">
-                    <h2 id={`lane-${lane.key}`} className="text-sm font-semibold">
-                      {keepTogether(lane.label)}
-                    </h2>
-                    {lane.entries.length ? (
-                      <>
-                        <p className="text-xs text-muted-foreground tabular-nums">
-                          {keepTogether(laneSummaryText(lane.entries.length, null))}
-                          {lane.countedEurYear ? (
-                            <>
-                              {SCREEN_SEPARATOR}
-                              <span data-figure="corsia">{keepTogether(laneCountedText(lane.countedEurYear))}</span>
-                            </>
-                          ) : null}
-                        </p>
-                        <ul className="grid gap-2 @xl/hub:grid-cols-2 @min-[58rem]/hub:grid-cols-1">{first.map((entry) => card(entry, lane.key))}</ul>
-                        {rest.length ? (
-                          // Il riassunto resta a schermo anche aperto («Mostra meno»): il fuoco non si perde.
-                          <Disclosure
-                            slot="lane-more"
-                            summary={
-                              <>
-                                <span className="[[open]>summary>&]:hidden">{laneMoreLabel(rest.length)}</span>
-                                <span className="hidden [[open]>summary>&]:inline">{LANES_TEXT.showLess}</span>
-                              </>
-                            }
-                          >
-                            <ul className="grid gap-2 @xl/hub:grid-cols-2 @min-[58rem]/hub:grid-cols-1">{rest.map((entry) => card(entry, lane.key))}</ul>
-                          </Disclosure>
-                        ) : null}
-                      </>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">{LANES_TEXT.emptyLane}</p>
-                    )}
+                  <section key={lane.key} data-slot="lane" data-lane={lane.key} aria-labelledby={`lane-${lane.key}`} className="min-w-0 space-y-3">
+                    <ListTitle id={`lane-${lane.key}`} title={lane.title} count={lane.entries.length} />
+                    <CardList cards={cards} total={lane.entries.length} className={LANE_GRID} />
                   </section>
                 );
               })}
@@ -273,24 +291,14 @@ export function PanoramaLanes({
       ) : null}
 
       {inProgress.length ? (
-        <section aria-labelledby={PANORAMA_SECTION_ID.inRealizzazione} className="space-y-3">
-          {/* L'ancora di «In realizzazione»: con `tabIndex` prende il fuoco, dal browser per le fasi (un `<a>` della pagina) e da `HashFocusLink` per «Vai alla Panoramica» di «Cosa serve». */}
-          <h2 id={PANORAMA_SECTION_ID.inRealizzazione} tabIndex={-1} className="flex scroll-mt-24 items-baseline gap-2 text-sm font-semibold outline-none">
-            {`${LANES_TEXT.inProgress} `}
-            <span className="text-xs font-normal text-muted-foreground tabular-nums">
-              {inProgress.length}
-              {/* Gli euro contati, come una corsia: con le corsie (o «Per agente») fanno la cifra in testa. */}
-              {lanes.inProgressCountedEurYear ? (
-                <>
-                  {SCREEN_SEPARATOR}
-                  <span data-figure="in-realizzazione">{keepTogether(laneCountedText(lanes.inProgressCountedEurYear))}</span>
-                </>
-              ) : null}
-            </span>
-          </h2>
+        <section aria-labelledby={PANORAMA_SECTION_ID.inRealizzazione} data-slot="panoramica-in-realizzazione" className="space-y-3">
+          {/* L'ancora di «In realizzazione»: con `tabIndex` prende il fuoco, da `HashFocusLink` per «Vai alla Panoramica» di «Cosa serve». */}
+          <ListTitle id={PANORAMA_SECTION_ID.inRealizzazione} title={LANES_TEXT.inProgress} count={inProgress.length} anchor />
           {column?.readOnlyNotice ? <DossierReadOnlyNotice /> : null}
-          <ul className="grid gap-2 @xl/hub:grid-cols-2 @min-[58rem]/hub:grid-cols-3">
-            {inProgress.map((item) => {
+          <CardList
+            total={inProgress.length}
+            className={ROW_GRID}
+            cards={inProgress.map((item) => {
               const dossier = cardOf(item.id);
               return dossier ? (
                 <li key={item.id} data-slot="lane-card" data-id={item.id} data-lane="in_realizzazione" className="min-w-0">
@@ -309,29 +317,23 @@ export function PanoramaLanes({
                 />
               );
             })}
-          </ul>
+          />
         </section>
       ) : null}
 
       {lanes.done.length ? (
-        <Disclosure
-          id={PANORAMA_SECTION_ID.realizzati}
-          slot="panoramica-realizzati"
-          className="scroll-mt-24"
-          summaryClassName="text-sm font-semibold text-foreground"
-          summary={
-            <>
-              {`${LANES_TEXT.done} `}
-              <span className="text-xs font-normal text-muted-foreground tabular-nums">{lanes.done.length}</span>
-            </>
-          }
-        >
-          <ul className="grid gap-2 @xl/hub:grid-cols-2 @min-[58rem]/hub:grid-cols-3">
-            {lanes.done.map((item) => (
-              <LaneCard key={item.id} item={item} place="realizzati" href={href(item.id)} agents={agents} bands={bands} referentState={stateOf(item.id)} />
-            ))}
-          </ul>
-        </Disclosure>
+        // «In uso», chiusa (§3.4): il riepilogo con gli euro contati ai revisori; `#panoramica-realizzati`, l'ancora di prima, la apre.
+        <div data-slot="panoramica-realizzati">
+          <Fold id={PANORAMA_SECTION_ID.realizzati} title={LANES_TEXT.done} summary={keepTogether(doneSummaryText(lanes.done.length, lanes.doneCountedEurYear))}>
+            <CardList
+              total={lanes.done.length}
+              className={ROW_GRID}
+              cards={lanes.done.map((item) => (
+                <LaneCard key={item.id} item={item} place="realizzati" href={href(item.id)} agents={agents} bands={bands} referentState={stateOf(item.id)} />
+              ))}
+            />
+          </Fold>
+        </div>
       ) : null}
     </div>
   );

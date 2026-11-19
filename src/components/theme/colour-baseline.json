@@ -246,9 +246,6 @@
   "src/components/use-cases/hub-header.tsx": {
     "palette": 4
   },
-  "src/components/use-cases/lane-card.tsx": {
-    "palette": 2
-  },
   "src/components/use-cases/origin-chip.tsx": {
     "palette": 2
   },

@@ -14,8 +14,9 @@ export interface CostFigureProps {
    * «€€ · fascia · team», «€€€ · fascia · stimato», con «Benefici e costi» «avvio 560 € ·
    * ricorrenti 600 €/anno» (senza fonte: la dice la scheda); «lunga» (scheda, §6.3): «€€ · 40.000 €»
    * oppure «€€ · fascia da 25.000 a 65.000 €», con la fonte per esteso; «avvio» (card della
-   * Panoramica, `startCostParts`): «avvio 30.000 € · team», «avvio €€ · fascia · team», «avvio 700 €»
-   * per «Benefici e costi», piccolo e grigio; senza costo niente, nemmeno «da stimare».
+   * Panoramica, `startCostParts`): «Costo 30.000 € · team», «Costo €€ · fascia · team», «Costo 700 €»
+   * per «Benefici e costi», piccolo e grigio (sulle card senza la fonte, D7: `withSource`); senza costo
+   * niente, nemmeno «da stimare».
    */
   form?: "corta" | "lunga" | "avvio";
   /** «Costo: €€ · 40.000 € · team» nella riga (§4.6); «Costo di realizzazione» sopra la cifra nella scheda. */
@@ -25,6 +26,11 @@ export interface CostFigureProps {
    * pannello). Senza, le due parti stanno in riga e vanno a capo solo dopo « · ».
    */
   stack?: boolean;
+  /**
+   * (Rilascio 10, D7) Forma «avvio»: false sulle card della Panoramica, che scrivono solo «Costo 30.000 €»; la fonte
+   * sta nel pannello e nella scheda (`data-source-in="pannello"` lo dice alle schermate). Vero per default.
+   */
+  withSource?: boolean;
   className?: string;
 }
 
@@ -38,15 +44,16 @@ const COST_LABEL_LONG = "Costo di realizzazione";
  * alle schermate di controllare che il costo abbia sempre la sua fonte e che la pagina del
  * contributore non abbia cifre (PIANO-LAVORI §5.4, §5.7).
  */
-export function CostFigure({ cost, bands = COST_BANDS, form = "corta", withLabel = false, stack = false, className }: CostFigureProps) {
+export function CostFigure({ cost, bands = COST_BANDS, form = "corta", withLabel = false, stack = false, withSource = true, className }: CostFigureProps) {
   if (form === "avvio") {
-    // Il costo d'avvio della card, senza etichetta: la fonte con il suo `data-source`, tranne «Benefici e costi».
+    // Il costo d'avvio della card, senza etichetta: la fonte con il suo `data-source`, tranne «Benefici e costi»;
+    // senza la fonte (D7) la dice il pannello.
     const start = startCostParts(cost, bands);
     if (!start || !cost) return null;
     return (
-      <span data-figure="costo" data-cost-source={cost.source} className={cn("text-xs text-muted-foreground", className)}>
+      <span data-figure="costo" data-cost-source={cost.source} data-source-in={withSource ? undefined : "pannello"} className={cn("text-xs text-muted-foreground", className)}>
         <span className="whitespace-nowrap">{start.figure}</span>
-        {start.source ? (
+        {withSource && start.source ? (
           <>
             <span>{SCREEN_SEPARATOR}</span>
             <SourceTag figure="costo" source={cost.source} />

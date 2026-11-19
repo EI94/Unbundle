@@ -60,12 +60,12 @@ test("la Panoramica, «Cosa serve» e «Da decidere» hanno il loro titolo; «�
   assert.match(hub, /<ListFocusTarget key="cosa-serve" title="Cosa serve" \/>\s*<NeedsBoardView\b/);
   assert.match(hub, /<ListFocusTarget key="da-decidere" title=\{reviewer \? HUB_TEXT\.decideView : HUB_TEXT\.contributorDecideView\} \/>\s*<DecideView\b/);
   assert.equal(hub.split("<ListFocusTarget").length - 1, 3, "un titolo per vista");
-  // Il pulsante del prossimo passo che cambia vista (rilascio 10, D3: «Decidi», «Chiedi», «Verifica») e «Da decidere»
-  // delle fasi lasciano il segno.
+  // Il pulsante del prossimo passo che cambia vista (rilascio 10, D3: «Decidi», «Chiedi», «Verifica») lascia il segno.
+  // La striscia delle fasi non c'è più (§3.4): «Da decidere» sta nelle viste.
   const top = readFileSync(new URL("./panoramica-top.tsx", import.meta.url), "utf8");
   assert.ok(top.includes("IN_HUB_STEPS.has(step.key) ? <ViewFocusLink href={href} /> : null"), "il pulsante del prossimo passo");
   assert.match(top, /const IN_HUB_STEPS: ReadonlySet<string> = new Set\(\["decidere", "chiedere", "verificare"\]\);/);
-  assert.ok(top.includes("<ViewFocusLink href={decideHref} className={STEP_LINK}>"), "«Da decidere» delle fasi");
+  assert.ok(!top.includes("decideHref") && !top.includes("STEP_LINK"), "niente fasi");
   assert.ok(!/from "next\/link"/.test(top), "nessun altro link che cambia vista");
   // I grafici del menu «⋯» stanno in chart-view.tsx: il ritorno sopra, mai un titolo da mettere a fuoco.
   const source = readFileSync(new URL("./chart-view.tsx", import.meta.url), "utf8");

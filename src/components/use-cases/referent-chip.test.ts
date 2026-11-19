@@ -39,6 +39,19 @@ test("ogni stato: la sua parola, il tono dell'icona, data-state; nessuno stato, 
   ]);
 });
 
+test("(rilascio 10, D7) la forma delle card: puntino più parola, il tono del puntino; senza stato niente", () => {
+  const fills = { manca: "bg-uc-grigio", in_attesa: "bg-uc-blu", nessuna_risposta: "bg-uc-rosso", da_verificare: "bg-uc-giallo", chiarimento: "bg-uc-blu", ha_chiesto: "bg-uc-giallo", fatto: "bg-uc-verde" } as const;
+  for (const state of REFERENT_STATES) {
+    const html = renderToStaticMarkup(createElement(chip.ReferentChip, { state, form: "puntino" }));
+    assert.match(html, new RegExp(`^<span data-slot="referent-chip" data-state="${state}" data-form="puntino"`));
+    assert.match(html, new RegExp(`<span aria-hidden="true" class="size-1\\.5 shrink-0 rounded-full ${fills[state]}"></span><span class="truncate font-medium text-foreground">${REFERENT_STATE_TEXT[state]}</span>`), state);
+    assert.ok(!html.includes("<svg"), "niente icona");
+  }
+  assert.equal(renderToStaticMarkup(createElement(chip.ReferentChip, { state: null, form: "puntino" })), "");
+  // Senza `form`: l'icona di sempre, nelle righe, nel pannello e nella scheda.
+  assert.ok(renderToStaticMarkup(createElement(chip.ReferentChip, { state: "manca" })).includes("<svg"));
+});
+
 test("il modulo dei chip si usa anche sul server (niente «use client») e solo con i token del tema", () => {
   const source = readFileSync(new URL("./referent-chip.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(source, /["']use client["']/);
