@@ -54,13 +54,16 @@ test("il tono colora solo l'icona; niente pillola, bordo o puntino, nessuna clas
   assert.doesNotMatch(source, /rounded-full|PhasePill|phase-pill|StatusDot/);
 });
 
-test("(rilascio 5) lo stato del referente arriva nelle card della Panoramica e nelle righe: hub → PanoramaLanes → LaneCard, DecideView → UseCaseRow", () => {
+test("(rilascio 5) lo stato del referente arriva nelle card della Panoramica: hub → PanoramaLanes → LaneCard; (rilascio 10, §3.4) «Da decidere» no", () => {
   const flat = (file: string) => readFileSync(new URL(file, import.meta.url), "utf8").replace(/\s+/g, " ");
   const hub = flat("./hub.tsx");
   const lanes = hub.slice(hub.indexOf("<PanoramaLanes "), hub.indexOf("/>", hub.indexOf("<PanoramaLanes ")));
   assert.match(lanes, /\breferentStates=\{data\.referentStates\}/);
+  // (Rilascio 10, §3.4, D7) Il chip del referente fuori da «Da decidere»: lo stato si legge nel pannello e nella scheda.
   const decide = hub.slice(hub.indexOf("<DecideView "), hub.indexOf("/>", hub.indexOf("<DecideView ")));
-  assert.match(decide, /\breferentStates=\{data\.referentStates\}/);
+  assert.doesNotMatch(decide, /\breferentStates=/);
+  const panel = hub.slice(hub.indexOf("<UseCasePanel "), hub.indexOf("/>", hub.indexOf("<UseCasePanel ")));
+  assert.match(panel, /\breferentState=\{data\.referentStates\?\.\[panelData\.item\.id\.toLowerCase\(\)\] \?\? null\}/);
   const view = flat("./panorama-lanes.tsx");
   const cards = [...view.matchAll(/<LaneCard [^>]*?\/>/g)].map((match) => match[0]);
   assert.equal(cards.length, 3, "corsie, «In realizzazione» e «Realizzati»");

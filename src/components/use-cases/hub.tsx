@@ -713,11 +713,11 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
               today={list.today}
               basePath={basePath}
               query={query}
-              bands={bands}
               overviewHref={abilities.canSeePriority ? viewHref("panoramica") : null}
-              referentStates={data.referentStates}
               filtersActive={filtersActive}
               clearHref={clearHref}
+              agents={agents}
+              canDecide={abilities.canDecide}
             />
           </>
         )}
