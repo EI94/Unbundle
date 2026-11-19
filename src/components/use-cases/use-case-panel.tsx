@@ -41,7 +41,6 @@ export const PANEL_TEXT = Object.freeze({
   openDetail: "Apri la scheda",
   close: "Chiudi",
   problem: "Problema",
-  needs: "Cosa serve",
   nextStep: "Prossimo passo",
 });
 
