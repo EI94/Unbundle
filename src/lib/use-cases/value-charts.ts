@@ -1,8 +1,8 @@
 /**
  * I dati dei grafici di «Benefici e costi» (spec di Pierpaolo, 25/10/2026): la matrice a bolle
- * facilità × beneficio (dal menu «⋯»), le ore liberate e il pareggio della riga «Su tutto il
- * portafoglio» della Panoramica, la J-curve e «Valore per tipo di ritorno» di «Curva del valore»
- * (dal menu «⋯»). Qui solo numeri ed etichette; i componenti disegnano.
+ * facilità × beneficio (il lato «Facilità × Beneficio» della «Matrice», dal menu «⋯» › «Grafici ›»), le ore
+ * liberate e il pareggio, la J-curve e «Valore per tipo di ritorno» di «Curva del valore» (dal menu «⋯»). Qui solo
+ * numeri ed etichette; i componenti disegnano.
  *
  * - **Colore per gruppo** (`groupPalette`): i gruppi di `value_model.group`, dal più grande (più
  *   schede, poi più beneficio contato, poi il nome), prendono i primi tre colori; gli altri gruppi e
@@ -460,7 +460,7 @@ export function hubCharts(items: readonly HubItem[]): HubChartParam[] {
 // ─── Curva del valore e Panoramica: ore, J-curve, pareggio ───────────
 
 /**
- * Le schede che entrano nei conti di «Curva del valore» e della riga «Su tutto il portafoglio»:
+ * Le schede che entrano nei conti di «Curva del valore»:
  * approvate o in realizzazione, con un modello.
  */
 export function roadmapValueItems(items: readonly HubItem[]): HubItem[] {
@@ -469,7 +469,7 @@ export function roadmapValueItems(items: readonly HubItem[]): HubItem[] {
 
 /**
  * L'avvio della scheda entra nei costi della curva? In realizzazione, oppure approvata «Da
- * costruire». La cifra «costo di avvio» in testa alla Panoramica (`roadmapTotals`) conta solo le
+ * costruire». Il costo delle card della Panoramica (e `roadmapTotals`) conta solo le
  * approvate «Da costruire», l'avvio che le card scrivono; la curva tiene anche quelle già partite,
  * che l'avvio lo pagano nei mesi fino all'entrata in uso.
  */

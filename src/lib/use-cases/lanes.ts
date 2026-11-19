@@ -1,26 +1,29 @@
 /**
- * Le corsie della Panoramica (rilascio «Panoramica»): gli use case approvati in tre corsie per
- * trimestre, poi «In realizzazione» e «Realizzati».
+ * Le corsie della Panoramica (rilascio «Panoramica»; rilascio 10, docs/ui-10/PROPOSTA-10.md §3.4): gli use case
+ * approvati in tre corsie per trimestre, poi «In realizzazione» e «In uso».
  *
- * - **Tre corsie.** «Questo trimestre · T4 2026», «Prossimo trimestre · T1 2027», «Più avanti»,
- *   sempre tutte e tre, anche vuote. Gli scaduti (trimestre passato, senza avvio) stanno in cima a
- *   «Questo trimestre» con «Scaduto» e il loro trimestre («T3 2026»), così non finiscono mai dietro
- *   «Mostra gli altri»; i trimestri dopo il prossimo vanno in «Più avanti» con il loro («T2 2027»).
+ * - **Tre corsie.** «T4 2026» (questo trimestre), «T1 2027» (il prossimo) e «Più avanti», ognuna con il suo
+ *   conteggio; a schermo solo quelle con almeno uno use case (lo zero non si vede), e «Più avanti» in una piega
+ *   chiusa. Gli scaduti (trimestre passato, senza avvio) stanno in cima a «Questo trimestre» con «Scaduto», così non
+ *   finiscono mai dietro «Vedi tutti»; i trimestri dopo il prossimo vanno in «Più avanti».
+ * - **Tre card, poi «Vedi tutti (N)».** Ogni elenco della Panoramica (corsie, «In realizzazione», «In uso») mostra
+ *   le prime `LANE_PREVIEW` card; le altre si aprono sul posto.
  * - **Ordine per euro.** Prima gli euro contati all'anno, poi il tetto «da misurare · fino a X €»,
  *   poi il Valore in parola, poi il resto; a pari cifra il codice, poi il titolo (`compareLaneItems`).
  * - **Barre.** La lunghezza è la cifra sulla scala del più grande degli approvati di tutto il
  *   workspace (`laneBarScale`): un filtro non accorcia né allunga nessuna barra. Piena per gli euro
  *   contati, tratteggiata per quelli da misurare; mai sotto il 4%.
+ * - **Il chip del referente** (D7, `cardReferentState`): sulla card solo quando chiede un'azione («Manca il
+ *   referente», «Nessuna risposta», «Risposte da verificare»); gli altri stati restano nel pannello e nella scheda.
  * - **Contributori.** Le stesse corsie, per titolo: nessuna cifra, niente «Scaduto» né trimestre a
  *   parte (la pillola «Approvato · T1 2027» lo dice già), nessun giudizio sul team.
  * - **Per agente.** Gli stessi use case delle corsie per agente del titolo (`agentGroups`): quanti,
  *   gli euro contati e in che corsie stanno; sotto, a parte, gli euro contati dei suoi use case «In
  *   realizzazione» («+ 4.043 € in realizzazione»), che la sezione sotto conta già.
- * - **Somme.** Gli euro di una corsia, di «In realizzazione» e di un gruppo «Per agente» sono la
+ * - **Somme.** Gli euro di una corsia, di «In realizzazione», di «In uso» e di un gruppo «Per agente» sono la
  *   somma delle cifre delle loro card, ognuna già arrotondata all'euro come la scrive la card
- *   (`shownPerYearEur`); così anche la cifra in testa (`roadmapTotals`). Le parti a schermo fanno
- *   sempre il totale, con qualunque filtro. La cifra di un agente più i suoi «in realizzazione» fanno
- *   la cifra in testa delle sue corsie (`?agente=LIBRA`).
+ *   (`shownPerYearEur`); così anche il numero grande in testa (`roadmapTotals`). La cifra di un agente più i suoi
+ *   «in realizzazione» fanno il numero grande delle sue corsie (`?agente=LIBRA`).
  *
  * Art. 15.4: corsie, ordini, gruppi e colori non leggono mai chi ha proposto; l'agente è il prefisso
  * del titolo, mai una persona.
@@ -30,6 +33,7 @@
 import { agentLabel, agentOfTitle, agentParamOf, NO_AGENT_PARAM, type AgentParam } from "./agents.ts";
 import { FIGURE_SEPARATOR, formatEuro, formatInteger, perYearText, shownPerYear, shownPerYearEur, valueScreenText, type ValueParts } from "./format.ts";
 import { quarterLabel, quarterOfDate, nextQuarter, WHEN_LATER_LABEL } from "./quarter.ts";
+import type { ReferentStateKey } from "./referent/use-case-state.ts";
 import type { QuarterCode } from "./types.ts";
 import { byRealizedDesc, isContributorItem, quarterOfItem, roadmapGroupKey, roadmapGroupLabel, type AnyHubItem, type HubItem } from "./views.ts";
 
@@ -37,22 +41,36 @@ import { byRealizedDesc, isContributorItem, quarterOfItem, roadmapGroupKey, road
 export const LANE_KEYS = ["questo_trimestre", "prossimo_trimestre", "piu_avanti"] as const;
 export type LaneKey = (typeof LANE_KEYS)[number];
 
-/** Le card a schermo in una corsia; le altre dietro «Mostra gli altri N». */
-export const LANE_PREVIEW = 5;
+/** Le card a schermo in un elenco della Panoramica (rilascio 10, §1 regola 4); le altre dietro «Vedi tutti (N)». */
+export const LANE_PREVIEW = 3;
 /** La barra più corta: 4% della scala, così anche una cifra piccola si vede. */
 export const LANE_BAR_MIN = 0.04;
 /** Un modello senza beneficio contato né da misurare. */
 export const QUALITATIVE_RETURN_LABEL = "ritorno qualitativo";
 
 /**
- * Le ancore della Panoramica: le corsie (anche «Per agente»), «In realizzazione» e «Realizzati».
- * Ci portano la striscia delle fasi in testa e «Vai alla Panoramica» di «Cosa serve».
+ * Le ancore della Panoramica: le corsie (anche «Per agente»), la piega «Più avanti», «In realizzazione» e la piega
+ * «In uso» (`realizzati`, il nome di prima: i link che girano la aprono ancora). Ci portano «Per agente» e «Vai alla
+ * Panoramica» di «Cosa serve»; un link a una piega la apre.
  */
 export const PANORAMA_SECTION_ID = Object.freeze({
   approvati: "panoramica-approvati",
+  piuAvanti: "panoramica-piu-avanti",
   inRealizzazione: "panoramica-in-realizzazione",
   realizzati: "panoramica-realizzati",
 });
+
+/**
+ * (Rilascio 10, D7) Gli stati del referente che sulla card chiedono un'azione: «Manca il referente», «Nessuna
+ * risposta», «Risposte da verificare». Gli altri (in attesa, chiarimento, ha chiesto, ha risposto) la card non li
+ * dice: restano nel pannello, nella scheda e nel filtro «Referente».
+ */
+export const CARD_REFERENT_STATES: readonly ReferentStateKey[] = Object.freeze(["manca", "nessuna_risposta", "da_verificare"]);
+
+/** Lo stato del referente da scrivere sulla card (D7): solo quando chiede un'azione, altrimenti null. */
+export function cardReferentState(state: ReferentStateKey | null | undefined): ReferentStateKey | null {
+  return state && CARD_REFERENT_STATES.includes(state) ? state : null;
+}
 
 /**
  * L'ancora della card di un agente in «Per agente»: `agente-LIBRA`, `agente-altri`. «‹ Tutti gli
@@ -74,8 +92,10 @@ export interface LaneEntry<T> {
 
 export interface Lane<T> {
   key: LaneKey;
-  /** «Questo trimestre · T4 2026», «Prossimo trimestre · T1 2027», «Più avanti». */
+  /** «Questo trimestre · T4 2026», «Prossimo trimestre · T1 2027», «Più avanti»: per i lettori di schermo di «Per agente». */
   label: string;
+  /** (Rilascio 10) Il titolo a schermo: «T4 2026», «T1 2027», «Più avanti». */
+  title: string;
   /** «T4», «T1», «Più avanti»: i chip dei gruppi «Per agente». */
   short: string;
   entries: LaneEntry<T>[];
@@ -90,8 +110,10 @@ export interface PanoramaLanes<T> {
   inProgress: T[];
   /** Gli euro contati all'anno di «In realizzazione» (revisori), come una corsia; null ai contributori. */
   inProgressCountedEurYear: number | null;
-  /** «Realizzati», dal più recente. */
+  /** «In uso» (realizzati e diffuse), dal più recente. */
   done: T[];
+  /** Gli euro contati all'anno di «In uso» (revisori), come una corsia; null ai contributori. */
+  doneCountedEurYear: number | null;
 }
 
 type LaneValue = Pick<ValueParts, "word" | "perYear" | "benefits">;
@@ -183,6 +205,11 @@ export function buildLanes<T extends AnyHubItem>(items: readonly T[], today: str
     prossimo_trimestre: quarterShort(nextQuarter(current)),
     piu_avanti: WHEN_LATER_LABEL,
   };
+  const titles: Record<LaneKey, string> = {
+    questo_trimestre: quarterLabel(current),
+    prossimo_trimestre: quarterLabel(nextQuarter(current)),
+    piu_avanti: WHEN_LATER_LABEL,
+  };
   const lanes = LANE_KEYS.map((key): Lane<T> => {
     const list = entries[key];
     if (reviewers) {
@@ -193,6 +220,7 @@ export function buildLanes<T extends AnyHubItem>(items: readonly T[], today: str
     return {
       key,
       label: roadmapGroupLabel(key, today),
+      title: titles[key],
       short: shorts[key],
       entries: list,
       countedEurYear: reviewers ? countedEurOf(list.map((entry) => entry.item as HubItem)) : null,
@@ -200,7 +228,13 @@ export function buildLanes<T extends AnyHubItem>(items: readonly T[], today: str
   });
   const inProgress = items.filter((item) => item.phase === "in_realizzazione").sort(byTitle);
   const done = items.filter((item) => item.phase === "realizzato").sort(byRealizedDesc);
-  return { lanes, inProgress, inProgressCountedEurYear: reviewers ? countedEurOf(inProgress.map((item) => item as HubItem)) : null, done };
+  return {
+    lanes,
+    inProgress,
+    inProgressCountedEurYear: reviewers ? countedEurOf(inProgress.map((item) => item as HubItem)) : null,
+    done,
+    doneCountedEurYear: reviewers ? countedEurOf(done.map((item) => item as HubItem)) : null,
+  };
 }
 
 /**
@@ -229,9 +263,21 @@ export function laneSummaryText(count: number, eur: number | null): string {
   return eur ? `${cases}${FIGURE_SEPARATOR}${laneCountedText(eur)}` : cases;
 }
 
-/** «Mostra l'altro», «Mostra gli altri 3»: le card dietro le prime `LANE_PREVIEW`. */
+/** «Mostra l'altro», «Mostra gli altri 3»: le voci dietro le prime cinque di «Valore per tipo di ritorno» (`value-by-lever.tsx`). */
 export function laneMoreLabel(hidden: number): string {
   return hidden === 1 ? "Mostra l'altro" : `Mostra gli altri ${formatInteger(hidden)}`;
+}
+
+/** (Rilascio 10) «Vedi tutti (5)»: il conto di tutto l'elenco, sotto le prime `LANE_PREVIEW` card della Panoramica. */
+export function laneSeeAllLabel(total: number): string {
+  return `Vedi tutti (${formatInteger(total)})`;
+}
+
+/** «1 use case · 38.000 € all'anno»: il riepilogo della piega «In uso»; «2 use case» senza euro contati (e ai contributori). */
+export function doneSummaryText(count: number, eur: number | null): string {
+  const cases = `${formatInteger(count)} use case`;
+  const perYear = eur ? perYearText({ amount: eur }) : null;
+  return perYear ? `${cases}${FIGURE_SEPARATOR}${perYear}` : cases;
 }
 
 /** Il Valore di una card nella corsia: il testo e la barra; testo null quando la card scrive «Valore: …». */
