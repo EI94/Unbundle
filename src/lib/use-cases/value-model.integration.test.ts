@@ -358,7 +358,7 @@ test("HTML: editor «Benefici e costi», cifre della riga e riquadro «Ipotesi d
   // Le due fonti nello stesso posto: sulla riga sotto la cifra grande.
   assert.equal((long.match(/<div data-slot="figure-source"><span data-source=/g) ?? []).length, 2, long);
 
-  // «Impatto» in testa alla scheda: le voci con il loro conto fuori dall'editor, la fonte, il costo e quando rientra l'avvio.
+  // «Valore» in testa alla scheda: le voci con il loro conto fuori dall'editor, la fonte, il costo e quando rientra l'avvio.
   const { ImpactBlock } = await import("../../components/use-cases/detail/impact-block.tsx");
   const { impactView } = await import("./guided.ts");
   const view = impactView({ value: detail.useCase.value, cost: detail.useCase.cost, valueModel: detail.useCase.valueModel, params: detail.valueParams, unofficial: false });
@@ -366,13 +366,17 @@ test("HTML: editor «Benefici e costi», cifre della riga e riquadro «Ipotesi d
   const impact = renderToStaticMarkup(
     createElement(ImpactBlock, { view, value: detail.useCase.value, cost: detail.useCase.cost, costBands: detail.costBands, risks: detail.useCase.risks }),
   );
-  const impactText = impact.replace(/<[^>]+>/g, "").replace(/&#x27;/g, "'").replace(/\u00a0/g, " ");
-  assert.match(impactText, /116 ore all'anno/);
-  assert.match(impactText, /4\.043 € all'anno · team/);
-  assert.match(impactText, /a 35 € l'ora/);
+  const impactText = impact.replace(/<[^>]+>/g, " ").replace(/&#x27;/g, "'").replace(/\u00a0/g, " ").replace(/\s+/g, " ");
+  // (Rilascio 10, §3.4) Il numero grande è il valore all'anno, con le ore e l'ora sotto; poi la riga del costo e del pareggio.
+  assert.match(impact, /data-figure="valore" data-source="team"/);
+  assert.match(impactText, /4\.043 € Valore all'anno/);
+  assert.match(impactText, /116 ore all'anno a 35 € l'ora/);
+  assert.ok(impactText.includes("Costo 560 € · costo all'anno 600 € · stima del team · pareggio in circa 2 mesi a regime, senza contare i 4 giorni di sviluppo"), impactText);
+  assert.ok(!impactText.includes("Costo di realizzazione Costo"), "la cifra di «Benefici e costi» dice già «Costo»");
+  // Una piega sola, «Come si calcola», con dentro le voci e da dove vengono i numeri: niente piega dentro la piega.
+  assert.equal(impact.split("<details").length - 1, 1, "una piega sola");
   assert.ok(impactText.includes("Smistamento delle richieste · 6.600 all'anno × 1,5 min × 70% ≈ 116 h · 4.043 € · ipotesi"), impactText);
   assert.ok(impactText.includes("Meno errori di smistamento") && impactText.includes("Ipotesi da confermare"), "il chip della voce qualitativa e quello delle ipotesi");
-  assert.ok(impactText.includes("Pareggio in circa 2 mesi a regime, senza contare i 4 giorni di sviluppo."), impactText);
   assert.ok(impactText.includes("Da dove vengono i numeri") && impactText.includes("Chi conferma i numeri") && impactText.includes("Responsabile di prova"));
   assert.match(impact, /data-figure="costo" data-cost-source="stima"/);
   assert.ok(!impact.includes('data-slot="valuation-form"'), "fuori dall'editor");
