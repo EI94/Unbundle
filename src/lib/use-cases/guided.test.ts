@@ -4,18 +4,23 @@ import { DEFAULT_REVIEW_TEAM_NAME } from "../review-team.ts";
 import type { UseCaseRealization } from "../uc/views/realization.ts";
 import { findHubForbiddenIn } from "./copy-guard.ts";
 import {
+  CHAPTER_ALIASES,
   DETAIL_CHAPTERS,
   GUIDED_TEXT,
   arrivalTarget,
   arrivalTargetIn,
   chapterFromParam,
+  compactPathOf,
   detailTargetIds,
   foldSummaries,
   impactView,
   isReadyToStart,
   limitsSummary,
   nextStepOf,
+  othersDetailsNote,
   paybackText,
+  publicNoteInView,
+  realizationAccountOf,
   requestGroupView,
   startsInBox,
   toTeam,
@@ -724,11 +729,12 @@ test("foldSummaries: valutazione, dettagli, realizzazione, storia", () => {
 });
 
 test("detailTargetIds e arrivalTarget: le ancore che ci sono; «Realizzazione» senza piega va al riquadro", () => {
+  // (Rilascio 10, §3.4) L'ordine della scheda in una colonna: il passo, «Quando» nel percorso, la nota, «Valore»…
   const all = detailTargetIds({ phase: "approvato", needs: true, requests: true, realization: true, history: true });
-  assert.deepEqual(all, ["decisione", "impatto", "cosa-e", "cosa-serve", "richieste", "quando", "nota-pubblica", "valutazione", "dettagli", "realizzazione", "storia"]);
+  assert.deepEqual(all, ["decisione", "quando", "nota-pubblica", "valore", "cosa-e", "cosa-serve", "richieste", "valutazione", "dettagli", "realizzazione", "storia"]);
   const few = detailTargetIds({ phase: "da_valutare", needs: true, requests: false, realization: false, history: true });
-  assert.deepEqual(few, ["decisione", "impatto", "cosa-e", "cosa-serve", "nota-pubblica", "valutazione", "dettagli", "storia"]);
-  assert.deepEqual(detailTargetIds({ phase: "da_valutare", needs: false, requests: true, realization: false, history: false }), ["decisione", "impatto", "cosa-e", "nota-pubblica", "valutazione", "dettagli"]);
+  assert.deepEqual(few, ["decisione", "nota-pubblica", "valore", "cosa-e", "cosa-serve", "valutazione", "dettagli", "storia"]);
+  assert.deepEqual(detailTargetIds({ phase: "da_valutare", needs: false, requests: true, realization: false, history: false }), ["decisione", "nota-pubblica", "valore", "cosa-e", "valutazione", "dettagli"]);
   assert.equal(arrivalTarget("storia", few), "storia");
   assert.equal(arrivalTarget("realizzazione", few), "decisione");
   assert.equal(arrivalTarget("realizzazione", all), "realizzazione");
@@ -738,7 +744,8 @@ test("detailTargetIds e arrivalTarget: le ancore che ci sono; «Realizzazione» 
 
 test("(Rilascio 9b) «Contesto» tra i capitoli, prima di «Storia» che resta l'ultima; `?capitolo=contesto` apre la piega", () => {
   const chapters = DETAIL_CHAPTERS.map((chapter) => chapter.id);
-  assert.deepEqual(chapters.slice(-3), ["realizzazione", "contesto", "storia"]);
+  // (Rilascio 10, §3.4) Valutazione del team · Dettagli · Contesto · Realizzazione · Storia.
+  assert.deepEqual(chapters.slice(-5), ["valutazione", "dettagli", "contesto", "realizzazione", "storia"]);
   assert.equal(chapters.at(-1), "storia", "«Storia» resta l'ultima");
   assert.equal(new Set(chapters).size, chapters.length, "nessun capitolo doppio");
   assert.equal(DETAIL_CHAPTERS.find((chapter) => chapter.id === "contesto")?.label, "Contesto");
@@ -746,14 +753,15 @@ test("(Rilascio 9b) «Contesto» tra i capitoli, prima di «Storia» che resta l
   assert.equal(chapterFromParam("contesto"), "contesto");
   assert.equal(chapterFromParam(" Contesto "), "contesto");
   assert.equal(chapterFromParam(["contesto", "storia"]), "contesto");
-  // I capitoli di prima restano, con gli alias.
-  for (const chapter of ["decisione", "impatto", "cosa-serve", "richieste", "valutazione", "dettagli", "realizzazione", "storia"]) assert.equal(chapterFromParam(chapter), chapter);
+  // I capitoli di prima restano, con gli alias (rilascio 10: «impatto» è «valore»).
+  for (const chapter of ["decisione", "cosa-serve", "richieste", "valutazione", "dettagli", "realizzazione", "storia"]) assert.equal(chapterFromParam(chapter), chapter);
+  assert.equal(chapterFromParam("impatto"), "valore");
   assert.equal(chapterFromParam("cos'è"), "cosa-e");
   assert.equal(chapterFromParam("contesti"), null);
 
-  // L'ancora c'è solo con la piega, dopo «Realizzazione» e prima di «Storia».
+  // L'ancora c'è solo con la piega, dopo «Dettagli» e prima di «Realizzazione» e «Storia».
   const all = detailTargetIds({ phase: "approvato", needs: true, requests: true, realization: true, context: true, history: true });
-  assert.deepEqual(all, ["decisione", "impatto", "cosa-e", "cosa-serve", "richieste", "quando", "nota-pubblica", "valutazione", "dettagli", "realizzazione", "contesto", "storia"]);
+  assert.deepEqual(all, ["decisione", "quando", "nota-pubblica", "valore", "cosa-e", "cosa-serve", "richieste", "valutazione", "dettagli", "contesto", "realizzazione", "storia"]);
   const early = detailTargetIds({ phase: "da_valutare", needs: true, requests: false, realization: false, context: true, history: true });
   assert.deepEqual(early.slice(-3), ["dettagli", "contesto", "storia"]);
   const without = detailTargetIds({ phase: "da_valutare", needs: true, requests: false, realization: false, context: false, history: true });
@@ -914,4 +922,120 @@ test("rilascio 6: «Il referente ha chiesto qualcosa» → «Rispondi al referen
   const reply = nextStepOf(input({ item: approved(), info: progress({ received: 2, total: 10, toAsk: 0, waiting: 0 }), referents: panel([]), askEntry: entry([]), referent: referent({ state: "da_verificare", review: "risposta" }) }));
   assert.deepEqual([reply.key, reply.line, reply.cta], ["G1", `${T} Il referente ha risposto a un chiarimento.`, "Verifica le risposte"]);
   assert.deepEqual(findHubForbiddenIn([asked.title, asked.line, asked.cta, waiting.title, waiting.line, waiting.cta, reply.line], "area"), []);
+});
+
+// ─── Rilascio 10, §3.4: la scheda in una colonna ─────────────────────
+
+test("(Rilascio 10, §8.2) alias `impatto` → `valore`: `?capitolo=impatto` e `#impatto` arrivano a «Valore»", () => {
+  assert.equal(chapterFromParam("impatto"), "valore");
+  assert.equal(chapterFromParam(" Impatto "), "valore");
+  assert.equal(chapterFromParam("valore"), "valore");
+  assert.equal(DETAIL_CHAPTERS.find((chapter) => chapter.id === "valore")?.label, "Valore");
+  assert.ok(!DETAIL_CHAPTERS.some((chapter) => (chapter.id as string) === "impatto"), "«Impatto» non è più un capitolo");
+  const ids = detailTargetIds({ phase: "da_valutare", needs: true, requests: false, realization: false, history: true });
+  assert.equal(arrivalTarget(chapterFromParam("impatto"), ids), "valore");
+  assert.equal(arrivalTargetIn("impatto", ids, false), "valore", "un vecchio link copiato con «#impatto»");
+});
+
+test("(Rilascio 10, §8.2) alias `scadenze` → `cosa-serve`: `?capitolo=scadenze` e `#scadenze` aprono «Cosa serve»", () => {
+  assert.equal(chapterFromParam("scadenze"), "cosa-serve");
+  assert.equal(chapterFromParam("SCADENZE"), "cosa-serve");
+  const ids = detailTargetIds({ phase: "approvato", needs: true, requests: false, realization: true, history: true });
+  assert.equal(arrivalTarget(chapterFromParam("scadenze"), ids), "cosa-serve");
+  assert.equal(arrivalTargetIn("scadenze", ids, false), "cosa-serve");
+  // Chi non vede «Cosa serve»: la cima della pagina, come `?capitolo=cosa-serve`.
+  const without = detailTargetIds({ phase: "approvato", needs: false, requests: false, realization: true, history: true });
+  assert.equal(arrivalTarget(chapterFromParam("scadenze"), without), null);
+});
+
+test("(Rilascio 10) ogni `?capitolo=` di oggi apre ancora il suo capitolo; gli alias portano solo a capitoli che ci sono", () => {
+  const all = detailTargetIds({ phase: "approvato", needs: true, requests: true, realization: true, context: true, history: true });
+  // Le forme dei link già partiti: campanella, e-mail (`cosa-serve`, `realizzazione`, `richieste`), il harness, le pagine.
+  for (const [raw, to] of [
+    ["decisione", "decisione"],
+    ["impatto", "valore"],
+    ["valore", "valore"],
+    ["cosa-e", "cosa-e"],
+    ["cosa", "cosa-e"],
+    ["cos'è", "cosa-e"],
+    ["cosa-serve", "cosa-serve"],
+    ["scadenze", "cosa-serve"],
+    ["richieste", "richieste"],
+    ["valutazione", "valutazione"],
+    ["dettagli", "dettagli"],
+    ["contesto", "contesto"],
+    ["realizzazione", "realizzazione"],
+    ["storia", "storia"],
+  ] as const) {
+    const chapter = chapterFromParam(raw);
+    assert.ok(chapter, raw);
+    assert.equal(arrivalTarget(chapter, all), to, raw);
+  }
+  const chapters = new Set<string>(DETAIL_CHAPTERS.map((chapter) => chapter.id));
+  for (const [alias, chapter] of Object.entries(CHAPTER_ALIASES)) assert.ok(chapters.has(chapter), `${alias} → ${chapter}`);
+  assert.ok(Object.isFrozen(CHAPTER_ALIASES));
+});
+
+test("(Rilascio 10, §3.4) il percorso in una riga: «Passo 4 di 6 · Informazioni: 2 di 5 arrivate»", () => {
+  const compact = (over: Partial<GuidedItem>, info: GuidedInfo | null = null, dossierRead: "ok" | "errore" = "ok") =>
+    compactPathOf(pathOfUseCase({ item: item(over), today: TODAY, info, dossierRead })!, info);
+  const running = progress({ received: 2, total: 5, toAsk: 3 });
+  assert.deepEqual(compact(approved(), running), { position: "Passo 4 di 6", now: "Informazioni: 2 di 5 arrivate" });
+  assert.deepEqual(compact(approved(), progress({ received: 0, total: 1, toAsk: 1 })), { position: "Passo 4 di 6", now: "Informazioni: 0 di 1 arrivata" });
+  // Il passo di adesso come cosa da fare.
+  assert.deepEqual(compact({}), { position: "Passo 2 di 6", now: "Valutazione" });
+  assert.deepEqual(compact(approved({ subState: "piu_avanti", targetQuarter: null })), { position: "Passo 3 di 6", now: "Approvazione: più avanti" });
+  assert.deepEqual(compact(approved({ targetQuarter: "2026-Q2" })), { position: "Passo 3 di 6", now: "Approvazione: T2 2026 passato" }, "il trimestre resta maiuscolo");
+  assert.deepEqual(compact(approved(), null), { position: "Passo 5 di 6", now: "Realizzazione: da avviare" });
+  assert.deepEqual(compact(approved(), COMPLETE), { position: "Passo 5 di 6", now: "Realizzazione: da avviare" });
+  const inRealization = { phase: "in_realizzazione" as const, subState: "dossier" as const, targetQuarter: "2026-Q4" };
+  assert.deepEqual(compact({ ...inRealization, dossier: { status: "raccolta" } }), { position: "Passo 5 di 6", now: "Realizzazione: in preparazione" });
+  assert.deepEqual(compact({ ...inRealization, dossier: { status: "in_esercizio" } }), { position: "Passo 6 di 6", now: "In uso: da segnare" });
+  assert.deepEqual(compact({ ...inRealization }, null, "errore"), { position: "Passo 5 di 6", now: "Realizzazione: non disponibile ora" });
+  // Tutti fatti: l'ultimo, con la sua data.
+  assert.deepEqual(compact({ phase: "realizzato", subState: "realizzato", realizedOn: "2026-10-03" }), { position: "Passo 6 di 6", now: "In uso dal 3 ott" });
+  assert.deepEqual(compact({ phase: "realizzato", subState: "realizzato", realizedOn: null }), { position: "Passo 6 di 6", now: "In uso" });
+  // Una best practice: quattro passi.
+  assert.deepEqual(compact({ phase: "approvato", subState: "piu_avanti", kind: "da_diffondere" }), { position: "Passo 4 di 4", now: "Diffusione: da segnare" });
+  assert.deepEqual(compact({ phase: "realizzato", subState: "diffusa", kind: "da_diffondere", realizedOn: "2026-10-03" }), { position: "Passo 4 di 4", now: "Diffusa il 3 ott" });
+  assert.deepEqual(findHubForbiddenIn([GUIDED_TEXT.path.position, GUIDED_TEXT.path.infoArrived, ...Object.values(GUIDED_TEXT.path.nowSteps)], "area"), []);
+});
+
+/** Un riepilogo della realizzazione avviata, come lo dà `realizationOfUseCase` (dati inventati). */
+function started(figures: { cost: string | null; benefit: string | null; breakEven: string | null }, href: string | null = `/dashboard/${WS}/casi-duso/case-1`): UseCaseRealization {
+  return {
+    state: "avviata",
+    dossier: { caseId: "case-1", statusLabel: "In preparazione", statusTone: "blu", closed: false, progress: null, myStep: null, nextMilestone: null, figures, href },
+  };
+}
+
+test("(Rilascio 10, D10) una sola cifra del valore: il conto della realizzazione avviata, per chi la legge; prima, la stima del team", () => {
+  const account = realizationAccountOf(started({ cost: "34.000 €", benefit: "52.000 €", breakEven: "8 mesi" }));
+  assert.deepEqual(account, { benefit: "52.000 €", cost: "34.000 €", breakEven: "8 mesi", href: `/dashboard/${WS}/casi-duso/case-1/valore` });
+  // Chi non apre la realizzazione legge il conto (lo mostra già la piega), senza il link.
+  assert.equal(realizationAccountOf(started({ cost: null, benefit: "52.000 €", breakEven: null }, null))?.href, null);
+  // Il conto senza il suo valore all'anno non è ancora un conto: resta la stima del team.
+  assert.equal(realizationAccountOf(started({ cost: "34.000 €", benefit: null, breakEven: null })), null);
+  // Chi non legge la realizzazione, o una realizzazione non avviata: la stima del team.
+  for (const realization of [null, undefined, { state: "nascosta" }, { state: "spenta" }, { state: "errore" }, { state: "best_practice" }, { state: "da_avviare", canStart: true, startHref: null }] as const) {
+    assert.equal(realizationAccountOf(realization as UseCaseRealization | null | undefined), null, JSON.stringify(realization));
+  }
+});
+
+test("(Rilascio 10, §3.4) «Nota pubblica» in vista solo con un testo, in «Serve info» o con una risposta; altrimenti in «Dettagli»", () => {
+  const note = (over: Partial<GuidedItem> & { publicNote: string | null }, answers = 0) => publicNoteInView({ ...item(over), publicNote: over.publicNote }, answers);
+  assert.equal(note({ publicNote: "Quante richieste al mese?" }), true);
+  assert.equal(note({ publicNote: null }), false);
+  assert.equal(note({ publicNote: "   " }), false, "solo spazi: niente testo");
+  assert.equal(note({ publicNote: null, subState: "serve_info" }), true, "«Serve info»: la nota è la domanda");
+  assert.equal(note({ publicNote: null, answered: true }), true);
+  assert.equal(note({ publicNote: null }, 1), true, "c'è una risposta di chi ha proposto");
+  assert.equal(note({ ...approved(), publicNote: null }), false);
+  assert.equal(note({ ...approved(), publicNote: "Va fatto dopo il gestionale." }), true);
+});
+
+test("(Rilascio 10, §3.4) la scheda del contributore su uno use case di altri: «Dettagli visibili a chi l'ha proposto e ad AI Builder.»", () => {
+  assert.equal(othersDetailsNote(DEFAULT_REVIEW_TEAM_NAME), `Dettagli visibili a chi l'ha proposto e ad ${DEFAULT_REVIEW_TEAM_NAME}.`);
+  assert.equal(othersDetailsNote("  Digital   Factory "), "Dettagli visibili a chi l'ha proposto e a Digital Factory.");
+  assert.deepEqual(findHubForbiddenIn([othersDetailsNote(TEAM), ...Object.values(GUIDED_TEXT.scheda)], "area"), []);
 });

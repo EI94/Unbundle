@@ -17,6 +17,10 @@
  *   la memoria del cliente che tocca lo use case, sta prima di «Storia», che resta l'ultima.
  * - **Pronto da avviare** (`isReadyToStart`): la regola di G9, una sola per la pagina e per chi
  *   la userà altrove.
+ * - (Rilascio 10, §3.4) **La scheda in una colonna**: il percorso in una riga (`compactPathOf`), una
+ *   sola cifra del valore (`realizationAccountOf`, D10), «Nota pubblica» in vista solo quando serve
+ *   (`publicNoteInView`), gli alias dei capitoli rinominati (`CHAPTER_ALIASES`) e la riga del
+ *   contributore sugli use case di altri (`othersDetailsNote`).
  *
  * I contributori non passano mai da qui: la loro scheda resta quella di prima, senza cifre, senza
  * esigenze e senza conteggi. I conteggi sono di esigenze di una scheda, mai di persone. Il nome
@@ -80,6 +84,18 @@ export const GUIDED_TEXT = Object.freeze({
     toMark: "da segnare",
     inUseSince: "dal {giorno}",
     diffusedOn: "il {giorno}",
+    // (Rilascio 10, §3.4) Il percorso in una riga dopo il passo, «Passo 4 di 6 · Informazioni: 2 di 5 arrivate», che si apre sui passi.
+    position: "Passo {n} di {totale}",
+    infoArrived: "{ricevute} di {totale} arrivate",
+    infoArrivedOne: "{ricevute} di 1 arrivata",
+    /** Il passo di adesso detto come cosa da fare («Valutazione», non «Valutato»); gli altri restano con la loro etichetta. */
+    nowSteps: Object.freeze({
+      valutato: "Valutazione",
+      approvato: "Approvazione",
+      diffusa: "Diffusione",
+    }),
+    /** «Quando» si sceglie dal percorso aperto (o dal passo «Scegli il trimestre»), non da un riquadro a parte. */
+    when: "Quando",
   }),
   box: Object.freeze({
     heading: "Prossimo passo",
@@ -240,6 +256,14 @@ export const GUIDED_TEXT = Object.freeze({
     easeValue: "{facilita} su 5",
     params: "Ipotesi di calcolo",
     paramsValue: "{ora} l'ora · {giornata} a giornata",
+    // (Rilascio 10, §3.4) «Valore»: la cifra, il costo e il pareggio in una riga; «Modifica» apre «Valutazione del team».
+    edit: "Modifica",
+    editLabel: "Modifica la valutazione del team",
+    costLine: "Costo di realizzazione {costo}",
+    breakEven: "pareggio in {mesi}",
+    /** (D10) Con la realizzazione avviata la cifra è il conto della realizzazione, non più la stima del team. */
+    fromRealization: "dalla realizzazione",
+    realizationAccount: "Il conto viene dalla realizzazione.",
   }),
   payback: Object.freeze({
     notCovered: "Il valore all'anno non copre il costo all'anno.",
@@ -291,6 +315,23 @@ export const GUIDED_TEXT = Object.freeze({
     lastChange: "ultimo cambiamento il {giorno}",
     noChange: "nessun cambiamento",
   }),
+  /**
+   * (Rilascio 10, §3.4) La scheda in una colonna: la testata con un solo «⋯» (gruppi «Decisione» e «Scheda»),
+   * «Cosa serve · N» in una riga che si apre, e la riga del contributore sugli use case di altri.
+   */
+  scheda: Object.freeze({
+    menu: "Altre azioni",
+    decisionGroup: "Decisione",
+    cardGroup: "Scheda",
+    visible: "Visibile in azienda",
+    needs: "Cosa serve",
+    needsCount: "Cosa serve · {n}",
+    add: "Aggiungi",
+    /** La prima voce di «Aggiungi ▾»: il modulo di un'informazione nuova (o di una scadenza); la seconda è «Collega un'informazione». */
+    addNeed: "Nuova informazione",
+    othersNote: "Dettagli visibili a chi l'ha proposto e a {team}.",
+    othersNoteVowel: "Dettagli visibili a chi l'ha proposto e ad {team}.",
+  }),
   // I cinque gruppi delle richieste stanno con le righe di «Cosa serve» (`needs.ts`), che li scrivono.
   requestGroups: NEED_REQUEST_GROUP_TEXT.groups,
   requestNotes: NEED_REQUEST_GROUP_TEXT.notes,
@@ -308,6 +349,15 @@ const DECIMAL = new Intl.NumberFormat("it-IT", { maximumFractionDigits: 2 });
 export function toTeam(name: string): string {
   const clean = name.replace(/\s+/g, " ").trim();
   return fill(/^[aA]/.test(clean) ? GUIDED_TEXT.toTeamVowel : GUIDED_TEXT.toTeam, { nome: clean });
+}
+
+/**
+ * (Rilascio 10, §3.4) La scheda del contributore su uno use case di altri: «Dettagli visibili a chi l'ha proposto e ad
+ * AI Builder.», con il nome del team del workspace (`reviewTeamName`) e «ad» davanti a una a, come `toTeam`.
+ */
+export function othersDetailsNote(teamName: string): string {
+  const clean = teamName.replace(/\s+/g, " ").trim();
+  return fill(/^[aA]/.test(clean) ? GUIDED_TEXT.scheda.othersNoteVowel : GUIDED_TEXT.scheda.othersNote, { team: clean });
 }
 
 /** Due pezzi di frase uniti da uno spazio, senza pezzi vuoti. */
@@ -500,6 +550,63 @@ function subLabel(key: PathStepKey, state: PathStepState, { item, today, info, d
       }
       return null;
   }
+}
+
+/** (Rilascio 10, §3.4) Il percorso in una riga, subito dopo il passo: dove si è e il passo di adesso. */
+export interface CompactPath {
+  /** «Passo 4 di 6». */
+  position: string;
+  /** «Informazioni: 2 di 5 arrivate», «Realizzazione: da avviare», «In uso dal 3 nov». */
+  now: string;
+}
+
+/**
+ * La riga compatta del percorso (`pathOfUseCase`), che si apre sui passi: «Passo 4 di 6 · Informazioni: 2 di 5
+ * arrivate». Il passo di adesso si dice come cosa da fare («Valutazione», «Approvazione»), con la sua riga piccola
+ * dopo i due punti; con tutti i passi fatti, l'ultimo con la sua data («In uso dal 3 nov»). `info` è la raccolta delle
+ * informazioni della scheda (la stessa del percorso), per dire quante sono arrivate.
+ */
+export function compactPathOf(path: UseCasePathView, info: Pick<InfoProgressView, "state" | "received" | "total"> | null): CompactPath {
+  const t = GUIDED_TEXT.path;
+  const current = path.steps.find((step) => step.current) ?? path.steps[path.steps.length - 1]!;
+  const position = fill(t.position, { n: formatInteger(current.number), totale: formatInteger(path.steps.length) });
+  if (current.state === "fatto") return { position, now: current.sub ? `${current.label} ${current.sub}` : current.label };
+  const label = (t.nowSteps as Readonly<Partial<Record<PathStepKey, string>>>)[current.key] ?? current.label;
+  let sub = current.sub;
+  if (current.key === "informazioni" && info && info.total > 0 && info.state !== "complete") {
+    sub = fill(info.total === 1 ? t.infoArrivedOne : t.infoArrived, { ricevute: formatInteger(info.received), totale: formatInteger(info.total) });
+  } else if (current.key === "realizzazione" && sub) {
+    // Lo stato della realizzazione («In preparazione») dopo i due punti, in minuscolo.
+    sub = lowerFirst(sub);
+  }
+  return { position, now: sub ? `${label}: ${sub}` : label };
+}
+
+// ═══ Il conto della realizzazione (D10) ══════════════════════════════
+
+/** (Rilascio 10, D10) Il conto della realizzazione, che la scheda mostra al posto della stima del team. */
+export interface RealizationAccount {
+  /** «52.000 €»: il valore all'anno del conto. */
+  benefit: string;
+  /** Il costo di realizzazione del conto; null se è ancora da calcolare. */
+  cost: string | null;
+  /** «8 mesi»; null se è ancora da calcolare. */
+  breakEven: string | null;
+  /** La scheda «Valore» della realizzazione, solo per chi la apre. */
+  href: string | null;
+}
+
+/**
+ * (D10) Una sola cifra del valore: con la realizzazione avviata la scheda mostra il conto della realizzazione, prima la
+ * stima del team. Il conto c'è solo per chi legge la realizzazione (`realizationOfUseCase` «avviata», che risponde ai
+ * soli revisori, con le cifre che la piega «Realizzazione» mostra già) e quando la realizzazione ha il suo valore
+ * all'anno; altrimenti null, e la scheda resta sulla stima del team.
+ */
+export function realizationAccountOf(realization: UseCaseRealization | null | undefined): RealizationAccount | null {
+  if (realization?.state !== "avviata") return null;
+  const { figures, href } = realization.dossier;
+  if (!figures.benefit) return null;
+  return { benefit: figures.benefit, cost: figures.cost, breakEven: figures.breakEven, href: href ? `${href}/valore` : null };
 }
 
 // ═══ «Prossimo passo» ════════════════════════════════════════════════
@@ -697,7 +804,8 @@ function step(key: NextStepKey, parts: StepParts): NextStep {
 
 const ANCHOR = Object.freeze({
   decisione: "decisione",
-  impatto: "impatto",
+  // (Rilascio 10, §8.2) «Impatto» si chiama «Valore»: l'ancora è `valore`, `impatto` resta come alias.
+  valore: "valore",
   cosaE: "cosa-e",
   cosaServe: "cosa-serve",
   richieste: "richieste",
@@ -1357,27 +1465,38 @@ export interface ChapterLink {
 
 /**
  * I `?capitolo=` della scheda, nell'ordine della pagina (§6.1, §14.3; rilascio 3). (Rilascio 9b)
- * «Contesto», la piega con la memoria del cliente: `?capitolo=contesto` la apre; sta prima di
- * «Storia», che resta l'ultima.
+ * «Contesto», la piega con la memoria del cliente: `?capitolo=contesto` la apre. (Rilascio 10, §3.4)
+ * Le pieghe in quest'ordine: Valutazione del team · Dettagli · Contesto · Realizzazione · Storia, che
+ * resta l'ultima; «Impatto» si chiama «Valore» (`valore`, con l'alias `impatto`).
  */
 export const DETAIL_CHAPTERS = [
   { id: "decisione", label: "Prossimo passo" },
-  { id: "impatto", label: GUIDED_TEXT.impact.title },
+  { id: "valore", label: GUIDED_TEXT.impact.title },
   { id: "cosa-e", label: "Come cambia il lavoro" },
   { id: "cosa-serve", label: "Cosa serve" },
   // La piega delle richieste ai referenti dentro «Cosa serve»: «Nessuna risposta» (campanella, email) la apre.
   { id: "richieste", label: "Richieste inviate" },
   { id: "valutazione", label: GUIDED_TEXT.folds.valutazione },
   { id: "dettagli", label: GUIDED_TEXT.folds.dettagli },
-  { id: "realizzazione", label: GUIDED_TEXT.folds.realizzazione },
   { id: "contesto", label: GUIDED_TEXT.folds.contesto },
+  { id: "realizzazione", label: GUIDED_TEXT.folds.realizzazione },
   { id: "storia", label: GUIDED_TEXT.folds.storia },
 ] as const satisfies readonly ChapterLink[];
 
 export type DetailChapter = (typeof DETAIL_CHAPTERS)[number]["id"];
 
-/** Altri modi di scrivere un capitolo in `?capitolo=` (email, campanella). */
-const CHAPTER_ALIASES: Readonly<Record<string, DetailChapter>> = { cosa: "cosa-e", "cosa-è": "cosa-e", "cos-e": "cosa-e", "cos'è": "cosa-e" };
+/**
+ * Altri modi di scrivere un capitolo in `?capitolo=` (email, campanella) e in un `#ancora` copiato. (Rilascio 10,
+ * §8.2) I capitoli rinominati: `impatto` → `valore`, `scadenze` (le date, dentro «Cosa serve») → `cosa-serve`.
+ */
+export const CHAPTER_ALIASES: Readonly<Record<string, DetailChapter>> = Object.freeze({
+  cosa: "cosa-e",
+  "cosa-è": "cosa-e",
+  "cos-e": "cosa-e",
+  "cos'è": "cosa-e",
+  impatto: "valore",
+  scadenze: "cosa-serve",
+});
 
 /** `?capitolo=` → il capitolo, oppure null per un valore fuori elenco. */
 export function chapterFromParam(raw: unknown): DetailChapter | null {
@@ -1386,6 +1505,17 @@ export function chapterFromParam(raw: unknown): DetailChapter | null {
   const key = value.trim().toLowerCase();
   if (DETAIL_CHAPTERS.some((chapter) => chapter.id === key)) return key as DetailChapter;
   return CHAPTER_ALIASES[key] ?? null;
+}
+
+/**
+ * (Rilascio 10, §3.4) «Nota pubblica» sta in vista, dopo il percorso, solo quando ha un testo, quando lo use case è
+ * in «Serve info» (la nota è la domanda a chi ha proposto) o quando chi ha proposto ha risposto; altrimenti sta in
+ * «Dettagli». L'ancora `nota-pubblica` è la stessa nei due posti.
+ */
+export function publicNoteInView(item: Pick<GuidedItem, "phase" | "subState" | "answered"> & { publicNote: string | null }, answers = 0): boolean {
+  if (typeof item.publicNote === "string" && item.publicNote.trim() !== "") return true;
+  if (item.phase === "da_valutare" && item.subState === "serve_info") return true;
+  return answers > 0 || item.answered === true;
 }
 
 // ═══ Le ancore ═══════════════════════════════════════════════════════
@@ -1404,15 +1534,20 @@ export interface TargetInput {
   history: boolean;
 }
 
-/** Le ancore della scheda di un revisore, nell'ordine della pagina: solo quelle che ci sono. */
+/**
+ * Le ancore della scheda di un revisore, nell'ordine della pagina: solo quelle che ci sono. (Rilascio 10, §3.4)
+ * «Quando» sta nel percorso aperto, subito dopo il passo; «Nota pubblica» dopo il percorso o dentro «Dettagli».
+ * Un'ancora dentro una piega chiusa la apre (`arriveAt`).
+ */
 export function detailTargetIds(input: TargetInput): string[] {
-  const ids: string[] = [ANCHOR.decisione, ANCHOR.impatto, ANCHOR.cosaE];
+  const ids: string[] = [ANCHOR.decisione];
+  if (input.phase === "approvato") ids.push(ANCHOR.quando);
+  ids.push(ANCHOR.notaPubblica, ANCHOR.valore, ANCHOR.cosaE);
   if (input.needs) ids.push(ANCHOR.cosaServe);
   if (input.needs && input.requests) ids.push(ANCHOR.richieste);
-  if (input.phase === "approvato") ids.push(ANCHOR.quando);
-  ids.push(ANCHOR.notaPubblica, ANCHOR.valutazione, ANCHOR.dettagli);
-  if (input.realization) ids.push(ANCHOR.realizzazione);
+  ids.push(ANCHOR.valutazione, ANCHOR.dettagli);
   if (input.context) ids.push(ANCHOR.contesto);
+  if (input.realization) ids.push(ANCHOR.realizzazione);
   if (input.history) ids.push(ANCHOR.storia);
   return ids;
 }
@@ -1441,10 +1576,12 @@ export function arrivalTarget(chapter: string | null | undefined, ids: readonly 
 /**
  * La regola di `arrivalTarget` con la risposta di `startsInBox` già data: il server la usa per
  * `?capitolo=`, il browser (`Arrival`) per un `#ancora` dell'indirizzo, così un vecchio link copiato
- * con «#realizzazione» su una scheda pronta arriva anche lui al riquadro, dove si avvia.
+ * con «#realizzazione» su una scheda pronta arriva anche lui al riquadro, dove si avvia. (Rilascio 10)
+ * Un `#ancora` con il nome di prima («#impatto», «#scadenze») arriva al capitolo di adesso.
  */
-export function arrivalTargetIn(chapter: string | null | undefined, ids: readonly string[], startInBox: boolean): string | null {
-  if (!chapter) return null;
+export function arrivalTargetIn(raw: string | null | undefined, ids: readonly string[], startInBox: boolean): string | null {
+  if (!raw) return null;
+  const chapter: string = Object.prototype.hasOwnProperty.call(CHAPTER_ALIASES, raw) ? CHAPTER_ALIASES[raw]! : raw;
   if (chapter === ANCHOR.realizzazione && startInBox) return ANCHOR.decisione;
   if (ids.includes(chapter)) return chapter;
   if (chapter === ANCHOR.richieste && ids.includes(ANCHOR.cosaServe)) return ANCHOR.cosaServe;
