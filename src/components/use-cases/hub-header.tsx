@@ -5,12 +5,13 @@ import { Button } from "@/components/ui/button";
 import type { ActivityMappingState } from "@/lib/use-cases/create";
 import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { cn } from "@/lib/utils";
-import { HubMenu } from "./hub-menu";
+import { HubMenu, type HubMenuLink } from "./hub-menu";
 
 /** Testi della testata e dei vuoti della pagina (docs/use-case/DESIGN.md §4.1, §4.9, §5.5, §14.3). */
 export const HUB_TEXT = Object.freeze({
   title: "Use case",
-  subtitle: "Dal basso e dall'alto: quali use case realizzare e quando.",
+  /** (Rilascio 10, §3.4) Il pulsante bordato della testata: «Nuovo» a schermo, «Nuovo use case» per i lettori di schermo. */
+  newShort: "Nuovo",
   newUseCase: "Nuovo use case",
   viewsLabel: "Viste",
   /** La prima vista, per tutti (rilascio «Panoramica»): al posto di «Priorità» e «Roadmap». */
@@ -40,37 +41,46 @@ export function inRealizationText(count: number): string {
 
 export interface HubHeaderProps {
   workspaceId: string;
-  /** Dove porta «Nuovo use case»: il pannello rapido (Lateral Space) o il modulo completo. */
+  /** Dove porta «Nuovo»: il pannello rapido (Lateral Space) o il modulo completo. */
   newHref: string;
-  /** Menu «⋯», solo revisori (§4.1): i grafici (matrici e curva del valore), «Esporta Excel», «Proponi da Activity mapping»; senza, non c'è. */
-  /** (Rilascio 5, §12) «⋯» ha solo «Esporta Excel» e «Proponi da Activity mapping»: i grafici sono in «Grafici». */
-  menu: { exportHref: string; activityMapping: ActivityMappingState; mappingHref: string } | null;
-  /** «Nuovo use case» pieno (predefinito) o bordato: bordato quando la Panoramica ha «Prossimo passo». */
+  /**
+   * Il menu «⋯», solo revisori (rilascio 10, §3.4): «Grafici ›» (la matrice e la curva del valore, con i filtri di
+   * adesso), «Proponi dai processi», «Esporta in Excel»; senza, non c'è.
+   */
+  menu: { exportHref: string; activityMapping: ActivityMappingState; mappingHref: string; charts: readonly HubMenuLink[] } | null;
+  /**
+   * «Nuovo» bordato (predefinito) o pieno. (Rilascio 10) Bordato: il pulsante pieno è il prossimo passo della vista;
+   * pieno solo dove la pagina non ne ha un altro, il contributore e l'area ancora vuota.
+   */
   newUseCaseVariant?: "default" | "outline";
   children?: ReactNode;
 }
 
 /**
- * La testata della pagina (docs/use-case/DESIGN.md §4.1): H1 «Use case», il sottotitolo di una
- * riga, il pulsante pieno «Nuovo use case», bordato nella Panoramica quando c'è «Prossimo passo»:
- * un solo pulsante pieno per schermata (pannello rapido per Lateral Space, modulo completo per gli
- * altri, §5.1), e il menu «⋯» dei revisori. Sotto, le viste e i filtri.
+ * La testata della pagina (rilascio 10, docs/ui-10/PROPOSTA-10.md §3.4, prototipo S2): H1 «Use case», senza
+ * sottotitolo; a destra «Nuovo» (pannello rapido per Lateral Space, modulo completo per gli altri, §5.1), bordato
+ * perché il pulsante pieno è il prossimo passo, e il «⋯» dei revisori. Sotto, le viste e i filtri.
  */
-export function HubHeader({ workspaceId, newHref, menu, newUseCaseVariant = "default", children }: HubHeaderProps) {
+export function HubHeader({ workspaceId, newHref, menu, newUseCaseVariant = "outline", children }: HubHeaderProps) {
   return (
     <header data-slot="hub-header" className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
-        <div className="min-w-0 space-y-1">
+        <div className="min-w-0 self-center">
           <h1 className="text-2xl font-semibold tracking-tight">{HUB_TEXT.title}</h1>
-          <p className="text-sm text-muted-foreground">{HUB_TEXT.subtitle}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <Button variant={newUseCaseVariant} className="min-h-11 sm:min-h-8" render={<Link href={newHref} scroll={false} />} nativeButton={false}>
+          <Button
+            variant={newUseCaseVariant}
+            className="min-h-11 sm:min-h-8"
+            aria-label={HUB_TEXT.newUseCase}
+            render={<Link href={newHref} scroll={false} />}
+            nativeButton={false}
+          >
             <Plus aria-hidden />
-            {HUB_TEXT.newUseCase}
+            {HUB_TEXT.newShort}
           </Button>
           {menu ? (
-            <HubMenu workspaceId={workspaceId} exportHref={menu.exportHref} activityMapping={menu.activityMapping} mappingHref={menu.mappingHref} />
+            <HubMenu workspaceId={workspaceId} exportHref={menu.exportHref} activityMapping={menu.activityMapping} mappingHref={menu.mappingHref} charts={menu.charts} />
           ) : null}
         </div>
       </div>

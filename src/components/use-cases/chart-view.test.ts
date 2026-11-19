@@ -9,9 +9,10 @@ import { DEFAULT_VALUE_PARAMS, valueModelSchema, type ValueParams } from "../../
 import { projectHubItem, type HubContext, type HubItem, type HubSourceRow } from "../../lib/use-cases/views.ts";
 import { enableTsxImports } from "./detail/referent/tsx-test-loader.ts";
 
-// I grafici del menu «⋯» resi in HTML (rilascio «Panoramica»): «‹ Torna alla Panoramica» con il nome
-// del grafico, la matrice con i due elenchi chiusi sotto («N da stimare», «N senza beneficio
-// contato»), il vuoto e «Curva del valore». Dati sintetici.
+// I grafici del menu «⋯» › «Grafici ›» resi in HTML (rilascio «Panoramica»; rilascio 10, §3.4): «‹ Torna alla
+// Panoramica» con il nome del grafico, una sola «Matrice» con l'interruttore «Valore × Costo | Facilità × Beneficio»,
+// i due elenchi chiusi sotto («N da stimare», «N senza beneficio contato»), il vuoto e «Curva del valore»; i vecchi
+// indirizzi `?mostra=matrice|benefici|curva` aprono ancora il loro contenuto. Dati sintetici.
 //
 // I vuoti vengono da hub-header.tsx, che porta con sé il menu «⋯» con le sue azioni del server (e il
 // database): qui il menu è un componente vuoto, il resto è quello vero.
@@ -113,6 +114,8 @@ function row(o: Partial<HubSourceRow> = {}): HubSourceRow {
   };
 }
 const item = (o: Partial<HubSourceRow> = {}): HubItem => projectHubItem(row(o), CTX, null);
+/** (Rilascio 10) Gli indirizzi dei due lati della «Matrice» (`matrixSides`), come li passa la pagina. */
+const SIDES = { matrice: `${BASE}?vista=panoramica&mostra=matrice`, benefici: `${BASE}?vista=panoramica&mostra=benefici` };
 
 function view(props: Record<string, unknown>): string {
   return renderToStaticMarkup(
@@ -195,7 +198,7 @@ test("matrice: sotto la legenda due elenchi chiusi; l'indirizzo apre il suo", ()
   assert.ok(!none.includes("<details") && !none.includes("da stimare"));
 });
 
-test("«Matrice Valore × Costo» dal menu «⋯»: «‹ Torna alla Panoramica», i punti, gli elenchi con i link al pannello", () => {
+test("«Matrice», lato «Valore × Costo», dal menu «⋯»: «‹ Torna alla Panoramica», i punti, gli elenchi con i link al pannello", () => {
   const valued = item({ customScores: HIGH, costEurOnce: 18_000 });
   const missingCost = item({ customScores: HIGH, ...TO_DECIDE });
   const missingValue = item({ costEurOnce: 20_000 });
@@ -207,7 +210,7 @@ test("«Matrice Valore × Costo» dal menu «⋯»: «‹ Torna alla Panoramica�
   // «‹ Torna alla Panoramica»: le corsie, con gli stessi filtri, senza grafico, «da stimare» né pannello.
   const header = html.slice(html.indexOf('data-slot="chart-header"'), html.indexOf("</h2>"));
   assert.match(header, new RegExp(`<a [^>]*href="${BASE}\\?vista=panoramica&amp;origine=adoption"`));
-  assert.ok(header.includes(">Torna alla Panoramica<") && header.endsWith(">Matrice Valore × Costo"), header);
+  assert.ok(header.includes(">Torna alla Panoramica<") && header.endsWith(">Matrice"), header);
   assert.ok(!html.includes('data-slot="list-focus"'), "il titolo per i lettori di schermo è della Panoramica");
   assert.ok(html.includes(`data-point="${valued.id}"`), "il punto");
   // «da stimare»: aperto, perché l'indirizzo lo chiede; i link aprono il pannello e restano nel grafico.
@@ -385,10 +388,10 @@ test("i vuoti dei grafici: «Nessuno use case da mettere in ordine», o «Togli 
   const filtered = view({ items: [], filtersActive: true });
   assert.ok(filtered.includes("Nessuno use case con questi filtri."));
   assert.match(filtered, new RegExp(`href="${BASE}\\?vista=panoramica&amp;mostra=matrice"[^>]*>Togli i filtri<`));
-  // Le bolle senza le ipotesi di calcolo: la matrice, con il suo nome.
-  const bubbles = view({ chart: "benefici", valueParams: null, items: [item({ customScores: HIGH, costEurOnce: 18_000 })] });
+  // Le bolle senza le ipotesi di calcolo: la matrice sul lato «Valore × Costo», senza l'interruttore.
+  const bubbles = view({ chart: "benefici", valueParams: null, items: [item({ customScores: HIGH, costEurOnce: 18_000 })], sides: SIDES });
   assert.match(bubbles, /data-chart="matrice"/);
-  assert.ok(bubbles.includes(">Matrice Valore × Costo</h2>") && !bubbles.includes("Facilità"));
+  assert.ok(bubbles.includes(">Matrice</h2>") && !bubbles.includes("Facilità") && !bubbles.includes('aria-label="Lato della matrice"'));
 });
 
 test("«Curva del valore»: J-curve, «Valore per tipo di ritorno» e «Ipotesi di calcolo»; senza schede con un modello il vuoto dei filtri", () => {
@@ -435,15 +438,48 @@ test("«Curva del valore» in una pagina stretta: un tipo di ritorno per sezione
 });
 
 test("i testi dei grafici passano la guardia delle parole", () => {
-  assert.deepEqual(Object.keys(charts.CHART_TEXT), ["matrice", "benefici", "curva", "back", "emptyMatrixTitle", "emptyMatrixBody"]);
-  assert.deepEqual(findHubForbiddenIn(Object.values(charts.CHART_TEXT), "area"), []);
-  const header = renderToStaticMarkup(createElement(charts.ChartHeader, { title: charts.CHART_TEXT.curva, backHref: `${BASE}?vista=panoramica` }));
+  assert.deepEqual(Object.keys(charts.CHART_TEXT), ["matrix", "sides", "sidesLabel", "curva", "back", "emptyMatrixTitle", "emptyMatrixBody"]);
+  const t = charts.CHART_TEXT;
+  assert.deepEqual(findHubForbiddenIn([t.matrix, ...Object.values(t.sides), t.sidesLabel, t.curva, t.back, t.emptyMatrixTitle, t.emptyMatrixBody], "area"), []);
+  assert.deepEqual(t.sides, { matrice: "Valore × Costo", benefici: "Facilità × Beneficio" });
+  const header = renderToStaticMarkup(createElement(charts.ChartHeader, { title: t.curva, backHref: `${BASE}?vista=panoramica` }));
   assert.match(header, /^<div data-slot="chart-header" class="flex flex-wrap items-center gap-x-3 gap-y-2">/);
   assert.match(header, new RegExp(`<a [^>]*href="${BASE}\\?vista=panoramica"`));
   assert.ok(header.endsWith("<h2 class=\"basis-full text-base font-semibold\">Curva del valore</h2></div>"));
-  assert.ok(!header.includes("Grafici"), "senza grafici niente menu");
-  // (Rilascio 5, §12) «Grafici» accanto a «‹ Torna alla Panoramica», con le voci dei grafici.
-  const withMenu = renderToStaticMarkup(createElement(charts.ChartHeader, { title: charts.CHART_TEXT.curva, backHref: `${BASE}?vista=panoramica`, charts: [{ label: charts.CHART_TEXT.matrice, href: `${BASE}?vista=panoramica&mostra=matrice` }] }));
-  assert.ok(withMenu.indexOf("Torna alla Panoramica") < withMenu.indexOf(">Grafici<") && withMenu.indexOf(">Grafici<") < withMenu.indexOf("<h2"), withMenu);
-  assert.match(withMenu, /data-action="charts-menu"/);
+  // (Rilascio 10) Gli altri grafici stanno nel «⋯» della testata: qui nessun «Grafici».
+  assert.ok(!header.includes("Grafici") && !header.includes("charts-menu"), "niente menu dei grafici sopra il grafico");
+  // L'interruttore della «Matrice»: dopo il titolo, i due lati con i loro indirizzi, quello aperto acceso.
+  const withSides = renderToStaticMarkup(createElement(charts.ChartHeader, { title: t.matrix, backHref: `${BASE}?vista=panoramica`, sides: { active: "benefici", hrefs: SIDES } }));
+  assert.ok(withSides.indexOf("<h2") < withSides.indexOf('aria-label="Lato della matrice"'), withSides);
+  assert.match(withSides, /<a [^>]*href="\/dashboard\/ws\/use-cases\?vista=panoramica&amp;mostra=matrice"[^>]*><span>Valore × Costo<\/span>/);
+  assert.match(withSides, /<a aria-current="page"[^>]*href="\/dashboard\/ws\/use-cases\?vista=panoramica&amp;mostra=benefici"[^>]*><span>Facilità × Beneficio<\/span>/);
+});
+
+test("(rilascio 10) i vecchi indirizzi aprono il loro contenuto: `mostra=matrice` la matrice Valore × Costo", () => {
+  const valued = item({ customScores: HIGH, costEurOnce: 18_000 });
+  const html = view({ chart: "matrice", items: [valued], sides: SIDES });
+  assert.match(html, /^<div data-slot="hub-chart" data-chart="matrice"/);
+  assert.ok(html.includes(">Matrice</h2>") && html.includes('data-slot="value-cost-matrix"') && html.includes(`data-point="${valued.id}"`));
+  assert.match(html, /<a aria-current="page"[^>]*href="[^"]*mostra=matrice"[^>]*><span>Valore × Costo<\/span>/, "il lato acceso");
+  assert.ok(!/<a aria-current="page"[^>]*mostra=benefici/.test(html));
+});
+
+test("(rilascio 10) i vecchi indirizzi aprono il loro contenuto: `mostra=benefici` la matrice sul lato Facilità × Beneficio", () => {
+  const small = item({ valueModel: COUNTED });
+  const html = view({ chart: "benefici", items: [small], planItems: [small], sides: SIDES, query: { vista: "panoramica", mostra: "benefici" } });
+  assert.match(html, /^<div data-slot="hub-chart" data-chart="benefici"/);
+  assert.ok(html.includes(">Matrice</h2>") && html.includes('data-slot="benefit-bubbles"'), "le bolle");
+  assert.match(html, /<a aria-current="page"[^>]*href="[^"]*mostra=benefici"[^>]*><span>Facilità × Beneficio<\/span>/, "il secondo lato acceso");
+  assert.ok(html.includes('data-slot="value-params-summary"'), "«Ipotesi di calcolo» sotto");
+  // Senza «Benefici e costi» nel workspace (niente `sides`): le bolle restano, senza l'interruttore.
+  const alone = view({ chart: "benefici", items: [small], planItems: [small], query: { vista: "panoramica", mostra: "benefici" } });
+  assert.ok(alone.includes('data-slot="benefit-bubbles"') && !alone.includes('aria-label="Lato della matrice"'));
+});
+
+test("(rilascio 10) i vecchi indirizzi aprono il loro contenuto: `mostra=curva` la «Curva del valore», senza interruttore", () => {
+  const approved = item({ valueModel: COUNTED });
+  const html = view({ chart: "curva", items: [approved], planItems: [approved], sides: SIDES, query: { vista: "panoramica", mostra: "curva" }, clearHref: `${BASE}?vista=panoramica&mostra=curva` });
+  assert.match(html, /^<div data-slot="hub-chart" data-chart="curva"/);
+  assert.ok(html.includes(">Curva del valore</h2>") && html.includes('data-slot="roadmap-value"'));
+  assert.ok(!html.includes('aria-label="Lato della matrice"'), "l'interruttore è della matrice");
 });

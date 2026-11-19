@@ -1,11 +1,11 @@
+import { SegmentedNav } from "@/components/dashboard/segmented-nav";
 import type { AgentPalette } from "@/lib/use-cases/agents";
 import { COST_BANDS, costLowLinePosition, type CostBandInfo } from "@/lib/use-cases/cost-bands";
 import { DEFAULT_THRESHOLDS, costLowBandOf, type ValuationModel } from "@/lib/use-cases/valuation";
 import { buildBenefitBubbles, buildRoadmapValue, groupPalette, roadmapPlan, type GroupPalette } from "@/lib/use-cases/value-charts";
 import type { ValueParams } from "@/lib/use-cases/value-model";
-import { buildPriority, offMatrixLabel, roadmapGroupKey, type HubChartParam, type HubEstimateParam, type HubItem } from "@/lib/use-cases/views";
+import { MATRIX_SIDES, buildPriority, offMatrixLabel, roadmapGroupKey, type HubChartParam, type HubEstimateParam, type HubItem, type MatrixSide } from "@/lib/use-cases/views";
 import { BenefitBubbleChart } from "./benefit-bubbles";
-import { ChartsMenu, type ChartsMenuLink } from "./charts-menu";
 import { EmptyState, NoResults } from "./hub-header";
 import { BackToListLink } from "./list-focus";
 import { RoadmapValueCharts } from "./roadmap-value";
@@ -13,27 +13,45 @@ import { hubHref, panelHref, withoutTransient, type HubQuery } from "./use-case-
 import { ValueCostMatrix, type MatrixOffItem, type MatrixPoint } from "./value-cost-matrix";
 import { ValueParamsSummary } from "./value-params-summary";
 
-/** Testi dei grafici del menu «⋯» (rilascio «Panoramica»): le voci del menu e i titoli sopra i grafici. */
+/** Testi dei grafici del menu «⋯» › «Grafici ›» (rilascio «Panoramica»; rilascio 10, §3.4): le voci e i titoli sopra i grafici. */
 export const CHART_TEXT = Object.freeze({
-  matrice: "Matrice Valore × Costo",
-  benefici: "Matrice Facilità × Beneficio",
+  /** Una sola matrice, con l'interruttore dei due lati. */
+  matrix: "Matrice",
+  /** I due lati della matrice (`MATRIX_SIDES`): `mostra=matrice` e `mostra=benefici`. */
+  sides: Object.freeze({ matrice: "Valore × Costo", benefici: "Facilità × Beneficio" } satisfies Record<MatrixSide, string>),
+  /** Il nome dell'interruttore per i lettori di schermo. */
+  sidesLabel: "Lato della matrice",
   curva: "Curva del valore",
   back: "Torna alla Panoramica",
   emptyMatrixTitle: "Nessuno use case da mettere in ordine",
   emptyMatrixBody: "Valuta Valore e Costo in «Da decidere».",
 });
 
+/** L'interruttore della «Matrice»: il lato aperto e l'indirizzo di ognuno, con i filtri di adesso. */
+export interface MatrixSidesNav {
+  active: MatrixSide;
+  hrefs: Readonly<Record<MatrixSide, string>>;
+}
+
 /**
- * Sopra un grafico del menu «⋯»: «‹ Torna alla Panoramica», con gli stessi filtri, e il nome del
- * grafico. Tornando, il fuoco va al titolo della Panoramica (`ListFocusTarget`), non sul `<body>`.
+ * Sopra un grafico del menu «⋯»: «‹ Torna alla Panoramica», con gli stessi filtri, il nome del grafico e, sulla
+ * «Matrice» di un workspace con «Benefici e costi», l'interruttore «Valore × Costo | Facilità × Beneficio». Tornando,
+ * il fuoco va al titolo della Panoramica (`ListFocusTarget`), non sul `<body>`. Gli altri grafici stanno nel «⋯» della
+ * testata, sempre a vista sopra.
  */
-export function ChartHeader({ title, backHref, charts = [] }: { title: string; backHref: string; charts?: readonly ChartsMenuLink[] }) {
+export function ChartHeader({ title, backHref, sides = null }: { title: string; backHref: string; sides?: MatrixSidesNav | null }) {
   return (
     <div data-slot="chart-header" className="flex flex-wrap items-center gap-x-3 gap-y-2">
       <BackToListLink href={backHref}>{CHART_TEXT.back}</BackToListLink>
-      {/* (Rilascio 5, §12) Gli altri grafici, a vista accanto al ritorno. */}
-      <ChartsMenu links={charts} className="ml-auto" />
       <h2 className="basis-full text-base font-semibold">{title}</h2>
+      {sides ? (
+        <SegmentedNav
+          size="sm"
+          ariaLabel={CHART_TEXT.sidesLabel}
+          active={sides.active}
+          items={MATRIX_SIDES.map((key) => ({ key, label: CHART_TEXT.sides[key], href: sides.hrefs[key] }))}
+        />
+      ) : null}
     </div>
   );
 }
@@ -65,23 +83,28 @@ export interface HubChartViewProps {
   clearHref: string;
   /** `stima` dell'indirizzo: l'elenco sotto la matrice aperto quando la pagina si rende (un vecchio chip «N da stimare»). */
   open: HubEstimateParam | null;
-  /** (Rilascio 5, §12) I grafici, nel menu «Grafici» accanto a «‹ Torna alla Panoramica». */
-  charts?: readonly ChartsMenuLink[];
+  /**
+   * (Rilascio 10, §3.4) Gli indirizzi dei due lati della «Matrice» (`matrixSides`), con i filtri di adesso: null in un
+   * workspace senza «Benefici e costi», dove la matrice ha un lato solo e niente interruttore.
+   */
+  sides?: Readonly<Record<MatrixSide, string>> | null;
 }
 
 /**
- * I grafici del menu «⋯», aperti nella Panoramica al posto delle corsie
+ * I grafici del menu «⋯» › «Grafici ›», aperti nella Panoramica al posto delle corsie
  * (`?vista=panoramica&mostra=matrice|benefici|curva`; solo revisori), con «‹ Torna alla Panoramica»
  * sopra e gli stessi filtri:
- * - «Matrice Valore × Costo»: le fasi «Da valutare» (non le «Rimandate» in attesa) e «Approvato»
- *   degli use case «Da costruire», nel colore dell'agente con gli agenti nei titoli e altrimenti
+ * - «Matrice», lato «Valore × Costo» (`mostra=matrice`): le fasi «Da valutare» (non le «Rimandate» in attesa) e
+ *   «Approvato» degli use case «Da costruire», nel colore dell'agente con gli agenti nei titoli e altrimenti
  *   dell'origine; sotto la legenda, chiusi, quelli «da stimare» e quelli con
  *   «Benefici e costi» senza un punto, che un link `stima` apre. Valore, costo, zone e soglie sono
  *   quelli del modello e delle fasce del workspace (D15, D18).
- * - «Matrice Facilità × Beneficio»: le bolle delle stesse schede con «Benefici e costi», con
- *   «Ipotesi di calcolo» sotto.
+ * - «Matrice», lato «Facilità × Beneficio» (`mostra=benefici`, il vecchio «Matrice Facilità × Beneficio»): le bolle
+ *   delle stesse schede con «Benefici e costi», con «Ipotesi di calcolo» sotto. L'interruttore dei due lati c'è solo
+ *   con «Benefici e costi» nel workspace (`sides`).
  * - «Curva del valore»: la J-curve e «Valore per tipo di ritorno» degli approvati e in realizzazione
- *   con «Benefici e costi», con «Ipotesi di calcolo» sotto; i mesi vengono da tutto il workspace.
+ *   con «Benefici e costi», con «Ipotesi di calcolo» sotto; i mesi vengono da tutto il workspace. Resta qui: la Home
+ *   («Tutti i numeri») ha la curva del programma, senza i segni per use case né i tipi di ritorno.
  * Ogni use case apre il pannello laterale. Il titolo della Panoramica per i lettori di schermo
  * (`ListFocusTarget`) non sta qui: è delle corsie, dove «‹ Torna alla Panoramica» porta il fuoco.
  */
@@ -102,13 +125,16 @@ export function HubChartView({
   filtersActive,
   clearHref,
   open,
-  charts = [],
+  sides = null,
 }: HubChartViewProps) {
   const base = withoutTransient(query);
   // Le bolle solo con le ipotesi di calcolo, altrimenti la matrice.
   const shown: HubChartParam = chart === "benefici" && !valueParams ? "matrice" : chart;
+  // Una sola «Matrice»: i due lati dietro l'interruttore, quando ci sono tutti e due.
+  const side: MatrixSide | null = shown === "curva" ? null : shown;
+  const sidesNav: MatrixSidesNav | null = side && sides && valueParams ? { active: side, hrefs: sides } : null;
   // «‹ Torna alla Panoramica»: le corsie, con gli stessi filtri e senza «da stimare».
-  const header = <ChartHeader title={CHART_TEXT[shown]} backHref={hubHref(basePath, base, { mostra: null, stima: null })} charts={charts} />;
+  const header = <ChartHeader title={side ? CHART_TEXT.matrix : CHART_TEXT.curva} backHref={hubHref(basePath, base, { mostra: null, stima: null })} sides={sidesNav} />;
   const hrefOf = (id: string) => panelHref(basePath, query, id);
 
   // «Curva del valore»: i conti delle schede filtrate, con i mesi di tutto il workspace.
