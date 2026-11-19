@@ -198,7 +198,9 @@ test("ambito di un file: componenti dell'area, file del vecchio nome, nient'altr
     ["src/components/use-cases/cost-input.test.ts", null],
     ["src/lib/slack/use-case-agent.ts", "vecchio_nome"],
     ["src/lib/slack/use-case-agent.test.ts", null],
-    ["src/app/share/portfolio/[workspaceId]/[useCaseId]/page.tsx", "vecchio_nome"],
+    // (Rilascio 10) La pagina del link di condivisione è pubblica: «caso d'uso», niente «login».
+    ["src/app/share/portfolio/[workspaceId]/[useCaseId]/page.tsx", "esterno"],
+    ["src/app/share/portfolio/[workspaceId]/[useCaseId]/share-view.tsx", "esterno"],
     ["src/components/workspace/claude-mcp-card.tsx", "vecchio_nome"],
     ["src/components/portfolio/scoring-model-form.tsx", "vecchio_nome"],
     ["./src/components/portfolio/scoring-model-form.tsx", "vecchio_nome"],
@@ -496,7 +498,7 @@ test("vecchio nome fuori dall'area: l'elenco dei file in attesa è valido", () =
     assert.equal(copyScopeOfFile(file), "vecchio_nome", file);
     assert.match(owner, /^H\d[a-z]?$/, file);
   }
-  assert.deepEqual(Object.values(OLD_NAME_PENDING).sort(), ["H2e", "H3d", "H3e", "H6i"]);
+  assert.deepEqual(Object.values(OLD_NAME_PENDING).sort(), ["H3d", "H3e", "H6i"]);
   assert.ok(OLD_NAME_SOURCES.every((entry) => existsSync(join(ROOT, entry))), "ogni file o cartella dell'elenco esiste");
 });
 
@@ -517,10 +519,18 @@ test(`vecchio nome fuori dall'area: pulito subito dove è già cambiato; nei fil
 
 // ─── (Rilascio 10, §4.2) Fuori dalla dashboard e nella CLI ───────────
 
-test("(rilascio 10) copy-guard verde sui testi delle pagine fuori dalla dashboard (/rispondi, /r, invito, /a, /s) e della CLI", () => {
+test("(rilascio 10) copy-guard verde sui testi delle pagine fuori dalla dashboard (/rispondi, /r, invito, /a, /s, /share) e della CLI", () => {
   const outside = OUTSIDE_SOURCE_DIRS.flatMap(walk).filter((file) => copyScopeOfFile(file) === "esterno");
   const cli = CLI_SOURCE_DIRS.flatMap(walk).filter((file) => copyScopeOfFile(file) === "cli");
-  const pieces = ["src/app/rispondi/[token]/page.tsx", "src/components/uc/referente/referente-page.tsx", "src/app/invite/[token]/page.tsx", "src/app/a/[token]/page.tsx", "src/app/s/[token]/page.tsx"];
+  const pieces = [
+    "src/app/rispondi/[token]/page.tsx",
+    "src/components/uc/referente/referente-page.tsx",
+    "src/app/invite/[token]/page.tsx",
+    "src/app/a/[token]/page.tsx",
+    "src/app/s/[token]/page.tsx",
+    "src/app/share/portfolio/[workspaceId]/[useCaseId]/page.tsx",
+    "src/app/share/portfolio/[workspaceId]/[useCaseId]/share-view.tsx",
+  ];
   for (const piece of pieces) assert.ok(outside.includes(piece), `${piece} si controlla`);
   assert.ok(cli.includes("src/lib/use-cases/cli/brief.ts"), "la CLI si controlla");
   const found = [

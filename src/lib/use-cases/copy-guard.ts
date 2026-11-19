@@ -13,9 +13,9 @@
  *   dell'area. Lì si dice «caso d'uso» e mai «use case»; le altre parole vietate dell'area restano
  *   vietate. La dashboard resta `area` («use case»).
  * - **`vecchio_nome`**: i file che stanno fuori dall'area e citano il vecchio nome
- *   (`OLD_NAME_SOURCES`: `src/lib/slack/**`, la pagina di condivisione, `claude-mcp-card.tsx`,
- *   `scoring-model-form.tsx`). Lì si cerca solo «Raccolta & ranking» e «Raccolta e ranking»:
- *   le altre parole restano solo per l'area.
+ *   (`OLD_NAME_SOURCES`: `src/lib/slack/**`, `claude-mcp-card.tsx`, `scoring-model-form.tsx`). Lì si
+ *   cerca solo «Raccolta & ranking» e «Raccolta e ranking»: le altre parole restano solo per l'area.
+ *   (Rilascio 10) La pagina di condivisione è pubblica: è `esterno`.
  *
  * (Rilascio 10, §4.2) Tre pubblici, con le parole ritirate dal vocabolario unico (§4):
  * - **`area`**, la dashboard: in più «Casi d'uso», «dossier», «Sub-responsabili», «fabbrica», «requisito»,
@@ -28,7 +28,7 @@
  * - **`cli`**, i messaggi della CLI e del pacchetto: «caso», mai «caso d'uso» né «use case».
  *
  * Il controllo del vecchio nome fuori dall'area è pronto ma si accende in H7: fino ad allora
- * i file in `OLD_NAME_PENDING` (quelli che H2e, H3d, H3e e H6i cambiano) sono tollerati, e
+ * i file in `OLD_NAME_PENDING` (quelli che H3d, H3e e H6i cambiano) sono tollerati, e
  * il test lo segnala senza fallire. Si accende da solo, e resta acceso, quando nel repository
  * c'è `OLD_NAME_GUARD_MARKER` (`docs/use-case/RUNBOOK.md`, che crea solo H7): da lì in poi
  * `npm run check` li controlla come gli altri. `USE_CASE_OLD_NAME_GUARD=1` lo accende prima,
@@ -193,8 +193,9 @@ export const AREA_SOURCE_DIRS: readonly string[] = [
 /**
  * (Rilascio 5.1) La pagina pubblica del referente: i suoi testi si controllano con l'ambito `esterno`
  * («caso d'uso», mai «use case»), anche se la cartella dei componenti sta dentro l'area. (Rilascio 10, §4.2)
- * Anche la pagina del link della realizzazione (`/r`), l'invito e le pagine del questionario AI Readiness per chi
- * risponde (`/a`, il link personale, e `/s`, il link aperto): «questionario», mai «Survey» né «Assessment».
+ * Anche la pagina del link della realizzazione (`/r`), l'invito, le pagine del questionario AI Readiness per chi
+ * risponde (`/a`, il link personale, e `/s`, il link aperto: «questionario», mai «Survey» né «Assessment») e la
+ * pagina del link di condivisione (`/share`, D14), che apre chi non è membro del workspace.
  */
 export const OUTSIDE_SOURCE_DIRS: readonly string[] = [
   "src/components/use-cases/referent-public/",
@@ -204,6 +205,7 @@ export const OUTSIDE_SOURCE_DIRS: readonly string[] = [
   "src/app/invite/",
   "src/app/a/",
   "src/app/s/",
+  "src/app/share/",
 ];
 
 /**
@@ -224,18 +226,16 @@ export const CLI_SOURCE_DIRS: readonly string[] = ["src/lib/use-cases/cli/"];
  */
 export const OLD_NAME_SOURCES: readonly string[] = [
   "src/lib/slack/",
-  "src/app/share/portfolio/[workspaceId]/[useCaseId]/page.tsx",
   "src/components/workspace/claude-mcp-card.tsx",
   "src/components/portfolio/scoring-model-form.tsx",
 ];
 
 /**
  * I file in cui il vecchio nome resta finché il loro pacchetto non cambia il testo (DESIGN
- * §14.5, PIANO-LAVORI H2e, H3d, H3e, H6i). Fino a H7 si tollerano; da H7
+ * §14.5, PIANO-LAVORI H3d, H3e, H6i). Fino a H7 si tollerano; da H7
  * (`OLD_NAME_GUARD_MARKER`), o con `USE_CASE_OLD_NAME_GUARD=1`, no.
  */
 export const OLD_NAME_PENDING: Readonly<Record<string, string>> = Object.freeze({
-  "src/app/share/portfolio/[workspaceId]/[useCaseId]/page.tsx": "H2e",
   "src/components/portfolio/scoring-model-form.tsx": "H3d",
   "src/lib/slack/use-case-agent.ts": "H3e",
   "src/components/workspace/claude-mcp-card.tsx": "H6i",
