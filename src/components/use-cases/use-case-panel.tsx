@@ -26,6 +26,7 @@ import { NextStepRow, type NextStepTarget } from "./detail/next-step-box";
 import { ReferentDialogHost } from "./detail/referent/dialog-host";
 import type { PanelReferent } from "./hub";
 import { SourceTag } from "./source-tag";
+import { KindLabel } from "./kind-label";
 import { PhasePill } from "./phase-pill";
 import { ReferentChip } from "./referent-chip";
 import type { ReferentStateKey } from "@/lib/use-cases/referent/use-case-state";
@@ -310,6 +311,8 @@ function ReviewerBody({
       <Block>
         <div className="flex flex-wrap items-center gap-2">
           <PhasePill label={shownPhaseLabel(item, dossierDown)} tone={item.tone} />
+          {/* (Rilascio 10, §3.4) Una best practice lo dice accanto alla fase: «Da diffondere», con il megafono. */}
+          {item.kind === "da_diffondere" ? <KindLabel kind="da_diffondere" /> : null}
           <ReferentChip state={referentState} />
         </div>
         {nextStep ? (
