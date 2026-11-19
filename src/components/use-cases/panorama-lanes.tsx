@@ -38,11 +38,11 @@ export const LANES_TEXT = Object.freeze({
   emptyTitle: "Niente in programma, per ora",
   emptyBody: "Approva uno use case e scegli quando farlo.",
   /**
-   * Ai contributori, che non approvano: che cosa trovano qui e dove sono le proposte. Solo quello
+   * Ai contributori, che non approvano: che cosa trovano qui e dove sono gli use case da valutare. Solo quello
    * che vedono: gli approvati nascosti alla ricerca (AI Transformation) non li vedono, e il vuoto
-   * non dice che nel workspace non ce ne sono.
+   * non dice che nel workspace non ce ne sono. (§4) Mai «proposte» per gli use case.
    */
-  emptyContributorBody: `Qui trovi gli use case approvati visibili a tutti. Le proposte sono in «${HUB_TEXT.contributorDecideView}».`,
+  emptyContributorBody: `Qui trovi gli use case approvati visibili a tutti. Quelli da valutare sono in «${HUB_TEXT.contributorDecideView}».`,
   noneWithFilters: "Niente in programma con questi filtri.",
   groupingLabel: "Raggruppa",
   byQuarter: "Per trimestre",

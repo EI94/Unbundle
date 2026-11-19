@@ -110,6 +110,51 @@ test("(rilascio 10, §4.2) nella dashboard: le parole ritirate dal vocabolario u
   }
 });
 
+test("(rilascio 10, §4) nella dashboard «proposta» per uno use case no; le proposte che nominano altro sì", () => {
+  for (const text of [
+    "Invia come proposta, con la valutazione di Claude e le notifiche",
+    "La tua proposta è in valutazione.",
+    "Le tue proposte",
+    "Delle proposte altrui solo titolo e fase.",
+    "Tre proposte di use case dai processi.",
+    "Qui trovi gli use case approvati visibili a tutti. Le proposte sono in «In valutazione».",
+    "Le\u00a0proposte sono in\u00a0«In\u00a0valutazione».",
+  ]) {
+    assert.deepEqual(findHubForbidden(text, "area").map((m) => m.rule), ["proposta"], text);
+  }
+  // Le altre proposte di oggi: una scadenza e una data, una domanda, un compito, i fatti del Contesto, «non si applica»
+  // del via e delle voci, le categorie dei processi; e chi ha proposto uno use case.
+  for (const ok of [
+    "Proposta",
+    "15 nov (proposta)",
+    "Scadenza proposta su 3.",
+    "Una domanda proposta per il referente",
+    "Una proposta di compito",
+    "Proposte dei coding agent · 2",
+    "2 proposte da decidere",
+    "1 proposta da confermare",
+    "Conferma 3 proposte",
+    "Proposta scartata.",
+    "Citazioni, proposte, impegni e domande",
+    "Ritira la proposta",
+    "Proposta registrata: servono le due firme.",
+    "C'è già una proposta in attesa delle firme.",
+    "Proposta «non si applica»",
+    "«Non si applica» proposta su 2: servono le due firme.",
+    "Usa le categorie proposte",
+    "Categorie riportate alla proposta.",
+    "Proposto da te",
+    guided.othersDetailsNote("Digital Factory"),
+    "Usa il modulo completo, con la valutazione di Claude e le notifiche",
+    "Qui trovi gli use case approvati visibili a tutti. Quelli da valutare sono in «In valutazione».",
+  ]) {
+    assert.deepEqual(findHubForbidden(ok, "area"), [], ok);
+  }
+  // Solo la dashboard: fuori si dice «caso d'uso», e «proposta» non è una delle parole vietate.
+  assert.deepEqual(findHubForbidden("La tua proposta", "esterno"), []);
+  assert.deepEqual(findHubForbidden("La tua proposta", "cli"), []);
+});
+
 test("(rilascio 10, §4.2) fuori dalla dashboard e nella CLI", () => {
   for (const [rule, text] of [
     ["survey", "Apri la survey"],

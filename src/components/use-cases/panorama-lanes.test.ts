@@ -325,7 +325,7 @@ test("vuoti: «Niente in programma, per ora»; con i filtri «Niente in programm
   const mine = textOf(render([own], { contributor: true }));
   assert.ok(mine.includes("Niente in programma, per ora"), mine);
   // Il nome della vista non va a capo: «In valutazione» resta intero.
-  assert.ok(mine.includes(`Qui trovi gli use case approvati visibili a tutti. Le proposte sono in «In${N}valutazione».`), mine);
+  assert.ok(mine.includes(`Qui trovi gli use case approvati visibili a tutti. Quelli da valutare sono in «In${N}valutazione».`), mine);
   assert.ok(!mine.includes("«In valutazione»"));
   for (const text of ["Nessuno use case è ancora approvato", "Approva uno use case", "nascost"]) assert.ok(!mine.includes(text), text);
   assert.deepEqual(findHubForbiddenIn([lanes.LANES_TEXT.emptyContributorBody], "area"), []);

@@ -1517,10 +1517,10 @@ test("vuoti: nessuno use case, niente da decidere, niente da mettere in ordine, 
   // Nessuno use case approvato, in realizzazione o realizzato: le corsie dicono il loro vuoto.
   const eOverview = await html("ls", ids.wsE, { vista: "panoramica" });
   assert.ok(eOverview.includes("Niente in programma, per ora") && eOverview.includes("Approva uno use case e scegli quando farlo."));
-  // Il contributore non approva: il vuoto gli dice dove sono le proposte.
+  // Il contributore non approva: il vuoto gli dice dove sono gli use case da valutare.
   const eContributorOverview = await html("contributor", ids.wsE, { vista: "panoramica" });
   assert.ok(eContributorOverview.includes("Niente in programma, per ora"), "le corsie vuote, non la pagina vuota");
-  assert.ok(eContributorOverview.includes(`Qui trovi gli use case approvati visibili a tutti. Le proposte sono in «In${N}valutazione».`));
+  assert.ok(eContributorOverview.includes(`Qui trovi gli use case approvati visibili a tutti. Quelli da valutare sono in «In${N}valutazione».`));
   assert.ok(!eContributorOverview.includes("«In valutazione»."), "il nome della vista non va a capo");
   assert.ok(!eContributorOverview.includes("Approva uno use case"));
   // Gli approvati ci sono ma sono nascosti alla ricerca: il contributore ha il vuoto, che dice solo
@@ -1530,7 +1530,7 @@ test("vuoti: nessuno use case, niente da decidere, niente da mettere in ordine, 
   const hContributor = await html("contributor", ids.wsH, { vista: "panoramica" });
   assert.ok(!hContributor.includes("Nessuno use case, per ora") && hContributor.includes('data-slot="segmented-nav"'), "la sua proposta c'è: la pagina non è vuota");
   assert.ok(hContributor.includes("Niente in programma, per ora"), "le corsie vuote");
-  assert.ok(hContributor.includes(`Qui trovi gli use case approvati visibili a tutti. Le proposte sono in «In${N}valutazione».`));
+  assert.ok(hContributor.includes(`Qui trovi gli use case approvati visibili a tutti. Quelli da valutare sono in «In${N}valutazione».`));
   for (const text of ["Nessuno use case è ancora approvato", "Approva uno use case", cards.hHidden.title, cards.hHidden.id]) assert.ok(!hContributor.includes(text), text);
   const eMatrix = await html("ls", ids.wsE, { vista: "panoramica", mostra: "matrice" });
   assert.ok(eMatrix.includes("Nessuno use case da mettere in ordine"));

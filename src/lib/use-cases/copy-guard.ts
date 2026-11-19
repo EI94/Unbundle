@@ -20,8 +20,8 @@
  * (Rilascio 10, §4.2) Tre pubblici, con le parole ritirate dal vocabolario unico (§4):
  * - **`area`**, la dashboard: in più «Casi d'uso», «dossier», «Sub-responsabili», «fabbrica», «requisito»,
  *   «esigenza», «ranking», «Goal», «OKR», «stream», «Activity mapping», «Discovery», «Privacy Policy», «Realizzati»,
- *   «Tocca anche», «Impatto» e «board» come titolo, «Non ce l'ho». Le parole per i soli ruoli del cliente (token,
- *   PR, p95, commit…) stanno in `src/lib/uc/views/copy-guard.ts`.
+ *   «Tocca anche», «Impatto» e «board» come titolo, «Non ce l'ho», «proposta» per uno use case. Le parole per i soli
+ *   ruoli del cliente (token, PR, p95, commit…) stanno in `src/lib/uc/views/copy-guard.ts`.
  * - **`esterno`**, le pagine pubbliche e le email: in più «Survey», «Assessment», «respondent», «Retention»,
  *   «Controller», «JSON», «login», «reset», «Non ce l'ho», «Privacy Policy». I codici XX-0000 negli oggetti li
  *   controlla il test del modello delle email (`src/lib/uc/notify/email-model.test.ts`).
@@ -74,6 +74,7 @@ export interface HubCopyRule {
     | "impatto_titolo"
     | "board_titolo"
     | "non_ce_lho"
+    | "proposta"
     | "survey"
     | "assessment"
     | "respondent"
@@ -131,6 +132,16 @@ export const HUB_COPY_RULES: readonly HubCopyRule[] = [
   { id: "impatto_titolo", word: "Impatto (titolo)", pattern: /^\s*impatto\b(?!\s+ambientale)/gi, scopes: AREA },
   { id: "board_titolo", word: "board (titolo)", pattern: /^\s*board\b/gi, scopes: AREA },
   { id: "non_ce_lho", word: "Non ce l'ho", pattern: /\bnon\s+ce\s+l['’]\s*ho\b/gi, scopes: AREA_AND_OUTSIDE },
+  // «proposta» per uno use case (§4: «use case»): «Invia come proposta», «La tua proposta», «Le tue proposte», «proposte
+  // altrui», «proposte di use case», «Le proposte sono in «In valutazione»». Le altre proposte restano, perché nominano
+  // altro: la scadenza «Proposta» e la data «(proposta)», una domanda proposta, una proposta di compito, i fatti del
+  // Contesto da confermare, «non si applica», le categorie dei processi.
+  {
+    id: "proposta",
+    word: "proposta (uno use case)",
+    pattern: /\binvi\w*\s+come\s+propost[ae]\b|\btu[ae]\s+propost[ae]\b|\bpropost[ae]\s+(?:altrui\b|d[ie]\s+use[\s-]*cases?\b|(?:sono|è|stanno)\s+in\s+«)/gi,
+    scopes: AREA,
+  },
   // (Rilascio 10, §4.2) Fuori dalla dashboard: le pagine pubbliche e le email.
   { id: "survey", word: "Survey", pattern: /\bsurveys?\b/gi, scopes: OUTSIDE },
   { id: "assessment", word: "Assessment", pattern: /\bassessments?\b/gi, scopes: OUTSIDE },
