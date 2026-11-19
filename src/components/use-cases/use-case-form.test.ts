@@ -3,13 +3,17 @@ import assert from "node:assert/strict";
 import * as nodeModule from "node:module";
 import { readFileSync } from "node:fs";
 import { findHubForbiddenIn } from "../../lib/use-cases/copy-guard.ts";
+import { QUICK_CREATE_TEXT } from "../../lib/use-cases/create.ts";
+import { parseHubParams } from "../../lib/use-cases/views.ts";
 import { enableTsxImports } from "./detail/referent/tsx-test-loader.ts";
 
 // (Rilascio 10, §3.4, D8) «Nuovo use case»: un modulo solo, nella pagina e nel pannello rapido. In vista il tipo (due
 // scelte grandi), Titolo e Problema; il resto in «Aggiungi dettagli», chiusa; un solo pulsante pieno. Reso in HTML,
 // senza database: le action sono finte (non si chiamano rendendo).
 let form: typeof import("./use-case-form.tsx");
+let sheet: typeof import("./quick-create-sheet.tsx");
 let render: (props: Record<string, unknown>) => string;
+let renderPlain: (type: unknown, props: Record<string, unknown>) => string;
 type ResolveResult = { url: string; shortCircuit?: boolean };
 const { registerHooks } = nodeModule as unknown as {
   registerHooks(hooks: { resolve?(specifier: string, context: { parentURL?: string }, nextResolve: (specifier: string, context: object) => ResolveResult): ResolveResult }): void;
@@ -25,12 +29,14 @@ before(async () => {
     },
   });
   form = await import("./use-case-form.tsx");
+  sheet = await import("./quick-create-sheet.tsx");
   const { createElement } = (await import("react")) as unknown as { createElement: (type: unknown, props: unknown, ...children: unknown[]) => unknown };
   const { renderToStaticMarkup } = (await import("react-dom/server")) as unknown as { renderToStaticMarkup: (element: unknown) => string };
   const { AppRouterContext } = (await import("next/dist/shared/lib/app-router-context.shared-runtime.js")) as unknown as { AppRouterContext: unknown };
   const router = { push() {}, replace() {}, refresh() {}, prefetch() {}, back() {}, forward() {} };
   render = (props) =>
     renderToStaticMarkup(createElement((AppRouterContext as { Provider: unknown }).Provider, { value: router }, createElement(form.UseCaseForm, { workspaceId: "ws", esgEnabled: true, ...props })));
+  renderPlain = (type, props) => renderToStaticMarkup(createElement(type, props));
 });
 
 const readable = (html: string) => html.replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
@@ -101,8 +107,34 @@ test("il pannello rapido di Lateral Space: lo stesso modulo, «Salva» pieno e �
   assert.match(html, /<input[^>]*name="aiLab"[^>]*value="AI Lab Finanza · 12 ott"/);
   assert.ok(html.includes('<option value="AI Lab Vendite"></option>'));
   assert.match(visible, /Aggiungi dettagli<\/span><span class="min-w-0 text-sm font-normal text-muted-foreground">AI Lab Finanza · 12 ott<\/span>/);
-  // Niente più «Problema in una riga» né il link al modulo completo: il modulo è lo stesso.
+  // Niente più «Problema in una riga» né il vecchio link: il modulo è lo stesso (il link nuovo sta nel piede del pannello).
   for (const gone of ["Problema in una riga", "Usa il modulo completo", "I dettagli si completano dopo", "Invia lo use case"]) assert.ok(!html.includes(gone), gone);
+});
+
+test("(audit, riga 68) in fondo al pannello rapido, solo per Lateral Space, un link alla pagina che invia lo use case come proposta", () => {
+  const html = readable(renderPlain(sheet.FullFormLink, { workspaceId: "ws" }));
+  // Un link e non un pulsante, grigio e sottolineato, alto 44 px sul telefono.
+  assert.match(html, /^<a\b[^>]*>Invia come proposta, con la valutazione di Claude e le notifiche<\/a>$/);
+  assert.ok(html.includes('href="/dashboard/ws/use-cases/nuovo"') && !html.includes('data-slot="button"'), html);
+  const classes = /class="([^"]*)"/.exec(html)?.[1].split(/\s+/) ?? [];
+  for (const cls of ["text-muted-foreground", "underline", "min-h-11", "sm:min-h-8"]) assert.ok(classes.includes(cls), cls);
+  assert.deepEqual(findHubForbiddenIn([QUICK_CREATE_TEXT.fullForm], "area"), []);
+  // Nel piede del pannello, dopo il modulo; la pagina del modulo non lo ripete.
+  const source = readFileSync(new URL("./quick-create-sheet.tsx", import.meta.url), "utf8");
+  const footer = source.indexOf('data-slot="quick-create-footer"');
+  assert.ok(source.indexOf("<UseCaseForm") < footer && footer < source.indexOf("<FullFormLink workspaceId={workspaceId} />"), "dopo il modulo, nel piede");
+  const page = readFileSync(new URL("../../app/(dashboard)/dashboard/[workspaceId]/use-cases/nuovo/page.tsx", import.meta.url), "utf8");
+  assert.ok(!page.includes("FullFormLink"));
+  // Il pannello lo monta la pagina solo con `?nuovo=1`, che vale solo per Lateral Space.
+  const hub = readFileSync(new URL("./hub.tsx", import.meta.url), "utf8");
+  assert.match(hub, /params\.nuovo \? quickCreateOptions\(workspaceId\) : null/);
+  assert.match(hub, /\{data\.quickCreate \? \(\s*<QuickCreateSheet\b/);
+  const viewer = (role: string, isLateralSpace: boolean) => ({ userId: "00000000-0000-4000-8000-000000000001", email: "persona.prova@cliente.test", emailVerified: true, role, isLateralSpace });
+  assert.equal(parseHubParams({ nuovo: "1" }, viewer("transformation_lead", true)).nuovo, true, "Lateral Space");
+  for (const role of ["exec_sponsor", "transformation_lead", "function_lead", "analyst", "contributor"]) {
+    assert.equal(parseHubParams({ nuovo: "1" }, viewer(role, false)).nuovo, false, role);
+  }
+  assert.equal(parseHubParams({ nuovo: "1" }, viewer("contributor", true)).nuovo, false, "Lateral Space senza ruolo da revisore");
 });
 
 test("il sorgente: un modulo solo per la pagina e il pannello, con le stesse letture dell'action", () => {

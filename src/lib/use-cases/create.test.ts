@@ -30,9 +30,6 @@ import {
   parseQuickUseCaseForm,
   parseUseCaseForm,
   proposedToast,
-  quickCreateItem,
-  quickFieldErrors,
-  readQuickCreate,
   receiptPath,
   savedToast,
 } from "./create.ts";
@@ -91,59 +88,6 @@ test("scelte dei chip e dei blocchi: due origini e due tipi, con le etichette di
 
 // ─── Pannello rapido (§5.2) ──────────────────────────────────────────
 
-test("pannello rapido: tre campi, AI Transformation e Da costruire predefiniti, problema in description, nessun proponente", () => {
-  const read = readQuickCreate({ title: "  Smistamento richieste  ", problem: "Le richieste arrivano in ordine sparso", aiLab: "" });
-  assert.ok(read.ok);
-  assert.deepEqual(read.value, {
-    title: "Smistamento richieste",
-    problem: "Le richieste arrivano in ordine sparso",
-    aiLab: null,
-    origin: "transformation",
-    kind: "da_costruire",
-  });
-  const item = quickCreateItem(read.value);
-  assert.deepEqual(item, {
-    source: "manual",
-    kind: "da_costruire",
-    origin: "transformation",
-    title: "Smistamento richieste",
-    description: "Le richieste arrivano in ordine sparso",
-    aiLab: null,
-  });
-  assert.deepEqual(Object.keys(item).sort(), ["aiLab", "description", "kind", "origin", "source", "title"]);
-
-  const chosen = readQuickCreate({ title: "Bozze di risposta", problem: "Tre risposte uguali al giorno", aiLab: "AI Lab Finanza · 12 ott", origin: "adoption", kind: "da_diffondere" });
-  assert.ok(chosen.ok);
-  assert.deepEqual(quickCreateItem(chosen.value), {
-    source: "manual",
-    kind: "da_diffondere",
-    origin: "adoption",
-    title: "Bozze di risposta",
-    description: "Tre risposte uguali al giorno",
-    aiLab: "AI Lab Finanza · 12 ott",
-  });
-});
-
-test("pannello rapido: limiti di §5.2 e nomi dei campi del pannello negli errori", () => {
-  assert.deepEqual(QUICK_CREATE_MAX, { title: 200, problem: 300, aiLab: 120 });
-  const short = readQuickCreate({ title: "ab", problem: "x", aiLab: "a".repeat(121) });
-  assert.ok(!short.ok);
-  assert.deepEqual(Object.keys(short.fieldErrors).sort(), ["aiLab", "problem", "title"]);
-  const long = readQuickCreate({ title: "a".repeat(201), problem: "a".repeat(301) });
-  assert.ok(!long.ok);
-  assert.equal(long.fieldErrors.title, tooLongMessage(200));
-  assert.equal(long.fieldErrors.problem, tooLongMessage(300));
-  // Gli errori del servizio chiamano `description` il problema.
-  assert.deepEqual(quickFieldErrors({ description: "Troppo lungo.", title: "Corto.", aiLab: "No." }), {
-    problem: "Troppo lungo.",
-    title: "Corto.",
-    aiLab: "No.",
-  });
-  assert.deepEqual(quickFieldErrors(undefined), {});
-  // Campi in più: rifiutati.
-  assert.ok(!readQuickCreate({ title: "Titolo valido", problem: "Problema valido", source: "web_proposed" }).ok);
-});
-
 test("pannello rapido: testi esatti (rilascio 10, §3.4: lo stesso modulo della pagina) e toast «XX-0031 salvato.»", () => {
   assert.deepEqual(QUICK_CREATE_TEXT, {
     heading: "Nuovo use case",
@@ -152,6 +96,7 @@ test("pannello rapido: testi esatti (rilascio 10, §3.4: lo stesso modulo della 
     save: "Salva",
     saveAndAdd: "Salva e aggiungi un altro",
     saving: "Salvo…",
+    fullForm: "Invia come proposta, con la valutazione di Claude e le notifiche",
     close: "Chiudi",
     error: "Non riusciamo a salvare. Riprova.",
   });
@@ -558,6 +503,13 @@ test("pannello rapido (rilascio 10): lo stesso modulo della pagina, più «AI La
   assert.deepEqual(wrong.fieldErrors, { title: FORM_TEXT.titleTooShort, description: FORM_TEXT.required, aiLab: tooLongMessage(120) });
   assert.equal(wrong.message, FORM_TEXT.fixFields);
   assert.equal(FORM_FIELD_NAMES.aiLab, "aiLab");
+  // Il canale non lo sceglie il modulo: un `source` in più non cambia nulla, il pannello salva sempre `manual`.
+  const forged = parseQuickUseCaseForm(formOf({ kind: "da_costruire", title: "Bozze di risposta", description: "Tre risposte", source: "web_proposed", proposedBy: "x@cliente.test" }), opts);
+  assert.ok(forged.ok);
+  assert.equal(forged.item.source, "manual");
+  assert.ok(!("proposedBy" in forged.item));
+  // I `maxLength` del pannello: il titolo come nella pagina, «AI Lab» fino a 120.
+  assert.deepEqual(QUICK_CREATE_MAX, { title: TEXT_LIMITS.title, aiLab: 120 });
 });
 
 // ─── Testi dell'area (§14.5) ─────────────────────────────────────────

@@ -11,9 +11,11 @@ import { abilitiesForUseCase } from "@/lib/use-cases/permissions";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 
 /**
- * `/use-cases/nuovo`: il modulo completo di «Nuovo use case» (docs/use-case/DESIGN.md §2.2,
- * §5.1, §5.3). Lo usano gli AI Builder del cliente e i contributori; Lateral Space lo apre dal
- * link del pannello rapido. Con l'area spenta per il workspace: `notFound()`.
+ * `/use-cases/nuovo`: il modulo di «Nuovo use case» (docs/use-case/DESIGN.md §2.2, §5.1, §5.3; rilascio 10, §3.4,
+ * D8), lo stesso del pannello rapido. Qui lo use case entra come una proposta (`web_proposed`): la valutazione di
+ * Claude, la campanella e le notifiche, chi l'ha proposto e la ricevuta. Lo usano gli AI Builder del cliente e i
+ * contributori; Lateral Space ci arriva dal link in fondo al pannello rapido, che invece salva senza seguiti
+ * (`manual`). Con l'area spenta per il workspace: `notFound()`.
  */
 export default async function NewUseCasePage({ params }: { params: Promise<{ workspaceId: string }> }) {
   const { workspaceId } = await params;

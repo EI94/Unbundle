@@ -925,10 +925,10 @@ test("(rilascio 10, §3.4) i filtri attivi come chip con ✕ e «Togli tutti», 
     }
     assert.deepEqual(chipsOf(await html(person, ids.wsA, { vista: "panoramica" })), { chips: [], clearAll: null }, `${person}: senza filtri niente chip`);
   }
-  // Il contributore ha la ricerca (e «Referente», quando serve): la ricerca non è un chip, si toglie dal campo.
+  // Il contributore ha la ricerca (e «Referente», quando serve): la ricerca non è un chip; «Togli tutti» la toglie.
   for (const vista of ["da-decidere", "panoramica"]) {
     const page = await html("contributor", ids.wsA, { vista, q: cards.ownByEmail.code });
-    assert.deepEqual(chipsOf(page).chips, [], vista);
+    assert.deepEqual(chipsOf(page), { chips: [], clearAll: `/dashboard/${ids.wsA}/use-cases?vista=${vista}` }, vista);
     assert.match(page, new RegExp(`<input type="search"[^>]*name="q" value="${cards.ownByEmail.code}"`), vista);
   }
 });

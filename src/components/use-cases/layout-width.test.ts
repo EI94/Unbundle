@@ -58,12 +58,21 @@ test("la pagina «Use case» è un contenitore: righe, corsie e tabelle guardano
 test("le righe dei revisori hanno le colonne da 58rem del riquadro", () => {
   // A 1280 px di finestra la pagina ha 960 px (60rem), 945 con una barra di scorrimento classica.
   const row = read("src/components/use-cases/use-case-row.tsx");
-  // Valore va a capo dopo «·» invece di scrivere sopra il Costo.
-  assert.match(row, /<ValueFigure value=\{item\.value\} withLabel wrap \/>/);
   assert.match(row, /const REVIEWER_ROW_LINK = `\$\{ROW_LINK\} @min-\[58rem\]\/hub:flex-row /);
-  // In una riga sola il titolo (con il codice) tiene almeno 14rem e la parte con le cifre si stringe.
-  assert.match(row, /"flex min-w-0 items-baseline gap-3 @min-\[58rem\]\/hub:min-w-56 @min-\[58rem\]\/hub:flex-1"/);
-  assert.match(row, /"flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 @min-\[58rem\]\/hub:flex-nowrap @min-\[58rem\]\/hub:gap-x-3"/);
+  // (Rilascio 10, §3.4) La riga di «Da decidere»: in una riga sola il titolo tiene almeno 14rem e prende il resto; le
+  // altre quattro in colonne della stessa larghezza in ogni riga. Più stretto vanno sotto il titolo, a capo se serve.
+  const decide = row.slice(row.indexOf("function DecideRow("), row.indexOf("export function OwnMarker("));
+  assert.match(decide, /"flex min-w-0 items-start gap-2 @min-\[58rem\]\/hub:min-w-56 @min-\[58rem\]\/hub:flex-1"/);
+  assert.match(decide, /"flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 @min-\[58rem\]\/hub:shrink-0 @min-\[58rem\]\/hub:flex-nowrap"/);
+  for (const column of [
+    /<CodeLabel code=\{item\.code\} className="@min-\[58rem\]\/hub:w-16" \/>/,
+    /<StatusDot tone=\{item\.tone\} label=\{reviewerSubStateText\(item\)\} className="@min-\[58rem\]\/hub:w-40" \/>/,
+    /whitespace-nowrap text-muted-foreground @min-\[58rem\]\/hub:w-24">\{waitingLabel\(/,
+    /<ValueFigure value=\{item\.value\} withLabel className="@min-\[58rem\]\/hub:w-44" \/>/,
+  ]) {
+    assert.match(decide, column);
+  }
+  assert.ok(!row.includes("function ReviewerRow(") && !row.includes("RowFigures"), "la riga con Valore e Costo non c'è più");
   // Lo script delle schermate controlla righe e corsie dallo stesso riquadro.
   assert.match(read("scripts/use-case-test/screens-hub.mjs"), /const HUB_COLUMNS_FROM_PX = 928;/);
 });

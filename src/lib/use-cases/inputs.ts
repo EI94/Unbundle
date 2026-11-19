@@ -361,28 +361,3 @@ export function validateValuation(
   if (!fields.some(Boolean)) return { ok: false, fieldErrors: { payload: NO_CHANGES_ERROR } };
   return { ok: true, valuation, fields: uniqueFields(fields) };
 }
-
-// ─── Pannello rapido (§5.2) ──────────────────────────────────────────
-
-export const quickCreateSchema = z
-  .object({
-    title: titleSchema,
-    problem: z
-      .string({ message: "Scrivi il problema in una riga." })
-      .trim()
-      .min(QUICK_CREATE_LIMITS.problem.min, { message: `Scrivi almeno ${QUICK_CREATE_LIMITS.problem.min} caratteri.` })
-      .max(QUICK_CREATE_LIMITS.problem.max, { message: tooLongMessage(QUICK_CREATE_LIMITS.problem.max) }),
-    aiLab: optionalTextSchema(QUICK_CREATE_LIMITS.aiLab.max).optional(),
-    /** Predefinita «AI Transformation» (§5.2). */
-    origin: z.enum(ORIGINS, { message: "Scegli AI Adoption o AI Transformation." }).default("transformation"),
-    /** Predefinito «Da costruire». */
-    kind: z.enum(KINDS, { message: "Scegli Da costruire o Da diffondere." }).default("da_costruire"),
-  })
-  .strict();
-
-export type QuickCreateInput = z.output<typeof quickCreateSchema>;
-
-export function validateQuickCreate(input: unknown): { ok: true; value: QuickCreateInput } | { ok: false; fieldErrors: FieldErrors } {
-  const parsed = quickCreateSchema.safeParse(input);
-  return parsed.success ? { ok: true, value: parsed.data } : { ok: false, fieldErrors: fieldErrorsOf(parsed.error) };
-}

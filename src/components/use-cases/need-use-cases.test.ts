@@ -155,12 +155,15 @@ test("needs-board.tsx si rende sul server: dai moduli «use client» importa sol
   assert.ok(!/^\s*["']use client["']/.test(readFileSync(new URL("../../lib/use-cases/needs.ts", import.meta.url), "utf8")), "needs.ts senza direttiva");
 });
 
-test("(rilascio 10, §3.4) con `agentTag` il tag dell'agente al posto del prefisso e del codice; senza, come prima (la scheda)", () => {
+test("(rilascio 10, §3.4) con `agentTag` il codice piccolo, poi il tag dell'agente al posto del prefisso; senza, come prima (la scheda)", () => {
   const ref = { id: "dddddddd-0000-4000-8000-000000000004", code: "XV-0004", title: "LIBRA L1 · Lettura dei documenti" };
   const tagged = renderToStaticMarkup(createElement(needUseCases.NeedUseCaseLink, { useCase: ref, href: "/x", agentTag: true, palette: null }));
   assert.ok(tagged.includes('data-slot="agent-tag"') && tagged.includes(">LIBRA L1</span>"), tagged);
   assert.ok(tagged.includes('<span class="sr-only">LIBRA L1 · </span>Lettura dei documenti'), "il prefisso resta per i lettori di schermo");
-  assert.ok(!tagged.includes('class="font-mono"'), "niente codice accanto al tag");
+  // Il codice piccolo e il separatore restano, prima del tag.
+  const code = tagged.indexOf('<span class="font-mono">XV-0004</span>\u00a0· ');
+  assert.ok(code >= 0 && code < tagged.indexOf('data-slot="agent-tag"'), "il codice prima del tag");
+  assert.equal((tagged.match(/class="font-mono"/g) ?? []).length, 1);
   assert.ok(tagged.includes('title="XV-0004 · LIBRA L1 · Lettura dei documenti"'), "il titolo del link resta intero");
   const plain = renderToStaticMarkup(createElement(needUseCases.NeedUseCaseLink, { useCase: ref, href: "/x" }));
   assert.ok(!plain.includes("agent-tag") && plain.includes('<span class="font-mono">XV-0004</span> · LIBRA L1 · Lettura dei documenti'), plain);

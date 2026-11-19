@@ -3,7 +3,7 @@ import { INFO_PROGRESS_TEXT } from "@/lib/use-cases/info-progress";
 import { KIND_LABEL, ORIGIN_LABEL } from "@/lib/use-cases/labels";
 import { NEED_STATE_TEXT } from "@/lib/use-cases/needs";
 import type { ReferentFilterMenu } from "@/lib/use-cases/referent/filter";
-import { NEED_STATE_PARAMS, isHubChart, type HubParamKey } from "@/lib/use-cases/views";
+import { NEED_STATE_PARAMS, SEARCH_MAX, isHubChart, type HubParamKey } from "@/lib/use-cases/views";
 import { withoutTransient, type HubQuery } from "./use-case-row";
 
 /**
@@ -107,7 +107,7 @@ function keptQuery(query: HubQuery): Record<string, string> {
 export function FilterBar({ basePath, query, mode, kind, more, referent = null }: FilterBarProps) {
   return (
     <div data-slot="filter-bar" className="min-w-0">
-      <FilterChips basePath={basePath} query={keptQuery(query)} search={{ param: "q" }} fields={filterFields({ query, mode, kind, more, referent })} />
+      <FilterChips basePath={basePath} query={keptQuery(query)} search={{ param: "q", maxLength: SEARCH_MAX }} fields={filterFields({ query, mode, kind, more, referent })} />
     </div>
   );
 }

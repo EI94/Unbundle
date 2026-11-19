@@ -180,15 +180,16 @@ test("FilterChips: i filtri nell'indirizzo; un chip con ✕ toglie il suo, «Tog
 });
 
 test("FilterChips: «Cerca», «Filtri (n)», i chip attivi con ✕ e «Togli tutti», resi", () => {
-  const html = readable(render(h(filters.FilterChips, { basePath: BASE, query: QUERY, search: { param: "q" }, fields: FIELDS })));
+  const html = readable(render(h(filters.FilterChips, { basePath: BASE, query: QUERY, search: { param: "q", maxLength: 100 }, fields: FIELDS })));
   const form = /<form role="search"[^>]*>/.exec(html)?.[0] ?? "";
   assert.match(form, /action="\/dashboard\/ws\/use-cases"/);
-  assert.match(form, /method="get"/);
+  assert.doesNotMatch(form, /method=/, "un GET, come ogni modulo senza metodo: `<Form>` di Next non lo scrive");
   const field = /<input type="search"[^>]*>/.exec(html)?.[0] ?? "";
   assert.match(field, /name="q"/, "il campo della ricerca");
   assert.match(field, /value="fatture"/, "con il valore di adesso");
   assert.match(field, /placeholder="Cerca"/);
   assert.match(field, /text-base/, "16 px al telefono");
+  assert.match(field, /maxLength="100"/, "non più lunga di quanto la pagina legge");
   assert.ok(html.includes('<input type="hidden" name="vista" value="panoramica"/>'), "la vista resta");
   assert.ok(!html.includes('type="hidden" name="q"'), "la ricerca la scrive il campo");
   assert.match(html, /aria-label="Cerca"[^>]*class="[^"]*sm:hidden/, "al telefono un'icona");
@@ -203,6 +204,27 @@ test("FilterChips: «Cerca», «Filtri (n)», i chip attivi con ✕ e «Togli tu
   assert.ok(textOf(none).includes("Filtri") && !textOf(none).includes("Filtri ("));
   assert.ok(!none.includes("filter-chips-active") && !none.includes("Togli tutti") && !none.includes('role="search"'));
   assert.equal(text.UI10_TEXT.filters.open(0), "Filtri");
+  // Con la sola ricerca: nessun chip, ma «Togli tutti» la toglie; senza `maxLength` il campo non ne ha.
+  const searchOnly = readable(render(h(filters.FilterChips, { basePath: BASE, query: { vista: "panoramica", q: "fatture" }, search: { param: "q" }, fields: FIELDS.map((f) => ({ ...f, value: null })) })));
+  assert.ok(!searchOnly.includes('aria-label="Togli '), "nessun chip");
+  assert.ok(searchOnly.includes(`href="${BASE}?vista=panoramica">Togli tutti</a>`), searchOnly);
+  assert.ok(!/<input type="search"[^>]*maxLength/.test(searchOnly));
+});
+
+test("FilterChips: la ricerca e «Mostra i risultati» vanno all'indirizzo nel client, senza spostare la pagina; il foglio si chiude", () => {
+  const source = readFileSync(new URL("./filter-chips.tsx", import.meta.url), "utf8");
+  assert.match(source, /^import Form from "next\/form";$/m);
+  const forms = [...source.matchAll(/<Form\s+([^>]*?)>/g)].map((match) => match[1].replace(/\s+/g, " "));
+  assert.equal(forms.length, 2, "la ricerca e il foglio");
+  for (const form of forms) {
+    assert.match(form, /action=\{basePath\} scroll=\{false\} prefetch=\{false\}/, form);
+    assert.ok(!/\bmethod=/.test(form), "`<Form>` non accetta `method`");
+  }
+  assert.ok(!/<form\b/.test(source), "nessun modulo che ricarica la pagina");
+  // «Tutti» non scrive niente: i campi vuoti si spengono per l'indirizzo e si riaccendono dopo.
+  assert.match(source, /element\.disabled = true;[\s\S]*?window\.setTimeout\(\(\) => \{\s*for \(const element of emptied\) element\.disabled = false;/);
+  assert.match(source, /onSubmit=\{\(event\) => \{\s*dropEmpty\(event\);\s*setSheet\(false\);\s*\}\}/);
+  assert.match(source, /<input\s+key=\{searched\}/, "il campo riparte dalla ricerca dell'indirizzo");
 });
 
 // ─── EmptyState, Row ─────────────────────────────────────────────────

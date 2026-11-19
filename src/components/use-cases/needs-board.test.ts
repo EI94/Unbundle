@@ -197,6 +197,13 @@ test("il prossimo passo: «Verifica N risposte» se ce ne sono; altrimenti «Chi
   // Una risposta da verificare senza use case collegato: il pulsante porta alle righe «Da verificare».
   const loose = render(build([need({ title: "Risposta libera", ownerSide: "cliente", status: "in_verifica", useCaseIds: [], forLabel: "Tutto il programma" })]));
   assert.ok(filled(loose)[0]?.includes(`href="${BASE}?vista=cosa-serve&stato=da-verificare"`), filled(loose)[0]);
+  // Con i filtri della pagina che tengono solo B, i due pulsanti aprono B, anche se la riga nomina prima A (XV-0001).
+  const shared = [need({ title: "Di tutti e due", ownerSide: "cliente", useCaseIds: [A, B] })];
+  const onlyB = { useCaseIds: new Set([B]), q: null };
+  assert.ok(filled(render(build(shared, onlyB)))[0]?.includes(`href="?vista=cosa-serve&apri=${B}"`), "«Chiedi le informazioni» su B");
+  const verifyB = render(build([...shared, need({ title: "Risposta di tutti e due", ownerSide: "cliente", status: "in_verifica", useCaseIds: [A, B] })], onlyB));
+  assert.ok(filled(verifyB)[0]?.includes(`href="?vista=cosa-serve&apri=${B}"`), "«Verifica 1 risposta» su B");
+  assert.ok(filled(render(build(shared)))[0]?.includes(`href="?vista=cosa-serve&apri=${A}"`), "senza filtri il codice più basso");
   // Solo attese e ferme: niente da fare per chi guarda, nessun pulsante pieno né «Prossimo passo».
   const waiting = render(build([need({ title: "In attesa", ownerSide: "fornitore", status: "chiesta" }), need({ title: "Ferma", ownerSide: "lateral_space", status: "bloccata" })]));
   assert.equal(filled(waiting).length, 0);
@@ -220,11 +227,12 @@ test("un gruppo: le prime tre righe, prima da verificare, poi «Vedi tutte (N)»
   const first = between(client, `data-need="${byTitle.get("Cliente 1")}"`, "</li>");
   assert.match(first, new RegExp(`<span data-meta="chi" class="inline-flex min-w-0 items-center gap-x-2"><span class="min-w-0">Aldo Prova, ufficio acquisti${N}· Cliente</span>`));
   assert.ok(first.includes(">Da chiedere<") && first.includes('href="?vista=cosa-serve&apri=' + A + '"'), "lo stato dei cinque e «Per» che apre il pannello");
-  // «Per» con il tag dell'agente al posto del prefisso, il prefisso solo per i lettori di schermo; niente codice.
+  // «Per»: il codice piccolo, poi il tag dell'agente al posto del prefisso, il prefisso solo per i lettori di schermo.
   const per = between(first, 'data-meta="per"', "</a>");
   assert.ok(per.includes('data-slot="agent-tag"') && per.includes(">LIBRA L1</span>"), per);
   assert.ok(per.includes('<span class="sr-only">LIBRA L1 · </span>Smistamento'), per);
-  assert.ok(!textOf(per.replace(/<span class="sr-only">[^<]*<\/span>/g, "")).includes("XV-0001"), "il tag al posto del codice");
+  assert.equal(textOf(per.replace(/<span class="sr-only">[^<]*<\/span>/g, "")).replace(/^[^>]*>/, ""), "XV-0001 · LIBRA L1Smistamento", "il codice prima del tag");
+  assert.ok(per.indexOf('<span class="font-mono">XV-0001</span>') < per.indexOf('data-slot="agent-tag"'), per);
   // Più use case: «Per 2 use case» chiuso, con prima gli agenti dei titoli.
   const two = between(client, `data-need="${byTitle.get("Insieme 2")}"`, "</li>");
   assert.ok(two.indexOf('data-slot="need-agents"') < two.indexOf(`Per 2${N}use${N}case`));

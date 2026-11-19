@@ -2,9 +2,9 @@
  * Nuovo use case e Activity mapping: le regole pure (docs/use-case/DESIGN.md §5, §8.1, §8.5,
  * §14.3; PIANO-LAVORI H3c).
  *
- * - **Pannello rapido** (§5.2, solo Lateral Space con ruolo da revisore): tre campi, origine
- *   predefinita «AI Transformation», tipo «Da costruire». Si salva con `source = manual`,
- *   senza proponente, senza valutazione dell'AI e senza notifiche (§1.2 punti 6 e 13).
+ * - **Pannello rapido** (§5.2, solo Lateral Space con ruolo da revisore): origine predefinita
+ *   «AI Transformation», tipo «Da costruire». Si salva con `source = manual`, senza
+ *   proponente, senza valutazione dell'AI e senza notifiche (§1.2 punti 6 e 13).
  * - **Modulo completo** (§5.3): il modulo di oggi con le etichette di §6.2 per tipo. Origine e
  *   «Valutazione iniziale» solo per i revisori; il costo arriva dal campo di §5.4 (importo,
  *   oppure una fascia del workspace). La stessa lettura (`parseUseCaseForm`) vale nel browser,
@@ -30,9 +30,7 @@ import {
   VALUE_EUR_YEAR_MAX,
   parseEuroAmount,
   tooLongMessage,
-  validateQuickCreate,
   type FieldErrors,
-  type QuickCreateInput,
 } from "./inputs.ts";
 import { KIND_LABEL, ORIGIN_LABEL, WHAT_FIELD_LABEL } from "./labels.ts";
 import type { NewUseCaseItem } from "./service.ts";
@@ -50,6 +48,11 @@ export const QUICK_CREATE_TEXT = Object.freeze({
   /** Bordato: salva, svuota i campi e tiene tipo, origine e AI Lab. */
   saveAndAdd: "Salva e aggiungi un altro",
   saving: "Salvo…",
+  /**
+   * In fondo al pannello, un link e non un pulsante: la pagina `/use-cases/nuovo`, che invia lo use case come tutti
+   * gli altri (`web_proposed`: la valutazione di Claude, la campanella e le notifiche, chi l'ha proposto).
+   */
+  fullForm: "Invia come proposta, con la valutazione di Claude e le notifiche",
   close: "Chiudi",
   /** Errore di salvataggio: i campi restano compilati. */
   error: "Non riusciamo a salvare. Riprova.",
@@ -161,44 +164,12 @@ export const KIND_OPTIONS: readonly { value: UseCaseKind; label: string }[] = Ob
 
 // ─── Pannello rapido (§5.2) ──────────────────────────────────────────
 
-/** Una scheda del pannello rapido, come la riceve il servizio. Il proponente resta vuoto. */
-export type QuickCreateItem = Pick<NewUseCaseInput, "source" | "kind" | "origin" | "title" | "description" | "aiLab">;
-
-/** I tre campi e i due chip diventano una scheda `manual`: «Problema in una riga» va in `description`. */
-export function quickCreateItem(input: QuickCreateInput): QuickCreateItem {
-  return {
-    source: "manual",
-    kind: input.kind,
-    origin: input.origin,
-    title: input.title,
-    description: input.problem,
-    aiLab: input.aiLab ?? null,
-  };
-}
-
-/** I campi del pannello: il servizio chiama `description` il «Problema in una riga». */
-const QUICK_FIELD_OF: Readonly<Record<string, string>> = { description: "problem" };
-
 /**
- * Gli errori per campo del pannello, con i nomi dei suoi campi (`title`, `problem`, `aiLab`),
- * sia dalla validazione (`validateQuickCreate`) sia dal servizio.
+ * I limiti del pannello, per gli attributi `maxLength`. (Rilascio 10, D8) Il pannello usa il modulo della pagina: il
+ * titolo come lì, più «AI Lab»; il «Problema in una riga» non c'è più (è «Problema», `description`).
  */
-export function quickFieldErrors(fieldErrors: FieldErrors | null | undefined): FieldErrors {
-  const out: FieldErrors = {};
-  for (const [key, message] of Object.entries(fieldErrors ?? {})) out[QUICK_FIELD_OF[key] ?? key] ??= message;
-  return out;
-}
-
-/** La validazione del pannello, con i nomi dei suoi campi. */
-export function readQuickCreate(input: unknown): { ok: true; value: QuickCreateInput } | { ok: false; fieldErrors: FieldErrors } {
-  const checked = validateQuickCreate(input);
-  return checked.ok ? checked : { ok: false, fieldErrors: quickFieldErrors(checked.fieldErrors) };
-}
-
-/** I limiti dei tre campi, per gli attributi `maxLength` del pannello. */
 export const QUICK_CREATE_MAX = Object.freeze({
   title: TEXT_LIMITS.title,
-  problem: QUICK_CREATE_LIMITS.problem.max,
   aiLab: QUICK_CREATE_LIMITS.aiLab.max,
 });
 

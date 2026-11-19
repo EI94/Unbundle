@@ -2,19 +2,12 @@ import Link from "next/link";
 import { StatusDot } from "@/components/uc/ui/status-dot";
 import { agentToneOf, titleAgent, type AgentPalette } from "@/lib/use-cases/agents";
 import { ANSWER_TEXT } from "@/lib/use-cases/answers";
-import { hasValueText } from "@/lib/use-cases/format";
-import { VALUE_COST_NOT_ESTIMATED_LABEL } from "@/lib/use-cases/labels";
 import { PHASE_LABEL, VALUED_PILL } from "@/lib/use-cases/phase";
 import type { ContributorUseCase } from "@/lib/use-cases/permissions";
 import { HUB_PARAM_KEYS, isContributorItem, waitingDays, waitingLabel, type AnyHubItem, type HubItem, type HubParamKey } from "@/lib/use-cases/views";
-import type { CostBandInfo } from "@/lib/use-cases/cost-bands";
-import type { ReferentStateKey } from "@/lib/use-cases/referent/use-case-state";
 import { cn } from "@/lib/utils";
 import { AgentTag } from "./agent-tag";
-import { CostFigure } from "./cost-figure";
-import { ReferentChip } from "./referent-chip";
-import { KindLabel } from "./kind-label";
-import { OriginChip, OriginDot } from "./origin-chip";
+import { OriginDot } from "./origin-chip";
 import { PhasePill } from "./phase-pill";
 import { ValueFigure } from "./value-figure";
 
@@ -27,24 +20,15 @@ import { ValueFigure } from "./value-figure";
  * qualcuno e restituisce l'indirizzo, con le chiavi nell'ordine di §4.2. Modulo senza
  * direttiva: lo usano i pezzi del server e quelli del browser (la barra dei filtri).
  *
- * Riga dei revisori (circa 56 px): codice, titolo, origine, il tipo solo se «Da diffondere»
- * (il tipo di quasi tutte è «Da costruire»: ripeterlo su ogni riga è rumore), il Valore (gli
- * euro all'anno se ci sono, altrimenti in parola) e Costo con la fonte, oppure un solo «da
- * stimare» grigio; in «Da decidere» anche il sotto-stato e i giorni di attesa. In una riga sola quando il riquadro della pagina
- * (`@container/hub` di hub.tsx) è largo almeno 58rem (da circa 1250 px di finestra, accanto alla
- * barra laterale), con il titolo largo almeno 14rem insieme al codice: se le cifre non ci stanno,
- * Valore e Costo vanno a capo dentro la riga. Più stretto (telefono, e da 768 a circa 1250 px
- * di finestra) prima riga codice, titolo e giorni, poi il
- * resto, che va a capo se non ci sta (§4.6): il costo non si accorcia mai e la sua fonte resta
- * a schermo (D5). Riga dei contributori: titolo e, se non la dice già la scheda «In
- * valutazione», la pillola della fase (con «Quando» se approvato); delle proprie proposte anche
- * il codice, «Proposto da te» e la pillola, e in «Serve info» «Rispondi» (D4, D13, D17). Un
- * clic apre il pannello laterale (`?apri=<id>`).
- *
- * (Rilascio 10, §3.4) In «Da decidere» la riga dei revisori ha cinque cose: tag e titolo, il codice piccolo, il
- * sotto-stato (puntino e parola), il Valore in parole e i giorni di attesa; l'origine è un punto con le parole per i
- * lettori di schermo. Il costo sta nel pannello, il chip del referente fuori da questa vista (anche ai contributori:
- * lo stato resta nel pannello e nella scheda, D7).
+ * (Rilascio 10, §3.4) Le righe stanno solo in «Da decidere». La riga dei revisori ha cinque cose: tag e titolo, il
+ * codice piccolo, il sotto-stato (puntino e parola), il Valore in parole e i giorni di attesa; l'origine è un punto con
+ * le parole per i lettori di schermo. In una riga sola quando il riquadro della pagina (`@container/hub` di hub.tsx) è
+ * largo almeno 58rem (da circa 1250 px di finestra, accanto alla barra laterale), con il titolo largo almeno 14rem;
+ * più stretto il titolo prende la sua riga e le altre quattro vanno sotto, a capo se non ci stanno (§4.6). Il costo
+ * sta nel pannello, il chip del referente fuori da questa vista (anche ai contributori: lo stato resta nel pannello e
+ * nella scheda, D7). Riga dei contributori: titolo e, se non la dice già la scheda «In valutazione», la pillola della
+ * fase (con «Quando» se approvato); delle proprie proposte anche il codice, «Proposto da te» e la pillola, e in «Serve
+ * info» «Rispondi» (D4, D13, D17). Un clic apre il pannello laterale (`?apri=<id>`).
  */
 
 /** I parametri della pagina come testo (solo chiavi di `HUB_PARAM_KEYS`). */
@@ -122,15 +106,9 @@ export function CodeLabel({ code, className }: { code: string | null; className?
 export interface UseCaseRowProps {
   item: AnyHubItem;
   href: string;
-  /** «Da decidere»: sotto-stato e giorni di attesa. */
-  variant?: "decide" | "plain";
   /** Oggi a Roma, per i giorni di attesa. */
   today: string;
-  /** Le fasce del costo del workspace (D15). */
-  bands?: readonly CostBandInfo[];
-  /** (Rilascio 5, §10.3) Lo stato del referente nella riga semplice; «Da decidere» non lo mostra (rilascio 10, §3.4). */
-  referentState?: ReferentStateKey | null;
-  /** (Rilascio 10) I colori degli agenti del workspace, per il tag della riga di «Da decidere». */
+  /** (Rilascio 10) I colori degli agenti del workspace, per il tag della riga. */
   agents?: AgentPalette | null;
 }
 
@@ -157,103 +135,27 @@ export const ROW_TEXT = Object.freeze({
  */
 export function othersCardNote(teamName: string): string {
   const team = teamName.replace(/\s+/g, " ").trim();
-  return (/^[aA]/.test(team) ? ROW_TEXT.othersNoteVowel : ROW_TEXT.othersNote).replace("{team}", team);
+  return (/^[aA]/.test(team) ? ROW_TEXT.othersNoteVowel : ROW_TEXT.othersNote).replace("{team}", () => team);
 }
 
-/** Una riga della lista (§4.6). Il link è tutta la riga: dentro non ci sono altri controlli. */
-export function UseCaseRow({ item, href, variant = "plain", today, bands, referentState = null, agents = null }: UseCaseRowProps) {
+/** Una riga di «Da decidere» (§4.6). Il link è tutta la riga: dentro non ci sono altri controlli. */
+export function UseCaseRow({ item, href, today, agents = null }: UseCaseRowProps) {
   if (isContributorItem(item)) return <ContributorRow item={item} href={href} />;
-  if (variant === "decide") return <DecideRow item={item} href={href} today={today} agents={agents} />;
-  return <ReviewerRow item={item} href={href} variant={variant} today={today} bands={bands} referentState={referentState} />;
+  return <DecideRow item={item} href={href} today={today} agents={agents} />;
 }
 
 const ROW_LINK =
   "group flex min-h-14 flex-col gap-1 rounded-lg px-3 py-2.5 outline-none transition-colors hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50";
 /**
  * Una riga sola sulla larghezza del riquadro (`@container/hub`), non della finestra: i revisori da
- * 58rem (codice, titolo, origine, sotto-stato, Valore e Costo con la fonte, giorni), come le
- * tre corsie della Panoramica, i contributori da 42rem (titolo e pillola).
+ * 58rem (titolo, codice, sotto-stato, giorni e Valore), come le tre corsie della Panoramica, i
+ * contributori da 42rem (titolo e pillola).
  */
 const REVIEWER_ROW_LINK = `${ROW_LINK} @min-[58rem]/hub:flex-row @min-[58rem]/hub:items-center @min-[58rem]/hub:gap-4`;
 /** Il titolo: due righe nel riquadro stretto, una con le colonne (le stesse larghezze di `REVIEWER_ROW_LINK`). */
 const TITLE_CLAMP_REVIEWER = "line-clamp-2 break-words @min-[58rem]/hub:line-clamp-1";
 const CONTRIBUTOR_ROW_LINK = `${ROW_LINK} @2xl/hub:flex-row @2xl/hub:items-center @2xl/hub:gap-4`;
 const TITLE_CLAMP_CONTRIBUTOR = "line-clamp-2 break-words @2xl/hub:line-clamp-1";
-
-/**
- * Valore e Costo nella riga (§4.6, §7.1, §7.2). Senza l'uno e senza l'altro una sola frase
- * grigia, «Valore e costo: da stimare», invece di «Valore: da stimare · Costo: da stimare» (e non
- * «da stimare» da solo, che non dice che cosa); senza uno dei due,
- * «Costo: da stimare» (o «Valore: da stimare») anche sul telefono. Il costo ha sempre la sua
- * fonte, intera: non si accorcia mai, va a capo (D5, §4.6).
- */
-export function RowFigures({ item, bands }: { item: Pick<HubItem, "value" | "cost">; bands?: readonly CostBandInfo[] }) {
-  if (!hasValueText(item.value) && !item.cost) {
-    return (
-      <span data-figure="stima" data-estimated="true" className="shrink-0 text-sm whitespace-nowrap text-muted-foreground">
-        {VALUE_COST_NOT_ESTIMATED_LABEL}
-      </span>
-    );
-  }
-  return (
-    <>
-      {/* «Valore:» e «Costo:» a ogni larghezza: la stessa riga dice sempre quale cifra è quale (H7). Se
-          la riga è stretta tutte e due vanno a capo, il Valore solo dopo «·». */}
-      <ValueFigure value={item.value} withLabel wrap />
-      <CostFigure cost={item.cost} bands={bands} withLabel className="min-w-0" />
-    </>
-  );
-}
-
-function ReviewerRow({
-  item,
-  href,
-  variant,
-  today,
-  bands,
-  referentState,
-}: {
-  item: HubItem;
-  href: string;
-  variant: "decide" | "plain";
-  today: string;
-  bands?: readonly CostBandInfo[];
-  referentState: ReferentStateKey | null;
-}) {
-  const days = variant === "decide" ? waitingLabel(waitingDays(item.waitingSince, today)) : null;
-  return (
-    <li data-slot="use-case-row" data-id={item.id}>
-      <Link href={href} scroll={false} className={REVIEWER_ROW_LINK}>
-        {/*
-          Prima riga: codice, titolo e, nel riquadro stretto, i giorni di attesa. In una riga sola almeno
-          14rem. Nel riquadro stretto il titolo va su due righe: con i prefissi di Rondine («LIBRA L1 · …»)
-          una riga sola tagliava proprio la parte che dice che cosa fa.
-        */}
-        <span className="flex min-w-0 items-baseline gap-3 @min-[58rem]/hub:min-w-56 @min-[58rem]/hub:flex-1">
-          <CodeLabel code={item.code} className="@min-[58rem]/hub:w-20" />
-          <span className={cn("min-w-0 flex-1 font-semibold text-foreground", TITLE_CLAMP_REVIEWER)}>{item.title}</span>
-          {days ? <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground @min-[58rem]/hub:hidden">{days}</span> : null}
-        </span>
-        {/*
-          Seconda riga: origine, tipo solo se «Da diffondere», sotto-stato, cifre; nel riquadro stretto va a
-          capo se non ci sta. In una riga sola si stringe accanto al titolo: Valore e Costo vanno a capo.
-        */}
-        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 @min-[58rem]/hub:flex-nowrap @min-[58rem]/hub:gap-x-3">
-          <OriginChip origin={item.origin} className="shrink-0" />
-          {item.kind === "da_diffondere" ? <KindLabel kind={item.kind} className="shrink-0" /> : null}
-          {variant === "decide" ? (
-            <span className="inline-flex shrink-0 items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium whitespace-nowrap @min-[58rem]/hub:order-last">
-              {reviewerSubStateText(item)}
-            </span>
-          ) : null}
-          <ReferentChip state={referentState} className="shrink-0 @min-[58rem]/hub:order-last" />
-          <RowFigures item={item} bands={bands} />
-          {days ? <span className="hidden shrink-0 text-xs whitespace-nowrap text-muted-foreground @min-[58rem]/hub:order-last @min-[58rem]/hub:inline @min-[58rem]/hub:w-20 @min-[58rem]/hub:text-right">{days}</span> : null}
-        </span>
-      </Link>
-    </li>
-  );
-}
 
 /**
  * (Rilascio 10, §3.4) La riga di «Da decidere»: l'origine (un punto), tag e titolo (il prefisso dell'agente resta per i

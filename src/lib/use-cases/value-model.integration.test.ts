@@ -311,7 +311,6 @@ test("HTML: editor «Benefici e costi», cifre della riga e riquadro «Ipotesi d
   const { renderToStaticMarkup } = (await import("react-dom/server")) as unknown as { renderToStaticMarkup: (element: unknown) => string };
   const { ValueModelEditor } = await import("../../components/use-cases/detail/value-model-editor.tsx");
   const { draftFromModel } = await import("../../components/use-cases/detail/value-model-draft.ts");
-  const { RowFigures } = await import("../../components/use-cases/use-case-row.tsx");
   const { ValueFigure } = await import("../../components/use-cases/value-figure.tsx");
   const { CostFigure } = await import("../../components/use-cases/cost-figure.tsx");
   const { ValueParamsSummary } = await import("../../components/use-cases/value-params-summary.tsx");
@@ -331,12 +330,16 @@ test("HTML: editor «Benefici e costi», cifre della riga e riquadro «Ipotesi d
   assert.match(empty, /Aggiungi una voce/);
   assert.doesNotMatch(empty, /Ritorno principale|Avanzate/, "senza voci solo «Aggiungi una voce»");
 
-  const figures = renderToStaticMarkup(createElement(RowFigures, { item: detail.useCase }));
+  // (Rilascio 10, §3.4) Le due cifre in riga come le scrivono la riga di «Da decidere» (il Valore) e la matrice (Valore e
+  // costo): la riga dei revisori con tutte e due non c'è più, il costo sta nel pannello.
+  const figures = renderToStaticMarkup(
+    createElement("div", null, createElement(ValueFigure, { value: detail.useCase.value, withLabel: true }), createElement(CostFigure, { cost: detail.useCase.cost, withLabel: true })),
+  );
   // Con una cifra in euro la riga scrive solo la cifra, senza la parola (rilascio «Pulizia»).
   assert.match(figures.replace(/<[^>]+>/g, ""), /Valore: 4\.043 €\/anno/);
   assert.doesNotMatch(figures, /Basso/);
-  // Nella riga stretta il Valore va a capo solo dopo «·»: la cifra resta intera.
-  assert.ok(figures.includes('<span class="whitespace-nowrap">4.043 €/anno</span>'), figures);
+  // La cifra resta intera.
+  assert.match(figures, /<span class="whitespace-nowrap[^"]*">4\.043 €\/anno<\/span>/);
   assert.match(figures.replace(/<[^>]+>/g, ""), /Costo 560 €\u00a0· costo all&#x27;anno 600 €/);
   // La cifra del modello va a capo solo dopo «·», che resta con «Costo …»: «Costo …» e «costo all'anno …» restano interi.
   for (const part of ["Costo 560 €", "costo all&#x27;anno 600 €"]) assert.ok(figures.includes(`<span class="whitespace-nowrap">${part}</span>`), part);

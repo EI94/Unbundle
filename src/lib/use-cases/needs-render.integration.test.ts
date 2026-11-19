@@ -606,10 +606,12 @@ test("Panoramica: il prossimo passo del workspace (rilascio 10, D3), lo stesso d
   const tags = [...between(shared, 'data-slot="need-agents"', `Per 2${N}use${N}case`).matchAll(/data-slot="agent-tag"[^>]*><span class="truncate">([^<]*)</g)].map((match) => match[1]);
   assert.deepEqual(tags, ["LIBRA"]);
   assert.ok(shared.indexOf('data-slot="need-agents"') < shared.indexOf(`Per 2${N}use${N}case`));
-  // Il requisito di un solo use case: nessun tag, il link dice già «LIBRA L2».
+  // Il requisito di un solo use case: nessun tag, il link dice già «LIBRA L2», dopo il codice piccolo.
   const blocked = between(target, START.blocked, "</li>");
   assert.ok(!blocked.includes('data-slot="need-agents"'), blocked);
   assert.ok(blocked.includes(`<span class="sr-only">LIBRA L2 · </span>Pagamenti ${suffix}`) && blocked.includes(">LIBRA L2</span>"), "il tag al posto del prefisso");
+  const code = blocked.indexOf(`<span class="font-mono">${startCards.b.code}</span>${N}· `);
+  assert.ok(code >= 0 && code < blocked.indexOf('data-slot="agent-tag"'), "il codice prima del tag");
   // Con un filtro il riquadro non c'è: dice tutto il workspace. Le corsie restano.
   const filtered = await hubHtml("builder", ids.wsStart, { vista: "panoramica", agente: "LIBRA" });
   assert.ok(!filtered.includes('data-slot="next-step"') && filtered.includes('data-slot="lanes"'));
@@ -782,9 +784,11 @@ test("Cosa serve con i filtri: le esigenze degli use case che passano, la ricerc
   const byTitle = await hubHtml("builder", ids.ws, { vista: "cosa-serve", q: T.kickoff, calendario: "1" });
   assert.ok(between(byTitle, 'data-slot="needs-steps"').includes(T.kickoff), "un passo senza use case, per il titolo");
   assert.ok(!byTitle.includes(T.access));
-  // La ricerca resta nel campo «Cerca», con la vista e il calendario: non è un chip.
+  // La ricerca resta nel campo «Cerca», con la vista e il calendario: non è un chip, ma «Togli tutti» la toglie.
   assert.match(byTitle, /<input type="hidden" name="calendario" value="1"\/>/);
-  assert.ok(!byTitle.includes('data-slot="filter-chips-active"'));
+  const active = /<ul data-slot="filter-chips-active"[\s\S]*?<\/ul>/.exec(byTitle)?.[0] ?? "";
+  assert.ok(!active.includes('aria-label="Togli '), active);
+  assert.match(active, /href="[^"]*\/use-cases\?vista=cosa-serve&(?:amp;)?calendario=1"[^>]*>Togli tutti<\/a>/);
 
   // Nessuno use case ha questa origine: niente da chiedere, con «Togli i filtri».
   const none = await hubHtml("builder", ids.ws, { vista: "cosa-serve", origine: "transformation" });

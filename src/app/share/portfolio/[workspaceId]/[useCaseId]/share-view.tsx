@@ -61,15 +61,15 @@ export function ShareCase({ title, phaseText, phase, subState = null, quando, lo
   );
 }
 
-/** Il link che non vale (disattivato, copiato in parte, scaduto): una frase sola, e «Accedi a Unbundle». */
-export function ShareInvalid({ expiredNote, loginHref }: { expiredNote: string | null; loginHref: string }) {
+/**
+ * Il link che non vale (disattivato, copiato in parte, scaduto): la stessa scheda per ogni motivo, una frase sola, e
+ * «Accedi a Unbundle». Chi ha il link non sa se è scaduto o se il team l'ha tolto.
+ */
+export function ShareInvalid({ loginHref }: { loginHref: string }) {
   return (
     <ShareShell>
       <h1 className="text-2xl font-semibold tracking-tight">{SHARE_PAGE_TEXT.invalidTitle}</h1>
-      <p className="text-muted-foreground">
-        {expiredNote ? `${expiredNote} ` : null}
-        {SHARE_PAGE_TEXT.invalidBody}
-      </p>
+      <p className="text-muted-foreground">{SHARE_PAGE_TEXT.invalidBody}</p>
       <Button render={<Link href={loginHref} />} nativeButton={false} className="h-12 w-full text-base">
         {SHARE_PAGE_TEXT.invalidLogin}
       </Button>
