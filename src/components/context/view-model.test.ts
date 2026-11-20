@@ -691,7 +691,8 @@ test("(rilascio 10) le viste: «processi», «fonti» e il vecchio «appunti»; 
 test("(rilascio 10) «Altro» di «Aggiungi appunti» si apre da sé solo per un errore di «Con chi» o «Link»", async () => {
   const { notesMoreOnError } = await import("./view-model.ts");
   assert.equal(notesMoreOnError({}), false);
-  assert.equal(notesMoreOnError({ body: "Scrivi gli appunti." }), false);
+  const bodyOnly: { body?: string; participants?: string; link?: string } = { body: "Scrivi gli appunti." };
+  assert.equal(notesMoreOnError(bodyOnly), false);
   assert.equal(notesMoreOnError({ link: "Il link non è valido." }), true);
   assert.equal(notesMoreOnError({ participants: "Troppo lungo." }), true);
 });
