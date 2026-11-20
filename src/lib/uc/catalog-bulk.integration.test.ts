@@ -275,6 +275,9 @@ test("Domande opens on «Da fare» and the indispensable questions: closed topic
   assert.ok(page.segments.some((s) => s.key === "tutte"));
   assert.ok(page.segments.every((s) => ["da-fare", "da-verificare", "tutte"].includes(s.key)));
   assert.equal(page.catalogSize, state.items.size);
+  // «Senza referente (N)» counts what the filter then shows.
+  const none = await loadQuestionsPage(exec!, lead, { searchParams: { referente: "nessuno" }, status, now: NOW });
+  assert.equal(page.counts.unassigned, none!.total);
   assert.equal(page.files, (await q(`SELECT count(*)::int AS n FROM uc_files WHERE case_id = $1::uuid AND deleted_at IS NULL`, [state.caseId]))[0].n);
   // A topic opens with its filter: its rows, by topic, the role only in the group.
   const first = page.topics[0];

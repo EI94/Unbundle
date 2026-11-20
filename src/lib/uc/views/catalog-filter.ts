@@ -552,16 +552,16 @@ export function questionWhereSql(caseId: string, filter: QuestionFilter, ctx: Qu
   return segment ? ucSql`${base} AND ${segment}` : base;
 }
 
-/** Stati in cui una domanda senza referente aspetta qualcuno a cui chiederla. */
-const TO_ASSIGN = statusIn(["da_chiedere", "mancante", "parziale", "bloccata"]);
-
 /**
- * Conteggi per argomento con i filtri di base (senza segmento): totale e a
- * posto per il sottotitolo del gruppo, i gruppi per i segmenti, le domande
- * senza referente e quelle fuori contratto. Una riga per argomento.
+ * Conteggi per argomento con i filtri di base (senza segmento): il totale e
+ * ogni segmento per gli argomenti chiusi e per i segmenti, quelle fuori
+ * contratto e, con la condizione stessa del filtro «Senza referente» nella
+ * vista aperta, quelle senza referente («Senza referente (137)»). Una riga per
+ * argomento.
  */
 export function questionCountsSql(caseId: string, filter: QuestionFilter, ctx: QuestionWhereContext): UcStatement {
   const verify = segmentConditionSql("da-verificare", ctx) ?? raw("false");
+  const inView = segmentConditionSql(filter.vista, ctx) ?? raw("true");
   return toStatement(ucSql`SELECT i.request_module_key AS m,
   count(*)::int AS n,
   count(*) FILTER (WHERE ${statusIn(SEGMENT_STATUSES["a-posto"])})::int AS a_posto,
@@ -569,7 +569,7 @@ export function questionCountsSql(caseId: string, filter: QuestionFilter, ctx: Q
   count(*) FILTER (WHERE ${verify})::int AS da_verificare,
   count(*) FILTER (WHERE i.status = 'in_verifica')::int AS in_verifica,
   count(*) FILTER (WHERE i.status = 'bloccata')::int AS bloccate,
-  count(*) FILTER (WHERE i.assignee_contact_id IS NULL AND i.response_type IS NOT NULL AND ${TO_ASSIGN})::int AS senza_referente,
+  count(*) FILTER (WHERE i.assignee_contact_id IS NULL AND ${inView})::int AS senza_referente,
   count(*) FILTER (WHERE i.perimeter = 'evoluzione')::int AS fuori
 FROM uc_items i
 WHERE ${questionBaseWhereSql(caseId, filter, ctx)}

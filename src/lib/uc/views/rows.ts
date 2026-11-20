@@ -280,7 +280,7 @@ export interface QuestionCounts {
   segments: Record<QuestionSegment, number>;
   /** Risposte da verificare date da chi guarda (le verifica un'altra persona): solo Lateral Space. */
   mine: number;
-  /** Domande senza referente che aspettano qualcuno a cui chiederle. */
+  /** Domande senza referente nella vista aperta: le stesse che mostra il filtro «Senza referente». */
   unassigned: number;
   /** Domande «Fuori contratto»: senza, il filtro «Contratto» non serve. */
   outOfContract: number;

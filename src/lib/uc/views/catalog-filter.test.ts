@@ -396,3 +396,14 @@ test("(release 10, §3.5) «A posto» chosen from the sheet opens «Tutte»: the
   assert.equal(questionQuery(done, PREP, segmentPatch(done, "da-fare")), "", "back to the default «Da rispondere»");
   assert.deepEqual(segmentPatch(parseQuestionFilter({ stato: "chiesta" }, "ls", PREP), "da-verificare"), { vista: "da-verificare" });
 });
+
+test("(release 10, §3.5) «Senza referente (N)» counts with the filter's own condition, in the open view", () => {
+  const counts = questionCountsSql(CASE_ID, parseQuestionFilter({}, "ls", PREP), ctxLs).text;
+  assert.match(counts, /count\(\*\) FILTER \(WHERE i\.assignee_contact_id IS NULL AND i\.status IN \('da_chiedere', 'chiesta', 'mancante', 'parziale'\)\)::int AS senza_referente/);
+  assert.doesNotMatch(counts, /response_type IS NOT NULL/);
+  const all = questionCountsSql(CASE_ID, parseQuestionFilter({ vista: "tutte" }, "ls", PREP), ctxLs).text;
+  assert.match(all, /i\.assignee_contact_id IS NULL AND true\)::int AS senza_referente/);
+  // Il filtro: la stessa condizione sulla stessa vista.
+  const filtered = toStatement(questionWhereSql(CASE_ID, parseQuestionFilter({ referente: "nessuno" }, "ls", PREP), ctxLs)).text;
+  assert.match(filtered, /i\.assignee_contact_id IS NULL[\s\S]*i\.status IN \('da_chiedere', 'chiesta', 'mancante', 'parziale'\)/);
+});
