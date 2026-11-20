@@ -93,8 +93,9 @@ test("links go to the new dossier routes; the weekly summary to the Roadmap", ()
   assert.equal(href("dato_scaduto", { item_id: ITEM }), `${base}/domande/${ITEM}`);
   assert.equal(href("dato_scaduto", { item_id: "../../x" }), `${base}/domande?vista=da-verificare`);
   assert.equal(href("blocco_sciolto"), `${base}/persone`);
-  assert.equal(href("gate_pronto"), `${base}/via`);
-  assert.equal(href("gate_approvato"), `${base}/via`);
+  // (Rilascio 10, §3.5) The via is the #via section of the Panoramica: straight there, the redirect of /via would lose the anchor.
+  assert.equal(href("gate_pronto"), `${base}#via`);
+  assert.equal(href("gate_approvato"), `${base}#via`);
   assert.equal(href("ls_lead_da_indicare"), `${base}/impostazioni`);
   assert.equal(href("owner_da_indicare"), `${base}/persone`);
   assert.equal(href("delega"), `${base}/persone`);
@@ -102,7 +103,7 @@ test("links go to the new dossier routes; the weekly summary to the Roadmap", ()
   assert.equal(bellHref({ workspaceId: WS, caseId: null, templateKey: "riepilogo_settimanale", payload: {} }), `/dashboard/${WS}/use-cases?vista=panoramica`);
   assert.equal(bellHref({ workspaceId: "altro", caseId: CASE, templateKey: "gate_pronto", payload: {} }), null);
   assert.equal(bellHref({ workspaceId: WS, caseId: "javascript:alert(1)", templateKey: "gate_pronto", payload: {} }), null);
-  assert.equal(bellHref({ workspaceId: WS.toUpperCase(), caseId: CASE.toUpperCase(), templateKey: "gate_pronto", payload: {} }), `${base}/via`);
+  assert.equal(bellHref({ workspaceId: WS.toUpperCase(), caseId: CASE.toUpperCase(), templateKey: "gate_pronto", payload: {} }), `${base}#via`);
 });
 
 test("first line: code and title of the use case, else of the dossier; nothing for the weekly summary", () => {
@@ -130,7 +131,7 @@ test("a queue row becomes a serialisable bell item with an Italian relative date
     context: "XX-0012 · Smistamento delle richieste",
     title: "Via allo sviluppo proposto",
     description: "Manca la firma del cliente.",
-    href: `/dashboard/${WS}/casi-duso/${CASE}/via`,
+    href: `/dashboard/${WS}/casi-duso/${CASE}#via`,
   });
   assert.deepEqual(JSON.parse(JSON.stringify(item)), item);
   assert.equal(toBellItem(row({ createdAt: new Date("2026-10-13T07:00:00Z") }), NOW).when, "ieri");

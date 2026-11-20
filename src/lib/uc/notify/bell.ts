@@ -152,7 +152,9 @@ export function bellHref(i: { workspaceId: string; caseId: string | null; templa
     }
     case "gate_pronto":
     case "gate_approvato":
-      return `${base}/via`;
+      // (Rilascio 10, §3.5) Il via è la sezione `#via` della Panoramica. La campanella apre con `router.push`, e un
+      // redirect letto come RSC perde l'ancora: il link porta dritto lì. I `/via` già salvati restano un 308.
+      return `${base}#via`;
     case "ls_lead_da_indicare":
       return `${base}/impostazioni`;
     case "blocco_sciolto":
