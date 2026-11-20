@@ -36,7 +36,7 @@ test("il pannello: le firme, la pausa o niente da firmare", () => {
 test("/firme è una route che risponde 308: accesso, ruolo di chi firma, poi il redirect; nessuna pagina", () => {
   assert.equal(existsSync(`${CASE_DIR}/firme/page.tsx`), false, "una pagina sotto loading.tsx risponderebbe 200 con meta refresh");
   const src = strip(readFileSync(`${CASE_DIR}/firme/route.ts`, "utf8"));
-  const order = ["requireWorkspacePage(workspaceId)", "findDossierAccess(", 'canOpenShellPage("firme", caseAccess.roles)', "notFound()", "landingSegment(caseAccess.roles)", "permanentRedirect(signaturesPanelHref("];
+  const order = ["requireWorkspacePage(workspaceId)", "findDossierAccess(", 'canOpenShellPage("firme", caseAccess.roles)', "notFound()", "landingSegment(caseAccess.roles)", "signaturesPanelHref(", "status: 308"];
   let last = -1;
   for (const needle of order) {
     const at = src.indexOf(needle);
@@ -44,6 +44,7 @@ test("/firme è una route che risponde 308: accesso, ruolo di chi firma, poi il 
     last = at;
   }
   assert.match(src, /request\.nextUrl\.searchParams/, "la query di prima resta");
+  assert.match(src, /"Cache-Control": "private, no-store"/, "un 308 che dipende da chi guarda non si ricorda");
 });
 
 test("il pannello apre da `?firma=1` solo a chi firma, rilegge le firme a ogni apertura e chiude togliendo il parametro", () => {

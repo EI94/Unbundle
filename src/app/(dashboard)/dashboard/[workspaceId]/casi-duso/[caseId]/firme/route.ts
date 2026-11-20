@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { notFound, permanentRedirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { signaturesPanelHref } from "@/components/uc/approvals/approval-texts";
 import { casePath } from "@/components/uc/catalog/paths";
 import { findDossierAccess } from "@/components/uc/shell/case-data";
@@ -14,7 +14,8 @@ import { canOpenShellPage, landingSegment } from "@/lib/uc/views/case-shell";
  * l'approvatore privacy. Chi non firma riceve 404, come prima; senza sessione si passa dal login e si torna qui.
  *
  * È una route e non una pagina: sotto `loading.tsx` una pagina parte in streaming e il redirect diventerebbe un 200 con
- * meta refresh (`loading.md`, «Status codes»); la route risponde subito 308. Legge solo l'accesso al caso.
+ * meta refresh (`loading.md`, «Status codes»); la route risponde subito 308. Legge solo l'accesso al caso. Il 308
+ * dipende da chi guarda (la pagina d'arrivo, o 404): `Cache-Control: private, no-store`, così il browser non lo ricorda.
  */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ workspaceId: string; caseId: string }> }) {
   const { workspaceId, caseId } = await params;
@@ -28,5 +29,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // «Sezione non disponibile»: la dice il guscio, alla radice della realizzazione.
     if (!(error instanceof UcAccessError)) throw error;
   }
-  permanentRedirect(signaturesPanelHref(casePath(workspaceId, caseId), landing, request.nextUrl.searchParams));
+  const location = signaturesPanelHref(casePath(workspaceId, caseId), landing, request.nextUrl.searchParams);
+  return new Response(null, { status: 308, headers: { Location: location, "Cache-Control": "private, no-store" } });
 }
