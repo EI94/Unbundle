@@ -387,3 +387,19 @@ test("(rilascio 10) il vecchio `attore` del Registro diventa il «Chi» uguale, 
   assert.equal(withoutLegacyActor(parseAuditFilter({ chi: "ls", attore: "sistema" }, false)).chi, "ls", "«Chi» vince");
   assert.equal(auditQuery(of("referente")), "?chi=referenti", "lo scaricato segue il chip");
 });
+
+test("(rilascio 10, F-116) «Scegli le date…»: l'intervallo libero va nel periodo e in «Scarica l'elenco»", () => {
+  // Il valore che scrive il filtro comune (`dateRangeValue` di FilterChips, provato in `progress/audit-log.test.ts`).
+  const value = "2026-10-01_2026-10-05";
+  assert.equal(periodValue("2026-10-01", "2026-10-05"), value, "lo stesso valore del filtro della pagina");
+  const page = parseAuditFilter({ periodo: value }, false);
+  assert.deepEqual([page.dal, page.al], ["2026-10-01", "2026-10-05"]);
+  // «Scarica l'elenco» porta lo stesso intervallo, e la route lo legge come la pagina.
+  const csv = auditQuery({ ...page, pagina: 1 });
+  assert.equal(csv, "?dal=2026-10-01&al=2026-10-05");
+  const route = parseAuditFilter(new URLSearchParams(csv.slice(1)), false);
+  assert.deepEqual([route.dal, route.al], ["2026-10-01", "2026-10-05"]);
+  const open = parseAuditFilter(new URLSearchParams("periodo=2026-10-01_"), false);
+  assert.deepEqual([open.dal, open.al], ["2026-10-01", null], "un lato vuoto: nessun limite");
+  assert.ok(periodOptions("2026-11-20", page).some((o) => o.value === value && o.label === "dal 1 ott al 5 ott"), "il chip lo dice");
+});

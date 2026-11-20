@@ -73,7 +73,13 @@ export default async function ActivityPage({
             {(page.total > 0 || bars.length > 0) && <ActivityCsvLink href={csvHref} />}
           </div>
           {clientView && <p className="max-w-2xl text-sm text-muted-foreground">Le azioni dei referenti non compaiono: vedi solo quante risposte arrivano ogni giorno.</p>}
-          <FilterChips basePath={basePath} query={query} fields={fields} />
+          <FilterChips
+            basePath={basePath}
+            query={query}
+            fields={fields}
+            // (F-116) Oltre ai periodi pronti, l'intervallo libero di prima: «Scegli le date…» scrive `periodo=AAAA-MM-GG_AAAA-MM-GG`.
+            dateRange={{ field: PERIOD_PARAM, choose: "Scegli le date…", fromLabel: "Dal", toLabel: "Al", from: filter.dal, to: filter.al }}
+          />
         </div>
 
         {clientView && page.daily && (

@@ -1,5 +1,7 @@
 import test, { before } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { parsePeriod, periodValue } from "../../../lib/uc/views/activity-period.ts";
 import { enableTsxImports } from "../../use-cases/detail/referent/tsx-test-loader.ts";
 import type { ActivityDay } from "../../../lib/uc/views/audit.ts";
 
@@ -33,4 +35,18 @@ test("chi non la apre legge il titolo; accorciato, quello intero sta nel «title
   assert.ok(html.includes(`title="${full}"`), "il titolo intero nel «title»");
   assert.match(html, /<span class="sr-only">«Quanti preventivi[^<]*commerciale di zona»<\/span>/);
   assert.match(html, /<span aria-hidden="true">«Quanti preventivi[^<]*del…»<\/span>/);
+});
+
+test("(F-116) «Scegli le date…» scrive l'intervallo nel periodo, nello stesso formato della pagina", async () => {
+  const { dateRangeValue } = await import("../../ui-10/filter-chips.tsx");
+  assert.equal(dateRangeValue("2026-10-01", "2026-10-05"), "2026-10-01_2026-10-05");
+  assert.equal(dateRangeValue("2026-10-01", "2026-10-05"), periodValue("2026-10-01", "2026-10-05"));
+  assert.deepEqual(parsePeriod(dateRangeValue("", "2026-10-05")), { dal: null, al: "2026-10-05" });
+  assert.equal(dateRangeValue("", ""), "", "senza date nessun parametro");
+  const sheet = readFileSync(new URL("../../ui-10/filter-chips.tsx", import.meta.url), "utf8");
+  assert.match(sheet, /<input type="hidden" name=\{dateRange\.field\} value=\{dateRangeValue\(dates\.from, dates\.to\)\} \/>/);
+  assert.match(sheet, /querySelector\(`select\[name="\$\{dateRange\.field\}"\]`\)/, "con le date la scelta del campo non parte");
+  const page = readFileSync(new URL("../../../app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/attivita/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /dateRange=\{\{ field: PERIOD_PARAM, choose: "Scegli le date…", fromLabel: "Dal", toLabel: "Al", from: filter\.dal, to: filter\.al \}\}/);
+  assert.match(page, /auditQuery\(\{ \.\.\.filter, pagina: 1 \}\)/, "«Scarica l'elenco» con lo stesso filtro");
 });
