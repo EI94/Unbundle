@@ -57,9 +57,6 @@
     "palette": 10,
     "dark": 1
   },
-  "src/components/ai-readiness/open-survey-start-form.tsx": {
-    "palette": 2
-  },
   "src/components/ai-readiness/question-editor.tsx": {
     "palette": 5,
     "fadedText": 2
@@ -68,14 +65,8 @@
     "palette": 19,
     "dark": 1
   },
-  "src/components/ai-readiness/respondent-survey-form.tsx": {
-    "palette": 16
-  },
   "src/components/ai-readiness/threshold-form.tsx": {
     "palette": 1
-  },
-  "src/components/ai-readiness/use-case-expert-form.tsx": {
-    "palette": 6
   },
   "src/components/ai-readiness/use-case-promote-button.tsx": {
     "palette": 1

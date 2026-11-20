@@ -7,11 +7,19 @@ import {
   type AiReadinessActionState,
 } from "@/lib/actions/ai-readiness";
 import { validateOpenSurveyStartFields } from "@/lib/ai-readiness/form-validation";
+import { SURVEY_TEXT } from "@/lib/public/survey";
+import { cn } from "@/lib/utils";
+import { PUBLIC_FIELD, PUBLIC_LABEL, PUBLIC_PRIMARY } from "@/components/public/classes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 const INITIAL: AiReadinessActionState<{ personalUrl: string }> = { ok: true };
+
+const S = SURVEY_TEXT.start;
+
+/** Il valore dell'elenco per «Un'altra area»: allora l'area si scrive nel campo sotto. */
+export const OTHER_AREA = "__altra__";
 
 function storageKey(openToken: string) {
   return `unbundle-air-open:${openToken.slice(-16)}`;
@@ -26,6 +34,12 @@ function readExistingUrl(openToken: string): string | null {
   }
 }
 
+/**
+ * L'avvio del questionario dal link aperto (`/s/<token>`). (Rilascio 10, ondata 4, PROPOSTA-10 §3.11) «La tua area» da un
+ * elenco, con «Un'altra area» da scrivere; niente email facoltativa (D12: il questionario è anonimo e a quell'indirizzo
+ * non arrivava niente; il server accetta l'avvio senza, come prima). «Inizia» a tutta larghezza, alto 48 px; da un
+ * dispositivo che l'ha già iniziato il pieno è «Riprendi da dove eri» e l'avvio diventa bordato. Campi a 16 px.
+ */
 export function OpenSurveyStartForm({
   openToken,
   named,
@@ -38,6 +52,7 @@ export function OpenSurveyStartForm({
   const [state, formAction, pending] = useActionState(action, INITIAL);
   const [existingUrl, setExistingUrl] = useState<string | null>(null);
   const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
+  const [area, setArea] = useState("");
 
   function clearLocalError(name: string) {
     setLocalErrors((current) => {
@@ -66,27 +81,23 @@ export function OpenSurveyStartForm({
     }
   }, [state, router, openToken]);
 
+  const errorOf = (name: string) => localErrors[name] || state.fieldErrors?.[name];
+  const areaError = errorOf("organizationUnit");
+
   return (
-    <div className="space-y-4">
+    <div className="mt-6 space-y-5">
       {existingUrl && (
-        <div
-          className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-sm"
-          data-testid="open-resume-banner"
-        >
-          <p className="font-medium">Hai già iniziato questo questionario da questo dispositivo.</p>
-          <Button
-            className="mt-3"
-            type="button"
-            onClick={() => router.push(existingUrl)}
-          >
-            Riprendi da dove eri
+        <div className="rounded-xl bg-card p-4 ring-1 ring-foreground/10" data-testid="open-resume-banner">
+          <p className="font-medium">{S.resume}</p>
+          <Button className={cn("mt-3", PUBLIC_PRIMARY)} type="button" onClick={() => router.push(existingUrl)}>
+            {S.resumeButton}
           </Button>
         </div>
       )}
 
       <form
         action={formAction}
-        className="space-y-4 rounded-[28px] border bg-card p-6"
+        className="space-y-5"
         noValidate
         onSubmit={(event) => {
           const data = new FormData(event.currentTarget);
@@ -102,70 +113,88 @@ export function OpenSurveyStartForm({
           }
         }}
       >
-        <h2 className="text-lg font-semibold">Inizia il questionario</h2>
         {named && (
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="firstName">Nome <span className="text-destructive">*</span></Label>
-              <Input
-                id="firstName"
-                name="firstName"
-                autoComplete="given-name"
-                placeholder="Es. Maria"
-                aria-invalid={Boolean(localErrors.firstName || state.fieldErrors?.firstName)}
-                onChange={() => clearLocalError("firstName")}
-              />
-              {(localErrors.firstName || state.fieldErrors?.firstName) && (
-                <p className="text-xs text-destructive">
-                  {localErrors.firstName || state.fieldErrors?.firstName}
-                </p>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="lastName">Cognome <span className="text-destructive">*</span></Label>
-              <Input
-                id="lastName"
-                name="lastName"
-                autoComplete="family-name"
-                placeholder="Es. Bianchi"
-                aria-invalid={Boolean(localErrors.lastName || state.fieldErrors?.lastName)}
-                onChange={() => clearLocalError("lastName")}
-              />
-              {(localErrors.lastName || state.fieldErrors?.lastName) && (
-                <p className="text-xs text-destructive">
-                  {localErrors.lastName || state.fieldErrors?.lastName}
-                </p>
-              )}
-            </div>
+            {(["firstName", "lastName"] as const).map((name) => (
+              <div key={name} className="space-y-1.5">
+                <Label htmlFor={name} className={PUBLIC_LABEL}>
+                  {S[name]}
+                </Label>
+                <Input
+                  id={name}
+                  name={name}
+                  className={PUBLIC_FIELD}
+                  autoComplete={name === "firstName" ? "given-name" : "family-name"}
+                  aria-invalid={Boolean(errorOf(name))}
+                  aria-describedby={errorOf(name) ? `${name}-errore` : undefined}
+                  onChange={() => clearLocalError(name)}
+                />
+                {errorOf(name) && (
+                  <p id={`${name}-errore`} className="text-sm text-destructive">
+                    {errorOf(name)}
+                  </p>
+                )}
+              </div>
+            ))}
           </div>
         )}
         <div className="space-y-1.5">
-          <Label htmlFor="organizationUnit">Area / team <span className="text-destructive">*</span></Label>
-          <Input
+          <Label htmlFor="organizationUnit" className={PUBLIC_LABEL}>
+            {S.area}
+          </Label>
+          <select
             id="organizationUnit"
-            name="organizationUnit"
-            placeholder="Es. Operations, Vendite, IT..."
-            aria-invalid={Boolean(
-              localErrors.organizationUnit || state.fieldErrors?.organizationUnit
-            )}
-            onChange={() => clearLocalError("organizationUnit")}
-          />
-          <p className="text-xs text-muted-foreground">Serve solo per aggregare i risultati per area.</p>
-          {(localErrors.organizationUnit || state.fieldErrors?.organizationUnit) && (
-            <p className="text-xs text-destructive">
-              {localErrors.organizationUnit || state.fieldErrors?.organizationUnit}
+            // Con «Un'altra area» il valore è quello scritto nel campo sotto, che porta lo stesso nome.
+            name={area === OTHER_AREA ? undefined : "organizationUnit"}
+            value={area}
+            onChange={(event) => {
+              setArea(event.target.value);
+              clearLocalError("organizationUnit");
+            }}
+            aria-invalid={Boolean(areaError && area !== OTHER_AREA)}
+            aria-describedby={areaError && area !== OTHER_AREA ? "organizationUnit-aiuto organizationUnit-errore" : "organizationUnit-aiuto"}
+            className="h-11 w-full min-w-0 rounded-lg border border-input bg-background px-3 text-base text-foreground aria-invalid:border-destructive"
+          >
+            <option value="">{S.areaChoose}</option>
+            {SURVEY_TEXT.areas.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+            <option value={OTHER_AREA}>{S.areaOther}</option>
+          </select>
+          {area === OTHER_AREA && (
+            <div className="space-y-1.5 pt-2">
+              <Label htmlFor="organizationUnitOther" className={PUBLIC_LABEL}>
+                {S.areaOtherLabel}
+              </Label>
+              <Input
+                id="organizationUnitOther"
+                name="organizationUnit"
+                className={PUBLIC_FIELD}
+                autoFocus
+                aria-invalid={Boolean(areaError)}
+                aria-describedby={areaError ? "organizationUnit-errore" : undefined}
+                onChange={() => clearLocalError("organizationUnit")}
+              />
+            </div>
+          )}
+          <p id="organizationUnit-aiuto" className="text-sm text-muted-foreground">
+            {S.areaHint}
+          </p>
+          {areaError && (
+            <p id="organizationUnit-errore" className="text-sm text-destructive">
+              {areaError}
             </p>
           )}
         </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="email">Email (opzionale)</Label>
-          <Input id="email" name="email" type="email" placeholder="Se vuoi che ti ricontattiamo sui risultati" />
-        </div>
         {!state.ok && state.message && (
-          <p className="text-sm text-destructive" role="alert">{state.message}</p>
+          <p className="text-destructive" role="alert">
+            {state.message}
+          </p>
         )}
-        <Button type="submit" size="lg" disabled={pending} data-testid="open-start-btn">
-          {pending ? "Preparo il tuo questionario…" : "Inizia →"}
+        <Button type="submit" className={PUBLIC_PRIMARY} variant={existingUrl ? "outline" : "default"} disabled={pending} data-testid="open-start-btn">
+          {pending ? S.starting : existingUrl ? S.restart : S.start}
         </Button>
       </form>
     </div>

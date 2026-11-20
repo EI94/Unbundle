@@ -11,11 +11,26 @@ import {
   validateUseCaseValues,
   type UseCaseField,
 } from "@/lib/ai-readiness/use-case-form";
+import { SURVEY_TEXT, expertCount, expertDone } from "@/lib/public/survey";
+import { PUBLIC_TEXT } from "@/lib/public/text";
+import { cn } from "@/lib/utils";
+import { PUBLIC_FIELD, PUBLIC_LABEL, PUBLIC_LINK, PUBLIC_PRIMARY } from "@/components/public/classes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { CheckCircle2, ListChecks, Plus } from "lucide-react";
+
+/**
+ * La raccolta dei casi d'uso dal link personale (`/a/<token>`, percorso «esperto»): uno alla volta, quanti se ne vuole.
+ *
+ * (Rilascio 10, ondata 4, PROPOSTA-10 §3.11, audit Fuori §3.8 AR-15…17) Prima del primo caso il pieno è «Invia questo caso
+ * d'uso»; dopo, il pieno è «Ho finito» (in cima, con il conto) e «Aggiungi un altro caso d'uso» diventa bordato. Accanto
+ * all'invio una riga con il link a «Come usiamo le tue risposte»: chi chiude registra la presa visione (come prima, sul
+ * server). La bozza resta sul dispositivo. Etichette a 14 px scure, campi a 16 px e 44 px, niente occhielli maiuscoli.
+ */
+
+const E = SURVEY_TEXT.expert;
 
 const SUBMIT_INITIAL: AiReadinessActionState<{ savedCount: number }> = { ok: true };
 const FINISH_INITIAL: AiReadinessActionState<{ completed: true }> = { ok: true };
@@ -31,30 +46,36 @@ function FieldControl({
   field: UseCaseField;
   error?: string;
 }) {
+  const id = `uc-${field.id}`;
+  const helpId = field.help ? `${id}-aiuto` : null;
+  const errorId = error ? `${id}-errore` : null;
   const common = {
     name: field.id,
-    id: `uc-${field.id}`,
+    id,
     placeholder: field.placeholder,
     "aria-invalid": error ? true : undefined,
+    "aria-describedby": [helpId, errorId].filter(Boolean).join(" ") || undefined,
   } as const;
   return (
     <div className="space-y-1.5">
-      <Label htmlFor={`uc-${field.id}`} className="text-sm leading-5">
+      <Label htmlFor={id} className={PUBLIC_LABEL}>
         {field.label}
         {field.required ? <span className="text-destructive"> *</span> : null}
       </Label>
       {field.help && (
-        <p className="text-xs leading-5 text-muted-foreground">{field.help}</p>
+        <p id={helpId ?? undefined} className="text-sm text-muted-foreground">
+          {field.help}
+        </p>
       )}
       {field.type === "textarea" ? (
-        <Textarea rows={3} {...common} />
+        <Textarea rows={3} className="text-base md:text-base" {...common} />
       ) : field.type === "select" ? (
         <select
           {...common}
           defaultValue=""
-          className="h-9 w-full rounded-lg border border-input bg-background px-2 text-sm"
+          className="h-11 w-full min-w-0 rounded-lg border border-input bg-background px-3 text-base text-foreground"
         >
-          <option value="">Seleziona...</option>
+          <option value="">{E.choose}</option>
           {field.options?.map((option) => (
             <option key={option} value={option}>
               {option}
@@ -62,9 +83,13 @@ function FieldControl({
           ))}
         </select>
       ) : (
-        <Input type={field.type === "number" ? "number" : "text"} min={0} {...common} />
+        <Input type={field.type === "number" ? "number" : "text"} min={0} className={PUBLIC_FIELD} {...common} />
       )}
-      {error && <p className="text-xs text-destructive">{error}</p>}
+      {error && (
+        <p id={errorId ?? undefined} className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -73,10 +98,13 @@ export function UseCaseExpertForm({
   token,
   initialCount,
   fieldIds,
+  noticeHref,
 }: {
   token: string;
   initialCount: number;
   fieldIds?: string[] | null;
+  /** L'informativa unica, «Come usiamo le tue risposte». */
+  noticeHref: string;
 }) {
   const submitAction = submitUseCaseExpertCaseAction.bind(null, token);
   const finishAction = finishUseCaseExpertAction.bind(null, token);
@@ -130,7 +158,7 @@ export function UseCaseExpertForm({
   }, [token]);
 
   // Caso salvato con successo: resetta il form per il prossimo, pulisci draft.
-  // Solo side-effect sul DOM (nessun setState) → un effect e appropriato.
+  // Solo side-effect sul DOM (nessun setState) → un effect è appropriato.
   useEffect(() => {
     if (submitState.ok && submitState.data?.savedCount != null) {
       formRef.current?.reset();
@@ -143,51 +171,34 @@ export function UseCaseExpertForm({
 
   if (finished) {
     return (
-      <div className="rounded-[32px] border bg-card p-8 text-center">
-        <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600">
-          <CheckCircle2 className="size-6" />
-        </div>
-        <h1 className="text-2xl font-semibold">Grazie!</h1>
-        <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
-          Hai inviato {savedCount}{" "}
-          {savedCount === 1 ? "caso" : "casi"}. Il team li esaminerà e li
-          trasformerà in ipotesi concrete su dove l&apos;AI può aiutare.
-        </p>
-      </div>
+      <section role="status" className="mt-6 rounded-xl bg-card p-5 ring-1 ring-foreground/10 sm:p-6" data-testid="usecase-done">
+        <CheckCircle2 aria-hidden className="size-6 text-primary" />
+        <h2 className="mt-3 text-xl font-semibold">{E.doneTitle}</h2>
+        <p className="mt-2 text-muted-foreground">{expertDone(savedCount)}</p>
+      </section>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div
-        className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card p-4"
-        data-testid="usecase-counter"
-      >
-        <div className="flex items-center gap-2 text-sm">
-          <ListChecks className="size-4 text-emerald-600" />
-          <span className="font-medium">
-            {savedCount === 0
-              ? "Nessun caso inviato finora"
-              : `${savedCount} ${savedCount === 1 ? "caso inviato" : "casi inviati"}`}
-          </span>
-        </div>
-        {savedCount > 0 && (
+    <div className="mt-6 space-y-8">
+      {/* Lo zero non si vede: il conto e «Ho finito» arrivano con il primo caso. */}
+      {savedCount > 0 && (
+        <div className="space-y-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10" data-testid="usecase-counter">
+          <p className="flex items-center gap-2 font-medium">
+            <ListChecks aria-hidden className="size-4 text-primary" />
+            {expertCount(savedCount)}
+          </p>
+          {justSaved && (
+            <p role="status" className="text-muted-foreground" data-testid="usecase-saved">
+              {E.saved}
+            </p>
+          )}
           <form action={finishFormAction}>
-            <Button type="submit" variant="outline" size="sm" disabled={finishPending}>
-              {finishPending ? "Chiudo..." : "Ho finito"}
+            <Button type="submit" className={PUBLIC_PRIMARY} disabled={finishPending} data-testid="usecase-finish">
+              {finishPending ? E.finishing : E.finish}
             </Button>
           </form>
-        )}
-      </div>
-
-      {justSaved && submitState.message && (
-        <p
-          className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-sm"
-          role="status"
-          data-testid="usecase-saved"
-        >
-          {submitState.message}
-        </p>
+        </div>
       )}
 
       <form
@@ -227,50 +238,50 @@ export function UseCaseExpertForm({
             .querySelector<HTMLElement>(`[name="${CSS.escape(first)}"]`)
             ?.scrollIntoView({ behavior: "smooth", block: "center" });
         }}
-        className="space-y-6"
+        className="space-y-8"
       >
         {visibleBlocks.map((block) => (
-          <section key={block.id} className="rounded-[32px] border bg-card p-6">
-            <div className="text-xs uppercase tracking-[0.22em] text-emerald-600">
-              {block.title}
+          <section key={block.id} className="space-y-5">
+            <div>
+              <h2 className="text-xl font-semibold">{block.title}</h2>
+              <p className="mt-1 text-muted-foreground">{block.subtitle}</p>
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">{block.subtitle}</p>
-            <div className="mt-5 space-y-5">
-              {block.fields.map((field) => (
-                <FieldControl
-                  key={field.id}
-                  field={field}
-                  error={localErrors[field.id] || submitState.fieldErrors?.[field.id]}
-                />
-              ))}
-            </div>
+            {block.fields.map((field) => (
+              <FieldControl
+                key={field.id}
+                field={field}
+                error={localErrors[field.id] || submitState.fieldErrors?.[field.id]}
+              />
+            ))}
           </section>
         ))}
 
-        {Object.keys(localErrors).length > 0 && (
-          <p className="rounded-2xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive" role="alert">
-            Completa i campi evidenziati prima di salvare il caso.
-          </p>
-        )}
+        <div className="space-y-4">
+          {Object.keys(localErrors).length > 0 && (
+            <p className="rounded-xl bg-destructive/10 px-4 py-3 text-destructive" role="alert">
+              {E.missing}
+            </p>
+          )}
 
-        {!submitState.ok && submitState.message && (
-          <p className="text-sm text-destructive" role="alert">
-            {submitState.message}
-          </p>
-        )}
+          {!submitState.ok && submitState.message && (
+            <p className="text-destructive" role="alert">
+              {submitState.message}
+            </p>
+          )}
 
-        <div className="flex flex-wrap items-center gap-3">
-          <Button type="submit" size="lg" disabled={submitPending} data-testid="usecase-submit">
-            <Plus className="mr-1 size-4" />
-            {submitPending
-              ? "Salvo il caso..."
-              : savedCount > 0
-                ? "Aggiungi questo caso"
-                : "Invia questo caso"}
+          <p className="text-muted-foreground" data-testid="usecase-acknowledge">
+            {E.acknowledge}{" "}
+            <a href={noticeHref} className={cn(PUBLIC_LINK, "text-foreground")}>
+              {PUBLIC_TEXT.notice}
+            </a>
+            .
+          </p>
+          {/* Un solo pieno: prima del primo caso è questo; dopo è «Ho finito», e questo diventa bordato. */}
+          <Button type="submit" variant={savedCount > 0 ? "outline" : "default"} className={PUBLIC_PRIMARY} disabled={submitPending} data-testid="usecase-submit">
+            <Plus aria-hidden className="size-4" />
+            {submitPending ? E.sending : savedCount > 0 ? E.add : E.send}
           </Button>
-          <span className="text-xs text-muted-foreground">
-            Puoi inviare quanti casi vuoi: uno alla volta.
-          </span>
+          <p className="text-sm text-muted-foreground">{E.oneAtATime}</p>
         </div>
       </form>
     </div>
