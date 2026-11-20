@@ -592,7 +592,6 @@ export function preflight(scope: BoardScope): UcStatement[] {
   return [storeProbe(), toStatement(ucSql`SELECT d.id FROM departments d WHERE d.id = ${U(scope.departmentId)} AND d.workspace_id = ${U(scope.workspaceId)}`)];
 }
 
-/** Il nome di un'unità del workspace: la cornice della board che si apre lo mostra prima che arrivi la board. */
 /**
  * (Rilascio 10, §3.7, F-160) «Aggiungi un'unità», in un batch di due istruzioni. Prima il lucchetto del workspace: due
  * aggiunte insieme passano una alla volta, e la seconda vede la prima (senza un indice unico sul nome, che sarebbe una
@@ -601,7 +600,7 @@ export function preflight(scope: BoardScope): UcStatement[] {
  * perché no (`same`, il nome c'è già; altrimenti il workspace è pieno).
  */
 export function unitAddLock(workspaceId: string): UcStatement {
-  return toStatement(ucSql`SELECT pg_advisory_xact_lock(hashtext('mappatura-unita:' || ${cast(workspaceId, "text")})) IS NULL AS locked`);
+  return toStatement(ucSql`SELECT pg_advisory_xact_lock(hashtext('mappatura-unita:' || lower(${cast(workspaceId, "text")}))) IS NULL AS locked`);
 }
 
 export function unitAdd(workspaceId: string, name: string): UcStatement {
@@ -616,6 +615,7 @@ export function unitAdd(workspaceId: string, name: string): UcStatement {
 SELECT (SELECT made.id FROM made) AS id, w.same, w.units FROM w`);
 }
 
+/** Il nome di un'unità del workspace: la cornice della board che si apre lo mostra prima che arrivi la board. */
 export function unitNameRead(scope: BoardScope): UcStatement {
   return toStatement(ucSql`SELECT d.name FROM departments d WHERE d.id = ${U(scope.departmentId)} AND d.workspace_id = ${U(scope.workspaceId)}`);
 }

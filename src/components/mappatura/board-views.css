@@ -219,4 +219,11 @@
      «⋯») ci sono 22 px, così le aree si toccano senza sovrapporsi: «Sposta su», «Sposta giù» ed «Elimina il processo»
      non si prendono per sbaglio. */
   [data-board-root] .b-board .b-row-ctl { gap: 22px; margin-top: 18px; }
+  /* Lo stesso per «Segna validata» e «Togli» di una nota: 22 px tra i due, così toccare il primo non cancella la nota. */
+  [data-board-root] .b-board .b-note-ctl, [data-board-root] .b-drawer .b-note-ctl { gap: 22px; }
+  /* Le voci del «⋯» della testata e il percorso «Contesto › Processi»: anche loro 44 px al tocco. */
+  [data-board-root] .b-menu-item { min-height: 44px; }
+  [data-board-root] .b-path a { display: inline-flex; align-items: center; min-height: 44px; }
+  /* Sotto il chi del processo, il «⋯» non arriva nel campo sopra. */
+  [data-board-root] .b-board .b-pm-lab .b-pm-extra { margin-top: 8px; }
 }

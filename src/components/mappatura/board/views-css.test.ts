@@ -79,6 +79,10 @@ test("sul tocco niente trascinamento; i controlli che compaiono al passaggio si 
   const ownGap = Number(board.find((rule) => rule.at === null && rule.selector === "[data-board-root] .b-pm-lab .b-pm-extra")?.declarations.get("gap")?.replace("px", ""));
   assert.equal(ownGap + 18, 22, "sotto il «⋯» 22 px in tutto");
   assert.equal(views.find((rule) => rule.at === null && rule.selector === "[data-board-root] .b-row-ctl button")?.declarations.get("width"), "22px");
+  // (Rilascio 10, revisione) Anche «Segna validata» e «Togli» di una nota: 22 px tra i due, così le aree non si toccano.
+  assert.ok(touch.some((rule) => rule.selector.includes(".b-board .b-note-ctl") && rule.selector.includes(".b-drawer .b-note-ctl") && !rule.selector.includes("button") && rule.declarations.get("gap") === "22px"));
+  assert.equal(declared(".b-menu-item")?.get("min-height"), "44px", "le voci del «⋯» della testata");
+  assert.equal(declared(".b-path a")?.get("min-height"), "44px", "il percorso della testata");
   assert.ok(touch.some((rule) => rule.selector.includes(".b-board .b-textin") && rule.declarations.get("font-size") === "16px"), "i campi a 16 px");
 });
 
