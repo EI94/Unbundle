@@ -1,36 +1,93 @@
-import Link from "next/link";
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { CliLoginConfirm } from "@/components/cli/cli-login-confirm";
+import { PUBLIC_FIELD, PUBLIC_LABEL, PUBLIC_PRIMARY } from "@/components/public/classes";
+import { PublicFooterLine, PublicLink, PublicShell } from "@/components/public/public-shell";
+import { PublicCard, PublicCardText } from "@/components/public/state-card";
+import { Button } from "@/components/ui/button";
 import { auth } from "@/lib/auth";
 import { loginPathForMissingSession, SESSION_COOKIE_NAME } from "@/lib/auth/session-signal";
 import { ensureDbSchema } from "@/lib/db/ensure-schema";
 import { cliCaseWorkspaceIds, cliStoreReady, findCliLogin } from "@/lib/db/queries/use-case-cli-auth";
 import { getWorkspaceGroupsForUser } from "@/lib/db/queries/workspaces";
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
+import { accountHref } from "@/lib/shell/account";
 import { normalizeUserCode } from "@/lib/use-cases/cli/codes";
-import { cliWorkspaceChoices } from "@/lib/use-cases/cli/workspace-choices";
+import { cliWorkspaceChoices, type CliWorkspaceChoice } from "@/lib/use-cases/cli/workspace-choices";
+import { CLI_PAGE_TEXT } from "./text";
 
 /**
  * «Collega questa CLI» (rilascio 8.0b, RILASCIO-8.0b-COSTRUZIONE.md §3): la persona, con l'accesso fatto, conferma
  * il codice che vede nel terminale e sceglie il workspace. Il token lo ritira la CLI, mai questa pagina. Il testo
  * dice di confermare solo un codice che si è chiesto: è la difesa contro chi manda un link con un suo codice. I
  * workspace proposti sono solo quelli dove la persona è nel team di un caso (`cliWorkspaceChoices`).
+ *
+ * (Rilascio 10, ondata 4, docs/ui-10/PROPOSTA-10.md §3.11) Il guscio unico delle pagine pubbliche, chiaro, il marchio non
+ * cliccabile: in fondo un link a «Il tuo account › Claude e terminale» e uno all'Agent Factory, del workspace che la
+ * pagina propone per primo (senza, l'elenco dei workspace); con un codice sbagliato, non trovato o scaduto, il campo per
+ * riscriverlo. I testi stanno in `./text.ts`.
  */
 export const metadata: Metadata = {
-  title: "Collega la CLI",
+  title: CLI_PAGE_TEXT.metaTitle,
   robots: { index: false, follow: false, nocache: true },
 };
 
-const DONE: Record<string, { title: string; body: string }> = {
-  scaduto: { title: "Il codice è scaduto", body: "I codici valgono 10 minuti. Nel terminale rifai «unbundle login»." },
-  confermato: { title: "Già confermato", body: "Questo codice è già stato confermato: torna al terminale." },
-  consegnato: { title: "Già usato", body: "Questo codice è già stato usato. Se non l'hai usato tu, revoca il collegamento da «Il tuo account › Claude e terminale»." },
-  negato: { title: "Codice annullato", body: "Hai detto «Non l'ho chiesto io»: nessuna CLI è stata collegata." },
-};
+const T = CLI_PAGE_TEXT;
+
+/** I due link in fondo: il workspace proposto per primo; senza, l'elenco dei workspace e niente Agent Factory. */
+function LinksFooter({ workspaceId }: { workspaceId: string | null }) {
+  return (
+    <PublicFooterLine className="flex flex-wrap gap-x-5">
+      <PublicLink href={workspaceId ? accountHref(workspaceId, "claude") : "/dashboard"}>{workspaceId ? T.account : T.workspaces}</PublicLink>
+      {workspaceId ? <PublicLink href={`/dashboard/${workspaceId}/agent-factory`}>{T.factory}</PublicLink> : null}
+    </PublicFooterLine>
+  );
+}
+
+/** Il campo del codice: all'inizio, e per riscriverlo dopo un codice sbagliato, non trovato o scaduto. */
+function CodeForm({ error, label = T.continue }: { error?: string | null; label?: string }) {
+  return (
+    <form method="get" className="mt-5 space-y-3" data-testid="cli-code-form">
+      <div className="space-y-1.5">
+        <label htmlFor="codice" className={PUBLIC_LABEL}>
+          {T.codeLabel}
+        </label>
+        <input
+          id="codice"
+          name="codice"
+          autoComplete="off"
+          autoCapitalize="characters"
+          placeholder={T.codePlaceholder}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? "codice-errore" : undefined}
+          className={`${PUBLIC_FIELD} w-full rounded-lg border border-input bg-background px-3 font-mono tracking-widest uppercase`}
+        />
+      </div>
+      {error ? (
+        <p id="codice-errore" className="text-destructive">
+          {error}
+        </p>
+      ) : null}
+      <Button type="submit" className={PUBLIC_PRIMARY}>
+        {label}
+      </Button>
+    </form>
+  );
+}
+
+/** I workspace della scelta: dove la persona è nel team di un caso. Senza il registro della CLI, nessuno. */
+async function workspaceChoices(userId: string): Promise<CliWorkspaceChoice[]> {
+  const executor = await getAppUcExecutor();
+  if (!(await cliStoreReady(executor))) return [];
+  const [groups, caseWorkspaces] = await Promise.all([getWorkspaceGroupsForUser(userId), cliCaseWorkspaceIds(executor, userId)]);
+  return cliWorkspaceChoices(
+    groups.flatMap((g) =>
+      g.workspaces.map((w) => ({ id: w.workspace.id, name: w.workspace.name, organization: g.organization.name, createdAt: w.workspace.createdAt, accessRole: w.accessRole })),
+    ),
+    caseWorkspaces,
+  );
+}
 
 export default async function CliConnectPage({ searchParams }: { searchParams: Promise<{ codice?: string }> }) {
   const { codice } = await searchParams;
@@ -39,85 +96,59 @@ export default async function CliConnectPage({ searchParams }: { searchParams: P
   const [session, cookieStore] = await Promise.all([auth(), cookies()]);
   if (!session?.user?.id) redirect(loginPathForMissingSession({ hadCookie: cookieStore.has(SESSION_COOKIE_NAME), callbackPath: callback }));
 
+  await ensureDbSchema();
+  const workspaces = await workspaceChoices(session.user.id);
+  const footer = <LinksFooter workspaceId={workspaces[0]?.id ?? null} />;
+
   if (!userCode) {
     return (
-      <Shell>
-        <h1 className="text-2xl font-semibold tracking-tight">Collega la CLI</h1>
-        <p className="text-sm text-muted-foreground">Scrivi il codice che vedi nel terminale dopo «unbundle login».</p>
-        <form method="get" className="flex flex-col gap-2 sm:flex-row">
-          <label htmlFor="codice" className="sr-only">
-            Codice
-          </label>
-          <input
-            id="codice"
-            name="codice"
-            autoComplete="off"
-            autoCapitalize="characters"
-            placeholder="BCDF-GHJK"
-            className="h-11 flex-1 rounded-md border border-input bg-background px-3 font-mono text-base tracking-widest uppercase sm:h-9 sm:text-sm"
-          />
-          <Button type="submit" className="h-11 sm:h-9">
-            Continua
-          </Button>
-        </form>
-        {codice ? <p className="text-sm text-destructive">Il codice non è valido: sono otto lettere, come BCDF-GHJK.</p> : null}
-      </Shell>
+      <PublicShell footer={footer}>
+        <PublicCard title={T.title}>
+          <PublicCardText>{T.ask}</PublicCardText>
+          <CodeForm error={codice ? T.invalid : null} />
+        </PublicCard>
+      </PublicShell>
     );
   }
 
-  await ensureDbSchema();
   const executor = await getAppUcExecutor();
   const login = (await cliStoreReady(executor)) ? await findCliLogin(executor, userCode) : null;
   if (!login) {
     return (
-      <Shell>
-        <h1 className="text-2xl font-semibold tracking-tight">Codice non trovato</h1>
-        <p className="text-sm text-muted-foreground">Controlla il codice nel terminale, oppure rifai «unbundle login».</p>
-      </Shell>
+      <PublicShell footer={footer}>
+        <PublicCard title={T.notFound.title}>
+          <PublicCardText>{T.notFound.body}</PublicCardText>
+          <CodeForm label={T.retype} />
+        </PublicCard>
+      </PublicShell>
     );
   }
   if (login.status !== "in_attesa") {
-    const done = DONE[login.status];
+    const done = T.done[login.status];
     return (
-      <Shell>
-        <h1 className="text-2xl font-semibold tracking-tight">{done.title}</h1>
-        <p className="text-sm text-muted-foreground">{done.body}</p>
-      </Shell>
+      <PublicShell footer={footer}>
+        <PublicCard title={done.title}>
+          <PublicCardText>{done.body}</PublicCardText>
+          {login.status === "scaduto" ? <CodeForm label={T.retype} /> : null}
+        </PublicCard>
+      </PublicShell>
     );
   }
 
-  const [groups, caseWorkspaces] = await Promise.all([getWorkspaceGroupsForUser(session.user.id), cliCaseWorkspaceIds(executor, session.user.id)]);
-  const workspaces = cliWorkspaceChoices(
-    groups.flatMap((g) =>
-      g.workspaces.map((w) => ({ id: w.workspace.id, name: w.workspace.name, organization: g.organization.name, createdAt: w.workspace.createdAt, accessRole: w.accessRole })),
-    ),
-    caseWorkspaces,
-  );
   return (
-    <Shell>
-      <h1 className="text-2xl font-semibold tracking-tight">Collega questa CLI?</h1>
-      <p className="text-sm text-muted-foreground">Conferma solo se questo è il codice che vedi adesso nel tuo terminale. Se non hai chiesto tu un collegamento, scegli {"«Non l'ho chiesto io»."}</p>
-      <p className="rounded-md border bg-muted px-4 py-3 text-center font-mono text-2xl tracking-[0.3em]">{login.userCode}</p>
-      <p className="text-sm text-muted-foreground">
-        Da: <span className="text-foreground">{login.clientLabel}</span>. La CLI potrà fare per 90 giorni quello che puoi fare tu nei casi dove sei nel team; si revoca da «Il tuo account › Claude e terminale» o con «unbundle logout».
-      </p>
-      <CliLoginConfirm userCode={login.userCode} workspaces={workspaces} />
-    </Shell>
-  );
-}
-
-function Shell({ children }: { children: React.ReactNode }) {
-  return (
-    <main className="min-h-dvh bg-background px-4 py-10 sm:px-6">
-      <div className="mx-auto flex min-h-[calc(100dvh-5rem)] w-full max-w-xl flex-col justify-center">
-        {/* (Ondata 0) Il marchio porta ai workspace, non alla pagina pubblica. */}
-        <Link href="/dashboard" className="mb-6 text-sm font-semibold tracking-wide">
-          Unbundle
-        </Link>
-        <Card className="gap-0 overflow-hidden py-0">
-          <CardContent className="space-y-4 p-6">{children}</CardContent>
-        </Card>
-      </div>
-    </main>
+    <PublicShell footer={footer}>
+      <PublicCard title={T.confirmTitle}>
+        <PublicCardText>{T.confirmAsk}</PublicCardText>
+        <p className="mt-5 rounded-lg border bg-muted px-4 py-3 text-center font-mono text-2xl tracking-[0.3em]">{login.userCode}</p>
+        <PublicCardText>
+          <p>
+            {T.from} <span className="text-foreground">{login.clientLabel}</span>. {T.scope}
+          </p>
+        </PublicCardText>
+        <div className="mt-5">
+          <CliLoginConfirm userCode={login.userCode} workspaces={workspaces} />
+        </div>
+      </PublicCard>
+    </PublicShell>
   );
 }

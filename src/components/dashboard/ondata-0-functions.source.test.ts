@@ -43,10 +43,13 @@ test("0.20 · the share page has no button inside a link: the button renders the
   assert.match(view, /<Button render=\{<Link href=\{loginHref\} \/>\} nativeButton=\{false\} className="h-12 w-full text-base">\s*\{SHARE_PAGE_TEXT\.invalidLogin\}/);
 });
 
-test("0.21 · on /cli/collega the brand goes to the workspaces", () => {
+test("0.21 · on /cli/collega the way out goes to the workspaces, never to «/»", () => {
   const page = read("src/app/cli/collega/page.tsx");
-  assert.match(page, /<Link href="\/dashboard" className="mb-6 text-sm font-semibold tracking-wide">\s*Unbundle\s*<\/Link>/);
-  assert.doesNotMatch(page, /<Link href="\/"/);
+  // (Rilascio 10, ondata 4) Il marchio del guscio pubblico non è un link: si torna con i link in fondo, a «Il tuo
+  // account › Claude e terminale» e all'Agent Factory del workspace (senza workspace, all'elenco dei workspace).
+  assert.match(page, /<PublicLink href=\{workspaceId \? accountHref\(workspaceId, "claude"\) : "\/dashboard"\}>/);
+  assert.match(page, /<PublicLink href=\{`\/dashboard\/\$\{workspaceId\}\/agent-factory`\}>/);
+  assert.doesNotMatch(page, /<Link href="\/"|href="\/"/);
 });
 
 test("0.22 · Firebase speaks Italian: the language is set where the client auth is created", () => {
