@@ -12,11 +12,13 @@ import { INVITABLE_ROLES } from "../workspace-roles.ts";
 // di un cliente a una persona di un'altra azienda.
 // - Nessun confronto con "learner" fuori dai moduli dei ruoli; nel SQL nessun `<> 'learner'` (un elenco che esclude).
 // - Nel SQL `'esterno_caso'` solo con `::text`: prima della 0043 `'esterno_caso'::member_role` è un errore, non un «no».
-// - `allowCaseOnly: true` solo nei file di `CASE_ONLY_SURFACES`, e ognuno lo dichiara: l'elenco resta esatto.
+// - `allowCaseOnly` (anche senza `true`) solo nei file di `CASE_ONLY_SURFACES`, che scrivono `true` da sé, e nei tre
+//   moduli delle porte, che non lo scrivono mai; nessuna opzione delle porte esportata. L'elenco resta esatto.
 // - Le 9 azioni aperte sono quelle (le 7 di chi costruisce, la conferma della CLI, «Scollega»); le 4 di chi approva no.
 // - `esterno_caso` mai tra i ruoli che un invito da Persone dà, né negli inviti dell'organizzazione.
 // - Le letture dirette di `getWorkspaceAccessForUser` solo nei file riletti uno per uno, ognuno con un elenco.
-// - Ogni pagina del workspace passa da una porta; ogni rotta del workspace pure (o è un vecchio indirizzo senza dati).
+// - Ogni pagina del workspace passa da una porta. Ogni rotta dell'app ha una classe e il suo controllo; quelle del
+//   workspace con la porta in ogni gestore. Ogni rotta della CLI chiede il caso con `resolveCliCase`, tranne sei.
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const rel = (path: string) => relative(root, path).split("\\").join("/");
@@ -77,12 +79,32 @@ test("U4: nel SQL `'esterno_caso'` si confronta solo come testo (`::text`)", () 
   assert.deepEqual(ddl, ["src/lib/db/use-case-hub-case-only-ddl.ts"]);
 });
 
-test("U4: `allowCaseOnly: true` solo nelle porte di CASE_ONLY_SURFACES, e ognuna lo dichiara", () => {
-  const declared = sources()
-    .filter((file) => rel(file) !== "src/lib/auth/case-only.ts" && /\ballowCaseOnly:\s*true\b/.test(code(readFileSync(file, "utf8"))))
-    .map(rel)
-    .sort();
-  assert.deepEqual(declared, [...CASE_ONLY_SURFACES].sort());
+/** I moduli delle porte: definiscono l'opzione e la passano avanti, mai con `true` scritto. */
+const DOOR_MODULES = new Set(["src/lib/auth/case-only.ts", "src/lib/workspace-access.ts", "src/lib/auth/require-workspace.ts"]);
+/** Un'opzione delle porte esportata: `export const X = { allowCaseOnly… }`, o un oggetto con l'opzione esportato dopo. */
+const EXPORTED_OPTION = /export\s+(?:const|let|var)\s+\w+[^;]*?\ballowCaseOnly\b|export\s+default\s+\{[^;]*?\ballowCaseOnly\b/;
+const optionHolders = (text: string) => [...text.matchAll(/\b(?:const|let|var)\s+(\w+)\s*(?::[^=;]+)?=\s*\{[^;]*?\ballowCaseOnly\b/g)].map((m) => m[1]);
+
+test("U4: `allowCaseOnly` solo nelle porte di CASE_ONLY_SURFACES (ognuna con `true` scritto) e nei moduli delle porte; mai un'opzione esportata", () => {
+  const files = sources().map((file) => ({ name: rel(file), text: code(readFileSync(file, "utf8")) }));
+  // Chi nomina l'opzione (scritta, in un oggetto, in una variabile, in un testo) è una porta dichiarata o un modulo delle porte.
+  const naming = files.filter((f) => /\ballowCaseOnly\b/.test(f.text)).map((f) => f.name);
+  assert.deepEqual(naming.filter((name) => !DOOR_MODULES.has(name)).sort(), [...CASE_ONLY_SURFACES].sort());
+  const bad: string[] = [];
+  for (const f of files) {
+    if (CASE_ONLY_SURFACES.includes(f.name) && !/\ballowCaseOnly:\s*true\b/.test(f.text)) bad.push(`${f.name}: una porta dichiarata scrive \`allowCaseOnly: true\` da sé`);
+    if (DOOR_MODULES.has(f.name) && /\ballowCaseOnly:\s*true\b/.test(f.text)) bad.push(`${f.name}: un modulo delle porte non apre da sé`);
+    if (EXPORTED_OPTION.test(f.text)) bad.push(`${f.name}: un'opzione delle porte esportata`);
+    for (const holder of optionHolders(f.text)) {
+      if (new RegExp(`export\\s*\\{[^}]*\\b${holder}\\b|export\\s+default\\s+${holder}\\b`).test(f.text)) bad.push(`${f.name}: \`${holder}\` esportata`);
+    }
+  }
+  assert.deepEqual(bad, []);
+  // La prova delle regole.
+  assert.ok(EXPORTED_OPTION.test("export const APRI = { allowCaseOnly: true } as const;"));
+  assert.ok(EXPORTED_OPTION.test("export const APRI: WorkspaceDoorOptions = Object.freeze({ allowCaseOnly: true });"));
+  assert.ok(!EXPORTED_OPTION.test("const APRI = { allowCaseOnly: true } as const;"));
+  assert.deepEqual(optionHolders("const APRI = { allowCaseOnly: true } as const;\nexport { APRI };"), ["APRI"]);
 });
 
 test("U4: le azioni aperte a «Solo questo use case» sono 9 (le 7 di chi costruisce, la conferma della CLI, «Scollega»), più «Segna tutte come lette» della campanella", () => {
@@ -200,22 +222,117 @@ test("ogni pagina del workspace passa da una porta: requireWorkspacePage, la For
   ]);
 });
 
-test("ogni rotta del workspace passa da una porta, o è un vecchio indirizzo senza database", () => {
-  const dirs = [WORKSPACE_PAGES, "src/app/api/workspaces/[workspaceId]", "src/app/api/context/[workspaceId]"];
-  const routes = dirs.flatMap((dir) => walk(join(root, dir))).filter((file) => /route\.tsx?$/.test(file));
-  assert.ok(routes.length > 30, `${routes.length} rotte`);
-  const DOORS = /\b(?:requireWorkspaceAccess|getCollaboratorAccess|openFileRoute|openReferentFileRoute|boardRequest|contextActorFromSession)\(/;
-  const open: string[] = [];
+/** I gestori esportati di una rotta (`export async function GET…`), ognuno con il suo corpo fino al prossimo export. */
+function handlers(text: string): Array<{ method: string; body: string }> {
+  const parts = text.split(/\nexport (?=(?:async )?function (?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b)/).slice(1);
+  return parts.map((part) => ({ method: /function (\w+)/.exec(part)?.[1] ?? "?", body: part.split(/\nexport /)[0] }));
+}
+
+const WORKSPACE_DOOR = /\b(?:requireWorkspaceAccess|getCollaboratorAccess|openFileRoute|openReferentFileRoute|boardRequest|contextActorFromSession)\(/;
+/**
+ * Ogni rotta dell'app ha una classe (la prima che le corrisponde, in quest'ordine): dove sta e il controllo con cui si
+ * apre. Una rotta nuova fuori da ogni classe fa fallire la prova: va classificata, con una revisione delle porte. Le rotte
+ * del workspace vogliono la porta in ogni gestore esportato, non in un punto qualunque del file.
+ */
+const ROUTE_CLASSES: ReadonlyArray<{ name: string; path: RegExp; check: RegExp; perHandler?: boolean; noDb?: boolean }> = [
+  {
+    name: "vecchio indirizzo del dossier (308)",
+    path: /^src\/app\/\(dashboard\)\/dashboard\/\[workspaceId\]\/casi-duso\/\[caseId\]\/(?:avanzamento|documenti|kpi|mappa|modello-dati|registro|registro\/csv|regole|roi|verifica|voci|voci\/\[itemId\])\/route\.ts$/,
+    check: /\blegacyCaseRouteFromPath\(/,
+    noDb: true,
+  },
+  {
+    name: "porta del workspace",
+    path: /^src\/app\/(?:\(dashboard\)\/dashboard\/\[workspaceId\]\/|api\/workspaces\/\[workspaceId\]\/|api\/context\/\[workspaceId\]\/|api\/ai\/chat\/|api\/documents\/upload\/|api\/ai-readiness\/assessments\/)/,
+    check: WORKSPACE_DOOR,
+    perHandler: true,
+  },
+  { name: "classificazione (l'azione con la sua porta)", path: /^src\/app\/api\/ai\/classify\/route\.ts$/, check: /\brunClassificationAction\(/ },
+  { name: "CLI (prova a parte, sotto)", path: /^src\/app\/api\/cli\//, check: /\b(?:openCli|handleCaseMcpRequest|startCliLogin|deliverCliLogin|authenticateCli)\b/ },
+  { name: "CI (la chiave di un repository)", path: /^src\/app\/api\/ci\//, check: /\bopenCi\(/ },
+  { name: "MCP del team", path: /^src\/app\/api\/mcp\/use-case\/route\.ts$/, check: /\bhandleTeamMcpRequest\b/ },
+  { name: "MCP dei dossier", path: /^src\/app\/api\/mcp\/casi\/cases\//, check: /\bhandleCaseRead\(/ },
+  { name: "connettore", path: /^src\/app\/api\/mcp\/connettore\//, check: /\bhandleConnectorRequest\b/ },
+  { name: "MCP del portafoglio", path: /^src\/app\/api\/mcp\/portfolio\/(?:submissions|requirements)\/route\.ts$/, check: /\b(?:handlePortfolioSubmissionPost|authenticateWorkspaceIntegrationToken)\(/ },
+  { name: "file degli MCP", path: /^src\/app\/api\/mcp\/(?:casi|portfolio)\/(?:server|skill)\/route\.ts$/, check: /\breadFile\(/ },
+  { name: "link del referente (dossier)", path: /^src\/app\/api\/r\/\[token\]\//, check: /\bhandlePublic\(/ },
+  { name: "link del referente (use case)", path: /^src\/app\/api\/rispondi\/\[token\]\//, check: /\bhandleReferentPublic\(/ },
+  { name: "link del rispondente", path: /^src\/app\/api\/ai-readiness\/respondents\/\[token\]\//, check: /\bgetRespondentPrivacyBundleByTokenHash\(/ },
+  { name: "cron", path: /^src\/app\/api\/cron\//, check: /\b(?:checkCronAuthorization|handleUcCron)\(|\bCRON_SECRET\b/ },
+  { name: "webhook di GitHub", path: /^src\/app\/api\/github\/webhook\/route\.ts$/, check: /\bverifyGithubSignature\(/ },
+  { name: "Slack", path: /^src\/app\/(?:api\/slack\/|install\/slack\/)/, check: /\b(?:handleSlackWebhookPost|verifySlackRequestSignature|getUserMembership|userHasWorkspaceAccess)\(/ },
+  { name: "sessione", path: /^src\/app\/api\/auth\/session\/route\.ts$/, check: /\bcreateSessionCookie\(/ },
+  { name: "Granola", path: /^src\/app\/api\/granola\//, check: /\b(?:completeGranolaConnect|clientMetadataDocument)\(/ },
+  { name: "Formazione (la sua porta, per elenco)", path: /^src\/app\/api\/learning\//, check: /\b(?:readLearningRequest|performLearningAdmin|readMaterialForDownload|requireFullProgramManager|requireRegisterAccess|workspaceDoor)\(/ },
+  { name: "testo pubblico", path: /^src\/app\/llms(?:-full)?\.txt\/route\.ts$/, check: /\bexport (?:async )?function GET\b/, noDb: true },
+];
+
+test("ogni rotta dell'app ha una classe e il suo controllo; quelle del workspace con la porta in ogni gestore", () => {
+  const routes = walk(join(root, "src/app")).filter((file) => /\/route\.tsx?$/.test(file));
+  assert.ok(routes.length > 130, `${routes.length} rotte`);
+  const bad: string[] = [];
   for (const file of routes) {
+    const name = rel(file);
     const text = code(readFileSync(file, "utf8"));
-    if (DOORS.test(text)) continue;
-    if (/legacyCaseRouteFromPath\(/.test(text) && !/@\/lib\/db/.test(text)) continue;
-    open.push(rel(file));
+    const klass = ROUTE_CLASSES.find((c) => c.path.test(name));
+    if (!klass) {
+      bad.push(`${name}: senza classe: classificala, con una revisione delle porte`);
+      continue;
+    }
+    if (!klass.check.test(text)) bad.push(`${name}: la classe «${klass.name}» vuole il suo controllo`);
+    if (klass.noDb && /@\/lib\/(?:db|learning\/server)/.test(text)) bad.push(`${name}: «${klass.name}» senza database`);
+    if (klass.perHandler) {
+      const found = handlers(text);
+      if (found.length === 0) bad.push(`${name}: nessun gestore esportato come funzione`);
+      for (const h of found) if (!klass.check.test(h.body)) bad.push(`${name} ${h.method}: senza la porta`);
+    }
   }
-  assert.deepEqual(open, []);
+  assert.deepEqual(bad, []);
 });
 
-test("la CLI e l'MCP del caso: una porta sola (`openCli`), poi il predicato per ogni caso; mai le altre porte del workspace", () => {
+/**
+ * Le rotte della CLI che non leggono un caso, una per una, ognuna con il suo controllo. Tutte le altre, in ogni gestore,
+ * aprono la CLI (`openCli`, aperta anche a `esterno_caso`) e chiedono il caso con il predicato (`resolveCliCase`).
+ */
+const CLI_WITHOUT_CASE = new Map<string, RegExp>([
+  ["src/app/api/cli/login/route.ts", /\bstartCliLogin\(/],
+  ["src/app/api/cli/login/token/route.ts", /\bdeliverCliLogin\(/],
+  ["src/app/api/cli/logout/route.ts", /\bauthenticateCli\(/],
+  ["src/app/api/cli/mcp/route.ts", /\bhandleCaseMcpRequest\b/],
+  ["src/app/api/cli/nota/route.ts", /\bisCliLateralSpace\(/],
+  ["src/app/api/cli/whoami/route.ts", /\bopenCli\(/],
+]);
+
+test("la CLI: ogni rotta chiede il caso con il predicato (`resolveCliCase`) in ogni gestore, tranne le sei senza caso", () => {
+  const routes = walk(join(root, "src/app/api/cli")).filter((file) => /\/route\.tsx?$/.test(file));
+  assert.ok(routes.length >= 18, `${routes.length} rotte della CLI`);
+  const bad: string[] = [];
+  for (const file of routes) {
+    const name = rel(file);
+    const text = code(readFileSync(file, "utf8"));
+    const exception = CLI_WITHOUT_CASE.get(name);
+    if (exception) {
+      if (!exception.test(text)) bad.push(`${name}: senza il suo controllo`);
+      continue;
+    }
+    const found = handlers(text);
+    if (found.length === 0) bad.push(`${name}: nessun gestore esportato come funzione`);
+    for (const h of found) {
+      if (!/\bopenCli\(/.test(h.body)) bad.push(`${name} ${h.method}: senza openCli`);
+      if (!/\bresolveCliCase\(/.test(h.body)) bad.push(`${name} ${h.method}: senza resolveCliCase (il caso con il predicato)`);
+    }
+  }
+  assert.deepEqual(bad, []);
+  // Le eccezioni dicono il vero: whoami legge solo il codice del caso del suo token; nota è solo di Lateral Space; l'MCP
+  // del caso vuole il token di un caso, poi il predicato.
+  const whoami = code(read("src/app/api/cli/whoami/route.ts"));
+  assert.equal((whoami.match(/\b(?:use_cases|uc_cases)\b/g) ?? []).length, 1);
+  assert.match(whoami, /SELECT code FROM use_cases WHERE id = \$\{cast\(principal\.caseUseCaseId, "uuid"\)\} AND workspace_id = /);
+  assert.doesNotMatch(whoami, /\b(?:loadAgentContext|familyChoices|readFactory\w*|listTasks\w*)\b/);
+  assert.match(code(read("src/app/api/cli/nota/route.ts")), /if \(!\(await isCliLateralSpace\(opened\.value\)\)\) return cliError\(403, "solo_lateral_space"/);
+  const mcp = code(read("src/lib/use-cases/cli/mcp.ts"));
+  assert.match(mcp, /if \(principal\.caseUseCaseId === null\) \{/);
+  assert.match(mcp, /await resolveCliCase\(opened, principal\.caseUseCaseId\)/);
   const kit = code(read("src/lib/use-cases/cli/route-kit.ts"));
   assert.match(kit, /const access = await getCollaboratorAccess\(principal\.userId, principal\.workspaceId, \{ allowCaseOnly: true \}\);/);
   for (const file of walk(join(root, "src/app/api/cli"))) {
