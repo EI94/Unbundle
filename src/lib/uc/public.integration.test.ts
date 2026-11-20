@@ -852,7 +852,7 @@ test("referent view: first name, two-level notice, question counts, minutes in p
   const old = await acknowledgePrivacy(exec!, l, { version: "uc-2026-10-2" }, popts());
   assert.equal(old.ok ? null : old.code, "informativa_cambiata", "the two-level notice is a new version");
   assert.ok((await acknowledgePrivacy(exec!, l, ACK, popts())).ok);
-  assert.equal(REFERENT_PRIVACY_NOTICE.version, "uc-2026-11-1");
+  assert.equal(REFERENT_PRIVACY_NOTICE.version, "uc-2026-11-2");
   const view = await viewOf(v.token);
   assert.equal(view.greetingName, "Marco");
   assert.equal(view.greetingName, greetingNameFrom("Marco Volumi"));

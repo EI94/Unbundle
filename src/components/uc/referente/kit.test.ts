@@ -127,9 +127,14 @@ test("(§3.11) un numero solo, con «salvato» accanto", () => {
   assert.equal(R_TEXT.step.count(1, 2_812, false), "1 di 2.812");
 });
 
-test("l'informativa di /r non cambia qui: la sposta il lead nell'informativa comune; il messaggio la segue", () => {
-  assert.equal(REFERENT_PRIVACY_NOTICE.version, "uc-2026-11-1");
-  assert.equal(REFERENT_PRIVACY_NOTICE.button, "Ho letto, iniziamo");
+test("(ondata 4) l'informativa di /r è la uc-2026-11-2: le parole del kit, «Iniziamo», «Chiedi a un'altra persona»; il messaggio la segue", () => {
+  assert.equal(REFERENT_PRIVACY_NOTICE.version, "uc-2026-11-2");
+  assert.equal(REFERENT_PRIVACY_NOTICE.button, "Iniziamo");
+  const all = [REFERENT_PRIVACY_NOTICE.lead, ...REFERENT_PRIVACY_NOTICE.summary, ...REFERENT_PRIVACY_NOTICE.paragraphs].join(" ");
+  assert.match(all, /«Chiedi a un'altra persona»/);
+  assert.doesNotMatch(all, /collega/, "genere neutro: nessun «collega»");
+  // I fatti di /r, non quelli di /rispondi: niente AI, niente «due giorni», niente «12 mesi».
+  assert.doesNotMatch(all, /intelligenza artificiale|due giorni|12 mesi/);
   assert.equal(PRIVACY_PENDING_MESSAGE, `Prima leggi l'informativa e premi «${REFERENT_PRIVACY_NOTICE.button}».`);
 });
 

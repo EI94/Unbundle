@@ -233,7 +233,7 @@ export async function step4(f) {
   const it = (k) => f.items.get(k);
   const ack = await api(f.token, "privacy-ack", { body: { version: f.m.REFERENT_PRIVACY_NOTICE.version, shown: f.m.REFERENT_PRIVACY_NOTICE.version } });
   check(ack.status === 200 && ack.json?.ok, `privacy ack ${ack.status}`);
-  check(f.m.REFERENT_PRIVACY_NOTICE.version === "uc-2026-11-1", "notice version");
+  check(f.m.REFERENT_PRIVACY_NOTICE.version === "uc-2026-11-2", "notice version");
   const view = await api(f.token, "", { method: "GET" });
   const item = (k) => view.json.data.modules.flatMap((m) => m.items).find((i) => i.key === k);
   const declared = item("q.costi.02");

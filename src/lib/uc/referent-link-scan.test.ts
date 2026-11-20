@@ -116,11 +116,11 @@ test("only /r opts in: the option is set by referentLinkScan and read by the sca
 
 test("the /r notice is a new version and says it calmly: names are used for this use case only, files are checked, nothing «blocks»", () => {
   const n = REFERENT_PRIVACY_NOTICE;
-  assert.equal(n.version, "uc-2026-11-1");
+  assert.equal(n.version, "uc-2026-11-2");
   const all = [n.lead, ...n.summary, ...n.paragraphs].join(" ");
   assert.doesNotMatch(all, /blocca/i);
   assert.doesNotMatch(all, /Non scrivere/);
-  assert.match(all, /Se scrivi il nome di un collega, un'email o un telefono, li usiamo solo per questo caso d'uso\./);
+  assert.match(all, /Se scrivi il nome di una persona, un'email o un telefono, li usiamo solo per questo caso d'uso\./);
   assert.match(all, /se ne troviamo, ti chiediamo di toglierli/);
   assert.ok(n.paragraphs.includes("Ogni file passa da un controllo automatico prima di essere usato."));
   assert.doesNotMatch(all.replace(/caso d'uso/g, ""), /\bcaso\b/, "fuori dalla dashboard «caso d'uso»");

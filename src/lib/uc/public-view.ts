@@ -55,13 +55,19 @@ export interface ReferentNoticeText {
  * riga; «caso d'uso» al posto di «caso». Chi aveva letto `uc-2026-10-2` la
  * rivede una volta. Testo da approvare dal titolare prima del rilascio.
  *
+ * (Rilascio 10, ondata 4) Versione `uc-2026-11-2`: le parole del kit del referente, il pulsante «Iniziamo» e
+ * «Chiedi a un'altra persona» (il nome nuovo del pulsante, in genere neutro), «il nome di una persona» al posto di
+ * «il nome di un collega». I fatti restano quelli di `/r`: non è l'informativa di `/rispondi`, che parla dell'AI,
+ * dell'impronta dell'IP tenuta due giorni e della cancellazione dopo 12 mesi, cose vere solo là. Chi aveva letto
+ * `uc-2026-11-1` la rivede una volta. Testo da approvare dal titolare prima del rilascio.
+ *
  * Quando la versione cambia, le scritture di chi aveva letto la vecchia
  * aspettano con `informativa_aggiornata` (un 503: la pagina aperta da prima
  * del rilascio tiene così le bozze e riprova) e la vista manda il testo nuovo,
  * che la pagina mostra al posto del suo (`noticeFor`).
  */
 export const REFERENT_PRIVACY_NOTICE = {
-  version: "uc-2026-11-1",
+  version: "uc-2026-11-2",
   title: "Prima di iniziare",
   lead: "Tre cose da sapere sulle tue risposte.",
   summary: [
@@ -73,15 +79,15 @@ export const REFERENT_PRIVACY_NOTICE = {
   /** Dopo la conferma l'informativa resta nel piè di pagina della Home con questo titolo. */
   footerLabel: "Come usiamo le tue risposte",
   contact: "Per domande o per cancellare i tuoi dati, scrivi a chi ti ha mandato il link.",
-  button: "Ho letto, iniziamo",
+  button: "Iniziamo",
   error: "Non riesco a registrarlo. Riprova tra poco.",
   paragraphs: [
     "Lateral Space raccoglie queste informazioni per conto della tua azienda, per preparare il caso d'uso. Le usiamo solo per questo.",
-    "Ti chiediamo informazioni sul lavoro, non su di te. Se scrivi il nome di un collega, un'email o un telefono, li usiamo solo per questo caso d'uso. Non servono dati sanitari, codici fiscali, date di nascita o preferenze su genere, età, origine o religione: se ne troviamo, ti chiediamo di toglierli.",
+    "Ti chiediamo informazioni sul lavoro, non su di te. Se scrivi il nome di una persona, un'email o un telefono, li usiamo solo per questo caso d'uso. Non servono dati sanitari, codici fiscali, date di nascita o preferenze su genere, età, origine o religione: se ne troviamo, ti chiediamo di toglierli.",
     "Ogni file passa da un controllo automatico prima di essere usato.",
     "Salviamo le tue risposte, il tuo nome, il ruolo e l'email che ci ha dato la tua azienda. Dell'indirizzo IP teniamo solo un'impronta cifrata, mai il numero.",
     "Non misuriamo i tuoi tempi e non facciamo classifiche tra persone. Le risposte le vedono Lateral Space e le persone della tua azienda che seguono il caso d'uso.",
-    "Il link è personale e scade dopo 30 giorni. Non inoltrarlo: se serve, usa «Chiedi a un collega». Per domande o per cancellare i tuoi dati scrivi a chi ti ha mandato il link.",
+    "Il link è personale e scade dopo 30 giorni. Non inoltrarlo: se serve, usa «Chiedi a un'altra persona». Per domande o per cancellare i tuoi dati scrivi a chi ti ha mandato il link.",
   ],
 } as const satisfies ReferentNoticeText;
 
