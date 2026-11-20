@@ -1,21 +1,23 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { PenLine, Plus, Users } from "lucide-react";
+import { Plus, Users } from "lucide-react";
 import { PageContainer } from "@/components/dashboard/page-container";
-import { SettingsSection } from "@/components/dashboard/settings-section";
 import { Button } from "@/components/ui/button";
 import { casePath } from "@/components/uc/catalog/paths";
 import { AddContactSheet } from "@/components/uc/people/contact-sheet";
+import { MembersPanel } from "@/components/uc/people/members-panel";
 import { PeopleList, type PeopleCan, type PersonRequestView } from "@/components/uc/people/people-list";
 import { SendSheet } from "@/components/uc/people/send-sheet";
-import { SignersPanel, type SignerSlot } from "@/components/uc/people/signers-panel";
+import type { SignerSlot } from "@/components/uc/people/signers-panel";
 import { WidgetBoundary } from "@/components/uc/people/widget-boundary";
 import { audienceOf, canWrite, loadCaseHead, openShellPage, ucEmailConfigured } from "@/components/uc/shell/case-data";
 import { EmptyState } from "@/components/uc/ui/empty-state";
 import { SectionHeading } from "@/components/uc/ui/section-heading";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
+import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { loadPeopleView } from "@/lib/db/queries/uc-people-view";
-import { loadSignerDesignations, loadUsableCaseFiles } from "@/lib/db/queries/uc-shell";
+import { loadCaseMembers, loadMemberCandidates, loadSignerDesignations, loadUsableCaseFiles } from "@/lib/db/queries/uc-shell";
+import { caseGrantUserIds } from "@/lib/db/queries/use-case-builders";
 import { exportChoices } from "@/lib/uc/export/request";
 import { addDays, romeDate } from "@/lib/uc/notify/schedule";
 import { stepHiddenOn } from "@/lib/uc/views/case-shell";
@@ -24,7 +26,7 @@ import { dayWithArticle } from "@/lib/uc/views/labels";
 import { clientPlainText } from "@/lib/uc/views/rows";
 import { caseNextSteps, nextStepFor, resolveStepHref } from "@/lib/uc/views/next-step";
 import { canOpenPage, seesValidatedOnly } from "@/lib/uc/views/page-access";
-import { EMAIL_OFF_TEXT, clientPeopleRows, lsPeopleRows, peopleHaveSendWork, personRoleText, signerCandidates, unassignedRoleRows } from "@/lib/uc/views/people";
+import { EMAIL_OFF_TEXT, PEOPLE_TEXT, clientPeopleRows, groupMembers, lsPeopleRows, peopleHaveSendWork, personRoleText, signerCandidates, unassignedRoleRows } from "@/lib/uc/views/people";
 
 function first(v: string | string[] | undefined): string | null {
   const s = Array.isArray(v) ? v[0] : v;
@@ -50,19 +52,19 @@ async function headerPrimaryOn(workspaceId: string, caseId: string, userId: stri
 }
 
 /**
- * Persone (DESIGN §3.9): chi risponde per il cliente, in una lista sola e in
- * ordine alfabetico, poi «Firme del cliente». Gli account del dossier stanno in
- * Impostazioni › Accesso al caso.
+ * Persone (rilascio 10, §3.5; DESIGN §3.9): due gruppi.
  *
- * - Responsabile Lateral Space: conteggi, stato e azioni per persona, il
- *   pannello «Invia le domande» (`?invia=1`) e «Aggiungi un referente»
- *   (`?nuovo=1`).
- * - Analista: la stessa lista, in sola lettura.
- * - Responsabile del cliente (art. 15.4): nome, ruolo e stato, senza
- *   conteggi né date; aggiunge colleghi, assegna le domande senza referente e
- *   affida quelle di una persona a un collega.
+ * - «Rispondono per il cliente»: chi risponde, in una lista sola e in ordine alfabetico, con chi firma per il cliente
+ *   come chip («firma il via», «firma la privacy») e una riga sola se manca qualcuno. Un solo «Invia le domande»
+ *   (`?invia=1`, i passi e l'email vera come «Chiedi al referente») e «Aggiungi» (`?nuovo=1`, tre campi più «Altro»).
+ * - «Nella realizzazione», solo per il responsabile Lateral Space (che li vedeva in Impostazioni del caso): gli account
+ *   con i loro ruoli e chi costruisce la realizzazione.
  *
- * In pausa, a caso chiuso e in sola lettura i controlli di scrittura non ci sono.
+ * Chi vede che cosa resta com'era: il responsabile Lateral Space modifica; l'analista legge la stessa lista; il
+ * responsabile del cliente (art. 15.4) legge nome, ruolo, firma e stato, senza conteggi né date, aggiunge altre persone,
+ * assegna le domande senza referente, affida quelle di una persona a un'altra e indica chi firma.
+ *
+ * In pausa, a realizzazione chiusa e in sola lettura i controlli di scrittura non ci sono.
  */
 export default async function PeoplePage({
   params,
@@ -81,10 +83,16 @@ export default async function PeoplePage({
   const isLead = roles.includes("ls_lead");
   const isOwner = roles.includes("owner_cliente");
 
-  const [view, files, designations] = await Promise.all([
+  const lsDomains = ucLsDomains();
+  // «Nella realizzazione»: gli account e chi costruisce, per il solo responsabile Lateral Space (prima in Impostazioni del caso).
+  const [view, files, designations, memberRows, candidates, builderIds] = await Promise.all([
     loadPeopleView(executor, { workspaceId, caseId, audience }),
     write && (isLead || isOwner) ? loadUsableCaseFiles(executor, { workspaceId, caseId }) : Promise.resolve([]),
     loadSignerDesignations(executor, { workspaceId, caseId }),
+    isLead ? loadCaseMembers(executor, { workspaceId, caseId, lsDomains }) : Promise.resolve([]),
+    isLead && write ? loadMemberCandidates(executor, { workspaceId, lsDomains }) : Promise.resolve([]),
+    // (8.0c) Chi costruisce il caso da fuori: la sua riga «Osservatore» dice «costruisce».
+    isLead ? caseGrantUserIds(executor, caseId) : Promise.resolve([]),
   ]);
   if (!view) notFound();
   // Al cliente i ruoli senza articoli, sigle o chiavi del template (DESIGN §6.2): «… (A.8)» → «…».
@@ -136,26 +144,30 @@ export default async function PeoplePage({
   };
   const slots: SignerSlot[] = (["owner", "privacy"] as const).map((d) => ({ designation: d, current: nameOf(view.designated[d]), evidenceText: evidenceText(d) }));
   const catalogBase = ls && canOpenPage("voci", roles) && !seesValidatedOnly(roles) ? casePath(workspaceId, caseId, "domande") : null;
-  const documentsHref = canOpenPage("documenti", roles) ? casePath(workspaceId, caseId, "domande/documenti") : null;
+  // (Rilascio 10, §3.5) I file stanno nel pannello «File» di Domande (`?apri=file`, l'indirizzo concordato).
+  const documentsHref = canOpenPage("documenti", roles) ? `${casePath(workspaceId, caseId, "domande")}?apri=file` : null;
   const today = romeDate(new Date());
+  // La riga «A» dell'anteprima dell'email: solo per chi apre il pannello (il responsabile Lateral Space).
+  const emails = can.send ? Object.fromEntries(contacts.map((c) => [c.id, c.email])) : {};
+  const editableMembers = write && isLead && view.caseStatus !== "sospeso";
 
   return (
     <PageContainer>
       <div className="space-y-8">
         <section className="space-y-3" aria-labelledby="uc-people-title">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <SectionHeading id="uc-people-title" title="Chi risponde per il cliente" />
+            <SectionHeading id="uc-people-title" title={PEOPLE_TEXT.clientGroup} />
             {!empty && (showSend || canAdd) ? (
               <div className="flex flex-wrap gap-2">
                 {showSend && (
                   <Button variant={sendFilled ? "default" : "outline"} className="min-h-11 sm:min-h-8" render={<Link href={sendHref} scroll={false} />} nativeButton={false}>
-                    Invia le domande
+                    {PEOPLE_TEXT.send}
                   </Button>
                 )}
                 {canAdd && (
                   <Button variant="outline" className="min-h-11 sm:min-h-8" render={<Link href={addHref} scroll={false} />} nativeButton={false}>
                     <Plus aria-hidden />
-                    Aggiungi
+                    {PEOPLE_TEXT.add}
                   </Button>
                 )}
               </div>
@@ -165,16 +177,16 @@ export default async function PeoplePage({
           {empty ? (
             <EmptyState
               icon={Users}
-              title="Nessun referente"
+              title={PEOPLE_TEXT.emptyTitle}
               action={
                 canAdd ? (
                   <Button className="min-h-11 sm:min-h-8" render={<Link href={addHref} scroll={false} />} nativeButton={false}>
-                    Aggiungi un referente
+                    {PEOPLE_TEXT.emptyAction}
                   </Button>
                 ) : undefined
               }
             >
-              Aggiungi chi risponde per il cliente: ognuno riceve un link con le sue domande.
+              {PEOPLE_TEXT.emptyBody}
             </EmptyState>
           ) : (
             <PeopleList
@@ -184,6 +196,7 @@ export default async function PeoplePage({
               unassigned={unassigned}
               contactOptions={contactOptions}
               signerOptions={signerOptions}
+              signers={slots}
               files={files}
               templateRoles={templateRoles}
               can={can}
@@ -198,18 +211,19 @@ export default async function PeoplePage({
           {ls && !emailConfigured && !empty && <p className="text-xs text-muted-foreground">{EMAIL_OFF_TEXT}</p>}
         </section>
 
-        <SettingsSection id="firme-del-cliente" icon={PenLine} title="Firme del cliente" description="Firmano dal link che arriva per email, indicati con una prova scritta del cliente.">
-          <SignersPanel
-            workspaceId={workspaceId}
-            caseId={caseId}
-            slots={slots}
-            candidates={signerOptions}
-            files={files}
-            canDesignate={can.designate}
-            canClear={can.clearSigner}
-            documentsHref={documentsHref}
-          />
-        </SettingsSection>
+        {isLead && (
+          <section className="space-y-3" aria-labelledby="uc-people-case">
+            <SectionHeading id="uc-people-case" title={PEOPLE_TEXT.caseGroup} />
+            <MembersPanel
+              workspaceId={workspaceId}
+              caseId={caseId}
+              members={groupMembers(memberRows, { withEmail: true })}
+              candidates={candidates.map((m) => ({ userId: m.userId, name: m.name, isLateralSpace: m.isLateralSpace }))}
+              canManage={editableMembers}
+              builderIds={builderIds}
+            />
+          </section>
+        )}
       </div>
 
       {first(sp.invia) === "1" && can.send && (
@@ -219,6 +233,7 @@ export default async function PeoplePage({
             caseId={caseId}
             roles={unassigned}
             contacts={contactOptions}
+            emails={emails}
             emailConfigured={emailConfigured}
             clientName={view.clientName}
             caseTitle={view.caseTitle}

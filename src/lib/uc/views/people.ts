@@ -11,6 +11,7 @@
  *
  * Modulo puro e senza dipendenze di Node: si usa anche nei componenti client.
  */
+import type { Block } from "../notify/email-render.ts";
 import type { Json } from "../types.ts";
 import { CLIENT_CASE_ROLES, LS_CASE_ROLES, type CaseRole, type ContactChannel, type RequestStatus, type SemaforoColor } from "../vocab.ts";
 import { formatCountIt } from "./format.ts";
@@ -32,7 +33,7 @@ export const CASE_ROLE_HINT: Readonly<Record<CaseRole, string>> = {
   ls_lead: "Gestisce la realizzazione, invia le domande e firma per Lateral Space.",
   ls_analista: "Verifica le risposte e propone domande.",
   ls_sviluppatore: "Legge il catalogo validato per sviluppare.",
-  owner_cliente: "Firma per il cliente il via allo sviluppo e aggiunge colleghi come referenti.",
+  owner_cliente: "Firma per il cliente il via allo sviluppo e aggiunge altre persone come referenti.",
   approvatore_privacy: "Firma la scheda privacy e l'accesso ai dati personali.",
   ai_board: "Legge Panoramica, Soluzione e Valore.",
   osservatore: "Legge Panoramica, Soluzione e Valore.",
@@ -231,7 +232,7 @@ function onDay(day: string): string {
  */
 export function requestTimeline(d: RequestDetailLike, day: (iso: string | null) => string | null): string {
   const sent = day(d.sentAt);
-  if (!sent) return d.needsApproval ? "Delega da approvare: il collega ha un dominio nuovo." : "Bozza: non ancora inviata.";
+  if (!sent) return d.needsApproval ? "Delega da approvare: la persona ha un dominio nuovo." : "Bozza: non ancora inviata.";
   const parts = [`Inviata ${onDay(sent)}${d.channel === "link_manuale" ? " con un link copiato a mano" : ""}`];
   const expires = day(d.expiresAt);
   if (expires) parts.push(`${d.visible ? "scade" : "scaduta"} ${onDay(expires)}`);
@@ -249,7 +250,7 @@ export function requestTimeline(d: RequestDetailLike, day: (iso: string | null) 
 export function requestDetailLines(d: RequestDetailLike, fmt: (iso: string | null) => string | null): string[] {
   const out: string[] = [requestTimeline(d, fmt)];
   if (d.escalated) out.push("Segnalata al responsabile del cliente.");
-  if (d.delegatedFromRequestId) out.push(d.delegationDepth > 1 ? "Delega di una delega." : "Delega da un collega.");
+  if (d.delegatedFromRequestId) out.push(d.delegationDepth > 1 ? "Delega di una delega." : "Delega da un'altra persona.");
   if (d.live) out.push(d.activeLinks > 0 ? "Link attivo" : "Link attivo, da copiare");
   else if (d.visible) out.push(PAUSED_LINK_TEXT);
   if (d.emailQueued && d.emailHoldReason === "email_non_configurata") out.push(EMAIL_NOT_CONFIGURED_TEXT);
@@ -379,6 +380,8 @@ export interface LsPersonRow<R extends PersonRequestLike = PersonRequestLike> {
   status: LsPersonStatus;
   /** «8 domande · 8 aperte», oppure null senza domande. */
   countsText: string | null;
+  /** (Rilascio 10) Le domande aperte, per la riga grigia «ruolo · 8 aperte» (`personLineText`). */
+  open: number;
   unsent: number;
   email: string | null;
   phone: string | null;
@@ -479,6 +482,7 @@ export function lsPeopleRows<R extends PersonRequestLike>(i: PeopleListInput<R>)
       signs,
       status: lsPersonStatus(ordered, counts.unsent),
       countsText: personCountsText(counts),
+      open: counts.open,
       unsent: counts.unsent,
       email: c.email,
       phone: c.phone,
@@ -582,7 +586,7 @@ const SKIP_OUTCOME: Readonly<Record<string, (n: string, one: boolean) => string>
 
 /**
  * L'esito di «Assegna», del passo 1 di «Invia le domande» e di «Affida le sue
- * domande a un altro collega»: «12 domande assegnate. 3 restano nel link
+ * domande a un'altra persona»: «12 domande assegnate. 3 restano nel link
  * ancora aperto.». Lo leggono anche le persone del cliente: niente comandi di
  * Lateral Space, niente chiavi.
  */
@@ -620,4 +624,127 @@ function durationText(minutes: number): string {
 export function sendGroupText(g: { questions: number; minutes: number; channel: "email" | "link_manuale" }, emailConfigured: boolean): string {
   const how = g.channel === "email" && emailConfigured ? "email" : "link da copiare";
   return `${plural(g.questions, "domanda", "domande")} · circa ${durationText(g.minutes)} · link valido 30 giorni · ${how}`;
+}
+
+// ── (Rilascio 10, §3.5) Persone in due gruppi ─────────────────────────
+
+/**
+ * I testi di Persone (rilascio 10, §3.5 e §3.17 dell'audit): due gruppi, «Rispondono per il cliente» (i referenti, con i
+ * firmatari come chip) e «Nella realizzazione» (gli account e chi costruisce, prima in Impostazioni del caso); un solo
+ * «Invia le domande»; il nuovo referente con tre campi più «Altro». Genere neutro: «un'altra persona», mai «un collega».
+ */
+export const PEOPLE_TEXT = {
+  clientGroup: "Rispondono per il cliente",
+  caseGroup: "Nella realizzazione",
+  send: "Invia le domande",
+  add: "Aggiungi",
+  emptyTitle: "Nessun referente",
+  emptyBody: "Aggiungi chi risponde per il cliente: ognuno riceve un link con le sue domande.",
+  emptyAction: "Aggiungi un referente",
+  unassigned: "Senza referente",
+  assign: "Affida a…",
+  /** «Vedi tutti (5)»: le righe oltre le prime tre. */
+  showAll: (n: number) => `Vedi tutti (${formatCountIt(n)})`,
+  showFewer: "Mostra meno",
+  /** Il «⋯» di una riga: chi firma per il cliente. */
+  designate: "Firma per il cliente…",
+  changeSigner: { owner: "Cambia chi firma il via…", privacy: "Cambia chi firma la privacy…" },
+  indicate: "Indica",
+  /** Il «⋯» di una riga, per chi ha domande da far partire. */
+  sendOne: "Invia le sue domande",
+  sendOneLink: "Prepara il suo link",
+  resend: "Reinvia",
+  sendNew: "Invia le nuove domande",
+  sendNewLink: "Prepara il link delle nuove domande",
+  affida: "Affida le sue domande a un'altra persona",
+  affidaTitle: (name: string) => `Affida le domande di ${name}`,
+  affidaBody: "Le sue domande ancora aperte passano alla persona che scegli. Quelle in un link ancora aperto restano dove sono.",
+  assignTitle: (role: string) => `Chi risponde per ${role}`,
+  assignBody: "Le domande di questo ruolo ancora senza referente vanno alla persona che scegli. Le invia Lateral Space.",
+  choosePerson: "Persona",
+  /** «Nella realizzazione». */
+  addMember: "Aggiungi una persona",
+  addMemberTitle: "Aggiungi una persona alla realizzazione",
+  addMemberBody: "Una persona del workspace con un account. Il ruolo dice che cosa vede e che cosa fa.",
+  memberWho: "Persona del workspace",
+  memberRole: "Ruolo nella realizzazione",
+  removeRole: (role: string) => `Togli il ruolo ${role}…`,
+  memberMenu: (name: string) => `Altre azioni per ${name}`,
+  noMembers: "Ancora nessuno.",
+  /** Il nuovo referente: tre campi più «Altro». */
+  more: "Altro",
+  contactName: "Nome e cognome",
+  contactEmail: "Email",
+  contactEmailHint: "Una persona del cliente, non di Lateral Space.",
+  contactRole: "Per quali domande",
+  contactRoleHint: "Le domande di questo ruolo le riceve per prime.",
+  contactLabel: "Come lo chiamate (facoltativo)",
+  contactPhone: "Telefono (facoltativo)",
+  contactChannel: "Canale preferito",
+  contactActive: "Referente attivo",
+  contactActiveHint: "Si possono mandargli domande.",
+} as const;
+
+/** I testi del pannello «Invia le domande» (rilascio 10, §3.5); i passi e «Controlla e invia» sono quelli di «Chiedi al referente». */
+export const SEND_TEXT = {
+  title: "Invia le domande",
+  loading: "Preparo l'elenco…",
+  nothing: "Non c'è niente da inviare: le domande assegnate sono già partite o aspettano una risposta.",
+  notRequestable: (n: number) => `${n === 1 ? "1 domanda non si può inviare adesso" : `${formatCountIt(n)} domande non si possono inviare adesso`}: bloccate, già partite o senza referente.`,
+  /** Sotto l'email: chi altro la riceve. */
+  others: (n: number) => (n === 1 ? "Anche l'altra persona riceve la stessa email, con le sue domande." : `Anche le altre ${formatCountIt(n)} persone ricevono la stessa email, con le loro domande.`),
+  /** Nessuno dei scelti riceve l'email: il link si copia a mano. */
+  noEmail: "Chi hai scelto non ha l'email: il link si copia dalla sua riga in Persone.",
+  moreQuestions: (n: number) => (n === 1 ? "E un'altra." : `E altre ${formatCountIt(n)}.`),
+} as const;
+
+/** La riga grigia di un referente per Lateral Space (§3.17 dell'audit): il ruolo e «8 aperte»; lo zero non si dice. */
+export function personLineText(row: Pick<LsPersonRow, "roleText"> & { open: number }): string | null {
+  const open = row.open > 0 ? plural(row.open, "aperta", "aperte") : null;
+  return [row.roleText, open].filter(Boolean).join(" · ") || null;
+}
+
+/** La riga riassuntiva dei firmatari, solo se manca qualcuno (§3.17 dell'audit); null se ci sono tutti e due. */
+export function signersMissingText(designated: { owner: string | null; privacy: string | null }): string | null {
+  if (!designated.owner && !designated.privacy) return "Manca chi firma per il cliente.";
+  if (!designated.owner) return "Manca chi firma il via per il cliente.";
+  if (!designated.privacy) return "Manca chi firma la privacy per il cliente.";
+  return null;
+}
+
+/** Che cosa fa scegliere «Indica» della riga riassuntiva: la sola firma che manca, oppure nulla (si sceglie nel dialogo). */
+export function missingDesignation(designated: { owner: string | null; privacy: string | null }): "owner" | "privacy" | null {
+  if (!designated.owner && designated.privacy) return "owner";
+  if (designated.owner && !designated.privacy) return "privacy";
+  return null;
+}
+
+/** Al massimo tre righe in vista, poi «Vedi tutti (N)» (rilascio 10, §1 regola 4). */
+export const PEOPLE_ROWS_SHOWN = 3;
+
+/** Le righe da mostrare: le prime tre, o tutte dopo «Vedi tutti». */
+export function shownRows<T>(rows: readonly T[], all: boolean): T[] {
+  return all ? [...rows] : rows.slice(0, PEOPLE_ROWS_SHOWN);
+}
+
+/**
+ * L'email vera di «Invia le domande» (rilascio 10, §3.5: come «Chiedi al referente»), nei blocchi dell'anteprima: dal
+ * testo semplice di `renderEmail` (lo stesso modello dell'invio, `email-render.ts`), un blocco per paragrafo. Il
+ * paragrafo «Apri le domande: <link>» diventa il pulsante, con la sola etichetta; le righe «> » una citazione, le righe
+ * «- » un elenco, i paragrafi dopo il pulsante la riga piccola.
+ */
+export function emailPreviewParts(rendered: { subject: string; text: string }): { subject: string; blocks: Block[] } {
+  const blocks: Block[] = [];
+  let afterLink = false;
+  for (const chunk of rendered.text.trim().split(/\n{2,}/)) {
+    const lines = chunk.split("\n");
+    const link = lines.length === 1 ? /^(.+?): (https?:\/\/\S+)$/.exec(chunk) : null;
+    if (link) {
+      blocks.push({ link: { href: link[2], label: link[1] } });
+      afterLink = true;
+    } else if (lines.every((l) => l.startsWith(">"))) blocks.push({ quote: lines.map((l) => l.replace(/^> ?/, "")).join("\n") });
+    else if (lines.every((l) => l.startsWith("- "))) blocks.push({ list: lines.map((l) => l.slice(2)) });
+    else blocks.push(afterLink ? { small: chunk } : { p: chunk });
+  }
+  return { subject: rendered.subject, blocks };
 }

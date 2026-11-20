@@ -33,6 +33,14 @@ import {
   removeRoleConfirmText,
   roleChoicesFor,
   rolesAssignableTo,
+  PEOPLE_ROWS_SHOWN,
+  PEOPLE_TEXT,
+  SEND_TEXT,
+  emailPreviewParts,
+  missingDesignation,
+  personLineText,
+  shownRows,
+  signersMissingText,
   sendButtonText,
   sendGroupText,
   sendOutcomeText,
@@ -151,7 +159,7 @@ test("request detail lines: escalation, delegation, link and email in plain word
   assert.deepEqual(requestDetailLines(base, day), ["Inviata il 3 ott · scade il 2 nov · promemoria 1 di 2 (il prossimo il 10 ott)", "Link attivo"]);
   const busy = requestDetailLines({ ...base, escalated: true, delegatedFromRequestId: "r0", delegationDepth: 1, emailQueued: true }, day);
   assert.ok(busy.includes("Segnalata al responsabile del cliente."));
-  assert.ok(busy.includes("Delega da un collega."));
+  assert.ok(busy.includes("Delega da un'altra persona."), "(rilascio 10, §4) genere neutro");
   assert.ok(busy.includes("In partenza"));
   const held = requestDetailLines({ ...base, emailQueued: true, emailHoldReason: "email_non_configurata" }, day);
   assert.ok(held.includes(EMAIL_NOT_CONFIGURED_TEXT));
@@ -400,4 +408,60 @@ test("assignment outcomes speak of results, never of commands only Lateral Space
     const text = assignOutcomeText({ assigned: 0, skipped: skip(code, 2), skippedTotal: 2, roleMismatch: 0 });
     assert.doesNotMatch(text, /revoca|::|\bvoc[ei]\b/i, text);
   }
+});
+
+// ── Rilascio 10, §3.5: Persone in due gruppi ──────────────────────────
+
+test("(rilascio 10) la riga di un referente dice il ruolo e «8 aperte»; lo zero non si dice", () => {
+  assert.equal(personLineText({ roleText: "Amministrazione", open: 8 }), "Amministrazione · 8 aperte");
+  assert.equal(personLineText({ roleText: "Amministrazione", open: 1 }), "Amministrazione · 1 aperta");
+  assert.equal(personLineText({ roleText: "Amministrazione", open: 0 }), "Amministrazione");
+  assert.equal(personLineText({ roleText: null, open: 0 }), null);
+  const rows = lsPeopleRows({ contacts: [contact("b", "Bea", { counts: { assigned: 5, open: 3, unsent: 0 } })], requests: [], roleLabels, designated: { owner: null, privacy: null } });
+  assert.equal(rows[0].open, 3, "la riga porta le aperte");
+});
+
+test("(rilascio 10) una riga sola se manca chi firma per il cliente, e «Indica» sceglie la firma che manca", () => {
+  assert.equal(signersMissingText({ owner: "a", privacy: "b" }), null, "ci sono tutti e due: nessuna riga");
+  assert.equal(signersMissingText({ owner: null, privacy: "b" }), "Manca chi firma il via per il cliente.");
+  assert.equal(signersMissingText({ owner: "a", privacy: null }), "Manca chi firma la privacy per il cliente.");
+  assert.equal(signersMissingText({ owner: null, privacy: null }), "Manca chi firma per il cliente.");
+  assert.equal(missingDesignation({ owner: null, privacy: "b" }), "owner");
+  assert.equal(missingDesignation({ owner: "a", privacy: null }), "privacy");
+  assert.equal(missingDesignation({ owner: null, privacy: null }), null, "mancano tutti e due: si sceglie nel dialogo");
+});
+
+test("(rilascio 10, §1 regola 4) al massimo tre righe in vista, poi «Vedi tutti (N)»", () => {
+  assert.equal(PEOPLE_ROWS_SHOWN, 3);
+  assert.deepEqual(shownRows([1, 2, 3, 4, 5], false), [1, 2, 3]);
+  assert.deepEqual(shownRows([1, 2, 3, 4, 5], true), [1, 2, 3, 4, 5]);
+  assert.equal(PEOPLE_TEXT.showAll(5), "Vedi tutti (5)");
+});
+
+test("(rilascio 10) l'anteprima di «Invia le domande» è l'email vera: paragrafi, il pulsante con la sola etichetta, la riga piccola", () => {
+  const link = "http://localhost/r/ucr_xxxxxxxx";
+  const text = ["Buongiorno,", "per il caso d'uso «Preventivi» di Cliente Demo ci servono alcune informazioni da te: 3 domande.", "> ci serve entro venerdì", `Apri le domande: ${link}`, "Il link è solo tuo e vale fino al 18 dicembre."].join("\n\n") + "\n";
+  const parts = emailPreviewParts({ subject: "Cliente Demo: 3 domande su «Preventivi»", text });
+  assert.equal(parts.subject, "Cliente Demo: 3 domande su «Preventivi»");
+  assert.deepEqual(parts.blocks, [
+    { p: "Buongiorno," },
+    { p: "per il caso d'uso «Preventivi» di Cliente Demo ci servono alcune informazioni da te: 3 domande." },
+    { quote: "ci serve entro venerdì" },
+    { link: { href: link, label: "Apri le domande" } },
+    { small: "Il link è solo tuo e vale fino al 18 dicembre." },
+  ]);
+});
+
+test("(rilascio 10) i testi di Persone e di «Invia le domande» passano il controllo, con genere neutro", () => {
+  const texts = [
+    ...Object.values(PEOPLE_TEXT).flatMap((v) => (typeof v === "string" ? [v] : typeof v === "function" ? [(v as (x: never) => string)("Bea" as never)] : Object.values(v))),
+    ...Object.values(SEND_TEXT).flatMap((v) => (typeof v === "string" ? [v] : [(v as (n: number) => string)(1), (v as (n: number) => string)(3)])),
+    ...CASE_ROLES.map((r) => CASE_ROLE_HINT[r]),
+    requestTimeline({ ...base, sentAt: null, needsApproval: true }, day),
+  ];
+  assert.deepEqual(findForbiddenIn(texts, "cliente"), []);
+  for (const t of texts) assert.doesNotMatch(t, /\bcolleg(?:a|he|hi)\b/i, `genere neutro: «${t}»`);
+  assert.equal(PEOPLE_TEXT.clientGroup, "Rispondono per il cliente");
+  assert.equal(PEOPLE_TEXT.caseGroup, "Nella realizzazione");
+  assert.equal(PEOPLE_TEXT.send, "Invia le domande", "un solo verbo per inviare, come in Domande (§4)");
 });

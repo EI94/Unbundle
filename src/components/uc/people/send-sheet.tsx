@@ -2,22 +2,26 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ChevronRight } from "lucide-react";
+import { Check } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { retryDossierTransition } from "@/components/uc/shell/transition-retry";
 import { DetailSheetFrame } from "@/components/uc/ui/detail-sheet";
+import { EmailPreview } from "@/components/use-cases/detail/referent/ask-preview";
 import { assignRoleQuestionsAction, previewRequestsAction, sendRequestsAction } from "@/lib/actions/uc-people";
 import type { RequestPreviewGroup } from "@/lib/db/queries/uc-requests";
 import { renderEmail } from "@/lib/uc/notify/email-templates";
 import { formatCountIt } from "@/lib/uc/views/format";
-import { EMAIL_OFF_TEXT, sendButtonText, sendGroupText } from "@/lib/uc/views/people";
+import { EMAIL_OFF_TEXT, SEND_TEXT, emailPreviewParts, sendButtonText, sendGroupText } from "@/lib/uc/views/people";
+import { REFERENT_UI_TEXT, fillText } from "@/lib/use-cases/referent/labels";
 import { cn } from "@/lib/utils";
 import { AssignStep, suggestedChoice, type AssignContactOption, type AssignRole } from "./assign-step";
 
 const FAILED = "Operazione non riuscita. Riprova tra poco.";
-/** Un link finto ma valido per l'anteprima: nel testo diventa «‹il suo link personale›». */
+/** Le domande in vista sotto l'email: le prime; le altre le trova aprendo il link. */
+const SEND_PREVIEW_QUESTIONS = 10;
+/** Un link finto ma valido per l'anteprima: a schermo resta solo l'etichetta del pulsante («Apri le domande»). */
 const SAMPLE_LINK = `http://localhost/r/ucr_${"x".repeat(32)}`;
 const DAY_MS = 86_400_000;
 
@@ -28,37 +32,65 @@ interface Preview {
   expiresAt: Date;
 }
 
-function StepTitle({ n, label, active }: { n: number; label: string; active: boolean }) {
+type Step = 1 | 2 | 3;
+const STEPS = REFERENT_UI_TEXT.askDialog.steps;
+
+/**
+ * I passi di «Invia le domande», come quelli di «Chiedi al referente» (rilascio 10, §3.5): «A chi», «Cosa chiedi»,
+ * «Controlla e invia», con gli stessi nomi e lo stesso disegno (fatto: la spunta; adesso: il bordo pieno). Lo stato si
+ * legge anche senza colore; non si clicca, si torna indietro con «Indietro».
+ */
+function SendStepBar({ step }: { step: Step }) {
+  const labels: Record<Step, string> = { 1: STEPS.who, 2: STEPS.what, 3: STEPS.check };
   return (
-    <span className={cn("inline-flex items-center gap-1.5 text-sm", active ? "font-medium text-foreground" : "text-muted-foreground")}>
-      <span className={cn("inline-flex size-5 items-center justify-center rounded-full text-xs tabular-nums ring-1", active ? "bg-foreground text-background ring-foreground" : "ring-foreground/20")} aria-hidden>
-        {n}
-      </span>
-      {label}
-    </span>
+    <ol aria-label={STEPS.label} data-slot="send-steps" className="grid grid-cols-3 gap-2">
+      {([1, 2, 3] as const).map((n) => {
+        const state = n < step ? "fatto" : n === step ? "adesso" : "dopo";
+        return (
+          <li key={n} data-state={state} aria-current={state === "adesso" ? "step" : undefined} className="flex min-w-0 items-start gap-2">
+            <span
+              aria-hidden
+              className={cn(
+                "flex size-6 shrink-0 items-center justify-center rounded-full text-xs tabular-nums",
+                state === "fatto" && "bg-foreground text-background",
+                state === "adesso" && "border-2 border-foreground font-medium",
+                state === "dopo" && "border border-input text-muted-foreground",
+              )}
+            >
+              {state === "fatto" ? <Check className="size-3.5" /> : n}
+            </span>
+            <span className={cn("min-w-0 pt-1 text-xs break-words", state === "adesso" ? "font-medium" : "text-muted-foreground")}>
+              {labels[n]}
+              <span className="sr-only">{state === "fatto" ? STEPS.done : state === "adesso" ? STEPS.now : ""}</span>
+            </span>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
 /**
- * Pannello «Invia le domande» (`?invia=1`, DESIGN §3.9.2). Si apre dal
- * primario, da Persone e dalla riga «Senza referente».
+ * Pannello «Invia le domande» (`?invia=1`; rilascio 10, §3.5: come «Chiedi al referente»). Si apre dal pulsante pieno,
+ * da Persone e dalla riga «Senza referente».
  *
- * 1. Chi risponde: per ogni ruolo con domande senza referente si sceglie la
- *    persona (proposta quella con lo stesso ruolo). Si salta se è tutto
- *    assegnato.
- * 2. Cosa parte: per ogni referente domande, minuti, durata del link e canale;
- *    l'anteprima del messaggio; «Invia a 2 referenti», oppure «Prepara 2 link»
- *    quando le email non partono.
+ * 1. «A chi»: per ogni ruolo con domande senza referente si sceglie la persona (proposta quella con lo stesso ruolo).
+ *    Si salta se è tutto assegnato.
+ * 2. «Cosa chiedi»: per ogni referente domande, minuti, durata del link e canale; si tolgono le persone che non devono
+ *    ricevere niente adesso.
+ * 3. «Controlla e invia»: l'email vera che riceve la prima persona scelta (oggetto e testo dello stesso modello
+ *    dell'invio, con il link solo come etichetta), poi «Invia a 2 referenti», oppure «Prepara 2 link» quando le email
+ *    non partono.
  *
- * Usa le action di sempre: `assignRoleQuestionsAction` (le domande di un ruolo
- * in un colpo solo, come «Assegna per ruolo»), `previewRequestsAction` e
- * `sendRequestsAction`.
+ * Usa le action di sempre: `assignRoleQuestionsAction` (le domande di un ruolo in un colpo solo),
+ * `previewRequestsAction` e `sendRequestsAction`.
  */
 export function SendSheet({
   workspaceId,
   caseId,
   roles,
   contacts,
+  emails,
   emailConfigured,
   clientName,
   caseTitle,
@@ -69,10 +101,12 @@ export function SendSheet({
   caseId: string;
   roles: readonly AssignRole[];
   contacts: readonly AssignContactOption[];
+  /** L'email di ogni referente, per la riga «A» dell'anteprima (solo Lateral Space apre il pannello). */
+  emails: Readonly<Record<string, string | null>>;
   emailConfigured: boolean;
   clientName: string;
   caseTitle: string;
-  /** «Riassegna anche quelle già assegnate» (solo il responsabile Lateral Space). */
+  /** «Affida anche quelle già affidate» (solo il responsabile Lateral Space). */
   canReassign: boolean;
   addHref: string | null;
 }) {
@@ -80,7 +114,7 @@ export function SendSheet({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
-  const [step, setStep] = useState<1 | 2>(roles.length > 0 ? 1 : 2);
+  const [step, setStep] = useState<Step>(roles.length > 0 ? 1 : 2);
   const [choices, setChoices] = useState<Record<string, string>>(() => Object.fromEntries(roles.map((r) => [r.roleKey, suggestedChoice(r, contacts)])));
   const [includeAssigned, setIncludeAssigned] = useState(false);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -104,7 +138,7 @@ export function SendSheet({
     return true;
   }
 
-  // Senza domande da assegnare il pannello parte dal passo 2: l'elenco si chiede subito, una volta.
+  // Senza domande da assegnare il pannello parte da «Cosa chiedi»: l'elenco si chiede subito, una volta.
   const startsAtTwo = roles.length === 0;
   useEffect(() => {
     if (!startsAtTwo) return;
@@ -114,7 +148,7 @@ export function SendSheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- solo all'apertura del pannello
   }, [startsAtTwo]);
 
-  function next() {
+  function assignAndContinue() {
     startTransition(async () => {
       try {
         let assigned = 0;
@@ -162,55 +196,57 @@ export function SendSheet({
   }
 
   const groups = preview?.groups ?? [];
-  const first = groups.find((g) => chosen.has(g.contactId)) ?? null;
+  const picked = groups.filter((g) => chosen.has(g.contactId));
+  // L'anteprima è l'email della prima persona scelta che la riceve davvero (chi non ha l'email riceve il link a mano).
+  const mailed = emailConfigured ? (picked.find((g) => g.channel === "email") ?? null) : null;
   const sample =
-    first && preview
-      ? renderEmail({ template: "richiesta_inviata", clientName: clientName || "Cliente", caseTitle, questions: first.items.length, minutes: first.minutes, expiresAt: preview.expiresAt, link: SAMPLE_LINK })
+    mailed && preview
+      ? renderEmail({ template: "richiesta_inviata", clientName: clientName || "Cliente", caseTitle, questions: mailed.items.length, minutes: mailed.minutes, expiresAt: preview.expiresAt, link: SAMPLE_LINK })
       : null;
+  const ready = preview !== null && groups.length > 0;
+  const T = REFERENT_UI_TEXT.askDialog;
+
+  const footer =
+    step === 1 ? (
+      <div className="flex flex-wrap gap-2">
+        <Button className="h-11 sm:h-8" disabled={pending} onClick={assignAndContinue}>
+          {pending ? "Un momento…" : T.next}
+        </Button>
+        <Button variant="ghost" className="h-11 sm:h-8" onClick={close}>
+          {T.cancel}
+        </Button>
+      </div>
+    ) : step === 2 ? (
+      <div className="flex flex-wrap gap-2">
+        {/* Avanti solo con l'elenco pronto e qualcuno da raggiungere: mai «Invia a 0 referenti». */}
+        {ready ? (
+          <Button className="h-11 sm:h-8" disabled={pending || chosen.size === 0} onClick={() => setStep(3)}>
+            {T.next}
+          </Button>
+        ) : (
+          <Button variant="ghost" className="h-11 sm:h-8" onClick={close}>
+            {T.close}
+          </Button>
+        )}
+        {roles.length > 0 && (
+          <Button variant="ghost" className="h-11 sm:h-8" disabled={pending} onClick={() => setStep(1)}>
+            {T.back}
+          </Button>
+        )}
+      </div>
+    ) : (
+      <div className="flex flex-wrap gap-2">
+        <Button className="h-11 sm:h-8" disabled={pending || chosen.size === 0} onClick={send}>
+          {sendButtonText(chosen.size, emailConfigured)}
+        </Button>
+        <Button variant="ghost" className="h-11 sm:h-8" disabled={pending} onClick={() => setStep(2)}>
+          {T.back}
+        </Button>
+      </div>
+    );
 
   return (
-    <DetailSheetFrame
-      open
-      onOpenChange={(open) => !open && close()}
-      size="xl"
-      title="Invia le domande"
-      chips={
-        <div className="flex flex-wrap items-center gap-3">
-          <StepTitle n={1} label="Chi risponde" active={step === 1} />
-          <StepTitle n={2} label="Cosa parte" active={step === 2} />
-        </div>
-      }
-      footer={
-        step === 1 ? (
-          <div className="flex flex-wrap gap-2">
-            <Button className="h-11 sm:h-8" disabled={pending} onClick={next}>
-              {pending ? "Un momento…" : "Avanti"}
-            </Button>
-            <Button variant="ghost" className="h-11 sm:h-8" onClick={close}>
-              Annulla
-            </Button>
-          </div>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {/* Il pulsante d'invio solo con l'elenco pronto e qualcosa da inviare: mai «Invia a 0 referenti». */}
-            {preview && groups.length > 0 ? (
-              <Button className="h-11 sm:h-8" disabled={pending || chosen.size === 0} onClick={send}>
-                {sendButtonText(chosen.size, emailConfigured)}
-              </Button>
-            ) : (
-              <Button variant="ghost" className="h-11 sm:h-8" onClick={close}>
-                Chiudi
-              </Button>
-            )}
-            {roles.length > 0 && (
-              <Button variant="ghost" className="h-11 sm:h-8" disabled={pending} onClick={() => setStep(1)}>
-                Indietro
-              </Button>
-            )}
-          </div>
-        )
-      }
-    >
+    <DetailSheetFrame open onOpenChange={(open) => !open && close()} size="xl" title={SEND_TEXT.title} chips={<SendStepBar step={step} />} footer={footer}>
       {step === 1 ? (
         <AssignStep
           roles={roles}
@@ -223,11 +259,11 @@ export function SendSheet({
         />
       ) : !preview ? (
         <p role="status" className="text-sm text-muted-foreground">
-          Preparo l&apos;elenco…
+          {SEND_TEXT.loading}
         </p>
       ) : groups.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Non c&apos;è niente da inviare: le domande assegnate sono già partite o aspettano una risposta.</p>
-      ) : (
+        <p className="text-sm text-muted-foreground">{SEND_TEXT.nothing}</p>
+      ) : step === 2 ? (
         <div className="space-y-4">
           <ul className="divide-y divide-border rounded-xl ring-1 ring-foreground/10">
             {groups.map((g) => {
@@ -256,23 +292,33 @@ export function SendSheet({
               );
             })}
           </ul>
-          {preview.notRequestable > 0 && (
-            <p className="text-xs text-muted-foreground">
-              {preview.notRequestable === 1 ? "1 domanda non si può inviare adesso" : `${preview.notRequestable} domande non si possono inviare adesso`}: bloccate, già partite o senza referente.
-            </p>
-          )}
+          {preview.notRequestable > 0 && <p className="text-xs text-muted-foreground">{SEND_TEXT.notRequestable(preview.notRequestable)}</p>}
           {!emailConfigured && <p className="text-xs text-muted-foreground">{EMAIL_OFF_TEXT}</p>}
-          {sample && (
-            <details className="group min-w-0">
-              <summary className="inline-flex min-h-11 cursor-pointer list-none items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground sm:min-h-8 [&::-webkit-details-marker]:hidden">
-                <ChevronRight className="size-4 shrink-0 transition-transform group-open:rotate-90" aria-hidden />
-                Anteprima del messaggio
-              </summary>
-              <div className="mt-2 space-y-2 rounded-lg bg-muted/40 p-3 text-xs">
-                <p className="font-medium break-words">{sample.subject}</p>
-                <p className="break-words whitespace-pre-line text-muted-foreground">{sample.text.replace(SAMPLE_LINK, "‹il suo link personale›").split("\n--\n")[0].trim()}</p>
+        </div>
+      ) : (
+        <div data-slot="send-check" className="space-y-4">
+          {mailed && sample ? (
+            <>
+              <h3 className="text-sm font-medium break-words">{fillText(T.checkHeading, { Nome: mailed.displayName })}</h3>
+              <EmailPreview
+                to={emails[mailed.contactId] ? fillText(T.toValue, { Nome: mailed.displayName, email: emails[mailed.contactId] ?? "" }) : mailed.displayName}
+                parts={emailPreviewParts(sample)}
+              />
+              <div className="space-y-1.5">
+                <p className="text-sm">{T.questionsOnLink}</p>
+                <ol className="list-decimal space-y-0.5 pl-5 text-sm">
+                  {mailed.items.slice(0, SEND_PREVIEW_QUESTIONS).map((item) => (
+                    <li key={item.itemId} className="break-words">
+                      {item.title}
+                    </li>
+                  ))}
+                </ol>
+                {mailed.items.length > SEND_PREVIEW_QUESTIONS && <p className="text-xs text-muted-foreground">{SEND_TEXT.moreQuestions(mailed.items.length - SEND_PREVIEW_QUESTIONS)}</p>}
               </div>
-            </details>
+              {picked.length > 1 && <p className="text-xs text-muted-foreground">{SEND_TEXT.others(picked.length - 1)}</p>}
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">{emailConfigured ? SEND_TEXT.noEmail : EMAIL_OFF_TEXT}</p>
           )}
         </div>
       )}
