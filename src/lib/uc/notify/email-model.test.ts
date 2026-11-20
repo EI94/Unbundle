@@ -103,6 +103,26 @@ test("(rilascio 10, §3.12) ogni corpo di un caso d'uso solo: al massimo 60 paro
   }
 });
 
+test("(rilascio 10, §3.12) le richieste e i promemoria della realizzazione: al massimo 60 parole anche con un titolo di 9 parole", () => {
+  const long = { clientName: "Cliente Demo", caseTitle: LONG.title };
+  const brand = emailBrand(ORIGIN);
+  const requests: EmailInput[] = [
+    { ...long, template: "richiesta_inviata", questions: 12, minutes: 25, expiresAt: EXPIRES, link: R },
+    { ...long, template: "promemoria_1", questions: 12, minutes: 25, expiresAt: EXPIRES, link: R },
+    { ...long, template: "promemoria_2", questions: 12, minutes: 25, expiresAt: EXPIRES, link: R },
+    { ...long, template: "chiarimento", itemTitle: "Volumi mensili delle fatture registrate a mano", expiresAt: EXPIRES, link: R },
+    { ...long, template: "delega", audience: "collega", fromRoleLabel: "Responsabile amministrativo", questions: 4, minutes: 9, expiresAt: EXPIRES, link: R },
+    { ...long, template: "richiesta_approvazione", designation: "privacy", pending: 2, expiresAt: EXPIRES, link: R },
+  ];
+  for (const input of requests) {
+    const m = renderEmail(input, brand);
+    const words = emailBodyWords(m.text);
+    assert.ok(words <= EMAIL_BODY_MAX_WORDS, `${input.template}: ${words} parole\n${m.text}`);
+    // La riga piccola del modello: il link solo tuo, la scadenza, la risposta all'email.
+    assert.ok(m.text.includes("Il link è solo tuo e vale fino all'8 dicembre. Per un dubbio, rispondi qui."), `${input.template}\n${m.text}`);
+  }
+});
+
 test("(rilascio 10, §3.12) il marchio una volta: l'intestazione in cima, niente piè di pagina; l'indirizzo in chiaro solo nel testo semplice", () => {
   for (const [label, m] of singleCaseEmails()) {
     assert.ok(!m.text.includes("Lateral Space via Unbundle") && !m.html.includes("Lateral Space via Unbundle"), `${label}: il piè di pagina con il marchio`);
