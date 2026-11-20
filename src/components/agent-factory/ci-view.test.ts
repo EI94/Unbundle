@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { CiKeyRepoOverview } from "../../lib/db/queries/use-case-ci-keys.ts";
-import { CI_SECRET_NAME, ciRepoName, ciRowState, type CiKeyRow } from "../../lib/use-cases/ci/keys.ts";
+import { CI_SECRET_NAME, ciRepoName, ciRowState, rotateRefusal, type CiKeyRow } from "../../lib/use-cases/ci/keys.ts";
 import { findHubForbiddenIn } from "../../lib/use-cases/copy-guard.ts";
 import { CI_SECRET, CI_TEXT, ciDay, ciLastSendText, ciRepoShortName, familyAnchor } from "./ci-text.ts";
 import { ciFamiliesView, ciRowView, ciTodoText, type CiFamiliesView } from "./ci-view.ts";
@@ -67,16 +67,34 @@ test("ogni stato della riga: la frase della specifica, il colore, e i pulsanti p
   assert.deepEqual(view([key({ revokedAt: at("2026-11-18T19:30:00.000Z"), revokedReason: "esposta" })]).primary, "collega");
 });
 
-test("«Ruota» solo quando il server la accetta: una chiave nuova mai usata (la vecchia già finita) aspetta GitHub", () => {
-  // La vecchia di una rotazione è scaduta; la nuova, mai usata, sostituisce: un'altra rotazione si rifiuterebbe.
-  const old = key({ createdAt: at("2026-05-01T10:00:00.000Z"), expiresAt: at("2026-11-12T10:00:00.000Z") });
-  const pending = key({ createdAt: at("2026-11-05T10:00:00.000Z"), expiresAt: at("2027-05-04T10:00:00.000Z"), replacesKeyId: old.id });
-  const v = view([pending, old]);
-  assert.equal(v.text, "CI collegata il 05/11/2026: le evals arrivano alla prossima unione su main.");
-  assert.deepEqual(v.menu, ["revoca"], "senza «Ruota»");
-  // In scadenza e con la rotazione ferma: nessun pulsante «Ruota», resta «Revoca».
+test("una rotazione ferma: finché la vecchia vale, in corso; finita la vecchia (22/11), il 28/11 la nuova è «da mettere» e «Ruota» si può", () => {
+  // Ruotata il 15/11 alle 11 di Roma: la vecchia vale al massimo 7 giorni, fino al 22/11; la nuova non arriva mai su GitHub.
+  const old = key({ createdAt: at("2026-06-05T10:00:00.000Z"), expiresAt: at("2026-11-22T10:00:00.000Z"), lastUsedAt: at("2026-11-14T09:00:00.000Z") });
+  const pending = key({ createdAt: at("2026-11-15T10:00:00.000Z"), expiresAt: at("2027-05-14T10:00:00.000Z"), replacesKeyId: old.id });
+  const before = at("2026-11-20T10:00:00.000Z");
+  assert.equal(rotateRefusal([pending, old], before), "rotazione_in_corso", "il 20/11 la vecchia vale ancora");
+  assert.deepEqual(view([pending, old], before), {
+    tone: "giallo",
+    text: "Chiave nuova da mettere su GitHub. La vecchia vale fino al primo invio con la nuova, al massimo fino al 22/11/2026.",
+    primary: null,
+    menu: ["revoca"],
+  });
+  const after = at("2026-11-28T10:00:00.000Z");
+  assert.equal(rotateRefusal([pending, old], after), null, "il 28/11 la vecchia è finita: si ruota di nuovo");
+  assert.deepEqual(view([pending, old], after), {
+    tone: "rosso",
+    text: "Chiave nuova da mettere su GitHub: la vecchia non vale più dal 22/11/2026 e la CI non manda le evals.",
+    primary: null,
+    menu: ["ruota", "revoca"],
+  });
+  // «Metti su GitHub…» resta in «Da fare per te», il 20/11 (ferma da più di un giorno) e il 28/11.
+  for (const now of [before, after]) {
+    const v = families({ now, repos: reposOf(overview([pending, old]), overview([], 0, OTHER)) });
+    assert.deepEqual(v.todos.map((t) => [t.kind, t.text]), [["metti", "Metti su GitHub la chiave nuova della CI di esempio-rosa."]], now.toISOString());
+  }
+  // In scadenza, con la vecchia finita: serve una chiave nuova, e «Ruota» è il pulsante.
   const expiringPending = key({ createdAt: at("2026-06-05T10:00:00.000Z"), expiresAt: at("2026-12-02T10:00:00.000Z"), replacesKeyId: old.id });
-  assert.deepEqual(view([expiringPending, old]), { tone: "giallo", text: "La chiave della CI scade il 02/12/2026.", primary: null, menu: ["revoca"] });
+  assert.deepEqual(view([expiringPending, old], after), { tone: "giallo", text: "La chiave della CI scade il 02/12/2026.", primary: "ruota", menu: ["revoca"] });
 });
 
 test("l'ultimo invio: oggi, ieri, poi la data; i giorni sono quelli di Roma", () => {

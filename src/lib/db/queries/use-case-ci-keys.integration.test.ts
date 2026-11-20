@@ -356,6 +356,28 @@ test("la rotazione: la vecchia al più 7 giorni, il primo invio con la nuova la 
   assert.equal((await keyRows()).length, 1);
 });
 
+test("una rotazione è in corso solo finché la vecchia vale: finita la vecchia, la nuova mai usata si ruota di nuovo", opts, async () => {
+  await clearKeys();
+  const first = okValue(await store.createCiKey(exec, { workspaceId: ids.ws, repo: REPO, actor: actor("manager"), lsDomains: LS }), "creata");
+  const second = okValue(await store.rotateCiKey(exec, { workspaceId: ids.ws, repo: REPO, actor: actor("manager"), lsDomains: LS }), "ruotata");
+  refused(await store.rotateCiKey(exec, { workspaceId: ids.ws, repo: REPO, actor: actor("manager"), lsDomains: LS }), "rotazione_in_corso", "la vecchia vale ancora");
+  // I 7 giorni della vecchia sono finiti e la nuova non è mai arrivata su GitHub.
+  await q(`UPDATE use_case_ci_keys SET created_at = now() - interval '30 days', expires_at = now() - interval '1 second' WHERE id = $1`, [first.keyId]);
+  const third = okValue(await store.rotateCiKey(exec, { workspaceId: ids.ws, repo: REPO, actor: actor("manager"), lsDomains: LS }), "di nuovo");
+  assert.equal(third.replaced?.keyId, second.keyId, "sostituisce la nuova mai usata");
+  assert.ok(third.replaced!.until.getTime() <= Date.now() + 7 * 86_400_000 + 1000, "che vale al più 7 giorni");
+  refused(await store.rotateCiKey(exec, { workspaceId: ids.ws, repo: REPO, actor: actor("manager"), lsDomains: LS }), "rotazione_in_corso", "di nuovo in corso");
+  const live = (await keyRows()).filter((r) => r.revoked_at === null && new Date(String(r.expires_at)).getTime() > Date.now());
+  assert.deepEqual(live.map((r) => r.id).sort(), [second.keyId, third.keyId].sort(), "mai più di due vive");
+  // Una vecchia che scadeva prima dei 7 giorni non si allunga.
+  await clearKeys();
+  const short = okValue(await store.createCiKey(exec, { workspaceId: ids.ws, repo: REPO, actor: actor("manager"), lsDomains: LS }), "corta");
+  await q(`UPDATE use_case_ci_keys SET created_at = now() - interval '178 days', expires_at = now() + interval '2 days' WHERE id = $1`, [short.keyId]);
+  const rotated = okValue(await store.rotateCiKey(exec, { workspaceId: ids.ws, repo: REPO, actor: actor("manager"), lsDomains: LS }), "ruotata");
+  const graceDays = (rotated.replaced!.until.getTime() - Date.now()) / 86_400_000;
+  assert.ok(graceDays > 1.9 && graceDays <= 2.0001, `la vecchia scadeva tra 2 giorni e resta così, non ${graceDays}`);
+});
+
 test("la chiave in un indirizzo: revocata subito (esposta), e l'e-mail a chi gestisce le chiavi; gli altri token si ignorano", opts, async () => {
   await clearKeys();
   const issued = okValue(await store.createCiKey(exec, { workspaceId: ids.ws, repo: REPO, actor: actor("manager"), lsDomains: LS }), "creata");

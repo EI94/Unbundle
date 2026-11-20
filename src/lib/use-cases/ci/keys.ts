@@ -207,9 +207,20 @@ export function liveCiKeys<T extends KeyFacts>(keys: readonly T[], now: Date): T
   return keys.filter((k) => isLiveCiKey(k, now)).sort(newestFirst);
 }
 
-/** Una rotazione aspetta la chiave nuova su GitHub: una chiave viva che ne sostituisce un'altra e non è mai stata usata. */
+/**
+ * Una rotazione è in corso: una chiave viva, mai usata, che sostituisce una chiave **ancora viva**. Quando la vecchia
+ * finisce (i suoi 7 giorni, o una revoca) la rotazione non è più in corso: la nuova, mai usata, resta «da mettere su
+ * GitHub» (`ciRowState`, `da_mettere`) e si può ruotare di nuovo, per esempio se la chiave mostrata una volta è persa.
+ * La stessa regola, in SQL, la rilegge `rotateCiKey`.
+ */
 export function rotationPending(keys: readonly KeyFacts[], now: Date): boolean {
-  return keys.some((k) => isLiveCiKey(k, now) && k.replacesKeyId !== null && k.lastUsedAt === null);
+  const live = new Set(keys.filter((k) => isLiveCiKey(k, now)).map((k) => k.id));
+  return keys.some((k) => live.has(k.id) && k.replacesKeyId !== null && k.lastUsedAt === null && live.has(k.replacesKeyId));
+}
+
+/** Quando una chiave ha smesso di valere: la revoca, o la scadenza se è venuta prima. */
+function endOf(k: Pick<CiKeyRow, "revokedAt" | "expiresAt">): Date {
+  return k.revokedAt && k.revokedAt.getTime() < k.expiresAt.getTime() ? k.revokedAt : k.expiresAt;
 }
 
 /** Perché «Crea la chiave» non si può: il repository ha già una chiave viva. */
@@ -271,6 +282,9 @@ export function ciKeyRetentionDue(k: Pick<CiKeyRow, "revokedAt" | "expiresAt">, 
  * - `usata`: una chiave viva, usata («CI collegata · ultimo invio … · la chiave scade il …»);
  * - `in_scadenza`: una chiave viva che scade entro 14 giorni («Ruota la chiave»);
  * - `rotazione`: la vecchia e la nuova vive, la nuova da mettere su GitHub (la vecchia vale fino a `old.expiresAt`);
+ * - `da_mettere`: la nuova di una rotazione, mai usata, e la vecchia finita (`oldEndedAt`, null se la sua riga non c'è
+ *   più): la CI riceve 401 finché la nuova non è su GitHub («Metti su GitHub…», e «Ruota» di nuovo si può). Una chiave in
+ *   scadenza resta `in_scadenza`: lì serve una chiave nuova, non quella;
  * - `scaduta`: nessuna chiave viva e l'ultima è scaduta, non revocata («Crea una chiave nuova»).
  */
 export type CiRowState =
@@ -280,6 +294,7 @@ export type CiRowState =
   | { kind: "usata"; key: CiKeyRow }
   | { kind: "in_scadenza"; key: CiKeyRow }
   | { kind: "rotazione"; old: CiKeyRow; fresh: CiKeyRow }
+  | { kind: "da_mettere"; key: CiKeyRow; oldEndedAt: Date | null }
   | { kind: "scaduta"; key: CiKeyRow };
 
 /** Lo stato della riga della famiglia, dalle chiavi del repository (anche revocate o scadute). */
@@ -290,6 +305,10 @@ export function ciRowState(keys: readonly CiKeyRow[], now: Date, ready = true): 
   if (live.length === 1) {
     const key = live[0];
     if (ciKeyExpiringSoon(key, now)) return { kind: "in_scadenza", key };
+    if (key.replacesKeyId !== null && key.lastUsedAt === null) {
+      const old = keys.find((k) => k.id === key.replacesKeyId);
+      return { kind: "da_mettere", key, oldEndedAt: old ? endOf(old) : null };
+    }
     return key.lastUsedAt ? { kind: "usata", key } : { kind: "mai_usata", key };
   }
   const latest = [...keys].sort(newestFirst)[0];
@@ -300,7 +319,8 @@ export function ciRowState(keys: readonly CiKeyRow[], now: Date, ready = true): 
  * «Da fare per te» di un repository, solo a chi gestisce le chiavi (§2.6):
  * - `collega`: nessuna chiave viva e almeno un caso dal progetto approvato in poi;
  * - `ruota`: la chiave scade entro 14 giorni;
- * - `metti`: una rotazione ferma da più di un giorno (la chiave nuova non è ancora arrivata da GitHub).
+ * - `metti`: una rotazione ferma da più di un giorno (la chiave nuova non è ancora arrivata da GitHub), o subito quando la
+ *   vecchia è già finita (`da_mettere`: la CI riceve 401).
  */
 export type CiTodoKind = "collega" | "ruota" | "metti";
 
@@ -313,6 +333,8 @@ export function ciKeyTodo(state: CiRowState, input: { approvedCases: number }, n
       return "ruota";
     case "rotazione":
       return now.getTime() - state.fresh.createdAt.getTime() > CI_ROTATION_STALE_DAYS * DAY_MS ? "metti" : null;
+    case "da_mettere":
+      return "metti";
     default:
       return null;
   }

@@ -62,6 +62,11 @@ export const CI_TEXT = Object.freeze({
     used: (lastSend: string, until: string) => `CI collegata · ultimo invio ${lastSend} · la chiave scade il ${until}`,
     expiring: (until: string) => `La chiave della CI scade il ${until}.`,
     rotation: (oldUntil: string) => `Chiave nuova da mettere su GitHub. La vecchia vale fino al primo invio con la nuova, al massimo fino al ${oldUntil}.`,
+    /** La nuova di una rotazione, mai usata, con la vecchia già finita: la CI riceve 401 finché la nuova non è su GitHub. */
+    awaitingKey: (oldEnded: string | null) =>
+      oldEnded
+        ? `Chiave nuova da mettere su GitHub: la vecchia non vale più dal ${oldEnded} e la CI non manda le evals.`
+        : "Chiave nuova da mettere su GitHub: la vecchia non vale più e la CI non manda le evals.",
     expired: (on: string) => `La chiave della CI è scaduta il ${on}: la CI non manda più le evals.`,
   }),
   /** I pulsanti della riga e il «⋯», solo per chi gestisce le chiavi. */

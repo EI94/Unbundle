@@ -95,6 +95,9 @@ export function ciRowView(state: CiRowState, keys: readonly CiKeyRow[], now: Dat
       return { tone: "giallo", text: CI_TEXT.row.expiring(ciDay(state.key.expiresAt)), primary: canRotate ? "ruota" : null, menu: ["revoca"] };
     case "rotazione":
       return { tone: "giallo", text: CI_TEXT.row.rotation(ciDay(state.old.expiresAt)), primary: null, menu: ["revoca"] };
+    case "da_mettere":
+      // La vecchia è finita: la CI riceve 401 finché la nuova non è su GitHub. Il passo è là; qui «Ruota» (la chiave persa) e «Revoca».
+      return { tone: "rosso", text: CI_TEXT.row.awaitingKey(state.oldEndedAt ? ciDay(state.oldEndedAt) : null), primary: null, menu: withLive() };
     case "scaduta":
       return { tone: "rosso", text: CI_TEXT.row.expired(ciDay(state.key.expiresAt)), primary: "crea", menu: [] };
   }

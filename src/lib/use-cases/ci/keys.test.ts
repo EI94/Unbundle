@@ -149,8 +149,12 @@ test("la rotazione: la vecchia vale al più 7 giorni; mai più di due vive; la s
   assert.equal(rotateRefusal([old], NOW), null);
   assert.equal(rotateRefusal([oldInGrace, fresh], NOW), "rotazione_in_corso", "due vive");
   assert.equal(rotationPending([oldInGrace, fresh], NOW), true);
-  // La vecchia è scaduta (o revocata a mano) ma la nuova non è mai arrivata da GitHub: ancora in corso.
-  assert.equal(rotateRefusal([{ ...oldInGrace, expiresAt: new Date(NOW.getTime() - 1) }, fresh], NOW), "rotazione_in_corso");
+  // La vecchia è finita (scaduta o revocata) e la nuova non è mai arrivata da GitHub: la rotazione non è più in corso e
+  // si può ruotare di nuovo (la chiave mostrata una volta può essere persa).
+  assert.equal(rotationPending([{ ...oldInGrace, expiresAt: new Date(NOW.getTime() - 1) }, fresh], NOW), false);
+  assert.equal(rotateRefusal([{ ...oldInGrace, expiresAt: new Date(NOW.getTime() - 1) }, fresh], NOW), null);
+  assert.equal(rotateRefusal([{ ...oldInGrace, revokedAt: NOW, revokedReason: "esposta" }, fresh], NOW), null);
+  assert.equal(rotateRefusal([fresh], NOW), null, "la riga della vecchia non c'è più");
   // Il primo invio con la nuova ha revocato la vecchia: si può ruotare di nuovo.
   const used = { ...fresh, lastUsedAt: NOW };
   assert.equal(rotateRefusal([{ ...oldInGrace, revokedAt: NOW, revokedReason: "ruotata" }, used], NOW), null);
@@ -188,6 +192,15 @@ test("la riga della famiglia: ogni stato del §2.6 dalle chiavi; «Da fare per t
   assert.equal(rotation.kind, "rotazione");
   assert.equal(rotation.kind === "rotazione" && rotation.old.id, old.id);
   assert.equal(rotation.kind === "rotazione" && rotation.fresh.id, fresh.id);
+  // La nuova di una rotazione mai arrivata su GitHub, con la vecchia già finita: da mettere, con il giorno della fine.
+  const dead = key({ lastUsedAt: new Date(NOW.getTime() - 9 * DAY), expiresAt: new Date(NOW.getTime() - 2 * DAY) });
+  const orphan = key({ createdAt: new Date(NOW.getTime() - 9 * DAY), replacesKeyId: dead.id });
+  assert.deepEqual(ciRowState([orphan, dead], NOW), { kind: "da_mettere", key: orphan, oldEndedAt: dead.expiresAt });
+  const revokedOld = { ...dead, expiresAt: new Date(NOW.getTime() + DAY), revokedAt: new Date(NOW.getTime() - 3 * DAY), revokedReason: "esposta" as const };
+  assert.deepEqual(ciRowState([orphan, revokedOld], NOW), { kind: "da_mettere", key: orphan, oldEndedAt: revokedOld.revokedAt });
+  assert.deepEqual(ciRowState([orphan], NOW), { kind: "da_mettere", key: orphan, oldEndedAt: null });
+  assert.equal(ciRowState([{ ...orphan, lastUsedAt: NOW }, dead], NOW).kind, "usata", "usata: la rotazione è finita");
+  assert.equal(ciRowState([{ ...orphan, expiresAt: new Date(NOW.getTime() + 5 * DAY) }, dead], NOW).kind, "in_scadenza", "in scadenza: serve una chiave nuova");
   const expired = key({ expiresAt: new Date(NOW.getTime() - DAY) });
   assert.deepEqual(ciRowState([expired], NOW), { kind: "scaduta", key: expired });
   assert.deepEqual(ciRowState([{ ...expired, revokedAt: NOW, revokedReason: "a_mano" }], NOW), { kind: "non_collegata" }, "revocata: non collegata");
@@ -198,6 +211,7 @@ test("la riga della famiglia: ogni stato del §2.6 dalle chiavi; «Da fare per t
   assert.equal(ciKeyTodo(ciRowState([expiring], NOW), { approvedCases: 0 }, NOW), "ruota");
   assert.equal(ciKeyTodo(rotation, { approvedCases: 0 }, NOW), "metti", "una rotazione ferma da più di un giorno");
   assert.equal(ciKeyTodo(ciRowState([old, { ...fresh, createdAt: new Date(NOW.getTime() - 3_600_000) }], NOW), { approvedCases: 0 }, NOW), null, "appena ruotata");
+  assert.equal(ciKeyTodo(ciRowState([orphan, dead], NOW), { approvedCases: 0 }, NOW), "metti", "la vecchia è finita: subito");
   assert.equal(ciKeyTodo(ciRowState([used], NOW), { approvedCases: 3 }, NOW), null);
   assert.equal(ciKeyTodo({ kind: "non_disponibile" }, { approvedCases: 3 }, NOW), null);
 });

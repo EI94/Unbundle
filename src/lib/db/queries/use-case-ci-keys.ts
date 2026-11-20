@@ -266,7 +266,8 @@ FROM facts LEFT JOIN created ON true`),
 /**
  * «Ruota la chiave»: una chiave nuova, che sostituisce quella viva; la vecchia vale ancora al più 7 giorni (e il primo
  * invio con la nuova la revoca). Si rifiuta senza una chiave viva (`nessuna_chiave`) e con una rotazione in corso: due
- * chiavi vive, o una chiave nuova mai usata (`rotazione_in_corso`). In coda `chiave_ci_creata`, come una chiave nuova.
+ * chiavi vive, o una chiave nuova mai usata la cui vecchia vale ancora (`rotazione_in_corso`, `rotationPending`). Finita la
+ * vecchia, la nuova mai usata si può ruotare di nuovo. In coda `chiave_ci_creata`, come una chiave nuova.
  */
 export async function rotateCiKey(
   executor: UcExecutor,
@@ -285,7 +286,8 @@ export async function rotateCiKey(
   SELECT EXISTS (${ciKeyManagersSql(ws, repoParam, input.lsDomains, actor)}) AS allowed,
     (SELECT r.repo FROM use_case_repos r WHERE r.workspace_id = ${ws} AND lower(r.repo) = lower(${repoParam}) ORDER BY r.created_at, r.id LIMIT 1) AS registered,
     (SELECT count(*)::int FROM use_case_ci_keys k WHERE ${ofRepo("k", ws, repoParam)} AND ${live("k")}) AS live,
-    EXISTS (SELECT 1 FROM use_case_ci_keys k WHERE ${ofRepo("k", ws, repoParam)} AND ${live("k")} AND k.replaces_key_id IS NOT NULL AND k.last_used_at IS NULL) AS pending
+    EXISTS (SELECT 1 FROM use_case_ci_keys k WHERE ${ofRepo("k", ws, repoParam)} AND ${live("k")} AND k.replaces_key_id IS NOT NULL AND k.last_used_at IS NULL
+      AND EXISTS (SELECT 1 FROM use_case_ci_keys o WHERE o.id = k.replaces_key_id AND o.workspace_id = k.workspace_id AND ${live("o")})) AS pending
 ), current_key AS (
   SELECT k.id FROM use_case_ci_keys k WHERE ${ofRepo("k", ws, repoParam)} AND ${live("k")} ORDER BY k.created_at DESC, k.id DESC LIMIT 1
 ), created AS (
