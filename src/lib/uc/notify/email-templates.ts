@@ -132,8 +132,8 @@ export type EmailInput =
   // `model`: il nome del catalogo («Claude Haiku 5.5»); null per un modello fuori dal catalogo, che non si scrive mai.
   | (CaseRef & { template: "banco_consiglio"; role: string; model: string | null; link: string })
   // (8.2a) Le evals di main sono sotto soglia o giù di almeno 5 punti (`drop`, 0..1): al team che costruisce, tranne chi
-  // le ha mandate. `quality`: già scritta («80%»).
-  | (CaseRef & { template: "evals_in_calo"; alert: "sotto_soglia" | "in_calo"; quality: string; drop: number | null; link: string })
+  // le ha mandate. `quality`: già scritta («80%»). (8.2b) `fromCi`: le ha mandate la CI di main (`evalsFromCiLine`).
+  | (CaseRef & { template: "evals_in_calo"; alert: "sotto_soglia" | "in_calo"; quality: string; drop: number | null; link: string; fromCi?: { commit: string } | null })
   // (8.0c) A chi entra tra chi costruisce i casi di un cliente da fuori Lateral Space, e a chi ne esce: senza caso, solo
   // con l'ok ai sub-responsabili del cliente. `cases`: null per «tutti, anche quelli che si apriranno».
   | { template: "team_aggiunto"; clientName: string; cases: number | null; link: string }
@@ -549,6 +549,7 @@ export function renderEmail(input: EmailInput, brand?: EmailBrand): RenderedEmai
             ? `le evals di main ${caso} sono scese di ${points} rispetto alle precedenti: ora sono ${atPercent(oneLine(input.quality, 8))}.`
             : `le evals di main ${caso} sono sotto soglia: ${oneLine(input.quality, 8)}.`,
         },
+        ...(input.fromCi ? [{ p: evalsFromCiLine(input.fromCi.commit) }] : []),
         { p: "Prima di cambiare altro, guarda quali gruppi non passano: sono nel progetto, in «Evals e banco di prova»." },
         { link: { href: link, label: "Apri il progetto" } },
         builderFooter(input),
@@ -680,4 +681,17 @@ export function renderCiKeyEmail(input: CiKeyEmailInput, brand?: EmailBrand): Re
         brand,
       );
   }
+}
+
+// ── (8.2b) Le evals arrivate dalla CI ─────────────────────────────────
+// Un blocco a parte, in fondo al file (RILASCIO-8.2b-SPEC.md §2.6): nell'e-mail `evals_in_calo` delle evals mandate dalla
+// CI di main una riga in più, con il commit corto. Mai la chiave né chi ha unito: la CI non è una persona.
+
+const CI_EVALS_COMMIT = /^[0-9a-f]{7,40}$/;
+
+/** «Le ha mandate la CI di main, commit a1b2c3d.»: il commit di 40 cifre (o già corto) diventa di 7. */
+export function evalsFromCiLine(commit: string): string {
+  const sha = commit.trim().toLowerCase();
+  if (!CI_EVALS_COMMIT.test(sha)) throw new Error("Commit dell'email non valido");
+  return `Le ha mandate la CI di main, commit ${sha.slice(0, 7)}.`;
 }
