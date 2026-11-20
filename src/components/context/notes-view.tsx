@@ -10,7 +10,6 @@ import { CONTEXT_TEXT } from "@/lib/context/text";
 import type { SourceListItem } from "@/lib/db/queries/context-sources";
 import { PeopleSearch } from "./people-search";
 import { SourceSheet } from "./source-sheet";
-import { UploadDocumentButton } from "./upload-document";
 import { sourceMeta } from "./view-model";
 
 const T = CONTEXT_TEXT;
@@ -46,15 +45,12 @@ export function NotesView({
   const closeSource = () => {
     setOpenSource(null);
     // Aperto da un link (`?fonte=`): chiuso, l'indirizzo torna quello della vista.
-    if (initialSourceId) router.replace(`/dashboard/${workspaceId}/contesto?vista=appunti`, { scroll: false });
+    if (initialSourceId) router.replace(`/dashboard/${workspaceId}/contesto?vista=fonti`, { scroll: false });
   };
 
   if (!lateralSpace) {
     return (
       <div className="space-y-4">
-        <div className="flex justify-end">
-          <UploadDocumentButton workspaceId={workspaceId} className="min-h-11 w-full px-4 sm:w-auto" />
-        </div>
         {sources.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">{T.documents.empty}</p>
         ) : (

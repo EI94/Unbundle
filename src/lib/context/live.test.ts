@@ -35,14 +35,14 @@ test("le righe, nella sezione giusta, come le mostra la pagina", () => {
   const rows = buildLiveRows(data());
   assert.deepEqual(rows.map((r) => [r.section, r.tag, r.text]), [
     ["azienda", null, "Cucine su misura per il mercato italiano."],
-    ["azienda", null, "Nodi strategici: Progettazione, Montaggio"],
-    ["azienda", null, "Nodi commodity: Contabilità"],
-    ["azienda", null, "Motori di margine: Linea premium"],
+    ["azienda", null, "Dove fa la differenza: Progettazione, Montaggio"],
+    ["azienda", null, "Lavoro di routine: Contabilità"],
+    ["azienda", null, "Da dove viene il margine: Linea premium"],
     ["azienda", null, "Rischi: Tempi di consegna"],
     ["azienda", null, "Maturità AI: Bassa"],
     ["azienda", null, "Dipendenti: 420"],
     ["azienda", null, "Ricavo dell'ultimo anno: 12 mln €"],
-    ["lavoro", null, "Acquisti: Compra legno e ferramenta · 4 persone · 7 attività mappate"],
+    ["lavoro", null, "Acquisti: Compra legno e ferramenta · 4 persone · 7 passi mappati"],
     ["lavoro", null, "Vendite"],
     ["obiettivi", "Risultato chiave", "Consegna in 20 giorni"],
     ["regole", null, "Perimetro: incluse Vendite, Acquisti; escluse Produzione"],
@@ -65,7 +65,7 @@ test("senza cifre (chi non è un revisore) le due righe non ci sono; i pezzi che
   );
   // Una persona, un'attività: al singolare.
   const one = buildLiveRows(data({ departments: [{ id: U1, name: "Acquisti", description: null, teamSize: 1 }], activityCounts: new Map([[U1, 1]]) }));
-  assert.ok(one.some((r) => r.text === "Acquisti · 1 persona · 1 attività mappata"));
+  assert.ok(one.some((r) => r.text === "Acquisti · 1 persona · 1 passo mappato"));
 });
 
 test("una riga sta su una riga e ha un tetto; le unità e gli obiettivi hanno un massimo", () => {

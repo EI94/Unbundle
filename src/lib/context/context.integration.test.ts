@@ -1649,8 +1649,8 @@ test("la Memoria mostra i dati della Discovery nella sezione giusta, letti dal v
   await q(`INSERT INTO activities (department_id, workspace_id, title) VALUES ($1, $2, 'Ordini ai fornitori'), ($1, $2, 'Controllo delle consegne')`, [ids.unitA, ids.wsA]);
   const view = await memory.loadContextMemory(actor("ls"));
   const live = (section: string) => view.sections.find((s) => s.section === section)!.live.map((row) => (row.tag ? `${row.tag}: ${row.text}` : row.text));
-  assert.deepEqual(live("azienda"), ["Cucine su misura per il mercato italiano.", "Nodi strategici: Progettazione", "Nodi commodity: Contabilità", "Maturità AI: Bassa", "Dipendenti: 420", "Ricavo dell'ultimo anno: 12 mln €"]);
-  assert.deepEqual(live("lavoro"), ["Acquisti: Compra legno e ferramenta · 4 persone · 2 attività mappate"]);
+  assert.deepEqual(live("azienda"), ["Cucine su misura per il mercato italiano.", "Dove fa la differenza: Progettazione", "Lavoro di routine: Contabilità", "Maturità AI: Bassa", "Dipendenti: 420", "Ricavo dell'ultimo anno: 12 mln €"]);
+  assert.deepEqual(live("lavoro"), ["Acquisti: Compra legno e ferramenta · 4 persone · 2 passi mappati"]);
   assert.deepEqual(live("obiettivi"), ["Obiettivo: Ridurre i tempi di consegna"]);
   assert.deepEqual(live("regole"), ["Perimetro: incluse Vendite, Acquisti; escluse Produzione", "Si parte dalle vendite.", "Orizzonte: 12 mesi"]);
   assert.deepEqual([live("persone"), live("sistemi"), live("parole")], [[], [], []]);
@@ -1661,7 +1661,7 @@ test("la Memoria mostra i dati della Discovery nella sezione giusta, letti dal v
   assert.deepEqual([await figures("ls"), await figures("rev"), await figures("lsc"), await figures("con")], [true, true, false, false]);
   // Si leggono dal vivo: una modifica alla Discovery si vede subito.
   await q(`UPDATE departments SET team_size = 5 WHERE id = $1`, [ids.unitA]);
-  assert.deepEqual((await memory.loadContextMemory(actor("con"))).sections.find((s) => s.section === "lavoro")!.live.map((r) => r.text), ["Acquisti: Compra legno e ferramenta · 5 persone · 2 attività mappate"]);
+  assert.deepEqual((await memory.loadContextMemory(actor("con"))).sections.find((s) => s.section === "lavoro")!.live.map((r) => r.text), ["Acquisti: Compra legno e ferramenta · 5 persone · 2 passi mappati"]);
 });
 
 test("«Novità per te»: niente alla prima visita; dopo 31 minuti i fatti nati dopo, non i propri, non quelli riconfermati; durante la visita restano", opts, async () => {
@@ -1891,7 +1891,7 @@ test("searchContext: Lateral Space trova fatti, Discovery, appunti e documenti; 
   assert.equal(forLs.filter((s) => s.kind === "fatto").length, 2);
   const fact = forLs.find((s) => s.kind === "fatto" && s.excerpt.includes("Udine"))!;
   assert.deepEqual([fact.label, /^\d{4}-\d{2}-\d{2}$/.test(fact.date ?? "")], ["Scritto a mano", true]);
-  assert.deepEqual(forLs.find((s) => s.kind === "discovery"), { n: forLs.find((s) => s.kind === "discovery")!.n, kind: "discovery", label: "Intervista iniziale", date: null, excerpt: `Acquisti: Compra per il ${WORD} · 5 persone · 2 attività mappate` });
+  assert.deepEqual(forLs.find((s) => s.kind === "discovery"), { n: forLs.find((s) => s.kind === "discovery")!.n, kind: "discovery", label: "Intervista iniziale", date: null, excerpt: `Acquisti: Compra per il ${WORD} · 5 persone · 2 passi mappati` });
   const found = forLs.find((s) => s.kind === "appunti")!;
   assert.deepEqual([found.label, found.date], [`Call sul ${WORD}`, "2026-11-10"]);
   assert.ok(found.excerpt.includes(`il ${WORD} chiude a dicembre`) && found.excerpt.length <= 600);

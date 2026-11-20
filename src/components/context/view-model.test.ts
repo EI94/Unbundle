@@ -664,3 +664,91 @@ test("il messaggio di una risposta d'errore: la frase della rotta, mai un codice
   assert.equal(responseMessage(null, "Riprova"), "Riprova");
   assert.equal(responseMessage("testo"), T.errors.retry);
 });
+
+// ─── (Rilascio 10, §3.7) Le viste, la testata comune e la Memoria ────
+
+const WS_ID = "44444444-4444-4444-8444-444444444444";
+
+test("(rilascio 10) le viste: «processi», «fonti» e il vecchio «appunti»; il resto è la Memoria", async () => {
+  const { contextViewOf, contextViewHref, CONTEXT_VIEWS } = await import("./view-model.ts");
+  assert.deepEqual([...CONTEXT_VIEWS], ["memoria", "processi", "fonti"]);
+  assert.equal(contextViewOf(undefined), "memoria");
+  assert.equal(contextViewOf("memoria"), "memoria");
+  assert.equal(contextViewOf("processi"), "processi");
+  assert.equal(contextViewOf("fonti"), "fonti");
+  assert.equal(contextViewOf("appunti"), "fonti");
+  assert.equal(contextViewOf(["fonti", "processi"]), "fonti");
+  assert.equal(contextViewOf("<script>"), "memoria");
+  assert.equal(contextViewHref(WS_ID, "memoria"), `/dashboard/${WS_ID}/contesto`);
+  assert.equal(contextViewHref(WS_ID, "fonti"), `/dashboard/${WS_ID}/contesto?vista=fonti`);
+});
+
+test("(rilascio 10, §8.2) `?vista=appunti` porta a `?vista=fonti` con tutti gli altri parametri; un indirizzo nuovo non si muove", async () => {
+  const { contextViewRedirect } = await import("./view-model.ts");
+  assert.equal(contextViewRedirect(WS_ID, { vista: "appunti" }), `/dashboard/${WS_ID}/contesto?vista=fonti`);
+  // Il link della CLI: `?vista=appunti&fonte=<id>` apre ancora il pannello della fonte.
+  assert.equal(contextViewRedirect(WS_ID, { vista: "appunti", fonte: "abc" }), `/dashboard/${WS_ID}/contesto?vista=fonti&fonte=abc`);
+  assert.equal(contextViewRedirect(WS_ID, { fonte: "abc", vista: "appunti", x: ["1", "2"] }), `/dashboard/${WS_ID}/contesto?fonte=abc&vista=fonti&x=1&x=2`);
+  assert.equal(contextViewRedirect(WS_ID, { vista: "fonti", fonte: "abc" }), null);
+  assert.equal(contextViewRedirect(WS_ID, {}), null);
+  assert.equal(contextViewRedirect(WS_ID, { vista: "processi" }), null);
+});
+
+test("(rilascio 10) `?apri=` e `?fonte=`: solo un id che sembra un uuid apre il pannello", async () => {
+  const { sheetIdParam } = await import("./view-model.ts");
+  const id = "9F0C2A4B-1D2E-4F3A-8B4C-5D6E7F8A9B0C";
+  assert.equal(sheetIdParam(id), id.toLowerCase());
+  assert.equal(sheetIdParam(` ${id} `), id.toLowerCase());
+  assert.equal(sheetIdParam([id]), id.toLowerCase());
+  for (const bad of [undefined, null, "", "fatto", "1234", "javascript:alert(1)", 42]) assert.equal(sheetIdParam(bad), null, String(bad));
+});
+
+test("(rilascio 10, §3.7) il passo della testata: «Conferma N proposte» solo per Lateral Space e solo con proposte", async () => {
+  const { confirmStep, contextMenu } = await import("./view-model.ts");
+  assert.deepEqual(confirmStep({ lateralSpace: true, openProposals: 3, workspaceId: WS_ID }), {
+    label: "Conferma 3 proposte",
+    why: "Unbundle le ha lette dalle fonti: confermale, correggile o scartale.",
+    href: `/dashboard/${WS_ID}/contesto/conferma`,
+  });
+  assert.equal(confirmStep({ lateralSpace: true, openProposals: 1, workspaceId: WS_ID })?.label, "Conferma 1 proposta");
+  assert.equal(confirmStep({ lateralSpace: true, openProposals: 0, workspaceId: WS_ID }), null);
+  assert.equal(confirmStep({ lateralSpace: false, openProposals: 5, workspaceId: WS_ID }), null);
+  // Il «⋯»: l'Intervista iniziale ai revisori, i fatti da verificare a Lateral Space quando ci sono.
+  assert.deepEqual(contextMenu({ workspaceId: WS_ID, reviewer: true, toCheck: 2, lateralSpace: true }).map((i) => [i.label, i.href]), [
+    ["Intervista iniziale", `/dashboard/${WS_ID}/setup/leadership`],
+    ["2 fatti da verificare", `/dashboard/${WS_ID}/contesto/verifica`],
+  ]);
+  assert.deepEqual(contextMenu({ workspaceId: WS_ID, reviewer: false, toCheck: 2, lateralSpace: false }), []);
+  assert.deepEqual(contextMenu({ workspaceId: WS_ID, reviewer: true, toCheck: 0, lateralSpace: true }).map((i) => i.key), ["intervista"]);
+});
+
+test("(rilascio 10, §3.7) «Impegni» in una lista: gli scaduti, poi per scadenza, i senza data in fondo; al massimo tre in vista", async () => {
+  const { memoryCommitments, commitmentParty, firstRows } = await import("./view-model.ts");
+  const c = (id: string, party: "nostra" | "cliente", dueOn: string | null, overdue = false): CommitmentView => ({ id, version: 1, statement: id, party, roleLabel: null, dueOn, overdue, visibility: "tutti" });
+  const ordered = memoryCommitments([c("a", "nostra", null), c("b", "nostra", "2026-11-30")], [c("c", "cliente", "2026-11-02", true), c("d", "cliente", "2026-11-20"), c("e", "cliente", "2026-11-30")]);
+  assert.deepEqual(ordered.map((x) => x.id), ["c", "d", "b", "e", "a"]);
+  assert.deepEqual([commitmentParty(c("x", "nostra", null)), commitmentParty(c("y", "cliente", null))], ["Nostri", "Del cliente"]);
+  assert.deepEqual(firstRows(ordered), { shown: ordered.slice(0, 3), rest: 2 });
+  assert.deepEqual(firstRows([1]), { shown: [1], rest: 0 });
+});
+
+test("(rilascio 10, §3.7) le sezioni chiuse: il conteggio, «Come lavorano» in unità; le righe della Discovery che portano da qualche parte", async () => {
+  const { sectionSummary, liveRowHref, noveltySource, noveltyRows } = await import("./view-model.ts");
+  const unit = "33333333-3333-4333-8333-333333333333";
+  const live = (key: string, section: MemorySection["section"] = "lavoro") => ({ key, section, text: key, tag: null });
+  assert.equal(sectionSummary({ section: "azienda", live: [live("tesi", "azienda")], facts: [fact(), fact()] }), "3");
+  assert.equal(sectionSummary({ section: "lavoro", live: [live(`unita:${unit}`)], facts: [] }), "1 unità");
+  assert.equal(sectionSummary({ section: "lavoro", live: [live(`unita:${unit}`), live(`unita:${unit.replace("3333-4", "3333-5")}`)], facts: [fact()] }), "2 unità · 1");
+  assert.equal(sectionSummary({ section: "lavoro", live: [], facts: [fact()] }), "1");
+  assert.equal(liveRowHref(WS_ID, { key: `unita:${unit.toUpperCase()}` }), `/dashboard/${WS_ID}/mapping/${unit}`);
+  assert.equal(liveRowHref(WS_ID, { key: "obiettivo:g1" }), `/dashboard/${WS_ID}/strategy`);
+  assert.equal(liveRowHref(WS_ID, { key: "tesi:proposta" }), null);
+  assert.equal(liveRowHref(WS_ID, { key: "unita:non-un-id" }), null);
+  // La fonte di una novità dal suo fatto; senza, la sezione.
+  const sections = [{ facts: [fact({ id: "f1", sourceLabel: "Documento 12 nov" })] }];
+  assert.equal(noveltySource({ factId: "f1", section: "sistemi" }, sections), "Documento 12 nov");
+  assert.equal(noveltySource({ factId: "f9", section: "sistemi" }, sections), "Sistemi e dati");
+  const item = (i: number) => ({ factId: `n${i}`, statement: `n${i}`, section: "sistemi" as const, tag: "nuovo" as const });
+  assert.deepEqual(noveltyRows({ items: [1, 2, 3, 4, 5].map(item), more: 2 }), { shown: [1, 2, 3].map(item), more: 4 });
+  assert.deepEqual(noveltyRows(null), { shown: [], more: 0 });
+});

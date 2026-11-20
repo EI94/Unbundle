@@ -115,42 +115,124 @@ const NOTICE: AiConsentNoticeData = {
 };
 
 const memoryProps = (over: Record<string, unknown> = {}) => ({ workspaceId: WS, today: TODAY, lateralSpace: true, canEditMemory: true, memory: memory(), useCaseOptions: [], consentNotice: null, ...over });
-
-test("la Memoria per Lateral Space: le righe di servizio, «In breve», «Novità», «Prossimi passi», le sezioni con qualcosa, «Domande aperte»", () => {
-  const html = render(createElement(MemoryView, memoryProps({ consentNotice: NOTICE, granola: createElement("p", null, "riga di Granola"), reader: createElement("p", null, "riga di lettura") })));
-  const text = textOf(html);
-  // (Rilascio 10, §3.7) Le proposte da confermare sono il pulsante pieno della testata: qui non si ripetono.
-  assert.ok(!text.includes("12 proposte da confermare"));
-  assert.ok(text.includes("riga di lettura") && text.includes("riga di Granola"));
-  assert.match(html, /data-testid="ai-consent-notice"/);
-  // «In breve» con la data, «Novità per te» con il segno e «e altre 3».
-  assert.ok(text.includes("In breve") && text.includes("Aggiornato il 14 nov") && text.includes("Produce cucine su misura."));
-  assert.ok(text.includes("Novità per te") && text.includes("Cambiato") && text.includes("e altre 3"));
-  // «Impegni» (rilascio 10, §4; prima «Prossimi passi»): i due gruppi, le scadenze, «Fatto» per ogni riga.
-  assert.ok(text.includes("Impegni") && text.includes("Nostri") && text.includes("Del cliente"));
-  assert.ok(text.includes("entro il 30 nov") && text.includes("scaduto il 2 nov"));
-  assert.equal(text.filter((t) => t === "Fatto").length, 2);
-  // Le sezioni: solo quelle con qualcosa, nell'ordine; la Discovery prima dei fatti; i segni solo quando servono.
-  const headings = [...html.matchAll(/<h2[^>]*>([^<]+)<\/h2>/g)].map((m) => m[1]);
-  assert.deepEqual(headings, ["In breve", "Novità per te", "Impegni", "Azienda", "Sistemi e dati", "Domande aperte"]);
-  assert.ok(text.includes("Intervista iniziale") && text.includes("Call 14 nov") && text.includes("Scritto a mano"));
-  assert.ok(text.includes("dedotto") && text.includes("da verificare"));
-  assert.ok(text.includes("Solo Lateral Space"), "il lucchetto ha il testo per i lettori di schermo");
-  // «Domande aperte» con a chi chiederle e «Chiusa».
-  assert.ok(text.includes("Da chiedere a: Direttore operativo") && text.includes("Chiusa"));
+const headerProps = (over: Partial<ContextPageProps>): Omit<ContextPageProps, "children"> => ({
+  workspaceId: WS,
+  today: TODAY,
+  tab: "memoria",
+  lateralSpace: true,
+  canEditMemory: true,
+  canUpload: true,
+  useCaseOptions: [],
+  consentNotice: null,
+  ...over,
 });
 
-test("la Memoria per il cliente: niente righe di servizio, niente «Fatto» né «Chiusa»", () => {
+/** I titoli H2, anche quelli delle pieghe (il titolo sta dentro il pulsante): il testo senza i tag. */
+function headingsOf(html: string): string[] {
+  return [...html.matchAll(/<h2\b[^>]*>([\s\S]*?)<\/h2>/g)].map((m) => textOf(m[1])[0] ?? "");
+}
+/** Il testo di una piega: il titolo e la riga grigia. */
+function foldsOf(html: string): Array<{ title: string; summary: string; expanded: boolean }> {
+  return [...html.matchAll(/<section[^>]*data-slot="fold"[^>]*>\s*<h2[^>]*>([\s\S]*?)<\/h2>/g)].map((m) => {
+    const [title, summary = ""] = textOf(m[1]);
+    return { title, summary, expanded: /aria-expanded="true"/.test(m[1]) };
+  });
+}
+
+const UNIT = "22222222-2222-4222-8222-222222222222";
+
+test("(rilascio 10, §3.7, S6) la Memoria per Lateral Space: «Chiedi al contesto», una riga di stato, «In breve», «Impegni», «Novità», le sezioni chiuse", () => {
+  const html = render(createElement(MemoryView, memoryProps({ consentNotice: NOTICE, granola: createElement("p", null, "riga di Granola"), reader: createElement("p", null, "riga di lettura") })));
+  const text = textOf(html);
+  // «Chiedi al contesto» in alto, con l'esempio.
+  assert.match(html, /placeholder="Per esempio: che gestionale usano\?"/);
+  assert.ok(html.indexOf('placeholder="Per esempio') < html.indexOf("In breve"), "la domanda prima di tutto");
+  // Una sola riga di stato: le righe restano montate (la lettura e il giro di Granola partono da sé), si vede la prima.
+  const status = /<div data-slot="status-row" class="([^"]*)">([\s\S]*?)<\/div>\s*<section/.exec(html);
+  assert.ok(status, "la riga di stato c'è");
+  assert.match(status[1], /\[&amp;&gt;\*:not\(:first-child\)\]:hidden/, "si vede solo la prima");
+  const order = ["riga di lettura", "ai-consent-notice", "riga di Granola"].map((needle) => status[2].indexOf(needle));
+  assert.ok(order.every((at) => at >= 0) && order[0] < order[1] && order[1] < order[2], `ordine ${order}`);
+  // (Rilascio 10, §3.7) Le proposte da confermare sono il pulsante pieno della testata: qui non si ripetono.
+  assert.ok(!text.includes("12 proposte da confermare"));
+  // «In breve» con la data.
+  assert.ok(text.includes("In breve") && text.includes("Aggiornato il 14 nov") && text.includes("Produce cucine su misura."));
+  // «Impegni»: una lista sola, la parte davanti alla frase, prima lo scaduto; «Fatto» fantasma con la frase per i lettori di schermo.
+  assert.ok(text.includes("Impegni"));
+  assert.ok(text.indexOf("Mandare l'elenco dei fornitori.") < text.indexOf("Mandare il preventivo."), "lo scaduto prima");
+  assert.ok(text.includes("Del cliente ·") && text.includes("Nostri ·"));
+  assert.ok(text.includes("entro il 30 nov") && text.includes("scaduto il 2 nov"));
+  const done = [...html.matchAll(/<button\b[^>]*>Fatto<\/button>/g)].map(([tag]) => tag);
+  assert.equal(done.length, 2);
+  for (const tag of done) assert.match(tag, /aria-describedby="[^"]+"/);
+  // «Novità»: il segno, la frase e la fonte del fatto; «e altre 3».
+  assert.ok(text.includes("Novità") && !text.includes("Novità per te") && text.includes("Cambiato") && text.includes("e altre 3"));
+  assert.ok(text.includes("Call 14 nov"));
+  // Le sezioni chiuse, con quante voci hanno, nell'ordine; «Domande aperte» in fondo, chiusa anche lei.
+  assert.deepEqual(headingsOf(html), ["In breve", "Impegni", "Novità", "Azienda", "Sistemi e dati", "Domande aperte"]);
+  assert.deepEqual(foldsOf(html), [
+    { title: "Azienda", summary: "1", expanded: false },
+    { title: "Sistemi e dati", summary: "2", expanded: false },
+    { title: "Domande aperte", summary: "1", expanded: false },
+  ]);
+  // Dentro le pieghe (nascoste finché chiuse): i fatti con i loro segni, la Discovery come «Intervista iniziale», «Chiudi».
+  assert.ok(text.includes("Intervista iniziale") && text.includes("Scritto a mano"));
+  assert.ok(text.includes("dedotto") && text.includes("da verificare"));
+  assert.ok(text.includes("Solo Lateral Space"), "il lucchetto ha il testo per i lettori di schermo");
+  assert.ok(text.includes("Da chiedere a: Direttore operativo") && text.includes("Chiudi") && !text.includes("Chiusa"));
+  assert.match(html, /<button\b[^>]*aria-describedby="[^"]+"[^>]*>Chiudi<\/button>/);
+});
+
+test("(rilascio 10, §3.7) la Memoria: al massimo tre impegni e tre novità in vista, poi «Vedi tutti (N)»; tre righe di «In breve»", () => {
+  const commitment = (i: number) => ({ id: `c${i}`, version: 1, statement: `Impegno numero ${i}.`, party: "nostra" as const, roleLabel: null, dueOn: `2026-11-2${i}`, overdue: false, visibility: "tutti" as const });
+  const items = (n: number) => Array.from({ length: n }, (_, i) => ({ factId: `n${i}`, statement: `Novità numero ${i}.`, section: "sistemi" as const, tag: "nuovo" as const }));
+  const html = render(
+    createElement(
+      MemoryView,
+      memoryProps({
+        memory: memory({
+          nextSteps: { nostri: [1, 2, 3, 4, 5].map(commitment), cliente: [] },
+          novelties: { items: items(5), more: 2 },
+          brief: { lines: ["Uno.", "Due.", "Tre.", "Quattro.", "Cinque."], updatedOn: "2026-11-14" },
+        }),
+      }),
+    ),
+  );
+  const text = textOf(html);
+  assert.deepEqual([1, 2, 3, 4, 5].map((i) => text.includes(`Impegno numero ${i}.`)), [true, true, true, false, false]);
+  assert.ok(text.includes("Vedi tutti (5)"));
+  assert.deepEqual([0, 1, 2, 3].map((i) => text.includes(`Novità numero ${i}.`)), [true, true, true, false]);
+  assert.ok(text.includes("e altre 4"), "le due oltre le tre e le due che la pagina non ha");
+  assert.deepEqual(["Uno.", "Tre.", "Quattro."].map((line) => text.includes(line)), [true, true, false]);
+  assert.ok(text.includes("Mostra tutto"));
+});
+
+test("(rilascio 10, §3.7) «Come lavorano» porta alle board, «Obiettivi e priorità» alla pagina degli obiettivi", () => {
+  const sections = memory().sections.map((s) =>
+    s.section === "lavoro"
+      ? { ...s, live: [{ key: `unita:${UNIT}`, section: "lavoro" as const, text: "Acquisti · 4 persone · 7 passi mappati", tag: null }] }
+      : s.section === "obiettivi"
+        ? { ...s, live: [{ key: "obiettivo:g1", section: "obiettivi" as const, text: "Rispondere in giornata", tag: "Obiettivo" }] }
+        : s,
+  );
+  const html = render(createElement(MemoryView, memoryProps({ memory: memory({ sections }) })));
+  assert.match(html, new RegExp(`<a href="/dashboard/${WS}/mapping/${UNIT}"[^>]*>`));
+  assert.deepEqual(foldsOf(html).find((fold) => fold.title === "Come lavorano"), { title: "Come lavorano", summary: "1 unità", expanded: false });
+  assert.equal((html.match(new RegExp(`href="/dashboard/${WS}/strategy"`, "g")) ?? []).length, 2, "la riga dell'obiettivo e il link «Obiettivi»");
+});
+
+test("la Memoria per il cliente: niente riga di stato, niente «Fatto» né «Chiudi»", () => {
   const html = render(createElement(MemoryView, memoryProps({ lateralSpace: false, canEditMemory: false, consentNotice: NOTICE, granola: createElement("p", null, "riga di Granola"), reader: createElement("p", null, "riga di lettura") })));
   const text = textOf(html);
   assert.equal(text.includes("12 proposte da confermare"), false);
   assert.equal(text.includes("riga di Granola") || text.includes("riga di lettura"), false);
-  assert.doesNotMatch(html, /ai-consent-notice/);
-  assert.equal(text.includes("Fatto") || text.includes("Chiusa"), false);
+  assert.doesNotMatch(html, /ai-consent-notice|status-row/);
+  assert.equal(text.includes("Fatto") || text.includes("Chiudi"), false);
   assert.ok(text.includes("Il gestionale è SAP Business One."));
+  assert.match(html, /placeholder="Per esempio: che gestionale usiamo\?"/);
 });
 
-test("la Memoria vuota: il titolo e la frase di chi guarda; per Lateral Space «Aggiungi appunti» lì, nella pagina", () => {
+test("la Memoria vuota: una frase sola, senza pulsante (l'azione è «Aggiungi», nella testata)", () => {
   const empty = memory({
     sections: memory().sections.map((s) => ({ ...s, live: [], facts: [] })),
     nextSteps: { nostri: [], cliente: [] },
@@ -159,82 +241,53 @@ test("la Memoria vuota: il titolo e la frase di chi guarda; per Lateral Space «
     novelties: null,
     counts: { facts: 0, openProposals: 0, unreadSources: 0, pendingSourceIds: [], toCheck: 0 },
   });
-  const forClient = textOf(render(createElement(MemoryView, memoryProps({ lateralSpace: false, canEditMemory: false, memory: empty }))));
-  assert.ok(forClient.includes("Ancora niente in memoria") && forClient.includes("Qui compare quello che sappiamo dell'azienda, con la fonte di ogni cosa."));
-  const page = render(
-    pageWith({ workspaceId: WS, workspaceName: "Cliente di prova", today: TODAY, tab: "memoria", lateralSpace: true, canEditMemory: true, addNotesInHeader: false, useCaseOptions: [], consentNotice: null }, createElement(MemoryView, memoryProps({ memory: empty }))),
-  );
+  const client = render(createElement(MemoryView, memoryProps({ lateralSpace: false, canEditMemory: false, memory: empty })));
+  assert.ok(textOf(client).includes("Qui compare quello che sappiamo dell'azienda, con le fonti."));
+  const page = render(pageWith(headerProps({}), createElement(MemoryView, memoryProps({ memory: empty }))));
   const text = textOf(page);
-  assert.ok(text.includes("Aggiungi gli appunti di una call: Unbundle li legge e propone i fatti. Confermi con un clic."));
-  assert.equal(text.filter((t) => t === "Aggiungi appunti").length, 1, "un solo «Aggiungi appunti»: nella Memoria vuota, non nella testata");
+  assert.ok(text.includes("Aggiungi gli appunti di una call: Unbundle propone i fatti."));
+  assert.equal(filledButtons(page).length, 1, "un solo pulsante pieno: «Aggiungi»");
+  assert.match(filledButtons(page)[0], /data-action="context-add"/);
+  assert.match(page, /data-slot="empty-state"/);
 });
 
-test("(rilascio 10, §3.7) la Memoria vuota con proposte da confermare: un solo pulsante pieno, «Conferma N proposte»; «Aggiungi appunti» bordato", () => {
-  const empty = (openProposals: number) =>
-    memory({
-      sections: memory().sections.map((s) => ({ ...s, live: [], facts: [] })),
-      nextSteps: { nostri: [], cliente: [] },
-      questions: [],
-      brief: null,
-      novelties: null,
-      counts: { facts: 0, openProposals, unreadSources: 1, pendingSourceIds: [], toCheck: 0 },
-    });
-  const pageFor = (openProposals: number) =>
-    render(
-      pageWith(
-        { workspaceId: WS, workspaceName: "Cliente di prova", today: TODAY, tab: "memoria", lateralSpace: true, canEditMemory: true, addNotesInHeader: false, pendingProposals: openProposals, useCaseOptions: [], consentNotice: null },
-        createElement(MemoryView, memoryProps({ memory: empty(openProposals) })),
-      ),
-    );
-  const addNotes = (html: string) => [...html.matchAll(/<button\b[^>]*>Aggiungi appunti<\/button>/g)].map(([tag]) => tag);
-  const withProposals = pageFor(2);
-  const filled = filledButtons(withProposals);
+// ─── La testata comune e le viste ────────────────────────────────────
+
+
+test("(rilascio 10, §3.7, S6) la testata: H1 «Contesto», «Aggiungi», le tre viste; niente nome del workspace né «Scrivi un fatto» a parte", () => {
+  const ls = render(pageWith(headerProps({ menu: [{ key: "intervista", label: "Intervista iniziale", href: `/dashboard/${WS}/setup/leadership` }] }), createElement("p", null, "vista")));
+  const text = textOf(ls);
+  assert.match(ls, /<h1[^>]*>Contesto<\/h1>/);
+  assert.ok(!text.includes("Cliente di prova") && !text.includes("Scrivi un fatto") && !text.includes("Aggiungi appunti"));
+  assert.ok(text.includes("Aggiungi") && !text.includes("Aggiungi un file"));
+  // Le viste: Memoria · Processi · Fonti.
+  assert.deepEqual(["Memoria", "Processi", "Fonti"].map((label) => text.includes(label)), [true, true, true]);
+  assert.match(ls, new RegExp(`href="/dashboard/${WS}/contesto\\?vista=fonti"`));
+  assert.match(ls, /aria-current="page"[^>]*>(<[^>]+>)*Memoria/);
+  // Il «⋯» con il suo nome per i lettori di schermo; le voci si aprono a richiesta.
+  assert.match(ls, /aria-label="Altre azioni"/);
+  // Senza un passo della vista, «Aggiungi» è il pulsante pieno.
+  assert.equal(filledButtons(ls).length, 1);
+  assert.match(filledButtons(ls)[0], /data-action="context-add"/);
+  // Il cliente aggiunge solo file: «Aggiungi un file», niente «⋯» senza voci.
+  const client = render(pageWith(headerProps({ lateralSpace: false, canEditMemory: false }), createElement("p", null, "vista")));
+  assert.ok(textOf(client).includes("Aggiungi un file"));
+  assert.doesNotMatch(client, /aria-label="Altre azioni"/);
+  assert.match(client, /data-slot="upload-document"/, "la scelta del file è nella pagina");
+});
+
+test("(rilascio 10, §3.7) con proposte da confermare il pulsante pieno è «Conferma N proposte» con il «?», e «Aggiungi» è bordato", () => {
+  const step = { kind: "link" as const, icon: "check" as const, label: "Conferma 3 proposte", why: "Unbundle le ha lette dalle fonti: confermale, correggile o scartale.", href: `/dashboard/${WS}/contesto/conferma` };
+  const html = render(pageWith(headerProps({ step }), createElement("p", null, "vista")));
+  const filled = filledButtons(html);
   assert.equal(filled.length, 1, "un solo pulsante pieno");
   assert.match(filled[0], new RegExp(`href="/dashboard/${WS}/contesto/conferma"`));
-  assert.equal(addNotes(withProposals).length, 1, "«Aggiungi appunti» resta, nella Memoria vuota");
-  assert.match(addNotes(withProposals)[0], /\bbg-background\b/, "bordato");
-  assert.doesNotMatch(addNotes(withProposals)[0], /\bbg-primary\b/);
-  // Senza proposte, «Aggiungi appunti» della Memoria vuota è il pulsante pieno.
-  const none = pageFor(0);
-  assert.equal(filledButtons(none).length, 1);
-  assert.match(filledButtons(none)[0], /\bbg-primary\b/);
-  assert.equal(addNotes(none).length, 1);
-  assert.match(addNotes(none)[0], /\bbg-primary\b/);
-});
-
-// ─── La testata e le schede ──────────────────────────────────────────
-
-test("la testata: per Lateral Space «Aggiungi appunti», «Scrivi un fatto» e le schede «Memoria» · «Appunti»; per il cliente «Documenti» e nient'altro", () => {
-  const shell = (lateralSpace: boolean) =>
-    render(pageWith({ workspaceId: WS, workspaceName: "Cliente di prova", today: TODAY, tab: "memoria", lateralSpace, canEditMemory: lateralSpace, addNotesInHeader: true, useCaseOptions: [], consentNotice: null }, createElement("p", null, "vista")));
-  const ls = shell(true);
-  const lsText = textOf(ls);
-  assert.ok(lsText.includes("Cliente di prova") && lsText.includes("Contesto"));
-  // (Rilascio 10, §4) Le fonti si chiamano «Fonti», per Lateral Space e per il cliente.
-  assert.deepEqual([lsText.includes("Aggiungi appunti"), lsText.includes("Scrivi un fatto"), lsText.includes("Fonti"), lsText.includes("Documenti")], [true, true, true, false]);
-  assert.match(ls, /placeholder="Fai una domanda sul cliente"/);
-  assert.match(ls, new RegExp(`href="/dashboard/${WS}/contesto\\?vista=appunti"`));
-  assert.match(ls, /aria-current="page"[^>]*>(<[^>]+>)*Memoria/);
-  const client = shell(false);
-  const clientText = textOf(client);
-  assert.deepEqual([clientText.includes("Aggiungi appunti"), clientText.includes("Scrivi un fatto"), clientText.includes("Appunti"), clientText.includes("Fonti")], [false, false, false, true]);
-  assert.match(client, /placeholder="Fai una domanda"/);
-  assert.ok(clientText.includes("Chiedi"));
-});
-
-test("(rilascio 10, §3.7) con proposte da confermare il pulsante pieno è «Conferma N proposte», e «Aggiungi appunti» è bordato", () => {
-  const props = { workspaceId: WS, workspaceName: "Cliente di prova", today: TODAY, tab: "memoria" as const, lateralSpace: true, canEditMemory: true, addNotesInHeader: true, useCaseOptions: [], consentNotice: null };
-  const withProposals = render(pageWith({ ...props, pendingProposals: 3 }, createElement("p", null, "vista")));
-  const text = textOf(withProposals).join(" | ");
-  assert.ok(text.includes("Conferma 3 proposte"), text);
-  assert.match(withProposals, new RegExp(`href="/dashboard/${WS}/contesto/conferma"`));
-  const one = textOf(render(pageWith({ ...props, pendingProposals: 1 }, createElement("p", null, "vista")))).join(" | ");
-  assert.ok(one.includes("Conferma 1 proposta"), one);
-  // Senza proposte: «Aggiungi appunti» resta il pulsante della testata, e «Conferma» non c'è.
-  const none = textOf(render(pageWith({ ...props, pendingProposals: 0 }, createElement("p", null, "vista")))).join(" | ");
-  assert.ok(none.includes("Aggiungi appunti") && !none.includes("Conferma"), none);
-  // Il cliente non conferma: niente pulsante.
-  assert.ok(!textOf(render(pageWith({ ...props, lateralSpace: false, canEditMemory: false, pendingProposals: 3 }, createElement("p", null, "vista")))).join(" | ").includes("Conferma"));
+  assert.ok(textOf(html).includes("Prossimo passo") && textOf(html).includes("Conferma 3 proposte"));
+  assert.match(html, /aria-label="Perché questo passo"/);
+  const add = /<button\b[^>]*data-action="context-add"[^>]*>/.exec(html)?.[0] ?? "";
+  assert.match(add, /\bbg-background\b/, "«Aggiungi» bordato");
+  // Il passo sta sotto il titolo e sopra le viste, nella prima schermata.
+  assert.ok(html.indexOf("Conferma 3 proposte") < html.indexOf(">Memoria<") || html.indexOf("Conferma 3 proposte") < html.indexOf("Memoria"));
 });
 
 // ─── «Da confermare» ─────────────────────────────────────────────────
@@ -365,7 +418,8 @@ test("la vista «Documenti» del cliente: i documenti con nome, data e dimension
   const mine = source({ ...doc, id: "d2", canRemove: true, document: { id: "doc2", fileName: "listino.xlsx", fileType: "x", fileSize: 340 * 1024 } });
   const html = render(createElement(NotesView, { workspaceId: WS, today: TODAY, lateralSpace: false, sources: [doc, mine], initialSourceId: "s1" }));
   const text = textOf(html);
-  assert.ok(text.includes("Carica documento"));
+  // (Rilascio 10, §3.7) Il cliente aggiunge un file da «Aggiungi un file», nella testata comune.
+  assert.equal(text.includes("Carica documento"), false);
   assert.ok(text.includes("organigramma.pdf") && text.includes("14 nov · 1,2 MB"));
   assert.ok(text.includes("listino.xlsx") && text.includes("14 nov · 340 KB"));
   assert.equal(text.filter((t) => t === "Togli").length, 1);

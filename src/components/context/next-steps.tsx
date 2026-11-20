@@ -1,23 +1,26 @@
 "use client";
 
-import { useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import { toast } from "sonner";
+import { TOAST_UNDO_MS } from "@/components/ui-10/toast";
 import { Button } from "@/components/ui/button";
 import { closeCommitmentAction, closeQuestionAction, reopenCommitmentAction } from "@/lib/actions/context";
 import { CONTEXT_TEXT } from "@/lib/context/text";
 import type { CommitmentView, QuestionView } from "@/lib/db/queries/context-memory";
+import { cn } from "@/lib/utils";
 import { LsLock } from "./fact-row";
-import { dueText } from "./view-model";
+import { commitmentParty, dueText, firstRows, memoryCommitments } from "./view-model";
 
 const T = CONTEXT_TEXT;
 
 /**
- * «Prossimi passi» (rilascio 9a, docs/contesto/RILASCIO-9a-COSTRUZIONE.md §7.2): gli impegni aperti, «Nostri» e «Del
- * cliente», per scadenza. Ogni riga: la frase, il ruolo, «entro il 30 nov» («scaduto il 30 nov» se è passato). Per
- * Lateral Space «Fatto»; il messaggio che segue offre «Riapri». Gli impegni valgono per ruolo e per parte, mai per
- * persona.
+ * «Impegni» (rilascio 9a, docs/contesto/RILASCIO-9a-COSTRUZIONE.md §7.2; rilascio 10, §3.7 e prototipo S6): gli impegni
+ * aperti in una lista sola, prima gli scaduti e poi per scadenza. Ogni riga: di chi è («Nostri», «Del cliente»), la
+ * frase, il ruolo, «entro il 30 nov» («scaduto il 30 nov» se è passato). Al massimo tre in vista, poi «Vedi tutti (N)».
+ * Per Lateral Space «Fatto» (fantasma), con la frase per i lettori di schermo; il messaggio che segue offre «Riapri».
+ * Gli impegni valgono per ruolo e per parte, mai per persona.
  */
-export function NextSteps({
+export function Commitments({
   workspaceId,
   today,
   nostri,
@@ -30,33 +33,39 @@ export function NextSteps({
   cliente: readonly CommitmentView[];
   canEdit: boolean;
 }) {
-  if (nostri.length === 0 && cliente.length === 0) return null;
+  const [all, setAll] = useState(false);
+  const listId = useId();
+  const items = memoryCommitments(nostri, cliente);
+  if (items.length === 0) return null;
+  const { shown, rest } = firstRows(items);
   return (
-    <section aria-labelledby="contesto-prossimi-passi" className="space-y-3">
-      <h2 id="contesto-prossimi-passi" className="text-base font-semibold">
+    <section aria-labelledby="contesto-impegni" className="space-y-2">
+      <h2 id="contesto-impegni" className="text-base font-semibold">
         {T.sections.prossimiPassi}
       </h2>
-      {[
-        { key: "nostri", label: T.nextSteps.ours, items: nostri },
-        { key: "cliente", label: T.nextSteps.theirs, items: cliente },
-      ]
-        .filter((group) => group.items.length > 0)
-        .map((group) => (
-          <div key={group.key} className="space-y-1">
-            <h3 className="px-3 text-xs font-medium text-muted-foreground">{group.label}</h3>
-            <ul className="divide-y rounded-xl border">
-              {group.items.map((commitment) => (
-                <CommitmentRow key={commitment.id} workspaceId={workspaceId} today={today} commitment={commitment} canEdit={canEdit} />
-              ))}
-            </ul>
-          </div>
+      <ul id={listId} className="divide-y rounded-xl border">
+        {(all ? items : shown).map((commitment) => (
+          <CommitmentRow key={commitment.id} workspaceId={workspaceId} today={today} commitment={commitment} canEdit={canEdit} />
         ))}
+      </ul>
+      {rest > 0 ? (
+        <button
+          type="button"
+          aria-expanded={all}
+          aria-controls={listId}
+          onClick={() => setAll(!all)}
+          className="inline-flex min-h-11 items-center rounded-md text-sm font-medium underline decoration-foreground/40 underline-offset-4 outline-none hover:decoration-foreground focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-8"
+        >
+          {all ? T.page.showLess : T.page.showAll(items.length)}
+        </button>
+      ) : null}
     </section>
   );
 }
 
 function CommitmentRow({ workspaceId, today, commitment, canEdit }: { workspaceId: string; today: string; commitment: CommitmentView; canEdit: boolean }) {
   const [pending, startTransition] = useTransition();
+  const statementId = useId();
   const due = dueText(commitment, today);
   const done = () =>
     startTransition(async () => {
@@ -66,6 +75,7 @@ function CommitmentRow({ workspaceId, today, commitment, canEdit }: { workspaceI
         return;
       }
       toast.success(T.nextSteps.closed, {
+        duration: TOAST_UNDO_MS,
         action: {
           label: T.nextSteps.reopen,
           onClick: () => {
@@ -77,17 +87,22 @@ function CommitmentRow({ workspaceId, today, commitment, canEdit }: { workspaceI
       });
     });
   return (
-    <li className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+    <li className="flex items-start justify-between gap-3 px-3 py-2.5">
       <div className="min-w-0 space-y-0.5">
-        <p className="text-sm leading-relaxed break-words">{commitment.statement}</p>
-        <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-          {commitment.roleLabel ? <span>{commitment.roleLabel}</span> : null}
-          {due ? <span className={commitment.overdue ? "font-medium text-foreground" : undefined}>{due}</span> : null}
-          {commitment.visibility === "ls" ? <LsLock /> : null}
+        <p className="text-sm leading-relaxed break-words">
+          <span className="text-muted-foreground">{commitmentParty(commitment)} · </span>
+          <span id={statementId}>{commitment.statement}</span>
         </p>
+        {commitment.roleLabel || due || commitment.visibility === "ls" ? (
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+            {commitment.roleLabel ? <span>{commitment.roleLabel}</span> : null}
+            {due ? <span className={cn(commitment.overdue && "font-medium text-foreground")}>{due}</span> : null}
+            {commitment.visibility === "ls" ? <LsLock /> : null}
+          </p>
+        ) : null}
       </div>
       {canEdit ? (
-        <Button type="button" variant="outline" className="min-h-11 shrink-0 sm:min-h-8" disabled={pending} onClick={done}>
+        <Button type="button" variant="ghost" className="-my-1 min-h-11 shrink-0 sm:min-h-8" disabled={pending} onClick={done} aria-describedby={statementId}>
           {T.nextSteps.done}
         </Button>
       ) : null}
@@ -95,25 +110,21 @@ function CommitmentRow({ workspaceId, today, commitment, canEdit }: { workspaceI
   );
 }
 
-/** «Domande aperte»: la domanda e «Da chiedere a: {ruolo}». Per Lateral Space «Chiusa». */
+/** «Domande aperte», dentro la sua sezione chiusa: la domanda e «Da chiedere a: {ruolo}». Per Lateral Space «Chiudi». */
 export function OpenQuestions({ workspaceId, questions, canEdit }: { workspaceId: string; questions: readonly QuestionView[]; canEdit: boolean }) {
   if (questions.length === 0) return null;
   return (
-    <section aria-labelledby="contesto-domande" className="space-y-2">
-      <h2 id="contesto-domande" className="text-base font-semibold">
-        {T.sections.domande}
-      </h2>
-      <ul className="divide-y rounded-xl border">
-        {questions.map((question) => (
-          <QuestionRow key={question.id} workspaceId={workspaceId} question={question} canEdit={canEdit} />
-        ))}
-      </ul>
-    </section>
+    <ul className="divide-y rounded-xl border">
+      {questions.map((question) => (
+        <QuestionRow key={question.id} workspaceId={workspaceId} question={question} canEdit={canEdit} />
+      ))}
+    </ul>
   );
 }
 
 function QuestionRow({ workspaceId, question, canEdit }: { workspaceId: string; question: QuestionView; canEdit: boolean }) {
   const [pending, startTransition] = useTransition();
+  const questionId = useId();
   const close = () =>
     startTransition(async () => {
       const result = await closeQuestionAction(workspaceId, question.id, question.version);
@@ -121,9 +132,11 @@ function QuestionRow({ workspaceId, question, canEdit }: { workspaceId: string; 
       else toast.error(result.message);
     });
   return (
-    <li className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+    <li className="flex items-start justify-between gap-3 px-3 py-2.5">
       <div className="min-w-0 space-y-0.5">
-        <p className="text-sm leading-relaxed break-words">{question.question}</p>
+        <p id={questionId} className="text-sm leading-relaxed break-words">
+          {question.question}
+        </p>
         {question.askWhom || question.visibility === "ls" ? (
           <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
             {question.askWhom ? <span>{T.questions.askWhom(question.askWhom)}</span> : null}
@@ -132,7 +145,7 @@ function QuestionRow({ workspaceId, question, canEdit }: { workspaceId: string; 
         ) : null}
       </div>
       {canEdit ? (
-        <Button type="button" variant="outline" className="min-h-11 shrink-0 sm:min-h-8" disabled={pending} onClick={close}>
+        <Button type="button" variant="ghost" className="-my-1 min-h-11 shrink-0 sm:min-h-8" disabled={pending} onClick={close} aria-describedby={questionId}>
           {T.questions.close}
         </Button>
       ) : null}

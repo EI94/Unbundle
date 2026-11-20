@@ -1,9 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileText, XIcon } from "lucide-react";
+import { ChevronRight, FileText, XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -51,12 +51,15 @@ export function AddNotesDialog({
   workspaceId,
   today,
   consentNotice,
+  pickedFile = null,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   workspaceId: string;
   today: string;
   consentNotice: AiConsentNoticeData | null;
+  /** (Rilascio 10, §3.7) Il file scelto da «Aggiungi › File»: la finestra si apre con lui dentro, come se fosse trascinato. */
+  pickedFile?: File | null;
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState<Draft>(() => emptyDraft(today));
@@ -72,6 +75,8 @@ export function AddNotesDialog({
   const round = useRef(0);
   const fileInput = useRef<HTMLInputElement | null>(null);
   const busy = phase === "salvo" || phase === "leggo";
+  // «Con chi» e «Link» stanno in «Altro», chiuso; si apre da sé quando hanno qualcosa o un errore.
+  const [moreOpen, setMoreOpen] = useState(false);
 
   const reset = () => {
     setDraft(emptyDraft(today));
@@ -82,6 +87,7 @@ export function AddNotesDialog({
     setPhase("modulo");
     setProgress(null);
     setEnding(null);
+    setMoreOpen(false);
   };
 
   const close = () => {
@@ -117,6 +123,16 @@ export function AddNotesDialog({
     setFile(picked);
     if (!titleTouched || !draft.title) setDraft((d) => ({ ...d, title }));
   };
+
+  // Il file di «Aggiungi › File» entra una volta, all'apertura.
+  const taken = useRef<File | null>(null);
+  useEffect(() => {
+    if (!open || !pickedFile || taken.current === pickedFile) return;
+    taken.current = pickedFile;
+    void takeFile(pickedFile);
+    // `takeFile` cambia a ogni disegno: conta solo il file nuovo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, pickedFile]);
 
   /** La lettura di una fonte già salvata, fino in fondo. */
   const read = async (sourceId: string) => {
@@ -313,29 +329,48 @@ export function AddNotesDialog({
                   />
                 </Field>
               </div>
-              <Field id="appunti-con-chi" label={T.add.participants} error={errors.participants || null} optional>
-                <Input
-                  id="appunti-con-chi"
-                  value={draft.participants}
-                  onChange={(event) => setDraft((d) => ({ ...d, participants: event.target.value }))}
-                  maxLength={CONTEXT_LIMITS.participantsMax}
-                  disabled={busy}
-                  className="min-h-11 sm:min-h-8"
-                />
-              </Field>
-              <Field id="appunti-link" label={T.add.link} error={errors.link || null} optional>
-                <Input
-                  id="appunti-link"
-                  type="url"
-                  inputMode="url"
-                  value={draft.link}
-                  onChange={(event) => setDraft((d) => ({ ...d, link: event.target.value }))}
-                  maxLength={CONTEXT_LIMITS.linkMax}
-                  placeholder="https://"
-                  disabled={busy}
-                  className="min-h-11 sm:min-h-8"
-                />
-              </Field>
+              {(() => {
+                const shown = moreOpen || Boolean(draft.participants || draft.link || errors.participants || errors.link);
+                return (
+                  <div className="space-y-4">
+                    <button
+                      type="button"
+                      aria-expanded={shown}
+                      aria-controls="appunti-altro"
+                      onClick={() => setMoreOpen(!shown)}
+                      className="inline-flex min-h-11 items-center gap-1 text-sm font-medium outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-8"
+                    >
+                      <ChevronRight aria-hidden className={cn("size-4 transition-transform motion-reduce:transition-none", shown && "rotate-90")} />
+                      {T.add.more}
+                    </button>
+                    <div id="appunti-altro" hidden={!shown} className="space-y-4">
+                      <Field id="appunti-con-chi" label={T.add.participants} error={errors.participants || null} optional>
+                        <Input
+                          id="appunti-con-chi"
+                          value={draft.participants}
+                          onChange={(event) => setDraft((d) => ({ ...d, participants: event.target.value }))}
+                          maxLength={CONTEXT_LIMITS.participantsMax}
+                          disabled={busy}
+                          className="min-h-11 sm:min-h-8"
+                        />
+                      </Field>
+                      <Field id="appunti-link" label={T.add.link} error={errors.link || null} optional>
+                        <Input
+                          id="appunti-link"
+                          type="url"
+                          inputMode="url"
+                          value={draft.link}
+                          onChange={(event) => setDraft((d) => ({ ...d, link: event.target.value }))}
+                          maxLength={CONTEXT_LIMITS.linkMax}
+                          placeholder="https://"
+                          disabled={busy}
+                          className="min-h-11 sm:min-h-8"
+                        />
+                      </Field>
+                    </div>
+                  </div>
+                );
+              })()}
               {failure ? (
                 <p role="alert" className="text-sm text-destructive">
                   {failure}

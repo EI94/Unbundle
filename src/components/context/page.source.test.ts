@@ -64,14 +64,19 @@ test("«Da confermare»: notFound() per chi non è di Lateral Space, prima di le
   assert.match(source, /await requireWorkspacePage\(workspaceId\)/);
 });
 
-test("la pagina: chi è nel workspace, la 0038 controllata, le due viste, Granola montato nei due punti, 60 secondi", () => {
+test("la pagina: chi è nel workspace, la 0038 controllata, le tre viste, Granola montato nei due punti, 60 secondi", () => {
   const source = withoutComments(read(PAGE));
   assert.match(source, /export const metadata = \{ title: CONTEXT_TEXT\.page\.title \};/);
   assert.match(source, /export const maxDuration = 60;/);
   assert.match(source, /await requireWorkspacePage\(workspaceId\)/);
   assert.match(source, /if \(!abilities\.canOpen\) notFound\(\);/);
   assert.ok(source.indexOf("contextStoreReady()") < source.indexOf("loadContextMemory("), "prima l'archivio, poi la memoria");
-  assert.match(source, /search\.vista === "appunti"/);
+  // (Rilascio 10, §3.7, §8.2) Le viste da `?vista=`; il vecchio `?vista=appunti` porta a `?vista=fonti`, con gli altri parametri.
+  assert.match(source, /const view = contextViewOf\(search\.vista\);/);
+  assert.match(source, /const moved = contextViewRedirect\(workspaceId, search\);\s*if \(moved\) permanentRedirect\(moved\);/);
+  assert.ok(source.indexOf("if (!abilities.canOpen) notFound();") < source.indexOf("contextViewRedirect("), "prima chi guarda, poi l'indirizzo");
+  // Il fatto si apre con `?apri=<fatto>`.
+  assert.match(source, /initialFact=\{sheetIdParam\(search\.apri\)\}/);
   assert.match(source, /<GranolaInbox workspaceId=\{workspaceId\} workspaceName=\{workspaceName\} compact \/>/, "una riga nella Memoria");
   assert.match(source, /<GranolaInbox workspaceId=\{workspaceId\} workspaceName=\{workspaceName\} \/>/, "il blocco intero negli Appunti");
   // Il lettore degli appunti in attesa parte solo con l'ok (senza, c'è l'avviso al suo posto).

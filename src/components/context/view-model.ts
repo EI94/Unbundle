@@ -21,7 +21,8 @@ import { dayLabel } from "../../lib/context/labels.ts";
 import { CONTEXT_TEXT } from "../../lib/context/text.ts";
 import { CONTEXT_LIMITS, CONTEXT_SECTIONS, type CommitmentParty, type ContextSection, type ContextVisibility, type ProposalKind, type SkippedCounts, type SourceKind, type SourceOrigin } from "../../lib/context/vocab.ts";
 import type { AskSource } from "../../lib/db/queries/context-ask.ts";
-import type { CommitmentView, FactView, MemorySection, MemoryView } from "../../lib/db/queries/context-memory.ts";
+import type { LiveRow } from "../../lib/context/live.ts";
+import type { CommitmentView, FactView, MemorySection, MemoryView, NoveltyItem } from "../../lib/db/queries/context-memory.ts";
 import type { NeedLinkView } from "../../lib/db/queries/context-needs.ts";
 import type { UseCaseContext, UseCaseFact } from "../../lib/db/queries/context-work.ts";
 import type { ConfirmItem, OpenProposals, ProposalPatch, ProposalView } from "../../lib/db/queries/context-proposals.ts";
@@ -336,7 +337,141 @@ export function askSourceMeta(source: Pick<AskSource, "kind" | "label" | "date">
   return parts.join(" · ");
 }
 
+// ─── (Rilascio 10, §3.7) Le viste di «Contesto» e la testata comune ──
+
+/** Le tre viste: Memoria · Processi · Fonti (D2). */
+export const CONTEXT_VIEWS = ["memoria", "processi", "fonti"] as const;
+export type ContextView = (typeof CONTEXT_VIEWS)[number];
+
+/** La vista di `?vista=`: «processi», «fonti» (anche il vecchio «appunti»); altrimenti la Memoria. */
+export function contextViewOf(raw: unknown): ContextView {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (value === "processi") return "processi";
+  if (value === "fonti" || value === "appunti") return "fonti";
+  return "memoria";
+}
+
+/** L'indirizzo di una vista: la Memoria senza parametri; i Processi, per ora, la pagina delle unità. */
+export function contextViewHref(workspaceId: string, view: ContextView): string {
+  const base = `/dashboard/${workspaceId}/contesto`;
+  if (view === "processi") return `/dashboard/${workspaceId}/mapping`;
+  return view === "memoria" ? base : `${base}?vista=${view}`;
+}
+
+/**
+ * (§8.2) Il vecchio `?vista=appunti` porta a `?vista=fonti`, con tutti gli altri parametri nello stesso ordine
+ * (`?fonte=<id>` dei link della CLI); null se l'indirizzo è già quello nuovo. L'ancora la tiene il browser.
+ */
+export function contextViewRedirect(workspaceId: string, search: Readonly<Record<string, string | string[] | undefined>>): string | null {
+  const vista = search.vista;
+  if (!(vista === "appunti" || (Array.isArray(vista) && vista.includes("appunti")))) return null;
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(search)) {
+    if (value === undefined) continue;
+    if (key === "vista") {
+      params.set("vista", "fonti");
+      continue;
+    }
+    for (const one of Array.isArray(value) ? value : [value]) params.append(key, one);
+  }
+  return `/dashboard/${workspaceId}/contesto?${params.toString()}`;
+}
+
+/** Un id che si può mettere in `?apri=` (il fatto) o `?fonte=` (la fonte): un uuid; altrimenti il pannello resta chiuso. */
+const SHEET_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function sheetIdParam(raw: unknown): string | null {
+  const value = typeof raw === "string" ? raw.trim() : Array.isArray(raw) && typeof raw[0] === "string" ? raw[0].trim() : "";
+  return SHEET_ID.test(value) ? value.toLowerCase() : null;
+}
+
+/**
+ * Il «⋯» della testata (§3.7): l'Intervista iniziale per i revisori (come nella barra laterale); per Lateral Space i
+ * fatti da verificare, quando ce ne sono (la riga di stato ne mostra una sola alla volta). Vuoto: niente «⋯».
+ */
+export function contextMenu(i: { workspaceId: string; reviewer: boolean; toCheck: number; lateralSpace: boolean }): Array<{ key: string; label: string; href: string }> {
+  const base = `/dashboard/${i.workspaceId}`;
+  const items: Array<{ key: string; label: string; href: string }> = [];
+  if (i.reviewer) items.push({ key: "intervista", label: T.page.interview, href: `${base}/setup/leadership` });
+  const toCheck = toCheckRow(i.toCheck, i.lateralSpace);
+  if (toCheck) items.push({ key: "verifica", label: toCheck, href: `${base}/contesto/verifica` });
+  return items;
+}
+
+/** Il prossimo passo della testata, per Lateral Space con proposte da confermare: «Conferma N proposte»; altrimenti niente. */
+export function confirmStep(i: { lateralSpace: boolean; openProposals: number; workspaceId: string }): { label: string; why: string; href: string } | null {
+  const n = Number.isFinite(i.openProposals) ? Math.trunc(i.openProposals) : 0;
+  if (!i.lateralSpace || n <= 0) return null;
+  return { label: T.page.confirmProposals(n), why: T.page.confirmWhy(n), href: `/dashboard/${i.workspaceId}/contesto/conferma` };
+}
+
 // ─── La Memoria ──────────────────────────────────────────────────────
+
+/** Al massimo tre righe in vista (§1 regola 4), poi «Vedi tutti (N)». */
+export const MEMORY_ROWS_MAX = 3;
+
+/** Le prime righe e quante restano. */
+export function firstRows<T>(items: readonly T[], max: number = MEMORY_ROWS_MAX): { shown: T[]; rest: number } {
+  return { shown: items.slice(0, max), rest: Math.max(0, items.length - max) };
+}
+
+/**
+ * «Impegni» in una lista sola (§3.7, S6): gli scaduti prima, poi per scadenza, i senza data in fondo; a parità prima i
+ * «Nostri». Ogni riga dice di chi è.
+ */
+export function memoryCommitments(nostri: readonly CommitmentView[], cliente: readonly CommitmentView[]): CommitmentView[] {
+  const all = [...nostri, ...cliente].map((commitment, index) => ({ commitment, index }));
+  const rank = (c: CommitmentView) => (c.overdue ? 0 : c.dueOn ? 1 : 2);
+  return all
+    .sort((a, b) => rank(a.commitment) - rank(b.commitment) || (a.commitment.dueOn ?? "").localeCompare(b.commitment.dueOn ?? "") || a.index - b.index)
+    .map(({ commitment }) => commitment);
+}
+
+/** «Nostri» o «Del cliente»: la parte di un impegno, davanti alla sua frase. */
+export function commitmentParty(commitment: Pick<CommitmentView, "party">): string {
+  return commitment.party === "nostra" ? T.nextSteps.ours : T.nextSteps.theirs;
+}
+
+/** Le unità di una riga della Discovery (`unita:<id>`) e gli obiettivi (`obiettivo:<id>`): la chiave dice da dove viene. */
+const UNIT_KEY = /^unita:([0-9a-f-]{36})$/i;
+
+/**
+ * Dove porta una riga della Discovery (§3.7): un'unità alla sua board («Come lavorano porta alle board»), un obiettivo
+ * alla pagina «Obiettivi»; le altre righe non hanno un link.
+ */
+export function liveRowHref(workspaceId: string, row: Pick<LiveRow, "key">): string | null {
+  const unit = UNIT_KEY.exec(row.key);
+  if (unit) return `/dashboard/${workspaceId}/mapping/${unit[1].toLowerCase()}`;
+  if (row.key.startsWith("obiettivo:")) return `/dashboard/${workspaceId}/strategy`;
+  return null;
+}
+
+/**
+ * La riga grigia di una sezione chiusa (§3.7, S6): quante voci ha («Azienda · 6»). «Come lavorano» conta le unità
+ * («6 unità»), e i fatti dopo («6 unità · 2»).
+ */
+export function sectionSummary(section: Pick<MemorySection, "section" | "live" | "facts">): string {
+  if (section.section !== "lavoro") return String(section.live.length + section.facts.length);
+  const units = section.live.filter((row) => UNIT_KEY.test(row.key)).length;
+  const others = section.live.length - units + section.facts.length;
+  if (units === 0) return String(others);
+  return others > 0 ? `${T.page.units(units)} · ${others}` : T.page.units(units);
+}
+
+/** La fonte di una novità («Call 14 nov»), presa dal fatto nella Memoria; se il fatto non è tra le sezioni, la sezione. */
+export function noveltySource(item: Pick<NoveltyItem, "factId" | "section">, sections: readonly Pick<MemorySection, "facts">[]): string {
+  for (const section of sections) {
+    const fact = section.facts.find((one) => one.id === item.factId);
+    if (fact) return fact.sourceLabel;
+  }
+  return sectionLabel(item.section);
+}
+
+/** Le novità in vista, al massimo tre, e quante altre ce ne sono (quelle oltre le tre e quelle che la pagina non ha letto). */
+export function noveltyRows(novelties: MemoryView["novelties"]): { shown: NoveltyItem[]; more: number } {
+  if (!novelties) return { shown: [], more: 0 };
+  const { shown, rest } = firstRows(novelties.items);
+  return { shown, more: rest + Math.max(0, Math.trunc(novelties.more) || 0) };
+}
 
 /** Le sezioni con qualcosa dentro (dati della Discovery o fatti), nell'ordine fisso: quelle vuote non si vedono. */
 export function visibleSections(sections: readonly MemorySection[]): MemorySection[] {

@@ -18,10 +18,26 @@ export const CONTEXT_TEXT = Object.freeze({
     tabDocuments: "Fonti",
     addNotes: "Aggiungi appunti",
     writeFact: "Scrivi un fatto",
+    // (Rilascio 10, §3.7) La testata comune: «Aggiungi» apre le tre scelte; chi aggiunge solo file li aggiunge da lì.
+    tabProcesses: "Processi",
+    add: "Aggiungi",
+    addFile: "Aggiungi un file",
+    addTitle: "Aggiungi al contesto",
+    choiceNotes: "Appunti",
+    choiceNotesHint: "Gli appunti o la trascrizione di una call: Unbundle propone i fatti.",
+    choiceFile: "File",
+    choiceFileHint: "PDF, Word, Excel, PowerPoint o testo, fino a 4 MB.",
+    choiceFact: "Un fatto",
+    choiceFactHint: "Una cosa che sai già, in una frase.",
+    more: "Altre azioni",
+    interview: "Intervista iniziale",
+    /** Il «?» di «Conferma N proposte». */
+    confirmWhy: (n: number) => (n === 1 ? "Unbundle l'ha letta dalle fonti: confermala, correggila o scartala." : "Unbundle le ha lette dalle fonti: confermale, correggile o scartale."),
     notReady: "Il contesto si sta preparando. Riprova tra qualche minuto.",
     emptyTitle: "Ancora niente in memoria",
-    emptyBodyLs: "Aggiungi gli appunti di una call: Unbundle li legge e propone i fatti. Confermi con un clic.",
-    emptyBodyClient: "Qui compare quello che sappiamo dell'azienda, con la fonte di ogni cosa.",
+    // (Rilascio 10, §5.4) Il vuoto vero: una frase sola; l'azione è «Aggiungi», nella testata.
+    emptyBodyLs: "Aggiungi gli appunti di una call: Unbundle propone i fatti.",
+    emptyBodyClient: "Qui compare quello che sappiamo dell'azienda, con le fonti.",
     // (Rilascio 10, §4) Le parole di ogni pagina che non si carica.
     errorTitle: "Questa pagina non si è caricata.",
     errorBody: "Quello che hai già salvato resta salvato.",
@@ -32,6 +48,18 @@ export const CONTEXT_TEXT = Object.freeze({
     open: "Apri",
     reading: "Leggo gli appunti…",
     readingOf: (i: number, n: number) => `Leggo gli appunti… ${i} di ${n}`,
+    // (Rilascio 10, §1 regola 4) Al massimo tre righe, poi «Vedi tutti (N)»; «In breve» con tre righe e il resto a richiesta.
+    showAll: (n: number) => `Vedi tutti (${n})`,
+    showLess: "Mostra meno",
+    briefMore: "Mostra tutto",
+    /** Il riepilogo di «Come lavorano» chiusa: le unità, e i fatti se ci sono. */
+    units: (n: number) => (n === 1 ? "1 unità" : `${n} unità`),
+    /** Il link della sezione «Obiettivi e priorità»: la pagina «Obiettivi», dove si misurano. */
+    goals: "Obiettivi",
+    /** Il nome di una riga che porta alla board di un'unità, per i lettori di schermo. */
+    openUnit: (name: string) => `Apri i processi di ${name}`,
+    /** Il titolo del pannello di un fatto mentre si carica. */
+    factTitle: "Fatto",
   }),
   sections: Object.freeze({
     azienda: "Azienda",
@@ -47,16 +75,18 @@ export const CONTEXT_TEXT = Object.freeze({
   }),
   brief: Object.freeze({ title: "In breve", updated: (date: string) => `Aggiornato il ${date}` }),
   // I dati della Discovery, letti dal vivo: le righe che la Memoria mostra con la fonte «Discovery».
+  // (Rilascio 10, §3.7) In italiano semplice: niente «nodi», «commodity», «driver».
   live: Object.freeze({
-    strategicNodes: (items: string) => `Nodi strategici: ${items}`,
-    commodityNodes: (items: string) => `Nodi commodity: ${items}`,
-    marginDrivers: (items: string) => `Motori di margine: ${items}`,
+    strategicNodes: (items: string) => `Dove fa la differenza: ${items}`,
+    commodityNodes: (items: string) => `Lavoro di routine: ${items}`,
+    marginDrivers: (items: string) => `Da dove viene il margine: ${items}`,
     risks: (items: string) => `Rischi: ${items}`,
     aiReadiness: (level: string) => `Maturità AI: ${level}`,
     employees: (count: string) => `Dipendenti: ${count}`,
     revenue: (amount: string) => `Ricavo dell'ultimo anno: ${amount}`,
     people: (n: number) => (n === 1 ? "1 persona" : `${n} persone`),
-    activities: (n: number) => (n === 1 ? "1 attività mappata" : `${n} attività mappate`),
+    // (Rilascio 10, §4) I passi di un processo si chiamano «passi», come nella board.
+    activities: (n: number) => (n === 1 ? "1 passo mappato" : `${n} passi mappati`),
     boundaryIncluded: (items: string) => `incluse ${items}`,
     boundaryExcluded: (items: string) => `escluse ${items}`,
     boundary: (parts: string) => `Perimetro: ${parts}`,
@@ -64,7 +94,8 @@ export const CONTEXT_TEXT = Object.freeze({
     // (Rilascio 10, §4) Obiettivo · Risultato chiave · KPI: mai «Goal».
     goalTag: Object.freeze({ goal: "Obiettivo", objective: "Obiettivo", key_result: "Risultato chiave" }),
   }),
-  novelties: Object.freeze({ title: "Novità per te", tagNew: "Nuovo", tagChanged: "Cambiato", more: (n: number) => (n === 1 ? "e un'altra" : `e altre ${n}`) }),
+  // (Rilascio 10, §3.7) «Novità», al massimo tre.
+  novelties: Object.freeze({ title: "Novità", tagNew: "Nuovo", tagChanged: "Cambiato", more: (n: number) => (n === 1 ? "e un'altra" : `e altre ${n}`) }),
   fact: Object.freeze({
     inferred: "dedotto",
     toCheck: "da verificare",
@@ -122,13 +153,14 @@ export const CONTEXT_TEXT = Object.freeze({
   }),
   questions: Object.freeze({
     askWhom: (role: string) => `Da chiedere a: ${role}`,
-    close: "Chiusa",
+    // (Rilascio 10) Un pulsante è un verbo: «Chiudi», con la domanda letta dai lettori di schermo.
+    close: "Chiudi",
     closed: "Domanda chiusa.",
   }),
   ask: Object.freeze({
     label: "Chiedi al contesto",
-    placeholderLs: "Fai una domanda sul cliente",
-    placeholderClient: "Fai una domanda",
+    placeholderLs: "Per esempio: che gestionale usano?",
+    placeholderClient: "Per esempio: che gestionale usiamo?",
     submit: "Chiedi",
     loading: "Cerco nel contesto…",
     sources: "Fonti",
@@ -152,6 +184,8 @@ export const CONTEXT_TEXT = Object.freeze({
     titleLabel: "Titolo",
     participants: "Con chi",
     link: "Link all'originale",
+    /** (Rilascio 10, §3.7) «Con chi» e «Link» stanno qui, chiusi. */
+    more: "Altro",
     optional: "facoltativo",
     submit: "Aggiungi",
     cancel: "Annulla",
