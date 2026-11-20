@@ -13,14 +13,10 @@ import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { loadActivityPage } from "@/lib/db/queries/uc-events";
 import { romeDate } from "@/lib/uc/notify/schedule";
 import { PERIOD_PARAM, periodOptions, periodValue } from "@/lib/uc/views/activity-period";
-import { activeAuditFilters, activityDays, auditFamiliesFor, auditQuery, auditWhoFor, dailyAnswerBars, parseAuditFilter, type AuditWho } from "@/lib/uc/views/audit";
+import { activeAuditFilters, activityDays, auditFamiliesFor, auditQuery, auditWhoFor, dailyAnswerBars, parseAuditFilter, withoutLegacyActor } from "@/lib/uc/views/audit";
 import { canOpenShellPage, seesFilteredAudit } from "@/lib/uc/views/case-shell";
 import { seesPersonalZoneMetadata } from "@/lib/uc/views/page-access";
-import type { EventActorType } from "@/lib/uc/vocab";
 import { cn } from "@/lib/utils";
-
-/** Il vecchio filtro `attore` (link del Registro) nel «Chi» di oggi, quando dice la stessa cosa. */
-const LEGACY_WHO: Partial<Record<EventActorType, AuditWho>> = { referente: "referenti", sistema: "sistema", mcp: "claude" };
 
 /**
  * Attività (rilascio 10, §3.5; DESIGN §3.12, PIANO §7.2, §3.3): una linea del tempo per giorno, righe di al massimo 8
@@ -43,7 +39,8 @@ export default async function ActivityPage({
   if (!canOpenShellPage("registro", caseAccess.roles)) notFound();
   const clientView = seesFilteredAudit(caseAccess.roles);
   const personalData = seesPersonalZoneMetadata(caseAccess.roles);
-  const filter = parseAuditFilter(await searchParams, clientView, { personalData });
+  // Il vecchio `attore` dei link del Registro diventa il «Chi» che dice la stessa cosa, o si lascia cadere (`withoutLegacyActor`).
+  const filter = withoutLegacyActor(parseAuditFilter(await searchParams, clientView, { personalData }));
   const page = await loadActivityPage(executor, { workspaceId, caseId: caseAccess.caseId, filter, clientView, lsDomains: ucLsDomains() });
   const now = new Date();
   const days = activityDays(page.rows, { now, audience: clientView ? "cliente" : "ls" });
@@ -51,18 +48,15 @@ export default async function ActivityPage({
   const basePath = casePath(workspaceId, caseId, "attivita");
   const csvHref = `${casePath(workspaceId, caseId, "attivita/csv")}${auditQuery({ ...filter, pagina: 1 })}`;
   const filtered = activeAuditFilters(filter) > 0;
-  // Il filtro comune: i parametri di adesso, il periodo in un parametro solo; il vecchio `attore` dei link del Registro
-  // diventa il «Chi» che dice la stessa cosa (così ha il suo chip e «Togli tutti» lo toglie); «utente» resta com'era.
+  // Il filtro comune: i parametri di adesso, con il periodo in un parametro solo.
   const period = periodValue(filter.dal, filter.al);
-  const who = filter.chi ?? (filter.attore ? (LEGACY_WHO[filter.attore] ?? null) : null);
   const query: Record<string, string> = {};
   if (filter.famiglia) query.tipo = filter.famiglia;
-  if (who) query.chi = who;
-  else if (filter.attore) query.attore = filter.attore;
+  if (filter.chi) query.chi = filter.chi;
   if (period) query[PERIOD_PARAM] = period;
   const fields = [
     { key: "tipo", label: "Tipo", options: auditFamiliesFor(clientView, personalData).map((f) => ({ value: f.key, label: f.label })), value: filter.famiglia },
-    { key: "chi", label: "Chi", options: auditWhoFor(clientView).map((w) => ({ value: w.key, label: w.label })), value: who },
+    { key: "chi", label: "Chi", options: auditWhoFor(clientView).map((w) => ({ value: w.key, label: w.label })), value: filter.chi },
     { key: PERIOD_PARAM, label: "Periodo", options: periodOptions(romeDate(now), filter), value: period },
   ];
 

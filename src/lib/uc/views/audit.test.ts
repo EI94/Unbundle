@@ -9,6 +9,7 @@ import {
   AUDIT_EVENT_LABEL,
   PERSONAL_DATA_FAMILY,
   clampActivityLine,
+  withoutLegacyActor,
   AUDIT_FAMILIES,
   EMPTY_AUDIT_FILTER,
   activeAuditFilters,
@@ -352,4 +353,13 @@ test("(rilascio 10) il periodo del filtro comune: un parametro solo, i link con 
 test("«Periodo»: a day counts only when complete, real and from 2000", () => {
   for (const partial of ["0002-10-14", "2026-1", "2026-02-30", "", "1999-12-31"]) assert.equal(periodDay(partial || null), null, partial);
   assert.equal(periodDay("2026-10-14"), "2026-10-14");
+});
+
+test("(rilascio 10) il vecchio `attore` del Registro diventa il «Chi» uguale, o si lascia cadere: mai un filtro senza chip", () => {
+  const of = (attore: string) => withoutLegacyActor(parseAuditFilter({ attore }, false));
+  assert.deepEqual([of("referente").chi, of("referente").attore], ["referenti", null]);
+  assert.deepEqual([of("sistema").chi, of("mcp").chi], ["sistema", "claude"]);
+  assert.deepEqual([of("utente").chi, of("utente").attore], [null, null], "«utente» non ha un «Chi» uguale");
+  assert.equal(withoutLegacyActor(parseAuditFilter({ chi: "ls", attore: "sistema" }, false)).chi, "ls", "«Chi» vince");
+  assert.equal(auditQuery(of("referente")), "?chi=referenti", "lo scaricato segue il chip");
 });

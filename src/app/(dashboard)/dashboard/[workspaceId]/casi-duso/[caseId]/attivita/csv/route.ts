@@ -8,7 +8,7 @@ import { loadActivityExport } from "@/lib/db/queries/uc-events";
 import { recordAuditExport } from "@/lib/db/queries/uc-shell";
 import { isPrefetchRequest } from "@/lib/http/prefetch";
 import { attachmentDisposition } from "@/lib/uc/export/request";
-import { auditCsv, parseAuditFilter } from "@/lib/uc/views/audit";
+import { auditCsv, parseAuditFilter, withoutLegacyActor } from "@/lib/uc/views/audit";
 import { UC_SHELL_PAGE_ROLES, seesFilteredAudit } from "@/lib/uc/views/case-shell";
 import { seesPersonalZoneMetadata } from "@/lib/uc/views/page-access";
 
@@ -61,7 +61,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { executor, caseAccess } = opened.value;
     const clientView = seesFilteredAudit(caseAccess.roles);
     // (Rilascio 10) Lo stesso filtro della pagina, «Dati personali» compreso per chi vede i metadati della zona personale.
-    const filter = parseAuditFilter(request.nextUrl.searchParams, clientView, { personalData: seesPersonalZoneMetadata(caseAccess.roles) });
+    const filter = withoutLegacyActor(parseAuditFilter(request.nextUrl.searchParams, clientView, { personalData: seesPersonalZoneMetadata(caseAccess.roles) }));
     const data = await loadActivityExport(executor, { workspaceId, caseId: caseAccess.caseId, filter, clientView, lsDomains: ucLsDomains() });
     csv = auditCsv(data.rows, data.daily ?? undefined);
     code = caseAccess.code;

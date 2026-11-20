@@ -238,6 +238,18 @@ export function parseAuditFilter(sp: SearchParams, clientView: boolean, opts: { 
   };
 }
 
+/** Il vecchio filtro `attore` (link del Registro) nel «Chi» di oggi, quando dice la stessa cosa. */
+const LEGACY_WHO: Partial<Record<EventActorType, AuditWho>> = { referente: "referenti", sistema: "sistema", mcp: "claude" };
+
+/**
+ * (Rilascio 10, §3.5) Il filtro comune ha «Chi», non il vecchio `attore` dei link del Registro: `attore` diventa il «Chi»
+ * che dice la stessa cosa (così ha il suo chip e «Togli tutti» lo toglie); «utente» non ha un «Chi» uguale e si lascia
+ * cadere. Nessun filtro resta attivo senza il suo chip.
+ */
+export function withoutLegacyActor(f: AuditFilter): AuditFilter {
+  return { ...f, chi: f.chi ?? (f.attore ? (LEGACY_WHO[f.attore] ?? null) : null), attore: null };
+}
+
 /** Query string dei filtri (senza la pagina 1). */
 export function auditQuery(f: AuditFilter, patch: Partial<AuditFilter> = {}): string {
   const next = { ...f, ...patch };
