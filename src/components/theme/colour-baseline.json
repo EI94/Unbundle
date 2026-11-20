@@ -72,7 +72,6 @@
     "palette": 1
   },
   "src/components/auth/login-form.tsx": {
-    "palette": 7,
     "hex": 4
   },
   "src/components/dashboard/competitive-analysis.tsx": {

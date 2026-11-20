@@ -18,10 +18,25 @@ import {
   GOOGLE_NEEDS_REAL_BROWSER,
   isInAppBrowser,
 } from "@/lib/firebase/auth-errors";
+import { LOGIN_TEXT } from "@/lib/public/login";
+import { cn } from "@/lib/utils";
+import { PUBLIC_FIELD, PUBLIC_LABEL, PUBLIC_LINK, PUBLIC_PRIMARY, PUBLIC_SECONDARY } from "@/components/public/classes";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
-import { toast } from "sonner";
+
+/**
+ * Il modulo d'accesso di `/login`: Google, email e password, account nuovo, nuova password.
+ *
+ * (Rilascio 10, ondata 4, PROPOSTA-10 §3.11, audit Fuori §3.1) Nel guscio unico delle pagine pubbliche, chiaro: un solo
+ * pulsante pieno (quello del modulo: «Accedi», «Crea account» o «Mandami il link per la password»), Google bordato; i
+ * link secondari alti 44 px; etichette leggibili e campi a 16 px; il segnaposto della password solo per un account nuovo.
+ * Il link per la password mandato si dice nella pagina, non con un toast (un portale uscirebbe dal contenitore chiaro).
+ * I testi stanno in `src/lib/public/login.ts`.
+ */
+
+const L = LOGIN_TEXT.form;
 
 type Mode = "login" | "register" | "reset";
 
@@ -50,6 +65,7 @@ function LoginFormInner() {
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [suggestRegister, setSuggestRegister] = useState(false);
   // Lo user agent non esiste durante il rendering sul server: lì, e all'idratazione, `false`;
   // subito dopo il valore del browser. Vale anche un browser che lo user agent non dice, quando la
@@ -71,6 +87,7 @@ function LoginFormInner() {
   function switchMode(next: Mode) {
     setMode(next);
     setError(null);
+    setNotice(null);
     setSuggestRegister(false);
   }
 
@@ -82,13 +99,14 @@ function LoginFormInner() {
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      throw new Error(body.error ?? "Errore durante la creazione della sessione");
+      throw new Error(body.error ?? L.session);
     }
   }
 
   async function handleGoogle() {
     setLoading(true);
     setError(null);
+    setNotice(null);
     try {
       const provider = new GoogleAuthProvider();
       // Sempre la scelta dell'account: chi ha cliccato «Cambia account» non
@@ -102,11 +120,11 @@ function LoginFormInner() {
       const code = firebaseErrorCode(err);
       if (GOOGLE_NEEDS_REAL_BROWSER.has(code)) {
         setGoogleBlocked(true);
-        setError("Questo browser non apre la finestra di Google. Apri il link in Safari o Chrome, oppure usa email e password qui sotto.");
+        setError(L.googleBlocked);
       } else if (code) {
         setError(firebaseErrorMessage(err));
       } else {
-        setError(err instanceof Error && err.message ? err.message : "Accesso con Google non riuscito. Riprova.");
+        setError(err instanceof Error && err.message ? err.message : L.googleFailed);
       }
     } finally {
       setLoading(false);
@@ -117,13 +135,14 @@ function LoginFormInner() {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setNotice(null);
     setSuggestRegister(false);
 
     try {
       if (mode === "reset") {
         await sendPasswordResetEmail(firebaseAuth, email);
-        toast.success("Email di reset inviata. Controlla la posta.");
         switchMode("login");
+        setNotice(L.resetSent);
         setLoading(false);
         return;
       }
@@ -149,53 +168,49 @@ function LoginFormInner() {
       const code = firebaseErrorCode(err);
       if (mode === "login" && (code === "auth/invalid-credential" || code === "auth/user-not-found")) {
         setSuggestRegister(true);
-        setError("Email o password non corrette.");
+        setError(L.wrong);
       } else if (code) {
         setError(firebaseErrorMessage(err));
       } else {
-        setError(err instanceof Error && err.message ? err.message : "Accesso non riuscito. Riprova.");
+        setError(err instanceof Error && err.message ? err.message : L.failed);
       }
     } finally {
       setLoading(false);
     }
   }
 
+  const secondary = cn(PUBLIC_LINK, "text-sm text-muted-foreground");
+
   return (
     <div className="space-y-5">
       {inAppBrowser && (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-sm text-amber-100" role="status" data-testid="in-app-browser-hint">
-          <p>
-            Sembra che tu abbia aperto il link dentro un&apos;app (WhatsApp, Teams…): lì l&apos;accesso con Google
-            spesso non funziona. Apri il link in Safari o Chrome, oppure usa email e password.
-          </p>
-          <button type="button" onClick={copyPageLink} className="mt-2 inline-flex h-10 items-center rounded-lg border border-amber-500/40 px-3 text-sm font-medium">
-            {linkCopied ? "Link copiato: incollalo nel browser" : "Copia il link"}
-          </button>
+        <div className="rounded-xl bg-uc-giallo-bg p-4" role="status" data-testid="in-app-browser-hint">
+          <p>{L.inApp}</p>
+          <Button type="button" variant="outline" className="mt-3 h-11" onClick={copyPageLink}>
+            {linkCopied ? L.copied : L.copy}
+          </Button>
         </div>
       )}
+      {notice && (
+        <p className="rounded-xl bg-uc-verde-bg px-4 py-3" role="status" data-testid="login-notice">
+          {notice}
+        </p>
+      )}
       {error && (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200" role="alert" data-testid="login-error">
+        <div className="rounded-xl bg-destructive/10 px-4 py-3 text-destructive" role="alert" data-testid="login-error">
           <p>{error}</p>
           {suggestRegister && (
-            <button
-              type="button"
-              className="mt-1 font-medium underline underline-offset-4"
-              onClick={() => switchMode("register")}
-            >
-              Primo accesso? Crea l&apos;account con questa email
+            <button type="button" className={cn(PUBLIC_LINK, "text-destructive")} onClick={() => switchMode("register")}>
+              {L.suggestRegister}
             </button>
           )}
         </div>
       )}
-      <button
-        onClick={handleGoogle}
-        disabled={loading}
-        className="w-full flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 py-3 text-sm font-medium hover:bg-accent transition-colors disabled:opacity-50"
-      >
+      <Button type="button" variant="outline" className={cn(PUBLIC_SECONDARY, "gap-2")} onClick={handleGoogle} disabled={loading} data-testid="login-google">
         {loading ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
         ) : (
-          <svg className="h-4 w-4" viewBox="0 0 24 24">
+          <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden>
             <path
               d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
               fill="#4285F4"
@@ -214,111 +229,96 @@ function LoginFormInner() {
             />
           </svg>
         )}
-        Continua con Google
-      </button>
+        {L.google}
+      </Button>
 
       <div className="flex items-center gap-4">
-        <div className="flex-1 h-px bg-border" />
-        <span className="text-xs text-muted-foreground">oppure</span>
-        <div className="flex-1 h-px bg-border" />
+        <div className="h-px flex-1 bg-border" />
+        <span className="text-sm text-muted-foreground">{L.or}</span>
+        <div className="h-px flex-1 bg-border" />
       </div>
 
       <form onSubmit={handleEmailSubmit} className="space-y-4">
         {mode === "register" && (
           <div className="space-y-1.5">
-            <Label htmlFor="name" className="text-xs text-muted-foreground">Nome</Label>
+            <Label htmlFor="name" className={PUBLIC_LABEL}>
+              {L.name}
+            </Label>
             <Input
               id="name"
               type="text"
-              placeholder="Mario Rossi"
+              autoComplete="name"
+              placeholder={L.namePlaceholder}
               value={name}
               onChange={(e) => setName(e.target.value)}
               disabled={loading}
-              className="bg-card border-border"
+              className={PUBLIC_FIELD}
             />
           </div>
         )}
 
         <div className="space-y-1.5">
-          <Label htmlFor="email" className="text-xs text-muted-foreground">Email</Label>
+          <Label htmlFor="email" className={PUBLIC_LABEL}>
+            {L.email}
+          </Label>
           <Input
             id="email"
             type="email"
-            placeholder="tu@azienda.com"
+            autoComplete="email"
+            placeholder={L.emailPlaceholder}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
             disabled={loading}
-            className="bg-card border-border"
+            className={PUBLIC_FIELD}
           />
         </div>
 
         {mode !== "reset" && (
           <div className="space-y-1.5">
-            <Label htmlFor="password" className="text-xs text-muted-foreground">Password</Label>
+            <Label htmlFor="password" className={PUBLIC_LABEL}>
+              {L.password}
+            </Label>
             <Input
               id="password"
               type="password"
-              placeholder="Minimo 6 caratteri"
+              autoComplete={mode === "register" ? "new-password" : "current-password"}
+              placeholder={mode === "register" ? L.passwordPlaceholder : undefined}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={6}
               disabled={loading}
-              className="bg-card border-border"
+              className={PUBLIC_FIELD}
             />
           </div>
         )}
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full min-h-11 rounded-lg bg-foreground text-background px-4 py-3 text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
-        >
-          {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin inline" />}
-          {mode === "login"
-            ? "Accedi"
-            : mode === "register"
-              ? "Crea account"
-              : "Invia link di reset"}
-        </button>
+        <Button type="submit" disabled={loading} className={PUBLIC_PRIMARY} data-testid="login-submit">
+          {loading && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
+          {mode === "login" ? L.login : mode === "register" ? L.register : L.reset}
+        </Button>
       </form>
 
-      <div className="flex flex-col items-center gap-1.5 text-xs">
+      <div className="flex flex-col items-center">
         {mode === "login" && (
           <>
-            <button
-              type="button"
-              className="text-muted-foreground hover:text-foreground transition-colors"
-              onClick={() => switchMode("register")}
-            >
-              Non hai un account? Registrati
+            <button type="button" className={secondary} onClick={() => switchMode("register")}>
+              {L.toRegister}
             </button>
-            <button
-              type="button"
-              className="text-muted-foreground hover:text-foreground transition-colors"
-              onClick={() => switchMode("reset")}
-            >
-              Password dimenticata?
+            <button type="button" className={secondary} onClick={() => switchMode("reset")}>
+              {L.forgot}
             </button>
           </>
         )}
         {mode === "register" && (
-          <button
-            type="button"
-            className="text-muted-foreground hover:text-foreground transition-colors"
-            onClick={() => switchMode("login")}
-          >
-            Hai gi&agrave; un account? Accedi
+          <button type="button" className={secondary} onClick={() => switchMode("login")}>
+            {L.toLogin}
           </button>
         )}
         {mode === "reset" && (
-          <button
-            type="button"
-            className="text-muted-foreground hover:text-foreground transition-colors"
-            onClick={() => switchMode("login")}
-          >
-            Torna al login
+          <button type="button" className={secondary} onClick={() => switchMode("login")}>
+            {L.back}
           </button>
         )}
       </div>
@@ -328,7 +328,7 @@ function LoginFormInner() {
 
 export function LoginForm() {
   return (
-    <Suspense fallback={<div className="h-40 flex items-center justify-center text-sm text-muted-foreground">Caricamento…</div>}>
+    <Suspense fallback={<div className="flex h-40 items-center justify-center text-sm text-muted-foreground">{L.loading}</div>}>
       <LoginFormInner />
     </Suspense>
   );

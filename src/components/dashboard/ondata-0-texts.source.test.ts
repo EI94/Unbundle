@@ -19,7 +19,9 @@ test("0.5 · «Privacy», not «Privacy Policy»: the page, its link from the lo
   for (const file of ["src/app/legal/privacy/page.tsx", "src/app/(auth)/login/page.tsx", "src/app/llms.txt/route.ts", "src/app/llms-full.txt/route.ts"]) {
     assert.doesNotMatch(read(file), /Privacy Policy/, file);
   }
-  assert.match(read("src/app/(auth)/login/page.tsx"), /href="\/legal\/privacy" className="underline hover:text-foreground">\s*Privacy\s*<\/a>/);
+  // (Rilascio 10, ondata 4) Il link sta nel piè di pagina del guscio pubblico; il testo in src/lib/public/login.ts.
+  assert.match(read("src/app/(auth)/login/page.tsx"), /<PublicLink href="\/legal\/privacy">\{LOGIN_TEXT\.privacyLink\}<\/PublicLink>/);
+  assert.match(read("src/lib/public/login.ts"), /privacyLink: "Privacy",/);
 });
 
 test("0.6 · no words of one industry: «Personale operativo», «a pezzo», no flights or nights in the suggestions", () => {

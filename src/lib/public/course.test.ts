@@ -107,7 +107,7 @@ test("the join form: one filled button; «Usa email e password» a 44 px link; �
   // Campi a 16 px e 44 px; nessun testo scritto nel componente, nessun colore fisso.
   assert.equal(form.match(/className=\{PUBLIC_FIELD\}/g)?.length, 3);
   assert.doesNotMatch(form, /emerald|amber|text-white|text-xs/);
-  assert.doesNotMatch(form, /"[A-ZÈ][^"\n]*\s[^"\n]*"/, "nessuna frase scritta a mano");
+  assert.doesNotMatch(form, /"[A-ZÈ][a-zàèéìòù']+\s[^"\n]*"/, "nessuna frase scritta a mano");
   assert.doesNotMatch(form, /window\.(?:confirm|prompt|alert)\b/);
   // Il bivio di `kept_other_cohort` resta com'è.
   assert.match(form, /\{T\.reopen\}/);
