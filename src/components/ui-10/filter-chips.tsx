@@ -23,6 +23,8 @@ export interface FilterField {
   options: readonly FilterOption[];
   /** Il valore di adesso; null: «Tutti». */
   value: string | null;
+  /** La voce vuota del foglio quando non è «Tutti» (per esempio il predefinito della pagina); senza, «Tutti». */
+  placeholder?: string;
 }
 
 export interface FilterChipsProps {
@@ -199,7 +201,7 @@ export function FilterChips({ basePath, query, search = null, fields, className 
                     defaultValue={field.value ?? ""}
                     className="h-11 w-full min-w-0 rounded-lg border border-input bg-transparent px-2 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 sm:h-9 sm:text-sm"
                   >
-                    <option value="">{t.all}</option>
+                    <option value="">{field.placeholder ?? t.all}</option>
                     {field.options.map((option) => (
                       <option key={option.value} value={option.value}>
                         {option.label}
