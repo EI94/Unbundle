@@ -607,8 +607,11 @@ export function unrevokedKeysOfRepoSql(workspaceId: string, repo: string): UcSta
   return toStatement(ucSql`SELECT count(*)::int AS n FROM use_case_ci_keys k WHERE ${ofRepo("k", cast(workspaceId, "uuid"), cast(repo, "text"))} AND k.revoked_at IS NULL`);
 }
 
+/** L'espressione SQL vera se la tabella della 0042 c'è (per gli script dell'operatore: `repo-unregister`). */
+export const CI_KEYS_PRESENT_SQL = "to_regclass('public.use_case_ci_keys') IS NOT NULL";
+
 /** Vero se la tabella della 0042 c'è: per gli script dell'operatore, che leggono la sonda da sé. */
-export const CI_KEYS_TABLE_SQL = "SELECT to_regclass('public.use_case_ci_keys') IS NOT NULL AS ok";
+export const CI_KEYS_TABLE_SQL = `SELECT ${CI_KEYS_PRESENT_SQL} AS ok`;
 
 /** `use-case-admin ci-keys`: le chiavi del workspace, con repository, prefisso, date e stato. Mai la chiave, mai chi. */
 export function ciKeysAdminListSql(workspaceId: string): UcStatement {
@@ -648,13 +651,14 @@ export interface CiKeysSweepSummary {
  * 2. l'avviso a 14 giorni, una volta (`reminded_at`): le chiavi vive entro 14 giorni dalla fine, non superate da una più
  *    nuova, con `chiave_ci_scade` in coda a chi gestisce le chiavi;
  * 3. le chiavi finite (revocate o scadute) da più di 12 mesi si cancellano.
- * `workspaceIds`: solo quei workspace (null: tutti).
+ * `workspaceIds`: solo quei workspace (null: tutti; un elenco vuoto: nessuno, come gli altri passi del cron).
  */
 export async function runCiKeysSweep(
   executor: UcExecutor,
   input: { lsDomains: readonly string[]; workspaceIds?: readonly string[] | null },
 ): Promise<CiKeysSweepSummary> {
   if (!(await ciKeysStoreReady(executor))) return { ready: false, reminded: 0, reminderNotices: 0, revokedWithoutCases: 0, deleted: 0 };
+  if (input.workspaceIds && input.workspaceIds.length === 0) return { ready: true, reminded: 0, reminderNotices: 0, revokedWithoutCases: 0, deleted: 0 };
   const scope = (alias: string) =>
     input.workspaceIds && input.workspaceIds.length > 0 ? ucSql` AND ${raw(alias)}.workspace_id = ANY(${cast([...input.workspaceIds], "uuid[]")})` : raw("");
   const [unregistered, reminders, deleted] = await executor.batch([

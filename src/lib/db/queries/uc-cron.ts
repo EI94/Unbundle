@@ -13,6 +13,8 @@
  *    settimanale all'Owner del cliente e ai membri Lateral Space (email e
  *    campanella);
  * 5. invio della coda arrivata a scadenza (`dispatchQueue`).
+ * (8.2b) Nella finestra, prima dell'invio, le chiavi della CI (`runCiKeysSweep`): le revoche dei repository senza casi,
+ * l'avviso a 14 giorni dalla fine (una volta), la cancellazione delle chiavi finite da più di 12 mesi.
  *
  * `runFreshnessCron` (`/api/cron/uc-freshness`, ogni notte):
  * 1. dati validati scaduti → `in_verifica` «dato scaduto» (riga 24), con la
@@ -61,6 +63,7 @@ import { CASE_OWNER_SQL, dispatchQueue } from "./uc-notifications-dispatch.ts";
 import { enqueueForLsMembersSql, enqueueSql } from "./uc-notifications.ts";
 import { runTaskStaleSweep, type TaskStaleSummary } from "./use-case-tasks-notices.ts";
 import { pruneGithubDeliveries } from "./use-case-github-prune.ts";
+import { runCiKeysSweep, type CiKeysSweepSummary } from "./use-case-ci-keys.ts";
 
 const WAITING_SQL = raw("'inviata', 'aperta', 'in_corso'");
 const OPEN_ITEM_STATES_SQL = raw("'da_fare', 'bozza'");
@@ -633,6 +636,8 @@ export interface RemindersCronSummary {
   dispatch: DispatchSummary | null;
   /** (8.1a) I compiti fermi: a chi chiesto, a quanti responsabili detto. Null fuori dalla finestra. */
   tasks: TaskStaleSummary | null;
+  /** (8.2b) Le chiavi della CI: avvisate, revocate perché il repository non ha più casi, cancellate. Null fuori dalla finestra. */
+  ciKeys: CiKeysSweepSummary | null;
 }
 
 export async function runRemindersCron(executor: UcExecutor, o: UcCronOptions): Promise<RemindersCronSummary> {
@@ -656,6 +661,7 @@ export async function runRemindersCron(executor: UcExecutor, o: UcCronOptions): 
     deferred: false,
     dispatch: null,
     tasks: null,
+    ciKeys: null,
   };
   const touched = new Map<string, string>();
 
@@ -827,6 +833,18 @@ export async function runRemindersCron(executor: UcExecutor, o: UcCronOptions): 
     } catch (error) {
       s.errors++;
       logFailure("uc-reminders", "eventi github", errorCode(error));
+    }
+  }
+
+  // 4d. (8.2b) Le chiavi della CI: i repository senza casi, l'avviso a 14 giorni (una volta, a chi gestisce le chiavi), le
+  // chiavi finite da più di 12 mesi. Nella finestra d'invio, prima dell'invio: le e-mail `chiave_ci_scade` partono in questo
+  // giro.
+  if (s.inWindow && timeLeft()) {
+    try {
+      s.ciKeys = await runCiKeysSweep(executor, { lsDomains: o.lsDomains, workspaceIds: ws === null || ws === undefined || ws === "" ? null : typeof ws === "string" ? [ws] : ws });
+    } catch (error) {
+      s.errors++;
+      logFailure("uc-reminders", "chiavi della ci", errorCode(error));
     }
   }
 
