@@ -17,10 +17,23 @@ import { formatCountIt } from "@/lib/uc/views/format";
 import { WORDS } from "@/lib/uc/views/labels";
 import type { QuestionFilterField } from "@/lib/uc/views/question-bar";
 import type { ContactOption, QuestionGroupView, QuestionRowView, QuestionSegmentItem, QuestionTopicGroup } from "@/lib/uc/views/rows";
-import type { ItemStatus } from "@/lib/uc/vocab";
 import { QuestionSelectionBar, type BulkPermissions, type BulkSelection } from "./bulk-actions";
 import { QuestionToolbar } from "./catalog-filters";
 import { CHECKBOX_CLASS } from "./checkbox";
+import {
+  WAITING_GROUP,
+  emptySelection,
+  groupNeedsRead,
+  groupPicked,
+  rowPicked,
+  selectAll,
+  selectionFor,
+  selectionOf,
+  toggleGroup,
+  toggleRow,
+  type SelectionPart,
+  type SelectionState,
+} from "./question-selection";
 import { ValueText } from "./value-text";
 
 export interface QuestionListProps {
@@ -57,12 +70,8 @@ const ROW = "group/row relative flex min-h-11 min-w-0 items-start gap-3 px-3 py-
 const LINK = "flex min-w-0 flex-1 items-start gap-3 rounded-sm outline-none after:absolute after:inset-0 focus-visible:after:ring-3 focus-visible:after:ring-ring/50";
 const FRAME = "divide-y overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10";
 
-/** Le domande scelte con un argomento intero (o con «In attesa»), dalla lettura del server. */
-interface TopicPick {
-  byStatus: Partial<Record<ItemStatus, string[]>>;
-  count: number;
-  truncated: boolean;
-}
+/** La lettura di «Seleziona tutte (N)», tra quelle in corso. */
+const ALL_KEY = "__tutte";
 
 /**
  * Domande (rilascio 10, §3.5): i segmenti e la barra, poi gli argomenti chiusi con il solo conteggio (il gruppo «In
@@ -79,28 +88,25 @@ export function QuestionList(props: QuestionListProps) {
   const listQuery = questionQuery(filter, defaults, { pagina: filter.pagina });
   const selectable = props.permissions.any;
 
-  // La selezione vale per la vista in cui è nata: cambiando filtri o pagina si svuota da sé.
+  // La selezione vale per la vista in cui è nata: cambiando filtri o pagina si svuota da sé. Ogni passaggio si applica
+  // allo stato di adesso (`setSel((prev) => …)`): una lettura che arriva dopo un'altra non cancella quello che ha aggiunto.
   const viewKey = listQuery;
   const [selecting, setSelecting] = useState(false);
-  const [sel, setSel] = useState<{ key: string; picked: ReadonlyMap<string, ItemStatus>; topics: ReadonlyMap<string, TopicPick>; all: BulkSelection | null }>({
-    key: viewKey,
-    picked: new Map(),
-    topics: new Map(),
-    all: null,
-  });
-  const [loadingTopic, setLoadingTopic] = useState<string | null>(null);
-  const current = sel.key === viewKey ? sel : { key: viewKey, picked: new Map<string, ItemStatus>(), topics: new Map<string, TopicPick>(), all: null };
-  const clear = () => setSel({ key: viewKey, picked: new Map(), topics: new Map(), all: null });
-  const toggleRow = (row: QuestionRowView, on: boolean) => {
-    // Togliere una domanda da «tutte le N» torna alla selezione della pagina.
-    const next = new Map(current.all ? rows.map((r) => [r.id, r.status] as const) : current.picked);
-    if (on) next.set(row.id, row.status);
-    else next.delete(row.id);
-    setSel({ key: viewKey, picked: next, topics: new Map(), all: null });
-  };
+  const [sel, setSel] = useState<SelectionState>(() => emptySelection(viewKey));
+  const current = selectionFor(sel, viewKey);
+  const update = (next: (state: SelectionState) => SelectionState) => setSel((prev) => next(selectionFor(prev, viewKey)));
+  const clear = () => setSel(emptySelection(viewKey));
+  const [loading, setLoading] = useState<ReadonlySet<string>>(() => new Set());
+  const busy = (key: string, on: boolean) =>
+    setLoading((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(key);
+      else next.delete(key);
+      return next;
+    });
 
-  /** Le domande di una vista (la pagina con un argomento o con «In attesa»), lette sul server. */
-  async function readSelection(patch: Partial<QuestionFilter>): Promise<TopicPick | null> {
+  /** Le domande di una vista (la pagina con un argomento, «In attesa» o tutta la vista), lette sul server. */
+  async function readSelection(patch: Partial<QuestionFilter>): Promise<SelectionPart | null> {
     try {
       const r = await selectCatalogItemsAction(props.workspaceId, props.caseId, { kind: "domande", query: questionQuery(filter, defaults, patch, { explicit: true }) });
       if (!r.ok) {
@@ -109,33 +115,27 @@ export function QuestionList(props: QuestionListProps) {
       }
       return { byStatus: r.data.byStatus, count: r.data.total, truncated: r.data.truncated };
     } catch {
-      toast.error("Selezione non riuscita. Riprova tra poco.");
+      toast.error(DOMANDE_TEXT.bar.selectFailed);
       return null;
     }
   }
-  async function toggleTopic(key: string, patch: Partial<QuestionFilter>, on: boolean) {
-    const topics = new Map(current.all ? [] : current.topics);
-    if (!on) {
-      topics.delete(key);
-      setSel({ key: viewKey, picked: new Map(), topics, all: null });
-      return;
+  async function pickGroup(key: string, patch: Partial<QuestionFilter>, on: boolean) {
+    let part: SelectionPart | null = null;
+    if (groupNeedsRead(current, key, on)) {
+      busy(key, true);
+      part = await readSelection(patch);
+      busy(key, false);
+      if (!part) return;
     }
-    setLoadingTopic(key);
-    const pick = await readSelection(patch);
-    setLoadingTopic(null);
-    if (!pick) return;
-    topics.set(key, pick);
-    setSel({ key: viewKey, picked: new Map(), topics, all: null });
+    update((state) => toggleGroup(state, key, on, part));
   }
-  const [loadingAll, setLoadingAll] = useState(false);
-  async function selectAll() {
-    setLoadingAll(true);
-    const pick = await readSelection({});
-    setLoadingAll(false);
-    if (pick) setSel({ key: viewKey, picked: current.picked, topics: new Map(), all: { scope: "risultati", byStatus: pick.byStatus, count: pick.count, truncated: pick.truncated } });
+  async function pickAll() {
+    busy(ALL_KEY, true);
+    const part = await readSelection({});
+    busy(ALL_KEY, false);
+    if (part) update((state) => selectAll(state, part));
   }
-  const selection: BulkSelection = current.all ?? selectionOf(current.picked, current.topics);
-  const isPicked = (id: string) => current.all !== null || current.picked.has(id);
+  const selection: BulkSelection = selectionOf(current);
 
   const openPanel = (e: React.MouseEvent<HTMLAnchorElement>, id: string) => {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
@@ -153,8 +153,8 @@ export function QuestionList(props: QuestionListProps) {
       open={props.openId === r.id}
       onOpen={openPanel}
       selecting={selectable && selecting}
-      picked={isPicked(r.id)}
-      onPick={toggleRow}
+      picked={rowPicked(current, r.id)}
+      onPick={(row, on) => update((state) => toggleRow(state, row, on, rows))}
     />
   );
 
@@ -202,9 +202,10 @@ export function QuestionList(props: QuestionListProps) {
                   count={props.waiting}
                   href={waitingHref}
                   selecting={selectable && selecting}
-                  picked={current.all !== null || current.topics.has("__attesa")}
-                  busy={loadingTopic === "__attesa"}
-                  onPick={(on) => void toggleTopic("__attesa", { vista: "bloccate" }, on)}
+                  // «Seleziona tutte (N)» vale per «Da fare», che non comprende le bloccate: «In attesa» si sceglie a parte.
+                  picked={groupPicked(current, WAITING_GROUP)}
+                  busy={loading.has(WAITING_GROUP)}
+                  onPick={(on) => void pickGroup(WAITING_GROUP, { vista: "bloccate" }, on)}
                 />
               </ul>
             )}
@@ -224,9 +225,9 @@ export function QuestionList(props: QuestionListProps) {
                       count={t.count}
                       href={`${basePath}${questionQuery(filter, defaults, topicPatch(t.key))}`}
                       selecting={selectable && selecting}
-                      picked={current.all !== null || current.topics.has(t.key)}
-                      busy={loadingTopic === t.key}
-                      onPick={(on) => void toggleTopic(t.key, topicPatch(t.key), on)}
+                      picked={groupPicked(current, t.key)}
+                      busy={loading.has(t.key)}
+                      onPick={(on) => void pickGroup(t.key, topicPatch(t.key), on)}
                     />
                   ))}
                 </ul>
@@ -272,30 +273,16 @@ export function QuestionList(props: QuestionListProps) {
           workspaceId={props.workspaceId}
           caseId={props.caseId}
           selection={selection}
-          total={loadingAll ? selection.count : total}
+          total={loading.has(ALL_KEY) ? selection.count : total}
           permissions={props.permissions}
           contacts={props.contacts}
           onCancel={clear}
-          onSelectAll={() => void selectAll()}
+          onSelectAll={() => void pickAll()}
           onDone={clear}
         />
       )}
     </div>
   );
-}
-
-/** Le righe scelte una per una più gli argomenti scelti interi (insiemi diversi: nessuna domanda due volte). */
-export function selectionOf(picked: ReadonlyMap<string, ItemStatus>, topics: ReadonlyMap<string, TopicPick>): BulkSelection {
-  const byStatus: Partial<Record<ItemStatus, string[]>> = {};
-  for (const [id, status] of picked) (byStatus[status] ??= []).push(id);
-  let count = picked.size;
-  let truncated = false;
-  for (const pick of topics.values()) {
-    for (const [status, ids] of Object.entries(pick.byStatus) as [ItemStatus, string[]][]) (byStatus[status] ??= []).push(...ids);
-    count += pick.count;
-    truncated ||= pick.truncated;
-  }
-  return { scope: topics.size > 0 ? "risultati" : "pagina", byStatus, count, truncated };
 }
 
 function ListEmpty({ filter, audience, clearHref }: { filter: QuestionFilter; audience: QuestionAudience; clearHref: string }) {

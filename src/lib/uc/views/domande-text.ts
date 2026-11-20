@@ -37,6 +37,7 @@ export const DOMANDE_TEXT = Object.freeze({
     selectTopics: "Scegli gli argomenti: si selezionano tutte le loro domande.",
     /** «Verifica una alla volta», quando il pulsante pieno della testata non ci porta già. */
     review: "Verifica una alla volta",
+    selectFailed: "Selezione non riuscita. Riprova tra poco.",
   }),
 
   filters: Object.freeze({
