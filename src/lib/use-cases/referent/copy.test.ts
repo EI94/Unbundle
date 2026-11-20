@@ -19,7 +19,7 @@ import {
   privacyNoticeTexts,
 } from "./labels.ts";
 import { PREPARED_QUESTIONS } from "./prepare.ts";
-import { REFERENT_KIT_NOTICE, REFERENT_KIT_TEXT, kitNoticeTexts } from "./kit.ts";
+import { REFERENT_KIT_TEXT } from "./kit.ts";
 
 // I testi di «Chiedi al referente», della campanella e di «Raccolta informazioni» (SPEC §5, §7, §P2.10):
 // nella dashboard «use case», mai «caso d'uso» né «wave»; (rilascio 5.1, decisione del titolare del
@@ -92,8 +92,6 @@ const DASHBOARD = [
 /** Fuori dalla dashboard: la pagina pubblica e le email. (Rilascio 10, D5) Anche il kit del referente, comune a `/r`. */
 const OUTSIDE = [
   ...strings(REFERENT_KIT_TEXT),
-  ...strings(REFERENT_KIT_NOTICE),
-  ...strings(kitNoticeTexts({ company: "Rondine", expires: "26 novembre 2026", contact: "privacy@example.test" })),
   ...strings(REFERENT_PUBLIC_TEXT),
   ...strings(REFERENT_CHECK_TEXT),
   ...strings(REFERENT_IMPACT_TEXT),
