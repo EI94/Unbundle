@@ -183,6 +183,8 @@ const STATUS_OF: Readonly<Record<string, number>> = {
   repo_di_altro_cliente: 409,
   repo_non_del_cliente: 403,
   repo_modello: 400,
+  // (8.0d, D4) Un caso di «Solo questo use case» sta in un repository suo, mai condiviso con altri casi.
+  repo_condiviso: 409,
 };
 
 /** Una chiave di idempotenza valida: quella che la CLI genera (un UUID) o una del chiamante, 8-128 caratteri. */
