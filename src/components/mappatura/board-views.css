@@ -73,10 +73,10 @@
 [data-board-root] .b-point-draft { display: flex; flex-direction: column; gap: 4px; }
 
 /* ── La mappa che si modifica ── */
-/* L'etichetta della riga: nome e chi lo segue si scrivono sul posto, allineati alla lettera. */
+/* L'etichetta della riga: il nome si scrive sul posto, allineato alla lettera; chi lo segue nel «⋯» del processo. */
 [data-board-root] .b-pm-lab .b-textin { margin: 0 -5px; width: calc(100% + 10px); }
 @media (hover: hover) {
-  [data-board-root] .b-pm-lab:not(:hover):not(:focus-within) .b-textin:placeholder-shown::placeholder { color: transparent; }
+  [data-board-root] .b-pm-lab:not(:hover):not(:focus-within) > b .b-textin:placeholder-shown::placeholder { color: transparent; }
 }
 [data-board-root] .b-pm-fr { font-family: var(--board-font-mono); font-size: 10.5px; color: var(--board-crit); }
 /* (Rilascio 10, §3.7) «Sposta su», «Sposta giù», «Elimina il processo» e i voti: i controlli tondi delle note, nel «⋯»
@@ -87,6 +87,8 @@
 [data-board-root] .b-row-more[aria-expanded="true"] { border-color: var(--board-ink); }
 [data-board-root] .b-row-ctl button { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--board-line-strong); background: var(--board-paper); color: var(--board-ink); display: grid; place-items: center; padding: 0; cursor: pointer; }
 [data-board-root] .b-row-ctl button[disabled], [data-board-root] .b-row-ctl button[aria-disabled="true"] { opacity: .35; cursor: not-allowed; }
+/* Chi segue il processo si scrive qui, su una riga sua, con il suggerimento sempre in vista (quello del nome compare al passaggio). */
+[data-board-root] .b-row-owner { flex-basis: 100%; min-width: 0; }
 /* Ogni riga è larga quanto la più lunga (`--steps` sul riquadro), con le card della larghezza del riferimento che non
    si stirano: le colonne della mappa restano in griglia, e una riga corta lascia vuoto il suo fondo. Sulla mappa che si
    modifica in fondo a ogni riga ci sta anche «+ passo»: 8 px prima, il bottone (61 px con Geist a 12 px), e il segno

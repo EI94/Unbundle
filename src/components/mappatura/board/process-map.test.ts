@@ -72,6 +72,9 @@ test("l'etichetta della riga: nome e chi lo segue sul posto, gli attriti; il «�
   // (Rilascio 10, §3.7) Chiuso, il «⋯» di ogni processo: i controlli ci sono (nascosti) e i voti sulla riga solo se ci sono.
   assert.deepEqual(clickables(closed.tree, "Altre azioni: Dalla richiesta all'ordine").map((button) => button.props["aria-expanded"]), [false]);
   assert.match(closed.html, /<span class="b-row-ctl" id="b-row-ctl-[^"]+" hidden="" data-b="row-controls">/);
+  // (Rilascio 10, §3.7) Sulla riga un campo solo, il nome: chi segue il processo si legge, e si scrive nel suo «⋯».
+  assert.match(closed.html, /<b><textarea[^>]*aria-label="Nome del processo"[^>]*>[^<]*<\/textarea><\/b><small>Responsabile acquisti<\/small><div class="b-pm-extra">/);
+  assert.match(closed.html, /<span class="b-row-ctl" id="b-row-ctl-[^"]+" hidden="" data-b="row-controls"><span class="b-row-owner"><textarea[^>]*aria-label="Chi lo segue"/);
   assert.match(closed.html, /<span class="b-votes" data-b="votes-count"><span class="b-vb" aria-hidden="true">3<\/span><span class="b-sr">Voti: 3\. Tuoi: 1\.<\/span><\/span>/);
   assert.equal((closed.html.match(/data-b="votes-count"/g) ?? []).length, 1, "B non ha voti: niente sulla riga");
   press(closed.tree, "Altre azioni: Dalla richiesta all'ordine");

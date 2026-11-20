@@ -8,9 +8,9 @@
  * i passi come card con una freccia tra due, il bordo dell'attrito (con la parola per i lettori di schermo), «◆ decide
  * una persona», «da validare». (Rilascio 10) La card dice solo il titolo, «Chi», ◆ e «da validare»: descrizione e
  * strumenti stanno nel drawer. Le modifiche:
- * - l'etichetta della riga: il nome e chi lo segue si scrivono sul posto; gli attriti della riga in rosso; i voti solo
- *   se ce ne sono; un «⋯» per processo apre «Sposta su», «Sposta giù», «Elimina il processo» (per uno vuoto, con
- *   «Annulla») e i voti `−` n `+`;
+ * - l'etichetta della riga: il nome si scrive sul posto; chi lo segue si legge; gli attriti della riga in rosso; i
+ *   voti solo se ce ne sono; un «⋯» per processo apre chi lo segue (da scrivere), «Sposta su», «Sposta giù», «Elimina
+ *   il processo» (per uno vuoto, con «Annulla») e i voti `−` n `+`;
  * - «+ passo» in fondo a ogni riga, sempre in vista (apre il drawer di un passo nuovo), «+ processo» sotto l'ultima;
  * - la maniglia a sinistra di ogni card trascina il passo nella sua riga o in un'altra (P58): la riga sotto il passo
  *   si colora (P59) e un segno dice dove cadrà. Senza mouse e sul telefono lo fanno i bottoni «Sposta…» del drawer.
@@ -109,11 +109,9 @@ export function MapRows(p: MapRowsProps): JSX.Element {
         ) : (
           process.name
         );
-        const owner = editable ? (
-          <LineInPlace value={process.owner ?? ""} label={VIEW_TEXT.row.ownerPlaceholder} placeholder={VIEW_TEXT.row.ownerPlaceholder} maxLength={L.owner} onCommit={(next, base) => run(processOwnerOp(process, next, base))} />
-        ) : (
-          process.owner
-        );
+        // (Rilascio 10, §3.7) Chi segue il processo si legge sulla riga; si scrive nel «⋯» del processo, con gli altri
+        // controlli della riga (sulla riga resta un campo solo, il nome).
+        const owner = process.owner?.trim() ? process.owner : null;
         const menuOpen = p.menu === process.id;
         const controlsId = `b-row-ctl-${process.id}`;
         const extra = (
@@ -143,6 +141,9 @@ export function MapRows(p: MapRowsProps): JSX.Element {
                   <MoreIcon />
                 </button>
                 <span className="b-row-ctl" id={controlsId} hidden={!menuOpen} data-b="row-controls">
+                  <span className="b-row-owner">
+                    <LineInPlace value={process.owner ?? ""} label={VIEW_TEXT.row.ownerPlaceholder} placeholder={VIEW_TEXT.row.ownerPlaceholder} maxLength={L.owner} onCommit={(next, base) => run(processOwnerOp(process, next, base))} />
+                  </span>
                   {/* In cima e in fondo il bottone resta raggiungibile (aria-disabled, come i voti): il fuoco non si perde (F1). */}
                   <button
                     type="button"
