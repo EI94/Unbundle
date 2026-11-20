@@ -11,15 +11,18 @@ import { REFERENT_CHECK_LIMITS } from "@/lib/db/use-case-hub-referent-check-ddl"
 import { REFERENT_BENEFIT_LIMITS } from "@/lib/db/use-case-hub-referent-benefits-ddl";
 import { benefitAnswered, benefitChoices, benefitQuestion } from "@/lib/use-cases/referent/impact-text";
 import { REFERENT_CHECK_TEXT, REFERENT_IMPACT_TEXT, fillText } from "@/lib/use-cases/referent/labels";
+import { descriptionClamp } from "./public-view-render";
 import { benefitDone, numberField, numberText, placeholderOf, stepLabel, type CheckStep } from "./steps-state";
 
 /**
- * (Rilascio 5, SPEC §7.1–§7.4) I passi di una richiesta al referente: la barra dei passi, «Lo use case»
+ * (Rilascio 5, SPEC §7.1–§7.4) I passi di una richiesta al referente: la barra dei passi, «Il caso d'uso»
  * («È così?», la descrizione, «Sì, è così» / «Correggi» con «Cosa cambieresti?») e, (rilascio 5.1),
- * «L'impatto»: una riga per ogni voce di «Benefici e costi» con un tocco («Sì» / «È di meno» / «È di più» /
- * «Non so» con i numeri facoltativi, o «Sì» / «No» / «Non so», o i due numeri quando il team non li ha
- * oppure «Non so») e un commento facoltativo; senza modello del valore le due domande del tempo. Un solo pulsante pieno per
+ * «Le stime»: una riga per ogni voce di «Benefici e costi» con un tocco («Sì» / «Meno» / «Di più» /
+ * «Non lo so» con i numeri facoltativi, o «Sì» / «No» / «Non lo so», o i due numeri quando il team non li ha
+ * oppure «Non lo so») e un commento facoltativo; senza modello del valore le due domande del tempo. Un solo pulsante pieno per
  * passo: il passo dopo. Le scelte sono pulsanti a levetta (`aria-pressed`) in un gruppo con il suo nome.
+ * (Rilascio 10, §3.11) La descrizione in 6 righe con «Leggi tutto»; «Ti tornano queste stime?» detto una volta, nel
+ * titolo; il commento dopo una scelta diversa da «Sì»; i passi fatti si toccano per tornarci.
  * I testi vengono da labels.ts.
  */
 
@@ -29,14 +32,18 @@ export const stepTitleId = (step: CheckStep) => `ucq-passo-${step}-titolo`;
 const CHOICE_CLASS = "min-h-11 h-auto w-full py-2.5 text-base whitespace-normal sm:w-auto";
 const AUTOSAVE_MS = 1500;
 
-/** La barra dei passi: cerchio e nome, lo stato si legge anche senza colore; non si clicca. */
-export function ReferentStepBar({ items }: { items: { step: CheckStep; state: "done" | "current" | "later" }[] }) {
+/**
+ * La barra dei passi: cerchio e nome, lo stato si legge anche senza colore. (Rilascio 10, §3.11) Un passo fatto si tocca
+ * per tornarci (`onGo`, 44 px): al passo 3 prende il posto di «Indietro», così la barra in basso ha solo il numero e
+ * «Invia». Il passo di adesso e quelli dopo non si toccano.
+ */
+export function ReferentStepBar({ items, onGo }: { items: { step: CheckStep; state: "done" | "current" | "later" }[]; onGo?: (step: CheckStep, e: React.MouseEvent<HTMLButtonElement>) => void }) {
   return (
     <ol aria-label={T.steps.label} data-slot="referent-steps" className={cn("mt-6 grid gap-2", items.length === 3 ? "grid-cols-3" : "grid-cols-2")}>
       {items.map((item, index) => {
         const label = stepLabel(item.step, item.state);
-        return (
-          <li key={item.step} data-state={item.state} aria-current={item.state === "current" ? "step" : undefined} className="flex min-w-0 items-start gap-2">
+        const body = (
+          <>
             <span
               aria-hidden
               className={cn(
@@ -52,6 +59,22 @@ export function ReferentStepBar({ items }: { items: { step: CheckStep; state: "d
               {label.text}
               <span className="sr-only">{label.suffix}</span>
             </span>
+          </>
+        );
+        return (
+          <li key={item.step} data-state={item.state} aria-current={item.state === "current" ? "step" : undefined} className="flex min-w-0 items-start gap-2">
+            {item.state === "done" && onGo ? (
+              <button
+                type="button"
+                data-slot="referent-step-go"
+                className="-mx-1 -my-2.5 flex min-h-11 min-w-0 items-start gap-2 rounded-md px-1 py-2.5 text-left outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/40"
+                onClick={(e) => onGo(item.step, e)}
+              >
+                {body}
+              </button>
+            ) : (
+              body
+            )}
           </li>
         );
       })}
@@ -180,7 +203,7 @@ export function ConfirmStep({
   return (
     <section aria-labelledby={stepTitleId(1)} className="mt-6 space-y-4" data-slot="referent-step-1">
       <StepTitle step={1}>{T.confirm.title}</StepTitle>
-      <blockquote className="rounded-xl bg-muted/50 px-4 py-3 text-base leading-7 break-words whitespace-pre-line">{check.description ?? title}</blockquote>
+      <Description text={check.description ?? title} />
       <div role="group" aria-label={T.confirm.group} className="flex flex-col gap-3 sm:flex-row">
         <Choice pressed={check.draft.confirm === "si"} filled={!fixing} onClick={onYes}>
           {T.confirm.yes}
@@ -231,6 +254,43 @@ export function ConfirmStep({
         </div>
       ) : null}
     </section>
+  );
+}
+
+/**
+ * (Rilascio 10, §3.11) La descrizione del caso d'uso in 6 righe, con «Leggi tutto» quando è più lunga: al telefono e dai
+ * 640 px secondo la sua lunghezza (`descriptionClamp`), così il pulsante c'è solo dove serve. Un tocco e si legge tutta.
+ */
+function Description({ text }: { text: string }) {
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  const clamp = descriptionClamp(text);
+  const long = (clamp.phone || clamp.wide) && !open;
+  return (
+    <div className="space-y-1" data-slot="referent-description">
+      <blockquote
+        id={`${id}-descrizione`}
+        className={cn(
+          "rounded-xl bg-muted/50 px-4 py-3 text-base leading-7 break-words whitespace-pre-line",
+          long && clamp.phone && "line-clamp-6",
+          long && (clamp.wide ? "sm:line-clamp-6" : "sm:line-clamp-none"),
+        )}
+      >
+        {text}
+      </blockquote>
+      {long ? (
+        <Button
+          type="button"
+          variant="ghost"
+          aria-expanded={false}
+          aria-controls={`${id}-descrizione`}
+          className={cn("-ml-2 min-h-11 h-auto px-2 text-base underline underline-offset-4", !clamp.wide && "sm:hidden")}
+          onClick={() => setOpen(true)}
+        >
+          {T.confirm.readAll}
+        </Button>
+      ) : null}
+    </div>
   );
 }
 
@@ -633,6 +693,9 @@ function BenefitRow({
   const describedBy = error ? errId : undefined;
   const commentId = benefitCommentId(row.key);
   const commentNote = commentError ?? commentWarning;
+  // (Rilascio 10, §3.11) Il commento si offre dopo una scelta diversa da «Sì» (o i due numeri); un commento già scritto resta.
+  const commentField = commentOpen || Boolean(commentNote) || state.comment.trim().length > 0;
+  const commentOffered = done && state.answer !== "si";
   const commentNoteId = `${id}-commento-nota`;
   const numberPlaceholder = (n: number | null) => (n !== null && n > 0 ? placeholderOf(n) : "");
   const choiceButtons = (
@@ -711,7 +774,7 @@ function BenefitRow({
       ) : missing && !done ? (
         <p className="text-sm break-words">{missingLine}</p>
       ) : null}
-      {commentOpen || commentNote ? (
+      {commentField ? (
         <div className="space-y-1.5">
           <label htmlFor={commentId} className="block text-sm font-medium">
             {I.commentLabel}
@@ -735,12 +798,12 @@ function BenefitRow({
             </p>
           ) : null}
         </div>
-      ) : (
+      ) : commentOffered ? (
         <Button
           type="button"
           variant="ghost"
           size="sm"
-          className="min-h-11 h-auto px-2 text-sm text-muted-foreground sm:min-h-8"
+          className="min-h-11 h-auto px-2 text-sm text-muted-foreground"
           onClick={(e) => {
             if (actions.tooSoon(e)) return;
             setCommentOpen(true);
@@ -749,7 +812,7 @@ function BenefitRow({
         >
           {I.addComment}
         </Button>
-      )}
+      ) : null}
     </div>
   );
 }

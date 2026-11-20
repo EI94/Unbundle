@@ -68,8 +68,9 @@ test("le forme: con i numeri del team, senza, in euro, qualitativa (anche in eur
   assert.deepEqual(impactRowsOf(model(fatto("g")))?.map((r) => r.form), ["fatto"]);
   assert.equal(benefitFormOf({ kind: "euro", volumeYear: null, minutes: null, eurYear: 0.004 }), "fatto");
   // (Decisione del titolare del 04/11/2026) «Non so» su ogni forma, per ultimo; da solo accanto ai due numeri.
-  // (Rilascio 10, D5) La parola è «Non lo so», la stessa per un numero e per un file.
-  assert.deepEqual(benefitChoices("ore").map((c) => c.label), ["Sì", "È di meno", "È di più", "Non lo so"]);
+  // (Rilascio 10, D5) La parola è «Non lo so», la stessa per un numero e per un file. (Rilascio 10, §3.11) «Sì · Meno · Di più · Non lo so».
+  assert.deepEqual(benefitChoices("ore").map((c) => c.label), ["Sì", "Meno", "Di più", "Non lo so"]);
+  assert.deepEqual(benefitChoices("euro").map((c) => c.label), ["Sì", "Meno", "Di più", "Non lo so"]);
   assert.deepEqual(benefitChoices("euro").map((c) => c.answer), ["si", "meno", "piu", "non_so"]);
   assert.deepEqual(benefitChoices("fatto").map((c) => c.label), ["Sì", "No", "Non lo so"]);
   assert.deepEqual(benefitChoices("ore_numeri"), [{ answer: "non_so", label: "Non lo so" }]);
@@ -77,20 +78,20 @@ test("le forme: con i numeri del team, senza, in euro, qualitativa (anche in eur
 
 test("le domande: ore al mese o l'anno, singolare e plurale, i decimali, gli euro, il qualitativo", () => {
   const q = (component: unknown) => benefitQuestion(impactRowsOf(model(component))![0]);
-  assert.equal(q(ore("t", 3000, 12)), "Controllo delle fatture: circa 250 volte al mese, 12 minuti ogni volta. Ti torna?");
-  assert.equal(q(ore("t", 12, 1)), "Controllo delle fatture: circa 1 volta al mese, 1 minuto ogni volta. Ti torna?");
-  assert.equal(q(ore("t", 18, 1.5)), "Controllo delle fatture: circa 2 volte al mese, 1,5 minuti ogni volta. Ti torna?");
-  assert.equal(q(ore("t", 6, 30)), "Controllo delle fatture: circa 6 volte l'anno, 30 minuti ogni volta. Ti torna?");
-  assert.equal(q(ore("t", 1, 90)), "Controllo delle fatture: circa 1 volta l'anno, 90 minuti ogni volta. Ti torna?");
-  assert.equal(q(ore("t", 144000, 2)), "Controllo delle fatture: circa 12.000 volte al mese, 2 minuti ogni volta. Ti torna?");
+  assert.equal(q(ore("t", 3000, 12)), "Controllo delle fatture: circa 250 volte al mese, 12 minuti ogni volta.");
+  assert.equal(q(ore("t", 12, 1)), "Controllo delle fatture: circa 1 volta al mese, 1 minuto ogni volta.");
+  assert.equal(q(ore("t", 18, 1.5)), "Controllo delle fatture: circa 2 volte al mese, 1,5 minuti ogni volta.");
+  assert.equal(q(ore("t", 6, 30)), "Controllo delle fatture: circa 6 volte l'anno, 30 minuti ogni volta.");
+  assert.equal(q(ore("t", 1, 90)), "Controllo delle fatture: circa 1 volta l'anno, 90 minuti ogni volta.");
+  assert.equal(q(ore("t", 144000, 2)), "Controllo delle fatture: circa 12.000 volte al mese, 2 minuti ogni volta.");
   assert.equal(q(ore("t", 0, 12)), "Controllo delle fatture: quante volte al mese, e quanti minuti ogni volta?");
-  assert.equal(q(euro("e", 4000)), "Meno solleciti: circa 4.000 € l'anno. Ti torna?");
-  assert.equal(q(euro("e", 1234.56)), "Meno solleciti: circa 1.235 € l'anno. Ti torna?");
-  assert.equal(q(euro("e", 0)), "Meno solleciti. Ti torna?", "senza cifra il referente non inventa euro");
-  assert.equal(q(fatto("q")), "Meno errori nelle registrazioni. Ti torna?");
-  assert.equal(q(fatto("q", { label: "Meno errori." })), "Meno errori. Ti torna?", "niente doppio punto");
-  assert.equal(q(fatto("q", { label: "Clienti più contenti!" })), "Clienti più contenti! Ti torna?");
-  assert.equal(q(ore("t", 3000, 12, { label: "Lettura:" })), "Lettura: circa 250 volte al mese, 12 minuti ogni volta. Ti torna?");
+  assert.equal(q(euro("e", 4000)), "Meno solleciti: circa 4.000 € l'anno.");
+  assert.equal(q(euro("e", 1234.56)), "Meno solleciti: circa 1.235 € l'anno.");
+  assert.equal(q(euro("e", 0)), "Meno solleciti.", "senza cifra il referente non inventa euro");
+  assert.equal(q(fatto("q")), "Meno errori nelle registrazioni.");
+  assert.equal(q(fatto("q", { label: "Meno errori." })), "Meno errori.", "niente doppio punto");
+  assert.equal(q(fatto("q", { label: "Clienti più contenti!" })), "Clienti più contenti!");
+  assert.equal(q(ore("t", 3000, 12, { label: "Lettura:" })), "Lettura: circa 250 volte al mese, 12 minuti ogni volta.");
   assert.equal(euroText(0.2), "meno di 1 €");
 });
 
@@ -103,9 +104,11 @@ test("il nome: quello della voce se passa i controlli, altrimenti il tipo di rit
       const question = benefitQuestion(row);
       assert.ok(question.startsWith(`${LEVER_LABELS[lever]}`), question);
       assert.doesNotMatch(question, /@|%|FONTE/);
-      if (kind === "ore") assert.match(question, /volte al mese, 12 minuti ogni volta\. Ti torna\?$/);
-      if (kind === "euro") assert.match(question, /circa 4\.000 € l'anno\. Ti torna\?$/);
-      if (kind === "qualitativo") assert.match(question, /\. Ti torna\?$/);
+      // (Rilascio 10, §3.11) «Ti torna?» si dice una volta, nel titolo del passo: le righe dicono solo la stima.
+      if (kind === "ore") assert.match(question, /volte al mese, 12 minuti ogni volta\.$/);
+      if (kind === "euro") assert.match(question, /circa 4\.000 € l'anno\.$/);
+      if (kind === "qualitativo") assert.match(question, /\.$/);
+      assert.doesNotMatch(question, /Ti torna/);
     }
   }
   assert.equal(impactRowsOf(model(fatto("k", { lever: "sconosciuta", label: "" })))![0].label, LEVER_LABELS.tempo);

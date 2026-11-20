@@ -19,9 +19,10 @@ import type {
   ReferentUploadResult,
   SubmitResult,
 } from "../../../lib/use-cases/referent/contract.ts";
-import { REFERENT_LIMITS, referentTemplateHref } from "../../../lib/use-cases/referent/contract.ts";
+import { referentTemplateHref } from "../../../lib/use-cases/referent/contract.ts";
 import { formatFileSize } from "../../../lib/use-cases/referent/upload-transport.ts";
-import { REFERENT_CHECK_TEXT, REFERENT_ERROR_MESSAGES, REFERENT_IMPACT_TEXT, REFERENT_PRIVACY_NOTICE, REFERENT_PUBLIC_TEXT, companyLabel, fillText, privacyNoticeTexts } from "../../../lib/use-cases/referent/labels.ts";
+import { kitClientLine, kitProgress } from "../../../lib/use-cases/referent/kit.ts";
+import { REFERENT_CHECK_TEXT, REFERENT_ERROR_MESSAGES, REFERENT_IMPACT_TEXT, REFERENT_PRIVACY_NOTICE, REFERENT_PUBLIC_TEXT, fillText, privacyNoticeTexts } from "../../../lib/use-cases/referent/labels.ts";
 import { benefitSentLine } from "../../../lib/use-cases/referent/impact-text.ts";
 import { referentDateLabel } from "../../../lib/use-cases/referent/view.ts";
 
@@ -29,24 +30,20 @@ const T = REFERENT_PUBLIC_TEXT;
 
 // ─── Le schede di servizio ───────────────────────────────────────────
 
-export type StateCardKind = "invalid" | "revoked" | "expired" | "unavailable";
+/**
+ * (Rilascio 10, §3.11) Due schede sole: «gone», il link che non vale più (sbagliato, revocato o scaduto: sempre le stesse
+ * parole, così non si capisce quale), ed «error», la pagina che non si è caricata (la funzione spenta, gli archivi non
+ * pronti, un errore), con il solo «Riprova».
+ */
+export type StateCardKind = "gone" | "error";
 
-/** La scheda di un link che non si può usare: ogni accesso che non è `ok` ha la sua. */
+/** La scheda di un accesso che non è `ok`. */
 export function stateCardKindOf(access: Exclude<ReferentPageResult["access"], "ok">): StateCardKind {
-  switch (access) {
-    case "revocato":
-      return "revoked";
-    case "scaduto":
-      return "expired";
-    case "non_disponibile":
-      return "unavailable";
-    default:
-      return "invalid";
-  }
+  return access === "non_disponibile" ? "error" : "gone";
 }
 
 export function stateCardText(kind: StateCardKind): { title: string; text: string } {
-  return { ...T.states[kind] };
+  return kind === "gone" ? { title: T.linkGone.title, text: T.linkGone.text } : { title: T.error.title, text: T.error.text };
 }
 
 // ─── Intestazione e informativa ──────────────────────────────────────
@@ -57,8 +54,8 @@ export function expiryLabel(expiresOn: string): string {
 }
 
 export interface HeaderTexts {
-  /** Il nome dell'azienda (workspace), in piccolo. */
-  company: string;
+  /** (Rilascio 10, §3.11) Il nome del cliente per la riga in alto («Rondine · con Lateral Space»); null senza. */
+  client: string | null;
   /** (Rilascio 10, D6) Il titolo del caso d'uso, senza il codice. */
   title: string;
   /** (Rilascio 10, D6) «Riferimento RD-0004», in piccolo in fondo alla pagina; null senza codice. */
@@ -74,7 +71,7 @@ export function headerTexts(view: ReferentAskView): HeaderTexts {
   const code = view.useCase.code?.trim();
   const message = view.message?.trim() ? view.message.trim() : null;
   return {
-    company: companyLabel(view.company),
+    client: kitClientLine(view.company) ? view.company.replace(/\s+/g, " ").trim() : null,
     title: view.useCase.title,
     reference: code ? `${REFERENT_PUBLIC_TEXT.reference} ${code}` : null,
     // (Rilascio 5) La richiesta al referente lo dice subito: «{Nome} ti ha indicato come referente.»
@@ -147,19 +144,24 @@ export function finalCardText(kind: "completed" | "empty", view?: ReferentAskVie
 
 export interface QuestionSection {
   needId: string;
-  /** «Domanda 2 di 3»: conta ogni domanda mostrata, anche quelle «gestita». */
-  label: string;
+  /**
+   * (Rilascio 10, §3.11) Il numero della scheda, «1», «2»…: conta ogni domanda mostrata, anche quelle «gestita». Lo
+   * stesso numero di «Manca ancora la domanda 2.».
+   */
+  number: number;
+  /** (Rilascio 10, §3.11) Al posto del numero, in «Novità»: «Nuova domanda». */
+  label?: string;
   title: string;
   kind: ReferentQuestionView["state"];
   question: ReferentQuestionView;
 }
 
-/** Le domande in ordine di posizione, con «Domanda n di m». */
+/** Le domande in ordine di posizione, numerate. */
 export function questionSections(view: ReferentAskView): QuestionSection[] {
   const ordered = [...view.questions].sort((a, b) => a.position - b.position);
   return ordered.map((q, i) => ({
     needId: q.needId,
-    label: fillText(T.questionOf, { n: i + 1, total: ordered.length }),
+    number: i + 1,
     title: q.title,
     kind: q.state,
     question: q,
@@ -216,14 +218,22 @@ export function commentOffered(c: Pick<ClosureState, "dontKnow" | "alreadyAttach
   return c.dontKnow || c.alreadyAttached || c.files.some(usableFile);
 }
 
-/** «Una domanda», «5 domande». */
-export function questionsHeading(n: number): string {
-  return n === 1 ? T.questionsOne : fillText(T.questionsMany, { n });
-}
+/** Lo stato del salvataggio di una domanda aperta, per l'unico «salvato» della barra. */
+export type QuestionSave = "saved" | "saving" | "error" | "held";
 
-/** «3 di 5 fatte». */
-export function doneCountText(done: number, total: number): string {
-  return fillText(T.doneCount, { k: done, n: total });
+/**
+ * (Rilascio 10, §3.11) Il solo numero della pagina, nella barra, con lo stato del salvataggio accanto: «2 di 5 ·
+ * salvato»; «salvataggio…» mentre una domanda salva; solo «2 di 5» con un salvataggio non riuscito o in attesa
+ * dell'informativa (lo dice la domanda). `unsent`: c'è un testo che parte solo con «Invia» (la risposta a un
+ * chiarimento): niente «salvato».
+ */
+export function progressText(done: number, total: number, saves: Iterable<QuestionSave>, o: { unsent?: boolean } = {}): string {
+  let state: "saved" | "saving" | null = o.unsent ? null : "saved";
+  for (const save of saves) {
+    if (save === "error" || save === "held") return kitProgress(done, total, null);
+    if (save === "saving") state = "saving";
+  }
+  return kitProgress(done, total, state);
 }
 
 /** «Manca ancora la domanda 4.», «Mancano ancora le domande 2, 4 e 6.» (i numeri di «Domanda k di n»). */
@@ -237,11 +247,6 @@ export function missingText(positions: readonly number[]): string {
 /** La riga sotto una domanda che manca. */
 export function closeHint(fileRequired: boolean): string {
   return fileRequired ? REFERENT_ERROR_MESSAGES.domanda_aperta_file : REFERENT_ERROR_MESSAGES.domanda_aperta;
-}
-
-/** «Si salva da solo: puoi tornare fino al 3 dicembre 2026.» */
-export function savesItselfText(view: ReferentAskView): string {
-  return fillText(T.savesItself, { data: expiryLabel(view.expiresOn) });
 }
 
 /** (Rilascio 5) Il giorno dell'ultimo invio del referente (la conferma, una risposta o, rilascio 6, un suo messaggio), oppure null. */
@@ -302,16 +307,6 @@ export function handledText(): string {
 export function counterLabel(length: number): string | null {
   if (length < 3500) return null;
   return fillText(T.counter, { n: formatCountIt(length) });
-}
-
-/** La riga d'aiuto dei file: 20 MB con il caricamento diretto, altrimenti 4 MB. */
-export function attachHelp(clientMode: boolean): string {
-  return clientMode ? T.attachHelp : T.attachHelpServerOnly;
-}
-
-/** Il limite di dimensione che vale per un file, in byte. */
-export function maxFileBytes(clientMode: boolean): number {
-  return clientMode ? REFERENT_LIMITS.clientMaxBytes : REFERENT_LIMITS.serverMaxBytes;
 }
 
 /** Un file della pagina: quelli della vista e quelli appena caricati. */
@@ -398,11 +393,6 @@ export function filesBlockSubmit(files: readonly PublicFile[]): "file_in_control
 
 // ─── Invio ───────────────────────────────────────────────────────────
 
-/** «Invii solo le domande a cui hai risposto. … fino al 26 novembre 2026.» */
-export function submitHint(view: ReferentAskView): string {
-  return fillText(T.submitHint, { data: expiryLabel(view.expiresOn) });
-}
-
 /**
  * La schermata dopo l'invio. (Rilascio 5) Si invia solo con tutto chiuso: «Grazie, è tutto.» e «{Nome} lo
  * vede subito.», senza pulsanti; resta il ripiego del rilascio 4 se qualcosa è ancora aperto.
@@ -434,8 +424,6 @@ export function issuesByQuestion(
   return { byNeed, first, general };
 }
 
-export const FOOTER_TEXT = T.footer;
-export const BRAND_TEXT = T.brand;
 
 // ─── (Rilascio 6) Il filo con il team ────────────────────────────────
 
@@ -497,16 +485,21 @@ export function threadLineOf(m: ReferentThreadMessageView, today: string): strin
   return `${fillText(template, { testo: m.text })}${fillText(TT.lineDate, { data: referentDateLabel(m.createdAt, today) })}`;
 }
 
-/** «Su «Volumi mensili»», «Su «Meno errori»», «Sul caso d'uso». */
+/** Un testo lungo, accorciato a 60 caratteri con «…». */
+const shortText = (text: string) => (text.length > 60 ? fillText(TT.cut, { testo: text.slice(0, 59).trimEnd() }) : text);
+
+/**
+ * (Rilascio 10, §3.11) Dove sta un messaggio, nella riga grigia sotto il titolo della scheda: «Sulla domanda «Volumi
+ * mensili»», «Sulla voce «Meno errori»», «Sul caso d'uso».
+ */
 export function anchorLabelOf(view: ReferentAskView, a: { anchor: string; needId?: string | null; componentKey?: string | null }): string {
-  const short = (text: string) => (text.length > 60 ? fillText(TT.cut, { testo: text.slice(0, 59).trimEnd() }) : text);
   if (a.anchor === "domanda") {
     const q = view.questions.find((x) => x.needId.toLowerCase() === (a.needId ?? "").toLowerCase());
-    if (q) return fillText(TT.onAnchor, { testo: short(q.title) });
+    if (q) return fillText(TT.onQuestion, { testo: shortText(q.title) });
   }
   if (a.anchor === "beneficio") {
     const b = view.check?.benefits?.find((x) => x.key === a.componentKey);
-    if (b) return fillText(TT.onAnchor, { testo: short(b.label.replace(/[.!?]+$/, "")) });
+    if (b) return fillText(TT.onBenefit, { testo: shortText(b.label.replace(/[.!?]+$/, "")) });
   }
   return TT.general;
 }
@@ -534,15 +527,18 @@ export interface NewsEntry {
   /** Il messaggio (chiarimento, risposta del team) o l'esigenza (domanda). */
   id: string;
   kind: "chiarimento" | "domanda" | "risposta";
-  /** «Chiarimento · 1 di 3». */
+  /** (Rilascio 10, §3.11) Il tipo, senza numeri: «Chiarimento», «Nuova domanda», «Risposta del team». */
   label: string;
-  /** «Su «Volumi mensili»». */
+  /** «Sulla domanda «Volumi mensili»»; vuota per una domanda nuova. */
   anchorLabel: string;
   /** La posizione (1…n), per «Manca ancora il punto 2.». */
   position: number;
 }
 
-/** Le voci di «Da completare» in ordine: prima i chiarimenti, poi le domande nuove, poi le risposte da leggere. */
+/**
+ * Le voci di «Novità» in ordine: prima i chiarimenti, poi le domande nuove, poi le risposte da leggere. (Rilascio 10,
+ * §3.11) Il tipo senza «1 di 3»: il solo numero della pagina sta nella barra.
+ */
 export function newsEntries(view: ReferentAskView): NewsEntry[] {
   const n = newsOf(view);
   const out: Omit<NewsEntry, "label" | "position">[] = [
@@ -550,15 +546,7 @@ export function newsEntries(view: ReferentAskView): NewsEntry[] {
     ...n.questions.map((q) => ({ id: q.needId, kind: "domanda" as const, anchorLabel: "" })),
     ...n.replies.map((m) => ({ id: m.id, kind: "risposta" as const, anchorLabel: anchorLabelOf(view, m) })),
   ];
-  return out.map((e, i) => {
-    const what = e.kind === "chiarimento" ? TT.clarification : e.kind === "domanda" ? TT.newQuestion : TT.teamReply;
-    return { ...e, position: i + 1, label: out.length > 1 ? `${what} · ${fillText(TT.itemOf, { k: i + 1, n: out.length })}` : what };
-  });
-}
-
-/** «Hai una novità.», «Hai 3 novità.» */
-export function newsLead(total: number): string {
-  return total === 1 ? TT.newsOne : fillText(TT.newsMany, { n: total });
+  return out.map((e, i) => ({ ...e, position: i + 1, label: e.kind === "chiarimento" ? TT.clarification : e.kind === "domanda" ? TT.newQuestion : TT.teamReply }));
 }
 
 /** «Manca ancora il punto 2.», «Mancano ancora i punti 1 e 3.» */
@@ -603,4 +591,71 @@ export function editableText(q: ReferentQuestionView): string {
 /** Le risposte del team che la pagina mostra adesso e non ha ancora segnato «viste». */
 export function freshReplyIds(view: ReferentAskView): string[] {
   return view.thread.messages.filter((m) => m.side === "team" && m.fresh).map((m) => m.id);
+}
+
+// ─── (Rilascio 10, §3.11) Lavoro finito: «Le tue risposte» e «Scrivi al team» ─
+
+/**
+ * Quante righe ha «Le tue risposte (n)»: la conferma del caso d'uso, ogni voce delle stime (o la riga del tempo) e ogni
+ * domanda già chiusa (inviata, o a cui ha pensato il team). Zero: niente da mostrare.
+ */
+export function sentCount(view: ReferentAskView): number {
+  const sent = view.check?.submittedAt ? 1 + (view.check.benefits ? view.check.benefits.length : 1) : 0;
+  return sent + view.questions.filter((q) => q.state !== "aperta").length;
+}
+
+/** «Le tue risposte (10)». */
+export function sentSummary(view: ReferentAskView): string {
+  return fillText(TT.yourAnswers, { n: sentCount(view) });
+}
+
+/** Una scelta di «Su cosa?»: dove va il messaggio e che cosa si può scrivere lì. */
+export interface WriteTarget {
+  /** La chiave dell'ancora (`threadKeyOf`). */
+  key: string;
+  /** Il testo dell'opzione: «Il caso d'uso», il nome della voce, il titolo della domanda. */
+  label: string;
+  /** «Aggiungi qualcosa» e/o «Ho un dubbio»: mai «Modifica», che sta nella riga della risposta. */
+  kinds: ("add" | "doubt")[];
+}
+
+/**
+ * (Rilascio 10, §3.11) Le scelte di «Scrivi al team» con «Su cosa?», nell'ordine della pagina: il caso d'uso, le voci
+ * delle stime, le domande già inviate. Le stesse regole del filo (`threadActionsOf`): su una risposta che si modifica
+ * ancora solo «Ho un dubbio» (un'aggiunta la chiuderebbe: «Modifica» resta nella sua riga); niente sulle domande a cui ha
+ * pensato il team, niente con il link chiuso.
+ */
+export function writeTargets(view: ReferentAskView): WriteTarget[] {
+  const kindsOf = (actions: readonly ThreadAction[]) => actions.filter((a): a is "add" | "doubt" => a === "add" || a === "doubt");
+  const out: WriteTarget[] = [];
+  const general = kindsOf(threadActionsOf(view, { kind: "generale" }));
+  if (general.length) out.push({ key: "g", label: TT.writeGeneral, kinds: general });
+  for (const b of view.check?.submittedAt ? (view.check.benefits ?? []) : []) {
+    const kinds = kindsOf(threadActionsOf(view, { kind: "beneficio" }));
+    if (kinds.length) out.push({ key: threadKeyOf({ anchor: "beneficio", componentKey: b.key }), label: shortText(b.label.replace(/[.!?]+$/, "")), kinds });
+  }
+  for (const q of questionSections(view)) {
+    if (q.kind !== "inviata") continue;
+    const kinds = kindsOf(threadActionsOf(view, { kind: "domanda", question: q.question }));
+    if (kinds.length) out.push({ key: threadKeyOf({ anchor: "domanda", needId: q.needId }), label: shortText(q.title), kinds });
+  }
+  return out;
+}
+
+/** (Rilascio 10, §3.11) La descrizione del passo 1 si legge in 6 righe; il resto con «Leggi tutto». */
+export const DESCRIPTION_LINES = 6;
+/** I caratteri di una riga della descrizione, circa: al telefono (375 px) e dai 640 px (la colonna di 40rem). */
+const LINE_CHARS = { phone: 40, wide: 72 } as const;
+
+function linesOf(text: string, perLine: number): number {
+  return text.split("\n").reduce((sum, line) => sum + Math.max(1, Math.ceil(line.trim().length / perLine)), 0);
+}
+
+/**
+ * Dove la descrizione supera le 6 righe e si accorcia, con «Leggi tutto»: al telefono e dai 640 px. Una stima dal testo,
+ * senza misurare la pagina: lo stesso risultato sul server e nel browser.
+ */
+export function descriptionClamp(text: string | null | undefined): { phone: boolean; wide: boolean } {
+  if (!text) return { phone: false, wide: false };
+  return { phone: linesOf(text, LINE_CHARS.phone) > DESCRIPTION_LINES, wide: linesOf(text, LINE_CHARS.wide) > DESCRIPTION_LINES };
 }

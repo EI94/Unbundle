@@ -99,7 +99,7 @@ export const benefitTitleId = (key) => \`ucq-beneficio-\${key}\`;
 export const benefitCommentId = (key) => \`ucq-beneficio-\${key}-commento\`;`,
   "./state-card": screens("MessageCard", "PublicShell"),
   "./submit-bar": `${screens("SubmitBar")}\nexport const SUBMIT_ERROR_ID = "ucq-invio-errore";`,
-  "./thread": `${screens("ClarificationCard", "SentDisclosure", "TeamReplyCard", "ThreadItem")}\nexport const newsTitleId = (id) => \`ucq-novita-\${id.toLowerCase()}-titolo\`;`,
+  "./thread": `${screens("ClarificationCard", "SentDisclosure", "TeamReplyCard", "ThreadItem", "WriteToTeam")}\nexport const WRITE_KEY = "scrivi";\nexport const newsTitleId = (id) => \`ucq-novita-\${id.toLowerCase()}-titolo\`;`,
 });
 await enableTsxImports();
 const { ReferentAskPage } = await import("./referent-ask-page.tsx");
@@ -424,34 +424,41 @@ test("«Da completare»: la risposta a un chiarimento che aspetta l'informativa 
   assert.deepEqual(s.writes[2].body, s.writes[0].body);
 });
 
-test("il campo sotto una risposta già inviata: l'invio aspetta l'informativa, che si mostra al posto del campo; «Iniziamo» e il campo torna, con il fuoco", async (t) => {
+test("(rilascio 10) «Scrivi al team» a lavoro finito: l'invio aspetta l'informativa, che si mostra al posto del campo; «Iniziamo» e il campo torna, con il fuoco", async (t) => {
   const first = view({ state: "completata", questions: [SENT], thread: { followUp: false, open: true, messages: [] } });
   const s = server(t, { "POST privacy": [ok({ accepted: true })] }, first);
   const page = open(first);
-  const general = (tree: Element) => {
-    const item = find(tree, (e) => e.type === ThreadItem && e.props.targetKey === "g");
-    assert.ok(item, "«Hai un dubbio sul caso d'uso?»");
-    return item;
-  };
+  const WriteToTeam: unknown = (await import("./thread")).WriteToTeam;
+  const write = (tree: Element) => one(tree, WriteToTeam, "«Scrivi al team»");
   let tree = show(page);
-  (general(tree).props.onComposer as (mode: string) => void)("doubt");
+  // Il campo di prima sotto ogni risposta non c'è più: «Scrivi al team» con «Su cosa?».
+  assert.equal(find(tree, (e) => e.type === ThreadItem && e.props.targetKey === "g"), null, "niente «Ho un dubbio» sul caso d'uso in fondo");
+  assert.deepEqual(
+    (write(tree).props.targets as { key: string; kinds: string[] }[]).map((x) => [x.key, x.kinds]),
+    [
+      ["g", ["doubt"]],
+      [`d:${NEED}`, ["doubt"]],
+    ],
+  );
+  assert.equal(write(tree).props.primary, true, "a lavoro finito è il pulsante pieno della schermata");
+  (write(tree).props.onOpen as (open: boolean) => void)(true);
   tree = show(page);
-  assert.equal(general(tree).props.composer, "doubt");
-  assert.equal(general(tree).props.privacyGate, null);
+  assert.equal(write(tree).props.open, true);
+  assert.equal(write(tree).props.privacyGate, null);
   s.view = { ...first, privacy: unread(NEXT) };
-  (general(tree).props.onPrivacyWait as () => void)();
+  (write(tree).props.onPrivacyWait as () => void)();
   await settle();
   tree = show(page);
-  const gate = general(tree).props.privacyGate as Element;
+  const gate = write(tree).props.privacyGate as Element;
   assert.equal(gate?.type, PrivacyCard, "l'informativa al posto del campo (la sola lettura non la chiede)");
   assert.deepEqual(gate.props.texts, NEXT);
   assert.equal(gate.props.again, true);
-  assert.equal(general(tree).props.composer, "doubt", "il campo resta aperto, sotto");
+  assert.equal(write(tree).props.open, true, "il campo resta aperto, sotto");
   (gate.props.onAccept as () => void)();
   await settle();
   tree = show(page);
   assert.deepEqual(s.writes, [{ route: "POST privacy", body: { version: NEXT.version, shown: NEXT.version } }]);
-  assert.equal(general(tree).props.privacyGate, null);
-  assert.equal(general(tree).props.composer, "doubt");
+  assert.equal(write(tree).props.privacyGate, null);
+  assert.equal(write(tree).props.open, true);
   assert.equal(focused.at(-1), "campo-aperto", "il fuoco torna nel campo");
 });

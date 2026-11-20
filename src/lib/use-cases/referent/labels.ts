@@ -10,7 +10,12 @@
  * I segnaposto `{Nome}`, `{Azienda}`, `{data}`… li riempiono le funzioni di questo modulo.
  *
  * Modulo puro: import relativi `.ts`, si usa anche nei componenti client.
+ *
+ * (Rilascio 10, D5) Le parole che `/rispondi` dice come `/r` vengono dal kit del referente (`kit.ts`): «Non lo so», il
+ * marchio con la riga del cliente, la scheda di un link che non vale più, quella di un errore con il solo «Riprova», un
+ * solo numero di avanzamento, «Riferimento», l'informativa comune.
  */
+import { REFERENT_KIT_TEXT as K } from "./kit.ts";
 
 /** Riempie `{chiave}` con i valori dati; i segnaposto senza valore restano com'erano. */
 export function fillText(template: string, values: Readonly<Record<string, string | number>>): string {
@@ -329,24 +334,25 @@ export const REFERENT_ESTIMATE_TEXT = Object.freeze({
  * la frase e riempie i numeri. Mai quote, ore liberate, fiducia, fonti o punteggi.
  */
 export const REFERENT_IMPACT_TEXT = Object.freeze({
-  // (Rilascio 10, §4) «Le stime» che il referente conferma.
+  // (Rilascio 10, §4) «Le stime» che il referente conferma. (Rilascio 10, §3.11) «Ti torna?» si dice una volta, nel
+  // titolo: le righe dicono solo la stima.
   title: "Ti tornano queste stime?",
-  ore: "{label}: circa {volte} al mese, {minuti} ogni volta. Ti torna?",
-  oreYear: "{label}: circa {volte} l'anno, {minuti} ogni volta. Ti torna?",
+  ore: "{label}: circa {volte} al mese, {minuti} ogni volta.",
+  oreYear: "{label}: circa {volte} l'anno, {minuti} ogni volta.",
   oreNumbers: "{label}: quante volte al mese, e quanti minuti ogni volta?",
-  euro: "{label}: circa {euro} l'anno. Ti torna?",
-  // (Rilascio 5.1, decisione del titolare del 04/11/2026) «Ti torna?» come sulle cifre del team.
-  fatto: "{label}. Ti torna?",
+  euro: "{label}: circa {euro} l'anno.",
+  fatto: "{label}.",
   /** Il nome finisce già con «?» o «!». */
-  fattoBare: "{label} Ti torna?",
+  fattoBare: "{label}",
   euroAmount: "{n} €",
   euroLess: "meno di 1 €",
+  // (Rilascio 10, §3.11) Le scelte: «Sì · Meno · Di più · Non lo so».
   yes: "Sì",
-  less: "È di meno",
-  more: "È di più",
+  less: "Meno",
+  more: "Di più",
   no: "No",
   // (Rilascio 10, D5) «Non lo so», la stessa parola per un numero e per un file.
-  dunno: "Non lo so",
+  dunno: K.dontKnow,
   numbersLead: "Se vuoi, dacci i tuoi numeri:",
   euroLead: "Se vuoi, dacci la tua cifra:",
   perMonth: "Volte al mese",
@@ -486,33 +492,39 @@ export const REFERENT_BLOCK_TEXT = Object.freeze({
 
 // ─── Pagina pubblica (§4.4) ──────────────────────────────────────────
 
+/**
+ * La pagina `/rispondi/<token>`. (Rilascio 10, §3.11) Il kit del referente (D5): il marchio in alto con «{Cliente} · con
+ * Lateral Space», una scheda sola per il link che non vale più e una per l'errore («Riprova»); al passo 3 tre controlli per
+ * domanda (il campo, «Allega», «Non lo so») più «Altro» con «È già allegato» e «Ho un dubbio»; un solo numero nella barra
+ * («2 di 5 · salvato»); a lavoro finito il grazie, «Scrivi al team» con «Su cosa?» e «Le tue risposte (n)» chiuso.
+ */
 export const REFERENT_PUBLIC_TEXT = Object.freeze({
-  brand: "Unbundle",
-  footer: "Lateral Space via Unbundle.",
+  brand: K.brand,
+  brandMark: K.brandMark,
   requestedBy: "{Nome} ti chiede alcune informazioni.",
   messageTitle: "Il messaggio di {Nome}",
-  states: Object.freeze({
-    invalid: Object.freeze({ title: "Link non valido", text: "Questo link non è più valido. Chiedi a chi te l'ha mandato un link nuovo." }),
-    revoked: Object.freeze({ title: "Link revocato", text: "Questo link non vale più. Se serve, chiedi a chi te l'ha mandato un link nuovo." }),
-    expired: Object.freeze({ title: "Link scaduto", text: "Questo link è scaduto. Se serve, chiedi a chi te l'ha mandato un link nuovo." }),
-    unavailable: Object.freeze({ title: "Non disponibile", text: "La pagina non è disponibile in questo momento. Riprova tra poco." }),
-  }),
-  questionOf: "Domanda {n} di {total}",
+  /** (Rilascio 10, §3.11) Una scheda sola per ogni link che non si può usare: sbagliato, revocato o scaduto. */
+  linkGone: K.linkGone,
   /** (Rilascio 10, D6) Il codice del caso d'uso, in piccolo in fondo alla pagina e alle email: «Riferimento RD-0004». */
-  reference: "Riferimento",
+  reference: K.reference,
   sentOn: "Inviata il {data}",
   // (Rilascio 10, D5) «Non lo so» ovunque fuori dalla dashboard.
-  dontKnow: "Non lo so",
-  answerLabel: "La tua risposta",
+  dontKnow: K.dontKnow,
   answerPlaceholder: "Scrivi qui. Bastano poche righe.",
   counter: "{n} di 4.000 caratteri",
+  /** (Rilascio 10, §3.11) Il comando sotto il campo; il pulsante grande di una domanda che vuole un file. */
+  attachShort: "Allega",
   attach: "Allega un file",
   /** («File da compilare») Il caricamento di sempre, quando la domanda ha un file da compilare. */
   attachFilled: "Allega il file compilato",
+  /** (Rilascio 10, §3.11) Con un file da compilare il campo sta chiuso sotto il caricamento. */
+  writeInstead: "Oppure scrivi la risposta",
+  /** (Rilascio 10, §3.11) «Altro ▸»: «È già allegato» e «Ho un dubbio». La freccia non si legge. */
+  more: "Altro",
+  moreClosed: "▸",
+  moreOpen: "▾",
   /** («File da compilare») Sotto il titolo della domanda, senza aprire niente: il referente legge quasi solo il titolo. */
   templateDownload: "Scarica il file da compilare",
-  attachHelp: "PDF, Word, Excel, PowerPoint, CSV o testo. Fino a 20 MB. Niente foto.",
-  attachHelpServerOnly: "PDF, Word, Excel, PowerPoint, CSV o testo. Fino a 4 MB. Niente foto.",
   fileStates: Object.freeze({
     in_quarantena: "Controllo in corso…",
     pulito: "Allegato",
@@ -530,9 +542,9 @@ export const REFERENT_PUBLIC_TEXT = Object.freeze({
     altriDati: "Il file ha IBAN, documenti d'identità o il sesso delle persone, che qui non teniamo: non l'abbiamo salvato. Se ti serve, toglili e caricalo di nuovo.",
     discriminatorio: "Il file ha preferenze su genere, età, origine o religione, che qui non teniamo: non l'abbiamo salvato. Se ti serve, toglile e caricalo di nuovo.",
   }),
+  /** I passi 1 e 2 dicono il salvataggio in una riga; una domanda lo dice solo quando non riesce. */
   autosave: Object.freeze({ saved: "Salvato", saving: "Salvataggio…", error: "Non salvato: riprova" }),
-  submit: "Invia",
-  submitHint: "Invii solo le domande a cui hai risposto. Le altre restano qui: puoi tornare con lo stesso link fino al {data}.",
+  submit: K.send,
   thanksTitle: "Grazie, abbiamo ricevuto le tue risposte.",
   thanksSeen: "{Nome} le vede subito.",
   remainingOne: "Resta una domanda: puoi rispondere quando vuoi, entro il {data}.",
@@ -542,21 +554,19 @@ export const REFERENT_PUBLIC_TEXT = Object.freeze({
   empty: "Non ci sono più domande per te. Grazie per la disponibilità.",
   // (Parte 3) Una domanda a cui ha già pensato il team dalla scheda: in sola lettura, mai cosa ha scritto.
   handledByTeam: "Non serve più: ci ha già pensato il team.",
-  privacyFooterLabel: "Come usiamo le tue risposte",
+  privacyFooterLabel: K.privacyFooter,
   /**
    * (Rilascio 9b) L'informativa torna a metà visita (una versione nuova, uscita mentre la pagina era aperta): sopra il
    * riquadro, una riga calma. Quello che il referente ha scritto resta sulla pagina e riparte dopo «{bottone}».
    */
   privacyAgain: "Abbiamo aggiornato l'informativa. Quello che hai scritto resta qui: leggila e premi «{bottone}» per continuare.",
-  /** La scheda d'errore imprevisto (`error.tsx`). */
-  error: Object.freeze({
-    title: "Qualcosa non ha funzionato",
-    text: "Può essere un problema momentaneo di connessione. Le risposte che hai già inviato sono salve: riprova tra poco.",
-    retry: "Riprova",
-    reload: "Ricarica la pagina",
-  }),
+  /**
+   * (Rilascio 10, §3.11) La scheda unica di un errore imprevisto (`error.tsx`, la pagina non disponibile): il solo «Riprova».
+   * «Ricarica la pagina» resta per l'informativa che la pagina non sa mostrare (rilascio 9b).
+   */
+  error: Object.freeze({ title: K.error.title, text: K.error.text, retry: K.error.retry, reload: "Ricarica la pagina" }),
   /** Il caricamento, per i lettori di schermo (`loading.tsx`). */
-  loading: "Caricamento…",
+  loading: K.loading,
   uploading: "Carico e controllo il file…",
   /** Etichette accessibili: «Togli preventivo.pdf», l'elenco dei file di una domanda. */
   aria: Object.freeze({
@@ -565,25 +575,23 @@ export const REFERENT_PUBLIC_TEXT = Object.freeze({
     files: "File allegati",
     closures: "Altri modi di chiudere la domanda",
     templateDownload: "Scarica il file da compilare {file}",
+    /** (Rilascio 10) «Altro» di una domanda: la parola che si vede, poi la domanda. */
+    moreOn: "Altro: «{testo}»",
   }),
-  // (Rilascio 5) Ogni domanda si chiude: una risposta, un file, «Non ce l'ho» o «È già allegato».
+  // (Rilascio 5) Ogni domanda si chiude: una risposta, un file, «Non lo so» o «È già allegato».
   alreadyAttached: "È già allegato",
   whoKnows: "Chi potrebbe saperlo? (facoltativo)",
   whoKnowsPlaceholder: "Per esempio: l'ufficio acquisti, o tra una settimana.",
   addComment: "Aggiungi un commento",
   commentLabel: "Commento (facoltativo)",
   commentPlaceholder: "Per esempio: è nel file della domanda 2.",
-  fileRequired: "Serve un file",
-  questionsOne: "Una domanda",
-  questionsMany: "{n} domande",
-  questionsLead: "Per ognuna: rispondi, allega un file o scegli «Non lo so».",
-  savesItself: "Si salva da solo: puoi tornare fino al {data}.",
-  doneCount: "{k} di {n} fatte",
+  /** (Rilascio 10, §3.11) Il titolo delle domande, come la barra dei passi: niente conteggio. */
+  questionsTitle: "Le domande",
   doneSuffix: " (fatta)",
   missingOne: "Manca ancora la domanda {k}.",
   missingMany: "Mancano ancora le domande {list}.",
   goToQuestion: "Vai alla domanda {k}",
-  send: "Invia",
+  send: K.send,
   thanksDone: "Grazie, è tutto.",
   thanksSeenNow: "{Nome} lo vede subito.",
   answeredOn: "Hai risposto il {data}. Grazie!",
@@ -597,26 +605,23 @@ export const REFERENT_PUBLIC_TEXT = Object.freeze({
   sentComment: "Commento: {testo}",
   sentWhoKnows: "Chi potrebbe saperlo: {testo}",
   /**
-   * (Rilascio 6) «Il filo con il team»: dopo «Invia» il link resta vivo. In alto «Da completare» con solo le
-   * cose nuove (un chiarimento del team, una domanda nuova, la risposta a un tuo dubbio), sotto quello che hai
-   * già inviato, con «Ho un dubbio», «Aggiungi qualcosa» e «Modifica». Mai chi del team ha scritto: «il team».
+   * (Rilascio 6) «Il filo con il team»: dopo «Invia» il link resta vivo. (Rilascio 10, §3.11) In alto «Novità», una
+   * scheda per cosa nuova con il titolo che è la domanda del team; quello che ha già inviato sta chiuso in «Le tue
+   * risposte (n)», con «Modifica» dove si può ancora; «Scrivi al team», con «Su cosa?», prende il posto di «Aggiungi
+   * qualcosa» e «Ho un dubbio» su ogni riga. Mai chi del team ha scritto: «il team».
    */
   thread: Object.freeze({
     /** «Invia» con un messaggio per il team ancora aperto sotto una risposta. */
     composerOpen: "Hai un messaggio per il team ancora da inviare: invialo o annullalo.",
-    newsTitle: "Da completare",
-    newsOne: "Hai una novità.",
-    newsMany: "Hai {n} novità.",
-    sentTitle: "Già inviato",
-    sentCount: "Già inviato · {n}",
-    itemOf: "{k} di {n}",
+    newsTitle: "Novità",
     clarification: "Chiarimento",
     newQuestion: "Nuova domanda",
     teamReply: "Risposta del team",
-    onAnchor: "Su «{testo}»",
+    /** (Rilascio 10, §3.11) Sotto il titolo della scheda (la domanda del team): dove si trova. */
+    onQuestion: "Sulla domanda «{testo}»",
+    onBenefit: "Sulla voce «{testo}»",
     cut: "{testo}…",
     general: "Sul caso d'uso",
-    teamAsks: "Il team chiede: «{testo}»",
     youAsked: "Il tuo dubbio: «{testo}»",
     replyLabel: "La tua risposta",
     replyPlaceholder: "Scrivi qui. Basta una riga.",
@@ -640,7 +645,16 @@ export const REFERENT_PUBLIC_TEXT = Object.freeze({
     cancel: "Annulla",
     empty: "Scrivi qualcosa prima di inviare.",
     sent: "Inviato. Il team lo vede subito.",
-    generalDoubt: "Hai un dubbio sul caso d'uso?",
+    generalDoubt: K.generalDoubt,
+    /** (Rilascio 10, §3.11) A lavoro finito: un solo «Scrivi al team», con «Su cosa?». */
+    write: "Scrivi al team",
+    writeAbout: "Su cosa?",
+    writeGeneral: "Il caso d'uso",
+    writeKinds: "Che cosa vuoi scrivere al team?",
+    writeLabel: "Che cosa vuoi dire al team?",
+    writeKindMissing: "Scegli se aggiungi qualcosa o hai un dubbio.",
+    /** (Rilascio 10, §3.11) Quello che ha già inviato, chiuso: la conferma, ogni stima e ogni domanda. */
+    yourAnswers: "Le tue risposte ({n})",
     missingOne: "Manca ancora il punto {k}.",
     missingMany: "Mancano ancora i punti {list}.",
     goTo: "Vai al punto {k}",
@@ -669,8 +683,10 @@ export const REFERENT_CHECK_TEXT = Object.freeze({
   confirm: Object.freeze({
     title: "È così?",
     group: "Il caso d'uso è descritto bene?",
-    yes: "Sì, è così",
-    fix: "Correggi",
+    yes: K.confirmYes,
+    fix: K.confirmFix,
+    /** (Rilascio 10, §3.11) La descrizione si legge in 6 righe; il resto a un tocco. */
+    readAll: "Leggi tutto",
     noteLabel: "Cosa cambieresti?",
     notePlaceholder: "Per esempio: le fatture arrivano anche via PEC.",
     noteMissing: "Scrivi cosa cambieresti.",
@@ -685,9 +701,9 @@ export const REFERENT_CHECK_TEXT = Object.freeze({
     invalid: "Scrivi un numero, per esempio 20 o 1,5.",
     stale: "Il team ha appena cambiato la stima: controlla di nuovo.",
   }),
-  back: "Indietro",
-  next: "Avanti",
-  send: "Invia",
+  back: K.back,
+  next: K.next,
+  send: K.send,
 });
 
 // ─── Informativa (§5.3) ──────────────────────────────────────────────
@@ -855,7 +871,8 @@ export const REFERENT_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.
   non_trovato: "Use case non trovato.",
   riprova: "Non riusciamo a salvare. Riprova.",
   // Pagina pubblica (§4.3)
-  link_non_valido: "Questo link non è più valido. Chiedi a chi te l'ha mandato un link nuovo.",
+  // (Rilascio 10, §3.11) Le parole della scheda unica di un link che non vale più.
+  link_non_valido: `${K.linkGone.title} ${K.linkGone.text}`,
   informativa_da_leggere: "Prima premi «Iniziamo».",
   informativa_cambiata: "L'informativa è cambiata: ricarica la pagina e leggila di nuovo.",
   // (Rilascio 9b) L'informativa letta su questa richiesta è di una versione vecchia: niente si salva finché non si legge
