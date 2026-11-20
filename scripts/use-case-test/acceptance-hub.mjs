@@ -11,9 +11,9 @@
 //
 // Workspace «a» of the fixtures has the area on, «b» off. Checks, each one printed:
 // - casi-duso/loading.tsx is there (the 307s below must not come from a page under it);
-// - /casi-duso: 307 to /use-cases?vista=panoramica when dossierLinksReady is true for «a» (read
-//   here from the database: the unique index and no complete dossier without a card), otherwise
-//   the list stays (no redirect); with the area off it never goes to the hub;
+// - (release 10, D9 (a)) /casi-duso: the list is retired, its route answers 308 to
+//   /use-cases?vista=panoramica in every workspace, whatever dossierLinksReady says (still read here
+//   from the database: the unique index and no complete dossier without a card);
 // - /casi-duso/nuovo without useCaseId: 307 to /use-cases?vista=panoramica (src/proxy.ts), and an
 //   empty or invalid useCaseId too; with the area off it stays;
 // - /casi-duso/nuovo?useCaseId=<a uuid not in the workspace>: the page sends to the Panoramica (under
@@ -101,14 +101,12 @@ record("casi-duso/loading.tsx is there", existsSync(resolve(loading)) ? [] : [`$
 
 const panoramica = (ws) => `/dashboard/${ws}/use-cases?vista=panoramica`;
 
-{
-  const res = await get(`/dashboard/${on}/casi-duso`);
+for (const ws of [on, off]) {
+  const res = await get(`/dashboard/${ws}/casi-duso`);
   const failures = [];
-  if (ready) {
-    if (res.status !== 307) failures.push(`status ${res.status}, expected 307`);
-    if (res.location !== panoramica(on)) failures.push(`Location ${res.location}, expected ${panoramica(on)}`);
-  } else if (res.location) failures.push(`redirected to ${res.location} without dossierLinksReady`);
-  record(`area on   ${res.status} /casi-duso ${ready ? "→ Panoramica" : "stays (dossierLinksReady false)"}`, failures);
+  if (res.status !== 308) failures.push(`status ${res.status}, expected 308`);
+  if (res.location !== panoramica(ws)) failures.push(`Location ${res.location}, expected ${panoramica(ws)}`);
+  record(`area ${ws === on ? "on " : "off"}  ${res.status} /casi-duso → /use-cases (the list is retired)`, failures);
 }
 for (const query of ["", "?useCaseId=", "?useCaseId=non-valido", "?altro=1"]) {
   const res = await get(`/dashboard/${on}/casi-duso/nuovo${query}`);
@@ -124,7 +122,7 @@ for (const query of ["", "?useCaseId=", "?useCaseId=non-valido", "?altro=1"]) {
   if (!res.location && !res.body.replace(/&amp;/g, "&").includes(panoramica(on))) failures.push(`status ${res.status} without a redirect to ${panoramica(on)}`);
   record(`area on   ${res.status} /casi-duso/nuovo?useCaseId=<not in the workspace> → Panoramica`, failures);
 }
-for (const path of [`/dashboard/${off}/casi-duso`, `/dashboard/${off}/casi-duso/nuovo`]) {
+for (const path of [`/dashboard/${off}/casi-duso/nuovo`]) {
   const res = await get(path);
   const failures = [];
   if (res.location?.includes("/use-cases")) failures.push(`redirected to ${res.location} with the area off`);

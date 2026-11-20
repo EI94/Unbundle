@@ -55,6 +55,48 @@ test("/soluzione/regole and /regole: 308 to the «Regole» panel of the Soluzion
   assert.deepEqual(redirectOf(older, `${ROOT}/regole?apri=${RULE}`), { target: `${ROOT}/soluzione?apri=regole&regola=${RULE}`, status: "308" }, "the oldest address, in one hop");
 });
 
+test("(D9 (a), F-016, F-018) the /casi-duso list is retired: 308 to Use case › Panoramica, with the stub log line", async () => {
+  const list = (await import("../../../app/(dashboard)/dashboard/[workspaceId]/casi-duso/route.ts")) as Route;
+  const lines: string[] = [];
+  const info = console.info;
+  console.info = (line: string) => void lines.push(line);
+  try {
+    assert.deepEqual(redirectOf(list, `/dashboard/${WS}/casi-duso`), { target: `/dashboard/${WS}/use-cases?vista=panoramica`, status: "308" });
+    assert.deepEqual(redirectOf(list, `/dashboard/${WS}/casi-duso/?x=1`), { target: `/dashboard/${WS}/use-cases?vista=panoramica`, status: "308" }, "the list had no parameters");
+  } finally {
+    console.info = info;
+  }
+  assert.deepEqual(lines.map((l) => JSON.parse(l)), [{ area: "use-case-hub", op: "stub", from: "/casi-duso" }, { area: "use-case-hub", op: "stub", from: "/casi-duso" }], "no id, no query");
+  assert.equal(existsSync(new URL("../../../app/(dashboard)/dashboard/[workspaceId]/casi-duso/page.tsx", import.meta.url)), false, "the list page is gone");
+  assert.ok(existsSync(new URL("../../../app/(dashboard)/dashboard/[workspaceId]/casi-duso/nuovo/page.tsx", import.meta.url)), "/casi-duso/nuovo stays as the fallback");
+});
+
+test("every other old address of the realization: one 308 each, to its new home, query translated", async () => {
+  const ITEM = "00000000-0000-4000-8000-0000000000bb";
+  const cases: [segment: string, path: string, target: string][] = [
+    ["voci", `${ROOT}/voci?preset=bloccate`, `${ROOT}/domande?vista=bloccate`],
+    ["voci/[itemId]", `${ROOT}/voci/${ITEM}`, `${ROOT}/domande/${ITEM}`],
+    ["verifica", `${ROOT}/verifica?pagina=2`, `${ROOT}/domande?vista=da-verificare&pagina=2`],
+    ["documenti", `${ROOT}/documenti`, `${ROOT}/domande?vista=tutte&indispensabili=no&mostra=documenti&apri=file`],
+    ["domande/documenti", `${ROOT}/domande/documenti`, `${ROOT}/domande?vista=tutte&indispensabili=no&mostra=documenti&apri=file`],
+    ["mappa", `${ROOT}/mappa?vista=oggi`, `${ROOT}/soluzione/mappa?vista=oggi`],
+    ["modello-dati", `${ROOT}/modello-dati?vista=fonti`, `${ROOT}/soluzione/dati?vista=fonti`],
+    ["kpi", `${ROOT}/kpi`, `${ROOT}/valore/kpi`],
+    ["roi", `${ROOT}/roi`, `${ROOT}/valore`],
+    ["avanzamento", `${ROOT}/avanzamento`, `${ROOT}#via`],
+    ["registro", `${ROOT}/registro?tipo=caso`, `${ROOT}/attivita?tipo=caso`],
+    ["registro/csv", `${ROOT}/registro/csv?tipo=caso`, `${ROOT}/attivita/csv?tipo=caso`],
+  ];
+  for (const [segment, path, target] of cases) assert.deepEqual(redirectOf(await load(segment), path), { target, status: "308" }, segment);
+});
+
+test("the services stay where they are: the test cases import (POST), the export, the files", () => {
+  const imports = readFileSync(handler("test-cases/import"), "utf8");
+  assert.match(imports, /export async function POST\(/);
+  assert.doesNotMatch(imports, /export (async )?function GET\(/, "no page and no redirect: a service");
+  for (const service of ["export", "files/[fileId]", "attivita/csv"]) assert.ok(existsSync(handler(service)), service);
+});
+
 test("old addresses are routes, never pages: under loading.tsx a page redirect would stream a 200", () => {
   for (const segment of ["progetto", "via", "firme", "avanzamento", "mappa", "regole", "modello-dati", "voci", "verifica", "documenti", "kpi", "roi", "registro", "soluzione/regole", "domande/documenti"]) {
     assert.ok(existsSync(handler(segment)), `${segment}/route.ts`);
