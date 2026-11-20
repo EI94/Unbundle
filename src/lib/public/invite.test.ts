@@ -54,7 +54,7 @@ test("the page: the public shell, one filled button per state, «Cosa potrai far
   assert.match(page, /<Button render=\{<Link href=\{registerHref\} \/>\} nativeButton=\{false\} className=\{PUBLIC_PRIMARY\} data-testid="invite-register">/);
   assert.match(page, /<Button render=\{<Link href=\{loginHref\} \/>\} nativeButton=\{false\} variant="outline" className=\{PUBLIC_SECONDARY\} data-testid="invite-login">/);
   // Tutto resta: già dentro, account sbagliato, cambio d'account, conferma dell'email, accetta.
-  for (const kept of ['data-testid="invite-already"', 'data-testid="invite-wrong-account"', "<SwitchAccountButton loginHref={switchHref} />", "<VerifyInviteEmail email={session.user.email} loginHref={loginHref} />", "<WorkspaceInviteAcceptForm token={token} workspaceName={workspace.name} />", "&mode=register"]) {
+  for (const kept of ['data-testid="invite-already"', 'data-testid="invite-wrong-account"', "<SwitchAccountButton loginHref={switchHref} className={PUBLIC_PRIMARY} />", "<VerifyInviteEmail email={session.user.email} loginHref={loginHref} />", "<WorkspaceInviteAcceptForm token={token} workspaceName={workspace.name} />", "&mode=register"]) {
     assert.ok(page.includes(kept), kept);
   }
   for (const gone of ['href="/"', "<Badge", "amber", "text-xs", "Invito a collaborare", "Entra in {", "h-10"]) assert.ok(!page.includes(gone), gone);
@@ -62,13 +62,18 @@ test("the page: the public shell, one filled button per state, «Cosa potrai far
   assert.match(code("src/app/invite/[token]/error.tsx"), /return <PublicErrorScreen retry=\{retry\} \/>;/);
 });
 
-test("the pieces: accept at 48 px, the e-mail check without «Firebase» and without fixed colours", () => {
+test("the pieces: accept and «Cambia account» at 48 px, the e-mail check without «Firebase» and without fixed colours", () => {
+  // «Cambia account»: pieno e a 48 px quando è l'azione principale; bordato dentro «Non sei tu? ▸».
+  const page = code("src/app/invite/[token]/page.tsx");
+  assert.match(page, /<SwitchAccountButton loginHref=\{loginHref\} variant="outline" className=\{PUBLIC_SECONDARY\} \/>/);
+  const switchButton = code("src/components/workspace/switch-account-button.tsx");
+  assert.match(switchButton, /variant=\{variant\}\s*className=\{cn\("w-full", className\)\}/);
   const accept = code("src/components/workspace/workspace-invite-accept-form.tsx");
   assert.match(accept, /<Button type="submit" className=\{PUBLIC_PRIMARY\} disabled=\{pending\}>/);
   assert.doesNotMatch(accept, /red-\d|text-red/);
   const verify = code("src/components/workspace/verify-invite-email.tsx");
   assert.doesNotMatch(verify, /amber|red-\d|text-red|text-xs/);
   assert.doesNotMatch(verify.replace(/firebase\w*|Firebase\w*(?=\W)/g, (m) => (/^[a-z]/.test(m) ? m : "")), /"[^"]*Firebase[^"]*"/, "nessun «Firebase» in un testo");
-  assert.equal(verify.match(/className=\{PUBLIC_PRIMARY\}/g)?.length, 2, "uno per stato: «Mandami il link» o «Ho confermato»");
+  assert.equal(verify.match(/className=\{PUBLIC_PRIMARY\}/g)?.length, 4, "uno per stato: «Cambia account», «Mandami il link» o «Ho confermato»");
   assert.doesNotMatch(verify, /"[A-ZÈ][a-zàèéìòù']+\s[^"\n]*"/, "nessuna frase scritta a mano");
 });

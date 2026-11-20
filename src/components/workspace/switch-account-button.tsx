@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ComponentProps } from "react";
 import { Button } from "@/components/ui/button";
 import { endAppSession } from "@/lib/auth/end-session";
+import { cn } from "@/lib/utils";
 
 /**
  * "Cambia account" stile Slack: chiude la sessione corrente e porta al login
@@ -10,8 +11,19 @@ import { endAppSession } from "@/lib/auth/end-session";
  * riservato a un'altra email resta in un vicolo cieco. La sessione si chiude
  * come con «Esci»: le bozze della board dell'activity mapping lasciano il
  * dispositivo prima (endAppSession).
+ *
+ * (Rilascio 10, ondata 4) `variant` e `className` da chi lo usa: sulle pagine pubbliche, quando è l'azione principale,
+ * pieno, a tutta larghezza e alto 48 px; dentro «Non sei tu? ▸», bordato.
  */
-export function SwitchAccountButton({ loginHref }: { loginHref: string }) {
+export function SwitchAccountButton({
+  loginHref,
+  variant = "default",
+  className,
+}: {
+  loginHref: string;
+  variant?: ComponentProps<typeof Button>["variant"];
+  className?: string;
+}) {
   const [pending, setPending] = useState(false);
 
   async function switchAccount() {
@@ -27,7 +39,8 @@ export function SwitchAccountButton({ loginHref }: { loginHref: string }) {
   return (
     <Button
       type="button"
-      className="w-full"
+      variant={variant}
+      className={cn("w-full", className)}
       onClick={switchAccount}
       disabled={pending}
       data-testid="switch-account"
