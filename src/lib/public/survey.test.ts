@@ -57,8 +57,8 @@ test("the header facts: «10 minuti · anonimo · si salva da solo», the privac
   assert.equal(surveyMinutes(1), 2, "almeno 2 minuti");
   assert.equal(surveyFacts(10, false), "10 minuti · anonimo · si salva da solo");
   assert.equal(surveyFacts(10, true), "10 minuti · nominativo · si salva da solo");
-  assert.equal(surveyPrivacyLine(false, 5), "Le risposte sono anonime: le leggiamo solo insieme a quelle di almeno 5 colleghi.");
-  assert.equal(surveyPrivacyLine(true, 5), "Le risposte si leggono solo per gruppi di almeno 5 persone.");
+  assert.equal(surveyPrivacyLine(false, 5), "Le risposte sono anonime: si leggono solo in gruppi di almeno 5 persone.");
+  assert.equal(surveyPrivacyLine(true, 5), "Le risposte si leggono solo in gruppi di almeno 5 persone.");
   assert.equal(SURVEY_TEXT.title, "Com'è l'AI nel tuo lavoro?");
   assert.equal(expertCount(1), "1 caso d'uso inviato");
   assert.equal(expertCount(2), "2 casi d'uso inviati");
@@ -172,6 +172,9 @@ test("/a: a short header, the acknowledgement recorded at submit with one line a
   assert.ok(!/<Checkbox\s+name="privacyAccepted"/.test(form), "nessuna casella dell'informativa");
   assert.match(form, /\{F\.acknowledge\}\{" "\}\s*<a href=\{noticeHref\}/);
   assert.match(form, /payload: \{ \.\.\.payload, consents: \{ \.\.\.payload\.consents, privacyAccepted: true \} \}/);
+  // In ogni browser: il modulo aggiunge la presa visione all'invio, anche dove FormData non porta il pulsante.
+  assert.match(form, /const data = new FormData\(form\);\s*data\.set\("privacyAccepted", "on"\);\s*startTransition\(\(\) => formAction\(data\)\);/);
+  assert.match(form, /action=\{formAction\}/, "senza script il modulo resta un modulo, con il pulsante che porta la presa visione");
   assert.match(form, /\["benchmarkConsent", payload\.consents\?\.benchmarkConsent === true\]/);
   assert.doesNotMatch(form, /\["privacyAccepted", /, "il ripristino di una bozza non tocca mai il pulsante d'invio");
   assert.match(form, /\{benchmarkEnabled && \(/);

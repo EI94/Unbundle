@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  startTransition,
   useActionState,
   useCallback,
   useEffect,
@@ -561,11 +562,16 @@ export function RespondentSurveyForm({
         // La presa visione è il tocco su «Invia le risposte», che la porta con sé: non si controlla come un campo.
         const payload = collectDraftPayload(form);
         const errors = validateSurveyPayload({ template, payload: { ...payload, consents: { ...payload.consents, privacyAccepted: true } }, anonymousMode });
+        event.preventDefault();
         if (Object.keys(errors).length === 0) {
           setLocalErrors({});
+          // L'invio con la presa visione: la si aggiunge qui, perché il FormData che React costruisce porta il pulsante
+          // solo nei browser che lo sanno fare (Safari da 16.4). Senza script la porta il pulsante stesso.
+          const data = new FormData(form);
+          data.set("privacyAccepted", "on");
+          startTransition(() => formAction(data));
           return;
         }
-        event.preventDefault();
         setLocalErrors(errors);
         const first = Object.keys(errors)[0];
         const target =
@@ -751,7 +757,7 @@ export function RespondentSurveyForm({
           </a>
           .
         </p>
-        {/* La presa visione dell'informativa viaggia con il pulsante: il server la vuole all'invio (`privacyAccepted`). */}
+        {/* La presa visione dell'informativa viaggia con l'invio (`privacyAccepted`): il pulsante la porta anche senza script. */}
         <Button type="submit" name="privacyAccepted" value="on" className={PUBLIC_PRIMARY} disabled={pending} data-testid="survey-submit">
           {pending ? F.submitting : F.submit}
         </Button>

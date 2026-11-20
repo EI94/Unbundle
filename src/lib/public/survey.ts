@@ -26,8 +26,8 @@ export const SURVEY_TEXT = Object.freeze({
   anonymous: "anonimo",
   named: "nominativo",
   /** La privacy in una riga, nella testata di `/a`. */
-  privacyAnonymous: "Le risposte sono anonime: le leggiamo solo insieme a quelle di almeno {N} colleghi.",
-  privacyNamed: "Le risposte si leggono solo per gruppi di almeno {N} persone.",
+  privacyAnonymous: "Le risposte sono anonime: si leggono solo in gruppi di almeno {N} persone.",
+  privacyNamed: "Le risposte si leggono solo in gruppi di almeno {N} persone.",
   /** In fondo al link personale. */
   personalLink: "Questo link è solo tuo: non inoltrarlo.",
 
