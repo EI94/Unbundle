@@ -125,6 +125,9 @@ export const HUB_COPY_RULES: readonly HubCopyRule[] = [
   { id: "stream", word: "stream", pattern: /\bstreams?\b/gi, scopes: AREA },
   { id: "activity_mapping", word: "Activity mapping", pattern: /\bactivity[\s-]*mapping\b/gi, scopes: AREA_AND_OUTSIDE },
   { id: "discovery", word: "Discovery", pattern: /\bdiscovery\b/gi, scopes: AREA },
+  // (Rilascio 10, ondata 6a) Le parole della vecchia Discovery: l'«Intervista iniziale» dice «Dove crea valore» e «Dove fa la differenza».
+  { id: "value_thesis", word: "Value Thesis", pattern: /\bvalue\s+thesis\b/gi, scopes: AREA },
+  { id: "nodi_strategici", word: "Nodi strategici", pattern: /\bnodi\s+(?:strategici|commodity)\b/gi, scopes: AREA },
   { id: "privacy_policy", word: "Privacy Policy", pattern: /\bprivacy\s+policy\b/gi, scopes: AREA_AND_OUTSIDE },
   { id: "realizzati", word: "Realizzati", pattern: /\brealizzat[io]\b/gi, scopes: AREA },
   { id: "tocca_anche", word: "Tocca anche", pattern: /\btocca\s+anche\b/gi, scopes: AREA },
