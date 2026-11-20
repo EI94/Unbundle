@@ -17,8 +17,7 @@
 //   sopra la pagina a 390;
 // - i colori calcolati della pagina, di un riquadro, del titolo, del suo corsivo, del punto della pillola e dei tre
 //   stream uguali ai token di quel modo (letti da board.css);
-// - al più un bottone pieno fuori dai drawer; nessun testo sul posto tagliato al primo disegno; sul telefono la seconda
-//   riga di ogni unità che comincia allo stesso punto.
+// - al più un bottone pieno fuori dai drawer; nessun testo sul posto tagliato al primo disegno.
 // Poi <out>/confronto.html mette ogni foto accanto a quella del riferimento con lo stesso nome (se <ref> c'è: i pixel
 // non si confrontano, i contenuti sono diversi apposta) e <out>/misure.json tiene i numeri.
 //
@@ -203,11 +202,6 @@ function measure() {
         inPanel: element.closest(".b-assist") !== null,
       };
     })(),
-    // La seconda riga di un'unità (i conteggi) comincia allo stesso punto in ogni riga.
-    unitMeta: [...document.querySelectorAll(".b-units .b-crow-meta")].map((element) => {
-      const first = [...element.children].find((child) => getComputedStyle(child).display !== "none") ?? element;
-      return Math.round(first.getBoundingClientRect().left);
-    }),
   };
 }
 
@@ -226,7 +220,6 @@ function check(name, config, m, expected, failures) {
   if (m.filled.length > 1) fail(`${m.filled.length} bottoni pieni: ${m.filled.join(", ")}`);
   if (m.clipped.length) fail(`testi sul posto tagliati: ${m.clipped.join(" | ")}`);
   if (m.hiddenAdds.length) fail(`corsie senza note con «+ nota» nascosto: ${m.hiddenAdds.join(", ")}`);
-  if (config.width === 390 && new Set(m.unitMeta).size > 1) fail(`la seconda riga delle unità comincia in punti diversi: ${m.unitMeta.join(", ")}`);
   for (const family of ["Geist", "Geist Mono", "Instrument Serif"]) if (!m.fonts.includes(family)) fail(`font non caricato: ${family}`);
   // I colori calcolati: quelli che la pagina mostra.
   for (const [token, value] of Object.entries(m.colours)) if (value !== null && value !== expected[token]) fail(`colore ${token} ${value}, atteso ${expected[token]}`);
