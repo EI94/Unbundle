@@ -233,9 +233,10 @@ export const CONTEXT_TEXT = Object.freeze({
     groupQuestions: "Domande",
     reconfirmed: (n: number) => (n === 1 ? "1 fatto riconfermato: si aggiorna la data" : `${n} fatti riconfermati: si aggiorna la data`),
     reconfirmedToChoose: (n: number) => (n === 1 ? "1 fatto riconfermato da scegliere: spuntalo se è giusto" : `${n} fatti riconfermati da scegliere: spunta quelli giusti`),
-    // (Rilascio 10, §3.7) Un solo blocco di riconferme, chiuso: una casella per fatto.
+    // (Rilascio 10, §3.7) Un solo blocco di riconferme: una casella per fatto. Il riepilogo conta le spuntate.
     reconfirmedTitle: "Riconfermati",
-    reconfirmedSummary: (n: number) => (n === 1 ? "1 · si aggiorna la data" : `${n} · si aggiorna la data`),
+    reconfirmedSummary: (ticked: number, total: number) =>
+      ticked <= 0 ? `${total} da scegliere` : ticked >= total ? `${total} · si aggiorna la data` : `${ticked} di ${total} · si aggiorna la data`,
     showQuote: "Citazione",
     button: (n: number) => `Conferma (${n})`,
     before: (text: string, source: string, date: string) => `Prima: ${text} (${source}, ${date})`,

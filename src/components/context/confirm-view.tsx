@@ -23,6 +23,7 @@ import {
   NO_CHOICES,
   proposalSource,
   reconfirmations,
+  reconfirmationsToChoose,
   rowErrors,
   selectedItems,
   selectionFrom,
@@ -35,7 +36,7 @@ const T = CONTEXT_TEXT;
 /**
  * «Da confermare» (rilascio 9a, docs/contesto/RILASCIO-9a-COSTRUZIONE.md §7.4; rilascio 10, §3.7): una pagina sua, con
  * un solo pulsante pieno, «Conferma (n)», fisso in fondo. I gruppi nell'ordine: Nuovi, Cambiati, In conflitto, Impegni,
- * Domande; poi un solo blocco di riconferme (chiuso, una casella per fatto) e i passaggi non riportati. «Dedotto» e conflitti non sono mai spuntati da soli; un conflitto
+ * Domande; poi un solo blocco di riconferme (una casella per fatto; aperto quando qualcuna va scelta) e i passaggi non riportati. «Dedotto» e conflitti non sono mai spuntati da soli; un conflitto
  * entra solo con la scelta della persona. Le proposte arrivano sempre dal server: le scelte della persona restano
  * sopra (una correzione, uno scarto o un aggiornamento non le cancellano).
  * (9b) Con una fonte sola nata dal lavoro la testata dice da dove vengono («Dalle risposte del referente per …», «Da chi
@@ -67,6 +68,9 @@ export function ConfirmView({
   const items = selectedItems(open, selection);
   const groups = confirmGroups(open.proposals);
   const again = reconfirmations(open);
+  // Le riconferme che partono senza spunta (dedotte, da un documento del cliente, «Solo Lateral Space») aprono il blocco.
+  const againToChoose = reconfirmationsToChoose(open).length;
+  const againTicked = again.filter((proposal) => selection.checked[proposal.id] === true).length;
   const notReported = notReportedLines(sources.map((source) => source.skipped));
   const subtitle = confirmHeading(sources, today, confirmSubtitle(sources, today));
   const memoryHref = `/dashboard/${workspaceId}/contesto`;
@@ -155,8 +159,10 @@ export function ConfirmView({
       ))}
 
       {again.length > 0 ? (
-        // (Rilascio 10, §3.7) Un solo blocco di riconferme, chiuso: una casella per fatto. Le «detto» partono spuntate.
-        <Fold id="conferma-riconferme" title={T.confirm.reconfirmedTitle} summary={T.confirm.reconfirmedSummary(again.length)}>
+        // (Rilascio 10, §3.7) Un solo blocco di riconferme, una casella per fatto. Le «detto» partono spuntate e il blocco
+        // resta chiuso; se qualcuna va scelta (non parte spuntata) il blocco è aperto, perché la scelta si veda. Il
+        // riepilogo conta le spuntate.
+        <Fold id="conferma-riconferme" title={T.confirm.reconfirmedTitle} summary={T.confirm.reconfirmedSummary(againTicked, again.length)} defaultOpen={againToChoose > 0}>
           <ul className="space-y-1">
             {again.map((proposal) => (
               <li key={`${proposal.id}:${proposal.version}`}>

@@ -360,9 +360,10 @@ test("«Da confermare»: i gruppi nell'ordine, «dedotto» e conflitti senza spu
   assert.ok(text.includes("dedotto") && text.includes("Nostro") && text.includes("Responsabile del progetto") && text.includes("entro il 30 nov"));
   assert.ok(text.includes("Da chiedere a: Direttore operativo"));
   assert.ok(text.includes("Non scrivere nomi di persone: indica il ruolo."));
-  // Un solo blocco di riconferme, chiuso, con il suo conteggio.
+  // Un solo blocco di riconferme, chiuso (la sola riconferma parte spuntata), con il conteggio delle spuntate.
   assert.ok(text.includes("Riconfermati") && text.includes("1 · si aggiorna la data") && text.includes("Hanno due stabilimenti."));
-  assert.match(html, /<section id="conferma-riconferme"[^>]*data-slot="fold"/);
+  assert.match(html, /<section id="conferma-riconferme" data-slot="fold" class="[^"]*"><h2[^>]*><button type="button" aria-expanded="false" aria-controls="conferma-riconferme-contenuto"/);
+  assert.match(html, /<div id="conferma-riconferme-contenuto" data-slot="fold-content" hidden=""/);
   assert.ok(text.includes("2 passaggi non riportati: parlavano di persone"));
   // La citazione si apre a richiesta: «Citazione», e il testo nascosto finché non si tocca.
   assert.match(html, /<p id="[^"]+" hidden="" class="[^"]*"><q>il gestionale è SAP<\/q><\/p>/, "la citazione chiusa");
@@ -375,7 +376,13 @@ test("«Da confermare»: i gruppi nell'ordine, «dedotto» e conflitti senza spu
   assert.equal(text.includes("Scarta") || text.includes("Modifica"), false, "nel «⋯», chiuso");
 });
 
-test("«Da confermare»: un solo blocco di riconferme, una casella per fatto: la «detto» spuntata, la «dedotto» no", () => {
+/** Il blocco delle riconferme è aperto: la sezione, il pulsante e il contenuto, che non è nascosto. */
+const reconfirmFoldOpen = (html: string) =>
+  /<section id="conferma-riconferme" data-slot="fold" data-open=""/.test(html) &&
+  /aria-expanded="true" aria-controls="conferma-riconferme-contenuto"/.test(html) &&
+  /<div id="conferma-riconferme-contenuto" data-slot="fold-content" class=/.test(html);
+
+test("«Da confermare»: un solo blocco di riconferme, una casella per fatto: la «detto» spuntata, la «dedotto» no; aperto, perché una va scelta", () => {
   const open: OpenProposals = {
     sources: [{ id: "s1", kind: "appunti", origin: "web", title: "Call di avvio", occurredOn: "2026-11-14", skipped: {} }],
     proposals: [],
@@ -386,11 +393,34 @@ test("«Da confermare»: un solo blocco di riconferme, una casella per fatto: la
   };
   const html = render(createElement(ConfirmView, confirmProps(open)));
   const text = textOf(html);
-  assert.ok(text.includes("2 · si aggiorna la data"), text.join(" | "));
+  assert.ok(text.includes("1 di 2 · si aggiorna la data"), text.join(" | "));
+  assert.ok(reconfirmFoldOpen(html), "la «dedotto» va scelta: il blocco è aperto");
   assert.ok(text.includes("Hanno due stabilimenti.") && text.includes("Il magazzino è piccolo."));
   assert.ok(text.includes("Conferma (1)"), "parte solo la riconferma «detto»");
   const checkboxes = [...html.matchAll(/<(?:button|span)[^>]*role="checkbox"[^>]*>/g)].map((m) => m[0]);
   assert.deepEqual(checkboxes.map((tag) => /aria-checked="true"/.test(tag)), [true, false], "la «detto» spuntata, la «dedotto» no");
+});
+
+test("«Da confermare»: un documento che riconferma solo due fatti da scegliere apre il blocco, che dice «2 da scegliere»; «Conferma (0)» aspetta la spunta", () => {
+  const open: OpenProposals = {
+    sources: [{ id: "s1", kind: "documento", origin: "web", title: "Organigramma", occurredOn: "2026-11-14", skipped: {} }],
+    proposals: [],
+    reconfirmed: [
+      proposal({ kind: "conferma", preselected: false, before: { factId: "f7", statement: "Hanno due stabilimenti.", sourceLabel: "Documento", date: "1 nov" } }),
+      proposal({ kind: "conferma", preselected: false, visibility: "ls", before: { factId: "f6", statement: "Il magazzino è piccolo.", sourceLabel: "Documento", date: "2 nov" } }),
+    ],
+  };
+  const html = render(createElement(ConfirmView, confirmProps(open)));
+  const text = textOf(html);
+  assert.ok(reconfirmFoldOpen(html), "aperto: le due caselle si vedono");
+  assert.ok(text.includes("2 da scegliere"), text.join(" | "));
+  const checkboxes = [...html.matchAll(/<(?:button|span)[^>]*role="checkbox"[^>]*>/g)].map((m) => m[0]);
+  assert.deepEqual(checkboxes.map((tag) => /aria-checked="true"/.test(tag)), [false, false]);
+  assert.ok(text.includes("Conferma (0)"));
+  // Tutte «detto»: il blocco resta chiuso.
+  const said = render(createElement(ConfirmView, confirmProps({ ...open, reconfirmed: open.reconfirmed.map((p) => ({ ...p, preselected: true })) })));
+  assert.equal(reconfirmFoldOpen(said), false);
+  assert.ok(textOf(said).includes("2 · si aggiorna la data"));
 });
 
 test("«Da confermare»: un conflitto che viene da un documento dice «Documento 14 nov», non «Call»", () => {
