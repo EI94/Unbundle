@@ -20,7 +20,6 @@ import {
   seesFilteredAudit,
   settingsTransitions,
   showsHeaderProgress,
-  solutionSegmentsFor,
   stepHasPageCommand,
   stepHiddenOn,
   stepPanelOf,
@@ -152,15 +151,6 @@ test("(rilascio 10, D9 (a)) with the viewer's tabs: Domande lights «Costruzione
   assert.equal(activeTabKey("costruzione", before), null, "before the via the Costruzione comes from the «⋯»");
   assert.equal(activeTabKey("domande", caseTabsFor(["ai_board"])), null);
   assert.equal(activeTabKey(null, after), "panoramica");
-});
-
-test("solution segments by role: Data only for Lateral Space", () => {
-  const keys = (role: CaseRole) => solutionSegmentsFor([role]).map((s) => s.key);
-  for (const role of ["ls_lead", "ls_analista", "ls_sviluppatore"] as const) assert.deepEqual(keys(role), ["descrizione", "mappa", "regole", "dati"], role);
-  assert.deepEqual(keys("owner_cliente"), ["descrizione", "mappa", "regole"]);
-  assert.deepEqual(keys("ai_board"), ["descrizione", "mappa"]);
-  assert.deepEqual(keys("osservatore"), ["descrizione", "mappa"]);
-  assert.deepEqual(keys("approvatore_privacy"), []);
 });
 
 test("the trail: use case, code, Realizzazione; the title without a code; the old link without a parent card", () => {

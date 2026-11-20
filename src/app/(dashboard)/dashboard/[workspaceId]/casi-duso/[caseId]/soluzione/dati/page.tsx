@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Database } from "lucide-react";
+import { ChevronLeft, Database } from "lucide-react";
 import { PageContainer } from "@/components/dashboard/page-container";
 import { openCaseView } from "@/components/uc/catalog/case-page";
 import { DataList, DataToolbar } from "@/components/uc/catalog/model-item-list";
@@ -16,7 +16,7 @@ import { readableTitle } from "@/lib/uc/views/description";
 import { KIND_LABEL } from "@/lib/uc/views/labels";
 import { DATA_VIEW_LABEL, groupRows, pageOffset, parseDataQuery, solutionHref, solutionPageHrefs } from "@/lib/uc/views/model";
 import { audienceFor, statusView } from "@/lib/uc/views/status-groups";
-import { SolutionNav } from "../_parts/solution-nav";
+import { SOLUTION_TEXT } from "@/lib/uc/views/solution";
 
 const EMPTY_VIEW: Readonly<Record<string, string>> = {
   entita: "Lo schema di partenza non ha entità.",
@@ -28,13 +28,13 @@ const EMPTY_VIEW: Readonly<Record<string, string>> = {
 };
 
 /**
- * Soluzione › Dati (DESIGN §3.7.4), per Lateral Space e lo sviluppatore nella
- * navigazione (il responsabile del cliente ha permesso e indirizzo): il
- * `Select` «Vista» (Entità, Variabili, Formule, Fonti, Qualità dei dati, Prova
- * sul passato) e «Cerca per nome». Righe con titolo, stato, una riga di testo e
- * il lucchetto; pagine di 100 righe sul server; il pannello (`?apri=`) ha le
- * parole semplici in vista e codice, valori, chiavi e disponibilità in
- * «Dettagli tecnici». `?entita=<chiave>` dei vecchi indirizzi apre l'entità.
+ * (Rilascio 10, §3.5, F-091, F-092) «Modello dati», una pagina senza scheda: ci si arriva da «Modello dati ›» in fondo
+ * alla Soluzione (Lateral Space e lo sviluppo; il responsabile del cliente ha permesso e indirizzo, come prima) e dalla
+ * «Qualità» della Costruzione («Prova sul passato ›», `?vista=prova`), con «‹ Soluzione» per tornare. Il `Select`
+ * «Vista» (Entità, Variabili, Formule, Fonti, Qualità dei dati, Prova sul passato) e «Cerca per nome». Righe con
+ * titolo, stato, una riga di testo e il lucchetto; pagine di 50 righe sul server («1–50 di 245», come in Domande); il
+ * pannello (`?apri=`) ha le parole semplici in vista e codice, valori, chiavi e disponibilità in «Dettagli tecnici».
+ * `?entita=<chiave>` dei vecchi indirizzi apre l'entità.
  *
  * Un giro solo (`loadSolutionData`), voce aperta compresa.
  */
@@ -68,7 +68,13 @@ export default async function SolutionDataPage({
 
   return (
     <PageContainer>
-      <SolutionNav workspaceId={workspaceId} caseId={caseId} roles={viewer.roles} active="dati" />
+      <div className="mb-6 space-y-1">
+        <Link href={casePath(workspaceId, caseId, "soluzione")} className="inline-flex min-h-11 items-center gap-0.5 text-sm text-muted-foreground hover:text-foreground sm:min-h-0">
+          <ChevronLeft className="size-4" aria-hidden />
+          {SOLUTION_TEXT.backToSolution}
+        </Link>
+        <h2 className="text-base font-semibold">{SOLUTION_TEXT.dataModel}</h2>
+      </div>
       <DataToolbar view={data.view} q={query.q} />
 
       {data.view === "prova" && (
@@ -103,7 +109,12 @@ export default async function SolutionDataPage({
       ) : (
         <>
           {data.view === "prova" ? <TestCasesList testCases={data.testCases} roles={viewer.roles} offset={pageOffset(data.page)} /> : <DataList groups={groups} />}
-          <ListPagination page={data.page} pages={data.pages} {...solutionPageHrefs(base, sp, data.page, data.pages)} />
+          <ListPagination
+            page={data.page}
+            pages={data.pages}
+            {...solutionPageHrefs(base, sp, data.page, data.pages)}
+            range={{ first: pageOffset(data.page) + 1, last: pageOffset(data.page) + shown, total: data.total }}
+          />
         </>
       )}
 

@@ -35,6 +35,10 @@ const FILES = [
   ...["costruzione/page.tsx", "costruzione/project-forms.tsx"].map((f) => join(CASE, f)),
   join(SRC, "lib/uc/views/construction.ts"),
   join(SRC, "components/agent-factory/eval-summary.tsx"),
+  // (Ondata 5b) La Soluzione da leggere, i suoi pannelli e le due pagine senza scheda.
+  ...["soluzione/page.tsx", "soluzione/mappa/page.tsx", "soluzione/dati/page.tsx"].map((f) => join(CASE, f)),
+  ...["process-board.tsx", "step-panel.tsx"].map((f) => join(SRC, "components/uc/map", f)),
+  join(SRC, "lib/uc/views/solution.ts"),
 ];
 
 /** Le stringhe e il testo JSX di un sorgente, senza commenti, import e operandi di confronto. */

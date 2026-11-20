@@ -273,8 +273,23 @@ export function TestCasesList({ testCases, roles, offset }: { testCases: TestCas
   );
 }
 
-/** «‹ Precedenti · Pagina 2 di 3 · Successive ›»: le pagine sono lette dal server. */
-export function ListPagination({ page, pages, prevHref, nextHref }: { page: number; pages: number; prevHref: string | null; nextHref: string | null }) {
+/**
+ * «‹ Precedenti · 51–100 di 245 · Successive ›»: le pagine sono lette dal server. (Rilascio 10, §3.13) Con `range` la
+ * forma di Domande, la stessa in tutta la realizzazione; senza, «Pagina 2 di 3».
+ */
+export function ListPagination({
+  page,
+  pages,
+  prevHref,
+  nextHref,
+  range,
+}: {
+  page: number;
+  pages: number;
+  prevHref: string | null;
+  nextHref: string | null;
+  range?: { first: number; last: number; total: number };
+}) {
   if (pages <= 1) return null;
   const link = "inline-flex min-h-11 items-center gap-0.5 rounded-md px-1 text-sm hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none sm:min-h-8";
   return (
@@ -288,7 +303,7 @@ export function ListPagination({ page, pages, prevHref, nextHref }: { page: numb
         <span />
       )}
       <span className="text-xs text-muted-foreground tabular-nums">
-        Pagina {formatCountIt(page)} di {formatCountIt(pages)}
+        {range ? `${formatCountIt(range.first)}–${formatCountIt(range.last)} di ${formatCountIt(range.total)}` : `Pagina ${formatCountIt(page)} di ${formatCountIt(pages)}`}
       </span>
       {nextHref ? (
         <Link href={nextHref} className={link}>

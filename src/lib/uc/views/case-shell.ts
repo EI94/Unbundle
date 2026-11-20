@@ -138,18 +138,6 @@ export function activeTabKey(segment: string | null, tabs?: readonly Pick<CaseTa
   return t.key === "domande" && tabs.some((x) => x.key === "costruzione") ? "costruzione" : null;
 }
 
-/** I segmenti di Soluzione per ruolo (DESIGN §2.3): Dati solo per Lateral Space. */
-export type SolutionSegment = "descrizione" | "mappa" | "regole" | "dati";
-
-export function solutionSegmentsFor(roles: readonly CaseRole[]): { key: SolutionSegment; label: string; segment: string }[] {
-  const out: { key: SolutionSegment; label: string; segment: string }[] = [];
-  if (canOpenShellPage("descrizione", roles)) out.push({ key: "descrizione", label: "Descrizione", segment: "soluzione" });
-  if (canOpenPage("mappa", roles)) out.push({ key: "mappa", label: "Mappa", segment: "soluzione/mappa" });
-  if (canOpenPage("regole", roles)) out.push({ key: "regole", label: "Regole", segment: "soluzione/regole" });
-  if (canOpenPage("modello_dati", roles) && isLs(roles)) out.push({ key: "dati", label: "Dati", segment: "soluzione/dati" });
-  return out;
-}
-
 // ── Menu «⋯» ──────────────────────────────────────────────────────────
 
 export type CaseMenuKey = "privacy" | "attivita" | "esporta" | "costruzione" | "impostazioni";
