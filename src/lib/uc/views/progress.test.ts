@@ -10,14 +10,16 @@ import {
   GATE_DECISION_LABEL,
   REJECTED_BY_LABEL,
   SIGNATURE_ROLE_LABEL,
-  VIA_AFTER_TEXT,
+  BLOCKERS_VISIBLE,
+  OVERVIEW_SIDE_SECTIONS,
+  TOPICS_VISIBLE,
   VIA_EVIDENCE_HINT,
   VIA_EVIDENCE_MISSING,
-  VIA_EXCEPTIONS,
   VIA_POLICY_TEXT,
   VIA_RECONFIRM_NOTE,
   VIA_RULE_TEXT,
-  VIA_SIGNERS_TEXT,
+  VIA_RULE_TO_CONFIRM,
+  VIA_THEN_TEXT,
   blockerPanelParam,
   blockerResolver,
   blockerShortLabel,
@@ -25,31 +27,35 @@ import {
   casePhaseGroups,
   catalogVersionRow,
   coverageText,
-  developerCatalogText,
-  doneConditionsText,
   exceptionsText,
   firstSentence,
   latestApproval,
   milestoneView,
   moduleProgress,
+  nextMilestoneText,
   nextMilestones,
   noRequiredText,
+  overviewBlockerTitle,
   overviewBlockers,
   overviewLayout,
   parseOverviewPanel,
   phaseStripOf,
   progressCells,
-  recentlyApprovedText,
   reviewHistoryRow,
-  signatureCalloutText,
+  topTopics,
+  topicOpenText,
   viaAction,
   viaConditions,
   viaEverApproved,
   viaFailureMessage,
+  viaGroupLinks,
+  viaHowText,
+  viaOpenConditions,
   viaProgress,
-  viaProgressHint,
+  viaProposeWhen,
   viaShownSignatures,
   viaSignatures,
+  viaSignaturesLine,
   viaState,
   viaStateView,
 } from "./progress.ts";
@@ -94,22 +100,25 @@ function gi(id: string, over: Partial<GateItem> = {}): GateItem {
 
 // ── Panoramica ────────────────────────────────────────────────────────
 
-test("overview layout: the sections each role reads, in its order (DESIGN §3.4)", () => {
+test("(rilascio 10, §3.5) overview layout: three blocks plus the topics, per role, in reading order", () => {
   const of = (...roles: CaseRole[]) => overviewLayout(roles);
-  assert.deepEqual(of("ls_lead").sections, ["fare", "via", "argomenti", "blocchi", "tappe", "caso"]);
+  assert.deepEqual(of("ls_lead").sections, ["fare", "via", "tappe", "argomenti", "blocchi"]);
   assert.equal(of("ls_lead").audience, "ls");
-  assert.deepEqual(of("ls_analista").sections, ["fare", "via", "argomenti", "blocchi", "tappe", "caso"]);
+  assert.deepEqual(of("ls_analista").sections, ["fare", "via", "tappe", "argomenti", "blocchi"]);
   assert.equal(of("ls_sviluppatore").kind, "sviluppatore");
-  assert.ok(!of("ls_sviluppatore").sections.includes("blocchi"), "the developer resolves no blocker");
-  assert.deepEqual(of("owner_cliente").sections, ["firma", "fare", "via", "argomenti", "tappe", "caso"]);
+  assert.deepEqual(of("ls_sviluppatore").sections, ["fare", "via", "tappe", "argomenti"], "the developer resolves no blocker");
+  assert.deepEqual(of("owner_cliente").sections, ["fare", "via", "tappe", "argomenti"], "Lateral Space handles the blockers; no signature box (F-032)");
   assert.equal(of("owner_cliente").audience, "cliente");
-  assert.ok(!of("owner_cliente").sections.includes("blocchi"), "Lateral Space handles the blockers");
   for (const r of ["osservatore", "ai_board"] as const) {
-    assert.deepEqual(of(r).sections, ["caso", "via", "tappe"], r);
+    assert.deepEqual(of(r).sections, ["via", "tappe"], r);
     assert.equal(of(r).audience, "cliente");
   }
   assert.equal(of("ls_lead", "osservatore").kind, "ls", "the role that sees the most wins");
   assert.equal(of("ls_sviluppatore", "ls_analista").kind, "ls");
+  // «Il caso» goes to Soluzione (F-031), the approved note to the via line (F-033): none of them is a section any more.
+  for (const r of ["ls_lead", "owner_cliente", "osservatore"] as const) assert.ok(!(of(r).sections as string[]).some((x) => ["caso", "firma"].includes(x)), r);
+  // Prototype S4: «Da fare» and «Via allo sviluppo» on the left; the next milestone, the topics and the blockers on the right.
+  assert.deepEqual([...OVERVIEW_SIDE_SECTIONS], ["tappe", "argomenti", "blocchi"]);
 });
 
 test("via progress: the big number, the yellow part and the open groups without zeros, in the viewer's words", () => {
@@ -137,8 +146,17 @@ test("via progress: the big number, the yellow part and the open groups without 
     ["2 da rispondere", "2 in verifica", "1 in attesa"],
   );
   assert.deepEqual(viaProgress([{ moduleKey: null, status: "validata", ok: true }], "ls").open, [], "a group at zero is not shown");
-  assert.equal(viaProgressHint("bozza"), "Si muove quando arrivano le prime risposte.");
-  assert.equal(viaProgressHint("raccolta"), null);
+  // (Rilascio 10, §3.5, prototipo S4) The groups as links under the big number: label then count; the ones the filled button says are skipped.
+  assert.deepEqual(
+    viaGroupLinks(ls, "ls").map((g) => [g.slug, g.text]),
+    [
+      ["da-fare", "Da fare 2"],
+      ["da-verificare", "Da verificare 2"],
+      ["bloccate", "Bloccate 1"],
+    ],
+  );
+  assert.deepEqual(viaGroupLinks(viaProgress(items, "cliente"), "cliente").map((g) => g.text), ["Da rispondere 2", "In verifica 2", "In attesa 1"]);
+  assert.deepEqual(viaGroupLinks(ls, "ls", { skip: ["da_verificare"] }).map((g) => g.group), ["da_fare", "bloccate"], "«Verifica N risposte» is already the filled button");
 });
 
 test("per topic: who misses the most first, then the template order, other questions last", () => {
@@ -242,26 +260,41 @@ test("milestones: next two not done, when and grey suffixes, the phase strip for
   assert.equal(phaseStripOf("chiuso", null), null);
 });
 
-test("signature callout, recently approved note and the developer's line", () => {
-  assert.equal(signatureCalloutText(0), null);
-  assert.equal(signatureCalloutText(1), "Serve la tua firma · 1 decisione aspetta te");
-  assert.equal(signatureCalloutText(2), "Serve la tua firma · 2 decisioni aspettano te");
-  const catalog = { version: 1, frozenAt: "2026-10-10T08:00:00Z" };
-  assert.equal(recentlyApprovedText({ status: "pronto_sviluppo", statusBeforeSuspension: null, catalog, now: NOW }), "Via allo sviluppo approvato. Il catalogo v1 è congelato.");
-  assert.equal(recentlyApprovedText({ status: "pronto_sviluppo", statusBeforeSuspension: null, catalog: { version: 1, frozenAt: OCT3 }, now: NOW }), null, "after seven days the note goes");
-  assert.equal(recentlyApprovedText({ status: "raccolta", statusBeforeSuspension: null, catalog, now: NOW }), null);
-  assert.equal(recentlyApprovedText({ status: "chiuso", statusBeforeSuspension: null, catalog, now: NOW }), null);
-  assert.equal(developerCatalogText({ pastVia: false, catalog: null, now: NOW }), "Il catalogo validato arriva con il via allo sviluppo.");
-  assert.equal(developerCatalogText({ pastVia: true, catalog: { version: 1, frozenAt: OCT3 }, now: NOW }), "Catalogo validato v1 · congelato il 3 ott");
+test("(rilascio 10, §3.5) the next milestone in one line, the top 3 topics with open questions, the blocker rows", () => {
+  assert.equal(nextMilestoneText({ title: "Via allo sviluppo", when: "12 dic", suffix: null }), "Via allo sviluppo · 12 dic");
+  assert.equal(nextMilestoneText({ title: "Prova sul passato", when: "settimana 6", suffix: "da confermare" }), "Prova sul passato · settimana 6 da confermare");
+  assert.equal(nextMilestoneText({ title: "Rodaggio", when: null, suffix: null }), "Rodaggio");
+  const rows = moduleProgress(
+    [
+      ...Array.from({ length: 12 }, () => ({ moduleKey: "volumi", ok: false })),
+      ...Array.from({ length: 9 }, () => ({ moduleKey: "sistemi", ok: false })),
+      ...Array.from({ length: 6 }, () => ({ moduleKey: "eccezioni", ok: false })),
+      ...Array.from({ length: 2 }, () => ({ moduleKey: "persone", ok: false })),
+      { moduleKey: "fatto", ok: true },
+    ],
+    [
+      { key: "volumi", title: "Volumi e tempi", roleKey: null },
+      { key: "sistemi", title: "Sistemi", roleKey: null },
+      { key: "eccezioni", title: "Eccezioni", roleKey: null },
+      { key: "persone", title: "Persone", roleKey: null },
+      { key: "fatto", title: "Già a posto", roleKey: null },
+    ],
+  );
+  assert.equal(TOPICS_VISIBLE, 3);
+  assert.deepEqual(topTopics(rows).map((r) => [r.title, topicOpenText(r.missing)]), [
+    ["Volumi e tempi", "12 aperte"],
+    ["Sistemi", "9 aperte"],
+    ["Eccezioni", "6 aperte"],
+  ]);
+  assert.equal(topicOpenText(1), "1 aperta");
+  assert.deepEqual(topTopics(rows.filter((r) => r.key === "fatto")), [], "a topic with nothing open is not shown (the zero)");
+  assert.equal(BLOCKERS_VISIBLE, 3, "three rows, then «Vedi tutti (n)»");
+  assert.equal(overviewBlockerTitle("Accesso al sistema"), "Blocco: Accesso al sistema");
   // Un caso chiuso dopo il via ha ancora il suo catalogo validato.
   assert.equal(viaEverApproved({ status: "chiuso", statusBeforeSuspension: null, catalogVersion: 1 }), true);
   assert.equal(viaEverApproved({ status: "chiuso", statusBeforeSuspension: null, catalogVersion: 0 }), false);
   assert.equal(viaEverApproved({ status: "sospeso", statusBeforeSuspension: "in_sviluppo", catalogVersion: 0 }), true);
   assert.equal(viaEverApproved({ status: "raccolta", statusBeforeSuspension: null, catalogVersion: 0 }), false);
-  assert.equal(
-    developerCatalogText({ pastVia: viaEverApproved({ status: "chiuso", statusBeforeSuspension: null, catalogVersion: 1 }), catalog: { version: 1, frozenAt: OCT3 }, now: NOW }),
-    "Catalogo validato v1 · congelato il 3 ott",
-  );
 });
 
 test("no indispensable questions: a hint for Lateral Space only, nothing for the client (the zero does not show)", () => {
@@ -296,7 +329,7 @@ test("via state: not yet, can be proposed, waiting for signatures, approved on a
   assert.deepEqual(viaStateView("non_ancora", null, NOW), { label: "Non ancora", tone: "grigio" });
 });
 
-test("via conditions in plain words, from the real computation; the always-true one is gone, the done ones fold away", () => {
+test("via conditions in plain words, from the real computation; the always-true one is gone; (rilascio 10) only the open ones show", () => {
   const items = [
     gi("1"),
     gi("2", { status: "da_chiedere" }),
@@ -320,9 +353,8 @@ test("via conditions in plain words, from the real computation; the always-true 
     ["deroghe_entro_limite"],
   );
   assert.equal([...open, ...done].some((c) => c.key === "disponibile"), false);
-  assert.equal(doneConditionsText(1, 4), "1 condizione già a posto");
-  assert.equal(doneConditionsText(4, 1), "4 condizioni già a posto");
-  assert.equal(doneConditionsText(5, 0), "Le 5 condizioni sono a posto");
+  // (Rilascio 10, §3.5) The questions are the big number: the open conditions list the others; the done ones are not shown (§1 rule 5).
+  assert.deepEqual(viaOpenConditions(open).map((c) => c.key), ["chiarimenti", "fonti_con_dataset", "regole_confermate"]);
 });
 
 test("via signatures: the two sides, signed on a day (from the link) or still to sign, never a name", () => {
@@ -375,12 +407,12 @@ test("the page action follows every row of the state table of DESIGN §3.5", () 
     approved: null,
     now: NOW,
   };
-  // Non pronto: «Proponi» spento, con il motivo sotto.
-  assert.deepEqual(viaAction(base), { kind: "proponi", disabled: true, note: "Si accende quando tutte le 245 domande indispensabili sono a posto." });
-  assert.deepEqual(viaAction({ ...base, ok: 245 }), { kind: "proponi", disabled: true, note: "Si accende quando tutte le condizioni qui sopra sono a posto." });
-  // In bozza «Proponi» c'è, spento, con il motivo sotto: il via si propone solo in preparazione.
-  assert.deepEqual(viaAction({ ...base, status: "bozza" }), { kind: "proponi", disabled: true, note: "Si accende quando tutte le 245 domande indispensabili sono a posto." });
-  assert.deepEqual(viaAction({ ...base, status: "bozza", ready: true, ok: 245 }), { kind: "proponi", disabled: true, note: "Si accende con la prima richiesta a un referente." });
+  // (Rilascio 10, §3.5, F-036) Non pronto: niente pulsante spento, la riga «Si propone quando …».
+  assert.deepEqual(viaAction(base), { kind: "proponi", disabled: true, note: "Si propone quando sono tutte a posto." });
+  assert.deepEqual(viaAction({ ...base, ok: 245 }), { kind: "proponi", disabled: true, note: "Si propone quando le condizioni qui sotto sono a posto." });
+  // In bozza il via si propone solo dopo la prima richiesta: la riga lo dice.
+  assert.deepEqual(viaAction({ ...base, status: "bozza" }), { kind: "proponi", disabled: true, note: "Si propone quando sono tutte a posto." });
+  assert.deepEqual(viaAction({ ...base, status: "bozza", ready: true, ok: 245 }), { kind: "proponi", disabled: true, note: "Si propone dopo la prima richiesta a un referente." });
   assert.deepEqual(viaAction({ ...base, status: "bozza", roles: ["ls_analista"] }), { kind: "nessuna", note: null });
   // Pronto, nessuna proposta.
   assert.deepEqual(viaAction({ ...base, ready: true, ok: 245 }), { kind: "proponi", disabled: false, note: null });
@@ -461,7 +493,7 @@ test("history and catalog versions: titles without gate codes, signatures by rol
   assert.equal(SIGNATURE_ROLE_LABEL.owner_cliente, "Responsabile del cliente");
 });
 
-test("how it works: the 5 phases hold the 9 states of the path, pause and closure are states", () => {
+test("(rilascio 10) the path in «Tutte le tappe»: the 5 phases hold the 9 states of the path, pause and closure are states", () => {
   const groups = casePhaseGroups("collaudo", null);
   assert.deepEqual(
     groups.map((g) => [g.phase, g.steps.map((s) => s.status)]),
@@ -513,9 +545,9 @@ test("every text of the overview and of the via page passes the copy guard for t
     ...Object.values(CASE_STATUS_HELP).flatMap((h) => [h.meaning, h.next]),
     ...Object.values(VIA_RULE_TEXT),
     ...Object.values(VIA_POLICY_TEXT),
-    ...VIA_EXCEPTIONS.flatMap((e) => [e.label, e.text]),
-    VIA_SIGNERS_TEXT,
-    VIA_AFTER_TEXT,
+    ...(["request_modules", "letterale", "unione"] as const).map(viaHowText),
+    VIA_THEN_TEXT,
+    VIA_RULE_TO_CONFIRM,
     VIA_EVIDENCE_HINT,
     ...Object.values(GATE_DECISION_LABEL),
     ...Object.values(REJECTED_BY_LABEL),
@@ -551,15 +583,43 @@ test("every text of the overview and of the via page passes the copy guard for t
       approved: null,
       now: NOW,
     }).note ?? "",
-    doneConditionsText(3, 2),
-    signatureCalloutText(2)!,
-    recentlyApprovedText({ status: "pronto_sviluppo", statusBeforeSuspension: null, catalog: { version: 1, frozenAt: "2026-10-12T08:00:00Z" }, now: NOW })!,
-    developerCatalogText({ pastVia: true, catalog: { version: 1, frozenAt: OCT3 }, now: NOW }),
+    ...(["bozza", "raccolta"] as const).flatMap((status) => [0, 1, 245].map((ok) => viaProposeWhen({ status, ready: false, required: ok === 1 ? 1 : 245, ok }) ?? "")),
+    viaSignaturesLine(viaSignatures([{ ruolo: "ls_lead", at: OCT3, metodo: "account" }], NOW)),
+    ...viaGroupLinks(viaProgress([{ moduleKey: "a", status: "bloccata", ok: false }, { moduleKey: "a", status: "chiesta", ok: false }], "cliente"), "cliente").map((g) => g.text),
+    topicOpenText(12),
+    overviewBlockerTitle("Accesso al sistema"),
+    nextMilestoneText({ title: "Via allo sviluppo", when: "12 dic", suffix: "(proposta)" }),
     reviewHistoryRow({ id: "r", decision: "approvato_con_riserva", proposedAt: OCT3, decidedAt: OCT3, catalogVersion: 2, signatures: [{ ruolo: "owner_cliente", at: OCT3, metodo: "link" }] }, NOW).title,
     catalogVersionRow({ version: 2, reason: "correzione", createdAt: OCT3, changeNote: null, diff: { added: 0, changed: 0, removed: 0 } }, NOW).title,
     exceptionsText({ waivers: { used: 2, cap: 24 }, should: { total: 80, ok: 30 } }),
     coverageText({ literalRequired: 484, coveredByQuestions: 300, ok: 10 }),
-    viaProgressHint("bozza")!,
   ];
   assert.deepEqual(findForbiddenIn(texts, "cliente"), []);
+});
+
+test("(rilascio 10, §3.5, F-036) the line instead of the dead «Proponi» button: when the via can be proposed", () => {
+  const at = (status: "bozza" | "raccolta" | "pronto_sviluppo" | "in_sviluppo" | "sospeso", over: Partial<{ ready: boolean; required: number; ok: number }> = {}) =>
+    viaProposeWhen({ status, ready: false, required: 245, ok: 186, ...over });
+  assert.equal(at("raccolta"), "Si propone quando sono tutte a posto.", "prototype S4");
+  assert.equal(at("raccolta", { required: 1, ok: 0 }), "Si propone quando è a posto.");
+  assert.equal(at("raccolta", { ok: 245 }), "Si propone quando le condizioni qui sotto sono a posto.", "the questions are done, other conditions are not");
+  assert.equal(at("bozza", { ok: 245, ready: true }), "Si propone dopo la prima richiesta a un referente.");
+  assert.equal(at("raccolta", { ok: 245, ready: true }), null, "ready: the lead has «Proponi», the others read the state");
+  for (const status of ["pronto_sviluppo", "in_sviluppo", "sospeso"] as const) assert.equal(at(status), null, status);
+});
+
+test("(rilascio 10, §3.5) the signatures in one row and «Come funziona» in the «?» of three lines at most", () => {
+  assert.equal(viaSignaturesLine(viaSignatures([], NOW)), "Lateral Space: da firmare · Cliente: da firmare");
+  assert.equal(
+    viaSignaturesLine(viaSignatures([{ ruolo: "ls_lead", at: OCT3, metodo: "account" }, { ruolo: "owner_cliente", at: "2026-10-08T09:00:00Z", metodo: "link" }], NOW)),
+    "Lateral Space: firmato il 3 ott · Cliente: firmato l'8 ott dal link",
+  );
+  for (const scope of ["request_modules", "letterale", "unione"] as const) {
+    const how = viaHowText(scope);
+    assert.ok(how.endsWith(VIA_THEN_TEXT), scope);
+    assert.match(how, /Lateral Space e il cliente/, scope);
+    assert.ok(how.split(/\s+/).length <= 50, `${scope}: ${how.split(/\s+/).length} words, three lines of the popover`);
+    assert.doesNotMatch(how, /qui sotto/, "no list below any more");
+  }
+  assert.match(viaHowText("request_modules"), /«Non si applica», «Partire senza risposta», «Soluzione provvisoria»/, "the three exceptions keep their names");
 });

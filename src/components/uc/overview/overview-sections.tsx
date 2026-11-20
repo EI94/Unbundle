@@ -1,212 +1,175 @@
 import Link from "next/link";
-import { CheckCircle2, ChevronRight, Lock, PenLine } from "lucide-react";
-import { PhaseStrip } from "@/components/uc/ui/phase-strip";
-import { ProgressToGate } from "@/components/uc/ui/progress-to-gate";
-import { SectionHeading } from "@/components/uc/ui/section-heading";
+import { ChevronRight, Lock } from "lucide-react";
+import { BigNumber } from "@/components/ui-10/big-number";
+import { Row, RowList } from "@/components/ui-10/row";
+import { Why } from "@/components/ui-10/why";
+import { NextStepIconView } from "@/components/use-cases/detail/next-step-box";
 import { StatusDot } from "@/components/uc/ui/status-dot";
-import type { CasePhase } from "@/lib/uc/views/labels";
 import { formatCountIt } from "@/lib/uc/views/format";
-import { MODULE_BAR_CELLS, MODULE_ROWS_VISIBLE, BLOCKERS_VISIBLE, type MilestoneView, type ModuleProgressRow, type OverviewBlockerRow, type ViaProgress } from "@/lib/uc/views/progress";
+import { BLOCKERS_VISIBLE, overviewBlockerTitle, topicOpenText, type MilestoneView, type ModuleProgressRow, type OverviewBlockerRow, type ViaConditionView } from "@/lib/uc/views/progress";
+import type { TurnRow } from "@/lib/uc/views/next-step";
+import type { NextStepIcon } from "@/lib/use-cases/guided";
 import type { SemaforoColor } from "@/lib/uc/vocab";
 import { cn } from "@/lib/utils";
 
 /**
- * Le sezioni della Panoramica (DESIGN §3.4): componenti server di sola
- * presentazione. I dati arrivano già pronti da `views/progress.ts` e da
- * `uc-overview.ts`; i link arrivano già completi, e mancano a chi non può
- * aprire la pagina di destinazione. Nessuna chiave, nessun pulsante pieno: il
- * solo pulsante pieno della pagina è quello della testata.
+ * Le sezioni della Panoramica (rilascio 10, docs/ui-10/PROPOSTA-10.md §3.5,
+ * prototipo S4): «Da fare», «Via allo sviluppo» (la vecchia `/via`), «Prossima
+ * tappa», «Per argomento» e le righe dei blocchi. Componenti server di sola
+ * presentazione: i testi arrivano già pronti da `views/progress.ts` e
+ * `views/next-step.ts`, i link già completi e solo a chi può aprire la pagina
+ * di destinazione. Nessun pulsante pieno qui: quello della pagina è il
+ * prossimo passo della testata, o il comando della sezione «Via allo sviluppo»
+ * (`GatePanel`) quando è lì. Le righe sono righe, non pulsanti.
  */
 
-const ROW = "group flex min-h-11 w-full min-w-0 items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none";
-const FRAME = "divide-y overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10";
-const DETAILS_SUMMARY =
-  "flex min-h-11 cursor-pointer list-none items-center gap-1 text-sm text-muted-foreground select-none hover:text-foreground sm:min-h-9 [&::-webkit-details-marker]:hidden";
+const H2 = "text-base font-semibold";
+const QUIET_LINK =
+  "inline-flex min-h-11 items-center gap-0.5 rounded-md text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-8";
 
-function Chevron() {
-  return <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden />;
-}
-
-/** La riga discreta in cima per una settimana dopo il via approvato. */
-export function ApprovedNote({ text }: { text: string }) {
+/** Il titolo di una sezione: un H2 vero, con qualcosa a destra (lo stato, il «?», il «⋯»). */
+export function SectionTitle({ id, title, children }: { id: string; title: string; children?: React.ReactNode }) {
   return (
-    <p role="status" className="flex items-start gap-2 text-sm">
-      <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-uc-verde" aria-hidden />
-      <span className="min-w-0">{text}</span>
-    </p>
+    <div className="flex min-h-11 min-w-0 items-center justify-between gap-3 sm:min-h-9">
+      <h2 id={id} className={H2}>
+        {title}
+      </h2>
+      {children ? <div className="flex min-w-0 shrink-0 items-center gap-2">{children}</div> : null}
+    </div>
   );
 }
 
-/** «Serve la tua firma · 2 decisioni aspettano te»: un link, il pulsante pieno resta in testata. */
-export function SignatureCallout({ text, href }: { text: string; href: string }) {
-  return (
-    <Link href={href} className={cn(FRAME, ROW, "divide-y-0")}>
-      <PenLine className="size-4 shrink-0 text-uc-giallo" aria-hidden />
-      <span className="min-w-0 flex-1 text-sm font-medium">{text}</span>
-      <Chevron />
-    </Link>
-  );
+// ── Da fare ───────────────────────────────────────────────────────────
+
+export interface TodoRow {
+  key: string;
+  label: string;
+  href: string;
+  icon: NextStepIcon;
+  /** Il passo apre un pannello della stessa pagina (`?conferma=`, `?esporta=`): la pagina non torna in cima. */
+  samePage?: boolean;
 }
 
-/** «Via allo sviluppo»: il numero grande, la barra e i gruppi aperti come link ai segmenti di Domande. */
-export function ViaSummary({
-  progress,
-  audience,
-  detailsHref,
-  questionsHref,
-  showGroups,
-  hint,
-  note,
-  emptyText,
-}: {
-  progress: ViaProgress;
-  audience: "ls" | "cliente";
-  /** `/via`, per chi la può aprire. */
-  detailsHref: string | null;
-  /** Domande del dossier: i conteggi diventano link a `?vista=<gruppo>`. */
-  questionsHref: string | null;
-  showGroups: boolean;
-  /** «Si muove quando arrivano le prime risposte.» */
-  hint: string | null;
-  /** La riga dello sviluppatore sul catalogo validato. */
-  note: string | null;
-  /** Senza domande indispensabili: la riga per Lateral Space (`noRequiredText`); per gli altri null e niente riga. */
-  emptyText: string | null;
-}) {
+/**
+ * «Da fare» (§3.5): al massimo 3 righe, i passi di chi guarda dopo il pulsante
+ * pieno, con l'icona e il verbo; poi la riga «Tocca a …» per una cosa che
+ * aspetta un'altra persona, senza freccia. Niente righe: niente sezione.
+ */
+export function OverviewTodo({ rows, turn }: { rows: readonly TodoRow[]; turn: TurnRow | null }) {
+  if (rows.length === 0 && !turn) return null;
   return (
-    <section aria-labelledby="uc-overview-via" className="min-w-0 space-y-3">
-      <SectionHeading id="uc-overview-via" title="Via allo sviluppo" action={detailsHref ? { label: "Dettagli", href: detailsHref } : undefined} />
-      {note && <p className="text-sm">{note}</p>}
-      {progress.required > 0 ? (
-        <ProgressToGate ok={progress.ok} required={progress.required} inReview={progress.inReview} size="lg" audience={audience} />
-      ) : (
-        emptyText && <p className="text-sm text-muted-foreground">{emptyText}</p>
-      )}
-      {showGroups && progress.open.length > 0 && (
-        <ul className="flex flex-wrap items-center gap-x-1 gap-y-1 text-sm text-muted-foreground" aria-label="Domande indispensabili non ancora a posto">
-          {progress.open.map((g, i) => (
-            <li key={g.group} className="flex items-center gap-1">
-              {i > 0 && <span aria-hidden>·</span>}
-              {questionsHref ? (
-                <Link href={`${questionsHref}?vista=${g.slug}`} className="inline-flex min-h-11 items-center tabular-nums underline-offset-4 hover:text-foreground hover:underline sm:min-h-0">
-                  {g.text}
-                </Link>
-              ) : (
-                <span className="tabular-nums">{g.text}</span>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-      {hint && <p className="text-sm text-muted-foreground">{hint}</p>}
+    <section aria-labelledby="uc-overview-todo" className="min-w-0 space-y-3">
+      <SectionTitle id="uc-overview-todo" title="Da fare" />
+      <RowList>
+        {rows.map((r) => (
+          <li key={r.key}>
+            <Row href={r.href} scroll={r.samePage ? false : undefined} leading={<NextStepIconView icon={r.icon} className="size-4 text-muted-foreground" />} title={r.label} />
+          </li>
+        ))}
+        {turn && (
+          <li>
+            <Row leading={<NextStepIconView icon="attesa" className="size-4 text-muted-foreground" />} title={turn.title} fact={turn.turn} />
+          </li>
+        )}
+      </RowList>
     </section>
   );
 }
 
-function MiniBar({ cells, label }: { cells: number; label: string }) {
+// ── Via allo sviluppo ─────────────────────────────────────────────────
+
+/** La barra del via: verde per «a posto», gialla al 40% per le risposte in verifica. */
+export function GateBar({ ok, required, inReview, audience }: { ok: number; required: number; inReview: number; audience: "ls" | "cliente" }) {
+  const total = Math.max(0, Math.round(required));
+  if (total <= 0) return null;
+  const clamp = (v: number, max: number) => Math.max(0, Math.min(max, Number.isFinite(v) ? Math.round(v) : 0));
+  const done = clamp(ok, total);
+  const review = clamp(inReview, total - done);
+  const text = `${formatCountIt(done)} di ${formatCountIt(total)} domande indispensabili a posto${review > 0 ? `, ${formatCountIt(review)} ${audience === "cliente" ? "in verifica" : "da verificare"}` : ""}`;
   return (
-    <span className="flex shrink-0 gap-0.5" role="img" aria-label={label}>
-      {Array.from({ length: MODULE_BAR_CELLS }, (_, i) => (
-        <span key={i} className={cn("h-2 w-2.5 rounded-[2px]", i < cells ? "bg-uc-verde" : "bg-muted")} />
-      ))}
+    <span
+      role="progressbar"
+      aria-label="Domande indispensabili a posto"
+      aria-valuemin={0}
+      aria-valuemax={total}
+      aria-valuenow={done}
+      aria-valuetext={text}
+      className="relative mt-3 flex h-1.5 w-full overflow-hidden rounded-full bg-muted"
+    >
+      <span className="h-full bg-uc-verde" style={{ width: `${(done / total) * 100}%` }} />
+      {review > 0 && <span className="h-full bg-uc-giallo/40" style={{ width: `${(review / total) * 100}%` }} />}
     </span>
   );
 }
 
-function ModuleRow({ row, href, showRole }: { row: ModuleProgressRow; href: string | null; showRole: boolean }) {
-  const count = `${formatCountIt(row.ok)} di ${formatCountIt(row.total)}`;
-  const body = (
-    <>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium break-words">{row.title}</span>
-        {showRole && row.roleLabel && <span className="block text-xs break-words text-muted-foreground sm:hidden">{row.roleLabel}</span>}
-      </span>
-      {showRole && row.roleLabel && <span className="hidden max-w-48 shrink-0 truncate text-xs text-muted-foreground sm:block">{row.roleLabel}</span>}
-      <MiniBar cells={row.cells} label={`${count} a posto`} />
-      <span className="w-16 shrink-0 text-right text-sm whitespace-nowrap tabular-nums">{count}</span>
-      {href ? <Chevron /> : <span className="size-4 shrink-0" aria-hidden />}
-    </>
+/** Il numero grande del via («186 di 245», «domande indispensabili a posto») con la barra; senza domande, la riga per Lateral Space. */
+export function ViaNumber({ ok, required, inReview, audience, emptyText }: { ok: number; required: number; inReview: number; audience: "ls" | "cliente"; emptyText: string | null }) {
+  if (required <= 0) return emptyText ? <p className="text-sm text-muted-foreground">{emptyText}</p> : null;
+  return (
+    <div className="min-w-0">
+      <BigNumber value={`${formatCountIt(Math.min(ok, required))} di ${formatCountIt(required)}`} label="domande indispensabili a posto" />
+      <GateBar ok={ok} required={required} inReview={inReview} audience={audience} />
+    </div>
   );
-  return <li>{href ? <Link href={href} className={ROW}>{body}</Link> : <div className={ROW}>{body}</div>}</li>;
 }
 
-/** «Per argomento»: le prime righe in vista, le altre in «Tutti gli argomenti (n) ▾». */
-export function ModuleProgressList({ rows, questionsHref, showRole }: { rows: readonly ModuleProgressRow[]; questionsHref: string | null; showRole: boolean }) {
+/** I gruppi del via come link a Domande: «Da fare 37 · Bloccate 13». */
+export function ViaGroupLinks({ links, questionsHref }: { links: readonly { group: string; slug: string; text: string }[]; questionsHref: string | null }) {
+  if (links.length === 0) return null;
+  return (
+    <ul className="flex flex-wrap items-center gap-x-1 text-sm text-muted-foreground" aria-label="Domande indispensabili non ancora a posto">
+      {links.map((g, i) => (
+        <li key={g.group} className="flex items-center gap-1">
+          {i > 0 && <span aria-hidden>·</span>}
+          {questionsHref ? (
+            <Link href={`${questionsHref}?vista=${g.slug}`} className="inline-flex min-h-11 items-center tabular-nums underline-offset-4 hover:text-foreground hover:underline sm:min-h-8">
+              {g.text}
+            </Link>
+          ) : (
+            <span className="tabular-nums">{g.text}</span>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * La riga dello stato del via, con il «?» di «Come funziona» (F-039): «Si
+ * propone quando sono tutte a posto», le firme in una riga, «Approvato il 3
+ * ott · catalogo v1».
+ */
+export function ViaStatusLine({ text, how }: { text: string; how: string }) {
+  return (
+    <div className="flex min-w-0 items-center gap-1 text-sm">
+      <p className="min-w-0 break-words">{text}</p>
+      <Why id="uc-via-come-funziona" text={how} label="Come funziona il via allo sviluppo" />
+    </div>
+  );
+}
+
+/** Le condizioni del via ancora aperte (senza quella delle domande, che è il numero), con il link dove si sistemano. */
+export function ViaConditions({ rows, hrefFor }: { rows: readonly ViaConditionView[]; hrefFor: (c: ViaConditionView) => string | null }) {
   if (rows.length === 0) return null;
-  const href = (r: ModuleProgressRow) => (questionsHref && r.key ? `${questionsHref}?argomento=${encodeURIComponent(r.key)}` : null);
-  const first = rows.slice(0, MODULE_ROWS_VISIBLE);
-  const rest = rows.slice(MODULE_ROWS_VISIBLE);
   return (
-    <section aria-labelledby="uc-overview-topics" className="min-w-0 space-y-3">
-      <SectionHeading id="uc-overview-topics" title="Per argomento" />
-      <ul className={FRAME}>
-        {first.map((r) => (
-          <ModuleRow key={r.key ?? "altre"} row={r} href={href(r)} showRole={showRole} />
-        ))}
-      </ul>
-      {rest.length > 0 && (
-        <details className="group/more min-w-0">
-          <summary className={DETAILS_SUMMARY}>
-            Tutti gli argomenti ({formatCountIt(rows.length)})
-            <ChevronRight className="size-3.5 transition-transform group-open/more:rotate-90" aria-hidden />
-          </summary>
-          <ul className={cn(FRAME, "mt-2")}>
-            {rest.map((r) => (
-              <ModuleRow key={r.key ?? "altre"} row={r} href={href(r)} showRole={showRole} />
-            ))}
-          </ul>
-        </details>
-      )}
-    </section>
+    <RowList label="Condizioni ancora aperte">
+      {rows.map((c) => (
+        <li key={c.key}>
+          <Row title={c.label} fact={c.detail} href={hrefFor(c) ?? undefined} />
+        </li>
+      ))}
+    </RowList>
   );
 }
 
-function BlockerRow({ row, href }: { row: OverviewBlockerRow; href: string }) {
-  return (
-    <li>
-      <Link href={href} scroll={false} className={ROW}>
-        <Lock className="size-4 shrink-0 text-uc-lucchetto" aria-hidden />
-        <span className="min-w-0 flex-1 sm:flex sm:items-baseline sm:gap-3">
-          <span className="block shrink-0 text-sm font-medium sm:w-48 sm:truncate">{row.label}</span>
-          <span className="block text-sm text-muted-foreground">{row.line}</span>
-        </span>
-        <Chevron />
-      </Link>
-    </li>
-  );
+/** Lo stato del via accanto al titolo della sezione, quando non è «Non ancora». */
+export function ViaState({ tone, label }: { tone: SemaforoColor; label: string }) {
+  return <StatusDot tone={tone} label={label} size="md" />;
 }
 
-/** «Blocchi» (solo Lateral Space): al massimo due in vista, gli altri in «Altri n ▾». Ogni riga apre il suo pannello. */
-export function BlockersSummary({ rows }: { rows: readonly (OverviewBlockerRow & { href: string })[] }) {
-  if (rows.length === 0) return null;
-  const first = rows.slice(0, BLOCKERS_VISIBLE);
-  const rest = rows.slice(BLOCKERS_VISIBLE);
-  return (
-    <section id="blocchi" aria-labelledby="uc-overview-blockers" className="min-w-0 scroll-mt-40 space-y-3">
-      <SectionHeading id="uc-overview-blockers" title="Blocchi" />
-      <ul className={FRAME}>
-        {first.map((r) => (
-          <BlockerRow key={r.id} row={r} href={r.href} />
-        ))}
-      </ul>
-      {rest.length > 0 && (
-        <details className="group/more min-w-0">
-          <summary className={DETAILS_SUMMARY}>
-            {rest.length === 1 ? "Altro 1" : `Altri ${formatCountIt(rest.length)}`}
-            <ChevronRight className="size-3.5 transition-transform group-open/more:rotate-90" aria-hidden />
-          </summary>
-          <ul className={cn(FRAME, "mt-2")}>
-            {rest.map((r) => (
-              <BlockerRow key={r.id} row={r} href={r.href} />
-            ))}
-          </ul>
-        </details>
-      )}
-    </section>
-  );
-}
+// ── Prossima tappa ────────────────────────────────────────────────────
 
-/** Una tappa: titolo, quando e i suffissi grigi («(proposta)», «da confermare»). */
+/** Una tappa nel pannello «Tutte le tappe»: titolo, quando e i suffissi grigi («(proposta)», «da confermare»). */
 export function MilestoneLine({ m }: { m: MilestoneView }) {
   return (
     <span className="flex min-w-0 flex-col gap-0.5 text-sm sm:flex-row sm:items-baseline sm:gap-3">
@@ -221,35 +184,15 @@ export function MilestoneLine({ m }: { m: MilestoneView }) {
   );
 }
 
-/** «Tappe»: la striscia delle 5 fasi, le prossime due tappe e «Tutte le tappe ›». */
-export function MilestonesSummary({
-  strip,
-  state,
-  next,
-  allHref,
-}: {
-  strip: { phase: CasePhase; complete: boolean; paused: boolean } | null;
-  /** «In pausa», «Chiuso»: uno stato, non una fase. */
-  state: { tone: SemaforoColor; label: string } | null;
-  next: readonly MilestoneView[];
-  allHref: string | null;
-}) {
+/** «Prossima tappa»: una riga e «Tutte le tappe ›» (il pannello `?apri=tappe`). Senza tappa da fare, «Tappe» e il link. */
+export function NextMilestone({ text, allHref }: { text: string | null; allHref: string | null }) {
+  if (!text && !allHref) return null;
   return (
-    <section aria-labelledby="uc-overview-milestones" className="min-w-0 space-y-3">
-      <SectionHeading id="uc-overview-milestones" title="Tappe" />
-      {state && <StatusDot tone={state.tone} label={state.label} size="md" />}
-      {strip && <PhaseStrip current={strip.phase} complete={strip.complete} paused={strip.paused} />}
-      {next.length > 0 && (
-        <ul className="space-y-2">
-          {next.map((m) => (
-            <li key={m.key}>
-              <MilestoneLine m={m} />
-            </li>
-          ))}
-        </ul>
-      )}
+    <section aria-labelledby="uc-overview-milestone" className="min-w-0 space-y-2">
+      <SectionTitle id="uc-overview-milestone" title={text ? "Prossima tappa" : "Tappe"} />
+      {text && <p className="text-sm break-words tabular-nums">{text}</p>}
       {allHref && (
-        <Link href={allHref} scroll={false} className="inline-flex min-h-11 items-center gap-0.5 text-sm text-muted-foreground hover:text-foreground sm:min-h-0">
+        <Link href={allHref} scroll={false} className={QUIET_LINK}>
           Tutte le tappe
           <ChevronRight className="size-3.5" aria-hidden />
         </Link>
@@ -258,18 +201,61 @@ export function MilestonesSummary({
   );
 }
 
-/** «Il caso»: «In breve» su 4 righe e «Leggi la descrizione ›». */
-export function CaseSummary({ inBreve, descriptionHref }: { inBreve: string | null; descriptionHref: string | null }) {
-  if (!inBreve && !descriptionHref) return null;
+// ── Per argomento ─────────────────────────────────────────────────────
+
+/**
+ * «Per argomento» (§3.5): i 3 argomenti con più domande indispensabili
+ * aperte, ognuno verso Domande filtrata, e «Tutti gli argomenti (n) ›».
+ */
+export function TopicList({ rows, hrefFor, allHref, total }: { rows: readonly ModuleProgressRow[]; hrefFor: (r: ModuleProgressRow) => string | null; allHref: string | null; total: number }) {
+  if (rows.length === 0) return null;
   return (
-    <section aria-labelledby="uc-overview-case" className="min-w-0 space-y-3">
-      <SectionHeading id="uc-overview-case" title="Il caso" />
-      {inBreve && <p className="line-clamp-4 text-sm break-words whitespace-pre-line">{inBreve}</p>}
-      {descriptionHref && (
-        <Link href={descriptionHref} className="inline-flex min-h-11 items-center gap-0.5 text-sm text-muted-foreground hover:text-foreground sm:min-h-0">
-          Leggi la descrizione
+    <section aria-labelledby="uc-overview-topics" className="min-w-0 space-y-3">
+      <SectionTitle id="uc-overview-topics" title="Per argomento" />
+      <RowList>
+        {rows.map((r) => (
+          <li key={r.key ?? "altre"}>
+            <Row title={r.title} fact={topicOpenText(r.missing)} href={hrefFor(r) ?? undefined} />
+          </li>
+        ))}
+      </RowList>
+      {allHref && total > rows.length && (
+        <Link href={allHref} className={QUIET_LINK}>
+          Tutti gli argomenti ({formatCountIt(total)})
           <ChevronRight className="size-3.5" aria-hidden />
         </Link>
+      )}
+    </section>
+  );
+}
+
+// ── Blocchi ───────────────────────────────────────────────────────────
+
+/**
+ * Le righe dei blocchi (solo Lateral Space, ancora `#blocchi`): «Blocco:
+ * Accesso al sistema ›», che apre il pannello del blocco. Al massimo 3, poi
+ * «Vedi tutti (n)».
+ */
+export function BlockerList({ rows }: { rows: readonly (OverviewBlockerRow & { href: string })[] }) {
+  if (rows.length === 0) return null;
+  const first = rows.slice(0, BLOCKERS_VISIBLE);
+  const rest = rows.slice(BLOCKERS_VISIBLE);
+  const row = (r: OverviewBlockerRow & { href: string }) => (
+    <li key={r.id}>
+      <Row href={r.href} scroll={false} leading={<Lock className="size-4 text-uc-lucchetto" aria-hidden />} title={overviewBlockerTitle(r.label)} />
+    </li>
+  );
+  return (
+    <section id="blocchi" aria-label="Blocchi" className="min-w-0 scroll-mt-40 space-y-2">
+      <RowList>{first.map(row)}</RowList>
+      {rest.length > 0 && (
+        <details className="group/more min-w-0">
+          <summary className={cn(QUIET_LINK, "cursor-pointer list-none select-none [&::-webkit-details-marker]:hidden")}>
+            Vedi tutti ({formatCountIt(rows.length)})
+            <ChevronRight className="size-3.5 transition-transform group-open/more:rotate-90" aria-hidden />
+          </summary>
+          <RowList className="mt-2">{rest.map(row)}</RowList>
+        </details>
       )}
     </section>
   );

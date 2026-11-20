@@ -10,7 +10,7 @@ const NONE = "__nessuno";
  * Il file di prova (email, verbale, approvazione scritta) scelto fra i file
  * utilizzabili del caso, con il `Select` di shadcn (DESIGN §5.4: nel dashboard
  * niente `select` nativi). Senza file, il suggerimento di caricarlo prima in
- * Domande › Documenti.
+ * Domande › File (rilascio 10: il pannello dei file di Domande).
  */
 export function EvidenceFileSelect({
   id,

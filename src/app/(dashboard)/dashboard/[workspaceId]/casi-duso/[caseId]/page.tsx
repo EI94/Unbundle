@@ -1,57 +1,101 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { Check, ChevronRight } from "lucide-react";
+import { AlertTriangle, Check, ChevronRight } from "lucide-react";
 import { PageContainer } from "@/components/dashboard/page-container";
+import { Fold } from "@/components/ui-10/fold";
 import { casePath, itemPath } from "@/components/uc/catalog/paths";
+import { CLAUDE_PANEL_ANCHOR, ClaudeDevPanel } from "@/components/uc/mcp/claude-dev-panel";
 import { BlockerResolveForm } from "@/components/uc/overview/blocker-resolve-form";
-import { ApprovedNote, BlockersSummary, CaseSummary, MilestoneLine, MilestonesSummary, ModuleProgressList, SignatureCallout, ViaSummary } from "@/components/uc/overview/overview-sections";
-import { loadCaseHead } from "@/components/uc/shell/case-data";
+import {
+  BlockerList,
+  MilestoneLine,
+  NextMilestone,
+  OverviewTodo,
+  SectionTitle,
+  TopicList,
+  ViaConditions,
+  ViaGroupLinks,
+  ViaNumber,
+  ViaState,
+  ViaStatusLine,
+  type TodoRow,
+} from "@/components/uc/overview/overview-sections";
+import { GatePanel, ViaWithdraw } from "@/components/uc/progress/gate-panel";
+import { CasePhases, CoverageCard, ViaHistory } from "@/components/uc/progress/progress-sections";
+import { loadCaseHead, loadFilesToCheck, ucEmailConfigured } from "@/components/uc/shell/case-data";
 import { DetailSheet } from "@/components/uc/ui/detail-sheet";
-import { NextStepList } from "@/components/uc/ui/next-step-list";
-import { SectionHeading } from "@/components/uc/ui/section-heading";
 import { TechDetails } from "@/components/uc/ui/tech-details";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
-import { loadOverview } from "@/lib/db/queries/uc-overview";
-import { CASE_STATUS_LABEL } from "@/lib/uc/case-state";
+import { listCaseReadTokens } from "@/lib/db/queries/uc-mcp";
+import { loadOverview, loadVia } from "@/lib/db/queries/uc-overview";
 import { exportChoices } from "@/lib/uc/export/request";
-import { CASE_STATUS_TONE, canOpenShellPage, landingSegment } from "@/lib/uc/views/case-shell";
+import { VIA_SECTION_ID, canOpenShellPage, landingSegment, stepHasPageCommand, stepHiddenOn } from "@/lib/uc/views/case-shell";
 import { readableText } from "@/lib/uc/views/description";
 import { formatCountIt } from "@/lib/uc/views/format";
-import { caseNextSteps, myNextSteps, whoseTurn, type NextStep } from "@/lib/uc/views/next-step";
-import { canOpenPage } from "@/lib/uc/views/page-access";
+import { FILES_HREF, NEXT_STEP_ICON, caseNextSteps, nextStepFor, overviewTodo, resolveStepHref, turnRow, type NextStep } from "@/lib/uc/views/next-step";
+import { canOpenPage, seesValidatedOnly } from "@/lib/uc/views/page-access";
 import {
   BLOCKER_PANEL_ITEMS,
+  OVERVIEW_SIDE_SECTIONS,
+  VIA_EVIDENCE_MISSING,
+  VIA_POLICY_TEXT,
+  VIA_RULE_TO_CONFIRM,
   blockerPanelParam,
   blockerResolver,
-  developerCatalogText,
+  casePhaseGroups,
+  catalogVersionRow,
+  coverageText,
+  exceptionsText,
+  isPastVia,
+  latestApproval,
   milestoneView,
   moduleProgress,
+  nextMilestoneText,
   nextMilestones,
   noRequiredText,
   overviewBlockerRow,
   overviewBlockers,
   overviewLayout,
   parseOverviewPanel,
-  phaseStripOf,
-  recentlyApprovedText,
-  signatureCalloutText,
+  reviewHistoryRow,
+  topTopics,
+  viaAction,
+  viaConditions,
   viaEverApproved,
+  viaGroupLinks,
+  viaHowText,
+  viaOpenConditions,
   viaProgress,
-  viaProgressHint,
+  viaProposeWhen,
+  viaShownSignatures,
+  viaSignatures,
+  viaSignaturesLine,
+  viaState,
+  viaStateView,
   type OverviewSection,
+  type ViaConditionView,
 } from "@/lib/uc/views/progress";
+import { isLsViewer } from "@/lib/uc/views/status-groups";
 
 /**
- * Panoramica del dossier (DESIGN §3.4): cosa fare adesso, il via allo
- * sviluppo, le domande indispensabili per argomento, i blocchi, le tappe e il
- * caso in breve, in una colonna `max-w-3xl`. Le sezioni e il loro ordine
- * cambiano per ruolo (`overviewLayout`); il solo pulsante pieno è quello della
- * testata, le righe di «Da fare adesso» sono link.
+ * Panoramica della realizzazione (rilascio 10, docs/ui-10/PROPOSTA-10.md
+ * §3.5, prototipo S4): tre blocchi più gli argomenti. A sinistra «Da fare»
+ * (al massimo 3 righe, mai il pulsante pieno di nuovo) e «Via allo sviluppo»
+ * (il numero grande, i gruppi come link, le condizioni ancora aperte, le firme
+ * in una riga, i comandi del via, «Storico» e «Diagnostica» chiusi, «Come
+ * funziona» nel «?»: assorbe la vecchia `/via`, all'ancora `#via`); a destra
+ * «Prossima tappa», «Per argomento» e i blocchi. Al telefono una colonna.
+ *
+ * Un solo pulsante pieno: quello della testata, oppure il comando della
+ * sezione «Via allo sviluppo» quando il passo si fa lì (la testata allora lo
+ * nasconde, `stepHasPageCommand`).
  *
  * Letture: la testata (`loadCaseHead`, già fatta dal layout nella stessa
- * richiesta) e un solo giro per la pagina (`loadOverview`), anche con il
- * pannello di un blocco aperto (`?apri=blocco:<id>`) o di tutte le tappe
- * (`?apri=tappe`).
+ * richiesta), la Panoramica (`loadOverview`, anche con il pannello di un blocco
+ * `?apri=blocco:<id>` o di tutte le tappe `?apri=tappe`) e il via
+ * (`loadVia`: prontezza dal vivo, proposte, versioni) in parallelo; per
+ * Lateral Space dopo il via gli accessi di Claude; per chi controlla i file il
+ * loro conteggio (lo stesso della testata).
  *
  * Chi non vede la Panoramica (l'approvatore privacy) va alla sua pagina d'arrivo.
  */
@@ -76,101 +120,201 @@ export default async function OverviewPage({
   const layout = overviewLayout(roles);
   const c = header.case;
   const base = casePath(workspaceId, caseId);
+  const ls = isLsViewer(roles);
+  const isLead = roles.includes("ls_lead");
+  const isOwner = roles.includes("owner_cliente");
   // In pausa e a caso chiuso i controlli di scrittura non ci sono; in sola lettura nemmeno.
   const writable = !caseAccess.readOnly && c.status !== "chiuso";
   const signable = writable && c.status !== "sospeso";
-  const isLead = roles.includes("ls_lead");
+  const pastVia = isPastVia(c.status, c.statusBeforeSuspension);
   const panel = parseOverviewPanel((await searchParams).apri);
   const blockerPanel = panel?.kind === "blocco" && layout.sections.includes("blocchi") ? panel.blockerId : null;
 
-  const data = await loadOverview(executor, {
-    workspaceId,
-    caseId,
-    now,
-    blockerId: blockerPanel,
-    blockerQuestions: BLOCKER_PANEL_ITEMS,
-    withFiles: blockerPanel !== null && isLead && signable,
-    audience: layout.audience,
-  });
-  if (!data) notFound();
+  const [data, via, tokens, filesToCheck] = await Promise.all([
+    loadOverview(executor, {
+      workspaceId,
+      caseId,
+      now,
+      blockerId: blockerPanel,
+      blockerQuestions: BLOCKER_PANEL_ITEMS,
+      withFiles: blockerPanel !== null && isLead && signable,
+      audience: layout.audience,
+    }),
+    loadVia(executor, { workspaceId, caseId, now, withFiles: signable && (isLead || isOwner) }),
+    ls && pastVia ? listCaseReadTokens(executor, workspaceId, caseId) : Promise.resolve([]),
+    loadFilesToCheck(workspaceId, caseId, session.user.id, access.role),
+  ]);
+  if (!data || !via) notFound();
 
   // I testi del caso e dello schema come li legge chi guarda: al cliente niente articoli, sigle, chiavi né codici (DESIGN §6.2).
   const text = (t: string) => readableText(t, layout.audience);
   const textOrNull = (t: string | null) => (t ? text(t) || null : null);
-
-  // Il prossimo passo: le stesse regole della testata (un passo si mostra solo se chi guarda lo può fare).
-  const exportable = exportChoices(roles, c.catalogVersion);
-  const usable = (s: NextStep) => s.owner !== "me" || (s.id === "scarica_catalogo" ? exportable.validated || exportable.draft : writable);
-  const steps = caseNextSteps(header.nextStep, { roles }).filter(usable);
-  const turn = whoseTurn(steps, header.nextStep);
-  const signatures = signable ? header.signatures.length : 0;
-  const listSteps = layout.kind === "cliente" && signatures > 0 ? steps.filter((s) => s.id !== "firma") : steps;
-
-  const progress = viaProgress(data.required, layout.audience);
   const questionsHref = canOpenPage("voci", roles) ? casePath(workspaceId, caseId, "domande") : null;
-  const viaHref = canOpenShellPage("via", roles) ? casePath(workspaceId, caseId, "via") : null;
-  // Il catalogo validato resta anche a caso chiuso dopo il via: la riga dello sviluppatore lo dice.
-  const catalogValidated = viaEverApproved({ status: c.status, statusBeforeSuspension: c.statusBeforeSuspension, catalogVersion: c.catalogVersion });
-  const blockers = layout.sections.includes("blocchi") ? overviewBlockers(data.blockers).map((b) => ({ ...b, href: `${base}?apri=${blockerPanelParam(b.id)}` })) : [];
+
+  // ── Il prossimo passo: le stesse regole della testata (un passo si mostra solo se chi guarda lo può fare). ──
+  const exportable = exportChoices(roles, c.catalogVersion);
+  const canExport = exportable.validated || exportable.draft;
+  const usable = (s: NextStep) => s.owner !== "me" || (s.id === "scarica_catalogo" ? canExport : writable);
+  const stepInput = { ...header.nextStep, filesToCheck };
+  const allSteps = caseNextSteps(stepInput, { roles });
+  const first = nextStepFor(allSteps);
+  const primary = first && usable(first) ? first : null;
+  const steps = allSteps.filter(usable);
+  // Il pulsante della testata si vede qui? Se no, il comando della sezione «Via allo sviluppo» è il pulsante pieno.
+  const headerPrimary = primary
+    ? !stepHiddenOn({ href: resolveStepHref(base, primary.href), caseBase: base, panel: Boolean(primary.transition) || primary.id === "scarica_catalogo", pageCommand: stepHasPageCommand(primary.id) }, base)
+    : false;
+  const todo = overviewTodo(steps, primary, turnRow(steps, stepInput, { roles }));
+  const todoRows: TodoRow[] = todo.steps.map((s) => ({ key: s.id, label: s.label, href: resolveStepHref(base, s.href), icon: NEXT_STEP_ICON[s.id], samePage: s.href.startsWith("?") }));
+
+  // ── Via allo sviluppo ──
+  const g1 = via.g1;
+  const progress = viaProgress(data.required, layout.audience);
+  const contractCase = via.core.contractRefs.length > 0;
+  const approved = latestApproval(via.reviews);
+  // Da riconfermare come nella prontezza: oltre il via, ma il via non è più pronto (calcolo dal vivo).
+  const reconfirm = pastVia && !g1.ready;
+  const everApproved = approved !== null || viaEverApproved({ status: c.status, statusBeforeSuspension: c.statusBeforeSuspension, catalogVersion: c.catalogVersion });
+  const state = viaState({ status: c.status, statusBeforeSuspension: c.statusBeforeSuspension, gateReconfirm: reconfirm, ready: g1.ready, pending: via.pending !== null, approved: everApproved });
+  const stateView = viaStateView(state, approved?.at ?? null, now);
+  // Caso a contratto con la proposta aperta senza la prova scritta: l'approvazione la aspetta.
+  const evidenceMissing = contractCase && via.pending !== null && !via.pending.writtenEvidence;
+  const action = viaAction({
+    roles,
+    signable,
+    status: c.status,
+    statusBeforeSuspension: c.statusBeforeSuspension,
+    ready: g1.ready,
+    required: g1.required,
+    ok: g1.ok,
+    pending: via.pending,
+    evidenceMissing,
+    reconfirm,
+    // Il link per firmare parte solo per email: senza servizio il responsabile del cliente firma dal suo account.
+    canSendLink: isLead && via.core.designated.owner !== null && ucEmailConfigured(),
+    approved,
+    now,
+  });
+  // La riga dello stato: quando si propone, le firme della proposta aperta, oppure «Approvato il 3 ott · catalogo v1».
+  const statusLine =
+    state === "in_attesa_firme"
+      ? viaSignaturesLine(viaSignatures(viaShownSignatures(via.pending, via.reviews), now))
+      : state === "approvato" || state === "da_riconfermare"
+        ? action.kind === "nessuna"
+          ? action.note
+          : null
+        : c.status === "chiuso"
+          ? null
+          : (viaProposeWhen({ status: c.status, ready: g1.ready, required: g1.required, ok: g1.ok }) ?? (g1.ready ? "Sono tutte a posto." : null));
+  const conditions = state === "approvato" || c.status === "chiuso" ? [] : viaOpenConditions(viaConditions(g1.conditions, { required: g1.required, ok: g1.ok, waivers: g1.waivers, audience: layout.audience }).open);
+  const conditionHref = (cond: ViaConditionView): string | null => {
+    if (!cond.segment) return null;
+    const page = cond.segment.startsWith("domande") ? "voci" : cond.segment === "soluzione/regole" ? "regole" : null;
+    if (page && !canOpenPage(page, roles)) return null;
+    // (Rilascio 10, §3.5) I file stanno nel pannello «File» di Domande.
+    return cond.segment === "domande/documenti" ? resolveStepHref(base, FILES_HREF) : casePath(workspaceId, caseId, cond.segment);
+  };
+  // Il via si firma nel pannello delle firme (`/firme`). Se la testata mostra già «Firma il via allo sviluppo», la sezione non lo ripete.
+  const headerSignsVia = headerPrimary && primary?.id === "firma" && header.nextStep.mySignaturesPending.length === 1 && header.nextStep.mySignaturesPending[0].kind === "via";
+  const signHref = headerSignsVia ? null : casePath(workspaceId, caseId, "firme");
+  const history = via.reviews.map((r) => reviewHistoryRow(r, now));
+  const versions = via.versions.map((v) => ({ key: String(v.version), ...catalogVersionRow(v, now) }));
+  // Le risposte da verificare stanno già nel pulsante pieno «Verifica N risposte»: il gruppo non si ripete.
+  const groupLinks =
+    layout.kind === "ls" || layout.kind === "cliente" ? viaGroupLinks(progress, layout.audience, { skip: primary?.id === "verifica" && headerPrimary ? ["da_verificare"] : [] }) : [];
+
+  // ── Tappe, argomenti, blocchi ──
   const milestones = data.milestones.map((m) => milestoneView({ ...m, title: text(m.title), plannedLabel: textOrNull(m.plannedLabel) }, now));
   const phases = data.phases.map((p) => Object.fromEntries(Object.entries(p).map(([k, v]) => [k, text(v)]).filter(([, v]) => v !== "")) as typeof p);
-  const strip = phaseStripOf(c.status, c.statusBeforeSuspension);
-  const approvedNote = recentlyApprovedText({ status: c.status, statusBeforeSuspension: c.statusBeforeSuspension, catalog: header.nextStep.catalog, now });
-  const callout = layout.sections.includes("firma") ? signatureCalloutText(signatures) : null;
+  const nextMilestone = nextMilestones(milestones, 1)[0] ?? null;
+  const topics = moduleProgress(data.required, data.modules).map((r) => ({ ...r, title: text(r.title) || r.title }));
+  const blockers = layout.sections.includes("blocchi") ? overviewBlockers(data.blockers).map((b) => ({ ...b, href: `${base}?apri=${blockerPanelParam(b.id)}` })) : [];
 
   const section = (key: OverviewSection) => {
     switch (key) {
-      case "firma":
-        return callout ? <SignatureCallout key={key} text={callout} href={casePath(workspaceId, caseId, "firme")} /> : null;
-      case "fare": {
-        const mine = myNextSteps(listSteps).length > 0;
-        if (!mine && !turn) return null;
-        return (
-          <section key={key} aria-labelledby={mine ? "uc-overview-next" : undefined} className="min-w-0 space-y-3">
-            {mine && <SectionHeading id="uc-overview-next" title="Da fare adesso" />}
-            <NextStepList steps={listSteps} whoseTurn={turn} base={base} />
-          </section>
-        );
-      }
+      case "fare":
+        return <OverviewTodo key={key} rows={todoRows} turn={todo.turn} />;
       case "via":
         return (
-          <ViaSummary
+          <section key={key} id={VIA_SECTION_ID} aria-labelledby="uc-overview-via" className="min-w-0 scroll-mt-40 space-y-3">
+            <SectionTitle id="uc-overview-via" title="Via allo sviluppo">
+              {state !== "non_ancora" && <ViaState tone={stateView.tone} label={stateView.label} />}
+              {isLead && signable && via.pending && <ViaWithdraw workspaceId={workspaceId} caseId={caseId} reviewId={via.pending.id} />}
+            </SectionTitle>
+            <ViaNumber ok={progress.ok} required={progress.required} inReview={progress.inReview} audience={layout.audience} emptyText={noRequiredText(layout.audience)} />
+            <ViaGroupLinks links={groupLinks} questionsHref={questionsHref} />
+            {statusLine && <ViaStatusLine text={statusLine} how={viaHowText(via.core.policy.scope)} />}
+            {evidenceMissing && <p className="text-sm text-muted-foreground">{VIA_EVIDENCE_MISSING}</p>}
+            {ls && contractCase && !via.core.policy.confirmed && (
+              <p role="status" className="flex items-start gap-2 rounded-lg bg-uc-giallo-bg px-3 py-2 text-sm">
+                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-uc-giallo" aria-hidden />
+                <span className="min-w-0">{VIA_RULE_TO_CONFIRM}</span>
+              </p>
+            )}
+            <ViaConditions rows={conditions} hrefFor={conditionHref} />
+            <GatePanel workspaceId={workspaceId} caseId={caseId} action={action} filled={!headerPrimary} reviewId={via.pending?.id ?? null} contractCase={contractCase} signHref={signHref} files={via.files} />
+            {(history.length > 0 || versions.length > 0 || ls) && (
+              <div className="pt-1">
+                {(history.length > 0 || versions.length > 0) && (
+                  <Fold id="storico" title="Storico">
+                    <ViaHistory reviews={history} versions={versions} />
+                  </Fold>
+                )}
+                {ls && (
+                  <Fold id="diagnostica" title="Diagnostica">
+                    <CoverageCard
+                      text={coverageText(via.coverage)}
+                      policy={VIA_POLICY_TEXT[via.core.policy.scope]}
+                      exceptions={exceptionsText({ waivers: g1.waivers, should: g1.should })}
+                      // Le chiavi degli elementi non coperti sono del catalogo intero: lo sviluppatore, che vede solo le voci validate, non le legge.
+                      uncovered={canOpenPage("voci", roles) && !seesValidatedOnly(roles) ? via.coverage.uncovered : []}
+                    />
+                  </Fold>
+                )}
+              </div>
+            )}
+            {ls && pastVia && (
+              // (Rilascio 10, §3.5) «Sviluppo con Claude» resta qui, dov'era in `/via`, finché l'ondata 5b non lo porta in Costruzione.
+              <div id={CLAUDE_PANEL_ANCHOR} className="min-w-0 scroll-mt-40">
+                <ClaudeDevPanel
+                  workspaceId={workspaceId}
+                  caseId={caseId}
+                  caseCode={c.code}
+                  canManage={isLead && !caseAccess.readOnly}
+                  catalogVersion={c.catalogVersion}
+                  caseClosed={c.status === "chiuso"}
+                  tokens={tokens}
+                />
+              </div>
+            )}
+          </section>
+        );
+      case "tappe":
+        return (
+          <NextMilestone
             key={key}
-            progress={progress}
-            audience={layout.audience}
-            detailsHref={viaHref}
-            questionsHref={questionsHref}
-            showGroups={layout.kind === "ls" || layout.kind === "cliente"}
-            hint={layout.kind === "sviluppatore" ? null : viaProgressHint(c.status)}
-            note={layout.kind === "sviluppatore" ? developerCatalogText({ pastVia: catalogValidated, catalog: header.nextStep.catalog, now }) : null}
-            emptyText={noRequiredText(layout.audience)}
+            text={nextMilestone ? nextMilestoneText(nextMilestone) : null}
+            // Il pannello ha sempre il percorso della realizzazione, con i suoi stati.
+            allHref={`${base}?apri=tappe`}
           />
         );
       case "argomenti":
         return (
-          <ModuleProgressList
+          <TopicList
             key={key}
-            rows={moduleProgress(data.required, data.modules, { roleLabels: data.roleLabels }).map((r) => ({ ...r, title: text(r.title) || r.title }))}
-            questionsHref={questionsHref}
-            showRole={layout.audience === "ls"}
+            rows={topTopics(topics)}
+            hrefFor={(r) => (questionsHref && r.key ? `${questionsHref}?argomento=${encodeURIComponent(r.key)}` : null)}
+            allHref={questionsHref}
+            total={topics.length}
           />
         );
       case "blocchi":
-        return <BlockersSummary key={key} rows={blockers} />;
-      case "tappe":
-        return (
-          <MilestonesSummary
-            key={key}
-            strip={strip}
-            state={c.status === "sospeso" || c.status === "chiuso" ? { tone: CASE_STATUS_TONE[c.status], label: CASE_STATUS_LABEL[c.status] } : null}
-            next={nextMilestones(milestones)}
-            allHref={milestones.length > 0 || phases.length > 0 ? `${base}?apri=tappe` : null}
-          />
-        );
-      case "caso":
-        return <CaseSummary key={key} inBreve={textOrNull(data.inBreve)} descriptionHref={canOpenShellPage("descrizione", roles) ? casePath(workspaceId, caseId, "soluzione") : null} />;
+        return <BlockerList key={key} rows={blockers} />;
     }
   };
+
+  const main = layout.sections.filter((s) => !OVERVIEW_SIDE_SECTIONS.includes(s));
+  const side = layout.sections.filter((s) => OVERVIEW_SIDE_SECTIONS.includes(s));
 
   // Il pannello si apre solo per un blocco attivo, mai per quello dei dati sanitari.
   const openBlocker = data.blocker && data.blocker.status === "attivo" && data.blocker.key !== "sanitario" ? data.blocker : null;
@@ -178,9 +322,9 @@ export default async function OverviewPage({
 
   return (
     <PageContainer>
-      <div className="max-w-3xl space-y-10">
-        {approvedNote && <ApprovedNote text={approvedNote} />}
-        {layout.sections.map(section)}
+      <div className="grid min-w-0 gap-x-8 gap-y-10 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] lg:items-start">
+        <div className="min-w-0 space-y-10">{main.map(section)}</div>
+        {side.length > 0 && <div className="min-w-0 space-y-10">{side.map(section)}</div>}
       </div>
 
       {openBlocker && openBlockerRow && (
@@ -246,12 +390,12 @@ export default async function OverviewPage({
           )}
           {phases.length > 0 && (
             <div className="space-y-2 border-t pt-4">
-              <h3 className="text-sm font-semibold">Fasi</h3>
+              <h3 className="text-sm font-semibold">Il piano</h3>
               <ol className="space-y-3">
                 {phases.map((p, i) => (
                   <li key={i} className="min-w-0 text-sm">
                     <p className="font-medium">
-                      {p.fase ?? `Fase ${i + 1}`}
+                      {p.fase ?? `Tappa ${i + 1}`}
                       {p.quando && <span className="font-normal text-muted-foreground"> · {p.quando}</span>}
                     </p>
                     {p.cosa && <p className="break-words whitespace-pre-line">{p.cosa}</p>}
@@ -261,6 +405,10 @@ export default async function OverviewPage({
               </ol>
             </div>
           )}
+          <div className="space-y-2 border-t pt-4">
+            <h3 className="text-sm font-semibold">Il percorso</h3>
+            <CasePhases phases={casePhaseGroups(c.status, c.statusBeforeSuspension)} />
+          </div>
         </DetailSheet>
       )}
     </PageContainer>
