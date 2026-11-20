@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
-import { PublicShell as SharedPublicShell } from "@/components/public";
+import { PublicShell as SharedPublicShell, PublicStateCard } from "@/components/public";
 import { ErrorCard } from "./error-card";
 import { MessageCard } from "./message-card";
-import { stateCardText, type StateCardKind } from "./public-view-render";
+import type { StateCardKind } from "./public-view-render";
 
 export { MessageCard };
 
@@ -32,8 +32,7 @@ export function PublicShell({ children, footer, client = null }: { children: Rea
  */
 export function StateCard({ kind }: { kind: StateCardKind }) {
   if (kind === "error") return <ErrorCard />;
-  const t = stateCardText(kind);
-  return <MessageCard title={t.title} text={<p>{t.text}</p>} />;
+  return <PublicStateCard kind="link" />;
 }
 
 /** La pagina di un link che non si può usare: il guscio, senza il cliente, e la sua scheda. */

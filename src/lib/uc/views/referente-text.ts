@@ -11,8 +11,8 @@
  * - La fonte del dato sta dentro «Altre opzioni»; nelle schermate «È più comodo dal computer» il pulsante pieno è
  *   «Rispondi dopo».
  *
- * L'informativa non sta qui: è `REFERENT_PRIVACY_NOTICE` in `public-view.ts`, con la sua versione, e all'unione passa
- * all'informativa comune del kit. I messaggi dell'API che la pagina mostra (`INVALID_LINK_MESSAGE`, …) stanno in
+ * L'informativa non sta qui: è `REFERENT_PRIVACY_NOTICE` in `public-view.ts`, con la sua versione (`uc-2026-11-2`,
+ * con le parole del kit; i fatti di `/r` non sono quelli di `/rispondi`, che tiene la sua). I messaggi dell'API che la pagina mostra (`INVALID_LINK_MESSAGE`, …) stanno in
  * `public-view.ts` e prendono da qui le parole della scheda del link.
  *
  * Modulo puro e senza import: lo leggono i componenti del referente (anche nel browser), `public-view.ts` e i test.
@@ -136,7 +136,7 @@ export const R_TEXT = Object.freeze({
     review: "Rivedi e invia",
     notKnown: "Non lo so",
     cancel: "Annulla",
-    confirm: "È così",
+    confirm: "Sì, è così",
     correct: "Correggi",
     undoCorrection: "Annulla la correzione",
   }),

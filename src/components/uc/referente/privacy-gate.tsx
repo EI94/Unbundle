@@ -18,9 +18,9 @@ import { Disclosure, Notice, PRIMARY_CLASS, ScreenTitle } from "./screen";
  * pagina e server di rilasci diversi), chiede di ricaricarsi: mai «Ho letto»
  * sotto un testo diverso da quello che si accetta.
  *
- * (Rilascio 10, §3.11) La riga del cliente la mostra il guscio, in alto. Il
- * testo dell'informativa e la sua versione non cambiano qui: all'unione passano
- * all'informativa comune del kit del referente.
+ * (Rilascio 10, §3.11) La riga del cliente la mostra il guscio, in alto.
+ * L'informativa è quella di `/r` (`uc-2026-11-2`, con le parole del kit): i suoi
+ * fatti non sono quelli di `/rispondi`, che tiene la sua.
  */
 export function PrivacyGate({
   notice,

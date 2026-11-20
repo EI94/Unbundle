@@ -1,11 +1,7 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { PRIMARY_CLASS } from "@/components/uc/referente/screen";
-import { REFERENT_PUBLIC_TEXT } from "@/lib/use-cases/referent/labels";
-import { MessageCard } from "./message-card";
-
-const X = REFERENT_PUBLIC_TEXT.error;
+import { PublicStateCard } from "@/components/public";
+import { PUBLIC_TEXT } from "@/lib/public/text";
 
 /**
  * (Rilascio 10, §3.11) La scheda unica di un errore della pagina del referente, con le parole di `/r`: «Questa pagina non
@@ -15,13 +11,5 @@ const X = REFERENT_PUBLIC_TEXT.error;
  * richiesta.
  */
 export function ErrorCard({ retry }: { retry?: () => void }) {
-  return (
-    <MessageCard title={X.title} text={<p>{X.text}</p>}>
-      <div className="mt-5">
-        <Button type="button" className={PRIMARY_CLASS} onClick={() => (retry ? retry() : window.location.reload())}>
-          {X.retry}
-        </Button>
-      </div>
-    </MessageCard>
-  );
+  return <PublicStateCard kind="error" retry={retry} body={PUBLIC_TEXT.error.saved} />;
 }

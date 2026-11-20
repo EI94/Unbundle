@@ -26,7 +26,7 @@ export function PublicShell({ children, footer, client }: { children: ReactNode;
       <PublicBrand client={client} />
       {children}
       {footer ? (
-        <footer data-slot="public-footer" className="mt-10 border-t border-border pt-3 text-sm break-words text-muted-foreground">
+        <footer data-slot="public-footer" className="mt-10 space-y-2 border-t border-border pt-3 text-sm break-words text-muted-foreground">
           {footer}
         </footer>
       ) : null}

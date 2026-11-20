@@ -3,6 +3,8 @@
 import { useState, type ReactNode } from "react";
 import { ChevronLeft, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PublicStateCard } from "@/components/public";
+import { PUBLIC_TEXT } from "@/lib/public/text";
 import { R_TEXT } from "@/lib/uc/views/referente-text";
 import { cn } from "@/lib/utils";
 
@@ -111,17 +113,7 @@ export function CopyLink({ link, name }: { link: string; name: string }) {
  * ricarica la pagina.
  */
 export function ErrorCard({ retry }: { retry?: () => void }) {
-  return (
-    <section className="mt-8 rounded-xl bg-card p-6 text-card-foreground ring-1 ring-foreground/10">
-      <h1 className="text-xl font-semibold break-words">{R_TEXT.error.title}</h1>
-      <p className="mt-3 text-base leading-7 break-words text-muted-foreground">{R_TEXT.error.body}</p>
-      <div className="mt-5">
-        <Button type="button" className={PRIMARY_CLASS} onClick={() => (retry ? retry() : window.location.reload())}>
-          {R_TEXT.error.retry}
-        </Button>
-      </div>
-    </section>
-  );
+  return <PublicStateCard kind="error" retry={retry} body={PUBLIC_TEXT.error.saved} />;
 }
 
 /** Riquadro richiudibile con il triangolo («▸ Istruzioni»), area di tocco di 44 px. */

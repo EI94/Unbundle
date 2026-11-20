@@ -17,6 +17,8 @@ import {
 import { checkDelegation } from "../../../lib/uc/request-state.ts";
 import { initialForm } from "../../../lib/uc/views/referente-form.ts";
 import { R_TEXT } from "../../../lib/uc/views/referente-text.ts";
+import { declaredSourceLabel } from "../../../lib/uc/public-rows.ts";
+import { normalizeDelega } from "../../../lib/uc/answers/universal.ts";
 import { enableTsxImports } from "../../use-cases/detail/referent/tsx-test-loader.ts";
 
 // (Rilascio 10, ondata 4 «Fuori», PROPOSTA-10 §3.11 «/r», §4, D5) Il link della realizzazione `/r` con le parole del
@@ -364,6 +366,18 @@ test("il guscio: in alto «{Cliente} · con Lateral Space», non cliccabile; il 
   const bare = render(h(shell.ReferentShell, { children: h("p", { children: "Contenuto" }) }));
   assert.ok(bare.includes(R_TEXT.shell.brand) && !bare.includes("con Lateral Space"));
   assert.doesNotMatch(bare, /<footer\b/);
+  // (Ondata 4, unione) Il guscio è quello unico delle pagine pubbliche, e così le due schede.
+  assert.match(withClient, /data-slot="public-shell"/);
+  assert.match(render(h(shell.InvalidLinkCard, {})), /data-slot="public-card"/);
+  assert.match(render(h(shell.UnavailableCard, {})), /data-slot="public-card"[\s\S]*Le risposte che hai già inviato sono salve\./);
+});
+
+test("(ondata 4) le parole neutre della delega e della fonte: «l'altra persona», mai «collega»", () => {
+  assert.equal(declaredSourceLabel("referente", null), "Da un'altra persona");
+  const missing = normalizeDelega(null, { activeItemIds: [] });
+  assert.ok(!missing.ok && missing.errors.some((e) => e.message === "Indica nome ed email dell'altra persona."));
+  const noName = normalizeDelega({ nome: "", email: "persona@cliente.test" }, { activeItemIds: [] });
+  assert.ok(!noName.ok && noName.errors.some((e) => e.message === "Scrivi il nome dell'altra persona."));
 });
 
 test("la scheda del link che non vale: le parole del guscio, nessun pulsante", () => {
