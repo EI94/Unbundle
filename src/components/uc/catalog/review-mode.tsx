@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState, useSyncExternalStore } from "react";
 import { CheckCircle2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { validateItemAction } from "@/lib/actions/uc-catalog";
+import { DOMANDE_TEXT } from "@/lib/uc/views/domande-text";
 import { formatCountIt } from "@/lib/uc/views/format";
-import { reviewHref, reviewKeyAction, type ReviewPosition } from "@/lib/uc/views/verification";
+import { REVIEW_SHORTCUTS_KEY, reviewHref, reviewKeyAction, shortcutsOn, type ReviewPosition } from "@/lib/uc/views/verification";
 import { QuestionActionBar, type QuestionActionBarProps } from "./item-actions";
 import { useUcAction } from "./use-uc-action";
 
@@ -22,11 +24,34 @@ export interface ReviewModeProps {
   position: ReviewPosition;
   /** La scheda, già disegnata dal server (senza le azioni). */
   card: React.ReactNode;
-  actions: Omit<QuestionActionBarProps, "filledFirst" | "onDone" | "shortcuts" | "openForm" | "onFormChange"> | null;
+  actions: Omit<QuestionActionBarProps, "filledFirst" | "onDone" | "shortcuts" | "keysOn" | "openForm" | "onFormChange"> | null;
   /** «Valida» si può fare adesso (quattro occhi): il tasto V fa lo stesso. */
   canValidate: boolean;
-  /** Fine della coda: «12 risposte le hai date tu: le verifica un collega.» */
+  /** Fine della coda: «12 risposte le hai date tu: le verifica un'altra persona.» */
   mineNote: string | null;
+}
+
+// (Rilascio 10, §3.5; WCAG 2.1.4) L'interruttore dei tasti rapidi: la scelta resta da una scheda all'altra (la pagina
+// rimonta la verifica a ogni scheda), solo in questo browser. Senza memoria del browser vale per questa pagina.
+const shortcutListeners = new Set<() => void>();
+function subscribeShortcuts(onChange: () => void): () => void {
+  shortcutListeners.add(onChange);
+  return () => shortcutListeners.delete(onChange);
+}
+function readShortcuts(): boolean {
+  try {
+    return shortcutsOn(window.localStorage.getItem(REVIEW_SHORTCUTS_KEY));
+  } catch {
+    return true;
+  }
+}
+function writeShortcuts(on: boolean) {
+  try {
+    window.localStorage.setItem(REVIEW_SHORTCUTS_KEY, on ? "si" : "no");
+  } catch {
+    // Senza memoria del browser la scelta non resta.
+  }
+  for (const l of shortcutListeners) l();
 }
 
 function typingIn(target: EventTarget | null): boolean {
@@ -36,15 +61,18 @@ function typingIn(target: EventTarget | null): boolean {
 
 /**
  * «Verifica una alla volta» (DESIGN §3.6.4): una risposta per scheda, dalla
- * più vecchia. Tasti rapidi V, C, → e ←; dopo ogni azione si passa alla
- * scheda successiva senza ricaricare la pagina. Al telefono la riga delle
- * azioni resta fissa in basso. La pagina lo monta con `key` sulla scheda: un
- * modulo aperto e il testo scritto non passano alla scheda dopo.
+ * più vecchia. Tasti rapidi V, C, → e ←, che un interruttore spegne (rilascio
+ * 10, §3.5); dopo ogni azione si passa alla scheda successiva senza ricaricare
+ * la pagina. Al telefono la riga delle azioni resta fissa in basso. La pagina
+ * lo monta con `key` sulla scheda: un modulo aperto e il testo scritto non
+ * passano alla scheda dopo.
  */
 export function ReviewMode({ baseHref, exitHref, panoramicaHref, position, card, actions, canValidate, mineNote }: ReviewModeProps) {
   const router = useRouter();
   const { pending, run } = useUcAction();
   const [form, setForm] = useState<FormKey | null>(null);
+  const keys = useSyncExternalStore(subscribeShortcuts, readShortcuts, () => true);
+  const switchId = useId();
   const go = (to: "next" | "prev" | "done") => router.replace(reviewHref(baseHref, position, to), { scroll: true });
   const next = () => go("done");
 
@@ -54,7 +82,7 @@ export function ReviewMode({ baseHref, exitHref, panoramicaHref, position, card,
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const action = reviewKeyAction({ key: e.key, altKey: e.altKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey, shiftKey: e.shiftKey, typing: typingIn(e.target) });
+      const action = reviewKeyAction({ key: e.key, altKey: e.altKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey, shiftKey: e.shiftKey, typing: typingIn(e.target), enabled: keys });
       if (!action) return;
       if (action === "next" && position.nextId) {
         e.preventDefault();
@@ -98,7 +126,7 @@ export function ReviewMode({ baseHref, exitHref, panoramicaHref, position, card,
           Verifica · {formatCountIt(position.index)} di {formatCountIt(position.total)}
         </p>
         {position.nextId ? (
-          <button type="button" onClick={() => go("next")} aria-keyshortcuts="ArrowRight" className="inline-flex min-h-11 items-center gap-1 text-muted-foreground hover:text-foreground">
+          <button type="button" onClick={() => go("next")} aria-keyshortcuts={keys ? "ArrowRight" : undefined} className="inline-flex min-h-11 items-center gap-1 text-muted-foreground hover:text-foreground">
             Salta
             <ChevronRight className="size-4" aria-hidden />
           </button>
@@ -110,11 +138,17 @@ export function ReviewMode({ baseHref, exitHref, panoramicaHref, position, card,
         {card}
         {actions && (
           <div className="max-sm:fixed max-sm:inset-x-0 max-sm:bottom-0 max-sm:z-30 max-sm:max-h-[60dvh] max-sm:overflow-y-auto max-sm:border-t max-sm:bg-background max-sm:p-3">
-            <QuestionActionBar {...actions} filledFirst filledForms={false} shortcuts openForm={form} onFormChange={setForm} onDone={next} />
+            <QuestionActionBar {...actions} filledFirst filledForms={false} shortcuts keysOn={keys} openForm={form} onFormChange={setForm} onDone={next} />
           </div>
         )}
       </article>
-      <p className="mt-3 hidden text-xs text-muted-foreground sm:block">V valida · C chiarimento · → salta · ← indietro</p>
+      <div className="mt-3 hidden flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground sm:flex">
+        <label htmlFor={switchId} className="flex min-h-9 cursor-pointer items-center gap-2">
+          <Switch id={switchId} checked={keys} onCheckedChange={(on) => writeShortcuts(on)} />
+          {DOMANDE_TEXT.verify.shortcuts}
+        </label>
+        {keys && <span>{DOMANDE_TEXT.verify.hint}</span>}
+      </div>
     </div>
   );
 }
