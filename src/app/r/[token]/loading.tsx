@@ -1,4 +1,5 @@
 import { ReferentShell } from "@/components/uc/referente/link-card";
+import { R_TEXT } from "@/lib/uc/views/referente-text";
 
 /**
  * Caricamento della pagina del referente (DESIGN §3.14, P0-4): solo sagome
@@ -16,7 +17,7 @@ export default function ReferentLinkLoading() {
         <div className="h-14 w-full animate-pulse rounded-xl bg-muted" />
       </div>
       <p role="status" className="sr-only">
-        Caricamento…
+        {R_TEXT.shell.loading}
       </p>
     </ReferentShell>
   );

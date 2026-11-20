@@ -97,8 +97,8 @@ await installAppModules({
   "./module-intro": screens("ModuleIntro"),
   "./module-review": screens("ModuleReview"),
   "./privacy-gate": screens("PrivacyGate"),
-  "./referente-home": screens("ReferenteHome"),
-  "./screen": `${screens("ClientLine", "Notice", "ScreenTitle")}\nexport const SCREEN_TITLE_ID = "uc-r-titolo";`,
+  "./referente-home": screens("ReferenteHome", "ReferenteHomeFooter"),
+  "./screen": `${screens("Notice", "ScreenTitle")}\nexport const SCREEN_TITLE_ID = "uc-r-titolo";`,
   "./sent-screen": screens("SentScreen"),
   "./step-runner": screens("StepRunner"),
 });

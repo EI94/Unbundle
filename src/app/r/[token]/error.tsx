@@ -1,27 +1,18 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { LinkCard, ReferentShell } from "@/components/uc/referente/link-card";
+import { ReferentShell } from "@/components/uc/referente/link-card";
+import { ErrorCard } from "@/components/uc/referente/screen";
 
 /**
- * Errore imprevisto nella pagina del referente: una scheda chiara (dentro il
- * layout `.survey-light`) con «Riprova», senza dettagli tecnici né dati della
- * richiesta. Le risposte inviate restano salve; le bozze non inviate restano
- * anche sul dispositivo, salvo le voci personali.
+ * Errore imprevisto nella pagina del referente: la scheda unica dell'errore (rilascio 10, §3.11), chiara (dentro il
+ * layout `.survey-light`), con il solo «Riprova»: `retry()` di Next 16 rilegge i dati e ridisegna la pagina. Senza
+ * dettagli tecnici né dati della richiesta. Le risposte inviate restano salve; le bozze non inviate restano anche sul
+ * dispositivo, salvo le voci personali.
  */
 export default function ReferentLinkError({ retry }: { error: unknown; retry: () => void }) {
   return (
     <ReferentShell>
-      <LinkCard title="Qualcosa non ha funzionato" body="Può essere un problema momentaneo di connessione. Le risposte che hai già inviato sono salve: riprova tra poco.">
-        <div className="mt-5 flex flex-wrap gap-2">
-          <Button type="button" className="min-h-11" onClick={() => retry()}>
-            Riprova
-          </Button>
-          <Button type="button" variant="outline" className="min-h-11" onClick={() => window.location.reload()}>
-            Ricarica la pagina
-          </Button>
-        </div>
-      </LinkCard>
+      <ErrorCard retry={retry} />
     </ReferentShell>
   );
 }

@@ -8,7 +8,7 @@
 //
 //   step 3 · link at 400 px: noindex (header and meta), no-store and no-referrer, light
 //            theme even with a dark browser; then, after the notice, every screen (home, each
-//            step of each topic, each «Controlla e invia», «Chiedi a un collega»): no
+//            step of each topic, each «Controlla e invia», «Chiedi a un'altra persona»): no
 //            horizontal scroll, no field under 16 px, at most one filled button, copy-guard
 //            for the client;
 //   step 4 · through the public API, as the page does: the two-level notice, a batch of
@@ -44,6 +44,7 @@ async function appModules() {
     ...(await load("src/lib/uc/answers/normalize.ts")),
     copyGuard: await load("src/lib/uc/views/copy-guard.ts"),
     plan: await load("src/lib/uc/views/referente-plan.ts"),
+    ...(await load("src/lib/uc/views/referente-text.ts")),
   };
 }
 
@@ -217,7 +218,8 @@ export async function step3(f) {
     }
     const delegable = modules.flatMap((m) => m.items).find((i) => i.can.delegate);
     check(delegable, "a question that can go to a colleague");
-    await visit("chiedi a un collega", `#/collega/${delegable.id}`, "Chiedi a un collega");
+    // (Release 10, §4.1) «Chiedi a un'altra persona», never «un collega».
+    await visit("chiedi a un'altra persona", `#/collega/${delegable.id}`, f.m.R_TEXT.documentTitle.delegate.replace(/ · Unbundle$/, ""));
     await closePage(page);
   } finally {
     await browser.close();
@@ -284,5 +286,5 @@ export async function step4(f) {
   const left = after.json.data.modules.flatMap((m) => m.items).map((i) => i.key);
   check(!left.includes("q.sistemi.02") && !left.includes("q.sistemi.04"), "delegated questions leave the link");
   check(after.json.data.progress.done >= answers.length, `progress ${after.json.data.progress.done}`);
-  return `${answers.length} risposte in un invio a gruppi (numero, intervallo, regola, tabella da Excel, «Non lo so», «Non si applica», conferma, allegato), delega a un collega`;
+  return `${answers.length} risposte in un invio a gruppi (numero, intervallo, regola, tabella da Excel, «Non lo so», «Non si applica», conferma, allegato), delega a un'altra persona`;
 }

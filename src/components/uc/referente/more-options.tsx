@@ -5,16 +5,21 @@ import { Button } from "@/components/ui/button";
 import type { Issue } from "@/lib/uc/answers/issues";
 import type { ReferentItemView } from "@/lib/uc/public-view";
 import { fieldIssues, type ReferentForm } from "@/lib/uc/views/referente-form";
+import { R_TEXT } from "@/lib/uc/views/referente-text";
+import type { SourceBasis } from "@/lib/uc/vocab";
 import { AttachmentField, type AttachmentRef } from "./attachment-field";
 import { CheckRow, Field, TextAreaControl } from "./inputs/fields";
 import { Disclosure, TEXT_BUTTON_CLASS } from "./screen";
+import { SourceChips } from "./source-chips";
 
 /**
  * «▸ Altre opzioni» (DESIGN §4.3 R2b), chiuso: nota, allegato, «È una
- * stima», «Ho risposto solo in parte» (apre la nota con il suggerimento), «Lo
- * sa meglio un collega» (R5) e «Da noi non si applica» (con il perché e
- * «Annulla» per tornare alla risposta). Quello che il referente ha già aperto
- * resta in vista anche fuori dal riquadro.
+ * stima», la fonte del dato («Da dove viene?», sui numeri e sulle date: rilascio
+ * 10, RD-3, accanto a «È una stima», che «A memoria» spunta da sola), «Ho
+ * risposto solo in parte» (apre la nota con il suggerimento), «Chiedi a
+ * un'altra persona» (R5) e «Da noi non si applica» (con il perché e «Annulla»
+ * per tornare alla risposta). Quello che il referente ha già aperto resta in
+ * vista anche fuori dal riquadro.
  */
 export interface MoreOptionsState {
   note: boolean;
@@ -33,6 +38,7 @@ export function MoreOptions({
   open,
   delegateHref,
   attachInView,
+  source,
   onForm,
   onAttachments,
   onOpen,
@@ -49,6 +55,8 @@ export function MoreOptions({
   delegateHref: string | null;
   /** L'allegato sta già in vista sopra (schema che lo suggerisce, tipo file). */
   attachInView: boolean;
+  /** La fonte del dato (numeri e date), oppure null per gli altri tipi. */
+  source: { value: SourceBasis | null; onToggle: (basis: SourceBasis) => void } | null;
   onForm: (patch: Partial<ReferentForm>) => void;
   onAttachments: (next: AttachmentRef[]) => void;
   onOpen: (patch: Partial<MoreOptionsState>) => void;
@@ -59,7 +67,7 @@ export function MoreOptions({
   return (
     <div className="space-y-4">
       {showNote ? (
-        <Field label="Nota (facoltativa)" htmlFor={`${id}-note`} issues={noteIssues} hint={form.partial ? "Scrivi cosa manca: ci aiuta a chiedere il resto." : undefined}>
+        <Field label={R_TEXT.more.note} htmlFor={`${id}-note`} issues={noteIssues} hint={form.partial ? R_TEXT.more.partialHint : undefined}>
           <TextAreaControl id={`${id}-note`} value={form.note} onChange={(v) => onForm({ note: v })} disabled={disabled} invalid={noteIssues.length > 0} rows={2} />
         </Field>
       ) : null}
@@ -68,12 +76,7 @@ export function MoreOptions({
       ) : null}
       {open.na ? (
         <div className="space-y-1">
-          <Field
-            label="Perché da voi non si applica?"
-            htmlFor={`${id}-na`}
-            issues={naIssues}
-            hint="Lateral Space e chi segue il caso d'uso nella tua azienda lo controllano prima di chiudere la domanda."
-          >
+          <Field label={R_TEXT.more.naReason} htmlFor={`${id}-na`} issues={naIssues} hint={R_TEXT.more.naHint}>
             <TextAreaControl id={`${id}-na`} value={form.naReason} onChange={(v) => onForm({ naReason: v })} disabled={disabled} invalid={naIssues.length > 0} rows={3} />
           </Field>
           <Button
@@ -87,27 +90,32 @@ export function MoreOptions({
               onForm({ naReason: "", ...(form.intent === "non_si_applica" ? { intent: null } : {}) });
             }}
           >
-            Annulla: rispondo alla domanda
+            {R_TEXT.more.naUndo}
           </Button>
         </div>
       ) : null}
-      <Disclosure summary="Altre opzioni">
+      <Disclosure summary={R_TEXT.more.fold}>
         <div className="space-y-1">
           {!item.personal && !showNote ? (
             <Button type="button" variant="ghost" className={TEXT_BUTTON_CLASS} disabled={disabled} onClick={() => onOpen({ note: true })}>
-              Aggiungi una nota
+              {R_TEXT.more.addNote}
             </Button>
           ) : null}
           {!attachInView && !open.attach ? (
             <div>
               <Button type="button" variant="ghost" className={TEXT_BUTTON_CLASS} disabled={disabled} onClick={() => onOpen({ attach: true })}>
-                Allega un file
+                {R_TEXT.more.attach}
               </Button>
             </div>
           ) : null}
           <CheckRow id={`${id}-estimate`} checked={form.estimate} onChange={(v) => onForm({ estimate: v })} disabled={disabled}>
-            È una stima
+            {R_TEXT.more.estimate}
           </CheckRow>
+          {source ? (
+            <div className="py-2">
+              <SourceChips id={id} value={source.value} disabled={disabled} onToggle={source.onToggle} />
+            </div>
+          ) : null}
           {item.can.partial && item.clarification === null && form.confirmMode === null ? (
             <CheckRow
               id={`${id}-partial`}
@@ -118,13 +126,13 @@ export function MoreOptions({
               }}
               disabled={disabled}
             >
-              Ho risposto solo in parte
+              {R_TEXT.more.partial}
             </CheckRow>
           ) : null}
           {delegateHref ? (
             <div>
               <a href={delegateHref} className="inline-flex min-h-11 items-center gap-1 px-2 text-base text-primary underline-offset-4 hover:underline">
-                Lo sa meglio un collega
+                {R_TEXT.more.delegate}
                 <ChevronRight className="size-4" aria-hidden />
               </a>
             </div>
@@ -132,7 +140,7 @@ export function MoreOptions({
           {item.can.proposeNa && !open.na ? (
             <div>
               <Button type="button" variant="ghost" className={TEXT_BUTTON_CLASS} disabled={disabled} onClick={() => onOpen({ na: true })}>
-                Da noi non si applica
+                {R_TEXT.more.notApplicable}
               </Button>
             </div>
           ) : null}

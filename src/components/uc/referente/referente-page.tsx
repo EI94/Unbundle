@@ -31,6 +31,7 @@ import {
   topicSteps,
   type ReferentRoute,
 } from "@/lib/uc/views/referente-plan";
+import { R_TEXT } from "@/lib/uc/views/referente-text";
 import { getView, postAnswers, postJson } from "./api";
 import { ApprovalsView, type ApprovalOutcome } from "./approvals-view";
 import type { AttachmentRef } from "./attachment-field";
@@ -40,8 +41,8 @@ import { InvalidLinkCard, ReferentShell } from "./link-card";
 import { ModuleIntro } from "./module-intro";
 import { ModuleReview, type ReviewRow } from "./module-review";
 import { PrivacyGate } from "./privacy-gate";
-import { ReferenteHome } from "./referente-home";
-import { ClientLine, Notice, SCREEN_TITLE_ID, ScreenTitle } from "./screen";
+import { ReferenteHome, ReferenteHomeFooter } from "./referente-home";
+import { Notice, SCREEN_TITLE_ID, ScreenTitle } from "./screen";
 import { SentScreen } from "./sent-screen";
 import { StepRunner } from "./step-runner";
 import { useAutosave, type AutosaveBlock } from "./use-autosave";
@@ -72,6 +73,10 @@ import { useDeviceMemory, useHashRoute, useNarrow, useReducedMotion } from "./us
  * o non risulta letta), niente di scritto si perde: le bozze restano, anche sul
  * dispositivo, la vista si rilegge e l'informativa torna sullo schermo, con il
  * testo del server. Un tocco su «Ho letto, iniziamo» e si riprende da lì.
+ *
+ * (Rilascio 10, §3.11) Il guscio porta in alto la riga «{Cliente} · con Lateral
+ * Space» e, solo sotto la Home, il suo piè di pagina; le parole stanno in
+ * `referente-text.ts`, le stesse del kit del referente.
  */
 
 export interface ReferentePageProps {
@@ -168,7 +173,7 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
     if (savedAnnounced.current) return;
     savedAnnounced.current = true;
     // «Salvato» solo la prima volta, e mai sopra un annuncio appena fatto («Confermato.»).
-    if (Date.now() - lastSaid.current > 2000) say("Salvato.");
+    if (Date.now() - lastSaid.current > 2000) say(R_TEXT.say.saved);
   }, [say]);
   // (Ondata 0) Una bozza aspetta l'informativa: la vista si rilegge (con `refresh`, più sotto) e l'informativa torna.
   const privacyWait = useRef<() => void>(() => undefined);
@@ -233,7 +238,7 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
       const r = await getView<ReferentView>(token);
       if (!r.ok) {
         if (r.code === "link_non_valido") setInvalid(true);
-        else setNotice({ tone: "errore", text: "Non riesco ad aggiornare la pagina. Ricaricala tra poco: le risposte inviate sono salve." });
+        else setNotice({ tone: "errore", text: R_TEXT.notices.refreshFailed });
         return null;
       }
       applyView(r.data, reset);
@@ -283,7 +288,7 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
 
   const topicById = (id: string) => plan.topics.find((t) => t.id === id) ?? null;
   const moduleById = (id: string) => view.modules.find((m) => topicId(m) === id) ?? null;
-  const contextFor = (item: ReferentItemView) => moduleOf(view, item.id)?.title ?? "Domande";
+  const contextFor = (item: ReferentItemView) => moduleOf(view, item.id)?.title ?? R_TEXT.step.otherTopic;
   const delegateHrefFor = (item: ReferentItemView) => (view.delegation.allowed && item.can.delegate ? referentHash({ screen: "collega", itemId: item.id }) : null);
   /** Il passo di una domanda nel suo argomento, oppure la domanda da sola. */
   const stepHashFor = (item: ReferentItemView): string => {
@@ -314,9 +319,9 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
 
   useEffect(() => {
     if (stepInfo && currentItemId) document.title = stepDocumentTitle(stepInfo.n, stepInfo.steps.length, stepInfo.title);
-    else if (route.screen === "invia") document.title = "Controlla e invia · Unbundle";
-    else if (route.screen === "collega") document.title = "Chiedi a un collega · Unbundle";
-    else document.title = "Unbundle";
+    else if (route.screen === "invia") document.title = R_TEXT.documentTitle.review;
+    else if (route.screen === "collega") document.title = R_TEXT.documentTitle.delegate;
+    else document.title = R_TEXT.documentTitle.page;
     if (route.screen === "passo" && stepInfo) memory.remember({ topic: route.topic, n: stepInfo.n });
     // Il focus va al titolo a ogni cambio di passo, non al primo caricamento.
     if (screenKey === firstScreen.current) return;
@@ -363,7 +368,7 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
     const check = checkSubmit(item, form, intentAction(intent), files, new Date());
     if (!check.ok) {
       setIssues((f) => ({ ...f, [item.id]: check.errors }));
-      say(check.errors[0]?.message ?? "Controlla i campi segnati.");
+      say(check.errors[0]?.message ?? R_TEXT.say.checkFields);
       return false;
     }
     changeForm(item, form);
@@ -382,7 +387,7 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
     const check = checkSubmit(item, form, action, files, new Date());
     if (!check.ok) {
       setIssues((f) => ({ ...f, [item.id]: check.errors }));
-      say(check.errors[0]?.message ?? "Controlla i campi segnati.");
+      say(check.errors[0]?.message ?? R_TEXT.say.checkFields);
       return false;
     }
     // (Ondata 0) Niente salvataggi automatici in mezzo, ma la copia sul dispositivo resta finché la risposta non è partita.
@@ -403,7 +408,7 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
     }
     forget(item.id);
     memory.unskip([item.id]);
-    say("Inviata.");
+    say(R_TEXT.say.sentOne);
     await refresh([item.id]);
     return true;
   }
@@ -416,7 +421,7 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
       void sendNow(item, intent).then((ok) => {
         if (!ok) return;
         if (route.screen === "voce") {
-          setNotice({ tone: "ok", text: "Risposta inviata. Lateral Space la controlla e ti scrive solo se serve un chiarimento." });
+          setNotice({ tone: "ok", text: R_TEXT.notices.answerSent });
           go({ screen: "home" });
         } else if (lastOfRound) {
           // Era l'ultima del giro: si passa al riepilogo (o alla Home se non c'è niente da inviare).
@@ -427,7 +432,7 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
       return;
     }
     if (decide(item, intent)) {
-      if (intent === "non_so") say("Salvato: «Non lo so».");
+      if (intent === "non_so") say(R_TEXT.say.notKnown);
       advance();
     }
   }
@@ -439,7 +444,7 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
 
   function onConfirm(item: ReferentItemView) {
     if (!decide(item, "conferma")) return;
-    say("Confermato.");
+    say(R_TEXT.say.confirmed);
     later(advance);
   }
 
@@ -467,7 +472,7 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
     if (toSend.length === 0) return;
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       setReview({ scope, failures: {}, partial: null, offline: true });
-      say("Sei offline: per inviare serve la connessione.");
+      say(R_TEXT.say.offline);
       return;
     }
     // Le risposte sostituiscono le bozze: nessun salvataggio automatico deve partire in mezzo. (Ondata 0) La copia sul
@@ -513,11 +518,11 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
     if (privacyWaited && next !== null && !next.privacy.acknowledged) return;
     const failed = Object.keys(failures).length;
     if (failed === 0) {
-      say("Inviate.");
+      say(R_TEXT.say.sentAll);
       go({ screen: "inviate", topic: scope }, { replace: true });
     } else {
       setReview({ scope, failures, partial: { sent: sent.length, failed }, offline: false });
-      say(`${sent.length} inviate, ${failed} da sistemare.`);
+      say(R_TEXT.say.partial(sent.length, failed));
     }
   }
 
@@ -533,14 +538,14 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
     for (const id of f.voci) forget(id);
     memory.unskip(f.voci);
     await refresh(f.voci);
-    say("Fatto.");
+    say(R_TEXT.say.done);
     return { ok: true, status: r.data.status, items: r.data.items, link: r.data.link };
   }
 
   async function sendClarification(item: ReferentItemView) {
     const ok = await sendNow(item, "risposta");
     if (!ok) return;
-    setNotice({ tone: "ok", text: "Grazie: abbiamo inviato la tua risposta al chiarimento." });
+    setNotice({ tone: "ok", text: R_TEXT.notices.clarificationSent });
     go({ screen: "home" }, { replace: true });
   }
 
@@ -577,7 +582,7 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
       setInvalid(true);
       return;
     }
-    setPrivacyError(r.code === "informativa_cambiata" ? r.message : "Non riesco a registrarlo. Riprova tra poco.");
+    setPrivacyError(r.code === "informativa_cambiata" ? r.message : R_TEXT.privacyAckError);
     if (r.code === "informativa_cambiata") await refresh();
   }
 
@@ -599,8 +604,8 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
 
   if (live && !privacyAck) {
     return (
-      <ReferentShell>
-        <PrivacyGate notice={noticeFor(view.privacy)} clientLabel={view.clientLabel} busy={privacyBusy} error={privacyError} disabled={!live} onAcknowledge={() => void acknowledge()} />
+      <ReferentShell client={view.clientLabel}>
+        <PrivacyGate notice={noticeFor(view.privacy)} busy={privacyBusy} error={privacyError} disabled={!live} onAcknowledge={() => void acknowledge()} />
         {liveRegion}
       </ReferentShell>
     );
@@ -614,13 +619,10 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
 
   if (view.mode === "approvazioni") {
     return (
-      <ReferentShell>
+      <ReferentShell client={view.clientLabel}>
         <section aria-labelledby={SCREEN_TITLE_ID} className="mt-4 space-y-4">
-          <div className="space-y-1">
-            <ClientLine clientLabel={view.clientLabel} />
-            <ScreenTitle>{view.greetingName ? `Ciao ${view.greetingName}` : "Ciao"}</ScreenTitle>
-          </div>
-          {view.paused ? <Notice tone="attenzione">Il caso d&apos;uso è in pausa. Ti scriviamo quando riparte.</Notice> : null}
+          <ScreenTitle>{R_TEXT.home.hello(view.greetingName)}</ScreenTitle>
+          {view.paused ? <Notice tone="attenzione">{R_TEXT.pausedNotice}</Notice> : null}
           {homeNotice}
         </section>
         <ApprovalsView approvals={view.approvals} disabled={!writable} onDecide={decideApproval} />
@@ -631,7 +633,6 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
 
   const homeScreen = (
     <ReferenteHome
-      clientLabel={view.clientLabel}
       greetingName={view.greetingName}
       plan={plan}
       expiresAt={view.expiresAt}
@@ -641,7 +642,6 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
       notice={homeNotice}
       preview={readOnly}
       paused={view.paused}
-      privacyNotice={noticeFor(view.privacy) ?? undefined}
     />
   );
 
@@ -731,7 +731,7 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
       screen = (
         <ModuleReview
           backHref={firstOpen || rows.length > 0 ? laterHref : referentHash({ screen: "home" })}
-          backLabel={topic ? topic.title : "Le più veloci"}
+          backLabel={topic ? topic.title : R_TEXT.quickTopic}
           rows={rows}
           later={openSteps.length > 0 ? { count: openSteps.length, href: laterHref } : null}
           sending={busy}
@@ -789,8 +789,10 @@ export function ReferentePage({ token, initialView, nowIso, readOnly = false }: 
     }
   }
 
+  // Il piè di pagina («Come usiamo le tue risposte», la scadenza) solo sotto la Home: le altre schermate hanno la barra in basso.
+  const footer = screen === homeScreen ? <ReferenteHomeFooter expiresAt={view.expiresAt} now={now} privacyNotice={noticeFor(view.privacy) ?? undefined} /> : undefined;
   return (
-    <ReferentShell>
+    <ReferentShell client={view.clientLabel} footer={footer}>
       {screen}
       {liveRegion}
     </ReferentShell>

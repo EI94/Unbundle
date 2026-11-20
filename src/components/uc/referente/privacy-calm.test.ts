@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type { ReferentItemView, ReferentNoticeText } from "../../../lib/uc/public-view.ts";
 import { PAUSED_CASE_MESSAGE, PRIVACY_UPDATED_MESSAGE, REFERENT_PRIVACY_NOTICE } from "../../../lib/uc/public-view.ts";
+import { R_TEXT } from "../../../lib/uc/views/referente-text.ts";
 import { enableTsxImports } from "../../use-cases/detail/referent/tsx-test-loader.ts";
 
 // (Ondata 0, privacy calma del 04/11) Niente casella di dichiarazione prima di un file: né sulla pagina del referente
@@ -92,24 +93,27 @@ test("the upload calls still send the declaration the dossier server asks for, w
 test("/r says «caso d'uso», not «caso»: the paused page, the paused message and «Non si applica»", () => {
   const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
   assert.equal(PAUSED_CASE_MESSAGE, "Il caso d'uso è in pausa: per ora non serve rispondere.");
-  for (const file of ["./referente-home.tsx", "./referente-page.tsx"]) {
-    assert.ok(read(file).includes("Il caso d&apos;uso è in pausa. Ti scriviamo quando riparte."), file);
-    assert.doesNotMatch(read(file), />\s*Il caso è in pausa/, file);
-  }
-  assert.ok(read("./more-options.tsx").includes("Lateral Space e chi segue il caso d'uso nella tua azienda"));
+  // (Rilascio 10) Le parole stanno in `referente-text.ts`: i componenti le leggono da lì.
+  assert.ok(R_TEXT.home.pausedText.startsWith("Il caso d'uso è in pausa. Ti scriviamo quando riparte."));
+  assert.equal(R_TEXT.pausedNotice, "Il caso d'uso è in pausa. Ti scriviamo quando riparte.");
+  assert.ok(read("./referente-home.tsx").includes("R_TEXT.home.pausedText"));
+  assert.ok(read("./referente-page.tsx").includes("R_TEXT.pausedNotice"));
+  for (const file of ["./referente-home.tsx", "./referente-page.tsx"]) assert.doesNotMatch(read(file), />\s*Il caso è in pausa/, file);
+  assert.ok(R_TEXT.more.naHint.includes("Lateral Space e chi segue il caso d'uso nella tua azienda"));
+  assert.ok(read("./more-options.tsx").includes("R_TEXT.more.naHint"));
   assert.ok(read("../../../lib/uc/item-state.ts").includes(`fail("caso_sospeso", "Il caso d'uso è in pausa: per ora non serve rispondere.")`));
 });
 
 test("(Ondata 0) the notice comes back with the text of the version to accept; without it, «Ricarica la pagina» and no «Ho letto»", () => {
   const next: ReferentNoticeText = { ...REFERENT_PRIVACY_NOTICE, version: "uc-2027-01-1", lead: "Tre cose da sapere, aggiornate.", summary: ["Primo punto nuovo.", "Secondo punto nuovo.", "Terzo punto nuovo."] };
-  const props = { clientLabel: "Cliente di prova", busy: false, error: null, disabled: false, onAcknowledge: noop };
+  const props = { busy: false, error: null, disabled: false, onAcknowledge: noop };
   const shown = render(h(gate.PrivacyGate, { ...props, notice: next }));
   for (const text of [next.lead, ...next.summary, next.button]) assert.ok(shown.includes(text), text);
   assert.ok(!shown.includes(REFERENT_PRIVACY_NOTICE.lead), "not the page's own text");
   assert.doesNotMatch(button(shown, next.button), DISABLED);
   const stale = render(h(gate.PrivacyGate, { ...props, notice: null })).replaceAll("&#x27;", "'");
   assert.ok(stale.includes(PRIVACY_UPDATED_MESSAGE));
-  assert.ok(stale.includes("Ricarica la pagina"));
+  assert.ok(stale.includes(R_TEXT.privacyReload));
   assert.ok(!stale.includes(REFERENT_PRIVACY_NOTICE.button) && !REFERENT_PRIVACY_NOTICE.summary.some((line) => stale.includes(line)), "no text to accept, no button to accept it");
   const footer = render(h(gate.PrivacyFooter, { notice: next })).replaceAll("&#x27;", "'");
   assert.ok(next.paragraphs.every((p) => footer.includes(p)) && footer.includes(next.footerLabel));

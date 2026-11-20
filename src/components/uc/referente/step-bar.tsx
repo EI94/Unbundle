@@ -4,21 +4,23 @@ import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { progressValueText } from "@/lib/uc/views/referente-plan";
+import { R_TEXT } from "@/lib/uc/views/referente-text";
 import { BackLink, TEXT_BUTTON_CLASS } from "./screen";
 import { useKeyboardOpen, usePhone } from "./use-device";
 
 /**
  * Barre del passo (DESIGN §4.3 R2, §4.7):
- * - in alto, 44 px: «‹ Argomenti» e «Rispondi dopo»; sotto, «Prezzi e sconti ·
- *   3 di 12» e «Salvato» (solo dopo la prima modifica), con l'avanzamento di
- *   3 px;
+ * - in alto, 44 px: «‹ Argomenti» e «Rispondi dopo»; sotto, l'argomento
+ *   («Prezzi e sconti») e un numero solo con il salvataggio accanto, «3 di 12 ·
+ *   salvato» (rilascio 10, §3.11: «salvato» solo dopo la prima modifica), con
+ *   l'avanzamento di 3 px;
  * - in basso (`ActionBar`): fissa al telefono con lo spazio della zona sicura,
  *   di nuovo nel flusso quando la tastiera è aperta; sotto il campo dal
  *   computer.
  */
 export function StepBar({
   backHref,
-  backLabel = "Argomenti",
+  backLabel = R_TEXT.step.back,
   context,
   n,
   total,
@@ -31,7 +33,7 @@ export function StepBar({
   context: string;
   n: number;
   total: number;
-  /** «Salvato»: solo dopo la prima modifica di questa visita. */
+  /** «· salvato» accanto al numero: solo dopo la prima modifica di questa visita. */
   saved: boolean;
   onSkip?: () => void;
 }) {
@@ -42,17 +44,23 @@ export function StepBar({
         <BackLink href={backHref}>{backLabel}</BackLink>
         {onSkip ? (
           <Button type="button" variant="ghost" className={TEXT_BUTTON_CLASS} onClick={onSkip}>
-            Rispondi dopo
+            {R_TEXT.step.later}
           </Button>
         ) : null}
       </div>
       <div className="flex items-baseline justify-between gap-3 text-sm text-muted-foreground">
-        <p className="min-w-0 break-words">
-          {context} · {n} di {total}
-        </p>
-        <p className="shrink-0">{saved ? "Salvato" : ""}</p>
+        <p className="min-w-0 break-words">{context}</p>
+        <p className="shrink-0 tabular-nums">{R_TEXT.step.count(n, total, saved)}</p>
       </div>
-      <div className="h-[3px] overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={n} aria-valuetext={`Domanda ${n} di ${total}`} aria-label="Domande dell'argomento">
+      <div
+        className="h-[3px] overflow-hidden rounded-full bg-muted"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={total}
+        aria-valuenow={n}
+        aria-valuetext={R_TEXT.step.valueText(n, total)}
+        aria-label={R_TEXT.step.barLabel}
+      >
         <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
       </div>
     </div>

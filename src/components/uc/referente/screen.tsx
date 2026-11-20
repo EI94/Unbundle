@@ -3,13 +3,16 @@
 import { useState, type ReactNode } from "react";
 import { ChevronLeft, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { R_TEXT } from "@/lib/uc/views/referente-text";
 import { cn } from "@/lib/utils";
 
 /**
  * Pezzi comuni delle schermate del referente (DESIGN §4.3, §4.7): il titolo che
  * riceve il focus a ogni cambio di passo, il link «‹ Indietro», gli avvisi in
- * linea (niente toast né portali su `/r`) e il link da copiare. Testi a 16 px,
- * aree di tocco di almeno 44 px, il primario a 48 px.
+ * linea (niente toast né portali su `/r`), il link da copiare e la scheda
+ * dell'errore. Testi a 16 px, aree di tocco di almeno 44 px, il primario a 48 px.
+ * (Rilascio 10, §3.11) La riga del cliente sta nel guscio (`ReferentShell`), non
+ * sopra il titolo; le parole stanno in `referente-text.ts`.
  */
 
 /** Id del titolo di ogni schermata: la pagina gli dà il focus a ogni cambio di passo. */
@@ -48,11 +51,6 @@ export function BackLink({ href, children }: { href: string; children: ReactNode
   );
 }
 
-/** «Lateral Space per Cliente Esempio», sopra il titolo. */
-export function ClientLine({ clientLabel }: { clientLabel: string }) {
-  return <p className="text-sm break-words text-muted-foreground">{clientLabel ? `Lateral Space per ${clientLabel}` : "Lateral Space"}</p>;
-}
-
 export type NoticeTone = "ok" | "info" | "attenzione" | "errore";
 
 /** Avviso in linea (mai un toast): `role=alert` per gli errori, `status` per il resto. */
@@ -84,7 +82,7 @@ export function CopyLink({ link, name }: { link: string; name: string }) {
         readOnly
         value={full}
         onFocus={(e) => e.currentTarget.select()}
-        aria-label={`Link per ${name}`}
+        aria-label={R_TEXT.delegate.linkLabel(name)}
         className="h-11 w-full min-w-0 rounded-lg border border-input bg-background px-3 font-mono text-base"
       />
       <Button
@@ -101,9 +99,28 @@ export function CopyLink({ link, name }: { link: string; name: string }) {
         }}
       >
         <Copy aria-hidden />
-        {copied ? "Link copiato" : "Copia il link"}
+        {copied ? R_TEXT.delegate.copied : R_TEXT.delegate.copyLink}
       </Button>
     </div>
+  );
+}
+
+/**
+ * (Rilascio 10, §3.11) La scheda dell'errore, una sola: il titolo, una riga calma e il solo «Riprova», pieno. Con
+ * `retry` (l'`error.tsx` di Next 16) rilegge i dati; senza, quando il servizio non ha risposto al primo caricamento,
+ * ricarica la pagina.
+ */
+export function ErrorCard({ retry }: { retry?: () => void }) {
+  return (
+    <section className="mt-8 rounded-xl bg-card p-6 text-card-foreground ring-1 ring-foreground/10">
+      <h1 className="text-xl font-semibold break-words">{R_TEXT.error.title}</h1>
+      <p className="mt-3 text-base leading-7 break-words text-muted-foreground">{R_TEXT.error.body}</p>
+      <div className="mt-5">
+        <Button type="button" className={PRIMARY_CLASS} onClick={() => (retry ? retry() : window.location.reload())}>
+          {R_TEXT.error.retry}
+        </Button>
+      </div>
+    </section>
   );
 }
 

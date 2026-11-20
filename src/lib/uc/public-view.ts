@@ -15,6 +15,7 @@
 import type { Issue } from "./answers/issues.ts";
 import type { ItemTrigger } from "./item-state.ts";
 import { fail, ok, type Json, type Result } from "./types.ts";
+import { R_TEXT } from "./views/referente-text.ts";
 import type {
   AnswerKind,
   ItemStatus,
@@ -117,10 +118,14 @@ export function privacyAckShown(body: { version?: unknown; shown?: unknown }, cu
 
 // ── Messaggi uniformi ─────────────────────────────────────────────────
 
-/** Token sbagliato, scaduto, revocato o sezione spenta: sempre lo stesso testo. */
-export const INVALID_LINK_MESSAGE = "Questo link non è più valido. Chiedi a chi te l'ha mandato un link nuovo.";
+/**
+ * Token sbagliato, scaduto, revocato o sezione spenta: sempre lo stesso testo. (Rilascio 10, §3.11) Le parole della
+ * scheda unica delle pagine pubbliche: «Questo link non vale più.» e la risposta all'email, che arriva a chi ha scritto.
+ */
+export const INVALID_LINK_MESSAGE = `${R_TEXT.invalidLink.title} ${R_TEXT.invalidLink.body}`;
 export const PAUSED_CASE_MESSAGE = "Il caso d'uso è in pausa: per ora non serve rispondere.";
-export const PRIVACY_PENDING_MESSAGE = "Prima leggi l'informativa e premi «Ho letto, iniziamo».";
+/** Il pulsante dell'informativa con le sue parole: se l'informativa cambia, il messaggio la segue. */
+export const PRIVACY_PENDING_MESSAGE = `Prima leggi l'informativa e premi «${REFERENT_PRIVACY_NOTICE.button}».`;
 /**
  * (Ondata 0) L'informativa letta su questa richiesta è di una versione vecchia (`informativa_aggiornata`): le
  * scritture aspettano «Ho letto, iniziamo» sulla nuova. Il testo è per chi ha la pagina aperta da prima del rilascio,
@@ -136,8 +141,11 @@ export const PRIVACY_UPDATED_MESSAGE = "Abbiamo aggiornato l'informativa: ricari
 export function waitsForPrivacy(code: string): boolean {
   return code === "informativa_da_leggere" || code === "informativa_aggiornata";
 }
-/** Domanda personale con la zona personale chiusa (DESIGN §4.3, «Si apriranno più avanti»). */
-export const PERSONAL_LOCKED_MESSAGE = "Riguarda dati personali: si apre quando la tua azienda approva la scheda privacy.";
+/**
+ * Domanda personale con la zona personale chiusa (DESIGN §4.3, «Si apriranno più avanti»). (Rilascio 10, RD-5) Senza
+ * il nome della scheda: «dà l'ok», come per i fornitori.
+ */
+export const PERSONAL_LOCKED_MESSAGE = "Riguarda dati personali: si apre quando la tua azienda dà l'ok.";
 /** Le risposte personali, ai chiarimenti e le deleghe partono da sole, mai in un invio a gruppi (DESIGN §4.2). */
 export const SINGLE_SEND_MESSAGE = "Questa risposta parte da sola: aprila e premi «Invia».";
 

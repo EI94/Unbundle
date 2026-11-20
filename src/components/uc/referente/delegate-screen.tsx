@@ -5,17 +5,18 @@ import { Button } from "@/components/ui/button";
 import type { Issue } from "@/lib/uc/answers/issues";
 import { checkDelegate, fieldIssues, type DelegateForm } from "@/lib/uc/views/referente-form";
 import { referentHash } from "@/lib/uc/views/referente-plan";
+import { R_TEXT } from "@/lib/uc/views/referente-text";
 import { CHOICE_ROW_CLASS, Field, FieldErrors, NATIVE_CHECK_CLASS, TextAreaControl, TextControl } from "./inputs/fields";
 import { BackLink, CopyLink, Disclosure, Notice, PRIMARY_CLASS, ScreenTitle } from "./screen";
 import { ActionBar } from "./step-bar";
-import { formatCountIt } from "@/lib/uc/views/format";
 
 /**
- * R5 · «Chiedi a un collega» (DESIGN §4.3, `#/collega/<id>`): nome, email di
- * lavoro, un messaggio facoltativo e cosa girargli: solo questa domanda, le
- * domande aperte dell'argomento, oppure «Scelgo io…» per argomento. Regge cento
- * e più domande in un invio. Il collega riceve un link suo; un dominio nuovo
- * per il caso lo controlla prima Lateral Space; senza email si copia il link.
+ * R5 · «Chiedi a un'altra persona» (DESIGN §4.3, `#/collega/<id>`; rilascio 10,
+ * §4.1, con il genere neutro): nome, email di lavoro, un messaggio facoltativo
+ * e quali domande girare: solo questa, le domande aperte dell'argomento, oppure
+ * «Scelgo io…» per argomento. Regge cento e più domande in un invio. L'altra
+ * persona riceve un link personale; un dominio nuovo per il caso lo controlla
+ * prima Lateral Space; senza email si copia il link.
  */
 export interface DelegateOption {
   id: string;
@@ -32,9 +33,9 @@ export type DelegateResult = { ok: true; status: "inviata" | "da_approvare"; ite
 type Scope = "questa" | "argomento" | "scelte";
 
 function doneText(r: Extract<DelegateResult, { ok: true }>, name: string): string {
-  if (r.status === "da_approvare") return `Prima di mandarlo, Lateral Space controlla l'indirizzo di ${name}. Intanto queste domande escono dalla tua lista.`;
-  if (r.link) return `Copia il link e mandalo a ${name}. Lo vedi solo adesso.`;
-  return r.items === 1 ? `Fatto: la domanda passa a ${name}. Non è più nella tua lista.` : `Fatto: ${r.items} domande passano a ${name}. Non sono più nella tua lista.`;
+  if (r.status === "da_approvare") return R_TEXT.delegate.toApprove(name);
+  if (r.link) return R_TEXT.delegate.copy(name);
+  return r.items === 1 ? R_TEXT.delegate.doneOne(name) : R_TEXT.delegate.doneMany(r.items, name);
 }
 
 export function DelegateScreen({
@@ -74,7 +75,7 @@ export function DelegateScreen({
     const check = checkDelegate(body, allIds);
     if (!check.ok) {
       setIssues(check.errors);
-      setMessage("Controlla i campi segnati.");
+      setMessage(R_TEXT.delegate.checkFields);
       return;
     }
     setBusy(true);
@@ -92,13 +93,13 @@ export function DelegateScreen({
   if (done) {
     return (
       <section aria-labelledby="uc-r-titolo" className="mt-6 space-y-5">
-        <ScreenTitle>Chiedi a un collega</ScreenTitle>
+        <ScreenTitle>{R_TEXT.delegate.title}</ScreenTitle>
         <Notice tone={done.status === "da_approvare" ? "info" : "ok"}>
           <p>{doneText(done, name)}</p>
           {done.link ? <CopyLink link={done.link} name={name} /> : null}
         </Notice>
         <Button className={PRIMARY_CLASS} render={<a href={referentHash({ screen: "home" })} />} nativeButton={false}>
-          Torna agli argomenti
+          {R_TEXT.delegate.backHome}
         </Button>
       </section>
     );
@@ -114,46 +115,42 @@ export function DelegateScreen({
 
   return (
     <section aria-labelledby="uc-r-titolo" className="mt-2 space-y-5">
-      <BackLink href={backHref}>Indietro</BackLink>
+      <BackLink href={backHref}>{R_TEXT.delegate.back}</BackLink>
       <div className="space-y-1">
-        <ScreenTitle>Chiedi a un collega</ScreenTitle>
-        <p className="text-base text-muted-foreground">
-          {emailConfigured ? "Gli mandiamo noi un link suo, solo per le domande che scegli." : "Ti diamo un link suo da mandargli, solo per le domande che scegli."}
-        </p>
+        <ScreenTitle>{R_TEXT.delegate.title}</ScreenTitle>
+        <p className="text-base text-muted-foreground">{emailConfigured ? R_TEXT.delegate.leadEmail : R_TEXT.delegate.leadCopy}</p>
       </div>
-      <Field label="Nome e cognome" htmlFor="uc-del-nome" issues={fieldIssues(issues, "nome")}>
+      <Field label={R_TEXT.delegate.name} htmlFor="uc-del-nome" issues={fieldIssues(issues, "nome")}>
         <TextControl id="uc-del-nome" value={form.nome} onChange={(v) => setForm({ ...form, nome: v })} disabled={busy} invalid={fieldIssues(issues, "nome").length > 0} autoCapitalize="sentences" />
       </Field>
-      <Field label="Email di lavoro" htmlFor="uc-del-email" issues={fieldIssues(issues, "email")}>
+      <Field label={R_TEXT.delegate.email} htmlFor="uc-del-email" issues={fieldIssues(issues, "email")}>
         <TextControl id="uc-del-email" type="email" inputMode="email" autoCapitalize="none" value={form.email} onChange={(v) => setForm({ ...form, email: v })} disabled={busy} invalid={fieldIssues(issues, "email").length > 0} />
       </Field>
-      <Field label="Un messaggio per lui (facoltativo)" htmlFor="uc-del-msg" issues={fieldIssues(issues, "messaggio")}>
+      <Field label={R_TEXT.delegate.message} htmlFor="uc-del-msg" issues={fieldIssues(issues, "messaggio")}>
         <TextAreaControl id="uc-del-msg" value={form.messaggio} onChange={(v) => setForm({ ...form, messaggio: v })} disabled={busy} rows={2} />
       </Field>
       <fieldset className="min-w-0 space-y-2">
-        <legend className="mb-2 text-base font-medium">Cosa gli giri</legend>
+        <legend className="mb-2 text-base font-medium">{R_TEXT.delegate.which}</legend>
         <label className={CHOICE_ROW_CLASS}>
           <input type="radio" name="uc-del-scope" className={NATIVE_CHECK_CLASS} checked={scope === "questa"} onChange={() => setScope("questa")} disabled={busy} />
-          <span className="min-w-0 break-words">Solo questa domanda</span>
+          <span className="min-w-0 break-words">{R_TEXT.delegate.onlyThis}</span>
         </label>
         {topicItems.length > 1 ? (
           <label className={CHOICE_ROW_CLASS}>
             <input type="radio" name="uc-del-scope" className={NATIVE_CHECK_CLASS} checked={scope === "argomento"} onChange={() => setScope("argomento")} disabled={busy} />
-            <span className="min-w-0 break-words">
-              Le {formatCountIt(topicItems.length)} domande aperte di «{topicTitle}»
-            </span>
+            <span className="min-w-0 break-words">{R_TEXT.delegate.topic(topicItems.length, topicTitle)}</span>
           </label>
         ) : null}
         {allIds.length > 1 ? (
           <label className={CHOICE_ROW_CLASS}>
             <input type="radio" name="uc-del-scope" className={NATIVE_CHECK_CLASS} checked={scope === "scelte"} onChange={() => setScope("scelte")} disabled={busy} />
-            <span className="min-w-0 break-words">Scelgo io…</span>
+            <span className="min-w-0 break-words">{R_TEXT.delegate.choose}</span>
           </label>
         ) : null}
         {scope === "scelte" ? (
           <div className="space-y-1 pt-1">
             {groups.map((g) => (
-              <Disclosure key={g.title} summary={`${g.title} (${g.items.filter((i) => chosen.has(i.id)).length} di ${g.items.length})`}>
+              <Disclosure key={g.title} summary={R_TEXT.delegate.group(g.title, g.items.filter((i) => chosen.has(i.id)).length, g.items.length)}>
                 <div className="grid gap-2 pt-1">
                   {g.items.map((o) => (
                     <label key={o.id} className={CHOICE_ROW_CLASS}>
@@ -171,7 +168,7 @@ export function DelegateScreen({
       {message ? <Notice tone="errore">{message}</Notice> : null}
       <ActionBar>
         <Button type="button" className={PRIMARY_CLASS} disabled={busy || voci.length === 0} onClick={() => void submit()}>
-          {emailConfigured ? "Manda il link" : "Crea il link"}
+          {emailConfigured ? R_TEXT.delegate.sendEmail : R_TEXT.delegate.createLink}
         </Button>
       </ActionBar>
     </section>

@@ -3,13 +3,12 @@
 import type { ReactNode } from "react";
 import { Check, ChevronRight, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import type { ReferentNoticeText } from "@/lib/uc/public-view";
 import { expiryNotice, homeProgressText, referentHash, type HomePlan, type ListRow, type TopicPlan } from "@/lib/uc/views/referente-plan";
+import { R_TEXT } from "@/lib/uc/views/referente-text";
 import { PrivacyFooter } from "./privacy-gate";
-import { ClientLine, Notice, PRIMARY_CLASS, ScreenTitle } from "./screen";
+import { Notice, PRIMARY_CLASS, ScreenTitle } from "./screen";
 import { ProgressBar } from "./step-bar";
-import { formatCountIt } from "@/lib/uc/views/format";
 
 /**
  * R1 · Home del referente (DESIGN §4.3): saluto, avanzamento «36 di 112
@@ -17,6 +16,11 @@ import { formatCountIt } from "@/lib/uc/views/format";
  * argomenti, gli elenchi secondari (solo quelli con qualcosa dentro) e in
  * fondo l'informativa e la scadenza del link. Con niente da fare, la scheda
  * calma di R9 «Hai finito».
+ *
+ * (Rilascio 10, §3.11) Un solo numero di avanzamento, quello in alto: le righe
+ * degli argomenti dicono quanto resta. La riga del cliente sta nel guscio, in
+ * alto; il piè di pagina («Come usiamo le tue risposte», il link solo tuo, la
+ * scadenza) è `ReferenteHomeFooter`, che la pagina passa al guscio.
  */
 
 /** Riga con l'azione a destra, area di tocco piena (come gli elenchi di Unbundle). */
@@ -31,7 +35,7 @@ function RowLink({ href, title, line, done, children }: { href: string; title: s
       {done ? (
         <span className="flex shrink-0 items-center gap-1 text-uc-verde">
           <Check className="size-5" aria-hidden />
-          <span className="sr-only">Inviato</span>
+          <span className="sr-only">{R_TEXT.home.sentMark}</span>
         </span>
       ) : null}
       <ChevronRight className="size-5 shrink-0 text-muted-foreground" aria-hidden />
@@ -43,9 +47,7 @@ function ListDisclosure({ title, count, children }: { title: string; count: numb
   return (
     <details className="group">
       <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-base font-medium select-none hover:bg-muted/60 [&::-webkit-details-marker]:hidden">
-        <span className="min-w-0 break-words">
-          {title} ({formatCountIt(count)})
-        </span>
+        <span className="min-w-0 break-words">{R_TEXT.home.list(title, count)}</span>
         <ChevronRight className="size-5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" aria-hidden />
       </summary>
       <div className="pb-2">{children}</div>
@@ -64,7 +66,6 @@ function PlainRows({ rows }: { rows: readonly ListRow[] }) {
 }
 
 export interface ReferenteHomeProps {
-  clientLabel: string;
   greetingName: string | null;
   plan: HomePlan;
   expiresAt: string;
@@ -79,36 +80,30 @@ export interface ReferenteHomeProps {
   preview?: boolean;
   /** Il caso è in pausa: R9 «Per ora non serve rispondere». */
   paused?: boolean;
-  /** (Ondata 0) Il testo dell'informativa accettata, quello della vista (`noticeFor`); senza, quello di questa pagina. */
-  privacyNotice?: ReferentNoticeText;
 }
 
-export function ReferenteHome({ clientLabel, greetingName, plan, expiresAt, now, narrow, topicHref, notice, preview, paused, privacyNotice }: ReferenteHomeProps) {
+export function ReferenteHome({ greetingName, plan, expiresAt, now, narrow, topicHref, notice, preview, paused }: ReferenteHomeProps) {
   const expiry = expiryNotice(expiresAt, now);
-  const hello = greetingName ? `Ciao ${greetingName}` : "Ciao";
   const finished = !paused && plan.finished && plan.primary === null;
   return (
     <section aria-labelledby="uc-r-titolo" className="mt-4 space-y-6">
-      <div className="space-y-1">
-        <ClientLine clientLabel={clientLabel} />
-        <ScreenTitle>{finished ? `Hai finito. Grazie${greetingName ? `, ${greetingName}` : ""}!` : paused ? "Per ora non serve rispondere" : hello}</ScreenTitle>
-      </div>
+      <ScreenTitle>{finished ? R_TEXT.home.finished(greetingName) : paused ? R_TEXT.home.pausedTitle : R_TEXT.home.hello(greetingName)}</ScreenTitle>
 
-      {preview ? <Notice tone="info">Anteprima: così la vede il referente.</Notice> : null}
+      {preview ? <Notice tone="info">{R_TEXT.home.preview}</Notice> : null}
       {expiry?.soon && !paused ? <Notice tone="attenzione">{expiry.text}</Notice> : null}
       {notice}
 
       {paused ? (
-        <p className="text-base leading-6">Il caso d&apos;uso è in pausa. Ti scriviamo quando riparte. Quello che hai scritto resta salvato.</p>
+        <p className="text-base leading-6">{R_TEXT.home.pausedText}</p>
       ) : finished ? (
-        <p className="text-base leading-6">Lateral Space controlla le risposte e ti scrive solo se serve un chiarimento. Puoi chiudere questa pagina.</p>
+        <p className="text-base leading-6">{R_TEXT.home.finishedText}</p>
       ) : (
         <>
-          <p className="text-base leading-6">Ci servono alcune risposte sul vostro lavoro. Puoi farle a più riprese: salviamo tutto da solo.</p>
+          <p className="text-base leading-6">{R_TEXT.home.intro}</p>
           {plan.progress.total > 0 ? (
             <div className="space-y-2">
               <p className="text-[15px] font-semibold tabular-nums">{homeProgressText(plan.progress.done, plan.progress.total)}</p>
-              <ProgressBar done={plan.progress.done} total={plan.progress.total} label="Risposte date" />
+              <ProgressBar done={plan.progress.done} total={plan.progress.total} label={R_TEXT.home.progressLabel} />
             </div>
           ) : null}
           {plan.primary ? (
@@ -129,7 +124,7 @@ export function ReferenteHome({ clientLabel, greetingName, plan, expiresAt, now,
 
       {!paused && plan.topics.length > 0 ? (
         <div className="space-y-2">
-          <h2 className="text-base font-semibold">Per argomento</h2>
+          <h2 className="text-base font-semibold">{R_TEXT.home.topics}</h2>
           <ul className="divide-y divide-border overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">
             {plan.topics.map((t) => (
               <li key={t.id}>
@@ -143,27 +138,27 @@ export function ReferenteHome({ clientLabel, greetingName, plan, expiresAt, now,
       {plan.skipped.length > 0 || (narrow && plan.computer.length > 0) || plan.locked.length > 0 || plan.sent.length > 0 ? (
         <div className="divide-y divide-border overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">
           {!paused && plan.skipped.length > 0 ? (
-            <ListDisclosure title="Lasciate per dopo" count={plan.skipped.length}>
+            <ListDisclosure title={R_TEXT.home.skipped} count={plan.skipped.length}>
               <PlainRows rows={plan.skipped} />
             </ListDisclosure>
           ) : null}
           {!paused && narrow && plan.computer.length > 0 ? (
-            <ListDisclosure title="Meglio dal computer" count={plan.computer.length}>
-              <p className="px-4 pb-2 text-base text-muted-foreground">Tabelle e file: apri questo stesso link dal computer e ritrovi tutto.</p>
+            <ListDisclosure title={R_TEXT.home.computer} count={plan.computer.length}>
+              <p className="px-4 pb-2 text-base text-muted-foreground">{R_TEXT.home.computerText}</p>
               <PlainRows rows={plan.computer} />
             </ListDisclosure>
           ) : null}
           {plan.locked.length > 0 ? (
-            <ListDisclosure title="Si apriranno più avanti" count={plan.locked.length}>
+            <ListDisclosure title={R_TEXT.home.locked} count={plan.locked.length}>
               <p className="flex items-start gap-2 px-4 pb-2 text-base text-muted-foreground">
                 <Lock className="mt-1 size-4 shrink-0" aria-hidden />
-                <span className="min-w-0">Riguardano dati personali: si aprono quando la tua azienda approva la scheda privacy.</span>
+                <span className="min-w-0">{R_TEXT.home.lockedText}</span>
               </p>
               <PlainRows rows={plan.locked} />
             </ListDisclosure>
           ) : null}
           {plan.sent.length > 0 ? (
-            <ListDisclosure title="Già inviate" count={plan.sent.length}>
+            <ListDisclosure title={R_TEXT.home.sent} count={plan.sent.length}>
               <ul className="divide-y divide-border">
                 {plan.sent.map((s) => (
                   <li key={s.id} className="px-4 py-3">
@@ -171,7 +166,7 @@ export function ReferenteHome({ clientLabel, greetingName, plan, expiresAt, now,
                     <p className="text-sm text-muted-foreground">{s.label}</p>
                     {s.canUpdate && !paused && !preview ? (
                       <a href={referentHash({ screen: "voce", itemId: s.id })} className="inline-flex min-h-11 items-center text-base text-primary underline-offset-4 hover:underline">
-                        {s.label === "A posto" ? "È cambiato qualcosa? Aggiorna la risposta" : "Rispondi ora"}
+                        {s.label === "A posto" ? R_TEXT.home.update : R_TEXT.home.answerNow}
                       </a>
                     ) : null}
                   </li>
@@ -181,12 +176,21 @@ export function ReferenteHome({ clientLabel, greetingName, plan, expiresAt, now,
           ) : null}
         </div>
       ) : null}
-
-      <footer className="space-y-1 border-t border-border pt-4">
-        <PrivacyFooter notice={privacyNotice} />
-        <p className={cn("text-base text-muted-foreground")}>Il link è solo tuo: non inoltrarlo.</p>
-        {expiry && !expiry.soon ? <p className="text-base text-muted-foreground">{expiry.text}</p> : null}
-      </footer>
     </section>
+  );
+}
+
+/**
+ * Il piè di pagina della Home, che la pagina passa al guscio (`footer`): «▸ Come usiamo le tue risposte» con il testo
+ * accettato, «Il link è solo tuo» e la scadenza, quando non è già in alto perché vicina.
+ */
+export function ReferenteHomeFooter({ expiresAt, now, privacyNotice }: { expiresAt: string; now: Date; privacyNotice?: ReferentNoticeText }) {
+  const expiry = expiryNotice(expiresAt, now);
+  return (
+    <>
+      <PrivacyFooter notice={privacyNotice} />
+      <p className="text-base text-muted-foreground">{R_TEXT.home.linkOnlyYours}</p>
+      {expiry && !expiry.soon ? <p className="text-base text-muted-foreground">{expiry.text}</p> : null}
+    </>
   );
 }
