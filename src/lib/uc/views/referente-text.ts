@@ -64,7 +64,8 @@ export const R_TEXT = Object.freeze({
     pausedText: "Il caso d'uso è in pausa. Ti scriviamo quando riparte. Quello che hai scritto resta salvato.",
     finishedText: "Lateral Space controlla le risposte e ti scrive solo se serve un chiarimento. Puoi chiudere questa pagina.",
     intro: "Ci servono alcune risposte sul vostro lavoro. Puoi rispondere a più riprese: si salva tutto da solo.",
-    preview: "Anteprima: così la vede il referente.",
+    /** L'anteprima di Lateral Space, con il genere neutro. */
+    preview: "Anteprima: così la vede chi risponde.",
     progressLabel: "Risposte date",
     topics: "Per argomento",
     sentMark: "Inviato",
