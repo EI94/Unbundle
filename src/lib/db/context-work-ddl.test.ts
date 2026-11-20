@@ -294,8 +294,8 @@ test("RUNBOOK §10.22: la 0041 la applica l'app, a mano solo di riserva, il rito
   for (const statement of CONTEXT_WORK_ROLL_FORWARD_STATEMENTS) assert.ok(section.includes(`\n   ${statement}\n`), statement);
   assert.match(back, /Al ritorno in avanti \(subito dopo il deploy nuovo\): `CONTEXT_WORK_ROLL_FORWARD_SQL`/);
   assert.ok(section.includes(`\`${CONTEXT_WORK_TABLE}\``));
-  // Il numero del codice e quello del documento sono lo stesso.
-  assert.equal(Number(ensureSchema.match(/const ENSURE_VERSION = (\d+);/)?.[1]), 35);
+  // Il numero del codice non torna mai sotto quello del documento (la 0042, «Le evals dalla CI», lo porta a 36).
+  assert.ok(Number(ensureSchema.match(/const ENSURE_VERSION = (\d+);/)?.[1]) >= 35);
   const people = runbook.slice(runbook.indexOf("### 7.2 "), runbook.indexOf("### 7.3 "));
   assert.match(people, /«Contesto» › «Appunti» › «Cerca una persona», con il nome e con l'e-mail; «Togli … da tutto»/);
   assert.match(people, /si cancellano solo su richiesta esplicita/);

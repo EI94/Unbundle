@@ -23,6 +23,7 @@ import { CONTEXT_DDL, CONTEXT_PROBE_SQL } from "./context-ddl.ts";
 import { MAPPING_BOARD_DDL, MAPPING_BOARD_PROBE_SQL } from "./mapping-board-ddl.ts";
 import { TEMPLATE_FILES_ADVISORY_LOCK, TEMPLATE_FILES_DDL, TEMPLATE_FILES_PROBE_SQL } from "./use-case-hub-template-files-ddl.ts";
 import { CONTEXT_WORK_ADVISORY_LOCK, CONTEXT_WORK_DDL, CONTEXT_WORK_PROBE_SQL } from "./context-work-ddl.ts";
+import { CI_KEYS_ADVISORY_LOCK, CI_KEYS_DDL, CI_KEYS_PROBE_SQL } from "./use-case-hub-ci-keys-ddl.ts";
 
 /**
  * Self-heal dello schema.
@@ -42,7 +43,7 @@ import { CONTEXT_WORK_ADVISORY_LOCK, CONTEXT_WORK_DDL, CONTEXT_WORK_PROBE_SQL } 
  */
 
 /** Incrementa ad ogni modifica a `runOnce`: così i worker warm ri-eseguono il catch-up. */
-const ENSURE_VERSION = 35;
+const ENSURE_VERSION = 36;
 
 let ensurePromise: Promise<void> | null = null;
 let ensureVersionApplied = 0;
@@ -744,6 +745,11 @@ async function runOnce(): Promise<void> {
   // dell'app: senza la 0041 niente legami con «Cosa serve», niente fonti dalle risposte, niente campanella nuova, e la CLI
   // risponde «riprova» a `nota` e `impara` (`contextWorkReady`); quello che legge solo la 0038 funziona.
   await runContextWorkDdlSafely();
+
+  // «Le evals dalla CI»: le chiavi della CI e la fonte delle evals (drizzle/0042_chiavi_ci.sql) ─────
+  // Dopo la 0041, ma dipende solo dalla 0036. Non blocca il resto dell'app: senza la 0042 `/api/ci/*` risponde 503, la riga
+  // della famiglia dice «Non ancora disponibile» e le letture delle evals non chiedono le colonne nuove (`ciKeysStoreReady`).
+  await runCiKeysDdlSafely();
 }
 
 /** Dopo un errore della 0024, un nuovo tentativo al massimo ogni 5 minuti per processo, mai a ogni richiesta. */
@@ -1004,6 +1010,25 @@ async function runContextWorkDdlSafely(): Promise<void> {
   } catch (err) {
     contextWorkDdlFailedAt = Date.now();
     console.error("[db/ensure-schema] 0041 self-heal failed, the app keeps serving «Contesto» without its work links (apply drizzle/0041 by hand):", err);
+  }
+}
+
+/** Dopo un errore della 0042, come la 0024: un nuovo tentativo al massimo ogni 5 minuti per processo. */
+let ciKeysDdlFailedAt: number | null = null;
+
+/**
+ * La 0042 senza far fallire `ensureDbSchema()`, come `runUseCaseReferentsDdlSafely`. Mai da un'anteprima di Vercel, come la
+ * 0038, la 0040 e la 0041: le anteprime usano il database di produzione, e la 0042 la applica solo il deploy di produzione
+ * (o il file a mano). Senza, l'anteprima serve come prima: la CI non manda niente e le evals sono tutte «dalla CLI».
+ */
+async function runCiKeysDdlSafely(): Promise<void> {
+  if (process.env.VERCEL_ENV === "preview") return;
+  try {
+    await runCiKeysDdl();
+    ciKeysDdlFailedAt = null;
+  } catch (err) {
+    ciKeysDdlFailedAt = Date.now();
+    console.error("[db/ensure-schema] 0042 self-heal failed, the app keeps serving without the CI keys (apply drizzle/0042 by hand):", err);
   }
 }
 
@@ -1334,6 +1359,20 @@ export async function runContextWorkDdl(statements: readonly string[] = CONTEXT_
   ]);
 }
 
+/**
+ * Applica il DDL della 0042 in una sola transazione, con lo stesso advisory lock del file e `lock_timeout` di 3s, come la
+ * 0041. In produzione la applica questo self-heal, al primo avvio dopo il deploy; il file a mano resta la strada di
+ * riserva.
+ */
+export async function runCiKeysDdl(statements: readonly string[] = CI_KEYS_DDL): Promise<void> {
+  const client = db.$client;
+  await client.transaction([
+    client.query("SELECT set_config('lock_timeout', '3s', true)"),
+    client.query(`SELECT pg_advisory_xact_lock(hashtext('${CI_KEYS_ADVISORY_LOCK}'))`),
+    ...statements.map((statement) => client.query(statement)),
+  ]);
+}
+
 async function schemaLooksCurrent(): Promise<boolean> {
   try {
     const result = (await db.execute(sql`
@@ -1462,6 +1501,7 @@ async function schemaLooksCurrent(): Promise<boolean> {
         AND ${sql.raw(MAPPING_BOARD_PROBE_SQL)}
         AND ${sql.raw(TEMPLATE_FILES_PROBE_SQL)}
         AND ${sql.raw(CONTEXT_WORK_PROBE_SQL)}
+        AND ${sql.raw(CI_KEYS_PROBE_SQL)}
       ) AS current;
     `)) as unknown as { rows?: Array<{ current?: unknown }> };
     return result.rows?.[0]?.current === true;
@@ -1571,6 +1611,11 @@ export async function ensureDbSchema(): Promise<void> {
     if (contextWorkDdlFailedAt !== null && Date.now() - contextWorkDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
       contextWorkDdlFailedAt = Date.now();
       ensurePromise = ensurePromise.then(runContextWorkDdlSafely);
+    }
+    // La 0042 era fallita (non fatale): come la 0024, un tentativo alla volta, dopo la pausa.
+    if (ciKeysDdlFailedAt !== null && Date.now() - ciKeysDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
+      ciKeysDdlFailedAt = Date.now();
+      ensurePromise = ensurePromise.then(runCiKeysDdlSafely);
     }
     return ensurePromise;
   }
