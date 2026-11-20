@@ -6,12 +6,11 @@ import { cn } from "@/lib/utils";
 import { formatCountIt } from "@/lib/uc/views/format";
 
 /**
- * Attività del caso (DESIGN §3.12): una linea del tempo raggruppata per giorno,
- * una frase per evento («Luca Verdi (Lateral Space) ha validato «…»»), 50
- * eventi per pagina, il CSV con gli stessi filtri. Per i ruoli del cliente il
- * filtro dell'art. 15.4 è già nella query: qui non arrivano eventi dei
- * referenti né aperture di link, e le risposte ricevute si vedono solo contate
- * per giorno (barrette). Componenti server: le frasi le prepara `activityDays`.
+ * Attività della realizzazione (rilascio 10, §3.5; DESIGN §3.12): una linea del tempo raggruppata per giorno, una frase
+ * di al massimo 8 parole per evento («Luca Verdi (Lateral Space) ha messo a posto «…»»), 50 eventi per pagina,
+ * «Scarica l'elenco» con gli stessi filtri. Per i ruoli del cliente il filtro dell'art. 15.4 è già nella query: qui non
+ * arrivano eventi dei referenti né aperture di link, e le risposte ricevute si vedono solo contate per giorno
+ * (barrette). Componenti server: le frasi le prepara `activityDays`.
  */
 
 
@@ -79,7 +78,7 @@ export function ActivityPagination({ basePath, filter, total }: { basePath: stri
  */
 export function DailyAnswerBars({ bars }: { bars: readonly { key: string; label: string; count: number; percent: number }[] }) {
   if (bars.length === 0) {
-    return <p className="text-sm text-muted-foreground">Ancora nessun giorno con almeno 5 risposte: i numeri più piccoli non si mostrano.</p>;
+    return <p className="text-sm text-muted-foreground">Ancora nessun giorno con almeno 5 risposte.</p>;
   }
   return (
     <ul className="space-y-2" aria-label="Risposte ricevute per giorno">
@@ -96,7 +95,7 @@ export function DailyAnswerBars({ bars }: { bars: readonly { key: string; label:
   );
 }
 
-/** «Scarica CSV» con gli stessi filtri: `<a download>` nativo, così un prefetch non lo scarica e non scrive nell'attività. */
+/** «Scarica l'elenco» con gli stessi filtri: `<a download>` nativo, così un prefetch non lo scarica e non scrive nell'attività. */
 export function ActivityCsvLink({ href }: { href: string }) {
   return (
     <a href={href} download className={cn(buttonVariants({ variant: "outline" }), "min-h-11 sm:min-h-8")}>

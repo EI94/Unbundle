@@ -4,8 +4,11 @@ import { UC_EVENT_TYPES } from "../../db/queries/uc-events.ts";
 import { toStatement } from "../sql/statement.ts";
 import { findForbidden } from "./copy-guard.ts";
 import {
+  ACTIVITY_LINE_MAX_WORDS,
   ACTIVITY_PAGE_SIZE,
   AUDIT_EVENT_LABEL,
+  PERSONAL_DATA_FAMILY,
+  clampActivityLine,
   AUDIT_FAMILIES,
   EMPTY_AUDIT_FILTER,
   activeAuditFilters,
@@ -26,7 +29,7 @@ import {
   referentAnswersWhereSql,
   type ActivityRow,
 } from "./audit.ts";
-import { periodDateInput } from "./activity-period.ts";
+import { parsePeriod, periodDateInput, periodOptions, periodValue } from "./activity-period.ts";
 
 const WS = "11111111-1111-4111-8111-111111111111";
 const CASE = "22222222-2222-4222-8222-222222222222";
@@ -169,7 +172,7 @@ test("every event type reads as a sentence with a subject, never as a code", () 
     for (const audience of ["ls", "cliente"] as const) {
       const r = row({ type, itemTitle: "Quanti preventivi si perdono ogni mese", payload: { item_key: "q.vendite.01", blocker_key: "costi_art_8_4", gate: "G1", version: 2, format: "xlsx" } });
       const { who, text } = activityText(r, audience);
-      assert.equal(who, "Luca Verdi (Lateral Space)");
+      assert.equal(who, "Luca Verdi", "(rilascio 10) il nome, senza «(Lateral Space)»");
       assert.doesNotMatch(text, /ha fatto un'azione/, type);
       assert.match(text, /^(ha|non) /, type);
       assert.deepEqual(findForbidden(`${who} ${text}`, "cliente"), [], `${type}: ${text}`);
@@ -184,11 +187,14 @@ test("every event type reads as a sentence with a subject, never as a code", () 
 test("sentences use titles and plain words: states, the via, the privacy form", () => {
   const title = "Quanti preventivi si perdono ogni mese per mancanza di risposta da parte del commerciale di zona competente";
   const validated = activityText(row({ type: "voce.stato_cambiato", toState: "validata", itemTitle: title, payload: { item_key: "q.x.01" } }), "ls");
-  assert.equal(validated.text, "ha validato «Quanti preventivi si perdono ogni mese per mancanza di risposta da parte del…»");
+  // (Rilascio 10, §3.5) «a posto», mai «validato»; la riga sta in 8 parole: il titolo si accorcia, il verbo no.
+  assert.equal(validated.text, "ha messo a posto «Quanti preventivi…»");
+  assert.equal(`${validated.who} ${validated.text}`.split(" ").length, 8);
   assert.doesNotMatch(validated.text, /q\.x\.01/);
   assert.equal(activityText(row({ type: "voce.stato_cambiato", toState: "in_verifica", itemTitle: "Sconti" }), "cliente").text, "ha portato «Sconti» a «In verifica»");
   assert.equal(activityText(row({ type: "voce.stato_cambiato", toState: "in_verifica", itemTitle: "Sconti" }), "ls").text, "ha portato «Sconti» a «Da verificare»");
-  assert.equal(activityText(row({ type: "caso.stato_cambiato", toState: "raccolta" }), "ls").text, "ha portato il caso a «In preparazione»");
+  assert.equal(activityText(row({ type: "caso.stato_cambiato", toState: "raccolta" }), "ls").text, "ha impostato «In preparazione»", "lo stato non si accorcia");
+  assert.equal(activityText(row({ type: "caso.stato_cambiato", toState: "pronto_sviluppo", actorType: "sistema", actorName: null, actorIsLs: false }), "ls").text, "Stato: «Pronto per lo sviluppo».");
   assert.equal(activityText(row({ type: "gate.proposto", payload: { gate: "G1" } }), "cliente").text, "ha proposto il via allo sviluppo");
   assert.equal(activityText(row({ type: "blocco.firmato", payload: { blocker_key: "a8" } }), "cliente").text, "ha firmato la scheda privacy");
   assert.equal(activityText(row({ type: "blocco.sciolto", payload: { blocker_key: "costi_art_8_4" } }), "cliente").text, "ha sciolto il blocco «Costi da approvare»");
@@ -199,8 +205,9 @@ test("sentences use titles and plain words: states, the via, the privacy form", 
   assert.equal(activityText(row({ type: "catalogo.letto_mcp", actorType: "mcp", actorName: null, actorIsLs: false }), "ls").who, "Claude");
 });
 
-test("who acted: the name, «(Lateral Space)» for Lateral Space, never an email for the client", () => {
-  assert.equal(activityWho({ actorType: "utente", actorName: "Luca Verdi", actorIsLs: true }), "Luca Verdi (Lateral Space)");
+test("who acted: the name, never an email for the client; (release 10) no «(Lateral Space)» on an 8-word row", () => {
+  assert.equal(activityWho({ actorType: "utente", actorName: "Luca Verdi", actorIsLs: true }), "Luca Verdi");
+  assert.equal(activityWho({ actorType: "utente", actorName: null, actorIsLs: true }), "Una persona di Lateral Space");
   assert.equal(activityWho({ actorType: "utente", actorName: "Anna Bianchi", actorIsLs: false }), "Anna Bianchi");
   assert.equal(activityWho({ actorType: "utente", actorName: null, actorIsLs: false }), "Una persona del cliente");
   assert.equal(activityWho({ actorType: "referente", actorName: "Mario Rossi", actorIsLs: false }), "Mario Rossi");
@@ -231,7 +238,7 @@ test("the timeline groups by day of Rome and joins the same person's consecutive
         "Oggi",
         [
           ["10:42", "Mario Rossi", "ha risposto a 3 domande", 3],
-          ["09:15", "Luca Verdi (Lateral Space)", "ha validato «Quanti preventivi si perdono»", 1],
+          ["09:15", "Luca Verdi", "ha messo a posto «Quanti preventivi…»", 1],
           ["09:10", "Mario Rossi", "ha risposto a «D»", 1],
         ],
       ],
@@ -243,7 +250,7 @@ test("the timeline groups by day of Rome and joins the same person's consecutive
           ["23:20", "Paola Neri", "ha risposto a «F»", 1],
         ],
       ],
-      ["2026-10-01", "1 ott", [["11:00", "Luca Verdi (Lateral Space)", "ha creato la realizzazione", 1]]],
+      ["2026-10-01", "1 ott", [["11:00", "Luca Verdi", "ha creato la realizzazione", 1]]],
     ],
   );
 });
@@ -290,4 +297,64 @@ test("«Periodo»: a date applies only when complete and from 2000, otherwise th
   assert.equal(periodDateInput("  ", "2026-10-01"), null);
   // The server reads the URL with the same rule.
   assert.deepEqual(parseAuditFilter({ dal: "0002-10-14", al: "2026-10-14" }, false), { ...EMPTY_AUDIT_FILTER, dal: null, al: "2026-10-14" });
+});
+
+// ── Rilascio 10, §3.5: Attività ───────────────────────────────────────
+
+test("(rilascio 10) righe di al massimo 8 parole: si accorcia il titolo tra virgolette, mai il verbo", () => {
+  assert.equal(clampActivityLine("Anna Bianchi", "ha risposto a «D»", "«D»"), "ha risposto a «D»", "già corta");
+  const long = "«Quanti preventivi si perdono ogni mese»";
+  assert.equal(clampActivityLine("Anna Bianchi", `ha aggiunto ${long}`, long), "ha aggiunto «Quanti preventivi si perdono…»");
+  const auto = "«Quanti preventivi si perdono ogni mese per mancanza di risposta»";
+  assert.equal(clampActivityLine(null, `${auto} è a posto.`, auto), "«Quanti preventivi si perdono ogni…» è a posto.");
+  assert.equal(clampActivityLine("Anna Maria Bianchi Rossi", "ha messo a posto «Quanti preventivi»", "«Quanti preventivi»"), "ha messo a posto «Quanti…»", "almeno una parola del titolo resta");
+  assert.equal(clampActivityLine("Anna Bianchi", "ha scaricato l'elenco dell'attività", null), "ha scaricato l'elenco dell'attività", "senza titolo la riga resta com'è");
+  assert.equal(clampActivityLine("Anna Maria Bianchi Rossi", "ha impostato «Pronto per lo sviluppo»", null), "ha impostato «Pronto per lo sviluppo»", "uno stato non si accorcia");
+  for (const type of ["voce.creata", "voce.modificata", "risposta.inviata", "voce.stato_cambiato"]) {
+    for (const actor of [{}, { actorType: "sistema" as const, actorName: null, actorIsLs: false }]) {
+      const t = activityText(row({ type, toState: "validata", itemTitle: "Quanti preventivi si perdono ogni mese per mancanza di risposta", ...actor }), "ls");
+      assert.ok(`${t.who ?? ""} ${t.text}`.trim().split(/\s+/).length <= ACTIVITY_LINE_MAX_WORDS, `${type}: ${t.who} ${t.text}`);
+    }
+  }
+});
+
+test("(rilascio 10) verbi semplici e genere neutro: «a posto», «il via (versione 1)», «un'altra persona», «realizzazione»", () => {
+  assert.equal(activityText(row({ type: "catalogo.congelato", payload: { version: 1, reason: "gate" } }), "ls").text, "ha approvato il via (versione 1)");
+  assert.equal(activityText(row({ type: "catalogo.congelato", payload: { version: 2, reason: "manuale" } }), "ls").text, "ha fissato il catalogo (versione 2)");
+  assert.equal(activityText(row({ type: "delega.creata", payload: { items: 3 } }), "ls").text, "ha girato 3 domande a un'altra persona");
+  assert.equal(activityText(row({ type: "delega.approvata" }), "ls").text, "ha approvato una delega");
+  assert.equal(activityText(row({ type: "registro.esportato" }), "ls").text, "ha scaricato l'elenco dell'attività");
+  for (const type of Object.keys(AUDIT_EVENT_LABEL)) {
+    const t = activityText(row({ type, toState: "raccolta", payload: { version: 1, items: 2 } }), "ls");
+    assert.doesNotMatch(t.text, /\bcolleg(?:a|he|hi)\b|\bil caso\b|\bdel caso\b|\bal caso\b|\bvalidat[oa]\b|\bcongelat[oa]\b|\bCSV\b/, `${type}: ${t.text}`);
+  }
+});
+
+test("(rilascio 10, F-115) «Dati personali»: un filtro di Attività per chi vede i metadati della zona personale", () => {
+  assert.deepEqual(auditFamiliesFor(false, true)[0], { key: PERSONAL_DATA_FAMILY, label: "Dati personali" });
+  assert.ok(!auditFamiliesFor(false).some((f) => f.key === PERSONAL_DATA_FAMILY), "senza il permesso non c'è");
+  assert.equal(parseAuditFilter({ tipo: PERSONAL_DATA_FAMILY }, true, { personalData: true }).famiglia, PERSONAL_DATA_FAMILY, "l'approvatore privacy sì");
+  assert.equal(parseAuditFilter({ tipo: PERSONAL_DATA_FAMILY }, true).famiglia, null, "il responsabile del cliente no");
+  const where = toStatement(auditWhereSql({ workspaceId: WS, caseId: CASE, filter: { ...EMPTY_AUDIT_FILTER, famiglia: PERSONAL_DATA_FAMILY }, clientView: false }));
+  assert.match(where.text, /e\.event_type = ANY\(\$3::text\[\]\) OR \(e\.event_type = 'file\.scaricato' AND e\.payload ->> 'zona' = 'personale'\)/);
+  assert.deepEqual(where.params, [CASE, WS, ["membro.zona_personale", "risposta.letta_personale"]], "come il vecchio «Registro degli accessi»");
+  assert.ok(!where.params.includes("dati_personali.%"), "non è una famiglia di tipi");
+});
+
+test("(rilascio 10) il periodo del filtro comune: un parametro solo, i link con `dal` e `al` valgono ancora", () => {
+  assert.deepEqual(parsePeriod("2026-10-01_2026-10-03"), { dal: "2026-10-01", al: "2026-10-03" });
+  assert.deepEqual(parsePeriod("2026-10-01_"), { dal: "2026-10-01", al: null });
+  assert.deepEqual(parsePeriod("x_y"), { dal: null, al: null });
+  assert.equal(periodValue("2026-10-01", null), "2026-10-01_");
+  assert.equal(periodValue(null, null), null);
+  const f = parseAuditFilter({ periodo: "2026-10-01_2026-10-03" }, false);
+  assert.deepEqual([f.dal, f.al], ["2026-10-01", "2026-10-03"]);
+  const old = parseAuditFilter({ dal: "2026-09-01", periodo: "2026-10-01_2026-10-03" }, false);
+  assert.deepEqual([old.dal, old.al], ["2026-09-01", "2026-10-03"], "`dal` dei link di prima vince");
+  const options = periodOptions("2026-11-20", { dal: null, al: null });
+  assert.deepEqual(options.map((o) => o.label), ["Oggi", "Ultimi 7 giorni", "Ultimi 30 giorni", "Ultimi 90 giorni"]);
+  assert.equal(options[1].value, "2026-11-14_");
+  const custom = periodOptions("2026-11-20", { dal: "2026-10-01", al: "2026-10-03" });
+  assert.equal(custom.at(-1)?.label, "dal 1 ott al 3 ott", "un periodo dei link di prima ha il suo chip");
+  assert.equal(periodOptions("2026-11-20", { dal: "2026-11-20", al: "2026-11-20" }).length, 4, "«Oggi» non si ripete");
 });

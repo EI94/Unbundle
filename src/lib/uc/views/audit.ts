@@ -19,7 +19,7 @@ import { csvCell } from "../../learning/policy.ts";
 import { CASE_STATUS_LABEL } from "../case-state.ts";
 import { cast, join, raw, ucSql, type SqlFragment } from "../sql/statement.ts";
 import { CASE_STATUSES, EVENT_ACTOR_TYPES, ITEM_STATUSES, isVocab, type CaseRole, type CaseStatus, type EventActorType, type ItemStatus } from "../vocab.ts";
-import { periodDay } from "./activity-period.ts";
+import { PERIOD_PARAM, parsePeriod, periodDay } from "./activity-period.ts";
 import { formatCountIt, formatDayIt } from "./format.ts";
 import { ROLE_LABEL, blockerLabel } from "./labels.ts";
 import { statusView, type Audience } from "./status-groups.ts";
@@ -36,8 +36,8 @@ export const CLIENT_HIDDEN_EVENT_TYPES: readonly string[] = ["link.aperto", "inf
 
 /** Famiglie di eventi per il filtro «Tipo», con l'etichetta (§2.6: domande, via allo sviluppo, attività). */
 export const AUDIT_FAMILIES: Readonly<Record<string, string>> = {
-  caso: "Caso",
-  membro: "Persone del caso",
+  caso: "Realizzazione",
+  membro: "Persone della realizzazione",
   referente: "Referenti",
   firmatario: "Chi firma per il cliente",
   voce: "Domande",
@@ -62,10 +62,21 @@ export const AUDIT_FAMILIES: Readonly<Record<string, string>> = {
 
 const CLIENT_HIDDEN_FAMILIES: readonly string[] = ["link", "informativa"];
 
-export function auditFamiliesFor(clientView: boolean): { key: string; label: string }[] {
-  return Object.entries(AUDIT_FAMILIES)
+/**
+ * (Rilascio 10, §3.5; F-115) «Dati personali»: gli accessi alla zona dei dati personali, le letture di risposte
+ * personali e i download di file personali, cioè il «Registro degli accessi» che prima stava in Privacy. È un filtro
+ * di Attività per chi vede i metadati della zona personale (Lateral Space e approvatore privacy,
+ * `seesPersonalZoneMetadata`); Privacy ci porta con un link (`?tipo=dati_personali`).
+ */
+export const PERSONAL_DATA_FAMILY = "dati_personali";
+export const PERSONAL_DATA_LABEL = "Dati personali";
+const PERSONAL_DATA_EVENTS: readonly string[] = ["membro.zona_personale", "risposta.letta_personale"];
+
+export function auditFamiliesFor(clientView: boolean, personalData = false): { key: string; label: string }[] {
+  const families = Object.entries(AUDIT_FAMILIES)
     .filter(([k]) => !clientView || !CLIENT_HIDDEN_FAMILIES.includes(k))
     .map(([key, label]) => ({ key, label }));
+  return personalData ? [{ key: PERSONAL_DATA_FAMILY, label: PERSONAL_DATA_LABEL }, ...families] : families;
 }
 
 export const AUDIT_ACTOR_LABEL: Readonly<Record<EventActorType, string>> = {
@@ -99,12 +110,12 @@ export function auditWhoFor(clientView: boolean): { key: AuditWho; label: string
 export const AUDIT_EVENT_LABEL: Readonly<Record<string, string>> = {
   "caso.creato": "Realizzazione creata",
   "caso.importato": "Realizzazione importata",
-  "caso.stato_cambiato": "Stato del caso cambiato",
+  "caso.stato_cambiato": "Stato della realizzazione cambiato",
   "caso.descrizione_modificata": "Descrizione modificata",
   "caso.ambiente_ai": "Ambiente AI registrato",
   "caso.regola_gate_confermata": "Regola del via allo sviluppo confermata",
-  "membro.aggiunto": "Persona aggiunta al caso",
-  "membro.rimosso": "Persona tolta dal caso",
+  "membro.aggiunto": "Persona aggiunta alla realizzazione",
+  "membro.rimosso": "Persona tolta dalla realizzazione",
   "membro.zona_personale": "Accesso ai dati personali",
   "referente.creato": "Referente aggiunto",
   "referente.modificato": "Referente modificato",
@@ -203,22 +214,26 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 /**
  * Filtri dall'URL; i valori non ammessi diventano «nessun filtro». Per il
  * cliente niente famiglie nascoste né referenti. Con `chi` il vecchio `attore`
- * non conta.
+ * non conta. «Dati personali» solo per chi vede i metadati della zona personale
+ * (`personalData`). (Rilascio 10) Il periodo arriva da `dal`/`al` (i link di
+ * prima) o da `periodo` (il filtro comune, `activity-period.ts`).
  */
-export function parseAuditFilter(sp: SearchParams, clientView: boolean): AuditFilter {
+export function parseAuditFilter(sp: SearchParams, clientView: boolean, opts: { personalData?: boolean } = {}): AuditFilter {
   const famiglia = first(sp, "tipo");
   const attore = first(sp, "attore");
   const chi = first(sp, "chi");
   const pagina = Number(first(sp, "pagina") ?? "1");
-  const allowedFamily = famiglia && famiglia in AUDIT_FAMILIES && !(clientView && CLIENT_HIDDEN_FAMILIES.includes(famiglia));
+  const period = parsePeriod(first(sp, PERIOD_PARAM));
+  const allowedFamily =
+    famiglia && ((famiglia in AUDIT_FAMILIES && !(clientView && CLIENT_HIDDEN_FAMILIES.includes(famiglia))) || (famiglia === PERSONAL_DATA_FAMILY && opts.personalData === true));
   const allowedWho = isVocab(AUDIT_WHO, chi) && !(clientView && chi === "referenti");
   const allowedActor = !allowedWho && isVocab(EVENT_ACTOR_TYPES, attore) && !(clientView && attore === "referente");
   return {
     famiglia: allowedFamily ? famiglia : null,
     attore: allowedActor ? (attore as EventActorType) : null,
     chi: allowedWho ? (chi as AuditWho) : null,
-    dal: periodDay(first(sp, "dal")),
-    al: periodDay(first(sp, "al")),
+    dal: periodDay(first(sp, "dal")) ?? period.dal,
+    al: periodDay(first(sp, "al")) ?? period.al,
     pagina: Number.isInteger(pagina) && pagina >= 1 && pagina <= 10_000 ? pagina : 1,
   };
 }
@@ -279,7 +294,10 @@ export function auditWhereSql(i: { workspaceId: string; caseId: string; filter: 
     parts.push(raw(`e.actor_type <> 'referente'`));
     parts.push(ucSql`NOT (e.event_type = ANY(${cast([...CLIENT_HIDDEN_EVENT_TYPES], "text[]")}))`);
   }
-  if (i.filter.famiglia) parts.push(ucSql`e.event_type LIKE ${cast(`${i.filter.famiglia}.%`, "text")}`);
+  if (i.filter.famiglia === PERSONAL_DATA_FAMILY) {
+    // Come il vecchio «Registro degli accessi» della Privacy (`loadPrivacyPage`).
+    parts.push(ucSql`(e.event_type = ANY(${cast([...PERSONAL_DATA_EVENTS], "text[]")}) OR (e.event_type = 'file.scaricato' AND e.payload ->> 'zona' = 'personale'))`);
+  } else if (i.filter.famiglia) parts.push(ucSql`e.event_type LIKE ${cast(`${i.filter.famiglia}.%`, "text")}`);
   if (i.filter.chi) parts.push(whoSql(i.filter.chi, i.lsDomains ?? []));
   else if (i.filter.attore) parts.push(ucSql`e.actor_type = ${cast(i.filter.attore, "text")}`);
   if (i.filter.dal) parts.push(ucSql`(e.created_at AT TIME ZONE 'Europe/Rome')::date >= ${cast(i.filter.dal, "date")}`);
@@ -569,7 +587,8 @@ function phraseOf(row: ActivityRow, audience: Audience): Phrase {
       return { one: "ha importato la realizzazione" };
     case "caso.stato_cambiato": {
       const to = caseStatusLabel(row.toState ?? payloadString(p, "to"));
-      return to ? { one: `ha portato il caso a «${to}»`, auto: `Il caso è passato a «${to}».` } : { one: "ha cambiato lo stato del caso" };
+      // (Rilascio 10, §4 e §3.5) Mai «caso» a schermo; lo stato della realizzazione in poche parole (righe di 8 al massimo).
+      return to ? { one: `ha impostato «${to}»`, auto: `Stato: «${to}».` } : { one: "ha cambiato lo stato" };
     }
     case "caso.descrizione_modificata":
       return { one: "ha modificato la descrizione", many: (n) => `ha modificato la descrizione ${formatCountIt(n)} volte`, group: "" };
@@ -579,11 +598,11 @@ function phraseOf(row: ActivityRow, audience: Audience): Phrase {
       return { one: "ha confermato la regola del via allo sviluppo" };
     case "membro.aggiunto": {
       const role = roleLabel(payloadString(p, "role"));
-      return { one: role ? `ha aggiunto una persona al caso come ${role}` : "ha aggiunto una persona al caso" };
+      return { one: role ? `ha aggiunto una persona come ${role}` : "ha aggiunto una persona alla realizzazione" };
     }
     case "membro.rimosso": {
       const role = roleLabel(payloadString(p, "role"));
-      return { one: role ? `ha tolto una persona dal ruolo ${role}` : "ha tolto una persona dal caso" };
+      return { one: role ? `ha tolto una persona dal ruolo ${role}` : "ha tolto una persona dalla realizzazione" };
     }
     case "membro.zona_personale":
       return { one: ZONE_ACTION[payloadString(p, "action") ?? ""] ?? "ha cambiato un accesso ai dati personali" };
@@ -607,7 +626,8 @@ function phraseOf(row: ActivityRow, audience: Audience): Phrase {
       const to = itemStateLabel(row.toState, audience);
       if (!to) return { one: `ha cambiato lo stato di ${q}`, many: (n) => `ha cambiato lo stato di ${formatCountIt(n)} domande`, group: "" };
       if (row.toState === "validata") {
-        return { one: `ha validato ${q}`, many: (n) => `ha validato ${formatCountIt(n)} domande`, auto: `${capitalize(q)} è a posto.`, autoMany: (n) => `${formatCountIt(n)} domande sono a posto.`, group: "validata" };
+        // (Rilascio 10, §3.20 dell'audit) «a posto», come nel resto dell'app; mai «validato».
+        return { one: `ha messo a posto ${q}`, many: (n) => `ha messo a posto ${formatCountIt(n)} domande`, auto: `${capitalize(q)} è a posto.`, autoMany: (n) => `${formatCountIt(n)} domande sono a posto.`, group: "validata" };
       }
       return {
         one: `ha portato ${q} a «${to}»`,
@@ -687,10 +707,10 @@ function phraseOf(row: ActivityRow, audience: Audience): Phrase {
       return { one: "ha revocato tutti i link dei referenti" };
     case "delega.creata": {
       const n = payloadCount(p, "items");
-      return { one: n !== null ? `ha girato ${plural(n, "una domanda", "domande")} a un collega` : "ha girato delle domande a un collega" };
+      return { one: n !== null ? `ha girato ${plural(n, "una domanda", "domande")} a un'altra persona` : "ha girato delle domande a un'altra persona" };
     }
     case "delega.approvata":
-      return { one: "ha approvato una delega a un collega" };
+      return { one: "ha approvato una delega" };
     case "informativa.vista":
       return { one: "ha letto l'informativa privacy" };
     case "file.caricato":
@@ -714,7 +734,7 @@ function phraseOf(row: ActivityRow, audience: Audience): Phrase {
     case "dataset.creato":
       return { one: "ha registrato un dataset" };
     case "dataset.validato":
-      return { one: "ha validato un dataset" };
+      return { one: "ha approvato la scheda di un dataset" };
     case "blocco.attivato":
     case "blocco.firmato":
     case "blocco.sciolto":
@@ -735,8 +755,12 @@ function phraseOf(row: ActivityRow, audience: Audience): Phrase {
     case "gate.respinto":
       return { one: "ha respinto il via allo sviluppo" };
     case "catalogo.congelato": {
+      // (Rilascio 10, §3.20 dell'audit) Con il via la versione del catalogo è quella approvata: «ha approvato il via (versione 1)».
       const v = payloadCount(p, "version");
-      return { one: v ? `ha congelato il catalogo v${v}` : "ha congelato il catalogo", auto: v ? `Catalogo v${v} congelato.` : "Catalogo congelato." };
+      if (payloadString(p, "reason") === "gate") {
+        return { one: v ? `ha approvato il via (versione ${v})` : "ha approvato il via", auto: v ? `Via approvato (versione ${v}).` : "Via approvato." };
+      }
+      return { one: v ? `ha fissato il catalogo (versione ${v})` : "ha fissato il catalogo", auto: v ? `Catalogo fissato (versione ${v}).` : "Catalogo fissato." };
     }
     case "catalogo.esportato": {
       const f = FORMAT_LABEL[payloadString(p, "format") ?? ""];
@@ -745,7 +769,7 @@ function phraseOf(row: ActivityRow, audience: Audience): Phrase {
     case "catalogo.letto_mcp":
       return { one: "ha letto il catalogo", many: (n) => `ha letto il catalogo ${formatCountIt(n)} volte`, group: "" };
     case "registro.esportato":
-      return { one: "ha scaricato l'attività in CSV" };
+      return { one: "ha scaricato l'elenco dell'attività" };
     case "casi_prova.importati": {
       const n = payloadCount(p, "count");
       return { one: n !== null ? `ha importato ${plural(n, "un caso di prova", "casi di prova")}` : "ha importato i casi di prova" };
@@ -778,16 +802,15 @@ function capitalize(s: string): string {
 }
 
 /**
- * Chi ha agito, come si legge nella riga: il nome (con «(Lateral Space)» per
- * chi è di Lateral Space), «Claude», oppure null per ciò che succede in
- * automatico. Al cliente non arrivano eventi dei referenti.
+ * Chi ha agito, come si legge nella riga: il nome, «Claude», oppure null per ciò
+ * che succede in automatico. Al cliente non arrivano eventi dei referenti.
+ * (Rilascio 10, §3.5) Righe di al massimo 8 parole: niente «(Lateral Space)»
+ * dopo il nome; il lato lo dice il filtro «Chi» e l'elenco scaricato.
  */
 export function activityWho(row: Pick<ActivityRow, "actorType" | "actorName" | "actorIsLs">): string | null {
   switch (row.actorType) {
-    case "utente": {
-      const name = row.actorName?.trim() || (row.actorIsLs ? "Una persona" : "Una persona del cliente");
-      return row.actorIsLs ? `${name} (Lateral Space)` : name;
-    }
+    case "utente":
+      return row.actorName?.trim() || (row.actorIsLs ? "Una persona di Lateral Space" : "Una persona del cliente");
     case "referente":
       return row.actorName?.trim() || "Un referente";
     case "mcp":
@@ -797,16 +820,40 @@ export function activityWho(row: Pick<ActivityRow, "actorType" | "actorName" | "
   }
 }
 
-/** La frase di una riga (uno o più eventi uguali e consecutivi). */
+/** (Rilascio 10, §3.5) Una riga di Attività dice al massimo 8 parole, chi ha agito compreso. */
+export const ACTIVITY_LINE_MAX_WORDS = 8;
+
+const words = (s: string) => s.split(/\s+/).filter(Boolean);
+
+/**
+ * Accorcia il titolo della domanda (`title`, già tra virgolette da `quoted`) perché la riga stia in
+ * `ACTIVITY_LINE_MAX_WORDS` parole: almeno una parola del titolo resta, con «…». Il verbo, chi ha agito e gli stati tra
+ * virgolette («In pausa») non si toccano: una riga senza il titolo resta com'è.
+ */
+export function clampActivityLine(who: string | null, text: string, title: string | null, max = ACTIVITY_LINE_MAX_WORDS): string {
+  const total = (who ? words(who).length : 0) + words(text).length;
+  const at = title ? text.indexOf(title) : -1;
+  if (total <= max || !title || at < 0 || !/^«[^»]*»$/.test(title)) return text;
+  const inner = words(title.slice(1, -1).replace(/…$/, ""));
+  const keep = Math.max(1, inner.length - (total - max));
+  if (keep >= inner.length) return text;
+  const short = inner.slice(0, keep).join(" ").replace(/[\s,;:.]+$/, "");
+  return `${text.slice(0, at)}«${short}…»${text.slice(at + title.length)}`;
+}
+
+/** La frase di una riga (uno o più eventi uguali e consecutivi), in al massimo 8 parole con chi ha agito. */
 export function activityText(row: ActivityRow, audience: Audience, count = 1): { who: string | null; text: string } {
   const phrase = phraseOf(row, audience);
   const who = activityWho(row);
+  const title = row.itemTitle?.trim() ? quoted(row.itemTitle) : null;
+  // Il titolo si cerca anche con la maiuscola della frase automatica («Quanti…» è a posto).
+  const clamp = (line: string) => clampActivityLine(who, line, title && !line.includes(title) ? capitalize(title) : title);
   if (who === null) {
-    if (count > 1 && phrase.autoMany) return { who: null, text: phrase.autoMany(count) };
-    if (phrase.auto) return { who: null, text: phrase.auto };
-    return { who: null, text: `${capitalize(count > 1 && phrase.many ? phrase.many(count) : phrase.one)} (in automatico).` };
+    if (count > 1 && phrase.autoMany) return { who: null, text: clamp(phrase.autoMany(count)) };
+    if (phrase.auto) return { who: null, text: clamp(phrase.auto) };
+    return { who: null, text: clamp(`${capitalize(count > 1 && phrase.many ? phrase.many(count) : phrase.one)} (in automatico).`) };
   }
-  return { who, text: count > 1 && phrase.many ? phrase.many(count) : phrase.one };
+  return { who, text: clamp(count > 1 && phrase.many ? phrase.many(count) : phrase.one) };
 }
 
 function groupKeyOf(row: ActivityRow, audience: Audience): string | null {

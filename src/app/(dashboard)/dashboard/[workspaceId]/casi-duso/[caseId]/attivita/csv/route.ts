@@ -10,10 +10,11 @@ import { isPrefetchRequest } from "@/lib/http/prefetch";
 import { attachmentDisposition } from "@/lib/uc/export/request";
 import { auditCsv, parseAuditFilter } from "@/lib/uc/views/audit";
 import { UC_SHELL_PAGE_ROLES, seesFilteredAudit } from "@/lib/uc/views/case-shell";
+import { seesPersonalZoneMetadata } from "@/lib/uc/views/page-access";
 
 /**
- * CSV di Attività (DESIGN §3.12, PIANO §7.2): `GET …/casi-duso/[caseId]/attivita/csv`
- * con gli stessi filtri della pagina (`tipo`, `chi`, `attore`, `dal`, `al`).
+ * CSV di Attività (DESIGN §3.12, PIANO §7.2; «Scarica l'elenco»): `GET …/casi-duso/[caseId]/attivita/csv`
+ * con gli stessi filtri della pagina (`tipo`, `chi`, `attore`, `dal`, `al`, `periodo`).
  *
  * - Lo scaricano il responsabile Lateral Space (attività completa) e i ruoli
  *   del cliente con l'attività filtrata: per loro il filtro dell'art. 15.4 è
@@ -59,7 +60,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
     const { executor, caseAccess } = opened.value;
     const clientView = seesFilteredAudit(caseAccess.roles);
-    const filter = parseAuditFilter(request.nextUrl.searchParams, clientView);
+    // (Rilascio 10) Lo stesso filtro della pagina, «Dati personali» compreso per chi vede i metadati della zona personale.
+    const filter = parseAuditFilter(request.nextUrl.searchParams, clientView, { personalData: seesPersonalZoneMetadata(caseAccess.roles) });
     const data = await loadActivityExport(executor, { workspaceId, caseId: caseAccess.caseId, filter, clientView, lsDomains: ucLsDomains() });
     csv = auditCsv(data.rows, data.daily ?? undefined);
     code = caseAccess.code;
