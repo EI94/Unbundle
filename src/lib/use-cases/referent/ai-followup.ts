@@ -28,11 +28,12 @@ type Env = Readonly<Record<string, string | undefined>>;
  * Le versioni dell'informativa del referente che dicono dell'aiuto dell'AI (la frase `REFERENT_AI_NOTICE_LINE`).
  * (Rilascio 9b) Anche `ucq-2026-11-3`: la sua frase dice la domanda in più e, in più, che le risposte tengono aggiornato
  * quello che sappiamo del lavoro (REFERENT_CONTEXT_NOTICE_VERSIONS in labels.ts). L'aiuto di oggi continua per chi ha
- * accettato `ucq-2026-11-2`.
+ * accettato `ucq-2026-11-2`. (Rilascio 10, D5) Anche `ref-2026-11-1`, l'informativa comune del kit del referente, che tiene
+ * la frase parola per parola.
  */
-export const REFERENT_AI_NOTICE_VERSIONS: readonly string[] = Object.freeze(["ucq-2026-11-2", "ucq-2026-11-3"]);
+export const REFERENT_AI_NOTICE_VERSIONS: readonly string[] = Object.freeze(["ucq-2026-11-2", "ucq-2026-11-3", "ref-2026-11-1"]);
 
-/** La frase dell'informativa sull'aiuto dell'AI: deve esserci nella versione di adesso (`ucq-2026-11-3`). */
+/** La frase dell'informativa sull'aiuto dell'AI: deve esserci nella versione di adesso (`ref-2026-11-1`). */
 export const REFERENT_AI_NOTICE_LINE =
   "Un sistema di intelligenza artificiale può leggere le tue risposte per suggerire al team una domanda in più e per tenere aggiornato quello che sappiamo del lavoro di {Azienda}, senza il tuo nome. Non decide niente e non scrive a nessuno: ogni proposta la controlla una persona del team.";
 

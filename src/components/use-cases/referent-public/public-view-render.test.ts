@@ -126,7 +126,9 @@ test("informativa: prima di tutto finché non è letta; i segnaposto riempiti", 
   assert.equal(p.fullTextLabel, "Leggi l'informativa completa");
   // L'informativa completa resta intera: chi, cosa, chi vede, controllo dei file, quanto, diritti, Garante.
   assert.ok(p.paragraphs.some((t) => t.startsWith("Lateral Space raccoglie queste informazioni per conto di Rondine")));
-  assert.ok(p.paragraphs.some((t) => t.startsWith("Giulia Neri e le altre persone di Rondine")));
+  // (Rilascio 10, D5) L'informativa comune: chi vede le risposte senza il nome di una persona.
+  assert.ok(p.paragraphs.some((t) => t.startsWith("Le persone di Rondine che lavorano ai casi d'uso vedono le tue risposte")));
+  assert.ok(![...p.summary, ...p.paragraphs].some((t) => t.includes("Giulia Neri")), "mai il nome di chi ha chiesto");
   assert.ok(p.paragraphs.some((t) => t.includes("controllo automatico")));
   assert.ok(p.paragraphs.some((t) => t.includes("12 mesi")));
   assert.ok(p.paragraphs.some((t) => t.includes("Garante per la protezione dei dati personali")));

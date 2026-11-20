@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
 import { isWorkingDay, romeDate, romeLocalToUtc, workingDaysBetween } from "../../uc/calendar.ts";
+import { REFERENT_PRIVACY_NOTICE } from "./labels.ts";
 
 // Referente già iscritto (27/10) sul database di prova, una persona per caso. Il referente risponde
 // sempre dal link personale, senza account; ma può avere già un account Unbundle (per esempio ha
@@ -558,7 +559,7 @@ test("una corsista scritta in «+ Nuovo referente»: collegata al suo account, l
   // Risponde dal link come chiunque: la pagina non legge la sessione.
   const first = await pub.resolveReferentToken(sent.token, V);
   if (first.access !== "ok") assert.fail(first.access);
-  assert.ok((await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" }, V)).ok);
+  assert.ok((await pub.acceptReferentPrivacy(first.link, { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version }, V)).ok);
   const resolved = await pub.resolveReferentToken(sent.token, V);
   if (resolved.access !== "ok") assert.fail(resolved.access);
   assert.ok((await pub.saveReferentDraft(resolved.link, { needId: sent.needIds[0], text: "Una volta alla settimana.", dontKnow: false }, V)).ok);

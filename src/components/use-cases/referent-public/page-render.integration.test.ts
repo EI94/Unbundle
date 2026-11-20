@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { REFERENT_PRIVACY_NOTICE } from "../../../lib/use-cases/referent/labels.ts";
 
 /** `module.registerHooks` di Node 24 (i tipi di @types/node del progetto non lo hanno ancora). */
 type ResolveResult = { url: string; shortCircuit?: boolean };
@@ -232,7 +233,7 @@ test("prima l'informativa: nessuna domanda, bozza o caricamento prima di «Inizi
 });
 
 test("dopo l'informativa: le domande con risposta, «Non lo so», «È già allegato», file e invio", opts, async () => {
-  pok(await pub.acceptReferentPrivacy(await linkOf(state.token), { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" }, new Date()), "informativa");
+  pok(await pub.acceptReferentPrivacy(await linkOf(state.token), { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version }, new Date()), "informativa");
   const shown = await html(state.token);
   // (Rilascio 10, §3.11) «Le domande», tre controlli per domanda più «Altro», un solo numero nella barra.
   for (const text of [
@@ -279,7 +280,7 @@ test("(Parte 3) una domanda a cui ha già pensato il team: «Non serve più», m
 test("una risposta inviata si legge, in sola lettura, con «Inviata il …»; poi «Hai risposto il … Grazie!»", opts, async () => {
   const link = await sendLink(`anna.bianchi.${suffix}@rondine.test`, needs.slice(2, 3));
   const l = await linkOf(link.token);
-  pok(await pub.acceptReferentPrivacy(l, { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" }, new Date()), "informativa");
+  pok(await pub.acceptReferentPrivacy(l, { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version }, new Date()), "informativa");
   const l2 = await linkOf(link.token);
   pok(await pub.saveReferentDraft(l2, { needId: needs[2], text: "Due persone, mezza giornata.", dontKnow: false }, new Date()), "bozza");
   const draftPage = await html(link.token);
@@ -345,7 +346,7 @@ test("(rilascio 5) la richiesta al referente: «ti ha indicato come referente»,
   const privacyFirst = await html(token!);
   assert.ok(privacyFirst.includes("Giulia Neri ti ha indicato come referente."));
   assert.ok(privacyFirst.includes("Prima di iniziare") && !privacyFirst.includes("È così?"), "prima l'informativa");
-  pok(await pub.acceptReferentPrivacy(await linkOf(token!), { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" }, new Date()), "informativa");
+  pok(await pub.acceptReferentPrivacy(await linkOf(token!), { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version }, new Date()), "informativa");
   // Il passo 1, anche chiedendo il passo 2 (riportato al primo non fatto).
   for (const passo of [undefined, "2", "3", "x"]) {
     const step1 = await html(token!, passo);

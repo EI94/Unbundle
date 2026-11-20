@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
+import { REFERENT_PRIVACY_NOTICE } from "./labels.ts";
 
 // «Chiedi al referente» sul database di prova, dall'invio alla risposta (SPEC §3.1, §3.2, §3.8,
 // §P2.6, §P2.7): le porte nell'ordine, la transazione di invio, l'email con il link, la pagina
@@ -267,11 +268,11 @@ test("pagina pubblica: il link, l'informativa, le bozze e i loro controlli", opt
   assert.ok(!wrong.ok && wrong.code === "informativa_cambiata");
   // (Rilascio 9b) Il corpo della pagina di produzione (49414cc9), senza la prova del testo mostrato: rifiutato con il
   // codice che quella pagina mostra con «ricarica la pagina», e niente si registra.
-  const unproven = await pub.acceptReferentPrivacy(resolved.link, { version: "ucq-2026-11-3" }, now);
+  const unproven = await pub.acceptReferentPrivacy(resolved.link, { version: REFERENT_PRIVACY_NOTICE.version }, now);
   assert.ok(!unproven.ok && unproven.code === "informativa_cambiata" && /ricarica la pagina/.test(unproven.message));
   const [unrecorded] = await q(`SELECT privacy_accepted_at, privacy_notice_version FROM use_case_referent_requests WHERE id = $1::uuid`, [state.requestId]);
   assert.deepEqual([unrecorded.privacy_accepted_at, unrecorded.privacy_notice_version], [null, null], "nessun consenso senza la prova");
-  assert.deepEqual(await pub.acceptReferentPrivacy(resolved.link, { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" }, now), { ok: true, value: { accepted: true } });
+  assert.deepEqual(await pub.acceptReferentPrivacy(resolved.link, { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version }, now), { ok: true, value: { accepted: true } });
   const [r] = await q(`SELECT status FROM use_case_referent_requests WHERE id = $1::uuid`, [state.requestId]);
   assert.equal(r.status, "inviata", "leggere l'informativa non cambia lo stato");
   const again = await pub.resolveReferentToken(state.token, now);
