@@ -131,8 +131,8 @@ const FINDING_CATEGORY: Readonly<Record<string, string>> = {
   vietata: "colonne vietate",
 };
 
-/** Esito dei controlli in parole: solo categorie, conteggi e codici (mai testo del file). */
-function findingsOf(raw: unknown): string[] {
+/** Esito dei controlli in parole: solo categorie e conteggi (mai testo del file); il codice del controllo solo a Lateral Space. */
+function findingsOf(raw: unknown, client = false): string[] {
   const f = rowJson<Record<string, unknown>>(raw);
   if (!f || typeof f !== "object" || Array.isArray(f)) return [];
   const out: string[] = [];
@@ -146,7 +146,7 @@ function findingsOf(raw: unknown): string[] {
     if (n > 0) out.push(`Valori personali riconosciuti: ${n}`);
   }
   if (f.revisione_manuale === true) out.push("Aspetta la revisione di un'altra persona di Lateral Space");
-  if (typeof f.codice === "string") out.push(`Codice: ${f.codice}`);
+  if (typeof f.codice === "string" && !client) out.push(`Codice: ${f.codice}`);
   if (Array.isArray(f.avvisi)) for (const a of f.avvisi) if (typeof a === "string") out.push(`Avviso: ${a}`);
   return out.slice(0, 10);
 }
@@ -168,7 +168,7 @@ export function rowsToCaseFiles(rows: readonly Row[], roles: readonly CaseRole[]
       personalData: FILE_PERSONAL_DATA_LABEL[personal],
       scanLabel: SCAN_STATUS_LABEL[scan],
       scanState: scan,
-      findings: findingsOf(r.scan_findings),
+      findings: findingsOf(r.scan_findings, client),
       usable: scan === "pulito" && (rowBool(r.content_scanned) || rowBool(r.reviewed)),
       preview: zone === "standard" ? parsePreview(r.preview) : null,
       retentionUntil: formatDateIt(rowIsoDate(r.retention_until)),
@@ -286,8 +286,10 @@ export interface FileManagementIndex {
 export interface CaseFileRow {
   id: string;
   name: string;
-  /** «Controllato · 2 MB · 3 ott». */
+  /** (Rilascio 10, §3.5) Nella riga stato e data: «Controllato · 3 ott». */
   meta: string;
+  /** La misura, nei dettagli del file: «2 MB». */
+  size: string | null;
   zone: "standard" | "personale";
   usable: boolean;
   findings: string[];
@@ -305,16 +307,18 @@ export interface DatasetCard {
   controller: string;
   rows: string | null;
   retention: string | null;
+  /** Un controllo di qualità ha trovato un errore (lo diceva la gestione dei file sulla domanda, ora sta nella scheda). */
+  dqError: boolean;
 }
 
 function datasetCard(d: DatasetView): DatasetCard {
-  return { status: d.status, period: d.period, controller: d.controller, rows: d.rows, retention: d.retentionUntil };
+  return { status: d.status, period: d.period, controller: d.controller, rows: d.rows, retention: d.retentionUntil, dqError: d.dqError };
 }
 
 /**
- * I file caricati come righe (§3.6.6): nome, esito e misura in una riga
- * grigia; si aprono su anteprima mascherata e scheda dataset; le azioni di
- * Lateral Space stanno nel «⋯». La scheda di un file è quella fatta da quel
+ * I file caricati come righe (§3.6.6; rilascio 10, §3.5): nome, poi stato e
+ * data in una riga grigia; si aprono su misura, anteprima mascherata e scheda
+ * dataset; le azioni di Lateral Space stanno nel «⋯». La scheda di un file è quella fatta da quel
  * file (`file_id`), la versione più nuova: due file della stessa domanda hanno
  * ognuno la sua, e un documento del caso (senza domanda) ha la sua.
  */
@@ -325,7 +329,8 @@ export function caseFileRows(files: readonly CaseFileView[], datasets: readonly 
     return {
       id: f.id,
       name: f.name,
-      meta: [f.scanLabel, f.size, f.at].filter(Boolean).join(" · "),
+      meta: [f.scanLabel, f.at].filter(Boolean).join(" · "),
+      size: f.size,
       zone: f.zone,
       usable: f.usable,
       findings: f.findings,

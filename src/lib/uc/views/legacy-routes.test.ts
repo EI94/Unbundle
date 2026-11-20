@@ -42,7 +42,7 @@ test("the verification queue goes to the «Da verificare» view, the page passes
 });
 
 test("documents, map, rules, data model, KPI, ROI and progress", () => {
-  assert.equal(route(["documenti"], "x=1"), `${base}/domande/documenti?x=1`);
+  assert.equal(route(["documenti"], "x=1"), `${base}/domande?vista=tutte&indispensabili=no&mostra=documenti&apri=file`, "(release 10) straight to the «File» panel");
   assert.equal(route(["mappa"], "vista=dati&altro=1"), `${base}/soluzione/mappa?vista=dati`);
   assert.equal(route(["regole"], "apri=abc"), `${base}/soluzione/regole?apri=abc`);
   assert.equal(route(["regole"], "q=1"), `${base}/soluzione/regole`);
@@ -57,6 +57,20 @@ test("the old audit log and its CSV go to Attività with their filters", () => {
   assert.equal(route(["registro"], "chi=ls"), `${base}/attivita?chi=ls`);
   assert.equal(route(["registro", "csv"], "tipo=caso&dal=2026-10-01"), `${base}/attivita/csv?tipo=caso&dal=2026-10-01`);
   assert.equal(route(["registro", "altro"]), null);
+});
+
+test("(release 10, §3.5) yesterday's Documenti page opens the «File» panel of Domande, with the «Documenti» filter on every question", () => {
+  const target = `${base}/domande?vista=tutte&indispensabili=no&mostra=documenti&apri=file`;
+  assert.equal(route(["domande", "documenti"]), target);
+  assert.equal(route(["domande", "documenti"], "x=1&apri=altro"), target, "the old page had no parameters: they drop");
+  assert.equal(legacyCaseRouteFromPath(`${base}/domande/documenti`), target, "the route under domande/documenti");
+  assert.equal(legacyCaseRouteFromPath(`${base}/domande/documenti/`), target);
+  assert.equal(legacyCaseRouteFromPath(`${base}/documenti`, new URLSearchParams("x=1")), target, "the older address, in one hop");
+  for (const rest of [[], [ITEM], ["verifica"], ["documenti", "x"]]) assert.equal(route(["domande", ...rest]), null, `domande/${rest.join("/")} stays where it is`);
+  // What the panel and the list read from it.
+  const f = parseQuestionFilter(Object.fromEntries(new URL(target, "http://x").searchParams), "ls", { vista: "da-fare", soloIndispensabili: true });
+  assert.deepEqual([f.vista, f.soloIndispensabili, f.documenti, f.catalogo], ["tutte", false, true, false]);
+  assert.equal(new URL(target, "http://x").searchParams.get("apri"), "file");
 });
 
 test("segments that are not old addresses are not redirected", () => {

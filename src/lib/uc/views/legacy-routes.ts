@@ -5,7 +5,9 @@
  * `legacyCaseRouteFromPath` e `permanentRedirect`, senza leggere il database.
  *
  * - `voci` → `domande`, con i filtri di oggi tradotti nei parametri nuovi;
- * - `voci/<id>` → `domande/<id>`, `documenti` → `domande/documenti`;
+ * - `voci/<id>` → `domande/<id>`;
+ * - `documenti` e `domande/documenti` → Domande con il pannello «File» aperto e il filtro «Documenti» (rilascio 10,
+ *   §3.5): `domande?vista=tutte&indispensabili=no&mostra=documenti&apri=file`;
  * - `verifica` → `domande?vista=da-verificare`;
  * - `mappa`, `regole`, `modello-dati` → `soluzione/{mappa,regole,dati}`;
  * - `kpi` → `valore/kpi`, `roi` → `valore`, `avanzamento` → `via`;
@@ -92,6 +94,14 @@ function catalogQuery(from: Map<string, string>): URLSearchParams {
 }
 
 /**
+ * (Rilascio 10, §3.5) L'archivio dei file è il pannello «File» di Domande; i documenti richiesti sono il suo filtro
+ * «Documenti», su tutte le domande (come la pagina di ieri, che non aveva filtri: la query si lascia cadere).
+ */
+function filesPanel(root: string): string {
+  return `${root}/domande?vista=tutte&indispensabili=no&mostra=documenti&apri=file`;
+}
+
+/**
  * Il nuovo indirizzo di un vecchio segmento del dossier, con la query tradotta;
  * null se `segments` non è un vecchio indirizzo. `base` è la radice del
  * dossier (`/dashboard/<ws>/casi-duso/<caso>`), `segments` i segmenti dopo.
@@ -114,7 +124,10 @@ export function legacyCaseRoute(base: string, segments: readonly string[], searc
       return withQuery(`${root}/domande`, q);
     }
     case "documenti":
-      return rest.length === 0 ? withQuery(`${root}/domande/documenti`, all()) : null;
+      return rest.length === 0 ? filesPanel(root) : null;
+    case "domande":
+      // Solo la pagina Documenti di ieri: le altre pagine di Domande restano dove sono.
+      return rest.length === 1 && rest[0] === "documenti" ? filesPanel(root) : null;
     case "mappa":
       return rest.length === 0 ? withQuery(`${root}/soluzione/mappa`, pick(sp, ["vista"])) : null;
     case "regole":

@@ -133,7 +133,7 @@ test("required documents in one row: who provides it, or «File caricato» once 
   assert.deepEqual(findForbiddenIn(client.flatMap((r) => [r.title, r.label, r.who]), "cliente"), []);
 });
 
-test("uploaded files: one grey line, Lateral Space actions from the upload panel, the dataset card of the file", () => {
+test("uploaded files: one grey line with state and date (release 10, §3.5), the size in the details, Lateral Space actions from the upload panel, the dataset card of the file", () => {
   const files = rowsToCaseFiles(
     [
       { id: "f1", item_id: "s1", item_key: "src.crm.richieste", item_title: "Export", file_name: "listino.xlsx", size_bytes: 2_097_152, storage_zone: "standard", personal_data: "no", scan_status: "pulito", content_scanned: true, created_at: "2026-10-03T09:00:00Z" },
@@ -147,7 +147,8 @@ test("uploaded files: one grey line, Lateral Space actions from the upload panel
     datasetsToDecide: new Map([["f1", { datasetId: "d1", canDecide: false }]]),
     deletable: new Set(["f1", "f2"]),
   });
-  assert.equal(rows[0].meta, "Controllato · 2 MB · 3 ott 2026");
+  assert.equal(rows[0].meta, "Controllato · 3 ott 2026");
+  assert.equal(rows[0].size, "2 MB");
   assert.deepEqual(rows[0].actions, { download: true, createDataset: true, decide: null, decideBlocked: true, delete: true });
   assert.equal(rows[0].dataset?.controller, "Cliente Esempio");
   assert.equal(rows[0].item?.title, "Export");
