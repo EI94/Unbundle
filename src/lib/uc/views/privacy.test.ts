@@ -236,6 +236,7 @@ test("(rilascio 10) Privacy: le due regole dentro «Cosa approvi», «A.8» solo
   assert.doesNotMatch(page, /I dati personali reali entrano|I dati sanitari non entrano|Registro degli accessi/, "le frasi fisse non stanno più in pagina");
   assert.match(page, /`\$\{casePath\(workspaceId, caseId, "attivita"\)\}\?tipo=\$\{PERSONAL_DATA_FAMILY\}`/, "il link ad Attività › «Dati personali»");
   assert.match(page, /canOpenShellPage\("registro", roles\)/, "solo per chi apre Attività; l'analista li legge in una piega");
+  assert.match(page, /\{!view && \(\s*<ul data-slot="privacy-rules"[^>]*>\s*<li>\{T\.realDataRule\}<\/li>\s*<li>\{T\.healthRule\}<\/li>/, "senza la scheda le due regole restano in pagina");
   const card = readFileSync(new URL("../../../components/uc/privacy/privacy-card.tsx", import.meta.url), "utf8");
   assert.match(card, /<li>\{PRIVACY_TEXT\.realDataRule\}<\/li>\s*<li>\{PRIVACY_TEXT\.healthRule\}<\/li>/);
   assert.match(card, /<TechDetails roles=\{viewerRoles\}>\s*<p>\{PRIVACY_TEXT\.technicalForm\}<\/p>/);

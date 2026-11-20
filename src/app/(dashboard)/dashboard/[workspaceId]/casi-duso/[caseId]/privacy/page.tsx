@@ -89,6 +89,13 @@ export default async function PrivacyPage({ params }: { params: Promise<{ worksp
       <div className="max-w-3xl space-y-6">
         <h2 className="text-base font-semibold">{T.title}</h2>
 
+        {/* Senza la scheda privacy (uno schema senza quel blocco) le due regole fisse restano in pagina. */}
+        {!view && (
+          <ul data-slot="privacy-rules" className="space-y-1 text-sm">
+            <li>{T.realDataRule}</li>
+            <li>{T.healthRule}</li>
+          </ul>
+        )}
         {view && (
           <PrivacyCard
             workspaceId={workspaceId}
