@@ -374,7 +374,18 @@ export function PeopleList(props: PeopleListProps) {
     </li>
   ));
 
-  const items = [...lsItems, ...clientItems, ...unassignedItems];
+  // Le righe che chiedono un'azione a chi guarda («Approva la delega», «Affida a…») vengono prima: mai dietro «Vedi
+  // tutti». Le altre restano in ordine alfabetico (art. 15.4: mai per domande aperte).
+  const lsRows = view.audience === "lateral_space" ? view.rows : [];
+  const delegation = (i: number) => (can.manage || can.send) && lsRows[i].status === "delega" && visibleAction(lsRows[i]) !== null;
+  const canAssign = can.send || (can.clientAssign && contactOptions.length > 0);
+  const items = [
+    ...lsItems.filter((_, i) => delegation(i)),
+    ...(canAssign ? unassignedItems : []),
+    ...lsItems.filter((_, i) => !delegation(i)),
+    ...clientItems,
+    ...(canAssign ? [] : unassignedItems),
+  ];
   const missing = signersMissingText(designated);
   const signerSlot = dialog?.kind === "firmatario" && dialog.designation ? (props.signers.find((s) => s.designation === dialog.designation) ?? null) : null;
 

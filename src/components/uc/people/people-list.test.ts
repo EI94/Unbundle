@@ -156,8 +156,23 @@ test("un solo «Invia le domande»: i passi e l'email vera di «Chiedi al refere
   assert.match(sheet, /<EmailPreview\s/, "la stessa anteprima dell'email");
   assert.match(sheet, /renderEmail\(\{ template: "richiesta_inviata"/, "lo stesso modello dell'invio");
   assert.doesNotMatch(sheet, /Anteprima del messaggio/, "non più chiusa in una piega");
+  // «Anche le altre N persone ricevono la stessa email»: solo chi ha l'email, non chi riceve il link a mano.
+  assert.match(sheet, /const othersMailed = mailed \? picked\.filter\(\(g\) => g\.channel === "email" && g\.contactId !== mailed\.contactId\)\.length : 0;/);
+  assert.match(sheet, /SEND_TEXT\.others\(othersMailed\)/);
   const page = readFileSync(new URL("../../../app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/persone/page.tsx", import.meta.url), "utf8");
   assert.equal(page.match(/PEOPLE_TEXT\.send\b/g)?.length, 1, "un solo «Invia le domande» sulla pagina");
   assert.doesNotMatch(page, /SettingsSection|Firme del cliente/, "le firme sono chip sulla riga, non una sezione");
   assert.match(page, /\{isLead && \(\s*<section[^>]*aria-labelledby="uc-people-case"/, "«Nella realizzazione» solo per il responsabile Lateral Space");
+});
+
+test("le righe che chiedono un'azione vengono prima: «Approva la delega» e «Affida a…» mai dietro «Vedi tutti»", () => {
+  const delegated = { ...req("e", "inviata"), detail: { ...DETAIL, openItems: 8, needsApproval: true } };
+  const rows = lsPeopleRows({ contacts, requests: [...requests, delegated], roleLabels: {}, designated });
+  const html = renderList(
+    props({ view: { audience: "lateral_space", rows }, unassigned: [{ roleKey: "sistemi", roleLabel: "Sistemi", questions: 4, suggestedContactIds: [] }] }),
+  );
+  assert.ok(html.includes("Elena Gialli") && html.includes(">Approva la delega<"), "la delega di Elena, ultima in ordine alfabetico, è in vista");
+  assert.ok(html.includes("Senza referente") && html.includes(">Affida a…<"), "le domande senza referente sono in vista");
+  assert.ok(html.indexOf("Elena Gialli") < html.indexOf("Senza referente") && html.indexOf("Senza referente") < html.indexOf("Anna Bianchi"), "prima le azioni, poi l'ordine alfabetico");
+  assert.ok(!html.includes("Carla Rossi"), "le altre persone dopo, dietro «Vedi tutti»");
 });

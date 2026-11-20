@@ -199,6 +199,7 @@ export function SendSheet({
   const picked = groups.filter((g) => chosen.has(g.contactId));
   // L'anteprima è l'email della prima persona scelta che la riceve davvero (chi non ha l'email riceve il link a mano).
   const mailed = emailConfigured ? (picked.find((g) => g.channel === "email") ?? null) : null;
+  const othersMailed = mailed ? picked.filter((g) => g.channel === "email" && g.contactId !== mailed.contactId).length : 0;
   const sample =
     mailed && preview
       ? renderEmail({ template: "richiesta_inviata", clientName: clientName || "Cliente", caseTitle, questions: mailed.items.length, minutes: mailed.minutes, expiresAt: preview.expiresAt, link: SAMPLE_LINK })
@@ -315,7 +316,8 @@ export function SendSheet({
                 </ol>
                 {mailed.items.length > SEND_PREVIEW_QUESTIONS && <p className="text-xs text-muted-foreground">{SEND_TEXT.moreQuestions(mailed.items.length - SEND_PREVIEW_QUESTIONS)}</p>}
               </div>
-              {picked.length > 1 && <p className="text-xs text-muted-foreground">{SEND_TEXT.others(picked.length - 1)}</p>}
+              {/* Solo chi riceve davvero l'email: chi non ce l'ha riceve il link a mano. */}
+              {othersMailed > 0 && <p className="text-xs text-muted-foreground">{SEND_TEXT.others(othersMailed)}</p>}
             </>
           ) : (
             <p className="text-sm text-muted-foreground">{emailConfigured ? SEND_TEXT.noEmail : EMAIL_OFF_TEXT}</p>
