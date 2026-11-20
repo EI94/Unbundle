@@ -8,12 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { moduleLabel } from "@/lib/learning/manage-view";
 import { AdminSection, AdminSelect, ConfirmAdminAction } from "./admin-shared";
 
 /**
  * Materiali del corso, dalla console. Tre domande per ogni file, perché sono le
  * tre che decidono se va bene in aula: a chi serve, quando, e se contiene le
- * soluzioni.
+ * soluzioni. (Rilascio 10, ondata 7a) La scheda «Materiali» di Gestisci: «Carica» è il suo solo pulsante pieno; il
+ * modulo si dice in parole («Modulo 1»), non con il codice.
  */
 
 const MAX_BYTES = 4_000_000;
@@ -109,17 +111,17 @@ export function AdminMaterials({ workspaceId, data, busy, mutate, onUploaded }: 
           <fieldset disabled={busy || uploading} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="material-file">File (fino a 4 MB)</Label>
-              <Input id="material-file" ref={fileInput} type="file" accept=".zip,.pdf,.pptx,.docx,.xlsx,.csv,.txt,.md"
+              <Input id="material-file" ref={fileInput} type="file" className="text-base sm:text-sm" accept=".zip,.pdf,.pptx,.docx,.xlsx,.csv,.txt,.md"
                 onChange={(event) => choose(event.target.files?.[0] ?? null)} />
               {file && <p className="text-sm text-muted-foreground">{file.name} · {sizeLabel(file.size)}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="material-title">Nome che vedono i partecipanti</Label>
-              <Input id="material-title" value={title} maxLength={200} onChange={(event) => setTitle(event.target.value)} placeholder="Es. Cartella degli esercizi" />
+              <Input id="material-title" className="text-base sm:text-sm" value={title} maxLength={200} onChange={(event) => setTitle(event.target.value)} placeholder="Es. Cartella degli esercizi" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="material-description">Istruzioni (facoltative)</Label>
-              <Textarea id="material-description" value={description} maxLength={2000} rows={4}
+              <Textarea id="material-description" className="text-base sm:text-sm" value={description} maxLength={2000} rows={4}
                 onChange={(event) => setDescription(event.target.value)}
                 placeholder={"Una riga per passo, es.\nScarica il file\nAprilo con un doppio clic\nTrascina la cartella sulla scrivania"} />
               <p className="text-xs text-muted-foreground">Ogni riga diventa un passo numerato sulla pagina del partecipante.</p>
@@ -129,7 +131,7 @@ export function AdminMaterials({ workspaceId, data, busy, mutate, onUploaded }: 
                 <Label htmlFor="material-module">Modulo</Label>
                 <AdminSelect id="material-module" value={moduleId} onChange={(event) => setModuleId(event.target.value)}>
                   <option value="">Tutto il corso</option>
-                  {modules.map((id) => <option key={id} value={id}>{id.toUpperCase()}</option>)}
+                  {modules.map((id) => <option key={id} value={id}>{moduleLabel(id)}</option>)}
                 </AdminSelect>
               </div>
               <div className="space-y-2">
@@ -142,7 +144,7 @@ export function AdminMaterials({ workspaceId, data, busy, mutate, onUploaded }: 
                 </AdminSelect>
               </div>
             </div>
-            <Button type="submit" disabled={!file || !title.trim()}>{uploading ? "Caricamento…" : "Carica"}</Button>
+            <Button type="submit" className="min-h-11 sm:min-h-9" disabled={!file || !title.trim()}>{uploading ? "Caricamento…" : "Carica"}</Button>
             {message && <p role={message.error ? "alert" : "status"} className={message.error ? "text-sm text-destructive" : "text-sm"}>{message.text}</p>}
           </fieldset>
         </form>
@@ -156,7 +158,7 @@ export function AdminMaterials({ workspaceId, data, busy, mutate, onUploaded }: 
               <div>
                 <h3 className="font-medium">{material.title}</h3>
                 <p className="text-sm text-muted-foreground">
-                  {material.fileName} · {sizeLabel(material.sizeBytes)} · {material.moduleId ? material.moduleId.toUpperCase() : "tutto il corso"}
+                  {material.fileName} · {sizeLabel(material.sizeBytes)} · {moduleLabel(material.moduleId).toLowerCase()}
                 </p>
                 <p className="mt-1 text-sm">{timingLabel(material)}</p>
                 {material.audience === "learners" && (

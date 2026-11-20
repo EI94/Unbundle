@@ -5,13 +5,20 @@ import { useRef, useState } from "react";
 import { ChartColumn } from "lucide-react";
 import type { AdminDetailDTO, LearningAdminRequest } from "@/lib/learning/admin-contract";
 import { learningAdminRequest } from "@/lib/learning/admin-client";
+import { ADMIN_TABS, adminTabHref, type AdminTab } from "@/lib/learning/manage-view";
+import { LEARNING_TEXT } from "@/lib/learning/text";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { AdminNotice, AdminSection, AdminSelect, AdminUnsavedNotice, ConfirmAdminAction, LearningLinkCopy, adminDate, cohortLabel, sessionLabels } from "./admin-shared";
+import { StatusDot } from "@/components/uc/ui/status-dot";
+import { ActionMenu } from "@/components/uc/ui/action-menu";
+import { Fold } from "@/components/ui-10/fold";
+import { notifyDone } from "@/components/ui-10/toast";
+import { cn } from "@/lib/utils";
+import { AdminNotice, AdminSection, AdminUnsavedNotice, ConfirmAdminAction, adminDate, cohortLabel } from "./admin-shared";
 import { AdminParticipants } from "./admin-participants";
-import { AdminJoinLinks } from "./admin-join-links";
+import { AdminLessons } from "./admin-join-links";
 import { AdminMaterials } from "./admin-materials";
 import { AdminGrants } from "./admin-grants";
 import { confirmLearningNavigation, useLearningUnsavedChanges } from "./use-unsaved-changes";
@@ -19,24 +26,37 @@ import { confirmLearningNavigation, useLearningUnsavedChanges } from "./use-unsa
 type Mutation = Exclude<LearningAdminRequest, { operation: "catalog" | "detail" | "inspectPack" }>;
 type WithoutActor<T> = T extends unknown ? Omit<T, "expectedUserId"> : never;
 export type AdminMutate = (request: WithoutActor<Mutation>) => Promise<boolean>;
-const sections = { overview: "Corso", links: "Link di accesso", materials: "Materiali", participants: "Partecipanti", sessions: "Turni", permissions: "Permessi", history: "Registro e conservazione" };
-type Section = keyof typeof sections;
+
+const M = LEARNING_TEXT.manage;
 
 const auditLabels: Record<string, string> = {
   program_imported: "Corso importato", program_enabled: "Corso reso disponibile", program_disabled: "Corso nascosto",
   program_closed: "Corso chiuso", program_reopened: "Corso riaperto", program_settings_changed: "Impostazioni aggiornate",
-  session_status_changed: "Apertura del turno aggiornata", learner_enrolled: "Partecipante assegnato", enrollment_changed: "Assegnazione aggiornata",
+  session_status_changed: "Attività della lezione aggiornate", learner_enrolled: "Partecipante assegnato", enrollment_changed: "Assegnazione aggiornata",
   grant_created: "Permesso concesso", grant_revoked: "Permesso revocato", retention_purged: "Dati scaduti cancellati",
   join_link_created: "Link di accesso creato", join_link_opened: "Ingresso aperto", join_link_closed: "Ingresso chiuso",
   join_link_seats_changed: "Posti del link aggiornati", join_link_revoked: "Link di accesso disattivato",
-  learner_joined_by_link: "Partecipante entrato dal link", learner_cohort_moved: "Partecipante spostato di turno",
+  learner_joined_by_link: "Partecipante entrato dal link", learner_cohort_moved: "Partecipante spostato di lezione",
   material_uploaded: "Materiale caricato", material_deleted: "Materiale eliminato",
   attempt_started: "Attività avviata", draft_saved: "Bozza salvata", attempt_submitted: "Attività consegnata", decisions_submitted: "Decisioni consegnate",
 };
 
-export function LearningAdminProgram({ workspaceId, initial }: { workspaceId: string; initial: AdminDetailDTO }) {
+/**
+ * «Gestisci» un corso (rilascio 10, ondata 7a, docs/ui-10/PROPOSTA-10.md §3.9, audit Fuori §4.11): sotto l'H1 (il titolo
+ * del corso) lo stato in una riga, «Risultati» bordato e il «⋯» (Copia link del corso · Vedi come partecipante ·
+ * Aggiorna); poi quattro schede, con il loro indirizzo (`?scheda=`) e un solo pulsante pieno ciascuna:
+ * - **Lezioni** — per ogni lezione l'ingresso (i link, il QR a schermo intero) e le attività (aperte, sospese, secondo
+ *   la scaletta), prima in due sezioni diverse;
+ * - **Materiali**;
+ * - **Persone** — chi segue il corso e i permessi;
+ * - **Impostazioni** — nome, informativa e conservazione; visibilità e chiusura; lo storico delle operazioni e la
+ *   cancellazione dei dati scaduti, chiusi.
+ * Le operazioni, i controlli del server e la protezione delle modifiche non salvate sono quelli di prima.
+ */
+export function LearningAdminProgram({ workspaceId, initial, initialTab, initialNow }: { workspaceId: string; initial: AdminDetailDTO; initialTab: AdminTab; initialNow: number }) {
   const [data, setData] = useState(initial);
-  const [section, setSection] = useState<Section>("overview");
+  const [section, setSection] = useState<AdminTab>(initialTab);
+  const [now, setNow] = useState(initialNow);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState(false);
@@ -45,6 +65,7 @@ export function LearningAdminProgram({ workspaceId, initial }: { workspaceId: st
   const inFlight = useRef(false);
   useLearningUnsavedChanges({ dirty: false, pending: busy });
   const base = `/dashboard/${workspaceId}/learning`;
+  const coursePath = `${base}/${data.program.id}`;
   const scope = { workspaceId, programId: data.program.id };
 
   const mutate: AdminMutate = async request => {
@@ -57,7 +78,7 @@ export function LearningAdminProgram({ workspaceId, initial }: { workspaceId: st
       setMessage(result.data.message);
       try {
         const updated = await learningAdminRequest({ expectedUserId: data.userId, operation: "detail", input: scope });
-        if (updated.ok) setData(updated.data);
+        if (updated.ok) { setData(updated.data); setNow(Date.now()); }
         else if (updated.code === "forbidden") { setAccessLost(true); setMessage("Modifica confermata. Il tuo permesso di gestione per questo corso non è più attivo."); }
         else setMessage(`${result.data.message} Ricarica la pagina per aggiornare il riepilogo.`);
       } catch { setMessage(`${result.data.message} Ricarica la pagina per aggiornare il riepilogo.`); }
@@ -68,7 +89,7 @@ export function LearningAdminProgram({ workspaceId, initial }: { workspaceId: st
 
   async function reloadDetail() {
     const result = await learningAdminRequest({ expectedUserId: data.userId, operation: "detail", input: scope });
-    if (result.ok) setData(result.data);
+    if (result.ok) { setData(result.data); setNow(Date.now()); }
   }
 
   async function refresh() {
@@ -79,50 +100,88 @@ export function LearningAdminProgram({ workspaceId, initial }: { workspaceId: st
     try {
       const result = await learningAdminRequest({ expectedUserId: data.userId, operation: "detail", input: scope });
       if (!result.ok) { setError(true); setMessage(result.message); if (result.code === "forbidden") setAccessLost(true); }
-      else { setData(result.data); setFormVersion(version => version + 1); setMessage("Riepilogo aggiornato."); }
+      else { setData(result.data); setNow(Date.now()); setFormVersion(version => version + 1); setMessage("Riepilogo aggiornato."); }
     } catch { setError(true); setMessage("Aggiornamento non riuscito. Riprova quando la connessione è disponibile."); }
     finally { inFlight.current = false; setBusy(false); }
   }
 
-  return <div className="space-y-6" aria-busy={busy}>
-    <div className="flex flex-wrap items-center justify-between gap-3"><Link className="text-sm underline" href={`${base}/admin`}>Tutti i corsi da gestire</Link><div className="flex flex-wrap items-center gap-2"><Link data-testid="admin-results-link" className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white hover:bg-emerald-500" href={`${base}/${data.program.id}/results`}><ChartColumn aria-hidden className="size-4" />Risultati</Link><Button type="button" variant="outline" disabled={busy} onClick={refresh}>Aggiorna riepilogo</Button></div></div>
+  async function copyCourseLink() {
+    const url = new URL(coursePath, window.location.origin).href;
+    try { await navigator.clipboard.writeText(url); notifyDone(M.copied); }
+    catch { setError(false); setMessage(M.copyFailed(url)); }
+  }
+
+  function openTab(key: AdminTab) {
+    const open = () => {
+      setSection(key); setMessage("");
+      window.history.replaceState(window.history.state, "", adminTabHref(window.location.pathname, window.location.search, key));
+    };
+    if (key !== section && confirmLearningNavigation(open)) open();
+  }
+
+  const program = data.program;
+  const status = program.status === "published" ? M.statusOpen : M.statusClosed;
+  const scoped = !program.canManageAll && program.managedCohorts.length
+    ? M.scoped(program.managedCohorts.map(cohort => cohortLabel(data.sessions, cohort).replace(/^Lezione del /, "")).join(", "))
+    : null;
+
+  return <div className="space-y-5" aria-busy={busy}>
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="min-w-0 space-y-1">
+        <StatusDot tone={program.status === "published" ? (program.featureEnabled ? "verde" : "grigio") : "grigio"} label={status} sublabel={program.featureEnabled ? M.visible : M.hidden} size="md" />
+        {scoped ? <p className="text-sm text-muted-foreground">{scoped}</p> : null}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button render={<Link href={`${coursePath}/results`} />} nativeButton={false} variant="outline" className="min-h-11 sm:min-h-9" data-testid="admin-results-link">
+          <ChartColumn aria-hidden data-icon="inline-start" />{M.results}
+        </Button>
+        <ActionMenu label={M.more} items={[
+          { label: M.copyLink, onSelect: () => void copyCourseLink() },
+          { label: M.asParticipant, href: coursePath },
+          { label: M.refresh, onSelect: () => void refresh(), disabled: busy },
+        ]} />
+      </div>
+    </div>
     <AdminNotice message={message} error={error} />
     {busy && <p role="status" className="text-sm text-muted-foreground">Operazione in corso. Attendi la conferma prima di lasciare la pagina.</p>}
     {!accessLost && <>
-      <div className="rounded-lg border p-4"><p className="font-medium">{data.program.title}</p><p className="mt-1 text-sm">{data.program.featureEnabled ? "Visibile ai partecipanti assegnati" : "Nascosto ai partecipanti"} · {data.program.status === "published" ? "In corso" : "Chiuso alle nuove risposte"}</p>{!data.program.canManageAll && <p className="mt-2 text-sm text-muted-foreground">{data.program.managedCohorts.length === 1 ? "Puoi gestire una lezione:" : `Puoi gestire ${data.program.managedCohorts.length} lezioni:`} {data.program.managedCohorts.map(cohort => cohortLabel(data.sessions, cohort).replace(/^Lezione del /, "")).join(", ")}.</p>}</div>
-      <nav aria-label="Gestione del corso" className="flex flex-wrap gap-2">{Object.entries(sections).map(([key, label]) => <Button key={key} type="button" variant={section === key ? "default" : "outline"} aria-pressed={section === key} disabled={busy} onClick={() => { const open = () => { setSection(key as Section); setMessage(""); }; if (key !== section && confirmLearningNavigation(open)) open(); }}>{label}</Button>)}</nav>
+      <nav aria-label={M.tabs.label} className="max-w-full min-w-0">
+        <ul className="grid grid-cols-2 gap-1 rounded-2xl border bg-muted/60 p-1 sm:inline-flex sm:grid-cols-none">
+          {ADMIN_TABS.map((key) => <li key={key} className="min-w-0">
+            <button type="button" aria-pressed={section === key} disabled={busy} data-testid={`admin-tab-${key}`}
+              onClick={() => openTab(key)}
+              className={cn("flex min-h-11 w-full items-center justify-center rounded-xl px-3 text-sm font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-60 sm:min-h-9",
+                section === key ? "bg-background text-foreground shadow-sm ring-1 ring-border" : "text-muted-foreground hover:bg-background/50 hover:text-foreground")}>
+              {M.tabs[key]}
+            </button>
+          </li>)}
+        </ul>
+      </nav>
       <div key={formVersion}>
-      {section === "overview" && <div className="space-y-6">
-        <AdminSection title="Preparazione del percorso">
-          <ol className="list-decimal space-y-2 pl-5 text-sm"><li>Controlla nome, informativa e conservazione.</li><li>In <strong>Link di accesso</strong> crea un link per ogni lezione e mandalo ai partecipanti, oppure proietta il QR in aula.</li><li>All’inizio della lezione apri l’ingresso del link; in <strong>Turni</strong> apri le attività.</li></ol>
-          <p className="text-sm">Nel tuo perimetro: {data.enrollments.filter(enrollment => enrollment.status === "active").length} assegnazioni attive · {data.grants.filter(grant => grant.capability === "review" && !grant.revokedAt).length} permessi per leggere le consegne individuali.</p>
-          <p className="text-sm">Chi apre un link di accesso entra con Google oppure email e password e si ritrova dentro il corso: non devi assegnare nessuno a mano, e vede soltanto questo corso. Le risposte salvate sono legate al suo account.</p>
-          <p className="text-sm"><Link className="underline" href={`${base}/${data.program.id}`}>Apri la pagina del percorso</Link>. Per verificare la vista partecipante usa un account di prova assegnato; questa pagina non cambia il tuo ruolo.</p>
-          <LearningLinkCopy path={`${base}/${data.program.id}`} label="Indirizzo del corso per chi è già iscritto" />
-          {data.program.canManageAll && <div className="flex flex-wrap items-start gap-3 border-t pt-4">
-            <ConfirmAdminAction busy={busy} label={data.program.featureEnabled ? "Nascondi corso" : "Rendi disponibile il corso"} description={data.program.featureEnabled ? "Nascondere il percorso a tutti i partecipanti? I dati salvati restano conservati, ma non saranno consultabili finché il corso è nascosto." : "Rendere il percorso visibile alle persone assegnate? Le attività seguiranno il programma dei turni. Nessuna email sarà inviata."} onConfirm={() => mutate({ operation: "lifecycle", input: { ...scope, action: data.program.featureEnabled ? "disable" : "enable" } })} />
-            <ConfirmAdminAction busy={busy} label={data.program.status === "published" ? "Chiudi corso" : "Riapri corso"} description={data.program.status === "published" ? "Chiudere il percorso alle nuove risposte? I partecipanti potranno ancora consultare le consegne se il corso è visibile. Il periodo di conservazione partirà dalla chiusura." : "Riaprire il percorso alle nuove risposte? La scadenza di conservazione sarà ricalcolata alla prossima chiusura. Controlla anche lo stato dei turni."} onConfirm={() => mutate({ operation: "lifecycle", input: { ...scope, action: data.program.status === "published" ? "close" : "reopen" } })} />
-          </div>}
-        </AdminSection>
-        {data.program.canManageAll && <AdminSettings data={data} workspaceId={workspaceId} busy={busy} mutate={mutate} />}
-
-      </div>}
-      {section === "links" && <AdminJoinLinks workspaceId={workspaceId} data={data} busy={busy} mutate={mutate} />}
-      {section === "materials" && <AdminMaterials workspaceId={workspaceId} data={data} busy={busy} mutate={mutate} onUploaded={reloadDetail} />}
-      {section === "participants" && <AdminParticipants workspaceId={workspaceId} data={data} busy={busy} mutate={mutate} />}
-      {section === "sessions" && <AdminSection title="Apertura dei turni">
-        <p className="text-sm">Con il programma automatico, M1 apre le attività dopo 30, 78 e 105 minuti dall’inizio del turno. La fine dell’incontro non interrompe il lavoro. “Tutte le attività aperte” permette di anticiparle; “Nuove risposte sospese” interrompe salvataggi e consegne.</p>
-        <p className="text-sm text-muted-foreground">Le date sono nell’ora italiana. Gli altri moduli restano in programma: questo pannello rende operativo il primo.</p>
-        <ul className="space-y-4">{data.sessions.map(session => <li key={session.id} className="space-y-3 rounded-lg border p-4"><h3 className="font-medium">Lezione del {adminDate(session.startsAt)}</h3><p className="text-sm">{adminDate(session.startsAt)} – {adminDate(session.endsAt)}</p>{session.moduleId === "m1" ? <AdminSessionForm session={session} workspaceId={workspaceId} programId={data.program.id} busy={busy} mutate={mutate} /> : <p className="text-sm text-muted-foreground">In programma · Attività non ancora disponibili</p>}</li>)}</ul>
-      </AdminSection>}
-      {section === "permissions" && <AdminGrants workspaceId={workspaceId} data={data} busy={busy} mutate={mutate} />}
-      {section === "history" && <div className="space-y-6">
-        {data.program.canManageAll && data.retention && <AdminRetention key={`${data.program.closedAt}:${data.program.retentionDays}:${data.retention.attempts}:${data.retention.ideaDrafts}`} data={data} workspaceId={workspaceId} busy={busy} mutate={mutate} />}
-        <AdminSection title="Registro delle operazioni">
-          <p className="text-sm text-muted-foreground">Operazioni recenti nel tuo perimetro. Questo registro non contiene risposte o voti.</p>
-          {data.audit.length === 0 ? <p>Nessuna operazione registrata.</p> : <ol className="space-y-3">{data.audit.map(event => <li key={event.id} className="rounded-lg border p-3"><p className="text-sm font-medium">{auditLabels[event.eventType] || "Operazione sul percorso"}</p><p className="text-sm text-muted-foreground">{adminDate(event.createdAt)} · {event.actorName || "Responsabile del percorso"}{event.cohortId ? ` · ${cohortLabel(data.sessions, event.cohortId).toLowerCase()}` : ""}</p></li>)}</ol>}
-        </AdminSection>
-      </div>}
+        {section === "lezioni" && <AdminLessons workspaceId={workspaceId} data={data} busy={busy} mutate={mutate} now={now} />}
+        {section === "materiali" && <AdminMaterials workspaceId={workspaceId} data={data} busy={busy} mutate={mutate} onUploaded={reloadDetail} />}
+        {section === "persone" && <div className="space-y-6">
+          <AdminParticipants workspaceId={workspaceId} data={data} busy={busy} mutate={mutate} />
+          <AdminGrants workspaceId={workspaceId} data={data} busy={busy} mutate={mutate} />
+        </div>}
+        {section === "impostazioni" && <div className="space-y-6">
+          {program.canManageAll && <AdminSettings data={data} workspaceId={workspaceId} busy={busy} mutate={mutate} />}
+          {program.canManageAll && <AdminSection title={M.lifecycle}>
+            <div className="flex flex-wrap items-start gap-3">
+              <ConfirmAdminAction busy={busy} label={program.featureEnabled ? "Nascondi corso" : "Rendi disponibile il corso"} description={program.featureEnabled ? "Nascondere il corso a tutti i partecipanti? I dati salvati restano conservati, ma non saranno consultabili finché il corso è nascosto." : "Rendere il corso visibile alle persone assegnate? Le attività seguiranno la scaletta delle lezioni. Nessuna email sarà inviata."} onConfirm={() => mutate({ operation: "lifecycle", input: { ...scope, action: program.featureEnabled ? "disable" : "enable" } })} />
+              <ConfirmAdminAction busy={busy} label={program.status === "published" ? "Chiudi corso" : "Riapri corso"} description={program.status === "published" ? "Chiudere il corso alle nuove risposte? I partecipanti potranno ancora consultare le consegne se il corso è visibile. Il periodo di conservazione partirà dalla chiusura." : "Riaprire il corso alle nuove risposte? La scadenza di conservazione sarà ricalcolata alla prossima chiusura. Controlla anche le attività delle lezioni."} onConfirm={() => mutate({ operation: "lifecycle", input: { ...scope, action: program.status === "published" ? "close" : "reopen" } })} />
+            </div>
+          </AdminSection>}
+          <div>
+            <Fold id="storico" title={M.history}>
+              <p className="text-sm text-muted-foreground">{M.historyNote}</p>
+              {data.audit.length === 0 ? <p className="text-sm">{M.historyEmpty}</p> : <ol className="space-y-2">{data.audit.map(event => <li key={event.id} className="rounded-lg border p-3"><p className="text-sm font-medium">{auditLabels[event.eventType] || "Operazione sul corso"}</p><p className="text-sm text-muted-foreground">{adminDate(event.createdAt)} · {event.actorName || "Chi tiene il corso"}{event.cohortId ? ` · ${cohortLabel(data.sessions, event.cohortId).toLowerCase()}` : ""}</p></li>)}</ol>}
+            </Fold>
+            {program.canManageAll && data.retention && <Fold id="cancellazione" title={M.purge}>
+              <AdminRetention key={`${program.closedAt}:${program.retentionDays}:${data.retention.attempts}:${data.retention.ideaDrafts}`} data={data} workspaceId={workspaceId} busy={busy} mutate={mutate} />
+            </Fold>}
+          </div>
+        </div>}
       </div>
     </>}
   </div>;
@@ -133,20 +192,20 @@ function AdminRetention({ data, workspaceId, busy, mutate }: { data: AdminDetail
   const [confirmed, setConfirmed] = useState(false);
   const { confirmDiscard } = useLearningUnsavedChanges({ dirty: !!title || confirmed, onDiscard: () => { setTitle(""); setConfirmed(false); } });
   const retention = data.retention!;
-  return <AdminSection title="Conservazione delle risposte">
-    <p className="text-sm">Periodo configurato: {data.program.retentionDays} giorni dalla chiusura. Chiusura: {adminDate(data.program.closedAt)}. {retention.purgeAfter ? `Cancellazione consentita dal ${adminDate(retention.purgeAfter)}.` : "La data sarà calcolata alla chiusura del percorso."}</p>
-    <p className="text-sm">Dati formativi conservati: {retention.attempts} tentativi e {retention.ideaDrafts} schede idea.</p>
+  return <div className="space-y-4">
+    <p className="text-sm">Periodo configurato: {data.program.retentionDays} giorni dalla chiusura. Chiusura: {adminDate(data.program.closedAt)}. {retention.purgeAfter ? `Cancellazione consentita dal ${adminDate(retention.purgeAfter)}.` : "La data sarà calcolata alla chiusura del corso."}</p>
+    <p className="text-sm">Dati conservati: {retention.attempts} prove e {retention.ideaDrafts} schede idea.</p>
     {!retention.eligible ? <p className="text-sm text-muted-foreground">La cancellazione non è ancora disponibile.</p> : <form onSubmit={async event => {
       event.preventDefault(); if (!confirmed || title !== data.program.title) return;
       if (await mutate({ operation: "purge", input: { workspaceId, programId: data.program.id, confirmProgramId: data.program.id, confirmTitle: title } })) { setTitle(""); setConfirmed(false); }
     }}><fieldset disabled={busy} className="space-y-4 rounded-lg border border-destructive/40 p-4">
-      <p className="text-sm">La cancellazione è definitiva: elimina risposte, feedback e schede idea di questo corso. Le proposte già inviate al portfolio restano nel portfolio. Iscrizioni, permessi e registro restano conservati.</p>
-      <div className="space-y-2"><Label htmlFor="purge-title">Per confermare, riscrivi il nome del corso: {data.program.title}</Label><Input id="purge-title" value={title} onChange={event => setTitle(event.target.value)} autoComplete="off" required /></div>
-      <label className="flex items-start gap-3 text-sm"><input className="mt-1 size-4" type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} required /><span>Confermo la cancellazione definitiva dei dati formativi scaduti di questo corso.</span></label>
+      <p className="text-sm">La cancellazione è definitiva: elimina risposte, riscontri e schede idea di questo corso. Gli use case già inviati restano. Iscrizioni, permessi e registro restano conservati.</p>
+      <div className="space-y-2"><Label htmlFor="purge-title">Per confermare, riscrivi il nome del corso: {data.program.title}</Label><Input id="purge-title" className="text-base sm:text-sm" value={title} onChange={event => setTitle(event.target.value)} autoComplete="off" required /></div>
+      <label className="flex items-start gap-3 text-sm"><input className="mt-1 size-4" type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} required /><span>Confermo la cancellazione definitiva dei dati scaduti di questo corso.</span></label>
       <AdminUnsavedNotice dirty={!!title || confirmed} onDiscard={confirmDiscard} />
-      <Button type="submit" variant="destructive" disabled={!confirmed || title !== data.program.title || (retention.attempts === 0 && retention.ideaDrafts === 0)}>Cancella dati formativi scaduti</Button>
+      <Button type="submit" variant="destructive" disabled={!confirmed || title !== data.program.title || (retention.attempts === 0 && retention.ideaDrafts === 0)}>Cancella i dati scaduti</Button>
     </fieldset></form>}
-  </AdminSection>;
+  </div>;
 }
 
 function AdminSettings({ data, workspaceId, busy, mutate }: { data: AdminDetailDTO; workspaceId: string; busy: boolean; mutate: AdminMutate }) {
@@ -164,22 +223,12 @@ function AdminSettings({ data, workspaceId, busy, mutate }: { data: AdminDetailD
         setForm({ baseline: submitted, title: submitted.title, policy: submitted.visibilityPolicy, retention: String(submitted.retentionDays) });
       }
     }}><fieldset disabled={busy} className="space-y-4">
-      <div className="space-y-2"><Label htmlFor="course-title">Nome del corso</Label><Input id="course-title" name="title" value={form.title} onChange={event => setForm({ ...form, title: event.target.value })} required maxLength={250} /></div>
-      <div className="space-y-2"><Label htmlFor="course-policy">Informativa visibile ai partecipanti</Label><Textarea id="course-policy" name="visibilityPolicy" value={form.policy} onChange={event => setForm({ ...form, policy: event.target.value })} required minLength={20} maxLength={10000} rows={4} /></div>
-      <div className="space-y-2"><Label htmlFor="course-retention">Giorni di conservazione dopo la chiusura</Label><Input id="course-retention" name="retentionDays" type="number" min={1} max={3650} value={form.retention} onChange={event => setForm({ ...form, retention: event.target.value })} required /><p className="text-sm text-muted-foreground">Accorciare il periodo anticipa la data dalla quale sarà possibile cancellare le risposte. La cancellazione richiede una conferma separata.</p></div>
+      <div className="space-y-2"><Label htmlFor="course-title">Nome del corso</Label><Input id="course-title" name="title" className="text-base sm:text-sm" value={form.title} onChange={event => setForm({ ...form, title: event.target.value })} required maxLength={250} /></div>
+      <div className="space-y-2"><Label htmlFor="course-policy">Informativa visibile ai partecipanti</Label><Textarea id="course-policy" name="visibilityPolicy" className="text-base sm:text-sm" value={form.policy} onChange={event => setForm({ ...form, policy: event.target.value })} required minLength={20} maxLength={10000} rows={4} /></div>
+      <div className="space-y-2"><Label htmlFor="course-retention">Giorni di conservazione dopo la chiusura</Label><Input id="course-retention" name="retentionDays" className="text-base sm:text-sm" type="number" min={1} max={3650} value={form.retention} onChange={event => setForm({ ...form, retention: event.target.value })} required /><p className="text-sm text-muted-foreground">Accorciare il periodo anticipa la data dalla quale sarà possibile cancellare le risposte. La cancellazione richiede una conferma separata.</p></div>
       <AdminUnsavedNotice dirty={dirty} onDiscard={confirmDiscard} />
-      <Button type="submit" disabled={!dirty}>Salva impostazioni</Button>
+      <Button type="submit" className="min-h-11 sm:min-h-9" disabled={!dirty}>Salva impostazioni</Button>
     </fieldset></form>
     <p className="text-sm text-muted-foreground">Le domande e le date appartengono alla versione importata. Per sostituire i contenuti crea un nuovo corso con una nuova versione; i progressi esistenti restano nel corso originale.</p>
   </AdminSection>;
-}
-
-function AdminSessionForm({ session, workspaceId, programId, busy, mutate }: { session: AdminDetailDTO["sessions"][number]; workspaceId: string; programId: string; busy: boolean; mutate: AdminMutate }) {
-  const [form, setForm] = useState({ saved: session.status, selected: session.status });
-  const dirty = form.saved !== form.selected;
-  const { confirmDiscard } = useLearningUnsavedChanges({ dirty, onDiscard: () => setForm({ saved: session.status, selected: session.status }) });
-  return <form className="space-y-3" onSubmit={async event => {
-    event.preventDefault(); const status = form.selected as "scheduled" | "open" | "closed";
-    if (await mutate({ operation: "session", input: { workspaceId, programId, sessionId: session.id, status } })) setForm({ saved: status, selected: status });
-  }}><fieldset disabled={busy} className="flex flex-wrap items-end gap-3"><div className="min-w-0 flex-1 space-y-2"><Label htmlFor={`session-${session.id}`}>Stato della lezione</Label><AdminSelect id={`session-${session.id}`} name="status" value={form.selected} onChange={event => setForm({ ...form, selected: event.target.value })}>{Object.entries(sessionLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</AdminSelect></div><Button type="submit" variant="outline" disabled={!dirty}>Salva apertura</Button></fieldset><AdminUnsavedNotice dirty={dirty} onDiscard={confirmDiscard} /></form>;
 }

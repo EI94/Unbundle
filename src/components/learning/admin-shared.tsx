@@ -1,17 +1,12 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode, SelectHTMLAttributes } from "react";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const capabilityLabels: Record<string, string> = {
   manage: "Gestire il corso", review: "Leggere consegne e risultati individuali",
   aggregate: "Vedere i risultati di gruppo", export: "Scaricare i risultati individuali",
-};
-export const sessionLabels: Record<string, string> = {
-  scheduled: "Apertura secondo il programma", open: "Tutte le attività aperte", closed: "Nuove risposte sospese",
 };
 export function adminDate(value: string | null) {
   return value ? new Intl.DateTimeFormat("it-IT", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Rome" }).format(new Date(value)) : "—";
@@ -24,11 +19,12 @@ export function cohortLabel(sessions: ReadonlyArray<{ cohortId: string; startsAt
   const session = cohortId ? sessions.find(entry => entry.cohortId === cohortId) : undefined;
   return session ? `Lezione del ${adminDate(session.startsAt)}` : "Lezione";
 }
+/** (Rilascio 10, ondata 7a, FO-12) Una sezione della console con un vero titolo H2, non un `div`. */
 export function AdminSection({ title, children }: { title: string; children: ReactNode }) {
-  return <Card><CardHeader><CardTitle>{title}</CardTitle></CardHeader><CardContent className="space-y-4">{children}</CardContent></Card>;
+  return <section className="space-y-4 rounded-xl border bg-card p-4 sm:p-5"><h2 className="text-base font-semibold">{title}</h2>{children}</section>;
 }
 export function AdminSelect(props: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...props} className={`min-h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-ring disabled:opacity-50 ${props.className ?? ""}`} />;
+  return <select {...props} className={`min-h-11 w-full rounded-lg border border-input bg-background px-3 py-2 text-base focus-visible:outline-ring disabled:opacity-50 sm:min-h-9 sm:text-sm ${props.className ?? ""}`} />;
 }
 export function AdminNotice({ message, error }: { message: string; error: boolean }) {
   const notice = useRef<HTMLParagraphElement>(null);
@@ -68,23 +64,4 @@ export function AdminUnsavedNotice({ dirty, onDiscard }: { dirty: boolean; onDis
     <p>Modifiche non salvate. Salva il modulo prima di cambiare sezione o uscire.</p>
     <Button type="button" variant="outline" onClick={onDiscard}>Scarta modifiche</Button>
   </div> : null;
-}
-
-export function LearningLinkCopy({ path, label }: { path: string; label: string }) {
-  const id = useId();
-  const input = useRef<HTMLInputElement>(null);
-  const [value, setValue] = useState(path);
-  const [notice, setNotice] = useState("");
-  async function copy() {
-    const url = new URL(path, window.location.origin).href;
-    setValue(url);
-    if (input.current) input.current.value = url;
-    try { await navigator.clipboard.writeText(url); setNotice("Link copiato. Condividilo con le persone assegnate: non concede nuovi permessi e non invia email."); }
-    catch { setNotice("Copia automatica non disponibile. Il link è selezionato: copialo manualmente."); input.current?.focus(); input.current?.select(); }
-  }
-  return <div className="space-y-2">
-    <label className="text-sm font-medium" htmlFor={id}>{label}</label>
-    <div className="flex flex-wrap gap-2"><Input ref={input} id={id} value={value} readOnly className="min-w-0 flex-1 text-sm" onFocus={() => { if (value === path) setValue(new URL(path, window.location.origin).href); }} /><Button type="button" variant="outline" onClick={copy}>Copia link</Button></div>
-    <p className="text-sm text-muted-foreground" role="status" aria-live="polite">{notice || "Apre il corso a chi è già iscritto. Per far entrare qualcuno di nuovo usa un link di accesso."}</p>
-  </div>;
 }
