@@ -25,7 +25,7 @@ import {
   type UnitBoardSummary,
 } from "../../../lib/mappatura/board-model.ts";
 import { cutLine, stepFieldValue, type StepField, type StepValue } from "../../../lib/mappatura/board-ops.ts";
-import { BOARD_TEXT } from "../../../lib/mappatura/text.ts";
+import { BOARD_TEXT, counted, formatCount, formatHours } from "../../../lib/mappatura/text.ts";
 import { BOARD_LANE, MAPPING_LIMITS, STREAMS, type Friction, type StepLane, type Stream, type UnitStatus } from "../../../lib/mappatura/vocab.ts";
 import type { OpInput } from "../store/board-client.ts";
 import { mapCountsLine, todayTileTexts, toClassifyText, toValidateText, unitStepsLine, type UnitWords, unitsTileTexts } from "./text.ts";
@@ -334,4 +334,35 @@ export function drawerReturnFocus<E>(p: {
   if (p.planned) return find(p.planned) ?? p.view;
   if (p.opener?.isConnected) return null;
   return (p.stepId ? find({ kind: "step", stepId: p.stepId }) : null) ?? p.view;
+}
+
+// ─── (Rilascio 10, §3.7) La vista «Processi» di «Contesto» ───────────
+
+/** Il prossimo passo della vista: l'unità in corso, poi la prima da iniziare; tutte complete (o nessuna): un'unità nuova. */
+export type ProcessesStep = { kind: "continue" | "start"; unit: UnitBoardSummary } | { kind: "add" };
+
+export function processesStep(units: readonly UnitBoardSummary[]): ProcessesStep {
+  const shown = units.map((unit) => ({ unit, status: shownUnitStatus(unit.status, unit.steps) }));
+  const going = shown.find((item) => item.status === "in_progress");
+  if (going) return { kind: "continue", unit: going.unit };
+  const fresh = shown.find((item) => item.status === "not_started");
+  if (fresh) return { kind: "start", unit: fresh.unit };
+  return { kind: "add" };
+}
+
+/** Il numero grande: «2 di 6» unità mappate; null senza unità (lo zero non si mostra). */
+export function processesNumber(units: readonly UnitBoardSummary[]): string | null {
+  if (units.length === 0) return null;
+  const n = unitNumbers(units);
+  return `${formatCount(n.complete)} di ${formatCount(n.total)}`;
+}
+
+/** Il tono del puntino dello stato di un'unità, nel semaforo dell'app: da iniziare grigio, in corso blu, completa verde. */
+export const unitDotTone = (status: UnitStatus): "grigio" | "blu" | "verde" => (status === "not_started" ? "grigio" : status === "in_progress" ? "blu" : "verde");
+
+/** Il fatto grigio della riga di un'unità: «25 passi · 40 h a settimana · 5 da validare»; niente a zero. */
+export function unitFactLine(unit: UnitBoardSummary): string | null {
+  const row = unitRow(unit);
+  const parts = [unit.steps > 0 ? counted(unit.steps, "passo", "passi") : null, unit.hoursWeek > 0 ? `${formatHours(unit.hoursWeek)} h a settimana` : null, ...row.todo].filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? parts.join(" · ") : null;
 }

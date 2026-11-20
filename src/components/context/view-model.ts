@@ -360,10 +360,9 @@ export function contextViewOf(raw: unknown): ContextView {
   return "memoria";
 }
 
-/** L'indirizzo di una vista: la Memoria senza parametri; i Processi, per ora, la pagina delle unità. */
+/** L'indirizzo di una vista: la Memoria senza parametri. */
 export function contextViewHref(workspaceId: string, view: ContextView): string {
   const base = `/dashboard/${workspaceId}/contesto`;
-  if (view === "processi") return `/dashboard/${workspaceId}/mapping`;
   return view === "memoria" ? base : `${base}?vista=${view}`;
 }
 
@@ -381,6 +380,19 @@ export function contextViewRedirect(workspaceId: string, search: Readonly<Record
       params.set("vista", "fonti");
       continue;
     }
+    for (const one of Array.isArray(value) ? value : [value]) params.append(key, one);
+  }
+  return `/dashboard/${workspaceId}/contesto?${params.toString()}`;
+}
+
+/**
+ * (§2.4, §8.2) Il vecchio elenco delle unità, `/mapping`, è la vista «Processi»: `/contesto?vista=processi`, con gli
+ * altri parametri dell'indirizzo di prima dopo di lei (una `vista` vecchia no). L'ancora la tiene il browser.
+ */
+export function processesRedirect(workspaceId: string, search: Readonly<Record<string, string | string[] | undefined>>): string {
+  const params = new URLSearchParams({ vista: "processi" });
+  for (const [key, value] of Object.entries(search)) {
+    if (key === "vista" || value === undefined) continue;
     for (const one of Array.isArray(value) ? value : [value]) params.append(key, one);
   }
   return `/dashboard/${workspaceId}/contesto?${params.toString()}`;

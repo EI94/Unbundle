@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useMemo, useRef, useState, type
 import Link from "next/link";
 import { ArrowRight, Check, FileText, MoreHorizontal, NotebookPen, PenLine, Plus, type LucideIcon } from "lucide-react";
 import { SegmentedNav } from "@/components/dashboard/segmented-nav";
+import { AddUnitDialog } from "@/components/mappatura/board/add-unit-dialog";
 import { NextStep } from "@/components/ui-10/next-step";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -58,6 +59,8 @@ export interface ContextPageProps {
   useCaseOptions: readonly UseCaseOption[];
   /** L'avviso dell'ok ai fornitori, se manca l'ok: «Aggiungi appunti» lo mostra dopo il salvataggio. */
   consentNotice: AiConsentNoticeData | null;
+  /** «Aggiungi un'unità» (la vista Processi): chi può modificare i processi. */
+  canAddUnit?: boolean;
   children: ReactNode;
 }
 
@@ -72,11 +75,12 @@ const STEP_ICON: Readonly<Record<"check" | "continue" | "add-unit", LucideIcon>>
  * - Le viste: Memoria · Processi · Fonti.
  * Al telefono il titolo e le due azioni stanno su una riga; il passo, a tutta larghezza, nella prima schermata.
  */
-export function ContextPage({ workspaceId, today, tab, lateralSpace, canEditMemory, canUpload, step = null, menu = [], useCaseOptions, consentNotice, children }: ContextPageProps) {
+export function ContextPage({ workspaceId, today, tab, lateralSpace, canEditMemory, canUpload, step = null, menu = [], useCaseOptions, consentNotice, canAddUnit = false, children }: ContextPageProps) {
   const [choosing, setChoosing] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [picked, setPicked] = useState<File | null>(null);
   const [writing, setWriting] = useState(false);
+  const [addingUnit, setAddingUnit] = useState(false);
   const notesFile = useRef<HTMLInputElement | null>(null);
   const upload = useDocumentUpload(workspaceId);
   const canAdd = lateralSpace || canUpload;
@@ -85,7 +89,7 @@ export function ContextPage({ workspaceId, today, tab, lateralSpace, canEditMemo
     if (lateralSpace) setChoosing(true);
     else upload.pick();
   }, [lateralSpace, upload]);
-  const actions = useMemo<ContextActions>(() => ({ add, addUnit: null }), [add]);
+  const actions = useMemo<ContextActions>(() => ({ add, addUnit: canAddUnit ? () => setAddingUnit(true) : null }), [add, canAddUnit]);
 
   const tabs = useMemo(
     () =>
@@ -112,7 +116,7 @@ export function ContextPage({ workspaceId, today, tab, lateralSpace, canEditMemo
   const stepItem = step
     ? step.kind === "link"
       ? { label: step.label, why: step.why, mine: true, href: step.href, icon: Icon ?? undefined }
-      : { label: step.label, why: step.why, mine: true, onClick: () => actions.addUnit?.(), icon: Icon ?? undefined }
+      : { label: step.label, why: step.why, mine: canAddUnit, onClick: () => setAddingUnit(true), icon: Icon ?? undefined }
     : null;
 
   return (
@@ -198,6 +202,8 @@ export function ContextPage({ workspaceId, today, tab, lateralSpace, canEditMemo
           />
         </>
       ) : null}
+
+      {canAddUnit ? <AddUnitDialog workspaceId={workspaceId} open={addingUnit} onOpenChange={setAddingUnit} /> : null}
 
       {lateralSpace && canEditMemory ? (
         <ContextSheet open={writing} onOpenChange={setWriting} title={T.writeFact.title}>

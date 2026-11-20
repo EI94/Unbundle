@@ -96,6 +96,28 @@ export const BOARD_TEXT = Object.freeze({
   votes: Object.freeze({ less: "Togli un tuo voto", more: "Aggiungi un voto" }),
 });
 
+/**
+ * (Rilascio 10, §3.7) «Aggiungi un'unità», che prima mancava (le unità nascevano solo dall'Intervista iniziale): la
+ * finestra e l'azione del server. La parola è sempre «unità», che non chiede accordi (vale per ogni workspace).
+ */
+export const UNIT_TEXT = Object.freeze({
+  add: "Aggiungi un'unità",
+  title: "Aggiungi un'unità",
+  nameLabel: "Nome dell'unità",
+  namePlaceholder: "Per esempio: Acquisti",
+  submit: "Aggiungi",
+  cancel: "Annulla",
+  saving: "Aggiungo…",
+  added: "Unità aggiunta: l'assistente aiuta a mappare il lavoro.",
+  nameMissing: "Scrivi il nome.",
+  nameTooLong: (max: number) => `Al massimo ${max} caratteri.`,
+  duplicate: "C'è già un'unità con questo nome.",
+  denied: "Non hai i permessi per farlo.",
+  failed: "Non è riuscito. Riprova tra poco.",
+});
+/** Quanto può essere lungo il nome di un'unità (lo stesso limite del nome di un processo). */
+export const UNIT_NAME_MAX = 120;
+
 /** L'etichetta del gruppo dei voti: il totale e quelli di chi guarda. */
 export const votesLabel = (total: number, mine: number): string => `Voti: ${formatCount(total)}. Tuoi: ${formatCount(mine)}.`;
 /** L'etichetta della × di un ruolo o di uno strumento. */

@@ -7,6 +7,9 @@ import { loadUseCaseOptions, romeToday } from "@/components/context/page-data";
 import { PendingReader } from "@/components/context/pending-reader";
 import { briefMaterial, confirmStep, consentNoticeNeeded, contextMenu, contextViewOf, contextViewRedirect, sheetIdParam } from "@/components/context/view-model";
 import { PageContainer } from "@/components/dashboard/page-container";
+import { ProcessesView } from "@/components/mappatura/board/processes-view";
+import { VIEW_TEXT } from "@/components/mappatura/board/text";
+import { processesStep } from "@/components/mappatura/board/view-model";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { contextActorFor } from "@/lib/context/server/actor";
 import { CONTEXT_TEXT } from "@/lib/context/text";
@@ -15,6 +18,10 @@ import { loadAiConsentNotice } from "@/lib/db/queries/context-consent";
 import { loadContextMemory } from "@/lib/db/queries/context-memory";
 import { listContextSources } from "@/lib/db/queries/context-sources";
 import { contextStoreReady } from "@/lib/db/queries/context-store";
+import { getAppUcExecutor } from "@/lib/db/uc-executor";
+import { boardAbilities } from "@/lib/mappatura/abilities";
+import { UNIT_TEXT } from "@/lib/mappatura/text";
+import { listUnitBoards } from "@/lib/mappatura/units";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 
 export const metadata = { title: CONTEXT_TEXT.page.title };
@@ -27,7 +34,7 @@ export const maxDuration = 60;
  * `contextAbilities`, e ogni lista arriva già filtrata dalle funzioni condivise.
  *
  * Tre viste sotto la stessa testata: la Memoria (senza `?vista`; `?apri=<fatto>` apre il pannello di un fatto), i
- * Processi, le Fonti (`?vista=fonti`; `?fonte=<id>` apre il pannello di una fonte). Il vecchio `?vista=appunti` porta
+ * Processi (`?vista=processi`: le unità, prima `/mapping`, che porta qui), le Fonti (`?vista=fonti`; `?fonte=<id>` apre il pannello di una fonte). Il vecchio `?vista=appunti` porta
  * a `?vista=fonti` con gli altri parametri (§8.2). Senza la 0038 una riga: si sta preparando.
  */
 export default async function ContextRoute({
@@ -71,6 +78,33 @@ export default async function ContextRoute({
     const step = confirmStep({ lateralSpace, openProposals, workspaceId });
     return step ? { kind: "link", icon: "check", ...step } : null;
   };
+
+  if (view === "processi") {
+    // (Rilascio 10, §3.7) I Processi: le unità con i numeri della loro board, in una lettura sola (prima `/mapping`).
+    const units = await listUnitBoards(await getAppUcExecutor(), workspaceId);
+    const canAddUnit = boardAbilities(access.role).edit;
+    const next = processesStep(units);
+    const P = VIEW_TEXT.processes;
+    const step: HeaderStep | null =
+      next.kind === "add"
+        ? canAddUnit
+          ? { kind: "action", action: "add-unit", label: UNIT_TEXT.add, why: P.addWhy }
+          : null
+        : {
+            kind: "link",
+            icon: "continue",
+            label: next.kind === "continue" ? P.continueStep(next.unit.name) : P.startStep(next.unit.name),
+            why: next.kind === "continue" ? P.continueWhy : P.startWhy,
+            href: `/dashboard/${workspaceId}/mapping/${next.unit.id}`,
+          };
+    return (
+      <PageContainer size="narrow">
+        <ContextPage {...shell} tab="processi" step={step} menu={contextMenu({ workspaceId, reviewer, toCheck: 0, lateralSpace })} canAddUnit={canAddUnit}>
+          <ProcessesView workspaceId={workspaceId} units={units} interviewHref={reviewer ? `/dashboard/${workspaceId}/setup/leadership` : null} />
+        </ContextPage>
+      </PageContainer>
+    );
+  }
 
   if (view === "fonti") {
     const sources = await listContextSources(actor);

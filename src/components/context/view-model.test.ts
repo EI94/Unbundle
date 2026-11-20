@@ -757,3 +757,10 @@ test("(rilascio 10, §3.7) le sezioni chiuse: il conteggio, «Come lavorano» in
   assert.deepEqual(noveltyRows({ items: [1, 2, 3, 4, 5].map(item), more: 2 }), { shown: [1, 2, 3].map(item), more: 4 });
   assert.deepEqual(noveltyRows(null), { shown: [], more: 0 });
 });
+
+test("(rilascio 10, §2.4) `/mapping` porta a `/contesto?vista=processi`, con la query di prima dopo la vista", async () => {
+  const { processesRedirect, contextViewHref } = await import("./view-model.ts");
+  assert.equal(processesRedirect(WS_ID, {}), `/dashboard/${WS_ID}/contesto?vista=processi`);
+  assert.equal(processesRedirect(WS_ID, { a: "1", vista: "x", b: ["2", "3"] }), `/dashboard/${WS_ID}/contesto?vista=processi&a=1&b=2&b=3`);
+  assert.equal(contextViewHref(WS_ID, "processi"), `/dashboard/${WS_ID}/contesto?vista=processi`);
+});

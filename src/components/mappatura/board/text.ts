@@ -27,6 +27,18 @@ export const VIEW_TEXT = Object.freeze({
     titlePlain: "Il lavoro di oggi,",
     discovery: Object.freeze({ title: "Prima l'intervista iniziale", link: "Vai all'intervista iniziale" }),
   }),
+  // (Rilascio 10, §3.7) La vista «Processi» di «Contesto»: un numero, una riga per unità, il passo.
+  processes: Object.freeze({
+    label: "Unità",
+    mapped: "unità mappate",
+    continueStep: (name: string) => `Continua: ${name}`,
+    continueWhy: "È l'unità in corso: riprendi da dove è rimasta.",
+    startStep: (name: string) => `Inizia: ${name}`,
+    startWhy: "Non è ancora cominciata: l'assistente aiuta a raccontare il lavoro.",
+    addWhy: "Ogni unità ha la sua mappa: i processi, i passi, chi li fa.",
+    empty: "Nessuna unità, per ora.",
+    interview: "Racconta l'azienda",
+  }),
   header: Object.freeze({ assistant: "Assistente" }),
   today: Object.freeze({
     titlePlain: "Come lavora oggi",

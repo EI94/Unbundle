@@ -319,3 +319,25 @@ test("alla chiusura del drawer: il posto deciso, chi l'ha aperto se c'è ancora,
   assert.equal(drawerReturnFocus({ view, planned: null, opener: gone, stepId: I.richieste })?.name, "card A1");
   assert.equal(drawerReturnFocus({ view, planned: null, opener: null, stepId: null })?.name, "vista");
 });
+
+test("(rilascio 10, §3.7) i Processi: il passo (l'unità in corso, poi la prima da iniziare, poi un'unità nuova), il numero e le righe senza zeri", async () => {
+  const { processesStep, processesNumber, unitDotTone, unitFactLine } = await import("./view-model.ts");
+  const [acquisti, magazzino, amministrazione] = fixtureUnits();
+  // In corso vince; poi la prima da iniziare; tutte complete o nessuna: un'unità nuova.
+  assert.deepEqual(processesStep([acquisti, amministrazione, magazzino]), { kind: "continue", unit: magazzino });
+  assert.deepEqual(processesStep([acquisti, amministrazione]), { kind: "start", unit: amministrazione });
+  assert.deepEqual(processesStep([acquisti]), { kind: "add" });
+  assert.deepEqual(processesStep([]), { kind: "add" });
+  // Un'unità «da iniziare» con dei passi è in corso, come mostra la sua riga.
+  assert.deepEqual(processesStep([acquisti, { ...amministrazione, steps: 2 }]), { kind: "continue", unit: { ...amministrazione, steps: 2 } });
+  // Il numero grande: «1 di 3»; niente senza unità.
+  assert.equal(processesNumber(fixtureUnits()), "1 di 3");
+  assert.equal(processesNumber([]), null);
+  // Il puntino dello stato, nel semaforo dell'app.
+  assert.deepEqual(["not_started", "in_progress", "mapped", "validated"].map((s) => unitDotTone(s as never)), ["grigio", "blu", "verde", "verde"]);
+  // La riga: passi, ore e quello che resta da fare; niente a zero.
+  assert.equal(unitFactLine(acquisti), "6 passi · 28,5 h a settimana · 2 da validare · 1 da classificare");
+  assert.equal(unitFactLine(magazzino), "4 passi · 31 h a settimana · 4 da validare");
+  assert.equal(unitFactLine(amministrazione), null);
+  assert.equal(unitFactLine({ ...amministrazione, steps: 1, hoursWeek: 0 }), "1 passo");
+});

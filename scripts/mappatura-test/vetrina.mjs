@@ -89,7 +89,6 @@ export async function buildVetrina(out) {
   const at = (path) => import(pathToFileURL(join(REPO, path)).href);
   const { createElement: h, Fragment } = await import("react");
   const { renderToStaticMarkup } = await import("react-dom/server");
-  const { UnitsView } = await at("src/components/mappatura/board/units-view.tsx");
   const { UnitBoard } = await at("src/components/mappatura/board/unit-board.tsx");
   const { StepDrawerBody, stepDrawerHead } = await at("src/components/mappatura/board/step-drawer.tsx");
   const { BoardProvider } = await at("src/components/mappatura/store/use-board.tsx");
@@ -102,7 +101,7 @@ export async function buildVetrina(out) {
   const { BoardLoadingHeader } = await at("src/components/mappatura/board/loading-header.tsx");
   const { BOARD_TABS, BOARD_TEXT } = await at("src/lib/mappatura/text.ts");
   const { locateStep } = await at("src/lib/mappatura/board-model.ts");
-  const { FIXTURE_IDS, SHOWCASE, fixtureBoard, fixtureUnits, showcaseBoard } = await at("scripts/mappatura-test/fixture.ts");
+  const { FIXTURE_IDS, SHOWCASE, fixtureBoard, showcaseBoard } = await at("scripts/mappatura-test/fixture.ts");
 
   const workspaceId = FIXTURE_IDS.workspace;
   const noop = () => {};
@@ -168,8 +167,6 @@ export async function buildVetrina(out) {
   );
 
   const bodies = {
-    "00-unita": html(h(UnitsView, { workspaceId, workspaceName: SHOWCASE.workspaceName, unitTerm: SHOWCASE.unitTerm, units: fixtureUnits() })),
-    "00-unita-vuota": html(h(UnitsView, { workspaceId, workspaceName: SHOWCASE.workspaceName, unitTerm: SHOWCASE.unitTerm, units: [] })),
     "02-oggi": unitBoard(full),
     "02-oggi-in-corso": unitBoard(showcaseBoard()),
     "02-oggi-vuota": unitBoard(fixtureBoard({ empty: true }), { assistantOpen: true }),

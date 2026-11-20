@@ -65,7 +65,7 @@ function referenceOf(name, config) {
   if (name.startsWith("status/")) return config.dir === "1440-light" ? `ledger/${name}.png` : null;
   if (name === "02e-oggi-toast-annulla") return config.width === 1440 ? `desk/detail-2x-${config.theme}/02-toast-con-annulla.png` : null;
   if (name === "02f-oggi-assistente-toast" || name === "02g-assistente-sopra-toast") return config.width === 1440 ? "ledger/status/6b-conflitto-toast.png" : null;
-  const same = { "00-unita": "07-casi", "02-oggi": "02-oggi", "02c-oggi-drawer-passo": "02c-oggi-drawer-passo", "04-domani": "04-domani", "04b-domani-drawer-confronto": "04b-domani-drawer-confronto" }[name];
+  const same = { "02-oggi": "02-oggi", "02c-oggi-drawer-passo": "02c-oggi-drawer-passo", "04-domani": "04-domani", "04b-domani-drawer-confronto": "04b-domani-drawer-confronto" }[name];
   return same ? `ledger/${config.dir}/${same}.png` : null;
 }
 

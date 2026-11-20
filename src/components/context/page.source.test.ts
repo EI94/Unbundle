@@ -169,3 +169,28 @@ test("«Da confermare» sul telefono: ogni casella si tocca in un'area di almeno
     assert.equal((source.match(/<Checkbox\b/g) ?? []).length, (source.match(/<label className="[^"]*\bmin-h-11\b[^"]*">\s*(?:<span[^>]*>\s*)?<Checkbox\b/g) ?? []).length, name);
   }
 });
+
+// ─── (Rilascio 10, §3.7) I Processi e «Aggiungi un'unità» ────────────
+
+test("(rilascio 10) i Processi: una lettura sola delle unità; «Aggiungi un'unità» a chi modifica i processi; `/mapping` porta qui con un 308", () => {
+  const source = withoutComments(read(PAGE));
+  assert.match(source, /if \(view === "processi"\) \{\s*const units = await listUnitBoards\(await getAppUcExecutor\(\), workspaceId\);\s*const canAddUnit = boardAbilities\(access\.role\)\.edit;/);
+  assert.match(source, /<ContextPage \{\.\.\.shell\} tab="processi" step=\{step\} [^>]*canAddUnit=\{canAddUnit\}>/);
+  const mapping = withoutComments(read(`${DASHBOARD}/mapping/page.tsx`));
+  assert.match(mapping, /await requireWorkspacePage\(workspaceId\);\s*permanentRedirect\(processesRedirect\(workspaceId, await searchParams\)\);/);
+  // Il 308 è vero: né la cartella né le sue madri hanno un loading.tsx (quello della board sta in [deptId]).
+  for (const dir of [`${DASHBOARD}/mapping`, DASHBOARD]) assert.equal(exists(`${dir}/loading.tsx`), false, `${dir}/loading.tsx`);
+});
+
+test("(rilascio 10) «Aggiungi un'unità»: prima chi chiama (sessione, workspace, la regola della board), poi il nome, poi il database; nessun modello", () => {
+  const source = withoutComments(read("src/lib/actions/mappatura-units.ts"));
+  assert.match(source, /^"use server";/);
+  const gate = source.indexOf("if (!access || !boardAbilities(access.role).edit) return { ok: false, message: UNIT_TEXT.denied };");
+  assert.ok(gate > 0 && gate > source.indexOf("await getCollaboratorAccess(session.user.id, workspaceId)"), "la guardia del workspace e la regola della board");
+  assert.ok(gate < source.indexOf("db\n") || gate < source.indexOf(".from(departments)"), "prima di leggere");
+  assert.ok(source.indexOf("UNIT_TEXT.duplicate") < source.indexOf("db.insert(departments)"), "un nome uguale non passa");
+  assert.match(source, /if \(name\.length > UNIT_NAME_MAX\) return/);
+  assert.doesNotMatch(source, /generateObject|generateText|streamText|anthropic|sendEmail|resend/i);
+  // Solo il nome: nessun altro campo dell'unità dal browser.
+  assert.match(source, /db\.insert\(departments\)\.values\(\{ workspaceId, name \}\)/);
+});

@@ -42,6 +42,8 @@ await installAppModules({
     .map((name) => `export async function ${name}() { return { ok: true, value: true }; }`)
     .join("\n"),
   "@/lib/actions/uc-subprocessors": `export async function declareSubprocessorsAction() { return { ok: true, data: null, message: "" }; }`,
+  // (Rilascio 10, §3.7) «Aggiungi un'unità» nella vista «Processi».
+  "@/lib/actions/mappatura-units": `export async function addUnitAction() { return { ok: false, message: "" }; }`,
   // (9b) «Cerca una persona» nella vista «Appunti» (people-search.tsx).
   "@/lib/actions/context-people": ["searchPersonAction", "erasePersonAction"].map((name) => `export async function ${name}() { return { ok: false, error: "riprova", message: "" }; }`).join("\n"),
 });
@@ -50,6 +52,8 @@ const { MemoryView } = await import("./memory-view.tsx");
 const { ConfirmView } = await import("./confirm-view.tsx");
 const { NotesView } = await import("./notes-view.tsx");
 const { ContextPage } = await import("./context-page.tsx");
+const { ProcessesView } = await import("../mappatura/board/processes-view.tsx");
+const { fixtureUnits } = await import("../../lib/mappatura/board-fixture.ts");
 
 const WS = "11111111-1111-4111-8111-111111111111";
 const TODAY = "2026-11-16";
@@ -445,4 +449,43 @@ test("la vista «Documenti» del cliente: i documenti con nome, data e dimension
   assert.equal((html.match(/>Togli<span class="sr-only"> listino\.xlsx<\/span><\/button>/g) ?? []).length, 1);
   assert.equal(text.includes("Da confermare (4)") || text.includes("Letto"), false, "niente stati della lettura per il cliente");
   assert.ok(textOf(render(createElement(NotesView, { workspaceId: WS, today: TODAY, lateralSpace: false, sources: [], initialSourceId: null }))).includes("Nessun documento ancora."));
+});
+
+// ─── (Rilascio 10, §3.7) I Processi ──────────────────────────────────
+
+test("(rilascio 10, §3.7) i Processi: un numero, una riga per unità con lo stato in parole e i conteggi senza zeri; il passo nella testata", () => {
+  const units = fixtureUnits();
+  const step = { kind: "link" as const, icon: "continue" as const, label: `Continua: ${units[1].name}`, why: "È l'unità in corso: riprendi da dove è rimasta.", href: `/dashboard/${WS}/mapping/${units[1].id}` };
+  const html = render(pageWith(headerProps({ tab: "processi", step, canAddUnit: true }), createElement(ProcessesView, { workspaceId: WS, units, interviewHref: null })));
+  const text = textOf(html);
+  // Un numero solo, «1 di 3» unità mappate.
+  assert.match(html, /data-slot="big-number-value"[^>]*>1 di 3</);
+  assert.ok(text.includes("unità mappate"));
+  // Una riga per unità: tutta la riga porta alla board; lo stato è un puntino e una parola.
+  for (const unit of units) assert.match(html, new RegExp(`<a href="/dashboard/${WS}/mapping/${unit.id}"[^>]*data-row="unit"`));
+  assert.ok(text.includes("Mappatura completa") && text.includes("In corso") && text.includes("Da iniziare"));
+  assert.ok(text.includes("6 passi · 28,5 h a settimana · 2 da validare · 1 da classificare"));
+  assert.equal(text.some((t) => /\b0 passi\b|0 h a settimana/.test(t)), false, "lo zero non si vede");
+  // Il passo della vista è il solo pulsante pieno; «Aggiungi un'unità» resta qui, tranquillo; «Aggiungi» è bordato.
+  const filled = filledButtons(html);
+  assert.equal(filled.length, 1);
+  assert.match(filled[0], new RegExp(`href="/dashboard/${WS}/mapping/${units[1].id}"`));
+  assert.ok(text.includes("Continua: Magazzino") || text.some((t) => t.startsWith("Continua: ")));
+  assert.ok(text.includes("Aggiungi un'unità"));
+  assert.match(/<button\b[^>]*data-action="context-add"[^>]*>/.exec(html)?.[0] ?? "", /\bbg-background\b/);
+});
+
+test("(rilascio 10, §3.7) i Processi senza unità: una frase e «Racconta l'azienda»; il passo pieno è «Aggiungi un'unità»", () => {
+  const step = { kind: "action" as const, action: "add-unit" as const, label: "Aggiungi un'unità", why: "Ogni unità ha la sua mappa: i processi, i passi, chi li fa." };
+  const html = render(pageWith(headerProps({ tab: "processi", step, canAddUnit: true }), createElement(ProcessesView, { workspaceId: WS, units: [], interviewHref: `/dashboard/${WS}/setup/leadership` })));
+  const text = textOf(html);
+  assert.ok(text.includes("Nessuna unità, per ora."));
+  assert.match(html, new RegExp(`<a[^>]*href="/dashboard/${WS}/setup/leadership"[^>]*>Racconta l(?:'|&#x27;)azienda</a>`));
+  const filled = filledButtons(html);
+  assert.equal(filled.length, 1);
+  assert.match(filled[0], /data-action="next-step"/);
+  assert.ok(text.includes("Aggiungi un'unità"));
+  assert.doesNotMatch(html, /data-slot="big-number"/, "lo zero non si mostra");
+  // Senza l'Intervista iniziale (chi non è revisore): la sola frase.
+  assert.doesNotMatch(render(createElement(ProcessesView, { workspaceId: WS, units: [], interviewHref: null })), /setup\/leadership/);
 });

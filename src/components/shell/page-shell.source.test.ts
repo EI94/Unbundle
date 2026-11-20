@@ -33,12 +33,13 @@ const REDIRECTS = [
   `${W}/learning/[programId]/live/page.tsx`,
   `${W}/learning/[programId]/manage/page.tsx`,
   `${W}/casi-duso/[caseId]/[...resto]/page.tsx`,
+  // (Rilascio 10, ondata 6a) L'elenco delle unità è la vista «Processi» di «Contesto».
+  `${W}/mapping/page.tsx`,
 ];
 
 /** Le pagine che hanno una cornice loro, a tutta pagina, con il motivo. */
 const OWN_FRAME: Record<string, string> = {
-  [`${W}/mapping/page.tsx`]: "la board: la sua grafica resta (scelta del titolare del 15/11), con la testata fissa e il titolo in Instrument Serif (§5.1)",
-  [`${W}/mapping/[deptId]/page.tsx`]: "la board di un'unità, come sopra",
+  [`${W}/mapping/[deptId]/page.tsx`]: "la board di un'unità: la sua grafica resta (scelta del titolare del 15/11), con la testata e il titolo in Instrument Serif (§5.1)",
   [`${W}/setup/leadership/page.tsx`]: "la chat dell'Intervista iniziale, alta quanto lo schermo, con la colonna laterale",
 };
 

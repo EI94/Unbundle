@@ -2,14 +2,13 @@
  * «Mappatura board»: le props dei cinque componenti d'ingresso (docs/mappatura/MAPPATURA-BOARD-PIANO.md §4.10).
  *
  * Le due pagine della mappatura (delle fondamenta) leggono i dati e montano questi componenti; ognuno appartiene al suo
- * pacchetto (§9): `UnitBoard` e `UnitsView` alle viste della board, `Companion`, `ClassificationView` e
- * `CompleteButton` al compagno. I due pacchetti si incontrano solo qui, nei file delle fondamenta e negli slot di
+ * pacchetto (§9): `UnitBoard` alle viste della board, `Companion`, `ClassificationView` e `CompleteButton` al
+ * compagno. (Rilascio 10, §3.7) L'elenco delle unità è la vista «Processi» di «Contesto» (`ProcessesView`). I due pacchetti si incontrano solo qui, nei file delle fondamenta e negli slot di
  * `UnitBoardProps`: una firma cambia solo passando dall'integratore.
  *
  * Solo tipi.
  */
 import type { ReactNode } from "react";
-import type { UnitBoardSummary } from "../../lib/mappatura/board-model.ts";
 import type { UnitTerm } from "../../lib/utils/unit-terminology.ts";
 import type { ChatConsent } from "../agent/chat-consent.ts";
 
@@ -29,14 +28,6 @@ export interface UnitBoardProps {
   classification: ReactNode;
   /** `<CompleteButton … />` (compagno): l'unico bottone pieno, a destra della testa della vista. */
   headAction: ReactNode;
-}
-
-/** L'elenco delle unità (S1): una riga per unità, i numeri prima. */
-export interface UnitsViewProps {
-  workspaceId: string;
-  workspaceName: string;
-  unitTerm: UnitTerm;
-  units: UnitBoardSummary[];
 }
 
 /** L'assistente accanto alla board: la chat, i documenti, i passi proposti dai documenti. */

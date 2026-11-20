@@ -61,7 +61,6 @@ const unitLayout = (await import("../../app/(dashboard)/dashboard/[workspaceId]/
 const { BoardLoadingNames } = await import("../../components/mappatura/board/loading-header.tsx");
 const { BoardProvider } = await import("../../components/mappatura/store/use-board.tsx");
 const { UnitBoard } = await import("../../components/mappatura/board/unit-board.tsx");
-const { UnitsView } = await import("../../components/mappatura/board/units-view.tsx");
 const { Companion } = await import("../../components/mappatura/companion/companion.tsx");
 const { CompleteButton } = await import("../../components/mappatura/companion/complete-button.tsx");
 const { ClassificationView } = await import("../../components/mappatura/classification/classification-view.tsx");
@@ -164,17 +163,13 @@ test("un'unità di un altro workspace (o un id che non è un'unità): 404, e nie
   assert.deepEqual(pagina.calls.map((call) => call[0]), ["requireWorkspacePage", "readBoard"]);
 });
 
-test("l'elenco delle unità: una lettura sola per tutte, con il nome del workspace e la sua parola per le unità", async () => {
+test("(rilascio 10, §2.4) il vecchio elenco delle unità porta ai Processi di «Contesto»: un 308 con la query di prima, dopo il controllo di chi guarda", async () => {
   pagina.calls = [];
-  const units = fixtureUnits();
-  (pagina as Pagina & { units?: unknown }).units = units;
-  const page = (await listPage({ params: Promise.resolve({ workspaceId: WS }) })) as Element;
-  assert.deepEqual(pagina.calls, [
-    ["requireWorkspacePage", WS],
-    ["listUnitBoards", EXECUTOR, WS],
-  ]);
-  assert.equal(page.type, UnitsView);
-  assert.deepEqual(page.props, { workspaceId: WS, workspaceName: "Officina di prova", unitTerm: { singular: "reparto", plural: "reparti" }, units });
+  const go = (search: Record<string, string | string[]>) => listPage({ params: Promise.resolve({ workspaceId: WS }), searchParams: Promise.resolve(search) });
+  const target = (error: unknown) => (error as { digest?: string }).digest ?? "";
+  await assert.rejects(go({}), (error: unknown) => target(error) === `NEXT_REDIRECT;replace;/dashboard/${WS}/contesto?vista=processi;308;`);
+  assert.deepEqual(pagina.calls, [["requireWorkspacePage", WS]], "nessuna lettura: solo il controllo");
+  await assert.rejects(go({ x: "1", vista: "vecchia" }), (error: unknown) => target(error).includes(`/dashboard/${WS}/contesto?vista=processi&x=1;308;`));
 });
 
 test("prima della board: il layout dell'unità legge i due nomi per la testata che carica, con il controllo della pagina", async () => {
