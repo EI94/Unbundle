@@ -189,10 +189,13 @@ test("(rilascio 10) «Aggiungi un'unità»: prima chi chiama (sessione, workspac
   assert.match(source, /^"use server";/);
   const gate = source.indexOf("if (!access || !boardAbilities(access.role).edit) return { ok: false, message: UNIT_TEXT.denied };");
   assert.ok(gate > 0 && gate > source.indexOf("await getCollaboratorAccess(session.user.id, workspaceId)"), "la guardia del workspace e la regola della board");
-  assert.ok(gate < source.indexOf("db\n") || gate < source.indexOf(".from(departments)"), "prima di leggere");
-  assert.ok(source.indexOf("UNIT_TEXT.duplicate") < source.indexOf("db.insert(departments)"), "un nome uguale non passa");
+  assert.ok(gate < source.indexOf("addUnit(await getAppUcExecutor(), workspaceId, name)"), "prima di scrivere");
   assert.match(source, /if \(name\.length > UNIT_NAME_MAX\) return/);
+  // Un nome uguale e il tetto delle unità li dice la transazione (`addUnit`, provata sul database in units.integration.test.ts).
+  assert.match(source, /added\.reason === "duplicate" \? UNIT_TEXT\.duplicate : UNIT_TEXT\.full\(MAPPING_LIMITS\.units\)/);
   assert.doesNotMatch(source, /generateObject|generateText|streamText|anthropic|sendEmail|resend/i);
   // Solo il nome: nessun altro campo dell'unità dal browser.
-  assert.match(source, /db\.insert\(departments\)\.values\(\{ workspaceId, name \}\)/);
+  const sql = withoutComments(read("src/lib/mappatura/board-sql.ts"));
+  assert.match(sql, /INSERT INTO departments \(workspace_id, name\)\s+SELECT \$\{U\(workspaceId\)\}, \$\{cast\(name, "text"\)\} FROM w WHERE NOT w\.same AND w\.units < \$\{cast\(MAPPING_LIMITS\.units, "int"\)\}/);
+  assert.match(sql, /pg_advisory_xact_lock\(hashtext\('mappatura-unita:' \|\| \$\{cast\(workspaceId, "text"\)\}\)\)/);
 });

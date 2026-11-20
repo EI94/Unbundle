@@ -1,13 +1,13 @@
 "use server";
 
-import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { departments } from "@/lib/db/schema";
+import { getAppUcExecutor } from "@/lib/db/uc-executor";
 import { logSafeError } from "@/lib/log/safe-error";
 import { boardAbilities } from "@/lib/mappatura/abilities";
 import { UNIT_NAME_MAX, UNIT_TEXT } from "@/lib/mappatura/text";
+import { addUnit } from "@/lib/mappatura/units";
+import { MAPPING_LIMITS } from "@/lib/mappatura/vocab";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -24,8 +24,9 @@ function cleanUnitName(raw: unknown): string {
  * nome. Prima le unità nascevano solo dalla chat dell'Intervista iniziale (`createDepartment`), aperta a ogni
  * collaboratore: qui la stessa regola, quella della board (`boardAbilities(role).edit`: ogni collaboratore, mai chi
  * segue solo un corso). Il nome si ricontrolla sul server: vuoto, troppo lungo o uguale a quello di un'altra unità del
- * workspace (senza badare alle maiuscole) non passa. Nessun modello, nessuna e-mail. Poi la pagina porta alla board
- * dell'unità, dove l'assistente si apre da sé (un'unità senza passi).
+ * workspace (senza badare alle maiuscole) non passa; un workspace con `MAPPING_LIMITS.units` unità è pieno. Il controllo
+ * del nome e l'aggiunta stanno in una transazione con il lucchetto del workspace (`addUnit`). Nessun modello, nessuna
+ * e-mail. Poi la pagina porta alla board dell'unità, dove l'assistente si apre da sé (un'unità senza passi).
  */
 export async function addUnitAction(workspaceId: string, rawName: string): Promise<AddUnitResult> {
   const session = await auth();
@@ -36,16 +37,11 @@ export async function addUnitAction(workspaceId: string, rawName: string): Promi
   if (!name) return { ok: false, message: UNIT_TEXT.nameMissing, field: "name" };
   if (name.length > UNIT_NAME_MAX) return { ok: false, message: UNIT_TEXT.nameTooLong(UNIT_NAME_MAX), field: "name" };
   try {
-    const [same] = await db
-      .select({ id: departments.id })
-      .from(departments)
-      .where(and(eq(departments.workspaceId, workspaceId), sql`lower(${departments.name}) = lower(${name})`))
-      .limit(1);
-    if (same) return { ok: false, message: UNIT_TEXT.duplicate, field: "name" };
-    const [unit] = await db.insert(departments).values({ workspaceId, name }).returning({ id: departments.id });
+    const added = await addUnit(await getAppUcExecutor(), workspaceId, name);
+    if (!added.ok) return { ok: false, message: added.reason === "duplicate" ? UNIT_TEXT.duplicate : UNIT_TEXT.full(MAPPING_LIMITS.units), field: "name" };
     revalidatePath(`/dashboard/${workspaceId}/contesto`, "layout");
     revalidatePath(`/dashboard/${workspaceId}/mapping`, "layout");
-    return { ok: true, value: { departmentId: unit.id } };
+    return { ok: true, value: { departmentId: added.departmentId } };
   } catch (error) {
     logSafeError("mappatura/unita", "unita_non_aggiunta", error, { workspaceId });
     return { ok: false, message: UNIT_TEXT.failed };

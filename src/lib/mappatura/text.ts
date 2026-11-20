@@ -124,6 +124,7 @@ export const UNIT_TEXT = Object.freeze({
   nameMissing: "Scrivi il nome.",
   nameTooLong: (max: number) => `Al massimo ${max} caratteri.`,
   duplicate: "C'è già un'unità con questo nome.",
+  full: (max: number) => `Ci sono già ${max} unità: è il massimo.`,
   denied: "Non hai i permessi per farlo.",
   failed: "Non è riuscito. Riprova tra poco.",
 });

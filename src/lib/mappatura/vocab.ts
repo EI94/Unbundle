@@ -64,6 +64,8 @@ export const MAPPING_LIMITS = Object.freeze({
   owner: 200,
   headline: 300,
   processes: 26,
+  /** (Rilascio 10, §3.7) Le unità di un workspace che «Aggiungi un'unità» accetta. */
+  units: 40,
   stepsPerProcess: 40,
   stepsPerUnit: 200,
   hoursWeek: 168,

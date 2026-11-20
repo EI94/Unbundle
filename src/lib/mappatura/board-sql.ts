@@ -593,6 +593,29 @@ export function preflight(scope: BoardScope): UcStatement[] {
 }
 
 /** Il nome di un'unità del workspace: la cornice della board che si apre lo mostra prima che arrivi la board. */
+/**
+ * (Rilascio 10, §3.7, F-160) «Aggiungi un'unità», in un batch di due istruzioni. Prima il lucchetto del workspace: due
+ * aggiunte insieme passano una alla volta, e la seconda vede la prima (senza un indice unico sul nome, che sarebbe una
+ * migrazione). Poi l'unità nuova, con il solo nome, se nel workspace non ce n'è già una con lo stesso nome (senza badare
+ * alle maiuscole) e se le unità sono meno di `MAPPING_LIMITS.units`. La riga dice com'è andata: l'id della nuova, o
+ * perché no (`same`, il nome c'è già; altrimenti il workspace è pieno).
+ */
+export function unitAddLock(workspaceId: string): UcStatement {
+  return toStatement(ucSql`SELECT pg_advisory_xact_lock(hashtext('mappatura-unita:' || ${cast(workspaceId, "text")})) IS NULL AS locked`);
+}
+
+export function unitAdd(workspaceId: string, name: string): UcStatement {
+  return toStatement(ucSql`WITH w AS (
+  SELECT count(*)::int AS units, coalesce(bool_or(lower(d.name) = lower(${cast(name, "text")})), false) AS same
+  FROM departments d WHERE d.workspace_id = ${U(workspaceId)}
+), made AS (
+  INSERT INTO departments (workspace_id, name)
+  SELECT ${U(workspaceId)}, ${cast(name, "text")} FROM w WHERE NOT w.same AND w.units < ${cast(MAPPING_LIMITS.units, "int")}
+  RETURNING id
+)
+SELECT (SELECT made.id FROM made) AS id, w.same, w.units FROM w`);
+}
+
 export function unitNameRead(scope: BoardScope): UcStatement {
   return toStatement(ucSql`SELECT d.name FROM departments d WHERE d.id = ${U(scope.departmentId)} AND d.workspace_id = ${U(scope.workspaceId)}`);
 }
