@@ -12,7 +12,10 @@
  * - `mappa`, `regole`, `modello-dati` → `soluzione/{mappa,regole,dati}`;
  * - `kpi` → `valore/kpi`, `roi` → `valore`, `avanzamento` → la sezione «Via
  *   allo sviluppo» della Panoramica (`#via`, rilascio 10: senza passare da `/via`);
- * - `registro` → `attivita`, `registro/csv` → `attivita/csv`.
+ * - `registro` → `attivita`, `registro/csv` → `attivita/csv`;
+ * - (rilascio 10, ondata 5b, §8.2) `progetto` → `costruzione`, con tutta la query: le ancore (`#banco`, `#compiti`,
+ *   `#contesto`) non arrivano al server e il browser le tiene, perché l'indirizzo nuovo non ne ha; la Costruzione ha
+ *   ancora quegli id (`#banco` è la piega dei dettagli della «Qualità»).
  *
  * Un parametro che la tabella non nomina si lascia cadere. Modulo puro.
  */
@@ -20,7 +23,7 @@
 export type LegacySearchParams = URLSearchParams | Readonly<Record<string, string | readonly string[] | undefined>>;
 
 /** I vecchi segmenti (primo livello sotto il caso) che hanno una pagina-stub. */
-export const LEGACY_CASE_SEGMENTS = ["voci", "verifica", "documenti", "mappa", "regole", "modello-dati", "kpi", "roi", "avanzamento", "registro"] as const;
+export const LEGACY_CASE_SEGMENTS = ["voci", "verifica", "documenti", "mappa", "regole", "modello-dati", "kpi", "roi", "avanzamento", "registro", "progetto"] as const;
 export type LegacyCaseSegment = (typeof LEGACY_CASE_SEGMENTS)[number];
 
 /** `preset` del vecchio catalogo → `vista` (e altri parametri) di Domande. */
@@ -145,6 +148,8 @@ export function legacyCaseRoute(base: string, segments: readonly string[], searc
       if (rest.length === 0) return withQuery(`${root}/attivita`, pick(sp, ["tipo", "chi", "attore", "dal", "al", "pagina"]));
       if (rest.length === 1 && rest[0] === "csv") return withQuery(`${root}/attivita/csv`, all());
       return null;
+    case "progetto":
+      return rest.length === 0 ? withQuery(`${root}/costruzione`, all()) : null;
     default:
       return null;
   }

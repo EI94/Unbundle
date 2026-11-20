@@ -74,8 +74,16 @@ test("(release 10, §3.5) yesterday's Documenti page opens the «File» panel of
   assert.equal(new URL(target, "http://x").searchParams.get("apri"), "file");
 });
 
+test("(rilascio 10, ondata 5b, F-131) the agent's project is the Costruzione: the whole query passes, anchors stay in the browser", () => {
+  assert.equal(route(["progetto"]), `${base}/costruzione`);
+  assert.equal(route(["progetto"], "da=email&x=1"), `${base}/costruzione?da=email&x=1`);
+  assert.equal(legacyCaseRouteFromPath(`${base}/progetto/`), `${base}/costruzione`);
+  assert.ok(!route(["progetto"])!.includes("#"), "no anchor in the Location: the browser keeps #banco, #compiti, #contesto");
+  assert.equal(route(["progetto", "x"]), null);
+});
+
 test("segments that are not old addresses are not redirected", () => {
-  for (const s of ["domande", "soluzione", "valore", "via", "persone", "privacy", "attivita", "export", "files", ""]) assert.equal(route([s]), null, s);
+  for (const s of ["domande", "costruzione", "soluzione", "valore", "via", "persone", "privacy", "attivita", "export", "files", ""]) assert.equal(route([s]), null, s);
   assert.equal(route([]), null);
   assert.equal(route(["roi", "x"]), null);
 });
