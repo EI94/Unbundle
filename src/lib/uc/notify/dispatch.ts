@@ -673,7 +673,15 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
       const drop = typeof n.payload.drop === "number" && Number.isFinite(n.payload.drop) && n.payload.drop > 0 && n.payload.drop <= 1 ? n.payload.drop : null;
       if (!alert || quality === null || (alert === "in_calo" && drop === null)) return cancel("avviso_assente");
       const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/use-cases/${useCase}/progetto`;
-      return { action: "send", to, link: null, build: () => ({ ...base, template: "evals_in_calo", alert, quality, drop: alert === "in_calo" ? drop : null, link, external: externalBuilder(recipient) }), after: null };
+      // (8.2b) Le ha mandate la CI di main: la riga in più, con il commit (controllato: le 40 cifre).
+      const fromCi = n.payload.source === "ci" && typeof n.payload.commit === "string" && /^[0-9a-f]{40}$/.test(n.payload.commit) ? { commit: n.payload.commit } : null;
+      return {
+        action: "send",
+        to,
+        link: null,
+        build: () => ({ ...base, template: "evals_in_calo", alert, quality, drop: alert === "in_calo" ? drop : null, link, external: externalBuilder(recipient), ...(fromCi ? { fromCi } : {}) }),
+        after: null,
+      };
     }
     case "compito_chiesto":
     case "compito_passato":

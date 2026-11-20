@@ -1,9 +1,13 @@
 import { Lightbulb, TriangleAlert } from "lucide-react";
+import type { EvalRunOrigin } from "@/lib/db/queries/use-case-eval-origins";
 import { formatCost, formatQuality, type BenchVerdict, type EvalOverview, type EvalRunView } from "@/lib/use-cases/factory/benchmark";
 import { cn } from "@/lib/utils";
 import { BenchChart } from "./bench-chart";
 import {
   EVAL_TEXT,
+  ciRunHref,
+  evalSourceText,
+  originOf,
   benchCommand,
   benchHeading,
   benchMetaLine,
@@ -48,11 +52,26 @@ import {
  *   stimato per 1.000 · tempo p95 · segni), la raccomandazione (in evidenza quando conviene cambiare, con la riga di
  *   `agent.yaml`) e il comando per rifarlo con gli stessi modelli; un banco superato dalle evals di `main` (il ruolo
  *   usa un altro modello, o non c'è più) resta come storia, con una riga neutra al posto della raccomandazione;
- * - senza misure, i due comandi e a cosa servono.
+ * - senza misure, i due comandi e a cosa servono, e (8.2b) che con la CI collegata le evals di main arrivano da sole;
+ * - (8.2b) in fondo alla riga di ogni esecuzione la fonte, «dalla CI» o «dalla CLI» (`origins`, letti con
+ *   `readEvalOrigins`; null: non si sa, e la riga non la dice). `ciLinks`: chi guarda costruisce il caso o è di Lateral
+ *   Space, e «dalla CI» porta all'esecuzione su GitHub; il cliente lo legge senza link.
  *
  * Solo presentazione: legge quello che la pagina le passa (`readEvalOverview`). Per caso e per ruolo, mai per persona.
  */
-export function EvalSection({ overview, caseCode, unavailable = false }: { overview: EvalOverview | null; caseCode: string; unavailable?: boolean }) {
+export function EvalSection({
+  overview,
+  caseCode,
+  unavailable = false,
+  origins = null,
+  ciLinks = false,
+}: {
+  overview: EvalOverview | null;
+  caseCode: string;
+  unavailable?: boolean;
+  origins?: ReadonlyMap<string, EvalRunOrigin> | null;
+  ciLinks?: boolean;
+}) {
   const measured = hasMeasures(overview);
   // I ruoli delle evals di oggi senza un banco: il comando per cominciare, ruolo per ruolo.
   const missing = measured ? rolesWithoutBench(overview) : [];
@@ -65,11 +84,11 @@ export function EvalSection({ overview, caseCode, unavailable = false }: { overv
       ) : null}
       {measured ? (
         <>
-          <EvalsBlock evals={overview.evals} caseCode={caseCode} />
+          <EvalsBlock evals={overview.evals} caseCode={caseCode} origin={overview.evals.latest ? originOf(origins, overview.evals.latest.id) : null} ciLinks={ciLinks} />
           {overview.benches.length ? (
             <>
               {overview.benches.map((bench) => (
-                <BenchCard key={bench.role} bench={bench} latest={overview.evals.latest} caseCode={caseCode} />
+                <BenchCard key={bench.role} bench={bench} latest={overview.evals.latest} caseCode={caseCode} origin={originOf(origins, bench.run.id)} ciLinks={ciLinks} />
               ))}
               {missing.map((role) => (
                 <Command key={role} label={benchMissingText(role)} command={benchCommand(caseCode, role)} />
@@ -98,6 +117,37 @@ function Command({ label, command }: { label?: string; command: string }) {
   );
 }
 
+/**
+ * (8.2b) « · dalla CI» o « · dalla CLI», in fondo alla riga di un'esecuzione. Per chi costruisce «dalla CI» porta
+ * all'esecuzione su GitHub, con un bersaglio di 44 px al telefono che non allarga la riga; senza fonte, niente.
+ */
+function RunSource({ origin, ciLinks }: { origin: EvalRunOrigin | null; ciLinks: boolean }) {
+  if (!origin) return null;
+  const href = ciRunHref(origin, ciLinks);
+  return (
+    <>
+      {" · "}
+      {href ? (
+        <a
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          data-slot="eval-source"
+          data-source={origin.source}
+          className="-my-3.5 inline-block py-3.5 text-foreground underline underline-offset-2 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:my-0 sm:py-0"
+        >
+          {evalSourceText(origin.source)}
+          <span className="sr-only">, {EVAL_TEXT.fromCiLink}</span>
+        </a>
+      ) : (
+        <span data-slot="eval-source" data-source={origin.source}>
+          {evalSourceText(origin.source)}
+        </span>
+      )}
+    </>
+  );
+}
+
 function FakeBadge() {
   return <p className="inline-flex rounded-full border border-uc-giallo bg-uc-giallo-bg px-2 py-0.5 text-xs">{EVAL_TEXT.fakeModels}</p>;
 }
@@ -111,7 +161,7 @@ function ThresholdMark({ ok }: { ok: boolean }) {
   );
 }
 
-function EvalsBlock({ evals, caseCode }: { evals: EvalOverview["evals"]; caseCode: string }) {
+function EvalsBlock({ evals, caseCode, origin, ciLinks }: { evals: EvalOverview["evals"]; caseCode: string; origin: EvalRunOrigin | null; ciLinks: boolean }) {
   const latest = evals.latest;
   const result = latest ? evalsResult(latest) : null;
   if (!latest || !result) {
@@ -135,7 +185,10 @@ function EvalsBlock({ evals, caseCode }: { evals: EvalOverview["evals"]; caseCod
         <h3 id="banco-evals" className="text-sm font-medium">
           {EVAL_TEXT.evalsHeading}
         </h3>
-        <p className="text-xs text-muted-foreground">{evalsMetaLine(latest)}</p>
+        <p className="text-xs text-muted-foreground">
+          {evalsMetaLine(latest)}
+          <RunSource origin={origin} ciLinks={ciLinks} />
+        </p>
       </div>
       <p className="sr-only">{evalsStatusLine(latest, ", ")}.</p>
       <div aria-hidden className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -196,7 +249,19 @@ function headingId(role: string): string {
  * hanno più): grafico e tabella restano come storia, senza «oggi», e una riga neutra prende il posto della
  * raccomandazione e della riga di `agent.yaml`; il comando per rifarlo solo se il ruolo c'è ancora.
  */
-function BenchCard({ bench, latest, caseCode }: { bench: EvalOverview["benches"][number]; latest: EvalRunView | null; caseCode: string }) {
+function BenchCard({
+  bench,
+  latest,
+  caseCode,
+  origin,
+  ciLinks,
+}: {
+  bench: EvalOverview["benches"][number];
+  latest: EvalRunView | null;
+  caseCode: string;
+  origin: EvalRunOrigin | null;
+  ciLinks: boolean;
+}) {
   const { role, run, analysis } = bench;
   const superseded = benchSupersededBy(bench, latest);
   const rows = benchRows(run.results, analysis, { superseded: superseded !== null });
@@ -207,7 +272,10 @@ function BenchCard({ bench, latest, caseCode }: { bench: EvalOverview["benches"]
         <h3 id={id} className="text-sm font-medium">
           {benchHeading(role)}
         </h3>
-        <p className="text-xs text-muted-foreground">{benchMetaLine(run)}</p>
+        <p className="text-xs text-muted-foreground">
+          {benchMetaLine(run)}
+          <RunSource origin={origin} ciLinks={ciLinks} />
+        </p>
       </div>
       {run.fakeModels ? <FakeBadge /> : null}
       <BenchChart role={role} rows={rows} />
@@ -360,6 +428,9 @@ function EmptyState({ caseCode, unavailable }: { caseCode: string; unavailable: 
           <Command command={benchCommand(caseCode, null)} />
         </li>
       </ul>
+      <p data-slot="eval-empty-ci" className="text-xs text-muted-foreground">
+        {EVAL_TEXT.emptyCi}
+      </p>
     </div>
   );
 }
