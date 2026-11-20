@@ -6,7 +6,7 @@ import { copyIsCurrent, missingCompanyFields, registerFacts, registerStatus, typ
 // «In ordine», oppure che cosa manca, nell'ordine di prima; i fatti in una riga grigia senza zeri. Dati inventati.
 
 const complete: RegisterFacts["organization"] = { legalName: "Cliente Demo S.r.l.", registerOwner: "Persona Demo, HR", aiActRole: "deployer", aiSystems: ["Claude"], useContext: "Uffici", trainers: "Formatrice Demo" };
-function register(o: Partial<RegisterFacts> & { totals?: Partial<RegisterFacts["totals"]> } = {}): RegisterFacts {
+function register(o: Omit<Partial<RegisterFacts>, "totals"> & { totals?: Partial<RegisterFacts["totals"]> } = {}): RegisterFacts {
   return {
     organization: complete,
     companies: [],
