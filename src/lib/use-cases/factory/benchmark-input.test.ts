@@ -247,7 +247,7 @@ test("la panoramica per la CLI: chiavi italiane, l'andamento così com'è, il ba
   const cli = evalOverviewForCli("TJ-0049", overview);
   assert.equal(cli.caso, "TJ-0049");
   assert.deepEqual(cli.evals.andamento, [{ quando: "2026-11-13T10:00:00.000Z", qualita: 0.9, soglieRispettate: true, modelliFinti: false }]);
-  assert.deepEqual(Object.keys(cli.evals.ultime ?? {}), ["id", "tipo", "ruolo", "livello", "ramo", "commit", "versioneModello", "modelli", "modelliFinti", "inCostruzione", "prove", "quando", "risultati"]);
+  assert.deepEqual(Object.keys(cli.evals.ultime ?? {}), ["id", "tipo", "ruolo", "livello", "ramo", "commit", "versioneModello", "modelli", "modelliFinti", "inCostruzione", "prove", "quando", "risultati", "fonte", "ci"]);
   const [b] = cli.banchi;
   // Stessa qualità: il più bravo è il più economico, e Sonnet è battuto su tutti e due.
   assert.deepEqual([b.ruolo, b.piuBravo, b.piuEconomico, b.piuEfficiente, b.raccomandazione?.tipo], ["lettura", HAIKU, HAIKU, HAIKU, "cambia"]);
