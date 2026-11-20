@@ -31,6 +31,7 @@ import {
   questionBackQuery,
   questionTabOf,
   questionsCollapsed,
+  segmentPatch,
   type QuestionDefaults,
 } from "./catalog-filter.ts";
 import { CASE_ID, CONTACT, ITEM as ITEM_ID, LS_USER } from "./view.fixtures.ts";
@@ -378,4 +379,20 @@ test("(release 10, §3.5) «File (6)»: the archive as the panel lists it; the p
   assert.match(dev.text, /f\.scan_status = 'pulito'/);
   assert.match(dev.text, /i\.status IN \('validata', 'non_applicabile'\)/);
   assert.ok(dev.params.includes(false));
+});
+
+test("(release 10, §3.5) «A posto» chosen from the sheet opens «Tutte»: the client on «Da rispondere» sees the questions in order, not an empty list", () => {
+  for (const audience of ["ls", "cliente"] as const) {
+    const f = parseQuestionFilter({ stato: "a-posto" }, audience, PREP);
+    assert.deepEqual([f.vista, f.stato], ["tutte", "a-posto"], audience);
+    assert.equal(parseQuestionFilter({ stato: "a-posto", vista: "da-verificare" }, audience, PREP).vista, "tutte");
+  }
+  assert.equal(parseQuestionFilter({ stato: "chiesta", vista: "da-fare" }, "ls", PREP).vista, "da-fare", "a detailed state keeps the segment");
+  // Andando a un altro segmento il filtro «A posto» si toglie; in «Tutte» resta.
+  const done = parseQuestionFilter({ stato: "a-posto" }, "cliente", PREP);
+  assert.deepEqual(segmentPatch(done, "da-fare"), { vista: "da-fare", stato: null });
+  assert.deepEqual(segmentPatch(done, "bloccate"), { vista: "bloccate", stato: null });
+  assert.deepEqual(segmentPatch(done, "tutte"), { vista: "tutte" });
+  assert.equal(questionQuery(done, PREP, segmentPatch(done, "da-fare")), "", "back to the default «Da rispondere»");
+  assert.deepEqual(segmentPatch(parseQuestionFilter({ stato: "chiesta" }, "ls", PREP), "da-verificare"), { vista: "da-verificare" });
 });

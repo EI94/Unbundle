@@ -11,7 +11,7 @@ import { TextAction } from "@/components/ui-10/row";
 import { StatusDot } from "@/components/uc/ui/status-dot";
 import { selectCatalogItemsAction } from "@/lib/actions/uc-catalog-selection";
 import { cn } from "@/lib/utils";
-import { QUESTIONS_PAGE_SIZE, hasActiveQuestionFilter, questionQuery, withoutQuestionFilters, type QuestionAudience, type QuestionDefaults, type QuestionFilter } from "@/lib/uc/views/catalog-filter";
+import { QUESTIONS_PAGE_SIZE, hasActiveQuestionFilter, questionQuery, segmentPatch, withoutQuestionFilters, type QuestionAudience, type QuestionDefaults, type QuestionFilter } from "@/lib/uc/views/catalog-filter";
 import { DOMANDE_TEXT } from "@/lib/uc/views/domande-text";
 import { formatCountIt } from "@/lib/uc/views/format";
 import { WORDS } from "@/lib/uc/views/labels";
@@ -158,7 +158,7 @@ export function QuestionList(props: QuestionListProps) {
     />
   );
 
-  const waitingHref = `${basePath}${questionQuery(filter, defaults, { vista: "bloccate" })}`;
+  const waitingHref = `${basePath}${questionQuery(filter, defaults, segmentPatch(filter, "bloccate"))}`;
   const topicPatch = (key: string): Partial<QuestionFilter> => ({ argomento: key });
   const pages = Math.max(1, Math.ceil(total / QUESTIONS_PAGE_SIZE));
   const first = total === 0 ? 0 : (filter.pagina - 1) * QUESTIONS_PAGE_SIZE + 1;

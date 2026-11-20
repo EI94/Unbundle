@@ -274,6 +274,14 @@ export const QUESTION_SEGMENTS_FOR: Readonly<Record<QuestionAudience, readonly Q
 export const QUESTION_TABS = ["da-fare", "da-verificare", "tutte"] as const;
 export type QuestionTab = (typeof QUESTION_TABS)[number];
 
+/**
+ * Il passaggio a un segmento (o al gruppo «In attesa»): il filtro «A posto» vale solo in «Tutte» e si toglie andando
+ * altrove, se no il link tornerebbe a «Tutte».
+ */
+export function segmentPatch(filter: Pick<QuestionFilter, "stato">, vista: QuestionSegment): Partial<QuestionFilter> {
+  return filter.stato === A_POSTO && vista !== "tutte" ? { vista, stato: null } : { vista };
+}
+
 /** Il segmento acceso per una vista: il gruppo «In attesa» sta in «Da fare». */
 export function questionTabOf(vista: QuestionSegment): QuestionTab | null {
   if (vista === "bloccate") return "da-fare";
@@ -362,11 +370,12 @@ export function parseQuestionFilter(sp: SearchParams, audience: QuestionAudience
   const perimetro = first(sp, "perimetro");
   const q = first(sp, "q");
   const page = Number.parseInt(first(sp, "pagina") ?? "1", 10);
-  // (Rilascio 10, §3.5) «A posto» non è più un segmento: `vista=a-posto` di ieri è «Tutte» con il filtro «A posto».
+  // (Rilascio 10, §3.5) «A posto» non è più un segmento: `vista=a-posto` di ieri è «Tutte» con il filtro «A posto», e
+  // il filtro «A posto» scelto dal foglio porta a «Tutte» (le domande a posto non stanno negli altri segmenti).
   const yesterdayDone = !dev && vista === A_POSTO;
   const state: QuestionStateFilter | null = stato === A_POSTO && !dev ? A_POSTO : ls && isVocab(ITEM_STATUSES, stato) ? stato : null;
   return {
-    vista: yesterdayDone ? "tutte" : isVocab(QUESTION_SEGMENTS_FOR[audience], vista) ? vista : defaults.vista,
+    vista: yesterdayDone || state === A_POSTO ? "tutte" : isVocab(QUESTION_SEGMENTS_FOR[audience], vista) ? vista : defaults.vista,
     soloIndispensabili: dev ? false : indispensabili === "no" ? false : indispensabili === "si" ? true : defaults.soloIndispensabili,
     catalogo,
     documenti: !catalogo && mostra === "documenti",

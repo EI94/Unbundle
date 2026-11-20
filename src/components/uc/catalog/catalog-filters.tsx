@@ -5,7 +5,7 @@ import { Paperclip } from "lucide-react";
 import { SegmentedNav } from "@/components/dashboard/segmented-nav";
 import { Button } from "@/components/ui/button";
 import { FilterChips } from "@/components/ui-10/filter-chips";
-import { questionQuery, questionTabOf, type QuestionDefaults, type QuestionFilter } from "@/lib/uc/views/catalog-filter";
+import { questionQuery, questionTabOf, segmentPatch, type QuestionDefaults, type QuestionFilter } from "@/lib/uc/views/catalog-filter";
 import { DOMANDE_TEXT } from "@/lib/uc/views/domande-text";
 import { questionKeptQuery, type QuestionFilterField } from "@/lib/uc/views/question-bar";
 import type { QuestionSegmentItem } from "@/lib/uc/views/rows";
@@ -43,7 +43,7 @@ export function QuestionToolbar({ basePath, filter, defaults, segments, fields, 
           ariaLabel={DOMANDE_TEXT.segments}
           active={active ?? ""}
           gridOnPhone
-          items={segments.map((s) => ({ key: s.key, label: s.label, count: s.count, href: `${basePath}${questionQuery(filter, defaults, { vista: s.key })}` }))}
+          items={segments.map((s) => ({ key: s.key, label: s.label, count: s.count, href: `${basePath}${questionQuery(filter, defaults, segmentPatch(filter, s.key))}` }))}
         />
       )}
       <div data-slot="question-bar" className="flex min-w-0 flex-wrap items-start gap-2">
