@@ -203,8 +203,6 @@ export const addStepLabel = (processName: string): string => `Aggiungi un passo 
 export const addNoteLabel = (laneLabel: string): string => `Aggiungi nota: ${laneLabel}`;
 export const noteLabel = (laneLabel: string): string => `Nota: ${laneLabel}`;
 export const frictionGroupLabel = (levelLabel: string): string => `${VIEW_TEXT.drawer.friction}: ${levelLabel}`;
-/** La riga del contesto del drawer di un passo: «Dalla richiesta all'ordine · A2». */
-export const drawerContext = (processName: string, code: string): string => `${processName} · ${code}`;
 /** Un passo nominato altrove (le tabelle, i collegamenti): «A2 · Confronto delle offerte». */
 export const stepRefText = (code: string, title: string): string => `${code} · ${title}`;
 /** Un processo nel menu «Sposta in»: «B · Dall'ordine alla consegna». */

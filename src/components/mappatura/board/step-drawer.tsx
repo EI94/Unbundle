@@ -27,10 +27,10 @@ import { BOARD_TEXT, FREQUENCY_LABEL, FRICTION_LABEL, LANE_LABEL, ORIGIN_LABEL, 
 import { ACTIVITY_COLUMNS, FRICTIONS, MAPPING_LIMITS, WORK_TYPES, type StepLane } from "../../../lib/mappatura/vocab.ts";
 import type { OpInput } from "../store/board-client.ts";
 import { AddButton, BoardButton, Section } from "../ui/atoms.tsx";
-import { Drawer, DrawerColumns, DrawerList, Human } from "../ui/drawer.tsx";
+import { Drawer, DrawerColumns, DrawerList, Human, StepContext } from "../ui/drawer.tsx";
 import { ChipInput, Field, LevelButtons, NoteItem, NumberInput, TextInPlace } from "../ui/edit.tsx";
 import { DraftText, LineInPlace } from "./in-place.tsx";
-import { VIEW_TEXT, addNoteLabel, drawerContext, frictionGroupLabel, moreCountText, noteLabel, processOptionText, stepRefText } from "./text.ts";
+import { VIEW_TEXT, addNoteLabel, frictionGroupLabel, moreCountText, noteLabel, processOptionText, stepRefText } from "./text.ts";
 import { drawerMoreCount, frictionOp, hoursOp, laneFull, laneOpen, moveTargets, newStepOps, newStepPlace, noteAddOp, noteTextOps, noteToggleOp, statusOp, stepCodes, stepMoveOp, stepTextOp, stepValueOp, type StepTextField } from "./view-model.ts";
 
 const L = MAPPING_LIMITS;
@@ -433,9 +433,9 @@ function FootMenu(p: { id: string; children: ReactNode }): JSX.Element {
 }
 
 /** La testa del drawer di un passo: la riga del contesto e il titolo (sul posto per chi modifica). */
-export function stepDrawerHead(p: { place: StepPlace; editable: boolean; actions: Pick<StepActions, "dispatch"> }): { context: string; title: ReactNode } {
+export function stepDrawerHead(p: { place: StepPlace; editable: boolean; actions: Pick<StepActions, "dispatch"> }): { context: ReactNode; title: ReactNode } {
   const { place } = p;
-  const context = drawerContext(place.process.name, place.code);
+  const context = <StepContext processName={place.process.name} code={place.code} />;
   if (!p.editable) return { context, title: place.step.title };
   return {
     context,
@@ -460,10 +460,10 @@ export function stepDrawerHead(p: { place: StepPlace; editable: boolean; actions
  * spostare il fuoco, e alla chiusura glielo rende; un `autoFocus` sposterebbe il fuoco prima, e il fuoco tornerebbe a
  * chi aveva aperto il drawer di prima.
  */
-export function draftDrawerHead(p: { board: MappingBoard; processId: string | null; actions: Pick<StepActions, "dispatch" | "newId">; onCreated(stepId: string): void }): { context: string; title: ReactNode } {
+export function draftDrawerHead(p: { board: MappingBoard; processId: string | null; actions: Pick<StepActions, "dispatch" | "newId">; onCreated(stepId: string): void }): { context: ReactNode; title: ReactNode } {
   const place = newStepPlace(p.board, p.processId);
   return {
-    context: drawerContext(place.processName, place.code),
+    context: <StepContext processName={place.processName} code={place.code} />,
     title: (
       <LineInPlace
         value=""

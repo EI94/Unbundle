@@ -21,7 +21,7 @@ import { STREAMS, type Stream } from "../../../lib/mappatura/vocab.ts";
 import type { OpInput } from "../store/board-client.ts";
 import { useBoard, useBoardClient } from "../store/use-board.tsx";
 import { AddButton, Chip, Section, StreamBadge } from "../ui/atoms.tsx";
-import { Compare, Drawer, DrawerColumns, DrawerList, Human } from "../ui/drawer.tsx";
+import { Compare, Drawer, DrawerColumns, DrawerList, Human, StepContext } from "../ui/drawer.tsx";
 import { NoteItem, Segmented } from "../ui/edit.tsx";
 import { CLASSIFICATION_TEXT, onetLine, reliabilityText } from "./text.ts";
 
@@ -242,7 +242,7 @@ export function ClassificationDrawer(p: { stepId: string | null; technical?: boo
   if (p.stepId && p.stepId !== lastId) setLastId(p.stepId);
   const shown = place ?? (lastId ? locateStep(board, lastId) : null);
   return (
-    <Drawer open={place !== null} onClose={p.onClose} wide context={shown ? `${shown.process.name} · ${shown.code}` : ""} title={shown?.step.title ?? ""}>
+    <Drawer open={place !== null} onClose={p.onClose} wide context={shown ? <StepContext processName={shown.process.name} code={shown.code} /> : ""} title={shown?.step.title ?? ""}>
       {shown ? <ClassificationDetails key={shown.step.id} board={board} place={shown} technical={p.technical} dispatch={(ops, options) => client.dispatch(ops, options)} newId={() => client.newId()} /> : null}
     </Drawer>
   );

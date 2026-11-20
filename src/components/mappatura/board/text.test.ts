@@ -7,7 +7,6 @@ import {
   addStepLabel,
   capitalized,
   discoveryText,
-  drawerContext,
   frictionGroupLabel,
   mapCountsLine,
   noteLabel,
@@ -63,7 +62,6 @@ test("ogni scritta delle viste rispetta lo stile della casa: «use case», nessu
     addNoteLabel("attriti"),
     noteLabel("attività"),
     frictionGroupLabel("Medio"),
-    drawerContext("dalla richiesta all'ordine", "A2"),
     stepRefText("A2", "confronto delle offerte"),
     processOptionText("B", "dall'ordine alla consegna"),
   ];
@@ -128,7 +126,6 @@ test("le scritte del piano, parola per parola; la parola dell'unità viene dal w
   assert.equal(addNoteLabel("Attriti"), "Aggiungi nota: Attriti");
   assert.equal(noteLabel("Cosa si fa"), "Nota: Cosa si fa");
   assert.equal(frictionGroupLabel("Forte"), "Attrito: Forte");
-  assert.equal(drawerContext("Resi", "B2"), "Resi · B2");
   assert.equal(VIEW_TEXT.map.hint, "clicca un passo per aprire attività, persone, dati, attriti, tempi e volumi");
   assert.equal(VIEW_TEXT.legend.toValidate, "«da validare» = passo da confermare");
   assert.deepEqual(Object.values(VIEW_TEXT.empty), ["Nessun passo, per ora", "Racconta il lavoro all'assistente, oppure aggiungi il primo passo.", "Inizia con l'assistente", "Aggiungi un passo"]);

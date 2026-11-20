@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { createElement, type FunctionComponent, type ReactNode } from "react";
+import { createElement, type FunctionComponent, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { enableTsxImports } from "../../use-cases/detail/referent/tsx-test-loader.ts";
 import { FIXTURE_IDS, fixtureBoard } from "../../../lib/mappatura/board-fixture.ts";
@@ -227,7 +227,8 @@ test("un passo nuovo nasce dal suo titolo, con il cursore dentro; senza titolo n
   let seq = 0;
   const newId = () => `f0000000-0000-4000-8000-${String(++seq).padStart(12, "0")}`;
   const head = draftDrawerHead({ board, processId: I.processB, actions: { dispatch: log.record("dispatch"), newId }, onCreated: log.record("created") });
-  assert.equal(head.context, "Dall'ordine alla consegna · B3");
+  // (Rilascio 10, §4) Il codice del passo solo per lo screen reader.
+  assert.equal(renderToStaticMarkup(head.context as ReactElement), 'Dall&#x27;ordine alla consegna<span class="b-sr"> · B3</span>');
   const title = head.title as AnyElement;
   assert.equal(title.type, LineInPlace);
   // Il cursore nel titolo lo mette il dialogo (initialFocus «title», sotto), non autoFocus: così il dialogo ricorda «+
@@ -258,7 +259,7 @@ test("la testa di un passo: la riga del contesto e il titolo sul posto, che non 
   const board = fixtureBoard();
   const log = recorder();
   const head = stepDrawerHead({ place: locateStep(board, I.scelta)!, editable: true, actions: { dispatch: log.record("dispatch") } });
-  assert.equal(head.context, "Dalla richiesta all'ordine · A3");
+  assert.equal(renderToStaticMarkup(head.context as ReactElement), 'Dalla richiesta all&#x27;ordine<span class="b-sr"> · A3</span>');
   const title = head.title as AnyElement;
   (title.props.onCommit as (next: string, base: string) => void)("", "Scelta del fornitore");
   (title.props.onCommit as (next: string, base: string) => void)("Scelta dell'offerta", "Scelta del fornitore");

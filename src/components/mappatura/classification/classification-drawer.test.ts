@@ -14,7 +14,7 @@ import { locateStep, type MappingBoard } from "../../../lib/mappatura/board-mode
 
 await enableTsxImports();
 const { ClassificationDetails, newIdeaOp, noteTextChange, noteToggleOp, streamChoiceOp, streamOptions } = await import("./classification-drawer.tsx");
-const { DrawerStatic } = await import("../ui/drawer.tsx");
+const { DrawerStatic, StepContext } = await import("../ui/drawer.tsx");
 
 const I = FIXTURE_IDS;
 const h = <P extends object>(type: (props: P) => ReactNode, props: Omit<P, "children"> | null = null, ...children: ReactNode[]) =>
@@ -24,14 +24,15 @@ function drawer(board: MappingBoard, stepId: string, technical = false) {
   const place = locateStep(board, stepId)!;
   return decode(
     renderToStaticMarkup(
-      h(DrawerStatic, { wide: true, context: `${place.process.name} · ${place.code}`, title: place.step.title }, h(ClassificationDetails, { board, place, technical, dispatch() {}, newId: () => "nuovo" })),
+      h(DrawerStatic, { wide: true, context: h(StepContext, { processName: place.process.name, code: place.code }), title: place.step.title }, h(ClassificationDetails, { board, place, technical, dispatch() {}, newId: () => "nuovo" })),
     ),
   );
 }
 
 test("il confronto: il badge, «Oggi» (la riga grigia) accanto a «Con l'AI» (il motivo); l'affidabilità nei dettagli tecnici", () => {
   const out = drawer(fixtureBoard({ classified: true }), I.confronto);
-  assert.match(out, /<div class="b-dr-sub">Dalla richiesta all'ordine · A2<\/div><h2 class="b-dr-t"[^>]*>Confronto delle offerte<\/h2>/);
+  // (Rilascio 10, §4) Il codice del passo («A2») solo per lo screen reader.
+  assert.match(out, /<div class="b-dr-sub">Dalla richiesta all'ordine<span class="b-sr"> · A2<\/span><\/div><h2 class="b-dr-t"[^>]*>Confronto delle offerte<\/h2>/);
   assert.match(out, /<div class="b-ag" data-b="badges"><span class="b-abadge" data-stream="automate" data-b="stream-badge" title="Automate">Automatizzare<\/span><\/div>/);
   assert.match(
     out,

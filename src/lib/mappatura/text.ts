@@ -287,3 +287,9 @@ export function mappingCompletedSignal(unitName: string, steps: number, hoursWee
     description: `${counted(steps, "passo", "passi")}, ${hours} ${hours === "1" ? "ora" : "ore"} a settimana.`,
   };
 }
+
+/**
+ * (Rilascio 10, §4) Il codice di un passo («A2») nella riga del contesto del drawer, dopo il nome del processo: solo per
+ * lo screen reader (niente codici a schermo), che così distingue due passi con lo stesso titolo.
+ */
+export const drawerCodeText = (code: string): string => ` · ${code}`;

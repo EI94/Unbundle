@@ -102,7 +102,7 @@ export async function buildVetrina(out) {
   const { CompleteButton } = await at("src/components/mappatura/companion/complete-button.tsx");
   const { ClassificationView } = await at("src/components/mappatura/classification/classification-view.tsx");
   const { ClassificationDetails } = await at("src/components/mappatura/classification/classification-drawer.tsx");
-  const { DrawerStatic } = await at("src/components/mappatura/ui/drawer.tsx");
+  const { DrawerStatic, StepContext } = await at("src/components/mappatura/ui/drawer.tsx");
   const { BoardHeader, BoardPath, BoardTabs, BoardTitle, StatusPill } = await at("src/components/mappatura/ui/frame.tsx");
   const { BoardLoadingHeader } = await at("src/components/mappatura/board/loading-header.tsx");
   const { BOARD_TABS, BOARD_TEXT } = await at("src/lib/mappatura/text.ts");
@@ -170,7 +170,7 @@ export async function buildVetrina(out) {
   // Il drawer che confronta (P27): un passo classificato con la proposta dell'assistente, come lo apre «Classificazione».
   const compared = locateStep(full, FIXTURE_IDS.confronto);
   const compare = html(
-    h(DrawerStatic, { wide: true, context: `${compared.process.name} · ${compared.code}`, title: compared.step.title }, h(ClassificationDetails, { board: full, place: compared, dispatch: noop, newId: actions.newId })),
+    h(DrawerStatic, { wide: true, context: h(StepContext, { processName: compared.process.name, code: compared.code }), title: compared.step.title }, h(ClassificationDetails, { board: full, place: compared, dispatch: noop, newId: actions.newId })),
   );
 
   const bodies = {
