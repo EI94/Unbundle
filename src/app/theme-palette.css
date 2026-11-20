@@ -1,7 +1,7 @@
 /* Generato da scripts/theme/palette-roles.mjs: non modificare a mano (node scripts/theme/palette-roles.mjs
    lo riscrive, --check dice se è allineato ai sorgenti). I colori fissi di Tailwind scelti per il
    fondo scuro: nel tema scuro il valore di sempre, nel tema «Chiaro» del dashboard un passo più
-   scuro della stessa tinta. 63 voci. */
+   scuro della stessa tinta. 62 voci. */
 @theme inline {
   --text-color-red-200: var(--palette-text-red-200, oklch(88.5% 0.062 18.334));
   --text-color-red-300: var(--palette-text-red-300, oklch(80.8% 0.114 19.571));
@@ -40,7 +40,6 @@
   --background-color-orange-500: var(--palette-background-orange-500, oklch(70.5% 0.213 47.604));
   --background-color-amber-500: var(--palette-background-amber-500, oklch(76.9% 0.188 70.08));
   --background-color-green-500: var(--palette-background-green-500, oklch(72.3% 0.219 149.579));
-  --background-color-emerald-400: var(--palette-background-emerald-400, oklch(76.5% 0.177 163.223));
   --background-color-emerald-500: var(--palette-background-emerald-500, oklch(69.6% 0.17 162.48));
   --background-color-emerald-600: var(--palette-background-emerald-600, oklch(59.6% 0.145 163.225));
   --background-color-teal-500: var(--palette-background-teal-500, oklch(70.4% 0.14 182.503));
@@ -76,7 +75,7 @@
   --palette-text-red-600: oklch(44.4% 0.177 26.899); /* red-800 */
   --palette-text-orange-400: oklch(47% 0.157 37.304); /* orange-800 */
   --palette-text-amber-50: oklch(47.3% 0.137 46.201); /* amber-800 */
-  --palette-text-amber-100: oklch(27.9% 0.077 45.635); /* amber-950 */
+  --palette-text-amber-100: oklch(41.4% 0.112 45.904); /* amber-900 */
   --palette-text-amber-200: oklch(47.3% 0.137 46.201); /* amber-800 */
   --palette-text-amber-300: oklch(47.3% 0.137 46.201); /* amber-800 */
   --palette-text-amber-500: oklch(47.3% 0.137 46.201); /* amber-800 */
@@ -106,7 +105,6 @@
   --palette-background-orange-500: oklch(55.3% 0.195 38.402); /* orange-700 */
   --palette-background-amber-500: oklch(55.5% 0.163 48.998); /* amber-700 */
   --palette-background-green-500: oklch(52.7% 0.154 150.069); /* green-700 */
-  --palette-background-emerald-400: oklch(59.6% 0.145 163.225); /* emerald-600 */
   --palette-background-emerald-500: oklch(50.8% 0.118 165.612); /* emerald-700 */
   --palette-background-emerald-600: oklch(43.2% 0.095 166.913); /* emerald-800 */
   --palette-background-teal-500: oklch(51.1% 0.096 186.391); /* teal-700 */

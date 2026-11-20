@@ -182,6 +182,60 @@ export const LEARNING_TEXT = Object.freeze({
     opensOn: (when: string) => `Si apre ${when}, quando chi tiene il corso dà il via.`,
     notOpen: "Per ora non è aperto.",
   }),
+
+  /**
+   * Risultati (`results/page.tsx`, `results-*.tsx`), §3.9: l'H1 è il titolo del corso; due schede, «In aula» (senza
+   * nomi, da proiettare) e «Persone» (con i nomi); un numero, «12 su 20 hanno finito»; «Presenta in aula» il solo
+   * pulsante pieno; «Scarica» bordato in testata, con il suo pannello; le lezioni da scegliere solo se sono più d'una.
+   */
+  results: Object.freeze({
+    tabs: Object.freeze({ label: "Sezioni dei risultati", group: "In aula", people: "Persone", locked: "serve un permesso" }),
+    closed: "Chiuso alle nuove risposte",
+    lessons: "Lezione",
+    allLessons: "Tutte le lezioni",
+    live: "In corso",
+    /** Il numero della pagina. */
+    finished: (done: number, total: number) => `${done} su ${total}`,
+    finishedLabel: "hanno finito",
+    finishedNote: (required: number) => (required === 1 ? "l'esercizio da fare" : `tutti i ${required} esercizi da fare`),
+    updatedAt: "Aggiornato alle",
+    showAnswers: "Mostra le risposte giuste",
+    present: "Presenta in aula",
+    noNames: "Qui non ci sono nomi: si può proiettare.",
+    withNames: "Con i nomi: non proiettarla.",
+    allNumbers: "Tutti i numeri",
+    enrolled: "Iscritti",
+    started: "Hanno iniziato",
+    completed: "Hanno finito gli esercizi",
+    achieved: "Obiettivo raggiunto",
+    leftOut: (turns: number, minimum: number) =>
+      turns === 1
+        ? `Una lezione con meno di ${minimum} iscritti non è contata qui: i suoi risultati restano privati.`
+        : `${turns} lezioni con meno di ${minimum} iscritti non sono contate qui: i loro risultati restano privati.`,
+    suppressed: (minimum: number) => `I risultati di gruppo compaiono quando nella lezione ci sono almeno ${minimum} iscritti.`,
+    refreshesItself: "La pagina si aggiorna da sola.",
+    noExercises: "Questo corso non ha ancora esercizi.",
+    submitted: (n: number, total: number) => `${n} su ${total} hanno consegnato`,
+    answering: (n: number) => (n === 1 ? "1 persona sta ancora rispondendo" : `${n} persone stanno ancora rispondendo`),
+    optional: "facoltativo",
+    hiddenUntil: (minimum: number, now: number) => `Le risposte compaiono da ${minimum} consegne (ora ${now}).`,
+    hiddenAllLessons: (minimum: number) => `Con tutte le lezioni insieme, le risposte compaiono quando ogni lezione ha almeno ${minimum} consegne. Scegli una lezione per vederle.`,
+    noPeople: "Ancora nessun iscritto in questa lezione.",
+    peopleArrive: "Le persone compaiono qui appena entrano nel corso.",
+    openAnswers: "Tocca un risultato per leggere le risposte.",
+    /** «Scarica»: il pannello, con le colonne in una piega. */
+    download: "Scarica",
+    downloadTitle: "Scarica l'elenco",
+    downloadText: "Una riga per ogni persona e per ogni volta che ha fatto un esercizio, di tutte le lezioni che puoi vedere. Si apre in Excel.",
+    downloadColumns: "Le colonne",
+    downloadButton: "Scarica l'elenco",
+    downloadCare: "L'elenco ha nomi ed email: ogni download resta nello storico delle operazioni del corso.",
+    manage: "Gestisci",
+    /** Un permesso che manca, solo per chi gestisce il corso. */
+    lockedTitle: (section: string) => `${section}: serve un permesso`,
+    grantSelf: "Attiva per me",
+    grantSelfNote: "Gestisci tu il corso: puoi darti questo permesso. Resta nello storico delle operazioni del corso.",
+  }),
 });
 
 /** Le righe di una lista in vista (§1, regola 4): tre, poi «Vedi tutti (N)». */

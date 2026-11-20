@@ -11,9 +11,10 @@ import { learningLeave } from "./use-unsaved-changes";
  * premere niente. Rilegge la pagina dal server (`router.refresh`) solo se la rete arriva al sito; senza rete, con il
  * sito che non risponde, con la scheda nascosta o con modifiche non salvate in un modulo, aspetta (il ritmo sta in
  * `@/lib/learning/live-refresh`), così il browser non finisce sulla sua pagina «offline». Prima di `from` (l'istante
- * da cui la lezione conta, deciso dal server con `liveRefreshFrom`) aspetta soltanto. Non disegna niente.
+ * da cui la lezione conta, deciso dal server con `liveRefreshFrom`) aspetta soltanto. I Risultati la usano con il loro
+ * ritmo di sempre (`seconds={10}`). Non disegna niente.
  */
-export function LiveRefresh({ from }: { from: number }) {
+export function LiveRefresh({ from, seconds }: { from: number; seconds?: number }) {
   const router = useRouter();
   useEffect(() => {
     let failures = 0;
@@ -23,7 +24,7 @@ export function LiveRefresh({ from }: { from: number }) {
 
     const schedule = () => {
       window.clearTimeout(timer);
-      if (!stopped) timer = window.setTimeout(() => void check(), Math.max(from - Date.now(), liveRefreshDelayMs(failures)));
+      if (!stopped) timer = window.setTimeout(() => void check(), Math.max(from - Date.now(), liveRefreshDelayMs(failures, seconds)));
     };
 
     /** La rete arriva al sito? Un file piccolo, mai dalla cache. */
@@ -72,6 +73,6 @@ export function LiveRefresh({ from }: { from: number }) {
       window.removeEventListener("online", onOnline);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [router, from]);
+  }, [router, from, seconds]);
   return null;
 }
