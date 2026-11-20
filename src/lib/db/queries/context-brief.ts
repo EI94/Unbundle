@@ -18,12 +18,12 @@ import { sql } from "drizzle-orm";
 import { CONTEXT_BRIEF_TIMEOUT_MS, ClaudeRefusalError, logClaudeTimeout, stoppedByDeadline } from "@/lib/ai/models";
 import { generateContextBrief } from "@/lib/context/brief/generate";
 import { briefFactsHash, buildBriefPrompt, cleanBriefLines, BRIEF_FACTS_IN_PROMPT } from "@/lib/context/brief/prompt";
-import { liveLines } from "@/lib/context/live";
+import { buildLiveRows, liveHashLines, liveLines } from "@/lib/context/live";
 import { CONTEXT_LIMITS, type ContextSection } from "@/lib/context/vocab";
 import { db } from "@/lib/db";
 import { logSafeError } from "@/lib/log/safe-error";
 import { contextAiConsentNow } from "./context-consent";
-import { loadLiveDiscovery } from "./context-discovery";
+import { loadLiveDiscoveryData } from "./context-discovery";
 import { ctxErrorCode, isUuid, requireSql, rowsOf, toDate } from "./context-shared";
 import { contextStoreReady } from "./context-store";
 import { getWorkspaceById } from "./workspaces";
@@ -57,13 +57,13 @@ export async function refreshContextBrief(workspaceId: string, opts: { force?: b
           WHERE workspace_id = ${workspaceId}::uuid AND status = 'attivo' AND visibility = 'tutti'
           ORDER BY last_confirmed_at DESC, id LIMIT ${BRIEF_FACTS_IN_PROMPT}
         ) f`),
-      loadLiveDiscovery(workspace, EVERYONE),
+      loadLiveDiscoveryData(workspace, EVERYONE),
       db.execute(sql`SELECT facts_hash, generated_at FROM context_briefs WHERE workspace_id = ${workspaceId}::uuid`),
     ]);
     const [read] = rowsOf<{ as_of: string; facts: unknown }>(factRows);
     if (!read?.as_of) return "non_riuscito";
     const facts = factsOf(read.facts);
-    const lines = liveLines(live);
+    const lines = live ? liveLines(buildLiveRows(live)) : [];
     const [current] = rowsOf<{ facts_hash: string; generated_at: unknown }>(briefRows);
 
     // Troppo poco per un riassunto: il blocco non si vede.
@@ -71,7 +71,8 @@ export async function refreshContextBrief(workspaceId: string, opts: { force?: b
       if (current) await db.execute(sql`DELETE FROM context_briefs WHERE workspace_id = ${workspaceId}::uuid`);
       return "vuoto";
     }
-    const hash = briefFactsHash(facts.map((f) => ({ id: f.id, version: Number(f.version) })), lines);
+    // (Rilascio 10) L'impronta con le etichette ferme della Discovery: un'etichetta a schermo nuova non riscrive «In breve».
+    const hash = briefFactsHash(facts.map((f) => ({ id: f.id, version: Number(f.version) })), live ? liveHashLines(live) : []);
     if (current?.facts_hash === hash) return "invariato";
     const generated = toDate(current?.generated_at);
     if (!opts.force && generated && Date.now() - generated.getTime() < CONTEXT_LIMITS.briefMinMinutes * 60_000) return "recente";
