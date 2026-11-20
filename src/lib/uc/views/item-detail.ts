@@ -260,7 +260,7 @@ export function rowsToAnswers(
 
 /**
  * Una risposta che non è un valore, in parole (§2.6): «Non lo sa», «Propone
- * “non si applica”: …», «L'ha girata a un collega». Null per i valori. Il testo
+ * “non si applica”: …», «L'ha girata a un'altra persona». Null per i valori. Il testo
  * arriva solo se chi guarda vede il valore (`value` null altrimenti).
  */
 export function nonValueAnswerText(kind: AnswerKind, value: unknown): string | null {
@@ -276,7 +276,8 @@ export function nonValueAnswerText(kind: AnswerKind, value: unknown): string | n
       return reason ? `Propone “non si applica”: ${reason}` : "Propone “non si applica”";
     }
     case "delega":
-      return "L'ha girata a un collega";
+      // (Rilascio 10, §4) Genere neutro, come `/r`.
+      return "L'ha girata a un'altra persona";
     default:
       return null;
   }

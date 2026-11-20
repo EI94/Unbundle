@@ -792,7 +792,7 @@ function phraseOf(row: ActivityRow, audience: Audience): Phrase {
     case "notifica.errore":
       return { one: "non è riuscito a inviare una notifica", auto: "Una notifica non è partita.", autoMany: (n) => `${formatCountIt(n)} notifiche non sono partite.`, group: "" };
     default:
-      return { one: `ha fatto un'azione sul caso (${label.toLowerCase()})`, auto: `${label}.` };
+      return { one: `ha fatto un'azione sulla realizzazione (${label.toLowerCase()})`, auto: `${label}.` };
   }
 }
 

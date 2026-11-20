@@ -93,7 +93,7 @@ export function evidenceRows(evidence: Readonly<Record<string, Json>> | null, lo
     ["Approvata il", dateIt(evidence.data)],
     ["Descrizione", typeof evidence.descrizione === "string" ? evidence.descrizione : null],
     ["Chi l'ha approvata", list(evidence.approvatori_per_ruolo, (r) => lookups.roles?.[r] ?? r)],
-    ["File firmato", typeof evidence.file_id === "string" ? (lookups.files?.get(evidence.file_id) ?? "File del caso") : null],
+    ["File firmato", typeof evidence.file_id === "string" ? (lookups.files?.get(evidence.file_id) ?? "File della realizzazione") : null],
     ["Titolo per usare i dati", yesNo(evidence.titolo_art_15_2)],
     ["Regioni dei dati verificate", yesNo(evidence.regione_dati_verificata)],
     ["Chi accede ai dati personali", list(evidence.accesso_zona_personale, (u) => lookups.people?.get(u) ?? "Persona di Lateral Space")],
@@ -203,7 +203,7 @@ export function buildBlockerEvidence(key: string, f: BlockerFormInput): Result<B
 // ── Dati del caso ─────────────────────────────────────────────────────
 
 export const DATA_MODE_LABEL: Readonly<Record<DataMode, { label: string; help: string }>> = {
-  solo_sintetici: { label: "Solo dati sintetici", help: "Si sviluppa e si prova con dati inventati. Nessun dato personale reale entra nel caso." },
+  solo_sintetici: { label: "Solo dati sintetici", help: "Si sviluppa e si prova con dati inventati. Nessun dato personale reale entra nella realizzazione." },
   pseudonimizzati: { label: "Dati pseudonimizzati", help: "I dati reali entrano senza nomi né identificativi diretti, dopo la scheda privacy firmata." },
   reali: { label: "Dati reali", help: "I dati reali entrano nella zona cifrata dei dati personali, solo dopo la scheda privacy firmata." },
 };

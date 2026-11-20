@@ -46,7 +46,8 @@ test("«Osservatore · costruisce» solo per chi ha una concessione che copre il
 
 test("i testi del pannello sono quelli della specifica", () => {
   assert.equal(MEMBER_BUILDS_LABEL, "Osservatore · costruisce");
-  assert.equal(MEMBER_BUILDS_REMOVE_TEXT, "Non costruirà più questo caso: i compiti che ha qui tornano da prendere. Per tutti i casi: Agent Factory › Chi costruisce.");
+  // (Rilascio 10, §4) A schermo «realizzazione», mai «caso».
+  assert.equal(MEMBER_BUILDS_REMOVE_TEXT, "Non costruirà più questa realizzazione: i compiti che ha qui tornano da prendere. Per tutte: Agent Factory › Chi costruisce.");
 });
 
 test("la conferma di «Togli» la sceglie removeRoleConfirmText, con i ruoli della persona: dice quando lascia i compiti", () => {

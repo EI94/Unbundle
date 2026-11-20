@@ -303,7 +303,7 @@ function LeverForm({ line, existing, save, baseHref, onDone }: { line: BenefitLi
           id="leva-leva"
           value={lever}
           onChange={setLever}
-          items={[{ value: NONE, label: line.leverLabel ? `Da indicare (nel caso: ${line.leverLabel})` : "Da indicare" }, ...LEVERS.map((l) => ({ value: l, label: LEVER_LABEL[l] }))]}
+          items={[{ value: NONE, label: line.leverLabel ? `Da indicare (nella realizzazione: ${line.leverLabel})` : "Da indicare" }, ...LEVERS.map((l) => ({ value: l, label: LEVER_LABEL[l] }))]}
         />
       </Field>
       <Field label="Beneficio in euro all'anno">

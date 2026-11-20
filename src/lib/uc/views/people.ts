@@ -43,13 +43,13 @@ export const CASE_ROLE_HINT: Readonly<Record<CaseRole, string>> = {
 export const MEMBER_BUILDS_LABEL = "Osservatore · costruisce";
 
 /** (8.0c) La conferma quando si toglie quella riga: da lì la persona non costruisce più questo caso, e i suoi compiti lì tornano da prendere. */
-export const MEMBER_BUILDS_REMOVE_TEXT = "Non costruirà più questo caso: i compiti che ha qui tornano da prendere. Per tutti i casi: Agent Factory › Chi costruisce.";
+export const MEMBER_BUILDS_REMOVE_TEXT = "Non costruirà più questa realizzazione: i compiti che ha qui tornano da prendere. Per tutte: Agent Factory › Chi costruisce.";
 
 /**
  * (8.0c) La conferma quando si toglie a una persona di Lateral Space l'ultimo ruolo con cui costruisce il caso: anche i
  * suoi compiti lì tornano da prendere (`removeCaseMemberReleasingTasks`).
  */
-export const MEMBER_LAST_LS_ROLE_REMOVE_TEXT = "Non costruirà più questo caso: i compiti che ha qui tornano da prendere.";
+export const MEMBER_LAST_LS_ROLE_REMOVE_TEXT = "Non costruirà più questa realizzazione: i compiti che ha qui tornano da prendere.";
 
 /** La conferma quando si toglie un ruolo che non cambia chi costruisce il caso. */
 export const MEMBER_ROLE_REMOVE_TEXT = "Smette subito di vedere ciò che quel ruolo permetteva. Gli altri ruoli restano.";
@@ -72,7 +72,7 @@ export function rolesAssignableTo(isLateralSpace: boolean): CaseRole[] {
 }
 
 /** (8.0c) Sotto il modulo, quando la persona scelta costruisce il caso da fuori: perché i ruoli del cliente sono spenti. */
-export const MEMBER_BUILDS_CLIENT_ROLE_TEXT = "Costruisce questo caso: non può avere anche un ruolo del cliente.";
+export const MEMBER_BUILDS_CLIENT_ROLE_TEXT = "Costruisce questa realizzazione: non può avere anche un ruolo del cliente.";
 
 /**
  * I ruoli da offrire a una persona in «Accesso al caso»: quelli che può avere e non ha già. (8.0c) A chi costruisce il

@@ -317,7 +317,7 @@ test("answer for the client: only the value, and only if the role sees it (§3.6
   const personal = rowsToAnswers(answerRows, { privacyClass: "personale", valueVisibility: "owner_e_ls", currentAnswerId: ANSWER, validatedAnswerId: null, roleLabels: {}, roles: ["owner_cliente"] });
   assert.equal(questionAnswerView(personal, [], { client: true, now: NOW })?.value.kind, "hidden");
   const delegated = rowsToAnswers([{ ...answerRows[0], kind: "delega", value: null }], { privacyClass: "riservato_azienda", valueVisibility: "owner_e_ls", currentAnswerId: ANSWER, validatedAnswerId: null, roleLabels: {}, roles: ["owner_cliente"] });
-  assert.equal(questionAnswerView(delegated, [], { client: true, now: NOW })?.summary, "L'ha girata a un collega");
+  assert.equal(questionAnswerView(delegated, [], { client: true, now: NOW })?.summary, "L'ha girata a un'altra persona");
   // «Il referente non ha ancora risposto» only when nobody answered.
   assert.equal(questionAnswerView([], [], { client: true, now: NOW }), null);
   assert.equal(questionAnswerView([], [], { client: false, now: NOW }), null);
@@ -358,7 +358,7 @@ test("answers that are not a value are said in words, never as raw data", () => 
   assert.equal(nonValueAnswerText("non_so", { who_might_know: "il responsabile dei turni" }), "Non lo sa: potrebbe saperlo il responsabile dei turni");
   assert.equal(nonValueAnswerText("non_so", null), "Non lo sa");
   assert.equal(nonValueAnswerText("proposta_na", { reason: "Il costo non cambia." }), "Propone “non si applica”: Il costo non cambia.");
-  assert.equal(nonValueAnswerText("delega", {}), "L'ha girata a un collega");
+  assert.equal(nonValueAnswerText("delega", {}), "L'ha girata a un'altra persona");
   assert.equal(nonValueAnswerText("valore", { value: 1 }), null);
   const [na] = rowsToAnswers([{ ...answerRows[0], kind: "proposta_na", value: { reason: "Non serve." } }], {
     privacyClass: "riservato_azienda",
