@@ -56,13 +56,18 @@ export const UC_NOTIFICATION_TEMPLATES = [
   // (8.0c) Chi entra tra chi costruisce i casi di un cliente da fuori Lateral Space, e chi ne esce (senza caso).
   "team_aggiunto",
   "team_tolto",
+  // (8.2b) Le chiavi della CI: creata, in scadenza, bloccata. Interne di Lateral Space, a chi gestisce le chiavi del
+  // repository, senza caso.
+  "chiave_ci_creata",
+  "chiave_ci_scade",
+  "chiave_ci_bloccata",
   // Dopo l'MVP.
   "esiti_verifica",
   "scadenza_vicina",
 ] as const;
 export type UcNotificationTemplate = (typeof UC_NOTIFICATION_TEMPLATES)[number];
 
-const SECRET_PREFIX = /^(ucr_|ub_mcp_|air_)/;
+const SECRET_PREFIX = /^(ucr_|ub_mcp_|ub_ci_|air_)/;
 const keyString = z
   .string()
   .regex(/^[A-Za-z0-9_.:-]{1,160}$/)

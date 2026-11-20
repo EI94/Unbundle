@@ -6,7 +6,9 @@ import { ucLogError } from "@/lib/uc/log";
 import { ok } from "@/lib/uc/types";
 import { requireCliWrite, resolveCliCase, runCliWrite, type CliCase } from "@/lib/use-cases/cli/case";
 import { cliError, cliJson, openCli, readCliBody } from "@/lib/use-cases/cli/route-kit";
+import { ciLinkVisible } from "@/lib/use-cases/ci/api";
 import { evalOverviewForCli, parseEvalRun, recommendationOf } from "@/lib/use-cases/factory/benchmark-input";
+import { canWriteFactory } from "@/lib/use-cases/factory/permissions";
 
 /**
  * Il banco di prova e le evals di un caso (rilascio 8.2a, docs/rilascio-8/BANCO-DI-PROVA.md §2).
@@ -18,7 +20,9 @@ import { evalOverviewForCli, parseEvalRun, recommendationOf } from "@/lib/use-ca
  *   avviso al team, le e-mail partono subito dopo la risposta. Il banco dice sempre il modello di oggi del suo ruolo
  *   (`modelli[ruolo]`); il banco di un ruolo nuovo quando il caso ne ha già 20 è un conflitto (409).
  * - `GET ?caso=<ID>`: l'ultimo banco di ogni ruolo, le evals che fanno lo stato del caso e il loro andamento, per la
- *   CLI. Lo legge chi è nel team del caso.
+ *   CLI. Lo legge chi è nel team del caso. (8.2b) Ogni esecuzione dice la sua fonte (`fonte`: `cli` o `ci`) e, se è
+ *   arrivata dalla CI, il link all'esecuzione su GitHub (`ci`) a chi costruisce il caso o è di Lateral Space; al cliente
+ *   `ci` è null (là si vede chi ha unito).
  *
  * Mai una persona nelle risposte: né chi ha lanciato il banco, né chi ha mandato le evals.
  */
@@ -34,7 +38,8 @@ export async function GET(request: Request): Promise<Response> {
   const c = resolved.value;
   const overview = await loadEvalOverview(opened.value.executor, c.target);
   if (!overview) return NOT_READY();
-  return cliJson(evalOverviewForCli(c.useCase.code, overview));
+  const ciLinks = ciLinkVisible({ isLateralSpace: c.access.user.isLateralSpace, builds: canWriteFactory(c.factory.roles) });
+  return cliJson(evalOverviewForCli(c.useCase.code, overview, { ciLinks }));
 }
 
 /** Dopo un avviso al team: il giro delle e-mail del caso subito dopo la risposta. */

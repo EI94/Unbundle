@@ -46,11 +46,11 @@ export const DEFAULT_TOKEN_PARAM_NAMES: readonly string[] = Object.freeze([
 ]);
 
 /**
- * Prefissi dei token Unbundle: token di workspace (connettore e REST) e token
- * personali del MCP del team. Un valore con uno di questi prefissi, ovunque
- * nell'indirizzo, è un token esposto.
+ * Prefissi dei token Unbundle: token di workspace (connettore e REST), token
+ * personali del MCP del team, token della CLI e (8.2b) chiavi della CI. Un valore
+ * con uno di questi prefissi, ovunque nell'indirizzo, è un token esposto.
  */
-export const DEFAULT_TOKEN_PREFIXES: readonly string[] = Object.freeze(["ub_mcp_", "ub_team_", "ub_cli_"]);
+export const DEFAULT_TOKEN_PREFIXES: readonly string[] = Object.freeze(["ub_mcp_", "ub_team_", "ub_cli_", "ub_ci_"]);
 
 export const HYGIENE_ERROR_STATUS = Object.freeze({
   not_found: 404,

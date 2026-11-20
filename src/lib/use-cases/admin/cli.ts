@@ -35,6 +35,9 @@ export const ADMIN_COMMANDS = [
   "factory-import",
   // (Rilascio 8.0c) La registrazione sbagliata di un repository, tolta dai casi di un workspace (solo Lateral Space).
   "repo-unregister",
+  // (Rilascio 8.2b) Le chiavi della CI di un workspace (sola lettura), e la revoca a mano di quelle di un repository.
+  "ci-keys",
+  "ci-key-revoke",
 ] as const;
 export type AdminCommandName = (typeof ADMIN_COMMANDS)[number];
 

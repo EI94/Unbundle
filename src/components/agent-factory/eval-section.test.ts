@@ -7,8 +7,9 @@ import { analyzeBench, type BenchResult, type EvalOverview, type EvalRunView } f
 import { findHubForbiddenIn } from "../../lib/use-cases/copy-guard.ts";
 import { enableTsxImports } from "../use-cases/detail/referent/tsx-test-loader.ts";
 import { EVAL_TEXT } from "./eval-format.ts";
+import type { EvalRunOrigin } from "../../lib/db/queries/use-case-eval-origins.ts";
 
-let render: (overview: EvalOverview | null, extra?: { unavailable?: boolean; caseCode?: string }) => string;
+let render: (overview: EvalOverview | null, extra?: { unavailable?: boolean; caseCode?: string; origins?: ReadonlyMap<string, EvalRunOrigin> | null; ciLinks?: boolean }) => string;
 before(async () => {
   await enableTsxImports();
   const { EvalSection } = await import("./eval-section.tsx");
@@ -312,4 +313,70 @@ test("i testi resi: «use case» nella dashboard, nessuna parola vietata, nessun
     assert.deepEqual(findHubForbiddenIn([text], "area"), []);
     assert.doesNotMatch(text, /@|lanciato da|eseguito da|autore/i);
   }
+});
+
+// ─── (8.2b) Da dove arriva un'esecuzione ─────────────────────────────
+
+const EVALS_ID = "00000000-0000-4000-8000-000000000001";
+const BENCH_ID = "00000000-0000-4000-8000-0000000000b1";
+const RUN_URL = "https://github.com/Voltaen/esempio-rosa/actions/runs/12345678901";
+const SOURCED: EvalOverview = { ...FULL, benches: [benchOf("lettura", LETTURA, { id: BENCH_ID })] };
+const ORIGINS = new Map<string, EvalRunOrigin>([
+  [EVALS_ID, { source: "ci", ciRunUrl: RUN_URL }],
+  [BENCH_ID, { source: "cli", ciRunUrl: null }],
+]);
+
+/** Il tag di apertura dell'elemento con `data-slot="eval-source"` dopo `after`. */
+function sourceTag(html: string, after: string): string {
+  const from = html.indexOf(after);
+  assert.ok(from >= 0, after);
+  return /<(a|span) [^>]*data-slot="eval-source"[^>]*>/.exec(html.slice(from))?.[0] ?? "";
+}
+
+test("(8.2b) la fonte in fondo alla riga: «dalla CI» porta all'esecuzione su GitHub per chi costruisce; il banco «dalla CLI»", () => {
+  const html = render(SOURCED, { origins: ORIGINS, ciLinks: true });
+  const text = textOf(html);
+  assert.ok(text.includes("14/11/2026 · ramo main · livello pull request · commit a1b2c3d · dalla CI"), "le evals, dalla CI");
+  assert.ok(text.includes("14/11/2026 · livello pull request · 4 modelli · ramo main · dalla CLI"), "il banco, dalla CLI");
+  const link = sourceTag(html, 'data-slot="eval-latest"');
+  assert.match(link, /^<a /);
+  assert.match(link, new RegExp(`href="${RUN_URL}"`));
+  assert.match(link, /target="_blank"/);
+  assert.match(link, /rel="noreferrer"/);
+  assert.match(link, /data-source="ci"/);
+  // 44 px al telefono senza allargare la riga: il bersaglio cresce, la riga no.
+  assert.match(link, /-my-3\.5 inline-block py-3\.5/);
+  assert.match(html, /dalla CI<span class="sr-only">, l&#x27;esecuzione su GitHub<\/span><\/a>/);
+  const bench = sourceTag(html, 'data-slot="bench-card"');
+  assert.match(bench, /^<span [^>]*data-source="cli"/, "«dalla CLI» non porta da nessuna parte");
+  assert.equal(count(html, /data-slot="eval-source"/), 2);
+});
+
+test("(8.2b) il cliente legge «dalla CI» senza link; un indirizzo che non è un'esecuzione di GitHub non diventa un link", () => {
+  const client = render(SOURCED, { origins: ORIGINS, ciLinks: false });
+  assert.ok(textOf(client).includes("commit a1b2c3d · dalla CI"));
+  assert.match(sourceTag(client, 'data-slot="eval-latest"'), /^<span [^>]*data-source="ci"/);
+  assert.doesNotMatch(client, /github\.com/, "nessun link all'esecuzione per il cliente");
+  for (const url of ["https://github.com/Voltaen/esempio-rosa/pull/3", "javascript:alert(1)", "https://example.test/actions/runs/1", null]) {
+    const html = render(SOURCED, { origins: new Map([[EVALS_ID, { source: "ci", ciRunUrl: url }]]), ciLinks: true });
+    assert.ok(textOf(html).includes("commit a1b2c3d · dalla CI"), String(url));
+    assert.doesNotMatch(html, /<a [^>]*data-slot="eval-source"/, String(url));
+  }
+  // Gli id si confrontano senza badare alle maiuscole: la lettura li dà in minuscolo.
+  const upper: EvalOverview = { ...SOURCED, evals: { ...SOURCED.evals, latest: run({ id: EVALS_ID.toUpperCase() }) } };
+  assert.match(sourceTag(render(upper, { origins: ORIGINS, ciLinks: true }), 'data-slot="eval-latest"'), /^<a /);
+});
+
+test("(8.2b) la fonte che non si è letta non si dice; senza misure, la CI collegata manda le evals di main da sola", () => {
+  for (const origins of [null, new Map<string, EvalRunOrigin>()]) {
+    const html = render(SOURCED, { origins, ciLinks: true });
+    assert.ok(textOf(html).includes("14/11/2026 · ramo main · livello pull request · commit a1b2c3d"));
+    assert.equal(count(html, /data-slot="eval-source"/), 0);
+    assert.doesNotMatch(textOf(html), /dalla CL?I/);
+  }
+  for (const html of [render(null), render(null, { unavailable: true })]) {
+    assert.match(html, /<p data-slot="eval-empty-ci" class="text-xs text-muted-foreground">Con la CI collegata, le evals di main arrivano da sole dopo ogni unione\.<\/p>/);
+  }
+  assert.doesNotMatch(render(FULL), /eval-empty-ci/, "con le misure, la riga non serve");
+  assert.deepEqual(findHubForbiddenIn([textOf(render(SOURCED, { origins: ORIGINS, ciLinks: true })), EVAL_TEXT.emptyCi], "area"), []);
 });

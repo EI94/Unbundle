@@ -21,7 +21,9 @@
  *    case toccato, preso per primo e nello stesso ordine del webhook;
  * 3. le registrazioni (`use_case_repos`): tutte quelle del workspace per quel repository, o solo quelle dello use case;
  * 4. la versione del modello del repository (`use_case_factory_repos`), se nel workspace non resta nessun caso con quel
- *    repository.
+ *    repository;
+ * 5. (8.2b) le chiavi della CI del repository, se nel workspace non resta nessun caso con quel repository: si revocano
+ *    (`senza_casi`) con la regola del modulo delle chiavi, l'unico che tocca la loro tabella.
  * Le pull request già unite o chiuse e le proposte già decise restano: sono la storia dei casi. Gli eventi che arrivano
  * dopo da quel repository si ignorano («repository_non_registrato»). GitHub non si tocca: lì le pull request e gli
  * accessi si chiudono a mano. Se poi il repository si registra di nuovo, una pull request rimasta aperta su GitHub qui
@@ -31,17 +33,19 @@
  */
 import { cast, raw, ref, toStatement, ucSql, type SqlFragment, type UcStatement } from "../../uc/sql/statement.ts";
 import { byUseCaseId, taskAfterPullRequestSql, tasksLockOfUseCaseSql } from "../factory/pull-request-sql.ts";
+import { CI_KEYS_PRESENT_SQL, revokeKeysOfUnregisteredRepoSql } from "../../db/queries/use-case-ci-keys.ts";
 
 export const REPO_UNREGISTER_OPTIONS = Object.freeze({ values: Object.freeze(["repo", "use-case"]) as readonly string[] });
 
 /**
- * Le tabelle che il comando usa: i repository dei casi (0031); le proposte (0034), le versioni (0032) e le pull request
- * con i loro compiti (0033), se ci sono.
+ * Le tabelle che il comando usa: i repository dei casi (0031); le proposte (0034), le versioni (0032), le pull request
+ * con i loro compiti (0033) e (8.2b) le chiavi della CI (0042), se ci sono.
  */
 export const REPO_UNREGISTER_SCHEMA_SQL = `SELECT to_regclass('public.use_case_repos') IS NOT NULL AS ok,
   to_regclass('public.use_case_task_proposals') IS NOT NULL AS proposals,
   to_regclass('public.use_case_factory_repos') IS NOT NULL AS factory_repos,
-  (to_regclass('public.use_case_pull_requests') IS NOT NULL AND to_regclass('public.use_case_tasks') IS NOT NULL) AS pull_requests`;
+  (to_regclass('public.use_case_pull_requests') IS NOT NULL AND to_regclass('public.use_case_tasks') IS NOT NULL) AS pull_requests,
+  ${CI_KEYS_PRESENT_SQL} AS ci_keys`;
 
 export const REPO_UNREGISTER_SCHEMA_MESSAGE = "Manca la tabella dei repository dei casi (drizzle/0031): non c'è niente da togliere.";
 
@@ -118,8 +122,8 @@ export interface RepoUnregisterFacts {
   workspaceId: string;
   repo: string;
   registrations: readonly RepoRegistration[];
-  /** Le tabelle che ci sono. */
-  tables: { proposals: boolean; factoryRepos: boolean; pullRequests: boolean };
+  /** Le tabelle che ci sono. (8.2b) `ciKeys`: la tabella delle chiavi della CI (assente: false). */
+  tables: { proposals: boolean; factoryRepos: boolean; pullRequests: boolean; ciKeys?: boolean };
   /** Le proposte da decidere che vengono dal repository negli use case toccati. */
   pendingProposals: number;
   /** Le pull request aperte del repository negli use case toccati, e i compiti in revisione legati a quelle. */
@@ -127,12 +131,16 @@ export interface RepoUnregisterFacts {
   tasksInReview: number;
   /** Le registrazioni del repository che restano nel workspace. */
   remaining: number;
+  /** (8.2b) Le chiavi della CI non revocate del repository nel workspace (`unrevokedKeysOfRepoSql`). */
+  unrevokedCiKeys?: number;
 }
 
 export interface RepoUnregisterPlan {
   statements: UcStatement[];
   /** Dove stanno, tra i risultati della transazione, le righe per `repoUnregisterOutcome` (null senza la 0033). */
   at: { inReview: number; closed: number; tasks: number } | null;
+  /** (8.2b) Dove sta, tra i risultati, la revoca delle chiavi della CI (null senza la 0042). */
+  ciKeysAt?: number | null;
   report: {
     repository: string;
     casi: { caso: string; cartella: string }[];
@@ -141,6 +149,8 @@ export interface RepoUnregisterPlan {
     compitiInRevisione: number;
     restanoNelWorkspace: number;
     nota: string;
+    /** (8.2b) Le chiavi della CI che si revocano: quelle non revocate, se nel workspace non resta nessun caso del repository. */
+    chiaviCiDaRevocare?: number;
   };
 }
 
@@ -187,9 +197,16 @@ RETURNING p.id`),
   AND NOT EXISTS (SELECT 1 FROM use_case_repos r WHERE r.workspace_id = ${ws} AND lower(r.repo) = lower(${repo}))`),
     );
   }
+  // (8.2b) Le chiavi della CI del repository, se non gli restano casi nel workspace: la regola sta nel modulo delle chiavi.
+  let ciKeysAt: number | null = null;
+  if (i.tables.ciKeys === true) {
+    ciKeysAt = statements.length;
+    statements.push(revokeKeysOfUnregisteredRepoSql(i.workspaceId, i.repo));
+  }
   return {
     statements,
     at,
+    ciKeysAt,
     report: {
       repository: i.repo,
       casi: i.registrations.map((r) => ({ caso: r.code || "senza codice", cartella: r.folder })),
@@ -198,6 +215,7 @@ RETURNING p.id`),
       compitiInRevisione: i.tables.pullRequests ? i.tasksInReview : 0,
       restanoNelWorkspace: i.remaining,
       nota: REPO_UNREGISTER_NOTE,
+      ...(i.tables.ciKeys === true ? { chiaviCiDaRevocare: i.remaining === 0 ? (i.unrevokedCiKeys ?? 0) : 0 } : {}),
     },
   };
 }
@@ -206,9 +224,14 @@ RETURNING p.id`),
  * Dopo `--apply`, dai risultati della transazione: le pull request chiuse davvero e i compiti che erano in revisione e
  * non lo sono più (uno con un'altra pull request pronta resta in revisione). Solo conteggi.
  */
-export function repoUnregisterOutcome(plan: RepoUnregisterPlan, results: readonly (readonly Record<string, unknown>[])[]): { prChiuse: number; compitiTornati: number } {
-  if (!plan.at) return { prChiuse: 0, compitiTornati: 0 };
+export function repoUnregisterOutcome(
+  plan: RepoUnregisterPlan,
+  results: readonly (readonly Record<string, unknown>[])[],
+): { prChiuse: number; compitiTornati: number; chiaviCiRevocate?: number } {
+  // (8.2b) Le chiavi della CI revocate davvero, solo se il piano le toccava.
+  const ci = plan.ciKeysAt === null || plan.ciKeysAt === undefined ? {} : { chiaviCiRevocate: (results[plan.ciKeysAt] ?? []).length };
+  if (!plan.at) return { prChiuse: 0, compitiTornati: 0, ...ci };
   const inReview = new Set((results[plan.at.inReview] ?? []).map((r) => String(r.id)));
   const back = (results[plan.at.tasks] ?? []).filter((r) => inReview.has(String(r.id)) && r.status !== "in_revisione");
-  return { prChiuse: (results[plan.at.closed] ?? []).length, compitiTornati: back.length };
+  return { prChiuse: (results[plan.at.closed] ?? []).length, compitiTornati: back.length, ...ci };
 }

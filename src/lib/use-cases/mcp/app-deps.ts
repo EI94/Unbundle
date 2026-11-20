@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { ensureDbSchema } from "@/lib/db/ensure-schema";
 import { useCaseEvents, useCases, users, workspaceConnectorConfigs, workspaceIntegrationTokens } from "@/lib/db/schema";
 import { USE_CASE_NEEDS_EVENT_FIELD } from "@/lib/db/use-case-hub-ddl";
-import { appExposedTokenAlertDeps, appRateLimitExecutor } from "@/lib/connector/app-deps";
+import { appExposedTokenAlertDeps, appRateLimitExecutor, revokeCiKeysFoundInUrl } from "@/lib/connector/app-deps";
 import { CONNECTOR_PUBLIC_ORIGIN } from "@/lib/connector/auth";
 import { alertExposedToken, type ExposedTokenAlertDeps } from "@/lib/connector/exposed-token-alert";
 import { askContext } from "@/lib/db/queries/context-ask";
@@ -359,6 +359,7 @@ export function appTeamMcpHandlerDeps(opts: {
       if (exposed) await alertExposedToken(exposed, alertDeps);
       return exposed;
     },
+    revokeCiKeys: revokeCiKeysFoundInUrl,
     tools: appTeamToolDeps({ schedule: opts.schedule, env, notify: opts.notify }),
   };
 }
