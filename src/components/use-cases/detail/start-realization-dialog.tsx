@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -12,16 +12,7 @@ import { startRealizationAction } from "@/lib/actions/uc-realization";
 import { REALIZATION_TEXT } from "@/lib/uc/views/realization";
 import { START_DIALOG_TEXT as T, startTemplateLabel } from "@/lib/uc/views/start-dialog";
 import { PREFILL_TEXT } from "@/lib/use-cases/realization-prefill";
-
-/** Apre il dialogo «Avvia la realizzazione»; null senza i suoi dati (allora il pulsante porta alla pagina di ripiego). */
-type OpenStart = () => void;
-
-const StartContext = createContext<OpenStart | null>(null);
-
-/** La funzione che apre il dialogo della scheda; null fuori dalla scheda o senza i dati del dialogo. */
-export function useStartRealization(): OpenStart | null {
-  return useContext(StartContext);
-}
+import { StartContext } from "./start-realization-context";
 
 /**
  * (Rilascio 10, docs/ui-10/PROPOSTA-10.md §3.5, F-019…F-024) «Avvia la realizzazione» è un dialogo sulla scheda dello
@@ -131,25 +122,5 @@ function StartRealizationDialog({ workspaceId, data, open, onOpenChange }: { wor
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-/**
- * Il pulsante «Avvia la realizzazione» della piega «Realizzazione» (bordato: il pieno è del riquadro «Prossimo
- * passo»). Con i dati del dialogo lo apre; senza, porta alla pagina di ripiego.
- */
-export function StartRealizationButton({ href, label, className }: { href: string; label: string; className?: string }) {
-  const open = useStartRealization();
-  if (open) {
-    return (
-      <Button type="button" variant="outline" className={className} onClick={open}>
-        {label}
-      </Button>
-    );
-  }
-  return (
-    <Button render={<Link href={href} />} nativeButton={false} variant="outline" className={className}>
-      {label}
-    </Button>
   );
 }

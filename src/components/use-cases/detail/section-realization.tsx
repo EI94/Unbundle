@@ -10,7 +10,7 @@ import { formatDayInYear } from "@/lib/use-cases/format";
 import type { HubDossier, UseCaseDetail } from "@/lib/use-cases/views";
 import { cn } from "@/lib/utils";
 import { MarkInProgressButton } from "../decision-buttons";
-import { StartRealizationButton } from "./start-realization-dialog";
+import { StartRealizationButton } from "./start-realization-context";
 
 /** I testi del capitolo (§6.5, §14.3). (Rilascio 10, §4, D4) A schermo «Realizzazione», mai «dossier». */
 export const SECTION_REALIZATION_TEXT = Object.freeze({

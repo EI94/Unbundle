@@ -16,6 +16,7 @@ type Render = (element: unknown) => string;
 let render: Render;
 let h: (type: unknown, props?: object | null, ...children: unknown[]) => unknown;
 let D: { StartRealizationButton: (props: never) => unknown; StartRealizationHost: (props: never) => unknown };
+let C: { StartRealizationButton: (props: never) => unknown };
 
 before(async () => {
   // L'azione del server è finta: qui si prova il dialogo, non la creazione.
@@ -27,7 +28,8 @@ before(async () => {
   const router = { push() {}, replace() {}, refresh() {}, prefetch() {}, back() {}, forward() {} };
   h = react.createElement as never;
   render = (element) => renderToStaticMarkup(react.createElement(AppRouterContext.Provider, { value: router }, element as never)).replace(/&#x27;/g, "'");
-  D = (await import("./start-realization-dialog.tsx")) as never;
+  C = (await import("./start-realization-context.tsx")) as never;
+  D = { ...((await import("./start-realization-dialog.tsx")) as object), StartRealizationButton: C.StartRealizationButton } as never;
 });
 
 const DATA = {
@@ -45,7 +47,7 @@ test("the dialog's words: who starts what, with which template; at most 25 words
   assert.equal(startTemplateLabel({ name: "Base", questions: 1 }), "Base · 1 domanda");
   const words = [T.title("XX-0012", ""), T.template({ name: "Smistamento richieste", questions: 245 }), T.change, T.cancel, T.start].join(" ").split(/\s+/).filter(Boolean);
   assert.ok(words.length <= 25, `${words.length} words`);
-  assert.deepEqual(findHubForbiddenIn([T.title("XX-0012", "x"), T.template({ name: "x", questions: 2 }), T.change, T.chooseLabel, T.cancel, T.start, T.settings], "dashboard"), []);
+  assert.deepEqual(findHubForbiddenIn([T.title("XX-0012", "x"), T.template({ name: "x", questions: 2 }), T.change, T.chooseLabel, T.cancel, T.start, T.settings], "area"), []);
 });
 
 test("without the dialog's data the buttons go to the fallback page; with them they open the dialog", () => {
@@ -68,6 +70,10 @@ test("the dialog: no «Nome», «Cambia schema» only with more than one templat
   assert.doesNotMatch(source, /window\.(confirm|prompt|alert)/);
   const box = read("./next-step-box.tsx");
   assert.match(box, /case "avvia":[\s\S]*?primary = openStart \?/, "the step opens the dialog");
+  // The step box and the fold import only the context, never the dialog with the server action.
+  assert.match(box, /from "\.\/start-realization-context"/);
+  assert.doesNotMatch(box, /start-realization-dialog/);
+  assert.doesNotMatch(read("./start-realization-context.tsx"), /lib\/actions/);
   const fold = read("./section-realization.tsx");
   assert.match(fold, /<StartRealizationButton href=\{`\/dashboard\/\$\{workspaceId\}\/casi-duso\/nuovo\?useCaseId=\$\{item\.id\}`\}/, "the fold too, with the fallback page");
   const page = read("../../../app/(dashboard)/dashboard/[workspaceId]/use-cases/[useCaseId]/page.tsx");
