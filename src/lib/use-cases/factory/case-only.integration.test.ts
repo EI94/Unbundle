@@ -390,6 +390,11 @@ test("B7: E3 mai tra i candidati del team di un altro caso, tra i referenti, «A
   const row = rows.find((r) => r.userId === ids.e3);
   assert.ok(row);
   assert.deepEqual([row.blocked, row.where.all], [null, false]);
+  // Mai firmatario né referente del cliente, nemmeno in un caso dove non costruisce (`firmatario_costruttore`,
+  // `referente_costruttore`): le e-mail di chi costruisce del caso e del workspace lo comprendono.
+  assert.ok((await builders.caseBuilderEmails(exec, ids.caseA3))?.includes(EMAIL.e3), "i firmatari e i referenti di A3");
+  assert.ok((await builders.workspaceBuilderEmails(exec, ids.wsA))?.includes(EMAIL.e5), "«A chi»: anche senza la riga");
+  assert.ok(!(await builders.caseBuilderEmails(exec, ids.caseA3))?.includes(EMAIL.c), "il Contributore resta del cliente");
   // «Aggiungi» (la 8.0c) non vale per «Solo questo use case».
   const added = await team.addExternalBuilder(exec, { workspaceId: ids.wsA, actorUserId: ids.lead, userId: ids.e3, where: "tutti", lsDomains: [LS] });
   assert.deepEqual([added.ok, !added.ok && added.code], [false, "solo_questo_use_case"]);

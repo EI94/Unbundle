@@ -145,3 +145,17 @@ test("use-case-admin doctor dice migrazione0043, solo da leggere", () => {
   assert.match(doctor, /const m0043 = \(await ctx\.db\.read\(`SELECT \$\{CASE_ONLY_PROBE_SQL\} AS ok`\)\)\[0\]\?\.ok === true;/);
   assert.match(doctor, /migrazione0043: m0043,/);
 });
+
+test("RUNBOOK §10.25: la 0043 la applica l'app, il valore non si toglie, mai da un'anteprima, a mano solo di riserva, il ritorno indietro", () => {
+  const runbook = readFileSync(new URL("../../../docs/casi-duso/RUNBOOK.md", import.meta.url), "utf8");
+  const heading = "### 10.25 Rilascio 8.0d-1: «Porte» (0043)";
+  assert.ok(runbook.includes(heading), "manca §10.25");
+  const section = runbook.slice(runbook.indexOf(heading));
+  assert.match(section, /`ENSURE_VERSION` 37/);
+  assert.match(section, /psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 -f drizzle\/0043_solo_questo_use_case\.sql/);
+  assert.match(section, /Mai drizzle-kit, mai `db:push`/);
+  assert.match(section, /`migrazione0043: true`/);
+  assert.match(section, /non parte da un'anteprima \(`VERCEL_ENV=preview`\)/);
+  assert.match(section, /\*\*Il valore non si toglie più\.\*\*/);
+  assert.match(section, /\*\*Mai più indietro della 8\.0d-1 con persone «Solo questo use case» dentro\*\*/);
+});

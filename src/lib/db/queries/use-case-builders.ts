@@ -426,10 +426,16 @@ export async function caseBuilderEmails(executor: UcExecutor, caseId: string): P
   const state = await grantsForChecks(executor);
   if (state !== "pronta") return state === "assente" ? [] : null;
   try {
+    // (8.0d) Anche chi è «Solo questo use case» nel workspace del caso, in qualunque caso costruisca: mai firmatario né
+    // referente del cliente, nemmeno in un altro caso (§2.5, «Elenchi di persone»).
     const [rows] = await executor.batch([
       toStatement(ucSql`SELECT DISTINCT lower(u.email) AS email FROM uc_cases c JOIN use_case_external_builders g ON ${grantCoversSql(ref("c"), ref("g"))}
 JOIN users u ON u.id = g.user_id
-WHERE c.id = ${cast(caseId, "uuid")} AND u.email IS NOT NULL AND NOT ${clientRoleInCaseSql(raw("u.id"))}`),
+WHERE c.id = ${cast(caseId, "uuid")} AND u.email IS NOT NULL AND NOT ${clientRoleInCaseSql(raw("u.id"))}
+UNION
+SELECT lower(u.email) AS email FROM uc_cases c JOIN workspace_memberships wm ON wm.workspace_id = c.workspace_id AND wm.role::text = 'esterno_caso'
+JOIN users u ON u.id = wm.user_id
+WHERE c.id = ${cast(caseId, "uuid")} AND u.email IS NOT NULL`),
     ]);
     return rows.map((r) => String(r.email));
   } catch {
@@ -446,9 +452,13 @@ export async function workspaceBuilderEmails(executor: UcExecutor, workspaceId: 
   const state = await grantsForChecks(executor);
   if (state !== "pronta") return state === "assente" ? [] : null;
   try {
+    // (8.0d) Anche «Solo questo use case», con o senza concessione: mai referente del cliente.
     const [rows] = await executor.batch([
       toStatement(ucSql`SELECT DISTINCT lower(u.email) AS email FROM use_case_external_builders g JOIN users u ON u.id = g.user_id
-WHERE g.workspace_id = ${cast(workspaceId, "uuid")} AND u.email IS NOT NULL`),
+WHERE g.workspace_id = ${cast(workspaceId, "uuid")} AND u.email IS NOT NULL
+UNION
+SELECT lower(u.email) AS email FROM workspace_memberships wm JOIN users u ON u.id = wm.user_id
+WHERE wm.workspace_id = ${cast(workspaceId, "uuid")} AND wm.role::text = 'esterno_caso' AND u.email IS NOT NULL`),
     ]);
     return rows.map((r) => String(r.email));
   } catch {

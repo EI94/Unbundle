@@ -874,3 +874,23 @@ Contratto: `docs/rilascio-8/BANCO-DI-PROVA.md`. La 8.2a è in produzione dal 15/
 
    Il codice di prima non conosce i due tipi e li mostrerebbe senza testo nella campanella. Le e-mail in coda dei due tipi le annulla da sé («modello_non_previsto»).
 2. Le tabelle della 0036 restano: il codice di prima le ignora. Finché il deploy della 8.2a non torna, `unbundle banco --invia` e `unbundle eval --invia` non trovano dove mandare: gli esiti restano nel terminale.
+
+### 10.25 Rilascio 8.0d-1: «Porte» (0043)
+
+Specifica: `docs/rilascio-8/RILASCIO-8.0d-ESTERNI-FASE-2.md`; l'inventario delle porte: `docs/casi-duso/DOORS-8.0d.md`. Il primo dei due rilasci di «Solo questo use case» (`esterno_caso`): il codice che conosce il valore e chiude ogni porta. **Nessuno può ancora ricevere il ruolo**: l'invito arriva con la 8.0d-2, dopo il blocco di main di questa.
+
+**Che cosa cambia:** per Lateral Space, i clienti, i Contributori e chi segue un corso, niente a schermo. Le porte del workspace (`getCollaboratorAccess`, `requireWorkspaceAccess`, `requireWorkspacePage`) fanno passare solo i cinque ruoli da collaboratore; `learner` solo dove la porta lo dichiara, `esterno_caso` solo nelle porte di `CASE_ONLY_SURFACES` e poi con il predicato per il caso; un ruolo che il codice non conosce mai (prima passava come un collaboratore). I segnali della campanella a chi non è revisore solo se è Contributore.
+
+**Migrazione 0043 (la applica l'app, al primo avvio dopo il deploy):**
+
+1. `ENSURE_VERSION` 37. Il self-heal applica gli stessi statement di `drizzle/0043_solo_questo_use_case.sql` (`CASE_ONLY_DDL`), in una transazione con l'advisory lock del file e `lock_timeout` 3s: il valore `esterno_caso` in coda a `member_role` e la tabella `use_case_builder_invites` con il suo indice. Solo il catalogo cambia: nessun dato, nessuna colonna, nessun CHECK; `workspace_memberships` non si tocca.
+2. **Il valore non si toglie più.** PostgreSQL non ha un comando per togliere un valore da un enum. Il self-heal della 0043 non parte da un'anteprima (`VERCEL_ENV=preview`), e il ramo non si pubblica prima del rilascio.
+3. Subito dopo il deploy: aprire una pagina, poi `use-case-admin doctor` deve dire `migrazione0043: true`. Se resta `false` (nel log «0043 self-heal failed…»), nessuno è «Solo questo use case» e l'accettazione di un suo invito risponde «riprova»; il self-heal riprova al massimo ogni 5 minuti. Solo allora, a mano: `psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 -f drizzle/0043_solo_questo_use_case.sql`. Mai drizzle-kit, mai `db:push`.
+4. Prima del deploy: un restore point su Neon (la 0043 è additiva). Nessuna variabile nuova su Vercel. Una sera sua, main fermo circa 24 ore.
+
+**Ritorno indietro:**
+
+1. Promote del deploy di prima, un passo su Vercel. Niente sul database: il valore e la tabella restano, il codice di prima li ignora, e nessuno ha `esterno_caso` (senza la 8.0d-2 non si può dare).
+2. **Mai più indietro della 8.0d-1 con persone «Solo questo use case» dentro** (dopo la 8.0d-2): il codice di prima le tratterebbe da collaboratori. Se servisse davvero, prima, in una transazione, il passo SQL della specifica (§4.7): token revocati, concessioni cancellate, inviti `esterno_caso` revocati, membership `esterno_caso` cancellate.
+
+**Dopo il deploy, a mano:** `doctor` con `migrazione0043: true`; una pagina di Lateral Space, una del cliente, una di un Contributore e la Formazione di chi segue un corso, come prima.
