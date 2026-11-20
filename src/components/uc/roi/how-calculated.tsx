@@ -17,10 +17,18 @@ function Part({ title, children }: { title: string; children: React.ReactNode })
  * in testa «Tutti i KPI (N) ›», che apre il pannello dei KPI (`?apri=kpi`); poi il costo all'anno e il valore nel
  * tempo, ipotesi e metodo, la formula del pareggio e l'esempio illustrativo. Tutto quello che non è una delle tre cifre.
  */
-export function HowCalculated({ how, kpiHref = null, kpiTotal = 0 }: { how: HowView; kpiHref?: string | null; kpiTotal?: number }) {
+export function HowCalculated({ how, kpiHref = null, kpiTotal = 0, account = true }: { how: HowView; kpiHref?: string | null; kpiTotal?: number; account?: boolean }) {
+  const kpis = kpiHref && kpiTotal > 0 ? <TextAction href={kpiHref}>{VALUE_TEXT.allKpis(kpiTotal)}</TextAction> : null;
+  // Senza conto (ancora vuoto) la piega resta per «Tutti i KPI», che non deve perdere il suo ingresso.
+  if (!account)
+    return kpis ? (
+      <Fold id="come-si-calcola" title={VALUE_TEXT.howCalculated}>
+        {kpis}
+      </Fold>
+    ) : null;
   return (
     <Fold id="come-si-calcola" title={VALUE_TEXT.howCalculated}>
-      {kpiHref && kpiTotal > 0 && <TextAction href={kpiHref}>{VALUE_TEXT.allKpis(kpiTotal)}</TextAction>}
+      {kpis}
       <div className="space-y-2">
         <dl className="grid gap-3 sm:grid-cols-2 sm:gap-6">
           {how.figures.map((f) => (

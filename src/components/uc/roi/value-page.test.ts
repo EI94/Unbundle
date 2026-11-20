@@ -54,7 +54,7 @@ test("Valore: niente sottotitolo, «Tutti i KPI» dentro «Come si calcola», le
   const page = strip(readFileSync(new URL("valore/page.tsx", CASE_DIR), "utf8"));
   assert.doesNotMatch(page, /Quanto costa e quanto rende/, "il sottotitolo non c'è più");
   assert.doesNotMatch(page, /Tutti i KPI/, "il link sta in «Come si calcola», non nella pagina");
-  assert.match(page, /<HowCalculated how=\{view\.how\} kpiHref=\{kpiHref\} kpiTotal=\{view\.kpiTotal\} \/>/);
+  assert.match(page, /<HowCalculated how=\{view\.how\} kpiHref=\{kpiHref\} kpiTotal=\{view\.kpiTotal\} account=\{view\.source !== "vuoto"\} \/>/, "anche senza conto «Tutti i KPI» ha il suo ingresso");
   assert.match(page, /<KpiListPanel /);
   assert.match(page, /<KpiPanel\s/);
   assert.match(page, /<LeverSwitchesPanel /);

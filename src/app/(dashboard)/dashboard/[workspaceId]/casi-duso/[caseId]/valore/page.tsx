@@ -102,7 +102,7 @@ export default async function ValuePage({
         <ValueAccount view={view} missingHref={panelHref(VALUE_PANEL.missing)} questionsHref={questionsHref} />
         <LeverList view={view} panelHref={panelHref} canEdit={canEdit} leversHref={canLevers ? panelHref(LEVERS_PANEL) : null} />
         <CostList view={view} panelHref={panelHref} canEdit={canEdit} />
-        {view.source !== "vuoto" ? <HowCalculated how={view.how} kpiHref={kpiHref} kpiTotal={view.kpiTotal} /> : null}
+        <HowCalculated how={view.how} kpiHref={kpiHref} kpiTotal={view.kpiTotal} account={view.source !== "vuoto"} />
       </div>
 
       {panel?.kind === "dati" && (
