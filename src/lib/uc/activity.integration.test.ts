@@ -9,7 +9,7 @@ import { addCaseMember, commandContextFor, createCase, loadUserContext } from ".
 import { loadActivityExport, loadActivityPage, loadPrivacyPage } from "../db/queries/uc-events.ts";
 import { planTemplateLoad } from "./template/load.ts";
 import { findForbidden } from "./views/copy-guard.ts";
-import { ACTIVITY_PAGE_SIZE, EMPTY_AUDIT_FILTER, activityDays, parseAuditFilter } from "./views/audit.ts";
+import { ACTIVITY_PAGE_SIZE, EMPTY_AUDIT_FILTER, PERSONAL_DATA_FAMILY, activityDays, auditCsv, parseAuditFilter } from "./views/audit.ts";
 
 // Opt-in integration suite for the Activity and Privacy reads of C7 (DESIGN
 // §3.10, §3.12), on the isolated local harness only. Same guard as the other uc
@@ -274,4 +274,29 @@ test("privacy page: privacy form, questions by class, personal files and access 
   assert.doesNotMatch(text, /@/, "no emails");
   assert.equal(await loadPrivacyPage(exec!, { workspaceId: ids.otherWs, caseId: state.caseId, lsDomains: LS_DOMAINS }), null);
   assert.equal(await loadPrivacyPage(exec!, { workspaceId: ids.ws, caseId: "non-un-uuid", lsDomains: LS_DOMAINS }), null);
+});
+
+test("(rilascio 10, F-115) «Dati personali»: gli accessi del vecchio registro della Privacy, niente altro, anche nello scaricato", opts, async () => {
+  const filter = parseAuditFilter({ tipo: PERSONAL_DATA_FAMILY }, false, { personalData: true });
+  assert.equal(filter.famiglia, PERSONAL_DATA_FAMILY);
+  const page = await loadActivityPage(exec!, query({ filter }));
+  assert.deepEqual(page.rows.map((r) => r.type).sort(), ["file.scaricato", "membro.zona_personale", "risposta.letta_personale"], "il download di un file normale resta fuori");
+  assert.equal(page.total, 3);
+  assert.ok(page.rows.every((r) => r.type !== "file.scaricato" || r.payload.zona === "personale"));
+  // Le stesse righe che la Privacy mostrava nel «Registro degli accessi».
+  const privacy = await loadPrivacyPage(exec!, { workspaceId: ids.ws, caseId: state.caseId, lsDomains: LS_DOMAINS });
+  assert.deepEqual(page.rows.map((r) => r.id).sort(), privacy!.accessLog.map((r) => r.id).sort());
+  // La riga porta la domanda, da aprire dal titolo.
+  const read = page.rows.find((r) => r.type === "risposta.letta_personale");
+  assert.equal(read?.itemId, state.items.get("q.servizio.01")!.id);
+  assert.ok(read?.itemStatus);
+  const line = activityDays(page.rows, { now: new Date("2026-10-05T12:00:00Z"), audience: "ls" }).flatMap((d) => d.lines).find((l) => l.id === read!.id);
+  assert.equal(line?.question?.itemId, read?.itemId);
+  assert.equal(line?.question?.full, `«${state.items.get("q.servizio.01")!.title}»`);
+  // Lo scaricato usa lo stesso filtro.
+  const exported = await loadActivityExport(exec!, query({ filter }));
+  assert.equal(exported.rows.length, 3);
+  assert.equal(auditCsv(exported.rows).trim().split("\r\n").length, 4, "intestazione e tre righe");
+  // Senza il permesso il filtro non vale (il responsabile del cliente non vede i metadati della zona personale).
+  assert.equal(parseAuditFilter({ tipo: PERSONAL_DATA_FAMILY }, true).famiglia, null);
 });
