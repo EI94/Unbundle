@@ -16,7 +16,7 @@ const { registerHooks } = nodeModule as unknown as {
 // - B5, B6: la riga non basta, «tutti» non vale; un membro dell'organizzazione mai.
 // - B2, B4: CLI e MCP del caso: su A1 come chi costruisce da fuori, su A2 e su B come un caso che non esiste.
 // - B3: le 7 azioni di chi costruisce su A1 sì, su A2 «non trovato»; approvare, riaprire, AI Board, modifica mai.
-// - B7: elenchi di persone. B8: il repository suo. U5: la campanella.
+// - B7: elenchi di persone. B8: il repository suo, e la famiglia di `setup` mai sul suo caso. U5: la campanella.
 // - D7: il contesto del caso, mai quello dell'azienda, per chiunque legga il suo caso (finisce nel repository).
 // - B9: le uscite. B10, B11, B13: l'accettazione e la salita. «Da fare per te».
 //
@@ -418,6 +418,34 @@ test("B8: il repository suo; nessun caso entra nel suo, il suo non entra in una 
   assert.deepEqual([intoFamily.status, codeOf(intoFamily)], [409, "repo_condiviso"], "il suo caso non entra in un repository con altri casi");
   const [n] = await q(`SELECT count(*)::int AS n FROM use_case_repos WHERE lower(repo) = lower($1)`, [own]);
   assert.equal(n.n, 1);
+});
+
+test("B8: la famiglia di `unbundle setup` mai su un caso di «Solo questo use case», per nessuno, nemmeno con righe scritte a mano", opts, async () => {
+  const own = `Prova/solo-${suffix}`;
+  const approve = (useCaseId: string, choice: string) =>
+    q(`INSERT INTO use_case_projects (use_case_id, workspace_id, version, status, approved_at, topics) VALUES ($1::uuid, $2::uuid, 1, 'approvato', now(), $3::jsonb)`, [useCaseId, ids.wsA, JSON.stringify({ framework: { scelta: choice } })]);
+  // A3 e A4 nello stesso repository (registrati in B8), A4 approvato: per Lateral Space su A3 la famiglia c'è, come prima.
+  await approve(ids.ucA4, `FAMIGLIA-A4-${suffix}`);
+  // A mano (la registrazione lo rifiuta, B8): A2 nel repository di A1, con un progetto approvato. E3 ha una riga
+  // osservatore in A2 scritta a mano (B5): la lettura della famiglia da sola gliela mostrerebbe.
+  await q(`INSERT INTO use_case_repos (use_case_id, workspace_id, repo, folder) VALUES ($1::uuid, $2::uuid, $3, $4)`, [ids.ucA2, ids.wsA, own, `casi/${CODE.A2.toLowerCase()}`]);
+  await approve(ids.ucA2, `FAMIGLIA-A2-${suffix}`);
+  try {
+    const { familyChoices } = await import("../../db/queries/use-case-factory.ts");
+    assert.deepEqual((await familyChoices(exec, { workspaceId: ids.wsA, useCaseId: ids.ucA1 }, ids.e3)).map((f) => f.code), [CODE.A2], "la riproduzione");
+    const leadA3 = await call(`setup?caso=${CODE.A3}`, { token: tokens.lead });
+    assert.equal(leadA3.status, 200, JSON.stringify(leadA3.json));
+    assert.deepEqual((leadA3.json.famiglia as Row[]).map((f) => f.caso), [CODE.A4], "su un caso senza «Solo questo use case» come prima");
+    for (const person of ["e3", "lead"] as const) {
+      const onA1 = await call(`setup?caso=${CODE.A1}`, { token: tokens[person] });
+      assert.equal(onA1.status, 200, JSON.stringify(onA1.json));
+      assert.deepEqual(onA1.json.famiglia, [], person);
+      assert.doesNotMatch(JSON.stringify(onA1.json), new RegExp(`FAMIGLIA-A2-${suffix}`), person);
+    }
+  } finally {
+    await q(`DELETE FROM use_case_repos WHERE use_case_id = $1::uuid`, [ids.ucA2]);
+    await q(`DELETE FROM use_case_projects WHERE use_case_id = ANY($1::uuid[])`, [[ids.ucA2, ids.ucA4]]);
+  }
 });
 
 test("U5: la campanella di E3: solo i tipi di chi costruisce dei suoi casi, anche con segnali e righe di altri casi", opts, async () => {
