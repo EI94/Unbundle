@@ -14,6 +14,7 @@ import {
   referentCapabilities,
   type ReferentItemView,
 } from "../../../lib/uc/public-view.ts";
+import { checkDelegation } from "../../../lib/uc/request-state.ts";
 import { initialForm } from "../../../lib/uc/views/referente-form.ts";
 import { R_TEXT } from "../../../lib/uc/views/referente-text.ts";
 import { enableTsxImports } from "../../use-cases/detail/referent/tsx-test-loader.ts";
@@ -109,6 +110,37 @@ test("(D5, §4.1) le parole del kit del referente: «Non lo so», «Avanti» sen
     texts.filter((t) => /\bcaso\b(?!\s+d['’]uso)/i.test(t)),
     [],
   );
+});
+
+test("(§4.1) i messaggi della delega che arrivano dal server: «un'altra persona», mai «collega», e le copy guard", () => {
+  // Le regole pure (`checkDelegation`), con ogni esito che rifiuta.
+  const base = { parentDepth: 0, delegationsToday: 0, delegateEmail: "persona@cliente.test", caseContactDomains: ["cliente.test"], lsDomains: ["ls.test"], itemIds: ["i1"], activeItemIds: ["i1"] };
+  const rules = [
+    checkDelegation({ ...base, parentDepth: 2 }),
+    checkDelegation({ ...base, delegationsToday: 5 }),
+    checkDelegation({ ...base, delegateEmail: "non-una-email" }),
+    checkDelegation({ ...base, delegateEmail: "persona@ls.test" }),
+    checkDelegation({ ...base, itemIds: [] }),
+    checkDelegation({ ...base, itemIds: ["i2"] }),
+  ].map((r) => (r.ok ? "" : r.message));
+  assert.ok(rules.every((m) => m !== ""), "ogni regola rifiuta con il suo messaggio");
+  // Le scritture della delega (`delegateItems`) vogliono il database: i loro messaggi si leggono dal sorgente.
+  const source = readFileSync(fileURLToPath(new URL("../../../lib/db/queries/uc-public.ts", import.meta.url)), "utf8");
+  const start = source.indexOf("export async function delegateItems");
+  assert.ok(start > 0, "la delega del server c'è");
+  const delegation = source.slice(start, source.indexOf("\nexport ", start + 1));
+  const server = [...delegation.matchAll(/publicFail\("[a-z_]+", "([^"]+)"/g), ...source.matchAll(/\btroppe_deleghe: "([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(server.length >= 6, `${server.length} messaggi del server`);
+  const texts = [...rules, ...server];
+  assert.deepEqual(
+    texts.filter((t) => /\bcolleg(?:a|hi|he)\b|\blui\b/i.test(t)),
+    [],
+  );
+  const found = texts.flatMap((t) => [...findHubForbidden(t, "esterno"), ...findForbidden(t, "cliente")].map((m) => `«${m.match}» in «${t}»`));
+  assert.deepEqual(found, []);
+  for (const text of ["Indica l'email di un'altra persona, non la tua.", "Non si può girare una domanda a Lateral Space: chiedi a un'altra persona della tua azienda."]) {
+    assert.ok(texts.includes(text), text);
+  }
 });
 
 test("(§3.11) le schede del guscio: il link che non vale e l'errore con il solo «Riprova»", () => {

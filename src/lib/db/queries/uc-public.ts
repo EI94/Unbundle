@@ -179,7 +179,7 @@ const PUBLIC_MESSAGES: Readonly<Record<string, string>> = {
   link_non_valido: INVALID_LINK_MESSAGE,
   conflitto: CHANGED,
   voce_non_disponibile: NOT_AVAILABLE,
-  troppe_deleghe: "Hai già chiesto a molti colleghi oggi. Riprova domani o scrivi a Lateral Space.",
+  troppe_deleghe: "Oggi hai già girato domande a molte persone. Riprova domani o scrivi a Lateral Space.",
   caso_chiuso: INVALID_LINK_MESSAGE,
 };
 
@@ -1086,7 +1086,7 @@ export async function delegateItems(executor: UcExecutor, link: ResolvedLink, in
   if (!writable.ok) return writable;
   const collection = checkCollection(link);
   if (!collection.ok) return collection;
-  if (!isPlainObject(input)) return publicFail("dati_non_validi", "Indica nome ed email del collega.");
+  if (!isPlainObject(input)) return publicFail("dati_non_validi", "Indica nome ed email dell'altra persona.");
   const now = opts.now ?? new Date();
   const [delegable] = await executor.batch([delegableItemsSql({ caseId: link.caseId, requestId: link.requestId, contactId: link.contactId })]);
   const states = new Map(delegable.map((r) => [String(r.item_id), rowVocab(REQUEST_ITEM_STATES, r.state) ?? "da_fare"]));
@@ -1096,7 +1096,7 @@ export async function delegateItems(executor: UcExecutor, link: ResolvedLink, in
   const value = prepared.value as { nome: string; email: string; voci: string[]; messaggio?: string };
   const email = value.email.toLowerCase();
   if (link.contactEmail && link.contactEmail.trim().toLowerCase() === email) {
-    return publicFail("delega_a_se_stessi", "Indica l'email di un collega, non la tua.", [issue("delega_a_se_stessi", "Indica l'email di un collega, non la tua.", "email")]);
+    return publicFail("delega_a_se_stessi", "Indica l'email di un'altra persona, non la tua.", [issue("delega_a_se_stessi", "Indica l'email di un'altra persona, non la tua.", "email")]);
   }
   const core = await loadCaseCore(executor, link.workspaceId, link.caseId);
   if (!core) return publicFail("link_non_valido", INVALID_LINK_MESSAGE);
@@ -1107,15 +1107,15 @@ export async function delegateItems(executor: UcExecutor, link: ResolvedLink, in
     delegationsTodaySql({ caseId: link.caseId, parentRequestId: link.requestId, excludeRequestId: randomUUID(), since: romeMidnightUtc(romeDateOf(now)) }),
   ]);
   const existingId = rowString(existing?.id);
-  if (existingId === link.contactId) return publicFail("delega_a_se_stessi", "Indica l'email di un collega, non la tua.");
-  if (existing && !rowBool(existing.is_active)) return publicFail("collega_non_attivo", "Questo collega non riceve più richieste: scrivi a Lateral Space.");
+  if (existingId === link.contactId) return publicFail("delega_a_se_stessi", "Indica l'email di un'altra persona, non la tua.");
+  if (existing && !rowBool(existing.is_active)) return publicFail("collega_non_attivo", "Questa persona non riceve più richieste: scrivi a Lateral Space.");
   const existingUserId = rowString(existing?.user_id);
   const existingUser = existingUserId ? await loadUserContext(executor, existingUserId, opts.lsDomains) : null;
   const allowed = checkContactEmail({ email, user: existingUser, lsDomains: opts.lsDomains, lsMemberEmails: sig.lsMemberEmails, builderEmails: sig.builderEmails });
   // (8.0c) Chi costruisce il caso non si legge adesso: la delega aspetta, «riprova tra poco».
   const unreadable = publicUnavailable(allowed);
   if (unreadable) return unreadable;
-  if (!allowed.ok) return publicFail("delega_a_lateral_space", "Non si può girare una domanda a Lateral Space: chiedi a un collega della tua azienda.");
+  if (!allowed.ok) return publicFail("delega_a_lateral_space", "Non si può girare una domanda a Lateral Space: chiedi a un'altra persona della tua azienda.");
   const rules = checkDelegation({
     parentDepth: link.delegationDepth,
     delegationsToday: rowNumber(today?.n) ?? 0,
