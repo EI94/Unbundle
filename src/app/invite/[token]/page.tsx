@@ -142,7 +142,7 @@ export default async function WorkspaceInvitePage({ params }: { params: Promise<
             <p className="rounded-xl bg-uc-giallo-bg px-4 py-3 break-words">
               {fillInvite(T.wrongAccount, { Sessione: session.user.email ?? "", Invito: maskInviteEmail(invitedEmail!) })}
             </p>
-            <SwitchAccountButton loginHref={switchHref} />
+            <SwitchAccountButton loginHref={switchHref} className={PUBLIC_PRIMARY} />
             {access && access.role !== "learner" ? (
               <p className="text-center text-sm text-muted-foreground">
                 {fillInvite(T.alreadyThere, ws)}{" "}
@@ -175,7 +175,7 @@ function SwitchAccountLink({ loginHref }: { loginHref: string }) {
     <details className="text-center text-sm text-muted-foreground">
       <summary className={`${PUBLIC_LINK} cursor-pointer justify-center`}>{T.notYou}</summary>
       <div className="mt-2">
-        <SwitchAccountButton loginHref={loginHref} />
+        <SwitchAccountButton loginHref={loginHref} variant="outline" className={PUBLIC_SECONDARY} />
       </div>
     </details>
   );

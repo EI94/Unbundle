@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { findHubForbiddenIn } from "../use-cases/copy-guard.ts";
 import { KEPT_OTHER_COHORT_TEXT } from "../learning/join-arrival.ts";
 import { COURSE_DOOR_CHECK_SECONDS, COURSE_JOIN_TEXT, COURSE_LINK_TEXT, courseHelp, courseLine, courseRetention, courseWhen } from "./course.ts";
+import { DOOR_CHECK_MAX_SECONDS, DOOR_CHECK_PROBE, doorCheckAfter, doorCheckDelayMs, doorCheckRuns } from "../../app/c/[token]/door-check.ts";
 
 // (Rilascio 10, ondata 4 «Fuori», docs/ui-10/PROPOSTA-10.md §3.11 «Corso `/c`», audit Fuori §3.7) Il link di un corso:
 // una card con H1 = il titolo del corso, la riga della data una volta sola, un solo pulsante pieno, la privacy in una
@@ -85,15 +86,44 @@ test("the page: the public shell, the course title as H1, one card, the door che
     assert.ok(!page.includes(gone), gone);
   }
   const watch = code("src/app/c/[token]/door-watch.tsx");
-  assert.match(watch, /window\.setInterval\(check, seconds \* 1000\)/);
-  assert.match(watch, /if \(document\.visibilityState === "visible"\) router\.refresh\(\);/, "rilegge la pagina dal server, solo con la scheda in vista");
-  assert.match(watch, /document\.addEventListener\("visibilitychange", check\)/, "e appena si torna dalla chat");
+  assert.match(watch, /if \(!doorCheckRuns\(\{ online: navigator\.onLine, visible: document\.visibilityState === "visible" \}\)\) \{\s*schedule\(\);\s*return;\s*\}/, "senza rete o con la scheda nascosta, niente");
+  assert.match(watch, /const next = doorCheckAfter\(failures, await reachable\(\)\);/);
+  assert.match(watch, /if \(next\.refresh\) router\.refresh\(\);/, "rilegge la pagina solo se la rete arriva al sito");
+  assert.match(watch, /await fetch\(DOOR_CHECK_PROBE, \{ method: "HEAD", cache: "no-store" \}\)/);
+  assert.match(watch, /window\.addEventListener\("online", onOnline\)/, "appena torna la rete");
+  assert.match(watch, /document\.addEventListener\("visibilitychange", onVisible\)/, "e appena si torna dalla chat");
+  assert.match(watch, /timer = window\.setTimeout\(\(\) => void check\(\), doorCheckDelayMs\(failures\)\)/, "il ritmo dal modulo puro");
+  assert.doesNotMatch(watch, /setInterval/);
   const layout = code("src/app/c/layout.tsx");
   assert.match(layout, /return <PublicRoot>\{children\}<\/PublicRoot>;/, "chiara, resa dal server");
   assert.match(layout, /export const viewport: Viewport = PUBLIC_VIEWPORT;/);
   const error = code("src/app/c/[token]/error.tsx");
   assert.match(error, /<PublicErrorScreen retry=\{retry\} body=\{COURSE_LINK_TEXT\.error\} \/>/, "solo «Riprova», che rilegge la pagina");
   assert.doesNotMatch(error, /\breset\b|reload/);
+});
+
+test("the door check: every 10 s, never offline or hidden, doubling after a failure up to 2 minutes, back to 10 s once the site answers", () => {
+  assert.equal(doorCheckDelayMs(0), 10_000);
+  assert.equal(doorCheckDelayMs(1), 20_000);
+  assert.equal(doorCheckDelayMs(2), 40_000);
+  assert.equal(doorCheckDelayMs(3), 80_000);
+  assert.equal(doorCheckDelayMs(4), DOOR_CHECK_MAX_SECONDS * 1000);
+  assert.equal(doorCheckDelayMs(50), 120_000, "mai oltre i 2 minuti");
+  assert.equal(doorCheckDelayMs(-3), 10_000);
+  assert.equal(doorCheckRuns({ online: true, visible: true }), true);
+  assert.equal(doorCheckRuns({ online: false, visible: true }), false, "senza rete la rilettura diventerebbe la pagina «offline» del browser");
+  assert.equal(doorCheckRuns({ online: true, visible: false }), false);
+  // Una serie: due fallimenti (la rete non arriva al sito), poi il sito risponde.
+  let state = { failures: 0, refresh: false };
+  state = doorCheckAfter(state.failures, false);
+  assert.deepEqual(state, { failures: 1, refresh: false });
+  state = doorCheckAfter(state.failures, false);
+  assert.deepEqual(state, { failures: 2, refresh: false });
+  assert.equal(doorCheckDelayMs(state.failures), 40_000);
+  state = doorCheckAfter(state.failures, true);
+  assert.deepEqual(state, { failures: 0, refresh: true });
+  assert.equal(doorCheckDelayMs(state.failures), 10_000);
+  assert.equal(DOOR_CHECK_PROBE, "/favicon.ico", "un file piccolo del sito, non la pagina");
 });
 
 test("the join form: one filled button; «Usa email e password» a 44 px link; «Non sono io» offers Google and e-mail again", () => {

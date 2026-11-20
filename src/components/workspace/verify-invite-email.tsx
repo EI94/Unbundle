@@ -106,12 +106,12 @@ export function VerifyInviteEmail({ email, loginHref }: { email: string; loginHr
       {mismatch ? (
         <div className="space-y-2">
           <p className="text-muted-foreground break-words">{fillInvite(V.mismatch, { Altra: user?.email ?? "", Email: email })}</p>
-          <SwitchAccountButton loginHref={loginHref} />
+          <SwitchAccountButton loginHref={loginHref} className={PUBLIC_PRIMARY} />
         </div>
       ) : user === null ? (
         <div className="space-y-2">
           <p className="text-muted-foreground break-words">{fillInvite(V.newLogin, { Email: email })}</p>
-          <SwitchAccountButton loginHref={loginHref} />
+          <SwitchAccountButton loginHref={loginHref} className={PUBLIC_PRIMARY} />
         </div>
       ) : status === "idle" || status === "sending" ? (
         <div className="space-y-2">

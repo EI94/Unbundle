@@ -5,11 +5,14 @@
  * Modulo puro: lo provano i test senza browser.
  */
 
-/** Il pulsante principale: `<Button className={PUBLIC_PRIMARY}>`, pieno. */
-export const PUBLIC_PRIMARY = "h-12 w-full text-base";
+/**
+ * Il pulsante principale: `<Button className={PUBLIC_PRIMARY}>`, pieno. Alto 48 px; un testo lungo («Entra nel corso come
+ * nome.cognome@azienda.it», il nome di un workspace) va a capo dentro il pulsante invece di uscire dal bordo a 375 px.
+ */
+export const PUBLIC_PRIMARY = "h-auto min-h-12 w-full whitespace-normal py-2 text-center text-base wrap-anywhere";
 
 /** Un pulsante bordato nel flusso della pagina (`variant="outline"`): la stessa misura del principale. */
-export const PUBLIC_SECONDARY = "h-12 w-full text-base";
+export const PUBLIC_SECONDARY = "h-auto min-h-12 w-full whitespace-normal py-2 text-center text-base wrap-anywhere";
 
 /** Un link o un pulsante di testo: 44 px di bersaglio, sottolineato. */
 export const PUBLIC_LINK = "inline-flex min-h-11 items-center text-left font-medium underline underline-offset-4 hover:text-foreground";

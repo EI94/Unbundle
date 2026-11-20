@@ -35,17 +35,21 @@ function readExistingUrl(openToken: string): string | null {
 }
 
 /**
- * L'avvio del questionario dal link aperto (`/s/<token>`). (Rilascio 10, ondata 4, PROPOSTA-10 §3.11) «La tua area» da un
- * elenco, con «Un'altra area» da scrivere; niente email facoltativa (D12: il questionario è anonimo e a quell'indirizzo
- * non arrivava niente; il server accetta l'avvio senza, come prima). «Inizia» a tutta larghezza, alto 48 px; da un
- * dispositivo che l'ha già iniziato il pieno è «Riprendi da dove eri» e l'avvio diventa bordato. Campi a 16 px.
+ * L'avvio del questionario dal link aperto (`/s/<token>`). (Rilascio 10, ondata 4, PROPOSTA-10 §3.11) «La tua area»
+ * dall'elenco delle aree che la rilevazione conosce già (`areas`, scritte come sono: nessuna si divide in due), con
+ * «Un'altra area» da scrivere; senza aree, il campo da scrivere di prima. Niente email facoltativa (D12: a
+ * quell'indirizzo non arrivava niente; il server accetta l'avvio senza, come prima). «Inizia» a tutta larghezza, alto
+ * 48 px; da un dispositivo che l'ha già iniziato il pieno è «Riprendi da dove eri» e l'avvio diventa bordato. Campi a 16 px.
  */
 export function OpenSurveyStartForm({
   openToken,
   named,
+  areas,
 }: {
   openToken: string;
   named: boolean;
+  /** Le aree che la rilevazione conosce già (`surveyAreas`); vuoto: si scrive. */
+  areas: readonly string[];
 }) {
   const router = useRouter();
   const action = startOpenSurveyAction.bind(null, openToken);
@@ -142,28 +146,40 @@ export function OpenSurveyStartForm({
           <Label htmlFor="organizationUnit" className={PUBLIC_LABEL}>
             {S.area}
           </Label>
-          <select
-            id="organizationUnit"
-            // Con «Un'altra area» il valore è quello scritto nel campo sotto, che porta lo stesso nome.
-            name={area === OTHER_AREA ? undefined : "organizationUnit"}
-            value={area}
-            onChange={(event) => {
-              setArea(event.target.value);
-              clearLocalError("organizationUnit");
-            }}
-            aria-invalid={Boolean(areaError && area !== OTHER_AREA)}
-            aria-describedby={areaError && area !== OTHER_AREA ? "organizationUnit-aiuto organizationUnit-errore" : "organizationUnit-aiuto"}
-            className="h-11 w-full min-w-0 rounded-lg border border-input bg-background px-3 text-base text-foreground aria-invalid:border-destructive"
-          >
-            <option value="">{S.areaChoose}</option>
-            {SURVEY_TEXT.areas.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-            <option value={OTHER_AREA}>{S.areaOther}</option>
-          </select>
-          {area === OTHER_AREA && (
+          {areas.length > 0 ? (
+            <select
+              id="organizationUnit"
+              // Con «Un'altra area» il valore è quello scritto nel campo sotto, che porta lo stesso nome.
+              name={area === OTHER_AREA ? undefined : "organizationUnit"}
+              value={area}
+              onChange={(event) => {
+                setArea(event.target.value);
+                clearLocalError("organizationUnit");
+              }}
+              aria-invalid={Boolean(areaError && area !== OTHER_AREA)}
+              aria-describedby={areaError && area !== OTHER_AREA ? "organizationUnit-aiuto organizationUnit-errore" : "organizationUnit-aiuto"}
+              className="h-11 w-full min-w-0 rounded-lg border border-input bg-background px-3 text-base text-foreground aria-invalid:border-destructive"
+            >
+              <option value="">{S.areaChoose}</option>
+              {areas.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+              <option value={OTHER_AREA}>{S.areaOther}</option>
+            </select>
+          ) : (
+            // Nessuna area ancora: si scrive, come prima.
+            <Input
+              id="organizationUnit"
+              name="organizationUnit"
+              className={PUBLIC_FIELD}
+              aria-invalid={Boolean(areaError)}
+              aria-describedby={areaError ? "organizationUnit-aiuto organizationUnit-errore" : "organizationUnit-aiuto"}
+              onChange={() => clearLocalError("organizationUnit")}
+            />
+          )}
+          {areas.length > 0 && area === OTHER_AREA && (
             <div className="space-y-1.5 pt-2">
               <Label htmlFor="organizationUnitOther" className={PUBLIC_LABEL}>
                 {S.areaOtherLabel}

@@ -10,11 +10,16 @@ import { auth } from "@/lib/auth";
 import { loginPathForMissingSession, SESSION_COOKIE_NAME } from "@/lib/auth/session-signal";
 import { ensureDbSchema } from "@/lib/db/ensure-schema";
 import { cliCaseWorkspaceIds, cliStoreReady, findCliLogin } from "@/lib/db/queries/use-case-cli-auth";
+import { factoryNavVisible } from "@/lib/db/queries/use-case-factory-line";
+import { viewerFromSession } from "@/lib/db/queries/use-case-hub";
+import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { getWorkspaceGroupsForUser } from "@/lib/db/queries/workspaces";
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
 import { accountHref } from "@/lib/shell/account";
 import { normalizeUserCode } from "@/lib/use-cases/cli/codes";
 import { cliWorkspaceChoices, type CliWorkspaceChoice } from "@/lib/use-cases/cli/workspace-choices";
+import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
+import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import { CLI_PAGE_TEXT } from "./text";
 
 /**
@@ -35,12 +40,15 @@ export const metadata: Metadata = {
 
 const T = CLI_PAGE_TEXT;
 
-/** I due link in fondo: il workspace proposto per primo; senza, l'elenco dei workspace e niente Agent Factory. */
-function LinksFooter({ workspaceId }: { workspaceId: string | null }) {
+/**
+ * I due link in fondo, del workspace proposto per primo: «Il tuo account › Claude e terminale» e l'Agent Factory, solo se
+ * la persona la può aprire (`factory`). Senza un workspace, l'elenco dei workspace.
+ */
+function LinksFooter({ workspaceId, factory }: { workspaceId: string | null; factory: boolean }) {
   return (
     <PublicFooterLine className="flex flex-wrap gap-x-5">
       <PublicLink href={workspaceId ? accountHref(workspaceId, "claude") : "/dashboard"}>{workspaceId ? T.account : T.workspaces}</PublicLink>
-      {workspaceId ? <PublicLink href={`/dashboard/${workspaceId}/agent-factory`}>{T.factory}</PublicLink> : null}
+      {workspaceId && factory ? <PublicLink href={`/dashboard/${workspaceId}/agent-factory`}>{T.factory}</PublicLink> : null}
     </PublicFooterLine>
   );
 }
@@ -76,17 +84,28 @@ function CodeForm({ error, label = T.continue }: { error?: string | null; label?
   );
 }
 
-/** I workspace della scelta: dove la persona è nel team di un caso. Senza il registro della CLI, nessuno. */
-async function workspaceChoices(userId: string): Promise<CliWorkspaceChoice[]> {
+/**
+ * I workspace della scelta: dove la persona è nel team di un caso, con il ruolo di ciascuno. Senza il registro della CLI,
+ * nessuno.
+ */
+async function workspaceChoices(userId: string): Promise<{ choices: CliWorkspaceChoice[]; roles: Map<string, string> }> {
   const executor = await getAppUcExecutor();
-  if (!(await cliStoreReady(executor))) return [];
+  if (!(await cliStoreReady(executor))) return { choices: [], roles: new Map() };
   const [groups, caseWorkspaces] = await Promise.all([getWorkspaceGroupsForUser(userId), cliCaseWorkspaceIds(executor, userId)]);
-  return cliWorkspaceChoices(
-    groups.flatMap((g) =>
-      g.workspaces.map((w) => ({ id: w.workspace.id, name: w.workspace.name, organization: g.organization.name, createdAt: w.workspace.createdAt, accessRole: w.accessRole })),
-    ),
-    caseWorkspaces,
+  const items = groups.flatMap((g) =>
+    g.workspaces.map((w) => ({ id: w.workspace.id, name: w.workspace.name, organization: g.organization.name, createdAt: w.workspace.createdAt, accessRole: w.accessRole })),
   );
+  return { choices: cliWorkspaceChoices(items, caseWorkspaces), roles: new Map(items.map((w) => [w.id.toLowerCase(), w.accessRole])) };
+}
+
+/**
+ * Se la persona può aprire l'Agent Factory di quel workspace: la stessa regola della pagina (`agent-factory/page.tsx`) e
+ * della voce nella barra (`factoryNavVisible`), con l'area «Use case» accesa e la sezione dei casi attiva.
+ */
+async function factoryOpens(user: { id: string; email: string | null; emailVerified: boolean }, workspaceId: string, role: string | undefined): Promise<boolean> {
+  if (!role || role === "learner" || !isUseCaseHubWorkspace(workspaceId) || process.env.UC_ENABLED !== "true") return false;
+  const lsManager = viewerFromSession(user, role).isLateralSpace && canReviewWorkspacePortfolio(role);
+  return factoryNavVisible(await getAppUcExecutor(), { workspaceId, userId: user.id, lsManager, lsDomains: ucLsDomains() });
 }
 
 export default async function CliConnectPage({ searchParams }: { searchParams: Promise<{ codice?: string }> }) {
@@ -97,8 +116,9 @@ export default async function CliConnectPage({ searchParams }: { searchParams: P
   if (!session?.user?.id) redirect(loginPathForMissingSession({ hadCookie: cookieStore.has(SESSION_COOKIE_NAME), callbackPath: callback }));
 
   await ensureDbSchema();
-  const workspaces = await workspaceChoices(session.user.id);
-  const footer = <LinksFooter workspaceId={workspaces[0]?.id ?? null} />;
+  const { choices: workspaces, roles } = await workspaceChoices(session.user.id);
+  const first = workspaces[0]?.id ?? null;
+  const footer = <LinksFooter workspaceId={first} factory={first ? await factoryOpens(session.user, first, roles.get(first)) : false} />;
 
   if (!userCode) {
     return (

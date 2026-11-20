@@ -126,7 +126,7 @@ test("(rilascio 10, §4) the respondent pages say «questionario», never Survey
   assert.ok(a.includes("<PublicCard title={SURVEY_TEXT.completed.title}>") && a.includes("<PublicCard title={SURVEY_TEXT.closed.title}>"));
   assert.ok(a.includes("if (!found) return <PublicInvalidScreen body={SURVEY_TEXT.gone} />;"), "the single card of a link that no longer works");
   assert.ok(survey.includes("le tue risposte completano il quadro raccolto con il questionario."));
-  assert.ok(survey.includes('personalLink: "Questo link è solo tuo: non inoltrarlo.",'));
+  assert.ok(survey.includes('personalLink: "Questo link è solo tuo: non inoltrarlo. Per invitare altre persone, condividi il link generale del questionario.",'));
   assert.ok(!a.includes("<Badge") && !a.includes("AI Readiness OS"), "no labels, no «OS»");
   assert.match(read("src/lib/actions/ai-readiness.ts"), /errorState\("Questo questionario è nominativo: inserisci nome e cognome\.",/);
   assert.match(survey, /Nessuna risposta è giusta o sbagliata\./);

@@ -94,8 +94,9 @@ test("one card for errors, with only «Riprova», full width and 48 px: no secon
   assert.equal(textOf(html), "Questa pagina non si è caricata. Riprova");
   assert.equal(count(html, /<button\b/g), 1);
   const button = /<button\b[^>]*>/.exec(html)?.[0] ?? "";
-  assert.match(button, /\bh-12\b/);
+  assert.match(button, /\bmin-h-12\b/);
   assert.match(button, /\bw-full\b/);
+  assert.doesNotMatch(button, /\bwhitespace-nowrap\b|\bh-\(--btn-h\)/, "un testo lungo va a capo, il pulsante cresce");
   assert.match(button, /type="button"/);
   assert.ok(!/Ricarica/.test(html));
   assert.equal(retried, 0, "rendering does not retry");
@@ -120,9 +121,12 @@ test("the light root of the public route layouts, rendered by the server", () =>
   assert.doesNotMatch(html, /overflow-x-hidden/);
 });
 
-test("the sizes: the main button full width and 48 px, the rest at least 44 px, fields at 16 px", () => {
-  assert.deepEqual(PUBLIC_PRIMARY.split(" ").sort(), ["h-12", "text-base", "w-full"]);
-  assert.deepEqual(PUBLIC_SECONDARY.split(" ").sort(), ["h-12", "text-base", "w-full"]);
+test("the sizes: the main button full width and 48 px, the rest at least 44 px, fields at 16 px; long labels wrap", () => {
+  for (const classes of [PUBLIC_PRIMARY, PUBLIC_SECONDARY]) {
+    for (const needed of ["min-h-12", "h-auto", "w-full", "text-base", "whitespace-normal", "wrap-anywhere", "text-center"]) {
+      assert.ok(classes.split(" ").includes(needed), `${needed} in «${classes}»`);
+    }
+  }
   assert.match(PUBLIC_LINK, /\bmin-h-11\b/);
   assert.match(PUBLIC_FIELD, /\bh-11\b/);
   assert.match(PUBLIC_FIELD, /(?:^| )text-base\b/);

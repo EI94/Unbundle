@@ -2,8 +2,8 @@ import type { ThemeProviderProps } from "next-themes";
 
 /**
  * Il tema del dashboard (Scuro, Chiaro, Come il sistema): la scelta resta in questo browser, per
- * ogni workspace, sotto una chiave sua (quella delle pagine pubbliche /a e /s è
- * `unbundle-survey-theme`, che resta com'è). «Scuro» è il predefinito per tutti.
+ * ogni workspace, sotto una chiave sua. Le pagine pubbliche (/a, /s, /c, /login, l'invito…) sono
+ * sempre chiare, senza una scelta loro (rilascio 10, ondata 4). «Scuro» è il predefinito per tutti.
  *
  * next-themes scrive il tema in `data-theme` su <html> con uno script in linea all'inizio del corpo
  * della pagina, e sulle pagine del dashboard THEME_BOOT_SCRIPT lo scrive già nel <head> (niente
