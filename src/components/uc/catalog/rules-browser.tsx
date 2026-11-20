@@ -9,14 +9,15 @@ import { PERIMETER_LABEL } from "@/lib/uc/views/labels";
 import { PERIMETER_PARAM, RULE_STATUS_GROUPS } from "@/lib/uc/views/model";
 import { STATUS_GROUP_LABEL, STATUS_GROUP_SLUG, type Audience } from "@/lib/uc/views/status-groups";
 import type { SemaforoColor } from "@/lib/uc/vocab";
-import { SolutionSearch, useUrlParams } from "./model-item-list";
+import { RESET_IN_RULES_PANEL, SolutionSearch, useUrlParams } from "./model-item-list";
 
 /**
- * Soluzione › Regole (DESIGN §3.7.3):
+ * Le regole (DESIGN §3.7.3; rilascio 10, §3.5: il pannello «Regole» della Soluzione, `?apri=regole`):
  *
- *   [⌕ Cerca una regola]  [Filtri ▾]   ◯ Mostra anche i vincoli
- *   La conferma: Commerciale · 12 di 40 confermate                     ▾
- *    ● Il margine minimo per richiesta non scende sotto la soglia.     ›
+ *   [⌕ Cerca una regola]  [Filtri ▾]   ◯ Mostra anche i vincoli (solo Lateral Space)
+ *   Commerciale                                                         ▾
+ *    ● Il margine minimo per richiesta non scende sotto la soglia,
+ *      su due righe al massimo.                                         ›
  *
  * Ricerca, filtri e pagine sul server: al client arrivano solo le righe (stato
  * e testo su una riga), mai gli array dei collegamenti. Gruppi per «Chi la
@@ -31,15 +32,20 @@ export function RulesToolbar({
   vincoli,
   hasConstraints,
   audience,
+  inPanel = false,
 }: {
   q: string | null;
   stato: string | null;
   perimetro: string | null;
   vincoli: boolean;
+  /** «Mostra anche i vincoli»: (rilascio 10, F-090) solo per Lateral Space, e solo se ce ne sono. */
   hasConstraints: boolean;
   audience: Audience;
+  /** (Rilascio 10) Nel pannello della Soluzione cercare e filtrare azzera la pagina e la regola, non il pannello. */
+  inPanel?: boolean;
 }) {
-  const { pending, set } = useUrlParams();
+  const reset = inPanel ? RESET_IN_RULES_PANEL : undefined;
+  const { pending, set } = useUrlParams(reset);
   const fields = [
     {
       key: "stato",
@@ -59,7 +65,7 @@ export function RulesToolbar({
   ];
   return (
     <div className="mb-5 flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center" aria-busy={pending}>
-      <SolutionSearch value={q} label="Cerca una regola" className="sm:max-w-sm sm:flex-1" />
+      <SolutionSearch value={q} label="Cerca una regola" className="sm:max-w-sm sm:flex-1" reset={reset} />
       <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
         <FilterPopover fields={fields} values={{ stato, perimetro }} onChange={(key, value) => set({ [key]: value })} onClear={() => set({ stato: null, perimetro: null })} />
         {hasConstraints && (
@@ -105,7 +111,7 @@ export function RulesList({ groups, allOpen }: { groups: RuleListGroup[]; allOpe
                   className="flex min-h-11 min-w-0 items-center gap-3 py-2 hover:bg-muted/40 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
                 >
                   <StatusDot tone={r.status.tone} label={r.status.label} hideLabel className="shrink-0" />
-                  <span className="min-w-0 flex-1 truncate text-sm" title={r.title}>
+                  <span className="line-clamp-2 min-w-0 flex-1 text-sm break-words" title={r.title}>
                     {r.title}
                   </span>
                   <span className="max-w-28 shrink-0 truncate text-xs text-muted-foreground" aria-hidden>

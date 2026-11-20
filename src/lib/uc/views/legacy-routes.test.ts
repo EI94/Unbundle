@@ -44,8 +44,9 @@ test("the verification queue goes to the «Da verificare» view, the page passes
 test("documents, map, rules, data model, KPI, ROI and progress", () => {
   assert.equal(route(["documenti"], "x=1"), `${base}/domande?vista=tutte&indispensabili=no&mostra=documenti&apri=file`, "(release 10) straight to the «File» panel");
   assert.equal(route(["mappa"], "vista=dati&altro=1"), `${base}/soluzione/mappa?vista=dati`);
-  assert.equal(route(["regole"], "apri=abc"), `${base}/soluzione/regole?apri=abc`);
-  assert.equal(route(["regole"], "q=1"), `${base}/soluzione/regole`);
+  // (Rilascio 10, ondata 5b, F-090) Straight to the «Regole» panel of the Soluzione, the open rule as `regola`.
+  assert.equal(route(["regole"], "apri=abc"), `${base}/soluzione?apri=regole&regola=abc`);
+  assert.equal(route(["regole"], "q=1&altro=x"), `${base}/soluzione?apri=regole&q=1`);
   assert.equal(route(["modello-dati"], `vista=fonti&entita=${ITEM}`), `${base}/soluzione/dati?vista=fonti&apri=${ITEM}`);
   assert.equal(route(["kpi"], "apri=k1"), `${base}/valore/kpi?apri=k1`);
   assert.equal(route(["roi"], "x=1"), `${base}/valore`);
@@ -72,6 +73,13 @@ test("(release 10, §3.5) yesterday's Documenti page opens the «File» panel of
   const f = parseQuestionFilter(Object.fromEntries(new URL(target, "http://x").searchParams), "ls", { vista: "da-fare", soloIndispensabili: true });
   assert.deepEqual([f.vista, f.soloIndispensabili, f.documenti, f.catalogo], ["tutte", false, true, false]);
   assert.equal(new URL(target, "http://x").searchParams.get("apri"), "file");
+});
+
+test("(rilascio 10, ondata 5b, F-090) yesterday's Soluzione › Regole page is the «Regole» panel; the other Soluzione pages stay", () => {
+  assert.equal(route(["soluzione", "regole"]), `${base}/soluzione?apri=regole`);
+  assert.equal(route(["soluzione", "regole"], `apri=${ITEM}&q=margine&vincoli=1&pagina=2`), `${base}/soluzione?apri=regole&q=margine&vincoli=1&pagina=2&regola=${ITEM}`);
+  assert.equal(legacyCaseRouteFromPath(`${base}/soluzione/regole/`, new URLSearchParams("stato=da-fare")), `${base}/soluzione?apri=regole&stato=da-fare`);
+  for (const rest of [[], ["mappa"], ["dati"], ["regole", "x"]]) assert.equal(route(["soluzione", ...rest]), null, `soluzione/${rest.join("/")} stays where it is`);
 });
 
 test("(rilascio 10, ondata 5b, F-131) the agent's project is the Costruzione: the whole query passes, anchors stay in the browser", () => {

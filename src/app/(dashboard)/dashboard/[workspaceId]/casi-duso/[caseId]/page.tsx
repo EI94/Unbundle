@@ -200,7 +200,8 @@ export default async function OverviewPage({
   const conditions = state === "approvato" || c.status === "chiuso" ? [] : viaOpenConditions(viaConditions(g1.conditions, { required: g1.required, ok: g1.ok, waivers: g1.waivers, audience: layout.audience }).open);
   const conditionHref = (cond: ViaConditionView): string | null => {
     if (!cond.segment) return null;
-    const page = cond.segment.startsWith("domande") ? "voci" : cond.segment === "soluzione/regole" ? "regole" : null;
+    // (Ondata 5b) Le regole sono il pannello «Regole» della Soluzione (`soluzione?apri=regole`).
+    const page = cond.segment.startsWith("domande") ? "voci" : cond.segment.startsWith("soluzione?apri=regole") ? "regole" : null;
     if (page && !canOpenPage(page, roles)) return null;
     // (Rilascio 10, §3.5) I file stanno nel pannello «File» di Domande.
     return cond.segment === "domande/documenti" ? resolveStepHref(base, FILES_HREF) : casePath(workspaceId, caseId, cond.segment);

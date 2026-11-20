@@ -590,7 +590,8 @@ const CONDITION_TEXT: Readonly<Record<string, { label: string; segment: string |
   voci_a_posto: { label: "Tutte le domande indispensabili a posto", segment: "domande" },
   chiarimenti: { label: "Chiarimenti aperti chiusi", segment: "domande" },
   fonti_con_dataset: { label: "Fonti e dataset approvati", segment: "domande/documenti" },
-  regole_confermate: { label: "Regole confermate da chi le possiede", segment: "soluzione/regole" },
+  // (Rilascio 10, ondata 5b) Le regole sono il pannello «Regole» della Soluzione.
+  regole_confermate: { label: "Regole confermate da chi le possiede", segment: "soluzione?apri=regole" },
   deroghe_entro_limite: { label: "Partenze senza risposta entro il limite", segment: null },
 };
 

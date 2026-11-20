@@ -344,7 +344,7 @@ test("via conditions in plain words, from the real computation; the always-true 
       ["voci_a_posto", "Tutte le domande indispensabili a posto", "mancano 1", "domande"],
       ["chiarimenti", "Chiarimenti aperti chiusi", "1", "domande"],
       ["fonti_con_dataset", "Fonti e dataset approvati", "1", "domande/documenti"],
-      ["regole_confermate", "Regole confermate da chi le possiede", "1", "soluzione/regole"],
+      ["regole_confermate", "Regole confermate da chi le possiede", "1", "soluzione?apri=regole"],
     ],
   );
   assert.deepEqual(

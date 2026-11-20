@@ -46,8 +46,17 @@ test("/progetto: 308 to the Costruzione with the same query; the anchors stay in
   assert.match(source, /<Fold id=\{T\.contextId\}/);
 });
 
+test("/soluzione/regole and /regole: 308 to the «Regole» panel of the Soluzione, the open rule as `regola` (F-090)", async () => {
+  const rules = await load("soluzione/regole");
+  const RULE = "00000000-0000-4000-8000-0000000000aa";
+  assert.deepEqual(redirectOf(rules, `${ROOT}/soluzione/regole`), { target: `${ROOT}/soluzione?apri=regole`, status: "308" });
+  assert.deepEqual(redirectOf(rules, `${ROOT}/soluzione/regole?apri=${RULE}&q=sconto&vincoli=1`), { target: `${ROOT}/soluzione?apri=regole&q=sconto&vincoli=1&regola=${RULE}`, status: "308" });
+  const older = await load("regole");
+  assert.deepEqual(redirectOf(older, `${ROOT}/regole?apri=${RULE}`), { target: `${ROOT}/soluzione?apri=regole&regola=${RULE}`, status: "308" }, "the oldest address, in one hop");
+});
+
 test("old addresses are routes, never pages: under loading.tsx a page redirect would stream a 200", () => {
-  for (const segment of ["progetto", "via", "firme", "avanzamento", "mappa", "regole", "modello-dati", "voci", "verifica", "documenti", "kpi", "roi", "registro"]) {
+  for (const segment of ["progetto", "via", "firme", "avanzamento", "mappa", "regole", "modello-dati", "voci", "verifica", "documenti", "kpi", "roi", "registro", "soluzione/regole", "domande/documenti"]) {
     assert.ok(existsSync(handler(segment)), `${segment}/route.ts`);
     assert.equal(existsSync(page(segment)), false, `${segment}/page.tsx`);
   }
