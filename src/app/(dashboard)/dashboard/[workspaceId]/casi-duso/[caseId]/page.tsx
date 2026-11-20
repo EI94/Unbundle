@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { AlertTriangle, Check, ChevronRight } from "lucide-react";
+import { AlertTriangle, Check, ChevronRight, Lock } from "lucide-react";
 import { PageContainer } from "@/components/dashboard/page-container";
 import { Fold } from "@/components/ui-10/fold";
 import { casePath, itemPath } from "@/components/uc/catalog/paths";
@@ -32,7 +32,7 @@ import { exportChoices } from "@/lib/uc/export/request";
 import { VIA_SECTION_ID, canOpenShellPage, landingSegment, stepHasPageCommand, stepHiddenOn, stepPanelOf } from "@/lib/uc/views/case-shell";
 import { readableText } from "@/lib/uc/views/description";
 import { formatCountIt } from "@/lib/uc/views/format";
-import { FILES_HREF, NEXT_STEP_ICON, SIGN_HREF, caseNextSteps, nextStepFor, overviewTodo, resolveStepHref, turnRow, type NextStep } from "@/lib/uc/views/next-step";
+import { FILES_HREF, NEXT_STEP_ICON, SIGN_HREF, caseNextSteps, nextStepFor, overviewTodo, resolveStepHref, stepFact, turnRow, type NextStep } from "@/lib/uc/views/next-step";
 import { canOpenPage, seesValidatedOnly } from "@/lib/uc/views/page-access";
 import {
   BLOCKER_PANEL_ITEMS,
@@ -165,7 +165,7 @@ export default async function OverviewPage({
     ? !stepHiddenOn({ href: resolveStepHref(base, primary.href), caseBase: base, panel: stepPanelOf(primary) !== undefined, pageCommand: stepHasPageCommand(primary.id) }, base)
     : false;
   const todo = overviewTodo(steps, primary, turnRow(steps, stepInput, { roles }));
-  const todoRows: TodoRow[] = todo.steps.map((s) => ({ key: s.id, label: s.label, href: resolveStepHref(base, s.href), icon: NEXT_STEP_ICON[s.id], samePage: s.href.startsWith("?") }));
+  const todoRows: TodoRow[] = todo.steps.map((s) => ({ key: s.id, label: s.label, fact: stepFact(s), href: resolveStepHref(base, s.href), icon: NEXT_STEP_ICON[s.id], samePage: s.href.startsWith("?") }));
 
   // ── Via allo sviluppo ──
   const g1 = via.g1;
@@ -261,7 +261,16 @@ export default async function OverviewPage({
                   </Fold>
                 )}
                 {ls && (
-                  <Fold id="diagnostica" title="Diagnostica">
+                  <Fold
+                    id="diagnostica"
+                    title="Diagnostica"
+                    marker={
+                      <>
+                        <Lock className="size-3.5 text-uc-lucchetto" aria-hidden />
+                        <span className="sr-only">(solo Lateral Space)</span>
+                      </>
+                    }
+                  >
                     <CoverageCard
                       text={coverageText(via.coverage)}
                       policy={VIA_POLICY_TEXT[via.core.policy.scope]}

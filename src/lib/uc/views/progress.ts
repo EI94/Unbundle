@@ -130,15 +130,18 @@ export function viaProgress(items: readonly RequiredItemFact[], audience: Audien
   return { required: items.length, ok, inReview, open };
 }
 
+/** (Rilascio 10, §3.5, prototipo S4) Le domande ferme sono «In attesa» per tutti, come il gruppo di Domande. */
+export const VIA_WAITING_LABEL = "In attesa";
+
 /**
- * (Rilascio 10, §3.5, prototipo S4) I gruppi del via come link a Domande, sotto il numero grande: «Da fare 37 ·
- * Bloccate 13», per il cliente «Da rispondere 37 · In attesa 13». `skip`: i gruppi che il pulsante pieno dice già
- * (le risposte da verificare, quando il passo è «Verifica N risposte»).
+ * (Rilascio 10, §3.5, prototipo S4) I gruppi del via come link a Domande, sotto il numero grande: «Da fare 37 · In
+ * attesa 13», per il cliente «Da rispondere 37 · In attesa 13». `skip`: i gruppi che il pulsante pieno dice già (le
+ * risposte da verificare, quando il passo è «Verifica N risposte»).
  */
 export function viaGroupLinks(progress: Pick<ViaProgress, "open">, audience: Audience, opts: { skip?: readonly StatusGroup[] } = {}): { group: StatusGroup; slug: string; text: string }[] {
   return progress.open
     .filter((g) => !(opts.skip ?? []).includes(g.group))
-    .map((g) => ({ group: g.group, slug: g.slug, text: `${STATUS_GROUP_LABEL[audience][g.group]} ${n(g.count)}` }));
+    .map((g) => ({ group: g.group, slug: g.slug, text: `${g.group === "bloccate" ? VIA_WAITING_LABEL : STATUS_GROUP_LABEL[audience][g.group]} ${n(g.count)}` }));
 }
 
 /**

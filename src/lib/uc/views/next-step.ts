@@ -444,6 +444,12 @@ export function overviewTodo(steps: readonly NextStep[], primary: NextStep | nul
   return { steps: rows, turn: turn && rows.length < max ? turn : null };
 }
 
+/** (Rilascio 10, §3.5, prototipo S4) Il fatto grigio di una riga di «Da fare»: la spiegazione del passo, senza il punto finale. */
+export function stepFact(step: Pick<NextStep, "detail">): string | null {
+  const fact = step.detail?.trim().replace(/\.$/, "") ?? "";
+  return fact || null;
+}
+
 /** Completa l'`href` di un passo con la radice del dossier (`/dashboard/<ws>/casi-duso/<id>`). */
 export function resolveStepHref(caseBase: string, href: string): string {
   const base = caseBase.replace(/\/+$/, "");

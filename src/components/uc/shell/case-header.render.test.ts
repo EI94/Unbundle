@@ -97,7 +97,7 @@ test("five elements: the trail, the use case title, the status, the filled step 
   const page = html(PROPS, PANORAMICA);
   // Percorso: «Use case › XX-0012 › Realizzazione»; «Realizzazione» è dove si è, mai un link.
   const trail = /<nav aria-label="Percorso"[\s\S]*?<\/nav>/.exec(page)?.[0] ?? "";
-  assert.match(trail, /href="[^"]*use-cases\?vista=panoramica"[^>]*>Use case</);
+  assert.match(trail, /href="[^"]*use-cases\?vista=panoramica"[^>]*>Use case</, "a link on the phone");
   assert.match(trail, />XX-0012</);
   assert.match(trail, /<span aria-current="page"[^>]*>Realizzazione<\/span>/);
   assert.doesNotMatch(trail, new RegExp(`href="${base}"`), "never a link to itself");
@@ -115,15 +115,19 @@ test("five elements: the trail, the use case title, the status, the filled step 
   assert.doesNotMatch(page, /Sola lettura|Configurazione da completare/);
 });
 
-test("≤20 words with the five tabs, 5 controls besides the tabs (≤9 without the «?»)", () => {
+test("≤20 words with the five tabs; ≤9 controls with the five tabs from md, where the sidebar has «Use case»", () => {
   const tabs = ["Panoramica", "Domande", "Soluzione", "Valore", "Persone"];
-  for (const at of [PANORAMICA, DOMANDE]) {
-    const page = html(PROPS, at);
-    const words = visibleWords(page);
-    assert.ok(words.length + tabs.length <= 20, `${at.pathname}: ${words.length} + ${tabs.length} words: ${words.join(" ")}`);
-    // Due link del percorso, il pulsante pieno, il suo «?», il «⋯»: con le 5 schede 10, 9 senza il «?».
-    assert.equal(controls(page).length, 5, `${at.pathname}: ${controls(page).join("\n")}`);
+  // A breakpoint hides one of the two «Use case» of the trail: the link below md, the plain word from md.
+  const at = (width: "phone" | "desktop", page: string) => controls(page).filter((c) => !(width === "desktop" ? /\bmd:hidden\b/ : /\bhidden md:/).test(c));
+  for (const where of [PANORAMICA, DOMANDE]) {
+    const page = html(PROPS, where);
+    const words = visibleWords(page.replace(/<span class="hidden md:inline">[^<]*<\/span>/g, ""));
+    assert.ok(words.length + tabs.length <= 20, `${where.pathname}: ${words.length} + ${tabs.length} words: ${words.join(" ")}`);
+    // Desktop: XX-0012, the filled button, its «?», the «⋯» and 5 tabs = 9. Phone: «Use case» is a link too, the one tap back.
+    assert.equal(at("desktop", page).length + tabs.length, 9, `${where.pathname}: ${at("desktop", page).join("\n")}`);
+    assert.equal(at("phone", page).length + tabs.length, 10);
   }
+  assert.match(html(PROPS, PANORAMICA), /<a class="[^"]*md:hidden[^"]*" href="[^"]*use-cases\?vista=panoramica">Use case<\/a><span class="hidden md:inline">Use case<\/span>/);
 });
 
 test("the small progress line: not on the Panoramica, which has the big number; elsewhere «186/245» with its bar", () => {

@@ -20,6 +20,7 @@ import {
   VIA_RULE_TEXT,
   VIA_RULE_TO_CONFIRM,
   VIA_THEN_TEXT,
+  VIA_WAITING_LABEL,
   blockerPanelParam,
   blockerResolver,
   blockerShortLabel,
@@ -152,9 +153,10 @@ test("via progress: the big number, the yellow part and the open groups without 
     [
       ["da-fare", "Da fare 2"],
       ["da-verificare", "Da verificare 2"],
-      ["bloccate", "Bloccate 1"],
+      ["bloccate", "In attesa 1"],
     ],
   );
+  assert.equal(VIA_WAITING_LABEL, "In attesa", "the stopped questions are «In attesa» for everyone, as the group of Domande");
   assert.deepEqual(viaGroupLinks(viaProgress(items, "cliente"), "cliente").map((g) => g.text), ["Da rispondere 2", "In verifica 2", "In attesa 1"]);
   assert.deepEqual(viaGroupLinks(ls, "ls", { skip: ["da_verificare"] }).map((g) => g.group), ["da_fare", "bloccate"], "«Verifica N risposte» is already the filled button");
 });

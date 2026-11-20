@@ -59,6 +59,8 @@ export function SectionTitle({ id, title, children }: { id: string; title: strin
 export interface TodoRow {
   key: string;
   label: string;
+  /** Il fatto grigio («14 indispensabili non sono ancora partite»), oppure null. */
+  fact?: string | null;
   href: string;
   icon: NextStepIcon;
   /** Il passo apre un pannello della stessa pagina (`?conferma=`, `?esporta=`): la pagina non torna in cima. */
@@ -67,8 +69,9 @@ export interface TodoRow {
 
 /**
  * «Da fare» (§3.5): al massimo 3 righe, i passi di chi guarda dopo il pulsante
- * pieno, con l'icona e il verbo; poi la riga «Tocca a …» per una cosa che
- * aspetta un'altra persona, senza freccia. Niente righe: niente sezione.
+ * pieno, con l'icona, il verbo e il fatto grigio; poi la riga «Tocca a …» per
+ * una cosa che aspetta un'altra persona, senza freccia. Niente righe: niente
+ * sezione.
  */
 export function OverviewTodo({ rows, turn }: { rows: readonly TodoRow[]; turn: TurnRow | null }) {
   if (rows.length === 0 && !turn) return null;
@@ -78,7 +81,7 @@ export function OverviewTodo({ rows, turn }: { rows: readonly TodoRow[]; turn: T
       <RowList>
         {rows.map((r) => (
           <li key={r.key}>
-            <Row href={r.href} scroll={r.samePage ? false : undefined} leading={<NextStepIconView icon={r.icon} className="size-4 text-muted-foreground" />} title={r.label} />
+            <Row href={r.href} scroll={r.samePage ? false : undefined} leading={<NextStepIconView icon={r.icon} className="size-4 text-muted-foreground" />} title={r.label} fact={r.fact} />
           </li>
         ))}
         {turn && (

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { CaseRole } from "../vocab.ts";
-import { FILES_HREF, FILES_PANEL, NEXT_STEP_ICON, SIGN_HREF, SIGN_PANEL, VIA_HREF, caseNextSteps, myNextSteps, nextStepFor, overviewTodo, resolveStepHref, turnRow, whoseTurn, type NextStep, type NextStepInput } from "./next-step.ts";
+import { FILES_HREF, FILES_PANEL, NEXT_STEP_ICON, SIGN_HREF, SIGN_PANEL, VIA_HREF, caseNextSteps, myNextSteps, nextStepFor, overviewTodo, resolveStepHref, stepFact, turnRow, whoseTurn, type NextStep, type NextStepInput } from "./next-step.ts";
 
 const NOW = new Date("2026-10-14T10:00:00Z");
 
@@ -379,4 +379,9 @@ test("(rilascio 10, §3.5) «Da fare»: never the filled button again, at most 3
   // Without a filled button (a read-only first step) the rows are the viewer's usable steps.
   assert.deepEqual(overviewTodo(all, null, null).steps.map((s) => s.id), ["invia_domande", "verifica", "controlla_file"]);
   assert.deepEqual(overviewTodo([], null, null), { steps: [], turn: null }, "nothing to do: no section");
+  // Prototype S4: each row keeps its grey fact, the step's explanation without the final stop.
+  assert.deepEqual(todo.steps.map(stepFact), [null, "2 PDF da aprire e controllare prima di usarli", "Ferma 4 domande indispensabili"], "no explanation, no fact");
+  assert.equal(stepFact({ detail: "Servono per andare avanti." }), "Servono per andare avanti");
+  assert.equal(stepFact({ detail: null }), null);
+  assert.equal(stepFact({ detail: "  " }), null);
 });

@@ -74,7 +74,7 @@ function s4(): string {
     ["volumi", "sistemi", "eccezioni", "dati", "persone", "a", "b", "c", "altro"].map((key) => ({ key, title: key === "volumi" ? "Volumi e tempi" : key[0].toUpperCase() + key.slice(1), roleKey: null })),
   );
   const todo = [
-    { key: "invia_domande", label: "Invia le domande", href: `${base}/persone?invia=1`, icon: "chiedi" },
+    { key: "invia_domande", label: "Invia le domande", fact: "14 indispensabili non sono ancora partite", href: `${base}/persone?invia=1`, icon: "chiedi" },
     { key: "controlla_file", label: "Controlla 2 file", href: `${base}${steps.FILES_HREF.slice(1)}`, icon: "dossier" },
   ];
   const turn = { title: "Firma del via allo sviluppo", turn: "Tocca al cliente" };
@@ -110,7 +110,7 @@ test("S4: three blocks plus the topics within ≤120 words and ≤15 controls, n
   assert.match(page, /role="progressbar"[^>]*aria-valuenow="186"/);
   // The groups as links, without the answers to verify (they are the filled «Verifica 9 risposte»).
   assert.match(page, new RegExp(`href="${questions}\\?vista=da-fare"[^>]*>Da fare 37<`));
-  assert.match(page, new RegExp(`href="${questions}\\?vista=bloccate"[^>]*>Bloccate 13<`));
+  assert.match(page, new RegExp(`href="${questions}\\?vista=bloccate"[^>]*>In attesa 13<`));
   assert.doesNotMatch(page, /Da verificare 9/);
   // «Come funziona» is the «?» of the line, not a manual on the page.
   assert.match(page, /Si propone quando sono tutte a posto\./);
@@ -185,7 +185,7 @@ test("the Panoramica page: the via section inside, its anchor, folds closed, the
   const source = readFileSync(new URL("../../../app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/page.tsx", import.meta.url), "utf8");
   assert.match(source, /<section key=\{key\} id=\{VIA_SECTION_ID\}/);
   assert.match(source, /<Fold id="storico" title="Storico">/);
-  assert.match(source, /<Fold id="diagnostica" title="Diagnostica">/);
+  assert.match(source, /<Fold\s+id="diagnostica"\s+title="Diagnostica"\s+marker=\{\s*<>\s*<Lock /, "the lock: Lateral Space only (prototype S4)");
   assert.doesNotMatch(source, /defaultOpen|<details[^>]*open/, "folds closed unless a link opens them");
   assert.match(source, /filled=\{!headerPrimary\}/);
   assert.match(source, /pageCommand: stepHasPageCommand\(primary\.id\)/, "the same rule as the header");

@@ -34,7 +34,9 @@ import { cn } from "@/lib/utils";
  * «Use case › XX-0012 › Realizzazione», su una riga anche a 400 px: il pezzo
  * di mezzo si accorcia con i puntini. Senza scheda madre «‹ Realizzazioni».
  * (Rilascio 10, §3.5) «Realizzazione» è dove si è, mai un link: alla
- * Panoramica porta la sua scheda; in Panoramica è la pagina corrente.
+ * Panoramica porta la sua scheda; in Panoramica è la pagina corrente. «Use
+ * case» è un link solo al telefono, dove la barra laterale sta dietro «☰»: da
+ * `md` la stessa voce «Use case» è nella barra, a un tocco (testata ≤9 controlli).
  */
 export function CaseTrailNav({ trail }: { trail: CaseTrail }) {
   const pathname = usePathname();
@@ -55,9 +57,10 @@ export function CaseTrailNav({ trail }: { trail: CaseTrail }) {
     <nav aria-label="Percorso" className="min-w-0 text-sm text-muted-foreground">
       <ol className="flex min-h-11 min-w-0 items-center gap-1 whitespace-nowrap sm:min-h-6">
         <li className="shrink-0">
-          <Link href={trail.root.href} className={link}>
+          <Link href={trail.root.href} className={cn(link, "md:hidden")}>
             {trail.root.label}
           </Link>
+          <span className="hidden md:inline">{trail.root.label}</span>
         </li>
         <li className="flex min-w-0 items-center gap-1">
           {sep}
