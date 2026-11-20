@@ -108,24 +108,41 @@ test("ogni error.tsx tipizza il valore lanciato come `unknown`, come la guida di
   }
 });
 
-test("(rilascio 10, §3.5) una pagina della realizzazione che non si apre: un testo solo e «Riprova», mai codici né «caso»", async () => {
+test("(rilascio 10, §3.5) una pagina della realizzazione che non si carica: un testo solo e «Riprova», mai codici né «caso»", async () => {
   const react = await import("react");
   const { AppRouterContext } = (await import("next/dist/shared/lib/app-router-context.shared-runtime.js")) as unknown as { AppRouterContext: import("react").Context<object | null> };
   const router = { push() {}, replace() {}, refresh() {}, prefetch() {}, back() {}, forward() {} };
   const inApp = (element: unknown) => renderToStaticMarkup(react.createElement(AppRouterContext.Provider, { value: router }, element as never));
   const { PAGE_ERROR_TEXT } = await import("../dashboard/page-load-error.tsx");
-  const notFound = await import("../../app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/not-found.tsx");
   const { SectionUnavailable } = await import("./shell/section-unavailable.tsx");
-  const screens: [string, string][] = [
+  for (const [where, html] of [
     ["la pagina", renderToStaticMarkup(fallbacks.pagina(withDigest) as never)],
-    ["non trovata", inApp(react.createElement(notFound.default))],
     ["sezione non disponibile", inApp(react.createElement(SectionUnavailable))],
-  ];
-  for (const [where, html] of screens) {
+  ] as [string, string][]) {
     assert.match(html, /role="alert"/, where);
-    assert.ok(html.includes(PAGE_ERROR_TEXT.title.replace(/'/g, "&#x27;")), `${where}: ${html}`);
+    assert.ok(html.includes(PAGE_ERROR_TEXT.title), `${where}: ${html}`);
     assert.match(html, />Riprova</, where);
-    assert.doesNotMatch(html, /non trovat|non disponibile|del caso|Dossier|Casi d&#x27;uso/i, where);
+    assert.doesNotMatch(html, /non disponibile|del caso|Dossier|Casi d&#x27;uso/i, where);
   }
   assert.equal(PAGE_ERROR_TEXT.title, "Questa pagina non si è caricata.");
+});
+
+test("(rilascio 10, §3.5) una pagina che non c'è: un titolo calmo e la via d'uscita, mai «Riprova» (un 404 non riesce)", async () => {
+  const react = await import("react");
+  const { PathParamsContext } = (await import("next/dist/shared/lib/hooks-client-context.shared-runtime.js")) as unknown as { PathParamsContext: import("react").Context<object | null> };
+  const { CASE_NOT_FOUND_TEXT } = await import("../../lib/uc/views/case-shell.ts");
+  const params = { workspaceId: "00000000-0000-4000-8000-0000000000f1", caseId: "00000000-0000-4000-8000-000000000c01" };
+  const withParams = (element: unknown) => renderToStaticMarkup(react.createElement(PathParamsContext.Provider, { value: params }, element as never)).replace(/&#x27;/g, "'");
+  const inside = await import("../../app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/not-found.tsx");
+  const outside = await import("../../app/(dashboard)/dashboard/[workspaceId]/casi-duso/not-found.tsx");
+  const inner = withParams(react.createElement(inside.default));
+  const outer = withParams(react.createElement(outside.default));
+  for (const html of [inner, outer]) {
+    assert.ok(html.includes(CASE_NOT_FOUND_TEXT.title), html);
+    assert.doesNotMatch(html, /Riprova|non trovat|Codice|caso/i, html);
+  }
+  assert.match(inner, new RegExp(`href="/dashboard/${params.workspaceId}/casi-duso/${params.caseId}"[^>]*>${CASE_NOT_FOUND_TEXT.toOverview}<`));
+  assert.doesNotMatch(inner, /bg-primary/, "inside the realization the filled button is the header's");
+  assert.match(outer, new RegExp(`href="/dashboard/${params.workspaceId}/use-cases"[^>]*>${CASE_NOT_FOUND_TEXT.toUseCases}<`));
+  assert.match(outer, /<h1 class="text-2xl font-semibold tracking-tight">/);
 });

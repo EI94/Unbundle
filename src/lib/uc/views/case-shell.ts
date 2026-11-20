@@ -215,6 +215,18 @@ export function checksFiles(i: { roles: readonly CaseRole[]; isLateralSpace: boo
   return i.roles.includes("ls_lead") || i.roles.includes("ls_analista");
 }
 
+/**
+ * (Rilascio 10, §3.5) Una pagina della realizzazione che non c'è o non è per chi guarda: un titolo calmo e la via
+ * d'uscita, mai «Riprova» (non può riuscire). Lo stesso titolo dentro la realizzazione e fuori.
+ */
+export const CASE_NOT_FOUND_TEXT = Object.freeze({
+  title: "Questa pagina non è disponibile.",
+  /** Dentro la realizzazione: testata e schede restano. */
+  toOverview: "Torna alla Panoramica",
+  /** Fuori: la realizzazione non c'è o chi guarda non ne fa parte. */
+  toUseCases: "Torna agli use case",
+});
+
 /** (Rilascio 10, §3.5) L'ancora della sezione «Via allo sviluppo» nella Panoramica: ci portano `/via`, `/avanzamento` e i passi del via. */
 export const VIA_SECTION_ID = "via";
 
