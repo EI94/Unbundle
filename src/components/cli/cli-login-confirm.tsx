@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useSyncExternalStore, useTransition } from "react";
+import { PUBLIC_LABEL, PUBLIC_PRIMARY, PUBLIC_SECONDARY } from "@/components/public/classes";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { confirmCliLoginAction, denyCliLoginAction, type CliLoginDecision } from "@/lib/actions/cli-login";
@@ -15,6 +16,8 @@ const noSubscription = () => () => {};
  * - **Il workspace si legge dal modulo al clic**, non da uno stato: una scelta fatta prima che la pagina fosse pronta
  *   resta quella che si vede.
  * - Senza workspace resta «Non l'ho chiesto io», per annullare un codice che non si è chiesto.
+ * - (Rilascio 10, ondata 4) Nel guscio delle pagine pubbliche: «Collega questa CLI», il pulsante principale, pieno, a
+ *   tutta larghezza e alto 48 px; «Non l'ho chiesto io» bordato sotto, alla stessa misura; il campo a 44 px e 16 px.
  */
 export function CliLoginConfirm({ userCode, workspaces }: { userCode: string; workspaces: { id: string; label: string }[] }) {
   const ready = useSyncExternalStore(noSubscription, () => true, () => false);
@@ -28,7 +31,7 @@ export function CliLoginConfirm({ userCode, workspaces }: { userCode: string; wo
     );
   }
   const deny = (
-    <Button type="button" variant="outline" className="h-11 sm:h-9" disabled={!ready || pending} onClick={() => start(async () => setResult(await denyCliLoginAction(userCode)))}>
+    <Button type="button" variant="outline" className={PUBLIC_SECONDARY} disabled={!ready || pending} onClick={() => start(async () => setResult(await denyCliLoginAction(userCode)))}>
       {"Non l'ho chiesto io"}
     </Button>
   );
@@ -42,7 +45,7 @@ export function CliLoginConfirm({ userCode, workspaces }: { userCode: string; wo
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">La CLI serve nei casi dove sei nel team, e non sei nel team di nessun caso: chiedi al responsabile del caso di aggiungerti.</p>
         {error}
-        <div className="flex flex-col gap-2 sm:flex-row-reverse">{deny}</div>
+        <div className="space-y-2">{deny}</div>
       </div>
     );
   }
@@ -61,12 +64,14 @@ export function CliLoginConfirm({ userCode, workspaces }: { userCode: string; wo
     >
       {workspaces.length > 1 ? (
         <div className="space-y-1.5">
-          <Label htmlFor="cli-workspace">Per quale workspace</Label>
+          <Label htmlFor="cli-workspace" className={PUBLIC_LABEL}>
+            Per quale workspace
+          </Label>
           <select
             id="cli-workspace"
             name="workspaceId"
             defaultValue={workspaces[0].id}
-            className="h-11 w-full rounded-md border border-input bg-background px-3 text-base sm:h-9 sm:text-sm"
+            className="h-11 w-full rounded-lg border border-input bg-background px-3 text-base"
           >
             {workspaces.map((w) => (
               <option key={w.id} value={w.id}>
@@ -82,8 +87,8 @@ export function CliLoginConfirm({ userCode, workspaces }: { userCode: string; wo
         </>
       )}
       {error}
-      <div className="flex flex-col gap-2 sm:flex-row-reverse">
-        <Button type="submit" className="h-11 sm:h-9" disabled={!ready || pending}>
+      <div className="space-y-2">
+        <Button type="submit" className={PUBLIC_PRIMARY} disabled={!ready || pending}>
           Collega questa CLI
         </Button>
         {deny}
