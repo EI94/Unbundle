@@ -246,12 +246,12 @@ export function checkDelegation(i: DelegationInput): Result<{ depth: number; nee
     return fail("delega_troppo_profonda", "Questa domanda è già stata girata due volte: chiedi a Lateral Space di riassegnarla.");
   }
   if (i.delegationsToday >= MAX_DELEGATIONS_PER_DAY) {
-    return fail("troppe_deleghe", "Hai già chiesto a molti colleghi oggi. Riprova domani o scrivi a Lateral Space.");
+    return fail("troppe_deleghe", "Oggi hai già girato domande a molte persone. Riprova domani o scrivi a Lateral Space.");
   }
   const domain = emailDomain(i.delegateEmail);
-  if (!domain) return fail("email_non_valida", "Controlla l'indirizzo email del collega.");
+  if (!domain) return fail("email_non_valida", "Controlla l'indirizzo email dell'altra persona.");
   if (i.lsDomains.includes(domain)) {
-    return fail("delega_a_lateral_space", "Non si può girare una domanda a Lateral Space: chiedi a un collega della tua azienda.");
+    return fail("delega_a_lateral_space", "Non si può girare una domanda a Lateral Space: chiedi a un'altra persona della tua azienda.");
   }
   if (i.itemIds.length === 0) return fail("nessuna_voce", "Scegli almeno una domanda da girare.");
   const active = new Set(i.activeItemIds);

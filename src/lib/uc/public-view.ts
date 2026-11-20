@@ -149,9 +149,20 @@ export function waitsForPrivacy(code: string): boolean {
 }
 /**
  * Domanda personale con la zona personale chiusa (DESIGN §4.3, «Si apriranno più avanti»). (Rilascio 10, RD-5) Senza
- * il nome della scheda: «dà l'ok», come per i fornitori.
+ * il nome della scheda: «dà l'ok», come per i fornitori. È il messaggio dei rifiuti; la chiave della vista è
+ * `PERSONAL_LOCKED_KEY_BEFORE`, per questo rilascio.
  */
 export const PERSONAL_LOCKED_MESSAGE = "Riguarda dati personali: si apre quando la tua azienda dà l'ok.";
+/**
+ * (Rilascio 10) Il testo di prima, che è anche la chiave con cui la pagina riconosce una domanda personale ancora chiusa
+ * (`isLockedPersonal` sul `lockedReason` della vista). Senza Skew Protection, per questo rilascio la vista la manda
+ * ancora e la pagina accetta tutte e due: una scheda aperta prima del rilascio (il codice di prima conosce solo questa)
+ * e una aperta prima di un rollback continuano a mostrare «Si apriranno più avanti». La pagina non la mostra mai. Dal
+ * rilascio dopo la vista può mandare `PERSONAL_LOCKED_MESSAGE`.
+ */
+export const PERSONAL_LOCKED_KEY_BEFORE = "Riguarda dati personali: si apre quando la tua azienda approva la scheda privacy.";
+/** Le chiavi di una domanda personale chiusa che la pagina riconosce: la nuova e quella di prima. */
+const PERSONAL_LOCKED_KEYS: readonly string[] = [PERSONAL_LOCKED_MESSAGE, PERSONAL_LOCKED_KEY_BEFORE];
 /** Le risposte personali, ai chiarimenti e le deleghe partono da sole, mai in un invio a gruppi (DESIGN §4.2). */
 export const SINGLE_SEND_MESSAGE = "Questa risposta parte da sola: aprila e premi «Invia».";
 
@@ -291,7 +302,8 @@ export function referentCapabilities(f: ReferentItemFacts): ReferentCapabilities
   if (!f.assignedToMe) return locked("Questa domanda non è più assegnata a te.");
   if (f.privacyClass === "escluso_sanitario") return locked("Qui non raccogliamo dati sanitari.");
   const personal = isPersonalClass(f.privacyClass);
-  if (personal && !f.personalZoneOpen) return locked(PERSONAL_LOCKED_MESSAGE);
+  // (Rilascio 10) La chiave di prima, che anche le pagine aperte prima del rilascio riconoscono (`isLockedPersonal`).
+  if (personal && !f.personalZoneOpen) return locked(PERSONAL_LOCKED_KEY_BEFORE);
   const active = ACTIVE.includes(f.requestItemState);
   const draft = !personal;
   switch (f.status) {
@@ -399,9 +411,12 @@ export function referentItemDone(i: { status: ItemStatus; requestItemState: Requ
 /**
  * Domanda personale ancora chiusa (zona personale non aperta): non conta
  * nell'avanzamento e sta in «Si apriranno più avanti» (DESIGN §4.4 punto 6).
+ * (Rilascio 10) Con la chiave nuova o con quella di prima: una vista di un
+ * server di un altro rilascio (prima del rilascio, dopo un rollback) vale lo
+ * stesso.
  */
 export function isLockedPersonal(i: { personal: boolean; can: Pick<ReferentCapabilities, "answer" | "lockedReason"> }): boolean {
-  return i.personal && !i.can.answer && i.can.lockedReason === PERSONAL_LOCKED_MESSAGE;
+  return i.personal && !i.can.answer && i.can.lockedReason !== null && PERSONAL_LOCKED_KEYS.includes(i.can.lockedReason);
 }
 
 /**

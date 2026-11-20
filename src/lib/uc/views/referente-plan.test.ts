@@ -365,8 +365,8 @@ test("fixed texts of the referent components pass the copy-guard (labels, hints,
   assert.ok(all.includes("Regole toccate"));
   assert.ok(all.includes("Scrivi quali regole usa questo caso, separate da virgole."));
   assert.ok(all.includes("Reale, senza nomi (dopo l'approvazione della scheda privacy)"));
-  // (Rilascio 10) Le parole delle schermate stanno in `referente-text.ts` (controllate in `referente-text.test.ts`); qui
-  // restano le etichette dei campi e dei file.
+  // (Rilascio 10) Le parole delle schermate stanno in `referente-text.ts` (controllate in
+  // `src/components/uc/referente/kit.test.ts`); qui restano le etichette dei campi e dei file.
   assert.ok(all.includes("Scegli il file Excel"));
   const found = texts.flatMap((t) => findForbiddenIn([t.text], "cliente").map((f) => `${t.file}: «${f.match}» in «${t.text}»`));
   assert.deepEqual(found, []);

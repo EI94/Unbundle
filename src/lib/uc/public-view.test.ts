@@ -6,6 +6,7 @@ import {
   MAX_BATCH_ANSWERS,
   MAX_DELEGATION_DEPTH,
   PAUSED_CASE_MESSAGE,
+  PERSONAL_LOCKED_KEY_BEFORE,
   PERSONAL_LOCKED_MESSAGE,
   PRIVACY_PENDING_MESSAGE,
   REFERENT_ANSWER_KINDS,
@@ -162,7 +163,8 @@ test("capabilities: pause, reassignment, health, personal zone, delegation depth
   assert.equal(referentCapabilities(facts({ privacyClass: "escluso_sanitario" })).answer, false);
   const closed = referentCapabilities(facts({ privacyClass: "personale_equipaggio" }));
   assert.equal(closed.answer, false);
-  assert.equal(closed.lockedReason, PERSONAL_LOCKED_MESSAGE, "the privacy sheet in plain words, never its code");
+  // (Rilascio 10) The key a page of the previous release knows: never shown, it puts the question in «Si apriranno più avanti».
+  assert.equal(closed.lockedReason, PERSONAL_LOCKED_KEY_BEFORE, "the privacy sheet in plain words, never its code");
   const open = referentCapabilities(facts({ privacyClass: "personale", personalZoneOpen: true }));
   assert.deepEqual([open.answer, open.draft], [true, false], "personal items: answer, never a draft on the server");
   const full = referentCapabilities(facts());
@@ -232,6 +234,24 @@ test("progress = done / answerable now: closed personal questions are out, «Non
   assert.equal(isLockedPersonal(open), false);
   assert.deepEqual(referentProgress([open, sent, notKnown, lockedPersonal, openPersonal]), { done: 2, total: 4 });
   assert.deepEqual(referentProgress([lockedPersonal]), { done: 0, total: 0 });
+});
+
+test("(rilascio 10) skew: a closed personal question is recognized with the new and the previous text, both ways across a deploy", () => {
+  const can = (lockedReason: string | null) => ({ answer: false, lockedReason });
+  // The view of this release (and of the previous one, after a rollback) sends the previous key; the next may send the new text.
+  assert.equal(PERSONAL_LOCKED_KEY_BEFORE, "Riguarda dati personali: si apre quando la tua azienda approva la scheda privacy.");
+  assert.equal(referentCapabilities(facts({ privacyClass: "personale" })).lockedReason, PERSONAL_LOCKED_KEY_BEFORE);
+  for (const key of [PERSONAL_LOCKED_KEY_BEFORE, PERSONAL_LOCKED_MESSAGE]) assert.equal(isLockedPersonal({ personal: true, can: can(key) }), true, key);
+  // Any other reason is not «a closed personal question»; nor is a question that is not personal, or one that can be answered.
+  for (const reason of [PAUSED_CASE_MESSAGE, "Questa domanda non è più assegnata a te.", null]) assert.equal(isLockedPersonal({ personal: true, can: can(reason) }), false, String(reason));
+  assert.equal(isLockedPersonal({ personal: false, can: can(PERSONAL_LOCKED_MESSAGE) }), false);
+  assert.equal(isLockedPersonal({ personal: true, can: { answer: true, lockedReason: PERSONAL_LOCKED_MESSAGE } }), false);
+  // The new text is the message of the refusals: plain words, no code.
+  assert.equal(PERSONAL_LOCKED_MESSAGE, "Riguarda dati personali: si apre quando la tua azienda dà l'ok.");
+  // Either key keeps the question out of the progress, in its own list.
+  const locked = (key: string) => ({ done: false, personal: true, can: can(key) });
+  const open = { done: false, personal: false, can: referentCapabilities(facts()) };
+  for (const key of [PERSONAL_LOCKED_KEY_BEFORE, PERSONAL_LOCKED_MESSAGE]) assert.deepEqual(referentProgress([open, locked(key)]), { done: 0, total: 1 }, key);
 });
 
 test("greeting: the first name when it looks like one, otherwise just «Ciao»", () => {

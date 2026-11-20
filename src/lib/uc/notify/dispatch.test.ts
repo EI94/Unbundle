@@ -539,9 +539,16 @@ test("reply-to on dossier emails: UC_EMAIL_REPLY_TO when valid, no header when m
     assert.equal(mailer.emails.length, 2);
     return mailer.emails.map((x) => x.email);
   };
-  for (const email of await run({ ...ENV, UC_EMAIL_REPLY_TO: "Risposte@LS.test" })) assert.equal(email.replyTo, "risposte@ls.test");
+  const withReply = await run({ ...ENV, UC_EMAIL_REPLY_TO: "Risposte@LS.test" });
+  for (const email of withReply) assert.equal(email.replyTo, "risposte@ls.test");
+  // (Rilascio 10, §3.12) La richiesta al referente promette una risposta solo quando c'è chi la riceve.
+  const toReferent = withReply.find((email) => email.to !== "owner@cliente.test");
+  assert.ok(toReferent?.text.includes("Per un dubbio, rispondi qui."), toReferent?.text);
   for (const env of [ENV, { ...ENV, UC_EMAIL_REPLY_TO: "risposte@ls.test\r\nBcc: x@y.test" }, { ...ENV, UC_EMAIL_REPLY_TO: "a@b.test, c@d.test" }]) {
-    for (const email of await run(env)) assert.equal("replyTo" in email, false, "no reply-to header");
+    for (const email of await run(env)) {
+      assert.equal("replyTo" in email, false, "no reply-to header");
+      assert.ok(!email.text.includes("rispondi qui") && !email.html.includes("rispondi qui"), "no reply-to, no promise of an answer");
+    }
   }
 });
 

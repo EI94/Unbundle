@@ -40,8 +40,11 @@ test("request email: subject with the count and the title, minutes in the text, 
   assert.equal(mail.subject, "Cliente A: 8 domande su «Gestione richieste»");
   assert.ok(mail.text.includes("ci servono alcune informazioni da te: 8 domande, circa 15 minuti."));
   assert.ok(mail.text.includes(`Apri le domande: ${LINK}`));
-  // (Rilascio 10, §3.12) La riga piccola del modello, come le email di «Chiedi al referente».
-  assert.ok(mail.text.includes("Il link è solo tuo e vale fino al 4 novembre. Per un dubbio, rispondi qui."));
+  // (Rilascio 10, §3.12) La riga piccola del modello: «Per un dubbio, rispondi qui.» solo se la risposta arriva a qualcuno.
+  assert.ok(mail.text.includes("Il link è solo tuo e vale fino al 4 novembre.\n"), mail.text);
+  assert.ok(!mail.text.includes("rispondi qui"), "without a reply-to the e-mail promises no answer");
+  // (Rilascio 10, §3.12) Il cliente lo dice l'oggetto, non il corpo.
+  assert.ok(mail.text.includes("per il caso d'uso «Gestione richieste» ci servono alcune informazioni da te"), mail.text);
   assert.ok(mail.text.includes("Se non sai una cosa, scegli «Non lo so» o chiedi a un'altra persona."));
   assert.ok(mail.text.includes("> Grazie!\n> A presto"));
   assert.ok(mail.html.includes(`href="${LINK}"`));
@@ -49,6 +52,28 @@ test("request email: subject with the count and the title, minutes in the text, 
   const one = renderEmail({ ...CASE, template: "richiesta_inviata", questions: 1, minutes: null, expiresAt: EXPIRES, link: LINK });
   assert.equal(one.subject, "Cliente A: 1 domanda su «Gestione richieste»");
   assertShort(one);
+});
+
+test("(rilascio 10, §3.12) «Per un dubbio, rispondi qui.» only when a reply reaches someone (replyKnown), on every referent e-mail", () => {
+  const inputs: EmailInput[] = [
+    { ...CASE, template: "richiesta_inviata", questions: 8, minutes: 15, expiresAt: EXPIRES, link: LINK },
+    { ...CASE, template: "promemoria_1", questions: 1, minutes: 2, expiresAt: EXPIRES, link: LINK },
+    { ...CASE, template: "promemoria_2", questions: 3, minutes: null, expiresAt: EXPIRES, link: LINK },
+    { ...CASE, template: "chiarimento", itemTitle: "Tempo medio", expiresAt: EXPIRES, link: LINK },
+    { ...CASE, template: "delega", audience: "collega", fromRoleLabel: "Operativo", questions: 2, minutes: 4, expiresAt: EXPIRES, link: LINK },
+    { ...CASE, template: "richiesta_approvazione", designation: "owner", pending: 2, expiresAt: EXPIRES, link: LINK },
+  ];
+  for (const input of inputs) {
+    const known = renderEmail(input, undefined, { replyKnown: true });
+    assert.ok(known.text.includes("Il link è solo tuo e vale fino al 4 novembre. Per un dubbio, rispondi qui."), `${input.template}\n${known.text}`);
+    assert.ok(known.html.includes("Per un dubbio, rispondi qui."), input.template);
+    for (const unknown of [renderEmail(input), renderEmail(input, undefined, { replyKnown: false })]) {
+      assert.ok(unknown.text.includes("Il link è solo tuo e vale fino al 4 novembre."), input.template);
+      assert.ok(!unknown.text.includes("rispondi qui") && !unknown.html.includes("rispondi qui"), `${input.template}: no reply-to, no promise`);
+    }
+    assertClean(known);
+    assertShort(known);
+  }
 });
 
 test("reminders: the second says it is the last one", () => {
@@ -90,7 +115,7 @@ test("clarification, delegation and approval emails", () => {
   const colleague = renderEmail({ ...CASE, template: "delega", audience: "collega", fromRoleLabel: "Operativo", questions: 2, minutes: 4, expiresAt: EXPIRES, link: LINK });
   assert.equal(colleague.subject, "Cliente A: 2 domande per te su «Gestione richieste»");
   // (Rilascio 10, §4) «un'altra persona», mai «un collega»: genere neutro.
-  assert.ok(colleague.text.includes("una persona (Operativo) di Cliente A ti chiede"));
+  assert.ok(colleague.text.includes("una persona (Operativo) ti chiede di rispondere"), colleague.text);
   assertClean(colleague);
   const delegator = renderEmail({ ...CASE, template: "delega", audience: "delegante", questions: 2 });
   assert.ok(!delegator.html.includes("href="));
