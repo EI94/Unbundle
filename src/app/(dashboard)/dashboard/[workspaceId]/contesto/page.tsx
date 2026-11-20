@@ -1,11 +1,11 @@
-import { notFound, permanentRedirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { ContextPage, type HeaderStep } from "@/components/context/context-page";
 import { GranolaInbox } from "@/components/context/granola/granola-inbox";
 import { MemoryView } from "@/components/context/memory-view";
 import { NotesView } from "@/components/context/notes-view";
 import { loadUseCaseOptions, romeToday } from "@/components/context/page-data";
 import { PendingReader } from "@/components/context/pending-reader";
-import { briefMaterial, confirmStep, consentNoticeNeeded, contextMenu, contextViewOf, contextViewRedirect, sheetIdParam } from "@/components/context/view-model";
+import { briefMaterial, confirmStep, consentNoticeNeeded, contextMenu, contextViewOf, sheetIdParam } from "@/components/context/view-model";
 import { PageContainer } from "@/components/dashboard/page-container";
 import { ProcessesView } from "@/components/mappatura/board/processes-view";
 import { VIEW_TEXT } from "@/components/mappatura/board/text";
@@ -35,7 +35,7 @@ export const maxDuration = 60;
  *
  * Tre viste sotto la stessa testata: la Memoria (senza `?vista`; `?apri=<fatto>` apre il pannello di un fatto), i
  * Processi (`?vista=processi`: le unità, prima `/mapping`, che porta qui), le Fonti (`?vista=fonti`; `?fonte=<id>` apre il pannello di una fonte). Il vecchio `?vista=appunti` porta
- * a `?vista=fonti` con gli altri parametri (§8.2). Senza la 0038 una riga: si sta preparando.
+ * a `?vista=fonti` con gli altri parametri (§8.2): lo fa il proxy, prima della pagina. Senza la 0038 una riga: si sta preparando.
  */
 export default async function ContextRoute({
   params,
@@ -50,9 +50,8 @@ export default async function ContextRoute({
   const abilities = contextAbilities(actor);
   if (!abilities.canOpen) notFound();
 
+  // Il vecchio `?vista=appunti` lo porta a `?vista=fonti` il proxy (src/proxy.ts, `notesViewAlias`), con un 308 vero.
   const search = await searchParams;
-  const moved = contextViewRedirect(workspaceId, search);
-  if (moved) permanentRedirect(moved);
 
   if (!(await contextStoreReady())) {
     return (

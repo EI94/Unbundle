@@ -688,17 +688,6 @@ test("(rilascio 10) le viste: «processi», «fonti» e il vecchio «appunti»; 
   assert.equal(contextViewHref(WS_ID, "fonti"), `/dashboard/${WS_ID}/contesto?vista=fonti`);
 });
 
-test("(rilascio 10, §8.2) `?vista=appunti` porta a `?vista=fonti` con tutti gli altri parametri; un indirizzo nuovo non si muove", async () => {
-  const { contextViewRedirect } = await import("./view-model.ts");
-  assert.equal(contextViewRedirect(WS_ID, { vista: "appunti" }), `/dashboard/${WS_ID}/contesto?vista=fonti`);
-  // Il link della CLI: `?vista=appunti&fonte=<id>` apre ancora il pannello della fonte.
-  assert.equal(contextViewRedirect(WS_ID, { vista: "appunti", fonte: "abc" }), `/dashboard/${WS_ID}/contesto?vista=fonti&fonte=abc`);
-  assert.equal(contextViewRedirect(WS_ID, { fonte: "abc", vista: "appunti", x: ["1", "2"] }), `/dashboard/${WS_ID}/contesto?fonte=abc&vista=fonti&x=1&x=2`);
-  assert.equal(contextViewRedirect(WS_ID, { vista: "fonti", fonte: "abc" }), null);
-  assert.equal(contextViewRedirect(WS_ID, {}), null);
-  assert.equal(contextViewRedirect(WS_ID, { vista: "processi" }), null);
-});
-
 test("(rilascio 10) `?apri=` e `?fonte=`: solo un id che sembra un uuid apre il pannello", async () => {
   const { sheetIdParam } = await import("./view-model.ts");
   const id = "9F0C2A4B-1D2E-4F3A-8B4C-5D6E7F8A9B0C";

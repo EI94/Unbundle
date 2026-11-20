@@ -352,7 +352,10 @@ export function askSourceMeta(source: Pick<AskSource, "kind" | "label" | "date">
 export const CONTEXT_VIEWS = ["memoria", "processi", "fonti"] as const;
 export type ContextView = (typeof CONTEXT_VIEWS)[number];
 
-/** La vista di `?vista=`: «processi», «fonti» (anche il vecchio «appunti»); altrimenti la Memoria. */
+/**
+ * La vista di `?vista=`: «processi», «fonti»; altrimenti la Memoria. Il vecchio «appunti» lo porta a «fonti» il proxy,
+ * con un 308 (src/lib/context/view-alias.ts); se arrivasse fin qui, vale «fonti».
+ */
 export function contextViewOf(raw: unknown): ContextView {
   const value = Array.isArray(raw) ? raw[0] : raw;
   if (value === "processi") return "processi";
@@ -364,25 +367,6 @@ export function contextViewOf(raw: unknown): ContextView {
 export function contextViewHref(workspaceId: string, view: ContextView): string {
   const base = `/dashboard/${workspaceId}/contesto`;
   return view === "memoria" ? base : `${base}?vista=${view}`;
-}
-
-/**
- * (§8.2) Il vecchio `?vista=appunti` porta a `?vista=fonti`, con tutti gli altri parametri nello stesso ordine
- * (`?fonte=<id>` dei link della CLI); null se l'indirizzo è già quello nuovo. L'ancora la tiene il browser.
- */
-export function contextViewRedirect(workspaceId: string, search: Readonly<Record<string, string | string[] | undefined>>): string | null {
-  const vista = search.vista;
-  if (!(vista === "appunti" || (Array.isArray(vista) && vista.includes("appunti")))) return null;
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(search)) {
-    if (value === undefined) continue;
-    if (key === "vista") {
-      params.set("vista", "fonti");
-      continue;
-    }
-    for (const one of Array.isArray(value) ? value : [value]) params.append(key, one);
-  }
-  return `/dashboard/${workspaceId}/contesto?${params.toString()}`;
 }
 
 /**

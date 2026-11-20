@@ -71,10 +71,12 @@ test("la pagina: chi è nel workspace, la 0038 controllata, le tre viste, Granol
   assert.match(source, /await requireWorkspacePage\(workspaceId\)/);
   assert.match(source, /if \(!abilities\.canOpen\) notFound\(\);/);
   assert.ok(source.indexOf("contextStoreReady()") < source.indexOf("loadContextMemory("), "prima l'archivio, poi la memoria");
-  // (Rilascio 10, §3.7, §8.2) Le viste da `?vista=`; il vecchio `?vista=appunti` porta a `?vista=fonti`, con gli altri parametri.
+  // (Rilascio 10, §3.7, §8.2) Le viste da `?vista=`. Il vecchio `?vista=appunti` porta a `?vista=fonti` nel proxy, con un 308
+  // vero (src/lib/context/view-alias.test.ts): non qui, sotto `loading.tsx`, dove sarebbe un 200 con una meta refresh.
   assert.match(source, /const view = contextViewOf\(search\.vista\);/);
-  assert.match(source, /const moved = contextViewRedirect\(workspaceId, search\);\s*if \(moved\) permanentRedirect\(moved\);/);
-  assert.ok(source.indexOf("if (!abilities.canOpen) notFound();") < source.indexOf("contextViewRedirect("), "prima chi guarda, poi l'indirizzo");
+  assert.doesNotMatch(source, /permanentRedirect|redirect\(/);
+  const proxy = withoutComments(read("src/proxy.ts"));
+  assert.match(proxy, /const notesAlias = dashWs\?\.\[1\] && hasSession \? notesViewAlias\(pathname, req\.nextUrl\.searchParams\) : null;\s*if \(notesAlias\) return NextResponse\.redirect\(new URL\(notesAlias, req\.url\), 308\);/);
   // Il fatto si apre con `?apri=<fatto>`.
   assert.match(source, /initialFact=\{sheetIdParam\(search\.apri\)\}/);
   assert.match(source, /<GranolaInbox workspaceId=\{workspaceId\} workspaceName=\{workspaceName\} compact \/>/, "una riga nella Memoria");

@@ -10,6 +10,7 @@ import {
   STALE_SESSION_PARAM,
   STALE_SESSION_VALUE,
 } from "@/lib/auth/session-signal";
+import { notesViewAlias } from "@/lib/context/view-alias";
 import { legacyRouteRedirect, stubLogEntry } from "@/lib/use-cases/legacy-routes";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 
@@ -83,6 +84,11 @@ export function proxy(req: NextRequest) {
       return NextResponse.redirect(new URL(legacy.to, req.url), 307);
     }
   }
+  // (Rilascio 10, ondata 6a) Le «Fonti» di «Contesto» si chiamavano «Appunti»: `?vista=appunti` porta a `?vista=fonti`
+  // con gli altri parametri (il `?fonte=` dei link della CLI). Qui e non in pagina, che sta sotto `contesto/loading.tsx`:
+  // lì il 308 sarebbe un 200 con una meta refresh.
+  const notesAlias = dashWs?.[1] && hasSession ? notesViewAlias(pathname, req.nextUrl.searchParams) : null;
+  if (notesAlias) return NextResponse.redirect(new URL(notesAlias, req.url), 308);
   if (dashWs?.[1] && hasSession) {
     const res = nextWithPath(req);
     res.cookies.set(SLACK_WORKSPACE_CONTEXT_COOKIE, dashWs[1], {
