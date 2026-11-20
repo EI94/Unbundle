@@ -171,12 +171,12 @@ test("Home di un workspace nuovo (S1b): «Per partire · 2 di 5», le righe fatt
   const data = reviewer({ items: [], program: empty, start: { discovery: true, notes: true, mappedUnits: 0, goals: 0, decided: 0, toDecide: 0 } });
   const html = readable(render(h(program.ProgramHome, { data, initialPanel: null })));
   assert.equal(filledButtons(html).length, 1);
-  assert.match(filledButtons(html)[0], /href="\/dashboard\/11111111-1111-4111-8111-111111111111\/mapping"/);
+  assert.match(filledButtons(html)[0], /href="\/dashboard\/11111111-1111-4111-8111-111111111111\/contesto\?vista=processi"/);
   assert.ok(textOf(html).includes("Prossimo passo Mappa i processi"));
   assert.ok(html.includes('class="sr-only">È il terzo passo di «Per partire».</span>'));
   assert.ok(html.includes('<h2 id="per-partire" class="text-base font-semibold">Per partire <span class="font-normal text-muted-foreground">· 2 di 5</span></h2>'));
   assert.match(html, /data-start="racconta" data-done="">.*Racconta l'azienda<span class="sr-only"> \(fatto\)<\/span>/);
-  assert.match(html, /<li data-start="processi"><a data-slot="row"[^>]*href="\/dashboard\/[^"]+\/mapping">/);
+  assert.match(html, /<li data-start="processi"><a data-slot="row"[^>]*href="\/dashboard\/[^"]+\/contesto\?vista=processi">/);
   assert.ok(!html.includes("big-number"), "«Per partire» al posto del numero grande");
   assert.ok(!html.includes('data-slot="row" data-row='), "le quattro righe, a zero, non ci sono");
 });
