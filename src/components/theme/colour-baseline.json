@@ -99,9 +99,6 @@
   "src/components/dashboard/simulation-viewer.tsx": {
     "palette": 4
   },
-  "src/components/learning/activity-player.tsx": {
-    "palette": 36
-  },
   "src/components/learning/admin-join-links.tsx": {
     "palette": 5,
     "whiteBlack": 1

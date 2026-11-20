@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Check, CircleCheck, CircleX, LoaderCircle, RotateCcw, TriangleAlert, X } from "lucide-react";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Check, ChevronRight, CircleCheck, CircleX, Download, LoaderCircle, RotateCcw, Send, TriangleAlert } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { startLearningAttempt, saveLearningDraft, submitLearningAttempt, submitLearningDecisions, startLearningRetake } from "@/lib/learning/client";
@@ -14,6 +15,10 @@ import { useLearningUnsavedChanges } from "./use-unsaved-changes";
 import { LearningRefresh } from "./learning-refresh";
 import { downloadLearningDraft } from "./download-draft";
 import { createAcknowledgedMemory } from "@/lib/learning/acknowledged-memory";
+import { LEARNING_TEXT } from "@/lib/learning/text";
+import { confirmDescription, exerciseProgress, problemSentence, readableDraft } from "@/lib/learning/exercise-view";
+
+const EX = LEARNING_TEXT.exercise;
 
 // Memory only: an accidental SPA back/forward navigation must not discard a
 // draft. Keys are server-authorized attempt UUIDs, never a shared activity ID.
@@ -63,7 +68,7 @@ function CaseSteps({ current }: { current: number }) {
       return <li key={label} aria-current={here ? "step" : undefined} className="flex items-center gap-2">
         {index > 0 && <span aria-hidden className="hidden h-px w-8 bg-border sm:block" />}
         <span aria-hidden className={cn("flex size-7 items-center justify-center rounded-full text-xs font-semibold",
-          here ? "bg-foreground text-background" : done ? "bg-emerald-500/20 text-emerald-300" : "border text-muted-foreground")}>
+          here ? "bg-foreground text-background" : done ? "bg-uc-verde-bg text-uc-verde" : "border text-muted-foreground")}>
           {done ? <Check className="size-4" /> : step}
         </span>
         <span className={here ? "font-medium" : "text-muted-foreground"}>{label}<span className="sr-only">{done ? " (fatto)" : ""}</span></span>
@@ -77,12 +82,12 @@ function CaseCard({ activity }: { activity: LearnerActivityDTO }) {
   if (!material) return null;
   return <section aria-label="Il caso" className="space-y-4 rounded-2xl border bg-card p-4 sm:p-5">
     <div>
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Il caso · dati inventati</p>
+      <p className="text-xs font-medium text-muted-foreground">Il caso · dati inventati</p>
       {material.title !== activity.title && <h3 className="mt-1 text-lg font-semibold">{material.title}</h3>}
     </div>
     {material.text && <p className="whitespace-pre-wrap break-words">{material.text}</p>}
-    {material.preparedBadOutput && <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4">
-      <p className="mb-2 text-sm font-semibold text-amber-300">La bozza da controllare</p>
+    {material.preparedBadOutput && <div className="rounded-xl border border-uc-giallo/40 bg-uc-giallo-bg p-4">
+      <p className="mb-2 text-sm font-semibold text-uc-giallo">La bozza da controllare</p>
       <p className="whitespace-pre-wrap break-words">{material.preparedBadOutput}</p>
     </div>}
     {material.task && <div className="space-y-1">
@@ -93,12 +98,12 @@ function CaseCard({ activity }: { activity: LearnerActivityDTO }) {
 }
 
 function ExampleCard({ example }: { example: NonNullable<AttemptDTO["caseExample"]> }) {
-  return <section aria-label="L’esempio preparato" className="space-y-3 rounded-2xl border border-emerald-500/40 bg-emerald-500/5 p-4 sm:p-5">
+  return <section aria-label="L’esempio preparato" className="space-y-3 rounded-2xl border border-uc-verde/40 bg-uc-verde-bg p-4 sm:p-5">
     <h3 className="text-lg font-semibold">L’esempio preparato</h3>
     <p className="text-sm text-muted-foreground">Confrontalo con quello che hai ottenuto in Cowork, oppure leggilo qui.</p>
     <p className="whitespace-pre-wrap break-words">{example.referenceOutput}</p>
     {example.prompt && <details className="rounded-xl border bg-background px-3 py-2">
-      <summary className="min-h-10 cursor-pointer py-2 font-medium">Il prompt usato</summary>
+      <summary className="min-h-11 cursor-pointer py-2 font-medium">Il prompt usato</summary>
       <p className="mt-2 whitespace-pre-wrap break-words text-sm">{example.prompt}</p>
     </details>}
   </section>;
@@ -137,7 +142,8 @@ function ActivityPlayerForm({ workspaceId, programId, userId, version, activity,
   const errorBox = useRef<HTMLDivElement>(null);
   const active = attempt?.activity ?? activity;
   const decisionsPending = active.type === "case_review" && !attempt?.decisionsSubmittedAt;
-  const phase = !attempt ? "start" : attempt.status === "submitted" && attempt.result ? "feedback" : reviewing ? "review" : decisionsPending || active.type !== "case_review" ? "questions" : "reflection";
+  // (Ondata 7a) La conferma prima dell'invio è una finestra breve (`reviewing`), non più una fase con l'elenco delle risposte.
+  const phase = !attempt ? "start" : attempt.status === "submitted" && attempt.result ? "feedback" : decisionsPending || active.type !== "case_review" ? "questions" : "reflection";
   const previousPhase = useRef(phase);
   const phaseHeading = useRef<HTMLHeadingElement>(null);
   const base = `/dashboard/${workspaceId}/learning/${programId}`;
@@ -237,7 +243,8 @@ function ActivityPlayerForm({ workspaceId, programId, userId, version, activity,
     if (!Object.keys(errors).length) phaseHeading.current?.focus();
   }, [phase, errors]);
 
-  const backup = () => downloadLearningDraft("le-mie-risposte.txt", current.current);
+  // (Ondata 7a) La copia in parole: le domande con la risposta scelta, i testi, come si è lavorato. Niente id né JSON.
+  const backup = () => downloadLearningDraft("le-mie-risposte.txt", readableDraft(active, current.current, modeTitle));
   // Senza modifiche da salvare, Riprova toglie l'avviso: si continua con «Controlla e invia».
   const retry = () => {
     if (edits.current === acknowledged.current) { setProblem(null); setMessage(""); return; }
@@ -286,7 +293,7 @@ function ActivityPlayerForm({ workspaceId, programId, userId, version, activity,
       const result = decisionsPending
         ? await submitLearningDecisions({ workspaceId, programId, attemptId: attempt.id, expectedRevision: revision.current })
         : await submitLearningAttempt({ workspaceId, programId, attemptId: attempt.id, expectedRevision: revision.current, idempotencyKey: submitKey.current });
-      if (!result.ok) { setProblem(result.code); setMessage(result.message); setErrors(result.fieldErrors ?? {}); if (result.code === "closed" || result.code === "forbidden") setDenied({ source: initialAttempt, reason: result.message }); return; }
+      if (!result.ok) { setReviewing(false); setProblem(result.code); setMessage(result.message); setErrors(result.fieldErrors ?? {}); if (result.code === "closed" || result.code === "forbidden") setDenied({ source: initialAttempt, reason: result.message }); return; }
       acknowledgedAttempts.remember(memoryScope, result.data);
       revision.current = result.data.revision;
       setAttempt(result.data);
@@ -294,7 +301,7 @@ function ActivityPlayerForm({ workspaceId, programId, userId, version, activity,
       setReviewing(false);
       setProblem(null);
       setMessage(decisionsPending ? "Risposte inviate. Ora confronta con l’esempio." : "");
-    } catch { setProblem("technical"); setMessage("L’invio non è stato confermato. Premi di nuovo Invia: le risposte non verranno inviate due volte."); }
+    } catch { setReviewing(false); setProblem("technical"); setMessage("L’invio non è stato confermato. Premi di nuovo Invia: le risposte non verranno inviate due volte."); }
     finally { inFlight.current = false; setBusy(false); }
   };
 
@@ -319,13 +326,14 @@ function ActivityPlayerForm({ workspaceId, programId, userId, version, activity,
     const index = active.items.findIndex((item) => item.id === id);
     if (index >= 0) return `Domanda ${index + 1}`;
     if (id === "mode") return "Come hai lavorato";
-    if (active.requiredTextFields.some((field) => field.id === id)) return "Il tuo commento";
+    const field = active.requiredTextFields.find((entry) => entry.id === id);
+    if (field) return field.label;
     return null;
   };
   const noAnswersYet = answered === 0 && !Object.values(responses.fields).some(Boolean) && !responses.mode;
   const quietStatus = message || (attempt?.status === "draft" && !readOnly ? (noAnswersYet ? "Le risposte si salvano da sole." : SAVED) : "");
 
-  const errorList = hasErrors && <div ref={errorBox} tabIndex={-1} role="alert" className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm outline-none">
+  const errorList = hasErrors && <div ref={errorBox} tabIndex={-1} role="alert" className="rounded-xl border border-uc-giallo/40 bg-uc-giallo-bg p-4 text-sm outline-none">
     <p className="font-medium">Prima di inviare, completa:</p>
     <ul className="mt-2 list-disc space-y-1 pl-5">{Object.entries(errors).map(([id, error]) => {
       const label = errorLabel(id);
@@ -339,7 +347,7 @@ function ActivityPlayerForm({ workspaceId, programId, userId, version, activity,
     {active.requiredTextFields.map((field) => <div key={field.id} className="space-y-2">
       <label className="block text-base font-medium" htmlFor={`field-${field.id}`}>{field.label}</label>
       <Textarea id={`field-${field.id}`} rows={4} className="min-h-28 text-base md:text-base" readOnly={readOnly} maxLength={field.maxChars} value={responses.fields[field.id] ?? ""} aria-invalid={!!errors[field.id]} aria-describedby={`help-${field.id}`} onChange={(event) => update({ ...current.current, fields: { ...current.current.fields, [field.id]: event.target.value } })} />
-      <p id={`help-${field.id}`} className={cn("text-sm", errors[field.id] ? "font-medium text-amber-300" : "text-muted-foreground")}>{errors[field.id] ? `Il tuo commento: ${errors[field.id]}` : `Basta una frase (almeno ${field.minChars} caratteri).`}</p>
+      <p id={`help-${field.id}`} className={cn("text-sm", errors[field.id] ? "font-medium text-uc-giallo" : "text-muted-foreground")}>{errors[field.id] ? `${field.label}: ${errors[field.id]}` : `Basta una frase (almeno ${field.minChars} caratteri).`}</p>
     </div>)}
     {active.allowedModes.length > 0 && <fieldset id="field-mode" className="min-w-0 rounded-2xl border bg-card p-4 sm:p-5" aria-describedby={errors.mode ? "error-mode" : undefined}>
       <legend className="float-left w-full text-base font-medium">Come hai lavorato?</legend>
@@ -349,7 +357,7 @@ function ActivityPlayerForm({ workspaceId, programId, userId, version, activity,
           <span className="min-w-0"><span className="block font-medium">{modeTitle(mode)}</span>{modeCopy[mode] && <span className="block text-sm text-muted-foreground">{modeCopy[mode].hint}</span>}</span>
         </label>)}
       </div>
-      {errors.mode && <p id="error-mode" className="mt-3 text-sm font-medium text-amber-300">Come hai lavorato: {errors.mode}</p>}
+      {errors.mode && <p id="error-mode" className="mt-3 text-sm font-medium text-uc-giallo">Come hai lavorato: {errors.mode}</p>}
     </fieldset>}
   </>;
 
@@ -359,34 +367,60 @@ function ActivityPlayerForm({ workspaceId, programId, userId, version, activity,
     {problem ? "" : quietStatus}
   </p>;
 
+  /**
+   * (Ondata 7a, PROPOSTA-10 §3.9) La barra fissa in fondo: un numero solo («3 di 5»), lo stato del salvataggio accanto e
+   * «Invia», il solo pulsante pieno; la conferma breve si apre nella finestra dell'app.
+   */
+  const bar = (step: "decisions" | "reflection" | "questions") => {
+    const progress = exerciseProgress(active, responses, step);
+    return <div data-slot="exercise-bar" className="sticky bottom-0 z-10 -mx-4 flex items-center gap-3 border-t bg-background px-4 py-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+      <div className="min-w-0 flex-1">
+        {progress.total > 0 && <p className="text-base font-semibold tabular-nums" data-testid="learning-progress">
+          <span className="sr-only">{EX.progressLabel}: </span>{EX.progress(progress.done, progress.total)}
+        </p>}
+        {saveStatus}
+      </div>
+      <Button data-testid="learning-submit" className="min-h-11 px-6 sm:min-h-9" onClick={prepareSubmit} disabled={busy || readOnly || problem === "conflict"}>
+        <Send aria-hidden data-icon="inline-start" />{EX.send}
+      </Button>
+    </div>;
+  };
+
+  /** Le azioni di riserva di un problema: chiuse, a un tocco. */
+  const moreOptions = (refresh: boolean) => <details className="group">
+    <summary className="inline-flex min-h-11 cursor-pointer list-none items-center gap-1 rounded-md text-sm font-medium underline decoration-foreground/40 underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-9 [&::-webkit-details-marker]:hidden">
+      {EX.more}<ChevronRight aria-hidden className="size-4 transition-transform group-open:rotate-90 motion-reduce:transition-none" />
+    </summary>
+    <div className="mt-2 flex flex-wrap items-center gap-3">
+      <Button variant="outline" className="min-h-11 sm:min-h-9" onClick={backup}><Download aria-hidden data-icon="inline-start" />{EX.copy}</Button>
+      {refresh && <LearningRefresh label={EX.refresh} className="min-h-11 sm:min-h-9" />}
+      {attempt && <a className="inline-flex min-h-11 items-center underline underline-offset-4 sm:min-h-9" href={activityPath} target="_blank" rel="noopener noreferrer">{EX.openSaved}</a>}
+      {(problem === "unauthenticated" || problem === "technical") && <a className="inline-flex min-h-11 items-center underline underline-offset-4 sm:min-h-9" target="_blank" rel="noopener noreferrer" href={`/login?session=stale&callbackUrl=${encodeURIComponent(activityPath)}`}>{EX.signIn}</a>}
+    </div>
+  </details>;
+
   return <div className="space-y-6">
     <header className="space-y-4">
       <p className="text-base text-muted-foreground">{introLine(active)}</p>
       {isCase && <CaseSteps current={step} />}
     </header>
 
-    {attempt?.status === "draft" && readOnly && <div className="space-y-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm" role="status">
-      <p className="font-medium">{readOnlyReason ?? "Per ora non puoi cambiare o inviare queste risposte."}</p>
-      <p>Le modifiche non salvate restano solo in questa pagina. Puoi scaricarne una copia.</p>
-      <div className="flex flex-wrap gap-3"><Button variant="outline" className="h-10" onClick={backup}>Scarica una copia</Button><LearningRefresh label="Aggiorna" /></div>
+    {attempt?.status === "draft" && readOnly && <div className="space-y-2 rounded-xl border border-uc-giallo/40 bg-uc-giallo-bg p-4 text-sm" role="status">
+      <p className="font-medium">{readOnlyReason ?? EX.readOnly}</p>
+      <p>{EX.unsavedHere}</p>
+      {moreOptions(true)}
     </div>}
-    {problem && !(readOnly && attempt?.status === "draft") && <div className="space-y-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm" role="alert">
+    {problem && !(readOnly && attempt?.status === "draft") && <div className="space-y-2 rounded-xl border border-uc-giallo/40 bg-uc-giallo-bg p-4 text-sm" role="alert">
       <p className="flex items-start gap-2 font-medium">
-        <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-amber-300" />
-        <span>{problem === "conflict" ? "Queste risposte sono state cambiate in un’altra scheda." : message || "Qualcosa non ha funzionato."}</span>
+        <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-uc-giallo" />
+        <span>{problemSentence(problem, message)}</span>
       </p>
-      {attempt ? <>
-        <p>{problem === "conflict"
-          ? "Qui restano come le vedi. Scarica una copia e apri le risposte salvate in un’altra scheda per confrontarle, poi aggiorna la pagina."
-          : "Lascia aperta questa pagina: le risposte non salvate restano qui."}</p>
-        <div className="flex flex-wrap items-center gap-3">
-          {problem !== "conflict" && !reviewing && <Button className="h-10" onClick={retry} disabled={busy || readOnly}>Riprova</Button>}
-          <Button variant="outline" className="h-10" onClick={backup}>Scarica una copia</Button>
-          {problem === "conflict" && <LearningRefresh label="Aggiorna" />}
-          <a className="inline-flex min-h-10 items-center underline underline-offset-4" href={activityPath} target="_blank" rel="noopener noreferrer">Apri le risposte salvate</a>
-          {(problem === "unauthenticated" || problem === "technical") && <a className="inline-flex min-h-10 items-center underline underline-offset-4" target="_blank" rel="noopener noreferrer" href={`/login?session=stale&callbackUrl=${encodeURIComponent(activityPath)}`}>Se serve, accedi di nuovo in una nuova scheda e poi riprova qui</a>}
-        </div>
-      </> : <LearningRefresh label="Aggiorna" />}
+      {problem === "conflict" && <p>{EX.conflictHelp}</p>}
+      <div className="flex flex-wrap items-center gap-3">
+        {attempt && problem !== "conflict" && !reviewing && <Button variant="outline" className="min-h-11 sm:min-h-9" onClick={retry} disabled={busy || readOnly}>{EX.retry}</Button>}
+        {!attempt && <LearningRefresh label={EX.refresh} className="min-h-11 sm:min-h-9" />}
+      </div>
+      {attempt && moreOptions(problem === "conflict")}
     </div>}
 
     {!attempt ? <section className="space-y-4 rounded-2xl border bg-card p-5 sm:p-6">
@@ -408,26 +442,32 @@ function ActivityPlayerForm({ workspaceId, programId, userId, version, activity,
       // rischia di peggiorare il risultato per curiosità.
       const offerRetake = practice && result.status === "needs_practice";
       const retakeReason = deniedReason ?? (restoredAcknowledgement ? "Aggiorna la pagina per controllare." : serverAccess?.retakeUnavailableReason) ?? null;
+      // (Ondata 7a, FO-16) Con «Da ripassare» il passo utile è riprovare: «Riprova l'esercizio» è il pulsante pieno.
+      const retakeFirst = offerRetake && canRetake;
       return <>
-        <section data-testid="learning-result-score" className={cn("space-y-4 rounded-2xl border p-5 sm:p-6", good ? "border-emerald-500/40 bg-emerald-500/10" : "border-amber-500/40 bg-amber-500/10")}>
+        <section data-testid="learning-result-score" className={cn("space-y-3 rounded-2xl border p-5 sm:p-6", good ? "border-uc-verde/40 bg-uc-verde-bg" : "border-uc-giallo/40 bg-uc-giallo-bg")}>
           <div className="flex items-start gap-3">
-            {good ? <CircleCheck aria-hidden className="mt-1 size-8 shrink-0 text-emerald-300" /> : <RotateCcw aria-hidden className="mt-1 size-8 shrink-0 text-amber-300" />}
+            {good ? <CircleCheck aria-hidden className="mt-1 size-8 shrink-0 text-uc-verde" /> : <RotateCcw aria-hidden className="mt-1 size-8 shrink-0 text-uc-giallo" />}
             <div className="min-w-0">
-              <h2 ref={phaseHeading} tabIndex={-1} className={cn(heading, "text-2xl font-semibold sm:text-3xl")}>{headline}</h2>
-              <p className="mt-1 text-lg font-medium sm:text-xl">{correctLine(result.correct, result.total)}</p>
+              <h2 ref={phaseHeading} tabIndex={-1} className={cn(heading, "text-2xl font-semibold")}>{headline}</h2>
+              <p className="mt-1 text-lg font-medium">{correctLine(result.correct, result.total)}</p>
             </div>
           </div>
-          <ul aria-label="Domanda per domanda" className="flex flex-wrap gap-2">
-            {items.map((item, index) => <li key={item.itemId} className={cn("flex h-9 items-center gap-1.5 rounded-full border px-3 text-sm font-medium",
-              item.correct ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-300" : "border-amber-500/50 bg-amber-500/10 text-amber-300")}>
-              {item.correct ? <Check aria-hidden className="size-4" /> : <X aria-hidden className="size-4" />}
-              <span>{index + 1}</span><span className="sr-only">{item.correct ? ": giusta" : ": da rivedere"}</span>
-            </li>)}
-          </ul>
           {result.status === "needs_practice" && <p>{canRetake ? "Rileggi le spiegazioni qui sotto e riprova quando vuoi." : "Rileggi le spiegazioni qui sotto."}</p>}
           {result.status === "formative_completed" && <p className="text-sm text-muted-foreground">Serviva per ripassare: non conta per il risultato.</p>}
           {essential > 0 && <p className="font-medium">{essential === 1 ? "Una risposta importante è da rivedere." : `${essential} risposte importanti sono da rivedere.`}</p>}
         </section>
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+          {retakeFirst && <Button data-testid="learning-retake" className={bigButton} disabled={busy} onClick={retake}><RotateCcw aria-hidden />{busy ? EX.retakeOpening : EX.retake}</Button>}
+          <Button render={<Link href={base} />} nativeButton={false} variant={retakeFirst ? "outline" : "default"} className={bigButton}>{EX.back}</Button>
+        </div>
+        {offerRetake && !canRetake && <div className="space-y-2 text-sm">
+          <p className="font-medium">{EX.retakeBlocked}</p>
+          {retakeReason && <p className="text-muted-foreground">{retakeReason}</p>}
+          <LearningRefresh label={EX.refresh} className="min-h-11 sm:min-h-9" />
+        </div>}
+        <p role="status" aria-live="polite" className="text-sm">{message}</p>
 
         <ol className="space-y-3" aria-label="Le risposte, una per una">
           {items.map((item, index) => {
@@ -437,15 +477,15 @@ function ActivityPlayerForm({ workspaceId, programId, userId, version, activity,
             const right = rightId ? question?.options.find((option) => option.id === rightId)?.text : undefined;
             return <li key={item.itemId} data-testid="learning-result-item" className="space-y-3 rounded-2xl border bg-card p-4 sm:p-5">
               <div className="flex items-start gap-3">
-                {item.correct ? <CircleCheck aria-hidden className="mt-0.5 size-6 shrink-0 text-emerald-300" /> : <CircleX aria-hidden className="mt-0.5 size-6 shrink-0 text-amber-300" />}
+                {item.correct ? <CircleCheck aria-hidden className="mt-0.5 size-6 shrink-0 text-uc-verde" /> : <CircleX aria-hidden className="mt-0.5 size-6 shrink-0 text-uc-giallo" />}
                 <div className="min-w-0 space-y-1">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Domanda {index + 1} · {item.correct ? "giusta" : "da rivedere"}{item.critical && !item.correct ? " · importante" : ""}</p>
+                  <p className="text-xs font-medium text-muted-foreground">Domanda {index + 1} · {item.correct ? "giusta" : "da rivedere"}{item.critical && !item.correct ? " · importante" : ""}</p>
                   <h3 className="break-words text-base font-medium">{question?.prompt}</h3>
                 </div>
               </div>
               <div className="space-y-1 text-sm sm:pl-9">
                 <p><span className="text-muted-foreground">La tua risposta: </span><span className="font-medium">{chosen ?? "—"}</span></p>
-                {!item.correct && right && <p><span className="text-muted-foreground">Risposta giusta: </span><span className="font-medium text-emerald-300">{right}</span></p>}
+                {!item.correct && right && <p><span className="text-muted-foreground">Risposta giusta: </span><span className="font-medium text-uc-verde">{right}</span></p>}
               </div>
               {item.feedback && <p className="rounded-xl bg-muted p-3 text-sm sm:ml-9">{item.feedback}</p>}
             </li>;
@@ -453,55 +493,28 @@ function ActivityPlayerForm({ workspaceId, programId, userId, version, activity,
         </ol>
 
         {active.requiredTextFields.length > 0 && <details className="rounded-2xl border px-4 py-3">
-          <summary className="min-h-10 cursor-pointer py-2 font-medium">Il tuo commento</summary>
+          <summary className="min-h-11 cursor-pointer py-2 font-medium">Il tuo commento</summary>
           <div className="mt-3 space-y-3 text-sm">
             {active.requiredTextFields.map((field) => <div key={field.id}><p className="text-muted-foreground">{field.label}</p><p className="whitespace-pre-wrap break-words">{attempt.responses.fields[field.id]}</p></div>)}
             {attempt.responses.mode && <p><span className="text-muted-foreground">Come hai lavorato: </span>{modeTitle(attempt.responses.mode)}</p>}
           </div>
         </details>}
         {attempt.caseExample && <details className="rounded-2xl border px-4 py-3">
-          <summary className="min-h-10 cursor-pointer py-2 font-medium">L’esempio preparato</summary>
+          <summary className="min-h-11 cursor-pointer py-2 font-medium">L’esempio preparato</summary>
           <div className="mt-3 space-y-3 text-sm">
             <p className="whitespace-pre-wrap break-words">{attempt.caseExample.referenceOutput}</p>
             {attempt.caseExample.prompt && <><p className="font-medium">Il prompt usato</p><p className="whitespace-pre-wrap break-words">{attempt.caseExample.prompt}</p></>}
           </div>
         </details>}
-
-        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-          <Link href={base} className={cn(buttonVariants(), bigButton)}>Torna al percorso</Link>
-          {offerRetake && canRetake && <Button variant="outline" className={bigButton} disabled={busy} onClick={retake}><RotateCcw aria-hidden />{busy ? "Apertura…" : "Riprova l’esercizio"}</Button>}
-        </div>
-        {offerRetake && !canRetake && <div className="space-y-2 text-sm">
-          <p className="font-medium">Per ora non puoi riprovare l’esercizio.</p>
-          {retakeReason && <p className="text-muted-foreground">{retakeReason}</p>}
-          <LearningRefresh label="Aggiorna" />
-        </div>}
-        <p role="status" aria-live="polite" className="text-sm">{message}</p>
       </>;
-    })() : phase === "review" ? <section className="space-y-5 rounded-2xl border bg-card p-4 sm:p-6">
-      <h2 ref={phaseHeading} tabIndex={-1} className={cn(heading, "text-xl font-semibold")}>Controlla e invia</h2>
-      {errorList}
-      <p>{decisionsPending
-        ? "Invia le risposte: dopo non potrai cambiarle. Poi vedrai l’esempio preparato."
-        : isCase ? "Dopo l’invio vedrai il risultato dell’esercizio." : "Dopo l’invio non potrai cambiare le risposte. Vedrai subito il risultato."}</p>
-      {(decisionsPending || !isCase) && <ol className="space-y-2">{active.items.map((item, index) => <li key={item.id} className="rounded-xl border bg-background p-3">
-        <p className="text-sm text-muted-foreground">Domanda {index + 1} · {item.prompt}</p>
-        <p className="mt-1 font-medium">{optionText(item.id, responses.answers[item.id]) ?? "—"}</p>
-      </li>)}</ol>}
-      {!decisionsPending && active.requiredTextFields.map((field) => <div key={field.id} className="rounded-xl border bg-background p-3"><p className="text-sm text-muted-foreground">{field.label}</p><p className="mt-1 whitespace-pre-wrap break-words">{responses.fields[field.id]}</p></div>)}
-      {!decisionsPending && responses.mode && <p><span className="text-muted-foreground">Come hai lavorato: </span><span className="font-medium">{modeTitle(responses.mode)}</span></p>}
-      <div className="flex flex-col gap-3 sm:flex-row">
-        <Button data-testid="learning-confirm-submit" className={bigButton} onClick={submit} disabled={busy || readOnly}>{busy ? "Invio…" : "Invia le risposte"}</Button>
-        <Button variant="outline" className={bigButton} disabled={busy} onClick={() => setReviewing(false)}>Modifica</Button>
-      </div>
-    </section> : phase === "reflection" ? <section className="space-y-5">
+    })() : phase === "reflection" ? <section className="space-y-5">
       <h2 ref={phaseHeading} tabIndex={-1} className={cn(heading, "text-xl font-semibold")}>Confronta con l’esempio</h2>
       {errorList}
       <details className="rounded-2xl border px-4 py-3">
-        <summary className="min-h-10 cursor-pointer py-2 font-medium">Rivedi il caso e le tue risposte</summary>
+        <summary className="min-h-11 cursor-pointer py-2 font-medium">Rivedi il caso e le tue risposte</summary>
         <div className="mt-3 space-y-4 text-sm">
           {active.case?.text && <p className="whitespace-pre-wrap break-words">{active.case.text}</p>}
-          {active.case?.preparedBadOutput && <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3"><p className="mb-1 font-semibold text-amber-300">La bozza da controllare</p><p className="whitespace-pre-wrap break-words">{active.case.preparedBadOutput}</p></div>}
+          {active.case?.preparedBadOutput && <div className="rounded-xl border border-uc-giallo/40 bg-uc-giallo-bg p-3"><p className="mb-1 font-semibold text-uc-giallo">La bozza da controllare</p><p className="whitespace-pre-wrap break-words">{active.case.preparedBadOutput}</p></div>}
           <ol className="space-y-2">{active.items.map((item, index) => <li key={item.id} id={`field-${item.id}`}>
             <p className="text-muted-foreground">Domanda {index + 1} · {item.prompt}</p>
             <p className="font-medium">{optionText(item.id, responses.answers[item.id]) ?? "—"}</p>
@@ -511,17 +524,14 @@ function ActivityPlayerForm({ workspaceId, programId, userId, version, activity,
       </details>
       {attempt.caseExample && <ExampleCard example={attempt.caseExample} />}
       {commentAndMode}
-      <div className="space-y-2">
-        <Button data-testid="learning-submit" className={bigButton} onClick={prepareSubmit} disabled={busy || readOnly || problem === "conflict"}>Controlla e invia</Button>
-        {saveStatus}
-      </div>
+      {bar("reflection")}
     </section> : <section className="space-y-5">
       <h2 ref={phaseHeading} tabIndex={-1} className={cn(heading, "text-xl font-semibold")}>{isCase ? "Leggi il caso e rispondi" : "Rispondi alle domande"}</h2>
       {errorList}
       <CaseCard activity={active} />
-      {active.items.map((item, index) => <fieldset key={item.id} id={`field-${item.id}`} data-testid="learning-question" className={cn("min-w-0 rounded-2xl border bg-card p-4 sm:p-5", errors[item.id] && "border-amber-500/60")} aria-describedby={errors[item.id] ? `error-${item.id}` : undefined}>
+      {active.items.map((item, index) => <fieldset key={item.id} id={`field-${item.id}`} data-testid="learning-question" className={cn("min-w-0 rounded-2xl border bg-card p-4 sm:p-5", errors[item.id] && "border-uc-giallo/60")} aria-describedby={errors[item.id] ? `error-${item.id}` : undefined}>
         <legend className="float-left w-full">
-          <span className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">Domanda {index + 1} di {active.items.length}</span>
+          <span className="block text-xs font-medium text-muted-foreground">Domanda {index + 1} di {active.items.length}</span>
           <span className="mt-1 block break-words text-base font-medium sm:text-lg">{item.prompt}</span>
         </legend>
         <div className="clear-left space-y-2 pt-4">
@@ -530,16 +540,22 @@ function ActivityPlayerForm({ workspaceId, programId, userId, version, activity,
             <span className="min-w-0 break-words">{option.text}</span>
           </label>)}
         </div>
-        {errors[item.id] && <p id={`error-${item.id}`} className="mt-3 text-sm font-medium text-amber-300">Domanda {index + 1}: {errors[item.id]}</p>}
+        {errors[item.id] && <p id={`error-${item.id}`} className="mt-3 text-sm font-medium text-uc-giallo">Domanda {index + 1}: {errors[item.id]}</p>}
       </fieldset>)}
       {!isCase && commentAndMode}
-      <div className="space-y-2">
-        <p className="text-sm text-muted-foreground">Hai risposto a {answered} {answered === 1 ? "domanda" : "domande"} su {active.items.length}</p>
-        <Button data-testid="learning-submit" className={bigButton} onClick={prepareSubmit} disabled={busy || readOnly || problem === "conflict"}>Controlla e invia</Button>
-        {saveStatus}
-      </div>
+      {bar(decisionsPending ? "decisions" : "questions")}
     </section>}
 
-    <p className="border-t pt-4 text-xs text-muted-foreground">Le tue risposte le vedi tu e il formatore del corso.</p>
+    {attempt && phase !== "feedback" && <ConfirmDialog
+      open={reviewing}
+      onOpenChange={(open) => { if (!open && !busy) setReviewing(false); }}
+      title={EX.confirmTitle}
+      description={confirmDescription({ decisionsPending, isCase })}
+      confirmLabel={busy ? EX.sending : EX.send}
+      cancelLabel={EX.cancel}
+      pending={busy}
+      confirmDisabled={readOnly}
+      onConfirm={() => { void submit(); }}
+    />}
   </div>;
 }

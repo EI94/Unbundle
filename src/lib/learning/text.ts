@@ -134,6 +134,54 @@ export const LEARNING_TEXT = Object.freeze({
     /** «Vedi tutti (N)» sotto le prime tre righe di una lista. */
     showAll: (n: number) => `Vedi tutti (${n})`,
   }),
+
+  /**
+   * L'esercizio (`activity-player.tsx` e la pagina dell'esercizio non ancora aperto), §3.9: la barra fissa «3 di 5 ·
+   * Invia» con una conferma breve; «Riprova l'esercizio» pieno quando c'è da ripassare; un errore in una frase, con
+   * «Riprova» e «Altre opzioni». Le regole che lo salvano, lo controllano e lo inviano non cambiano.
+   */
+  exercise: Object.freeze({
+    /** La barra fissa: il numero e il pulsante pieno. */
+    progress: (done: number, total: number) => `${done} di ${total}`,
+    progressLabel: "Parti completate",
+    send: "Invia",
+    sending: "Invio…",
+    /** La conferma breve, nella finestra dell'app. */
+    confirmTitle: "Inviare le risposte?",
+    confirmQuiz: "Dopo l'invio non potrai cambiarle: vedi subito il risultato.",
+    confirmDecisions: "Dopo l'invio non potrai cambiarle: poi confronti con l'esempio preparato.",
+    confirmReflection: "Dopo l'invio vedi il risultato dell'esercizio.",
+    cancel: "Annulla",
+    /** L'esito. */
+    retake: "Riprova l'esercizio",
+    retakeOpening: "Apertura…",
+    back: "Torna al corso",
+    retakeBlocked: "Per ora non puoi riprovare l'esercizio.",
+    /** Un problema: una frase, «Riprova» e il resto in «Altre opzioni». */
+    retry: "Riprova",
+    more: "Altre opzioni",
+    copy: "Scarica una copia",
+    refresh: "Aggiorna la pagina",
+    openSaved: "Apri le risposte salvate",
+    signIn: "Accedi di nuovo in una nuova scheda",
+    conflict: "Queste risposte sono state cambiate in un'altra scheda.",
+    conflictHelp: "Qui restano come le vedi: scaricane una copia prima di aggiornare la pagina.",
+    technical: "Il salvataggio non è stato confermato. Le risposte restano qui.",
+    unauthenticated: "La sessione è scaduta: accedi di nuovo in un'altra scheda, poi riprova qui.",
+    fallback: "Qualcosa non ha funzionato. Le risposte restano qui.",
+    readOnly: "Per ora non puoi cambiare o inviare queste risposte.",
+    unsavedHere: "Le modifiche non salvate restano solo in questa pagina.",
+    /** La copia leggibile delle risposte, nel file scaricato. */
+    copyTitle: (title: string) => `Le mie risposte · ${title}`,
+    copyQuestion: (n: number, prompt: string) => `Domanda ${n}: ${prompt}`,
+    copyAnswer: (text: string) => `Risposta: ${text}`,
+    copyNoAnswer: "Risposta: (nessuna)",
+    copyMode: (mode: string) => `Come hai lavorato: ${mode}`,
+    /** L'esercizio non ancora aperto: una frase sola e il controllo da solo. */
+    opensAt: (time: string) => `Si apre alle ${time}, quando chi tiene il corso dà il via.`,
+    opensOn: (when: string) => `Si apre ${when}, quando chi tiene il corso dà il via.`,
+    notOpen: "Per ora non è aperto.",
+  }),
 });
 
 /** Le righe di una lista in vista (§1, regola 4): tre, poi «Vedi tutti (N)». */
