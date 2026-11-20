@@ -72,6 +72,13 @@ test("sul tocco niente trascinamento; i controlli che compaiono al passaggio si 
   assert.equal(declared(".b-tabbar .b-tab")?.get("min-height"), "44px");
   const hit = touch.find((rule) => rule.selector.includes(".b-row-more::after"))?.declarations;
   assert.deepEqual([hit?.get("content"), hit?.get("inset")], ['""', "-11px"], "22 px a vista, 44 al tocco");
+  // (Rilascio 10) Nel «⋯» aperto di un processo le aree da 44 px non si sovrappongono: 22 px tra i bottoni da 22 px, e
+  // tra il «⋯» e la loro riga (4 px dello spazio della colonna più 18 di margine).
+  const rowControls = declared(".b-board .b-row-ctl");
+  assert.deepEqual([rowControls?.get("gap"), rowControls?.get("margin-top")], ["22px", "18px"]);
+  const ownGap = Number(board.find((rule) => rule.at === null && rule.selector === "[data-board-root] .b-pm-lab .b-pm-extra")?.declarations.get("gap")?.replace("px", ""));
+  assert.equal(ownGap + 18, 22, "sotto il «⋯» 22 px in tutto");
+  assert.equal(views.find((rule) => rule.at === null && rule.selector === "[data-board-root] .b-row-ctl button")?.declarations.get("width"), "22px");
   assert.ok(touch.some((rule) => rule.selector.includes(".b-board .b-textin") && rule.declarations.get("font-size") === "16px"), "i campi a 16 px");
 });
 

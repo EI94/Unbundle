@@ -213,4 +213,8 @@
   [data-board-root] .b-board .b-row-ctl button, [data-board-root] .b-board .b-votes button, [data-board-root] .b-board .b-note-ctl button, [data-board-root] .b-drawer .b-note-ctl button, [data-board-root] .b-drawer .b-chip button { position: relative; }
   [data-board-root] .b-row-more::after, [data-board-root] .b-board .b-row-ctl button::after, [data-board-root] .b-board .b-votes button::after, [data-board-root] .b-board .b-note-ctl button::after, [data-board-root] .b-drawer .b-note-ctl button::after, [data-board-root] .b-drawer .b-chip button::after { content: ""; position: absolute; inset: -11px; }
   [data-board-root] .b-board .b-input, [data-board-root] .b-drawer .b-input, [data-board-root] .b-board .b-textin, [data-board-root] .b-drawer .b-textin { font-size: 16px; }
+  /* Il «⋯» di un processo, aperto: i bottoni restano tondi da 22 px con l'area da 44, e tra l'uno e l'altro (e sotto il
+     «⋯») ci sono 22 px, così le aree si toccano senza sovrapporsi: «Sposta su», «Sposta giù» ed «Elimina il processo»
+     non si prendono per sbaglio. */
+  [data-board-root] .b-board .b-row-ctl { gap: 22px; margin-top: 18px; }
 }
