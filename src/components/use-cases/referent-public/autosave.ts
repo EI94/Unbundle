@@ -19,11 +19,11 @@ export const AUTOSAVE_DELAY_MS = 1500;
 
 export interface DraftValue {
   text: string;
-  /** «Non ce l'ho» (rilascio 5; nel rilascio 4 «Non lo so»). */
+  /** «Non lo so» (rilascio 10, D5; nel rilascio 5 «Non ce l'ho»). */
   dontKnow: boolean;
   /** (Rilascio 5) «È già allegato». */
   alreadyAttached?: boolean;
-  /** (Rilascio 5) Il commento, o «Chi potrebbe saperlo?» con «Non ce l'ho». */
+  /** (Rilascio 5) Il commento, o «Chi potrebbe saperlo?» con «Non lo so». */
   comment?: string;
 }
 
@@ -66,7 +66,7 @@ export type AutosaveEvent =
   | { type: "held"; value: DraftValue };
 
 /**
- * Lo stesso valore, per il server: testo e commento senza spazi ai bordi; con «Non ce l'ho» o «È già
+ * Lo stesso valore, per il server: testo e commento senza spazi ai bordi; con «Non lo so» o «È già
  * allegato» il testo non conta.
  */
 export function sameDraft(a: DraftValue, b: DraftValue): boolean {

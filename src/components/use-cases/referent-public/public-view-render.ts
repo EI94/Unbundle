@@ -179,7 +179,7 @@ export function hasOpenQuestions(view: ReferentAskView): boolean {
  */
 export function sentAnswerView(q: ReferentQuestionView, today: string): { sentOn: string; text: string | null; files: string[]; comment?: string | null } | null {
   if (q.state !== "inviata" || !q.answer) return null;
-  // (Rilascio 5) «Non ce l'ho», «È già allegato», il commento o «Chi potrebbe saperlo».
+  // (Rilascio 5) «Non lo so», «È già allegato», il commento o «Chi potrebbe saperlo».
   const comment = q.answer.comment?.trim() ? fillText(q.answer.dontKnow ? T.sentWhoKnows : T.sentComment, { testo: q.answer.comment.trim() }) : null;
   return {
     sentOn: fillText(T.sentOn, { data: referentDateLabel(q.answer.submittedAt, today) }),
@@ -204,7 +204,7 @@ export function usableFile(f: Pick<PublicFile, "status">): boolean {
   return f.status === "pulito" || f.status === "in_revisione";
 }
 
-/** La domanda è chiusa: un testo (non su «Serve un file»), un file, «Non ce l'ho» o «È già allegato». */
+/** La domanda è chiusa: un testo (non su «Serve un file»), un file, «Non lo so» o «È già allegato». */
 export function questionClosed(q: Pick<ReferentQuestionView, "state" | "fileRequired">, c: ClosureState | null): boolean {
   if (q.state !== "aperta") return true;
   if (!c) return false;
@@ -213,7 +213,7 @@ export function questionClosed(q: Pick<ReferentQuestionView, "state" | "fileRequ
   return !q.fileRequired && c.text.trim().length > 0;
 }
 
-/** Il commento si offre solo con una chiusura senza testo: «Non ce l'ho», «È già allegato» o un file. */
+/** Il commento si offre solo con una chiusura senza testo: «Non lo so», «È già allegato» o un file. */
 export function commentOffered(c: Pick<ClosureState, "dontKnow" | "alreadyAttached" | "files">): boolean {
   return c.dontKnow || c.alreadyAttached || c.files.some(usableFile);
 }
@@ -582,7 +582,7 @@ export function updatedLine(q: ReferentQuestionView, today: string): string | nu
   return q.answer?.editedAt ? fillText(TT.updatedOn, { data: referentDateLabel(q.answer.editedAt, today) }) : null;
 }
 
-/** Il testo che «Modifica» mette nel campo: la risposta scritta, mai «Non ce l'ho». */
+/** Il testo che «Modifica» mette nel campo: la risposta scritta, mai «Non lo so». */
 export function editableText(q: ReferentQuestionView): string {
   if (!q.answer || q.answer.dontKnow || q.answer.alreadyAttached) return "";
   return q.answer.text ?? "";
