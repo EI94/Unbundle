@@ -26,7 +26,11 @@ const FILES = [
   join(SRC, "components/uc/progress/audit-log.tsx"),
   join(SRC, "components/uc/shell/case-status-control.tsx"),
   ...["persone/page.tsx", "valore/page.tsx", "valore/kpi/page.tsx", "privacy/page.tsx", "attivita/page.tsx", "impostazioni/page.tsx", "impostazioni/settings-forms.tsx", "firme/route.ts"].map((f) => join(CASE, f)),
-  ...["people.ts", "case-settings.ts", "privacy.ts", "kpi.ts", "audit.ts", "activity-period.ts"].map((f) => join(SRC, "lib/uc/views", f)),
+  ...["people.ts", "case-settings.ts", "privacy.ts", "kpi.ts", "audit.ts", "activity-period.ts", "domande-text.ts", "progress.ts"].map((f) => join(SRC, "lib/uc/views", f)),
+  // (Rilascio 10, §3.5) Anche Domande, la testata e la Panoramica.
+  ...inDir("components/uc/catalog"),
+  ...inDir("components/uc/overview"),
+  ...["layout.tsx", "page.tsx", "not-found.tsx", "error.tsx", "domande/page.tsx", "domande/verifica/page.tsx"].map((f) => join(CASE, f)),
 ];
 
 /** Le stringhe e il testo JSX di un sorgente, senza commenti, import e operandi di confronto. */
@@ -69,7 +73,8 @@ test("«realizzazione» a schermo, mai «caso»", () => {
   const found = FILES.flatMap((file) =>
     visibleTexts(file)
       // «un caso di prova» è un'altra cosa, e resta.
-      .filter((t) => /\b(?:il|del|al|nel|dal|sul|questo|un) caso\b(?! di prova)|^Caso\b/.test(t))
+      // Maiuscole comprese («Questo caso…»); le chiavi interne («caso.creato») non sono testo a schermo.
+      .filter((t) => /\b(?:il|del|al|nel|dal|sul|questo|un) caso\b(?! di prova)/i.test(t) || /^Caso\b/.test(t))
       .map((t) => `${file.slice(SRC.length)}: «${t}»`),
   );
   assert.deepEqual(found, []);

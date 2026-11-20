@@ -103,7 +103,7 @@ export default async function KpiPage({
                 }
               />
             ) : (
-              <EmptyState icon={Gauge} variant="page" title="Questo caso non ha ancora KPI" />
+              <EmptyState icon={Gauge} variant="page" title="Questa realizzazione non ha ancora KPI" />
             )
           ) : (
             <KpiList

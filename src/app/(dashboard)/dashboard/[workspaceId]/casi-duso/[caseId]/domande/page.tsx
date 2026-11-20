@@ -6,7 +6,7 @@ import { QuestionPanelBody, QuestionPanelHead } from "@/components/uc/catalog/it
 import { casePath } from "@/components/uc/catalog/paths";
 import { QuestionList } from "@/components/uc/catalog/question-list";
 import { FilePanel } from "@/components/uc/documents/file-panel";
-import { loadCaseHead } from "@/components/uc/shell/case-data";
+import { headerNextSteps, loadCaseHead } from "@/components/uc/shell/case-data";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { loadUploadPanel, type UploadPanelData } from "@/lib/db/queries/uc-files";
 import { loadQuestionDocuments, loadQuestionsPage } from "@/lib/db/queries/uc-questions";
@@ -15,7 +15,7 @@ import { UUID } from "@/lib/uc/ids";
 import { can } from "@/lib/uc/permissions";
 import { questionQuery, withoutQuestionFilters } from "@/lib/uc/views/catalog-filter";
 import { caseFileRows, datasetsWithoutFile } from "@/lib/uc/views/documents";
-import { caseNextSteps, nextStepFor } from "@/lib/uc/views/next-step";
+import { nextStepFor } from "@/lib/uc/views/next-step";
 import { canOpenItem, canOpenPage } from "@/lib/uc/views/page-access";
 import { questionFilterFields } from "@/lib/uc/views/question-bar";
 import { clientPlainText } from "@/lib/uc/views/rows";
@@ -36,7 +36,7 @@ const FILE_PANEL = "file";
  */
 async function headerLeadsToReview(workspaceId: string, caseId: string, userId: string, workspaceRole: string): Promise<boolean> {
   const { caseAccess, header } = await loadCaseHead(workspaceId, caseId, userId, workspaceRole);
-  return nextStepFor(caseNextSteps(header.nextStep, { roles: caseAccess.roles }))?.id === "verifica";
+  return nextStepFor(headerNextSteps(caseAccess, header))?.id === "verifica";
 }
 
 /**

@@ -10,6 +10,7 @@ import { getAppUcExecutor, type UcExecutor, type UcRow } from "@/lib/db/uc-execu
 import { timeUc } from "@/lib/uc/log";
 import type { CaseRole } from "@/lib/uc/vocab";
 import { UC_SHELL_PAGE_ROLES, checksFiles, type UcShellPage } from "@/lib/uc/views/case-shell";
+import { caseNextSteps, type NextStep } from "@/lib/uc/views/next-step";
 import type { WorkspaceAccess } from "@/lib/workspace-access";
 
 /**
@@ -121,6 +122,14 @@ export const loadCaseHead = cache(async function loadCaseHead(
  */
 export function filesToCheckFor(caseAccess: Pick<CaseAccess, "roles" | "readOnly" | "status" | "user">, header: Pick<CaseHeaderData, "filesToCheck">): number {
   return checksFiles({ roles: caseAccess.roles, isLateralSpace: caseAccess.user.isLateralSpace, readOnly: caseAccess.readOnly, status: caseAccess.status }) ? header.filesToCheck : 0;
+}
+
+/**
+ * (Rilascio 10, §3.5) I passi della testata, con i file da controllare: gli stessi per il guscio e per le pagine che
+ * decidono il loro pulsante pieno guardando quello della testata (Persone, Domande), così non ce ne sono mai due.
+ */
+export function headerNextSteps(caseAccess: Pick<CaseAccess, "roles" | "readOnly" | "status" | "user">, header: Pick<CaseHeaderData, "filesToCheck" | "nextStep">): NextStep[] {
+  return caseNextSteps({ ...header.nextStep, filesToCheck: filesToCheckFor(caseAccess, header) }, { roles: caseAccess.roles });
 }
 
 /** Una pagina del guscio: 404 se il ruolo di caso non basta (`UC_SHELL_PAGE_ROLES`). */

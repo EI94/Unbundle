@@ -19,6 +19,7 @@
  * Modulo puro e senza dipendenze di Node: si usa anche nei componenti client.
  */
 import { CASE_ACTION_ROLES } from "../permissions.ts";
+import { statusHint } from "./case-settings.ts";
 import { LS_CASE_ROLES, type CaseRole, type CaseStatus, type SemaforoColor } from "../vocab.ts";
 import { CASE_STATUS_TONE as STATUS_TONE } from "./labels.ts";
 import type { NextStep, NextStepId } from "./next-step.ts";
@@ -364,12 +365,10 @@ export function settingsTransitions(current: CaseStatus, allowed: readonly CaseS
   return { state: shown.filter((to) => to !== "chiuso"), danger: shown.filter((to) => to === "chiuso") };
 }
 
-/** Spiegazione breve di un cambio di stato, per «Stato del caso» e il dialogo di conferma. */
+/** Spiegazione breve di un cambio di stato, per il dialogo di conferma: le parole di Impostazioni (`statusHint`). */
 export function transitionHint(from: CaseStatus, to: CaseStatus): string {
-  if (to === "chiuso") return "Il caso si chiude per sempre: i link dei referenti e gli accessi di Claude si revocano. Si può solo duplicare.";
-  if (to === "sospeso") return "Il caso si ferma: niente invii né promemoria, i link restano in sola lettura.";
-  if (from === "sospeso") return "Il caso riprende dallo stato in cui era.";
-  if (to === "in_sviluppo") return from === "pronto_sviluppo" ? "Il team parte con lo sviluppo sul catalogo validato." : "Si torna allo sviluppo per correggere.";
+  const said = statusHint(from, to);
+  if (said) return said;
   if (to === "in_esercizio") return "Dopo almeno 14 giorni di rodaggio senza anomalie bloccanti.";
   if (to === "misura_roi") return "Si confronta il valore stimato con quello misurato.";
   return "";

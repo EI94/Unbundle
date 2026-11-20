@@ -412,11 +412,11 @@ export function clientPlainText(text: string): string {
 }
 
 /**
- * Lo stato di una sola domanda: come il gruppo, ma al singolare («Bloccata»,
- * non «Bloccate», che era il nome del segmento).
+ * Lo stato di una sola domanda: come il gruppo. (Rilascio 10, §3.5) «In attesa» per tutti, come il gruppo in Domande
+ * e nella Panoramica (era «Bloccata» per Lateral Space).
  */
 export function oneQuestionStateLabel(view: Pick<StatusView, "label" | "group">, audience: "ls" | "cliente"): string {
-  return audience === "ls" && view.group === "bloccate" ? "Bloccata" : view.label;
+  return audience === "ls" && view.group === "bloccate" ? "In attesa" : view.label;
 }
 
 export interface QuestionRowView {

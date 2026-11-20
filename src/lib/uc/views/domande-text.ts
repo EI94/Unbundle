@@ -136,7 +136,7 @@ export const DOMANDE_TEXT = Object.freeze({
     }),
     /** Il passo di scelta, sotto ogni voce. */
     proposeHint: Object.freeze({
-      proposeNa: "La domanda non riguarda questo caso.",
+      proposeNa: "La domanda non riguarda questa realizzazione.",
       proposeWaiver: "Si parte e la risposta arriva dopo.",
       proposeFallback: "Si parte con una soluzione temporanea.",
     }),

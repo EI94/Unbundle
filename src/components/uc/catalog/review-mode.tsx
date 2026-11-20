@@ -109,7 +109,7 @@ export function ReviewMode({ baseHref, exitHref, panoramicaHref, position, card,
         <CheckCircle2 className="size-10 text-uc-verde" aria-hidden />
         <p className="text-lg font-semibold">Tutto verificato.</p>
         {mineNote && <p className="text-sm text-muted-foreground">{mineNote}</p>}
-        <Button className="mt-2 min-h-11 sm:min-h-9" render={<Link href={panoramicaHref} />} nativeButton={false}>
+        <Button variant="outline" className="mt-2 min-h-11 sm:min-h-9" render={<Link href={panoramicaHref} />} nativeButton={false}>
           Torna alla Panoramica
         </Button>
       </div>

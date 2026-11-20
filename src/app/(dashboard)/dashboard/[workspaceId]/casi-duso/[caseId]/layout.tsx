@@ -1,7 +1,7 @@
 import { casePath } from "@/components/uc/catalog/paths";
 import { CaseSignaturesPanel } from "@/components/uc/approvals/sign-panel";
 import { CatalogExportLinks } from "@/components/uc/export/catalog-export-links";
-import { filesToCheckFor, loadCaseHead } from "@/components/uc/shell/case-data";
+import { headerNextSteps, loadCaseHead } from "@/components/uc/shell/case-data";
 import { CaseHeader } from "@/components/uc/shell/case-header";
 import { CaseUrlPanels, type CaseMenuEntry, type CaseStepView, type CaseTransitionView } from "@/components/uc/shell/case-menu";
 import { CaseStickyBar, CaseTabs } from "@/components/uc/shell/case-tabs";
@@ -27,7 +27,7 @@ import {
   stepPanelOf,
   transitionHint,
 } from "@/lib/uc/views/case-shell";
-import { NEXT_STEP_ICON, caseNextSteps, nextStepFor, resolveStepHref, type NextStep } from "@/lib/uc/views/next-step";
+import { NEXT_STEP_ICON, nextStepFor, resolveStepHref, type NextStep } from "@/lib/uc/views/next-step";
 import { isLsViewer } from "@/lib/uc/views/status-groups";
 import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
 
@@ -71,7 +71,7 @@ export default async function CaseLayout({ children, params }: { children: React
   const writable = !caseAccess.readOnly && c.status !== "chiuso";
   const exportable = exportChoices(roles, c.catalogVersion);
   const canExport = exportable.validated || exportable.draft;
-  const steps = caseNextSteps({ ...header.nextStep, filesToCheck: filesToCheckFor(caseAccess, header) }, { roles });
+  const steps = headerNextSteps(caseAccess, header);
   const usable = (s: NextStep) => (s.id === "scarica_catalogo" ? canExport : writable);
   const next = nextStepFor(steps);
   const primary = next && usable(next) ? next : null;

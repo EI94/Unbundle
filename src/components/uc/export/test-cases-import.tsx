@@ -97,7 +97,7 @@ export function TestCasesImport({ importHref, className }: TestCasesImportProps)
             File dei casi di prova
           </label>
           <p className="text-xs break-words text-muted-foreground">
-            File JSON o CSV in UTF-8, al massimo 2 MB. Colonne del CSV: key, kind, input, atteso, regole, covers, serve_per. Un caso con la stessa key si
+            File JSON o CSV in UTF-8, al massimo 2 MB. Colonne del CSV: key, kind, input, atteso, regole, covers, serve_per. Un caso di prova con la stessa key si
             aggiorna. I casi pseudonimizzati si caricano solo dopo la scheda privacy. Niente nomi di persone né dati sanitari.
           </p>
           <input

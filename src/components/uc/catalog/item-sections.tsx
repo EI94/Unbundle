@@ -179,7 +179,7 @@ function QuestionNotices({ model }: { model: QuestionDetailModel }) {
       {model.blocked && (
         <p className="flex items-start gap-2 text-sm">
           <Lock className="mt-0.5 size-4 shrink-0 text-uc-lucchetto" aria-hidden />
-          <span className="min-w-0 break-words">{model.client ? `In attesa: ${model.blocked}` : `Bloccata: ${model.blocked}`}</span>
+          <span className="min-w-0 break-words">{`In attesa: ${model.blocked}`}</span>
         </p>
       )}
       {model.notice && (

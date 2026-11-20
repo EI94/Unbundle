@@ -267,7 +267,7 @@ test("(release 10, §3.5) a row for Lateral Space says one thing in grey: who an
   assert.equal(late.overdue, "scaduta il 10 ott");
   const locked = rowToQuestionRow(questionRow({ status: "bloccata", lock_key: "a8", privacy_class: "personale" }), rowCtx("ls", ["ls_lead"]));
   assert.equal(locked.line, "Scheda privacy");
-  assert.equal(locked.label, "Bloccata");
+  assert.equal(locked.label, "In attesa");
   assert.equal(locked.personal, true);
   assert.equal(rowToQuestionRow(questionRow({ status: "validata" }), rowCtx("ls", ["ls_lead"])).line, "A posto");
   assert.equal(rowToQuestionRow(questionRow({ status: "non_applicabile" }), rowCtx("ls", ["ls_lead"])).line, "Non si applica");

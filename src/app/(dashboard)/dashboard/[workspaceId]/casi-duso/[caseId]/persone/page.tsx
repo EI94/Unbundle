@@ -10,7 +10,7 @@ import { PeopleList, type PeopleCan, type PersonRequestView } from "@/components
 import { SendSheet } from "@/components/uc/people/send-sheet";
 import type { SignerSlot } from "@/components/uc/people/signers-panel";
 import { WidgetBoundary } from "@/components/uc/people/widget-boundary";
-import { audienceOf, canWrite, loadCaseHead, openShellPage, ucEmailConfigured } from "@/components/uc/shell/case-data";
+import { audienceOf, canWrite, headerNextSteps, loadCaseHead, openShellPage, ucEmailConfigured } from "@/components/uc/shell/case-data";
 import { EmptyState } from "@/components/uc/ui/empty-state";
 import { SectionHeading } from "@/components/uc/ui/section-heading";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
@@ -20,11 +20,11 @@ import { loadCaseMembers, loadMemberCandidates, loadSignerDesignations, loadUsab
 import { caseGrantUserIds } from "@/lib/db/queries/use-case-builders";
 import { exportChoices } from "@/lib/uc/export/request";
 import { addDays, romeDate } from "@/lib/uc/notify/schedule";
-import { stepHiddenOn } from "@/lib/uc/views/case-shell";
+import { stepHasPageCommand, stepHiddenOn, stepPanelOf } from "@/lib/uc/views/case-shell";
 import { formatDayIt } from "@/lib/uc/views/format";
 import { dayWithArticle } from "@/lib/uc/views/labels";
 import { clientPlainText } from "@/lib/uc/views/rows";
-import { caseNextSteps, nextStepFor, resolveStepHref } from "@/lib/uc/views/next-step";
+import { nextStepFor, resolveStepHref } from "@/lib/uc/views/next-step";
 import { canOpenPage, seesValidatedOnly } from "@/lib/uc/views/page-access";
 import { EMAIL_OFF_TEXT, PEOPLE_TEXT, clientPeopleRows, groupMembers, lsPeopleRows, peopleHaveSendWork, personRoleText, signerCandidates, unassignedRoleRows } from "@/lib/uc/views/people";
 
@@ -42,13 +42,13 @@ function first(v: string | string[] | undefined): string | null {
  */
 async function headerPrimaryOn(workspaceId: string, caseId: string, userId: string, workspaceRole: string, pagePath: string): Promise<boolean> {
   const { caseAccess, header } = await loadCaseHead(workspaceId, caseId, userId, workspaceRole);
-  const next = nextStepFor(caseNextSteps(header.nextStep, { roles: caseAccess.roles }));
+  const next = nextStepFor(headerNextSteps(caseAccess, header));
   if (!next) return false;
   // Come il guscio: «Scarica il catalogo validato» c'è solo con un export possibile.
   const exportable = exportChoices(caseAccess.roles, header.case.catalogVersion);
   if (next.id === "scarica_catalogo" && !exportable.validated && !exportable.draft) return false;
   const caseBase = casePath(workspaceId, caseId);
-  return !stepHiddenOn({ href: resolveStepHref(caseBase, next.href), caseBase, panel: Boolean(next.transition) || next.id === "scarica_catalogo" }, pagePath);
+  return !stepHiddenOn({ href: resolveStepHref(caseBase, next.href), caseBase, panel: stepPanelOf(next) !== undefined, pageCommand: stepHasPageCommand(next.id) }, pagePath);
 }
 
 /**
