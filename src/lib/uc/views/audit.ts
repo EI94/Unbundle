@@ -424,7 +424,16 @@ export function auditDetail(row: Pick<AuditRow, "fromState" | "toState" | "paylo
   return parts.join(" · ");
 }
 
-export function auditActorText(row: Pick<AuditRow, "actorType" | "actorName">): string {
+/**
+ * «Chi» nell'elenco scaricato. (Rilascio 10, §3.5) Le righe della pagina non dicono più il lato dopo il nome: lo dice
+ * l'elenco, dall'email verificata (`actorIsLs`): «Luca Verdi (Lateral Space)», «Anna Bianchi (cliente)». Senza
+ * `actorIsLs` (righe di prima) resta il tipo di attore.
+ */
+export function auditActorText(row: Pick<AuditRow, "actorType" | "actorName"> & { actorIsLs?: boolean }): string {
+  if (row.actorType === "utente" && row.actorIsLs !== undefined) {
+    const side = row.actorIsLs ? "Lateral Space" : "cliente";
+    return row.actorName ? `${row.actorName} (${side})` : row.actorIsLs ? "Persona di Lateral Space" : "Persona del cliente";
+  }
   const base = AUDIT_ACTOR_LABEL[row.actorType] ?? row.actorType;
   return row.actorName ? `${row.actorName} (${base.toLowerCase()})` : base;
 }
@@ -437,7 +446,7 @@ export function romeDateTime(iso: string): string {
 }
 
 /** CSV dell'attività (`;` come separatore, per Excel in italiano); ogni cella passa da `csvCell`. */
-export function auditCsv(rows: readonly AuditRow[], daily?: { days: { day: string; count: number }[]; below: number }): string {
+export function auditCsv(rows: readonly (AuditRow & { actorIsLs?: boolean })[], daily?: { days: { day: string; count: number }[]; below: number }): string {
   const lines = [["Data e ora", "Evento", "Chi", "Dettagli"].map(csvCell).join(";")];
   for (const r of rows) lines.push([romeDateTime(r.at), auditEventLabel(r.type), auditActorText(r), auditDetail(r)].map(csvCell).join(";"));
   if (daily) {

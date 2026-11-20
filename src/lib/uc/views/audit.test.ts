@@ -143,6 +143,12 @@ test("CSV export guards formulas and adds daily answers", () => {
   assert.match(lines[1], /"'=SOMMA\(A1\) \(persona con account\)"/);
   assert.match(lines[1], /"05\/10\/2026 10:30"/);
   assert.match(lines[2], /"Risposte ricevute";"Referenti";"6"/);
+  // (Rilascio 10) Il lato di chi ha agito, che la pagina non scrive più dopo il nome, sta nell'elenco scaricato.
+  const side = (actorIsLs: boolean, actorName: string | null) =>
+    auditCsv([{ id: "e2", at: "2026-10-05T08:30:00Z", type: "voce.creata", actorType: "utente", actorName, actorIsLs, targetType: null, fromState: null, toState: null, payload: {} }]).trim().split("\r\n")[1];
+  assert.match(side(true, "Luca Verdi"), /"Luca Verdi \(Lateral Space\)"/);
+  assert.match(side(false, "Anna Bianchi"), /"Anna Bianchi \(cliente\)"/);
+  assert.match(side(true, null), /"Persona di Lateral Space"/);
 });
 
 test("«Chi» filters Lateral Space and client people by verified email domain, and wins over the old actor filter", () => {
