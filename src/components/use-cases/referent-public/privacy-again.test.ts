@@ -99,7 +99,7 @@ export const benefitTitleId = (key) => \`ucq-beneficio-\${key}\`;
 export const benefitCommentId = (key) => \`ucq-beneficio-\${key}-commento\`;`,
   "./state-card": screens("MessageCard", "PublicShell"),
   "./submit-bar": `${screens("SubmitBar")}\nexport const SUBMIT_ERROR_ID = "ucq-invio-errore";`,
-  "./thread": `${screens("ClarificationCard", "SentDisclosure", "TeamReplyCard", "ThreadItem", "WriteToTeam")}\nexport const WRITE_KEY = "scrivi";\nexport const WRITE_ABOUT_ID = "ucq-scrivi-su";\nexport const newsTitleId = (id) => \`ucq-novita-\${id.toLowerCase()}-titolo\`;`,
+  "./thread": `${screens("ClarificationCard", "SentDisclosure", "TeamReplyCard", "ThreadItem", "WriteToTeam")}\nexport const WRITE_KEY = "scrivi";\nexport const WRITE_ABOUT_ID = "ucq-scrivi-su";\nexport const WRITE_BUTTON_ID = "ucq-scrivi";\nexport const newsTitleId = (id) => \`ucq-novita-\${id.toLowerCase()}-titolo\`;`,
 });
 await enableTsxImports();
 const { ReferentAskPage } = await import("./referent-ask-page.tsx");

@@ -207,6 +207,7 @@ export function OpenQuestionCard({
   const [moreOpen, setMoreOpen] = useState(() => draft?.alreadyAttached === true);
   const [writeOpen, setWriteOpen] = useState(() => Boolean(draft?.text?.trim()) && !draft?.dontKnow && !draft?.alreadyAttached);
   const attachRef = useRef<AttachmentsHandle>(null);
+  const textRef = useRef<HTMLTextAreaElement>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const stateRef = useRef<AutosaveState>(state);
@@ -365,6 +366,7 @@ export function OpenQuestionCard({
   const field = textOpen ? (
     <div className="min-w-0 space-y-1.5">
       <textarea
+        ref={textRef}
         id={textId}
         value={value.text}
         maxLength={REFERENT_LIMITS.answerMax}
@@ -404,7 +406,18 @@ export function OpenQuestionCard({
     <CardFrame section={section} token={downloads ? token : undefined} invalid={fieldErrors.length > 0} missing={missing && !closed} closed={closed}>
       {bigAttach ? attachments : field}
       {template && showText && !textOpen ? (
-        <Button type="button" variant="ghost" aria-expanded={false} className="-ml-2 min-h-11 h-auto px-2 text-base underline underline-offset-4" disabled={blocked} onClick={() => setWriteOpen(true)}>
+        <Button
+          type="button"
+          variant="ghost"
+          aria-expanded={false}
+          className="-ml-2 min-h-11 h-auto px-2 text-base underline underline-offset-4"
+          disabled={blocked}
+          onClick={() => {
+            // Il pulsante sparisce: il fuoco va nel campo che si apre.
+            setWriteOpen(true);
+            requestAnimationFrame(() => textRef.current?.focus());
+          }}
+        >
           {T.writeInstead}
           <span aria-hidden>{` ${T.moreClosed}`}</span>
         </Button>

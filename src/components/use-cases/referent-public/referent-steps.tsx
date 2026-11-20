@@ -273,14 +273,17 @@ export function ConfirmStep({
 function Description({ text }: { text: string }) {
   const id = useId();
   const [open, setOpen] = useState(false);
+  const quoteRef = useRef<HTMLQuoteElement>(null);
   const clamp = descriptionClamp(text);
   const long = (clamp.phone || clamp.wide) && !open;
   return (
     <div className="space-y-1" data-slot="referent-description">
       <blockquote
+        ref={quoteRef}
         id={`${id}-descrizione`}
+        tabIndex={-1}
         className={cn(
-          "rounded-xl bg-muted/50 px-4 py-3 text-base leading-7 break-words whitespace-pre-line",
+          "rounded-xl bg-muted/50 px-4 py-3 text-base leading-7 break-words whitespace-pre-line outline-none focus-visible:ring-3 focus-visible:ring-ring/40",
           long && clamp.phone && "line-clamp-6",
           long && (clamp.wide ? "sm:line-clamp-6" : "sm:line-clamp-none"),
         )}
@@ -294,7 +297,11 @@ function Description({ text }: { text: string }) {
           aria-expanded={false}
           aria-controls={`${id}-descrizione`}
           className={cn("-ml-2 min-h-11 h-auto px-2 text-base underline underline-offset-4", !clamp.wide && "sm:hidden")}
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            // Il pulsante sparisce: il fuoco va sulla descrizione, ora intera.
+            setOpen(true);
+            requestAnimationFrame(() => quoteRef.current?.focus());
+          }}
         >
           {T.confirm.readAll}
         </Button>

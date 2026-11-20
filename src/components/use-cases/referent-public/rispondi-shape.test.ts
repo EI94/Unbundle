@@ -142,6 +142,7 @@ test("passo 1: la descrizione in 6 righe con «Leggi tutto» solo quando è lung
   assert.deepEqual(filled(short), ["Sì, è così"]);
   const long = html(view({ kind: "referente", check: CHECK(null, "Le richieste arrivano per email, per telefono e dal sito. ".repeat(8)) }));
   assert.match(long, /<blockquote[^>]*class="[^"]*\bline-clamp-6\b/);
+  assert.match(long, /<blockquote[^>]*tabindex="-1"/, "dopo «Leggi tutto» il fuoco va sulla descrizione");
   assert.ok(long.includes(">Leggi tutto<"));
 });
 

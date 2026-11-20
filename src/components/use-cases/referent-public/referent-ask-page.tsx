@@ -40,7 +40,7 @@ import { ConfirmStep, EstimateStep, ImpactStep, ReferentStepBar, benefitCommentI
 import { MessageCard, PublicShell } from "./state-card";
 import { hasSteps, isRepeatActivation, parseStep, resolveStep, stepOfSubmitRefusal, stepOneWarning, stepSearch, stepStates, stepTwoWarning, stepsOf, type CheckStep, type StepRefusal } from "./steps-state";
 import { SUBMIT_ERROR_ID, SubmitBar } from "./submit-bar";
-import { ClarificationCard, SentDisclosure, TeamReplyCard, ThreadItem, WRITE_ABOUT_ID, WRITE_KEY, WriteToTeam, newsTitleId } from "./thread";
+import { ClarificationCard, SentDisclosure, TeamReplyCard, ThreadItem, WRITE_ABOUT_ID, WRITE_BUTTON_ID, WRITE_KEY, WriteToTeam, newsTitleId } from "./thread";
 
 /**
  * La pagina del referente `/rispondi/<token>` (SPEC §4.4): pubblica, senza account, pensata per il
@@ -956,9 +956,9 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
       onOpen={(open) => {
         setComposer(open ? { key: WRITE_KEY, mode: "add" } : null);
         setSentKey(null);
-        // Il fuoco su «Su cosa?», la prima scelta del campo.
-        if (open) setFocusTarget(WRITE_ABOUT_ID);
-        else setSubmitError((e) => (e === TT.composerOpen ? null : e));
+        // Il fuoco su «Su cosa?», la prima scelta del campo; chiuso, di nuovo su «Scrivi al team».
+        setFocusTarget(open ? WRITE_ABOUT_ID : WRITE_BUTTON_ID);
+        if (!open) setSubmitError((e) => (e === TT.composerOpen ? null : e));
       }}
       primary={primary}
       privacyGate={privacyGate}
@@ -966,6 +966,7 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
       onSent={() => {
         setComposer(null);
         setSubmitError((e) => (e === TT.composerOpen ? null : e));
+        setFocusTarget(WRITE_BUTTON_ID);
         void reload().then(() => setSentKey(WRITE_KEY));
       }}
       onStale={() => void reload()}
