@@ -39,7 +39,7 @@ import {
   freshReplyIds,
   messagesOf,
   newsEntries,
-  newsMissingText,
+  newsMissingHint,
   newsOf,
   threadActionsOf,
   threadKeyOf,
@@ -393,8 +393,15 @@ test("(rilascio 6) «Da completare»: prima i chiarimenti, poi le domande nuove,
     "(rilascio 10, §3.11) il tipo senza «1 di 3»: il solo numero sta nella barra",
   );
   assert.equal(newsEntries(followUpView([clar]))[0].label, "Chiarimento");
-  assert.equal(newsMissingText([2]), "Manca ancora il punto 2.");
-  assert.equal(newsMissingText([3, 1]), "Mancano ancora i punti 1 e 3.");
+  // (Rilascio 10, §3.11) Le schede di «Novità» non hanno un numero: quello che manca si dice con la domanda.
+  const [first, second] = newsEntries(v);
+  assert.deepEqual(newsMissingHint(v, [first]), { text: "Manca ancora la risposta a «Testo».", goLabel: "Vai alla domanda" }, "il chiarimento: la domanda del team");
+  assert.deepEqual(newsMissingHint(v, [second]), { text: "Manca ancora la risposta a «Domanda 1».", goLabel: "Vai alla domanda" }, "la domanda nuova: il suo titolo");
+  assert.deepEqual(newsMissingHint(v, [first, second]), { text: "Mancano ancora 2 risposte: le trovi evidenziate.", goLabel: "Vai alla prima" });
+  assert.equal(newsMissingHint(v, []), null);
+  const long = followUpView([msg({ id: "c9", side: "team", kind: "chiarimento", waiting: true, text: `${"Quante pratiche ".repeat(8)}?` })]);
+  assert.match(newsMissingHint(long, newsEntries(long))!.text, /^Manca ancora la risposta a «.{59}…»\.$/u, "una domanda lunga si accorcia");
+  for (const hint of [newsMissingHint(v, [first]), newsMissingHint(v, [first, second])]) assert.doesNotMatch(`${hint?.text} ${hint?.goLabel}`, /punto|\d+\s*di\s*\d+/);
   assert.equal(doubtOf(v, reply)?.text, "Chi le vede?");
   assert.deepEqual(freshReplyIds(v), ["r1"]);
 });

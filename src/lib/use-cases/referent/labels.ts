@@ -655,9 +655,14 @@ export const REFERENT_PUBLIC_TEXT = Object.freeze({
     writeKindMissing: "Scegli se aggiungi qualcosa o hai un dubbio.",
     /** (Rilascio 10, §3.11) Quello che ha già inviato, chiuso: la conferma, ogni stima e ogni domanda. */
     yourAnswers: "Le tue risposte ({n})",
-    missingOne: "Manca ancora il punto {k}.",
-    missingMany: "Mancano ancora i punti {list}.",
-    goTo: "Vai al punto {k}",
+    /**
+     * (Rilascio 10, §3.11) Le schede di «Novità» non hanno un numero: quello che manca si dice con la domanda (la domanda
+     * del team o la domanda nuova), e «Vai» porta alla prima.
+     */
+    missingOne: "Manca ancora la risposta a «{testo}».",
+    missingMany: "Mancano ancora {n} risposte: le trovi evidenziate.",
+    goToOne: "Vai alla domanda",
+    goToFirst: "Vai alla prima",
     aria: Object.freeze({
       doubtOn: "Ho un dubbio su «{testo}»",
       addOn: "Aggiungi qualcosa a «{testo}»",

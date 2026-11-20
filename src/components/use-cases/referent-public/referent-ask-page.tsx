@@ -19,7 +19,7 @@ import {
   messagesOf,
   missingText,
   newsEntries,
-  newsMissingText,
+  newsMissingHint,
   noticeOf,
   privacyTexts,
   progressText,
@@ -917,7 +917,9 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
   // (Rilascio 6) «Novità»: le cose fatte, quelle che «Invia» ha trovato da fare.
   const newsDone = entries.filter((e) => e.kind === "risposta" || (e.kind === "chiarimento" && (replyTexts[e.id] ?? "").trim().length > 0) || (e.kind === "domanda" && closedMap.get(e.id.toLowerCase()) === true)).length;
   const newsActionable = entries.some((e) => e.kind !== "risposta");
-  const newsMissingPositions = entries.filter((e) => newsMissing.includes(e.id) || newsMissing.includes(e.id.toLowerCase())).map((e) => e.position);
+  // (Rilascio 10, §3.11) Le schede di «Novità» non hanno un numero: quello che manca si dice con la domanda.
+  const newsMissingEntries = entries.filter((e) => newsMissing.includes(e.id) || newsMissing.includes(e.id.toLowerCase()));
+  const newsHint = newsMissingHint(view, newsMissingEntries);
   const questionCard = (section: QuestionSection, o: { primary: boolean; label?: string; missing?: boolean }) => (
     <QuestionCard
       key={`${section.needId}:${section.kind}:${generation}`}
@@ -1029,12 +1031,12 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
           <SubmitBar
             status={progressText(newsDone, entries.length, savesOf(openIds), { unsent })}
             missing={
-              newsMissingPositions.length
+              newsHint
                 ? {
-                    text: newsMissingText(newsMissingPositions),
-                    goLabel: fillText(TT.goTo, { k: newsMissingPositions[0] }),
+                    text: newsHint.text,
+                    goLabel: newsHint.goLabel,
                     onGo: () => {
-                      const first = entries.find((e) => e.position === newsMissingPositions[0]);
+                      const first = newsMissingEntries[0];
                       if (first) focusById(first.kind === "domanda" ? questionTitleId(first.id) : newsTitleId(first.id));
                     },
                   }
