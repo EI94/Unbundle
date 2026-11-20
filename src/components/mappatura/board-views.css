@@ -166,8 +166,10 @@
 [data-board-root] .b-dr-more { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex-basis: 100%; }
 [data-board-root] .b-dr-more[hidden] { display: none; }
 
-/* Sul telefono i processi diventano un elenco di card, una sotto l'altra: niente mappa che scorre di lato. */
-@container board (max-width: 680px) {
+/* Sul telefono (e sul tablet in verticale) i processi diventano un elenco di card, una sotto l'altra: niente mappa che
+   scorre di lato. La soglia è sotto l'area che resta alla board da 1280 px con l'assistente agganciato (1280 − 256 della
+   barra − 380 del pannello = 644 px): lì la mappa resta una mappa. */
+@container board (max-width: 600px) {
   [data-board-root] .b-view .b-pm { overflow-x: visible; }
   [data-board-root] .b-view .b-pm-row { display: block; min-width: 0; }
   [data-board-root] .b-view .b-pm-lab { position: static; border-right: 0; border-bottom: 1px solid var(--board-line); }

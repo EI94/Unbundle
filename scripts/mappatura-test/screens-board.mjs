@@ -230,8 +230,8 @@ function check(name, config, m, expected, failures) {
   if (m.kpi !== null && (m.kpi !== "30px" || !/Instrument Serif/.test(m.kpiFamily))) fail(`numero dei riquadri ${m.kpi} ${m.kpiFamily}`);
   if (m.viewTitle !== null && m.viewTitle !== (config.width === 1440 ? "42px" : "28px")) fail(`titolo della vista ${m.viewTitle}`);
   if (m.rowLabel !== null) near(m.rowLabel, m.board !== null && m.board >= 1500 ? 160 : 136, 0.5, "etichetta della riga");
-  // (Rilascio 10, §3.7) Con l'area della board fino a 680 px (il telefono) i processi sono un elenco verticale di card.
-  const phoneList = m.board !== null && m.board <= 680;
+  // (Rilascio 10, §3.7) Con l'area della board fino a 600 px (il telefono) i processi sono un elenco verticale di card.
+  const phoneList = m.board !== null && m.board <= 600;
   m.rows.forEach(({ widths }, index) => {
     if (widths.length === 0) return;
     if (phoneList) {

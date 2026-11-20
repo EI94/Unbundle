@@ -89,6 +89,15 @@ test("una corsia vuota che si modifica mostra sempre «+ nota»; in una corsia c
   assert.equal(board.find((rule) => rule.at === null && rule.selector === "[data-board-root] .b-cell .b-add")?.declarations.get("opacity"), "0");
 });
 
+test("(rilascio 10) l'elenco di card dei processi vale sul telefono, non da 1280 px con l'assistente agganciato", () => {
+  const list = views.filter((rule) => rule.selector.startsWith("[data-board-root] .b-view .b-pm"));
+  assert.ok(list.length >= 4);
+  assert.deepEqual([...new Set(list.map((rule) => rule.at))], ["@container board (max-width: 600px)"]);
+  const docked = Number(WIDE_QUERY.match(/\d+/)?.[0]) - 256 - 380;
+  assert.ok(docked > 600, `${docked} px di board da 1280 px con il pannello: resta la mappa`);
+  assert.ok(390 <= 600 && 768 - 256 <= 600, "il telefono e il tablet in verticale: l'elenco");
+});
+
 test("nelle tabelle impilate del telefono il nome della colonna e i passi stanno sulla stessa riga", () => {
   const stacked = views.find((rule) => rule.at === "@container board (max-width: 680px)" && rule.selector === "[data-board-root] .b-tbl.b-stack .b-steprefs");
   // In linea: i passi scorrono dopo «Passi: » e vanno a capo come un testo (un riquadro, anche in linea, andrebbe a capo
