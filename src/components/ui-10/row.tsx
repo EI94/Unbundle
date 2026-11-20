@@ -16,6 +16,8 @@ export interface RowProps {
   trailing?: ReactNode;
   /** Un link: tutta la riga porta lì. */
   href?: string;
+  /** Solo con `href`: `false` non riporta la pagina in cima (una riga che apre un pannello con `?apri=`). */
+  scroll?: boolean;
   /** Un'azione della pagina (un pannello): solo da un componente client. */
   onClick?: () => void;
   /** Il pannello che la riga apre, per `aria-haspopup`. */
@@ -43,11 +45,11 @@ function RowBody({ title, fact, leading, trailing, arrow }: Pick<RowProps, "titl
  * freccia. Un link (`href`), un pulsante che apre un pannello (`onClick`) o, senza nessuno dei due, una riga ferma
  * senza freccia. Le righe stanno in una `RowList`.
  */
-export function Row({ title, fact, leading, trailing, href, onClick, opensPanel, className, ...rest }: RowProps) {
+export function Row({ title, fact, leading, trailing, href, scroll, onClick, opensPanel, className, ...rest }: RowProps) {
   const data = rest["data-row"];
   if (href) {
     return (
-      <Link href={href} data-slot="row" data-row={data} className={cn(ROW, className)}>
+      <Link href={href} scroll={scroll} data-slot="row" data-row={data} className={cn(ROW, className)}>
         <RowBody title={title} fact={fact} leading={leading} trailing={trailing} arrow />
       </Link>
     );
