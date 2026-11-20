@@ -11,10 +11,12 @@
 //   G1 not ready → through the commands, every indispensable question still missing becomes
 //   «non si applica» with both signatures (Lateral Space proposes and signs, the client's owner
 //   signs with the /firme command) → ready → Lateral Space proposes the via → /firme as
-//   owner-cliente at 400 px: the list, «Inizia», the decision «1 di 1», «Ho letto e approvo» →
-//   catalog v1 and «Pronto per lo sviluppo». An @ls.test address with the client's role never
-//   signs as the client: /firme is not for it, and the command refuses it even when the role is
-//   forced. The validation of answers by someone else (four eyes) is step 5, not this one.
+//   owner-cliente at 400 px: (release 10, §3.5) the 308 lands on the Panoramica with the
+//   signatures panel open (`?firma=1`), the list, «Inizia», the decision «1 di 1», «Ho letto e
+//   approvo» → catalog v1 and «Pronto per lo sviluppo». An @ls.test address with the client's role
+//   never signs as the client: /firme is not for it (404, no panel), and the command refuses it
+//   even when the role is forced. The validation of answers by someone else (four eyes) is step 5,
+//   not this one.
 import { createRequire } from "node:module";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -163,6 +165,9 @@ export async function step8(db, fixtures) {
       await loginAs(page, "owner-cliente", { to: `/dashboard/${ids.ws}` });
       const nav = await navigate(page, `${app}${firme}`);
       check(nav.status === 200, `/firme status ${nav.status}`);
+      // (Release 10, §3.5) /firme is a 308 to the Panoramica with the signatures panel open.
+      const landed = new URL(nav.url);
+      check(landed.pathname === `/dashboard/${ids.ws}/casi-duso/${caseId}` && landed.searchParams.get("firma") === "1", `/firme lands on ${landed.pathname}${landed.search}`);
       const audit = async (name) => {
         const report = await pageReport(page);
         await screenshot(page, join(shots, `${name}.png`));
@@ -201,7 +206,7 @@ export async function step8(db, fixtures) {
     check(after.rows[0].status === "pronto_sviluppo" && after.rows[0].catalog_version === 1, `case ${after.rows[0].status} v${after.rows[0].catalog_version}`);
     const version = await db.query("SELECT reason FROM uc_catalog_versions WHERE case_id = $1 AND version = 1", [caseId]);
     check(version.rows[0]?.reason === "gate", "catalog v1 frozen by the via");
-    return `G1 da non pronto a pronto con i comandi (${before.g1.missing.length} domande mancanti «non si applica» a due firme, ${ready.g1.required} indispensabili), proposta, firma di owner-cliente su /firme a 400 px (elenco, «1 di 1», «Ho letto e approvo»), catalogo v1, «pronto_sviluppo»; @ls.test con il ruolo del cliente: 404 su /firme e rifiutato dal comando. Schermate: ${shots}`;
+    return `G1 da non pronto a pronto con i comandi (${before.g1.missing.length} domande mancanti «non si applica» a due firme, ${ready.g1.required} indispensabili), proposta, firma di owner-cliente dal pannello delle firme (/firme → ?firma=1) a 400 px (elenco, «1 di 1», «Ho letto e approvo»), catalogo v1, «pronto_sviluppo»; @ls.test con il ruolo del cliente: 404 su /firme e rifiutato dal comando. Schermate: ${shots}`;
   } finally {
     await cleanup().catch(() => undefined);
   }

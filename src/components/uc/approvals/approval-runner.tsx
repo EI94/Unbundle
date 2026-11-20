@@ -148,7 +148,8 @@ export function ApprovalRunner({ approvals, onDecide, disabled = false, variant 
     <section data-slot="approval-list" aria-label={APPROVAL_TEXT.listLabel} className={cn("min-w-0 space-y-4", body)}>
       <div ref={introRef} tabIndex={-1} className="space-y-1 outline-none">
         <p className="font-medium break-words">{intro.lead}</p>
-        <p className="break-words text-muted-foreground">{intro.calm}</p>
+        {/* (Rilascio 10, §3.18) «Leggile con calma» la legge solo il cliente: sul link e nel pannello delle firme. */}
+        {variant === "cliente" ? <p className="break-words text-muted-foreground">{intro.calm}</p> : null}
       </div>
       <ul className="divide-y overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">
         {pending.map((a, i) => (
