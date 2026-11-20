@@ -85,7 +85,7 @@ test("U4: `allowCaseOnly: true` solo nelle porte di CASE_ONLY_SURFACES, e ognuna
   assert.deepEqual(declared, [...CASE_ONLY_SURFACES].sort());
 });
 
-test("U4: le azioni aperte a «Solo questo use case» sono 9: le 7 di chi costruisce, la conferma della CLI e «Scollega»", () => {
+test("U4: le azioni aperte a «Solo questo use case» sono 9 (le 7 di chi costruisce, la conferma della CLI, «Scollega»), più «Segna tutte come lette» della campanella", () => {
   const factory = code(read("src/lib/actions/use-case-factory.ts"));
   const opened: string[] = [];
   const closed: string[] = [];
@@ -104,10 +104,14 @@ test("U4: le azioni aperte a «Solo questo use case» sono 9: le 7 di chi costru
   assert.match(login, /export async function confirmCliLoginAction[\s\S]*?requireWorkspaceAccess\(workspaceId, \{ allowCaseOnly: true \}\)/);
   const tokens = code(read("src/lib/actions/cli-tokens.ts"));
   assert.match(tokens, /export async function revokeOwnCliTokenAction[\s\S]*?requireWorkspaceAccess\(workspaceId, \{ allowCaseOnly: true \}\)/);
+  // La campanella della barra in alto: solo «Segna tutte come lette», mai la scelta delle e-mail (il foglio dell'account).
+  const bell = code(read("src/lib/actions/notifications.ts"));
+  assert.equal((bell.match(/allowCaseOnly: true/g) ?? []).length, 1);
+  assert.match(bell, /export async function markAllBellReadAction[\s\S]*?getCollaboratorAccess\(s\.userId, workspaceId, \{ allowCaseOnly: true \}\)/);
   // Nessun'altra azione apre: la regola di sopra lo dice per i file; qui per le azioni dei file aperti.
   for (const file of walk(join(root, "src/lib/actions"))) {
     const name = rel(file);
-    if (["src/lib/actions/use-case-factory.ts", "src/lib/actions/cli-login.ts", "src/lib/actions/cli-tokens.ts"].includes(name)) continue;
+    if (["src/lib/actions/use-case-factory.ts", "src/lib/actions/cli-login.ts", "src/lib/actions/cli-tokens.ts", "src/lib/actions/notifications.ts"].includes(name)) continue;
     assert.doesNotMatch(code(readFileSync(file, "utf8")), /allowCaseOnly/, name);
   }
 });

@@ -101,7 +101,7 @@ export function caseOnlyRedirect(params: { role: string | null | undefined; path
  * - Il layout del workspace (il perimetro: `caseOnlyRedirect`, la barra con una voce, la campanella).
  * - Pagine: l'Agent Factory, il guscio del dossier (solo la testata e «Progetto dell'agente»), «Progetto dell'agente» e
  *   il suo indirizzo breve (campanella, CLI). Fuori dalla dashboard: «Collega questa CLI» e la sua scelta del workspace.
- * - La campanella (rotta): solo i tipi di chi costruisce, dei suoi casi.
+ * - La campanella (la rotta, e «Segna tutte come lette» della barra in alto): solo i tipi di chi costruisce, dei suoi casi.
  * - Le azioni: le 7 di chi costruisce (`use-case-factory.ts`), la conferma della CLI (`cli-login.ts`), «Scollega»
  *   (`cli-tokens.ts`).
  * - La CLI e l'MCP del caso: `openCli` (`route-kit.ts`); ogni caso poi vuole il predicato (`resolveCliCase`).
@@ -113,6 +113,7 @@ export const CASE_ONLY_SURFACES: readonly string[] = Object.freeze([
   "src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/progetto/page.tsx",
   "src/app/(dashboard)/dashboard/[workspaceId]/use-cases/[useCaseId]/progetto/page.tsx",
   "src/app/api/workspaces/[workspaceId]/bell/route.ts",
+  "src/lib/actions/notifications.ts",
   "src/lib/actions/use-case-factory.ts",
   "src/lib/actions/cli-login.ts",
   "src/lib/actions/cli-tokens.ts",

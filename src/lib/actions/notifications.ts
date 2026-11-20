@@ -12,6 +12,7 @@ import { BELL_TEXT, parseUpTo, type BellPayload } from "@/lib/notifications/bell
 import { loadBellPayload } from "@/lib/notifications/bell-data";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { getCollaboratorAccess, type WorkspaceAccess } from "@/lib/workspace-access";
+import { isCaseOnly } from "@/lib/auth/case-only";
 
 /**
  * Le due azioni rare ed esplicite della campanella (SPEC §P2.3.8): «Segna tutte come lette» e la
@@ -47,18 +48,22 @@ async function payloadFor(workspaceId: string, c: { userId: string; role: string
   return loadBellPayload({ workspaceId, userId: c.userId, role: c.role, useCaseHub: isUseCaseHubWorkspace(workspaceId) });
 }
 
-/** `upTo` = il `latestAt` del payload che la persona ha visto (null: niente da segnare, solo «visto»). */
+/**
+ * `upTo` = il `latestAt` del payload che la persona ha visto (null: niente da segnare, solo «visto»).
+ * (8.0d) «Segna tutte come lette» è della campanella, che apre anche a «Solo questo use case» (`CASE_ONLY_SURFACES`):
+ * scrive solo righe sue (i segnali per lui sono nessuno, le righe dei dossier non le ha), e il payload è il suo.
+ */
 export async function markAllBellReadAction(workspaceId: string, upTo: string | null): Promise<BellActionResult> {
   const limit = upTo === null ? null : parseUpTo(upTo);
   const s = await signedIn(workspaceId, upTo === null || limit !== null);
   if (!s.ok) return s;
-  const c = withAccess(s, await getCollaboratorAccess(s.userId, workspaceId));
+  const c = withAccess(s, await getCollaboratorAccess(s.userId, workspaceId, { allowCaseOnly: true }));
   if (!c.ok) return c;
   try {
     if (limit) {
       await markSignalsReadForUser({ workspaceId, userId: c.userId, role: c.role, signalIds: null, upTo: limit });
       await markUseCaseNotificationsRead({ userId: c.userId, workspaceId, id: null, upTo: limit });
-      if (isUcEnabledFor(workspaceId)) {
+      if (!isCaseOnly(c.role) && isUcEnabledFor(workspaceId)) {
         const { markBellRead } = await import("@/lib/db/queries/uc-notifications-dispatch");
         // Come segnali e notifiche degli use case: solo fino alle righe che la persona ha visto.
         await markBellRead(await getAppUcExecutor(), { userId: c.userId, workspaceId, notificationId: null, upTo: limit });

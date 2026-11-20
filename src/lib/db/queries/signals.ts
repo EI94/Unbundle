@@ -3,7 +3,7 @@ import { db } from "..";
 import { weeklySignals } from "../schema";
 import { ensureDbSchema } from "../ensure-schema";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
-import type { BellSignalInput } from "@/lib/notifications/bell";
+import { bellSourcesFor, type BellSignalInput } from "@/lib/notifications/bell";
 
 /**
  * I segnali delle schede: `new_portfolio_item` porta il titolo e 220 caratteri del
@@ -28,14 +28,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  */
 function visibleTo(workspaceId: string, role: string | null | undefined) {
   const ofWorkspace = eq(weeklySignals.workspaceId, workspaceId);
-  if (canReviewWorkspacePortfolio(role)) return ofWorkspace;
-  if (seesContributorSignals(role)) return and(ofWorkspace, notInArray(weeklySignals.signalType, [...USE_CASE_SIGNAL_TYPES]));
+  const audience = bellSourcesFor(role).signals;
+  if (audience === "tutti") return ofWorkspace;
+  if (audience === "senza_schede") return and(ofWorkspace, notInArray(weeklySignals.signalType, [...USE_CASE_SIGNAL_TYPES]));
   return sql`false`;
-}
-
-/** (8.0d) Chi non rivede il portafoglio vede i segnali del workspace (senza quelli delle schede) solo se è Contributore. */
-export function seesContributorSignals(role: string | null | undefined): boolean {
-  return role === "contributor";
 }
 
 /** Letto per `userId` (o, senza persona, il solo `is_read` di sempre). */
@@ -117,7 +113,7 @@ export async function markSignalsReadForUser(i: { workspaceId: string; userId: s
   const ids = i.signalIds === null ? null : [...new Set(i.signalIds.filter((x) => UUID.test(x)).map((x) => x.toLowerCase()))];
   if (ids !== null && ids.length === 0) return 0;
   // (8.0d) Per elenco, come `visibleTo`: chi non vede nessun segnale non ne segna nessuno.
-  if (!canReviewWorkspacePortfolio(i.role) && !seesContributorSignals(i.role)) return 0;
+  if (bellSourcesFor(i.role).signals === "nessuno") return 0;
   await ensureDbSchema();
   const hidden = canReviewWorkspacePortfolio(i.role) ? sql`` : sql` AND s.signal_type <> ALL(${`{${USE_CASE_SIGNAL_TYPES.join(",")}}`}::text[])`;
   const only = ids === null ? sql`` : sql` AND s.id = ANY(${`{${ids.join(",")}}`}::uuid[])`;

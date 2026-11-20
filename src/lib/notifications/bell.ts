@@ -25,6 +25,8 @@ import { PROPOSAL_NOTICE_KINDS } from "../db/use-case-hub-proposals-ddl.ts";
 import { EVAL_NOTICE_KINDS } from "../db/use-case-hub-evals-ddl.ts";
 import { hubSignalHref } from "../use-cases/digest.ts";
 import { MAPPING_COMPLETED_SIGNAL } from "../mappatura/text.ts";
+import { canReviewWorkspacePortfolio } from "../workspace-permissions.ts";
+import { isCaseOnly } from "../auth/case-only.ts";
 import { noticeContextOf, noticeTextOf } from "../use-cases/notices.ts";
 import { cosaServeHref, realizzazioneHref, richiesteHref, subprocessorsSettingsHref } from "../use-cases/referent/contract.ts";
 
@@ -259,6 +261,38 @@ export const CASE_TEAM_BELL_KINDS: readonly UseCaseNoticeKind[] = Object.freeze(
   ...EVAL_NOTICE_KINDS,
   "contesto_nuovo",
 ]);
+
+/**
+ * (8.0d) Che cosa della campanella vede un ruolo nel workspace, per elenco (RILASCIO-8.0d-ESTERNI-FASE-2.md §2.5, U5, U6):
+ * - i revisori: tutti i segnali, le righe dei dossier, ogni tipo degli use case;
+ * - il Contributore: i segnali senza quelli delle schede, le righe dei dossier, i tipi del team del caso;
+ * - «Solo questo use case»: nessun segnale, nessuna riga dei dossier, solo i tipi di chi costruisce
+ *   (`CASE_TEAM_BELL_KINDS`) e solo dei casi che costruisce adesso (`onlyOwnCases`);
+ * - chi segue un corso e un ruolo che il codice non conosce: niente.
+ */
+export interface BellSources {
+  signals: "tutti" | "senza_schede" | "nessuno";
+  dossier: boolean;
+  /** null: ogni tipo. */
+  useCaseKinds: readonly UseCaseNoticeKind[] | null;
+  onlyOwnCases: boolean;
+}
+
+/**
+ * (8.0d) I tipi della campanella di «Solo questo use case»: quelli del team del caso (`CASE_TEAM_BELL_KINDS`) tranne i
+ * quattro che restano a Lateral Space e all'AI Board (§2.8; 8.0c D12): mai «da approvare», la domanda di un coding agent,
+ * gli strumenti nuovi, l'ok da rifare. Comunque le righe sono per persona: questi tipi non gli arrivano.
+ */
+export const CASE_ONLY_BELL_KINDS: readonly UseCaseNoticeKind[] = Object.freeze(
+  CASE_TEAM_BELL_KINDS.filter((kind) => !(["progetto_appr", "domanda_agente", "strumento_nuovo", "ok_decaduto"] as readonly string[]).includes(kind)),
+);
+
+export function bellSourcesFor(role: string | null | undefined): BellSources {
+  if (canReviewWorkspacePortfolio(role)) return { signals: "tutti", dossier: true, useCaseKinds: null, onlyOwnCases: false };
+  if (role === "contributor") return { signals: "senza_schede", dossier: true, useCaseKinds: CASE_TEAM_BELL_KINDS, onlyOwnCases: false };
+  if (isCaseOnly(role)) return { signals: "nessuno", dossier: false, useCaseKinds: CASE_ONLY_BELL_KINDS, onlyOwnCases: true };
+  return { signals: "nessuno", dossier: false, useCaseKinds: [], onlyOwnCases: false };
+}
 
 /** (8.1a) I tipi dei compiti, e (8.1b) la PR da rivedere: portano ai compiti del progetto dell'agente. */
 const TASK_KINDS: ReadonlySet<UseCaseNoticeKind> = new Set([...TASK_NOTICE_KINDS, ...GITHUB_NOTICE_KINDS, ...PROPOSAL_NOTICE_KINDS]);

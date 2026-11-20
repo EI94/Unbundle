@@ -131,3 +131,45 @@ test("l'email riservata si mostra mascherata a chi non ha ancora fatto l'accesso
   assert.equal(maskInviteEmail("anna.rossi@azienda.it"), "a***@azienda.it");
   assert.equal(maskInviteEmail("non-una-email"), "***");
 });
+
+// ─── (8.0d) Gli inviti «Solo questo use case» (RILASCIO-8.0d-ESTERNI-FASE-2.md §2.3, §2.10 U3) ─────────
+
+const caseOnly = (patch: Partial<WorkspaceInvitation> = {}) => ({ role: "esterno_caso" as WorkspaceInvitation["role"], email: "anna@altra.test", ...patch });
+
+test("U3: un invito «Solo questo use case» a un collaboratore: resta il suo ruolo, il link non si consuma", () => {
+  for (const role of ["exec_sponsor", "transformation_lead", "function_lead", "analyst", "contributor"]) {
+    assert.deepEqual(decide(caseOnly(), user("anna@altra.test"), { workspaceRole: role }), { kind: "already_member", role, source: "workspace" }, role);
+  }
+  // Anche un ruolo che il codice non conosce resta com'è (come prima): l'invito non lo cambia.
+  assert.equal(decide(caseOnly(), user("anna@altra.test"), { workspaceRole: "inventato" }).kind, "already_member");
+});
+
+test("U3: un membro dell'organizzazione non diventa mai «Solo questo use case»", () => {
+  assert.deepEqual(decide(caseOnly(), user("anna@altra.test"), { orgRole: "contributor" }), { kind: "already_member", role: "contributor", source: "organization" });
+  assert.deepEqual(decide(caseOnly(), user("anna@altra.test"), { orgRole: "exec_sponsor", workspaceRole: "learner" }), { kind: "already_member", role: "exec_sponsor", source: "organization" });
+});
+
+test("U3: chi segue un corso nel workspace non accetta un invito «Solo questo use case»: serve un invito da collaboratore", () => {
+  assert.deepEqual(decide(caseOnly(), user("anna@altra.test"), { workspaceRole: "learner" }), { kind: "reject", reason: "learner_case_only" });
+  // Il rifiuto viene prima del link: anche scaduto, il motivo è quello.
+  assert.deepEqual(decide(caseOnly({ revokedAt: NOW }), user("anna@altra.test"), { workspaceRole: "learner" }), { kind: "reject", reason: "learner_case_only" });
+  // Con un invito da collaboratore, invece, sale come prima.
+  assert.deepEqual(decide({ role: "analyst" }, user("a@x.it"), { workspaceRole: "learner" }), { kind: "claim", upgradesLearner: true });
+});
+
+test("U3: un invito da collaboratore a «Solo questo use case»: sale, e la concessione resta", () => {
+  assert.deepEqual(decide({ role: "analyst" }, user("anna@altra.test"), { workspaceRole: "esterno_caso" }), { kind: "claim", upgradesLearner: false, upgradesCaseOnly: true });
+  assert.deepEqual(decide({ role: "contributor", email: "anna@altra.test" }, user("anna@altra.test"), { workspaceRole: "esterno_caso" }), { kind: "claim", upgradesLearner: false, upgradesCaseOnly: true });
+});
+
+test("U3: una persona nuova entra con l'invito «Solo questo use case» solo con l'e-mail riservata e verificata, e l'invito valido", () => {
+  assert.deepEqual(decide(caseOnly(), user("anna@altra.test")), { kind: "claim", upgradesLearner: false, caseOnly: true });
+  assert.deepEqual(decide(caseOnly(), user("marco@altra.test")), { kind: "reject", reason: "email_mismatch" });
+  assert.deepEqual(decide(caseOnly(), user("anna@altra.test", false)), { kind: "reject", reason: "email_unverified" });
+  assert.deepEqual(decide(caseOnly({ email: null }), user("anna@altra.test")), { kind: "reject", reason: "case_only_email" });
+  assert.deepEqual(decide(caseOnly({ revokedAt: NOW })), { kind: "reject", reason: "revoked" });
+  assert.deepEqual(decide(caseOnly({ expiresAt: new Date("2026-04-27T00:00:00Z") })), { kind: "reject", reason: "expired" });
+  assert.deepEqual(decide(caseOnly({ usedCount: 1 })), { kind: "reject", reason: "used" });
+  // Già «Solo questo use case» in un altro caso: riceve anche questo, il ruolo resta.
+  assert.deepEqual(decide(caseOnly(), user("anna@altra.test"), { workspaceRole: "esterno_caso" }), { kind: "claim", upgradesLearner: false, caseOnly: true });
+});
