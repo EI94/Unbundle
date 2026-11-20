@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext } from "react";
+import { createContext, useContext, type MouseEvent } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
@@ -21,20 +21,26 @@ export function useStartRealization(): OpenStart | null {
 }
 
 /**
+ * Il clic su un link «Avvia la realizzazione»: con i dati del dialogo lo apre al posto della pagina di ripiego; con un
+ * tasto premuto (una nuova scheda) o senza il dialogo il link fa il suo lavoro. Senza JavaScript resta il link.
+ */
+export function startClickHandler(open: OpenStart | null): ((event: MouseEvent<HTMLElement>) => void) | undefined {
+  if (!open) return undefined;
+  return (event) => {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    open();
+  };
+}
+
+/**
  * Il pulsante «Avvia la realizzazione» della piega «Realizzazione» (bordato: il pieno è del riquadro «Prossimo
- * passo»). Con i dati del dialogo lo apre; senza, porta alla pagina di ripiego.
+ * passo»): il link alla pagina di ripiego, che con i dati del dialogo apre il dialogo.
  */
 export function StartRealizationButton({ href, label, className }: { href: string; label: string; className?: string }) {
   const open = useStartRealization();
-  if (open) {
-    return (
-      <Button type="button" variant="outline" className={className} onClick={open}>
-        {label}
-      </Button>
-    );
-  }
   return (
-    <Button render={<Link href={href} />} nativeButton={false} variant="outline" className={className}>
+    <Button render={<Link href={href} onClick={startClickHandler(open)} />} nativeButton={false} variant="outline" className={className} data-action={open ? "start-dialog" : undefined}>
       {label}
     </Button>
   );

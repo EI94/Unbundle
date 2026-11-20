@@ -16,7 +16,7 @@ type Render = (element: unknown) => string;
 let render: Render;
 let h: (type: unknown, props?: object | null, ...children: unknown[]) => unknown;
 let D: { StartRealizationButton: (props: never) => unknown; StartRealizationHost: (props: never) => unknown };
-let C: { StartRealizationButton: (props: never) => unknown };
+let C: { StartRealizationButton: (props: never) => unknown; startClickHandler: (open: (() => void) | null) => ((event: never) => void) | undefined };
 
 before(async () => {
   // L'azione del server è finta: qui si prova il dialogo, non la creazione.
@@ -50,13 +50,26 @@ test("the dialog's words: who starts what, with which template; at most 25 words
   assert.deepEqual(findHubForbiddenIn([T.title("XX-0012", "x"), T.template({ name: "x", questions: 2 }), T.change, T.chooseLabel, T.cancel, T.start, T.settings], "area"), []);
 });
 
-test("without the dialog's data the buttons go to the fallback page; with them they open the dialog", () => {
+test("the buttons are links to the fallback page; with the dialog's data a click opens the dialog instead", () => {
   const fallback = render(h(D.StartRealizationButton, { href: "/dashboard/w/casi-duso/nuovo?useCaseId=u", label: "Avvia la realizzazione" }));
   assert.match(fallback, /<a [^>]*href="\/dashboard\/w\/casi-duso\/nuovo\?useCaseId=u"/);
+  assert.doesNotMatch(fallback, /data-action="start-dialog"/);
   const inHost = render(h(D.StartRealizationHost, { workspaceId: "w", data: DATA }, h(D.StartRealizationButton, { href: "/x", label: "Avvia la realizzazione" })));
-  assert.match(inHost, /<button type="button"[^>]*>Avvia la realizzazione<\/button>/, "a button that opens the dialog");
-  assert.doesNotMatch(inHost, /href="\/x"/);
-  assert.match(inHost, /data-variant="outline"|border/, "outlined: the filled one belongs to the step box");
+  assert.match(inHost, /<a [^>]*href="\/x"[^>]*data-action="start-dialog"|<a [^>]*data-action="start-dialog"[^>]*href="\/x"/, "without JavaScript the link still works");
+  assert.match(inHost, /border/, "outlined: the filled one belongs to the step box");
+  // The click: the dialog opens instead of the page; a click with a key (a new tab) or without the dialog stays a link.
+  let opened = 0;
+  const click = C.startClickHandler(() => void opened++)!;
+  const event = (over: object = {}) => ({ defaultPrevented: false, button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, prevented: false, preventDefault() { this.prevented = true; }, ...over });
+  const plain = event();
+  click(plain as never);
+  assert.equal(opened, 1);
+  assert.equal(plain.prevented, true);
+  const newTab = event({ metaKey: true });
+  click(newTab as never);
+  assert.equal(opened, 1, "cmd/ctrl-click opens the page in a new tab");
+  assert.equal(newTab.prevented, false);
+  assert.equal(C.startClickHandler(null), undefined);
 });
 
 test("the dialog: no «Nome», «Cambia schema» only with more than one template, its own filled «Avvia», the same action", () => {
@@ -69,7 +82,7 @@ test("the dialog: no «Nome», «Cambia schema» only with more than one templat
   assert.match(source, /REALIZATION_TEXT\.noPrefix/, "the missing code prefix says where to set it (F-023)");
   assert.doesNotMatch(source, /window\.(confirm|prompt|alert)/);
   const box = read("./next-step-box.tsx");
-  assert.match(box, /case "avvia":[\s\S]*?primary = openStart \?/, "the step opens the dialog");
+  assert.match(box, /case "avvia":[\s\S]*?onClick=\{startClickHandler\(openStart\)\}/, "the step opens the dialog, and stays a link without it");
   // The step box and the fold import only the context, never the dialog with the server action.
   assert.match(box, /from "\.\/start-realization-context"/);
   assert.doesNotMatch(box, /start-realization-dialog/);
