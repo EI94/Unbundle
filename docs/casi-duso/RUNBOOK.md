@@ -891,6 +891,20 @@ Specifica: `docs/rilascio-8/RILASCIO-8.0d-ESTERNI-FASE-2.md`; l'inventario delle
 **Ritorno indietro:**
 
 1. Promote del deploy di prima, un passo su Vercel. Niente sul database: il valore e la tabella restano, il codice di prima li ignora, e nessuno ha `esterno_caso` (senza la 8.0d-2 non si può dare).
-2. **Mai più indietro della 8.0d-1 con persone «Solo questo use case» dentro** (dopo la 8.0d-2): il codice di prima le tratterebbe da collaboratori. Se servisse davvero, prima, in una transazione, il passo SQL della specifica (§4.7): token revocati, concessioni cancellate, inviti `esterno_caso` revocati, membership `esterno_caso` cancellate.
+2. **Mai più indietro della 8.0d-1 con persone «Solo questo use case» dentro** (dopo la 8.0d-2): il codice di prima le tratterebbe da collaboratori. Se servisse davvero, prima, in una transazione (con `psql --no-psqlrc --set=ON_ERROR_STOP=1`): token revocati, concessioni cancellate, inviti `esterno_caso` revocati, membership `esterno_caso` cancellate.
+
+   ```sql
+   BEGIN;
+   UPDATE workspace_integration_tokens t SET revoked_at = now()
+   WHERE t.revoked_at IS NULL AND EXISTS (SELECT 1 FROM workspace_memberships m
+     WHERE m.workspace_id = t.workspace_id AND m.user_id = t.owner_user_id AND m.role::text = 'esterno_caso');
+   DELETE FROM use_case_external_builders g USING workspace_memberships m
+   WHERE m.workspace_id = g.workspace_id AND m.user_id = g.user_id AND m.role::text = 'esterno_caso';
+   UPDATE workspace_invitations SET revoked_at = now() WHERE role::text = 'esterno_caso' AND revoked_at IS NULL;
+   DELETE FROM workspace_memberships WHERE role::text = 'esterno_caso';
+   COMMIT;
+   ```
+
+   I compiti che avevano restano a loro nome: li passa il responsabile. Le righe `osservatore` restano, senza poteri e senza accesso al workspace.
 
 **Dopo il deploy, a mano:** `doctor` con `migrazione0043: true`; una pagina di Lateral Space, una del cliente, una di un Contributore e la Formazione di chi segue un corso, come prima.

@@ -158,4 +158,20 @@ test("RUNBOOK §10.25: la 0043 la applica l'app, il valore non si toglie, mai da
   assert.match(section, /non parte da un'anteprima \(`VERCEL_ENV=preview`\)/);
   assert.match(section, /\*\*Il valore non si toglie più\.\*\*/);
   assert.match(section, /\*\*Mai più indietro della 8\.0d-1 con persone «Solo questo use case» dentro\*\*/);
+  // Il passo SQL di quel ritorno indietro sta qui per intero: la specifica non è nel repository.
+  const next = section.indexOf("\n### ", heading.length);
+  const own = next === -1 ? section : section.slice(0, next);
+  assert.doesNotMatch(own, /§4\.7/);
+  const sql = (/```sql\n([\s\S]*?)```/.exec(own)?.[1] ?? "").replace(/^ {3}/gm, "");
+  assert.match(sql, /^BEGIN;\n/);
+  assert.match(sql, /\nCOMMIT;\n$/);
+  const statements = [
+    /UPDATE workspace_integration_tokens t SET revoked_at = now\(\)\nWHERE t\.revoked_at IS NULL AND EXISTS \(SELECT 1 FROM workspace_memberships m\n {2}WHERE m\.workspace_id = t\.workspace_id AND m\.user_id = t\.owner_user_id AND m\.role::text = 'esterno_caso'\);/,
+    /DELETE FROM use_case_external_builders g USING workspace_memberships m\nWHERE m\.workspace_id = g\.workspace_id AND m\.user_id = g\.user_id AND m\.role::text = 'esterno_caso';/,
+    /UPDATE workspace_invitations SET revoked_at = now\(\) WHERE role::text = 'esterno_caso' AND revoked_at IS NULL;/,
+    /DELETE FROM workspace_memberships WHERE role::text = 'esterno_caso';/,
+  ];
+  const at = statements.map((statement) => sql.search(statement));
+  assert.ok(at.every((i) => i > 0), `${at}`);
+  assert.deepEqual([...at].sort((a, b) => a - b), at, "token e concessioni (trovati dalla membership) prima, la membership per ultima");
 });
