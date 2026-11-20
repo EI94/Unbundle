@@ -67,7 +67,7 @@ function key(over: Partial<CiKeyRow> = {}): CiKeyRow {
   };
 }
 
-test("la chiave: ub_ci_ e 32 byte casuali in base64url, l'impronta SHA-256, il prefisso da mostrare", () => {
+test("la chiave: il prefisso della CI e 32 byte casuali in base64url, l'impronta SHA-256, il prefisso da mostrare", () => {
   const a = newCiKey();
   const b = newCiKey();
   assert.match(a, /^ub_ci_[A-Za-z0-9_-]{43}$/);

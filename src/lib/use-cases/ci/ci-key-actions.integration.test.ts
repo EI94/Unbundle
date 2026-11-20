@@ -209,6 +209,6 @@ test("la sezione spenta per il workspace: «Non ancora disponibile», a chiunque
   }
 });
 
-test("mai ub_ci_ nei log delle azioni", opts, async () => {
+test("mai il prefisso della chiave della CI nei log delle azioni", opts, async () => {
   assert.ok(!logged.some((line) => line.includes("ub_ci_")));
 });

@@ -198,7 +198,7 @@ after(async () => {
   await q(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [PEOPLE.map((p) => ids[p])]);
 });
 
-test("la chiave: ub_ci_ e 32 byte, in tabella solo impronta e prefisso, 180 giorni; l'e-mail a chi gestisce le chiavi, tranne chi l'ha creata", opts, async () => {
+test("la chiave: il prefisso della CI e 32 byte, in tabella solo impronta e prefisso, 180 giorni; l'e-mail a chi gestisce le chiavi, tranne chi l'ha creata", opts, async () => {
   await clearKeys();
   assert.equal(await store.ciKeysStoreReady(exec), true);
   const issued = okValue(await store.createCiKey(exec, { workspaceId: ids.ws, repo: ` ${REPO.toLowerCase()}.git `, actor: actor("manager"), lsDomains: LS }), "creata");
@@ -477,6 +477,6 @@ test("il workspace cancellato porta via le sue chiavi", opts, async () => {
   assert.equal((await q(`SELECT count(*)::int AS n FROM use_case_ci_keys WHERE workspace_id = $1`, [doomed]))[0].n, 0);
 });
 
-test("mai ub_ci_ nei log della suite", opts, async () => {
+test("mai il prefisso della chiave della CI nei log della suite", opts, async () => {
   assert.ok(!logged.some((line) => line.includes("ub_ci_")), "una chiave in un log");
 });

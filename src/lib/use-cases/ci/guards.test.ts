@@ -32,7 +32,7 @@ function codeFiles(): string[] {
   return out;
 }
 
-test("ub_ci_ è tra i prefissi bloccati: una chiave della CI in un indirizzo si riconosce, nella query, nel percorso, codificata", () => {
+test("il prefisso della chiave della CI è tra i prefissi bloccati: una chiave della CI in un indirizzo si riconosce, nella query, nel percorso, codificata", () => {
   assert.ok(DEFAULT_TOKEN_PREFIXES.includes(CI_KEY_PREFIX));
   assert.ok(DEFAULT_TOKEN_PREFIXES.includes("ub_cli_"), "i prefissi di prima restano");
   const key = newCiKey();
@@ -82,7 +82,7 @@ test("nessuna lettura raggruppa o ordina per chi ha creato o revocato una chiave
   assert.ok(!/SELECT k\.\*|SELECT \*/.test(store), "mai tutte le colonne");
 });
 
-test("ub_ci_ mai nei log: i moduli della chiave non scrivono sulla console", () => {
+test("il prefisso della chiave della CI mai nei log: i moduli della chiave non scrivono sulla console", () => {
   const keyModules = ["src/lib/use-cases/ci/keys.ts", "src/lib/db/queries/use-case-ci-keys.ts", "src/lib/actions/ci-keys.ts", "scripts/use-case-admin/ci-keys.ts", "scripts/use-case-admin/ci-key-revoke.ts"];
   for (const path of keyModules) {
     let text: string;
