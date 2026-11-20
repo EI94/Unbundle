@@ -184,6 +184,9 @@ test("the Panoramica page: the via section inside, its anchor, folds closed, the
   assert.match(source, /loadVia\(executor,/);
   assert.match(source, /<DetailSheet title="Tutte le tappe"/);
   assert.match(source, /<CasePhases phases=\{casePhaseGroups\(/, "the 11 states of «Come funziona» are in the path of the panel");
-  assert.match(source, /<div id=\{CLAUDE_PANEL_ANCHOR\}/, "«Sviluppo con Claude» stays where /via had it");
+  assert.match(source, /<div id="sviluppo-con-claude"/, "«Sviluppo con Claude» stays where /via had it");
+  const anchor = /export const CLAUDE_PANEL_ANCHOR = "([^"]+)"/.exec(readFileSync(new URL("../mcp/claude-dev-panel.tsx", import.meta.url), "utf8"))?.[1];
+  assert.equal(anchor, "sviluppo-con-claude", "the anchor the panel opens itself on");
+  assert.doesNotMatch(source, /import \{[^}]*CLAUDE_PANEL_ANCHOR/, "a value of a client module is not a string on the server");
   assert.doesNotMatch(source, /casePath\(workspaceId, caseId, "via"\)|"Dettagli"|Il caso"|SignatureCallout|ApprovedNote/);
 });

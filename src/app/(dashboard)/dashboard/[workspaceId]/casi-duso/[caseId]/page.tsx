@@ -4,7 +4,7 @@ import { AlertTriangle, Check, ChevronRight } from "lucide-react";
 import { PageContainer } from "@/components/dashboard/page-container";
 import { Fold } from "@/components/ui-10/fold";
 import { casePath, itemPath } from "@/components/uc/catalog/paths";
-import { CLAUDE_PANEL_ANCHOR, ClaudeDevPanel } from "@/components/uc/mcp/claude-dev-panel";
+import { ClaudeDevPanel } from "@/components/uc/mcp/claude-dev-panel";
 import { BlockerResolveForm } from "@/components/uc/overview/blocker-resolve-form";
 import {
   BlockerList,
@@ -274,8 +274,9 @@ export default async function OverviewPage({
               </div>
             )}
             {ls && pastVia && (
-              // (Rilascio 10, §3.5) «Sviluppo con Claude» resta qui, dov'era in `/via`, finché l'ondata 5b non lo porta in Costruzione.
-              <div id={CLAUDE_PANEL_ANCHOR} className="min-w-0 scroll-mt-40">
+              // (Rilascio 10, §3.5) «Sviluppo con Claude» resta qui, dov'era in `/via`, finché l'ondata 5b non lo porta in
+              // Costruzione. L'ancora è `CLAUDE_PANEL_ANCHOR`, scritta qui: un valore di un modulo client, letto dal server, non è una stringa.
+              <div id="sviluppo-con-claude" className="min-w-0 scroll-mt-40">
                 <ClaudeDevPanel
                   workspaceId={workspaceId}
                   caseId={caseId}
