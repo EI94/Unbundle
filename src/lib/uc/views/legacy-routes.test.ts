@@ -49,7 +49,8 @@ test("documents, map, rules, data model, KPI, ROI and progress", () => {
   assert.equal(route(["modello-dati"], `vista=fonti&entita=${ITEM}`), `${base}/soluzione/dati?vista=fonti&apri=${ITEM}`);
   assert.equal(route(["kpi"], "apri=k1"), `${base}/valore/kpi?apri=k1`);
   assert.equal(route(["roi"], "x=1"), `${base}/valore`);
-  assert.equal(route(["avanzamento"], "x=1"), `${base}/via`);
+  // (Rilascio 10, §3.5) Dritto alla sezione «Via allo sviluppo» della Panoramica, senza passare da `/via`.
+  assert.equal(route(["avanzamento"], "x=1"), `${base}#via`);
 });
 
 test("the old audit log and its CSV go to Attività with their filters", () => {

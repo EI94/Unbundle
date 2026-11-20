@@ -4,27 +4,33 @@ import { readFileSync } from "node:fs";
 import {
   CASE_STATUS_TONE,
   PAGES_WITHOUT_PRIMARY,
+  STEPS_WITH_PAGE_COMMAND,
   UC_SHELL_PAGE_ROLES,
+  VIA_SECTION_ID,
   activeTabKey,
   canOpenShellPage,
   caseHeadAlert,
   caseMenuFor,
   caseTabsFor,
   caseTrail,
+  checksFiles,
   landingSegment,
+  realizationTitle,
   seesFilteredAudit,
-  showsReadOnlyBadge,
   settingsTransitions,
+  showsHeaderProgress,
   solutionSegmentsFor,
+  stepHasPageCommand,
   stepHiddenOn,
   transitionNeedsReason,
+  viaRedirect,
 } from "./case-shell.ts";
+import { VIA_HREF } from "./next-step.ts";
 import { CASE_STATUS_TONE as LABELS_TONE } from "./labels.ts";
 import { CASE_ROLES, CASE_STATUSES, type CaseRole } from "../vocab.ts";
 
 const tabs = (role: CaseRole) => caseTabsFor([role]).map((t) => t.label);
-const menu = (role: CaseRole, i: Partial<Parameters<typeof caseMenuFor>[1]> = {}) =>
-  caseMenuFor([role], { pendingSignatures: 0, pastVia: false, exportable: false, ...i }).map((m) => m.label);
+const menu = (role: CaseRole, i: Partial<Parameters<typeof caseMenuFor>[1]> = {}) => caseMenuFor([role], { exportable: false, ...i }).map((m) => m.label);
 
 test("five tabs at most, by role as in DESIGN §2.3, never disabled ones", () => {
   assert.deepEqual(tabs("ls_lead"), ["Panoramica", "Domande", "Soluzione", "Valore", "Persone"]);
@@ -45,29 +51,26 @@ test("everyone lands on the overview, the privacy approver on Privacy", () => {
   for (const role of CASE_ROLES) assert.notEqual(landingSegment([role]), undefined, role);
 });
 
-test("the «⋯» menu shows only what serves, per role", () => {
-  assert.deepEqual(menu("ls_lead", { pendingSignatures: 2, pastVia: true, exportable: true }), [
-    "Da firmare (2)",
-    "Privacy",
-    "Attività",
-    "Esporta…",
-    "Sviluppo con Claude",
-    "Progetto dell'agente",
-    "Impostazioni del caso",
-  ]);
-  assert.deepEqual(menu("ls_lead"), ["Privacy", "Attività", "Progetto dell'agente", "Impostazioni del caso"], "no signatures, no via, nothing to export");
-  assert.deepEqual(menu("ls_analista", { pendingSignatures: 3, pastVia: true, exportable: true }), ["Privacy", "Esporta…", "Sviluppo con Claude", "Progetto dell'agente"]);
-  assert.deepEqual(menu("ls_sviluppatore", { pastVia: true, exportable: true }), ["Esporta…", "Sviluppo con Claude", "Progetto dell'agente"]);
+test("(rilascio 10, §3.5) the «⋯» menu: Privacy · Attività · Esporta… · Impostazioni, only what serves, per role", () => {
+  // «Progetto dell'agente» stays until wave 5b turns it into the «Costruzione» tab (F-011): nothing is lost meanwhile.
+  assert.deepEqual(menu("ls_lead", { exportable: true }), ["Privacy", "Attività", "Esporta…", "Progetto dell'agente", "Impostazioni"]);
+  assert.deepEqual(menu("ls_lead"), ["Privacy", "Attività", "Progetto dell'agente", "Impostazioni"], "nothing to export");
+  assert.deepEqual(menu("ls_analista", { exportable: true }), ["Privacy", "Esporta…", "Progetto dell'agente"]);
+  assert.deepEqual(menu("ls_sviluppatore", { exportable: true }), ["Esporta…", "Progetto dell'agente"]);
   assert.deepEqual(menu("ls_sviluppatore"), ["Progetto dell'agente"], "before the via the developer has only the agent's project (release 8.0a)");
-  assert.deepEqual(menu("owner_cliente", { pendingSignatures: 1, pastVia: true, exportable: true }), ["Da firmare (1)", "Privacy", "Attività", "Scarica in Excel", "Progetto dell'agente"]);
-  assert.deepEqual(menu("approvatore_privacy", { pendingSignatures: 1 }), ["Da firmare (1)", "Attività"]);
-  assert.deepEqual(menu("approvatore_privacy"), ["Attività"]);
-  for (const role of ["ai_board", "osservatore"] as const) assert.deepEqual(menu(role, { pendingSignatures: 4, pastVia: true }), ["Progetto dell'agente"], role);
-  assert.equal(caseMenuFor(["ai_board"], { pendingSignatures: 0, pastVia: false, exportable: false })[0]?.segment, "progetto");
+  assert.deepEqual(menu("owner_cliente", { exportable: true }), ["Privacy", "Attività", "Scarica in Excel", "Progetto dell'agente"]);
+  assert.deepEqual(menu("approvatore_privacy"), ["Attività"], "the privacy approver lands on Privacy");
+  for (const role of ["ai_board", "osservatore"] as const) assert.deepEqual(menu(role, { exportable: false }), ["Progetto dell'agente"], role);
+  assert.equal(caseMenuFor(["ai_board"], { exportable: false })[0]?.segment, "progetto");
   assert.equal(canOpenShellPage("progetto", ["approvatore_privacy"]), false, "the privacy approver does not need the agent's project");
-  const claude = caseMenuFor(["ls_lead"], { pendingSignatures: 0, pastVia: true, exportable: false }).find((m) => m.key === "claude");
-  assert.equal(claude?.segment, "via#sviluppo-con-claude");
-  const exp = caseMenuFor(["ls_lead"], { pendingSignatures: 0, pastVia: false, exportable: true }).find((m) => m.key === "esporta");
+  // «Da firmare (n)» is the filled «Firma …» and the signatures panel (F-006); «Sviluppo con Claude» lives in the via section (F-010, F-042).
+  for (const role of ["ls_lead", "ls_analista", "ls_sviluppatore", "owner_cliente", "approvatore_privacy", "ai_board", "osservatore"] as const) {
+    const labels = menu(role, { exportable: true });
+    assert.ok(!labels.some((l) => /firmare|Claude|del caso/.test(l)), `${role}: ${labels.join(", ")}`);
+    assert.ok(labels.length <= 5, role);
+    if (labels.includes("Impostazioni")) assert.equal(labels.at(-1), "Impostazioni", "Impostazioni is always the last one");
+  }
+  const exp = caseMenuFor(["ls_lead"], { exportable: true }).find((m) => m.key === "esporta");
   assert.equal(exp?.segment, null, "export opens the panel");
 });
 
@@ -126,19 +129,51 @@ test("the trail: use case, code, Realizzazione; the title without a code; the ol
   assert.deepEqual(caseTrail({ workspaceId: ws, caseBase, parent: null }), { kind: "lista", back: { label: "Realizzazioni", href: "/dashboard/w1/casi-duso" } });
 });
 
-test("one alert at most, in the order of DESIGN §3.3", () => {
-  const base = { status: "raccolta" as const, gateReconfirm: false, lsConfigured: true, workspaceAdmin: false, canOpenVia: true };
+test("one alert at most, in the order of DESIGN §3.3; (rilascio 10) not when the filled button already says it", () => {
+  const base = { status: "raccolta" as const, gateReconfirm: false, canOpenVia: true };
   assert.equal(caseHeadAlert(base), null);
-  assert.deepEqual(caseHeadAlert({ ...base, status: "in_sviluppo", gateReconfirm: true, lsConfigured: false, workspaceAdmin: true })?.action, { label: "Vedi cosa manca", segment: "via" });
+  assert.deepEqual(caseHeadAlert({ ...base, status: "in_sviluppo", gateReconfirm: true })?.action, { label: "Vedi cosa manca", href: "/#via" });
   assert.equal(caseHeadAlert({ ...base, status: "in_sviluppo", gateReconfirm: true, canOpenVia: false })?.action, null);
-  assert.equal(caseHeadAlert({ ...base, status: "sospeso", lsConfigured: false, workspaceAdmin: true })?.kind, "pausa");
+  assert.equal(caseHeadAlert({ ...base, status: "sospeso" })?.kind, "pausa");
   assert.equal(caseHeadAlert({ ...base, status: "chiuso", gateReconfirm: true })?.kind, "chiuso");
-  assert.equal(caseHeadAlert({ ...base, lsConfigured: false, workspaceAdmin: true })?.kind, "configurazione");
-  assert.equal(caseHeadAlert({ ...base, lsConfigured: false, workspaceAdmin: false }), null, "the others see the badge instead");
-  assert.equal(showsReadOnlyBadge({ lsConfigured: false, workspaceAdmin: false }), true);
-  assert.equal(showsReadOnlyBadge({ lsConfigured: false, workspaceAdmin: true }), false);
-  assert.equal(showsReadOnlyBadge({ lsConfigured: true, workspaceAdmin: false }), false);
-  assert.equal(caseHeadAlert({ ...base, status: "sospeso" })?.text, "Caso in pausa: niente invii né promemoria finché non riprende.");
+  assert.equal(caseHeadAlert({ ...base, status: "sospeso" })?.text, "Realizzazione in pausa: niente invii né promemoria finché non riprende.");
+  assert.equal(caseHeadAlert({ ...base, status: "chiuso" })?.text, "Realizzazione chiusa: si può solo leggere.");
+  // One signal per state: «Riconferma il via allo sviluppo» and «Riprendi la realizzazione» say it already.
+  assert.equal(caseHeadAlert({ ...base, status: "in_sviluppo", gateReconfirm: true, primary: "riconferma_via" }), null);
+  assert.equal(caseHeadAlert({ ...base, status: "in_sviluppo", gateReconfirm: true, primary: "verifica" })?.kind, "riconferma", "another step: the alert stays");
+  assert.equal(caseHeadAlert({ ...base, status: "sospeso", primary: "riprendi" }), null);
+  assert.equal(caseHeadAlert({ ...base, status: "sospeso", primary: null })?.kind, "pausa", "the client has no «Riprendi»: the alert stays");
+  // F-005: the incomplete configuration goes to the log, never to the header.
+  for (const status of ["bozza", "raccolta", "in_sviluppo"] as const) assert.equal(caseHeadAlert({ ...base, status }), null, status);
+});
+
+test("(rilascio 10, §3.5) the title is always the use case's; the small progress only for who opens the Panoramica", () => {
+  assert.equal(realizationTitle({ caseTitle: "Dossier di prova", parent: { title: "Smistamento delle richieste" } }), "Smistamento delle richieste");
+  assert.equal(realizationTitle({ caseTitle: "Dossier di prova", parent: { title: "  " } }), "Dossier di prova", "an empty use case title falls back");
+  assert.equal(realizationTitle({ caseTitle: "Dossier di prova", parent: null }), "Dossier di prova", "no parent card: the dossier's own");
+  for (const role of ["ls_lead", "ls_analista", "ls_sviluppatore", "owner_cliente", "ai_board", "osservatore"] as const) assert.equal(showsHeaderProgress([role]), true, role);
+  assert.equal(showsHeaderProgress(["approvatore_privacy"]), false, "the privacy approver never opens the Panoramica");
+});
+
+test("(rilascio 10, §3.5, F-043) /via goes to the via section of the Panoramica, keeping the query", () => {
+  const root = "/dashboard/w1/casi-duso/c1";
+  assert.equal(VIA_SECTION_ID, "via");
+  assert.equal(VIA_HREF, `/#${VIA_SECTION_ID}`, "the steps point to the same anchor");
+  assert.equal(viaRedirect(`${root}/via`, ""), `${root}#via`);
+  assert.equal(viaRedirect(`${root}/via/`, "?"), `${root}#via`);
+  assert.equal(viaRedirect(`${root}/via`, "?apri=tappe&x=1"), `${root}?apri=tappe&x=1#via`);
+  assert.equal(viaRedirect(`${root}/via`, "x=1"), `${root}?x=1#via`);
+  for (const path of [`${root}`, `${root}/via/storico`, `${root}/domande`, "/dashboard/w1/use-cases/u1/via", "/via"]) assert.equal(viaRedirect(path, ""), null, path);
+});
+
+test("(rilascio 10, §3.5, F-076) «Controlla N file»: who checks PDFs by hand, on an open realization", () => {
+  const open = { isLateralSpace: true, readOnly: false, status: "raccolta" as const };
+  assert.equal(checksFiles({ ...open, roles: ["ls_lead"] }), true);
+  assert.equal(checksFiles({ ...open, roles: ["ls_analista"] }), true);
+  for (const role of ["ls_sviluppatore", "owner_cliente", "approvatore_privacy", "ai_board", "osservatore"] as const) assert.equal(checksFiles({ ...open, roles: [role] }), false, role);
+  assert.equal(checksFiles({ ...open, roles: ["ls_lead"], isLateralSpace: false }), false, "only a person of Lateral Space");
+  assert.equal(checksFiles({ ...open, roles: ["ls_lead"], readOnly: true }), false);
+  for (const status of ["sospeso", "chiuso"] as const) assert.equal(checksFiles({ ...open, roles: ["ls_lead"], status }), false, status);
 });
 
 test("the primary hides on the page it leads to and stays only on Panoramica anchors", () => {
@@ -155,6 +190,18 @@ test("the primary hides on the page it leads to and stays only on Panoramica anc
   assert.equal(stepHiddenOn(at(`${base}/impostazioni#stato`), `${base}/impostazioni`), true, "«Riprendi il caso» is the section of the same page");
   assert.equal(stepHiddenOn(at(`${base}/impostazioni#stato`), base), false);
   assert.equal(stepHiddenOn(at(`${base}/domande/verifica`), `${base}/domande`), false);
+});
+
+test("(rilascio 10, §3.5) a step whose command is in the via section hides on the Panoramica, which has the filled one", () => {
+  const base = "/dashboard/w1/casi-duso/c1";
+  assert.deepEqual([...STEPS_WITH_PAGE_COMMAND], ["proponi_via", "manda_link_firma"]);
+  assert.equal(stepHasPageCommand("proponi_via"), true);
+  assert.equal(stepHasPageCommand("riconferma_via"), false, "nothing to press there: the filled one stays and scrolls to #via");
+  const propose = { href: `${base}#via`, caseBase: base, pageCommand: true };
+  assert.equal(stepHiddenOn(propose, base), true, "on the Panoramica the section proposes");
+  assert.equal(stepHiddenOn(propose, `${base}/`), true);
+  assert.equal(stepHiddenOn(propose, `${base}/domande`), false, "on the other tabs it leads there");
+  assert.equal(stepHiddenOn({ href: `${base}#via`, caseBase: base }, base), false, "an anchor of the Panoramica without a command stays");
 });
 
 test("the primary never shows on Impostazioni, panels included: one filled button there", () => {

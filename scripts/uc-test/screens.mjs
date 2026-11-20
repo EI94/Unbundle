@@ -8,7 +8,7 @@
 //
 //   # the pages of a package, strict checks
 //   UC_TEST_ROOT=… node --no-warnings scripts/uc-test/screens.mjs --label C2 \
-//     --path "/dashboard/{ws}/casi-duso/{case}" --path "/dashboard/{ws}/casi-duso/{case}/via" \
+//     --path "/dashboard/{ws}/casi-duso/{case}" --path "/dashboard/{ws}/casi-duso/{case}/domande" \
 //     --as ls-lead,ls-analista,owner-cliente,osservatore --widths 1440,400
 //
 //   # routes from a module: export default [{ name?, path, as?: [account…] }]

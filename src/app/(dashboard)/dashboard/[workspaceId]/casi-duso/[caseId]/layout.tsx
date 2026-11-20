@@ -1,6 +1,6 @@
 import { casePath } from "@/components/uc/catalog/paths";
 import { CatalogExportLinks } from "@/components/uc/export/catalog-export-links";
-import { loadCaseHead } from "@/components/uc/shell/case-data";
+import { loadCaseHead, loadFilesToCheck } from "@/components/uc/shell/case-data";
 import { CaseHeader } from "@/components/uc/shell/case-header";
 import { CaseUrlPanels, type CaseMenuEntry, type CaseStepView, type CaseTransitionView } from "@/components/uc/shell/case-menu";
 import { CaseStickyBar, CaseTabs } from "@/components/uc/shell/case-tabs";
@@ -10,34 +10,49 @@ import { LateralSpaceViewerProvider } from "@/components/uc/shell/viewer-context
 import { SkipLink, UC_CONTENT_ID } from "@/components/uc/ui/skip-link";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { UcAccessError } from "@/lib/db/queries/uc-access";
-import { CASE_STATUS_LABEL, isCasePastG1 } from "@/lib/uc/case-state";
+import { CASE_STATUS_LABEL } from "@/lib/uc/case-state";
 import { exportChoices } from "@/lib/uc/export/request";
-import { CASE_STATUS_TONE, canOpenShellPage, caseHeadAlert, caseMenuFor, caseTabsFor, caseTrail, showsReadOnlyBadge, transitionHint } from "@/lib/uc/views/case-shell";
+import { ucLog } from "@/lib/uc/log";
+import {
+  CASE_STATUS_TONE,
+  canOpenShellPage,
+  caseHeadAlert,
+  caseMenuFor,
+  caseTabsFor,
+  caseTrail,
+  realizationTitle,
+  showsHeaderProgress,
+  stepHasPageCommand,
+  transitionHint,
+} from "@/lib/uc/views/case-shell";
 import { NEXT_STEP_ICON, caseNextSteps, nextStepFor, resolveStepHref, type NextStep } from "@/lib/uc/views/next-step";
 import { isLsViewer } from "@/lib/uc/views/status-groups";
-import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
 
 /** Il blocco testata più schede: lo misura `screens.mjs` (≤ 260 px a 1440) e lo guarda la barra fissa. */
 const CASE_HEAD_ID = "uc-case-head";
 
 /**
- * Guscio del dossier (DESIGN §3.3): testata, schede, barra fissa, menu «⋯» e
- * pannelli dall'indirizzo, sopra ogni pagina del caso.
+ * Guscio del dossier (DESIGN §3.3; rilascio 10, §3.5): testata, schede, barra
+ * fissa, menu «⋯» e pannelli dall'indirizzo, sopra ogni pagina del caso.
  *
  * I dati della testata sono un giro solo (`uc-header.ts`, prontezza in cache;
- * subito dopo un comando, con la cache ancora indietro, dal vivo e un giro in più).
- * Ogni pagina ripete da sé `requireWorkspacePage(` e il controllo del ruolo di
- * caso, perché un layout non si riesegue nelle navigazioni interne. Le azioni
- * dei casi invalidano questo layout (`revalidatePath(…, "layout")`), così la
- * testata resta aggiornata. Senza le tabelle uc ogni pagina mostra «Sezione
- * non disponibile», come la lista.
+ * subito dopo un comando, con la cache ancora indietro, dal vivo e un giro in più),
+ * più, per chi controlla i file, il conteggio dei PDF da controllare a mano
+ * (`loadFilesToCheck`, il passo «Controlla N file»). Ogni pagina ripete da sé
+ * `requireWorkspacePage(` e il controllo del ruolo di caso, perché un layout non
+ * si riesegue nelle navigazioni interne. Le azioni dei casi invalidano questo
+ * layout (`revalidatePath(…, "layout")`), così la testata resta aggiornata.
+ * Senza le tabelle uc ogni pagina mostra «Questa pagina non si è caricata.»
+ * (`SectionUnavailable`). Con la configurazione di Lateral Space incompleta la
+ * realizzazione è in sola lettura: lo dice il log, non la testata (F-005).
  */
 export default async function CaseLayout({ children, params }: { children: React.ReactNode; params: Promise<{ workspaceId: string; caseId: string }> }) {
   const { workspaceId, caseId } = await params;
   const { session, access } = await requireWorkspacePage(workspaceId);
   let head: Awaited<ReturnType<typeof loadCaseHead>>;
+  let filesToCheck: number;
   try {
-    head = await loadCaseHead(workspaceId, caseId, session.user.id, access.role);
+    [head, filesToCheck] = await Promise.all([loadCaseHead(workspaceId, caseId, session.user.id, access.role), loadFilesToCheck(workspaceId, caseId, session.user.id, access.role)]);
   } catch (error) {
     if (error instanceof UcAccessError && error.code === "non_disponibile") return <SectionUnavailable />;
     throw error;
@@ -47,14 +62,13 @@ export default async function CaseLayout({ children, params }: { children: React
   const c = header.case;
   const base = casePath(workspaceId, caseId);
   const at = (segment: string) => `${base}/${segment}`;
+  if (!caseAccess.lsConfigured) ucLog({ level: "warn", area: "uc", op: "configurazione_da_completare", code: "domini_ls_mancanti", workspaceId, caseId });
 
   // In pausa, a caso chiuso e in sola lettura i controlli di scrittura non ci sono.
   const writable = !caseAccess.readOnly && c.status !== "chiuso";
-  // In pausa si riprende soltanto: niente firme dal menu.
-  const signable = writable && c.status !== "sospeso";
   const exportable = exportChoices(roles, c.catalogVersion);
   const canExport = exportable.validated || exportable.draft;
-  const steps = caseNextSteps(header.nextStep, { roles });
+  const steps = caseNextSteps({ ...header.nextStep, filesToCheck }, { roles });
   const usable = (s: NextStep) => (s.id === "scarica_catalogo" ? canExport : writable);
   const next = nextStepFor(steps);
   const primary = next && usable(next) ? next : null;
@@ -67,6 +81,8 @@ export default async function CaseLayout({ children, params }: { children: React
         // (Rilascio 10, §7.4) L'icona e il «?» come il passo dello use case.
         icon: NEXT_STEP_ICON[primary.id],
         why: primary.detail,
+        // (Rilascio 10, §3.5) «Proponi il via» e «Manda il link» si fanno nella sezione «Via allo sviluppo»: lì il pulsante pieno è suo.
+        pageCommand: stepHasPageCommand(primary.id),
       }
     : null;
   const transitionStep = steps.find((s) => s.owner === "me" && s.transition && usable(s));
@@ -80,18 +96,15 @@ export default async function CaseLayout({ children, params }: { children: React
         }
       : null;
 
-  const menu: CaseMenuEntry[] = caseMenuFor(roles, {
-    pendingSignatures: signable ? header.signatures.length : 0,
-    pastVia: isCasePastG1(c.status, c.statusBeforeSuspension),
-    exportable: canExport,
-  }).map((m) => ({ key: m.key, label: m.label, href: m.segment === null ? null : at(m.segment) }));
+  const menu: CaseMenuEntry[] = caseMenuFor(roles, { exportable: canExport }).map((m) => ({ key: m.key, label: m.label, href: m.segment === null ? null : at(m.segment) }));
 
-  const workspaceAdmin = canManageWorkspaceSettings(access.role);
-  const canOpenVia = canOpenShellPage("via", roles);
-  const alert = caseHeadAlert({ status: c.status, gateReconfirm: header.readiness?.gate_reconfirm === true, lsConfigured: caseAccess.lsConfigured, workspaceAdmin, canOpenVia });
+  // (Rilascio 10, §3.5) Un segnale per stato: l'avviso non c'è quando il pulsante pieno dice già la stessa cosa.
+  const alert = caseHeadAlert({ status: c.status, gateReconfirm: header.readiness?.gate_reconfirm === true, canOpenVia: canOpenShellPage("via", roles), primary: primary?.id ?? null });
   const tabs = caseTabsFor(roles);
   const status = { tone: CASE_STATUS_TONE[c.status], label: CASE_STATUS_LABEL[c.status] };
   const ls = isLsViewer(roles);
+  // (Rilascio 10, §3.5) Il titolo è sempre quello dello use case, in testata e nella barra fissa.
+  const title = realizationTitle({ caseTitle: c.title, parent: header.parent });
 
   return (
     <div data-uc-case-root="" className="flex min-w-0 flex-1 flex-col">
@@ -100,20 +113,17 @@ export default async function CaseLayout({ children, params }: { children: React
         <div className={`mx-auto w-full max-w-6xl min-w-0 px-4 sm:px-6 lg:px-8 ${tabs.length === 0 ? "pb-4" : ""}`}>
           <CaseHeader
             trail={caseTrail({ workspaceId, caseBase: base, parent: header.parent })}
-            overviewLinkable={canOpenShellPage("panoramica", roles)}
-            title={c.title}
-            oneLiner={c.oneLiner}
+            title={title}
             status={status}
-            readOnlyBadge={showsReadOnlyBadge({ lsConfigured: caseAccess.lsConfigured, workspaceAdmin })}
-            alert={alert ? { ...alert, href: alert.action ? at(alert.action.segment) : null } : null}
-            progress={header.progress ? { ...header.progress, href: canOpenVia ? at("via") : null, audience: ls ? "ls" : "cliente" } : null}
+            alert={alert ? { ...alert, action: alert.action ? { label: alert.action.label, href: resolveStepHref(base, alert.action.href) } : null } : null}
+            progress={header.progress && showsHeaderProgress(roles) ? { ...header.progress, audience: ls ? "ls" : "cliente" } : null}
             step={stepView}
             menu={menu}
           />
           <CaseTabs basePath={base} tabs={tabs} />
         </div>
       </div>
-      <CaseStickyBar basePath={base} tabs={tabs} headId={CASE_HEAD_ID} title={c.title} status={status} progress={header.progress} step={stepView} />
+      <CaseStickyBar basePath={base} tabs={tabs} headId={CASE_HEAD_ID} title={title} status={status} progress={header.progress} step={stepView} />
       <CaseUrlPanels
         workspaceId={workspaceId}
         caseId={caseId}

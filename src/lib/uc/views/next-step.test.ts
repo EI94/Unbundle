@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { CaseRole } from "../vocab.ts";
-import { NEXT_STEP_ICON, caseNextSteps, myNextSteps, nextStepFor, resolveStepHref, whoseTurn, type NextStep, type NextStepInput } from "./next-step.ts";
+import { FILES_HREF, NEXT_STEP_ICON, VIA_HREF, caseNextSteps, myNextSteps, nextStepFor, overviewTodo, resolveStepHref, turnRow, whoseTurn, type NextStep, type NextStepInput } from "./next-step.ts";
 
 const NOW = new Date("2026-10-14T10:00:00Z");
 
@@ -63,7 +63,8 @@ test("row 2: a paused case only resumes, for the lead", () => {
 
 test("row 3: the go-ahead to development must be confirmed again", () => {
   const s = primary({ status: "in_sviluppo", gateReconfirm: true, g1: { required: 245, ok: 242, ready: false, byGroup: {} } }, LEAD);
-  assert.deepEqual(brief(s), { label: "Riconferma il via allo sviluppo", detail: "3 domande indispensabili non sono più a posto.", href: "/via", owner: "me" });
+  // (Rilascio 10, §3.5) Il via sta nella Panoramica, all'ancora `#via`.
+  assert.deepEqual(brief(s), { label: "Riconferma il via allo sviluppo", detail: "3 domande indispensabili non sono più a posto.", href: "/#via", owner: "me" });
   assert.equal(primary({ status: "in_sviluppo", gateReconfirm: true, g1: { required: 10, ok: 9, ready: false, byGroup: {} } }, LEAD)?.detail, "1 domanda indispensabile non è più a posto.");
 });
 
@@ -91,7 +92,7 @@ test("row 4: signatures waiting for the viewer, for the lead, the client owner a
 
 test("row 5: all indispensable questions in place, no proposal yet", () => {
   const ready = { g1: { required: 245, ok: 245, ready: true, byGroup: {} } };
-  assert.deepEqual(brief(primary(ready, LEAD)), { label: "Proponi il via allo sviluppo", detail: "Le 245 domande indispensabili sono a posto.", href: "/via", owner: "me" });
+  assert.deepEqual(brief(primary(ready, LEAD)), { label: "Proponi il via allo sviluppo", detail: "Le 245 domande indispensabili sono a posto.", href: "/#via", owner: "me" });
   assert.equal(steps({ ...ready, pendingGateReview: { lsSigned: false, clientSigned: false } }, LEAD).some((s) => s.id === "proponi_via"), false);
   assert.equal(primary(ready, AN), null);
 });
@@ -159,7 +160,7 @@ test("row 10: blockers that stop indispensable questions; the privacy sheet open
 
 test("row 11: Lateral Space signed the proposal, the client did not", () => {
   const review = { pendingGateReview: { lsSigned: true, clientSigned: false, lsSignedAt: "2026-10-03T09:00:00Z" } };
-  assert.deepEqual(brief(primary(review, LEAD)), { label: "Manda il link per firmare", detail: "Hai firmato il 3 ott. Manca il responsabile del cliente.", href: "/via", owner: "me" });
+  assert.deepEqual(brief(primary(review, LEAD)), { label: "Manda il link per firmare", detail: "Hai firmato il 3 ott. Manca il responsabile del cliente.", href: "/#via", owner: "me" });
   assert.equal(whoseTurn(steps(review, AN), input(review)), "Tocca al cliente: manca la firma del responsabile del cliente.");
   // (Rilascio 10, §1 regola 2) Chi ha un passo suo non vede «Tocca anche a …»: basta il pulsante pieno.
   assert.equal(whoseTurn(steps(review, LEAD), input(review)), null);
@@ -286,7 +287,7 @@ test("hrefs are relative to the dossier root", () => {
 });
 
 test("(rilascio 10, §7.4) ogni passo ha la sua icona, la stessa dei passi dello use case", () => {
-  const ids = ["riprendi", "riconferma_via", "firma", "proponi_via", "avvia_sviluppo", "aggiungi_referenti", "invia_domande", "verifica", "sciogli_blocchi", "manda_link_firma", "indica_firmatario_privacy", "scarica_catalogo", "passo_avanti", "risposte_referenti"] as const;
+  const ids = ["riprendi", "riconferma_via", "firma", "proponi_via", "avvia_sviluppo", "aggiungi_referenti", "invia_domande", "verifica", "controlla_file", "sciogli_blocchi", "manda_link_firma", "indica_firmatario_privacy", "scarica_catalogo", "passo_avanti", "risposte_referenti"] as const;
   assert.deepEqual(Object.keys(NEXT_STEP_ICON).sort(), [...ids].sort());
   assert.equal(NEXT_STEP_ICON.verifica, "verifica");
   assert.equal(NEXT_STEP_ICON.invia_domande, "chiedi");
@@ -300,4 +301,75 @@ test("(rilascio 10, §1 regola 2) «Tocca a …» solo quando non tocca a chi gu
     if (myNextSteps(s).length > 0) assert.equal(line, null, roles.join());
     assert.doesNotMatch(line ?? "", /Tocca anche/, roles.join());
   }
+});
+
+test("(rilascio 10, §3.5) the via steps point to the via section of the Panoramica", () => {
+  assert.equal(VIA_HREF, "/#via");
+  const base = "/dashboard/ws/casi-duso/caso";
+  assert.equal(resolveStepHref(base, VIA_HREF), `${base}#via`);
+  const via = [
+    primary({ gateReconfirm: true, status: "in_sviluppo", g1: { required: 245, ok: 242, ready: false, byGroup: {} } }, LEAD),
+    primary({ g1: { required: 245, ok: 245, ready: true, byGroup: {} } }, LEAD),
+    primary({ pendingGateReview: { lsSigned: true, clientSigned: false, lsSignedAt: "2026-10-03T09:00:00Z" } }, LEAD),
+  ];
+  assert.deepEqual(via.map((s) => [s?.id, s?.href]), [
+    ["riconferma_via", "/#via"],
+    ["proponi_via", "/#via"],
+    ["manda_link_firma", "/#via"],
+  ]);
+  for (const roles of [LEAD, AN, OWN, DEV]) for (const s of steps({ gateReconfirm: true, unsentMust: 3 }, roles)) assert.notEqual(s.href, "/via", `${roles.join()}: ${s.id}`);
+});
+
+test("(rilascio 10, §3.5, F-076) «Controlla N file»: a step after the verification, for who checks files, to the File panel", () => {
+  assert.equal(FILES_HREF, "/domande?apri=file");
+  assert.equal(NEXT_STEP_ICON.controlla_file, "dossier");
+  for (const roles of [LEAD, AN]) {
+    assert.deepEqual(brief(primary({ filesToCheck: 2 }, roles)), { label: "Controlla 2 file", detail: "2 PDF da aprire e controllare prima di usarli.", href: "/domande?apri=file", owner: "me" }, roles.join());
+  }
+  assert.equal(primary({ filesToCheck: 1 }, LEAD)?.label, "Controlla 1 file");
+  assert.equal(primary({ filesToCheck: 1 }, LEAD)?.detail, "Un PDF da aprire e controllare prima di usarlo.");
+  for (const roles of [OWN, PRIV, DEV, BOARD, OBS]) assert.ok(!steps({ filesToCheck: 3 }, roles).some((s) => s.id === "controlla_file"), roles.join());
+  assert.ok(!steps({}, LEAD).some((s) => s.id === "controlla_file"), "without the count, no step (zero is not shown)");
+  assert.ok(!steps({ filesToCheck: 0 }, LEAD).some((s) => s.id === "controlla_file"));
+  // The order of DESIGN §2.7: what unblocks others first, then the desk work; the files right after the verification.
+  const order = steps({ unsentMust: 14, toVerifyForMe: 9, toVerifyTotal: 9, filesToCheck: 2, blockersActive: 1, blockedMust: 4 }, LEAD).map((s) => s.id);
+  assert.deepEqual(order, ["invia_domande", "verifica", "controlla_file", "sciogli_blocchi"]);
+  assert.deepEqual(steps({ status: "sospeso", filesToCheck: 2 }, LEAD).map((s) => s.id), ["riprendi"], "paused: only resuming");
+});
+
+test("(rilascio 10, §3.5) «Tocca a …» rows: something another person must do, never the viewer's own", () => {
+  const row = (i: Partial<NextStepInput>, roles: CaseRole[]) => turnRow(steps(i, roles), input(i), { roles });
+  // The client waits for Lateral Space; a verifier never reads «Tocca a Lateral Space».
+  assert.deepEqual(row({ toVerifyTotal: 12 }, OWN), { title: "12 risposte in verifica", turn: "Tocca a Lateral Space" });
+  assert.deepEqual(row({ toVerifyTotal: 1 }, DEV), { title: "1 risposta da verificare", turn: "Tocca a Lateral Space" });
+  for (const roles of [LEAD, AN]) assert.equal(row({ toVerifyTotal: 12 }, roles), null, roles.join());
+  assert.deepEqual(row({ waitingOnReferents: 10 }, LEAD), { title: "Risposte a 10 domande", turn: "Tocca ai referenti" });
+  assert.deepEqual(row({ waitingOnReferents: 1 }, OWN), { title: "Risposta a 1 domanda", turn: "Tocca ai referenti" });
+  // The client's signature: not for the lead who sends the link, nor for the client who signs.
+  const review = { pendingGateReview: { lsSigned: true, clientSigned: false } };
+  assert.deepEqual(row(review, AN), { title: "Firma del via allo sviluppo", turn: "Tocca al cliente" });
+  assert.equal(row(review, LEAD), null, "the lead has «Manda il link per firmare»");
+  assert.equal(row({ ...review, mySignaturesPending: [{ kind: "via", otherSideSigned: true }] }, OWN), null, "the client signs: their own step");
+  for (const status of ["sospeso", "chiuso"] as const) assert.equal(row({ status, waitingOnReferents: 3 }, OWN), null, status);
+  assert.equal(row({}, OWN), null);
+  for (const roles of [LEAD, AN, OWN, PRIV, DEV, BOARD, OBS]) assert.doesNotMatch(row({ toVerifyTotal: 3, waitingOnReferents: 2, ...review }, roles)?.turn ?? "", /Tocca anche|Tocca a te/, roles.join());
+});
+
+test("(rilascio 10, §3.5) «Da fare»: never the filled button again, at most 3 rows, the «Tocca a …» row last", () => {
+  const busy = { unsentMust: 14, toVerifyForMe: 9, toVerifyTotal: 9, filesToCheck: 2, blockersActive: 1, blockedMust: 4, waitingOnReferents: 6 };
+  const all = steps(busy, LEAD);
+  const first = nextStepFor(all);
+  const turn = turnRow(all, input(busy), { roles: LEAD });
+  const todo = overviewTodo(all, first, turn);
+  assert.equal(first?.id, "invia_domande");
+  assert.deepEqual(todo.steps.map((s) => s.id), ["verifica", "controlla_file", "sciogli_blocchi"]);
+  assert.equal(todo.turn, null, "three rows already: no room for «Tocca a …»");
+  const fewer = { toVerifyForMe: 9, toVerifyTotal: 9, waitingOnReferents: 6 };
+  const some = steps(fewer, LEAD);
+  const t = overviewTodo(some, nextStepFor(some), turnRow(some, input(fewer), { roles: LEAD }));
+  assert.deepEqual(t.steps, [], "the only step is the filled button");
+  assert.deepEqual(t.turn, { title: "Risposte a 6 domande", turn: "Tocca ai referenti" });
+  // Without a filled button (a read-only first step) the rows are the viewer's usable steps.
+  assert.deepEqual(overviewTodo(all, null, null).steps.map((s) => s.id), ["invia_domande", "verifica", "controlla_file"]);
+  assert.deepEqual(overviewTodo([], null, null), { steps: [], turn: null }, "nothing to do: no section");
 });

@@ -76,6 +76,44 @@ function TabRow({ basePath, tabs, compact = false, ariaLabel }: { basePath: stri
   );
 }
 
+function clampCount(value: number, max: number): number {
+  return Math.max(0, Math.min(max, Number.isFinite(value) ? Math.round(value) : 0));
+}
+
+/**
+ * (Rilascio 10, §3.5) L'avanzamento piccolo della testata, accanto allo stato: la barra e «186/245». Non sulla
+ * Panoramica, che ha il numero grande «186 di 245» (un numero per schermata); non è un link: la Panoramica è la prima
+ * scheda. I lettori di schermo leggono la frase intera. Senza domande indispensabili non c'è (lo zero non si mostra).
+ */
+export function CaseHeadProgress({ ok, required, inReview, audience }: { ok: number; required: number; inReview: number; audience: "ls" | "cliente" }) {
+  const active = useActiveTab();
+  const total = Number.isFinite(required) ? Math.round(required) : 0;
+  if (active === "panoramica" || total <= 0) return null;
+  const done = clampCount(ok, total);
+  const review = clampCount(inReview, total - done);
+  const count = `${formatCountIt(done)} di ${formatCountIt(total)}`;
+  const text = `${count} domande indispensabili a posto${review > 0 ? `, ${formatCountIt(review)} ${audience === "cliente" ? "in verifica" : "da verificare"}` : ""}`;
+  return (
+    <span data-slot="case-head-progress" className="inline-flex items-center gap-2 text-sm text-muted-foreground" title={text}>
+      <span
+        role="progressbar"
+        aria-label="Domande indispensabili a posto"
+        aria-valuemin={0}
+        aria-valuemax={total}
+        aria-valuenow={done}
+        aria-valuetext={text}
+        className="relative flex h-1.5 w-16 overflow-hidden rounded-full bg-muted"
+      >
+        <span className="h-full bg-uc-verde" style={{ width: `${(done / total) * 100}%` }} />
+        {review > 0 && <span className="h-full bg-uc-giallo/40" style={{ width: `${(review / total) * 100}%` }} />}
+      </span>
+      <span aria-hidden className="tabular-nums">
+        {formatCountIt(done)}/{formatCountIt(total)}
+      </span>
+    </span>
+  );
+}
+
 /** Le schede sotto la testata, dentro il blocco della testata. */
 export function CaseTabs({ basePath, tabs }: { basePath: string; tabs: readonly CaseTab[] }) {
   if (tabs.length === 0) return null;
