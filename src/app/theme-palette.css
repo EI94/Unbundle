@@ -1,7 +1,7 @@
 /* Generato da scripts/theme/palette-roles.mjs: non modificare a mano (node scripts/theme/palette-roles.mjs
    lo riscrive, --check dice se è allineato ai sorgenti). I colori fissi di Tailwind scelti per il
    fondo scuro: nel tema scuro il valore di sempre, nel tema «Chiaro» del dashboard un passo più
-   scuro della stessa tinta. 62 voci. */
+   scuro della stessa tinta. 60 voci. */
 @theme inline {
   --text-color-red-200: var(--palette-text-red-200, oklch(88.5% 0.062 18.334));
   --text-color-red-300: var(--palette-text-red-300, oklch(80.8% 0.114 19.571));
@@ -45,7 +45,6 @@
   --background-color-teal-500: var(--palette-background-teal-500, oklch(70.4% 0.14 182.503));
   --background-color-sky-400: var(--palette-background-sky-400, oklch(74.6% 0.16 232.661));
   --background-color-sky-500: var(--palette-background-sky-500, oklch(68.5% 0.169 237.323));
-  --background-color-sky-600: var(--palette-background-sky-600, oklch(58.8% 0.158 241.966));
   --background-color-blue-500: var(--palette-background-blue-500, oklch(62.3% 0.214 259.815));
   --background-color-indigo-500: var(--palette-background-indigo-500, oklch(58.5% 0.233 277.117));
   --background-color-purple-500: var(--palette-background-purple-500, oklch(62.7% 0.265 303.9));
@@ -57,7 +56,6 @@
   --border-color-amber-500: var(--palette-border-amber-500, oklch(76.9% 0.188 70.08));
   --border-color-green-500: var(--palette-border-green-500, oklch(72.3% 0.219 149.579));
   --border-color-emerald-500: var(--palette-border-emerald-500, oklch(69.6% 0.17 162.48));
-  --border-color-emerald-600: var(--palette-border-emerald-600, oklch(59.6% 0.145 163.225));
   --border-color-teal-500: var(--palette-border-teal-500, oklch(70.4% 0.14 182.503));
   --border-color-sky-500: var(--palette-border-sky-500, oklch(68.5% 0.169 237.323));
   --border-color-indigo-500: var(--palette-border-indigo-500, oklch(58.5% 0.233 277.117));
@@ -110,7 +108,6 @@
   --palette-background-teal-500: oklch(51.1% 0.096 186.391); /* teal-700 */
   --palette-background-sky-400: oklch(50% 0.134 242.749); /* sky-700 */
   --palette-background-sky-500: oklch(50% 0.134 242.749); /* sky-700 */
-  --palette-background-sky-600: oklch(44.3% 0.11 240.79); /* sky-800 */
   --palette-background-blue-500: oklch(48.8% 0.243 264.376); /* blue-700 */
   --palette-background-indigo-500: oklch(45.7% 0.24 277.023); /* indigo-700 */
   --palette-background-purple-500: oklch(49.6% 0.265 301.924); /* purple-700 */
@@ -122,7 +119,6 @@
   --palette-border-amber-500: oklch(55.5% 0.163 48.998); /* amber-700 */
   --palette-border-green-500: oklch(52.7% 0.154 150.069); /* green-700 */
   --palette-border-emerald-500: oklch(50.8% 0.118 165.612); /* emerald-700 */
-  --palette-border-emerald-600: oklch(50.8% 0.118 165.612); /* emerald-700 */
   --palette-border-teal-500: oklch(51.1% 0.096 186.391); /* teal-700 */
   --palette-border-sky-500: oklch(50% 0.134 242.749); /* sky-700 */
   --palette-border-indigo-500: oklch(45.7% 0.24 277.023); /* indigo-700 */

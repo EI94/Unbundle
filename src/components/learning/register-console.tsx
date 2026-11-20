@@ -1,44 +1,39 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import type { FormEvent, ReactNode } from "react";
+import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { Download } from "lucide-react";
 import type { TrainingRegister } from "@/lib/learning/register";
 import { dateTime, longDate, sessionLabel, sessionStateLabel } from "@/lib/learning/register-format";
 import { criteriaMap, italianAuthority, legalFramework, limits, notIncluded, presenceDefinition, privacyGuidance, REGISTER_LEGAL_VERIFIED_ON } from "@/lib/learning/register-legal";
+import { missingCompanyFields, registerFacts, registerStatus } from "@/lib/learning/register-view";
+import { LEARNING_TEXT } from "@/lib/learning/text";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { AdminNotice, AdminSection, AdminSelect } from "./admin-shared";
+import { StatusDot } from "@/components/uc/ui/status-dot";
+import { Fold } from "@/components/ui-10/fold";
+import { AdminNotice, AdminSelect } from "./admin-shared";
+
+const G = LEARNING_TEXT.register;
 
 /**
- * Il registro della formazione IA, per l'amministratore. Prima la risposta
- * alla domanda che conta in un controllo — «siamo a posto?» — poi la copia da
- * consegnare, poi i dettagli.
+ * Il «Registro della formazione AI», per chi amministra il workspace o gestisce un corso (rilascio 10, ondata 7a,
+ * docs/ui-10/PROPOSTA-10.md §3.9, audit Fuori §4.13). Prima la risposta alla domanda che conta in un controllo —
+ * «siamo a posto?» — in una frase («In ordine», oppure che cosa manca, con il link per sistemarlo); poi la copia da
+ * consegnare, «Scarica PDF» il solo pulsante pieno, con Excel come link; poi righe chiuse: Partecipanti, Registra una
+ * presenza, Lezioni, Dati dell'azienda (aperta da sola se mancano dati), Contenuti, Verifica una copia (con «Mostra
+ * impronta»), Cosa dice la norma. Le operazioni, il contenuto del registro, il PDF, l'Excel e la loro norma non
+ * cambiano; la norma sulla pagina sta tutta nella sua piega.
  */
 
 type ExportRow = { id: string; format: "pdf" | "xlsx"; sha256: string; sizeBytes: number; participantCount: number; companyDomain: string | null; generatedAt: string; generatedBy: string };
 type Result = { ok: boolean; message?: string; match?: { id: string; format: string; generatedAt: string; generatedBy: string; participantCount: number; companyDomain: string | null } | null };
 
 const sessionKey = (p: { programId: string; moduleId: string; cohortId: string }) => `${p.programId}|${p.moduleId}|${p.cohortId}`;
-
-function Table({ head, children, label }: { head: string[]; children: ReactNode; label: string }) {
-  return <div className="overflow-x-auto rounded-lg border">
-    <table className="w-full min-w-[640px] text-left text-sm" aria-label={label}>
-      <thead className="bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground"><tr>{head.map((h) => <th key={h} scope="col" className="px-3 py-2 font-medium">{h}</th>)}</tr></thead>
-      <tbody className="divide-y">{children}</tbody>
-    </table>
-  </div>;
-}
-
-function Check({ ok, title, children }: { ok: boolean | "info"; title: string; children?: ReactNode }) {
-  const tone = ok === true ? "bg-emerald-600" : ok === "info" ? "bg-sky-600" : "bg-amber-500";
-  return <li className="flex gap-3">
-    <span aria-hidden className={`mt-1.5 size-2.5 shrink-0 rounded-full ${tone}`} />
-    <div className="space-y-1"><p className="font-medium">{ok === true ? "✓ " : ""}{title}</p>{children && <div className="text-sm text-muted-foreground">{children}</div>}</div>
-  </li>;
-}
+const linkAction = "inline-flex min-h-11 items-center text-sm font-medium underline decoration-foreground/40 underline-offset-4 outline-none hover:decoration-foreground focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 sm:min-h-9";
 
 export function RegisterConsole({ workspaceId, userId, canEditSettings, register, exports }: {
   workspaceId: string; userId: string; canEditSettings: boolean; register: TrainingRegister; exports: ExportRow[];
@@ -49,7 +44,6 @@ export function RegisterConsole({ workspaceId, userId, canEditSettings, register
   const [lastExport, setLastExport] = useState<{ format: string; id: string; sha: string } | null>(null);
   const [company, setCompany] = useState("");
   const inFlight = useRef(false);
-  const org = register.organization;
   const t = register.totals;
   const sessionByKey = useMemo(() => new Map(register.sessions.map((s) => [sessionKey(s), s])), [register.sessions]);
 
@@ -98,102 +92,61 @@ export function RegisterConsole({ workspaceId, userId, canEditSettings, register
       link.href = url; link.download = name; document.body.appendChild(link); link.click(); link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 10_000);
       setLastExport({ format, id: response.headers.get("x-register-export-id") ?? "", sha: response.headers.get("x-register-sha256") ?? "" });
-      setNotice({ message: `${format === "pdf" ? "PDF" : "Excel"} scaricato. La piattaforma ne ha registrato codice e impronta.`, error: false });
+      setNotice({ message: G.downloaded(format), error: false });
       router.refresh();
     } catch {
       setNotice({ message: "Connessione interrotta durante l'esportazione. Riprova.", error: true });
     } finally { inFlight.current = false; setBusy(false); }
   }
 
-  // ─── Stato del registro ───
-  const multiCompany = register.companies.length > 1;
-  const missingFields = [
-    !multiCompany && !org.legalName && "ragione sociale",
-    ...(multiCompany ? register.companies.filter((c) => !c.legalName).map((c) => `ragione sociale per @${c.domain}`) : []),
-    !org.registerOwner && "referente del registro",
-    !org.aiActRole && "ruolo ai sensi dell'AI Act",
-    !org.aiSystems.length && "sistemi di IA in uso",
-    !org.useContext && "contesto d'uso",
-    !org.trainers && "docenti",
-  ].filter(Boolean) as string[];
-  const emptySessions = register.sessions.filter((s) => s.state === "senza_partecipanti");
-  const lastHeldEnd = register.sessions.filter((s) => s.state === "svolta").map((s) => s.endsAt).sort().at(-1) ?? null;
   const lastCopy = exports[0] ?? null;
-  const copyIsCurrent = Boolean(lastCopy && (!lastHeldEnd || lastCopy.generatedAt >= lastHeldEnd));
+  const status = registerStatus(register, lastCopy?.generatedAt ?? null);
+  const facts = registerFacts(register, lastCopy ? dateTime(lastCopy.generatedAt) : null);
+  const missing = missingCompanyFields(register).length > 0;
 
   return <div className="space-y-6" aria-busy={busy}>
-    <p className="max-w-3xl">
-      Il registro raccoglie da solo le prove della formazione sull&apos;IA svolta con {register.provider.name}: chi ha partecipato, quando, a quale
-      contenuto, con quali materiali. Serve a mostrare, in caso di controllo, le misure adottate ai sensi dell&apos;art. 4 dell&apos;AI Act.
-      Non contiene risposte né punteggi.
-    </p>
+    <section aria-label={G.title} data-testid="register-status" className="space-y-1">
+      <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-base">
+        <StatusDot tone={status.tone} label={status.sentence} size="md" />
+        {status.fix ? <a className={linkAction} href={`#${status.fix}`}>{G.fix}</a> : null}
+      </p>
+      {facts ? <p className="text-sm text-muted-foreground">{facts}</p> : null}
+    </section>
     <AdminNotice message={notice.message} error={notice.error} />
 
-    <AdminSection title="Stato del registro">
-      <ul className="space-y-4">
-        <Check ok={missingFields.length === 0} title={missingFields.length === 0 ? "Dati dell'azienda completi" : "Dati dell'azienda da completare"}>
-          {missingFields.length > 0 && <p>Mancano: {missingFields.join(", ")}. <a className="underline underline-offset-4" href="#dati-azienda">Completa i dati</a> — servono due minuti e compaiono in ogni copia.</p>}
-        </Check>
-        <Check ok={t.sessionsHeld > 0 ? true : "info"} title={t.sessionsHeld > 0
-          ? `${t.sessionsHeld} ${t.sessionsHeld === 1 ? "sessione svolta" : "sessioni svolte"}, ${t.peopleAttended} ${t.peopleAttended === 1 ? "persona ha partecipato" : "persone hanno partecipato"}`
-          : "Nessuna sessione ancora svolta"}>
-          {t.sessionsScheduled > 0 && <p>{t.sessionsScheduled} {t.sessionsScheduled === 1 ? "sessione in programma" : "sessioni in programma"}: entrano nel registro da sole, man mano che si svolgono.</p>}
-        </Check>
-        {t.undocumented > 0 && <Check ok={false} title={`${t.undocumented} ${t.undocumented === 1 ? "iscrizione" : "iscrizioni"} senza partecipazione documentata`}>
-          <p>Persone iscritte a un turno concluso che non sono entrate dal link durante la lezione e non hanno consegnato esercitazioni: non sono contate fra chi ha partecipato. Se erano in aula, <a className="underline underline-offset-4" href="#presenze">registra la presenza</a>.</p>
-        </Check>}
-        {emptySessions.length > 0 && <Check ok={false} title={`${emptySessions.length === 1 ? "Un turno concluso" : `${emptySessions.length} turni conclusi`} senza partecipanti registrati`}>
-          <p>{emptySessions.map((s) => `${s.moduleTitle}, ${sessionLabel(s)}`).join("; ")}. Se la lezione si è tenuta, <a className="underline underline-offset-4" href="#presenze">registra le presenze</a>.</p>
-        </Check>}
-        <Check ok={copyIsCurrent ? true : t.sessionsHeld > 0 ? false : "info"} title={lastCopy ? `Ultima copia esportata il ${dateTime(lastCopy.generatedAt)}` : "Nessuna copia esportata"}>
-          {!copyIsCurrent && t.sessionsHeld > 0 && <p>Scarica una copia dopo ogni sessione e conservala con i documenti dell&apos;azienda: così la prova esiste anche fuori dalla piattaforma.</p>}
-          {copyIsCurrent && <p>La copia è aggiornata all&apos;ultima sessione svolta.</p>}
-        </Check>
-      </ul>
-    </AdminSection>
-
-    <AdminSection title="Scarica il registro">
-      <p className="text-sm">Il PDF è la copia da mostrare o stampare; l&apos;Excel la stessa cosa, da filtrare. Ogni copia riceve un codice e la piattaforma ne conserva l&apos;impronta: chiunque può verificare che non sia stata modificata.</p>
+    <section aria-label={G.pdf} className="space-y-3">
       {register.companies.length > 1 && <div className="max-w-md space-y-1">
-        <Label htmlFor="register-company">Registro di</Label>
+        <Label htmlFor="register-company">{G.company}</Label>
         <AdminSelect id="register-company" value={company} disabled={busy} onChange={(e) => setCompany(e.target.value)}>
-          <option value="">Tutto il corso · {t.people} {t.people === 1 ? "persona" : "persone"}</option>
+          <option value="">{G.allCourse(t.people)}</option>
           {register.companies.map((c) => <option key={c.domain} value={c.domain}>{c.legalName ?? `@${c.domain}`} · {c.people} {c.people === 1 ? "persona" : "persone"}</option>)}
         </AdminSelect>
-        <p className="text-xs text-muted-foreground">Il corso riunisce persone di più società: ognuna può avere il proprio registro, con la propria ragione sociale. La società si riconosce dal dominio dell&apos;email.</p>
+        <p className="text-sm text-muted-foreground">{G.companyHint}</p>
       </div>}
-      <div className="flex flex-wrap gap-3">
-        <Button type="button" disabled={busy} onClick={() => download("pdf")}>{busy ? "Preparazione…" : "Scarica PDF"}</Button>
-        <Button type="button" variant="outline" disabled={busy} onClick={() => download("xlsx")}>Scarica Excel</Button>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <Button type="button" className="min-h-11 w-full sm:min-h-9 sm:w-auto" disabled={busy} onClick={() => download("pdf")} data-testid="register-pdf">
+          <Download aria-hidden data-icon="inline-start" />{busy ? G.preparing : G.pdf}
+        </Button>
+        <button type="button" className={linkAction} disabled={busy} onClick={() => download("xlsx")} data-testid="register-excel">{G.excel}</button>
       </div>
-      {lastExport && <dl className="grid gap-1 rounded-lg bg-muted/40 p-3 text-sm sm:grid-cols-[10rem_1fr]" data-testid="last-export">
-        <dt className="text-muted-foreground">Codice</dt><dd className="break-all font-mono text-xs">{lastExport.id}</dd>
-        <dt className="text-muted-foreground">Impronta SHA-256</dt><dd className="break-all font-mono text-xs">{lastExport.sha}</dd>
-      </dl>}
-    </AdminSection>
+      {lastExport && <details className="text-sm" data-testid="last-export">
+        <summary className="min-h-11 cursor-pointer py-2 sm:min-h-9">{G.fingerprint}</summary>
+        <dl className="grid gap-1 rounded-lg bg-muted/40 p-3 sm:grid-cols-[8rem_1fr]">
+          <dt className="text-muted-foreground">{G.code}</dt><dd className="break-all font-mono text-xs">{lastExport.id}</dd>
+          <dt className="text-muted-foreground">{G.fingerprintLabel}</dt><dd className="break-all font-mono text-xs">{lastExport.sha}</dd>
+        </dl>
+      </details>}
+    </section>
 
-    <Participants register={register} sessionByKey={sessionByKey} busy={busy} run={run} />
-    <ManualEntry register={register} busy={busy} run={run} />
-
-    <AdminSection title={`Sessioni (${register.sessions.length})`}>
-      {register.sessions.length === 0 ? <p className="text-sm text-muted-foreground">Nessuna sessione.</p> : <Table label="Sessioni" head={["Sessione", "Modulo", "Durata", "Stato", "Partecipanti", "Art. 4 in vigore"]}>
-        {register.sessions.map((s) => <tr key={sessionKey(s)}>
-          <td className="px-3 py-2">{sessionLabel(s)}</td>
-          <td className="px-3 py-2">{s.moduleTitle}<span className="block text-xs text-muted-foreground">{s.programTitle}</span></td>
-          <td className="px-3 py-2">{s.durationMinutes} min</td>
-          <td className="px-3 py-2">{sessionStateLabel[s.state]}</td>
-          <td className="px-3 py-2">{s.state === "in_programma" ? `${s.enrolled} iscritti` : s.participants + s.manualParticipants}
-            {s.manualParticipants > 0 && <span className="block text-xs text-muted-foreground">di cui {s.manualParticipants} registrati dal formatore</span>}
-            {s.undocumented > 0 && <span className="block text-xs text-uc-giallo">+ {s.undocumented} senza partecipazione documentata</span>}</td>
-          <td className="px-3 py-2 text-xs">{s.article4 === "modificato" ? "Testo modificato (Reg. UE 2026/1744)" : "Testo originario"}</td>
-        </tr>)}
-      </Table>}
-    </AdminSection>
-
-    <CompanySettings register={register} canEdit={canEditSettings} busy={busy} run={run} />
-    <Contents register={register} />
-    <Copies exports={exports} busy={busy} call={call} />
-    <LegalNotes />
+    <div>
+      <Participants register={register} sessionByKey={sessionByKey} busy={busy} run={run} />
+      <ManualEntry register={register} busy={busy} run={run} />
+      <Lessons register={register} />
+      <CompanySettings register={register} canEdit={canEditSettings} busy={busy} run={run} open={missing} />
+      <Contents register={register} />
+      <Copies exports={exports} busy={busy} call={call} />
+      <LegalNotes />
+    </div>
   </div>;
 }
 
@@ -209,54 +162,56 @@ function Participants({ register, sessionByKey, busy, run }: {
   const needle = query.trim().toLowerCase();
   const shown = register.participants.filter((p) => (!filter || sessionKey(p) === filter)
     && (!needle || p.name.toLowerCase().includes(needle) || (p.email ?? "").toLowerCase().includes(needle)));
-  return <AdminSection title={`Partecipanti (${register.participants.length})`}>
-    {register.participants.length === 0 ? <p className="text-sm text-muted-foreground">Ancora nessun partecipante. Chi entra dal link del turno compare qui da solo.</p> : <>
+  return <Fold id="partecipanti" title={G.participants(register.participants.length)}>
+    {register.participants.length === 0 ? <p className="text-sm text-muted-foreground">{G.noParticipants}</p> : <>
       <div className="grid gap-3 sm:grid-cols-2">
-        <div className="space-y-1"><Label htmlFor="register-search">Cerca</Label><Input id="register-search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Nome o email" /></div>
-        <div className="space-y-1"><Label htmlFor="register-session">Sessione</Label>
+        <div className="space-y-1"><Label htmlFor="register-search">{G.search}</Label><Input id="register-search" className="text-base sm:text-sm" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={G.searchHint} /></div>
+        <div className="space-y-1"><Label htmlFor="register-session">{G.lessonFilter}</Label>
           <AdminSelect id="register-session" value={filter} onChange={(e) => setFilter(e.target.value)}>
-            <option value="">Tutte le sessioni</option>
+            <option value="">{G.allLessons}</option>
             {register.sessions.map((s) => <option key={sessionKey(s)} value={sessionKey(s)}>{s.moduleTitle} · {sessionLabel(s)}</option>)}
           </AdminSelect>
         </div>
       </div>
-      <p className="text-xs text-muted-foreground">«Esercitazioni» conta le esercitazioni consegnate sul totale richiesto dal modulo, non il loro esito. {presenceDefinition}</p>
-      <Table label="Partecipanti" head={["Partecipante", "Sessione", "Accesso", "Esercitazioni", "Stato"]}>
+      <p className="text-sm text-muted-foreground">«Esercitazioni» conta le esercitazioni consegnate sul totale richiesto dal modulo, non il loro esito. {presenceDefinition}</p>
+      <ul aria-label={G.participants(register.participants.length)} className="divide-y rounded-xl border">
         {shown.map((p) => {
           const s = sessionByKey.get(sessionKey(p));
-          return <tr key={p.key} className="align-top">
-            <td className="px-3 py-2"><span className="font-medium">{p.name}</span>{p.email && <span className="block break-all text-xs text-muted-foreground">{p.email}</span>}</td>
-            <td className="px-3 py-2">{p.moduleTitle}{s && <span className="block text-xs text-muted-foreground">{sessionLabel(s)}</span>}</td>
-            <td className="px-3 py-2">{p.joinedAt ? <>{dateTime(p.joinedAt)}<span className="block text-xs text-muted-foreground">{p.joinLabel}</span></> : p.source === "registrazione_manuale"
-              ? <>Registrata il {dateTime(p.recordedAt)}<span className="block text-xs text-muted-foreground">da {p.recordedBy}</span></> : <span className="text-muted-foreground">{p.joinLabel}</span>}</td>
-            <td className="px-3 py-2">{p.source === "registrazione_manuale" ? "—" : `${p.submitted} di ${p.required}`}</td>
-            <td className="px-3 py-2">
-              {p.statusLabel}{p.manualNote && <span className="block text-xs text-muted-foreground">Nota: {p.manualNote}</span>}
-              {p.manualEntryId && (voiding === p.manualEntryId ? <form className="mt-2 space-y-2" onSubmit={async (e: FormEvent) => {
+          return <li key={p.key} className="grid gap-1 p-3 text-sm sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)] sm:gap-4">
+            <div className="min-w-0"><p className="font-medium break-words">{p.name}</p>{p.email && <p className="break-all text-muted-foreground">{p.email}</p>}</div>
+            <div className="min-w-0 text-muted-foreground">
+              <p>{p.moduleTitle}{s ? ` · ${sessionLabel(s)}` : ""}</p>
+              <p>{p.joinedAt ? `${dateTime(p.joinedAt)} · ${p.joinLabel}` : p.source === "registrazione_manuale" ? `Registrata il ${dateTime(p.recordedAt)} da ${p.recordedBy}` : p.joinLabel}</p>
+            </div>
+            <div className="min-w-0 space-y-1">
+              <p className="font-medium">{p.statusLabel}</p>
+              {p.source !== "registrazione_manuale" && <p className="text-muted-foreground">{G.exercises(p.submitted, p.required)}</p>}
+              {p.manualNote && <p className="text-muted-foreground">Nota: {p.manualNote}</p>}
+              {p.manualEntryId && (voiding === p.manualEntryId ? <form className="space-y-2 pt-1" onSubmit={async (e: FormEvent) => {
                 e.preventDefault();
                 await run({ operation: "voidManualEntry", entryId: p.manualEntryId, reason }, () => { setVoiding(null); setReason(""); });
               }}>
-                <Label htmlFor={`void-${p.manualEntryId}`} className="text-xs">Motivo dell&apos;annullamento</Label>
-                <Input id={`void-${p.manualEntryId}`} value={reason} maxLength={500} required minLength={3} onChange={(e) => setReason(e.target.value)} placeholder="Es. nome scritto male" autoFocus />
+                <Label htmlFor={`void-${p.manualEntryId}`}>{G.voidReason}</Label>
+                <Input id={`void-${p.manualEntryId}`} className="text-base sm:text-sm" value={reason} maxLength={500} required minLength={3} onChange={(e) => setReason(e.target.value)} placeholder={G.voidReasonHint} autoFocus />
                 <div className="flex flex-wrap gap-2">
-                  <Button type="submit" size="sm" variant="destructive" disabled={busy || reason.trim().length < 3}>Annulla presenza</Button>
-                  <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => { setVoiding(null); setReason(""); }}>Indietro</Button>
+                  <Button type="submit" variant="destructive" className="min-h-11 sm:min-h-9" disabled={busy || reason.trim().length < 3}>{G.voidConfirm}</Button>
+                  <Button type="button" variant="outline" className="min-h-11 sm:min-h-9" disabled={busy} onClick={() => { setVoiding(null); setReason(""); }}>{G.voidBack}</Button>
                 </div>
-                <p className="text-xs text-muted-foreground">L&apos;annullamento non si può revocare e resta visibile fra le correzioni.</p>
-              </form> : <Button type="button" size="sm" variant="ghost" className="mt-1 h-auto px-0 text-xs underline" disabled={busy} onClick={() => { setVoiding(p.manualEntryId); setReason(""); }}>Annulla questa presenza</Button>)}
-            </td>
-          </tr>;
+                <p className="text-muted-foreground">{G.voidNote}</p>
+              </form> : <Button type="button" variant="outline" className="min-h-11 sm:min-h-9" disabled={busy} onClick={() => { setVoiding(p.manualEntryId); setReason(""); }}>{G.voidEntry}</Button>)}
+            </div>
+          </li>;
         })}
-        {shown.length === 0 && <tr><td colSpan={5} className="px-3 py-4 text-center text-muted-foreground">Nessun partecipante corrisponde ai filtri.</td></tr>}
-      </Table>
+        {shown.length === 0 && <li className="p-3 text-center text-sm text-muted-foreground">{G.noMatch}</li>}
+      </ul>
       {register.corrections.length > 0 && <details className="text-sm">
-        <summary className="cursor-pointer">Correzioni ({register.corrections.length})</summary>
+        <summary className="min-h-11 cursor-pointer py-2 sm:min-h-9">{G.corrections(register.corrections.length)}</summary>
         <ul className="mt-2 space-y-2">{register.corrections.map((c) => <li key={c.id} className="rounded-lg border p-3">
           <span className="font-medium">{c.personName}</span> · {c.moduleTitle} — registrata il {dateTime(c.recordedAt)} da {c.recordedBy}, annullata il {dateTime(c.voidedAt)} da {c.voidedBy}. Motivo: {c.voidReason}
         </li>)}</ul>
       </details>}
     </>}
-  </AdminSection>;
+  </Fold>;
 }
 
 function ManualEntry({ register, busy, run }: { register: TrainingRegister; busy: boolean; run: Run }) {
@@ -267,8 +222,8 @@ function ManualEntry({ register, busy, run }: { register: TrainingRegister; busy
   const [note, setNote] = useState("");
   const target = sessions.find((s) => sessionKey(s) === session);
   if (!sessions.length) return null;
-  return <section id="presenze" className="scroll-mt-6"><AdminSection title="Registra una presenza">
-    <p className="text-sm">Per chi era in aula ma non è entrato dal link: telefono scarico, nessun account, un collaboratore esterno. Chi è entrato dal link compare da solo. Una presenza registrata non si modifica: si annulla, con il motivo.</p>
+  return <Fold id="presenze" title={G.record}>
+    <p className="text-sm">{G.recordIntro}</p>
     <form className="space-y-4" onSubmit={async (e) => {
       e.preventDefault();
       if (!target) return;
@@ -276,22 +231,40 @@ function ManualEntry({ register, busy, run }: { register: TrainingRegister; busy
         () => { setName(""); setEmail(""); setNote(""); });
     }}>
       <fieldset disabled={busy} className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-1 sm:col-span-2"><Label htmlFor="manual-session">Sessione</Label>
+        <div className="space-y-1 sm:col-span-2"><Label htmlFor="manual-session">{G.recordLesson}</Label>
           <AdminSelect id="manual-session" value={session} required onChange={(e) => setSession(e.target.value)}>
-            <option value="">Scegli la sessione</option>
+            <option value="">{G.recordChoose}</option>
             {sessions.map((s) => <option key={sessionKey(s)} value={sessionKey(s)}>{s.moduleTitle} · {sessionLabel(s)}</option>)}
           </AdminSelect>
         </div>
-        <div className="space-y-1"><Label htmlFor="manual-name">Nome e cognome</Label><Input id="manual-name" value={name} required minLength={2} maxLength={200} onChange={(e) => setName(e.target.value)} autoComplete="off" /></div>
-        <div className="space-y-1"><Label htmlFor="manual-email">Email (facoltativa)</Label><Input id="manual-email" type="email" value={email} maxLength={254} onChange={(e) => setEmail(e.target.value)} autoComplete="off" /></div>
-        <div className="space-y-1 sm:col-span-2"><Label htmlFor="manual-note">Nota (facoltativa)</Label><Input id="manual-note" value={note} maxLength={1000} onChange={(e) => setNote(e.target.value)} placeholder="Es. presente in aula, foglio firme del 5 ottobre" /></div>
-        <div className="sm:col-span-2"><Button type="submit" disabled={!target || name.trim().length < 2}>Registra presenza</Button></div>
+        <div className="space-y-1"><Label htmlFor="manual-name">{G.recordName}</Label><Input id="manual-name" className="text-base sm:text-sm" value={name} required minLength={2} maxLength={200} onChange={(e) => setName(e.target.value)} autoComplete="off" /></div>
+        <div className="space-y-1"><Label htmlFor="manual-email">{G.recordEmail}</Label><Input id="manual-email" className="text-base sm:text-sm" type="email" value={email} maxLength={254} onChange={(e) => setEmail(e.target.value)} autoComplete="off" /></div>
+        <div className="space-y-1 sm:col-span-2"><Label htmlFor="manual-note">{G.recordNote}</Label><Input id="manual-note" className="text-base sm:text-sm" value={note} maxLength={1000} onChange={(e) => setNote(e.target.value)} placeholder={G.recordNoteHint} /></div>
+        <div className="sm:col-span-2"><Button type="submit" variant="outline" className="min-h-11 sm:min-h-9" disabled={!target || name.trim().length < 2}>{G.recordSubmit}</Button></div>
       </fieldset>
     </form>
-  </AdminSection></section>;
+  </Fold>;
 }
 
-function CompanySettings({ register, canEdit, busy, run }: { register: TrainingRegister; canEdit: boolean; busy: boolean; run: Run }) {
+function Lessons({ register }: { register: TrainingRegister }) {
+  if (!register.sessions.length) return null;
+  return <Fold id="lezioni" title={G.lessons(register.sessions.length)}>
+    <ul aria-label={G.lessons(register.sessions.length)} className="divide-y rounded-xl border">
+      {register.sessions.map((s) => <li key={sessionKey(s)} className="grid gap-1 p-3 text-sm sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)] sm:gap-4">
+        <div className="min-w-0"><p className="font-medium">{sessionLabel(s)}</p><p className="text-muted-foreground">{s.moduleTitle} · {s.programTitle} · {s.durationMinutes} min</p></div>
+        <div className="min-w-0">
+          <p>{sessionStateLabel[s.state]}</p>
+          <p className="text-muted-foreground">{s.state === "in_programma" ? `${s.enrolled} iscritti` : `${s.participants + s.manualParticipants} partecipanti`}</p>
+          {s.manualParticipants > 0 && <span className="block text-xs text-muted-foreground">di cui {s.manualParticipants} registrati dal formatore</span>}
+          {s.undocumented > 0 && <span className="block text-xs text-uc-giallo">+ {s.undocumented} senza partecipazione documentata</span>}
+        </div>
+        <p className="min-w-0 text-xs text-muted-foreground">Art. 4 in vigore: {s.article4 === "modificato" ? "Testo modificato (Reg. UE 2026/1744)" : "Testo originario"}</p>
+      </li>)}
+    </ul>
+  </Fold>;
+}
+
+function CompanySettings({ register, canEdit, busy, run, open }: { register: TrainingRegister; canEdit: boolean; busy: boolean; run: Run; open: boolean }) {
   const org = register.organization;
   const [legalName, setLegalName] = useState(org.legalName ?? "");
   const [owner, setOwner] = useState(org.registerOwner ?? "");
@@ -303,81 +276,80 @@ function CompanySettings({ register, canEdit, busy, run }: { register: TrainingR
   const domains = [...new Set([...register.companies.map((c) => c.domain), ...Object.keys(org.companyNames)])];
   const [companyNames, setCompanyNames] = useState<Record<string, string>>(org.companyNames);
   const list = systems.split("\n").map((s) => s.trim()).filter(Boolean);
-  return <section id="dati-azienda" className="scroll-mt-6"><AdminSection title="Dati dell'azienda">
-    <p className="text-sm">Quello che la piattaforma non può sapere da sola. L&apos;art. 4 chiede misure che tengano conto del contesto in cui l&apos;IA è usata e delle persone su cui incide: scriverlo qui lo rende visibile in ogni copia, marcato come dichiarato dall&apos;azienda.</p>
-    {!canEdit && <p className="text-sm text-muted-foreground">Solo chi amministra il workspace modifica questi dati.</p>}
+  return <Fold id="dati-azienda" title={G.company2} defaultOpen={open}>
+    <p className="text-sm">{G.companyIntro}</p>
+    {!canEdit && <p className="text-sm text-muted-foreground">{G.companyReadOnly}</p>}
     <form className="space-y-4" onSubmit={async (e) => {
       e.preventDefault();
       await run({ operation: "saveSettings", settings: { organizationLegalName: legalName, registerOwner: owner, aiActRole: role || null, aiSystems: list, useContext: context, trainers, companyNames, otherInitiatives: other } });
     }}>
       <fieldset disabled={busy || !canEdit} className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-1"><Label htmlFor="reg-legal">{domains.length > 1 ? "Ragione sociale (registro completo)" : "Ragione sociale"}</Label><Input id="reg-legal" value={legalName} maxLength={300} onChange={(e) => setLegalName(e.target.value)} placeholder={domains.length > 1 ? "Es. Gruppo Esempio" : org.workspaceName} /></div>
-        <div className="space-y-1"><Label htmlFor="reg-owner">Referente del registro</Label><Input id="reg-owner" value={owner} maxLength={300} onChange={(e) => setOwner(e.target.value)} placeholder="Nome, ruolo" /></div>
-        <div className="space-y-1"><Label htmlFor="reg-role">Ruolo ai sensi dell&apos;AI Act</Label>
+        <div className="space-y-1"><Label htmlFor="reg-legal">{domains.length > 1 ? "Ragione sociale (registro completo)" : "Ragione sociale"}</Label><Input id="reg-legal" className="text-base sm:text-sm" value={legalName} maxLength={300} onChange={(e) => setLegalName(e.target.value)} placeholder={domains.length > 1 ? "Es. Gruppo Esempio" : org.workspaceName} /></div>
+        <div className="space-y-1"><Label htmlFor="reg-owner">Referente del registro</Label><Input id="reg-owner" className="text-base sm:text-sm" value={owner} maxLength={300} onChange={(e) => setOwner(e.target.value)} placeholder="Nome, ruolo" /></div>
+        <div className="space-y-1"><Label htmlFor="reg-role">{G.role}</Label>
           <AdminSelect id="reg-role" value={role} onChange={(e) => setRole(e.target.value)}>
-            <option value="">Da indicare</option>
-            <option value="deployer">Deployer: utilizza sistemi di IA</option>
-            <option value="provider">Fornitore: sviluppa o immette sistemi di IA</option>
-            <option value="both">Deployer e fornitore</option>
+            <option value="">{G.roleChoose}</option>
+            <option value="deployer">{G.roleDeployer}</option>
+            <option value="provider">{G.roleProvider}</option>
+            <option value="both">{G.roleBoth}</option>
           </AdminSelect>
-          <p className="text-xs text-muted-foreground">Lo dichiara l&apos;azienda. Chi usa strumenti come Copilot o ChatGPT nel lavoro è di norma deployer.</p>
+          <p className="text-sm text-muted-foreground">{G.roleHint}</p>
         </div>
         {domains.length > 1 && <div className="space-y-2 rounded-lg border p-3 sm:col-span-2">
           <p className="text-sm font-medium">Ragione sociale di ogni società</p>
-          <p className="text-xs text-muted-foreground">Compare in testa al registro di quella società.</p>
+          <p className="text-sm text-muted-foreground">Compare in testa al registro di quella società.</p>
           <div className="grid gap-3 sm:grid-cols-2">{domains.map((d) => <div key={d} className="space-y-1">
             <Label htmlFor={`reg-company-${d}`}>Email @{d}</Label>
-            <Input id={`reg-company-${d}`} value={companyNames[d] ?? ""} maxLength={300} placeholder="Ragione sociale"
+            <Input id={`reg-company-${d}`} className="text-base sm:text-sm" value={companyNames[d] ?? ""} maxLength={300} placeholder="Ragione sociale"
               onChange={(e) => setCompanyNames((names) => ({ ...names, [d]: e.target.value }))} />
           </div>)}</div>
         </div>}
-        <div className="space-y-1"><Label htmlFor="reg-systems">Sistemi di IA in uso</Label>
-          <Textarea id="reg-systems" rows={4} value={systems} onChange={(e) => setSystems(e.target.value)} placeholder={"Uno per riga, es.\nClaude (Anthropic) — bozze e analisi di documenti — rischio limitato\nMicrosoft 365 Copilot — email e riunioni — rischio limitato"} />
-          <p className="text-xs text-muted-foreground">Uno per riga, fino a 30: nome, fornitore, a cosa serve, livello di rischio secondo l&apos;azienda.</p>
+        <div className="space-y-1"><Label htmlFor="reg-systems">{G.systems}</Label>
+          <Textarea id="reg-systems" className="text-base sm:text-sm" rows={4} value={systems} onChange={(e) => setSystems(e.target.value)} placeholder={"Uno per riga, es.\nClaude (Anthropic) — bozze e analisi di documenti — rischio limitato\nMicrosoft 365 Copilot — email e riunioni — rischio limitato"} />
+          <p className="text-sm text-muted-foreground">{G.systemsHint}</p>
         </div>
         <div className="space-y-1"><Label htmlFor="reg-context">Contesto d&apos;uso e persone interessate</Label>
-          <Textarea id="reg-context" rows={4} value={context} maxLength={4000} onChange={(e) => setContext(e.target.value)} placeholder="Es. uffici commerciali e operativi, per bozze di email e analisi di documenti interni; nessuna decisione automatizzata su clienti o dipendenti." />
+          <Textarea id="reg-context" className="text-base sm:text-sm" rows={4} value={context} maxLength={4000} onChange={(e) => setContext(e.target.value)} placeholder="Es. uffici commerciali e operativi, per bozze di email e analisi di documenti interni; nessuna decisione automatizzata su clienti o dipendenti." />
         </div>
         <div className="space-y-1"><Label htmlFor="reg-trainers">Docenti e qualifica</Label>
-          <Textarea id="reg-trainers" rows={3} value={trainers} maxLength={2000} onChange={(e) => setTrainers(e.target.value)} placeholder={`Es. Nome Cognome, ${register.provider.name} — consulente AI`} />
+          <Textarea id="reg-trainers" className="text-base sm:text-sm" rows={3} value={trainers} maxLength={2000} onChange={(e) => setTrainers(e.target.value)} placeholder={`Es. Nome Cognome, ${register.provider.name} — consulente AI`} />
         </div>
         <div className="space-y-1"><Label htmlFor="reg-other">Altre iniziative di alfabetizzazione (facoltativo)</Label>
-          <Textarea id="reg-other" rows={3} value={other} maxLength={4000} onChange={(e) => setOther(e.target.value)} placeholder="Es. policy interna sull'uso dell'IA del 1° settembre 2026, comunicata a tutto il personale." />
+          <Textarea id="reg-other" className="text-base sm:text-sm" rows={3} value={other} maxLength={4000} onChange={(e) => setOther(e.target.value)} placeholder={G.otherHint} />
         </div>
-        {canEdit && <div className="sm:col-span-2 flex flex-wrap items-center gap-3">
-          <Button type="submit" disabled={list.length > 30}>Salva dati dell&apos;azienda</Button>
-          {org.settingsUpdatedAt && <span className="text-xs text-muted-foreground">Ultima modifica {dateTime(org.settingsUpdatedAt)} · {org.settingsUpdatedBy}</span>}
+        {canEdit && <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
+          <Button type="submit" variant="outline" className="min-h-11 sm:min-h-9" disabled={list.length > 30}>{G.save}</Button>
+          {org.settingsUpdatedAt && <span className="text-sm text-muted-foreground">Ultima modifica {dateTime(org.settingsUpdatedAt)} · {org.settingsUpdatedBy}</span>}
         </div>}
       </fieldset>
     </form>
-  </AdminSection></section>;
+  </Fold>;
 }
 
 function Contents({ register }: { register: TrainingRegister }) {
-  return <AdminSection title="Contenuti e materiali">
-    {register.programs.length === 0 && <p className="text-sm text-muted-foreground">Nessun percorso pubblicato.</p>}
+  if (!register.programs.length && !register.needsAssessments.length) return null;
+  return <Fold id="contenuti" title={G.contents}>
     {register.programs.map((program) => <div key={program.id} className="space-y-3">
       <div><h3 className="font-semibold">{program.title}</h3>
-        <p className="text-sm text-muted-foreground">Pubblicato il {longDate(program.publishedAt)}</p>
-        <p className="break-all font-mono text-xs text-muted-foreground">Impronta del contenuto: {program.packHash}</p></div>
+        <p className="text-sm text-muted-foreground">Pubblicato il {longDate(program.publishedAt)}</p></div>
       <ul className="space-y-2">{program.modules.map((m) => <li key={m.id} className="rounded-lg border p-3 text-sm">
         <p className="font-medium">{m.title}{m.subtitle ? ` — ${m.subtitle}` : ""}</p>
         {m.objective && <p>{m.objective}</p>}
         <p className="text-muted-foreground">{[m.durationMinutes ? `${m.durationMinutes} minuti` : null, m.competencies.length ? `Competenze: ${m.competencies.join(", ")}` : null, m.exercises.length ? `${m.exercises.length} esercitazioni` : null].filter(Boolean).join(" · ")}</p>
       </li>)}</ul>
-      {program.materials.length > 0 && <Table label={`Materiali di ${program.title}`} head={["Materiale", "File", "Per", "Impronta SHA-256"]}>
-        {program.materials.map((mat) => <tr key={mat.sha256 + mat.fileName}>
-          <td className="px-3 py-2">{mat.title}</td><td className="px-3 py-2">{mat.fileName}</td>
-          <td className="px-3 py-2">{mat.audience === "trainers" ? "Solo formatori" : "Partecipanti"}</td>
-          <td className="break-all px-3 py-2 font-mono text-xs">{mat.sha256}</td>
-        </tr>)}
-      </Table>}
+      {program.materials.length > 0 && <ul aria-label={`Materiali di ${program.title}`} className="divide-y rounded-xl border text-sm">
+        {program.materials.map((mat) => <li key={mat.sha256 + mat.fileName} className="space-y-1 p-3">
+          <p><span className="font-medium">{mat.title}</span> · {mat.fileName} · {mat.audience === "trainers" ? "Solo formatori" : "Partecipanti"}</p>
+          <details><summary className="min-h-11 cursor-pointer py-2 text-muted-foreground sm:min-h-9">{G.fingerprint}</summary><p className="break-all font-mono text-xs">{mat.sha256}</p></details>
+        </li>)}
+      </ul>}
+      <details className="text-sm"><summary className="min-h-11 cursor-pointer py-2 text-muted-foreground sm:min-h-9">{G.fingerprint}: {program.title}</summary><p className="break-all font-mono text-xs">{program.packHash}</p></details>
     </div>)}
     {register.needsAssessments.length > 0 && <div className="space-y-1 text-sm">
       <h3 className="font-semibold">Rilevazione dei bisogni</h3>
       {register.needsAssessments.map((a) => <p key={a.name + a.createdAt}>{a.name} — avviata il {longDate(a.createdAt)}, {a.completed} {a.completed === 1 ? "risposta completa" : "risposte complete"}. Nel registro compare solo il numero.</p>)}
     </div>}
-  </AdminSection>;
+  </Fold>;
 }
 
 async function sha256Hex(file: File) {
@@ -406,25 +378,27 @@ function Copies({ exports, busy, call }: { exports: ExportRow[]; busy: boolean; 
       if (input.current) input.current.value = "";
     }
   }
-  return <AdminSection title="Copie esportate e verifica">
+  return <Fold id="verifica" title={G.verify}>
     <div className="space-y-2">
-      <Label htmlFor="register-verify">Verifica un file</Label>
-      <Input id="register-verify" ref={input} type="file" accept=".pdf,.xlsx" disabled={busy || checking} onChange={(e) => verify(e.target.files?.[0] ?? null)} />
-      <p className="text-xs text-muted-foreground">Il file non viene caricato: il browser ne calcola l&apos;impronta e la confronta con le copie esportate.</p>
-      <div aria-live="polite">{checking ? <p className="text-sm" role="status">Verifica in corso…</p> : verdict && <p role="status" className={`rounded-lg border p-3 text-sm ${verdict.ok ? "border-emerald-600/40" : "border-amber-500/60"}`}>{verdict.text}</p>}</div>
+      <Label htmlFor="register-verify">{G.verifyLabel}</Label>
+      <Input id="register-verify" ref={input} type="file" className="text-base sm:text-sm" accept=".pdf,.xlsx" disabled={busy || checking} onChange={(e) => verify(e.target.files?.[0] ?? null)} />
+      <p className="text-sm text-muted-foreground">{G.verifyHint}</p>
+      <div aria-live="polite">{checking ? <p className="text-sm" role="status">{G.verifying}</p> : verdict && <p role="status" className={`rounded-lg border p-3 text-sm ${verdict.ok ? "border-uc-verde/40" : "border-uc-giallo/60"}`}>{verdict.text}</p>}</div>
     </div>
-    {exports.length === 0 ? <p className="text-sm text-muted-foreground">Nessuna copia esportata finora.</p> : <Table label="Copie esportate" head={["Data", "Copia", "Da", "Partecipanti", "Impronta SHA-256"]}>
-      {exports.map((e) => <tr key={e.id}>
-        <td className="px-3 py-2">{dateTime(e.generatedAt)}</td><td className="px-3 py-2">{e.format === "pdf" ? "PDF" : "Excel"}<span className="block text-xs text-muted-foreground">{e.companyDomain ? `@${e.companyDomain}` : "Tutto il corso"}</span></td>
-        <td className="px-3 py-2">{e.generatedBy}</td><td className="px-3 py-2">{e.participantCount}</td>
-        <td className="break-all px-3 py-2 font-mono text-xs" title={`Codice ${e.id}`}>{e.sha256}</td>
-      </tr>)}
-    </Table>}
-  </AdminSection>;
+    {exports.length > 0 && <div className="space-y-2">
+      <h3 className="text-sm font-medium">{G.copies(exports.length)}</h3>
+      <ul className="divide-y rounded-xl border text-sm">
+        {exports.map((e) => <li key={e.id} className="space-y-1 p-3">
+          <p><span className="font-medium">{e.format === "pdf" ? "PDF" : "Excel"}</span> · {dateTime(e.generatedAt)} · {e.generatedBy} · {e.participantCount} partecipanti · {e.companyDomain ? `@${e.companyDomain}` : "Tutto il corso"}</p>
+          <details><summary className="min-h-11 cursor-pointer py-2 text-muted-foreground sm:min-h-9">{G.fingerprint}</summary><p className="break-all font-mono text-xs">{G.code} {e.id} · {e.sha256}</p></details>
+        </li>)}
+      </ul>
+    </div>}
+  </Fold>;
 }
 
 function LegalNotes() {
-  return <AdminSection title="Riferimenti normativi">
+  return <Fold id="norma" title={G.law}>
     <div className="space-y-3 text-sm">
       {legalFramework.map((p) => <p key={p}>{p}</p>)}
       <dl className="grid gap-2 sm:grid-cols-[14rem_1fr]">{criteriaMap.map(([k, v]) => <div key={k} className="contents"><dt className="font-medium">{k}</dt><dd className="text-muted-foreground">{v}</dd></div>)}</dl>
@@ -435,5 +409,5 @@ function LegalNotes() {
       <dl className="grid gap-2 sm:grid-cols-[14rem_1fr]">{privacyGuidance.map(([k, v]) => <div key={k} className="contents"><dt className="font-medium">{k}</dt><dd className="text-muted-foreground">{v}</dd></div>)}</dl>
       <p className="text-xs text-muted-foreground">Indicazioni di buona pratica, non parere legale. Quadro normativo verificato su fonti ufficiali UE e italiane il {longDate(`${REGISTER_LEGAL_VERIFIED_ON}T12:00:00Z`)}.</p>
     </div>
-  </AdminSection>;
+  </Fold>;
 }

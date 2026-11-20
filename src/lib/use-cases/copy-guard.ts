@@ -199,6 +199,10 @@ export const AREA_SOURCE_DIRS: readonly string[] = [
   "src/app/(dashboard)/dashboard/[workspaceId]/agent-factory/",
   "src/app/(dashboard)/dashboard/[workspaceId]/contesto/",
   "src/app/(dashboard)/dashboard/[workspaceId]/mapping/",
+  // (Rilascio 10, ondata 7a «Formazione») La Formazione della dashboard: il corso, l'esercizio, i Risultati, Gestisci e il
+  // Registro. Il modulo del link del corso (`join-course-form.tsx`) resta fra le pagine di fuori.
+  "src/components/learning/",
+  "src/app/(dashboard)/dashboard/[workspaceId]/learning/",
 ];
 
 /**

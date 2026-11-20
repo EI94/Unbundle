@@ -99,9 +99,6 @@
   "src/components/learning/admin-shared.tsx": {
     "palette": 1
   },
-  "src/components/learning/register-console.tsx": {
-    "palette": 5
-  },
   "src/components/learning/results-charts.tsx": {
     "palette": 9
   },

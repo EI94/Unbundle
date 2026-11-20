@@ -7,6 +7,7 @@ import type { GroupActivity, GroupItem } from "@/lib/learning/results";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ImportantTag, ItemBars } from "./results-charts";
+import { LEARNING_TEXT } from "@/lib/learning/text";
 import { clockLabel, formatDecimal, percent } from "./results-format";
 
 /**
@@ -135,10 +136,10 @@ export function ResultsPresent({ activities, enrolled, minimum, suppressed, cont
           <p className="text-3xl font-semibold sm:text-5xl">Ancora niente da mostrare</p>
           <p className="text-lg text-muted-foreground sm:text-2xl">
             {suppressed
-              ? `I risultati di gruppo compaiono quando nel turno ci sono almeno ${minimum} iscritti.`
+              ? LEARNING_TEXT.results.suppressed(minimum)
               : `Le domande di un esercizio compaiono qui quando ci sono almeno ${minimum} consegne.`}
           </p>
-          <p className="text-base text-muted-foreground sm:text-lg">La pagina si aggiorna da sola.</p>
+          <p className="text-base text-muted-foreground sm:text-lg">{LEARNING_TEXT.results.refreshesItself}</p>
         </div> : slide.kind === "summary" ? <div className="space-y-8 sm:space-y-12">
           <div className="space-y-3">
             <p className="text-sm font-medium uppercase tracking-widest text-muted-foreground sm:text-base">Com’è andata</p>
