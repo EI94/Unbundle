@@ -394,6 +394,8 @@ export function SentDisclosure({ summary, children }: { summary: string; childre
 export const WRITE_KEY = "scrivi";
 /** «Su cosa?»: riceve il fuoco quando si apre «Scrivi al team», prima del testo. */
 export const WRITE_ABOUT_ID = "ucq-scrivi-su";
+/** «Scrivi al team»: riprende il fuoco quando il campo si chiude («Annulla») o dopo l'invio. */
+export const WRITE_BUTTON_ID = "ucq-scrivi";
 
 /**
  * (Rilascio 10, §3.11) «Scrivi al team»: un pulsante solo, che apre il campo con «Su cosa?» (un `<select>` nativo, niente
@@ -447,7 +449,7 @@ export function WriteToTeam({
           </div>
         </>
       ) : (
-        <Button type="button" variant={primary ? "default" : "outline"} className="h-12 w-full text-base sm:w-auto sm:min-w-48" onClick={() => onOpen(true)}>
+        <Button id={WRITE_BUTTON_ID} type="button" variant={primary ? "default" : "outline"} className="h-12 w-full text-base sm:w-auto sm:min-w-48" onClick={() => onOpen(true)}>
           {TT.write}
         </Button>
       )}

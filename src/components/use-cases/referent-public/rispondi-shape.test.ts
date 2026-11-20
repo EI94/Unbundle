@@ -114,8 +114,9 @@ test("passo 3, le domande: tre controlli per domanda più «Altro ▸», un solo
   assert.deepEqual(shownButtons(template), ["Allega il file compilato", "Oppure scrivi la risposta ▸", "Non lo so", "Altro ▸"]);
   // Una domanda che vuole un file: «Allega un file» grande, «Non lo so», «Altro ▸».
   assert.deepEqual(shownButtons(cardOf(markup, N[2])), ["Allega un file", "Non lo so", "Altro ▸"]);
-  // Il numero della scheda al posto di «Domanda 1 di 3».
+  // Il numero della scheda al posto di «Domanda 1 di 3»: decorativo, e nel titolo per i lettori di schermo («1.»).
   assert.match(plain, /data-slot="question-number"[^>]*>1<\/span>/);
+  assert.match(plain, /<h3[^>]*><span class="sr-only">1\. <\/span>Quanti preventivi fate in un mese\?<\/h3>/);
   // Un solo numero, nella barra; un solo pulsante pieno.
   assert.match(markup, /data-slot="referent-progress"[^>]*>0 di 3 · salvato<\/p>/);
   assert.deepEqual(filled(markup), ["Invia"]);
@@ -141,7 +142,21 @@ test("passo 1: la descrizione in 6 righe con «Leggi tutto» solo quando è lung
   assert.deepEqual(filled(short), ["Sì, è così"]);
   const long = html(view({ kind: "referente", check: CHECK(null, "Le richieste arrivano per email, per telefono e dal sito. ".repeat(8)) }));
   assert.match(long, /<blockquote[^>]*class="[^"]*\bline-clamp-6\b/);
+  assert.match(long, /<blockquote[^>]*tabindex="-1"/, "dopo «Leggi tutto» il fuoco va sulla descrizione");
   assert.ok(long.includes(">Leggi tutto<"));
+});
+
+test("(rilascio 10) i passi fatti si toccano solo se si raggiungono: mai oltre un passo da finire", () => {
+  // «Correggi» senza nota: il passo 1 non è fatto, il passo 2 (i due numeri del tempo) sì.
+  const draft = { confirm: "correggi" as const, note: null, estimate: null, timesPerMonth: 20, minutesEach: 5, stale: false, savedAt: null };
+  const stuck = html(view({ kind: "referente", check: { ...CHECK(null)!, draft } }), "2");
+  const steps = stuck.slice(stuck.indexOf('data-slot="referent-steps"'), stuck.indexOf("</ol>"));
+  assert.match(steps, /data-state="done"/, "«Le stime» è fatta");
+  assert.doesNotMatch(steps, /referent-step-go/, "ma non si tocca: prima va finito «Il caso d'uso»");
+  assert.match(stuck, /<h2[^>]*>È così\?<\/h2>/, "e la pagina resta al passo 1");
+  // Tutti e due fatti: al passo 3 i due passi si toccano.
+  const done = html(view({ kind: "referente", check: { ...CHECK(null)!, draft: { ...draft, confirm: "si" } } }), "3");
+  assert.equal((done.match(/data-slot="referent-step-go"/g) ?? []).length, 2);
 });
 
 test("passo 2: «Ti tornano queste stime?» una volta, «Sì · Meno · Di più · Non lo so», il commento dopo una scelta diversa da «Sì»", () => {

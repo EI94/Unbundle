@@ -13,7 +13,7 @@
  *
  * (Rilascio 10, D5) Le parole che `/rispondi` dice come `/r` vengono dal kit del referente (`kit.ts`): «Non lo so», il
  * marchio con la riga del cliente, la scheda di un link che non vale più, quella di un errore con il solo «Riprova», un
- * solo numero di avanzamento, «Riferimento», l'informativa comune.
+ * solo numero di avanzamento, «Riferimento». L'informativa resta di ogni pagina: `/r` tiene i suoi dati in un altro modo.
  */
 import { REFERENT_KIT_TEXT as K } from "./kit.ts";
 
@@ -577,6 +577,8 @@ export const REFERENT_PUBLIC_TEXT = Object.freeze({
     templateDownload: "Scarica il file da compilare {file}",
     /** (Rilascio 10) «Altro» di una domanda: la parola che si vede, poi la domanda. */
     moreOn: "Altro: «{testo}»",
+    /** (Rilascio 10) Il numero della domanda, prima del titolo, per i lettori di schermo («2.»). */
+    number: "{n}.",
   }),
   // (Rilascio 5) Ogni domanda si chiude: una risposta, un file, «Non lo so» o «È già allegato».
   alreadyAttached: "È già allegato",
@@ -655,9 +657,14 @@ export const REFERENT_PUBLIC_TEXT = Object.freeze({
     writeKindMissing: "Scegli se aggiungi qualcosa o hai un dubbio.",
     /** (Rilascio 10, §3.11) Quello che ha già inviato, chiuso: la conferma, ogni stima e ogni domanda. */
     yourAnswers: "Le tue risposte ({n})",
-    missingOne: "Manca ancora il punto {k}.",
-    missingMany: "Mancano ancora i punti {list}.",
-    goTo: "Vai al punto {k}",
+    /**
+     * (Rilascio 10, §3.11) Le schede di «Novità» non hanno un numero: quello che manca si dice con la domanda (la domanda
+     * del team o la domanda nuova), e «Vai» porta alla prima.
+     */
+    missingOne: "Manca ancora la risposta a «{testo}».",
+    missingMany: "Mancano ancora {n} risposte: le trovi evidenziate.",
+    goToOne: "Vai alla domanda",
+    goToFirst: "Vai alla prima",
     aria: Object.freeze({
       doubtOn: "Ho un dubbio su «{testo}»",
       addOn: "Aggiungi qualcosa a «{testo}»",

@@ -549,11 +549,21 @@ export function newsEntries(view: ReferentAskView): NewsEntry[] {
   return out.map((e, i) => ({ ...e, position: i + 1, label: e.kind === "chiarimento" ? TT.clarification : e.kind === "domanda" ? TT.newQuestion : TT.teamReply }));
 }
 
-/** «Manca ancora il punto 2.», «Mancano ancora i punti 1 e 3.» */
-export function newsMissingText(positions: readonly number[]): string {
-  const list = [...positions].sort((a, b) => a - b);
-  if (list.length === 1) return fillText(TT.missingOne, { k: list[0] });
-  return fillText(TT.missingMany, { list: `${list.slice(0, -1).join(", ")} e ${list[list.length - 1]}` });
+/** Il titolo della scheda di una voce di «Novità»: il messaggio del team, o il titolo della domanda nuova. */
+export function newsTitleOf(view: ReferentAskView, entry: Pick<NewsEntry, "id" | "kind">): string {
+  if (entry.kind === "domanda") return view.questions.find((q) => q.needId.toLowerCase() === entry.id.toLowerCase())?.title ?? "";
+  return view.thread.messages.find((m) => m.id === entry.id)?.text ?? "";
+}
+
+/**
+ * (Rilascio 10, §3.11) Quello che «Invia» ha trovato da fare in «Novità», senza numeri (le schede non ne hanno): una voce,
+ * «Manca ancora la risposta a «Al mese o all'anno?».» e «Vai alla domanda»; più voci, «Mancano ancora 2 risposte: le
+ * trovi evidenziate.» e «Vai alla prima». null quando non manca niente.
+ */
+export function newsMissingHint(view: ReferentAskView, missing: readonly Pick<NewsEntry, "id" | "kind">[]): { text: string; goLabel: string } | null {
+  if (missing.length === 0) return null;
+  if (missing.length === 1) return { text: fillText(TT.missingOne, { testo: shortText(newsTitleOf(view, missing[0]).replace(/\s+/g, " ").trim()) }), goLabel: TT.goToOne };
+  return { text: fillText(TT.missingMany, { n: missing.length }), goLabel: TT.goToFirst };
 }
 
 /** Il dubbio del referente a cui risponde una risposta del team (per «Il tuo dubbio: «…»»), oppure null. */
@@ -596,17 +606,21 @@ export function freshReplyIds(view: ReferentAskView): string[] {
 // ─── (Rilascio 10, §3.11) Lavoro finito: «Le tue risposte» e «Scrivi al team» ─
 
 /**
- * Quante righe ha «Le tue risposte (n)»: la conferma del caso d'uso, ogni voce delle stime (o la riga del tempo) e ogni
- * domanda già chiusa (inviata, o a cui ha pensato il team). Zero: niente da mostrare.
+ * Quante righe ha «Le tue risposte (n)»: la conferma del caso d'uso, ogni voce delle stime (o la riga del tempo), ogni
+ * domanda già chiusa (inviata, o a cui ha pensato il team) e, senza la conferma inviata, il blocco dei messaggi sul caso
+ * d'uso (`withFresh` come la pagina: in «Novità» le risposte del team non ancora viste hanno la loro scheda). Zero: niente
+ * da mostrare.
  */
-export function sentCount(view: ReferentAskView): number {
-  const sent = view.check?.submittedAt ? 1 + (view.check.benefits ? view.check.benefits.length : 1) : 0;
-  return sent + view.questions.filter((q) => q.state !== "aperta").length;
+export function sentCount(view: ReferentAskView, o: { withFresh?: boolean } = {}): number {
+  const checkSent = Boolean(view.check?.submittedAt);
+  const sent = checkSent ? 1 + (view.check?.benefits ? view.check.benefits.length : 1) : 0;
+  const general = !checkSent && messagesOf(view, "g", o).length > 0 ? 1 : 0;
+  return sent + view.questions.filter((q) => q.state !== "aperta").length + general;
 }
 
 /** «Le tue risposte (10)». */
-export function sentSummary(view: ReferentAskView): string {
-  return fillText(TT.yourAnswers, { n: sentCount(view) });
+export function sentSummary(view: ReferentAskView, o: { withFresh?: boolean } = {}): string {
+  return fillText(TT.yourAnswers, { n: sentCount(view, o) });
 }
 
 /** Una scelta di «Su cosa?»: dove va il messaggio e che cosa si può scrivere lì. */

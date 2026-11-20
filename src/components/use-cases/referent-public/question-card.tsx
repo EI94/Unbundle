@@ -87,6 +87,8 @@ function CardFrame({
         <div className="min-w-0 flex-1 space-y-1">
           {section.label ? <p className="text-sm text-muted-foreground">{section.label}</p> : null}
           <h3 id={questionTitleId(section.needId)} tabIndex={-1} className="rounded-md text-base leading-6 font-semibold break-words outline-none focus-visible:ring-3 focus-visible:ring-ring/40">
+            {/* (Rilascio 10) Il numero che si vede è decorativo: lo leggono così i lettori di schermo («Manca ancora la domanda 2.»). */}
+            {section.label ? null : <span className="sr-only">{fillText(T.aria.number, { n: section.number })} </span>}
             {section.title}
           </h3>
         </div>
@@ -205,6 +207,7 @@ export function OpenQuestionCard({
   const [moreOpen, setMoreOpen] = useState(() => draft?.alreadyAttached === true);
   const [writeOpen, setWriteOpen] = useState(() => Boolean(draft?.text?.trim()) && !draft?.dontKnow && !draft?.alreadyAttached);
   const attachRef = useRef<AttachmentsHandle>(null);
+  const textRef = useRef<HTMLTextAreaElement>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const stateRef = useRef<AutosaveState>(state);
@@ -350,6 +353,8 @@ export function OpenQuestionCard({
   const errId = `${id}-err`;
   const statusId = `${id}-stato`;
   const moreId = `${id}-altro`;
+  // (Rilascio 10) Con «È già allegato» scelto, «Altro» resta aperto: è l'unico segno della scelta.
+  const moreShown = moreOpen || attached;
   const blocked = disabled;
   const template = (section.question.templates ?? []).length > 0;
   const showText = !fileRequired && !value.dontKnow && !attached;
@@ -363,6 +368,7 @@ export function OpenQuestionCard({
   const field = textOpen ? (
     <div className="min-w-0 space-y-1.5">
       <textarea
+        ref={textRef}
         id={textId}
         value={value.text}
         maxLength={REFERENT_LIMITS.answerMax}
@@ -402,7 +408,18 @@ export function OpenQuestionCard({
     <CardFrame section={section} token={downloads ? token : undefined} invalid={fieldErrors.length > 0} missing={missing && !closed} closed={closed}>
       {bigAttach ? attachments : field}
       {template && showText && !textOpen ? (
-        <Button type="button" variant="ghost" aria-expanded={false} className="-ml-2 min-h-11 h-auto px-2 text-base underline underline-offset-4" disabled={blocked} onClick={() => setWriteOpen(true)}>
+        <Button
+          type="button"
+          variant="ghost"
+          aria-expanded={false}
+          className="-ml-2 min-h-11 h-auto px-2 text-base underline underline-offset-4"
+          disabled={blocked}
+          onClick={() => {
+            // Il pulsante sparisce: il fuoco va nel campo che si apre.
+            setWriteOpen(true);
+            requestAnimationFrame(() => textRef.current?.focus());
+          }}
+        >
           {T.writeInstead}
           <span aria-hidden>{` ${T.moreClosed}`}</span>
         </Button>
@@ -432,17 +449,19 @@ export function OpenQuestionCard({
         <Button
           type="button"
           variant="ghost"
-          aria-expanded={moreOpen}
+          aria-expanded={moreShown}
           aria-controls={moreId}
           aria-label={fillText(T.aria.moreOn, { testo: section.title })}
           className={COMMAND_CLASS}
-          onClick={() => setMoreOpen((open) => !open)}
+          onClick={() => {
+            if (!attached) setMoreOpen((open) => !open);
+          }}
         >
           {T.more}
-          <span aria-hidden>{` ${moreOpen ? T.moreOpen : T.moreClosed}`}</span>
+          <span aria-hidden>{` ${moreShown ? T.moreOpen : T.moreClosed}`}</span>
         </Button>
       </div>
-      <div id={moreId} hidden={!moreOpen || undefined} data-slot="question-more" className="-mt-2 -ml-2 flex flex-wrap gap-x-1">
+      <div id={moreId} hidden={!moreShown || undefined} data-slot="question-more" className="-mt-2 -ml-2 flex flex-wrap gap-x-1">
         <Button type="button" variant="ghost" aria-pressed={attached} className={COMMAND_CLASS} disabled={blocked} onClick={toggleAttached}>
           {T.alreadyAttached}
         </Button>

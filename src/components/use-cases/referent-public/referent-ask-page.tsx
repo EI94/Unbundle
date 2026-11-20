@@ -19,7 +19,7 @@ import {
   messagesOf,
   missingText,
   newsEntries,
-  newsMissingText,
+  newsMissingHint,
   noticeOf,
   privacyTexts,
   progressText,
@@ -40,7 +40,7 @@ import { ConfirmStep, EstimateStep, ImpactStep, ReferentStepBar, benefitCommentI
 import { MessageCard, PublicShell } from "./state-card";
 import { hasSteps, isRepeatActivation, parseStep, resolveStep, stepOfSubmitRefusal, stepOneWarning, stepSearch, stepStates, stepTwoWarning, stepsOf, type CheckStep, type StepRefusal } from "./steps-state";
 import { SUBMIT_ERROR_ID, SubmitBar } from "./submit-bar";
-import { ClarificationCard, SentDisclosure, TeamReplyCard, ThreadItem, WRITE_ABOUT_ID, WRITE_KEY, WriteToTeam, newsTitleId } from "./thread";
+import { ClarificationCard, SentDisclosure, TeamReplyCard, ThreadItem, WRITE_ABOUT_ID, WRITE_BUTTON_ID, WRITE_KEY, WriteToTeam, newsTitleId } from "./thread";
 
 /**
  * La pagina del referente `/rispondi/<token>` (SPEC §4.4): pubblica, senza account, pensata per il
@@ -917,7 +917,9 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
   // (Rilascio 6) «Novità»: le cose fatte, quelle che «Invia» ha trovato da fare.
   const newsDone = entries.filter((e) => e.kind === "risposta" || (e.kind === "chiarimento" && (replyTexts[e.id] ?? "").trim().length > 0) || (e.kind === "domanda" && closedMap.get(e.id.toLowerCase()) === true)).length;
   const newsActionable = entries.some((e) => e.kind !== "risposta");
-  const newsMissingPositions = entries.filter((e) => newsMissing.includes(e.id) || newsMissing.includes(e.id.toLowerCase())).map((e) => e.position);
+  // (Rilascio 10, §3.11) Le schede di «Novità» non hanno un numero: quello che manca si dice con la domanda.
+  const newsMissingEntries = entries.filter((e) => newsMissing.includes(e.id) || newsMissing.includes(e.id.toLowerCase()));
+  const newsHint = newsMissingHint(view, newsMissingEntries);
   const questionCard = (section: QuestionSection, o: { primary: boolean; label?: string; missing?: boolean }) => (
     <QuestionCard
       key={`${section.needId}:${section.kind}:${generation}`}
@@ -954,9 +956,9 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
       onOpen={(open) => {
         setComposer(open ? { key: WRITE_KEY, mode: "add" } : null);
         setSentKey(null);
-        // Il fuoco su «Su cosa?», la prima scelta del campo.
-        if (open) setFocusTarget(WRITE_ABOUT_ID);
-        else setSubmitError((e) => (e === TT.composerOpen ? null : e));
+        // Il fuoco su «Su cosa?», la prima scelta del campo; chiuso, di nuovo su «Scrivi al team».
+        setFocusTarget(open ? WRITE_ABOUT_ID : WRITE_BUTTON_ID);
+        if (!open) setSubmitError((e) => (e === TT.composerOpen ? null : e));
       }}
       primary={primary}
       privacyGate={privacyGate}
@@ -964,6 +966,7 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
       onSent={() => {
         setComposer(null);
         setSubmitError((e) => (e === TT.composerOpen ? null : e));
+        setFocusTarget(WRITE_BUTTON_ID);
         void reload().then(() => setSentKey(WRITE_KEY));
       }}
       onStale={() => void reload()}
@@ -977,7 +980,7 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
     const sent = sections.filter((q) => q.kind !== "aperta");
     if (!sentCheck && sent.length === 0 && !generalLines()) return null;
     return (
-      <SentDisclosure summary={sentSummary(view)}>
+      <SentDisclosure summary={sentSummary(view, { withFresh: under !== "news" })}>
         {sentCheckBlock()}
         {sent.map((section) => questionCard(section, { primary: false }))}
         {generalLines()}
@@ -1029,12 +1032,12 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
           <SubmitBar
             status={progressText(newsDone, entries.length, savesOf(openIds), { unsent })}
             missing={
-              newsMissingPositions.length
+              newsHint
                 ? {
-                    text: newsMissingText(newsMissingPositions),
-                    goLabel: fillText(TT.goTo, { k: newsMissingPositions[0] }),
+                    text: newsHint.text,
+                    goLabel: newsHint.goLabel,
                     onGo: () => {
-                      const first = entries.find((e) => e.position === newsMissingPositions[0]);
+                      const first = newsMissingEntries[0];
                       if (first) focusById(first.kind === "domanda" ? questionTitleId(first.id) : newsTitleId(first.id));
                     },
                   }
@@ -1067,9 +1070,12 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
       {stepped && under === "questions" ? (
         <ReferentStepBar
           items={stepStates(view, step)}
+          // (Rilascio 10) Si torna solo a un passo che si raggiunge adesso: mai oltre il primo da finire.
+          canGo={(to) => resolveStep(view, to) === to}
           onGo={(to, e) => {
+            const target = resolveStep(viewRef.current, to);
             // Il secondo clic di un doppio clic su un passo arriva sul passo dopo: lo si ignora.
-            if (to !== step && !tooSoon(e)) goTo(to);
+            if (target !== step && !tooSoon(e)) goTo(target);
           }}
         />
       ) : null}

@@ -37,7 +37,16 @@ const AUTOSAVE_MS = 1500;
  * per tornarci (`onGo`, 44 px): al passo 3 prende il posto di «Indietro», così la barra in basso ha solo il numero e
  * «Invia». Il passo di adesso e quelli dopo non si toccano.
  */
-export function ReferentStepBar({ items, onGo }: { items: { step: CheckStep; state: "done" | "current" | "later" }[]; onGo?: (step: CheckStep, e: React.MouseEvent<HTMLButtonElement>) => void }) {
+export function ReferentStepBar({
+  items,
+  onGo,
+  canGo,
+}: {
+  items: { step: CheckStep; state: "done" | "current" | "later" }[];
+  onGo?: (step: CheckStep, e: React.MouseEvent<HTMLButtonElement>) => void;
+  /** (Rilascio 10) Il passo si raggiunge adesso (`resolveStep`): un passo fatto dopo uno da finire non si tocca. */
+  canGo?: (step: CheckStep) => boolean;
+}) {
   return (
     <ol aria-label={T.steps.label} data-slot="referent-steps" className={cn("mt-6 grid gap-2", items.length === 3 ? "grid-cols-3" : "grid-cols-2")}>
       {items.map((item, index) => {
@@ -63,7 +72,7 @@ export function ReferentStepBar({ items, onGo }: { items: { step: CheckStep; sta
         );
         return (
           <li key={item.step} data-state={item.state} aria-current={item.state === "current" ? "step" : undefined} className="flex min-w-0 items-start gap-2">
-            {item.state === "done" && onGo ? (
+            {item.state === "done" && onGo && (canGo?.(item.step) ?? true) ? (
               <button
                 type="button"
                 data-slot="referent-step-go"
@@ -264,14 +273,17 @@ export function ConfirmStep({
 function Description({ text }: { text: string }) {
   const id = useId();
   const [open, setOpen] = useState(false);
+  const quoteRef = useRef<HTMLQuoteElement>(null);
   const clamp = descriptionClamp(text);
   const long = (clamp.phone || clamp.wide) && !open;
   return (
     <div className="space-y-1" data-slot="referent-description">
       <blockquote
+        ref={quoteRef}
         id={`${id}-descrizione`}
+        tabIndex={-1}
         className={cn(
-          "rounded-xl bg-muted/50 px-4 py-3 text-base leading-7 break-words whitespace-pre-line",
+          "rounded-xl bg-muted/50 px-4 py-3 text-base leading-7 break-words whitespace-pre-line outline-none focus-visible:ring-3 focus-visible:ring-ring/40",
           long && clamp.phone && "line-clamp-6",
           long && (clamp.wide ? "sm:line-clamp-6" : "sm:line-clamp-none"),
         )}
@@ -285,7 +297,11 @@ function Description({ text }: { text: string }) {
           aria-expanded={false}
           aria-controls={`${id}-descrizione`}
           className={cn("-ml-2 min-h-11 h-auto px-2 text-base underline underline-offset-4", !clamp.wide && "sm:hidden")}
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            // Il pulsante sparisce: il fuoco va sulla descrizione, ora intera.
+            setOpen(true);
+            requestAnimationFrame(() => quoteRef.current?.focus());
+          }}
         >
           {T.confirm.readAll}
         </Button>
