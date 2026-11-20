@@ -60,12 +60,6 @@ export const CLASSIFICATION_TEXT = Object.freeze({
 /** Il riquadro di uno stream: «Automatizzare · 12,5 h a settimana». */
 export const streamTileLabel = (stream: Stream, hoursWeek: number): string => `${STREAM_LABEL[stream]} · ${formatHours(hoursWeek)} h a settimana`;
 
-/** La media dell'esposizione all'AI, o «—» se nessun passo ha il match O*NET. */
-export const exposureTileValue = (pct: number | null): string => (pct === null ? "—" : `${formatCount(pct)}%`);
-
-/** «3 passi da classificare.», «1 passo da classificare.». */
-export const toClassifyLine = (n: number): string => `${counted(n, "passo", "passi")} da classificare.`;
-
 /** Il bottone che classifica quello che resta: «Classifica 3 passi», «Classifica 1 passo». */
 export const classifyButtonLabel = (n: number): string => `Classifica ${counted(n, "passo", "passi")}`;
 

@@ -22,7 +22,6 @@ import {
   noteCaption,
   noteMark,
   pillText,
-  exposureBadgeLabel,
   removeChipLabel,
   savedAtLabel,
   votesLabel,
@@ -53,7 +52,6 @@ test("ogni scritta rispetta lo stile della casa: «use case», nessuna chiave in
     counted(3, "passo", "passi"),
     votesLabel(5, 2),
     removeChipLabel("magazzino"),
-    exposureBadgeLabel(34),
   ];
   assert.ok(texts.length > 100, "le scritte ci sono");
   assertHouseStyle(texts);
@@ -120,7 +118,7 @@ test("i numeri e i plurali: 1 passo, 3 passi; le ore con la virgola; la riga del
   assert.deepEqual(mappingCompletedSignal("Magazzino", 1, 1), { title: "Mappatura completata: Magazzino", description: "1 passo, 1 ora a settimana." });
   assert.equal(mappingCompletedSignal("Magazzino", 0, 0).description, "0 passi, 0 ore a settimana.");
   assert.equal(MAPPING_COMPLETED_SIGNAL, "mapping_completed");
-  assert.deepEqual([votesLabel(5, 2), removeChipLabel("Buyer"), exposureBadgeLabel(34.4), exposureBadgeLabel(0)], ["Voti: 5. Tuoi: 2.", "Togli Buyer", "AI 34%", "AI 0%"]);
+  assert.deepEqual([votesLabel(5, 2), removeChipLabel("Buyer")], ["Voti: 5. Tuoi: 2.", "Togli Buyer"]);
   const { friction, ...card } = BOARD_TEXT.card;
   assert.deepEqual(card, { who: "Chi:", toValidate: "da validare", decides: "Decide una persona" });
   // (Rilascio 10, §3.7) L'attrito di una card in parole, per i lettori di schermo.

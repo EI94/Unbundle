@@ -9,7 +9,7 @@ import { enableTsxImports } from "../../use-cases/detail/referent/tsx-test-loade
 
 await enableTsxImports();
 const { ProcessMap, ProcessRow, STEP_CARD_TOOLS, StepArrow, StepCard, widestRow } = await import("./map.tsx");
-const { ExposureBadge, StreamBadge } = await import("./atoms.tsx");
+const { StreamBadge } = await import("./atoms.tsx");
 
 const html = (element: Parameters<typeof renderToStaticMarkup>[0]) => renderToStaticMarkup(element);
 /** `createElement` con i figli dopo le props: il tipo di React li vuole tra le props quando un componente li chiede. */
@@ -76,13 +76,14 @@ test("la card della classificazione: i badge, «da classificare», il bordo dell
       title: "Confronto delle offerte",
       description: "Il confronto si fa a mano.",
       accent: { kind: "stream", stream: "differentiate" },
-      badges: [createElement(StreamBadge, { key: "s", stream: "differentiate", small: true }), createElement(ExposureBadge, { key: "e", pct: 22, small: true })],
+      badges: [createElement(StreamBadge, { key: "s", stream: "differentiate", small: true })],
       gate: null,
       onOpen: noop,
     }),
   );
   assert.match(classified, /^<button type="button" class="b-node b-tb" data-stream="differentiate" data-step="B1"/);
-  assert.match(classified, /<span class="b-nt">Confronto delle offerte<\/span><span class="b-ag"><span class="b-abadge b-small" data-stream="differentiate" data-b="stream-badge" title="Differentiate">Differenziare<\/span><span class="b-abadge b-auto b-small" data-b="exposure-badge">AI 22%<\/span><\/span><span class="b-ns2">/);
+  // (Rilascio 10, §3.7) Sulla card il badge dello stream; l'esposizione all'AI sta nei «Dettagli tecnici» del drawer.
+  assert.match(classified, /<span class="b-nt">Confronto delle offerte<\/span><span class="b-ag"><span class="b-abadge b-small" data-stream="differentiate" data-b="stream-badge" title="Differentiate">Differenziare<\/span><\/span><span class="b-ns2">/);
   const unclassified = html(h(StepCard, { code: "B2", title: "Archivio", accent: { kind: "stream", stream: null }, note: "da classificare", onOpen: noop }));
   assert.match(unclassified, /^<button type="button" class="b-node b-tb" data-step="B2"/, "senza stream il bordo resta quello di una linea");
   assert.match(unclassified, /<span class="b-none">da classificare<\/span>/);

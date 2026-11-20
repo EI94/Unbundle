@@ -28,7 +28,7 @@ import { cutLine, stepFieldValue, type StepField, type StepValue } from "../../.
 import { BOARD_TEXT, counted, formatCount, formatHours } from "../../../lib/mappatura/text.ts";
 import { BOARD_LANE, MAPPING_LIMITS, STREAMS, type Friction, type StepLane, type Stream, type UnitStatus } from "../../../lib/mappatura/vocab.ts";
 import type { OpInput } from "../store/board-client.ts";
-import { frictionsChipText, mapCountsLine, todaySummaryText, todayTileTexts, toClassifyText, toValidateChipText, toValidateText, unitStepsLine, type UnitWords, unitsTileTexts } from "./text.ts";
+import { frictionsChipText, todaySummaryText, toClassifyText, toValidateChipText, toValidateText, unitStepsLine } from "./text.ts";
 
 const L = MAPPING_LIMITS;
 
@@ -45,17 +45,6 @@ export const boardEmpty = (board: Pick<MappingBoard, "processes">): boolean => b
 
 /** I punti di analisi si vedono quando ce n'è almeno uno, o quando la mappatura è completa (§1.3). */
 export const analysisShown = (board: Pick<MappingBoard, "analysis" | "unit">): boolean => board.analysis.length > 0 || unitComplete(board.unit.status);
-
-/** I quattro riquadri di «Processi di oggi», dagli stessi numeri della legenda e delle tabelle (P37, P38). */
-export function todayTiles(board: MappingBoard): Array<{ value: string; label: string }> {
-  return todayTileTexts(boardNumbers(board));
-}
-
-/** La riga dei conteggi sopra la mappa (P60). */
-export function mapCounts(board: MappingBoard): string {
-  const n = boardNumbers(board);
-  return mapCountsLine(n.toValidate, n.confirmed, n.frictions);
-}
 
 /**
  * (Rilascio 10, §3.7) I chip che filtrano la mappa: «7 attriti» (prima «Evidenzia attriti», P61) sfuma i passi senza
@@ -162,11 +151,6 @@ export function unitRow(unit: UnitBoardSummary): UnitRowModel {
     todo,
     streams: classified ? STREAMS.map((stream) => ({ stream, count: unit.streams[stream] })) : null,
   };
-}
-
-/** I quattro riquadri dell'elenco delle unità, dagli stessi numeri delle righe. */
-export function unitsTiles(units: readonly UnitBoardSummary[], words: UnitWords): Array<{ value: string; label: string }> {
-  return unitsTileTexts(unitNumbers(units), words);
 }
 
 // ─── Le operazioni dei controlli ─────────────────────────────────────

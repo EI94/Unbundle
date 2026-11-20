@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ASSISTANT_KEY, createBoardPrefs, resolveTab, tabFromHash, tabKey, type PrefsEnv } from "./prefs.ts";
+import { ASSISTANT_KEY, createBoardPrefs, resolveTab, tabFromHash, type PrefsEnv } from "./prefs.ts";
+
+/** La chiave con cui fino al rilascio 10 si ricordava la scheda di un'unità sul dispositivo: non si legge più. */
+const OLD_TAB_KEY = (departmentId: string) => `unbundle-mapping-tab:${departmentId}`;
 
 // Quello che la board ricorda sul dispositivo e nell'indirizzo (docs/mappatura/MAPPATURA-BOARD-PIANO.md §1.5, P4, P5):
 // la scheda per unità, con l'ancora che vince; il pannello dell'assistente; niente sul server.
@@ -43,7 +46,7 @@ test("la scheda da aprire: l'ancora, poi il default (P4, P5); nessuna scheda ric
   assert.equal(resolveTab("#x", "oggi"), "oggi");
   // Una scheda ricordata da prima del rilascio 10 non conta più: lo stesso link apre la stessa scheda a tutti.
   const env = fakeEnv();
-  env.store.set(tabKey("u1"), "classificazione");
+  env.store.set(OLD_TAB_KEY("u1"), "classificazione");
   assert.equal(createBoardPrefs(env).tab("u1", "oggi"), "oggi");
 });
 
@@ -54,7 +57,7 @@ test("scegliere una scheda la scrive nell'ancora, senza una voce in più nella c
   const off = prefs.subscribe(() => seen.push(prefs.tab("u1", "oggi")));
   assert.equal(prefs.tab("u1", "oggi"), "oggi");
   prefs.selectTab("u1", "classificazione");
-  assert.equal(env.store.has(tabKey("u1")), false, "niente sul dispositivo");
+  assert.equal(env.store.has(OLD_TAB_KEY("u1")), false, "niente sul dispositivo");
   assert.deepEqual(env.replaced, ["classificazione"]);
   assert.deepEqual(seen, ["classificazione"], "chi legge la scheda lo sa subito");
   // Senza ancora, ogni unità apre la prima scheda.

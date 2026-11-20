@@ -13,7 +13,7 @@
 import Link from "next/link";
 import type { ButtonHTMLAttributes, JSX, ReactNode } from "react";
 import { firstSentence } from "../../../lib/mappatura/board-model.ts";
-import { BOARD_TEXT, STREAM_ENGLISH, exposureBadgeLabel, removeChipLabel, streamLabel } from "../../../lib/mappatura/text.ts";
+import { BOARD_TEXT, STREAM_ENGLISH, removeChipLabel, streamLabel } from "../../../lib/mappatura/text.ts";
 import type { Stream } from "../../../lib/mappatura/vocab.ts";
 import { focusBeforeRemoving, type FocusNode } from "./focus.ts";
 
@@ -106,15 +106,6 @@ export function StreamBadge(p: { stream: Stream; small?: boolean }): JSX.Element
   return (
     <span className={cx("b-abadge", p.small && "b-small")} data-stream={p.stream} data-b="stream-badge" title={STREAM_ENGLISH[p.stream]}>
       {streamLabel(p.stream)}
-    </span>
-  );
-}
-
-/** Il badge grigio dell'esposizione all'AI dal match O*NET: «AI 34%» (al posto di «AUTO» del riferimento). */
-export function ExposureBadge(p: { pct: number; small?: boolean }): JSX.Element {
-  return (
-    <span className={cx("b-abadge", "b-auto", p.small && "b-small")} data-b="exposure-badge">
-      {exposureBadgeLabel(p.pct)}
     </span>
   );
 }

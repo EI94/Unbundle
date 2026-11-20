@@ -17,7 +17,6 @@ import {
   headlineOp,
   hoursOp,
   laneFull,
-  mapCounts,
   moveTargets,
   newProcessOp,
   newStepOps,
@@ -36,9 +35,9 @@ import {
   stepMoveOp,
   stepTextOp,
   stepValueOp,
-  todayTiles,
+  mapFilterChips,
+  todaySummary,
   unitRow,
-  unitsTiles,
   voteOp,
 } from "./view-model.ts";
 
@@ -57,21 +56,19 @@ const valid = (op: OpInput): BoardOp => {
 const apply = (board: MappingBoard, ...ops: Array<OpInput | null>) => applyOps(board, ops.filter((op): op is OpInput => op !== null).map(valid), { kind: "persona" });
 const order = (board: MappingBoard) => board.processes.map((process) => process.steps.map((step) => step.title));
 
-test("i riquadri e i conteggi nascono dalla board: una modifica li cambia tutti insieme (P37, P38, P60)", () => {
+test("il riquadro di «Oggi» e i chip della mappa nascono dalla board: una modifica li cambia insieme (P37, P38, P60; rilascio 10, §3.7)", () => {
   const board = fixtureBoard();
-  assert.deepEqual(todayTiles(board), [
-    { value: "6", label: "passi in 2 processi" },
-    { value: "28,5 h", label: "ore a settimana" },
-    { value: "3", label: "passi dove decide una persona" },
-    { value: "2", label: "passi da validare" },
-  ]);
+  assert.deepEqual(todaySummary(board), { value: "6 passi", label: "28,5 h a settimana · 3 dove decide una persona" });
   // Gli attriti: le note della corsia, o uno per un livello scelto senza note (A1 ne ha due, A2, A4 e B1 uno).
-  assert.equal(mapCounts(board), "2 da validare · 4 confermati · 5 attriti");
-  // Confermare un passo e togliergli le ore cambia i riquadri e la riga dei conteggi, subito.
+  assert.deepEqual(mapFilterChips(board), [
+    { filter: "attriti", label: "5 attriti" },
+    { filter: "da-validare", label: "2 da validare" },
+  ]);
+  // Confermare un passo e togliergli le ore cambia il riquadro e i chip, subito.
   const confronto = locateStep(board, I.confronto)!.step;
   const next = apply(board, statusOp(confronto), hoursOp(confronto, null, 8));
-  assert.deepEqual(todayTiles(next).map((tile) => tile.value), ["6", "20,5 h", "3", "1"]);
-  assert.equal(mapCounts(next), "1 da validare · 5 confermati · 5 attriti");
+  assert.deepEqual(todaySummary(next), { value: "6 passi", label: "20,5 h a settimana · 3 dove decide una persona" });
+  assert.deepEqual(mapFilterChips(next).map((chip) => chip.label), ["5 attriti", "1 da validare"]);
 });
 
 test("che cosa si vede: modificabile, vuota, i punti di analisi, i passi sfumati", () => {
@@ -279,12 +276,6 @@ test("le righe delle unità: lo stato mostrato, i conteggi, quello che resta da 
   assert.deepEqual(unitRow(amministrazione), { status: "not_started", tone: "neutral", steps: "0 passi · 0 h a settimana", todo: [], streams: null });
   // Un'unità con passi è «In corso» da sola, anche se nessuno l'ha segnata.
   assert.equal(unitRow({ ...amministrazione, steps: 2, hoursWeek: 3 }).status, "in_progress");
-  assert.deepEqual(unitsTiles(fixtureUnits(), { singular: "funzione", plural: "funzioni" }), [
-    { value: "1 di 3", label: "funzioni con la mappatura completa" },
-    { value: "10", label: "passi mappati" },
-    { value: "59,5 h", label: "ore a settimana" },
-    { value: "6", label: "passi da validare" },
-  ]);
 });
 
 test("dopo «Elimina il passo» il fuoco va alla card prima nella riga, o a quella dopo, o a «+ passo» della riga vuota (F1)", () => {

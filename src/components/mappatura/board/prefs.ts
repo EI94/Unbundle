@@ -15,8 +15,6 @@
  */
 import { BOARD_TABS, type BoardTab } from "../../../lib/mappatura/text.ts";
 
-/** La scheda che si ricordava per unità, fino al rilascio 10: non si legge e non si scrive più. */
-export const tabKey = (departmentId: string) => `unbundle-mapping-tab:${departmentId}`;
 /** Il pannello dell'assistente: «1» aperto, «0» chiuso. */
 export const ASSISTANT_KEY = "unbundle-mapping-assistant";
 /** Da quanto è larga la finestra l'assistente sta accanto alla board, invece che sopra (§1.5). */

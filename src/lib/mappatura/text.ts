@@ -135,8 +135,6 @@ export const UNIT_NAME_MAX = 120;
 export const votesLabel = (total: number, mine: number): string => `Voti: ${formatCount(total)}. Tuoi: ${formatCount(mine)}.`;
 /** L'etichetta della × di un ruolo o di uno strumento. */
 export const removeChipLabel = (name: string): string => `Togli ${name}`;
-/** Il badge grigio dell'esposizione all'AI di un passo. */
-export const exposureBadgeLabel = (pct: number): string => `AI ${formatCount(Math.round(pct))}%`;
 
 // ─── Il vocabolario, in parole ───────────────────────────────────────
 
