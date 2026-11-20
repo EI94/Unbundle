@@ -3,6 +3,7 @@ import { canWriteFactory } from "@/lib/use-cases/factory/permissions";
 import { resolveCliCase } from "@/lib/use-cases/cli/case";
 import { cliError, cliJson, openCli } from "@/lib/use-cases/cli/route-kit";
 import { notBuilderMessage } from "@/lib/use-cases/cli/case-errors";
+import { caseOnlyPackageFiles } from "@/lib/use-cases/factory/package";
 
 /**
  * `unbundle start <ID>` (rilascio 8.0b): i tre file dell'ultima versione del pacchetto, per `casi/<id>/unbundle/`.
@@ -22,5 +23,6 @@ export async function GET(request: Request): Promise<Response> {
   if (!read.ok) return cliError(404, "non_trovato", read.message);
   const latest = read.value.latestPackage;
   if (!latest) return cliError(404, "senza_pacchetto", "Nessun pacchetto ancora: si genera dalla pagina «Progetto dell'agente».");
-  return cliJson({ caso: c.useCase.code, versione: latest.version, creatoIl: latest.createdAt, fonte: latest.source, file: latest.files });
+  // (8.0d, D7) A «Solo questo use case» `CONTESTO.md` con i soli fatti legati al suo caso.
+  return cliJson({ caso: c.useCase.code, versione: latest.version, creatoIl: latest.createdAt, fonte: latest.source, file: c.caseOnly ? caseOnlyPackageFiles(latest.files) : latest.files });
 }

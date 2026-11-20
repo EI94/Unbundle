@@ -22,7 +22,9 @@ const NO_CASE_HERE: CliLoginDecision = { ok: false, message: "In questo workspac
  * dalla pagina.
  */
 export async function confirmCliLoginAction(userCode: string, workspaceId: string): Promise<CliLoginDecision> {
-  const { session } = await requireWorkspaceAccess(workspaceId);
+  // (8.0d) Una porta di «Solo questo use case» (`CASE_ONLY_SURFACES`): costruisce dalla CLI. Il resto lo dice
+  // `cliCaseWorkspaceIds` (una concessione o un ruolo in un caso), e ogni caso poi vuole il predicato.
+  const { session } = await requireWorkspaceAccess(workspaceId, { allowCaseOnly: true });
   await ensureDbSchema();
   const executor = await getAppUcExecutor();
   if (!(await cliStoreReady(executor))) return NOT_READY;

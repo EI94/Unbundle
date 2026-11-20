@@ -206,6 +206,29 @@ export function formatContestoMd(ctx: AgentContext, i: { code: string; version: 
   return `${[F.title(i.code, i.version), F.lead(i.day), ...body].join("\n\n")}\n`;
 }
 
+/**
+ * (8.0d, D7) Il contesto per «Solo questo use case»: solo i fatti legati al suo caso, gli impegni e le domande che lo
+ * nominano; mai «In breve», «Regole e vincoli» e «Parole del cliente» dell'azienda. `loadAgentContext` con `caseOnly` li
+ * legge già così; questa li toglie anche da un contesto letto per tutti.
+ */
+export function caseOnlyAgentContext(ctx: AgentContext): AgentContext {
+  return { ...ctx, brief: [], rules: [], words: [] };
+}
+
+/**
+ * (8.0d, D7) `CONTESTO.md` di una versione del pacchetto, per «Solo questo use case»: il titolo, la riga d'apertura e la
+ * sola sezione «Che cosa tocca questo caso». Le altre sezioni (dell'azienda) si tolgono anche dalle versioni salvate prima.
+ * null senza fatti del caso, o con un file che non ha la forma attesa (si chiude, non si apre).
+ */
+export function caseOnlyContestoMd(file: string | null | undefined): string | null {
+  if (typeof file !== "string") return null;
+  const blocks = file.replace(/\n$/, "").split("\n\n");
+  if (blocks.length < 3 || !blocks[0].startsWith("# ")) return null;
+  const kept = blocks.slice(2).filter((block) => block.startsWith(`${T.file.caseFacts}\n- `));
+  if (kept.length === 0) return null;
+  return `${[blocks[0], blocks[1], ...kept].join("\n\n")}\n`;
+}
+
 /** Un impegno: «Inviare l'esportazione · del cliente · Responsabile amministrativo · entro il 25/11/2026». */
 function commitmentLine(c: AgentContext["commitments"][number]): string {
   const L = T.layer;

@@ -7,6 +7,7 @@ import { PublicFooterLine, PublicLink, PublicShell } from "@/components/public/p
 import { PublicCard, PublicCardText } from "@/components/public/state-card";
 import { Button } from "@/components/ui/button";
 import { auth } from "@/lib/auth";
+import { workspaceDoor } from "@/lib/auth/case-only";
 import { loginPathForMissingSession, SESSION_COOKIE_NAME } from "@/lib/auth/session-signal";
 import { ensureDbSchema } from "@/lib/db/ensure-schema";
 import { cliCaseWorkspaceIds, cliStoreReady, findCliLogin } from "@/lib/db/queries/use-case-cli-auth";
@@ -103,7 +104,8 @@ async function workspaceChoices(userId: string): Promise<{ choices: CliWorkspace
  * della voce nella barra (`factoryNavVisible`), con l'area «Use case» accesa e la sezione dei casi attiva.
  */
 async function factoryOpens(user: { id: string; email: string | null; emailVerified: boolean }, workspaceId: string, role: string | undefined): Promise<boolean> {
-  if (!role || role === "learner" || !isUseCaseHubWorkspace(workspaceId) || process.env.UC_ENABLED !== "true") return false;
+  // (8.0d) Per elenco: i collaboratori e «Solo questo use case» (la voce «Agent Factory» è la sua); mai chi segue un corso.
+  if (!role || workspaceDoor(role, { allowCaseOnly: true }) !== "aperta" || !isUseCaseHubWorkspace(workspaceId) || process.env.UC_ENABLED !== "true") return false;
   const lsManager = viewerFromSession(user, role).isLateralSpace && canReviewWorkspacePortfolio(role);
   return factoryNavVisible(await getAppUcExecutor(), { workspaceId, userId: user.id, lsManager, lsDomains: ucLsDomains() });
 }

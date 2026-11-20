@@ -37,6 +37,7 @@ import { canReadFactory, canWriteFactory } from "@/lib/use-cases/factory/permiss
 import { decideExistingTeamRequest } from "@/lib/use-cases/mcp/idempotency";
 import { abilitiesForUseCase } from "@/lib/use-cases/permissions";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
+import { isCaseOnly } from "@/lib/auth/case-only";
 import { cliError, cliJson, type OpenedCli } from "./route-kit";
 import { CLI_CASE_NOT_FOUND, CLI_CASE_UNAVAILABLE, cliCaseAccessFailure, notBuilderMessage } from "./case-errors";
 
@@ -52,6 +53,12 @@ export interface CliCase {
   target: FactoryTarget;
   /** Chi vede «Cosa serve» sulla scheda (`abilitiesForUseCase`): per le esigenze e il pacchetto. */
   canSeeNeeds: boolean;
+  /**
+   * (8.0d) La persona è «Solo questo use case» nel workspace: costruisce questo caso con il predicato (la porta l'ha già
+   * controllato, `caseAccessPrecheck`). Della memoria del cliente riceve solo i fatti legati al caso (D7), mai «In breve»,
+   * regole e parole dell'azienda; registra solo il repository del suo caso (D4).
+   */
+  caseOnly: boolean;
 }
 
 const NOT_FOUND = CLI_CASE_NOT_FOUND;
@@ -75,6 +82,7 @@ LIMIT 1`),
   if (!row || (principal.caseUseCaseId !== null && principal.caseUseCaseId !== String(row.id))) return { ok: false, response: cliError(404, "non_trovato", NOT_FOUND) };
   const viewer = viewerFromSession({ id: principal.userId, email: row.email ? String(row.email) : null, emailVerified: row.email_verified === true }, access.role);
   const abilities = abilitiesForUseCase(viewer);
+  const caseOnly = isCaseOnly(access.role);
   if (!row.case_id) {
     // Che il codice esista lo dice solo a chi vede tutti i codici nella pagina: per gli altri è «non trovato».
     if (!abilities.canSeeAllCodes) return { ok: false, response: cliError(404, "non_trovato", NOT_FOUND) };
@@ -104,7 +112,9 @@ LIMIT 1`),
       factory,
       actor: { kind: "persona", userId: principal.userId, roles: factory.roles },
       target: { workspaceId: principal.workspaceId, useCaseId: String(row.id) },
-      canSeeNeeds: abilities.canSeeNeeds,
+      // (8.0d, D7) «Solo questo use case» riceve tutto quello che riguarda il suo caso, «Cosa serve» compreso: è del caso.
+      canSeeNeeds: abilities.canSeeNeeds || caseOnly,
+      caseOnly,
     },
   };
 }

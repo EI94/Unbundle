@@ -18,7 +18,8 @@ import { listTasks, tasksStoreReady, type TaskView } from "@/lib/db/queries/use-
 import { listOpenProposals, proposalsStoreReady, type ProposalView } from "@/lib/db/queries/use-case-task-proposals";
 import type { UcExecutor } from "@/lib/db/uc-executor";
 import { loadFactoryAccess } from "@/lib/use-cases/factory/access";
-import { packageContextDelta } from "@/lib/use-cases/factory/package";
+import { caseOnlyPackageFiles, packageContextDelta } from "@/lib/use-cases/factory/package";
+import { isCaseOnly } from "@/lib/auth/case-only";
 import { aiBoardOkRule, AI_BOARD_NOTE_MIN, canApproveProject, canRequestProjectChange, canWriteFactory } from "@/lib/use-cases/factory/permissions";
 import { romeToday } from "@/lib/use-cases/quarter";
 import { AiBoardOk, DecisionForm, DetailsEditor, PackageButton, ProjectPrimaryAction, ProposalButtons, ReopenProject, TopicEditor } from "./project-forms";
@@ -169,15 +170,20 @@ async function readContextSection(actor: ContextActor, useCaseId: string): Promi
   }
 }
 
+/** (8.0d, D7) Il progetto come lo legge «Solo questo use case»: `CONTESTO.md` del pacchetto con i soli fatti del suo caso. */
+function caseOnlyView(view: FactoryView): FactoryView {
+  return view.latestPackage ? { ...view, latestPackage: { ...view.latestPackage, files: caseOnlyPackageFiles(view.latestPackage.files) } } : view;
+}
+
 /**
  * (9b) Le novità del contesto dopo l'ultimo pacchetto: le righe di `CONTESTO.md` che il prossimo «Aggiorna il pacchetto»
  * cambierebbe, dal file salvato nella versione a quello di adesso (con gli stessi nomi coperti); se la versione non ha
  * `CONTESTO.md`, tutte le righe di adesso. Zero se la lettura non riesce.
  */
-async function readContextDelta(executor: UcExecutor, target: FactoryTarget, code: string, latest: NonNullable<FactoryView["latestPackage"]>): Promise<number> {
+async function readContextDelta(executor: UcExecutor, target: FactoryTarget, code: string, latest: NonNullable<FactoryView["latestPackage"]>, caseOnly: boolean): Promise<number> {
   try {
-    const [context, names] = await Promise.all([loadAgentContext(target), namesToHide(executor, target)]);
-    return packageContextDelta({ context, namesToHide: names, code, latest });
+    const [context, names] = await Promise.all([loadAgentContext({ ...target, caseOnly }), namesToHide(executor, target)]);
+    return packageContextDelta({ context, namesToHide: names, code, latest, caseOnly });
   } catch (error) {
     console.error("[agent-project] context_delta_failed", { error: { name: error instanceof Error ? error.name : "Error" } });
     return 0;
@@ -186,9 +192,12 @@ async function readContextDelta(executor: UcExecutor, target: FactoryTarget, cod
 
 export default async function AgentProjectPage({ params }: { params: Promise<{ workspaceId: string; caseId: string }> }) {
   const { workspaceId, caseId } = await params;
-  const { session, access } = await requireWorkspacePage(workspaceId);
+  // (8.0d) Una porta di «Solo questo use case» (`CASE_ONLY_SURFACES`): il dossier poi vuole il predicato per questo caso
+  // (`caseAccessPrecheck`), e un caso fuori risponde 404. Della memoria del cliente legge solo i fatti del suo caso (D7).
+  const { session, access } = await requireWorkspacePage(workspaceId, { allowCaseOnly: true });
   const { caseAccess, executor } = await openShellPage({ workspaceId, caseId, session, access, page: "progetto" });
   const roles = caseAccess.roles;
+  const caseOnly = isCaseOnly(access.role);
 
   if (!(await factoryStoreReady(executor))) {
     return (
@@ -214,7 +223,8 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
   }
   const read = await readFactory(executor, target, { kind: "persona", userId: session.user.id, roles: factory.roles });
   if (!read.ok) notFound();
-  const view = read.value;
+  // (8.0d, D7) «Solo questo use case» legge il pacchetto con `CONTESTO.md` ridotto ai fatti del suo caso.
+  const view = caseOnly ? caseOnlyView(read.value) : read.value;
 
   const writable = canWrite(caseAccess);
   // Chi costruisce: scrive il progetto e legge il pacchetto (che è per i coding agent, non per il cliente).
@@ -283,7 +293,7 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
     tasksReady ? listTasks(executor, target) : Promise.resolve<TaskView[]>([]),
     readEvalOverview(executor, target).then(async (read) => ({ ...read, origins: await readEvalOrigins(executor, target, read.overview) })),
     readContextSection(contextActorFor(session.user, access, workspaceId), useCase.useCaseId),
-    builder && view.latestPackage ? readContextDelta(executor, target, useCase.code ?? "", view.latestPackage) : Promise.resolve(0),
+    builder && view.latestPackage ? readContextDelta(executor, target, useCase.code ?? "", view.latestPackage, caseOnly) : Promise.resolve(0),
   ]);
   const deltaLine = packageDeltaLine(contextDelta);
   // Le proposte sono testi del team: le vede solo chi costruisce il caso (anche da fuori Lateral Space), e le decide chi

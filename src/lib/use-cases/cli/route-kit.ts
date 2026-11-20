@@ -174,7 +174,9 @@ export async function openCli(
   if (!(await cliStoreReady(executor))) return { ok: false, response: cliError(503, "non_disponibile", "La CLI non è ancora disponibile: riprova tra qualche minuto.") };
   const principal = await authenticateCli(executor, request.headers.get("authorization"));
   if (!principal) return { ok: false, response: cliError(401, "token", "Token mancante, scaduto o revocato: fai «unbundle login».") };
-  const access = await getCollaboratorAccess(principal.userId, principal.workspaceId);
+  // (8.0d) Apre anche a «Solo questo use case» (`allowCaseOnly`, una porta di `CASE_ONLY_SURFACES`): ogni caso poi vuole il
+  // predicato (`resolveCliCase` → `caseAccessPrecheck`), e un caso fuori risponde come uno che non esiste.
+  const access = await getCollaboratorAccess(principal.userId, principal.workspaceId, { allowCaseOnly: true });
   if (!access) return { ok: false, response: cliError(403, "workspace", "Non hai più accesso a questo workspace.") };
   if (input.limit !== false) {
     const limited = await consumeCliTokenLimit(principal.tokenId, input.write);

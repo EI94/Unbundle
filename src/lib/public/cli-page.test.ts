@@ -23,12 +23,14 @@ test("the two links at the bottom: «Il tuo account › Claude e terminale» and
   assert.match(page, /\{workspaceId && factory \? <PublicLink href=\{`\/dashboard\/\$\{workspaceId\}\/agent-factory`\}>\{T\.factory\}<\/PublicLink> : null\}/);
   assert.match(page, /const first = workspaces\[0\]\?\.id \?\? null;/, "il workspace che la scelta propone per primo");
   assert.match(page, /<LinksFooter workspaceId=\{first\} factory=\{first \? await factoryOpens\(session\.user, first, roles\.get\(first\)\) : false\} \/>/);
-  assert.match(page, /if \(!role \|\| role === "learner" \|\| !isUseCaseHubWorkspace\(workspaceId\) \|\| process\.env\.UC_ENABLED !== "true"\) return false;/);
+  // (8.0d) Per elenco: i collaboratori e «Solo questo use case», come la porta della pagina; mai chi segue un corso.
+  assert.match(page, /if \(!role \|\| workspaceDoor\(role, \{ allowCaseOnly: true \}\) !== "aperta" \|\| !isUseCaseHubWorkspace\(workspaceId\) \|\| process\.env\.UC_ENABLED !== "true"\) return false;/);
   assert.match(page, /const lsManager = viewerFromSession\(user, role\)\.isLateralSpace && canReviewWorkspacePortfolio\(role\);/);
   assert.match(page, /return factoryNavVisible\(await getAppUcExecutor\(\), \{ workspaceId, userId: user\.id, lsManager, lsDomains: ucLsDomains\(\) \}\);/);
   const factoryPage = code("src/app/(dashboard)/dashboard/[workspaceId]/agent-factory/page.tsx");
   assert.match(factoryPage, /if \(!isUseCaseHubWorkspace\(workspaceId\) \|\| process\.env\.UC_ENABLED !== "true"\) notFound\(\);/, "la stessa regola della pagina");
-  assert.match(factoryPage, /if \(!\(await factoryNavVisible\(executor, \{ workspaceId, userId: session\.user\.id, lsManager, lsDomains \}\)\)\) notFound\(\);/);
+  // (8.0d) Senza la voce, 404; «Solo questo use case» ha sempre la sua voce, e prima della riga del dossier la pagina lo dice.
+  assert.match(factoryPage, /if \(!\(await factoryNavVisible\(executor, \{ workspaceId, userId: session\.user\.id, lsManager, lsDomains \}\)\)\) \{\s+if \(!caseOnly\) notFound\(\);/);
   assert.equal(accountHref("00000000-0000-4000-8000-0000000000a1", "claude"), "/dashboard/00000000-0000-4000-8000-0000000000a1?account=claude");
   assert.equal(CLI_PAGE_TEXT.account, "Il tuo account › Claude e terminale");
   assert.equal(CLI_PAGE_TEXT.factory, "Agent Factory");

@@ -16,6 +16,8 @@ import { CASE_STATUS_TONE, canOpenShellPage, caseHeadAlert, caseMenuFor, caseTab
 import { NEXT_STEP_ICON, caseNextSteps, nextStepFor, resolveStepHref, type NextStep } from "@/lib/uc/views/next-step";
 import { isLsViewer } from "@/lib/uc/views/status-groups";
 import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
+import { caseOnlyHomePath, isCaseOnly } from "@/lib/auth/case-only";
+import { SHELL_TEXT } from "@/lib/shell/text";
 
 /** Il blocco testata più schede: lo misura `screens.mjs` (≤ 260 px a 1440) e lo guarda la barra fissa. */
 const CASE_HEAD_ID = "uc-case-head";
@@ -34,7 +36,11 @@ const CASE_HEAD_ID = "uc-case-head";
  */
 export default async function CaseLayout({ children, params }: { children: React.ReactNode; params: Promise<{ workspaceId: string; caseId: string }> }) {
   const { workspaceId, caseId } = await params;
-  const { session, access } = await requireWorkspacePage(workspaceId);
+  // (8.0d) Una porta di «Solo questo use case» (`CASE_ONLY_SURFACES`): il caso poi vuole il predicato (`loadCaseHead` →
+  // `caseAccessPrecheck`, 404 per un caso fuori). Per lui solo la testata, senza schede, menu «⋯», passi né avvisi: la sua
+  // pagina è «Progetto dell'agente», e il percorso torna all'Agent Factory.
+  const { session, access } = await requireWorkspacePage(workspaceId, { allowCaseOnly: true });
+  const caseOnly = isCaseOnly(access.role);
   let head: Awaited<ReturnType<typeof loadCaseHead>>;
   try {
     head = await loadCaseHead(workspaceId, caseId, session.user.id, access.role);
@@ -69,7 +75,7 @@ export default async function CaseLayout({ children, params }: { children: React
         why: primary.detail,
       }
     : null;
-  const transitionStep = steps.find((s) => s.owner === "me" && s.transition && usable(s));
+  const transitionStep = caseOnly ? undefined : steps.find((s) => s.owner === "me" && s.transition && usable(s));
   const transition: CaseTransitionView | null =
     transitionStep?.transition !== undefined
       ? {
@@ -80,16 +86,23 @@ export default async function CaseLayout({ children, params }: { children: React
         }
       : null;
 
-  const menu: CaseMenuEntry[] = caseMenuFor(roles, {
-    pendingSignatures: signable ? header.signatures.length : 0,
-    pastVia: isCasePastG1(c.status, c.statusBeforeSuspension),
-    exportable: canExport,
-  }).map((m) => ({ key: m.key, label: m.label, href: m.segment === null ? null : at(m.segment) }));
+  const menu: CaseMenuEntry[] = caseOnly
+    ? []
+    : caseMenuFor(roles, {
+        pendingSignatures: signable ? header.signatures.length : 0,
+        pastVia: isCasePastG1(c.status, c.statusBeforeSuspension),
+        exportable: canExport,
+      }).map((m) => ({ key: m.key, label: m.label, href: m.segment === null ? null : at(m.segment) }));
 
   const workspaceAdmin = canManageWorkspaceSettings(access.role);
   const canOpenVia = canOpenShellPage("via", roles);
-  const alert = caseHeadAlert({ status: c.status, gateReconfirm: header.readiness?.gate_reconfirm === true, lsConfigured: caseAccess.lsConfigured, workspaceAdmin, canOpenVia });
-  const tabs = caseTabsFor(roles);
+  const alert = caseOnly ? null : caseHeadAlert({ status: c.status, gateReconfirm: header.readiness?.gate_reconfirm === true, lsConfigured: caseAccess.lsConfigured, workspaceAdmin, canOpenVia });
+  const tabs = caseOnly ? [] : caseTabsFor(roles);
+  const shownStep = caseOnly ? null : stepView;
+  const progress = caseOnly ? null : header.progress;
+  const trail = caseOnly
+    ? ({ kind: "lista", back: { label: SHELL_TEXT.nav.factory, href: caseOnlyHomePath(workspaceId) } } as const)
+    : caseTrail({ workspaceId, caseBase: base, parent: header.parent });
   const status = { tone: CASE_STATUS_TONE[c.status], label: CASE_STATUS_LABEL[c.status] };
   const ls = isLsViewer(roles);
 
@@ -99,27 +112,27 @@ export default async function CaseLayout({ children, params }: { children: React
       <div id={CASE_HEAD_ID} data-uc-case-head="" className="border-b border-border">
         <div className={`mx-auto w-full max-w-6xl min-w-0 px-4 sm:px-6 lg:px-8 ${tabs.length === 0 ? "pb-4" : ""}`}>
           <CaseHeader
-            trail={caseTrail({ workspaceId, caseBase: base, parent: header.parent })}
-            overviewLinkable={canOpenShellPage("panoramica", roles)}
+            trail={trail}
+            overviewLinkable={!caseOnly && canOpenShellPage("panoramica", roles)}
             title={c.title}
             oneLiner={c.oneLiner}
             status={status}
             readOnlyBadge={showsReadOnlyBadge({ lsConfigured: caseAccess.lsConfigured, workspaceAdmin })}
             alert={alert ? { ...alert, href: alert.action ? at(alert.action.segment) : null } : null}
-            progress={header.progress ? { ...header.progress, href: canOpenVia ? at("via") : null, audience: ls ? "ls" : "cliente" } : null}
-            step={stepView}
+            progress={progress ? { ...progress, href: canOpenVia ? at("via") : null, audience: ls ? "ls" : "cliente" } : null}
+            step={shownStep}
             menu={menu}
           />
           <CaseTabs basePath={base} tabs={tabs} />
         </div>
       </div>
-      <CaseStickyBar basePath={base} tabs={tabs} headId={CASE_HEAD_ID} title={c.title} status={status} progress={header.progress} step={stepView} />
+      <CaseStickyBar basePath={base} tabs={tabs} headId={CASE_HEAD_ID} title={c.title} status={status} progress={progress} step={shownStep} />
       <CaseUrlPanels
         workspaceId={workspaceId}
         caseId={caseId}
         transition={writable ? transition : null}
         exportPanel={
-          canExport
+          canExport && !caseOnly
             ? {
                 title: ls ? "Esporta il catalogo" : "Scarica in Excel",
                 note: "Ogni download resta in Attività.",

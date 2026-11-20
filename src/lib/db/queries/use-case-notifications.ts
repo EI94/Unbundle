@@ -88,14 +88,25 @@ async function bellTables(executor: UcExecutor): Promise<{ notifications: boolea
  * (8.0a) Con `kinds`, solo quei tipi: chi non rivede il portafoglio vede solo le righe dell'Agent Factory, che
  * arrivano per il ruolo nel team del caso.
  */
-export async function listUseCaseBellRows(i: { userId: string; workspaceId: string; limit: number; days: number; now: Date; kinds?: readonly string[] }): Promise<BellUseCaseInput[]> {
+export async function listUseCaseBellRows(i: {
+  userId: string;
+  workspaceId: string;
+  limit: number;
+  days: number;
+  now: Date;
+  kinds?: readonly string[];
+  /** (8.0d) Solo le righe di questi use case («Solo questo use case»: i suoi casi). Vuoto: nessuna riga. */
+  useCaseIds?: readonly string[];
+}): Promise<BellUseCaseInput[]> {
   if (!isUuid(i.userId) || !isUuid(i.workspaceId)) return [];
+  if (i.useCaseIds && i.useCaseIds.filter(isUuid).length === 0) return [];
   const executor = await getAppUcExecutor();
   const tables = await bellTables(executor);
   if (!tables.notifications) return [];
   const ready = ucSql`
   AND (n.kind <> 'pronto' OR ${readyNowSql("u", { dossiers: tables.dossiers })})${i.kinds ? ucSql`
-  AND n.kind = ANY (${cast([...i.kinds], "text[]")})` : raw("")}`;
+  AND n.kind = ANY (${cast([...i.kinds], "text[]")})` : raw("")}${i.useCaseIds ? ucSql`
+  AND n.use_case_id = ANY (${cast(i.useCaseIds.filter(isUuid), "uuid[]")})` : raw("")}`;
   const suppliers = tables.acks ? ucSql`
   AND (n.kind <> 'fornitori' OR NOT ${subprocessorsAckSql(raw("n.workspace_id"))})` : raw("");
   const [rows] = await executor.batch([

@@ -71,22 +71,25 @@ export async function loadCliContext(executor: UcExecutor, c: CliCase, input: { 
   // (9b) La riga del contesto nel brief, solo per la CLI che conosce `--contesto`: il contesto di adesso, da confrontare
   // con il CONTESTO.md dell'ultimo pacchetto.
   const knowsContext = cliKnowsContextLayer(input.userAgent);
+  // (8.0d, D7) Chi legge conta solo per «Solo questo use case»: per tutti gli altri la lettura resta quella di sempre.
+  const caseOnlyReader = c.caseOnly ? ({ caseOnly: true } as const) : {};
   const contextLine = input.layer === null && knowsContext;
   const [extras, names, tasks, agent] = await Promise.all([
     cliCaseExtras(executor, c.target, { canSeeNeeds: c.canSeeNeeds }),
     namesToHide(executor, c.target),
     tasksStoreReady(executor).then((ready) => (ready ? listTasks(executor, c.target) : [])),
     // (9b) Lo strato `contesto` (con `since`) e la riga del brief (senza): solo «Per tutti», per chiunque chieda (D1).
+    // (8.0d, D7) A «Solo questo use case» solo i fatti legati al suo caso, mai quelli dell'azienda.
     contextLayer
-      ? loadAgentContext({ workspaceId: c.target.workspaceId, useCaseId: c.target.useCaseId, since: input.since })
+      ? loadAgentContext({ workspaceId: c.target.workspaceId, useCaseId: c.target.useCaseId, since: input.since, ...caseOnlyReader })
       : contextLine
-        ? loadAgentContext({ workspaceId: c.target.workspaceId, useCaseId: c.target.useCaseId })
+        ? loadAgentContext({ workspaceId: c.target.workspaceId, useCaseId: c.target.useCaseId, ...caseOnlyReader })
         : Promise.resolve(null),
   ]);
   if (contextLayer && agent === null) return { ok: false, code: "non_disponibile" };
   // Le novità del brief: le righe di CONTESTO.md che il prossimo «Aggiorna il pacchetto» cambierebbe; senza pacchetto,
   // quanti fatti ci sono. Senza archivio (agent null) nessuna riga.
-  const contextDelta = contextLine ? packageContextDelta({ context: agent, namesToHide: names, code: c.useCase.code, latest: view.latestPackage }) : 0;
+  const contextDelta = contextLine ? packageContextDelta({ context: agent, namesToHide: names, code: c.useCase.code, latest: view.latestPackage, ...caseOnlyReader }) : 0;
   const shared = contextLayer && agent ? redactAgentContext(agent, names) : null;
   const viewerId = c.actor.kind === "persona" ? c.actor.userId : "";
   const base = {

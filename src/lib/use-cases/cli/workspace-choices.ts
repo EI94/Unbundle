@@ -5,8 +5,12 @@
  * - Ogni voce si riconosce: nome, organizzazione se è diversa, e per due voci uguali la data di creazione. Se
  *   anche la data è uguale, l'inizio dell'id. Il 12/11 la pagina mostrava cinque «NATIVA · Supersapiens» uguali.
  *
+ * (8.0d) Per elenco: i collaboratori e «Solo questo use case» (che costruisce dalla CLI); mai chi segue solo un corso, né
+ * un ruolo che il codice non conosce.
+ *
  * Modulo puro.
  */
+import { workspaceDoor } from "../../auth/case-only.ts";
 
 export interface CliWorkspaceInput {
   id: string;
@@ -39,7 +43,7 @@ export function cliWorkspaceChoices(items: readonly CliWorkspaceInput[], caseWor
   const byId = new Map<string, CliWorkspaceInput>();
   for (const w of items) {
     const id = w.id.toLowerCase();
-    if (w.accessRole === "learner" || !caseWorkspaceIds.has(id) || byId.has(id)) continue;
+    if (workspaceDoor(w.accessRole, { allowCaseOnly: true }) !== "aperta" || !caseWorkspaceIds.has(id) || byId.has(id)) continue;
     byId.set(id, w);
   }
   const kept = [...byId.entries()];

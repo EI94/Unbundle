@@ -18,7 +18,10 @@ import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import { externalRefusals, listBuilders, listWhereChoices, type BuilderRow } from "@/lib/db/queries/use-case-workspace-team";
 import { loadMemberCandidates } from "@/lib/db/queries/uc-shell";
 import { ROLE_LABEL } from "@/lib/uc/views/labels";
-import { builderStateText, builderWhereText, externalRemoveConfirm } from "@/lib/use-cases/factory/builders-text";
+import { CASE_ONLY_WAITING_TEXT, builderStateText, builderWhereText, externalRemoveConfirm } from "@/lib/use-cases/factory/builders-text";
+import { isCaseOnly } from "@/lib/auth/case-only";
+import { readExternalGrant } from "@/lib/db/queries/use-case-builders";
+import { joinCaseOnlyDossier } from "@/lib/db/queries/use-case-workspace-team";
 import { BuilderFacts } from "@/components/agent-factory/builder-facts";
 import { readCiFamilies } from "@/components/agent-factory/ci-load";
 import { CiRow } from "@/components/agent-factory/ci-row";
@@ -81,9 +84,13 @@ function prLine(p: FactoryCaseRow["prs"]): string | null {
   return [parts.join(" e "), days, spend].filter(Boolean).join(", ");
 }
 
-function todoHref(workspaceId: string, t: FactoryTodo): string {
+function todoHref(workspaceId: string, t: FactoryTodo, caseOnly = false): string {
   if (t.href) return t.href;
-  if (t.kind === "collega") return `/dashboard/${workspaceId}/settings#cli`;
+  // (8.0d) «Solo questo use case» non apre Impostazioni: il testo dice già come si collega la CLI.
+  if (t.kind === "collega") return caseOnly ? `/dashboard/${workspaceId}/agent-factory` : `/dashboard/${workspaceId}/settings#cli`;
+  // (8.0d) «Togli …» porta a «Chi costruisce»; «Aggiungi … al team» al team del dossier.
+  if (t.kind === "togli_esterno") return `/dashboard/${workspaceId}/agent-factory#team`;
+  if (t.kind === "aggiungi_esterno") return `/dashboard/${workspaceId}/casi-duso/${t.caseId}/persone`;
   if (t.kind === "domande") return `/dashboard/${workspaceId}/use-cases/${t.useCaseId}/proposte`;
   if (t.kind === "banco" || t.kind === "evals") return `/dashboard/${workspaceId}/casi-duso/${t.caseId}/progetto#banco`;
   return `/dashboard/${workspaceId}/casi-duso/${t.caseId}/progetto${t.kind === "approva" ? "" : "#compiti"}`;
@@ -141,15 +148,41 @@ function BuilderLine({ workspaceId, m, ciLive }: { workspaceId: string; m: Build
   );
 }
 
+/** (8.0d) Le righe `osservatore` dei casi di «Solo questo use case» (per caso, mai «tutti»); un errore non ferma la pagina. */
+async function joinCaseOnlyDossiers(executor: Awaited<ReturnType<typeof getAppUcExecutor>>, i: { workspaceId: string; userId: string; lsDomains: readonly string[] }): Promise<void> {
+  try {
+    const grant = await readExternalGrant(executor, i.workspaceId, i.userId);
+    if (!grant || grant.all) return;
+    for (const useCaseId of grant.useCaseIds) await joinCaseOnlyDossier(executor, { ...i, useCaseId });
+  } catch (error) {
+    console.error("[agent-factory] solo_caso_riga", error instanceof Error ? error.name : "errore");
+  }
+}
+
 export default async function AgentFactoryPage({ params }: { params: Promise<{ workspaceId: string }> }) {
   const { workspaceId } = await params;
-  const { session, access } = await requireWorkspacePage(workspaceId);
+  // (8.0d) Una porta di «Solo questo use case» (`CASE_ONLY_SURFACES`): la sua casa nel workspace. Vede solo i casi che
+  // costruisce adesso (il predicato), mai «Chi costruisce», mai i casi degli altri.
+  const { session, access } = await requireWorkspacePage(workspaceId, { allowCaseOnly: true });
   if (!isUseCaseHubWorkspace(workspaceId) || process.env.UC_ENABLED !== "true") notFound();
+  const caseOnly = isCaseOnly(access.role);
   const viewer = viewerFromSession(session.user, access.role);
-  const lsManager = viewer.isLateralSpace && canReviewWorkspacePortfolio(access.role);
+  const lsManager = !caseOnly && viewer.isLateralSpace && canReviewWorkspacePortfolio(access.role);
   const executor = await getAppUcExecutor();
   const lsDomains = ucLsDomains();
-  if (!(await factoryNavVisible(executor, { workspaceId, userId: session.user.id, lsManager, lsDomains }))) notFound();
+  // (8.0d) La riga `osservatore` dei suoi casi, se manca, con chi ha invitato come attore (se ne è ancora responsabile):
+  // si ripete senza danni a ogni visita, come riaprendo il link dell'invito.
+  if (caseOnly) await joinCaseOnlyDossiers(executor, { workspaceId, userId: session.user.id, lsDomains });
+  if (!(await factoryNavVisible(executor, { workspaceId, userId: session.user.id, lsManager, lsDomains }))) {
+    if (!caseOnly) notFound();
+    // (8.0d) «Solo questo use case» ha sempre la sua voce: prima della riga del dossier la pagina lo dice.
+    return (
+      <PageContainer>
+        <h1 className={PAGE_TITLE_CLASS}>Agent Factory</h1>
+        <p className="mt-2 text-sm text-muted-foreground">{CASE_ONLY_WAITING_TEXT}</p>
+      </PageContainer>
+    );
+  }
   // La pagina legge le tabelle della 0030 e della 0031: finché non ci sono (il primo avvio dopo un rilascio), lo dice.
   const [factoryReady, cliReady] = await Promise.all([factoryStoreReady(executor), cliStoreReady(executor)]);
   if (!factoryReady || !cliReady) {
@@ -160,7 +193,7 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
       </PageContainer>
     );
   }
-  const view = await loadFactoryOverview(executor, { workspaceId, userId: session.user.id, seeAll: lsManager, canSeeNeeds: abilitiesForUseCase(viewer).canSeeNeeds, lsDomains });
+  const view = await loadFactoryOverview(executor, { workspaceId, userId: session.user.id, seeAll: lsManager, canSeeNeeds: abilitiesForUseCase(viewer).canSeeNeeds, lsDomains, caseOnly });
   const [builders, candidates, choices] = lsManager
     ? await Promise.all([listBuilders(executor, workspaceId, lsDomains), loadMemberCandidates(executor, { workspaceId, lsDomains }), listWhereChoices(executor, workspaceId)])
     : [null, [], []];
@@ -210,7 +243,7 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
                     <ExternalLink aria-label="Su GitHub" className="size-4 shrink-0 text-muted-foreground" />
                   </a>
                 ) : (
-                  <Link href={todoHref(workspaceId, t)} className="flex min-h-11 items-center justify-between gap-3 py-2 text-sm hover:underline">
+                  <Link href={todoHref(workspaceId, t, caseOnly)} className="flex min-h-11 items-center justify-between gap-3 py-2 text-sm hover:underline">
                     {t.code ? (
                       <span>
                         <span className="font-medium tabular-nums">{t.code}</span> · {t.text}

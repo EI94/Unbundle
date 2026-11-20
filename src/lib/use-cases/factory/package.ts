@@ -26,7 +26,7 @@
  */
 import { createHash } from "node:crypto";
 import type { PackageFile } from "../../db/use-case-hub-factory-ddl.ts";
-import { formatContestoMd, type AgentContext, type AgentFact } from "../../context/work/agent-text.ts";
+import { caseOnlyContestoMd, formatContestoMd, type AgentContext, type AgentFact } from "../../context/work/agent-text.ts";
 
 /** Quello che serve al pacchetto, già letto con i permessi di chi lo genera (`queries/use-case-factory.ts`). */
 export interface PackageSource {
@@ -265,12 +265,30 @@ export function packageContextDelta(i: {
   namesToHide: readonly string[];
   code: string;
   latest: { files: Readonly<Record<string, unknown>> } | null | undefined;
+  /** (8.0d, D7) Chi legge è «Solo questo use case»: il file salvato si confronta come lo legge lui (`caseOnlyPackageFiles`). */
+  caseOnly?: boolean;
 }): number {
   if (!i.context) return 0;
   const fresh = contextSectionsFor(i.context, i.namesToHide, i.code);
   if (!i.latest) return contextFileFacts(fresh);
-  const stored = i.latest.files?.["CONTESTO.md"];
+  const files = i.caseOnly ? caseOnlyPackageFiles(i.latest.files) : i.latest.files;
+  const stored = files?.["CONTESTO.md"];
   return contextFileDelta(typeof stored === "string" ? stored : null, fresh);
+}
+
+/**
+ * (8.0d, D7) I file di una versione del pacchetto per «Solo questo use case»: gli stessi, con `CONTESTO.md` ridotto ai
+ * fatti legati al suo caso (`caseOnlyContestoMd`), o senza `CONTESTO.md` se non ne restano. Vale anche per le versioni
+ * salvate prima: il pacchetto è uno per caso, e lo leggono tutti quelli che lo costruiscono.
+ */
+export function caseOnlyPackageFiles<T extends Readonly<Record<string, unknown>>>(files: T | null | undefined): T {
+  const out: Record<string, unknown> = { ...(files ?? {}) };
+  if ("CONTESTO.md" in out) {
+    const reduced = caseOnlyContestoMd(typeof out["CONTESTO.md"] === "string" ? (out["CONTESTO.md"] as string) : null);
+    if (reduced === null) delete out["CONTESTO.md"];
+    else out["CONTESTO.md"] = reduced;
+  }
+  return out as T;
 }
 
 function clean(text: string | null | undefined, max: number, tokens: readonly string[], given: ReadonlySet<string> = new Set()): string | null {
