@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { addCommentAction, resolveCommentAction } from "@/lib/actions/uc-catalog";
 import { cn } from "@/lib/utils";
+import { DOMANDE_TEXT } from "@/lib/uc/views/domande-text";
 import type { ActivityEntry } from "@/lib/uc/views/item-detail";
 import { useUcAction } from "./use-uc-action";
 
@@ -140,7 +141,7 @@ export function QuestionActivity({
         >
           <label className="block">
             <span className="sr-only">Commento</span>
-            <Textarea value={body} onChange={(e) => setBody(e.target.value)} maxLength={4000} rows={3} placeholder="Niente nomi di persone né dati personali." autoFocus />
+            <Textarea value={body} onChange={(e) => setBody(e.target.value)} maxLength={4000} rows={3} placeholder={DOMANDE_TEXT.comments.placeholder} autoFocus />
           </label>
           {visibilities.length > 1 && (
             <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
