@@ -4,10 +4,12 @@ import { parseSupportContacts } from "@/lib/ai-readiness/support-contacts";
 import { getRespondentPrivacyBundleByTokenHash } from "@/lib/db/queries/ai-readiness";
 import { SURVEY_TEXT, fillSurvey, surveyDay } from "@/lib/public/survey";
 import { RespondentPrivacyControls } from "@/components/ai-readiness/respondent-privacy-controls";
-import { PublicContact, PublicLink, PublicShell } from "@/components/public/public-shell";
+import { PUBLIC_PRIMARY } from "@/components/public/classes";
+import { PublicContact, PublicShell } from "@/components/public/public-shell";
 import { PublicCard, PublicCardText, PublicInvalidScreen } from "@/components/public/state-card";
 import { SurveyNotice } from "@/components/public/survey-notice";
 import { Fold } from "@/components/ui-10/fold";
+import { Button } from "@/components/ui/button";
 
 export const dynamic = "force-dynamic";
 
@@ -16,8 +18,9 @@ export const dynamic = "force-dynamic";
  * docs/ui-10/PROPOSTA-10.md §3.11, audit Fuori §3.8 AR-18…20): chi le raccoglie, perché, chi le vede, per quanto tempo, a
  * chi chiedere. Sotto, chiusa, «I tuoi dati ▸»: il riepilogo, «Scarica una copia», «Ritira il consenso al confronto»
  * (solo se è stato dato) e «Cancella le mie risposte» con la conferma nella pagina. La piega si apre da sola quando si
- * arriva per i dati (`?dati=1`) o dopo un'azione (`?benchmark=`, `?error=`). Il guscio unico, chiaro; niente stato
- * dell'invito in inglese, «Controller», «Retention» né «JSON». Le rotte delle azioni non cambiano.
+ * arriva per i dati (`?dati=1`) o dopo un'azione (`?benchmark=`, `?error=`). Finché il questionario si può compilare, il
+ * pulsante pieno è «Torna al questionario». Il guscio unico, chiaro; niente stato dell'invito in inglese, «Controller»,
+ * «Retention» né «JSON». Le rotte delle azioni non cambiano.
  */
 export const metadata: Metadata = {
   title: SURVEY_TEXT.notice.title,
@@ -62,6 +65,7 @@ export default async function AiReadinessPrivacyPage({
   const sent = surveyDay(bundle.respondent.completedAt);
   const cases = bundle.useCases.length;
   const benchmarkGiven = bundle.respondent.hasBenchmarkConsent === true;
+  const canGoBack = bundle.respondent.inviteStatus !== "completed" && bundle.assessment.status === "open";
 
   return (
     <PublicShell client={client} footer={support ? <PublicContact label={support.label} href={support.mailto} /> : null}>
@@ -90,9 +94,12 @@ export default async function AiReadinessPrivacyPage({
         <RespondentPrivacyControls token={token} benchmarkGiven={benchmarkGiven} />
       </Fold>
 
-      <p className="mt-6">
-        <PublicLink href={`/a/${token}`}>{SURVEY_TEXT.notice.back}</PublicLink>
-      </p>
+      {/* Il prossimo passo, finché il questionario si può ancora compilare: tornarci. */}
+      {canGoBack ? (
+        <Button render={<a href={`/a/${token}`} />} nativeButton={false} className={`mt-6 ${PUBLIC_PRIMARY}`} data-testid="privacy-back">
+          {SURVEY_TEXT.notice.back}
+        </Button>
+      ) : null}
     </PublicShell>
   );
 }

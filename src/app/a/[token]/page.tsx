@@ -25,7 +25,7 @@ export const dynamic = "force-dynamic";
  *
  * (Rilascio 10, ondata 4, docs/ui-10/PROPOSTA-10.md §3.11, audit Fuori §3.8) Il guscio unico delle pagine pubbliche,
  * chiaro, con il nome del cliente in alto, non cliccabile. Una testata di circa 40 parole: il titolo, «10 minuti · anonimo
- * · si salva da solo», il testo d'apertura della rilevazione e la privacy in una riga. Niente etichette, metodologia
+ * · si salva da solo», la privacy in una riga e, se chi gestisce la rilevazione l'ha scritto, il suo testo d'apertura. Niente etichette, metodologia
  * («Questa compilazione alimenta…»), tre card «come funziona», blocco legale, casella: la presa visione si registra
  * all'invio, con una riga e il link a «Come usiamo le tue risposte» (l'informativa unica). In fondo il contatto e «Questo
  * link è solo tuo». I testi stanno in `src/lib/public/survey.ts`.
@@ -112,6 +112,10 @@ export default async function AiReadinessRespondentPage({
 
   const isInternalTrack = found.respondent.surveyTrack === "internal";
   const named = found.assessment.anonymousMode === false;
+  // Il testo d'apertura della rilevazione, solo se chi la gestisce l'ha scritto: quello proposto di serie è generico, e
+  // la testata resta di circa 40 parole.
+  const intro = brandCopy(brand, "introCopy", AI_READINESS_DEFAULT_COPY.intro);
+  const ownIntro = intro.trim() && intro !== AI_READINESS_DEFAULT_COPY.intro ? intro : null;
   const scoredQuestions = found.templateDefinition.questions.filter((question) => question.answerType !== "text").length;
 
   const existingResponse = await getResponseForRespondent(
@@ -141,7 +145,7 @@ export default async function AiReadinessRespondentPage({
           <p className="mt-2 text-muted-foreground">{surveyFacts(surveyMinutes(scoredQuestions), named)}</p>
           <div className="mt-4 space-y-2">
             {isInternalTrack ? <p>{SURVEY_TEXT.internalIntro}</p> : null}
-            <p>{brandCopy(brand, "introCopy", AI_READINESS_DEFAULT_COPY.intro)}</p>
+            {ownIntro ? <p>{ownIntro}</p> : null}
             <p className="text-muted-foreground">{surveyPrivacyLine(named, found.assessment.aggregationThreshold)}</p>
           </div>
         </header>

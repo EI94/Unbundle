@@ -133,7 +133,8 @@ test("the privacy page: the single notice as H1, «I tuoi dati ▸» closed unle
   assert.match(page, /const openData = first\(query\.dati\) === "1" \|\| withdrawn \|\| error !== "";/);
   assert.match(page, /<RespondentPrivacyControls token=\{token\} benchmarkGiven=\{benchmarkGiven\} \/>/);
   assert.match(page, /if \(!bundle\) return <PublicInvalidScreen body=\{SURVEY_TEXT\.gone\} \/>;/);
-  assert.match(page, /<PublicLink href=\{`\/a\/\$\{token\}`\}>\{SURVEY_TEXT\.notice\.back\}<\/PublicLink>/);
+  assert.match(page, /const canGoBack = bundle\.respondent\.inviteStatus !== "completed" && bundle\.assessment\.status === "open";/);
+  assert.match(page, /<Button render=\{<a href=\{`\/a\/\$\{token\}`\} \/>\} nativeButton=\{false\} className=\{`mt-6 \$\{PUBLIC_PRIMARY\}`\} data-testid="privacy-back">/, "il prossimo passo: tornare al questionario");
   assert.doesNotMatch(page, /inviteStatus\}|Torna al survey|Privacy e dati AI Readiness/);
   assert.match(code("src/app/privacy/layout.tsx"), /return <PublicRoot>\{children\}<\/PublicRoot>;/, "chiara: prima era sempre scura");
   assert.ok(existsSync(new URL("../../../src/app/privacy/ai-readiness/[token]/error.tsx", import.meta.url)), "l'errore ha la sua scheda");
@@ -162,6 +163,9 @@ test("/a: a short header, the acknowledgement recorded at submit with one line a
   const page = code("src/app/a/[token]/page.tsx");
   assert.match(page, /\{isInternalTrack \? SURVEY_TEXT\.internalTitle : SURVEY_TEXT\.title\}/);
   assert.match(page, /useCaseModule=\{!isInternalTrack\}/, "il modulo dei casi d'uso per tutti, mai per i referenti");
+  // Il testo d'apertura solo se chi gestisce la rilevazione l'ha scritto: quello di serie non allunga la testata.
+  assert.match(page, /const ownIntro = intro\.trim\(\) && intro !== AI_READINESS_DEFAULT_COPY\.intro \? intro : null;/);
+  assert.match(page, /\{ownIntro \? <p>\{ownIntro\}<\/p> : null\}/);
   for (const gone of ["survey-track-summary", "survey-howto", "includedPillars", "AI Readiness OS", "<Badge", "🔗", "💡", "SurveyThemeToggle", "Gestisci privacy"]) assert.ok(!page.includes(gone), gone);
   const form = code("src/components/ai-readiness/respondent-survey-form.tsx");
   assert.match(form, /<Button type="submit" name="privacyAccepted" value="on" className=\{PUBLIC_PRIMARY\}/, "la presa visione viaggia con l'invio");
