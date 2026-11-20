@@ -233,36 +233,52 @@ function searchParamsOf(query: string): Record<string, string> {
   return sp;
 }
 
-// ── Domande (DESIGN §3.6, WP3) ────────────────────────────────────────
+// ── Domande (DESIGN §3.6, WP3; rilascio 10, §3.5) ─────────────────────
 //
 // Il catalogo di sopra resta per i lettori di oggi fino a WP13. Domande ha i
 // suoi parametri (§2.5): `vista` (segmento), `indispensabili`, `mostra`,
 // `tipo`, `argomento`, `referente`, `ruolo`, `stato`, `riservatezza`,
 // `perimetro`, `q`, `pagina`. Tre pubblici:
-// - Lateral Space: segmenti «Da fare · Da verificare · Bloccate · Documenti ·
-//   Tutte», tutti i filtri, anche «Tutto il catalogo»;
+// - Lateral Space: segmenti «Da fare · Da verificare · Tutte», tutti i filtri,
+//   anche «Documenti» e «Tutto il catalogo»;
 // - sviluppatore: solo le domande a posto, con la ricerca;
-// - responsabile del cliente: «Da rispondere · In verifica · A posto · Tutte»,
-//   senza stato dettagliato, riservatezza né catalogo (§3.6.8); del referente
-//   solo «Senza referente», mai una persona (art. 15.4).
-// Filtri, conteggi, ordine e pagine stanno nel database: alla pagina arrivano
-// 50 righe.
+// - responsabile del cliente: «Da rispondere · In verifica · Tutte», senza
+//   stato dettagliato, riservatezza né catalogo (§3.6.8); del referente solo
+//   «Senza referente», mai una persona (art. 15.4).
+// (Rilascio 10, §3.5) «Bloccate» è il gruppo «In attesa» in cima a «Da fare»
+// (`vista=bloccate` lo apre, come i link di ieri); «A posto» e «Documenti»
+// sono filtri (`stato=a-posto`, `mostra=documenti`): `vista=a-posto` di ieri
+// diventa «Tutte» con «A posto». Filtri, conteggi, ordine e pagine stanno nel
+// database: alla pagina arrivano 50 righe.
 
 export const QUESTIONS_PAGE_SIZE = 50;
 
-/** I segmenti di Domande, come valori di `?vista=`. */
+/** I valori di `?vista=`: i tre segmenti, il gruppo «In attesa» e «A posto» (lo sviluppatore, i link di ieri). */
 export const QUESTION_SEGMENTS = ["da-fare", "da-verificare", "bloccate", "a-posto", "tutte"] as const;
 export type QuestionSegment = (typeof QUESTION_SEGMENTS)[number];
 
 /** Chi guarda Domande. */
 export type QuestionAudience = "ls" | "sviluppatore" | "cliente";
 
-/** Segmenti che ogni pubblico può aprire. Lateral Space vede «A posto» solo se lo chiede l'indirizzo. */
+/**
+ * I valori di `vista` che ogni pubblico apre. «bloccate» è il gruppo «In attesa» di «Da fare»; «a-posto» per Lateral
+ * Space e il cliente si legge come «Tutte» con il filtro «A posto» (`parseQuestionFilter`).
+ */
 export const QUESTION_SEGMENTS_FOR: Readonly<Record<QuestionAudience, readonly QuestionSegment[]>> = {
-  ls: ["da-fare", "da-verificare", "bloccate", "a-posto", "tutte"],
-  cliente: ["da-fare", "da-verificare", "a-posto", "tutte"],
+  ls: ["da-fare", "da-verificare", "bloccate", "tutte"],
+  cliente: ["da-fare", "da-verificare", "bloccate", "tutte"],
   sviluppatore: ["a-posto"],
 };
+
+/** (Rilascio 10, §3.5) I segmenti in vista: tre per Lateral Space e per il cliente, nessuno per lo sviluppatore. */
+export const QUESTION_TABS = ["da-fare", "da-verificare", "tutte"] as const;
+export type QuestionTab = (typeof QUESTION_TABS)[number];
+
+/** Il segmento acceso per una vista: il gruppo «In attesa» sta in «Da fare». */
+export function questionTabOf(vista: QuestionSegment): QuestionTab | null {
+  if (vista === "bloccate") return "da-fare";
+  return (QUESTION_TABS as readonly string[]).includes(vista) ? (vista as QuestionTab) : null;
+}
 
 /** Etichette dei segmenti: il cliente legge le sue parole (§2.6). */
 export const QUESTION_SEGMENT_LABEL: Readonly<Record<"ls" | "cliente", Readonly<Record<QuestionSegment, string>>>> = {
@@ -297,18 +313,26 @@ export function questionDefaults(status: CaseStatus, statusBeforeSuspension: Cas
 export const PERIMETER_FILTERS = ["nel", "fuori"] as const;
 export type PerimeterFilter = (typeof PERIMETER_FILTERS)[number];
 
+/** (Rilascio 10, §3.5) Il filtro «A posto»: le domande validate e quelle che non si applicano. */
+export const A_POSTO = "a-posto" as const;
+/** Il filtro «Stato»: «A posto» per tutti; gli stati di dettaglio solo per Lateral Space. */
+export type QuestionStateFilter = ItemStatus | typeof A_POSTO;
+
 export interface QuestionFilter {
   vista: QuestionSegment;
   soloIndispensabili: boolean;
   /** «Mostra: Tutto il catalogo» (solo Lateral Space): ogni tipo di voce, non solo le domande. */
   catalogo: boolean;
+  /** (Rilascio 10, §3.5) «Mostra: Documenti»: fonti, documenti e domande con un file o un dataset (`mostra=documenti`). */
+  documenti: boolean;
   /** Tipo di voce, solo con il catalogo intero. */
   tipo: ItemKind | null;
+  /** La chiave dell'argomento; `nessuno` = senza argomento. */
   argomento: string | null;
   referente: string | null;
   ruolo: string | null;
-  /** Stato di dettaglio (solo Lateral Space). */
-  stato: ItemStatus | null;
+  /** «A posto» (tutti) o uno stato di dettaglio (solo Lateral Space). */
+  stato: QuestionStateFilter | null;
   /** Classe di riservatezza (solo Lateral Space). */
   riservatezza: PrivacyClass | null;
   perimetro: PerimeterFilter | null;
@@ -327,7 +351,8 @@ export function parseQuestionFilter(sp: SearchParams, audience: QuestionAudience
   const dev = audience === "sviluppatore";
   const vista = first(sp, "vista");
   const indispensabili = first(sp, "indispensabili");
-  const catalogo = ls && first(sp, "mostra") === "catalogo";
+  const mostra = first(sp, "mostra");
+  const catalogo = ls && mostra === "catalogo";
   const tipo = first(sp, "tipo");
   const argomento = first(sp, "argomento");
   const referente = first(sp, "referente");
@@ -337,16 +362,20 @@ export function parseQuestionFilter(sp: SearchParams, audience: QuestionAudience
   const perimetro = first(sp, "perimetro");
   const q = first(sp, "q");
   const page = Number.parseInt(first(sp, "pagina") ?? "1", 10);
+  // (Rilascio 10, §3.5) «A posto» non è più un segmento: `vista=a-posto` di ieri è «Tutte» con il filtro «A posto».
+  const yesterdayDone = !dev && vista === A_POSTO;
+  const state: QuestionStateFilter | null = stato === A_POSTO && !dev ? A_POSTO : ls && isVocab(ITEM_STATUSES, stato) ? stato : null;
   return {
-    vista: isVocab(QUESTION_SEGMENTS_FOR[audience], vista) ? vista : defaults.vista,
+    vista: yesterdayDone ? "tutte" : isVocab(QUESTION_SEGMENTS_FOR[audience], vista) ? vista : defaults.vista,
     soloIndispensabili: dev ? false : indispensabili === "no" ? false : indispensabili === "si" ? true : defaults.soloIndispensabili,
     catalogo,
+    documenti: !catalogo && mostra === "documenti",
     tipo: catalogo && isVocab(ITEM_KINDS, tipo) ? tipo : null,
-    argomento: argomento !== null && MODULE_KEY.test(argomento) ? argomento : null,
-    // Il cliente filtra solo «Senza referente», per assegnarle: mai un collega, che darebbe nei conteggi i suoi progressi (art. 15.4, §3.9.3).
+    argomento: argomento === NONE ? NONE : argomento !== null && MODULE_KEY.test(argomento) ? argomento : null,
+    // Il cliente filtra solo «Senza referente», per assegnarle: mai un'altra persona, che darebbe nei conteggi i suoi progressi (art. 15.4, §3.9.3).
     referente: referente === NONE ? (dev ? null : NONE) : ls && referente !== null && UUID.test(referente) ? referente : null,
     ruolo: !dev && ruolo !== null && ROLE_KEY.test(ruolo) ? ruolo : null,
-    stato: ls && isVocab(ITEM_STATUSES, stato) ? stato : null,
+    stato: state ?? (yesterdayDone ? A_POSTO : null),
     riservatezza: ls && isVocab(PRIVACY_CLASSES, riservatezza) ? riservatezza : null,
     perimetro: !dev && isVocab(PERIMETER_FILTERS, perimetro) ? perimetro : null,
     q: q !== null ? q.slice(0, MAX_Q) : null,
@@ -359,45 +388,27 @@ export function parseQuestionQuery(query: string, audience: QuestionAudience, de
   return parseQuestionFilter(searchParamsOf(query), audience, defaults);
 }
 
-/** I filtri del pannello «Filtri» (vista, interruttore, ricerca e pagina esclusi). */
-const QUESTION_FILTER_KEYS = ["catalogo", "tipo", "argomento", "referente", "ruolo", "stato", "riservatezza", "perimetro"] as const;
+/** I filtri del foglio «Filtri» (vista, indispensabili, ricerca e pagina esclusi). */
+const QUESTION_FILTER_KEYS = ["catalogo", "documenti", "tipo", "argomento", "referente", "ruolo", "stato", "riservatezza", "perimetro"] as const;
 export type QuestionFilterKey = (typeof QUESTION_FILTER_KEYS)[number];
 
-/** Almeno un filtro del pannello è attivo (la ricerca no: ha la sua casella). */
+/** Almeno un filtro del foglio è attivo (la ricerca no: ha la sua casella). */
 export function hasActiveQuestionFilter(filter: QuestionFilter): boolean {
-  return QUESTION_FILTER_KEYS.some((k) => (k === "catalogo" ? filter.catalogo : filter[k] !== null));
+  return QUESTION_FILTER_KEYS.some((k) => (k === "catalogo" || k === "documenti" ? filter[k] : filter[k] !== null));
 }
 
-/** I filtri del pannello tolti; vista, interruttore e ricerca restano. */
+/** I filtri del foglio tolti; vista, interruttore e ricerca restano. */
 export function withoutQuestionFilters(filter: QuestionFilter): QuestionFilter {
-  return { ...filter, catalogo: false, tipo: null, argomento: null, referente: null, ruolo: null, stato: null, riservatezza: null, perimetro: null, pagina: 1 };
-}
-
-/** La casella della ricerca rispetto all'URL: il `q` che vede adesso e i testi che ha mandato e non sono ancora tornati. */
-export interface SearchBoxSync {
-  urlQ: string;
-  sent: readonly string[];
-}
-
-/** Quanti testi mandati si ricordano: una navigazione persa non resta in coda per sempre. */
-const SEARCH_SENT_MAX = 10;
-
-/** Il testo che la barra ha appena mandato con una navigazione. */
-export function searchSent(sync: SearchBoxSync, q: string): SearchBoxSync {
-  return { urlQ: sync.urlQ, sent: [...sync.sent, q].slice(-SEARCH_SENT_MAX) };
+  return { ...filter, catalogo: false, documenti: false, tipo: null, argomento: null, referente: null, ruolo: null, stato: null, riservatezza: null, perimetro: null, pagina: 1 };
 }
 
 /**
- * L'URL ha un `q` nuovo. Se è un testo che la barra ha mandato, è la sua eco:
- * chi sta scrivendo continua (`box` null). Altrimenti la navigazione viene da
- * fuori («Togli i filtri», indietro, un link) e la casella prende il testo
- * dell'URL, invece di rimandare il vecchio dopo 300 ms.
+ * (Rilascio 10, §3.5) Gli argomenti restano chiusi, con il solo conteggio, finché l'indirizzo non chiede domande
+ * precise: un filtro del foglio, una ricerca o il gruppo «In attesa» (`vista=bloccate`). Allora si vedono le righe,
+ * 50 per pagina. Aprire un argomento è il filtro «Argomento».
  */
-export function followUrlSearch(sync: SearchBoxSync, urlQ: string): { sync: SearchBoxSync; box: string | null } {
-  if (sync.urlQ === urlQ) return { sync, box: null };
-  const at = sync.sent.indexOf(urlQ);
-  if (at >= 0) return { sync: { urlQ, sent: sync.sent.slice(at + 1) }, box: null };
-  return { sync: { urlQ, sent: [] }, box: urlQ };
+export function questionsCollapsed(filter: QuestionFilter): boolean {
+  return filter.vista !== "bloccate" && !filter.q && !hasActiveQuestionFilter(filter);
 }
 
 /**
@@ -415,10 +426,12 @@ export function questionQuery(
   const next: QuestionFilter = { ...filter, ...patch };
   if (!("pagina" in patch)) next.pagina = 1;
   if (!next.catalogo) next.tipo = null;
+  if (next.catalogo) next.documenti = false;
   const params = new URLSearchParams();
   if (opts.explicit || next.vista !== defaults.vista) params.set("vista", next.vista);
   if (opts.explicit || next.soloIndispensabili !== defaults.soloIndispensabili) params.set("indispensabili", next.soloIndispensabili ? "si" : "no");
   if (next.catalogo) params.set("mostra", "catalogo");
+  else if (next.documenti) params.set("mostra", "documenti");
   if (next.tipo) params.set("tipo", next.tipo);
   for (const k of ["argomento", "referente", "ruolo", "stato", "riservatezza", "perimetro", "q"] as const) {
     const v = next[k];
@@ -426,6 +439,24 @@ export function questionQuery(
   }
   if (next.pagina > 1) params.set("pagina", String(next.pagina));
   for (const [k, v] of Object.entries(opts.extra ?? {})) params.set(k, v);
+  const s = params.toString();
+  return s ? `?${s}` : "";
+}
+
+/** I parametri della lista di Domande, nell'ordine in cui `questionQuery` li scrive. */
+export const QUESTION_LIST_PARAMS = ["vista", "indispensabili", "mostra", "tipo", "argomento", "referente", "ruolo", "stato", "riservatezza", "perimetro", "q", "pagina"] as const;
+
+/**
+ * (Rilascio 10, §3.5) Tornando da una domanda a tutta pagina, filtri e pagina restano: la riga porta alla domanda con
+ * la query della lista (`/domande/<id>?vista=…&pagina=2`), e «‹ Domande» la ritrova qui. Solo i parametri della lista,
+ * il primo valore di ognuno; niente pannello.
+ */
+export function questionBackQuery(sp: SearchParams): string {
+  const params = new URLSearchParams();
+  for (const key of QUESTION_LIST_PARAMS) {
+    const value = first(sp, key);
+    if (value !== null) params.set(key, value);
+  }
   const s = params.toString();
   return s ? `?${s}` : "";
 }
@@ -452,7 +483,7 @@ export function notMineSql(userId: string): SqlFragment {
       WHERE ca.id = i.current_answer_id AND t.issued_by_user_id = ${me}))`;
 }
 
-/** Stati di ogni gruppo (§2.6). */
+/** Stati di ogni gruppo (§2.6). «Da fare» non comprende le bloccate: stanno nel gruppo «In attesa», in cima. */
 const SEGMENT_STATUSES: Readonly<Record<Exclude<QuestionSegment, "tutte">, readonly ItemStatus[]>> = {
   "da-fare": ["da_chiedere", "chiesta", "mancante", "parziale"],
   "da-verificare": ["in_verifica"],
@@ -483,13 +514,16 @@ export function segmentConditionSql(segment: QuestionSegment, ctx: QuestionWhere
 export function questionBaseWhereSql(caseId: string, filter: QuestionFilter, ctx: QuestionWhereContext, without?: "tipo"): SqlFragment {
   const parts: SqlFragment[] = [ucSql`i.case_id = ${cast(caseId, "uuid")}`, raw("i.deleted_at IS NULL")];
   if (ctx.audience === "sviluppatore") parts.push(statusIn(VALIDATED_STATUSES));
-  if (!filter.catalogo) parts.push(raw(`i.kind = '${DEFAULT_KIND}'`));
+  if (filter.documenti) parts.push(raw(REQUIRED_DOCUMENT));
+  else if (!filter.catalogo) parts.push(raw(`i.kind = '${DEFAULT_KIND}'`));
   else if (filter.tipo && without !== "tipo") parts.push(ucSql`i.kind = ${cast(filter.tipo, "text")}`);
   if (filter.soloIndispensabili) parts.push(requiredForViaSql());
-  if (filter.stato) parts.push(ucSql`i.status = ${cast(filter.stato, "text")}`);
+  if (filter.stato === A_POSTO) parts.push(statusIn(SEGMENT_STATUSES["a-posto"]));
+  else if (filter.stato) parts.push(ucSql`i.status = ${cast(filter.stato, "text")}`);
   if (filter.referente === NONE) parts.push(raw("i.assignee_contact_id IS NULL"));
   else if (filter.referente) parts.push(ucSql`i.assignee_contact_id = ${cast(filter.referente, "uuid")}`);
-  if (filter.argomento) parts.push(ucSql`i.request_module_key = ${cast(filter.argomento, "text")}`);
+  if (filter.argomento === NONE) parts.push(raw("i.request_module_key IS NULL"));
+  else if (filter.argomento) parts.push(ucSql`i.request_module_key = ${cast(filter.argomento, "text")}`);
   if (filter.ruolo) parts.push(ucSql`i.owner_role_key = ${cast(filter.ruolo, "text")}`);
   if (filter.riservatezza) parts.push(ucSql`i.privacy_class = ${cast(filter.riservatezza, "text")}`);
   if (filter.perimetro === "fuori") parts.push(raw("i.perimeter = 'evoluzione'"));
@@ -539,10 +573,11 @@ const HIDDEN_VALUE_CLASSES = raw("i.privacy_class IN ('personale', 'personale_eq
 /**
  * Ordine di Domande (§3.6.1): per argomento nell'ordine dello schema, dentro
  * l'argomento prima le indispensabili, poi l'ordine dello schema. «Da
- * verificare» va dalla risposta più vecchia (§3.6.3).
+ * verificare» dentro l'argomento va dalla risposta più vecchia (§3.6.3); la
+ * coda di «Verifica una alla volta» resta dalla più vecchia di tutte.
  */
 function questionOrderSql(filter: QuestionFilter): SqlFragment {
-  if (filter.vista === "da-verificare") return raw("a.created_at NULLS LAST, i.sort_order, i.key");
+  if (filter.vista === "da-verificare") return raw("mo.ord NULLS LAST, a.created_at NULLS LAST, i.sort_order, i.key");
   return raw("mo.ord NULLS LAST, (i.priority = 'must') DESC, i.sort_order, i.key");
 }
 
@@ -562,8 +597,9 @@ function moduleOrderCte(caseId: string): SqlFragment {
 
 /**
  * Una pagina di Domande (50 righe) con la risposta corrente: valore (mai per
- * le classi personali e sanitarie), chi ha risposto e quando, l'esito dei
- * controlli automatici sulla risposta, il primo blocco attivo delle bloccate.
+ * le classi personali e sanitarie), chi ha risposto e quando, il primo blocco
+ * attivo delle bloccate. (Rilascio 10, §3.5) La riga dice una cosa sola: i
+ * controlli automatici e l'estratto stanno nel pannello.
  */
 export function questionPageSql(caseId: string, filter: QuestionFilter, ctx: QuestionWhereContext): UcStatement {
   const offset = Math.max(0, Math.floor(filter.pagina) - 1) * QUESTIONS_PAGE_SIZE;
@@ -574,10 +610,6 @@ SELECT i.id, i.key, i.kind, i.title, i.status, i.status_reason, i.priority, i.pr
   CASE WHEN ${HIDDEN_VALUE_CLASSES} OR a.erased_at IS NOT NULL THEN NULL ELSE a.value END AS a_value,
   a.value_encrypted IS NOT NULL AS a_encrypted, a.erased_at IS NOT NULL AS a_erased,
   rc.display_name AS a_responder,
-  (SELECT jsonb_build_object('avvisi', count(*) FILTER (WHERE v.outcome = 'avviso'), 'errori', count(*) FILTER (WHERE v.outcome = 'errore'),
-      'primo', (array_agg(v.message ORDER BY (v.outcome = 'errore') DESC, v.created_at))[1])
-    FROM uc_validations v
-    WHERE v.item_id = i.id AND v.answer_id = i.current_answer_id AND v.kind = 'automatica' AND v.outcome IN ('errore', 'avviso')) AS checks,
   CASE WHEN i.status = 'bloccata' THEN (SELECT b.key FROM uc_item_blockers ib JOIN uc_blockers b ON b.id = ib.blocker_id
     WHERE ib.item_id = i.id AND b.status IN ('attivo', 'permanente') ORDER BY b.key LIMIT 1) END AS lock_key
 FROM uc_items i
@@ -606,12 +638,29 @@ export function catalogSizeSql(caseId: string, audience: QuestionAudience): UcSt
   return toStatement(ucSql`SELECT count(*)::int AS n FROM uc_items i WHERE i.case_id = ${cast(caseId, "uuid")} AND i.deleted_at IS NULL${validated}`);
 }
 
-/** Documenti richiesti (fonti, documenti, risposte con un file o un dataset), per il segmento «Documenti». */
+/** Un documento richiesto (alias `i`): una fonte, un documento o una domanda con un file o un dataset per risposta. */
+const REQUIRED_DOCUMENT = "(i.kind IN ('fonte', 'documento') OR i.response_type IN ('file', 'dataset'))";
+
+/** Documenti richiesti, per «Documenti richiesti (N)» del pannello «File». */
 export function requiredDocumentsCountSql(caseId: string, audience: QuestionAudience): UcStatement {
   const validated = audience === "sviluppatore" ? ucSql` AND ${statusIn(VALIDATED_STATUSES)}` : raw("");
   return toStatement(ucSql`SELECT count(*)::int AS n FROM uc_items i
 WHERE i.case_id = ${cast(caseId, "uuid")} AND i.deleted_at IS NULL
-  AND (i.kind IN ('fonte', 'documento') OR i.response_type IN ('file', 'dataset'))${validated}`);
+  AND ${raw(REQUIRED_DOCUMENT)}${validated}`);
+}
+
+/**
+ * I file dell'archivio, per «File (6)» nella barra di Domande: come l'elenco del pannello «File» (la zona personale
+ * solo per chi ne vede i metadati). Lo sviluppatore conta solo i file pronti dei documenti a posto.
+ */
+export function caseFilesCountSql(caseId: string, i: { personalZone: boolean; validatedOnly: boolean }): UcStatement {
+  const validated = i.validatedOnly
+    ? ucSql` AND f.scan_status = 'pulito' AND (f.content_scanned OR f.reviewed_at IS NOT NULL)
+  AND EXISTS (SELECT 1 FROM uc_items i WHERE i.id = f.item_id AND i.deleted_at IS NULL AND ${statusIn(VALIDATED_STATUSES)} AND ${raw(REQUIRED_DOCUMENT)})`
+    : raw("");
+  return toStatement(ucSql`SELECT count(*)::int AS n FROM uc_files f
+WHERE f.case_id = ${cast(caseId, "uuid")} AND f.deleted_at IS NULL
+  AND (${cast(i.personalZone, "boolean")} OR f.storage_zone = 'standard')${validated}`);
 }
 
 /** Voci per tipo, con i filtri di base tranne il tipo (le opzioni di «Tipo» con il catalogo intero). */

@@ -4,21 +4,22 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { ChevronLeft, ChevronRight, Lock, SearchX } from "lucide-react";
+import { ChevronLeft, ChevronRight, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/uc/ui/empty-state";
+import { EmptyState } from "@/components/ui-10/empty-state";
+import { TextAction } from "@/components/ui-10/row";
 import { StatusDot } from "@/components/uc/ui/status-dot";
 import { selectCatalogItemsAction } from "@/lib/actions/uc-catalog-selection";
 import { cn } from "@/lib/utils";
-import { answersText, questionsText } from "@/lib/uc/views/bulk";
 import { QUESTIONS_PAGE_SIZE, hasActiveQuestionFilter, questionQuery, withoutQuestionFilters, type QuestionAudience, type QuestionDefaults, type QuestionFilter } from "@/lib/uc/views/catalog-filter";
+import { DOMANDE_TEXT } from "@/lib/uc/views/domande-text";
 import { formatCountIt } from "@/lib/uc/views/format";
 import { WORDS } from "@/lib/uc/views/labels";
-import type { ContactOption, QuestionGroupView, QuestionRowView, QuestionSegmentItem } from "@/lib/uc/views/rows";
-import { mineExcludedText } from "@/lib/uc/views/verification";
+import type { QuestionFilterField } from "@/lib/uc/views/question-bar";
+import type { ContactOption, QuestionGroupView, QuestionRowView, QuestionSegmentItem, QuestionTopicGroup } from "@/lib/uc/views/rows";
 import type { ItemStatus } from "@/lib/uc/vocab";
 import { QuestionSelectionBar, type BulkPermissions, type BulkSelection } from "./bulk-actions";
-import { QuestionToolbar, type QuestionFilterOptions } from "./catalog-filters";
+import { QuestionToolbar } from "./catalog-filters";
 import { CHECKBOX_CLASS } from "./checkbox";
 import { ValueText } from "./value-text";
 
@@ -31,73 +32,109 @@ export interface QuestionListProps {
   filter: QuestionFilter;
   defaults: QuestionDefaults;
   segments: QuestionSegmentItem[];
+  fields: QuestionFilterField[];
+  /** Argomenti chiusi (nessun filtro, nessuna ricerca): si vedono i gruppi, non le righe. */
+  collapsed: boolean;
+  topics: QuestionTopicGroup[];
+  /** Il gruppo «In attesa» in cima a «Da fare» (0: non c'è). */
+  waiting: number;
   rows: QuestionRowView[];
-  /** Gruppi per argomento; null = elenco semplice. */
-  groups: QuestionGroupView[] | null;
-  /** Domande del segmento aperto, in tutte le pagine. */
+  groups: QuestionGroupView[];
+  /** Domande della vista aperta, in tutte le pagine. */
   total: number;
-  /** Risposte da verificare date da chi guarda (Lateral Space). */
-  mine: number;
-  /** «115 domande senza referente · Assegna ›»: solo per chi assegna. */
-  unassigned: { count: number; href: string } | null;
-  options: QuestionFilterOptions;
+  /** I file dell'archivio, per «File (6)». */
+  files: number;
   permissions: BulkPermissions;
   contacts: ContactOption[];
-  /** «Verifica una alla volta» (chi valida). */
+  /** «Verifica una alla volta», solo se il pulsante pieno della testata non ci porta già. */
   reviewHref: string | null;
-  documentsHref: string;
   /** La domanda aperta nel pannello (`?apri=`), evidenziata nella lista. */
   openId: string | null;
 }
 
-/** Riga: la stessa classe per tutte le 50, una volta sola nel codice. */
-const ROW = "group/row relative flex min-h-14 min-w-0 items-start gap-3 px-3 py-2.5 transition-colors hover:bg-muted/50 sm:px-4";
+/** Una riga: alta almeno 44 px al telefono, la stessa classe per tutte. */
+const ROW = "group/row relative flex min-h-11 min-w-0 items-start gap-3 px-3 py-2.5 transition-colors hover:bg-muted/50 sm:min-h-12 sm:px-4";
 const LINK = "flex min-w-0 flex-1 items-start gap-3 rounded-sm outline-none after:absolute after:inset-0 focus-visible:after:ring-3 focus-visible:after:ring-ring/50";
+const FRAME = "divide-y overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10";
+
+/** Le domande scelte con un argomento intero (o con «In attesa»), dalla lettura del server. */
+interface TopicPick {
+  byStatus: Partial<Record<ItemStatus, string[]>>;
+  count: number;
+  truncated: boolean;
+}
 
 /**
- * Domande (DESIGN §3.6.2, §3.6.7, §3.6.8): barra degli strumenti, righe per
- * argomento, piè di pagina compatto e selezione sul modello di Mail. Il clic su
- * una riga apre il pannello (`?apri=<id>`); con Cmd o Ctrl apre la pagina
- * intera. Filtri e ricerca cambiano l'URL dentro una transizione: intanto la
- * lista si attenua (`aria-busy`).
+ * Domande (rilascio 10, §3.5): i segmenti e la barra, poi gli argomenti chiusi con il solo conteggio (il gruppo «In
+ * attesa» in cima a «Da fare»); un filtro, una ricerca o un argomento aperto mostrano le righe, 50 per pagina,
+ * raggruppate per argomento. Ogni riga dice il titolo e una cosa in grigio. Il clic apre il pannello (`?apri=<id>`)
+ * e chiuderlo lascia filtri e pagina; con Cmd o Ctrl si apre la pagina intera, che riporta qui con «‹ Domande».
+ * «Seleziona» sceglie righe, oppure argomenti interi quando sono chiusi.
  */
 export function QuestionList(props: QuestionListProps) {
   const { basePath, audience, filter, defaults, rows, groups, total } = props;
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const navigate = (href: string, opts: { replace?: boolean } = {}) =>
-    startTransition(() => (opts.replace ? router.replace(href, { scroll: false }) : router.push(href, { scroll: false })));
-  const query = questionQuery(filter, defaults);
-  const ls = audience === "ls";
+  const navigate = (href: string) => startTransition(() => router.push(href, { scroll: false }));
+  const listQuery = questionQuery(filter, defaults, { pagina: filter.pagina });
   const selectable = props.permissions.any;
 
   // La selezione vale per la vista in cui è nata: cambiando filtri o pagina si svuota da sé.
-  const viewKey = `${query}|${filter.pagina}`;
+  const viewKey = listQuery;
   const [selecting, setSelecting] = useState(false);
-  const [sel, setSel] = useState<{ key: string; picked: ReadonlyMap<string, ItemStatus>; all: BulkSelection | null }>({ key: viewKey, picked: new Map(), all: null });
-  const current = sel.key === viewKey ? sel : { key: viewKey, picked: new Map<string, ItemStatus>(), all: null };
-  const clear = () => setSel({ key: viewKey, picked: new Map(), all: null });
-  const toggle = (row: QuestionRowView, on: boolean) => {
+  const [sel, setSel] = useState<{ key: string; picked: ReadonlyMap<string, ItemStatus>; topics: ReadonlyMap<string, TopicPick>; all: BulkSelection | null }>({
+    key: viewKey,
+    picked: new Map(),
+    topics: new Map(),
+    all: null,
+  });
+  const [loadingTopic, setLoadingTopic] = useState<string | null>(null);
+  const current = sel.key === viewKey ? sel : { key: viewKey, picked: new Map<string, ItemStatus>(), topics: new Map<string, TopicPick>(), all: null };
+  const clear = () => setSel({ key: viewKey, picked: new Map(), topics: new Map(), all: null });
+  const toggleRow = (row: QuestionRowView, on: boolean) => {
     // Togliere una domanda da «tutte le N» torna alla selezione della pagina.
     const next = new Map(current.all ? rows.map((r) => [r.id, r.status] as const) : current.picked);
     if (on) next.set(row.id, row.status);
     else next.delete(row.id);
-    setSel({ key: viewKey, picked: next, all: null });
+    setSel({ key: viewKey, picked: next, topics: new Map(), all: null });
   };
+
+  /** Le domande di una vista (la pagina con un argomento o con «In attesa»), lette sul server. */
+  async function readSelection(patch: Partial<QuestionFilter>): Promise<TopicPick | null> {
+    try {
+      const r = await selectCatalogItemsAction(props.workspaceId, props.caseId, { kind: "domande", query: questionQuery(filter, defaults, patch, { explicit: true }) });
+      if (!r.ok) {
+        toast.error(r.message);
+        return null;
+      }
+      return { byStatus: r.data.byStatus, count: r.data.total, truncated: r.data.truncated };
+    } catch {
+      toast.error("Selezione non riuscita. Riprova tra poco.");
+      return null;
+    }
+  }
+  async function toggleTopic(key: string, patch: Partial<QuestionFilter>, on: boolean) {
+    const topics = new Map(current.all ? [] : current.topics);
+    if (!on) {
+      topics.delete(key);
+      setSel({ key: viewKey, picked: new Map(), topics, all: null });
+      return;
+    }
+    setLoadingTopic(key);
+    const pick = await readSelection(patch);
+    setLoadingTopic(null);
+    if (!pick) return;
+    topics.set(key, pick);
+    setSel({ key: viewKey, picked: new Map(), topics, all: null });
+  }
   const [loadingAll, setLoadingAll] = useState(false);
   async function selectAll() {
     setLoadingAll(true);
-    try {
-      const r = await selectCatalogItemsAction(props.workspaceId, props.caseId, { kind: "domande", query: questionQuery(filter, defaults, {}, { explicit: true }) });
-      if (!r.ok) toast.error(r.message);
-      else setSel({ key: viewKey, picked: current.picked, all: { scope: "risultati", byStatus: r.data.byStatus, count: r.data.total, truncated: r.data.truncated } });
-    } catch {
-      toast.error("Selezione non riuscita. Riprova tra poco.");
-    } finally {
-      setLoadingAll(false);
-    }
+    const pick = await readSelection({});
+    setLoadingAll(false);
+    if (pick) setSel({ key: viewKey, picked: current.picked, topics: new Map(), all: { scope: "risultati", byStatus: pick.byStatus, count: pick.count, truncated: pick.truncated } });
   }
-  const selection: BulkSelection = current.all ?? { scope: "pagina", byStatus: byStatusOf(current.picked), count: current.picked.size, truncated: false };
+  const selection: BulkSelection = current.all ?? selectionOf(current.picked, current.topics);
   const isPicked = (id: string) => current.all !== null || current.picked.has(id);
 
   const openPanel = (e: React.MouseEvent<HTMLAnchorElement>, id: string) => {
@@ -111,36 +148,34 @@ export function QuestionList(props: QuestionListProps) {
     <QuestionRow
       key={r.id}
       row={r}
-      audience={audience}
-      vista={filter.vista}
-      showMust={!filter.soloIndispensabili}
-      href={`${basePath}/${r.id}`}
+      // La pagina intera porta con sé i filtri e la pagina della lista: «‹ Domande» ci torna.
+      href={`${basePath}/${r.id}${listQuery}`}
       open={props.openId === r.id}
       onOpen={openPanel}
       selecting={selectable && selecting}
       picked={isPicked(r.id)}
-      onPick={toggle}
+      onPick={toggleRow}
     />
   );
 
+  const waitingHref = `${basePath}${questionQuery(filter, defaults, { vista: "bloccate" })}`;
+  const topicPatch = (key: string): Partial<QuestionFilter> => ({ argomento: key });
   const pages = Math.max(1, Math.ceil(total / QUESTIONS_PAGE_SIZE));
   const first = total === 0 ? 0 : (filter.pagina - 1) * QUESTIONS_PAGE_SIZE + 1;
   const last = Math.min(filter.pagina * QUESTIONS_PAGE_SIZE, total);
-  const reviewing = ls && filter.vista === "da-verificare";
-  const mineNote = reviewing ? mineExcludedText(props.mine, "elenco") : null;
+  const clearHref = `${basePath}${questionQuery({ ...withoutQuestionFilters(filter), q: null }, defaults)}`;
+  const nothing = props.collapsed ? props.topics.length === 0 && props.waiting === 0 : rows.length === 0 && props.waiting === 0;
 
   return (
     // Al telefono la riga «N selezionate» della barra va da sola, i pulsanti sotto (la barra è di `ui/selection-bar`).
     <div className="min-w-0 space-y-4 max-sm:[&_[data-slot=selection-bar]>p]:basis-full">
       <QuestionToolbar
         basePath={basePath}
-        audience={audience}
         filter={filter}
         defaults={defaults}
         segments={props.segments}
-        documentsHref={props.documentsHref}
-        options={props.options}
-        navigate={navigate}
+        fields={props.fields}
+        files={{ href: `${basePath}${questionQuery(filter, defaults, { pagina: filter.pagina }, { extra: { apri: "file" } })}`, count: props.files }}
         selection={{
           available: selectable,
           active: selecting,
@@ -151,67 +186,80 @@ export function QuestionList(props: QuestionListProps) {
         }}
       />
 
-      {props.unassigned && props.unassigned.count > 0 && (
-        <p className="text-sm text-muted-foreground">
-          {questionsText(props.unassigned.count)} senza referente ·{" "}
-          <Link href={props.unassigned.href} className="inline-flex min-h-11 items-center font-medium text-foreground underline-offset-4 hover:underline sm:min-h-0">
-            Affida a… ›
-          </Link>
-        </p>
-      )}
+      {props.reviewHref && <TextAction href={props.reviewHref}>{DOMANDE_TEXT.bar.review}</TextAction>}
+      {selectable && selecting && props.collapsed && <p className="text-sm text-muted-foreground">{DOMANDE_TEXT.bar.selectTopics}</p>}
 
-      {/* (Rilascio 10, §7.4) Un solo pulsante per «Verifica»: quello pieno della testata. Qui un link nella riga, non un secondo pulsante. */}
-      {reviewing && total > 0 && (
-        <p className="text-sm">
-          {answersText(total)} da verificare, dalla più vecchia.
-          {props.reviewHref && (
-            <>
-              {" "}
-              <Link href={props.reviewHref} data-slot="review-one-by-one" className="inline-flex min-h-11 items-center font-medium underline-offset-4 hover:underline sm:min-h-0">
-                Verifica una alla volta ›
-              </Link>
-            </>
-          )}
-        </p>
-      )}
-
-      <div aria-busy={pending} className={cn("min-w-0 transition-opacity", pending && "opacity-60")}>
-        {rows.length === 0 ? (
-          <ListEmpty filter={filter} audience={audience} onClear={() => navigate(`${basePath}${questionQuery({ ...withoutQuestionFilters(filter), q: null }, defaults)}`)} />
-        ) : groups ? (
-          <div className="space-y-6">
-            {groups.map((g) => (
-              <section key={g.key || "senza"} aria-label={g.title} className="min-w-0">
-                <h2 className="mb-1.5 text-xs tracking-wide text-muted-foreground">
-                  <span className="font-medium text-foreground">{g.title}</span>
-                  {g.meta && ` · ${g.meta}`}
-                </h2>
-                <ul className="divide-y overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">{g.rowIds.map((id) => renderRow(byId.get(id)!))}</ul>
-              </section>
-            ))}
-          </div>
+      <div aria-busy={pending} className={cn("min-w-0 space-y-6 transition-opacity", pending && "opacity-60")}>
+        {nothing ? (
+          <ListEmpty filter={filter} audience={audience} clearHref={clearHref} />
         ) : (
-          <ul className="divide-y overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">{rows.map(renderRow)}</ul>
+          <>
+            {props.waiting > 0 && (
+              <ul className={FRAME} aria-label={DOMANDE_TEXT.waiting}>
+                <GroupRow
+                  title={DOMANDE_TEXT.waiting}
+                  fact={DOMANDE_TEXT.waitingFact}
+                  count={props.waiting}
+                  href={waitingHref}
+                  selecting={selectable && selecting}
+                  picked={current.all !== null || current.topics.has("__attesa")}
+                  busy={loadingTopic === "__attesa"}
+                  onPick={(on) => void toggleTopic("__attesa", { vista: "bloccate" }, on)}
+                />
+              </ul>
+            )}
+            {filter.vista === "bloccate" && rows.length > 0 && (
+              <h2 className="text-base font-semibold">
+                {DOMANDE_TEXT.waiting} <span className="font-normal text-muted-foreground tabular-nums">· {formatCountIt(total)}</span>
+              </h2>
+            )}
+            {props.collapsed ? (
+              props.topics.length > 0 && (
+                <ul className={FRAME} aria-label={DOMANDE_TEXT.topics}>
+                  {props.topics.map((t) => (
+                    <GroupRow
+                      key={t.key}
+                      title={t.title}
+                      fact={t.role}
+                      count={t.count}
+                      href={`${basePath}${questionQuery(filter, defaults, topicPatch(t.key))}`}
+                      selecting={selectable && selecting}
+                      picked={current.all !== null || current.topics.has(t.key)}
+                      busy={loadingTopic === t.key}
+                      onPick={(on) => void toggleTopic(t.key, topicPatch(t.key), on)}
+                    />
+                  ))}
+                </ul>
+              )
+            ) : (
+              groups.map((g) => (
+                <section key={g.key || "senza"} aria-label={g.title} className="min-w-0 space-y-2">
+                  <h2 className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-base font-semibold">
+                    <span className="min-w-0 break-words">{g.title}</span>
+                    {g.role && <span className="min-w-0 text-sm font-normal text-muted-foreground">{g.role}</span>}
+                    {g.count > 0 && <span className="text-sm font-normal text-muted-foreground tabular-nums">· {formatCountIt(g.count)}</span>}
+                  </h2>
+                  <ul className={FRAME}>{g.rowIds.map((id) => renderRow(byId.get(id)!))}</ul>
+                </section>
+              ))
+            )}
+          </>
         )}
       </div>
 
-      {mineNote && <p className="border-t pt-3 text-sm text-muted-foreground">{mineNote}</p>}
-
-      {pages > 1 && (
-        <nav aria-label="Pagine" className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-sm">
-          <span className="text-muted-foreground tabular-nums">
-            {formatCountIt(first)}–{formatCountIt(last)} di {formatCountIt(total)}
-          </span>
+      {!props.collapsed && pages > 1 && (
+        <nav aria-label={DOMANDE_TEXT.pages.label} className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-sm">
+          <span className="text-muted-foreground tabular-nums">{DOMANDE_TEXT.pages.range(first, last, total)}</span>
           <span className="flex gap-1">
             {filter.pagina > 1 && (
               <Button variant="ghost" className="min-h-11 sm:min-h-8" onClick={() => navigate(`${basePath}${questionQuery(filter, defaults, { pagina: filter.pagina - 1 })}`)}>
                 <ChevronLeft aria-hidden />
-                Precedenti
+                {DOMANDE_TEXT.pages.previous}
               </Button>
             )}
             {filter.pagina < pages && (
               <Button variant="ghost" className="min-h-11 sm:min-h-8" onClick={() => navigate(`${basePath}${questionQuery(filter, defaults, { pagina: filter.pagina + 1 })}`)}>
-                Successive
+                {DOMANDE_TEXT.pages.next}
                 <ChevronRight aria-hidden />
               </Button>
             )}
@@ -236,55 +284,68 @@ export function QuestionList(props: QuestionListProps) {
   );
 }
 
-function byStatusOf(picked: ReadonlyMap<string, ItemStatus>): Partial<Record<ItemStatus, string[]>> {
-  const out: Partial<Record<ItemStatus, string[]>> = {};
-  for (const [id, status] of picked) (out[status] ??= []).push(id);
-  return out;
+/** Le righe scelte una per una più gli argomenti scelti interi (insiemi diversi: nessuna domanda due volte). */
+export function selectionOf(picked: ReadonlyMap<string, ItemStatus>, topics: ReadonlyMap<string, TopicPick>): BulkSelection {
+  const byStatus: Partial<Record<ItemStatus, string[]>> = {};
+  for (const [id, status] of picked) (byStatus[status] ??= []).push(id);
+  let count = picked.size;
+  let truncated = false;
+  for (const pick of topics.values()) {
+    for (const [status, ids] of Object.entries(pick.byStatus) as [ItemStatus, string[]][]) (byStatus[status] ??= []).push(...ids);
+    count += pick.count;
+    truncated ||= pick.truncated;
+  }
+  return { scope: topics.size > 0 ? "risultati" : "pagina", byStatus, count, truncated };
 }
 
-const EMPTY_TEXT: Readonly<Record<QuestionFilter["vista"], string>> = {
-  "da-fare": "Nessuna domanda da fare.",
-  "da-verificare": "Niente da verificare, adesso.",
-  bloccate: "Nessuna domanda bloccata.",
-  "a-posto": "Ancora nessuna domanda a posto.",
-  tutte: "Nessuna domanda.",
-};
+function ListEmpty({ filter, audience, clearHref }: { filter: QuestionFilter; audience: QuestionAudience; clearHref: string }) {
+  const t = DOMANDE_TEXT.empty;
+  if (filter.q) return <EmptyState text={t.search(filter.q)} action={{ label: t.clear, href: clearHref }} />;
+  if (hasActiveQuestionFilter(filter)) return <EmptyState text={t.filters} action={{ label: t.clear, href: clearHref }} />;
+  return <EmptyState text={(audience === "ls" ? t.ls : t.cliente)[filter.vista]} />;
+}
 
-function ListEmpty({ filter, audience, onClear }: { filter: QuestionFilter; audience: QuestionAudience; onClear: () => void }) {
-  if (filter.q) {
-    return (
-      <EmptyState
-        icon={SearchX}
-        title={`Nessuna domanda trovata per “${filter.q}”.`}
-        action={
-          <Button variant="outline" className="min-h-11 sm:min-h-8" onClick={onClear}>
-            Togli i filtri
-          </Button>
-        }
-      />
-    );
-  }
-  if (hasActiveQuestionFilter(filter)) {
-    return (
-      <EmptyState
-        title="Nessuna domanda con questi filtri."
-        action={
-          <Button variant="outline" className="min-h-11 sm:min-h-8" onClick={onClear}>
-            Togli i filtri
-          </Button>
-        }
-      />
-    );
-  }
-  const text = audience === "cliente" && filter.vista === "da-fare" ? "Nessuna domanda da rispondere." : audience === "cliente" && filter.vista === "da-verificare" ? "Nessuna risposta in verifica." : EMPTY_TEXT[filter.vista];
-  return <EmptyState title={text} />;
+/** Un argomento chiuso, o il gruppo «In attesa»: il titolo, una cosa in grigio, il conteggio e la freccia. */
+function GroupRow({
+  title,
+  fact,
+  count,
+  href,
+  selecting,
+  picked,
+  busy,
+  onPick,
+}: {
+  title: string;
+  fact: string | null;
+  count: number;
+  href: string;
+  selecting: boolean;
+  picked: boolean;
+  busy: boolean;
+  onPick: (on: boolean) => void;
+}) {
+  return (
+    <li className={cn(ROW, "items-center", picked && "bg-muted/60")} data-slot="question-group">
+      {selecting && (
+        <label className="relative z-10 -my-1.5 -ml-1.5 flex size-11 shrink-0 cursor-pointer items-center justify-center sm:size-8">
+          <input type="checkbox" className={CHECKBOX_CLASS} checked={picked} disabled={busy} onChange={(e) => onPick(e.target.checked)} aria-label={DOMANDE_TEXT.row.selectTopic(title)} />
+        </label>
+      )}
+      <Link href={href} className={cn(LINK, "items-center")}>
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-6">
+          <span className="min-w-0 text-sm font-medium break-words">{title}</span>
+          {fact && <span className="min-w-0 text-sm text-muted-foreground sm:text-right">{fact}</span>}
+        </span>
+        <span className="shrink-0 text-sm text-muted-foreground tabular-nums">{formatCountIt(count)}</span>
+        <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+      </Link>
+    </li>
+  );
 }
 
 function QuestionRow({
   row: r,
-  audience,
-  vista,
-  showMust,
   href,
   open,
   onOpen,
@@ -293,9 +354,6 @@ function QuestionRow({
   onPick,
 }: {
   row: QuestionRowView;
-  audience: QuestionAudience;
-  vista: QuestionFilter["vista"];
-  showMust: boolean;
   href: string;
   open: boolean;
   onOpen: (e: React.MouseEvent<HTMLAnchorElement>, id: string) => void;
@@ -303,22 +361,11 @@ function QuestionRow({
   picked: boolean;
   onPick: (row: QuestionRowView, on: boolean) => void;
 }) {
-  const client = audience === "cliente";
-  // Lo stato non si dice solo con il colore: con «Tutte» la parola c'è sempre.
-  const state = r.sublabel ?? (vista === "tutte" ? r.label : null);
-  const meta: React.ReactNode[] = [];
-  if (state) meta.push(state);
-  if (client && r.moduleTitle) meta.push(r.moduleTitle);
-  if (client) meta.push(r.assignee ? `Risponde: ${r.assignee}` : "Senza referente");
-  if (r.lockReason) meta.push(r.lockReason);
-  if (r.due) meta.push(<span className={cn(r.due.overdue && "text-uc-rosso")}>{r.due.text}</span>);
-  const who = !client && audience !== "sviluppatore" ? (r.answer ? [r.answer.by, r.answer.when].filter(Boolean).join(" · ") || r.assignee || "Senza referente" : (r.assignee ?? "Senza referente")) : null;
-  const whoMissing = who === "Senza referente";
   return (
-    <li className={cn(ROW, (picked || open) && "bg-muted/60")} data-state={picked ? "selected" : undefined}>
+    <li className={cn(ROW, (picked || open) && "bg-muted/60")} data-state={picked ? "selected" : undefined} data-slot="question-row">
       {selecting && (
         <label className="relative z-10 -my-1.5 -ml-1.5 flex size-11 shrink-0 cursor-pointer items-center justify-center sm:size-8">
-          <input type="checkbox" className={CHECKBOX_CLASS} checked={picked} onChange={(e) => onPick(r, e.target.checked)} aria-label={`Seleziona «${r.title}»`} />
+          <input type="checkbox" className={CHECKBOX_CLASS} checked={picked} onChange={(e) => onPick(r, e.target.checked)} aria-label={DOMANDE_TEXT.row.select(r.title)} />
         </label>
       )}
       <a href={href} onClick={(e) => onOpen(e, r.id)} aria-current={open ? "true" : undefined} className={LINK}>
@@ -326,51 +373,29 @@ function QuestionRow({
           <StatusDot tone={r.tone} label={r.label} hideLabel />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="flex min-w-0 items-start gap-3">
-            <span className="line-clamp-2 min-w-0 flex-1 text-sm font-medium break-words">{r.title}</span>
-            {r.answer && <span className="hidden max-w-56 shrink-0 truncate text-sm text-muted-foreground md:inline">«{r.answer.excerpt}»</span>}
-            {who && <span className={cn("hidden max-w-48 shrink-0 truncate text-right text-sm sm:inline", whoMissing ? "text-uc-giallo" : "text-muted-foreground")}>{who}</span>}
-          </span>
-          {r.answer && <span className="mt-0.5 block truncate text-sm text-muted-foreground md:hidden">«{r.answer.excerpt}»</span>}
-          {r.value && <ValueText value={r.value} className="mt-0.5 line-clamp-2 block text-sm" />}
-          {r.checks && <span className={cn("mt-0.5 block text-xs break-words", r.checks.error ? "text-uc-rosso" : "text-foreground")}>{r.checks.text}</span>}
-          {(meta.length > 0 || who || (showMust && r.must) || r.personal || r.outOfContract || (!client && !r.assignee && r.roleLabel)) && (
-            <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
-              {who && (
-                <span className="sm:hidden">
-                  <span className={cn(whoMissing && "text-uc-giallo")}>{who}</span>
-                  {meta.length > 0 && <span aria-hidden> ·</span>}
-                </span>
-              )}
-              {meta.map((m, i) => (
-                <span key={i} className="inline-flex items-center gap-1.5">
-                  {i > 0 && <span aria-hidden>·</span>}
-                  {m}
-                </span>
-              ))}
-              {!client && !r.assignee && r.roleLabel && (
-                <span>
-                  {meta.length > 0 && <span aria-hidden>· </span>}
-                  {r.roleLabel}
-                </span>
-              )}
-              {showMust && r.must && <Badge>{WORDS.indispensabile}</Badge>}
-              {r.outOfContract && <Badge dashed>{WORDS.fuoriContratto}</Badge>}
-              {r.personal && (
-                <span title={WORDS.datoPersonale} className="inline-flex items-center text-uc-lucchetto">
-                  <Lock className="size-3.5" aria-hidden />
-                  <span className="sr-only">{WORDS.datoPersonale}</span>
-                </span>
+          <span className="line-clamp-2 block text-sm font-medium break-words">{r.title}</span>
+          {r.value ? (
+            <ValueText value={r.value} className="mt-0.5 line-clamp-2 block text-sm" />
+          ) : (
+            <span className="mt-0.5 block truncate text-sm text-muted-foreground">
+              <span className={cn(r.missing && "text-uc-giallo")}>{r.line}</span>
+              {r.overdue && (
+                <>
+                  <span aria-hidden> · </span>
+                  <span className="text-uc-rosso">{r.overdue}</span>
+                </>
               )}
             </span>
           )}
         </span>
+        {r.personal && (
+          <span title={WORDS.datoPersonale} className="mt-1 shrink-0 text-uc-lucchetto">
+            <Lock className="size-3.5" aria-hidden />
+            <span className="sr-only">{WORDS.datoPersonale}</span>
+          </span>
+        )}
         <ChevronRight className="mt-1 size-4 shrink-0 text-muted-foreground" aria-hidden />
       </a>
     </li>
   );
-}
-
-function Badge({ dashed = false, children }: { dashed?: boolean; children: React.ReactNode }) {
-  return <span className={cn("inline-flex h-5 items-center rounded-4xl border px-2 font-medium whitespace-nowrap text-foreground", dashed && "border-dashed")}>{children}</span>;
 }

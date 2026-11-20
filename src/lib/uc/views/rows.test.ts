@@ -1,15 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ITEM_STATUSES, type CaseRole } from "../vocab.ts";
-import { QUESTION_SEGMENT_LABEL } from "./catalog-filter.ts";
+import { NONE, QUESTION_SEGMENT_LABEL } from "./catalog-filter.ts";
 import { findForbiddenIn } from "./copy-guard.ts";
 import {
   CATALOG_VALUE_MAX,
-  checksLine,
   dueView,
   parseCaseViewContext,
   questionGroups,
   questionSegmentItems,
+  questionTopicGroups,
+  topicCount,
   roleLabelsFrom,
   rowToCatalogRow,
   rowToContact,
@@ -138,7 +139,7 @@ test("long values are clipped in the catalog (the item detail shows them whole)"
 
 const NOW = new Date("2026-10-14T10:00:00Z");
 
-test("Domande counts: segments, topics, the answers of the viewer and the unassigned ones", () => {
+test("Domande counts: segments, topics with a count per segment, the answers of the viewer and the unassigned ones", () => {
   const c = rowsToQuestionCounts([
     { m: "m.a", n: 10, a_posto: 2, da_fare: 5, da_verificare: 1, in_verifica: 3, bloccate: 0, senza_referente: 4, fuori: 0 },
     { m: null, n: 2, a_posto: 0, da_fare: 1, da_verificare: 0, in_verifica: 0, bloccate: 1, senza_referente: 0, fuori: 1 },
@@ -147,23 +148,63 @@ test("Domande counts: segments, topics, the answers of the viewer and the unassi
   assert.equal(c.mine, 2, "in review but answered by the viewer");
   assert.equal(c.unassigned, 4);
   assert.equal(c.outOfContract, 1);
-  assert.deepEqual(c.byModule, { "m.a": { total: 10, ok: 2 }, "": { total: 2, ok: 0 } });
+  assert.deepEqual(c.byModule, {
+    "m.a": { total: 10, ok: 2, daFare: 5, daVerificare: 1, bloccate: 0 },
+    "": { total: 2, ok: 0, daFare: 1, daVerificare: 0, bloccate: 1 },
+  });
+  assert.deepEqual(
+    (["da-fare", "da-verificare", "bloccate", "a-posto", "tutte"] as const).map((v) => topicCount(c.byModule["m.a"], v)),
+    [5, 1, 0, 2, 10],
+  );
+  assert.equal(topicCount(undefined, "tutte"), 0);
 });
 
-test("Domande segments: zero hidden except the default, the open one and «Tutte»; Documenti before «Tutte» (§3.6.1)", () => {
+test("(release 10, §3.5) three segments: «Da fare · Da verificare · Tutte», the client's words; «Bloccate» counts in «Da fare»; zero hidden except the default, the open one and «Tutte»", () => {
   const counts = { "da-fare": 140, "da-verificare": 0, bloccate: 10, "a-posto": 3, tutte: 245 };
-  const ls = questionSegmentItems({ audience: "ls", counts, active: "da-fare", defaultSegment: "da-fare", documents: 12 });
+  const ls = questionSegmentItems({ audience: "ls", counts, active: "da-fare", defaultSegment: "da-fare" });
   assert.deepEqual(
     ls.map((s) => `${s.key}:${s.label}:${s.count}`),
-    ["da-fare:Da fare:140", "bloccate:Bloccate:10", "documenti:Documenti:12", "tutte:Tutte:245"],
+    ["da-fare:Da fare:150", "tutte:Tutte:245"],
+    "no «Bloccate», «A posto» or «Documenti» segment; the waiting group counts in «Da fare»",
   );
-  const open = questionSegmentItems({ audience: "ls", counts, active: "a-posto", defaultSegment: "tutte", documents: 0 });
-  assert.deepEqual(open.map((s) => s.key), ["da-fare", "bloccate", "a-posto", "tutte"]);
-  const zero = questionSegmentItems({ audience: "ls", counts: { ...counts, "da-fare": 0 }, active: "tutte", defaultSegment: "da-fare", documents: null });
+  const blocked = questionSegmentItems({ audience: "ls", counts: { ...counts, "da-verificare": 4 }, active: "bloccate", defaultSegment: "tutte" });
+  assert.deepEqual(blocked.map((s) => s.key), ["da-fare", "da-verificare", "tutte"], "the waiting group lights «Da fare»");
+  const zero = questionSegmentItems({ audience: "ls", counts: { ...counts, "da-fare": 0, bloccate: 0 }, active: "tutte", defaultSegment: "da-fare" });
   assert.ok(zero.some((s) => s.key === "da-fare"), "the default stays at 0");
-  const client = questionSegmentItems({ audience: "cliente", counts, active: "da-fare", defaultSegment: "da-fare", documents: null });
-  assert.deepEqual(client.map((s) => s.label), ["Da rispondere", "A posto", "Tutte"]);
-  assert.deepEqual(questionSegmentItems({ audience: "sviluppatore", counts, active: "a-posto", defaultSegment: "a-posto", documents: 3 }), []);
+  const verify = questionSegmentItems({ audience: "ls", counts, active: "da-verificare", defaultSegment: "tutte" });
+  assert.ok(verify.some((s) => s.key === "da-verificare" && s.count === 0), "the open one stays at 0");
+  const client = questionSegmentItems({ audience: "cliente", counts: { ...counts, "da-verificare": 2 }, active: "da-fare", defaultSegment: "da-fare" });
+  assert.deepEqual(client.map((s) => s.label), ["Da rispondere", "In verifica", "Tutte"]);
+  assert.deepEqual(questionSegmentItems({ audience: "sviluppatore", counts, active: "a-posto", defaultSegment: "a-posto" }), []);
+});
+
+test("(release 10, §3.5) closed topics: schema order, only those with questions, the role in the group, the count of the open view; topics outside the schema and no topic last", () => {
+  const counts = {
+    "m.costi": { total: 3, ok: 1, daFare: 2, daVerificare: 0, bloccate: 0 },
+    "m.servizio.base": { total: 14, ok: 0, daFare: 9, daVerificare: 3, bloccate: 2 },
+    "m.vecchio": { total: 1, ok: 0, daFare: 1, daVerificare: 0, bloccate: 0 },
+    "": { total: 4, ok: 0, daFare: 4, daVerificare: 0, bloccate: 0 },
+  };
+  const modules = [
+    { key: "m.servizio.base", title: "Prezzi e sconti (art. 7.2)", roleKey: "resp_servizio" },
+    { key: "m.costi", title: "Costi", roleKey: null },
+    { key: "m.vuoto", title: "Vuoto", roleKey: null },
+  ];
+  const roleLabels = { resp_servizio: "Commerciale (A.8)" };
+  const ls = questionTopicGroups({ counts, modules, roleLabels, vista: "da-fare", plain: (t) => t });
+  assert.deepEqual(
+    ls.map((g) => [g.key, g.title, g.role, g.count]),
+    [
+      ["m.servizio.base", "Prezzi e sconti (art. 7.2)", "Commerciale (A.8)", 9],
+      ["m.costi", "Costi", null, 2],
+      ["m.vecchio", "Altro argomento", null, 1],
+      [NONE, "Senza argomento", null, 4],
+    ],
+  );
+  const verify = questionTopicGroups({ counts, modules, roleLabels, vista: "da-verificare", plain: (t) => t });
+  assert.deepEqual(verify.map((g) => [g.key, g.count]), [["m.servizio.base", 3]], "a topic without questions in the view is not shown");
+  const client = questionTopicGroups({ counts, modules, roleLabels, vista: "tutte", plain: clientPlainText });
+  assert.deepEqual(findForbiddenIn(client.flatMap((g) => [g.title, g.role ?? ""]), "cliente"), [], "no article or privacy sheet code for the client");
 });
 
 test("due date only within 7 days or past, in the row words", () => {
@@ -172,13 +213,6 @@ test("due date only within 7 days or past, in the row words", () => {
   assert.equal(dueView(new Date("2026-11-30T16:00:00Z"), "chiesta", NOW), null);
   assert.equal(dueView(new Date("2026-10-08T16:00:00Z"), "validata", NOW), null);
   assert.equal(dueView(null, "chiesta", NOW), null);
-});
-
-test("automatic checks in one line: errors before warnings", () => {
-  assert.deepEqual(checksLine({ avvisi: 1, errori: 0, primo: "Il valore è fuori dall'intervallo atteso." }), { text: "1 avviso: il valore è fuori dall'intervallo atteso.", error: false });
-  assert.deepEqual(checksLine({ avvisi: 2, errori: 1, primo: "Formato non valido." }), { text: "1 errore: formato non valido.", error: true });
-  assert.equal(checksLine(null), null);
-  assert.equal(checksLine({ avvisi: 0, errori: 0 }), null);
 });
 
 const questionRow = (over: Record<string, unknown> = {}) => ({
@@ -205,7 +239,6 @@ const questionRow = (over: Record<string, unknown> = {}) => ({
   a_encrypted: false,
   a_erased: false,
   a_responder: "Mario Rossi",
-  checks: { avvisi: 1, errori: 0, primo: "Il valore è fuori dall'intervallo atteso." },
   lock_key: null,
   ...over,
 });
@@ -214,61 +247,54 @@ const rowCtx = (audience: "ls" | "cliente" | "sviluppatore", roles: CaseRole[]) 
   audience,
   roles,
   contacts: new Map([[CONTACT, { id: CONTACT, name: "Mario Rossi", roleLabel: null, templateRoleKey: "resp_servizio", assignable: true }]]),
-  roleLabels: { resp_servizio: "Commerciale" },
-  moduleTitles: new Map([["m.servizio.base", "Prezzi e sconti"]]),
   now: NOW,
 });
 
-test("Domande row for Lateral Space: group, grey sub-state, answer excerpt with who and when, checks", () => {
+test("(release 10, §3.5) a row for Lateral Space says one thing in grey: who answered and when, who answers, the block, the state; the due date only when past", () => {
   const r = rowToQuestionRow(questionRow(), rowCtx("ls", ["ls_analista"]));
   assert.equal(r.label, "Da verificare");
-  assert.equal(r.sublabel, null);
   assert.equal(r.title, "Quanti preventivi si perdono ogni mese? (F012)");
-  assert.equal(r.assignee, "Mario Rossi");
-  assert.equal(r.roleLabel, null, "the role only without a referent");
-  assert.deepEqual(r.answer, { excerpt: "40", muted: false, by: "Mario Rossi", when: "2 giorni fa" });
-  assert.equal(r.checks?.text, "1 avviso: il valore è fuori dall'intervallo atteso.");
-  assert.equal(r.must, true);
+  assert.equal(r.line, "Mario Rossi · 2 giorni fa");
+  assert.equal(r.missing, false);
   assert.equal(r.value, null);
   const asked = rowToQuestionRow(questionRow({ status: "chiesta", assignee_contact_id: null, due_at: "2026-10-16T16:00:00Z" }), rowCtx("ls", ["ls_lead"]));
   assert.equal(asked.label, "Da fare");
-  assert.equal(asked.sublabel, "Chiesta, in attesa");
-  assert.equal(asked.assignee, null);
-  assert.equal(asked.roleLabel, "Commerciale");
-  assert.equal(asked.answer, null);
-  assert.equal(asked.checks, null);
-  assert.equal(asked.due?.text, "scade il 16 ott");
+  assert.equal(asked.line, "Senza referente", "the role is only in the group");
+  assert.equal(asked.missing, true);
+  assert.equal(asked.overdue, null, "a due date still to come is not on the row");
+  const late = rowToQuestionRow(questionRow({ status: "chiesta", due_at: "2026-10-10T16:00:00Z" }), rowCtx("ls", ["ls_lead"]));
+  assert.equal(late.line, "Mario Rossi");
+  assert.equal(late.overdue, "scaduta il 10 ott");
   const locked = rowToQuestionRow(questionRow({ status: "bloccata", lock_key: "a8", privacy_class: "personale" }), rowCtx("ls", ["ls_lead"]));
-  assert.equal(locked.lockReason, "Scheda privacy");
-  assert.equal(locked.label, "Bloccata", "one question is «Bloccata», the segment is «Bloccate»");
+  assert.equal(locked.line, "Scheda privacy");
+  assert.equal(locked.label, "Bloccata");
   assert.equal(locked.personal, true);
+  assert.equal(rowToQuestionRow(questionRow({ status: "validata" }), rowCtx("ls", ["ls_lead"])).line, "A posto");
+  assert.equal(rowToQuestionRow(questionRow({ status: "non_applicabile" }), rowCtx("ls", ["ls_lead"])).line, "Non si applica");
+  for (const row of [r, asked, late, locked]) assert.equal(row.line.split(" ").length <= 6, true, `«${row.line}»: one short grey line`);
 });
 
-test("Domande row for the client: its words, no answer, no codes in the title (§3.6.8)", () => {
+test("Domande row for the client: its words, no answer, no date next to a name, no codes in the title (§3.6.8)", () => {
   const r = rowToQuestionRow(questionRow({ status: "mancante" }), rowCtx("cliente", ["owner_cliente"]));
   assert.equal(r.label, "Da rispondere");
-  assert.equal(r.sublabel, null);
-  assert.equal(r.answer, null);
-  assert.equal(r.checks, null);
+  assert.equal(r.line, "Mario Rossi", "who answers");
   assert.equal(r.value, null);
   assert.equal(r.title, "Quanti preventivi si perdono ogni mese?");
-  assert.equal(r.moduleTitle, "Prezzi e sconti");
-  assert.equal(r.assignee, "Mario Rossi");
-  assert.deepEqual(findForbiddenIn([r.label, r.title, r.moduleTitle ?? ""], "cliente"), []);
-  // Next to «Risponde: Mario Rossi» a deadline would be a date per person (art. 15.4): never for the client, not even overdue.
+  assert.deepEqual(findForbiddenIn([r.label, r.title, r.line], "cliente"), []);
+  const review = rowToQuestionRow(questionRow(), rowCtx("cliente", ["owner_cliente"]));
+  assert.equal(review.line, "In verifica", "the state, never who answered and when (art. 15.4)");
+  // Next to the name of who answers a deadline would be a date per person (art. 15.4): never for the client, not even overdue.
   const late = rowToQuestionRow(questionRow({ status: "chiesta", due_at: "2026-10-10T16:00:00Z" }), rowCtx("cliente", ["owner_cliente"]));
-  assert.equal(late.due, null);
-  assert.equal(rowToQuestionRow(questionRow({ status: "chiesta", due_at: "2026-10-10T16:00:00Z" }), rowCtx("ls", ["ls_lead"])).due?.overdue, true);
+  assert.equal(late.overdue, null);
 });
 
 test("Domande row for the developer: the validated value in line", () => {
-  const r = rowToQuestionRow(questionRow({ status: "validata", checks: null }), rowCtx("sviluppatore", ["ls_sviluppatore"]));
+  const r = rowToQuestionRow(questionRow({ status: "validata" }), rowCtx("sviluppatore", ["ls_sviluppatore"]));
   assert.deepEqual(r.value, { kind: "value", text: "40" });
-  assert.equal(r.answer, null);
-  assert.equal(r.due, null);
+  assert.equal(r.overdue, null);
 });
 
-test("Domande groups follow the page order; the subtitle counts the whole topic with the filters", () => {
+test("Domande groups follow the page order: title, the role (only here) and the count of the whole topic with the filters", () => {
   const ctx = rowCtx("ls", ["ls_lead"]);
   const rows = [
     rowToQuestionRow(questionRow({ id: "a1" }), ctx),
@@ -276,20 +302,23 @@ test("Domande groups follow the page order; the subtitle counts the whole topic 
     rowToQuestionRow(questionRow({ id: "b1", request_module_key: "m.costi" }), ctx),
     rowToQuestionRow(questionRow({ id: "x1", request_module_key: null }), ctx),
   ];
+  const zero = { ok: 0, daFare: 0, daVerificare: 0, bloccate: 0 };
   const groups = questionGroups(rows, {
-    counts: { "m.servizio.base": { total: 14, ok: 0 }, "m.costi": { total: 3, ok: 1 }, "": { total: 1, ok: 0 } },
+    counts: { "m.servizio.base": { ...zero, total: 14, daVerificare: 2 }, "m.costi": { ...zero, total: 3, daVerificare: 1 }, "": { ...zero, total: 1, daVerificare: 1 } },
     modules: [
       { key: "m.servizio.base", title: "Prezzi e sconti", roleKey: "resp_servizio" },
       { key: "m.costi", title: "Costi", roleKey: null },
     ],
     roleLabels: { resp_servizio: "Commerciale" },
+    vista: "da-verificare",
+    plain: (t) => t,
   });
   assert.deepEqual(
-    groups.map((g) => [g.title, g.meta, g.rowIds.join(",")]),
+    groups.map((g) => [g.title, g.role, g.count, g.rowIds.join(",")]),
     [
-      ["Prezzi e sconti", "Commerciale · 0 di 14", "a1,a2"],
-      ["Costi", "1 di 3", "b1"],
-      ["Senza argomento", "0 di 1", "x1"],
+      ["Prezzi e sconti", "Commerciale", 2, "a1,a2"],
+      ["Costi", null, 1, "b1"],
+      ["Senza argomento", null, 1, "x1"],
     ],
   );
 });

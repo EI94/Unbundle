@@ -8,7 +8,7 @@ import { applyTemplateLoad } from "../db/queries/uc-templates.ts";
 import { addCaseMember, commandContextFor, createCase, loadUserContext, updateCaseRoi, type UcCommandContext } from "../db/queries/uc-cases.ts";
 import { recordLsAnswer } from "../db/queries/uc-items.ts";
 import { assignItems, createContact, requestConfirmation, sendRequests } from "../db/queries/uc-requests.ts";
-import { loadQuestionSegments, loadQuestionSelection, loadQuestionsPage, loadReviewQueue } from "../db/queries/uc-questions.ts";
+import { loadQuestionDocuments, loadQuestionSelection, loadQuestionsPage, loadReviewQueue } from "../db/queries/uc-questions.ts";
 import { loadPeopleView } from "../db/queries/uc-people-view.ts";
 import { loadValuePage } from "../db/queries/uc-value.ts";
 import { loadCatalogSelection, type UcViewer } from "../db/queries/uc-views.ts";
@@ -247,7 +247,7 @@ async function caseStatus(caseId = state.caseId): Promise<CaseStatus> {
 
 const NOW = new Date();
 
-test("Domande opens on «Da fare» and the indispensable questions, by topic in schema order, in one batch", opts, async () => {
+test("Domande opens on «Da fare» and the indispensable questions: closed topics in schema order with their count, the «In attesa» group on top, in one batch", opts, async () => {
   const lead = await viewer(ids.lead, ["ls_lead"]);
   const status = await caseStatus();
   const page = await loadQuestionsPage(exec!, lead, { searchParams: {}, status, now: NOW });
@@ -258,57 +258,63 @@ test("Domande opens on «Da fare» and the indispensable questions, by topic in 
   const required = `i.kind = 'domanda' AND i.in_gate_scope AND i.priority = 'must' AND i.perimeter = 'in_contratto' AND i.serves_for @> '["modello"]'::jsonb`;
   assert.equal(page.counts.segments.tutte, await count(required));
   assert.equal(page.total, await count(`${required} AND i.status IN ('da_chiedere', 'chiesta', 'mancante', 'parziale')`));
-  assert.equal(page.rows.length, Math.min(page.total, 50));
-  // Topics in the order of the schema, the indispensable questions first inside each topic.
+  // (Release 10, §3.5) Without a filter the topics stay closed: no rows read, one group per topic with its count.
+  assert.equal(page.collapsed, true);
+  assert.deepEqual(page.rows, []);
+  assert.equal(page.waiting, await count(`${required} AND i.status = 'bloccata'`));
   const order = page.ctx.modules.map((m) => m.key);
-  const positions = page.rows.map((r) => order.indexOf(r.moduleKey ?? ""));
-  assert.deepEqual(positions, [...positions].sort((a, b) => a - b));
-  assert.ok(page.groups && page.groups.length > 0);
-  for (const g of page.groups) {
-    const total = await count(`${required} AND i.request_module_key = $2`, [g.key]);
-    assert.match(g.meta, new RegExp(`\\d+ di ${total}$`));
+  const positions = page.topics.filter((t) => order.includes(t.key)).map((t) => order.indexOf(t.key));
+  assert.deepEqual(positions, [...positions].sort((a, b) => a - b), "topics in the order of the schema");
+  for (const t of page.topics) {
+    const where = t.key === "nessuno" ? "i.request_module_key IS NULL" : "i.request_module_key = $2";
+    assert.equal(t.count, await count(`${required} AND ${where} AND i.status IN ('da_chiedere', 'chiesta', 'mancante', 'parziale')`, t.key === "nessuno" ? [] : [t.key]), t.key);
   }
-  // Segments: the default one stays, «Tutte» always; Documenti counts the required documents.
-  assert.ok(page.segments.some((s) => s.key === "da-fare"));
+  assert.equal(page.topics.reduce((n, t) => n + t.count, 0), page.total);
+  // Segments: «Da fare» (with the waiting group) and «Tutte»; no «Bloccate», «A posto» or «Documenti».
+  assert.deepEqual(page.segments.find((s) => s.key === "da-fare")?.count, page.total + page.waiting);
   assert.ok(page.segments.some((s) => s.key === "tutte"));
-  const docs = await count(`(i.kind IN ('fonte', 'documento') OR i.response_type IN ('file', 'dataset'))`);
-  assert.equal(page.segments.find((s) => s.key === "documenti")?.count, docs > 0 ? docs : undefined);
+  assert.ok(page.segments.every((s) => ["da-fare", "da-verificare", "tutte"].includes(s.key)));
   assert.equal(page.catalogSize, state.items.size);
-  // Every question with the switch off; the whole catalog for Lateral Space.
-  const all = await loadQuestionsPage(exec!, lead, { searchParams: { vista: "tutte", indispensabili: "no" }, status, now: NOW });
+  assert.equal(page.files, (await q(`SELECT count(*)::int AS n FROM uc_files WHERE case_id = $1::uuid AND deleted_at IS NULL`, [state.caseId]))[0].n);
+  // A topic opens with its filter: its rows, by topic, the role only in the group.
+  const first = page.topics[0];
+  const topic = await loadQuestionsPage(exec!, lead, { searchParams: { argomento: first.key }, status, now: NOW });
+  assert.equal(topic!.collapsed, false);
+  assert.equal(topic!.total, first.count);
+  assert.equal(topic!.rows.length, Math.min(first.count, 50));
+  assert.deepEqual(topic!.groups.map((g) => [g.key === "" ? "nessuno" : g.key, g.count]), [[first.key, first.count]]);
+  // Every question with the switch off; the whole catalog for Lateral Space; the «Documenti» filter.
+  const all = await loadQuestionsPage(exec!, lead, { searchParams: { vista: "tutte", indispensabili: "no", q: "q." }, status, now: NOW });
   assert.equal(all!.total, await count("i.kind = 'domanda'"));
   const catalog = await loadQuestionsPage(exec!, lead, { searchParams: { vista: "tutte", indispensabili: "no", mostra: "catalogo" }, status, now: NOW });
   assert.equal(catalog!.total, state.items.size);
   assert.equal(Object.values(catalog!.kindCounts ?? {}).reduce((s, n) => s + n, 0), state.items.size);
+  const docs = await loadQuestionsPage(exec!, lead, { searchParams: { vista: "tutte", indispensabili: "no", mostra: "documenti" }, status, now: NOW });
+  assert.equal(docs!.total, await count(`(i.kind IN ('fonte', 'documento') OR i.response_type IN ('file', 'dataset'))`));
+  assert.equal(docs!.total, (await loadQuestionDocuments(exec!, lead))!.required.length, "the filter lists what the «File» panel calls the required documents");
   // Pasting a key finds the question; a page past the end shows the last one.
   const byKey = await loadQuestionsPage(exec!, lead, { searchParams: { vista: "tutte", indispensabili: "no", q: "q.costi.01" }, status, now: NOW });
   assert.deepEqual(byKey!.rows.map((r) => r.id), [item("q.costi.01")]);
-  const past = await loadQuestionsPage(exec!, lead, { searchParams: { vista: "tutte", indispensabili: "no", pagina: "9" }, status, now: NOW });
-  assert.equal(past!.filter.pagina, 1);
-  assert.equal(past!.rows.length, all!.rows.length);
-  const segments = await loadQuestionSegments(exec!, lead, status);
-  assert.deepEqual(
-    segments.segments.map((s) => s.key),
-    page.segments.map((s) => s.key),
-  );
+  const past = await loadQuestionsPage(exec!, lead, { searchParams: { vista: "tutte", indispensabili: "no", q: "q.", pagina: "9" }, status, now: NOW });
+  assert.equal(past!.filter.pagina, Math.max(1, Math.ceil(all!.total / 50)));
 });
 
-test("«Da verificare» and «Verifica una alla volta» apply the four eyes: your own answers go to a colleague", opts, async () => {
+test("«Da verificare» and «Verifica una alla volta» apply the four eyes: your own answers go to another person", opts, async () => {
   const analystCtx = await ctxFor(ids.analyst);
   const key = "q.sistemi.01";
   const recorded = await recordLsAnswer(exec!, analystCtx, { itemId: item(key), value: { value: "sì" }, sourceKind: "documento", sourceRef: "Manuale del sistema" });
   assert.ok(recorded.ok, recorded.ok ? "" : recorded.message);
   const status = await caseStatus();
-  const params = { vista: "da-verificare", indispensabili: "no" };
+  const params = { vista: "da-verificare", indispensabili: "no", q: "q." };
   const analyst = await loadQuestionsPage(exec!, await viewer(ids.analyst, ["ls_analista"]), { searchParams: params, status, now: NOW });
   assert.equal(analyst!.counts.mine, 1);
   assert.ok(!analyst!.rows.some((r) => r.id === item(key)), "the analyst answered: not in the analyst's list");
   const lead = await loadQuestionsPage(exec!, await viewer(ids.lead, ["ls_lead"]), { searchParams: params, status, now: NOW });
   const row = lead!.rows.find((r) => r.id === item(key));
   assert.ok(row, "the lead verifies it");
-  assert.ok(row.answer?.excerpt && row.answer.excerpt !== "—");
   assert.equal(row.label, "Da verificare");
-  assert.equal(lead!.groups, null, "«Da verificare» is one list, from the oldest answer");
+  assert.ok(row.line.length > 0, "who answered and when, in grey");
+  assert.ok(lead!.groups.length > 0, "(release 10) grouped by topic, the oldest answer first inside each");
   const analystQueue = await loadReviewQueue(exec!, await viewer(ids.analyst, ["ls_analista"]));
   assert.ok(!analystQueue.ids.includes(item(key)));
   assert.equal(analystQueue.mine, 1);
@@ -323,25 +329,29 @@ test("Domande for the client and the developer: their words, no answers for the 
   const owner = await loadQuestionsPage(exec!, await viewer(ids.owner, ["owner_cliente"]), { searchParams: { vista: "bloccate", indispensabili: "no" }, status, now: NOW });
   assert.ok(owner);
   assert.equal(owner.audience, "cliente");
-  assert.equal(owner.filter.vista, owner.defaults.vista, "«Bloccate» is not a client segment");
-  assert.ok(owner.rows.every((r) => r.answer === null && r.value === null && r.checks === null));
-  assert.ok(owner.segments.every((s) => ["Da rispondere", "In verifica", "A posto", "Tutte"].includes(s.label)));
-  assert.ok(!owner.segments.some((s) => s.key === "documenti" || s.key === "bloccate"));
-  assert.equal(owner.groups, null);
+  assert.equal(owner.filter.vista, "bloccate", "(release 10) the «In attesa» group of «Da rispondere»");
+  assert.equal(owner.collapsed, false);
+  assert.equal(owner.total, await count("i.kind = 'domanda' AND i.status = 'bloccata'"));
+  assert.ok(owner.rows.every((r) => r.value === null && r.overdue === null));
+  assert.ok(owner.segments.every((s) => ["Da rispondere", "In verifica", "Tutte"].includes(s.label)));
   assert.equal(owner.catalogSize, null);
-  // Art. 15.4: the client never filters by one colleague, so the segment counts are never that person's progress.
+  // Yesterday's «A posto» segment is «Tutte» with the «A posto» filter.
+  const done = await loadQuestionsPage(exec!, await viewer(ids.owner, ["owner_cliente"]), { searchParams: { vista: "a-posto", indispensabili: "no" }, status, now: NOW });
+  assert.deepEqual([done!.filter.vista, done!.filter.stato], ["tutte", "a-posto"]);
+  assert.equal(done!.total, await count("i.kind = 'domanda' AND i.status IN ('validata', 'non_applicabile')"));
+  // Art. 15.4: the client never filters by one person, so the segment counts are never that person's progress.
   const ownerViewer = await viewer(ids.owner, ["owner_cliente"]);
   const all = { vista: "tutte", indispensabili: "no" };
   assert.ok((await count("i.kind = 'domanda' AND i.assignee_contact_id = $2::uuid", [state.contactCosts])) > 0, "some questions are assigned");
   const everyone = await loadQuestionsPage(exec!, ownerViewer, { searchParams: all, status, now: NOW });
-  const oneColleague = await loadQuestionsPage(exec!, ownerViewer, { searchParams: { ...all, referente: state.contactCosts }, status, now: NOW });
-  assert.equal(oneColleague!.filter.referente, null);
-  assert.deepEqual(oneColleague!.counts.segments, everyone!.counts.segments);
-  assert.deepEqual(oneColleague!.segments, everyone!.segments);
-  assert.ok(oneColleague!.rows.every((r) => r.due === null), "no deadline next to «Risponde: …»");
+  const onePerson = await loadQuestionsPage(exec!, ownerViewer, { searchParams: { ...all, referente: state.contactCosts }, status, now: NOW });
+  assert.equal(onePerson!.filter.referente, null);
+  assert.deepEqual(onePerson!.counts.segments, everyone!.counts.segments);
+  assert.deepEqual(onePerson!.segments, everyone!.segments);
   // «Senza referente» stays: the client finds the questions to assign.
   const unassigned = await loadQuestionsPage(exec!, ownerViewer, { searchParams: { ...all, referente: "nessuno" }, status, now: NOW });
   assert.equal(unassigned!.total, await count("i.kind = 'domanda' AND i.assignee_contact_id IS NULL"));
+  assert.ok(unassigned!.rows.every((r) => r.overdue === null), "no deadline next to who answers");
   // Lateral Space keeps the filter by referent.
   const lead = await loadQuestionsPage(exec!, await viewer(ids.lead, ["ls_lead"]), { searchParams: { ...all, referente: state.contactCosts }, status, now: NOW });
   assert.equal(lead!.total, await count("i.kind = 'domanda' AND i.assignee_contact_id = $2::uuid", [state.contactCosts]));
@@ -363,4 +373,8 @@ test("«Seleziona tutte le N» of Domande follows the page's view, with vista an
   const defaults = await loadQuestionSelection(exec!, lead, questionQuery(page!.filter, page!.defaults, { vista: "da-fare", soloIndispensabili: true, ruolo: null }, { explicit: true }));
   const first = await loadQuestionsPage(exec!, lead, { searchParams: {}, status, now: NOW });
   assert.equal(defaults.total, first!.total);
+  // (Release 10, §3.5) A closed topic is selected whole: its questions in the view, as its count says.
+  const topic = first!.topics[0];
+  const whole = await loadQuestionSelection(exec!, lead, questionQuery(first!.filter, first!.defaults, { argomento: topic.key }, { explicit: true }));
+  assert.equal(whole.total, topic.count);
 });
