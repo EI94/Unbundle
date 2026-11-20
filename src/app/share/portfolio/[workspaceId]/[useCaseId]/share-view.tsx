@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { PublicShell } from "@/components/public/public-shell";
+import { PublicStateCard } from "@/components/public/state-card";
 import { PhasePill } from "@/components/use-cases/phase-pill";
 import { SHARE_PAGE_TEXT } from "@/lib/use-cases/share-page";
 import type { Phase, SubState } from "@/lib/use-cases/types";
@@ -9,14 +11,17 @@ import type { Phase, SubState } from "@/lib/use-cases/types";
  * (Rilascio 10, §3.4, §3.11) Le viste della pagina pubblica del link di condivisione: tema chiaro (`.survey-light`),
  * il marchio piccolo in alto, una colonna; il pulsante principale a tutta larghezza, alto 48 px. Nessun dato oltre a
  * quelli che la pagina passa già ridotti (D14). Senza stato: si rendono sul server.
+ *
+ * (Rilascio 10, ondata 4) Dentro il guscio unico delle pagine pubbliche (`src/components/public/`): lo stesso marchio, la
+ * stessa scheda del link che non vale. La radice chiara resta qui e non in un layout: la pagina si rende anche da sola
+ * (le prove d'integrazione) e deve restare chiara.
  */
 export function ShareShell({ children }: { children: ReactNode }) {
   return (
-    <div data-slot="share-page" className="survey-light min-h-dvh w-full min-w-0 overflow-x-hidden bg-background text-foreground">
-      <main className="mx-auto w-full max-w-xl min-w-0 px-4 pt-5 pb-10 text-base sm:px-6 sm:pt-10">
-        <p className="text-sm font-semibold tracking-wide">{SHARE_PAGE_TEXT.brand}</p>
+    <div data-slot="share-page" className="survey-light min-h-dvh w-full min-w-0 overflow-x-clip bg-background text-foreground">
+      <PublicShell>
         <div className="mt-8 space-y-4">{children}</div>
-      </main>
+      </PublicShell>
     </div>
   );
 }
@@ -67,12 +72,16 @@ export function ShareCase({ title, phaseText, phase, subState = null, quando, lo
  */
 export function ShareInvalid({ loginHref }: { loginHref: string }) {
   return (
-    <ShareShell>
-      <h1 className="text-2xl font-semibold tracking-tight">{SHARE_PAGE_TEXT.invalidTitle}</h1>
-      <p className="text-muted-foreground">{SHARE_PAGE_TEXT.invalidBody}</p>
-      <Button render={<Link href={loginHref} />} nativeButton={false} className="h-12 w-full text-base">
-        {SHARE_PAGE_TEXT.invalidLogin}
-      </Button>
-    </ShareShell>
+    <div data-slot="share-page" className="survey-light min-h-dvh w-full min-w-0 overflow-x-clip bg-background text-foreground">
+      <PublicShell>
+        <PublicStateCard kind="link" body={SHARE_PAGE_TEXT.invalidBody}>
+          <div className="mt-5">
+            <Button render={<Link href={loginHref} />} nativeButton={false} className="h-12 w-full text-base">
+              {SHARE_PAGE_TEXT.invalidLogin}
+            </Button>
+          </div>
+        </PublicStateCard>
+      </PublicShell>
+    </div>
   );
 }

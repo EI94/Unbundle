@@ -31,6 +31,14 @@ export const PUBLIC_TEXT = Object.freeze({
   }),
   /** Per i lettori di schermo, mentre la pagina si carica. */
   loading: "Caricamento…",
+  /** Il piè di pagina delle pagine legali: la home e le tre pagine, a un tocco l'una dall'altra. */
+  legal: Object.freeze({
+    label: "Pagine legali",
+    home: "Unbundle",
+    privacy: "Privacy",
+    terms: "Termini di servizio",
+    support: "Supporto",
+  }),
 });
 
 /** Riempie «{Nome}» e simili; un segnaposto senza valore resta com'è. */
