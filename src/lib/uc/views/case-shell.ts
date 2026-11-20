@@ -1,7 +1,9 @@
 /**
  * Guscio del dossier (DESIGN §2.2, §2.3, §3.3): chi apre le pagine del guscio,
  * le 5 schede, il menu «⋯», la pagina d'arrivo, il percorso e l'avviso della
- * testata.
+ * testata. (Rilascio 10, §3.5) La testata ha cinque elementi: percorso, titolo
+ * (sempre quello dello use case), stato a puntino, il pulsante pieno con icona
+ * e «?», «⋯» con Privacy · Attività · Esporta… · Impostazioni.
  *
  * I permessi non cambiano (`UC_PAGE_ROLES`, `UC_SHELL_PAGE_ROLES`,
  * `CASE_ACTION_ROLES`): cambia solo la navigazione. Una scheda o una voce del
@@ -19,6 +21,7 @@
 import { CASE_ACTION_ROLES } from "../permissions.ts";
 import { LS_CASE_ROLES, type CaseRole, type CaseStatus, type SemaforoColor } from "../vocab.ts";
 import { CASE_STATUS_TONE as STATUS_TONE } from "./labels.ts";
+import type { NextStep, NextStepId } from "./next-step.ts";
 import { canOpenPage } from "./page-access.ts";
 
 export type UcShellPage = "panoramica" | "via" | "descrizione" | "persone" | "privacy" | "registro" | "firme" | "impostazioni" | "progetto";
@@ -117,40 +120,41 @@ export function solutionSegmentsFor(roles: readonly CaseRole[]): { key: Solution
 
 // ── Menu «⋯» ──────────────────────────────────────────────────────────
 
-export type CaseMenuKey = "firme" | "privacy" | "attivita" | "esporta" | "claude" | "progetto" | "impostazioni";
+export type CaseMenuKey = "privacy" | "attivita" | "esporta" | "progetto" | "impostazioni";
 
 export interface CaseMenuItem {
   key: CaseMenuKey;
   label: string;
-  /** Segmento sotto il dossier (con l'ancora); null per «Esporta…», che apre il pannello. */
+  /** Segmento sotto il dossier; null per «Esporta…», che apre il pannello. */
   segment: string | null;
 }
 
 export interface CaseMenuInput {
-  /** Firme in attesa per chi guarda. */
-  pendingSignatures: number;
-  /** Il caso è oltre il via allo sviluppo (anche se in pausa). */
-  pastVia: boolean;
   /** C'è qualcosa da scaricare per chi guarda (`exportChoices`). */
   exportable: boolean;
 }
 
 /**
- * Le voci del menu «⋯» (DESIGN §2.2, §2.3), solo quelle che servono:
- * «Da firmare (n)» solo con firme in attesa, «Sviluppo con Claude» solo per
- * Lateral Space dopo il via, Privacy non per chi ci arriva già (l'approvatore
- * privacy). Senza voci il menu non c'è. «Impostazioni del caso» è sempre
- * l'ultima.
+ * Le voci del menu «⋯» (rilascio 10, §3.5): Privacy · Attività · Esporta… ·
+ * Impostazioni, solo quelle che chi guarda può aprire; Privacy non per chi ci
+ * arriva già (l'approvatore privacy). Senza voci il menu non c'è.
+ * «Impostazioni» è sempre l'ultima.
+ *
+ * - «Da firmare (n)» non c'è più: la firma è il pulsante pieno «Firma …» e il
+ *   pannello delle firme (F-006).
+ * - «Sviluppo con Claude» sta nella sezione «Via allo sviluppo» della
+ *   Panoramica, dove era in `/via` (F-010, F-042), finché l'ondata 5b non lo
+ *   porta in Costruzione.
+ * - «Progetto dell'agente» resta qui finché l'ondata 5b non ne fa la scheda
+ *   «Costruzione» (F-011): niente si perde nel frattempo.
  */
 export function caseMenuFor(roles: readonly CaseRole[], i: CaseMenuInput): CaseMenuItem[] {
   const out: CaseMenuItem[] = [];
-  if (i.pendingSignatures > 0 && canOpenShellPage("firme", roles)) out.push({ key: "firme", label: `Da firmare (${i.pendingSignatures})`, segment: "firme" });
   if (canOpenShellPage("privacy", roles) && landingSegment(roles) !== "privacy") out.push({ key: "privacy", label: "Privacy", segment: "privacy" });
   if (canOpenShellPage("registro", roles)) out.push({ key: "attivita", label: "Attività", segment: "attivita" });
   if (i.exportable) out.push({ key: "esporta", label: isLs(roles) ? "Esporta…" : "Scarica in Excel", segment: null });
-  if (i.pastVia && isLs(roles)) out.push({ key: "claude", label: "Sviluppo con Claude", segment: "via#sviluppo-con-claude" });
   if (canOpenShellPage("progetto", roles)) out.push({ key: "progetto", label: "Progetto dell'agente", segment: "progetto" });
-  if (canOpenShellPage("impostazioni", roles)) out.push({ key: "impostazioni", label: "Impostazioni del caso", segment: "impostazioni" });
+  if (canOpenShellPage("impostazioni", roles)) out.push({ key: "impostazioni", label: "Impostazioni", segment: "impostazioni" });
   return out;
 }
 
@@ -185,39 +189,102 @@ export function caseTrail(i: CaseTrailInput): CaseTrail {
   };
 }
 
+/**
+ * (Rilascio 10, §3.5) Il titolo della realizzazione è sempre quello dello use case (la scheda madre); senza scheda
+ * madre, o con il titolo vuoto, quello del dossier. Lo stesso nella testata e nella barra fissa.
+ */
+export function realizationTitle(i: { caseTitle: string; parent: { title: string } | null }): string {
+  return i.parent?.title?.trim() || i.caseTitle;
+}
+
+/**
+ * (Rilascio 10, §3.5) L'avanzamento piccolo in testata («186/245» con la barra): per chi apre la Panoramica, dove sta
+ * il numero grande. Non sulla Panoramica stessa (lo decide la testata), mai all'approvatore privacy, che non la apre.
+ */
+export function showsHeaderProgress(roles: readonly CaseRole[]): boolean {
+  return canOpenShellPage("panoramica", roles);
+}
+
+/**
+ * (Rilascio 10, §3.5, F-076) Chi ha il passo «Controlla N file»: chi può controllare a mano un PDF (`canReviewFile`:
+ * responsabile o analista, persona di Lateral Space), a realizzazione aperta (non chiusa né in pausa) e non in sola
+ * lettura, come i comandi sui file. Per gli altri il conteggio non si legge.
+ */
+export function checksFiles(i: { roles: readonly CaseRole[]; isLateralSpace: boolean; readOnly: boolean; status: CaseStatus }): boolean {
+  if (!i.isLateralSpace || i.readOnly || i.status === "chiuso" || i.status === "sospeso") return false;
+  return i.roles.includes("ls_lead") || i.roles.includes("ls_analista");
+}
+
+/**
+ * (Rilascio 10, §3.5) Una pagina della realizzazione che non c'è o non è per chi guarda: un titolo calmo e la via
+ * d'uscita, mai «Riprova» (non può riuscire). Lo stesso titolo dentro la realizzazione e fuori.
+ */
+export const CASE_NOT_FOUND_TEXT = Object.freeze({
+  title: "Questa pagina non è disponibile.",
+  /** Dentro la realizzazione: testata e schede restano. */
+  toOverview: "Torna alla Panoramica",
+  /** Fuori: la realizzazione non c'è o chi guarda non ne fa parte. */
+  toUseCases: "Torna agli use case",
+});
+
+/** (Rilascio 10, §3.5) L'ancora della sezione «Via allo sviluppo» nella Panoramica: ci portano `/via`, `/avanzamento` e i passi del via. */
+export const VIA_SECTION_ID = "via";
+
+const VIA_PATH = /^(\/dashboard\/[^/?#]+\/casi-duso\/[^/?#]+)\/via\/?$/;
+
+/**
+ * (Rilascio 10, §3.5, F-043) Dove porta la vecchia `/via`: la Panoramica all'ancora `#via`, con la stessa query (i
+ * parametri restano tutti). Null se il percorso non è il `/via` di un dossier.
+ */
+export function viaRedirect(pathname: string, search: string): string | null {
+  const m = VIA_PATH.exec(pathname);
+  if (!m) return null;
+  const query = search.replace(/^\?/, "");
+  return `${m[1]}${query ? `?${query}` : ""}#${VIA_SECTION_ID}`;
+}
+
 export type CaseHeadAlertKind = "riconferma" | "pausa" | "chiuso" | "configurazione";
 
 export interface CaseHeadAlert {
   kind: CaseHeadAlertKind;
   text: string;
   tone: SemaforoColor;
-  /** Link dell'avviso (solo «Vedi cosa manca»): segmento sotto il dossier. */
-  action: { label: string; segment: string } | null;
+  /** Link dell'avviso (solo «Vedi cosa manca»): relativo alla radice del dossier, come i passi (`resolveStepHref`). */
+  action: { label: string; href: string } | null;
 }
 
 /**
  * L'unico avviso della testata (DESIGN §3.3), in quest'ordine: via da
- * riconfermare, pausa, chiusura, configurazione da completare (solo per chi
- * gestisce il workspace; gli altri vedono il badge «Sola lettura»).
+ * riconfermare, pausa, chiusura, configurazione da completare. (Rilascio 10,
+ * §3.5) Un segnale per stato: l'avviso non c'è quando il pulsante pieno dice
+ * già la stessa cosa (`primary`: «Riconferma il via allo sviluppo»,
+ * «Riprendi la realizzazione»). La configurazione che manca (i domini di
+ * Lateral Space: tutti in sola lettura) va nel log e, finché l'ondata 6b non la
+ * porta in una riga delle Impostazioni del workspace, la legge qui solo chi le
+ * gestisce (F-005); niente badge «Sola lettura» per gli altri.
  */
-export function caseHeadAlert(i: { status: CaseStatus; gateReconfirm: boolean; lsConfigured: boolean; workspaceAdmin: boolean; canOpenVia: boolean }): CaseHeadAlert | null {
-  if (i.gateReconfirm && i.status !== "chiuso") {
+export function caseHeadAlert(i: {
+  status: CaseStatus;
+  gateReconfirm: boolean;
+  canOpenVia: boolean;
+  primary?: NextStepId | null;
+  /** I domini di Lateral Space sono configurati (altrimenti la realizzazione è in sola lettura per tutti). */
+  lsConfigured?: boolean;
+  /** Chi guarda gestisce le Impostazioni del workspace. */
+  workspaceAdmin?: boolean;
+}): CaseHeadAlert | null {
+  if (i.gateReconfirm && i.status !== "chiuso" && i.primary !== "riconferma_via") {
     return {
       kind: "riconferma",
       text: "Il via allo sviluppo va riconfermato: alcune domande indispensabili non sono più a posto.",
       tone: "rosso",
-      action: i.canOpenVia ? { label: "Vedi cosa manca", segment: "via" } : null,
+      action: i.canOpenVia ? { label: "Vedi cosa manca", href: "/#via" } : null,
     };
   }
-  if (i.status === "sospeso") return { kind: "pausa", text: "Caso in pausa: niente invii né promemoria finché non riprende.", tone: "grigio", action: null };
-  if (i.status === "chiuso") return { kind: "chiuso", text: "Caso chiuso: si può solo leggere.", tone: "grigio", action: null };
-  if (!i.lsConfigured && i.workspaceAdmin) return { kind: "configurazione", text: "Configurazione da completare: la sezione è in sola lettura.", tone: "giallo", action: null };
+  if (i.status === "sospeso" && i.primary !== "riprendi") return { kind: "pausa", text: "Realizzazione in pausa: niente invii né promemoria finché non riprende.", tone: "grigio", action: null };
+  if (i.status === "chiuso") return { kind: "chiuso", text: "Realizzazione chiusa: si può solo leggere.", tone: "grigio", action: null };
+  if (i.lsConfigured === false && i.workspaceAdmin) return { kind: "configurazione", text: "Configurazione da completare: la realizzazione è in sola lettura.", tone: "giallo", action: null };
   return null;
-}
-
-/** Il badge «Sola lettura» accanto allo stato: configurazione da completare, per chi non gestisce il workspace. */
-export function showsReadOnlyBadge(i: { lsConfigured: boolean; workspaceAdmin: boolean }): boolean {
-  return !i.lsConfigured && !i.workspaceAdmin;
 }
 
 /**
@@ -228,20 +295,50 @@ export function showsReadOnlyBadge(i: { lsConfigured: boolean; workspaceAdmin: b
 export const PAGES_WITHOUT_PRIMARY: readonly string[] = ["impostazioni", "progetto"];
 
 /**
+ * (Rilascio 10, §3.5) I passi il cui comando sta nella sezione «Via allo sviluppo» della Panoramica («Proponi il via
+ * allo sviluppo», «Manda il link per firmare»): lì la sezione ha il suo pulsante pieno e quello della testata si
+ * nasconde, come sulla vecchia `/via`. Sulle altre schede il pulsante della testata porta lì (`/#via`).
+ */
+export const STEPS_WITH_PAGE_COMMAND: readonly NextStepId[] = ["proponi_via", "manda_link_firma"];
+
+export function stepHasPageCommand(id: NextStepId): boolean {
+  return STEPS_WITH_PAGE_COMMAND.includes(id);
+}
+
+/** Il pannello che apre il passo della testata: il dialogo di conferma, «Esporta…», le firme o il pannello della pagina d'arrivo. */
+export type StepPanel = { name: "conferma" | "esporta" | "firma" | "apri"; value: string };
+
+/**
+ * Il pannello di un passo (rilascio 10, §3.5): `?conferma=<stato>` per i cambi di stato, `?esporta=1` per il catalogo
+ * dello sviluppatore, `?firma=1` per le firme (pannelli del guscio, su ogni pagina), `?apri=file` per «Controlla N
+ * file» (il pannello «File» di Domande). Con un pannello il primario non si nasconde mai sulla pagina in cui porta
+ * (`stepHiddenOn`): lì lo apre.
+ */
+export function stepPanelOf(step: Pick<NextStep, "id" | "transition" | "panel">): StepPanel | undefined {
+  if (step.transition) return { name: "conferma", value: step.transition };
+  if (step.id === "scarica_catalogo") return { name: "esporta", value: "1" };
+  return step.panel ? { ...step.panel } : undefined;
+}
+
+/**
  * Il pulsante primario si nasconde sulla pagina in cui porta (DESIGN §2.2),
  * anche se il passo apre lì un pannello (`/persone?invia=1` su Persone: la
  * pagina ha già i suoi comandi) o un'ancora (`/impostazioni#stato` su
  * Impostazioni). Resta sulle ancore di Panoramica (`/#blocchi`, in Panoramica)
  * e sui passi che aprono un pannello della testata (`?conferma=`, `?esporta=`).
  * Sulle pagine di `PAGES_WITHOUT_PRIMARY` non c'è mai, qualunque sia il passo.
+ * (Rilascio 10, §3.5) `pageCommand`: il comando del passo sta nella pagina
+ * d'arrivo (`stepHasPageCommand`), che allora ha il suo pulsante pieno: lì il
+ * primario si nasconde anche se porta a un'ancora.
  */
-export function stepHiddenOn(step: { href: string; caseBase: string; panel?: boolean }, pathname: string): boolean {
+export function stepHiddenOn(step: { href: string; caseBase: string; panel?: boolean; pageCommand?: boolean }, pathname: string): boolean {
   const clean = (p: string) => p.split(/[?#]/)[0].replace(/\/+$/, "");
   const root = clean(step.caseBase);
   const here = clean(pathname);
   if (here.startsWith(`${root}/`) && PAGES_WITHOUT_PRIMARY.includes(here.slice(root.length + 1).split("/")[0])) return true;
   if (step.panel) return false;
   const target = clean(step.href);
+  if (step.pageCommand && target === here) return true;
   if (target === root && step.href.includes("#")) return false;
   return target === here;
 }

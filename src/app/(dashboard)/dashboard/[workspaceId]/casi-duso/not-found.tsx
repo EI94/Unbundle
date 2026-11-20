@@ -4,22 +4,23 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { PageContainer } from "@/components/dashboard/page-container";
+import { CASE_NOT_FOUND_TEXT } from "@/lib/uc/views/case-shell";
 
 /**
- * Il dossier non c'è o chi guarda non ne fa parte (DESIGN §3.14): il layout del
- * caso chiama `notFound()`. Riporta alla pagina Use case.
+ * La realizzazione non c'è o chi guarda non ne fa parte (DESIGN §3.14): il layout del caso chiama `notFound()`.
+ * (Rilascio 10, §3.5) Lo stesso titolo calmo delle pagine della realizzazione e la via d'uscita, «Torna agli use
+ * case»: qui è il passo della schermata.
  */
 export default function CaseNotFound() {
   const params = useParams<{ workspaceId: string }>();
   const useCases = params?.workspaceId ? `/dashboard/${params.workspaceId}/use-cases` : null;
   return (
     <PageContainer size="narrow">
-      <div className="space-y-3 rounded-xl bg-card p-6 ring-1 ring-foreground/10">
-        <h1 className="text-lg font-semibold">Realizzazione non trovata</h1>
-        <p className="text-sm text-muted-foreground">La realizzazione non esiste o non hai accesso. Chiedi a chi la gestisce di aggiungerti.</p>
+      <div className="space-y-3">
+        <h1 className="text-2xl font-semibold tracking-tight">{CASE_NOT_FOUND_TEXT.title}</h1>
         {useCases && (
-          <Button variant="outline" className="h-11 sm:h-8" render={<Link href={useCases} />} nativeButton={false}>
-            Torna agli use case
+          <Button className="min-h-11 sm:min-h-8" render={<Link href={useCases} />} nativeButton={false}>
+            {CASE_NOT_FOUND_TEXT.toUseCases}
           </Button>
         )}
       </div>

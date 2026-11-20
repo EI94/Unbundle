@@ -7,7 +7,8 @@ import { createUcExecutor, type UcExecutor } from "../db/uc-executor.ts";
 import { applyTemplateLoad } from "../db/queries/uc-templates.ts";
 import { addCaseMember, commandContextFor, confirmGatePolicy, createCase, loadCaseReadiness, loadUserContext, type UcCommandContext } from "../db/queries/uc-cases.ts";
 import { proposeGate, rejectGate, signGate } from "../db/queries/uc-gates.ts";
-import { loadOverview, loadVia } from "../db/queries/uc-overview.ts";
+import { caseReadTokensSql, toCaseReadTokens } from "../db/queries/uc-mcp.ts";
+import { loadOverview, loadOverviewWithVia, loadVia } from "../db/queries/uc-overview.ts";
 import { isRequired } from "./gates.ts";
 import { planTemplateLoad } from "./template/load.ts";
 import { latestApproval, moduleProgress, overviewBlockers, reviewHistoryRow, viaAction, viaConditions, viaProgress, viaShownSignatures, viaState, type ViaAction } from "./views/progress.ts";
@@ -228,10 +229,33 @@ test("overview: one round-trip, the indispensable questions with the same count 
       ["m3", false],
     ],
   );
-  assert.equal(data.inBreve, "Instrada ogni richiesta alla persona giusta.");
+  assert.equal("inBreve" in data, false, "(rilascio 10) «Il caso» left the Panoramica: «In breve» is not read any more");
   assert.deepEqual(data.phases, [{ fase: "Preparazione", quando: "ottobre", cosa: "Raccolta dei dati" }, { fase: "Sviluppo" }]);
   assert.equal(data.blocker, null);
   assert.deepEqual(data.files, []);
+});
+
+test("(rilascio 10, §3.5) the Panoramica with the via inside: overview, via and the Claude accesses in one round-trip, as the separate reads", opts, async () => {
+  const c = counting();
+  const both = await loadOverviewWithVia(c.executor, {
+    overview: { workspaceId: ids.ws, caseId: state.caseId, now: NOW, audience: "ls" },
+    via: { workspaceId: ids.ws, caseId: state.caseId, now: NOW },
+    extra: [caseReadTokensSql(ids.ws, state.caseId)],
+  });
+  assert.equal(c.trips(), 1, "one batch: with the header, the Panoramica reads in 2 round-trips");
+  assert.deepEqual(both.overview, await loadOverview(exec!, { workspaceId: ids.ws, caseId: state.caseId, now: NOW, audience: "ls" }));
+  assert.deepEqual(both.via, await loadVia(exec!, { workspaceId: ids.ws, caseId: state.caseId, now: NOW }));
+  assert.equal(both.extra.length, 1);
+  assert.deepEqual(toCaseReadTokens(both.extra[0]), [], "no Claude access on this case");
+  // Without the extra statements, and never across workspaces.
+  const plain = counting();
+  const alone = await loadOverviewWithVia(plain.executor, { overview: { workspaceId: ids.ws, caseId: state.caseId, now: NOW }, via: { workspaceId: ids.ws, caseId: state.caseId, now: NOW } });
+  assert.equal(plain.trips(), 1);
+  assert.deepEqual(alone.extra, []);
+  const elsewhere = await loadOverviewWithVia(exec!, { overview: { workspaceId: randomUUID(), caseId: state.caseId }, via: { workspaceId: randomUUID(), caseId: state.caseId } });
+  assert.equal(elsewhere.overview, null);
+  assert.equal(elsewhere.via, null);
+  assert.deepEqual(await loadOverviewWithVia(exec!, { overview: { workspaceId: "x", caseId: state.caseId }, via: { workspaceId: "x", caseId: state.caseId } }), { overview: null, via: null, extra: [] }, "an invalid id reads nothing");
 });
 
 test("overview panel: a blocker with its first questions by title and the evidence files, still one round-trip; never across workspaces", opts, async () => {

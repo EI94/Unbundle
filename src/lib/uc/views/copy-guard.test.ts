@@ -6,7 +6,7 @@ import { ITEM_STATUSES, type CaseRole } from "../vocab.ts";
 import { FORBIDDEN_RULES, findForbidden, findForbiddenIn } from "./copy-guard.ts";
 import { stripFactCodes, stripLegalRefs } from "./format.ts";
 import * as labels from "./labels.ts";
-import { caseNextSteps, whoseTurn, type NextStepInput } from "./next-step.ts";
+import { caseNextSteps, turnRow, type NextStepInput } from "./next-step.ts";
 import { STATUS_GROUP_LABEL, groupCountText, groupCounts, statusView } from "./status-groups.ts";
 
 test("every pattern of DESIGN §6.2 is caught for the client", () => {
@@ -128,7 +128,7 @@ test("copy-guard is green on the labels", () => {
   assert.deepEqual(findForbiddenIn(texts, "cliente"), []);
 });
 
-test("copy-guard is green on the next steps and «Tocca a …» lines the client reads", () => {
+test("copy-guard is green on the next steps, the «Tocca a …» lines and (rilascio 10) the «Da fare» rows the client reads", () => {
   const busy: NextStepInput = {
     now: new Date("2026-10-14T10:00:00Z"),
     status: "raccolta",
@@ -144,6 +144,7 @@ test("copy-guard is green on the next steps and «Tocca a …» lines the client
     toVerifyMust: 95,
     oldestToVerifyAt: "2026-10-11",
     toVerifyTotal: 160,
+    filesToCheck: 2,
     waitingOnReferents: 40,
     blockersActive: 2,
     blockedMust: 10,
@@ -164,8 +165,10 @@ test("copy-guard is green on the next steps and «Tocca a …» lines the client
     for (const roles of roleSets) {
       const steps = caseNextSteps(input, { roles });
       for (const s of steps) texts.push(s.label, ...(s.detail ? [s.detail] : []));
-      const line = whoseTurn(steps, input);
-      if (line) texts.push(line);
+      for (const quiet of [input, { ...input, toVerifyTotal: 0 }, { ...input, toVerifyTotal: 0, waitingOnReferents: 0 }]) {
+        const row = turnRow(caseNextSteps(quiet, { roles }), quiet, { roles });
+        if (row) texts.push(row.title, row.turn);
+      }
     }
   }
   assert.ok(texts.length > 50);
@@ -175,4 +178,21 @@ test("copy-guard is green on the next steps and «Tocca a …» lines the client
 test("the strip helpers leave nothing the guard would catch", () => {
   const texts = ["Costi da autorizzare (art. 8.4)", "Dichiarato in call (F010, F011)", "Scheda A.8 firmata ai sensi dell'art. 15.2", "valore · fonte F012"];
   for (const t of texts) assert.deepEqual(findForbidden(stripLegalRefs(stripFactCodes(t)), "cliente"), [], t);
+});
+
+test("(rilascio 10, §3.5) copy-guard is green on the fixed words of the Panoramica, the via section and its commands", async () => {
+  const { OVERVIEW_TEXT, viaBarText } = await import("./progress.ts");
+  const { CASE_NOT_FOUND_TEXT } = await import("./case-shell.ts");
+  const { findHubForbiddenIn } = await import("../../use-cases/copy-guard.ts");
+  const texts: string[] = [];
+  for (const value of [...Object.values(OVERVIEW_TEXT), ...Object.values(CASE_NOT_FOUND_TEXT)]) {
+    if (typeof value === "string") texts.push(value);
+    else for (const arg of [1, 2, 9]) texts.push((value as (n: number) => string)(arg));
+  }
+  texts.push(OVERVIEW_TEXT.closesWith("il verbale firmato"));
+  for (const audience of ["ls", "cliente"] as const) texts.push(viaBarText({ ok: 186, required: 245, inReview: 9, audience }));
+  assert.ok(texts.length > 60, `${texts.length} texts`);
+  assert.deepEqual(findForbiddenIn(texts, "cliente"), [], "the client's guard");
+  assert.deepEqual(findHubForbiddenIn(texts, "area").map((m) => `«${m.match}» in «${m.text}»`), [], "the dashboard's words");
+  for (const text of texts) assert.doesNotMatch(text, /\bcaso\b|dossier/i, text);
 });

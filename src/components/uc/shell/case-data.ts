@@ -9,7 +9,7 @@ import { caseHeaderFromRows, type CaseHeaderData } from "@/lib/db/queries/uc-hea
 import { getAppUcExecutor, type UcExecutor, type UcRow } from "@/lib/db/uc-executor";
 import { timeUc } from "@/lib/uc/log";
 import type { CaseRole } from "@/lib/uc/vocab";
-import { UC_SHELL_PAGE_ROLES, type UcShellPage } from "@/lib/uc/views/case-shell";
+import { UC_SHELL_PAGE_ROLES, checksFiles, type UcShellPage } from "@/lib/uc/views/case-shell";
 import type { WorkspaceAccess } from "@/lib/workspace-access";
 
 /**
@@ -114,6 +114,14 @@ export const loadCaseHead = cache(async function loadCaseHead(
   if (!header) notFound();
   return { caseAccess, executor, header };
 });
+
+/**
+ * (Rilascio 10, §3.5, F-076) Il numero del passo «Controlla N file»: i PDF da controllare a mano letti dalla testata,
+ * nel suo stesso giro (`filesToCheckCountSql`), solo per chi controlla i file (`checksFiles`); per gli altri 0.
+ */
+export function filesToCheckFor(caseAccess: Pick<CaseAccess, "roles" | "readOnly" | "status" | "user">, header: Pick<CaseHeaderData, "filesToCheck">): number {
+  return checksFiles({ roles: caseAccess.roles, isLateralSpace: caseAccess.user.isLateralSpace, readOnly: caseAccess.readOnly, status: caseAccess.status }) ? header.filesToCheck : 0;
+}
 
 /** Una pagina del guscio: 404 se il ruolo di caso non basta (`UC_SHELL_PAGE_ROLES`). */
 export async function openShellPage(i: { workspaceId: string; caseId: string; session: Session; access: Pick<WorkspaceAccess, "role">; page: UcShellPage }): Promise<OpenedShell> {

@@ -5,6 +5,7 @@ import Link, { useLinkStatus } from "next/link";
 import { useSelectedLayoutSegment } from "next/navigation";
 import { StatusDot } from "@/components/uc/ui/status-dot";
 import { activeTabKey, type CaseTab } from "@/lib/uc/views/case-shell";
+import { OVERVIEW_TEXT, viaBarText } from "@/lib/uc/views/progress";
 import { formatCountIt } from "@/lib/uc/views/format";
 import type { SemaforoColor } from "@/lib/uc/vocab";
 import { cn } from "@/lib/utils";
@@ -73,6 +74,43 @@ function TabRow({ basePath, tabs, compact = false, ariaLabel }: { basePath: stri
         })}
       </div>
     </nav>
+  );
+}
+
+function clampCount(value: number, max: number): number {
+  return Math.max(0, Math.min(max, Number.isFinite(value) ? Math.round(value) : 0));
+}
+
+/**
+ * (Rilascio 10, §3.5) L'avanzamento piccolo della testata, accanto allo stato: la barra e «186/245». Non sulla
+ * Panoramica, che ha il numero grande «186 di 245» (un numero per schermata); non è un link: la Panoramica è la prima
+ * scheda. I lettori di schermo leggono la frase intera. Senza domande indispensabili non c'è (lo zero non si mostra).
+ */
+export function CaseHeadProgress({ ok, required, inReview, audience }: { ok: number; required: number; inReview: number; audience: "ls" | "cliente" }) {
+  const active = useActiveTab();
+  const total = Number.isFinite(required) ? Math.round(required) : 0;
+  if (active === "panoramica" || total <= 0) return null;
+  const done = clampCount(ok, total);
+  const review = clampCount(inReview, total - done);
+  const text = viaBarText({ ok: done, required: total, inReview: review, audience });
+  return (
+    <span data-slot="case-head-progress" className="inline-flex items-center gap-2 text-sm text-muted-foreground" title={text}>
+      <span
+        role="progressbar"
+        aria-label={OVERVIEW_TEXT.barLabel}
+        aria-valuemin={0}
+        aria-valuemax={total}
+        aria-valuenow={done}
+        aria-valuetext={text}
+        className="relative flex h-1.5 w-16 overflow-hidden rounded-full bg-muted"
+      >
+        <span className="h-full bg-uc-verde" style={{ width: `${(done / total) * 100}%` }} />
+        {review > 0 && <span className="h-full bg-uc-giallo/40" style={{ width: `${(review / total) * 100}%` }} />}
+      </span>
+      <span aria-hidden className="tabular-nums">
+        {formatCountIt(done)}/{formatCountIt(total)}
+      </span>
+    </span>
   );
 }
 

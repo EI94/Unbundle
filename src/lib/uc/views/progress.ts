@@ -1,6 +1,9 @@
 /**
  * Panoramica e Via allo sviluppo (DESIGN §3.4, §3.5): il modulo puro dietro le
- * due pagine che prendono il posto del vecchio Avanzamento.
+ * due pagine che prendono il posto del vecchio Avanzamento. (Rilascio 10,
+ * §3.5) La Panoramica ha tre blocchi più gli argomenti: «Da fare», «Via allo
+ * sviluppo» (che assorbe la vecchia `/via`, all'ancora `#via`), «Prossima
+ * tappa» e «Per argomento».
  *
  * - Panoramica: le sezioni per ruolo, le domande indispensabili per argomento
  *   (prima chi manca di più), i blocchi con un'etichetta breve per chiave (mai
@@ -23,9 +26,9 @@ import type { GateCondition } from "../gates.ts";
 import { signatureSideOf } from "../permissions.ts";
 import type { CaseRole, CaseStatus, GatePolicyScope, ItemStatus, SemaforoColor } from "../vocab.ts";
 import { formatCountIt, formatDayIt, stripLegalRefs } from "./format.ts";
-import { CASE_PHASES, CASE_PHASE_LABEL, CASE_STATUS_PHASE, ROLE_LABEL, SIGNERS_TEXT, casePhaseOf, WORDS, dayWithArticle, gateStateLabel, type CasePhase, type GateState } from "./labels.ts";
+import { CASE_PHASES, CASE_PHASE_LABEL, CASE_STATUS_PHASE, ROLE_LABEL, casePhaseOf, WORDS, dayWithArticle, gateStateLabel, type CasePhase, type GateState } from "./labels.ts";
 import { seesValidatedOnly } from "./page-access.ts";
-import { STATUS_GROUP_OF, STATUS_GROUP_SLUG, groupCountText, isLsViewer, type Audience, type StatusGroup } from "./status-groups.ts";
+import { STATUS_GROUP_LABEL, STATUS_GROUP_OF, STATUS_GROUP_SLUG, groupCountText, isLsViewer, type Audience, type StatusGroup } from "./status-groups.ts";
 import { UUID } from "../ids.ts";
 
 const n = formatCountIt;
@@ -33,19 +36,91 @@ const n = formatCountIt;
 // ── Panoramica: chi vede quali sezioni ────────────────────────────────
 
 /**
- * Le sezioni della Panoramica, nell'ordine in cui si leggono (DESIGN §3.4,
- * «Varianti per ruolo e per stato»):
- * - `firma`: il riquadro «Serve la tua firma» del responsabile del cliente;
- * - `fare`: «Da fare adesso» e la riga «Tocca a …»;
- * - `via`, `argomenti`, `blocchi`, `tappe`, `caso`.
+ * Le sezioni della Panoramica (rilascio 10, §3.5, prototipo S4), nell'ordine
+ * in cui si leggono: a sinistra `fare` («Da fare») e `via` («Via allo
+ * sviluppo», con l'ancora `#via`); a destra `tappe` («Prossima tappa»),
+ * `argomenti` («Per argomento») e `blocchi` (le righe dei blocchi, ancora
+ * `#blocchi`). Al telefono una colonna, nello stesso ordine.
  */
-export type OverviewSection = "firma" | "fare" | "via" | "argomenti" | "blocchi" | "tappe" | "caso";
+export type OverviewSection = "fare" | "via" | "tappe" | "argomenti" | "blocchi";
+
+/** Le sezioni della colonna di destra da `lg` in su; le altre stanno a sinistra. */
+export const OVERVIEW_SIDE_SECTIONS: readonly OverviewSection[] = ["tappe", "argomenti", "blocchi"];
+
+/**
+ * (Rilascio 10, §3.5) Le parole fisse della Panoramica, della sezione «Via allo sviluppo», dei suoi comandi e dei
+ * pannelli «Tutte le tappe» e del blocco: qui una volta, i componenti le leggono da qui (`copy-guard.test.ts`).
+ */
+export const OVERVIEW_TEXT = Object.freeze({
+  todo: "Da fare",
+  via: WORDS.via,
+  bigNumberLabel: "domande indispensabili a posto",
+  /** Il nome della barra del via per i lettori di schermo. */
+  barLabel: "Domande indispensabili a posto",
+  groupsLabel: "Domande indispensabili non ancora a posto",
+  howLabel: "Come funziona il via allo sviluppo",
+  conditionsLabel: "Condizioni ancora aperte",
+  /** Il via è pronto: le condizioni sono a posto. */
+  allReady: "Sono tutte a posto.",
+  storico: "Storico",
+  diagnostica: "Diagnostica",
+  lsOnly: "(solo Lateral Space)",
+  nextMilestone: WORDS.prossimaTappa,
+  milestones: WORDS.tappe,
+  allMilestones: "Tutte le tappe",
+  milestoneDone: "Fatta",
+  plan: "Il piano",
+  planStep: (i: number) => `Tappa ${i}`,
+  closesWith: (text: string) => `Si chiude con: ${text}`,
+  path: "Il percorso",
+  pathNow: "adesso",
+  pathBefore: " (prima della pausa)",
+  pathNote: "«In pausa» e «Chiuso» sono stati della realizzazione: in pausa riprende dallo stato in cui era.",
+  topics: "Per argomento",
+  allTopics: (count: number) => `Tutti gli argomenti (${n(count)})`,
+  seeAll: (count: number) => `Vedi tutti (${n(count)})`,
+  blockers: "Blocchi",
+  blockerActive: "Attivo",
+  blockerResolver: "Chi lo scioglie",
+  blockerItems: (count: number) => (count === 1 ? "1 domanda collegata" : `${n(count)} domande collegate`),
+  blockerAllItems: "Vedi tutte",
+  toPrivacySheet: "Vai alla scheda privacy",
+  // I comandi del via (`GatePanel`, `ViaWithdraw`).
+  propose: "Proponi il via allo sviluppo",
+  proposed: "Via allo sviluppo proposto: ora servono le firme.",
+  proposeEvidence: "Prova scritta (email o verbale), se ce l'hai già",
+  sign: "Firma il via allo sviluppo",
+  sendLink: "Manda il link per firmare",
+  linkSent: "Link per firmare in partenza per email.",
+  attachEvidence: "Allega la prova scritta",
+  attachEvidenceLabel: "Prova scritta da allegare (email o verbale)",
+  evidenceAttached: "Prova scritta allegata.",
+  withdrawMenu: "Altre azioni sul via allo sviluppo",
+  withdraw: "Ritira la proposta…",
+  withdrawTitle: "Ritirare la proposta?",
+  withdrawText: "Le firme già date si perdono: il via si propone di nuovo quando serve.",
+  withdrawReason: "Perché la ritiri",
+  withdrawCancel: "Annulla",
+  withdrawConfirm: "Ritira",
+  withdrawn: "Proposta ritirata.",
+  // «Diagnostica» (`CoverageCard`).
+  coverage: "Copertura del modello dati",
+  policy: "Quali domande contano",
+  exceptions: "Eccezioni",
+  uncovered: (count: number) => `Elementi non coperti da domande (${n(count)})`,
+});
+
+/** La barra del via per i lettori di schermo: «186 di 245 domande indispensabili a posto, 9 da verificare» (al cliente «in verifica»). */
+export function viaBarText(i: { ok: number; required: number; inReview: number; audience: Audience }): string {
+  const review = i.inReview > 0 ? `, ${n(i.inReview)} ${i.audience === "cliente" ? "in verifica" : "da verificare"}` : "";
+  return `${n(i.ok)} di ${n(i.required)} ${OVERVIEW_TEXT.bigNumberLabel}${review}`;
+}
 
 /**
  * - `ls`: responsabile Lateral Space e analista, tutto;
  * - `sviluppatore`: solo il ruolo di sviluppatore, il catalogo validato;
  * - `cliente`: il responsabile del cliente, gruppi del cliente e niente blocchi;
- * - `lettore`: AI Board e osservatore, il caso, il numero e le tappe.
+ * - `lettore`: AI Board e osservatore, il via e le tappe.
  */
 export type OverviewKind = "ls" | "sviluppatore" | "cliente" | "lettore";
 
@@ -56,10 +131,10 @@ export interface OverviewLayout {
 }
 
 const SECTIONS: Readonly<Record<OverviewKind, readonly OverviewSection[]>> = {
-  ls: ["fare", "via", "argomenti", "blocchi", "tappe", "caso"],
-  sviluppatore: ["fare", "via", "argomenti", "tappe", "caso"],
-  cliente: ["firma", "fare", "via", "argomenti", "tappe", "caso"],
-  lettore: ["caso", "via", "tappe"],
+  ls: ["fare", "via", "tappe", "argomenti", "blocchi"],
+  sviluppatore: ["fare", "via", "tappe", "argomenti"],
+  cliente: ["fare", "via", "tappe", "argomenti"],
+  lettore: ["via", "tappe"],
 };
 
 /** Le sezioni della Panoramica per chi guarda: vince il ruolo che vede di più. */
@@ -71,22 +146,6 @@ export function overviewLayout(roles: readonly CaseRole[]): OverviewLayout {
   return { kind, audience: kind === "ls" || kind === "sviluppatore" ? "ls" : "cliente", sections: [...SECTIONS[kind]] };
 }
 
-/** «Serve la tua firma · 2 decisioni aspettano te» (responsabile del cliente, solo con firme in attesa). */
-export function signatureCalloutText(count: number): string | null {
-  if (!Number.isFinite(count) || count <= 0) return null;
-  return count === 1 ? "Serve la tua firma · 1 decisione aspetta te" : `Serve la tua firma · ${n(count)} decisioni aspettano te`;
-}
-
-/** Via approvato da meno di `days` giorni (7): la riga discreta in cima alla Panoramica. */
-export function recentlyApprovedText(i: { status: CaseStatus; statusBeforeSuspension: CaseStatus | null; catalog: { version: number; frozenAt: Date | string | null } | null; now: Date; days?: number }): string | null {
-  if (!i.catalog || i.status === "chiuso" || !isCasePastG1(i.status, i.statusBeforeSuspension)) return null;
-  const at = i.catalog.frozenAt instanceof Date ? i.catalog.frozenAt : i.catalog.frozenAt ? new Date(i.catalog.frozenAt) : null;
-  if (!at || Number.isNaN(at.getTime())) return null;
-  const age = i.now.getTime() - at.getTime();
-  if (age < 0 || age > (i.days ?? 7) * 86_400_000) return null;
-  return `Via allo sviluppo approvato. Il catalogo v${i.catalog.version} è congelato.`;
-}
-
 /**
  * Il via è stato approvato almeno una volta: il caso è oltre la preparazione
  * (anche in pausa) oppure ha un catalogo congelato, che resta anche a caso
@@ -94,17 +153,6 @@ export function recentlyApprovedText(i: { status: CaseStatus; statusBeforeSuspen
  */
 export function viaEverApproved(i: { status: CaseStatus; statusBeforeSuspension: CaseStatus | null; catalogVersion: number }): boolean {
   return isCasePastG1(i.status, i.statusBeforeSuspension) || i.catalogVersion > 0;
-}
-
-/**
- * La riga dello sviluppatore sotto il numero: prima del via e dopo (DESIGN
- * §3.4). `pastVia` è `viaEverApproved`: un caso chiuso dopo il via ha ancora
- * il suo catalogo validato.
- */
-export function developerCatalogText(i: { pastVia: boolean; catalog: { version: number; frozenAt: Date | string | null } | null; now: Date }): string {
-  if (!i.pastVia || !i.catalog) return "Il catalogo validato arriva con il via allo sviluppo.";
-  const day = formatDayIt(i.catalog.frozenAt, { now: i.now });
-  return `Catalogo validato v${i.catalog.version}${day ? ` · congelato ${dayWithArticle("il", day)}` : ""}`;
 }
 
 // ── Domande indispensabili: conteggi per gruppo ───────────────────────
@@ -151,6 +199,20 @@ export function viaProgress(items: readonly RequiredItemFact[], audience: Audien
   return { required: items.length, ok, inReview, open };
 }
 
+/** (Rilascio 10, §3.5, prototipo S4) Le domande ferme sono «In attesa» per tutti, come il gruppo di Domande. */
+export const VIA_WAITING_LABEL = "In attesa";
+
+/**
+ * (Rilascio 10, §3.5, prototipo S4) I gruppi del via come link a Domande, sotto il numero grande: «Da fare 37 · In
+ * attesa 13», per il cliente «Da rispondere 37 · In attesa 13». `skip`: i gruppi che il pulsante pieno dice già (le
+ * risposte da verificare, quando il passo è «Verifica N risposte»).
+ */
+export function viaGroupLinks(progress: Pick<ViaProgress, "open">, audience: Audience, opts: { skip?: readonly StatusGroup[] } = {}): { group: StatusGroup; slug: string; text: string }[] {
+  return progress.open
+    .filter((g) => !(opts.skip ?? []).includes(g.group))
+    .map((g) => ({ group: g.group, slug: g.slug, text: `${g.group === "bloccate" ? VIA_WAITING_LABEL : STATUS_GROUP_LABEL[audience][g.group]} ${n(g.count)}` }));
+}
+
 /**
  * Il via senza domande indispensabili (regola o schema da controllare): lo
  * dice solo a Lateral Space, con dove guardare. Al cliente niente: lo zero
@@ -158,11 +220,6 @@ export function viaProgress(items: readonly RequiredItemFact[], audience: Audien
  */
 export function noRequiredText(audience: Audience): string | null {
   return audience === "ls" ? "Nessuna domanda indispensabile: controlla la regola del via in Diagnostica." : null;
-}
-
-/** «Si muove quando arrivano le prime risposte.» sotto il numero, solo in bozza. */
-export function viaProgressHint(status: CaseStatus): string | null {
-  return status === "bozza" ? "Si muove quando arrivano le prime risposte." : null;
 }
 
 // ── Per argomento ─────────────────────────────────────────────────────
@@ -182,21 +239,11 @@ export interface ModuleProgressRow {
   ok: number;
   total: number;
   missing: number;
-  /** Celle piene della mini-barra (su `MODULE_BAR_CELLS`): piena solo se è tutto a posto. */
-  cells: number;
 }
 
-export const MODULE_BAR_CELLS = 5;
-/** Righe visibili; le altre stanno in «Tutti gli argomenti (n) ▾». */
-export const MODULE_ROWS_VISIBLE = 6;
+/** (Rilascio 10, §3.5) «Per argomento»: i 3 argomenti con più domande aperte, poi «Tutti gli argomenti (n) ›». */
+export const TOPICS_VISIBLE = 3;
 const OTHER_QUESTIONS = "Altre domande";
-
-/** Celle piene di una mini-barra: arrotondate per difetto, così la barra è piena solo a «14 di 14». */
-export function progressCells(ok: number, total: number, cells = MODULE_BAR_CELLS): number {
-  if (!Number.isFinite(total) || total <= 0) return 0;
-  const done = Math.max(0, Math.min(total, Number.isFinite(ok) ? ok : 0));
-  return Math.floor((done * cells) / total);
-}
 
 /**
  * Le domande indispensabili per argomento (DESIGN §3.4, «Per argomento»):
@@ -223,11 +270,23 @@ export function moduleProgress(items: readonly Pick<RequiredItemFact, "moduleKey
       ok: t.ok,
       total: t.total,
       missing: t.total - t.ok,
-      cells: progressCells(t.ok, t.total),
     };
   });
   const rank = (k: string | null) => (k === null ? Number.MAX_SAFE_INTEGER : (order.get(k) ?? Number.MAX_SAFE_INTEGER - 1));
   return rows.sort((a, b) => b.missing - a.missing || rank(a.key) - rank(b.key) || (a.key ?? "").localeCompare(b.key ?? ""));
+}
+
+/**
+ * (Rilascio 10, §3.5) Gli argomenti in vista in Panoramica: quelli con domande indispensabili aperte, prima chi ne ha
+ * di più (`moduleProgress` è già in quest'ordine), al massimo `max`. Lo zero non si mostra.
+ */
+export function topTopics(rows: readonly ModuleProgressRow[], max = TOPICS_VISIBLE): ModuleProgressRow[] {
+  return rows.filter((r) => r.missing > 0).slice(0, max);
+}
+
+/** «12 aperte», «1 aperta»: le domande indispensabili non ancora a posto di un argomento. */
+export function topicOpenText(missing: number): string {
+  return missing === 1 ? "1 aperta" : `${n(missing)} aperte`;
 }
 
 // ── Blocchi ───────────────────────────────────────────────────────────
@@ -307,8 +366,13 @@ export interface OverviewBlockerRow {
   items: number;
 }
 
-/** Blocchi visibili prima di «Altri n ▾». */
-export const BLOCKERS_VISIBLE = 2;
+/** (Rilascio 10, §1 regola 4) Blocchi visibili prima di «Vedi tutti (n)». */
+export const BLOCKERS_VISIBLE = 3;
+
+/** (Rilascio 10, §3.5, prototipo S4) La riga di un blocco in Panoramica: «Blocco: Accesso al sistema». */
+export function overviewBlockerTitle(label: string): string {
+  return `Blocco: ${label}`;
+}
 
 /**
  * I blocchi della Panoramica (DESIGN §3.4): solo quelli attivi con domande
@@ -388,22 +452,22 @@ export function milestoneView(m: MilestoneLike, now: Date): MilestoneView {
   return { key: m.key, title: m.title, when, suffix: parts.length ? parts.join(" · ") : null, done: m.done };
 }
 
-/** Le prossime tappe ancora da fare, nell'ordine del caso (2 in Panoramica). */
+/** (Rilascio 10, §3.5) «Prossima tappa»: una riga, «Via allo sviluppo · 12 dic (proposta)». */
+export function nextMilestoneText(m: Pick<MilestoneView, "title" | "when" | "suffix">): string {
+  const when = [m.when, m.suffix].filter(Boolean).join(" ");
+  return when ? `${m.title} · ${when}` : m.title;
+}
+
+/** Le prossime tappe ancora da fare, nell'ordine del caso (una in Panoramica). */
 export function nextMilestones<T extends Pick<MilestoneLike, "done">>(milestones: readonly T[], max = 2): T[] {
   return milestones.filter((m) => !m.done).slice(0, max);
 }
 
-/** Fase della striscia delle tappe; null a caso chiuso (lo stato basta). */
-export function phaseStripOf(status: CaseStatus, statusBeforeSuspension: CaseStatus | null): { phase: CasePhase; complete: boolean; paused: boolean } | null {
-  const at = casePhaseOf(status, statusBeforeSuspension);
-  return at ? { ...at, paused: status === "sospeso" } : null;
-}
-
 // ── Stati del caso ────────────────────────────────────────────────────
 
-/** Cosa vuol dire ogni stato e quando si va avanti, nelle parole di §2.6. */
+/** Cosa vuol dire ogni stato e quando si va avanti, nelle parole di §2.6 (rilascio 10, §4: «realizzazione», mai «caso»). */
 export const CASE_STATUS_HELP: Readonly<Record<CaseStatus, { meaning: string; next: string }>> = {
-  bozza: { meaning: "Lateral Space prepara il caso: domande, descrizione, mappa e referenti.", next: "Parte la prima richiesta a un referente." },
+  bozza: { meaning: "Lateral Space prepara la realizzazione: domande, descrizione, mappa e referenti.", next: "Parte la prima richiesta a un referente." },
   raccolta: { meaning: "I referenti rispondono e Lateral Space verifica le risposte.", next: "Il via allo sviluppo è approvato." },
   pronto_sviluppo: { meaning: "Via approvato: il catalogo è congelato e il team può partire.", next: "Lateral Space avvia lo sviluppo." },
   in_sviluppo: { meaning: "Il team costruisce la soluzione sul catalogo validato, all'inizio con dati inventati.", next: "La soluzione è pronta per la prova sul passato." },
@@ -412,8 +476,8 @@ export const CASE_STATUS_HELP: Readonly<Record<CaseStatus, { meaning: string; ne
   stabilizzazione: { meaning: "Per 14 giorni si correggono i difetti e si controlla che non ci siano anomalie bloccanti.", next: "Finiti i 14 giorni senza anomalie bloccanti." },
   in_esercizio: { meaning: "La soluzione è in uso; i KPI si misurano ogni mese.", next: "Arriva la revisione del valore in programma." },
   misura_roi: { meaning: "Si confronta il valore stimato con quello misurato e si decide come andare avanti.", next: "Decisione: continuare, evolvere o chiudere." },
-  sospeso: { meaning: "Il caso è fermo per un motivo esterno, scritto nel caso.", next: "Il motivo è risolto: il caso torna allo stato di prima." },
-  chiuso: { meaning: "Caso archiviato, respinto o dismesso.", next: "Non riparte: si può solo duplicare." },
+  sospeso: { meaning: "La realizzazione è ferma per un motivo esterno, scritto nelle sue impostazioni.", next: "Il motivo è risolto: la realizzazione torna allo stato di prima." },
+  chiuso: { meaning: "Realizzazione archiviata, respinta o dismessa.", next: "Non riparte: si può solo duplicare." },
 };
 
 export interface StepperStep {
@@ -457,16 +521,19 @@ export interface PhaseGroup {
   steps: StepperStep[];
 }
 
-/** Le 5 fasi con gli stati che contengono, per «Come funziona» di `/via`. Pausa e chiusura sono stati, non fasi. */
+/**
+ * Le 5 fasi con gli stati che contengono (rilascio 10, §3.5: «Il percorso» del pannello «Tutte le tappe»; in pausa la
+ * fase di prima, a realizzazione chiusa nessuna). Pausa e chiusura sono stati, non fasi.
+ */
 export function casePhaseGroups(status: CaseStatus, statusBeforeSuspension: CaseStatus | null): PhaseGroup[] {
   const steps = caseStepper(status, statusBeforeSuspension);
-  const strip = phaseStripOf(status, statusBeforeSuspension);
-  const at = strip ? CASE_PHASES.indexOf(strip.phase) : -1;
+  const where = casePhaseOf(status, statusBeforeSuspension);
+  const at = where ? CASE_PHASES.indexOf(where.phase) : -1;
   return CASE_PHASES.map((phase, i) => ({
     phase,
     label: CASE_PHASE_LABEL[phase],
     current: i === at,
-    done: at >= 0 && (i < at || (i === at && strip!.complete)),
+    done: at >= 0 && (i < at || (i === at && where!.complete)),
     steps: steps.filter((s) => CASE_STATUS_PHASE[s.status] === phase),
   }));
 }
@@ -562,10 +629,12 @@ export function viaConditions(
   return { open: views.filter((v) => !v.ok), done: views.filter((v) => v.ok) };
 }
 
-/** «4 condizioni già a posto», «Le 5 condizioni sono a posto» quando non manca nulla. */
-export function doneConditionsText(done: number, open: number): string {
-  if (open === 0) return done === 1 ? "La condizione è a posto" : `Le ${n(done)} condizioni sono a posto`;
-  return done === 1 ? "1 condizione già a posto" : `${n(done)} condizioni già a posto`;
+/**
+ * (Rilascio 10, §3.5) Le condizioni ancora aperte nella sezione «Via allo sviluppo», senza quella delle domande
+ * indispensabili (la dice il numero grande). Le condizioni già a posto non si mostrano (§1 regola 5).
+ */
+export function viaOpenConditions(open: readonly ViaConditionView[]): ViaConditionView[] {
+  return open.filter((c) => c.key !== "voci_a_posto");
 }
 
 export interface ViaSignatureLine {
@@ -587,6 +656,11 @@ export function viaSignatures(signatures: readonly { ruolo: string; at: string; 
   return [line("ls", "Lateral Space"), line("cliente", "Cliente")];
 }
 
+/** (Rilascio 10, §3.5) Le firme del via in una riga: «Lateral Space: firmato il 3 ott · Cliente: da firmare». */
+export function viaSignaturesLine(lines: readonly ViaSignatureLine[]): string {
+  return lines.map((l) => `${l.label}: ${l.text.charAt(0).toLowerCase()}${l.text.slice(1)}`).join(" · ");
+}
+
 /**
  * Le firme che «Firme» mostra: quelle della proposta aperta; senza proposta,
  * quelle dell'ultima approvazione, anche quando il via è da riconfermare o il
@@ -605,8 +679,9 @@ export const VIA_EVIDENCE_MISSING = "Manca la prova scritta (email o verbale).";
  * L'azione della pagina `/via` per chi guarda, dalla tabella «Primario per
  * stato» di DESIGN §3.5:
  * - `proponi`: il responsabile Lateral Space, in bozza o in preparazione,
- *   senza proposta; spenta finché il via non è pronto (in bozza sempre), con
- *   il motivo sotto;
+ *   senza proposta; `disabled` finché il via non è pronto (in bozza sempre):
+ *   (rilascio 10, §3.5) allora non c'è un pulsante spento, ma la riga «Si
+ *   propone quando …» (`viaProposeWhen`), la stessa per tutti;
  * - `firma_ls`: proposta aperta senza la firma di Lateral Space;
  * - `manda_link`: Lateral Space ha firmato, il cliente no (il pulsante solo
  *   se il link si può mandare, la riga sempre); `attachEvidence`: sui casi a
@@ -679,19 +754,23 @@ export function viaAction(i: {
     return { kind: "nessuna", note: null };
   }
   if (lead && (i.status === "raccolta" || i.status === "bozza")) {
-    // In bozza il via non si propone (`caseAllowsGate`): il pulsante c'è, spento, con il motivo sotto.
+    // In bozza il via non si propone (`caseAllowsGate`): niente pulsante, la riga «Si propone quando …».
     if (i.ready && i.status === "raccolta") return { kind: "proponi", disabled: false, note: null };
-    const note =
-      i.required > 0 && i.ok < i.required
-        ? i.required === 1
-          ? "Si accende quando la domanda indispensabile è a posto."
-          : `Si accende quando tutte le ${n(i.required)} domande indispensabili sono a posto.`
-        : i.status === "bozza"
-          ? "Si accende con la prima richiesta a un referente."
-          : "Si accende quando tutte le condizioni qui sopra sono a posto.";
-    return { kind: "proponi", disabled: true, note };
+    return { kind: "proponi", disabled: true, note: viaProposeWhen(i) };
   }
   return { kind: "nessuna", note: null };
+}
+
+/**
+ * (Rilascio 10, §3.5, F-036) La riga al posto del pulsante spento «Proponi il via allo sviluppo»: quando il via si
+ * potrà proporre. La leggono tutti, finché il via non è pronto; null quando è pronto, proposto o già approvato.
+ */
+export function viaProposeWhen(i: { status: CaseStatus; ready: boolean; required: number; ok: number }): string | null {
+  if (i.status !== "bozza" && i.status !== "raccolta") return null;
+  if (i.ready && i.status === "raccolta") return null;
+  if (i.required > 0 && i.ok < i.required) return i.required === 1 ? "Si propone quando è a posto." : "Si propone quando sono tutte a posto.";
+  if (i.status === "bozza") return "Si propone dopo la prima richiesta a un referente.";
+  return "Si propone quando le condizioni qui sotto sono a posto.";
 }
 
 /** I tre comandi del via che arrivano anche al responsabile del cliente. */
@@ -707,7 +786,7 @@ const VIA_FAILURE_MESSAGE: Readonly<Record<string, string | Readonly<Record<ViaC
   gate_gia_deciso: "Su questa proposta c'è già una decisione.",
   gate_non_disponibile: "Questo passaggio non è ancora disponibile.",
   regola_gate_da_confermare: "La regola del via va confermata prima di approvare.",
-  stato_caso_non_ammesso: "In questo stato del caso il via allo sviluppo non si propone né si firma.",
+  stato_caso_non_ammesso: "In questo stato della realizzazione il via allo sviluppo non si propone né si firma.",
   proposta_aperta: "C'è già una proposta in attesa delle firme.",
   firmatario_non_ammesso: SIGNERS_ONLY,
   attore_non_ammesso: { proponi: PROPOSES_ONLY, firma: SIGNERS_ONLY, rifiuta: "Rispondono alla proposta solo il responsabile Lateral Space e il responsabile del cliente." },
@@ -726,35 +805,31 @@ export function viaFailureMessage(command: ViaCommand, failure: { code: string; 
 }
 
 /** Avviso solo per Lateral Space sui casi a contratto con la regola non ancora confermata (DESIGN §3.5). */
-export const VIA_RULE_TO_CONFIRM = "Regola da confermare: è un caso a contratto, va confermata prima di proporre il via.";
+export const VIA_RULE_TO_CONFIRM = "Regola da confermare: la realizzazione è a contratto, va confermata prima di proporre il via.";
 
-/** Il suggerimento accanto al selettore della prova scritta (DESIGN §3.5). */
-export const VIA_EVIDENCE_HINT = "Carica prima il file in Domande › Documenti.";
+/** Il suggerimento accanto al selettore della prova scritta (DESIGN §3.5). (Rilascio 10) I file stanno nel pannello «File» di Domande. */
+export const VIA_EVIDENCE_HINT = "Carica prima il file in Domande › File.";
 
 // ── Come funziona ─────────────────────────────────────────────────────
 
-/** La regola del via in parole semplici, per regola del caso. */
+/**
+ * La regola del via in parole semplici, per regola del caso. (Rilascio 10, §3.5, F-039) «Come funziona» è il «?»
+ * della sezione: tre righe al massimo, con `VIA_THEN_TEXT` (`viaHowText`). Le eccezioni hanno il loro nome; le fasi
+ * con i loro stati stanno nel pannello «Tutte le tappe».
+ */
 export const VIA_RULE_TEXT: Readonly<Record<GatePolicyScope, string>> = {
-  request_modules: "Si parte quando tutte le domande indispensabili degli argomenti, nel contratto, sono a posto: con una risposta verificata oppure con una delle tre eccezioni qui sotto.",
-  letterale: "Si parte quando tutti gli elementi indispensabili del modello dati, nel contratto, sono a posto: con una risposta verificata oppure con una delle tre eccezioni qui sotto.",
-  unione: "Si parte quando sono a posto sia le domande indispensabili degli argomenti sia gli elementi indispensabili del modello dati, nel contratto: con una risposta verificata oppure con una delle tre eccezioni qui sotto.",
+  request_modules: `Si propone quando tutte le domande indispensabili degli argomenti, nel contratto, sono a posto: verificate oppure con un'eccezione firmata («${WORDS.nonSiApplica}», «${WORDS.partireSenzaRisposta}», «${WORDS.soluzioneProvvisoria}»).`,
+  letterale: `Si propone quando tutti gli elementi indispensabili del modello dati, nel contratto, sono a posto: verificati oppure con un'eccezione firmata («${WORDS.nonSiApplica}», «${WORDS.partireSenzaRisposta}», «${WORDS.soluzioneProvvisoria}»).`,
+  unione: `Si propone quando sono a posto le domande indispensabili degli argomenti e gli elementi indispensabili del modello dati, nel contratto: verificati oppure con un'eccezione firmata.`,
 };
 
-/** Le tre eccezioni, ognuna con le due firme. */
-export const VIA_EXCEPTIONS: readonly { label: string; text: string }[] = [
-  { label: WORDS.nonSiApplica, text: "La domanda non vale per questo caso. Lo firmano Lateral Space e il cliente." },
-  {
-    label: WORDS.partireSenzaRisposta,
-    text: "Si parte senza la risposta, con il motivo, il piano e la data per chiuderla. Al massimo una domanda su dieci, mai sui dati personali o sulle regole di legge.",
-  },
-  { label: WORDS.soluzioneProvvisoria, text: "Una domanda ferma per un blocco si sostituisce con un'alternativa, fino a una data stabilita. La firmano tutti e due." },
-];
+/** Dopo la proposta (prototipo S4): chi firma e che cosa succede. */
+export const VIA_THEN_TEXT = "Poi firmano Lateral Space e il cliente, e il catalogo si congela.";
 
-/** Chi firma il via (§2.6). */
-export const VIA_SIGNERS_TEXT = SIGNERS_TEXT;
-
-/** Che cosa succede con il via approvato. */
-export const VIA_AFTER_TEXT = "Con le due firme il catalogo si congela in una versione: è quello su cui si sviluppa.";
+/** Il «?» di «Via allo sviluppo»: la regola del caso e chi firma. */
+export function viaHowText(scope: GatePolicyScope): string {
+  return `${VIA_RULE_TEXT[scope] ?? VIA_RULE_TEXT.request_modules} ${VIA_THEN_TEXT}`;
+}
 
 // ── Storico ───────────────────────────────────────────────────────────
 

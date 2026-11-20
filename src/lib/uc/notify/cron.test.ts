@@ -265,7 +265,7 @@ test("the bell reads nothing with the section off, without uc tables or for peop
   );
   const items = await unreadForUser(USER, { workspaceId: WS, executor: ls, env: on });
   assert.equal(items.length, 1);
-  assert.equal(items[0].href, `/dashboard/${WS}/casi-duso/${CASE}/via`);
+  assert.equal(items[0].href, `/dashboard/${WS}/casi-duso/${CASE}#via`);
 });
 
 test("dispatch does nothing with the section off or a malformed case id", async () => {

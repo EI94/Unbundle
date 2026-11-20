@@ -8,10 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useUcAction } from "@/components/uc/catalog/use-uc-action";
+import { UI10_TEXT } from "@/components/ui-10/text";
 import { NextStepIconView, NextStepWhy } from "@/components/use-cases/detail/next-step-box";
 import { ActionMenu, type ActionMenuItem } from "@/components/uc/ui/action-menu";
 import { transitionCaseAction } from "@/lib/actions/uc-cases";
-import { stepHiddenOn, type CaseMenuKey, type CaseTrail } from "@/lib/uc/views/case-shell";
+import { stepHiddenOn, type CaseMenuKey, type CaseTrail, type StepPanel } from "@/lib/uc/views/case-shell";
 import type { CaseStatus } from "@/lib/uc/vocab";
 import type { NextStepIcon } from "@/lib/use-cases/guided";
 import { cn } from "@/lib/utils";
@@ -31,10 +32,13 @@ import { cn } from "@/lib/utils";
 
 /**
  * «Use case › XX-0012 › Realizzazione», su una riga anche a 400 px: il pezzo
- * di mezzo si accorcia con i puntini. «Realizzazione» porta alla Panoramica e,
- * in Panoramica, è la pagina corrente. Senza scheda madre «‹ Realizzazioni».
+ * di mezzo si accorcia con i puntini. Senza scheda madre «‹ Realizzazioni».
+ * (Rilascio 10, §3.5) «Realizzazione» è dove si è, mai un link: alla
+ * Panoramica porta la sua scheda; in Panoramica è la pagina corrente. «Use
+ * case» è un link solo al telefono, dove la barra laterale sta dietro «☰»: da
+ * `md` la stessa voce «Use case» è nella barra, a un tocco (testata ≤9 controlli).
  */
-export function CaseTrailNav({ trail, overviewLinkable }: { trail: CaseTrail; overviewLinkable: boolean }) {
+export function CaseTrailNav({ trail }: { trail: CaseTrail }) {
   const pathname = usePathname();
   const link = "rounded-sm hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none";
   if (trail.kind === "lista") {
@@ -53,9 +57,10 @@ export function CaseTrailNav({ trail, overviewLinkable }: { trail: CaseTrail; ov
     <nav aria-label="Percorso" className="min-w-0 text-sm text-muted-foreground">
       <ol className="flex min-h-11 min-w-0 items-center gap-1 whitespace-nowrap sm:min-h-6">
         <li className="shrink-0">
-          <Link href={trail.root.href} className={link}>
+          <Link href={trail.root.href} className={cn(link, "md:hidden")}>
             {trail.root.label}
           </Link>
+          <span className="hidden md:inline">{trail.root.label}</span>
         </li>
         <li className="flex min-w-0 items-center gap-1">
           {sep}
@@ -69,10 +74,6 @@ export function CaseTrailNav({ trail, overviewLinkable }: { trail: CaseTrail; ov
             <span aria-current="page" className="text-foreground">
               {trail.current.label}
             </span>
-          ) : overviewLinkable ? (
-            <Link href={trail.current.href} className={link}>
-              {trail.current.label}
-            </Link>
           ) : (
             <span>{trail.current.label}</span>
           )}
@@ -91,12 +92,21 @@ export interface CaseStepView {
   href: string;
   /** Radice del dossier: dice dove il passo si nasconde (`stepHiddenOn`). */
   caseBase: string;
-  /** Il passo apre un pannello della testata invece di cambiare pagina. */
-  panel?: { name: "conferma" | "esporta"; value: string };
+  /**
+   * Il passo apre un pannello invece di cambiare pagina (`stepPanelOf`): quelli del guscio (`conferma`, `esporta`,
+   * `firma`) su ogni pagina; (rilascio 10, §3.5) `apri` sulla pagina d'arrivo del passo (il pannello «File» di
+   * Domande), che dalle altre pagine si raggiunge con `href`.
+   */
+  panel?: StepPanel;
   /** (Rilascio 10, §7.4) L'icona accanto al verbo, come nei passi dello use case (`NEXT_STEP_ICON`). */
   icon?: NextStepIcon;
   /** (Rilascio 10, §7.4) Il perché del passo, nel «?» accanto al pulsante (`NextStepWhy`); null senza niente da dire. */
   why?: string | null;
+  /**
+   * (Rilascio 10, §3.5) Il comando del passo sta nella pagina d'arrivo («Proponi il via allo sviluppo» nella sezione
+   * «Via allo sviluppo»): lì la pagina ha il suo pulsante pieno e questo si nasconde (`stepHiddenOn`).
+   */
+  pageCommand?: boolean;
 }
 
 function withParam(pathname: string, current: URLSearchParams, name: string, value: string): string {
@@ -105,38 +115,66 @@ function withParam(pathname: string, current: URLSearchParams, name: string, val
   return `${pathname}?${next.toString()}`;
 }
 
+const pathOf = (href: string) => href.split(/[?#]/)[0].replace(/\/+$/, "");
+
+/**
+ * Dove porta il passo da questa pagina: un pannello del guscio (conferma, esporta, firma) si apre qui; un pannello di
+ * pagina (`apri`) si apre qui solo sulla sua pagina, con i filtri di chi guarda; altrimenti l'indirizzo del passo.
+ * `inPlace`: si resta qui.
+ */
+export function stepTarget(step: Pick<CaseStepView, "href" | "panel">, pathname: string, current: URLSearchParams): { href: string; inPlace: boolean } {
+  if (!step.panel) return { href: step.href, inPlace: false };
+  if (step.panel.name === "apri" && pathOf(pathname) !== pathOf(step.href)) return { href: step.href, inPlace: false };
+  return { href: withParam(pathname, current, step.panel.name, step.panel.value), inPlace: true };
+}
+
 /**
  * Il pulsante pieno (DESIGN §2.7, `nextStepFor`). Si nasconde sulla pagina in
  * cui porta e su Impostazioni; resta sulle ancore di Panoramica e sui passi
  * che aprono un pannello (`stepHiddenOn`). (Rilascio 10, §7.4) Come il passo
  * dello use case: l'icona accanto al verbo e, nella testata, il «?» con il
  * perché (`NextStepWhy`); nella barra fissa (`size="sm"`) solo icona e verbo.
+ * (Rilascio 10, §3.5) Nella testata, sopra, l'etichetta «Prossimo passo» del
+ * pezzo comune (`withLabel`): c'è solo quando c'è il pulsante. 44 px al
+ * telefono, 36 px da 640 px, largo quanto la colonna meno il «?».
  */
-export function CaseStepButton({ step, size = "default", className }: { step: CaseStepView; size?: "default" | "sm"; className?: string }) {
+export function CaseStepButton({ step, size = "default", withLabel = false, className }: { step: CaseStepView; size?: "default" | "sm"; withLabel?: boolean; className?: string }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const whyId = useId();
-  if (stepHiddenOn({ href: step.href, caseBase: step.caseBase, panel: !!step.panel }, pathname)) return null;
-  const href = step.panel ? withParam(pathname, searchParams, step.panel.name, step.panel.value) : step.href;
+  const labelId = useId();
+  if (stepHiddenOn({ href: step.href, caseBase: step.caseBase, panel: !!step.panel, pageCommand: step.pageCommand }, pathname)) return null;
+  const { href, inPlace } = stepTarget(step, pathname, searchParams);
   const why = size === "default" && step.why ? step.why : null;
   const button = (
     <Button
       size={size}
       data-slot="case-step"
-      className={cn(size === "default" ? "h-11 px-4 sm:h-8 sm:px-2.5" : "min-h-8", why ? "min-w-0 flex-1 sm:flex-none" : className)}
-      render={<Link href={href} scroll={!step.panel} aria-describedby={why ? whyId : undefined} />}
+      className={cn(size === "default" ? "min-w-0 flex-1 sm:flex-none" : "min-h-8", !why && !withLabel ? className : undefined)}
+      render={<Link href={href} scroll={!inPlace} aria-describedby={why ? whyId : undefined} />}
       nativeButton={false}
     >
       {step.icon ? <NextStepIconView icon={step.icon} /> : null}
       {step.label}
     </Button>
   );
-  if (!why) return button;
+  const row =
+    why || withLabel ? (
+      <span className={cn("flex min-w-0 items-center gap-1", withLabel ? undefined : className)}>
+        {button}
+        {why ? <NextStepWhy id={whyId} text={why} /> : null}
+      </span>
+    ) : (
+      button
+    );
+  if (!withLabel) return row;
   return (
-    <span className={cn("flex min-w-0 items-center gap-1", className)}>
-      {button}
-      <NextStepWhy id={whyId} text={why} />
-    </span>
+    <section aria-labelledby={labelId} data-slot="next-step" className={cn("min-w-0 space-y-2", className)}>
+      <p id={labelId} className="text-xs text-muted-foreground">
+        {UI10_TEXT.nextStep.label}
+      </p>
+      {row}
+    </section>
   );
 }
 

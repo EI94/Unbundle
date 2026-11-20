@@ -9,18 +9,21 @@
  * - `owner` dice di chi è il passo rispetto a chi guarda: «me» se tocca a lui.
  *   I passi legati a chi guarda (firme, verifica con i quattro occhi già
  *   applicati, catalogo dello sviluppatore) compaiono solo come «me».
- * - `nextStepFor` dà il pulsante pieno della testata; `whoseTurn` la riga
- *   «Tocca a …» per le cose che toccano ad altri.
- * - `href` è relativo alla radice del dossier (`/via`, `/persone?invia=1`,
+ * - `nextStepFor` dà il pulsante pieno della testata; (rilascio 10, §3.5)
+ *   `overviewTodo` le righe di «Da fare» in Panoramica e `turnRow` la riga
+ *   «Tocca a …» per una cosa che tocca ad altri.
+ * - `href` è relativo alla radice del dossier (`/#via`, `/persone?invia=1`,
  *   `/#blocchi`, `?conferma=<stato>` per i passi che si confermano in un
- *   dialogo): `resolveStepHref` lo completa.
+ *   dialogo): `resolveStepHref` lo completa. (Rilascio 10, §3.5) Il via allo
+ *   sviluppo sta nella Panoramica, all'ancora `#via`: la vecchia `/via` ci
+ *   porta con un redirect.
  *
  * I dati arrivano da `loadNextStepInput` di `src/lib/db/queries/uc-next-step.ts`
  * (WP1). Modulo puro e senza dipendenze di Node.
  */
 import type { NextStepIcon } from "../../use-cases/guided.ts";
 import { isCasePastG1 } from "../case-state.ts";
-import type { CaseRole, CaseStatus } from "../vocab.ts";
+import { LS_CASE_ROLES, type CaseRole, type CaseStatus } from "../vocab.ts";
 import { formatCountIt, formatDayIt, formatRelativeIt } from "./format.ts";
 import { dayWithArticle } from "./labels.ts";
 import type { StatusGroup } from "./status-groups.ts";
@@ -36,6 +39,7 @@ export type NextStepId =
   | "aggiungi_referenti"
   | "invia_domande"
   | "verifica"
+  | "controlla_file"
   | "sciogli_blocchi"
   | "manda_link_firma"
   | "indica_firmatario_privacy"
@@ -52,6 +56,12 @@ export interface NextStep {
   owner: StepOwner;
   /** Per i passi che si confermano in un dialogo: lo stato verso cui va il caso. */
   transition?: CaseStatus;
+  /**
+   * (Rilascio 10, §3.5) Il passo apre un pannello invece di cambiare pagina: `firma` è il pannello delle firme, nel
+   * guscio (`?firma=1`, su ogni pagina); `apri` un pannello della pagina d'arrivo (`?apri=file` di Domande), che su
+   * quella pagina si apre lì e dalle altre si raggiunge con `href`.
+   */
+  panel?: { name: "apri" | "firma"; value: string };
 }
 
 /**
@@ -67,6 +77,7 @@ export const NEXT_STEP_ICON: Readonly<Record<NextStepId, NextStepIcon>> = Object
   aggiungi_referenti: "referente",
   invia_domande: "chiedi",
   verifica: "verifica",
+  controlla_file: "dossier",
   sciogli_blocchi: "ferme",
   manda_link_firma: "chiedi",
   indica_firmatario_privacy: "referente",
@@ -74,6 +85,21 @@ export const NEXT_STEP_ICON: Readonly<Record<NextStepId, NextStepIcon>> = Object
   passo_avanti: "avvia",
   risposte_referenti: "attesa",
 });
+
+/** (Rilascio 10, §3.5) Il via allo sviluppo: la sezione della Panoramica con l'ancora `#via` (la vecchia `/via` ci porta). */
+export const VIA_HREF = "/#via";
+
+/** (Rilascio 10, §3.5) Il pannello «File» di Domande (`?apri=file`, di «domande»): l'indirizzo concordato, resta questo. */
+export const FILES_HREF = "/domande?apri=file";
+
+/** (Rilascio 10, §3.5, F-006) Il pannello delle firme, nel guscio della realizzazione: `/firme` ci porta. */
+export const SIGN_HREF = "?firma=1";
+
+/** Il pannello delle firme come pannello del passo: si apre sulla pagina dove si è. */
+export const SIGN_PANEL: Readonly<{ name: "firma"; value: string }> = Object.freeze({ name: "firma", value: "1" });
+
+/** Il pannello «File» come pannello del passo: su Domande il pulsante lo apre lì, con i filtri di chi guarda. */
+export const FILES_PANEL: Readonly<{ name: "apri"; value: string }> = Object.freeze({ name: "apri", value: "file" });
 
 /** Una firma che aspetta chi guarda. `otherSideSigned`: l'altra parte ha già firmato. */
 export interface PendingSignature {
@@ -105,6 +131,11 @@ export interface NextStepInput {
   toVerifyMust: number;
   /** La più vecchia di quelle che chi guarda può verificare. */
   oldestToVerifyAt: Date | string | null;
+  /**
+   * (Rilascio 10, §3.5) PDF da controllare a mano che chi guarda può controllare: non quelli che ha caricato lui
+   * (quattro occhi, `canReviewFile`). Lo legge il guscio a parte (`loadFilesToCheck`); senza, nessun passo.
+   */
+  filesToCheck?: number;
   /** Tutte le risposte da verificare, di chiunque. */
   toVerifyTotal: number;
   /** Domande che aspettano una risposta dai referenti. */
@@ -156,7 +187,7 @@ function signatureStep(pending: readonly PendingSignature[], isLead: boolean): N
   else if (count === 1 && pending[0].kind === "scheda_privacy") label = "Firma la scheda privacy";
   else label = count === 1 ? "Firma 1 decisione" : `Firma ${n(count)} decisioni`;
   const allOtherSigned = pending.every((p) => p.otherSideSigned);
-  return { id: "firma", label, detail: allOtherSigned && !isLead ? "Lateral Space ha già firmato." : "Servono per andare avanti.", href: "/firme", owner: "me" };
+  return { id: "firma", label, detail: allOtherSigned && !isLead ? "Lateral Space ha già firmato." : "Servono per andare avanti.", href: SIGN_HREF, owner: "me", panel: { ...SIGN_PANEL } };
 }
 
 /** I passi che valgono adesso, nell'ordine della tabella di DESIGN §2.7. */
@@ -183,7 +214,7 @@ export function caseNextSteps(input: NextStepInput, viewer: NextStepViewer): Nex
       id: "riconferma_via",
       label: "Riconferma il via allo sviluppo",
       detail: lost === 0 ? null : lost === 1 ? "1 domanda indispensabile non è più a posto." : `${n(lost)} domande indispensabili non sono più a posto.`,
-      href: "/via",
+      href: VIA_HREF,
       owner: forLead(),
     });
   }
@@ -200,7 +231,7 @@ export function caseNextSteps(input: NextStepInput, viewer: NextStepViewer): Nex
       id: "proponi_via",
       label: "Proponi il via allo sviluppo",
       detail: required === 1 ? "La domanda indispensabile è a posto." : `Le ${n(required)} domande indispensabili sono a posto.`,
-      href: "/via",
+      href: VIA_HREF,
       owner: forLead(),
     });
   }
@@ -251,6 +282,20 @@ export function caseNextSteps(input: NextStepInput, viewer: NextStepViewer): Nex
     });
   }
 
+  // 9b. (Rilascio 10, §3.5) PDF da controllare a mano: il pannello «File» di Domande. Era la riga «N file da
+  // controllare a mano · Controlla ›» dei documenti.
+  const files = Math.max(0, Math.floor(input.filesToCheck ?? 0));
+  if ((lead || has("ls_analista")) && files > 0) {
+    steps.push({
+      id: "controlla_file",
+      label: files === 1 ? "Controlla 1 file" : `Controlla ${n(files)} file`,
+      detail: files === 1 ? "Un PDF da aprire e controllare prima di usarlo." : `${n(files)} PDF da aprire e controllare prima di usarli.`,
+      href: FILES_HREF,
+      owner: "me",
+      panel: { ...FILES_PANEL },
+    });
+  }
+
   // 10. Blocchi che fermano domande indispensabili.
   if (input.blockersActive > 0 && input.blockedMust > 0) {
     const one = input.blockersActive === 1;
@@ -269,7 +314,7 @@ export function caseNextSteps(input: NextStepInput, viewer: NextStepViewer): Nex
   if (review && review.lsSigned && !review.clientSigned) {
     const on = formatDayIt(review.lsSignedAt ?? null, { now: input.now });
     const who = lead ? (on ? `Hai firmato ${dayWithArticle("il", on)}.` : "Hai firmato.") : on ? `Lateral Space ha firmato ${dayWithArticle("il", on)}.` : "Lateral Space ha firmato.";
-    steps.push({ id: "manda_link_firma", label: "Manda il link per firmare", detail: `${who} Manca il responsabile del cliente.`, href: "/via", owner: forLead() });
+    steps.push({ id: "manda_link_firma", label: "Manda il link per firmare", detail: `${who} Manca il responsabile del cliente.`, href: VIA_HREF, owner: forLead() });
   }
 
   // 12. Manca chi firma la privacy per il cliente.
@@ -301,7 +346,7 @@ export function caseNextSteps(input: NextStepInput, viewer: NextStepViewer): Nex
     steps.push({ id: "passo_avanti", label: forward.label, detail: forward.detail, href: `?conferma=${input.forwardTransition}`, owner: forLead(), transition: input.forwardTransition });
   }
 
-  // Domande che aspettano i referenti: non è un pulsante, serve a Panoramica e a `whoseTurn`.
+  // Domande che aspettano i referenti: non è un pulsante, serve a «Da fare» in Panoramica (`turnRow`).
   if (input.waitingOnReferents > 0) {
     const count = input.waitingOnReferents;
     steps.push({
@@ -321,40 +366,53 @@ export function nextStepFor(steps: readonly NextStep[]): NextStep | null {
   return steps.find((s) => s.owner === "me") ?? null;
 }
 
-/** I passi di chi guarda, al massimo `max` («Da fare adesso» ne mostra 3). */
-export function myNextSteps(steps: readonly NextStep[], max = 3): NextStep[] {
-  return steps.filter((s) => s.owner === "me").slice(0, max);
+/** (Rilascio 10, §3.5) Una riga di «Da fare» che aspetta un'altra persona: che cosa e chi deve muoversi. */
+export interface TurnRow {
+  /** Che cosa aspetta: «Firma del via allo sviluppo», «Risposte a 10 domande». */
+  title: string;
+  /** «Tocca a Lateral Space», «Tocca ai referenti», «Tocca al cliente». */
+  turn: string;
 }
 
 /**
- * La riga «Tocca a …» per ciò che tocca ad altri (si usa il primo
- * applicabile). (Rilascio 10, §1 regola 2) Compare solo quando non tocca a chi
- * guarda: se chi guarda ha un passo suo, il pulsante pieno basta e non c'è riga.
- *
- * «Tutto in ordine» vale solo quando non resta un passo di nessuno, salvo il
- * passo avanti dopo lo sviluppo: un passo di altri senza una riga sua in §2.7
- * (riconfermare il via, sciogliere i blocchi, indicare chi firma la privacy,
- * una firma che manca a Lateral Space) non dà riga. Lo dicono già i passi e
- * l'avviso della testata.
+ * (Rilascio 10, §3.5 e §1 regola 2) La riga «Tocca a …» di «Da fare» in Panoramica: la prima cosa che aspetta
+ * un'altra persona (le risposte in verifica, i referenti, la firma del cliente). Mai per chi guarda: chi verifica le risposte non legge «Tocca a
+ * Lateral Space»; chi manda il link o deve firmare il via non legge «Tocca al cliente». Può stare sotto i passi di
+ * chi guarda (prototipo S4). In pausa e a realizzazione chiusa niente: lo dice la testata.
  */
-export function whoseTurn(steps: readonly NextStep[], input: NextStepInput): string | null {
-  if (input.status === "chiuso") return "Realizzazione chiusa: si può solo leggere.";
-  if (input.status === "sospeso") return null;
-  // (Rilascio 10) Mai «Tocca anche a …»: con un passo di chi guarda, nessuna riga.
-  if (steps.some((s) => s.owner === "me")) return null;
-  const othersToVerify = Math.max(0, input.toVerifyTotal);
-  if (othersToVerify > 0) {
-    return `Tocca a Lateral Space: stanno verificando ${othersToVerify === 1 ? "1 risposta" : `${n(othersToVerify)} risposte`}.`;
+export function turnRow(steps: readonly NextStep[], input: NextStepInput, viewer: NextStepViewer): TurnRow | null {
+  if (input.status === "chiuso" || input.status === "sospeso") return null;
+  const roles = viewer.roles;
+  const mine = (id: NextStepId) => steps.some((s) => s.owner === "me" && s.id === id);
+  const verifier = roles.includes("ls_lead") || roles.includes("ls_analista");
+  const lsViewer = roles.some((r) => (LS_CASE_ROLES as readonly CaseRole[]).includes(r));
+  const verifying = Math.max(0, input.toVerifyTotal);
+  if (!verifier && verifying > 0) {
+    const word = lsViewer ? "da verificare" : "in verifica";
+    return { title: verifying === 1 ? `1 risposta ${word}` : `${n(verifying)} risposte ${word}`, turn: "Tocca a Lateral Space" };
   }
-  const referents = steps.find((s) => s.owner === "referenti");
-  if (referents) return `Tocca ai referenti: ${referents.detail}`;
+  const waiting = Math.max(0, input.waitingOnReferents);
+  if (waiting > 0) return { title: waiting === 1 ? "Risposta a 1 domanda" : `Risposte a ${n(waiting)} domande`, turn: "Tocca ai referenti" };
   const review = input.pendingGateReview;
-  if (review && review.lsSigned && !review.clientSigned) return "Tocca al cliente: manca la firma del responsabile del cliente.";
-  // Il passo avanti dopo lo sviluppo è un'opportunità, non un'attesa: resta «Tutto in ordine».
-  if (steps.some((s) => s.id !== "passo_avanti")) return null;
-  if (review && !(review.lsSigned && review.clientSigned)) return null;
-  const milestone = input.nextMilestone ? formatDayIt(input.nextMilestone.date, { now: input.now }) : null;
-  return milestone ? `Tutto in ordine. Prossima tappa: ${milestone}.` : "Tutto in ordine.";
+  if (review && review.lsSigned && !review.clientSigned && !mine("manda_link_firma") && !mine("firma") && !roles.includes("owner_cliente")) {
+    return { title: "Firma del via allo sviluppo", turn: "Tocca al cliente" };
+  }
+  return null;
+}
+
+/**
+ * (Rilascio 10, §3.5) «Da fare» in Panoramica: i passi di chi guarda dopo il pulsante pieno (mai il pulsante pieno
+ * di nuovo), poi la riga «Tocca a …»; al massimo `max` righe in tutto. Niente righe: la sezione non c'è.
+ */
+export function overviewTodo(steps: readonly NextStep[], primary: NextStep | null, turn: TurnRow | null, max = 3): { steps: NextStep[]; turn: TurnRow | null } {
+  const rows = steps.filter((s) => s.owner === "me" && s.id !== primary?.id).slice(0, max);
+  return { steps: rows, turn: turn && rows.length < max ? turn : null };
+}
+
+/** (Rilascio 10, §3.5, prototipo S4) Il fatto grigio di una riga di «Da fare»: la spiegazione del passo, senza il punto finale. */
+export function stepFact(step: Pick<NextStep, "detail">): string | null {
+  const fact = step.detail?.trim().replace(/\.$/, "") ?? "";
+  return fact || null;
 }
 
 /** Completa l'`href` di un passo con la radice del dossier (`/dashboard/<ws>/casi-duso/<id>`). */

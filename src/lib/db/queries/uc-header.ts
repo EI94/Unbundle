@@ -2,7 +2,8 @@
  * Dati della testata del dossier (DESIGN §3.3), in un solo giro: un batch con
  * i campi del caso, la prontezza in cache (`uc_cases.readiness`), id, codice e
  * titolo della scheda madre (`use_cases`, via `portfolio_use_case_id`), il
- * prossimo passo e le firme in attesa di chi guarda.
+ * prossimo passo e le firme in attesa di chi guarda, e (rilascio 10, §3.5) i
+ * PDF che aspettano il suo controllo a mano (il passo «Controlla N file»).
  *
  * La testata legge la prontezza in cache: la cache si aggiorna dopo ogni
  * comando, dopo le risposte dei referenti e ogni notte. Dopo un comando però
@@ -21,6 +22,7 @@
  */
 import type { Readiness } from "../../uc/semaforo.ts";
 import { rowNumber, rowString, rowVocab } from "../../uc/sql/readiness.ts";
+import { filesToCheckCountSql } from "../../uc/sql/files.ts";
 import { cast, toStatement, ucSql, type UcStatement } from "../../uc/sql/statement.ts";
 import type { NextStepInput } from "../../uc/views/next-step.ts";
 import { CASE_STATUSES, type CaseRole, type CaseStatus } from "../../uc/vocab.ts";
@@ -49,6 +51,11 @@ export interface CaseHeaderData {
   nextStep: NextStepInput;
   /** Firme in attesa di chi guarda. */
   signatures: CaseSignature[];
+  /**
+   * (Rilascio 10, §3.5) PDF in revisione manuale non caricati da chi guarda (`filesToCheckCountSql`). Il passo
+   * «Controlla N file» lo usa solo per chi controlla i file (`checksFiles`).
+   */
+  filesToCheck: number;
 }
 
 /** Caso e scheda madre, nel workspace. */
@@ -60,11 +67,14 @@ LEFT JOIN use_cases u ON u.id = c.portfolio_use_case_id AND u.workspace_id = c.w
 WHERE c.id = ${cast(caseId, "uuid")} AND c.workspace_id = ${cast(workspaceId, "uuid")} AND c.setup_completed_at IS NOT NULL`);
 }
 
-/** Le istruzioni della testata, per un batch (anche insieme all'accesso, `uc-dossier-base.ts`). Id già controllati. */
+/**
+ * Le istruzioni della testata, per un batch (anche insieme all'accesso, `uc-dossier-base.ts`). Id già controllati.
+ * L'ultima è il conteggio dei PDF da controllare (`caseHeaderFromRows` la legge per ultima).
+ */
 export function caseHeaderStatements(i: { workspaceId: string; caseId: string; userId: string }): UcStatement[] {
   // Un URL con l'uuid in maiuscolo apre lo stesso dossier: gli id si confrontano come li scrive Postgres.
   const [workspaceId, caseId, userId] = [lowerId(i.workspaceId), lowerId(i.caseId), lowerId(i.userId)];
-  return [caseHeaderSql(workspaceId, caseId), ...nextStepStatements({ workspaceId, caseIds: [caseId], userId })];
+  return [caseHeaderSql(workspaceId, caseId), ...nextStepStatements({ workspaceId, caseIds: [caseId], userId }), filesToCheckCountSql({ workspaceId, caseId, userId })];
 }
 
 /**
@@ -91,7 +101,10 @@ export async function caseHeaderFromRows(
 ): Promise<CaseHeaderData | null> {
   const now = i.now ?? new Date();
   const [workspaceId, caseId] = [lowerId(i.workspaceId), lowerId(i.caseId)];
-  const [head, ...rest] = rows;
+  const head = rows[0];
+  // Le righe del prossimo passo stanno in mezzo; l'ultima è il conteggio dei PDF da controllare.
+  const rest = rows.slice(1, -1);
+  const filesToCheck = rowNumber(rows[rows.length - 1]?.[0]?.files_to_check) ?? 0;
   const row = head?.[0];
   const status = row ? rowVocab(CASE_STATUSES, row.status) : null;
   if (!row || !status) return null;
@@ -121,5 +134,6 @@ export async function caseHeaderFromRows(
     readiness: read.readiness,
     nextStep: read.input,
     signatures: read.signatures,
+    filesToCheck,
   };
 }

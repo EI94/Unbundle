@@ -8,7 +8,8 @@
  * - `voci/<id>` → `domande/<id>`, `documenti` → `domande/documenti`;
  * - `verifica` → `domande?vista=da-verificare`;
  * - `mappa`, `regole`, `modello-dati` → `soluzione/{mappa,regole,dati}`;
- * - `kpi` → `valore/kpi`, `roi` → `valore`, `avanzamento` → `via`;
+ * - `kpi` → `valore/kpi`, `roi` → `valore`, `avanzamento` → la sezione «Via
+ *   allo sviluppo» della Panoramica (`#via`, rilascio 10: senza passare da `/via`);
  * - `registro` → `attivita`, `registro/csv` → `attivita/csv`.
  *
  * Un parametro che la tabella non nomina si lascia cadere. Modulo puro.
@@ -126,7 +127,7 @@ export function legacyCaseRoute(base: string, segments: readonly string[], searc
     case "roi":
       return rest.length === 0 ? `${root}/valore` : null;
     case "avanzamento":
-      return rest.length === 0 ? `${root}/via` : null;
+      return rest.length === 0 ? `${root}#via` : null;
     case "registro":
       if (rest.length === 0) return withQuery(`${root}/attivita`, pick(sp, ["tipo", "chi", "attore", "dal", "al", "pagina"]));
       if (rest.length === 1 && rest[0] === "csv") return withQuery(`${root}/attivita/csv`, all());

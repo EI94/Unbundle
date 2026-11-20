@@ -20,7 +20,9 @@ import { formatDayIt } from "@/lib/uc/views/format";
 
 /**
  * «Sviluppo con Claude» (DESIGN §3.13.2): un pannello, solo per Lateral Space e
- * solo dopo il via allo sviluppo. Il menu «⋯» porta a `…/via#sviluppo-con-claude`:
+ * solo dopo il via allo sviluppo. Sta nella sezione «Via allo sviluppo» della
+ * Panoramica (rilascio 10, §3.5; l'ondata 5b lo porta in Costruzione); un link a
+ * `…#sviluppo-con-claude` sulla Panoramica lo apre:
  * con quell'ancora il pannello si apre da solo; sulla pagina resta una riga
  * con «Apri».
  *
@@ -49,7 +51,7 @@ export interface ClaudeDevPanelProps {
   tokens: CaseReadTokenItem[];
 }
 
-/** L'ancora del menu «⋯» (`caseMenuFor`, voce «Sviluppo con Claude»). */
+/** L'ancora del pannello nella Panoramica: un link con questa ancora lo apre da solo. */
 export const CLAUDE_PANEL_ANCHOR = "sviluppo-con-claude";
 
 const SCOPE_TEXT: Readonly<Record<GrantableCaseScope, { label: string; hint: string }>> = {
@@ -60,8 +62,8 @@ const SCOPE_TEXT: Readonly<Record<GrantableCaseScope, { label: string; hint: str
 const KEY_PLACEHOLDER = "<la chiave che ti dà il responsabile>";
 
 /**
- * L'ancora nell'indirizzo. Un link della stessa pagina (il menu «⋯» aperto su
- * `/via`) cambia l'indirizzo con `pushState`, che non manda `hashchange`: per
+ * L'ancora nell'indirizzo. Un link della stessa pagina (sulla Panoramica, con
+ * l'ancora) cambia l'indirizzo con `pushState`, che non manda `hashchange`: per
  * questo si guarda anche il clic su un link con l'ancora, un attimo dopo.
  */
 function subscribeHash(onChange: () => void): () => void {

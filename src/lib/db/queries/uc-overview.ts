@@ -5,15 +5,17 @@
  * - `loadOverview`: argomenti e ruoli dello schema, le sole domande
  *   indispensabili del via con le colonne che dicono se sono a posto (mai le
  *   2.812 voci del caso, mai valori né testi delle risposte), i blocchi attivi
- *   con le domande collegate, le tappe, «In breve» e le «Fasi» della
- *   descrizione. Con `blockerId` anche il pannello di quel blocco (le prime
- *   domande collegate per titolo), con `withFiles` i file utilizzabili come
- *   prova.
+ *   con le domande collegate, le tappe e le «Fasi» della descrizione. Con
+ *   `blockerId` anche il pannello di quel blocco (le prime domande collegate
+ *   per titolo), con `withFiles` i file utilizzabili come prova.
  * - `loadVia`: la prontezza dal vivo (condizioni, copertura del modello dati),
  *   le proposte del via con le firme per ruolo e le versioni del catalogo.
  *   Prende il posto di `getCaseOverview`, `listGateReviews`,
  *   `listCatalogVersions` e `loadProgressExtras` su questa pagina (DESIGN §8.1,
  *   regola 3: i caricatori nuovi stanno nel file nuovo del pacchetto).
+ * - (Rilascio 10, §3.5) `loadOverviewWithVia`: la Panoramica che assorbe il via,
+ *   le due letture e le istruzioni in più del chiamante (gli accessi di Claude)
+ *   in un solo batch: un giro, oltre a quello della testata.
  *
  * Le domande indispensabili sono quelle di `isRequired` (`gates.ts`): nel
  * via, `must`, nel contratto, utili al modello. Se sono a posto lo dice
@@ -175,9 +177,7 @@ export interface OverviewData {
   /** Blocchi attivi del caso, nell'ordine di creazione. */
   blockers: OverviewBlockerInput[];
   milestones: MilestoneLike[];
-  /** «In breve» come lo legge chi guarda: mai codici dei fatti; al cliente nemmeno articoli e chiavi (P0-12). */
-  inBreve: string | null;
-  /** Le «Fasi» della descrizione (fase, quando, cosa si fa, si chiude con), ripulite come «In breve». */
+  /** Le «Fasi» della descrizione (fase, quando, cosa si fa, si chiude con) come le legge chi guarda (P0-12). */
   phases: DescriptionRecord[];
   /** Il blocco del pannello aperto (`?apri=blocco:<id>`), con le prime domande collegate. */
   blocker: (OverviewBlockerInput & { status: BlockerStatus; questions: { id: string; title: string }[] }) | null;
@@ -185,17 +185,15 @@ export interface OverviewData {
   files: { id: string; name: string }[];
 }
 
-/**
- * La Panoramica in un giro. Null se il dossier non c'è o non è di questo
- * workspace. `blockerId` apre il pannello di un blocco (le prime
- * `blockerQuestions` domande); `withFiles` aggiunge i file per le prove.
- * `audience` è il pubblico di chi guarda per i testi della descrizione: senza,
- * quello del cliente, che toglie di più (DESIGN §7.1 P0-12).
- */
-export async function loadOverview(
-  executor: UcExecutor,
-  i: { workspaceId: string; caseId: string; now?: Date; blockerId?: string | null; blockerQuestions?: number; withFiles?: boolean; audience?: Audience },
-): Promise<OverviewData | null> {
+/** Le istruzioni di una lettura e come leggerne le righe: così più letture stanno in un batch solo. */
+interface PreparedRead<T> {
+  statements: UcStatement[];
+  parse: (rows: readonly Row[][]) => T | null;
+}
+
+export type OverviewInput = { workspaceId: string; caseId: string; now?: Date; blockerId?: string | null; blockerQuestions?: number; withFiles?: boolean; audience?: Audience };
+
+function prepareOverview(i: OverviewInput): PreparedRead<OverviewData> | null {
   if (!UUID.test(i.workspaceId) || !UUID.test(i.caseId)) return null;
   const now = i.now ?? new Date();
   const c = caseOf(i.workspaceId, i.caseId);
@@ -210,37 +208,48 @@ export async function loadOverview(
   ];
   if (blockerId) statements.push(activeBlockersSql(c, blockerId), blockerQuestionsSql(c, blockerId, Math.max(1, Math.min(50, i.blockerQuestions ?? 10))));
   if (i.withFiles) statements.push(usableFilesSql(c));
-  const rows = await executor.batch(statements);
-  const ctx = context.parse(rows[0]);
-  if (!ctx) return null;
-  const required = (rows[1] ?? []).map((r) => {
-    const item = rowToGateItem(r);
-    return { itemId: item.id, moduleKey: item.requestModuleKey, status: rowVocab(ITEM_STATUSES, r.status) ?? ("da_chiedere" as ItemStatus), ok: isItemOk(item, "G1", now).ok };
-  });
-  const parts = rowObject(rows[4]?.[0]?.parts);
-  // Come la Descrizione di Soluzione (`descriptionView`): il testo salvato tiene i codici dei fatti, chi legge no.
-  const audience = i.audience ?? "cliente";
-  const inBreve = readableContent(readBlock(descriptionBlockDef("in_breve")!, parts.in_breve), audience);
-  const phases = readableContent(readBlock(descriptionBlockDef("fasi")!, parts.fasi), audience);
-  let blocker: OverviewData["blocker"] = null;
-  let next = 5;
-  if (blockerId) {
-    const head = rows[next]?.[0];
-    blocker = head ? { ...toBlocker(head), questions: (rows[next + 1] ?? []).map((q) => ({ id: String(q.id), title: String(q.title) })) } : null;
-    next += 2;
-  }
-  return {
-    status: ctx.status,
-    modules: ctx.modules,
-    roleLabels: ctx.roleLabels,
-    required,
-    blockers: (rows[2] ?? []).map(toBlocker),
-    milestones: (rows[3] ?? []).map(toMilestone),
-    inBreve: inBreve.kind === "testo" ? inBreve.text : null,
-    phases: phases.kind === "schede" ? phases.records : [],
-    blocker,
-    files: i.withFiles ? fileRows(rows[next]) : [],
+  const parse = (rows: readonly Row[][]): OverviewData | null => {
+    const ctx = context.parse(rows[0]);
+    if (!ctx) return null;
+    const required = (rows[1] ?? []).map((r) => {
+      const item = rowToGateItem(r);
+      return { itemId: item.id, moduleKey: item.requestModuleKey, status: rowVocab(ITEM_STATUSES, r.status) ?? ("da_chiedere" as ItemStatus), ok: isItemOk(item, "G1", now).ok };
+    });
+    const parts = rowObject(rows[4]?.[0]?.parts);
+    // Come la Descrizione di Soluzione (`descriptionView`): il testo salvato tiene i codici dei fatti, chi legge no.
+    const phases = readableContent(readBlock(descriptionBlockDef("fasi")!, parts.fasi), i.audience ?? "cliente");
+    let blocker: OverviewData["blocker"] = null;
+    let next = 5;
+    if (blockerId) {
+      const head = rows[next]?.[0];
+      blocker = head ? { ...toBlocker(head), questions: (rows[next + 1] ?? []).map((q) => ({ id: String(q.id), title: String(q.title) })) } : null;
+      next += 2;
+    }
+    return {
+      status: ctx.status,
+      modules: ctx.modules,
+      roleLabels: ctx.roleLabels,
+      required,
+      blockers: (rows[2] ?? []).map(toBlocker),
+      milestones: (rows[3] ?? []).map(toMilestone),
+      phases: phases.kind === "schede" ? phases.records : [],
+      blocker,
+      files: i.withFiles ? fileRows(rows[next]) : [],
+    };
   };
+  return { statements, parse };
+}
+
+/**
+ * La Panoramica in un giro. Null se il dossier non c'è o non è di questo
+ * workspace. `blockerId` apre il pannello di un blocco (le prime
+ * `blockerQuestions` domande); `withFiles` aggiunge i file per le prove.
+ * `audience` è il pubblico di chi guarda per i testi della descrizione: senza,
+ * quello del cliente, che toglie di più (DESIGN §7.1 P0-12).
+ */
+export async function loadOverview(executor: UcExecutor, i: OverviewInput): Promise<OverviewData | null> {
+  const read = prepareOverview(i);
+  return read ? read.parse(await executor.batch(read.statements)) : null;
 }
 
 // ── Via allo sviluppo ─────────────────────────────────────────────────
@@ -319,40 +328,68 @@ function toReview(r: Row): ViaReview {
   };
 }
 
-/**
- * La pagina del via in un giro: la prontezza dal vivo (la stessa funzione
- * della cache) più proposte, firme e versioni del catalogo. Null se il dossier
- * non c'è o non è di questo workspace.
- */
-export async function loadVia(executor: UcExecutor, i: { workspaceId: string; caseId: string; now?: Date; withFiles?: boolean }): Promise<ViaData | null> {
+export type ViaInput = { workspaceId: string; caseId: string; now?: Date; withFiles?: boolean };
+
+function prepareVia(i: ViaInput): PreparedRead<ViaData> | null {
   if (!UUID.test(i.workspaceId) || !UUID.test(i.caseId)) return null;
   const now = i.now ?? new Date();
   const [workspaceId, caseId] = [i.workspaceId.toLowerCase(), i.caseId.toLowerCase()];
   const c = caseOf(workspaceId, caseId);
   const readiness = readinessReadStatements(workspaceId, caseId);
   const statements = [...readiness, reviewsSql(c), versionsSql(c), ...(i.withFiles ? [usableFilesSql(c)] : [])];
-  const rows = await executor.batch(statements);
-  const input = parseReadinessRows(rows.slice(0, readiness.length));
-  if (!input) return null;
-  const live = computeCaseReadiness(input, now);
-  const reviews = (rows[readiness.length] ?? []).map(toReview);
-  const versions = (rows[readiness.length + 1] ?? []).map(
-    (r): ViaCatalogVersion => ({
-      version: rowNumber(r.version) ?? 0,
-      reason: String(r.reason),
-      createdAt: rowDate(r.created_at)?.toISOString() ?? null,
-      changeNote: rowString(r.change_note),
-      diff: { added: rowNumber(r.added) ?? 0, removed: rowNumber(r.removed) ?? 0, changed: rowNumber(r.changed) ?? 0 },
-    }),
-  );
-  return {
-    core: input.core,
-    g1: live.g1,
-    coverage: live.coverage,
-    inReview: live.g1.missing.filter((m) => m.status === "in_verifica").length,
-    reviews,
-    pending: reviews.find((r) => r.decision === "proposto") ?? null,
-    versions,
-    files: i.withFiles ? fileRows(rows[readiness.length + 2]) : [],
+  const parse = (rows: readonly Row[][]): ViaData | null => {
+    const input = parseReadinessRows(rows.slice(0, readiness.length));
+    if (!input) return null;
+    const live = computeCaseReadiness(input, now);
+    const reviews = (rows[readiness.length] ?? []).map(toReview);
+    const versions = (rows[readiness.length + 1] ?? []).map(
+      (r): ViaCatalogVersion => ({
+        version: rowNumber(r.version) ?? 0,
+        reason: String(r.reason),
+        createdAt: rowDate(r.created_at)?.toISOString() ?? null,
+        changeNote: rowString(r.change_note),
+        diff: { added: rowNumber(r.added) ?? 0, removed: rowNumber(r.removed) ?? 0, changed: rowNumber(r.changed) ?? 0 },
+      }),
+    );
+    return {
+      core: input.core,
+      g1: live.g1,
+      coverage: live.coverage,
+      inReview: live.g1.missing.filter((m) => m.status === "in_verifica").length,
+      reviews,
+      pending: reviews.find((r) => r.decision === "proposto") ?? null,
+      versions,
+      files: i.withFiles ? fileRows(rows[readiness.length + 2]) : [],
+    };
   };
+  return { statements, parse };
+}
+
+/**
+ * La pagina del via in un giro: la prontezza dal vivo (la stessa funzione
+ * della cache) più proposte, firme e versioni del catalogo. Null se il dossier
+ * non c'è o non è di questo workspace.
+ */
+export async function loadVia(executor: UcExecutor, i: ViaInput): Promise<ViaData | null> {
+  const read = prepareVia(i);
+  return read ? read.parse(await executor.batch(read.statements)) : null;
+}
+
+/**
+ * (Rilascio 10, §3.5) La Panoramica con il via dentro, in un giro solo: le istruzioni di `loadOverview`, di `loadVia`
+ * e quelle in più del chiamante (`extra`: gli accessi di Claude) in un batch, poi le righe divise. Lo stesso risultato
+ * delle due letture separate; `extra` restituisce le righe delle istruzioni in più, nell'ordine.
+ */
+export async function loadOverviewWithVia(
+  executor: UcExecutor,
+  i: { overview: OverviewInput; via: ViaInput; extra?: readonly UcStatement[] },
+): Promise<{ overview: OverviewData | null; via: ViaData | null; extra: Row[][] }> {
+  const overview = prepareOverview(i.overview);
+  const via = prepareVia(i.via);
+  if (!overview || !via) return { overview: null, via: null, extra: [] };
+  const extra = i.extra ?? [];
+  const rows = await executor.batch([...overview.statements, ...via.statements, ...extra]);
+  const a = overview.statements.length;
+  const b = a + via.statements.length;
+  return { overview: overview.parse(rows.slice(0, a)), via: via.parse(rows.slice(a, b)), extra: rows.slice(b, b + extra.length) };
 }

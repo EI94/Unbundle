@@ -39,6 +39,8 @@ export interface FoldProps {
   title: string;
   /** La riga grigia di riepilogo accanto al titolo. */
   summary?: string | null;
+  /** Un segno dopo il titolo, dentro il pulsante (il lucchetto di ciò che vede solo Lateral Space). Facoltativo. */
+  marker?: ReactNode;
   /** Aperta quando la pagina arriva da un link che la chiede (per esempio `?capitolo=`): lo decide il server. */
   defaultOpen?: boolean;
   children: ReactNode;
@@ -53,7 +55,7 @@ export interface FoldProps {
  * della stessa pagina la chiede). Poi la apre e la chiude chi guarda (`foldOpen`). Sostituisce il `<details>` di
  * `use-cases/detail/fold.tsx`, dove il titolo stava dentro il `<summary>`.
  */
-export function Fold({ id, title, summary, defaultOpen = false, children, className }: FoldProps) {
+export function Fold({ id, title, summary, marker, defaultOpen = false, children, className }: FoldProps) {
   const hash = useSyncExternalStore(subscribeHash, () => window.location.hash, () => "");
   const [toggle, setToggle] = useState<{ open: boolean; hash: string } | null>(null);
   const open = foldOpen({ id, defaultOpen, hash, toggle });
@@ -70,6 +72,7 @@ export function Fold({ id, title, summary, defaultOpen = false, children, classN
         >
           <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-0.5">
             <span className="min-w-0 break-words">{title}</span>
+            {marker ? <span className="inline-flex shrink-0 items-center self-center">{marker}</span> : null}
             {summary ? <span className="min-w-0 text-sm font-normal text-muted-foreground">{summary}</span> : null}
           </span>
           <ChevronRight aria-hidden className={cn("size-4 shrink-0 text-muted-foreground transition-transform duration-150 motion-reduce:transition-none", open && "rotate-90")} />
