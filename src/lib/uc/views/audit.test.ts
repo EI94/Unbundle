@@ -5,10 +5,10 @@ import { toStatement } from "../sql/statement.ts";
 import { findForbidden } from "./copy-guard.ts";
 import {
   ACTIVITY_LINE_MAX_WORDS,
+  activityLineWords,
   ACTIVITY_PAGE_SIZE,
   AUDIT_EVENT_LABEL,
   PERSONAL_DATA_FAMILY,
-  clampActivityLine,
   withoutLegacyActor,
   AUDIT_FAMILIES,
   EMPTY_AUDIT_FILTER,
@@ -195,8 +195,8 @@ test("sentences use titles and plain words: states, the via, the privacy form", 
   const title = "Quanti preventivi si perdono ogni mese per mancanza di risposta da parte del commerciale di zona competente";
   const validated = activityText(row({ type: "voce.stato_cambiato", toState: "validata", itemTitle: title, payload: { item_key: "q.x.01" } }), "ls");
   // (Rilascio 10, §3.5) «a posto», mai «validato»; la riga sta in 8 parole: il titolo si accorcia, il verbo no.
-  assert.equal(validated.text, "ha messo a posto «Quanti preventivi…»");
-  assert.equal(`${validated.who} ${validated.text}`.split(" ").length, 8);
+  assert.equal(validated.text, "ha messo a posto «Quanti preventivi si perdono ogni mese per mancanza di risposta da parte del…»", "il titolo intero, fino a 80 caratteri");
+  assert.ok(activityLineWords(validated.who, validated.text) <= ACTIVITY_LINE_MAX_WORDS, "8 parole oltre al titolo");
   assert.doesNotMatch(validated.text, /q\.x\.01/);
   assert.equal(activityText(row({ type: "voce.stato_cambiato", toState: "in_verifica", itemTitle: "Sconti" }), "cliente").text, "ha portato «Sconti» a «In verifica»");
   assert.equal(activityText(row({ type: "voce.stato_cambiato", toState: "in_verifica", itemTitle: "Sconti" }), "ls").text, "ha portato «Sconti» a «Da verificare»");
@@ -205,8 +205,8 @@ test("sentences use titles and plain words: states, the via, the privacy form", 
   assert.equal(activityText(row({ type: "gate.proposto", payload: { gate: "G1" } }), "cliente").text, "ha proposto il via allo sviluppo");
   assert.equal(activityText(row({ type: "blocco.firmato", payload: { blocker_key: "a8" } }), "cliente").text, "ha firmato la scheda privacy");
   assert.equal(activityText(row({ type: "blocco.sciolto", payload: { blocker_key: "costi_art_8_4" } }), "cliente").text, "ha sciolto il blocco «Costi da approvare»");
-  assert.equal(activityText(row({ type: "catalogo.esportato", payload: { format: "xlsx", version: 1 } }), "cliente").text, "ha scaricato il catalogo v1 in Excel");
-  assert.equal(activityText(row({ type: "catalogo.esportato", payload: { format: "json", version: "bozza" } }), "ls").text, "ha scaricato la bozza del catalogo in JSON");
+  assert.equal(activityText(row({ type: "catalogo.esportato", payload: { format: "xlsx", version: 1 } }), "cliente").text, "ha scaricato la versione 1 (Excel)");
+  assert.equal(activityText(row({ type: "catalogo.esportato", payload: { format: "json", version: "bozza" } }), "ls").text, "ha scaricato la bozza (JSON)");
   assert.equal(activityText(row({ type: "risposta.inviata", itemTitle: null }), "ls").text, "ha registrato una risposta a una domanda");
   assert.equal(activityText(row({ type: "gate.approvato", actorType: "sistema", actorName: null, actorIsLs: false }), "ls").text, "Via allo sviluppo approvato.");
   assert.equal(activityText(row({ type: "catalogo.letto_mcp", actorType: "mcp", actorName: null, actorIsLs: false }), "ls").who, "Claude");
@@ -245,7 +245,7 @@ test("the timeline groups by day of Rome and joins the same person's consecutive
         "Oggi",
         [
           ["10:42", "Mario Rossi", "ha risposto a 3 domande", 3],
-          ["09:15", "Luca Verdi", "ha messo a posto «Quanti preventivi…»", 1],
+          ["09:15", "Luca Verdi", "ha messo a posto «Quanti preventivi si perdono»", 1],
           ["09:10", "Mario Rossi", "ha risposto a «D»", 1],
         ],
       ],
@@ -292,27 +292,51 @@ test("family labels follow the vocabulary: questions, the via, activity", () => 
   }
 });
 
-test("(rilascio 10) righe di al massimo 8 parole: si accorcia il titolo tra virgolette, mai il verbo", () => {
-  assert.equal(clampActivityLine("Anna Bianchi", "ha risposto a «D»", "«D»"), "ha risposto a «D»", "già corta");
-  const long = "«Quanti preventivi si perdono ogni mese»";
-  assert.equal(clampActivityLine("Anna Bianchi", `ha aggiunto ${long}`, long), "ha aggiunto «Quanti preventivi si perdono…»");
-  const auto = "«Quanti preventivi si perdono ogni mese per mancanza di risposta»";
-  assert.equal(clampActivityLine(null, `${auto} è a posto.`, auto), "«Quanti preventivi si perdono ogni…» è a posto.");
-  assert.equal(clampActivityLine("Anna Maria Bianchi Rossi", "ha messo a posto «Quanti preventivi»", "«Quanti preventivi»"), "ha messo a posto «Quanti…»", "almeno una parola del titolo resta");
-  assert.equal(clampActivityLine("Anna Bianchi", "ha scaricato l'elenco dell'attività", null), "ha scaricato l'elenco dell'attività", "senza titolo la riga resta com'è");
-  assert.equal(clampActivityLine("Anna Maria Bianchi Rossi", "ha impostato «Pronto per lo sviluppo»", null), "ha impostato «Pronto per lo sviluppo»", "uno stato non si accorcia");
-  for (const type of ["voce.creata", "voce.modificata", "risposta.inviata", "voce.stato_cambiato"]) {
-    for (const actor of [{}, { actorType: "sistema" as const, actorName: null, actorIsLs: false }]) {
-      const t = activityText(row({ type, toState: "validata", itemTitle: "Quanti preventivi si perdono ogni mese per mancanza di risposta", ...actor }), "ls");
-      assert.ok(`${t.who ?? ""} ${t.text}`.trim().split(/\s+/).length <= ACTIVITY_LINE_MAX_WORDS, `${type}: ${t.who} ${t.text}`);
+test("(rilascio 10) righe di al massimo 8 parole oltre a ciò che sta tra virgolette: si accorcia il verbo, mai il titolo", () => {
+  assert.equal(activityLineWords("Anna Bianchi", "ha messo a posto «Quanti preventivi si perdono ogni mese»"), 7, "il titolo conta una parola");
+  assert.equal(activityLineWords(null, "«Quanti preventivi» è passata a «In verifica»."), 5);
+  const title = "Quanti preventivi si perdono ogni mese per mancanza di risposta";
+  const payloads: Record<string, unknown>[] = [
+    {},
+    { items: 3, count: 3, version: 2, reason: "gate", format: "xlsx", zona: "personale", blocker_key: "costi_art_8_4", role: "ls_lead", action: "proposta", channel: "email", outcome: "avviso", designation: "privacy" },
+    { version: "bozza", format: "json", blocker_key: "a8", action: "revocata", role: "approvatore_privacy", purpose: "approvazioni" },
+  ];
+  for (const type of Object.keys(AUDIT_EVENT_LABEL)) {
+    for (const payload of payloads) {
+      for (const toState of [null, "validata", "in_verifica", "pronto_sviluppo"]) {
+        const base = { type, toState, payload, itemTitle: title };
+        for (const count of [1, 3]) {
+          const user = activityText(row(base), "ls", count);
+          assert.ok(activityLineWords(user.who, user.text) <= ACTIVITY_LINE_MAX_WORDS, `${type} ×${count}: ${user.who} ${user.text}`);
+          if (user.text.includes("«Quanti")) assert.ok(user.text.includes(`«${title}»`), `${type}: il titolo resta intero (${user.text})`);
+        }
+        const auto = activityText(row({ ...base, actorType: "sistema", actorName: null, actorIsLs: false }), "ls");
+        if (!auto.text.endsWith("(in automatico).")) assert.ok(activityLineWords(null, auto.text) <= ACTIVITY_LINE_MAX_WORDS, `${type} automatico: ${auto.text}`);
+      }
     }
   }
+});
+
+test("(rilascio 10) la riga porta la domanda del titolo, intera, per aprirla da Attività", () => {
+  const long = `${"Quanti preventivi si perdono ogni mese ".repeat(3)}fine`;
+  const days = activityDays(
+    [
+      row({ type: "voce.modificata", at: "2026-10-14T08:42:00Z", itemTitle: "Sconti", itemId: "33333333-3333-4333-8333-333333333333", itemStatus: "chiesta" }),
+      row({ type: "voce.modificata", at: "2026-10-14T08:41:00Z", itemTitle: long, itemId: null, actorKey: "utente:u2" }),
+      row({ type: "registro.esportato", at: "2026-10-14T08:40:00Z", actorKey: "utente:u3" }),
+    ],
+    { now: NOW, audience: "ls" },
+  );
+  const [short, cut, none] = days[0].lines;
+  assert.deepEqual(short.question, { shown: "«Sconti»", full: "«Sconti»", itemId: "33333333-3333-4333-8333-333333333333", itemStatus: "chiesta" });
+  assert.ok(cut.question && cut.question.shown.endsWith("…»") && cut.question.full === `«${long}»`, "oltre 80 caratteri il titolo intero resta per il «title» e i lettori di schermo");
+  assert.equal(none.question, null, "una riga senza domanda");
 });
 
 test("(rilascio 10) verbi semplici e genere neutro: «a posto», «il via (versione 1)», «un'altra persona», «realizzazione»", () => {
   assert.equal(activityText(row({ type: "catalogo.congelato", payload: { version: 1, reason: "gate" } }), "ls").text, "ha approvato il via (versione 1)");
   assert.equal(activityText(row({ type: "catalogo.congelato", payload: { version: 2, reason: "manuale" } }), "ls").text, "ha fissato il catalogo (versione 2)");
-  assert.equal(activityText(row({ type: "delega.creata", payload: { items: 3 } }), "ls").text, "ha girato 3 domande a un'altra persona");
+  assert.equal(activityText(row({ type: "delega.creata", payload: { items: 3 } }), "ls").text, "ha delegato 3 domande");
   assert.equal(activityText(row({ type: "delega.approvata" }), "ls").text, "ha approvato una delega");
   assert.equal(activityText(row({ type: "registro.esportato" }), "ls").text, "ha scaricato l'elenco dell'attività");
   for (const type of Object.keys(AUDIT_EVENT_LABEL)) {

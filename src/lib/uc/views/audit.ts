@@ -478,6 +478,9 @@ export interface ActivityRow extends AuditRow {
   actorIsLs: boolean;
   /** Titolo della domanda dell'evento (`payload.item_key`), se c'è ancora. */
   itemTitle: string | null;
+  /** (Rilascio 10) La domanda dell'evento e il suo stato, per aprirla dalla riga; assenti nelle righe di prima. */
+  itemId?: string | null;
+  itemStatus?: ItemStatus | null;
 }
 
 /** Una frase della linea del tempo: «Luca Verdi (Lateral Space)» + «ha validato «…»». */
@@ -490,6 +493,11 @@ export interface ActivityLine {
   text: string;
   /** Eventi uniti nella riga (più risposte dello stesso referente, per esempio). */
   count: number;
+  /**
+   * (Rilascio 10, §3.5) Il titolo della domanda come sta nella frase (`shown`, tra virgolette, accorciato solo oltre 80
+   * caratteri) e intero (`full`), con la domanda da aprire; null se la frase non nomina una domanda.
+   */
+  question: { shown: string; full: string; itemId: string | null; itemStatus: ItemStatus | null } | null;
 }
 
 export interface ActivityDay {
@@ -558,11 +566,13 @@ function payloadCount(p: Readonly<Record<string, unknown>>, key: string): number
 
 const FORMAT_LABEL: Readonly<Record<string, string>> = { json: "JSON", md: "Markdown", xlsx: "Excel", csv: "CSV" };
 const CHECK_OUTCOME: Readonly<Record<string, string>> = { ok: "a posto", avviso: "con un avviso", errore: "con un errore" };
+/** L'esito di più controlli in una riga (8 parole al massimo): «ha controllato 3 domande con avvisi». */
+const CHECK_OUTCOME_MANY: Readonly<Record<string, string>> = { ok: "a posto", avviso: "con avvisi", errore: "con errori" };
 const ZONE_ACTION: Readonly<Record<string, string>> = {
-  proposta: "ha proposto un accesso ai dati personali",
-  firmata: "ha firmato un accesso ai dati personali",
-  attivata: "ha attivato un accesso ai dati personali",
-  revocata: "ha tolto un accesso ai dati personali",
+  proposta: "ha proposto l'accesso ai dati personali",
+  firmata: "ha firmato l'accesso ai dati personali",
+  attivata: "ha attivato l'accesso ai dati personali",
+  revocata: "ha tolto l'accesso ai dati personali",
 };
 
 /**
@@ -593,8 +603,8 @@ function roleLabel(v: string | null): string | null {
 
 function catalogVersion(p: Readonly<Record<string, unknown>>): string {
   const v = p.version;
-  if (v === "bozza") return "la bozza del catalogo";
-  return typeof v === "number" && v > 0 ? `il catalogo v${v}` : "il catalogo";
+  if (v === "bozza") return "la bozza";
+  return typeof v === "number" && v > 0 ? `la versione ${v}` : "il catalogo";
 }
 
 function phraseOf(row: ActivityRow, audience: Audience): Phrase {
@@ -616,17 +626,17 @@ function phraseOf(row: ActivityRow, audience: Audience): Phrase {
     case "caso.ambiente_ai":
       return { one: p.approved === true ? "ha approvato l'ambiente AI" : "ha registrato l'ambiente AI" };
     case "caso.regola_gate_confermata":
-      return { one: "ha confermato la regola del via allo sviluppo" };
+      return { one: "ha confermato la regola del via" };
     case "membro.aggiunto": {
       const role = roleLabel(payloadString(p, "role"));
-      return { one: role ? `ha aggiunto una persona come ${role}` : "ha aggiunto una persona alla realizzazione" };
+      return { one: role ? `ha dato il ruolo «${role}»` : "ha aggiunto una persona alla realizzazione" };
     }
     case "membro.rimosso": {
       const role = roleLabel(payloadString(p, "role"));
-      return { one: role ? `ha tolto una persona dal ruolo ${role}` : "ha tolto una persona dalla realizzazione" };
+      return { one: role ? `ha tolto il ruolo «${role}»` : "ha tolto una persona dalla realizzazione" };
     }
     case "membro.zona_personale":
-      return { one: ZONE_ACTION[payloadString(p, "action") ?? ""] ?? "ha cambiato un accesso ai dati personali" };
+      return { one: ZONE_ACTION[payloadString(p, "action") ?? ""] ?? "ha cambiato l'accesso ai dati personali" };
     case "referente.creato":
       return { one: "ha aggiunto un referente", many: (n) => `ha aggiunto ${formatCountIt(n)} referenti`, group: "" };
     case "referente.modificato":
@@ -635,17 +645,17 @@ function phraseOf(row: ActivityRow, audience: Audience): Phrase {
       return { one: "ha anonimizzato un referente", many: (n) => `ha anonimizzato ${formatCountIt(n)} referenti`, group: "" };
     case "firmatario.designato": {
       const d = payloadString(p, "designation");
-      return { one: d === "owner" ? "ha indicato il responsabile del cliente" : d === "privacy" ? "ha indicato chi firma la privacy" : "ha indicato chi firma per il cliente" };
+      return { one: d === "owner" ? "ha indicato il responsabile del cliente" : d === "privacy" ? "ha indicato chi firma la privacy" : "ha indicato chi firma" };
     }
     case "voce.creata":
       return { one: `ha aggiunto ${q}`, many: (n) => `ha aggiunto ${formatCountIt(n)} domande`, group: "" };
     case "voce.modificata":
       return { one: `ha modificato ${q}`, many: (n) => `ha modificato ${formatCountIt(n)} domande`, group: "" };
     case "voce.classe_privacy_cambiata":
-      return { one: `ha cambiato la riservatezza di ${q}`, many: (n) => `ha cambiato la riservatezza di ${formatCountIt(n)} domande`, group: "" };
+      return { one: `ha cambiato la riservatezza di ${q}`, many: (n) => `ha cambiato riservatezza a ${formatCountIt(n)} domande`, group: "" };
     case "voce.stato_cambiato": {
       const to = itemStateLabel(row.toState, audience);
-      if (!to) return { one: `ha cambiato lo stato di ${q}`, many: (n) => `ha cambiato lo stato di ${formatCountIt(n)} domande`, group: "" };
+      if (!to) return { one: `ha cambiato lo stato di ${q}`, many: (n) => `ha cambiato stato a ${formatCountIt(n)} domande`, group: "" };
       if (row.toState === "validata") {
         // (Rilascio 10, §3.20 dell'audit) «a posto», come nel resto dell'app; mai «validato».
         return { one: `ha messo a posto ${q}`, many: (n) => `ha messo a posto ${formatCountIt(n)} domande`, auto: `${capitalize(q)} è a posto.`, autoMany: (n) => `${formatCountIt(n)} domande sono a posto.`, group: "validata" };
@@ -660,7 +670,7 @@ function phraseOf(row: ActivityRow, audience: Audience): Phrase {
     }
     case "voce.stato_importato": {
       const n = payloadCount(p, "count");
-      return { one: n !== null ? `ha importato lo stato di ${plural(n, "una domanda", "domande")}` : "ha importato lo stato delle domande" };
+      return { one: n !== null ? `ha importato ${plural(n, "lo stato di una domanda", "stati di domande")}` : "ha importato gli stati" };
     }
     case "voce.assegnata": {
       const n = payloadCount(p, "count");
@@ -676,20 +686,21 @@ function phraseOf(row: ActivityRow, audience: Audience): Phrase {
     case "voce.deroga_firmata":
       return { one: `ha firmato «Partire senza risposta» per ${q}` };
     case "voce.ripiego_firmato":
-      return { one: `ha firmato la soluzione provvisoria per ${q}` };
+      return { one: `ha firmato «Soluzione provvisoria» per ${q}` };
     case "risposta.inviata":
       if (row.actorType === "utente") return { one: `ha registrato una risposta a ${q}`, many: (n) => `ha registrato ${formatCountIt(n)} risposte`, group: "" };
       return { one: `ha risposto a ${q}`, many: (n) => `ha risposto a ${formatCountIt(n)} domande`, group: "" };
     case "risposta.letta_personale":
-      return { one: `ha letto un dato personale di ${q}`, many: (n) => `ha letto ${formatCountIt(n)} dati personali`, group: "" };
+      return { one: `ha letto un dato personale: ${q}`, many: (n) => `ha letto ${formatCountIt(n)} dati personali`, group: "" };
     case "risposta.cancellata_privacy":
-      return { one: `ha cancellato un dato personale di ${q}`, auto: `Un dato personale di ${q} è stato cancellato.` };
+      return { one: `ha cancellato un dato personale: ${q}`, auto: `Dato personale cancellato: ${q}.` };
     case "validazione.registrata": {
       const outcome = CHECK_OUTCOME[payloadString(p, "outcome") ?? ""] ?? null;
       const tail = outcome ? `: ${outcome}` : "";
+      const outcomeMany = CHECK_OUTCOME_MANY[payloadString(p, "outcome") ?? ""] ?? null;
       return {
         one: `ha controllato ${q}${tail}`,
-        many: (n) => `ha controllato ${formatCountIt(n)} domande${tail}`,
+        many: (n) => `ha controllato ${formatCountIt(n)} domande${outcomeMany ? ` ${outcomeMany}` : ""}`,
         auto: `Controllo automatico su ${q}${tail}.`,
         autoMany: (n) => `Controllo automatico su ${formatCountIt(n)} domande${tail}.`,
         group: payloadString(p, "outcome") ?? "",
@@ -707,8 +718,8 @@ function phraseOf(row: ActivityRow, audience: Audience): Phrase {
       if (payloadString(p, "purpose") === "approvazioni") return { one: `${verb} un link per firmare` };
       const n = payloadCount(p, "items");
       return {
-        one: n !== null ? `${verb} ${plural(n, "una domanda", "domande")} a un referente` : `${verb} una richiesta a un referente`,
-        many: (k) => `${verb} le domande a ${formatCountIt(k)} referenti`,
+        one: n !== null ? `${verb} ${plural(n, "una domanda", "domande")}` : `${verb} una richiesta`,
+        many: (k) => `${verb} domande a ${formatCountIt(k)} referenti`,
         group: "",
       };
     }
@@ -719,16 +730,16 @@ function phraseOf(row: ActivityRow, audience: Audience): Phrase {
     case "richiesta.scaduta":
       return { one: "ha chiuso una richiesta scaduta", auto: "Una richiesta è scaduta.", autoMany: (n) => `${formatCountIt(n)} richieste sono scadute.`, group: "" };
     case "richiesta.prorogata":
-      return { one: "ha spostato la scadenza di una richiesta" };
+      return { one: "ha spostato una scadenza" };
     case "link.aperto":
       return { one: "ha aperto il link", many: (n) => `ha aperto il link ${formatCountIt(n)} volte`, group: "" };
     case "link.copiato":
       return { one: "ha copiato un link" };
     case "link.revocati_tutti":
-      return { one: "ha revocato tutti i link dei referenti" };
+      return { one: "ha revocato tutti i link" };
     case "delega.creata": {
       const n = payloadCount(p, "items");
-      return { one: n !== null ? `ha girato ${plural(n, "una domanda", "domande")} a un'altra persona` : "ha girato delle domande a un'altra persona" };
+      return { one: n !== null ? `ha delegato ${plural(n, "una domanda", "domande")}` : "ha delegato delle domande" };
     }
     case "delega.approvata":
       return { one: "ha approvato una delega" };
@@ -736,17 +747,17 @@ function phraseOf(row: ActivityRow, audience: Audience): Phrase {
       return { one: "ha letto l'informativa privacy" };
     case "file.caricato":
       return {
-        one: payloadString(p, "zona") === "personale" ? "ha caricato un file con dati personali" : "ha caricato un file",
+        one: payloadString(p, "zona") === "personale" ? "ha caricato un file personale" : "ha caricato un file",
         many: (n) => `ha caricato ${formatCountIt(n)} file`,
         group: "",
       };
     case "file.rifiutato":
-      return { one: "ha rifiutato un file", auto: "Un file non ha passato il controllo ed è stato rifiutato." };
+      return { one: "ha rifiutato un file", auto: "Un file non ha passato il controllo." };
     case "file.revisionato":
       return { one: "ha controllato un file" };
     case "file.scaricato":
       return {
-        one: payloadString(p, "zona") === "personale" ? "ha scaricato un file con dati personali" : "ha scaricato un file",
+        one: payloadString(p, "zona") === "personale" ? "ha scaricato un file personale" : "ha scaricato un file",
         many: (n) => `ha scaricato ${formatCountIt(n)} file`,
         group: payloadString(p, "zona") ?? "",
       };
@@ -755,7 +766,7 @@ function phraseOf(row: ActivityRow, audience: Audience): Phrase {
     case "dataset.creato":
       return { one: "ha registrato un dataset" };
     case "dataset.validato":
-      return { one: "ha approvato la scheda di un dataset" };
+      return { one: "ha approvato un dataset" };
     case "blocco.attivato":
     case "blocco.firmato":
     case "blocco.sciolto":
@@ -764,7 +775,7 @@ function phraseOf(row: ActivityRow, audience: Audience): Phrase {
       const name = key ? `«${blockerLabel(key)}»` : "un blocco";
       if (row.type === "blocco.attivato") return { one: `ha attivato il blocco ${name}`, auto: `Si è attivato il blocco ${name}.` };
       if (row.type === "blocco.firmato") return { one: key === "a8" ? "ha firmato la scheda privacy" : `ha firmato per sciogliere ${name}` };
-      if (row.type === "blocco.sciolto") return { one: key === "a8" ? "ha completato le firme della scheda privacy" : `ha sciolto il blocco ${name}`, auto: `Il blocco ${name} è sciolto.` };
+      if (row.type === "blocco.sciolto") return { one: key === "a8" ? "ha completato la scheda privacy" : `ha sciolto il blocco ${name}`, auto: `Il blocco ${name} è sciolto.` };
       return { one: `ha riattivato il blocco ${name}` };
     }
     case "gate.proposto":
@@ -784,8 +795,9 @@ function phraseOf(row: ActivityRow, audience: Audience): Phrase {
       return { one: v ? `ha fissato il catalogo (versione ${v})` : "ha fissato il catalogo", auto: v ? `Catalogo fissato (versione ${v}).` : "Catalogo fissato." };
     }
     case "catalogo.esportato": {
+      // (Rilascio 10) Niente «v2» a schermo: «la versione 2», «la bozza», con il formato tra parentesi.
       const f = FORMAT_LABEL[payloadString(p, "format") ?? ""];
-      return { one: `ha scaricato ${catalogVersion(p)}${f ? ` in ${f}` : ""}` };
+      return { one: `ha scaricato ${catalogVersion(p)}${f ? ` (${f})` : ""}` };
     }
     case "catalogo.letto_mcp":
       return { one: "ha letto il catalogo", many: (n) => `ha letto il catalogo ${formatCountIt(n)} volte`, group: "" };
@@ -800,7 +812,7 @@ function phraseOf(row: ActivityRow, audience: Audience): Phrase {
     case "seed.applicato":
       return { one: "ha caricato lo stato di partenza", auto: "Stato di partenza caricato." };
     case "seed.valore_omesso":
-      return { one: "ha lasciato fuori un valore già dichiarato", auto: "Un valore già dichiarato non è stato caricato." };
+      return { one: "ha escluso un valore già dichiarato", auto: "Un valore già dichiarato non è stato caricato." };
     case "notifica.inviata": {
       const email = payloadString(p, "channel") === "email";
       return {
@@ -811,7 +823,7 @@ function phraseOf(row: ActivityRow, audience: Audience): Phrase {
       };
     }
     case "notifica.errore":
-      return { one: "non è riuscito a inviare una notifica", auto: "Una notifica non è partita.", autoMany: (n) => `${formatCountIt(n)} notifiche non sono partite.`, group: "" };
+      return { one: "non ha potuto inviare una notifica", auto: "Una notifica non è partita.", autoMany: (n) => `${formatCountIt(n)} notifiche non sono partite.`, group: "" };
     default:
       return { one: `ha fatto un'azione sulla realizzazione (${label.toLowerCase()})`, auto: `${label}.` };
   }
@@ -841,40 +853,28 @@ export function activityWho(row: Pick<ActivityRow, "actorType" | "actorName" | "
   }
 }
 
-/** (Rilascio 10, §3.5) Una riga di Attività dice al massimo 8 parole, chi ha agito compreso. */
+/**
+ * (Rilascio 10, §3.5) Una riga di Attività dice al massimo 8 parole, chi ha agito compreso, oltre a ciò che sta tra
+ * virgolette (il titolo di una domanda, un blocco, uno stato): si accorcia il verbo, mai il titolo, e la riga va a capo.
+ */
 export const ACTIVITY_LINE_MAX_WORDS = 8;
 
-const words = (s: string) => s.split(/\s+/).filter(Boolean);
-
-/**
- * Accorcia il titolo della domanda (`title`, già tra virgolette da `quoted`) perché la riga stia in
- * `ACTIVITY_LINE_MAX_WORDS` parole: almeno una parola del titolo resta, con «…». Il verbo, chi ha agito e gli stati tra
- * virgolette («In pausa») non si toccano: una riga senza il titolo resta com'è.
- */
-export function clampActivityLine(who: string | null, text: string, title: string | null, max = ACTIVITY_LINE_MAX_WORDS): string {
-  const total = (who ? words(who).length : 0) + words(text).length;
-  const at = title ? text.indexOf(title) : -1;
-  if (total <= max || !title || at < 0 || !/^«[^»]*»$/.test(title)) return text;
-  const inner = words(title.slice(1, -1).replace(/…$/, ""));
-  const keep = Math.max(1, inner.length - (total - max));
-  if (keep >= inner.length) return text;
-  const short = inner.slice(0, keep).join(" ").replace(/[\s,;:.]+$/, "");
-  return `${text.slice(0, at)}«${short}…»${text.slice(at + title.length)}`;
+/** Le parole di una riga, con ogni «…» contato come una parola sola. */
+export function activityLineWords(who: string | null, text: string): number {
+  const words = (s: string) => s.split(/\s+/).filter(Boolean).length;
+  return (who ? words(who) : 0) + words(text.replace(/«[^»]*»/g, "«»"));
 }
 
-/** La frase di una riga (uno o più eventi uguali e consecutivi), in al massimo 8 parole con chi ha agito. */
+/** La frase di una riga (uno o più eventi uguali e consecutivi). */
 export function activityText(row: ActivityRow, audience: Audience, count = 1): { who: string | null; text: string } {
   const phrase = phraseOf(row, audience);
   const who = activityWho(row);
-  const title = row.itemTitle?.trim() ? quoted(row.itemTitle) : null;
-  // Il titolo si cerca anche con la maiuscola della frase automatica («Quanti…» è a posto).
-  const clamp = (line: string) => clampActivityLine(who, line, title && !line.includes(title) ? capitalize(title) : title);
   if (who === null) {
-    if (count > 1 && phrase.autoMany) return { who: null, text: clamp(phrase.autoMany(count)) };
-    if (phrase.auto) return { who: null, text: clamp(phrase.auto) };
-    return { who: null, text: clamp(`${capitalize(count > 1 && phrase.many ? phrase.many(count) : phrase.one)} (in automatico).`) };
+    if (count > 1 && phrase.autoMany) return { who: null, text: phrase.autoMany(count) };
+    if (phrase.auto) return { who: null, text: phrase.auto };
+    return { who: null, text: `${capitalize(count > 1 && phrase.many ? phrase.many(count) : phrase.one)} (in automatico).` };
   }
-  return { who, text: clamp(count > 1 && phrase.many ? phrase.many(count) : phrase.one) };
+  return { who, text: count > 1 && phrase.many ? phrase.many(count) : phrase.one };
 }
 
 function groupKeyOf(row: ActivityRow, audience: Audience): string | null {
@@ -897,7 +897,10 @@ export function activityDays(rows: readonly ActivityRow[], o: { now: Date; audie
     if (!current) return;
     const day = days[days.length - 1];
     const { who, text } = activityText(current.row, o.audience, current.count);
-    day.lines.push({ id: current.row.id, time: romeTime(current.row.at), who, text, count: current.count });
+    const title = current.row.itemTitle?.trim().replace(/\s+/g, " ") ?? "";
+    const shown = title ? quoted(title) : null;
+    const question = shown && text.includes(shown) ? { shown, full: `«${title}»`, itemId: current.row.itemId ?? null, itemStatus: current.row.itemStatus ?? null } : null;
+    day.lines.push({ id: current.row.id, time: romeTime(current.row.at), who, text, count: current.count, question });
     current = null;
   };
   for (const row of rows) {

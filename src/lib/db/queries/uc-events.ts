@@ -31,7 +31,7 @@ import {
 import type { MemberRowInput } from "../../uc/views/people.ts";
 import type { BlockerRowInput } from "../../uc/views/privacy.ts";
 import { clientPlainText, type CaseViewContext } from "../../uc/views/rows.ts";
-import { CASE_ROLES, EVENT_ACTOR_TYPES, PRIVACY_CLASSES, type EventActorType, type PrivacyClass } from "../../uc/vocab.ts";
+import { CASE_ROLES, EVENT_ACTOR_TYPES, ITEM_STATUSES, PRIVACY_CLASSES, type EventActorType, type PrivacyClass } from "../../uc/vocab.ts";
 import type { UcExecutor } from "../uc-executor.ts";
 import { UUID } from "../../uc/ids.ts";
 import { caseViewContextReader } from "./uc-views.ts";
@@ -454,7 +454,7 @@ function activityRowsSql(i: ActivityQuery & { limit: number; offset: number }): 
   return toStatement(ucSql`SELECT e.id, e.created_at, e.event_type, e.actor_type, e.actor_user_id, e.actor_contact_id, e.target_type, e.from_state, e.to_state, e.payload,
   CASE WHEN e.actor_type = 'utente' THEN ${userName} WHEN e.actor_type = 'referente' THEN ${contactName} ELSE NULL END AS actor_name,
   (e.actor_type = 'utente' AND ${eventActorIsLsSql(i.lsDomains)}) AS actor_is_ls,
-  it.title AS item_title
+  it.title AS item_title, it.id AS item_id, it.status AS item_status
 FROM uc_events e
 LEFT JOIN users u ON u.id = e.actor_user_id
 LEFT JOIN uc_contacts ct ON ct.id = e.actor_contact_id AND ct.workspace_id = e.workspace_id
@@ -481,6 +481,9 @@ function toActivityRow(r: Record<string, unknown>): ActivityRow | null {
     actorKey: actorId ? `${actorType}:${actorId}` : actorType,
     actorIsLs: rowBool(r.actor_is_ls),
     itemTitle: rowString(r.item_title),
+    // (Rilascio 10, §3.5) La domanda del titolo, da aprire dalla riga di Attività se chi guarda la apre.
+    itemId: rowString(r.item_id),
+    itemStatus: rowVocab(ITEM_STATUSES, r.item_status),
   };
 }
 

@@ -4,7 +4,7 @@ import { History } from "lucide-react";
 import { PageContainer } from "@/components/dashboard/page-container";
 import { FilterChips } from "@/components/ui-10/filter-chips";
 import { buttonVariants } from "@/components/ui/button";
-import { casePath } from "@/components/uc/catalog/paths";
+import { casePath, itemPath } from "@/components/uc/catalog/paths";
 import { ActivityCsvLink, ActivityPagination, ActivityTimeline, DailyAnswerBars } from "@/components/uc/progress/audit-log";
 import { loadCaseHead } from "@/components/uc/shell/case-data";
 import { EmptyState } from "@/components/uc/ui/empty-state";
@@ -15,7 +15,8 @@ import { romeDate } from "@/lib/uc/notify/schedule";
 import { PERIOD_PARAM, periodOptions, periodValue } from "@/lib/uc/views/activity-period";
 import { activeAuditFilters, activityDays, auditFamiliesFor, auditQuery, auditWhoFor, dailyAnswerBars, parseAuditFilter, withoutLegacyActor } from "@/lib/uc/views/audit";
 import { canOpenShellPage, seesFilteredAudit } from "@/lib/uc/views/case-shell";
-import { seesPersonalZoneMetadata } from "@/lib/uc/views/page-access";
+import { canOpenItem, canOpenPage, seesPersonalZoneMetadata } from "@/lib/uc/views/page-access";
+import type { ItemStatus } from "@/lib/uc/vocab";
 import { cn } from "@/lib/utils";
 
 /**
@@ -48,6 +49,9 @@ export default async function ActivityPage({
   const basePath = casePath(workspaceId, caseId, "attivita");
   const csvHref = `${casePath(workspaceId, caseId, "attivita/csv")}${auditQuery({ ...filter, pagina: 1 })}`;
   const filtered = activeAuditFilters(filter) > 0;
+  // (Rilascio 10, §3.5) Il titolo di una domanda porta alla domanda, per chi la apre.
+  const roles = caseAccess.roles;
+  const questionHref = canOpenPage("voce", roles) ? (itemId: string, status: ItemStatus | null) => (status === null || canOpenItem(roles, status) ? itemPath(workspaceId, caseId, itemId) : null) : null;
   // Il filtro comune: i parametri di adesso, con il periodo in un parametro solo.
   const period = periodValue(filter.dal, filter.al);
   const query: Record<string, string> = {};
@@ -100,7 +104,7 @@ export default async function ActivityPage({
           )
         ) : (
           <div className="space-y-6">
-            <ActivityTimeline days={days} />
+            <ActivityTimeline days={days} questionHref={questionHref} />
             <ActivityPagination basePath={basePath} filter={filter} total={page.total} />
           </div>
         )}

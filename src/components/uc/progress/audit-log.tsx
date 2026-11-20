@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
-import { ACTIVITY_PAGE_SIZE, auditQuery, type ActivityDay, type AuditFilter } from "@/lib/uc/views/audit";
+import { ACTIVITY_PAGE_SIZE, auditQuery, type ActivityDay, type ActivityLine, type AuditFilter } from "@/lib/uc/views/audit";
+import type { ItemStatus } from "@/lib/uc/vocab";
 import { cn } from "@/lib/utils";
 import { formatCountIt } from "@/lib/uc/views/format";
 
@@ -14,7 +15,43 @@ import { formatCountIt } from "@/lib/uc/views/format";
  */
 
 
-export function ActivityTimeline({ days }: { days: readonly ActivityDay[] }) {
+/**
+ * La frase di una riga con il titolo della domanda intero e raggiungibile (rilascio 10, §3.5): un link alla domanda
+ * per chi la apre (`questionHref`), altrimenti il titolo con il suo `title`; accorciato oltre 80 caratteri, il titolo
+ * intero resta nel `title` e per i lettori di schermo.
+ */
+function LineText({ line, questionHref }: { line: ActivityLine; questionHref?: QuestionHref | null }) {
+  const q = line.question;
+  const at = q ? line.text.indexOf(q.shown) : -1;
+  if (!q || at < 0) return <>{line.text}</>;
+  const cut = q.full !== q.shown;
+  const label = (
+    <>
+      <span aria-hidden={cut || undefined}>{q.shown}</span>
+      {cut ? <span className="sr-only">{q.full}</span> : null}
+    </>
+  );
+  const href = q.itemId && questionHref ? questionHref(q.itemId, q.itemStatus) : null;
+  const title = href ? (
+    <Link href={href} title={cut ? q.full : undefined} className="underline decoration-foreground/30 underline-offset-4 hover:decoration-foreground">
+      {label}
+    </Link>
+  ) : (
+    <span title={cut ? q.full : undefined}>{label}</span>
+  );
+  return (
+    <>
+      {line.text.slice(0, at)}
+      {title}
+      {line.text.slice(at + q.shown.length)}
+    </>
+  );
+}
+
+/** Dove porta il titolo di una domanda: la sua pagina, se chi guarda la apre; altrimenti null. */
+export type QuestionHref = (itemId: string, status: ItemStatus | null) => string | null;
+
+export function ActivityTimeline({ days, questionHref = null }: { days: readonly ActivityDay[]; questionHref?: QuestionHref | null }) {
   return (
     <div className="space-y-6">
       {days.map((day) => (
@@ -29,10 +66,10 @@ export function ActivityTimeline({ days }: { days: readonly ActivityDay[] }) {
                 <p className="min-w-0 break-words">
                   {line.who ? (
                     <>
-                      <span className="font-medium">{line.who}</span> {line.text}
+                      <span className="font-medium">{line.who}</span> <LineText line={line} questionHref={questionHref} />
                     </>
                   ) : (
-                    line.text
+                    <LineText line={line} questionHref={questionHref} />
                   )}
                 </p>
               </li>
