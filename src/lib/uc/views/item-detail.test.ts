@@ -247,7 +247,7 @@ test("the reason typed with «Manca il dato» or «Risposta parziale» stays vis
   assert.deepEqual(findForbiddenIn([statusReasonLine("mancante", "x", true) ?? "", statusReasonLine("parziale", "x", true) ?? ""], "cliente"), []);
 });
 
-test("panel actions for the client: one action, «Affida a un altro collega» (§3.6.8)", () => {
+test("panel actions for the client: one action, «Affida a…» (§3.6.8)", () => {
   const loaded = rowToLoadedItem(snapshotRow({ status: "chiesta", a_id: null, current_answer_id: null }));
   const actions = itemActions({ ...base, loaded, roles: ["owner_cliente"], user: ownerUser });
   assert.deepEqual(questionActionPlan({ status: "chiesta", actions, askAgain: false, reassign: true, client: true }), { primary: ["reassign"], more: [] });
@@ -255,15 +255,18 @@ test("panel actions for the client: one action, «Affida a un altro collega» (�
   assert.deepEqual(findForbiddenIn([QUESTION_ACTION_LABEL.reassign], "cliente"), []);
 });
 
-test("«Chiedi di nuovo» only for the lead, with a referent, from the states that can be sent", () => {
+test("«Chiedi al referente» only for the lead, with a referent, from the states that can be sent", () => {
   const ok = { status: "mancante" as const, hasAssignee: true, roles: ["ls_lead"] as CaseRole[], writable: true };
   assert.equal(canAskAgain(ok), true);
   assert.equal(canAskAgain({ ...ok, hasAssignee: false }), false);
   assert.equal(canAskAgain({ ...ok, roles: ["ls_analista"] }), false);
   assert.equal(canAskAgain({ ...ok, status: "chiesta" }), false);
   assert.equal(canAskAgain({ ...ok, writable: false }), false);
-  assert.equal(askAgainLabel("da_chiedere"), "Chiedi al referente");
-  assert.equal(askAgainLabel("mancante"), "Chiedi di nuovo");
+  // (Rilascio 10, §4) One verb to ask, the first time and after: the same words as the selection and Persone.
+  assert.equal(askAgainLabel(), "Chiedi al referente");
+  assert.equal(QUESTION_ACTION_LABEL.askAgain, "Chiedi al referente");
+  assert.equal(QUESTION_ACTION_LABEL.reassign, "Affida a…");
+  assert.equal(QUESTION_ACTION_LABEL.record, "Inserisci il valore");
 });
 
 test("pending signature notice: who is missing, and [Firma] only for who can sign", () => {
@@ -317,7 +320,7 @@ test("answer for the client: only the value, and only if the role sees it (§3.6
   const personal = rowsToAnswers(answerRows, { privacyClass: "personale", valueVisibility: "owner_e_ls", currentAnswerId: ANSWER, validatedAnswerId: null, roleLabels: {}, roles: ["owner_cliente"] });
   assert.equal(questionAnswerView(personal, [], { client: true, now: NOW })?.value.kind, "hidden");
   const delegated = rowsToAnswers([{ ...answerRows[0], kind: "delega", value: null }], { privacyClass: "riservato_azienda", valueVisibility: "owner_e_ls", currentAnswerId: ANSWER, validatedAnswerId: null, roleLabels: {}, roles: ["owner_cliente"] });
-  assert.equal(questionAnswerView(delegated, [], { client: true, now: NOW })?.summary, "L'ha girata a un collega");
+  assert.equal(questionAnswerView(delegated, [], { client: true, now: NOW })?.summary, "L'ha girata a un'altra persona");
   // «Il referente non ha ancora risposto» only when nobody answered.
   assert.equal(questionAnswerView([], [], { client: true, now: NOW }), null);
   assert.equal(questionAnswerView([], [], { client: false, now: NOW }), null);
@@ -358,7 +361,7 @@ test("answers that are not a value are said in words, never as raw data", () => 
   assert.equal(nonValueAnswerText("non_so", { who_might_know: "il responsabile dei turni" }), "Non lo sa: potrebbe saperlo il responsabile dei turni");
   assert.equal(nonValueAnswerText("non_so", null), "Non lo sa");
   assert.equal(nonValueAnswerText("proposta_na", { reason: "Il costo non cambia." }), "Propone “non si applica”: Il costo non cambia.");
-  assert.equal(nonValueAnswerText("delega", {}), "L'ha girata a un collega");
+  assert.equal(nonValueAnswerText("delega", {}), "L'ha girata a un'altra persona");
   assert.equal(nonValueAnswerText("valore", { value: 1 }), null);
   const [na] = rowsToAnswers([{ ...answerRows[0], kind: "proposta_na", value: { reason: "Non serve." } }], {
     privacyClass: "riservato_azienda",

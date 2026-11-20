@@ -7,7 +7,7 @@
  *   mandare voci che il comando rifiuterebbe comunque: il comando ricontrolla
  *   ogni voce (permessi, transizione, CAS) e dice quali ha saltato e perché.
  * - I lotti seguono i limiti dei comandi: 500 voci per assegnazione, scadenza
- *   ed esiti; 2.000 per «Invia» e «Chiedi conferma», che fanno una richiesta per
+ *   ed esiti; 2.000 per «Chiedi al referente» e «Chiedi conferma al referente», che fanno una richiesta per
  *   referente a ogni chiamata (lotti grandi = meno link per la stessa persona).
  *
  * Modulo puro, usato anche nel browser.
@@ -116,10 +116,10 @@ export function skippedText(groups: readonly SkipGroup[], unlisted = 0): string 
 
 /** Le azioni della selezione in Domande: con quale parola si chiamano (§3.6.2). */
 export const BULK_ACTION_LABEL: Readonly<Record<BulkActionKey, string>> = {
-  // (Rilascio 10, §4) «Affida a…», la stessa parola nella selezione e in Persone.
+  // (Rilascio 10, §4) «Affida a…» e «Chiedi al referente»: le stesse parole nella selezione, nel pannello della domanda e in Persone.
   assign: "Affida a…",
-  send: "Invia",
-  confirm: "Chiedi conferma",
+  send: "Chiedi al referente",
+  confirm: "Chiedi conferma al referente",
   due: "Imposta la scadenza",
   missing: "Segna: manca il dato",
   partial: "Segna: risposta parziale",
