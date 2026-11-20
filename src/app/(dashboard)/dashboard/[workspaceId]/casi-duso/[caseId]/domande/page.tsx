@@ -129,6 +129,7 @@ export default async function QuestionsPage({
         groups={data.groups}
         total={data.total}
         files={data.files}
+        mine={data.counts.mine}
         permissions={{ ...permissions, any: Object.values(permissions).some(Boolean) }}
         contacts={data.contacts}
         reviewHref={reviewHref}

@@ -135,6 +135,7 @@ function listProps(filter: QuestionFilter, over: Record<string, unknown> = {}) {
     groups: [] as QuestionGroupView[],
     total: SEGMENTS[filter.vista],
     files: 6,
+    mine: 0,
     permissions: { any: true, assign: true, setDue: true, outcomes: true, proposeNa: true, send: true },
     contacts: [],
     reviewHref: null,
@@ -197,6 +198,10 @@ test("«Da verificare»: «Verifica una alla volta» is a quiet link only when t
   assert.deepEqual(filled(quiet), [], "never a second button for the same destination");
   const none = html(h(list.QuestionList, listProps(filter, { reviewHref: null })));
   assert.doesNotMatch(none, /Verifica una alla volta/);
+  // I quattro occhi in una riga grigia: perché manca una risposta che chi guarda ha dato.
+  const mine = html(h(list.QuestionList, listProps(filter, { mine: 2 })));
+  assert.match(mine, /<p class="text-sm text-muted-foreground">2 risposte non sono qui perché le hai date tu: le verifica un&#x27;altra persona\.<\/p>|<p class="text-sm text-muted-foreground">2 risposte non sono qui perché le hai date tu: le verifica un'altra persona\.<\/p>/);
+  assert.doesNotMatch(html(h(list.QuestionList, listProps(parseQuestionFilter({}, "ls", PREP), { mine: 2 }))), /le hai date tu/, "only in «Da verificare»");
 });
 
 test("the client: «Da rispondere · In verifica · Tutte»; the referent filter offers only «Senza referente»", () => {

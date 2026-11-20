@@ -16,6 +16,7 @@ import { DOMANDE_TEXT } from "@/lib/uc/views/domande-text";
 import { formatCountIt } from "@/lib/uc/views/format";
 import { WORDS } from "@/lib/uc/views/labels";
 import type { QuestionFilterField } from "@/lib/uc/views/question-bar";
+import { mineExcludedText } from "@/lib/uc/views/verification";
 import type { ContactOption, QuestionGroupView, QuestionRowView, QuestionSegmentItem, QuestionTopicGroup } from "@/lib/uc/views/rows";
 import { QuestionSelectionBar, type BulkPermissions, type BulkSelection } from "./bulk-actions";
 import { QuestionToolbar } from "./catalog-filters";
@@ -57,6 +58,8 @@ export interface QuestionListProps {
   total: number;
   /** I file dell'archivio, per «File (6)». */
   files: number;
+  /** Risposte da verificare date da chi guarda (Lateral Space): le verifica un'altra persona, e una riga lo dice. */
+  mine: number;
   permissions: BulkPermissions;
   contacts: ContactOption[];
   /** «Verifica una alla volta», solo se il pulsante pieno della testata non ci porta già. */
@@ -158,6 +161,7 @@ export function QuestionList(props: QuestionListProps) {
     />
   );
 
+  const mineNote = audience === "ls" && filter.vista === "da-verificare" ? mineExcludedText(props.mine, "elenco") : null;
   const waitingHref = `${basePath}${questionQuery(filter, defaults, segmentPatch(filter, "bloccate"))}`;
   const topicPatch = (key: string): Partial<QuestionFilter> => ({ argomento: key });
   const pages = Math.max(1, Math.ceil(total / QUESTIONS_PAGE_SIZE));
@@ -187,6 +191,8 @@ export function QuestionList(props: QuestionListProps) {
       />
 
       {props.reviewHref && <TextAction href={props.reviewHref}>{DOMANDE_TEXT.bar.review}</TextAction>}
+      {/* I quattro occhi: perché in «Da verificare» manca una risposta che chi guarda conosce. */}
+      {mineNote && <p className="text-sm text-muted-foreground">{mineNote}</p>}
       {selectable && selecting && props.collapsed && <p className="text-sm text-muted-foreground">{DOMANDE_TEXT.bar.selectTopics}</p>}
 
       <div aria-busy={pending} className={cn("min-w-0 space-y-6 transition-opacity", pending && "opacity-60")}>
