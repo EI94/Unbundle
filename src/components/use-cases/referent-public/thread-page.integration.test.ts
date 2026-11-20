@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { REFERENT_PRIVACY_NOTICE } from "../../../lib/use-cases/referent/labels.ts";
 
 /** `module.registerHooks` di Node 24 (i tipi di @types/node del progetto non lo hanno ancora). */
 type ResolveResult = { url: string; shortCircuit?: boolean };
@@ -19,11 +20,12 @@ const { registerHooks } = nodeModule as unknown as {
 
 // (Rilascio 6) «Il filo con il team» sulla pagina del referente, sul database di prova, dalle rotte vere e con la
 // pagina vera `/rispondi/[token]` resa in questo processo:
-// - dopo «Invia» il link resta vivo: un chiarimento del team apre la pagina su «Da completare», con solo le cose
-//   nuove e un solo pulsante pieno («Invia»); sotto «Già inviato», con «Modifica» e «Ho un dubbio»;
+// - dopo «Invia» il link resta vivo: un chiarimento del team apre la pagina su «Novità», con solo le cose
+//   nuove e un solo pulsante pieno («Invia»); sotto «Le tue risposte (n)», chiuso, con «Modifica»; (rilascio 10)
+//   «Aggiungi qualcosa» e «Ho un dubbio» stanno in «Scrivi al team», con «Su cosa?»;
 // - la risposta al chiarimento dalla rotta: la richiesta torna completata, l'informazione «Da verificare», la
 //   campanella e l'avviso a chi ha chiesto, la proposta dell'AI in coda;
-// - «Ho un dubbio» su una voce e in generale, la risposta del team in «Da completare», poi «vista»;
+// - «Ho un dubbio» su una voce e in generale, la risposta del team in «Novità», poi «vista»;
 // - «Modifica» fino ad «A posto» (decisione 3 del titolare), poi «Aggiungi qualcosa»; l'informativa nuova prima di scrivere;
 // - le domande nuove nella stessa richiesta («Nuova domanda»);
 // - un'email al giorno con tutte le novità («Hai 2 novità sul caso d'uso …»), il link rinnovato, poi il giorno dopo;
@@ -269,17 +271,18 @@ after(async () => {
   await q(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [[ids.builder, ids.other]]);
 });
 
-test("un chiarimento del team apre la pagina su «Da completare»: solo la novità, un solo pulsante pieno; la risposta dalla rotta chiude il giro", opts, async () => {
+test("un chiarimento del team apre la pagina su «Novità»: solo la novità, un solo pulsante pieno; la risposta dalla rotta chiude il giro", opts, async () => {
   const card = await newCard();
   const r = await answeredReferent(card);
-  // Prima di ogni novità: la pagina in sola lettura, con «Modifica» e «Ho un dubbio» sotto le risposte.
+  // Prima di ogni novità: il grazie, «Scrivi al team» (pieno) e «Le tue risposte (n)» chiuso, con «Modifica» dentro.
+  // (Rilascio 10, §3.11) «Aggiungi qualcosa» e «Ho un dubbio» su ogni riga sono passati in «Scrivi al team», con «Su cosa?».
   const quiet = await html(r.token);
   assert.ok(quiet.includes("Hai risposto il"), "la scheda finale");
-  assert.ok(!quiet.includes("Da completare"));
-  assert.deepEqual(filledButtons(quiet), [], "in sola lettura nessun pulsante pieno");
-  for (const label of ["Modifica la risposta a «Volumi mensili»", "Ho un dubbio su «Volumi mensili»", "Aggiungi qualcosa a «Controllo delle fatture»", "Ho un dubbio su «Controllo delle fatture»", "Ho un dubbio su «Fatture fornitori»"]) {
-    assert.ok(ariaButtons(quiet).includes(label), label);
-  }
+  assert.ok(!quiet.includes("Novità</h2>"));
+  assert.deepEqual(filledButtons(quiet), ["Scrivi al team"], "a lavoro finito il pulsante pieno è «Scrivi al team»");
+  assert.match(quiet, /<details[^>]*data-slot="referent-sent"[^>]*><summary[^>]*>[\s\S]*?Le tue risposte \(\d+\)<\/summary>/);
+  assert.ok(ariaButtons(quiet).includes("Modifica la risposta a «Volumi mensili»"), "«Modifica» nella riga della risposta");
+  for (const gone of ["Ho un dubbio su «Volumi mensili»", "Aggiungi qualcosa a «Controllo delle fatture»", "Ho un dubbio su «Fatture fornitori»"]) assert.ok(!ariaButtons(quiet).includes(gone), gone);
 
   const asked = ok(
     await thread.askReferentClarification(ctx("other"), card.id, { requestId: r.requestId, anchor: "domanda", needId: card.needs[0], text: "Al mese o all'anno, più o meno?" }, { env: ENV, now: NOW }),
@@ -303,9 +306,11 @@ test("un chiarimento del team apre la pagina su «Da completare»: solo la novit
   assert.ok(new Date(`${view.expiresOn}T12:00:00Z`).getTime() > Date.now() + 29 * 86_400_000, "il link vale 30 giorni dalla novità");
 
   const news = await html(r.token);
-  for (const text of ["Da completare", "Hai una novità.", "Chiarimento", "Su «Volumi mensili»", "Il team chiede: «Al mese o all'anno, più o meno?»", "La tua risposta", "0 di 1 fatte", "Già inviato", "Il team ha chiesto: «Al mese o all'anno, più o meno?»", "Il gestionale"]) {
+  // (Rilascio 10, §3.11) «Novità»: il titolo della scheda è la domanda del team, la riga grigia dice dove; un solo numero.
+  for (const text of ["Novità", "Chiarimento", "Al mese o all'anno, più o meno?</h3>", "Sulla domanda «Volumi mensili»", "La tua risposta", "0 di 1 · salvato", "Le tue risposte", "Il team ha chiesto: «Al mese o all'anno, più o meno?»", "Il gestionale"]) {
     assert.ok(news.includes(text), `«${text}»`);
   }
+  for (const gone of ["Da completare", "Hai una novità.", "Il team chiede:", "Già inviato", "fatte"]) assert.ok(!news.includes(gone), gone);
   assert.deepEqual(filledButtons(news), ["Invia"], "un solo pulsante pieno: «Invia»");
   assert.ok(!news.includes("Prima di iniziare"), "l'informativa di questa versione è già letta");
   assertNothingPrivate(news);
@@ -328,7 +333,7 @@ test("un chiarimento del team apre la pagina su «Da completare»: solo la novit
   const queued = await q(`SELECT status FROM use_case_referent_suggestions WHERE request_id = $1::uuid AND need_id = $2::uuid AND status = 'da_fare'`, [r.requestId, card.needs[0]]);
   assert.equal(queued.length, Math.max(1, queuedBefore), "l'AI guarda la risposta dopo, mai qui: una riga in attesa per risposta");
   const done = await html(r.token);
-  assert.ok(!done.includes("Da completare"), "niente più di nuovo");
+  assert.ok(!done.includes("Novità</h2>"), "niente più di nuovo");
   for (const text of ["Hai risposto il", "Il team ha chiesto: «Al mese o all'anno, più o meno?»", "Hai risposto: «Al mese: circa 250 nei mesi pieni.»"]) assert.ok(done.includes(text), text);
   assertNothingPrivate(done);
 });
@@ -356,8 +361,8 @@ test("«Ho un dubbio» su una voce e in generale; la risposta del team in «Da c
   const view = await pub.loadReferentAskView(await linkOf(r.token), { env: ENV, now: new Date() });
   assert.deepEqual(view.thread.messages.filter((m) => m.side === "team").map((m) => `${m.kind}:${m.fresh}:${m.replyTo === messageId}`), ["risposta:true:true"]);
   const news = await html(r.token);
-  for (const text of ["Da completare", "Hai una novità.", "Risposta del team", "Su «Controllo delle fatture»", "Il tuo dubbio: «Contate anche i resi?»", "Sì, anche i resi."]) assert.ok(news.includes(text), text);
-  assert.deepEqual(filledButtons(news), [], "una risposta da leggere: niente da inviare");
+  for (const text of ["Novità", "Risposta del team", "Sì, anche i resi.</h3>", "Sulla voce «Controllo delle fatture»", "Il tuo dubbio: «Contate anche i resi?»"]) assert.ok(news.includes(text), text);
+  assert.deepEqual(filledButtons(news), ["Scrivi al team"], "una risposta da leggere: niente da inviare, «Scrivi al team» è il passo");
   assertNothingPrivate(news);
 
   // La pagina l'ha mostrata: «vista». Un id che non è della richiesta non fa niente.
@@ -367,7 +372,7 @@ test("«Ho un dubbio» su una voce e in generale; la risposta del team in «Da c
   assert.equal((await call("seen", r.token, { ids: [answered.messageId] })).json.data?.seen, 0, "una seconda volta niente");
   assert.equal((await call("seen", r.token, { ids: ["non-un-id"] })).status, 400);
   const later = await html(r.token);
-  assert.ok(!later.includes("Da completare"));
+  assert.ok(!later.includes("Novità</h2>"));
   assert.ok(later.includes("Il team ha risposto: «Sì, anche i resi.»"), "sotto la sua voce");
   assert.ok(later.includes("Hai chiesto: «Chi vede queste risposte?»"), "il dubbio generale sotto «Il caso d'uso»");
 });
@@ -390,9 +395,10 @@ test("«Modifica» finché il team non segna «A posto», poi «Aggiungi qualcos
   view = await pub.loadReferentAskView(await linkOf(r.token), { env: ENV, now: new Date() });
   assert.equal(view.questions.find((x) => x.needId === card.needs[1])!.editable, false);
   const locked = await html(r.token);
-  assert.ok(ariaButtons(locked).includes("Aggiungi qualcosa a «Sistemi usati»"));
+  // (Rilascio 10, §3.11) Dopo «A posto» niente «Modifica» nella riga: si aggiunge da «Scrivi al team», con «Su cosa?».
   assert.ok(!ariaButtons(locked).includes("Modifica la risposta a «Sistemi usati»"));
   assert.ok(ariaButtons(locked).includes("Modifica la risposta a «Volumi mensili»"), "l'altra si modifica ancora");
+  assert.ok(locked.includes(">Scrivi al team<"));
   const closed = await call("edit", r.token, { needId: card.needs[1], text: "Di nuovo" });
   assert.equal(closed.status, 409);
   assert.equal(closed.json.error, "risposta_chiusa");
@@ -422,10 +428,10 @@ test("«Modifica» finché il team non segna «A posto», poi «Aggiungi qualcos
   assert.equal(messages, 0, "niente si scrive");
   const readOnly = await html(r.token);
   assert.ok(readOnly.includes("Hai risposto il") && !readOnly.includes("Prima di iniziare"), "la sola lettura non chiede l'informativa");
-  await q(`UPDATE use_case_referent_requests SET privacy_notice_version = 'ucq-2026-11-3' WHERE id = $1::uuid`, [r.requestId]);
+  await q(`UPDATE use_case_referent_requests SET privacy_notice_version = $2 WHERE id = $1::uuid`, [r.requestId, REFERENT_PRIVACY_NOTICE.version]);
 });
 
-test("le domande nuove alla stessa persona: «Nuova domanda» in «Da completare», poi «Invia» dalle rotte", opts, async () => {
+test("le domande nuove alla stessa persona: «Nuova domanda» in «Novità», poi «Invia» dalle rotte", opts, async () => {
   const card = await newCard();
   const r = await answeredReferent(card);
   const v = Number((await requestOf(r.requestId)).version);
@@ -436,9 +442,11 @@ test("le domande nuove alla stessa persona: «Nuova domanda» in «Da completare
   assert.equal(fresh.followUp, true);
   assert.equal(fresh.state, "aperta");
   const news = await html(r.token);
-  for (const text of ["Da completare", "Hai una novità.", "Nuova domanda", "Esempio di pratica", "Già inviato", "Circa 200 al mese"]) assert.ok(news.includes(text), text);
+  for (const text of ["Novità", "Nuova domanda", "Esempio di pratica", "Le tue risposte", "Circa 200 al mese"]) assert.ok(news.includes(text), text);
   assert.deepEqual(filledButtons(news), ["Invia"]);
-  assert.ok(ariaButtons(news).includes("Ho un dubbio su «Esempio di pratica»"));
+  // (Rilascio 10, §3.11) Su una domanda nuova «Ho un dubbio» sta in «Altro ▸».
+  assert.ok(ariaButtons(news).includes("Altro: «Esempio di pratica»"));
+  assert.match(news, /data-slot="question-more"[^>]*>[\s\S]*?>Ho un dubbio</);
   assertNothingPrivate(news);
   assert.equal((await call("draft", r.token, { needId: card.needs[2], text: "Una fattura di un fornitore di carta.", dontKnow: false })).status, 200);
   const submitted = await call("submit", r.token, { shown: [card.needs[2]] });
