@@ -6,7 +6,7 @@ import { ITEM_STATUSES, type CaseRole } from "../vocab.ts";
 import { FORBIDDEN_RULES, findForbidden, findForbiddenIn } from "./copy-guard.ts";
 import { stripFactCodes, stripLegalRefs } from "./format.ts";
 import * as labels from "./labels.ts";
-import { caseNextSteps, whoseTurn, type NextStepInput } from "./next-step.ts";
+import { caseNextSteps, turnRow, whoseTurn, type NextStepInput } from "./next-step.ts";
 import { STATUS_GROUP_LABEL, groupCountText, groupCounts, statusView } from "./status-groups.ts";
 
 test("every pattern of DESIGN §6.2 is caught for the client", () => {
@@ -128,7 +128,7 @@ test("copy-guard is green on the labels", () => {
   assert.deepEqual(findForbiddenIn(texts, "cliente"), []);
 });
 
-test("copy-guard is green on the next steps and «Tocca a …» lines the client reads", () => {
+test("copy-guard is green on the next steps, the «Tocca a …» lines and (rilascio 10) the «Da fare» rows the client reads", () => {
   const busy: NextStepInput = {
     now: new Date("2026-10-14T10:00:00Z"),
     status: "raccolta",
@@ -144,6 +144,7 @@ test("copy-guard is green on the next steps and «Tocca a …» lines the client
     toVerifyMust: 95,
     oldestToVerifyAt: "2026-10-11",
     toVerifyTotal: 160,
+    filesToCheck: 2,
     waitingOnReferents: 40,
     blockersActive: 2,
     blockedMust: 10,
@@ -166,6 +167,10 @@ test("copy-guard is green on the next steps and «Tocca a …» lines the client
       for (const s of steps) texts.push(s.label, ...(s.detail ? [s.detail] : []));
       const line = whoseTurn(steps, input);
       if (line) texts.push(line);
+      for (const quiet of [input, { ...input, toVerifyTotal: 0 }, { ...input, toVerifyTotal: 0, waitingOnReferents: 0 }]) {
+        const row = turnRow(caseNextSteps(quiet, { roles }), quiet, { roles });
+        if (row) texts.push(row.title, row.turn);
+      }
     }
   }
   assert.ok(texts.length > 50);

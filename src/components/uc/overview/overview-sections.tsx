@@ -24,8 +24,23 @@ import { cn } from "@/lib/utils";
  */
 
 const H2 = "text-base font-semibold";
+/** (Rilascio 10, §1 regola 4) Righe in vista in una lista della Panoramica, poi «Vedi tutti (n)». */
+const ROWS_VISIBLE = 3;
 const QUIET_LINK =
   "inline-flex min-h-11 items-center gap-0.5 rounded-md text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-8";
+
+/** Le righe oltre le prime 3, chiuse sotto «Vedi tutti (n)» finché chi guarda non le apre. */
+function MoreRows({ total, children }: { total: number; children: React.ReactNode }) {
+  return (
+    <details className="group/more min-w-0">
+      <summary className={cn(QUIET_LINK, "cursor-pointer list-none select-none [&::-webkit-details-marker]:hidden")}>
+        Vedi tutti ({formatCountIt(total)})
+        <ChevronRight className="size-3.5 transition-transform group-open/more:rotate-90" aria-hidden />
+      </summary>
+      <RowList className="mt-2">{children}</RowList>
+    </details>
+  );
+}
 
 /** Il titolo di una sezione: un H2 vero, con qualcosa a destra (lo stato, il «?», il «⋯»). */
 export function SectionTitle({ id, title, children }: { id: string; title: string; children?: React.ReactNode }) {
@@ -148,17 +163,24 @@ export function ViaStatusLine({ text, how }: { text: string; how: string }) {
   );
 }
 
-/** Le condizioni del via ancora aperte (senza quella delle domande, che è il numero), con il link dove si sistemano. */
+/**
+ * Le condizioni del via ancora aperte (senza quella delle domande, che è il numero), con il link dove si sistemano.
+ * Al massimo 3 in vista, poi «Vedi tutti (n)» (§1 regola 4).
+ */
 export function ViaConditions({ rows, hrefFor }: { rows: readonly ViaConditionView[]; hrefFor: (c: ViaConditionView) => string | null }) {
   if (rows.length === 0) return null;
+  const row = (c: ViaConditionView) => (
+    <li key={c.key}>
+      <Row title={c.label} fact={c.detail} href={hrefFor(c) ?? undefined} />
+    </li>
+  );
+  const first = rows.slice(0, ROWS_VISIBLE);
+  const rest = rows.slice(ROWS_VISIBLE);
   return (
-    <RowList label="Condizioni ancora aperte">
-      {rows.map((c) => (
-        <li key={c.key}>
-          <Row title={c.label} fact={c.detail} href={hrefFor(c) ?? undefined} />
-        </li>
-      ))}
-    </RowList>
+    <div className="min-w-0 space-y-2">
+      <RowList label="Condizioni ancora aperte">{first.map(row)}</RowList>
+      {rest.length > 0 && <MoreRows total={rows.length}>{rest.map(row)}</MoreRows>}
+    </div>
   );
 }
 
@@ -248,15 +270,7 @@ export function BlockerList({ rows }: { rows: readonly (OverviewBlockerRow & { h
   return (
     <section id="blocchi" aria-label="Blocchi" className="min-w-0 scroll-mt-40 space-y-2">
       <RowList>{first.map(row)}</RowList>
-      {rest.length > 0 && (
-        <details className="group/more min-w-0">
-          <summary className={cn(QUIET_LINK, "cursor-pointer list-none select-none [&::-webkit-details-marker]:hidden")}>
-            Vedi tutti ({formatCountIt(rows.length)})
-            <ChevronRight className="size-3.5 transition-transform group-open/more:rotate-90" aria-hidden />
-          </summary>
-          <RowList className="mt-2">{rest.map(row)}</RowList>
-        </details>
-      )}
+      {rest.length > 0 && <MoreRows total={rows.length}>{rest.map(row)}</MoreRows>}
     </section>
   );
 }

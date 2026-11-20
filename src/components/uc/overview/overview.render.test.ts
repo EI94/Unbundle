@@ -151,6 +151,15 @@ test("blockers: at most 3 rows, then «Vedi tutti (n)»; each row opens its pane
   assert.doesNotMatch(page, /<details[^>]*open/, "folded until asked");
 });
 
+test("the open conditions of the via: 3 rows, then «Vedi tutti (n)»; each one links where it is fixed, if the viewer can open it", () => {
+  const rows = ["chiarimenti", "fonti_con_dataset", "regole_confermate", "deroghe_entro_limite"].map((key) => ({ key, label: `Condizione ${key}`, detail: "3", ok: false, segment: key === "deroghe_entro_limite" ? null : "domande" }));
+  const page = render(h(S.ViaConditions, { rows, hrefFor: (c: { segment: string | null }) => (c.segment ? questions : null) } as never));
+  assert.equal((page.match(/data-slot="row"/g) ?? []).length, 4);
+  assert.match(page, /<summary[^>]*>Vedi tutti \(4\)/);
+  assert.equal((page.match(new RegExp(`href="${questions}"`, "g")) ?? []).length, 3, "the one without a page is a plain row");
+  assert.equal(render(h(S.ViaConditions, { rows: [], hrefFor: () => null } as never)), "", "all done: nothing (§1 rule 5)");
+});
+
 test("the via commands: no dead button, the filled one only when the header hides its own, no «Non approvo» here", () => {
   const panel = (action: object, over: object = {}) =>
     render(h(G.GatePanel, { workspaceId: WS, caseId: CASE, action, filled: true, reviewId: "r1", contractCase: false, signHref: `${base}/firme`, files: [], ...over } as never));
