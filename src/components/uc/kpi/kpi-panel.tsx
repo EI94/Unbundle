@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { ItemLink } from "@/components/uc/catalog/item-link";
 import { itemPath } from "@/components/uc/catalog/paths";
 import { LEVER_META } from "@/components/uc/common/lever-icons";
@@ -9,7 +9,7 @@ import type { LinkedItem } from "@/lib/uc/views/item-detail";
 import { KPI_READINESS_VIEW, pnlText, type KpiView } from "@/lib/uc/views/kpi";
 import { PHASE_LABEL, PRIORITY_LABEL } from "@/lib/uc/views/labels";
 import { canOpenItem } from "@/lib/uc/views/page-access";
-import { plainText } from "@/lib/uc/views/roi";
+import { VALUE_TEXT, plainText } from "@/lib/uc/views/roi";
 import type { CaseRole } from "@/lib/uc/vocab";
 
 function Line({ label, children }: { label: string; children: React.ReactNode }) {
@@ -53,6 +53,7 @@ export function KpiPanel({
   roles,
   closeHref,
   keyTitles,
+  backHref = null,
 }: {
   kpi: KpiView;
   workspaceId: string;
@@ -60,6 +61,8 @@ export function KpiPanel({
   roles: readonly CaseRole[];
   closeHref: string;
   keyTitles: ReadonlyMap<string, string>;
+  /** (Rilascio 10) Nel pannello di Valore: «‹ Tutti i KPI» torna all'elenco com'era; la ✕ chiude tutto. */
+  backHref?: string | null;
 }) {
   const it = kpi.item;
   const dot = KPI_READINESS_VIEW[kpi.readiness];
@@ -78,6 +81,12 @@ export function KpiPanel({
         ) : undefined
       }
     >
+      {backHref && (
+        <Link href={backHref} scroll={false} className="-mt-1 inline-flex min-h-11 items-center gap-0.5 text-sm text-muted-foreground hover:text-foreground sm:min-h-8">
+          <ChevronLeft className="size-3.5" aria-hidden />
+          {VALUE_TEXT.kpiBack}
+        </Link>
+      )}
       <Line label="Cos'è">{clean(it.explanation)}</Line>
       <Line label="Formula">{clean(kpi.formula)}</Line>
       <Line label="Unità">{kpi.unit}</Line>

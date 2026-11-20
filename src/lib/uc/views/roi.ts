@@ -612,3 +612,32 @@ export function valuePanel(apri: string | null | undefined, view: ValueView): Va
   const cost = view.costs.find((c) => c.id === apri);
   return cost ? { kind: "costo", row: cost } : null;
 }
+
+// ── (Rilascio 10, §3.5) Valore: tre cifre, «Stima» una volta, i KPI in un pannello ──
+
+/**
+ * I testi della scheda Valore (rilascio 10, §3.5; §3.15 dell'audit): le tre cifre con le parole di §4 («Costo di
+ * realizzazione», «Valore all'anno», «Pareggio», da `valueFigures`), «Stima» detto una volta (la frase sulle stime sta
+ * nel suo «?»), leve e costi, «Tutti i KPI» dentro «Come si calcola». Nessun sottotitolo.
+ */
+export const VALUE_TEXT = {
+  account: "Il conto",
+  /** Il «?» accanto a «Stima»: la frase sulle stime, una volta sola. */
+  statusWhy: "Che cosa vuol dire",
+  toCompute: (n: number) => (n === 1 ? "Il conto è da calcolare: manca 1 dato." : `Il conto è da calcolare: mancano ${formatNumberIt(n)} dati.`),
+  toComputeNoData: "Il conto è da calcolare: mancano ancora dei valori.",
+  seeWhich: "Vedi quali",
+  levers: "Leve",
+  inactiveLevers: (n: number) => `Leve non attive (${formatNumberIt(n)})`,
+  changeLevers: "Cambia le leve",
+  leversTitle: "Leve della realizzazione",
+  leversNote: "Le leve accese entrano nel conto.",
+  save: "Salva",
+  costs: "Costi",
+  howCalculated: "Come si calcola",
+  allKpis: (n: number) => `Tutti i KPI (${formatNumberIt(n)})`,
+  kpiTitle: "Tutti i KPI",
+  kpiBack: "Tutti i KPI",
+  showAll: (n: number) => `Vedi tutti (${formatNumberIt(n)})`,
+  showFewer: "Mostra meno",
+} as const;

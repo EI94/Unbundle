@@ -634,3 +634,53 @@ export function groupViews(groups: readonly KpiGroup[], open: "tutti" | readonly
 export function vanityText(n: number): string {
   return n === 1 ? "1 KPI indispensabile senza una voce del conto" : `${formatNumberIt(n)} KPI indispensabili senza una voce del conto`;
 }
+
+// ── (Rilascio 10, §3.5) «Tutti i KPI» in un pannello di Valore ─────────
+
+/**
+ * «Tutti i KPI» è un pannello di Valore (rilascio 10, §3.5; F-099, F-100), aperto da «Come si calcola»:
+ * `?apri=kpi` per l'elenco (con `vista`, `q`, `gruppi` e `pagine` come prima), `?apri=kpi-<id>` per un KPI, con
+ * «Tutti i KPI» per tornare all'elenco. `/valore/kpi` e `/kpi` portano qui (`kpiPanelFromLegacy`).
+ */
+export const KPI_PANEL = "kpi";
+const KPI_ONE = /^kpi-([0-9a-f-]{36})$/i;
+
+/** Il pannello dei KPI chiesto da `?apri=`: l'elenco (`kpiId` null) o un KPI; null per gli altri pannelli di Valore. */
+export function parseKpiPanel(apri: string | null | undefined): { kpiId: string | null } | null {
+  if (!apri) return null;
+  if (apri === KPI_PANEL) return { kpiId: null };
+  const one = KPI_ONE.exec(apri);
+  return one && UUID.test(one[1]) ? { kpiId: one[1].toLowerCase() } : null;
+}
+
+/** Il valore di `?apri=` per l'elenco o per un KPI. */
+export function kpiPanelValue(kpiId?: string | null): string {
+  return kpiId ? `${KPI_PANEL}-${kpiId}` : KPI_PANEL;
+}
+
+/**
+ * L'indirizzo di Valore con il pannello dei KPI: `apri` (l'elenco o un KPI) prima, poi vista, ricerca, gruppo e
+ * pagine dell'elenco, così chiudere un KPI torna all'elenco com'era.
+ */
+export function kpiPanelHref(
+  valoreBase: string,
+  p: { kpiId?: string | null; vista?: KpiViewKey | null; q?: string | null; gruppi?: readonly string[] | null; pagine?: Readonly<Record<string, number>> | null },
+): string {
+  const list = kpiQuery({ vista: p.vista, q: p.q, gruppi: p.gruppi, pagine: p.pagine });
+  const rest = list ? `&${list.slice(1)}` : "";
+  return `${valoreBase}?apri=${kpiPanelValue(p.kpiId)}${rest}`;
+}
+
+/**
+ * Da un vecchio indirizzo di `/valore/kpi` (e quindi di `/kpi`) al pannello di Valore: i parametri dell'elenco restano,
+ * `apri=<id>` del KPI diventa `apri=kpi-<id>`, gli altri si lasciano cadere.
+ */
+export function kpiPanelFromLegacy(valoreBase: string, sp: Readonly<Record<string, string | string[] | undefined>>): string {
+  const p = parseKpiParams(sp);
+  return kpiPanelHref(valoreBase, { kpiId: p.apri, vista: p.vista, q: p.q, gruppi: p.gruppi, pagine: p.pagine });
+}
+
+/** «KPI non collegati al conto (12)»: il filtro di Lateral Space che prende il posto della vista «Da sistemare». */
+export function vanityFilterLabel(n: number): string {
+  return `KPI non collegati al conto (${formatNumberIt(n)})`;
+}

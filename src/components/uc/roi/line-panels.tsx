@@ -342,8 +342,17 @@ export function LeverPanel({
   baseHref,
   editing: startEditing,
   roles,
-  kpiHref,
-}: PanelBase & { row: LeverRowPublic; line: BenefitLine | null; hasLine: boolean; kpiHref: string | null }) {
+  kpiBase,
+}: PanelBase & {
+  row: LeverRowPublic;
+  line: BenefitLine | null;
+  hasLine: boolean;
+  /**
+   * (Rilascio 10) La scheda Valore, dove un KPI si apre nel suo pannello (`?apri=kpi-<id>`, `kpiPanelValue` di
+   * `views/kpi.ts`, scritto qui per non portare quel modulo nel browser); null per chi non apre i KPI.
+   */
+  kpiBase: string | null;
+}) {
   const canEdit = save !== null && (line !== null || !hasLine);
   const [editing, setEditing] = useState(canEdit && startEditing);
   return (
@@ -361,9 +370,10 @@ export function LeverPanel({
                   const dot = <StatusDot tone={k.dot.tone} label={k.title} size="md" title={k.dot.label} />;
                   return (
                     <li key={k.id}>
-                      {kpiHref ? (
+                      {kpiBase ? (
                         <Link
-                          href={`${kpiHref}?apri=${k.id}`}
+                          href={`${kpiBase}?apri=kpi-${k.id}`}
+                          scroll={false}
                           className="-mx-1 flex min-h-11 items-center rounded-md px-1 hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none sm:min-h-8"
                         >
                           {dot}
