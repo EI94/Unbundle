@@ -6,7 +6,7 @@ import { ITEM_STATUSES, type CaseRole } from "../vocab.ts";
 import { FORBIDDEN_RULES, findForbidden, findForbiddenIn } from "./copy-guard.ts";
 import { stripFactCodes, stripLegalRefs } from "./format.ts";
 import * as labels from "./labels.ts";
-import { caseNextSteps, turnRow, whoseTurn, type NextStepInput } from "./next-step.ts";
+import { caseNextSteps, turnRow, type NextStepInput } from "./next-step.ts";
 import { STATUS_GROUP_LABEL, groupCountText, groupCounts, statusView } from "./status-groups.ts";
 
 test("every pattern of DESIGN §6.2 is caught for the client", () => {
@@ -165,8 +165,6 @@ test("copy-guard is green on the next steps, the «Tocca a …» lines and (rila
     for (const roles of roleSets) {
       const steps = caseNextSteps(input, { roles });
       for (const s of steps) texts.push(s.label, ...(s.detail ? [s.detail] : []));
-      const line = whoseTurn(steps, input);
-      if (line) texts.push(line);
       for (const quiet of [input, { ...input, toVerifyTotal: 0 }, { ...input, toVerifyTotal: 0, waitingOnReferents: 0 }]) {
         const row = turnRow(caseNextSteps(quiet, { roles }), quiet, { roles });
         if (row) texts.push(row.title, row.turn);

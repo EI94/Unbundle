@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { CaseRole } from "../vocab.ts";
-import { FILES_HREF, FILES_PANEL, NEXT_STEP_ICON, SIGN_HREF, SIGN_PANEL, VIA_HREF, caseNextSteps, myNextSteps, nextStepFor, overviewTodo, resolveStepHref, stepFact, turnRow, whoseTurn, type NextStep, type NextStepInput } from "./next-step.ts";
+import { FILES_HREF, FILES_PANEL, NEXT_STEP_ICON, SIGN_HREF, SIGN_PANEL, VIA_HREF, caseNextSteps, nextStepFor, overviewTodo, resolveStepHref, stepFact, turnRow, type NextStep, type NextStepInput } from "./next-step.ts";
 
 const NOW = new Date("2026-10-14T10:00:00Z");
 
@@ -45,12 +45,16 @@ const OBS: CaseRole[] = ["osservatore"];
 const steps = (i: Partial<NextStepInput>, roles: CaseRole[]) => caseNextSteps(input(i), { roles });
 const primary = (i: Partial<NextStepInput>, roles: CaseRole[]) => nextStepFor(steps(i, roles));
 const brief = (s: NextStep | null) => (s ? { label: s.label, detail: s.detail, href: s.href, owner: s.owner } : null);
+/** I passi di chi guarda, nell'ordine (le righe di «Da fare» dopo il primo). */
+const mine = (list: readonly NextStep[]) => list.filter((s) => s.owner === "me");
+/** La riga «Tocca a …» di «Da fare» in Panoramica. */
+const turn = (i: Partial<NextStepInput>, roles: CaseRole[]) => turnRow(steps(i, roles), input(i), { roles });
 
 test("row 1: a closed case has no step for anyone", () => {
   for (const roles of [LEAD, AN, OWN, PRIV, DEV]) {
     assert.deepEqual(steps({ status: "chiuso", unsentMust: 10, toVerifyForMe: 5, mySignaturesPending: [{ kind: "via", otherSideSigned: true }] }, roles), []);
   }
-  assert.equal(whoseTurn([], input({ status: "chiuso" })), "Realizzazione chiusa: si può solo leggere.");
+  assert.equal(turn({ status: "chiuso", waitingOnReferents: 3 }, OWN), null, "the header alert says it is closed");
 });
 
 test("row 2: a paused case only resumes, for the lead", () => {
@@ -58,7 +62,7 @@ test("row 2: a paused case only resumes, for the lead", () => {
   assert.deepEqual(brief(primary(paused, LEAD)), { label: "Riprendi la realizzazione", detail: "In pausa dal 3 ott.", href: "/impostazioni#stato", owner: "me" });
   assert.equal(primary(paused, AN), null, "nothing to verify while paused");
   assert.deepEqual(steps(paused, OWN).map((s) => s.owner), ["ls"]);
-  assert.equal(whoseTurn(steps(paused, OWN), input(paused)), null, "the header notice explains the pause");
+  assert.equal(turn(paused, OWN), null, "the header notice explains the pause");
 });
 
 test("row 3: the go-ahead to development must be confirmed again", () => {
@@ -116,7 +120,7 @@ test("row 6: ready for development, confirmed in a dialog", () => {
 test("row 7: draft without referents; the draft shows «Aggiungi i referenti» then «Invia le domande»", () => {
   const draft = { status: "bozza" as const, referents: 0, unassignedMust: 7, unsentMust: 7 };
   assert.deepEqual(
-    myNextSteps(steps(draft, LEAD)).map((s) => s.label),
+    mine(steps(draft, LEAD)).map((s) => s.label),
     ["Aggiungi i referenti", "Invia le domande"],
   );
   assert.deepEqual(brief(primary(draft, LEAD)), { label: "Aggiungi i referenti", detail: "Ognuno riceve un link con le sue domande.", href: "/persone?nuovo=1", owner: "me" });
@@ -143,7 +147,8 @@ test("row 9: answers to verify, with four eyes already applied", () => {
   // Four eyes: the analyst entered these answers, so none is for them; another person verifies.
   const own = { toVerifyForMe: 0, toVerifyMust: 0, toVerifyTotal: 12 };
   assert.equal(primary(own, AN), null);
-  assert.equal(whoseTurn(steps(own, AN), input(own)), "Tocca a Lateral Space: stanno verificando 12 risposte.");
+  assert.equal(turn(own, AN), null, "an analyst never reads «Tocca a Lateral Space»");
+  assert.deepEqual(turn(own, OWN), { title: "12 risposte in verifica", turn: "Tocca a Lateral Space" });
   assert.equal(primary({ toVerifyForMe: 1, toVerifyMust: 0, toVerifyTotal: 1, oldestToVerifyAt: NOW }, AN)?.detail, "È appena arrivata.");
   assert.equal(primary({ toVerifyForMe: 1, toVerifyMust: 1, toVerifyTotal: 1, oldestToVerifyAt: "2026-10-01T08:00:00Z" }, AN)?.detail, "1 è indispensabile. È dell'1 ott.");
   assert.equal(primary({ toVerifyForMe: 2, toVerifyMust: 0, toVerifyTotal: 2, oldestToVerifyAt: "2026-09-30T08:00:00Z" }, AN)?.detail, "La più vecchia è del 30 set.");
@@ -165,13 +170,13 @@ test("row 10: blockers that stop indispensable questions; the privacy sheet open
 test("row 11: Lateral Space signed the proposal, the client did not", () => {
   const review = { pendingGateReview: { lsSigned: true, clientSigned: false, lsSignedAt: "2026-10-03T09:00:00Z" } };
   assert.deepEqual(brief(primary(review, LEAD)), { label: "Manda il link per firmare", detail: "Hai firmato il 3 ott. Manca il responsabile del cliente.", href: "/#via", owner: "me" });
-  assert.equal(whoseTurn(steps(review, AN), input(review)), "Tocca al cliente: manca la firma del responsabile del cliente.");
-  // (Rilascio 10, §1 regola 2) Chi ha un passo suo non vede «Tocca anche a …»: basta il pulsante pieno.
-  assert.equal(whoseTurn(steps(review, LEAD), input(review)), null);
+  assert.deepEqual(turn(review, AN), { title: "Firma del via allo sviluppo", turn: "Tocca al cliente" });
+  // (Rilascio 10, §1 regola 2) The lead has «Manda il link per firmare»: no «Tocca al cliente» on top.
+  assert.equal(turn(review, LEAD), null);
   // The client owner who must sign sees their own step, not «Tocca al cliente».
   const ownerView = { ...review, mySignaturesPending: [{ kind: "via" as const, otherSideSigned: true }] };
   assert.equal(primary(ownerView, OWN)?.label, "Firma il via allo sviluppo");
-  assert.equal(whoseTurn(steps(ownerView, OWN), input(ownerView)), null);
+  assert.equal(turn(ownerView, OWN), null);
 });
 
 test("row 12: the client owner names the privacy signer", () => {
@@ -225,10 +230,10 @@ test("the first rule wins: sending and signing come before verifying", () => {
   // On the seeded case the lead sees «Invia le domande» and the analyst «Verifica 160 risposte».
   assert.equal(primary(seeded, LEAD)?.label, "Invia le domande");
   assert.equal(primary(seeded, AN)?.label, "Verifica 160 risposte");
-  assert.deepEqual(myNextSteps(steps(seeded, LEAD)).map((s) => s.label), ["Invia le domande", "Verifica 160 risposte", "Sciogli 2 blocchi"]);
-  assert.deepEqual(myNextSteps(steps(seeded, AN)).map((s) => s.label), ["Verifica 160 risposte"], "the analyst only has their own steps");
-  assert.equal(whoseTurn(steps(seeded, LEAD), input(seeded)), null, "(rilascio 10) mai «Tocca anche a …»");
-  assert.equal(whoseTurn(steps(seeded, OWN), input(seeded)), "Tocca a Lateral Space: stanno verificando 160 risposte.");
+  assert.deepEqual(mine(steps(seeded, LEAD)).map((s) => s.label), ["Invia le domande", "Verifica 160 risposte", "Sciogli 2 blocchi"]);
+  assert.deepEqual(mine(steps(seeded, AN)).map((s) => s.label), ["Verifica 160 risposte"], "the analyst only has their own steps");
+  assert.deepEqual(turn(seeded, LEAD), { title: "Risposte a 40 domande", turn: "Tocca ai referenti" }, "(rilascio 10) the referents, never «Tocca anche a …»");
+  assert.deepEqual(turn(seeded, OWN), { title: "160 risposte in verifica", turn: "Tocca a Lateral Space" });
 });
 
 test("days 1, 8 and 11 take the elided article", () => {
@@ -247,37 +252,16 @@ test("days 1, 8 and 11 take the elided article", () => {
   assert.equal(primary({ toVerifyForMe: 3, toVerifyMust: 0, toVerifyTotal: 3, oldestToVerifyAt: "2026-10-01T08:00:00Z" }, AN)?.detail, "La più vecchia è dell'1 ott.");
 });
 
-test("whoseTurn: everything in order, with the next milestone", () => {
-  const quiet = { nextMilestone: { title: "Mappatura dei dati", date: "2026-10-23" } };
-  assert.equal(whoseTurn(steps(quiet, OBS), input(quiet)), "Tutto in ordine. Prossima tappa: 23 ott.");
-  assert.equal(whoseTurn(steps({}, OBS), input()), "Tutto in ordine.");
-  assert.equal(whoseTurn(steps({ unsentMust: 3 }, LEAD), input({ unsentMust: 3 })), null, "no line when only the viewer has something to do");
-  assert.equal(whoseTurn(steps({ waitingOnReferents: 1 }, OWN), input({ waitingOnReferents: 1 })), "Tocca ai referenti: 1 domanda è da loro. I promemoria partono da soli.");
-});
-
-test("whoseTurn: never «Tutto in ordine» while a step of someone else is pending", () => {
-  const line = (i: Partial<NextStepInput>, roles: CaseRole[]) => whoseTurn(steps(i, roles), input(i));
-  const reconfirm = { status: "in_sviluppo" as const, gateReconfirm: true, g1: { required: 10, ok: 8, ready: false, byGroup: {} }, nextMilestone: { title: "Prova", date: "2026-10-23" } };
+test("(rilascio 10, §3.5) «Tocca a …»: a step of someone else that has no row in «Da fare» gives none; zero is not shown", () => {
+  const reconfirm = { status: "in_sviluppo" as const, gateReconfirm: true, g1: { required: 10, ok: 8, ready: false, byGroup: {} } };
   assert.deepEqual(steps(reconfirm, OWN).map((s) => `${s.id}:${s.owner}`), ["riconferma_via:ls"]);
-  for (const roles of [OWN, OBS, BOARD, AN, DEV]) assert.equal(line(reconfirm, roles), null, `riconferma_via for ${roles[0]}`);
+  for (const roles of [OWN, OBS, BOARD, AN, DEV]) assert.equal(turn(reconfirm, roles), null, `riconferma_via for ${roles[0]}: the header alert says it`);
   const blocked = { blockersActive: 2, blockedMust: 10 };
-  assert.deepEqual(steps(blocked, OWN).map((s) => `${s.id}:${s.owner}`), ["sciogli_blocchi:ls"]);
-  for (const roles of [OWN, OBS, AN]) assert.equal(line(blocked, roles), null, `sciogli_blocchi for ${roles[0]}`);
-  const signer = { privacySignerMissing: true };
-  assert.deepEqual(steps(signer, LEAD).map((s) => `${s.id}:${s.owner}`), ["indica_firmatario_privacy:cliente"]);
-  for (const roles of [LEAD, AN, OBS]) assert.equal(line(signer, roles), null, `indica_firmatario_privacy for ${roles[0]}`);
-  const draft = { status: "bozza" as const, referents: 0, unsentMust: 7 };
-  assert.deepEqual(steps(draft, OWN).map((s) => `${s.id}:${s.owner}`), ["aggiungi_referenti:ls", "invia_domande:ls"]);
-  assert.equal(line(draft, OWN), null);
-  // A proposal nobody has signed yet: the lead's signature is missing, so not «in order» either.
-  assert.equal(line({ pendingGateReview: { lsSigned: false, clientSigned: false } }, OWN), null);
-  // The covered lines still win over the silent ones.
-  assert.equal(line({ ...blocked, waitingOnReferents: 3 }, OWN), "Tocca ai referenti: 3 domande sono da loro. I promemoria partono da soli.");
-  // Nothing pending for anyone: in order. A forward step after development is not a wait.
-  assert.equal(line({ pendingGateReview: { lsSigned: true, clientSigned: true } }, OBS), "Tutto in ordine.");
-  const developing = { status: "in_sviluppo" as const, forwardTransition: "backtest" as const, nextMilestone: { title: "Prova", date: "2026-10-23" } };
-  assert.equal(line(developing, OBS), "Tutto in ordine. Prossima tappa: 23 ott.");
-  assert.equal(line(developing, LEAD), null, "the lead has the forward step");
+  for (const roles of [OWN, OBS, AN]) assert.equal(turn(blocked, roles), null, `sciogli_blocchi for ${roles[0]}`);
+  assert.equal(turn({ privacySignerMissing: true }, LEAD), null);
+  assert.equal(turn({ pendingGateReview: { lsSigned: false, clientSigned: false } }, OWN), null, "nobody signed yet: Lateral Space signs first");
+  assert.deepEqual(turn({ ...blocked, waitingOnReferents: 3 }, OWN), { title: "Risposte a 3 domande", turn: "Tocca ai referenti" });
+  assert.equal(turn({ status: "in_sviluppo", forwardTransition: "backtest", nextMilestone: { title: "Prova", date: "2026-10-23" } }, OBS), null, "in order: no row (the next milestone has its own block)");
 });
 
 test("hrefs are relative to the dossier root", () => {
@@ -295,16 +279,6 @@ test("(rilascio 10, §7.4) ogni passo ha la sua icona, la stessa dei passi dello
   assert.deepEqual(Object.keys(NEXT_STEP_ICON).sort(), [...ids].sort());
   assert.equal(NEXT_STEP_ICON.verifica, "verifica");
   assert.equal(NEXT_STEP_ICON.invia_domande, "chiedi");
-});
-
-test("(rilascio 10, §1 regola 2) «Tocca a …» solo quando non tocca a chi guarda, mai «Tocca anche»", () => {
-  const busy = { unsentMust: 4, toVerifyForMe: 2, toVerifyTotal: 5, waitingOnReferents: 3, pendingGateReview: { lsSigned: true, clientSigned: false } };
-  for (const roles of [LEAD, AN, OWN, PRIV, DEV, BOARD, OBS]) {
-    const s = steps(busy, roles);
-    const line = whoseTurn(s, input(busy));
-    if (myNextSteps(s).length > 0) assert.equal(line, null, roles.join());
-    assert.doesNotMatch(line ?? "", /Tocca anche/, roles.join());
-  }
 });
 
 test("(rilascio 10, §3.5) the via steps point to the via section of the Panoramica", () => {

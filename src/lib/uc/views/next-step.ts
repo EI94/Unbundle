@@ -9,8 +9,9 @@
  * - `owner` dice di chi è il passo rispetto a chi guarda: «me» se tocca a lui.
  *   I passi legati a chi guarda (firme, verifica con i quattro occhi già
  *   applicati, catalogo dello sviluppatore) compaiono solo come «me».
- * - `nextStepFor` dà il pulsante pieno della testata; `whoseTurn` la riga
- *   «Tocca a …» per le cose che toccano ad altri.
+ * - `nextStepFor` dà il pulsante pieno della testata; (rilascio 10, §3.5)
+ *   `overviewTodo` le righe di «Da fare» in Panoramica e `turnRow` la riga
+ *   «Tocca a …» per una cosa che tocca ad altri.
  * - `href` è relativo alla radice del dossier (`/#via`, `/persone?invia=1`,
  *   `/#blocchi`, `?conferma=<stato>` per i passi che si confermano in un
  *   dialogo): `resolveStepHref` lo completa. (Rilascio 10, §3.5) Il via allo
@@ -345,7 +346,7 @@ export function caseNextSteps(input: NextStepInput, viewer: NextStepViewer): Nex
     steps.push({ id: "passo_avanti", label: forward.label, detail: forward.detail, href: `?conferma=${input.forwardTransition}`, owner: forLead(), transition: input.forwardTransition });
   }
 
-  // Domande che aspettano i referenti: non è un pulsante, serve a Panoramica e a `whoseTurn`.
+  // Domande che aspettano i referenti: non è un pulsante, serve a «Da fare» in Panoramica (`turnRow`).
   if (input.waitingOnReferents > 0) {
     const count = input.waitingOnReferents;
     steps.push({
@@ -365,42 +366,6 @@ export function nextStepFor(steps: readonly NextStep[]): NextStep | null {
   return steps.find((s) => s.owner === "me") ?? null;
 }
 
-/** I passi di chi guarda, al massimo `max` («Da fare adesso» ne mostra 3). */
-export function myNextSteps(steps: readonly NextStep[], max = 3): NextStep[] {
-  return steps.filter((s) => s.owner === "me").slice(0, max);
-}
-
-/**
- * La riga «Tocca a …» per ciò che tocca ad altri (si usa il primo
- * applicabile). (Rilascio 10, §1 regola 2) Compare solo quando non tocca a chi
- * guarda: se chi guarda ha un passo suo, il pulsante pieno basta e non c'è riga.
- *
- * «Tutto in ordine» vale solo quando non resta un passo di nessuno, salvo il
- * passo avanti dopo lo sviluppo: un passo di altri senza una riga sua in §2.7
- * (riconfermare il via, sciogliere i blocchi, indicare chi firma la privacy,
- * una firma che manca a Lateral Space) non dà riga. Lo dicono già i passi e
- * l'avviso della testata.
- */
-export function whoseTurn(steps: readonly NextStep[], input: NextStepInput): string | null {
-  if (input.status === "chiuso") return "Realizzazione chiusa: si può solo leggere.";
-  if (input.status === "sospeso") return null;
-  // (Rilascio 10) Mai «Tocca anche a …»: con un passo di chi guarda, nessuna riga.
-  if (steps.some((s) => s.owner === "me")) return null;
-  const othersToVerify = Math.max(0, input.toVerifyTotal);
-  if (othersToVerify > 0) {
-    return `Tocca a Lateral Space: stanno verificando ${othersToVerify === 1 ? "1 risposta" : `${n(othersToVerify)} risposte`}.`;
-  }
-  const referents = steps.find((s) => s.owner === "referenti");
-  if (referents) return `Tocca ai referenti: ${referents.detail}`;
-  const review = input.pendingGateReview;
-  if (review && review.lsSigned && !review.clientSigned) return "Tocca al cliente: manca la firma del responsabile del cliente.";
-  // Il passo avanti dopo lo sviluppo è un'opportunità, non un'attesa: resta «Tutto in ordine».
-  if (steps.some((s) => s.id !== "passo_avanti")) return null;
-  if (review && !(review.lsSigned && review.clientSigned)) return null;
-  const milestone = input.nextMilestone ? formatDayIt(input.nextMilestone.date, { now: input.now }) : null;
-  return milestone ? `Tutto in ordine. Prossima tappa: ${milestone}.` : "Tutto in ordine.";
-}
-
 /** (Rilascio 10, §3.5) Una riga di «Da fare» che aspetta un'altra persona: che cosa e chi deve muoversi. */
 export interface TurnRow {
   /** Che cosa aspetta: «Firma del via allo sviluppo», «Risposte a 10 domande». */
@@ -411,7 +376,7 @@ export interface TurnRow {
 
 /**
  * (Rilascio 10, §3.5 e §1 regola 2) La riga «Tocca a …» di «Da fare» in Panoramica: la prima cosa che aspetta
- * un'altra persona, nell'ordine di `whoseTurn`. Mai per chi guarda: chi verifica le risposte non legge «Tocca a
+ * un'altra persona (le risposte in verifica, i referenti, la firma del cliente). Mai per chi guarda: chi verifica le risposte non legge «Tocca a
  * Lateral Space»; chi manda il link o deve firmare il via non legge «Tocca al cliente». Può stare sotto i passi di
  * chi guarda (prototipo S4). In pausa e a realizzazione chiusa niente: lo dice la testata.
  */

@@ -40,8 +40,6 @@ import {
   overviewBlockers,
   overviewLayout,
   parseOverviewPanel,
-  phaseStripOf,
-  progressCells,
   reviewHistoryRow,
   topTopics,
   topicOpenText,
@@ -182,19 +180,16 @@ test("per topic: who misses the most first, then the template order, other quest
     { roleLabels: { comm: "Commerciale" } },
   );
   assert.deepEqual(
-    rows.map((r) => [r.key, r.title, r.roleLabel, r.ok, r.total, r.cells]),
+    rows.map((r) => [r.key, r.title, r.roleLabel, r.ok, r.total, r.missing]),
     [
-      ["m.b", "Canali di vendita", "Commerciale", 0, 4, 0],
-      ["m.a", "Prezzi e sconti", "Commerciale", 3, 4, 3],
-      ["m.c", "Sistemi ed export", null, 0, 1, 0],
-      [null, "Altre domande", null, 0, 1, 0],
-      ["m.d", "Già a posto", null, 1, 1, 5],
+      ["m.b", "Canali di vendita", "Commerciale", 0, 4, 4],
+      ["m.a", "Prezzi e sconti", "Commerciale", 3, 4, 1],
+      ["m.c", "Sistemi ed export", null, 0, 1, 1],
+      [null, "Altre domande", null, 0, 1, 1],
+      ["m.d", "Già a posto", null, 1, 1, 0],
     ],
   );
   assert.equal(rows.some((r) => r.key === "m.e"), false, "a topic without indispensable questions is not listed");
-  assert.equal(progressCells(13, 14), 4, "the bar is full only when everything is in place");
-  assert.equal(progressCells(14, 14), 5);
-  assert.equal(progressCells(0, 0), 0);
 });
 
 test("blockers: active ones with questions plus the privacy sheet, never the health one, short labels and their line", () => {
@@ -242,7 +237,7 @@ test("panel from the address: a blocker by id or all milestones, anything else i
   assert.equal(parseOverviewPanel(undefined), null);
 });
 
-test("milestones: next two not done, when and grey suffixes, the phase strip for paused and closed cases", () => {
+test("milestones: next ones not done, when and grey suffixes; the path for paused and closed realizations", () => {
   const ms = [
     { key: "a", title: "Specifiche", plannedDate: "2026-10-02", plannedLabel: null, isProposal: false, toConfirm: false, done: true },
     { key: "b", title: "Mappatura dei dati", plannedDate: "2026-10-23", plannedLabel: null, isProposal: true, toConfirm: false, done: false },
@@ -256,10 +251,12 @@ test("milestones: next two not done, when and grey suffixes, the phase strip for
   assert.deepEqual(milestoneView(ms[1], NOW), { key: "b", title: "Mappatura dei dati", when: "23 ott", suffix: "(proposta)", done: false });
   assert.deepEqual(milestoneView(ms[2], NOW).suffix, "da confermare", "the label already says «(proposta)»");
   assert.equal(milestoneView(ms[3], NOW).when, null);
-  assert.deepEqual(phaseStripOf("raccolta", null), { phase: "preparazione", complete: false, paused: false });
-  assert.deepEqual(phaseStripOf("pronto_sviluppo", null), { phase: "preparazione", complete: true, paused: false });
-  assert.deepEqual(phaseStripOf("sospeso", "collaudo"), { phase: "prova", complete: false, paused: true });
-  assert.equal(phaseStripOf("chiuso", null), null);
+  // The path of «Tutte le tappe»: the phase of now, the one before a pause, none once closed.
+  const current = (status: Parameters<typeof casePhaseGroups>[0], before: Parameters<typeof casePhaseGroups>[1] = null) => casePhaseGroups(status, before).find((g) => g.current)?.phase ?? null;
+  assert.equal(current("raccolta"), "preparazione");
+  assert.equal(casePhaseGroups("pronto_sviluppo", null)[0].done, true, "Preparazione ✓");
+  assert.equal(current("sospeso", "collaudo"), "prova");
+  assert.equal(current("chiuso"), null);
 });
 
 test("(rilascio 10, §3.5) the next milestone in one line, the top 3 topics with open questions, the blocker rows", () => {

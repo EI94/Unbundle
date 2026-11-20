@@ -239,21 +239,11 @@ export interface ModuleProgressRow {
   ok: number;
   total: number;
   missing: number;
-  /** Celle piene della mini-barra (su `MODULE_BAR_CELLS`): piena solo se è tutto a posto. */
-  cells: number;
 }
 
-export const MODULE_BAR_CELLS = 5;
 /** (Rilascio 10, §3.5) «Per argomento»: i 3 argomenti con più domande aperte, poi «Tutti gli argomenti (n) ›». */
 export const TOPICS_VISIBLE = 3;
 const OTHER_QUESTIONS = "Altre domande";
-
-/** Celle piene di una mini-barra: arrotondate per difetto, così la barra è piena solo a «14 di 14». */
-export function progressCells(ok: number, total: number, cells = MODULE_BAR_CELLS): number {
-  if (!Number.isFinite(total) || total <= 0) return 0;
-  const done = Math.max(0, Math.min(total, Number.isFinite(ok) ? ok : 0));
-  return Math.floor((done * cells) / total);
-}
 
 /**
  * Le domande indispensabili per argomento (DESIGN §3.4, «Per argomento»):
@@ -280,7 +270,6 @@ export function moduleProgress(items: readonly Pick<RequiredItemFact, "moduleKey
       ok: t.ok,
       total: t.total,
       missing: t.total - t.ok,
-      cells: progressCells(t.ok, t.total),
     };
   });
   const rank = (k: string | null) => (k === null ? Number.MAX_SAFE_INTEGER : (order.get(k) ?? Number.MAX_SAFE_INTEGER - 1));
@@ -474,12 +463,6 @@ export function nextMilestones<T extends Pick<MilestoneLike, "done">>(milestones
   return milestones.filter((m) => !m.done).slice(0, max);
 }
 
-/** Fase della striscia delle tappe; null a caso chiuso (lo stato basta). */
-export function phaseStripOf(status: CaseStatus, statusBeforeSuspension: CaseStatus | null): { phase: CasePhase; complete: boolean; paused: boolean } | null {
-  const at = casePhaseOf(status, statusBeforeSuspension);
-  return at ? { ...at, paused: status === "sospeso" } : null;
-}
-
 // ── Stati del caso ────────────────────────────────────────────────────
 
 /** Cosa vuol dire ogni stato e quando si va avanti, nelle parole di §2.6 (rilascio 10, §4: «realizzazione», mai «caso»). */
@@ -538,16 +521,19 @@ export interface PhaseGroup {
   steps: StepperStep[];
 }
 
-/** Le 5 fasi con gli stati che contengono, per «Come funziona» di `/via`. Pausa e chiusura sono stati, non fasi. */
+/**
+ * Le 5 fasi con gli stati che contengono (rilascio 10, §3.5: «Il percorso» del pannello «Tutte le tappe»; in pausa la
+ * fase di prima, a realizzazione chiusa nessuna). Pausa e chiusura sono stati, non fasi.
+ */
 export function casePhaseGroups(status: CaseStatus, statusBeforeSuspension: CaseStatus | null): PhaseGroup[] {
   const steps = caseStepper(status, statusBeforeSuspension);
-  const strip = phaseStripOf(status, statusBeforeSuspension);
-  const at = strip ? CASE_PHASES.indexOf(strip.phase) : -1;
+  const where = casePhaseOf(status, statusBeforeSuspension);
+  const at = where ? CASE_PHASES.indexOf(where.phase) : -1;
   return CASE_PHASES.map((phase, i) => ({
     phase,
     label: CASE_PHASE_LABEL[phase],
     current: i === at,
-    done: at >= 0 && (i < at || (i === at && strip!.complete)),
+    done: at >= 0 && (i < at || (i === at && where!.complete)),
     steps: steps.filter((s) => CASE_STATUS_PHASE[s.status] === phase),
   }));
 }
