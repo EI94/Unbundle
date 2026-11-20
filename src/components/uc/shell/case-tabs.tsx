@@ -28,13 +28,14 @@ function TabLabel({ label }: { label: string }) {
   );
 }
 
-function useActiveTab() {
+/** La scheda accesa; con le schede di chi guarda, dopo il via Domande accende «Costruzione» (`activeTabKey`). */
+function useActiveTab(tabs?: readonly CaseTab[]) {
   const raw = useSelectedLayoutSegment();
-  return activeTabKey(raw && !raw.startsWith("__") ? raw : null);
+  return activeTabKey(raw && !raw.startsWith("__") ? raw : null, tabs);
 }
 
 function TabRow({ basePath, tabs, compact = false, ariaLabel }: { basePath: string; tabs: readonly CaseTab[]; compact?: boolean; ariaLabel: string }) {
-  const active = useActiveTab();
+  const active = useActiveTab(tabs);
   const listRef = useRef<HTMLDivElement | null>(null);
   const activeRef = useRef<HTMLAnchorElement | null>(null);
   useEffect(() => {

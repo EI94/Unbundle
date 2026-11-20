@@ -15,6 +15,7 @@ import {
   caseTrail,
   checksFiles,
   landingSegment,
+  pastViaPhase,
   realizationTitle,
   seesFilteredAudit,
   settingsTransitions,
@@ -30,7 +31,7 @@ import { VIA_HREF } from "./next-step.ts";
 import { CASE_STATUS_TONE as LABELS_TONE } from "./labels.ts";
 import { CASE_ROLES, CASE_STATUSES, type CaseRole } from "../vocab.ts";
 
-const tabs = (role: CaseRole) => caseTabsFor([role]).map((t) => t.label);
+const tabs = (role: CaseRole, pastVia = false) => caseTabsFor([role], { pastVia }).map((t) => t.label);
 const menu = (role: CaseRole, i: Partial<Parameters<typeof caseMenuFor>[1]> = {}) => caseMenuFor([role], { exportable: false, ...i }).map((m) => m.label);
 
 test("five tabs at most, by role as in DESIGN §2.3, never disabled ones", () => {
@@ -44,6 +45,32 @@ test("five tabs at most, by role as in DESIGN §2.3, never disabled ones", () =>
   for (const role of CASE_ROLES) assert.ok(caseTabsFor([role]).length <= 5, role);
 });
 
+test("(rilascio 10, D9 (a)) after the via «Costruzione» takes the place of «Domande», for who opens it", () => {
+  assert.deepEqual(tabs("ls_lead", true), ["Panoramica", "Costruzione", "Soluzione", "Valore", "Persone"]);
+  assert.deepEqual(tabs("ls_analista", true), ["Panoramica", "Costruzione", "Soluzione", "Valore", "Persone"]);
+  assert.deepEqual(tabs("ls_sviluppatore", true), ["Panoramica", "Costruzione", "Soluzione"]);
+  assert.deepEqual(tabs("owner_cliente", true), ["Panoramica", "Costruzione", "Soluzione", "Valore", "Persone"]);
+  assert.deepEqual(tabs("ai_board", true), ["Panoramica", "Costruzione", "Soluzione", "Valore"], "the AI Board gives its ok to the new tools there");
+  assert.deepEqual(tabs("osservatore", true), ["Panoramica", "Costruzione", "Soluzione", "Valore"], "an outside builder is an observer of the realization");
+  assert.deepEqual(tabs("approvatore_privacy", true), []);
+  for (const role of CASE_ROLES) {
+    const after = caseTabsFor([role], { pastVia: true });
+    assert.ok(after.length <= 5, role);
+    assert.ok(!(after.some((t) => t.key === "domande") && after.some((t) => t.key === "costruzione")), `${role}: never both`);
+  }
+  assert.equal(caseTabsFor(["ls_lead"], { pastVia: true })[1]?.segment, "costruzione");
+});
+
+test("(rilascio 10, D9 (a)) the phase: after the via, in a pause after it, and closed after an approved via", () => {
+  assert.equal(pastViaPhase({ status: "raccolta" }), false);
+  assert.equal(pastViaPhase({ status: "bozza", catalogVersion: 0 }), false);
+  for (const status of ["pronto_sviluppo", "in_sviluppo", "backtest", "collaudo", "stabilizzazione", "in_esercizio", "misura_roi"] as const) assert.equal(pastViaPhase({ status }), true, status);
+  assert.equal(pastViaPhase({ status: "sospeso", statusBeforeSuspension: "in_sviluppo" }), true);
+  assert.equal(pastViaPhase({ status: "sospeso", statusBeforeSuspension: "raccolta", catalogVersion: 0 }), false);
+  assert.equal(pastViaPhase({ status: "chiuso", catalogVersion: 1 }), true, "the frozen catalog says the via was approved");
+  assert.equal(pastViaPhase({ status: "chiuso", catalogVersion: 0 }), false);
+});
+
 test("everyone lands on the overview, the privacy approver on Privacy", () => {
   for (const role of ["ls_lead", "ls_analista", "ls_sviluppatore", "owner_cliente", "ai_board", "osservatore"] as const) {
     assert.equal(landingSegment([role]), null, role);
@@ -53,23 +80,33 @@ test("everyone lands on the overview, the privacy approver on Privacy", () => {
 });
 
 test("(rilascio 10, §3.5) the «⋯» menu: Privacy · Attività · Esporta… · Impostazioni, only what serves, per role", () => {
-  // «Progetto dell'agente» stays until wave 5b turns it into the «Costruzione» tab (F-011): nothing is lost meanwhile.
-  assert.deepEqual(menu("ls_lead", { exportable: true }), ["Privacy", "Attività", "Esporta…", "Progetto dell'agente", "Impostazioni"]);
-  assert.deepEqual(menu("ls_lead"), ["Privacy", "Attività", "Progetto dell'agente", "Impostazioni"], "nothing to export");
-  assert.deepEqual(menu("ls_analista", { exportable: true }), ["Privacy", "Esporta…", "Progetto dell'agente"]);
-  assert.deepEqual(menu("ls_sviluppatore", { exportable: true }), ["Esporta…", "Progetto dell'agente"]);
-  assert.deepEqual(menu("ls_sviluppatore"), ["Progetto dell'agente"], "before the via the developer has only the agent's project (release 8.0a)");
-  assert.deepEqual(menu("owner_cliente", { exportable: true }), ["Privacy", "Attività", "Scarica in Excel", "Progetto dell'agente"]);
+  // (D9 (a)) After the via the Costruzione is a tab: the menu has the four entries of §3.5.
+  assert.deepEqual(menu("ls_lead", { exportable: true, pastVia: true }), ["Privacy", "Attività", "Esporta…", "Impostazioni"]);
+  assert.deepEqual(menu("ls_lead", { pastVia: true }), ["Privacy", "Attività", "Impostazioni"], "nothing to export");
+  assert.deepEqual(menu("ls_analista", { exportable: true, pastVia: true }), ["Privacy", "Esporta…"]);
+  assert.deepEqual(menu("ls_sviluppatore", { exportable: true, pastVia: true }), ["Esporta…"]);
+  assert.deepEqual(menu("owner_cliente", { exportable: true, pastVia: true }), ["Privacy", "Attività", "Scarica in Excel"]);
+  for (const role of ["ai_board", "osservatore"] as const) assert.deepEqual(menu(role, { pastVia: true }), [], role);
+  // Before the via the project is set up during the collection too (8.0a): «Costruzione» opens from the menu, where the
+  // agent's project was (F-011), so nothing is lost; the Agent Factory and the bell link it as well.
+  assert.deepEqual(menu("ls_lead", { exportable: true }), ["Privacy", "Attività", "Esporta…", "Costruzione", "Impostazioni"]);
+  assert.deepEqual(menu("ls_lead"), ["Privacy", "Attività", "Costruzione", "Impostazioni"], "nothing to export");
+  assert.deepEqual(menu("ls_analista", { exportable: true }), ["Privacy", "Esporta…", "Costruzione"]);
+  assert.deepEqual(menu("ls_sviluppatore", { exportable: true }), ["Esporta…", "Costruzione"]);
+  assert.deepEqual(menu("ls_sviluppatore"), ["Costruzione"], "before the via the developer has only the agent's project (release 8.0a)");
+  assert.deepEqual(menu("owner_cliente", { exportable: true }), ["Privacy", "Attività", "Scarica in Excel", "Costruzione"]);
   assert.deepEqual(menu("approvatore_privacy"), ["Attività"], "the privacy approver lands on Privacy");
-  for (const role of ["ai_board", "osservatore"] as const) assert.deepEqual(menu(role, { exportable: false }), ["Progetto dell'agente"], role);
-  assert.equal(caseMenuFor(["ai_board"], { exportable: false })[0]?.segment, "progetto");
-  assert.equal(canOpenShellPage("progetto", ["approvatore_privacy"]), false, "the privacy approver does not need the agent's project");
+  for (const role of ["ai_board", "osservatore"] as const) assert.deepEqual(menu(role, { exportable: false }), ["Costruzione"], role);
+  assert.equal(caseMenuFor(["ai_board"], { exportable: false })[0]?.segment, "costruzione");
+  assert.equal(canOpenShellPage("costruzione", ["approvatore_privacy"]), false, "the privacy approver does not need the agent's project");
   // «Da firmare (n)» is the filled «Firma …» and the signatures panel (F-006); «Sviluppo con Claude» lives in the via section (F-010, F-042).
   for (const role of ["ls_lead", "ls_analista", "ls_sviluppatore", "owner_cliente", "approvatore_privacy", "ai_board", "osservatore"] as const) {
-    const labels = menu(role, { exportable: true });
-    assert.ok(!labels.some((l) => /firmare|Claude|del caso/.test(l)), `${role}: ${labels.join(", ")}`);
-    assert.ok(labels.length <= 5, role);
-    if (labels.includes("Impostazioni")) assert.equal(labels.at(-1), "Impostazioni", "Impostazioni is always the last one");
+    for (const pastVia of [false, true]) {
+      const labels = menu(role, { exportable: true, pastVia });
+      assert.ok(!labels.some((l) => /firmare|Claude|del caso|Progetto/.test(l)), `${role}: ${labels.join(", ")}`);
+      assert.ok(labels.length <= (pastVia ? 4 : 5), role);
+      if (labels.includes("Impostazioni")) assert.equal(labels.at(-1), "Impostazioni", "Impostazioni is always the last one");
+    }
   }
   const exp = caseMenuFor(["ls_lead"], { exportable: true }).find((m) => m.key === "esporta");
   assert.equal(exp?.segment, null, "export opens the panel");
@@ -99,10 +136,22 @@ test("only the case lead sees the full activity", () => {
 test("active tab from the first segment; pages without a tab light none", () => {
   assert.equal(activeTabKey(null), "panoramica");
   assert.equal(activeTabKey("domande"), "domande");
+  assert.equal(activeTabKey("costruzione"), "costruzione");
   assert.equal(activeTabKey("soluzione"), "soluzione");
   assert.equal(activeTabKey("valore"), "valore");
   assert.equal(activeTabKey("persone"), "persone");
-  for (const s of ["via", "firme", "privacy", "attivita", "impostazioni", "export", "voci"]) assert.equal(activeTabKey(s), null, s);
+  for (const s of ["via", "firme", "privacy", "attivita", "impostazioni", "export", "voci", "progetto"]) assert.equal(activeTabKey(s), null, s);
+});
+
+test("(rilascio 10, D9 (a)) with the viewer's tabs: Domande lights «Costruzione» after the via; the menu's Costruzione lights none", () => {
+  const before = caseTabsFor(["ls_lead"]);
+  const after = caseTabsFor(["ls_lead"], { pastVia: true });
+  assert.equal(activeTabKey("domande", before), "domande");
+  assert.equal(activeTabKey("domande", after), "costruzione", "Domande opens from «Catalogo ›» of the Costruzione");
+  assert.equal(activeTabKey("costruzione", after), "costruzione");
+  assert.equal(activeTabKey("costruzione", before), null, "before the via the Costruzione comes from the «⋯»");
+  assert.equal(activeTabKey("domande", caseTabsFor(["ai_board"])), null);
+  assert.equal(activeTabKey(null, after), "panoramica");
 });
 
 test("solution segments by role: Data only for Lateral Space", () => {
@@ -224,7 +273,7 @@ test("(rilascio 10, §3.5) the panel of a step: the header's dialogs, «Esporta�
 
 test("the primary never shows on Impostazioni, panels included: one filled button there", () => {
   const base = "/dashboard/w1/casi-duso/c1";
-  assert.deepEqual(PAGES_WITHOUT_PRIMARY, ["impostazioni", "progetto"], "(8.0a) il progetto dell'agente ha la sua azione principale");
+  assert.deepEqual(PAGES_WITHOUT_PRIMARY, ["impostazioni", "costruzione"], "(8.0a) il progetto dell'agente, oggi la Costruzione, ha la sua azione principale");
   assert.equal(stepHiddenOn({ href: `${base}/persone?invia=1`, caseBase: base }, `${base}/impostazioni`), true);
   assert.equal(stepHiddenOn({ href: `${base}/persone?nuovo=1`, caseBase: base }, `${base}/impostazioni/`), true);
   assert.equal(stepHiddenOn({ href: base, caseBase: base, panel: true }, `${base}/impostazioni`), true, "«Avvia lo sviluppo» opens its dialog from the other pages");

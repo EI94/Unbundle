@@ -21,6 +21,7 @@ import {
   caseMenuFor,
   caseTabsFor,
   caseTrail,
+  pastViaPhase,
   realizationTitle,
   showsHeaderProgress,
   stepHasPageCommand,
@@ -100,7 +101,9 @@ export default async function CaseLayout({ children, params }: { children: React
         }
       : null;
 
-  const menu: CaseMenuEntry[] = caseMenuFor(roles, { exportable: canExport }).map((m) => ({ key: m.key, label: m.label, href: m.segment === null ? null : at(m.segment) }));
+  // (Rilascio 10, §3.5, D9 (a)) Dopo il via la Costruzione è una scheda, al posto di Domande; prima si apre dal «⋯».
+  const pastVia = pastViaPhase(c);
+  const menu: CaseMenuEntry[] = caseMenuFor(roles, { exportable: canExport, pastVia }).map((m) => ({ key: m.key, label: m.label, href: m.segment === null ? null : at(m.segment) }));
 
   // (Rilascio 10, §3.5) Un segnale per stato: l'avviso non c'è quando il pulsante pieno dice già la stessa cosa.
   // La configurazione incompleta (F-005): nel log e, fino all'ondata 6b, un avviso solo per chi gestisce il workspace.
@@ -112,7 +115,7 @@ export default async function CaseLayout({ children, params }: { children: React
     lsConfigured: caseAccess.lsConfigured,
     workspaceAdmin: canManageWorkspaceSettings(access.role),
   });
-  const tabs = caseTabsFor(roles);
+  const tabs = caseTabsFor(roles, { pastVia });
   const status = { tone: CASE_STATUS_TONE[c.status], label: CASE_STATUS_LABEL[c.status] };
   const ls = isLsViewer(roles);
   // (Rilascio 10, §3.5) Il titolo è sempre quello dello use case, in testata e nella barra fissa.
