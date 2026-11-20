@@ -392,6 +392,8 @@ export function SentDisclosure({ summary, children }: { summary: string; childre
 
 /** (Rilascio 10, §3.11) Il campo aperto di «Scrivi al team», nello stato della pagina (un campo alla volta). */
 export const WRITE_KEY = "scrivi";
+/** «Su cosa?»: riceve il fuoco quando si apre «Scrivi al team», prima del testo. */
+export const WRITE_ABOUT_ID = "ucq-scrivi-su";
 
 /**
  * (Rilascio 10, §3.11) «Scrivi al team»: un pulsante solo, che apre il campo con «Su cosa?» (un `<select>` nativo, niente
@@ -529,11 +531,11 @@ function WriteForm({
       }}
     >
       <div className="min-w-0 space-y-1.5">
-        <label htmlFor={`${id}-su`} className="block text-sm font-medium">
+        <label htmlFor={WRITE_ABOUT_ID} className="block text-sm font-medium">
           {TT.writeAbout}
         </label>
         <select
-          id={`${id}-su`}
+          id={WRITE_ABOUT_ID}
           value={target.key}
           disabled={busy}
           onChange={(e) => {
