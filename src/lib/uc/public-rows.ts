@@ -251,7 +251,7 @@ export function declaredSourceLabel(source: (typeof ANSWER_SOURCE_KINDS)[number]
     case "sistema":
       return "Dai vostri sistemi";
     case "referente":
-      return "Da un collega";
+      return "Da un'altra persona";
     default:
       return "Da Lateral Space";
   }

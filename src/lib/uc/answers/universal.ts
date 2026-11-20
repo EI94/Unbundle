@@ -39,14 +39,14 @@ export function normalizeNonSo(raw: unknown): UniversalResult {
   return done(who === null ? {} : { who_might_know: who }, errors);
 }
 
-/** Delega a un collega: nuovo link solo per quelle voci. */
+/** Delega a un'altra persona: nuovo link solo per quelle voci. */
 export function normalizeDelega(raw: unknown, ctx: { activeItemIds: readonly string[] }): UniversalResult {
-  if (!isPlainObject(raw)) return { ok: false, errors: [issue("delega_mancante", "Indica nome ed email del collega.", "nome")] };
+  if (!isPlainObject(raw)) return { ok: false, errors: [issue("delega_mancante", "Indica nome ed email dell'altra persona.", "nome")] };
   const errors: Issue[] = [];
   const nome = nonEmptyString(raw.nome);
   const email = normalizeEmail(raw.email);
   const messaggio = typeof raw.messaggio === "string" && cleanText(raw.messaggio) !== "" ? cleanMultiline(raw.messaggio) : null;
-  if (nome === null) errors.push(issue("nome_mancante", "Scrivi il nome del collega.", "nome"));
+  if (nome === null) errors.push(issue("nome_mancante", "Scrivi il nome dell'altra persona.", "nome"));
   else if (nome.length > 120) errors.push(issue("nome_troppo_lungo", "Il nome è troppo lungo.", "nome"));
   if (email === null) errors.push(issue("email_non_valida", "Scrivi un'email valida.", "email"));
   if (messaggio !== null && messaggio.length > 1000) {
