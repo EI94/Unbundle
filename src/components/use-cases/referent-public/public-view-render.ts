@@ -606,17 +606,21 @@ export function freshReplyIds(view: ReferentAskView): string[] {
 // ─── (Rilascio 10, §3.11) Lavoro finito: «Le tue risposte» e «Scrivi al team» ─
 
 /**
- * Quante righe ha «Le tue risposte (n)»: la conferma del caso d'uso, ogni voce delle stime (o la riga del tempo) e ogni
- * domanda già chiusa (inviata, o a cui ha pensato il team). Zero: niente da mostrare.
+ * Quante righe ha «Le tue risposte (n)»: la conferma del caso d'uso, ogni voce delle stime (o la riga del tempo), ogni
+ * domanda già chiusa (inviata, o a cui ha pensato il team) e, senza la conferma inviata, il blocco dei messaggi sul caso
+ * d'uso (`withFresh` come la pagina: in «Novità» le risposte del team non ancora viste hanno la loro scheda). Zero: niente
+ * da mostrare.
  */
-export function sentCount(view: ReferentAskView): number {
-  const sent = view.check?.submittedAt ? 1 + (view.check.benefits ? view.check.benefits.length : 1) : 0;
-  return sent + view.questions.filter((q) => q.state !== "aperta").length;
+export function sentCount(view: ReferentAskView, o: { withFresh?: boolean } = {}): number {
+  const checkSent = Boolean(view.check?.submittedAt);
+  const sent = checkSent ? 1 + (view.check?.benefits ? view.check.benefits.length : 1) : 0;
+  const general = !checkSent && messagesOf(view, "g", o).length > 0 ? 1 : 0;
+  return sent + view.questions.filter((q) => q.state !== "aperta").length + general;
 }
 
 /** «Le tue risposte (10)». */
-export function sentSummary(view: ReferentAskView): string {
-  return fillText(TT.yourAnswers, { n: sentCount(view) });
+export function sentSummary(view: ReferentAskView, o: { withFresh?: boolean } = {}): string {
+  return fillText(TT.yourAnswers, { n: sentCount(view, o) });
 }
 
 /** Una scelta di «Su cosa?»: dove va il messaggio e che cosa si può scrivere lì. */

@@ -507,6 +507,14 @@ test("(rilascio 10, §3.11) «Le tue risposte (n)»: la conferma, ogni stima e o
   assert.equal(sentCount(followUpView([], { kind: "referente", check: sentCheckOf(null) })), 1 + 1 + 2);
   assert.equal(sentCount(followUpView([])), 2);
   assert.equal(sentCount(view()), 0, "niente di inviato: zero");
+  // Senza la conferma inviata, i messaggi sul caso d'uso sono una riga (mai «Le tue risposte (0)» con qualcosa dentro).
+  const onlyGeneral = followUpView([msg({ id: "d1", side: "referente", kind: "dubbio", anchor: "generale", needId: null })], { questions: [] });
+  assert.equal(sentCount(onlyGeneral), 1);
+  assert.equal(sentSummary(onlyGeneral), "Le tue risposte (1)");
+  // In «Novità» la risposta del team non ancora vista ha la sua scheda: non conta.
+  const fresh = followUpView([msg({ id: "r1", side: "team", kind: "risposta", anchor: "generale", needId: null, fresh: true })], { questions: [] });
+  assert.equal(sentCount(fresh, { withFresh: false }), 0);
+  assert.equal(sentCount(fresh), 1);
 });
 
 test("(rilascio 10, §3.11) «Scrivi al team» con «Su cosa?»: il caso d'uso, le stime, le domande inviate; le regole del filo", () => {

@@ -980,7 +980,7 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
     const sent = sections.filter((q) => q.kind !== "aperta");
     if (!sentCheck && sent.length === 0 && !generalLines()) return null;
     return (
-      <SentDisclosure summary={sentSummary(view)}>
+      <SentDisclosure summary={sentSummary(view, { withFresh: under !== "news" })}>
         {sentCheckBlock()}
         {sent.map((section) => questionCard(section, { primary: false }))}
         {generalLines()}
