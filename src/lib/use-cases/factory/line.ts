@@ -23,8 +23,10 @@ import { EVALS_MAIN, formatQuality, modelLabel, type BenchVerdict } from "./benc
  * main, mai prima (la coda manderebbe ad aggiornare a una versione che «unbundle aggiorna» non porta ancora).
  * (8.0c) La 1.5.0: la CLI decide se si scrive dal campo `scrive` di `unbundle context` (con chi costruisce da fuori, non
  * più solo l'elenco dei ruoli di Lateral Space). Il modello 1.5.0 si unisce prima del rilascio 8.0c.
+ * (9b) La 1.6.0: il contesto del cliente nella CLI (`context --contesto`, `contesto`, `nota`, `impara`, `CONTESTO.md`
+ * nel pacchetto). Unita sul main del modello il 18/11/2026; Unbundle la serve dal rilascio 9b (19/11).
  */
-export const AGENT_FACTORY_TEMPLATE_VERSION = "1.5.0";
+export const AGENT_FACTORY_TEMPLATE_VERSION = "1.6.0";
 
 /** (8.0c) Il repository modello dell'Agent Factory: non è mai il repository di un cliente, per nessuno. */
 export const AGENT_FACTORY_TEMPLATE_REPO = "Voltaen/agent-factory-modello";

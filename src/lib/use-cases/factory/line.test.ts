@@ -58,13 +58,17 @@ test("la coda della fabbrica: i repository indietro con il modello, o senza vers
   assert.match(queue[1].text, /Ha il modello 1\.2\.0, c'è il 1\.3\.0: «unbundle aggiorna»/);
 });
 
-test("(8.0c) il modello di oggi è la 1.5.0 (decide da `scrive`): i repository con la 1.4.x vanno in coda per «unbundle aggiorna»", () => {
-  assert.equal(AGENT_FACTORY_TEMPLATE_VERSION, "1.5.0");
+test("(9b) il modello di oggi è la 1.6.0 (il contesto del cliente): i repository con la 1.5.x o prima vanno in coda per «unbundle aggiorna»", () => {
+  assert.equal(AGENT_FACTORY_TEMPLATE_VERSION, "1.6.0");
   const queue = factoryQueue([
     { repo: "Voltaen/beta-rosa", templateVersion: "1.4.1" },
     { repo: "Voltaen/alfa-esploso", templateVersion: "1.5.0" },
+    { repo: "Voltaen/gamma-esploso", templateVersion: "1.6.0" },
   ]);
-  assert.deepEqual(queue, [{ repo: "Voltaen/beta-rosa", text: "Ha il modello 1.4.1, c'è il 1.5.0: «unbundle aggiorna» apre la pull request." }]);
+  assert.deepEqual(queue, [
+    { repo: "Voltaen/alfa-esploso", text: "Ha il modello 1.5.0, c'è il 1.6.0: «unbundle aggiorna» apre la pull request." },
+    { repo: "Voltaen/beta-rosa", text: "Ha il modello 1.4.1, c'è il 1.6.0: «unbundle aggiorna» apre la pull request." },
+  ]);
 });
 
 test("(8.2a) le evals e il banco nella riga del caso: «evals 96%», «sotto soglia», «il banco consiglia …»", () => {
