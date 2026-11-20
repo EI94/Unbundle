@@ -206,7 +206,8 @@ export const AREA_SOURCE_DIRS: readonly string[] = [
  * («caso d'uso», mai «use case»), anche se la cartella dei componenti sta dentro l'area. (Rilascio 10, §4.2)
  * Anche la pagina del link della realizzazione (`/r`), l'invito, le pagine del questionario AI Readiness per chi
  * risponde (`/a`, il link personale, e `/s`, il link aperto: «questionario», mai «Survey» né «Assessment») e la
- * pagina del link di condivisione (`/share`, D14), che apre chi non è membro del workspace.
+ * pagina del link di condivisione (`/share`, D14), che apre chi non è membro del workspace. (Ondata 4) E il guscio unico
+ * delle pagine pubbliche con i suoi testi, il corso, l'informativa del questionario, l'accesso e i loro pezzi.
  */
 export const OUTSIDE_SOURCE_DIRS: readonly string[] = [
   "src/components/use-cases/referent-public/",
@@ -217,6 +218,21 @@ export const OUTSIDE_SOURCE_DIRS: readonly string[] = [
   "src/app/a/",
   "src/app/s/",
   "src/app/share/",
+  // (Rilascio 10, ondata 4 «Fuori») Il guscio unico delle pagine pubbliche e i suoi testi, il corso `/c`, l'informativa del
+  // questionario, l'accesso, e i pezzi di queste pagine che stanno fra i componenti.
+  "src/components/public/",
+  "src/lib/public/",
+  "src/app/c/",
+  "src/app/privacy/",
+  "src/app/(auth)/",
+  "src/components/learning/join-course-form.tsx",
+  "src/components/ai-readiness/open-survey-start-form.tsx",
+  "src/components/ai-readiness/respondent-survey-form.tsx",
+  "src/components/ai-readiness/use-case-expert-form.tsx",
+  "src/components/ai-readiness/respondent-privacy-controls.tsx",
+  "src/components/auth/login-form.tsx",
+  "src/components/workspace/workspace-invite-accept-form.tsx",
+  "src/components/workspace/verify-invite-email.tsx",
 ];
 
 /**
@@ -228,8 +244,11 @@ export const AREA_LEGACY_FILES: readonly string[] = [
   "src/app/(dashboard)/dashboard/[workspaceId]/use-cases/[useCaseId]/page.tsx",
 ];
 
-/** (Rilascio 10, §4.2) I messaggi della CLI e del pacchetto: ambito `cli` («caso»). */
-export const CLI_SOURCE_DIRS: readonly string[] = ["src/lib/use-cases/cli/"];
+/**
+ * (Rilascio 10, §4.2) I messaggi della CLI e del pacchetto: ambito `cli` («caso»). (Ondata 4) Anche la pagina «Collega la
+ * CLI» (`/cli/collega`), che parla a chi usa la CLI e scrive i suoi comandi («unbundle login») come sono.
+ */
+export const CLI_SOURCE_DIRS: readonly string[] = ["src/lib/use-cases/cli/", "src/app/cli/"];
 
 /**
  * I file fuori dall'area che citano il vecchio nome (DESIGN §14.5): una cartella finisce con

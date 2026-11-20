@@ -35,8 +35,11 @@ const E = SURVEY_TEXT.expert;
 const SUBMIT_INITIAL: AiReadinessActionState<{ savedCount: number }> = { ok: true };
 const FINISH_INITIAL: AiReadinessActionState<{ completed: true }> = { ok: true };
 
+/** La chiave della bozza sul dispositivo: la stessa di sempre, così una bozza già salvata si ritrova. */
+const DRAFT_KEY_PREFIX = "unbundle-air-usecase:";
+
 function draftKey(token: string) {
-  return `unbundle-air-usecase:${token.slice(-16)}`;
+  return DRAFT_KEY_PREFIX + token.slice(-16);
 }
 
 function FieldControl({
