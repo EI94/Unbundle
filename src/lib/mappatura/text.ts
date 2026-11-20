@@ -32,6 +32,12 @@ export const BOARD_TEXT = Object.freeze({
   tabsLabel: "Sezioni dell'unità",
   // (Rilascio 10, §3.7) Le schede «Oggi» e «Con l'AI», senza numeri.
   tabs: Object.freeze({ oggi: "Oggi", classificazione: "Con l'AI" } satisfies Record<BoardTab, string>),
+  // (Rilascio 10, §3.7) La prima riga della testata: il percorso «Contesto › Processi › {Unità}».
+  path: Object.freeze({ label: "Percorso", context: "Contesto", processes: "Processi", separator: "›" }),
+  /** Il «⋯» della testata della board. */
+  menu: "Altre azioni",
+  /** (Rilascio 10, §3.7) La pillola dice la sua parola anche al telefono: la forma corta. */
+  pillShort: Object.freeze({ loading: "Caricamento", ready: "Pronto", saved: "Salvato", dirty: "Da salvare", saving: "Salvo…", readonly: "Sola lettura", local: "Solo qui" }),
   pill: Object.freeze({
     loading: "Caricamento",
     ready: "Pronto",
@@ -79,7 +85,13 @@ export const BOARD_TEXT = Object.freeze({
   /** I segni della mappa come testo (P62). */
   marks: Object.freeze({ toValidate: "[da validare]", hypothesis: "[ipotesi]" }),
   /** La card di un passo. */
-  card: Object.freeze({ who: "Chi:", toValidate: "da validare", decides: "Decide una persona" }),
+  card: Object.freeze({
+    who: "Chi:",
+    toValidate: "da validare",
+    decides: "Decide una persona",
+    /** (Rilascio 10, §3.7) L'attrito sulla card non è solo il colore del bordo: la parola per i lettori di schermo. */
+    friction: (level: string) => `Attrito: ${level.toLowerCase()}`,
+  }),
   /**
    * I due controlli di una nota e la sua spunta. Tolta la spunta, una nota scritta sulla board torna «ipotesi», una
    * venuta dalla chat, dai documenti o da prima della board torna «da fonti» (P56): per lei «Togli la spunta».
@@ -256,6 +268,12 @@ export function pillText(state: PillTextState, savedAt: string | null): string {
     return when ? `Salvato ${when}` : BOARD_TEXT.pill.ready;
   }
   return BOARD_TEXT.pill[state];
+}
+
+/** (Rilascio 10, §3.7) La parola della pillola sulla riga delle schede del telefono: «Salvato», «Da salvare», «Salvo…». */
+export function pillShortText(state: PillTextState, savedAt: string | null): string {
+  if (state === "saved") return savedAtLabel(savedAt) ? BOARD_TEXT.pillShort.saved : BOARD_TEXT.pillShort.ready;
+  return BOARD_TEXT.pillShort[state];
 }
 
 // ─── La riga della campanella (la scrive il server, §7.6) ────────────

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { ReactElement } from "react";
 import { installAppModules } from "../ai/claude-test-kit.ts";
 import { enableTsxImports } from "../../components/use-cases/detail/referent/tsx-test-loader.ts";
-import { FIXTURE_IDS, fixtureBoard, fixtureUnits } from "./board-fixture.ts";
+import { FIXTURE_IDS, fixtureBoard } from "./board-fixture.ts";
 import type { MappingBoard } from "./board-model.ts";
 
 // Le due pagine della mappatura (docs/mappatura/MAPPATURA-BOARD-PIANO.md §1.1, §4.10, §6): leggono e montano, niente di
@@ -124,7 +124,8 @@ test("la board di un'unità: letta per chi guarda, con gli use case che può ved
   });
   const classification = view.props.classification as Element;
   assert.equal(classification.type, ClassificationView);
-  assert.deepEqual(classification.props, { workspaceId: WS, useCaseHub: false });
+  // (Rilascio 10, §3.7) Chi guarda è di Lateral Space o no: i «Dettagli tecnici» del drawer.
+  assert.deepEqual(classification.props, { workspaceId: WS, useCaseHub: false, lateralSpace: false });
   const headAction = view.props.headAction as Element;
   assert.equal(headAction.type, CompleteButton);
   assert.deepEqual(headAction.props, { workspaceId: WS, departmentId: board.unit.id });
@@ -139,6 +140,17 @@ test("l'assistente si apre da solo con ?mode=chat (i link di prima) e finché l'
   assert.equal(await assistantOpen(fixtureBoard(), { mode: "chat" }), true);
   assert.equal(await assistantOpen(fixtureBoard(), { mode: "altro" }), false);
   assert.equal(await assistantOpen(fixtureBoard({ empty: true }), {}), true);
+});
+
+test("(rilascio 10, §8.2) `?apri=<passo>` arriva alla board: il drawer di quel passo si apre all'arrivo; un valore che non è un id, niente", async () => {
+  const step = async (search: Record<string, string>) => {
+    reset(fixtureBoard());
+    const page = await open(fixtureBoard().unit.id, search);
+    return (page.props.children as Element).props.initialStep;
+  };
+  assert.equal(await step({ apri: FIXTURE_IDS.richieste }), FIXTURE_IDS.richieste);
+  assert.equal(await step({ apri: "non-un-passo" }), null);
+  assert.equal(await step({}), null);
 });
 
 test("senza conversazione nessun messaggio; con l'area «Use case» accesa la classificazione lo sa", async () => {

@@ -7,8 +7,9 @@ import { FIXTURE_IDS, fixtureBoard } from "../../../lib/mappatura/board-fixture.
 import type { MappingBoard } from "../../../lib/mappatura/board-model.ts";
 import { clickable, clickables, elements, ofType, press, recorder, type AnyElement } from "./test-support/elements.ts";
 
-// La mappa che si modifica (docs/mappatura/MAPPATURA-BOARD-PIANO.md §1.3; P11–P19, P53, P57–P61, P65): il disegno del
-// riferimento, i controlli di [v1] portati sulla mappa, e niente controlli in sola lettura. I controlli si chiamano
+// La mappa che si modifica (docs/mappatura/MAPPATURA-BOARD-PIANO.md §1.3; P11–P19, P53, P57–P61, P65; rilascio 10,
+// §3.7): il disegno del riferimento, i controlli di [v1] portati sulla mappa (spostare, eliminare e votare nel «⋯» del
+// processo), le card con titolo, «Chi», ◆ e «da validare», e niente controlli in sola lettura. I controlli si chiamano
 // dall'albero degli elementi; il disegno si legge dal markup statico.
 
 await enableTsxImports();
@@ -19,12 +20,17 @@ const { StepCard } = await import("../ui/map.tsx");
 
 const I = FIXTURE_IDS;
 
-function rows(board: MappingBoard, options: { editable?: boolean; dim?: boolean; drag?: { dragging: string | null; over: { processId: string; beforeId: string | null } | null }; focusProcessId?: string | null } = {}) {
+function rows(
+  board: MappingBoard,
+  options: { editable?: boolean; filter?: "attriti" | "da-validare" | null; menu?: string | null; drag?: { dragging: string | null; over: { processId: string; beforeId: string | null } | null }; focusProcessId?: string | null } = {},
+) {
   const log = recorder();
   const tree = MapRows({
     board,
     editable: options.editable ?? true,
-    dim: options.dim ?? false,
+    filter: options.filter ?? null,
+    menu: options.menu ?? null,
+    onMenu: log.record("menu"),
     drag: options.drag ?? NO_DRAG,
     focusProcessId: options.focusProcessId ?? null,
     actions: { dispatch: log.record("dispatch"), openStep: log.record("openStep"), addStep: log.record("addStep"), addProcess: log.record("addProcess"), notify: log.record("notify") },
@@ -48,6 +54,10 @@ test("una riga per processo, i passi da sinistra a destra con una freccia tra du
   assert.deepEqual([...html.matchAll(/data-step="(\w+)"/g)].map((match) => match[1]), ["A1", "A2", "A3", "A4", "B1", "B2"]);
   // A1: attrito forte, la decisione con il suo nome; A2: da validare; A4: attrito lieve; B2: decide una persona senza nome.
   assert.match(a, /class="b-node" data-pain="3" data-step="A1"[^>]*>.*?<span class="b-gate" data-b="gate">Richiesta completa<\/span>/);
+  // (Rilascio 10, §3.7) La card: titolo, «Chi», ◆ e «da validare»; descrizione e strumenti stanno nel drawer. L'attrito
+  // non è solo il colore del bordo: la parola per i lettori di schermo.
+  assert.doesNotMatch(html, /class="b-ns2"|class="b-chip b-tool"/);
+  assert.match(a, /data-step="A1"[^>]*>.*?<span class="b-sr">Attrito: forte<\/span>/);
   assert.match(a, /data-pain="2" data-step="A2".*?<span class="b-tag b-line">da validare<\/span>/);
   assert.match(a, /data-pain="1" data-step="A4"/);
   assert.match(b, /data-step="B2"[^>]*>.*?<span class="b-gate" data-b="gate">Decide una persona<\/span>/);
@@ -56,9 +66,20 @@ test("una riga per processo, i passi da sinistra a destra con una freccia tra du
   assert.match(rows(fixtureBoard({ readOnly: true }), { editable: false }).html, /^<div class="b-pm" style="--steps:4" data-b="map">/);
 });
 
-test("l'etichetta della riga: nome e chi lo segue sul posto, gli attriti, i voti, su, giù; un processo vuoto si elimina con «Annulla»", () => {
+test("l'etichetta della riga: nome e chi lo segue sul posto, gli attriti; il «⋯» con su, giù, i voti; un processo vuoto si elimina con «Annulla»", () => {
   const board = fixtureBoard();
-  const { tree, log, html } = rows(board);
+  const closed = rows(board);
+  // (Rilascio 10, §3.7) Chiuso, il «⋯» di ogni processo: i controlli ci sono (nascosti) e i voti sulla riga solo se ci sono.
+  assert.deepEqual(clickables(closed.tree, "Altre azioni: Dalla richiesta all'ordine").map((button) => button.props["aria-expanded"]), [false]);
+  assert.match(closed.html, /<span class="b-row-ctl" id="b-row-ctl-[^"]+" hidden="" data-b="row-controls">/);
+  assert.match(closed.html, /<span class="b-votes" data-b="votes-count"><span class="b-vb" aria-hidden="true">3<\/span><span class="b-sr">Voti: 3\. Tuoi: 1\.<\/span><\/span>/);
+  assert.equal((closed.html.match(/data-b="votes-count"/g) ?? []).length, 1, "B non ha voti: niente sulla riga");
+  press(closed.tree, "Altre azioni: Dalla richiesta all'ordine");
+  assert.deepEqual(closed.log.named("menu"), [[I.processA]]);
+  // Aperto, il «⋯» di A: i controlli si vedono e il conteggio sulla riga lascia il posto ai voti.
+  const { tree, log, html } = rows(board, { menu: I.processA });
+  assert.doesNotMatch(html.split('data-b="process-row"')[1], /data-b="votes-count"/);
+  assert.match(html, /aria-expanded="true"/);
   const fields = ofType(tree, LineInPlace);
   const [nameA, ownerA, nameB, ownerB] = fields;
   assert.deepEqual(fields.map((field) => [field.props.value, field.props.placeholder]), [
@@ -76,7 +97,7 @@ test("l'etichetta della riga: nome e chi lo segue sul posto, gli attriti, i voti
   assert.match(html, /<span class="b-pm-fr">1 attrito<\/span>/);
   // I voti: il totale e i miei; ognuno muove i suoi.
   const [votesA] = ofType(tree, Votes);
-  assert.deepEqual([votesA.props.total, votesA.props.mine, votesA.props.disabled], [3, 1, false]);
+  assert.deepEqual([votesA.props.total, votesA.props.mine, votesA.props.disabled], [3, 1, undefined]);
   (votesA.props.onChange as (mine: number) => void)(2);
   // Su e giù: il primo non sale, l'ultimo non scende. Il bottone lo dice (aria-disabled) e non fa niente, ma resta
   // raggiungibile: il fuoco non cade sulla pagina quando la riga arriva in cima o in fondo (F1).
@@ -96,8 +117,8 @@ test("l'etichetta della riga: nome e chi lo segue sul posto, gli attriti, i voti
   // «Elimina il processo» solo per un processo senza passi.
   assert.deepEqual(clickables(tree, "Elimina il processo"), []);
   const emptyRow = { ...board, processes: [...board.processes, { id: "a0000000-0000-4000-8000-000000000009", name: "Resi", owner: null, votes: 0, myVotes: 0, steps: [] }] };
-  const withEmpty = rows(emptyRow);
-  // La riga se ne va con il bottone: prima il fuoco va nella vista, così non cade sulla pagina (F1).
+  const withEmpty = rows(emptyRow, { menu: "a0000000-0000-4000-8000-000000000009" });
+  // La riga se ne va con il bottone: prima il fuoco va nella vista, così non cade sulla pagina (F1); il «⋯» si chiude.
   const order: string[] = [];
   const view = { focus: () => void order.push("vista") };
   const remove = clickable(withEmpty.tree, "Elimina il processo");
@@ -105,8 +126,9 @@ test("l'etichetta della riga: nome e chi lo segue sul posto, gli attriti, i voti
   order.push(`dispatch ${withEmpty.log.named("dispatch").length}`);
   assert.deepEqual(order, ["vista", "dispatch 1"]);
   assert.deepEqual(withEmpty.log.named("dispatch"), [[{ t: "process.remove", processId: "a0000000-0000-4000-8000-000000000009" }, { undo: "Processo eliminato." }]]);
-  // Una riga vuota mostra sempre il suo «+ passo».
-  assert.match(withEmpty.html, /class="b-add b-add-step b-add-first" data-b="add">\+ passo<\/button>/);
+  assert.deepEqual(withEmpty.log.named("menu"), [[null]]);
+  // «+ passo» si vede sempre, in ogni riga (rilascio 10).
+  assert.match(withEmpty.html, /class="b-add b-add-step" data-b="add">\+ passo<\/button>/);
 });
 
 test("«+ passo» in fondo a ogni riga, «+ processo» sotto l'ultima, un clic su un passo lo apre (P19, P53)", () => {
@@ -146,24 +168,24 @@ test("il trascinamento: la riga sotto il passo si colora, un segno dice dove cad
   assert.match(source, /event\.dataTransfer\.setDragImage\(card, 16, 16\)/, "si vede la card intera");
 });
 
-test("«Evidenzia attriti» sfuma i passi senza attrito; il processo appena aggiunto ha il cursore nel nome, scelto (P61)", () => {
-  const { html } = rows(fixtureBoard(), { dim: true });
+test("i chip della mappa: «N attriti» sfuma i passi senza attrito, «N da validare» quelli confermati; il processo appena aggiunto ha il cursore nel nome (P61)", () => {
+  const { html } = rows(fixtureBoard(), { filter: "attriti" });
   assert.match(html, /^<div class="b-pm" style="--steps:4" data-dim="" data-adds="" data-b="map">/);
   assert.deepEqual([...html.matchAll(/data-step="(\w+)" data-step-id="[^"]+" data-dimmed=""/g)].map((match) => match[1]), ["A3", "B2"]);
+  const toValidate = rows(fixtureBoard(), { filter: "da-validare" }).html;
+  assert.ok([...toValidate.matchAll(/data-step="(\w+)" data-step-id="[^"]+" data-dimmed=""/g)].map((match) => match[1]).every((code) => code !== "A2"), "A2 è da validare: resta accesa");
   assert.doesNotMatch(rows(fixtureBoard()).html, /data-dimmed/);
   const focused = rows(fixtureBoard(), { focusProcessId: I.processB });
   const [nameA, , nameB] = ofType(focused.tree, LineInPlace);
   assert.deepEqual([nameA.props.autoFocus, nameB.props.autoFocus, nameB.props.selectOnFocus], [false, true, true]);
 });
 
-test("in sola lettura la mappa si legge: nessun campo, nessuna maniglia, nessun «+»; i voti solo se ce ne sono, spenti (F9)", () => {
+test("in sola lettura la mappa si legge: nessun campo, nessuna maniglia, nessun «+», nessun «⋯»; i voti solo se ce ne sono, da leggere (F9)", () => {
   const { tree, html } = rows(fixtureBoard({ readOnly: true }), { editable: false });
-  assert.doesNotMatch(html, /<textarea|b-grip|b-add|b-row-ctl|data-process-id/);
+  assert.doesNotMatch(html, /<textarea|b-grip|b-add|b-row-ctl|b-row-more|data-process-id/);
   assert.match(html, /<b>Dalla richiesta all&#x27;ordine<\/b><small>Responsabile acquisti<\/small>/);
-  const votes = ofType(tree, Votes) as AnyElement[];
-  assert.equal(votes.length, 1, "B non ha voti: niente controllo");
-  assert.equal(votes[0].props.disabled, true);
-  assert.match(html, /<button type="button" aria-label="Togli un tuo voto" disabled="">/);
+  assert.equal((ofType(tree, Votes) as AnyElement[]).length, 0, "nessun controllo dei voti");
+  assert.equal((html.match(/data-b="votes-count"/g) ?? []).length, 1, "il conteggio dove ci sono voti");
   // I passi si aprono lo stesso.
   assert.equal(ofType(tree, StepCard).length, 6);
 });

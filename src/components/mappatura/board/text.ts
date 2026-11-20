@@ -61,6 +61,9 @@ export const VIEW_TEXT = Object.freeze({
     hint: "clicca un passo per aprire attività, persone, dati, attriti, tempi e volumi",
     dim: "Evidenzia attriti",
     copy: "Copia la mappa come testo",
+    // (Rilascio 10, §3.7) I conteggi sono chip che filtrano; la legenda sta dietro il «?».
+    chipsLabel: "Mostra i passi",
+    legendButton: "Che cosa vuol dire",
   }),
   legend: Object.freeze({
     strong: "attrito forte",
@@ -75,6 +78,8 @@ export const VIEW_TEXT = Object.freeze({
     up: "Sposta su",
     down: "Sposta giù",
     remove: "Elimina il processo",
+    /** (Rilascio 10, §3.7) Un «⋯» per processo: sposta, elimina, voti. */
+    menu: (name: string) => `Altre azioni: ${name}`,
   }),
   add: Object.freeze({ step: "+ passo", process: "+ processo" }),
   card: Object.freeze({ grip: "Trascina per spostare" }),
@@ -117,6 +122,11 @@ export const VIEW_TEXT = Object.freeze({
     right: "Sposta a destra",
     moveTo: "Sposta in",
     remove: "Elimina il passo",
+    // (Rilascio 10, §3.7) Il drawer in tre gruppi, e un «⋯» nel piede per spostare ed eliminare.
+    groupStep: "Il passo",
+    groupNotes: "Note",
+    groupMore: "Altro",
+    footMenu: "Altre azioni sul passo",
   }),
   copy: Object.freeze({ title: "La mappa come testo", context: "Copia a mano" }),
 });
@@ -199,3 +209,17 @@ export const drawerContext = (processName: string, code: string): string => `${p
 export const stepRefText = (code: string, title: string): string => `${code} · ${title}`;
 /** Un processo nel menu «Sposta in»: «B · Dall'ordine alla consegna». */
 export const processOptionText = (letter: string, name: string): string => `${letter} · ${name}`;
+
+// ─── (Rilascio 10, §3.7) «Oggi» più leggera ──────────────────────────
+
+/** Un riquadro solo: «25 passi», e sotto «40 h a settimana · 8 dove decide una persona»; niente a zero. */
+export function todaySummaryText(n: { steps: number; hoursWeek: number; decisions: number }): { value: string; label: string } {
+  const parts = [n.hoursWeek > 0 ? `${formatHours(n.hoursWeek)} h a settimana` : null, n.decisions > 0 ? `${formatCount(n.decisions)} dove decide una persona` : null].filter((part): part is string => part !== null);
+  return { value: counted(n.steps, "passo", "passi"), label: parts.join(" · ") };
+}
+
+/** Il chip degli attriti, «7 attriti», e quello dei passi da validare, «5 da validare». */
+export const frictionsChipText = (n: number): string => counted(n, "attrito", "attriti");
+export const toValidateChipText = (n: number): string => `${formatCount(n)} da validare`;
+/** Quello che resta nel gruppo «Altro» del drawer chiuso: «3». */
+export const moreCountText = (n: number): string => formatCount(n);

@@ -28,6 +28,8 @@ export interface UnitBoardProps {
   classification: ReactNode;
   /** `<CompleteButton … />` (compagno): l'unico bottone pieno, a destra della testa della vista. */
   headAction: ReactNode;
+  /** (Rilascio 10, §8.2) `?apri=<passo>`: il drawer di quel passo, aperto all'arrivo nella scheda dell'indirizzo. */
+  initialStep?: string | null;
 }
 
 /** L'assistente accanto alla board: la chat, i documenti, i passi proposti dai documenti. */
@@ -45,10 +47,15 @@ export interface CompanionProps {
   initialConsent?: ChatConsent;
 }
 
-/** La scheda «Classificazione»: legge la board con `useBoard`. `useCaseHub`: l'area «Use case» è accesa nel workspace. */
+/**
+ * La scheda «Con l'AI» (prima «Classificazione»): legge la board con `useBoard`. `useCaseHub`: l'area «Use case» è accesa
+ * nel workspace. (Rilascio 10, §3.7) `lateralSpace`: chi guarda è di Lateral Space, e vede i «Dettagli tecnici» (O*NET,
+ * esposizione all'AI, affidabilità).
+ */
 export interface ClassificationViewProps {
   workspaceId: string;
   useCaseHub: boolean;
+  lateralSpace?: boolean;
 }
 
 /** «Completa la mappatura» e «Classifica {n} passi»: legge la board con `useBoard`, scrive con `replace`. */

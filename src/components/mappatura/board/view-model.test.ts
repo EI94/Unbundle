@@ -86,8 +86,10 @@ test("che cosa si vede: modificabile, vuota, i punti di analisi, i passi sfumati
   assert.equal(analysisShown({ ...fixtureBoard({ classified: true }), analysis: [] }), true);
   // «Evidenzia attriti» sfuma solo i passi senza attrito.
   const steps = allSteps(fixtureBoard());
-  assert.deepEqual(steps.filter((step) => stepDimmed(step, true)).map((step) => step.id), [I.scelta, I.controllo]);
-  assert.deepEqual(steps.filter((step) => stepDimmed(step, false)), []);
+  // (Rilascio 10, §3.7) I chip: «N attriti» sfuma i passi senza attrito, «N da validare» quelli già confermati.
+  assert.deepEqual(steps.filter((step) => stepDimmed(step, "attriti")).map((step) => step.id), [I.scelta, I.controllo]);
+  assert.deepEqual(steps.filter((step) => stepDimmed(step, null)), []);
+  assert.ok(steps.filter((step) => stepDimmed(step, "da-validare")).every((step) => step.status === "confermato"));
   assert.equal(laneFull(Array.from({ length: 30 }, () => steps[0].notes.attriti[0]), "attriti"), true);
   assert.equal(laneFull(fixtureBoard().analysis, "analisi"), false);
   assert.equal(laneFull(Array.from({ length: 6 }, () => fixtureBoard().analysis[0]), "analisi"), true);

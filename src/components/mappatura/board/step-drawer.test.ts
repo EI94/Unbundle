@@ -174,13 +174,27 @@ test("i collegamenti aprono gli altri passi; senza collegamenti la sezione non c
   assert.doesNotMatch(html(body(board, I.ordine).tree), /Collegamenti/);
 });
 
-test("l'ordine del drawer: descrizione, chip, «Entra» ed «Esce», le quattro corsie, «Decide una persona», «Eccezioni», «Collegamenti», «Altri dettagli», il fondo (P20)", () => {
+test("(rilascio 10, §3.7) il drawer in tre gruppi: «Il passo» (descrizione, chip, «Entra» ed «Esce»), «Note» (le quattro corsie), «Altro» chiuso; il fondo", () => {
   const out = html(body(fixtureBoard(), I.richieste).tree);
   const labels = [...out.matchAll(/<p class="b-k">([^<]+)<\/p>|<div class="b-human" data-b="human"><b>([^<]+)<\/b>|<summary>([^<]+)<small>|<summary>([^<]+)<\/summary>/g)].map((match) => match[1] ?? match[2] ?? match[3] ?? match[4]);
-  assert.deepEqual(labels, ["Entra", "Esce", "Cosa si fa", "Attriti", "Dati e documenti", "Tempi e volumi", "Decide una persona", "Eccezioni", "Collegamenti", "Altri dettagli"]);
+  assert.deepEqual(labels, ["Il passo", "Entra", "Esce", "Note", "Cosa si fa", "Attriti", "Dati e documenti", "Tempi e volumi", "Altro", "Decide una persona", "Eccezioni", "Collegamenti"]);
   assert.ok(out.indexOf('data-b="step-description"') < out.indexOf('data-b="step-chips"'));
   assert.ok(out.indexOf('data-b="step-chips"') < out.indexOf(">Entra<"));
-  assert.ok(out.indexOf("Altri dettagli") < out.indexOf('data-b="step-foot"'));
+  assert.ok(out.indexOf('data-b="group-step"') < out.indexOf('data-b="group-notes"') && out.indexOf('data-b="group-notes"') < out.indexOf('data-b="group-more"'));
+  assert.ok(out.indexOf('data-b="group-more"') < out.indexOf('data-b="step-foot"'));
+  // Le corsie si aprono da sole quando hanno qualcosa (note, il livello d'attrito, frequenza o ore); «Altro» è chiuso, con il conteggio.
+  const sections = (markup: string) => [...markup.matchAll(/<details class="b-sec"( open="")? data-b="section"><summary>([^<]+)(?:<small>([^<]+)<\/small>)?<\/summary>/g)].map((match) => [match[2], match[1] === ' open=""', match[3] ?? null]);
+  assert.deepEqual(sections(out), [
+    ["Cosa si fa", true, "2"],
+    ["Attriti", true, "2"],
+    ["Dati e documenti", true, "1"],
+    ["Tempi e volumi", true, "1"],
+    ["Altro", false, "5"],
+  ]);
+  // Una corsia senza niente resta chiusa, senza conteggio.
+  const board = fixtureBoard();
+  const bare = { ...board, processes: board.processes.map((process) => ({ ...process, steps: process.steps.map((step) => (step.id === I.richieste ? { ...step, notes: { ...step.notes, dati: [] } } : step)) })) };
+  assert.deepEqual(sections(html(body(bare, I.richieste).tree))[2], ["Dati e documenti", false, null]);
   // Ruoli e strumenti come chip, con «+ ruolo» e «+ strumento»; le note con la loro didascalia.
   assert.match(out, /<span class="b-chip" data-b="chip">Buyer<button type="button" aria-label="Togli Buyer"/);
   assert.match(out, /<span class="b-chip b-tool" data-b="chip">E-mail<button/);

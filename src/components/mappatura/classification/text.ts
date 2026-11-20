@@ -21,7 +21,7 @@ export const CLASSIFICATION_TEXT = Object.freeze({
   reset: "Usa le categorie proposte",
   resetDone: "Categorie riportate alla proposta.",
   exposureTile: "Esposizione all'AI, media",
-  legend: Object.freeze({ unclassified: "da classificare", decides: "decide una persona" }),
+  legend: Object.freeze({ unclassified: "da classificare", decides: "decide una persona", button: "Che cosa vuol dire" }),
   filters: Object.freeze({ label: "Mostra i passi", all: "Tutti", unclassified: "Da classificare" }),
   card: Object.freeze({ unclassified: "da classificare" }),
   before: Object.freeze({
@@ -50,6 +50,10 @@ export const CLASSIFICATION_TEXT = Object.freeze({
     none: "—",
     noneLabel: "Nessuna categoria",
     proposed: "Proposto dall'assistente",
+    // (Rilascio 10, §3.7) L'esposizione all'AI, il codice O*NET e l'affidabilità: dettagli tecnici, per Lateral Space.
+    technical: "Dettagli tecnici",
+    onet: "Mansione O*NET",
+    reliability: "Affidabilità",
   }),
 });
 

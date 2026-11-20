@@ -2,9 +2,10 @@
  * «Mappatura board»: quello che la board ricorda sul dispositivo e nell'indirizzo (docs/mappatura/MAPPATURA-BOARD-PIANO.md
  * §1.3, §1.5, P4, P5).
  *
- * - La scheda aperta: ricordata per unità (`localStorage`), e scritta nell'ancora dell'indirizzo (`#oggi`,
- *   `#classificazione`) senza una voce in più nella cronologia. L'ancora vince sulla scheda ricordata (P5): un link
- *   della campanella apre «Classificazione», e chi cambia l'ancora (il toast «Apri» dopo il completamento) la segue.
+ * - La scheda aperta: scritta nell'ancora dell'indirizzo (`#oggi`, `#classificazione`) senza una voce in più nella
+ *   cronologia. Un link della campanella apre «Con l'AI», e chi cambia l'ancora (il toast «Apri» dopo il completamento)
+ *   la segue. (Rilascio 10, §3.7, §8.2) La scheda non si ricorda più sul dispositivo: due persone che aprono lo stesso
+ *   link vedono la stessa scheda.
  * - Il pannello dell'assistente aperto o chiuso: una preferenza sola per tutte le unità.
  * - Se la finestra è larga abbastanza per tenere l'assistente accanto alla board (1280 px).
  *
@@ -14,7 +15,7 @@
  */
 import { BOARD_TABS, type BoardTab } from "../../../lib/mappatura/text.ts";
 
-/** La scheda ricordata di un'unità. */
+/** La scheda che si ricordava per unità, fino al rilascio 10: non si legge e non si scrive più. */
 export const tabKey = (departmentId: string) => `unbundle-mapping-tab:${departmentId}`;
 /** Il pannello dell'assistente: «1» aperto, «0» chiuso. */
 export const ASSISTANT_KEY = "unbundle-mapping-assistant";
@@ -27,9 +28,9 @@ export function tabFromHash(hash: string | null | undefined): BoardTab | null {
   return (BOARD_TABS as readonly string[]).includes(id) ? (id as BoardTab) : null;
 }
 
-/** La scheda da aprire: quella dell'ancora, poi quella ricordata, poi il default (P4, P5). */
-export function resolveTab(hash: string, remembered: string | null, fallback: BoardTab): BoardTab {
-  return tabFromHash(hash) ?? tabFromHash(remembered) ?? fallback;
+/** La scheda da aprire: quella dell'ancora, poi il default (P4, P5; rilascio 10: niente scheda ricordata). */
+export function resolveTab(hash: string, fallback: BoardTab): BoardTab {
+  return tabFromHash(hash) ?? fallback;
 }
 
 export interface PrefsEnv {
@@ -65,10 +66,9 @@ export function createBoardPrefs(env: PrefsEnv | null): BoardPrefs {
         off?.();
       };
     },
-    tab: (departmentId, fallback) => (env ? resolveTab(env.hash(), env.read(tabKey(departmentId)), fallback) : fallback),
-    selectTab(departmentId, tab) {
+    tab: (_departmentId, fallback) => (env ? resolveTab(env.hash(), fallback) : fallback),
+    selectTab(_departmentId, tab) {
       if (!env) return;
-      env.write(tabKey(departmentId), tab);
       if (tabFromHash(env.hash()) !== tab) env.replaceHash(tab);
       emit();
     },

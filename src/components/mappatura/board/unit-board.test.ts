@@ -7,10 +7,11 @@ import { enableTsxImports } from "../../use-cases/detail/referent/tsx-test-loade
 import { FIXTURE_IDS, fixtureBoard } from "../../../lib/mappatura/board-fixture.ts";
 import type { MappingBoard } from "../../../lib/mappatura/board-model.ts";
 
-// La board di un'unità (docs/mappatura/MAPPATURA-BOARD-PIANO.md §1.3–§1.5; P1–P7, P70–P71, P79, P85): la testata con
-// il marchio, la pillola, «Assistente», il titolo e le schede; una vista per volta, legata alla sua scheda; il pannello
-// dell'assistente con lo slot del compagno, aperto o chiuso; sul telefono la riga delle schede con la pillola a punto e
-// il bottone dell'assistente. Markup statico, com'è al primo disegno; il comportamento nel browser si legge dal sorgente.
+// La board di un'unità (docs/mappatura/MAPPATURA-BOARD-PIANO.md §1.3–§1.5; P1–P7, P70–P71, P79, P85; rilascio 10, §3.7):
+// la testata in tre righe (il percorso con la pillola, il «⋯» e «Assistente»; il titolo; le schede senza numeri); una
+// vista per volta, legata alla sua scheda; il pannello dell'assistente con lo slot del compagno, aperto o chiuso; sul
+// telefono la riga delle schede con la pillola (punto e parola), il «⋯» e il bottone dell'assistente. Markup statico,
+// com'è al primo disegno; il comportamento nel browser si legge dal sorgente.
 
 await enableTsxImports();
 const { UnitBoard } = await import("./unit-board.tsx");
@@ -40,22 +41,25 @@ function render(board: MappingBoard, extra: { assistantDefaultOpen?: boolean; in
   );
 }
 
-test("la testata: il marchio con il link all'elenco, la pillola, «Assistente», il titolo «{unità} board», le schede (P1–P3, P70)", () => {
+test("(rilascio 10, §3.7) la testata in tre righe: il percorso con la pillola, il «⋯» e «Assistente»; il titolo, il nome dell'unità; le schede senza numeri", () => {
   const html = render(fixtureBoard());
   assert.match(html, /<header class="b-top" data-b="header">/);
-  assert.match(html, /<div class="b-brand" data-b="brand">.*?lateral <span class="b-mute">space<\/span><\/b><span class="b-x" aria-hidden="true">×<\/span><span>Officina di prova<\/span><span class="b-x" aria-hidden="true">·<\/span><a href="\/dashboard\/[^/]+\/mapping">Processi<\/a><\/div>/);
+  assert.match(html, /<nav class="b-brand b-path" aria-label="Percorso" data-b="path">.*?<a href="\/dashboard\/[^/]+\/contesto">Contesto<\/a>.*?<a href="\/dashboard\/[^/]+\/contesto\?vista=processi">Processi<\/a>.*?<span class="b-path-here" aria-current="page">Ufficio acquisti<\/span><\/nav>/);
+  assert.doesNotMatch(html.slice(0, html.indexOf("</header>")), /Officina di prova|lateral/, "il workspace sta nella barra laterale");
   assert.match(html, /<span class="b-status" data-s="saved" role="status" aria-live="polite" tabindex="-1" data-b="pill"><span class="b-dot" aria-hidden="true"><\/span><span>Salvato 16\/11, 10:30<\/span><\/span>/);
-  assert.doesNotMatch(html, /data-b="save-now"/, "«Salva ora» solo con modifiche da salvare");
+  assert.doesNotMatch(html, /data-b="save-now"/, "«Salva ora» solo se il salvataggio non riesce o fuori linea");
+  // Il «⋯» della testata, nascosto al telefono (là sta nella riga delle schede).
+  assert.match(html, /<button type="button"[^>]*aria-haspopup="menu"[^>]*aria-label="Altre azioni"[^>]*class="b-iconbtn b-menu-btn b-hide-phone"/);
   const toggle = html.match(/<button type="button" class="b-btn b-hide-phone b-assist-toggle" aria-expanded="false" aria-controls="([^"]+)" data-b="assistant-toggle">Assistente<\/button>/);
   assert.ok(toggle, "il bottone dell'assistente, contornato");
   assert.match(html, new RegExp(`<aside id="${toggle![1].replace(/[^\w-]/g, "\\$&")}" class="b-assist" hidden=""`), "il bottone controlla il pannello");
   assert.match(html, /<h1 class="b-title" style="margin-top:8px"><span data-b="title">Ufficio acquisti<\/span><\/h1>/);
-  // Le schede: il numero d'ordine, nessun conteggio; la scelta ha aria-selected e il suo pannello.
+  // Le schede: nessun numero d'ordine, nessun conteggio; la scelta ha aria-selected e il suo pannello.
   assert.match(html, /<div class="b-tabs" role="tablist" aria-label="Sezioni dell&#x27;unità">/);
-  const tabs = [...html.matchAll(/<button type="button" role="tab" id="([^"]+)" class="b-tab" data-tab="(\w+)" aria-selected="(\w+)" aria-controls="([^"]+)" tabindex="(-?\d)"><span class="b-n" aria-hidden="true">(\d\d)<\/span>([^<]+)<\/button>/g)].map((match) => match.slice(1));
+  const tabs = [...html.matchAll(/<button type="button" role="tab" id="([^"]+)" class="b-tab" data-tab="(\w+)" aria-selected="(\w+)" aria-controls="([^"]+)" tabindex="(-?\d)">([^<]+)<\/button>/g)].map((match) => match.slice(1));
   assert.deepEqual(tabs, [
-    ["b-tab-oggi", "oggi", "true", "b-panel-oggi", "0", "01", "Oggi"],
-    ["b-tab-classificazione", "classificazione", "false", "b-panel-classificazione", "-1", "02", "Con l&#x27;AI"],
+    ["b-tab-oggi", "oggi", "true", "b-panel-oggi", "0", "Oggi"],
+    ["b-tab-classificazione", "classificazione", "false", "b-panel-classificazione", "-1", "Con l&#x27;AI"],
   ]);
 });
 
@@ -88,24 +92,28 @@ test("il pannello dell'assistente: lo slot del compagno sotto «Assistente» e �
   assert.match(open, /<div class="b-scrim b-assist-scrim" aria-hidden="true" data-b="assistant-scrim"><\/div>$/);
 });
 
-test("sul telefono: la riga delle schede con la pillola a punto (per gli occhi) e il bottone dell'assistente (P79)", () => {
+test("sul telefono: la riga delle schede con la pillola (il punto e la parola), il «⋯» e il bottone dell'assistente (P79; rilascio 10)", () => {
   const html = render(fixtureBoard());
   assert.match(
     html,
-    /<div class="b-tabs-aside"><span class="b-tabs-pill" aria-hidden="true"><span class="b-status b-compact" data-s="saved" role="status" aria-live="polite" data-b="pill"><span class="b-dot" aria-hidden="true"><\/span><span class="b-sr">Salvato 16\/11, 10:30<\/span><\/span><\/span><button type="button" class="b-iconbtn" aria-label="Assistente" title="Assistente" aria-expanded="false" aria-controls="[^"]+">/,
+    /<div class="b-tabs-aside"><span class="b-tabs-pill" aria-hidden="true"><span class="b-status b-compact b-word" data-s="saved" role="status" aria-live="polite" data-b="pill"><span class="b-dot" aria-hidden="true"><\/span><span aria-hidden="true">Salvato<\/span><span class="b-sr">Salvato 16\/11, 10:30<\/span><\/span><\/span><button type="button"[^>]*class="b-iconbtn b-menu-btn"[^>]*>.*?<\/button><button type="button" class="b-iconbtn" aria-label="Assistente" title="Assistente" aria-expanded="false" aria-controls="[^"]+">/,
   );
 });
 
-test("nel browser: la scheda scelta porta in cima e si ricorda; il pannello sopra la pagina la rende inerte e si chiude con Escape e il velo", () => {
+test("nel browser: la scheda scelta porta in cima (l'ancora, mai una scheda ricordata); il pannello sopra la pagina la rende inerte e si chiude con Escape e il velo", () => {
   const source = readFileSync(new URL("./unit-board.tsx", import.meta.url), "utf8");
-  // La scheda viene dalle preferenze (l'ancora, poi quella ricordata) e sceglierla la ricorda e porta in cima.
+  // La scheda viene dall'ancora (rilascio 10: niente scheda ricordata sul dispositivo) e sceglierla porta in cima.
   assert.match(source, /useSyncExternalStore\(prefs\.subscribe, \(\) => prefs\.tab\(departmentId, fallbackTab\), \(\) => fallbackTab\)/);
-  assert.match(source, /prefs\.selectTab\(departmentId, next\);\s+window\.scrollTo\(\{ top: 0 \}\);/);
+  assert.match(source, /if \(next !== tab\) setArrival\(null\);\s+prefs\.selectTab\(departmentId, next\);\s+window\.scrollTo\(\{ top: 0 \}\);/);
   assert.match(source, /window\.addEventListener\("hashchange", top\)/);
+  // (Rilascio 10, §8.2) Il passo dell'indirizzo arriva alla vista della scheda aperta; su desktop resta ferma la sola riga delle schede.
+  assert.match(source, /const \[arrival, setArrival\] = useState<string \| null>\(p\.initialStep \?\? null\);/);
+  assert.match(source, /<ArrivalStep\.Provider value=\{arrival\}>/);
+  assert.match(source, /header\.style\.setProperty\("--b-sticky-offset", `\$\{Math\.max\(0, Math\.round\(tabbar\.offsetTop\)\)\}px`\)/);
   // Il pannello: la scelta della visita, il default della pagina, la preferenza del dispositivo; sopra la pagina sotto i 1280 px.
   assert.match(source, /const open = choice \?\? \(p\.assistantDefaultOpen \|\| remembered === true\);/);
   assert.match(source, /const overlay = open && !wide;/);
-  assert.match(source, /<div className="b-board-col" inert=\{overlay \|\| undefined\}>/);
+  assert.match(source, /<div className="b-board-col" ref=\{column\} inert=\{overlay \|\| undefined\}>/);
   assert.match(source, /<div className=\{cx\("b-scrim", "b-assist-scrim", overlay && "b-on"\)\} aria-hidden="true" onClick=\{close\}/);
   // Sopra la pagina è un dialogo modale (F2): il resto (app compresa) inerte tranne il velo, Escape sul documento, le due
   // guardie del Tab, il toast dentro il pannello (modal-panel.test.ts prova le funzioni).

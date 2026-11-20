@@ -141,10 +141,13 @@ export function StatusChip(p: { tone: "neutral" | "ok" | "wait" | "check"; child
 
 // ─── Numeri, legenda, filtri ─────────────────────────────────────────
 
-/** I numeri prima di tutto (P37): quattro riquadri, il numero in serif e una riga sotto; due per riga stretti. */
-export function Kpis(p: { items: ReadonlyArray<{ value: string; label: string }> }): JSX.Element {
+/**
+ * I numeri prima di tutto (P37): quattro riquadri, il numero in serif e una riga sotto; due per riga stretti.
+ * (Rilascio 10, §3.7) `single`: un riquadro solo, largo quanto serve (un numero grande per schermata).
+ */
+export function Kpis(p: { items: ReadonlyArray<{ value: string; label: string }>; single?: boolean }): JSX.Element {
   return (
-    <div className="b-kpis" data-b="kpis">
+    <div className={p.single ? "b-kpis b-kpis-one" : "b-kpis"} data-b="kpis">
       {p.items.map((item, index) => (
         <div className="b-kpi" key={`${index}:${item.label}`}>
           <div className="b-kv">{item.value}</div>

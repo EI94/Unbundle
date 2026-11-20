@@ -57,13 +57,22 @@ test("ogni classe che il foglio nomina esiste, in board.css o nel markup delle v
   assert.deepEqual([...new Set(written)].filter((name) => !styled.has(`.${name}`)), []);
 });
 
-test("sul tocco niente trascinamento; i controlli che compaiono al passaggio si vedono sempre", () => {
+test("sul tocco niente trascinamento; i controlli che compaiono al passaggio si vedono sempre; ogni cosa che si tocca è grande 44 px (rilascio 10)", () => {
   const touch = views.filter((rule) => rule.at === "@media (hover: none)");
   const declared = (selector: string) => touch.find((rule) => rule.selector === `[data-board-root] ${selector}`)?.declarations;
   assert.equal(declared(".b-node-w > .b-grip")?.get("display"), "none");
-  assert.equal(declared(".b-row-ctl")?.get("opacity"), "1");
   assert.equal(declared(".b-point .b-point-ctl")?.get("opacity"), "1");
-  assert.equal(declared(".b-add-step")?.get("opacity"), ".8");
+  // (Rilascio 10, §3.7) «+ passo» si vede sempre, anche col mouse; i controlli di un processo stanno nel suo «⋯».
+  const always = (selector: string) => views.find((rule) => rule.at === null && rule.selector === `[data-board-root] ${selector}`)?.declarations;
+  assert.equal(always(".b-add-step")?.get("opacity"), "1");
+  assert.equal(always(".b-row-ctl[hidden]")?.get("display"), "none", "chiusi finché non si tocca il «⋯»");
+  assert.ok(!views.some((rule) => rule.selector.includes(":hover .b-add-step") || rule.selector.includes(":hover .b-row-ctl")), "niente compare solo al passaggio");
+  // 44 px: il bottone dell'assistente e del «⋯», le schede, i bottoni e i chip; i bottoni tondi piccoli con un margine invisibile.
+  assert.deepEqual([declared(".b-iconbtn")?.get("width"), declared(".b-iconbtn")?.get("height")], ["44px", "44px"]);
+  assert.equal(declared(".b-tabbar .b-tab")?.get("min-height"), "44px");
+  const hit = touch.find((rule) => rule.selector.includes(".b-row-more::after"))?.declarations;
+  assert.deepEqual([hit?.get("content"), hit?.get("inset")], ['""', "-11px"], "22 px a vista, 44 al tocco");
+  assert.ok(touch.some((rule) => rule.selector.includes(".b-board .b-textin") && rule.declarations.get("font-size") === "16px"), "i campi a 16 px");
 });
 
 test("una corsia vuota che si modifica mostra sempre «+ nota»; in una corsia con note compare al passaggio o al fuoco (P21)", () => {

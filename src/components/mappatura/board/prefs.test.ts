@@ -33,30 +33,34 @@ function fakeEnv(hash = "") {
   return env;
 }
 
-test("la scheda da aprire: l'ancora, poi quella ricordata, poi il default (P4, P5)", () => {
+test("la scheda da aprire: l'ancora, poi il default (P4, P5); nessuna scheda ricordata (rilascio 10)", () => {
   assert.equal(tabFromHash("#classificazione"), "classificazione");
   assert.equal(tabFromHash("oggi"), "oggi");
   assert.equal(tabFromHash("#altro"), null);
   assert.equal(tabFromHash(null), null);
-  assert.equal(resolveTab("#oggi", "classificazione", "oggi"), "oggi", "l'ancora vince sulla scheda ricordata");
-  assert.equal(resolveTab("", "classificazione", "oggi"), "classificazione");
-  assert.equal(resolveTab("#x", "y", "oggi"), "oggi");
+  assert.equal(resolveTab("#oggi", "classificazione"), "oggi");
+  assert.equal(resolveTab("", "oggi"), "oggi");
+  assert.equal(resolveTab("#x", "oggi"), "oggi");
+  // Una scheda ricordata da prima del rilascio 10 non conta più: lo stesso link apre la stessa scheda a tutti.
+  const env = fakeEnv();
+  env.store.set(tabKey("u1"), "classificazione");
+  assert.equal(createBoardPrefs(env).tab("u1", "oggi"), "oggi");
 });
 
-test("scegliere una scheda la ricorda per l'unità e la scrive nell'ancora, senza una voce in più nella cronologia", () => {
+test("scegliere una scheda la scrive nell'ancora, senza una voce in più nella cronologia, e niente sul dispositivo", () => {
   const env = fakeEnv();
   const prefs = createBoardPrefs(env);
   const seen: string[] = [];
   const off = prefs.subscribe(() => seen.push(prefs.tab("u1", "oggi")));
   assert.equal(prefs.tab("u1", "oggi"), "oggi");
   prefs.selectTab("u1", "classificazione");
-  assert.equal(env.store.get(tabKey("u1")), "classificazione");
+  assert.equal(env.store.has(tabKey("u1")), false, "niente sul dispositivo");
   assert.deepEqual(env.replaced, ["classificazione"]);
   assert.deepEqual(seen, ["classificazione"], "chi legge la scheda lo sa subito");
-  // Un'altra unità non ha la stessa scheda ricordata (l'ancora però vale per la pagina aperta).
+  // Senza ancora, ogni unità apre la prima scheda.
   env.hashValue = "";
   assert.equal(prefs.tab("u2", "oggi"), "oggi");
-  assert.equal(prefs.tab("u1", "oggi"), "classificazione");
+  assert.equal(prefs.tab("u1", "oggi"), "oggi");
   // Chi cambia l'ancora (il toast «Apri» dopo il completamento) è seguito.
   env.fireHashChange("#oggi");
   assert.equal(seen.at(-1), "oggi");

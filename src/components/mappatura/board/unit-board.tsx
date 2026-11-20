@@ -1,14 +1,15 @@
 "use client";
 
 /**
- * «Mappatura board»: la board di un'unità, S2 (docs/mappatura/MAPPATURA-BOARD-PIANO.md §1.3–§1.5, §4.10; P1–P10,
- * P70–P79, P83–P85).
+ * «Mappatura board»: la board di un'unità, S2 (docs/mappatura/MAPPATURA-BOARD-PIANO.md §1.3–§1.5; P1–P10,
+ * P70–P79, P83–P85; rilascio 10, docs/ui-10/PROPOSTA-10.md §3.7: la grafica resta, cambia il comportamento).
  *
- * La testata del riferimento, ferma sotto la barra del workspace: la riga del marchio con la pillola dello stato,
- * «Salva ora» quando c'è da salvare e il bottone «Assistente»; il titolo in serif «{Unità} *board*»; le schede «01
- * Processi di oggi», «02 Classificazione». Una scheda sostituisce la vista e porta la pagina in cima; è ricordata per
- * unità sul dispositivo, e l'ancora dell'indirizzo (`#oggi`, `#classificazione`) vince (P4, P5): chi la cambia (il
- * toast «Apri» dopo il completamento) è seguito.
+ * La testata in tre righe: il percorso «Contesto › Processi › {Unità}» con a destra la pillola dello stato, il «⋯»
+ * («Copia la mappa come testo», «Usa le categorie proposte») e «Assistente»; il titolo in serif, il nome dell'unità; le
+ * schede «Oggi» e «Con l'AI», senza numeri. Su desktop, scorrendo, resta ferma la sola riga delle schede (la testata
+ * sale fino a lei: `--b-sticky-offset`). «Salva ora» compare solo se il salvataggio non riesce o fuori linea. Una scheda
+ * sostituisce la vista e porta la pagina in cima; vale l'ancora dell'indirizzo (`#oggi`, `#classificazione`), mai una
+ * scheda ricordata sul dispositivo. Il passo aperto ha il suo indirizzo, `?apri=<passo>`: un link lo riapre.
  *
  * Il pannello dell'assistente (lo slot `assistant` del compagno) sta a destra della board: agganciato, in una colonna
  * di 380 px, da 1280 px di finestra (la board si stringe e la mappa scorre nel suo riquadro); più stretto, sopra la
@@ -17,19 +18,24 @@
  * l'unità non ha un passo (`assistantDefaultOpen`). Chiuso resta montato: la conversazione continua e quello che
  * l'assistente salva arriva sulla board.
  *
- * Sul telefono la riga del marchio, la pillola e il titolo scorrono con la pagina; resta ferma la sola riga delle
- * schede, con la pillola a punto e il bottone dell'assistente a destra (P79 adattato: board.css).
+ * Sul telefono il percorso, la pillola e il titolo scorrono con la pagina; resta ferma la sola riga delle schede, con
+ * la pillola (punto e parola) e il bottone dell'assistente a destra (board.css, board-views.css).
  */
-import { useEffect, useEffectEvent, useId, useRef, useState, useSyncExternalStore, type JSX } from "react";
+import { useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type JSX } from "react";
+import { boardAsText, streamNumbers } from "../../../lib/mappatura/board-model.ts";
 import { BOARD_TABS, BOARD_TEXT, type BoardTab } from "../../../lib/mappatura/text.ts";
 import type { UnitBoardProps } from "../contracts.ts";
 import { useBoard, useBoardClient, useClaimToastHost } from "../store/use-board.tsx";
 import { BoardToastView, PanelToastHost } from "../ui/edit.tsx";
-import { BoardBrand, BoardHeader, BoardMain, BoardTabs, BoardTitle, StatusPill, boardPanelId, boardTabId } from "../ui/frame.tsx";
+import { BoardHeader, BoardMain, BoardPath, BoardTabs, BoardTitle, StatusPill, boardPanelId, boardTabId } from "../ui/frame.tsx";
+import { BoardMenu, type BoardMenuItem } from "../ui/menu.tsx";
+import { resetStreams } from "../classification/classification-view.tsx";
+import { CLASSIFICATION_TEXT } from "../classification/text.ts";
 import { closesOnEscape, inertOthers, wrapFocus, type InertNode } from "./modal-panel.ts";
 import { boardPrefs, subscribeWide, wideNow, wideOnServer } from "./prefs.ts";
 import { VIEW_TEXT } from "./text.ts";
-import { TodayView } from "./today-view.tsx";
+import { CopyDrawer, TodayView } from "./today-view.tsx";
+import { ArrivalStep } from "./arrival.tsx";
 
 const cx = (...names: Array<string | false | null | undefined>) => names.filter(Boolean).join(" ");
 
@@ -75,20 +81,70 @@ export function UnitBoard(p: UnitBoardProps & { initialTab?: BoardTab }): JSX.El
   const board = useBoard((state) => state.board);
   const pill = useBoard((state) => state.pill);
   const savedAt = useBoard((state) => state.savedAt);
+  const failed = useBoard((state) => state.failed);
   const client = useBoardClient();
   const departmentId = board.unit.id;
   const fallbackTab = p.initialTab ?? BOARD_TABS[0];
 
-  // La scheda: l'ancora, poi quella ricordata per l'unità; sul server e al primo disegno, la prima.
+  // La scheda: l'ancora; sul server e al primo disegno, la prima.
   const prefs = boardPrefs();
   const tab = useSyncExternalStore(prefs.subscribe, () => prefs.tab(departmentId, fallbackTab), () => fallbackTab);
+  // Il passo dell'indirizzo, all'arrivo: vale per la scheda di adesso, finché non se ne sceglie un'altra.
+  const [arrival, setArrival] = useState<string | null>(p.initialStep ?? null);
   const select = (next: BoardTab) => {
+    if (next !== tab) setArrival(null);
     prefs.selectTab(departmentId, next);
     window.scrollTo({ top: 0 });
   };
+
+  // «Copia la mappa come testo» (nel «⋯»): negli appunti, o nel drawer da copiare a mano (P62).
+  const [copyText, setCopyText] = useState<string | null>(null);
+  const copyMap = () => {
+    const text = boardAsText(board);
+    const clipboard = typeof navigator === "undefined" ? undefined : navigator.clipboard;
+    if (!clipboard?.writeText) {
+      setCopyText(text);
+      return;
+    }
+    clipboard.writeText(text).then(
+      () => client.notify(BOARD_TEXT.toast.copied),
+      () => setCopyText(text),
+    );
+  };
+  const complete = board.unit.status === "mapped" || board.unit.status === "validated";
+  const canReset = complete && board.can.setStream && streamNumbers(board).differsFromProposal > 0;
+  const menu: BoardMenuItem[] = [
+    { key: "copia", label: VIEW_TEXT.map.copy, onSelect: copyMap },
+    ...(canReset
+      ? [
+          {
+            key: "categorie",
+            label: CLASSIFICATION_TEXT.reset,
+            onSelect: () => resetStreams(client),
+          },
+        ]
+      : []),
+  ];
+
+  // Su desktop resta ferma la sola riga delle schede: la testata sale di quanto è alto quello che sta sopra le schede.
+  const column = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const header = column.current?.querySelector<HTMLElement>('[data-b="header"]');
+    const tabbar = header?.querySelector<HTMLElement>('[data-b="tabs"]');
+    if (!header || !tabbar) return;
+    const measure = () => header.style.setProperty("--b-sticky-offset", `${Math.max(0, Math.round(tabbar.offsetTop))}px`);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
   // Chi cambia l'ancora (il toast «Apri» dopo il completamento) porta la pagina in cima, come una scheda scelta (P4).
   useEffect(() => {
-    const top = () => window.scrollTo({ top: 0 });
+    const top = () => {
+      window.scrollTo({ top: 0 });
+      setArrival(null);
+    };
     window.addEventListener("hashchange", top);
     return () => window.removeEventListener("hashchange", top);
   }, []);
@@ -158,19 +214,20 @@ export function UnitBoard(p: UnitBoardProps & { initialTab?: BoardTab }): JSX.El
   }, [overlay]);
 
   const assistantButtons = { "aria-expanded": open, "aria-controls": panelId };
-  const brand = <BoardBrand workspaceName={p.workspaceName} areaHref={`/dashboard/${p.workspaceId}/mapping`} />;
+  const brand = <BoardPath workspaceId={p.workspaceId} unitName={board.unit.name} />;
   const tabs = BOARD_TABS.map((id) => ({ id, label: BOARD_TEXT.tabs[id] }));
 
   return (
     <>
       <div className="b-board" data-assistant={open ? "open" : "closed"} data-b="board">
-        <div className="b-board-col" inert={overlay || undefined}>
+        <div className="b-board-col" ref={column} inert={overlay || undefined}>
           <BoardHeader
             brand={brand}
             title={<BoardTitle plain={board.unit.name} accent={BOARD_TEXT.boardTitleAccent} />}
             aside={
               <>
-                <StatusPill state={pill} savedAt={savedAt} onSaveNow={() => void client.saveNow()} />
+                <StatusPill state={pill} savedAt={savedAt} failed={failed} onSaveNow={() => void client.saveNow()} />
+                <BoardMenu label={BOARD_TEXT.menu} items={menu} hidePhone />
                 <button ref={headToggle} type="button" className="b-btn b-hide-phone b-assist-toggle" {...assistantButtons} onClick={toggle} data-b="assistant-toggle">
                   {VIEW_TEXT.header.assistant}
                 </button>
@@ -187,6 +244,7 @@ export function UnitBoard(p: UnitBoardProps & { initialTab?: BoardTab }): JSX.El
                     <span className="b-tabs-pill" aria-hidden="true">
                       <StatusPill state={pill} savedAt={savedAt} compact />
                     </span>
+                    <BoardMenu label={BOARD_TEXT.menu} items={menu} />
                     <button ref={tabToggle} type="button" className="b-iconbtn" aria-label={VIEW_TEXT.header.assistant} title={VIEW_TEXT.header.assistant} {...assistantButtons} onClick={toggle}>
                       <AssistantIcon />
                     </button>
@@ -196,12 +254,14 @@ export function UnitBoard(p: UnitBoardProps & { initialTab?: BoardTab }): JSX.El
             }
           />
           <BoardMain>
+            <ArrivalStep.Provider value={arrival}>
             {BOARD_TABS.map((id) => (
               // Il pannello prende il fuoco (senza entrare nel giro del Tab) quando la persona lascia un campo con Escape.
               <section key={id} className={cx("b-view", tab === id && "b-on")} role="tabpanel" id={boardPanelId(id)} aria-labelledby={boardTabId(id)} hidden={tab !== id} tabIndex={-1} data-b={`view-${id}`}>
                 {tab !== id ? null : id === "oggi" ? <TodayView headAction={p.headAction} onStartAssistant={() => setOpen(true, "field")} /> : p.classification}
               </section>
             ))}
+            </ArrivalStep.Provider>
           </BoardMain>
           {/* Il toast della pagina sta in fondo alla colonna della board: centrato sull'area della board, mai sopra il pannello
               agganciato dell'assistente. */}
@@ -225,6 +285,7 @@ export function UnitBoard(p: UnitBoardProps & { initialTab?: BoardTab }): JSX.El
         </aside>
       </div>
       <div className={cx("b-scrim", "b-assist-scrim", overlay && "b-on")} aria-hidden="true" onClick={close} data-b="assistant-scrim" />
+      <CopyDrawer text={copyText} onClose={() => setCopyText(null)} />
     </>
   );
 }

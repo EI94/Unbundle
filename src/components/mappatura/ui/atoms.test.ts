@@ -116,7 +116,8 @@ test("la tabella che sul telefono diventa blocchi: le colonne prima dei valori (
 test("i pezzi della board non scrivono testi né colori propri: le scritte vengono da text.ts o da chi li usa", () => {
   const dir = new URL("./", import.meta.url);
   const sources = readdirSync(dir).filter((file) => file.endsWith(".tsx"));
-  assert.deepEqual(sources.sort(), ["atoms.tsx", "drawer.tsx", "edit.tsx", "frame.tsx", "map.tsx"]);
+  // (Rilascio 10, §3.7) In più il «⋯» della testata.
+  assert.deepEqual(sources.sort(), ["atoms.tsx", "drawer.tsx", "edit.tsx", "frame.tsx", "map.tsx", "menu.tsx"]);
   for (const file of sources) {
     const source = readFileSync(new URL(file, dir), "utf8").replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
     // Nessun testo con lettere scritto nel markup, nessuna etichetta scritta a mano.

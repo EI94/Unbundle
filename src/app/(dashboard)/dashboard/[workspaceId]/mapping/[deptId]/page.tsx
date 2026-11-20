@@ -3,6 +3,7 @@ import { ClassificationView } from "@/components/mappatura/classification/classi
 import { Companion } from "@/components/mappatura/companion/companion";
 import { CompleteButton } from "@/components/mappatura/companion/complete-button";
 import { UnitBoard } from "@/components/mappatura/board/unit-board";
+import { sheetIdParam } from "@/components/context/view-model";
 import { BoardProvider } from "@/components/mappatura/store/use-board";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { getActiveConversation, getMessages } from "@/lib/db/queries/conversations";
@@ -22,7 +23,8 @@ import { getUnitTerm } from "@/lib/utils/unit-terminology";
  * 404), la conversazione dell'unità, se ci sono documenti, gli use case nati dalla mappatura che chi guarda può vedere
  * (una volta sola: le riletture dopo un salvataggio non li portano). Poi la board nel browser (`BoardProvider`) con la
  * vista della board e i tre slot del compagno. `?mode=chat` (i link di prima) apre la board con l'assistente aperto,
- * come un'unità ancora senza passi.
+ * come un'unità ancora senza passi. (Rilascio 10, §8.2) `?apri=<passo>` apre il drawer di quel passo, nella scheda
+ * dell'ancora (`#oggi`, `#classificazione`).
  */
 export default async function UnitBoardPage({
   params,
@@ -33,7 +35,7 @@ export default async function UnitBoardPage({
 }) {
   const { workspaceId, deptId } = await params;
   const { session, access } = await requireWorkspacePage(workspaceId);
-  const { mode } = await searchParams;
+  const { mode, apri } = await searchParams;
 
   const executor = await getAppUcExecutor();
   const read = await readBoard(executor, { workspaceId, departmentId: deptId }, { userId: session.user.id, role: access.role });
@@ -41,10 +43,11 @@ export default async function UnitBoardPage({
   // L'id come lo scrive il database: la bozza sul dispositivo e le rotte usano sempre lo stesso.
   const departmentId = read.unit.id;
 
+  const viewer = viewerFromSession(session.user, access.role);
   const [conversation, hasDocuments, links] = await Promise.all([
     getActiveConversation(workspaceId, "activity_mapping", departmentId),
     unitHasDocuments(executor, { workspaceId, departmentId }),
-    boardUseCaseLinks(workspaceId, viewerFromSession(session.user, access.role), new Set(allSteps(read).map((step) => step.id))),
+    boardUseCaseLinks(workspaceId, viewer, new Set(allSteps(read).map((step) => step.id))),
   ]);
   const messages = conversation ? await getMessages(conversation.id) : [];
   const initialMessages = messages.map((message) => ({ id: message.id, role: message.role as "user" | "assistant", content: message.content }));
@@ -67,8 +70,9 @@ export default async function UnitBoardPage({
             hasDocuments={hasDocuments}
           />
         }
-        classification={<ClassificationView workspaceId={workspaceId} useCaseHub={isUseCaseHubWorkspace(workspaceId)} />}
+        classification={<ClassificationView workspaceId={workspaceId} useCaseHub={isUseCaseHubWorkspace(workspaceId)} lateralSpace={viewer.isLateralSpace} />}
         headAction={<CompleteButton workspaceId={workspaceId} departmentId={departmentId} />}
+        initialStep={sheetIdParam(apri)}
       />
     </BoardProvider>
   );

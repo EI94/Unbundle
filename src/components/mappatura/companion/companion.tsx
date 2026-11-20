@@ -19,7 +19,7 @@
  * campo resta com'è.
  */
 import { useChat } from "@ai-sdk/react";
-import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type JSX, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent, type JSX, type KeyboardEvent, type ReactNode } from "react";
 import { CONTEXT_TEXT } from "../../../lib/context/text.ts";
 import { CONSENT_CHECKING, isConsentError, loadChatConsent, type ChatConsent } from "../../agent/chat-consent.ts";
 import { HIDDEN_TOOLS, MAPPING_TOOL_LABELS, TOOL_LABELS, assistantView, messageText, type ChatProgress, type ChatUIMessage } from "../../agent/chat-view.ts";
@@ -175,6 +175,8 @@ export function Companion(p: CompanionProps): JSX.Element {
   );
   const { messages, status, error, sendMessage } = useChat({ chat: session.chat });
   const [hasDocuments, setHasDocuments] = useState(p.hasDocuments);
+  const [docsOpen, setDocsOpen] = useState(false);
+  const docsId = useId();
   const root = useRef<HTMLDivElement>(null);
   const field = useRef<HTMLTextAreaElement>(null);
   const busy = status === "submitted" || status === "streaming";
@@ -257,9 +259,18 @@ export function Companion(p: CompanionProps): JSX.Element {
   const F = COMPANION_TEXT.field;
   return (
     <div className="b-comp" ref={root} data-b="companion">
+      {/* (Rilascio 10, §3.7) Un solo «Documenti ▾»: dentro, «Carica documenti» e «Proponi passi dai documenti». */}
       <div className="b-comp-tools">
-        <Documents workspaceId={p.workspaceId} departmentId={p.departmentId} disabled={!canEdit} onUploaded={() => setHasDocuments(true)} />
-        {hasDocuments ? <Proposals workspaceId={p.workspaceId} departmentId={p.departmentId} disabled={!canEdit} /> : null}
+        <button type="button" className="b-btn b-small" aria-expanded={docsOpen} aria-controls={docsId} onClick={() => setDocsOpen(!docsOpen)} data-b="documents-menu">
+          {COMPANION_TEXT.documents.menu}
+          <span className="b-caret" aria-hidden="true">
+            {docsOpen ? "▴" : "▾"}
+          </span>
+        </button>
+        <div className="b-comp-tools" id={docsId} hidden={!docsOpen}>
+          <Documents workspaceId={p.workspaceId} departmentId={p.departmentId} disabled={!canEdit} onUploaded={() => setHasDocuments(true)} />
+          {hasDocuments ? <Proposals workspaceId={p.workspaceId} departmentId={p.departmentId} disabled={!canEdit} /> : null}
+        </div>
       </div>
       <div className="b-comp-log" role="log" aria-busy={busy} data-b="companion-log">
         {messages.map((message, index) => (

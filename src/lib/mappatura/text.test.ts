@@ -121,7 +121,10 @@ test("i numeri e i plurali: 1 passo, 3 passi; le ore con la virgola; la riga del
   assert.equal(mappingCompletedSignal("Magazzino", 0, 0).description, "0 passi, 0 ore a settimana.");
   assert.equal(MAPPING_COMPLETED_SIGNAL, "mapping_completed");
   assert.deepEqual([votesLabel(5, 2), removeChipLabel("Buyer"), exposureBadgeLabel(34.4), exposureBadgeLabel(0)], ["Voti: 5. Tuoi: 2.", "Togli Buyer", "AI 34%", "AI 0%"]);
-  assert.deepEqual(BOARD_TEXT.card, { who: "Chi:", toValidate: "da validare", decides: "Decide una persona" });
+  const { friction, ...card } = BOARD_TEXT.card;
+  assert.deepEqual(card, { who: "Chi:", toValidate: "da validare", decides: "Decide una persona" });
+  // (Rilascio 10, §3.7) L'attrito di una card in parole, per i lettori di schermo.
+  assert.equal(friction("Forte"), "Attrito: forte");
 });
 
 test("i toast dei limiti dicono i numeri di MAPPING_LIMITS", () => {

@@ -90,6 +90,8 @@ export function StepCard(p: {
   note?: string | null;
   dimmed?: boolean;
   grip?: ReactNode;
+  /** (Rilascio 10, §3.7) L'attrito in parole, per i lettori di schermo: il bordo da solo è solo un colore. */
+  frictionText?: string | null;
   onOpen(): void;
 }): JSX.Element {
   const accent = p.accent;
@@ -112,6 +114,7 @@ export function StepCard(p: {
     >
       <span className="b-sr">{p.code}</span>
       <span className="b-nt">{p.title}</span>
+      {p.frictionText ? <span className="b-sr">{p.frictionText}</span> : null}
       {p.badges ? <span className="b-ag">{p.badges}</span> : null}
       {p.note ? <span className="b-none">{p.note}</span> : null}
       {p.description ? <span className="b-ns2">{p.description}</span> : null}

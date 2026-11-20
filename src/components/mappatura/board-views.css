@@ -76,9 +76,12 @@
   [data-board-root] .b-pm-lab:not(:hover):not(:focus-within) .b-textin:placeholder-shown::placeholder { color: transparent; }
 }
 [data-board-root] .b-pm-fr { font-family: var(--board-font-mono); font-size: 10.5px; color: var(--board-crit); }
-/* «Sposta su», «Sposta giù», «Elimina il processo»: i controlli tondi delle note, visibili al passaggio o al fuoco, sempre senza mouse. */
-[data-board-root] .b-row-ctl { display: flex; gap: 3px; opacity: 0; transition: opacity .12s; }
-[data-board-root] .b-pm-lab:hover .b-row-ctl, [data-board-root] .b-pm-lab:focus-within .b-row-ctl { opacity: 1; }
+/* (Rilascio 10, §3.7) «Sposta su», «Sposta giù», «Elimina il processo» e i voti: i controlli tondi delle note, nel «⋯»
+   del processo (si aprono sotto il nome, chiusi finché non si tocca il «⋯»). */
+[data-board-root] .b-row-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
+[data-board-root] .b-row-ctl[hidden] { display: none; }
+[data-board-root] .b-row-more { appearance: none; position: relative; width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--board-line-strong); background: var(--board-paper); color: var(--board-ink); display: grid; place-items: center; padding: 0; cursor: pointer; }
+[data-board-root] .b-row-more[aria-expanded="true"] { border-color: var(--board-ink); }
 [data-board-root] .b-row-ctl button { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--board-line-strong); background: var(--board-paper); color: var(--board-ink); display: grid; place-items: center; padding: 0; cursor: pointer; }
 [data-board-root] .b-row-ctl button[disabled], [data-board-root] .b-row-ctl button[aria-disabled="true"] { opacity: .35; cursor: not-allowed; }
 /* Ogni riga è larga quanto la più lunga (`--steps` sul riquadro), con le card della larghezza del riferimento che non
@@ -86,9 +89,8 @@
    modifica in fondo a ogni riga ci sta anche «+ passo»: 8 px prima, il bottone (61 px con Geist a 12 px), e il segno
    di dove cade un passo trascinato (11 px). */
 [data-board-root] .b-pm[data-adds] { --b-after: 80px; }
-/* «+ passo» in fondo alla riga: compare al passaggio o al fuoco, come «+ nota»; sempre in una riga vuota e senza mouse. */
-[data-board-root] .b-add-step { white-space: nowrap; opacity: 0; transition: opacity .15s; }
-[data-board-root] .b-pm-row:hover .b-add-step, [data-board-root] .b-pm-row:focus-within .b-add-step, [data-board-root] .b-add-step:focus-visible, [data-board-root] .b-add-step.b-add-first { opacity: 1; }
+/* (Rilascio 10, §3.7) «+ passo» in fondo alla riga, sempre in vista: è l'azione che crea. */
+[data-board-root] .b-add-step { white-space: nowrap; opacity: 1; }
 /* «+ processo» sotto l'ultima riga, fermo a sinistra quando la mappa scorre. */
 [data-board-root] .b-pm-foot { position: sticky; left: 0; width: max-content; padding: 10px 12px; }
 [data-board-root] .b-add-process { white-space: nowrap; }
@@ -133,7 +135,57 @@
 
 /* ── Senza mouse (telefono, tablet): i controlli che compaiono al passaggio si vedono sempre; niente trascinamento ── */
 @media (hover: none) {
-  [data-board-root] .b-row-ctl, [data-board-root] .b-point .b-point-ctl { opacity: 1; }
-  [data-board-root] .b-add-step { opacity: .8; }
+  [data-board-root] .b-point .b-point-ctl { opacity: 1; }
   [data-board-root] .b-node-w > .b-grip { display: none; }
+}
+
+/* ── (Rilascio 10, §3.7) La testata in tre righe: il percorso, il titolo, le schede ── */
+/* Su desktop resta ferma la sola riga delle schede: la testata sale di quanto è alto quello che sta sopra le schede
+   (`--b-sticky-offset`, misurato dalla board). Sul telefono la testata non ha riga sua (board.css): non cambia niente. */
+[data-board-root] .b-board-col > .b-top { top: calc(var(--board-shell-top) - var(--b-sticky-offset, 0px)); }
+/* Il percorso ha la forma del marchio: le voci in mono, la pagina in inchiostro. */
+[data-board-root] .b-path .b-path-here { font-family: var(--board-font-mono); letter-spacing: .02em; font-size: 11px; text-transform: uppercase; color: var(--board-ink); }
+/* La pillola sulla riga delle schede del telefono: il punto e la parola, mai solo un colore. */
+[data-board-root] .b-status.b-compact.b-word { padding: 5px 9px; gap: 6px; }
+/* Il «⋯» della testata e il suo menu, nei colori della board. */
+[data-board-root] .b-menu-pos { z-index: 60; }
+[data-board-root] .b-menu { min-width: 220px; padding: 4px; background: var(--board-paper); color: var(--board-ink); border: 1px solid var(--board-line-strong); border-radius: 8px; box-shadow: var(--board-shadow); outline: none; }
+[data-board-root] .b-menu-item { display: flex; align-items: center; min-height: 36px; padding: 6px 10px; border-radius: 5px; font-size: 13px; cursor: pointer; outline: none; }
+[data-board-root] .b-menu-item[data-highlighted] { background: var(--board-bone-2); }
+
+/* ── (Rilascio 10, §3.7) «Oggi» più leggera ── */
+/* Un riquadro solo: largo quanto il suo testo. */
+[data-board-root] .b-kpis.b-kpis-one { grid-template-columns: minmax(0, max-content); }
+/* I chip che filtrano la mappa e il «?» della legenda. */
+[data-board-root] .b-map-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+[data-board-root] .b-legend-btn { font-family: var(--board-font-mono); font-size: 13px; }
+/* Il drawer del passo in tre gruppi; spostare ed eliminare nel «⋯» del piede. */
+[data-board-root] .b-dr-group { display: flex; flex-direction: column; gap: 12px; }
+[data-board-root] .b-dr-body .b-sec { padding: 10px 0; }
+[data-board-root] .b-foot-more { padding-inline: 9px; }
+[data-board-root] .b-dr-more { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex-basis: 100%; }
+[data-board-root] .b-dr-more[hidden] { display: none; }
+
+/* Sul telefono i processi diventano un elenco di card, una sotto l'altra: niente mappa che scorre di lato. */
+@container board (max-width: 680px) {
+  [data-board-root] .b-view .b-pm { overflow-x: visible; }
+  [data-board-root] .b-view .b-pm-row { display: block; min-width: 0; }
+  [data-board-root] .b-view .b-pm-lab { position: static; border-right: 0; border-bottom: 1px solid var(--board-line); }
+  [data-board-root] .b-view .b-pm-steps { flex-direction: column; align-items: stretch; }
+  [data-board-root] .b-view .b-pm-steps .b-node, [data-board-root] .b-view .b-node-w { flex: none; width: 100%; min-width: 0; }
+  [data-board-root] .b-view .b-arrow { width: auto; height: 18px; }
+  [data-board-root] .b-view .b-arrow svg { transform: rotate(90deg); }
+  [data-board-root] .b-view .b-pm-after { padding: 8px 0 0; }
+}
+
+/* Al tocco ogni cosa che si tocca è grande almeno 44 px: i bottoni piccoli della grafica restano piccoli, la loro area
+   no (un margine invisibile intorno); i campi scrivono a 16 px (il telefono non ingrandisce la pagina). */
+@media (hover: none) {
+  [data-board-root] .b-iconbtn { width: 44px; height: 44px; }
+  [data-board-root] .b-tabbar .b-tab { min-height: 44px; }
+  [data-board-root] .b-board .b-btn, [data-board-root] .b-drawer .b-btn, [data-board-root] .b-assist .b-btn { min-height: 44px; }
+  [data-board-root] .b-board .b-add, [data-board-root] .b-drawer .b-add, [data-board-root] .b-board .b-fchip, [data-board-root] .b-drawer .b-wsel button, [data-board-root] .b-drawer .b-feas button { min-height: 44px; }
+  [data-board-root] .b-board .b-row-ctl button, [data-board-root] .b-board .b-votes button, [data-board-root] .b-board .b-note-ctl button, [data-board-root] .b-drawer .b-note-ctl button, [data-board-root] .b-drawer .b-chip button { position: relative; }
+  [data-board-root] .b-row-more::after, [data-board-root] .b-board .b-row-ctl button::after, [data-board-root] .b-board .b-votes button::after, [data-board-root] .b-board .b-note-ctl button::after, [data-board-root] .b-drawer .b-note-ctl button::after, [data-board-root] .b-drawer .b-chip button::after { content: ""; position: absolute; inset: -11px; }
+  [data-board-root] .b-board .b-input, [data-board-root] .b-drawer .b-input, [data-board-root] .b-board .b-textin, [data-board-root] .b-drawer .b-textin { font-size: 16px; }
 }

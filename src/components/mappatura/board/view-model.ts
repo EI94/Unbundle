@@ -28,7 +28,7 @@ import { cutLine, stepFieldValue, type StepField, type StepValue } from "../../.
 import { BOARD_TEXT, counted, formatCount, formatHours } from "../../../lib/mappatura/text.ts";
 import { BOARD_LANE, MAPPING_LIMITS, STREAMS, type Friction, type StepLane, type Stream, type UnitStatus } from "../../../lib/mappatura/vocab.ts";
 import type { OpInput } from "../store/board-client.ts";
-import { mapCountsLine, todayTileTexts, toClassifyText, toValidateText, unitStepsLine, type UnitWords, unitsTileTexts } from "./text.ts";
+import { frictionsChipText, mapCountsLine, todaySummaryText, todayTileTexts, toClassifyText, toValidateChipText, toValidateText, unitStepsLine, type UnitWords, unitsTileTexts } from "./text.ts";
 
 const L = MAPPING_LIMITS;
 
@@ -57,8 +57,51 @@ export function mapCounts(board: MappingBoard): string {
   return mapCountsLine(n.toValidate, n.confirmed, n.frictions);
 }
 
-/** «Evidenzia attriti» sfuma i passi che non hanno attriti (P61). */
-export const stepDimmed = (step: Pick<BoardStep, "friction" | "notes">, dim: boolean): boolean => dim && stepFrictions(step) === 0;
+/**
+ * (Rilascio 10, §3.7) I chip che filtrano la mappa: «7 attriti» (prima «Evidenzia attriti», P61) sfuma i passi senza
+ * attriti, «5 da validare» quelli già confermati. Uno alla volta; non si salvano.
+ */
+export type MapFilter = "attriti" | "da-validare";
+
+/** Un passo si sfuma con il filtro acceso: senza attriti, o già confermato. Senza filtro, mai. */
+export const stepDimmed = (step: Pick<BoardStep, "friction" | "notes" | "status">, filter: MapFilter | null): boolean =>
+  filter === "attriti" ? stepFrictions(step) === 0 : filter === "da-validare" ? step.status !== "da_validare" : false;
+
+/** I chip della mappa, solo quelli che non sono a zero: «7 attriti», «5 da validare». */
+export function mapFilterChips(board: MappingBoard): Array<{ filter: MapFilter; label: string }> {
+  const n = boardNumbers(board);
+  return [
+    ...(n.frictions > 0 ? [{ filter: "attriti" as const, label: frictionsChipText(n.frictions) }] : []),
+    ...(n.toValidate > 0 ? [{ filter: "da-validare" as const, label: toValidateChipText(n.toValidate) }] : []),
+  ];
+}
+
+/** (Rilascio 10, §3.7) Il riquadro solo di «Oggi»: «25 passi», con le ore e le decisioni di una persona sotto. */
+export function todaySummary(board: MappingBoard): { value: string; label: string } {
+  return todaySummaryText(boardNumbers(board));
+}
+
+/**
+ * (Rilascio 10, §3.7) Il drawer di un passo in tre gruppi: quante cose ha «Altro» (la decisione di una persona, le
+ * eccezioni, i collegamenti, il tipo di lavoro, la qualità), per il conteggio accanto al titolo chiuso.
+ */
+export function drawerMoreCount(step: Pick<BoardStep, "decision" | "decisionLabel" | "exception" | "dependsOn" | "neededBy" | "workType" | "quality">): number {
+  return [
+    Boolean(step.decision?.trim() || step.decisionLabel?.trim()),
+    Boolean(step.exception?.trim()),
+    step.dependsOn.length + step.neededBy.length > 0,
+    Boolean(step.workType),
+    Boolean(step.quality?.trim()),
+  ].filter(Boolean).length;
+}
+
+/** Una corsia di note si apre da sé quando ha qualcosa: le note, il livello d'attrito scelto, la frequenza o le ore. */
+export function laneOpen(step: Pick<BoardStep, "notes" | "frictionSet" | "frequency" | "hoursWeek">, lane: StepLane): boolean {
+  if (step.notes[lane].length > 0) return true;
+  if (lane === "attriti") return step.frictionSet;
+  if (lane === "tempi") return Boolean(step.frequency) || step.hoursWeek !== null;
+  return false;
+}
 
 /** Un processo che non ha più posto per un passo (40). */
 export const processFull = (process: Pick<BoardProcess, "steps">): boolean => process.steps.length >= L.stepsPerProcess;
