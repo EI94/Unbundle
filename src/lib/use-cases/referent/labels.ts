@@ -15,7 +15,7 @@
  * marchio con la riga del cliente, la scheda di un link che non vale più, quella di un errore con il solo «Riprova», un
  * solo numero di avanzamento, «Riferimento», l'informativa comune.
  */
-import { REFERENT_KIT_NOTICE, REFERENT_KIT_TEXT as K } from "./kit.ts";
+import { REFERENT_KIT_TEXT as K } from "./kit.ts";
 
 /** Riempie `{chiave}` con i valori dati; i segnaposto senza valore restano com'erano. */
 export function fillText(template: string, values: Readonly<Record<string, string | number>>): string {
@@ -709,13 +709,14 @@ export const REFERENT_CHECK_TEXT = Object.freeze({
 // ─── Informativa (§5.3) ──────────────────────────────────────────────
 
 /**
- * L'informativa a due livelli della pagina pubblica fino al rilascio 10, versione `ucq-2026-11-3` (rilascio 9b, D2: le
- * risposte tengono aggiornato quello che sappiamo del lavoro dell'azienda, senza il nome; rilascio 6: l'aiuto dell'AI;
- * rilascio 5.1: nomi, email e telefoni non si bloccano più, «basta che lo diciamo prima nelle informative», decisione del
- * titolare del 04/11/2026). Resta qui com'era: è il testo che ha letto chi ha accettato questa versione, e le sue risposte
- * restano leggibili dall'aiuto dell'AI e da «Contesto».
+ * L'informativa a due livelli della pagina pubblica, versione `ucq-2026-11-3` (rilascio 9b, D2: le risposte tengono
+ * aggiornato quello che sappiamo del lavoro dell'azienda, senza il nome; rilascio 6: l'aiuto dell'AI; rilascio 5.1: nomi,
+ * email e telefoni non si bloccano più, «basta che lo diciamo prima nelle informative», decisione del
+ * titolare del 04/11/2026). Sopra due righe calme; il testo completo, intero, a un tocco. L'accettazione
+ * si registra sulla richiesta con questa versione; una versione nuova mostra di nuovo il riquadro, una volta.
+ * Testo legale da confermare con il titolare (indirizzo di contatto, 12 mesi).
  */
-export const REFERENT_PRIVACY_NOTICE_UCQ_2026_11_3 = Object.freeze({
+export const REFERENT_PRIVACY_NOTICE = Object.freeze({
   // (Rilascio 9b, D2) `ucq-2026-11-3`: cambiano tre paragrafi (i casi d'uso, l'AI che tiene aggiornato quello che sappiamo
   // del lavoro, che cosa resta dopo 12 mesi); il resto è quello di `ucq-2026-11-2`.
   version: "ucq-2026-11-3",
@@ -744,21 +745,12 @@ export const REFERENT_PRIVACY_NOTICE_UCQ_2026_11_3 = Object.freeze({
 });
 
 /**
- * L'informativa di adesso della pagina pubblica, a due livelli: sopra due righe calme, il testo completo, intero, a un
- * tocco. L'accettazione si registra sulla richiesta con questa versione; una versione nuova mostra di nuovo il riquadro,
- * una volta (rilascio 9b: con la prova del testo mostrato, `shown`, e senza perdere quello che il referente ha scritto).
- * (Rilascio 10, D5) È l'informativa comune del kit del referente, `ref-2026-11-1` (`kit.ts`), la stessa di `/r`: da far
- * approvare dal titolare prima del rilascio.
- */
-export const REFERENT_PRIVACY_NOTICE = REFERENT_KIT_NOTICE;
-
-/**
  * (Rilascio 9b, D2) Le versioni dell'informativa che dicono che le risposte tengono aggiornato quello che sappiamo del
  * lavoro dell'azienda, senza il nome di chi risponde: solo le risposte date con una di queste diventano una fonte di
  * «Contesto» (src/lib/db/queries/context-referent.ts). Chi cambia l'informativa e tiene la frase aggiunge qui la versione
- * nuova. (Rilascio 10, D5) `ref-2026-11-1`, l'informativa comune del kit, tiene la frase.
+ * nuova.
  */
-export const REFERENT_CONTEXT_NOTICE_VERSIONS: readonly string[] = Object.freeze(["ucq-2026-11-3", REFERENT_KIT_NOTICE.version]);
+export const REFERENT_CONTEXT_NOTICE_VERSIONS: readonly string[] = Object.freeze(["ucq-2026-11-3"]);
 
 /** Le risposte date con questa versione dell'informativa possono diventare una fonte di «Contesto». */
 export function noticeAllowsContext(version: string | null | undefined): boolean {

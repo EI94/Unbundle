@@ -152,7 +152,7 @@ async function answeredReferent(card: { id: string; needs: string[] }): Promise<
   const outbox = await send(sent.requestId);
   const token = /\/rispondi\/(ucq_[A-Za-z0-9_-]{32})/.exec(outbox[0]?.text ?? "")?.[1];
   assert.ok(token, "il link nell'email");
-  pok(await pub.acceptReferentPrivacy(await linkOf(token!), { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version }, new Date()) as never, "informativa");
+  pok(await pub.acceptReferentPrivacy(await linkOf(token!), { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" }, new Date()) as never, "informativa");
   const link = await linkOf(token!);
   pok(await pub.saveReferentCheck(link, { step: 1, confirm: "si", note: null }, new Date()) as never, "passo 1");
   pok(await pub.saveReferentCheck(link, { step: 2, benefit: { key: "tempo-1", seen: SEEN, answer: "meno", timesPerMonth: 200 } }, new Date()) as never, "passo 2");

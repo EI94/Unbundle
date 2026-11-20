@@ -4,7 +4,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
-import { REFERENT_PRIVACY_NOTICE } from "../../../lib/use-cases/referent/labels.ts";
 
 // (Rilascio 5, SPEC §6, §7.3, §7.4, §13, A4; rilascio 5.1) La conferma dello use case e l'impatto sulla
 // pagina del referente, sul database di prova: la vista (descrizione filtrata, una riga per ogni voce di
@@ -109,7 +108,7 @@ async function referentLink(useCaseId: string, needIds: string[]): Promise<{ tok
   const first = await pub.resolveReferentToken(token, new Date());
   assert.ok(first.access === "ok");
   if (first.access !== "ok") throw new Error("link");
-  ok(await pub.acceptReferentPrivacy(first.link, { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version }, new Date()) as never, "informativa");
+  ok(await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" }, new Date()) as never, "informativa");
   const again = await pub.resolveReferentToken(token, new Date());
   if (again.access !== "ok") throw new Error("link");
   return { token, requestId: sent.requestId, link: again.link };

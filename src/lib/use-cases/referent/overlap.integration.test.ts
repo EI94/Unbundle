@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
 import { isWorkingDay, romeDate, romeLocalToUtc, workingDaysBetween } from "../../uc/calendar.ts";
-import { REFERENT_PRIVACY_NOTICE } from "./labels.ts";
 
 // Ruoli che si sovrappongono (SPEC Parte 3, §P3.9) sul database di prova, una persona per caso:
 // - corsista e referente (ruolo learner), contributore e referente, revisore e referente (Fabio,
@@ -185,7 +184,7 @@ async function answerByLink(token: string, needId: string, text: string) {
   const first = await pub.resolveReferentToken(token, V);
   assert.equal(first.access, "ok");
   if (first.access !== "ok") return;
-  assert.ok((await pub.acceptReferentPrivacy(first.link, { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version }, V)).ok);
+  assert.ok((await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" }, V)).ok);
   const resolved = await pub.resolveReferentToken(token, V);
   if (resolved.access !== "ok") assert.fail("link");
   assert.ok((await pub.saveReferentDraft(resolved.link, { needId, text, dontKnow: false }, V)).ok, "bozza");

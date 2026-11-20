@@ -4,7 +4,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
-import { REFERENT_PRIVACY_NOTICE } from "./labels.ts";
 
 // «Referente in un tocco» (rilascio 5, SPEC §9.2, §9.3, A6) sul database di prova: quello che il team fa con
 // la risposta del referente. «Usa la stima di {Nome}» cambia solo i numeri dati della voce «ore» (per la
@@ -113,7 +112,7 @@ async function answered(
   assert.ok(token);
   const first = await pub.resolveReferentToken(token!, new Date());
   if (first.access !== "ok") assert.fail("link");
-  pok(await pub.acceptReferentPrivacy(first.link, { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version }, new Date()) as never, "informativa");
+  pok(await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" }, new Date()) as never, "informativa");
   const link = await pub.resolveReferentToken(token!, new Date());
   if (link.access !== "ok") assert.fail("link");
   pok(await pub.saveReferentCheck(link.link, { step: 1, ...step1 }, new Date()) as never, "passo 1");

@@ -4,7 +4,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
-import { REFERENT_PRIVACY_NOTICE } from "./labels.ts";
 
 // «Chiedi al referente» per i revisori, sul database di prova (SPEC §3.3, §3.9, §3.10, §5): il
 // pannello e le sue porte, la revoca, il nuovo tentativo, le risposte e i file del team, «Correggi
@@ -240,7 +239,7 @@ test("la lettura dell'informativa non cambia la vista dei revisori", opts, async
   const before = JSON.stringify((await panelFor("builder"))!.requests);
   const resolved = await pub.resolveReferentToken(state.token, new Date());
   assert.ok(resolved.access === "ok");
-  if (resolved.access === "ok") assert.ok((await pub.acceptReferentPrivacy(resolved.link, { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version }, new Date())).ok);
+  if (resolved.access === "ok") assert.ok((await pub.acceptReferentPrivacy(resolved.link, { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" }, new Date())).ok);
   assert.equal(JSON.stringify((await panelFor("builder"))!.requests), before);
 });
 

@@ -4,7 +4,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
-import { REFERENT_PRIVACY_NOTICE } from "./labels.ts";
 
 // La pagina pubblica del referente sul database di prova (SPEC §2.3, §3.8, §4): quando il link vale
 // (revocato, scaduto, un indirizzo cambiato, un referente anonimizzato o non più attivo, l'area spenta),
@@ -207,7 +206,7 @@ test("un'informativa vecchia si mostra di nuovo e blocca le bozze; una domanda r
   const resolved = await pub.resolveReferentToken(state.token, new Date());
   assert.ok(resolved.access === "ok");
   if (resolved.access !== "ok") return;
-  assert.ok((await pub.acceptReferentPrivacy(resolved.link, { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version }, new Date())).ok);
+  assert.ok((await pub.acceptReferentPrivacy(resolved.link, { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" }, new Date())).ok);
   await q(`UPDATE use_case_referent_requests SET privacy_notice_version = 'ucq-2025-01-1' WHERE id = $1::uuid`, [state.requestId]);
   const old = await pub.resolveReferentToken(state.token, new Date());
   assert.ok(old.access === "ok" && !old.link.privacyAccepted);
@@ -218,7 +217,7 @@ test("un'informativa vecchia si mostra di nuovo e blocca le bozze; una domanda r
   assert.ok(!draft.ok && draft.code === "informativa_aggiornata");
   assert.equal(draft.message, "Abbiamo aggiornato l'informativa: ricarica la pagina per leggerla e continuare.");
   const page = await pub.loadReferentAskPage(state.token, { env: ENV, now: new Date() });
-  assert.ok(page.access === "ok" && !page.view.privacy.accepted && page.view.privacy.notice?.version === REFERENT_PRIVACY_NOTICE.version, "la vista porta il testo da rileggere");
+  assert.ok(page.access === "ok" && !page.view.privacy.accepted && page.view.privacy.notice?.version === "ucq-2026-11-3", "la vista porta il testo da rileggere");
   // Il revisore cambia lo stato dell'esigenza: la domanda esce dalla pagina.
   const needsService = await import("../needs-service.ts");
   const [n] = await q(`SELECT version FROM use_case_needs WHERE id = $1::uuid`, [state.needs[2]]);

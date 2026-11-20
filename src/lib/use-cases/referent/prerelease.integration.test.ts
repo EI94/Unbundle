@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
 import { isWorkingDay, romeDate, romeLocalToUtc } from "../../uc/calendar.ts";
-import { REFERENT_PRIVACY_NOTICE } from "./labels.ts";
 
 // Le correzioni della revisione prima del rilascio di «Chiedi al referente», sul database di prova:
 // - un revisore che è anche il referente non accetta il PDF scansionato che ha mandato lui dal link;
@@ -162,7 +161,7 @@ async function ask(by: Person, card: string, contactId: string, needIds: string[
 async function openLink(token: string): Promise<Link> {
   const first = await pub.resolveReferentToken(token, V);
   if (first.access !== "ok") assert.fail(`link: ${first.access}`);
-  assert.ok((await pub.acceptReferentPrivacy(first.link, { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version }, V)).ok, "informativa");
+  assert.ok((await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" }, V)).ok, "informativa");
   const again = await pub.resolveReferentToken(token, V);
   if (again.access !== "ok") assert.fail("link dopo l'informativa");
   return again.link;

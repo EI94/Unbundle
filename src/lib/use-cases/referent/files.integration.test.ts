@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
-import { REFERENT_PRIVACY_NOTICE, REFERENT_PUBLIC_TEXT } from "./labels.ts";
+import { REFERENT_PUBLIC_TEXT } from "./labels.ts";
 
 // I file di «Chiedi al referente» sul database di prova (SPEC §2.3, §3.8, §3.9): caricamento dal link
 // e dalla scheda, controllo del contenuto, avvisi da confermare, PDF in revisione controllati da
@@ -178,7 +178,7 @@ test("preparazione: autorizzazione, domande, richiesta, link con l'informativa l
   // Prima dell'informativa niente file.
   const early = await pub.uploadReferentFileServer(resolved.link, { needId: state.needs[0], fileName: "a.csv", declaration: true, bytes: CLEAN }, ENV);
   assert.ok(!early.ok && early.code === "informativa_da_leggere");
-  assert.ok((await pub.acceptReferentPrivacy(resolved.link, { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version }, new Date())).ok);
+  assert.ok((await pub.acceptReferentPrivacy(resolved.link, { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" }, new Date())).ok);
   const again = await pub.resolveReferentToken(state.token, new Date());
   assert.ok(again.access === "ok");
   if (again.access === "ok") link = again.link;

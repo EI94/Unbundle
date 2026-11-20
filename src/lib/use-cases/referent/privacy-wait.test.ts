@@ -4,18 +4,17 @@ import { findHubForbidden } from "../copy-guard.ts";
 import { REFERENT_ERROR_MESSAGES, REFERENT_PRIVACY_NOTICE, privacyNoticeTexts, privacyNoticeView } from "./labels.ts";
 import { PRIVACY_NOT_SHOWN, linkPrivacyWait, privacyAccepted, privacyAcceptanceShown, privacyWaitOf, waitsForPrivacy } from "./state.ts";
 
-// (Rilascio 9b) L'informativa di `/rispondi` passa da `ucq-2026-11-2` a `ucq-2026-11-3` (rilascio 10, D5: a `ref-2026-11-1`,
-// l'informativa comune del kit del referente) e Vercel Hobby non ha Skew
+// (Rilascio 9b) L'informativa di `/rispondi` passa da `ucq-2026-11-2` a `ucq-2026-11-3` e Vercel Hobby non ha Skew
 // Protection: le pagine aperte prima del rilascio (49414cc9) parlano con il server nuovo. Un'accettazione deve provare
 // quale testo era sullo schermo; una scrittura di chi aveva letto la versione vecchia aspetta, senza far perdere il testo.
 // Regole pure, senza database: le rotte vere sono in handler.integration.test.ts.
 
 const NOW = REFERENT_PRIVACY_NOTICE.version;
-const OLD = "ucq-2026-11-3";
+const OLD = "ucq-2026-11-2";
 const at = new Date("2026-11-10T09:00:00Z");
 
 test("perché una scrittura aspetta: informativa mai letta, oppure letta in una versione vecchia", () => {
-  assert.equal(NOW, "ref-2026-11-1");
+  assert.equal(NOW, "ucq-2026-11-3");
   assert.equal(privacyWaitOf({ privacyAcceptedAt: null, privacyNoticeVersion: null }), "informativa_da_leggere");
   assert.equal(privacyWaitOf({ privacyAcceptedAt: at, privacyNoticeVersion: OLD }), "informativa_aggiornata");
   assert.equal(privacyWaitOf({ privacyAcceptedAt: at, privacyNoticeVersion: null }), "informativa_aggiornata", "letta, ma non si sa quale");
@@ -52,7 +51,7 @@ test("«Iniziamo» si registra solo con la prova del testo mostrato: la pagina d
   assert.equal(privacyAcceptanceShown({ version: NOW, shown: OLD }), false, "un testo di un'altra versione");
   assert.equal(privacyAcceptanceShown({ version: OLD, shown: NOW }), false);
   assert.equal(privacyAcceptanceShown({ version: NOW, shown: true }), false);
-  for (const body of [null, undefined, NOW, [NOW, NOW], {}]) assert.equal(privacyAcceptanceShown(body), false, JSON.stringify(body));
+  for (const body of [null, undefined, "ucq-2026-11-3", [NOW, NOW], {}]) assert.equal(privacyAcceptanceShown(body), false, JSON.stringify(body));
   assert.equal(privacyAcceptanceShown({ version: "ucq-2027-01-1", shown: "ucq-2027-01-1" }, "ucq-2027-01-1"), true, "vale per ogni versione");
 });
 
@@ -70,7 +69,7 @@ test("la vista porta l'informativa intera di adesso, già riempita, come la riem
     button: REFERENT_PRIVACY_NOTICE.button,
     footerLabel: REFERENT_PRIVACY_NOTICE.footerLabel,
   });
-  assert.ok(notice.paragraphs.some((p) => p.includes("tenere aggiornato quello che sappiamo del lavoro di Cliente di prova, senza il tuo nome")), "la frase del 9b resta");
+  assert.ok(notice.paragraphs.some((p) => p.includes("tenere aggiornato quello che sappiamo del lavoro di Cliente di prova, senza il tuo nome")), "il testo di ucq-2026-11-3");
 });
 
 test("il testo nuovo: calmo, dice cosa fare, nessuna parola vietata o tecnica", () => {

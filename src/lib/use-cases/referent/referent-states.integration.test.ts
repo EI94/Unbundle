@@ -4,7 +4,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
-import { REFERENT_PRIVACY_NOTICE } from "./labels.ts";
 
 // «Referente in un tocco» (rilascio 5, SPEC §10.1, A8) sul database di prova: lo stato del referente di ogni
 // use case per le card e le righe (`listReferentStates`), per i revisori con che cosa aspetta il team, per i
@@ -93,7 +92,7 @@ async function answered(useCaseId: string, step1: { confirm: "si" | "correggi"; 
   assert.ok(token);
   const first = await pub.resolveReferentToken(token!, new Date());
   if (first.access !== "ok") assert.fail("link");
-  pok(await pub.acceptReferentPrivacy(first.link, { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version }, new Date()) as never, "informativa");
+  pok(await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" }, new Date()) as never, "informativa");
   const link = await pub.resolveReferentToken(token!, new Date());
   if (link.access !== "ok") assert.fail("link");
   pok(await pub.saveReferentCheck(link.link, { step: 1, ...step1 }, new Date()) as never, "passo 1");
