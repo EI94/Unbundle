@@ -116,7 +116,7 @@ export function bellText(templateKey: string, payload: Record<string, Json>, ext
     case "gate_approvato":
       return { title: "Via allo sviluppo approvato", description: "Il catalogo è pronto per lo sviluppo." };
     case "ls_lead_da_indicare":
-      return { title: "La realizzazione non ha un responsabile", description: "Indicane uno in Impostazioni." };
+      return { title: "La realizzazione non ha un responsabile", description: "Indicane uno in Persone." };
     case "owner_da_indicare":
       return { title: "Manca il responsabile del cliente", description: "Una richiesta è ferma dopo due promemoria." };
     case "delega":
@@ -154,7 +154,7 @@ export function bellHref(i: { workspaceId: string; caseId: string | null; templa
     case "gate_approvato":
       return `${base}/via`;
     case "ls_lead_da_indicare":
-      return `${base}/impostazioni`;
+      return `${base}/persone`;
     case "blocco_sciolto":
     case "owner_da_indicare":
     case "delega":

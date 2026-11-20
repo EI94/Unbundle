@@ -56,7 +56,7 @@ test("each bell template has the title and detail of the spec table", () => {
   assert.equal(bellText("blocco_sciolto", {}).title, "Domande sbloccate");
   assert.deepEqual(bellText("gate_pronto", { gate: "G1" }), { title: "Via allo sviluppo proposto", description: "Manca la firma del cliente." });
   assert.deepEqual(bellText("gate_approvato", { version: 2 }), { title: "Via allo sviluppo approvato", description: "Il catalogo è pronto per lo sviluppo." });
-  assert.deepEqual(bellText("ls_lead_da_indicare", {}), { title: "La realizzazione non ha un responsabile", description: "Indicane uno in Impostazioni." });
+  assert.deepEqual(bellText("ls_lead_da_indicare", {}), { title: "La realizzazione non ha un responsabile", description: "Indicane uno in Persone." });
   assert.deepEqual(bellText("owner_da_indicare", {}), { title: "Manca il responsabile del cliente", description: "Una richiesta è ferma dopo due promemoria." });
   assert.deepEqual(bellText("delega", { items: 3 }), { title: "Domande girate a un'altra persona", description: "3 domande: approva la delega in Persone." });
   assert.equal(bellText("delega", { items: 1 }).description, "1 domanda: approva la delega in Persone.");
@@ -95,7 +95,8 @@ test("links go to the new dossier routes; the weekly summary to the Roadmap", ()
   assert.equal(href("blocco_sciolto"), `${base}/persone`);
   assert.equal(href("gate_pronto"), `${base}/via`);
   assert.equal(href("gate_approvato"), `${base}/via`);
-  assert.equal(href("ls_lead_da_indicare"), `${base}/impostazioni`);
+  // (Rilascio 10, §3.5) Gli account stanno in Persone › «Nella realizzazione».
+  assert.equal(href("ls_lead_da_indicare"), `${base}/persone`);
   assert.equal(href("owner_da_indicare"), `${base}/persone`);
   assert.equal(href("delega"), `${base}/persone`);
   assert.equal(href("qualcosa_di_nuovo"), base);
