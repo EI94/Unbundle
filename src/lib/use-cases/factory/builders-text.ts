@@ -98,15 +98,25 @@ export function externalRemovedText(r: ExternalRemovedFacts): string {
 }
 
 /**
- * La conferma di «Togli» per chi costruisce da fuori: titolo e testo. `openCases`: i dossier aperti dove ha davvero la
- * riga `osservatore` (quelli da cui esce), non quelli che la concessione copre.
+ * (8.2b) In fondo alla conferma di «Togli», quando un repository dei suoi casi ha una chiave della CI viva: su GitHub
+ * Free i workflow dei rami leggono i segreti del repository, e una chiave copiata vale finché nessuno la ruota.
  */
-export function externalRemoveConfirm(i: { name: string; openCases: number; repos: readonly string[] }): { title: string; text: string } {
+export function ciRotateAfterRemoveText(repos: readonly string[]): string {
+  if (!repos.length) return "";
+  return repos.length === 1 ? ` Ruota anche la chiave della CI di ${repos[0]}.` : ` Ruota anche le chiavi della CI di ${reposText(repos)}.`;
+}
+
+/**
+ * La conferma di «Togli» per chi costruisce da fuori: titolo e testo. `openCases`: i dossier aperti dove ha davvero la
+ * riga `osservatore` (quelli da cui esce), non quelli che la concessione copre. (8.2b) `ciRepos`: i suoi repository con
+ * una chiave della CI viva, da ruotare.
+ */
+export function externalRemoveConfirm(i: { name: string; openCases: number; repos: readonly string[]; ciRepos?: readonly string[] }): { title: string; text: string } {
   const github = i.repos.length ? ` Su GitHub togli anche il suo accesso a ${reposText(i.repos)}.` : "";
   const cases = i.openCases > 0 ? ` Esce da ${casesText(i.openCases)} e i compiti che ha in corso tornano da prendere.` : "";
   return {
     title: `Togliere ${i.name} da chi costruisce?`,
-    text: `Da subito non scrive più nei casi del cliente e non entra in quelli nuovi.${cases}${github}`,
+    text: `Da subito non scrive più nei casi del cliente e non entra in quelli nuovi.${cases}${github}${ciRotateAfterRemoveText(i.ciRepos ?? [])}`,
   };
 }
 

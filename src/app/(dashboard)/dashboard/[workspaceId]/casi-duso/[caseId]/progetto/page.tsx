@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { Building2, ClipboardList, FlaskConical, Gavel, ListTodo, Package, Wrench } from "lucide-react";
 import { EVAL_TEXT, evalSectionDescription } from "@/components/agent-factory/eval-format";
-import { readEvalOverview } from "@/components/agent-factory/eval-load";
+import { readEvalOrigins, readEvalOverview } from "@/components/agent-factory/eval-load";
 import { EvalSection } from "@/components/agent-factory/eval-section";
 import { UseCaseContextView } from "@/components/context/use-case-context";
 import { packageDeltaLine, packageFilesShown } from "@/components/context/view-model";
@@ -46,6 +46,8 @@ import { AiBoardOk, DecisionForm, DetailsEditor, PackageButton, ProjectPrimaryAc
  * - (8.2a) Evals e banco di prova (`#banco`), per tutti quelli che vedono la pagina: le ultime evals con l'andamento,
  *   l'ultimo banco per ruolo con il grafico qualità contro costo e la raccomandazione, o i comandi per cominciare.
  *   Si lanciano dalla CLI; qui si leggono. Una lettura che fallisce non fa cadere la pagina.
+ *   (8.2b) Ogni esecuzione dice da dove è arrivata, «dalla CI» o «dalla CLI»: per chi costruisce il caso (anche da
+ *   fuori) e per Lateral Space «dalla CI» porta all'esecuzione su GitHub; il cliente lo legge senza link.
  * - (9b) «Contesto» (`#contesto`, l'ancora di «Il contesto è cambiato» in campanella), dopo «Decisioni»: quello che
  *   sappiamo del cliente e che tocca lo use case, lo stesso della piega della scheda, con i fatti per chi guarda (Lateral
  *   Space per l'e-mail verificata; chi costruisce da fuori, il responsabile del cliente e l'AI Board solo «Per tutti»).
@@ -276,9 +278,10 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
   // Le evals e i banchi insieme ai compiti; `readEvalOverview` non rifiuta mai (un errore va nel log e nella sezione).
   // (9b) Insieme anche il contesto per chi guarda e, per chi vede il pacchetto, le novità dopo l'ultimo: nessuna delle
   // due letture fa cadere la pagina.
+  // (8.2b) Con le evals, da dove sono arrivate («dalla CI», «dalla CLI»): anche questa lettura non fa cadere la pagina.
   const [tasks, evals, context, contextDelta] = await Promise.all([
     tasksReady ? listTasks(executor, target) : Promise.resolve<TaskView[]>([]),
-    readEvalOverview(executor, target),
+    readEvalOverview(executor, target).then(async (read) => ({ ...read, origins: await readEvalOrigins(executor, target, read.overview) })),
     readContextSection(contextActorFor(session.user, access, workspaceId), useCase.useCaseId),
     builder && view.latestPackage ? readContextDelta(executor, target, useCase.code ?? "", view.latestPackage) : Promise.resolve(0),
   ]);
@@ -450,7 +453,7 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
         ) : null}
 
         <SettingsSection id="banco" icon={FlaskConical} title={EVAL_TEXT.title} description={evalSectionDescription(evals.overview, evals.unavailable)}>
-          <EvalSection overview={evals.overview} caseCode={caseCode} unavailable={evals.unavailable} />
+          <EvalSection overview={evals.overview} caseCode={caseCode} unavailable={evals.unavailable} origins={evals.origins} ciLinks={builder || caseAccess.user.isLateralSpace} />
         </SettingsSection>
 
         <SettingsSection id="decisioni" icon={Gavel} title="Decisioni" description="Valgono per ogni coding agent del caso. Quelle delle scelte sono qui sopra, in «Le scelte».">

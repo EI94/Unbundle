@@ -26,6 +26,7 @@ import {
   RETRY_DELAY_MINUTES,
   WINDOWED_TEMPLATES,
   HOLD_EMAIL_NOT_CONFIGURED,
+  isCiKeyEmailTemplate,
   runDispatch,
   type AfterSent,
   type ClaimedNotification,
@@ -57,6 +58,7 @@ import { eventInsertFromSql } from "./uc-events.ts";
 import { loadApprovals } from "./uc-public.ts";
 import { issueRequestToken, revokeIssuedToken } from "./uc-requests.ts";
 import { externalBuilderMailFacts } from "./use-case-builders.ts";
+import { ciKeyMailFacts, ciKeysStoreReady } from "./use-case-ci-keys.ts";
 import { loadSubprocessorAck } from "./uc-subprocessors.ts";
 
 export type { UcBellItem } from "../../uc/notify/bell.ts";
@@ -476,6 +478,7 @@ export async function loadDeliveryFacts(executor: UcExecutor, n: ClaimedNotifica
   if (!facts.case) {
     if (n.templateKey === "riepilogo_settimanale") facts.weekly = await weeklyFacts(executor, n, o.now);
     if (n.templateKey === "cli_collegata") facts.cliToken = await cliTokenFacts(executor, n);
+    if (isCiKeyEmailTemplate(n.templateKey)) facts.ciKey = await ciKeyFacts(executor, n, o.lsDomains);
     return facts;
   }
   const c = facts.case;
@@ -550,6 +553,20 @@ WHERE id = ${cast(tokenId, "uuid")} AND workspace_id = ${cast(n.workspaceId, "uu
   ]);
   const createdAt = rowDate(row?.created_at);
   return createdAt ? { createdAt, expiresAt: rowDate(row?.expires_at) } : null;
+}
+
+/**
+ * (8.2b) Le e-mail della chiave della CI: la chiave della riga (`payload.keyId`), solo nel workspace della riga, e se la
+ * persona destinataria gestisce ancora le chiavi del repository. Le legge il modulo delle chiavi, l'unico che tocca la
+ * loro tabella. Senza la 0042, o senza la chiave: null (l'e-mail si annulla).
+ */
+async function ciKeyFacts(executor: UcExecutor, n: ClaimedNotification, lsDomains: readonly string[]): Promise<DeliveryFacts["ciKey"]> {
+  const keyId = typeof n.payload.keyId === "string" && isUuid(n.payload.keyId) ? n.payload.keyId : null;
+  if (!keyId || !n.recipientUserId || !isUuid(n.recipientUserId)) return null;
+  if (!(await ciKeysStoreReady(executor))) return null;
+  const facts = await ciKeyMailFacts(executor, { keyId, workspaceId: n.workspaceId, recipientUserId: n.recipientUserId, lsDomains });
+  if (!facts) return null;
+  return { repo: facts.repo, createdAt: facts.createdAt, expiresAt: facts.expiresAt, revokedAt: facts.revokedAt, recipientManages: facts.recipientManages, superseded: facts.superseded };
 }
 
 // ── Motore sull'esecutore ─────────────────────────────────────────────

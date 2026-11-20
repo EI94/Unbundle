@@ -6,6 +6,7 @@
  * in `src/lib/use-cases/admin/repo-unregister.ts`.
  */
 import { AdminStop, DRY_RUN_NOTE, done, schemaMissing, type AdminCommand } from "../../src/lib/use-cases/admin/cli.ts";
+import { unrevokedKeysOfRepoSql } from "../../src/lib/db/queries/use-case-ci-keys.ts";
 import {
   openPullRequestsSql,
   parseRepoOption,
@@ -43,7 +44,7 @@ export const command: AdminCommand = {
     if (registrations.length === 0) {
       return done({ status: "NOTHING_TO_DO", message: `Questo repository non è registrato per i casi del workspace${code ? ` nello use case ${code}` : ""}.`, repository: repo });
     }
-    const tables = { proposals: schema.proposals === true, factoryRepos: schema.factory_repos === true, pullRequests: schema.pull_requests === true };
+    const tables = { proposals: schema.proposals === true, factoryRepos: schema.factory_repos === true, pullRequests: schema.pull_requests === true, ciKeys: schema.ci_keys === true };
     const useCaseIds = registrations.map((r) => r.useCaseId);
     const pending = tables.proposals ? pendingProposalsSql(workspaceId, repo, useCaseIds) : null;
     const pendingProposals = pending ? Number((await ctx.db.read(pending.text, pending.params))[0]?.n ?? 0) : 0;
@@ -51,6 +52,9 @@ export const command: AdminCommand = {
     const openRow = open ? (await ctx.db.read(open.text, open.params))[0] : undefined;
     const left = remainingRegistrationsSql(workspaceId, repo, registrations.map((r) => r.id));
     const remaining = Number((await ctx.db.read(left.text, left.params))[0]?.n ?? 0);
+    // (8.2b) Le chiavi della CI del repository: si revocano se non gli restano casi nel workspace.
+    const keys = tables.ciKeys ? unrevokedKeysOfRepoSql(workspaceId, repo) : null;
+    const unrevokedCiKeys = keys ? Number((await ctx.db.read(keys.text, keys.params))[0]?.n ?? 0) : 0;
     const plan = repoUnregisterPlan({
       workspaceId,
       repo,
@@ -60,6 +64,7 @@ export const command: AdminCommand = {
       openPullRequests: Number(openRow?.n ?? 0),
       tasksInReview: Number(openRow?.tasks ?? 0),
       remaining,
+      unrevokedCiKeys,
     });
     if (!ctx.apply) return done({ status: "DRY_RUN", message: DRY_RUN_NOTE, ...plan.report });
     ctx.print({ status: "PLAN", command: ctx.command, ...plan.report });

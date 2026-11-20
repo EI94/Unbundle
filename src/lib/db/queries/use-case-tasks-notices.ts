@@ -67,7 +67,15 @@ export interface TaskNoticeExtra {
   alert?: "sotto_soglia" | "in_calo";
   qualityText?: string;
   drop?: number;
+  /**
+   * (8.2b) Le evals le ha mandate la CI di main, con la chiave del repository: l'e-mail `evals_in_calo` lo dice, con il
+   * commit (le 40 cifre; l'e-mail ne mostra 7). Senza, o con un commit che non è di 40 cifre, niente riga in più.
+   */
+  fromCi?: { commit: string };
 }
+
+/** (8.2b) Il commit di main che manda la CI: le 40 cifre esadecimali, in minuscolo. */
+const CI_COMMIT = /^[0-9a-f]{40}$/;
 
 /** Nessuno: per le notifiche del cron, che non escludono una persona. */
 export const NOBODY = "00000000-0000-0000-0000-000000000000";
@@ -126,6 +134,7 @@ export function taskEmailSql(
     ...(extra.alert ? { alert: extra.alert } : {}),
     ...(extra.qualityText ? { qualityText: extra.qualityText } : {}),
     ...(extra.drop !== undefined && Number.isFinite(extra.drop) ? { drop: extra.drop } : {}),
+    ...(extra.fromCi && CI_COMMIT.test(extra.fromCi.commit) ? { source: "ci", commit: extra.fromCi.commit } : {}),
   });
   // Il compito (e la PR) nella chiave: due compiti, o due PR, lo stesso giorno sono due e-mail. La PR come impronta
   // corta: un nome di repository lungo non supera la colonna (varchar 200).
