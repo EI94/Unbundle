@@ -35,11 +35,13 @@ test("export route: prefetch first, then flag, session, workspace, case role, pe
     "snapshotForViewer(",
     "renderCatalogExport(",
     "recordCatalogExport(",
-    "encodeForTransfer(file",
+    "fileForTransfer(file)",
     "new Response(sent.body",
   );
   assert.match(src, /"Cache-Control": "private, no-store"/);
   assert.match(src, /"X-Content-Type-Options": "nosniff"/);
+  // Next.js toglie Content-Encoding e Content-Length dalle risposte delle route (16.4.5): mai un corpo compresso per il trasporto.
+  assert.ok(!src.includes("Content-Encoding") && !src.includes("Content-Length"), "no transport encoding in a route handler");
   assert.ok(!src.includes("getWorkspaceAccessForUser("));
   assert.ok(!src.includes("export async function POST"), "export is read-only");
 });

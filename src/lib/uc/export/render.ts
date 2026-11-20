@@ -9,7 +9,7 @@
  *   valori personali o sanitari (`buildCatalogSnapshot`), ma l'export li toglie
  *   di nuovo prima di uscire: un valore personale non esce mai da qui.
  * - `renderCatalogExport`: il file pronto per la risposta.
- * - `encodeForTransfer`: gzip per il trasporto, se il browser lo accetta.
+ * - `fileForTransfer`: il file com'è; sopra 4 MB compresso come `.gz`.
  *
  * La fotografia arriva già filtrata per il ruolo (`snapshotForViewer`): qui non
  * si decide chi vede cosa. Modulo puro (solo `spreadsheet/write.ts` per
@@ -91,25 +91,19 @@ export interface RenderedExport {
   fileName: string;
 }
 
-/** Sotto questa soglia non conviene comprimere. */
-const GZIP_MIN_BYTES = 32 * 1024;
+/** Una risposta di una funzione Vercel sta sotto 4,5 MB: sopra questa soglia il file parte compresso. */
+const MAX_PLAIN_BYTES = 4 * 1024 * 1024;
 
 /**
- * Compressione gzip per il trasporto quando il browser la accetta. Il JSON di
- * un catalogo grande (migliaia di voci con i testi) supera facilmente il limite
- * di 4,5 MB delle risposte di una funzione Vercel; compresso resta sotto il
- * megabyte. Il browser lo decomprime da solo: il file salvato è quello originale.
- * L'Excel è già compresso e resta com'è.
+ * Il file da mandare. Next.js, dalla 16.4.5 (GHSA-pc58-hwjq-p385), toglie `Content-Encoding` e `Content-Length`
+ * dalle risposte delle route: un corpo compresso per il trasporto arriverebbe al browser illeggibile. Il file parte
+ * quindi com'è, e verso il browser lo comprime Vercel. Il JSON o il Markdown di un catalogo grande (migliaia di voci
+ * con i testi) può superare il limite di 4,5 MB di una risposta: sopra 4 MB parte come file `.gz`, che si apre con
+ * un doppio clic. L'Excel è già compresso e resta com'è.
  */
-export function encodeForTransfer(file: RenderedExport, acceptEncoding: string | null): { body: Uint8Array; contentEncoding: "gzip" | null } {
-  const accepts = (acceptEncoding ?? "")
-    .split(",")
-    .map((part) => part.trim().toLowerCase())
-    .some((part) => part === "gzip" || (part.startsWith("gzip;") && !/;\s*q=0(\.0*)?$/.test(part)));
-  if (!accepts || file.body.byteLength < GZIP_MIN_BYTES || file.contentType === EXPORT_CONTENT_TYPES.xlsx) {
-    return { body: file.body, contentEncoding: null };
-  }
-  return { body: new Uint8Array(gzipSync(file.body)), contentEncoding: "gzip" };
+export function fileForTransfer(file: RenderedExport): RenderedExport {
+  if (file.body.byteLength <= MAX_PLAIN_BYTES || file.contentType === EXPORT_CONTENT_TYPES.xlsx) return file;
+  return { body: new Uint8Array(gzipSync(file.body)), contentType: "application/gzip", fileName: `${file.fileName}.gz` };
 }
 
 /** Il file dell'export. La bozza (`version: "bozza"`) segna «non validata» ogni voce non a posto. */

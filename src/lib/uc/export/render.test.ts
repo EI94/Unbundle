@@ -4,7 +4,7 @@ import { gunzipSync } from "node:zlib";
 import * as XLSX from "xlsx";
 import { buildCatalogSnapshot, snapshotForViewer, type CatalogSnapshot } from "../snapshot.ts";
 import { answer, item, sampleInput } from "../snapshot.fixtures.ts";
-import { encodeForTransfer, parseStoredSnapshot, renderCatalogExport, withoutPersonalValues } from "./render.ts";
+import { fileForTransfer, parseStoredSnapshot, renderCatalogExport, withoutPersonalValues } from "./render.ts";
 
 function snap(over: Parameters<typeof sampleInput>[0] = {}): CatalogSnapshot {
   const r = buildCatalogSnapshot(sampleInput(over));
@@ -126,18 +126,17 @@ test("a draft from live items keeps current answers marked as not validated", ()
   assert.equal(parsed.items.find((i) => i.key === "q.esempio.10")?.answer?.validated, false);
 });
 
-test("transfer encoding: gzip for large text exports when the browser accepts it, never for Excel", () => {
-  const big = { body: new TextEncoder().encode(JSON.stringify({ x: "a".repeat(100_000) })), contentType: "application/json; charset=utf-8", fileName: "x.json" };
-  const gz = encodeForTransfer(big, "gzip, deflate, br");
-  assert.equal(gz.contentEncoding, "gzip");
-  assert.ok(gz.body.byteLength < big.body.byteLength / 10);
-  assert.deepEqual(new Uint8Array(gunzipSync(gz.body)), big.body);
-  assert.equal(encodeForTransfer(big, null).contentEncoding, null);
-  assert.equal(encodeForTransfer(big, "br").contentEncoding, null);
-  assert.equal(encodeForTransfer(big, "gzip;q=0, br").contentEncoding, null);
-  assert.equal(encodeForTransfer(big, "GZIP;q=0.5").contentEncoding, "gzip");
+test("transfer: the file as it is up to 4 MB; above, a .gz file; Excel never compressed", () => {
   const small = renderCatalogExport(snap(), "md");
-  assert.equal(encodeForTransfer(small, "gzip").contentEncoding, null);
-  const xlsx = { ...big, contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" };
-  assert.equal(encodeForTransfer(xlsx, "gzip").contentEncoding, null);
+  assert.equal(fileForTransfer(small), small);
+  const medium = { body: new TextEncoder().encode(JSON.stringify({ x: "a".repeat(3_000_000) })), contentType: "application/json; charset=utf-8", fileName: "XX-0012-v3.json" };
+  assert.equal(fileForTransfer(medium), medium, "below the 4,5 MB limit the browser gets the plain file");
+  const big = { ...medium, body: new TextEncoder().encode(JSON.stringify({ x: "a".repeat(5_000_000) })) };
+  const gz = fileForTransfer(big);
+  assert.equal(gz.contentType, "application/gzip");
+  assert.equal(gz.fileName, "XX-0012-v3.json.gz");
+  assert.ok(gz.body.byteLength < 4 * 1024 * 1024);
+  assert.deepEqual(new Uint8Array(gunzipSync(gz.body)), big.body);
+  const xlsx = { ...big, contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName: "XX-0012-v3.xlsx" };
+  assert.equal(fileForTransfer(xlsx), xlsx);
 });

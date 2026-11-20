@@ -8,7 +8,7 @@ import { loadExportSnapshot, recordCatalogExport } from "@/lib/db/queries/uc-exp
 import { isPrefetchRequest } from "@/lib/http/prefetch";
 import { renderClientCatalogExport } from "@/lib/uc/export/client-catalog";
 import { attachmentDisposition, clientDraftBeforeVia, exportAllowed, exportFormatAllowed, parseExportQuery } from "@/lib/uc/export/request";
-import { encodeForTransfer, renderCatalogExport } from "@/lib/uc/export/render";
+import { fileForTransfer, renderCatalogExport } from "@/lib/uc/export/render";
 import { snapshotForViewer } from "@/lib/uc/snapshot";
 import { isLsViewer } from "@/lib/uc/views/status-groups";
 
@@ -98,17 +98,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return text(503, "Export non riuscito. Riprova tra poco.");
   }
 
-  // Un catalogo grande in JSON supera i 4,5 MB di una risposta Vercel: compresso no.
-  const sent = encodeForTransfer(file, request.headers.get("accept-encoding"));
+  // Il file com'è (lo comprime Vercel); un catalogo oltre 4 MB parte come `.gz`, sotto il limite di 4,5 MB.
+  const sent = fileForTransfer(file);
   return new Response(sent.body as BodyInit, {
     status: 200,
     headers: {
       ...NO_STORE,
-      "Content-Type": file.contentType,
-      "Content-Length": String(sent.body.byteLength),
-      "Content-Disposition": attachmentDisposition(file.fileName),
-      Vary: "Accept-Encoding",
-      ...(sent.contentEncoding ? { "Content-Encoding": sent.contentEncoding } : {}),
+      "Content-Type": sent.contentType,
+      "Content-Disposition": attachmentDisposition(sent.fileName),
     },
   });
 }
