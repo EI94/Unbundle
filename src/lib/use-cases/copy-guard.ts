@@ -68,6 +68,9 @@ export interface HubCopyRule {
     | "stream"
     | "activity_mapping"
     | "discovery"
+    // (Rilascio 10, ondata 6a) Le parole della vecchia Discovery.
+    | "value_thesis"
+    | "nodi_strategici"
     | "privacy_policy"
     | "realizzati"
     | "tocca_anche"
