@@ -42,7 +42,7 @@ export function KpiListPanel({ data, valoreBase, state, ls }: { data: KpiPageDat
             <Link
               href={fixing ? href({ vista: null }) : href({ vista: "da-sistemare" })}
               scroll={false}
-              aria-pressed={fixing}
+              aria-current={fixing ? "true" : undefined}
               className={cn(
                 "inline-flex min-h-11 items-center rounded-full px-3 text-xs font-medium ring-1 sm:min-h-8",
                 fixing ? "bg-foreground text-background ring-foreground" : "text-muted-foreground ring-foreground/15 hover:text-foreground",

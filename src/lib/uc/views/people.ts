@@ -678,11 +678,11 @@ export const PEOPLE_TEXT = {
   contactEmailHint: "Una persona del cliente, non di Lateral Space.",
   contactRole: "Per quali domande",
   contactRoleHint: "Le domande di questo ruolo le riceve per prime.",
-  contactLabel: "Come lo chiamate (facoltativo)",
+  contactLabel: "Come chiamate il suo ruolo (facoltativo)",
   contactPhone: "Telefono (facoltativo)",
   contactChannel: "Canale preferito",
   contactActive: "Referente attivo",
-  contactActiveHint: "Si possono mandargli domande.",
+  contactActiveHint: "Può ricevere domande.",
 } as const;
 
 /** I testi del pannello «Invia le domande» (rilascio 10, §3.5); i passi e «Controlla e invia» sono quelli di «Chiedi al referente». */

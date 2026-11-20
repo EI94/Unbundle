@@ -44,8 +44,24 @@ function visibleTexts(file: string): string[] {
   return out.map((t) => t.replace(/\s+/g, " ").trim()).filter((t) => /[a-zà-ÿ]{3}/i.test(t));
 }
 
-test("genere neutro: nessun «collega» o «colleghi» per una persona", () => {
-  const found = FILES.flatMap((file) => visibleTexts(file).filter((t) => /\bcolleg(?:a|he|hi)\b/i.test(t)).map((t) => `${file.slice(SRC.length)}: «${t}»`));
+/**
+ * Genere neutro per una persona: niente «collega/colleghi», niente pronomi che dicono il genere («lui», «lei», «-gli»
+ * attaccato al verbo, «gli arrivano», «lo chiamate»). «gli» articolo («gli accessi») e «le» per le cose («le domande»)
+ * restano.
+ */
+const GENDERED = /\bcolleg(?:a|he|hi)\b|\b(?:lui|lei)\b|\b[a-zàèéìòù]+(?:ar|er|ir)(?:gli|glielo|gliela)\b|\bgli (?:arriv|mand|chied|scriv|invi|serv|rest|passa|tocca)|\b(?:lo|la) (?:chiamate|chiamano|indicate|scegliete)\b/i;
+
+test("il controllo del genere riconosce le forme di prima", () => {
+  for (const old of ["Si possono mandargli domande.", "Come lo chiamate (facoltativo)", "Le domande di questo ruolo gli arrivano per prime.", "restano a lei o a lui", "Delega da un collega."]) {
+    assert.match(old, GENDERED, old);
+  }
+  for (const ok of ["Può ricevere domande.", "Come chiamate il suo ruolo (facoltativo)", "gli accessi ai dati personali", "Le domande di questo ruolo le riceve per prime.", "un'altra persona"]) {
+    assert.doesNotMatch(ok, GENDERED, ok);
+  }
+});
+
+test("genere neutro: nessun «collega» e nessun pronome che dice il genere di una persona", () => {
+  const found = FILES.flatMap((file) => visibleTexts(file).filter((t) => GENDERED.test(t)).map((t) => `${file.slice(SRC.length)}: «${t}»`));
   assert.deepEqual(found, []);
 });
 

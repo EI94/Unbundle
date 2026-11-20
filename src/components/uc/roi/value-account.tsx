@@ -6,11 +6,11 @@ import { formatCountIt } from "@/lib/uc/views/format";
 import { VALUE_TEXT, missingText, type ValueFigure, type ValueView } from "@/lib/uc/views/roi";
 
 /** Una cifra del conto in piccolo: il numero, oppure la nota («da calcolare», «non rientra»). */
-export function Figure({ figure, size = "md" }: { figure: ValueFigure; size?: "lg" | "md" }) {
+export function Figure({ figure }: { figure: ValueFigure }) {
   return (
     <div className="min-w-0">
       <dt className="text-sm text-muted-foreground">{figure.label}</dt>
-      <dd className={size === "lg" ? "mt-0.5 text-2xl font-semibold tracking-tight tabular-nums" : "mt-0.5 text-base font-semibold tabular-nums"}>
+      <dd className="mt-0.5 text-base font-semibold tabular-nums">
         {figure.value ?? <span className="font-normal text-muted-foreground">{figure.note}</span>}
       </dd>
     </div>

@@ -29,7 +29,7 @@ import {
   referentAnswersWhereSql,
   type ActivityRow,
 } from "./audit.ts";
-import { parsePeriod, periodDateInput, periodOptions, periodValue } from "./activity-period.ts";
+import { parsePeriod, periodDay, periodOptions, periodValue } from "./activity-period.ts";
 
 const WS = "11111111-1111-4111-8111-111111111111";
 const CASE = "22222222-2222-4222-8222-222222222222";
@@ -285,22 +285,6 @@ test("family labels follow the vocabulary: questions, the via, activity", () => 
   }
 });
 
-test("«Periodo»: a date applies only when complete and from 2000, otherwise the applied one stays", () => {
-  // Typing the year of 2026 digit by digit gives 0002-…, 0020-…, 0202-… before 2026-…: none of them is a filter.
-  for (const partial of ["0002-10-14", "0020-10-14", "0202-10-14", "1999-12-31"]) {
-    assert.equal(periodDateInput(partial, null), null, partial);
-    assert.equal(periodDateInput(partial, "2026-10-01"), "2026-10-01", partial);
-  }
-  assert.equal(periodDateInput("2026-10-14", null), "2026-10-14");
-  assert.equal(periodDateInput("2026-02-30", "2026-10-01"), "2026-10-01", "an impossible date keeps the applied one");
-  assert.equal(periodDateInput("", "2026-10-01"), null, "an empty field removes the limit");
-  assert.equal(periodDateInput("  ", "2026-10-01"), null);
-  // The server reads the URL with the same rule.
-  assert.deepEqual(parseAuditFilter({ dal: "0002-10-14", al: "2026-10-14" }, false), { ...EMPTY_AUDIT_FILTER, dal: null, al: "2026-10-14" });
-});
-
-// ── Rilascio 10, §3.5: Attività ───────────────────────────────────────
-
 test("(rilascio 10) righe di al massimo 8 parole: si accorcia il titolo tra virgolette, mai il verbo", () => {
   assert.equal(clampActivityLine("Anna Bianchi", "ha risposto a «D»", "«D»"), "ha risposto a «D»", "già corta");
   const long = "«Quanti preventivi si perdono ogni mese»";
@@ -357,4 +341,9 @@ test("(rilascio 10) il periodo del filtro comune: un parametro solo, i link con 
   const custom = periodOptions("2026-11-20", { dal: "2026-10-01", al: "2026-10-03" });
   assert.equal(custom.at(-1)?.label, "dal 1 ott al 3 ott", "un periodo dei link di prima ha il suo chip");
   assert.equal(periodOptions("2026-11-20", { dal: "2026-11-20", al: "2026-11-20" }).length, 4, "«Oggi» non si ripete");
+});
+
+test("«Periodo»: a day counts only when complete, real and from 2000", () => {
+  for (const partial of ["0002-10-14", "2026-1", "2026-02-30", "", "1999-12-31"]) assert.equal(periodDay(partial || null), null, partial);
+  assert.equal(periodDay("2026-10-14"), "2026-10-14");
 });
