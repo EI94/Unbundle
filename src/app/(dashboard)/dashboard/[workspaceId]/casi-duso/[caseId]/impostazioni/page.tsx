@@ -1,159 +1,112 @@
 import { notFound } from "next/navigation";
-import { Activity, FileText, ShieldAlert, Target, Users } from "lucide-react";
-import { PAGE_TITLE_CLASS, PageContainer } from "@/components/dashboard/page-container";
-import { SettingsSection } from "@/components/dashboard/settings-section";
-import { LeverIcons } from "@/components/uc/common/lever-icons";
-import { MembersPanel } from "@/components/uc/people/members-panel";
+import { PageContainer } from "@/components/dashboard/page-container";
 import { canWrite, openShellPage } from "@/components/uc/shell/case-data";
 import { CaseStatusControl, type StatusOption } from "@/components/uc/shell/case-status-control";
 import { TechDetails } from "@/components/uc/ui/tech-details";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
-import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { loadCaseSettings, loadStatusOptions } from "@/lib/db/queries/uc-people-view";
-import { loadCaseMembers, loadMemberCandidates } from "@/lib/db/queries/uc-shell";
-import { caseGrantUserIds } from "@/lib/db/queries/use-case-builders";
 import { CASE_STATUS_LABEL } from "@/lib/uc/case-state";
-import { settingsTransitions, transitionHint, transitionNeedsReason } from "@/lib/uc/views/case-shell";
-import { groupMembers } from "@/lib/uc/views/people";
+import { SETTINGS_TEXT, statusHint } from "@/lib/uc/views/case-settings";
+import { settingsTransitions, transitionNeedsReason } from "@/lib/uc/views/case-shell";
 import type { CaseStatus } from "@/lib/uc/vocab";
-import { CaseIdentityForm, RevokeAllLinks, ScopeLeversForm } from "./settings-forms";
+import { CaseIdentityForm, RevokeAllLinks } from "./settings-forms";
+
+const SECTION_TITLE = "text-sm font-semibold";
 
 /**
- * Impostazioni del caso (DESIGN §3.13.3, WP6): solo il responsabile Lateral
- * Space, gli altri ricevono 404. Stessa forma delle Impostazioni del
- * workspace: H1 «Impostazioni», blocchi `SettingsSection`. La riga sopra il
- * titolo con il nome del caso qui non c'è: la pagina sta dentro il guscio del
- * dossier e la testata lo nomina subito sopra.
+ * Impostazioni della realizzazione (rilascio 10, §3.5; §3.21 dell'audit): solo il responsabile Lateral Space, gli
+ * altri ricevono 404. Il titolo è un H2, sotto l'H1 della testata. Tre sezioni:
  *
- * - «Il caso»: nome e frase. Il codice è quello dello use case: si legge e non
- *   si cambia qui; il codice di prima, se diverso, sta in «Dettagli tecnici»
- *   con lo schema di partenza.
- * - «Perimetro e leve»: il testo del perimetro e le 8 leve come interruttori.
- * - «Accesso al caso»: membri e ruoli (prima in Persone).
- * - «Stato del caso» (`#stato`): pausa e ripresa, con il motivo.
- * - «Zona pericolosa»: «Revoca tutti i link dei referenti», «Chiudi il caso» (solo qui, Ondata 0).
+ * - «La realizzazione»: nome, frase e perimetro, con un «Salva»; codice, schema di partenza e codice precedente in
+ *   «Dettagli tecnici».
+ * - «Pausa» (`#pausa`; la vecchia ancora `#stato` porta qui): «Metti in pausa…», «Riprendi», «Torna allo sviluppo…».
+ * - «Zona pericolosa»: «Revoca i link…» e «Chiudi la realizzazione…», una volta sola.
  *
- * In pausa restano solo «Riprendi», la chiusura e la revoca dei link; a caso
- * chiuso la pagina si legge soltanto.
+ * Gli account sono in Persone › «Nella realizzazione», le leve in Valore. In pausa restano «Riprendi», la chiusura e la
+ * revoca dei link; a realizzazione chiusa la pagina si legge soltanto.
  */
 export default async function CaseSettingsPage({ params }: { params: Promise<{ workspaceId: string; caseId: string }> }) {
   const { workspaceId, caseId } = await params;
   const { session, access } = await requireWorkspacePage(workspaceId);
   const { caseAccess, executor, ctx } = await openShellPage({ workspaceId, caseId, session, access, page: "impostazioni" });
   const write = canWrite(caseAccess);
-  const lsDomains = ucLsDomains();
-  const [settings, status, memberRows, candidates, builderIds] = await Promise.all([
-    loadCaseSettings(executor, { workspaceId, caseId }),
-    write ? loadStatusOptions(executor, ctx) : Promise.resolve(null),
-    loadCaseMembers(executor, { workspaceId, caseId, lsDomains }),
-    write ? loadMemberCandidates(executor, { workspaceId, lsDomains }) : Promise.resolve([]),
-    // (8.0c) Chi costruisce il caso da fuori: la sua riga «Osservatore» dice «costruisce».
-    caseGrantUserIds(executor, caseId),
-  ]);
+  const [settings, status] = await Promise.all([loadCaseSettings(executor, { workspaceId, caseId }), write ? loadStatusOptions(executor, ctx) : Promise.resolve(null)]);
   if (!settings) notFound();
 
   const current = settings.status;
   const paused = current === "sospeso";
   const editable = write && !paused;
-  const option = (to: CaseStatus): StatusOption => ({ to, label: CASE_STATUS_LABEL[to], hint: transitionHint(current, to), needsReason: transitionNeedsReason(to) });
+  const option = (to: CaseStatus): StatusOption => ({ to, label: CASE_STATUS_LABEL[to], hint: statusHint(current, to), needsReason: transitionNeedsReason(to) });
   // Il passo avanti è il primario della testata; qui pausa, ripresa e il ritorno allo sviluppo, la chiusura in «Zona pericolosa».
   const transitions = settingsTransitions(current, status?.allowed ?? []);
   const stateOptions = transitions.state.map(option);
   const closeOption = transitions.danger.map(option);
+  const T = SETTINGS_TEXT;
 
   return (
     <PageContainer>
-      <header className="min-w-0">
-        <h1 className={PAGE_TITLE_CLASS}>Impostazioni</h1>
-      </header>
+      <div className="max-w-3xl space-y-8">
+        <h2 className="text-base font-semibold">{T.title}</h2>
 
-      <div className="mt-6 space-y-6">
-        <SettingsSection id="il-caso" icon={FileText} title="Il caso" description="Nome e frase si leggono in testata.">
-          <div className="space-y-5">
-            <div className="space-y-1">
-              <p className="text-sm">
-                <span className="text-muted-foreground">Codice </span>
-                <span className="font-medium tabular-nums">{settings.displayCode}</span>
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {settings.useCaseCode ? "È il codice dello use case: si legge e non si cambia qui." : "Il codice non si cambia: entra nei testi firmati."}
-              </p>
-            </div>
-            {editable ? (
-              <CaseIdentityForm workspaceId={workspaceId} caseId={caseId} title={settings.title} oneLiner={settings.oneLiner} />
-            ) : (
-              <dl className="grid gap-3 text-sm">
-                <div>
-                  <dt className="text-xs text-muted-foreground">Nome</dt>
-                  <dd className="break-words">{settings.title}</dd>
-                </div>
-                {settings.oneLiner && (
-                  <div>
-                    <dt className="text-xs text-muted-foreground">In una frase</dt>
-                    <dd className="break-words">{settings.oneLiner}</dd>
-                  </div>
-                )}
-              </dl>
-            )}
-            <TechDetails roles={caseAccess.roles}>
-              <p>
-                Schema di partenza: {settings.templateName} · versione {settings.templateVersion}
-              </p>
-              {settings.previousCode && <p>Codice precedente della realizzazione: {settings.previousCode}</p>}
-            </TechDetails>
-          </div>
-        </SettingsSection>
-
-        <SettingsSection id="perimetro" icon={Target} title="Perimetro e leve" description="Che cosa entra nella realizzazione e dove porta valore.">
+        <section id="realizzazione" aria-labelledby="uc-settings-realization" className="scroll-mt-28 space-y-4">
+          <h3 id="uc-settings-realization" className={SECTION_TITLE}>
+            {T.realization}
+          </h3>
           {editable ? (
-            <ScopeLeversForm workspaceId={workspaceId} caseId={caseId} perimeterLabel={settings.perimeterLabel} levers={settings.levers} />
+            <CaseIdentityForm workspaceId={workspaceId} caseId={caseId} title={settings.title} oneLiner={settings.oneLiner} perimeterLabel={settings.perimeterLabel} />
           ) : (
-            <div className="space-y-3 text-sm">
-              {settings.perimeterLabel && <p className="break-words">{settings.perimeterLabel}</p>}
-              <LeverIcons active={settings.levers} />
-              {!settings.perimeterLabel && settings.levers.length === 0 && <p className="text-muted-foreground">Non ancora indicati.</p>}
-            </div>
+            <dl className="grid gap-3 text-sm">
+              <div>
+                <dt className="text-xs text-muted-foreground">{T.name}</dt>
+                <dd className="break-words">{settings.title}</dd>
+              </div>
+              {settings.oneLiner && (
+                <div>
+                  <dt className="text-xs text-muted-foreground">{T.oneLiner}</dt>
+                  <dd className="break-words">{settings.oneLiner}</dd>
+                </div>
+              )}
+              {settings.perimeterLabel && (
+                <div>
+                  <dt className="text-xs text-muted-foreground">{T.perimeter}</dt>
+                  <dd className="break-words">{settings.perimeterLabel}</dd>
+                </div>
+              )}
+            </dl>
           )}
-        </SettingsSection>
+          <TechDetails roles={caseAccess.roles} copyValue={settings.displayCode}>
+            <p>{T.code(settings.displayCode)}</p>
+            <p>{T.template(settings.templateName, settings.templateVersion)}</p>
+            {settings.previousCode && <p>{T.previousCode(settings.previousCode)}</p>}
+          </TechDetails>
+        </section>
 
-        <SettingsSection id="accesso" icon={Users} title="Accesso al caso" description="Chi ha un account e il suo ruolo nella realizzazione. «Lateral Space» o «Cliente» dipende dal dominio dell'email verificata.">
-          <MembersPanel
-            workspaceId={workspaceId}
-            caseId={caseId}
-            members={groupMembers(memberRows, { withEmail: true })}
-            candidates={candidates.map((m) => ({ userId: m.userId, name: m.name, isLateralSpace: m.isLateralSpace }))}
-            canManage={editable}
-            builderIds={builderIds}
-          />
-        </SettingsSection>
-
-        <SettingsSection
-          id="stato"
-          icon={Activity}
-          title="Stato del caso"
-          description={`Adesso: ${CASE_STATUS_LABEL[current]}. Il passo avanti è il pulsante in alto; qui ci sono pausa e ripresa.`}
-        >
+        <section id="pausa" aria-labelledby="uc-settings-pause" className="scroll-mt-28 space-y-3 border-t pt-6">
+          {/* La vecchia ancora: il passo «Riprendi la realizzazione» e i link già partiti dicono `#stato`. */}
+          <span id="stato" className="block scroll-mt-28" aria-hidden />
+          <h3 id="uc-settings-pause" className={SECTION_TITLE}>
+            {T.pause}
+          </h3>
           {stateOptions.length > 0 ? (
             <CaseStatusControl workspaceId={workspaceId} caseId={caseId} current={current} transitions={stateOptions} />
           ) : (
-            <p className="text-sm text-muted-foreground">{current === "chiuso" ? "Il caso è chiuso: si può solo leggere." : "Nessun cambio di stato da qui, adesso."}</p>
+            <p className="text-sm text-muted-foreground">{current === "chiuso" ? T.closed : T.noChange}</p>
           )}
-        </SettingsSection>
+        </section>
 
         {write && (
-          <SettingsSection
-            id="zona-pericolosa"
-            icon={ShieldAlert}
-            iconClassName="bg-red-500/10 text-red-600 dark:text-red-400"
-            tone="danger"
-            title="Zona pericolosa"
-            description="Azioni che non si annullano. Le risposte già arrivate restano."
-          >
+          <section id="zona-pericolosa" aria-labelledby="uc-settings-danger" className="scroll-mt-28 space-y-3 rounded-xl p-4 ring-1 ring-destructive/30 sm:p-5">
+            <div className="space-y-1">
+              <h3 id="uc-settings-danger" className={SECTION_TITLE}>
+                {T.danger}
+              </h3>
+              <p className="text-sm text-muted-foreground">{T.dangerNote}</p>
+            </div>
             <div className="flex flex-wrap gap-2">
               <RevokeAllLinks workspaceId={workspaceId} caseId={caseId} />
               {closeOption.length > 0 && <CaseStatusControl workspaceId={workspaceId} caseId={caseId} current={current} transitions={closeOption} />}
             </div>
-          </SettingsSection>
+          </section>
         )}
       </div>
     </PageContainer>

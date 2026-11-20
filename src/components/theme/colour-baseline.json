@@ -3,10 +3,6 @@
     "palette": 22,
     "whiteBlack": 1
   },
-  "src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/impostazioni/page.tsx": {
-    "palette": 2,
-    "dark": 1
-  },
   "src/app/(dashboard)/dashboard/[workspaceId]/intelligence/page.tsx": {
     "palette": 3
   },
