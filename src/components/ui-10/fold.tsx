@@ -43,6 +43,11 @@ export interface FoldProps {
   marker?: ReactNode;
   /** Aperta quando la pagina arriva da un link che la chiede (per esempio `?capitolo=`): lo decide il server. */
   defaultOpen?: boolean;
+  /**
+   * (Rilascio 10, ondata 5b) Il livello del titolo: 2 di default; 3 per una piega dentro una sezione che ha già il suo
+   * H2 (i dettagli della «Qualità» nella Costruzione). Facoltativo: ogni uso di prima resta un H2.
+   */
+  level?: 2 | 3;
   children: ReactNode;
   className?: string;
 }
@@ -55,14 +60,15 @@ export interface FoldProps {
  * della stessa pagina la chiede). Poi la apre e la chiude chi guarda (`foldOpen`). Sostituisce il `<details>` di
  * `use-cases/detail/fold.tsx`, dove il titolo stava dentro il `<summary>`.
  */
-export function Fold({ id, title, summary, marker, defaultOpen = false, children, className }: FoldProps) {
+export function Fold({ id, title, summary, marker, defaultOpen = false, level = 2, children, className }: FoldProps) {
+  const Heading = level === 3 ? "h3" : "h2";
   const hash = useSyncExternalStore(subscribeHash, () => window.location.hash, () => "");
   const [toggle, setToggle] = useState<{ open: boolean; hash: string } | null>(null);
   const open = foldOpen({ id, defaultOpen, hash, toggle });
   const contentId = `${id}-contenuto`;
   return (
     <section id={id} data-slot="fold" data-open={open ? "" : undefined} className={cn("scroll-mt-20 border-t last:border-b", className)}>
-      <h2 className="text-base font-semibold">
+      <Heading className="text-base font-semibold">
         <button
           type="button"
           aria-expanded={open}
@@ -77,7 +83,7 @@ export function Fold({ id, title, summary, marker, defaultOpen = false, children
           </span>
           <ChevronRight aria-hidden className={cn("size-4 shrink-0 text-muted-foreground transition-transform duration-150 motion-reduce:transition-none", open && "rotate-90")} />
         </button>
-      </h2>
+      </Heading>
       <div id={contentId} data-slot="fold-content" hidden={!open} className="space-y-4 pb-5">
         {children}
       </div>

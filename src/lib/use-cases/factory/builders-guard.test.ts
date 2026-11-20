@@ -33,6 +33,7 @@ const FACTORY_DIRS = [
   "src/app/api/github",
   "src/components/agent-factory",
   "src/app/(dashboard)/dashboard/[workspaceId]/agent-factory",
+  "src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/costruzione",
   "src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/progetto",
 ];
 const FACTORY_FILES = [

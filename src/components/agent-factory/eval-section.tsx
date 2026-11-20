@@ -120,8 +120,9 @@ function Command({ label, command }: { label?: string; command: string }) {
 /**
  * (8.2b) « · dalla CI» o « · dalla CLI», in fondo alla riga di un'esecuzione. Per chi costruisce «dalla CI» porta
  * all'esecuzione su GitHub, con un bersaglio di 44 px al telefono che non allarga la riga; senza fonte, niente.
+ * (Rilascio 10) La usa anche la riga di «Qualità» della Costruzione (`EvalSummary`).
  */
-function RunSource({ origin, ciLinks }: { origin: EvalRunOrigin | null; ciLinks: boolean }) {
+export function RunSource({ origin, ciLinks }: { origin: EvalRunOrigin | null; ciLinks: boolean }) {
   if (!origin) return null;
   const href = ciRunHref(origin, ciLinks);
   return (

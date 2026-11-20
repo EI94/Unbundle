@@ -1,117 +1,129 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Building2, ClipboardList, FlaskConical, Gavel, ListTodo, Package, Wrench } from "lucide-react";
-import { EVAL_TEXT, evalSectionDescription } from "@/components/agent-factory/eval-format";
+import { ChevronRight } from "lucide-react";
+import { QUALITY_ANCHORS, QUALITY_TEXT, hasMeasures, qualitySummary } from "@/components/agent-factory/eval-format";
 import { readEvalOrigins, readEvalOverview } from "@/components/agent-factory/eval-load";
 import { EvalSection } from "@/components/agent-factory/eval-section";
+import { EvalSummary } from "@/components/agent-factory/eval-summary";
 import { UseCaseContextView } from "@/components/context/use-case-context";
-import { packageDeltaLine, packageFilesShown } from "@/components/context/view-model";
-import { PAGE_TITLE_CLASS, PageContainer } from "@/components/dashboard/page-container";
-import { SettingsSection } from "@/components/dashboard/settings-section";
-import { canWrite, openShellPage } from "@/components/uc/shell/case-data";
+import { contextFoldSummary, packageDeltaLine, packageFilesShown } from "@/components/context/view-model";
+import { PageContainer } from "@/components/dashboard/page-container";
+import { Fold } from "@/components/ui-10/fold";
+import { casePath } from "@/components/uc/catalog/paths";
+import { ClaudeDevPanel } from "@/components/uc/mcp/claude-dev-panel";
+import { canWrite, loadCaseHead } from "@/components/uc/shell/case-data";
+import { StatusDot } from "@/components/uc/ui/status-dot";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { contextActorFor, type ContextActor } from "@/lib/context/server/actor";
 import { CONTEXT_TEXT } from "@/lib/context/text";
 import { loadAgentContext, loadUseCaseContext, type UseCaseContext } from "@/lib/db/queries/context-work";
-import { factoryStoreReady, readFactory, topicLabel, findUseCaseOfCase, namesToHide, type DecisionView, type FactoryTarget, type FactoryView, type ProjectView } from "@/lib/db/queries/use-case-factory";
+import { listCaseReadTokens } from "@/lib/db/queries/uc-mcp";
+import { factoryStoreReady, readFactory, findUseCaseOfCase, namesToHide, type DecisionView, type FactoryTarget, type FactoryView, type ProjectView } from "@/lib/db/queries/use-case-factory";
 import { FACTORY_LIMITS, SETUP_TOPICS } from "@/lib/db/use-case-hub-factory-ddl";
 import { listTasks, tasksStoreReady, type TaskView } from "@/lib/db/queries/use-case-tasks";
 import { listOpenProposals, proposalsStoreReady, type ProposalView } from "@/lib/db/queries/use-case-task-proposals";
 import type { UcExecutor } from "@/lib/db/uc-executor";
+import { canOpenShellPage, pastViaPhase } from "@/lib/uc/views/case-shell";
+import {
+  CONSTRUCTION_TEXT as T,
+  TASKS_ALL_PARAM,
+  TASKS_ALL_VALUE,
+  TASKS_SHOWN,
+  agentFoldSummary,
+  choicesMade,
+  constructionTopicLabel,
+  missingChoices,
+  projectAction,
+  projectStateLine,
+  projectTone,
+  seesBuildDetails,
+  tasksInOrder,
+  tasksTally,
+  type TaskStatusKey,
+} from "@/lib/uc/views/construction";
+import { canOpenPage } from "@/lib/uc/views/page-access";
+import { isLsViewer } from "@/lib/uc/views/status-groups";
+import type { SemaforoColor } from "@/lib/uc/vocab";
 import { loadFactoryAccess } from "@/lib/use-cases/factory/access";
 import { packageContextDelta } from "@/lib/use-cases/factory/package";
 import { aiBoardOkRule, AI_BOARD_NOTE_MIN, canApproveProject, canRequestProjectChange, canWriteFactory } from "@/lib/use-cases/factory/permissions";
 import { romeToday } from "@/lib/use-cases/quarter";
+import { cn } from "@/lib/utils";
 import { AiBoardOk, DecisionForm, DetailsEditor, PackageButton, ProjectPrimaryAction, ProposalButtons, ReopenProject, TopicEditor } from "./project-forms";
 
 /**
- * Il progetto dell'agente (rilascio 8.0a, docs/rilascio-8/RILASCIO-8.0-PIANO.md §2): l'impostazione dello use case
- * nell'Agent Factory. Si apre dal menu «⋯» del dossier; la leggono il team del caso e l'AI Board, gli altri
- * ricevono 404 (`UC_SHELL_PAGE_ROLES.progetto`).
+ * La Costruzione (rilascio 10, docs/ui-10/PROPOSTA-10.md §3.5, D9 (a)): il progetto dell'agente della realizzazione
+ * (rilascio 8.0a) con i compiti (8.1a, 8.1b), la qualità (8.2a, 8.2b) e, per chi costruisce, «Per il coding agent».
+ * Dopo il via allo sviluppo è la seconda scheda, al posto di Domande (che resta a un tocco, «Catalogo ›»); prima del
+ * via si apre dal «⋯». La leggono il team della realizzazione e l'AI Board; gli altri ricevono 404
+ * (`UC_SHELL_PAGE_ROLES.costruzione`). `/progetto` porta qui con un 308 (le sue ancore restano: `#banco`, `#compiti`,
+ * `#contesto`).
  *
- * - Un'azione principale, secondo lo stato e chi guarda: «Imposta lo use case», «Manda in approvazione», l'ok
- *   dell'AI Board (o «Chiedi una modifica»), «Approva il progetto» (solo il responsabile), «Rivedi il progetto».
- *   «Riapri per cambiarlo» la ha solo il responsabile, con la conferma: fa decadere l'ok dell'AI Board.
- * - I 10 argomenti con la scelta, il perché e l'alternativa scartata; si cambiano solo con il progetto in corso.
- *   Con una versione nuova aperta resta da leggere quella approvata.
- * - Strumenti nuovi e stima, con l'ok o la modifica chiesta dall'AI Board.
- * - Le decisioni che valgono, oltre alle scelte; lo storico completo, con quelle sostituite, su richiesta.
- * - Il pacchetto, solo per chi costruisce: la versione di oggi, i suoi file, «Aggiorna il pacchetto».
- * - (8.1a) I compiti (`#compiti`): stato e chi li ha, le aree e le prove a richiesta. Si prendono e si passano dal
- *   coding agent, con la CLI; qui si leggono.
- * - (8.1b) Le proposte di compito da GitHub (un'issue, un commento `/compito`), solo per chi costruisce: le accetta
- *   (nasce il compito) o le scarta.
- * - (8.0c) Chi scrive, il pacchetto e le proposte vengono dai ruoli della fabbrica (`loadFactoryAccess`): chi costruisce
- *   il caso da fuori Lateral Space, da osservatore nel dossier, imposta il progetto come uno sviluppatore. Chi approva,
- *   riapre e dà l'ok dell'AI Board resta quello di prima (i ruoli del caso).
- * - (8.2a) Evals e banco di prova (`#banco`), per tutti quelli che vedono la pagina: le ultime evals con l'andamento,
- *   l'ultimo banco per ruolo con il grafico qualità contro costo e la raccomandazione, o i comandi per cominciare.
- *   Si lanciano dalla CLI; qui si leggono. Una lettura che fallisce non fa cadere la pagina.
- *   (8.2b) Ogni esecuzione dice da dove è arrivata, «dalla CI» o «dalla CLI»: per chi costruisce il caso (anche da
- *   fuori) e per Lateral Space «dalla CI» porta all'esecuzione su GitHub; il cliente lo legge senza link.
- * - (9b) «Contesto» (`#contesto`, l'ancora di «Il contesto è cambiato» in campanella), dopo «Decisioni»: quello che
- *   sappiamo del cliente e che tocca lo use case, lo stesso della piega della scheda, con i fatti per chi guarda (Lateral
- *   Space per l'e-mail verificata; chi costruisce da fuori, il responsabile del cliente e l'AI Board solo «Per tutti»).
- *   Senza niente da mostrare non c'è. In «Pacchetto», a chi lo vede, la riga «Il contesto è cambiato dopo l'ultimo
- *   pacchetto (n novità).» sotto la versione, solo quando serve: l'azione resta «Aggiorna il pacchetto». «Leggi i file»
- *   mostra anche `CONTESTO.md` quando c'è.
+ * - In vista: lo stato del progetto («Approvato · versione 2 · 10 di 10 scelte»), la sua sola azione (il pulsante pieno
+ *   della pagina: la testata qui non ha il suo), i Compiti (al massimo 3 righe, poi «Vedi tutti (N)»; le proposte con
+ *   «Accetta» bordato) e «Qualità» in una riga, con per ogni ruolo la sola raccomandazione del banco.
+ * - In piega, chiuse finché un link non le apre: Scelte (i 10 argomenti, gli strumenti nuovi e la stima, la versione
+ *   approvata di prima) · Decisioni · Contesto (9b, l'ancora di «Il contesto è cambiato») · «Per il coding agent»
+ *   (pacchetto, comandi e gli accessi di Claude, che prima stavano nel via).
+ * - Ai ruoli del cliente la qualità è una frase sola: niente comandi, rami, commit o p95 (`seesBuildDetails`). Chi
+ *   scrive, approva e dà l'ok dell'AI Board è quello di prima (`loadFactoryAccess`, i permessi della fabbrica).
  *
- * Il dialogo dell'impostazione si fa anche dal coding agent (skill `/agent-factory:imposta`): qui si rilegge, si
- * corregge e si approva.
+ * Una lettura che non riesce (evals, contesto, novità del pacchetto) non fa cadere la pagina.
  */
-
-const STATUS_TEXT: Record<ProjectView["status"], string> = {
-  in_corso: "In corso",
-  da_approvare: "Da approvare",
-  approvato: "Approvato",
-  superato: "Superato",
-};
 
 const day = (iso: string | null) => (iso ? new Intl.DateTimeFormat("it-IT", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/Rome" }).format(new Date(iso)) : "");
 const amount = (n: number, digits: number) => new Intl.NumberFormat("it-IT", { maximumFractionDigits: digits, useGrouping: "always" }).format(n);
+const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+
+const TASK_TONE: Readonly<Record<TaskStatusKey, SemaforoColor>> = { da_fare: "grigio", in_corso: "blu", in_revisione: "giallo", fatto: "verde", annullato: "grigio" };
 
 /** Le scelte di una versione, in sola lettura (anche per la versione approvata mentre se ne prepara un'altra). */
 function ChoiceText({ choice }: { choice: ProjectView["topics"][keyof ProjectView["topics"]] | null }) {
-  if (!choice) return <p className="mt-0.5 text-sm text-muted-foreground">Da scegliere</p>;
+  if (!choice) return <p className="mt-0.5 text-sm text-muted-foreground">{T.choiceTodo}</p>;
   return (
     <>
-      <p className="mt-0.5 text-sm">{choice.scelta}</p>
-      {choice.perche ? <p className="mt-0.5 text-xs text-muted-foreground">Perché: {choice.perche}</p> : null}
-      {choice.alternativa ? <p className="mt-0.5 text-xs text-muted-foreground">Scartata: {choice.alternativa}</p> : null}
+      <p className="mt-0.5 text-sm break-words">{choice.scelta}</p>
+      {choice.perche ? <p className="mt-0.5 text-xs break-words text-muted-foreground">{T.choiceWhy(choice.perche)}</p> : null}
+      {choice.alternativa ? <p className="mt-0.5 text-xs break-words text-muted-foreground">{T.choiceDropped(choice.alternativa)}</p> : null}
     </>
   );
 }
 
-const TASK_STATUS: Record<TaskView["status"], string> = {
-  da_fare: "Da fare",
-  in_corso: "In corso",
-  in_revisione: "In revisione",
-  fatto: "Fatto",
-  annullato: "Annullato",
-};
-
-function TaskLine({ t }: { t: TaskView }) {
-  const who = (t.status === "in_corso" || t.status === "in_revisione") && t.holderName ? ` · ${t.holderName}` : "";
+/** Un compito: riferimento, titolo e lo stato a puntino; i dettagli a richiesta. Ramo e modifica solo a chi costruisce. */
+function TaskLine({ t, details }: { t: TaskView; details: boolean }) {
+  const holder = (t.status === "in_corso" || t.status === "in_revisione") && t.holderName ? t.holderName : undefined;
+  const lines = [
+    t.areas.length ? T.taskAreas(t.areas) : null,
+    t.estimateHours !== null ? T.taskEstimate(String(t.estimateHours).replace(".", ",")) : null,
+    t.evidence ? T.taskEvidence(t.evidence) : null,
+    details && t.branch ? T.taskBranch(t.branch) : null,
+  ].filter((l): l is string => l !== null);
+  const pr = details && t.prUrl ? t.prUrl : null;
+  const head = (
+    <>
+      <span className={cn("min-w-0 text-sm break-words", t.status === "annullato" && "text-muted-foreground line-through")}>
+        <span className="font-medium tabular-nums">{t.ref}</span> · {t.title}
+      </span>
+      <StatusDot tone={TASK_TONE[t.status]} label={T.taskStatus[t.status]} sublabel={holder} className="shrink-0" />
+    </>
+  );
+  if (lines.length === 0 && !pr) {
+    return <li className="flex min-h-11 items-center justify-between gap-3 py-2.5 sm:min-h-0">{head}</li>;
+  }
   return (
     <li>
-      <details className="group py-2.5">
-        <summary className="flex min-h-11 cursor-pointer items-start justify-between gap-3 sm:min-h-0">
-          <span className={`min-w-0 text-sm ${t.status === "annullato" ? "text-muted-foreground line-through" : ""}`}>
-            <span className="font-medium tabular-nums">{t.ref}</span> · {t.title}
-          </span>
-          <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs ${t.status === "fatto" ? "border-uc-verde bg-uc-verde-bg" : t.status === "da_fare" ? "text-muted-foreground" : ""}`}>
-            {TASK_STATUS[t.status]}
-            {who}
-          </span>
-        </summary>
+      <details className="py-2.5">
+        <summary className="flex min-h-11 cursor-pointer items-center justify-between gap-3 sm:min-h-0">{head}</summary>
         <div className="mt-2 space-y-1 text-xs text-muted-foreground">
-          {t.areas.length ? <p className="break-words">Aree: {t.areas.join(", ")}</p> : null}
-          {t.estimateHours !== null ? <p>Stima: {String(t.estimateHours).replace(".", ",")} ore</p> : null}
-          {t.evidence ? <p>Prove: {t.evidence}</p> : null}
-          {t.branch ? <p className="break-words">Ramo: {t.branch}</p> : null}
-          {t.prUrl ? (
+          {lines.map((l) => (
+            <p key={l} className="break-words">
+              {l}
+            </p>
+          ))}
+          {pr ? (
             <p>
-              <a href={t.prUrl} className="underline" target="_blank" rel="noreferrer">
-                La pull request
+              <a href={pr} className="underline" target="_blank" rel="noreferrer">
+                {T.taskChange}
               </a>
             </p>
           ) : null}
@@ -122,6 +134,7 @@ function TaskLine({ t }: { t: TaskView }) {
 }
 
 function ProposalLine({ p, ids }: { p: ProposalView; ids: { workspaceId: string; caseId: string } | null }) {
+  const from = T.proposalFrom(p.source === "github" ? "github" : "slack");
   return (
     <li className="flex flex-col gap-2 py-2.5 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0 text-sm">
@@ -129,16 +142,16 @@ function ProposalLine({ p, ids }: { p: ProposalView; ids: { workspaceId: string;
         <p className="mt-0.5 text-xs text-muted-foreground">
           {p.link ? (
             <a href={p.link} className="underline" target="_blank" rel="noreferrer">
-              Da {p.source === "github" ? "GitHub" : "Slack"}
+              {from}
             </a>
           ) : (
-            `Da ${p.source === "github" ? "GitHub" : "Slack"}`
+            from
           )}{" "}
-          · il {day(p.createdAt)}
-          {p.existingRef ? ` · forse c'è già: ${p.existingRef}` : ""}
+          · {T.proposalOn(day(p.createdAt))}
+          {p.existingRef ? ` · ${T.proposalExisting(p.existingRef)}` : ""}
         </p>
       </div>
-      {ids ? <ProposalButtons workspaceId={ids.workspaceId} caseId={ids.caseId} proposalId={p.id} /> : null}
+      {ids ? <ProposalButtons workspaceId={ids.workspaceId} caseId={ids.caseId} proposalId={p.id} title={p.title} /> : null}
     </li>
   );
 }
@@ -147,75 +160,82 @@ function DecisionLine({ d }: { d: DecisionView }) {
   return (
     <li className="py-2.5 text-sm">
       <p className={d.supersededOn ? "text-muted-foreground" : undefined}>
-        <span className="tabular-nums text-muted-foreground">{day(d.decidedOn)}</span> · <span className="font-medium">{d.topic}</span> ·{" "}
+        <span className="tabular-nums text-muted-foreground">{day(d.decidedOn)}</span> · <span className="font-medium">{constructionTopicLabel(d.topicKey, d.topic)}</span> ·{" "}
         <span className={d.supersededOn ? "line-through" : undefined}>{d.choice}</span>
       </p>
-      {d.supersededOn ? <p className="mt-0.5 text-xs text-muted-foreground">Sostituita il {day(d.supersededOn)}</p> : d.reason ? <p className="mt-0.5 text-xs text-muted-foreground">{d.reason}</p> : null}
+      {d.supersededOn ? <p className="mt-0.5 text-xs text-muted-foreground">{T.decisionReplaced(day(d.supersededOn))}</p> : d.reason ? <p className="mt-0.5 text-xs break-words text-muted-foreground">{d.reason}</p> : null}
     </li>
   );
 }
 
+/** Un comando da lanciare: il testo e il comando, tutto selezionato con un clic. */
+function CommandLine({ label, command }: { label: string; command: string }) {
+  return (
+    <p className="text-xs text-muted-foreground">
+      {label}{" "}
+      <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] break-words text-foreground select-all box-decoration-clone">{command}</code>
+    </p>
+  );
+}
+
 /**
- * (9b) La sezione «Contesto»: i fatti, gli impegni e le domande del cliente che toccano lo use case, per chi guarda (anche
- * nessuno: la sezione resta, con una riga che lo dice, ed è l'ancora della campanella). null senza l'archivio di
- * «Contesto», per chi non apre «Contesto» o se la lettura non riesce: la pagina resta, senza sezione.
+ * (9b) Il contesto dello use case per chi guarda (anche vuoto: la piega c'è, ed è l'ancora della campanella). null
+ * senza l'archivio di «Contesto», per chi non apre «Contesto» o se la lettura non riesce.
  */
 async function readContextSection(actor: ContextActor, useCaseId: string): Promise<UseCaseContext | null> {
   try {
     return await loadUseCaseContext(actor, useCaseId);
   } catch (error) {
-    console.error("[agent-project] context_failed", { error: { name: error instanceof Error ? error.name : "Error" } });
+    console.error("[costruzione] context_failed", { error: { name: error instanceof Error ? error.name : "Error" } });
     return null;
   }
 }
 
-/**
- * (9b) Le novità del contesto dopo l'ultimo pacchetto: le righe di `CONTESTO.md` che il prossimo «Aggiorna il pacchetto»
- * cambierebbe, dal file salvato nella versione a quello di adesso (con gli stessi nomi coperti); se la versione non ha
- * `CONTESTO.md`, tutte le righe di adesso. Zero se la lettura non riesce.
- */
+/** (9b) Le novità del contesto dopo l'ultimo pacchetto (`packageContextDelta`); zero se la lettura non riesce. */
 async function readContextDelta(executor: UcExecutor, target: FactoryTarget, code: string, latest: NonNullable<FactoryView["latestPackage"]>): Promise<number> {
   try {
     const [context, names] = await Promise.all([loadAgentContext(target), namesToHide(executor, target)]);
     return packageContextDelta({ context, namesToHide: names, code, latest });
   } catch (error) {
-    console.error("[agent-project] context_delta_failed", { error: { name: error instanceof Error ? error.name : "Error" } });
+    console.error("[costruzione] context_delta_failed", { error: { name: error instanceof Error ? error.name : "Error" } });
     return 0;
   }
 }
 
-export default async function AgentProjectPage({ params }: { params: Promise<{ workspaceId: string; caseId: string }> }) {
+function NotYet() {
+  return (
+    <PageContainer>
+      <p className="text-sm text-muted-foreground">{T.unavailable}</p>
+    </PageContainer>
+  );
+}
+
+export default async function ConstructionPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ workspaceId: string; caseId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { workspaceId, caseId } = await params;
   const { session, access } = await requireWorkspacePage(workspaceId);
-  const { caseAccess, executor } = await openShellPage({ workspaceId, caseId, session, access, page: "progetto" });
+  const { caseAccess, executor, header } = await loadCaseHead(workspaceId, caseId, session.user.id, access.role);
   const roles = caseAccess.roles;
+  if (!canOpenShellPage("costruzione", roles)) notFound();
 
-  if (!(await factoryStoreReady(executor))) {
-    return (
-      <PageContainer>
-        <h1 className={PAGE_TITLE_CLASS}>Progetto dell&apos;agente</h1>
-        <p className="mt-4 text-sm text-muted-foreground">Non ancora disponibile: riprova tra qualche minuto.</p>
-      </PageContainer>
-    );
-  }
+  if (!(await factoryStoreReady(executor))) return <NotYet />;
   const useCase = await findUseCaseOfCase(executor, workspaceId, caseId);
   if (!useCase) notFound();
   const target = { workspaceId, useCaseId: useCase.useCaseId };
   // (8.0c) I ruoli della fabbrica: quelli del caso, più `builder_esterno` per chi costruisce da fuori.
   const factory = await loadFactoryAccess(executor, caseAccess);
-  // La 0037 non è pronta e la persona costruisce il caso da fuori (o non si sa): come la fabbrica non ancora pronta.
-  if (factory.blocked === "non_disponibile") {
-    return (
-      <PageContainer>
-        <h1 className={PAGE_TITLE_CLASS}>Progetto dell&apos;agente</h1>
-        <p className="mt-4 text-sm text-muted-foreground">Non ancora disponibile: riprova tra qualche minuto.</p>
-      </PageContainer>
-    );
-  }
+  if (factory.blocked === "non_disponibile") return <NotYet />;
   const read = await readFactory(executor, target, { kind: "persona", userId: session.user.id, roles: factory.roles });
   if (!read.ok) notFound();
   const view = read.value;
 
+  const c = header.case;
+  const base = casePath(workspaceId, caseId, "costruzione");
   const writable = canWrite(caseAccess);
   // Chi costruisce: scrive il progetto e legge il pacchetto (che è per i coding agent, non per il cliente).
   const builder = canWriteFactory(factory.roles);
@@ -223,40 +243,28 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
   const approver = writable && canApproveProject(roles);
   const board = writable ? aiBoardOkRule(roles) : { allowed: false, noteRequired: false };
   const boardMember = writable && canRequestProjectChange(roles);
+  const ls = isLsViewer(roles);
+  // I dettagli di chi costruisce (comandi, rami, banco intero, pacchetto): chi costruisce e Lateral Space.
+  const details = seesBuildDetails({ builder, lateralSpace: ls || caseAccess.user.isLateralSpace });
+  const pastVia = pastViaPhase(c);
+
   const project = view.open ?? view.approved;
   const open = view.open;
   const editable = writer && open?.status === "in_corso";
   const pending = open?.status === "da_approvare" ? open : null;
   const needsBoard = pending !== null && pending.newTools.length > 0 && !pending.aiBoardOkAt;
-  const missing = open?.status === "in_corso" ? SETUP_TOPICS.filter((t) => !open.topics[t]?.scelta) : [];
-  const chosen = project ? SETUP_TOPICS.length - SETUP_TOPICS.filter((t) => !project.topics[t]?.scelta).length : 0;
   const changeRequest = open?.changeRequest ? { text: open.changeRequest, on: open.changeRequestedAt } : null;
-
-  // L'azione principale e, per il responsabile, «Riapri per cambiarlo» accanto (o al suo posto, se l'AI Board ha
-  // chiesto una modifica: è il passo che sblocca).
-  let primary: "imposta" | "manda" | "approva" | "rivedi" | "ok_board" | "riapri" | null = null;
-  let reopenAside = false;
-  if (!project) primary = writer ? "imposta" : null;
-  else if (open?.status === "in_corso") primary = writer ? "manda" : null;
-  else if (pending) {
-    if (approver) {
-      if (needsBoard && changeRequest) primary = "riapri";
-      else {
-        primary = needsBoard ? "ok_board" : "approva";
-        reopenAside = true;
-      }
-    } else if (needsBoard && board.allowed) primary = "ok_board";
-  } else primary = writer ? "rivedi" : null;
-
-  const statusLine = project
-    ? `${STATUS_TEXT[project.status]} · versione ${project.version}${project.status === "approvato" && project.approvedAt ? ` · il ${day(project.approvedAt)}` : ""}`
-    : "Lo use case non è ancora impostato.";
-  const hint =
-    missing.length > 0 && writer
-      ? `Prima dell'invio ${missing.length === 1 ? `manca ${topicLabel(missing[0])}` : `mancano ${missing.length} scelte: ${missing.map(topicLabel).join(", ")}`}.`
-      : needsBoard && !changeRequest
-        ? "Prima dell'approvazione serve l'ok dell'AI Board agli strumenti nuovi."
-        : null;
+  const { action, reopenAside } = projectAction({
+    hasProject: project !== null,
+    openStatus: open?.status === "in_corso" || open?.status === "da_approvare" ? open.status : null,
+    writer,
+    approver,
+    needsBoard,
+    boardAllowed: board.allowed,
+    changeRequested: changeRequest !== null,
+  });
+  const missing = open?.status === "in_corso" ? missingChoices(open.topics) : [];
+  const hint = missing.length > 0 && writer ? T.missing(missing) : needsBoard && !changeRequest ? T.boardOkNeeded : null;
   const previous = open && view.approved ? view.approved : null;
 
   const okBoard = pending ? (
@@ -271,170 +279,81 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
       noteMax={FACTORY_LIMITS.aiBoardNote}
     />
   ) : null;
-  const reopen = pending ? <ReopenProject workspaceId={workspaceId} caseId={caseId} revision={pending.revision} boardOkOn={pending.aiBoardOkAt ? day(pending.aiBoardOkAt) : null} primary={primary === "riapri"} /> : null;
+  const reopen = pending ? <ReopenProject workspaceId={workspaceId} caseId={caseId} revision={pending.revision} boardOkOn={pending.aiBoardOkAt ? day(pending.aiBoardOkAt) : null} primary={action === "riapri"} /> : null;
+  const primaryAction =
+    action === "ok_board" ? okBoard : action === "riapri" ? reopen : action ? <ProjectPrimaryAction workspaceId={workspaceId} caseId={caseId} action={action} revision={open?.revision ?? null} blocked={missing.length > 0} /> : null;
 
   const teamDecisions = view.decisions.filter((d) => d.source !== "impostazione" && d.supersededOn === null);
+  const replaced = view.decisions.filter((d) => d.supersededOn !== null).length;
   const tasksReady = await tasksStoreReady(executor);
-  // Le evals e i banchi insieme ai compiti; `readEvalOverview` non rifiuta mai (un errore va nel log e nella sezione).
-  // (9b) Insieme anche il contesto per chi guarda e, per chi vede il pacchetto, le novità dopo l'ultimo: nessuna delle
-  // due letture fa cadere la pagina.
-  // (8.2b) Con le evals, da dove sono arrivate («dalla CI», «dalla CLI»): anche questa lettura non fa cadere la pagina.
-  const [tasks, evals, context, contextDelta] = await Promise.all([
+  // Compiti, evals con la loro fonte (8.2b), contesto, novità del pacchetto e accessi di Claude: insieme, e nessuna lettura
+  // fa cadere la pagina. Gli accessi di Claude solo a Lateral Space dopo il via, come nel via di prima.
+  const claudeShown = ls && pastVia;
+  const [tasks, evals, context, contextDelta, tokens] = await Promise.all([
     tasksReady ? listTasks(executor, target) : Promise.resolve<TaskView[]>([]),
-    readEvalOverview(executor, target).then(async (read) => ({ ...read, origins: await readEvalOrigins(executor, target, read.overview) })),
+    readEvalOverview(executor, target).then(async (r) => ({ ...r, origins: await readEvalOrigins(executor, target, r.overview) })),
     readContextSection(contextActorFor(session.user, access, workspaceId), useCase.useCaseId),
     builder && view.latestPackage ? readContextDelta(executor, target, useCase.code ?? "", view.latestPackage) : Promise.resolve(0),
+    claudeShown ? listCaseReadTokens(executor, workspaceId, caseId) : Promise.resolve([]),
   ]);
   const deltaLine = packageDeltaLine(contextDelta);
-  // Le proposte sono testi del team: le vede solo chi costruisce il caso (anche da fuori Lateral Space), e le decide chi
-  // tra loro può scrivere nel caso.
+  // Le proposte sono testi del team: le vede solo chi costruisce (anche da fuori), le decide chi tra loro può scrivere.
   const proposals = tasksReady && builder && (await proposalsStoreReady(executor)) ? await listOpenProposals(executor, target) : [];
   const caseCode = useCase.code ?? "<ID>";
-  const tally = {
-    open: tasks.filter((t) => t.status === "da_fare").length,
-    busy: tasks.filter((t) => t.status === "in_corso" || t.status === "in_revisione").length,
-    done: tasks.filter((t) => t.status === "fatto").length,
-  };
-  const replaced = view.decisions.filter((d) => d.supersededOn !== null).length;
+
+  const sp = await searchParams;
+  const allTasks = first(sp[TASKS_ALL_PARAM]) === TASKS_ALL_VALUE;
+  const ordered = tasksInOrder(tasks);
+  const shownTasks = allTasks ? ordered : ordered.slice(0, TASKS_SHOWN);
+  const tally = tasksTally(tasks);
+  const tasksShown = tasksReady && (tasks.length > 0 || proposals.length > 0 || (view.approved !== null && details));
+
+  const summary = qualitySummary(evals.overview, { builder: details });
+  const qualityShown = details || summary !== null;
+  const ciLinks = builder || caseAccess.user.isLateralSpace;
+
+  const catalogHref = pastVia && canOpenPage("voci", roles) ? casePath(workspaceId, caseId, "domande") : null;
+  const backtestHref = details && canOpenPage("modello_dati", roles) ? `${casePath(workspaceId, caseId, "soluzione/dati")}?vista=prova` : null;
+  const decisionsShown = view.decisions.length > 0 || writer;
+  const agentShown = builder || claudeShown;
 
   return (
     <PageContainer>
-      <header className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h1 id="progetto-titolo" tabIndex={-1} className={`${PAGE_TITLE_CLASS} outline-none`}>
-            Progetto dell&apos;agente
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">{statusLine}</p>
-          {hint ? <p className="mt-1 text-sm">{hint}</p> : null}
-          {previous ? (
-            <details className="mt-1 text-sm">
-              <summary className="flex min-h-11 cursor-pointer items-center text-muted-foreground sm:min-h-0">
-                Versione {previous.version} approvata il {day(previous.approvedAt)} · Vedi
-              </summary>
-              <ul className="mt-2 divide-y rounded-md border px-3">
-                {SETUP_TOPICS.map((topic) => (
-                  <li key={topic} className="py-2.5">
-                    <p className="text-sm font-medium">{topicLabel(topic)}</p>
-                    <ChoiceText choice={previous.topics[topic] ?? null} />
-                  </li>
-                ))}
-              </ul>
-            </details>
-          ) : null}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {reopenAside ? reopen : null}
-          {primary === "ok_board" ? okBoard : primary === "riapri" ? reopen : <ProjectPrimaryAction workspaceId={workspaceId} caseId={caseId} action={primary} revision={open?.revision ?? null} blocked={missing.length > 0} />}
-        </div>
-      </header>
-
-      {changeRequest ? (
-        <div role="status" className="mt-4 rounded-md border border-uc-giallo bg-uc-giallo-bg p-3 text-sm">
-          <p className="font-medium">L&apos;AI Board chiede una modifica{changeRequest.on ? ` (${day(changeRequest.on)})` : ""}</p>
-          <p className="mt-1 whitespace-pre-wrap break-words">{changeRequest.text}</p>
-          {open?.status === "da_approvare" ? (
-            <p className="mt-1 text-muted-foreground">{approver ? "Riapri il progetto per cambiarlo con il team." : "Il responsabile del caso riapre il progetto per cambiarlo."}</p>
-          ) : (
-            <p className="mt-1 text-muted-foreground">Resta qui finché il progetto non torna da approvare.</p>
-          )}
-        </div>
-      ) : null}
-
-      <div className="mt-6 space-y-6">
-        <SettingsSection
-          id="scelte"
-          icon={ClipboardList}
-          title="Le scelte"
-          description={
-            project
-              ? `${chosen} di ${SETUP_TOPICS.length} argomenti scelti. Ogni scelta è anche una decisione del caso.`
-              : builder
-                ? "Si fanno qui o dal coding agent, con la skill /agent-factory:imposta."
-                : "Le prepara chi costruisce il caso; qui le leggi e, se serve, le approvi."
-          }
-        >
-          {project ? (
-            <ul className="divide-y">
-              {SETUP_TOPICS.map((topic) => {
-                const choice = project.topics[topic] ?? null;
-                return (
-                  <li key={topic} className="flex items-start justify-between gap-3 py-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium">{topicLabel(topic)}</p>
-                      <ChoiceText choice={choice} />
-                    </div>
-                    {editable ? <TopicEditor workspaceId={workspaceId} caseId={caseId} topic={topic} label={topicLabel(topic)} current={choice} /> : null}
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <p className="text-sm text-muted-foreground">Nessuna scelta ancora.</p>
-          )}
-        </SettingsSection>
-
-        {project ? (
-          <SettingsSection id="strumenti" icon={Wrench} title="Strumenti nuovi e stima" description="Quello che il cliente approva oltre alle scelte.">
-            <div className="space-y-3 text-sm">
-              {project.newTools.length ? (
-                <ul className="space-y-1">
-                  {project.newTools.map((tool) => (
-                    <li key={tool.nome}>
-                      <span className="font-medium">{tool.nome}</span>
-                      {tool.perche ? <span className="text-muted-foreground"> · {tool.perche}</span> : null}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-muted-foreground">Nessuno strumento nuovo per il cliente.</p>
-              )}
-              {project.newTools.length ? (
-                <p className={project.aiBoardOkAt ? "" : "text-muted-foreground"}>
-                  {project.aiBoardOkAt
-                    ? `Ok dell'AI Board il ${day(project.aiBoardOkAt)}${project.aiBoardNote ? `: ${project.aiBoardNote}` : "."}`
-                    : project.status === "in_corso"
-                      ? "Dopo l'invio in approvazione serve l'ok dell'AI Board."
-                      : changeRequest
-                        ? "L'AI Board ha chiesto una modifica: niente ok per ora."
-                        : "Manca l'ok dell'AI Board."}
-                </p>
-              ) : null}
-              <p>
-                {project.estimateHours !== null ? `Costruzione: circa ${amount(project.estimateHours, 1)} ore.` : "Costruzione: non stimata."}{" "}
-                {project.monthlyCostEur !== null ? `Costo al mese: circa ${amount(project.monthlyCostEur, 0)} €.` : "Costo al mese: non stimato."}
-              </p>
-              {editable ? (
-                <div className="flex flex-wrap gap-2">
-                  <DetailsEditor
-                    workspaceId={workspaceId}
-                    caseId={caseId}
-                    tools={project.newTools}
-                    hours={project.estimateHours}
-                    cost={project.monthlyCostEur}
-                    limits={{ hours: FACTORY_LIMITS.hoursMax, cost: FACTORY_LIMITS.monthlyCostEurMax, tools: FACTORY_LIMITS.newToolsMax }}
-                  />
-                </div>
-              ) : null}
+      <div className="max-w-3xl min-w-0 space-y-8">
+        <section aria-labelledby={T.projectHeadingId} className="min-w-0 space-y-3">
+          <h2 id={T.projectHeadingId} tabIndex={-1} className="text-base font-semibold outline-none">
+            {T.project}
+          </h2>
+          <p className="text-sm">
+            {project ? <StatusDot tone={projectTone(project.status)} label={projectStateLine(project, day)} size="md" /> : <span className="text-muted-foreground">{T.notSet}</span>}
+          </p>
+          {hint ? <p className="text-sm text-muted-foreground">{hint}</p> : null}
+          {changeRequest ? (
+            <div role="status" className="rounded-md border border-uc-giallo bg-uc-giallo-bg p-3 text-sm">
+              <p className="font-medium">{T.changeRequest(changeRequest.on ? day(changeRequest.on) : null)}</p>
+              <p className="mt-1 break-words whitespace-pre-wrap">{changeRequest.text}</p>
+              <p className="mt-1 text-muted-foreground">{open?.status === "da_approvare" ? (approver ? T.changeRequestLead : T.changeRequestOthers) : T.changeRequestStays}</p>
             </div>
-          </SettingsSection>
-        ) : null}
+          ) : null}
+          {primaryAction || reopenAside ? (
+            <div className="flex flex-wrap gap-2">
+              {primaryAction}
+              {reopenAside ? reopen : null}
+            </div>
+          ) : null}
+        </section>
 
-        {tasksReady && (tasks.length > 0 || view.approved || proposals.length > 0) ? (
-          <SettingsSection
-            id="compiti"
-            icon={ListTodo}
-            title="Compiti"
-            description={
-              tasks.length
-                ? `${tally.open} da prendere · ${tally.busy} in corso · ${tally.done} ${tally.done === 1 ? "fatto" : "fatti"}. Si prendono dal coding agent: «unbundle take ${caseCode} T-n».`
-                : `Nessun compito ancora: nascono dal progetto, con «unbundle compiti importa ${caseCode}».`
-            }
-          >
+        {tasksShown ? (
+          <section id={T.tasksHeadingId} aria-labelledby="compiti-titolo" className="min-w-0 scroll-mt-40 space-y-2">
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+              <h2 id="compiti-titolo" className="text-base font-semibold">
+                {T.tasks}
+              </h2>
+              {tally ? <p className="text-sm text-muted-foreground">{tally}</p> : null}
+            </div>
             {proposals.length ? (
-              <div className="mb-3 rounded-md border px-3">
-                <p className="pt-2.5 text-sm font-medium">
-                  {proposals.length === 1 ? "Una proposta da decidere" : `${proposals.length} proposte da decidere`}
-                </p>
+              <div className="rounded-md border px-3">
+                <p className="pt-2.5 text-sm font-medium">{T.proposals(proposals.length)}</p>
                 <ul className="divide-y">
                   {proposals.map((p) => (
                     <ProposalLine key={p.id} p={p} ids={writer ? { workspaceId, caseId } : null} />
@@ -444,82 +363,221 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
             ) : null}
             {tasks.length ? (
               <ul className="divide-y">
-                {tasks.map((t) => (
-                  <TaskLine key={t.id} t={t} />
+                {shownTasks.map((t) => (
+                  <TaskLine key={t.id} t={t} details={details} />
                 ))}
               </ul>
+            ) : proposals.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{T.noTasks}</p>
             ) : null}
-          </SettingsSection>
+            {tasks.length > TASKS_SHOWN ? (
+              <Link href={allTasks ? `${base}#${T.tasksHeadingId}` : `${base}?${TASKS_ALL_PARAM}=${TASKS_ALL_VALUE}#${T.tasksHeadingId}`} className="inline-flex min-h-11 items-center gap-0.5 text-sm text-muted-foreground hover:text-foreground sm:min-h-0">
+                {allTasks ? T.seeFewer : T.seeAll(tasks.length)}
+                {allTasks ? null : <ChevronRight className="size-3.5" aria-hidden />}
+              </Link>
+            ) : null}
+          </section>
         ) : null}
 
-        <SettingsSection id="banco" icon={FlaskConical} title={EVAL_TEXT.title} description={evalSectionDescription(evals.overview, evals.unavailable)}>
-          <EvalSection overview={evals.overview} caseCode={caseCode} unavailable={evals.unavailable} origins={evals.origins} ciLinks={builder || caseAccess.user.isLateralSpace} />
-        </SettingsSection>
+        {qualityShown ? (
+          <section id={QUALITY_ANCHORS.section} aria-labelledby="qualita-titolo" className="min-w-0 scroll-mt-40 space-y-3">
+            {/* L'ancora di ieri (`progetto#banco`) per chi non ha la piega dei dettagli: porta alla sezione. */}
+            {details ? null : <span id={QUALITY_ANCHORS.details} className="block scroll-mt-40" />}
+            <h2 id="qualita-titolo" className="text-base font-semibold">
+              {QUALITY_TEXT.heading}
+            </h2>
+            <EvalSummary summary={summary} origins={evals.origins} ciLinks={ciLinks} unavailable={evals.unavailable && details} />
+            {details && !summary && !evals.unavailable ? <p className="text-sm text-muted-foreground">{QUALITY_TEXT.none}</p> : null}
+            {details ? (
+              <Fold id={QUALITY_ANCHORS.details} title={QUALITY_TEXT.details} summary={hasMeasures(evals.overview) ? null : QUALITY_TEXT.start} level={3} className="last:border-b-0">
+                <EvalSection overview={evals.overview} caseCode={caseCode} unavailable={evals.unavailable} origins={evals.origins} ciLinks={ciLinks} />
+                {backtestHref ? (
+                  <Link href={backtestHref} className="inline-flex min-h-11 items-center gap-0.5 text-sm font-medium hover:underline sm:min-h-0">
+                    {QUALITY_TEXT.backtest}
+                    <ChevronRight className="size-3.5" aria-hidden />
+                  </Link>
+                ) : null}
+              </Fold>
+            ) : null}
+          </section>
+        ) : null}
 
-        <SettingsSection id="decisioni" icon={Gavel} title="Decisioni" description="Valgono per ogni coding agent del caso. Quelle delle scelte sono qui sopra, in «Le scelte».">
-          <div className="space-y-3">
-            {teamDecisions.length ? (
+        <div className="min-w-0">
+          <Fold id={T.choicesId} title={T.choicesTitle} summary={project ? T.choices(choicesMade(project.topics), SETUP_TOPICS.length) : null}>
+            {project ? (
               <ul className="divide-y">
-                {teamDecisions.map((d) => (
-                  <DecisionLine key={d.id} d={d} />
-                ))}
+                {SETUP_TOPICS.map((topic) => {
+                  const choice = project.topics[topic] ?? null;
+                  const label = constructionTopicLabel(topic);
+                  return (
+                    <li key={topic} className="flex items-start justify-between gap-3 py-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">{label}</p>
+                        <ChoiceText choice={choice} />
+                      </div>
+                      {editable ? <TopicEditor workspaceId={workspaceId} caseId={caseId} topic={topic} label={label} current={choice} /> : null}
+                    </li>
+                  );
+                })}
               </ul>
             ) : (
-              <p className="text-sm text-muted-foreground">Nessuna decisione oltre alle scelte.</p>
+              <p className="text-sm text-muted-foreground">{T.notSet}</p>
             )}
-            {view.decisions.length ? (
-              <details className="rounded-md border px-3">
-                <summary className="flex min-h-11 cursor-pointer items-center text-sm">
-                  Tutte le decisioni ({view.decisions.length}
-                  {replaced ? `, di cui ${replaced} ${replaced === 1 ? "sostituita" : "sostituite"}` : ""})
-                </summary>
-                <ul className="divide-y pb-1">
-                  {view.decisions.map((d) => (
-                    <DecisionLine key={d.id} d={d} />
+            {project ? (
+              <div className="space-y-2 text-sm">
+                <h3 className="font-medium">{T.toolsTitle}</h3>
+                {project.newTools.length ? (
+                  <ul className="space-y-1">
+                    {project.newTools.map((tool) => (
+                      <li key={tool.nome} className="break-words">
+                        <span className="font-medium">{tool.nome}</span>
+                        {tool.perche ? <span className="text-muted-foreground"> · {tool.perche}</span> : null}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-muted-foreground">{T.noTools}</p>
+                )}
+                {project.newTools.length ? (
+                  <p className={project.aiBoardOkAt ? undefined : "text-muted-foreground"}>
+                    {project.aiBoardOkAt
+                      ? T.boardOk(day(project.aiBoardOkAt), project.aiBoardNote)
+                      : project.status === "in_corso"
+                        ? T.boardOkAfterSubmit
+                        : changeRequest
+                          ? T.boardChangeAsked
+                          : T.boardOkMissing}
+                  </p>
+                ) : null}
+                <p>
+                  {project.estimateHours !== null ? T.estimateHours(amount(project.estimateHours, 1)) : T.estimateHoursNone}{" "}
+                  {project.monthlyCostEur !== null ? T.estimateCost(amount(project.monthlyCostEur, 0)) : T.estimateCostNone}
+                </p>
+                {editable ? (
+                  <DetailsEditor
+                    workspaceId={workspaceId}
+                    caseId={caseId}
+                    tools={project.newTools}
+                    hours={project.estimateHours}
+                    cost={project.monthlyCostEur}
+                    limits={{ hours: FACTORY_LIMITS.hoursMax, cost: FACTORY_LIMITS.monthlyCostEurMax, tools: FACTORY_LIMITS.newToolsMax }}
+                  />
+                ) : null}
+              </div>
+            ) : null}
+            {previous ? (
+              <details className="text-sm">
+                <summary className="flex min-h-11 cursor-pointer items-center text-muted-foreground sm:min-h-0">{T.previous(previous.version, day(previous.approvedAt))}</summary>
+                <ul className="mt-2 divide-y rounded-md border px-3">
+                  {SETUP_TOPICS.map((topic) => (
+                    <li key={topic} className="py-2.5">
+                      <p className="text-sm font-medium">{constructionTopicLabel(topic)}</p>
+                      <ChoiceText choice={previous.topics[topic] ?? null} />
+                    </li>
                   ))}
                 </ul>
               </details>
             ) : null}
-            {writer ? <DecisionForm workspaceId={workspaceId} caseId={caseId} /> : null}
-          </div>
-        </SettingsSection>
+          </Fold>
 
-        {/* (9b) Con la lettura riuscita la sezione c'è sempre, anche vuota: la campanella «Il contesto è cambiato» porta qui. */}
-        {context ? (
-          <SettingsSection id="contesto" icon={Building2} title={CONTEXT_TEXT.useCase.title} description={CONTEXT_TEXT.useCase.dossierDescription}>
-            <UseCaseContextView workspaceId={workspaceId} today={romeToday()} context={context} />
-          </SettingsSection>
-        ) : null}
-
-        {builder ? (
-          <SettingsSection id="pacchetto" icon={Package} title="Pacchetto" description="I file che il repository del caso legge e non cambia: senza nomi di persona.">
-            <div className="space-y-3 text-sm">
-              {view.latestPackage ? (
-                <>
-                  <p>
-                    <span className="font-medium">Versione {view.latestPackage.version}</span>
-                    <span className="text-muted-foreground">
-                      {" "}
-                      · {view.latestPackage.source === "importato" ? "preparata a mano" : "generata dalla scheda dello use case"} il {day(view.latestPackage.createdAt)}
-                    </span>
-                  </p>
-                  {deltaLine ? <p data-slot="package-context-delta">{deltaLine}</p> : null}
-                  <details className="rounded-md border px-3">
-                    <summary className="flex min-h-11 cursor-pointer items-center text-sm">Leggi i file</summary>
-                    {packageFilesShown(view.latestPackage.files).map(({ name, text }) => (
-                      <div key={name} className="mb-3">
-                        <p className="text-xs font-medium text-muted-foreground">{name}</p>
-                        <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-words rounded bg-muted p-2 text-xs">{text}</pre>
-                      </div>
-                    ))}
-                  </details>
-                </>
+          {decisionsShown ? (
+            <Fold id={T.decisionsId} title={T.decisionsTitle} summary={teamDecisions.length ? String(teamDecisions.length) : null}>
+              <p className="text-sm text-muted-foreground">{T.decisionsHint}</p>
+              {teamDecisions.length ? (
+                <ul className="divide-y">
+                  {teamDecisions.map((d) => (
+                    <DecisionLine key={d.id} d={d} />
+                  ))}
+                </ul>
               ) : (
-                <p className="text-muted-foreground">Nessun pacchetto ancora.</p>
+                <p className="text-sm text-muted-foreground">{T.decisionsNone}</p>
               )}
-              {writer ? <PackageButton workspaceId={workspaceId} caseId={caseId} first={!view.latestPackage} /> : null}
-            </div>
-          </SettingsSection>
+              {view.decisions.length ? (
+                <details className="rounded-md border px-3">
+                  <summary className="flex min-h-11 cursor-pointer items-center text-sm">{T.decisionsAll(view.decisions.length, replaced)}</summary>
+                  <ul className="divide-y pb-1">
+                    {view.decisions.map((d) => (
+                      <DecisionLine key={d.id} d={d} />
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
+              {writer ? <DecisionForm workspaceId={workspaceId} caseId={caseId} /> : null}
+            </Fold>
+          ) : null}
+
+          {/* (9b) Con la lettura riuscita la piega c'è sempre, anche vuota: la campanella «Il contesto è cambiato» porta qui. */}
+          {context ? (
+            <Fold id={T.contextId} title={CONTEXT_TEXT.useCase.title} summary={contextFoldSummary(context) || null}>
+              <p className="text-sm text-muted-foreground">{CONTEXT_TEXT.useCase.dossierDescription}</p>
+              <UseCaseContextView workspaceId={workspaceId} today={romeToday()} context={context} />
+            </Fold>
+          ) : null}
+
+          {agentShown ? (
+            <Fold id={T.agentId} title={T.agentTitle} summary={agentFoldSummary({ packageShown: builder, commandsShown: builder, claudeShown })}>
+              {builder ? (
+                <section aria-labelledby="pacchetto-titolo" className="space-y-2 text-sm">
+                  <h3 id="pacchetto-titolo" className="font-medium">
+                    {T.packageTitle}
+                  </h3>
+                  <p className="text-muted-foreground">{T.packageHint}</p>
+                  {view.latestPackage ? (
+                    <>
+                      <p>
+                        <span className="font-medium">{T.packageVersion(view.latestPackage.version)}</span>
+                        <span className="text-muted-foreground">{T.packageMade(view.latestPackage.source === "importato", day(view.latestPackage.createdAt))}</span>
+                      </p>
+                      {deltaLine ? <p data-slot="package-context-delta">{deltaLine}</p> : null}
+                      <details className="rounded-md border px-3">
+                        <summary className="flex min-h-11 cursor-pointer items-center text-sm">{T.packageRead}</summary>
+                        {packageFilesShown(view.latestPackage.files).map(({ name, text }) => (
+                          <div key={name} className="mb-3">
+                            <p className="text-xs font-medium text-muted-foreground">{name}</p>
+                            <pre className="mt-1 overflow-x-auto rounded bg-muted p-2 text-xs break-words whitespace-pre-wrap">{text}</pre>
+                          </div>
+                        ))}
+                      </details>
+                    </>
+                  ) : (
+                    <p className="text-muted-foreground">{T.packageNone}</p>
+                  )}
+                  {writer ? <PackageButton workspaceId={workspaceId} caseId={caseId} first={!view.latestPackage} /> : null}
+                </section>
+              ) : null}
+              {builder ? (
+                <section aria-labelledby="comandi-titolo" className="space-y-2">
+                  <h3 id="comandi-titolo" className="text-sm font-medium">
+                    {T.commandsTitle}
+                  </h3>
+                  <CommandLine label={T.commandTake} command={`unbundle take ${caseCode} T-n`} />
+                  <CommandLine label={T.commandImport} command={`unbundle compiti importa ${caseCode}`} />
+                  <CommandLine label={T.commandSetup} command="/agent-factory:imposta" />
+                </section>
+              ) : null}
+              {claudeShown ? (
+                // L'ancora è `CLAUDE_PANEL_ANCHOR`, scritta qui: un valore di un modulo client, letto dal server, non è una stringa.
+                <div id="sviluppo-con-claude" className="min-w-0 scroll-mt-40">
+                  <ClaudeDevPanel
+                    workspaceId={workspaceId}
+                    caseId={caseId}
+                    caseCode={c.code}
+                    canManage={roles.includes("ls_lead") && !caseAccess.readOnly}
+                    catalogVersion={c.catalogVersion}
+                    caseClosed={c.status === "chiuso"}
+                    tokens={tokens}
+                  />
+                </div>
+              ) : null}
+            </Fold>
+          ) : null}
+        </div>
+
+        {catalogHref ? (
+          <Link href={catalogHref} className="inline-flex min-h-11 items-center gap-0.5 text-sm font-medium hover:underline sm:min-h-0">
+            {T.catalog}
+            <ChevronRight className="size-3.5" aria-hidden />
+          </Link>
         ) : null}
       </div>
     </PageContainer>

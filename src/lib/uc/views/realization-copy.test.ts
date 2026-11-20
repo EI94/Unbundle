@@ -31,6 +31,10 @@ const FILES = [
   ...inDir("components/uc/catalog"),
   ...inDir("components/uc/overview"),
   ...["layout.tsx", "page.tsx", "not-found.tsx", "error.tsx", "domande/page.tsx", "domande/verifica/page.tsx"].map((f) => join(CASE, f)),
+  // (Ondata 5b) La Costruzione e i suoi testi.
+  ...["costruzione/page.tsx", "costruzione/project-forms.tsx"].map((f) => join(CASE, f)),
+  join(SRC, "lib/uc/views/construction.ts"),
+  join(SRC, "components/agent-factory/eval-summary.tsx"),
 ];
 
 /** Le stringhe e il testo JSX di un sorgente, senza commenti, import e operandi di confronto. */

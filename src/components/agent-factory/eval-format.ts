@@ -35,6 +35,7 @@ import {
   analyzeBench,
   benchSuperseded,
   EVALS_DROP,
+  EVALS_MAIN,
   evalsAlert,
   formatCost,
   formatQuality,
@@ -563,6 +564,76 @@ export function rolesWithoutBench(overview: EvalOverview): string[] {
 /** Il tono della raccomandazione: in evidenza per «cambia», attenzione per «nessuno», altrimenti testo. */
 export function verdictTone(verdict: BenchVerdict): "cambia" | "attenzione" | "neutro" {
   return verdict.kind === "cambia" ? "cambia" : verdict.kind === "nessuno" ? "attenzione" : "neutro";
+}
+
+// ─── (Rilascio 10) La qualità in una riga ───────────────────────────
+
+/**
+ * (Rilascio 10, docs/ui-10/PROPOSTA-10.md §3.5) I testi di «Qualità» nella Costruzione: la riga che dice qualità e
+ * soglie, e la piega con tutta la sezione per chi costruisce. Le ancore: `qualita` per la sezione, `banco` (quella di
+ * ieri, `progetto#banco`, della campanella, delle e-mail, della CLI e del MCP) per la piega dei dettagli.
+ */
+export const QUALITY_TEXT = Object.freeze({
+  heading: "Qualità",
+  details: "Dettagli per chi costruisce",
+  none: "Ancora nessuna misura: si lanciano dal repository, con la CLI.",
+  start: "I comandi per cominciare",
+  backtest: "Prova sul passato",
+});
+
+/** Le ancore della sezione e della piega dei dettagli. */
+export const QUALITY_ANCHORS = Object.freeze({ section: "qualita", details: "banco" });
+
+/** «Qualità 96,4% · soglie rispettate». */
+export function qualityLine(quality: number, thresholdsMet: boolean): string {
+  return `${QUALITY_TEXT.heading} ${formatQuality(quality)} · ${thresholdsMet ? EVAL_TEXT.thresholdsMet : EVAL_TEXT.thresholdsMissed}`;
+}
+
+/** La raccomandazione di un ruolo, come la riga di «Qualità» la mostra. */
+export interface QualityAdvice {
+  role: string;
+  text: string;
+  tone: "cambia" | "attenzione" | "neutro";
+}
+
+export interface QualitySummary {
+  /** «Qualità 96,4% · soglie rispettate»; null senza le evals con i modelli di oggi (solo banchi). */
+  line: string | null;
+  /** Le evals rispettano le soglie (il tono del puntino); null senza la riga. */
+  met: boolean | null;
+  /** Il run delle evals della riga: data e fonte («dalla CI»). */
+  runId: string | null;
+  /** «14/11/2026», con il ramo quando non è main («14/11/2026 · ramo tj-0049/t-3»): solo per chi costruisce. */
+  meta: string | null;
+  /** «In calo: …», «Sotto soglia: …»: solo per chi costruisce. */
+  alert: string | null;
+  /** Per ogni ruolo con un banco ancora valido (non superato), la sola raccomandazione: solo per chi costruisce. */
+  advice: QualityAdvice[];
+}
+
+/**
+ * La «Qualità» della Costruzione in una riga (§3.5): qualità e soglie delle evals che fanno lo stato del caso e, per ogni
+ * ruolo, la sola raccomandazione del suo ultimo banco (un banco superato dalle evals di main non consiglia più: resta
+ * nei dettagli). Ai ruoli del cliente (`builder` falso) la sola riga, niente ramo, comandi né modelli. Null senza misure.
+ */
+export function qualitySummary(overview: EvalOverview | null, o: { builder: boolean }): QualitySummary | null {
+  if (!hasMeasures(overview)) return null;
+  const latest = overview.evals.latest;
+  const result = latest ? evalsResult(latest) : null;
+  const line = result ? qualityLine(result.quality, result.thresholdsMet) : null;
+  if (!o.builder) return line ? { line, met: result!.thresholdsMet, runId: null, meta: null, alert: null, advice: [] } : null;
+  const meta = latest ? [dayText(latest.createdAt), latest.branch && latest.branch !== EVALS_MAIN ? `ramo ${latest.branch}` : null].filter(Boolean).join(" · ") || null : null;
+  const advice = overview.benches
+    .filter((bench) => benchSupersededBy(bench, latest) === null)
+    .map((bench) => ({ role: bench.role, text: bench.analysis.verdict.text, tone: verdictTone(bench.analysis.verdict) }));
+  return {
+    line,
+    met: result ? result.thresholdsMet : null,
+    runId: latest && result ? latest.id : null,
+    meta: result ? meta : null,
+    alert: result ? evalsAlertText(latestEvalsAlert(overview.evals)) : null,
+    advice,
+  };
 }
 
 // ─── Le scale ────────────────────────────────────────────────────────

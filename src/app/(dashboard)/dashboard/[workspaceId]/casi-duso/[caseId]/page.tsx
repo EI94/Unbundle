@@ -4,7 +4,6 @@ import { AlertTriangle, Check, ChevronRight, Lock } from "lucide-react";
 import { PageContainer } from "@/components/dashboard/page-container";
 import { Fold } from "@/components/ui-10/fold";
 import { casePath, itemPath } from "@/components/uc/catalog/paths";
-import { ClaudeDevPanel } from "@/components/uc/mcp/claude-dev-panel";
 import { BlockerResolveForm } from "@/components/uc/overview/blocker-resolve-form";
 import {
   BlockerList,
@@ -26,7 +25,6 @@ import { filesToCheckFor, loadCaseHead, ucEmailConfigured } from "@/components/u
 import { DetailSheet } from "@/components/uc/ui/detail-sheet";
 import { TechDetails } from "@/components/uc/ui/tech-details";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
-import { caseReadTokensSql, toCaseReadTokens } from "@/lib/db/queries/uc-mcp";
 import { loadOverviewWithVia } from "@/lib/db/queries/uc-overview";
 import { exportChoices } from "@/lib/uc/export/request";
 import { VIA_SECTION_ID, canOpenShellPage, landingSegment, stepHasPageCommand, stepHiddenOn, stepPanelOf } from "@/lib/uc/views/case-shell";
@@ -93,9 +91,9 @@ import { isLsViewer } from "@/lib/uc/views/status-groups";
  * Letture: due giri. La testata (`loadCaseHead`, già fatta dal layout nella
  * stessa richiesta, con il conteggio dei PDF da controllare), poi un batch solo
  * (`loadOverviewWithVia`) con la Panoramica (anche con il pannello di un blocco
- * `?apri=blocco:<id>` o di tutte le tappe `?apri=tappe`), il via (prontezza dal
- * vivo, proposte, versioni) e, per Lateral Space dopo il via, gli accessi di
- * Claude.
+ * `?apri=blocco:<id>` o di tutte le tappe `?apri=tappe`) e il via (prontezza dal
+ * vivo, proposte, versioni). (Ondata 5b) Gli accessi di Claude stanno in
+ * Costruzione › «Per il coding agent».
  *
  * Chi non vede la Panoramica (l'approvatore privacy) va alla sua pagina d'arrivo.
  */
@@ -130,16 +128,13 @@ export default async function OverviewPage({
   const panel = parseOverviewPanel((await searchParams).apri);
   const blockerPanel = panel?.kind === "blocco" && layout.sections.includes("blocchi") ? panel.blockerId : null;
 
-  // Un giro solo: Panoramica, via e (Lateral Space dopo il via) gli accessi di Claude nello stesso batch.
-  const withTokens = ls && pastVia;
+  // Un giro solo: Panoramica e via nello stesso batch.
   const read = await loadOverviewWithVia(executor, {
     overview: { workspaceId, caseId, now, blockerId: blockerPanel, blockerQuestions: BLOCKER_PANEL_ITEMS, withFiles: blockerPanel !== null && isLead && signable, audience: layout.audience },
     via: { workspaceId, caseId, now, withFiles: signable && (isLead || isOwner) },
-    extra: withTokens ? [caseReadTokensSql(caseAccess.workspaceId, caseAccess.caseId)] : [],
   });
   const { overview: data, via } = read;
   if (!data || !via) notFound();
-  const tokens = withTokens ? toCaseReadTokens(read.extra[0]) : [];
   const filesToCheck = filesToCheckFor(caseAccess, header);
 
   // I testi del caso e dello schema come li legge chi guarda: al cliente niente articoli, sigle, chiavi né codici (DESIGN §6.2).
@@ -276,21 +271,6 @@ export default async function OverviewPage({
                     />
                   </Fold>
                 )}
-              </div>
-            )}
-            {ls && pastVia && (
-              // (Rilascio 10, §3.5) «Sviluppo con Claude» resta qui, dov'era in `/via`, finché l'ondata 5b non lo porta in
-              // Costruzione. L'ancora è `CLAUDE_PANEL_ANCHOR`, scritta qui: un valore di un modulo client, letto dal server, non è una stringa.
-              <div id="sviluppo-con-claude" className="min-w-0 scroll-mt-40">
-                <ClaudeDevPanel
-                  workspaceId={workspaceId}
-                  caseId={caseId}
-                  caseCode={c.code}
-                  canManage={isLead && !caseAccess.readOnly}
-                  catalogVersion={c.catalogVersion}
-                  caseClosed={c.status === "chiuso"}
-                  tokens={tokens}
-                />
               </div>
             )}
           </section>

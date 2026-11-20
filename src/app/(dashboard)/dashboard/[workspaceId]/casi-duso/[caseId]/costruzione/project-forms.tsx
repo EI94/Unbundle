@@ -21,6 +21,7 @@ import {
   submitProjectAction,
 } from "@/lib/actions/use-case-factory";
 import type { UcActionResult } from "@/lib/actions/uc-action-context";
+import { CONSTRUCTION_TEXT as T } from "@/lib/uc/views/construction";
 import { italianAmount } from "@/lib/use-cases/factory/italian-amount";
 
 const FIELD = "h-11 text-base sm:h-9 sm:text-sm";
@@ -31,14 +32,14 @@ const ERROR = "text-xs text-destructive";
 type Ids = { workspaceId: string; caseId: string };
 
 /**
- * Dopo un'azione che toglie il pulsante da cui si era partiti, il fuoco torna al titolo della pagina. La pagina si
+ * Dopo un'azione che toglie il pulsante da cui si era partiti, il fuoco torna al titolo del progetto. La pagina si
  * aggiorna dopo la risposta: si riprova per un secondo, e solo se il fuoco è rimasto a nessuno (mai lo si toglie a
  * un campo o a un pulsante dove chi usa la pagina è già andato).
  */
 function focusTitle() {
   let tries = 0;
   const tick = () => {
-    const title = document.getElementById("progetto-titolo");
+    const title = document.getElementById(T.projectHeadingId);
     const lost = document.activeElement === null || document.activeElement === document.body;
     if (title && lost) title.focus();
     if (++tries < 10) window.setTimeout(tick, 100);
@@ -46,7 +47,10 @@ function focusTitle() {
   window.setTimeout(tick, 50);
 }
 
-/** L'azione principale della pagina, una sola, secondo lo stato del progetto e chi guarda. */
+/**
+ * L'azione principale della Costruzione, una sola, secondo lo stato del progetto e chi guarda (`projectAction`). È il
+ * solo pulsante pieno della pagina: la testata qui non ha il suo (`PAGES_WITHOUT_PRIMARY`).
+ */
 export function ProjectPrimaryAction({
   workspaceId,
   caseId,
@@ -56,7 +60,7 @@ export function ProjectPrimaryAction({
 }: Ids & { action: "imposta" | "manda" | "approva" | "rivedi" | null; revision: number | null; blocked?: boolean }) {
   const { pending, run } = useUcAction();
   if (!action) return null;
-  const label = { imposta: "Imposta lo use case", manda: "Manda in approvazione", approva: "Approva il progetto", rivedi: "Rivedi il progetto" }[action];
+  const label = T.primary[action];
   const calls: Record<"imposta" | "manda" | "approva" | "rivedi", () => Promise<UcActionResult<unknown>>> = {
     imposta: () => startProjectAction(workspaceId, caseId),
     rivedi: () => startProjectAction(workspaceId, caseId),
@@ -83,7 +87,7 @@ export function ReopenProject({ workspaceId, caseId, revision, boardOkOn, primar
   return (
     <>
       <Button variant={primary ? "default" : "outline"} className={BUTTON} onClick={() => setOpen(true)}>
-        Riapri per cambiarlo
+        {T.reopen}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
@@ -135,15 +139,15 @@ export function TopicEditor({
   const [alternativa, setAlternativa] = useState(current?.alternativa ?? "");
   return (
     <>
-      <Button variant="ghost" size="sm" className="min-h-11 sm:min-h-8" onClick={() => setOpen(true)} aria-label={`${current ? "Cambia" : "Scegli"}: ${label}`}>
-        {current ? "Cambia" : "Scegli"}
+      <Button variant="ghost" size="sm" className="min-h-11 sm:min-h-8" onClick={() => setOpen(true)} aria-label={`${current ? T.choiceChange : T.choicePick}: ${label}`}>
+        {current ? T.choiceChange : T.choicePick}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{label}</DialogTitle>
             <DialogDescription>
-              Diventa anche una decisione del caso, con il giorno{current ? "; quella di prima resta nello storico come sostituita" : ""}.
+              Diventa anche una decisione della realizzazione, con il giorno{current ? "; quella di prima resta nello storico come sostituita" : ""}.
             </DialogDescription>
           </DialogHeader>
           <form
@@ -222,7 +226,7 @@ export function DetailsEditor({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Strumenti nuovi e stima</DialogTitle>
+            <DialogTitle>{T.toolsTitle}</DialogTitle>
             <DialogDescription>Uno strumento nuovo per il cliente chiede l&apos;ok dell&apos;AI Board prima dell&apos;approvazione.</DialogDescription>
           </DialogHeader>
           <form
@@ -240,7 +244,7 @@ export function DetailsEditor({
                 id="strumenti-nuovi"
                 value={toolsText}
                 rows={3}
-                placeholder="Neon: il database del caso, in UE"
+                placeholder={"Neon: il database dell'agente, in UE"}
                 aria-invalid={toolsError ? true : undefined}
                 aria-describedby={toolsError ? "strumenti-nuovi-errore" : undefined}
                 onChange={(e) => setToolsText(e.target.value)}
@@ -338,8 +342,8 @@ export function AiBoardOk({
               {noteRequired
                 ? "Lo registri per conto dell'AI Board: scrivi chi l'ha dato e quando."
                 : canAskChange
-                  ? "Con il tuo ok il responsabile del caso può approvare il progetto. Se qualcosa non va, chiedi una modifica."
-                  : "Con il tuo ok il responsabile del caso può approvare il progetto."}
+                  ? "Con il tuo ok la persona responsabile della realizzazione può approvare il progetto. Se qualcosa non va, chiedi una modifica."
+                  : "Con il tuo ok la persona responsabile della realizzazione può approvare il progetto."}
             </DialogDescription>
           </DialogHeader>
           <ul className="space-y-1 rounded-md border p-3 text-sm">
@@ -408,7 +412,7 @@ export function DecisionForm({ workspaceId, caseId }: Ids) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Una decisione del team</DialogTitle>
-            <DialogDescription>Vale per ogni coding agent del caso. Non si cambia: se serve, se ne aggiunge un&apos;altra.</DialogDescription>
+            <DialogDescription>Vale per ogni coding agent della realizzazione. Non si cambia: se serve, se ne aggiunge un&apos;altra.</DialogDescription>
           </DialogHeader>
           <form
             className="grid gap-4"
@@ -448,23 +452,25 @@ export function DecisionForm({ workspaceId, caseId }: Ids) {
   );
 }
 
-/** «Aggiorna il pacchetto»: una versione nuova solo se la scheda è cambiata. */
-/** (8.1b) «Accetta come compito» o «Scarta» una proposta (da GitHub). */
-export function ProposalButtons({ workspaceId, caseId, proposalId }: Ids & { proposalId: string }) {
+/**
+ * (8.1b) «Accetta» (nasce il compito) o «Scarta» una proposta (da GitHub). (Rilascio 10, §3.5) Bordati: una proposta
+ * per riga non è il prossimo passo della pagina. Il nome per i lettori di schermo dice quale proposta.
+ */
+export function ProposalButtons({ workspaceId, caseId, proposalId, title }: Ids & { proposalId: string; title: string }) {
   const { pending, run } = useUcAction();
   return (
     <div className="flex shrink-0 flex-wrap gap-2">
-      {/* (Rilascio 10, §7.4) Bordato: una proposta per riga non è il prossimo passo della pagina. */}
-      <Button size="sm" variant="outline" className={BUTTON} disabled={pending} onClick={() => run(() => decideTaskProposalAction(workspaceId, caseId, proposalId, "accetta"))}>
-        Accetta come compito
+      <Button size="sm" variant="outline" className={BUTTON} aria-label={`${T.accept}: ${title}`} disabled={pending} onClick={() => run(() => decideTaskProposalAction(workspaceId, caseId, proposalId, "accetta"))}>
+        {T.accept}
       </Button>
-      <Button size="sm" variant="outline" className={BUTTON} disabled={pending} onClick={() => run(() => decideTaskProposalAction(workspaceId, caseId, proposalId, "scarta"))}>
-        Scarta
+      <Button size="sm" variant="outline" className={BUTTON} aria-label={`${T.discard}: ${title}`} disabled={pending} onClick={() => run(() => decideTaskProposalAction(workspaceId, caseId, proposalId, "scarta"))}>
+        {T.discard}
       </Button>
     </div>
   );
 }
 
+/** «Aggiorna il pacchetto»: una versione nuova solo se la scheda è cambiata. */
 export function PackageButton({ workspaceId, caseId, first }: Ids & { first: boolean }) {
   const { pending, run } = useUcAction();
   return (

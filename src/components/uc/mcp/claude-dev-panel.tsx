@@ -20,11 +20,11 @@ import { formatDayIt } from "@/lib/uc/views/format";
 
 /**
  * «Sviluppo con Claude» (DESIGN §3.13.2): un pannello, solo per Lateral Space e
- * solo dopo il via allo sviluppo. Sta nella sezione «Via allo sviluppo» della
- * Panoramica (rilascio 10, §3.5; l'ondata 5b lo porta in Costruzione); un link a
- * `…#sviluppo-con-claude` sulla Panoramica lo apre:
+ * solo dopo il via allo sviluppo. (Rilascio 10, §3.5) Sta in Costruzione › «Per il
+ * coding agent», con gli accessi di Claude presi dal via; un link a
+ * `…/costruzione#sviluppo-con-claude` lo apre:
  * con quell'ancora il pannello si apre da solo; sulla pagina resta una riga
- * con «Apri».
+ * con «Apri» (il titolo è un H3, dentro la piega).
  *
  * - Responsabile Lateral Space: «Crea un accesso» (letture e nome, proposto
  *   «Dossier · XX-0012 · sola lettura» con il codice dello use case), il
@@ -51,7 +51,7 @@ export interface ClaudeDevPanelProps {
   tokens: CaseReadTokenItem[];
 }
 
-/** L'ancora del pannello nella Panoramica: un link con questa ancora lo apre da solo. */
+/** L'ancora del pannello nella Costruzione: un link con questa ancora lo apre da solo. */
 export const CLAUDE_PANEL_ANCHOR = "sviluppo-con-claude";
 
 const SCOPE_TEXT: Readonly<Record<GrantableCaseScope, { label: string; hint: string }>> = {
@@ -186,9 +186,9 @@ export function ClaudeDevPanel({ workspaceId, caseId, caseCode, canManage, catal
         <div className="flex min-w-0 items-start gap-3">
           <Bot className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
           <div className="min-w-0">
-            <h2 id="uc-claude-title" className="text-base font-semibold">
+            <h3 id="uc-claude-title" className="text-sm font-semibold">
               Sviluppo con Claude
-            </h2>
+            </h3>
             <p className="text-sm text-muted-foreground">{active > 0 ? (active === 1 ? "1 accesso attivo" : `${active} accessi attivi`) : "Nessun accesso attivo"}</p>
           </div>
         </div>
