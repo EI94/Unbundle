@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { CLI_DDL } from "./use-case-hub-cli-ddl.ts";
-import { EVALS_DDL } from "./use-case-hub-evals-ddl.ts";
+import { EVALS_DDL, EVALS_ROLLBACK_SWEEP_SQL } from "./use-case-hub-evals-ddl.ts";
 import {
   CI_EVAL_RUN_COLUMNS,
   CI_EVAL_RUN_CONSTRAINTS,
@@ -226,4 +226,31 @@ test("use-case-admin doctor dice migrazione0042, solo da leggere", () => {
   assert.match(doctor, /import \{ CI_KEYS_PROBE_SQL \} from "\.\.\/\.\.\/src\/lib\/db\/use-case-hub-ci-keys-ddl\.ts";/);
   assert.match(doctor, /const m0042 = \(await ctx\.db\.read\(`SELECT \$\{CI_KEYS_PROBE_SQL\} AS ok`\)\)\[0\]\?\.ok === true;/);
   assert.match(doctor, /migrazione0042: m0042,/);
+});
+
+test("RUNBOOK §10.23: la 0042 la applica l'app, a mano solo di riserva, il ritorno indietro e il modello 1.7.0; §10.24 la nota della 0036", () => {
+  const runbook = readFileSync(new URL("../../../docs/casi-duso/RUNBOOK.md", import.meta.url), "utf8");
+  const heading = "### 10.23 Rilascio 8.2b: «Le evals dalla CI» (0042)";
+  assert.ok(runbook.includes(heading), "manca §10.23");
+  const section = runbook.slice(runbook.indexOf(heading), runbook.indexOf("### 10.24 "));
+  assert.match(section, /`ENSURE_VERSION` 36/);
+  assert.match(section, /psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 -f drizzle\/0042_chiavi_ci\.sql/);
+  assert.match(section, /Mai drizzle-kit, mai `db:push`/);
+  assert.match(section, /`migrazione0042: true`/);
+  assert.match(section, /non parte da un'anteprima \(`VERCEL_ENV=preview`\)/);
+  assert.match(section, /\*\*Ritorno indietro:\*\*/);
+  assert.match(section, /Promote del deploy di prima, un passo su Vercel\. Niente sul database\./);
+  assert.match(section, /il codice di prima le annulla da sé \(«modello_non_previsto»\)/);
+  assert.match(section, /Il modello 1\.7\.0 con l'Unbundle di prima: `\/api\/ci\/\*` risponde 404/);
+  assert.ok(section.includes(`\`${CI_KEYS_TABLE}\``));
+  for (const column of CI_EVAL_RUN_COLUMNS) assert.ok(section.includes(`\`${column}\``), column);
+  // Il numero del codice non torna mai sotto quello del documento.
+  assert.ok(Number(ensureSchema.match(/const ENSURE_VERSION = (\d+);/)?.[1]) >= 36);
+  // La nota della 0036 (8.2a), che il §10 non aveva: la migrazione, la strada a mano e il ritorno indietro.
+  const old = runbook.slice(runbook.indexOf("### 10.24 Rilascio 8.2a: «Banco di prova ed evals» (0036)"));
+  assert.ok(old.startsWith("### 10.24 "), "manca §10.24");
+  assert.match(old, /`ENSURE_VERSION` 30/);
+  assert.match(old, /`migrazione0036: true`/);
+  assert.match(old, /psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 -f drizzle\/0036_evals\.sql/);
+  for (const statement of EVALS_ROLLBACK_SWEEP_SQL) assert.ok(old.includes(`\n   ${statement}\n`), statement);
 });
