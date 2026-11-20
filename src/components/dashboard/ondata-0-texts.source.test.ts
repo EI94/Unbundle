@@ -62,11 +62,16 @@ test("0.8 · a Slack error is a sentence, never its key", async () => {
 test("0.10 · the course link says what is true: kept N days after the course closes; the real name of the button", () => {
   const page = read("src/app/c/[token]/page.tsx");
   assert.doesNotMatch(page, /poi vengono\s+eliminate/);
-  assert.match(page, /\{preview\.retentionDays === 1 \? "giorno" : "giorni"\} dopo la\s+chiusura del corso\./);
+  // (Rilascio 10, ondata 4) I testi della pagina e del modulo stanno in src/lib/public/course.ts.
+  assert.match(page, /\{courseRetention\(preview\.retentionDays\)\}/);
+  const texts = read("src/lib/public/course.ts");
+  assert.match(texts, /recordedRetention: "Le risposte restano conservate per \{N\} \{giorni\} dopo la chiusura del corso\.",/);
+  assert.match(texts, /day: "giorno",\s*days: "giorni",/);
   const form = read("src/components/learning/join-course-form.tsx");
-  assert.doesNotMatch(form, /«Crea un account»/);
-  assert.match(form, /"auth\/user-not-found": "Nessun account con questa email: tocca «Non ho un account: creane uno»\."/);
-  assert.match(form, /: "Non ho un account: creane uno"\}/, "the button has that name");
+  for (const source of [form, texts]) assert.doesNotMatch(source, /«Crea un account»/);
+  assert.match(texts, /"auth\/user-not-found": "Nessun account con questa email: tocca «Non ho un account: creane uno»\."/);
+  assert.match(texts, /toRegister: "Non ho un account: creane uno",/, "the button has that name");
+  assert.match(form, /\{registering \? J\.toLogin : J\.toRegister\}/);
 });
 
 test("0.11 · «1 risposta», not «1 risposte»", () => {
