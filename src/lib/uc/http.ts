@@ -133,7 +133,7 @@ export function publicError(code: string, opts: { message?: string; issues?: rea
   return publicJson(body, opts.status ?? publicStatusFor(code), extra);
 }
 
-/** La scheda «Questo link non è più valido», per ogni token non utilizzabile. */
+/** La scheda «Questo link non vale più.», per ogni token non utilizzabile (`INVALID_LINK_MESSAGE`). */
 export function invalidLinkResponse(): Response {
   return publicError("link_non_valido");
 }
