@@ -353,6 +353,8 @@ export function OpenQuestionCard({
   const errId = `${id}-err`;
   const statusId = `${id}-stato`;
   const moreId = `${id}-altro`;
+  // (Rilascio 10) Con «È già allegato» scelto, «Altro» resta aperto: è l'unico segno della scelta.
+  const moreShown = moreOpen || attached;
   const blocked = disabled;
   const template = (section.question.templates ?? []).length > 0;
   const showText = !fileRequired && !value.dontKnow && !attached;
@@ -447,17 +449,19 @@ export function OpenQuestionCard({
         <Button
           type="button"
           variant="ghost"
-          aria-expanded={moreOpen}
+          aria-expanded={moreShown}
           aria-controls={moreId}
           aria-label={fillText(T.aria.moreOn, { testo: section.title })}
           className={COMMAND_CLASS}
-          onClick={() => setMoreOpen((open) => !open)}
+          onClick={() => {
+            if (!attached) setMoreOpen((open) => !open);
+          }}
         >
           {T.more}
-          <span aria-hidden>{` ${moreOpen ? T.moreOpen : T.moreClosed}`}</span>
+          <span aria-hidden>{` ${moreShown ? T.moreOpen : T.moreClosed}`}</span>
         </Button>
       </div>
-      <div id={moreId} hidden={!moreOpen || undefined} data-slot="question-more" className="-mt-2 -ml-2 flex flex-wrap gap-x-1">
+      <div id={moreId} hidden={!moreShown || undefined} data-slot="question-more" className="-mt-2 -ml-2 flex flex-wrap gap-x-1">
         <Button type="button" variant="ghost" aria-pressed={attached} className={COMMAND_CLASS} disabled={blocked} onClick={toggleAttached}>
           {T.alreadyAttached}
         </Button>

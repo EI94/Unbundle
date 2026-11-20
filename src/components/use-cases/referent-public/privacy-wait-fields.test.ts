@@ -329,3 +329,30 @@ test("il campo sotto una risposta: l'invio che aspetta l'informativa tiene il me
   assert.equal(one(tree, (e) => e.type === "textarea", "il testo").props.value, "Cosa intendete per pratica?", "il messaggio resta");
   assert.equal(find(tree, (e) => e.type === "p" && String(e.props.id).endsWith("-errore")), null, "nessun messaggio sotto il campo");
 });
+
+test("(rilascio 10) con «È già allegato» scelto «Altro» resta aperto: è l'unico segno della scelta", (t) => {
+  server(t, {});
+  const { card } = openCard(t);
+  const more = (e: Element) => e.props["data-slot"] === "question-more";
+  const moreToggle = (e: Element) => typeof e.props["aria-controls"] === "string" && e.props["aria-expanded"] !== undefined;
+  const attachedButton = (e: Element) => e.props["aria-pressed"] !== undefined && [e.props.children].flat().includes(REFERENT_PUBLIC_TEXT.alreadyAttached);
+  let tree = card.render();
+  assert.equal(one(tree, more, "«Altro»").props.hidden, true, "chiuso all'inizio");
+  (one(tree, moreToggle, "il pulsante «Altro»").props.onClick as () => void)();
+  tree = card.render();
+  assert.equal(one(tree, more, "«Altro»").props.hidden, undefined, "aperto");
+  (one(tree, attachedButton, "«È già allegato»").props.onClick as (e: unknown) => void)({ detail: 1 });
+  tree = card.render();
+  assert.equal(one(tree, attachedButton, "«È già allegato»").props["aria-pressed"], true);
+  // Un tocco su «Altro» non lo chiude finché la scelta c'è.
+  (one(tree, moreToggle, "il pulsante «Altro»").props.onClick as () => void)();
+  tree = card.render();
+  assert.equal(one(tree, more, "«Altro»").props.hidden, undefined, "resta aperto con «È già allegato»");
+  assert.equal(one(tree, moreToggle, "il pulsante «Altro»").props["aria-expanded"], true);
+  // Tolta la scelta, «Altro» si chiude di nuovo.
+  (one(tree, attachedButton, "«È già allegato»").props.onClick as (e: unknown) => void)({ detail: 1 });
+  tree = card.render();
+  (one(tree, moreToggle, "il pulsante «Altro»").props.onClick as () => void)();
+  tree = card.render();
+  assert.equal(one(tree, more, "«Altro»").props.hidden, true);
+});
