@@ -88,11 +88,15 @@ import {
   type Phase,
 } from "../../uc/vocab.ts";
 import { eventActorFrom, eventInsertFromSql, eventInsertSql, eventPayload, type EventActor } from "./uc-events.ts";
-import { caseBuilderEmails, hasGrantForCase } from "./use-case-builders.ts";
+import { caseBuilderEmails, caseOnlyGranteeOfCase, hasGrantForCase } from "./use-case-builders.ts";
+import { COLLABORATOR_ROLES_SQL } from "../../workspace-permissions.ts";
 import { enqueueForLsMembersSql } from "./uc-notifications.ts";
 import { bellPrefix } from "../../uc/notify/dedupe.ts";
 import { createCaseFromTemplate, type TemplateRef } from "./uc-templates.ts";
 import { UC_ERROR_MESSAGES, runUcBatch, type UcExecutor, type UcRow } from "../uc-executor.ts";
+
+/** (8.0d) Un altro ruolo nel caso a «Solo questo use case» (RILASCIO-8.0d-ESTERNI-FASE-2.md §2.9). */
+export const CASE_ONLY_OBSERVER_MESSAGE = "Lavora solo a questo use case: nel team resta osservatore.";
 
 // ── Aiuti condivisi ───────────────────────────────────────────────────
 
@@ -720,12 +724,16 @@ export async function transitionCase(executor: UcExecutor, ctx: UcCommandContext
 
 const MemberSchema = z.object({ userId: z.string().regex(UUID), role: z.enum(CASE_ROLES) });
 
-/** Collaboratore del workspace (non solo partecipante ai corsi). */
+/**
+ * Collaboratore del workspace (non solo partecipante ai corsi). (8.0d) Per elenco, come testo: i cinque ruoli da
+ * collaboratore; mai «Solo questo use case» (la sua riga `osservatore` passa da `caseOnlyObserverSql`) né un ruolo che il
+ * codice non conosce.
+ */
 function collaboratorSql(workspaceId: string, userId: string): UcStatement {
   return toStatement(ucSql`SELECT EXISTS (
   SELECT 1 FROM workspaces w WHERE w.id = ${cast(workspaceId, "uuid")} AND (
-    EXISTS (SELECT 1 FROM memberships m WHERE m.organization_id = w.organization_id AND m.user_id = ${cast(userId, "uuid")} AND m.role::text <> 'learner')
-    OR EXISTS (SELECT 1 FROM workspace_memberships wm WHERE wm.workspace_id = w.id AND wm.user_id = ${cast(userId, "uuid")} AND wm.role::text <> 'learner'))
+    EXISTS (SELECT 1 FROM memberships m WHERE m.organization_id = w.organization_id AND m.user_id = ${cast(userId, "uuid")} AND m.role::text IN (${raw(COLLABORATOR_ROLES_SQL)}))
+    OR EXISTS (SELECT 1 FROM workspace_memberships wm WHERE wm.workspace_id = w.id AND wm.user_id = ${cast(userId, "uuid")} AND wm.role::text IN (${raw(COLLABORATOR_ROLES_SQL)})))
 ) AS ok`);
 }
 
@@ -751,7 +759,11 @@ export async function addCaseMember(
   if (!parsed.success) return fail("dati_non_validi", "Scegli la persona e il ruolo.");
   const { userId, role } = parsed.data;
   const [[collaborator]] = await executor.batch([collaboratorSql(ctx.workspaceId, userId)]);
-  if (!rowBool(collaborator?.ok)) return fail("non_collaboratore", "La persona deve essere un collaboratore del workspace.");
+  if (!rowBool(collaborator?.ok)) {
+    // (8.0d) «Solo questo use case» entra nel team solo del caso della sua concessione, e solo come osservatore.
+    if (!(await caseOnlyGranteeOfCase(executor, { caseId: ctx.caseId, userId }))) return fail("non_collaboratore", "La persona deve essere un collaboratore del workspace.");
+    if (role !== "osservatore") return fail("solo_osservatore", CASE_ONLY_OBSERVER_MESSAGE);
+  }
   const target = await loadUserContext(executor, userId, ctx.lsDomains);
   if (!target) return fail("utente_non_trovato", "Utente non trovato.");
   const roles = await loadCaseRoles(executor, ctx.caseId, target, ctx.lsDomains);

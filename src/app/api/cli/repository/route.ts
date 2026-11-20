@@ -35,7 +35,8 @@ export async function POST(request: Request): Promise<Response> {
   const parsed = parseCaseRepo(body.body);
   if (!parsed.ok) return cliError(400, "dati_non_validi", parsed.message);
   return runCliWrite(request, opened.value, "repository", body.body, async () => {
-    const r = await registerCaseRepo(opened.value.executor, c.actor, c.target, parsed.value);
+    // (8.0d, D4) «Solo questo use case» registra solo il repository già registrato per il suo caso.
+    const r = await registerCaseRepo(opened.value.executor, c.actor, c.target, parsed.value, { caseOnly: c.caseOnly });
     return r.ok ? { ok: true, value: { id: r.value.id, nuovo: r.value.created } } : r;
   });
 }

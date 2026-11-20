@@ -50,7 +50,7 @@ import {
 import { isNeedDone, needStatusView, type NeedStatus, type NeedType } from "@/lib/use-cases/needs";
 import { romeToday } from "@/lib/use-cases/quarter";
 import { hasOpenTasksSql, NOBODY, notifyTask, tasksTablesReady } from "@/lib/db/queries/use-case-tasks-notices";
-import { caseRecipientsSql, loadBuilderScope, NO_EXTERNAL_BUILDERS, type BuilderScope } from "@/lib/db/queries/use-case-builders";
+import { caseOnlyUseCaseFragment, caseRecipientsSql, loadBuilderScope, NO_EXTERNAL_BUILDERS, type BuilderScope } from "@/lib/db/queries/use-case-builders";
 import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { EXTERNAL_BUILDER_ROLE, FACTORY_BUILDER_ROLES, LS_BUILDER_ROLES } from "@/lib/use-cases/factory/builders";
 import { isTemplateRepo } from "@/lib/use-cases/factory/line";
@@ -904,6 +904,13 @@ export const REPO_NOT_OF_CLIENT_MESSAGE =
   "Questo repository non è tra quelli dei casi del cliente: uno nuovo lo registra Lateral Space. Chiedilo al responsabile del caso, poi rilancia lo stesso comando.";
 
 /**
+ * (8.0d, D4) Un caso costruito da «Solo questo use case» sta in un repository suo: non entra in un repository con altri casi,
+ * e nessuno aggiunge altri casi al suo (su GitHub i casi della famiglia si vedrebbero).
+ */
+export const REPO_SHARED_CASE_ONLY_MESSAGE =
+  "Questo caso lo costruisce chi lavora solo a un caso: ha un repository suo, che non si condivide con altri casi. Scegli un repository solo per questo caso.";
+
+/**
  * `unbundle repo create`: registra (o aggiorna) il repository e la cartella dello use case. In fila per repository
  * (l'advisory lock), così due clienti insieme non lo registrano tutti e due. (8.0c)
  * - Mai il repository modello, per nessuno (`repo_modello`).
@@ -913,29 +920,47 @@ export const REPO_NOT_OF_CLIENT_MESSAGE =
  *   già registrato per i casi dello stesso cliente: la famiglia la crea e la registra Lateral Space, chi costruisce da
  *   fuori ci aggiunge i casi. Un repository nuovo, o di un altro cliente, gli risponde con un testo solo
  *   (`repo_non_del_cliente`): nessuno occupa un repository, e nessuno scopre chi usa un nome.
+ * - (8.0d, D4) «Solo questo use case» (`opts.caseOnly`) registra solo il repository già registrato per il suo caso, con lo
+ *   stesso testo (`repo_non_del_cliente`). Un caso che costruisce chi è «Solo questo use case» sta in un repository suo:
+ *   non entra in un repository con altri casi, e nessuno aggiunge altri casi al suo (`repo_condiviso`), chiunque registri.
  */
-export async function registerCaseRepo(executor: UcExecutor, actor: FactoryActor, target: FactoryTarget, input: CaseRepoInput): Promise<Result<{ id: string; created: boolean }>> {
+export async function registerCaseRepo(
+  executor: UcExecutor,
+  actor: FactoryActor,
+  target: FactoryTarget,
+  input: CaseRepoInput,
+  opts: { caseOnly?: boolean } = {},
+): Promise<Result<{ id: string; created: boolean }>> {
   if (!mayWrite(actor)) return fail("permesso_negato", DENIED);
   if (isTemplateRepo(input.repo)) return fail("repo_modello", REPO_TEMPLATE_MESSAGE);
-  const lsBuilder = actor.kind === "script" || actor.roles.some((role) => (LS_BUILDER_ROLES as readonly string[]).includes(role));
+  const caseOnlyActor = opts.caseOnly === true;
+  const lsBuilder = !caseOnlyActor && (actor.kind === "script" || actor.roles.some((role) => (LS_BUILDER_ROLES as readonly string[]).includes(role)));
   const ws = cast(target.workspaceId, "uuid");
   const uc = cast(target.useCaseId, "uuid");
   const repo = cast(input.repo, "text");
   const elsewhere = ucSql`EXISTS (SELECT 1 FROM use_case_repos o WHERE lower(o.repo) = lower(${repo}) AND o.workspace_id <> ${ws})`;
   const known = ucSql`EXISTS (SELECT 1 FROM use_case_repos o WHERE lower(o.repo) = lower(${repo}) AND o.workspace_id = ${ws})`;
+  // (8.0d) Il repository già registrato per questo caso, e la regola del repository suo (D4).
+  const own = ucSql`EXISTS (SELECT 1 FROM use_case_repos o WHERE lower(o.repo) = lower(${repo}) AND o.workspace_id = ${ws} AND o.use_case_id = ${uc})`;
+  const caseOnlyCase = await caseOnlyUseCaseFragment(executor);
+  const shared = ucSql`((${caseOnlyCase(uc)} AND EXISTS (SELECT 1 FROM use_case_repos o WHERE lower(o.repo) = lower(${repo}) AND o.use_case_id <> ${uc}))
+    OR EXISTS (SELECT 1 FROM use_case_repos o WHERE lower(o.repo) = lower(${repo}) AND o.use_case_id <> ${uc} AND ${caseOnlyCase(raw("o.use_case_id"))}))`;
   const [, facts, rows] = await executor.batch([
     toStatement(ucSql`SELECT pg_advisory_xact_lock(hashtext('unbundle:use-case-repo:' || lower(${repo})))`),
-    toStatement(ucSql`SELECT ${elsewhere} AS taken, ${known} AS known`),
+    toStatement(ucSql`SELECT ${elsewhere} AS taken, ${known} AS known, ${own} AS own, ${shared} AS shared`),
     toStatement(ucSql`INSERT INTO use_case_repos (use_case_id, workspace_id, repo, folder, profile, vercel_project, created_by_user_id)
 SELECT u.id, u.workspace_id, ${repo}, ${cast(input.folder, "text")}, ${cast(input.profile, "text")}, ${cast(input.vercelProject, "text")}, ${cast(userOf(actor), "uuid")}
 FROM use_cases u WHERE u.id = ${uc} AND u.workspace_id = ${ws} AND NOT ${elsewhere} AND (${cast(lsBuilder, "boolean")} OR ${known})
+  AND (NOT ${cast(caseOnlyActor, "boolean")} OR ${own}) AND NOT ${shared}
 ON CONFLICT (use_case_id, repo, folder) DO UPDATE SET profile = coalesce(EXCLUDED.profile, use_case_repos.profile),
   vercel_project = coalesce(EXCLUDED.vercel_project, use_case_repos.vercel_project), updated_at = now()
 RETURNING id, (xmax = 0) AS created`),
   ]);
   const taken = facts[0]?.taken === true;
+  if (caseOnlyActor && facts[0]?.own !== true) return fail("repo_non_del_cliente", REPO_NOT_OF_CLIENT_MESSAGE);
   if (!lsBuilder && (taken || facts[0]?.known !== true)) return fail("repo_non_del_cliente", REPO_NOT_OF_CLIENT_MESSAGE);
   if (taken) return fail("repo_di_altro_cliente", "Questo repository è già registrato per un altro cliente: ogni cliente ha i suoi.");
+  if (facts[0]?.shared === true) return fail("repo_condiviso", REPO_SHARED_CASE_ONLY_MESSAGE);
   if (!rows[0]) return fail("non_trovato", "Use case non trovato.");
   return ok({ id: String(rows[0].id), created: rows[0].created === true });
 }
