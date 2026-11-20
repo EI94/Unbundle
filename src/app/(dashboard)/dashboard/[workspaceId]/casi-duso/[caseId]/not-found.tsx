@@ -1,27 +1,24 @@
 "use client";
 
-import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { PageContainer } from "@/components/dashboard/page-container";
+import { PAGE_ERROR_TEXT } from "@/components/dashboard/page-load-error";
 
 /**
- * Una parte del dossier che non c'è o non è per il ruolo di chi guarda
- * (DESIGN §3.14). Dentro il layout del caso: testata e schede restano.
+ * Una parte della realizzazione che non c'è o non è per il ruolo di chi guarda (DESIGN §3.14). Dentro il layout del
+ * caso: testata e schede restano, e portano dove serve. (Rilascio 10, §3.5) Un testo solo per ogni pagina che non si
+ * apre, «Questa pagina non si è caricata.», con «Riprova»: niente codici, niente «caso».
  */
 export default function CasePageNotFound() {
-  const params = useParams<{ workspaceId: string; caseId: string }>();
-  const overview = params?.workspaceId && params?.caseId ? `/dashboard/${params.workspaceId}/casi-duso/${params.caseId}` : null;
+  const router = useRouter();
   return (
     <PageContainer>
-      <div className="max-w-3xl space-y-3">
-        <h2 className="text-lg font-semibold">Pagina non trovata</h2>
-        <p className="text-sm text-muted-foreground">Questa parte del caso non c&apos;è o non è per il tuo ruolo.</p>
-        {overview && (
-          <Button variant="outline" className="h-11 sm:h-8" render={<Link href={overview} />} nativeButton={false}>
-            Torna alla Panoramica
-          </Button>
-        )}
+      <div role="alert" className="max-w-3xl space-y-3">
+        <h2 className="text-lg font-semibold">{PAGE_ERROR_TEXT.title}</h2>
+        <Button variant="outline" className="min-h-11 sm:min-h-8" onClick={() => router.refresh()}>
+          {PAGE_ERROR_TEXT.retry}
+        </Button>
       </div>
     </PageContainer>
   );

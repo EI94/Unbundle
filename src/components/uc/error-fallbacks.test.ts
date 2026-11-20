@@ -107,3 +107,25 @@ test("ogni error.tsx tipizza il valore lanciato come `unknown`, come la guida di
     assert.doesNotMatch(source, /error\.digest|as Error\b/, `${file}: il digest si legge con digestOf`);
   }
 });
+
+test("(rilascio 10, §3.5) una pagina della realizzazione che non si apre: un testo solo e «Riprova», mai codici né «caso»", async () => {
+  const react = await import("react");
+  const { AppRouterContext } = (await import("next/dist/shared/lib/app-router-context.shared-runtime.js")) as unknown as { AppRouterContext: import("react").Context<object | null> };
+  const router = { push() {}, replace() {}, refresh() {}, prefetch() {}, back() {}, forward() {} };
+  const inApp = (element: unknown) => renderToStaticMarkup(react.createElement(AppRouterContext.Provider, { value: router }, element as never));
+  const { PAGE_ERROR_TEXT } = await import("../dashboard/page-load-error.tsx");
+  const notFound = await import("../../app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/not-found.tsx");
+  const { SectionUnavailable } = await import("./shell/section-unavailable.tsx");
+  const screens: [string, string][] = [
+    ["la pagina", renderToStaticMarkup(fallbacks.pagina(withDigest) as never)],
+    ["non trovata", inApp(react.createElement(notFound.default))],
+    ["sezione non disponibile", inApp(react.createElement(SectionUnavailable))],
+  ];
+  for (const [where, html] of screens) {
+    assert.match(html, /role="alert"/, where);
+    assert.ok(html.includes(PAGE_ERROR_TEXT.title.replace(/'/g, "&#x27;")), `${where}: ${html}`);
+    assert.match(html, />Riprova</, where);
+    assert.doesNotMatch(html, /non trovat|non disponibile|del caso|Dossier|Casi d&#x27;uso/i, where);
+  }
+  assert.equal(PAGE_ERROR_TEXT.title, "Questa pagina non si è caricata.");
+});
