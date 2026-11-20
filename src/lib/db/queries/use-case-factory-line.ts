@@ -32,6 +32,8 @@ import { EVALS_MAIN_BRANCH, loadEvalFacts, type CaseEvalFacts } from "@/lib/db/q
 import { evalsTodoText } from "@/lib/use-cases/factory/line";
 import { buildsCaseSql, externalBuilderSql, loadBuilderScope, lsStoredBuilderSql, NO_EXTERNAL_BUILDERS, type BuilderScope } from "@/lib/db/queries/use-case-builders";
 import { CLI_TOKEN_PROVIDER } from "@/lib/use-cases/cli/codes";
+import { ciKeysStoreReady } from "@/lib/db/queries/use-case-ci-keys";
+import { CI_VERSION_WINDOW_DAYS } from "@/lib/use-cases/ci/api";
 
 /**
  * Vero se la persona costruisce in almeno un caso del workspace (la voce «Agent Factory» nella barra): un ruolo di
@@ -301,8 +303,22 @@ FROM workspaces w WHERE w.id = ${ws}`),
 const SEMVER = /^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$/;
 
 /**
+ * (8.2b) Vero, nell'aggiornamento di una riga di `use_case_factory_repos`, se la CI ha mandato evals di main per un caso
+ * del repository negli ultimi `CI_VERSION_WINDOW_DAYS` giorni: la versione del modello allora la dice main. Legge la
+ * fonte delle evals: solo con la 0042 pronta.
+ */
+const CI_VERSION_FROM_MAIN_SQL = ucSql`EXISTS (SELECT 1 FROM use_case_eval_runs e
+  JOIN use_case_repos rr ON rr.use_case_id = e.use_case_id AND rr.workspace_id = e.workspace_id
+  WHERE e.workspace_id = use_case_factory_repos.workspace_id AND lower(rr.repo) = lower(use_case_factory_repos.repo)
+    AND e.source = 'ci' AND e.branch = ${cast(EVALS_MAIN_BRANCH, "text")} AND e.template_version IS NOT NULL
+    AND e.created_at > now() - make_interval(days => ${cast(CI_VERSION_WINDOW_DAYS, "int")}))`;
+
+/**
  * La versione del modello (e del comune) di un repository della fabbrica, come la dice `unbundle start`. Il
  * repository dev'essere registrato per lo use case del token: un caso dice la versione solo del suo repository.
+ * (8.2b) Se la CI manda le evals di main del repository (negli ultimi `CI_VERSION_WINDOW_DAYS` giorni), la versione
+ * del modello la dice main (`recordEvalRun` dalla CI): quella detta dal computer di una persona, magari da un ramo, non
+ * la cambia; la versione del comune sì (la CI non la manda).
  */
 export async function reportRepoVersion(
   executor: UcExecutor,
@@ -312,14 +328,17 @@ export async function reportRepoVersion(
   const common = typeof input.commonVersion === "string" && SEMVER.test(input.commonVersion) ? input.commonVersion : null;
   if (!template) return fail("dati_non_validi", "versioneModello: come 1.3.0.");
   if (!(await tasksTablesReady(executor))) return fail("non_disponibile", "Non ancora disponibile: riprova tra qualche minuto.");
+  const fromMain = (await ciKeysStoreReady(executor)) ? CI_VERSION_FROM_MAIN_SQL : raw("false");
   const ws = cast(input.workspaceId, "uuid");
   const [rows] = await executor.batch([
     toStatement(ucSql`INSERT INTO use_case_factory_repos (workspace_id, repo, kind, template_version, common_version, reported_at)
 SELECT ${ws}, r.repo, 'famiglia', ${cast(template, "text")}, ${cast(common, "text")}, now()
 FROM use_case_repos r WHERE r.workspace_id = ${ws} AND r.use_case_id = ${cast(input.useCaseId, "uuid")} AND lower(r.repo) = lower(${cast(input.repo, "text")})
 LIMIT 1
-ON CONFLICT (workspace_id, repo) DO UPDATE SET template_version = EXCLUDED.template_version, common_version = coalesce(EXCLUDED.common_version, use_case_factory_repos.common_version),
-  reported_at = now(), updated_at = now()
+ON CONFLICT (workspace_id, repo) DO UPDATE SET
+  template_version = CASE WHEN ${fromMain} THEN use_case_factory_repos.template_version ELSE EXCLUDED.template_version END,
+  common_version = coalesce(EXCLUDED.common_version, use_case_factory_repos.common_version),
+  reported_at = CASE WHEN ${fromMain} THEN use_case_factory_repos.reported_at ELSE now() END, updated_at = now()
 RETURNING repo`),
   ]);
   if (!rows[0]) return fail("non_trovato", "Il repository non è registrato per questo caso: «unbundle repo create».");

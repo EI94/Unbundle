@@ -15,7 +15,7 @@
  *   - Tempi e token medi si arrotondano all'intero, il costo a 6 decimali: quello che si salva è quello che si rilegge,
  *     e la raccomandazione è la stessa prima e dopo.
  * - **Le risposte:** la raccomandazione del banco (`analyzeBench`, la stessa regola della CLI), mai con i modelli finti;
- *   la panoramica di `GET /api/cli/evals`.
+ *   la panoramica di `GET /api/cli/evals`, (8.2b) con la fonte di ogni esecuzione (`fonte`, `ci`).
  *
  * Mai una persona: né chi lancia il banco, né chi manda le evals.
  * Modulo puro: import relativi `.ts`.
@@ -286,8 +286,21 @@ export function resultForCli(r: BenchResult) {
   };
 }
 
-/** Un banco o delle evals con le chiavi della CLI. */
-export function runForCli(run: EvalRunView) {
+/**
+ * Come la CLI legge un banco o delle evals. (8.2b) `ciLinks`: chi chiede vede il link all'esecuzione su GitHub delle
+ * esecuzioni arrivate dalla CI (chi costruisce il caso o è di Lateral Space, `ciLinkVisible`); per gli altri `ci` è null.
+ */
+export interface CliRunReadOptions {
+  ciLinks?: boolean;
+}
+
+/**
+ * Un banco o delle evals con le chiavi della CLI. (8.2b) `fonte`: `cli` (una persona, con la sua CLI) o `ci` (la CI di
+ * main, con la chiave del repository); `ci`: l'indirizzo dell'esecuzione su GitHub, solo per la fonte `ci` e solo a chi
+ * può vederlo, altrimenti null. Una lettura senza la 0042 dice `cli`, come le righe di prima.
+ */
+export function runForCli(run: EvalRunView, opts: CliRunReadOptions = {}) {
+  const fonte: "cli" | "ci" = run.source === "ci" ? "ci" : "cli";
   return {
     id: run.id,
     tipo: run.kind,
@@ -302,23 +315,26 @@ export function runForCli(run: EvalRunView) {
     prove: run.casesTotal,
     quando: run.createdAt,
     risultati: run.results.map(resultForCli),
+    fonte,
+    ci: fonte === "ci" && opts.ciLinks === true ? (run.ciRunUrl ?? null) : null,
   };
 }
 
 /**
  * La panoramica per la CLI (`GET /api/cli/evals?caso=<ID>`): le evals che fanno lo stato del caso (`main` prima, poi i
  * modelli veri, poi il livello completo) con il loro andamento (stesso ramo, stessi modelli veri o finti, stesso livello,
- * dalla più vecchia) e l'ultimo banco di ogni ruolo, con i tre segni, la frontiera e la raccomandazione.
+ * dalla più vecchia) e l'ultimo banco di ogni ruolo, con i tre segni, la frontiera e la raccomandazione. (8.2b) Ogni
+ * esecuzione dice la sua fonte, e il link all'esecuzione della CI a chi può vederlo (`opts.ciLinks`).
  */
-export function evalOverviewForCli(code: string, o: EvalOverview) {
+export function evalOverviewForCli(code: string, o: EvalOverview, opts: CliRunReadOptions = {}) {
   return {
     caso: code,
     evals: {
-      ultime: o.evals.latest ? runForCli(o.evals.latest) : null,
+      ultime: o.evals.latest ? runForCli(o.evals.latest, opts) : null,
       andamento: o.evals.trend.map((t) => ({ quando: t.at, qualita: t.quality, soglieRispettate: t.thresholdsMet, modelliFinti: t.fakeModels })),
     },
     banchi: o.benches.map((b) => ({
-      ...runForCli(b.run),
+      ...runForCli(b.run, opts),
       piuBravo: b.analysis.best,
       piuEconomico: b.analysis.cheapest,
       piuEfficiente: b.analysis.efficient,

@@ -276,9 +276,11 @@ test("lo schema della 0036 c'è; il file due volte e il self-heal due volte non 
   const [kinds] = await q(`SELECT pg_get_constraintdef(oid) AS def, convalidated FROM pg_constraint WHERE conname = 'use_case_notifications_kind_check'`);
   assert.match(String(kinds.def), /'compito_proposto'[\s\S]*'banco_consiglio'[\s\S]*'evals_in_calo'/);
   assert.equal(kinds.convalidated, true);
-  // Nessuna colonna sulla persona (art. 15.4).
+  // Nessuna colonna sulla persona (art. 15.4). (8.2b) La 0042 aggiunge la fonte, la chiave della CI e il link all'esecuzione.
   const columns = (await q(`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name IN ('use_case_eval_runs', 'use_case_eval_results')`)).map((r) => String(r.column_name));
-  assert.ok(columns.length === 32 && !columns.some((c) => /user|author|actor|_by|email|login|person/.test(c)), columns.join(", "));
+  const ciColumns = ["source", "ci_key_id", "ci_run_url"];
+  assert.ok(columns.length === 32 + ciColumns.length && ciColumns.every((c) => columns.includes(c)), columns.join(", "));
+  assert.ok(!columns.some((c) => /user|author|actor|_by|email|login|person/.test(c)), columns.join(", "));
 
   const run = `INSERT INTO use_case_eval_runs (use_case_id, workspace_id, kind, role, level, branch, commit_sha, template_version, models, cases_total)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10) RETURNING id`;

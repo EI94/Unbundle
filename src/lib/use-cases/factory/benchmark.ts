@@ -304,6 +304,16 @@ export interface EvalRunView {
   casesTotal: number;
   createdAt: string;
   results: BenchResult[];
+  /**
+   * (8.2b) Da dove è arrivata: la CLI di una persona o la CI di `main` (`use_case_eval_runs.source`). Manca quando la
+   * lettura non chiede le colonne della 0042 (non ancora applicata): vale «dalla CLI», come le righe di prima.
+   */
+  source?: "cli" | "ci";
+  /**
+   * (8.2b) L'esecuzione su GitHub (`https://github.com/<owner>/<nome>/actions/runs/<n>`), solo per la fonte `ci`; null
+   * altrimenti. La mostra solo chi costruisce o è di Lateral Space (`ciLinkVisible`): là si vede chi ha unito.
+   */
+  ciRunUrl?: string | null;
 }
 
 /** Quello che la pagina mostra di un caso: le evals che fanno lo stato del caso con l'andamento, e l'ultimo banco per ogni ruolo. */
