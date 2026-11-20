@@ -91,8 +91,18 @@ test("mai scambiata con un token della CLI: prefissi diversi, e nessuno dei due 
   assert.equal(bearerTokenFromHeader(`Bearer ${ci}`, CLI_TOKEN_PREFIX), null, "una chiave della CI non entra in /api/cli/*");
   for (const header of [null, undefined, "", ci, `Basic ${ci}`, `Bearer ${ci} altro`, `Bearer ub_ci_corta`]) assert.equal(ciKeyFromAuthorization(header), null, String(header));
   assert.deepEqual(ciKeyCandidates([cli, ci, ci, "ub_team_x"]), [ci]);
-  assert.equal(ciIdempotencyOwner("ABCDEF00-0000-4000-8000-000000000001"), `${CI_IDEMPOTENCY_PREFIX}abcdef00-0000-4000-8000-000000000001`);
-  assert.throws(() => ciIdempotencyOwner(ci));
+  // Il registro dell'idempotenza: il repository nel suo workspace, non la chiave (le due chiavi di una rotazione lo condividono).
+  const WS = "ABCDEF00-0000-4000-8000-000000000001";
+  assert.equal(ciIdempotencyOwner(WS, REPO), `${CI_IDEMPOTENCY_PREFIX}abcdef00-0000-4000-8000-000000000001:voltaen/esempio-rosa`);
+  assert.equal(ciIdempotencyOwner(WS.toLowerCase(), "VOLTAEN/Esempio-Rosa"), ciIdempotencyOwner(WS, REPO), "senza badare alle maiuscole");
+  const long = `Voltaen/${"a".repeat(100)}`;
+  const hashed = ciIdempotencyOwner(WS, long);
+  assert.equal(hashed.length, 80, "la colonna tiene 80 caratteri");
+  assert.equal(hashed, `${CI_IDEMPOTENCY_PREFIX}abcdef00-0000-4000-8000-000000000001:${createHash("sha256").update(long.toLowerCase(), "utf8").digest("hex").slice(0, 40)}`);
+  assert.equal(ciIdempotencyOwner(WS, long.toUpperCase()), hashed);
+  for (const repo of ["Voltaen/esempio-rosa", `Voltaen/${"b".repeat(100)}`, `${"c".repeat(39)}/${"d".repeat(100)}`]) assert.ok(ciIdempotencyOwner(WS, repo).length <= 80, repo);
+  assert.throws(() => ciIdempotencyOwner(ci, REPO));
+  assert.throws(() => ciIdempotencyOwner(WS, "non un repository"));
 });
 
 test("il repository: owner/nome, .git tolto, senza badare alle maiuscole; {nome} senza l'organizzazione", () => {

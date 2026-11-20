@@ -514,7 +514,8 @@ test("la riga dell'esecuzione: fonte ci, la chiave, il link, nessuna persona; la
   assert.ok(!columns.some((c) => /user|author|actor|_by|email|login|person/.test(c)), columns.join(", "));
   // Il registro dell'idempotenza: la chiave della CI, mai una persona.
   const [request] = await q(`SELECT principal_key, tool, status FROM use_case_mcp_requests WHERE workspace_id = $1 AND idempotency_key = $2`, [ids.ws, idemOf(body)]);
-  assert.deepEqual(request, { principal_key: `ci:${keyId}`, tool: "evals", status: "completed" });
+  // (Revisione) Il registro dell'idempotenza è del repository nel suo workspace, non della chiave.
+  assert.deepEqual(request, { principal_key: `ci:${ids.ws}:${REPO.toLowerCase()}`, tool: "evals", status: "completed" });
 
   // La versione del modello del repository: quella di main.
   const repo = await factoryRepo();
@@ -662,8 +663,15 @@ test("l'idempotenza: lo stesso invio «ripetuto» (anche da un job rilanciato), 
   const rerun = await send(key, { ...body, ci: { esecuzione: run, tentativo: 2, url: runUrl(run) } });
   assert.deepEqual([rerun.status, rerun.json.ripetuta, rerun.json.id], [200, true, first.json.id]);
   assert.equal(await ciRuns(ids.uc6), before + 1);
-  // La stessa chiave d'idempotenza con altri numeri: 409, con il testo della CLI.
-  const conflict = await send(key, { ...body, risultati: [result({ superati: 20 })] });
+  // (Revisione) Il job rilanciato dopo una rotazione, con la chiave nuova: è lo stesso invio, nessuna seconda riga.
+  const rotated = await store.rotateCiKey(exec, { workspaceId: ids.ws, repo: REPO, actor: { userId: ids.manager }, lsDomains: LS });
+  if (!rotated.ok) assert.fail(`rotazione non riuscita: ${rotated.code}`);
+  issuedKeyIds.push(rotated.value.keyId);
+  const afterRotation = await send(rotated.value.key, { ...body, ci: { esecuzione: run, tentativo: 3, url: runUrl(run) } });
+  assert.deepEqual([afterRotation.status, afterRotation.json.ripetuta, afterRotation.json.id], [200, true, first.json.id], afterRotation.text);
+  assert.equal(await ciRuns(ids.uc6), before + 1, "la stessa esecuzione, una riga sola");
+  // La stessa chiave d'idempotenza con altri numeri: 409, con il testo della CLI (la vecchia chiave ora è revocata: la nuova).
+  const conflict = await send(rotated.value.key, { ...body, risultati: [result({ superati: 20 })] });
   assert.deepEqual([conflict.status, codeOf(conflict), messageOf(conflict)], [409, "idempotenza", "La stessa chiave con una richiesta diversa: usa una chiave nuova."]);
   assert.equal(await ciRuns(ids.uc6), before + 1, "nessun doppione");
 });

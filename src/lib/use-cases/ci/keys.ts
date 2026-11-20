@@ -47,8 +47,13 @@ export const CI_ROTATION_STALE_DAYS = 1;
 export const CI_MAIN_BRANCH = "main";
 /** Il nome del segreto su GitHub. */
 export const CI_SECRET_NAME = "UNBUNDLE_CI_TOKEN";
-/** Il prefisso del registro dell'idempotenza per le richieste della CI: `ci:<id della chiave>`, mai il token di una persona. */
+/**
+ * Il prefisso del registro dell'idempotenza per le richieste della CI: `ci:<workspace>:<repository>` (`ciIdempotencyOwner`),
+ * mai il token di una persona.
+ */
 export const CI_IDEMPOTENCY_PREFIX = "ci:";
+/** La colonna del registro (`use_case_mcp_requests.principal_key`) tiene al massimo 80 caratteri. */
+const IDEMPOTENCY_OWNER_MAX = 80;
 /** I byte casuali di una chiave. */
 export const CI_KEY_BYTES = 32;
 
@@ -92,10 +97,19 @@ export function ciKeyCandidates(candidates: readonly string[]): string[] {
   return [...new Set(candidates.filter((c) => typeof c === "string" && c.startsWith(CI_KEY_PREFIX)))];
 }
 
-/** Chi scrive nel registro dell'idempotenza per una richiesta della CI: `ci:<id della chiave>`. */
-export function ciIdempotencyOwner(keyId: string): string {
-  if (!UUID.test(keyId)) throw new Error("Chiave della CI non valida");
-  return `${CI_IDEMPOTENCY_PREFIX}${keyId.toLowerCase()}`;
+/**
+ * Chi scrive nel registro dell'idempotenza per una richiesta della CI: il repository nel suo workspace,
+ * `ci:<workspace>:<owner/nome in minuscolo>`, non la chiave. Così un job rilanciato dopo una rotazione (la stessa
+ * esecuzione, la chiave nuova) ritrova il primo invio e risponde «ripetuta», invece di scrivere una seconda riga. Un
+ * repository che non ci sta (la colonna tiene 80 caratteri) entra con i primi 40 caratteri della sua impronta SHA-256:
+ * per lo stesso repository sempre la stessa forma, e un'impronta (senza «/») non si confonde mai con un nome.
+ */
+export function ciIdempotencyOwner(workspaceId: string, repo: string): string {
+  if (!UUID.test(workspaceId)) throw new Error("Workspace non valido");
+  const lower = repo.trim().toLowerCase();
+  if (!CI_REPO_RE.test(lower)) throw new Error("Repository non valido");
+  const owner = `${CI_IDEMPOTENCY_PREFIX}${workspaceId.toLowerCase()}:${lower}`;
+  return owner.length <= IDEMPOTENCY_OWNER_MAX ? owner : `${CI_IDEMPOTENCY_PREFIX}${workspaceId.toLowerCase()}:${hashSecret(lower).slice(0, 40)}`;
 }
 
 // ─── Il repository ───────────────────────────────────────────────────

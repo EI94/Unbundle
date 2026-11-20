@@ -102,7 +102,8 @@ test("le rotte della CI: ogni metodo passa dalle difese, la chiave nell'indirizz
   assert.ok(order.every((at) => at > 0), String(order));
   assert.deepEqual([...order].sort((a, b) => a - b), order, "nell'ordine");
   // L'idempotenza della CLI, con la chiave della CI e mai il token di una persona.
-  assert.match(kit, /principalKey: ciIdempotencyOwner\(opened\.principal\.keyId\), logScope: "ci"/);
+  // (Revisione) Il repository, non la chiave: un job rilanciato dopo una rotazione ritrova il primo invio.
+  assert.match(kit, /principalKey: ciIdempotencyOwner\(opened\.principal\.workspaceId, opened\.principal\.repo\), logScope: "ci"/);
 
   const casi = read("src/app/api/ci/casi/route.ts");
   assert.match(casi, /export async function GET\(request: Request\): Promise<Response> \{\n {2}const opened = await openCi\(request, \{ method: "GET", write: false \}\);/);

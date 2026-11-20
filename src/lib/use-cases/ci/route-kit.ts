@@ -13,7 +13,7 @@ import "server-only";
  * - **L'area accesa** per il workspace della chiave, come la pagina «Agent Factory»: l'area «Use case» e i dossier. Spenta
  *   (o il workspace escluso), per la CI i casi non ci sono: la lista è vuota e un invio è 404; le tabelle dei dossier che
  *   non rispondono sono 503.
- * - **L'idempotenza** della CLI (`executeIdempotentWrite`), con `ci:<id della chiave>` al posto del token di una persona:
+ * - **L'idempotenza** della CLI (`executeIdempotentWrite`), con `ci:<workspace>:<repository>` al posto del token di una persona:
  *   lo stesso invio risponde come il primo (`ripetuta: true`), la stessa chiave con un altro corpo è 409 `idempotenza`.
  *
  * Nei log solo codici, nell'area `ci`: mai la chiave, mai il corpo. Mai una persona nelle risposte.
@@ -126,7 +126,7 @@ export async function openCi(request: Request, input: { method: "GET" | "POST"; 
 
 /**
  * Una scrittura della CI con la chiave di idempotenza dell'intestazione (`Idempotency-Key: gh-<esecuzione>-<caso>`), nel
- * registro della CLI con `ci:<id della chiave>`. La stessa richiesta ripetuta risponde come la prima, con
+ * registro della CLI con `ci:<workspace>:<repository>` (non la chiave: un job rilanciato dopo una rotazione è lo stesso invio). La stessa richiesta ripetuta risponde come la prima, con
  * `ripetuta: true`; la stessa chiave con un altro corpo è 409 `idempotenza`; ancora in corso, 409 `in_corso`.
  */
 export async function runCiWrite<T extends Record<string, unknown>>(
@@ -138,7 +138,7 @@ export async function runCiWrite<T extends Record<string, unknown>>(
 ): Promise<Response> {
   const idempotencyKey = request.headers.get("idempotency-key")?.trim() ?? "";
   if (!CLI_IDEMPOTENCY_KEY.test(idempotencyKey)) return cliError(400, "idempotenza", CI_IDEMPOTENCY_MISSING_MESSAGE);
-  const writer = { workspaceId: opened.principal.workspaceId, principalKey: ciIdempotencyOwner(opened.principal.keyId), logScope: "ci" };
+  const writer = { workspaceId: opened.principal.workspaceId, principalKey: ciIdempotencyOwner(opened.principal.workspaceId, opened.principal.repo), logScope: "ci" };
   const outcome = await executeIdempotentWrite(writer, idempotencyKey, tool, body, execute, { reserveId: true });
   if (!outcome.ok) return cliFailureResponse(outcome);
   return cliJson(outcome.repeated ? { ...outcome.value, ripetuta: true } : outcome.value);
