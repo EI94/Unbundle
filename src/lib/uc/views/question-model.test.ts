@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import nodeModule from "node:module";
 import type { ItemDetailData } from "../../db/queries/uc-views.ts";
 import { rowToLoadedItem } from "../sql/transitions.ts";
@@ -73,4 +74,14 @@ test("question page: Lateral Space keeps the template's labels as they are", () 
   const ls = model(["ls_lead"]);
   assert.equal(ls.side.roleLabel, "Approvatore privacy (A.8)");
   assert.equal(ls.topic, "Organizzazione del lavoro (art. 7.2)");
+});
+
+test("(release 10, §3.5) «Apri a tutta pagina» keeps the list's filters and page, so «‹ Domande» finds them again", () => {
+  const plain = model(["ls_lead"]);
+  assert.equal(plain.fullHref, `/dashboard/${WS_ID}/casi-duso/${CASE_ID}/domande/${plain.itemId}`);
+  const withList = questionDetailModel(detail(), { workspaceId: WS_ID, caseId: CASE_ID, roles: ["ls_lead"], readOnly: false, now: new Date("2026-10-10T10:00:00Z"), listQuery: "?vista=tutte&argomento=m.volumi&pagina=2" });
+  assert.equal(withList.fullHref, `/dashboard/${WS_ID}/casi-duso/${CASE_ID}/domande/${plain.itemId}?vista=tutte&argomento=m.volumi&pagina=2`);
+  const page = readFileSync(new URL("src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/domande/page.tsx", root), "utf8");
+  assert.match(page, /const listQuery = questionQuery\(filter, defaults, \{ pagina: filter\.pagina \}\);/);
+  assert.match(page, /questionDetailModel\(detail, \{[^}]*listQuery \}\)/, "the panel of Domande passes it");
 });

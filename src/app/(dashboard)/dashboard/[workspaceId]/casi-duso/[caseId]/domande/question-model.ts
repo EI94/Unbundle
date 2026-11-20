@@ -61,7 +61,15 @@ export function expectsFile(data: Pick<ItemDetailData, "loaded">): boolean {
  */
 export function questionDetailModel(
   data: ItemDetailData,
-  i: { workspaceId: string; caseId: string; roles: readonly CaseRole[]; readOnly: boolean; now: Date },
+  i: {
+    workspaceId: string;
+    caseId: string;
+    roles: readonly CaseRole[];
+    readOnly: boolean;
+    now: Date;
+    /** (Rilascio 10, §3.5) La query della lista da cui si apre il pannello: «Apri a tutta pagina» la porta, e «‹ Domande» ci torna. */
+    listQuery?: string;
+  },
 ): QuestionDetailModel {
   const s = data.loaded.snapshot;
   const x = data.loaded.extra;
@@ -136,6 +144,6 @@ export function questionDetailModel(
       // Accanto al referente, la scadenza sarebbe una data per persona: al cliente no (art. 15.4).
       due: ls && x.dueAt ? `${formatLongDayIt(x.dueAt)}${x.dueIsProposal ? " (proposta)" : ""}` : null,
     },
-    fullHref: itemPath(i.workspaceId, i.caseId, s.id),
+    fullHref: `${itemPath(i.workspaceId, i.caseId, s.id)}${i.listQuery ?? ""}`,
   };
 }

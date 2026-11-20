@@ -90,7 +90,9 @@ export default async function QuestionsPage({
     send: listWritable && can(roles, "inviare_richieste"),
   };
   const basePath = casePath(workspaceId, caseId, "domande");
-  const panel = detail && canOpenItem(roles, detail.loaded.snapshot.status) ? questionDetailModel(detail, { workspaceId, caseId, roles, readOnly: viewer.readOnly, now }) : null;
+  // «Apri a tutta pagina» porta i filtri e la pagina della lista: «‹ Domande» ci torna.
+  const listQuery = questionQuery(filter, defaults, { pagina: filter.pagina });
+  const panel = detail && canOpenItem(roles, detail.loaded.snapshot.status) ? questionDetailModel(detail, { workspaceId, caseId, roles, readOnly: viewer.readOnly, now, listQuery }) : null;
   const reviewing = audience === "ls" && filter.vista === "da-verificare" && data.total > 0 && writable && canOpenPage("verifica", roles);
   const reviewHref = reviewing && !(await headerLeadsToReview(workspaceId, caseId, session.user.id, access.role)) ? casePath(workspaceId, caseId, "domande/verifica") : null;
   const fields = questionFilterFields(filter, defaults, audience, {
