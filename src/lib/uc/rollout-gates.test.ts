@@ -32,7 +32,8 @@ test("pages and actions: the case access goes through the workspace switch", () 
 
 // Gates handed off by C11 to other packages' files (DESIGN §8.1 rule 1), now landed.
 test("dossier entries, notifications and referent links: the workspace switch", () => {
-  for (const page of ["casi-duso/page.tsx", "casi-duso/nuovo/page.tsx"]) {
+  // (Rilascio 10, D9 (a)) La lista `/casi-duso` è un 308 verso la Panoramica (`casi-duso/route.ts`): non legge nulla.
+  for (const page of ["casi-duso/nuovo/page.tsx"]) {
     const src = source(`src/app/(dashboard)/dashboard/[workspaceId]/${page}`);
     assert.match(src, /if \(!isUcEnabledFor\(workspaceId\)\) notFound\(\);/, page);
     assert.match(src, /await ensureUcAvailable\(workspaceId\);/, page);

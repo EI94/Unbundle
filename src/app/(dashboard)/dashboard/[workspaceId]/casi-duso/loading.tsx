@@ -2,8 +2,8 @@ import { PageContainer } from "@/components/dashboard/page-container";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
- * Il dossier (o la lista di ripiego) si carica (DESIGN §3.14): lo scheletro
- * riserva l'altezza della testata e delle schede, poi 8 righe.
+ * Una realizzazione si carica (DESIGN §3.14): lo scheletro riserva l'altezza della testata e delle schede, poi 8 righe.
+ * (Rilascio 10, D9 (a)) La lista `/casi-duso` non c'è più: l'indirizzo risponde 308 dalla sua route.
  */
 export default function CasesLoading() {
   return (
