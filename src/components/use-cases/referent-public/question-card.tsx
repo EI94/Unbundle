@@ -87,6 +87,8 @@ function CardFrame({
         <div className="min-w-0 flex-1 space-y-1">
           {section.label ? <p className="text-sm text-muted-foreground">{section.label}</p> : null}
           <h3 id={questionTitleId(section.needId)} tabIndex={-1} className="rounded-md text-base leading-6 font-semibold break-words outline-none focus-visible:ring-3 focus-visible:ring-ring/40">
+            {/* (Rilascio 10) Il numero che si vede è decorativo: lo leggono così i lettori di schermo («Manca ancora la domanda 2.»). */}
+            {section.label ? null : <span className="sr-only">{fillText(T.aria.number, { n: section.number })} </span>}
             {section.title}
           </h3>
         </div>

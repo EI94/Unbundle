@@ -114,8 +114,9 @@ test("passo 3, le domande: tre controlli per domanda più «Altro ▸», un solo
   assert.deepEqual(shownButtons(template), ["Allega il file compilato", "Oppure scrivi la risposta ▸", "Non lo so", "Altro ▸"]);
   // Una domanda che vuole un file: «Allega un file» grande, «Non lo so», «Altro ▸».
   assert.deepEqual(shownButtons(cardOf(markup, N[2])), ["Allega un file", "Non lo so", "Altro ▸"]);
-  // Il numero della scheda al posto di «Domanda 1 di 3».
+  // Il numero della scheda al posto di «Domanda 1 di 3»: decorativo, e nel titolo per i lettori di schermo («1.»).
   assert.match(plain, /data-slot="question-number"[^>]*>1<\/span>/);
+  assert.match(plain, /<h3[^>]*><span class="sr-only">1\. <\/span>Quanti preventivi fate in un mese\?<\/h3>/);
   // Un solo numero, nella barra; un solo pulsante pieno.
   assert.match(markup, /data-slot="referent-progress"[^>]*>0 di 3 · salvato<\/p>/);
   assert.deepEqual(filled(markup), ["Invia"]);

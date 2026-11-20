@@ -577,6 +577,8 @@ export const REFERENT_PUBLIC_TEXT = Object.freeze({
     templateDownload: "Scarica il file da compilare {file}",
     /** (Rilascio 10) «Altro» di una domanda: la parola che si vede, poi la domanda. */
     moreOn: "Altro: «{testo}»",
+    /** (Rilascio 10) Il numero della domanda, prima del titolo, per i lettori di schermo («2.»). */
+    number: "{n}.",
   }),
   // (Rilascio 5) Ogni domanda si chiude: una risposta, un file, «Non lo so» o «È già allegato».
   alreadyAttached: "È già allegato",
