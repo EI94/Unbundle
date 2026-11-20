@@ -13,7 +13,7 @@
  *
  * (Rilascio 10, D5) Le parole che `/rispondi` dice come `/r` vengono dal kit del referente (`kit.ts`): «Non lo so», il
  * marchio con la riga del cliente, la scheda di un link che non vale più, quella di un errore con il solo «Riprova», un
- * solo numero di avanzamento, «Riferimento», l'informativa comune.
+ * solo numero di avanzamento, «Riferimento». L'informativa resta di ogni pagina: `/r` tiene i suoi dati in un altro modo.
  */
 import { REFERENT_KIT_NOTICE, REFERENT_KIT_TEXT as K } from "./kit.ts";
 
