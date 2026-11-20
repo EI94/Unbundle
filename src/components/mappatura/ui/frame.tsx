@@ -60,18 +60,23 @@ function BrandMark(): JSX.Element {
 /**
  * (Rilascio 10, §3.7) La prima riga della testata di un'unità: il segno della board e il percorso «Contesto › Processi
  * › {Unità}», nella forma del marchio (l'etichetta in mono). Le prime due voci sono link; l'ultima è la pagina, con
- * `aria-current`. Il nome del workspace sta già nella barra laterale.
+ * `aria-current`. Il nome del workspace sta già nella barra laterale. `processes={false}`: una pagina di «Contesto» che
+ * non sta nei Processi (l'Intervista iniziale, «Contesto › Intervista iniziale»).
  */
-export function BoardPath(p: { workspaceId: string; unitName: string }): JSX.Element {
+export function BoardPath(p: { workspaceId: string; unitName: string; processes?: boolean }): JSX.Element {
   const base = `/dashboard/${p.workspaceId}/contesto`;
   return (
     <nav className="b-brand b-path" aria-label={BOARD_TEXT.path.label} data-b="path">
       <BrandMark />
       <Link href={base}>{BOARD_TEXT.path.context}</Link>
-      <span className="b-x" aria-hidden="true">
-        {BOARD_TEXT.path.separator}
-      </span>
-      <Link href={`${base}?vista=processi`}>{BOARD_TEXT.path.processes}</Link>
+      {p.processes === false ? null : (
+        <>
+          <span className="b-x" aria-hidden="true">
+            {BOARD_TEXT.path.separator}
+          </span>
+          <Link href={`${base}?vista=processi`}>{BOARD_TEXT.path.processes}</Link>
+        </>
+      )}
       {p.unitName ? (
         <>
           <span className="b-x" aria-hidden="true">

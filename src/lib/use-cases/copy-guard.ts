@@ -199,6 +199,8 @@ export const AREA_SOURCE_DIRS: readonly string[] = [
   "src/app/(dashboard)/dashboard/[workspaceId]/agent-factory/",
   "src/app/(dashboard)/dashboard/[workspaceId]/contesto/",
   "src/app/(dashboard)/dashboard/[workspaceId]/mapping/",
+  // (Rilascio 10, ondata 6a) L'«Intervista iniziale» (`/setup/leadership`, prima «Discovery») e il vecchio indirizzo di «Contesto».
+  "src/app/(dashboard)/dashboard/[workspaceId]/setup/",
 ];
 
 /**

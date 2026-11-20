@@ -44,7 +44,7 @@ test("la testata: il percorso con la pillola a destra, il titolo con il corsivo,
   assert.match(css, /@media \(min-width: 48rem\) \{\s*\[data-board-root\] \.b-top\.b-notabs \.b-title \{ padding-bottom: 12px; \}/);
 });
 
-test("(rilascio 10, §3.7) il percorso: il segno, «Contesto › Processi › {Unità}», le prime due voci link, l'ultima la pagina", () => {
+test("(rilascio 10, §3.7) il percorso: il segno, «Contesto › Processi › {Unità}», le prime due voci link, l'ultima la pagina; senza «Processi» per l'Intervista", () => {
   const out = html(h(BoardPath, { workspaceId: "ws", unitName: "Ufficio acquisti" }));
   assert.match(out, /^<nav class="b-brand b-path" aria-label="Percorso" data-b="path"><svg width="22" height="12" viewBox="0 0 24 12" aria-hidden="true" focusable="false">/);
   assert.match(
@@ -55,6 +55,11 @@ test("(rilascio 10, §3.7) il percorso: il segno, «Contesto › Processi › {U
   assert.doesNotMatch(out, /lateral|×/);
   // Senza nome (la board che carica, un'unità che non si trova) il percorso si ferma ai Processi.
   assert.doesNotMatch(html(h(BoardPath, { workspaceId: "ws", unitName: "" })), /aria-current/);
+  // Una pagina di «Contesto» fuori dai Processi (l'Intervista iniziale): «Contesto › {Pagina}».
+  assert.match(
+    html(h(BoardPath, { workspaceId: "ws", unitName: "Intervista iniziale", processes: false })),
+    /<a href="\/dashboard\/ws\/contesto">Contesto<\/a><span class="b-x" aria-hidden="true">›<\/span><span class="b-path-here" aria-current="page">Intervista iniziale<\/span><\/nav>$/,
+  );
 });
 
 test("il titolo: la parte in corsivo dopo il resto, o prima", () => {
