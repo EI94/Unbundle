@@ -623,11 +623,6 @@ export type CiKeyEmailInput =
   | { template: "chiave_ci_scade"; clientName: string; repo: string; expiresAt: Date; link: string }
   | { template: "chiave_ci_bloccata"; clientName: string; repo: string; link: string };
 
-/** Vero per le e-mail della chiave della CI, che compone `renderCiKeyEmail` (le altre, `renderEmail`). */
-export function isCiKeyEmailInput(input: { template: string }): input is CiKeyEmailInput {
-  return (CI_KEY_EMAIL_TEMPLATE_KEYS as readonly string[]).includes(input.template);
-}
-
 const CI_REPO_TEXT = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/;
 
 /** Il repository nei testi: intero nel corpo, senza l'organizzazione nell'oggetto. Solo `owner/nome`: mai un testo libero. */

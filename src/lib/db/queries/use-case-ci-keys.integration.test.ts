@@ -225,26 +225,30 @@ test("la chiave: il prefisso della CI e 32 byte, in tabella solo impronta e pref
 
 test("D6: chi gestisce il workspace e il responsabile di un caso aperto del repository sì; gli altri no, anche chiamando direttamente", opts, async () => {
   await clearKeys();
+  const managedBy = async (person: Person, workspaceId = ids.ws, lsDomains: readonly string[] = LS) => {
+    const m = await store.ciKeyManagedRepos(exec, { workspaceId, userId: ids[person], lsDomains });
+    return { all: m.all, repos: [...m.repos] };
+  };
+  // Lo sviluppatore di Lateral Space è anche responsabile di un caso chiuso di un altro repository: lì no, e nemmeno qui.
   for (const person of ["dev", "outside", "client", "unverified", "learner"] as const) {
     refused(await store.createCiKey(exec, { workspaceId: ids.ws, repo: REPO, actor: actor(person), lsDomains: LS }), "permesso_negato", person);
-    assert.equal(await store.canManageCiKeys(exec, { workspaceId: ids.ws, userId: ids[person], repo: REPO, lsDomains: LS }), false, person);
+    assert.deepEqual(await managedBy(person), { all: false, repos: [] }, person);
   }
   // Senza i domini di Lateral Space nessuno gestisce le chiavi.
   refused(await store.createCiKey(exec, { workspaceId: ids.ws, repo: REPO, actor: actor("manager"), lsDomains: [] }), "permesso_negato", "senza domini");
-  // Il responsabile di un caso chiuso di un altro repository: lì no.
-  assert.equal(await store.canManageCiKeys(exec, { workspaceId: ids.ws, userId: ids.dev, repo: LONE_REPO, lsDomains: LS }), false);
-  assert.equal(await store.canManageCiKeys(exec, { workspaceId: ids.ws, userId: ids.lead, repo: OTHER_REPO, lsDomains: LS }), false, "il responsabile di un caso di un altro repository");
-  assert.equal(await store.canManageCiKeys(exec, { workspaceId: ids.ws, userId: ids.lead, repo: REPO, lsDomains: LS }), true);
-  assert.equal(await store.canManageCiKeys(exec, { workspaceId: ids.ws, userId: ids.manager, repo: OTHER_REPO, lsDomains: LS }), true);
+  assert.deepEqual(await managedBy("manager", ids.ws, []), { all: false, repos: [] }, "senza domini");
+  // Il responsabile: solo il repository del suo caso aperto, non quello di un altro caso; chi gestisce il workspace: tutti.
+  assert.deepEqual(await managedBy("lead"), { all: false, repos: [REPO.toLowerCase()] });
+  refused(await store.createCiKey(exec, { workspaceId: ids.ws, repo: OTHER_REPO, actor: actor("lead"), lsDomains: LS }), "permesso_negato", "il repository di un altro caso");
+  assert.equal((await managedBy("manager")).all, true);
   // Chi gestisce un altro workspace non gestisce le chiavi di questo, e viceversa.
-  assert.equal(await store.canManageCiKeys(exec, { workspaceId: ids.wsB, userId: ids.lead, repo: REPO, lsDomains: LS }), false);
-  const managed = await store.ciKeyManagedRepos(exec, { workspaceId: ids.ws, userId: ids.lead, lsDomains: LS });
-  assert.deepEqual({ all: managed.all, repos: [...managed.repos] }, { all: false, repos: [REPO.toLowerCase()] });
-  const manager = await store.ciKeyManagedRepos(exec, { workspaceId: ids.ws, userId: ids.manager, lsDomains: LS });
-  assert.equal(manager.all, true);
-  for (const person of ["dev", "outside", "client"] as const) {
-    const none = await store.ciKeyManagedRepos(exec, { workspaceId: ids.ws, userId: ids[person], lsDomains: LS });
-    assert.deepEqual({ all: none.all, repos: [...none.repos] }, { all: false, repos: [] }, person);
+  assert.deepEqual(await managedBy("lead", ids.wsB), { all: false, repos: [] });
+  // `lsManager` della pagina: Lateral Space con un ruolo da revisore nel workspace, anche analista (D6 come la pagina).
+  await q(`UPDATE workspace_memberships SET role = 'analyst'::member_role WHERE workspace_id = $1 AND user_id = $2`, [ids.ws, ids.dev]);
+  try {
+    assert.equal((await managedBy("dev")).all, true, "un analista di Lateral Space nel workspace");
+  } finally {
+    await q(`UPDATE workspace_memberships SET role = 'contributor'::member_role WHERE workspace_id = $1 AND user_id = $2`, [ids.ws, ids.dev]);
   }
   const issued = okValue(await store.createCiKey(exec, { workspaceId: ids.ws, repo: REPO, actor: actor("lead"), lsDomains: LS }), "il responsabile");
   for (const person of ["dev", "outside", "client", "unverified", "learner"] as const) {
@@ -403,6 +407,12 @@ test("il cron: l'avviso a 14 giorni una volta sola e non alla vecchia di una rot
   assert.equal(reminded.reminded, 1);
   assert.deepEqual((await notices("chiave_ci_scade", issued.keyId)).map((r) => r.user_id), usersOf("manager", "lead"), "solo a chi gestisce le chiavi");
   assert.equal((await sweep()).reminded, 0, "una volta sola");
+  // Revocata (o scaduta) vicino alla fine: nessun avviso.
+  await clearKeys();
+  const revokedSoon = okValue(await store.createCiKey(exec, { workspaceId: ids.ws, repo: REPO, actor: actor("manager"), lsDomains: LS }), "revocata");
+  await q(`UPDATE use_case_ci_keys SET created_at = now() - interval '170 days', expires_at = now() + interval '10 days' WHERE id = $1`, [revokedSoon.keyId]);
+  okValue(await store.revokeCiKeys(exec, { workspaceId: ids.ws, repo: REPO, actor: actor("manager"), lsDomains: LS }), "revoca");
+  assert.equal((await sweep()).reminded, 0, "una chiave revocata non si avvisa");
   // La vecchia di una rotazione non si avvisa: la si sta cambiando.
   await clearKeys();
   const old = okValue(await store.createCiKey(exec, { workspaceId: ids.ws, repo: REPO, actor: actor("manager"), lsDomains: LS }), "vecchia");

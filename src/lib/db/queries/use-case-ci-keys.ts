@@ -116,18 +116,6 @@ WHERE ckm_w.id = ${workspace}${only ? ucSql` AND ckm_u.id = ${only}` : raw("")}
 LIMIT 200`;
 }
 
-/** Vero se la persona gestisce le chiavi del repository (D6), riletto adesso. Per la pagina e le azioni. */
-export async function canManageCiKeys(executor: UcExecutor, input: { workspaceId: string; userId: string; repo: string; lsDomains: readonly string[] }): Promise<boolean> {
-  const repo = normalizeCiRepo(input.repo);
-  if (!repo) return false;
-  const [rows] = await executor.batch([
-    toStatement(
-      ucSql`SELECT EXISTS (${ciKeyManagersSql(cast(input.workspaceId, "uuid"), cast(repo, "text"), input.lsDomains, cast(input.userId, "uuid"))}) AS ok`,
-    ),
-  ]);
-  return rows[0]?.ok === true;
-}
-
 /**
  * I repository di cui la persona gestisce le chiavi nel workspace: `all` per chi gestisce il workspace (tutti), altrimenti
  * quelli dei casi aperti di cui è responsabile (in minuscolo). Per la pagina: chi vede «Collega la CI», «Ruota» e

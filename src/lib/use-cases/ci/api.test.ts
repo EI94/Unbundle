@@ -12,7 +12,6 @@ import {
   checkCiRunSource,
   ciCaseFailureCode,
   ciCasesBody,
-  ciErrorBody,
   ciEvalsWriteBody,
   ciLinkVisible,
   parseCiEvals,
@@ -172,7 +171,7 @@ test("gli errori: lo stato e il testo del §2.9; i limiti per chiave; l'intestaz
     ["troppo_grande", 413, "La richiesta è troppo grande."],
   ];
   for (const [code, status, message] of expected) {
-    assert.deepEqual(ciErrorBody(code), { status, body: { errore: { codice: code, messaggio: message } } }, code);
+    assert.deepEqual(CI_ERRORS[code], { status, message }, code);
   }
   assert.equal(CI_ERRORS.origine.status, 403);
   assert.ok(!/CLI/.test(CI_ERRORS.origine.message), "la CI non è la CLI");

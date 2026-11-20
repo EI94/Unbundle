@@ -63,12 +63,6 @@ export function ciCaseFailureCode(code: string): "non_trovato" | "senza_dossier"
   return code === "senza_dossier" || code === "caso_chiuso" || code === "caso_sospeso" ? code : "non_trovato";
 }
 
-/** Il corpo di un errore, com'è nella risposta. */
-export function ciErrorBody(code: CiErrorCode): { status: number; body: { errore: { codice: CiErrorCode; messaggio: string } } } {
-  const e = CI_ERRORS[code];
-  return { status: e.status, body: { errore: { codice: code, messaggio: e.message } } };
-}
-
 // ─── GET /api/ci/casi ────────────────────────────────────────────────
 
 /** Perché un caso del repository non riceve evals: chiuso, in pausa, senza la realizzazione (il dossier). */

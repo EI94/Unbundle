@@ -15,25 +15,19 @@ import {
   CI_KEY_ROTATION_GRACE_DAYS,
   CI_MAIN_BRANCH,
   CI_SECRET_NAME,
-  canManageCiKeysRule,
   checkCiRun,
   ciIdempotencyOwner,
   ciKeyCandidates,
   ciKeyDisplayPrefix,
-  ciKeyExpiresAt,
   ciKeyFromAuthorization,
-  ciKeyReminderDue,
-  ciKeyRetentionDue,
   ciKeyTodo,
   ciRepoName,
   ciRowState,
-  createRefusal,
   hashCiKey,
   isCiKey,
   newCiKey,
   normalizeCiRepo,
   rotateRefusal,
-  rotatedOldUntil,
   rotationPending,
   type CiKeyRow,
 } from "./keys.ts";
@@ -141,20 +135,17 @@ test("l'invio della CI: solo main (403), il commit di 40 cifre, l'esecuzione di 
   }
 });
 
-test("la rotazione: la vecchia vale al più 7 giorni; mai più di due vive; la seconda con la nuova mai usata si rifiuta", () => {
+// La durata, i 7 giorni della vecchia, l'avviso a 14 giorni e la cancellazione dopo 12 mesi stanno nell'SQL del modulo
+// delle chiavi: le prove sono sul database (src/lib/db/queries/use-case-ci-keys.integration.test.ts). Qui le costanti e
+// le regole che usa anche la pagina.
+test("la rotazione: mai più di due vive; in corso solo finché la vecchia vale; poi si ruota di nuovo", () => {
   assert.equal(CI_KEY_DAYS, 180);
   assert.equal(CI_KEY_ROTATION_GRACE_DAYS, 7);
   assert.equal(CI_KEY_MAX_LIVE, 2);
-  assert.equal(ciKeyExpiresAt(NOW).getTime() - NOW.getTime(), 180 * DAY);
-  assert.equal(rotatedOldUntil(new Date(NOW.getTime() + 100 * DAY), NOW).getTime(), NOW.getTime() + 7 * DAY, "al più tardi adesso più 7 giorni");
-  assert.equal(rotatedOldUntil(new Date(NOW.getTime() + 2 * DAY), NOW).getTime(), NOW.getTime() + 2 * DAY, "prima, se scadeva prima");
+  assert.equal(CI_KEY_REMINDER_DAYS, 14);
   const old = key();
-  const fresh = key({ replacesKeyId: old.id, createdAt: NOW, expiresAt: ciKeyExpiresAt(NOW) });
-  const oldInGrace = { ...old, expiresAt: rotatedOldUntil(old.expiresAt, NOW) };
-  assert.equal(createRefusal([], NOW), null);
-  assert.equal(createRefusal([old], NOW), "gia_collegata");
-  assert.equal(createRefusal([{ ...old, revokedAt: NOW, revokedReason: "a_mano" }], NOW), null);
-  assert.equal(createRefusal([{ ...old, expiresAt: new Date(NOW.getTime() - 1) }], NOW), null, "scaduta: se ne crea una nuova");
+  const fresh = key({ replacesKeyId: old.id, createdAt: NOW, expiresAt: new Date(NOW.getTime() + 180 * DAY) });
+  const oldInGrace = { ...old, expiresAt: new Date(NOW.getTime() + 7 * DAY) };
   assert.equal(rotateRefusal([], NOW), "nessuna_chiave");
   assert.equal(rotateRefusal([old], NOW), null);
   assert.equal(rotateRefusal([oldInGrace, fresh], NOW), "rotazione_in_corso", "due vive");
@@ -170,23 +161,6 @@ test("la rotazione: la vecchia vale al più 7 giorni; mai più di due vive; la s
   assert.equal(rotateRefusal([{ ...oldInGrace, revokedAt: NOW, revokedReason: "ruotata" }, used], NOW), null);
 });
 
-test("l'avviso a 14 giorni: una volta, mai alla vecchia di una rotazione, mai a una chiave finita; dopo 12 mesi si cancella", () => {
-  assert.equal(CI_KEY_REMINDER_DAYS, 14);
-  const soon = key({ expiresAt: new Date(NOW.getTime() + 14 * DAY) });
-  assert.equal(ciKeyReminderDue(soon, [soon], NOW), true);
-  assert.equal(ciKeyReminderDue({ ...soon, expiresAt: new Date(NOW.getTime() + 14 * DAY + 1) }, [soon], NOW), false, "a più di 14 giorni");
-  assert.equal(ciKeyReminderDue({ ...soon, remindedAt: NOW }, [soon], NOW), false, "una volta sola");
-  assert.equal(ciKeyReminderDue({ ...soon, revokedAt: NOW, revokedReason: "a_mano" }, [soon], NOW), false);
-  assert.equal(ciKeyReminderDue({ ...soon, expiresAt: new Date(NOW.getTime() - 1) }, [soon], NOW), false);
-  const fresh = key({ createdAt: NOW, replacesKeyId: soon.id, expiresAt: ciKeyExpiresAt(NOW) });
-  assert.equal(ciKeyReminderDue(soon, [soon, fresh], NOW), false, "superata da una più nuova");
-  const month = 30 * DAY;
-  assert.equal(ciKeyRetentionDue(key({ expiresAt: new Date(NOW.getTime() - 13 * month) }), NOW), true);
-  assert.equal(ciKeyRetentionDue(key({ expiresAt: new Date(NOW.getTime() - 11 * month) }), NOW), false);
-  assert.equal(ciKeyRetentionDue(key({ revokedAt: new Date(NOW.getTime() - 13 * month), revokedReason: "esposta", expiresAt: new Date(NOW.getTime() + DAY) }), NOW), true);
-  assert.equal(ciKeyRetentionDue(key(), NOW), false);
-});
-
 test("la riga della famiglia: ogni stato del §2.6 dalle chiavi; «Da fare per te» solo dove c'è da fare", () => {
   assert.deepEqual(ciRowState([], NOW, false), { kind: "non_disponibile" });
   assert.deepEqual(ciRowState([], NOW), { kind: "non_collegata" });
@@ -197,7 +171,7 @@ test("la riga della famiglia: ogni stato del §2.6 dalle chiavi; «Da fare per t
   const expiring = key({ lastUsedAt: NOW, expiresAt: new Date(NOW.getTime() + 5 * DAY) });
   assert.equal(ciRowState([expiring], NOW).kind, "in_scadenza");
   const old = key({ lastUsedAt: NOW, expiresAt: new Date(NOW.getTime() + 7 * DAY) });
-  const fresh = key({ createdAt: new Date(NOW.getTime() - 2 * DAY), replacesKeyId: old.id, expiresAt: ciKeyExpiresAt(NOW) });
+  const fresh = key({ createdAt: new Date(NOW.getTime() - 2 * DAY), replacesKeyId: old.id, expiresAt: new Date(NOW.getTime() + 178 * DAY) });
   const rotation = ciRowState([old, fresh], NOW);
   assert.equal(rotation.kind, "rotazione");
   assert.equal(rotation.kind === "rotazione" && rotation.old.id, old.id);
@@ -224,17 +198,6 @@ test("la riga della famiglia: ogni stato del §2.6 dalle chiavi; «Da fare per t
   assert.equal(ciKeyTodo(ciRowState([orphan, dead], NOW), { approvedCases: 0 }, NOW), "metti", "la vecchia è finita: subito");
   assert.equal(ciKeyTodo(ciRowState([used], NOW), { approvedCases: 3 }, NOW), null);
   assert.equal(ciKeyTodo({ kind: "non_disponibile" }, { approvedCases: 3 }, NOW), null);
-});
-
-test("D6: solo Lateral Space, chi gestisce il workspace o è responsabile di un caso aperto del repository", () => {
-  const rule = (isLateralSpace: boolean, workspaceRole: string | null, leadsOpenCaseOfRepo: boolean) => canManageCiKeysRule({ isLateralSpace, workspaceRole, leadsOpenCaseOfRepo });
-  assert.equal(rule(true, "transformation_lead", false), true, "chi gestisce il workspace");
-  assert.equal(rule(true, "analyst", false), true, "un ruolo da revisore, come lsManager");
-  assert.equal(rule(true, "contributor", true), true, "il responsabile del caso");
-  assert.equal(rule(true, "contributor", false), false, "sviluppatore o analista di Lateral Space");
-  assert.equal(rule(false, "transformation_lead", true), false, "il cliente, chi costruisce da fuori");
-  assert.equal(rule(true, "learner", true), false, "chi segue un corso");
-  assert.equal(rule(true, null, true), false, "fuori dal workspace");
 });
 
 test("i testi delle azioni e degli errori sono quelli della specifica; il segreto si chiama UNBUNDLE_CI_TOKEN", () => {

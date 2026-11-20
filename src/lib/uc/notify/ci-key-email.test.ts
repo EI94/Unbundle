@@ -15,7 +15,7 @@ import {
   type ClaimedNotification,
   type DeliveryFacts,
 } from "./dispatch.ts";
-import { CI_KEY_EMAIL_TEMPLATE_KEYS, isCiKeyEmailInput, renderCiKeyEmail, type CiKeyEmailInput } from "./email-templates.ts";
+import { CI_KEY_EMAIL_TEMPLATE_KEYS, renderCiKeyEmail, type CiKeyEmailInput } from "./email-templates.ts";
 import { EMAIL_BODY_MAX_WORDS, EMAIL_SUBJECT_MAX, emailBodyWords } from "./email-render.ts";
 import { UC_NOTIFICATION_TEMPLATES } from "../../db/queries/uc-notifications.ts";
 import { CI_KEY_EMAIL_TEMPLATES as STORE_TEMPLATES } from "../../db/queries/use-case-ci-keys.ts";
@@ -57,7 +57,7 @@ function built(templateKey: string, f = facts()): CiKeyEmailInput {
   const plan = planCiKeyDelivery(claimed(templateKey), f, OPTS);
   assert.equal(plan.action, "send", templateKey);
   if (plan.action !== "send") throw new Error("non parte");
-  assert.ok(isCiKeyEmailInput(plan.email), templateKey);
+  assert.equal(plan.email.template, templateKey);
   return plan.email;
 }
 

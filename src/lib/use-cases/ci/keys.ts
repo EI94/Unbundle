@@ -10,11 +10,14 @@
  *   solo le evals e il banco di `main`, con il commit intero e l'esecuzione di GitHub di quel repository.
  * - **La durata:** 180 giorni, l'avviso a 14 giorni, una volta sola.
  * - **La rotazione:** la chiave nuova si vede una volta; la vecchia vale al più 7 giorni e il primo invio con la nuova la
- *   revoca (`ruotata`). Mai più di due chiavi vive per repository: una seconda rotazione, con la nuova mai usata, si
- *   rifiuta.
+ *   revoca (`ruotata`). Mai più di due chiavi vive per repository: una seconda rotazione, con la nuova mai usata e la
+ *   vecchia ancora viva, si rifiuta (`rotationPending`).
  * - **Chi la gestisce (D6):** solo Lateral Space, con l'e-mail verificata: chi gestisce il workspace (un ruolo da
  *   revisore, come `lsManager` della pagina «Agent Factory») o chi è responsabile (`ls_lead`) di un caso aperto
- *   registrato sul repository. Sviluppatori e analisti di Lateral Space, chi costruisce da fuori e il cliente mai.
+ *   registrato sul repository. Sviluppatori e analisti di Lateral Space, chi costruisce da fuori e il cliente mai. La
+ *   regola sta in SQL (`ciKeyManagersSql` del modulo delle chiavi), riletta a ogni scrittura.
+ * - **La durata, l'avviso a 14 giorni e la cancellazione dopo 12 mesi** stanno nell'SQL del modulo delle chiavi (le
+ *   costanti sono qui).
  * - **La riga della famiglia e «Da fare per te»:** lo stato di un repository dalle sue chiavi (i testi li scrive la
  *   pagina).
  *
@@ -24,7 +27,6 @@
 import { randomBytes } from "node:crypto";
 import { bearerTokenFromHeader } from "../../connector/auth.ts";
 import { CI_REPO_RE, CI_RUN_URL_RE, type CiKeyRevokedReason } from "../../db/use-case-hub-ci-keys-ddl.ts";
-import { canReviewWorkspacePortfolio } from "../../workspace-permissions.ts";
 import { hashSecret } from "../cli/codes.ts";
 
 // ─── Costanti ────────────────────────────────────────────────────────
@@ -188,7 +190,7 @@ export function checkCiRun(input: { ramo?: unknown; commit?: unknown; ci?: unkno
   return { ok: true, value: { runId, attempt, url } };
 }
 
-// ─── Le chiavi di un repository: vive, rotazione, avviso, cancellazione ──
+// ─── Le chiavi di un repository: vive, rotazione ─────────────────────
 
 /** Una chiave come la leggono le regole e la pagina: mai l'impronta, mai chi l'ha creata o revocata. */
 export interface CiKeyRow {
@@ -237,14 +239,9 @@ function endOf(k: Pick<CiKeyRow, "revokedAt" | "expiresAt">): Date {
   return k.revokedAt && k.revokedAt.getTime() < k.expiresAt.getTime() ? k.revokedAt : k.expiresAt;
 }
 
-/** Perché «Crea la chiave» non si può: il repository ha già una chiave viva. */
-export function createRefusal(keys: readonly KeyFacts[], now: Date): "gia_collegata" | null {
-  return liveCiKeys(keys, now).length > 0 ? "gia_collegata" : null;
-}
-
 /**
- * Perché «Ruota la chiave» non si può: nessuna chiave viva, oppure una rotazione già in corso (la nuova mai usata, o già
- * {@link CI_KEY_MAX_LIVE} chiavi vive).
+ * Perché «Ruota la chiave» non si può: nessuna chiave viva, oppure una rotazione già in corso (la nuova mai usata con la
+ * vecchia ancora viva, o già {@link CI_KEY_MAX_LIVE} chiavi vive). Per i pulsanti della pagina: lo stesso no dell'SQL.
  */
 export function rotateRefusal(keys: readonly KeyFacts[], now: Date): "nessuna_chiave" | "rotazione_in_corso" | null {
   const live = liveCiKeys(keys, now);
@@ -253,37 +250,9 @@ export function rotateRefusal(keys: readonly KeyFacts[], now: Date): "nessuna_ch
   return null;
 }
 
-/** La scadenza di una chiave creata adesso. */
-export function ciKeyExpiresAt(now: Date): Date {
-  return new Date(now.getTime() + CI_KEY_DAYS * DAY_MS);
-}
-
-/** Dopo una rotazione, la vecchia vale fino a qui: al più tardi adesso più 7 giorni, prima se scadeva prima. */
-export function rotatedOldUntil(oldExpiresAt: Date, now: Date): Date {
-  return new Date(Math.min(oldExpiresAt.getTime(), now.getTime() + CI_KEY_ROTATION_GRACE_DAYS * DAY_MS));
-}
-
 /** Vero se la chiave scade entro 14 giorni (ed è ancora viva). */
 export function ciKeyExpiringSoon(k: Pick<CiKeyRow, "revokedAt" | "expiresAt">, now: Date): boolean {
   return isLiveCiKey(k, now) && k.expiresAt.getTime() - now.getTime() <= CI_KEY_REMINDER_DAYS * DAY_MS;
-}
-
-/**
- * L'avviso a 14 giorni (`chiave_ci_scade`) tocca a questa chiave? Viva, entro 14 giorni dalla fine, mai avvisata, e non
- * superata da una chiave più nuova dello stesso repository (la vecchia di una rotazione non si avvisa: la si sta
- * cambiando).
- */
-export function ciKeyReminderDue(key: KeyFacts & Pick<CiKeyRow, "remindedAt">, keys: readonly KeyFacts[], now: Date): boolean {
-  if (key.remindedAt !== null || !ciKeyExpiringSoon(key, now)) return false;
-  return !keys.some((other) => other.id !== key.id && isLiveCiKey(other, now) && other.createdAt.getTime() > key.createdAt.getTime());
-}
-
-/** La chiave è finita (revocata o scaduta) da più di 12 mesi: si cancella. */
-export function ciKeyRetentionDue(k: Pick<CiKeyRow, "revokedAt" | "expiresAt">, now: Date): boolean {
-  const end = k.revokedAt && k.revokedAt.getTime() < k.expiresAt.getTime() ? k.revokedAt : k.expiresAt;
-  const limit = new Date(now.getTime());
-  limit.setUTCMonth(limit.getUTCMonth() - CI_KEY_RETENTION_MONTHS);
-  return end.getTime() < limit.getTime();
 }
 
 // ─── La riga della famiglia e «Da fare per te» (i testi li scrive la pagina) ──
@@ -352,18 +321,6 @@ export function ciKeyTodo(state: CiRowState, input: { approvedCases: number }, n
     default:
       return null;
   }
-}
-
-// ─── Chi gestisce le chiavi (D6) ──────────────────────────────────────
-
-/**
- * La regola di D6, per chi ha già passato il controllo dell'accesso al workspace: Lateral Space (e-mail verificata) e
- * chi gestisce il workspace (ruolo da revisore) o è responsabile di un caso aperto registrato sul repository. Chi segue
- * solo un corso (`learner`) mai. La stessa regola, in SQL, la rilegge ogni scrittura (`ciKeyManagerSql`).
- */
-export function canManageCiKeysRule(i: { isLateralSpace: boolean; workspaceRole: string | null | undefined; leadsOpenCaseOfRepo: boolean }): boolean {
-  if (!i.isLateralSpace || !i.workspaceRole || i.workspaceRole === "learner") return false;
-  return canReviewWorkspacePortfolio(i.workspaceRole) || i.leadsOpenCaseOfRepo;
 }
 
 // ─── I testi delle azioni (rifiuti ed esiti) ──────────────────────────
