@@ -338,28 +338,40 @@ test("«Da confermare»: i gruppi nell'ordine, «dedotto» e conflitti senza spu
   const text = textOf(html);
   assert.ok(text.includes("Da confermare") && text.includes("Dagli appunti «Call di avvio» del 14 nov"));
   const headings = [...html.matchAll(/<h2[^>]*>([^<]+)<\/h2>/g)].map((m) => m[1]);
-  assert.deepEqual(headings, ["Nuovi", "Cambiano", "Conflitti", "Impegni", "Domande"]);
+  // (Rilascio 10, §3.7) I gruppi con una forma sola.
+  assert.deepEqual(headings, ["Nuovi", "Cambiati", "In conflitto", "Impegni", "Domande"]);
   // Spuntate: la «detto», il cambio, l'impegno, la domanda, e le riconferme. Non la «dedotto», non quella con il nome.
   assert.ok(text.includes("Conferma (5)"), text.join(" | "));
   const checkboxes = [...html.matchAll(/<(?:button|span)[^>]*role="checkbox"[^>]*>/g)].map((m) => m[0]);
-  assert.equal(checkboxes.length, 7, "sei righe con la casella (il conflitto no) e la riga delle riconferme");
+  assert.equal(checkboxes.length, 7, "sei righe con la casella (il conflitto no) e la riconferma, con la sua");
   assert.equal(checkboxes.filter((tag) => /aria-checked="true"/.test(tag)).length, 5);
   assert.equal(checkboxes.filter((tag) => /aria-disabled="true"|data-disabled/.test(tag)).length, 1, "la riga con il nome non si spunta finché non si corregge");
   // «Cambiano» con «Prima»; il conflitto con «Prima» e «Ora» e le due scelte, nessuna scelta di partenza.
   assert.ok(text.includes("Prima: Gli ordini sono 30 al giorno. (Call, 3 nov)"));
   assert.ok(text.includes("Prima: Il CRM è Salesforce. (Documento, 21 ott)") && text.includes("Ora: Il CRM è HubSpot. (Call 14 nov)"));
-  assert.ok(text.includes("Tieni “Prima”") && text.includes("Passa a “Ora”") && text.includes("Scegli quale tenere."));
+  assert.ok(text.includes("Tieni quello di prima") && text.includes("Passa al nuovo") && text.includes("Scegli quale tenere."));
+  assert.doesNotMatch(html, /“|”/, "le virgolette dell'app sono «»");
   assert.equal((html.match(/role="radio" aria-checked="true"/g) ?? []).length, 0);
   // I segni, l'impegno, la domanda, il problema da correggere, le riconferme, i non riportati.
   assert.ok(text.includes("dedotto") && text.includes("Nostro") && text.includes("Responsabile del progetto") && text.includes("entro il 30 nov"));
   assert.ok(text.includes("Da chiedere a: Direttore operativo"));
   assert.ok(text.includes("Non scrivere nomi di persone: indica il ruolo."));
-  assert.ok(text.includes("1 fatto riconfermato: si aggiorna la data") && text.includes("Hanno due stabilimenti."));
+  // Un solo blocco di riconferme, chiuso, con il suo conteggio.
+  assert.ok(text.includes("Riconfermati") && text.includes("1 · si aggiorna la data") && text.includes("Hanno due stabilimenti."));
+  assert.match(html, /<section id="conferma-riconferme"[^>]*data-slot="fold"/);
   assert.ok(text.includes("2 passaggi non riportati: parlavano di persone"));
-  assert.match(html, /<q>il gestionale è SAP<\/q>/, "la citazione tra virgolette");
+  // La citazione si apre a richiesta: «Citazione», e il testo nascosto finché non si tocca.
+  assert.match(html, /<p id="[^"]+" hidden="" class="[^"]*"><q>il gestionale è SAP<\/q><\/p>/, "la citazione chiusa");
+  assert.ok(text.includes("Citazione"));
+  // Chi la vede: il lucchetto solo per «Solo Lateral Space», mai «Per tutti».
+  assert.equal(text.includes("Per tutti"), false);
+  // La riga si modifica toccando la frase; «Scarta» sta nel «⋯» della riga (le voci si aprono a richiesta).
+  assert.match(html, /<button type="button" id="[^"]+" aria-expanded="false" class="[^"]*">Il gestionale è SAP Business One\.<\/button>/);
+  assert.equal((html.match(/data-action="proposal-menu"/g) ?? []).length, 7);
+  assert.equal(text.includes("Scarta") || text.includes("Modifica"), false, "nel «⋯», chiuso");
 });
 
-test("«Da confermare»: le riconferme «detto» stanno nella riga spuntata; una «dedotto» ha la sua casella, senza spunta", () => {
+test("«Da confermare»: un solo blocco di riconferme, una casella per fatto: la «detto» spuntata, la «dedotto» no", () => {
   const open: OpenProposals = {
     sources: [{ id: "s1", kind: "appunti", origin: "web", title: "Call di avvio", occurredOn: "2026-11-14", skipped: {} }],
     proposals: [],
@@ -370,11 +382,11 @@ test("«Da confermare»: le riconferme «detto» stanno nella riga spuntata; una
   };
   const html = render(createElement(ConfirmView, confirmProps(open)));
   const text = textOf(html);
-  assert.ok(text.includes("1 fatto riconfermato: si aggiorna la data"), text.join(" | "));
-  assert.ok(text.includes("1 fatto riconfermato da scegliere: spuntalo se è giusto") && text.includes("Il magazzino è piccolo."));
+  assert.ok(text.includes("2 · si aggiorna la data"), text.join(" | "));
+  assert.ok(text.includes("Hanno due stabilimenti.") && text.includes("Il magazzino è piccolo."));
   assert.ok(text.includes("Conferma (1)"), "parte solo la riconferma «detto»");
   const checkboxes = [...html.matchAll(/<(?:button|span)[^>]*role="checkbox"[^>]*>/g)].map((m) => m[0]);
-  assert.deepEqual(checkboxes.map((tag) => /aria-checked="true"/.test(tag)), [false, true], "la «dedotto» senza spunta, la riga delle «detto» spuntata");
+  assert.deepEqual(checkboxes.map((tag) => /aria-checked="true"/.test(tag)), [true, false], "la «detto» spuntata, la «dedotto» no");
 });
 
 test("«Da confermare»: un conflitto che viene da un documento dice «Documento 14 nov», non «Call»", () => {
@@ -404,13 +416,20 @@ function source(over: Partial<SourceListItem> = {}): SourceListItem {
 }
 const doc = source({ id: "d1", kind: "documento", origin: "web", title: "Organigramma", state: "letto", openProposals: 0, visibility: "tutti", document: { id: "doc1", fileName: "organigramma.pdf", fileType: "application/pdf", fileSize: 1_258_291 }, canRemove: false });
 
-test("la vista «Appunti» per Lateral Space: Granola in alto, ogni fonte con data, origine, stato e chi vede un documento", () => {
+test("(rilascio 10, §3.7) le Fonti per Lateral Space: Granola in alto; l'origine è un'icona, la data e la lettura in grigio, il lucchetto solo per «Solo Lateral Space»", () => {
   const html = render(createElement(NotesView, { workspaceId: WS, today: TODAY, lateralSpace: true, sources: [source(), doc], granola: createElement("p", null, "blocco di Granola"), initialSourceId: null }));
   const text = textOf(html);
   assert.equal(text[0], "blocco di Granola");
-  assert.ok(text.includes("Call di avvio") && text.includes("Granola") && text.includes("Da confermare (4)"));
-  assert.ok(text.includes("Organigramma") && text.includes("Documento") && text.includes("Letto") && text.includes("Per tutti"));
-  assert.equal(text.includes("Carica documento"), false, "Lateral Space carica da «Aggiungi appunti»");
+  // L'origine: un'icona, e il suo nome solo per i lettori di schermo.
+  assert.match(html, /<span class="sr-only">Granola: <\/span>Call di avvio/);
+  assert.match(html, /<span class="sr-only">Documento: <\/span>Organigramma/);
+  assert.ok(text.includes("14 nov") && text.includes("Da confermare (4)") && text.includes("Letto"));
+  // La visibilità solo quando è «Solo Lateral Space»: il lucchetto sulla call, niente «Per tutti» sul documento.
+  assert.equal(text.includes("Per tutti"), false);
+  assert.equal(text.filter((t) => t === "Solo Lateral Space").length, 1);
+  assert.equal(text.includes("Carica documento"), false, "Lateral Space aggiunge da «Aggiungi», nella testata");
+  // Ogni riga apre il pannello della fonte.
+  assert.equal((html.match(/aria-haspopup="dialog"/g) ?? []).length, 2);
   assert.ok(textOf(render(createElement(NotesView, { workspaceId: WS, today: TODAY, lateralSpace: true, sources: [], initialSourceId: null }))).includes("Nessun appunto ancora."));
 });
 
@@ -422,7 +441,8 @@ test("la vista «Documenti» del cliente: i documenti con nome, data e dimension
   assert.equal(text.includes("Carica documento"), false);
   assert.ok(text.includes("organigramma.pdf") && text.includes("14 nov · 1,2 MB"));
   assert.ok(text.includes("listino.xlsx") && text.includes("14 nov · 340 KB"));
-  assert.equal(text.filter((t) => t === "Togli").length, 1);
+  // «Togli» dice ai lettori di schermo il nome del documento.
+  assert.equal((html.match(/>Togli<span class="sr-only"> listino\.xlsx<\/span><\/button>/g) ?? []).length, 1);
   assert.equal(text.includes("Da confermare (4)") || text.includes("Letto"), false, "niente stati della lettura per il cliente");
   assert.ok(textOf(render(createElement(NotesView, { workspaceId: WS, today: TODAY, lateralSpace: false, sources: [], initialSourceId: null }))).includes("Nessun documento ancora."));
 });

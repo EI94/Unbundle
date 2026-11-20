@@ -390,7 +390,7 @@ export function AddNotesDialog({
               <p className="text-sm">
                 {ending.message.text}{" "}
                 {ending.duplicate && ending.sourceId ? (
-                  <Link href={`/dashboard/${workspaceId}/contesto?vista=appunti&fonte=${encodeURIComponent(ending.sourceId)}`} onClick={() => close()} className="underline underline-offset-4">
+                  <Link href={`/dashboard/${workspaceId}/contesto?vista=fonti&fonte=${encodeURIComponent(ending.sourceId)}`} onClick={() => close()} className="underline underline-offset-4">
                     {T.page.open}
                   </Link>
                 ) : null}

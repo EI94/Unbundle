@@ -49,6 +49,7 @@ import {
   proposedTitle,
   readOutcomeMessage,
   reconfirmable,
+  reconfirmations,
   reconfirmationsToChoose,
   responseMessage,
   rowErrors,
@@ -143,14 +144,13 @@ test("preselezione: spuntate le «detto»; «dedotto», conflitti e proposte da 
   const selection = initialSelection(open([said, inferred, conflict, named, forcedConflict, forcedIssue]));
   assert.equal(selection.checked[said.id], true);
   for (const p of [inferred, conflict, named, forcedConflict, forcedIssue]) assert.equal(selection.checked[p.id], false, p.kind);
-  assert.equal(selection.reconfirm, true);
   assert.deepEqual(selection.resolutions, {}, "nessun conflitto ha una scelta di partenza");
   assert.equal(isCheckable(conflict), false);
   assert.equal(isCheckable(named), false);
   assert.equal(isCheckable(inferred), true, "una «dedotto» si spunta a mano");
 });
 
-test("«Conferma (n)»: le righe spuntate, i conflitti con una scelta, le riconferme se la riga è spuntata", () => {
+test("«Conferma (n)»: le righe spuntate, i conflitti con una scelta, le riconferme spuntate una per una", () => {
   const said = proposal();
   const inferred = proposal({ basis: "dedotto", preselected: false });
   const conflict = proposal({ kind: "conflitto", preselected: false, version: 3 });
@@ -173,33 +173,38 @@ test("«Conferma (n)»: le righe spuntate, i conflitti con una scelta, le riconf
     { id: conflict.id, version: 3, resolution: "ora" },
   );
   assert.equal(items.some((item) => item.id === named.id), false);
-  // La riga delle riconferme tolta: restano le altre.
-  assert.equal(confirmCount(data, { ...chosen, reconfirm: false }), 3);
-  // Niente spuntato, nessuna scelta, riconferme tolte: zero (il pulsante è spento).
-  assert.equal(confirmCount(data, { checked: {}, resolutions: {}, reconfirm: false }), 0);
+  // (Rilascio 10, §3.7) Le due riconferme tolte una per una: restano le altre.
+  const [first, second] = reconfirmable(data);
+  assert.equal(confirmCount(data, { ...chosen, checked: { ...chosen.checked, [first.id]: false, [second.id]: false } }), 3);
+  // Niente spuntato e nessuna scelta: zero (il pulsante è spento).
+  assert.equal(confirmCount(data, { checked: {}, resolutions: {} }), 0);
 });
 
-test("riconferme: solo le «detto» partono spuntate, nella riga; le «dedotto» si scelgono una per una, come nell'MCP", () => {
+test("(rilascio 10, §3.7) riconferme: una casella per fatto; solo le «detto» partono spuntate, le «dedotto» si scelgono, come nell'MCP", () => {
   const said = proposal({ kind: "conferma" });
   const inferred = proposal({ kind: "conferma", basis: "dedotto", preselected: false });
   const fromClient = proposal({ kind: "conferma", preselected: false });
-  const data = open([], [said, inferred, fromClient]);
+  const broken = proposal({ kind: "conferma", issue: "lungo" });
+  const data = open([], [said, inferred, fromClient, broken]);
+  assert.deepEqual(reconfirmations(data).map((p) => p.id), [said.id, inferred.id, fromClient.id], "una da correggere non entra nel blocco");
   assert.deepEqual(reconfirmable(data).map((p) => p.id), [said.id]);
   assert.deepEqual(reconfirmationsToChoose(data).map((p) => p.id), [inferred.id, fromClient.id]);
   const start = initialSelection(data);
-  assert.deepEqual([start.reconfirm, start.checked[inferred.id], start.checked[fromClient.id]], [true, false, false]);
+  assert.deepEqual([start.checked[said.id], start.checked[inferred.id], start.checked[fromClient.id], start.checked[broken.id]], [true, false, false, false]);
   assert.deepEqual(selectedItems(data, start), [{ id: said.id, version: 1 }]);
-  // Spuntata a mano, la «dedotto» entra; la riga tolta, le «detto» no.
-  const picked = selectionFrom(data, { overrides: { [inferred.id]: true }, resolutions: {}, reconfirm: false });
+  // Spuntata a mano, la «dedotto» entra; la «detto» tolta a mano, no.
+  const picked = selectionFrom(data, { overrides: { [inferred.id]: true, [said.id]: false }, resolutions: {} });
   assert.deepEqual(selectedItems(data, picked), [{ id: inferred.id, version: 1 }]);
-  assert.equal(confirmCount(data, selectionFrom(data, { overrides: { [inferred.id]: true }, resolutions: {}, reconfirm: true })), 2);
+  assert.equal(confirmCount(data, selectionFrom(data, { overrides: { [inferred.id]: true }, resolutions: {} })), 2);
+  // Quella da correggere non entra nemmeno spuntata a mano.
+  assert.equal(confirmCount(data, selectionFrom(data, { overrides: { [broken.id]: true }, resolutions: {} })), 1);
 });
 
 test("le scelte a mano restano sopra le proposte del server: una correzione o un aggiornamento non le cancellano", () => {
   const named = proposal({ issue: "nome_persona", preselected: false });
   const said = proposal();
   const inferred = proposal({ basis: "dedotto", preselected: false });
-  const choices = { overrides: { [said.id]: false, [inferred.id]: true, [named.id]: true }, resolutions: {}, reconfirm: true };
+  const choices = { overrides: { [said.id]: false, [inferred.id]: true, [named.id]: true }, resolutions: {} };
   // Da correggere: non si spunta, anche se la persona l'aveva spuntata.
   let selection = selectionFrom(open([named, said, inferred]), choices);
   assert.deepEqual([selection.checked[named.id], selection.checked[said.id], selection.checked[inferred.id]], [false, false, true]);
@@ -211,10 +216,10 @@ test("le scelte a mano restano sopra le proposte del server: una correzione o un
   assert.equal(selectionFrom(open([fixed]), { ...choices, overrides: {} }).checked[named.id], true);
   // Una correzione che introduce un problema toglie la spunta.
   assert.equal(selectionFrom(open([{ ...inferred, issue: "lungo" }]), choices).checked[inferred.id], false);
-  // Le scelte dei conflitti e la riga delle riconferme passano com'erano.
+  // Le scelte dei conflitti passano com'erano.
   const conflict = proposal({ kind: "conflitto", preselected: false });
-  const withConflict = selectionFrom(open([conflict]), { overrides: { [conflict.id]: true }, resolutions: { [conflict.id]: "prima" }, reconfirm: false });
-  assert.deepEqual(withConflict, { checked: { [conflict.id]: false }, resolutions: { [conflict.id]: "prima" }, reconfirm: false });
+  const withConflict = selectionFrom(open([conflict]), { overrides: { [conflict.id]: true }, resolutions: { [conflict.id]: "prima" } });
+  assert.deepEqual(withConflict, { checked: { [conflict.id]: false }, resolutions: { [conflict.id]: "prima" } });
 });
 
 test("dopo una conferma: si resta se restano righe, si passa a tutte se l'appunto è finito, si torna alla Memoria se non resta niente", () => {

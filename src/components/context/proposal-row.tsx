@@ -2,8 +2,10 @@
 
 import { useId, useState, useTransition } from "react";
 import { toast } from "sonner";
+import { ChevronRight, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { discardProposalsAction, editProposalAction } from "@/lib/actions/context";
@@ -13,7 +15,7 @@ import type { ProposalView } from "@/lib/db/queries/context-proposals";
 import { cn } from "@/lib/utils";
 import { LsLock } from "./fact-row";
 import { ChoiceSelect, Field, Mark, UseCasePicker, nameOfUseCase, type UseCaseOption } from "./fields";
-import { answersNeedLine, dueText, editableFields, isCheckable, proposalDraft, proposalPatch, sectionLabel, visibilityLabel, type ProposalDraft, type Resolution } from "./view-model";
+import { answersNeedLine, dueText, editableFields, isCheckable, proposalDraft, proposalPatch, sectionLabel, type ProposalDraft, type Resolution } from "./view-model";
 import { SECTION_ITEMS, VISIBILITY_ITEMS } from "./write-fact-form";
 
 const T = CONTEXT_TEXT;
@@ -24,10 +26,12 @@ const PARTY_ITEMS: ReadonlyArray<{ value: CommitmentParty; label: string }> = [
 ];
 
 /**
- * Una riga di «Da confermare» (rilascio 9a, docs/contesto/RILASCIO-9a-COSTRUZIONE.md §7.4): la casella; la frase (per
- * «Cambiano» sopra «Prima: …»; per un conflitto «Prima» e «Ora» con le due scelte); la citazione; «dedotto» e il
- * messaggio di ciò che va corretto; la sezione, chi la vede, gli use case; per un impegno di chi è, il ruolo e la data.
- * «Modifica» apre i campi sul posto; «Scarta» toglie la riga. Una riga da correggere non si spunta finché non è corretta.
+ * Una riga di «Da confermare» (rilascio 9a, docs/contesto/RILASCIO-9a-COSTRUZIONE.md §7.4; rilascio 10, §3.7): la
+ * casella; la frase (per «Cambiati» sopra «Prima: …»; per un conflitto «Prima» e «Ora» con le due scelte); «dedotto» e
+ * il messaggio di ciò che va corretto; la sezione, gli use case; per un impegno di chi è, il ruolo e la data. Chi la vede
+ * si dice solo con il lucchetto, quando è «Solo Lateral Space». La citazione si apre a richiesta.
+ * La riga si modifica toccando la frase: i campi si aprono sul posto. «Scarta» sta nel «⋯» della riga, con «Modifica».
+ * Una riga da correggere non si spunta finché non è corretta.
  * (9b) Sotto la frase, quando la lettura l'ha visto: «Risponde a «Cosa serve»: {titolo} ({codice})», solo per una
  * proposta «Per tutti»; per una «Solo Lateral Space», che non chiude la richiesta, «Solo un fatto «Per tutti» chiude una
  * richiesta.» (`answersNeedLine`).
@@ -63,7 +67,9 @@ export function ProposalRow({
   onDiscarded: () => void;
 }) {
   const statementId = useId();
+  const quoteId = useId();
   const [editing, setEditing] = useState(false);
+  const [quoteOpen, setQuoteOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const conflict = proposal.kind === "conflitto";
   const checkable = isCheckable(proposal);
@@ -81,6 +87,19 @@ export function ProposalRow({
     });
 
   const busy = disabled || pending;
+  // La frase si tocca per modificarla: un pulsante che si legge come il testo.
+  const statement = (text: string, className?: string) => (
+    <button
+      type="button"
+      id={statementId}
+      disabled={busy || editing}
+      aria-expanded={editing}
+      onClick={() => setEditing(true)}
+      className={cn("-mx-1 block min-h-11 w-full rounded-md px-1 text-left text-sm leading-relaxed break-words outline-none hover:bg-muted/40 focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-default sm:min-h-0", className)}
+    >
+      {text}
+    </button>
+  );
   return (
     <li className={cn("space-y-3 rounded-xl border p-3", error && "border-destructive/50")}>
       <div className="flex gap-3">
@@ -95,22 +114,30 @@ export function ProposalRow({
           {conflict && proposal.before ? (
             <div className="space-y-1">
               <p className="text-sm leading-relaxed">{T.confirm.before(proposal.before.statement, proposal.before.sourceLabel, proposal.before.date)}</p>
-              <p id={statementId} className="text-sm leading-relaxed font-medium">
-                {T.confirm.now(proposal.statement, sourceLabel)}
-              </p>
+              {statement(T.confirm.now(proposal.statement, sourceLabel), "font-medium")}
             </div>
           ) : (
-            <p id={statementId} className="text-sm leading-relaxed break-words">
-              {proposal.statement}
-            </p>
+            statement(proposal.statement)
           )}
           {needLine ? <p className="text-xs leading-relaxed break-words">{needLine}</p> : null}
-          {proposal.quote ? (
-            <p className="text-xs leading-relaxed break-words text-muted-foreground">
-              <q>{proposal.quote}</q>
-            </p>
-          ) : null}
           <ProposalMeta proposal={proposal} today={today} />
+          {proposal.quote ? (
+            <div className="space-y-1">
+              <button
+                type="button"
+                aria-expanded={quoteOpen}
+                aria-controls={quoteId}
+                onClick={() => setQuoteOpen(!quoteOpen)}
+                className="inline-flex min-h-11 items-center gap-1 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-0"
+              >
+                <ChevronRight aria-hidden className={cn("size-3.5 transition-transform motion-reduce:transition-none", quoteOpen && "rotate-90")} />
+                {T.confirm.showQuote}
+              </button>
+              <p id={quoteId} hidden={!quoteOpen} className="text-xs leading-relaxed break-words text-muted-foreground">
+                <q>{proposal.quote}</q>
+              </p>
+            </div>
+          ) : null}
           {proposal.issueMessage ? (
             <p role="alert" className="text-sm text-foreground">
               {proposal.issueMessage}
@@ -122,6 +149,22 @@ export function ProposalRow({
             </p>
           ) : null}
         </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={<Button type="button" variant="ghost" size="icon" aria-label={T.page.more} aria-describedby={statementId} className="-mt-1 -mr-1 size-11 shrink-0 sm:size-8" disabled={busy} />}
+            data-action="proposal-menu"
+          >
+            <MoreHorizontal aria-hidden />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-auto min-w-40">
+            <DropdownMenuItem className="min-h-11 px-2 sm:min-h-8" onClick={() => setEditing(true)}>
+              {T.confirm.edit}
+            </DropdownMenuItem>
+            <DropdownMenuItem className="min-h-11 px-2 sm:min-h-8" onClick={discard}>
+              {T.confirm.discard}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {conflict ? (
@@ -151,23 +194,12 @@ export function ProposalRow({
         </div>
       ) : null}
 
-      {editing ? (
-        <ProposalEdit workspaceId={workspaceId} proposal={proposal} useCaseOptions={useCaseOptions} onClose={() => setEditing(false)} />
-      ) : (
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="ghost" className="min-h-11 sm:min-h-8" disabled={busy} onClick={() => setEditing(true)}>
-            {T.confirm.edit}
-          </Button>
-          <Button type="button" variant="ghost" className="min-h-11 sm:min-h-8" disabled={busy} onClick={discard}>
-            {T.confirm.discard}
-          </Button>
-        </div>
-      )}
+      {editing ? <ProposalEdit workspaceId={workspaceId} proposal={proposal} useCaseOptions={useCaseOptions} onClose={() => setEditing(false)} /> : null}
     </li>
   );
 }
 
-/** La riga piccola sotto la frase: dedotto, risponde a una domanda, sezione, chi la vede, use case, impegno. */
+/** La riga piccola sotto la frase: dedotto, risponde a una domanda, sezione, use case, impegno; il lucchetto solo per «Solo Lateral Space». */
 function ProposalMeta({ proposal, today }: { proposal: ProposalView; today: string }) {
   const parts: string[] = [];
   if (proposal.section) parts.push(sectionLabel(proposal.section));
@@ -186,10 +218,7 @@ function ProposalMeta({ proposal, today }: { proposal: ProposalView; today: stri
       {parts.map((part, index) => (
         <span key={`${part}-${index}`}>{part}</span>
       ))}
-      <span className="inline-flex items-center gap-1">
-        {proposal.visibility === "ls" ? <LsLock /> : null}
-        <span aria-hidden={proposal.visibility === "ls" ? true : undefined}>{visibilityLabel(proposal.visibility)}</span>
-      </span>
+      {proposal.visibility === "ls" ? <LsLock /> : null}
     </div>
   );
 }

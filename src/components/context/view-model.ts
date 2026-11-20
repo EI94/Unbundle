@@ -74,11 +74,13 @@ export function confirmGroups(proposals: readonly ProposalView[]): ConfirmGroup[
 }
 
 export type Resolution = "prima" | "ora";
-/** Che cosa ha scelto la persona: le caselle, la scelta di ogni conflitto, la riga delle riconferme. */
+/**
+ * Che cosa ha scelto la persona: le caselle (anche quelle delle riconferme, una per fatto) e la scelta di ogni
+ * conflitto. (Rilascio 10, §3.7) Le riconferme stanno in un solo blocco, ognuna con la sua casella.
+ */
 export interface ConfirmSelection {
   checked: Readonly<Record<string, boolean>>;
   resolutions: Readonly<Record<string, Resolution>>;
-  reconfirm: boolean;
 }
 
 /** Una casella si può spuntare: non un conflitto (lì si sceglie «Prima» o «Ora») e nessun dato da correggere. */
@@ -87,29 +89,28 @@ export function isCheckable(proposal: Pick<ProposalView, "kind" | "issue">): boo
 }
 
 /**
- * Le scelte della persona sopra le proposte del server: le caselle toccate a mano, la scelta di ogni conflitto, la riga
- * delle riconferme. Le proposte arrivano sempre dal server (dopo una correzione, uno scarto, un aggiornamento): una
- * casella mai toccata segue la preselezione della proposta di adesso.
+ * Le scelte della persona sopra le proposte del server: le caselle toccate a mano e la scelta di ogni conflitto. Le
+ * proposte arrivano sempre dal server (dopo una correzione, uno scarto, un aggiornamento): una casella mai toccata segue
+ * la preselezione della proposta di adesso.
  */
 export interface ConfirmChoices {
   overrides: Readonly<Record<string, boolean>>;
   resolutions: Readonly<Record<string, Resolution>>;
-  reconfirm: boolean;
 }
-export const NO_CHOICES: ConfirmChoices = Object.freeze({ overrides: Object.freeze({}), resolutions: Object.freeze({}), reconfirm: true });
+export const NO_CHOICES: ConfirmChoices = Object.freeze({ overrides: Object.freeze({}), resolutions: Object.freeze({}) });
 
 /**
  * Le caselle a schermo: spuntate le proposte `preselected` (base «detto», non un conflitto, niente da correggere),
  * oppure come le ha messe la persona. Una proposta da correggere o un conflitto non si spuntano mai; corretta, torna
- * come prima (la scelta a mano resta). Nessun conflitto ha una scelta di partenza. Le riconferme preselezionate stanno
- * nella riga delle riconferme, che parte spuntata; le altre hanno una casella loro, che parte senza spunta.
+ * come prima (la scelta a mano resta). Nessun conflitto ha una scelta di partenza. Le riconferme seguono la stessa
+ * regola: spuntate quelle preselezionate («detto»), senza spunta le altre («dedotto», da un documento del cliente).
  */
 export function selectionFrom(open: Pick<OpenProposals, "proposals"> & Partial<Pick<OpenProposals, "reconfirmed">>, choices: ConfirmChoices = NO_CHOICES): ConfirmSelection {
   const checked: Record<string, boolean> = {};
-  for (const proposal of [...open.proposals, ...reconfirmationsToChoose({ reconfirmed: open.reconfirmed ?? [] })]) {
+  for (const proposal of [...open.proposals, ...(open.reconfirmed ?? [])]) {
     checked[proposal.id] = isCheckable(proposal) && (choices.overrides[proposal.id] ?? proposal.preselected);
   }
-  return { checked, resolutions: choices.resolutions, reconfirm: choices.reconfirm };
+  return { checked, resolutions: choices.resolutions };
 }
 
 /** La scelta di partenza: nessuna scelta della persona. */
@@ -117,10 +118,7 @@ export function initialSelection(open: Pick<OpenProposals, "proposals"> & Partia
   return selectionFrom(open, NO_CHOICES);
 }
 
-/**
- * Le voci da mandare a `confirmProposals`: le righe spuntate, i conflitti con una scelta, le riconferme preselezionate
- * se la loro riga è spuntata, e le altre riconferme spuntate una per una.
- */
+/** Le voci da mandare a `confirmProposals`: le righe spuntate, i conflitti con una scelta, le riconferme spuntate. */
 export function selectedItems(open: Pick<OpenProposals, "proposals" | "reconfirmed">, selection: ConfirmSelection): ConfirmItem[] {
   const items: ConfirmItem[] = [];
   for (const proposal of open.proposals) {
@@ -132,10 +130,7 @@ export function selectedItems(open: Pick<OpenProposals, "proposals" | "reconfirm
     }
     if (selection.checked[proposal.id] === true) items.push({ id: proposal.id, version: proposal.version });
   }
-  if (selection.reconfirm) {
-    for (const proposal of reconfirmable(open)) items.push({ id: proposal.id, version: proposal.version });
-  }
-  for (const proposal of reconfirmationsToChoose(open)) {
+  for (const proposal of reconfirmations(open)) {
     if (selection.checked[proposal.id] === true) items.push({ id: proposal.id, version: proposal.version });
   }
   return items;
@@ -146,17 +141,22 @@ export function confirmCount(open: Pick<OpenProposals, "proposals" | "reconfirme
   return selectedItems(open, selection).length;
 }
 
-/** Le riconferme che entrano con la riga spuntata: le preselezionate («detto»), senza niente da correggere. */
+/** (Rilascio 10, §3.7) Le riconferme del blocco, una casella per fatto: quelle senza niente da correggere. */
+export function reconfirmations(open: Pick<OpenProposals, "reconfirmed">): ProposalView[] {
+  return open.reconfirmed.filter((proposal) => proposal.issue === null);
+}
+
+/** Le riconferme che partono spuntate: le preselezionate («detto»). */
 export function reconfirmable(open: Pick<OpenProposals, "reconfirmed">): ProposalView[] {
-  return open.reconfirmed.filter((proposal) => proposal.issue === null && proposal.preselected);
+  return reconfirmations(open).filter((proposal) => proposal.preselected);
 }
 
 /**
- * Le riconferme da scegliere una per una: «dedotto», o da un documento del cliente, o di un fatto «Solo Lateral Space».
- * Partono senza spunta, come fa l'MCP del team.
+ * Le riconferme che partono senza spunta: «dedotto», o da un documento del cliente, o di un fatto «Solo Lateral Space».
+ * Si scelgono una per una, come fa l'MCP del team.
  */
 export function reconfirmationsToChoose(open: Pick<OpenProposals, "reconfirmed">): ProposalView[] {
-  return open.reconfirmed.filter((proposal) => proposal.issue === null && !proposal.preselected);
+  return reconfirmations(open).filter((proposal) => !proposal.preselected);
 }
 
 /**
@@ -311,6 +311,15 @@ export function sourceMeta(item: SourceListItem, today: string, lateralSpace: bo
   const parts = [day, sourceOriginLabel(item), sourceStateLabel(item)];
   if (item.kind === "documento") parts.push(visibilityLabel(item.visibility));
   return parts.filter(Boolean);
+}
+
+/**
+ * (Rilascio 10, §3.7) La riga di una fonte nella vista «Fonti», per Lateral Space: la data e a che punto è la lettura.
+ * L'origine è un'icona (con il suo nome per i lettori di schermo); chi la vede si dice solo con il lucchetto, quando è
+ * «Solo Lateral Space».
+ */
+export function sourceRowMeta(item: SourceListItem, today: string): string[] {
+  return [dayLabel(item.occurredOn, today), sourceStateLabel(item)].filter(Boolean);
 }
 
 /** Che cosa si può fare su una fonte (Lateral Space): leggere la prima volta, rileggere, o niente mentre la legge qualcuno. */
