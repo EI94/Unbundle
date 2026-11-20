@@ -274,13 +274,7 @@
   "src/components/workspace/team-mcp-card.tsx": {
     "palette": 14
   },
-  "src/components/workspace/verify-invite-email.tsx": {
-    "palette": 5
-  },
   "src/components/workspace/workspace-collaboration-card.tsx": {
     "palette": 13
-  },
-  "src/components/workspace/workspace-invite-accept-form.tsx": {
-    "palette": 3
   }
 }
