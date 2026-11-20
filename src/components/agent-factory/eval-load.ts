@@ -1,5 +1,6 @@
 import "server-only";
 import { unstable_rethrow } from "next/navigation";
+import { loadEvalRunOrigins, type EvalRunOrigin } from "@/lib/db/queries/use-case-eval-origins";
 import { loadEvalOverview } from "@/lib/db/queries/use-case-evals";
 import type { FactoryTarget } from "@/lib/db/queries/use-case-factory";
 import type { UcExecutor } from "@/lib/db/uc-executor";
@@ -46,4 +47,28 @@ export async function readEvalOverview(
   }
   if (read.dropped > 0) logSafeError(SCOPE, "righe_scartate", new TypeError("EvalOverview"), { ...where, dropped: read.dropped }, log);
   return { overview: read.overview, unavailable: false };
+}
+
+/**
+ * (8.2b) Da dove sono arrivate le esecuzioni che la sezione mostra (le evals che fanno lo stato del caso e l'ultimo banco
+ * di ogni ruolo): «dalla CI» o «dalla CLI». Senza panoramica, niente; una lettura che non riesce va nel log (solo codici)
+ * e dà null: la sezione non dice la fonte, piuttosto che dirne una sbagliata.
+ */
+export async function readEvalOrigins(
+  executor: UcExecutor,
+  target: FactoryTarget,
+  overview: EvalOverview | null,
+  deps: { load?: typeof loadEvalRunOrigins; log?: Pick<Console, "error"> } = {},
+): Promise<ReadonlyMap<string, EvalRunOrigin> | null> {
+  if (!overview) return null;
+  const ids = [overview.evals.latest?.id, ...overview.benches.map((b) => b.run.id)].filter((id): id is string => typeof id === "string" && id.length > 0);
+  if (ids.length === 0) return new Map();
+  const load = deps.load ?? loadEvalRunOrigins;
+  try {
+    return await load(executor, target, ids);
+  } catch (error) {
+    unstable_rethrow(error);
+    logSafeError(SCOPE, "fonte_non_letta", error, { workspaceId: target.workspaceId, useCaseId: target.useCaseId }, deps.log ?? console);
+    return null;
+  }
 }

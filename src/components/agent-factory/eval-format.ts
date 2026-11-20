@@ -24,6 +24,10 @@
  *   l'avviso delle evals, il banco superato) restano in `lib/use-cases/factory/benchmark.ts`: qui solo come si leggono
  *   e si mostrano.
  *
+ * - **(8.2b) La fonte:** la riga di un'esecuzione finisce con «dalla CI» (le ha mandate la CI di main, con la chiave
+ *   del repository) o «dalla CLI» (una persona). Per chi costruisce «dalla CI» porta all'esecuzione su GitHub; il
+ *   cliente lo legge senza link (`ciRunHref`).
+ *
  * Per caso e per ruolo, mai per persona: niente qui sa chi ha lanciato il banco o le evals (art. 15.4).
  * Modulo puro: solo import relativi `.ts`, lo usano il server e il browser con gli stessi testi.
  */
@@ -47,6 +51,7 @@ import {
   type EvalRunView,
   type EvalsAlert,
 } from "../../lib/use-cases/factory/benchmark.ts";
+import type { EvalRunOrigin } from "../../lib/db/queries/use-case-eval-origins.ts";
 import { labelWidthPx } from "../../lib/use-cases/matrix-labels.ts";
 
 // ─── Testi ───────────────────────────────────────────────────────────
@@ -91,7 +96,39 @@ export const EVAL_TEXT = Object.freeze({
   columnP95: "Tempo p95",
   columnMarks: "Segni",
   notMeasured: "non misurato",
+  /** (8.2b) In fondo alla riga di un'esecuzione: da dove è arrivata. */
+  fromCi: "dalla CI",
+  fromCli: "dalla CLI",
+  /** (8.2b) Per i lettori di schermo, dopo «dalla CI» quando porta all'esecuzione su GitHub. */
+  fromCiLink: "l'esecuzione su GitHub",
+  /** (8.2b) Senza misure, una riga in più. */
+  emptyCi: "Con la CI collegata, le evals di main arrivano da sole dopo ogni unione.",
 });
+
+/** (8.2b) «dalla CI» o «dalla CLI», in fondo alla riga di un'esecuzione. */
+export function evalSourceText(source: EvalRunOrigin["source"]): string {
+  return source === "ci" ? EVAL_TEXT.fromCi : EVAL_TEXT.fromCli;
+}
+
+/**
+ * (8.2b) L'esecuzione su GitHub, la stessa regola della 0042 (`CI_RUN_URL_RE`, una prova le tiene uguali): qui scritta di
+ * nuovo perché questo modulo va anche nel browser.
+ */
+export const CI_RUN_LINK_RE = /^https:\/\/github[.]com\/[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}\/actions\/runs\/[0-9]{1,20}$/;
+
+/**
+ * (8.2b) Dove porta «dalla CI»: l'esecuzione su GitHub, solo per chi costruisce (`withLink`) e solo per un indirizzo di
+ * un'esecuzione di GitHub. Il cliente legge «dalla CI» senza link: là si vede chi ha unito.
+ */
+export function ciRunHref(origin: EvalRunOrigin | null | undefined, withLink: boolean): string | null {
+  if (!withLink || !origin || origin.source !== "ci" || typeof origin.ciRunUrl !== "string") return null;
+  return CI_RUN_LINK_RE.test(origin.ciRunUrl) ? origin.ciRunUrl : null;
+}
+
+/** (8.2b) La fonte di un'esecuzione, dall'elenco letto (id senza badare alle maiuscole); null se non si sa. */
+export function originOf(origins: ReadonlyMap<string, EvalRunOrigin> | null | undefined, runId: string): EvalRunOrigin | null {
+  return origins?.get(runId.toLowerCase()) ?? null;
+}
 
 /** I segni di un modello nel banco, in quest'ordine. */
 export const BENCH_MARKS = ["oggi", "più bravo", "più efficiente", "più economico"] as const;
