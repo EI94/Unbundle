@@ -120,3 +120,31 @@ test("the same batch for a non-member, another workspace, an uppercase address",
   assert.equal(upper.access?.id, state.caseId);
   assert.ok(await caseHeaderFromRows(exec!, upper.headerRows, { workspaceId: ids.ws.toUpperCase(), caseId: state.caseId.toUpperCase(), roles: ["ls_lead"] }));
 });
+
+test("(rilascio 10, §3.5) the header counts the PDFs to check by hand in the same round-trip: never one's own upload, standard zone only", opts, async () => {
+  const sha = (n: number) => String(n).repeat(64).slice(0, 64);
+  const file = (n: number, uploader: string, extra = "") =>
+    q(
+      `INSERT INTO uc_files (workspace_id, case_id, uploaded_by_user_id, file_name, privacy_class, max_size_bytes, sha256, scan_findings${extra ? ", " + extra.split("=")[0] : ""})
+       VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'riservato_azienda', 1000, $5, '{"revisione_manuale": true}'::jsonb${extra ? ", " + extra.split("=")[1] : ""})`,
+      [ids.ws, state.caseId, uploader, `prova-${n}.pdf`, sha(n)],
+    );
+  await file(1, ids.lead);
+  await file(2, ids.owner);
+  await file(3, ids.owner, "deleted_at=now()");
+  await file(4, ids.owner, "reviewed_at=now()");
+  try {
+    const header = async (userId: string, roles: ("ls_lead" | "owner_cliente")[]) => {
+      const counted = countingExecutor();
+      const base = await loadDossierBaseRows(counted.executor, { workspaceId: ids.ws, caseId: state.caseId, userId });
+      assert.equal(counted.calls(), 1, "still one round-trip with the access");
+      return caseHeaderFromRows(exec!, base.headerRows, { workspaceId: ids.ws, caseId: state.caseId, roles });
+    };
+    assert.equal((await header(ids.lead, ["ls_lead"]))?.filesToCheck, 1, "the owner's PDF, not the lead's own (four eyes); deleted and reviewed ones never");
+    assert.equal((await header(ids.owner, ["owner_cliente"]))?.filesToCheck, 1, "the raw count: the layout shows the step only to who checks files (checksFiles)");
+    const own = await loadCaseHeader(exec!, { workspaceId: ids.ws, caseId: state.caseId, userId: ids.lead, roles: ["ls_lead"] });
+    assert.equal(own?.filesToCheck, 1, "the header's own read counts the same");
+  } finally {
+    await q(`DELETE FROM uc_files WHERE case_id = $1::uuid AND file_name LIKE 'prova-%'`, [state.caseId]);
+  }
+});

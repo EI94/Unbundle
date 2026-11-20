@@ -1,6 +1,6 @@
 import { casePath } from "@/components/uc/catalog/paths";
 import { CatalogExportLinks } from "@/components/uc/export/catalog-export-links";
-import { loadCaseHead, loadFilesToCheck } from "@/components/uc/shell/case-data";
+import { filesToCheckFor, loadCaseHead } from "@/components/uc/shell/case-data";
 import { CaseHeader } from "@/components/uc/shell/case-header";
 import { CaseUrlPanels, type CaseMenuEntry, type CaseStepView, type CaseTransitionView } from "@/components/uc/shell/case-menu";
 import { CaseStickyBar, CaseTabs } from "@/components/uc/shell/case-tabs";
@@ -39,8 +39,8 @@ const CASE_HEAD_ID = "uc-case-head";
  *
  * I dati della testata sono un giro solo (`uc-header.ts`, prontezza in cache;
  * subito dopo un comando, con la cache ancora indietro, dal vivo e un giro in più),
- * più, per chi controlla i file, il conteggio dei PDF da controllare a mano
- * (`loadFilesToCheck`, il passo «Controlla N file»). Ogni pagina ripete da sé
+ * con il conteggio dei PDF da controllare a mano (il passo «Controlla N file»,
+ * `filesToCheckFor`). Ogni pagina ripete da sé
  * `requireWorkspacePage(` e il controllo del ruolo di caso, perché un layout non
  * si riesegue nelle navigazioni interne. Le azioni dei casi invalidano questo
  * layout (`revalidatePath(…, "layout")`), così la testata resta aggiornata.
@@ -53,9 +53,8 @@ export default async function CaseLayout({ children, params }: { children: React
   const { workspaceId, caseId } = await params;
   const { session, access } = await requireWorkspacePage(workspaceId);
   let head: Awaited<ReturnType<typeof loadCaseHead>>;
-  let filesToCheck: number;
   try {
-    [head, filesToCheck] = await Promise.all([loadCaseHead(workspaceId, caseId, session.user.id, access.role), loadFilesToCheck(workspaceId, caseId, session.user.id, access.role)]);
+    head = await loadCaseHead(workspaceId, caseId, session.user.id, access.role);
   } catch (error) {
     if (error instanceof UcAccessError && error.code === "non_disponibile") return <SectionUnavailable />;
     throw error;
@@ -71,7 +70,7 @@ export default async function CaseLayout({ children, params }: { children: React
   const writable = !caseAccess.readOnly && c.status !== "chiuso";
   const exportable = exportChoices(roles, c.catalogVersion);
   const canExport = exportable.validated || exportable.draft;
-  const steps = caseNextSteps({ ...header.nextStep, filesToCheck }, { roles });
+  const steps = caseNextSteps({ ...header.nextStep, filesToCheck: filesToCheckFor(caseAccess, header) }, { roles });
   const usable = (s: NextStep) => (s.id === "scarica_catalogo" ? canExport : writable);
   const next = nextStepFor(steps);
   const primary = next && usable(next) ? next : null;

@@ -8,8 +8,6 @@ import { loadDossierBaseRows } from "@/lib/db/queries/uc-dossier-base";
 import { caseHeaderFromRows, type CaseHeaderData } from "@/lib/db/queries/uc-header";
 import { getAppUcExecutor, type UcExecutor, type UcRow } from "@/lib/db/uc-executor";
 import { timeUc } from "@/lib/uc/log";
-import { panelFilesSql } from "@/lib/uc/sql/files";
-import { rowBool, rowString } from "@/lib/uc/sql/readiness";
 import type { CaseRole } from "@/lib/uc/vocab";
 import { UC_SHELL_PAGE_ROLES, checksFiles, type UcShellPage } from "@/lib/uc/views/case-shell";
 import type { WorkspaceAccess } from "@/lib/workspace-access";
@@ -118,18 +116,12 @@ export const loadCaseHead = cache(async function loadCaseHead(
 });
 
 /**
- * (Rilascio 10, §3.5, F-076) Il numero del passo «Controlla N file»: i PDF in revisione manuale che chi guarda può
- * controllare, cioè nella zona standard (la sola che si controlla a mano, `reviewDecisionSql`) e non caricati da lui
- * (quattro occhi, `canReviewFile`). Stessa lettura del pannello dei file (`panelFilesSql`), un giro e una volta per
- * richiesta: lo chiedono la testata e la Panoramica. 0 senza leggere per chi non controlla i file (`checksFiles`).
+ * (Rilascio 10, §3.5, F-076) Il numero del passo «Controlla N file»: i PDF da controllare a mano letti dalla testata,
+ * nel suo stesso giro (`filesToCheckCountSql`), solo per chi controlla i file (`checksFiles`); per gli altri 0.
  */
-export const loadFilesToCheck = cache(async function loadFilesToCheck(workspaceId: string, caseId: string, userId: string, workspaceRole: string): Promise<number> {
-  const { caseAccess, executor } = await dossierBase(workspaceId, caseId, userId, workspaceRole);
-  if (!checksFiles({ roles: caseAccess.roles, isLateralSpace: caseAccess.user.isLateralSpace, readOnly: caseAccess.readOnly, status: caseAccess.status })) return 0;
-  const [rows = []] = await executor.batch([panelFilesSql({ caseId: caseAccess.caseId, itemId: null, includePersonalZone: false })]);
-  const me = caseAccess.user.userId.toLowerCase();
-  return rows.filter((r) => rowBool(r.in_review) && rowString(r.uploaded_by_user_id)?.toLowerCase() !== me).length;
-});
+export function filesToCheckFor(caseAccess: Pick<CaseAccess, "roles" | "readOnly" | "status" | "user">, header: Pick<CaseHeaderData, "filesToCheck">): number {
+  return checksFiles({ roles: caseAccess.roles, isLateralSpace: caseAccess.user.isLateralSpace, readOnly: caseAccess.readOnly, status: caseAccess.status }) ? header.filesToCheck : 0;
+}
 
 /** Una pagina del guscio: 404 se il ruolo di caso non basta (`UC_SHELL_PAGE_ROLES`). */
 export async function openShellPage(i: { workspaceId: string; caseId: string; session: Session; access: Pick<WorkspaceAccess, "role">; page: UcShellPage }): Promise<OpenedShell> {

@@ -335,7 +335,7 @@ test("the template's roles, modules, gates and ROI are read from the definition 
 
 // ── Panoramica senza codici interni per il cliente (DESIGN §7.1 P0-12) ──
 
-test("the Panoramica reads «In breve» and the phases without fact codes, and without articles or item keys for the client", opts, async () => {
+test("the Panoramica reads the phases without fact codes, and without articles or item keys for the client", opts, async () => {
   const [saved] = await q(`SELECT description FROM uc_cases WHERE id = $1::uuid`, [state.caseId]);
   // Synthetic text written as Lateral Space keeps its notes: fact codes, an article, an item key.
   const inBreve = "Il servizio risponde in giornata (F001, F002), come da art. 7.2; il volume è in q.servizio.02.";
@@ -347,14 +347,15 @@ test("the Panoramica reads «In breve» and the phases without fact codes, and w
   ]);
   try {
     const c = { workspaceId: ids.ws, caseId: state.caseId };
-    const texts = (d: Awaited<ReturnType<typeof loadOverview>>) => [d!.inBreve ?? "", ...d!.phases.flatMap((p) => Object.values(p))];
+    const texts = (d: Awaited<ReturnType<typeof loadOverview>>) => d!.phases.flatMap((p) => Object.values(p));
     const client = await loadOverview(exec!, c);
-    assert.match(client!.inBreve ?? "", /^Il servizio risponde in giornata, /);
+    // (Rilascio 10, §3.5) «Il caso» left the Panoramica (F-031): «In breve» is read by Soluzione only.
+    assert.equal(client && "inBreve" in client, false);
     assert.deepEqual(client!.phases, [{ fase: "Prova", quando: "Maggio", cosa: "Si prova sui dati inventati.", uscita: "Il via" }]);
     for (const text of texts(client)) assert.deepEqual(findForbidden(text, "cliente"), [], text);
     const ls = await loadOverview(exec!, { ...c, audience: "ls" });
     assert.ok(texts(ls).every((t) => !/F\d{3}/.test(t)), "no fact codes for Lateral Space either, as in the Descrizione");
-    assert.match(ls!.inBreve ?? "", /art\. 7\.2/, "Lateral Space keeps the article");
+    assert.match(ls!.phases[0]?.uscita ?? "", /art\. 9/, "Lateral Space keeps the article");
   } finally {
     await q(`UPDATE uc_cases SET description = $2::jsonb WHERE id = $1::uuid`, [state.caseId, JSON.stringify(saved.description ?? null)]);
   }

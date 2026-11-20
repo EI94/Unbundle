@@ -583,6 +583,18 @@ ORDER BY f.created_at DESC
 LIMIT 200`);
 }
 
+/**
+ * (Rilascio 10, §3.5, F-076) Quanti PDF aspettano il controllo a mano da chi guarda: in revisione manuale, nella zona
+ * standard (la sola che si controlla a mano, `reviewDecisionSql`), non caricati da lui (quattro occhi). Un conteggio,
+ * per la testata del caso (il passo «Controlla N file»), nel suo stesso giro.
+ */
+export function filesToCheckCountSql(i: { workspaceId: string; caseId: string; userId: string }): UcStatement {
+  return toStatement(ucSql`SELECT count(*)::int AS files_to_check FROM uc_files f
+WHERE f.case_id = ${cast(uuid(i.caseId, "caso"), "uuid")} AND f.workspace_id = ${cast(uuid(i.workspaceId, "workspace"), "uuid")}
+  AND f.storage_zone = 'standard' AND ${IN_REVIEW}
+  AND f.uploaded_by_user_id IS DISTINCT FROM ${cast(uuid(i.userId, "utente"), "uuid")}`);
+}
+
 /** Schede dataset da verificare (caso intero o una voce). */
 export function panelDatasetsSql(i: { caseId: string; itemId: string | null }): UcStatement {
   const caseId = cast(uuid(i.caseId, "caso"), "uuid");

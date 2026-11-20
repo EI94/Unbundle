@@ -189,8 +189,10 @@ test("the Panoramica page: the via section inside, its anchor, folds closed, the
   assert.doesNotMatch(source, /defaultOpen|<details[^>]*open/, "folds closed unless a link opens them");
   assert.match(source, /filled=\{!headerPrimary\}/);
   assert.match(source, /pageCommand: stepHasPageCommand\(primary\.id\)/, "the same rule as the header");
-  assert.match(source, /await Promise\.all\(\[\s*loadOverview\(/);
-  assert.match(source, /loadVia\(executor,/);
+  // (Medio of the review) Two round-trips: the header's batch, then one batch for overview, via and Claude's accesses.
+  assert.match(source, /await loadOverviewWithVia\(executor, \{/);
+  assert.match(source, /extra: withTokens \? \[caseReadTokensSql\(/);
+  assert.doesNotMatch(source, /Promise\.all|listCaseReadTokens|loadFilesToCheck|await loadOverview\(|await loadVia\(/);
   assert.match(source, /<DetailSheet title=\{T\.allMilestones\}/);
   // (Rilascio 10) The words live in the text module: no visible literal is left in the page.
   assert.doesNotMatch(source, /title="[A-Z]|>\s*(Vedi tutte|Il piano|Il percorso|Chi lo scioglie|Vai alla scheda privacy)\s*</);

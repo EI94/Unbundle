@@ -22,12 +22,12 @@
 import { listGateReviews } from "./uc-gates.ts";
 import { isUuid, loadCaseReadiness } from "./uc-cases.ts";
 import { eventInsertSql } from "./uc-events.ts";
-import type { UcExecutor } from "../uc-executor.ts";
+import type { UcExecutor, UcRow } from "../uc-executor.ts";
 import { caseListView, dataDictionaryView, gateStatusView, openItemsView, validatedCatalogView, type DictionaryItemInput, type McpViewOptions, type OpenItemInput } from "../../uc/mcp-view.ts";
 import { caseScopeMarker, clientTextFromSettings, grantedCaseScopes, parseStoredSnapshot, roleLabelsFrom, type GrantableCaseScope, type McpCaseTool } from "../../uc/mcp-access.ts";
 import { snapshotForViewer } from "../../uc/snapshot.ts";
 import { rowBool, rowDate, rowJson, rowNumber, rowObject, rowString, rowVocab } from "../../uc/sql/readiness.ts";
-import { cast, toStatement, ucSql } from "../../uc/sql/statement.ts";
+import { cast, toStatement, ucSql, type UcStatement } from "../../uc/sql/statement.ts";
 import { templatePartsReader } from "../../uc/sql/template-parts.ts";
 import type { Json } from "../../uc/types.ts";
 import { CASE_STATUSES, ITEM_KINDS, ITEM_STATUSES, PRIORITIES, PRIVACY_CLASSES, type CaseStatus, type ItemKind } from "../../uc/vocab.ts";
@@ -288,18 +288,23 @@ export interface CaseReadTokenItem {
  * Drizzle): le date si leggono con `AT TIME ZONE 'UTC'`, così non dipendono dal
  * fuso del processo né da quello della sessione.
  */
-export async function listCaseReadTokens(executor: UcExecutor, workspaceId: string, caseId: string): Promise<CaseReadTokenItem[]> {
-  if (!isUuid(workspaceId) || !isUuid(caseId)) return [];
-  const [rows] = await executor.batch([
-    toStatement(ucSql`SELECT id, label, token_prefix, scopes,
+/**
+ * (Rilascio 10, §3.5) Gli accessi di Claude di un caso come istruzione, per metterla nel batch di una pagina (la
+ * Panoramica: `loadOverviewWithVia`); le righe si leggono con `toCaseReadTokens`. Id già controllati (UUID).
+ */
+export function caseReadTokensSql(workspaceId: string, caseId: string): UcStatement {
+  return toStatement(ucSql`SELECT id, label, token_prefix, scopes,
   created_at AT TIME ZONE 'UTC' AS created_at, expires_at AT TIME ZONE 'UTC' AS expires_at,
   last_used_at AT TIME ZONE 'UTC' AS last_used_at, revoked_at AT TIME ZONE 'UTC' AS revoked_at,
   revoked_at IS NULL AND (expires_at IS NULL OR expires_at > (now() AT TIME ZONE 'UTC')) AS active
 FROM workspace_integration_tokens
 WHERE workspace_id = ${cast(workspaceId, "uuid")} AND scopes ? ${cast(caseScopeMarker(caseId), "text")}
-ORDER BY created_at DESC`),
-  ]);
-  return rows.map((r) => ({
+ORDER BY created_at DESC`);
+}
+
+/** Le righe di `caseReadTokensSql`: mai il segreto. */
+export function toCaseReadTokens(rows: readonly UcRow[] | undefined): CaseReadTokenItem[] {
+  return (rows ?? []).map((r) => ({
     id: String(r.id),
     label: String(r.label),
     tokenPrefix: String(r.token_prefix),
@@ -310,6 +315,12 @@ ORDER BY created_at DESC`),
     revokedAt: rowDate(r.revoked_at)?.toISOString() ?? null,
     active: rowBool(r.active),
   }));
+}
+
+export async function listCaseReadTokens(executor: UcExecutor, workspaceId: string, caseId: string): Promise<CaseReadTokenItem[]> {
+  if (!isUuid(workspaceId) || !isUuid(caseId)) return [];
+  const [rows] = await executor.batch([caseReadTokensSql(workspaceId, caseId)]);
+  return toCaseReadTokens(rows);
 }
 
 /** Revoca un solo token del caso; false se non c'è, è di un altro caso o è già revocato. */

@@ -22,12 +22,12 @@ import {
 } from "@/components/uc/overview/overview-sections";
 import { GatePanel, ViaWithdraw } from "@/components/uc/progress/gate-panel";
 import { CasePhases, CoverageCard, ViaHistory } from "@/components/uc/progress/progress-sections";
-import { loadCaseHead, loadFilesToCheck, ucEmailConfigured } from "@/components/uc/shell/case-data";
+import { filesToCheckFor, loadCaseHead, ucEmailConfigured } from "@/components/uc/shell/case-data";
 import { DetailSheet } from "@/components/uc/ui/detail-sheet";
 import { TechDetails } from "@/components/uc/ui/tech-details";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
-import { listCaseReadTokens } from "@/lib/db/queries/uc-mcp";
-import { loadOverview, loadVia } from "@/lib/db/queries/uc-overview";
+import { caseReadTokensSql, toCaseReadTokens } from "@/lib/db/queries/uc-mcp";
+import { loadOverviewWithVia } from "@/lib/db/queries/uc-overview";
 import { exportChoices } from "@/lib/uc/export/request";
 import { VIA_SECTION_ID, canOpenShellPage, landingSegment, stepHasPageCommand, stepHiddenOn, stepPanelOf } from "@/lib/uc/views/case-shell";
 import { readableText } from "@/lib/uc/views/description";
@@ -90,12 +90,12 @@ import { isLsViewer } from "@/lib/uc/views/status-groups";
  * sezione «Via allo sviluppo» quando il passo si fa lì (la testata allora lo
  * nasconde, `stepHasPageCommand`).
  *
- * Letture: la testata (`loadCaseHead`, già fatta dal layout nella stessa
- * richiesta), la Panoramica (`loadOverview`, anche con il pannello di un blocco
- * `?apri=blocco:<id>` o di tutte le tappe `?apri=tappe`) e il via
- * (`loadVia`: prontezza dal vivo, proposte, versioni) in parallelo; per
- * Lateral Space dopo il via gli accessi di Claude; per chi controlla i file il
- * loro conteggio (lo stesso della testata).
+ * Letture: due giri. La testata (`loadCaseHead`, già fatta dal layout nella
+ * stessa richiesta, con il conteggio dei PDF da controllare), poi un batch solo
+ * (`loadOverviewWithVia`) con la Panoramica (anche con il pannello di un blocco
+ * `?apri=blocco:<id>` o di tutte le tappe `?apri=tappe`), il via (prontezza dal
+ * vivo, proposte, versioni) e, per Lateral Space dopo il via, gli accessi di
+ * Claude.
  *
  * Chi non vede la Panoramica (l'approvatore privacy) va alla sua pagina d'arrivo.
  */
@@ -130,21 +130,17 @@ export default async function OverviewPage({
   const panel = parseOverviewPanel((await searchParams).apri);
   const blockerPanel = panel?.kind === "blocco" && layout.sections.includes("blocchi") ? panel.blockerId : null;
 
-  const [data, via, tokens, filesToCheck] = await Promise.all([
-    loadOverview(executor, {
-      workspaceId,
-      caseId,
-      now,
-      blockerId: blockerPanel,
-      blockerQuestions: BLOCKER_PANEL_ITEMS,
-      withFiles: blockerPanel !== null && isLead && signable,
-      audience: layout.audience,
-    }),
-    loadVia(executor, { workspaceId, caseId, now, withFiles: signable && (isLead || isOwner) }),
-    ls && pastVia ? listCaseReadTokens(executor, workspaceId, caseId) : Promise.resolve([]),
-    loadFilesToCheck(workspaceId, caseId, session.user.id, access.role),
-  ]);
+  // Un giro solo: Panoramica, via e (Lateral Space dopo il via) gli accessi di Claude nello stesso batch.
+  const withTokens = ls && pastVia;
+  const read = await loadOverviewWithVia(executor, {
+    overview: { workspaceId, caseId, now, blockerId: blockerPanel, blockerQuestions: BLOCKER_PANEL_ITEMS, withFiles: blockerPanel !== null && isLead && signable, audience: layout.audience },
+    via: { workspaceId, caseId, now, withFiles: signable && (isLead || isOwner) },
+    extra: withTokens ? [caseReadTokensSql(caseAccess.workspaceId, caseAccess.caseId)] : [],
+  });
+  const { overview: data, via } = read;
   if (!data || !via) notFound();
+  const tokens = withTokens ? toCaseReadTokens(read.extra[0]) : [];
+  const filesToCheck = filesToCheckFor(caseAccess, header);
 
   // I testi del caso e dello schema come li legge chi guarda: al cliente niente articoli, sigle, chiavi né codici (DESIGN §6.2).
   const text = (t: string) => readableText(t, layout.audience);
