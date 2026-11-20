@@ -131,7 +131,7 @@ test("i messaggi di partenza: quelli salvati com'erano, o il benvenuto con il no
   ]);
   const [welcome] = seedMessages({ unitName: "Ufficio acquisti", hasDocuments: true, initialMessages: [] });
   assert.equal(welcome.role, "assistant");
-  assert.match((welcome.parts[0] as { text: string }).text, /^Mappiamo il lavoro di \*\*Ufficio acquisti\*\*\. .* Ho già i documenti caricati: li uso per fare domande più precise\.$/);
+  assert.match((welcome.parts[0] as { text: string }).text, /^Mappiamo il lavoro di \*\*Ufficio acquisti\*\*: .* Uso anche i documenti caricati\.$/);
 });
 
 test("una chat vera con il Claude finto: «Passo salvato», e dopo la rilettura il passo è nello store della board, senza ricaricare", async (t) => {

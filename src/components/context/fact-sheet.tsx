@@ -33,6 +33,7 @@ export function FactSheet({
   canEdit,
   useCaseOptions,
   onClose,
+  onReplaced,
 }: {
   workspaceId: string;
   factId: string | null;
@@ -40,6 +41,8 @@ export function FactSheet({
   canEdit: boolean;
   useCaseOptions: readonly UseCaseOption[];
   onClose: () => void;
+  /** (Rilascio 10) Un testo nuovo è un fatto nuovo: la pagina scrive il suo id nell'indirizzo (`?apri=`). */
+  onReplaced?: (factId: string) => void;
 }) {
   // Il fatto aperto può cambiare id: un testo nuovo è una versione nuova.
   const [current, setCurrent] = useState<string | null>(factId);
@@ -57,7 +60,10 @@ export function FactSheet({
       canEdit={canEdit}
       useCaseOptions={useCaseOptions}
       onClose={onClose}
-      onReplaced={(next) => setCurrent(next)}
+      onReplaced={(next) => {
+        setCurrent(next);
+        onReplaced?.(next);
+      }}
     />
   );
 }
@@ -95,7 +101,8 @@ function FactSheetBody({
   }, [workspaceId, factId, reload]);
 
   const fact = loaded.status === "pronto" ? loaded.fact : null;
-  const title = fact?.statement ?? T.page.title;
+  // (Rilascio 10) Mentre si carica, un titolo neutro: «Fatto».
+  const title = fact?.statement ?? T.page.factTitle;
 
   const act = (work: () => Promise<{ ok: true } | { ok: false; message: string }>, done: string, after: "reload" | "close") => {
     startTransition(async () => {

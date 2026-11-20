@@ -11,7 +11,7 @@ import { enableTsxImports } from "../../use-cases/detail/referent/tsx-test-loade
 
 await enableTsxImports();
 const atoms = await import("./atoms.tsx");
-const { AddButton, BoardButton, Chip, Dot, ExposureBadge, FilterChip, GatePill, Kpis, Legend, LegendItem, MoreText, RowLink, Section, StackTable, StatusChip, StreamBadge, Tag } = atoms;
+const { AddButton, BoardButton, Chip, Dot, FilterChip, GatePill, Kpis, Legend, LegendItem, MoreText, RowLink, Section, StackTable, StatusChip, StreamBadge, Tag } = atoms;
 
 const html = (element: Parameters<typeof renderToStaticMarkup>[0]) => renderToStaticMarkup(element);
 /** `createElement` con i figli dopo le props: il tipo di React li vuole tra le props quando un componente li chiede. */
@@ -61,8 +61,6 @@ test("tag, chip di ruoli e strumenti con la loro ×, punti della legenda, il rom
 test("i badge: lo stream nel suo colore e con il suo nome (P23, P28); il grigio dell'esposizione; la pillola della decisione (P25)", () => {
   assert.equal(html(h(StreamBadge, { stream: "automate" })), '<span class="b-abadge" data-stream="automate" data-b="stream-badge" title="Automate">Automatizzare</span>');
   assert.equal(html(h(StreamBadge, { stream: "differentiate", small: true })), '<span class="b-abadge b-small" data-stream="differentiate" data-b="stream-badge" title="Differentiate">Differenziare</span>');
-  assert.equal(html(h(ExposureBadge, { pct: 34.4 })), '<span class="b-abadge b-auto" data-b="exposure-badge">AI 34%</span>');
-  assert.equal(html(h(ExposureBadge, { pct: 0, small: true })), '<span class="b-abadge b-auto b-small" data-b="exposure-badge">AI 0%</span>');
   assert.equal(html(h(GatePill, { label: "Conferma dell'ordine" })), '<span class="b-gate" data-b="gate">Conferma dell&#x27;ordine</span>');
   assert.equal(html(h(GatePill, { label: null })), '<span class="b-gate" data-b="gate">Decide una persona</span>');
   assert.equal(html(h(GatePill, { label: "  " })), '<span class="b-gate" data-b="gate">Decide una persona</span>');
@@ -116,7 +114,8 @@ test("la tabella che sul telefono diventa blocchi: le colonne prima dei valori (
 test("i pezzi della board non scrivono testi né colori propri: le scritte vengono da text.ts o da chi li usa", () => {
   const dir = new URL("./", import.meta.url);
   const sources = readdirSync(dir).filter((file) => file.endsWith(".tsx"));
-  assert.deepEqual(sources.sort(), ["atoms.tsx", "drawer.tsx", "edit.tsx", "frame.tsx", "map.tsx"]);
+  // (Rilascio 10, §3.7) In più il «⋯» della testata.
+  assert.deepEqual(sources.sort(), ["atoms.tsx", "drawer.tsx", "edit.tsx", "frame.tsx", "map.tsx", "menu.tsx"]);
   for (const file of sources) {
     const source = readFileSync(new URL(file, dir), "utf8").replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
     // Nessun testo con lettere scritto nel markup, nessuna etichetta scritta a mano.

@@ -10,6 +10,9 @@
 /* Il corpo del pannello (della board) non ha margini: il compagno prende quelli della testa del pannello, 22 px. */
 [data-board-root] .b-comp { display: flex; flex-direction: column; gap: 12px; min-height: 100%; padding: 14px 22px 0; font-size: 13.5px; line-height: 1.5; color: var(--board-ink-2); }
 [data-board-root] .b-comp-tools { display: flex; flex-wrap: wrap; gap: 8px; }
+/* (Rilascio 10, §3.7) «Documenti ▾»: chiuso, le due azioni non si vedono; la freccia dopo la parola. */
+[data-board-root] .b-comp-tools[hidden] { display: none; }
+[data-board-root] .b-caret { font-size: 10px; color: var(--board-graphite); }
 [data-board-root] .b-comp-log { display: flex; flex-direction: column; gap: 14px; flex: 1 1 auto; min-width: 0; }
 [data-board-root] .b-comp-msg { min-width: 0; overflow-wrap: anywhere; }
 [data-board-root] .b-comp-msg[data-role="user"] { align-self: flex-end; max-width: 85%; background: var(--board-bone); border: 1px solid var(--board-line-strong); border-radius: 8px; padding: 8px 11px; color: var(--board-ink); }
@@ -49,11 +52,9 @@
 [data-board-root] .b-comp-foot { position: sticky; bottom: 0; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding-top: 12px; border-top: 1px solid var(--board-line); background: var(--board-paper); }
 
 /* ── «Classificazione»: le azioni della testa, la riga da classificare, i filtri, le righe degli use case ── */
-[data-board-root] .b-cls-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; }
-[data-board-root] .b-cls-todo { margin: 0 0 14px; font-size: 13px; color: var(--board-graphite); }
 /* I riquadri dei tre stream: il punto dello stream davanti alla riga (un colore per stream, P28). */
 [data-board-root] .b-cls .b-kpi .b-kl .b-adot { margin-right: 6px; }
-[data-board-root] .b-cls-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+[data-board-root] .b-cls-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 12px; }
 /* «da classificare» nella legenda e nel filtro: un anello, come il bordo neutro delle card senza stream (il punto pieno
    neutro quasi sparisce sul fondo scuro). */
 [data-board-root] .b-cls .b-adot[data-tone="neutral"] { background: transparent; box-shadow: inset 0 0 0 1.5px var(--board-graphite-2); }
@@ -67,3 +68,8 @@
 [data-board-root] .b-dr-body > .b-ag { display: flex; flex-wrap: wrap; gap: 4px; }
 [data-board-root] .b-cls-big { margin: 0 0 4px; font-family: var(--board-font-serif); font-size: 28px; line-height: 1; font-variant-numeric: tabular-nums; color: var(--board-ink); }
 @container board (max-width:520px) { [data-board-root] .b-cls-cases { --b-crow-cols: 72px minmax(0, 1fr); } }
+
+/* Al tocco il campo dell'assistente scrive a 16 px: il telefono non ingrandisce la pagina. */
+@media (hover: none) {
+  [data-board-root] .b-assist .b-comp-input { font-size: 16px; }
+}

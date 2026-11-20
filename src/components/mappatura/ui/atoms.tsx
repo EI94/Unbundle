@@ -13,7 +13,7 @@
 import Link from "next/link";
 import type { ButtonHTMLAttributes, JSX, ReactNode } from "react";
 import { firstSentence } from "../../../lib/mappatura/board-model.ts";
-import { BOARD_TEXT, STREAM_ENGLISH, exposureBadgeLabel, removeChipLabel, streamLabel } from "../../../lib/mappatura/text.ts";
+import { BOARD_TEXT, STREAM_ENGLISH, removeChipLabel, streamLabel } from "../../../lib/mappatura/text.ts";
 import type { Stream } from "../../../lib/mappatura/vocab.ts";
 import { focusBeforeRemoving, type FocusNode } from "./focus.ts";
 
@@ -110,15 +110,6 @@ export function StreamBadge(p: { stream: Stream; small?: boolean }): JSX.Element
   );
 }
 
-/** Il badge grigio dell'esposizione all'AI dal match O*NET: «AI 34%» (al posto di «AUTO» del riferimento). */
-export function ExposureBadge(p: { pct: number; small?: boolean }): JSX.Element {
-  return (
-    <span className={cx("b-abadge", "b-auto", p.small && "b-small")} data-b="exposure-badge">
-      {exposureBadgeLabel(p.pct)}
-    </span>
-  );
-}
-
 /** La pillola ambra della decisione di una persona, con il rombo (P25): il nome della decisione, o «Decide una persona». */
 export function GatePill(p: { label: string | null }): JSX.Element {
   return (
@@ -141,10 +132,13 @@ export function StatusChip(p: { tone: "neutral" | "ok" | "wait" | "check"; child
 
 // ─── Numeri, legenda, filtri ─────────────────────────────────────────
 
-/** I numeri prima di tutto (P37): quattro riquadri, il numero in serif e una riga sotto; due per riga stretti. */
-export function Kpis(p: { items: ReadonlyArray<{ value: string; label: string }> }): JSX.Element {
+/**
+ * I numeri prima di tutto (P37): quattro riquadri, il numero in serif e una riga sotto; due per riga stretti.
+ * (Rilascio 10, §3.7) `single`: un riquadro solo, largo quanto serve (un numero grande per schermata).
+ */
+export function Kpis(p: { items: ReadonlyArray<{ value: string; label: string }>; single?: boolean }): JSX.Element {
   return (
-    <div className="b-kpis" data-b="kpis">
+    <div className={p.single ? "b-kpis b-kpis-one" : "b-kpis"} data-b="kpis">
       {p.items.map((item, index) => (
         <div className="b-kpi" key={`${index}:${item.label}`}>
           <div className="b-kv">{item.value}</div>

@@ -64,14 +64,21 @@ test("«Da confermare»: notFound() per chi non è di Lateral Space, prima di le
   assert.match(source, /await requireWorkspacePage\(workspaceId\)/);
 });
 
-test("la pagina: chi è nel workspace, la 0038 controllata, le due viste, Granola montato nei due punti, 60 secondi", () => {
+test("la pagina: chi è nel workspace, la 0038 controllata, le tre viste, Granola montato nei due punti, 60 secondi", () => {
   const source = withoutComments(read(PAGE));
   assert.match(source, /export const metadata = \{ title: CONTEXT_TEXT\.page\.title \};/);
   assert.match(source, /export const maxDuration = 60;/);
   assert.match(source, /await requireWorkspacePage\(workspaceId\)/);
   assert.match(source, /if \(!abilities\.canOpen\) notFound\(\);/);
   assert.ok(source.indexOf("contextStoreReady()") < source.indexOf("loadContextMemory("), "prima l'archivio, poi la memoria");
-  assert.match(source, /search\.vista === "appunti"/);
+  // (Rilascio 10, §3.7, §8.2) Le viste da `?vista=`. Il vecchio `?vista=appunti` porta a `?vista=fonti` nel proxy, con un 308
+  // vero (src/lib/context/view-alias.test.ts): non qui, sotto `loading.tsx`, dove sarebbe un 200 con una meta refresh.
+  assert.match(source, /const view = contextViewOf\(search\.vista\);/);
+  assert.doesNotMatch(source, /permanentRedirect|redirect\(/);
+  const proxy = withoutComments(read("src/proxy.ts"));
+  assert.match(proxy, /const notesAlias = dashWs\?\.\[1\] && hasSession \? notesViewAlias\(pathname, req\.nextUrl\.searchParams\) : null;\s*if \(notesAlias\) return NextResponse\.redirect\(new URL\(notesAlias, req\.url\), 308\);/);
+  // Il fatto si apre con `?apri=<fatto>`.
+  assert.match(source, /initialFact=\{sheetIdParam\(search\.apri\)\}/);
   assert.match(source, /<GranolaInbox workspaceId=\{workspaceId\} workspaceName=\{workspaceName\} compact \/>/, "una riga nella Memoria");
   assert.match(source, /<GranolaInbox workspaceId=\{workspaceId\} workspaceName=\{workspaceName\} \/>/, "il blocco intero negli Appunti");
   // Il lettore degli appunti in attesa parte solo con l'ok (senza, c'è l'avviso al suo posto).
@@ -119,6 +126,17 @@ test("«Aggiungi appunti» legge un file di testo trascinato come il caricamento
   assert.doesNotMatch(source, /\.text\(\)/, "File.text() legge solo UTF-8");
 });
 
+test("(rilascio 10) «Altro» di «Aggiungi appunti»: si chiude anche con del testo in «Con chi» o «Link»; si apre da sé solo per un loro errore", () => {
+  const source = withoutComments(read("src/components/context/add-notes-dialog.tsx"));
+  assert.match(source, /const shown = moreOpen;/);
+  assert.doesNotMatch(source, /moreOpen \|\| Boolean\(draft\./, "il testo dentro non la tiene aperta");
+  assert.match(source, /setErrors\(\{ \.\.\.local \}\);\s*if \(notesMoreOnError\(local\)\) setMoreOpen\(true\);/);
+  assert.match(source, /setErrors\(saved\.fieldErrors\);\s*if \(notesMoreOnError\(saved\.fieldErrors\)\) setMoreOpen\(true\);/);
+  // I campi restano nella pagina, nascosti: il loro testo si salva anche con «Altro» chiuso.
+  assert.match(source, /<div id="appunti-altro" hidden=\{!shown\}/);
+  assert.match(source, /participants: draft\.participants, link: draft\.link/);
+});
+
 test("«Aggiungi appunti» chiusa durante la lettura: quando la lettura finisce, la pagina si aggiorna", () => {
   const source = withoutComments(read("src/components/context/add-notes-dialog.tsx"));
   assert.match(source, /if \(running\.current !== controller\) \{\s*router\.refresh\(\);\s*return;\s*\}/);
@@ -156,10 +174,39 @@ test("«Da confermare» sul telefono: ogni casella si tocca in un'area di almeno
   const row = read("src/components/context/proposal-row.tsx");
   assert.match(row, /<label className="[^"]*\bmin-h-11\b[^"]*\bmin-w-11\b[^"]*">\s*<Checkbox checked=\{checkable && checked\}/, "la casella di una proposta");
   const view = read("src/components/context/confirm-view.tsx");
-  assert.match(view, /<label className="[^"]*\bmin-h-11\b[^"]*\bmin-w-11\b[^"]*">\s*<Checkbox checked=\{choices\.reconfirm\}/, "la riga delle riconferme");
-  assert.match(view, /<label className="flex min-h-11 [^"]*">\s*<span className="[^"]*\bmin-w-11\b[^"]*">\s*<Checkbox/, "una riconferma da scegliere: tutta la riga");
+  // (Rilascio 10, §3.7) Un solo blocco di riconferme: una casella per fatto, ognuna su tutta la riga.
+  assert.match(view, /<label className="flex min-h-11 [^"]*">\s*<span className="[^"]*\bmin-w-11\b[^"]*">\s*<Checkbox/, "una riconferma: tutta la riga");
+  assert.doesNotMatch(view, /choices\.reconfirm/, "niente più riga unica delle riconferme");
   // Nessuna casella fuori da un'area così.
   for (const [name, source] of [["proposal-row.tsx", row], ["confirm-view.tsx", view]] as const) {
     assert.equal((source.match(/<Checkbox\b/g) ?? []).length, (source.match(/<label className="[^"]*\bmin-h-11\b[^"]*">\s*(?:<span[^>]*>\s*)?<Checkbox\b/g) ?? []).length, name);
   }
+});
+
+// ─── (Rilascio 10, §3.7) I Processi e «Aggiungi un'unità» ────────────
+
+test("(rilascio 10) i Processi: una lettura sola delle unità; «Aggiungi un'unità» a chi modifica i processi; `/mapping` porta qui con un 308", () => {
+  const source = withoutComments(read(PAGE));
+  assert.match(source, /if \(view === "processi"\) \{\s*const units = await listUnitBoards\(await getAppUcExecutor\(\), workspaceId\);\s*const canAddUnit = boardAbilities\(access\.role\)\.edit;/);
+  assert.match(source, /<ContextPage \{\.\.\.shell\} tab="processi" step=\{step\} [^>]*canAddUnit=\{canAddUnit\}>/);
+  const mapping = withoutComments(read(`${DASHBOARD}/mapping/page.tsx`));
+  assert.match(mapping, /await requireWorkspacePage\(workspaceId\);\s*permanentRedirect\(processesRedirect\(workspaceId, await searchParams\)\);/);
+  // Il 308 è vero: né la cartella né le sue madri hanno un loading.tsx (quello della board sta in [deptId]).
+  for (const dir of [`${DASHBOARD}/mapping`, DASHBOARD]) assert.equal(exists(`${dir}/loading.tsx`), false, `${dir}/loading.tsx`);
+});
+
+test("(rilascio 10) «Aggiungi un'unità»: prima chi chiama (sessione, workspace, la regola della board), poi il nome, poi il database; nessun modello", () => {
+  const source = withoutComments(read("src/lib/actions/mappatura-units.ts"));
+  assert.match(source, /^"use server";/);
+  const gate = source.indexOf("if (!access || !boardAbilities(access.role).edit) return { ok: false, message: UNIT_TEXT.denied };");
+  assert.ok(gate > 0 && gate > source.indexOf("await getCollaboratorAccess(session.user.id, workspaceId)"), "la guardia del workspace e la regola della board");
+  assert.ok(gate < source.indexOf("addUnit(await getAppUcExecutor(), workspaceId, name)"), "prima di scrivere");
+  assert.match(source, /if \(name\.length > UNIT_NAME_MAX\) return/);
+  // Un nome uguale e il tetto delle unità li dice la transazione (`addUnit`, provata sul database in units.integration.test.ts).
+  assert.match(source, /added\.reason === "duplicate" \? UNIT_TEXT\.duplicate : UNIT_TEXT\.full\(MAPPING_LIMITS\.units\)/);
+  assert.doesNotMatch(source, /generateObject|generateText|streamText|anthropic|sendEmail|resend/i);
+  // Solo il nome: nessun altro campo dell'unità dal browser.
+  const sql = withoutComments(read("src/lib/mappatura/board-sql.ts"));
+  assert.match(sql, /INSERT INTO departments \(workspace_id, name\)\s+SELECT \$\{U\(workspaceId\)\}, \$\{cast\(name, "text"\)\} FROM w WHERE NOT w\.same AND w\.units < \$\{cast\(MAPPING_LIMITS\.units, "int"\)\}/);
+  assert.match(sql, /pg_advisory_xact_lock\(hashtext\('mappatura-unita:' \|\| lower\(\$\{cast\(workspaceId, "text"\)\}\)\)\)/, "un lucchetto per workspace, senza badare alle maiuscole dell'id");
 });

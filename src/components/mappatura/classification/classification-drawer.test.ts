@@ -6,37 +6,44 @@ import { enableTsxImports } from "../../use-cases/detail/referent/tsx-test-loade
 import { FIXTURE_IDS, fixtureBoard } from "../../../lib/mappatura/board-fixture.ts";
 import { locateStep, type MappingBoard } from "../../../lib/mappatura/board-model.ts";
 
-// (Mappatura board) Il drawer che confronta, sulla scheda «Classificazione» (docs/mappatura/MAPPATURA-BOARD-PIANO.md
-// §1.4, §7.3; P27, P44, P25, P21): badge, «Oggi» accanto a «Classificazione», il selettore dello stream (spento per chi
-// non rivede, il punto ambra sulla proposta), il potenziale, la decisione, l'esposizione con O*NET, gli strumenti, gli
-// attriti, le idee del team, gli use case. Il corpo si rende dentro il drawer statico (il dialogo non si disegna sul
-// server).
+// (Mappatura board) Il drawer che confronta, sulla scheda «Con l'AI» (docs/mappatura/MAPPATURA-BOARD-PIANO.md §1.4,
+// §7.3; P27, P44, P25, P21; rilascio 10, §3.7): il badge, «Oggi» accanto a «Con l'AI», il selettore della categoria
+// (spento per chi non rivede, il punto ambra sulla proposta), il potenziale, la decisione, gli strumenti, gli attriti, le
+// idee del team, gli use case; l'esposizione all'AI, O*NET e l'affidabilità nei «Dettagli tecnici», solo per Lateral
+// Space. Il corpo si rende dentro il drawer statico (il dialogo non si disegna sul server).
 
 await enableTsxImports();
 const { ClassificationDetails, newIdeaOp, noteTextChange, noteToggleOp, streamChoiceOp, streamOptions } = await import("./classification-drawer.tsx");
-const { DrawerStatic } = await import("../ui/drawer.tsx");
+const { DrawerStatic, StepContext } = await import("../ui/drawer.tsx");
 
 const I = FIXTURE_IDS;
 const h = <P extends object>(type: (props: P) => ReactNode, props: Omit<P, "children"> | null = null, ...children: ReactNode[]) =>
   createElement(type as unknown as FunctionComponent<Omit<P, "children">>, props, ...children);
 const decode = (text: string) => text.replaceAll("&#x27;", "'").replaceAll("&quot;", '"').replaceAll("&amp;", "&");
-function drawer(board: MappingBoard, stepId: string) {
+function drawer(board: MappingBoard, stepId: string, technical = false) {
   const place = locateStep(board, stepId)!;
   return decode(
     renderToStaticMarkup(
-      h(DrawerStatic, { wide: true, context: `${place.process.name} · ${place.code}`, title: place.step.title }, h(ClassificationDetails, { board, place, dispatch() {}, newId: () => "nuovo" })),
+      h(DrawerStatic, { wide: true, context: h(StepContext, { processName: place.process.name, code: place.code }), title: place.step.title }, h(ClassificationDetails, { board, place, technical, dispatch() {}, newId: () => "nuovo" })),
     ),
   );
 }
 
-test("il confronto: badge, «Oggi» (la riga grigia) accanto a «Classificazione» (il motivo e l'affidabilità)", () => {
+test("il confronto: il badge, «Oggi» (la riga grigia) accanto a «Con l'AI» (il motivo); l'affidabilità nei dettagli tecnici", () => {
   const out = drawer(fixtureBoard({ classified: true }), I.confronto);
-  assert.match(out, /<div class="b-dr-sub">Dalla richiesta all'ordine · A2<\/div><h2 class="b-dr-t"[^>]*>Confronto delle offerte<\/h2>/);
-  assert.match(out, /<div class="b-ag" data-b="badges"><span class="b-abadge" data-stream="automate" data-b="stream-badge" title="Automate">Automatizzare<\/span><span class="b-abadge b-auto" data-b="exposure-badge">AI 22%<\/span><\/div>/);
+  // (Rilascio 10, §4) Il codice del passo («A2») solo per lo screen reader.
+  assert.match(out, /<div class="b-dr-sub">Dalla richiesta all'ordine<span class="b-sr"> · A2<\/span><\/div><h2 class="b-dr-t"[^>]*>Confronto delle offerte<\/h2>/);
+  assert.match(out, /<div class="b-ag" data-b="badges"><span class="b-abadge" data-stream="automate" data-b="stream-badge" title="Automate">Automatizzare<\/span><\/div>/);
   assert.match(
     out,
-    /<div class="b-compare" data-b="compare"><div><p class="b-k">Oggi<\/p><div class="b-was"><p>Per ogni richiesta si chiedono tre offerte e si confrontano\.<\/p><\/div><\/div><div><p class="b-k">Con l'AI<\/p><div class="b-now"><p>Il confronto è meccanico, ma la scelta dei criteri no\.<\/p><p class="b-muted">Affidabilità 61%<\/p><\/div><\/div><\/div>/,
+    /<div class="b-compare" data-b="compare"><div><p class="b-k">Oggi<\/p><div class="b-was"><p>Per ogni richiesta si chiedono tre offerte e si confrontano\.<\/p><\/div><\/div><div><p class="b-k">Con l'AI<\/p><div class="b-now"><p>Il confronto è meccanico, ma la scelta dei criteri no\.<\/p><\/div><\/div><\/div>/,
   );
+  assert.doesNotMatch(out, /AI 22%|Affidabilità|O\*NET|Dettagli tecnici/, "chi non è di Lateral Space non vede i dettagli tecnici");
+  // Lateral Space: «Dettagli tecnici», chiusi, con l'esposizione, O*NET e l'affidabilità.
+  const technical = drawer(fixtureBoard({ classified: true }), I.confronto, true);
+  assert.match(technical, /<details class="b-sec" data-b="section"><summary>Dettagli tecnici<\/summary>/);
+  assert.match(technical, /<p class="b-k">Esposizione all'AI<\/p><p class="b-cls-big">22%<\/p>/);
+  assert.match(technical, /<p class="b-k">Affidabilità<\/p><p class="b-muted">Affidabilità 61%<\/p>/);
   // Un passo senza stream: resta da classificare.
   assert.match(drawer(fixtureBoard({ classified: true }), I.ordine), /<p class="b-k">Con l'AI<\/p><div class="b-now"><p>Resta da classificare\.<\/p><\/div>/);
 });
@@ -68,7 +75,7 @@ test("la scelta nel selettore: un'operazione dei revisori con lo stream di adess
   ]);
 });
 
-test("il resto del passo: potenziale, la decisione con il suo nome, l'esposizione con O*NET, strumenti, attriti, idee, use case", () => {
+test("il resto del passo: potenziale, la decisione con il suo nome, strumenti, attriti, idee, use case; O*NET nei dettagli tecnici", () => {
   const board = fixtureBoard({ classified: true });
   const href = `/dashboard/${I.workspace}/use-cases/uc-1`;
   const linked: MappingBoard = {
@@ -76,19 +83,19 @@ test("il resto del passo: potenziale, la decisione con il suo nome, l'esposizion
     useCases: [{ id: "uc-1", code: "UC-0001", title: "Richieste in un modulo solo", href, stream: "automate" }],
     processes: board.processes.map((process) => ({ ...process, steps: process.steps.map((step) => (step.id === I.richieste ? { ...step, useCaseIds: ["uc-1"] } : step)) })),
   };
-  const out = drawer(linked, I.richieste);
+  const out = drawer(linked, I.richieste, true);
   assert.match(out, /<p class="b-k">Potenziale con l'AI<\/p><p>La richiesta si può leggere e completare da sola\.<\/p>/);
   assert.match(out, /<p class="b-k">Decide una persona<\/p><div class="b-human" data-b="human"><b>Richiesta completa<\/b>Chi compra decide se la richiesta è completa\.<\/div>/);
-  assert.match(out, /<p class="b-k">Esposizione all'AI<\/p><p class="b-cls-big">34%<\/p><p class="b-muted">O\*NET 13-1023\.00 · Purchasing agents<\/p>/);
+  assert.match(out, /<p class="b-k">Esposizione all'AI<\/p><p class="b-cls-big">34%<\/p><\/div><div data-b="drawer-list"><p class="b-k">Mansione O\*NET<\/p><p class="b-muted">O\*NET 13-1023\.00 · Purchasing agents<\/p>/);
   assert.match(out, /<p class="b-k">Strumenti<\/p><div class="b-chips"><span class="b-chip b-tool" data-b="chip">E-mail<\/span><span class="b-chip b-tool" data-b="chip">Foglio di calcolo<\/span><\/div>/);
   assert.match(out, /<p class="b-k">Attriti di oggi<\/p><ul class="b-l"><li>Richieste incomplete<\/li><li>Nessun modulo unico<\/li><\/ul>/);
   assert.match(out, /<p class="b-k">Idee del team<\/p><div class="b-cell" data-lane="idee"><div class="b-note-w" data-status="validato" data-origin="board" data-b="note">/);
   assert.match(out, /<button aria-label="Aggiungi un'idea del team" type="button" class="b-add" data-b="add">\+ idea<\/button>/);
   assert.match(out, new RegExp(`<p class="b-k">Use case</p><ul class="b-l"><li><a href="${href}">UC-0001 · Richieste in un modulo solo</a></li></ul>`));
   // Senza nulla da dire, «—»; un passo senza decisione non ha il blocco.
-  const plain = drawer(board, I.ordine);
+  const plain = drawer(board, I.ordine, true);
   assert.match(plain, /<p class="b-k">Potenziale con l'AI<\/p><p class="b-muted">—<\/p>/);
-  assert.match(plain, /<p class="b-k">Esposizione all'AI<\/p><p class="b-muted">—<\/p>/);
+  assert.doesNotMatch(plain, /Dettagli tecnici/, "senza esposizione, O*NET né affidabilità i dettagli tecnici non ci sono");
   assert.match(plain, /<p class="b-k">Use case<\/p><p class="b-muted">—<\/p>/);
   assert.doesNotMatch(plain, /Decide una persona/);
   // Una decisione senza nome (i passi di prima della board, o l'assistente che non lo dà): «Decide una persona» una volta.

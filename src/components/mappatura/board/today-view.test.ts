@@ -8,9 +8,10 @@ import { FIXTURE_IDS, fixtureBoard } from "../../../lib/mappatura/board-fixture.
 import type { MappingBoard } from "../../../lib/mappatura/board-model.ts";
 import { clickables, ofType, press, recorder, textOf } from "./test-support/elements.ts";
 
-// La vista «Processi di oggi» (docs/mappatura/MAPPATURA-BOARD-PIANO.md §1.3, §8.1; P7, P34, P35, P37, P38, P53–P62,
-// F9): i riquadri prima della mappa; un'unità vuota con i suoi due bottoni, uno pieno; una board in sola lettura con i
-// controlli spenti dal primo disegno; al più un bottone pieno nella vista; i controlli mandano le operazioni giuste.
+// La vista «Oggi» (docs/mappatura/MAPPATURA-BOARD-PIANO.md §1.3, §8.1; P7, P34, P35, P37, P38, P53–P62, F9; rilascio
+// 10, §3.7): un riquadro solo prima della mappa; i chip che filtrano e la legenda dietro il «?»; un'unità vuota con i suoi
+// due bottoni, uno pieno; una board in sola lettura con i controlli spenti dal primo disegno; al più un bottone pieno nella
+// vista; i controlli mandano le operazioni giuste; il drawer di un passo con il suo indirizzo.
 
 await enableTsxImports();
 const { AnalysisPoint, TodayContent, TodayView } = await import("./today-view.tsx");
@@ -26,7 +27,7 @@ const completeButton = () => h(BoardButton, { variant: "primary" }, "Completa la
 const render = (board: MappingBoard, headAction: ReactNode = completeButton()) =>
   renderToStaticMarkup(h(BoardProvider, { workspaceId: I.workspace, departmentId: board.unit.id, userId: I.user, initial: board }, h(TodayView, { headAction, onStartAssistant() {} })));
 
-function content(board: MappingBoard, extra: { dim?: boolean; addingPoint?: boolean } = {}) {
+function content(board: MappingBoard, extra: { filter?: "attriti" | "da-validare" | null; legend?: boolean; addingPoint?: boolean } = {}) {
   const log = recorder();
   let seq = 0;
   const actions = {
@@ -36,16 +37,16 @@ function content(board: MappingBoard, extra: { dim?: boolean; addingPoint?: bool
     addStep: log.record("addStep"),
     addProcess: log.record("addProcess"),
     startAssistant: log.record("startAssistant"),
-    toggleDim: log.record("toggleDim"),
-    copyMap: log.record("copyMap"),
+    setFilter: log.record("setFilter"),
+    toggleLegend: log.record("toggleLegend"),
     setAddingPoint: log.record("setAddingPoint"),
     newId: () => `f0000000-0000-4000-8000-${String(++seq).padStart(12, "0")}`,
   };
-  const tree = TodayContent({ board, dim: extra.dim ?? false, addingPoint: extra.addingPoint ?? false, focusProcessId: null, headAction: completeButton(), actions });
+  const tree = TodayContent({ board, filter: extra.filter ?? null, legend: extra.legend ?? false, addingPoint: extra.addingPoint ?? false, focusProcessId: null, headAction: completeButton(), actions });
   return { tree, log };
 }
 
-test("dall'alto: la testa con il bottone della vista, i riquadri, i punti di analisi, chi fa cosa, la mappa (P37: i numeri prima)", () => {
+test("dall'alto: la testa con il bottone della vista, un riquadro solo, i punti di analisi, chi fa cosa, i chip, la mappa (P37; rilascio 10)", () => {
   const html = render(fixtureBoard());
   const at = (needle: string) => {
     const index = html.indexOf(needle);
@@ -55,23 +56,33 @@ test("dall'alto: la testa con il bottone della vista, i riquadri, i punti di ana
   assert.ok(at('data-b="view-head"') < at('data-b="kpis"'));
   assert.ok(at('data-b="kpis"') < at('data-b="points"'));
   assert.ok(at('data-b="points"') < at("Chi fa cosa e con quali strumenti"));
-  assert.ok(at("Chi fa cosa e con quali strumenti") < at('data-b="legend"'));
-  assert.ok(at('data-b="legend"') < at('data-b="map-tools"'));
-  assert.ok(at('data-b="map-tools"') < at('data-b="map"'), "i riquadri prima della mappa");
-  // La testa: l'occhiello, il titolo di sempre con il nome dell'unità in corsivo, la descrizione, a destra il bottone della vista.
-  assert.match(html, /<p class="b-eyebrow">Oggi<\/p><h2 class="b-h">Come lavora oggi <i>Ufficio acquisti<\/i><\/h2><p class="b-lede">Compra materiali e servizi per gli altri uffici\.<\/p><\/div><div class="b-head-action"><button type="button" class="b-btn b-primary" data-b="button" data-variant="primary">Completa la mappatura<\/button><\/div>/);
-  const tiles = [...html.matchAll(/<div class="b-kv">([^<]*)<\/div><div class="b-kl">([^<]*)<\/div>/g)].map((match) => `${match[1]} ${match[2]}`);
-  assert.deepEqual(tiles, ["6 passi in 2 processi", "28,5 h ore a settimana", "3 passi dove decide una persona", "2 passi da validare"]);
-  // La legenda: i tre attriti, il rombo, «da validare»; la riga dei conteggi; i due strumenti della mappa.
+  assert.ok(at("Chi fa cosa e con quali strumenti") < at('data-b="map-tools"'));
+  assert.ok(at('data-b="map-tools"') < at('data-b="legend"'));
+  assert.ok(at('data-b="legend"') < at('data-b="map"'), "i numeri prima della mappa");
+  // (Rilascio 10, §3.7) La testa: niente occhiello né «Come lavora oggi {unità}» (lo dicono la scheda e il titolo); la
+  // descrizione, a destra il bottone della vista.
+  assert.match(html, /<div class="b-head" data-b="view-head"><div><p class="b-lede">Compra materiali e servizi per gli altri uffici\.<\/p><\/div><div class="b-head-action"><button type="button" class="b-btn b-primary" data-b="button" data-variant="primary">Completa la mappatura<\/button><\/div>/);
+  assert.doesNotMatch(html, /b-eyebrow|Come lavora oggi/);
+  // Un riquadro solo: i passi, poi le ore e le decisioni di una persona.
+  assert.match(html, /<div class="b-kpis b-kpis-one" data-b="kpis">/);
+  const tiles = [...html.matchAll(/<div class="b-kv">([^<]*)<\/div><div class="b-kl">([^<]*)<\/div>/g)].map((match) => `${match[1]} | ${match[2]}`);
+  assert.deepEqual(tiles, ["6 passi | 28,5 h a settimana · 3 dove decide una persona"]);
+  // I chip che filtrano: «5 attriti» e «2 da validare», mai a zero; la legenda dietro il «?», chiusa.
+  assert.match(html, /<span class="b-map-chips" role="group" aria-label="Mostra i passi"><button type="button" class="b-fchip" aria-pressed="false" data-b="filter-chip"><i class="b-adot" data-tone="crit" aria-hidden="true" data-b="dot"><\/i>5 attriti<\/button><button type="button" class="b-fchip" aria-pressed="false" data-b="filter-chip">2 da validare<\/button><\/span>/);
+  assert.match(html, /<button type="button" class="b-iconbtn b-legend-btn" aria-label="Che cosa vuol dire" title="Che cosa vuol dire" aria-expanded="false" aria-controls="b-legenda-oggi" data-b="legend-toggle">\?<\/button>/);
+  assert.match(html, /<div id="b-legenda-oggi" hidden=""><div class="b-legend" data-b="legend">/);
   assert.match(html, /<i class="b-adot" data-tone="crit" aria-hidden="true" data-b="dot"><\/i>attrito forte<\/span>/);
   assert.match(html, /<i class="b-adot b-diamond" aria-hidden="true" data-b="dot"><\/i>decide una persona<\/span>/);
-  assert.match(html, /<span class="b-legend-note">«da validare» = passo da confermare<\/span>/);
-  assert.match(html, /<span class="b-counts">2 da validare · 4 confermati · 5 attriti<\/span>/);
-  assert.match(html, /<button type="button" class="b-fchip" aria-pressed="false" data-b="filter-chip">Evidenzia attriti<\/button>/);
-  assert.match(html, /<button type="button" class="b-btn b-ghost" data-b="button" data-variant="ghost">Copia la mappa come testo<\/button>/);
-  assert.match(html, /<h3 class="b-sh">I processi, uno per uno<small>clicca un passo per aprire attività, persone, dati, attriti, tempi e volumi<\/small><\/h3>/);
+  assert.match(html, /<span class="b-legend-note"><span class="b-tag b-line" data-b="tag">da validare<\/span><\/span>/, "«da validare» con il suo segno, senza spiegarlo due volte");
+  // Il titolo della mappa senza suggerimento; niente riga dei conteggi, niente «Copia» (sta nel «⋯» della testata).
+  assert.match(html, /<h3 class="b-sh">I processi, uno per uno<\/h3>/);
+  assert.doesNotMatch(html, /b-counts|Evidenzia attriti|Copia la mappa come testo/);
   // Chi fa cosa: chiuso, con il conteggio nel suo sommario.
   assert.match(html, /<details class="b-sec" data-b="section"><summary>Chi fa cosa e con quali strumenti<small>4 ruoli · 6 strumenti<\/small><\/summary>/);
+  // Senza attriti né passi da validare, niente chip.
+  const calm = fixtureBoard();
+  const quiet = { ...calm, processes: calm.processes.map((process) => ({ ...process, steps: process.steps.map((step) => ({ ...step, friction: 0 as const, frictionSet: false, status: "confermato" as const, notes: { ...step.notes, attriti: [] } })) })) };
+  assert.doesNotMatch(render(quiet), /b-map-chips/);
 });
 
 test("al più un bottone pieno nella vista: quello della testa; il drawer è una schermata sua", () => {
@@ -104,30 +115,36 @@ test("una board in sola lettura disegna i suoi controlli spenti, o non li disegn
   assert.doesNotMatch(missing, /<textarea|\+ passo/);
 });
 
-test("i controlli della vista: la scoperta sul posto, «Evidenzia attriti», «Copia la mappa come testo», i passi delle tabelle", () => {
+test("i controlli della vista: la scoperta sul posto, i chip (uno alla volta), il «?», i passi delle tabelle", () => {
   const classified = fixtureBoard({ classified: true });
   const { tree, log } = content(classified);
   const [headline] = ofType(tree, LineInPlace);
   assert.equal(headline.props.value, "Un terzo del tempo va a rincorrere richieste incomplete e consegne in ritardo.");
   assert.equal(headline.props.placeholder, "La scoperta, in una frase.");
   (headline.props.onCommit as (next: string, base: string) => void)("", headline.props.value as string);
-  const [dim] = ofType(tree, FilterChip);
-  assert.equal(textOf(dim.props.children), "Evidenzia attriti");
-  (dim.props.onToggle as () => void)();
-  press(tree, "Copia la mappa come testo");
+  const [frictions, toValidate] = ofType(tree, FilterChip);
+  assert.deepEqual([textOf(frictions.props.children), textOf(toValidate.props.children)], ["5 attriti", "2 da validare"]);
+  (frictions.props.onToggle as () => void)();
+  (toValidate.props.onToggle as () => void)();
+  press(tree, "Che cosa vuol dire");
   // A2 è nelle righe di tutti i suoi ruoli e strumenti: ognuna lo apre.
   const refs = clickables(tree, "A2 · Confronto delle offerte");
   assert.equal(refs.length, 7);
   (refs[0].props.onClick as () => void)();
   assert.deepEqual(log.calls, [
     ["dispatch", { t: "board.set", field: "headline", prev: "Un terzo del tempo va a rincorrere richieste incomplete e consegne in ritardo.", next: null }],
-    ["toggleDim"],
-    ["copyMap"],
+    ["setFilter", "attriti"],
+    ["setFilter", "da-validare"],
+    ["toggleLegend"],
     ["openStep", I.confronto],
   ]);
-  // «Evidenzia attriti» premuto.
-  assert.equal(ofType(content(classified, { dim: true }).tree, FilterChip)[0].props.pressed, true);
-  assert.equal(dim.props.pressed, false);
+  // Un chip premuto si spegne con un altro tocco; la legenda aperta si vede.
+  const on = content(classified, { filter: "attriti", legend: true });
+  const [pressed] = ofType(on.tree, FilterChip);
+  assert.equal(pressed.props.pressed, true);
+  (pressed.props.onToggle as () => void)();
+  assert.deepEqual(on.log.named("setFilter"), [[null]]);
+  assert.equal(frictions.props.pressed, false);
 });
 
 test("i punti di analisi: titolo, prima frase e «Dettagli»; si validano, si eliminano con «Annulla», se ne aggiunge uno che nasce con il testo (P35, P53–P57)", () => {
@@ -188,9 +205,12 @@ test("«Elimina il passo» dalla vista: il passo esce con «Annulla», il drawer
   const source = readFileSync(new URL("./today-view.tsx", import.meta.url), "utf8");
   const remove = source.slice(source.indexOf("removeStep: (stepId) => {"), source.indexOf("setAdding: setAddingLane", source.indexOf("removeStep: (stepId) => {")));
   assert.match(remove, /afterRemoval\.current = focusAfterRemoval\(board, stepId\);\s+client\.dispatch\(\{ t: "step\.remove", stepId \}, \{ undo: BOARD_TEXT\.toast\.stepRemoved \}\);\s+close\(\);/);
-  // Alla chiusura il posto deciso, poi chi ha aperto il drawer se c'è ancora: `drawerReturnFocus` nella vista «Processi di oggi».
-  assert.match(source, /finalFocus=\{\(\) => \{[\s\S]*drawerReturnFocus\(\{ view, planned, opener: opener\.current, stepId: drawer\.target\?\.kind === "step" \? drawer\.target\.stepId : null \}\)/);
-  assert.match(source, /const open = \(target: DrawerTarget\) => \{\s+opener\.current = typeof document === "undefined" \? null : document\.activeElement;/);
+  // Alla chiusura il posto deciso, poi chi ha aperto il drawer se c'è ancora: `drawerReturnFocus` nella vista «Oggi».
+  assert.match(source, /finalFocus=\{\(\) => \{[\s\S]*drawerReturnFocus\(\{ view, planned, opener: opener\.current, stepId: shown\?\.kind === "step" \? shown\.stepId : null \}\)/);
+  assert.match(source, /const remember = \(\) => \{\s+opener\.current = typeof document === "undefined" \? null : document\.activeElement;/);
+  // (Rilascio 10, §8.2) Il passo aperto ha il suo indirizzo: `?apri=<passo>`, anche all'arrivo da un link.
+  assert.match(source, /const \[openStep, showStep\] = useSheetParam\(\{ initial: useArrivalStep\(\), accept: acceptStep \}\);/);
+  assert.match(source, /const acceptStep = \(raw: string \| null\) => sheetIdParam\(raw\);/);
   // Le card e «+ passo» si trovano per id.
   const board = fixtureBoard();
   const out = render(board);

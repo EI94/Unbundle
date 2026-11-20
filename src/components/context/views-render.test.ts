@@ -42,6 +42,8 @@ await installAppModules({
     .map((name) => `export async function ${name}() { return { ok: true, value: true }; }`)
     .join("\n"),
   "@/lib/actions/uc-subprocessors": `export async function declareSubprocessorsAction() { return { ok: true, data: null, message: "" }; }`,
+  // (Rilascio 10, §3.7) «Aggiungi un'unità» nella vista «Processi».
+  "@/lib/actions/mappatura-units": `export async function addUnitAction() { return { ok: false, message: "" }; }`,
   // (9b) «Cerca una persona» nella vista «Appunti» (people-search.tsx).
   "@/lib/actions/context-people": ["searchPersonAction", "erasePersonAction"].map((name) => `export async function ${name}() { return { ok: false, error: "riprova", message: "" }; }`).join("\n"),
 });
@@ -50,6 +52,8 @@ const { MemoryView } = await import("./memory-view.tsx");
 const { ConfirmView } = await import("./confirm-view.tsx");
 const { NotesView } = await import("./notes-view.tsx");
 const { ContextPage } = await import("./context-page.tsx");
+const { ProcessesView } = await import("../mappatura/board/processes-view.tsx");
+const { fixtureUnits } = await import("../../lib/mappatura/board-fixture.ts");
 
 const WS = "11111111-1111-4111-8111-111111111111";
 const TODAY = "2026-11-16";
@@ -115,42 +119,124 @@ const NOTICE: AiConsentNoticeData = {
 };
 
 const memoryProps = (over: Record<string, unknown> = {}) => ({ workspaceId: WS, today: TODAY, lateralSpace: true, canEditMemory: true, memory: memory(), useCaseOptions: [], consentNotice: null, ...over });
-
-test("la Memoria per Lateral Space: le righe di servizio, «In breve», «Novità», «Prossimi passi», le sezioni con qualcosa, «Domande aperte»", () => {
-  const html = render(createElement(MemoryView, memoryProps({ consentNotice: NOTICE, granola: createElement("p", null, "riga di Granola"), reader: createElement("p", null, "riga di lettura") })));
-  const text = textOf(html);
-  // (Rilascio 10, §3.7) Le proposte da confermare sono il pulsante pieno della testata: qui non si ripetono.
-  assert.ok(!text.includes("12 proposte da confermare"));
-  assert.ok(text.includes("riga di lettura") && text.includes("riga di Granola"));
-  assert.match(html, /data-testid="ai-consent-notice"/);
-  // «In breve» con la data, «Novità per te» con il segno e «e altre 3».
-  assert.ok(text.includes("In breve") && text.includes("Aggiornato il 14 nov") && text.includes("Produce cucine su misura."));
-  assert.ok(text.includes("Novità per te") && text.includes("Cambiato") && text.includes("e altre 3"));
-  // «Impegni» (rilascio 10, §4; prima «Prossimi passi»): i due gruppi, le scadenze, «Fatto» per ogni riga.
-  assert.ok(text.includes("Impegni") && text.includes("Nostri") && text.includes("Del cliente"));
-  assert.ok(text.includes("entro il 30 nov") && text.includes("scaduto il 2 nov"));
-  assert.equal(text.filter((t) => t === "Fatto").length, 2);
-  // Le sezioni: solo quelle con qualcosa, nell'ordine; la Discovery prima dei fatti; i segni solo quando servono.
-  const headings = [...html.matchAll(/<h2[^>]*>([^<]+)<\/h2>/g)].map((m) => m[1]);
-  assert.deepEqual(headings, ["In breve", "Novità per te", "Impegni", "Azienda", "Sistemi e dati", "Domande aperte"]);
-  assert.ok(text.includes("Intervista iniziale") && text.includes("Call 14 nov") && text.includes("Scritto a mano"));
-  assert.ok(text.includes("dedotto") && text.includes("da verificare"));
-  assert.ok(text.includes("Solo Lateral Space"), "il lucchetto ha il testo per i lettori di schermo");
-  // «Domande aperte» con a chi chiederle e «Chiusa».
-  assert.ok(text.includes("Da chiedere a: Direttore operativo") && text.includes("Chiusa"));
+const headerProps = (over: Partial<ContextPageProps>): Omit<ContextPageProps, "children"> => ({
+  workspaceId: WS,
+  today: TODAY,
+  tab: "memoria",
+  lateralSpace: true,
+  canEditMemory: true,
+  canUpload: true,
+  useCaseOptions: [],
+  consentNotice: null,
+  ...over,
 });
 
-test("la Memoria per il cliente: niente righe di servizio, niente «Fatto» né «Chiusa»", () => {
+/** I titoli H2, anche quelli delle pieghe (il titolo sta dentro il pulsante): il testo senza i tag. */
+function headingsOf(html: string): string[] {
+  return [...html.matchAll(/<h2\b[^>]*>([\s\S]*?)<\/h2>/g)].map((m) => textOf(m[1])[0] ?? "");
+}
+/** Il testo di una piega: il titolo e la riga grigia. */
+function foldsOf(html: string): Array<{ title: string; summary: string; expanded: boolean }> {
+  return [...html.matchAll(/<section[^>]*data-slot="fold"[^>]*>\s*<h2[^>]*>([\s\S]*?)<\/h2>/g)].map((m) => {
+    const [title, summary = ""] = textOf(m[1]);
+    return { title, summary, expanded: /aria-expanded="true"/.test(m[1]) };
+  });
+}
+
+const UNIT = "22222222-2222-4222-8222-222222222222";
+
+test("(rilascio 10, §3.7, S6) la Memoria per Lateral Space: «Chiedi al contesto», una riga di stato, «In breve», «Impegni», «Novità», le sezioni chiuse", () => {
+  const html = render(createElement(MemoryView, memoryProps({ consentNotice: NOTICE, granola: createElement("p", null, "riga di Granola"), reader: createElement("p", null, "riga di lettura") })));
+  const text = textOf(html);
+  // «Chiedi al contesto» in alto, con l'esempio.
+  assert.match(html, /placeholder="Per esempio: che gestionale usano\?"/);
+  assert.ok(html.indexOf('placeholder="Per esempio') < html.indexOf("In breve"), "la domanda prima di tutto");
+  // Una sola riga di stato: le righe restano montate (la lettura e il giro di Granola partono da sé), si vede la prima.
+  const status = /<div data-slot="status-row" class="([^"]*)">([\s\S]*?)<\/div>\s*<section/.exec(html);
+  assert.ok(status, "la riga di stato c'è");
+  assert.match(status[1], /\[&amp;&gt;\*:not\(:first-child\)\]:hidden/, "si vede solo la prima");
+  const order = ["riga di lettura", "ai-consent-notice", "riga di Granola"].map((needle) => status[2].indexOf(needle));
+  assert.ok(order.every((at) => at >= 0) && order[0] < order[1] && order[1] < order[2], `ordine ${order}`);
+  // (Rilascio 10, §3.7) Le proposte da confermare sono il pulsante pieno della testata: qui non si ripetono.
+  assert.ok(!text.includes("12 proposte da confermare"));
+  // «In breve» con la data.
+  assert.ok(text.includes("In breve") && text.includes("Aggiornato il 14 nov") && text.includes("Produce cucine su misura."));
+  // «Impegni»: una lista sola, la parte davanti alla frase, prima lo scaduto; «Fatto» fantasma con la frase per i lettori di schermo.
+  assert.ok(text.includes("Impegni"));
+  assert.ok(text.indexOf("Mandare l'elenco dei fornitori.") < text.indexOf("Mandare il preventivo."), "lo scaduto prima");
+  assert.ok(text.includes("Del cliente ·") && text.includes("Nostri ·"));
+  assert.ok(text.includes("entro il 30 nov") && text.includes("scaduto il 2 nov"));
+  const done = [...html.matchAll(/<button\b[^>]*>Fatto<\/button>/g)].map(([tag]) => tag);
+  assert.equal(done.length, 2);
+  for (const tag of done) assert.match(tag, /aria-describedby="[^"]+"/);
+  // «Novità»: il segno, la frase e la fonte del fatto; «e altre 3».
+  assert.ok(text.includes("Novità") && !text.includes("Novità per te") && text.includes("Cambiato") && text.includes("e altre 3"));
+  assert.ok(text.includes("Call 14 nov"));
+  // Le sezioni chiuse, con quante voci hanno, nell'ordine; «Domande aperte» in fondo, chiusa anche lei.
+  assert.deepEqual(headingsOf(html), ["In breve", "Impegni", "Novità", "Azienda", "Sistemi e dati", "Domande aperte"]);
+  assert.deepEqual(foldsOf(html), [
+    { title: "Azienda", summary: "1", expanded: false },
+    { title: "Sistemi e dati", summary: "2", expanded: false },
+    { title: "Domande aperte", summary: "1", expanded: false },
+  ]);
+  // Dentro le pieghe (nascoste finché chiuse): i fatti con i loro segni, la Discovery come «Intervista iniziale», «Chiudi».
+  assert.ok(text.includes("Intervista iniziale") && text.includes("Scritto a mano"));
+  assert.ok(text.includes("dedotto") && text.includes("da verificare"));
+  assert.ok(text.includes("Solo Lateral Space"), "il lucchetto ha il testo per i lettori di schermo");
+  assert.ok(text.includes("Da chiedere a: Direttore operativo") && text.includes("Chiudi") && !text.includes("Chiusa"));
+  assert.match(html, /<button\b[^>]*aria-describedby="[^"]+"[^>]*>Chiudi<\/button>/);
+});
+
+test("(rilascio 10, §3.7) la Memoria: al massimo tre impegni e tre novità in vista, poi «Vedi tutti (N)»; tre righe di «In breve»", () => {
+  const commitment = (i: number) => ({ id: `c${i}`, version: 1, statement: `Impegno numero ${i}.`, party: "nostra" as const, roleLabel: null, dueOn: `2026-11-2${i}`, overdue: false, visibility: "tutti" as const });
+  const items = (n: number) => Array.from({ length: n }, (_, i) => ({ factId: `n${i}`, statement: `Novità numero ${i}.`, section: "sistemi" as const, tag: "nuovo" as const }));
+  const html = render(
+    createElement(
+      MemoryView,
+      memoryProps({
+        memory: memory({
+          nextSteps: { nostri: [1, 2, 3, 4, 5].map(commitment), cliente: [] },
+          novelties: { items: items(5), more: 2 },
+          brief: { lines: ["Uno.", "Due.", "Tre.", "Quattro.", "Cinque."], updatedOn: "2026-11-14" },
+        }),
+      }),
+    ),
+  );
+  const text = textOf(html);
+  assert.deepEqual([1, 2, 3, 4, 5].map((i) => text.includes(`Impegno numero ${i}.`)), [true, true, true, false, false]);
+  assert.ok(text.includes("Vedi tutti (5)"));
+  assert.deepEqual([0, 1, 2, 3].map((i) => text.includes(`Novità numero ${i}.`)), [true, true, true, false]);
+  assert.ok(text.includes("e altre 4"), "le due oltre le tre e le due che la pagina non ha");
+  assert.deepEqual(["Uno.", "Tre.", "Quattro."].map((line) => text.includes(line)), [true, true, false]);
+  assert.ok(text.includes("Mostra tutto"));
+});
+
+test("(rilascio 10, §3.7) «Come lavorano» porta alle board, «Obiettivi e priorità» alla pagina degli obiettivi", () => {
+  const sections = memory().sections.map((s) =>
+    s.section === "lavoro"
+      ? { ...s, live: [{ key: `unita:${UNIT}`, section: "lavoro" as const, text: "Acquisti · 4 persone · 7 passi mappati", tag: null }] }
+      : s.section === "obiettivi"
+        ? { ...s, live: [{ key: "obiettivo:g1", section: "obiettivi" as const, text: "Rispondere in giornata", tag: "Obiettivo" }] }
+        : s,
+  );
+  const html = render(createElement(MemoryView, memoryProps({ memory: memory({ sections }) })));
+  assert.match(html, new RegExp(`<a href="/dashboard/${WS}/mapping/${UNIT}"[^>]*>`));
+  assert.deepEqual(foldsOf(html).find((fold) => fold.title === "Come lavorano"), { title: "Come lavorano", summary: "1 unità", expanded: false });
+  assert.equal((html.match(new RegExp(`href="/dashboard/${WS}/strategy"`, "g")) ?? []).length, 2, "la riga dell'obiettivo e il link «Obiettivi»");
+});
+
+test("la Memoria per il cliente: niente riga di stato, niente «Fatto» né «Chiudi»", () => {
   const html = render(createElement(MemoryView, memoryProps({ lateralSpace: false, canEditMemory: false, consentNotice: NOTICE, granola: createElement("p", null, "riga di Granola"), reader: createElement("p", null, "riga di lettura") })));
   const text = textOf(html);
   assert.equal(text.includes("12 proposte da confermare"), false);
   assert.equal(text.includes("riga di Granola") || text.includes("riga di lettura"), false);
-  assert.doesNotMatch(html, /ai-consent-notice/);
-  assert.equal(text.includes("Fatto") || text.includes("Chiusa"), false);
+  assert.doesNotMatch(html, /ai-consent-notice|status-row/);
+  assert.equal(text.includes("Fatto") || text.includes("Chiudi"), false);
   assert.ok(text.includes("Il gestionale è SAP Business One."));
+  assert.match(html, /placeholder="Per esempio: che gestionale usiamo\?"/);
 });
 
-test("la Memoria vuota: il titolo e la frase di chi guarda; per Lateral Space «Aggiungi appunti» lì, nella pagina", () => {
+test("la Memoria vuota: una frase sola, senza pulsante (l'azione è «Aggiungi», nella testata)", () => {
   const empty = memory({
     sections: memory().sections.map((s) => ({ ...s, live: [], facts: [] })),
     nextSteps: { nostri: [], cliente: [] },
@@ -159,82 +245,53 @@ test("la Memoria vuota: il titolo e la frase di chi guarda; per Lateral Space «
     novelties: null,
     counts: { facts: 0, openProposals: 0, unreadSources: 0, pendingSourceIds: [], toCheck: 0 },
   });
-  const forClient = textOf(render(createElement(MemoryView, memoryProps({ lateralSpace: false, canEditMemory: false, memory: empty }))));
-  assert.ok(forClient.includes("Ancora niente in memoria") && forClient.includes("Qui compare quello che sappiamo dell'azienda, con la fonte di ogni cosa."));
-  const page = render(
-    pageWith({ workspaceId: WS, workspaceName: "Cliente di prova", today: TODAY, tab: "memoria", lateralSpace: true, canEditMemory: true, addNotesInHeader: false, useCaseOptions: [], consentNotice: null }, createElement(MemoryView, memoryProps({ memory: empty }))),
-  );
+  const client = render(createElement(MemoryView, memoryProps({ lateralSpace: false, canEditMemory: false, memory: empty })));
+  assert.ok(textOf(client).includes("Qui compare quello che sappiamo dell'azienda, con le fonti."));
+  const page = render(pageWith(headerProps({}), createElement(MemoryView, memoryProps({ memory: empty }))));
   const text = textOf(page);
-  assert.ok(text.includes("Aggiungi gli appunti di una call: Unbundle li legge e propone i fatti. Confermi con un clic."));
-  assert.equal(text.filter((t) => t === "Aggiungi appunti").length, 1, "un solo «Aggiungi appunti»: nella Memoria vuota, non nella testata");
+  assert.ok(text.includes("Aggiungi gli appunti di una call: Unbundle propone i fatti."));
+  assert.equal(filledButtons(page).length, 1, "un solo pulsante pieno: «Aggiungi»");
+  assert.match(filledButtons(page)[0], /data-action="context-add"/);
+  assert.match(page, /data-slot="empty-state"/);
 });
 
-test("(rilascio 10, §3.7) la Memoria vuota con proposte da confermare: un solo pulsante pieno, «Conferma N proposte»; «Aggiungi appunti» bordato", () => {
-  const empty = (openProposals: number) =>
-    memory({
-      sections: memory().sections.map((s) => ({ ...s, live: [], facts: [] })),
-      nextSteps: { nostri: [], cliente: [] },
-      questions: [],
-      brief: null,
-      novelties: null,
-      counts: { facts: 0, openProposals, unreadSources: 1, pendingSourceIds: [], toCheck: 0 },
-    });
-  const pageFor = (openProposals: number) =>
-    render(
-      pageWith(
-        { workspaceId: WS, workspaceName: "Cliente di prova", today: TODAY, tab: "memoria", lateralSpace: true, canEditMemory: true, addNotesInHeader: false, pendingProposals: openProposals, useCaseOptions: [], consentNotice: null },
-        createElement(MemoryView, memoryProps({ memory: empty(openProposals) })),
-      ),
-    );
-  const addNotes = (html: string) => [...html.matchAll(/<button\b[^>]*>Aggiungi appunti<\/button>/g)].map(([tag]) => tag);
-  const withProposals = pageFor(2);
-  const filled = filledButtons(withProposals);
+// ─── La testata comune e le viste ────────────────────────────────────
+
+
+test("(rilascio 10, §3.7, S6) la testata: H1 «Contesto», «Aggiungi», le tre viste; niente nome del workspace né «Scrivi un fatto» a parte", () => {
+  const ls = render(pageWith(headerProps({ menu: [{ key: "intervista", label: "Intervista iniziale", href: `/dashboard/${WS}/setup/leadership` }] }), createElement("p", null, "vista")));
+  const text = textOf(ls);
+  assert.match(ls, /<h1[^>]*>Contesto<\/h1>/);
+  assert.ok(!text.includes("Cliente di prova") && !text.includes("Scrivi un fatto") && !text.includes("Aggiungi appunti"));
+  assert.ok(text.includes("Aggiungi") && !text.includes("Aggiungi un file"));
+  // Le viste: Memoria · Processi · Fonti.
+  assert.deepEqual(["Memoria", "Processi", "Fonti"].map((label) => text.includes(label)), [true, true, true]);
+  assert.match(ls, new RegExp(`href="/dashboard/${WS}/contesto\\?vista=fonti"`));
+  assert.match(ls, /aria-current="page"[^>]*>(<[^>]+>)*Memoria/);
+  // Il «⋯» con il suo nome per i lettori di schermo; le voci si aprono a richiesta.
+  assert.match(ls, /aria-label="Altre azioni"/);
+  // Senza un passo della vista, «Aggiungi» è il pulsante pieno.
+  assert.equal(filledButtons(ls).length, 1);
+  assert.match(filledButtons(ls)[0], /data-action="context-add"/);
+  // Il cliente aggiunge solo file: «Aggiungi un file», niente «⋯» senza voci.
+  const client = render(pageWith(headerProps({ lateralSpace: false, canEditMemory: false }), createElement("p", null, "vista")));
+  assert.ok(textOf(client).includes("Aggiungi un file"));
+  assert.doesNotMatch(client, /aria-label="Altre azioni"/);
+  assert.match(client, /data-slot="upload-document"/, "la scelta del file è nella pagina");
+});
+
+test("(rilascio 10, §3.7) con proposte da confermare il pulsante pieno è «Conferma N proposte» con il «?», e «Aggiungi» è bordato", () => {
+  const step = { kind: "link" as const, icon: "check" as const, label: "Conferma 3 proposte", why: "Unbundle le ha lette dalle fonti: confermale, correggile o scartale.", href: `/dashboard/${WS}/contesto/conferma` };
+  const html = render(pageWith(headerProps({ step }), createElement("p", null, "vista")));
+  const filled = filledButtons(html);
   assert.equal(filled.length, 1, "un solo pulsante pieno");
   assert.match(filled[0], new RegExp(`href="/dashboard/${WS}/contesto/conferma"`));
-  assert.equal(addNotes(withProposals).length, 1, "«Aggiungi appunti» resta, nella Memoria vuota");
-  assert.match(addNotes(withProposals)[0], /\bbg-background\b/, "bordato");
-  assert.doesNotMatch(addNotes(withProposals)[0], /\bbg-primary\b/);
-  // Senza proposte, «Aggiungi appunti» della Memoria vuota è il pulsante pieno.
-  const none = pageFor(0);
-  assert.equal(filledButtons(none).length, 1);
-  assert.match(filledButtons(none)[0], /\bbg-primary\b/);
-  assert.equal(addNotes(none).length, 1);
-  assert.match(addNotes(none)[0], /\bbg-primary\b/);
-});
-
-// ─── La testata e le schede ──────────────────────────────────────────
-
-test("la testata: per Lateral Space «Aggiungi appunti», «Scrivi un fatto» e le schede «Memoria» · «Appunti»; per il cliente «Documenti» e nient'altro", () => {
-  const shell = (lateralSpace: boolean) =>
-    render(pageWith({ workspaceId: WS, workspaceName: "Cliente di prova", today: TODAY, tab: "memoria", lateralSpace, canEditMemory: lateralSpace, addNotesInHeader: true, useCaseOptions: [], consentNotice: null }, createElement("p", null, "vista")));
-  const ls = shell(true);
-  const lsText = textOf(ls);
-  assert.ok(lsText.includes("Cliente di prova") && lsText.includes("Contesto"));
-  // (Rilascio 10, §4) Le fonti si chiamano «Fonti», per Lateral Space e per il cliente.
-  assert.deepEqual([lsText.includes("Aggiungi appunti"), lsText.includes("Scrivi un fatto"), lsText.includes("Fonti"), lsText.includes("Documenti")], [true, true, true, false]);
-  assert.match(ls, /placeholder="Fai una domanda sul cliente"/);
-  assert.match(ls, new RegExp(`href="/dashboard/${WS}/contesto\\?vista=appunti"`));
-  assert.match(ls, /aria-current="page"[^>]*>(<[^>]+>)*Memoria/);
-  const client = shell(false);
-  const clientText = textOf(client);
-  assert.deepEqual([clientText.includes("Aggiungi appunti"), clientText.includes("Scrivi un fatto"), clientText.includes("Appunti"), clientText.includes("Fonti")], [false, false, false, true]);
-  assert.match(client, /placeholder="Fai una domanda"/);
-  assert.ok(clientText.includes("Chiedi"));
-});
-
-test("(rilascio 10, §3.7) con proposte da confermare il pulsante pieno è «Conferma N proposte», e «Aggiungi appunti» è bordato", () => {
-  const props = { workspaceId: WS, workspaceName: "Cliente di prova", today: TODAY, tab: "memoria" as const, lateralSpace: true, canEditMemory: true, addNotesInHeader: true, useCaseOptions: [], consentNotice: null };
-  const withProposals = render(pageWith({ ...props, pendingProposals: 3 }, createElement("p", null, "vista")));
-  const text = textOf(withProposals).join(" | ");
-  assert.ok(text.includes("Conferma 3 proposte"), text);
-  assert.match(withProposals, new RegExp(`href="/dashboard/${WS}/contesto/conferma"`));
-  const one = textOf(render(pageWith({ ...props, pendingProposals: 1 }, createElement("p", null, "vista")))).join(" | ");
-  assert.ok(one.includes("Conferma 1 proposta"), one);
-  // Senza proposte: «Aggiungi appunti» resta il pulsante della testata, e «Conferma» non c'è.
-  const none = textOf(render(pageWith({ ...props, pendingProposals: 0 }, createElement("p", null, "vista")))).join(" | ");
-  assert.ok(none.includes("Aggiungi appunti") && !none.includes("Conferma"), none);
-  // Il cliente non conferma: niente pulsante.
-  assert.ok(!textOf(render(pageWith({ ...props, lateralSpace: false, canEditMemory: false, pendingProposals: 3 }, createElement("p", null, "vista")))).join(" | ").includes("Conferma"));
+  assert.ok(textOf(html).includes("Prossimo passo") && textOf(html).includes("Conferma 3 proposte"));
+  assert.match(html, /aria-label="Perché questo passo"/);
+  const add = /<button\b[^>]*data-action="context-add"[^>]*>/.exec(html)?.[0] ?? "";
+  assert.match(add, /\bbg-background\b/, "«Aggiungi» bordato");
+  // Il passo sta sotto il titolo e sopra le viste, nella prima schermata.
+  assert.ok(html.indexOf("Conferma 3 proposte") < html.indexOf(">Memoria<") || html.indexOf("Conferma 3 proposte") < html.indexOf("Memoria"));
 });
 
 // ─── «Da confermare» ─────────────────────────────────────────────────
@@ -285,28 +342,47 @@ test("«Da confermare»: i gruppi nell'ordine, «dedotto» e conflitti senza spu
   const text = textOf(html);
   assert.ok(text.includes("Da confermare") && text.includes("Dagli appunti «Call di avvio» del 14 nov"));
   const headings = [...html.matchAll(/<h2[^>]*>([^<]+)<\/h2>/g)].map((m) => m[1]);
-  assert.deepEqual(headings, ["Nuovi", "Cambiano", "Conflitti", "Impegni", "Domande"]);
+  // (Rilascio 10, §3.7) I gruppi con una forma sola.
+  assert.deepEqual(headings, ["Nuovi", "Cambiati", "In conflitto", "Impegni", "Domande"]);
   // Spuntate: la «detto», il cambio, l'impegno, la domanda, e le riconferme. Non la «dedotto», non quella con il nome.
   assert.ok(text.includes("Conferma (5)"), text.join(" | "));
   const checkboxes = [...html.matchAll(/<(?:button|span)[^>]*role="checkbox"[^>]*>/g)].map((m) => m[0]);
-  assert.equal(checkboxes.length, 7, "sei righe con la casella (il conflitto no) e la riga delle riconferme");
+  assert.equal(checkboxes.length, 7, "sei righe con la casella (il conflitto no) e la riconferma, con la sua");
   assert.equal(checkboxes.filter((tag) => /aria-checked="true"/.test(tag)).length, 5);
   assert.equal(checkboxes.filter((tag) => /aria-disabled="true"|data-disabled/.test(tag)).length, 1, "la riga con il nome non si spunta finché non si corregge");
   // «Cambiano» con «Prima»; il conflitto con «Prima» e «Ora» e le due scelte, nessuna scelta di partenza.
   assert.ok(text.includes("Prima: Gli ordini sono 30 al giorno. (Call, 3 nov)"));
   assert.ok(text.includes("Prima: Il CRM è Salesforce. (Documento, 21 ott)") && text.includes("Ora: Il CRM è HubSpot. (Call 14 nov)"));
-  assert.ok(text.includes("Tieni “Prima”") && text.includes("Passa a “Ora”") && text.includes("Scegli quale tenere."));
+  assert.ok(text.includes("Tieni quello di prima") && text.includes("Passa al nuovo") && text.includes("Scegli quale tenere."));
+  assert.doesNotMatch(html, /“|”/, "le virgolette dell'app sono «»");
   assert.equal((html.match(/role="radio" aria-checked="true"/g) ?? []).length, 0);
   // I segni, l'impegno, la domanda, il problema da correggere, le riconferme, i non riportati.
   assert.ok(text.includes("dedotto") && text.includes("Nostro") && text.includes("Responsabile del progetto") && text.includes("entro il 30 nov"));
   assert.ok(text.includes("Da chiedere a: Direttore operativo"));
   assert.ok(text.includes("Non scrivere nomi di persone: indica il ruolo."));
-  assert.ok(text.includes("1 fatto riconfermato: si aggiorna la data") && text.includes("Hanno due stabilimenti."));
+  // Un solo blocco di riconferme, chiuso (la sola riconferma parte spuntata), con il conteggio delle spuntate.
+  assert.ok(text.includes("Riconfermati") && text.includes("1 · si aggiorna la data") && text.includes("Hanno due stabilimenti."));
+  assert.match(html, /<section id="conferma-riconferme" data-slot="fold" class="[^"]*"><h2[^>]*><button type="button" aria-expanded="false" aria-controls="conferma-riconferme-contenuto"/);
+  assert.match(html, /<div id="conferma-riconferme-contenuto" data-slot="fold-content" hidden=""/);
   assert.ok(text.includes("2 passaggi non riportati: parlavano di persone"));
-  assert.match(html, /<q>il gestionale è SAP<\/q>/, "la citazione tra virgolette");
+  // La citazione si apre a richiesta: «Citazione», e il testo nascosto finché non si tocca.
+  assert.match(html, /<p id="[^"]+" hidden="" class="[^"]*"><q>il gestionale è SAP<\/q><\/p>/, "la citazione chiusa");
+  assert.ok(text.includes("Citazione"));
+  // Chi la vede: il lucchetto solo per «Solo Lateral Space», mai «Per tutti».
+  assert.equal(text.includes("Per tutti"), false);
+  // La riga si modifica toccando la frase; «Scarta» sta nel «⋯» della riga (le voci si aprono a richiesta).
+  assert.match(html, /<button type="button" id="[^"]+" aria-expanded="false" class="[^"]*">Il gestionale è SAP Business One\.<\/button>/);
+  assert.equal((html.match(/data-action="proposal-menu"/g) ?? []).length, 7);
+  assert.equal(text.includes("Scarta") || text.includes("Modifica"), false, "nel «⋯», chiuso");
 });
 
-test("«Da confermare»: le riconferme «detto» stanno nella riga spuntata; una «dedotto» ha la sua casella, senza spunta", () => {
+/** Il blocco delle riconferme è aperto: la sezione, il pulsante e il contenuto, che non è nascosto. */
+const reconfirmFoldOpen = (html: string) =>
+  /<section id="conferma-riconferme" data-slot="fold" data-open=""/.test(html) &&
+  /aria-expanded="true" aria-controls="conferma-riconferme-contenuto"/.test(html) &&
+  /<div id="conferma-riconferme-contenuto" data-slot="fold-content" class=/.test(html);
+
+test("«Da confermare»: un solo blocco di riconferme, una casella per fatto: la «detto» spuntata, la «dedotto» no; aperto, perché una va scelta", () => {
   const open: OpenProposals = {
     sources: [{ id: "s1", kind: "appunti", origin: "web", title: "Call di avvio", occurredOn: "2026-11-14", skipped: {} }],
     proposals: [],
@@ -317,11 +393,34 @@ test("«Da confermare»: le riconferme «detto» stanno nella riga spuntata; una
   };
   const html = render(createElement(ConfirmView, confirmProps(open)));
   const text = textOf(html);
-  assert.ok(text.includes("1 fatto riconfermato: si aggiorna la data"), text.join(" | "));
-  assert.ok(text.includes("1 fatto riconfermato da scegliere: spuntalo se è giusto") && text.includes("Il magazzino è piccolo."));
+  assert.ok(text.includes("1 di 2 · si aggiorna la data"), text.join(" | "));
+  assert.ok(reconfirmFoldOpen(html), "la «dedotto» va scelta: il blocco è aperto");
+  assert.ok(text.includes("Hanno due stabilimenti.") && text.includes("Il magazzino è piccolo."));
   assert.ok(text.includes("Conferma (1)"), "parte solo la riconferma «detto»");
   const checkboxes = [...html.matchAll(/<(?:button|span)[^>]*role="checkbox"[^>]*>/g)].map((m) => m[0]);
-  assert.deepEqual(checkboxes.map((tag) => /aria-checked="true"/.test(tag)), [false, true], "la «dedotto» senza spunta, la riga delle «detto» spuntata");
+  assert.deepEqual(checkboxes.map((tag) => /aria-checked="true"/.test(tag)), [true, false], "la «detto» spuntata, la «dedotto» no");
+});
+
+test("«Da confermare»: un documento che riconferma solo due fatti da scegliere apre il blocco, che dice «2 da scegliere»; «Conferma (0)» aspetta la spunta", () => {
+  const open: OpenProposals = {
+    sources: [{ id: "s1", kind: "documento", origin: "web", title: "Organigramma", occurredOn: "2026-11-14", skipped: {} }],
+    proposals: [],
+    reconfirmed: [
+      proposal({ kind: "conferma", preselected: false, before: { factId: "f7", statement: "Hanno due stabilimenti.", sourceLabel: "Documento", date: "1 nov" } }),
+      proposal({ kind: "conferma", preselected: false, visibility: "ls", before: { factId: "f6", statement: "Il magazzino è piccolo.", sourceLabel: "Documento", date: "2 nov" } }),
+    ],
+  };
+  const html = render(createElement(ConfirmView, confirmProps(open)));
+  const text = textOf(html);
+  assert.ok(reconfirmFoldOpen(html), "aperto: le due caselle si vedono");
+  assert.ok(text.includes("2 da scegliere"), text.join(" | "));
+  const checkboxes = [...html.matchAll(/<(?:button|span)[^>]*role="checkbox"[^>]*>/g)].map((m) => m[0]);
+  assert.deepEqual(checkboxes.map((tag) => /aria-checked="true"/.test(tag)), [false, false]);
+  assert.ok(text.includes("Conferma (0)"));
+  // Tutte «detto»: il blocco resta chiuso.
+  const said = render(createElement(ConfirmView, confirmProps({ ...open, reconfirmed: open.reconfirmed.map((p) => ({ ...p, preselected: true })) })));
+  assert.equal(reconfirmFoldOpen(said), false);
+  assert.ok(textOf(said).includes("2 · si aggiorna la data"));
 });
 
 test("«Da confermare»: un conflitto che viene da un documento dice «Documento 14 nov», non «Call»", () => {
@@ -351,13 +450,20 @@ function source(over: Partial<SourceListItem> = {}): SourceListItem {
 }
 const doc = source({ id: "d1", kind: "documento", origin: "web", title: "Organigramma", state: "letto", openProposals: 0, visibility: "tutti", document: { id: "doc1", fileName: "organigramma.pdf", fileType: "application/pdf", fileSize: 1_258_291 }, canRemove: false });
 
-test("la vista «Appunti» per Lateral Space: Granola in alto, ogni fonte con data, origine, stato e chi vede un documento", () => {
+test("(rilascio 10, §3.7) le Fonti per Lateral Space: Granola in alto; l'origine è un'icona, la data e la lettura in grigio, il lucchetto solo per «Solo Lateral Space»", () => {
   const html = render(createElement(NotesView, { workspaceId: WS, today: TODAY, lateralSpace: true, sources: [source(), doc], granola: createElement("p", null, "blocco di Granola"), initialSourceId: null }));
   const text = textOf(html);
   assert.equal(text[0], "blocco di Granola");
-  assert.ok(text.includes("Call di avvio") && text.includes("Granola") && text.includes("Da confermare (4)"));
-  assert.ok(text.includes("Organigramma") && text.includes("Documento") && text.includes("Letto") && text.includes("Per tutti"));
-  assert.equal(text.includes("Carica documento"), false, "Lateral Space carica da «Aggiungi appunti»");
+  // L'origine: un'icona, e il suo nome solo per i lettori di schermo.
+  assert.match(html, /<span class="sr-only">Granola: <\/span>Call di avvio/);
+  assert.match(html, /<span class="sr-only">Documento: <\/span>Organigramma/);
+  assert.ok(text.includes("14 nov") && text.includes("Da confermare (4)") && text.includes("Letto"));
+  // La visibilità solo quando è «Solo Lateral Space»: il lucchetto sulla call, niente «Per tutti» sul documento.
+  assert.equal(text.includes("Per tutti"), false);
+  assert.equal(text.filter((t) => t === "Solo Lateral Space").length, 1);
+  assert.equal(text.includes("Carica documento"), false, "Lateral Space aggiunge da «Aggiungi», nella testata");
+  // Ogni riga apre il pannello della fonte.
+  assert.equal((html.match(/aria-haspopup="dialog"/g) ?? []).length, 2);
   assert.ok(textOf(render(createElement(NotesView, { workspaceId: WS, today: TODAY, lateralSpace: true, sources: [], initialSourceId: null }))).includes("Nessun appunto ancora."));
 });
 
@@ -365,10 +471,51 @@ test("la vista «Documenti» del cliente: i documenti con nome, data e dimension
   const mine = source({ ...doc, id: "d2", canRemove: true, document: { id: "doc2", fileName: "listino.xlsx", fileType: "x", fileSize: 340 * 1024 } });
   const html = render(createElement(NotesView, { workspaceId: WS, today: TODAY, lateralSpace: false, sources: [doc, mine], initialSourceId: "s1" }));
   const text = textOf(html);
-  assert.ok(text.includes("Carica documento"));
+  // (Rilascio 10, §3.7) Il cliente aggiunge un file da «Aggiungi un file», nella testata comune.
+  assert.equal(text.includes("Carica documento"), false);
   assert.ok(text.includes("organigramma.pdf") && text.includes("14 nov · 1,2 MB"));
   assert.ok(text.includes("listino.xlsx") && text.includes("14 nov · 340 KB"));
-  assert.equal(text.filter((t) => t === "Togli").length, 1);
+  // «Togli» dice ai lettori di schermo il nome del documento.
+  assert.equal((html.match(/>Togli<span class="sr-only"> listino\.xlsx<\/span><\/button>/g) ?? []).length, 1);
   assert.equal(text.includes("Da confermare (4)") || text.includes("Letto"), false, "niente stati della lettura per il cliente");
   assert.ok(textOf(render(createElement(NotesView, { workspaceId: WS, today: TODAY, lateralSpace: false, sources: [], initialSourceId: null }))).includes("Nessun documento ancora."));
+});
+
+// ─── (Rilascio 10, §3.7) I Processi ──────────────────────────────────
+
+test("(rilascio 10, §3.7) i Processi: un numero, una riga per unità con lo stato in parole e i conteggi senza zeri; il passo nella testata", () => {
+  const units = fixtureUnits();
+  const step = { kind: "link" as const, icon: "continue" as const, label: `Continua: ${units[1].name}`, why: "È l'unità in corso: riprendi da dove è rimasta.", href: `/dashboard/${WS}/mapping/${units[1].id}` };
+  const html = render(pageWith(headerProps({ tab: "processi", step, canAddUnit: true }), createElement(ProcessesView, { workspaceId: WS, units, interviewHref: null })));
+  const text = textOf(html);
+  // Un numero solo, «1 di 3» unità mappate.
+  assert.match(html, /data-slot="big-number-value"[^>]*>1 di 3</);
+  assert.ok(text.includes("unità mappate"));
+  // Una riga per unità: tutta la riga porta alla board; lo stato è un puntino e una parola.
+  for (const unit of units) assert.match(html, new RegExp(`<a href="/dashboard/${WS}/mapping/${unit.id}"[^>]*data-row="unit"`));
+  assert.ok(text.includes("Mappatura completa") && text.includes("In corso") && text.includes("Da iniziare"));
+  assert.ok(text.includes("6 passi · 28,5 h a settimana · 2 da validare · 1 da classificare"));
+  assert.equal(text.some((t) => /\b0 passi\b|0 h a settimana/.test(t)), false, "lo zero non si vede");
+  // Il passo della vista è il solo pulsante pieno; «Aggiungi un'unità» resta qui, tranquillo; «Aggiungi» è bordato.
+  const filled = filledButtons(html);
+  assert.equal(filled.length, 1);
+  assert.match(filled[0], new RegExp(`href="/dashboard/${WS}/mapping/${units[1].id}"`));
+  assert.ok(text.includes("Continua: Magazzino") || text.some((t) => t.startsWith("Continua: ")));
+  assert.ok(text.includes("Aggiungi un'unità"));
+  assert.match(/<button\b[^>]*data-action="context-add"[^>]*>/.exec(html)?.[0] ?? "", /\bbg-background\b/);
+});
+
+test("(rilascio 10, §3.7) i Processi senza unità: una frase e «Racconta l'azienda»; il passo pieno è «Aggiungi un'unità»", () => {
+  const step = { kind: "action" as const, action: "add-unit" as const, label: "Aggiungi un'unità", why: "Ogni unità ha la sua mappa: i processi, i passi, chi li fa." };
+  const html = render(pageWith(headerProps({ tab: "processi", step, canAddUnit: true }), createElement(ProcessesView, { workspaceId: WS, units: [], interviewHref: `/dashboard/${WS}/setup/leadership` })));
+  const text = textOf(html);
+  assert.ok(text.includes("Nessuna unità, per ora."));
+  assert.match(html, new RegExp(`<a[^>]*href="/dashboard/${WS}/setup/leadership"[^>]*>Racconta l(?:'|&#x27;)azienda</a>`));
+  const filled = filledButtons(html);
+  assert.equal(filled.length, 1);
+  assert.match(filled[0], /data-action="next-step"/);
+  assert.ok(text.includes("Aggiungi un'unità"));
+  assert.doesNotMatch(html, /data-slot="big-number"/, "lo zero non si mostra");
+  // Senza l'Intervista iniziale (chi non è revisore): la sola frase.
+  assert.doesNotMatch(render(createElement(ProcessesView, { workspaceId: WS, units: [], interviewHref: null })), /setup\/leadership/);
 });

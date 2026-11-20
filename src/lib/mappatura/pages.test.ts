@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { ReactElement } from "react";
 import { installAppModules } from "../ai/claude-test-kit.ts";
 import { enableTsxImports } from "../../components/use-cases/detail/referent/tsx-test-loader.ts";
-import { FIXTURE_IDS, fixtureBoard, fixtureUnits } from "./board-fixture.ts";
+import { FIXTURE_IDS, fixtureBoard } from "./board-fixture.ts";
 import type { MappingBoard } from "./board-model.ts";
 
 // Le due pagine della mappatura (docs/mappatura/MAPPATURA-BOARD-PIANO.md §1.1, §4.10, §6): leggono e montano, niente di
@@ -61,7 +61,6 @@ const unitLayout = (await import("../../app/(dashboard)/dashboard/[workspaceId]/
 const { BoardLoadingNames } = await import("../../components/mappatura/board/loading-header.tsx");
 const { BoardProvider } = await import("../../components/mappatura/store/use-board.tsx");
 const { UnitBoard } = await import("../../components/mappatura/board/unit-board.tsx");
-const { UnitsView } = await import("../../components/mappatura/board/units-view.tsx");
 const { Companion } = await import("../../components/mappatura/companion/companion.tsx");
 const { CompleteButton } = await import("../../components/mappatura/companion/complete-button.tsx");
 const { ClassificationView } = await import("../../components/mappatura/classification/classification-view.tsx");
@@ -125,7 +124,8 @@ test("la board di un'unità: letta per chi guarda, con gli use case che può ved
   });
   const classification = view.props.classification as Element;
   assert.equal(classification.type, ClassificationView);
-  assert.deepEqual(classification.props, { workspaceId: WS, useCaseHub: false });
+  // (Rilascio 10, §3.7) Chi guarda è di Lateral Space o no: i «Dettagli tecnici» del drawer.
+  assert.deepEqual(classification.props, { workspaceId: WS, useCaseHub: false, lateralSpace: false });
   const headAction = view.props.headAction as Element;
   assert.equal(headAction.type, CompleteButton);
   assert.deepEqual(headAction.props, { workspaceId: WS, departmentId: board.unit.id });
@@ -140,6 +140,17 @@ test("l'assistente si apre da solo con ?mode=chat (i link di prima) e finché l'
   assert.equal(await assistantOpen(fixtureBoard(), { mode: "chat" }), true);
   assert.equal(await assistantOpen(fixtureBoard(), { mode: "altro" }), false);
   assert.equal(await assistantOpen(fixtureBoard({ empty: true }), {}), true);
+});
+
+test("(rilascio 10, §8.2) `?apri=<passo>` arriva alla board: il drawer di quel passo si apre all'arrivo; un valore che non è un id, niente", async () => {
+  const step = async (search: Record<string, string>) => {
+    reset(fixtureBoard());
+    const page = await open(fixtureBoard().unit.id, search);
+    return (page.props.children as Element).props.initialStep;
+  };
+  assert.equal(await step({ apri: FIXTURE_IDS.richieste }), FIXTURE_IDS.richieste);
+  assert.equal(await step({ apri: "non-un-passo" }), null);
+  assert.equal(await step({}), null);
 });
 
 test("senza conversazione nessun messaggio; con l'area «Use case» accesa la classificazione lo sa", async () => {
@@ -164,17 +175,13 @@ test("un'unità di un altro workspace (o un id che non è un'unità): 404, e nie
   assert.deepEqual(pagina.calls.map((call) => call[0]), ["requireWorkspacePage", "readBoard"]);
 });
 
-test("l'elenco delle unità: una lettura sola per tutte, con il nome del workspace e la sua parola per le unità", async () => {
+test("(rilascio 10, §2.4) il vecchio elenco delle unità porta ai Processi di «Contesto»: un 308 con la query di prima, dopo il controllo di chi guarda", async () => {
   pagina.calls = [];
-  const units = fixtureUnits();
-  (pagina as Pagina & { units?: unknown }).units = units;
-  const page = (await listPage({ params: Promise.resolve({ workspaceId: WS }) })) as Element;
-  assert.deepEqual(pagina.calls, [
-    ["requireWorkspacePage", WS],
-    ["listUnitBoards", EXECUTOR, WS],
-  ]);
-  assert.equal(page.type, UnitsView);
-  assert.deepEqual(page.props, { workspaceId: WS, workspaceName: "Officina di prova", unitTerm: { singular: "reparto", plural: "reparti" }, units });
+  const go = (search: Record<string, string | string[]>) => listPage({ params: Promise.resolve({ workspaceId: WS }), searchParams: Promise.resolve(search) });
+  const target = (error: unknown) => (error as { digest?: string }).digest ?? "";
+  await assert.rejects(go({}), (error: unknown) => target(error) === `NEXT_REDIRECT;replace;/dashboard/${WS}/contesto?vista=processi;308;`);
+  assert.deepEqual(pagina.calls, [["requireWorkspacePage", WS]], "nessuna lettura: solo il controllo");
+  await assert.rejects(go({ x: "1", vista: "vecchia" }), (error: unknown) => target(error).includes(`/dashboard/${WS}/contesto?vista=processi&x=1;308;`));
 });
 
 test("prima della board: il layout dell'unità legge i due nomi per la testata che carica, con il controllo della pagina", async () => {

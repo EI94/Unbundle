@@ -2,7 +2,7 @@
 // La vetrina della board dell'activity mapping (docs/mappatura/MAPPATURA-BOARD-PIANO.md §8.5).
 //
 // Pagine statiche fatte con i componenti veri (renderToStaticMarkup), i tre fogli della board e la board inventata di
-// fixture.ts: l'elenco delle unità; «Processi di oggi» piena, vuota e in sola lettura; il drawer di un passo; il
+// fixture.ts: «Processi di oggi» piena, vuota e in sola lettura; il drawer di un passo; il
 // pannello dell'assistente; «Classificazione» (lo slot del compagno, come lo disegna il suo componente) e il suo drawer
 // che confronta; la testata in
 // ogni stato della pillola; i due toast del riferimento e quello con «Annulla». Niente app, niente database, niente
@@ -23,9 +23,8 @@ export const FONTS_HREF = "https://fonts.googleapis.com/css2?family=Geist:wght@3
 const SHEETS = ["src/components/mappatura/board.css", "src/components/mappatura/board-views.css", "src/components/mappatura/board-companion.css"];
 
 /** Le pagine della vetrina: il nome del file, e se la foto è la sola finestra (un drawer è fermo alla finestra). */
+// (Rilascio 10, ondata 6a) L'elenco delle unità è la vista «Processi» di «Contesto», fuori dalla board: niente più «00-unita».
 export const PAGES = [
-  { name: "00-unita", viewport: false },
-  { name: "00-unita-vuota", viewport: false },
   { name: "02-oggi", viewport: false },
   { name: "02-oggi-in-corso", viewport: false },
   { name: "02-oggi-vuota", viewport: false },
@@ -84,12 +83,18 @@ ${sheets}
 
 /** Scrive le pagine della vetrina in `out` (la cartella si svuota prima) e restituisce l'elenco. */
 export async function buildVetrina(out) {
+  // L'avviso dell'ok ai sub-responsabili (nell'assistente) ha un'azione del server e il router di Next: nella vetrina non
+  // servono, e senza le chiavi del server l'azione non si carica. Due moduli finti, come nei test del compagno.
+  const { installAppModules } = await import(pathToFileURL(join(REPO, "src/lib/ai/claude-test-kit.ts")).href);
+  await installAppModules({
+    "@/lib/actions/uc-subprocessors": "export async function declareSubprocessorsAction() { return { ok: true }; }",
+    "next/navigation": "export function useRouter() { return { refresh() {}, push() {} }; }",
+  });
   const { enableTsxImports } = await import(pathToFileURL(join(REPO, "src/components/use-cases/detail/referent/tsx-test-loader.ts")).href);
   await enableTsxImports();
   const at = (path) => import(pathToFileURL(join(REPO, path)).href);
   const { createElement: h, Fragment } = await import("react");
   const { renderToStaticMarkup } = await import("react-dom/server");
-  const { UnitsView } = await at("src/components/mappatura/board/units-view.tsx");
   const { UnitBoard } = await at("src/components/mappatura/board/unit-board.tsx");
   const { StepDrawerBody, stepDrawerHead } = await at("src/components/mappatura/board/step-drawer.tsx");
   const { BoardProvider } = await at("src/components/mappatura/store/use-board.tsx");
@@ -97,12 +102,12 @@ export async function buildVetrina(out) {
   const { CompleteButton } = await at("src/components/mappatura/companion/complete-button.tsx");
   const { ClassificationView } = await at("src/components/mappatura/classification/classification-view.tsx");
   const { ClassificationDetails } = await at("src/components/mappatura/classification/classification-drawer.tsx");
-  const { DrawerStatic } = await at("src/components/mappatura/ui/drawer.tsx");
-  const { BoardBrand, BoardHeader, BoardTabs, BoardTitle, StatusPill } = await at("src/components/mappatura/ui/frame.tsx");
+  const { DrawerStatic, StepContext } = await at("src/components/mappatura/ui/drawer.tsx");
+  const { BoardHeader, BoardPath, BoardTabs, BoardTitle, StatusPill } = await at("src/components/mappatura/ui/frame.tsx");
   const { BoardLoadingHeader } = await at("src/components/mappatura/board/loading-header.tsx");
   const { BOARD_TABS, BOARD_TEXT } = await at("src/lib/mappatura/text.ts");
   const { locateStep } = await at("src/lib/mappatura/board-model.ts");
-  const { FIXTURE_IDS, SHOWCASE, fixtureBoard, fixtureUnits, showcaseBoard } = await at("scripts/mappatura-test/fixture.ts");
+  const { FIXTURE_IDS, SHOWCASE, fixtureBoard, showcaseBoard } = await at("scripts/mappatura-test/fixture.ts");
 
   const workspaceId = FIXTURE_IDS.workspace;
   const noop = () => {};
@@ -143,7 +148,8 @@ export async function buildVetrina(out) {
   const header = (state, savedAt, unitName = "Ufficio acquisti") =>
     html(
       h(BoardHeader, {
-        brand: h(BoardBrand, { workspaceName: SHOWCASE.workspaceName, areaHref: `/dashboard/${workspaceId}/mapping` }),
+        // (Rilascio 10, §3.7) La prima riga: il percorso «Contesto › Processi › {Unità}».
+        brand: h(BoardPath, { workspaceId, unitName }),
         title: h(BoardTitle, { plain: unitName, accent: BOARD_TEXT.boardTitleAccent }),
         aside: h(
           Fragment,
@@ -164,12 +170,10 @@ export async function buildVetrina(out) {
   // Il drawer che confronta (P27): un passo classificato con la proposta dell'assistente, come lo apre «Classificazione».
   const compared = locateStep(full, FIXTURE_IDS.confronto);
   const compare = html(
-    h(DrawerStatic, { wide: true, context: `${compared.process.name} · ${compared.code}`, title: compared.step.title }, h(ClassificationDetails, { board: full, place: compared, dispatch: noop, newId: actions.newId })),
+    h(DrawerStatic, { wide: true, context: h(StepContext, { processName: compared.process.name, code: compared.code }), title: compared.step.title }, h(ClassificationDetails, { board: full, place: compared, dispatch: noop, newId: actions.newId })),
   );
 
   const bodies = {
-    "00-unita": html(h(UnitsView, { workspaceId, workspaceName: SHOWCASE.workspaceName, unitTerm: SHOWCASE.unitTerm, units: fixtureUnits() })),
-    "00-unita-vuota": html(h(UnitsView, { workspaceId, workspaceName: SHOWCASE.workspaceName, unitTerm: SHOWCASE.unitTerm, units: [] })),
     "02-oggi": unitBoard(full),
     "02-oggi-in-corso": unitBoard(showcaseBoard()),
     "02-oggi-vuota": unitBoard(fixtureBoard({ empty: true }), { assistantOpen: true }),
@@ -200,6 +204,7 @@ export async function buildVetrina(out) {
 
   rmSync(out, { recursive: true, force: true });
   for (const { name } of PAGES) {
+    if (typeof bodies[name] !== "string") throw new Error(`vetrina: la pagina ${name} non ha contenuto`);
     const file = join(out, `${name}.html`);
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, page(`Vetrina della board · ${name}`, bodies[name]));

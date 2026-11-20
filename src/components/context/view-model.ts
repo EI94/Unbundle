@@ -21,7 +21,8 @@ import { dayLabel } from "../../lib/context/labels.ts";
 import { CONTEXT_TEXT } from "../../lib/context/text.ts";
 import { CONTEXT_LIMITS, CONTEXT_SECTIONS, type CommitmentParty, type ContextSection, type ContextVisibility, type ProposalKind, type SkippedCounts, type SourceKind, type SourceOrigin } from "../../lib/context/vocab.ts";
 import type { AskSource } from "../../lib/db/queries/context-ask.ts";
-import type { CommitmentView, FactView, MemorySection, MemoryView } from "../../lib/db/queries/context-memory.ts";
+import type { LiveRow } from "../../lib/context/live.ts";
+import type { CommitmentView, FactView, MemorySection, MemoryView, NoveltyItem } from "../../lib/db/queries/context-memory.ts";
 import type { NeedLinkView } from "../../lib/db/queries/context-needs.ts";
 import type { UseCaseContext, UseCaseFact } from "../../lib/db/queries/context-work.ts";
 import type { ConfirmItem, OpenProposals, ProposalPatch, ProposalView } from "../../lib/db/queries/context-proposals.ts";
@@ -73,11 +74,13 @@ export function confirmGroups(proposals: readonly ProposalView[]): ConfirmGroup[
 }
 
 export type Resolution = "prima" | "ora";
-/** Che cosa ha scelto la persona: le caselle, la scelta di ogni conflitto, la riga delle riconferme. */
+/**
+ * Che cosa ha scelto la persona: le caselle (anche quelle delle riconferme, una per fatto) e la scelta di ogni
+ * conflitto. (Rilascio 10, §3.7) Le riconferme stanno in un solo blocco, ognuna con la sua casella.
+ */
 export interface ConfirmSelection {
   checked: Readonly<Record<string, boolean>>;
   resolutions: Readonly<Record<string, Resolution>>;
-  reconfirm: boolean;
 }
 
 /** Una casella si può spuntare: non un conflitto (lì si sceglie «Prima» o «Ora») e nessun dato da correggere. */
@@ -86,29 +89,28 @@ export function isCheckable(proposal: Pick<ProposalView, "kind" | "issue">): boo
 }
 
 /**
- * Le scelte della persona sopra le proposte del server: le caselle toccate a mano, la scelta di ogni conflitto, la riga
- * delle riconferme. Le proposte arrivano sempre dal server (dopo una correzione, uno scarto, un aggiornamento): una
- * casella mai toccata segue la preselezione della proposta di adesso.
+ * Le scelte della persona sopra le proposte del server: le caselle toccate a mano e la scelta di ogni conflitto. Le
+ * proposte arrivano sempre dal server (dopo una correzione, uno scarto, un aggiornamento): una casella mai toccata segue
+ * la preselezione della proposta di adesso.
  */
 export interface ConfirmChoices {
   overrides: Readonly<Record<string, boolean>>;
   resolutions: Readonly<Record<string, Resolution>>;
-  reconfirm: boolean;
 }
-export const NO_CHOICES: ConfirmChoices = Object.freeze({ overrides: Object.freeze({}), resolutions: Object.freeze({}), reconfirm: true });
+export const NO_CHOICES: ConfirmChoices = Object.freeze({ overrides: Object.freeze({}), resolutions: Object.freeze({}) });
 
 /**
  * Le caselle a schermo: spuntate le proposte `preselected` (base «detto», non un conflitto, niente da correggere),
  * oppure come le ha messe la persona. Una proposta da correggere o un conflitto non si spuntano mai; corretta, torna
- * come prima (la scelta a mano resta). Nessun conflitto ha una scelta di partenza. Le riconferme preselezionate stanno
- * nella riga delle riconferme, che parte spuntata; le altre hanno una casella loro, che parte senza spunta.
+ * come prima (la scelta a mano resta). Nessun conflitto ha una scelta di partenza. Le riconferme seguono la stessa
+ * regola: spuntate quelle preselezionate («detto»), senza spunta le altre («dedotto», da un documento del cliente).
  */
 export function selectionFrom(open: Pick<OpenProposals, "proposals"> & Partial<Pick<OpenProposals, "reconfirmed">>, choices: ConfirmChoices = NO_CHOICES): ConfirmSelection {
   const checked: Record<string, boolean> = {};
-  for (const proposal of [...open.proposals, ...reconfirmationsToChoose({ reconfirmed: open.reconfirmed ?? [] })]) {
+  for (const proposal of [...open.proposals, ...(open.reconfirmed ?? [])]) {
     checked[proposal.id] = isCheckable(proposal) && (choices.overrides[proposal.id] ?? proposal.preselected);
   }
-  return { checked, resolutions: choices.resolutions, reconfirm: choices.reconfirm };
+  return { checked, resolutions: choices.resolutions };
 }
 
 /** La scelta di partenza: nessuna scelta della persona. */
@@ -116,10 +118,7 @@ export function initialSelection(open: Pick<OpenProposals, "proposals"> & Partia
   return selectionFrom(open, NO_CHOICES);
 }
 
-/**
- * Le voci da mandare a `confirmProposals`: le righe spuntate, i conflitti con una scelta, le riconferme preselezionate
- * se la loro riga è spuntata, e le altre riconferme spuntate una per una.
- */
+/** Le voci da mandare a `confirmProposals`: le righe spuntate, i conflitti con una scelta, le riconferme spuntate. */
 export function selectedItems(open: Pick<OpenProposals, "proposals" | "reconfirmed">, selection: ConfirmSelection): ConfirmItem[] {
   const items: ConfirmItem[] = [];
   for (const proposal of open.proposals) {
@@ -131,10 +130,7 @@ export function selectedItems(open: Pick<OpenProposals, "proposals" | "reconfirm
     }
     if (selection.checked[proposal.id] === true) items.push({ id: proposal.id, version: proposal.version });
   }
-  if (selection.reconfirm) {
-    for (const proposal of reconfirmable(open)) items.push({ id: proposal.id, version: proposal.version });
-  }
-  for (const proposal of reconfirmationsToChoose(open)) {
+  for (const proposal of reconfirmations(open)) {
     if (selection.checked[proposal.id] === true) items.push({ id: proposal.id, version: proposal.version });
   }
   return items;
@@ -145,17 +141,22 @@ export function confirmCount(open: Pick<OpenProposals, "proposals" | "reconfirme
   return selectedItems(open, selection).length;
 }
 
-/** Le riconferme che entrano con la riga spuntata: le preselezionate («detto»), senza niente da correggere. */
+/** (Rilascio 10, §3.7) Le riconferme del blocco, una casella per fatto: quelle senza niente da correggere. */
+export function reconfirmations(open: Pick<OpenProposals, "reconfirmed">): ProposalView[] {
+  return open.reconfirmed.filter((proposal) => proposal.issue === null);
+}
+
+/** Le riconferme che partono spuntate: le preselezionate («detto»). */
 export function reconfirmable(open: Pick<OpenProposals, "reconfirmed">): ProposalView[] {
-  return open.reconfirmed.filter((proposal) => proposal.issue === null && proposal.preselected);
+  return reconfirmations(open).filter((proposal) => proposal.preselected);
 }
 
 /**
- * Le riconferme da scegliere una per una: «dedotto», o da un documento del cliente, o di un fatto «Solo Lateral Space».
- * Partono senza spunta, come fa l'MCP del team.
+ * Le riconferme che partono senza spunta: «dedotto», o da un documento del cliente, o di un fatto «Solo Lateral Space».
+ * Si scelgono una per una, come fa l'MCP del team.
  */
 export function reconfirmationsToChoose(open: Pick<OpenProposals, "reconfirmed">): ProposalView[] {
-  return open.reconfirmed.filter((proposal) => proposal.issue === null && !proposal.preselected);
+  return reconfirmations(open).filter((proposal) => !proposal.preselected);
 }
 
 /**
@@ -312,6 +313,15 @@ export function sourceMeta(item: SourceListItem, today: string, lateralSpace: bo
   return parts.filter(Boolean);
 }
 
+/**
+ * (Rilascio 10, §3.7) La riga di una fonte nella vista «Fonti», per Lateral Space: la data e a che punto è la lettura.
+ * L'origine è un'icona (con il suo nome per i lettori di schermo); chi la vede si dice solo con il lucchetto, quando è
+ * «Solo Lateral Space».
+ */
+export function sourceRowMeta(item: SourceListItem, today: string): string[] {
+  return [dayLabel(item.occurredOn, today), sourceStateLabel(item)].filter(Boolean);
+}
+
 /** Che cosa si può fare su una fonte (Lateral Space): leggere la prima volta, rileggere, o niente mentre la legge qualcuno. */
 export function sourceReadAction(item: { state: SourceState }, purged: boolean): "leggi" | "rileggi" | null {
   if (purged || item.state === "in_lettura") return null;
@@ -336,7 +346,137 @@ export function askSourceMeta(source: Pick<AskSource, "kind" | "label" | "date">
   return parts.join(" · ");
 }
 
+// ─── (Rilascio 10, §3.7) Le viste di «Contesto» e la testata comune ──
+
+/** Le tre viste: Memoria · Processi · Fonti (D2). */
+export const CONTEXT_VIEWS = ["memoria", "processi", "fonti"] as const;
+export type ContextView = (typeof CONTEXT_VIEWS)[number];
+
+/**
+ * La vista di `?vista=`: «processi», «fonti»; altrimenti la Memoria. Il vecchio «appunti» lo porta a «fonti» il proxy,
+ * con un 308 (src/lib/context/view-alias.ts); se arrivasse fin qui, vale «fonti».
+ */
+export function contextViewOf(raw: unknown): ContextView {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (value === "processi") return "processi";
+  if (value === "fonti" || value === "appunti") return "fonti";
+  return "memoria";
+}
+
+/** L'indirizzo di una vista: la Memoria senza parametri. */
+export function contextViewHref(workspaceId: string, view: ContextView): string {
+  const base = `/dashboard/${workspaceId}/contesto`;
+  return view === "memoria" ? base : `${base}?vista=${view}`;
+}
+
+/**
+ * (§2.4, §8.2) Il vecchio elenco delle unità, `/mapping`, è la vista «Processi»: `/contesto?vista=processi`, con gli
+ * altri parametri dell'indirizzo di prima dopo di lei (una `vista` vecchia no). L'ancora la tiene il browser.
+ */
+export function processesRedirect(workspaceId: string, search: Readonly<Record<string, string | string[] | undefined>>): string {
+  const params = new URLSearchParams({ vista: "processi" });
+  for (const [key, value] of Object.entries(search)) {
+    if (key === "vista" || value === undefined) continue;
+    for (const one of Array.isArray(value) ? value : [value]) params.append(key, one);
+  }
+  return `/dashboard/${workspaceId}/contesto?${params.toString()}`;
+}
+
+/** Un id che si può mettere in `?apri=` (il fatto) o `?fonte=` (la fonte): un uuid; altrimenti il pannello resta chiuso. */
+const SHEET_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function sheetIdParam(raw: unknown): string | null {
+  const value = typeof raw === "string" ? raw.trim() : Array.isArray(raw) && typeof raw[0] === "string" ? raw[0].trim() : "";
+  return SHEET_ID.test(value) ? value.toLowerCase() : null;
+}
+
+/**
+ * Il «⋯» della testata (§3.7): l'Intervista iniziale per i revisori (come nella barra laterale); per Lateral Space i
+ * fatti da verificare, quando ce ne sono (la riga di stato ne mostra una sola alla volta). Vuoto: niente «⋯».
+ */
+export function contextMenu(i: { workspaceId: string; reviewer: boolean; toCheck: number; lateralSpace: boolean }): Array<{ key: string; label: string; href: string }> {
+  const base = `/dashboard/${i.workspaceId}`;
+  const items: Array<{ key: string; label: string; href: string }> = [];
+  if (i.reviewer) items.push({ key: "intervista", label: T.page.interview, href: `${base}/setup/leadership` });
+  const toCheck = toCheckRow(i.toCheck, i.lateralSpace);
+  if (toCheck) items.push({ key: "verifica", label: toCheck, href: `${base}/contesto/verifica` });
+  return items;
+}
+
+/** Il prossimo passo della testata, per Lateral Space con proposte da confermare: «Conferma N proposte»; altrimenti niente. */
+export function confirmStep(i: { lateralSpace: boolean; openProposals: number; workspaceId: string }): { label: string; why: string; href: string } | null {
+  const n = Number.isFinite(i.openProposals) ? Math.trunc(i.openProposals) : 0;
+  if (!i.lateralSpace || n <= 0) return null;
+  return { label: T.page.confirmProposals(n), why: T.page.confirmWhy(n), href: `/dashboard/${i.workspaceId}/contesto/conferma` };
+}
+
 // ─── La Memoria ──────────────────────────────────────────────────────
+
+/** Al massimo tre righe in vista (§1 regola 4), poi «Vedi tutti (N)». */
+export const MEMORY_ROWS_MAX = 3;
+
+/** Le prime righe e quante restano. */
+export function firstRows<T>(items: readonly T[], max: number = MEMORY_ROWS_MAX): { shown: T[]; rest: number } {
+  return { shown: items.slice(0, max), rest: Math.max(0, items.length - max) };
+}
+
+/**
+ * «Impegni» in una lista sola (§3.7, S6): gli scaduti prima, poi per scadenza, i senza data in fondo; a parità prima i
+ * «Nostri». Ogni riga dice di chi è.
+ */
+export function memoryCommitments(nostri: readonly CommitmentView[], cliente: readonly CommitmentView[]): CommitmentView[] {
+  const all = [...nostri, ...cliente].map((commitment, index) => ({ commitment, index }));
+  const rank = (c: CommitmentView) => (c.overdue ? 0 : c.dueOn ? 1 : 2);
+  return all
+    .sort((a, b) => rank(a.commitment) - rank(b.commitment) || (a.commitment.dueOn ?? "").localeCompare(b.commitment.dueOn ?? "") || a.index - b.index)
+    .map(({ commitment }) => commitment);
+}
+
+/** «Nostri» o «Del cliente»: la parte di un impegno, davanti alla sua frase. */
+export function commitmentParty(commitment: Pick<CommitmentView, "party">): string {
+  return commitment.party === "nostra" ? T.nextSteps.ours : T.nextSteps.theirs;
+}
+
+/** Le unità di una riga della Discovery (`unita:<id>`) e gli obiettivi (`obiettivo:<id>`): la chiave dice da dove viene. */
+const UNIT_KEY = /^unita:([0-9a-f-]{36})$/i;
+
+/**
+ * Dove porta una riga della Discovery (§3.7): un'unità alla sua board («Come lavorano porta alle board»), un obiettivo
+ * alla pagina «Obiettivi»; le altre righe non hanno un link.
+ */
+export function liveRowHref(workspaceId: string, row: Pick<LiveRow, "key">): string | null {
+  const unit = UNIT_KEY.exec(row.key);
+  if (unit) return `/dashboard/${workspaceId}/mapping/${unit[1].toLowerCase()}`;
+  if (row.key.startsWith("obiettivo:")) return `/dashboard/${workspaceId}/strategy`;
+  return null;
+}
+
+/**
+ * La riga grigia di una sezione chiusa (§3.7, S6): quante voci ha («Azienda · 6»). «Come lavorano» conta le unità
+ * («6 unità»), e i fatti dopo («6 unità · 2»).
+ */
+export function sectionSummary(section: Pick<MemorySection, "section" | "live" | "facts">): string {
+  if (section.section !== "lavoro") return String(section.live.length + section.facts.length);
+  const units = section.live.filter((row) => UNIT_KEY.test(row.key)).length;
+  const others = section.live.length - units + section.facts.length;
+  if (units === 0) return String(others);
+  return others > 0 ? `${T.page.units(units)} · ${others}` : T.page.units(units);
+}
+
+/** La fonte di una novità («Call 14 nov»), presa dal fatto nella Memoria; se il fatto non è tra le sezioni, la sezione. */
+export function noveltySource(item: Pick<NoveltyItem, "factId" | "section">, sections: readonly Pick<MemorySection, "facts">[]): string {
+  for (const section of sections) {
+    const fact = section.facts.find((one) => one.id === item.factId);
+    if (fact) return fact.sourceLabel;
+  }
+  return sectionLabel(item.section);
+}
+
+/** Le novità in vista, al massimo tre, e quante altre ce ne sono (quelle oltre le tre e quelle che la pagina non ha letto). */
+export function noveltyRows(novelties: MemoryView["novelties"]): { shown: NoveltyItem[]; more: number } {
+  if (!novelties) return { shown: [], more: 0 };
+  const { shown, rest } = firstRows(novelties.items);
+  return { shown, more: rest + Math.max(0, Math.trunc(novelties.more) || 0) };
+}
 
 /** Le sezioni con qualcosa dentro (dati della Discovery o fatti), nell'ordine fisso: quelle vuote non si vedono. */
 export function visibleSections(sections: readonly MemorySection[]): MemorySection[] {
@@ -599,6 +739,12 @@ export interface NoteDraftErrors {
   link?: string;
 }
 /** I controlli del browser prima di salvare (gli stessi limiti di `addContextNote`, che li rifà). Senza file servono gli appunti. */
+/**
+ * (Rilascio 10) «Altro» del dialogo «Aggiungi appunti» («Con chi» e «Link») si apre da sé solo per un errore in uno dei
+ * due campi; con del testo dentro chi scrive lo chiude lo stesso, e il testo resta.
+ */
+export const notesMoreOnError = (errors: { readonly participants?: string; readonly link?: string }): boolean => Boolean(errors.participants || errors.link);
+
 export function noteDraftErrors(draft: { body: string; title: string; occurredOn: string; link: string; hasFile: boolean }): NoteDraftErrors {
   const errors: NoteDraftErrors = {};
   const body = draft.body.trim();

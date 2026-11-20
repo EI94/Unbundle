@@ -1,70 +1,38 @@
-import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { notFound } from "next/navigation";
+import { Interview } from "@/components/mappatura/interview/interview";
+import { INTERVIEW_TEXT } from "@/components/mappatura/interview/text";
+import { requireWorkspacePage } from "@/lib/auth/require-workspace";
+import { getActiveConversation, getMessages } from "@/lib/db/queries/conversations";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
-import {
-  getActiveConversation,
-  getMessages,
-} from "@/lib/db/queries/conversations";
-import { ChatInterface } from "@/components/agent/chat-interface";
-import { LeadershipSidebar } from "@/components/dashboard/leadership-sidebar";
-import { DocumentUpload } from "@/components/dashboard/document-upload";
-import { Compass } from "lucide-react";
 
-const WELCOME = `L'AI sta cambiando le regole del gioco. Capiremo dove si sposta il valore nella tua organizzazione e cosa significa per te.
+export const metadata = { title: INTERVIEW_TEXT.title };
 
-**Come si chiama la tua organizzazione e cosa fate?**`;
-
-const SUGGESTIONS = [
-  "Siamo [nome azienda] nel settore...",
-  "Gestiamo servizi professionali per enterprise",
-  "Siamo una tech company in fase di scaling",
-];
-
-export default async function LeadershipSetupPage({
+/**
+ * L'«Intervista iniziale» (rilascio 10, docs/ui-10/PROPOSTA-10.md §3.7; prima «Discovery», stesso indirizzo): la
+ * conversazione con cui l'azienda si racconta, nella chat dell'assistente della board, con il riepilogo accanto. Chi è
+ * nel workspace, come prima. La conversazione è quella di sempre (`leadership_setup`): i messaggi salvati ripartono da
+ * dove erano. `?apri=riepilogo` apre il riepilogo dove non sta accanto alla chat (al telefono).
+ */
+export default async function InterviewPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ workspaceId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-
   const { workspaceId } = await params;
-
   await requireWorkspacePage(workspaceId);
   const workspace = await getWorkspaceById(workspaceId);
   if (!workspace) notFound();
 
-  const conversation = await getActiveConversation(
-    workspaceId,
-    "leadership_setup"
-  );
-  const existingMessages = conversation
-    ? await getMessages(conversation.id)
-    : [];
-
-  const initialMessages = existingMessages.map((m) => ({
-    id: m.id,
-    role: m.role as "user" | "assistant",
-    content: m.content,
+  const conversation = await getActiveConversation(workspaceId, "leadership_setup");
+  const saved = conversation ? await getMessages(conversation.id) : [];
+  const initialMessages = saved.map((message) => ({
+    id: message.id,
+    role: message.role as "user" | "assistant",
+    content: message.content,
   }));
+  const { apri } = await searchParams;
 
-  return (
-    <div className="flex h-[calc(100vh-1px)] overflow-hidden">
-      <div className="flex-1 flex flex-col">
-        <div className="border-b border-border px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <Compass className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">Discovery</span>
-          </div>
-          <DocumentUpload workspaceId={workspaceId} />
-        </div>
-        <ChatInterface
-          workspaceId={workspaceId}
-          conversationType="leadership_setup"
-          initialMessages={initialMessages}
-          welcomeMessage={WELCOME}
-          suggestions={SUGGESTIONS}
-        />
-      </div>
-      <LeadershipSidebar workspaceId={workspaceId} />
-    </div>
-  );
+  return <Interview workspaceId={workspaceId} initialMessages={initialMessages} initialSheet={typeof apri === "string" ? apri : null} />;
 }

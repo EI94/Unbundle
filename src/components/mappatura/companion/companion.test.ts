@@ -46,17 +46,18 @@ function companion(options: { board?: MappingBoard; hasDocuments?: boolean; init
   );
 }
 
-test("l'assistente di un'unità senza conversazione: il benvenuto con il nome in grassetto, i suggerimenti, «Carica documenti», il campo", () => {
+test("l'assistente di un'unità senza conversazione: il benvenuto in una riga, tre suggerimenti, «Documenti ▾» con «Carica documenti», il campo", () => {
   const out = companion();
   assert.match(out, /^<div class="b-comp" data-b="companion">/);
-  assert.match(out, /Mappiamo il lavoro di <strong>Ufficio acquisti<\/strong>\. Racconta una settimana tipo: su cosa va più tempo\? Salvo ogni passo sulla board mentre parliamo\./);
+  // (Rilascio 10, §3.7) Il benvenuto in una riga sola, con il nome in grassetto; tre suggerimenti.
+  assert.match(out, /<p>Mappiamo il lavoro di <strong>Ufficio acquisti<\/strong>: su cosa va più tempo in una settimana tipo\?<\/p>/);
   assert.deepEqual([...out.matchAll(/<button type="button" class="b-fchip">([^<]+)<\/button>/g)].map((match) => match[1]), [
     "Le attività principali sono quattro o cinque",
     "Molto tempo va in report e controlli",
-    "Il lavoro è frammentato",
     "Tanti passaggi si fanno a mano",
   ]);
-  // Un solo bottone piccolo finché l'unità non ha documenti: «Proponi passi dai documenti» compare dopo il primo.
+  // Un solo «Documenti ▾», chiuso; dentro un solo bottone finché l'unità non ha documenti («Proponi passi» dopo il primo).
+  assert.match(out, /<button type="button" class="b-btn b-small" aria-expanded="false" aria-controls="([^"]+)" data-b="documents-menu">Documenti<span class="b-caret" aria-hidden="true">▾<\/span><\/button><div class="b-comp-tools" id="\1" hidden="">/);
   assert.match(out, /class="b-btn b-small" data-b="button" data-variant="outline">Carica documenti<\/button>/);
   assert.doesNotMatch(out, /Proponi passi dai documenti/);
   assert.match(out, /<input type="file" accept="\.pdf,\.txt,\.csv,\.md,\.docx,\.xlsx,\.pptx" multiple="" hidden="" tabindex="-1" aria-hidden="true" data-b="companion-files"\/>/);
@@ -70,7 +71,7 @@ test("l'assistente di un'unità senza conversazione: il benvenuto con il nome in
 test("con i documenti: «Proponi passi dai documenti» e la frase in più del benvenuto; una board in sola lettura spegne i due bottoni", () => {
   const out = companion({ hasDocuments: true });
   assert.match(out, /data-action="propose" type="button" class="b-btn b-small" data-b="button" data-variant="outline">Proponi passi dai documenti<\/button>/);
-  assert.match(out, /Ho già i documenti caricati: li uso per fare domande più precise\./);
+  assert.match(out, /Uso anche i documenti caricati\./);
   const readOnly = companion({ hasDocuments: true, board: fixtureBoard({ readOnly: true }) });
   assert.equal(readOnly.match(/<button disabled=""[^>]*class="b-btn b-small"/g)?.length, 2, "spenti dal primo disegno (F9)");
 });

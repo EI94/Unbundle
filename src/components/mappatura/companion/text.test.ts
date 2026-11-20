@@ -25,10 +25,11 @@ test("ogni scritta dell'assistente rispetta lo stile della casa", () => {
 });
 
 test("il benvenuto: il nome dell'unità in grassetto; con i documenti una frase in più", () => {
-  assert.equal(welcomeText("Ufficio acquisti", false), "Mappiamo il lavoro di **Ufficio acquisti**. Racconta una settimana tipo: su cosa va più tempo? Salvo ogni passo sulla board mentre parliamo.");
+  // (Rilascio 10, §3.7) Una riga sola.
+  assert.equal(welcomeText("Ufficio acquisti", false), "Mappiamo il lavoro di **Ufficio acquisti**: su cosa va più tempo in una settimana tipo?");
   assert.equal(
     welcomeText(" Ufficio *acquisti* ", true),
-    "Mappiamo il lavoro di **Ufficio acquisti**. Racconta una settimana tipo: su cosa va più tempo? Salvo ogni passo sulla board mentre parliamo. Ho già i documenti caricati: li uso per fare domande più precise.",
+    "Mappiamo il lavoro di **Ufficio acquisti**: su cosa va più tempo in una settimana tipo? Uso anche i documenti caricati.",
   );
 });
 

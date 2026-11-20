@@ -1,6 +1,7 @@
 "use client";
 
-import { Lock } from "lucide-react";
+import Link from "next/link";
+import { ChevronRight, Lock } from "lucide-react";
 import { CONTEXT_TEXT } from "@/lib/context/text";
 import type { FactView, LiveRow } from "@/lib/db/queries/context-memory";
 import { Mark } from "./fields";
@@ -44,15 +45,34 @@ export function FactRow({ fact, onOpen }: { fact: FactView; onOpen: (factId: str
   );
 }
 
-/** Un dato della Discovery, letto dal vivo: fonte «Discovery», senza azioni. */
-export function LiveRowItem({ row }: { row: LiveRow }) {
-  return (
-    <li className="flex flex-col gap-1 px-3 py-2.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
+/**
+ * Un dato dell'Intervista iniziale, letto dal vivo: fonte «Intervista iniziale», senza azioni. (Rilascio 10, §3.7) Con
+ * `href` tutta la riga è un link: un'unità porta alla sua board, un obiettivo alla pagina «Obiettivi».
+ */
+export function LiveRowItem({ row, href }: { row: LiveRow; href?: string | null }) {
+  const body = (
+    <>
       <span className="min-w-0 text-sm leading-relaxed break-words">
         {row.tag ? <span className="mr-1.5 text-xs text-muted-foreground">{row.tag}</span> : null}
         {row.text}
       </span>
-      <span className="shrink-0 text-xs text-muted-foreground">{T.fact.sourceDiscovery}</span>
-    </li>
+      <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+        {T.fact.sourceDiscovery}
+        {href ? <ChevronRight aria-hidden className="size-4" /> : null}
+      </span>
+    </>
   );
+  if (href) {
+    return (
+      <li>
+        <Link
+          href={href}
+          className="flex min-h-11 w-full flex-col gap-1 rounded-lg px-3 py-2.5 outline-none transition-colors hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4"
+        >
+          {body}
+        </Link>
+      </li>
+    );
+  }
+  return <li className="flex flex-col gap-1 px-3 py-2.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">{body}</li>;
 }

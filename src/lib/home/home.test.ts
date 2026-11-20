@@ -231,10 +231,10 @@ test("«Per partire» (S1b): cinque righe, «2 di 5», e la prima riga aperta è
     why: "È il terzo passo di «Per partire».",
     mine: true,
     turn: null,
-    href: `${BASE}/mapping`,
+    href: `${BASE}/contesto?vista=processi`,
     panel: null,
   });
-  assert.deepEqual(start.rows.map((row) => row.href), [`${BASE}/setup/leadership`, `${BASE}/contesto?vista=appunti`, `${BASE}/mapping`, `${BASE}/strategy`, `${BASE}/use-cases`]);
+  assert.deepEqual(start.rows.map((row) => row.href), [`${BASE}/setup/leadership`, `${BASE}/contesto?vista=fonti`, `${BASE}/contesto?vista=processi`, `${BASE}/strategy`, `${BASE}/use-cases`]);
 });
 
 test("«Per partire»: solo in un workspace nuovo; sparisce appena uno use case è deciso, anche con righe aperte", () => {

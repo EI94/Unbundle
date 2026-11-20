@@ -42,9 +42,9 @@ test("la testata che carica: la pillola «Caricamento», il titolo che tiene la 
     ["oggi", "true"],
     ["classificazione", "false"],
   ]);
-  // Il link all'elenco delle unità resta: si può tornare indietro mentre la board arriva.
-  assert.match(html, /<a href="\/dashboard\/[^"]+\/mapping">Processi<\/a>/);
-  assert.doesNotMatch(html, /×/, "il nome del workspace non si sa ancora");
+  // (Rilascio 10, §3.7) Il percorso resta: si può tornare ai Processi mentre la board arriva.
+  assert.match(html, /<a href="\/dashboard\/[^"]+\/contesto\?vista=processi">Processi<\/a>/);
+  assert.doesNotMatch(html, /aria-current="page"/, "il nome dell'unità non si sa ancora");
 });
 
 test("la testata che carica ha gli stessi pezzi di quella della board, nello stesso ordine", () => {
@@ -64,23 +64,24 @@ test("la testata che carica ha gli stessi pezzi di quella della board, nello ste
       const attrs = match[2];
       return [match[1], /class="([^"]+)"/.exec(attrs)?.[1] ?? "", /role="([^"]+)"/.exec(attrs)?.[1] ?? ""].join(".");
     });
-  // La riga del marchio non ha il nome del workspace (non si sa ancora): una riga sola lo stesso. Dal resto in poi, uguali.
+  // Il percorso non ha il nome dell'unità (non si sa ancora): una riga sola lo stesso. Dal resto in poi, uguali.
   const after = (parts: string[]) => parts.slice(parts.indexOf("div.b-spacer."));
   assert.deepEqual(after(shape(html)), after(shape(header)));
   assert.ok(shape(html).includes("div.b-tabbar."), "la riga delle schede c'è");
 });
 
-test("con i nomi letti sul server: il marchio con il workspace e il titolo vero, gli stessi della board che arriva; un nome lungo va a capo uguale", () => {
+test("con i nomi letti sul server: il percorso e il titolo vero, gli stessi della board che arriva; un nome lungo va a capo uguale", () => {
   const long = "Amministrazione, finanza, controllo di gestione e rapporti con le banche";
   const loading = renderToStaticMarkup(createElement(BoardLoadingHeader, { workspaceId: I.workspace, departmentId: I.unit, unitName: long, workspaceName: "Officina di prova" }));
   const loaded = loadedHeader(long);
-  // Il marchio e il titolo sono gli stessi, carattere per carattere: vanno a capo nello stesso punto, a ogni larghezza.
-  const brand = (markup: string) => /<div class="b-brand" data-b="brand">[\s\S]*?<\/div>/.exec(markup)?.[0];
+  // Il percorso e il titolo sono gli stessi, carattere per carattere: vanno a capo nello stesso punto, a ogni larghezza.
+  const brand = (markup: string) => /<nav class="b-brand b-path"[^>]*>[\s\S]*?<\/nav>/.exec(markup)?.[0];
   const title = (markup: string) => /<h1 class="b-title"[^>]*>[\s\S]*?<\/h1>/.exec(markup)?.[0];
   assert.equal(title(loading), `<h1 class="b-title" style="margin-top:8px"><span data-b="title">${long}</span></h1>`);
   assert.equal(title(loading), title(loaded));
   assert.equal(brand(loading), brand(loaded));
-  assert.match(loading, /<span class="b-x" aria-hidden="true">×<\/span><span>Officina di prova<\/span>/);
+  assert.match(loading, new RegExp(`<span class="b-path-here" aria-current="page">${long}</span>`));
+  assert.doesNotMatch(loading, /Officina di prova/, "il workspace sta nella barra laterale, non nella testata");
   // Tutta la testata: la stessa struttura, elemento per elemento; cambiano solo la pillola e i bottoni che non si usano ancora.
   const shape = (markup: string) => [...markup.matchAll(/<([a-z0-9]+)([^>]*)>/g)].map((match) => [match[1], /class="([^"]+)"/.exec(match[2])?.[1] ?? ""].join("."));
   assert.deepEqual(shape(loading), shape(loaded));

@@ -5,13 +5,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ChevronDown } from "lucide-react";
+import { Fold } from "@/components/ui-10/fold";
 import { Button } from "@/components/ui/button";
 import { assignGranolaMeetingAction, leaveOutGranolaMeetingsAction } from "@/lib/actions/context-granola";
 import { granolaCompactLine, granolaSyncLine, granolaUpdatedLine, type Line } from "@/lib/context/granola/view";
 import { dayLabel } from "@/lib/context/labels";
 import { CONTEXT_TEXT } from "@/lib/context/text";
-import type { GranolaSyncResult, UnsortedMeeting } from "@/lib/db/queries/context-granola";
+import type { GranolaRulesView, GranolaSyncResult, UnsortedMeeting } from "@/lib/db/queries/context-granola";
 import { cn } from "@/lib/utils";
+import { GranolaRulesFields } from "./granola-rules";
 
 const T = CONTEXT_TEXT.granola;
 const LINE_TONE: Record<Line["tone"], string> = { ok: "text-uc-verde", info: "text-muted-foreground", error: "text-destructive" };
@@ -42,6 +44,7 @@ export function GranolaInboxPanel({
   unsortedCount,
   blockedCount,
   renderedAt,
+  rules = null,
 }: {
   workspaceId: string;
   workspaceName: string;
@@ -53,6 +56,8 @@ export function GranolaInboxPanel({
   unsortedCount: number;
   blockedCount: number;
   renderedAt: string;
+  /** (Rilascio 10, §3.7) Le regole delle call di questo cliente: nel blocco intero, con un collegamento attivo. */
+  rules?: GranolaRulesView | null;
 }) {
   const router = useRouter();
   const [syncing, setSyncing] = useState(false);
@@ -100,7 +105,7 @@ export function GranolaInboxPanel({
     return (
       <p role="status" className="flex min-h-11 items-center text-sm text-muted-foreground">
         {line.toNotes ? (
-          <Link className="inline-flex min-h-11 items-center underline-offset-4 hover:text-foreground hover:underline" href={`/dashboard/${workspaceId}/contesto?vista=appunti`}>
+          <Link className="inline-flex min-h-11 items-center underline-offset-4 hover:text-foreground hover:underline" href={`/dashboard/${workspaceId}/contesto?vista=fonti`}>
             {line.text}
           </Link>
         ) : (
@@ -136,6 +141,11 @@ export function GranolaInboxPanel({
       {after && !syncing && <p className={cn("text-sm", LINE_TONE[after.tone])}>{after.text}</p>}
       {blockedCount > 0 && <p className="text-sm text-muted-foreground">{T.blocked(blockedCount)}</p>}
       {unsortedCount > 0 && <UnsortedMeetings workspaceId={workspaceId} workspaceName={workspaceName} count={unsortedCount} renderedAt={renderedAt} />}
+      {rules ? (
+        <Fold id="granola-regole-cliente" title={T.rulesTitle(workspaceName)} className="last:border-b-0">
+          <GranolaRulesFields workspaceId={workspaceId} rules={rules} />
+        </Fold>
+      ) : null}
     </section>
   );
 }

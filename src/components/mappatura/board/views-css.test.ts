@@ -57,13 +57,33 @@ test("ogni classe che il foglio nomina esiste, in board.css o nel markup delle v
   assert.deepEqual([...new Set(written)].filter((name) => !styled.has(`.${name}`)), []);
 });
 
-test("sul tocco niente trascinamento; i controlli che compaiono al passaggio si vedono sempre", () => {
+test("sul tocco niente trascinamento; i controlli che compaiono al passaggio si vedono sempre; ogni cosa che si tocca è grande 44 px (rilascio 10)", () => {
   const touch = views.filter((rule) => rule.at === "@media (hover: none)");
   const declared = (selector: string) => touch.find((rule) => rule.selector === `[data-board-root] ${selector}`)?.declarations;
   assert.equal(declared(".b-node-w > .b-grip")?.get("display"), "none");
-  assert.equal(declared(".b-row-ctl")?.get("opacity"), "1");
   assert.equal(declared(".b-point .b-point-ctl")?.get("opacity"), "1");
-  assert.equal(declared(".b-add-step")?.get("opacity"), ".8");
+  // (Rilascio 10, §3.7) «+ passo» si vede sempre, anche col mouse; i controlli di un processo stanno nel suo «⋯».
+  const always = (selector: string) => views.find((rule) => rule.at === null && rule.selector === `[data-board-root] ${selector}`)?.declarations;
+  assert.equal(always(".b-add-step")?.get("opacity"), "1");
+  assert.equal(always(".b-row-ctl[hidden]")?.get("display"), "none", "chiusi finché non si tocca il «⋯»");
+  assert.ok(!views.some((rule) => rule.selector.includes(":hover .b-add-step") || rule.selector.includes(":hover .b-row-ctl")), "niente compare solo al passaggio");
+  // 44 px: il bottone dell'assistente e del «⋯», le schede, i bottoni e i chip; i bottoni tondi piccoli con un margine invisibile.
+  assert.deepEqual([declared(".b-iconbtn")?.get("width"), declared(".b-iconbtn")?.get("height")], ["44px", "44px"]);
+  assert.equal(declared(".b-tabbar .b-tab")?.get("min-height"), "44px");
+  const hit = touch.find((rule) => rule.selector.includes(".b-row-more::after"))?.declarations;
+  assert.deepEqual([hit?.get("content"), hit?.get("inset")], ['""', "-11px"], "22 px a vista, 44 al tocco");
+  // (Rilascio 10) Nel «⋯» aperto di un processo le aree da 44 px non si sovrappongono: 22 px tra i bottoni da 22 px, e
+  // tra il «⋯» e la loro riga (4 px dello spazio della colonna più 18 di margine).
+  const rowControls = declared(".b-board .b-row-ctl");
+  assert.deepEqual([rowControls?.get("gap"), rowControls?.get("margin-top")], ["22px", "18px"]);
+  const ownGap = Number(board.find((rule) => rule.at === null && rule.selector === "[data-board-root] .b-pm-lab .b-pm-extra")?.declarations.get("gap")?.replace("px", ""));
+  assert.equal(ownGap + 18, 22, "sotto il «⋯» 22 px in tutto");
+  assert.equal(views.find((rule) => rule.at === null && rule.selector === "[data-board-root] .b-row-ctl button")?.declarations.get("width"), "22px");
+  // (Rilascio 10, revisione) Anche «Segna validata» e «Togli» di una nota: 22 px tra i due, così le aree non si toccano.
+  assert.deepEqual([declared(".b-board .b-note-ctl")?.get("gap"), declared(".b-drawer .b-note-ctl")?.get("gap")], ["22px", "22px"]);
+  assert.equal(declared(".b-menu-item")?.get("min-height"), "44px", "le voci del «⋯» della testata");
+  assert.equal(declared(".b-path a")?.get("min-height"), "44px", "il percorso della testata");
+  assert.ok(touch.some((rule) => rule.selector.includes(".b-board .b-textin") && rule.declarations.get("font-size") === "16px"), "i campi a 16 px");
 });
 
 test("una corsia vuota che si modifica mostra sempre «+ nota»; in una corsia con note compare al passaggio o al fuoco (P21)", () => {
@@ -71,6 +91,15 @@ test("una corsia vuota che si modifica mostra sempre «+ nota»; in una corsia c
   assert.equal(empty?.declarations.get("opacity"), "1");
   // Il riferimento nasconde «+ nota» fino al passaggio: la regola portata resta com'è, per le corsie con note.
   assert.equal(board.find((rule) => rule.at === null && rule.selector === "[data-board-root] .b-cell .b-add")?.declarations.get("opacity"), "0");
+});
+
+test("(rilascio 10) l'elenco di card dei processi vale sul telefono, non da 1280 px con l'assistente agganciato", () => {
+  const list = views.filter((rule) => rule.selector.startsWith("[data-board-root] .b-view .b-pm"));
+  assert.ok(list.length >= 4);
+  assert.deepEqual([...new Set(list.map((rule) => rule.at))], ["@container board (max-width: 600px)"]);
+  const docked = Number(WIDE_QUERY.match(/\d+/)?.[0]) - 256 - 380;
+  assert.ok(docked > 600, `${docked} px di board da 1280 px con il pannello: resta la mappa`);
+  assert.ok(390 <= 600 && 768 - 256 <= 600, "il telefono e il tablet in verticale: l'elenco");
 });
 
 test("nelle tabelle impilate del telefono il nome della colonna e i passi stanno sulla stessa riga", () => {
@@ -136,6 +165,12 @@ test("«+ passo» ha il suo posto in fondo a ogni riga della mappa che si modifi
   assert.ok(room >= need, `--b-after ${room} px, ne servono ${need}`);
   // La mappa in sola lettura non ha «+ passo»: niente posto in più (la larghezza della riga lo legge con 0 px di default).
   assert.equal(views.filter((item) => item.declarations.has("--b-after")).map((item) => item.selector).join(), "[data-board-root] .b-pm[data-adds]");
+  // (Rilascio 10, §3.7) In una riga più lunga del riquadro «+ passo» resta fermo al bordo destro, sopra le card che
+  // scorrono: si tocca senza far scorrere la mappa. Il margine che si aggiunge a destra si toglie: la riga non si allarga.
+  const pinned = rule(views, ".b-pm[data-adds] .b-pm-after");
+  assert.deepEqual([pinned?.get("position"), pinned?.get("right"), pinned?.get("z-index")], ["sticky", "0", "1"]);
+  assert.equal(px(pinned?.get("padding-right"), "margine a destra") + px(pinned?.get("margin-right")?.replace("-", ""), "margine negativo") * -1, 0);
+  assert.match(pinned?.get("background") ?? "", /var\(--board-bone\)/, "copre le card che gli passano sotto");
 });
 
 test("il posto del toast: in fondo alla colonna della board (fermo in fondo alla finestra), sopra il campo dell'assistente, in fondo a un drawer", () => {

@@ -11,10 +11,16 @@ const FILES = (readdirSync(DIR) as string[]).filter((name) => name.endsWith(".ts
 /** Il codice senza commenti. */
 const code = (source: string) => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/.*$/gm, "$1").replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, "");
 
-test("i file del blocco: due componenti server e i loro due pannelli client", () => {
-  assert.deepEqual(FILES.sort(), ["granola-card-panel.tsx", "granola-card.tsx", "granola-inbox-panel.tsx", "granola-inbox.tsx"]);
+test("i file del blocco: due componenti server, i loro due pannelli client e le regole delle call, comuni ai due", () => {
+  assert.deepEqual(FILES.sort(), ["granola-card-panel.tsx", "granola-card.tsx", "granola-inbox-panel.tsx", "granola-inbox.tsx", "granola-rules.tsx"]);
   for (const server of ["granola-card.tsx", "granola-inbox.tsx"]) assert.doesNotMatch(read(server), /^"use client"/m, server);
-  for (const client of ["granola-card-panel.tsx", "granola-inbox-panel.tsx"]) assert.match(read(client), /^"use client";/, client);
+  for (const client of ["granola-card-panel.tsx", "granola-inbox-panel.tsx", "granola-rules.tsx"]) assert.match(read(client), /^"use client";/, client);
+  // (Rilascio 10, §3.7) Le regole delle call: in Impostazioni (con l'ancora) e nelle Fonti, sotto Granola, chiuse.
+  assert.match(code(read("granola-card-panel.tsx")), /<GranolaRulesFields workspaceId=\{workspaceId\} rules=\{rules\} \/>/);
+  assert.match(code(read("granola-inbox-panel.tsx")), /<Fold id="granola-regole-cliente" title=\{T\.rulesTitle\(workspaceName\)\}[^>]*>\s*<GranolaRulesFields workspaceId=\{workspaceId\} rules=\{rules\} \/>/);
+  // Le regole si leggono solo nel blocco intero e con un collegamento attivo, dopo il controllo di chi guarda.
+  const inbox = code(read("granola-inbox.tsx"));
+  assert.match(inbox, /const rules = !compact && status\.connected && status\.status !== "da_ricollegare" \? await readGranolaRules\(who\.actor\) : null;/);
 });
 
 test("a chi non è di Lateral Space il blocco non c'è: il controllo viene prima di ogni lettura", () => {
@@ -57,7 +63,7 @@ test("i testi dei blocchi sono quelli di CONTEXT_TEXT.granola (più i pochi comu
   for (const file of FILES) for (const match of code(read(file)).matchAll(/\bT\.([a-zA-Z]+)/g)) used.add(`granola.${match[1]}`);
   const outside = [...used].filter((key) => !key.startsWith("granola"));
   assert.deepEqual(outside.sort(), ["add", "notes"], "solo «Salvo…» e «Togli», comuni a Contesto");
-  for (const file of FILES.filter((f) => f.endsWith("-panel.tsx"))) assert.match(read(file), /const T = CONTEXT_TEXT\.granola;/, file);
+  for (const file of FILES.filter((f) => f.endsWith("-panel.tsx") || f === "granola-rules.tsx")) assert.match(read(file), /const T = CONTEXT_TEXT\.granola;/, file);
 });
 
 test("«Da smistare» aperto: una riga mentre legge da Granola, e una quando non c'è niente; mai «Aggiorno da Granola…»", () => {
@@ -78,17 +84,18 @@ test("«Da smistare» sul telefono: i due pulsanti vanno a capo, e «Assegna a �
 });
 
 test("Impostazioni ha un solo pulsante pieno: nel blocco di Granola ogni pulsante è «outline» o «ghost», anche «Salva»", () => {
-  for (const file of ["granola-card-panel.tsx", "granola-inbox-panel.tsx"]) {
+  for (const file of ["granola-card-panel.tsx", "granola-inbox-panel.tsx", "granola-rules.tsx"]) {
     const buttons = [...code(read(file)).matchAll(/<Button\b[^>]*>/g)].map((m) => m[0]);
     assert.ok(buttons.length > 0, file);
     for (const button of buttons) assert.match(button, /\bvariant="(?:outline|ghost)"/, `${file}: ${button}`);
   }
-  assert.match(code(read("granola-card-panel.tsx")), /<Button type="button" variant="outline"[^>]*onClick=\{save\}>/);
+  assert.match(code(read("granola-rules.tsx")), /<Button type="button" variant="outline"[^>]*onClick=\{save\}>/);
 });
 
 test("la riga di Granola nella Memoria: il link a «Da smistare» si tocca in un'area alta almeno 44 px", () => {
   const source = code(read("granola-inbox-panel.tsx"));
   const compact = source.slice(source.indexOf("if (compact) {"), source.indexOf("if (!connected || expired) {"));
   assert.match(compact, /<p role="status" className="[^"]*\bmin-h-11\b[^"]*">/);
-  assert.match(compact, /<Link className="[^"]*\binline-flex\b[^"]*\bmin-h-11\b[^"]*" href=\{`\/dashboard\/\$\{workspaceId\}\/contesto\?vista=appunti`\}>/);
+  // (Rilascio 10, §3.7) La vista si chiama «Fonti»: il link va lì diretto.
+  assert.match(compact, /<Link className="[^"]*\binline-flex\b[^"]*\bmin-h-11\b[^"]*" href=\{`\/dashboard\/\$\{workspaceId\}\/contesto\?vista=fonti`\}>/);
 });

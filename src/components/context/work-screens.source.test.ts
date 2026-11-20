@@ -214,9 +214,9 @@ test("«Da verificare»: un solo pulsante pieno, fisso in fondo con il margine d
 test("la Memoria: la riga «n fatti da verificare» porta a /contesto/verifica, solo per Lateral Space", () => {
   const memory = withoutComments(read("src/components/context/memory-view.tsx"));
   assert.match(memory, /const toCheck = toCheckRow\(memory\.counts\.toCheck, lateralSpace\);/);
-  assert.match(memory, /\{toCheck \? <ServiceLink label=\{toCheck\} href=\{`\/dashboard\/\$\{workspaceId\}\/contesto\/verifica`\} \/> : null\}/);
-  // Dentro le righe di servizio, che ci sono solo per Lateral Space.
-  const rows = memory.slice(memory.indexOf("{lateralSpace ? ("), memory.indexOf("</ServiceRows>"));
+  assert.match(memory, /\{toCheck \? <StatusLink label=\{toCheck\} href=\{`\/dashboard\/\$\{workspaceId\}\/contesto\/verifica`\} \/> : null\}/);
+  // (Rilascio 10, §3.7) Dentro la riga di stato, che c'è solo per Lateral Space.
+  const rows = memory.slice(memory.indexOf("{lateralSpace ? ("), memory.indexOf("{empty ?"));
   assert.ok(rows.includes("contesto/verifica"), "dentro il blocco di Lateral Space");
 });
 

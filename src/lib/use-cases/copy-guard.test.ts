@@ -65,6 +65,9 @@ test("nell'area: ogni parola vietata di §14.5, senza distinguere maiuscole", ()
     ["effort", "Effort"],
     ["impact", "Impact"],
     ["feasibility", "Feasibility"],
+    ["value_thesis", "Value Thesis"],
+    ["nodi_strategici", "Nodi strategici:"],
+    ["nodi_strategici", "nodi commodity"],
   ];
   for (const [rule, text] of cases) {
     const found = findHubForbidden(text, "area");

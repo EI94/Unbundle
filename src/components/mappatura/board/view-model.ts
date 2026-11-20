@@ -25,10 +25,10 @@ import {
   type UnitBoardSummary,
 } from "../../../lib/mappatura/board-model.ts";
 import { cutLine, stepFieldValue, type StepField, type StepValue } from "../../../lib/mappatura/board-ops.ts";
-import { BOARD_TEXT } from "../../../lib/mappatura/text.ts";
+import { BOARD_TEXT, counted, formatCount, formatHours } from "../../../lib/mappatura/text.ts";
 import { BOARD_LANE, MAPPING_LIMITS, STREAMS, type Friction, type StepLane, type Stream, type UnitStatus } from "../../../lib/mappatura/vocab.ts";
 import type { OpInput } from "../store/board-client.ts";
-import { mapCountsLine, todayTileTexts, toClassifyText, toValidateText, unitStepsLine, type UnitWords, unitsTileTexts } from "./text.ts";
+import { frictionsChipText, todaySummaryText, toClassifyText, toValidateChipText, toValidateText, unitStepsLine } from "./text.ts";
 
 const L = MAPPING_LIMITS;
 
@@ -46,19 +46,51 @@ export const boardEmpty = (board: Pick<MappingBoard, "processes">): boolean => b
 /** I punti di analisi si vedono quando ce n'è almeno uno, o quando la mappatura è completa (§1.3). */
 export const analysisShown = (board: Pick<MappingBoard, "analysis" | "unit">): boolean => board.analysis.length > 0 || unitComplete(board.unit.status);
 
-/** I quattro riquadri di «Processi di oggi», dagli stessi numeri della legenda e delle tabelle (P37, P38). */
-export function todayTiles(board: MappingBoard): Array<{ value: string; label: string }> {
-  return todayTileTexts(boardNumbers(board));
-}
+/**
+ * (Rilascio 10, §3.7) I chip che filtrano la mappa: «7 attriti» (prima «Evidenzia attriti», P61) sfuma i passi senza
+ * attriti, «5 da validare» quelli già confermati. Uno alla volta; non si salvano.
+ */
+export type MapFilter = "attriti" | "da-validare";
 
-/** La riga dei conteggi sopra la mappa (P60). */
-export function mapCounts(board: MappingBoard): string {
+/** Un passo si sfuma con il filtro acceso: senza attriti, o già confermato. Senza filtro, mai. */
+export const stepDimmed = (step: Pick<BoardStep, "friction" | "notes" | "status">, filter: MapFilter | null): boolean =>
+  filter === "attriti" ? stepFrictions(step) === 0 : filter === "da-validare" ? step.status !== "da_validare" : false;
+
+/** I chip della mappa, solo quelli che non sono a zero: «7 attriti», «5 da validare». */
+export function mapFilterChips(board: MappingBoard): Array<{ filter: MapFilter; label: string }> {
   const n = boardNumbers(board);
-  return mapCountsLine(n.toValidate, n.confirmed, n.frictions);
+  return [
+    ...(n.frictions > 0 ? [{ filter: "attriti" as const, label: frictionsChipText(n.frictions) }] : []),
+    ...(n.toValidate > 0 ? [{ filter: "da-validare" as const, label: toValidateChipText(n.toValidate) }] : []),
+  ];
 }
 
-/** «Evidenzia attriti» sfuma i passi che non hanno attriti (P61). */
-export const stepDimmed = (step: Pick<BoardStep, "friction" | "notes">, dim: boolean): boolean => dim && stepFrictions(step) === 0;
+/** (Rilascio 10, §3.7) Il riquadro solo di «Oggi»: «25 passi», con le ore e le decisioni di una persona sotto. */
+export function todaySummary(board: MappingBoard): { value: string; label: string } {
+  return todaySummaryText(boardNumbers(board));
+}
+
+/**
+ * (Rilascio 10, §3.7) Il drawer di un passo in tre gruppi: quante cose ha «Altro» (la decisione di una persona, le
+ * eccezioni, i collegamenti, il tipo di lavoro, la qualità), per il conteggio accanto al titolo chiuso.
+ */
+export function drawerMoreCount(step: Pick<BoardStep, "decision" | "decisionLabel" | "exception" | "dependsOn" | "neededBy" | "workType" | "quality">): number {
+  return [
+    Boolean(step.decision?.trim() || step.decisionLabel?.trim()),
+    Boolean(step.exception?.trim()),
+    step.dependsOn.length + step.neededBy.length > 0,
+    Boolean(step.workType),
+    Boolean(step.quality?.trim()),
+  ].filter(Boolean).length;
+}
+
+/** Una corsia di note si apre da sé quando ha qualcosa: le note, il livello d'attrito scelto, la frequenza o le ore. */
+export function laneOpen(step: Pick<BoardStep, "notes" | "frictionSet" | "frequency" | "hoursWeek">, lane: StepLane): boolean {
+  if (step.notes[lane].length > 0) return true;
+  if (lane === "attriti") return step.frictionSet;
+  if (lane === "tempi") return Boolean(step.frequency) || step.hoursWeek !== null;
+  return false;
+}
 
 /** Un processo che non ha più posto per un passo (40). */
 export const processFull = (process: Pick<BoardProcess, "steps">): boolean => process.steps.length >= L.stepsPerProcess;
@@ -119,11 +151,6 @@ export function unitRow(unit: UnitBoardSummary): UnitRowModel {
     todo,
     streams: classified ? STREAMS.map((stream) => ({ stream, count: unit.streams[stream] })) : null,
   };
-}
-
-/** I quattro riquadri dell'elenco delle unità, dagli stessi numeri delle righe. */
-export function unitsTiles(units: readonly UnitBoardSummary[], words: UnitWords): Array<{ value: string; label: string }> {
-  return unitsTileTexts(unitNumbers(units), words);
 }
 
 // ─── Le operazioni dei controlli ─────────────────────────────────────
@@ -334,4 +361,35 @@ export function drawerReturnFocus<E>(p: {
   if (p.planned) return find(p.planned) ?? p.view;
   if (p.opener?.isConnected) return null;
   return (p.stepId ? find({ kind: "step", stepId: p.stepId }) : null) ?? p.view;
+}
+
+// ─── (Rilascio 10, §3.7) La vista «Processi» di «Contesto» ───────────
+
+/** Il prossimo passo della vista: l'unità in corso, poi la prima da iniziare; tutte complete (o nessuna): un'unità nuova. */
+export type ProcessesStep = { kind: "continue" | "start"; unit: UnitBoardSummary } | { kind: "add" };
+
+export function processesStep(units: readonly UnitBoardSummary[]): ProcessesStep {
+  const shown = units.map((unit) => ({ unit, status: shownUnitStatus(unit.status, unit.steps) }));
+  const going = shown.find((item) => item.status === "in_progress");
+  if (going) return { kind: "continue", unit: going.unit };
+  const fresh = shown.find((item) => item.status === "not_started");
+  if (fresh) return { kind: "start", unit: fresh.unit };
+  return { kind: "add" };
+}
+
+/** Il numero grande: «2 di 6» unità mappate; null senza unità (lo zero non si mostra). */
+export function processesNumber(units: readonly UnitBoardSummary[]): string | null {
+  if (units.length === 0) return null;
+  const n = unitNumbers(units);
+  return `${formatCount(n.complete)} di ${formatCount(n.total)}`;
+}
+
+/** Il tono del puntino dello stato di un'unità, nel semaforo dell'app: da iniziare grigio, in corso blu, completa verde. */
+export const unitDotTone = (status: UnitStatus): "grigio" | "blu" | "verde" => (status === "not_started" ? "grigio" : status === "in_progress" ? "blu" : "verde");
+
+/** Il fatto grigio della riga di un'unità: «25 passi · 40 h a settimana · 5 da validare»; niente a zero. */
+export function unitFactLine(unit: UnitBoardSummary): string | null {
+  const row = unitRow(unit);
+  const parts = [unit.steps > 0 ? counted(unit.steps, "passo", "passi") : null, unit.hoursWeek > 0 ? `${formatHours(unit.hoursWeek)} h a settimana` : null, ...row.todo].filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? parts.join(" · ") : null;
 }

@@ -18,8 +18,8 @@
  * chiede al montaggio e dopo un 403 `ok_fornitori_mancante` della rotta, che è il controllo vero: mentre si chiede il
  * campo resta com'è.
  */
-import { useChat } from "@ai-sdk/react";
-import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type JSX, type KeyboardEvent, type ReactNode } from "react";
+import { useChat, type Chat } from "@ai-sdk/react";
+import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent, type JSX, type KeyboardEvent, type ReactNode } from "react";
 import { CONTEXT_TEXT } from "../../../lib/context/text.ts";
 import { CONSENT_CHECKING, isConsentError, loadChatConsent, type ChatConsent } from "../../agent/chat-consent.ts";
 import { HIDDEN_TOOLS, MAPPING_TOOL_LABELS, TOOL_LABELS, assistantView, messageText, type ChatProgress, type ChatUIMessage } from "../../agent/chat-view.ts";
@@ -86,8 +86,14 @@ export function ProgressItem(p: { item: ChatProgress }): JSX.Element {
   );
 }
 
-/** Un messaggio della conversazione: la domanda della persona, o la risposta con le sue righe di avanzamento. */
-export function MessageView(p: { message: ChatUIMessage; arriving: boolean }): JSX.Element {
+/** Le etichette dei tool di una chat: per ogni tool, quella mentre lavora e quella a lavoro finito. */
+export type ToolLabels = Readonly<Record<string, { active: string; done: string }>>;
+
+/**
+ * Un messaggio della conversazione: la domanda della persona, o la risposta con le sue righe di avanzamento. `labels`:
+ * le etichette dei tool di questa chat (quelle della board, se non è detto altro).
+ */
+export function MessageView(p: { message: ChatUIMessage; arriving: boolean; labels?: ToolLabels }): JSX.Element {
   if (p.message.role === "user") {
     return (
       <div className="b-comp-msg" data-role="user">
@@ -95,7 +101,7 @@ export function MessageView(p: { message: ChatUIMessage; arriving: boolean }): J
       </div>
     );
   }
-  const view = assistantView(p.message, HIDDEN_TOOLS, { arriving: p.arriving, labels: COMPANION_TOOL_LABELS });
+  const view = assistantView(p.message, HIDDEN_TOOLS, { arriving: p.arriving, labels: p.labels ?? COMPANION_TOOL_LABELS });
   const text = view.kind === "refused" ? view.notice : view.text;
   if (!text.trim() && view.progress.length === 0) return <Fragment />;
   return (
@@ -127,8 +133,8 @@ function Waiting(): JSX.Element {
   return <p className="b-comp-wait">{waitingText(useSeconds())}</p>;
 }
 
-function Nudge(): JSX.Element | null {
-  return useSeconds() < NUDGE_AFTER_S ? null : <p className="b-comp-nudge">{COMPANION_TEXT.nudge}</p>;
+function Nudge(p: { text: string }): JSX.Element | null {
+  return useSeconds() < NUDGE_AFTER_S ? null : <p className="b-comp-nudge">{p.text}</p>;
 }
 
 export function ChatError(p: { error: Error }): JSX.Element {
@@ -173,8 +179,58 @@ export function Companion(p: CompanionProps): JSX.Element {
       }),
     ),
   );
-  const { messages, status, error, sendMessage } = useChat({ chat: session.chat });
   const [hasDocuments, setHasDocuments] = useState(p.hasDocuments);
+  const [docsOpen, setDocsOpen] = useState(false);
+  const docsId = useId();
+  // Ogni tool della board finito rilegge la board aperta, una volta (session.ts).
+  const observe = useCallback((messages: readonly ChatUIMessage[]) => session.observe(messages), [session]);
+  return (
+    <CompanionChat
+      workspaceId={p.workspaceId}
+      chat={session.chat}
+      onMessages={observe}
+      suggestions={COMPANION_TEXT.suggestions}
+      nudge={COMPANION_TEXT.nudge}
+      initialConsent={p.initialConsent}
+      tools={
+        // (Rilascio 10, §3.7) Un solo «Documenti ▾»: dentro, «Carica documenti» e «Proponi passi dai documenti».
+        <div className="b-comp-tools">
+          <button type="button" className="b-btn b-small" aria-expanded={docsOpen} aria-controls={docsId} onClick={() => setDocsOpen(!docsOpen)} data-b="documents-menu">
+            {COMPANION_TEXT.documents.menu}
+            <span className="b-caret" aria-hidden="true">
+              {docsOpen ? "▴" : "▾"}
+            </span>
+          </button>
+          <div className="b-comp-tools" id={docsId} hidden={!docsOpen}>
+            <Documents workspaceId={p.workspaceId} departmentId={p.departmentId} disabled={!canEdit} onUploaded={() => setHasDocuments(true)} />
+            {hasDocuments ? <Proposals workspaceId={p.workspaceId} departmentId={p.departmentId} disabled={!canEdit} /> : null}
+          </div>
+        </div>
+      }
+    />
+  );
+}
+
+/**
+ * (Rilascio 10, §3.7) La chat dell'assistente, senza la board: la conversazione, l'attesa, il promemoria, l'errore, i
+ * suggerimenti, il campo e l'avviso dell'ok ai fornitori. La usano l'assistente della board (`Companion`, con «Documenti
+ * ▾» e la board che si rilegge dopo ogni tool) e l'Intervista iniziale (`InterviewChat`): una chat sola, nella stessa
+ * forma. `onMessages` riceve i messaggi come arrivano; `tools` sta sopra la conversazione; `labels`: le etichette dei
+ * tool di questa chat. `sendPrimary`: «Invia» è il pulsante pieno della schermata (l'Intervista, dove rispondere è il
+ * prossimo passo); nella board resta contornato, perché il pieno è della vista.
+ */
+export function CompanionChat(p: {
+  workspaceId: string;
+  chat: Chat<ChatUIMessage>;
+  onMessages?: (messages: readonly ChatUIMessage[]) => void;
+  tools?: ReactNode;
+  suggestions: readonly string[];
+  nudge: string;
+  labels?: ToolLabels;
+  sendPrimary?: boolean;
+  initialConsent?: ChatConsent;
+}): JSX.Element {
+  const { messages, status, error, sendMessage } = useChat({ chat: p.chat });
   const root = useRef<HTMLDivElement>(null);
   const field = useRef<HTMLTextAreaElement>(null);
   const busy = status === "submitted" || status === "streaming";
@@ -198,8 +254,9 @@ export function Companion(p: CompanionProps): JSX.Element {
   const userTurn = !busy && messages.length > 1 && messages[messages.length - 1]?.role === "assistant" && messages.some((message) => message.role === "user");
   const showSuggestions = !busy && !consentMissing && !messages.some((message) => message.role === "user");
 
-  // Ogni tool della board finito rilegge la board aperta, una volta (session.ts).
-  useEffect(() => session.observe(messages), [session, messages]);
+  // I messaggi come arrivano: la board si rilegge dopo ogni suo tool (session.ts).
+  const onMessages = p.onMessages;
+  useEffect(() => onMessages?.(messages), [onMessages, messages]);
 
   // La conversazione resta in fondo mentre arriva, se la persona era già in fondo.
   const atBottom = useRef(true);
@@ -257,22 +314,19 @@ export function Companion(p: CompanionProps): JSX.Element {
   const F = COMPANION_TEXT.field;
   return (
     <div className="b-comp" ref={root} data-b="companion">
-      <div className="b-comp-tools">
-        <Documents workspaceId={p.workspaceId} departmentId={p.departmentId} disabled={!canEdit} onUploaded={() => setHasDocuments(true)} />
-        {hasDocuments ? <Proposals workspaceId={p.workspaceId} departmentId={p.departmentId} disabled={!canEdit} /> : null}
-      </div>
+      {p.tools ?? null}
       <div className="b-comp-log" role="log" aria-busy={busy} data-b="companion-log">
         {messages.map((message, index) => (
-          <MessageView key={message.id} message={message} arriving={busy && index === messages.length - 1} />
+          <MessageView key={message.id} message={message} arriving={busy && index === messages.length - 1} labels={p.labels} />
         ))}
         {busy ? <Waiting /> : null}
         {/* Manca l'ok: al posto dell'errore, l'avviso in fondo. */}
         {error && !refusedForConsent ? <ChatError error={error} /> : null}
-        {userTurn ? <Nudge /> : null}
+        {userTurn ? <Nudge text={p.nudge} /> : null}
       </div>
       {showSuggestions ? (
         <div className="b-comp-sugg">
-          {COMPANION_TEXT.suggestions.map((suggestion) => (
+          {p.suggestions.map((suggestion) => (
             <button
               key={suggestion}
               type="button"
@@ -320,7 +374,7 @@ export function Companion(p: CompanionProps): JSX.Element {
           onKeyDown={onKeyDown}
           data-b="companion-input"
         />
-        <BoardButton type="submit" aria-label={F.send} title={F.send} aria-disabled={busy || undefined} data-action="send">
+        <BoardButton type="submit" variant={p.sendPrimary ? "primary" : undefined} aria-label={F.send} title={F.send} aria-disabled={busy || undefined} data-action="send">
           {SEND_ICON}
         </BoardButton>
       </form>
