@@ -14,8 +14,10 @@ import type { AiReadinessAnswer } from "@/lib/ai-readiness/types";
 import { SURVEY_TEXT, fillSurvey, surveyFacts, surveyMinutes, surveyPrivacyLine } from "@/lib/public/survey";
 import { RespondentSurveyForm } from "@/components/ai-readiness/respondent-survey-form";
 import { UseCaseExpertForm } from "@/components/ai-readiness/use-case-expert-form";
-import { PublicContact, PublicFooterLine, PublicLink, PublicShell } from "@/components/public/public-shell";
+import { PublicContact, PublicFooterLine, PublicLink, PublicNoticeLink, PublicShell } from "@/components/public/public-shell";
 import { PublicCard, PublicCardText, PublicInvalidScreen } from "@/components/public/state-card";
+import { SurveyNotice } from "@/components/public/survey-notice";
+import { Fold } from "@/components/ui-10/fold";
 
 export const dynamic = "force-dynamic";
 
@@ -27,8 +29,9 @@ export const dynamic = "force-dynamic";
  * chiaro, con il nome del cliente in alto, non cliccabile. Una testata di circa 40 parole: il titolo, «10 minuti · anonimo
  * · si salva da solo», la privacy in una riga e, se chi gestisce la rilevazione l'ha scritto, il suo testo d'apertura. Niente etichette, metodologia
  * («Questa compilazione alimenta…»), tre card «come funziona», blocco legale, casella: la presa visione si registra
- * all'invio, con una riga e il link a «Come usiamo le tue risposte» (l'informativa unica). In fondo il contatto e «Questo
- * link è solo tuo». I testi stanno in `src/lib/public/survey.ts`.
+ * all'invio, con una riga e il link a «Come usiamo le tue risposte» (l'informativa unica). «Come usiamo le tue risposte ▸»
+ * anche in testa, prima della prima domanda, e in fondo il suo link, il contatto e «Questo link è solo tuo». I testi
+ * stanno in `src/lib/public/survey.ts`.
  */
 export const metadata: Metadata = {
   title: "Questionario AI Readiness",
@@ -59,11 +62,21 @@ export default async function AiReadinessRespondentPage({
   const client = configString(brand, "displayName").trim() || null;
   const support = parseSupportContacts(configString(privacy, "supportEmail"));
   const noticeHref = `/privacy/ai-readiness/${token}`;
+  const named = found.assessment.anonymousMode === false;
   const footer = (
     <>
+      <PublicNoticeLink href={noticeHref} />
       {support ? <PublicContact label={support.label} href={support.mailto} /> : null}
       <PublicFooterLine>{SURVEY_TEXT.personalLink}</PublicFooterLine>
     </>
+  );
+  // (Revisione dell'ondata 4) Chi raccoglie, perché, come, chi vede, su quale base, per quanto e a chi chiedere: a un tocco
+  // prima della prima domanda, perché la bozza (e, nominativo, nome e cognome) arriva al server 2 secondi dopo la prima
+  // risposta.
+  const noticeFold = (
+    <Fold id="come-usiamo-le-risposte" title={SURVEY_TEXT.notice.title} className="mt-4 last:border-b">
+      <SurveyNotice privacyConfig={privacy} threshold={found.assessment.aggregationThreshold} named={named} support={support} />
+    </Fold>
   );
 
   if (found.respondent.inviteStatus === "completed") {
@@ -99,6 +112,7 @@ export default async function AiReadinessRespondentPage({
         <div data-survey-track="use_case_expert">
           <h1 className="mt-6 text-2xl font-semibold tracking-tight break-words">{SURVEY_TEXT.expert.title}</h1>
           <p className="mt-2 text-muted-foreground">{SURVEY_TEXT.expert.intro}</p>
+          {noticeFold}
           <UseCaseExpertForm
             token={token}
             initialCount={cases.length}
@@ -111,7 +125,6 @@ export default async function AiReadinessRespondentPage({
   }
 
   const isInternalTrack = found.respondent.surveyTrack === "internal";
-  const named = found.assessment.anonymousMode === false;
   // Il testo d'apertura della rilevazione, solo se chi la gestisce l'ha scritto: quello proposto di serie è generico, e
   // la testata resta di circa 40 parole.
   const intro = brandCopy(brand, "introCopy", AI_READINESS_DEFAULT_COPY.intro);
@@ -148,6 +161,7 @@ export default async function AiReadinessRespondentPage({
             {ownIntro ? <p>{ownIntro}</p> : null}
             <p className="text-muted-foreground">{surveyPrivacyLine(named, found.assessment.aggregationThreshold)}</p>
           </div>
+          {noticeFold}
         </header>
 
         <RespondentSurveyForm

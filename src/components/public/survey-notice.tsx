@@ -1,24 +1,28 @@
-import { SURVEY_TEXT, surveyNotice } from "@/lib/public/survey";
+import { SURVEY_TEXT, noticeUrlOf, surveyNotice } from "@/lib/public/survey";
 import { PublicLink } from "./public-shell";
 
 /**
  * L'informativa unica del questionario, «Come usiamo le tue risposte» (rilascio 10, ondata 4, PROPOSTA-10 §3.11, audit
- * Fuori §3.8 «/privacy/ai-readiness»): chi le raccoglie, perché, chi le vede, su quale base, per quanto tempo, a chi
- * chiedere. La stessa su `/privacy/ai-readiness/<token>` e, chiusa nel piè di pagina, sul link aperto `/s/<token>` (dove
- * non c'è ancora un link personale). L'informativa completa del cliente, se c'è, a un tocco. Senza stato.
+ * Fuori §3.8 «/privacy/ai-readiness»): chi le raccoglie, perché, come sono salvate, chi le vede, su quale base, per quanto
+ * tempo, a chi chiedere, fatto per fatto come l'informativa di prima (`surveyNotice`). La stessa su
+ * `/privacy/ai-readiness/<token>` e, chiusa, sul link aperto `/s/<token>` e in testa al questionario `/a/<token>`.
+ * L'informativa completa del cliente, se c'è, a un tocco (`noticeUrlOf`: un indirizzo che non è una pagina web si legge
+ * come testo). Senza stato.
  */
 export function SurveyNotice({
   privacyConfig,
   threshold,
+  named,
   support,
 }: {
   privacyConfig: Readonly<Record<string, unknown>> | null | undefined;
   threshold: number;
+  named: boolean;
   support: { label: string; mailto: string } | null;
 }) {
   const N = SURVEY_TEXT.notice;
-  const rows = surveyNotice({ privacyConfig, threshold });
-  const full = typeof privacyConfig?.privacyNoticeUrl === "string" && /^https?:\/\//i.test(privacyConfig.privacyNoticeUrl.trim()) ? privacyConfig.privacyNoticeUrl.trim() : null;
+  const rows = surveyNotice({ privacyConfig, threshold, named });
+  const full = noticeUrlOf(privacyConfig?.privacyNoticeUrl);
   return (
     <div data-slot="survey-notice" className="space-y-4">
       <dl className="space-y-3">
@@ -41,11 +45,15 @@ export function SurveyNotice({
           </dd>
         </div>
       </dl>
-      {full ? (
+      {full && "href" in full ? (
         <p>
-          <PublicLink href={full} external>
+          <PublicLink href={full.href} external={!full.href.startsWith("mailto:")}>
             {N.full}
           </PublicLink>
+        </p>
+      ) : full ? (
+        <p className="break-words text-muted-foreground">
+          {N.fullText} {full.text}
         </p>
       ) : null}
     </div>

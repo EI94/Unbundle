@@ -5,8 +5,13 @@
  * usiamo le tue risposte» (`/privacy/ai-readiness/<token>`, con «I tuoi dati ▸»).
  *
  * Per chi risponde è un «questionario», mai «Survey» né «Assessment»; «caso d'uso», mai «use case»; niente nomi dei
- * pilastri in inglese, niente lessico legale («Controller», «Retention»); genere neutro (§4, §4.2). I nomi delle aree
- * del questionario vengono da `src/lib/ai-readiness/copy.ts` (`surveyPillarTitle`). Modulo puro, senza import.
+ * pilastri in inglese, niente lessico legale («Controller», «Retention»); genere neutro (§4, §4.2).
+ *
+ * Quello che si dice della privacy dice quello che fa il codice, fatto per fatto, come l'informativa di prima: le risposte
+ * sono pseudonime (un codice al posto del nome), non anonime; la soglia vale per i risultati per area, mentre il profilo
+ * dell'azienda usa tutte le risposte (`src/lib/ai-readiness/scoring.ts`); le risposte di una persona si vedono solo se le
+ * impostazioni della rilevazione lo permettono (`allowIndividualView`, `src/lib/ai-readiness/export.ts`); il questionario
+ * può essere nominativo. Modulo puro, senza import.
  */
 
 export const SURVEY_TEXT = Object.freeze({
@@ -21,15 +26,20 @@ export const SURVEY_TEXT = Object.freeze({
   /** L'H1 della scheda dei referenti (sistemi, dati, persone e processi). */
   internalTitle: "Sistemi, dati e processi dell'azienda",
   internalIntro: "Questa scheda è per chi conosce sistemi, dati o organizzazione: le tue risposte completano il quadro raccolto con il questionario.",
-  /** «10 minuti · anonimo · si salva da solo»: una riga sotto l'H1. */
+  /** «10 minuti · risposte pseudonime · si salva da solo»: una riga sotto l'H1. */
   facts: "{N} minuti · {modo} · si salva da solo",
-  anonymous: "anonimo",
+  anonymous: "risposte pseudonime",
   named: "nominativo",
-  /** La privacy in una riga, nella testata di `/a`. */
-  privacyAnonymous: "Le risposte sono anonime: si leggono solo in gruppi di almeno {N} persone.",
-  privacyNamed: "Le risposte si leggono solo in gruppi di almeno {N} persone.",
+  /**
+   * La privacy in una riga, nella testata di `/a`: le risposte pseudonime (un codice al posto del nome) e aggregate, o il
+   * questionario nominativo; la soglia vale per i risultati per area. Con «Come usiamo le tue risposte ▸» accanto.
+   */
+  privacyAnonymous: "Le risposte sono salvate con un codice al posto del nome e aggregate: i risultati per area si vedono solo con almeno {N} {risposte}.",
+  privacyNamed: "Il questionario è nominativo: i risultati per area si vedono solo con almeno {N} {risposte}.",
+  answer: "risposta",
+  answers: "risposte",
   /** In fondo al link personale. */
-  personalLink: "Questo link è solo tuo: non inoltrarlo.",
+  personalLink: "Questo link è solo tuo: non inoltrarlo. Per invitare altre persone, condividi il link generale del questionario.",
 
   // ─── /s, il link aperto ───────────────────────────────────────────
   start: Object.freeze({
@@ -37,6 +47,7 @@ export const SURVEY_TEXT = Object.freeze({
     lastName: "Cognome",
     area: "La tua area",
     areaChoose: "Scegli",
+    /** Dopo le aree che la rilevazione conosce già: un'area nuova, da scrivere. */
     areaOther: "Un'altra area",
     areaOtherLabel: "Quale area?",
     areaHint: "Serve solo per leggere i risultati per area.",
@@ -46,23 +57,6 @@ export const SURVEY_TEXT = Object.freeze({
     resumeButton: "Riprendi da dove eri",
     restart: "Inizia da capo",
   }),
-  /**
-   * «La tua area» da un elenco: le aree di un'azienda, più «Un'altra area» da scrivere. Lo stesso nome per chi lavora
-   * nella stessa area, così i risultati per area non si dividono in «Vendite», «vendite» e «Sales».
-   */
-  areas: Object.freeze([
-    "Direzione",
-    "Amministrazione e finanza",
-    "Commerciale e vendite",
-    "Marketing e comunicazione",
-    "Acquisti e logistica",
-    "Produzione",
-    "Qualità",
-    "Ricerca e sviluppo",
-    "Risorse umane",
-    "IT e sistemi",
-    "Assistenza clienti",
-  ]),
 
   // ─── /a, il questionario ──────────────────────────────────────────
   form: Object.freeze({
@@ -154,15 +148,27 @@ export const SURVEY_TEXT = Object.freeze({
     controllerFallback: "La tua azienda",
     processorFallback: "Unbundle / Lateral Space",
     why: "Perché",
-    whyValue: "Per capire dove l'AI può aiutare il lavoro di tutti.",
+    whyValue: "Per misurare, in forma aggregata, quanto l'azienda è pronta a usare l'AI.",
+    stored: "Come sono salvate",
+    storedAnonymous: "Con un codice al posto del nome (pseudonimo).",
+    storedNamed: "Con nome e cognome: il questionario è nominativo.",
     sees: "Chi le vede",
-    seesValue: "Solo risultati di gruppo: servono almeno {N} risposte.",
+    /** Il profilo dell'azienda usa tutte le risposte; la soglia vale per i risultati per area. */
+    seesValue: "Chi gestisce la rilevazione vede il profilo dell'azienda, fatto con tutte le risposte, e i risultati per area solo con almeno {N} {risposte}.",
+    /** La vista delle risposte di una persona (`allowIndividualView`): spenta, si dice che si può accendere; accesa, lo si dice. */
+    seesIndividualOff: "Le risposte di una singola persona non le vede, salvo che le impostazioni della privacy lo permettano.",
+    seesIndividualOn: "Con le impostazioni di questa rilevazione può vedere anche le risposte di ogni persona.",
     basis: "Su quale base",
+    basisFallback: "La indica l'azienda.",
     howLong: "Per quanto tempo",
-    howLongValue: "{N} giorni.",
+    howLongValue: "{N} {giorni}.",
+    day: "giorno",
+    days: "giorni",
     questions: "Domande",
     questionsFallback: "Chiedi al referente interno.",
     full: "Leggi l'informativa completa",
+    /** Un indirizzo dell'informativa completa che non è una pagina web: si mostra com'è, senza link. */
+    fullText: "Informativa completa:",
     back: "Torna al questionario",
   }),
   /** «I tuoi dati ▸», sotto l'informativa del link personale. */
@@ -172,16 +178,22 @@ export const SURVEY_TEXT = Object.freeze({
     notSent: "Le tue risposte: non ancora inviate.",
     cases: "Casi d'uso proposti: {n}.",
     benchmarkGiven: "Hai dato il consenso al confronto con altre aziende.",
+    /** Le azioni restano registrate (prima: «tracciate in audit log»). */
+    tracked: "Ogni azione qui resta registrata.",
     download: "Scarica una copia",
     withdraw: "Ritira il consenso al confronto",
+    /** Che cosa cambia ritirandolo. */
+    withdrawNote: "Le risposte restano per la rilevazione interna, ma non servono più ai confronti futuri con altre aziende.",
     withdrawn: "Consenso al confronto ritirato.",
     erase: "Cancella le mie risposte",
-    eraseAsk: "Cancelliamo nome, risposte e testi collegati a questo link. Non si può annullare.",
+    eraseAsk: "Cancelliamo i dati che ti identificano, le risposte e i testi collegati a questo link. Non si può annullare.",
     eraseConfirm: "Sì, cancella le risposte",
     cancel: "Annulla",
     eraseFailed: "Non abbiamo cancellato niente: riprova.",
     erasedTitle: "Risposte cancellate",
-    erased: "Nome, risposte e testi collegati a questo link non ci sono più.",
+    erased: "I dati che ti identificavano, le risposte e i testi collegati a questo link non ci sono più: il link non mostra più dati personali.",
+    /** Il link dopo una cancellazione (o sbagliato): la scheda unica, che dice anche questo. */
+    gone: "Oppure le risposte sono già state cancellate. Per un aiuto, chiedi al referente interno.",
   }),
 });
 
@@ -195,14 +207,19 @@ export function surveyMinutes(scoredQuestions: number): number {
   return Math.max(2, Math.round(scoredQuestions * 0.5));
 }
 
-/** «10 minuti · anonimo · si salva da solo». */
+/** «10 minuti · risposte pseudonime · si salva da solo». */
 export function surveyFacts(minutes: number, named: boolean): string {
   return fill(SURVEY_TEXT.facts, { N: minutes, modo: named ? SURVEY_TEXT.named : SURVEY_TEXT.anonymous });
 }
 
-/** La privacy in una riga, nella testata del questionario. */
+/** «1 risposta», «5 risposte». */
+function answersWord(n: number): string {
+  return n === 1 ? SURVEY_TEXT.answer : SURVEY_TEXT.answers;
+}
+
+/** La privacy in una riga, nella testata del questionario: pseudonime o nominativo, e la soglia delle aree. */
 export function surveyPrivacyLine(named: boolean, threshold: number): string {
-  return fill(named ? SURVEY_TEXT.privacyNamed : SURVEY_TEXT.privacyAnonymous, { N: threshold });
+  return fill(named ? SURVEY_TEXT.privacyNamed : SURVEY_TEXT.privacyAnonymous, { N: threshold, risposte: answersWord(threshold) });
 }
 
 export type SurveySaveStatus = "idle" | "dirty" | "saving" | "saved" | "error";
@@ -244,23 +261,69 @@ export interface SurveyNoticeRow {
 }
 
 /**
- * L'informativa unica «Come usiamo le tue risposte», con i valori della rilevazione: chi le raccoglie, perché, chi le
- * vede, su quale base (se è scritta), per quanto tempo, a chi chiedere. Il contatto lo mette la pagina come link.
+ * L'informativa unica «Come usiamo le tue risposte», con i valori della rilevazione e fatto per fatto come quella di
+ * prima: chi le raccoglie (titolare e fornitore), perché (misurare in forma aggregata), come sono salvate (pseudonime, o
+ * nominative), chi le vede (il profilo dell'azienda con tutte le risposte, le aree solo dalla soglia, le risposte di una
+ * persona solo se le impostazioni lo permettono, e lo dice quando lo permettono), su quale base, per quanto tempo. Il
+ * contatto lo mette la pagina come link.
  */
-export function surveyNotice(i: { privacyConfig: Readonly<Record<string, unknown>> | null | undefined; threshold: number }): SurveyNoticeRow[] {
+export function surveyNotice(i: { privacyConfig: Readonly<Record<string, unknown>> | null | undefined; threshold: number; named: boolean }): SurveyNoticeRow[] {
   const N = SURVEY_TEXT.notice;
   const controller = configText(i.privacyConfig, "controllerName") ?? N.controllerFallback;
   const processor = configText(i.privacyConfig, "processorName") ?? N.processorFallback;
   const basis = configText(i.privacyConfig, "legalBasis");
   const rawDays = Number(i.privacyConfig?.dataRetentionDays);
   const days = Number.isFinite(rawDays) && rawDays > 0 ? Math.round(rawDays) : 365;
+  const individual = i.privacyConfig?.allowIndividualView === true;
   return [
     { label: N.who, value: withStop(fill(N.whoValue, { Titolare: controller, Fornitore: processor })) },
     { label: N.why, value: N.whyValue },
-    { label: N.sees, value: fill(N.seesValue, { N: i.threshold }) },
-    ...(basis ? [{ label: N.basis, value: withStop(basis) }] : []),
-    { label: N.howLong, value: fill(N.howLongValue, { N: days }) },
+    { label: N.stored, value: i.named ? N.storedNamed : N.storedAnonymous },
+    {
+      label: N.sees,
+      value: `${fill(N.seesValue, { N: i.threshold, risposte: answersWord(i.threshold) })} ${individual ? N.seesIndividualOn : N.seesIndividualOff}`,
+    },
+    { label: N.basis, value: basis ? withStop(basis) : N.basisFallback },
+    { label: N.howLong, value: fill(N.howLongValue, { N: days, giorni: days === 1 ? N.day : N.days }) },
   ];
+}
+
+/**
+ * L'indirizzo dell'informativa completa del cliente (`privacyNoticeUrl`), come si mostra: una pagina web resta un link;
+ * un indirizzo scritto senza «https://» («www.cliente.it/privacy») diventa un link con «https://» davanti (prima il
+ * browser lo leggeva come un indirizzo di Unbundle, e non si apriva); un indirizzo email resta un link email; il resto
+ * si mostra com'è, come testo. Mai un link con un altro schema («javascript:», «data:»): il browser lo eseguirebbe.
+ */
+export function noticeUrlOf(raw: unknown): { href: string } | { text: string } | null {
+  if (typeof raw !== "string") return null;
+  const value = raw.trim();
+  if (!value) return null;
+  if (/^https?:\/\//i.test(value)) return { href: value };
+  if (/^mailto:[^\s]+@[^\s]+$/i.test(value)) return { href: value };
+  if (/^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test(value)) return { href: `mailto:${value}` };
+  if (/^[^\s:/?#]+\.[a-z]{2,}(?:[/?#][^\s]*)?$/i.test(value)) return { href: `https://${value}` };
+  if (/^[a-z][a-z0-9+.-]*:(?!\s)/i.test(value)) return null;
+  return { text: value };
+}
+
+/** Il segno che la cancellazione lascia al posto dell'area (`anonymizeAiReadinessRespondentByTokenHash`): non è un'area. */
+const ERASED_AREA = "Privacy deleted";
+
+/**
+ * «La tua area» sul link aperto: le aree che la rilevazione conosce già (quelle delle persone invitate o già iscritte),
+ * scritte come sono, così chi sceglie finisce nella stessa area e nessuna si divide in due (i risultati per area
+ * raggruppano per il testo esatto, senza spazi in testa e in coda: `src/lib/ai-readiness/scoring.ts`). Senza aree, il
+ * campo da scrivere di prima. Niente vuoti, niente doppioni, niente aree che il server rifiuterebbe (meno di 2 caratteri),
+ * niente segno della cancellazione. In ordine alfabetico.
+ */
+export function surveyAreas(units: readonly (string | null | undefined)[]): string[] {
+  const seen = new Set<string>();
+  for (const unit of units) {
+    const area = typeof unit === "string" ? unit.trim() : "";
+    if (area.length < 2 || area === ERASED_AREA) continue;
+    seen.add(area);
+  }
+  return [...seen].sort((a, b) => a.localeCompare(b, "it"));
 }
 
 /** La data di invio delle risposte: «12 novembre 2026», a Roma. */

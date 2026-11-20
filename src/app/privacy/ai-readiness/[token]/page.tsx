@@ -3,6 +3,7 @@ import { hashInviteToken } from "@/lib/ai-readiness/token";
 import { parseSupportContacts } from "@/lib/ai-readiness/support-contacts";
 import { getRespondentPrivacyBundleByTokenHash } from "@/lib/db/queries/ai-readiness";
 import { SURVEY_TEXT, fillSurvey, surveyDay } from "@/lib/public/survey";
+import { PUBLIC_TEXT } from "@/lib/public/text";
 import { RespondentPrivacyControls } from "@/components/ai-readiness/respondent-privacy-controls";
 import { PUBLIC_PRIMARY } from "@/components/public/classes";
 import { PublicContact, PublicShell } from "@/components/public/public-shell";
@@ -53,7 +54,8 @@ export default async function AiReadinessPrivacyPage({
   }
 
   const bundle = await getRespondentPrivacyBundleByTokenHash(hashInviteToken(token));
-  if (!bundle) return <PublicInvalidScreen body={SURVEY_TEXT.gone} />;
+  // Un link sbagliato, o il link di prima dopo una cancellazione: la scheda unica, che lo dice.
+  if (!bundle) return <PublicInvalidScreen body={D.gone} />;
 
   const privacy = (bundle.assessment.privacyConfig ?? {}) as Record<string, unknown>;
   const brand = (bundle.assessment.brandConfig ?? {}) as Record<string, unknown>;
@@ -71,7 +73,7 @@ export default async function AiReadinessPrivacyPage({
     <PublicShell client={client} footer={support ? <PublicContact label={support.label} href={support.mailto} /> : null}>
       <h1 className="mt-6 text-2xl font-semibold tracking-tight">{SURVEY_TEXT.notice.title}</h1>
       <div className="mt-6">
-        <SurveyNotice privacyConfig={privacy} threshold={bundle.assessment.aggregationThreshold} support={support} />
+        <SurveyNotice privacyConfig={privacy} threshold={bundle.assessment.aggregationThreshold} named={bundle.assessment.anonymousMode === false} support={support} />
       </div>
 
       <Fold id="i-tuoi-dati" title={D.title} defaultOpen={openData} className="mt-8">
@@ -88,10 +90,11 @@ export default async function AiReadinessPrivacyPage({
         ) : null}
         {error ? (
           <p role="alert" className="rounded-xl bg-destructive/10 px-4 py-3 text-destructive">
-            {error === "invalid" ? SURVEY_TEXT.gone : D.eraseFailed}
+            {error === "invalid" ? `${PUBLIC_TEXT.invalidLink.title} ${D.gone}` : D.eraseFailed}
           </p>
         ) : null}
         <RespondentPrivacyControls token={token} benchmarkGiven={benchmarkGiven} />
+        <p className="text-sm text-muted-foreground">{D.tracked}</p>
       </Fold>
 
       {/* Il prossimo passo, finché il questionario si può ancora compilare: tornarci. */}
