@@ -10,6 +10,7 @@ import {
   EMAIL_TEMPLATES,
   WINDOWED_TEMPLATES,
   isCiKeyEmailTemplate,
+  planCiKeyDelivery,
   planDelivery,
   type ClaimedNotification,
   type DeliveryFacts,
@@ -50,15 +51,14 @@ const facts = (over: Partial<DeliveryFacts> = {}, key: Partial<NonNullable<Deliv
   ...over,
 });
 
-const action = (plan: ReturnType<typeof planDelivery>) => (plan.action === "send" ? "send" : `${plan.action}:${plan.reason}`);
+const action = (plan: ReturnType<typeof planCiKeyDelivery>) => (plan.action === "send" ? "send" : `${plan.action}:${plan.reason}`);
 
 function built(templateKey: string, f = facts()): CiKeyEmailInput {
-  const plan = planDelivery(claimed(templateKey), f, OPTS);
+  const plan = planCiKeyDelivery(claimed(templateKey), f, OPTS);
   assert.equal(plan.action, "send", templateKey);
   if (plan.action !== "send") throw new Error("non parte");
-  const input = plan.build(null);
-  assert.ok(isCiKeyEmailInput(input), templateKey);
-  return input;
+  assert.ok(isCiKeyEmailInput(plan.email), templateKey);
+  return plan.email;
 }
 
 test("i tre modelli sono nella coda, nel motore e nel modulo delle chiavi; partono a qualunque ora; non sono di chi costruisce", () => {
@@ -77,33 +77,33 @@ test("i tre modelli sono nella coda, nel motore e nel modulo delle chiavi; parto
 
 test("a chi gestisce le chiavi, di Lateral Space, senza caso; il link all'Agent Factory del workspace", () => {
   for (const tpl of CI_KEY_EMAIL_TEMPLATES) {
-    const plan = planDelivery(claimed(tpl), facts(), OPTS);
+    const plan = planCiKeyDelivery(claimed(tpl), facts(), OPTS);
     assert.equal(plan.action, "send", tpl);
     if (plan.action !== "send") continue;
     assert.equal(plan.to, "responsabile@ls.test");
-    assert.equal(plan.link, null, "nessun link dei referenti");
-    assert.equal(plan.after, null);
-    const input = plan.build(null);
-    assert.equal(input.template, tpl);
-    assert.equal((input as { link: string }).link, LINK);
-    assert.equal((input as { repo: string }).repo, REPO);
+    assert.equal(plan.email.template, tpl);
+    assert.equal(plan.email.link, LINK);
+    assert.equal(plan.email.repo, REPO);
+    // Il motore delle altre e-mail non le manda mai: hanno il loro piano e il loro modello.
+    assert.deepEqual(planDelivery(claimed(tpl), facts(), OPTS), { action: "cancel", reason: "modello_della_chiave_ci" });
   }
+  assert.equal(action(planCiKeyDelivery(claimed("cli_collegata"), facts(), OPTS)), "cancel:modello_non_previsto");
 });
 
 test("si annullano: un contatto, chi non è di Lateral Space, chi non gestisce più le chiavi, la chiave che non c'è più", () => {
   for (const tpl of CI_KEY_EMAIL_TEMPLATES) {
     const contact = facts({ recipient: { kind: "contact", id: USER, email: "a@ls.test", reachable: true, digestOptOut: false, lateralSpace: false } });
-    assert.equal(action(planDelivery(claimed(tpl), contact, OPTS)), "cancel:destinatario_non_utente", tpl);
+    assert.equal(action(planCiKeyDelivery(claimed(tpl), contact, OPTS)), "cancel:destinatario_non_utente", tpl);
     const client = facts({ recipient: { kind: "user", id: USER, email: "a@cliente.test", reachable: true, digestOptOut: false, lateralSpace: false } });
-    assert.equal(action(planDelivery(claimed(tpl), client, OPTS)), "cancel:destinatario_non_lateral_space", tpl);
-    assert.equal(action(planDelivery(claimed(tpl), facts({}, { recipientManages: false }), OPTS)), "cancel:non_gestisce_le_chiavi", tpl);
-    assert.equal(action(planDelivery(claimed(tpl), facts({ ciKey: null }), OPTS)), "cancel:chiave_assente", tpl);
-    assert.equal(action(planDelivery(claimed(tpl), facts({ recipient: null }), OPTS)), "cancel:destinatario_non_raggiungibile", tpl);
+    assert.equal(action(planCiKeyDelivery(claimed(tpl), client, OPTS)), "cancel:destinatario_non_lateral_space", tpl);
+    assert.equal(action(planCiKeyDelivery(claimed(tpl), facts({}, { recipientManages: false }), OPTS)), "cancel:non_gestisce_le_chiavi", tpl);
+    assert.equal(action(planCiKeyDelivery(claimed(tpl), facts({ ciKey: null }), OPTS)), "cancel:chiave_assente", tpl);
+    assert.equal(action(planCiKeyDelivery(claimed(tpl), facts({ recipient: null }), OPTS)), "cancel:destinatario_non_raggiungibile", tpl);
   }
   // L'avviso di scadenza non serve più se la chiave è già stata revocata, ruotata o è scaduta; le altre due partono.
   for (const key of [{ revokedAt: NOW }, { superseded: true }, { expiresAt: NOW }]) {
-    assert.equal(action(planDelivery(claimed("chiave_ci_scade"), facts({}, key), OPTS)), "cancel:chiave_cambiata", JSON.stringify(key));
-    assert.equal(action(planDelivery(claimed("chiave_ci_creata"), facts({}, key), OPTS)), "send");
+    assert.equal(action(planCiKeyDelivery(claimed("chiave_ci_scade"), facts({}, key), OPTS)), "cancel:chiave_cambiata", JSON.stringify(key));
+    assert.equal(action(planCiKeyDelivery(claimed("chiave_ci_creata"), facts({}, key), OPTS)), "send");
   }
 });
 
