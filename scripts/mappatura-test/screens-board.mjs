@@ -10,8 +10,9 @@
 //   numero d'ordine in mono 10,5 px; etichetta della riga 136 px (160 da 1500 px di board); ogni card della mappa larga
 //   quanto il token --board-card (188 px, il riferimento a 1440), in ogni riga; numero dei riquadri 30 px in serif;
 //   testata 127 ± 8 px a 1440;
-// - la mappa che scorre nel suo riquadro a 390, e la pagina che non scorre mai di lato, in ogni vista; con la mappa fatta
-//   scorrere fino in fondo l'etichetta di ogni riga al bordo sinistro, le righe larghe uguali, «+ passo» dentro la riga;
+// - (rilascio 10, §3.7) a 390 i processi sono un elenco di card, una sotto l'altra, larghe quanto la riga: la mappa non
+//   scorre di lato; la pagina non scorre mai di lato, in ogni vista; con la mappa fatta scorrere fino in fondo l'etichetta
+//   di ogni riga al bordo sinistro, le righe larghe uguali, «+ passo» dentro la riga;
 // - il drawer di 920 px a 1440 e di tutta la larghezza a 390; il pannello dell'assistente agganciato (380 px) a 1440 e
 //   sopra la pagina a 390;
 // - i colori calcolati della pagina, di un riquadro, del titolo, del suo corsivo, del punto della pillola e dei tre
@@ -236,8 +237,15 @@ function check(name, config, m, expected, failures) {
   if (m.kpi !== null && (m.kpi !== "30px" || !/Instrument Serif/.test(m.kpiFamily))) fail(`numero dei riquadri ${m.kpi} ${m.kpiFamily}`);
   if (m.viewTitle !== null && m.viewTitle !== (config.width === 1440 ? "42px" : "28px")) fail(`titolo della vista ${m.viewTitle}`);
   if (m.rowLabel !== null) near(m.rowLabel, m.board !== null && m.board >= 1500 ? 160 : 136, 0.5, "etichetta della riga");
+  // (Rilascio 10, §3.7) Con l'area della board fino a 680 px (il telefono) i processi sono un elenco verticale di card.
+  const phoneList = m.board !== null && m.board <= 680;
   m.rows.forEach(({ widths }, index) => {
     if (widths.length === 0) return;
+    if (phoneList) {
+      // Al telefono ogni card è larga quanto la sua riga: tutte uguali, e mai più strette di una card del riferimento.
+      if (widths.some((value) => Math.abs(value - widths[0]) > 0.5 || value < CARD)) fail(`riga ${index + 1}: card larghe ${widths.join(", ")}, attese tutte uguali e larghe quanto la riga`);
+      return;
+    }
     // Le card sono tutte della larghezza del riferimento (--board-card, 188 px), con o senza maniglia e in ogni riga: una
     // riga corta non le stira, e la mappa si legge come una griglia. Il bordo dell'attrito non allarga la card.
     const off = widths.filter((value) => Math.abs(value - CARD) > 0.5);
@@ -247,7 +255,7 @@ function check(name, config, m, expected, failures) {
   // il suo spazio, e non tocca la riga della testata.
   if (config.width === 1440 && m.header !== null && m.tabs) near(m.header, 127, 8, "testata");
   if (config.width === 1440 && m.titleGap !== null && !m.tabs && m.titleGap < 4) fail(`le lettere del titolo toccano la riga della testata (${m.titleGap} px tra loro)`);
-  if (config.width === 390 && m.map && m.rows.some((row) => row.widths.length >= 2) && !(m.map.scrollWidth > m.map.clientWidth)) fail("la mappa non scorre nel suo riquadro");
+  if (phoneList && m.map && m.map.scrollWidth > m.map.clientWidth + 1) fail(`al telefono la mappa scorre di lato (${m.map.scrollWidth} > ${m.map.clientWidth})`);
   m.pinned.forEach(({ labels, rows, scrollWidth }, index) => {
     const where = `mappa ${index + 1} in fondo`;
     if (labels.some((left) => Math.abs(left) > 1)) fail(`${where}: etichette fuori dal bordo sinistro (${labels.join(", ")})`);
