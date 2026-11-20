@@ -58,7 +58,9 @@ export function BoardLoadingHeader(p: { workspaceId: string; departmentId: strin
       title={p.unitName ? <BoardTitle plain={p.unitName} accent={BOARD_TEXT.boardTitleAccent} /> : " "}
       aside={
         <>
-          <StatusPill state="loading" savedAt={null} />
+          <span className="b-hide-phone b-top-pill">
+            <StatusPill state="loading" savedAt={null} />
+          </span>
           <BoardMenuPlaceholder label={BOARD_TEXT.menu} hidePhone />
           <button type="button" className="b-btn b-hide-phone b-assist-toggle" inert data-b="assistant-toggle">
             {VIEW_TEXT.header.assistant}
@@ -74,7 +76,7 @@ export function BoardLoadingHeader(p: { workspaceId: string; departmentId: strin
           inert
           aside={
             <>
-              <span className="b-tabs-pill" aria-hidden="true">
+              <span className="b-tabs-pill">
                 <StatusPill state="loading" savedAt={null} compact />
               </span>
               <BoardMenuPlaceholder label={BOARD_TEXT.menu} />

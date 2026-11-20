@@ -226,7 +226,10 @@ export function UnitBoard(p: UnitBoardProps & { initialTab?: BoardTab }): JSX.El
             title={<BoardTitle plain={board.unit.name} accent={BOARD_TEXT.boardTitleAccent} />}
             aside={
               <>
-                <StatusPill state={pill} savedAt={savedAt} failed={failed} onSaveNow={() => void client.saveNow()} />
+                {/* (Rilascio 10, §3.7) Al telefono la pillola sta solo nella riga delle schede: la testata resta di tre righe. */}
+                <span className="b-hide-phone b-top-pill">
+                  <StatusPill state={pill} savedAt={savedAt} failed={failed} onSaveNow={() => void client.saveNow()} />
+                </span>
                 <BoardMenu label={BOARD_TEXT.menu} items={menu} hidePhone />
                 <button ref={headToggle} type="button" className="b-btn b-hide-phone b-assist-toggle" {...assistantButtons} onClick={toggle} data-b="assistant-toggle">
                   {VIEW_TEXT.header.assistant}
@@ -241,8 +244,8 @@ export function UnitBoard(p: UnitBoardProps & { initialTab?: BoardTab }): JSX.El
                 onSelect={select}
                 aside={
                   <>
-                    <span className="b-tabs-pill" aria-hidden="true">
-                      <StatusPill state={pill} savedAt={savedAt} compact />
+                    <span className="b-tabs-pill">
+                      <StatusPill state={pill} savedAt={savedAt} compact failed={failed} onSaveNow={() => void client.saveNow()} />
                     </span>
                     <BoardMenu label={BOARD_TEXT.menu} items={menu} />
                     <button ref={tabToggle} type="button" className="b-iconbtn" aria-label={VIEW_TEXT.header.assistant} title={VIEW_TEXT.header.assistant} {...assistantButtons} onClick={toggle}>

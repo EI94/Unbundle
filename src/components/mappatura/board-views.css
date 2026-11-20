@@ -30,7 +30,10 @@
 [data-board-root] .b-assist-toggle[aria-expanded="true"] { border-color: var(--board-ink); }
 [data-board-root] .b-iconbtn { appearance: none; width: 30px; height: 30px; display: grid; place-items: center; padding: 0; border: 1px solid var(--board-line-strong); border-radius: 6px; background: var(--board-paper); color: var(--board-ink); cursor: pointer; }
 [data-board-root] .b-iconbtn[aria-expanded="true"] { border-color: var(--board-ink); }
-[data-board-root] .b-tabs-pill { display: flex; }
+[data-board-root] .b-tabs-pill { display: flex; align-items: center; gap: 6px; }
+/* (Rilascio 10, §3.7) La pillola della riga del marchio non fa un riquadro suo; al telefono non c'è (`b-hide-phone`): lì
+   la pillola è quella della riga delle schede, e la testata ha tre righe (il percorso, il titolo, le schede). */
+[data-board-root] .b-top-pill { display: contents; }
 
 /* Una vista prende il fuoco quando la persona lascia un campo con Escape: senza l'anello, come il drawer. */
 [data-board-root] .b-view:focus { outline: none; }

@@ -202,7 +202,8 @@ export function BoardTabs<T extends string>(p: {
 export function StatusPill(p: { state: PillState | "loading"; savedAt: string | null; compact?: boolean; failed?: boolean; onSaveNow?: () => void }): JSX.Element {
   const text = pillText(p.state, p.savedAt);
   const pill = useRef<HTMLSpanElement>(null);
-  const saves = Boolean(p.onSaveNow) && !p.compact;
+  // (Rilascio 10, §3.7) Anche la pillola corta del telefono, che lì è la sola, porta «Salva ora» quando serve.
+  const saves = Boolean(p.onSaveNow);
   const stuck = (p.failed === true && p.state === "dirty") || p.state === "local";
   return (
     <>

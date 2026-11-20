@@ -92,11 +92,14 @@ test("il pannello dell'assistente: lo slot del compagno sotto «Assistente» e �
   assert.match(open, /<div class="b-scrim b-assist-scrim" aria-hidden="true" data-b="assistant-scrim"><\/div>$/);
 });
 
-test("sul telefono: la riga delle schede con la pillola (il punto e la parola), il «⋯» e il bottone dell'assistente (P79; rilascio 10)", () => {
+test("sul telefono: la riga delle schede con la pillola (il punto e la parola), il «⋯» e il bottone dell'assistente; la pillola della riga del marchio no (P79; rilascio 10)", () => {
   const html = render(fixtureBoard());
+  // (Rilascio 10, §3.7) Al telefono la testata ha tre righe: la pillola sta solo nella riga delle schede, ed è lei quella
+  // che i lettori di schermo leggono; quella della riga del marchio c'è solo da 48rem (`b-hide-phone`).
+  assert.match(html, /<div class="b-top-aside"><span class="b-hide-phone b-top-pill"><span class="b-status" data-s="saved" role="status" aria-live="polite" tabindex="-1" data-b="pill">/);
   assert.match(
     html,
-    /<div class="b-tabs-aside"><span class="b-tabs-pill" aria-hidden="true"><span class="b-status b-compact b-word" data-s="saved" role="status" aria-live="polite" data-b="pill"><span class="b-dot" aria-hidden="true"><\/span><span aria-hidden="true">Salvato<\/span><span class="b-sr">Salvato 16\/11, 10:30<\/span><\/span><\/span><button type="button"[^>]*class="b-iconbtn b-menu-btn"[^>]*>.*?<\/button><button type="button" class="b-iconbtn" aria-label="Assistente" title="Assistente" aria-expanded="false" aria-controls="[^"]+">/,
+    /<div class="b-tabs-aside"><span class="b-tabs-pill"><span class="b-status b-compact b-word" data-s="saved" role="status" aria-live="polite" tabindex="-1" data-b="pill"><span class="b-dot" aria-hidden="true"><\/span><span aria-hidden="true">Salvato<\/span><span class="b-sr">Salvato 16\/11, 10:30<\/span><\/span><\/span><button type="button"[^>]*class="b-iconbtn b-menu-btn"[^>]*>.*?<\/button><button type="button" class="b-iconbtn" aria-label="Assistente" title="Assistente" aria-expanded="false" aria-controls="[^"]+">/,
   );
 });
 

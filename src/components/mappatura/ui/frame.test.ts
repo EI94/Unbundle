@@ -123,12 +123,14 @@ test("la pillola: la scritta di ogni stato, una regione viva educata; «Salva or
   assert.doesNotMatch(html(h(StatusPill, { state: "dirty", savedAt: null, failed: true })), /Salva ora|tabindex/, "senza onSaveNow niente bottone, e la pillola non prende il fuoco");
   // «Salva ora» sparisce appena il salvataggio parte: prima il fuoco va alla pillola, se era sul bottone (F1).
   assert.match(readFileSync(new URL("./frame.tsx", import.meta.url), "utf8"), /if \(event\.currentTarget\.ownerDocument\.activeElement === event\.currentTarget\) pill\.current\?\.focus\(\{ preventScroll: true \}\);\s+p\.onSaveNow\?\.\(\);/);
-  // Compatta (la riga delle schede sul telefono): il punto e la parola corta; la scritta intera per gli screen reader.
+  // Compatta (la riga delle schede sul telefono): il punto e la parola corta; la scritta intera per gli screen reader. Al
+  // telefono è la sola pillola: dopo un salvataggio non riuscito porta anche lei «Salva ora».
   const compact = html(h(StatusPill, { state: "dirty", savedAt: null, compact: true, failed: true, onSaveNow() {} }));
   assert.equal(
     compact,
-    '<span class="b-status b-compact b-word" data-s="dirty" role="status" aria-live="polite" data-b="pill"><span class="b-dot" aria-hidden="true"></span><span aria-hidden="true">Da salvare</span><span class="b-sr">Modifiche da salvare</span></span>',
+    '<span class="b-status b-compact b-word" data-s="dirty" role="status" aria-live="polite" tabindex="-1" data-b="pill"><span class="b-dot" aria-hidden="true"></span><span aria-hidden="true">Da salvare</span><span class="b-sr">Modifiche da salvare</span></span><button type="button" class="b-btn b-small" data-b="save-now">Salva ora</button>',
   );
+  assert.doesNotMatch(html(h(StatusPill, { state: "dirty", savedAt: null, compact: true, onSaveNow() {} })), /Salva ora/, "solo dopo un salvataggio non riuscito");
   assert.match(html(h(StatusPill, { state: "saved", savedAt, compact: true })), /<span aria-hidden="true">Salvato<\/span><span class="b-sr">Salvato 16\/11, 10:30<\/span>/);
 });
 
