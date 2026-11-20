@@ -1,58 +1,34 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { hashInviteToken } from "@/lib/ai-readiness/token";
+import { parseSupportContacts } from "@/lib/ai-readiness/support-contacts";
 import { getRespondentPrivacyBundleByTokenHash } from "@/lib/db/queries/ai-readiness";
+import { SURVEY_TEXT, fillSurvey, surveyDay } from "@/lib/public/survey";
 import { RespondentPrivacyControls } from "@/components/ai-readiness/respondent-privacy-controls";
+import { PUBLIC_PRIMARY } from "@/components/public/classes";
+import { PublicContact, PublicShell } from "@/components/public/public-shell";
+import { PublicCard, PublicCardText, PublicInvalidScreen } from "@/components/public/state-card";
+import { SurveyNotice } from "@/components/public/survey-notice";
+import { Fold } from "@/components/ui-10/fold";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * L'informativa unica del questionario, «Come usiamo le tue risposte», dal link personale (rilascio 10, ondata 4,
+ * docs/ui-10/PROPOSTA-10.md §3.11, audit Fuori §3.8 AR-18…20): chi le raccoglie, perché, chi le vede, per quanto tempo, a
+ * chi chiedere. Sotto, chiusa, «I tuoi dati ▸»: il riepilogo, «Scarica una copia», «Ritira il consenso al confronto»
+ * (solo se è stato dato) e «Cancella le mie risposte» con la conferma nella pagina. La piega si apre da sola quando si
+ * arriva per i dati (`?dati=1`) o dopo un'azione (`?benchmark=`, `?error=`). Finché il questionario si può compilare, il
+ * pulsante pieno è «Torna al questionario». Il guscio unico, chiaro; niente stato dell'invito in inglese, «Controller»,
+ * «Retention» né «JSON». Le rotte delle azioni non cambiano.
+ */
 export const metadata: Metadata = {
-  title: "Privacy AI Readiness",
+  title: SURVEY_TEXT.notice.title,
   robots: { index: false, follow: false, nocache: true },
 };
 
-function InvalidPrivacyLink() {
-  return (
-    <main className="min-h-screen bg-background px-4 py-8 text-foreground">
-      <div className="mx-auto max-w-2xl">
-        <Link href="/" className="text-sm font-semibold tracking-wide">
-          Unbundle
-        </Link>
-        <Card className="mt-8 rounded-[32px]">
-          <CardHeader>
-            <CardTitle>Link privacy non valido</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm leading-6 text-muted-foreground">
-            Il link non è valido o i dati sono già stati anonimizzati. Chiedi al
-            referente interno se hai bisogno di supporto.
-          </CardContent>
-        </Card>
-      </div>
-    </main>
-  );
-}
-
-function AnonymizedSuccess() {
-  return (
-    <main className="min-h-screen bg-background px-4 py-8 text-foreground">
-      <div className="mx-auto max-w-2xl">
-        <Link href="/" className="text-sm font-semibold tracking-wide">
-          Unbundle
-        </Link>
-        <Card className="mt-8 rounded-[32px]">
-          <CardHeader>
-            <CardTitle>Dati anonimizzati</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm leading-6 text-muted-foreground">
-            I dati collegati a questo token sono stati anonimizzati. Il vecchio
-            link non può più mostrare dati personali.
-          </CardContent>
-        </Card>
-      </div>
-    </main>
-  );
+function first(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value) ?? "";
 }
 
 export default async function AiReadinessPrivacyPage({
@@ -64,94 +40,66 @@ export default async function AiReadinessPrivacyPage({
 }) {
   const { token } = await params;
   const query = await searchParams;
-  if (query.anonymized === "1") return <AnonymizedSuccess />;
+  const D = SURVEY_TEXT.data;
+
+  if (first(query.anonymized) === "1") {
+    return (
+      <PublicShell>
+        <PublicCard title={D.erasedTitle}>
+          <PublicCardText>{D.erased}</PublicCardText>
+        </PublicCard>
+      </PublicShell>
+    );
+  }
+
   const bundle = await getRespondentPrivacyBundleByTokenHash(hashInviteToken(token));
-  if (!bundle) return <InvalidPrivacyLink />;
-  const privacy = bundle.assessment.privacyConfig ?? {};
-  const error = typeof query.error === "string" ? query.error : "";
-  const benchmark = typeof query.benchmark === "string" ? query.benchmark : "";
+  if (!bundle) return <PublicInvalidScreen body={SURVEY_TEXT.gone} />;
+
+  const privacy = (bundle.assessment.privacyConfig ?? {}) as Record<string, unknown>;
+  const brand = (bundle.assessment.brandConfig ?? {}) as Record<string, unknown>;
+  const client = typeof brand.displayName === "string" && brand.displayName.trim() ? brand.displayName.trim() : null;
+  const support = parseSupportContacts(typeof privacy.supportEmail === "string" ? privacy.supportEmail : "");
+  const error = first(query.error);
+  const withdrawn = first(query.benchmark) === "withdrawn";
+  const openData = first(query.dati) === "1" || withdrawn || error !== "";
+  const sent = surveyDay(bundle.respondent.completedAt);
+  const cases = bundle.useCases.length;
+  const benchmarkGiven = bundle.respondent.hasBenchmarkConsent === true;
+  const canGoBack = bundle.respondent.inviteStatus !== "completed" && bundle.assessment.status === "open";
 
   return (
-    <main className="min-h-screen bg-background px-4 py-8 text-foreground sm:px-6">
-      <div className="mx-auto max-w-4xl space-y-6">
-        <header className="rounded-[36px] border bg-linear-to-br from-emerald-500/10 via-card to-sky-500/10 p-7">
-          <Link href="/" className="text-sm font-semibold tracking-wide">
-            Unbundle
-          </Link>
-          <h1 className="mt-6 text-3xl font-semibold tracking-tight">
-            Privacy e dati AI Readiness
-          </h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Da qui puoi scaricare i dati collegati al tuo token, revocare il
-            consenso benchmark o anonimizzare le risposte. Le azioni sono
-            tracciate in audit log.
-          </p>
-        </header>
-
-        <Card className="rounded-[28px]">
-          <CardHeader>
-            <CardTitle>Riepilogo trattamento</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-3 text-sm md:grid-cols-2">
-            <div className="rounded-2xl border p-3">
-              <div className="text-xs text-muted-foreground">Assessment</div>
-              <div className="mt-1 font-medium">{bundle.assessment.name}</div>
-            </div>
-            <div className="rounded-2xl border p-3">
-              <div className="text-xs text-muted-foreground">Stato invito</div>
-              <div className="mt-1 font-medium">{bundle.respondent.inviteStatus}</div>
-            </div>
-            <div className="rounded-2xl border p-3">
-              <div className="text-xs text-muted-foreground">Controller</div>
-              <div className="mt-1 font-medium">
-                {typeof privacy.controllerName === "string"
-                  ? privacy.controllerName
-                  : "azienda cliente"}
-              </div>
-            </div>
-            <div className="rounded-2xl border p-3">
-              <div className="text-xs text-muted-foreground">Retention</div>
-              <div className="mt-1 font-medium">
-                {String(privacy.dataRetentionDays ?? 365)} giorni
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {benchmark === "withdrawn" && (
-          <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-700">
-            Consenso benchmark revocato correttamente.
-          </div>
-        )}
-        {error === "confirmation" && (
-          <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
-            Per anonimizzare devi scrivere esattamente ANONIMIZZA.
-          </div>
-        )}
-        {error === "invalid" && (
-          <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
-            Link privacy non valido o già anonimizzato.
-          </div>
-        )}
-
-        <div className="flex flex-wrap gap-2">
-          <Button
-            render={<Link href={`/api/ai-readiness/respondents/${token}/export`} />}
-            nativeButton={false}
-          >
-            Scarica i miei dati JSON
-          </Button>
-          <Button
-            variant="outline"
-            render={<Link href={`/a/${token}`} />}
-            nativeButton={false}
-          >
-            Torna al survey
-          </Button>
-        </div>
-
-        <RespondentPrivacyControls token={token} />
+    <PublicShell client={client} footer={support ? <PublicContact label={support.label} href={support.mailto} /> : null}>
+      <h1 className="mt-6 text-2xl font-semibold tracking-tight">{SURVEY_TEXT.notice.title}</h1>
+      <div className="mt-6">
+        <SurveyNotice privacyConfig={privacy} threshold={bundle.assessment.aggregationThreshold} support={support} />
       </div>
-    </main>
+
+      <Fold id="i-tuoi-dati" title={D.title} defaultOpen={openData} className="mt-8">
+        <ul className="space-y-1 text-muted-foreground" data-testid="privacy-summary">
+          <li>{sent ? fillSurvey(D.sent, { data: sent }) : D.notSent}</li>
+          {/* Lo zero non si vede. */}
+          {cases > 0 ? <li>{fillSurvey(D.cases, { n: cases })}</li> : null}
+          {benchmarkGiven ? <li>{D.benchmarkGiven}</li> : null}
+        </ul>
+        {withdrawn ? (
+          <p role="status" className="rounded-xl bg-uc-verde-bg px-4 py-3">
+            {D.withdrawn}
+          </p>
+        ) : null}
+        {error ? (
+          <p role="alert" className="rounded-xl bg-destructive/10 px-4 py-3 text-destructive">
+            {error === "invalid" ? SURVEY_TEXT.gone : D.eraseFailed}
+          </p>
+        ) : null}
+        <RespondentPrivacyControls token={token} benchmarkGiven={benchmarkGiven} />
+      </Fold>
+
+      {/* Il prossimo passo, finché il questionario si può ancora compilare: tornarci. */}
+      {canGoBack ? (
+        <Button render={<a href={`/a/${token}`} />} nativeButton={false} className={`mt-6 ${PUBLIC_PRIMARY}`} data-testid="privacy-back">
+          {SURVEY_TEXT.notice.back}
+        </Button>
+      ) : null}
+    </PublicShell>
   );
 }

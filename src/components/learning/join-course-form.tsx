@@ -14,6 +14,10 @@ import {
 import { firebaseAuth } from "@/lib/firebase/client";
 import { joinCourseByLinkAction, requestCohortReopenAction } from "@/lib/actions/learning-join";
 import { KEPT_OTHER_COHORT_TEXT } from "@/lib/learning/join-arrival";
+import { COURSE_JOIN_TEXT } from "@/lib/public/course";
+import { fillPublic } from "@/lib/public/text";
+import { cn } from "@/lib/utils";
+import { PUBLIC_FIELD, PUBLIC_LABEL, PUBLIC_LINK, PUBLIC_PRIMARY, PUBLIC_SECONDARY } from "@/components/public/classes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,29 +34,17 @@ import { Label } from "@/components/ui/label";
  * di prima, dove ha già delle risposte. Prima di aprire il corso la pagina lo
  * dice e offre «Chiedi di riaprire il turno» (`requestCohortReopenAction`, con
  * il token di questo link); «Apri il corso» porta alla lezione.
+ *
+ * (Rilascio 10, ondata 4, PROPOSTA-10 §3.11) Un solo pulsante pieno: «Entra con
+ * Google», con il link «Usa email e password»; aperto il modulo, il pieno è il
+ * suo «Entra» e Google diventa bordato. «Non sono io» offre di nuovo Google ed
+ * email e password, anche su un telefono condiviso. Bersagli di 44 px, campi a
+ * 16 px, il pulsante principale a 48 px. I testi stanno in `src/lib/public/course.ts`.
  */
 
 type Step = "account" | "enroll" | "open";
 
-const STEP_LABELS: Record<Step, string> = {
-  account: "Account verificato",
-  enroll: "Iscrizione alla lezione",
-  open: "Apro il corso",
-};
-
-const FIREBASE_MESSAGES: Record<string, string> = {
-  "auth/email-already-in-use":
-    "Questa email ha già un account. Usa la password che hai scelto allora, oppure entra con Google.",
-  "auth/invalid-email": "Controlla l'indirizzo email.",
-  "auth/weak-password": "Serve una password di almeno 6 caratteri.",
-  "auth/user-not-found": "Nessun account con questa email: tocca «Non ho un account: creane uno».",
-  "auth/wrong-password": "Password errata.",
-  "auth/invalid-credential": "Email o password non corrette. Se è la prima volta, tocca «Non ho un account: creane uno».",
-  "auth/too-many-requests": "Troppi tentativi. Aspetta un minuto e riprova.",
-  "auth/network-request-failed":
-    "Connessione interrotta. Controlla la rete e riprova: non hai perso nulla.",
-  "auth/popup-closed-by-user": "Finestra chiusa prima di finire. Riprova.",
-};
+const J = COURSE_JOIN_TEXT;
 
 /** Le webview di WhatsApp e Teams non supportano la finestra di Google. */
 const NEEDS_REDIRECT = new Set([
@@ -64,11 +56,9 @@ const NEEDS_REDIRECT = new Set([
 export function JoinCourseForm({
   token,
   signedInAs,
-  courseTitle,
 }: {
   token: string;
   signedInAs: { name: string | null; email: string } | null;
-  courseTitle: string;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -80,6 +70,8 @@ export function JoinCourseForm({
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [browserHint, setBrowserHint] = useState(false);
   const [copied, setCopied] = useState(false);
+  // «Non sono io»: la persona collegata non è chi ha in mano il telefono.
+  const [notMe, setNotMe] = useState(false);
   // (Ondata 0) Con `kept_other_cohort`: l'indirizzo della lezione, aperto solo con «Apri il corso».
   const [kept, setKept] = useState<string | null>(null);
   const [reopen, setReopen] = useState<{ pending: boolean; sent: boolean; message: string | null }>({ pending: false, sent: false, message: null });
@@ -108,7 +100,7 @@ export function JoinCourseForm({
       err && typeof err === "object" && "code" in err
         ? String((err as { code: unknown }).code)
         : "";
-    if (code) return { code, message: FIREBASE_MESSAGES[code] ?? null };
+    if (code) return { code, message: Object.hasOwn(J.firebase, code) ? J.firebase[code] : null };
     return { code: "", message: err instanceof Error ? err.message : null };
   }
 
@@ -127,10 +119,7 @@ export function JoinCourseForm({
         });
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as { error?: string };
-          throw new Error(
-            body.error ??
-              "Non è stato possibile aprire la sessione. Riprova ad accedere."
-          );
+          throw new Error(body.error ?? J.sessionFailed);
         }
       }
       setDone(["account"]);
@@ -142,7 +131,7 @@ export function JoinCourseForm({
         return;
       }
       if (result.status !== "done") {
-        setError("Non è stato possibile completare l'iscrizione. Riprova.");
+        setError(J.enrollFailed);
         setDone([]);
         return;
       }
@@ -156,10 +145,7 @@ export function JoinCourseForm({
       router.replace(result.path);
     } catch (err) {
       const { message } = describe(err);
-      setError(
-        message ??
-          "Qualcosa non ha funzionato. Riprova: nessuna delle tue risposte è andata persa."
-      );
+      setError(message ?? J.failed);
       setDone([]);
     } finally {
       inFlight.current = false;
@@ -186,12 +172,10 @@ export function JoinCourseForm({
           await signInWithRedirect(firebaseAuth, new GoogleAuthProvider());
           return;
         } catch {
-          setError(
-            "Questa app non permette di accedere con Google. Apri il link in Safari o Chrome."
-          );
+          setError(J.googleBlocked);
         }
       } else {
-        setError(message ?? "Accesso con Google non riuscito. Riprova.");
+        setError(message ?? J.googleFailed);
       }
     } finally {
       setBusy(false);
@@ -201,7 +185,7 @@ export function JoinCourseForm({
   async function withEmail(event: React.FormEvent) {
     event.preventDefault();
     if (registering && !form.name.trim()) {
-      setError("Scrivi nome e cognome: compaiono nel registro della formazione.");
+      setError(J.nameNeeded);
       return;
     }
     setBusy(true);
@@ -231,7 +215,7 @@ export function JoinCourseForm({
       await run(await credential.user.getIdToken());
     } catch (err) {
       const { message } = describe(err);
-      setError(message ?? "Accesso non riuscito. Controlla email e password.");
+      setError(message ?? J.emailFailed);
     } finally {
       setBusy(false);
     }
@@ -243,7 +227,7 @@ export function JoinCourseForm({
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2500);
     } catch {
-      setError("Copia non riuscita: seleziona l'indirizzo dalla barra del browser.");
+      setError(J.copyFailed);
     }
   }
 
@@ -260,20 +244,20 @@ export function JoinCourseForm({
   if (kept) {
     const T = KEPT_OTHER_COHORT_TEXT;
     return (
-      <div className="space-y-3 rounded-2xl border p-4" data-testid="join-kept">
-        <p className="text-sm font-medium">{T.title}</p>
-        <p className="text-sm text-muted-foreground">{T.body}</p>
+      <div className="space-y-3" data-testid="join-kept">
+        <p className="font-medium">{T.title}</p>
+        <p className="text-muted-foreground">{T.body}</p>
         {reopen.message && (
-          <p role="status" className="text-sm">
+          <p role="status" className="text-muted-foreground">
             {reopen.message}
           </p>
         )}
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <Button type="button" className="min-h-11" onClick={() => router.replace(kept)}>
+        <div className="space-y-2 pt-1">
+          <Button type="button" className={PUBLIC_PRIMARY} onClick={() => router.replace(kept)}>
             {T.open}
           </Button>
           {!reopen.sent && (
-            <Button type="button" variant="outline" className="min-h-11" disabled={reopen.pending} onClick={() => void askReopen()}>
+            <Button type="button" variant="outline" className={PUBLIC_SECONDARY} disabled={reopen.pending} onClick={() => void askReopen()}>
               {T.reopen}
             </Button>
           )}
@@ -286,42 +270,35 @@ export function JoinCourseForm({
     const steps: Step[] = ["account", "enroll", "open"];
     return (
       <div className="space-y-3" data-testid="join-progress">
-        <p className="text-sm font-medium">Ti sto portando dentro al corso…</p>
+        <p className="font-medium">{J.progress}</p>
         <ul className="space-y-2" aria-live="polite">
           {steps.map((step) => {
             const complete = done.includes(step);
             return (
-              <li
-                key={step}
-                className="flex items-center gap-3 text-sm"
-                data-step={step}
-                data-state={complete ? "done" : "pending"}
-              >
+              <li key={step} className="flex items-center gap-3" data-step={step} data-state={complete ? "done" : "pending"}>
                 <span
                   aria-hidden
                   className={
                     complete
-                      ? "flex size-5 items-center justify-center rounded-full bg-emerald-600 text-[11px] font-bold text-white"
+                      ? "flex size-5 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground"
                       : "size-5 rounded-full border-2 border-muted"
                   }
                 >
                   {complete ? "✓" : ""}
                 </span>
                 <span className={complete ? "text-foreground" : "text-muted-foreground"}>
-                  {STEP_LABELS[step]}
+                  {J.steps[step]}
+                  {complete ? <span className="sr-only"> ({J.stepDone})</span> : null}
                 </span>
               </li>
             );
           })}
         </ul>
         {error && (
-          <div
-            className="rounded-2xl border border-destructive/40 bg-destructive/10 p-4 text-sm"
-            role="alert"
-          >
+          <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4" role="alert">
             <p>{error}</p>
             <Button
-              className="mt-3"
+              className="mt-3 h-11"
               type="button"
               variant="outline"
               onClick={() => {
@@ -330,7 +307,7 @@ export function JoinCourseForm({
                 setBusy(false);
               }}
             >
-              Riprova
+              {J.retry}
             </Button>
           </div>
         )}
@@ -338,100 +315,81 @@ export function JoinCourseForm({
     );
   }
 
+  const asSignedIn = signedInAs && !notMe ? signedInAs : null;
+
   return (
     <div className="space-y-4">
       {error && !showEmail && (
-        <div
-          className="rounded-2xl border border-destructive/40 bg-destructive/10 p-4 text-sm"
-          role="alert"
-          data-testid="join-error"
-        >
+        <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4" role="alert" data-testid="join-error">
           {error}
         </div>
       )}
 
       {browserHint && (
-        <div className="rounded-2xl border bg-muted/40 p-4 text-sm">
-          <p className="font-medium">Apri il link nel browser</p>
-          <p className="mt-1 text-muted-foreground">
-            L&apos;app da cui hai aperto il link non permette l&apos;accesso con
-            Google.
-          </p>
-          <Button className="mt-3" type="button" variant="outline" onClick={copyLink}>
-            {copied ? "Indirizzo copiato" : "Copia l'indirizzo"}
+        <div className="rounded-xl border bg-muted/40 p-4">
+          <p className="font-medium">{J.browserTitle}</p>
+          <p className="mt-1 text-muted-foreground">{J.browserBody}</p>
+          <Button className="mt-3 h-11" type="button" variant="outline" onClick={copyLink}>
+            {copied ? J.copied : J.copy}
           </Button>
         </div>
       )}
 
-      {signedInAs ? (
-        <div className="space-y-3">
-          <Button
-            className="h-12 w-full text-base"
-            size="lg"
-            type="button"
-            data-testid="join-continue"
-            onClick={() => run(null)}
-          >
-            Entra nel corso come {signedInAs.name || signedInAs.email}
+      {asSignedIn ? (
+        <div className="space-y-1">
+          <Button className={PUBLIC_PRIMARY} type="button" data-testid="join-continue" onClick={() => run(null)}>
+            {fillPublic(J.continueAs, { Nome: asSignedIn.name || asSignedIn.email })}
           </Button>
-          <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-            <span className="min-w-0 truncate">{signedInAs.email}</span>
+          <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+            <span className="min-w-0 truncate">{asSignedIn.email}</span>
             <button
-              className="shrink-0 font-medium text-foreground underline"
+              className={cn(PUBLIC_LINK, "shrink-0 text-foreground")}
               type="button"
+              data-testid="join-not-me"
               onClick={() => {
-                setShowEmail(false);
-                void withGoogle();
+                setNotMe(true);
+                setError(null);
               }}
             >
-              Non sono io
+              {J.notMe}
             </button>
           </div>
         </div>
       ) : (
         <div className="space-y-3">
-          <Button
-            className="h-12 w-full text-base"
-            size="lg"
-            type="button"
-            data-testid="join-google"
-            onClick={withGoogle}
-          >
-            Entra con Google
+          <Button className={PUBLIC_PRIMARY} variant={showEmail ? "outline" : "default"} type="button" data-testid="join-google" onClick={withGoogle}>
+            {J.google}
           </Button>
 
           {!showEmail ? (
-            <Button
-              className="h-12 w-full text-base"
-              size="lg"
-              variant="outline"
-              type="button"
-              data-testid="join-use-email"
-              onClick={() => setShowEmail(true)}
-            >
-              Entra con email e password
-            </Button>
+            <button className={PUBLIC_LINK} type="button" data-testid="join-use-email" onClick={() => setShowEmail(true)}>
+              {J.useEmail}
+            </button>
           ) : (
-            <form className="space-y-3 rounded-2xl border bg-background/60 p-4" onSubmit={withEmail} noValidate>
+            <form className="space-y-4 pt-2" onSubmit={withEmail} noValidate>
               {registering && (
                 <div className="space-y-1.5">
-                  <Label htmlFor="join-name">Nome e cognome</Label>
+                  <Label htmlFor="join-name" className={PUBLIC_LABEL}>
+                    {J.name}
+                  </Label>
                   <Input
                     id="join-name"
-                    className="h-11"
+                    className={PUBLIC_FIELD}
                     required
                     autoComplete="name"
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    placeholder="Come ti chiami"
+                    placeholder={J.namePlaceholder}
                   />
                 </div>
               )}
               <div className="space-y-1.5">
-                <Label htmlFor="join-email">Email</Label>
+                <Label htmlFor="join-email" className={PUBLIC_LABEL}>
+                  {J.email}
+                </Label>
                 <Input
                   id="join-email"
-                  className="h-11"
+                  className={PUBLIC_FIELD}
                   type="email"
                   required
                   autoComplete="email"
@@ -441,10 +399,12 @@ export function JoinCourseForm({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="join-password">Password</Label>
+                <Label htmlFor="join-password" className={PUBLIC_LABEL}>
+                  {J.password}
+                </Label>
                 <Input
                   id="join-password"
-                  className="h-11"
+                  className={PUBLIC_FIELD}
                   type="password"
                   required
                   minLength={6}
@@ -454,31 +414,28 @@ export function JoinCourseForm({
                 />
               </div>
               {error && (
-                <p className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm" role="alert" data-testid="join-error">
+                <p className="rounded-xl border border-destructive/40 bg-destructive/10 p-3" role="alert" data-testid="join-error">
                   {error}
                 </p>
               )}
-              <Button className="h-12 w-full text-base" type="submit" disabled={busy} data-testid="join-email-submit">
-                {registering ? "Crea l'account ed entra" : "Entra nel corso"}
+              <Button className={PUBLIC_PRIMARY} type="submit" disabled={busy} data-testid="join-email-submit">
+                {registering ? J.register : J.login}
               </Button>
               <button
-                className="min-h-10 w-full text-center text-sm text-muted-foreground underline"
+                className={cn(PUBLIC_LINK, "w-full justify-center text-muted-foreground")}
                 type="button"
                 data-testid="join-toggle-register"
-                onClick={() => { setRegistering((value) => !value); setError(null); }}
+                onClick={() => {
+                  setRegistering((value) => !value);
+                  setError(null);
+                }}
               >
-                {registering
-                  ? "Ho già un account: accedi"
-                  : "Non ho un account: creane uno"}
+                {registering ? J.toLogin : J.toRegister}
               </button>
             </form>
           )}
         </div>
       )}
-
-      <p className="text-center text-xs text-muted-foreground">
-        Entrando ti iscrivi a «{courseTitle}».
-      </p>
     </div>
   );
 }

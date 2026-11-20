@@ -50,7 +50,8 @@ test("withSavedAccents: the system template saved before (ai-readiness-core-4) r
 
 test("the pages show the saved texts through brandCopy, and new assessments save the accented defaults", () => {
   assert.match(read("src/app/a/[token]/page.tsx"), /brandCopy\(brand, "introCopy", AI_READINESS_DEFAULT_COPY\.intro\)/);
-  assert.match(read("src/app/s/[token]/page.tsx"), /brandCopy\(\s*brand,\s*"introCopy",/);
+  // (Rilascio 10, ondata 4) Il testo d'apertura si legge una volta, su /a: /s non lo ripete più.
+  assert.doesNotMatch(read("src/app/s/[token]/page.tsx"), /introCopy/);
   assert.match(read("src/components/ai-readiness/respondent-survey-form.tsx"), /brandCopy\(brandConfig, "completionCopy", AI_READINESS_DEFAULT_COPY\.completion\)/);
   assert.match(read("src/components/ai-readiness/assessment-create-form.tsx"), /defaultValue=\{AI_READINESS_DEFAULT_COPY\.intro\}/);
   const action = read("src/lib/actions/ai-readiness.ts");
@@ -100,13 +101,18 @@ test("the radar sentence is true: the profile uses every answer, the threshold i
   assert.ok(page.includes("Il profilo usa le risposte arrivate finora. Punteggi per area e confronto partono da {bundle.assessment.aggregationThreshold} risposte."));
 });
 
-test("(rilascio 10) what the page says about anonymity is true: no «anonymous questionnaire» in the header, and the privacy box names «Anonimizza risposte»", () => {
+test("(rilascio 10) what the page says about anonymity is true: no «anonymous questionnaire» in the header, and the privacy box names «Cancella le mie risposte»", () => {
   const page = read("src/app/(dashboard)/dashboard/[workspaceId]/ai-readiness/page.tsx").replace(/\s+/g, " ");
-  // Una rilevazione può essere nominativa: la testata non promette l'anonimato.
-  assert.match(read("src/components/ai-readiness/respondent-survey-form.tsx"), /Questo questionario è nominativo/);
+  // Una rilevazione può essere nominativa: la testata non promette l'anonimato. (Rilascio 10, ondata 4) I testi di chi
+  // risponde stanno in src/lib/public/survey.ts.
+  const survey = read("src/lib/public/survey.ts");
+  assert.match(survey, /identityText: "Questo questionario è nominativo/);
+  assert.match(read("src/components/ai-readiness/respondent-survey-form.tsx"), /\{F\.identityText\}/);
   assert.ok(page.includes("Una rilevazione su come l&apos;azienda usa l&apos;AI: inviti, questionario, punteggi e report."));
-  // Dal link personale chi risponde rende anonime le sue risposte («Anonimizza risposte»), non resta anonimo.
-  assert.match(read("src/components/ai-readiness/respondent-privacy-controls.tsx"), /<h2 className="font-semibold">Anonimizza risposte<\/h2>/);
+  // Dal link personale chi risponde cancella le sue risposte (le rende anonime: «Cancella le mie risposte»), non resta
+  // anonimo.
+  assert.match(survey, /erase: "Cancella le mie risposte",/);
+  assert.match(read("src/components/ai-readiness/respondent-privacy-controls.tsx"), /\{D\.erase\}/);
   assert.ok(page.includes("togliere il consenso al confronto e rendere anonime le sue risposte dal suo link personale."));
   assert.doesNotMatch(page, /questionario anonimo|restare anonim/);
 });
@@ -114,14 +120,16 @@ test("(rilascio 10) what the page says about anonymity is true: no «anonymous q
 test("(rilascio 10, §4) the respondent pages say «questionario», never Survey or Assessment, with their accents", () => {
   const a = read("src/app/a/[token]/page.tsx").replace(/\s+/g, " ");
   assert.ok(a.includes('title: "Questionario AI Readiness"'), "the tab title, as on /s");
-  for (const title of ["Link non valido", "Questionario già completato", "Questionario non aperto"]) assert.ok(a.includes(`<CardTitle>${title}</CardTitle>`), title);
-  assert.ok(a.includes("Il link del questionario non è valido"));
-  assert.ok(a.includes("Questo questionario è nominativo: ti chiederemo nome e cognome, senza bisogno di creare un account."));
-  assert.ok(a.includes("le tue risposte completano il quadro raccolto con il questionario."));
-  assert.ok(a.includes("condividi il link generale del questionario."));
-  assert.ok(a.includes("<Badge variant=\"secondary\">AI Readiness</Badge>") && !a.includes("AI Readiness OS"), "the name of the view, without «OS»");
+  // (Rilascio 10, ondata 4) I testi stanno in src/lib/public/survey.ts; la pagina li chiede per chiave.
+  const survey = read("src/lib/public/survey.ts");
+  for (const title of ["Hai già inviato le risposte", "Il questionario non è aperto"]) assert.ok(survey.includes(`title: "${title}"`), title);
+  assert.ok(a.includes("<PublicCard title={SURVEY_TEXT.completed.title}>") && a.includes("<PublicCard title={SURVEY_TEXT.closed.title}>"));
+  assert.ok(a.includes("if (!found) return <PublicInvalidScreen body={SURVEY_TEXT.gone} />;"), "the single card of a link that no longer works");
+  assert.ok(survey.includes("le tue risposte completano il quadro raccolto con il questionario."));
+  assert.ok(survey.includes('personalLink: "Questo link è solo tuo: non inoltrarlo.",'));
+  assert.ok(!a.includes("<Badge") && !a.includes("AI Readiness OS"), "no labels, no «OS»");
   assert.match(read("src/lib/actions/ai-readiness.ts"), /errorState\("Questo questionario è nominativo: inserisci nome e cognome\.",/);
-  assert.match(read("src/app/s/[token]/page.tsx"), /Nessuna risposta è giusta o sbagliata\./);
+  assert.match(survey, /Nessuna risposta è giusta o sbagliata\./);
   // «Survey», «Assessment», «respondent» e «use case» li vieta il copy-guard di fuori, che controlla anche /a e /s.
   const guard = read("src/lib/use-cases/copy-guard.ts");
   assert.ok(guard.includes('  "src/app/a/",\n  "src/app/s/",'));
@@ -130,7 +138,9 @@ test("(rilascio 10, §4) the respondent pages say «questionario», never Survey
 test("/s has no answers yet: its error page does not promise answers saved on the device, and «Riprova» re-reads the page", () => {
   const page = read("src/app/s/[token]/error.tsx");
   assert.doesNotMatch(page, /salvate su questo dispositivo/);
-  assert.match(page, /Questa pagina non si è caricata\./);
-  assert.match(page, /onClick=\{\(\) => retry\(\)\}/);
+  // (Rilascio 10, ondata 4) La scheda unica dell'errore delle pagine pubbliche: «Questa pagina non si è caricata.» e il
+  // solo «Riprova», che chiama `retry`.
+  assert.match(page, /return <PublicErrorScreen retry=\{retry\} \/>;/);
+  assert.match(read("src/lib/public/text.ts"), /title: "Questa pagina non si è caricata\.",/);
   assert.doesNotMatch(page, /\breset\b/);
 });

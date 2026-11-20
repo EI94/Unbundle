@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { AI_READINESS_DEFAULT_COPY, brandCopy } from "@/lib/ai-readiness/copy";
 import { hashInviteToken } from "@/lib/ai-readiness/token";
 import { parseSupportContacts } from "@/lib/ai-readiness/support-contacts";
@@ -11,45 +10,38 @@ import {
 } from "@/lib/db/queries/ai-readiness";
 import { draftPrefillFromResponse } from "@/lib/ai-readiness/draft";
 import { questionScopeFromUnknown } from "@/lib/ai-readiness/template-scope";
-import { surveyTrackMeta } from "@/lib/ai-readiness/survey-track";
 import type { AiReadinessAnswer } from "@/lib/ai-readiness/types";
+import { SURVEY_TEXT, fillSurvey, surveyFacts, surveyMinutes, surveyPrivacyLine } from "@/lib/public/survey";
 import { RespondentSurveyForm } from "@/components/ai-readiness/respondent-survey-form";
 import { UseCaseExpertForm } from "@/components/ai-readiness/use-case-expert-form";
-import { SurveyThemeToggle } from "@/components/ai-readiness/survey-theme-toggle";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PublicContact, PublicFooterLine, PublicLink, PublicShell } from "@/components/public/public-shell";
+import { PublicCard, PublicCardText, PublicInvalidScreen } from "@/components/public/state-card";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Il link personale del questionario AI Readiness (`/a/<token>`), con tre percorsi: il questionario per tutti, la scheda
+ * dei referenti e la raccolta dei casi d'uso.
+ *
+ * (Rilascio 10, ondata 4, docs/ui-10/PROPOSTA-10.md §3.11, audit Fuori §3.8) Il guscio unico delle pagine pubbliche,
+ * chiaro, con il nome del cliente in alto, non cliccabile. Una testata di circa 40 parole: il titolo, «10 minuti · anonimo
+ * · si salva da solo», la privacy in una riga e, se chi gestisce la rilevazione l'ha scritto, il suo testo d'apertura. Niente etichette, metodologia
+ * («Questa compilazione alimenta…»), tre card «come funziona», blocco legale, casella: la presa visione si registra
+ * all'invio, con una riga e il link a «Come usiamo le tue risposte» (l'informativa unica). In fondo il contatto e «Questo
+ * link è solo tuo». I testi stanno in `src/lib/public/survey.ts`.
+ */
 export const metadata: Metadata = {
   title: "Questionario AI Readiness",
+  description: SURVEY_TEXT.preview.titleNoClient,
   robots: { index: false, follow: false, nocache: true },
+  // Mai la scheda commerciale del sito nell'anteprima di una chat.
+  openGraph: { title: "Questionario AI Readiness", description: SURVEY_TEXT.preview.titleNoClient, type: "website" },
+  twitter: { card: "summary", title: "Questionario AI Readiness", description: SURVEY_TEXT.preview.titleNoClient },
 };
 
 function configString(config: Record<string, unknown> | null, key: string, fallback = "") {
   const value = config?.[key];
   return typeof value === "string" ? value : fallback;
-}
-
-function InvalidInvite() {
-  return (
-    <main id="survey-root" className="min-h-screen bg-background px-4 py-8 text-foreground">
-      <div className="mx-auto max-w-2xl">
-        <Link href="/" className="text-sm font-semibold tracking-wide">
-          Unbundle
-        </Link>
-        <Card className="mt-8 rounded-[32px]">
-          <CardHeader>
-            <CardTitle>Link non valido</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm leading-6 text-muted-foreground">
-            Il link del questionario non è valido, è scaduto o è stato
-            revocato. Chiedi al referente interno di generare un nuovo invito.
-          </CardContent>
-        </Card>
-      </div>
-    </main>
-  );
 }
 
 export default async function AiReadinessRespondentPage({
@@ -59,142 +51,72 @@ export default async function AiReadinessRespondentPage({
 }) {
   const { token } = await params;
   const found = await getRespondentByInviteTokenHash(hashInviteToken(token));
-  if (!found) return <InvalidInvite />;
+  if (!found) return <PublicInvalidScreen body={SURVEY_TEXT.gone} />;
   await markRespondentOpened(found.respondent);
 
   const brand = found.assessment.brandConfig ?? {};
   const privacy = found.assessment.privacyConfig ?? {};
-  const displayName = configString(brand, "displayName", "Unbundle");
-  const surveyName = found.assessment.name;
+  const client = configString(brand, "displayName").trim() || null;
   const support = parseSupportContacts(configString(privacy, "supportEmail"));
-  const scoredQuestions = found.templateDefinition.questions.filter(
-    (question) => question.answerType !== "text"
-  ).length;
-  const estimatedMinutes = Math.max(2, Math.round(scoredQuestions * 0.5));
-  const isInternalTrack = found.respondent.surveyTrack === "internal";
-  const track = surveyTrackMeta(found.respondent.surveyTrack);
-  const includedPillars = found.templateDefinition.pillars.map(
-    (pillar) => pillar.title
+  const noticeHref = `/privacy/ai-readiness/${token}`;
+  const footer = (
+    <>
+      {support ? <PublicContact label={support.label} href={support.mailto} /> : null}
+      <PublicFooterLine>{SURVEY_TEXT.personalLink}</PublicFooterLine>
+    </>
   );
 
   if (found.respondent.inviteStatus === "completed") {
     return (
-      <main id="survey-root" className="min-h-screen bg-background px-4 py-8 text-foreground">
-        <div className="mx-auto max-w-2xl">
-          <Link href="/" className="text-sm font-semibold tracking-wide">
-            Unbundle
-          </Link>
-          <Card className="mt-8 rounded-[32px]">
-            <CardHeader>
-              <CardTitle>Questionario già completato</CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              Le tue risposte sono già state inviate una volta e non possono
-              essere modificate: così ogni persona conta una sola volta.
-              Se pensi ci sia un errore{support ? ` scrivi a ${support.label}` : " contatta il referente interno"}.
-              <div className="mt-4">
-                <Link
-                  className="font-medium text-foreground underline"
-                  href={`/privacy/ai-readiness/${token}`}
-                >
-                  Gestisci privacy e dati personali
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </main>
+      <PublicShell client={client} footer={footer}>
+        <PublicCard title={SURVEY_TEXT.completed.title}>
+          <PublicCardText>
+            <p>{SURVEY_TEXT.completed.body}</p>
+            {support ? <p>{fillSurvey(SURVEY_TEXT.wrong, { contatto: support.label })}</p> : null}
+          </PublicCardText>
+          <p className="mt-4">
+            <PublicLink href={`${noticeHref}?dati=1`}>{SURVEY_TEXT.data.title}</PublicLink>
+          </p>
+        </PublicCard>
+      </PublicShell>
     );
   }
 
   if (found.assessment.status !== "open") {
     return (
-      <main id="survey-root" className="min-h-screen bg-background px-4 py-8 text-foreground">
-        <div className="mx-auto max-w-2xl">
-          <Link href="/" className="text-sm font-semibold tracking-wide">
-            Unbundle
-          </Link>
-          <Card className="mt-8 rounded-[32px]">
-            <CardHeader>
-              <CardTitle>Questionario non aperto</CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              Il link è valido, ma il team non ha ancora aperto la raccolta o
-              l&apos;ha già chiusa. Contatta il referente interno.
-            </CardContent>
-          </Card>
-        </div>
-      </main>
+      <PublicShell client={client} footer={footer}>
+        <PublicCard title={SURVEY_TEXT.closed.title}>
+          <PublicCardText>{SURVEY_TEXT.closed.body}</PublicCardText>
+        </PublicCard>
+      </PublicShell>
     );
   }
 
-  const isUseCaseExpert = found.respondent.surveyTrack === "use_case_expert";
-  if (isUseCaseExpert) {
+  if (found.respondent.surveyTrack === "use_case_expert") {
     const cases = await listUseCaseSubmissionsByRespondent(found.respondent.id);
     return (
-      <main
-        id="survey-root"
-        className="min-h-screen bg-background px-4 py-8 text-foreground sm:px-6"
-        data-survey-track="use_case_expert"
-      >
-        <div className="mx-auto max-w-3xl space-y-8">
-          <header className="rounded-[36px] border bg-linear-to-br from-emerald-500/10 via-card to-sky-500/10 p-7">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <Link href="/" className="text-sm font-semibold tracking-wide">
-                Unbundle
-              </Link>
-              <SurveyThemeToggle />
-            </div>
-            <div className="mt-8 flex flex-wrap items-center gap-2">
-              <Badge variant="secondary">AI Readiness</Badge>
-              <Badge variant="outline">{displayName}</Badge>
-              <Badge variant="secondary">Raccolta casi d&apos;uso</Badge>
-            </div>
-            <h1 className="mt-5 max-w-3xl text-4xl font-semibold tracking-tight">
-              Raccontaci un caso concreto 💡
-            </h1>
-            <p className="mt-2 max-w-3xl text-base text-muted-foreground">
-              Ci serve il tuo sguardo da esperto del business: descrivi una o più
-              situazioni di lavoro reali dove l&apos;AI potrebbe fare la differenza.
-              Non serve essere tecnici, bastano la tua conoscenza e qualche esempio.
-            </p>
-            <div className="mt-5 grid gap-2 sm:grid-cols-3">
-              {[
-                { n: "1", t: "Il bisogno", d: "Qual è il problema e perché conta." },
-                { n: "2", t: "Com'è oggi", d: "Processo, persone, strumenti e dati, così come sono adesso." },
-                { n: "3", t: "Come cambierebbe", d: "La tua ipotesi su come l'AI può aiutare." },
-              ].map((step) => (
-                <div key={step.n} className="rounded-2xl border bg-background/60 p-3">
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <span className="flex size-5 items-center justify-center rounded-full bg-emerald-500/15 text-xs font-semibold text-emerald-600">{step.n}</span>
-                    {step.t}
-                  </div>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{step.d}</p>
-                </div>
-              ))}
-            </div>
-            {support && (
-              <p className="mt-4 text-xs text-muted-foreground">
-                Domande? Scrivi a{" "}
-                <a className="font-medium text-foreground underline" href={support.mailto}>
-                  {support.label}
-                </a>
-              </p>
-            )}
-          </header>
-
+      <PublicShell client={client} footer={footer}>
+        <div data-survey-track="use_case_expert">
+          <h1 className="mt-6 text-2xl font-semibold tracking-tight break-words">{SURVEY_TEXT.expert.title}</h1>
+          <p className="mt-2 text-muted-foreground">{SURVEY_TEXT.expert.intro}</p>
           <UseCaseExpertForm
             token={token}
             initialCount={cases.length}
-            fieldIds={
-              questionScopeFromUnknown(found.respondent.questionScope)?.useCaseFieldIds ??
-              null
-            }
+            noticeHref={noticeHref}
+            fieldIds={questionScopeFromUnknown(found.respondent.questionScope)?.useCaseFieldIds ?? null}
           />
         </div>
-      </main>
+      </PublicShell>
     );
   }
+
+  const isInternalTrack = found.respondent.surveyTrack === "internal";
+  const named = found.assessment.anonymousMode === false;
+  // Il testo d'apertura della rilevazione, solo se chi la gestisce l'ha scritto: quello proposto di serie è generico, e
+  // la testata resta di circa 40 parole.
+  const intro = brandCopy(brand, "introCopy", AI_READINESS_DEFAULT_COPY.intro);
+  const ownIntro = intro.trim() && intro !== AI_READINESS_DEFAULT_COPY.intro ? intro : null;
+  const scoredQuestions = found.templateDefinition.questions.filter((question) => question.answerType !== "text").length;
 
   const existingResponse = await getResponseForRespondent(
     found.respondent.assessmentId,
@@ -216,102 +138,16 @@ export default async function AiReadinessRespondentPage({
       : null;
 
   return (
-    <main
-      id="survey-root"
-      className="min-h-screen bg-background px-4 py-8 text-foreground sm:px-6"
-      data-survey-track={found.respondent.surveyTrack}
-    >
-      <div className="mx-auto max-w-5xl space-y-8">
-        <header className="rounded-[36px] border bg-linear-to-br from-emerald-500/10 via-card to-sky-500/10 p-7">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Link href="/" className="text-sm font-semibold tracking-wide">
-              Unbundle
-            </Link>
-            <SurveyThemeToggle />
+    <PublicShell client={client} footer={footer}>
+      <div data-survey-track={found.respondent.surveyTrack}>
+        <header data-testid="survey-header">
+          <h1 className="mt-6 text-2xl font-semibold tracking-tight break-words">{isInternalTrack ? SURVEY_TEXT.internalTitle : SURVEY_TEXT.title}</h1>
+          <p className="mt-2 text-muted-foreground">{surveyFacts(surveyMinutes(scoredQuestions), named)}</p>
+          <div className="mt-4 space-y-2">
+            {isInternalTrack ? <p>{SURVEY_TEXT.internalIntro}</p> : null}
+            {ownIntro ? <p>{ownIntro}</p> : null}
+            <p className="text-muted-foreground">{surveyPrivacyLine(named, found.assessment.aggregationThreshold)}</p>
           </div>
-          <div className="mt-8 flex flex-wrap items-center gap-2">
-            <Badge variant="secondary">AI Readiness</Badge>
-            <Badge variant="outline">{displayName}</Badge>
-            <Badge variant="secondary">{track.label}</Badge>
-            <Badge variant="outline">~{estimatedMinutes} minuti</Badge>
-          </div>
-          <h1 className="mt-5 max-w-3xl text-4xl font-semibold tracking-tight">
-            {isInternalTrack
-              ? `Scheda referenti «${surveyName}»`
-              : `Questionario per l'organizzazione «${surveyName}»`}
-          </h1>
-          <p className="mt-2 max-w-3xl text-base text-muted-foreground">
-            {isInternalTrack
-              ? "Questa scheda è per chi conosce sistemi, dati o organizzazione: le tue risposte completano il quadro raccolto con il questionario."
-              : "Il tuo contributo è importante: aiuta la tua organizzazione a capire dove l'AI può dare una mano davvero."}
-          </p>
-          <div
-            className={`mt-4 rounded-2xl border p-4 ${
-              isInternalTrack
-                ? "border-sky-500/30 bg-sky-500/10"
-                : "bg-background/60"
-            }`}
-            data-testid="survey-track-summary"
-          >
-            <div className="text-sm font-medium">
-              Questa compilazione alimenta: {includedPillars.join(", ")}
-            </div>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              {track.description}
-            </p>
-          </div>
-          <p className="mt-4 max-w-3xl text-sm leading-6 text-muted-foreground">
-            {brandCopy(brand, "introCopy", AI_READINESS_DEFAULT_COPY.intro)}
-          </p>
-          <div className="mt-5 grid gap-2 sm:grid-cols-3" data-testid="survey-howto">
-            {[
-              { n: "1", t: "Scegli il livello che ti somiglia", d: "Ogni voto da 1 a 5 è spiegato. Se non sai, c'è l'opzione «Non so»." },
-              { n: "2", t: "Tutto si salva da solo", d: "Puoi chiudere e riprendere quando vuoi da questo stesso link." },
-              { n: "3", t: "Invia alla fine", d: "Controlla la barra di avanzamento e premi «Invia le risposte»." },
-            ].map((step) => (
-              <div key={step.n} className="rounded-2xl border bg-background/60 p-3">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <span className="flex size-5 items-center justify-center rounded-full bg-emerald-500/15 text-xs font-semibold text-emerald-600">{step.n}</span>
-                  {step.t}
-                </div>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">{step.d}</p>
-              </div>
-            ))}
-          </div>
-          <div className="mt-3 rounded-2xl border bg-background/60 p-4 text-xs leading-5 text-muted-foreground">
-            {found.assessment.anonymousMode !== false ? (
-              <>
-                Le risposte sono salvate con identificativo pseudonimo e vengono
-                aggregate. I risultati per area sono visibili solo se ci sono
-                almeno {found.assessment.aggregationThreshold} risposte.
-              </>
-            ) : (
-              <>
-                Questo questionario è nominativo: ti chiederemo nome e cognome,
-                senza bisogno di creare un account. I risultati per area vengono
-                comunque aggregati (minimo {found.assessment.aggregationThreshold}{" "}
-                risposte).
-              </>
-            )}
-            <div className="mt-2 flex flex-wrap gap-4">
-              <Link
-                className="font-medium text-foreground underline"
-                href={`/privacy/ai-readiness/${token}`}
-              >
-                Gestisci privacy, export dati o revoca benchmark
-              </Link>
-              {support && (
-                <a className="font-medium text-foreground underline" href={support.mailto}>
-                  Serve aiuto? Scrivi a {support.label}
-                </a>
-              )}
-            </div>
-          </div>
-          <p className="mt-4 rounded-2xl border bg-background/60 p-3 text-xs leading-5 text-muted-foreground">
-            🔗 Questo link è personale e riporta alle <em>tue</em> risposte: non
-            inoltrarlo ai colleghi. Per invitarli, condividi il link generale
-            del questionario.
-          </p>
         </header>
 
         <RespondentSurveyForm
@@ -321,7 +157,9 @@ export default async function AiReadinessRespondentPage({
           privacyConfig={privacy}
           initialDraft={draft}
           draftSavedAt={draftSavedAt}
-          anonymousMode={found.assessment.anonymousMode !== false}
+          anonymousMode={!named}
+          useCaseModule={!isInternalTrack}
+          noticeHref={noticeHref}
           initialIdentity={{
             firstName:
               draft?.identity.firstName || found.respondent.name || "",
@@ -330,6 +168,6 @@ export default async function AiReadinessRespondentPage({
           }}
         />
       </div>
-    </main>
+    </PublicShell>
   );
 }

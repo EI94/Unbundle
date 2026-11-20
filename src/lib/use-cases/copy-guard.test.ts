@@ -646,3 +646,43 @@ test("(rilascio 10, §4) le parole della dashboard anche nella Home, nel Program
   assert.ok(texts.length > 100, `${texts.length} testi controllati`);
   assert.deepEqual(findHubForbiddenIn(texts, "area").map((m) => `«${m.match}» in «${m.text}»`), []);
 });
+
+test("(rilascio 10, ondata 4) le parole di fuori anche nel guscio unico, nel corso, nel questionario, nell'informativa, nell'accesso e nell'invito; la CLI anche in /cli/collega", async () => {
+  const pieces = [
+    "src/components/public/public-shell.tsx",
+    "src/components/public/state-card.tsx",
+    "src/components/public/survey-notice.tsx",
+    "src/lib/public/text.ts",
+    "src/lib/public/course.ts",
+    "src/lib/public/survey.ts",
+    "src/lib/public/login.ts",
+    "src/lib/public/invite.ts",
+    "src/app/c/[token]/page.tsx",
+    "src/app/privacy/ai-readiness/[token]/page.tsx",
+    "src/app/(auth)/login/page.tsx",
+    "src/components/learning/join-course-form.tsx",
+    "src/components/ai-readiness/open-survey-start-form.tsx",
+    "src/components/ai-readiness/respondent-survey-form.tsx",
+    "src/components/ai-readiness/use-case-expert-form.tsx",
+    "src/components/ai-readiness/respondent-privacy-controls.tsx",
+    "src/components/auth/login-form.tsx",
+    "src/components/workspace/workspace-invite-accept-form.tsx",
+    "src/components/workspace/verify-invite-email.tsx",
+  ];
+  for (const piece of pieces) assert.equal(copyScopeOfFile(piece), "esterno", piece);
+  assert.equal(copyScopeOfFile("src/lib/public/survey.test.ts"), null, "i test non sono testi visibili");
+  assert.equal(copyScopeOfFile("src/components/ai-readiness/assessment-actions.tsx"), null, "la dashboard di AI Readiness è dell'ondata 7");
+  const found = pieces.flatMap((file) => matchesOf(file, "esterno").map((m) => `${file}: «${m.match}» in «${m.text}»`));
+  assert.deepEqual(found, []);
+  // I testi esportati dei moduli, anche quelli che i componenti leggono per chiave.
+  const modules = await Promise.all([import("../public/text.ts"), import("../public/course.ts"), import("../public/survey.ts"), import("../public/login.ts"), import("../public/invite.ts")]);
+  const texts = modules.flatMap((mod) => exportedStrings(mod as Record<string, unknown>)).filter((t) => !CODE_LIKE.test(t));
+  assert.ok(texts.length > 200, `${texts.length} testi controllati`);
+  assert.deepEqual(findHubForbiddenIn(texts, "esterno").map((m) => `«${m.match}» in «${m.text}»`), []);
+  // «Collega la CLI» parla come la CLI: «caso», e il comando «unbundle login» com'è.
+  for (const file of ["src/app/cli/collega/page.tsx", "src/app/cli/collega/text.ts"]) assert.equal(copyScopeOfFile(file), "cli", file);
+  const { CLI_PAGE_TEXT } = await import("../../app/cli/collega/text.ts");
+  const cli = exportedStrings({ CLI_PAGE_TEXT }).filter((t) => !CODE_LIKE.test(t));
+  assert.ok(cli.some((t) => t.includes("«unbundle login»")));
+  assert.deepEqual(findHubForbiddenIn(cli, "cli"), []);
+});

@@ -33,9 +33,10 @@ test("next-themes: «Scuro» per tutti finché qualcuno non sceglie, in data-the
     storageKey: "unbundle-theme",
     disableTransitionOnChange: true,
   });
-  // La scelta delle pagine pubbliche /a e /s resta la sua.
-  const survey = readRepo("src/components/ai-readiness/survey-theme-toggle.tsx");
-  assert.ok(survey.includes('const STORAGE_KEY = "unbundle-survey-theme";'));
+  // (Rilascio 10, ondata 4) Le pagine pubbliche /a e /s sono sempre chiare (`.survey-light` nel layout della rotta): il loro
+  // interruttore non c'è più, e la chiave del tema del dashboard non è mai la sua di prima.
+  assert.ok(readRepo("src/app/a/layout.tsx").includes("return <PublicRoot>{children}</PublicRoot>;"));
+  assert.ok(readRepo("src/app/s/layout.tsx").includes("return <PublicRoot>{children}</PublicRoot>;"));
   assert.notEqual(THEME_STORAGE_KEY, "unbundle-survey-theme");
 });
 

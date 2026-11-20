@@ -78,6 +78,7 @@ export const privacyGuidance: [string, string][] = [
 /**
  * Informativa breve per i partecipanti, sulla pagina d'ingresso e sul corso.
  * Senza nome dell'azienda: lo stesso corso può riunire persone di più società.
+ * (Rilascio 10, §4) «AI», non «IA»: «IA» resta solo nel PDF del Registro.
  */
 export const participantNotice =
-  "Per documentare la formazione sull'IA, la tua azienda tiene un registro con nome, email, data e ora del tuo accesso e quante esercitazioni hai consegnato, ma non cosa hai risposto: le tue risposte le vede solo il formatore. Niente voti né classifiche, e il registro non serve a valutarti. Titolare dei dati è la tua azienda: puoi chiederle l'informativa completa e opporti al trattamento.";
+  "Per documentare la formazione sull'AI, la tua azienda tiene un registro con nome, email, data e ora del tuo accesso e quante esercitazioni hai consegnato, ma non cosa hai risposto: le tue risposte le vede solo il formatore. Niente voti né classifiche, e il registro non serve a valutarti. Titolare dei dati è la tua azienda: puoi chiederle l'informativa completa e opporti al trattamento.";

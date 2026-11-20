@@ -34,7 +34,9 @@ test("il caso d'uso del link: tema chiaro, il marchio in alto, l'H1 è il titolo
     ),
   );
   assert.match(html, /^<div data-slot="share-page" class="survey-light /, "le pagine pubbliche sono chiare");
-  assert.ok(html.indexOf(">Unbundle</p>") < html.indexOf("<h1"), "il marchio in alto, piccolo");
+  // (Rilascio 10, ondata 4) Il marchio del guscio unico delle pagine pubbliche, non cliccabile.
+  assert.ok(html.indexOf('data-slot="public-brand"') > 0 && html.indexOf('data-slot="public-brand"') < html.indexOf("<h1"), "il marchio in alto, piccolo");
+  assert.ok(!/<a\b/.test(/<p data-slot="public-brand"[^>]*>[\s\S]*?<\/p>/.exec(html)?.[0] ?? "<a"), "il marchio non è un link");
   assert.match(html, /<h1 class="text-2xl font-semibold tracking-tight break-words">Preventivi ai clienti<\/h1>/);
   assert.equal((html.match(/<h1/g) ?? []).length, 1);
   assert.ok(textOf(html).includes("Fase Approvato Quando T1 2027"), textOf(html));
@@ -54,7 +56,9 @@ test("una scheda nascosta alla ricerca: solo la fase, con «Caso d'uso» come ti
 
 test("il link che non vale: una scheda sola, la stessa frase scaduto o tolto", () => {
   const invalid = readable(renderToStaticMarkup(h(view.ShareInvalid, { loginHref: LOGIN })));
-  assert.equal(textOf(invalid), "Unbundle Questo link non vale più. Accedi per aprire la scheda, o chiedi un link nuovo al team. Accedi a Unbundle");
+  // (Rilascio 10, ondata 4) La scheda unica del guscio pubblico, con il testo della condivisione.
+  assert.equal(textOf(invalid), "U Unbundle Questo link non vale più. Accedi per aprire la scheda, o chiedi un link nuovo al team. Accedi a Unbundle");
+  assert.match(invalid, /data-slot="public-card"/);
   assert.match(invalid, /^<div data-slot="share-page" class="survey-light /);
   assert.ok(invalid.includes(`href="${LOGIN}"`));
   // Nessun motivo: chi ha il link non sa se è scaduto o se il team l'ha tolto.

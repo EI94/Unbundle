@@ -1,6 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { brandCopy } from "@/lib/ai-readiness/copy";
 import { hashInviteToken } from "@/lib/ai-readiness/token";
 import { parseSupportContacts } from "@/lib/ai-readiness/support-contacts";
 import { getAssessmentByOpenLinkTokenHash } from "@/lib/db/queries/ai-readiness";
@@ -9,18 +7,44 @@ import {
   filterTemplateForTrack,
   questionScopeFromUnknown,
 } from "@/lib/ai-readiness/template-scope";
-import { AI_READINESS_SURVEY_TRACKS } from "@/lib/ai-readiness/survey-track";
+import { SURVEY_TEXT, fillSurvey, surveyFacts, surveyMinutes } from "@/lib/public/survey";
 import { OpenSurveyStartForm } from "@/components/ai-readiness/open-survey-start-form";
-import { SurveyThemeToggle } from "@/components/ai-readiness/survey-theme-toggle";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PublicContact, PublicShell } from "@/components/public/public-shell";
+import { PublicCard, PublicCardText, PublicInvalidScreen } from "@/components/public/state-card";
+import { SurveyNotice } from "@/components/public/survey-notice";
+import { Fold } from "@/components/ui-10/fold";
 
 export const dynamic = "force-dynamic";
 
 /**
+ * Il link aperto del questionario AI Readiness (`/s/<token>`): chi lo apre sceglie la sua area (e, se il questionario è
+ * nominativo, scrive nome e cognome), poi va al suo link personale `/a/…`.
+ *
+ * (Rilascio 10, ondata 4, docs/ui-10/PROPOSTA-10.md §3.11, audit Fuori §3.8) Il guscio unico delle pagine pubbliche,
+ * chiaro: il nome del cliente in alto, non cliccabile; H1 «Com'è l'AI nel tuo lavoro?»; «10 minuti · anonimo · si salva
+ * da solo»; «La tua area» da un elenco; «Inizia» a tutta larghezza. Niente metodologia interna, nome della rilevazione,
+ * interruttore del tema, email facoltativa (D12). In fondo «Come usiamo le tue risposte» (l'informativa unica, chiusa) e
+ * il contatto. Un link sbagliato ha la scheda unica; una raccolta chiusa lo dice. I testi stanno in
+ * `src/lib/public/survey.ts`.
+ */
+
+/** Le domande del questionario per tutti di questo link: quelle con le risposte pronte decidono i minuti. */
+function scoredQuestions(found: NonNullable<Awaited<ReturnType<typeof getAssessmentByOpenLinkTokenHash>>>) {
+  const everyone = filterTemplateForQuestionScope(
+    filterTemplateForTrack(found.templateDefinition, "everyone"),
+    questionScopeFromUnknown(found.assessment.scoringConfig?.openLinkQuestionScope)
+  );
+  return everyone.questions.filter((q) => q.answerType !== "text").length;
+}
+
+function displayName(brand: Record<string, unknown> | null | undefined): string | null {
+  return typeof brand?.displayName === "string" && brand.displayName.trim() ? brand.displayName.trim() : null;
+}
+
+/**
  * Anteprima del link quando viene incollato in WhatsApp, Teams o in una mail:
- * senza questo il primo contatto del dipendente e' una card di marketing del
- * fornitore. Resta noindex: e' solo la scheda condivisa nelle chat.
+ * senza questo il primo contatto del dipendente è una card di marketing del
+ * fornitore. Resta noindex: è solo la scheda condivisa nelle chat.
  */
 export async function generateMetadata({
   params,
@@ -29,14 +53,10 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { token } = await params;
   const found = await getAssessmentByOpenLinkTokenHash(hashInviteToken(token));
-  const brand = found?.assessment.brandConfig as Record<string, unknown> | null;
-  const company =
-    typeof brand?.displayName === "string" ? brand.displayName : null;
-  const title = company
-    ? `Questionario AI Readiness — ${company}`
-    : "Questionario AI Readiness";
-  const description =
-    "Bastano 10 minuti: raccontaci come lavori oggi e dove l'AI potrebbe darti una mano. Nessuna risposta è giusta o sbagliata.";
+  const company = displayName(found?.assessment.brandConfig);
+  const P = SURVEY_TEXT.preview;
+  const title = company ? fillSurvey(P.title, { Cliente: company }) : P.titleNoClient;
+  const description = fillSurvey(P.description, { N: found ? surveyMinutes(scoredQuestions(found)) : 10 });
   return {
     title,
     description,
@@ -59,103 +79,42 @@ export default async function OpenSurveyLandingPage({
   const { token } = await params;
   const found = await getAssessmentByOpenLinkTokenHash(hashInviteToken(token));
 
-  if (!found || found.assessment.status !== "open") {
+  if (!found) return <PublicInvalidScreen body={SURVEY_TEXT.gone} />;
+
+  const client = displayName(found.assessment.brandConfig);
+  const privacy = found.assessment.privacyConfig ?? {};
+  const support = parseSupportContacts(configString(privacy, "supportEmail"));
+  const contact = support ? <PublicContact label={support.label} href={support.mailto} /> : null;
+
+  if (found.assessment.status !== "open") {
     return (
-      <main id="survey-root" className="min-h-screen bg-background px-4 py-8 text-foreground">
-        <div className="mx-auto max-w-2xl">
-          <Link href="/" className="text-sm font-semibold tracking-wide">Unbundle</Link>
-          <Card className="mt-8 rounded-[32px]">
-            <CardHeader><CardTitle>Link non attivo</CardTitle></CardHeader>
-            <CardContent className="text-sm leading-6 text-muted-foreground">
-              Il link non è valido oppure la raccolta non è aperta in questo
-              momento. Chiedi al referente interno un nuovo link.
-            </CardContent>
-          </Card>
-        </div>
-      </main>
+      <PublicShell client={client} footer={contact}>
+        <PublicCard title={SURVEY_TEXT.closed.title}>
+          <PublicCardText>{SURVEY_TEXT.closed.body}</PublicCardText>
+        </PublicCard>
+      </PublicShell>
     );
   }
 
-  const brand = found.assessment.brandConfig ?? {};
-  const privacy = found.assessment.privacyConfig ?? {};
   const named = found.assessment.anonymousMode === false;
-  const support = parseSupportContacts(configString(privacy, "supportEmail"));
-  const everyoneDef = filterTemplateForQuestionScope(
-    filterTemplateForTrack(found.templateDefinition, "everyone"),
-    questionScopeFromUnknown(found.assessment.scoringConfig?.openLinkQuestionScope)
-  );
-  const scored = everyoneDef.questions.filter((q) => q.answerType !== "text").length;
-  const openQuestions = everyoneDef.questions.length - scored;
-  const minutes = Math.max(2, Math.round(scored * 0.5));
-  const track = AI_READINESS_SURVEY_TRACKS.everyone;
-  const includedAreas = everyoneDef.sections.map((section) => section.title);
 
   return (
-    <main
-      id="survey-root"
-      className="min-h-screen bg-background px-4 py-8 text-foreground sm:px-6"
-      data-survey-track="everyone"
+    <PublicShell
+      client={client}
+      footer={
+        <>
+          <Fold id="come-usiamo-le-risposte" title={SURVEY_TEXT.notice.title} className="border-t-0 last:border-b-0 [&_h2]:text-sm [&_h2]:font-medium">
+            <SurveyNotice privacyConfig={privacy} threshold={found.assessment.aggregationThreshold} support={support} />
+          </Fold>
+          {contact}
+        </>
+      }
     >
-      <div className="mx-auto max-w-3xl space-y-6">
-        <header className="rounded-[36px] border bg-linear-to-br from-emerald-500/10 via-card to-sky-500/10 p-7">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Link href="/" className="text-sm font-semibold tracking-wide">Unbundle</Link>
-            <SurveyThemeToggle />
-          </div>
-          <div className="mt-6 flex flex-wrap items-center gap-2">
-            <Badge variant="secondary">AI Readiness</Badge>
-            <Badge variant="outline">{configString(brand, "displayName", "Unbundle")}</Badge>
-            <Badge variant="secondary">{track.label}</Badge>
-            <Badge variant="outline">~{minutes} minuti</Badge>
-            <Badge variant="outline">{named ? "Nominativa" : "Anonima"}</Badge>
-          </div>
-          <h1 className="mt-5 text-3xl font-semibold tracking-tight">
-            Questionario per l&apos;organizzazione «{found.assessment.name}»
-          </h1>
-          <p className="mt-3 text-sm leading-6 text-muted-foreground">
-            {brandCopy(
-              brand,
-              "introCopy",
-              "Il tuo contributo è importante: aiuta la tua organizzazione a capire dove l'AI può dare una mano davvero. Non è un esame e non ci sono risposte sbagliate."
-            )}
-          </p>
-          <div className="mt-4 rounded-2xl border border-emerald-500/25 bg-background/70 p-4">
-            <div className="text-sm font-medium">{track.audience}</div>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              Alimenta {track.feeds}. Non richiede informazioni su
-              infrastruttura, dati aziendali o organizzazione dei processi:
-              quelle vengono raccolte separatamente con la scheda referenti.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {includedAreas.map((area) => (
-                <Badge key={area} variant="outline">
-                  {area}
-                </Badge>
-              ))}
-            </div>
-          </div>
-          <ul className="mt-4 grid gap-2 text-sm text-muted-foreground sm:grid-cols-3">
-            <li className="rounded-2xl border bg-background/60 p-3">
-              {/* Stringa unica: il JSX multi-riga mangiava lo spazio dopo il numero. */}
-              {`✍️ ${scored} domande con risposte già pronte${
-                openQuestions > 0 ? ` + ${openQuestions} aperte, facoltative` : ""
-              }`}
-            </li>
-            <li className="rounded-2xl border bg-background/60 p-3">💾 Salvataggio automatico, riprendi quando vuoi</li>
-            <li className="rounded-2xl border bg-background/60 p-3">🔒 {named ? "Risposte nominative, risultati aggregati" : "Risposte pseudonime e aggregate"}</li>
-          </ul>
-          {support && (
-            <p className="mt-4 text-xs text-muted-foreground">
-              Domande o problemi? Scrivi a{" "}
-              <a className="font-medium text-foreground underline" href={support.mailto}>
-                {support.label}
-              </a>
-            </p>
-          )}
-        </header>
-
+      <div data-survey-track="everyone">
+        <h1 className="mt-6 text-2xl font-semibold tracking-tight break-words">{SURVEY_TEXT.title}</h1>
+        <p className="mt-2 text-muted-foreground">{surveyFacts(surveyMinutes(scoredQuestions(found)), named)}</p>
         <OpenSurveyStartForm openToken={token} named={named} />
       </div>
-    </main>
+    </PublicShell>
   );
 }
