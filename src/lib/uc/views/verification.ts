@@ -194,17 +194,20 @@ export type ReviewKeyAction = "validate" | "clarify" | "next" | "prev";
 
 /**
  * Tasti rapidi (§3.6.4): V valida, C chiarimento, → salta, ← indietro. Mai
- * mentre si scrive in un campo o con un tasto modificatore.
+ * mentre si scrive in un campo o con un tasto modificatore. (Rilascio 10,
+ * §3.5; WCAG 2.1.4) L'interruttore (`enabled` falso) spegne i tasti di un
+ * carattere, V e C; le frecce restano.
  */
-export function reviewKeyAction(e: { key: string; altKey?: boolean; ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean; typing: boolean }): ReviewKeyAction | null {
+export function reviewKeyAction(e: { key: string; altKey?: boolean; ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean; typing: boolean; enabled?: boolean }): ReviewKeyAction | null {
   if (e.typing || e.altKey || e.ctrlKey || e.metaKey) return null;
+  const letters = e.enabled !== false;
   switch (e.key) {
     case "v":
     case "V":
-      return "validate";
+      return letters ? "validate" : null;
     case "c":
     case "C":
-      return "clarify";
+      return letters ? "clarify" : null;
     case "ArrowRight":
       return "next";
     case "ArrowLeft":
@@ -214,10 +217,19 @@ export function reviewKeyAction(e: { key: string; altKey?: boolean; ctrlKey?: bo
   }
 }
 
-/** «12 risposte non sono qui perché le hai date tu: le verifica un collega.» */
+/** «12 risposte non sono qui perché le hai date tu: le verifica un'altra persona.» */
 export function mineExcludedText(n: number, where: "elenco" | "fine"): string | null {
   if (n <= 0) return null;
   const answers = n === 1 ? "1 risposta" : `${formatCountIt(n)} risposte`;
-  if (where === "fine") return `${answers} ${n === 1 ? "l'hai data" : "le hai date"} tu: ${n === 1 ? "la verifica" : "le verifica"} un collega.`;
-  return `${answers} non ${n === 1 ? "è qui perché l'hai data" : "sono qui perché le hai date"} tu: ${n === 1 ? "la verifica" : "le verifica"} un collega.`;
+  const who = `${n === 1 ? "la verifica" : "le verifica"} un'altra persona.`;
+  if (where === "fine") return `${answers} ${n === 1 ? "l'hai data" : "le hai date"} tu: ${who}`;
+  return `${answers} non ${n === 1 ? "è qui perché l'hai data" : "sono qui perché le hai date"} tu: ${who}`;
+}
+
+/** (Rilascio 10, §3.5) La scelta dei tasti rapidi resta da una scheda all'altra, solo in questo browser. */
+export const REVIEW_SHORTCUTS_KEY = "uc.verifica.tasti";
+
+/** Il valore ricordato → tasti accesi? Accesi se non c'è niente o il valore non si legge. */
+export function shortcutsOn(stored: string | null): boolean {
+  return stored !== "no";
 }

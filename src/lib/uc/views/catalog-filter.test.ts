@@ -27,9 +27,11 @@ import {
   reviewQueueSql,
   segmentConditionSql,
   withoutQuestionFilters,
-  followUrlSearch,
-  searchSent,
-  type SearchBoxSync,
+  caseFilesCountSql,
+  questionBackQuery,
+  questionTabOf,
+  questionsCollapsed,
+  segmentPatch,
   type QuestionDefaults,
 } from "./catalog-filter.ts";
 import { CASE_ID, CONTACT, ITEM as ITEM_ID, LS_USER } from "./view.fixtures.ts";
@@ -188,6 +190,7 @@ test("Domande parameters: every filter for Lateral Space, the URL wins over the 
     vista: "bloccate",
     soloIndispensabili: false,
     catalogo: true,
+    documenti: false,
     tipo: "kpi",
     argomento: "m.servizio.base",
     referente: CONTACT,
@@ -211,14 +214,15 @@ test("Domande parameters: every filter for Lateral Space, the URL wins over the 
 
 test("Domande parameters for the client and the developer: only what they may use (§3.6.7, §3.6.8)", () => {
   const c = parseQuestionFilter({ vista: "bloccate", stato: "chiesta", riservatezza: "personale", mostra: "catalogo", referente: "nessuno" }, "cliente", PREP);
-  assert.equal(c.vista, "da-fare", "«Bloccate» is not a client segment");
+  assert.equal(c.vista, "bloccate", "(release 10) the client opens the «In attesa» group of «Da rispondere» too");
   assert.equal(c.stato, null);
   assert.equal(c.riservatezza, null);
   assert.equal(c.catalogo, false);
   assert.equal(c.referente, "nessuno", "the client finds the questions to assign");
   assert.equal(parseQuestionFilter({ referente: CONTACT }, "cliente", PREP).referente, null, "never one colleague: the counts would be that person's progress (art. 15.4)");
   assert.equal(parseQuestionFilter({ referente: CONTACT }, "ls", PREP).referente, CONTACT);
-  assert.equal(parseQuestionFilter({ vista: "a-posto" }, "cliente", PREP).vista, "a-posto");
+  const done = parseQuestionFilter({ vista: "a-posto" }, "cliente", PREP);
+  assert.deepEqual([done.vista, done.stato], ["tutte", "a-posto"], "(release 10) yesterday's «A posto» segment is «Tutte» with the «A posto» filter");
   const dev = parseQuestionFilter({ vista: "da-fare", indispensabili: "si", referente: CONTACT, q: "x" }, "sviluppatore", questionDefaults("in_sviluppo", null, "sviluppatore"));
   assert.equal(dev.vista, "a-posto");
   assert.equal(dev.soloIndispensabili, false);
@@ -296,7 +300,8 @@ test("Domande page: 50 rows, by topic in schema order with the indispensable fir
   assert.match(page.text, /request_modules/);
   assert.match(page.text, /CASE WHEN i\.privacy_class IN \('personale', 'personale_equipaggio', 'escluso_sanitario'\)/);
   const verify = questionPageSql(CASE_ID, { ...f, vista: "da-verificare" }, ctxLs);
-  assert.match(verify.text, /ORDER BY a\.created_at NULLS LAST/);
+  assert.match(verify.text, /ORDER BY mo\.ord NULLS LAST, a\.created_at NULLS LAST/, "by topic, then from the oldest answer");
+  assert.doesNotMatch(page.text, /uc_validations/, "(release 10) the row says one thing: the automatic checks are in the panel");
   const counts = questionCountsSql(CASE_ID, f, ctxLs);
   assert.match(counts.text, /GROUP BY 1/);
   assert.doesNotMatch(counts.text, /WHERE[\s\S]*AND i\.status IN \('da_chiedere', 'chiesta', 'mancante', 'parziale'\)\s*GROUP/, "the counts run without the segment");
@@ -306,20 +311,99 @@ test("Domande page: 50 rows, by topic in schema order with the indispensable fir
   assert.match(queue.text, /AS mine/);
 });
 
-test("the search box follows the URL when the change comes from elsewhere, not its own echo", () => {
-  let sync: SearchBoxSync = { urlQ: "zzz", sent: [] };
-  // «Togli i filtri» or Back: the URL loses q; the box takes it, so the old text is not sent again 300 ms later.
-  assert.deepEqual(followUrlSearch(sync, ""), { sync: { urlQ: "", sent: [] }, box: "" });
-  // The box sent «ab» and then «abc»: the echo of «ab» keeps what is being typed.
-  sync = searchSent(searchSent({ urlQ: "", sent: [] }, "ab"), "abc");
-  const echo = followUrlSearch(sync, "ab");
-  assert.deepEqual(echo, { sync: { urlQ: "ab", sent: ["abc"] }, box: null });
-  assert.deepEqual(followUrlSearch(echo.sync, "abc"), { sync: { urlQ: "abc", sent: [] }, box: null });
-  // Nothing changed: nothing to do.
-  assert.equal(followUrlSearch(echo.sync, "ab").sync, echo.sync);
-  // Lost navigations do not pile up.
-  let many: SearchBoxSync = { urlQ: "", sent: [] };
-  for (let i = 0; i < 30; i++) many = searchSent(many, `q${i}`);
-  assert.equal(many.sent.length, 10);
-  assert.equal(many.sent.at(-1), "q29");
+test("(release 10, §3.5) yesterday's segments still open: «Bloccate» is the «In attesa» group of «Da fare», «A posto» is a filter of «Tutte»", () => {
+  for (const audience of ["ls", "cliente"] as const) {
+    const blocked = parseQuestionFilter({ vista: "bloccate" }, audience, PREP);
+    assert.equal(blocked.vista, "bloccate", audience);
+    assert.equal(questionTabOf(blocked.vista), "da-fare", "the segment lit is «Da fare»");
+    const done = parseQuestionFilter({ vista: "a-posto", stato: "chiesta" }, audience, AFTER);
+    assert.equal(done.vista, "tutte", audience);
+    assert.equal(done.stato, audience === "ls" ? "chiesta" : "a-posto", "a detailed state from the address wins for Lateral Space");
+  }
+  const dev = parseQuestionFilter({ vista: "a-posto", stato: "a-posto" }, "sviluppatore", questionDefaults("in_sviluppo", null, "sviluppatore"));
+  assert.deepEqual([dev.vista, dev.stato], ["a-posto", null], "the developer only sees the questions in order, as before");
+  assert.equal(questionTabOf("a-posto"), null);
+  assert.equal(questionTabOf("da-verificare"), "da-verificare");
+  assert.equal(questionTabOf("tutte"), "tutte");
+  const sql = toStatement(questionBaseWhereSql(CASE_ID, parseQuestionFilter({ stato: "a-posto" }, "cliente", AFTER), { userId: LS_USER, audience: "cliente" }));
+  assert.match(sql.text, /i\.status IN \('validata', 'non_applicabile'\)/);
+  assert.equal(parseQuestionFilter({ stato: "chiesta" }, "cliente", AFTER).stato, null, "no detailed state for the client");
+});
+
+test("(release 10, §3.5) «Documenti» is a filter: sources, documents and questions answered with a file; the whole catalog wins", () => {
+  const docs = parseQuestionFilter({ mostra: "documenti" }, "cliente", AFTER);
+  assert.equal(docs.documenti, true);
+  assert.equal(docs.catalogo, false);
+  const where = toStatement(questionBaseWhereSql(CASE_ID, docs, { userId: LS_USER, audience: "cliente" })).text;
+  assert.match(where, /i\.kind IN \('fonte', 'documento'\) OR i\.response_type IN \('file', 'dataset'\)/);
+  assert.doesNotMatch(where, /i\.kind = 'domanda'/);
+  assert.equal(questionQuery(docs, AFTER), "?mostra=documenti");
+  assert.equal(hasActiveQuestionFilter(docs), true);
+  assert.equal(withoutQuestionFilters(docs).documenti, false);
+  const both = parseQuestionFilter({ mostra: "catalogo" }, "ls", AFTER);
+  assert.equal(questionQuery({ ...both, documenti: true }, AFTER), "?mostra=catalogo", "one «Mostra» at a time");
+  assert.equal(parseQuestionFilter({ mostra: "catalogo" }, "cliente", AFTER).catalogo, false, "the whole catalog stays for Lateral Space");
+});
+
+test("(release 10, §3.5) «Senza argomento» opens with `argomento=nessuno`", () => {
+  const none = parseQuestionFilter({ argomento: "nessuno" }, "ls", AFTER);
+  assert.equal(none.argomento, "nessuno");
+  assert.match(toStatement(questionBaseWhereSql(CASE_ID, none, ctxLs)).text, /i\.request_module_key IS NULL/);
+  assert.equal(questionQuery(none, AFTER), "?argomento=nessuno");
+});
+
+test("(release 10, §3.5) topics stay closed until the address asks for precise questions: a filter, a search, the «In attesa» group", () => {
+  assert.equal(questionsCollapsed(parseQuestionFilter({}, "ls", PREP)), true);
+  assert.equal(questionsCollapsed(parseQuestionFilter({ vista: "tutte", indispensabili: "no", pagina: "3" }, "ls", PREP)), true, "the segment, the switch and the page do not open");
+  assert.equal(questionsCollapsed(parseQuestionFilter({}, "sviluppatore", questionDefaults("in_sviluppo", null, "sviluppatore"))), true);
+  for (const sp of [{ argomento: "m.a" }, { referente: CONTACT }, { q: "preventivi" }, { vista: "bloccate" }, { stato: "a-posto" }, { mostra: "documenti" }, { perimetro: "fuori" }, { ruolo: "resp_servizio" }]) {
+    assert.equal(questionsCollapsed(parseQuestionFilter(sp, "ls", PREP)), false, JSON.stringify(sp));
+  }
+});
+
+test("(release 10, §3.5) back from a question: the list's own parameters, nothing else", () => {
+  assert.equal(questionBackQuery({}), "");
+  assert.equal(
+    questionBackQuery({ apri: ITEM_ID, vista: "da-verificare", argomento: "m.a", pagina: "2", da: "verifica", q: ["it's", "x"] }),
+    "?vista=da-verificare&argomento=m.a&q=it%27s&pagina=2",
+  );
+});
+
+test("(release 10, §3.5) «File (6)»: the archive as the panel lists it; the personal zone only for who sees its metadata; the developer only ready files of documents in order", () => {
+  const ls = caseFilesCountSql(CASE_ID, { personalZone: true, validatedOnly: false });
+  assert.match(ls.text, /FROM uc_files f/);
+  assert.match(ls.text, /f\.deleted_at IS NULL/);
+  assert.ok(ls.params.includes(true));
+  assert.doesNotMatch(ls.text, /uc_items/);
+  const dev = caseFilesCountSql(CASE_ID, { personalZone: false, validatedOnly: true });
+  assert.match(dev.text, /f\.scan_status = 'pulito'/);
+  assert.match(dev.text, /i\.status IN \('validata', 'non_applicabile'\)/);
+  assert.ok(dev.params.includes(false));
+});
+
+test("(release 10, §3.5) «A posto» chosen from the sheet opens «Tutte»: the client on «Da rispondere» sees the questions in order, not an empty list", () => {
+  for (const audience of ["ls", "cliente"] as const) {
+    const f = parseQuestionFilter({ stato: "a-posto" }, audience, PREP);
+    assert.deepEqual([f.vista, f.stato], ["tutte", "a-posto"], audience);
+    assert.equal(parseQuestionFilter({ stato: "a-posto", vista: "da-verificare" }, audience, PREP).vista, "tutte");
+  }
+  assert.equal(parseQuestionFilter({ stato: "chiesta", vista: "da-fare" }, "ls", PREP).vista, "da-fare", "a detailed state keeps the segment");
+  // Andando a un altro segmento il filtro «A posto» si toglie; in «Tutte» resta.
+  const done = parseQuestionFilter({ stato: "a-posto" }, "cliente", PREP);
+  assert.deepEqual(segmentPatch(done, "da-fare"), { vista: "da-fare", stato: null });
+  assert.deepEqual(segmentPatch(done, "bloccate"), { vista: "bloccate", stato: null });
+  assert.deepEqual(segmentPatch(done, "tutte"), { vista: "tutte" });
+  assert.equal(questionQuery(done, PREP, segmentPatch(done, "da-fare")), "", "back to the default «Da rispondere»");
+  assert.deepEqual(segmentPatch(parseQuestionFilter({ stato: "chiesta" }, "ls", PREP), "da-verificare"), { vista: "da-verificare" });
+});
+
+test("(release 10, §3.5) «Senza referente (N)» counts with the filter's own condition, in the open view", () => {
+  const counts = questionCountsSql(CASE_ID, parseQuestionFilter({}, "ls", PREP), ctxLs).text;
+  assert.match(counts, /count\(\*\) FILTER \(WHERE i\.assignee_contact_id IS NULL AND i\.status IN \('da_chiedere', 'chiesta', 'mancante', 'parziale'\)\)::int AS senza_referente/);
+  assert.doesNotMatch(counts, /response_type IS NOT NULL/);
+  const all = questionCountsSql(CASE_ID, parseQuestionFilter({ vista: "tutte" }, "ls", PREP), ctxLs).text;
+  assert.match(all, /i\.assignee_contact_id IS NULL AND true\)::int AS senza_referente/);
+  // Il filtro: la stessa condizione sulla stessa vista.
+  const filtered = toStatement(questionWhereSql(CASE_ID, parseQuestionFilter({ referente: "nessuno" }, "ls", PREP), ctxLs)).text;
+  assert.match(filtered, /i\.assignee_contact_id IS NULL[\s\S]*i\.status IN \('da_chiedere', 'chiesta', 'mancante', 'parziale'\)/);
 });

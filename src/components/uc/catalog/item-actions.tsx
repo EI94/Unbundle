@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Lock } from "lucide-react";
+import { ChevronRight, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -21,13 +21,36 @@ import {
 } from "@/lib/actions/uc-catalog";
 import { assignItemsAction, sendRequestsAction } from "@/lib/actions/uc-people";
 import { cn } from "@/lib/utils";
+import { DOMANDE_TEXT } from "@/lib/uc/views/domande-text";
 import { QUESTION_ACTION_LABEL, type ItemActions, type QuestionActionKey, type QuestionActionPlan } from "@/lib/uc/views/item-detail";
 import type { ResponseType } from "@/lib/uc/vocab";
 import { SELECT_CLASS } from "./catalog-filters";
+import { CHECKBOX_CLASS } from "./checkbox";
 import { useUcAction } from "./use-uc-action";
 
-/** Le azioni che aprono un modulo sotto la riga dei pulsanti. */
-type FormKey = Exclude<QuestionActionKey, "validate" | "askAgain">;
+/** Le azioni che aprono un modulo sotto la riga dei pulsanti; «propose» è il passo di scelta di «Proponi…». */
+type FormKey = Exclude<QuestionActionKey, "validate" | "askAgain"> | "propose";
+
+/** Le tre proposte che chiedono due firme: nel «⋯» stanno sotto una voce sola, «Proponi…» (rilascio 10, §3.5). */
+const PROPOSALS = ["proposeNa", "proposeWaiver", "proposeFallback"] as const satisfies readonly QuestionActionKey[];
+type ProposalKey = (typeof PROPOSALS)[number];
+
+const A = DOMANDE_TEXT.actions;
+
+/**
+ * Le voci del «⋯» della domanda: con due o tre proposte una voce sola, «Proponi…», che apre il passo di scelta; con
+ * una sola, la proposta per nome. Le altre azioni restano come sono, nell'ordine del piano.
+ */
+export function questionMenuKeys(more: readonly QuestionActionKey[]): { keys: (QuestionActionKey | "propose")[]; proposals: ProposalKey[] } {
+  const proposals = more.filter((k): k is ProposalKey => (PROPOSALS as readonly QuestionActionKey[]).includes(k));
+  if (proposals.length < 2) return { keys: [...more], proposals };
+  const keys: (QuestionActionKey | "propose")[] = [];
+  for (const k of more) {
+    if (!(PROPOSALS as readonly QuestionActionKey[]).includes(k)) keys.push(k);
+    else if (!keys.includes("propose")) keys.push("propose");
+  }
+  return { keys, proposals };
+}
 
 export interface QuestionActionBarProps {
   workspaceId: string;
@@ -35,12 +58,12 @@ export interface QuestionActionBarProps {
   itemId: string;
   plan: QuestionActionPlan;
   actions: ItemActions;
-  /** «Chiedi al referente» o «Chiedi di nuovo». */
+  /** «Chiedi al referente». */
   askAgainLabel: string;
   responseType: ResponseType | null;
   options: { value: string; label: string }[];
   requiresValidity: boolean;
-  /** «Affida a un altro collega» (responsabile del cliente): i colleghi a cui affidarla. */
+  /** «Affida a…» (responsabile del cliente): le persone a cui affidarla. */
   reassign: { contacts: { id: string; name: string; roleLabel: string | null }[]; currentId: string | null } | null;
   /**
    * Prima primaria piena: solo dentro il pannello (un dialogo). Sulla pagina
@@ -53,6 +76,8 @@ export interface QuestionActionBarProps {
   onDone?: () => void;
   /** Valida e chiarimento hanno tasti rapidi in «Verifica una alla volta». */
   shortcuts?: boolean;
+  /** I tasti rapidi sono accesi (l'interruttore di «Verifica una alla volta»): solo allora i pulsanti li dichiarano. */
+  keysOn?: boolean;
   /** Apre da fuori un modulo (il tasto C della verifica). */
   openForm?: FormKey | null;
   onFormChange?: (form: FormKey | null) => void;
@@ -61,7 +86,8 @@ export interface QuestionActionBarProps {
 
 /**
  * Le azioni della domanda (DESIGN §3.6.5): al massimo 2 primarie scelte dallo
- * stato, tutte le altre nel menu «⋯». Le azioni con un motivo aprono un modulo
+ * stato, tutte le altre nel menu «⋯», con le proposte sotto «Proponi…» e un
+ * passo di scelta (rilascio 10, §3.5). Le azioni con un motivo aprono un modulo
  * sotto i pulsanti; «Valida» spento dice perché (quattro occhi). Ogni comando
  * ricontrolla tutto lato server.
  */
@@ -78,12 +104,12 @@ export function QuestionActionBar(props: QuestionActionBarProps) {
   };
   const label = (k: QuestionActionKey) => (k === "askAgain" ? props.askAgainLabel : QUESTION_ACTION_LABEL[k]);
 
-  const act = (k: QuestionActionKey) => {
+  const act = (k: QuestionActionKey | "propose") => {
     switch (k) {
       case "validate":
         return run(() => validateItemAction(workspaceId, caseId, { itemId }), { success: "Risposta validata: la domanda è a posto.", onSuccess: done });
       case "askAgain":
-        return run(() => sendRequestsAction(workspaceId, caseId, { itemIds: [itemId], message: null }), { success: "Domanda inviata al referente.", onSuccess: done });
+        return run(() => sendRequestsAction(workspaceId, caseId, { itemIds: [itemId], message: null }), { success: A.askDone, onSuccess: done });
       default:
         return setForm(form === k ? null : k);
     }
@@ -94,7 +120,12 @@ export function QuestionActionBar(props: QuestionActionBarProps) {
     return check && !check.ok ? check.message : null;
   };
 
-  const menu: ActionMenuItem[] = plan.more.map((k) => ({ label: label(k), onSelect: () => act(k), disabled: pending || blocked(k) !== null, hint: blocked(k) ?? undefined }));
+  const { keys, proposals } = questionMenuKeys(plan.more);
+  const menu: ActionMenuItem[] = keys.map((k) =>
+    k === "propose"
+      ? { label: A.propose, onSelect: () => act("propose"), disabled: pending || proposals.every((p) => blocked(p) !== null) }
+      : { label: label(k), onSelect: () => act(k), disabled: pending || blocked(k) !== null, hint: blocked(k) ?? undefined },
+  );
   const reasons = plan.primary.map(blocked).filter((m): m is string => m !== null);
   if (plan.primary.length === 0 && menu.length === 0) return null;
 
@@ -109,7 +140,7 @@ export function QuestionActionBar(props: QuestionActionBarProps) {
             className="min-h-11 sm:min-h-8"
             disabled={pending || blocked(k) !== null}
             aria-expanded={k === "validate" || k === "askAgain" ? undefined : form === k}
-            aria-keyshortcuts={props.shortcuts ? (k === "validate" ? "V" : k === "clarify" ? "C" : undefined) : undefined}
+            aria-keyshortcuts={props.shortcuts && props.keysOn !== false ? (k === "validate" ? "V" : k === "clarify" ? "C" : undefined) : undefined}
             onClick={() => act(k)}
           >
             {label(k)}
@@ -143,10 +174,18 @@ export function QuestionActionBar(props: QuestionActionBarProps) {
       {form === "missing" && (
         <TextForm label="Perché manca" hint="Il motivo resta visibile sulla domanda." min={3} max={500} submit="Segna: manca il dato" filled={filledForms} pending={pending} onCancel={() => setForm(null)} onSubmit={(reason) => run(() => markMissingAction(workspaceId, caseId, { itemId, reason }), { success: "Segnata: manca il dato.", onSuccess: done })} />
       )}
+      {form === "propose" && (
+        <ProposeChoice
+          options={proposals.map((k) => ({ key: k, blocked: blocked(k) }))}
+          filled={filledForms}
+          onCancel={() => setForm(null)}
+          onChoose={(k) => setForm(k)}
+        />
+      )}
       {form === "proposeNa" && (
         <TextForm
           label="Perché non si applica"
-          hint="Almeno 10 caratteri. Poi servono due firme: Lateral Space e il cliente."
+          hint={A.signaturesNote}
           min={10}
           max={2000}
           submit="Proponi “non si applica”"
@@ -168,7 +207,7 @@ export function QuestionActionBar(props: QuestionActionBarProps) {
           requiresValidity={props.requiresValidity}
           pending={pending}
           filled={filledForms}
-          onSubmit={(input) => run(() => recordLsAnswerAction(workspaceId, caseId, { itemId, ...input }), { success: "Valore inserito: ora lo verifica un collega.", onSuccess: done })}
+          onSubmit={(input) => run(() => recordLsAnswerAction(workspaceId, caseId, { itemId, ...input }), { success: A.recordDone, onSuccess: done })}
         />
       )}
       {form === "reassign" && props.reassign && (
@@ -177,7 +216,7 @@ export function QuestionActionBar(props: QuestionActionBarProps) {
           pending={pending}
           filled={filledForms}
           onCancel={() => setForm(null)}
-          onSubmit={(contactId) => run(() => assignItemsAction(workspaceId, caseId, { mode: "voci", itemIds: [itemId], contactId }), { success: "Domanda affidata al collega.", onSuccess: done })}
+          onSubmit={(contactId) => run(() => assignItemsAction(workspaceId, caseId, { mode: "voci", itemIds: [itemId], contactId }), { success: A.reassignDone, onSuccess: done })}
         />
       )}
     </div>
@@ -205,11 +244,11 @@ function ReassignForm({ contacts, pending, filled, onCancel, onSubmit }: { conta
       }}
     >
       {contacts.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Non ci sono altri colleghi a cui affidarla: aggiungili da Persone.</p>
+        <p className="text-sm text-muted-foreground">{A.reassignNone}</p>
       ) : (
         <Select items={items} value={contactId} onValueChange={(v) => setContactId(v ? String(v) : null)}>
-          <SelectTrigger className="min-h-11 w-full sm:min-h-8" aria-label="Collega">
-            <SelectValue placeholder="Scegli il collega" />
+          <SelectTrigger className="min-h-11 w-full sm:min-h-8" aria-label={A.reassignPick}>
+            <SelectValue placeholder={A.reassignPick} />
           </SelectTrigger>
           <SelectContent>
             {items.map((c) => (
@@ -222,10 +261,55 @@ function ReassignForm({ contacts, pending, filled, onCancel, onSubmit }: { conta
       )}
       <div className="flex flex-wrap gap-2">
         <Button type="submit" variant={filled ? "default" : "outline"} className="min-h-11 sm:min-h-8" disabled={!contactId || pending}>
-          Affida
+          {A.reassignSubmit}
         </Button>
         <Button type="button" variant="ghost" className="min-h-11 sm:min-h-8" onClick={onCancel}>
-          Annulla
+          {A.cancel}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/** Il passo di scelta di «Proponi…»: le proposte che il ruolo ha, quelle non possibili adesso spente con il motivo. */
+function ProposeChoice({
+  options,
+  filled,
+  onCancel,
+  onChoose,
+}: {
+  options: { key: ProposalKey; blocked: string | null }[];
+  filled: boolean;
+  onCancel: () => void;
+  onChoose: (key: ProposalKey) => void;
+}) {
+  const [chosen, setChosen] = useState<ProposalKey | null>(options.find((o) => o.blocked === null)?.key ?? null);
+  return (
+    <form
+      className="space-y-3 rounded-lg p-3 ring-1 ring-foreground/10"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (chosen) onChoose(chosen);
+      }}
+    >
+      <fieldset className="space-y-1">
+        <legend className="mb-1 text-sm font-medium">{A.proposeStep}</legend>
+        {options.map((o) => (
+          <label key={o.key} className={cn("flex min-h-11 cursor-pointer items-start gap-3 rounded-md px-1 py-2 text-sm sm:min-h-9", o.blocked && "cursor-not-allowed opacity-60")}>
+            <input type="radio" name="proposta" value={o.key} checked={chosen === o.key} disabled={o.blocked !== null} onChange={() => setChosen(o.key)} className="mt-1 accent-primary" />
+            <span className="min-w-0">
+              <span className="block font-medium">{A.proposeChoice[o.key]}</span>
+              <span className="block text-xs text-muted-foreground">{o.blocked ?? A.proposeHint[o.key]}</span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" variant={filled ? "default" : "outline"} className="min-h-11 sm:min-h-8" disabled={!chosen}>
+          {A.proposeNext}
+        </Button>
+        <Button type="button" variant="ghost" className="min-h-11 sm:min-h-8" onClick={onCancel}>
+          {A.cancel}
         </Button>
       </div>
     </form>
@@ -292,7 +376,9 @@ function WaiverForm({ pending, filled, onSubmit }: { pending: boolean; filled: b
         onSubmit({ motivo: motivo.trim(), piano: piano.trim(), scadenza });
       }}
     >
-      <p className="text-xs text-muted-foreground">Al massimo il 10% delle domande indispensabili. Mai su dati personali, regole di legge, vincoli rigidi o domande bloccate.</p>
+      <p className="text-xs text-muted-foreground">
+        {A.waiverNote} {A.signaturesNote}
+      </p>
       <label className="block">
         <span className="mb-1 block text-sm font-medium">Motivo</span>
         <Textarea value={motivo} onChange={(e) => setMotivo(e.target.value)} maxLength={2000} rows={2} />
@@ -303,7 +389,7 @@ function WaiverForm({ pending, filled, onSubmit }: { pending: boolean; filled: b
       </label>
       <label className="block">
         <span className="mb-1 block text-sm font-medium">Entro quando</span>
-        <Input type="date" value={scadenza} onChange={(e) => setScadenza(e.target.value)} className="w-44" />
+        <Input type="date" value={scadenza} onChange={(e) => setScadenza(e.target.value)} className="h-11 w-44 text-base sm:h-8 sm:text-sm" />
       </label>
       <Button type="submit" variant={filled ? "default" : "outline"} className="min-h-11 sm:min-h-8" disabled={motivo.trim().length < 10 || piano.trim().length < 10 || !scadenza || pending}>
         Proponi di partire senza risposta
@@ -330,7 +416,7 @@ function FallbackForm({ pending, filled, onSubmit }: { pending: boolean; filled:
       </label>
       <label className="block">
         <span className="mb-1 block text-sm font-medium">Da sostituire entro</span>
-        <Input type="date" value={until} onChange={(e) => setUntil(e.target.value)} className="w-44" />
+        <Input type="date" value={until} onChange={(e) => setUntil(e.target.value)} className="h-11 w-44 text-base sm:h-8 sm:text-sm" />
       </label>
       <Button type="submit" variant={filled ? "default" : "outline"} className="min-h-11 sm:min-h-8" disabled={descrizione.trim().length < 10 || !until || pending}>
         Proponi la soluzione provvisoria
@@ -345,8 +431,13 @@ const SOURCE_KINDS = [
   ["lateral_space", "Lateral Space (calcolo o analisi)"],
 ] as const;
 
+const R = DOMANDE_TEXT.record;
+
+/** I campi del modulo: 44 px e testo a 16 px al telefono. */
+const FIELD = "h-11 text-base sm:h-8 sm:text-sm";
+
 const BASIS = [
-  ["", "Da dove viene: non indicato"],
+  ["", R.basisUnknown],
   ["sistema", "Dal sistema"],
   ["documento", "Da un documento"],
   ["stima_a_memoria", "Stima a memoria"],
@@ -354,7 +445,7 @@ const BASIS = [
 ] as const;
 
 const CONFIDENCE = [
-  ["", "Affidabilità: non indicata"],
+  ["", R.confidenceUnknown],
   ["certo", "Certo"],
   ["stima", "È una stima"],
   ["da_verificare", "Da verificare"],
@@ -408,6 +499,13 @@ function RecordValueForm({
     type === "scelta_multipla" && options.length > 0 ? multi.length > 0 : needsChoice ? choice !== "" && (choice !== "correggo" || text.trim() !== "") : text.trim() !== "";
   const ready = sourceRef.trim().length >= 2 && (!requiresValidity || validFrom !== "") && valueReady;
 
+  const validity = (
+    <label className="block">
+      <span className="mb-1 block text-sm font-medium">{requiresValidity ? R.validFromRequired : R.validFrom}</span>
+      <Input type="date" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} className={FIELD} />
+    </label>
+  );
+
   return (
     <form
       className="space-y-3 rounded-lg p-3 ring-1 ring-foreground/10"
@@ -424,12 +522,12 @@ function RecordValueForm({
         });
       }}
     >
-      <p className="text-xs text-muted-foreground">Chi inserisce il valore non lo può validare. Niente dati personali: quelli passano solo dalla zona personale.</p>
+      <p className="text-xs text-muted-foreground">{R.calm}</p>
       {type === "scelta" && options.length > 0 && (
         <label className="block">
-          <span className="mb-1 block text-sm font-medium">Valore</span>
+          <span className="mb-1 block text-sm font-medium">{R.value}</span>
           <select className={SELECT_CLASS} value={choice} onChange={(e) => setChoice(e.target.value)}>
-            <option value="">Scegli</option>
+            <option value="">{R.choose}</option>
             {options.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
@@ -440,11 +538,11 @@ function RecordValueForm({
       )}
       {type === "scelta_multipla" && options.length > 0 && (
         <fieldset>
-          <legend className="mb-1 text-sm font-medium">Valori</legend>
+          <legend className="mb-1 text-sm font-medium">{R.values}</legend>
           <div className="space-y-1">
             {options.map((o) => (
-              <label key={o.value} className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={multi.includes(o.value)} onChange={(e) => setMulti((m) => (e.target.checked ? [...m, o.value] : m.filter((x) => x !== o.value)))} />
+              <label key={o.value} className="flex min-h-11 items-center gap-2 text-sm sm:min-h-8">
+                <input type="checkbox" className={CHECKBOX_CLASS} checked={multi.includes(o.value)} onChange={(e) => setMulti((m) => (e.target.checked ? [...m, o.value] : m.filter((x) => x !== o.value)))} />
                 {o.label}
               </label>
             ))}
@@ -453,9 +551,9 @@ function RecordValueForm({
       )}
       {type === "si_no" && (
         <label className="block">
-          <span className="mb-1 block text-sm font-medium">Valore</span>
+          <span className="mb-1 block text-sm font-medium">{R.value}</span>
           <select className={SELECT_CLASS} value={choice} onChange={(e) => setChoice(e.target.value)}>
-            <option value="">Scegli</option>
+            <option value="">{R.choose}</option>
             <option value="sì">Sì</option>
             <option value="no">No</option>
           </select>
@@ -463,9 +561,9 @@ function RecordValueForm({
       )}
       {(type === "conferma_regola" || type === "conferma_formula") && (
         <label className="block">
-          <span className="mb-1 block text-sm font-medium">Esito</span>
+          <span className="mb-1 block text-sm font-medium">{R.outcome}</span>
           <select className={SELECT_CLASS} value={choice} onChange={(e) => setChoice(e.target.value)}>
-            <option value="">Scegli</option>
+            <option value="">{R.choose}</option>
             <option value="confermo">Confermata così</option>
             <option value="correggo">Va corretta</option>
             {type === "conferma_regola" && <option value="non_vale">Non vale</option>}
@@ -475,24 +573,24 @@ function RecordValueForm({
       {!(type === "scelta" && options.length) && !(type === "scelta_multipla" && options.length) && type !== "si_no" && (
         <label className="block">
           <span className="mb-1 block text-sm font-medium">
-            {type === "conferma_regola" ? "Testo corretto (se va corretta)" : type === "conferma_formula" ? "Formula corretta (se va corretta)" : "Valore"}
+            {type === "conferma_regola" ? "Testo corretto (se va corretta)" : type === "conferma_formula" ? "Formula corretta (se va corretta)" : R.value}
           </span>
           {type === "tabella" || type === "testo" || type === "conferma_regola" || type === "conferma_formula" ? (
             <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={type === "tabella" ? 6 : 3} placeholder={type === "tabella" ? "Incolla la tabella da Excel, con l'intestazione" : undefined} />
           ) : (
-            <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Scrivilo come lo scriverebbe il referente, es. 1.200 € IVA esclusa a pezzo" />
+            <Input value={text} onChange={(e) => setText(e.target.value)} className={FIELD} placeholder="Scrivilo come lo scriverebbe il referente, es. 1.200 € IVA esclusa a pezzo" />
           )}
         </label>
       )}
       {type === "conferma_regola" && (
         <label className="block">
           <span className="mb-1 block text-sm font-medium">Eccezioni</span>
-          <Input value={exceptions} onChange={(e) => setExceptions(e.target.value)} placeholder="Oppure «nessuna»" />
+          <Input value={exceptions} onChange={(e) => setExceptions(e.target.value)} className={FIELD} placeholder="Oppure «nessuna»" />
         </label>
       )}
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="block">
-          <span className="mb-1 block text-sm font-medium">Fonte</span>
+          <span className="mb-1 block text-sm font-medium">{R.source}</span>
           <select className={SELECT_CLASS} value={sourceKind} onChange={(e) => setSourceKind(e.target.value)}>
             {SOURCE_KINDS.map(([v, l]) => (
               <option key={v} value={v}>
@@ -502,40 +600,49 @@ function RecordValueForm({
           </select>
         </label>
         <label className="block">
-          <span className="mb-1 block text-sm font-medium">Riferimento della fonte</span>
-          <Input value={sourceRef} onChange={(e) => setSourceRef(e.target.value)} maxLength={500} placeholder="Es. Listino 2026, pagina 3" />
+          <span className="mb-1 block text-sm font-medium">{R.sourceRef}</span>
+          <Input value={sourceRef} onChange={(e) => setSourceRef(e.target.value)} maxLength={500} className={FIELD} placeholder={R.sourceRefPlaceholder} />
         </label>
-        <label className="block">
-          <span className="sr-only">Da dove viene</span>
-          <select className={SELECT_CLASS} value={basis} onChange={(e) => setBasis(e.target.value)}>
-            {BASIS.map(([v, l]) => (
-              <option key={v} value={v}>
-                {l}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="block">
-          <span className="sr-only">Affidabilità</span>
-          <select className={SELECT_CLASS} value={confidence} onChange={(e) => setConfidence(e.target.value)}>
-            {CONFIDENCE.map(([v, l]) => (
-              <option key={v} value={v}>
-                {l}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium">Valido dal{requiresValidity ? " (obbligatorio)" : ""}</span>
-          <Input type="date" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} />
-        </label>
+        {requiresValidity && validity}
       </div>
-      <label className="block">
-        <span className="mb-1 block text-sm font-medium">Nota</span>
-        <Textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} rows={2} />
-      </label>
+      {/* (Rilascio 10, §3.5) Valore e Fonte in vista; il resto in «Altri dettagli», chiuso. */}
+      <details className="group min-w-0">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 text-sm text-muted-foreground select-none hover:text-foreground sm:min-h-8 [&::-webkit-details-marker]:hidden">
+          <ChevronRight className="size-4 shrink-0 transition-transform group-open:rotate-90 motion-reduce:transition-none" aria-hidden />
+          {R.more}
+        </summary>
+        <div className="mt-2 space-y-2">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium">{R.basis}</span>
+              <select className={SELECT_CLASS} value={basis} onChange={(e) => setBasis(e.target.value)}>
+                {BASIS.map(([v, l]) => (
+                  <option key={v} value={v}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium">{R.confidence}</span>
+              <select className={SELECT_CLASS} value={confidence} onChange={(e) => setConfidence(e.target.value)}>
+                {CONFIDENCE.map(([v, l]) => (
+                  <option key={v} value={v}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {!requiresValidity && validity}
+          </div>
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium">{R.note}</span>
+            <Textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} rows={2} />
+          </label>
+        </div>
+      </details>
       <Button type="submit" variant={filled ? "default" : "outline"} className="min-h-11 sm:min-h-8" disabled={!ready || pending}>
-        Inserisci il valore
+        {QUESTION_ACTION_LABEL.record}
       </Button>
     </form>
   );

@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { AlertTriangle, ArrowUpRight, ChevronRight, Download, FileText, Info, Lock, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, ChevronLeft, ChevronRight, Download, FileText, Info, Lock, XCircle } from "lucide-react";
+import { Fold as PanelFold } from "@/components/ui-10/fold";
 import { KeyValues } from "@/components/uc/ui/key-values";
 import { StatusDot } from "@/components/uc/ui/status-dot";
 import { TechDetails } from "@/components/uc/ui/tech-details";
@@ -14,6 +15,7 @@ import type {
   SpecEntry,
 } from "@/lib/uc/views/item-detail";
 import { WORDS } from "@/lib/uc/views/labels";
+import { DOMANDE_TEXT } from "@/lib/uc/views/domande-text";
 import type { CaseRole, SemaforoColor } from "@/lib/uc/vocab";
 import { QuestionActionBar, SignLink, type QuestionActionBarProps } from "./item-actions";
 import { QuestionActivity } from "./item-comments";
@@ -90,11 +92,44 @@ export interface QuestionDetailModel {
   fullHref: string;
 }
 
-/** Riga sotto il titolo: stato, «Indispensabile», «Fuori contratto», lucchetto. */
+/** (Rilascio 10, §3.5) Uno stato solo: il più preciso («Chiesta, in attesa»), non «Da fare · Chiesta, in attesa». */
+function oneState(model: QuestionDetailModel): string {
+  return model.status.sublabel ?? model.status.label;
+}
+
+/**
+ * La testa del pannello della domanda, sotto il titolo: uno stato solo, «Indispensabile», «Fuori contratto», il
+ * lucchetto e l'icona «Apri a tutta pagina». Solo testo in linea: sta nella descrizione del pannello.
+ */
+export function QuestionPanelHead({ model }: { model: QuestionDetailModel }) {
+  return (
+    <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+      <StatusDot tone={model.status.tone} label={oneState(model)} size="md" />
+      {model.must && <span className="text-muted-foreground">· {WORDS.indispensabile}</span>}
+      {model.outOfContract && <span className="text-muted-foreground">· {WORDS.fuoriContratto}</span>}
+      {model.personal && (
+        <span title={WORDS.datoPersonale} className="inline-flex items-center text-uc-lucchetto">
+          <Lock className="size-3.5" aria-hidden />
+          <span className="sr-only">{WORDS.datoPersonale}</span>
+        </span>
+      )}
+      <Link
+        href={model.fullHref}
+        title={DOMANDE_TEXT.panel.fullPage}
+        aria-label={DOMANDE_TEXT.panel.fullPage}
+        className="ml-auto inline-flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 sm:size-8"
+      >
+        <ArrowUpRight className="size-4" aria-hidden />
+      </Link>
+    </span>
+  );
+}
+
+/** Riga sotto il titolo della pagina intera: uno stato solo, «Indispensabile», «Fuori contratto», lucchetto. */
 export function QuestionStatusLine({ model }: { model: QuestionDetailModel }) {
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-      <StatusDot tone={model.status.tone} label={model.status.label} sublabel={model.status.sublabel ?? undefined} size="md" />
+      <StatusDot tone={model.status.tone} label={oneState(model)} size="md" />
       {model.must && <span className="text-muted-foreground">· {WORDS.indispensabile}</span>}
       {model.outOfContract && <span className="text-muted-foreground">· {WORDS.fuoriContratto}</span>}
       {model.personal && (
@@ -277,30 +312,29 @@ function LinkedQuestions({ linked }: { linked: QuestionDetailModel["linked"] }) 
 }
 
 /**
- * Il contenuto del pannello `?apri=<id>` (§3.6.5): azioni, avvisi, risposta,
- * la domanda, attività, dettagli tecnici e «Apri a tutta pagina».
+ * Il contenuto del pannello `?apri=<id>` (§3.6.5; rilascio 10, §3.5): la risposta in alto, subito sotto le azioni
+ * (una sola piena) e gli avvisi; poi «La domanda», chiusa quando c'è già una risposta, «Attività · N», chiusa, e i
+ * dettagli tecnici di Lateral Space. Stato e «Apri a tutta pagina» stanno nella testa (`QuestionPanelHead`).
  */
 export function QuestionPanelBody({ model }: { model: QuestionDetailModel }) {
   return (
-    <div className="min-w-0 space-y-6">
-      {model.actions && <QuestionActionBar key={model.itemId} {...model.actions} filledFirst />}
-      <QuestionNotices model={model} />
-      <Section title={model.client ? "Risposta del referente" : "Risposta"}>
+    <div className="min-w-0 space-y-5">
+      <Section title={model.client ? DOMANDE_TEXT.panel.answer.cliente : DOMANDE_TEXT.panel.answer.ls}>
         <QuestionAnswerBlock answer={model.answer} files={model.files} workspaceId={model.workspaceId} caseId={model.caseId} client={model.client} />
       </Section>
-      <Section title="La domanda">
-        <QuestionAbout about={model.about} clamp />
-      </Section>
-      {!model.client && (
-        <Section title="Attività" count={model.activity.entries.length}>
-          <QuestionActivity key={model.itemId} workspaceId={model.workspaceId} caseId={model.caseId} itemId={model.itemId} entries={model.activity.entries} visibilities={model.activity.visibilities} canResolve={model.activity.canResolve} />
-        </Section>
-      )}
+      {model.actions && <QuestionActionBar key={model.itemId} {...model.actions} filledFirst />}
+      <QuestionNotices model={model} />
+      <div className="min-w-0">
+        <PanelFold id={`domanda-${model.itemId}`} title={DOMANDE_TEXT.panel.question} defaultOpen={model.answer === null}>
+          <QuestionAbout about={model.about} clamp={false} />
+        </PanelFold>
+        {!model.client && (
+          <PanelFold id={`attivita-${model.itemId}`} title={DOMANDE_TEXT.panel.activity(model.activity.entries.length)}>
+            <QuestionActivity key={model.itemId} workspaceId={model.workspaceId} caseId={model.caseId} itemId={model.itemId} entries={model.activity.entries} visibilities={model.activity.visibilities} canResolve={model.activity.canResolve} />
+          </PanelFold>
+        )}
+      </div>
       <QuestionTech model={model} />
-      <Link href={model.fullHref} className="inline-flex min-h-11 items-center gap-1 text-sm text-muted-foreground hover:text-foreground sm:min-h-0">
-        Apri a tutta pagina
-        <ArrowUpRight className="size-4" aria-hidden />
-      </Link>
     </div>
   );
 }
@@ -314,13 +348,18 @@ const PHONE_STICKY_ACTIONS =
   "max-sm:sticky max-sm:top-[122px] max-sm:z-10 max-sm:-mx-4 max-sm:max-h-[50dvh] max-sm:overflow-y-auto max-sm:border-b max-sm:bg-background max-sm:px-4 max-sm:py-2";
 
 /**
- * La pagina intera `/domande/<id>` (§3.6.5): da `lg` due colonne, a sinistra
- * risposta, domanda e attività, a destra referente, scadenza e domande
- * collegate. Al telefono le azioni restano fisse in alto, sotto il titolo.
+ * La pagina intera `/domande/<id>` (§3.6.5; rilascio 10, §3.5): «‹ Domande» riporta alla lista con i suoi filtri e la
+ * sua pagina; da `lg` due colonne, a sinistra risposta, domanda e attività, a destra solo il referente, con scadenza e
+ * domande collegate in «Altri dettagli». Al telefono le azioni restano fisse in alto, sotto il titolo.
  */
-export function QuestionPageBody({ model, upload }: { model: QuestionDetailModel; upload?: React.ReactNode }) {
+export function QuestionPageBody({ model, upload, backHref }: { model: QuestionDetailModel; upload?: React.ReactNode; backHref: string }) {
+  const more = Boolean(model.side.due) || model.linked.length > 0;
   return (
     <div className="min-w-0 space-y-6">
+      <Link href={backHref} className="-ml-1 inline-flex min-h-11 items-center gap-0.5 rounded-md px-1 text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-8">
+        <ChevronLeft className="size-4" aria-hidden />
+        {DOMANDE_TEXT.back}
+      </Link>
       <header className="min-w-0 space-y-2">
         <QuestionStatusLine model={model} />
         <h2 className="text-xl font-semibold tracking-tight break-words">{model.title}</h2>
@@ -333,39 +372,41 @@ export function QuestionPageBody({ model, upload }: { model: QuestionDetailModel
       <QuestionNotices model={model} />
       <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,16rem)]">
         <div className="min-w-0 space-y-8">
-          <Section title={model.client ? "Risposta del referente" : "Risposta"}>
+          <Section title={model.client ? DOMANDE_TEXT.panel.answer.cliente : DOMANDE_TEXT.panel.answer.ls}>
             <QuestionAnswerBlock answer={model.answer} files={model.files} workspaceId={model.workspaceId} caseId={model.caseId} client={model.client} />
             {upload}
           </Section>
-          <Section title="La domanda">
+          <Section title={DOMANDE_TEXT.panel.question}>
             <QuestionAbout about={model.about} clamp={false} />
           </Section>
           {!model.client && (
-            <Section title="Attività" count={model.activity.entries.length}>
+            <Section title={DOMANDE_TEXT.panel.activity(0)} count={model.activity.entries.length}>
               <QuestionActivity key={model.itemId} workspaceId={model.workspaceId} caseId={model.caseId} itemId={model.itemId} entries={model.activity.entries} visibilities={model.activity.visibilities} canResolve={model.activity.canResolve} all />
             </Section>
           )}
           <QuestionTech model={model} />
         </div>
-        <aside className="min-w-0 space-y-6 text-sm">
+        <aside className="min-w-0 space-y-4 text-sm">
           <section className="space-y-1">
-            <h3 className="text-xs tracking-wide text-muted-foreground">Referente</h3>
-            <p className={cn(!model.side.assignee && "text-uc-giallo")}>{model.side.assignee ?? "Senza referente"}</p>
+            <h3 className="text-xs tracking-wide text-muted-foreground">{DOMANDE_TEXT.panel.referent}</h3>
+            <p className={cn(!model.side.assignee && "text-uc-giallo")}>{model.side.assignee ?? DOMANDE_TEXT.row.noReferent}</p>
             {model.side.roleLabel && <p className="text-xs text-muted-foreground">{model.side.roleLabel}</p>}
           </section>
-          {model.side.due && (
-            <section className="space-y-1">
-              <h3 className="text-xs tracking-wide text-muted-foreground">Scadenza</h3>
-              <p>{model.side.due}</p>
-            </section>
-          )}
-          {model.linked.length > 0 && (
-            <section className="space-y-2">
-              <h3 className="text-xs tracking-wide text-muted-foreground">
-                Collegata a {model.linked.length} {model.linked.length === 1 ? "domanda" : "domande"}
-              </h3>
-              <LinkedQuestions linked={model.linked} />
-            </section>
+          {more && (
+            <Fold title={DOMANDE_TEXT.panel.more}>
+              {model.side.due && (
+                <p>
+                  <span className="text-muted-foreground">{DOMANDE_TEXT.panel.due}: </span>
+                  {model.side.due}
+                </p>
+              )}
+              {model.linked.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-muted-foreground">{DOMANDE_TEXT.panel.linked(model.linked.length)}</p>
+                  <LinkedQuestions linked={model.linked} />
+                </div>
+              )}
+            </Fold>
           )}
         </aside>
       </div>

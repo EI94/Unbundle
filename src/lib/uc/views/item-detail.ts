@@ -276,7 +276,7 @@ export function nonValueAnswerText(kind: AnswerKind, value: unknown): string | n
       return reason ? `Propone “non si applica”: ${reason}` : "Propone “non si applica”";
     }
     case "delega":
-      return "L'ha girata a un collega";
+      return "L'ha girata a un'altra persona";
     default:
       return null;
   }
@@ -585,8 +585,9 @@ export type QuestionActionKey = (typeof QUESTION_ACTIONS)[number];
 export const QUESTION_ACTION_LABEL: Readonly<Record<QuestionActionKey, string>> = {
   validate: "Valida",
   clarify: "Chiedi un chiarimento",
-  askAgain: "Chiedi di nuovo",
-  record: "Inserisci un valore da una fonte",
+  // (Rilascio 10, §4) Un verbo per chiedere: «Chiedi al referente», la prima volta e dopo, come nella selezione e in Persone.
+  askAgain: "Chiedi al referente",
+  record: "Inserisci il valore",
   reopen: "Riapri",
   partial: "Risposta parziale",
   missing: "Manca il dato",
@@ -596,16 +597,16 @@ export const QUESTION_ACTION_LABEL: Readonly<Record<QuestionActionKey, string>> 
   reassign: "Affida a…",
 };
 
-/** «Chiedi di nuovo»: la domanda torna al referente (`sendRequests`), da questi stati e solo con un referente. */
+/** «Chiedi al referente»: la domanda torna al referente (`sendRequests`), da questi stati e solo con un referente. */
 const ASK_AGAIN_STATUSES: readonly ItemStatus[] = ["da_chiedere", "mancante", "parziale"];
 
 export function canAskAgain(i: { status: ItemStatus; hasAssignee: boolean; roles: readonly CaseRole[]; writable: boolean }): boolean {
   return i.writable && i.hasAssignee && can(i.roles, "inviare_richieste") && ASK_AGAIN_STATUSES.includes(i.status);
 }
 
-/** «Chiedi al referente» la prima volta, «Chiedi di nuovo» dopo. */
-export function askAgainLabel(status: ItemStatus): string {
-  return status === "da_chiedere" ? "Chiedi al referente" : QUESTION_ACTION_LABEL.askAgain;
+/** (Rilascio 10, §4) «Chiedi al referente», da ogni stato: la stessa parola la prima volta e dopo. */
+export function askAgainLabel(): string {
+  return QUESTION_ACTION_LABEL.askAgain;
 }
 
 export interface QuestionActionPlan {
@@ -662,7 +663,7 @@ const PRIMARY_BY_STATUS: Readonly<Record<ItemStatus, readonly QuestionActionKey[
 
 /**
  * Primarie e menu della domanda. Il cliente (§3.6.8) ha una sola azione:
- * «Affida a un'altra persona». Le firme non stanno qui: l'avviso in linea
+ * «Affida a…». Le firme non stanno qui: l'avviso in linea
  * porta a `/firme`. Le azioni che il ruolo non ha non compaiono.
  */
 export function questionActionPlan(i: { status: ItemStatus; actions: ItemActions; askAgain: boolean; reassign: boolean; client: boolean }): QuestionActionPlan {

@@ -1,7 +1,7 @@
 /**
- * Letture di Domande (DESIGN §3.6, WP3): la lista con segmenti, filtri e
- * conteggi, la selezione «tutte le N», la coda di «Verifica una alla volta» e
- * Documenti.
+ * Letture di Domande (DESIGN §3.6, WP3; rilascio 10, §3.5): la lista con
+ * segmenti, filtri, argomenti chiusi e conteggi, la selezione «tutte le N», la
+ * coda di «Verifica una alla volta» e l'archivio del pannello «File».
  *
  * Al posto dei vecchi caricatori del catalogo, della coda di verifica e dei
  * documenti di `uc-views.ts` (tolti da WP13): ordine per argomento, 50 righe,
@@ -17,6 +17,7 @@
  */
 import { cast, toStatement, ucSql, type UcStatement } from "../../uc/sql/statement.ts";
 import {
+  caseFilesCountSql,
   catalogSizeSql,
   parseQuestionFilter,
   parseQuestionQuery,
@@ -26,9 +27,9 @@ import {
   questionKindFacetSql,
   questionPageSql,
   questionSelectionSql,
+  questionsCollapsed,
   QUESTION_SELECTION_MAX,
   QUESTIONS_PAGE_SIZE,
-  requiredDocumentsCountSql,
   reviewQueueSql,
   type QuestionAudience,
   type QuestionDefaults,
@@ -39,6 +40,7 @@ import {
   clientPlainText,
   questionGroups,
   questionSegmentItems,
+  questionTopicGroups,
   rowCount,
   rowsToFacet,
   rowsToQuestionCounts,
@@ -51,6 +53,7 @@ import {
   type QuestionGroupView,
   type QuestionRowView,
   type QuestionSegmentItem,
+  type QuestionTopicGroup,
 } from "../../uc/views/rows.ts";
 import { rowsToCaseFiles, rowsToDatasets, rowsToRequiredDocuments, type CaseFileView, type DatasetView, type RequiredDocumentView } from "../../uc/views/documents.ts";
 import { seesPersonalZoneMetadata, seesValidatedOnly } from "../../uc/views/page-access.ts";
@@ -88,17 +91,25 @@ export interface QuestionsPageData {
   defaults: QuestionDefaults;
   /** Filtri applicati (quelli dell'URL, con i predefiniti; la pagina oltre l'ultima diventa l'ultima). */
   filter: QuestionFilter;
+  /** (Rilascio 10, §3.5) Argomenti chiusi, con il solo conteggio: niente righe finché un filtro o una ricerca non le chiede. */
+  collapsed: boolean;
+  /** Gli argomenti chiusi della vista (vuoto quando si vedono le righe). */
+  topics: QuestionTopicGroup[];
+  /** Il gruppo «In attesa» in cima a «Da fare»: le domande ferme per un blocco, con i filtri; 0 nelle altre viste. */
+  waiting: number;
   rows: QuestionRowView[];
-  /** Gruppi per argomento; null dove l'elenco non si raggruppa (Da verificare, cliente). */
-  groups: QuestionGroupView[] | null;
+  /** Gruppi per argomento delle righe della pagina. */
+  groups: QuestionGroupView[];
   counts: QuestionCounts;
-  /** Domande del segmento aperto, in tutte le pagine. */
+  /** Domande della vista aperta, in tutte le pagine. */
   total: number;
   segments: QuestionSegmentItem[];
   /** Voci del caso di ogni tipo («Tutto il catalogo (2.812)»): solo Lateral Space. */
   catalogSize: number | null;
   /** Conteggio per tipo con il catalogo intero (opzioni di «Tipo»). */
   kindCounts: Record<string, number> | null;
+  /** I file dell'archivio («File (6)»), come li vede chi guarda. */
+  files: number;
 }
 
 function whereContext(v: UcViewer, audience: QuestionAudience): QuestionWhereContext {
@@ -106,9 +117,10 @@ function whereContext(v: UcViewer, audience: QuestionAudience): QuestionWhereCon
 }
 
 /**
- * Una pagina di Domande (50 righe) con i conteggi, in un batch. Le righe di
- * «Da verificare» vanno dalla risposta più vecchia e non si raggruppano; il
- * cliente legge un elenco semplice con l'argomento nella riga.
+ * Una pagina di Domande in un batch: contesto, referenti, conteggi per
+ * argomento, i file dell'archivio e, quando un filtro o una ricerca le chiede,
+ * 50 righe raggruppate per argomento. Senza filtri gli argomenti restano chiusi
+ * (rilascio 10, §3.5) e le righe non si leggono.
  */
 export async function loadQuestionsPage(
   executor: UcExecutor,
@@ -119,68 +131,52 @@ export async function loadQuestionsPage(
   let filter = parseQuestionFilter(i.searchParams, audience, defaults);
   const where = whereContext(v, audience);
   const ls = audience === "ls";
+  const collapsed = questionsCollapsed(filter);
   const context = caseViewContextReader(v.workspaceId, v.caseId);
   const statements: UcStatement[] = [
     context.statement,
     contactsSql(v.workspaceId),
     questionCountsSql(v.caseId, filter, where),
-    questionPageSql(v.caseId, filter, where),
+    caseFilesCountSql(v.caseId, { personalZone: seesPersonalZoneMetadata(v.roles), validatedOnly: seesValidatedOnly(v.roles) }),
   ];
-  if (ls) statements.push(catalogSizeSql(v.caseId, audience), requiredDocumentsCountSql(v.caseId, audience));
-  if (filter.catalogo) statements.push(questionKindFacetSql(v.caseId, filter, where));
+  const at = { page: -1, size: -1, kinds: -1 };
+  if (!collapsed) at.page = statements.push(questionPageSql(v.caseId, filter, where)) - 1;
+  if (ls) at.size = statements.push(catalogSizeSql(v.caseId, audience)) - 1;
+  if (filter.catalogo) at.kinds = statements.push(questionKindFacetSql(v.caseId, filter, where)) - 1;
   const rows = await executor.batch(statements);
   const ctx = context.parse(rows[0]);
   if (!ctx) return null;
   const contacts = rows[1].map(rowToContact);
   const counts = rowsToQuestionCounts(rows[2]);
   const total = counts.segments[filter.vista];
-  let pageRows = rows[3];
-  if (pageRows.length === 0 && total > 0 && filter.pagina > 1) {
+  let pageRows = at.page >= 0 ? rows[at.page] : [];
+  if (!collapsed && pageRows.length === 0 && total > 0 && filter.pagina > 1) {
     // Pagina oltre l'ultima (per esempio dopo un'azione che ha svuotato l'ultima): si mostra l'ultima.
     filter = { ...filter, pagina: Math.ceil(total / QUESTIONS_PAGE_SIZE) };
     [pageRows] = await executor.batch([questionPageSql(v.caseId, filter, where)]);
   }
   const contactMap = new Map(contacts.map((c) => [c.id, c]));
-  // Il titolo dell'argomento accanto alla domanda: al cliente senza articoli, sigle o chiavi (DESIGN §6.2).
-  const moduleTitles = new Map(ctx.modules.map((m) => [m.key, audience === "cliente" ? clientPlainText(m.title) || m.title : m.title]));
-  const questionRows = pageRows.map((r) => rowToQuestionRow(r, { audience, roles: v.roles, contacts: contactMap, roleLabels: ctx.roleLabels, moduleTitles, now: i.now }));
-  const grouped = audience !== "cliente" && filter.vista !== "da-verificare";
+  // Argomenti e ruoli dello schema: al cliente senza articoli, sigle o chiavi (DESIGN §6.2).
+  const plain = (text: string) => (audience === "cliente" ? clientPlainText(text) || text : text);
+  const questionRows = pageRows.map((r) => rowToQuestionRow(r, { audience, roles: v.roles, contacts: contactMap, now: i.now }));
+  const grouping = { counts: counts.byModule, modules: ctx.modules, roleLabels: ctx.roleLabels, vista: filter.vista, plain };
   return {
     ctx,
     contacts,
     audience,
     defaults,
     filter,
+    collapsed,
+    topics: collapsed ? questionTopicGroups(grouping) : [],
+    waiting: filter.vista === "da-fare" ? counts.segments.bloccate : 0,
     rows: questionRows,
-    groups: grouped ? questionGroups(questionRows, { counts: counts.byModule, modules: ctx.modules, roleLabels: ctx.roleLabels }) : null,
+    groups: questionGroups(questionRows, grouping),
     counts,
     total,
-    segments: questionSegmentItems({ audience, counts: counts.segments, active: filter.vista, defaultSegment: defaults.vista, documents: ls ? rowCount(rows[5]) : null }),
-    catalogSize: ls ? rowCount(rows[4]) : null,
-    kindCounts: filter.catalogo ? rowsToFacet(rows[ls ? 6 : 4]) : null,
-  };
-}
-
-/**
- * I segmenti di Domande con la vista predefinita, per le pagine sotto Domande
- * che li mostrano senza la lista (Documenti, §3.6.6). Un giro.
- */
-export async function loadQuestionSegments(
-  executor: UcExecutor,
-  v: UcViewer,
-  status: CaseStatus,
-): Promise<{ audience: QuestionAudience; defaults: QuestionDefaults; filter: QuestionFilter; segments: QuestionSegmentItem[] }> {
-  const { audience, defaults } = await loadQuestionDefaults(executor, v, status);
-  const filter = parseQuestionFilter({}, audience, defaults);
-  if (audience === "sviluppatore") return { audience, defaults, filter, segments: [] };
-  const ls = audience === "ls";
-  const rows = await executor.batch([questionCountsSql(v.caseId, filter, whereContext(v, audience)), ...(ls ? [requiredDocumentsCountSql(v.caseId, audience)] : [])]);
-  const counts = rowsToQuestionCounts(rows[0]);
-  return {
-    audience,
-    defaults,
-    filter,
-    segments: questionSegmentItems({ audience, counts: counts.segments, active: filter.vista, defaultSegment: defaults.vista, documents: ls ? rowCount(rows[1]) : null }),
+    segments: questionSegmentItems({ audience, counts: counts.segments, active: filter.vista, defaultSegment: defaults.vista }),
+    catalogSize: at.size >= 0 ? rowCount(rows[at.size]) : null,
+    kindCounts: at.kinds >= 0 ? rowsToFacet(rows[at.kinds]) : null,
+    files: rowCount(rows[3]),
   };
 }
 

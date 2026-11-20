@@ -44,7 +44,7 @@ export interface BulkPermissions {
   outcomes: boolean;
   /** «Proponi non applicabile» (Lateral Space). */
   proposeNa: boolean;
-  /** «Invia» e «Chiedi conferma»: richieste ai referenti (Responsabile del caso). */
+  /** «Chiedi al referente» e «Chiedi conferma al referente»: richieste ai referenti (Responsabile del caso). */
   send: boolean;
 }
 
@@ -99,7 +99,7 @@ export interface QuestionSelectionBarProps {
 
 /**
  * La selezione di Domande sul modello di Mail (§3.6.2): «12 selezionate
- * [Assegna a…] [Invia] [Altro ▾] [Annulla]», fissa in fondo alla finestra.
+ * [Affida a…] [Chiedi al referente] [Altro ▾] [Annulla]», fissa in fondo alla finestra.
  * Ogni azione apre un dialogo che dice a quante domande si applica; l'esito
  * arriva come toast, con le domande saltate e il motivo.
  */
@@ -251,10 +251,10 @@ export function QuestionSelectionBar({ workspaceId, caseId, selection, total, pe
           )}
           {(mode === "send" || mode === "confirm") && (
             <DialogBody
-              title={mode === "send" ? "Invia ai referenti" : "Chiedi conferma"}
+              title={BULK_ACTION_LABEL[mode]}
               note={`${mode === "send" ? "Ogni referente riceve un link con le sue domande." : "Le risposte tornano a chi possiede il dato, che le conferma o le corregge."} ${appliesTo(eligible(mode))} Quelle senza referente si saltano.`}
               busy={busy}
-              submit={mode === "send" ? `Invia ${questionsText(eligible("send"))}` : `Chiedi conferma di ${questionsText(eligible("confirm"))}`}
+              submit={mode === "send" ? `Chiedi ${questionsText(eligible("send"))}` : `Chiedi conferma di ${questionsText(eligible("confirm"))}`}
               ready
               onCancel={close}
               onSubmit={() =>

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { rowToLoadedItem } from "../sql/transitions.ts";
 import {
+  REVIEW_SHORTCUTS_KEY,
   VERIFICATION_PAGE_SIZE,
   buildQueue,
   excludedFromQueue,
@@ -12,6 +13,7 @@ import {
   reviewKeyAction,
   reviewPosition,
   rowsToReviewQueue,
+  shortcutsOn,
 } from "./verification.ts";
 import { LS_USER, OTHER_LS, lsUser, snapshotRow } from "./view.fixtures.ts";
 
@@ -112,9 +114,21 @@ test("keyboard: V validates, C asks, arrows move; never while typing or with a m
   assert.equal(reviewKeyAction({ key: "x", typing: false }), null);
 });
 
-test("the four eyes in words: the answers of the viewer go to a colleague", () => {
-  assert.equal(mineExcludedText(12, "elenco"), "12 risposte non sono qui perché le hai date tu: le verifica un collega.");
-  assert.equal(mineExcludedText(1, "elenco"), "1 risposta non è qui perché l'hai data tu: la verifica un collega.");
-  assert.equal(mineExcludedText(12, "fine"), "12 risposte le hai date tu: le verifica un collega.");
+test("(release 10, §3.5; WCAG 2.1.4) the switch turns the one-character keys off, the arrows stay; on unless the browser remembers «no»", () => {
+  for (const key of ["v", "V", "c", "C"]) assert.equal(reviewKeyAction({ key, typing: false, enabled: false }), null, key);
+  assert.equal(reviewKeyAction({ key: "ArrowRight", typing: false, enabled: false }), "next");
+  assert.equal(reviewKeyAction({ key: "ArrowLeft", typing: false, enabled: false }), "prev");
+  assert.equal(reviewKeyAction({ key: "v", typing: false, enabled: true }), "validate");
+  assert.equal(shortcutsOn(null), true);
+  assert.equal(shortcutsOn("si"), true);
+  assert.equal(shortcutsOn("no"), false);
+  assert.equal(shortcutsOn("boh"), true);
+  assert.equal(REVIEW_SHORTCUTS_KEY, "uc.verifica.tasti");
+});
+
+test("the four eyes in words: the answers of the viewer go to another person (neutral gender)", () => {
+  assert.equal(mineExcludedText(12, "elenco"), "12 risposte non sono qui perché le hai date tu: le verifica un'altra persona.");
+  assert.equal(mineExcludedText(1, "elenco"), "1 risposta non è qui perché l'hai data tu: la verifica un'altra persona.");
+  assert.equal(mineExcludedText(12, "fine"), "12 risposte le hai date tu: le verifica un'altra persona.");
   assert.equal(mineExcludedText(0, "fine"), null);
 });

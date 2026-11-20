@@ -1,20 +1,21 @@
 import { unstable_rethrow } from "next/navigation";
 import { Lock, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { TextAction } from "@/components/ui-10/row";
+import { casePath } from "@/components/uc/catalog/paths";
 import { findDossierAccess } from "@/components/uc/shell/case-data";
 import { requireWorkspaceAccess } from "@/lib/auth/require-workspace";
 import { loadUploadPanel, type UploadPanelData } from "@/lib/db/queries/uc-files";
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
+import { DOMANDE_TEXT } from "@/lib/uc/views/domande-text";
 import type { StorageZone } from "@/lib/uc/vocab";
-import { FileManagement } from "./file-management";
 import { UploadPanelClient } from "./upload-panel-client";
 
 /**
- * Pannello di caricamento dei documenti del caso (vista Lateral Space, PIANO
- * §5.1, §6): carica un file nel caso o nella voce (quarantena, controllo del
- * contenuto e delle intestazioni, rifiuto e cancellazione dei dati sanitari),
- * rivede i PDF in attesa (mai chi li ha caricati), crea e verifica le schede
- * dataset, cancella i file non più utili (Responsabile del caso).
+ * Caricamento di un file per una domanda (vista Lateral Space, PIANO §5.1, §6), sulla domanda a tutta pagina: carica
+ * il file nella voce (quarantena, controllo del contenuto e delle intestazioni, rifiuto e cancellazione dei dati
+ * sanitari). (Rilascio 10, §3.5) La gestione dei file (PDF da controllare, schede dataset, cancellazione) sta solo nel
+ * pannello «File» di Domande: qui un link lo apre.
  *
  * Componente server: ricontrolla l'accesso (workspace e ruoli di caso che
  * valgono adesso) e legge solo metadati. La zona della voce la decide il
@@ -100,7 +101,7 @@ export async function UploadPanel(props: UploadPanelProps) {
         <Unavailable text={data.upload.reason ?? "Qui non puoi caricare file."} />
       )}
 
-      {data.canManage ? <FileManagement workspaceId={props.workspaceId} caseId={props.caseId} data={data} /> : null}
+      <TextAction href={`${casePath(props.workspaceId, props.caseId, "domande")}?apri=file`}>{DOMANDE_TEXT.panel.manageFiles}</TextAction>
     </section>
   );
 }

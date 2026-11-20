@@ -88,3 +88,10 @@ test("the selection toasts say what happened (§3.6.2)", () => {
   assert.equal(bulkOutcomeText("na", 4), "«Non si applica» proposta su 4 domande: servono le due firme.");
   assert.deepEqual(Object.keys(BULK_ACTION_LABEL).sort(), [...BULK_ACTIONS].sort());
 });
+
+test("(release 10, §3.5) the selection asks with the panel's and Persone's verbs: «Affida a…», «Chiedi al referente»", () => {
+  assert.equal(BULK_ACTION_LABEL.assign, "Affida a…");
+  assert.equal(BULK_ACTION_LABEL.send, "Chiedi al referente");
+  assert.equal(BULK_ACTION_LABEL.confirm, "Chiedi conferma al referente");
+  assert.ok(!Object.values(BULK_ACTION_LABEL).some((l) => /^(Invia|Assegna)\b/.test(l)), "no «Invia», no «Assegna a…»");
+});

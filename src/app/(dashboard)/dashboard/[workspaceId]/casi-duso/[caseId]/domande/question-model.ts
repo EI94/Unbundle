@@ -54,14 +54,22 @@ export function expectsFile(data: Pick<ItemDetailData, "loaded">): boolean {
  * caricatore del dettaglio: azioni dallo stato e dal ruolo, avviso delle
  * firme, risposta, attività in una sola linea del tempo, dettagli tecnici solo
  * per Lateral Space. Al cliente niente codici, nemmeno nell'argomento, nel
- * ruolo di chi risponde e in quelli dei colleghi a cui affidarla; niente
- * autore né data delle risposte, niente scadenza accanto al nome di chi
- * risponde (art. 15.4); una sola azione, «Affida a un altro collega». In
- * pausa, a caso chiuso e in sola lettura le azioni non ci sono.
+ * ruolo di chi risponde e in quelli delle altre persone a cui affidarla;
+ * niente autore né data delle risposte, niente scadenza accanto al nome di
+ * chi risponde (art. 15.4); una sola azione, «Affida a…». In pausa, a caso
+ * chiuso e in sola lettura le azioni non ci sono.
  */
 export function questionDetailModel(
   data: ItemDetailData,
-  i: { workspaceId: string; caseId: string; roles: readonly CaseRole[]; readOnly: boolean; now: Date },
+  i: {
+    workspaceId: string;
+    caseId: string;
+    roles: readonly CaseRole[];
+    readOnly: boolean;
+    now: Date;
+    /** (Rilascio 10, §3.5) La query della lista da cui si apre il pannello: «Apri a tutta pagina» la porta, e «‹ Domande» ci torna. */
+    listQuery?: string;
+  },
 ): QuestionDetailModel {
   const s = data.loaded.snapshot;
   const x = data.loaded.extra;
@@ -103,7 +111,7 @@ export function questionDetailModel(
             itemId: s.id,
             plan,
             actions: data.actions,
-            askAgainLabel: askAgainLabel(s.status),
+            askAgainLabel: askAgainLabel(),
             responseType: s.responseType,
             options: choiceOptions(x.responseConfig),
             requiresValidity: s.requiresValidityPeriod,
@@ -136,6 +144,6 @@ export function questionDetailModel(
       // Accanto al referente, la scadenza sarebbe una data per persona: al cliente no (art. 15.4).
       due: ls && x.dueAt ? `${formatLongDayIt(x.dueAt)}${x.dueIsProposal ? " (proposta)" : ""}` : null,
     },
-    fullHref: itemPath(i.workspaceId, i.caseId, s.id),
+    fullHref: `${itemPath(i.workspaceId, i.caseId, s.id)}${i.listQuery ?? ""}`,
   };
 }

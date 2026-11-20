@@ -196,17 +196,21 @@ test("questions: every question in one view, the referent's answer, no answers f
   const status = await caseStatus();
   const now = new Date();
   const questions = [...state.items.keys()].filter((k) => k.startsWith("q."));
-  const all = await loadQuestionsPage(exec!, lead, { searchParams: { vista: "tutte", indispensabili: "no" }, status, now });
+  // (Release 10, §3.5) A search opens the rows; without it the topics stay closed.
+  const all = await loadQuestionsPage(exec!, lead, { searchParams: { vista: "tutte", indispensabili: "no", q: "q." }, status, now });
   assert.ok(all);
   assert.equal(all.total, questions.length);
   assert.ok(all.rows.length <= 50);
   const answered = all.rows.find((r) => r.id === item("q.servizio.02"));
   assert.equal(answered?.status, "in_verifica");
-  assert.equal(answered?.assignee, "Referente di prova");
-  assert.ok(all.groups && all.groups.length > 0, "grouped by topic for Lateral Space");
-  const observer = await loadQuestionsPage(exec!, await viewer(ids.observer, ["osservatore"]), { searchParams: { vista: "tutte", indispensabili: "no" }, status, now });
+  assert.match(answered?.line ?? "", /^Referente di prova/, "who answered, in grey");
+  assert.ok(all.groups.length > 0, "grouped by topic for Lateral Space");
+  const closed = await loadQuestionsPage(exec!, lead, { searchParams: { vista: "tutte", indispensabili: "no" }, status, now });
+  assert.equal(closed!.collapsed, true);
+  assert.equal(closed!.topics.reduce((n, t) => n + t.count, 0), questions.length);
+  const observer = await loadQuestionsPage(exec!, await viewer(ids.observer, ["osservatore"]), { searchParams: { vista: "tutte", indispensabili: "no", q: "q." }, status, now });
   assert.equal(observer!.audience, "cliente");
-  assert.ok(observer!.rows.every((r) => r.answer === null && r.value === null), "the client never gets the answers");
+  assert.ok(observer!.rows.every((r) => r.value === null && !/giorni? fa|ieri|adesso/.test(r.line)), "the client never gets the answers, nor who answered and when");
   const dev = await loadQuestionsPage(exec!, { ...lead, roles: ["ls_sviluppatore"] }, { searchParams: {}, status, now });
   assert.equal(dev!.total, 0, "nothing is green yet");
 });
@@ -300,7 +304,7 @@ test("the template's roles, modules, gates and ROI are read from the definition 
   const c = { workspaceId: ids.ws, caseId: state.caseId };
   const questions = await loadQuestionsPage(inspecting, lead, { searchParams: { vista: "tutte", indispensabili: "no" }, status, now });
   assert.deepEqual(questions!.ctx.roleLabels, firstCtx.roleLabels);
-  assert.ok(questions!.groups!.length > 0 && questions!.groups!.every((g) => g.title !== null), "topics in schema order, with their titles");
+  assert.ok(questions!.topics.length > 0 && questions!.topics.every((g) => g.title !== ""), "topics in schema order, with their titles");
   assert.ok(await loadQuestionDocuments(inspecting, lead));
   assert.ok(await loadItemDetail(inspecting, lead, item("q.servizio.05")));
   assert.ok(await loadOverview(inspecting, { ...c, now }));
