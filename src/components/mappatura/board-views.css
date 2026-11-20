@@ -94,8 +94,10 @@
    modifica in fondo a ogni riga ci sta anche «+ passo»: 8 px prima, il bottone (61 px con Geist a 12 px), e il segno
    di dove cade un passo trascinato (11 px). */
 [data-board-root] .b-pm[data-adds] { --b-after: 80px; }
-/* (Rilascio 10, §3.7) «+ passo» in fondo alla riga, sempre in vista: è l'azione che crea. */
+/* (Rilascio 10, §3.7) «+ passo» in fondo alla riga, sempre in vista: è l'azione che crea. In una riga più lunga del
+   riquadro resta fermo al suo bordo destro, sopra le card che scorrono, così si tocca senza far scorrere la mappa. */
 [data-board-root] .b-add-step { white-space: nowrap; opacity: 1; }
+[data-board-root] .b-pm[data-adds] .b-pm-after { position: sticky; right: 0; z-index: 1; padding-right: 12px; margin-right: -12px; background: color-mix(in srgb, var(--board-bone) 95%, transparent); }
 /* «+ processo» sotto l'ultima riga, fermo a sinistra quando la mappa scorre. */
 [data-board-root] .b-pm-foot { position: sticky; left: 0; width: max-content; padding: 10px 12px; }
 [data-board-root] .b-add-process { white-space: nowrap; }

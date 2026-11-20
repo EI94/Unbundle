@@ -11,7 +11,8 @@
  * - l'etichetta della riga: il nome si scrive sul posto; chi lo segue si legge; gli attriti della riga in rosso; i
  *   voti solo se ce ne sono; un «⋯» per processo apre chi lo segue (da scrivere), «Sposta su», «Sposta giù», «Elimina
  *   il processo» (per uno vuoto, con «Annulla») e i voti `−` n `+`;
- * - «+ passo» in fondo a ogni riga, sempre in vista (apre il drawer di un passo nuovo), «+ processo» sotto l'ultima;
+ * - «+ passo» in fondo a ogni riga, sempre in vista anche quando la mappa scorre (resta al bordo destro del riquadro;
+ *   apre il drawer di un passo nuovo), «+ processo» sotto l'ultima;
  * - la maniglia a sinistra di ogni card trascina il passo nella sua riga o in un'altra (P58): la riga sotto il passo
  *   si colora (P59) e un segno dice dove cadrà. Senza mouse e sul telefono lo fanno i bottoni «Sposta…» del drawer.
  * In sola lettura nessun controllo: si legge la mappa e si aprono i passi.

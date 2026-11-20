@@ -165,6 +165,12 @@ test("«+ passo» ha il suo posto in fondo a ogni riga della mappa che si modifi
   assert.ok(room >= need, `--b-after ${room} px, ne servono ${need}`);
   // La mappa in sola lettura non ha «+ passo»: niente posto in più (la larghezza della riga lo legge con 0 px di default).
   assert.equal(views.filter((item) => item.declarations.has("--b-after")).map((item) => item.selector).join(), "[data-board-root] .b-pm[data-adds]");
+  // (Rilascio 10, §3.7) In una riga più lunga del riquadro «+ passo» resta fermo al bordo destro, sopra le card che
+  // scorrono: si tocca senza far scorrere la mappa. Il margine che si aggiunge a destra si toglie: la riga non si allarga.
+  const pinned = rule(views, ".b-pm[data-adds] .b-pm-after");
+  assert.deepEqual([pinned?.get("position"), pinned?.get("right"), pinned?.get("z-index")], ["sticky", "0", "1"]);
+  assert.equal(px(pinned?.get("padding-right"), "margine a destra") + px(pinned?.get("margin-right")?.replace("-", ""), "margine negativo") * -1, 0);
+  assert.match(pinned?.get("background") ?? "", /var\(--board-bone\)/, "copre le card che gli passano sotto");
 });
 
 test("il posto del toast: in fondo alla colonna della board (fermo in fondo alla finestra), sopra il campo dell'assistente, in fondo a un drawer", () => {
