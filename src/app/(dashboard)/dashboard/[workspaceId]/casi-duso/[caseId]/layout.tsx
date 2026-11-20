@@ -28,6 +28,7 @@ import {
 } from "@/lib/uc/views/case-shell";
 import { NEXT_STEP_ICON, caseNextSteps, nextStepFor, resolveStepHref, type NextStep } from "@/lib/uc/views/next-step";
 import { isLsViewer } from "@/lib/uc/views/status-groups";
+import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
 
 /** Il blocco testata più schede: lo misura `screens.mjs` (≤ 260 px a 1440) e lo guarda la barra fissa. */
 const CASE_HEAD_ID = "uc-case-head";
@@ -45,7 +46,8 @@ const CASE_HEAD_ID = "uc-case-head";
  * layout (`revalidatePath(…, "layout")`), così la testata resta aggiornata.
  * Senza le tabelle uc ogni pagina mostra «Questa pagina non si è caricata.»
  * (`SectionUnavailable`). Con la configurazione di Lateral Space incompleta la
- * realizzazione è in sola lettura: lo dice il log, non la testata (F-005).
+ * realizzazione è in sola lettura: lo dice il log, e l'avviso della testata a
+ * chi gestisce il workspace (F-005, fino all'ondata 6b).
  */
 export default async function CaseLayout({ children, params }: { children: React.ReactNode; params: Promise<{ workspaceId: string; caseId: string }> }) {
   const { workspaceId, caseId } = await params;
@@ -101,7 +103,15 @@ export default async function CaseLayout({ children, params }: { children: React
   const menu: CaseMenuEntry[] = caseMenuFor(roles, { exportable: canExport }).map((m) => ({ key: m.key, label: m.label, href: m.segment === null ? null : at(m.segment) }));
 
   // (Rilascio 10, §3.5) Un segnale per stato: l'avviso non c'è quando il pulsante pieno dice già la stessa cosa.
-  const alert = caseHeadAlert({ status: c.status, gateReconfirm: header.readiness?.gate_reconfirm === true, canOpenVia: canOpenShellPage("via", roles), primary: primary?.id ?? null });
+  // La configurazione incompleta (F-005): nel log e, fino all'ondata 6b, un avviso solo per chi gestisce il workspace.
+  const alert = caseHeadAlert({
+    status: c.status,
+    gateReconfirm: header.readiness?.gate_reconfirm === true,
+    canOpenVia: canOpenShellPage("via", roles),
+    primary: primary?.id ?? null,
+    lsConfigured: caseAccess.lsConfigured,
+    workspaceAdmin: canManageWorkspaceSettings(access.role),
+  });
   const tabs = caseTabsFor(roles);
   const status = { tone: CASE_STATUS_TONE[c.status], label: CASE_STATUS_LABEL[c.status] };
   const ls = isLsViewer(roles);

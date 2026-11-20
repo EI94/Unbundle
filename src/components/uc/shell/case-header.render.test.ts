@@ -174,8 +174,9 @@ test("the layout: the use case title, the alert silenced by the same filled butt
   assert.match(source, /const title = realizationTitle\(\{ caseTitle: c\.title, parent: header\.parent \}\);/);
   assert.match(source, /<CaseHeader[\s\S]*title=\{title\}/);
   assert.match(source, /<CaseStickyBar[^>]*title=\{title\}/, "the fixed bar has the same title");
-  assert.match(source, /caseHeadAlert\(\{[\s\S]*?primary: primary\?\.id \?\? null \}\)/);
+  assert.match(source, /caseHeadAlert\(\{[\s\S]*?primary: primary\?\.id \?\? null,/);
   assert.match(source, /ucLog\(\{ level: "warn", area: "uc", op: "configurazione_da_completare"/);
+  assert.match(source, /workspaceAdmin: canManageWorkspaceSettings\(access\.role\)/, "the alert, for the admins only, until wave 6b");
   assert.match(source, /caseNextSteps\(\{ \.\.\.header\.nextStep, filesToCheck \}/, "«Controlla N file» in the header");
   assert.doesNotMatch(source, /oneLiner|readOnlyBadge|showsReadOnlyBadge/);
 });

@@ -243,7 +243,7 @@ export function viaRedirect(pathname: string, search: string): string | null {
   return `${m[1]}${query ? `?${query}` : ""}#${VIA_SECTION_ID}`;
 }
 
-export type CaseHeadAlertKind = "riconferma" | "pausa" | "chiuso";
+export type CaseHeadAlertKind = "riconferma" | "pausa" | "chiuso" | "configurazione";
 
 export interface CaseHeadAlert {
   kind: CaseHeadAlertKind;
@@ -255,13 +255,24 @@ export interface CaseHeadAlert {
 
 /**
  * L'unico avviso della testata (DESIGN §3.3), in quest'ordine: via da
- * riconfermare, pausa, chiusura. (Rilascio 10, §3.5) Un segnale per stato:
- * l'avviso non c'è quando il pulsante pieno dice già la stessa cosa
- * (`primary`: «Riconferma il via allo sviluppo», «Riprendi la
- * realizzazione»). L'avviso «Configurazione da completare» e il badge «Sola
- * lettura» non ci sono più: la configurazione che manca va nel log (F-005).
+ * riconfermare, pausa, chiusura, configurazione da completare. (Rilascio 10,
+ * §3.5) Un segnale per stato: l'avviso non c'è quando il pulsante pieno dice
+ * già la stessa cosa (`primary`: «Riconferma il via allo sviluppo»,
+ * «Riprendi la realizzazione»). La configurazione che manca (i domini di
+ * Lateral Space: tutti in sola lettura) va nel log e, finché l'ondata 6b non la
+ * porta in una riga delle Impostazioni del workspace, la legge qui solo chi le
+ * gestisce (F-005); niente badge «Sola lettura» per gli altri.
  */
-export function caseHeadAlert(i: { status: CaseStatus; gateReconfirm: boolean; canOpenVia: boolean; primary?: NextStepId | null }): CaseHeadAlert | null {
+export function caseHeadAlert(i: {
+  status: CaseStatus;
+  gateReconfirm: boolean;
+  canOpenVia: boolean;
+  primary?: NextStepId | null;
+  /** I domini di Lateral Space sono configurati (altrimenti la realizzazione è in sola lettura per tutti). */
+  lsConfigured?: boolean;
+  /** Chi guarda gestisce le Impostazioni del workspace. */
+  workspaceAdmin?: boolean;
+}): CaseHeadAlert | null {
   if (i.gateReconfirm && i.status !== "chiuso" && i.primary !== "riconferma_via") {
     return {
       kind: "riconferma",
@@ -272,6 +283,7 @@ export function caseHeadAlert(i: { status: CaseStatus; gateReconfirm: boolean; c
   }
   if (i.status === "sospeso" && i.primary !== "riprendi") return { kind: "pausa", text: "Realizzazione in pausa: niente invii né promemoria finché non riprende.", tone: "grigio", action: null };
   if (i.status === "chiuso") return { kind: "chiuso", text: "Realizzazione chiusa: si può solo leggere.", tone: "grigio", action: null };
+  if (i.lsConfigured === false && i.workspaceAdmin) return { kind: "configurazione", text: "Configurazione da completare: la realizzazione è in sola lettura.", tone: "giallo", action: null };
   return null;
 }
 

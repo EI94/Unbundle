@@ -144,8 +144,12 @@ test("one alert at most, in the order of DESIGN §3.3; (rilascio 10) not when th
   assert.equal(caseHeadAlert({ ...base, status: "in_sviluppo", gateReconfirm: true, primary: "verifica" })?.kind, "riconferma", "another step: the alert stays");
   assert.equal(caseHeadAlert({ ...base, status: "sospeso", primary: "riprendi" }), null);
   assert.equal(caseHeadAlert({ ...base, status: "sospeso", primary: null })?.kind, "pausa", "the client has no «Riprendi»: the alert stays");
-  // F-005: the incomplete configuration goes to the log, never to the header.
-  for (const status of ["bozza", "raccolta", "in_sviluppo"] as const) assert.equal(caseHeadAlert({ ...base, status }), null, status);
+  // F-005: the incomplete configuration goes to the log and, until wave 6b moves it to Settings, to the admins only.
+  const config = { ...base, lsConfigured: false };
+  assert.deepEqual(caseHeadAlert({ ...config, workspaceAdmin: true }), { kind: "configurazione", text: "Configurazione da completare: la realizzazione è in sola lettura.", tone: "giallo", action: null });
+  assert.equal(caseHeadAlert({ ...config, workspaceAdmin: false }), null, "no badge, no alert for the others");
+  assert.equal(caseHeadAlert({ ...base, lsConfigured: true, workspaceAdmin: true }), null);
+  assert.equal(caseHeadAlert({ ...config, workspaceAdmin: true, status: "sospeso" })?.kind, "pausa", "one alert at most, the state first");
 });
 
 test("(rilascio 10, §3.5) the title is always the use case's; the small progress only for who opens the Panoramica", () => {
