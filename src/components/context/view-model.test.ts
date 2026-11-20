@@ -688,6 +688,14 @@ test("(rilascio 10) le viste: «processi», «fonti» e il vecchio «appunti»; 
   assert.equal(contextViewHref(WS_ID, "fonti"), `/dashboard/${WS_ID}/contesto?vista=fonti`);
 });
 
+test("(rilascio 10) «Altro» di «Aggiungi appunti» si apre da sé solo per un errore di «Con chi» o «Link»", async () => {
+  const { notesMoreOnError } = await import("./view-model.ts");
+  assert.equal(notesMoreOnError({}), false);
+  assert.equal(notesMoreOnError({ body: "Scrivi gli appunti." }), false);
+  assert.equal(notesMoreOnError({ link: "Il link non è valido." }), true);
+  assert.equal(notesMoreOnError({ participants: "Troppo lungo." }), true);
+});
+
 test("(rilascio 10) `?apri=` e `?fonte=`: solo un id che sembra un uuid apre il pannello", async () => {
   const { sheetIdParam } = await import("./view-model.ts");
   const id = "9F0C2A4B-1D2E-4F3A-8B4C-5D6E7F8A9B0C";

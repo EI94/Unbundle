@@ -739,6 +739,12 @@ export interface NoteDraftErrors {
   link?: string;
 }
 /** I controlli del browser prima di salvare (gli stessi limiti di `addContextNote`, che li rifà). Senza file servono gli appunti. */
+/**
+ * (Rilascio 10) «Altro» del dialogo «Aggiungi appunti» («Con chi» e «Link») si apre da sé solo per un errore in uno dei
+ * due campi; con del testo dentro chi scrive lo chiude lo stesso, e il testo resta.
+ */
+export const notesMoreOnError = (errors: { readonly participants?: string; readonly link?: string }): boolean => Boolean(errors.participants || errors.link);
+
 export function noteDraftErrors(draft: { body: string; title: string; occurredOn: string; link: string; hasFile: boolean }): NoteDraftErrors {
   const errors: NoteDraftErrors = {};
   const body = draft.body.trim();

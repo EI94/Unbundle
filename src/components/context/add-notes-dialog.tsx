@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 import { AiConsentNotice } from "./ai-consent-notice";
 import { Field } from "./fields";
 import { readUntilDone, saveNote, uploadDocument } from "./read-client";
-import { ACCEPTED_FILES, addNotesClose, afterUpload, droppedFileKind, droppedText, fileSizeText, noteDraftErrors, proposedTitle, readOutcomeMessage, titleFromFileName, type AddNotesPhase, type ReadMessage } from "./view-model";
+import { ACCEPTED_FILES, addNotesClose, afterUpload, droppedFileKind, droppedText, fileSizeText, noteDraftErrors, notesMoreOnError, proposedTitle, readOutcomeMessage, titleFromFileName, type AddNotesPhase, type ReadMessage } from "./view-model";
 
 const T = CONTEXT_TEXT;
 
@@ -75,7 +75,8 @@ export function AddNotesDialog({
   const round = useRef(0);
   const fileInput = useRef<HTMLInputElement | null>(null);
   const busy = phase === "salvo" || phase === "leggo";
-  // «Con chi» e «Link» stanno in «Altro», chiuso; si apre da sé quando hanno qualcosa o un errore.
+  // «Con chi» e «Link» stanno in «Altro», chiuso; si apre da sé per un errore in uno dei due, e si chiude anche con del
+  // testo dentro (il testo resta e si salva).
   const [moreOpen, setMoreOpen] = useState(false);
 
   const reset = () => {
@@ -174,6 +175,7 @@ export function AddNotesDialog({
   const submit = async () => {
     const local = noteDraftErrors({ ...draft, hasFile: file !== null });
     setErrors({ ...local });
+    if (notesMoreOnError(local)) setMoreOpen(true);
     setFailure(null);
     if (Object.keys(local).length > 0) return;
     const mine = round.current;
@@ -201,8 +203,10 @@ export function AddNotesDialog({
       if (round.current !== mine) return;
       if (!saved || !saved.ok) {
         setPhase("modulo");
-        if (saved && Object.keys(saved.fieldErrors).length > 0) setErrors(saved.fieldErrors);
-        else setFailure(saved ? saved.message : T.errors.retry);
+        if (saved && Object.keys(saved.fieldErrors).length > 0) {
+          setErrors(saved.fieldErrors);
+          if (notesMoreOnError(saved.fieldErrors)) setMoreOpen(true);
+        } else setFailure(saved ? saved.message : T.errors.retry);
         return;
       }
       if (!saved.value.created) {
@@ -330,7 +334,7 @@ export function AddNotesDialog({
                 </Field>
               </div>
               {(() => {
-                const shown = moreOpen || Boolean(draft.participants || draft.link || errors.participants || errors.link);
+                const shown = moreOpen;
                 return (
                   <div className="space-y-4">
                     <button

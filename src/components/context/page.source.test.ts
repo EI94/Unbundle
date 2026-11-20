@@ -126,6 +126,17 @@ test("«Aggiungi appunti» legge un file di testo trascinato come il caricamento
   assert.doesNotMatch(source, /\.text\(\)/, "File.text() legge solo UTF-8");
 });
 
+test("(rilascio 10) «Altro» di «Aggiungi appunti»: si chiude anche con del testo in «Con chi» o «Link»; si apre da sé solo per un loro errore", () => {
+  const source = withoutComments(read("src/components/context/add-notes-dialog.tsx"));
+  assert.match(source, /const shown = moreOpen;/);
+  assert.doesNotMatch(source, /moreOpen \|\| Boolean\(draft\./, "il testo dentro non la tiene aperta");
+  assert.match(source, /setErrors\(\{ \.\.\.local \}\);\s*if \(notesMoreOnError\(local\)\) setMoreOpen\(true\);/);
+  assert.match(source, /setErrors\(saved\.fieldErrors\);\s*if \(notesMoreOnError\(saved\.fieldErrors\)\) setMoreOpen\(true\);/);
+  // I campi restano nella pagina, nascosti: il loro testo si salva anche con «Altro» chiuso.
+  assert.match(source, /<div id="appunti-altro" hidden=\{!shown\}/);
+  assert.match(source, /participants: draft\.participants, link: draft\.link/);
+});
+
 test("«Aggiungi appunti» chiusa durante la lettura: quando la lettura finisce, la pagina si aggiorna", () => {
   const source = withoutComments(read("src/components/context/add-notes-dialog.tsx"));
   assert.match(source, /if \(running\.current !== controller\) \{\s*router\.refresh\(\);\s*return;\s*\}/);
