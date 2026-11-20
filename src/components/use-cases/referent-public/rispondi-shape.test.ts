@@ -145,6 +145,19 @@ test("passo 1: la descrizione in 6 righe con «Leggi tutto» solo quando è lung
   assert.ok(long.includes(">Leggi tutto<"));
 });
 
+test("(rilascio 10) i passi fatti si toccano solo se si raggiungono: mai oltre un passo da finire", () => {
+  // «Correggi» senza nota: il passo 1 non è fatto, il passo 2 (i due numeri del tempo) sì.
+  const draft = { confirm: "correggi" as const, note: null, estimate: null, timesPerMonth: 20, minutesEach: 5, stale: false, savedAt: null };
+  const stuck = html(view({ kind: "referente", check: { ...CHECK(null)!, draft } }), "2");
+  const steps = stuck.slice(stuck.indexOf('data-slot="referent-steps"'), stuck.indexOf("</ol>"));
+  assert.match(steps, /data-state="done"/, "«Le stime» è fatta");
+  assert.doesNotMatch(steps, /referent-step-go/, "ma non si tocca: prima va finito «Il caso d'uso»");
+  assert.match(stuck, /<h2[^>]*>È così\?<\/h2>/, "e la pagina resta al passo 1");
+  // Tutti e due fatti: al passo 3 i due passi si toccano.
+  const done = html(view({ kind: "referente", check: { ...CHECK(null)!, draft: { ...draft, confirm: "si" } } }), "3");
+  assert.equal((done.match(/data-slot="referent-step-go"/g) ?? []).length, 2);
+});
+
 test("passo 2: «Ti tornano queste stime?» una volta, «Sì · Meno · Di più · Non lo so», il commento dopo una scelta diversa da «Sì»", () => {
   const confirmed = { confirm: "si" as const, note: null, estimate: null, timesPerMonth: null, minutesEach: null, stale: false, savedAt: null };
   const at = (draft: ReferentBenefitView["draft"]) => html(view({ kind: "referente", check: { ...CHECK([row("tempo-1", draft)])!, draft: confirmed } }), "2");

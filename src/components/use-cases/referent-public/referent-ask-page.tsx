@@ -1069,9 +1069,12 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
       {stepped && under === "questions" ? (
         <ReferentStepBar
           items={stepStates(view, step)}
+          // (Rilascio 10) Si torna solo a un passo che si raggiunge adesso: mai oltre il primo da finire.
+          canGo={(to) => resolveStep(view, to) === to}
           onGo={(to, e) => {
+            const target = resolveStep(viewRef.current, to);
             // Il secondo clic di un doppio clic su un passo arriva sul passo dopo: lo si ignora.
-            if (to !== step && !tooSoon(e)) goTo(to);
+            if (target !== step && !tooSoon(e)) goTo(target);
           }}
         />
       ) : null}

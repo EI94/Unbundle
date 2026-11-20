@@ -37,7 +37,16 @@ const AUTOSAVE_MS = 1500;
  * per tornarci (`onGo`, 44 px): al passo 3 prende il posto di «Indietro», così la barra in basso ha solo il numero e
  * «Invia». Il passo di adesso e quelli dopo non si toccano.
  */
-export function ReferentStepBar({ items, onGo }: { items: { step: CheckStep; state: "done" | "current" | "later" }[]; onGo?: (step: CheckStep, e: React.MouseEvent<HTMLButtonElement>) => void }) {
+export function ReferentStepBar({
+  items,
+  onGo,
+  canGo,
+}: {
+  items: { step: CheckStep; state: "done" | "current" | "later" }[];
+  onGo?: (step: CheckStep, e: React.MouseEvent<HTMLButtonElement>) => void;
+  /** (Rilascio 10) Il passo si raggiunge adesso (`resolveStep`): un passo fatto dopo uno da finire non si tocca. */
+  canGo?: (step: CheckStep) => boolean;
+}) {
   return (
     <ol aria-label={T.steps.label} data-slot="referent-steps" className={cn("mt-6 grid gap-2", items.length === 3 ? "grid-cols-3" : "grid-cols-2")}>
       {items.map((item, index) => {
@@ -63,7 +72,7 @@ export function ReferentStepBar({ items, onGo }: { items: { step: CheckStep; sta
         );
         return (
           <li key={item.step} data-state={item.state} aria-current={item.state === "current" ? "step" : undefined} className="flex min-w-0 items-start gap-2">
-            {item.state === "done" && onGo ? (
+            {item.state === "done" && onGo && (canGo?.(item.step) ?? true) ? (
               <button
                 type="button"
                 data-slot="referent-step-go"
