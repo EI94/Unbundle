@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronRight, FileText, Lock, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -11,7 +11,7 @@ import { SELECT_CLASS } from "@/components/uc/catalog/catalog-filters";
 import { filePath } from "@/components/uc/catalog/paths";
 import { useUcAction } from "@/components/uc/catalog/use-uc-action";
 import { ActionMenu, type ActionMenuItem } from "@/components/uc/ui/action-menu";
-import { deleteFileAction, validateDatasetAction } from "@/lib/actions/uc-files";
+import { deleteFileAction, reviewQuarantinedFileAction, validateDatasetAction } from "@/lib/actions/uc-files";
 import type { UploadPanelData } from "@/lib/db/queries/uc-files";
 import { cn } from "@/lib/utils";
 import type { CaseFileRow, DatasetCard, DatasetWithoutFileRow, PreviewTable } from "@/lib/uc/views/documents";
@@ -66,26 +66,46 @@ export function FilePanel({ workspaceId, caseId, questionsBase, files, datasetsW
   const [uploading, setUploading] = useState(false);
   const [all, setAll] = useState(false);
   const [datasetFor, setDatasetFor] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState<CaseFileRow | null>(null);
+  /** «Cancella» un file o «Rifiuta» un PDF da controllare: la stessa finestra di conferma. */
+  const [confirming, setConfirming] = useState<{ kind: "delete" | "reject"; id: string; name: string } | null>(null);
   const [targetId, setTargetId] = useState("");
   const target = upload?.targets.find((t) => (t.id ?? "") === targetId) ?? upload?.targets[0] ?? null;
   const candidate = manage?.candidates.find((c) => c.id === datasetFor) ?? null;
   const reviews = manage?.reviews ?? [];
   const shown = all ? files : files.slice(0, SHOWN);
+  // Il fuoco va dove compare il contenuto nuovo: il caricamento in cima, il primo file in più dopo «Vedi tutti».
+  const uploadHeading = useRef<HTMLHeadingElement | null>(null);
+  const firstMore = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (uploading) uploadHeading.current?.focus();
+  }, [uploading]);
+  useEffect(() => {
+    if (all) firstMore.current?.focus();
+  }, [all]);
 
+  const decideItems = (actions: { decide: { datasetId: string } | null; decideBlocked: boolean }): ActionMenuItem[] => {
+    if (actions.decide) {
+      const datasetId = actions.decide.datasetId;
+      return [
+        { label: T.validateDataset, disabled: pending, onSelect: () => run(() => validateDatasetAction(workspaceId, caseId, { datasetId, outcome: "validato" }), { success: T.datasetValidated }) },
+        { label: T.rejectDataset, disabled: pending, onSelect: () => run(() => validateDatasetAction(workspaceId, caseId, { datasetId, outcome: "rifiutato" }), { success: T.datasetRejected }) },
+      ];
+    }
+    return actions.decideBlocked ? [{ label: T.validateDataset, disabled: true, hint: T.decideBlocked }] : [];
+  };
   const menuFor = (f: CaseFileRow): ActionMenuItem[] => {
     const items: ActionMenuItem[] = [];
     if (f.actions.download) items.push({ label: T.download, href: filePath(workspaceId, caseId, f.id) });
     if (f.actions.createDataset) items.push({ label: T.createDataset, onSelect: () => setDatasetFor(f.id) });
-    if (f.actions.decide) {
-      const datasetId = f.actions.decide.datasetId;
-      items.push({ label: T.validateDataset, disabled: pending, onSelect: () => run(() => validateDatasetAction(workspaceId, caseId, { datasetId, outcome: "validato" }), { success: T.datasetValidated }) });
-      items.push({ label: T.rejectDataset, disabled: pending, onSelect: () => run(() => validateDatasetAction(workspaceId, caseId, { datasetId, outcome: "rifiutato" }), { success: T.datasetRejected }) });
-    } else if (f.actions.decideBlocked) {
-      items.push({ label: T.validateDataset, disabled: true, hint: T.decideBlocked });
-    }
-    if (f.actions.delete) items.push({ label: T.delete, destructive: true, onSelect: () => setDeleting(f) });
+    items.push(...decideItems(f.actions));
+    if (f.actions.delete) items.push({ label: T.delete, destructive: true, onSelect: () => setConfirming({ kind: "delete", id: f.id, name: f.name }) });
     return items;
+  };
+  const confirm = () => {
+    if (!confirming) return;
+    const done = { onSuccess: () => setConfirming(null) };
+    if (confirming.kind === "delete") run(() => deleteFileAction(workspaceId, caseId, { fileId: confirming.id }), { success: T.deleted, ...done });
+    else run(() => reviewQuarantinedFileAction(workspaceId, caseId, { fileId: confirming.id, outcome: "rifiutato" }), { success: T.rejected, ...done });
   };
 
   return (
@@ -103,7 +123,9 @@ export function FilePanel({ workspaceId, caseId, questionsBase, files, datasetsW
       <div data-slot="file-panel" className="min-w-0 space-y-6">
         {upload && uploading && target && (
           <section aria-label={T.upload} className="min-w-0 space-y-3 rounded-xl p-3 ring-1 ring-foreground/10">
-            <h3 className="text-base font-semibold">{T.upload}</h3>
+            <h3 ref={uploadHeading} tabIndex={-1} className="rounded-sm text-base font-semibold outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+              {T.upload}
+            </h3>
             {upload.allowed ? (
               <>
                 <label className="block space-y-1.5 text-sm">
@@ -136,7 +158,7 @@ export function FilePanel({ workspaceId, caseId, questionsBase, files, datasetsW
             <h3 id="uc-file-da-controllare" className="text-base font-semibold">
               {T.toCheck(reviews.length)}
             </h3>
-            <QuarantineReviews workspaceId={workspaceId} caseId={caseId} reviews={reviews} heading={false} />
+            <QuarantineReviews workspaceId={workspaceId} caseId={caseId} reviews={reviews} heading={false} onReject={(f) => setConfirming({ kind: "reject", ...f })} />
           </section>
         )}
 
@@ -148,10 +170,13 @@ export function FilePanel({ workspaceId, caseId, questionsBase, files, datasetsW
             <p className="text-sm text-muted-foreground">{T.none}</p>
           ) : (
             <ul className="divide-y rounded-xl bg-card ring-1 ring-foreground/10">
-              {shown.map((f) => (
+              {shown.map((f, i) => (
                 <li key={f.id} className="flex min-w-0 items-start gap-2 px-3 py-1.5">
                   <details className="group min-w-0 flex-1">
-                    <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 py-1 [&::-webkit-details-marker]:hidden">
+                    <summary
+                      ref={i === SHOWN ? firstMore : undefined}
+                      className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-sm py-1 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden"
+                    >
                       {f.zone === "personale" ? <Lock className="size-4 shrink-0 text-uc-lucchetto" aria-hidden /> : <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden />}
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium">{f.name}</span>
@@ -176,9 +201,13 @@ export function FilePanel({ workspaceId, caseId, questionsBase, files, datasetsW
             </h3>
             <ul className="divide-y rounded-xl bg-card ring-1 ring-foreground/10">
               {datasetsWithoutFile.map((d) => (
-                <li key={d.id} className="min-w-0 px-3 py-2.5 text-sm">
-                  <p className="font-medium break-words">{d.title}</p>
-                  <DatasetLine card={d} />
+                <li key={d.id} className="flex min-w-0 items-start gap-2 px-3 py-2.5 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium break-words">{d.title}</p>
+                    <DatasetLine card={d} />
+                  </div>
+                  {/* Una scheda che aspetta la verifica si decide anche senza il suo file (F-074). */}
+                  <ActionMenu items={decideItems(d.actions)} label={T.datasetMenu(d.title)} />
                 </li>
               ))}
             </ul>
@@ -201,23 +230,18 @@ export function FilePanel({ workspaceId, caseId, questionsBase, files, datasetsW
         </Dialog>
       )}
 
-      <Dialog open={deleting !== null} onOpenChange={(o) => !o && !pending && setDeleting(null)}>
+      <Dialog open={confirming !== null} onOpenChange={(o) => !o && !pending && setConfirming(null)}>
         <DialogContent showCloseButton={false} className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="break-words">{deleting ? T.deleteTitle(deleting.name) : T.delete}</DialogTitle>
-            <DialogDescription>{T.deleteBody}</DialogDescription>
+            <DialogTitle className="break-words">{confirming ? (confirming.kind === "delete" ? T.deleteTitle(confirming.name) : T.rejectTitle(confirming.name)) : T.delete}</DialogTitle>
+            <DialogDescription>{confirming?.kind === "reject" ? T.rejectBody : T.deleteBody}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="ghost" className="min-h-11 sm:min-h-8" onClick={() => setDeleting(null)} disabled={pending}>
+            <Button variant="ghost" className="min-h-11 sm:min-h-8" onClick={() => setConfirming(null)} disabled={pending}>
               {DOMANDE_TEXT.actions.cancel}
             </Button>
-            <Button
-              variant="destructive"
-              className="min-h-11 sm:min-h-8"
-              disabled={pending || deleting === null}
-              onClick={() => deleting && run(() => deleteFileAction(workspaceId, caseId, { fileId: deleting.id }), { success: T.deleted, onSuccess: () => setDeleting(null) })}
-            >
-              {T.delete}
+            <Button variant="destructive" className="min-h-11 sm:min-h-8" disabled={pending || confirming === null} onClick={confirm}>
+              {confirming?.kind === "reject" ? T.reject : T.delete}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -264,7 +288,9 @@ function DatasetLine({ card }: { card: DatasetCard }) {
   return (
     <>
       <p className="text-xs break-words text-muted-foreground">
-        {[card.status, card.period ? `Periodo ${card.period}` : null, card.rows ? `${card.rows} righe` : null, `Titolare: ${card.controller}`, card.retention ? `Si conserva fino al ${card.retention}` : null].filter(Boolean).join(" · ")}
+        {[card.status, card.period ? T.datasetPeriod(card.period) : null, card.rows ? T.datasetRows(card.rows) : null, T.datasetController(card.controller), card.retention ? T.datasetRetention(card.retention) : null]
+          .filter(Boolean)
+          .join(" · ")}
       </p>
       {card.dqError && <p className="text-xs text-uc-rosso">{T.datasetError}</p>}
     </>
@@ -274,14 +300,14 @@ function DatasetLine({ card }: { card: DatasetCard }) {
 function PreviewGrid({ preview }: { preview: PreviewTable }) {
   return (
     <div className="min-w-0 space-y-1">
-      <p className="text-xs text-muted-foreground">Prime righe, con le colonne personali nascoste (•••).{preview.totalRows !== null ? ` Righe nel file: ${preview.totalRows}.` : ""}</p>
+      <p className="text-xs text-muted-foreground">{[T.previewIntro, preview.totalRows !== null ? T.previewRows(preview.totalRows) : null].filter(Boolean).join(" ")}</p>
       <div className="max-w-full overflow-x-auto rounded-lg ring-1 ring-foreground/10">
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b bg-muted/40">
               {preview.columns.map((c, i) => (
                 <th key={i} className={cn("px-2 py-1.5 text-left font-medium whitespace-nowrap", preview.maskedColumns.includes(i) && "text-uc-lucchetto")}>
-                  {c || `Colonna ${i + 1}`}
+                  {c || T.previewColumn(i + 1)}
                 </th>
               ))}
             </tr>
@@ -299,7 +325,7 @@ function PreviewGrid({ preview }: { preview: PreviewTable }) {
           </tbody>
         </table>
       </div>
-      {preview.truncated && <p className="text-xs text-muted-foreground">L&apos;anteprima mostra solo una parte del file.</p>}
+      {preview.truncated && <p className="text-xs text-muted-foreground">{T.previewPartial}</p>}
     </div>
   );
 }

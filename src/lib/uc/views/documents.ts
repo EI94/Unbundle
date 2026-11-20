@@ -10,12 +10,11 @@
  * Modulo puro.
  */
 import { rowBool, rowDate, rowIsoDate, rowJson, rowNumber, rowObject, rowString, rowStringArray, rowVocab, type Row } from "../sql/readiness.ts";
-import { DATASET_STATUSES, FILE_PERSONAL_DATA, ITEM_KINDS, ITEM_STATUSES, PRIORITIES, PRIVACY_CLASSES, RESPONSE_TYPES, SCAN_STATUSES, type CaseRole, type ItemKind, type ItemStatus, type Priority, type PrivacyClass, type ResponseType, type SemaforoColor } from "../vocab.ts";
+import { DATASET_STATUSES, FILE_PERSONAL_DATA, ITEM_KINDS, ITEM_STATUSES, PRIORITIES, PRIVACY_CLASSES, RESPONSE_TYPES, SCAN_STATUSES, type CaseRole, type ItemKind, type ItemStatus, type Priority, type PrivacyClass, type ResponseType } from "../vocab.ts";
 import { formatBytes, formatDateIt, formatNumberIt, specText } from "./format.ts";
 import { DATASET_STATUS_LABEL, FILE_PERSONAL_DATA_LABEL, SCAN_STATUS_LABEL } from "./labels.ts";
 import { canOpenItem, isClientViewer } from "./page-access.ts";
-import { clientPlainText, oneQuestionStateLabel, type ContactOption } from "./rows.ts";
-import { statusView } from "./status-groups.ts";
+import { clientPlainText, type ContactOption } from "./rows.ts";
 
 export interface RequiredDocumentView {
   id: string;
@@ -231,46 +230,13 @@ export function rowsToDatasets(rows: readonly Row[]): DatasetView[] {
 
 // ── Documenti di Domande (DESIGN §3.6.6) ──────────────────────────────
 
-export interface RequiredDocumentRow {
-  id: string;
-  title: string;
-  tone: SemaforoColor;
-  /** Lo stato per chi guarda (gruppo per Lateral Space, parola del cliente). */
-  label: string;
-  /** «Mario Rossi», «File caricato», «Senza referente». */
-  who: string;
-  /** Manca il referente: in ambra. */
-  missing: boolean;
-  personal: boolean;
-  canOpen: boolean;
-}
-
 /** Al cliente un titolo vuoto non mostra la chiave (§6.2). */
-const UNTITLED_DOCUMENT = "Documento senza titolo";
 const UNTITLED_QUESTION = "Domanda senza titolo";
 
 /** Il titolo per chi guarda: al cliente senza codici dei fatti, articoli né chiavi, e mai la chiave al posto del titolo. */
 function titleFor(title: string, key: string, audience: "ls" | "cliente", untitled: string): string {
   if (audience === "ls") return title || key;
   return clientPlainText(title) || untitled;
-}
-
-/** I documenti richiesti in una riga: chi lo fornisce, oppure «File caricato» appena c'è un file (§3.6.6). */
-export function requiredDocumentRows(docs: readonly RequiredDocumentView[], audience: "ls" | "cliente"): RequiredDocumentRow[] {
-  return docs.map((d) => {
-    const view = statusView(d.status, audience);
-    const arrived = d.files > 0 || d.datasets > 0;
-    return {
-      id: d.id,
-      title: titleFor(d.title, d.key, audience, UNTITLED_DOCUMENT),
-      tone: view.tone,
-      label: oneQuestionStateLabel(view, audience),
-      who: arrived ? "File caricato" : (d.assignee ?? "Senza referente"),
-      missing: !arrived && !d.assignee,
-      personal: d.privacyClass === "personale" || d.privacyClass === "personale_equipaggio" || d.afterA8,
-      canOpen: d.canOpen,
-    };
-  });
 }
 
 /** Le azioni di Lateral Space su un file, dal pannello di caricamento (`loadUploadPanel`). */
@@ -352,6 +318,8 @@ export interface DatasetWithoutFileRow extends DatasetCard {
   id: string;
   /** La fonte per titolo (la chiave solo per Lateral Space, se la fonte non è nel catalogo). */
   title: string;
+  /** (Rilascio 10, §3.5) Una scheda che aspetta la verifica si valida o si rifiuta anche se il suo file non c'è più. */
+  actions: { decide: { datasetId: string } | null; decideBlocked: boolean };
 }
 
 /**
@@ -363,6 +331,8 @@ export function datasetsWithoutFile(
   datasets: readonly DatasetView[],
   sources: ReadonlyMap<string, string>,
   audience: "ls" | "cliente",
+  /** Le schede da verificare (`loadUploadPanel`) e se chi guarda le può decidere; null per chi non gestisce i file. */
+  toDecide: ReadonlyMap<string, { canDecide: boolean }> | null = null,
 ): DatasetWithoutFileRow[] {
   const listed = new Set(files.map((f) => f.id));
   const seen = new Set<string>();
@@ -371,13 +341,13 @@ export function datasetsWithoutFile(
     if (d.fileId !== null && listed.has(d.fileId)) continue;
     if (seen.has(d.sourceKey)) continue;
     seen.add(d.sourceKey);
-    out.push({ id: d.id, title: titleFor(sources.get(d.sourceKey) ?? "", d.sourceKey, audience, "Scheda dataset"), ...datasetCard(d) });
+    const decide = toDecide?.get(d.id) ?? null;
+    out.push({
+      id: d.id,
+      title: titleFor(sources.get(d.sourceKey) ?? "", d.sourceKey, audience, "Scheda dataset"),
+      ...datasetCard(d),
+      actions: { decide: decide?.canDecide ? { datasetId: d.id } : null, decideBlocked: decide !== null && !decide.canDecide },
+    });
   }
   return out;
-}
-
-/** «2 file da controllare a mano» (solo Lateral Space, solo se ce ne sono). */
-export function reviewsText(n: number): string | null {
-  if (n <= 0) return null;
-  return n === 1 ? "1 file da controllare a mano" : `${formatNumberIt(n)} file da controllare a mano`;
 }

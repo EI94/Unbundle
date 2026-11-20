@@ -167,7 +167,8 @@ function fileArchive(
         : null,
       i.audience,
     ),
-    datasetsWithoutFile: datasetsWithoutFile(data.files, data.datasets, sources, i.audience),
+    // Le schede da verificare si decidono anche quando il loro file non c'è più (F-074).
+    datasetsWithoutFile: datasetsWithoutFile(data.files, data.datasets, sources, i.audience, manage ? new Map(manage.datasets.map((d) => [d.id, { canDecide: d.canDecide }])) : null),
     upload:
       i.writable && panel
         ? {

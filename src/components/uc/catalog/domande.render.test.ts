@@ -362,6 +362,31 @@ test("the «File» panel: the files to check on top, three files then «Vedi tut
   assert.doesNotMatch(panel, /type="checkbox"/);
   assert.doesNotMatch(text, /quarantena|non contiene dati|Codice:/i);
   assert.match(text, /I file della zona personale mostrano solo i dati del file, mai il contenuto\./);
+  // Una scheda senza file che aspetta la verifica ha il suo «⋯» (Valida, Rifiuta).
+  const orphan = html(
+    h(files.FilePanel, {
+      workspaceId: WS,
+      caseId: CASE,
+      questionsBase: base,
+      files: [],
+      datasetsWithoutFile: [{ id: id(300), title: "Export degli ordini", status: "Profilato", period: null, controller: "Cliente Demo", rows: null, retention: null, dqError: false, actions: { decide: { datasetId: id(300) }, decideBlocked: false } }],
+      upload: null,
+      manage: { reviews: [], candidates: [], controller: "Cliente Demo", sources: [] },
+      personalNote: false,
+      required: { count: 0, href: base },
+    }),
+  );
+  assert.match(orphan, /aria-label="Azioni sulla scheda Export degli ordini"/);
+  const source = readFileSync(new URL("../documents/file-panel.tsx", import.meta.url), "utf8");
+  assert.match(source, /<ActionMenu items=\{decideItems\(d\.actions\)\} label=\{T\.datasetMenu\(d\.title\)\} \/>/);
+  // «Rifiuta» un PDF chiede conferma nella stessa finestra di «Cancella»; il fuoco segue il contenuto nuovo.
+  assert.match(source, /onReject=\{\(f\) => setConfirming\(\{ kind: "reject", \.\.\.f \}\)\}/);
+  assert.match(source, /reviewQuarantinedFileAction\(workspaceId, caseId, \{ fileId: confirming\.id, outcome: "rifiutato" \}\)/);
+  assert.match(source, /if \(uploading\) uploadHeading\.current\?\.focus\(\);/);
+  assert.match(source, /if \(all\) firstMore\.current\?\.focus\(\);/);
+  assert.match(source, /ref=\{i === SHOWN \? firstMore : undefined\}/);
+  const management = readFileSync(new URL("../documents/file-management.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(management, /outcome: "rifiutato"/, "a PDF is never rejected in one tap");
   // Chi non carica non ha il pulsante.
   const reader = html(h(files.FilePanel, { workspaceId: WS, caseId: CASE, questionsBase: base, files: [], datasetsWithoutFile: [], upload: null, manage: null, personalNote: false, required: { count: 0, href: base } }));
   assert.deepEqual(filled(reader), []);

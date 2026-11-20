@@ -219,5 +219,24 @@ export const DOMANDE_TEXT = Object.freeze({
     datasetRejected: "Scheda dataset rifiutata.",
     dataset: "Scheda dataset",
     datasetError: "Un controllo di qualità ha trovato un errore.",
+    datasetMenu: (title: string) => `Azioni sulla scheda ${title}`,
+    /** La scheda dataset in una riga grigia. */
+    datasetPeriod: (period: string) => `Periodo ${period}`,
+    datasetRows: (rows: string) => `${rows} righe`,
+    datasetController: (controller: string) => `Titolare: ${controller}`,
+    datasetRetention: (day: string) => `Si conserva fino al ${day}`,
+    /** L'anteprima di un file tabellare, con le colonne personali nascoste. */
+    previewIntro: "Prime righe, con le colonne personali nascoste (•••).",
+    previewRows: (rows: number) => `Righe nel file: ${n(rows)}.`,
+    previewColumn: (index: number) => `Colonna ${index}`,
+    previewPartial: "L'anteprima mostra solo una parte del file.",
+    /** I PDF da controllare a mano. */
+    open: "Apri",
+    clean: "È pulito",
+    cleaned: "File segnato come pulito: ora si può usare.",
+    reject: "Rifiuta",
+    rejectTitle: (name: string) => `Rifiutare «${name}»?`,
+    rejectBody: "Il file si cancella; nell'attività resta che è stato rifiutato.",
+    rejected: "File rifiutato e cancellato.",
   }),
 });

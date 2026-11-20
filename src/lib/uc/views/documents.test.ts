@@ -1,8 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { CaseRole } from "../vocab.ts";
 import { findForbiddenIn } from "./copy-guard.ts";
-import { caseFileRows, datasetsWithoutFile, parsePreview, requiredDocumentRows, reviewsText, rowsToCaseFiles, rowsToDatasets, rowsToRequiredDocuments } from "./documents.ts";
+import { caseFileRows, datasetsWithoutFile, parsePreview, rowsToCaseFiles, rowsToDatasets, rowsToRequiredDocuments } from "./documents.ts";
 import { CONTACT } from "./view.fixtures.ts";
 
 test("required documents: who provides them, after A.8, files and datasets", () => {
@@ -91,48 +90,6 @@ test("datasets: period, rows, controller and quality errors", () => {
 
 // ── Documenti di Domande (DESIGN §3.6.6) ──────────────────────────────
 
-const requiredRow = (over: Record<string, unknown> = {}) => ({
-  id: "s1",
-  key: "src.crm.richieste",
-  kind: "fonte",
-  title: "Export dei preventivi dell'ultimo anno (F010)",
-  help: null,
-  status: "chiesta",
-  priority: "must",
-  privacy_class: "riservato_azienda",
-  availability: [],
-  owner_role_key: "referente_sistemi",
-  assignee_contact_id: CONTACT,
-  response_type: "dataset",
-  spec: {},
-  active_blockers: [],
-  files: 0,
-  datasets: 0,
-  ...over,
-});
-const docCtx = (roles: CaseRole[]) => ({ roles, roleLabels: {}, contacts: new Map([[CONTACT, { id: CONTACT, name: "Mario Rossi", roleLabel: null, templateRoleKey: null, assignable: true }]]) });
-
-test("required documents in one row: who provides it, or «File caricato» once a file arrived", () => {
-  const docs = rowsToRequiredDocuments(
-    [requiredRow(), requiredRow({ id: "s2", title: "Listino prezzi in vigore", status: "validata", files: 1 }), requiredRow({ id: "s3", assignee_contact_id: null, privacy_class: "personale" })],
-    docCtx(["ls_lead"]),
-  );
-  const rows = requiredDocumentRows(docs, "ls");
-  assert.deepEqual(
-    rows.map((r) => [r.who, r.label, r.missing, r.personal]),
-    [
-      ["Mario Rossi", "Da fare", false, false],
-      ["File caricato", "A posto", false, false],
-      ["Senza referente", "Da fare", true, true],
-    ],
-  );
-  assert.equal(rows[0].title, "Export dei preventivi dell'ultimo anno (F010)");
-  const client = requiredDocumentRows(rowsToRequiredDocuments([requiredRow()], docCtx(["owner_cliente"])), "cliente");
-  assert.equal(client[0].label, "Da rispondere");
-  assert.equal(client[0].title, "Export dei preventivi dell'ultimo anno");
-  assert.deepEqual(findForbiddenIn(client.flatMap((r) => [r.title, r.label, r.who]), "cliente"), []);
-});
-
 test("uploaded files: one grey line with state and date (release 10, §3.5), the size in the details, Lateral Space actions from the upload panel, the dataset card of the file", () => {
   const files = rowsToCaseFiles(
     [
@@ -206,12 +163,23 @@ test("the client reads the question of a file without codes, and never a key", (
   assert.equal(client[1].item?.title, "Domanda senza titolo");
   assert.deepEqual(findForbiddenIn(client.map((r) => r.item?.title ?? ""), "cliente"), []);
   assert.equal(caseFileRows(files, [], null, "ls")[1].item?.title, "src.crm.altro");
-  const untitled = requiredDocumentRows(rowsToRequiredDocuments([requiredRow({ title: "" })], docCtx(["owner_cliente"])), "cliente");
-  assert.equal(untitled[0].title, "Documento senza titolo");
 });
 
-test("files to check by hand, only when there are some", () => {
-  assert.equal(reviewsText(0), null);
-  assert.equal(reviewsText(1), "1 file da controllare a mano");
-  assert.equal(reviewsText(2), "2 file da controllare a mano");
+test("(release 10, §3.5) a card waiting for the check is validated or rejected even when its file is gone; who uploaded it cannot", () => {
+  const ds = (id: string, status: string) => ({ id, item_id: "s1", file_id: null, source_key: `src.${id}`, dataset_version: 1, data_controller_label: "Cliente Demo", status });
+  const datasets = rowsToDatasets([ds("mine", "profilato"), ds("theirs", "ricevuto"), ds("done", "validato")]);
+  const toDecide = new Map([
+    ["mine", { canDecide: false }],
+    ["theirs", { canDecide: true }],
+  ]);
+  const rows = datasetsWithoutFile([], datasets, new Map(), "ls", toDecide);
+  assert.deepEqual(
+    rows.map((r) => [r.id, r.actions]),
+    [
+      ["mine", { decide: null, decideBlocked: true }],
+      ["theirs", { decide: { datasetId: "theirs" }, decideBlocked: false }],
+      ["done", { decide: null, decideBlocked: false }],
+    ],
+  );
+  assert.ok(datasetsWithoutFile([], datasets, new Map(), "cliente").every((r) => r.actions.decide === null && !r.actions.decideBlocked), "nothing to decide without the panel's data");
 });

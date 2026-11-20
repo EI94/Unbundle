@@ -31,8 +31,23 @@ function fileMeta(f: PanelFile): string {
     .join(" · ");
 }
 
-/** PDF da controllare a mano: li apre e li segna una persona di Lateral Space diversa da chi li ha caricati. */
-export function QuarantineReviews({ workspaceId, caseId, reviews, heading = true }: { workspaceId: string; caseId: string; reviews: UploadPanelData["reviews"]; heading?: boolean }) {
+/**
+ * PDF da controllare a mano: li apre e li segna una persona di Lateral Space diversa da chi li ha caricati. «È pulito»
+ * vale subito; «Rifiuta» cancella il file e chiede conferma nella finestra del pannello (`onReject`), come «Cancella».
+ */
+export function QuarantineReviews({
+  workspaceId,
+  caseId,
+  reviews,
+  heading = true,
+  onReject,
+}: {
+  workspaceId: string;
+  caseId: string;
+  reviews: UploadPanelData["reviews"];
+  heading?: boolean;
+  onReject: (file: { id: string; name: string }) => void;
+}) {
   const { pending, run } = useUcAction();
   if (reviews.length === 0) return null;
   return (
@@ -51,27 +66,21 @@ export function QuarantineReviews({ workspaceId, caseId, reviews, heading = true
               <div className="flex shrink-0 flex-wrap gap-2">
                 <Button size="sm" variant="outline" className="min-h-11 sm:min-h-7" render={<a href={filePath(workspaceId, caseId, f.id)} />} nativeButton={false}>
                   <Eye aria-hidden />
-                  Apri
+                  {DOMANDE_TEXT.files.open}
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
                   className="min-h-11 sm:min-h-7"
                   disabled={pending}
-                  onClick={() => run(() => reviewQuarantinedFileAction(workspaceId, caseId, { fileId: f.id, outcome: "pulito" }), { success: "File segnato come pulito: ora si può usare." })}
+                  onClick={() => run(() => reviewQuarantinedFileAction(workspaceId, caseId, { fileId: f.id, outcome: "pulito" }), { success: DOMANDE_TEXT.files.cleaned })}
                 >
                   <CheckCircle2 aria-hidden />
-                  È pulito
+                  {DOMANDE_TEXT.files.clean}
                 </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="min-h-11 text-uc-rosso sm:min-h-7"
-                  disabled={pending}
-                  onClick={() => run(() => reviewQuarantinedFileAction(workspaceId, caseId, { fileId: f.id, outcome: "rifiutato" }), { success: "File rifiutato e cancellato." })}
-                >
+                <Button size="sm" variant="outline" className="min-h-11 text-uc-rosso sm:min-h-7" disabled={pending} onClick={() => onReject({ id: f.id, name: f.name })}>
                   <XCircle aria-hidden />
-                  Rifiuta
+                  {DOMANDE_TEXT.files.reject}
                 </Button>
               </div>
             ) : null}
