@@ -7,6 +7,7 @@ import type { Issue } from "@/lib/uc/answers/issues";
 import type { ReferentItemView } from "@/lib/uc/public-view";
 import { fieldIssues, otherIssues, type ReferentForm } from "@/lib/uc/views/referente-form";
 import { referentHash } from "@/lib/uc/views/referente-plan";
+import { R_TEXT } from "@/lib/uc/views/referente-text";
 import { AnswerInput } from "./answer-input";
 import type { AttachmentRef } from "./attachment-field";
 import { Field, FieldErrors, TextAreaControl } from "./inputs/fields";
@@ -58,24 +59,24 @@ export function ClarificationScreen({
       }}
     >
       <section aria-labelledby="uc-r-titolo" className="mt-2 space-y-5">
-        <BackLink href={referentHash({ screen: "home" })}>Argomenti</BackLink>
+        <BackLink href={referentHash({ screen: "home" })}>{R_TEXT.step.back}</BackLink>
         <ScreenTitle size="question">{item.title}</ScreenTitle>
         <div className="space-y-1 rounded-xl bg-uc-giallo-bg px-4 py-3">
-          <p className="text-sm font-medium">Lateral Space ti chiede</p>
+          <p className="text-sm font-medium">{R_TEXT.clarification.asks}</p>
           <p className="text-base break-words">{item.clarification}</p>
         </div>
         {item.ownAnswer?.display ? (
           <p className="text-base break-words">
-            <span className="text-muted-foreground">La tua risposta di prima: </span>
+            <span className="text-muted-foreground">{R_TEXT.clarification.before}</span>
             {item.ownAnswer.display}
           </p>
         ) : null}
-        <Field label="La tua risposta" htmlFor={`${id}-reply`} issues={noteIssues}>
+        <Field label={R_TEXT.clarification.reply} htmlFor={`${id}-reply`} issues={noteIssues}>
           <TextAreaControl id={`${id}-reply`} value={form.note} onChange={(v) => onForm({ ...form, note: v })} disabled={busy} invalid={noteIssues.length > 0} rows={3} />
         </Field>
         {correct ? (
           <div className="space-y-2">
-            <p className="text-base font-medium">Il valore corretto</p>
+            <p className="text-base font-medium">{R_TEXT.clarification.rightValue}</p>
             <AnswerInput
               type={item.responseType}
               id={id}
@@ -84,7 +85,7 @@ export function ClarificationScreen({
               onChange={(value) => onForm({ ...form, value })}
               issues={valueIssues}
               disabled={busy}
-              label={`${item.title}: valore corretto`}
+              label={R_TEXT.clarification.rightValueLabel(item.title)}
               token={token}
               itemId={item.id}
               attachments={attachments}
@@ -96,14 +97,14 @@ export function ClarificationScreen({
           </div>
         ) : (
           <button type="button" className="inline-flex min-h-11 items-center gap-1 text-base text-primary underline-offset-4 hover:underline" onClick={() => setCorrect(true)}>
-            Correggi anche il valore
+            {R_TEXT.clarification.correct}
             <ChevronRight className="size-4" aria-hidden />
           </button>
         )}
         <FieldErrors issues={issues.filter((i) => !i.field || (!correct && i.field !== "note"))} />
         <ActionBar>
           <Button type="submit" className={PRIMARY_CLASS} disabled={busy}>
-            Invia la risposta
+            {R_TEXT.clarification.send}
           </Button>
         </ActionBar>
       </section>

@@ -205,6 +205,17 @@ export function minutesWords(n: number): string {
   return m === 0 ? hours : `${hours} e ${plural(m, "1 minuto", "{n} minuti")}`;
 }
 
+/**
+ * (Rilascio 10, §3.11) La riga di un argomento iniziato dice quanto resta, non un secondo «3 di 8»: il numero
+ * dell'avanzamento nella Home è uno, in alto. «Ancora 3 domande · circa 4 minuti», «Ancora 3 domande · 1 pronta da
+ * inviare», «2 pronte da inviare».
+ */
+function startedLine(open: number, ready: number, minutes: number): string {
+  const readyText = plural(ready, "1 pronta da inviare", "{n} pronte da inviare");
+  if (open === 0) return readyText;
+  return ready > 0 ? `Ancora ${plural(open, "1 domanda", "{n} domande")} · ${readyText}` : `Ancora ${questionsAndMinutes(open, minutes)}`;
+}
+
 function stepHash(topic: string, n: number): string {
   return referentHash({ screen: "passo", topic, n });
 }
@@ -237,7 +248,7 @@ export function planReferentHome(view: Pick<ReferentView, "modules">, state: Pla
       status === "inviato"
         ? plural(counted.length, "1 domanda inviata", "{n} domande inviate")
         : status === "iniziato"
-          ? `${done + readyHere} di ${counted.length}${readyHere > 0 ? ` · ${plural(readyHere, "1 pronta da inviare", "{n} pronte da inviare")}` : ""}`
+          ? startedLine(open.length, readyHere, minutes)
           : questionsAndMinutes(steps.length, minutes);
     return {
       id: topicId(m),
@@ -315,7 +326,8 @@ export function planReferentHome(view: Pick<ReferentView, "modules">, state: Pla
       primary = {
         kind: "riprendi",
         title: "Riprendi da dove eri",
-        text: `${resume.title} · ${resume.done + resume.ready} di ${resume.total}`,
+        // (Rilascio 10, §3.11) Quanto resta, non un secondo numero di avanzamento.
+        text: `${resume.title} · ancora ${plural(resume.steps.length - resume.ready, "1 domanda", "{n} domande")}`,
         button: "Riprendi",
         hash: stepHash(resume.id, n),
       };

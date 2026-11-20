@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { referentHash } from "@/lib/uc/views/referente-plan";
+import { R_TEXT } from "@/lib/uc/views/referente-text";
 import { BackLink, Notice, PRIMARY_CLASS, ScreenTitle, TEXT_BUTTON_CLASS } from "./screen";
 import { ActionBar } from "./step-bar";
 
@@ -47,15 +48,13 @@ export function ModuleReview({
     <section aria-labelledby="uc-r-titolo" className="mt-2 space-y-5">
       <BackLink href={backHref}>{backLabel}</BackLink>
       <div className="space-y-1">
-        <ScreenTitle>Controlla e invia</ScreenTitle>
-        <p className="text-base text-muted-foreground">{n === 0 ? "Non ci sono risposte pronte." : n === 1 ? "1 risposta pronta." : `${n} risposte pronte.`}</p>
+        <ScreenTitle>{R_TEXT.review.title}</ScreenTitle>
+        <p className="text-base text-muted-foreground">{R_TEXT.review.ready(n)}</p>
       </div>
       {partial ? (
-        <Notice tone="errore">
-          {partial.sent} {partial.sent === 1 ? "inviata" : "inviate"}, {partial.failed} da sistemare.
-        </Notice>
+        <Notice tone="errore">{R_TEXT.review.partial(partial.sent, partial.failed)}</Notice>
       ) : null}
-      {offline ? <Notice tone="attenzione">Sei offline. Quello che hai scritto resta su questo telefono; per inviare serve la connessione.</Notice> : null}
+      {offline ? <Notice tone="attenzione">{R_TEXT.review.offline}</Notice> : null}
       {n > 0 ? (
         <ul className="divide-y divide-border overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">
           {rows.map((r) => (
@@ -66,7 +65,7 @@ export function ModuleReview({
                 {r.failure ? <p className="text-base break-words text-uc-rosso">{r.failure}</p> : null}
               </div>
               <a href={r.editHref} className="inline-flex min-h-11 shrink-0 items-center text-base text-primary underline-offset-4 hover:underline">
-                {r.failure ? "Sistema" : "Modifica"}
+                {r.failure ? R_TEXT.review.fix : R_TEXT.review.edit}
               </a>
             </li>
           ))}
@@ -74,19 +73,19 @@ export function ModuleReview({
       ) : null}
       {later && later.count > 0 ? (
         <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 text-base">
-          <span className="text-muted-foreground">{later.count === 1 ? "1 lasciata per dopo" : `${later.count} lasciate per dopo`}</span>
+          <span className="text-muted-foreground">{R_TEXT.review.later(later.count)}</span>
           <a href={later.href} className="inline-flex min-h-11 items-center text-primary underline-offset-4 hover:underline">
-            Rispondi ora
+            {R_TEXT.review.answerNow}
           </a>
         </div>
       ) : null}
-      <p className="text-base text-muted-foreground">Dopo l&apos;invio le controlla Lateral Space: nel frattempo non si modificano.</p>
+      <p className="text-base text-muted-foreground">{R_TEXT.review.afterSend}</p>
       <ActionBar className="flex-col items-stretch gap-1 sm:flex-row sm:items-center">
         <Button type="button" className={PRIMARY_CLASS} disabled={sending || n === 0} onClick={onSend}>
-          {sending ? "Invio in corso…" : n === 1 ? "Invia 1 risposta" : `Invia ${n} risposte`}
+          {sending ? R_TEXT.review.sending : R_TEXT.review.send(n)}
         </Button>
         <Button variant="ghost" className={TEXT_BUTTON_CLASS} render={<a href={referentHash({ screen: "home" })} />} nativeButton={false}>
-          Continua più tardi
+          {R_TEXT.review.continueLater}
         </Button>
       </ActionBar>
     </section>

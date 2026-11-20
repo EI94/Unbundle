@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReferentDeclaredValue } from "@/lib/uc/public-view";
+import { R_TEXT } from "@/lib/uc/views/referente-text";
 
 /**
  * R2a · «Ci avete già detto» (DESIGN §4.3): il valore già dichiarato, in un
@@ -14,7 +15,7 @@ export function DeclaredValue({ declared, id }: { declared: ReferentDeclaredValu
   return (
     <div role="group" aria-labelledby={`${id}-gia`} className="space-y-1 rounded-xl bg-card px-4 py-3 ring-1 ring-foreground/10">
       <p id={`${id}-gia`} className="text-sm text-muted-foreground">
-        Ci avete già detto
+        {R_TEXT.question.alreadyTold}
       </p>
       <p className="text-xl leading-7 font-semibold break-words">{declared.display}</p>
       <p className="text-sm break-words text-muted-foreground">{declared.sourceLabel}</p>

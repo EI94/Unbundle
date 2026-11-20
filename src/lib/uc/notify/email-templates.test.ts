@@ -40,8 +40,9 @@ test("request email: subject with the count and the title, minutes in the text, 
   assert.equal(mail.subject, "Cliente A: 8 domande su «Gestione richieste»");
   assert.ok(mail.text.includes("ci servono alcune informazioni da te: 8 domande, circa 15 minuti."));
   assert.ok(mail.text.includes(`Apri le domande: ${LINK}`));
-  assert.ok(mail.text.includes("Il link è solo tuo e vale fino al 4 novembre. Se le domande sono per un'altra persona, chiedile dalla pagina."));
-  assert.ok(mail.text.includes("Se non sai una cosa, scegli «Non lo so»."));
+  // (Rilascio 10, §3.12) La riga piccola del modello, come le email di «Chiedi al referente».
+  assert.ok(mail.text.includes("Il link è solo tuo e vale fino al 4 novembre. Per un dubbio, rispondi qui."));
+  assert.ok(mail.text.includes("Se non sai una cosa, scegli «Non lo so» o chiedi a un'altra persona."));
   assert.ok(mail.text.includes("> Grazie!\n> A presto"));
   assert.ok(mail.html.includes(`href="${LINK}"`));
   assertClean(mail);
@@ -133,11 +134,30 @@ test("weekly summary for the Owner and for Lateral Space", () => {
     week: "2026-W41",
     cases: [{ ...base, link: "https://unbundle.example/dashboard/7c9e6679-7425-40de-944b-e07fc1f90ae7/casi-duso/16fd2706-8baf-433b-82eb-8c7fada847da" }],
   });
-  assert.equal(ls.subject, "Riepilogo dei casi d'uso: settimana 2026-W41");
+  // (Rilascio 10, §3.12) La settimana come la dice la campanella, mai il codice ISO; il pulsante con il verbo.
+  assert.equal(ls.subject, "Riepilogo dei casi d'uso: settimana 41");
+  assert.ok(ls.text.includes("ecco a che punto sono i casi d'uso (settimana 41)."), ls.text);
+  assert.ok(owner.text.includes("ecco a che punto sono i casi d'uso (settimana 41)."), owner.text);
+  assert.ok(!ls.text.includes("2026-W41") && !owner.text.includes("2026-W41"));
   assert.ok(!ls.text.includes("Volumi"), "red items only for the Owner");
-  assert.ok(ls.text.includes("Apri ES-UC-01: https://unbundle.example/dashboard/"));
+  assert.ok(ls.text.includes("Apri la realizzazione: https://unbundle.example/dashboard/"));
+  assert.ok(!ls.text.includes("Apri ES-UC-01"), "never the code on the button");
   assert.ok(ls.html.includes('href="https://unbundle.example/dashboard/'));
   assertClean(ls);
+});
+
+test("(rilascio 10, §3.12) weekly summary: the client opens the subject for Lateral Space too; an unreadable week says «questa settimana»", () => {
+  const cases = [{ code: "XX-0012", title: "Gestione richieste", total: 20, counts: {}, greenPct: 45, g1: null, nextMilestone: null, link: "https://unbundle.example/dashboard/7c9e6679-7425-40de-944b-e07fc1f90ae7/casi-duso/16fd2706-8baf-433b-82eb-8c7fada847da" }];
+  const ls = renderEmail({ template: "riepilogo_settimanale", audience: "ls", clientName: "Cliente Demo", week: "2026-W47", cases });
+  assert.equal(ls.subject, "Cliente Demo: riepilogo della settimana");
+  assert.ok(ls.text.includes("Gestione richieste — 45 % a posto\n"), ls.text);
+  const odd = renderEmail({ template: "riepilogo_settimanale", audience: "ls", clientName: null, week: "settimana?", cases });
+  assert.equal(odd.subject, "Riepilogo dei casi d'uso: questa settimana");
+  assert.ok(odd.text.includes("ecco a che punto sono i casi d'uso questa settimana."), odd.text);
+  for (const mail of [ls, odd]) {
+    assert.doesNotMatch(`${mail.subject}\n${mail.text}`, /\bW\d{2}\b|XX-0012/);
+    assertClean(mail);
+  }
 });
 
 // ── (9b) The «Contesto» block of the weekly summary (RILASCIO-9b-COSTRUZIONE.md §2.9, D6) ──
@@ -187,7 +207,7 @@ test("(9b) weekly summary for Lateral Space: «Contesto del cliente» after the 
   assert.ok(mail.html.includes(`href="${CONTEXT_LINK}"`));
   assertClean(mail);
   // The subject does not change.
-  assert.equal(mail.subject, "Riepilogo dei casi d'uso: settimana 2026-W47");
+  assert.equal(mail.subject, "Riepilogo dei casi d'uso: settimana 47");
 });
 
 test("(9b) weekly summary: one line per number that is not zero, with the singulars of the plan", () => {

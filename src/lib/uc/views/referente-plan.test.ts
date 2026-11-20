@@ -164,7 +164,7 @@ test("home: one primary card, chosen by state (clarification > send > resume > q
   const peekedPlain = planReferentHome({ modules: [topicB, mod("m.d", "Sistemi", [item({ type: "numero" })])] }, { narrow: false, last: { topic: "m.d", n: 1 } });
   assert.deepEqual([peekedPlain.primary?.kind, peekedPlain.primary?.title], ["inizia", "Iniziamo da Costi del servizio"]);
   const resume = planReferentHome(view, { narrow: false, touched: new Set([n1.id]), last: { topic: "m.a", n: 4 } });
-  assert.deepEqual([resume.primary?.kind, resume.primary?.title, resume.primary?.text, resume.primary?.hash], ["riprendi", "Riprendi da dove eri", "Prezzi e sconti · 0 di 4", "#/a/m.a/4"]);
+  assert.deepEqual([resume.primary?.kind, resume.primary?.title, resume.primary?.text, resume.primary?.hash], ["riprendi", "Riprendi da dove eri", "Prezzi e sconti · ancora 4 domande", "#/a/m.a/4"]);
   const elsewhere = planReferentHome(view, { narrow: false, touched: new Set([n2.id]), last: { topic: "m.a", n: 2 } });
   assert.deepEqual([elsewhere.primary?.kind, elsewhere.primary?.hash], ["riprendi", "#/a/m.b/1"], "the started topic, from its first step, when uc-last points elsewhere");
 
@@ -188,7 +188,13 @@ test("home: topics, secondary lists, progress without the closed personal questi
   const topic = mod("m.a", "Prezzi e sconti", [sent, ok, open, heavy, locked, skipped], { estimatedMinutes: 12, questionCount: 6 });
   const plan = planReferentHome({ modules: [topic] }, { narrow: true, ready: new Set([open.id]), skipped: new Set([skipped.id]) });
   assert.deepEqual(plan.progress, { done: 2, total: 5 }, "the closed personal question is not counted");
-  assert.deepEqual(plan.topics.map((t) => [t.title, t.line, t.status]), [["Prezzi e sconti", "3 di 5 · 1 pronta da inviare", "iniziato"]]);
+  // (Rilascio 10, §3.11) Un solo numero di avanzamento nella Home, in alto: la riga dell'argomento dice quanto resta.
+  assert.deepEqual(plan.topics.map((t) => [t.title, t.line, t.status]), [["Prezzi e sconti", "Ancora 2 domande · 1 pronta da inviare", "iniziato"]]);
+  const started = planReferentHome({ modules: [topic] }, { narrow: true, touched: new Set([open.id]) });
+  assert.match(started.topics[0].line, /^Ancora 3 domande · circa \d+ minut[oi]$/);
+  assert.doesNotMatch(started.topics[0].line, /\d+ di \d+/);
+  const allReady = planReferentHome({ modules: [topic] }, { narrow: true, ready: new Set([open.id, heavy.id, skipped.id]) });
+  assert.equal(allReady.topics[0].line, "3 pronte da inviare");
   assert.deepEqual(plan.computer.map((r) => r.title), ["Tariffe per stagione"]);
   assert.deepEqual(plan.locked.map((r) => r.title), ["Turni"]);
   assert.deepEqual(plan.skipped.map((r) => [r.title, r.hash]), [["Orari", "#/a/m.a/2"]]);
@@ -359,7 +365,9 @@ test("fixed texts of the referent components pass the copy-guard (labels, hints,
   assert.ok(all.includes("Regole toccate"));
   assert.ok(all.includes("Scrivi quali regole usa questo caso, separate da virgole."));
   assert.ok(all.includes("Reale, senza nomi (dopo l'approvazione della scheda privacy)"));
-  assert.ok(all.includes("Gira tutto l'argomento a un collega") || all.includes("Gira tutto l&apos;argomento a un collega"));
+  // (Rilascio 10) Le parole delle schermate stanno in `referente-text.ts` (controllate in `referente-text.test.ts`); qui
+  // restano le etichette dei campi e dei file.
+  assert.ok(all.includes("Scegli il file Excel"));
   const found = texts.flatMap((t) => findForbiddenIn([t.text], "cliente").map((f) => `${t.file}: «${f.match}» in «${t.text}»`));
   assert.deepEqual(found, []);
 });

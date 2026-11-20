@@ -212,11 +212,21 @@ function caseSubject(c: CaseRef, what: string): string {
 }
 
 /**
- * (Rilascio 10, §3.12) La riga piccola delle email ai referenti, una sola: «Il link è solo tuo e vale fino al 26
- * novembre. Se le domande sono per un'altra persona, chiedile dalla pagina.»
+ * (Rilascio 10, §3.12) La riga piccola delle email ai referenti, una sola, come nel modello e nelle email di «Chiedi al
+ * referente»: «Il link è solo tuo e vale fino al 26 novembre. Per un dubbio, rispondi qui.» La risposta arriva a Lateral
+ * Space (`UC_EMAIL_REPLY_TO`), come dice la scheda del link che non vale più.
  */
 function linkNote(expiresAt: Date): string {
-  return `Il link è solo tuo e vale ${untilDayIt(expiresAt)}. Se le domande sono per un'altra persona, chiedile dalla pagina.`;
+  return `Il link è solo tuo e vale ${untilDayIt(expiresAt)}. Per un dubbio, rispondi qui.`;
+}
+
+/**
+ * (Rilascio 10, §3.12) La settimana del riepilogo come la dice la campanella: «settimana 47», mai il codice ISO
+ * («2026-W47») a una persona del cliente. Una settimana che non si legge: null.
+ */
+function weekNumber(week: string): number | null {
+  const match = /^\d{4}-W(\d{2})$/.exec(week.trim());
+  return match ? Number(match[1]) : null;
 }
 
 /** (Rilascio 10, §3.12) Nel riepilogo una riga per caso d'uso: «Titolo — 45 % a posto · prossima tappa: …». */
@@ -306,7 +316,8 @@ export function renderEmail(input: EmailInput, brand?: EmailBrand): RenderedEmai
         {
           p: `per il caso d'uso «${oneLine(input.caseTitle, 120)}» di ${oneLine(input.clientName, 80)} ci servono alcune informazioni da te: ${plural(input.questions, "domanda", "domande")}${mins ? `, ${mins}` : ""}.`,
         },
-        { p: "Le risposte si salvano da sole. Se non sai una cosa, scegli «Non lo so»." },
+        // (Rilascio 10, §3.12) Al massimo 60 parole anche con un titolo lungo: «Non lo so» e l'altra persona in una riga.
+        { p: "Se non sai una cosa, scegli «Non lo so» o chiedi a un'altra persona." },
       ];
       if (input.message && input.message.trim()) blocks.push({ quote: multiLine(input.message, 1000) });
       blocks.push({ link: { href: link, label: "Apri le domande" } }, { small: linkNote(input.expiresAt) });
@@ -394,14 +405,18 @@ export function renderEmail(input: EmailInput, brand?: EmailBrand): RenderedEmai
         },
         { p: "Nella pagina trovi il testo esatto. Puoi firmare o rifiutare, con un motivo." },
         { link: { href: link, label: "Leggi e decidi" } },
-        { small: `Il link è solo tuo e vale ${untilDayIt(input.expiresAt)}.` },
+        { small: linkNote(input.expiresAt) },
       ]);
     }
     case "riepilogo_settimanale": {
       const owner = input.audience === "owner";
-      const week = oneLine(input.week, 10);
-      const subject = owner && input.clientName ? emailSubject(input.clientName, "riepilogo della settimana") : emailSubject("Riepilogo dei casi d'uso", `settimana ${week}`);
-      const blocks: Block[] = [{ p: "Buongiorno," }, { p: `ecco a che punto sono i casi d'uso (settimana ${week}).` }];
+      const week = weekNumber(input.week);
+      // (Rilascio 10, §3.12) «{Cliente}: riepilogo della settimana» per tutti e due i pubblici: a Lateral Space l'oggetto
+      // dice di quale cliente; senza il nome, la settimana come la dice la campanella.
+      const subject = input.clientName
+        ? emailSubject(input.clientName, "riepilogo della settimana")
+        : emailSubject("Riepilogo dei casi d'uso", week === null ? "questa settimana" : `settimana ${week}`);
+      const blocks: Block[] = [{ p: "Buongiorno," }, { p: `ecco a che punto sono i casi d'uso ${week === null ? "questa settimana" : `(settimana ${week})`}.` }];
       if (input.cases.length === 0) blocks.push({ p: "Nessun caso attivo questa settimana." });
       // (Rilascio 10, §3.12) Una riga per caso d'uso: «Titolo — 45 % a posto · prossima tappa: …».
       for (const c of [...input.cases].sort((a, b) => a.code.localeCompare(b.code))) {
@@ -409,7 +424,8 @@ export function renderEmail(input: EmailInput, brand?: EmailBrand): RenderedEmai
         if (owner && c.redItems && c.redItems.length > 0) {
           blocks.push({ p: "Mancano ancora:" }, { list: c.redItems.slice(0, 10).map((i) => oneLine(i.title, 200)) });
         }
-        if (!owner && c.link) blocks.push({ link: { href: checkEmailLink(c.link, "dashboard"), label: `Apri ${oneLine(c.code, 40)}` } });
+        // (Rilascio 10, §4.1) Il pulsante con il verbo e la parola unica, «Apri la realizzazione»: il caso lo dice la riga sopra.
+        if (!owner && c.link) blocks.push({ link: { href: checkEmailLink(c.link, "dashboard"), label: "Apri la realizzazione" } });
       }
       // (9b) Il blocco «Contesto», per pubblico: all'Owner solo quello che è «Per tutti».
       blocks.push(...(input.audience === "owner" ? ownerContextBlocks(input.context) : lsContextBlocks(input.context)));

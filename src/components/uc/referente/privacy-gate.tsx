@@ -2,8 +2,9 @@
 
 import { Button } from "@/components/ui/button";
 import { PRIVACY_UPDATED_MESSAGE, REFERENT_PRIVACY_NOTICE, type ReferentNoticeText } from "@/lib/uc/public-view";
+import { R_TEXT } from "@/lib/uc/views/referente-text";
 import { ActionBar } from "./step-bar";
-import { ClientLine, Disclosure, Notice, PRIMARY_CLASS, ScreenTitle } from "./screen";
+import { Disclosure, Notice, PRIMARY_CLASS, ScreenTitle } from "./screen";
 
 /**
  * R0 · «Prima di iniziare» (DESIGN §4.3): l'informativa a due livelli. Tre
@@ -16,17 +17,19 @@ import { ClientLine, Disclosure, Notice, PRIMARY_CLASS, ScreenTitle } from "./sc
  * cambiata con un rilascio. Se la pagina non ha quel testo (`notice` null,
  * pagina e server di rilasci diversi), chiede di ricaricarsi: mai «Ho letto»
  * sotto un testo diverso da quello che si accetta.
+ *
+ * (Rilascio 10, §3.11) La riga del cliente la mostra il guscio, in alto. Il
+ * testo dell'informativa e la sua versione non cambiano qui: all'unione passano
+ * all'informativa comune del kit del referente.
  */
 export function PrivacyGate({
   notice,
-  clientLabel,
   busy,
   error,
   disabled,
   onAcknowledge,
 }: {
   notice: ReferentNoticeText | null;
-  clientLabel: string;
   busy: boolean;
   error: string | null;
   disabled: boolean;
@@ -35,14 +38,11 @@ export function PrivacyGate({
   if (!notice) {
     return (
       <section aria-labelledby="uc-r-titolo" className="mt-4 space-y-5">
-        <div className="space-y-1">
-          <ClientLine clientLabel={clientLabel} />
-          <ScreenTitle>{REFERENT_PRIVACY_NOTICE.title}</ScreenTitle>
-        </div>
+        <ScreenTitle>{REFERENT_PRIVACY_NOTICE.title}</ScreenTitle>
         <p className="text-base">{PRIVACY_UPDATED_MESSAGE}</p>
         <ActionBar>
           <Button type="button" className={PRIMARY_CLASS} onClick={() => window.location.reload()}>
-            Ricarica la pagina
+            {R_TEXT.privacyReload}
           </Button>
         </ActionBar>
       </section>
@@ -51,10 +51,7 @@ export function PrivacyGate({
   const n = notice;
   return (
     <section aria-labelledby="uc-r-titolo" className="mt-4 space-y-5">
-      <div className="space-y-1">
-        <ClientLine clientLabel={clientLabel} />
-        <ScreenTitle>{n.title}</ScreenTitle>
-      </div>
+      <ScreenTitle>{n.title}</ScreenTitle>
       <p className="text-base">{n.lead}</p>
       <ul className="list-disc space-y-3 pl-5 text-base leading-6">
         {n.summary.map((s) => (

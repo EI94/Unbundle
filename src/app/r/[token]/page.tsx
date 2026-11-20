@@ -15,8 +15,10 @@ export const dynamic = "force-dynamic";
  * Pagina del referente `/r/[token]` (DESIGN §4): pubblica, senza account,
  * pensata per il telefono. Mai `notFound()`: token sbagliato, scaduto o
  * revocato, sezione spenta (anche solo per il workspace del caso,
- * `UC_WORKSPACE_IDS`) danno sempre la stessa scheda «Questo link non è più
- * valido», resa qui con i metadati `noindex` del layout.
+ * `UC_WORKSPACE_IDS`) danno sempre la stessa scheda «Questo link non vale
+ * più.», resa qui con i metadati `noindex` del layout. (Rilascio 10, §3.11) Il
+ * servizio che non risponde dà la scheda unica dell'errore, con il solo
+ * «Riprova».
  *
  * Solo letture: niente `first_opened_at` e nessun evento su GET (l'apertura la
  * registra la pagina con `POST …/opened` dopo l'idratazione), così prefetch e
