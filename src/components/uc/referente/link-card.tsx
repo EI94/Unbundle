@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { PublicShell } from "@/components/public";
 import { R_TEXT } from "@/lib/uc/views/referente-text";
 import { ErrorCard } from "./screen";
 
@@ -17,25 +18,10 @@ import { ErrorCard } from "./screen";
  * dà la pagina («Come usiamo le tue risposte», la scadenza del link), solo dove serve.
  */
 export function ReferentShell({ children, footer, client }: { children: ReactNode; footer?: ReactNode; client?: string | null }) {
-  const name = client?.trim();
   return (
-    <main className="mx-auto w-full max-w-xl min-w-0 px-4 pt-5 pb-10 text-base sm:px-6 sm:pt-10">
-      <p className="flex min-w-0 items-center gap-2 text-sm">
-        <span aria-hidden className="inline-flex size-5 shrink-0 items-center justify-center rounded-[5px] bg-foreground text-[11px] leading-none font-bold text-background">
-          U
-        </span>
-        {name ? (
-          <span className="min-w-0 break-words text-muted-foreground">
-            <span className="sr-only">{R_TEXT.shell.brand}: </span>
-            {R_TEXT.shell.client(name)}
-          </span>
-        ) : (
-          <span className="font-semibold tracking-wide">{R_TEXT.shell.brand}</span>
-        )}
-      </p>
+    <PublicShell footer={footer} client={client}>
       {children}
-      {footer ? <footer className="mt-10 space-y-1 border-t border-border pt-4">{footer}</footer> : null}
-    </main>
+    </PublicShell>
   );
 }
 

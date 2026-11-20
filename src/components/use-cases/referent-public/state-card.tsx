@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
-import { kitClientLine } from "@/lib/use-cases/referent/kit";
-import { REFERENT_PUBLIC_TEXT } from "@/lib/use-cases/referent/labels";
+import { PublicShell as SharedPublicShell } from "@/components/public";
 import { ErrorCard } from "./error-card";
 import { MessageCard } from "./message-card";
 import { stateCardText, type StateCardKind } from "./public-view-render";
@@ -17,21 +16,12 @@ export { MessageCard };
  * Nessun componente con portale: la pagina vive in `.survey-light`.
  */
 
-const T = REFERENT_PUBLIC_TEXT;
-
+/** Il guscio è quello unico delle pagine pubbliche (`src/components/public/`): stesse props, stesso marchio. */
 export function PublicShell({ children, footer, client = null }: { children: ReactNode; footer?: ReactNode; client?: string | null }) {
-  const line = kitClientLine(client);
   return (
-    <main className="mx-auto w-full max-w-[40rem] min-w-0 px-4 pt-5 pb-10 text-base sm:px-6 sm:pt-10">
-      <p data-slot="public-brand" className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
-        <span aria-hidden className="inline-grid size-5 shrink-0 place-items-center rounded-[5px] bg-foreground text-[11px] leading-none font-bold text-background">
-          {T.brandMark}
-        </span>
-        <span className={line ? "min-w-0 break-words" : "min-w-0 font-semibold tracking-wide text-foreground"}>{line ?? T.brand}</span>
-      </p>
+    <SharedPublicShell footer={footer} client={client}>
       {children}
-      {footer ? <footer className="mt-10 space-y-2 border-t border-border pt-4 text-sm break-words text-muted-foreground">{footer}</footer> : null}
-    </main>
+    </SharedPublicShell>
   );
 }
 
