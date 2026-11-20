@@ -208,5 +208,5 @@ test("(rilascio 10) «Aggiungi un'unità»: prima chi chiama (sessione, workspac
   // Solo il nome: nessun altro campo dell'unità dal browser.
   const sql = withoutComments(read("src/lib/mappatura/board-sql.ts"));
   assert.match(sql, /INSERT INTO departments \(workspace_id, name\)\s+SELECT \$\{U\(workspaceId\)\}, \$\{cast\(name, "text"\)\} FROM w WHERE NOT w\.same AND w\.units < \$\{cast\(MAPPING_LIMITS\.units, "int"\)\}/);
-  assert.match(sql, /pg_advisory_xact_lock\(hashtext\('mappatura-unita:' \|\| \$\{cast\(workspaceId, "text"\)\}\)\)/);
+  assert.match(sql, /pg_advisory_xact_lock\(hashtext\('mappatura-unita:' \|\| lower\(\$\{cast\(workspaceId, "text"\)\}\)\)\)/, "un lucchetto per workspace, senza badare alle maiuscole dell'id");
 });
