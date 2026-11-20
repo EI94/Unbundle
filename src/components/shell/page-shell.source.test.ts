@@ -78,7 +78,8 @@ test("ogni pagina della dashboard sta in PageContainer, direttamente o con il co
   }
   assert.match(read("src/components/home/home-route.tsx"), /<ContributorHome\b[\s\S]*<ProgramHome\b/);
   // I componenti che disegnano le pagine della Formazione stanno nel contenitore.
-  assert.match(read("src/components/learning/learning-shell.tsx"), /return <PageContainer className="space-y-6">/);
+  // (Ondata 7a) Il corso e l'esercizio di chi lo segue nel contenitore stretto, il resto della Formazione in quello di Persone.
+  assert.match(read("src/components/learning/learning-shell.tsx"), /return <PageContainer size=\{size\} className="space-y-6">/);
   assert.match(read("src/components/learning/program-overview.tsx"), /<LearningShell\b/);
   assert.doesNotMatch(read("src/components/learning/learning-shell.tsx"), /<main\b/, "un solo <main>, quello della cornice");
 });

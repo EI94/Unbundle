@@ -1,27 +1,53 @@
 import Link from "next/link";
-import { ChartColumn } from "lucide-react";
-import { getLearningHome } from "@/lib/learning/server";
+import { redirect } from "next/navigation";
+import { Settings2 } from "lucide-react";
+import { getLearningHome, getLearningProgram } from "@/lib/learning/server";
 import { getLearningAdminCatalog } from "@/lib/learning/admin";
+import { nextLessonOf } from "@/lib/learning/course-view";
+import { LEARNING_TEXT } from "@/lib/learning/text";
 import { LearningShell, LearningUnavailable } from "@/components/learning/learning-shell";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Row, RowList } from "@/components/ui-10/row";
+
+/**
+ * L'ingresso della Formazione (rilascio 10, ondata 7a, docs/ui-10/PROPOSTA-10.md §3.9): chi segue un corso solo entra
+ * diretto nel corso; con più corsi, una riga per corso, cliccabile per intero, con «Prossima lezione: lun 24 nov,
+ * 14:30». Chi gestisce la formazione ha un solo «Gestisci», bordato: il registro si apre da lì. Niente codici del turno.
+ */
 export default async function LearningHome({ params }: { params: Promise<{ workspaceId: string }> }) {
   const { workspaceId } = await params;
+  const T = LEARNING_TEXT.home;
   const home = await getLearningHome(workspaceId);
-  const admin = home.enabled ? await getLearningAdminCatalog(workspaceId) : null;
-  return <LearningShell workspaceId={workspaceId} title="La tua formazione">
-    <p>Materiali, attività e feedback personali. Un percorso per imparare e riprovare, senza classifiche.</p>
-    {(admin?.canCreate || admin?.canManage) && <div className="flex flex-wrap gap-3">
-      <Link className="inline-block rounded-lg border px-4 py-2 text-sm font-medium" href={`/dashboard/${workspaceId}/learning/admin`}>Gestisci formazione</Link>
-      <Link className="inline-block rounded-lg border px-4 py-2 text-sm font-medium" href={`/dashboard/${workspaceId}/learning/register`}>Registro formazione IA</Link>
-    </div>}
-    {!home.enabled ? <LearningUnavailable message="La formazione non è ancora attiva in questo ambiente. Le altre sezioni del workspace restano disponibili." /> : home.programs.length === 0 ? <LearningUnavailable message="Non hai ancora un percorso assegnato in questo workspace. Rivolgiti al responsabile della formazione." /> : <div className="grid gap-4 sm:grid-cols-2">{home.programs.map((program) => <Card key={program.id}><CardHeader><CardTitle>{program.title}</CardTitle></CardHeader><CardContent className="space-y-3">
-      {/* (Rilascio 10, §7.4) Niente codice del turno a schermo: la data della lezione sta nel corso. */}
-      <div className="flex flex-wrap gap-2">
-        <Link className="inline-flex min-h-10 items-center rounded-lg bg-primary px-4 py-2 text-primary-foreground" href={`/dashboard/${workspaceId}/learning/${program.id}`}>Apri il corso</Link>
-        {(program.canReview || program.canAggregate || program.canExport || program.canManage) && <Link data-testid="program-results-link" className="inline-flex min-h-10 items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted" href={`/dashboard/${workspaceId}/learning/${program.id}/results`}>
-          <ChartColumn aria-hidden className="size-4" /> Risultati
-        </Link>}
-      </div>
-    </CardContent></Card>)}</div>}
+  if (!home.enabled) return <LearningShell workspaceId={workspaceId} title={T.title}><LearningUnavailable message={T.off} /></LearningShell>;
+  const admin = await getLearningAdminCatalog(workspaceId);
+  const manages = admin.canCreate || admin.canManage;
+  const base = `/dashboard/${workspaceId}/learning`;
+  // Un corso solo, e niente da gestire: si entra diretti nel corso (un 307: dipende dai corsi di chi guarda).
+  if (!manages && home.programs.length === 1) redirect(`${base}/${home.programs[0].id}`);
+
+  // La prossima lezione di ogni corso. Un corso che non si legge resta in elenco, senza la riga.
+  const lessons = await Promise.all(home.programs.map(async (program) => {
+    try {
+      const detail = await getLearningProgram(workspaceId, program.id);
+      return nextLessonOf({ ownSession: detail.ownSession, sessions: detail.sessions, canParticipate: detail.canParticipate, now: detail.now });
+    } catch {
+      return null;
+    }
+  }));
+
+  const manage = manages && home.programs.length > 0
+    ? <Button render={<Link href={`${base}/admin`} />} nativeButton={false} variant="outline" className="min-h-11 sm:min-h-9">
+      <Settings2 aria-hidden data-icon="inline-start" />{T.manage}
+    </Button>
+    : null;
+
+  return <LearningShell workspaceId={workspaceId} title={T.title} actions={manage}>
+    {home.programs.length === 0
+      ? <LearningUnavailable message={manages ? T.emptyManager : T.empty} action={manages ? { label: T.manage, href: `${base}/admin`, icon: Settings2, nextStep: true } : null} />
+      : <RowList label={T.courses}>
+        {home.programs.map((program, index) => <li key={program.id}>
+          <Row title={program.title} fact={lessons[index] ? T.nextLesson(lessons[index]) : null} href={`${base}/${program.id}`} data-row="learning-course" />
+        </li>)}
+      </RowList>}
   </LearningShell>;
 }

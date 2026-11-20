@@ -117,10 +117,6 @@
     "palette": 3,
     "whiteBlack": 1
   },
-  "src/components/learning/program-overview.tsx": {
-    "palette": 19,
-    "whiteBlack": 1
-  },
   "src/components/learning/register-console.tsx": {
     "palette": 5
   },

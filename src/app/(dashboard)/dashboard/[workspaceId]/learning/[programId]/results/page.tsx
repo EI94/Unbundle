@@ -8,6 +8,7 @@ import { ResultsExport } from "@/components/learning/results-export";
 import { ResultsLocked } from "@/components/learning/results-access";
 import { ResultsTabs, ResultsTurns, type ResultsView } from "@/components/learning/results-nav";
 import { turnLabel } from "@/components/learning/results-format";
+import { LEARNING_TEXT } from "@/lib/learning/text";
 
 /**
  * Risultati del corso per chi lo tiene, in tre sezioni: di gruppo (senza nomi,
@@ -50,7 +51,7 @@ export default async function LearningResultsPage({ params, searchParams }: {
   // «Attiva per me» chiede un permesso su tutti i turni: lo può dare solo chi li gestisce tutti.
   const locked = { workspaceId, programId, viewerId: data.viewerId, canManage: data.can.manageAll };
 
-  return <LearningShell workspaceId={workspaceId} title="Risultati">
+  return <LearningShell workspaceId={workspaceId} title="Risultati" back={{ href: base, label: LEARNING_TEXT.backToCourse }}>
     <div className="-mt-3 flex flex-wrap items-center justify-between gap-3">
       <div className="min-w-0 space-y-1">
         <p className="text-lg text-muted-foreground">{data.program.title}</p>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getLearningActivity } from "@/lib/learning/server";
 import { ActivityPlayer } from "@/components/learning/activity-player";
 import { LearningShell } from "@/components/learning/learning-shell";
+import { LEARNING_TEXT } from "@/lib/learning/text";
 import { LearningRefresh } from "@/components/learning/learning-refresh";
 
 export default async function ActivityPage({ params }: { params: Promise<{ workspaceId: string; programId: string; activityId: string }> }) {
@@ -9,7 +10,7 @@ export default async function ActivityPage({ params }: { params: Promise<{ works
   const data = await getLearningActivity(workspaceId, programId, activityId);
   const base = `/dashboard/${workspaceId}/learning/${programId}`;
   const scheduled = data.availability.state === "scheduled";
-  return <LearningShell workspaceId={workspaceId} title={data.activityTitle} back={{ href: base, label: "Torna al percorso" }}>
+  return <LearningShell workspaceId={workspaceId} title={data.activityTitle} back={{ href: base, label: LEARNING_TEXT.backToCourse }}>
     {!data.activity ? <section className="space-y-4 rounded-2xl border bg-card p-5 sm:p-6">
       <h2 className="text-lg font-semibold">{scheduled ? "Si apre durante la lezione" : "Per ora non è aperta"}</h2>
       {data.availability.reason && <p>{data.availability.reason}</p>}

@@ -31,7 +31,8 @@ test("the lesson reads the arrival parameters the join action sends", () => {
   const page = read("src/app/(dashboard)/dashboard/[workspaceId]/learning/[programId]/[moduleId]/page.tsx");
   assert.match(page, /<ProgramOverview \{\.\.\.values\} arrival=\{joinArrival\(sp\.joined, sp\.outcome\)\} \/>/);
   const overview = read("src/components/learning/program-overview.tsx");
-  assert.match(overview, /\{arrival && \(\s*<p role="status"[^>]*>\s*\{arrival\}\s*<\/p>/);
+  // (Ondata 7a) La riga d'arrivo sta in cima alla pagina del corso nuova; la prova resa è in course-page.test.ts.
+  assert.match(overview, /\{arrival \? \(\s*<p role="status"[^>]*>\s*\{arrival\}\s*<\/p>/);
 });
 
 test("kept_other_cohort stops on the link page with «Chiedi di riaprire il turno», wired to the server action", () => {
