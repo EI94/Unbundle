@@ -380,9 +380,20 @@ test("«Verifica una alla volta» stays as it is, plus a switch that turns the s
   assert.match(page, /role="switch"[^>]*aria-checked="true"|aria-checked="true"[^>]*role="switch"/);
   assert.match(textOf(page), /Tasti rapidi V valida · C chiarimento · → salta · ← indietro/);
   assert.match(textOf(page), /Verifica · 3 di 160/);
+  // Il ritorno alla scheda di prima ha un pulsante (fantasma), oltre alla freccia.
+  const previous = /<button[^>]*>(?:(?!<\/button>)[\s\S])*Precedente<\/button>/.exec(page)?.[0] ?? "";
+  assert.ok(previous, "«‹ Precedente»");
+  assert.match(previous, /aria-keyshortcuts="ArrowLeft"/);
+  assert.equal(filled(previous).length, 0);
+  // L'interruttore si vede a ogni larghezza (niente `hidden` sulla sua riga).
+  const row = /<div class="([^"]*)"><button[^>]*>(?:(?!<\/button>)[\s\S])*Precedente/.exec(page)?.[1] ?? "";
+  assert.ok(row && !row.split(/\s+/).includes("hidden"), row);
+  const first = html(h(review.ReviewMode, { baseHref: `${base}/verifica`, exitHref: base, panoramicaHref: base, position: { currentId: id(7), index: 1, total: 2, nextId: id(8), prevId: null }, card: null, actions: null, canValidate: true, mineNote: null }));
+  assert.doesNotMatch(first, /Precedente/, "no previous card, no button");
   const source = readFileSync(new URL("./review-mode.tsx", import.meta.url), "utf8");
   assert.match(source, /reviewKeyAction\(\{[^}]*enabled: keys \}\)/, "the keys obey the switch");
-  assert.match(source, /aria-keyshortcuts=\{keys \? "ArrowRight" : undefined\}/);
+  assert.match(source, /aria-keyshortcuts="ArrowRight"/, "the arrows stay on");
+  assert.match(source, /\{keys \? DOMANDE_TEXT\.verify\.hint : DOMANDE_TEXT\.verify\.hintArrows\}/);
   assert.match(source, /window\.localStorage\.setItem\(REVIEW_SHORTCUTS_KEY, on \? "si" : "no"\)/, "the choice stays from one card to the next");
 });
 

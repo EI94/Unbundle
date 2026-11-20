@@ -195,18 +195,19 @@ export type ReviewKeyAction = "validate" | "clarify" | "next" | "prev";
 /**
  * Tasti rapidi (§3.6.4): V valida, C chiarimento, → salta, ← indietro. Mai
  * mentre si scrive in un campo o con un tasto modificatore. (Rilascio 10,
- * §3.5; WCAG 2.1.4) Chi li spegne con l'interruttore non ne ha nessuno
- * (`enabled` falso).
+ * §3.5; WCAG 2.1.4) L'interruttore (`enabled` falso) spegne i tasti di un
+ * carattere, V e C; le frecce restano.
  */
 export function reviewKeyAction(e: { key: string; altKey?: boolean; ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean; typing: boolean; enabled?: boolean }): ReviewKeyAction | null {
-  if (e.enabled === false || e.typing || e.altKey || e.ctrlKey || e.metaKey) return null;
+  if (e.typing || e.altKey || e.ctrlKey || e.metaKey) return null;
+  const letters = e.enabled !== false;
   switch (e.key) {
     case "v":
     case "V":
-      return "validate";
+      return letters ? "validate" : null;
     case "c":
     case "C":
-      return "clarify";
+      return letters ? "clarify" : null;
     case "ArrowRight":
       return "next";
     case "ArrowLeft":

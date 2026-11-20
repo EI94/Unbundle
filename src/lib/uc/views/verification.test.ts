@@ -114,8 +114,10 @@ test("keyboard: V validates, C asks, arrows move; never while typing or with a m
   assert.equal(reviewKeyAction({ key: "x", typing: false }), null);
 });
 
-test("(release 10, §3.5; WCAG 2.1.4) the switch turns every shortcut off; on unless the browser remembers «no»", () => {
-  for (const key of ["v", "C", "ArrowRight", "ArrowLeft"]) assert.equal(reviewKeyAction({ key, typing: false, enabled: false }), null, key);
+test("(release 10, §3.5; WCAG 2.1.4) the switch turns the one-character keys off, the arrows stay; on unless the browser remembers «no»", () => {
+  for (const key of ["v", "V", "c", "C"]) assert.equal(reviewKeyAction({ key, typing: false, enabled: false }), null, key);
+  assert.equal(reviewKeyAction({ key: "ArrowRight", typing: false, enabled: false }), "next");
+  assert.equal(reviewKeyAction({ key: "ArrowLeft", typing: false, enabled: false }), "prev");
   assert.equal(reviewKeyAction({ key: "v", typing: false, enabled: true }), "validate");
   assert.equal(shortcutsOn(null), true);
   assert.equal(shortcutsOn("si"), true);

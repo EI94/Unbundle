@@ -61,8 +61,9 @@ function typingIn(target: EventTarget | null): boolean {
 
 /**
  * «Verifica una alla volta» (DESIGN §3.6.4): una risposta per scheda, dalla
- * più vecchia. Tasti rapidi V, C, → e ←, che un interruttore spegne (rilascio
- * 10, §3.5); dopo ogni azione si passa alla scheda successiva senza ricaricare
+ * più vecchia. Tasti rapidi V, C, → e ←; un interruttore spegne V e C (rilascio
+ * 10, §3.5; le frecce restano) e «‹ Precedente» torna alla scheda di prima.
+ * Dopo ogni azione si passa alla scheda successiva senza ricaricare
  * la pagina. Al telefono la riga delle azioni resta fissa in basso. La pagina
  * lo monta con `key` sulla scheda: un modulo aperto e il testo scritto non
  * passano alla scheda dopo.
@@ -126,7 +127,7 @@ export function ReviewMode({ baseHref, exitHref, panoramicaHref, position, card,
           Verifica · {formatCountIt(position.index)} di {formatCountIt(position.total)}
         </p>
         {position.nextId ? (
-          <button type="button" onClick={() => go("next")} aria-keyshortcuts={keys ? "ArrowRight" : undefined} className="inline-flex min-h-11 items-center gap-1 text-muted-foreground hover:text-foreground">
+          <button type="button" onClick={() => go("next")} aria-keyshortcuts="ArrowRight" className="inline-flex min-h-11 items-center gap-1 text-muted-foreground hover:text-foreground">
             Salta
             <ChevronRight className="size-4" aria-hidden />
           </button>
@@ -142,12 +143,20 @@ export function ReviewMode({ baseHref, exitHref, panoramicaHref, position, card,
           </div>
         )}
       </article>
-      <div className="mt-3 hidden flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground sm:flex">
-        <label htmlFor={switchId} className="flex min-h-9 cursor-pointer items-center gap-2">
+      {/* (Rilascio 10, §3.5) «‹ Precedente» per chi non usa i tasti; l'interruttore spegne V e C (WCAG 2.1.4: i tasti di
+          un carattere), le frecce restano. Si vede a ogni larghezza, anche con una tastiera collegata al tablet. */}
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        {position.prevId && (
+          <Button type="button" variant="ghost" className="-ml-2 min-h-11 sm:min-h-9" onClick={() => go("prev")} aria-keyshortcuts="ArrowLeft">
+            <ChevronLeft aria-hidden data-icon="inline-start" />
+            {DOMANDE_TEXT.verify.previous}
+          </Button>
+        )}
+        <label htmlFor={switchId} className="flex min-h-11 cursor-pointer items-center gap-2 sm:min-h-9">
           <Switch id={switchId} checked={keys} onCheckedChange={(on) => writeShortcuts(on)} />
           {DOMANDE_TEXT.verify.shortcuts}
         </label>
-        {keys && <span>{DOMANDE_TEXT.verify.hint}</span>}
+        <span className="hidden sm:inline">{keys ? DOMANDE_TEXT.verify.hint : DOMANDE_TEXT.verify.hintArrows}</span>
       </div>
     </div>
   );

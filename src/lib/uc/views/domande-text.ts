@@ -181,6 +181,9 @@ export const DOMANDE_TEXT = Object.freeze({
     /** L'interruttore dei tasti rapidi (WCAG 2.1.4). */
     shortcuts: "Tasti rapidi",
     hint: "V valida · C chiarimento · → salta · ← indietro",
+    /** Con i tasti rapidi spenti restano le frecce. */
+    hintArrows: "→ salta · ← indietro",
+    previous: "Precedente",
   }),
 
   /** Il pannello «File» (`?apri=file`): l'archivio della realizzazione. */
