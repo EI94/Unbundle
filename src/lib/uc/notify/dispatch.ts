@@ -1047,8 +1047,9 @@ async function deliverOne(
 
   let rendered: RenderedEmail;
   try {
-    // (Rilascio 10, §3.12) Le email della realizzazione hanno l'intestazione come le altre.
-    rendered = renderEmail(plan.build(issued ? `${config.origin}/r/${issued.token}` : null), emailBrand(config.origin));
+    // (Rilascio 10, §3.12) Le email della realizzazione hanno l'intestazione come le altre; «Per un dubbio, rispondi qui.»
+    // solo se una risposta arriva a qualcuno (il reply-to qui sotto).
+    rendered = renderEmail(plan.build(issued ? `${config.origin}/r/${issued.token}` : null), emailBrand(config.origin), { replyKnown: Boolean(config.replyTo) });
   } catch {
     if (issued && n.caseId) await store.revokeToken({ caseId: n.caseId, tokenId: issued.tokenId });
     await store.markFailed(n, "testo_non_valido");

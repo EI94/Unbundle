@@ -103,23 +103,27 @@ test("(rilascio 10, §3.12) ogni corpo di un caso d'uso solo: al massimo 60 paro
   }
 });
 
-test("(rilascio 10, §3.12) le richieste e i promemoria della realizzazione: al massimo 60 parole anche con un titolo di 9 parole", () => {
-  const long = { clientName: "Cliente Demo", caseTitle: LONG.title };
+test("(rilascio 10, §3.12) le richieste e i promemoria della realizzazione: al massimo 60 parole anche con un titolo di 9 parole e un cliente di 7", () => {
   const brand = emailBrand(ORIGIN);
-  const requests: EmailInput[] = [
-    { ...long, template: "richiesta_inviata", questions: 12, minutes: 25, expiresAt: EXPIRES, link: R },
-    { ...long, template: "promemoria_1", questions: 12, minutes: 25, expiresAt: EXPIRES, link: R },
-    { ...long, template: "promemoria_2", questions: 12, minutes: 25, expiresAt: EXPIRES, link: R },
-    { ...long, template: "chiarimento", itemTitle: "Volumi mensili delle fatture registrate a mano", expiresAt: EXPIRES, link: R },
-    { ...long, template: "delega", audience: "collega", fromRoleLabel: "Responsabile amministrativo", questions: 4, minutes: 9, expiresAt: EXPIRES, link: R },
-    { ...long, template: "richiesta_approvazione", designation: "privacy", pending: 2, expiresAt: EXPIRES, link: R },
-  ];
-  for (const input of requests) {
-    const m = renderEmail(input, brand);
-    const words = emailBodyWords(m.text);
-    assert.ok(words <= EMAIL_BODY_MAX_WORDS, `${input.template}: ${words} parole\n${m.text}`);
-    // La riga piccola del modello: il link solo tuo, la scadenza, la risposta all'email.
-    assert.ok(m.text.includes("Il link è solo tuo e vale fino all'8 dicembre. Per un dubbio, rispondi qui."), `${input.template}\n${m.text}`);
+  // Il cliente apre l'oggetto e non torna nel corpo: un nome lungo non allunga il corpo.
+  for (const clientName of ["Cliente Demo", "Una ragione sociale lunga di prova S.p.A."]) {
+    const long = { clientName, caseTitle: LONG.title };
+    const requests: EmailInput[] = [
+      { ...long, template: "richiesta_inviata", questions: 12, minutes: 25, expiresAt: EXPIRES, link: R },
+      { ...long, template: "promemoria_1", questions: 12, minutes: 25, expiresAt: EXPIRES, link: R },
+      { ...long, template: "promemoria_2", questions: 12, minutes: 25, expiresAt: EXPIRES, link: R },
+      { ...long, template: "chiarimento", itemTitle: "Volumi mensili delle fatture registrate a mano", expiresAt: EXPIRES, link: R },
+      { ...long, template: "delega", audience: "collega", fromRoleLabel: "Responsabile amministrativo", questions: 4, minutes: 9, expiresAt: EXPIRES, link: R },
+      { ...long, template: "richiesta_approvazione", designation: "privacy", pending: 2, expiresAt: EXPIRES, link: R },
+    ];
+    for (const input of requests) {
+      // La variante più lunga: con chi risponde all'email, «Per un dubbio, rispondi qui.».
+      const m = renderEmail(input, brand, { replyKnown: true });
+      const words = emailBodyWords(m.text);
+      assert.ok(words <= EMAIL_BODY_MAX_WORDS, `${clientName} · ${input.template}: ${words} parole\n${m.text}`);
+      assert.ok(m.text.includes("Il link è solo tuo e vale fino all'8 dicembre. Per un dubbio, rispondi qui."), `${input.template}\n${m.text}`);
+      assert.ok(m.subject.length <= EMAIL_SUBJECT_MAX, m.subject);
+    }
   }
 });
 

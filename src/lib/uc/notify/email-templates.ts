@@ -213,11 +213,23 @@ function caseSubject(c: CaseRef, what: string): string {
 
 /**
  * (Rilascio 10, §3.12) La riga piccola delle email ai referenti, una sola, come nel modello e nelle email di «Chiedi al
- * referente»: «Il link è solo tuo e vale fino al 26 novembre. Per un dubbio, rispondi qui.» La risposta arriva a Lateral
- * Space (`UC_EMAIL_REPLY_TO`), come dice la scheda del link che non vale più.
+ * referente» (`referent/email.ts`): «Il link è solo tuo e vale fino al 26 novembre. Per un dubbio, rispondi qui.» La
+ * seconda frase solo quando una risposta all'email arriva a qualcuno (`replyKnown`: c'è `UC_EMAIL_REPLY_TO`); senza,
+ * solo la prima.
  */
-function linkNote(expiresAt: Date): string {
-  return `Il link è solo tuo e vale ${untilDayIt(expiresAt)}. Per un dubbio, rispondi qui.`;
+function linkNote(expiresAt: Date, replyKnown: boolean): string {
+  const first = `Il link è solo tuo e vale ${untilDayIt(expiresAt)}.`;
+  return replyKnown ? `${first} Per un dubbio, rispondi qui.` : first;
+}
+
+/** (Rilascio 10, §3.12) Come si compone un'email oltre al modello. */
+export interface EmailOptions {
+  /**
+   * Una risposta all'email arriva a qualcuno: il mittente non riceve posta, il reply-to è `UC_EMAIL_REPLY_TO`. Lo dice chi
+   * invia (`dispatch`, `Boolean(config.replyTo)`); senza (l'anteprima di «Invia le domande», i test) la riga piccola non
+   * promette risposte.
+   */
+  replyKnown?: boolean;
 }
 
 /**
@@ -302,10 +314,12 @@ function ownerContextBlocks(c: WeeklyContextOwner | null | undefined): Block[] {
 
 /**
  * L'email di un modello, con l'intestazione (rilascio 10, §3.12: `brand`, come le email dell'area «Use case»).
- * Senza `brand` (l'anteprima di «Invia le domande») l'HTML non ha il marchio.
+ * Senza `brand` (l'anteprima di «Invia le domande») l'HTML non ha il marchio. Con `options.replyKnown` la riga piccola
+ * dice anche «Per un dubbio, rispondi qui.» (`EmailOptions`).
  */
-export function renderEmail(input: EmailInput, brand?: EmailBrand): RenderedEmail {
+export function renderEmail(input: EmailInput, brand?: EmailBrand, options: EmailOptions = {}): RenderedEmail {
   const out = (subject: string, blocks: Block[]) => render(subject, blocks, brand);
+  const replyKnown = options.replyKnown === true;
   switch (input.template) {
     case "richiesta_inviata": {
       const link = checkEmailLink(input.link, "referente");
@@ -314,13 +328,14 @@ export function renderEmail(input: EmailInput, brand?: EmailBrand): RenderedEmai
       const blocks: Block[] = [
         { p: "Buongiorno," },
         {
-          p: `per il caso d'uso «${oneLine(input.caseTitle, 120)}» di ${oneLine(input.clientName, 80)} ci servono alcune informazioni da te: ${plural(input.questions, "domanda", "domande")}${mins ? `, ${mins}` : ""}.`,
+          // (Rilascio 10, §3.12) Il cliente lo dice già l'oggetto: il corpo resta entro 60 parole anche con un nome lungo.
+          p: `per il caso d'uso «${oneLine(input.caseTitle, 120)}» ci servono alcune informazioni da te: ${plural(input.questions, "domanda", "domande")}${mins ? `, ${mins}` : ""}.`,
         },
         // (Rilascio 10, §3.12) Al massimo 60 parole anche con un titolo lungo: «Non lo so» e l'altra persona in una riga.
         { p: "Se non sai una cosa, scegli «Non lo so» o chiedi a un'altra persona." },
       ];
       if (input.message && input.message.trim()) blocks.push({ quote: multiLine(input.message, 1000) });
-      blocks.push({ link: { href: link, label: "Apri le domande" } }, { small: linkNote(input.expiresAt) });
+      blocks.push({ link: { href: link, label: "Apri le domande" } }, { small: linkNote(input.expiresAt, replyKnown) });
       return out(subject, blocks);
     }
     case "promemoria_1":
@@ -337,7 +352,7 @@ export function renderEmail(input: EmailInput, brand?: EmailBrand): RenderedEmai
         // (Rilascio 10, §3.12) Un solo «Riprendi»; l'ultimo promemoria ricorda «Non lo so». Genere neutro.
         second ? { p: "È l'ultimo promemoria: se non sai qualcosa, scegli «Non lo so»." } : { p: "Le risposte già scritte sono salvate: riprendi da lì." },
         { link: { href: link, label: "Riprendi" } },
-        { small: linkNote(input.expiresAt) },
+        { small: linkNote(input.expiresAt, replyKnown) },
       ]);
     }
     case "segnalazione_owner": {
@@ -367,7 +382,7 @@ export function renderEmail(input: EmailInput, brand?: EmailBrand): RenderedEmai
             : "su una tua risposta ci serve un chiarimento. Trovi la nostra domanda nella pagina.",
         },
         { link: { href: link, label: "Rispondi" } },
-        { small: linkNote(input.expiresAt) },
+        { small: linkNote(input.expiresAt, replyKnown) },
       ]);
     }
     case "delega": {
@@ -386,11 +401,11 @@ export function renderEmail(input: EmailInput, brand?: EmailBrand): RenderedEmai
       const blocks: Block[] = [
         { p: "Buongiorno," },
         {
-          p: `una persona${from} di ${oneLine(input.clientName, 80)} ti chiede di rispondere a ${plural(input.questions, "domanda", "domande")} per il caso d'uso «${oneLine(input.caseTitle, 120)}»${mins ? `, ${mins}` : ""}.`,
+          p: `una persona${from} ti chiede di rispondere a ${plural(input.questions, "domanda", "domande")} per il caso d'uso «${oneLine(input.caseTitle, 120)}»${mins ? `, ${mins}` : ""}.`,
         },
       ];
       if (input.message && input.message.trim()) blocks.push({ quote: multiLine(input.message, 1000) });
-      blocks.push({ p: "Se non sai una cosa, scegli «Non lo so»." }, { link: { href: link, label: "Apri le domande" } }, { small: linkNote(input.expiresAt) });
+      blocks.push({ p: "Se non sai una cosa, scegli «Non lo so»." }, { link: { href: link, label: "Apri le domande" } }, { small: linkNote(input.expiresAt, replyKnown) });
       return out(subject, blocks);
     }
     case "richiesta_approvazione": {
@@ -405,7 +420,7 @@ export function renderEmail(input: EmailInput, brand?: EmailBrand): RenderedEmai
         },
         { p: "Nella pagina trovi il testo esatto. Puoi firmare o rifiutare, con un motivo." },
         { link: { href: link, label: "Leggi e decidi" } },
-        { small: linkNote(input.expiresAt) },
+        { small: linkNote(input.expiresAt, replyKnown) },
       ]);
     }
     case "riepilogo_settimanale": {
