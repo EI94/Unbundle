@@ -1,4 +1,5 @@
 import { casePath } from "@/components/uc/catalog/paths";
+import { CaseSignaturesPanel } from "@/components/uc/approvals/sign-panel";
 import { CatalogExportLinks } from "@/components/uc/export/catalog-export-links";
 import { filesToCheckFor, loadCaseHead } from "@/components/uc/shell/case-data";
 import { CaseHeader } from "@/components/uc/shell/case-header";
@@ -135,7 +136,9 @@ export default async function CaseLayout({ children, params }: { children: React
         </div>
       </div>
       <CaseStickyBar basePath={base} tabs={tabs} headId={CASE_HEAD_ID} title={title} status={status} progress={header.progress} step={stepView} />
-      {/* TODO(integrazione 5a): montare qui il pannello delle firme di «persone» (`?firma=1`, F-006), che su questo ramo non c'è: <CaseSignaturesPanel workspaceId={workspaceId} caseId={caseId} roles={roles} status={c.status} readOnly={caseAccess.readOnly} /> da `@/components/uc/approvals/sign-panel`. */}
+      {/* (Rilascio 10, §3.5) Il pannello delle firme (`?firma=1`): su ogni pagina della realizzazione, così il passo «Firma»
+          e `/firme` lo aprono dove si è. */}
+      <CaseSignaturesPanel workspaceId={workspaceId} caseId={caseId} roles={roles} status={c.status} readOnly={caseAccess.readOnly} />
       <CaseUrlPanels
         workspaceId={workspaceId}
         caseId={caseId}
