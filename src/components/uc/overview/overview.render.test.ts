@@ -162,13 +162,13 @@ test("the open conditions of the via: 3 rows, then «Vedi tutti (n)»; each one 
 
 test("the via commands: no dead button, the filled one only when the header hides its own, no «Non approvo» here", () => {
   const panel = (action: object, over: object = {}) =>
-    render(h(G.GatePanel, { workspaceId: WS, caseId: CASE, action, filled: true, reviewId: "r1", contractCase: false, signHref: `${base}/firme`, files: [], ...over } as never));
+    render(h(G.GatePanel, { workspaceId: WS, caseId: CASE, action, filled: true, reviewId: "r1", contractCase: false, signHref: `${base}?firma=1`, files: [], ...over } as never));
   assert.equal(panel({ kind: "proponi", disabled: true, note: "Si propone quando sono tutte a posto." }), "", "F-036: the line says when, no button");
   const propose = panel({ kind: "proponi", disabled: false, note: null });
   assert.match(propose, />Proponi il via allo sviluppo</);
   assert.equal(filled(propose), 1, "on the Panoramica the header hides «Proponi»: this is the filled one");
   assert.equal(filled(panel({ kind: "proponi", disabled: false, note: null }, { filled: false })), 0);
-  assert.match(panel({ kind: "firma_cliente", note: null }), new RegExp(`href="${base}/firme"[^>]*>Firma il via allo sviluppo`));
+  assert.match(panel({ kind: "firma_cliente", note: null }), new RegExp(`href="${base}\\?firma=1"[^>]*>Firma il via allo sviluppo`), "the signatures panel of the shell");
   assert.equal(panel({ kind: "firma_cliente", note: null }, { signHref: null }), "", "the header already says «Firma il via allo sviluppo»");
   const send = panel({ kind: "manda_link", canSend: true, attachEvidence: false, note: "Hai firmato il 3 ott. Manca il responsabile del cliente." });
   assert.match(send, /Manda il link per firmare/);

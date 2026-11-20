@@ -305,13 +305,14 @@ export function stepHasPageCommand(id: NextStepId): boolean {
   return STEPS_WITH_PAGE_COMMAND.includes(id);
 }
 
-/** Il pannello che apre il passo della testata: il dialogo di conferma, «Esporta…» o il pannello della pagina d'arrivo. */
-export type StepPanel = { name: "conferma" | "esporta" | "apri"; value: string };
+/** Il pannello che apre il passo della testata: il dialogo di conferma, «Esporta…», le firme o il pannello della pagina d'arrivo. */
+export type StepPanel = { name: "conferma" | "esporta" | "firma" | "apri"; value: string };
 
 /**
  * Il pannello di un passo (rilascio 10, §3.5): `?conferma=<stato>` per i cambi di stato, `?esporta=1` per il catalogo
- * dello sviluppatore (pannelli della testata, su ogni pagina), `?apri=file` per «Controlla N file» (il pannello «File»
- * di Domande). Con un pannello il primario non si nasconde mai sulla pagina in cui porta (`stepHiddenOn`): lì lo apre.
+ * dello sviluppatore, `?firma=1` per le firme (pannelli del guscio, su ogni pagina), `?apri=file` per «Controlla N
+ * file» (il pannello «File» di Domande). Con un pannello il primario non si nasconde mai sulla pagina in cui porta
+ * (`stepHiddenOn`): lì lo apre.
  */
 export function stepPanelOf(step: Pick<NextStep, "id" | "transition" | "panel">): StepPanel | undefined {
   if (step.transition) return { name: "conferma", value: step.transition };

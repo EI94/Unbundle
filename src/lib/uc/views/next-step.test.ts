@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { CaseRole } from "../vocab.ts";
-import { FILES_HREF, FILES_PANEL, NEXT_STEP_ICON, VIA_HREF, caseNextSteps, myNextSteps, nextStepFor, overviewTodo, resolveStepHref, turnRow, whoseTurn, type NextStep, type NextStepInput } from "./next-step.ts";
+import { FILES_HREF, FILES_PANEL, NEXT_STEP_ICON, SIGN_HREF, SIGN_PANEL, VIA_HREF, caseNextSteps, myNextSteps, nextStepFor, overviewTodo, resolveStepHref, turnRow, whoseTurn, type NextStep, type NextStepInput } from "./next-step.ts";
 
 const NOW = new Date("2026-10-14T10:00:00Z");
 
@@ -70,11 +70,15 @@ test("row 3: the go-ahead to development must be confirmed again", () => {
 
 test("row 4: signatures waiting for the viewer, for the lead, the client owner and the privacy approver", () => {
   const gate = [{ kind: "via" as const, otherSideSigned: true }];
-  assert.deepEqual(brief(primary({ mySignaturesPending: gate }, OWN)), { label: "Firma il via allo sviluppo", detail: "Lateral Space ha già firmato.", href: "/firme", owner: "me" });
+  // (Rilascio 10, §3.5, F-006) The signatures panel of the shell, on the page where one is.
+  assert.deepEqual(brief(primary({ mySignaturesPending: gate }, OWN)), { label: "Firma il via allo sviluppo", detail: "Lateral Space ha già firmato.", href: "?firma=1", owner: "me" });
+  assert.deepEqual(primary({ mySignaturesPending: gate }, OWN)?.panel, { name: "firma", value: "1" });
+  assert.equal(SIGN_HREF, "?firma=1");
+  assert.deepEqual(SIGN_PANEL, { name: "firma", value: "1" });
   assert.deepEqual(brief(primary({ mySignaturesPending: [{ kind: "scheda_privacy", otherSideSigned: false }] }, PRIV)), {
     label: "Firma la scheda privacy",
     detail: "Servono per andare avanti.",
-    href: "/firme",
+    href: "?firma=1",
     owner: "me",
   });
   const three = [

@@ -212,6 +212,7 @@ test("(rilascio 10, §3.5) a step whose command is in the via section hides on t
 test("(rilascio 10, §3.5) the panel of a step: the header's dialogs, «Esporta…», and the File panel of Domande, which stays on Domande", () => {
   assert.deepEqual(stepPanelOf({ id: "avvia_sviluppo", transition: "in_sviluppo" }), { name: "conferma", value: "in_sviluppo" });
   assert.deepEqual(stepPanelOf({ id: "scarica_catalogo" }), { name: "esporta", value: "1" });
+  assert.deepEqual(stepPanelOf({ id: "firma", panel: { name: "firma", value: "1" } }), { name: "firma", value: "1" }, "the signatures panel of the shell");
   assert.deepEqual(stepPanelOf({ id: "controlla_file", panel: { name: "apri", value: "file" } }), { name: "apri", value: "file" });
   assert.equal(stepPanelOf({ id: "verifica" }), undefined);
   const base = "/dashboard/w1/casi-duso/c1";

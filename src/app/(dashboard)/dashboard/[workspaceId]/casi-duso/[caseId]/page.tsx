@@ -32,7 +32,7 @@ import { exportChoices } from "@/lib/uc/export/request";
 import { VIA_SECTION_ID, canOpenShellPage, landingSegment, stepHasPageCommand, stepHiddenOn, stepPanelOf } from "@/lib/uc/views/case-shell";
 import { readableText } from "@/lib/uc/views/description";
 import { formatCountIt } from "@/lib/uc/views/format";
-import { FILES_HREF, NEXT_STEP_ICON, caseNextSteps, nextStepFor, overviewTodo, resolveStepHref, turnRow, type NextStep } from "@/lib/uc/views/next-step";
+import { FILES_HREF, NEXT_STEP_ICON, SIGN_HREF, caseNextSteps, nextStepFor, overviewTodo, resolveStepHref, turnRow, type NextStep } from "@/lib/uc/views/next-step";
 import { canOpenPage, seesValidatedOnly } from "@/lib/uc/views/page-access";
 import {
   BLOCKER_PANEL_ITEMS,
@@ -214,9 +214,9 @@ export default async function OverviewPage({
     // (Rilascio 10, §3.5) I file stanno nel pannello «File» di Domande.
     return cond.segment === "domande/documenti" ? resolveStepHref(base, FILES_HREF) : casePath(workspaceId, caseId, cond.segment);
   };
-  // Il via si firma nel pannello delle firme (`/firme`). Se la testata mostra già «Firma il via allo sviluppo», la sezione non lo ripete.
+  // Il via si firma nel pannello delle firme (`?firma=1`, nel guscio). Se la testata mostra già «Firma il via allo sviluppo», la sezione non lo ripete.
   const headerSignsVia = headerPrimary && primary?.id === "firma" && header.nextStep.mySignaturesPending.length === 1 && header.nextStep.mySignaturesPending[0].kind === "via";
-  const signHref = headerSignsVia ? null : casePath(workspaceId, caseId, "firme");
+  const signHref = headerSignsVia ? null : resolveStepHref(base, SIGN_HREF);
   const history = via.reviews.map((r) => reviewHistoryRow(r, now));
   const versions = via.versions.map((v) => ({ key: String(v.version), ...catalogVersionRow(v, now) }));
   // Le risposte da verificare stanno già nel pulsante pieno «Verifica N risposte»: il gruppo non si ripete.

@@ -30,9 +30,9 @@ export interface GatePanelProps {
   /** Caso a contratto: la prova scritta (email o verbale) serve prima dell'approvazione. */
   contractCase: boolean;
   /**
-   * Dove si firma il via (`/firme`, il pannello delle firme). Null se il
-   * pulsante della testata porta già lì con lo stesso testo: la sezione non lo
-   * ripete.
+   * Dove si firma il via: il pannello delle firme del guscio (`?firma=1`). Null
+   * se il pulsante della testata porta già lì con lo stesso testo: la sezione
+   * non lo ripete.
    */
   signHref: string | null;
   files: readonly { id: string; name: string }[];
@@ -94,7 +94,7 @@ export function GatePanel(p: GatePanelProps) {
       )}
 
       {signing && p.signHref && (
-        <Button variant={variant} className={size} render={<Link href={p.signHref} />} nativeButton={false}>
+        <Button variant={variant} className={size} render={<Link href={p.signHref} scroll={false} />} nativeButton={false}>
           Firma il via allo sviluppo
         </Button>
       )}

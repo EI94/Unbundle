@@ -162,6 +162,13 @@ test("(contract with «domande») «Controlla 2 file»: on Domande it stays and 
   assert.ok(onPeople.includes(`href="${base}/domande?apri=file"`), "the people's query does not travel to Domande");
 });
 
+test("(rilascio 10, F-006) «Firma il via allo sviluppo»: the signatures panel of the shell opens where one is, filters kept", () => {
+  const sign = { ...PROPS, step: { label: "Firma il via allo sviluppo", href: `${base}?firma=1`, caseBase: base, icon: "decidi", why: "Lateral Space ha già firmato.", panel: { name: "firma", value: "1" } } };
+  const filledLink = (page: string) => /<a\b[^>]*\bbg-primary\b[^>]*>/.exec(page)?.[0] ?? "";
+  assert.ok(filledLink(html(sign, { ...DOMANDE, search: "vista=da-fare" })).includes(`href="${base}/domande?vista=da-fare&amp;firma=1"`));
+  assert.ok(filledLink(html(sign, PANORAMICA)).includes(`href="${base}?firma=1"`));
+});
+
 test("one alert at most, with its link already complete", () => {
   const alert = { kind: "riconferma", text: "Il via allo sviluppo va riconfermato: alcune domande indispensabili non sono più a posto.", tone: "rosso", action: { label: "Vedi cosa manca", href: `${base}#via` } };
   const page = html({ ...PROPS, alert }, DOMANDE);

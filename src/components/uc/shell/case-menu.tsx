@@ -90,9 +90,9 @@ export interface CaseStepView {
   /** Radice del dossier: dice dove il passo si nasconde (`stepHiddenOn`). */
   caseBase: string;
   /**
-   * Il passo apre un pannello invece di cambiare pagina (`stepPanelOf`): quelli della testata (`conferma`, `esporta`)
-   * su ogni pagina; (rilascio 10, §3.5) `apri` sulla pagina d'arrivo del passo (il pannello «File» di Domande), che
-   * dalle altre pagine si raggiunge con `href`.
+   * Il passo apre un pannello invece di cambiare pagina (`stepPanelOf`): quelli del guscio (`conferma`, `esporta`,
+   * `firma`) su ogni pagina; (rilascio 10, §3.5) `apri` sulla pagina d'arrivo del passo (il pannello «File» di
+   * Domande), che dalle altre pagine si raggiunge con `href`.
    */
   panel?: StepPanel;
   /** (Rilascio 10, §7.4) L'icona accanto al verbo, come nei passi dello use case (`NEXT_STEP_ICON`). */
@@ -115,8 +115,9 @@ function withParam(pathname: string, current: URLSearchParams, name: string, val
 const pathOf = (href: string) => href.split(/[?#]/)[0].replace(/\/+$/, "");
 
 /**
- * Dove porta il passo da questa pagina: un pannello della testata si apre qui; un pannello di pagina (`apri`) si apre
- * qui solo sulla sua pagina, con i filtri di chi guarda; altrimenti l'indirizzo del passo. `inPlace`: si resta qui.
+ * Dove porta il passo da questa pagina: un pannello del guscio (conferma, esporta, firma) si apre qui; un pannello di
+ * pagina (`apri`) si apre qui solo sulla sua pagina, con i filtri di chi guarda; altrimenti l'indirizzo del passo.
+ * `inPlace`: si resta qui.
  */
 export function stepTarget(step: Pick<CaseStepView, "href" | "panel">, pathname: string, current: URLSearchParams): { href: string; inPlace: boolean } {
   if (!step.panel) return { href: step.href, inPlace: false };

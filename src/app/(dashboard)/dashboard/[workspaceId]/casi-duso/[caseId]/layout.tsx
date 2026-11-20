@@ -136,6 +136,7 @@ export default async function CaseLayout({ children, params }: { children: React
         </div>
       </div>
       <CaseStickyBar basePath={base} tabs={tabs} headId={CASE_HEAD_ID} title={title} status={status} progress={header.progress} step={stepView} />
+      {/* TODO(integrazione 5a): montare qui il pannello delle firme di «persone» (`?firma=1`, F-006), che su questo ramo non c'è: <CaseSignaturesPanel workspaceId={workspaceId} caseId={caseId} roles={roles} status={c.status} readOnly={caseAccess.readOnly} /> da `@/components/uc/approvals/sign-panel`. */}
       <CaseUrlPanels
         workspaceId={workspaceId}
         caseId={caseId}

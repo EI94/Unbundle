@@ -56,10 +56,11 @@ export interface NextStep {
   /** Per i passi che si confermano in un dialogo: lo stato verso cui va il caso. */
   transition?: CaseStatus;
   /**
-   * (Rilascio 10, §3.5) Il passo apre un pannello della pagina d'arrivo (`?apri=file` di Domande): su quella pagina il
-   * pulsante resta e apre il pannello lì; dalle altre pagine porta alla pagina con il pannello aperto.
+   * (Rilascio 10, §3.5) Il passo apre un pannello invece di cambiare pagina: `firma` è il pannello delle firme, nel
+   * guscio (`?firma=1`, su ogni pagina); `apri` un pannello della pagina d'arrivo (`?apri=file` di Domande), che su
+   * quella pagina si apre lì e dalle altre si raggiunge con `href`.
    */
-  panel?: { name: "apri"; value: string };
+  panel?: { name: "apri" | "firma"; value: string };
 }
 
 /**
@@ -89,6 +90,12 @@ export const VIA_HREF = "/#via";
 
 /** (Rilascio 10, §3.5) Il pannello «File» di Domande (`?apri=file`, di «domande»): l'indirizzo concordato, resta questo. */
 export const FILES_HREF = "/domande?apri=file";
+
+/** (Rilascio 10, §3.5, F-006) Il pannello delle firme, nel guscio della realizzazione: `/firme` ci porta. */
+export const SIGN_HREF = "?firma=1";
+
+/** Il pannello delle firme come pannello del passo: si apre sulla pagina dove si è. */
+export const SIGN_PANEL: Readonly<{ name: "firma"; value: string }> = Object.freeze({ name: "firma", value: "1" });
 
 /** Il pannello «File» come pannello del passo: su Domande il pulsante lo apre lì, con i filtri di chi guarda. */
 export const FILES_PANEL: Readonly<{ name: "apri"; value: string }> = Object.freeze({ name: "apri", value: "file" });
@@ -179,7 +186,7 @@ function signatureStep(pending: readonly PendingSignature[], isLead: boolean): N
   else if (count === 1 && pending[0].kind === "scheda_privacy") label = "Firma la scheda privacy";
   else label = count === 1 ? "Firma 1 decisione" : `Firma ${n(count)} decisioni`;
   const allOtherSigned = pending.every((p) => p.otherSideSigned);
-  return { id: "firma", label, detail: allOtherSigned && !isLead ? "Lateral Space ha già firmato." : "Servono per andare avanti.", href: "/firme", owner: "me" };
+  return { id: "firma", label, detail: allOtherSigned && !isLead ? "Lateral Space ha già firmato." : "Servono per andare avanti.", href: SIGN_HREF, owner: "me", panel: { ...SIGN_PANEL } };
 }
 
 /** I passi che valgono adesso, nell'ordine della tabella di DESIGN §2.7. */
