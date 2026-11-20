@@ -90,8 +90,10 @@ test("la stessa mappa di «Oggi», colorata per categoria: il badge, «da classi
   assert.doesNotMatch(out, /exposure-badge|AI 34%/, "l'esposizione all'AI sta nei dettagli tecnici del drawer");
   assert.match(out, /<span class="b-nt">Invio dell'ordine<\/span><span class="b-none">da classificare<\/span>/);
   assert.deepEqual([...out.matchAll(/<span class="b-gate" data-b="gate">([^<]+)<\/span>/g)].map((match) => match[1]), ["Richiesta completa", "Scelta del fornitore", "Decide una persona"]);
-  // Niente chi e strumenti sulla mappa classificata: quelli sono di «Processi di oggi» e del drawer.
-  assert.doesNotMatch(out, /class="b-who"|b-chip b-tool/);
+  // Niente chi e strumenti sulla mappa classificata: quelli sono di «Processi di oggi» e del drawer. (Rilascio 10, §3.7)
+  // Nemmeno la descrizione: come su «Oggi», sta nel drawer.
+  assert.doesNotMatch(out, /class="b-who"|b-chip b-tool|class="b-ns2"/);
+  assert.ok(allSteps(board).some((step) => step.description), "la prova ha passi con la descrizione");
   // Ogni riga è larga quanto la più lunga (quattro passi), senza il posto di «+ passo»: le etichette restano ferme (P13).
   assert.match(out, /<div class="b-pm" style="--steps:4" data-dim="" data-b="map">|<div class="b-pm" style="--steps:4" data-b="map">/);
   assert.doesNotMatch(out, /<div class="b-pm-row" style=|data-adds/);

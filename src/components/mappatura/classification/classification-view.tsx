@@ -85,7 +85,8 @@ const isComplete = (board: Pick<MappingBoard, "unit">) => board.unit.status === 
 
 /**
  * Un passo sulla mappa classificata: il badge della categoria, «da classificare», la decisione, il bordo della
- * categoria. (Rilascio 10, §3.7) L'esposizione all'AI non sta sulla card: è un dettaglio tecnico, nel drawer.
+ * categoria. (Rilascio 10, §3.7) Come su «Oggi», la descrizione sta nel drawer; l'esposizione all'AI non sta sulla card:
+ * è un dettaglio tecnico, nel drawer.
  */
 function ClassifiedStep(p: { step: BoardStep; code: string; dimmed: boolean; onOpen(): void }): JSX.Element {
   const { step } = p;
@@ -94,7 +95,6 @@ function ClassifiedStep(p: { step: BoardStep; code: string; dimmed: boolean; onO
     <StepCard
       code={p.code}
       title={step.title}
-      description={step.description}
       accent={{ kind: "stream", stream: step.stream }}
       badges={badges}
       note={step.stream ? null : CLASSIFICATION_TEXT.card.unclassified}
