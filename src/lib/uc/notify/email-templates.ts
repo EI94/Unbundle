@@ -605,3 +605,79 @@ export function renderEmail(input: EmailInput, brand?: EmailBrand): RenderedEmai
     }
   }
 }
+
+// ── (8.2b) Le chiavi della CI ─────────────────────────────────────────
+// Un blocco a parte, in fondo al file (RILASCIO-8.2b-SPEC.md §2.6): le e-mail della chiave della CI sono interne di Lateral
+// Space e senza caso, a chi gestisce le chiavi del repository (`chiave_ci_creata` tranne chi l'ha creata). Il modello del
+// rilascio 10 (§3.12): l'oggetto al massimo di 55 caratteri, «{Cliente}: {cosa} «{nome}»»; il corpo corto; un pulsante
+// con un verbo; il testo semplice con l'indirizzo in chiaro. Mai la chiave, il suo prefisso o chi l'ha creata: la chiave è
+// del repository, non di una persona.
+
+/** I tre modelli della chiave della CI (gli stessi di `CI_KEY_EMAIL_TEMPLATES` del modulo delle chiavi). */
+export const CI_KEY_EMAIL_TEMPLATE_KEYS = ["chiave_ci_creata", "chiave_ci_scade", "chiave_ci_bloccata"] as const;
+
+/** Le e-mail della chiave della CI. `repo`: `owner/nome`, come è registrato; il link porta all'Agent Factory del workspace. */
+export type CiKeyEmailInput =
+  | { template: "chiave_ci_creata"; clientName: string; repo: string; createdAt: Date; link: string }
+  | { template: "chiave_ci_scade"; clientName: string; repo: string; expiresAt: Date; link: string }
+  | { template: "chiave_ci_bloccata"; clientName: string; repo: string; link: string };
+
+/** Vero per le e-mail della chiave della CI, che compone `renderCiKeyEmail` (le altre, `renderEmail`). */
+export function isCiKeyEmailInput(input: { template: string }): input is CiKeyEmailInput {
+  return (CI_KEY_EMAIL_TEMPLATE_KEYS as readonly string[]).includes(input.template);
+}
+
+const CI_REPO_TEXT = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/;
+
+/** Il repository nei testi: intero nel corpo, senza l'organizzazione nell'oggetto. Solo `owner/nome`: mai un testo libero. */
+function ciRepoText(repo: string): { full: string; name: string } {
+  const full = repo.trim();
+  if (!CI_REPO_TEXT.test(full)) throw new Error("Repository dell'email non valido");
+  return { full, name: full.slice(full.indexOf("/") + 1) };
+}
+
+/** L'e-mail di una chiave della CI, con l'intestazione come le altre (`brand`). */
+export function renderCiKeyEmail(input: CiKeyEmailInput, brand?: EmailBrand): RenderedEmail {
+  const link = checkEmailLink(input.link, "dashboard");
+  const client = oneLine(input.clientName, 80);
+  const repo = ciRepoText(input.repo);
+  const open: Block = { link: { href: link, label: "Apri l'Agent Factory" } };
+  switch (input.template) {
+    case "chiave_ci_creata":
+      return render(
+        emailSubject(client, "nuova chiave della CI", repo.name),
+        [
+          { p: "Buongiorno," },
+          { p: `${onDate(input.createdAt, "il")} alle ${TIME_IT.format(input.createdAt)} è stata creata una chiave con cui la CI di ${repo.full} manda a Unbundle le evals di main.` },
+          { p: "Se sai chi l'ha creata, non serve fare niente. Se no, revocala dall'Agent Factory." },
+          open,
+          { small: "Email automatica di Unbundle: arriva a ogni nuova chiave della CI." },
+        ],
+        brand,
+      );
+    case "chiave_ci_scade":
+      return render(
+        emailSubject(client, "chiave della CI in scadenza", repo.name),
+        [
+          { p: "Buongiorno," },
+          { p: `${onDate(input.expiresAt, "il")} scade la chiave con cui la CI di ${repo.full} manda a Unbundle le evals di main. Da quel giorno il job «unbundle» si ferma con un errore.` },
+          { p: "Ruotala dall'Agent Factory e metti la chiave nuova nel segreto UNBUNDLE_CI_TOKEN su GitHub." },
+          open,
+          { small: "Email interna di Lateral Space." },
+        ],
+        brand,
+      );
+    case "chiave_ci_bloccata":
+      return render(
+        emailSubject(client, "chiave della CI bloccata", repo.name),
+        [
+          { p: "Buongiorno," },
+          { p: `Unbundle ha trovato la chiave della CI di ${repo.full} dentro un indirizzo web e l'ha revocata.` },
+          { p: "Crea una chiave nuova dall'Agent Factory e mettila nel segreto UNBUNDLE_CI_TOKEN su GitHub. Fino ad allora le evals di main restano su GitHub." },
+          open,
+          { small: "Email interna di Lateral Space." },
+        ],
+        brand,
+      );
+  }
+}

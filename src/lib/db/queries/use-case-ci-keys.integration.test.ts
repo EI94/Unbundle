@@ -433,6 +433,42 @@ test("la riga della famiglia: i repository dei casi con le chiavi, dalla più nu
   assert.equal(await store.ciKeyMailFacts(exec, { keyId: first.keyId, workspaceId: ids.wsB, recipientUserId: ids.lead, lsDomains: LS }), null, "solo nel workspace della riga");
 });
 
+test("le tre e-mail partono dalla coda a chi gestisce le chiavi, con il repository e il link all'Agent Factory; mai la chiave", opts, async () => {
+  await clearKeys();
+  const dispatch = await import("./uc-notifications-dispatch.ts");
+  const sent: { to: string; subject: string; text: string; html: string }[] = [];
+  const mailer = { send: async (email: { to: string; subject: string; text: string; html: string }) => (sent.push(email), { ok: true as const }) };
+  const env = { RESEND_API_KEY: "re_prova", UC_EMAIL_FROM: "Unbundle <notifiche@unbundle.test>", NEXT_PUBLIC_APP_URL: "https://app.unbundle.test" };
+  const run = () => dispatch.dispatchQueue(exec, { env, lsDomains: LS, workspaceId: ids.ws, mailer, sendIntervalMs: 0 });
+  const issued = okValue(await store.createCiKey(exec, { workspaceId: ids.ws, repo: REPO, actor: actor("manager"), lsDomains: LS }), "creata");
+  assert.equal((await run()).sent, 1);
+  assert.deepEqual(sent.map((e) => e.to), [EMAIL.lead]);
+  assert.match(sent[0].subject, /^Cliente di prov…: nuova chiave della CI «esempio-/);
+  assert.ok(sent[0].text.includes(`la CI di ${REPO} manda a Unbundle le evals di main`));
+  assert.ok(sent[0].text.includes(`https://app.unbundle.test/dashboard/${ids.ws}/agent-factory`));
+  await store.revokeExposedCiKeys(exec, [issued.key], LS);
+  assert.equal((await run()).sent, 2);
+  assert.deepEqual(sent.slice(1).map((e) => e.to).sort(), [EMAIL.manager, EMAIL.lead].sort());
+  assert.ok(sent.slice(1).every((e) => /chiave della CI bloccata/.test(e.subject)));
+  // L'avviso di scadenza: a chi gestisce le chiavi; e si annulla per chi nel frattempo non le gestisce più.
+  const soon = okValue(await store.createCiKey(exec, { workspaceId: ids.ws, repo: REPO, actor: actor("lead"), lsDomains: LS }), "nuova");
+  await run();
+  await q(`UPDATE use_case_ci_keys SET created_at = now() - interval '170 days', expires_at = now() + interval '3 days' WHERE id = $1`, [soon.keyId]);
+  assert.equal((await store.runCiKeysSweep(exec, { lsDomains: LS, workspaceIds: [ids.ws] })).reminderNotices, 2);
+  await q(`UPDATE uc_case_members SET role = 'ls_sviluppatore' WHERE case_id = $1 AND user_id = $2`, [ids.case1, ids.lead]);
+  try {
+    const before = sent.length;
+    const summary = await run();
+    assert.equal(summary.sent, 1);
+    assert.equal(summary.cancelled, 1, "chi non è più responsabile del caso non la riceve");
+    assert.deepEqual(sent.slice(before).map((e) => e.to), [EMAIL.manager]);
+    assert.match(sent[sent.length - 1].subject, /chiave della CI in scadenza/);
+  } finally {
+    await q(`UPDATE uc_case_members SET role = 'ls_lead' WHERE case_id = $1 AND user_id = $2`, [ids.case1, ids.lead]);
+  }
+  for (const email of sent) assert.ok(![email.subject, email.text, email.html].some((t) => t.includes("ub_ci_")), "mai la chiave in un'e-mail");
+});
+
 test("il workspace cancellato porta via le sue chiavi", opts, async () => {
   const doomed = randomUUID();
   await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1, $2, 'Workspace da cancellare CI')`, [doomed, ids.org]);

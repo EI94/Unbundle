@@ -4,6 +4,7 @@ import "server-only";
  * le stesse del MCP del team:
  *
  * - **nessun token nell'indirizzo**: un token della CLI trovato lì si segna «esposto» (da revocare) e si risponde 400;
+ *   (8.2b) una chiave della CI trovata lì si revoca subito (`esposta`), con l'e-mail `chiave_ci_bloccata`;
  * - **niente browser**: una richiesta con `Origin` si respinge (la CLI non lo manda);
  * - **solo JSON, corpo piccolo** nelle scritture;
  * - **il token, poi l'accesso al workspace riletto a ogni richiesta** (chi è uscito dal workspace non entra più,
@@ -15,6 +16,7 @@ import "server-only";
  * Le risposte sono `{ errore: { codice, messaggio } }` con il messaggio in italiano, da mostrare così com'è.
  */
 import { createHash } from "node:crypto";
+import { after } from "next/server";
 import { appRateLimitExecutor } from "@/lib/connector/app-deps";
 import {
   declaredBodyTooLarge,
@@ -28,12 +30,15 @@ import { consumeRateLimits, rateLimitBucket, type RateLimitRule } from "@/lib/co
 import { ensureDbSchema } from "@/lib/db/ensure-schema";
 import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { authenticateCli, cliStoreReady, type CliPrincipal } from "@/lib/db/queries/use-case-cli-auth";
+import { dispatchDue } from "@/lib/db/queries/uc-notifications-dispatch";
+import { revokeExposedCiKeys } from "@/lib/db/queries/use-case-ci-keys";
 import { markIntegrationTokenExposed } from "@/lib/db/queries/workspace-integrations";
 import { getAppUcExecutor, type UcExecutor } from "@/lib/db/uc-executor";
 import { logSafeError } from "@/lib/log/safe-error";
 import { isEmailVerifiedValue, isLateralSpaceEmail } from "@/lib/uc/lateral-space";
 import { cast, toStatement, ucSql } from "@/lib/uc/sql/statement";
 import { getCollaboratorAccess, type WorkspaceAccess } from "@/lib/workspace-access";
+import { ciKeyCandidates } from "@/lib/use-cases/ci/keys";
 import { CLI_DEVICE_CODE_PREFIX, CLI_TOKEN_PREFIX, hashSecret } from "./codes";
 
 export const CLI_ROUTE_LIMITS = Object.freeze({
@@ -74,6 +79,7 @@ export async function screenCliRequest(request: Request, method: "GET" | "POST",
         logSafeError("cli", "segna esposto", error);
       }
     }
+    await revokeCiKeysInUrl(finding.candidates);
     return cliError(400, "token_nell_indirizzo", "Il token non va mai nell'indirizzo: è stato bloccato. Rifai «unbundle login».");
   }
   if (request.method.toUpperCase() !== method) return cliError(405, "metodo", "Metodo non ammesso.", { Allow: method });
@@ -83,6 +89,32 @@ export async function screenCliRequest(request: Request, method: "GET" | "POST",
     if (declaredBodyTooLarge(request.headers, maxBytes)) return cliError(413, "troppo_grande", TOO_LARGE);
   }
   return null;
+}
+
+/**
+ * (8.2b) Le chiavi della CI trovate in un indirizzo (`findTokenInUrl`): revocate subito (`esposta`, `revokeExposedCiKeys`),
+ * e l'e-mail `chiave_ci_bloccata` a chi gestisce le chiavi del repository parte subito dopo la risposta (se non parte, la
+ * riprende il cron). Gli altri token si ignorano qui. Un guasto va nel log con il solo codice (area `ci`, mai la chiave):
+ * la risposta resta il rifiuto della rotta. La usano le rotte della CLI e quelle della CI.
+ */
+export async function revokeCiKeysInUrl(candidates: readonly string[]): Promise<void> {
+  const keys = ciKeyCandidates(candidates);
+  if (keys.length === 0) return;
+  try {
+    const executor = await getAppUcExecutor();
+    const { noticeIds } = await revokeExposedCiKeys(executor, keys, ucLsDomains());
+    for (const notificationId of noticeIds) {
+      after(async () => {
+        try {
+          await dispatchDue({ notificationId });
+        } catch (error) {
+          logSafeError("ci", "email chiave bloccata", error);
+        }
+      });
+    }
+  } catch (error) {
+    logSafeError("ci", "revoca chiave esposta", error);
+  }
 }
 
 /**
