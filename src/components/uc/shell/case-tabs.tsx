@@ -5,6 +5,7 @@ import Link, { useLinkStatus } from "next/link";
 import { useSelectedLayoutSegment } from "next/navigation";
 import { StatusDot } from "@/components/uc/ui/status-dot";
 import { activeTabKey, type CaseTab } from "@/lib/uc/views/case-shell";
+import { OVERVIEW_TEXT, viaBarText } from "@/lib/uc/views/progress";
 import { formatCountIt } from "@/lib/uc/views/format";
 import type { SemaforoColor } from "@/lib/uc/vocab";
 import { cn } from "@/lib/utils";
@@ -91,13 +92,12 @@ export function CaseHeadProgress({ ok, required, inReview, audience }: { ok: num
   if (active === "panoramica" || total <= 0) return null;
   const done = clampCount(ok, total);
   const review = clampCount(inReview, total - done);
-  const count = `${formatCountIt(done)} di ${formatCountIt(total)}`;
-  const text = `${count} domande indispensabili a posto${review > 0 ? `, ${formatCountIt(review)} ${audience === "cliente" ? "in verifica" : "da verificare"}` : ""}`;
+  const text = viaBarText({ ok: done, required: total, inReview: review, audience });
   return (
     <span data-slot="case-head-progress" className="inline-flex items-center gap-2 text-sm text-muted-foreground" title={text}>
       <span
         role="progressbar"
-        aria-label="Domande indispensabili a posto"
+        aria-label={OVERVIEW_TEXT.barLabel}
         aria-valuemin={0}
         aria-valuemax={total}
         aria-valuenow={done}

@@ -1,6 +1,5 @@
 import { Check, ChevronRight } from "lucide-react";
-import { formatCountIt } from "@/lib/uc/views/format";
-import type { PhaseGroup } from "@/lib/uc/views/progress";
+import { OVERVIEW_TEXT as T, type PhaseGroup } from "@/lib/uc/views/progress";
 import { cn } from "@/lib/utils";
 
 /**
@@ -33,13 +32,13 @@ export function CasePhases({ phases }: { phases: readonly PhaseGroup[] }) {
                 {g.done ? <Check className="size-3.5" /> : i + 1}
               </span>
               <span className={cn(g.current ? "font-medium" : undefined)}>{g.label}</span>
-              {g.current && <span className="text-xs text-muted-foreground">adesso</span>}
+              {g.current && <span className="text-xs text-muted-foreground">{T.pathNow}</span>}
             </p>
             <ul className="mt-1 space-y-1 pl-8 text-sm">
               {g.steps.map((s) => (
                 <li key={s.status} className="min-w-0">
                   <span className={cn(s.current || s.before ? "font-medium" : undefined)}>{s.label}</span>
-                  {s.before && <span className="text-muted-foreground"> (prima della pausa)</span>}
+                  {s.before && <span className="text-muted-foreground">{T.pathBefore}</span>}
                   <span className="text-muted-foreground">: {s.meaning}</span>
                 </li>
               ))}
@@ -47,7 +46,7 @@ export function CasePhases({ phases }: { phases: readonly PhaseGroup[] }) {
           </li>
         ))}
       </ol>
-      <p className="text-sm text-muted-foreground">«In pausa» e «Chiuso» sono stati della realizzazione: in pausa riprende dallo stato in cui era.</p>
+      <p className="text-sm text-muted-foreground">{T.pathNote}</p>
     </div>
   );
 }
@@ -90,22 +89,22 @@ export function CoverageCard({ text, policy, exceptions, uncovered }: { text: st
     <div className="space-y-3 text-sm">
       <dl className="space-y-2">
         <div>
-          <dt className="text-muted-foreground">Copertura del modello dati</dt>
+          <dt className="text-muted-foreground">{T.coverage}</dt>
           <dd>{text}</dd>
         </div>
         <div>
-          <dt className="text-muted-foreground">Quali domande contano</dt>
+          <dt className="text-muted-foreground">{T.policy}</dt>
           <dd>{policy}</dd>
         </div>
         <div>
-          <dt className="text-muted-foreground">Eccezioni</dt>
+          <dt className="text-muted-foreground">{T.exceptions}</dt>
           <dd>{exceptions}</dd>
         </div>
       </dl>
       {uncovered.length > 0 && (
         <details className="group/unc min-w-0">
           <summary className="flex min-h-11 cursor-pointer list-none items-center gap-1 text-muted-foreground select-none hover:text-foreground sm:min-h-9 [&::-webkit-details-marker]:hidden">
-            Elementi non coperti da domande ({formatCountIt(uncovered.length)})
+            {T.uncovered(uncovered.length)}
             <ChevronRight className="size-3.5 transition-transform group-open/unc:rotate-90" aria-hidden />
           </summary>
           <ul className="mt-2 flex max-h-64 flex-wrap gap-1.5 overflow-y-auto">

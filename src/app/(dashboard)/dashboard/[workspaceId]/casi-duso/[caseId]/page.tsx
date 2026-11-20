@@ -31,12 +31,12 @@ import { loadOverview, loadVia } from "@/lib/db/queries/uc-overview";
 import { exportChoices } from "@/lib/uc/export/request";
 import { VIA_SECTION_ID, canOpenShellPage, landingSegment, stepHasPageCommand, stepHiddenOn, stepPanelOf } from "@/lib/uc/views/case-shell";
 import { readableText } from "@/lib/uc/views/description";
-import { formatCountIt } from "@/lib/uc/views/format";
 import { FILES_HREF, NEXT_STEP_ICON, SIGN_HREF, caseNextSteps, nextStepFor, overviewTodo, resolveStepHref, stepFact, turnRow, type NextStep } from "@/lib/uc/views/next-step";
 import { canOpenPage, seesValidatedOnly } from "@/lib/uc/views/page-access";
 import {
   BLOCKER_PANEL_ITEMS,
   OVERVIEW_SIDE_SECTIONS,
+  OVERVIEW_TEXT as T,
   VIA_EVIDENCE_MISSING,
   VIA_POLICY_TEXT,
   VIA_RULE_TO_CONFIRM,
@@ -205,7 +205,7 @@ export default async function OverviewPage({
           : null
         : c.status === "chiuso"
           ? null
-          : (viaProposeWhen({ status: c.status, ready: g1.ready, required: g1.required, ok: g1.ok }) ?? (g1.ready ? "Sono tutte a posto." : null));
+          : (viaProposeWhen({ status: c.status, ready: g1.ready, required: g1.required, ok: g1.ok }) ?? (g1.ready ? T.allReady : null));
   const conditions = state === "approvato" || c.status === "chiuso" ? [] : viaOpenConditions(viaConditions(g1.conditions, { required: g1.required, ok: g1.ok, waivers: g1.waivers, audience: layout.audience }).open);
   const conditionHref = (cond: ViaConditionView): string | null => {
     if (!cond.segment) return null;
@@ -237,7 +237,7 @@ export default async function OverviewPage({
       case "via":
         return (
           <section key={key} id={VIA_SECTION_ID} aria-labelledby="uc-overview-via" className="min-w-0 scroll-mt-40 space-y-3">
-            <SectionTitle id="uc-overview-via" title="Via allo sviluppo">
+            <SectionTitle id="uc-overview-via" title={T.via}>
               {state !== "non_ancora" && <ViaState tone={stateView.tone} label={stateView.label} />}
               {isLead && signable && via.pending && <ViaWithdraw workspaceId={workspaceId} caseId={caseId} reviewId={via.pending.id} />}
             </SectionTitle>
@@ -256,18 +256,18 @@ export default async function OverviewPage({
             {(history.length > 0 || versions.length > 0 || ls) && (
               <div className="pt-1">
                 {(history.length > 0 || versions.length > 0) && (
-                  <Fold id="storico" title="Storico">
+                  <Fold id="storico" title={T.storico}>
                     <ViaHistory reviews={history} versions={versions} />
                   </Fold>
                 )}
                 {ls && (
                   <Fold
                     id="diagnostica"
-                    title="Diagnostica"
+                    title={T.diagnostica}
                     marker={
                       <>
                         <Lock className="size-3.5 text-uc-lucchetto" aria-hidden />
-                        <span className="sr-only">(solo Lateral Space)</span>
+                        <span className="sr-only">{T.lsOnly}</span>
                       </>
                     }
                   >
@@ -338,15 +338,15 @@ export default async function OverviewPage({
       </div>
 
       {openBlocker && openBlockerRow && (
-        <DetailSheet title={openBlockerRow.label} status={{ tone: "lucchetto", label: "Attivo" }} description={openBlockerRow.fullLabel} closeHref={base}>
+        <DetailSheet title={openBlockerRow.label} status={{ tone: "lucchetto", label: T.blockerActive }} description={openBlockerRow.fullLabel} closeHref={base}>
           <div className="space-y-1 text-sm">
-            <p className="text-muted-foreground">Chi lo scioglie</p>
+            <p className="text-muted-foreground">{T.blockerResolver}</p>
             <p>{blockerResolver(openBlocker.key)}</p>
           </div>
           {openBlocker.questions.length > 0 && (
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground">
-                {openBlocker.items === 1 ? "1 domanda collegata" : `${formatCountIt(openBlocker.items)} domande collegate`}
+                {T.blockerItems(openBlocker.items)}
               </p>
               <ul className="divide-y overflow-hidden rounded-xl ring-1 ring-foreground/10">
                 {openBlocker.questions.map((q) => (
@@ -364,7 +364,7 @@ export default async function OverviewPage({
               </ul>
               {questionsHref && openBlocker.items > openBlocker.questions.length && (
                 <Link href={`${questionsHref}?vista=bloccate&blocco=${openBlocker.id}`} className="inline-flex min-h-11 items-center gap-0.5 text-sm text-muted-foreground hover:text-foreground sm:min-h-0">
-                  Vedi tutte
+                  {T.blockerAllItems}
                   <ChevronRight className="size-3.5" aria-hidden />
                 </Link>
               )}
@@ -372,7 +372,7 @@ export default async function OverviewPage({
           )}
           {openBlocker.key === "a8" && canOpenShellPage("privacy", roles) && (
             <Link href={casePath(workspaceId, caseId, "privacy")} className="inline-flex min-h-11 items-center gap-0.5 text-sm font-medium hover:underline sm:min-h-0">
-              Vai alla scheda privacy
+              {T.toPrivacySheet}
               <ChevronRight className="size-3.5" aria-hidden />
             </Link>
           )}
@@ -387,12 +387,12 @@ export default async function OverviewPage({
       )}
 
       {panel?.kind === "tappe" && (
-        <DetailSheet title="Tutte le tappe" closeHref={base}>
+        <DetailSheet title={T.allMilestones} closeHref={base}>
           {milestones.length > 0 && (
             <ol className="space-y-3">
               {milestones.map((m) => (
                 <li key={m.key} className="flex min-w-0 items-start gap-2">
-                  {m.done ? <Check className="mt-0.5 size-4 shrink-0 text-uc-verde" aria-label="Fatta" /> : <span className="size-4 shrink-0" aria-hidden />}
+                  {m.done ? <Check className="mt-0.5 size-4 shrink-0 text-uc-verde" aria-label={T.milestoneDone} /> : <span className="size-4 shrink-0" aria-hidden />}
                   <MilestoneLine m={m} />
                 </li>
               ))}
@@ -400,23 +400,23 @@ export default async function OverviewPage({
           )}
           {phases.length > 0 && (
             <div className="space-y-2 border-t pt-4">
-              <h3 className="text-sm font-semibold">Il piano</h3>
+              <h3 className="text-sm font-semibold">{T.plan}</h3>
               <ol className="space-y-3">
                 {phases.map((p, i) => (
                   <li key={i} className="min-w-0 text-sm">
                     <p className="font-medium">
-                      {p.fase ?? `Tappa ${i + 1}`}
+                      {p.fase ?? T.planStep(i + 1)}
                       {p.quando && <span className="font-normal text-muted-foreground"> · {p.quando}</span>}
                     </p>
                     {p.cosa && <p className="break-words whitespace-pre-line">{p.cosa}</p>}
-                    {p.uscita && <p className="break-words text-muted-foreground">Si chiude con: {p.uscita}</p>}
+                    {p.uscita && <p className="break-words text-muted-foreground">{T.closesWith(p.uscita)}</p>}
                   </li>
                 ))}
               </ol>
             </div>
           )}
           <div className="space-y-2 border-t pt-4">
-            <h3 className="text-sm font-semibold">Il percorso</h3>
+            <h3 className="text-sm font-semibold">{T.path}</h3>
             <CasePhases phases={casePhaseGroups(c.status, c.statusBeforeSuspension)} />
           </div>
         </DetailSheet>

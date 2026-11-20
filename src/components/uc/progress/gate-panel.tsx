@@ -12,7 +12,7 @@ import { EvidenceFileSelect } from "@/components/uc/overview/evidence-file-selec
 import { ActionMenu } from "@/components/uc/ui/action-menu";
 import { proposeGateAction, rejectGateAction, signGateAction } from "@/lib/actions/uc-gates";
 import { requestApprovalAction } from "@/lib/actions/uc-people";
-import type { ViaAction } from "@/lib/uc/views/progress";
+import { OVERVIEW_TEXT as T, type ViaAction } from "@/lib/uc/views/progress";
 
 export interface GatePanelProps {
   workspaceId: string;
@@ -75,7 +75,7 @@ export function GatePanel(p: GatePanelProps) {
       {proposing && (
         <>
           {p.contractCase && (
-            <EvidenceFileSelect id="uc-via-propose-evidence" label="Prova scritta (email o verbale), se ce l'hai già" files={p.files} value={evidence} onChange={setEvidence} />
+            <EvidenceFileSelect id="uc-via-propose-evidence" label={T.proposeEvidence} files={p.files} value={evidence} onChange={setEvidence} />
           )}
           <Button
             variant={variant}
@@ -83,19 +83,19 @@ export function GatePanel(p: GatePanelProps) {
             disabled={pending}
             onClick={() =>
               run(() => proposeGateAction(p.workspaceId, p.caseId, { gate: "G1", evidenceFileId: evidence || null }), {
-                success: "Via allo sviluppo proposto: ora servono le firme.",
+                success: T.proposed,
                 onSuccess: () => setEvidence(""),
               })
             }
           >
-            Proponi il via allo sviluppo
+            {T.propose}
           </Button>
         </>
       )}
 
       {signing && p.signHref && (
         <Button variant={variant} className={size} render={<Link href={p.signHref} scroll={false} />} nativeButton={false}>
-          Firma il via allo sviluppo
+          {T.sign}
         </Button>
       )}
 
@@ -104,10 +104,10 @@ export function GatePanel(p: GatePanelProps) {
           variant={variant}
           className={size}
           disabled={pending}
-          onClick={() => run(() => requestApprovalAction(p.workspaceId, p.caseId, { designation: "owner" }), { success: "Link per firmare in partenza per email." })}
+          onClick={() => run(() => requestApprovalAction(p.workspaceId, p.caseId, { designation: "owner" }), { success: T.linkSent })}
         >
           <Mail aria-hidden data-icon="inline-start" />
-          Manda il link per firmare
+          {T.sendLink}
         </Button>
       )}
 
@@ -115,7 +115,7 @@ export function GatePanel(p: GatePanelProps) {
 
       {attaching && p.reviewId && (
         <div className="min-w-0 space-y-3">
-          <EvidenceFileSelect id="uc-via-attach-evidence" label="Prova scritta da allegare (email o verbale)" files={p.files} value={evidence} onChange={setEvidence} />
+          <EvidenceFileSelect id="uc-via-attach-evidence" label={T.attachEvidenceLabel} files={p.files} value={evidence} onChange={setEvidence} />
           {p.files.length > 0 && (
             <Button
               variant={attachVariant}
@@ -123,12 +123,12 @@ export function GatePanel(p: GatePanelProps) {
               disabled={pending || !evidence}
               onClick={() =>
                 run(() => signGateAction(p.workspaceId, p.caseId, { reviewId: p.reviewId, evidenceFileId: evidence }), {
-                  success: "Prova scritta allegata.",
+                  success: T.evidenceAttached,
                   onSuccess: () => setEvidence(""),
                 })
               }
             >
-              Allega la prova scritta
+              {T.attachEvidence}
             </Button>
           )}
         </div>
@@ -153,30 +153,30 @@ export function ViaWithdraw({ workspaceId, caseId, reviewId }: { workspaceId: st
   };
   return (
     <>
-      <ActionMenu items={[{ label: "Ritira la proposta…", onSelect: () => setOpen(true) }]} label="Altre azioni sul via allo sviluppo" />
+      <ActionMenu items={[{ label: T.withdraw, onSelect: () => setOpen(true) }]} label={T.withdrawMenu} />
       <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : !pending && close())}>
         <DialogContent className="sm:max-w-md">
           <form
             className="space-y-4"
             onSubmit={(e) => {
               e.preventDefault();
-              run(() => rejectGateAction(workspaceId, caseId, { reviewId, reason: reason.trim() }), { success: "Proposta ritirata.", onSuccess: close });
+              run(() => rejectGateAction(workspaceId, caseId, { reviewId, reason: reason.trim() }), { success: T.withdrawn, onSuccess: close });
             }}
           >
             <DialogHeader>
-              <DialogTitle>Ritirare la proposta?</DialogTitle>
-              <DialogDescription>Le firme già date si perdono: il via si propone di nuovo quando serve.</DialogDescription>
+              <DialogTitle>{T.withdrawTitle}</DialogTitle>
+              <DialogDescription>{T.withdrawText}</DialogDescription>
             </DialogHeader>
             <div className="space-y-2">
-              <Label htmlFor="uc-via-withdraw">Perché la ritiri</Label>
+              <Label htmlFor="uc-via-withdraw">{T.withdrawReason}</Label>
               <Textarea id="uc-via-withdraw" value={reason} onChange={(e) => setReason(e.target.value)} rows={3} maxLength={2000} className="text-base sm:text-sm" />
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" className="min-h-11 sm:min-h-9" onClick={close} disabled={pending}>
-                Annulla
+                {T.withdrawCancel}
               </Button>
               <Button type="submit" variant="destructive" className="min-h-11 sm:min-h-9" disabled={pending || reason.trim().length < 3}>
-                Ritira
+                {T.withdrawConfirm}
               </Button>
             </DialogFooter>
           </form>

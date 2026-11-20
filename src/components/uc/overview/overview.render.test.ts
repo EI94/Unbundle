@@ -184,14 +184,16 @@ test("the via commands: no dead button, the filled one only when the header hide
 test("the Panoramica page: the via section inside, its anchor, folds closed, the panels, the loads in parallel", () => {
   const source = readFileSync(new URL("../../../app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/page.tsx", import.meta.url), "utf8");
   assert.match(source, /<section key=\{key\} id=\{VIA_SECTION_ID\}/);
-  assert.match(source, /<Fold id="storico" title="Storico">/);
-  assert.match(source, /<Fold\s+id="diagnostica"\s+title="Diagnostica"\s+marker=\{\s*<>\s*<Lock /, "the lock: Lateral Space only (prototype S4)");
+  assert.match(source, /<Fold id="storico" title=\{T\.storico\}>/);
+  assert.match(source, /<Fold\s+id="diagnostica"\s+title=\{T\.diagnostica\}\s+marker=\{\s*<>\s*<Lock /, "the lock: Lateral Space only (prototype S4)");
   assert.doesNotMatch(source, /defaultOpen|<details[^>]*open/, "folds closed unless a link opens them");
   assert.match(source, /filled=\{!headerPrimary\}/);
   assert.match(source, /pageCommand: stepHasPageCommand\(primary\.id\)/, "the same rule as the header");
   assert.match(source, /await Promise\.all\(\[\s*loadOverview\(/);
   assert.match(source, /loadVia\(executor,/);
-  assert.match(source, /<DetailSheet title="Tutte le tappe"/);
+  assert.match(source, /<DetailSheet title=\{T\.allMilestones\}/);
+  // (Rilascio 10) The words live in the text module: no visible literal is left in the page.
+  assert.doesNotMatch(source, /title="[A-Z]|>\s*(Vedi tutte|Il piano|Il percorso|Chi lo scioglie|Vai alla scheda privacy)\s*</);
   assert.match(source, /<CasePhases phases=\{casePhaseGroups\(/, "the 11 states of «Come funziona» are in the path of the panel");
   assert.match(source, /<div id="sviluppo-con-claude"/, "«Sviluppo con Claude» stays where /via had it");
   const anchor = /export const CLAUDE_PANEL_ANCHOR = "([^"]+)"/.exec(readFileSync(new URL("../mcp/claude-dev-panel.tsx", import.meta.url), "utf8"))?.[1];

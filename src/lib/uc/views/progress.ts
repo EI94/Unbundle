@@ -48,6 +48,75 @@ export type OverviewSection = "fare" | "via" | "tappe" | "argomenti" | "blocchi"
 export const OVERVIEW_SIDE_SECTIONS: readonly OverviewSection[] = ["tappe", "argomenti", "blocchi"];
 
 /**
+ * (Rilascio 10, §3.5) Le parole fisse della Panoramica, della sezione «Via allo sviluppo», dei suoi comandi e dei
+ * pannelli «Tutte le tappe» e del blocco: qui una volta, i componenti le leggono da qui (`copy-guard.test.ts`).
+ */
+export const OVERVIEW_TEXT = Object.freeze({
+  todo: "Da fare",
+  via: WORDS.via,
+  bigNumberLabel: "domande indispensabili a posto",
+  /** Il nome della barra del via per i lettori di schermo. */
+  barLabel: "Domande indispensabili a posto",
+  groupsLabel: "Domande indispensabili non ancora a posto",
+  howLabel: "Come funziona il via allo sviluppo",
+  conditionsLabel: "Condizioni ancora aperte",
+  /** Il via è pronto: le condizioni sono a posto. */
+  allReady: "Sono tutte a posto.",
+  storico: "Storico",
+  diagnostica: "Diagnostica",
+  lsOnly: "(solo Lateral Space)",
+  nextMilestone: WORDS.prossimaTappa,
+  milestones: WORDS.tappe,
+  allMilestones: "Tutte le tappe",
+  milestoneDone: "Fatta",
+  plan: "Il piano",
+  planStep: (i: number) => `Tappa ${i}`,
+  closesWith: (text: string) => `Si chiude con: ${text}`,
+  path: "Il percorso",
+  pathNow: "adesso",
+  pathBefore: " (prima della pausa)",
+  pathNote: "«In pausa» e «Chiuso» sono stati della realizzazione: in pausa riprende dallo stato in cui era.",
+  topics: "Per argomento",
+  allTopics: (count: number) => `Tutti gli argomenti (${n(count)})`,
+  seeAll: (count: number) => `Vedi tutti (${n(count)})`,
+  blockers: "Blocchi",
+  blockerActive: "Attivo",
+  blockerResolver: "Chi lo scioglie",
+  blockerItems: (count: number) => (count === 1 ? "1 domanda collegata" : `${n(count)} domande collegate`),
+  blockerAllItems: "Vedi tutte",
+  toPrivacySheet: "Vai alla scheda privacy",
+  // I comandi del via (`GatePanel`, `ViaWithdraw`).
+  propose: "Proponi il via allo sviluppo",
+  proposed: "Via allo sviluppo proposto: ora servono le firme.",
+  proposeEvidence: "Prova scritta (email o verbale), se ce l'hai già",
+  sign: "Firma il via allo sviluppo",
+  sendLink: "Manda il link per firmare",
+  linkSent: "Link per firmare in partenza per email.",
+  attachEvidence: "Allega la prova scritta",
+  attachEvidenceLabel: "Prova scritta da allegare (email o verbale)",
+  evidenceAttached: "Prova scritta allegata.",
+  withdrawMenu: "Altre azioni sul via allo sviluppo",
+  withdraw: "Ritira la proposta…",
+  withdrawTitle: "Ritirare la proposta?",
+  withdrawText: "Le firme già date si perdono: il via si propone di nuovo quando serve.",
+  withdrawReason: "Perché la ritiri",
+  withdrawCancel: "Annulla",
+  withdrawConfirm: "Ritira",
+  withdrawn: "Proposta ritirata.",
+  // «Diagnostica» (`CoverageCard`).
+  coverage: "Copertura del modello dati",
+  policy: "Quali domande contano",
+  exceptions: "Eccezioni",
+  uncovered: (count: number) => `Elementi non coperti da domande (${n(count)})`,
+});
+
+/** La barra del via per i lettori di schermo: «186 di 245 domande indispensabili a posto, 9 da verificare» (al cliente «in verifica»). */
+export function viaBarText(i: { ok: number; required: number; inReview: number; audience: Audience }): string {
+  const review = i.inReview > 0 ? `, ${n(i.inReview)} ${i.audience === "cliente" ? "in verifica" : "da verificare"}` : "";
+  return `${n(i.ok)} di ${n(i.required)} ${OVERVIEW_TEXT.bigNumberLabel}${review}`;
+}
+
+/**
  * - `ls`: responsabile Lateral Space e analista, tutto;
  * - `sviluppatore`: solo il ruolo di sviluppatore, il catalogo validato;
  * - `cliente`: il responsabile del cliente, gruppi del cliente e niente blocchi;

@@ -6,7 +6,7 @@ import { Why } from "@/components/ui-10/why";
 import { NextStepIconView } from "@/components/use-cases/detail/next-step-box";
 import { StatusDot } from "@/components/uc/ui/status-dot";
 import { formatCountIt } from "@/lib/uc/views/format";
-import { BLOCKERS_VISIBLE, overviewBlockerTitle, topicOpenText, type MilestoneView, type ModuleProgressRow, type OverviewBlockerRow, type ViaConditionView } from "@/lib/uc/views/progress";
+import { BLOCKERS_VISIBLE, OVERVIEW_TEXT as T, overviewBlockerTitle, topicOpenText, viaBarText, type MilestoneView, type ModuleProgressRow, type OverviewBlockerRow, type ViaConditionView } from "@/lib/uc/views/progress";
 import type { TurnRow } from "@/lib/uc/views/next-step";
 import type { NextStepIcon } from "@/lib/use-cases/guided";
 import type { SemaforoColor } from "@/lib/uc/vocab";
@@ -34,7 +34,7 @@ function MoreRows({ total, children }: { total: number; children: React.ReactNod
   return (
     <details className="group/more min-w-0">
       <summary className={cn(QUIET_LINK, "cursor-pointer list-none select-none [&::-webkit-details-marker]:hidden")}>
-        Vedi tutti ({formatCountIt(total)})
+        {T.seeAll(total)}
         <ChevronRight className="size-3.5 transition-transform group-open/more:rotate-90" aria-hidden />
       </summary>
       <RowList className="mt-2">{children}</RowList>
@@ -77,7 +77,7 @@ export function OverviewTodo({ rows, turn }: { rows: readonly TodoRow[]; turn: T
   if (rows.length === 0 && !turn) return null;
   return (
     <section aria-labelledby="uc-overview-todo" className="min-w-0 space-y-3">
-      <SectionTitle id="uc-overview-todo" title="Da fare" />
+      <SectionTitle id="uc-overview-todo" title={T.todo} />
       <RowList>
         {rows.map((r) => (
           <li key={r.key}>
@@ -103,11 +103,11 @@ export function GateBar({ ok, required, inReview, audience }: { ok: number; requ
   const clamp = (v: number, max: number) => Math.max(0, Math.min(max, Number.isFinite(v) ? Math.round(v) : 0));
   const done = clamp(ok, total);
   const review = clamp(inReview, total - done);
-  const text = `${formatCountIt(done)} di ${formatCountIt(total)} domande indispensabili a posto${review > 0 ? `, ${formatCountIt(review)} ${audience === "cliente" ? "in verifica" : "da verificare"}` : ""}`;
+  const text = viaBarText({ ok: done, required: total, inReview: review, audience });
   return (
     <span
       role="progressbar"
-      aria-label="Domande indispensabili a posto"
+      aria-label={T.barLabel}
       aria-valuemin={0}
       aria-valuemax={total}
       aria-valuenow={done}
@@ -125,7 +125,7 @@ export function ViaNumber({ ok, required, inReview, audience, emptyText }: { ok:
   if (required <= 0) return emptyText ? <p className="text-sm text-muted-foreground">{emptyText}</p> : null;
   return (
     <div className="min-w-0">
-      <BigNumber value={`${formatCountIt(Math.min(ok, required))} di ${formatCountIt(required)}`} label="domande indispensabili a posto" />
+      <BigNumber value={`${formatCountIt(Math.min(ok, required))} di ${formatCountIt(required)}`} label={T.bigNumberLabel} />
       <GateBar ok={ok} required={required} inReview={inReview} audience={audience} />
     </div>
   );
@@ -135,7 +135,7 @@ export function ViaNumber({ ok, required, inReview, audience, emptyText }: { ok:
 export function ViaGroupLinks({ links, questionsHref }: { links: readonly { group: string; slug: string; text: string }[]; questionsHref: string | null }) {
   if (links.length === 0) return null;
   return (
-    <ul className="flex flex-wrap items-center gap-x-1 text-sm text-muted-foreground" aria-label="Domande indispensabili non ancora a posto">
+    <ul className="flex flex-wrap items-center gap-x-1 text-sm text-muted-foreground" aria-label={T.groupsLabel}>
       {links.map((g, i) => (
         <li key={g.group} className="flex items-center gap-1">
           {i > 0 && <span aria-hidden>·</span>}
@@ -161,7 +161,7 @@ export function ViaStatusLine({ text, how }: { text: string; how: string }) {
   return (
     <div className="flex min-w-0 items-center gap-1 text-sm">
       <p className="min-w-0 break-words">{text}</p>
-      <Why id="uc-via-come-funziona" text={how} label="Come funziona il via allo sviluppo" />
+      <Why id="uc-via-come-funziona" text={how} label={T.howLabel} />
     </div>
   );
 }
@@ -181,7 +181,7 @@ export function ViaConditions({ rows, hrefFor }: { rows: readonly ViaConditionVi
   const rest = rows.slice(ROWS_VISIBLE);
   return (
     <div className="min-w-0 space-y-2">
-      <RowList label="Condizioni ancora aperte">{first.map(row)}</RowList>
+      <RowList label={T.conditionsLabel}>{first.map(row)}</RowList>
       {rest.length > 0 && <MoreRows total={rows.length}>{rest.map(row)}</MoreRows>}
     </div>
   );
@@ -214,11 +214,11 @@ export function NextMilestone({ text, allHref }: { text: string | null; allHref:
   if (!text && !allHref) return null;
   return (
     <section aria-labelledby="uc-overview-milestone" className="min-w-0 space-y-2">
-      <SectionTitle id="uc-overview-milestone" title={text ? "Prossima tappa" : "Tappe"} />
+      <SectionTitle id="uc-overview-milestone" title={text ? T.nextMilestone : T.milestones} />
       {text && <p className="text-sm break-words tabular-nums">{text}</p>}
       {allHref && (
         <Link href={allHref} scroll={false} className={QUIET_LINK}>
-          Tutte le tappe
+          {T.allMilestones}
           <ChevronRight className="size-3.5" aria-hidden />
         </Link>
       )}
@@ -236,7 +236,7 @@ export function TopicList({ rows, hrefFor, allHref, total }: { rows: readonly Mo
   if (rows.length === 0) return null;
   return (
     <section aria-labelledby="uc-overview-topics" className="min-w-0 space-y-3">
-      <SectionTitle id="uc-overview-topics" title="Per argomento" />
+      <SectionTitle id="uc-overview-topics" title={T.topics} />
       <RowList>
         {rows.map((r) => (
           <li key={r.key ?? "altre"}>
@@ -246,7 +246,7 @@ export function TopicList({ rows, hrefFor, allHref, total }: { rows: readonly Mo
       </RowList>
       {allHref && total > rows.length && (
         <Link href={allHref} className={QUIET_LINK}>
-          Tutti gli argomenti ({formatCountIt(total)})
+          {T.allTopics(total)}
           <ChevronRight className="size-3.5" aria-hidden />
         </Link>
       )}
@@ -271,7 +271,7 @@ export function BlockerList({ rows }: { rows: readonly (OverviewBlockerRow & { h
     </li>
   );
   return (
-    <section id="blocchi" aria-label="Blocchi" className="min-w-0 scroll-mt-40 space-y-2">
+    <section id="blocchi" aria-label={T.blockers} className="min-w-0 scroll-mt-40 space-y-2">
       <RowList>{first.map(row)}</RowList>
       {rest.length > 0 && <MoreRows total={rows.length}>{rest.map(row)}</MoreRows>}
     </section>

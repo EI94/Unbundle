@@ -181,3 +181,20 @@ test("the strip helpers leave nothing the guard would catch", () => {
   const texts = ["Costi da autorizzare (art. 8.4)", "Dichiarato in call (F010, F011)", "Scheda A.8 firmata ai sensi dell'art. 15.2", "valore · fonte F012"];
   for (const t of texts) assert.deepEqual(findForbidden(stripLegalRefs(stripFactCodes(t)), "cliente"), [], t);
 });
+
+test("(rilascio 10, §3.5) copy-guard is green on the fixed words of the Panoramica, the via section and its commands", async () => {
+  const { OVERVIEW_TEXT, viaBarText } = await import("./progress.ts");
+  const { CASE_NOT_FOUND_TEXT } = await import("./case-shell.ts");
+  const { findHubForbiddenIn } = await import("../../use-cases/copy-guard.ts");
+  const texts: string[] = [];
+  for (const value of [...Object.values(OVERVIEW_TEXT), ...Object.values(CASE_NOT_FOUND_TEXT)]) {
+    if (typeof value === "string") texts.push(value);
+    else for (const arg of [1, 2, 9]) texts.push((value as (n: number) => string)(arg));
+  }
+  texts.push(OVERVIEW_TEXT.closesWith("il verbale firmato"));
+  for (const audience of ["ls", "cliente"] as const) texts.push(viaBarText({ ok: 186, required: 245, inReview: 9, audience }));
+  assert.ok(texts.length > 60, `${texts.length} texts`);
+  assert.deepEqual(findForbiddenIn(texts, "cliente"), [], "the client's guard");
+  assert.deepEqual(findHubForbiddenIn(texts, "area").map((m) => `«${m.match}» in «${m.text}»`), [], "the dashboard's words");
+  for (const text of texts) assert.doesNotMatch(text, /\bcaso\b|dossier/i, text);
+});
