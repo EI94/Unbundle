@@ -50,7 +50,7 @@ import {
 import { isNeedDone, needStatusView, type NeedStatus, type NeedType } from "@/lib/use-cases/needs";
 import { romeToday } from "@/lib/use-cases/quarter";
 import { hasOpenTasksSql, NOBODY, notifyTask, tasksTablesReady } from "@/lib/db/queries/use-case-tasks-notices";
-import { caseOnlyUseCaseFragment, caseRecipientsSql, loadBuilderScope, NO_EXTERNAL_BUILDERS, type BuilderScope } from "@/lib/db/queries/use-case-builders";
+import { caseOnlyUseCaseFragment, caseRecipientsSql, hasCaseOnlyBuilder, loadBuilderScope, NO_EXTERNAL_BUILDERS, type BuilderScope } from "@/lib/db/queries/use-case-builders";
 import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { EXTERNAL_BUILDER_ROLE, FACTORY_BUILDER_ROLES, LS_BUILDER_ROLES } from "@/lib/use-cases/factory/builders";
 import { isTemplateRepo } from "@/lib/use-cases/factory/line";
@@ -405,12 +405,16 @@ export type PackageCard = Omit<PackageSource, "answers" | "openNeeds" | "namesTo
  * scrivono in repository e PR. Senza l'archivio di «Contesto» (la 0038 assente) nessun contesto, come prima della 9b; con
  * la sonda che non risponde, o con l'archivio e una lettura che non riesce, `unavailable`: il pacchetto non si salva
  * (riprova), invece di nascere senza `CONTESTO.md`.
+ *
+ * (8.0d, D7) Se lo use case lo costruisce, o lo costruirà, qualcuno «Solo questo use case» (`hasCaseOnlyBuilder`),
+ * solo i fatti legati al caso, chiunque generi il pacchetto: `unbundle start` lo scrive nel repository del caso.
  */
-async function packageContextFor(target: FactoryTarget): Promise<{ context: AgentContext | null; unavailable: boolean }> {
+async function packageContextFor(executor: UcExecutor, target: FactoryTarget): Promise<{ context: AgentContext | null; unavailable: boolean }> {
   const state = await contextStoreState();
   if (state === "assente") return { context: null, unavailable: false };
   if (state === "sconosciuto") return { context: null, unavailable: true };
-  const context = await loadAgentContext({ workspaceId: target.workspaceId, useCaseId: target.useCaseId });
+  const caseOnly = await hasCaseOnlyBuilder(executor, target);
+  const context = await loadAgentContext({ workspaceId: target.workspaceId, useCaseId: target.useCaseId, ...(caseOnly ? { caseOnly: true } : {}) });
   return { context, unavailable: context === null };
 }
 
@@ -437,7 +441,7 @@ WHERE l.use_case_id = ${uc} AND n.workspace_id = ${ws} AND n.archived_at IS NULL
 ORDER BY n.type, n.sort_order, n.created_at, n.id LIMIT 80`);
   const [[answers, needs, names], context] = await Promise.all([
     executor.batch(opts.canSeeNeeds ? [answersSql, needsSql, namesToHideSql(target)] : [nothing, nothing, namesToHideSql(target)]),
-    packageContextFor(target),
+    packageContextFor(executor, target),
   ]);
   const label = (type: unknown, status: unknown) => needStatusView(String(type) as NeedType, String(status) as NeedStatus).label.toLowerCase();
   return {

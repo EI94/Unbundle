@@ -1,6 +1,6 @@
 import { readFactory } from "@/lib/db/queries/use-case-factory";
 import { canWriteFactory } from "@/lib/use-cases/factory/permissions";
-import { resolveCliCase } from "@/lib/use-cases/cli/case";
+import { caseOnlyContextOf, resolveCliCase } from "@/lib/use-cases/cli/case";
 import { cliError, cliJson, openCli } from "@/lib/use-cases/cli/route-kit";
 import { notBuilderMessage } from "@/lib/use-cases/cli/case-errors";
 import { caseOnlyPackageFiles } from "@/lib/use-cases/factory/package";
@@ -23,6 +23,9 @@ export async function GET(request: Request): Promise<Response> {
   if (!read.ok) return cliError(404, "non_trovato", read.message);
   const latest = read.value.latestPackage;
   if (!latest) return cliError(404, "senza_pacchetto", "Nessun pacchetto ancora: si genera dalla pagina «Progetto dell'agente».");
-  // (8.0d, D7) A «Solo questo use case» `CONTESTO.md` con i soli fatti legati al suo caso.
-  return cliJson({ caso: c.useCase.code, versione: latest.version, creatoIl: latest.createdAt, fonte: latest.source, file: c.caseOnly ? caseOnlyPackageFiles(latest.files) : latest.files });
+  // (8.0d, D7) `CONTESTO.md` con i soli fatti legati al caso a «Solo questo use case» e a chiunque legga un caso che
+  // costruisce qualcuno «Solo questo use case»: `unbundle start` lo scrive nel repository del caso. Anche per le versioni
+  // generate prima.
+  const caseOnlyContext = await caseOnlyContextOf(opened.value.executor, c);
+  return cliJson({ caso: c.useCase.code, versione: latest.version, creatoIl: latest.createdAt, fonte: latest.source, file: caseOnlyContext ? caseOnlyPackageFiles(latest.files) : latest.files });
 }

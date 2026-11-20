@@ -27,6 +27,8 @@ import {
 } from "@/lib/db/queries/team-mcp-requests";
 import { resolveCaseAccess, UcAccessError, type CaseAccess } from "@/lib/db/queries/uc-access";
 import { factoryStoreReady, type FactoryActor, type FactoryTarget } from "@/lib/db/queries/use-case-factory";
+import { hasCaseOnlyBuilder } from "@/lib/db/queries/use-case-builders";
+import type { UcExecutor } from "@/lib/db/uc-executor";
 import { viewerFromSession } from "@/lib/db/queries/use-case-hub";
 import { logSafeError } from "@/lib/log/safe-error";
 import { cast, toStatement, ucSql } from "@/lib/uc/sql/statement";
@@ -62,6 +64,16 @@ export interface CliCase {
 }
 
 const NOT_FOUND = CLI_CASE_NOT_FOUND;
+
+/**
+ * (8.0d, D7) Il contesto del caso è quello di «Solo questo use case» (i soli fatti legati al caso, il pacchetto con
+ * `CONTESTO.md` ridotto): per chi lo è, e per **chiunque** legga un caso che costruisce, o costruirà, qualcuno «Solo
+ * questo use case» (`hasCaseOnlyBuilder`). Quello che la CLI e l'MCP del caso portano finisce nel repository del
+ * caso, che chi viene da fuori legge su GitHub. Lo chiedono solo i comandi che portano il contesto: una lettura in più.
+ */
+export async function caseOnlyContextOf(executor: UcExecutor, c: CliCase): Promise<boolean> {
+  return c.caseOnly || (await hasCaseOnlyBuilder(executor, c.target));
+}
 
 /** Il caso della richiesta, dal codice dello use case; la risposta d'errore se non si può. */
 export async function resolveCliCase(opened: OpenedCli, ref: unknown): Promise<{ ok: true; value: CliCase } | { ok: false; response: Response }> {

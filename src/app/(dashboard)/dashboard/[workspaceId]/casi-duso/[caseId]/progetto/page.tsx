@@ -13,6 +13,7 @@ import { contextActorFor, type ContextActor } from "@/lib/context/server/actor";
 import { CONTEXT_TEXT } from "@/lib/context/text";
 import { loadAgentContext, loadUseCaseContext, type UseCaseContext } from "@/lib/db/queries/context-work";
 import { factoryStoreReady, readFactory, topicLabel, findUseCaseOfCase, namesToHide, type DecisionView, type FactoryTarget, type FactoryView, type ProjectView } from "@/lib/db/queries/use-case-factory";
+import { hasCaseOnlyBuilder } from "@/lib/db/queries/use-case-builders";
 import { FACTORY_LIMITS, SETUP_TOPICS } from "@/lib/db/use-case-hub-factory-ddl";
 import { listTasks, tasksStoreReady, type TaskView } from "@/lib/db/queries/use-case-tasks";
 import { listOpenProposals, proposalsStoreReady, type ProposalView } from "@/lib/db/queries/use-case-task-proposals";
@@ -170,7 +171,10 @@ async function readContextSection(actor: ContextActor, useCaseId: string): Promi
   }
 }
 
-/** (8.0d, D7) Il progetto come lo legge «Solo questo use case»: `CONTESTO.md` del pacchetto con i soli fatti del suo caso. */
+/**
+ * (8.0d, D7) Il progetto come lo legge «Solo questo use case», e chiunque legga un caso che costruisce qualcuno «Solo
+ * questo use case»: `CONTESTO.md` del pacchetto con i soli fatti del caso (quello che si copia finisce nel repository).
+ */
 function caseOnlyView(view: FactoryView): FactoryView {
   return view.latestPackage ? { ...view, latestPackage: { ...view.latestPackage, files: caseOnlyPackageFiles(view.latestPackage.files) } } : view;
 }
@@ -180,10 +184,10 @@ function caseOnlyView(view: FactoryView): FactoryView {
  * cambierebbe, dal file salvato nella versione a quello di adesso (con gli stessi nomi coperti); se la versione non ha
  * `CONTESTO.md`, tutte le righe di adesso. Zero se la lettura non riesce.
  */
-async function readContextDelta(executor: UcExecutor, target: FactoryTarget, code: string, latest: NonNullable<FactoryView["latestPackage"]>, caseOnly: boolean): Promise<number> {
+async function readContextDelta(executor: UcExecutor, target: FactoryTarget, code: string, latest: NonNullable<FactoryView["latestPackage"]>, caseOnlyContext: boolean): Promise<number> {
   try {
-    const [context, names] = await Promise.all([loadAgentContext({ ...target, caseOnly }), namesToHide(executor, target)]);
-    return packageContextDelta({ context, namesToHide: names, code, latest, caseOnly });
+    const [context, names] = await Promise.all([loadAgentContext({ ...target, caseOnly: caseOnlyContext }), namesToHide(executor, target)]);
+    return packageContextDelta({ context, namesToHide: names, code, latest, caseOnly: caseOnlyContext });
   } catch (error) {
     console.error("[agent-project] context_delta_failed", { error: { name: error instanceof Error ? error.name : "Error" } });
     return 0;
@@ -223,8 +227,10 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
   }
   const read = await readFactory(executor, target, { kind: "persona", userId: session.user.id, roles: factory.roles });
   if (!read.ok) notFound();
-  // (8.0d, D7) «Solo questo use case» legge il pacchetto con `CONTESTO.md` ridotto ai fatti del suo caso.
-  const view = caseOnly ? caseOnlyView(read.value) : read.value;
+  // (8.0d, D7) «Solo questo use case», e chiunque legga un caso che costruisce qualcuno «Solo questo use case», legge il
+  // pacchetto con `CONTESTO.md` ridotto ai fatti del caso.
+  const caseOnlyContext = caseOnly || (await hasCaseOnlyBuilder(executor, target));
+  const view = caseOnlyContext ? caseOnlyView(read.value) : read.value;
 
   const writable = canWrite(caseAccess);
   // Chi costruisce: scrive il progetto e legge il pacchetto (che è per i coding agent, non per il cliente).
@@ -293,7 +299,7 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
     tasksReady ? listTasks(executor, target) : Promise.resolve<TaskView[]>([]),
     readEvalOverview(executor, target).then(async (read) => ({ ...read, origins: await readEvalOrigins(executor, target, read.overview) })),
     readContextSection(contextActorFor(session.user, access, workspaceId), useCase.useCaseId),
-    builder && view.latestPackage ? readContextDelta(executor, target, useCase.code ?? "", view.latestPackage, caseOnly) : Promise.resolve(0),
+    builder && view.latestPackage ? readContextDelta(executor, target, useCase.code ?? "", view.latestPackage, caseOnlyContext) : Promise.resolve(0),
   ]);
   const deltaLine = packageDeltaLine(contextDelta);
   // Le proposte sono testi del team: le vede solo chi costruisce il caso (anche da fuori Lateral Space), e le decide chi

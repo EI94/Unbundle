@@ -225,12 +225,13 @@ test("(9b) chi genera il pacchetto prende il contesto solo da loadAgentContext, 
   assert.match(factory, /^import \{ loadAgentContext \} from "@\/lib\/db\/queries\/context-work";$/m);
   assert.doesNotMatch(factory, /loadUseCaseContext|contextActorFor|contextAbilities|loadContextMemory|from "@\/lib\/db\/queries\/context-(?!work"|store")/);
   const context = body("async function packageContextFor(");
-  assert.match(context, /const context = await loadAgentContext\(\{ workspaceId: target\.workspaceId, useCaseId: target\.useCaseId \}\);/);
+  // (8.0d, D7) Con chi costruisce «Solo questo use case» (o un suo invito valido) i soli fatti legati al caso, chiunque generi.
+  assert.match(context, /const caseOnly = await hasCaseOnlyBuilder\(executor, target\);\s*const context = await loadAgentContext\(\{ workspaceId: target\.workspaceId, useCaseId: target\.useCaseId, \.\.\.\(caseOnly \? \{ caseOnly: true \} : \{\}\) \}\);/);
   assert.match(context, /if \(state === "sconosciuto"\) return \{ context: null, unavailable: true \};/, "una sonda che non risponde non fa un pacchetto senza contesto");
   assert.match(context, /return \{ context, unavailable: context === null \};/);
   assert.doesNotMatch(context, /isLateralSpace|seesLateralSpace|visibility|context_facts/, "non dipende da chi genera");
   const source = body("export async function packageSourceFor(");
-  assert.match(source, /packageContextFor\(target\)/);
+  assert.match(source, /packageContextFor\(executor, target\)/);
   assert.match(source, /context: context\.context,\s+contextUnavailable: context\.unavailable,/);
   assert.match(body("export async function savePackageVersion("), /if \("generated" in input && input\.generated\.contextUnavailable === true\) return fail\("non_disponibile", AGENT_CONTEXT_TEXT\.unavailable\);/);
   // E `loadAgentContext` legge i fatti, gli impegni e le domande solo «Per tutti» (la prova sul database è di F).

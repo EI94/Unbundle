@@ -553,6 +553,33 @@ export async function caseOnlyUseCaseFragment(executor: UcExecutor): Promise<(us
   } catch {
     invites = false;
   }
+  return caseOnlyFragment(invites);
+}
+
+/**
+ * (8.0d, D7) Lo use case lo costruisce, o lo costruirà (un invito valido), qualcuno «Solo questo use case»
+ * (`caseOnlyUseCaseFragment`). Allora il suo contesto è quello di «Solo questo use case» per **chiunque** lo legga: il
+ * pacchetto si genera con i soli fatti del caso, e la CLI, l'MCP del caso e la pagina portano solo quelli. Quello che legge
+ * chi costruisce (anche Lateral Space, con `unbundle start`) finisce nel repository del caso, che chi viene da fuori legge
+ * su GitHub. Senza la 0037 falso; una sonda o una lettura che non riesce vale sì (un contesto più stretto, mai più largo).
+ */
+export async function hasCaseOnlyBuilder(executor: UcExecutor, target: { useCaseId: string }): Promise<boolean> {
+  if (!UUID_RE.test(target.useCaseId)) return true;
+  const probe = await probeExternalBuilders(executor);
+  if (probe === "assente") return false;
+  if (probe === "guasta") return true;
+  try {
+    const [ready] = await executor.batch([toStatement(ucSql`SELECT ${raw(CASE_ONLY_PROBE_SQL)} AS ready`)]);
+    const builtByCaseOnly = caseOnlyFragment(ready[0]?.ready === true);
+    const [rows] = await executor.batch([toStatement(ucSql`SELECT ${builtByCaseOnly(cast(target.useCaseId, "uuid"))} AS yes`)]);
+    return rows[0]?.yes !== false;
+  } catch {
+    return true;
+  }
+}
+
+/** La condizione di `caseOnlyUseCaseFragment`, con o senza gli inviti della 0043. */
+function caseOnlyFragment(invites: boolean): (useCase: SqlFragment) => SqlFragment {
   return (useCase) => ucSql`(EXISTS (SELECT 1 FROM use_case_external_builders xb_co
       JOIN workspace_memberships xb_cow ON xb_cow.workspace_id = xb_co.workspace_id AND xb_cow.user_id = xb_co.user_id AND xb_cow.role::text = 'esterno_caso'
       WHERE xb_co.use_case_id = ${useCase})${

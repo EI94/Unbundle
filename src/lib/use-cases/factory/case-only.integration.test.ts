@@ -16,7 +16,8 @@ const { registerHooks } = nodeModule as unknown as {
 // - B5, B6: la riga non basta, «tutti» non vale; un membro dell'organizzazione mai.
 // - B2, B4: CLI e MCP del caso: su A1 come chi costruisce da fuori, su A2 e su B come un caso che non esiste.
 // - B3: le 7 azioni di chi costruisce su A1 sì, su A2 «non trovato»; approvare, riaprire, AI Board, modifica mai.
-// - B7: elenchi di persone. B8: il repository suo. U5: la campanella. D7: il contesto del caso, mai quello dell'azienda.
+// - B7: elenchi di persone. B8: il repository suo. U5: la campanella.
+// - D7: il contesto del caso, mai quello dell'azienda, per chiunque legga il suo caso (finisce nel repository).
 // - B9: le uscite. B10, B11, B13: l'accettazione e la salita. «Da fare per te».
 //
 // - Con scripts/use-case-test/run-db-tests.mjs (HUB_TEST_ISOLATED=true, database hub_<id> su 127.0.0.1). Dati
@@ -440,7 +441,7 @@ test("U5: la campanella di E3: solo i tipi di chi costruisce dei suoi casi, anch
   assert.doesNotMatch(JSON.stringify(unknown), new RegExp(`SEGNALE-${suffix}|${CODE.A1}`), "un ruolo sconosciuto: niente");
 });
 
-test("D7: il contesto e il pacchetto di E3 hanno i fatti del suo caso, mai «In breve», regole e parole dell'azienda", opts, async () => {
+test("D7: su A1, che E3 costruisce, il contesto e il pacchetto hanno i fatti del caso, mai «In breve», regole e parole dell'azienda, per E3 e per chiunque; su A3 come prima", opts, async () => {
   const fact = async (statement: string, section: string, linked: boolean) => {
     const id = randomUUID();
     await q(
@@ -467,16 +468,47 @@ test("D7: il contesto e il pacchetto di E3 hanno i fatti del suo caso, mai «In 
   assert.equal(layer.status, 200, JSON.stringify(layer.json));
   assert.match(String(layer.json.testo), /quotazioni dal portale/);
   assert.doesNotMatch(JSON.stringify(layer.json), COMPANY);
-  assert.match(JSON.stringify((await call(`context?caso=${CODE.A1}&strato=contesto`, { token: tokens.lead })).json), COMPANY, "Lateral Space come prima");
-  // Il pacchetto: generato da Lateral Space con tutto il contesto «Per tutti»; E3 lo legge con i soli fatti del caso.
+  // Su A1, che E3 costruisce, anche Lateral Space legge i soli fatti del caso: quello che porta la CLI finisce nel
+  // repository del caso, che E3 legge su GitHub. Niente domande sulla memoria dalla CLI. Su A3 (nessuno «Solo questo use
+  // case») come prima.
+  const leadLayer = await call(`context?caso=${CODE.A1}&strato=contesto`, { token: tokens.lead });
+  assert.equal(leadLayer.status, 200, JSON.stringify(leadLayer.json));
+  assert.match(String(leadLayer.json.testo), /quotazioni dal portale/);
+  assert.doesNotMatch(JSON.stringify(leadLayer.json), COMPANY, "Lateral Space su A1");
+  const leadAsks = await post("contesto", tokens.lead!, { caso: CODE.A1, domanda: "Chi sono i clienti più grandi?" }, null);
+  assert.deepEqual([leadAsks.status, codeOf(leadAsks)], [403, "solo_questo_caso"]);
+  assert.match(JSON.stringify((await call(`context?caso=${CODE.A3}&strato=contesto`, { token: tokens.lead })).json), COMPANY, "Lateral Space su A3 come prima");
+  // Il pacchetto. Una versione salvata prima della 8.0d, con tutto il contesto «Per tutti» (scritta a mano): chiunque la
+  // legge con i soli fatti del caso. Quella che Lateral Space genera adesso nasce così, anche nel database.
+  const { formatContestoMd } = await import("../../context/work/agent-text.ts");
+  const before = formatContestoMd(all, { code: CODE.A1, version: 1, day: "2026-11-10" });
+  assert.match(String(before), COMPANY);
+  const [{ n: saved }] = await q(`SELECT coalesce(max(version), 0)::int AS n FROM use_case_packages WHERE use_case_id = $1::uuid`, [ids.ucA1]);
+  await q(`INSERT INTO use_case_packages (use_case_id, workspace_id, version, content_hash, files, source) VALUES ($1::uuid, $2::uuid, $3, $4, $5::jsonb, 'generato')`, [
+    ids.ucA1,
+    ids.wsA,
+    Number(saved) + 1,
+    "0".repeat(64),
+    JSON.stringify({ "PACCHETTO.md": "# Pacchetto del caso (k1)\n", "BRIEF.md": "# Brief\n", VERSIONE: "k1\n", "CONTESTO.md": before }),
+  ]);
+  for (const person of ["lead", "e3"] as const) {
+    const old = await call(`pacchetto?caso=${CODE.A1}`, { token: tokens[person] });
+    assert.deepEqual([old.status, old.json.versione], [200, Number(saved) + 1], person);
+    assert.match(String((old.json.file as Row)["CONTESTO.md"]), /quotazioni dal portale/, person);
+    assert.doesNotMatch(JSON.stringify(old.json), COMPANY, `${person}: la versione salvata prima`);
+  }
   const pkg = await as("lead", () => factoryActions.generatePackageAction(ids.wsA, ids.caseA1));
   assert.equal(pkg.ok, true, pkg.ok ? "" : pkg.message);
-  const forLead = await call(`pacchetto?caso=${CODE.A1}`, { token: tokens.lead });
-  assert.match(String((forLead.json.file as Row)["CONTESTO.md"]), COMPANY);
-  const forE3 = await call(`pacchetto?caso=${CODE.A1}`, { token: tokens.e3 });
-  assert.equal(forE3.status, 200);
-  assert.match(String((forE3.json.file as Row)["CONTESTO.md"]), /quotazioni dal portale/);
-  assert.doesNotMatch(JSON.stringify(forE3.json), COMPANY);
+  const [stored] = await q(`SELECT version, files FROM use_case_packages WHERE use_case_id = $1::uuid ORDER BY version DESC LIMIT 1`, [ids.ucA1]);
+  assert.equal(stored.version, Number(saved) + 2);
+  assert.match(String((stored.files as Row)["CONTESTO.md"]), /quotazioni dal portale/);
+  assert.doesNotMatch(JSON.stringify(stored.files), COMPANY, "il pacchetto nasce con i soli fatti del caso");
+  for (const person of ["lead", "e3"] as const) {
+    const read = await call(`pacchetto?caso=${CODE.A1}`, { token: tokens[person] });
+    assert.deepEqual([read.status, read.json.versione], [200, Number(saved) + 2], person);
+    assert.match(String((read.json.file as Row)["CONTESTO.md"]), /quotazioni dal portale/, person);
+    assert.doesNotMatch(JSON.stringify(read.json), COMPANY, person);
+  }
   // L'MCP del caso: lo stesso strato.
   const scoped = String((await post("token-caso", tokens.e3!, { caso: CODE.A1 })).json.token);
   const viaMcp = await tool(scoped, "get_case_context", { layer: "contesto" });

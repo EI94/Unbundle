@@ -20,7 +20,7 @@ import type { UcExecutor } from "@/lib/db/uc-executor";
 import { packageContextDelta, redactAgentContext } from "@/lib/use-cases/factory/package";
 import { canWriteFactory } from "@/lib/use-cases/factory/permissions";
 import { cliKnowsContextLayer, composeBrief, composeDecisionsLayer, composePackageLayer, composeProjectLayer, composeQuestionsLayer, nextStep, type ContextLayer } from "./brief";
-import { CLI_NOT_A_BUILDER, type CliCase } from "./case";
+import { CLI_NOT_A_BUILDER, caseOnlyContextOf, type CliCase } from "./case";
 import { notBuilderMessage } from "./case-errors";
 
 export { CONTEXT_LAYERS, type ContextLayer } from "./brief";
@@ -71,9 +71,10 @@ export async function loadCliContext(executor: UcExecutor, c: CliCase, input: { 
   // (9b) La riga del contesto nel brief, solo per la CLI che conosce `--contesto`: il contesto di adesso, da confrontare
   // con il CONTESTO.md dell'ultimo pacchetto.
   const knowsContext = cliKnowsContextLayer(input.userAgent);
-  // (8.0d, D7) Chi legge conta solo per «Solo questo use case»: per tutti gli altri la lettura resta quella di sempre.
-  const caseOnlyReader = c.caseOnly ? ({ caseOnly: true } as const) : {};
   const contextLine = input.layer === null && knowsContext;
+  // (8.0d, D7) I soli fatti legati al caso per «Solo questo use case», e per chiunque legga un caso che costruisce
+  // qualcuno «Solo questo use case» (`caseOnlyContextOf`); per tutti gli altri la lettura resta quella di sempre.
+  const caseOnlyReader = (contextLayer || contextLine) && (await caseOnlyContextOf(executor, c)) ? ({ caseOnly: true } as const) : {};
   const [extras, names, tasks, agent] = await Promise.all([
     cliCaseExtras(executor, c.target, { canSeeNeeds: c.canSeeNeeds }),
     namesToHide(executor, c.target),
