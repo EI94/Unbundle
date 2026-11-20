@@ -25,6 +25,8 @@ export const PUBLIC_TEXT = Object.freeze({
   /** Una scheda sola per l'errore, con il solo «Riprova» (`retry` di Next 16: rilegge la pagina dal server). */
   error: Object.freeze({
     title: "Questa pagina non si è caricata.",
+    /** Sotto il titolo, solo dove chi legge ha già inviato risposte (`/r`, `/rispondi`): mai sull'accesso o sull'invito. */
+    saved: "Le risposte che hai già inviato sono salve.",
     retry: "Riprova",
   }),
   /** Per i lettori di schermo, mentre la pagina si carica. */

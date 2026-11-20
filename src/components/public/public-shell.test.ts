@@ -88,7 +88,7 @@ test("one card for a link that no longer works: «Questo link non vale più.», 
   assert.equal(textOf(screen), "U Cliente Demo · con Lateral Space Questo link non vale più. Rispondi all'email che hai ricevuto: arriva a chi ti ha scritto.");
 });
 
-test("one card for errors, with only «Riprova», full width and 48 px: no second button, no reload", () => {
+test("one card for errors, with only «Riprova», full width and 48 px: no second button", () => {
   let retried = 0;
   const html = render(h(card.PublicStateCard, { kind: "error", retry: () => (retried += 1) }));
   assert.equal(textOf(html), "Questa pagina non si è caricata. Riprova");
@@ -100,15 +100,24 @@ test("one card for errors, with only «Riprova», full width and 48 px: no secon
   assert.ok(!/Ricarica/.test(html));
   assert.equal(retried, 0, "rendering does not retry");
 
-  const withBody = render(h(card.PublicErrorScreen, { retry: () => undefined, body: "Le risposte già inviate restano." }));
-  assert.equal(textOf(withBody), "U Unbundle Questa pagina non si è caricata. Le risposte già inviate restano. Riprova");
-  // La funzione è quella di Next: la scheda la chiama al tocco, senza argomenti.
-  assert.match(readFileSync(new URL("state-card.tsx", DIR), "utf8"), /onClick=\{\(\) => props\.retry\(\)\}/);
+  // Il testo sotto il titolo è della pagina: quello delle risposte già inviate vale solo dove ce ne sono (/r, /rispondi).
+  const withBody = render(h(card.PublicErrorScreen, { retry: () => undefined, body: PUBLIC_TEXT.error.saved }));
+  assert.equal(textOf(withBody), "U Unbundle Questa pagina non si è caricata. Le risposte che hai già inviato sono salve. Riprova");
+  // Senza `retry` (una scheda resa dal server, dove non c'è un confine d'errore) la stessa scheda, e «Riprova» ricarica.
+  const server = render(h(card.PublicStateCard, { kind: "error" }));
+  assert.equal(textOf(server), "Questa pagina non si è caricata. Riprova");
+  assert.equal(count(server, /<button\b/g), 1);
+  // Al tocco: il `retry` di Next, senza argomenti; altrimenti la pagina si ricarica.
+  const source = readFileSync(new URL("retry-button.tsx", DIR), "utf8");
+  assert.match(source, /onClick=\{\(\) => \(retry \? retry\(\) : window\.location\.reload\(\)\)\}/);
+  assert.match(source, /^"use client";/, "solo il pulsante è del client");
 });
 
 test("the light root of the public route layouts, rendered by the server", () => {
   const html = render(h(shell.PublicRoot, {}, h("p", {}, "x")));
-  assert.match(html, /^<div data-slot="public-root" class="survey-light min-h-dvh w-full min-w-0 overflow-x-hidden bg-background text-foreground">/);
+  assert.match(html, /^<div data-slot="public-root" class="survey-light min-h-dvh w-full min-w-0 overflow-x-clip bg-background text-foreground">/);
+  // `clip`, non `hidden`: con `hidden` la radice diventa un contenitore che scorre e le barre `sticky` non restano in vista.
+  assert.doesNotMatch(html, /overflow-x-hidden/);
 });
 
 test("the sizes: the main button full width and 48 px, the rest at least 44 px, fields at 16 px", () => {
@@ -129,6 +138,7 @@ test("the texts: the words of §4 outside the dashboard, no code, «AI» and neu
     PUBLIC_TEXT.invalidLink.title,
     PUBLIC_TEXT.invalidLink.body,
     PUBLIC_TEXT.error.title,
+    PUBLIC_TEXT.error.saved,
     PUBLIC_TEXT.error.retry,
     PUBLIC_TEXT.loading,
     brandLine("Cliente Demo"),
@@ -146,14 +156,15 @@ test("the shell has no portal, no browser dialog and no inline text outside the 
     const source = readFileSync(new URL(file, DIR), "utf8");
     assert.doesNotMatch(source, /from "(?:@\/components\/ui\/(?:select|dialog|popover|tooltip|sheet|dropdown-menu|sonner|alert-dialog)|sonner)"/, `${file}: portale`);
     assert.doesNotMatch(source, /window\.(?:confirm|prompt|alert)\b/, file);
-    assert.doesNotMatch(source, /^\s*"use client"/m, `${file}: si rende sul server`);
+    // Solo «Riprova» è del client (il tocco); il guscio e le schede si rendono sul server.
+    if (file !== "retry-button.tsx") assert.doesNotMatch(source, /^\s*"use client"/m, `${file}: si rende sul server`);
   }
   // Le parole a schermo vengono dal modulo dei testi: nei componenti non ci sono frasi scritte a mano.
   const code = (file: string) =>
     readFileSync(new URL(file, DIR), "utf8")
       .replace(/\/\*[\s\S]*?\*\//g, "")
       .replace(/^\s*\/\/.*$/gm, "");
-  for (const file of ["public-shell.tsx", "state-card.tsx"]) {
+  for (const file of ["public-shell.tsx", "state-card.tsx", "retry-button.tsx"]) {
     for (const sentence of ["non vale", "Riprova", "Come usiamo", "Lateral Space", "Serve aiuto"]) assert.ok(!code(file).includes(sentence), `${file}: «${sentence}»`);
   }
 });

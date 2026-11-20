@@ -1,18 +1,20 @@
 import type { ReactNode } from "react";
-import { Button } from "@/components/ui/button";
 import { PUBLIC_TEXT } from "@/lib/public/text";
 import { cn } from "@/lib/utils";
-import { PUBLIC_PRIMARY } from "./classes";
 import { PublicShell } from "./public-shell";
+import { PublicRetryButton } from "./retry-button";
 
 /**
  * Le schede delle pagine fuori dalla dashboard (rilascio 10, ondata 4, PROPOSTA-10 §3.11):
  * - `PublicCard`: una scheda con il titolo (H1 della pagina) e il suo contenuto;
  * - `PublicStateCard`: una scheda sola per ogni link che non si può usare («Questo link non vale più.» e «Rispondi
  *   all'email che hai ricevuto…», il testo si cambia dove non vale, per esempio un link avuto in chat) e una sola per
- *   l'errore, con il solo «Riprova» (`retry` di Next 16, che rilegge la pagina dal server).
+ *   l'errore, con il solo «Riprova»: `retry` di Next 16 negli `error.tsx`, che rilegge la pagina dal server; senza,
+ *   in una scheda resa dal server, ricarica la pagina (`./retry-button.tsx`). Il testo sotto il titolo dell'errore è
+ *   della pagina: «Le risposte che hai già inviato sono salve.» (`PUBLIC_TEXT.error.saved`) vale solo dove ci sono
+ *   risposte (`/r`, `/rispondi`), non sull'accesso o sull'invito.
  *
- * Senza stato e senza portali. La scheda d'errore riceve una funzione: la usano solo gli `error.tsx`, che sono del client.
+ * Senza stato e senza portali: si rende sul server.
  */
 
 export function PublicCard({
@@ -59,8 +61,9 @@ export type PublicStateCardProps =
   | {
       /** La pagina non si è caricata. */
       kind: "error";
-      retry: () => void;
-      /** Una frase sotto il titolo, facoltativa: per esempio che le risposte già inviate restano. */
+      /** Il `retry` di Next negli `error.tsx`; senza, «Riprova» ricarica la pagina. */
+      retry?: () => void;
+      /** Una frase sotto il titolo, facoltativa: per esempio `PUBLIC_TEXT.error.saved` dove ci sono risposte inviate. */
       body?: ReactNode;
     };
 
@@ -69,9 +72,7 @@ export function PublicStateCard(props: PublicStateCardProps) {
     return (
       <PublicCard title={PUBLIC_TEXT.error.title}>
         {props.body ? <PublicCardText>{props.body}</PublicCardText> : null}
-        <Button type="button" className={cn("mt-5", PUBLIC_PRIMARY)} onClick={() => props.retry()}>
-          {PUBLIC_TEXT.error.retry}
-        </Button>
+        <PublicRetryButton retry={props.retry} className="mt-5" />
       </PublicCard>
     );
   }
@@ -83,8 +84,8 @@ export function PublicStateCard(props: PublicStateCardProps) {
   );
 }
 
-/** La pagina intera di un errore: il guscio e la sua scheda. Per gli `error.tsx`. */
-export function PublicErrorScreen({ retry, body, client }: { retry: () => void; body?: ReactNode; client?: string | null }) {
+/** La pagina intera di un errore: il guscio e la sua scheda. Per gli `error.tsx` (con `retry`) e le schede del server. */
+export function PublicErrorScreen({ retry, body, client }: { retry?: () => void; body?: ReactNode; client?: string | null }) {
   return (
     <PublicShell client={client}>
       <PublicStateCard kind="error" retry={retry} body={body} />

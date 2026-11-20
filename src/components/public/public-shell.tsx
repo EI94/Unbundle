@@ -48,11 +48,12 @@ export function PublicBrand({ client }: { client?: string | null }) {
 
 /**
  * La radice chiara dei layout delle rotte pubbliche: `.survey-light` reso dal server, così ogni stato (anche l'errore e la
- * scheda di un link che non vale) è chiaro. Niente scorrimento laterale a 375 px.
+ * scheda di un link che non vale) è chiaro. Niente scorrimento laterale a 375 px: `overflow-x: clip` e non `hidden`, che
+ * farebbe della radice un contenitore che scorre e fermerebbe le barre `sticky` (l'avanzamento del questionario).
  */
 export function PublicRoot({ children }: { children: ReactNode }) {
   return (
-    <div data-slot="public-root" className="survey-light min-h-dvh w-full min-w-0 overflow-x-hidden bg-background text-foreground">
+    <div data-slot="public-root" className="survey-light min-h-dvh w-full min-w-0 overflow-x-clip bg-background text-foreground">
       {children}
     </div>
   );

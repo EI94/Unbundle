@@ -4,4 +4,5 @@
  */
 export { PublicBrand, PublicContact, PublicFooterLine, PublicLink, PublicNoticeLink, PublicRoot, PublicShell } from "./public-shell";
 export { PublicCard, PublicCardText, PublicErrorScreen, PublicInvalidScreen, PublicStateCard, type PublicStateCardProps } from "./state-card";
+export { PublicRetryButton } from "./retry-button";
 export { PUBLIC_FIELD, PUBLIC_LABEL, PUBLIC_LINK, PUBLIC_PRIMARY, PUBLIC_SECONDARY } from "./classes";
