@@ -228,6 +228,10 @@ export async function recreateWorkspaceInvitationAction(
   if (previous.usedCount >= previous.maxUses) {
     return errorState("Questo link è già stato usato: la persona è già entrata. Per invitare qualcun altro crea un nuovo link.");
   }
+  // (8.0d) Un invito «Solo questo use case» non si rifà da Persone: senza il suo caso non varrebbe, e lo dà Lateral Space.
+  if (isCaseOnly(previous.role)) {
+    return errorState("Questo invito è per un solo use case: lo rimanda Lateral Space dall'Agent Factory.");
+  }
 
   await revokeWorkspaceInvitation({ workspaceId, invitationId });
   const { invitation, token } = await createWorkspaceInvitation({

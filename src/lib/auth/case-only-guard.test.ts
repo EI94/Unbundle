@@ -133,6 +133,8 @@ test("U4: esterno_caso mai tra i ruoli di un invito da Persone, né negli inviti
   const actions = code(read("src/lib/actions/workspace-collaboration.ts"));
   assert.match(actions, /if \(!\(WORKSPACE_COLLABORATOR_ROLES as readonly string\[\]\)\.includes\(role\)\) \{\s*return errorState\("Ruolo non valido\."\);/);
   assert.match(actions, /if \(isCaseOnly\(membership\.role\)\) \{[\s\S]*?return errorState\(CASE_ONLY_ROLE_NOTE\);/);
+  // «Crea un altro link» da Persone non rifà un invito «Solo questo use case» (che senza il suo caso non varrebbe).
+  assert.match(actions, /if \(isCaseOnly\(previous\.role\)\) \{\s*return errorState\(/);
 });
 
 test("le tre porte usano la regola unica (`workspaceDoor`), senza altri confronti di ruolo", () => {
