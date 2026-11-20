@@ -5,6 +5,9 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { workspaceDoor } from "@/lib/auth/case-only";
+import { LEARNER_ROLE } from "@/lib/learning/learner-scope";
+import { COLLABORATOR_ROLES } from "@/lib/workspace-permissions";
 import { learningEnabled, LearningError } from "./server";
 import { parseTrainingPack, trainingPackHash, localDateTimeToUtc } from "./pack";
 import { learningRetentionEligibility } from "./retention";
@@ -30,7 +33,9 @@ function effectiveRole(workspaceId: string, user: SQL): SQL {
   return sql`(SELECT COALESCE((SELECT m.role::text FROM memberships m WHERE m.organization_id=w.organization_id AND m.user_id=${user}),
     (SELECT wm.role::text FROM workspace_memberships wm WHERE wm.workspace_id=w.id AND wm.user_id=${user})) FROM workspaces w WHERE w.id=${workspaceId}::uuid)`;
 }
-function member(workspaceId: string, user: SQL): SQL { return sql`${effectiveRole(workspaceId,user)} IS NOT NULL`; }
+// (8.0d-1) Membro per elenco: i cinque collaboratori e chi segue un corso, mai «Solo questo use case» né un ruolo sconosciuto.
+const LEARNING_MEMBER_ROLES = sql.raw([...COLLABORATOR_ROLES, LEARNER_ROLE].map((role) => `'${role}'`).join(","));
+function member(workspaceId: string, user: SQL): SQL { return sql`${effectiveRole(workspaceId,user)} IN (${LEARNING_MEMBER_ROLES})`; }
 function bootstrap(workspaceId: string, userId: string): SQL { return sql`${effectiveRole(workspaceId,sql`${userId}::uuid`)} IN ('exec_sponsor','transformation_lead')`; }
 function manager(ctx: Context, cohort: SQL | null = null, anyScope = false): SQL {
   return sql`${member(ctx.workspaceId,sql`${ctx.userId}::uuid`)} AND EXISTS(SELECT 1 FROM learning_grants admin_authority WHERE admin_authority.workspace_id=${ctx.workspaceId}::uuid
@@ -47,7 +52,8 @@ async function workspaceActor(workspaceId: string, expectedUserId?: string) {
     throw new LearningError("forbidden", "L’account connesso è cambiato. Nessuna operazione è stata eseguita: riapri la gestione con l’account corretto.");
   }
   const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
-  if (!access) throw unavailable();
+  // (8.0d-1) Per elenco: i collaboratori e chi segue un corso; mai «Solo questo use case» né un ruolo sconosciuto.
+  if (!access || workspaceDoor(access.role, { allowLearner: true }) !== "aperta") throw unavailable();
   return { userId: session.user.id, access, canCreate: ["exec_sponsor", "transformation_lead"].includes(access.role) };
 }
 async function requireManager(workspaceId: string, programId: string, expectedUserId?: string): Promise<Context> {

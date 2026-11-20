@@ -20,6 +20,12 @@
 import { LEARNER_ROLE } from "../learning/learner-scope.ts";
 import { isCollaboratorRole } from "../workspace-permissions.ts";
 
+/**
+ * Chi segue solo un corso, per i moduli che non devono importare la Formazione (i referenti, la campanella): lo stesso
+ * `isLearnerOnly` di src/lib/learning/learner-scope.ts.
+ */
+export { LEARNER_ROLE, isLearnerOnly } from "../learning/learner-scope.ts";
+
 /** Il ruolo nel workspace di chi costruisce un solo use case, da un'altra azienda o dall'IT del cliente. */
 export const CASE_ONLY_ROLE = "esterno_caso" as const;
 export type CaseOnlyRole = typeof CASE_ONLY_ROLE;
@@ -92,14 +98,16 @@ export function caseOnlyRedirect(params: { role: string | null | undefined; path
  * Le porte che aprono a `esterno_caso` (`allowCaseOnly: true`), e nient'altro: ogni file qui dichiara l'opzione, e
  * nessun altro file la dichiara (la prova di guardia). Una pagina, una rotta o un'azione nuova è chiusa a
  * «Solo questo use case» finché non entra qui, con una revisione delle porte.
+ * - Il layout del workspace (il perimetro: `caseOnlyRedirect`, la barra con una voce, la campanella).
  * - Pagine: l'Agent Factory, il guscio del dossier (solo la testata e «Progetto dell'agente»), «Progetto dell'agente» e
- *   il suo indirizzo breve (campanella, CLI).
+ *   il suo indirizzo breve (campanella, CLI). Fuori dalla dashboard: «Collega questa CLI» e la sua scelta del workspace.
  * - La campanella (rotta): solo i tipi di chi costruisce, dei suoi casi.
  * - Le azioni: le 7 di chi costruisce (`use-case-factory.ts`), la conferma della CLI (`cli-login.ts`), «Scollega»
  *   (`cli-tokens.ts`).
  * - La CLI e l'MCP del caso: `openCli` (`route-kit.ts`); ogni caso poi vuole il predicato (`resolveCliCase`).
  */
 export const CASE_ONLY_SURFACES: readonly string[] = Object.freeze([
+  "src/app/(dashboard)/dashboard/[workspaceId]/layout.tsx",
   "src/app/(dashboard)/dashboard/[workspaceId]/agent-factory/page.tsx",
   "src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/layout.tsx",
   "src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/progetto/page.tsx",
@@ -109,4 +117,6 @@ export const CASE_ONLY_SURFACES: readonly string[] = Object.freeze([
   "src/lib/actions/cli-login.ts",
   "src/lib/actions/cli-tokens.ts",
   "src/lib/use-cases/cli/route-kit.ts",
+  "src/app/cli/collega/page.tsx",
+  "src/lib/use-cases/cli/workspace-choices.ts",
 ]);

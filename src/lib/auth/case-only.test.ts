@@ -121,5 +121,5 @@ test("U2: il perimetro vale solo per esterno_caso; chi segue un corso resta nel 
 test("le porte che aprono a esterno_caso sono un elenco fisso, senza doppioni", () => {
   assert.equal(new Set(CASE_ONLY_SURFACES).size, CASE_ONLY_SURFACES.length);
   assert.ok(Object.isFrozen(CASE_ONLY_SURFACES));
-  assert.equal(CASE_ONLY_SURFACES.length, 9);
+  assert.equal(CASE_ONLY_SURFACES.length, 12);
 });

@@ -5,7 +5,8 @@ import { db } from "@/lib/db";
 import { caseAccessRowSql, toCaseAccessRow, type CaseAccessRow } from "@/lib/db/queries/uc-dossier-base";
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
 import { ensureUcSchema } from "@/lib/db/ensure-schema";
-import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
+import { canManageWorkspaceSettings, isCollaboratorRole } from "@/lib/workspace-permissions";
+import { isCaseOnly } from "@/lib/auth/case-only";
 import { caseRoleAllowedFor, parseLsDomains, userContextFrom } from "@/lib/uc/lateral-space";
 import { timeUc } from "@/lib/uc/log";
 import { rolloutEnv, ucOnForEveryWorkspace } from "@/lib/uc/platform";
@@ -140,13 +141,34 @@ const loadCaseAccessRow = cache(async function loadCaseAccessRow(workspaceId: st
  * Prima della lettura: id validi, niente partecipanti ai corsi, sezione accesa
  * per il workspace e tabelle pronte (`ensureUcAvailable`, che lancia
  * `UcAccessError`). False se la persona non vede comunque il caso.
+ *
+ * (8.0d) Per elenco: i cinque collaboratori; «Solo questo use case» solo se il
+ * predicato di chi costruisce da fuori è vero per questo caso adesso (la riga
+ * `osservatore` da sola non apre niente, nemmeno in lettura); un ruolo che il
+ * codice non conosce mai.
  */
 export async function caseAccessPrecheck(input: CaseAccessInput): Promise<boolean> {
   if (!UUID.test(input.caseId) || !UUID.test(input.workspaceId) || !UUID.test(input.userId)) return false;
-  if (input.workspaceRole === "learner") return false;
+  const caseOnly = isCaseOnly(input.workspaceRole);
+  if (!isCollaboratorRole(input.workspaceRole) && !caseOnly) return false;
   await ensureUcAvailable(input.workspaceId);
+  if (caseOnly && !(await caseOnlyBuildsCase(input.caseId.toLowerCase(), input.userId.toLowerCase()))) return false;
   return true;
 }
+
+/**
+ * (8.0d) «Solo questo use case» costruisce questo caso adesso: il predicato unico di `use-case-builders.ts` (una
+ * concessione per questo caso, mai «tutti»; la riga `osservatore`; l'e-mail verificata fuori da Lateral Space). Una
+ * lettura che non riesce vale «no»: si chiude, non si apre.
+ */
+const caseOnlyBuildsCase = cache(async function caseOnlyBuildsCase(caseId: string, userId: string): Promise<boolean> {
+  try {
+    const { isExternalBuilderOfCase } = await import("@/lib/db/queries/use-case-builders");
+    return await isExternalBuilderOfCase(await getAppUcExecutor(), { caseId, userId, lsDomains: ucLsDomains() });
+  } catch {
+    return false;
+  }
+});
 
 /**
  * Accesso dell'utente al caso, oppure null se il caso non esiste, non è di quel

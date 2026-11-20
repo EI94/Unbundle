@@ -48,7 +48,9 @@ test("i testi degli use case sono quelli di docs/use-case/DESIGN.md §14.4", () 
 test("fuori dalla dashboard (invito) gli stessi ruoli dicono «casi d'uso», mai «use case» (rilascio 10, §4)", () => {
   assert.deepEqual(Object.keys(ROLE_INFO_OUTSIDE).sort(), Object.keys(ROLE_INFO).sort());
   for (const [role, info] of Object.entries(ROLE_INFO_OUTSIDE)) {
-    assert.equal(info.label, ROLE_INFO[role].label, role);
+    // (8.0d) L'unico nome che cambia fuori dalla dashboard: «Solo questo use case» diventa «Solo questo caso d'uso».
+    if (role === "esterno_caso") assert.equal(info.label, "Solo questo caso d'uso");
+    else assert.equal(info.label, ROLE_INFO[role].label, role);
     assert.doesNotMatch([info.summary, ...info.can, ...(info.cannot ?? [])].join(" "), /\buse case\b/i, role);
   }
   assert.ok(ROLE_INFO_OUTSIDE.function_lead.can.includes("Decide se e quando fare i casi d'uso"));

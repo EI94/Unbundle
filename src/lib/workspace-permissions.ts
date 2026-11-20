@@ -30,3 +30,9 @@ export const COLLABORATOR_ROLES = Object.freeze([...PORTFOLIO_REVIEWER_ROLES, "c
 export function isCollaboratorRole(role: string | null | undefined): boolean {
   return typeof role === "string" && (COLLABORATOR_ROLES as readonly string[]).includes(role);
 }
+
+/**
+ * (8.0d-1) I cinque ruoli da collaboratore come elenco SQL (`role::text IN (…)`): nel SQL il ruolo si confronta come
+ * testo, mai come `member_role` (un valore che l'enum non ha ancora è un errore, non un «no»).
+ */
+export const COLLABORATOR_ROLES_SQL = COLLABORATOR_ROLES.map((role) => `'${role}'`).join(", ");

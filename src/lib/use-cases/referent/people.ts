@@ -21,7 +21,8 @@
  * Art. 15.4: nessun ORDER BY, GROUP BY o conteggio; una riga per contatto. Modulo puro.
  */
 import { cast, raw, toStatement, ucSql, type SqlFragment, type UcStatement } from "../../uc/sql/statement.ts";
-import { canReviewWorkspacePortfolio } from "../../workspace-permissions.ts";
+import { COLLABORATOR_ROLES_SQL, canReviewWorkspacePortfolio, isCollaboratorRole } from "../../workspace-permissions.ts";
+import { isLearnerOnly } from "../../auth/case-only.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -150,7 +151,8 @@ export function personFactsOf(row: Readonly<Record<string, unknown>> | undefined
  * partecipante ai corsi) riceve l'elenco del selettore di «Chiedi al referente».
  */
 export function canSeeWorkspacePeople(role: string | null | undefined): boolean {
-  return typeof role === "string" && role.length > 0 && role !== "learner";
+  // (8.0d) Per elenco: i cinque collaboratori; mai chi segue un corso, «Solo questo use case» o un ruolo sconosciuto.
+  return isCollaboratorRole(role);
 }
 
 /**
@@ -159,7 +161,9 @@ export function canSeeWorkspacePeople(role: string | null | undefined): boolean 
  * solo per le persone proposte, mai per chi guarda (`canSeeWorkspacePeople`).
  */
 export function isPickableMemberRole(role: string | null | undefined): boolean {
-  return typeof role === "string" && role.length > 0;
+  // (8.0d) Per elenco: i collaboratori e chi segue un corso; mai «Solo questo use case» (non fa il referente) né un ruolo
+  // che il codice non conosce.
+  return isCollaboratorRole(role) || isLearnerOnly(role);
 }
 
 /** (Rilascio 4) Con `learners` l'elenco ha anche i partecipanti ai corsi di questo workspace. */
@@ -181,11 +185,13 @@ export function workspaceMembersSql(workspaceId: string, userId: string | null =
   const ws = cast(uuid(workspaceId, "workspace"), "uuid");
   const one = userId === null ? raw("") : ucSql` AND pu.id = ${cast(uuid(userId, "persona"), "uuid")}`;
   // `pw0` c'è solo dentro la tabella derivata `m`: fuori, il workspace è di nuovo il parametro legato.
+  // (8.0d) Per elenco, come testo: i cinque collaboratori (e con l'opzione chi segue un corso qui), mai «Solo questo use
+  // case» né un ruolo che il codice non conosce.
   const roles = o.learners
-    ? ucSql`WHERE m.role IS NOT NULL AND (m.role <> 'learner' OR EXISTS (
+    ? ucSql`WHERE m.role IS NOT NULL AND (m.role IN (${raw(COLLABORATOR_ROLES_SQL)}) OR (m.role = 'learner' AND EXISTS (
   SELECT 1 FROM workspace_memberships lwm
-  WHERE lwm.workspace_id = ${ws} AND lwm.user_id = m.user_id::uuid AND lwm.role = 'learner'))`
-    : raw(`WHERE m.role IS NOT NULL AND m.role <> 'learner'`);
+  WHERE lwm.workspace_id = ${ws} AND lwm.user_id = m.user_id::uuid AND lwm.role::text = 'learner')))`
+    : raw(`WHERE m.role IS NOT NULL AND m.role IN (${COLLABORATOR_ROLES_SQL})`);
   return toStatement(ucSql`SELECT m.user_id, m.name, m.email, m.role FROM (
   SELECT pu.id::text AS user_id, pu.name, lower(btrim(pu.email)) AS email, ${effectiveRole("pu.id", "pw0.id")} AS role
   FROM users pu JOIN workspaces pw0 ON pw0.id = ${ws}

@@ -56,6 +56,8 @@ test("persona: «Hai già un account» solo per un membro che non è revisore, c
 test("chi vede le persone del workspace: ogni ruolo tranne i partecipanti ai corsi (come Impostazioni › Persone)", () => {
   for (const role of ["exec_sponsor", "transformation_lead", "function_lead", "analyst", "contributor"]) assert.equal(canSeeWorkspacePeople(role), true, role);
   for (const role of ["learner", null, undefined, ""]) assert.equal(canSeeWorkspacePeople(role), false, String(role));
+  // (8.0d) Per elenco: nemmeno «Solo questo use case» né un ruolo sconosciuto.
+  for (const role of ["esterno_caso", "inventato"]) assert.equal(canSeeWorkspacePeople(role), false, role);
 });
 
 // ── Le persone del selettore ─────────────────────────────────────────
@@ -67,7 +69,9 @@ test("la SQL delle persone: account verificati del workspace, niente partecipant
     assert.doesNotMatch(s.text, /learning_/i, "nessun dato dei corsi");
     assert.doesNotMatch(s.text, /\bORDER\s+BY\b|\bGROUP\s+BY\b|count\(/i);
     assert.match(s.text, /email_verified IS NOT NULL/);
-    assert.match(s.text, /m\.role <> 'learner'/);
+    // (8.0d) Per elenco, come testo: i cinque collaboratori, mai «non learner».
+    assert.match(s.text, /m\.role IN \('exec_sponsor', 'transformation_lead', 'function_lead', 'analyst', 'contributor'\)/);
+    assert.doesNotMatch(s.text, /<> 'learner'|esterno_caso/);
     assert.match(s.text, /FROM memberships pm[\s\S]*workspace_memberships pwm/, "il ruolo: prima l'organizzazione, poi il workspace");
   }
   assert.ok(one.params.includes(ANNA), "una sola persona, id in minuscolo");
@@ -120,10 +124,12 @@ test("selettore: una voce per persona, mai chi guarda, mai Lateral Space, in ord
 
 // ── (Rilascio 4) I partecipanti ai corsi del workspace nel selettore ──────
 
-const OLD_LAST = "WHERE m.role IS NOT NULL AND m.role <> 'learner'";
-const LEARNERS_LAST = `WHERE m.role IS NOT NULL AND (m.role <> 'learner' OR EXISTS (
+// (8.0d) Le condizioni sui ruoli sono un elenco (i cinque collaboratori; con l'opzione anche chi segue un corso qui), non
+// più «tutti tranne learner»: lo stesso significato per i ruoli di sempre, niente per «Solo questo use case».
+const OLD_LAST = "WHERE m.role IS NOT NULL AND m.role IN ('exec_sponsor', 'transformation_lead', 'function_lead', 'analyst', 'contributor')";
+const LEARNERS_LAST = `WHERE m.role IS NOT NULL AND (m.role IN ('exec_sponsor', 'transformation_lead', 'function_lead', 'analyst', 'contributor') OR (m.role = 'learner' AND EXISTS (
   SELECT 1 FROM workspace_memberships lwm
-  WHERE lwm.workspace_id = $N::uuid AND lwm.user_id = m.user_id::uuid AND lwm.role = 'learner'))`;
+  WHERE lwm.workspace_id = $N::uuid AND lwm.user_id = m.user_id::uuid AND lwm.role::text = 'learner')))`;
 
 test("la SQL senza l'opzione è quella di prima, parola per parola; con l'opzione cambia solo l'ultima condizione", () => {
   for (const userId of [null, ANNA]) {
@@ -146,7 +152,7 @@ test("la SQL con i partecipanti ai corsi: solo una riga «learner» di questo wo
   assert.doesNotMatch(s.text, /learning_/i, "nessuna tabella dei corsi");
   assert.doesNotMatch(s.text, /\bORDER\s+BY\b|\bGROUP\s+BY\b|count\(/i);
   assert.match(s.text, /email_verified IS NOT NULL/);
-  assert.match(s.text, /EXISTS \(\s*SELECT 1 FROM workspace_memberships lwm\s+WHERE lwm\.workspace_id = \$\d+::uuid AND lwm\.user_id = m\.user_id::uuid AND lwm\.role = 'learner'\)/);
+  assert.match(s.text, /EXISTS \(\s*SELECT 1 FROM workspace_memberships lwm\s+WHERE lwm\.workspace_id = \$\d+::uuid AND lwm\.user_id = m\.user_id::uuid AND lwm\.role::text = 'learner'\)/);
   // `pw0` vive solo dentro la tabella derivata `m`: dopo «) m» non compare più.
   const outer = s.text.slice(s.text.lastIndexOf(") m\n"));
   assert.doesNotMatch(outer, /\bpw0\b/);
@@ -162,6 +168,10 @@ test("le righe con i partecipanti ai corsi: il ruolo «learner» entra solo con 
   assert.equal(memberFactsOf({ ...row, role: null }, { learners: true }), null);
   for (const role of ["learner", "contributor", "function_lead"]) assert.equal(isPickableMemberRole(role), true, role);
   for (const role of [null, undefined, ""]) assert.equal(isPickableMemberRole(role), false, String(role));
+  // (8.0d) «Solo questo use case» non fa il referente; un ruolo sconosciuto non si propone.
+  for (const role of ["esterno_caso", "inventato"]) assert.equal(isPickableMemberRole(role), false, role);
+  assert.equal(memberFactsOf({ ...row, role: "esterno_caso" }, { learners: true }), null);
+  assert.equal(memberFactsOf({ ...row, role: "esterno_caso" }), null);
   // Chi guarda non diventa mai «chi vede le persone» perché partecipa a un corso.
   assert.equal(canSeeWorkspacePeople("learner"), false);
   const members = [member(ANNA, "Anna Verdi", "anna@rondine.test", "learner"), member(BRUNO, "Bruno Bianchi", "bruno@rondine.test", "function_lead"), member(CARLA, "Carla Neri", "carla@ls.test", "learner")];

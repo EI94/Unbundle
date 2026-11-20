@@ -44,7 +44,7 @@ import {
   type CiKeyActionRefusal,
   type CiKeyRow,
 } from "../../use-cases/ci/keys.ts";
-import { PORTFOLIO_REVIEWER_ROLES } from "../../workspace-permissions.ts";
+import { COLLABORATOR_ROLES_SQL, PORTFOLIO_REVIEWER_ROLES } from "../../workspace-permissions.ts";
 
 // ─── Le e-mail della chiave (interne di Lateral Space, senza caso) ─────
 
@@ -111,7 +111,7 @@ CROSS JOIN LATERAL (SELECT ${ROLE_SQL} AS role) ckm_role
 WHERE ckm_w.id = ${workspace}${only ? ucSql` AND ckm_u.id = ${only}` : raw("")}
   AND ckm_u.email_verified IS NOT NULL
   AND coalesce(lower(substring(btrim(ckm_u.email) from '@([^@]+)$')) = ANY(${domainsParam(lsDomains)}), false)
-  AND ckm_role.role IS NOT NULL AND ckm_role.role <> 'learner'
+  AND ckm_role.role IN (${raw(COLLABORATOR_ROLES_SQL)})
   AND (ckm_role.role = ANY(${cast([...PORTFOLIO_REVIEWER_ROLES], "text[]")})${leads})
 LIMIT 200`;
 }

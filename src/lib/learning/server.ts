@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { workspaceDoor } from "@/lib/auth/case-only";
 import { learningPrograms, learningEnrollments, learningSessions, learningGrants, learningAttempts, learningAuditEvents } from "./schema";
 import { getActivity, createAttemptOrder, getLearnerActivity, getSubmittedCaseExample } from "./pack";
 import { validateDraftResponses, validateCompleteness, gradeActivity } from "./grading";
@@ -41,7 +42,10 @@ async function requireWorkspace(workspaceId: string) {
   identifier(workspaceId);
   const session = await auth();
   if (!session?.user?.id) throw new LearningError("unauthenticated", "Accesso non confermato. Conserva questa pagina e riprova; se la sessione è terminata, accedi in una nuova scheda.");
-  if (!await getWorkspaceAccessForUser(session.user.id, workspaceId)) throw new LearningError("forbidden", "Contenuto non disponibile per questo account.");
+  // (8.0d-1) La Formazione apre ai collaboratori e a chi segue un corso, per elenco: mai a «Solo questo use case» né a un
+  // ruolo che il codice non conosce.
+  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  if (!access || workspaceDoor(access.role, { allowLearner: true }) !== "aperta") throw new LearningError("forbidden", "Contenuto non disponibile per questo account.");
   return session.user.id;
 }
 async function requireProgram(workspaceId: string, programId: string) {

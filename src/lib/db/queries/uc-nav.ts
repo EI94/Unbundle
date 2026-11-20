@@ -5,7 +5,7 @@ import { getUcUserContext, isUcEnabled, isUcEnabledFor, isUcLsConfigured, ucLsDo
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
 import { ucLogError } from "@/lib/uc/log";
 import type { DossierCardView, UseCaseRealization } from "@/lib/uc/views/realization";
-import { canManageWorkspaceSettings, canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
+import { canManageWorkspaceSettings, canReviewWorkspacePortfolio, isCollaboratorRole } from "@/lib/workspace-permissions";
 import { readDossierCards, readRealization, type RealizationViewer } from "./uc-realization";
 import { UUID } from "@/lib/uc/ids";
 
@@ -44,7 +44,8 @@ async function ucTablesPresent(): Promise<boolean> {
  * può avviarli e chi è membro di un dossier del workspace.
  */
 export async function ucCasesNavVisible(i: { userId: string; workspaceId: string; role: string }): Promise<boolean> {
-  if (!isUcEnabled() || i.role === "learner" || !UUID.test(i.workspaceId) || !UUID.test(i.userId)) return false;
+  // (8.0d) Per elenco: solo i cinque collaboratori (chi segue un corso, «Solo questo use case» e un ruolo sconosciuto no).
+  if (!isUcEnabled() || !isCollaboratorRole(i.role) || !UUID.test(i.workspaceId) || !UUID.test(i.userId)) return false;
   if (!isUcEnabledFor(i.workspaceId)) return false;
   if (canManageWorkspaceSettings(i.role)) return true;
   try {
@@ -76,7 +77,7 @@ export interface PortfolioCaseLink {
  * `realizationForUseCase`.
  */
 export async function portfolioCaseLink(i: { userId: string; workspaceId: string; role: string; useCaseId: string; useCaseStatus: string }): Promise<PortfolioCaseLink | null> {
-  if (!isUcEnabled() || i.role === "learner" || !UUID.test(i.workspaceId) || !UUID.test(i.useCaseId) || !UUID.test(i.userId)) return null;
+  if (!isUcEnabled() || !isCollaboratorRole(i.role) || !UUID.test(i.workspaceId) || !UUID.test(i.useCaseId) || !UUID.test(i.userId)) return null;
   if (!isUcEnabledFor(i.workspaceId)) return null;
   try {
     if (!(await ucTablesPresent())) return null;
@@ -117,7 +118,7 @@ function viewerFor(userId: string, role: string): RealizationViewer {
  */
 export async function realizationForUseCase(i: { userId: string; workspaceId: string; role: string; useCaseId: string }): Promise<UseCaseRealization | null> {
   if (!UUID.test(i.workspaceId) || !UUID.test(i.useCaseId) || !UUID.test(i.userId)) return null;
-  if (i.role === "learner" || !canReviewWorkspacePortfolio(i.role)) return { state: "nascosta" };
+  if (!canReviewWorkspacePortfolio(i.role)) return { state: "nascosta" };
   if (!isUcEnabledFor(i.workspaceId)) return { state: "spenta" };
   try {
     if (!(await ucTablesPresent())) return { state: "spenta" };
@@ -148,7 +149,7 @@ export type DossierColumn =
  * prossimo passo di tutti, più il controllo delle tabelle ogni 5 minuti.
  */
 export async function casesForUseCases(i: { workspaceId: string; userId: string; role: string; useCaseIds: readonly string[] }): Promise<DossierColumn> {
-  if (!UUID.test(i.workspaceId) || !UUID.test(i.userId) || i.role === "learner" || !canReviewWorkspacePortfolio(i.role)) return { state: "nascosta" };
+  if (!UUID.test(i.workspaceId) || !UUID.test(i.userId) || !canReviewWorkspacePortfolio(i.role)) return { state: "nascosta" };
   if (!isUcEnabledFor(i.workspaceId)) return { state: "spenta" };
   try {
     if (!(await ucTablesPresent())) return { state: "spenta" };
@@ -168,7 +169,7 @@ export async function casesForUseCases(i: { workspaceId: string; userId: string;
  * propaga alla sua pagina d'errore.
  */
 export async function dossierCardsForWorkspace(i: { workspaceId: string; userId: string; role: string }): Promise<DossierCardView[]> {
-  if (!UUID.test(i.workspaceId) || !UUID.test(i.userId) || i.role === "learner") return [];
+  if (!UUID.test(i.workspaceId) || !UUID.test(i.userId) || !isCollaboratorRole(i.role)) return [];
   const executor = await getAppUcExecutor();
   const read = await readDossierCards(executor, { workspaceId: i.workspaceId, useCaseIds: null, viewer: viewerFor(i.userId, i.role), lsDomains: ucLsDomains() });
   return read.cards;

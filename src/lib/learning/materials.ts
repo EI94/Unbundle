@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { workspaceDoor } from "@/lib/auth/case-only";
 import { LearningError, learningEnabled } from "./server";
 import { materialAccess, type MaterialAccess, type MaterialViewer } from "./material-access";
 
@@ -51,7 +52,8 @@ const materialColumns = sql`m.id, m.workspace_id AS "workspaceId", m.program_id 
 /** Ciò che serve a decidere l'accesso, per una persona e un corso. */
 async function viewerFor(userId: string, workspaceId: string, programId: string): Promise<MaterialViewer | null> {
   const access = await getWorkspaceAccessForUser(userId, workspaceId);
-  if (!access) return null;
+  // (8.0d-1) Per elenco: i collaboratori e chi segue un corso; mai «Solo questo use case» né un ruolo sconosciuto.
+  if (!access || workspaceDoor(access.role, { allowLearner: true }) !== "aperta") return null;
   const [state] = await rows<{
     featureEnabled: boolean | null;
     grants: number;

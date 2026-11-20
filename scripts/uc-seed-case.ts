@@ -264,7 +264,8 @@ async function checkActor(workspaceId: string): Promise<void> {
     toStatement(ucSql`SELECT 1 AS ok FROM workspaces w
 WHERE w.id = ${cast(workspaceId, "uuid")}
   AND (EXISTS (SELECT 1 FROM memberships m WHERE m.organization_id = w.organization_id AND m.user_id = ${cast(actor, "uuid")})
-    OR EXISTS (SELECT 1 FROM workspace_memberships wm WHERE wm.workspace_id = w.id AND wm.user_id = ${cast(actor, "uuid")} AND wm.role <> 'learner'))`),
+    OR EXISTS (SELECT 1 FROM workspace_memberships wm WHERE wm.workspace_id = w.id AND wm.user_id = ${cast(actor, "uuid")}
+      AND wm.role::text IN ('exec_sponsor', 'transformation_lead', 'function_lead', 'analyst', 'contributor')))`),
   );
   if (!rows[0]) fail("attore_non_membro", "L'attore non è membro del workspace (i partecipanti ai corsi non contano).");
   const user = await loadUserContext(executor, actor!, lsDomains);

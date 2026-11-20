@@ -16,7 +16,8 @@
 import { z } from "zod";
 import { userContextFrom } from "../../uc/lateral-space.ts";
 import { rowBool, rowDate, rowJson, rowObject, rowString, rowVocab } from "../../uc/sql/readiness.ts";
-import { cast, toStatement, ucSql } from "../../uc/sql/statement.ts";
+import { cast, raw, toStatement, ucSql } from "../../uc/sql/statement.ts";
+import { COLLABORATOR_ROLES_SQL } from "../../workspace-permissions.ts";
 import { templatePartsReader } from "../../uc/sql/template-parts.ts";
 import { fail, ok, type Json, type Result } from "../../uc/types.ts";
 import { changedBlocks, normalizeBlockInput, parseDescriptionHistory, stableJson, withBlock, type DescriptionHistoryEntry } from "../../uc/views/description.ts";
@@ -70,7 +71,11 @@ export interface MemberCandidate {
   workspaceRole: string;
 }
 
-/** Collaboratori del workspace (mai chi partecipa solo ai corsi): chi si può aggiungere al caso. */
+/**
+ * Collaboratori del workspace (mai chi partecipa solo ai corsi): chi si può aggiungere al caso. (8.0d) Per elenco, come
+ * testo: i cinque ruoli da collaboratore; mai «Solo questo use case» (la sua riga la scrive l'invito, nel suo caso) né un
+ * ruolo che il codice non conosce.
+ */
 export async function loadMemberCandidates(executor: UcExecutor, i: { workspaceId: string; lsDomains: readonly string[] }): Promise<MemberCandidate[]> {
   if (!isUuid(i.workspaceId)) return [];
   const ws = uuid(i.workspaceId);
@@ -81,7 +86,7 @@ FROM (
   UNION ALL
   SELECT wm.user_id, wm.role::text AS role, 2 AS pri FROM workspace_memberships wm WHERE wm.workspace_id = ${ws}
 ) x JOIN users u ON u.id = x.user_id
-WHERE x.role <> 'learner'
+WHERE x.role IN (${raw(COLLABORATOR_ROLES_SQL)})
 ORDER BY u.id, x.pri`),
   ]);
   return rows

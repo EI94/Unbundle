@@ -88,7 +88,9 @@ test("i testi: «caso d'uso» fuori dalla dashboard, mai «use case» né il nom
 });
 
 test("la pagina: i membri vanno alla scheda, il token si verifica prima di leggere i dati, il link che non vale ha la sua scheda", () => {
-  assert.match(PAGE, /if \(access && access\.role !== "learner"\) \{\s*redirect\(memberCardPath\(workspaceId, useCaseId\)\);/);
+  // (8.0d) Per elenco: alla scheda vera solo i collaboratori; chi segue un corso, «Solo questo use case» e un ruolo
+  // sconosciuto restano sulla vista ridotta, come chi non ha un account.
+  assert.match(PAGE, /if \(access && isCollaboratorRole\(access\.role\)\) \{\s*redirect\(memberCardPath\(workspaceId, useCaseId\)\);/);
   assert.ok(PAGE.indexOf("verifyPortfolioShareToken(") < PAGE.indexOf("getUseCaseById("), "prima il token, poi i dati");
   // Scaduto o tolto, la stessa scheda: un solo ritorno, senza il motivo.
   assert.match(PAGE, /if \(!workspace \|\| !check\.ok\) return <ShareInvalid loginHref=\{loginHref\(workspaceId, useCaseId\)\} \/>;/);

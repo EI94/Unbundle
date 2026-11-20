@@ -13,7 +13,7 @@
  * 3. l'indice sullo use case (gli inviti in attesa di un caso).
  *
  * Solo aggiunte: cambia il catalogo di PostgreSQL e nasce una tabella; nessuna riscrittura, nessun dato, nessuna colonna
- * cambiata, nessun CHECK toccato. Il DDL uc (0018) e la sua impronta non cambiano; `use_case_external_builders` (0037)
+ * cambiata, nessun CHECK toccato. Il DDL uc (0018) e la sua impronta non cambiano; la tabella delle concessioni (0037)
  * non cambia. Il codice di prima ignora il valore e la tabella.
  *
  * `src/lib/db/use-case-hub-case-only-ddl.test.ts` controlla che la migrazione contenga questi statement, nello stesso

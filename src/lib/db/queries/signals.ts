@@ -21,13 +21,21 @@ export const USE_CASE_SIGNAL_TYPES = ["new_portfolio_item", "use_case_digest", "
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * I segnali del workspace che `role` può vedere. I revisori tutti; chiunque altro, anche
- * senza ruolo, senza i segnali delle schede.
+ * I segnali del workspace che `role` può vedere. I revisori tutti; il Contributore senza i
+ * segnali delle schede. (8.0d) Per elenco: chi segue un corso, «Solo questo use case», un ruolo
+ * che il codice non conosce e chi non ha ruolo non ne vedono nessuno (prima avevano la vista del
+ * Contributore).
  */
 function visibleTo(workspaceId: string, role: string | null | undefined) {
   const ofWorkspace = eq(weeklySignals.workspaceId, workspaceId);
   if (canReviewWorkspacePortfolio(role)) return ofWorkspace;
-  return and(ofWorkspace, notInArray(weeklySignals.signalType, [...USE_CASE_SIGNAL_TYPES]));
+  if (seesContributorSignals(role)) return and(ofWorkspace, notInArray(weeklySignals.signalType, [...USE_CASE_SIGNAL_TYPES]));
+  return sql`false`;
+}
+
+/** (8.0d) Chi non rivede il portafoglio vede i segnali del workspace (senza quelli delle schede) solo se è Contributore. */
+export function seesContributorSignals(role: string | null | undefined): boolean {
+  return role === "contributor";
 }
 
 /** Letto per `userId` (o, senza persona, il solo `is_read` di sempre). */
@@ -108,6 +116,8 @@ export async function markSignalsReadForUser(i: { workspaceId: string; userId: s
   if (!UUID.test(i.workspaceId) || !UUID.test(i.userId)) return 0;
   const ids = i.signalIds === null ? null : [...new Set(i.signalIds.filter((x) => UUID.test(x)).map((x) => x.toLowerCase()))];
   if (ids !== null && ids.length === 0) return 0;
+  // (8.0d) Per elenco, come `visibleTo`: chi non vede nessun segnale non ne segna nessuno.
+  if (!canReviewWorkspacePortfolio(i.role) && !seesContributorSignals(i.role)) return 0;
   await ensureDbSchema();
   const hidden = canReviewWorkspacePortfolio(i.role) ? sql`` : sql` AND s.signal_type <> ALL(${`{${USE_CASE_SIGNAL_TYPES.join(",")}}`}::text[])`;
   const only = ids === null ? sql`` : sql` AND s.id = ANY(${`{${ids.join(",")}}`}::uuid[])`;

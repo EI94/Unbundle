@@ -85,13 +85,20 @@ export const ROLE_INFO_OUTSIDE: Record<string, RoleInfo> = {
     cannot: ROLE_INFO.contributor.cannot,
   },
   learner: ROLE_INFO.learner,
+  // (8.0d) Fuori dalla dashboard «caso d'uso», anche nel nome del ruolo (RILASCIO-8.0d-ESTERNI-FASE-2.md, intestazione).
   esterno_caso: {
-    label: ROLE_INFO.esterno_caso.label,
+    label: "Solo questo caso d'uso",
     summary: "costruisce un solo caso d'uso dall'Agent Factory",
     can: ["Costruisce un solo caso d'uso dall'Agent Factory"],
     cannot: ROLE_INFO.esterno_caso.cannot,
   },
 };
+
+/**
+ * (8.0d) Il cambio di ruolo di «Solo questo use case» da Impostazioni › Persone non si fa: lo dicono la riga e il rifiuto
+ * del server. Per aprirle il workspace serve un invito da collaboratore.
+ */
+export const CASE_ONLY_ROLE_NOTE = "Questa persona lavora a un solo use case. Per aprirle il workspace serve un invito da collaboratore.";
 
 /** Ruoli che un invito può assegnare, dal più limitato al più ampio. */
 export const INVITABLE_ROLES = ["contributor", "analyst", "function_lead", "transformation_lead"] as const;

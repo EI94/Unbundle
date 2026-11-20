@@ -15,7 +15,9 @@ import {
 } from "@/lib/actions/workspace-collaboration";
 import { CONFIRM_TEXT } from "@/lib/confirm-text";
 import { WORKSPACE_INVITE_EXPIRES_IN_DAYS } from "@/lib/workspace-invite-config";
-import { INVITABLE_ROLES, ROLE_INFO, roleLabel } from "@/lib/workspace-roles";
+import { CASE_ONLY_ROLE_NOTE, INVITABLE_ROLES, ROLE_INFO, roleLabel } from "@/lib/workspace-roles";
+import { isCaseOnly } from "@/lib/auth/case-only";
+import { isLearnerOnly } from "@/lib/learning/learner-scope";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog, useSubmitConfirmation } from "@/components/ui/confirm-dialog";
@@ -213,7 +215,8 @@ export function WorkspaceCollaborationCard({
     linkBoxRef.current?.querySelector("input")?.focus();
   }, [lastAction, recreateState.ok, recreateState.data]);
 
-  const collaborators = members.filter((member) => member.role !== "learner");
+  // (8.0d) Per elenco: tutti tranne chi segue solo un corso, «Solo questo use case» compreso (con il suo ruolo).
+  const collaborators = members.filter((member) => !isLearnerOnly(member.role));
   const learnerCount = members.length - collaborators.length;
 
   const { open, history } = useMemo(() => {
@@ -351,6 +354,8 @@ export function WorkspaceCollaborationCard({
               {collaborators.map((member) => {
                 const isManageable = canManage && member.source === "workspace" && member.userId !== currentUserId;
                 const knownRole = (INVITABLE_ROLES as readonly string[]).includes(member.role);
+                // (8.0d) «Solo questo use case»: il ruolo non si cambia da qui (lo rifiuta anche il server); si toglie.
+                const caseOnly = isCaseOnly(member.role);
                 return (
                   <li
                     key={member.userId}
@@ -368,6 +373,11 @@ export function WorkspaceCollaborationCard({
                     <div className="flex w-full flex-wrap items-center gap-2 @xl:w-auto">
                       {isManageable ? (
                         <>
+                          {caseOnly ? (
+                            <span className="min-w-0 flex-1 text-xs text-muted-foreground @xl:flex-none @xl:w-56" title={CASE_ONLY_ROLE_NOTE}>
+                              <Badge variant="outline">{roleLabel(member.role)}</Badge> {CASE_ONLY_ROLE_NOTE}
+                            </span>
+                          ) : (
                           <form action={memberRoleFormAction} className="min-w-0 flex-1 @xl:flex-none">
                             <input type="hidden" name="userId" value={member.userId} />
                             <select
@@ -397,6 +407,7 @@ export function WorkspaceCollaborationCard({
                               ))}
                             </select>
                           </form>
+                          )}
                           <form
                             action={memberRemoveFormAction}
                             onSubmit={(event) => {
