@@ -52,7 +52,6 @@ export const REALIZATION_TEXT = {
   readOnly: "Configurazione da completare: manca l'elenco dei domini di Lateral Space. Finché manca, le realizzazioni sono in sola lettura.",
   noTemplates: "Nessuno schema disponibile: chiedi a Lateral Space di pubblicarne uno.",
   creating: "Stiamo preparando la realizzazione: ci vuole qualche secondo.",
-  footnote: "La realizzazione nasce in bozza e ne sei responsabile. Prende il codice e i testi dello use case.",
   noPrefix: "Questo workspace non ha ancora un prefisso per i codici. Impostalo in Impostazioni.",
   alreadyStarted: "Questo use case ha già una realizzazione.",
 } as const;

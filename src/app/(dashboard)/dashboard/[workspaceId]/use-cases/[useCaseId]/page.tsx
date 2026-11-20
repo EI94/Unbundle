@@ -28,6 +28,7 @@ import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { reviewTeamName } from "@/lib/review-team";
 import { PAGE_TITLE_CLASS, PageContainer } from "@/components/dashboard/page-container";
 import { UseCaseDetailView, chapterFromParam, showsRealization } from "@/components/use-cases/detail/detail";
+import { loadStartDialog } from "@/components/uc/realization/start-data";
 import { guideLabels, type GuideLabels } from "@/components/use-cases/detail/intake-details";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -147,7 +148,7 @@ export default async function UseCaseDetailPage({
   const contextActor = reviewer ? contextActorFor(session.user, access, workspaceId) : null;
   // «Cosa serve», «Chiedi al referente» e «Raccolta informazioni»: solo a chi vede le esigenze
   // (`canSeeNeeds`); le letture stesse rispondono null a tutti gli altri.
-  const [needRefs, referents, infoProgress, agentProposals, context, needLinks] = await Promise.all([
+  const [needRefs, referents, infoProgress, agentProposals, context, needLinks, startDialog] = await Promise.all([
     needLists
       ? needUseCaseRefs(
           workspaceId,
@@ -175,6 +176,8 @@ export default async function UseCaseDetailPage({
     contextActor ? loadContextFold(contextActor, result.useCase.id) : null,
     // (Rilascio 9b) «Una call risponde» sotto le richieste di «Cosa serve»: a chi modifica le esigenze.
     contextActor && abilities.canEditNeeds && needLists ? loadNeedLinks(contextActor, result.useCase.id) : {},
+    // (Rilascio 10, §3.5) I dati del dialogo «Avvia la realizzazione», solo quando chi guarda può avviare adesso.
+    realization?.state === "da_avviare" && realization.canStart ? loadStartDialog({ workspaceId, useCaseId: result.useCase.id, userId: session.user.id, role: access.role }) : null,
   ]);
 
   // (Rilascio 5, §9.1) Al contributore la sola parola dello stato del referente, dopo la pillola della fase.
@@ -206,6 +209,7 @@ export default async function UseCaseDetailPage({
         contributorReferentState={contributorReferentState}
         context={context}
         needLinks={needLinks}
+        startDialog={startDialog}
       />
     </PageContainer>
   );
