@@ -70,6 +70,11 @@ export interface ConnectorGateDeps {
    * prima volta avvisa Lateral Space (nell'app: `exposed_at` e canale admin di Slack).
    */
   markTokenExposed(tokenHash: string): Promise<unknown>;
+  /**
+   * (8.2b) Le chiavi della CI (`ub_ci_`) tra i token trovati nell'indirizzo: si revocano subito, come nelle rotte della
+   * CLI (nell'app `revokeCiKeysInUrl`: `esposta`, e l'e-mail `chiave_ci_bloccata` dopo la risposta). Facoltativa.
+   */
+  revokeCiKeys?(candidates: readonly string[]): Promise<unknown>;
   log?: Pick<Console, "error">;
 }
 
@@ -91,6 +96,13 @@ export async function gateConnectorRequest(request: Request, slug: string, deps:
         await deps.markTokenExposed(hashIntegrationToken(candidate));
       } catch (error) {
         logSafeError("connector", "exposed_token_flag_failed", error, {}, deps.log);
+      }
+    }
+    if (deps.revokeCiKeys && inUrl.candidates.length > 0) {
+      try {
+        await deps.revokeCiKeys(inUrl.candidates);
+      } catch (error) {
+        logSafeError("connector", "ci_key_revoke_failed", error, {}, deps.log);
       }
     }
     return fail("token_in_url", hygieneError("token_in_url"));
