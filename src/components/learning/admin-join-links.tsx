@@ -5,6 +5,7 @@ import type { FormEvent } from "react";
 import { Copy, DoorOpen, Link2, QrCode } from "lucide-react";
 import type { AdminDetailDTO, AdminJoinLinkDTO } from "@/lib/learning/admin-contract";
 import { learningAdminRequest } from "@/lib/learning/admin-client";
+import { clockLabel } from "@/lib/learning/course-view";
 import { activitiesState, lessonsNextStep, linkState, linkUsable } from "@/lib/learning/manage-view";
 import { LEARNING_TEXT } from "@/lib/learning/text";
 import type { AdminMutate } from "./admin-program";
@@ -95,7 +96,7 @@ function LessonCard({ lesson, data, busy, mutate, now, scope, primary, created, 
   return <section aria-labelledby={`lezione-${lesson.id}`} data-testid="admin-lesson" className="space-y-4 rounded-xl border bg-card p-4 sm:p-5">
     <header className="space-y-1">
       <h2 id={`lezione-${lesson.id}`} className="text-base font-semibold">{title}</h2>
-      <p className="text-sm text-muted-foreground">{adminDate(lesson.startsAt)} – {adminDate(lesson.endsAt)}{enrolled ? ` · ${L.enrolled(enrolled)}` : ""}</p>
+      <p className="text-sm text-muted-foreground">{clockLabel(lesson.startsAt)}–{clockLabel(lesson.endsAt)}{enrolled ? ` · ${L.enrolled(enrolled)}` : ""}</p>
     </header>
 
     {/* «Ingresso»: i link della lezione, il QR, i posti. */}

@@ -5,7 +5,8 @@ import type { AdminCapability, AdminDetailDTO } from "@/lib/learning/admin-contr
 import type { AdminMutate } from "./admin-program";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { AdminSection, AdminSelect, AdminUnsavedNotice, ConfirmAdminAction, capabilityLabels, adminDate, cohortLabel } from "./admin-shared";
+import { Fold } from "@/components/ui-10/fold";
+import { AdminSelect, AdminUnsavedNotice, ConfirmAdminAction, capabilityLabels, adminDate, cohortLabel } from "./admin-shared";
 
 import { useLearningUnsavedChanges } from "./use-unsaved-changes";
 
@@ -23,8 +24,12 @@ export function AdminGrants({ workspaceId, data, busy, mutate }: {
   const scope = { workspaceId, programId: data.program.id };
   // (Rilascio 10, ondata 7a) Le lezioni con la loro data, mai con il codice del turno.
   const lessonOf = (cohortId: string | null) => cohortId ? cohortLabel(data.sessions, cohortId) : "Tutte le lezioni";
-  return <div className="space-y-6">
-    <AdminSection title="Autorizza una persona">
+  // (Rilascio 10, ondata 7a) I permessi in una piega chiusa della scheda «Persone»: si danno di rado, e la scheda ha il suo
+  // pulsante pieno, «Assegna alle persone selezionate».
+  const active = data.grants.filter(grant => !grant.revokedAt).length;
+  return <div><Fold id="permessi" title={active ? `Permessi (${active})` : "Permessi"}>
+    <section aria-label="Autorizza una persona" className="space-y-4">
+      <h3 className="text-sm font-semibold">Autorizza una persona</h3>
       <p className="text-sm">I permessi sono separati: gestire il corso non fa leggere né scaricare i risultati con i nomi. Dai ogni accesso alla persona e alle lezioni concordate.</p>
       <form onSubmit={async event => {
         event.preventDefault(); if (!confirmed) return;
@@ -37,14 +42,14 @@ export function AdminGrants({ workspaceId, data, busy, mutate }: {
         <AdminUnsavedNotice dirty={dirty} onDiscard={confirmDiscard} />
         <Button type="submit" variant="outline" className="min-h-11 sm:min-h-9" disabled={!confirmed}>Concedi permesso</Button>
       </fieldset></form>
-    </AdminSection>
-    <AdminSection title="Permessi del corso">
+    </section>
+    <section aria-label="Permessi del corso" className="space-y-3 border-t pt-4">
       <p className="text-sm text-muted-foreground">La revoca interrompe l’accesso per quel permesso. Deve restare almeno una persona che gestisce tutto il corso.</p>
       {data.grants.length === 0 && <p>Nessun permesso.</p>}
       <ul className="space-y-3">{data.grants.map(grant => <li key={grant.id} className="space-y-3 rounded-lg border p-4">
         <div><h3 className="font-medium">{grant.name || grant.email}</h3><p className="break-words text-sm text-muted-foreground">{grant.email}</p><p className="mt-2 text-sm">{capabilityLabels[grant.capability]} · {lessonOf(grant.cohortId)}</p><p className="text-sm text-muted-foreground">{grant.revokedAt ? `Revocato il ${adminDate(grant.revokedAt)}` : `Attivo dal ${adminDate(grant.grantedAt)}`}</p></div>
         {!grant.revokedAt && (data.program.canManageAll || (grant.capability !== "manage" && grant.cohortId !== null)) && <ConfirmAdminAction busy={busy} label="Revoca permesso" description={`Revocare a ${grant.name || grant.email} il permesso “${capabilityLabels[grant.capability]}” per ${lessonOf(grant.cohortId).toLowerCase()}?`} onConfirm={() => mutate({ operation: "revokeGrant", input: { ...scope, grantId: grant.id } })} />}
       </li>)}</ul>
-    </AdminSection>
-  </div>;
+    </section>
+  </Fold></div>;
 }

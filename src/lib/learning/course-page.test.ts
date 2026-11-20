@@ -209,6 +209,15 @@ test("whoever runs the course: no «Adesso», «Risultati» filled and «Gestisc
   assert.equal(fake.live.length, 0);
 });
 
+test("a participant who also runs the course keeps «Risultati» and «Gestisci» one tap away, bordered; «Adesso» keeps the filled button", async () => {
+  const html = await page({ ...program({ now: START + 40 * MIN, activities: [act("a", { title: "Ripasso", purpose: "formative", required: false, status: "available", availability: available })] }), canAggregate: true, canManage: true });
+  const filled = filledButtons(html);
+  assert.equal(filled.length, 1);
+  assert.match(filled[0], new RegExp(`href="${BASE}/activities/a"`));
+  assert.match(html, new RegExp(`<a [^>]*href="${BASE}/results"`));
+  assert.match(html, new RegExp(`<a [^>]*href="${BASE}/admin"`));
+});
+
 test("the lesson address (/m2) opens «Prossimi moduli»; the arrival from a link says how the enrolment went", async () => {
   const html = await page(program({ now: START - 2 * 60 * MIN }), "m2", "Iscrizione fatta: il corso è qui sotto.");
   assert.deepEqual(folds(html).find((fold) => fold.id === "prossimi-moduli"), { id: "prossimi-moduli", open: true });

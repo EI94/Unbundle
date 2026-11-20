@@ -234,8 +234,10 @@ export async function ProgramOverview({ workspaceId, programId, moduleId, arriva
   const refreshFrom = participant ? liveRefreshFrom(own, program.now) : null;
   const ended = phase === "after";
 
-  const actions = !participant && showResults ? <>
-    <Button render={<Link href={`${base}/results`} />} nativeButton={false} className="min-h-11 flex-1 sm:min-h-9 sm:flex-none" data-action="next-step">
+  // «Risultati» e «Gestisci» restano a un tocco per chi ha i permessi, anche se segue il corso: per chi lo tiene soltanto
+  // «Risultati» è il pulsante pieno; per chi lo segue il pieno è quello della card «Adesso», e qui restano bordati.
+  const actions = showResults ? <>
+    <Button render={<Link href={`${base}/results`} />} nativeButton={false} variant={participant ? "outline" : "default"} className="min-h-11 flex-1 sm:min-h-9 sm:flex-none" data-action={participant ? undefined : "next-step"}>
       <ChartColumn aria-hidden data-icon="inline-start" />{T.results}
     </Button>
     {program.canManage ? <Button render={<Link href={`${base}/admin`} />} nativeButton={false} variant="outline" className="min-h-11 flex-1 sm:min-h-9 sm:flex-none">
