@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { ChevronLeft, ChevronRight, Gauge } from "lucide-react";
+import { notFound, permanentRedirect } from "next/navigation";
+import { ChevronRight, Gauge } from "lucide-react";
 import { PageContainer } from "@/components/dashboard/page-container";
 import { SegmentedNav, type SegmentedNavItem } from "@/components/dashboard/segmented-nav";
 import { Button } from "@/components/ui/button";
@@ -14,11 +14,15 @@ import { EmptyState } from "@/components/uc/ui/empty-state";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { loadKpiPage } from "@/lib/db/queries/uc-value";
 import { formatCountIt } from "@/lib/uc/views/format";
-import { KPI_VIEW_LABEL, groupViews, groupsOpen, kpiQuery, pagesOfOpen, parseKpiParams, toggleGroup, vanityText, withGroupPage, type KpiViewKey } from "@/lib/uc/views/kpi";
+import { KPI_VIEW_LABEL, groupViews, groupsOpen, kpiPanelFromLegacy, kpiQuery, pagesOfOpen, parseKpiParams, toggleGroup, vanityText, withGroupPage, type KpiViewKey } from "@/lib/uc/views/kpi";
 import { canOpenPage } from "@/lib/uc/views/page-access";
 import { isLsViewer } from "@/lib/uc/views/status-groups";
 
 /**
+ * (Rilascio 10, §3.5) «Tutti i KPI» è un pannello di Valore (`?apri=kpi`): chi apre Valore ci arriva da qui con un
+ * redirect permanente che tiene vista, ricerca, gruppo, pagine e il KPI aperto (`kpiPanelFromLegacy`). Lo sviluppatore,
+ * che Valore non lo apre, legge ancora qui l'elenco, com'era: nessun indirizzo smette di aprire i KPI.
+ *
  * Tutti i KPI (DESIGN §3.8, `/valore/kpi`): «Collegati al conto» e «Tutti»,
  * raggruppati per leva, con la ricerca (`?q=`). Ricerca e gruppi stanno sul
  * server: al client arrivano solo le righe del gruppo aperto (`?gruppi=`, uno
@@ -37,6 +41,7 @@ export default async function KpiPage({
   const sp = await searchParams;
   const { session, access } = await requireWorkspacePage(workspaceId);
   const { executor, viewer } = await openCaseView({ workspaceId, caseId, session, access, page: "kpi" });
+  if (canOpenPage("roi", viewer.roles)) permanentRedirect(kpiPanelFromLegacy(casePath(workspaceId, caseId, "valore"), sp));
   const p = parseKpiParams(sp);
   const data = await loadKpiPage(executor, viewer, p);
   if (!data) notFound();
@@ -62,15 +67,6 @@ export default async function KpiPage({
   return (
     <PageContainer>
       <div className="max-w-4xl space-y-6">
-        {canOpenPage("roi", roles) && (
-          <Link
-            href={casePath(workspaceId, caseId, "valore")}
-            className="-mb-2 inline-flex min-h-11 items-center gap-1 text-sm text-muted-foreground hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none sm:min-h-8"
-          >
-            <ChevronLeft className="size-4" aria-hidden />
-            Valore
-          </Link>
-        )}
         {(data.counts.tutti > 0 || data.q) && (
           <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             {segments.length > 1 ? (

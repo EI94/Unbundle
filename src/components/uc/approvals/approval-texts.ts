@@ -10,7 +10,7 @@
  */
 import type { ApprovalView } from "@/lib/uc/public-view";
 import type { ApprovalStep, SignerSide } from "@/lib/uc/views/approvals";
-import { CLIENT_CASE_ROLES, LS_CASE_ROLES, type CaseRole } from "../../../lib/uc/vocab.ts";
+import { CLIENT_CASE_ROLES, LS_CASE_ROLES, type CaseRole, type CaseStatus } from "../../../lib/uc/vocab.ts";
 
 export type ApprovalDecision = "approvo" | "non_approvo";
 
@@ -151,3 +151,39 @@ export function linkOutcomeText(
   const waitingForEvidence = outcome.waitingForEvidence ?? (!complete && approval.kind === "gate" && approval.otherSideSigned);
   return outcomeText({ side: approval.side, decision, complete, waitingForEvidence });
 }
+
+// ── (Rilascio 10, §3.5) Il pannello delle firme della realizzazione (`?firma=1`) ──
+
+/** Il parametro che apre il pannello delle firme, su ogni pagina della realizzazione. */
+export const SIGN_PANEL_PARAM = "firma";
+
+/**
+ * Dove porta `/firme` (rilascio 10, §2.4 e §8.2): la pagina d'arrivo di chi firma (la Panoramica; Privacy per
+ * l'approvatore privacy, che la Panoramica non la apre) con il pannello aperto e la query di prima.
+ * `landing` è il segmento di `landingSegment` (null = la Panoramica).
+ */
+export function signaturesPanelHref(caseBase: string, landing: string | null | undefined, searchParams?: URLSearchParams): string {
+  const query = new URLSearchParams(searchParams?.toString() ?? "");
+  query.delete(SIGN_PANEL_PARAM);
+  query.set(SIGN_PANEL_PARAM, "1");
+  const root = caseBase.replace(/\/+$/, "");
+  return `${root}${landing ? `/${landing}` : ""}?${query.toString()}`;
+}
+
+/** Che cosa dice il pannello: le firme da dare, la pausa (le firme restano, ma non si firma), oppure niente. */
+export type SignPanelState = "firma" | "pausa" | "nulla";
+
+/** In pausa si riprende soltanto; a realizzazione chiusa o in sola lettura non c'è nulla da firmare. */
+export function signPanelState(i: { status: CaseStatus; readOnly: boolean }): SignPanelState {
+  if (i.readOnly || i.status === "chiuso") return "nulla";
+  return i.status === "sospeso" ? "pausa" : "firma";
+}
+
+/** I testi del pannello: il titolo è il verbo (§4, «Firma»), il resto lo dice `ApprovalRunner`. */
+export const SIGN_PANEL_TEXT = {
+  title: "Firma",
+  loading: "Un momento…",
+  failed: "Le firme non si sono caricate.",
+  retry: "Riprova",
+  paused: "Si firma di nuovo quando la realizzazione riprende.",
+} as const;

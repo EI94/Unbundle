@@ -289,7 +289,8 @@ export const ANSWER_KIND_LABEL: Readonly<Record<AnswerKind, string>> = {
   conferma: "Conferma",
   correzione: "Correzione",
   non_so: "Non lo so",
-  delega: "Delega a un collega",
+  // (Rilascio 10, §4) Genere neutro: «un'altra persona», mai «un collega».
+  delega: "Delega a un'altra persona",
   proposta_na: "Proposta «non si applica»",
   risposta_chiarimento: "Risposta al chiarimento",
 };
@@ -394,7 +395,7 @@ const EVENT_LABEL: Readonly<Record<string, string>> = {
   "blocco.riattivato": "Blocco riattivato",
   "richiesta.inviata": "Richiesta inviata",
   "richiesta.revocata": "Richiesta revocata",
-  "delega.creata": "Delega a un collega",
+  "delega.creata": "Delega a un'altra persona",
   "seed.applicato": "Stato di partenza caricato",
   "seed.valore_omesso": "Valore già dichiarato, non caricato",
 };

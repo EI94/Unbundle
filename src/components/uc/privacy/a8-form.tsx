@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useUcAction } from "@/components/uc/catalog/use-uc-action";
 import { resolveBlockerAction } from "@/lib/actions/uc-gates";
-import { buildA8Evidence, type A8FormInput } from "@/lib/uc/views/privacy";
+import { PRIVACY_TEXT, buildA8Evidence, type A8FormInput } from "@/lib/uc/views/privacy";
 
 const NO_FILE = "__nessuno__";
 
@@ -21,8 +21,8 @@ const NO_FILE = "__nessuno__";
  * serve la firma dell'approvatore privacy sulla stessa scheda. Cambiare la
  * scheda annulla le firme date su quella di prima.
  *
- * L'etichetta del documento, «Scheda privacy (A.8)», è l'unico punto dove
- * compare la sigla: il modulo è solo per Lateral Space.
+ * (Rilascio 10, §3.5) La sigla del modulo non è più nell'etichetta del
+ * documento: la legge Lateral Space in «Dettagli tecnici» della scheda.
  */
 export function A8Form({
   workspaceId,
@@ -72,7 +72,8 @@ export function A8Form({
     >
       <div className="grid min-w-0 gap-3 sm:grid-cols-3">
         <div className="space-y-1.5 sm:col-span-3">
-          <Label htmlFor="uc-a8-doc">Scheda privacy (A.8)</Label>
+          {/* (Rilascio 10, §3.5) La sigla del modulo («A.8») sta in «Dettagli tecnici» della scheda, non qui. */}
+          <Label htmlFor="uc-a8-doc">{PRIVACY_TEXT.formDocument}</Label>
           <Input id="uc-a8-doc" value={f.documento} maxLength={500} onChange={(e) => set({ documento: e.target.value })} placeholder="Titolo del documento firmato" className="h-11 text-base sm:h-9 sm:text-sm" />
         </div>
         <div className="space-y-1.5">
@@ -99,7 +100,7 @@ export function A8Form({
           </Select>
         </div>
       </div>
-      {files.length === 0 && <p className="text-xs text-muted-foreground">Carica prima la scheda firmata in Domande › Documenti.</p>}
+      {files.length === 0 && <p className="text-xs text-muted-foreground">Carica prima la scheda firmata in Domande › File.</p>}
 
       <fieldset className="space-y-1.5">
         <legend className="mb-1 text-sm font-medium">Chi l&apos;ha approvata (ruoli, non nomi)</legend>
@@ -127,7 +128,7 @@ export function A8Form({
       <fieldset className="space-y-1.5">
         <legend className="mb-1 text-sm font-medium">Chi di Lateral Space può entrare nella zona dei dati personali</legend>
         {lsMembers.length === 0 ? (
-          <p className="text-xs text-muted-foreground">Nessun membro di Lateral Space nel caso. Va bene anche nessuno.</p>
+          <p className="text-xs text-muted-foreground">Nessuna persona di Lateral Space nella realizzazione. Va bene anche nessuno.</p>
         ) : (
           <div className="grid gap-1 sm:grid-cols-2">
             {lsMembers.map((m) => (

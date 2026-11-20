@@ -1,21 +1,57 @@
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
-import { ACTIVITY_PAGE_SIZE, auditQuery, type ActivityDay, type AuditFilter } from "@/lib/uc/views/audit";
+import { ACTIVITY_PAGE_SIZE, auditQuery, type ActivityDay, type ActivityLine, type AuditFilter } from "@/lib/uc/views/audit";
+import type { ItemStatus } from "@/lib/uc/vocab";
 import { cn } from "@/lib/utils";
 import { formatCountIt } from "@/lib/uc/views/format";
 
 /**
- * Attività del caso (DESIGN §3.12): una linea del tempo raggruppata per giorno,
- * una frase per evento («Luca Verdi (Lateral Space) ha validato «…»»), 50
- * eventi per pagina, il CSV con gli stessi filtri. Per i ruoli del cliente il
- * filtro dell'art. 15.4 è già nella query: qui non arrivano eventi dei
- * referenti né aperture di link, e le risposte ricevute si vedono solo contate
- * per giorno (barrette). Componenti server: le frasi le prepara `activityDays`.
+ * Attività della realizzazione (rilascio 10, §3.5; DESIGN §3.12): una linea del tempo raggruppata per giorno, una frase
+ * di al massimo 8 parole per evento («Luca Verdi (Lateral Space) ha messo a posto «…»»), 50 eventi per pagina,
+ * «Scarica l'elenco» con gli stessi filtri. Per i ruoli del cliente il filtro dell'art. 15.4 è già nella query: qui non
+ * arrivano eventi dei referenti né aperture di link, e le risposte ricevute si vedono solo contate per giorno
+ * (barrette). Componenti server: le frasi le prepara `activityDays`.
  */
 
 
-export function ActivityTimeline({ days }: { days: readonly ActivityDay[] }) {
+/**
+ * La frase di una riga con il titolo della domanda intero e raggiungibile (rilascio 10, §3.5): un link alla domanda
+ * per chi la apre (`questionHref`), altrimenti il titolo con il suo `title`; accorciato oltre 80 caratteri, il titolo
+ * intero resta nel `title` e per i lettori di schermo.
+ */
+function LineText({ line, questionHref }: { line: ActivityLine; questionHref?: QuestionHref | null }) {
+  const q = line.question;
+  const at = q ? line.text.indexOf(q.shown) : -1;
+  if (!q || at < 0) return <>{line.text}</>;
+  const cut = q.full !== q.shown;
+  const label = (
+    <>
+      <span aria-hidden={cut || undefined}>{q.shown}</span>
+      {cut ? <span className="sr-only">{q.full}</span> : null}
+    </>
+  );
+  const href = q.itemId && questionHref ? questionHref(q.itemId, q.itemStatus) : null;
+  const title = href ? (
+    <Link href={href} title={cut ? q.full : undefined} className="underline decoration-foreground/30 underline-offset-4 hover:decoration-foreground">
+      {label}
+    </Link>
+  ) : (
+    <span title={cut ? q.full : undefined}>{label}</span>
+  );
+  return (
+    <>
+      {line.text.slice(0, at)}
+      {title}
+      {line.text.slice(at + q.shown.length)}
+    </>
+  );
+}
+
+/** Dove porta il titolo di una domanda: la sua pagina, se chi guarda la apre; altrimenti null. */
+export type QuestionHref = (itemId: string, status: ItemStatus | null) => string | null;
+
+export function ActivityTimeline({ days, questionHref = null }: { days: readonly ActivityDay[]; questionHref?: QuestionHref | null }) {
   return (
     <div className="space-y-6">
       {days.map((day) => (
@@ -30,10 +66,10 @@ export function ActivityTimeline({ days }: { days: readonly ActivityDay[] }) {
                 <p className="min-w-0 break-words">
                   {line.who ? (
                     <>
-                      <span className="font-medium">{line.who}</span> {line.text}
+                      <span className="font-medium">{line.who}</span> <LineText line={line} questionHref={questionHref} />
                     </>
                   ) : (
-                    line.text
+                    <LineText line={line} questionHref={questionHref} />
                   )}
                 </p>
               </li>
@@ -79,7 +115,7 @@ export function ActivityPagination({ basePath, filter, total }: { basePath: stri
  */
 export function DailyAnswerBars({ bars }: { bars: readonly { key: string; label: string; count: number; percent: number }[] }) {
   if (bars.length === 0) {
-    return <p className="text-sm text-muted-foreground">Ancora nessun giorno con almeno 5 risposte: i numeri più piccoli non si mostrano.</p>;
+    return <p className="text-sm text-muted-foreground">Ancora nessun giorno con almeno 5 risposte.</p>;
   }
   return (
     <ul className="space-y-2" aria-label="Risposte ricevute per giorno">
@@ -96,7 +132,7 @@ export function DailyAnswerBars({ bars }: { bars: readonly { key: string; label:
   );
 }
 
-/** «Scarica CSV» con gli stessi filtri: `<a download>` nativo, così un prefetch non lo scarica e non scrive nell'attività. */
+/** «Scarica l'elenco» con gli stessi filtri: `<a download>` nativo, così un prefetch non lo scarica e non scrive nell'attività. */
 export function ActivityCsvLink({ href }: { href: string }) {
   return (
     <a href={href} download className={cn(buttonVariants({ variant: "outline" }), "min-h-11 sm:min-h-8")}>

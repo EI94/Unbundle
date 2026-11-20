@@ -93,7 +93,7 @@ export function evidenceRows(evidence: Readonly<Record<string, Json>> | null, lo
     ["Approvata il", dateIt(evidence.data)],
     ["Descrizione", typeof evidence.descrizione === "string" ? evidence.descrizione : null],
     ["Chi l'ha approvata", list(evidence.approvatori_per_ruolo, (r) => lookups.roles?.[r] ?? r)],
-    ["File firmato", typeof evidence.file_id === "string" ? (lookups.files?.get(evidence.file_id) ?? "File del caso") : null],
+    ["File firmato", typeof evidence.file_id === "string" ? (lookups.files?.get(evidence.file_id) ?? "File della realizzazione") : null],
     ["Titolo per usare i dati", yesNo(evidence.titolo_art_15_2)],
     ["Regioni dei dati verificate", yesNo(evidence.regione_dati_verificata)],
     ["Chi accede ai dati personali", list(evidence.accesso_zona_personale, (u) => lookups.people?.get(u) ?? "Persona di Lateral Space")],
@@ -203,7 +203,7 @@ export function buildBlockerEvidence(key: string, f: BlockerFormInput): Result<B
 // ── Dati del caso ─────────────────────────────────────────────────────
 
 export const DATA_MODE_LABEL: Readonly<Record<DataMode, { label: string; help: string }>> = {
-  solo_sintetici: { label: "Solo dati sintetici", help: "Si sviluppa e si prova con dati inventati. Nessun dato personale reale entra nel caso." },
+  solo_sintetici: { label: "Solo dati sintetici", help: "Si sviluppa e si prova con dati inventati. Nessun dato personale reale entra nella realizzazione." },
   pseudonimizzati: { label: "Dati pseudonimizzati", help: "I dati reali entrano senza nomi né identificativi diretti, dopo la scheda privacy firmata." },
   reali: { label: "Dati reali", help: "I dati reali entrano nella zona cifrata dei dati personali, solo dopo la scheda privacy firmata." },
 };
@@ -350,4 +350,44 @@ export function canManagePersonalZone(members: readonly ZoneMemberRow[], viewer:
     const a = personalZoneActions(m, viewer);
     return a.propose || a.sign || a.revoke;
   });
+}
+
+// ── (Rilascio 10, §3.5) La pagina Privacy più corta ───────────────────
+
+/**
+ * I testi della pagina Privacy (rilascio 10, §3.5; §3.19 dell'audit): la scheda privacy con le firme in una riga, la
+ * modalità dei dati, la zona personale e il link ad Attività › «Dati personali». Le due frasi fisse stanno dentro
+ * «Cosa approvi»; «A.8» sta in «Dettagli tecnici», solo per Lateral Space. Al massimo 70 parole in vista.
+ */
+export const PRIVACY_TEXT = {
+  title: "Privacy",
+  card: "Scheda privacy",
+  whatYouApprove: "Cosa approvi",
+  /** Le due frasi che prima stavano in testa e in fondo alla pagina: ora dentro «Cosa approvi». */
+  realDataRule: "I dati personali reali entrano solo dopo la scheda privacy firmata.",
+  healthRule: "I dati sanitari non entrano mai nella realizzazione.",
+  technicalForm: "Modulo della scheda privacy: A.8",
+  dataMode: "Modalità dei dati",
+  zone: "Zona dei dati personali",
+  manage: "Gestisci",
+  /** Il link ad Attività filtrata, o la piega per chi Attività non la apre. */
+  accesses: "Accessi ai dati personali",
+  personalFiles: "File con dati personali",
+  questions: "Domande per riservatezza",
+  formDocument: "Scheda privacy firmata",
+} as const;
+
+/** Il tipo di un file in parole, mai il MIME grezzo (§3.19 dell'audit): «PDF», «Foglio di calcolo», «Immagine»… */
+export function fileTypeLabel(mime: string | null | undefined): string {
+  const m = (mime ?? "").toLowerCase().split(";")[0].trim();
+  if (m === "application/pdf") return "PDF";
+  if (m === "text/csv" || m.includes("spreadsheet") || m.includes("ms-excel")) return "Foglio di calcolo";
+  if (m.includes("wordprocessing") || m === "application/msword" || m.includes("opendocument.text") || m === "application/rtf") return "Documento di testo";
+  if (m.includes("presentation") || m.includes("powerpoint")) return "Presentazione";
+  if (m.startsWith("image/")) return "Immagine";
+  if (m === "text/plain" || m === "text/markdown") return "Testo";
+  if (m === "message/rfc822" || m === "application/vnd.ms-outlook") return "Email";
+  if (m === "application/zip" || m === "application/x-zip-compressed") return "Archivio compresso";
+  if (m === "application/json" || m === "application/xml" || m === "text/xml") return "File di dati";
+  return "File";
 }

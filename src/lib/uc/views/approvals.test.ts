@@ -456,7 +456,8 @@ function signatureComponentTexts(): { file: string; text: string }[] {
   const components = fileURLToPath(new URL("../../../components/uc/", import.meta.url));
   const files = [
     ...readdirSync(join(components, "approvals"))
-      .filter((n) => /\.tsx?$/.test(n))
+      // The components and their texts module; their tests hold codes on purpose (`kind: "gate"`).
+      .filter((n) => /\.tsx?$/.test(n) && !n.endsWith(".test.ts"))
       .map((n) => join("approvals", n)),
     join("referente", "approvals-view.tsx"),
   ];

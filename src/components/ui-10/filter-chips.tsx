@@ -35,7 +35,18 @@ export interface FilterChipsProps {
   /** La ricerca, con il suo parametro (`q`) e, se c'è, la lunghezza che la pagina legge; null: niente «Cerca». */
   search?: { param: string; maxLength?: number } | null;
   fields: readonly FilterField[];
+  /**
+   * (Facoltativo, rilascio 10 §3.5) «Scegli le date…» sotto i filtri: due date che scrivono nel parametro `field`
+   * `AAAA-MM-GG_AAAA-MM-GG` (`dateRangeValue`, un lato vuoto = nessun limite) al posto della sua scelta. Senza, il
+   * foglio è quello di sempre.
+   */
+  dateRange?: { field: string; choose: string; fromLabel: string; toLabel: string; from: string | null; to: string | null } | null;
   className?: string;
+}
+
+/** Il valore di un intervallo di date per `dateRange`: «AAAA-MM-GG_AAAA-MM-GG», un lato vuoto senza limite; "" senza date. */
+export function dateRangeValue(from: string, to: string): string {
+  return from || to ? `${from}_${to}` : "";
 }
 
 /** L'indirizzo con i cambi (`null` toglie il parametro), nell'ordine di `query`, poi i nuovi. */
@@ -100,8 +111,10 @@ function dropEmpty(event: FormEvent<HTMLFormElement>) {
  * moduli GET (`<Form>` di Next: si va all'indirizzo nel client, la pagina resta dov'è; si condivide un link e si torna
  * indietro). Sostituisce `use-cases/filter-bar.tsx`, i chip del catalogo e `uc/ui/filter-popover.tsx`.
  */
-export function FilterChips({ basePath, query, search = null, fields, className }: FilterChipsProps) {
+export function FilterChips({ basePath, query, search = null, fields, dateRange = null, className }: FilterChipsProps) {
   const [sheet, setSheet] = useState(false);
+  // «Scegli le date…»: null finché non si sceglie; poi le due date del foglio.
+  const [dates, setDates] = useState<{ from: string; to: string } | null>(null);
   const searched = search ? (query[search.param] ?? "") : "";
   const [searching, setSearching] = useState(searched !== "");
   const chips = activeChips({ basePath, query, fields });
@@ -172,12 +185,28 @@ export function FilterChips({ basePath, query, search = null, fields, className 
           </li>
         </ul>
       ) : null}
-      <Sheet open={sheet} onOpenChange={setSheet}>
+      <Sheet
+        open={sheet}
+        onOpenChange={(open) => {
+          setSheet(open);
+          if (!open) setDates(null);
+        }}
+      >
         <SheetContent side="right" showCloseButton={false} className="gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-lg">
           <Form
             action={basePath}
             scroll={false}
             prefetch={false}
+            // Con le date scelte vale il loro intervallo: la scelta del campo non parte (prima di `onSubmit`, che fa l'indirizzo).
+            onSubmitCapture={(event) => {
+              if (!dateRange || !dates) return;
+              const chosen = event.currentTarget.querySelector(`select[name="${dateRange.field}"]`);
+              if (dateRangeValue(dates.from, dates.to) && chosen instanceof HTMLSelectElement) {
+                chosen.disabled = true;
+                window.setTimeout(() => (chosen.disabled = false), 0);
+              }
+              setDates(null);
+            }}
             onSubmit={(event) => {
               dropEmpty(event);
               setSheet(false);
@@ -210,6 +239,34 @@ export function FilterChips({ basePath, query, search = null, fields, className 
                   </select>
                 </label>
               ))}
+              {dateRange ? (
+                dates === null ? (
+                  <button
+                    type="button"
+                    onClick={() => setDates({ from: dateRange.from ?? "", to: dateRange.to ?? "" })}
+                    className="inline-flex min-h-11 items-center rounded-md text-sm font-medium underline decoration-foreground/40 underline-offset-4 outline-none hover:decoration-foreground focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-8"
+                  >
+                    {dateRange.choose}
+                  </button>
+                ) : (
+                  <fieldset data-slot="filter-chips-dates" className="grid min-w-0 grid-cols-2 gap-2">
+                    <legend className="mb-1.5 text-sm font-medium">{dateRange.choose.replace(/…$/, "")}</legend>
+                    {(["from", "to"] as const).map((side) => (
+                      <label key={side} className="block min-w-0 space-y-1.5">
+                        <span className="block text-xs text-muted-foreground">{side === "from" ? dateRange.fromLabel : dateRange.toLabel}</span>
+                        <input
+                          type="date"
+                          min="2000-01-01"
+                          value={dates[side]}
+                          onChange={(e) => setDates({ ...dates, [side]: e.target.value })}
+                          className="h-11 w-full min-w-0 rounded-lg border border-input bg-transparent px-2 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 sm:h-9 sm:text-sm"
+                        />
+                      </label>
+                    ))}
+                    <input type="hidden" name={dateRange.field} value={dateRangeValue(dates.from, dates.to)} />
+                  </fieldset>
+                )
+              ) : null}
             </div>
             <SheetFooter className="mt-0 border-t px-4 py-3 sm:px-6">
               <Button type="submit" className="min-h-11 w-full sm:min-h-9">

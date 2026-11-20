@@ -2,15 +2,15 @@ import { ChevronRight, FileLock2 } from "lucide-react";
 import type { PrivacyAccessRow, PrivacyZoneFile } from "@/lib/db/queries/uc-events";
 import { auditEventLabel } from "@/lib/uc/views/audit";
 import { formatBytes, formatCountIt, formatDateIt, formatDateTimeIt } from "@/lib/uc/views/format";
+import { PRIVACY_TEXT, fileTypeLabel } from "@/lib/uc/views/privacy";
 import type { PrivacyClass } from "@/lib/uc/vocab";
 import { InfoHint } from "./info-hint";
 
 /**
- * Parti di sola lettura della pagina Privacy (DESIGN §3.10): la riga
- * «Modalità dei dati», le parti chiuse «Domande per riservatezza» (solo
- * Lateral Space) e «Registro degli accessi» (Lateral Space e approvatore
- * privacy), con i file della zona dei dati personali (solo metadati, mai il
- * contenuto). Titoli delle domande, mai le chiavi. Componenti server.
+ * Parti di sola lettura della pagina Privacy (rilascio 10, §3.5; DESIGN §3.10): la riga «Modalità dei dati», le
+ * parti chiuse «Domande per riservatezza» (solo Lateral Space), «Accessi ai dati personali» (per chi non apre Attività,
+ * dove ora sta il filtro «Dati personali») e «File con dati personali» (solo metadati, mai il contenuto; il tipo del
+ * file in parole). Titoli delle domande, mai le chiavi. Componenti server.
  */
 
 
@@ -27,7 +27,7 @@ export function PrivacyRow({ label, children, aside }: { label: string; children
 
 export function DataModeRow({ mode }: { mode: { label: string; help: string } }) {
   return (
-    <PrivacyRow label="Modalità dei dati">
+    <PrivacyRow label={PRIVACY_TEXT.dataMode}>
       <span className="inline-flex max-w-full items-center gap-1">
         <span className="font-medium">{mode.label}</span>
         {mode.help && <InfoHint label={`Cosa vuol dire «${mode.label}»`}>{mode.help}</InfoHint>}
@@ -90,7 +90,7 @@ const SCAN_LABEL: Readonly<Record<string, string>> = {
   rifiutato: "Rifiutato",
 };
 
-/** File della zona dei dati personali: solo metadati, mai il nome né il contenuto. */
+/** File della zona dei dati personali: solo metadati, mai il nome né il contenuto; il tipo in parole, mai il MIME. */
 export function PersonalFilesList({ files }: { files: readonly PrivacyZoneFile[] }) {
   return (
     <ul className="divide-y">
@@ -99,7 +99,7 @@ export function PersonalFilesList({ files }: { files: readonly PrivacyZoneFile[]
           <FileLock2 className="mt-0.5 size-4 shrink-0 text-uc-lucchetto" aria-hidden />
           <div className="min-w-0">
             <p className="break-words">
-              {f.itemTitle ?? "File senza domanda"} · {f.mime}
+              {f.itemTitle ?? "File senza domanda"} · {fileTypeLabel(f.mime)}
               {formatBytes(f.sizeBytes) ? ` · ${formatBytes(f.sizeBytes)}` : ""}
             </p>
             <p className="text-xs break-words text-muted-foreground">

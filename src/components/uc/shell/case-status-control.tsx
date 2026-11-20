@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useUcAction } from "@/components/uc/catalog/use-uc-action";
 import { transitionCaseAction } from "@/lib/actions/uc-cases";
+import { SETTINGS_TEXT, statusActionLabel, statusConfirmLabel, statusDialogTitle, statusDoneText } from "@/lib/uc/views/case-settings";
 import type { CaseStatus } from "@/lib/uc/vocab";
 import { cn } from "@/lib/utils";
 
@@ -19,38 +20,12 @@ export interface StatusOption {
   needsReason: boolean;
 }
 
-/** Il pulsante di ogni cambio (DESIGN §3.13.3): «Metti in pausa…», «Riprendi», «Chiudi il caso…». */
-export function statusActionLabel(from: CaseStatus, to: CaseStatus): string {
-  if (to === "sospeso") return "Metti in pausa…";
-  if (to === "chiuso") return "Chiudi il caso…";
-  if (from === "sospeso") return "Riprendi";
-  if (to === "in_sviluppo") return "Torna allo sviluppo…";
-  return "Cambia stato…";
-}
-
-function dialogTitle(from: CaseStatus, to: CaseStatus): string {
-  if (to === "sospeso") return "Mettere in pausa il caso?";
-  if (to === "chiuso") return "Chiudere il caso?";
-  if (from === "sospeso") return "Riprendere il caso?";
-  if (to === "in_sviluppo") return "Tornare allo sviluppo?";
-  return "Cambiare lo stato del caso?";
-}
-
-function confirmLabel(from: CaseStatus, to: CaseStatus): string {
-  if (to === "sospeso") return "Metti in pausa";
-  if (to === "chiuso") return "Chiudi il caso";
-  if (from === "sospeso") return "Riprendi";
-  if (to === "in_sviluppo") return "Torna allo sviluppo";
-  return "Conferma";
-}
-
 /**
- * «Stato del caso» delle Impostazioni (DESIGN §3.13.3, ancora `#stato`): un
- * pulsante per ogni cambio ammesso adesso (calcolati sul server con le stesse
- * regole del comando, che li ricontrolla) e un dialogo con il motivo e il testo
- * di `transitionHint`. Pausa e chiusura chiedono il motivo. Il passo avanti non
- * sta qui: è il primario della testata. «Riprendi» è pieno: in pausa è
- * l'unica azione della pagina.
+ * I cambi di stato delle Impostazioni della realizzazione (rilascio 10, §3.5): in «Pausa» (`#pausa`, anche dalla
+ * vecchia ancora `#stato`) «Metti in pausa…», «Riprendi» e «Torna allo sviluppo…»; in «Zona pericolosa» «Chiudi la
+ * realizzazione…». Un pulsante per ogni cambio ammesso adesso (calcolati sul server con le stesse regole del comando,
+ * che li ricontrolla) e un dialogo con il motivo e la frase di `statusHint`. Pausa e chiusura chiedono il motivo. Il
+ * passo avanti non sta qui: è il primario della testata. «Riprendi» è pieno: in pausa è l'unica azione della pagina.
  */
 export function CaseStatusControl({
   workspaceId,
@@ -77,7 +52,7 @@ export function CaseStatusControl({
     if (!open) return;
     const chosen = open;
     run(() => transitionCaseAction(workspaceId, caseId, { to: chosen.to, reason: reason.trim() || null }), {
-      success: `Il caso ora è «${chosen.label}».`,
+      success: statusDoneText(chosen.label),
       onSuccess: () => setOpen(null),
     });
   }
@@ -104,7 +79,7 @@ export function CaseStatusControl({
         {open && (
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>{dialogTitle(current, open.to)}</DialogTitle>
+              <DialogTitle>{statusDialogTitle(current, open.to)}</DialogTitle>
               {open.hint && <DialogDescription>{open.hint}</DialogDescription>}
             </DialogHeader>
             <form
@@ -115,14 +90,14 @@ export function CaseStatusControl({
                 if (ready) submit();
               }}
             >
-              <Label htmlFor="uc-status-reason">Motivo{open.needsReason ? "" : " (facoltativo)"}</Label>
+              <Label htmlFor="uc-status-reason">{open.needsReason ? SETTINGS_TEXT.reason : SETTINGS_TEXT.reasonOptional}</Label>
               <Textarea
                 id="uc-status-reason"
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 maxLength={2000}
                 rows={3}
-                placeholder="Scrivilo in poche parole, senza nomi di persone."
+                placeholder={SETTINGS_TEXT.reasonPlaceholder}
                 className="text-base sm:text-sm"
               />
             </form>
@@ -131,7 +106,7 @@ export function CaseStatusControl({
                 Annulla
               </Button>
               <Button type="submit" form="uc-status-form" variant={open.to === "chiuso" ? "destructive" : "default"} className="h-11 sm:h-8" disabled={!ready || pending}>
-                {pending ? "Un momento…" : confirmLabel(current, open.to)}
+                {pending ? "Un momento…" : statusConfirmLabel(current, open.to)}
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -8,10 +8,11 @@ import { Label } from "@/components/ui/label";
 import { useUcAction } from "@/components/uc/catalog/use-uc-action";
 import { SEMAFORO_TONE } from "@/components/uc/common/semaforo-tone";
 import { DetailSheetFrame } from "@/components/uc/ui/detail-sheet";
+import { TechDetails } from "@/components/uc/ui/tech-details";
 import { reactivateBlockerAction } from "@/lib/actions/uc-gates";
 import { requestApprovalAction } from "@/lib/actions/uc-people";
-import type { A8FormInput, BlockerView, SignatureLine } from "@/lib/uc/views/privacy";
-import type { SemaforoColor } from "@/lib/uc/vocab";
+import { PRIVACY_TEXT, type A8FormInput, type BlockerView, type SignatureLine } from "@/lib/uc/views/privacy";
+import type { CaseRole, SemaforoColor } from "@/lib/uc/vocab";
 import { cn } from "@/lib/utils";
 import { A8Form } from "./a8-form";
 
@@ -62,9 +63,10 @@ function Reactivate({ workspaceId, caseId, blockerId }: { workspaceId: string; c
 }
 
 /**
- * Il riquadro «Scheda privacy» (DESIGN §3.10): cosa manca, le due firme
- * («Lateral Space ✓ firmata il 3 ott · Cliente ○ da firmare») e «Cosa
- * approvi», chiuso. Le azioni sono `outline`.
+ * Il riquadro «Scheda privacy» (rilascio 10, §3.5; DESIGN §3.10): cosa manca, le due firme in una riga
+ * («Lateral Space ✓ firmata il 3 ott · Cliente ○ da firmare») e «Cosa approvi», chiuso, con le due regole fisse
+ * (dati reali solo dopo la firma, mai dati sanitari) e, per Lateral Space, «A.8» in «Dettagli tecnici». Le azioni
+ * sono `outline`.
  *
  * - Firmare non si fa da qui: il primario della testata, «Firma la scheda
  *   privacy», porta a Firme, dove la firma viaggia con l'impronta del testo letto.
@@ -86,6 +88,7 @@ export function PrivacyCard({
   roles,
   files,
   lsMembers,
+  viewerRoles = [],
 }: {
   workspaceId: string;
   caseId: string;
@@ -97,6 +100,8 @@ export function PrivacyCard({
   roles: readonly { key: string; label: string }[];
   files: readonly { id: string; name: string }[];
   lsMembers: readonly { userId: string; name: string }[];
+  /** I ruoli di chi guarda: «Dettagli tecnici» (la sigla del modulo) solo per Lateral Space. */
+  viewerRoles?: readonly CaseRole[];
 }) {
   const { pending, run } = useUcAction();
   const [form, setForm] = useState<null | "registra" | "correggi">(null);
@@ -134,7 +139,7 @@ export function PrivacyCard({
   return (
     <section aria-labelledby="uc-scheda-privacy" className="min-w-0 rounded-xl bg-card p-4 ring-1 ring-foreground/10 sm:p-5">
       <h3 id="uc-scheda-privacy" className="text-sm font-semibold">
-        Scheda privacy
+        {PRIVACY_TEXT.card}
       </h3>
       <p className="mt-1 flex items-start gap-2 text-sm">
         <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", SEMAFORO_TONE[status.tone].fill)} aria-hidden />
@@ -142,11 +147,11 @@ export function PrivacyCard({
       </p>
 
       {signatures.length > 0 && (
-        <dl className="mt-3 grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
+        <dl data-slot="privacy-signatures" className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
           {signatures.map((s) => (
-            <div key={s.role} className="flex min-w-0 items-center gap-2">
-              <dt className="w-28 shrink-0 text-muted-foreground">{s.label}</dt>
-              <dd className="flex min-w-0 items-center gap-1.5">
+            <div key={s.role} className="flex min-w-0 items-center gap-1.5">
+              <dt className="text-muted-foreground">{s.label}</dt>
+              <dd className="flex min-w-0 items-center gap-1">
                 {s.signed ? <CheckCircle2 className="size-4 shrink-0 text-uc-verde" aria-hidden /> : <Circle className="size-4 shrink-0 text-muted-foreground" aria-hidden />}
                 <span className="min-w-0 break-words">{s.text}</span>
               </dd>
@@ -155,25 +160,31 @@ export function PrivacyCard({
         </dl>
       )}
 
-      {view.evidence.length > 0 && (
-        <details className="group mt-3 min-w-0">
-          <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-x-2 text-sm select-none sm:min-h-9 [&::-webkit-details-marker]:hidden">
-            <span className="inline-flex items-center gap-1.5 font-medium">
-              <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" aria-hidden />
-              Cosa approvi
-            </span>
-            <span className="text-muted-foreground">documento, versione, regioni dei dati, chi accede</span>
-          </summary>
-          <dl className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1 pl-5.5 text-sm sm:grid-cols-[minmax(0,13rem)_minmax(0,1fr)]">
-            {view.evidence.map(([k, v]) => (
-              <div key={k} className="contents">
-                <dt className="text-muted-foreground">{k}</dt>
-                <dd className="min-w-0 break-words">{v}</dd>
-              </div>
-            ))}
-          </dl>
-        </details>
-      )}
+      <details className="group mt-3 min-w-0">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 text-sm font-medium select-none sm:min-h-9 [&::-webkit-details-marker]:hidden">
+          <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" aria-hidden />
+          {PRIVACY_TEXT.whatYouApprove}
+        </summary>
+        <div className="mt-2 space-y-3 pl-5.5 text-sm">
+          <ul className="space-y-1">
+            <li>{PRIVACY_TEXT.realDataRule}</li>
+            <li>{PRIVACY_TEXT.healthRule}</li>
+          </ul>
+          {view.evidence.length > 0 && (
+            <dl className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-[minmax(0,13rem)_minmax(0,1fr)]">
+              {view.evidence.map(([k, v]) => (
+                <div key={k} className="contents">
+                  <dt className="text-muted-foreground">{k}</dt>
+                  <dd className="min-w-0 break-words">{v}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+          <TechDetails roles={viewerRoles}>
+            <p>{PRIVACY_TEXT.technicalForm}</p>
+          </TechDetails>
+        </div>
+      </details>
 
       {(actions.length > 0 || (viewer.lead && view.status === "sciolto")) && (
         <div className="mt-4 flex flex-wrap gap-2">

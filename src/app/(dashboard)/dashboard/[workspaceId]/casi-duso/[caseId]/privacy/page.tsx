@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
 import { PageContainer } from "@/components/dashboard/page-container";
+import { TextAction } from "@/components/ui-10/row";
+import { casePath } from "@/components/uc/catalog/paths";
 import { PersonalZoneSheet } from "@/components/uc/privacy/personal-zone-panel";
 import { PrivacyCard } from "@/components/uc/privacy/privacy-card";
 import { DataModeRow, PersonalAccessLog, PersonalFilesList, PrivacyDisclosure, PrivacyQuestionsTable, PrivacyRow } from "@/components/uc/privacy/privacy-summary";
@@ -7,11 +9,13 @@ import { canWrite, loadCaseHead, ucEmailConfigured, ucPersonalZoneConfigured } f
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { loadPrivacyPage } from "@/lib/db/queries/uc-events";
+import { PERSONAL_DATA_FAMILY } from "@/lib/uc/views/audit";
 import { canOpenShellPage } from "@/lib/uc/views/case-shell";
 import { formatDayIt } from "@/lib/uc/views/format";
 import { seesPersonalZoneMetadata } from "@/lib/uc/views/page-access";
 import { groupMembers } from "@/lib/uc/views/people";
 import {
+  PRIVACY_TEXT,
   a8FormFromEvidence,
   a8SignatureLines,
   blockerView,
@@ -30,13 +34,13 @@ import { clientPlainText } from "@/lib/uc/views/rows";
 const isLsRole = (r: CaseRole) => (LS_CASE_ROLES as readonly string[]).includes(r);
 
 /**
- * Privacy (DESIGN §3.10): è tutto il prodotto dell'approvatore privacy; gli
- * altri ruoli ci arrivano dal «⋯». In alto la scheda privacy con le due firme,
- * poi modalità dei dati e zona dei dati personali («Gestisci ›» apre il
- * pannello degli accessi), la riga sui dati sanitari e due parti chiuse:
- * «Domande per riservatezza» (solo Lateral Space) e «Registro degli accessi»
- * (Lateral Space e approvatore privacy, solo metadati). Gli altri blocchi
- * stanno in Panoramica › Blocchi. Nessun articolo nei testi.
+ * Privacy (rilascio 10, §3.5; DESIGN §3.10): è tutto il prodotto dell'approvatore privacy; gli altri ruoli ci arrivano
+ * dal «⋯». In alto la scheda privacy con le due firme in una riga (le due regole fisse dentro «Cosa approvi», «A.8» in
+ * «Dettagli tecnici»), poi modalità dei dati e zona dei dati personali («Gestisci ›» apre il pannello degli accessi).
+ * Gli accessi ai dati personali, il vecchio «Registro degli accessi», stanno in Attività › «Dati personali», con un
+ * link; chi Attività non la apre (l'analista) li legge qui, in una piega. Poi, chiuse, «File con dati personali»
+ * (solo metadati, il tipo in parole) e «Domande per riservatezza» (solo Lateral Space). Al massimo 70 parole in vista.
+ * Gli altri blocchi stanno in Panoramica › Blocchi. Nessun articolo nei testi.
  */
 export default async function PrivacyPage({ params }: { params: Promise<{ workspaceId: string; caseId: string }> }) {
   const { workspaceId, caseId } = await params;
@@ -76,14 +80,22 @@ export default async function PrivacyPage({ params }: { params: Promise<{ worksp
   const accessLog = seesPersonalZoneMetadata(roles) ? data.accessLog.map(plainTitle) : [];
   const personalFiles = seesPersonalZoneMetadata(roles) ? data.personalFiles.map(plainTitle) : [];
 
+  // Gli accessi ai dati personali: in Attività › «Dati personali» per chi la apre, altrimenti qui (solo metadati).
+  const accessHref = accessLog.length > 0 && canOpenShellPage("registro", roles) ? `${casePath(workspaceId, caseId, "attivita")}?tipo=${PERSONAL_DATA_FAMILY}` : null;
+  const T = PRIVACY_TEXT;
+
   return (
     <PageContainer>
-      <div className="max-w-3xl space-y-8">
-        <div className="min-w-0">
-          <h2 className="text-base font-semibold">Privacy</h2>
-          <p className="mt-1 text-sm text-muted-foreground">I dati personali reali entrano solo dopo la scheda privacy firmata.</p>
-        </div>
+      <div className="max-w-3xl space-y-6">
+        <h2 className="text-base font-semibold">{T.title}</h2>
 
+        {/* Senza la scheda privacy (uno schema senza quel blocco) le due regole fisse restano in pagina. */}
+        {!view && (
+          <ul data-slot="privacy-rules" className="space-y-1 text-sm">
+            <li>{T.realDataRule}</li>
+            <li>{T.healthRule}</li>
+          </ul>
+        )}
         {view && (
           <PrivacyCard
             workspaceId={workspaceId}
@@ -96,38 +108,34 @@ export default async function PrivacyPage({ params }: { params: Promise<{ worksp
             roles={lead ? Object.entries(ctx.roleLabels).map(([key, label]) => ({ key, label })) : []}
             files={lead ? files : []}
             lsMembers={lead ? lsMembers.map((m) => ({ userId: m.userId, name: m.name })) : []}
+            viewerRoles={roles}
           />
         )}
 
-        <div className="space-y-2">
-          <dl className="divide-y">
-            <DataModeRow mode={dataModeView(data.dataMode)} />
-            <PrivacyRow
-              label="Zona dei dati personali"
-              aside={manageZone ? <PersonalZoneSheet workspaceId={workspaceId} caseId={caseId} zoneText={zone.text} members={zoneRows} viewer={zoneViewer} /> : null}
-            >
-              {zone.text}
-            </PrivacyRow>
-          </dl>
-          <p className="text-sm text-muted-foreground">I dati sanitari non entrano mai nel caso.</p>
-        </div>
+        <dl className="divide-y">
+          <DataModeRow mode={dataModeView(data.dataMode)} />
+          <PrivacyRow label={T.zone} aside={manageZone ? <PersonalZoneSheet workspaceId={workspaceId} caseId={caseId} zoneText={zone.text} members={zoneRows} viewer={zoneViewer} /> : null}>
+            {zone.text}
+          </PrivacyRow>
+        </dl>
 
-        {(questionRows.length > 0 || accessLog.length > 0 || personalFiles.length > 0) && (
+        {accessHref && <TextAction href={accessHref}>{T.accesses}</TextAction>}
+
+        {((!accessHref && accessLog.length > 0) || personalFiles.length > 0 || questionRows.length > 0) && (
           <div className="space-y-1">
-            {questionRows.length > 0 && (
-              <PrivacyDisclosure title="Domande per riservatezza">
-                <PrivacyQuestionsTable rows={questionRows} />
+            {!accessHref && accessLog.length > 0 && (
+              <PrivacyDisclosure title={T.accesses}>
+                <PersonalAccessLog events={accessLog} />
               </PrivacyDisclosure>
             )}
-            {(accessLog.length > 0 || personalFiles.length > 0) && (
-              <PrivacyDisclosure title="Registro degli accessi">
-                {accessLog.length > 0 && <PersonalAccessLog events={accessLog} />}
-                {personalFiles.length > 0 && (
-                  <div className="space-y-1">
-                    <h3 className="text-xs tracking-wide text-muted-foreground">File con dati personali</h3>
-                    <PersonalFilesList files={personalFiles} />
-                  </div>
-                )}
+            {personalFiles.length > 0 && (
+              <PrivacyDisclosure title={T.personalFiles}>
+                <PersonalFilesList files={personalFiles} />
+              </PrivacyDisclosure>
+            )}
+            {questionRows.length > 0 && (
+              <PrivacyDisclosure title={T.questions}>
+                <PrivacyQuestionsTable rows={questionRows} />
               </PrivacyDisclosure>
             )}
           </div>

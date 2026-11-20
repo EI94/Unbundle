@@ -11,8 +11,9 @@ import { Input } from "@/components/ui/input";
  * aggiorna solo l'indirizzo, mezzo secondo dopo l'ultima lettera o con Invio,
  * tenendo la vista chiesta (`vista`). Il pannello aperto si chiude. Se
  * l'indirizzo cambia da fuori («Togli la ricerca», indietro), il campo lo segue.
+ * (Rilascio 10) Nel pannello di Valore `keep` tiene il pannello aperto (`apri=kpi`).
  */
-export function KpiSearch({ q, baseHref, vista }: { q: string | null; baseHref: string; vista: string | null }) {
+export function KpiSearch({ q, baseHref, vista, keep }: { q: string | null; baseHref: string; vista: string | null; keep?: Readonly<Record<string, string>> }) {
   const router = useRouter();
   const [value, setValue] = useState(q ?? "");
   const [pushed, setPushed] = useState(q ?? "");
@@ -32,7 +33,7 @@ export function KpiSearch({ q, baseHref, vista }: { q: string | null; baseHref: 
     const next = text.replace(/\s+/g, " ").trim();
     if (next === pushed) return;
     setPushed(next);
-    const sp = new URLSearchParams();
+    const sp = new URLSearchParams(keep);
     if (vista) sp.set("vista", vista);
     if (next) sp.set("q", next);
     const query = sp.toString();

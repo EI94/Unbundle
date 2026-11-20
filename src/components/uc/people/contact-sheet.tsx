@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,8 +10,9 @@ import { Switch } from "@/components/ui/switch";
 import { useUcAction } from "@/components/uc/catalog/use-uc-action";
 import { DetailSheetFrame } from "@/components/uc/ui/detail-sheet";
 import { createContactAction, updateContactAction } from "@/lib/actions/uc-people";
-import { CONTACT_CHANNEL_LABEL } from "@/lib/uc/views/people";
+import { CONTACT_CHANNEL_LABEL, PEOPLE_TEXT as T } from "@/lib/uc/views/people";
 import { CONTACT_CHANNELS, type ContactChannel } from "@/lib/uc/vocab";
+import { cn } from "@/lib/utils";
 import { ChoiceSelect } from "./choice-select";
 
 /** I campi di un referente come li modifica il pannello. */
@@ -29,9 +31,9 @@ export const EMPTY_CONTACT: ContactFormValue = { displayName: "", templateRoleKe
 const FIELD = "h-11 text-base sm:h-9 sm:text-sm";
 
 /**
- * Il modulo del referente (DESIGN §3.9.1): nome e cognome, ruolo («Per quali
- * domande»), come lo chiamate, email, telefono facoltativo, canale preferito.
- * In modifica c'è anche «Referente attivo».
+ * Il modulo del referente (rilascio 10, §3.5; DESIGN §3.9.1): tre campi in vista, nome e cognome, email e «Per quali
+ * domande» (il ruolo dello schema); il resto in «Altro», chiuso: come lo chiamate, telefono facoltativo, canale
+ * preferito e, in modifica, «Referente attivo». Nessun campo si perde.
  */
 function ContactFields({
   id,
@@ -46,16 +48,24 @@ function ContactFields({
   roles: readonly { key: string; label: string }[];
   withActive: boolean;
 }) {
+  const [more, setMore] = useState(false);
   const set = (patch: Partial<ContactFormValue>) => onChange({ ...value, ...patch });
   return (
     <div className="grid min-w-0 gap-4">
       <div className="space-y-1.5">
-        <Label htmlFor={`${id}-name`}>Nome e cognome</Label>
+        <Label htmlFor={`${id}-name`}>{T.contactName}</Label>
         <Input id={`${id}-name`} value={value.displayName} maxLength={255} autoComplete="off" onChange={(e) => set({ displayName: e.target.value })} className={FIELD} />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor={`${id}-email`}>{T.contactEmail}</Label>
+        <Input id={`${id}-email`} type="email" inputMode="email" autoComplete="off" value={value.email} maxLength={320} onChange={(e) => set({ email: e.target.value })} className={FIELD} aria-describedby={`${id}-email-hint`} />
+        <p id={`${id}-email-hint`} className="text-xs text-muted-foreground">
+          {T.contactEmailHint}
+        </p>
       </div>
       {roles.length > 0 && (
         <div className="space-y-1.5">
-          <Label htmlFor={`${id}-role`}>Per quali domande</Label>
+          <Label htmlFor={`${id}-role`}>{T.contactRole}</Label>
           <ChoiceSelect
             id={`${id}-role`}
             value={value.templateRoleKey}
@@ -63,41 +73,50 @@ function ContactFields({
             groups={[{ options: roles.map((r) => ({ value: r.key, label: r.label })) }]}
             onChange={(key) => set({ templateRoleKey: key })}
           />
-          <p className="text-xs text-muted-foreground">Le domande di questo ruolo gli arrivano per prime.</p>
+          <p className="text-xs text-muted-foreground">{T.contactRoleHint}</p>
         </div>
       )}
-      <div className="space-y-1.5">
-        <Label htmlFor={`${id}-label`}>Come lo chiamate (facoltativo)</Label>
-        <Input id={`${id}-label`} value={value.roleLabel} maxLength={255} placeholder="Es. Controllo di gestione" onChange={(e) => set({ roleLabel: e.target.value })} className={FIELD} />
+      <div className="min-w-0">
+        <button
+          type="button"
+          aria-expanded={more}
+          aria-controls={`${id}-more`}
+          onClick={() => setMore(!more)}
+          className="inline-flex min-h-11 items-center gap-1 rounded-md text-sm font-medium focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none sm:min-h-8"
+        >
+          <ChevronRight className={cn("size-4 shrink-0 text-muted-foreground transition-transform", more && "rotate-90")} aria-hidden />
+          {T.more}
+        </button>
+        <div id={`${id}-more`} hidden={!more} className="mt-3 grid min-w-0 gap-4">
+          <div className="space-y-1.5">
+            <Label htmlFor={`${id}-label`}>{T.contactLabel}</Label>
+            <Input id={`${id}-label`} value={value.roleLabel} maxLength={255} placeholder="Es. Controllo di gestione" onChange={(e) => set({ roleLabel: e.target.value })} className={FIELD} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={`${id}-phone`}>{T.contactPhone}</Label>
+            <Input id={`${id}-phone`} type="tel" inputMode="tel" autoComplete="off" value={value.phone} maxLength={40} placeholder="+39…" onChange={(e) => set({ phone: e.target.value })} className={FIELD} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={`${id}-channel`}>{T.contactChannel}</Label>
+            <ChoiceSelect
+              id={`${id}-channel`}
+              value={value.preferredChannel}
+              placeholder="Lo sceglie Unbundle"
+              groups={[{ options: CONTACT_CHANNELS.map((c) => ({ value: c, label: CONTACT_CHANNEL_LABEL[c] })) }]}
+              onChange={(c) => set({ preferredChannel: (CONTACT_CHANNELS as readonly string[]).includes(c) ? (c as ContactChannel) : "" })}
+            />
+          </div>
+          {withActive && (
+            <label htmlFor={`${id}-active`} className="flex min-h-11 items-center justify-between gap-3 text-sm">
+              <span>
+                {T.contactActive}
+                <span className="block text-xs text-muted-foreground">{T.contactActiveHint}</span>
+              </span>
+              <Switch id={`${id}-active`} checked={value.isActive} onCheckedChange={(checked) => set({ isActive: checked })} />
+            </label>
+          )}
+        </div>
       </div>
-      <div className="space-y-1.5">
-        <Label htmlFor={`${id}-email`}>Email</Label>
-        <Input id={`${id}-email`} type="email" inputMode="email" autoComplete="off" value={value.email} maxLength={320} onChange={(e) => set({ email: e.target.value })} className={FIELD} />
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor={`${id}-phone`}>Telefono (facoltativo)</Label>
-        <Input id={`${id}-phone`} type="tel" inputMode="tel" autoComplete="off" value={value.phone} maxLength={40} placeholder="+39…" onChange={(e) => set({ phone: e.target.value })} className={FIELD} />
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor={`${id}-channel`}>Canale preferito</Label>
-        <ChoiceSelect
-          id={`${id}-channel`}
-          value={value.preferredChannel}
-          placeholder="Lo sceglie Unbundle"
-          groups={[{ options: CONTACT_CHANNELS.map((c) => ({ value: c, label: CONTACT_CHANNEL_LABEL[c] })) }]}
-          onChange={(c) => set({ preferredChannel: (CONTACT_CHANNELS as readonly string[]).includes(c) ? (c as ContactChannel) : "" })}
-        />
-      </div>
-      {withActive && (
-        <label htmlFor={`${id}-active`} className="flex min-h-11 items-center justify-between gap-3 text-sm">
-          <span>
-            Referente attivo
-            <span className="block text-xs text-muted-foreground">Si possono mandargli domande.</span>
-          </span>
-          <Switch id={`${id}-active`} checked={value.isActive} onCheckedChange={(checked) => set({ isActive: checked })} />
-        </label>
-      )}
-      <p className="text-xs text-muted-foreground">Solo persone del cliente: un indirizzo di Lateral Space non può essere un referente.</p>
     </div>
   );
 }

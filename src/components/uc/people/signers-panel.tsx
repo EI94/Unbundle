@@ -34,8 +34,11 @@ const HELP: Readonly<Record<"owner" | "privacy", string>> = {
  * Dialogo per indicare chi firma per il cliente (via allo sviluppo o privacy),
  * con la prova scritta caricata nel dossier (l'email del cliente che indica la
  * persona). Con `fixedContact` la persona è già scelta (dal «⋯» di una riga di
- * Persone) e si sceglie che cosa firma. Cambiare persona annulla le firme in
- * attesa della persona di prima: lo ricontrolla il server.
+ * Persone, «Firma per il cliente…») e si sceglie che cosa firma; con
+ * `designation` si sceglie la persona («Cambia chi firma…», «Indica» della riga
+ * che dice chi manca). Lo apre il responsabile Lateral Space o del cliente; solo
+ * Lateral Space ha «Togli». Cambiare persona annulla le firme in attesa della
+ * persona di prima: lo ricontrolla il server.
  */
 export function SignerDialog({
   workspaceId,
@@ -45,6 +48,7 @@ export function SignerDialog({
   designation: fixedDesignation,
   fixedContact,
   current,
+  evidence = null,
   candidates,
   files,
   canClear,
@@ -58,10 +62,12 @@ export function SignerDialog({
   designation?: "owner" | "privacy";
   fixedContact?: SignerContactOption;
   current?: SignerContactOption | null;
+  /** La prova scritta di chi firma adesso («Prova: … · indicato il 3 ott»). */
+  evidence?: string | null;
   candidates: readonly SignerContactOption[];
   files: readonly { id: string; name: string }[];
   canClear: boolean;
-  /** Dove si caricano i documenti (Domande › Documenti), per la prova che manca. */
+  /** Dove si caricano i documenti (il pannello «File» di Domande), per la prova che manca. */
   documentsHref: string | null;
 }) {
   const { pending, run } = useUcAction();
@@ -129,16 +135,21 @@ export function SignerDialog({
                 Carica prima il file in{" "}
                 {documentsHref ? (
                   <Link href={documentsHref} className="underline underline-offset-4">
-                    Domande › Documenti
+                    Domande › File
                   </Link>
                 ) : (
-                  "Domande › Documenti"
+                  "Domande › File"
                 )}
                 : l&apos;email del cliente che indica la persona.
               </p>
             )}
           </div>
-          {current && <p className="text-xs text-muted-foreground">Adesso firma {current.name}. Con un cambio le sue firme ancora in attesa si annullano.</p>}
+          {current && (
+            <p className="text-xs text-muted-foreground">
+              Adesso firma {current.name}
+              {evidence ? ` (${evidence})` : ""}. Con un cambio le sue firme ancora in attesa si annullano.
+            </p>
+          )}
         </form>
         <DialogFooter>
           {canClear && current && !fixedContact && (
@@ -155,71 +166,5 @@ export function SignerDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-/**
- * «Firme del cliente» (DESIGN §3.9.1): chi firma il via allo sviluppo e chi la
- * privacy, con la prova scritta, e «Cambia» o «Indica». Lo indicano il
- * responsabile Lateral Space e il responsabile del cliente; lo toglie solo
- * Lateral Space.
- */
-export function SignersPanel({
-  workspaceId,
-  caseId,
-  slots,
-  candidates,
-  files,
-  canDesignate,
-  canClear,
-  documentsHref = null,
-}: {
-  workspaceId: string;
-  caseId: string;
-  slots: readonly SignerSlot[];
-  candidates: readonly SignerContactOption[];
-  files: readonly { id: string; name: string }[];
-  /** Responsabile Lateral Space o responsabile del cliente, non in sola lettura. */
-  canDesignate: boolean;
-  /** Solo il responsabile Lateral Space toglie una designazione. */
-  canClear: boolean;
-  documentsHref?: string | null;
-}) {
-  const [open, setOpen] = useState<"owner" | "privacy" | null>(null);
-  const slot = slots.find((s) => s.designation === open) ?? null;
-  return (
-    <>
-      <ul className="-my-3 divide-y divide-border">
-        {slots.map((s) => (
-          <li key={s.designation} className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 py-3">
-            <span className="w-full text-sm font-medium sm:w-44 sm:shrink-0">{DESIGNATION_LABEL[s.designation]}</span>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm break-words">{s.current ? s.current.name : <span className="text-muted-foreground">Da indicare</span>}</p>
-              {s.current && s.evidenceText && <p className="text-xs break-words text-muted-foreground">{s.evidenceText}</p>}
-            </div>
-            {canDesignate && (
-              <Button size="sm" variant="outline" className="min-h-11 sm:min-h-7" onClick={() => setOpen(s.designation)}>
-                {s.current ? "Cambia" : "Indica"}
-              </Button>
-            )}
-          </li>
-        ))}
-      </ul>
-      {slot && (
-        <SignerDialog
-          key={slot.designation}
-          workspaceId={workspaceId}
-          caseId={caseId}
-          open
-          onOpenChange={(o) => !o && setOpen(null)}
-          designation={slot.designation}
-          current={slot.current}
-          candidates={candidates}
-          files={files}
-          canClear={canClear}
-          documentsHref={documentsHref}
-        />
-      )}
-    </>
   );
 }

@@ -26,11 +26,18 @@ import {
 import { formatCountIt, formatDayIt } from "@/lib/uc/views/format";
 import {
   CLIENT_PERSON_STATUS,
+  DESIGNATION_LABEL,
   DESIGNATION_SUFFIX,
   LS_PERSON_STATUS,
+  PEOPLE_ROWS_SHOWN,
+  PEOPLE_TEXT,
   REQUEST_STATUS_TONE,
+  missingDesignation,
+  personLineText,
   personPendingText,
   requestDetailLines,
+  shownRows,
+  signersMissingText,
   type ClientPersonRow,
   type LsPersonRow,
   type PersonRequestLike,
@@ -41,7 +48,7 @@ import { cn } from "@/lib/utils";
 import { contactGroupsFor, suggestedChoice, type AssignContactOption } from "./assign-step";
 import { ChoiceSelect } from "./choice-select";
 import { EditContactSheet, type ContactFormValue } from "./contact-sheet";
-import { SignerDialog, type SignerContactOption } from "./signers-panel";
+import { SignerDialog, type SignerContactOption, type SignerSlot } from "./signers-panel";
 
 /** Una richiesta nella riga, come la manda la pagina (con l'etichetta dello stato già pronta). */
 export type PersonRequestView = PersonRequestLike & { statusLabel: string };
@@ -68,6 +75,8 @@ export interface PeopleListProps {
   /** Referenti a cui si possono dare domande: attivi e non anonimizzati. */
   contactOptions: readonly AssignContactOption[];
   signerOptions: readonly SignerContactOption[];
+  /** Chi firma per il cliente adesso, con la prova scritta («Prova: …, indicato il 3 ott»). */
+  signers: readonly SignerSlot[];
   files: readonly { id: string; name: string }[];
   templateRoles: readonly { key: string; label: string }[];
   can: PeopleCan;
@@ -77,6 +86,7 @@ export interface PeopleListProps {
   maxExpiry: string;
   /** Domande del dossier per chi le vede (`?referente=<id>` le filtra). */
   catalogBase: string | null;
+  /** Il pannello «File» di Domande, per la prova scritta che manca. */
   documentsHref: string | null;
   /** Il pannello «Invia le domande» (`?invia=1`). */
   sendHref: string;
@@ -87,27 +97,43 @@ type DialogState =
   | { kind: "scadenza"; row: LsPersonRowView; request: PersonRequestView }
   | { kind: "revoca"; row: LsPersonRowView; request: PersonRequestView }
   | { kind: "anonimizza"; row: LsPersonRowView }
-  | { kind: "firmatario"; row: LsPersonRowView }
+  | { kind: "firmatario"; contact: SignerContactOption | null; designation: "owner" | "privacy" | null }
   | { kind: "modifica"; row: LsPersonRowView }
   | { kind: "affida"; row: ClientPersonRow }
   | { kind: "assegna"; role: UnassignedRoleRow };
 
+interface RowAction {
+  label: string;
+  onClick: () => void;
+  destructive?: boolean;
+}
+
 const WAITING: readonly RequestStatus[] = ["inviata", "aperta", "in_corso"];
 const BTN = "min-h-11 sm:min-h-7";
 const day = (iso: string | null) => formatDayIt(iso);
+const T = PEOPLE_TEXT;
 
-function signsText(signs: readonly ("owner" | "privacy")[]): string | null {
-  return signs.length ? signs.map((s) => DESIGNATION_SUFFIX[s]).join(" e ") : null;
-}
-
-function RowMenu({ label, children }: { label: string; children: React.ReactNode }) {
+function RowMenu({ label, items }: { label: string; items: readonly RowAction[] }) {
+  if (items.length === 0) return null;
+  const plain = items.filter((i) => !i.destructive);
+  const danger = items.filter((i) => i.destructive);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label={label} className="size-11 sm:size-7" />}>
         <MoreHorizontal aria-hidden />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-auto min-w-52 max-w-[min(20rem,calc(100vw-2rem))]">
-        {children}
+        {plain.map((i) => (
+          <DropdownMenuItem key={i.label} className={ITEM} onClick={i.onClick}>
+            {i.label}
+          </DropdownMenuItem>
+        ))}
+        {danger.length > 0 && plain.length > 0 && <DropdownMenuSeparator />}
+        {danger.map((i) => (
+          <DropdownMenuItem key={i.label} variant="destructive" className={ITEM} onClick={i.onClick}>
+            {i.label}
+          </DropdownMenuItem>
+        ))}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -115,29 +141,42 @@ function RowMenu({ label, children }: { label: string; children: React.ReactNode
 
 const ITEM = "min-h-11 sm:min-h-8";
 
+/** I firmatari come chip sulla riga: «firma il via», «firma la privacy» (§3.5). */
+function SignerChips({ signs }: { signs: readonly ("owner" | "privacy")[] }) {
+  if (signs.length === 0) return null;
+  return (
+    <span className="inline-flex flex-wrap gap-1">
+      {signs.map((s) => (
+        <span key={s} data-slot="signer-chip" className="inline-flex h-6 items-center rounded-full px-2 text-xs font-normal text-muted-foreground ring-1 ring-foreground/15">
+          {DESIGNATION_SUFFIX[s]}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 /**
- * Persone (DESIGN §3.9): una lista sola di chi risponde per il cliente, in
- * ordine alfabetico, poi le righe «Senza referente».
+ * «Rispondono per il cliente» (rilascio 10, §3.5; DESIGN §3.9): chi risponde per il cliente, in ordine alfabetico,
+ * poi le righe «Senza referente»; al massimo tre righe in vista, poi «Vedi tutti (N)». I firmatari sono chip sulla
+ * riga («firma il via», «firma la privacy»); sotto, una riga sola se manca qualcuno, con «Indica».
  *
- * - Lateral Space: ruolo con il suffisso del firmatario, «8 domande · 8
- *   aperte» (più «3 da inviare» se lo stato non lo dice), stato e un'azione
- *   `outline` («Invia», «Copia link», «Reinvia», «Approva la delega»); il «⋯»
- *   con «Invia le nuove domande» (link attivo e domande assegnate dopo),
- *   «Cambia scadenza», «Revoca il link», «Modifica», «Designa come
- *   firmatario» e «Anonimizza…». Il clic sul nome apre i dettagli: invio,
- *   scadenza, promemoria, deleghe.
+ * - Lateral Space: il ruolo e «8 aperte», lo stato e, sulla riga, solo «Copia link» o «Approva la delega». Il «⋯»
+ *   della riga ha l'invio di quella persona («Invia le sue domande», «Reinvia», «Invia le nuove domande»), «Cambia
+ *   scadenza», «Revoca il link», «Modifica», «Firma per il cliente…», «Cambia chi firma…» e «Anonimizza…». Il clic
+ *   sul nome apre i dettagli: recapiti, invio, scadenza, promemoria, deleghe, la prova di chi firma. Per inviare a
+ *   tutti c'è un solo «Invia le domande», in testa al gruppo.
  * - L'analista vede la stessa lista senza azioni.
- * - Il cliente (art. 15.4): nome, ruolo e stato («Da invitare», «Invitato», «Ha
- *   finito», «Link scaduto»); nessun conteggio, nessuna data. Il responsabile
- *   del cliente assegna le domande senza referente e affida quelle di una
- *   persona a un collega.
+ * - Il cliente (art. 15.4): nome, ruolo, firma e stato; nessun conteggio, nessuna data. Il responsabile del cliente
+ *   affida le domande di una persona a un'altra, indica chi firma e assegna le domande senza referente.
  */
 export function PeopleList(props: PeopleListProps) {
   const { workspaceId, caseId, view, unassigned, contactOptions, can, emailConfigured } = props;
   const { pending, run } = useUcAction();
   const [open, setOpen] = useState<Set<string>>(new Set());
+  const [all, setAll] = useState(false);
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const close = () => setDialog(null);
+  const designated = { owner: props.signers.find((s) => s.designation === "owner")?.current?.id ?? null, privacy: props.signers.find((s) => s.designation === "privacy")?.current?.id ?? null };
 
   function toggle(id: string) {
     const next = new Set(open);
@@ -152,8 +191,8 @@ export function PeopleList(props: PeopleListProps) {
     });
   }
 
-  /** L'azione `outline` della riga, una sola, dallo stato (§3.9.1). */
-  function primaryFor(row: LsPersonRowView): { label: string; onClick: () => void } | null {
+  /** Sulla riga solo «Copia link» o «Approva la delega» (§3.17 dell'audit); l'invio di una persona va nel suo «⋯». */
+  function visibleAction(row: LsPersonRowView): RowAction | null {
     const reqs = row.requests;
     if (row.status === "delega") {
       const r = reqs.find((x) => x.detail?.needsApproval && x.actions.approveDelegation);
@@ -163,192 +202,224 @@ export function PeopleList(props: PeopleListProps) {
       const r = reqs.find((x) => WAITING.includes(x.status) && x.actions.copyLink);
       return r ? { label: "Copia link", onClick: () => copyLink(row, r) } : null;
     }
-    if (!can.send) return null;
-    const viaEmail = emailConfigured && row.hasEmail;
-    if (row.status === "link_scaduto" && row.unsent > 0) {
-      return { label: viaEmail ? "Reinvia" : "Prepara il link", onClick: () => run(() => sendRequestsAction(workspaceId, caseId, { contactIds: [row.id] })) };
-    }
-    if (row.status === "da_inviare") {
+    if (can.send && row.status === "da_inviare" && !(emailConfigured && row.hasEmail)) {
       const draft = reqs.find((x) => x.status === "bozza" && !x.detail?.needsApproval && x.actions.send);
-      if (draft) {
-        return viaEmail
-          ? { label: "Invia", onClick: () => run(() => sendRequestAction(workspaceId, caseId, { requestId: draft.id })) }
-          : { label: "Copia link", onClick: () => copyLink(row, draft) };
-      }
-      if (row.unsent > 0) return { label: viaEmail ? "Invia" : "Prepara il link", onClick: () => run(() => sendRequestsAction(workspaceId, caseId, { contactIds: [row.id] })) };
+      if (draft) return { label: "Copia link", onClick: () => copyLink(row, draft) };
     }
     return null;
   }
 
-  function lsMenu(row: LsPersonRowView) {
-    if (!can.manage) return null;
-    const extend = row.requests.find((x) => (WAITING.includes(x.status) || x.status === "completata") && x.actions.extend);
-    const revoke = row.requests.find((x) => x.actions.revoke && x.status !== "bozza") ?? row.requests.find((x) => x.actions.revoke);
-    const signer = can.designate && row.isActive && !row.anonymized && row.hasEmail;
-    // Domande assegnate dopo il link ancora aperto: il link non le contiene, partono con una richiesta loro.
-    const sendNew = can.send && row.status === "link_attivo" && row.unsent > 0 && row.isActive && !row.anonymized;
-    // Senza voci il menu non c'è (una persona anonimizzata senza link aperti).
-    if (!extend && !revoke && row.anonymized) return null;
-    return (
-      <RowMenu label={`Altre azioni per ${row.name}`}>
-        {sendNew && (
-          <DropdownMenuItem className={ITEM} onClick={() => run(() => sendRequestsAction(workspaceId, caseId, { contactIds: [row.id] }))}>
-            {emailConfigured && row.hasEmail ? "Invia le nuove domande" : "Prepara il link delle nuove domande"}
-          </DropdownMenuItem>
-        )}
-        {extend && (
-          <DropdownMenuItem className={ITEM} onClick={() => setDialog({ kind: "scadenza", row, request: extend })}>
-            Cambia scadenza
-          </DropdownMenuItem>
-        )}
-        {revoke && (
-          <DropdownMenuItem className={ITEM} onClick={() => setDialog({ kind: "revoca", row, request: revoke })}>
-            Revoca il link
-          </DropdownMenuItem>
-        )}
-        {!row.anonymized && (
-          <DropdownMenuItem className={ITEM} onClick={() => setDialog({ kind: "modifica", row })}>
-            Modifica
-          </DropdownMenuItem>
-        )}
-        {signer && (
-          <DropdownMenuItem className={ITEM} onClick={() => setDialog({ kind: "firmatario", row })}>
-            Designa come firmatario
-          </DropdownMenuItem>
-        )}
-        {!row.anonymized && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" className={ITEM} onClick={() => setDialog({ kind: "anonimizza", row })}>
-              Anonimizza…
-            </DropdownMenuItem>
-          </>
-        )}
-      </RowMenu>
-    );
+  /** L'invio di una sola persona, nel «⋯» della riga. */
+  function sendAction(row: LsPersonRowView): RowAction | null {
+    if (!can.send || !row.isActive || row.anonymized) return null;
+    const viaEmail = emailConfigured && row.hasEmail;
+    const sendAll = (label: string): RowAction => ({ label, onClick: () => run(() => sendRequestsAction(workspaceId, caseId, { contactIds: [row.id] })) });
+    if (row.status === "link_attivo" && row.unsent > 0) return sendAll(viaEmail ? T.sendNew : T.sendNewLink);
+    if (row.status === "link_scaduto" && row.unsent > 0) return sendAll(viaEmail ? T.resend : T.sendOneLink);
+    if (row.status === "da_inviare") {
+      const draft = row.requests.find((x) => x.status === "bozza" && !x.detail?.needsApproval && x.actions.send);
+      if (draft) return viaEmail ? { label: T.sendOne, onClick: () => run(() => sendRequestAction(workspaceId, caseId, { requestId: draft.id })) } : null;
+      if (row.unsent > 0) return sendAll(viaEmail ? T.sendOne : T.sendOneLink);
+    }
+    return null;
   }
 
-  const lsRows = view.audience === "lateral_space" ? view.rows : [];
-  const clientRows = view.audience === "cliente" ? view.rows : [];
+  const isCandidate = (id: string) => props.signerOptions.some((c) => c.id === id);
+  const signerActions = (id: string, name: string, roleLabel: string | null, signs: readonly ("owner" | "privacy")[]): RowAction[] => {
+    if (!can.designate) return [];
+    const out: RowAction[] = [];
+    if (signs.length < 2 && isCandidate(id)) out.push({ label: T.designate, onClick: () => setDialog({ kind: "firmatario", contact: { id, name, roleLabel }, designation: null }) });
+    for (const d of signs) out.push({ label: T.changeSigner[d], onClick: () => setDialog({ kind: "firmatario", contact: null, designation: d }) });
+    return out;
+  };
+
+  function lsMenu(row: LsPersonRowView): RowAction[] {
+    if (!can.manage) return [];
+    const extend = row.requests.find((x) => (WAITING.includes(x.status) || x.status === "completata") && x.actions.extend);
+    const revoke = row.requests.find((x) => x.actions.revoke && x.status !== "bozza") ?? row.requests.find((x) => x.actions.revoke);
+    const out: RowAction[] = [];
+    const send = sendAction(row);
+    if (send) out.push(send);
+    if (extend) out.push({ label: "Cambia scadenza", onClick: () => setDialog({ kind: "scadenza", row, request: extend }) });
+    if (revoke) out.push({ label: "Revoca il link", onClick: () => setDialog({ kind: "revoca", row, request: revoke }) });
+    if (!row.anonymized) out.push({ label: "Modifica", onClick: () => setDialog({ kind: "modifica", row }) });
+    if (row.isActive && !row.anonymized && row.hasEmail) out.push(...signerActions(row.id, row.name, row.roleText, row.signs));
+    if (!row.anonymized) out.push({ label: "Anonimizza…", onClick: () => setDialog({ kind: "anonimizza", row }), destructive: true });
+    return out;
+  }
+
   const others = (id: string) => contactOptions.filter((c) => c.id !== id);
+
+  const lsItems = (view.audience === "lateral_space" ? view.rows : []).map((row) => {
+    const status = LS_PERSON_STATUS[row.status];
+    const primary = can.manage || can.send ? visibleAction(row) : null;
+    const expanded = open.has(row.id);
+    const line = personLineText(row);
+    const evidence = props.signers.filter((s) => s.current?.id === row.id && s.evidenceText).map((s) => `${DESIGNATION_LABEL[s.designation]}: ${s.evidenceText}`);
+    const pendingText = personPendingText(row);
+    return (
+      <li key={row.id} className={cn("px-4 py-3", row.anonymized && "text-muted-foreground")}>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+          <div className="min-w-0 flex-1 basis-56">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+              <button
+                type="button"
+                className="inline-flex min-h-11 max-w-full items-center gap-1 rounded-sm text-left text-sm font-medium focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none sm:min-h-6"
+                aria-expanded={expanded}
+                aria-controls={`uc-person-${row.id}`}
+                onClick={() => toggle(row.id)}
+              >
+                <ChevronRight className={cn("size-4 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-90")} aria-hidden />
+                <span className="break-words">{row.name}</span>
+                {row.anonymized && <span className="ml-1 text-xs font-normal">anonimizzato</span>}
+                {!row.isActive && !row.anonymized && <span className="ml-1 text-xs font-normal text-muted-foreground">non attivo</span>}
+              </button>
+              <SignerChips signs={row.signs} />
+            </div>
+            {line && <p className="pl-5 text-xs break-words text-muted-foreground tabular-nums">{line}</p>}
+          </div>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            {row.status === "nessuno" ? null : <StatusDot tone={status.tone} label={status.label} className="sm:w-36" />}
+            {primary && (
+              <Button size="sm" variant="outline" className={BTN} disabled={pending} onClick={primary.onClick}>
+                {primary.label}
+              </Button>
+            )}
+            <RowMenu label={`Altre azioni per ${row.name}`} items={lsMenu(row)} />
+          </div>
+        </div>
+        {expanded && (
+          <div id={`uc-person-${row.id}`} className="mt-2 space-y-3 pl-5 text-xs text-muted-foreground">
+            {(row.email || row.phone) && <p className="break-all">{[row.email, row.phone].filter(Boolean).join(" · ")}</p>}
+            {!row.hasEmail && !row.anonymized && <p>Senza email: il link si copia e si manda a mano.</p>}
+            {row.countsText && <p className="tabular-nums">{[row.countsText, pendingText].filter(Boolean).join(" · ")}</p>}
+            {evidence.map((e) => (
+              <p key={e} className="break-words">
+                {e}
+              </p>
+            ))}
+            {row.requests.length === 0 ? (
+              <p>Nessuna domanda ancora partita.</p>
+            ) : (
+              <ul className="space-y-2">
+                {row.requests.slice(0, 5).map((r) => (
+                  <li key={r.id} className="space-y-0.5">
+                    <StatusDot tone={REQUEST_STATUS_TONE[r.status]} label={r.statusLabel} />
+                    {r.detail && r.status !== "revocata" && (
+                      <ul className="space-y-0.5">
+                        {requestDetailLines(r.detail, day).map((text) => (
+                          <li key={text} className="break-words">
+                            {text}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {props.catalogBase && row.countsText && (
+              <Link href={`${props.catalogBase}?referente=${row.id}`} className="inline-flex min-h-11 items-center gap-0.5 text-sm text-muted-foreground hover:text-foreground sm:min-h-0">
+                Vedi le sue domande
+                <ChevronRight className="size-3.5" aria-hidden />
+              </Link>
+            )}
+          </div>
+        )}
+      </li>
+    );
+  });
+
+  const clientItems = (view.audience === "cliente" ? view.rows : []).map((row) => {
+    const status = CLIENT_PERSON_STATUS[row.status];
+    const menu: RowAction[] = [];
+    if (can.clientAssign && others(row.id).length > 0) menu.push({ label: T.affida, onClick: () => setDialog({ kind: "affida", row }) });
+    menu.push(...signerActions(row.id, row.name, row.roleText, row.signs));
+    return (
+      <li key={row.id} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
+        <div className="min-w-0 flex-1 basis-56">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="text-sm font-medium break-words">{row.name}</p>
+            <SignerChips signs={row.signs} />
+          </div>
+          {row.roleText && <p className="text-xs break-words text-muted-foreground">{row.roleText}</p>}
+        </div>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <StatusDot tone={status.tone} label={status.label} className="sm:w-28" />
+          <RowMenu label={`Altre azioni per ${row.name}`} items={menu} />
+        </div>
+      </li>
+    );
+  });
+
+  const unassignedItems = unassigned.map((u) => (
+    <li key={`ruolo-${u.roleKey}`} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
+      <div className="min-w-0 flex-1 basis-56">
+        <p className="text-sm text-muted-foreground">{T.unassigned}</p>
+        <p className="text-xs break-words text-muted-foreground tabular-nums">
+          {u.roleLabel} · {formatCountIt(u.questions)} {u.questions === 1 ? "domanda" : "domande"}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {can.send ? (
+          <Button size="sm" variant="outline" className={BTN} render={<Link href={props.sendHref} scroll={false} />} nativeButton={false}>
+            {T.assign}
+          </Button>
+        ) : can.clientAssign && contactOptions.length > 0 ? (
+          <Button size="sm" variant="outline" className={BTN} onClick={() => setDialog({ kind: "assegna", role: u })}>
+            {T.assign}
+          </Button>
+        ) : null}
+      </div>
+    </li>
+  ));
+
+  // Le righe che chiedono un'azione a chi guarda («Approva la delega», «Affida a…») vengono prima: mai dietro «Vedi
+  // tutti». Le altre restano in ordine alfabetico (art. 15.4: mai per domande aperte).
+  const lsRows = view.audience === "lateral_space" ? view.rows : [];
+  const delegation = (i: number) => (can.manage || can.send) && lsRows[i].status === "delega" && visibleAction(lsRows[i]) !== null;
+  const canAssign = can.send || (can.clientAssign && contactOptions.length > 0);
+  const items = [
+    ...lsItems.filter((_, i) => delegation(i)),
+    ...(canAssign ? unassignedItems : []),
+    ...lsItems.filter((_, i) => !delegation(i)),
+    ...clientItems,
+    ...(canAssign ? [] : unassignedItems),
+  ];
+  const missing = signersMissingText(designated);
+  const signerSlot = dialog?.kind === "firmatario" && dialog.designation ? (props.signers.find((s) => s.designation === dialog.designation) ?? null) : null;
 
   return (
     <>
-      <ul className="divide-y divide-border rounded-xl bg-card ring-1 ring-foreground/10" aria-label="Chi risponde per il cliente">
-        {lsRows.map((row) => {
-          const status = LS_PERSON_STATUS[row.status];
-          const primary = can.manage || can.send ? primaryFor(row) : null;
-          const expanded = open.has(row.id);
-          const meta = [row.roleText, signsText(row.signs), row.countsText, personPendingText(row)].filter(Boolean).join(" · ");
-          return (
-            <li key={row.id} className={cn("px-4 py-3", row.anonymized && "text-muted-foreground")}>
-              <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
-                <div className="min-w-0 flex-1 basis-56">
-                  <button
-                    type="button"
-                    className="inline-flex min-h-11 max-w-full items-center gap-1 rounded-sm text-left text-sm font-medium focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none sm:min-h-6"
-                    aria-expanded={expanded}
-                    aria-controls={`uc-person-${row.id}`}
-                    onClick={() => toggle(row.id)}
-                  >
-                    <ChevronRight className={cn("size-4 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-90")} aria-hidden />
-                    <span className="break-words">{row.name}</span>
-                    {row.anonymized && <span className="ml-1 text-xs font-normal">anonimizzato</span>}
-                    {!row.isActive && !row.anonymized && <span className="ml-1 text-xs font-normal text-muted-foreground">non attivo</span>}
-                  </button>
-                  {meta && <p className="pl-5 text-xs break-words text-muted-foreground tabular-nums">{meta}</p>}
-                </div>
-                <div className="flex min-w-0 flex-wrap items-center gap-2">
-                  {row.status === "nessuno" ? <span className="text-xs text-muted-foreground sm:w-36">–</span> : <StatusDot tone={status.tone} label={status.label} className="sm:w-36" />}
-                  {primary && (
-                    <Button size="sm" variant="outline" className={BTN} disabled={pending} onClick={primary.onClick}>
-                      {primary.label}
-                    </Button>
-                  )}
-                  {lsMenu(row)}
-                </div>
-              </div>
-              {expanded && (
-                <div id={`uc-person-${row.id}`} className="mt-2 space-y-3 pl-5 text-xs text-muted-foreground">
-                  {(row.email || row.phone) && <p className="break-all">{[row.email, row.phone].filter(Boolean).join(" · ")}</p>}
-                  {!row.hasEmail && !row.anonymized && <p>Senza email: il link si copia e si manda a mano.</p>}
-                  {row.requests.length === 0 ? (
-                    <p>Nessuna domanda ancora partita.</p>
-                  ) : (
-                    <ul className="space-y-2">
-                      {row.requests.slice(0, 5).map((r) => (
-                        <li key={r.id} className="space-y-0.5">
-                          <StatusDot tone={REQUEST_STATUS_TONE[r.status]} label={r.statusLabel} />
-                          {r.detail && r.status !== "revocata" && (
-                            <ul className="space-y-0.5">
-                              {requestDetailLines(r.detail, day).map((line) => (
-                                <li key={line} className="break-words">
-                                  {line}
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {props.catalogBase && row.countsText && (
-                    <Link href={`${props.catalogBase}?referente=${row.id}`} className="inline-flex min-h-11 items-center gap-0.5 text-sm text-muted-foreground hover:text-foreground sm:min-h-0">
-                      Vedi le sue domande
-                      <ChevronRight className="size-3.5" aria-hidden />
-                    </Link>
-                  )}
-                </div>
-              )}
-            </li>
-          );
-        })}
-
-        {clientRows.map((row) => {
-          const status = CLIENT_PERSON_STATUS[row.status];
-          const meta = [row.roleText, signsText(row.signs)].filter(Boolean).join(" · ");
-          return (
-            <li key={row.id} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
-              <div className="min-w-0 flex-1 basis-56">
-                <p className="text-sm font-medium break-words">{row.name}</p>
-                {meta && <p className="text-xs break-words text-muted-foreground">{meta}</p>}
-              </div>
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <StatusDot tone={status.tone} label={status.label} className="sm:w-28" />
-                {can.clientAssign && others(row.id).length > 0 && (
-                  <RowMenu label={`Altre azioni per ${row.name}`}>
-                    <DropdownMenuItem className={ITEM} onClick={() => setDialog({ kind: "affida", row })}>
-                      {"Affida le sue domande a un'altra persona"}
-                    </DropdownMenuItem>
-                  </RowMenu>
-                )}
-              </div>
-            </li>
-          );
-        })}
-
-        {unassigned.map((u) => (
-          <li key={`ruolo-${u.roleKey}`} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
-            <div className="min-w-0 flex-1 basis-56">
-              <p className="text-sm text-muted-foreground">Senza referente</p>
-              <p className="text-xs break-words text-muted-foreground tabular-nums">
-                {u.roleLabel} · {formatCountIt(u.questions)} {u.questions === 1 ? "domanda" : "domande"}
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              {can.send ? (
-                <Button size="sm" variant="outline" className={BTN} render={<Link href={props.sendHref} scroll={false} />} nativeButton={false}>
-                  Affida a…
-                </Button>
-              ) : can.clientAssign && contactOptions.length > 0 ? (
-                <Button size="sm" variant="outline" className={BTN} onClick={() => setDialog({ kind: "assegna", role: u })}>
-                  Affida a…
-                </Button>
-              ) : null}
-            </div>
-          </li>
-        ))}
+      <ul className="divide-y divide-border rounded-xl bg-card ring-1 ring-foreground/10" aria-label={T.clientGroup}>
+        {shownRows(items, all)}
       </ul>
+      {items.length > PEOPLE_ROWS_SHOWN && (
+        <button
+          type="button"
+          aria-expanded={all}
+          onClick={() => setAll(!all)}
+          className="inline-flex min-h-11 items-center gap-0.5 rounded-md text-sm text-muted-foreground hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none sm:min-h-8"
+        >
+          {all ? T.showFewer : T.showAll(items.length)}
+          <ChevronRight className={cn("size-3.5 transition-transform", all && "-rotate-90")} aria-hidden />
+        </button>
+      )}
+      {missing && (
+        <p data-slot="signers-missing" className="flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
+          <span>{missing}</span>
+          {can.designate && props.signerOptions.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setDialog({ kind: "firmatario", contact: null, designation: missingDesignation(designated) })}
+              className="inline-flex min-h-11 items-center gap-0.5 rounded-md font-medium text-foreground underline decoration-foreground/40 underline-offset-4 hover:decoration-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none sm:min-h-8"
+            >
+              {T.indicate}
+              <ChevronRight className="size-3.5" aria-hidden />
+            </button>
+          )}
+        </p>
+      )}
 
       {dialog?.kind === "link" && (
         <Dialog open onOpenChange={(o) => !o && close()}>
@@ -379,7 +450,7 @@ export function PeopleList(props: PeopleListProps) {
             <DialogHeader>
               <DialogTitle>Anonimizzare {dialog.row.name}?</DialogTitle>
               <DialogDescription>
-                Il nome e i recapiti di {dialog.row.name} spariscono dal caso. Le risposte restano. Non si può annullare.
+                Il nome e i recapiti di {dialog.row.name} spariscono dalla realizzazione. Le risposte restano. Non si può annullare.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -405,10 +476,13 @@ export function PeopleList(props: PeopleListProps) {
           caseId={caseId}
           open
           onOpenChange={(o) => !o && close()}
-          fixedContact={{ id: dialog.row.id, name: dialog.row.name, roleLabel: dialog.row.roleText }}
+          designation={dialog.designation ?? undefined}
+          fixedContact={dialog.contact ?? undefined}
+          current={signerSlot?.current ?? null}
+          evidence={signerSlot?.evidenceText ?? null}
           candidates={props.signerOptions}
           files={props.files}
-          canClear={false}
+          canClear={can.clearSigner}
           documentsHref={props.documentsHref}
         />
       )}
@@ -436,8 +510,8 @@ export function PeopleList(props: PeopleListProps) {
 
       {dialog?.kind === "affida" && (
         <ChooseContactDialog
-          title={`Affida le domande di ${dialog.row.name}`}
-          description="Le sue domande ancora aperte passano al collega che scegli. Quelle in un link ancora aperto restano a lei o a lui."
+          title={T.affidaTitle(dialog.row.name)}
+          description={T.affidaBody}
           confirm="Affida"
           contacts={others(dialog.row.id)}
           suggestedIds={[]}
@@ -449,8 +523,8 @@ export function PeopleList(props: PeopleListProps) {
 
       {dialog?.kind === "assegna" && (
         <ChooseContactDialog
-          title={`Chi risponde per ${dialog.role.roleLabel}`}
-          description="Le domande di questo ruolo ancora senza referente vanno alla persona che scegli. Le invia Lateral Space."
+          title={T.assignTitle(dialog.role.roleLabel)}
+          description={T.assignBody}
           confirm="Affida"
           contacts={contactOptions}
           suggestedIds={dialog.role.suggestedContactIds}
@@ -575,7 +649,7 @@ function ChooseContactDialog({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <div className="space-y-1.5">
-          <Label htmlFor="uc-choose-contact">Collega</Label>
+          <Label htmlFor="uc-choose-contact">{T.choosePerson}</Label>
           <ChoiceSelect id="uc-choose-contact" value={contactId} onChange={setContactId} placeholder="Scegli" groups={contactGroupsFor(suggestedIds, contacts)} />
         </div>
         <DialogFooter>
