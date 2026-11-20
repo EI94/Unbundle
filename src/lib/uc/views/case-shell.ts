@@ -21,7 +21,7 @@
 import { CASE_ACTION_ROLES } from "../permissions.ts";
 import { LS_CASE_ROLES, type CaseRole, type CaseStatus, type SemaforoColor } from "../vocab.ts";
 import { CASE_STATUS_TONE as STATUS_TONE } from "./labels.ts";
-import type { NextStepId } from "./next-step.ts";
+import type { NextStep, NextStepId } from "./next-step.ts";
 import { canOpenPage } from "./page-access.ts";
 
 export type UcShellPage = "panoramica" | "via" | "descrizione" | "persone" | "privacy" | "registro" | "firme" | "impostazioni" | "progetto";
@@ -279,6 +279,20 @@ export const STEPS_WITH_PAGE_COMMAND: readonly NextStepId[] = ["proponi_via", "m
 
 export function stepHasPageCommand(id: NextStepId): boolean {
   return STEPS_WITH_PAGE_COMMAND.includes(id);
+}
+
+/** Il pannello che apre il passo della testata: il dialogo di conferma, «Esporta…» o il pannello della pagina d'arrivo. */
+export type StepPanel = { name: "conferma" | "esporta" | "apri"; value: string };
+
+/**
+ * Il pannello di un passo (rilascio 10, §3.5): `?conferma=<stato>` per i cambi di stato, `?esporta=1` per il catalogo
+ * dello sviluppatore (pannelli della testata, su ogni pagina), `?apri=file` per «Controlla N file» (il pannello «File»
+ * di Domande). Con un pannello il primario non si nasconde mai sulla pagina in cui porta (`stepHiddenOn`): lì lo apre.
+ */
+export function stepPanelOf(step: Pick<NextStep, "id" | "transition" | "panel">): StepPanel | undefined {
+  if (step.transition) return { name: "conferma", value: step.transition };
+  if (step.id === "scarica_catalogo") return { name: "esporta", value: "1" };
+  return step.panel ? { ...step.panel } : undefined;
 }
 
 /**

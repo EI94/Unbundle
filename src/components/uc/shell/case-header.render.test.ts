@@ -21,7 +21,7 @@ const CASE = "00000000-0000-4000-8000-000000000c01";
 const base = `/dashboard/${WS}/casi-duso/${CASE}`;
 
 type Props = Record<string, unknown>;
-let html: (props: Props, at: { pathname: string; segment: string | null }) => string;
+let html: (props: Props, at: { pathname: string; segment: string | null; search?: string }) => string;
 
 before(async () => {
   await enableTsxImports();
@@ -49,7 +49,7 @@ before(async () => {
         h(
           LayoutRouterContext.Provider,
           { value: { parentTree, parentRenderTree: { data: { bfcacheId: 0 } }, parentCacheNode: null, parentSegmentPath: null, url: at.pathname } },
-          h(PathnameContext.Provider, { value: at.pathname }, h(SearchParamsContext.Provider, { value: new URLSearchParams() }, h(CaseHeader as never, props as never))),
+          h(PathnameContext.Provider, { value: at.pathname }, h(SearchParamsContext.Provider, { value: new URLSearchParams(at.search ?? "") }, h(CaseHeader as never, props as never))),
         ),
       ),
     ).replace(/&#x27;/g, "'");
@@ -149,6 +149,17 @@ test("no step: no label, no filled button; the step hides on the page it leads t
   assert.doesNotMatch(html(propose, PANORAMICA), /bg-primary/);
   const elsewhere = /<a\b[^>]*\bbg-primary\b[^>]*>/.exec(html(propose, DOMANDE))?.[0] ?? "";
   assert.ok(elsewhere.includes(`href="${base}#via"`), elsewhere);
+});
+
+test("(contract with «domande») «Controlla 2 file»: on Domande it stays and opens the File panel there, with the filters; elsewhere it leads there", () => {
+  const files = { ...PROPS, step: { label: "Controlla 2 file", href: `${base}/domande?apri=file`, caseBase: base, icon: "dossier", why: "2 PDF da aprire e controllare prima di usarli.", panel: { name: "apri", value: "file" } } };
+  const filledLink = (page: string) => /<a\b[^>]*\bbg-primary\b[^>]*>/.exec(page)?.[0] ?? "";
+  const onQuestions = filledLink(html(files, { ...DOMANDE, search: "vista=da-fare&pagina=2" }));
+  assert.ok(onQuestions.includes(`href="${base}/domande?vista=da-fare&amp;pagina=2&amp;apri=file"`), onQuestions);
+  const onOverview = filledLink(html(files, PANORAMICA));
+  assert.ok(onOverview.includes(`href="${base}/domande?apri=file"`), onOverview);
+  const onPeople = filledLink(html(files, { pathname: `${base}/persone`, segment: "persone", search: "invia=1" }));
+  assert.ok(onPeople.includes(`href="${base}/domande?apri=file"`), "the people's query does not travel to Domande");
 });
 
 test("one alert at most, with its link already complete", () => {

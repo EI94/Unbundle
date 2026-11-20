@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { CaseRole } from "../vocab.ts";
-import { FILES_HREF, NEXT_STEP_ICON, VIA_HREF, caseNextSteps, myNextSteps, nextStepFor, overviewTodo, resolveStepHref, turnRow, whoseTurn, type NextStep, type NextStepInput } from "./next-step.ts";
+import { FILES_HREF, FILES_PANEL, NEXT_STEP_ICON, VIA_HREF, caseNextSteps, myNextSteps, nextStepFor, overviewTodo, resolveStepHref, turnRow, whoseTurn, type NextStep, type NextStepInput } from "./next-step.ts";
 
 const NOW = new Date("2026-10-14T10:00:00Z");
 
@@ -326,6 +326,9 @@ test("(rilascio 10, §3.5, F-076) «Controlla N file»: a step after the verific
   for (const roles of [LEAD, AN]) {
     assert.deepEqual(brief(primary({ filesToCheck: 2 }, roles)), { label: "Controlla 2 file", detail: "2 PDF da aprire e controllare prima di usarli.", href: "/domande?apri=file", owner: "me" }, roles.join());
   }
+  // Contract with «domande»: a panel step, so on Domande the filled button stays and opens the File panel there.
+  assert.deepEqual(primary({ filesToCheck: 2 }, LEAD)?.panel, { name: "apri", value: "file" });
+  assert.deepEqual(FILES_PANEL, { name: "apri", value: "file" });
   assert.equal(primary({ filesToCheck: 1 }, LEAD)?.label, "Controlla 1 file");
   assert.equal(primary({ filesToCheck: 1 }, LEAD)?.detail, "Un PDF da aprire e controllare prima di usarlo.");
   for (const roles of [OWN, PRIV, DEV, BOARD, OBS]) assert.ok(!steps({ filesToCheck: 3 }, roles).some((s) => s.id === "controlla_file"), roles.join());

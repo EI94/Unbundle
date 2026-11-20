@@ -55,6 +55,11 @@ export interface NextStep {
   owner: StepOwner;
   /** Per i passi che si confermano in un dialogo: lo stato verso cui va il caso. */
   transition?: CaseStatus;
+  /**
+   * (Rilascio 10, §3.5) Il passo apre un pannello della pagina d'arrivo (`?apri=file` di Domande): su quella pagina il
+   * pulsante resta e apre il pannello lì; dalle altre pagine porta alla pagina con il pannello aperto.
+   */
+  panel?: { name: "apri"; value: string };
 }
 
 /**
@@ -84,6 +89,9 @@ export const VIA_HREF = "/#via";
 
 /** (Rilascio 10, §3.5) Il pannello «File» di Domande (`?apri=file`, di «domande»): l'indirizzo concordato, resta questo. */
 export const FILES_HREF = "/domande?apri=file";
+
+/** Il pannello «File» come pannello del passo: su Domande il pulsante lo apre lì, con i filtri di chi guarda. */
+export const FILES_PANEL: Readonly<{ name: "apri"; value: string }> = Object.freeze({ name: "apri", value: "file" });
 
 /** Una firma che aspetta chi guarda. `otherSideSigned`: l'altra parte ha già firmato. */
 export interface PendingSignature {
@@ -276,6 +284,7 @@ export function caseNextSteps(input: NextStepInput, viewer: NextStepViewer): Nex
       detail: files === 1 ? "Un PDF da aprire e controllare prima di usarlo." : `${n(files)} PDF da aprire e controllare prima di usarli.`,
       href: FILES_HREF,
       owner: "me",
+      panel: { ...FILES_PANEL },
     });
   }
 

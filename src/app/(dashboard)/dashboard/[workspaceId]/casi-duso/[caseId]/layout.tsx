@@ -23,6 +23,7 @@ import {
   realizationTitle,
   showsHeaderProgress,
   stepHasPageCommand,
+  stepPanelOf,
   transitionHint,
 } from "@/lib/uc/views/case-shell";
 import { NEXT_STEP_ICON, caseNextSteps, nextStepFor, resolveStepHref, type NextStep } from "@/lib/uc/views/next-step";
@@ -77,7 +78,8 @@ export default async function CaseLayout({ children, params }: { children: React
         label: primary.label,
         href: resolveStepHref(base, primary.href),
         caseBase: base,
-        panel: primary.transition ? { name: "conferma", value: primary.transition } : primary.id === "scarica_catalogo" ? { name: "esporta", value: "1" } : undefined,
+        // Un pannello: il dialogo di conferma, «Esporta…», o (rilascio 10, §3.5) il pannello «File» di Domande, che lì resta.
+        panel: stepPanelOf(primary),
         // (Rilascio 10, §7.4) L'icona e il «?» come il passo dello use case.
         icon: NEXT_STEP_ICON[primary.id],
         why: primary.detail,

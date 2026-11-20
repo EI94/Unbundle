@@ -22,6 +22,7 @@ import {
   solutionSegmentsFor,
   stepHasPageCommand,
   stepHiddenOn,
+  stepPanelOf,
   transitionNeedsReason,
   viaRedirect,
 } from "./case-shell.ts";
@@ -202,6 +203,18 @@ test("(rilascio 10, §3.5) a step whose command is in the via section hides on t
   assert.equal(stepHiddenOn(propose, `${base}/`), true);
   assert.equal(stepHiddenOn(propose, `${base}/domande`), false, "on the other tabs it leads there");
   assert.equal(stepHiddenOn({ href: `${base}#via`, caseBase: base }, base), false, "an anchor of the Panoramica without a command stays");
+});
+
+test("(rilascio 10, §3.5) the panel of a step: the header's dialogs, «Esporta…», and the File panel of Domande, which stays on Domande", () => {
+  assert.deepEqual(stepPanelOf({ id: "avvia_sviluppo", transition: "in_sviluppo" }), { name: "conferma", value: "in_sviluppo" });
+  assert.deepEqual(stepPanelOf({ id: "scarica_catalogo" }), { name: "esporta", value: "1" });
+  assert.deepEqual(stepPanelOf({ id: "controlla_file", panel: { name: "apri", value: "file" } }), { name: "apri", value: "file" });
+  assert.equal(stepPanelOf({ id: "verifica" }), undefined);
+  const base = "/dashboard/w1/casi-duso/c1";
+  const files = { href: `${base}/domande?apri=file`, caseBase: base, panel: true };
+  assert.equal(stepHiddenOn(files, `${base}/domande`), false, "on Domande the filled button stays: it opens the panel there");
+  assert.equal(stepHiddenOn(files, base), false);
+  assert.equal(stepHiddenOn(files, `${base}/impostazioni`), true, "never on Impostazioni");
 });
 
 test("the primary never shows on Impostazioni, panels included: one filled button there", () => {

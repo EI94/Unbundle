@@ -12,7 +12,7 @@ import { UI10_TEXT } from "@/components/ui-10/text";
 import { NextStepIconView, NextStepWhy } from "@/components/use-cases/detail/next-step-box";
 import { ActionMenu, type ActionMenuItem } from "@/components/uc/ui/action-menu";
 import { transitionCaseAction } from "@/lib/actions/uc-cases";
-import { stepHiddenOn, type CaseMenuKey, type CaseTrail } from "@/lib/uc/views/case-shell";
+import { stepHiddenOn, type CaseMenuKey, type CaseTrail, type StepPanel } from "@/lib/uc/views/case-shell";
 import type { CaseStatus } from "@/lib/uc/vocab";
 import type { NextStepIcon } from "@/lib/use-cases/guided";
 import { cn } from "@/lib/utils";
@@ -89,8 +89,12 @@ export interface CaseStepView {
   href: string;
   /** Radice del dossier: dice dove il passo si nasconde (`stepHiddenOn`). */
   caseBase: string;
-  /** Il passo apre un pannello della testata invece di cambiare pagina. */
-  panel?: { name: "conferma" | "esporta"; value: string };
+  /**
+   * Il passo apre un pannello invece di cambiare pagina (`stepPanelOf`): quelli della testata (`conferma`, `esporta`)
+   * su ogni pagina; (rilascio 10, §3.5) `apri` sulla pagina d'arrivo del passo (il pannello «File» di Domande), che
+   * dalle altre pagine si raggiunge con `href`.
+   */
+  panel?: StepPanel;
   /** (Rilascio 10, §7.4) L'icona accanto al verbo, come nei passi dello use case (`NEXT_STEP_ICON`). */
   icon?: NextStepIcon;
   /** (Rilascio 10, §7.4) Il perché del passo, nel «?» accanto al pulsante (`NextStepWhy`); null senza niente da dire. */
@@ -106,6 +110,18 @@ function withParam(pathname: string, current: URLSearchParams, name: string, val
   const next = new URLSearchParams(current.toString());
   next.set(name, value);
   return `${pathname}?${next.toString()}`;
+}
+
+const pathOf = (href: string) => href.split(/[?#]/)[0].replace(/\/+$/, "");
+
+/**
+ * Dove porta il passo da questa pagina: un pannello della testata si apre qui; un pannello di pagina (`apri`) si apre
+ * qui solo sulla sua pagina, con i filtri di chi guarda; altrimenti l'indirizzo del passo. `inPlace`: si resta qui.
+ */
+export function stepTarget(step: Pick<CaseStepView, "href" | "panel">, pathname: string, current: URLSearchParams): { href: string; inPlace: boolean } {
+  if (!step.panel) return { href: step.href, inPlace: false };
+  if (step.panel.name === "apri" && pathOf(pathname) !== pathOf(step.href)) return { href: step.href, inPlace: false };
+  return { href: withParam(pathname, current, step.panel.name, step.panel.value), inPlace: true };
 }
 
 /**
@@ -124,14 +140,14 @@ export function CaseStepButton({ step, size = "default", withLabel = false, clas
   const whyId = useId();
   const labelId = useId();
   if (stepHiddenOn({ href: step.href, caseBase: step.caseBase, panel: !!step.panel, pageCommand: step.pageCommand }, pathname)) return null;
-  const href = step.panel ? withParam(pathname, searchParams, step.panel.name, step.panel.value) : step.href;
+  const { href, inPlace } = stepTarget(step, pathname, searchParams);
   const why = size === "default" && step.why ? step.why : null;
   const button = (
     <Button
       size={size}
       data-slot="case-step"
       className={cn(size === "default" ? "min-w-0 flex-1 sm:flex-none" : "min-h-8", !why && !withLabel ? className : undefined)}
-      render={<Link href={href} scroll={!step.panel} aria-describedby={why ? whyId : undefined} />}
+      render={<Link href={href} scroll={!inPlace} aria-describedby={why ? whyId : undefined} />}
       nativeButton={false}
     >
       {step.icon ? <NextStepIconView icon={step.icon} /> : null}
