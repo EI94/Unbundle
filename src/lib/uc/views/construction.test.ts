@@ -96,3 +96,25 @@ test("copy guard: the words a client role can read on the Costruzione are clean,
     assert.doesNotMatch(text, /\bcoding agent\b|\bCLI\b|\bcommit\b|\bp95\b|\bramo\b/i, text);
   }
 });
+
+test("the Costruzione page: no second H1, closed folds, one action, the client without commands, every 8.2b piece in the details", async () => {
+  const { readFileSync } = await import("node:fs");
+  const source = readFileSync(new URL("../../../app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/costruzione/page.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /<h1\b|PAGE_TITLE_CLASS|SettingsSection/, "the realization's header has the H1; no settings frames on a work page");
+  assert.doesNotMatch(source, /defaultOpen/, "folds closed unless a link opens them");
+  for (const fold of ["T.choicesId", "T.decisionsId", "T.contextId", "T.agentId", "QUALITY_ANCHORS.details"]) assert.match(source, new RegExp(`<Fold id=\\{${fold.replace(".", "\\.")}\\}`), fold);
+  // One action for the project; the header's own primary never shows here (PAGES_WITHOUT_PRIMARY).
+  assert.equal((source.match(/<ProjectPrimaryAction /g) ?? []).length, 1);
+  assert.match(source, /const \{ action, reopenAside \} = projectAction\(\{/);
+  // Every 8.2b element stays: the whole evals section, with «dalla CI» and its link for who builds.
+  assert.match(source, /<EvalSection overview=\{evals\.overview\} caseCode=\{caseCode\} unavailable=\{evals\.unavailable\} origins=\{evals\.origins\} ciLinks=\{ciLinks\} \/>/);
+  assert.match(source, /readEvalOrigins\(executor, target, r\.overview\)/);
+  assert.match(source, /const summary = qualitySummary\(evals\.overview, \{ builder: details \}\);/, "the client's roles read one sentence");
+  // Branches and the change on GitHub only for who builds; commands only in «Per il coding agent».
+  assert.match(source, /details && t\.branch \? T\.taskBranch\(t\.branch\) : null/);
+  assert.match(source, /const pr = details && t\.prUrl \? t\.prUrl : null;/);
+  assert.match(source, /\{builder \? \(\s*<section aria-labelledby="comandi-titolo"/);
+  // Topics in Italian on screen; «Catalogo ›» after the via.
+  assert.match(source, /constructionTopicLabel\(topic\)/);
+  assert.match(source, /const catalogHref = pastVia && canOpenPage\("voci", roles\)/);
+});

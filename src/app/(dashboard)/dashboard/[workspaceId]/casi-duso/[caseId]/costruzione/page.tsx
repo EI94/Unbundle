@@ -403,8 +403,9 @@ export default async function ConstructionPage({
         ) : null}
 
         <div className="min-w-0">
-          <Fold id={T.choicesId} title={T.choicesTitle} summary={project ? T.choices(choicesMade(project.topics), SETUP_TOPICS.length) : null}>
-            {project ? (
+          {/* Senza progetto non ci sono scelte da leggere: la riga del progetto lo dice già (lo zero non si vede). */}
+          {project ? (
+            <Fold id={T.choicesId} title={T.choicesTitle} summary={T.choices(choicesMade(project.topics), SETUP_TOPICS.length)}>
               <ul className="divide-y">
                 {SETUP_TOPICS.map((topic) => {
                   const choice = project.topics[topic] ?? null;
@@ -420,10 +421,6 @@ export default async function ConstructionPage({
                   );
                 })}
               </ul>
-            ) : (
-              <p className="text-sm text-muted-foreground">{T.notSet}</p>
-            )}
-            {project ? (
               <div className="space-y-2 text-sm">
                 <h3 className="font-medium">{T.toolsTitle}</h3>
                 {project.newTools.length ? (
@@ -464,21 +461,21 @@ export default async function ConstructionPage({
                   />
                 ) : null}
               </div>
-            ) : null}
-            {previous ? (
-              <details className="text-sm">
-                <summary className="flex min-h-11 cursor-pointer items-center text-muted-foreground sm:min-h-0">{T.previous(previous.version, day(previous.approvedAt))}</summary>
-                <ul className="mt-2 divide-y rounded-md border px-3">
-                  {SETUP_TOPICS.map((topic) => (
-                    <li key={topic} className="py-2.5">
-                      <p className="text-sm font-medium">{constructionTopicLabel(topic)}</p>
-                      <ChoiceText choice={previous.topics[topic] ?? null} />
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            ) : null}
-          </Fold>
+              {previous ? (
+                <details className="text-sm">
+                  <summary className="flex min-h-11 cursor-pointer items-center text-muted-foreground sm:min-h-0">{T.previous(previous.version, day(previous.approvedAt))}</summary>
+                  <ul className="mt-2 divide-y rounded-md border px-3">
+                    {SETUP_TOPICS.map((topic) => (
+                      <li key={topic} className="py-2.5">
+                        <p className="text-sm font-medium">{constructionTopicLabel(topic)}</p>
+                        <ChoiceText choice={previous.topics[topic] ?? null} />
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
+            </Fold>
+          ) : null}
 
           {decisionsShown ? (
             <Fold id={T.decisionsId} title={T.decisionsTitle} summary={teamDecisions.length ? String(teamDecisions.length) : null}>
