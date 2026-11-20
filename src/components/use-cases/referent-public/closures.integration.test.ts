@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
+import { REFERENT_PRIVACY_NOTICE } from "../../../lib/use-cases/referent/labels.ts";
 
 // (Rilascio 5, SPEC §3.6, §6.2, §7.5, A2, A4) Le chiusure delle domande sulla pagina del referente, sul
 // database di prova: «Non ce l'ho» ed «È già allegato» che si escludono e tolgono il testo, il commento solo
@@ -147,7 +148,7 @@ async function closedLink(questions: number, fileRequired: number[] = []) {
   assert.ok(token, "il link è nell'email");
   const first = await pub.resolveReferentToken(token, new Date());
   if (first.access !== "ok") throw new Error("link");
-  okPub(await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" }, new Date()));
+  okPub(await pub.acceptReferentPrivacy(first.link, { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version }, new Date()));
   const again = await pub.resolveReferentToken(token, new Date());
   if (again.access !== "ok") throw new Error("link");
   return { card, needIds, token, requestId: sent.requestId, link: again.link };

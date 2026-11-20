@@ -93,9 +93,12 @@ export function PrivacyCard({
   );
 }
 
-/** Nel piè di pagina: «▸ Come usiamo le tue risposte», con l'informativa completa. */
-export function PrivacyFooter({ texts, reference = null }: { texts: Pick<PrivacyTexts, "footerLabel" | "paragraphs">; reference?: string | null }) {
-  const notice = (
+/**
+ * Nel piè di pagina: «▸ Come usiamo le tue risposte», con l'informativa completa. (Rilascio 10, §3.11) Un solo accesso al
+ * testo completo per schermata: sulla schermata dell'informativa (`withNotice` falso) solo il riferimento.
+ */
+export function PrivacyFooter({ texts, reference = null, withNotice = true }: { texts: Pick<PrivacyTexts, "footerLabel" | "paragraphs">; reference?: string | null; withNotice?: boolean }) {
+  const notice = withNotice ? (
     <Disclosure summary={texts.footerLabel}>
       <div className="space-y-2 text-base leading-6 break-words text-muted-foreground">
         {texts.paragraphs.map((p) => (
@@ -103,7 +106,7 @@ export function PrivacyFooter({ texts, reference = null }: { texts: Pick<Privacy
         ))}
       </div>
     </Disclosure>
-  );
+  ) : null;
   if (!reference) return notice;
   // (Rilascio 10, D6) Il codice del caso d'uso in piccolo, sotto il link all'informativa: mai nel titolo.
   return (

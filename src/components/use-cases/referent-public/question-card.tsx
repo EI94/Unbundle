@@ -1,29 +1,35 @@
 "use client";
 
 import { useCallback, useEffect, useId, useReducer, useRef, useState } from "react";
-import { Check } from "lucide-react";
+import { Check, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TEXTAREA_CLASS } from "@/components/uc/referente/inputs/fields";
 import { REFERENT_CHECK_LIMITS } from "@/lib/db/use-case-hub-referent-check-ddl";
 import { cn } from "@/lib/utils";
 import { REFERENT_LIMITS } from "@/lib/use-cases/referent/contract";
-import { REFERENT_ERROR_MESSAGES, REFERENT_PUBLIC_TEXT } from "@/lib/use-cases/referent/labels";
+import { REFERENT_ERROR_MESSAGES, REFERENT_PUBLIC_TEXT, fillText } from "@/lib/use-cases/referent/labels";
 import { waitsForPrivacy } from "@/lib/use-cases/referent/state";
 import { saveDraft } from "./api";
-import { Attachments } from "./attachments";
+import { Attachments, type AttachmentsHandle } from "./attachments";
 import { autosaveLabelKey, autosaveReducer, dueDraft, initialAutosave, needsFlush, waitFor, type AutosaveState, type DraftValue } from "./autosave";
-import { attachHelp, attachLabel, closeHint, commentOffered, counterLabel, handledText, questionClosed, sentAnswerView, updatedLine, type PublicFile, type QuestionSection } from "./public-view-render";
+import { attachLabel, closeHint, commentOffered, counterLabel, handledText, questionClosed, sentAnswerView, updatedLine, type PublicFile, type QuestionSave, type QuestionSection } from "./public-view-render";
 import { TemplateDownloads } from "./template-downloads";
 
 /**
  * Una domanda della pagina `/rispondi/<token>` (SPEC §4.4 punto 4, Parte 3 §P3.7; rilascio 5 §7.5):
  * - «aperta»: si chiude con una risposta (salvata da sola 1,5 secondi dopo l'ultimo tasto e uscendo dal
- *   campo; mai su «Serve un file»), un file, «Non ce l'ho» (con «Chi potrebbe saperlo?») o «È già
+ *   campo; mai su «Serve un file»), un file, «Non lo so» (con «Chi potrebbe saperlo?») o «È già
  *   allegato»; con un file o «È già allegato» si può aggiungere un commento;
- * - «inviata»: in sola lettura, «Inviata il 27/10», il testo, «Non ce l'ho» o «È già allegato», il
+ * - «inviata»: in sola lettura, «Inviata il 27/10», il testo, «Non lo so» o «È già allegato», il
  *   commento, i nomi dei file;
  * - «gestita»: ci ha già pensato il team dalla scheda. Solo il titolo e «Non serve più: ci ha già
  *   pensato il team.»: niente campi, niente file, mai cosa ha scritto il team né chi.
+ *
+ * (Rilascio 10, §3.11) Tre controlli per domanda: il campo, «Allega» e «Non lo so», più «Altro ▸» con «È già allegato» e
+ * «Ho un dubbio». La scheda ha il suo numero («1», «2»…) e il titolo che fa da etichetta del campo. Con un file da
+ * compilare prima «Scarica il file da compilare», poi «Allega il file compilato», e il campo chiuso sotto «Oppure scrivi la
+ * risposta ▸»; una domanda che vuole un file ha «Allega un file» grande. Lo stato del salvataggio sta nella barra («2 di 5 ·
+ * salvato», `onSave`): sotto la domanda solo quando non riesce.
  *
  * (Rilascio 9b) Una bozza, un file o un «Togli» che aspettano l'informativa (mai letta, o cambiata con un rilascio
  * mentre la pagina era aperta) non ricostruiscono la domanda: il testo resta nel campo (`held`), la pagina mostra di
@@ -37,6 +43,9 @@ export const questionTitleId = (needId: string) => `ucq-domanda-${needId.toLower
 
 /** Salva quello che manca prima dell'invio: true se il server ha l'ultima versione della risposta. */
 export type FlushDraft = () => Promise<boolean>;
+
+/** (Rilascio 10, §3.11) I comandi sotto il campo: senza bordo, alti 44 px, scelti con il fondo e un filo. */
+const COMMAND_CLASS = "min-h-11 h-auto px-2 text-base font-medium aria-pressed:bg-muted aria-pressed:ring-[1.5px] aria-pressed:ring-foreground aria-pressed:ring-inset";
 
 function CardFrame({
   section,
@@ -60,24 +69,28 @@ function CardFrame({
       aria-labelledby={questionTitleId(section.needId)}
       data-closed={closed ? "" : undefined}
       className={cn(
-        "min-w-0 scroll-mt-6 space-y-4 rounded-xl bg-card p-4 ring-1 ring-foreground/10 sm:p-5",
+        "min-w-0 scroll-mt-6 space-y-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10 sm:p-5",
         missing && "ring-2 ring-uc-giallo",
         invalid && "ring-2 ring-uc-rosso",
       )}
     >
-      <div className="space-y-1">
-        <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-          <span>{section.label}</span>
-          {closed ? (
-            <>
-              <Check className="size-4 text-uc-verde" aria-hidden />
-              <span className="sr-only">{T.doneSuffix}</span>
-            </>
-          ) : null}
-        </p>
-        <h3 id={questionTitleId(section.needId)} tabIndex={-1} className="rounded-md text-lg leading-snug font-semibold break-words outline-none focus-visible:ring-3 focus-visible:ring-ring/40">
-          {section.title}
-        </h3>
+      <div className="flex min-w-0 items-start gap-3">
+        {section.label ? null : (
+          <span
+            aria-hidden
+            data-slot="question-number"
+            className={cn("grid size-6 shrink-0 place-items-center rounded-full text-[13px] leading-none font-semibold tabular-nums", closed ? "bg-uc-verde-bg text-uc-verde" : "bg-muted")}
+          >
+            {closed ? <Check className="size-3.5" /> : section.number}
+          </span>
+        )}
+        <div className="min-w-0 flex-1 space-y-1">
+          {section.label ? <p className="text-sm text-muted-foreground">{section.label}</p> : null}
+          <h3 id={questionTitleId(section.needId)} tabIndex={-1} className="rounded-md text-base leading-6 font-semibold break-words outline-none focus-visible:ring-3 focus-visible:ring-ring/40">
+            {section.title}
+          </h3>
+        </div>
+        {closed ? <span className="sr-only">{T.doneSuffix}</span> : null}
       </div>
       {token ? <TemplateDownloads token={token} question={section.question} /> : null}
       {children}
@@ -139,6 +152,8 @@ export function OpenQuestionCard({
   downloads = true,
   paused = false,
   onPrivacyWait,
+  onSave,
+  onDoubt,
 }: {
   token: string;
   section: QuestionSection;
@@ -155,20 +170,23 @@ export function OpenQuestionCard({
   onEdit?: (needId: string) => void;
   /** (Rilascio 5) «Invia» l'ha trovata ancora aperta: l'anello morbido e la riga «Per chiudere: …». */
   missing?: boolean;
-  /** (Rilascio 5) La domanda è chiusa o no, per «{k} di {n} fatte» e «Invia». */
+  /** (Rilascio 5) La domanda è chiusa o no, per «2 di 5» e «Invia». */
   onClosure?: (needId: string, closed: boolean) => void;
   /**
    * (Rilascio 5) Il secondo clic di un doppio clic, o un clic subito dopo il cambio di passo (il doppio
-   * clic su «Sì» del passo 2 arriva sulla prima domanda): «Non ce l'ho», «È già allegato» e «Allega un
-   * file» lo ignorano.
+   * clic su «Sì» del passo 2 arriva sulla prima domanda): «Non lo so», «È già allegato» e «Allega» lo ignorano.
    */
   tooSoon?: (e: React.MouseEvent<HTMLButtonElement>) => boolean;
-  /** (Rilascio 6) Sotto la domanda: il filo con il team e «Ho un dubbio». */
+  /** (Rilascio 6) Sotto la domanda: il filo con il team e il campo di «Ho un dubbio». */
   extra?: React.ReactNode;
   /** (Rilascio 9b) L'informativa è sullo schermo al posto delle domande: nessun salvataggio parte da solo. */
   paused?: boolean;
   /** (Rilascio 9b) Una scrittura aspetta l'informativa: la pagina la mostra di nuovo, senza ricostruire la domanda. */
   onPrivacyWait?: () => void;
+  /** (Rilascio 10, §3.11) Lo stato del salvataggio di questa domanda, per l'unico «salvato» della barra. */
+  onSave?: (needId: string, save: QuestionSave) => void;
+  /** (Rilascio 10, §3.11) «Ho un dubbio» dentro «Altro»: la pagina apre il campo sotto la domanda. Senza, niente «Ho un dubbio». */
+  onDoubt?: () => void;
 }) {
   const id = useId();
   const needId = section.needId;
@@ -182,6 +200,11 @@ export function OpenQuestionCard({
   );
   const [files, setFiles] = useState<PublicFile[]>(() => section.question.files);
   const [commentOpen, setCommentOpen] = useState(() => Boolean(draft?.comment));
+  // (Rilascio 10, §3.11) «Altro ▸» chiuso, aperto se «È già allegato» è già scelto; con un file da compilare il campo
+  // chiuso sotto «Oppure scrivi la risposta ▸», aperto se c'è già un testo.
+  const [moreOpen, setMoreOpen] = useState(() => draft?.alreadyAttached === true);
+  const [writeOpen, setWriteOpen] = useState(() => Boolean(draft?.text?.trim()) && !draft?.dontKnow && !draft?.alreadyAttached);
+  const attachRef = useRef<AttachmentsHandle>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const stateRef = useRef<AutosaveState>(state);
@@ -314,6 +337,11 @@ export function OpenQuestionCard({
 
   const counter = counterLabel(value.text.length);
   const statusKey = autosaveLabelKey(state);
+  // (Rilascio 10, §3.11) Lo stato del salvataggio va alla barra: «salvato» solo quando tutto è sul server.
+  const saveState: QuestionSave = state.status === "held" ? "held" : state.status === "error" || state.status === "blocked" ? "error" : state.inFlight || state.status === "pending" || state.status === "saving" ? "saving" : "saved";
+  useEffect(() => {
+    onSave?.(needId, saveState);
+  }, [needId, saveState, onSave]);
   const fieldErrors = [...state.fieldError.map((i) => i.message), ...issues.filter((m) => !state.fieldError.some((i) => i.message === m))];
   // Un avviso che l'invio ha già trasformato in errore non si ripete sotto.
   const warnings = state.warnings.filter((w) => !fieldErrors.includes(w.message));
@@ -321,63 +349,108 @@ export function OpenQuestionCard({
   const commentId = `${id}-commento`;
   const errId = `${id}-err`;
   const statusId = `${id}-stato`;
+  const moreId = `${id}-altro`;
   const blocked = disabled;
+  const template = (section.question.templates ?? []).length > 0;
   const showText = !fileRequired && !value.dontKnow && !attached;
+  // (Rilascio 10, §3.11) Con un file da compilare il campo sta chiuso sotto «Oppure scrivi la risposta ▸».
+  const textOpen = showText && (!template || writeOpen || value.text.trim().length > 0);
   const showComment = value.dontKnow || (offerComment && (commentOpen || Boolean(value.comment?.trim())));
+  // Il pulsante grande: la domanda vuole un file o ha un file da compilare; altrimenti il comando «Allega».
+  const bigAttach = fileRequired || template;
+  const canUpload = !value.dontKnow && !attached;
+
+  const field = textOpen ? (
+    <div className="min-w-0 space-y-1.5">
+      <textarea
+        id={textId}
+        value={value.text}
+        maxLength={REFERENT_LIMITS.answerMax}
+        rows={2}
+        placeholder={T.answerPlaceholder}
+        disabled={blocked}
+        aria-labelledby={questionTitleId(needId)}
+        aria-invalid={fieldErrors.length > 0 || undefined}
+        aria-describedby={[fieldErrors.length > 0 ? errId : null, statusId].filter(Boolean).join(" ")}
+        onChange={(e) => edit({ text: e.target.value }, false)}
+        onBlur={() => dispatch({ type: "blur", now: Date.now() })}
+        className={cn(TEXTAREA_CLASS, "min-h-12 field-sizing-content")}
+      />
+      {counter ? <p className="text-sm text-muted-foreground">{counter}</p> : null}
+    </div>
+  ) : null;
+
+  const attachments =
+    canUpload || files.some((f) => f.status !== "rifiutato") ? (
+      <Attachments
+        token={token}
+        needId={needId}
+        files={files}
+        onFiles={setFiles}
+        clientMode={clientMode}
+        allowUpload={canUpload}
+        disabled={blocked}
+        tooSoon={tooSoon}
+        label={attachLabel(section.question)}
+        onPrivacyWait={onPrivacyWait}
+        trigger={bigAttach ? "button" : "none"}
+        handleRef={attachRef}
+      />
+    ) : null;
 
   return (
     <CardFrame section={section} token={downloads ? token : undefined} invalid={fieldErrors.length > 0} missing={missing && !closed} closed={closed}>
-      {fileRequired ? (
-        <p className="text-sm break-words text-muted-foreground">
-          <span className="font-medium text-foreground">{T.fileRequired}</span> · {attachHelp(clientMode)}
-        </p>
+      {bigAttach ? attachments : field}
+      {template && showText && !textOpen ? (
+        <Button type="button" variant="ghost" aria-expanded={false} className="-ml-2 min-h-11 h-auto px-2 text-base underline underline-offset-4" disabled={blocked} onClick={() => setWriteOpen(true)}>
+          {T.writeInstead}
+          <span aria-hidden>{` ${T.moreClosed}`}</span>
+        </Button>
       ) : null}
-      {showText ? (
-        <div className="min-w-0 space-y-1.5">
-          <label htmlFor={textId} className="block text-sm font-medium">
-            {T.answerLabel}
-          </label>
-          <textarea
-            id={textId}
-            value={value.text}
-            maxLength={REFERENT_LIMITS.answerMax}
-            rows={4}
-            placeholder={T.answerPlaceholder}
+      {template ? field : null}
+      {bigAttach ? null : attachments}
+
+      <div role="group" aria-label={T.aria.closures} data-slot="question-commands" className="-ml-2 flex flex-wrap gap-x-1">
+        {bigAttach || !canUpload ? null : (
+          <Button
+            type="button"
+            variant="ghost"
+            className={COMMAND_CLASS}
             disabled={blocked}
-            aria-invalid={fieldErrors.length > 0 || undefined}
-            aria-describedby={[fieldErrors.length > 0 ? errId : null, statusId].filter(Boolean).join(" ")}
-            onChange={(e) => edit({ text: e.target.value }, false)}
-            onBlur={() => dispatch({ type: "blur", now: Date.now() })}
-            className={TEXTAREA_CLASS}
-          />
-          {counter ? <p className="text-sm text-muted-foreground">{counter}</p> : null}
-        </div>
-      ) : null}
-
-      {!value.dontKnow && !attached ? (
-        <Attachments
-          token={token}
-          needId={needId}
-          files={files}
-          onFiles={setFiles}
-          clientMode={clientMode}
-          allowUpload
-          disabled={blocked}
-          tooSoon={tooSoon}
-          label={attachLabel(section.question)}
-          onPrivacyWait={onPrivacyWait}
-        />
-      ) : files.some((f) => f.status !== "rifiutato") ? (
-        <Attachments token={token} needId={needId} files={files} onFiles={setFiles} clientMode={clientMode} allowUpload={false} disabled={blocked} onPrivacyWait={onPrivacyWait} />
-      ) : null}
-
-      <div role="group" aria-label={T.aria.closures} className="flex flex-wrap gap-2">
-        <Button type="button" variant="outline" aria-pressed={value.dontKnow} className={cn("min-h-11 text-base", value.dontKnow && "border-foreground")} disabled={blocked} onClick={toggleDontKnow}>
+            onClick={(e) => {
+              if (e.detail > 1 || tooSoon?.(e)) return;
+              attachRef.current?.open();
+            }}
+          >
+            <Paperclip aria-hidden />
+            {T.attachShort}
+          </Button>
+        )}
+        <Button type="button" variant="ghost" aria-pressed={value.dontKnow} className={COMMAND_CLASS} disabled={blocked} onClick={toggleDontKnow}>
           {T.dontKnow}
         </Button>
-        <Button type="button" variant="outline" aria-pressed={attached} className={cn("min-h-11 text-base", attached && "border-foreground")} disabled={blocked} onClick={toggleAttached}>
+        <Button
+          type="button"
+          variant="ghost"
+          aria-expanded={moreOpen}
+          aria-controls={moreId}
+          aria-label={fillText(T.aria.moreOn, { testo: section.title })}
+          className={COMMAND_CLASS}
+          onClick={() => setMoreOpen((open) => !open)}
+        >
+          {T.more}
+          <span aria-hidden>{` ${moreOpen ? T.moreOpen : T.moreClosed}`}</span>
+        </Button>
+      </div>
+      <div id={moreId} hidden={!moreOpen || undefined} data-slot="question-more" className="-mt-2 -ml-2 flex flex-wrap gap-x-1">
+        <Button type="button" variant="ghost" aria-pressed={attached} className={COMMAND_CLASS} disabled={blocked} onClick={toggleAttached}>
           {T.alreadyAttached}
         </Button>
+        {onDoubt ? (
+          <Button type="button" variant="ghost" className={COMMAND_CLASS} onClick={() => onDoubt()}>
+            {T.thread.doubt}
+          </Button>
+        ) : null}
       </div>
 
       {showComment ? (
@@ -398,13 +471,14 @@ export function OpenQuestionCard({
           />
         </div>
       ) : offerComment ? (
-        <Button type="button" variant="ghost" className="min-h-11 h-auto px-2 text-base" onClick={() => setCommentOpen(true)}>
+        <Button type="button" variant="ghost" className="-ml-2 min-h-11 h-auto px-2 text-base" onClick={() => setCommentOpen(true)}>
           {T.addComment}
         </Button>
       ) : null}
 
-      <p id={statusId} role="status" aria-live="polite" className={cn("min-h-5 text-sm text-muted-foreground", statusKey === "error" && "text-uc-rosso")}>
-        {statusKey ? T.autosave[statusKey] : ""}
+      {/* (Rilascio 10, §3.11) Lo stato sotto la domanda solo quando il salvataggio non riesce: «salvato» sta nella barra. */}
+      <p id={statusId} role="status" aria-live="polite" className={cn("text-sm text-uc-rosso", statusKey !== "error" && "sr-only")}>
+        {statusKey === "error" ? T.autosave.error : ""}
       </p>
       {fieldErrors.length > 0 || localError ? (
         <ul id={errId} className="space-y-1 text-sm break-words text-uc-rosso">

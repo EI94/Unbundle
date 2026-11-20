@@ -91,7 +91,8 @@ export function useRef(value) { return r().useRef(value); }
 export function useId() { return r().useId(); }
 export function useMemo(fn, deps) { return r().useMemo(fn, deps); }
 export function useCallback(fn, deps) { return r().useMemo(() => fn, deps); }
-export function useEffect(fn, deps) { r().useEffect(fn, deps); }`;
+export function useEffect(fn, deps) { r().useEffect(fn, deps); }
+export function useImperativeHandle(ref, create) { if (ref && typeof ref === "object") ref.current = create(); }`;
 const JSX = `export function jsx(type, props, key) { return { type, key: key ?? null, props: props ?? {} }; }
 export const jsxs = jsx;
 export const Fragment = "frammento";`;
@@ -167,7 +168,7 @@ const text = (e: Element) => [e.props.children].flat().join("");
 function openCard(t: TestContext) {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: Date.parse("2026-11-18T19:00:00Z") });
   const flushes: (() => Promise<boolean>)[] = [];
-  const calls = { wait: 0, stale: [] as string[] };
+  const calls = { wait: 0, stale: [] as string[], saves: [] as string[] };
   const card = mount(OpenQuestionCard as unknown as (props: Record<string, unknown>) => unknown, {
     token: TOKEN,
     section: SECTION,
@@ -177,6 +178,8 @@ function openCard(t: TestContext) {
     registerFlush: (_: string, flush: (() => Promise<boolean>) | null) => void (flush && flushes.push(flush)),
     onStale: (code: string) => void calls.stale.push(code),
     onPrivacyWait: () => void (calls.wait += 1),
+    // (Rilascio 10, §3.11) Lo stato del salvataggio va alla barra della pagina.
+    onSave: (_: string, save: string) => void (calls.saves.at(-1) === save ? null : calls.saves.push(save)),
     paused: false,
   });
   return { card, flushes, calls };
@@ -200,6 +203,7 @@ for (const [label, wait] of [
     assert.deepEqual(calls.stale, [], "mai la domanda ricostruita dalla bozza del server");
     assert.equal(one(tree, answerField, "il campo").props.value, "Circa 40 al mese.", "il testo resta nel campo");
     assert.equal(text(one(tree, statusLine, "la riga dello stato")), "", "mai «Non salvato: riprova» per un'attesa");
+    assert.equal(calls.saves.at(-1), "held", "(rilascio 10) la barra non dice «salvato» mentre la bozza aspetta");
 
     // L'informativa è sullo schermo (la pagina mette in pausa le domande): uscire dal campo non fa partire niente.
     card.props.paused = true;
@@ -218,7 +222,9 @@ for (const [label, wait] of [
     tree = card.render();
     assert.deepEqual(writes.map((w) => w.route), ["POST draft", "POST draft"]);
     assert.deepEqual(writes[1].body, writes[0].body, "la stessa bozza di prima");
-    assert.equal(text(one(tree, statusLine, "la riga dello stato")), REFERENT_PUBLIC_TEXT.autosave.saved);
+    // (Rilascio 10, §3.11) «salvato» sta nella barra della pagina, una volta: sotto la domanda niente.
+    assert.equal(text(one(tree, statusLine, "la riga dello stato")), "");
+    assert.equal(calls.saves.at(-1), "saved");
   });
 }
 
@@ -232,7 +238,8 @@ test("un rifiuto vero della bozza resta quello di prima: «Non salvato: riprova�
   const tree = card.render();
   assert.equal(calls.wait, 0);
   assert.deepEqual(calls.stale, ["gia_inviata"]);
-  assert.equal(text(one(tree, statusLine, "la riga dello stato")), REFERENT_PUBLIC_TEXT.autosave.error);
+  assert.equal(text(one(tree, statusLine, "la riga dello stato")), REFERENT_PUBLIC_TEXT.autosave.error, "un salvataggio non riuscito si dice sotto la domanda");
+  assert.equal(calls.saves.at(-1), "error");
 });
 
 test("la domanda passa ai suoi file l'attesa dell'informativa", (t) => {

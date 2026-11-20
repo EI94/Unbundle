@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
+import { REFERENT_PRIVACY_NOTICE } from "../../../lib/use-cases/referent/labels.ts";
 
 // Le API pubbliche `/api/rispondi/[token]/…` chiamate come le chiama Next (SPEC §4.2, §9.2): origine,
 // segreto su Vercel, limiti per IP e per link, link sconosciuti, errori senza token nel log, e il giro
@@ -171,7 +172,7 @@ test("GET: la vista con il link giusto, senza scrivere niente; un link sconosciu
     const r = await call("", token, { method: "GET" });
     assert.equal(r.status, 404, token);
     assert.equal(r.json.error, "link_non_valido");
-    const w = await call("privacy", token, { body: { version: "ucq-2026-11-3" } });
+    const w = await call("privacy", token, { body: { version: REFERENT_PRIVACY_NOTICE.version } });
     assert.equal(w.status, 404);
     assert.equal(w.json.error, "link_non_valido");
   }
@@ -179,7 +180,7 @@ test("GET: la vista con il link giusto, senza scrivere niente; un link sconosciu
 
 test("scritture: un'origine diversa o assente → 403 origine_non_ammessa, niente scritto", opts, async () => {
   for (const origin of ["https://altro.example", null, "null"]) {
-    const r = await call("privacy", state.token, { body: { version: "ucq-2026-11-3" }, origin });
+    const r = await call("privacy", state.token, { body: { version: REFERENT_PRIVACY_NOTICE.version }, origin });
     assert.equal(r.status, 403, String(origin));
     assert.equal(r.json.error, "origine_non_ammessa");
   }
@@ -201,7 +202,7 @@ test("su Vercel (anteprima o produzione) senza UC_SECRET le scritture rispondono
   try {
     for (const env of ["preview", "production"]) {
       process.env.VERCEL_ENV = env;
-      const r = await call("privacy", state.token, { body: { version: "ucq-2026-11-3" } });
+      const r = await call("privacy", state.token, { body: { version: REFERENT_PRIVACY_NOTICE.version } });
       assert.equal(r.status, 503, env);
       assert.equal(r.json.error, "non_disponibile");
     }
@@ -226,7 +227,7 @@ test("la funzione spenta o il workspace fuori dall'area: link non valido, come o
     assert.equal((await call("", state.token, { method: "GET" })).json.error, "link_non_valido");
     delete process.env.USE_CASE_REFERENTS;
     process.env.USE_CASE_HUB_WORKSPACES = randomUUID();
-    assert.equal((await call("privacy", state.token, { body: { version: "ucq-2026-11-3" } })).json.error, "link_non_valido");
+    assert.equal((await call("privacy", state.token, { body: { version: REFERENT_PRIVACY_NOTICE.version } })).json.error, "link_non_valido");
     // Spegnere i dossier non spegne questa funzione.
     process.env.USE_CASE_HUB_WORKSPACES = ids.ws;
     process.env.UC_ENABLED = "false";
@@ -244,7 +245,7 @@ test("dalle rotte: informativa, bozza bloccata dal controllo del testo, bozza, f
   const early = await call("draft", state.token, { body: { needId: n0, text: "Ogni giorno", dontKnow: false } });
   assert.equal(early.status, 409);
   assert.equal(early.json.error, "informativa_da_leggere");
-  const accepted = await call("privacy", state.token, { body: { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" } });
+  const accepted = await call("privacy", state.token, { body: { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version } });
   assert.equal(accepted.status, 200);
   assert.deepEqual(accepted.json.data, { accepted: true });
 
@@ -336,13 +337,13 @@ test("(rilascio 9b) «Iniziamo» si registra solo con la prova del testo mostrat
 
   // La vista porta il testo da accettare, già riempito: la pagina mostra quello.
   const first = await privacyOf();
-  assert.deepEqual([first.accepted, first.version, first.notice?.version], [false, "ucq-2026-11-3", "ucq-2026-11-3"]);
+  assert.deepEqual([first.accepted, first.version, first.notice?.version], [false, REFERENT_PRIVACY_NOTICE.version, REFERENT_PRIVACY_NOTICE.version]);
   assert.ok(first.notice?.summary.some((t) => t.includes("Rondine prova")) && first.notice.paragraphs.some((t) => t.includes("senza il tuo nome")));
   assert.equal(first.notice?.button, "Iniziamo");
 
   // La pagina di produzione (49414cc9) manda solo `{ version }`, quella della vista: 409 «informativa_cambiata», che
   // mostra con il suo messaggio («ricarica la pagina»). Una prova di un'altra versione, lo stesso. Niente si registra.
-  for (const body of [{ version: "ucq-2026-11-3" }, { version: "ucq-2026-11-3", shown: "ucq-2026-11-2" }, { version: "ucq-2026-11-2", shown: "ucq-2026-11-3" }, { shown: "ucq-2026-11-3" }]) {
+  for (const body of [{ version: REFERENT_PRIVACY_NOTICE.version }, { version: REFERENT_PRIVACY_NOTICE.version, shown: "ucq-2026-11-2" }, { version: "ucq-2026-11-2", shown: REFERENT_PRIVACY_NOTICE.version }, { shown: REFERENT_PRIVACY_NOTICE.version }]) {
     const r = await call("privacy", link.token, { body });
     assert.deepEqual([r.status, r.json.error], [409, "informativa_cambiata"], JSON.stringify(body));
     assert.match(String(r.json.message), /ricarica la pagina/);
@@ -350,9 +351,9 @@ test("(rilascio 9b) «Iniziamo» si registra solo con la prova del testo mostrat
   assert.deepEqual(Object.values(await requestRow()), [null, null], "nessun consenso senza la prova");
 
   // La pagina nuova: la versione del testo mostrato, con la prova.
-  const accepted = await call("privacy", link.token, { body: { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" } });
+  const accepted = await call("privacy", link.token, { body: { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version } });
   assert.deepEqual([accepted.status, accepted.json.data], [200, { accepted: true }]);
-  assert.equal((await requestRow()).privacy_notice_version, "ucq-2026-11-3");
+  assert.equal((await requestRow()).privacy_notice_version, REFERENT_PRIVACY_NOTICE.version);
   assert.equal((await call("draft", link.token, { body: { needId: n2, text: "Circa 30 al mese.", dontKnow: false } })).status, 200);
   const file = await call("upload", link.token, { form: csvForm(n3) });
   assert.equal(file.json.data?.status, "pulito", JSON.stringify(file.json));
@@ -388,14 +389,14 @@ test("(rilascio 9b) «Iniziamo» si registra solo con la prova del testo mostrat
   }
   assert.deepEqual(await snapshot(), before, "niente si salva, niente si toglie, niente si invia");
   // La pagina di produzione può ancora rimandare la sua accettazione: rifiutata, e il consenso resta quello di prima.
-  assert.equal((await call("privacy", link.token, { body: { version: "ucq-2026-11-3" } })).json.error, "informativa_cambiata");
+  assert.equal((await call("privacy", link.token, { body: { version: REFERENT_PRIVACY_NOTICE.version } })).json.error, "informativa_cambiata");
   assert.equal((await requestRow()).privacy_notice_version, "ucq-2026-11-2");
 
   // La vista lo dice, con il testo da rileggere; un «Iniziamo» con la prova e si riprende da lì.
   const again = await privacyOf();
-  assert.deepEqual([again.accepted, again.notice?.version], [false, "ucq-2026-11-3"]);
-  assert.equal((await call("privacy", link.token, { body: { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" } })).status, 200);
-  assert.equal((await requestRow()).privacy_notice_version, "ucq-2026-11-3");
+  assert.deepEqual([again.accepted, again.notice?.version], [false, REFERENT_PRIVACY_NOTICE.version]);
+  assert.equal((await call("privacy", link.token, { body: { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version } })).status, 200);
+  assert.equal((await requestRow()).privacy_notice_version, REFERENT_PRIVACY_NOTICE.version);
   assert.equal((await call("draft", link.token, { body: { needId: n2, text: "Circa 30 al mese, d'estate meno.", dontKnow: false } })).status, 200);
 });
 
@@ -404,7 +405,7 @@ test("limite per link: la 31ª apertura in un minuto → 429 con Retry-After", o
   let last = 0;
   let retry: string | null = null;
   for (let i = 0; i < 31; i++) {
-    const r = await call("privacy", state.token, { body: { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" } });
+    const r = await call("privacy", state.token, { body: { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version } });
     last = r.status;
     retry = r.headers.get("retry-after");
   }

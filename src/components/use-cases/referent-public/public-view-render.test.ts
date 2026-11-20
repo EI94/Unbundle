@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import type { ReferentAskView, ReferentFileView, ReferentQuestionView, ReferentThreadMessageView } from "../../../lib/use-cases/referent/contract.ts";
 import { REFERENT_PRIVACY_NOTICE, REFERENT_PUBLIC_TEXT, privacyNoticeView } from "../../../lib/use-cases/referent/labels.ts";
 import {
-  attachHelp,
   counterLabel,
+  descriptionClamp,
   expiryLabel,
   fileFromUpload,
   fileRow,
@@ -22,17 +22,16 @@ import {
   sentAnswerView,
   stateCardKindOf,
   stateCardText,
-  submitHint,
   thanksTexts,
   closeHint,
   commentOffered,
-  doneCountText,
   lastSentOn,
   missingText,
+  progressText,
   questionClosed,
-  questionsHeading,
-  savesItselfText,
   sentCheckLines,
+  sentCount,
+  sentSummary,
   usableFile,
   anchorLabelOf,
   doubtOf,
@@ -40,7 +39,6 @@ import {
   freshReplyIds,
   messagesOf,
   newsEntries,
-  newsLead,
   newsMissingText,
   newsOf,
   threadActionsOf,
@@ -48,6 +46,7 @@ import {
   threadLineOf,
   threadTargetOf,
   updatedLine,
+  writeTargets,
 } from "./public-view-render.ts";
 
 // Dalla vista della richiesta a quello che la pagina `/rispondi/<token>` mostra (SPEC §4.4, §P3.7).
@@ -86,30 +85,30 @@ const file = (over: Partial<ReferentFileView> = {}): ReferentFileView => ({
   ...over,
 });
 
-test("le schede dei link che non si possono usare", () => {
-  assert.equal(stateCardKindOf("non_valido"), "invalid");
-  assert.equal(stateCardKindOf("revocato"), "revoked");
-  assert.equal(stateCardKindOf("scaduto"), "expired");
-  assert.equal(stateCardKindOf("non_disponibile"), "unavailable");
-  assert.deepEqual(stateCardText("invalid"), { title: "Link non valido", text: "Questo link non è più valido. Chiedi a chi te l'ha mandato un link nuovo." });
-  assert.equal(stateCardText("revoked").title, "Link revocato");
-  assert.equal(stateCardText("expired").title, "Link scaduto");
-  assert.equal(stateCardText("unavailable").title, "Non disponibile");
+test("(rilascio 10, §3.11) due schede sole: il link che non vale più (sbagliato, revocato, scaduto) e l'errore con «Riprova»", () => {
+  for (const access of ["non_valido", "revocato", "scaduto"] as const) assert.equal(stateCardKindOf(access), "gone", access);
+  assert.equal(stateCardKindOf("non_disponibile"), "error");
+  assert.deepEqual(stateCardText("gone"), { title: "Questo link non vale più.", text: "Rispondi all'email che hai ricevuto: arriva a chi ti ha scritto." });
+  // Le stesse parole di `/r` (il kit del referente).
+  assert.deepEqual(stateCardText("error"), { title: "Questa pagina non si è caricata.", text: "Le risposte che hai già inviato sono salve." });
+  assert.equal(REFERENT_PUBLIC_TEXT.error.retry, "Riprova");
 });
 
-test("intestazione: azienda, «CODICE · Titolo», chi chiede e il suo messaggio", () => {
+test("intestazione: il cliente per la riga in alto, il titolo senza codice, chi chiede e il suo messaggio", () => {
   const h = headerTexts(view());
   assert.deepEqual(h, {
-    company: "Rondine",
+    client: "Rondine",
     title: "Fatture fornitori",
     reference: "Riferimento RD-0004",
     requestedBy: "Giulia Neri ti chiede alcune informazioni.",
     message: { title: "Il messaggio di Giulia Neri", text: "Ci serve per la stima di fine mese." },
   });
-  const plain = headerTexts(view({ useCase: { code: null, title: "Fatture" }, message: "   ", company: "" }));
+  const plain = headerTexts(view({ useCase: { code: null, title: "Fatture" }, message: "   ", company: "  " }));
   assert.equal(plain.title, "Fatture");
   assert.equal(plain.message, null);
-  assert.equal(plain.company, "la tua azienda");
+  assert.equal(plain.reference, null);
+  assert.equal(plain.client, null, "senza il nome del cliente, il marchio da solo");
+  assert.equal(headerTexts(view({ company: "  Cliente   Demo " })).client, "Cliente Demo");
 });
 
 test("informativa: prima di tutto finché non è letta; i segnaposto riempiti", () => {
@@ -127,7 +126,9 @@ test("informativa: prima di tutto finché non è letta; i segnaposto riempiti", 
   assert.equal(p.fullTextLabel, "Leggi l'informativa completa");
   // L'informativa completa resta intera: chi, cosa, chi vede, controllo dei file, quanto, diritti, Garante.
   assert.ok(p.paragraphs.some((t) => t.startsWith("Lateral Space raccoglie queste informazioni per conto di Rondine")));
-  assert.ok(p.paragraphs.some((t) => t.startsWith("Giulia Neri e le altre persone di Rondine")));
+  // (Rilascio 10, D5) L'informativa comune: chi vede le risposte senza il nome di una persona.
+  assert.ok(p.paragraphs.some((t) => t.startsWith("Le persone di Rondine che lavorano ai casi d'uso vedono le tue risposte")));
+  assert.ok(![...p.summary, ...p.paragraphs].some((t) => t.includes("Giulia Neri")), "mai il nome di chi ha chiesto");
   assert.ok(p.paragraphs.some((t) => t.includes("controllo automatico")));
   assert.ok(p.paragraphs.some((t) => t.includes("12 mesi")));
   assert.ok(p.paragraphs.some((t) => t.includes("Garante per la protezione dei dati personali")));
@@ -137,13 +138,13 @@ test("informativa: prima di tutto finché non è letta; i segnaposto riempiti", 
   assert.ok(![...p.summary, ...p.paragraphs].some((t) => /\{[A-Za-z]+\}/.test(t)), "nessun segnaposto vuoto");
 });
 
-test("«Domanda n di m» in ordine di posizione, e la fine", () => {
+test("(rilascio 10, §3.11) le domande numerate «1», «2» in ordine di posizione, e la fine", () => {
   const sections = questionSections(view({ questions: [question(1, { position: 5 }), question(0, { position: 2 })] }));
   assert.deepEqual(
-    sections.map((s) => [s.needId, s.label]),
+    sections.map((s) => [s.needId, s.number, s.label]),
     [
-      [N[0], "Domanda 1 di 2"],
-      [N[1], "Domanda 2 di 2"],
+      [N[0], 1, undefined],
+      [N[1], 2, undefined],
     ],
   );
   assert.equal(screenOf(view({ state: "completata" })), "completed");
@@ -164,7 +165,7 @@ test("(Parte 3) una domanda «gestita»: solo il titolo e «Non serve più: ci h
   const handled = question(1, { state: "gestita" });
   const sections = questionSections(view({ questions: [question(0), handled] }));
   assert.equal(sections[1].kind, "gestita");
-  assert.equal(sections[1].label, "Domanda 2 di 2", "conta come le altre");
+  assert.equal(sections[1].number, 2, "conta come le altre");
   assert.equal(handledText(), "Non serve più: ci ha già pensato il team.");
   assert.equal(sentAnswerView(handled, "2026-10-27"), null, "niente risposta da mostrare");
   // Tutto fatto dal team: la scheda «vuota», poi le domande in sola lettura.
@@ -177,11 +178,6 @@ test("il contatore compare dai 3.500 caratteri", () => {
   assert.equal(counterLabel(3499), null);
   assert.equal(counterLabel(3500), "3.500 di 4.000 caratteri");
   assert.equal(counterLabel(4000), "4.000 di 4.000 caratteri");
-});
-
-test("la riga d'aiuto dei file: 20 MB con il caricamento diretto, 4 MB senza", () => {
-  assert.equal(attachHelp(true), "PDF, Word, Excel, PowerPoint, CSV o testo. Fino a 20 MB. Niente foto.");
-  assert.equal(attachHelp(false), "PDF, Word, Excel, PowerPoint, CSV o testo. Fino a 4 MB. Niente foto.");
 });
 
 test("gli stati dei file e «in revisione»; (rilascio 5.1) niente più da confermare", () => {
@@ -210,7 +206,6 @@ test("gli stati dei file e «in revisione»; (rilascio 5.1) niente più da confe
 
 test("invio: la frase con la data, il ringraziamento, le domande che restano", () => {
   assert.equal(expiryLabel("2026-11-26"), "26 novembre 2026");
-  assert.equal(submitHint(view()), "Invii solo le domande a cui hai risposto. Le altre restano qui: puoi tornare con lo stesso link fino al 26 novembre 2026.");
   // (Rilascio 5) Si invia solo con tutto chiuso: «Grazie, è tutto.», senza pulsanti.
   assert.deepEqual(thanksTexts({ submitted: 2, open: 0, state: "completata" }, view()), {
     title: "Grazie, è tutto.",
@@ -244,7 +239,7 @@ test("i problemi dell'invio vanno sulle loro domande, la prima da mostrare è ne
 
 test("la pagina usa solo i campi del contratto: un campo in più nella vista non arriva a schermo", () => {
   const leaky = { ...view(), proposedBy: "proponente@rondine.it", reviewNotes: "NOTA-RISERVATA", valueEurYear: 98765 } as ReferentAskView;
-  const shown = JSON.stringify([headerTexts(leaky), privacyTexts(leaky), questionSections(leaky).map((s) => [s.label, s.title]), submitHint(leaky)]);
+  const shown = JSON.stringify([headerTexts(leaky), privacyTexts(leaky), questionSections(leaky).map((s) => [s.number, s.title]), writeTargets(leaky), sentSummary(leaky)]);
   for (const secret of ["proponente@rondine.it", "NOTA-RISERVATA", "98765"]) assert.ok(!shown.includes(secret), secret);
 });
 
@@ -274,15 +269,21 @@ test("(rilascio 5) il commento solo con una chiusura senza testo; i testi della 
   assert.equal(commentOffered({ dontKnow: true, alreadyAttached: false, files: [] }), true);
   assert.equal(commentOffered({ dontKnow: false, alreadyAttached: true, files: [] }), true);
   assert.equal(commentOffered({ dontKnow: false, alreadyAttached: false, files: [file({ status: "pulito" })] }), true);
-  assert.equal(questionsHeading(1), "Una domanda");
-  assert.equal(questionsHeading(5), "5 domande");
-  assert.equal(doneCountText(3, 5), "3 di 5 fatte");
   assert.equal(missingText([4]), "Manca ancora la domanda 4.");
   assert.equal(missingText([6, 2, 4]), "Mancano ancora le domande 2, 4 e 6.");
   assert.equal(missingText([2, 3]), "Mancano ancora le domande 2 e 3.");
   assert.equal(closeHint(false), "Per chiudere: rispondi, allega un file o scegli «Non lo so».");
   assert.equal(closeHint(true), "Per chiudere: allega il file o scegli «Non lo so».");
-  assert.equal(savesItselfText(view()), "Si salva da solo: puoi tornare fino al 26 novembre 2026.");
+});
+
+test("(rilascio 10, §3.11) un solo numero, nella barra, con il salvataggio accanto: «2 di 5 · salvato»", () => {
+  assert.equal(progressText(2, 5, []), "2 di 5 · salvato");
+  assert.equal(progressText(2, 5, ["saved", "saved"]), "2 di 5 · salvato");
+  assert.equal(progressText(2, 5, ["saved", "saving"]), "2 di 5 · salvataggio…");
+  assert.equal(progressText(2, 5, ["saving", "error"]), "2 di 5", "un salvataggio non riuscito lo dice la domanda");
+  assert.equal(progressText(2, 5, ["held"]), "2 di 5", "in attesa dell'informativa niente «salvato»");
+  assert.equal(progressText(1, 3, ["saved"], { unsent: true }), "1 di 3", "una risposta a un chiarimento parte solo con «Invia»");
+  for (const text of [progressText(0, 1, []), progressText(3, 3, ["saving"])]) assert.match(text, /^\d+ di \d+( · (salvato|salvataggio…))?$/);
 });
 
 test("(rilascio 5) dopo l'invio: «Hai risposto il …», la conferma e la stima in sola lettura, «Non ce l'ho», «È già allegato», il commento", () => {
@@ -385,14 +386,13 @@ test("(rilascio 6) «Da completare»: prima i chiarimenti, poi le domande nuove,
   assert.deepEqual(
     newsEntries(v).map((e) => [e.kind, e.label, e.anchorLabel, e.position]),
     [
-      ["chiarimento", "Chiarimento · 1 di 3", "Su «Domanda 0»", 1],
-      ["domanda", "Nuova domanda · 2 di 3", "", 2],
-      ["risposta", "Risposta del team · 3 di 3", "Sul caso d'uso", 3],
+      ["chiarimento", "Chiarimento", "Sulla domanda «Domanda 0»", 1],
+      ["domanda", "Nuova domanda", "", 2],
+      ["risposta", "Risposta del team", "Sul caso d'uso", 3],
     ],
+    "(rilascio 10, §3.11) il tipo senza «1 di 3»: il solo numero sta nella barra",
   );
-  assert.equal(newsEntries(followUpView([clar]))[0].label, "Chiarimento", "una sola: senza numeri");
-  assert.equal(newsLead(1), "Hai una novità.");
-  assert.equal(newsLead(3), "Hai 3 novità.");
+  assert.equal(newsEntries(followUpView([clar]))[0].label, "Chiarimento");
   assert.equal(newsMissingText([2]), "Manca ancora il punto 2.");
   assert.equal(newsMissingText([3, 1]), "Mancano ancora i punti 1 e 3.");
   assert.equal(doubtOf(v, reply)?.text, "Chi le vede?");
@@ -421,9 +421,9 @@ test("(rilascio 6) le righe del filo sotto una risposta, mai chi del team ha scr
   assert.deepEqual(messagesOf(v, "g").map((m) => m.id), ["g1"], "un'ancora che non c'è più: con «Generale»");
   const fresh = msg({ id: "f", side: "team", kind: "risposta", fresh: true });
   assert.deepEqual(messagesOf(followUpView([fresh]), `d:${N[0]}`, { withFresh: false }), [], "in «Da completare» la risposta nuova ha la sua scheda");
-  assert.equal(anchorLabelOf(v, { anchor: "domanda", needId: N[1] }), "Su «Domanda 1»");
+  assert.equal(anchorLabelOf(v, { anchor: "domanda", needId: N[1] }), "Sulla domanda «Domanda 1»");
   assert.equal(anchorLabelOf(v, { anchor: "generale" }), "Sul caso d'uso");
-  assert.equal(anchorLabelOf(view({ questions: [question(0, { title: "x".repeat(80) })] }), { anchor: "domanda", needId: N[0] }), `Su «${"x".repeat(59)}…»`);
+  assert.equal(anchorLabelOf(view({ questions: [question(0, { title: "x".repeat(80) })] }), { anchor: "domanda", needId: N[0] }), `Sulla domanda «${"x".repeat(59)}…»`);
   assert.deepEqual(threadTargetOf(threadKeyOf({ anchor: "beneficio", componentKey: "tempo-1" })), { anchor: "beneficio", componentKey: "tempo-1" });
   assert.deepEqual(threadTargetOf("g"), { anchor: "generale" });
   for (const line of lines) assert.doesNotMatch(line, /use case|\(team\)/);
@@ -477,4 +477,57 @@ test("(rilascio 9b) la schermata sotto l'informativa: quella che la pagina mostr
   assert.equal(screenOf(followUp), "privacy", "un chiarimento chiede l'informativa");
   assert.equal(screenUnderNotice(followUp), "news");
   assert.equal(screenUnderNotice(view({ state: "completata", privacy: unread, questions: [] })), "completed");
+});
+
+// ─── (Rilascio 10, §3.11) Lavoro finito e passo 1 ────────────────────
+
+const sentCheckOf = (benefits: NonNullable<ReferentAskView["check"]>["benefits"]): ReferentAskView["check"] => ({
+  description: null,
+  benefits,
+  draft: { confirm: "si", note: null, estimate: null, timesPerMonth: null, minutesEach: null, stale: false, savedAt: null },
+  submittedAt: "2026-11-03T10:00:00.000Z",
+});
+const BENEFITS: NonNullable<NonNullable<ReferentAskView["check"]>["benefits"]> = [
+  { key: "tempo-1", form: "ore", label: "Controllo delle fatture", team: { kind: "ore", volumeYear: 3000, minutes: 12, eurYear: null }, draft: null },
+  { key: "qualita-1", form: "fatto", label: "Meno errori.", team: { kind: "qualitativo", volumeYear: null, minutes: null, eurYear: null }, draft: null },
+];
+
+test("(rilascio 10, §3.11) «Le tue risposte (n)»: la conferma, ogni stima e ogni domanda chiusa", () => {
+  const done = followUpView([], { kind: "referente", check: sentCheckOf(BENEFITS), questions: [sentQuestion(0), sentQuestion(1), question(2, { state: "gestita" })] });
+  assert.equal(sentCount(done), 1 + 2 + 3);
+  assert.equal(sentSummary(done), "Le tue risposte (6)");
+  // La stima del tempo senza modello del valore conta come una riga; senza conferma inviata, solo le domande.
+  assert.equal(sentCount(followUpView([], { kind: "referente", check: sentCheckOf(null) })), 1 + 1 + 2);
+  assert.equal(sentCount(followUpView([])), 2);
+  assert.equal(sentCount(view()), 0, "niente di inviato: zero");
+});
+
+test("(rilascio 10, §3.11) «Scrivi al team» con «Su cosa?»: il caso d'uso, le stime, le domande inviate; le regole del filo", () => {
+  const done = followUpView([], { kind: "referente", check: sentCheckOf(BENEFITS), questions: [sentQuestion(0), sentQuestion(1, { editable: false }), question(2, { state: "gestita" })] });
+  assert.deepEqual(writeTargets(done), [
+    { key: "g", label: "Il caso d'uso", kinds: ["add", "doubt"] },
+    { key: "b:tempo-1", label: "Controllo delle fatture", kinds: ["add", "doubt"] },
+    { key: "b:qualita-1", label: "Meno errori", kinds: ["add", "doubt"] },
+    // Una risposta che si modifica ancora: solo «Ho un dubbio» (un'aggiunta la chiuderebbe; «Modifica» sta nella riga).
+    { key: `d:${N[0]}`, label: "Domanda 0", kinds: ["doubt"] },
+    // Dopo «A posto»: «Aggiungi qualcosa» e «Ho un dubbio»; mai una domanda a cui ha pensato il team.
+    { key: `d:${N[1]}`, label: "Domanda 1", kinds: ["add", "doubt"] },
+  ]);
+  // Una richiesta di sole domande: sul caso d'uso solo «Ho un dubbio», come prima.
+  assert.deepEqual(writeTargets(followUpView([]))[0], { key: "g", label: "Il caso d'uso", kinds: ["doubt"] });
+  // Il link chiuso: niente da scrivere.
+  assert.deepEqual(writeTargets(followUpView([], { thread: { followUp: true, open: false, messages: [] } })), []);
+  // Le stime si nominano come in «Novità»: «Sulla voce «…»».
+  assert.equal(anchorLabelOf(done, { anchor: "beneficio", componentKey: "qualita-1" }), "Sulla voce «Meno errori»");
+});
+
+test("(rilascio 10, §3.11) la descrizione in 6 righe con «Leggi tutto»: al telefono e dai 640 px secondo la lunghezza", () => {
+  assert.deepEqual(descriptionClamp(null), { phone: false, wide: false });
+  assert.deepEqual(descriptionClamp("Le fatture arrivano per email e si registrano a mano."), { phone: false, wide: false });
+  // Circa 300 caratteri: più di 6 righe al telefono (40 a riga), meno di 6 dai 640 px (72 a riga).
+  const medium = "Le fatture dei fornitori arrivano per email, per PEC e a volte su carta. ".repeat(4);
+  assert.deepEqual(descriptionClamp(medium), { phone: true, wide: false });
+  assert.deepEqual(descriptionClamp("x".repeat(600)), { phone: true, wide: true });
+  // Gli a capo contano come righe.
+  assert.deepEqual(descriptionClamp(["uno", "due", "tre", "quattro", "cinque", "sei", "sette"].join("\n")), { phone: true, wide: true });
 });

@@ -212,7 +212,7 @@ test("richiesta di sole domande: dice chi chiede e su quale caso d'uso; il link 
   assert.equal(m.subject, "Rondine: 2 domande su «Fatture fornitori»");
   const lines = m.text.split("\n").map((l) => l.trim()).filter(Boolean);
   assert.equal(lines[0], "Buongiorno,");
-  assert.equal(lines[1], "Fabio Esempio ti fa 2 domande sul caso d'uso «Fatture fornitori», un lavoro che Rondine vuole semplificare con l'AI.");
+  assert.equal(lines[1], "Fabio Esempio ti fa 2 domande sul caso d'uso «Fatture fornitori», un lavoro da semplificare con l'AI.");
   assert.ok(richiesta({ questions: 1 }).text.includes("Fabio Esempio ti fa una domanda sul caso d'uso"));
   assert.ok(m.text.includes(LINK) && m.text.includes("Il link è solo tuo e vale fino al 26 novembre.") && !m.text.includes("Lateral Space via Unbundle"));
   assert.ok(!m.text.includes(ACCOUNT_NOTICE_LINE) && !m.text.includes(TEAM_ACCESS_LINE), "senza account nel workspace: nessuna delle due righe");

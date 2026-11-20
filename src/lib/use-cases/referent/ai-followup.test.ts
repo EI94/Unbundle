@@ -14,7 +14,7 @@ import {
   referentAiSuggestionsOn,
   resolveReferentAiModel,
 } from "./ai-followup.ts";
-import { REFERENT_PRIVACY_NOTICE, noticeAllowsContext, privacyNoticeTexts } from "./labels.ts";
+import { REFERENT_PRIVACY_NOTICE, REFERENT_PRIVACY_NOTICE_UCQ_2026_11_3, noticeAllowsContext, privacyNoticeTexts } from "./labels.ts";
 import { PORTFOLIO_RANKING_DEFAULT_MODEL, portfolioRankingCallSettings } from "../../portfolio/ai-ranking-contract.ts";
 import { CLAUDE_TASKS } from "../../ai/models.ts";
 import { findHubForbidden } from "../copy-guard.ts";
@@ -31,11 +31,13 @@ test("accesa di default, `USE_CASE_REFERENT_AI=off` la spegne; senza chiave ness
 });
 
 test("solo con un'informativa che lo dice; quella di adesso lo dice, con una frase calma", () => {
-  assert.deepEqual([...REFERENT_AI_NOTICE_VERSIONS], ["ucq-2026-11-2", "ucq-2026-11-3"]);
+  assert.deepEqual([...REFERENT_AI_NOTICE_VERSIONS], ["ucq-2026-11-2", "ucq-2026-11-3", "ref-2026-11-1"]);
   assert.equal(noticeAllowsAi("ucq-2026-11-1"), false, "la versione del rilascio 5.1 non parlava dell'AI");
   assert.equal(noticeAllowsAi("ucq-2026-11-2"), true, "(9b) l'aiuto di oggi continua per chi ha accettato la versione di prima");
+  assert.equal(noticeAllowsAi("ucq-2026-11-3"), true, "(rilascio 10) e per chi ha accettato quella del 9b");
   assert.equal(noticeAllowsAi(null), false);
-  assert.equal(REFERENT_PRIVACY_NOTICE.version, "ucq-2026-11-3");
+  // (Rilascio 10, D5) L'informativa comune del kit del referente.
+  assert.equal(REFERENT_PRIVACY_NOTICE.version, "ref-2026-11-1");
   // Chi cambia l'informativa (la parte del referente) tiene la frase e mette la versione nuova nell'elenco.
   assert.equal(currentNoticeMentionsAi(), true);
   assert.ok(REFERENT_PRIVACY_NOTICE.paragraphs.includes(REFERENT_AI_NOTICE_LINE));
@@ -119,8 +121,9 @@ test("nel cron l'AI viene per ultima, dopo le pulizie, con un tempo massimo", ()
   assert.match(route, /maxDuration = 120\b/);
 });
 
-test("(9b, D2) l'informativa ucq-2026-11-3: i tre paragrafi del piano, parola per parola; «casi d'uso»; senza il nome di chi risponde", () => {
-  const paragraphs = [...REFERENT_PRIVACY_NOTICE.paragraphs];
+test("(9b, D2) l'informativa ucq-2026-11-3 (resta per chi l'ha accettata): i tre paragrafi del piano, parola per parola; «casi d'uso»; senza il nome di chi risponde", () => {
+  const paragraphs = [...REFERENT_PRIVACY_NOTICE_UCQ_2026_11_3.paragraphs];
+  assert.equal(REFERENT_PRIVACY_NOTICE_UCQ_2026_11_3.version, "ucq-2026-11-3");
   const changed = [
     "Lateral Space raccoglie queste informazioni per conto di {Azienda}, per valutare e preparare i casi d'uso. Le usiamo solo per questo.",
     "Un sistema di intelligenza artificiale può leggere le tue risposte per suggerire al team una domanda in più e per tenere aggiornato quello che sappiamo del lavoro di {Azienda}, senza il tuo nome. Non decide niente e non scrive a nessuno: ogni proposta la controlla una persona del team.",
@@ -137,13 +140,26 @@ test("(9b, D2) l'informativa ucq-2026-11-3: i tre paragrafi del piano, parola pe
     assert.doesNotMatch(text, /attenzion|rischi|obblig|vietat|use case/i, "frasi calme, «caso d'uso» fuori dalla dashboard");
   }
   assert.match(changed[0], /i casi d'uso/);
-  // L'AI e la memoria del lavoro: la stessa frase, che fa leggere le risposte a «Contesto» solo con questa versione.
+  // L'AI e la memoria del lavoro: la stessa frase, che fa leggere le risposte a «Contesto» solo con queste versioni.
   assert.equal(REFERENT_AI_NOTICE_LINE, changed[1]);
-  assert.equal(noticeAllowsContext(REFERENT_PRIVACY_NOTICE.version), true);
+  assert.equal(noticeAllowsContext("ucq-2026-11-3"), true);
   assert.equal(noticeAllowsContext("ucq-2026-11-2"), false, "le risposte date con l'informativa di prima non si leggono");
-  // I segnaposto si riempiono come prima: il nome dell'azienda, mai quello della persona.
+});
+
+test("(rilascio 10, D5) l'informativa di adesso è quella comune del kit: tiene la frase dell'AI e di «Contesto», mai il nome di una persona", () => {
+  assert.ok(REFERENT_PRIVACY_NOTICE.paragraphs.includes(REFERENT_AI_NOTICE_LINE));
+  assert.equal(noticeAllowsContext(REFERENT_PRIVACY_NOTICE.version), true, "le risposte date con l'informativa comune restano una fonte di «Contesto»");
+  assert.equal(noticeAllowsAi(REFERENT_PRIVACY_NOTICE.version), true);
+  // Cambiano due cose rispetto a ucq-2026-11-3: «valutare e realizzare» e chi vede le risposte, senza il nome di chi chiede.
+  const before = REFERENT_PRIVACY_NOTICE_UCQ_2026_11_3;
+  const changed = REFERENT_PRIVACY_NOTICE.paragraphs.filter((p) => !before.paragraphs.includes(p));
+  assert.deepEqual(changed, [
+    "Lateral Space raccoglie queste informazioni per conto di {Azienda}, per valutare e realizzare i casi d'uso. Le usiamo solo per questo.",
+    "Le persone di {Azienda} che lavorano ai casi d'uso vedono le tue risposte e quando sono arrivate. Non misuriamo i tuoi tempi e non facciamo classifiche tra persone.",
+  ]);
+  assert.deepEqual(REFERENT_PRIVACY_NOTICE.summary.filter((p) => !before.summary.includes(p)), ["Le risposte e i file li vedono solo Lateral Space e le persone di {Azienda} che lavorano ai casi d'uso."]);
   const filled = privacyNoticeTexts({ company: "Rondine", expires: "26 novembre 2026", requester: "Giulia Neri", contact: "privacy@example.test" });
   assert.equal(filled.paragraphs[3].includes("del lavoro di Rondine, senza il tuo nome."), true);
-  assert.equal(filled.paragraphs.filter((p) => p.includes("Giulia Neri")).length, 1, "chi ha chiesto compare solo dove compariva già");
+  assert.equal([...filled.summary, ...filled.paragraphs].filter((p) => p.includes("Giulia Neri")).length, 0, "mai il nome di chi ha chiesto");
 });
 

@@ -10,7 +10,6 @@ import { acceptPrivacy, fetchAskView, markSeen, postReply, saveCheck, submitAnsw
 import { PRIVACY_TITLE_ID, PrivacyCard, PrivacyFooter } from "./privacy-card";
 import { QuestionCard, questionTitleId, type FlushDraft } from "./question-card";
 import {
-  doneCountText,
   doubtOf,
   editableText,
   finalCardText,
@@ -20,19 +19,20 @@ import {
   messagesOf,
   missingText,
   newsEntries,
-  newsLead,
   newsMissingText,
   noticeOf,
   privacyTexts,
+  progressText,
   questionSections,
-  questionsHeading,
-  savesItselfText,
   screenOf,
   screenUnderNotice,
   sentCheckLines,
+  sentSummary,
   thanksTexts,
   threadActionsOf,
   threadKeyOf,
+  writeTargets,
+  type QuestionSave,
   type QuestionSection,
   type ThreadAction,
 } from "./public-view-render";
@@ -40,7 +40,7 @@ import { ConfirmStep, EstimateStep, ImpactStep, ReferentStepBar, benefitCommentI
 import { MessageCard, PublicShell } from "./state-card";
 import { hasSteps, isRepeatActivation, parseStep, resolveStep, stepOfSubmitRefusal, stepOneWarning, stepSearch, stepStates, stepTwoWarning, stepsOf, type CheckStep, type StepRefusal } from "./steps-state";
 import { SUBMIT_ERROR_ID, SubmitBar } from "./submit-bar";
-import { ClarificationCard, SentDisclosure, TeamReplyCard, ThreadItem, newsTitleId } from "./thread";
+import { ClarificationCard, SentDisclosure, TeamReplyCard, ThreadItem, WRITE_ABOUT_ID, WRITE_KEY, WriteToTeam, newsTitleId } from "./thread";
 
 /**
  * La pagina del referente `/rispondi/<token>` (SPEC §4.4): pubblica, senza account, pensata per il
@@ -51,6 +51,11 @@ import { ClarificationCard, SentDisclosure, TeamReplyCard, ThreadItem, newsTitle
  *
  * Non legge mai la sessione e non porta mai alla dashboard: vale uguale per chiunque abbia il link. Il
  * token serve solo per l'indirizzo delle chiamate: mai salvato sul dispositivo.
+ *
+ * (Rilascio 10, §3.11) Il kit del referente: in alto «{Cliente} · con Lateral Space»; il titolo senza codice
+ * («Riferimento XX-0024» in fondo); al passo 3 «Le domande» con tre controlli per domanda e un solo numero nella barra
+ * («2 di 5 · salvato»); a lavoro finito il grazie, «Scrivi al team» con «Su cosa?» e «Le tue risposte (n)» chiuso;
+ * «Novità» con la domanda del team come titolo della scheda.
  *
  * (Rilascio 9b) L'informativa mostrata è quella della vista (`noticeOf`), e «Iniziamo» manda la sua versione come prova
  * (`shown`). Se una scrittura aspetta l'informativa (cambiata con un rilascio mentre la pagina è aperta, o non letta),
@@ -109,8 +114,10 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
   const [benefitWarnings, setBenefitWarnings] = useState<Readonly<Record<string, string>>>({});
   const [staleNotice, setStaleNotice] = useState(false);
   const checkInFlight = useRef<Promise<boolean> | null>(null);
-  // (Rilascio 5) Le domande chiuse (per «{k} di {n} fatte») e quelle che «Invia» ha trovato aperte.
+  // (Rilascio 5) Le domande chiuse (per «2 di 5») e quelle che «Invia» ha trovato aperte.
   const [closedMap, setClosedMap] = useState<Map<string, boolean>>(() => new Map());
+  // (Rilascio 10, §3.11) Lo stato del salvataggio di ogni domanda aperta, per l'unico «salvato» della barra.
+  const [saves, setSaves] = useState<Map<string, QuestionSave>>(() => new Map());
   const [missing, setMissing] = useState<string[]>([]);
   const [newQuestions, setNewQuestions] = useState(false);
   const [privacyBusy, setPrivacyBusy] = useState(false);
@@ -283,6 +290,16 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
       return next;
     });
     if (closed) setMissing((current) => (current.includes(key) ? current.filter((id) => id !== key) : current));
+  }, []);
+
+  const onSave = useCallback((needId: string, save: QuestionSave) => {
+    const key = needId.toLowerCase();
+    setSaves((current) => {
+      if (current.get(key) === save) return current;
+      const next = new Map(current);
+      next.set(key, save);
+      return next;
+    });
   }, []);
 
   const clearIssues = useCallback((needId: string) => {
@@ -710,14 +727,19 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
   const noticeCard = <PrivacyCard texts={notice} again={noticeAgain} busy={privacyBusy} error={privacyError} onAccept={() => void onAccept()} />;
   const privacyGate = view.privacy.accepted || onNotice ? null : noticeCard;
 
-  /** (Rilascio 6) Il filo di un'ancora, con «Modifica», «Aggiungi qualcosa» e «Ho un dubbio». */
-  const threadItem = (key: string, subject: string, actions: ThreadAction[], o: { primary: boolean; editText?: string }) => (
+  /**
+   * (Rilascio 6) Il filo di un'ancora: le righe e il campo che si apre. (Rilascio 10, §3.11) Sotto una risposta già inviata
+   * resta solo «Modifica» (dove si può); «Aggiungi qualcosa» e «Ho un dubbio» stanno in «Scrivi al team», e su una domanda
+   * aperta «Ho un dubbio» sta in «Altro».
+   */
+  const threadItem = (key: string, subject: string, actions: ThreadAction[], o: { primary: boolean; editText?: string; labels?: Partial<Record<ThreadAction, string>> }) => (
     <ThreadItem
       token={token}
       targetKey={key}
       subject={subject}
       messages={messagesOf(view, key, { withFresh: under !== "news" })}
       actions={actions}
+      labels={o.labels}
       today={today}
       editText={o.editText}
       composer={composer?.key === key ? composer.mode : null}
@@ -740,16 +762,28 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
     />
   );
   const questionThread = (section: QuestionSection, primary: boolean) =>
-    threadItem(threadKeyOf({ anchor: "domanda", needId: section.needId }), section.title, threadActionsOf(view, { kind: "domanda", question: section.question }), {
-      primary,
-      editText: editableText(section.question),
-    });
+    threadItem(
+      threadKeyOf({ anchor: "domanda", needId: section.needId }),
+      section.title,
+      threadActionsOf(view, { kind: "domanda", question: section.question }).filter((a) => a === "edit"),
+      { primary, editText: editableText(section.question) },
+    );
+  /** (Rilascio 10, §3.11) «Ho un dubbio» dentro «Altro» di una domanda aperta: il campo si apre sotto la domanda. */
+  const doubtOn = (section: QuestionSection) =>
+    threadActionsOf(view, { kind: "domanda", question: section.question }).includes("doubt")
+      ? () => {
+          setComposer({ key: threadKeyOf({ anchor: "domanda", needId: section.needId }), mode: "doubt" });
+          setSentKey(null);
+          setFocusTarget(COMPOSER_FOCUS);
+        }
+      : undefined;
 
-  const footer = <PrivacyFooter texts={privacy} reference={header.reference} />;
+  // (Rilascio 10, §3.11) Un solo accesso all'informativa intera per schermata: sulla schermata dell'informativa c'è già.
+  const footer = <PrivacyFooter texts={privacy} reference={header.reference} withNotice={!onNotice} />;
+  const title = <h1 className="text-2xl leading-[1.875rem] font-semibold tracking-tight break-words">{header.title}</h1>;
   const intro = (
     <header className="mt-4 space-y-2">
-      <p className="text-sm break-words text-muted-foreground">{header.company}</p>
-      <h1 className="text-2xl leading-[1.875rem] font-semibold tracking-tight break-words">{header.title}</h1>
+      {title}
       <p className="text-base break-words">{header.requestedBy}</p>
       {header.message ? (
         <figure className="mt-3 rounded-xl bg-muted/50 px-4 py-3">
@@ -759,12 +793,14 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
       ) : null}
     </header>
   );
+  /** (Rilascio 10, §3.11) Sopra il grazie e a lavoro finito, solo il titolo. */
+  const titleOnly = <header className="mt-4">{title}</header>;
 
   if (thanks) {
     const t = thanksTexts(thanks, view);
     return (
-      <PublicShell footer={footer}>
-        {intro}
+      <PublicShell footer={footer} client={header.client}>
+        {titleOnly}
         <MessageCard
           as="h2"
           titleId={THANKS_TITLE_ID}
@@ -802,9 +838,9 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
    * e nascosto mentre l'informativa è sullo schermo, se la visita l'ha già mostrato (`keep`). Alla prima apertura, solo
    * l'informativa: niente domande, bozze o caricamenti prima di «Iniziamo».
    */
-  const shell = (content: React.ReactNode) => (
-    <PublicShell footer={footer}>
-      {intro}
+  const shell = (content: React.ReactNode, o: { titleOnly?: boolean } = {}) => (
+    <PublicShell footer={footer} client={header.client}>
+      {o.titleOnly && !onNotice ? titleOnly : intro}
       {onNotice ? noticeCard : null}
       {!onNotice || keep ? (
         <div hidden={onNotice || undefined} data-slot="referent-content">
@@ -819,22 +855,24 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
   const sentCheck = readOnly || newsScreen ? sentCheckLines(view) : null;
   const doneCount = sections.filter((q) => q.kind !== "aperta" || closedMap.get(q.needId.toLowerCase()) === true).length;
   const missingPositions = sections.map((q, i) => (missing.includes(q.needId.toLowerCase()) ? i + 1 : 0)).filter((n) => n > 0);
+  /** (Rilascio 10, §3.11) Lo stato del salvataggio delle domande aperte mostrate: l'unico «salvato», nella barra. */
+  const savesOf = (ids: readonly string[]) => ids.map((id) => saves.get(id.toLowerCase())).filter((x): x is QuestionSave => x !== undefined);
 
-  // (Rilascio 5) I passi «Lo use case» e «Il tempo»; le domande del passo 3 dopo, nascoste qui una volta aperte.
+  // (Rilascio 5) I passi «Il caso d'uso» e «Le stime»; le domande del passo 3 dopo, nascoste qui una volta aperte.
   const onCheckStep = stepped && under === "questions" && step !== 3;
   const check = stepped ? view.check : null;
-  const questionsBlock = under === "questions" || (readOnly && sections.length > 0);
+  const questionsBlock = under === "questions";
   const renderQuestions = questionsBlock && (!onCheckStep || questionsOpened);
 
-  // (Rilascio 6) La conferma e l'impatto già inviati, ognuno con il suo filo («Aggiungi qualcosa», «Ho un dubbio»).
-  const benefitLabel = (key: string) => view.check?.benefits?.find((b) => b.key === key)?.label ?? view.useCase.title;
-  const sentCheckBlock = (primary: boolean) =>
+  // (Rilascio 6) La conferma e le stime già inviate, ognuna con il suo filo. (Rilascio 10, §3.11) Solo le righe: si scrive
+  // al team con «Scrivi al team».
+  const sentCheckBlock = () =>
     sentCheck ? (
-      <div className="space-y-3 text-base leading-7 break-words" data-slot="referent-sent-check">
+      <div className="space-y-3 rounded-xl bg-card p-4 text-base leading-7 break-words ring-1 ring-foreground/10 sm:p-5" data-slot="referent-sent-check">
         <div className="space-y-2">
           <p>{sentCheck.useCase}</p>
           {sentCheck.note ? <blockquote className="rounded-xl bg-muted/50 px-4 py-3 whitespace-pre-line">{sentCheck.note}</blockquote> : null}
-          {threadItem("g", view.useCase.title, threadActionsOf(view, { kind: "generale" }), { primary })}
+          {threadItem("g", view.useCase.title, [], { primary: false })}
         </div>
         {sentCheck.time ? (
           <p>
@@ -848,27 +886,35 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
               <li key={b.key} className="space-y-1 break-words">
                 <p>{b.line}</p>
                 {b.comment ? <p className="text-muted-foreground">{b.comment}</p> : null}
-                {threadItem(threadKeyOf({ anchor: "beneficio", componentKey: b.key }), benefitLabel(b.key), threadActionsOf(view, { kind: "beneficio" }), { primary })}
+                {threadItem(threadKeyOf({ anchor: "beneficio", componentKey: b.key }), b.line, [], { primary: false })}
               </li>
             ))}
           </ul>
         ) : null}
       </div>
     ) : null;
-  /** (Rilascio 6) «Hai un dubbio sul caso d'uso?» quando non c'è la conferma inviata a cui attaccarlo. */
-  const generalBlock = (primary: boolean) => {
-    if (sentCheck) return null;
-    const actions = threadActionsOf(view, { kind: "generale" });
+  /** (Rilascio 6) I messaggi sul caso d'uso senza la conferma inviata a cui attaccarli (una richiesta di sole domande). */
+  const generalLines = () => {
+    if (sentCheck || messagesOf(view, "g", { withFresh: under !== "news" }).length === 0) return null;
+    return (
+      <div className="space-y-1 rounded-xl bg-card p-4 ring-1 ring-foreground/10 sm:p-5" data-slot="referent-general">
+        <p className="text-base break-words">{TT.general}</p>
+        {threadItem("g", view.useCase.title, [], { primary: false })}
+      </div>
+    );
+  };
+  /** (Rilascio 10, §3.11) Sotto le domande, un link: «Hai un dubbio sul caso d'uso?». */
+  const generalDoubt = () => {
+    const actions = threadActionsOf(view, { kind: "generale" }).filter((a) => a === "doubt");
     if (actions.length === 0 && messagesOf(view, "g").length === 0) return null;
     return (
       <div className="mt-6 space-y-1" data-slot="referent-general">
-        {actions.length ? <p className="text-base break-words text-muted-foreground">{TT.generalDoubt}</p> : null}
-        {threadItem("g", view.useCase.title, actions, { primary })}
+        {threadItem("g", view.useCase.title, actions, { primary: false, labels: { doubt: TT.generalDoubt } })}
       </div>
     );
   };
 
-  // (Rilascio 6) «Da completare»: le cose fatte, quelle che «Invia» ha trovato da fare.
+  // (Rilascio 6) «Novità»: le cose fatte, quelle che «Invia» ha trovato da fare.
   const newsDone = entries.filter((e) => e.kind === "risposta" || (e.kind === "chiarimento" && (replyTexts[e.id] ?? "").trim().length > 0) || (e.kind === "domanda" && closedMap.get(e.id.toLowerCase()) === true)).length;
   const newsActionable = entries.some((e) => e.kind !== "risposta");
   const newsMissingPositions = entries.filter((e) => newsMissing.includes(e.id) || newsMissing.includes(e.id.toLowerCase())).map((e) => e.position);
@@ -891,18 +937,63 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
       extra={questionThread(section, o.primary)}
       paused={onNotice}
       onPrivacyWait={() => privacyWait(questionTitleId(section.needId))}
+      onSave={onSave}
+      onDoubt={doubtOn(section)}
     />
   );
 
+  /**
+   * (Rilascio 10, §3.11) «Scrivi al team», con «Su cosa?»: a lavoro finito e in «Novità». Pieno solo quando la schermata
+   * non ha già «Invia».
+   */
+  const writeToTeam = (primary: boolean) => (
+    <WriteToTeam
+      token={token}
+      targets={writeTargets(view)}
+      open={composer?.key === WRITE_KEY}
+      onOpen={(open) => {
+        setComposer(open ? { key: WRITE_KEY, mode: "add" } : null);
+        setSentKey(null);
+        // Il fuoco su «Su cosa?», la prima scelta del campo.
+        if (open) setFocusTarget(WRITE_ABOUT_ID);
+        else setSubmitError((e) => (e === TT.composerOpen ? null : e));
+      }}
+      primary={primary}
+      privacyGate={privacyGate}
+      sent={sentKey === WRITE_KEY}
+      onSent={() => {
+        setComposer(null);
+        setSubmitError((e) => (e === TT.composerOpen ? null : e));
+        void reload().then(() => setSentKey(WRITE_KEY));
+      }}
+      onStale={() => void reload()}
+      onDirty={onComposerDirty}
+      onPrivacyWait={() => privacyWait(COMPOSER_FOCUS)}
+    />
+  );
+
+  /** (Rilascio 10, §3.11) Quello che ha già inviato, chiuso: «Le tue risposte (n)». Dentro, «Modifica» dove si può ancora. */
+  const yourAnswers = () => {
+    const sent = sections.filter((q) => q.kind !== "aperta");
+    if (!sentCheck && sent.length === 0 && !generalLines()) return null;
+    return (
+      <SentDisclosure summary={sentSummary(view)}>
+        {sentCheckBlock()}
+        {sent.map((section) => questionCard(section, { primary: false }))}
+        {generalLines()}
+      </SentDisclosure>
+    );
+  };
+
   if (newsScreen) {
-    const sentSections = sections.filter((q) => q.kind !== "aperta");
+    const openIds = entries.filter((e) => e.kind === "domanda").map((e) => e.id);
+    const unsent = entries.some((e) => e.kind === "chiarimento" && (replyTexts[e.id] ?? "").trim().length > 0);
     return shell(
       <>
         <section aria-labelledby={NEWS_TITLE_ID} className="mt-6" data-slot="referent-news">
           <h2 id={NEWS_TITLE_ID} tabIndex={-1} className="text-xl font-semibold outline-none">
             {TT.newsTitle}
           </h2>
-          <p className="mt-1 text-base break-words text-muted-foreground">{newsLead(entries.length)}</p>
           {newQuestions ? <Notice tone="info">{REFERENT_ERROR_MESSAGES.domande_nuove}</Notice> : null}
           <div className="mt-4 space-y-4">
             {entries.map((entry) => {
@@ -931,15 +1022,12 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
             })}
           </div>
         </section>
+        {writeToTeam(!newsActionable)}
         {/* (Rilascio 6, B.1.5) Quello che ha già inviato: un tocco più in là, con il conteggio; «Invia» in fondo. */}
-        <SentDisclosure summary={fillText(TT.sentCount, { n: (sentCheck ? 1 : 0) + sentSections.length })}>
-          {sentCheck ? <div className="rounded-xl bg-card p-4 ring-1 ring-foreground/10 sm:p-5">{sentCheckBlock(false)}</div> : null}
-          {sentSections.map((section) => questionCard(section, { primary: false }))}
-          {generalBlock(false)}
-        </SentDisclosure>
+        {yourAnswers()}
         {newsActionable ? (
           <SubmitBar
-            status={doneCountText(newsDone, entries.length)}
+            status={progressText(newsDone, entries.length, savesOf(openIds), { unsent })}
             missing={
               newsMissingPositions.length
                 ? {
@@ -961,9 +1049,30 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
     );
   }
 
+  if (readOnly) {
+    // (Rilascio 10, §3.11) Lavoro finito: il grazie, «Scrivi al team» con «Su cosa?», «Le tue risposte (n)» chiuso.
+    return shell(
+      <>
+        <MessageCard as="h2" titleId={FINAL_TITLE_ID} title={finalCardText(under === "completed" ? "completed" : "empty", view, today)} />
+        {writeToTeam(true)}
+        {yourAnswers()}
+      </>,
+      { titleOnly: true },
+    );
+  }
+
+  const openIds = sections.filter((q) => q.kind === "aperta").map((q) => q.needId);
   return shell(
     <>
-      {stepped && under === "questions" ? <ReferentStepBar items={stepStates(view, step)} /> : null}
+      {stepped && under === "questions" ? (
+        <ReferentStepBar
+          items={stepStates(view, step)}
+          onGo={(to, e) => {
+            // Il secondo clic di un doppio clic su un passo arriva sul passo dopo: lo si ignora.
+            if (to !== step && !tooSoon(e)) goTo(to);
+          }}
+        />
+      ) : null}
       {onCheckStep && check ? (
         <>
           <p role="status" aria-live="polite" className="mt-2 min-h-5 text-sm text-muted-foreground">
@@ -1006,49 +1115,29 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
           )}
         </>
       ) : null}
-      {readOnly ? (
-        <MessageCard as="h2" titleId={FINAL_TITLE_ID} title={finalCardText(under === "completed" ? "completed" : "empty", view, today)}>
-          {sentCheck ? <div className="mt-3">{sentCheckBlock(true)}</div> : null}
-        </MessageCard>
-      ) : null}
       {renderQuestions ? (
         <div hidden={onCheckStep} data-slot="referent-questions">
-          {under === "questions" && sections.length > 0 ? (
+          {sections.length > 0 ? (
             <div className="mt-6 space-y-2">
               <h2 id={QUESTIONS_TITLE_ID} tabIndex={-1} className="text-xl font-semibold outline-none">
-                {questionsHeading(sections.length)}
+                {REFERENT_PUBLIC_TEXT.questionsTitle}
               </h2>
-              <p className="text-base break-words text-muted-foreground">{REFERENT_PUBLIC_TEXT.questionsLead}</p>
               {newQuestions ? <Notice tone="info">{REFERENT_ERROR_MESSAGES.domande_nuove}</Notice> : null}
             </div>
           ) : null}
-          {questionsBlock ? (
-            <div className="mt-6 space-y-4" aria-labelledby={readOnly ? FINAL_TITLE_ID : QUESTIONS_TITLE_ID}>
-              {sections.map((section) => questionCard(section, { primary: readOnly }))}
-              {under === "questions" ? <p className="text-sm break-words text-muted-foreground">{savesItselfText(view)}</p> : null}
-            </div>
-          ) : null}
-          {under === "questions" ? generalBlock(false) : null}
-          {under === "questions" ? (
-            <SubmitBar
-              status={doneCountText(doneCount, sections.length)}
-              missing={missingPositions.length ? { text: missingText(missingPositions), goLabel: fillText(REFERENT_PUBLIC_TEXT.goToQuestion, { k: missingPositions[0] }), onGo: () => focusById(questionTitleId(missing[0])) } : null}
-              error={submitError}
-              busy={submitBusy}
-              onSubmit={() => void onSubmit()}
-              onBack={
-                stepped
-                  ? (e) => {
-                      // Il secondo clic di un doppio clic su «Indietro» arriva sul passo 2: lo si ignora.
-                      if (!tooSoon(e)) goTo(2);
-                    }
-                  : undefined
-              }
-            />
-          ) : null}
+          <div className="mt-4 space-y-4" aria-labelledby={QUESTIONS_TITLE_ID}>
+            {sections.map((section) => questionCard(section, { primary: false }))}
+          </div>
+          {generalDoubt()}
+          <SubmitBar
+            status={progressText(doneCount, sections.length, savesOf(openIds))}
+            missing={missingPositions.length ? { text: missingText(missingPositions), goLabel: fillText(REFERENT_PUBLIC_TEXT.goToQuestion, { k: missingPositions[0] }), onGo: () => focusById(questionTitleId(missing[0])) } : null}
+            error={submitError}
+            busy={submitBusy}
+            onSubmit={() => void onSubmit()}
+          />
         </div>
       ) : null}
-      {readOnly ? generalBlock(true) : null}
     </>,
   );
 }

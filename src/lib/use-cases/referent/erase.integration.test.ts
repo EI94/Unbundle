@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
+import { REFERENT_PRIVACY_NOTICE } from "./labels.ts";
 
 // La cancellazione dei dati di un referente da parte dell'operatore sul database di prova (SPEC
 // §3.10): `use-case-admin erase-referent` a secco e con `--apply`, in una transazione, con lo stesso
@@ -188,7 +189,7 @@ test("preparazione: una richiesta con una risposta inviata e una bozza", opts, a
   const resolved = await pub.resolveReferentToken(state.token, new Date());
   assert.ok(resolved.access === "ok");
   if (resolved.access !== "ok") return;
-  assert.ok((await pub.acceptReferentPrivacy(resolved.link, { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" }, new Date())).ok);
+  assert.ok((await pub.acceptReferentPrivacy(resolved.link, { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version }, new Date())).ok);
   const link = await pub.resolveReferentToken(state.token, new Date());
   if (link.access !== "ok") return assert.fail("link");
   assert.ok((await pub.saveReferentDraft(link.link, { needId: state.needs[0], text: "Circa 20 al giorno", dontKnow: false }, new Date())).ok);

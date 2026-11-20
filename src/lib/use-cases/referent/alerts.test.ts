@@ -168,7 +168,8 @@ const entry = (over: Partial<RequesterAlertInput["entries"][number]> = {}) => ({
 });
 const has = (text: string, line: string) => assert.ok(text.includes(line), `manca «${line}» in:\n${text}`);
 // (Rilascio 10, §3.12) Il piede in una riga; il marchio una volta (niente «Lateral Space via Unbundle.»).
-const FOOTER = "Non vuoi queste email? Togli «Avvisami per email» in Il tuo account (menu sotto il tuo nome).";
+// (Rilascio 10, §3.12) Le parole della proposta: «Non vuoi queste email? Togli «Avvisami per email» in Il tuo account.».
+const FOOTER = "Non vuoi queste email? Togli «Avvisami per email» in Il tuo account.";
 
 function safe(m: { subject: string; text: string; html: string }) {
   for (const part of [m.subject, m.text, m.html]) {
@@ -191,7 +192,7 @@ test("(rilascio 10) il piede cita le parole del foglio: l'interruttore comincia 
   assert.equal(quoted, "Avvisami per email");
   const A = SHELL_TEXT.account;
   assert.ok(A.email.toggle.startsWith(`${quoted} `), A.email.toggle);
-  assert.ok(REQUESTER_ALERT_FOOTER.includes(` in ${A.title} (menu sotto il tuo nome).`), REQUESTER_ALERT_FOOTER);
+  assert.ok(REQUESTER_ALERT_FOOTER.endsWith(` in ${A.title}.`), REQUESTER_ALERT_FOOTER);
   assert.equal(SHELL_TEXT.user.account, A.title, "la voce del menu sotto il nome");
 });
 
@@ -217,12 +218,12 @@ test("testo: solo documenti, solo «Non lo so», risposte e «Non lo so», solo 
   const unknown = renderRequesterAlert({ company: "Rondine", entries: [entry({ unknowns: 1 })] });
   // (Rilascio 10, §3.12) Mai «non sa rispondere»: al referente mancano alcune informazioni.
   assert.equal(unknown.subject, "Rondine: mancano informazioni su «Fatture fornitori»");
-  has(unknown.text, "il referente non ha l'informazione per 1 domanda.");
+  has(unknown.text, "ci sono novità sul caso d'uso «Fatture fornitori» di Rondine: al referente manca un'informazione.");
   has(unknown.text, "Per i «Non lo so» chiedi a un'altra persona.");
   has(unknown.text, "Apri «Cosa serve»");
   assert.ok(!unknown.text.includes("Da verificare"));
   const mixed = renderRequesterAlert({ company: "Rondine", entries: [entry({ answers: 3, unknowns: 2 })] });
-  has(mixed.text, "di Rondine: sono arrivate 3 risposte e il referente non ha l'informazione per 2 domande.");
+  has(mixed.text, "di Rondine: sono arrivate 3 risposte e al referente mancano alcune informazioni.");
   const last = renderRequesterAlert({ company: "Rondine", entries: [entry({ followUp: "ultimo_promemoria" })] });
   assert.equal(last.subject, "Rondine: nessuna risposta su «Fatture fornitori»");
   has(last.text, "ci sono novità sul caso d'uso «Fatture fornitori» di Rondine. È partito l'ultimo promemoria e restano domande senza risposta.");
@@ -230,13 +231,16 @@ test("testo: solo documenti, solo «Non lo so», risposte e «Non lo so», solo 
   // Il seguito è una frase a sé: mai «… per 1 domanda e il link è scaduto e restano …»; con il link scaduto l'oggetto dice «nessuna risposta».
   const expired = renderRequesterAlert({ company: "Rondine", entries: [entry({ followUp: "scaduta", unknowns: 1 })] });
   assert.equal(expired.subject, "Rondine: nessuna risposta su «Fatture fornitori»");
-  has(expired.text, "di Rondine: il referente non ha l'informazione per 1 domanda. Il link è scaduto e restano domande senza risposta.");
+  has(expired.text, "di Rondine: al referente manca un'informazione. Il link è scaduto e restano domande senza risposta.");
   assert.ok(!/ e il link è scaduto/.test(expired.text));
   assert.ok(!expired.text.includes("Per i «Non lo so»"), "con il seguito, solo la sua riga");
   const all = renderRequesterAlert({ company: "Rondine", entries: [entry({ answers: 2, documents: 1, followUp: "ultimo_promemoria" })] });
   has(all.text, "di Rondine: sono arrivate 2 risposte e c'è 1 documento nuovo. È partito l'ultimo promemoria e restano domande senza risposta.");
   for (const m of [docs, unknown, mixed, last, expired, all]) {
     safe(m);
+    // (Rilascio 10, §3.12) Il tono neutro verso il referente; il corpo di una scheda al massimo di 60 parole.
+    assert.doesNotMatch(m.text, /non sa rispondere|non ha l'informazione/);
+    assert.ok(emailBodyWords(m.text) <= EMAIL_BODY_MAX_WORDS, m.text);
     assert.equal(m.text.split("Fatture fornitori").length - 1, 1, `il titolo una volta sola: ${m.subject}`);
     assert.ok(!/ e [^.]* e restano/.test(m.text), `mai due «e» di fila: ${m.subject}`);
   }

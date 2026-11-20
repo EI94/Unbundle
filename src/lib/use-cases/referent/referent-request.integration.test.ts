@@ -242,7 +242,7 @@ test("richiesta al referente senza domande: la riga della conferma, la Storia, l
   // (Rilascio 10, §3.12, §9.9) «{Cliente}: conferma «Titolo»»; il corpo corto, «Non lo so».
   assert.equal(m.subject, "Rondine prova: conferma «Fatture fornitori»");
   assert.ok(m.text.includes("Persona builder ti ha indicato come referente del caso d'uso «Fatture fornitori»"), m.text);
-  assert.ok(m.text.includes("Bastano pochi minuti: confermi la descrizione e alcune stime. Se non sai, scegli «Non lo so»."), m.text);
+  assert.ok(m.text.includes("Bastano pochi minuti: confermi la descrizione e alcune stime. Se non sai una cosa, scegli «Non lo so»."), m.text);
   assert.ok(m.text.includes("Inizia"), m.text);
   assert.ok(!/domand/.test(m.text.split("Bastano")[0]), "nessuna domanda");
 });
@@ -253,7 +253,7 @@ test("richiesta al referente con domande e «Serve un file»: l'email conta le d
   assert.deepEqual((await itemsOf(sent.requestId)).map((i) => [i.position, i.file_required]), [[1, false], [2, true], [3, false]]);
   for (const id of card.needs.slice(0, 3)) assert.equal(await statusOf(id), "chiesta");
   const m = await mailOf(sent.requestId);
-  assert.ok(m.text.includes("Bastano pochi minuti: confermi la descrizione, alcune stime e 3 domande. Se non sai, scegli «Non lo so»."), m.text);
+  assert.ok(m.text.includes("Bastano pochi minuti: confermi la descrizione, alcune stime e 3 domande. Se non sai una cosa, scegli «Non lo so»."), m.text);
   // «Serve un file» solo tra le domande della richiesta.
   const other = await newCard();
   refused(await sendReferent(other.id, { contact: await contactOf(BRUNA), needIds: other.needs.slice(0, 1), fileRequired: [other.needs[2]] }), "domande_cambiate");

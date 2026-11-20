@@ -61,14 +61,19 @@ function render(q: ReferentQuestionView, o: { downloads?: boolean } = {}): strin
 
 const TEMPLATE = { id: FILE_ID, name: "modello-XX-0001.xlsx", sizeBytes: 49_152 };
 
-test("il link compare nella scheda della domanda, subito sotto il titolo, con nome e dimensione", () => {
+test("il link compare nella scheda della domanda, subito sotto il titolo, con nome e dimensione; (rilascio 10) poi «Allega il file compilato», il campo chiuso", () => {
   const html = render(question({ needId: NEED_A, templates: [TEMPLATE] }));
   const title = html.indexOf("Compila il foglio dei fornitori di prova</h3>");
   const link = html.indexOf(`href="/api/rispondi/${TOKEN}/da-compilare?file=${FILE_ID}"`);
-  const answer = html.indexOf(T.answerLabel);
+  const upload = html.indexOf(T.attachFilled);
+  const write = html.indexOf(T.writeInstead);
   assert.ok(title > 0, "il titolo");
   assert.ok(link > title, "il link dopo il titolo");
-  assert.ok(answer > link, "il link prima della risposta: si vede senza aprire niente");
+  assert.ok(upload > link, "(rilascio 10, §3.11) prima «Scarica», poi «Allega il file compilato»");
+  assert.ok(write > upload, "poi «Oppure scrivi la risposta ▸»");
+  assert.doesNotMatch(html, /<textarea[^>]*-text"/, "il campo della risposta sta chiuso");
+  const writeButton = html.slice(html.lastIndexOf("<button", write), write);
+  assert.match(writeButton, /aria-expanded="false"/);
   const anchor = html.slice(html.lastIndexOf("<a", link), html.indexOf("</a>", link));
   assert.match(anchor, /\sdownload(=""|\s|>)/, "sempre come allegato");
   assert.match(anchor, new RegExp(`aria-label="${T.aria.templateDownload.replace("{file}", "modello-XX-0001.xlsx")}"`));
@@ -79,12 +84,16 @@ test("il link compare nella scheda della domanda, subito sotto il titolo, con no
   assert.equal(html.includes(`>${T.attach}<`), false);
 });
 
-test("senza file da compilare: nessun link, il caricamento dice «Allega un file»", () => {
+test("senza file da compilare: nessun link; (rilascio 10, §3.11) il campo, poi «Allega» · «Non lo so» · «Altro ▸»", () => {
   const html = render(question({ needId: NEED_A }));
   assert.equal(html.includes("/da-compilare"), false);
   assert.equal(html.includes(T.templateDownload), false);
-  assert.ok(html.includes(T.attach));
   assert.equal(html.includes(T.attachFilled), false);
+  assert.ok(html.indexOf("<textarea") > 0 && html.indexOf("<textarea") < html.indexOf(`>${T.attachShort}<`), "il campo prima dei comandi");
+  // Una domanda che vuole un file: il pulsante grande «Allega un file», niente campo.
+  const file = render(question({ needId: NEED_B, fileRequired: true }));
+  assert.ok(file.includes(`${T.attach}</button>`));
+  assert.doesNotMatch(file, /<textarea/);
 });
 
 test("una domanda già inviata ha ancora il link; una «gestita» no", () => {

@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { REFERENT_PRIVACY_NOTICE } from "../../../lib/use-cases/referent/labels.ts";
 
 /** `module.registerHooks` di Node 24 (i tipi di @types/node del progetto non lo hanno ancora). */
 type ResolveResult = { url: string; shortCircuit?: boolean };
@@ -198,7 +199,8 @@ function assertNothingPrivate(page: string, extra: string[] = []) {
     assert.ok(!page.includes(secret), `la pagina non mostra «${secret}»`);
   }
   assert.doesNotMatch(page, /href="[^"]*\/(dashboard|login)\b/, "nessun link alla dashboard o all'accesso");
-  assert.ok(page.includes("Lateral Space via Unbundle."), "il piè di pagina");
+  // (Rilascio 10, §3.11) Il marchio una volta, in alto: niente più «Lateral Space via Unbundle.» in fondo.
+  assert.ok(!page.includes("Lateral Space via Unbundle"), "il marchio una volta");
 }
 
 const state = { token: "", requestId: "" };
@@ -208,7 +210,8 @@ test("prima l'informativa: nessuna domanda, bozza o caricamento prima di «Inizi
   Object.assign(state, link);
   const first = await html(link.token);
   for (const text of [
-    "Rondine prova",
+    // (Rilascio 10, §3.11) In alto il marchio con la riga del cliente.
+    "Rondine prova · con Lateral Space",
     // (Rilascio 10, D6) Il titolo senza codice; il codice in piccolo in fondo, «Riferimento …».
     `Riferimento ${CODE}`,
     "Giulia Neri ti chiede alcune informazioni.",
@@ -218,10 +221,11 @@ test("prima l'informativa: nessuna domanda, bozza o caricamento prima di «Inizi
     "Ti chiediamo del tuo lavoro, non di te.",
     "Leggi l'informativa completa",
     "Iniziamo",
-    "Come usiamo le tue risposte",
   ]) {
     assert.ok(first.includes(text), text);
   }
+  // (Rilascio 10, §3.11) Un solo accesso al testo completo per schermata: qui c'è «Leggi l'informativa completa».
+  assert.ok(!first.includes("Come usiamo le tue risposte"), "niente piè di pagina con l'informativa sulla schermata dell'informativa");
   assert.match(first, /<h1[^>]*>[^<]*Fatture fornitori<\/h1>/);
   for (const absent of ["La tua risposta", "Invia le risposte", "Allega un file", "Domanda 1 di 2", titles[0], titles[1]]) assert.ok(!first.includes(absent), `prima dell'informativa: niente «${absent}»`);
   assert.doesNotMatch(first, /<textarea|type="file"/);
@@ -229,26 +233,25 @@ test("prima l'informativa: nessuna domanda, bozza o caricamento prima di «Inizi
 });
 
 test("dopo l'informativa: le domande con risposta, «Non lo so», «È già allegato», file e invio", opts, async () => {
-  pok(await pub.acceptReferentPrivacy(await linkOf(state.token), { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" }, new Date()), "informativa");
+  pok(await pub.acceptReferentPrivacy(await linkOf(state.token), { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version }, new Date()), "informativa");
   const shown = await html(state.token);
+  // (Rilascio 10, §3.11) «Le domande», tre controlli per domanda più «Altro», un solo numero nella barra.
   for (const text of [
-    "Domanda 1 di 2",
-    "Domanda 2 di 2",
     titles[0],
     titles[1],
-    "La tua risposta",
+    "Le domande</h2>",
     "Scrivi qui. Bastano poche righe.",
+    ">Allega<",
     "Non lo so",
+    "Altro",
     "È già allegato",
-    "Allega un file",
-    "2 domande",
-    "Per ognuna: rispondi, allega un file o scegli «Non lo so».",
-    "0 di 2 fatte",
+    "0 di 2 · salvato",
     "Invia",
-    "Si salva da solo: puoi tornare fino al",
+    "Come usiamo le tue risposte",
   ]) {
     assert.ok(shown.includes(text), text);
   }
+  for (const gone of ["Domanda 1 di 2", "La tua risposta", "2 domande", "Per ognuna", "fatte", "Si salva da solo"]) assert.ok(!shown.includes(gone), gone);
   assert.ok(!shown.includes("Prima di iniziare"), "il riquadro dell'informativa non c'è più");
   for (const other of titles.slice(2)) assert.ok(!shown.includes(other), "solo le domande di questa richiesta");
   assert.match(shown, /<textarea[^>]*maxLength="4000"|<textarea[^>]*maxlength="4000"/);
@@ -259,7 +262,7 @@ test("(Parte 3) una domanda a cui ha già pensato il team: «Non serve più», m
   ok(await referents.addReviewerAnswer(as(), ids.useCase, needs[1], { text: "Usano il gestionale interno TESTO-DEL-TEAM." }), "risposta del team");
   const partly = await html(state.token);
   assert.ok(partly.includes("Non serve più: ci ha già pensato il team."));
-  assert.ok(partly.includes("Domanda 2 di 2"), "conta come le altre");
+  assert.ok(partly.includes("1 di 2 · salvato"), "conta come le altre");
   assert.ok(!partly.includes("TESTO-DEL-TEAM"), "mai cosa ha scritto il team");
   assert.ok(!partly.includes("Giulia Neri (team)"), "mai chi");
   assert.equal((partly.match(/<textarea/g) ?? []).length, 1, "un solo campo: la domanda ancora aperta");
@@ -277,7 +280,7 @@ test("(Parte 3) una domanda a cui ha già pensato il team: «Non serve più», m
 test("una risposta inviata si legge, in sola lettura, con «Inviata il …»; poi «Hai risposto il … Grazie!»", opts, async () => {
   const link = await sendLink(`anna.bianchi.${suffix}@rondine.test`, needs.slice(2, 3));
   const l = await linkOf(link.token);
-  pok(await pub.acceptReferentPrivacy(l, { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" }, new Date()), "informativa");
+  pok(await pub.acceptReferentPrivacy(l, { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version }, new Date()), "informativa");
   const l2 = await linkOf(link.token);
   pok(await pub.saveReferentDraft(l2, { needId: needs[2], text: "Due persone, mezza giornata.", dontKnow: false }, new Date()), "bozza");
   const draftPage = await html(link.token);
@@ -291,34 +294,38 @@ test("una risposta inviata si legge, in sola lettura, con «Inviata il …»; po
   assertNothingPrivate(sent);
 });
 
-test("le schede dei link che non si possono usare, senza dati della richiesta", opts, async () => {
+test("(rilascio 10, §3.11) una scheda sola per i link che non si possono usare, senza dati della richiesta; l'errore con «Riprova»", opts, async () => {
+  const GONE = "Questo link non vale più.";
   const unknown = await html(`ucq_${randomBytes(24).toString("base64url")}`);
-  assert.ok(unknown.includes("Link non valido"));
-  assert.ok(unknown.includes("Questo link non è più valido. Chiedi a chi te l'ha mandato un link nuovo."));
-  assert.ok((await html("non-un-link")).includes("Link non valido"));
+  assert.ok(unknown.includes(GONE));
+  assert.ok(unknown.includes("Rispondi all'email che hai ricevuto: arriva a chi ti ha scritto."));
+  assert.ok((await html("non-un-link")).includes(GONE));
 
   const toRevoke = await sendLink(`luca.verdi.${suffix}@rondine.test`, needs.slice(3, 4));
   const [r] = await q(`SELECT version FROM use_case_referent_requests WHERE id = $1::uuid`, [toRevoke.requestId]);
   ok(await referents.revokeReferentRequest(as(), ids.useCase, toRevoke.requestId, Number(r.version)), "revoca");
   const revoked = await html(toRevoke.token);
-  assert.ok(revoked.includes("Link revocato"));
+  assert.ok(revoked.includes(GONE), "la stessa scheda: non si capisce perché");
   assert.ok(!revoked.includes("Fatture fornitori") && !revoked.includes("Giulia Neri"), "niente della richiesta");
 
   const toExpire = await sendLink(`sara.neri.${suffix}@rondine.test`, needs.slice(4, 5));
   await q(`UPDATE use_case_referent_tokens SET expires_at = now() - interval '1 minute' WHERE request_id = $1::uuid`, [toExpire.requestId]);
   const expired = await html(toExpire.token);
-  assert.ok(expired.includes("Link scaduto"));
+  assert.ok(expired.includes(GONE));
   assert.ok(!expired.includes("Fatture fornitori"));
 
   process.env.USE_CASE_REFERENTS = "off";
   try {
-    assert.ok((await html(state.token)).includes("Non disponibile"));
+    const down = await html(state.token);
+    assert.ok(down.includes("Questa pagina non si è caricata."));
+    assert.ok(down.includes(">Riprova</button>"), "il solo «Riprova»");
   } finally {
     delete process.env.USE_CASE_REFERENTS;
   }
   for (const p of [unknown, revoked, expired]) {
     assert.doesNotMatch(p, /href="[^"]*\/(dashboard|login)\b/);
-    assert.ok(p.includes("Lateral Space via Unbundle."));
+    assert.doesNotMatch(p, /<button|<footer/, "nessun controllo, nessun piè di pagina");
+    assert.ok(!p.includes("Lateral Space via Unbundle"));
   }
 });
 
@@ -339,7 +346,7 @@ test("(rilascio 5) la richiesta al referente: «ti ha indicato come referente»,
   const privacyFirst = await html(token!);
   assert.ok(privacyFirst.includes("Giulia Neri ti ha indicato come referente."));
   assert.ok(privacyFirst.includes("Prima di iniziare") && !privacyFirst.includes("È così?"), "prima l'informativa");
-  pok(await pub.acceptReferentPrivacy(await linkOf(token!), { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" }, new Date()), "informativa");
+  pok(await pub.acceptReferentPrivacy(await linkOf(token!), { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version }, new Date()), "informativa");
   // Il passo 1, anche chiedendo il passo 2 (riportato al primo non fatto).
   for (const passo of [undefined, "2", "3", "x"]) {
     const step1 = await html(token!, passo);
@@ -362,10 +369,11 @@ test("(rilascio 5) la richiesta al referente: «ti ha indicato come referente»,
   assert.match(step2, /inputMode="decimal"|inputmode="decimal"/);
   // ?passo=1 vale: si può tornare indietro.
   assert.ok((await html(token!, "1")).includes("È così?"));
-  // Fatti tutti e due, il passo 3 con le domande e «Indietro».
+  // Fatti tutti e due, il passo 3 con le domande; (rilascio 10) i passi fatti si toccano per tornarci.
   pok(await pub.saveReferentCheck(link, { step: 2, teamSeen: null, estimate: null, timesPerMonth: 20, minutesEach: 30 }, new Date()), "tempo");
   const step3 = await html(token!);
-  assert.ok(step3.includes(titles[5]) && step3.includes("Indietro"));
+  assert.ok(step3.includes(titles[5]));
+  assert.equal((step3.match(/data-slot="referent-step-go"/g) ?? []).length, 2, "«Il caso d'uso» e «Le stime» si toccano");
   assert.deepEqual(filledButtons(step3), ["Invia"]);
   for (const forbidden of ["98765", "98.765", "NOTA-RISERVATA", PROPOSER]) assert.ok(!step3.includes(forbidden));
   // (Rilascio 5.1, rilascio 10 §4) Con un modello del valore il passo 2 sono «Le stime»: una riga per voce, un tocco, un solo pulsante pieno.
@@ -384,18 +392,19 @@ test("(rilascio 5) la richiesta al referente: «ti ha indicato come referente»,
     for (const text of [
       "Le stime",
       "Ti tornano queste stime?",
-      "Controllo delle fatture: circa 250 volte al mese, 12 minuti ogni volta. Ti torna?",
-      "Meno solleciti: circa 4.321 € l'anno. Ti torna?",
-      "Meno errori. Ti torna?",
-      "È di meno",
-      "È di più",
+      // (Rilascio 10, §3.11) «Ti torna?» si dice una volta, nel titolo; le scelte «Sì · Meno · Di più · Non lo so».
+      "Controllo delle fatture: circa 250 volte al mese, 12 minuti ogni volta.",
+      "Meno solleciti: circa 4.321 € l'anno.",
+      "Meno errori.",
+      ">Meno<",
+      ">Di più<",
       "Non lo so",
-      "Aggiungi un commento",
       "Indietro",
     ]) {
       assert.ok(impact.includes(text), text);
     }
     assert.deepEqual(filledButtons(impact), ["Avanti"], "le scelte sono a levetta, il pulsante pieno è il passo dopo");
+    assert.ok(!impact.includes("Ti torna?") && !impact.includes("Aggiungi un commento"), "il commento dopo una scelta diversa da «Sì»");
     assert.equal((impact.match(/data-slot="referent-benefit"/g) ?? []).length, 3);
     // (Decisione del titolare del 04/11/2026) «Non lo so» anche sulle cifre del team: quattro scelte a ore e in euro, tre sulla qualitativa.
     assert.equal((impact.match(/aria-pressed="false"/g) ?? []).length, 11, "4 + 4 + 3 scelte, nessuna premuta");

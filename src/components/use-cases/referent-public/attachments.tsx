@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useId, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { FileText, Loader2, Paperclip, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -23,7 +23,16 @@ import { fileFromUpload, fileRow, type FileRow, type PublicFile } from "./public
  *
  * (Rilascio 9b) Un caricamento o un «Togli» che aspettano l'informativa non dicono «Prima premi «Iniziamo».» sotto un
  * pulsante che non c'è: la pagina mostra di nuovo l'informativa (`onPrivacyWait`), poi si riprova.
+ *
+ * (Rilascio 10, §3.11) Il pulsante di caricamento è grande, a tutta larghezza e alto 48 px, quando la domanda vuole un
+ * file o ha un file da compilare («Allega un file», «Allega il file compilato»); sulle altre domande la scelta del file
+ * si apre dal comando «Allega» della domanda (`handleRef.open`), accanto a «Non lo so» e «Altro».
  */
+
+/** (Rilascio 10) Il comando «Allega» della domanda apre la scelta del file. */
+export interface AttachmentsHandle {
+  open: () => void;
+}
 
 const T = REFERENT_PUBLIC_TEXT;
 
@@ -45,13 +54,15 @@ export function Attachments({
   tooSoon,
   label,
   onPrivacyWait,
+  trigger = "button",
+  handleRef,
 }: {
   token: string;
   needId: string;
   files: PublicFile[];
   onFiles: (update: (current: PublicFile[]) => PublicFile[]) => void;
   clientMode: boolean;
-  /** false con «Non ce l'ho» o «È già allegato»: si possono solo togliere i file già caricati. */
+  /** false con «Non lo so» o «È già allegato»: si possono solo togliere i file già caricati. */
   allowUpload: boolean;
   disabled: boolean;
   /** (Rilascio 5) Un clic subito dopo il cambio di passo: «Allega un file» lo ignora. */
@@ -60,6 +71,9 @@ export function Attachments({
   label?: string;
   /** (Rilascio 9b) Il caricamento o «Togli» aspettano l'informativa: la pagina la mostra di nuovo. */
   onPrivacyWait?: () => void;
+  /** (Rilascio 10) «button»: il pulsante grande; «none»: la scelta del file si apre da `handleRef.open`. */
+  trigger?: "button" | "none";
+  handleRef?: Ref<AttachmentsHandle>;
 }) {
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
@@ -68,6 +82,15 @@ export function Attachments({
   const [error, setError] = useState<string | null>(null);
   const live = files.filter((f) => f.status !== "rifiutato");
   const blocked = disabled || uploading !== null;
+  useImperativeHandle(
+    handleRef,
+    () => ({
+      open: () => {
+        if (!blocked && allowUpload) input.current?.click();
+      },
+    }),
+    [blocked, allowUpload],
+  );
 
   async function onFile(file: File) {
     setError(null);
@@ -102,6 +125,25 @@ export function Attachments({
   }
 
   const rows = files.map(fileRow);
+  const fileInput = allowUpload ? (
+    <input
+      ref={input}
+      id={`${id}-file`}
+      type="file"
+      accept={REFERENT_LIMITS.accept}
+      className="sr-only"
+      tabIndex={-1}
+      aria-hidden
+      disabled={blocked}
+      onChange={(e) => {
+        const file = e.currentTarget.files?.[0];
+        if (file) void onFile(file);
+      }}
+    />
+  ) : null;
+  // (Rilascio 10) Con il caricamento aperto dal comando «Allega» e niente da mostrare: solo la scelta del file, nascosta,
+  // così la scheda non ha uno spazio vuoto.
+  if (rows.length === 0 && !uploading && !error && trigger === "none") return fileInput;
 
   return (
     <div className="min-w-0 space-y-3">
@@ -159,34 +201,23 @@ export function Attachments({
 
       {allowUpload ? (
         <div className="min-w-0 space-y-2">
-          <input
-            ref={input}
-            id={`${id}-file`}
-            type="file"
-            accept={REFERENT_LIMITS.accept}
-            className="sr-only"
-            tabIndex={-1}
-            aria-hidden
-            disabled={blocked}
-            onChange={(e) => {
-              const file = e.currentTarget.files?.[0];
-              if (file) void onFile(file);
-            }}
-          />
+          {fileInput}
           {/* (Rilascio 5.1) «Allega un file» apre subito la scelta del file: le regole le dice l'informativa, prima. */}
-          <Button
-            type="button"
-            variant="outline"
-            className="min-h-11 text-base"
-            aria-busy={uploading !== null || undefined}
-            onClick={(e) => {
-              if (blocked || e.detail > 1 || tooSoon?.(e)) return;
-              input.current?.click();
-            }}
-          >
-            {uploading ? <Loader2 className="animate-spin" aria-hidden /> : <Paperclip aria-hidden />}
-            {uploading ? T.uploading : (label ?? T.attach)}
-          </Button>
+          {trigger === "button" ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="h-12 w-full text-base whitespace-normal"
+              aria-busy={uploading !== null || undefined}
+              onClick={(e) => {
+                if (blocked || e.detail > 1 || tooSoon?.(e)) return;
+                input.current?.click();
+              }}
+            >
+              {uploading ? <Loader2 className="animate-spin" aria-hidden /> : <Paperclip aria-hidden />}
+              {uploading ? T.uploading : (label ?? T.attach)}
+            </Button>
+          ) : null}
         </div>
       ) : null}
 

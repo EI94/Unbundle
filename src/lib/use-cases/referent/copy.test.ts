@@ -19,6 +19,7 @@ import {
   privacyNoticeTexts,
 } from "./labels.ts";
 import { PREPARED_QUESTIONS } from "./prepare.ts";
+import { REFERENT_KIT_NOTICE, REFERENT_KIT_TEXT, kitNoticeTexts } from "./kit.ts";
 
 // I testi di «Chiedi al referente», della campanella e di «Raccolta informazioni» (SPEC §5, §7, §P2.10):
 // nella dashboard «use case», mai «caso d'uso» né «wave»; (rilascio 5.1, decisione del titolare del
@@ -88,8 +89,11 @@ const DASHBOARD = [
   ...strings(USE_CASE_NOTICE_TEXT),
 ];
 
-/** Fuori dalla dashboard: la pagina pubblica e le email. */
+/** Fuori dalla dashboard: la pagina pubblica e le email. (Rilascio 10, D5) Anche il kit del referente, comune a `/r`. */
 const OUTSIDE = [
+  ...strings(REFERENT_KIT_TEXT),
+  ...strings(REFERENT_KIT_NOTICE),
+  ...strings(kitNoticeTexts({ company: "Rondine", expires: "26 novembre 2026", contact: "privacy@example.test" })),
   ...strings(REFERENT_PUBLIC_TEXT),
   ...strings(REFERENT_CHECK_TEXT),
   ...strings(REFERENT_IMPACT_TEXT),
@@ -131,4 +135,10 @@ test("nessuna parola tecnica per i clienti", () => {
 test("le scelte si chiamano «A posto», «Risposta parziale», «Manca il dato»: mai «validata», «Parziale» o «Mancante»", () => {
   const texts = [...strings(BELL_TEXT), ...strings(INFO_PROGRESS_TEXT), ...strings(USE_CASE_NOTICE_TEXT), ...strings(REFERENT_UI_TEXT)];
   assert.deepEqual(texts.filter((t) => /\bvalidat[ao]\b/i.test(t) || /«(Parziale|Mancante)»|^(Parziale|Mancante)$/.test(t)), []);
+});
+
+test("(rilascio 10, §4.2) fuori dalla dashboard «Non lo so», mai «Non ce l'ho»; nessun codice nei titoli delle email", () => {
+  assert.deepEqual(OUTSIDE.filter((t) => /non\s+ce\s+l['’]\s*ho/i.test(t)), []);
+  assert.ok(OUTSIDE.some((t) => t.includes("«Non lo so»")));
+  for (const m of emails) assert.doesNotMatch(m.subject, /\b[A-Z]{2,4}-\d{4}\b/, m.subject);
 });

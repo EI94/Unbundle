@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { EMAIL_BODY_MAX_WORDS, EMAIL_SUBJECT_MAX, UC_EMAIL_LOGO_PATH, emailBodyWords, emailBrand } from "../../uc/notify/email-render.ts";
-import { checkReferentLink, labelOfUseCase, linkLine, renderReferentEmail, titleOfUseCase, whatIsACaseLine, type ReminderEntry } from "./email.ts";
+import { DONT_KNOW_LINE, LAST_REMINDER_LINE, checkReferentLink, labelOfUseCase, linkLine, renderReferentEmail, titleOfUseCase, whatIsACaseLine, type ReminderEntry } from "./email.ts";
 
 // Le email di «Chiedi al referente», parola per parola (SPEC §7). Dati inventati. (Rilascio 5.1) Fuori
 // dalla dashboard «caso d'uso», mai «use case»; l'oggetto comincia sempre con l'azienda. (Rilascio 10,
@@ -39,9 +39,10 @@ function short(m: { text: string; subject: string }) {
   assert.ok(words <= EMAIL_BODY_MAX_WORDS, `${words} parole: ${m.subject}\n${m.text}`);
 }
 
-test("(rilascio 10) che cos'è un caso d'uso, nella prima frase", () => {
-  assert.equal(whatIsACaseLine("Rondine"), "un lavoro che Rondine vuole semplificare con l'AI");
-  assert.equal(whatIsACaseLine(""), "un lavoro che la tua azienda vuole semplificare con l'AI");
+test("(rilascio 10, §9.9) che cos'è un caso d'uso, nella prima frase, come nel prototipo; «Non lo so» dal kit", () => {
+  assert.equal(whatIsACaseLine(), "un lavoro da semplificare con l'AI");
+  assert.equal(DONT_KNOW_LINE, "Se non sai una cosa, scegli «Non lo so».");
+  assert.equal(LAST_REMINDER_LINE, "È l'ultimo promemoria: se non sai qualcosa, scegli «Non lo so».");
 });
 
 test("{UC}: il titolo senza codice; il codice e il titolo restano per chi li usa; al massimo 120 caratteri", () => {
@@ -63,8 +64,9 @@ test("richiesta: oggetto e testo, con e senza messaggio e risposta all'email", (
   // (Rilascio 5, §8.4) Solo domande: l'oggetto e la prima riga non dicono «sei il referente».
   assert.equal(one.subject, "Rondine: una domanda su «Fatture fornitori»");
   has(one.text, "Buongiorno,");
-  has(one.text, "Giulia Neri ti fa una domanda sul caso d'uso «Fatture fornitori», un lavoro che Rondine vuole semplificare con l'AI.");
-  has(one.text, "Bastano pochi minuti. Se non sai, scegli «Non lo so». Se hai un documento utile, allegalo.");
+  has(one.text, "Giulia Neri ti fa una domanda sul caso d'uso «Fatture fornitori», un lavoro da semplificare con l'AI.");
+  has(one.text, "Bastano pochi minuti. Se non sai una cosa, scegli «Non lo so».");
+  assert.ok(!one.text.includes("allegalo"), "(rilascio 10, §3.12) «Allega» sta sotto ogni domanda della pagina");
   assert.doesNotMatch(one.text, /dati personali|togli nomi/, "(rilascio 5.1) niente allarmi sui dati personali");
   has(one.text, `Apri le domande: ${LINK}`);
   has(one.text, "Il link è solo tuo e vale fino al 26 novembre. Per un dubbio, rispondi qui.");
@@ -131,6 +133,8 @@ test("promemoria con più voci: un blocco per caso d'uso, il suo link, chi chied
   has(two.text, "«Fatture fornitori», chiede Giulia Neri: 2 domande aperte, entro il 26 novembre.");
   has(two.text, "«Ordini clienti», chiede Luca Verdi: una domanda aperta, entro il 26 novembre.");
   has(two.text, "È l'ultimo promemoria per questo caso d'uso.");
+  // (Rilascio 10, §3.12) Con un ultimo promemoria tra le voci, «Non lo so» una volta.
+  assert.equal(two.text.split("Se non sai qualcosa, scegli «Non lo so».").length - 1, 1);
   has(two.text, LINK);
   has(two.text, LINK2);
   has(two.text, "I link sono solo tuoi.");
@@ -187,8 +191,8 @@ test("(rilascio 5; rilascio 10, §9.9) richiesta al referente: «conferma», le 
     zero.text,
     [
       "Buongiorno,",
-      "Giulia Neri ti ha indicato come referente del caso d'uso «Fatture fornitori», un lavoro che Rondine vuole semplificare con l'AI.",
-      "Bastano pochi minuti: confermi la descrizione e alcune stime. Se non sai, scegli «Non lo so».",
+      "Giulia Neri ti ha indicato come referente del caso d'uso «Fatture fornitori», un lavoro da semplificare con l'AI.",
+      "Bastano pochi minuti: confermi la descrizione e alcune stime. Se non sai una cosa, scegli «Non lo so».",
       `Inizia: ${LINK}`,
       "Il link è solo tuo e vale fino al 26 novembre. Per un dubbio, rispondi qui.",
       "Riferimento RD-0004",
@@ -346,4 +350,63 @@ test("(rilascio 6) un'email con più novità dice quante nell'oggetto; i promemo
   has(many.text, "«Fatture fornitori», chiede Giulia Neri: un chiarimento, entro il 26 novembre.");
   has(many.text, "«Ordini», da Giulia Neri: novità per te, entro il 26 novembre.");
   assert.doesNotMatch(many.text, /0 domande/);
+});
+
+test("(rilascio 10, §9.9) la richiesta al referente come il prototipo S8: oggetto, corpo parola per parola, «Inizia», al massimo 60 parole", () => {
+  const m = renderReferentEmail(
+    {
+      template: "richiesta",
+      kind: "referente",
+      company: "Cliente Demo",
+      useCase: { code: "XX-0024", title: "Preventivi ai clienti" },
+      requesterName: "Giulia Neri",
+      questions: 5,
+      message: null,
+      expiresAt: new Date("2026-12-18T10:00:00Z"),
+      link: LINK,
+      replyToKnown: true,
+    },
+    emailBrand("https://app.example.test"),
+  );
+  assert.equal(m.subject, "Cliente Demo: conferma «Preventivi ai clienti»");
+  assert.equal(m.subject.length, 46);
+  assert.equal(
+    m.text,
+    [
+      "Buongiorno,",
+      "Giulia Neri ti ha indicato come referente del caso d'uso «Preventivi ai clienti», un lavoro da semplificare con l'AI.",
+      "Bastano pochi minuti: confermi la descrizione, alcune stime e 5 domande. Se non sai una cosa, scegli «Non lo so».",
+      `Inizia: ${LINK}`,
+      "Il link è solo tuo e vale fino al 18 dicembre. Per un dubbio, rispondi qui.",
+      "Riferimento XX-0024",
+    ].join("\n\n") + "\n",
+  );
+  assert.ok(emailBodyWords(m.text) <= EMAIL_BODY_MAX_WORDS, String(emailBodyWords(m.text)));
+  // Il pulsante, uno solo, con il verbo; l'indirizzo in chiaro solo nel testo semplice.
+  assert.equal((m.html.match(/<a\b/g) ?? []).length, 1);
+  assert.match(m.html, />Inizia<\/a>/);
+  assert.ok(!m.html.includes(`>${LINK}<`));
+});
+
+test("(rilascio 10, §3.12) ogni email al referente di un caso d'uso solo: al massimo 55 caratteri d'oggetto e 60 parole, «Riprendi» per i promemoria", () => {
+  // Il modello: un titolo di poche parole, senza il messaggio di chi chiede né la riga del file da compilare.
+  const base = { company: "Una ragione sociale piuttosto lunga S.p.A.", replyToKnown: true, replyName: "Giulia Neri" };
+  const uc = { code: "XX-0025", title: "Ordini ai fornitori" };
+  const all = [
+    renderReferentEmail({ template: "richiesta", kind: "referente", company: base.company, useCase: uc, requesterName: "Giulia Neri", questions: 12, message: null, expiresAt: EXPIRES, link: LINK, replyToKnown: true }),
+    renderReferentEmail({ template: "richiesta", company: base.company, useCase: uc, requesterName: "Giulia Neri", questions: 12, message: null, expiresAt: EXPIRES, link: LINK, replyToKnown: true }),
+    ...(["primo", "manuale", "ultimo"] as const).map((kind) => renderReferentEmail({ template: "promemoria", ...base, entries: [entry({ kind, useCase: uc, openQuestions: 7, checkPending: true, openClarifications: 2 })] })),
+    renderReferentEmail({ template: "promemoria", ...base, entries: [entry({ kind: "ultimo", useCase: uc, openQuestions: 2, openClarifications: 3 })] }),
+    renderReferentEmail({ template: "promemoria", ...base, entries: [entry({ kind: "nuove", useCase: uc, newQuestions: 3, clarifications: 1, replies: 1 })] }),
+    renderReferentEmail({ template: "promemoria", ...base, entries: [entry({ kind: "nuove", useCase: uc, newQuestions: 2 })] }),
+    renderReferentEmail({ template: "conferma", company: base.company, useCase: uc, requesterName: "Giulia Neri", submitted: 9, openQuestions: 3, expiresAt: EXPIRES }),
+  ];
+  for (const m of all) {
+    assert.ok(m.subject.length <= EMAIL_SUBJECT_MAX, `${m.subject.length}: ${m.subject}`);
+    assert.doesNotMatch(m.subject, CODE);
+    assert.match(m.subject, /^Una ragione soc.*«Ordini ai[^»]*»$/, "il cliente prima, il titolo per ultimo");
+    short(m);
+    assert.doesNotMatch(m.text, /Non ce l'ho|In questa email non ci sono le tue risposte|Riprendi le domande/);
+  }
+  for (const m of all.slice(2, 6)) assert.equal(m.text.split("Riprendi:").length - 1, 1, m.subject);
 });

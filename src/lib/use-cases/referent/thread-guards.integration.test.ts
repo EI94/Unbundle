@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
+import { REFERENT_PRIVACY_NOTICE } from "./labels.ts";
 
 // (Rilascio 6) «Il filo con il referente»: i casi trovati dalla verifica del rilascio, sul database di prova.
 // - Un dubbio del referente rinnova il link; dopo la scadenza un dubbio o un chiarimento senza risposta possibile
@@ -133,7 +134,7 @@ async function answeredReferent(card: { id: string; needs: string[] }): Promise<
   assert.ok(token, "il link nell'email");
   const first = await pub.resolveReferentToken(token!, new Date());
   if (first.access !== "ok") assert.fail("link");
-  pok(await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" }, new Date()) as never, "informativa");
+  pok(await pub.acceptReferentPrivacy(first.link, { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version }, new Date()) as never, "informativa");
   const link = await linkOf(token!);
   pok(await pub.saveReferentCheck(link, { step: 1, confirm: "si", note: null }, new Date()) as never, "passo 1");
   pok(await pub.saveReferentCheck(link, { step: 2, benefit: { key: "tempo-1", seen: SEEN, answer: "meno", timesPerMonth: 200 } }, new Date()) as never, "passo 2");
@@ -302,7 +303,7 @@ test("«Chiedi un chiarimento» su una richiesta completata mentre la stessa per
   assert.ok(token, "il link di R1");
   const first = await pub.resolveReferentToken(token!, new Date());
   if (first.access !== "ok") assert.fail("link");
-  pok(await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-3", shown: "ucq-2026-11-3" }, new Date()) as never, "informativa");
+  pok(await pub.acceptReferentPrivacy(first.link, { version: REFERENT_PRIVACY_NOTICE.version, shown: REFERENT_PRIVACY_NOTICE.version }, new Date()) as never, "informativa");
   pok(await pub.saveReferentDraft(await linkOf(token!), { needId: card.needs[0], text: "Circa 200 al mese", dontKnow: false }, new Date()) as never, "bozza");
   pok(await pub.submitReferentAnswers(await linkOf(token!), {}, new Date()) as never, "invia");
   await send(r1.requestId);
