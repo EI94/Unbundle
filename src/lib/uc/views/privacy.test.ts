@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { blockerEvidenceHash } from "../blockers.ts";
+import { findForbiddenIn } from "./copy-guard.ts";
 import {
+  PRIVACY_TEXT,
+  fileTypeLabel,
   a8FormFromEvidence,
   a8SignatureLines,
   blockerFormFields,
@@ -207,4 +211,35 @@ test("personal zone: the lead proposes, the privacy approver signs, anyone of th
   assert.equal(canManagePersonalZone([member({})], approver), false, "nothing to sign yet");
   assert.equal(canManagePersonalZone([member({ state: "in_attesa" })], approver), true);
   assert.equal(canManagePersonalZone([], lead), false);
+});
+
+// ── Rilascio 10, §3.5: Privacy più corta ──────────────────────────────
+
+test("(rilascio 10) il tipo del file in parole, mai il MIME grezzo", () => {
+  assert.equal(fileTypeLabel("application/pdf"), "PDF");
+  assert.equal(fileTypeLabel("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"), "Foglio di calcolo");
+  assert.equal(fileTypeLabel("text/csv; charset=utf-8"), "Foglio di calcolo");
+  assert.equal(fileTypeLabel("application/vnd.openxmlformats-officedocument.wordprocessingml.document"), "Documento di testo");
+  assert.equal(fileTypeLabel("image/png"), "Immagine");
+  assert.equal(fileTypeLabel("message/rfc822"), "Email");
+  assert.equal(fileTypeLabel("application/octet-stream"), "File");
+  assert.equal(fileTypeLabel(null), "File");
+  for (const mime of ["application/pdf", "image/jpeg", "application/zip", "text/plain"]) assert.doesNotMatch(fileTypeLabel(mime), /\//, mime);
+});
+
+test("(rilascio 10) Privacy: le due regole dentro «Cosa approvi», «A.8» solo in «Dettagli tecnici», gli accessi in Attività", () => {
+  const { technicalForm, ...shown } = PRIVACY_TEXT;
+  assert.match(technicalForm, /A\.8/, "la sigla resta, per Lateral Space");
+  assert.deepEqual(findForbiddenIn(Object.values(shown), "cliente"), [], "il resto lo legge anche il cliente");
+  assert.doesNotMatch(PRIVACY_TEXT.healthRule, /\bcaso\b/);
+  const page = readFileSync(new URL("../../../app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/privacy/page.tsx", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.doesNotMatch(page, /I dati personali reali entrano|I dati sanitari non entrano|Registro degli accessi/, "le frasi fisse non stanno più in pagina");
+  assert.match(page, /`\$\{casePath\(workspaceId, caseId, "attivita"\)\}\?tipo=\$\{PERSONAL_DATA_FAMILY\}`/, "il link ad Attività › «Dati personali»");
+  assert.match(page, /canOpenShellPage\("registro", roles\)/, "solo per chi apre Attività; l'analista li legge in una piega");
+  const card = readFileSync(new URL("../../../components/uc/privacy/privacy-card.tsx", import.meta.url), "utf8");
+  assert.match(card, /<li>\{PRIVACY_TEXT\.realDataRule\}<\/li>\s*<li>\{PRIVACY_TEXT\.healthRule\}<\/li>/);
+  assert.match(card, /<TechDetails roles=\{viewerRoles\}>\s*<p>\{PRIVACY_TEXT\.technicalForm\}<\/p>/);
+  assert.match(card, /data-slot="privacy-signatures" className="[^"]*flex flex-wrap/, "le firme in una riga");
+  const form = readFileSync(new URL("../../../components/uc/privacy/a8-form.tsx", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.doesNotMatch(form, /\(A\.8\)/, "l'etichetta del modulo senza la sigla");
 });
