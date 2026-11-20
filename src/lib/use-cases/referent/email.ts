@@ -10,6 +10,8 @@
  * «Fatture fornitori»», con il titolo e mai il codice (`emailSubject`); il corpo al massimo di 60
  * parole: il saluto, chi e che cosa, quanto ci vuole, il pulsante con un verbo, una riga piccola («Il
  * link è solo tuo e vale fino al …»); il codice resta in piccolo in fondo («Riferimento RD-0004»).
+ * (Rilascio 10, §9.9) La richiesta al referente parola per parola come il prototipo S8: «…, un lavoro da semplificare
+ * con l'AI.», «Se non sai una cosa, scegli «Non lo so».»; «Non lo so» viene dal kit del referente (D5).
  *
  * Regole: testo semplice più HTML minimo con il motore dei dossier (`email-render.ts`): in cima il
  * marchio «U» di Unbundle (`brand`), nessun tracciamento, il pulsante del link (l'indirizzo in chiaro
@@ -21,6 +23,7 @@
  */
 import { byDayIt, emailSubject, multiLine, oneLine, render, untilDayIt, type Block, type EmailBrand, type RenderedEmail } from "../../uc/notify/email-render.ts";
 import type { ReferentReminderKind } from "../../db/use-case-hub-referents-ddl.ts";
+import { REFERENT_KIT_TEXT } from "./kit.ts";
 import { REFERENT_PUBLIC_TEXT, companyLabel } from "./labels.ts";
 import { checkCardLink } from "./links.ts";
 
@@ -123,12 +126,16 @@ function referenceBlocks(uc: UcRef): Block[] {
 }
 
 /**
- * (Rilascio 5.1) Che cos'è un caso d'uso, per chi lo legge per la prima volta. (Rilascio 10, §3.12) Sta
- * nella prima frase dell'email: «…, un lavoro che Rondine vuole semplificare con l'AI.».
+ * (Rilascio 5.1) Che cos'è un caso d'uso, per chi lo legge per la prima volta. (Rilascio 10, §3.12, §9.9) Sta
+ * nella prima frase dell'email, come nel prototipo S8: «…, un lavoro da semplificare con l'AI.». Il nome del
+ * cliente lo dicono già l'oggetto e il mittente.
  */
-export function whatIsACaseLine(companyName: string): string {
-  return `un lavoro che ${company(companyName)} vuole semplificare con l'AI`;
+export function whatIsACaseLine(): string {
+  return "un lavoro da semplificare con l'AI";
 }
+
+/** (Rilascio 10, §9.9, D5) «Se non sai una cosa, scegli «Non lo so».» */
+export const DONT_KNOW_LINE = `Se non sai una cosa, scegli «${REFERENT_KIT_TEXT.dontKnow}».`;
 
 /** (Rilascio 10, §3.12) L'oggetto di ogni email al referente: «{Azienda}: {cosa} «{Titolo}»», al massimo 55 caratteri. */
 const subjectFor = (companyName: string, what: string, uc?: UcRef) => emailSubject(company(companyName), what, uc ? titleOfUseCase(uc) : null);
@@ -268,7 +275,7 @@ function singleReminder(e: ReminderEntry, input: Extract<ReferentEmailInput, { t
 }
 
 /** (Rilascio 10, §3.12) La chiusura dell'ultimo promemoria. */
-export const LAST_REMINDER_LINE = "È l'ultimo promemoria: se non sai qualcosa, scegli «Non lo so».";
+export const LAST_REMINDER_LINE = `È l'ultimo promemoria: se non sai qualcosa, scegli «${REFERENT_KIT_TEXT.dontKnow}».`;
 
 function multiReminder(input: Extract<ReferentEmailInput, { template: "promemoria" }>, brand?: EmailBrand): RenderedEmail {
   const n = input.entries.length;
@@ -302,6 +309,8 @@ function multiReminder(input: Extract<ReferentEmailInput, { template: "promemori
     );
     if (e.cardLink) blocks.push({ link: { href: checkCardLink(e.cardLink), label: TEAM_ACCESS_LINK_LABEL } });
   }
+  // (Rilascio 10, §3.12) Con un ultimo promemoria tra le voci, una volta: «Non lo so».
+  if (input.entries.some((e) => e.kind === "ultimo")) blocks.push({ p: `Se non sai qualcosa, scegli «${REFERENT_KIT_TEXT.dontKnow}».` });
   blocks.push({ small: input.replyToKnown && input.replyName ? "I link sono solo tuoi. Per un dubbio, rispondi qui." : "I link sono solo tuoi." });
   return render(subjectFor(input.company, `promemoria su ${n} casi d'uso`), blocks, brand);
 }
@@ -330,11 +339,11 @@ export function referentRequestParts(input: Extract<ReferentEmailInput, { templa
     const what = n <= 0 ? "la descrizione e alcune stime" : `la descrizione, alcune stime e ${n === 1 ? "una domanda" : `${n} domande`}`;
     const blocks: Block[] = [
       { p: "Buongiorno," },
-      { p: `${name(input.requesterName)} ti ha indicato come referente del caso d'uso «${uc}», ${whatIsACaseLine(input.company)}.` },
+      { p: `${name(input.requesterName)} ti ha indicato come referente del caso d'uso «${uc}», ${whatIsACaseLine()}.` },
     ];
     if (input.message && input.message.trim()) blocks.push({ quote: multiLine(input.message, 1000) });
     blocks.push(
-      { p: `Bastano pochi minuti: confermi ${what}. Se non sai, scegli «Non lo so».` },
+      { p: `Bastano pochi minuti: confermi ${what}. ${DONT_KNOW_LINE}` },
       ...fillInBlocks(input.fillInQuestions),
       { link: { href: link, label: "Inizia" } },
       ...tail,
@@ -346,11 +355,12 @@ export function referentRequestParts(input: Extract<ReferentEmailInput, { templa
   const n = Math.max(0, input.questions);
   const blocks: Block[] = [
     { p: "Buongiorno," },
-    { p: `${name(input.requesterName)} ti fa ${n === 1 ? "una domanda" : `${n} domande`} sul caso d'uso «${uc}», ${whatIsACaseLine(input.company)}.` },
+    { p: `${name(input.requesterName)} ti fa ${n === 1 ? "una domanda" : `${n} domande`} sul caso d'uso «${uc}», ${whatIsACaseLine()}.` },
   ];
   if (input.message && input.message.trim()) blocks.push({ quote: multiLine(input.message, 1000) });
   blocks.push(
-    { p: "Bastano pochi minuti. Se non sai, scegli «Non lo so». Se hai un documento utile, allegalo." },
+    // (Rilascio 10, §3.12) Il modello: quanto ci vuole e «Non lo so»; «Allega» sta sotto ogni domanda della pagina.
+    { p: `Bastano pochi minuti. ${DONT_KNOW_LINE}` },
     ...fillInBlocks(input.fillInQuestions),
     { link: { href: link, label: "Apri le domande" } },
     ...tail,

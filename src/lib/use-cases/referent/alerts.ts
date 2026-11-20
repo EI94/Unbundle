@@ -212,7 +212,8 @@ function factsOf(e: AlertEntry): string[] {
   const q = e.questions ?? 0;
   if (q > 0) out.push(q === 1 ? "il referente ha una domanda per il team" : `il referente ha ${q} domande per il team`);
   if (e.answers > 0) out.push(e.answers === 1 ? "è arrivata 1 risposta" : `sono arrivate ${e.answers} risposte`);
-  if (e.unknowns > 0) out.push(e.unknowns === 1 ? "il referente non ha l'informazione per 1 domanda" : `il referente non ha l'informazione per ${e.unknowns} domande`);
+  // (Rilascio 10, §3.12) Il tono neutro: al referente mancano alcune informazioni (mai «non sa rispondere»).
+  if (e.unknowns > 0) out.push(e.unknowns === 1 ? "al referente manca un'informazione" : "al referente mancano alcune informazioni");
   if (e.documents > 0) out.push(e.documents === 1 ? "c'è 1 documento nuovo" : `ci sono ${e.documents} documenti nuovi`);
   return out;
 }
@@ -251,8 +252,8 @@ function subjectOf(i: RequesterAlertInput): string {
   return emailSubject(company, "nessuna risposta su", uc);
 }
 
-/** (Rilascio 10, §3.12) Il piede: una riga sola, dove togliere l'avviso. */
-export const REQUESTER_ALERT_FOOTER = "Non vuoi queste email? Togli «Avvisami per email» in Il tuo account (menu sotto il tuo nome).";
+/** (Rilascio 10, §3.12) Il piede: una riga sola, dove togliere l'avviso, con le parole del foglio «Il tuo account». */
+export const REQUESTER_ALERT_FOOTER = "Non vuoi queste email? Togli «Avvisami per email» in Il tuo account.";
 
 /** L'email a chi ha chiesto, parola per parola. (Rilascio 5.1) Con `brand` l'HTML ha in cima il marchio. */
 export function renderRequesterAlert(i: RequesterAlertInput, brand?: EmailBrand): RenderedEmail {
