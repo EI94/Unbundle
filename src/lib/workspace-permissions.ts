@@ -18,3 +18,15 @@ export const PORTFOLIO_REVIEWER_ROLES = Object.freeze(["exec_sponsor", "transfor
 export function canReviewWorkspacePortfolio(role: string | null | undefined) {
   return typeof role === "string" && (PORTFOLIO_REVIEWER_ROLES as readonly string[]).includes(role);
 }
+
+/**
+ * (8.0d-1) I cinque ruoli da collaboratore: i revisori e il Contributore. Sono gli unici che passano le porte del
+ * workspace senza opzioni (`workspaceDoor`, src/lib/auth/case-only.ts): chi segue solo un corso (`learner`),
+ * «Solo questo use case» (`esterno_caso`) e un ruolo che il codice non conosce restano fuori, finché una porta non li
+ * dichiara. Anche le query che chiedono «è un collaboratore?» usano questo elenco, mai «non è `learner`».
+ */
+export const COLLABORATOR_ROLES = Object.freeze([...PORTFOLIO_REVIEWER_ROLES, "contributor"] as const);
+
+export function isCollaboratorRole(role: string | null | undefined): boolean {
+  return typeof role === "string" && (COLLABORATOR_ROLES as readonly string[]).includes(role);
+}

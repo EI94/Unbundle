@@ -45,6 +45,14 @@ export const ROLE_INFO: Record<string, RoleInfo> = {
     summary: "vede solo i propri corsi",
     can: ["Segue i corsi a cui è iscritto"],
   },
+  // (8.0d) «Solo questo use case» (`esterno_caso`): lo dà Lateral Space con un invito, mai un invito da Persone
+  // (`INVITABLE_ROLES` non lo contiene). Le porte lo tengono nel suo perimetro (src/lib/auth/case-only.ts).
+  esterno_caso: {
+    label: "Solo questo use case",
+    summary: "costruisce un solo use case dall'Agent Factory",
+    can: ["Costruisce un solo use case dall'Agent Factory"],
+    cannot: ["Non vede il resto del workspace"],
+  },
 };
 
 /**
@@ -77,6 +85,12 @@ export const ROLE_INFO_OUTSIDE: Record<string, RoleInfo> = {
     cannot: ROLE_INFO.contributor.cannot,
   },
   learner: ROLE_INFO.learner,
+  esterno_caso: {
+    label: ROLE_INFO.esterno_caso.label,
+    summary: "costruisce un solo caso d'uso dall'Agent Factory",
+    can: ["Costruisce un solo caso d'uso dall'Agent Factory"],
+    cannot: ROLE_INFO.esterno_caso.cannot,
+  },
 };
 
 /** Ruoli che un invito può assegnare, dal più limitato al più ampio. */

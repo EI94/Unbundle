@@ -18,6 +18,7 @@ import {
   WORKSPACE_INVITE_MAX_USES,
   type InviteRejection,
 } from "@/lib/workspace-invite-token";
+import type { CaseOnlyRole } from "@/lib/auth/case-only";
 
 export const WORKSPACE_COLLABORATOR_ROLES = [
   "transformation_lead",
@@ -36,8 +37,10 @@ export type WorkspaceCollaboratorRole =
  * elenchi, quindi va mostrato per quello che e'. Non e' l'insieme assegnabile
  * da un invito, che resta WORKSPACE_COLLABORATOR_ROLES: nessuna interfaccia
  * umana deve poter conferire `learner`, e nessun invito deve poterlo togliere.
+ * (8.0d) Anche «Solo questo use case» (`esterno_caso`): compare in Persone con
+ * il suo nome, e nessun invito da Persone lo conferisce.
  */
-export type WorkspaceMemberRole = WorkspaceCollaboratorRole | "learner";
+export type WorkspaceMemberRole = WorkspaceCollaboratorRole | "learner" | CaseOnlyRole;
 
 
 export async function createWorkspaceInvitation(params: {

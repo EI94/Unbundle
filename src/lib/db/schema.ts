@@ -179,6 +179,10 @@ export const memberRoleEnum = pgEnum("member_role", [
   // migrazione 0013. Chi entra da un link di corso ottiene solo questo, e
   // `isLearnerOnly` lo tiene dentro la sola area Formazione.
   "learner",
+  // (0043, rilascio 8.0d-1) «Solo questo use case», in coda come `learner`: l'ordine deve combaciare con l'ALTER TYPE
+  // della 0043. Solo nel workspace (`workspace_memberships`, `workspace_invitations`), mai nell'organizzazione. Non si
+  // toglie più: le porte lo tengono chiuso per default (`workspaceDoor`, src/lib/auth/case-only.ts).
+  "esterno_caso",
 ]);
 
 export const workspaceStatusEnum = pgEnum("workspace_status", [
@@ -1642,6 +1646,22 @@ export const useCaseExternalBuilders = pgTable(
     createdAt: tz("created_at").defaultNow().notNull(),
   },
   (t) => [primaryKey({ name: "use_case_external_builders_pkey", columns: [t.id] })]
+);
+
+/**
+ * (0043, rilascio 8.0d-1) Il caso di un invito «Solo questo use case»: un invito, un caso. Chi invita e quando stanno
+ * nell'invito (`workspace_invitations`) e poi nella concessione (`use_case_external_builders`). L'indice sullo use case
+ * sta solo nella migrazione e in use-case-hub-case-only-ddl.ts.
+ */
+export const useCaseBuilderInvites = pgTable(
+  "use_case_builder_invites",
+  {
+    invitationId: uuid("invitation_id").notNull().references(() => workspaceInvitations.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
+    createdAt: tz("created_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "use_case_builder_invites_pkey", columns: [t.invitationId] })]
 );
 
 /** (0034, rilascio 8.1b) Le proposte di compito. Nessuna colonna su chi propone o decide (art. 15.4). */
