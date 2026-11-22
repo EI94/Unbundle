@@ -1,26 +1,33 @@
 import type { Metadata } from "next";
 import { getTrainingRegister, listRegisterExports, requireRegisterAccess } from "@/lib/learning/register";
 import { LearningError, learningEnabled } from "@/lib/learning/server";
+import { LEARNING_TEXT } from "@/lib/learning/text";
 import { LearningShell, LearningUnavailable } from "@/components/learning/learning-shell";
 import { RegisterConsole } from "@/components/learning/register-console";
 
-export const metadata: Metadata = { title: "Registro della formazione IA" };
+const G = LEARNING_TEXT.register;
 
+export const metadata: Metadata = { title: G.title };
+
+/**
+ * Il «Registro della formazione AI» (rilascio 10, ondata 7a, §3.9): a schermo «AI»; il PDF e l'Excel tengono il loro
+ * titolo e la loro norma. Si apre da «Gestisci formazione», dove si torna.
+ */
 export default async function TrainingRegisterPage({ params }: { params: Promise<{ workspaceId: string }> }) {
   const { workspaceId } = await params;
-  const title = "Registro della formazione IA";
-  if (!learningEnabled()) return <LearningShell workspaceId={workspaceId} title={title}><LearningUnavailable message="La formazione non è attiva in questo ambiente." /></LearningShell>;
+  const back = { href: `/dashboard/${workspaceId}/learning/admin`, label: G.back };
+  if (!learningEnabled()) return <LearningShell workspaceId={workspaceId} title={G.title} back={back}><LearningUnavailable message={G.off} /></LearningShell>;
   let access: Awaited<ReturnType<typeof requireRegisterAccess>>;
   try {
     access = await requireRegisterAccess(workspaceId);
   } catch (error) {
     if (!(error instanceof LearningError)) throw error;
-    return <LearningShell workspaceId={workspaceId} title={title}>
-      <LearningUnavailable message="Il registro è consultabile da chi amministra il workspace o gestisce un corso. Se ti serve, chiedilo al responsabile della formazione." />
+    return <LearningShell workspaceId={workspaceId} title={G.title} back={back}>
+      <LearningUnavailable message={G.denied} />
     </LearningShell>;
   }
   const [register, exports] = await Promise.all([getTrainingRegister(access), listRegisterExports(workspaceId)]);
-  return <LearningShell workspaceId={workspaceId} title={title}>
+  return <LearningShell workspaceId={workspaceId} title={G.title} back={back}>
     <RegisterConsole
       key={`${workspaceId}:${access.userId}`}
       workspaceId={workspaceId}

@@ -39,9 +39,11 @@ test("un corso che questo account non può aprire: la spiegazione nella cornice 
     const html = renderToStaticMarkup(await open(moduleId));
     const text = textOf(html);
     assert.match(html, /<h1 [^>]*>Formazione<\/h1>/, "il titolo della pagina");
-    assert.ok(text.includes("Percorso non disponibile"), text);
+    // (Ondata 7a) Una frase sola, senza il titolo «Percorso non disponibile» (FO-4), e il ritorno alla Formazione.
+    assert.doesNotMatch(text, /Percorso non disponibile/);
+    assert.match(html, /data-slot="empty-state"/);
     assert.ok(text.includes(LEARNING_TEXT.programUnavailable.body), text);
-    assert.match(html, new RegExp(`href="/dashboard/${WS}/learning"`), "il ritorno alla Formazione del workspace");
+    assert.match(html, new RegExp(`<a [^>]*href="/dashboard/${WS}/learning"[^>]*>.*${LEARNING_TEXT.backToLearning}</a>`), "il ritorno alla Formazione del workspace");
     assert.doesNotMatch(text, /Riprova|non si è caricata/);
     assert.equal(prova.asked, 1);
   }

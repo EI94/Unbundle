@@ -431,7 +431,8 @@ test("tema chiaro: la legenda degli esiti di Learning ha il bordo del colore del
   assert.ok(edge);
   const alpha = Number(edge[1]) / 100;
   const individual = readRepo("src/components/learning/results-individual.tsx");
-  assert.ok(individual.includes('<span aria-hidden data-slot="outcome-swatch" className={cn("inline-block size-3 rounded border", outcomeTone(status))} />'));
+  // (Ondata 7a, FO-26) Nella legenda e nelle celle l'esito ha anche la sua icona, non solo il colore.
+  assert.ok(individual.includes('<span aria-hidden data-slot="outcome-swatch" className={cn("inline-flex size-4 items-center justify-center rounded border", outcomeTone(status))}><OutcomeIcon status={status} /></span>'));
   const format = readRepo("src/components/learning/results-format.tsx");
   const palette = declarations(topLevelRules(readRepo("src/app/theme-palette.css")).find((r) => r.selector === LIGHT)!.body);
   const tones: Array<[string, string, string]> = [

@@ -1,340 +1,210 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
-import { CircleCheck, PartyPopper, RotateCcw } from "lucide-react";
+import { ChartColumn, Download, Play, RotateCcw, Settings2 } from "lucide-react";
 import { LearningError, getLearningProgram } from "@/lib/learning/server";
 import { participantNotice } from "@/lib/learning/register-legal";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { LEARNING_ROWS_SHOWN, LEARNING_TEXT } from "@/lib/learning/text";
+import {
+  agendaBlocks,
+  exerciseRow,
+  lessonPhase,
+  lessonWhen,
+  liveRefreshFrom,
+  nowCard,
+  outcomeWord,
+  sizeLabel,
+  MODULE_PAGE_IDS,
+  type CourseActivity,
+  type NowAction,
+} from "@/lib/learning/course-view";
+import { Button } from "@/components/ui/button";
+import { StatusDot } from "@/components/uc/ui/status-dot";
+import { Fold } from "@/components/ui-10/fold";
+import { NextStep, type NextStepItem } from "@/components/ui-10/next-step";
+import { Row, RowList, TextAction } from "@/components/ui-10/row";
 import { cn } from "@/lib/utils";
-import { LearningShell, ProgramUnavailable, outcomeLabel } from "./learning-shell";
-import { LearningRefresh } from "./learning-refresh";
+import { LearningShell, ProgramUnavailable } from "./learning-shell";
+import { LiveRefresh } from "./live-refresh";
 
 /**
- * Il corso visto da chi lo segue: una scaletta, non un elenco.
+ * Il corso visto da chi lo segue (rilascio 10, ondata 7a, docs/ui-10/PROPOSTA-10.md §3.9), dall'alto in basso:
+ * - il titolo e la riga «La tua lezione: lunedì 24 novembre, 14:30–16:30»;
+ * - la card «Adesso», con il solo pulsante pieno della pagina: prima della lezione «Scarica i materiali», durante
+ *   «Inizia: {esercizio aperto}», dopo «2 di 3 esercizi fatti» con «Rifai…» quando c'è da ripassare;
+ * - «Scaletta», aperta in lezione, con gli orari veri e «Siamo qui»;
+ * - «Esercizi», l'unico posto con gli esiti, con «Tutte le prove» (prima la pagina «Il mio risultato»);
+ * - «Materiali», «Da portare a casa» (dopo la lezione), «Prossimi moduli (N)» e «Chi vede le tue risposte», chiusi.
+ * In lezione la pagina si aggiorna da sola ogni 15 secondi (`LiveRefresh`), al posto di «Aggiorna».
  *
- * Prima della lezione la pagina dice cosa scaricare e come; durante, indica
- * il punto in cui si trova l'aula e mette ogni attività accanto al momento in
- * cui si fa; dopo, raccoglie ciò che resta: il riepilogo, il prossimo passo,
- * le slide. Tutto viene dal corso, niente è scritto qui per un corso solo.
+ * Chi tiene il corso e non lo segue vede le stesse sezioni senza la card «Adesso», con «Risultati» e «Gestisci» in
+ * testata. Le regole stanno in `@/lib/learning/course-view` (pure, con i test); tutto viene dal corso, niente è scritto
+ * qui per un corso solo.
  */
 
 type Program = Awaited<ReturnType<typeof getLearningProgram>>;
 type ModuleView = Program["modules"][number];
-type ActivityView = ModuleView["activities"][number];
 type Material = Program["materials"][number];
-type HistoryRow = Program["history"][number];
-type ResultView = NonNullable<ActivityView["result"]>;
 
-const ROME = "Europe/Rome";
-const navLink = "inline-flex min-h-10 items-center underline underline-offset-4";
+const T = LEARNING_TEXT.course;
 
-function dayLabel(iso: string) {
-  return new Intl.DateTimeFormat("it-IT", { timeZone: ROME, weekday: "long", day: "numeric", month: "long" }).format(new Date(iso));
-}
-function hourLabel(iso: string) {
-  return new Intl.DateTimeFormat("it-IT", { timeZone: ROME, hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
-}
-function minuteLabel(minutes: number) {
-  return String(minutes).padStart(2, "0");
-}
-function sizeLabel(bytes: number) {
-  if (bytes < 1024) return `${bytes} byte`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
-}
-/** Le righe della descrizione diventano passi, se il formatore le ha scritte così. */
-function steps(text: string | null) {
-  return (text ?? "").split("\n").map((line) => line.replace(/^\s*(\d+[.)]|[-•])\s*/, "").trim()).filter(Boolean);
-}
-function plural(count: number, one: string, many: string) {
-  return `${count} ${count === 1 ? one : many}`;
+/** Le prime tre righe di una lista, le altre dietro «Vedi tutti (N)» (§1, regola 4). Senza JavaScript. */
+function ShowAllRows<Item>({ items, render, label }: { items: readonly Item[]; render: (item: Item) => ReactNode; label: string }) {
+  const shown = items.slice(0, LEARNING_ROWS_SHOWN);
+  const rest = items.slice(LEARNING_ROWS_SHOWN);
+  return <>
+    <RowList label={label}>{shown.map(render)}</RowList>
+    {rest.length ? (
+      <details data-slot="show-all" className="group">
+        <summary className="inline-flex min-h-11 cursor-pointer list-none items-center rounded-md text-sm font-medium underline decoration-foreground/40 underline-offset-4 outline-none hover:decoration-foreground focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-8 [&::-webkit-details-marker]:hidden">
+          {T.showAll(items.length)}
+        </summary>
+        <RowList className="mt-3" label={label}>{rest.map(render)}</RowList>
+      </details>
+    ) : null}
+  </>;
 }
 
 /**
- * L'ultima consegna di un'attività, anche quando dopo è iniziata una nuova
- * prova non ancora inviata: il risultato da mostrare resta quello consegnato.
+ * Un materiale: tutta la riga scarica il file. Un link nativo e non `<Link>`: un prefetch del router non deve scaricare
+ * né contare nulla.
  */
-function latestResult(activity: ActivityView, history: HistoryRow[]): { result: ResultView; attemptId: string } | null {
-  // L'ultima prova aperta può essere il recupero: valgono le consegne
-  // dell'attività e del suo recupero, come nel completamento del turno.
-  const linked = new Set([activity.id, ...history.filter((entry) => entry.id === activity.attemptId).map((entry) => entry.activityId)]);
-  const row = history.filter((entry) => entry.status === "submitted" && entry.result && linked.has(entry.activityId)).at(-1);
-  if (row?.result) return { result: row.result, attemptId: row.id };
-  if (activity.status === "submitted" && activity.result && activity.attemptId) return { result: activity.result, attemptId: activity.attemptId };
-  return null;
-}
-
-function OutcomePill({ status }: { status: string }) {
-  const good = status === "consolidated" || status === "formative_completed";
-  const practice = status === "needs_practice";
-  return (
-    <span className={cn("inline-flex h-7 items-center gap-1 whitespace-nowrap rounded-full border px-2.5 text-xs font-medium",
-      good ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-300"
-        : practice ? "border-amber-500/50 bg-amber-500/10 text-amber-300"
-          : "text-muted-foreground")}>
-      {good && <CircleCheck aria-hidden className="size-3.5" />}
-      {practice && <RotateCcw aria-hidden className="size-3.5" />}
-      {outcomeLabel(status)}
-    </span>
-  );
-}
-
-/**
- * «Il tuo risultato»: le attività del turno con le risposte giuste e, quando
- * il turno è completo, l'esito in una riga. Componente server, usato sia nel
- * percorso sia nella pagina «Il mio risultato».
- */
-export function LearnerResultSummary({ module, history, base, emptyText }: {
-  module: ModuleView; history: HistoryRow[]; base: string; emptyText?: string;
-}) {
-  const rows = module.activities.map((activity) => ({ activity, latest: latestResult(activity, history) }));
-  const anySubmitted = rows.some((row) => row.latest);
-  if (!anySubmitted && !emptyText) return null;
-  const required = rows.filter((row) => row.activity.required);
-  const counted = required.length > 0 ? required : rows;
-  const correct = counted.reduce((sum, row) => sum + (row.latest?.result.correct ?? 0), 0);
-  const total = counted.reduce((sum, row) => sum + (row.latest?.result.total ?? 0), 0);
-  const { completion } = module;
-  const completed = completion.status === "completed";
-  const missing = Math.max(completion.required - completion.submitted, 0);
-  const headingId = `learning-result-${module.id}`;
-
-  return (
-    <section
-      aria-labelledby={headingId}
-      data-testid="learning-result-summary"
-      className="space-y-4 rounded-2xl border-2 border-foreground/20 bg-muted/30 p-4 sm:p-5"
-    >
-      <h2 id={headingId} className="text-lg font-semibold">Il tuo risultato</h2>
-
-      {completed && (
-        completion.outcome === "consolidated" ? (
-          <div className="flex items-start gap-3 rounded-xl border border-emerald-500/50 bg-emerald-500/10 p-4">
-            <PartyPopper aria-hidden className="mt-0.5 size-6 shrink-0 text-emerald-300" />
-            <p className="text-base font-semibold sm:text-lg">Turno completato: obiettivo raggiunto</p>
-          </div>
-        ) : (
-          <div className="flex items-start gap-3 rounded-xl border border-amber-500/50 bg-amber-500/10 p-4">
-            <RotateCcw aria-hidden className="mt-0.5 size-6 shrink-0 text-amber-300" />
-            <div className="space-y-1">
-              <p className="text-base font-semibold sm:text-lg">Turno completato: alcuni punti da ripassare</p>
-              <p className="text-sm">Rifai quando vuoi gli esercizi segnati «Da ripassare».</p>
-            </div>
-          </div>
-        )
-      )}
-
-      {anySubmitted ? (
-        <>
-          <p className="text-base font-medium" data-testid="learning-result-total">
-            {[
-              completion.required > 0 ? `Esercizi: ${completion.submitted} di ${completion.required} fatti` : null,
-              total > 0 ? `${correct} ${correct === 1 ? "risposta giusta" : "risposte giuste"} su ${total}` : null,
-            ].filter(Boolean).join(" · ")}
-          </p>
-          {!completed && missing > 0 && (
-            <p className="text-sm text-muted-foreground">{missing === 1 ? "Ancora 1 esercizio da fare." : `Ancora ${missing} esercizi da fare.`}</p>
-          )}
-          <ul className="divide-y rounded-xl border bg-background">
-            {rows.map(({ activity, latest }) => (
-              <li key={activity.id} className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                <div className="min-w-0 sm:flex-1">
-                  <p className="font-medium">{activity.title}</p>
-                  {!activity.required && <p className="text-xs text-muted-foreground">Non conta per il risultato</p>}
-                </div>
-                {latest ? (
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span className="text-sm tabular-nums">{latest.result.correct}/{latest.result.total} giuste</span>
-                    <OutcomePill status={latest.result.status} />
-                    <Link className={cn(navLink, "text-sm")} href={`${base}/attempts/${latest.attemptId}`}>
-                      Rivedi<span className="sr-only"> {activity.title}</span>
-                    </Link>
-                  </div>
-                ) : (
-                  <span className="text-sm text-muted-foreground">{activity.status === "draft" ? outcomeLabel("draft") : "Da fare"}</span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </>
-      ) : (
-        <p className="text-sm text-muted-foreground">{emptyText}</p>
-      )}
-    </section>
-  );
-}
-
-function activityStatus(activity: ActivityView) {
-  if (activity.status === "submitted") {
-    const label = outcomeLabel(activity.result?.status ?? "submitted");
-    return activity.result ? `${label} · ${activity.result.correct}/${activity.result.total} giuste` : label;
-  }
-  if (activity.status === "draft") return outcomeLabel("draft");
-  if (activity.availability.writeAccess) return "Da fare";
-  return activity.availability.state === "scheduled" ? "Si apre durante la lezione" : "Non ancora aperta";
-}
-function activityAction(activity: ActivityView) {
-  if (activity.status === "submitted") return "Vedi il risultato";
-  if (activity.status === "draft") return activity.availability.writeAccess ? "Continua" : "Vedi le risposte";
-  return activity.availability.writeAccess ? "Inizia" : null;
-}
-
-function ActivityRow({ activity, base, canParticipate }: { activity: ActivityView; base: string; canParticipate: boolean }) {
-  const href = activity.attemptId ? `${base}/attempts/${activity.attemptId}` : `${base}/activities/${activity.id}`;
-  const open = activity.availability.writeAccess || activity.status === "submitted" || activity.status === "draft";
-  const action = activityAction(activity);
-  const tone = activity.status === "submitted"
-    ? activity.result?.status === "needs_practice" ? "text-amber-300" : "text-emerald-300"
-    : "text-muted-foreground";
-  return (
-    <li className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-background p-3">
-      <div className="min-w-0 flex-1">
-        <p className="font-medium">{activity.title}</p>
-        {canParticipate && (
-          <p className="text-sm text-muted-foreground">
-            <span className={tone}>{activityStatus(activity)}</span>
-            {activity.status !== "submitted" && activity.estimatedMinutes ? ` · circa ${plural(activity.estimatedMinutes, "minuto", "minuti")}` : ""}
-            {!activity.required ? " · non conta per il risultato" : ""}
-          </p>
-        )}
-        {canParticipate && !open && activity.availability.reason && (
-          <p className="mt-1 text-xs text-muted-foreground">{activity.availability.reason}</p>
-        )}
-      </div>
-      {canParticipate && open && action && (
-        <Link
-          className={activity.status === "submitted"
-            ? "inline-flex min-h-10 items-center rounded-lg border px-4 text-sm font-medium hover:bg-muted"
-            : "inline-flex min-h-10 items-center rounded-lg bg-foreground px-5 text-sm font-semibold text-background hover:bg-foreground/90"}
-          href={href}
-        >
-          {action}<span className="sr-only">: {activity.title}</span>
-        </Link>
-      )}
-    </li>
-  );
-}
-
 function MaterialRow({ material }: { material: Material }) {
-  const downloadable = material.access.downloadable;
-  return (
-    <li className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-background p-3">
-      <div className="min-w-0">
-        <p className="font-medium">
-          {material.title}
-          {material.forTrainers && <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-xs font-normal">solo formatori</span>}
-        </p>
-        <p className="text-sm text-muted-foreground">
-          {material.fileName} · {sizeLabel(material.sizeBytes)}
-        </p>
-        {!downloadable && <p className="mt-1 text-xs text-muted-foreground">{material.access.reason}</p>}
-      </div>
-      {downloadable ? (
-        // Link nativo e non <Link>: un prefetch del router non deve scaricare né contare nulla.
-        <a className="inline-flex min-h-10 items-center rounded-lg border px-4 text-sm font-medium" href={material.href} download={material.fileName}>
-          Scarica
-        </a>
-      ) : (
-        <span className="text-sm text-muted-foreground">Non ancora disponibile</span>
-      )}
-    </li>
-  );
+  const facts = [material.fileName, sizeLabel(material.sizeBytes), material.forTrainers ? T.materials.forTrainers : null].filter(Boolean).join(" · ");
+  const body = <>
+    <span className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-6">
+      <span className="min-w-0 font-medium break-words">{material.title}</span>
+      <span className="min-w-0 break-words text-muted-foreground sm:text-right">{material.access.downloadable ? facts : material.access.reason ?? T.materials.notYet}</span>
+    </span>
+  </>;
+  const row = "group flex min-h-11 w-full min-w-0 items-center gap-3 px-4 py-3 text-left text-sm outline-none transition-colors focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/50 sm:min-h-12";
+  return <li>
+    {material.access.downloadable ? (
+      <a data-slot="row" className={cn(row, "hover:bg-muted/40")} href={material.href} download={material.fileName}>
+        {body}
+        <Download aria-hidden className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground" />
+        <span className="sr-only">{T.materials.download}</span>
+      </a>
+    ) : (
+      <div data-slot="row" className={row}>{body}</div>
+    )}
+  </li>;
 }
 
-function BeforeYouStart({ materials }: { materials: Material[] }) {
-  if (!materials.length) return null;
-  return (
-    <section
-      aria-labelledby="before-start"
-      className="space-y-4 rounded-2xl border-2 border-emerald-600/40 bg-emerald-500/5 p-5"
-      data-testid="learning-before-start"
-    >
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-emerald-300">Prima di iniziare</p>
-        <h2 id="before-start" className="mt-1 text-lg font-semibold">
-          {materials.length === 1 ? `Scarica «${materials[0].title}»` : "Scarica i materiali della lezione"}
-        </h2>
-      </div>
-      {materials.map((material) => (
-        <div key={material.id} className="space-y-3">
-          {steps(material.description).length > 0 && (
-            <ol className="list-decimal space-y-1.5 pl-5 text-sm">
-              {steps(material.description).map((step) => <li key={step}>{step}</li>)}
-            </ol>
-          )}
-          {material.access.downloadable ? (
-            <a
-              className="inline-flex min-h-12 flex-wrap items-center gap-x-2 rounded-xl bg-emerald-700 px-6 py-3 text-base font-medium text-white hover:bg-emerald-800"
-              href={material.href}
-              download={material.fileName}
-              data-testid="learning-download-before"
-            >
-              <span>Scarica {material.fileName}</span>
-              <span className="whitespace-nowrap font-normal opacity-90">{sizeLabel(material.sizeBytes)}</span>
-            </a>
-          ) : (
-            <p className="text-sm text-muted-foreground">{material.access.reason}</p>
-          )}
+function nowStep(action: NowAction): NextStepItem {
+  const icon = action.kind === "redo" ? RotateCcw : action.kind === "download" || action.kind === "materials" ? Download : Play;
+  if (action.kind === "download") return { label: action.label, icon, why: T.now.why, mine: true, link: <a href={action.href} download={action.fileName} /> };
+  // Un link nativo verso la piega: il cambio d'ancora la apre (`Fold` ascolta «hashchange»).
+  if (action.kind === "materials") return { label: action.label, icon, why: T.now.why, mine: true, link: <a href={action.href} /> };
+  return { label: action.label, icon, why: T.now.why, mine: true, href: action.href };
+}
+
+function NowCardView({ card }: { card: ReturnType<typeof nowCard> }) {
+  const counted = card.phase === "after";
+  return <section aria-labelledby="adesso-titolo" data-testid="learning-now" className="space-y-3 rounded-xl border bg-card p-4 sm:p-5">
+    <h2 id="adesso-titolo" className="text-base font-semibold">{T.now.title}</h2>
+    <p data-testid="learning-now-line" className={counted ? "text-lg font-semibold tabular-nums" : "text-sm"}>{card.line}</p>
+    {card.note ? <p className="text-sm text-muted-foreground">{card.note}</p> : null}
+    {/* Il titolo dell'esercizio sta qui, sopra il pulsante: il pulsante pieno non va a capo e dice solo il verbo. */}
+    {card.subject ? <p data-testid="learning-now-subject" className="font-medium break-words">{card.subject}</p> : null}
+    {card.action ? <NextStep id="adesso" step={nowStep(card.action)} /> : null}
+    {card.steps.length ? (
+      <ol className="list-decimal space-y-1 pl-5 text-sm">{card.steps.map((step) => <li key={step}>{step}</li>)}</ol>
+    ) : null}
+  </section>;
+}
+
+function Agenda({ module, session, now, open }: { module: ModuleView; session: Program["ownSession"]; now: number; open: boolean }) {
+  const blocks = agendaBlocks(module.agenda, session, now);
+  if (!blocks.length) return null;
+  return <Fold id="scaletta" title={T.agenda.title} defaultOpen={open}>
+    <ol className="space-y-2" aria-label={T.agenda.label}>
+      {blocks.map((block) => <li
+        key={block.key}
+        aria-current={block.current ? "step" : undefined}
+        className={cn("rounded-xl border p-3", block.current && "border-foreground bg-muted/40", block.past && "text-muted-foreground")}
+      >
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <span className="text-sm tabular-nums text-muted-foreground">{block.time}</span>
+          <span className="font-medium">{block.title}</span>
+          {block.current ? <span className="rounded-full bg-foreground px-2 py-0.5 text-xs font-medium text-background">{T.agenda.here}</span> : null}
         </div>
-      ))}
-    </section>
-  );
+        {block.detail ? <p className="mt-1 text-sm text-muted-foreground">{block.detail}</p> : null}
+      </li>)}
+    </ol>
+  </Fold>;
 }
 
-function Agenda({ module, sessionStart, now, base, canParticipate }: {
-  module: ModuleView; sessionStart: string | null; now: number; base: string; canParticipate: boolean;
-}) {
-  const elapsed = sessionStart ? Math.floor((now - new Date(sessionStart).getTime()) / 60_000) : null;
-  const live = elapsed !== null && elapsed >= 0 && elapsed < module.durationMinutes;
-  const placed = new Set<string>();
-  const blocks = module.agenda.map((block) => {
-    const activities = module.activities.filter((activity) =>
-      typeof activity.opensAfterMinutes === "number" &&
-      activity.opensAfterMinutes >= block.from_minute && activity.opensAfterMinutes < block.to_minute);
-    activities.forEach((activity) => placed.add(activity.id));
-    const current = live && elapsed! >= block.from_minute && elapsed! < block.to_minute;
-    // Un blocco con attività ancora da fare non è «passato»: gli esercizi
-    // possono essere compiti da fare dopo la lezione, e non devono sembrare chiusi.
-    const pending = activities.some((activity) => activity.availability.writeAccess && activity.status !== "submitted");
-    const past = !pending && (live ? elapsed! >= block.to_minute : elapsed !== null && elapsed >= module.durationMinutes);
-    return { block, activities, current, past };
-  });
-  const loose = module.activities.filter((activity) => !placed.has(activity.id));
+function Exercises({ program, module, base, participant }: { program: Program; module: ModuleView; base: string; participant: boolean }) {
+  const activities: readonly CourseActivity[] = module.activities;
+  if (!activities.length) return null;
+  const E = T.exercises;
+  const history = participant ? [...program.history].reverse() : [];
+  return <section aria-labelledby="esercizi-titolo" id="esercizi" className="scroll-mt-20 space-y-3">
+    <h2 id="esercizi-titolo" className="text-base font-semibold">{E.title}</h2>
+    <ShowAllRows label={E.label} items={activities} render={(activity) => {
+      if (!participant) {
+        const facts = [activity.estimatedMinutes ? E.minutes(activity.estimatedMinutes) : null, activity.required ? null : E.notCounted].filter(Boolean).join(" · ");
+        return <li key={activity.id}><Row title={activity.title} fact={facts || null} /></li>;
+      }
+      const row = exerciseRow(activity, base, program.now, program.history);
+      const fact = <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5 sm:justify-end">
+        <StatusDot tone={row.tone} label={row.state} size="md" />
+        {row.fact ? <span>{row.fact}</span> : null}
+      </span>;
+      return <li key={activity.id} data-testid="learning-exercise"><Row title={row.title} fact={fact} href={row.href ?? undefined} /></li>;
+    }} />
+    {history.length ? (
+      <Fold id="prove" title={E.attempts(history.length)}>
+        <RowList label={E.attempts(history.length)}>
+          {history.map((attempt) => {
+            const fact = attempt.result ? `${E.score(attempt.result.correct, attempt.result.total)} · ${outcomeWord(attempt.result.status)}` : attempt.status === "submitted" ? outcomeWord("submitted") : E.inProgress;
+            return <li key={attempt.id}>
+              <Row title={E.attempt(attempt.activityTitle, attempt.attemptNumber)} fact={fact} href={`${base}/attempts/${attempt.id}`} />
+            </li>;
+          })}
+        </RowList>
+      </Fold>
+    ) : null}
+    {participant ? <TextAction href={`${base}/ideas`}>{E.idea}</TextAction> : null}
+  </section>;
+}
 
-  return (
-    <div className="space-y-4">
-      {blocks.length > 0 && (
-        <ol className="space-y-2" aria-label="Scaletta della lezione">
-          {blocks.map(({ block, activities, current, past }) => (
-            <li
-              key={`${block.from_minute}-${block.title}`}
-              aria-current={current ? "step" : undefined}
-              className={current
-                ? "rounded-2xl border-2 border-foreground bg-muted/40 p-4"
-                : `rounded-2xl border p-4 ${past ? "opacity-70" : ""}`}
-            >
-              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                  {minuteLabel(block.from_minute)}–{minuteLabel(block.to_minute)}
-                </span>
-                <span className="font-medium">{block.title}</span>
-                {current && <span className="rounded-full bg-foreground px-2 py-0.5 text-xs font-medium text-background">Siamo qui</span>}
-              </div>
-              {block.detail && <p className="mt-1 text-sm text-muted-foreground">{block.detail}</p>}
-              {activities.length > 0 && (
-                <ul className="mt-3 space-y-2">
-                  {activities.map((activity) => <ActivityRow key={activity.id} activity={activity} base={base} canParticipate={canParticipate} />)}
-                </ul>
-              )}
-            </li>
-          ))}
-        </ol>
-      )}
-      {loose.length > 0 && (
-        <ul className="space-y-2">
-          {loose.map((activity) => <ActivityRow key={activity.id} activity={activity} base={base} canParticipate={canParticipate} />)}
-        </ul>
-      )}
-    </div>
-  );
+function Takeaways({ module }: { module: ModuleView }) {
+  if (!module.takeaways.length && !module.nextSteps.length) return null;
+  return <Fold id="da-portare-a-casa" title={T.takeaways.title}>
+    {module.takeaways.length ? <ol className="list-decimal space-y-1 pl-5 text-sm">{module.takeaways.map((item) => <li key={item}>{item}</li>)}</ol> : null}
+    {module.nextSteps.length ? <div className="space-y-2">
+      <h3 className="text-sm font-medium">{T.takeaways.nextSteps}</h3>
+      <ol className="list-decimal space-y-1 pl-5 text-sm">{module.nextSteps.map((item) => <li key={item}>{item}</li>)}</ol>
+    </div> : null}
+  </Fold>;
+}
+
+/**
+ * «Prossimi moduli», chiusa. Per chi tiene il corso «Altri moduli»: il titolo di ogni modulo apre la sua pagina
+ * (`…/<corso>/m2`), con la sua scaletta e i suoi esercizi.
+ */
+function NextModules({ program, modules, open, base, runs }: { program: Program; modules: ModuleView[]; open: boolean; base: string; runs: boolean }) {
+  if (!modules.length) return null;
+  return <Fold id="prossimi-moduli" title={runs ? T.nextModules.titleOthers(modules.length) : T.nextModules.title(modules.length)} defaultOpen={open}>
+    {modules.map((module) => {
+      const sessions = program.sessions.filter((session) => session.moduleId === module.id);
+      const materials = program.materials.filter((material) => material.moduleId === module.id);
+      const linked = runs && MODULE_PAGE_IDS.includes(module.id);
+      return <div key={module.id} className="space-y-2">
+        <h3 className="font-medium">{linked
+          ? <Link className="inline-flex min-h-11 items-center underline decoration-foreground/40 underline-offset-4 hover:decoration-foreground sm:min-h-8" href={`${base}/${module.id}`} data-testid="learning-module-link">{module.title}</Link>
+          : module.title}</h3>
+        {module.subtitle ? <p className="text-sm text-muted-foreground">{module.subtitle}</p> : null}
+        {module.objective ? <p className="text-sm">{module.objective}</p> : null}
+        {sessions.length ? <div className="text-sm">
+          <p className="text-muted-foreground">{T.nextModules.dates}</p>
+          <ul className="list-disc pl-5">{sessions.map((session) => <li key={session.id}>{lessonWhen(session)}</li>)}</ul>
+        </div> : <p className="text-sm text-muted-foreground">{T.nextModules.planned}</p>}
+        {materials.length ? <RowList label={`${T.materials.title}: ${module.title}`}>{materials.map((material) => <MaterialRow key={material.id} material={material} />)}</RowList> : null}
+      </div>;
+    })}
+  </Fold>;
 }
 
 export async function ProgramOverview({ workspaceId, programId, moduleId, arrival = null }: { workspaceId: string; programId: string; moduleId?: string; arrival?: string | null }) {
@@ -348,129 +218,77 @@ export async function ProgramOverview({ workspaceId, programId, moduleId, arriva
     throw error;
   }
   const base = `/dashboard/${workspaceId}/learning/${programId}`;
-  const own = program.ownSession;
-  const isTrainerView = !program.canParticipate;
+  const participant = program.canParticipate;
+  const own = participant ? program.ownSession : null;
   const showResults = program.canReview || program.canAggregate || program.canExport || program.canManage;
-  const modules = program.modules.filter((module) => !moduleId || module.id === moduleId);
-  const before = program.materials.filter((material) => material.downloadBefore && (!moduleId || !material.moduleId || material.moduleId === moduleId));
+
+  // Il modulo in primo piano: quello della propria lezione; per chi tiene il corso quello dell'indirizzo (`/m2`), o il
+  // primo. Gli altri vanno in «Prossimi moduli», che si apre da sé quando l'indirizzo chiede uno di loro.
+  const ownModule = own ? program.modules.find((module) => module.id === own.moduleId) : undefined;
+  const focus = ownModule ?? program.modules.find((module) => module.id === moduleId) ?? program.modules.find((module) => module.id === "m1") ?? program.modules[0];
+  const others = program.modules.filter((module) => module.id !== focus?.id);
+  const askedOther = !!moduleId && moduleId !== focus?.id && others.some((module) => module.id === moduleId);
+
+  const phase = lessonPhase(own, program.now);
+  const ownMaterials = program.materials.filter((material) => !material.moduleId || material.moduleId === focus?.id);
+  const card = participant && focus
+    ? nowCard({
+      session: own,
+      now: program.now,
+      activities: focus.activities,
+      beforeMaterials: ownMaterials.filter((material) => material.downloadBefore),
+      base,
+      courseOpen: program.status === "published",
+      completion: focus.completion,
+    })
+    : null;
+  const refreshFrom = participant ? liveRefreshFrom(own, program.now) : null;
+  const ended = phase === "after";
+
+  // «Risultati» e «Gestisci» restano a un tocco per chi ha i permessi, anche se segue il corso: per chi lo tiene soltanto
+  // «Risultati» è il pulsante pieno; per chi lo segue il pieno è quello della card «Adesso», e qui restano bordati.
+  const actions = showResults ? <>
+    <Button render={<Link href={`${base}/results`} />} nativeButton={false} variant={participant ? "outline" : "default"} className="min-h-11 flex-1 sm:min-h-9 sm:flex-none" data-action={participant ? undefined : "next-step"}>
+      <ChartColumn aria-hidden data-icon="inline-start" />{T.results}
+    </Button>
+    {program.canManage ? <Button render={<Link href={`${base}/admin`} />} nativeButton={false} variant="outline" className="min-h-11 flex-1 sm:min-h-9 sm:flex-none">
+      <Settings2 aria-hidden data-icon="inline-start" />{T.manage}
+    </Button> : null}
+  </> : null;
+  const subtitle = participant ? (own ? T.lesson(lessonWhen(own)) : null) : T.trainerLine;
 
   return (
-    <LearningShell workspaceId={workspaceId} title={program.title}>
-      {arrival && (
-        <p role="status" className="rounded-2xl border bg-muted/40 px-4 py-3 text-sm" data-testid="join-arrival">
+    <LearningShell workspaceId={workspaceId} title={program.title} subtitle={subtitle} actions={actions} size="narrow">
+      {refreshFrom !== null ? <LiveRefresh from={refreshFrom} /> : null}
+      {arrival ? (
+        <p role="status" className="rounded-xl border bg-muted/40 px-4 py-3 text-sm" data-testid="join-arrival">
           {arrival}
         </p>
-      )}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <nav aria-label="Pagine del corso" className="flex flex-wrap gap-x-5 text-sm">
-          <Link className={navLink} href={base}>Il percorso</Link>
-          {program.canParticipate && <>
-            <Link className={navLink} href={`${base}/progress`}>Il mio risultato</Link>
-            <Link className={navLink} href={`${base}/ideas`}>La mia idea</Link>
-          </>}
-          {showResults && <Link className={cn(navLink, "font-medium")} href={`${base}/results`}>Risultati</Link>}
-          {program.canManage && <Link className={navLink} href={`${base}/admin`}>Gestisci corso</Link>}
-        </nav>
-        <LearningRefresh label="Aggiorna" />
-      </div>
+      ) : null}
 
-      <BeforeYouStart materials={before} />
+      {card ? <NowCardView card={card} /> : null}
 
-      <div className="grid gap-5">
-        {modules.map((module) => {
-          const isOwn = own?.moduleId === module.id;
-          const moduleSessions = program.sessions.filter((session) => session.moduleId === module.id);
-          const ended = isOwn && own && (own.status === "closed" || program.now >= new Date(own.endsAt).getTime());
-          const moduleMaterials = program.materials.filter((material) => material.moduleId === module.id && !material.downloadBefore);
-          const operational = module.activities.length > 0 || module.agenda.length > 0;
-          const learner = isOwn && program.canParticipate;
-          const hasResults = learner && module.activities.some((activity) => latestResult(activity, program.history));
-          return (
-            <Card key={module.id} className={isOwn ? "border-foreground/30" : undefined}>
-              <CardHeader className="space-y-2">
-                <CardTitle className="text-xl">{module.title}</CardTitle>
-                <p className="text-sm text-muted-foreground">{module.subtitle}</p>
-                {isOwn && own ? (
-                  <p className="text-sm font-medium">
-                    Il tuo turno: {dayLabel(own.startsAt)}, {hourLabel(own.startsAt)}–{hourLabel(own.endsAt)}
-                    {own.status === "open" ? " · aperto dal formatore" : own.status === "closed" ? " · concluso" : ""}
-                  </p>
-                ) : (
-                  moduleSessions.length > 0 && (
-                    <p className="text-sm">
-                      {moduleSessions.map((session, index) => (
-                        <span key={session.id}>
-                          {index > 0 ? " · oppure " : ""}
-                          {dayLabel(session.startsAt)}, {hourLabel(session.startsAt)}–{hourLabel(session.endsAt)}
-                        </span>
-                      ))}
-                    </p>
-                  )
-                )}
-              </CardHeader>
-              <CardContent className="space-y-5">
-                <p className="text-sm">{module.objective}</p>
-
-                {hasResults && <LearnerResultSummary module={module} history={program.history} base={base} />}
-
-                {learner && !hasResults && module.completion.required > 0 && (
-                  <p className="text-sm font-medium" data-testid="learning-module-progress">
-                    Esercizi fatti: {module.completion.submitted} di {module.completion.required}
-                  </p>
-                )}
-
-                {operational && (isOwn || isTrainerView) ? (
-                  <Agenda module={module} sessionStart={isOwn && own ? own.startsAt : null} now={program.now} base={base} canParticipate={program.canParticipate} />
-                ) : (
-                  <p className="text-sm text-muted-foreground">In programma. Le attività si apriranno nel turno di questo modulo.</p>
-                )}
-
-                {module.takeaways.length > 0 && (isTrainerView || ended) && (
-                  <section aria-label="Da portare a casa" className="space-y-2">
-                    <h3 className="font-medium">Da portare a casa</h3>
-                    <ol className="list-decimal space-y-1 pl-5 text-sm">
-                      {module.takeaways.map((item) => <li key={item}>{item}</li>)}
-                    </ol>
-                  </section>
-                )}
-
-                {module.nextSteps.length > 0 && (isTrainerView || ended) && (
-                  <section aria-label="Prima del prossimo modulo" className="space-y-2 rounded-xl bg-muted/40 p-4">
-                    <h3 className="font-medium">Prima del prossimo modulo</h3>
-                    <ol className="list-decimal space-y-1 pl-5 text-sm">
-                      {module.nextSteps.map((item) => <li key={item}>{item}</li>)}
-                    </ol>
-                  </section>
-                )}
-
-                {moduleMaterials.length > 0 && (
-                  <section aria-label="Materiali del modulo" className="space-y-2">
-                    <h3 className="font-medium">Materiali</h3>
-                    <ul className="space-y-2">{moduleMaterials.map((material) => <MaterialRow key={material.id} material={material} />)}</ul>
-                  </section>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-
-      {isTrainerView && (
-        <p className="text-sm text-muted-foreground">
-          Stai guardando il corso come formatore: vedi tutte le scalette e tutti i materiali. I risultati dei partecipanti sono nella pagina Risultati.
-        </p>
-      )}
-
-      <details className="rounded-xl border px-4 py-3">
-        <summary className="cursor-pointer py-1 font-medium">Chi vede le tue risposte</summary>
-        <div className="mt-3 space-y-3 text-sm">
-          <p>Le risposte sono legate al tuo account. Le vedi tu e i formatori del corso. La direzione vede solo i risultati di gruppo.</p>
-          <p className="whitespace-pre-wrap">{program.visibilityPolicy}</p>
-          <p>Le risposte restano conservate {program.retentionDays} giorni dopo la chiusura del corso.</p>
-          <p>{participantNotice}</p>
-          {program.reviewers.length > 0 && <p>Formatori del tuo turno: {program.reviewers.join(", ")}.</p>}
+      {focus ? <>
+        {focus.agenda.length ? <div><Agenda module={focus} session={own} now={program.now} open={phase === "live"} /></div> : null}
+        <Exercises program={program} module={focus} base={base} participant={participant} />
+        <div>
+          {ownMaterials.length ? <Fold id="materiali" title={T.materials.title}>
+            <RowList label={T.materials.title}>{ownMaterials.map((material) => <MaterialRow key={material.id} material={material} />)}</RowList>
+          </Fold> : null}
+          {!participant || ended ? <Takeaways module={focus} /> : null}
+          <NextModules program={program} modules={others} open={askedOther} base={base} runs={!participant || showResults} />
+          {participant ? <Fold id="chi-vede" title={T.privacy.title}>
+            <div className="space-y-3 text-sm">
+              {program.visibilityPolicy ? <p className="whitespace-pre-wrap">{program.visibilityPolicy}</p> : null}
+              <p>{participantNotice}</p>
+              <p className="text-muted-foreground">
+                {T.privacy.retention(program.retentionDays)}
+                {program.reviewers.length ? ` ${T.privacy.trainers(program.reviewers.join(", "))}` : ""}
+              </p>
+            </div>
+          </Fold> : null}
         </div>
-      </details>
+      </> : null}
     </LearningShell>
   );
 }

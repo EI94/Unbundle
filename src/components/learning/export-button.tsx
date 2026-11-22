@@ -3,10 +3,14 @@ import { useRef, useState } from "react";
 import { CircleCheck, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { exportLearningCsv } from "@/lib/learning/client";
+import { LEARNING_TEXT } from "@/lib/learning/text";
 import { cn } from "@/lib/utils";
 
-/** Scarica i risultati individuali in CSV. Ogni download viene registrato dal server. */
-export function LearningExportButton({ workspaceId, programId, label = "Scarica i risultati (CSV)", testId = "results-export-button", className }: {
+/**
+ * Scarica i risultati individuali (un CSV che si apre in Excel). Ogni download viene registrato dal server.
+ * (Rilascio 10, ondata 7a, §4) «Scarica l'elenco», il pieno del pannello «Scarica»; i colori del tema.
+ */
+export function LearningExportButton({ workspaceId, programId, label = LEARNING_TEXT.results.downloadButton, testId = "results-export-button", className }: {
   workspaceId: string; programId: string; label?: string; testId?: string; className?: string;
 }) {
   const [busy, setBusy] = useState(false);
@@ -31,11 +35,11 @@ export function LearningExportButton({ workspaceId, programId, label = "Scarica 
   };
   return <div className="space-y-3">
     <Button type="button" disabled={busy} aria-busy={busy} onClick={download} data-testid={testId}
-      className={cn("h-auto min-h-11 max-w-full gap-2 whitespace-normal bg-emerald-600 px-5 py-2 text-base text-white hover:bg-emerald-500", className)}>
-      <Download aria-hidden className="size-5" /> {busy ? "Preparazione del file…" : label}
+      className={cn("min-h-11 w-full gap-2 sm:min-h-9 sm:w-auto", className)}>
+      <Download aria-hidden data-icon="inline-start" /> {busy ? "Preparazione del file…" : label}
     </Button>
     <div aria-live="polite" aria-atomic="true">
-      {notice && <p role={notice.ok ? "status" : "alert"} className={cn("flex items-start gap-2 text-sm", notice.ok ? "text-emerald-300" : "text-destructive")}>
+      {notice && <p role={notice.ok ? "status" : "alert"} className={cn("flex items-start gap-2 text-sm", notice.ok ? "text-uc-verde" : "text-destructive")}>
         {notice.ok && <CircleCheck aria-hidden className="mt-0.5 size-4 shrink-0" />}{notice.text}
       </p>}
     </div>

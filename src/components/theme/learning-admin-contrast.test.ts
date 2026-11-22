@@ -15,9 +15,12 @@ test("the Formazione console states use the semaforo tokens, no dark: and no fix
     assert.doesNotMatch(source, /(?<![\w-])dark:/, file);
     assert.doesNotMatch(source, /text-(?:amber|emerald)-\d00/, file);
   }
+  // (Ondata 7a) Lo stato di un link sta nelle regole di «Gestisci» (manage-view.ts) e va a schermo come puntino e parola
+  // (`StatusDot`), con i toni del semaforo.
+  const view = readRepo("src/lib/learning/manage-view.ts");
+  assert.match(view, /\{ label: "Ingresso aperto", tone: "verde" \} : \{ label: "Ingresso chiuso", tone: "giallo" \}/);
   const links = readRepo("src/components/learning/admin-join-links.tsx");
-  assert.match(links, /label: "Ingresso chiuso", tone: "text-uc-giallo"/);
-  assert.match(links, /label: "Ingresso aperto", tone: "text-uc-verde"/);
+  assert.match(links, /<StatusDot tone=\{state\.tone\} label=\{state\.label\} size="md" \/>/);
   assert.match(readRepo("src/components/learning/admin-program.tsx"), /<p role="status" className="text-sm text-uc-giallo">Il riepilogo contiene/);
   assert.match(readRepo("src/components/learning/register-console.tsx"), /className="block text-xs text-uc-giallo">\+ \{s\.undocumented\}/);
 });
