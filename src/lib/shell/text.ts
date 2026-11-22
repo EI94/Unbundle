@@ -24,8 +24,6 @@ export const SHELL_TEXT = Object.freeze({
     interview: "Intervista iniziale",
     readiness: "AI Readiness",
     learning: "Formazione",
-    /** L'elenco delle realizzazioni, finché non ogni realizzazione ha la sua scheda (P0-16). */
-    realizations: "Realizzazioni",
     /** Gli strumenti di oggi, sotto una linea sottile e senza titolo (D11 respinta dal titolare il 18/11). */
     toolsLabel: "Strumenti",
     valueMap: "Value map",

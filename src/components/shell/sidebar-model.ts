@@ -5,8 +5,9 @@
  * In alto le cinque voci: Home · Use case · Agent Factory · Contesto · Persone. «Agent Factory» solo per chi costruisce,
  * come oggi (`factoryAvailable`); i contributori e chi segue solo un corso come dice §2.2. Sotto una linea sottile,
  * senza titolo, ogni altro strumento di oggi resta una voce sua (D11 respinta: niente «Altri strumenti», niente ritiri):
- * Value map, Report, Blueprints, Simulazione, Intelligence, nell'ordine di oggi; prima di loro «Realizzazioni» finché
- * non ogni realizzazione ha la sua scheda (P0-16). «Impostazioni» sta nel piede, solo per chi gestisce il workspace.
+ * Value map, Report, Blueprints, Simulazione, Intelligence, nell'ordine di oggi. (Rilascio 10, D9 (a), si chiude P0-16)
+ * Con l'area accesa la lista delle realizzazioni è in ritiro: le realizzazioni stanno sotto «Use case», che si accende
+ * anche su `/casi-duso`. «Impostazioni» sta nel piede, solo per chi gestisce il workspace.
  *
  * Le viste di una voce che le pagine non hanno ancora (Processi e Intervista iniziale in «Contesto», AI Readiness e
  * Formazione in «Persone») stanno sotto la voce, solo mentre è accesa: così ogni pagina di oggi resta a un tocco dalla
@@ -81,7 +82,10 @@ export interface ShellViewer {
   useCaseHub: boolean;
   /** Il workspace ha dei corsi (`hasLearningForWorkspace`). */
   learningAvailable: boolean;
-  /** «Realizzazioni»: chi vede le realizzazioni, finché non ognuna ha la sua scheda (P0-16, `ucCasesNavVisible`). */
+  /**
+   * La voce della lista delle realizzazioni (`ucCasesNavVisible`), solo nella barra di prima (area spenta): con l'area
+   * accesa la lista è in ritiro (rilascio 10, D9 (a)).
+   */
   casesAvailable: boolean;
   /** «Agent Factory»: chi costruisce in un caso del workspace, o lo guida da manager di Lateral Space (`factoryNavVisible`). */
   factoryAvailable: boolean;
@@ -89,9 +93,6 @@ export interface ShellViewer {
 
 const N = SHELL_TEXT.nav;
 const L = SHELL_TEXT.legacy;
-
-/** «Use case» lascia `/casi-duso` a «Realizzazioni» mentre quella voce c'è. */
-const USE_CASE_WITHOUT_REALIZATIONS: readonly string[] = Object.freeze(USE_CASE_NAV_MATCH.filter((segment) => segment !== "casi-duso"));
 
 /** Solo l'indirizzo della voce: come accendeva la barra prima dell'area «Use case». */
 const EXACT: readonly string[] = Object.freeze([]);
@@ -149,7 +150,7 @@ export function workspaceNav(viewer: ShellViewer): ShellNav {
       title: N.useCase,
       href: `${base}/use-cases`,
       icon: "use-case",
-      match: viewer.casesAvailable ? USE_CASE_WITHOUT_REALIZATIONS : USE_CASE_NAV_MATCH,
+      match: USE_CASE_NAV_MATCH,
     },
     ...(viewer.factoryAvailable ? [{ key: "factory", title: N.factory, href: `${base}/agent-factory`, icon: "factory" } satisfies ShellNavItem] : []),
     // I contributori leggono il Contesto e modificano i Processi, come oggi; l'Intervista iniziale è dei revisori.
@@ -174,7 +175,6 @@ export function workspaceNav(viewer: ShellViewer): ShellNav {
   }
 
   const tools: ShellNavItem[] = [
-    ...(viewer.casesAvailable ? [{ key: "realizations", title: N.realizations, href: `${base}/casi-duso`, icon: "realizations", match: ["casi-duso"] } satisfies ShellNavItem] : []),
     // Gli strumenti della prima versione: ai revisori, come in §2.2 (il contributore non li può usare, §4.10 dell'audit).
     ...(reviewer
       ? ([
