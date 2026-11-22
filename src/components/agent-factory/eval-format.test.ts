@@ -23,7 +23,6 @@ import {
   costPer1000Text,
   costScale,
   dayText,
-  evalSectionDescription,
   evalsAlertText,
   evalsCommand,
   evalsMetaLine,
@@ -143,7 +142,6 @@ test("la riga di agent.yaml per cambiare modello, e le note fisse", () => {
   assert.equal(changeHint("lettura", HAIKU), "Per cambiarlo: in agent.yaml, modelli.lettura.modello: anthropic/claude-haiku-5-5, poi la pull request.");
   assert.deepEqual(changeHintParts("scrittura", SONNET), { file: "agent.yaml", line: "modelli.scrittura.modello: anthropic/claude-sonnet-5-5" });
   assert.equal(EVAL_TEXT.fakeModels, "modelli finti: misurano il codice, non i modelli");
-  assert.equal(EVAL_TEXT.title, "Evals e banco di prova");
   assert.equal(benchHeading("lettura"), "Banco di prova · ruolo «lettura»");
   assert.equal(benchMissingText("scrittura"), "Ancora nessun banco per il ruolo «scrittura»:");
 });
@@ -198,14 +196,11 @@ test("i modelli per ruolo e i gruppi di prove, in un ordine fisso", () => {
   assert.equal(groupsLine({}), null);
 });
 
-test("la descrizione della sezione: cosa c'è, o come si comincia", () => {
+test("ci sono misure: le evals o almeno un banco", () => {
   const empty: EvalOverview = { evals: { latest: null, trend: [] }, benches: [] };
-  assert.equal(evalSectionDescription(null), EVAL_TEXT.descriptionEmpty);
-  assert.equal(evalSectionDescription(empty), EVAL_TEXT.descriptionEmpty);
+  assert.equal(hasMeasures(null), false);
   assert.equal(hasMeasures(empty), false);
   const withEvals: EvalOverview = { evals: { latest: run(), trend: [] }, benches: [] };
-  assert.equal(evalSectionDescription(withEvals), EVAL_TEXT.description);
-  assert.equal(evalSectionDescription(null, true), EVAL_TEXT.description, "lettura non riuscita: non si dice «ancora nessuna misura»");
   assert.equal(hasMeasures(withEvals), true);
 });
 

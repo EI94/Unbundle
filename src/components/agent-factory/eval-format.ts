@@ -59,9 +59,6 @@ import { labelWidthPx } from "../../lib/use-cases/matrix-labels.ts";
 
 /** I testi della sezione. Nella dashboard si dice «use case», mai «caso d'uso». */
 export const EVAL_TEXT = Object.freeze({
-  title: "Evals e banco di prova",
-  description: "Quanto rende l'agente con i modelli di oggi, e quale modello conviene per ogni ruolo.",
-  descriptionEmpty: "Ancora nessuna misura: si lanciano dal repository del caso, con la CLI.",
   unavailable: "Adesso le misure non si leggono: riprova tra qualche minuto.",
   evalsHeading: "Stato delle evals",
   evalsNone: "Le evals con i modelli di oggi non sono ancora arrivate.",
@@ -230,14 +227,6 @@ export function benchHeading(role: string): string {
 /** «Ancora nessun banco per il ruolo «scrittura»:», prima del comando. */
 export function benchMissingText(role: string): string {
   return `Ancora nessun banco per il ruolo «${role}»:`;
-}
-
-/**
- * La descrizione della sezione: con almeno una misura, cosa c'è; senza, come si comincia. Se la lettura non è riuscita
- * non si sa se ci sono misure: la descrizione di sempre, mai «ancora nessuna misura».
- */
-export function evalSectionDescription(overview: EvalOverview | null, unavailable = false): string {
-  return hasMeasures(overview) || unavailable ? EVAL_TEXT.description : EVAL_TEXT.descriptionEmpty;
 }
 
 /** Vero se ci sono le evals o almeno un banco. */
