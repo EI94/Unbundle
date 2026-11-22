@@ -575,9 +575,9 @@ export const QUALITY_TEXT = Object.freeze({
 /** Le ancore della sezione e della piega dei dettagli. */
 export const QUALITY_ANCHORS = Object.freeze({ section: "qualita", details: "banco" });
 
-/** «Qualità 96,4% · soglie rispettate». */
+/** «96,4% · soglie rispettate»: la riga sta sotto il titolo «Qualità», che non si ripete. */
 export function qualityLine(quality: number, thresholdsMet: boolean): string {
-  return `${QUALITY_TEXT.heading} ${formatQuality(quality)} · ${thresholdsMet ? EVAL_TEXT.thresholdsMet : EVAL_TEXT.thresholdsMissed}`;
+  return `${formatQuality(quality)} · ${thresholdsMet ? EVAL_TEXT.thresholdsMet : EVAL_TEXT.thresholdsMissed}`;
 }
 
 /** La raccomandazione di un ruolo, come la riga di «Qualità» la mostra. */
@@ -589,7 +589,7 @@ export interface QualityAdvice {
 
 export interface QualitySummary {
   /**
-   * «Qualità 96,4% · soglie rispettate»; per chi costruisce, con i modelli finti, «… · modelli finti». null senza le
+   * «96,4% · soglie rispettate»; per chi costruisce, con i modelli finti, «… · modelli finti». null senza le
    * evals con i modelli di oggi (solo banchi).
    */
   line: string | null;

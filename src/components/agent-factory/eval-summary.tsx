@@ -7,7 +7,7 @@ import { RunSource } from "./eval-section";
 
 /**
  * (Rilascio 10, docs/ui-10/PROPOSTA-10.md §3.5) La «Qualità» della Costruzione in vista: una riga con qualità e soglie
- * («Qualità 96,4% · soglie rispettate», il puntino verde o rosso con la parola, grigio in costruzione; «· modelli
+ * («96,4% · soglie rispettate» sotto il titolo, il puntino verde o rosso con la parola, grigio in costruzione; «· modelli
  * finti» per chi costruisce, quando le evals sono girate con quelli) e, per chi costruisce, la data con la
  * fonte («dalla CI», che porta all'esecuzione su GitHub, 8.2b), l'avviso se le evals calano e, per ogni ruolo, la sola
  * raccomandazione del banco. Tutto il resto (andamento, gruppi, modelli, grafici, tabelle, comandi) sta nella piega
