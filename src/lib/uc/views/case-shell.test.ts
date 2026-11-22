@@ -24,6 +24,7 @@ import {
   stepHasPageCommand,
   stepHiddenOn,
   stepPanelOf,
+  tabAriaCurrent,
   transitionNeedsReason,
   viaRedirect,
 } from "./case-shell.ts";
@@ -156,6 +157,11 @@ test("(rilascio 10, D9 (a)) with the viewer's tabs: Domande lights «Costruzione
   assert.equal(activeTabKey("costruzione", before), null, "before the via the Costruzione comes from the «⋯»");
   assert.equal(activeTabKey("domande", caseTabsFor(["ai_board"])), null);
   assert.equal(activeTabKey(null, after), "panoramica");
+  const construction = after.find((t) => t.key === "costruzione")!;
+  assert.equal(tabAriaCurrent("domande", construction), "true", "lit by Domande: not the page");
+  assert.equal(tabAriaCurrent("costruzione", construction), "page");
+  assert.equal(tabAriaCurrent(null, after.find((t) => t.key === "panoramica")!), "page");
+  assert.equal(tabAriaCurrent("domande", before.find((t) => t.key === "domande")!), "page", "domande/<id> stays the Domande page");
 });
 
 test("the trail: use case, code, Realizzazione; the title without a code; the old link without a parent card", () => {

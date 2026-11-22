@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link, { useLinkStatus } from "next/link";
 import { useSelectedLayoutSegment } from "next/navigation";
 import { StatusDot } from "@/components/uc/ui/status-dot";
-import { activeTabKey, type CaseTab } from "@/lib/uc/views/case-shell";
+import { activeTabKey, tabAriaCurrent, type CaseTab } from "@/lib/uc/views/case-shell";
 import { OVERVIEW_TEXT, viaBarText } from "@/lib/uc/views/progress";
 import { formatCountIt } from "@/lib/uc/views/format";
 import type { SemaforoColor } from "@/lib/uc/vocab";
@@ -28,14 +28,20 @@ function TabLabel({ label }: { label: string }) {
   );
 }
 
+/** Il primo segmento sotto il dossier; null sulla Panoramica. */
+function useTabSegment(): string | null {
+  const raw = useSelectedLayoutSegment();
+  return raw && !raw.startsWith("__") ? raw : null;
+}
+
 /** La scheda accesa; con le schede di chi guarda, dopo il via Domande accende «Costruzione» (`activeTabKey`). */
 function useActiveTab(tabs?: readonly CaseTab[]) {
-  const raw = useSelectedLayoutSegment();
-  return activeTabKey(raw && !raw.startsWith("__") ? raw : null, tabs);
+  return activeTabKey(useTabSegment(), tabs);
 }
 
 function TabRow({ basePath, tabs, compact = false, ariaLabel }: { basePath: string; tabs: readonly CaseTab[]; compact?: boolean; ariaLabel: string }) {
-  const active = useActiveTab(tabs);
+  const segment = useTabSegment();
+  const active = activeTabKey(segment, tabs);
   const listRef = useRef<HTMLDivElement | null>(null);
   const activeRef = useRef<HTMLAnchorElement | null>(null);
   useEffect(() => {
@@ -62,7 +68,8 @@ function TabRow({ basePath, tabs, compact = false, ariaLabel }: { basePath: stri
               key={t.key}
               ref={isActive ? activeRef : undefined}
               href={t.segment ? `${basePath}/${t.segment}` : basePath}
-              aria-current={isActive ? "page" : undefined}
+              // (Rilascio 10, D9 (a)) Su Domande, dopo il via, «Costruzione» è accesa ma non è la pagina: «true».
+              aria-current={isActive ? tabAriaCurrent(segment, t) : undefined}
               className={cn(
                 "inline-flex min-h-11 shrink-0 items-center border-b-2 px-2.5 text-sm whitespace-nowrap transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
                 compact && "lg:min-h-10",

@@ -143,6 +143,14 @@ export function activeTabKey(segment: string | null, tabs?: readonly Pick<CaseTa
   return t.key === "domande" && tabs.some((x) => x.key === "costruzione") ? "costruzione" : null;
 }
 
+/**
+ * (Rilascio 10, D9 (a)) `aria-current` della scheda accesa: «page» sulla sua pagina (e sotto, `domande/<id>`); «true»
+ * quando la accende un'altra pagina, Domande dopo il via con «Costruzione»: la pagina aperta non è la sua.
+ */
+export function tabAriaCurrent(segment: string | null, tab: Pick<CaseTab, "segment">): "page" | "true" {
+  return tab.segment === segment ? "page" : "true";
+}
+
 // ── Menu «⋯» ──────────────────────────────────────────────────────────
 
 export type CaseMenuKey = "privacy" | "attivita" | "esporta" | "costruzione" | "impostazioni";
