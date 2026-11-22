@@ -176,6 +176,8 @@ test("il prossimo passo segue il progetto", () => {
   assert.equal(nextStep({ ...base, open: project({ status: "da_approvare" }) }), "aspettare l'approvazione del responsabile del caso.");
   assert.match(nextStep({ ...base, open: project({ status: "da_approvare", aiBoardOkAt: null, changeRequest: "Solo in UE" }) }), /chiede una modifica/);
   assert.match(nextStep({ ...base, approved: project(), open: null }), /generare il pacchetto/);
+  // (Rilascio 10) La pagina del progetto è la Costruzione.
+  assert.equal(nextStep({ ...base, approved: project(), open: null }), "generare il pacchetto dalla pagina «Costruzione».");
 });
 
 test("dal: che cosa è cambiato; senza novità lo dice", () => {

@@ -66,3 +66,12 @@ test("(9b) «Il contesto è cambiato» e «Una risposta per «Cosa serve»»: ti
     assert.doesNotMatch(text, /caso d'uso|casi d'uso/i, text);
   }
 });
+
+test("(rilascio 10) the agent's project is the «Costruzione» and its measures are «Qualità»: never the old page names", () => {
+  for (const [key, text] of Object.entries(USE_CASE_NOTICE_TEXT)) {
+    if (typeof text !== "string") continue;
+    assert.doesNotMatch(text, /Progetto dell'agente|Evals e banco di prova/, key);
+  }
+  assert.match(USE_CASE_NOTICE_TEXT.projectToApprove, /in «Costruzione», nella realizzazione\.$/);
+  assert.match(USE_CASE_NOTICE_TEXT.benchAdvice, /in «Qualità», nel progetto\.$/);
+});

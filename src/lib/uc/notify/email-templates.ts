@@ -563,7 +563,7 @@ export function renderEmail(input: EmailInput, brand?: EmailBrand, options: Emai
         { p: "Buongiorno," },
         { p: `per il ruolo «${oneLine(input.role, 40)}» dell'agente del caso d'uso «${oneLine(input.caseTitle, 120)}», il banco di prova ${advice}` },
         // (Rilascio 10, §3.12) La metà delle parole: il resto sta nel progetto.
-        { p: "Il confronto e il comando per la pull request sono nel progetto, in «Evals e banco di prova». Il modello lo cambia una persona del team." },
+        { p: "Il confronto e il comando per la pull request sono nel progetto, in «Qualità». Il modello lo cambia una persona del team." },
         { link: { href: link, label: "Apri il progetto" } },
         builderFooter(input),
       ]);
@@ -581,7 +581,7 @@ export function renderEmail(input: EmailInput, brand?: EmailBrand, options: Emai
             : `le evals di main ${caso} sono sotto soglia: ${oneLine(input.quality, 8)}.`,
         },
         ...(input.fromCi ? [{ p: evalsFromCiLine(input.fromCi.commit) }] : []),
-        { p: "Prima di cambiare altro, guarda quali gruppi non passano: sono nel progetto, in «Evals e banco di prova»." },
+        { p: "Prima di cambiare altro, guarda quali gruppi non passano: sono nel progetto, in «Qualità»." },
         { link: { href: link, label: "Apri il progetto" } },
         builderFooter(input),
       ]);

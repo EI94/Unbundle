@@ -134,7 +134,7 @@ export function nextStep(input: Pick<BriefInput, "open" | "approved" | "latestPa
     return "aspettare l'approvazione del responsabile del caso.";
   }
   if (!approved) return `impostare il caso («unbundle setup ${input.code}»).`;
-  if (!input.latestPackage) return "generare il pacchetto dalla pagina «Progetto dell'agente».";
+  if (!input.latestPackage) return "generare il pacchetto dalla pagina «Costruzione».";
   return `costruire secondo il progetto approvato (versione ${approved.version}).`;
 }
 
@@ -295,7 +295,7 @@ export function composeQuestionsLayer(input: {
 
 /** Lo strato «pacchetto»: le versioni, dalla più recente; i file li porta «unbundle start». */
 export function composePackageLayer(input: { code: string; packages: { version: number; createdAt: string; source: "generato" | "importato"; contentHash: string }[] }): string {
-  if (!input.packages.length) return `${input.code}: nessun pacchetto ancora. Si genera dalla pagina «Progetto dell'agente».`;
+  if (!input.packages.length) return `${input.code}: nessun pacchetto ancora. Si genera dalla pagina «Costruzione».`;
   const lines = [`${input.code} · pacchetto (${input.packages.length} versioni)`];
   for (const p of input.packages.slice(0, 10)) {
     lines.push(`- k${p.version} · ${day(p.createdAt)} · ${p.source === "importato" ? "preparato a mano" : "generato dalla scheda"} · impronta ${p.contentHash.slice(0, 12)}`);
