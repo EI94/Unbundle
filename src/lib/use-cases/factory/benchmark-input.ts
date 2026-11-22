@@ -16,6 +16,11 @@
  *     e la raccomandazione è la stessa prima e dopo.
  * - **Le risposte:** la raccomandazione del banco (`analyzeBench`, la stessa regola della CLI), mai con i modelli finti;
  *   la panoramica di `GET /api/cli/evals`, (8.2b) con la fonte di ogni esecuzione (`fonte`, `ci`).
+ * - **(Casi senza AI, docs/rilascio-8/CASI-SENZA-AI.md §4)** `senzaAi: true` (facoltativo; se manca, no): solo evals,
+ *   `modelli` assente o {}, `modelliFinti: false`, un solo risultato «attuale» senza modello, costi né token. Si salva
+ *   con l'id riservato `senza-ai` (`NO_AI_MODEL`), che senza `senzaAi` non si può usare, né nei modelli né nei risultati.
+ *   Le letture dicono `senzaAi` di ogni esecuzione; la risposta a un invio lo dice solo per un caso senza AI, e
+ *   l'impronta dell'idempotenza degli altri invii resta quella di prima (`evalRunFingerprint`).
  *
  * Mai una persona: né chi lancia il banco, né chi manda le evals.
  * Modulo puro: import relativi `.ts`.
@@ -24,6 +29,7 @@ import { EVAL_BRANCH_RE, EVAL_COMMIT_RE, EVAL_GROUP_RE, EVAL_LIMITS, EVAL_VERSIO
 import {
   LEVEL_RE,
   MODEL_ID_RE,
+  NO_AI_MODEL,
   ROLE_RE,
   type BenchAnalysis,
   type BenchResult,
@@ -31,6 +37,7 @@ import {
   type EvalOverview,
   type EvalRunKind,
   type EvalRunView,
+  type EvalsAlert,
 } from "./benchmark.ts";
 
 export type InputResult<T> = { ok: true; value: T } | { ok: false; message: string };
@@ -48,6 +55,11 @@ export interface EvalRunInput {
   models: Record<string, string>;
   fakeModels: boolean;
   inConstruction: boolean;
+  /**
+   * (Casi senza AI) Le evals di un caso senza AI (`senzaAi: true`): `models` vuoto, `fakeModels` falso, un solo risultato
+   * con il modello `senza-ai` e senza costi né token.
+   */
+  withoutAi: boolean;
   /** Quante prove: il massimo delle totali dei risultati. */
   casesTotal: number;
   results: BenchResult[];
@@ -55,6 +67,33 @@ export interface EvalRunInput {
 
 /** Quanto può discostarsi la qualità mandata dalla CLI da superate / totali (mezzo punto). */
 export const QUALITY_TOLERANCE = 0.005;
+
+/**
+ * (Casi senza AI, §4) I messaggi di un corpo con `senzaAi: true` sbagliato, e quello dell'id riservato in un corpo senza
+ * (nei modelli o nei risultati, anche del banco). Quelli di un risultato dicono il campo (`noAiModelMessage`,
+ * `noAiMeasureMessage`).
+ */
+export const NO_AI_MESSAGES = Object.freeze({
+  bench: "Un caso senza AI non ha un banco di prova: non ci sono modelli da confrontare.",
+  models: "modelli: un caso senza AI non ha ruoli né modelli (senza_ai: true e modelli: {} in agent.yaml).",
+  fakeModels: "modelliFinti: un caso senza AI non ha modelli da sostituire, quindi false.",
+  reserved: "senza-ai è riservato ai casi senza AI: dichiaralo con senzaAi: true.",
+});
+
+/** (Casi senza AI) «risultati[0].modello: …»: un caso senza AI non ha modello. */
+export const noAiModelMessage = (at: string) => `${at}.modello: un caso senza AI non ha modello (lascialo vuoto).`;
+/** (Casi senza AI) «risultati[0].costoPer1000Usd: …»: un caso senza AI non ha costi né token dei modelli. */
+export const noAiMeasureMessage = (label: string) => `${label}: un caso senza AI non ha costi né token dei modelli.`;
+
+/**
+ * Le evals senza i modelli di oggi, con il suggerimento per un caso senza AI (§4): la CLI fino alla 1.7.0 non manda
+ * `senzaAi`.
+ */
+export const EVALS_MODELS_MESSAGE =
+  "modelli: per le evals, ogni ruolo di agent.yaml con il suo modello di oggi (almeno uno). Se il caso non usa modelli, manda senzaAi: true (senza_ai: true in agent.yaml, modello 1.7.0 o successivo).";
+
+/** L'id riservato dei casi senza AI, scritto in qualunque modo: senza `senzaAi` non è un modello. */
+const isNoAiModel = (model: string) => model.toLowerCase() === NO_AI_MODEL;
 
 const L = EVAL_LIMITS;
 const bad = <T>(message: string): InputResult<T> => ({ ok: false, message });
@@ -112,10 +151,28 @@ function parseGroups(v: unknown, at: string): InputResult<Record<string, EvalGro
   return { ok: true, value: out };
 }
 
-function parseResult(v: unknown, i: number): InputResult<BenchResult> {
+/**
+ * Il modello di un risultato: l'id di un modello, mai quello riservato. (Casi senza AI) Per un caso senza AI manca, o è
+ * l'id riservato: si salva sempre quello.
+ */
+function resultModel(v: unknown, at: string, withoutAi: boolean): InputResult<string> {
+  if (withoutAi) return absent(v) || v === NO_AI_MODEL ? { ok: true, value: NO_AI_MODEL } : bad(noAiModelMessage(at));
+  if (typeof v !== "string" || !MODEL_ID_RE.test(v)) return bad(`${at}.modello: l'id di un modello, come anthropic/claude-haiku-5-5 (al massimo ${L.model} caratteri).`);
+  if (isNoAiModel(v)) return bad(NO_AI_MESSAGES.reserved);
+  return { ok: true, value: v };
+}
+
+/** Una misura dei modelli (il costo, i token). (Casi senza AI) Per un caso senza AI non c'è: manca, o è null. */
+function modelMeasure(v: unknown, label: string, max: number, decimals: number, what: string, withoutAi: boolean): InputResult<number | null> {
+  if (!withoutAi) return measure(v, label, max, decimals, what);
+  return absent(v) ? { ok: true, value: null } : bad(noAiMeasureMessage(label));
+}
+
+function parseResult(v: unknown, i: number, withoutAi: boolean): InputResult<BenchResult> {
   const at = `risultati[${i}]`;
   if (!isObject(v)) return bad(`${at}: un oggetto con modello, superati, totali e soglie.`);
-  if (typeof v.modello !== "string" || !MODEL_ID_RE.test(v.modello)) return bad(`${at}.modello: l'id di un modello, come anthropic/claude-haiku-5-5 (al massimo ${L.model} caratteri).`);
+  const model = resultModel(v.modello, at, withoutAi);
+  if (!model.ok) return model;
   const current = flag(v.attuale, `${at}.attuale`, false);
   if (!current.ok) return current;
   const passed = integer(v.superati, `${at}.superati`, 0, L.casesMax);
@@ -132,23 +189,23 @@ function parseResult(v: unknown, i: number): InputResult<BenchResult> {
   if (!thresholds.ok) return thresholds;
   const groups = parseGroups(v.gruppi, at);
   if (!groups.ok) return groups;
-  const cost = measure(v.costoPer1000Usd, `${at}.costoPer1000Usd`, L.costPer1000UsdMax, 6, "il costo stimato in USD");
+  const cost = modelMeasure(v.costoPer1000Usd, `${at}.costoPer1000Usd`, L.costPer1000UsdMax, 6, "il costo stimato in USD", withoutAi);
   if (!cost.ok) return cost;
   const p50 = measure(v.latenzaP50Ms, `${at}.latenzaP50Ms`, L.latencyMsMax, 0, "i millisecondi");
   if (!p50.ok) return p50;
   const p95 = measure(v.latenzaP95Ms, `${at}.latenzaP95Ms`, L.latencyMsMax, 0, "i millisecondi");
   if (!p95.ok) return p95;
   if (p50.value !== null && p95.value !== null && p50.value > p95.value) return bad(`${at}: la latenza p50 non può superare la p95.`);
-  const tokensIn = measure(v.tokenIngressoMedi, `${at}.tokenIngressoMedi`, L.tokensAvgMax, 0, "i token medi");
+  const tokensIn = modelMeasure(v.tokenIngressoMedi, `${at}.tokenIngressoMedi`, L.tokensAvgMax, 0, "i token medi", withoutAi);
   if (!tokensIn.ok) return tokensIn;
-  const tokensOut = measure(v.tokenUscitaMedi, `${at}.tokenUscitaMedi`, L.tokensAvgMax, 0, "i token medi");
+  const tokensOut = modelMeasure(v.tokenUscitaMedi, `${at}.tokenUscitaMedi`, L.tokensAvgMax, 0, "i token medi", withoutAi);
   if (!tokensOut.ok) return tokensOut;
   const errors = absent(v.errori) ? ({ ok: true, value: 0 } as const) : integer(v.errori, `${at}.errori`, 0, L.errorsMax);
   if (!errors.ok) return errors;
   return {
     ok: true,
     value: {
-      model: v.modello,
+      model: model.value,
       current: current.value,
       quality,
       passed: passed.value,
@@ -165,8 +222,10 @@ function parseResult(v: unknown, i: number): InputResult<BenchResult> {
   };
 }
 
-function parseModels(v: unknown): InputResult<Record<string, string>> {
+function parseModels(v: unknown, withoutAi: boolean): InputResult<Record<string, string>> {
   if (absent(v)) return { ok: true, value: {} };
+  // (Casi senza AI) Nessun ruolo e nessun modello: `modelli` manca, o è {}.
+  if (withoutAi) return isObject(v) && Object.keys(v).length === 0 ? { ok: true, value: {} } : bad(NO_AI_MESSAGES.models);
   if (!isObject(v)) return bad("modelli: un oggetto, il ruolo e il suo modello di oggi.");
   const entries = Object.entries(v);
   if (entries.length > L.modelsMax) return bad(`modelli: al massimo ${L.modelsMax} ruoli.`);
@@ -174,6 +233,7 @@ function parseModels(v: unknown): InputResult<Record<string, string>> {
   for (const [role, model] of entries) {
     if (!ROLE_RE.test(role)) return bad("modelli: ogni chiave è un ruolo di agent.yaml, come «lettura» (minuscole, cifre, - e _).");
     if (typeof model !== "string" || !MODEL_ID_RE.test(model)) return bad(`modelli.${role}: l'id di un modello, come anthropic/claude-haiku-5-5.`);
+    if (isNoAiModel(model)) return bad(NO_AI_MESSAGES.reserved);
     out[role] = model;
   }
   return { ok: true, value: out };
@@ -183,6 +243,11 @@ function parseModels(v: unknown): InputResult<Record<string, string>> {
 export function parseEvalRun(body: Record<string, unknown>): InputResult<EvalRunInput> {
   const kind = body.tipo;
   if (kind !== "banco" && kind !== "evals") return bad("tipo: «banco» oppure «evals».");
+  // (Casi senza AI) Facoltativo: se manca, no, e tutto resta come prima. Un caso senza AI manda solo le evals.
+  const noAi = flag(body.senzaAi, "senzaAi", false);
+  if (!noAi.ok) return noAi;
+  const withoutAi = noAi.value;
+  if (withoutAi && kind === "banco") return bad(NO_AI_MESSAGES.bench);
   let role: string | null = null;
   if (kind === "banco") {
     if (typeof body.ruolo !== "string" || !ROLE_RE.test(body.ruolo)) return bad("ruolo: il ruolo di agent.yaml che il banco ha provato, come «lettura» (minuscole, cifre, - e _).");
@@ -198,10 +263,11 @@ export function parseEvalRun(body: Record<string, unknown>): InputResult<EvalRun
   if (!version.ok) return version;
   const fake = flag(body.modelliFinti, "modelliFinti", null);
   if (!fake.ok) return fake;
+  if (withoutAi && fake.value) return bad(NO_AI_MESSAGES.fakeModels);
   // Per il banco non conta (non avvisa mai): se manca, no. Per le evals decide l'avviso: si dice sempre.
   const construction = flag(body.inCostruzione, "inCostruzione", kind === "banco" ? false : null);
   if (!construction.ok) return construction;
-  const models = parseModels(body.modelli);
+  const models = parseModels(body.modelli, withoutAi);
   if (!models.ok) return models;
 
   const raw = body.risultati;
@@ -212,7 +278,7 @@ export function parseEvalRun(body: Record<string, unknown>): InputResult<EvalRun
   const results: BenchResult[] = [];
   const seen = new Set<string>();
   for (const [i, item] of raw.entries()) {
-    const parsed = parseResult(item, i);
+    const parsed = parseResult(item, i, withoutAi);
     if (!parsed.ok) return parsed;
     const key = parsed.value.model.toLowerCase();
     if (seen.has(key)) return bad(`risultati: ogni modello una volta sola (${parsed.value.model} è ripetuto).`);
@@ -224,8 +290,8 @@ export function parseEvalRun(body: Record<string, unknown>): InputResult<EvalRun
     return bad(kind === "banco" ? "risultati: esattamente un modello «attuale», quello di oggi del ruolo." : "risultati: il risultato delle evals è quello dei modelli di oggi, «attuale»: true.");
   }
   // Le evals dicono i modelli di oggi di agent.yaml, come la CLI li manda sempre: senza, un banco già seguito non si
-  // riconosce più (benchSuperseded), e il consiglio sparirebbe o resterebbe a caso.
-  if (kind === "evals" && Object.keys(models.value).length === 0) return bad("modelli: per le evals, ogni ruolo di agent.yaml con il suo modello di oggi (almeno uno).");
+  // riconosce più (benchSuperseded), e il consiglio sparirebbe o resterebbe a caso. Un caso senza AI non ne ha.
+  if (kind === "evals" && !withoutAi && Object.keys(models.value).length === 0) return bad(EVALS_MODELS_MESSAGE);
   if (role !== null) {
     // Il banco dice sempre il modello di oggi del suo ruolo (la CLI lo prende da agent.yaml): senza, un ruolo inventato.
     const today = Object.hasOwn(models.value, role) ? models.value[role] : null;
@@ -244,10 +310,37 @@ export function parseEvalRun(body: Record<string, unknown>): InputResult<EvalRun
       models: models.value,
       fakeModels: fake.value,
       inConstruction: construction.value,
+      withoutAi,
       casesTotal: Math.max(...results.map((r) => r.total)),
       results,
     },
   };
+}
+
+/**
+ * (Casi senza AI) Vero se un invio rispetta il segno dei casi senza AI, come lo lascia `parseEvalRun`: le evals di un
+ * caso senza AI (`withoutAi`) hanno solo il risultato `senza-ai`, senza modelli, costi né token; gli altri invii non
+ * usano mai `senza-ai`. Lo ricontrolla chi scrive (`recordEvalRun`): un invio che non lo rispetta si leggerebbe per
+ * quello che non è.
+ */
+export function noAiMarkConsistent(input: EvalRunInput): boolean {
+  if (!input.withoutAi) return !input.results.some((r) => isNoAiModel(r.model)) && !Object.values(input.models).some(isNoAiModel);
+  return (
+    input.kind === "evals" &&
+    !input.fakeModels &&
+    Object.keys(input.models).length === 0 &&
+    input.results.every((r) => r.model === NO_AI_MODEL && r.costPer1000Usd === null && r.tokensInAvg === null && r.tokensOutAvg === null)
+  );
+}
+
+/**
+ * (Casi senza AI) L'invio controllato di cui si fa l'impronta per l'idempotenza (`runCliWrite`, `ciEvalsWriteBody`):
+ * `withoutAi` solo quando è vero. Così l'impronta degli invii di prima resta la stessa, e una ripresa a cavallo del
+ * rilascio risponde ancora «ripetuta».
+ */
+export function evalRunFingerprint(input: EvalRunInput): Record<string, unknown> {
+  const { withoutAi, ...before } = input;
+  return withoutAi ? { ...before, withoutAi } : before;
 }
 
 // ─── Le risposte alla CLI ────────────────────────────────────────────
@@ -265,6 +358,21 @@ export function recommendationOf(analysis: BenchAnalysis | null): CliRecommendat
   if (v.kind === "finti") return null;
   const model = v.kind === "nessuno" ? null : v.model;
   return { tipo: v.kind, ...(model ? { modello: model } : {}), testo: v.text };
+}
+
+/**
+ * La risposta a un invio (`POST /api/cli/evals` e, dalla 8.2b, `POST /api/ci/evals`): `{ id, raccomandazione, avviso,
+ * link }`. (Casi senza AI) Solo per le evals di un caso senza AI anche `senzaAi: true` (la raccomandazione è null, non
+ * c'è un banco): le risposte agli altri invii restano parola per parola quelle di prima.
+ */
+export function evalRunReply(recorded: { id: string; analysis: BenchAnalysis | null; alert: EvalsAlert }, input: Pick<EvalRunInput, "withoutAi">, link: string) {
+  return {
+    id: recorded.id,
+    raccomandazione: recommendationOf(recorded.analysis),
+    avviso: recorded.alert?.kind ?? null,
+    link,
+    ...(input.withoutAi ? { senzaAi: true as const } : {}),
+  };
 }
 
 /** Un risultato con le chiavi della CLI, le stesse del corpo del POST. */
@@ -297,7 +405,9 @@ export interface CliRunReadOptions {
 /**
  * Un banco o delle evals con le chiavi della CLI. (8.2b) `fonte`: `cli` (una persona, con la sua CLI) o `ci` (la CI di
  * main, con la chiave del repository); `ci`: l'indirizzo dell'esecuzione su GitHub, solo per la fonte `ci` e solo a chi
- * può vederlo, altrimenti null. Una lettura senza la 0042 dice `cli`, come le righe di prima.
+ * può vederlo, altrimenti null. Una lettura senza la 0042 dice `cli`, come le righe di prima. (Casi senza AI) `senzaAi`:
+ * le evals di un caso senza AI (`modelli` {}, il risultato `senza-ai` senza costi né token); un campo in più, che la CLI
+ * di prima ignora.
  */
 export function runForCli(run: EvalRunView, opts: CliRunReadOptions = {}) {
   const fonte: "cli" | "ci" = run.source === "ci" ? "ci" : "cli";
@@ -311,6 +421,7 @@ export function runForCli(run: EvalRunView, opts: CliRunReadOptions = {}) {
     versioneModello: run.templateVersion,
     modelli: run.models,
     modelliFinti: run.fakeModels,
+    senzaAi: run.withoutAi === true,
     inCostruzione: run.inConstruction,
     prove: run.casesTotal,
     quando: run.createdAt,
@@ -323,7 +434,8 @@ export function runForCli(run: EvalRunView, opts: CliRunReadOptions = {}) {
 /**
  * La panoramica per la CLI (`GET /api/cli/evals?caso=<ID>`): le evals che fanno lo stato del caso (`main` prima, poi i
  * modelli veri, poi il livello completo) con il loro andamento (stesso ramo, stessi modelli veri o finti, stesso livello,
- * dalla più vecchia) e l'ultimo banco di ogni ruolo, con i tre segni, la frontiera e la raccomandazione. (8.2b) Ogni
+ * senza AI con senza AI, dalla più vecchia) e l'ultimo banco di ogni ruolo, con i tre segni, la frontiera e la
+ * raccomandazione. (8.2b) Ogni
  * esecuzione dice la sua fonte, e il link all'esecuzione della CI a chi può vederlo (`opts.ciLinks`).
  */
 export function evalOverviewForCli(code: string, o: EvalOverview, opts: CliRunReadOptions = {}) {

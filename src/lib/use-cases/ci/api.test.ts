@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { analyzeBench, type EvalOverview, type EvalRunView } from "../factory/benchmark.ts";
-import { evalOverviewForCli, parseEvalRun, runForCli } from "../factory/benchmark-input.ts";
+import { NO_AI_MESSAGES, evalOverviewForCli, parseEvalRun, runForCli } from "../factory/benchmark-input.ts";
 import {
   CI_ERRORS,
   CI_IDEMPOTENCY_MISSING_MESSAGE,
@@ -22,7 +22,8 @@ import { CI_COMMIT_MESSAGE, CI_RUN_URL_MESSAGE } from "./keys.ts";
 // L'API della CI senza il database (rilascio 8.2b, RILASCIO-8.2b-SPEC.md §2.2, §2.3, §2.9): il corpo di
 // `POST /api/ci/evals` (prima solo main, il commit intero e l'esecuzione di quel repository, poi le regole della 8.2a),
 // la risposta di `GET /api/ci/casi`, gli errori con lo stato e il testo della specifica, l'impronta dell'idempotenza senza
-// il tentativo, chi scrive (la CI, mai una persona), chi vede il link a GitHub, la fonte nella lettura della CLI. Dati inventati.
+// il tentativo, chi scrive (la CI, mai una persona), chi vede il link a GitHub, la fonte nella lettura della CLI. (Casi
+// senza AI, docs/rilascio-8/CASI-SENZA-AI.md §4) `senzaAi` dalla CI con le regole della CLI. Dati inventati.
 
 const REPO = "Voltaen/esempio-rosa";
 const SHA = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678";
@@ -197,6 +198,52 @@ test("l'idempotenza: l'impronta senza il tentativo (un job rilanciato è la stes
   assert.deepEqual(a.ci, { url: RUN_URL });
   assert.equal(a.caso, "XX-0012");
   assert.ok(!JSON.stringify(a).includes("tentativo") && !JSON.stringify(a).includes('"attempt"'));
+});
+
+test("(casi senza AI) senzaAi dalla CI: prima le regole della CI, poi quelle della CLI; l'impronta di prima per gli altri invii", () => {
+  /** Il corpo del §4 dalla CI: le evals di main di un caso senza AI, senza modello, costi né token. */
+  const noAi = (over: Record<string, unknown> = {}) =>
+    body({ senzaAi: true, modelliFinti: false, modelli: {}, risultati: [{ attuale: true, superati: 48, totali: 48, qualita: 1, soglieRispettate: true, latenzaP95Ms: 410 }], ...over });
+  const parsed = parseCiEvals(noAi(), REPO);
+  assert.ok(parsed.ok, JSON.stringify(parsed));
+  if (!parsed.ok) return;
+  const { input } = parsed.value;
+  assert.deepEqual([input.withoutAi, input.models, input.fakeModels, input.results[0].model, input.results[0].costPer1000Usd, input.results[0].tokensInAvg], [true, {}, false, "senza-ai", null, null]);
+  assert.deepEqual(parsed.value.run, { runId: RUN, attempt: 1, url: RUN_URL });
+  // Chi scrive: la CI con la sua chiave, come per gli altri invii.
+  assert.equal(checkCiRunSource({ kind: "ci", keyId: randomUUID(), runUrl: RUN_URL, repo: REPO }, input), null);
+  // Prima le regole della CI: solo main, il commit intero.
+  const branch = parseCiEvals(noAi({ ramo: "xx-0012/prova" }), REPO);
+  assert.ok(!branch.ok && branch.status === 403 && branch.code === "solo_main");
+  const commit = parseCiEvals(noAi({ commit: "3ffb2ae" }), REPO);
+  assert.ok(!commit.ok && commit.status === 400 && commit.message === CI_COMMIT_MESSAGE);
+  // Poi quelle dei casi senza AI, con i messaggi della CLI (400 dati_non_validi).
+  const result = (over: Record<string, unknown>) => [{ attuale: true, superati: 48, totali: 48, soglieRispettate: true, ...over }];
+  const refused: [Record<string, unknown>, string][] = [
+    [{ tipo: "banco", ruolo: "lettura" }, NO_AI_MESSAGES.bench],
+    [{ modelli: { lettura: HAIKU } }, NO_AI_MESSAGES.models],
+    [{ modelliFinti: true }, NO_AI_MESSAGES.fakeModels],
+    [{ risultati: result({ costoPer1000Usd: 0.1 }) }, "risultati[0].costoPer1000Usd: un caso senza AI non ha costi né token dei modelli."],
+    [{ risultati: result({ tokenUscitaMedi: 12 }) }, "risultati[0].tokenUscitaMedi: un caso senza AI non ha costi né token dei modelli."],
+    [{ risultati: result({ modello: HAIKU }) }, "risultati[0].modello: un caso senza AI non ha modello (lascialo vuoto)."],
+  ];
+  for (const [over, message] of refused) {
+    const r = parseCiEvals(noAi(over), REPO);
+    assert.ok(!r.ok, JSON.stringify(over));
+    if (!r.ok) assert.deepEqual([r.status, r.code, r.message], [400, "dati_non_validi", message], JSON.stringify(over));
+  }
+  // `senza-ai` è riservato anche dalla CI, nelle evals e nel banco.
+  for (const over of [{ modelli: { lettura: "senza-ai" } }, { risultati: [result({ modello: "senza-ai" })[0]] }, { tipo: "banco", ruolo: "lettura", modelliFinti: false, modelli: { lettura: "senza-ai" }, risultati: [result({ modello: "senza-ai" })[0]] }]) {
+    const r = parseCiEvals(body(over), REPO);
+    assert.ok(!r.ok && r.status === 400 && r.message === NO_AI_MESSAGES.reserved, JSON.stringify(over));
+  }
+  // L'impronta: con il segno per un caso senza AI; per gli altri invii la stessa di prima, senza `withoutAi`.
+  const today = parseCiEvals(body(), REPO);
+  assert.ok(today.ok);
+  if (!today.ok) return;
+  assert.equal(Object.hasOwn(ciEvalsWriteBody("XX-0012", today.value), "withoutAi"), false);
+  assert.equal(ciEvalsWriteBody("XX-0012", parsed.value).withoutAi, true);
+  assert.deepEqual(ciEvalsWriteBody("XX-0012", parsed.value).ci, { url: RUN_URL });
 });
 
 test("chi scrive: la CI con la sua chiave e l'esecuzione di quel repository, solo main e il commit intero; mai una persona", () => {

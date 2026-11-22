@@ -12,6 +12,11 @@
  * - **Le evals:** l'esito delle evals con i modelli di oggi; l'avviso quando sono sotto soglia o scendono di 5 punti
  *   rispetto alle precedenti dello stesso ramo e dello stesso livello, con gli stessi modelli (veri con veri, finti con
  *   finti). Lo stato del caso lo fanno le evals vere e complete di `main` (le altre solo finché quelle non ci sono).
+ * - **(Casi senza AI, docs/rilascio-8/CASI-SENZA-AI.md)** Un caso che non chiama modelli manda le sue evals con
+ *   `models = {}` e un solo risultato con l'id riservato {@link NO_AI_MODEL}: il segno sta nel risultato
+ *   ({@link evalRunWithoutAi}), non nei modelli vuoti, che hanno anche le evals mandate a mano prima del 14/11. Sono
+ *   evals vere: fanno lo stato e avvisano come le altre, e si confrontano solo con quelle senza AI. Nessun banco: dopo
+ *   le evals senza AI di `main` ogni banco del caso è superato.
  *
  * Per caso e per ruolo, mai per persona. La stessa regola sta nella CLI del modello (`unbundle banco`).
  * Modulo puro: niente database, niente rete.
@@ -32,6 +37,9 @@ export const MODEL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,79}$/;
 export const ROLE_RE = /^[a-z][a-z0-9_-]{0,39}$/;
 /** Un livello delle evals («pull_request», «veloce»…). */
 export const LEVEL_RE = /^[a-z_]{1,20}$/;
+
+/** (casi senza AI) L'id riservato del risultato delle evals di un caso che non chiama modelli. Mai un modello vero. */
+export const NO_AI_MODEL = "senza-ai";
 
 export type EvalRunKind = "banco" | "evals";
 
@@ -60,6 +68,15 @@ export interface BenchResult {
   tokensInAvg: number | null;
   tokensOutAvg: number | null;
   errors: number;
+}
+
+/**
+ * (casi senza AI, §3) Vero per le evals di un caso senza AI: il loro risultato «attuale» ha l'id riservato
+ * {@link NO_AI_MODEL}. Mai un banco; mai le evals con i modelli vuoti e un modello vero (quelle mandate a mano prima del
+ * 14/11): si leggono come prima. La stessa regola delle letture del database (`use-case-evals.ts`).
+ */
+export function evalRunWithoutAi(kind: EvalRunKind, results: readonly Pick<BenchResult, "model" | "current">[]): boolean {
+  return kind === "evals" && results.find((r) => r.current)?.model === NO_AI_MODEL;
 }
 
 export type BenchVerdict =
@@ -274,14 +291,16 @@ export const EVALS_MAIN = "main";
  * Un banco superato: dopo di lui sono arrivate evals vere di `main` e lì il ruolo usa un altro modello, o non c'è più.
  * Il consiglio era stato seguito (o il ruolo è cambiato): non si mostra più come «da fare», e la pagina chiede di
  * rifare il banco. `bench.currentModel`: il modello «attuale» del banco; `evals`: le evals che fanno lo stato del caso.
+ * (Casi senza AI) Dopo evals senza AI di `main` (`evals.withoutAi`) ogni banco del caso è superato: i ruoli non ci sono più.
  */
 export function benchSuperseded(
   bench: { role: string | null; at: string | Date; currentModel: string | null },
-  evals: { at: string | Date; branch: string | null; fakeModels: boolean; models: Readonly<Record<string, string>> } | null,
+  evals: { at: string | Date; branch: string | null; fakeModels: boolean; models: Readonly<Record<string, string>>; withoutAi?: boolean } | null,
 ): boolean {
   if (!evals || evals.fakeModels || evals.branch !== EVALS_MAIN || !bench.role) return false;
-  // Evals senza i modelli di oggi (mandate a mano, prima che si chiedessero): non dicono che il ruolo non c'è più.
-  if (Object.keys(evals.models).length === 0) return false;
+  // Evals senza i modelli di oggi (mandate a mano, prima che si chiedessero) e senza il segno dei casi senza AI: non
+  // dicono che il ruolo non c'è più.
+  if (evals.withoutAi !== true && Object.keys(evals.models).length === 0) return false;
   const evalsAt = new Date(evals.at).getTime();
   const benchAt = new Date(bench.at).getTime();
   if (!Number.isFinite(evalsAt) || !Number.isFinite(benchAt) || evalsAt <= benchAt) return false;
@@ -314,6 +333,11 @@ export interface EvalRunView {
    * altrimenti. La mostra solo chi costruisce o è di Lateral Space (`ciLinkVisible`): là si vede chi ha unito.
    */
   ciRunUrl?: string | null;
+  /**
+   * (Casi senza AI) Le evals di un caso senza AI ({@link evalRunWithoutAi}): nessun modello, nessun costo né token.
+   * Dove manca vale no.
+   */
+  withoutAi?: boolean;
 }
 
 /** Quello che la pagina mostra di un caso: le evals che fanno lo stato del caso con l'andamento, e l'ultimo banco per ogni ruolo. */
@@ -321,8 +345,11 @@ export interface EvalOverview {
   evals: {
     /** Le evals che fanno lo stato del caso: `main` prima, poi i modelli veri, poi il livello completo, poi le più recenti. */
     latest: EvalRunView | null;
-    /** Le ultime evals della stessa serie di `latest` (stesso ramo, modelli veri o finti, livello), dalla più vecchia. */
-    trend: { at: string; quality: number; thresholdsMet: boolean; fakeModels: boolean }[];
+    /**
+     * Le ultime evals della stessa serie di `latest` (stesso ramo, modelli veri o finti, livello; senza AI con senza AI),
+     * dalla più vecchia. Dove `withoutAi` manca vale no.
+     */
+    trend: { at: string; quality: number; thresholdsMet: boolean; fakeModels: boolean; withoutAi?: boolean }[];
   };
   benches: { role: string; run: EvalRunView; analysis: BenchAnalysis }[];
 }

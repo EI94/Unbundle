@@ -8,7 +8,7 @@ import { ok } from "@/lib/uc/types";
 import { ciCaseFailureCode, ciEvalsWriteBody, parseCiEvals } from "@/lib/use-cases/ci/api";
 import { ciError, ciMethodNotAllowed, openCi, runCiWrite } from "@/lib/use-cases/ci/route-kit";
 import { cliError, cliPublicOrigin, readCliBody } from "@/lib/use-cases/cli/route-kit";
-import { recommendationOf } from "@/lib/use-cases/factory/benchmark-input";
+import { evalRunReply } from "@/lib/use-cases/factory/benchmark-input";
 
 /**
  * `POST /api/ci/evals` (rilascio 8.2b, docs/rilascio-8/RILASCIO-8.2b-SPEC.md §2.3 e §2.9): le evals (e il banco) di main
@@ -24,6 +24,8 @@ import { recommendationOf } from "@/lib/use-cases/factory/benchmark-input";
  *   del repository diventa quella di main. Dopo un avviso le e-mail partono subito dopo la risposta.
  * - La risposta è quella della CLI: `{ id, raccomandazione, avviso, link }`, con `ripetuta: true` per un invio già
  *   arrivato (lo stesso corpo con la stessa chiave di idempotenza, anche da un job rilanciato).
+ * - (Casi senza AI, docs/rilascio-8/CASI-SENZA-AI.md §4) `senzaAi: true` vale come nella CLI, con le stesse regole
+ *   (`parseEvalRun`): solo evals, senza modelli, costi né token; la risposta ha in più `senzaAi: true`.
  */
 export const runtime = "nodejs";
 
@@ -63,7 +65,7 @@ export async function POST(request: Request): Promise<Response> {
     });
     if (!r.ok) return r;
     if (r.value.notified && c.dossierId) dispatchAfter(c.dossierId);
-    return ok({ id: r.value.id, raccomandazione: recommendationOf(r.value.analysis), avviso: r.value.alert?.kind ?? null, link });
+    return ok(evalRunReply(r.value, input, link));
   });
 }
 

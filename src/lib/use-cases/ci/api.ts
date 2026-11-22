@@ -8,7 +8,8 @@
  * - **I casi** (`ciCasesBody`): il repository della chiave, i suoi casi registrati in Unbundle (aperti, o il perché),
  *   «solo main» e la scadenza della chiave. Mai una persona.
  * - **L'invio** (`parseCiEvals`): prima le regole della CI (`checkCiRun`: `ramo` uguale a `main` o 403 `solo_main`, il
- *   commit intero, l'esecuzione di GitHub di quel repository), poi quelle della 8.2a (`parseEvalRun`).
+ *   commit intero, l'esecuzione di GitHub di quel repository), poi quelle della 8.2a (`parseEvalRun`, con `senzaAi` dei
+ *   casi senza AI).
  * - **L'idempotenza** (`ciEvalsWriteBody`): l'impronta è quella del corpo controllato più l'indirizzo dell'esecuzione,
  *   senza il tentativo: un job rilanciato con le stesse evals risponde «ripetuta» e non conta due volte; con altri numeri è
  *   un conflitto (`idempotenza`, 409), e le evals di quell'esecuzione restano quelle arrivate per prime.
@@ -20,7 +21,7 @@
  * Modulo puro: import relativi `.ts`.
  */
 import { CI_KEY_LIMITS, CI_REPO_RE, CI_RUN_URL_RE } from "../../db/use-case-hub-ci-keys-ddl.ts";
-import { parseEvalRun, type EvalRunInput } from "../factory/benchmark-input.ts";
+import { evalRunFingerprint, parseEvalRun, type EvalRunInput } from "../factory/benchmark-input.ts";
 import { CI_COMMIT_RE, CI_KEY_ERRORS, CI_MAIN_BRANCH, checkCiRun, sameCiRepo, type CiRunRef } from "./keys.ts";
 
 // ─── Limiti ──────────────────────────────────────────────────────────
@@ -140,9 +141,10 @@ export function parseCiEvals(body: Record<string, unknown>, repo: string): CiEva
 /**
  * Il corpo di cui si fa l'impronta per l'idempotenza: il caso, l'invio controllato e l'indirizzo dell'esecuzione. Il
  * tentativo (`ci.tentativo`) resta fuori: un job rilanciato con le stesse evals è la stessa richiesta («ripetuta»).
+ * (Casi senza AI) L'invio come lo dice `evalRunFingerprint`: per gli altri invii la stessa impronta di prima.
  */
 export function ciEvalsWriteBody(code: string, request: CiEvalsRequest): Record<string, unknown> {
-  return { caso: code, ...request.input, ci: { url: request.run.url } };
+  return { caso: code, ...evalRunFingerprint(request.input), ci: { url: request.run.url } };
 }
 
 // ─── Chi scrive: la CI, mai una persona ──────────────────────────────

@@ -1,8 +1,9 @@
 // Il banco di prova e le evals (rilascio 8.2a): il più bravo, il più economico, il più efficiente, la frontiera, la
-// raccomandazione; l'avviso delle evals. Docs: docs/rilascio-8/BANCO-DI-PROVA.md §3.
+// raccomandazione; l'avviso delle evals. Docs: docs/rilascio-8/BANCO-DI-PROVA.md §3. (Casi senza AI,
+// docs/rilascio-8/CASI-SENZA-AI.md §3, §5) La regola del segno e il banco superato dalle evals senza AI di main.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { analyzeBench, benchSuperseded, evalsAlert, formatCost, formatQuality, modelLabel, type BenchResult } from "./benchmark.ts";
+import { analyzeBench, benchSuperseded, evalRunWithoutAi, evalsAlert, formatCost, formatQuality, modelLabel, NO_AI_MODEL, type BenchResult } from "./benchmark.ts";
 
 const r = (model: string, quality: number, cost: number | null, over: Partial<BenchResult> = {}): BenchResult => ({
   model,
@@ -146,6 +147,29 @@ test("un banco superato: evals vere di main più nuove, con un altro modello per
   assert.equal(benchSuperseded(bench, null), false);
   assert.equal(benchSuperseded({ ...bench, role: null }, evals()), false);
   assert.equal(benchSuperseded(bench, evals({ models: Object.assign(Object.create(null), { constructor: HAIKU }) })), true, "un ruolo «constructor» non viene dal prototipo");
+});
+
+test("(casi senza AI) la regola: le evals con il risultato «attuale» senza-ai; mai un banco, mai i modelli vuoti senza il segno", () => {
+  assert.equal(NO_AI_MODEL, "senza-ai");
+  assert.equal(evalRunWithoutAi("evals", [r(NO_AI_MODEL, 1, null, { current: true })]), true);
+  assert.equal(evalRunWithoutAi("banco", [r(NO_AI_MODEL, 1, null, { current: true })]), false, "mai un banco");
+  assert.equal(evalRunWithoutAi("evals", [r(HAIKU, 1, null, { current: true })]), false, "un modello vero, anche con i modelli vuoti");
+  assert.equal(evalRunWithoutAi("evals", [r(HAIKU, 1, null, { current: true }), r(NO_AI_MODEL, 1, null)]), false, "conta solo il risultato «attuale»");
+  assert.equal(evalRunWithoutAi("evals", [r("Senza-AI", 1, null, { current: true })]), false, "l'id riservato com'è scritto nel database");
+  assert.equal(evalRunWithoutAi("evals", []), false);
+});
+
+test("(casi senza AI) un banco superato: evals senza AI di main più recenti; i modelli vuoti senza il segno restano come oggi", () => {
+  const bench = { role: "lettura", at: "2026-11-14T10:00:00.000Z", currentModel: SONNET };
+  const noAi = (over: Record<string, unknown> = {}) => ({ at: "2026-11-14T11:00:00.000Z", branch: "main", fakeModels: false, models: {} as Record<string, string>, withoutAi: true, ...over });
+  assert.equal(benchSuperseded(bench, noAi()), true, "il ruolo non c'è più: il caso è senza AI");
+  assert.equal(benchSuperseded({ role: "scrittura", at: bench.at, currentModel: HAIKU }, noAi()), true, "ogni banco del caso");
+  assert.equal(benchSuperseded(bench, noAi({ withoutAi: false })), false, "models vuoti senza il segno: le evals mandate a mano prima del 14/11");
+  assert.equal(benchSuperseded(bench, noAi({ withoutAi: undefined })), false, "il caso di oggi");
+  assert.equal(benchSuperseded(bench, noAi({ at: "2026-11-14T09:00:00.000Z" })), false, "evals più vecchie del banco");
+  assert.equal(benchSuperseded(bench, noAi({ at: bench.at })), false, "nello stesso istante: non dopo");
+  assert.equal(benchSuperseded(bench, noAi({ branch: "xx-0007/prova" })), false, "solo main");
+  assert.equal(benchSuperseded(bench, noAi({ fakeModels: true })), false);
 });
 
 test("l'attuale sotto soglia: conviene il più efficiente che le rispetta", () => {

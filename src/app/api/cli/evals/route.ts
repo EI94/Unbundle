@@ -7,7 +7,7 @@ import { ok } from "@/lib/uc/types";
 import { requireCliWrite, resolveCliCase, runCliWrite, type CliCase } from "@/lib/use-cases/cli/case";
 import { cliError, cliJson, openCli, readCliBody } from "@/lib/use-cases/cli/route-kit";
 import { ciLinkVisible } from "@/lib/use-cases/ci/api";
-import { evalOverviewForCli, parseEvalRun, recommendationOf } from "@/lib/use-cases/factory/benchmark-input";
+import { evalOverviewForCli, evalRunFingerprint, evalRunReply, parseEvalRun } from "@/lib/use-cases/factory/benchmark-input";
 import { canWriteFactory } from "@/lib/use-cases/factory/permissions";
 
 /**
@@ -19,10 +19,12 @@ import { canWriteFactory } from "@/lib/use-cases/factory/permissions";
  *   raccomandazione del banco (mai con i modelli finti), l'avviso delle evals, la sezione del progetto. Se è partito un
  *   avviso al team, le e-mail partono subito dopo la risposta. Il banco dice sempre il modello di oggi del suo ruolo
  *   (`modelli[ruolo]`); il banco di un ruolo nuovo quando il caso ne ha già 20 è un conflitto (409).
+ *   (Casi senza AI, docs/rilascio-8/CASI-SENZA-AI.md §4) Con `senzaAi: true` le evals di un caso che non chiama modelli:
+ *   niente banco, niente modelli, costi né token; la risposta ha in più `senzaAi: true`. Senza, tutto come prima.
  * - `GET ?caso=<ID>`: l'ultimo banco di ogni ruolo, le evals che fanno lo stato del caso e il loro andamento, per la
  *   CLI. Lo legge chi è nel team del caso. (8.2b) Ogni esecuzione dice la sua fonte (`fonte`: `cli` o `ci`) e, se è
  *   arrivata dalla CI, il link all'esecuzione su GitHub (`ci`) a chi costruisce il caso o è di Lateral Space; al cliente
- *   `ci` è null (là si vede chi ha unito).
+ *   `ci` è null (là si vede chi ha unito). (Casi senza AI) E se sono le evals di un caso senza AI (`senzaAi`).
  *
  * Mai una persona nelle risposte: né chi ha lanciato il banco, né chi ha mandato le evals.
  */
@@ -69,17 +71,17 @@ export async function POST(request: Request): Promise<Response> {
   const input = parsed.value;
   const link = `${new URL(request.url).origin}/dashboard/${c.target.workspaceId}/use-cases/${c.target.useCaseId}/progetto#banco`;
   // L'impronta della richiesta è quella del corpo controllato: lo stesso banco riscritto in un altro ordine di chiavi è lo
-  // stesso; un numero diverso è un'altra richiesta.
+  // stesso; un numero diverso è un'altra richiesta. (Casi senza AI) Per gli altri invii la stessa di prima.
   return runCliWrite(
     request,
     opened.value,
     "evals",
-    { caso: c.useCase.code, ...input },
+    { caso: c.useCase.code, ...evalRunFingerprint(input) },
     async (id) => {
       const r = await recordEvalRun(opened.value.executor, c.target, input, { id, actorUserId: c.actor.kind === "persona" ? c.actor.userId : null, lsDomains: ucLsDomains() });
       if (!r.ok) return r;
       if (r.value.notified) dispatchAfter(c);
-      return ok({ id: r.value.id, raccomandazione: recommendationOf(r.value.analysis), avviso: r.value.alert?.kind ?? null, link });
+      return ok(evalRunReply(r.value, input, link));
     },
     { reserveId: true },
   );
