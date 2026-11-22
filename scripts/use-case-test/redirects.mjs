@@ -16,8 +16,9 @@
 // - area off: the same addresses answer 200 with today's page;
 // - still reachable with the area on: /portfolio/export, /share/portfolio/** (members go to
 //   the card), /casi-duso/<caseId>, /r/<token>, /api/r/** (the route's own 4xx for an unknown
-//   token); (release 10) /casi-duso itself answers 308 to the Panoramica (the list is retired), and
-//   the realization's moved addresses (/progetto, /soluzione/regole, /regole, /via) answer 308;
+//   token); (release 10) with the area on /casi-duso itself answers 307 to the Panoramica (the list
+//   is retired), and the realization's moved addresses (/progetto, /soluzione/regole, /regole, /via)
+//   answer 308;
 // - not-found under use-cases/loading.tsx (/use-cases/nuovo with the area off): 200, judged by
 //   the content (the noindex meta, and the area's not-found page as Chrome shows it, through
 //   scripts/uc-test/cdp.mjs), never by the status;
@@ -170,14 +171,15 @@ if (caseId) {
   record("area on   200 /casi-duso/{caseId}", res.status === 200 ? [] : [`status ${res.status}${res.location ? ` → ${res.location}` : ""}`]);
 }
 {
-  // (Release 10, D9 (a)) The /casi-duso list is retired: its route answers 308 to the Panoramica,
-  // always, with a stub log line (§6 below), whatever dossierLinksReady says.
+  // (Release 10, D9 (a)) With the area on the /casi-duso list is retired: src/proxy.ts answers 307 to
+  // the Panoramica (temporary, as for the modules being retired: the area can be switched off), with a
+  // stub log line (§6 below), whatever dossierLinksReady says.
   const res = await get(`/dashboard/${on}/casi-duso?x=1`);
   const failures = [];
   const panoramica = `/dashboard/${on}/use-cases?vista=panoramica`;
-  if (res.status !== 308) failures.push(`status ${res.status}, expected 308`);
+  if (res.status !== 307) failures.push(`status ${res.status}, expected 307`);
   if (res.location !== panoramica) failures.push(`Location ${res.location}, expected ${panoramica}`);
-  record(`area on   ${res.status} /casi-duso (308 to the Panoramica: the list is retired)`, failures);
+  record(`area on   ${res.status} /casi-duso (307 to the Panoramica: the list is retired)`, failures);
 }
 if (caseId) {
   // (Release 10, wave 5b, §8.2) The realization's moved addresses: real 308s, query kept, never a 200 + meta refresh.
