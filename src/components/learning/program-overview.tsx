@@ -103,6 +103,8 @@ function NowCardView({ card }: { card: ReturnType<typeof nowCard> }) {
     <h2 id="adesso-titolo" className="text-base font-semibold">{T.now.title}</h2>
     <p data-testid="learning-now-line" className={counted ? "text-lg font-semibold tabular-nums" : "text-sm"}>{card.line}</p>
     {card.note ? <p className="text-sm text-muted-foreground">{card.note}</p> : null}
+    {/* Il titolo dell'esercizio sta qui, sopra il pulsante: il pulsante pieno non va a capo e dice solo il verbo. */}
+    {card.subject ? <p data-testid="learning-now-subject" className="font-medium break-words">{card.subject}</p> : null}
     {card.action ? <NextStep id="adesso" step={nowStep(card.action)} /> : null}
     {card.steps.length ? (
       <ol className="list-decimal space-y-1 pl-5 text-sm">{card.steps.map((step) => <li key={step}>{step}</li>)}</ol>
@@ -143,7 +145,7 @@ function Exercises({ program, module, base, participant }: { program: Program; m
         const facts = [activity.estimatedMinutes ? E.minutes(activity.estimatedMinutes) : null, activity.required ? null : E.notCounted].filter(Boolean).join(" · ");
         return <li key={activity.id}><Row title={activity.title} fact={facts || null} /></li>;
       }
-      const row = exerciseRow(activity, base, program.now);
+      const row = exerciseRow(activity, base, program.now, program.history);
       const fact = <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5 sm:justify-end">
         <StatusDot tone={row.tone} label={row.state} size="md" />
         {row.fact ? <span>{row.fact}</span> : null}
@@ -229,6 +231,7 @@ export async function ProgramOverview({ workspaceId, programId, moduleId, arriva
       beforeMaterials: ownMaterials.filter((material) => material.downloadBefore),
       base,
       courseOpen: program.status === "published",
+      completion: focus.completion,
     })
     : null;
   const refreshFrom = participant ? liveRefreshFrom(own, program.now) : null;

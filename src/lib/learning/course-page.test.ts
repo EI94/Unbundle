@@ -68,7 +68,7 @@ type Act = Record<string, unknown>;
 function act(id: string, o: Act = {}): Act {
   return { id, title: `Esercizio ${id}`, kind: "knowledge_check", purpose: "post_module", estimatedMinutes: 10, required: true, opensAfterMinutes: 30, status: "scheduled", attemptId: null, attemptNumber: null, attemptTitle: null, result: null, availability: scheduled, ...o };
 }
-function program(o: { now: number; activities?: Act[]; participant?: boolean; manage?: boolean; history?: Act[]; status?: string; sessionStatus?: string; materials?: Act[] }) {
+function program(o: { now: number; activities?: Act[]; participant?: boolean; manage?: boolean; history?: Act[]; status?: string; sessionStatus?: string; materials?: Act[]; completion?: Act }) {
   const participant = o.participant ?? true;
   const session = { cohortId: "c1", moduleId: "m1", startsAt: new Date(START).toISOString(), endsAt: new Date(END).toISOString(), status: o.sessionStatus ?? "scheduled" };
   return {
@@ -84,7 +84,7 @@ function program(o: { now: number; activities?: Act[]; participant?: boolean; ma
         id: "m1", title: "Modulo 1", subtitle: "Le basi", objective: "Usare l'AI nel lavoro di ogni giorno.", durationMinutes: 120,
         agenda: [{ from_minute: 0, to_minute: 30, title: "Apertura" }, { from_minute: 30, to_minute: 78, title: "Esercizio guidato" }, { from_minute: 78, to_minute: 120, title: "Il caso" }],
         takeaways: ["Rileggere sempre la bozza"], nextSteps: ["Provare con un documento vero"],
-        completion: { required: 2, submitted: 0, status: "not_started", outcome: null }, completionStatus: "not_started", learningOutcome: null, status: "published",
+        completion: o.completion ?? { required: 2, submitted: 0, status: "not_started", outcome: null }, completionStatus: "not_started", learningOutcome: null, status: "published",
         activities: o.activities ?? [act("a", { title: "Ripasso", purpose: "formative", required: false }), act("b", { title: "Il caso" }), act("c", { title: "La verifica" })],
       },
       { id: "m2", title: "Modulo 2", subtitle: "Più avanti", objective: "Automatizzare un processo.", durationMinutes: 120, agenda: [], takeaways: [], nextSteps: [], completion: { required: 0, submitted: 0, status: "not_started", outcome: null }, completionStatus: "not_started", learningOutcome: null, status: "scheduled", activities: [] },
@@ -142,13 +142,15 @@ test("before the lesson: the lesson line, «Adesso» with «Scarica i materiali�
   assert.match(html, new RegExp(`href="${BASE}/ideas"`), "«Dal corso al tuo lavoro» a un tocco");
 });
 
-test("in the lesson: «Inizia: {exercise}» is the filled button, the agenda is open with «Siamo qui», the page refreshes itself", async () => {
+test("in the lesson: «Inizia l'esercizio» is the filled button with the exercise's title above it, the agenda is open with «Siamo qui», the page refreshes itself", async () => {
   const html = await page(program({ now: START + 40 * MIN, activities: [act("a", { title: "Ripasso", purpose: "formative", required: false, status: "available", availability: available }), act("b", { title: "Il caso" }), act("c", { title: "La verifica" })] }));
   const text = common(html);
   const filled = filledButtons(html);
   assert.equal(filled.length, 1);
   assert.match(filled[0], new RegExp(`href="${BASE}/activities/a"`));
-  assert.ok(text.includes("Inizia: Ripasso"), text);
+  assert.match(html, /data-testid="learning-now-subject"[^>]*>Ripasso<\/p>/, "il titolo sopra il pulsante");
+  const from = html.indexOf(filled[0]);
+  assert.equal(textOf(html.slice(from, html.indexOf("</a>", from))), "Inizia l'esercizio", "il pulsante dice solo il verbo");
   assert.deepEqual(folds(html).find((fold) => fold.id === "scaletta"), { id: "scaletta", open: true }, "in lezione la scaletta è aperta");
   assert.match(html, /aria-current="step"[^>]*>[\s\S]*?15:00–15:48[\s\S]*?Siamo qui/);
   assert.ok(text.includes("Da fare"), "l'esercizio aperto si dice «Da fare»");
@@ -162,6 +164,7 @@ test("after the lesson: one number, «Rifai» on what needs practice, «Da porta
   const done = { status: "submitted", attemptId: "t1", attemptNumber: 1, result: { correct: 5, total: 5, status: "consolidated", essentialErrors: 0 }, availability: available };
   const html = await page(program({
     now: END + 60 * MIN,
+    completion: { required: 2, submitted: 2, status: "completed", outcome: "needs_practice" },
     activities: [
       act("a", { title: "Ripasso", purpose: "formative", required: false, ...done, result: { correct: 3, total: 3, status: "formative_completed", essentialErrors: 0 } }),
       act("b", { title: "Il caso", ...done, attemptId: "t2" }),
@@ -179,7 +182,9 @@ test("after the lesson: one number, «Rifai» on what needs practice, «Da porta
   const filled = filledButtons(html);
   assert.equal(filled.length, 1);
   assert.match(filled[0], new RegExp(`href="${BASE}/attempts/t3"`));
-  assert.ok(text.includes("Rifai: La verifica"));
+  assert.match(html, /data-testid="learning-now-subject"[^>]*>La verifica<\/p>/);
+  assert.ok(text.includes("Rifai l'esercizio"));
+  assert.doesNotMatch(text, /Rifai: |Inizia: |Continua: /, "mai il titolo dentro il pulsante pieno");
   // Gli esiti solo in «Esercizi»: il numero «2 di 2» una volta, «4/5 giuste» mai.
   assert.equal((text.match(/esercizi fatti/g) ?? []).length, 1, "un solo numero di avanzamento");
   assert.doesNotMatch(text, /\d\/\d giuste|Il tuo risultato|Turno completato/);
@@ -189,6 +194,28 @@ test("after the lesson: one number, «Rifai» on what needs practice, «Da porta
   assert.ok(folds(html).every((fold) => !fold.open), "dopo la lezione tutto chiuso");
   assert.ok(text.includes("Tutte le prove (3)"));
   assert.equal(fake.live.length, 0, "dopo la lezione la pagina non si aggiorna da sola");
+});
+
+test("after «Riprova»: the new draft keeps «2 di 2» and the outcome; the row says the last result and continues the new attempt", async () => {
+  const sent = { status: "submitted", attemptNumber: 1, availability: available };
+  const html = await page(program({
+    now: END + 60 * MIN,
+    completion: { required: 2, submitted: 2, status: "completed", outcome: "needs_practice" },
+    activities: [
+      act("b", { title: "Il caso", ...sent, attemptId: "t2", result: { correct: 5, total: 5, status: "consolidated", essentialErrors: 0 } }),
+      act("c", { title: "La verifica", status: "draft", attemptId: "t9", attemptNumber: 1, result: null, availability: available }),
+    ],
+    history: [
+      { id: "t2", activityId: "b", activityTitle: "Il caso", attemptNumber: 1, status: "submitted", submittedAt: null, result: { correct: 5, total: 5, status: "consolidated", essentialErrors: 0 } },
+      { id: "t3", activityId: "c", activityTitle: "La verifica", attemptNumber: 1, status: "submitted", submittedAt: null, result: { correct: 2, total: 5, status: "needs_practice", essentialErrors: 1 } },
+      { id: "t9", activityId: "c-retake", activityTitle: "La verifica (recupero)", attemptNumber: 1, status: "draft", submittedAt: null, result: null },
+    ],
+  }));
+  const text = textOf(html);
+  assert.match(html, /data-testid="learning-now-line"[^>]*>2 di 2 esercizi fatti</);
+  assert.ok(text.includes("Alcuni punti da ripassare."));
+  assert.ok(text.includes("Da ripassare 2 di 5 giuste · nuova prova in corso"), text);
+  assert.match(filledButtons(html)[0], new RegExp(`href="${BASE}/attempts/t9"`), "«Continua l'esercizio» sulla prova nuova");
 });
 
 test("whoever runs the course: no «Adesso», «Risultati» filled and «Gestisci» bordered, no privacy fold, rows without links", async () => {

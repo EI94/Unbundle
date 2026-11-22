@@ -5,6 +5,7 @@ import {
   agendaBlocks,
   clockLabel,
   exerciseRow,
+  lastSentResult,
   lessonPhase,
   lessonWhen,
   liveRefreshFrom,
@@ -132,6 +133,12 @@ test("an exercise row: the state as a dot and a word, one grey fact, a link only
   }
 });
 
+/** Il completamento del modulo come lo calcola il server (`moduleCompletion`): due esercizi obbligatori. */
+const completion = (submitted: number, outcome: "consolidated" | "needs_practice" | null = null, required = 2) => ({
+  required, submitted, status: submitted === required ? "completed" : submitted ? "in_progress" : "not_started", outcome,
+});
+const C0 = completion(0);
+
 const three = (o: Partial<Record<"a" | "b" | "c", Partial<CourseActivity>>> = {}) => [
   activity({ id: "a", title: "Ripasso", purpose: "formative", required: false, ...o.a }),
   activity({ id: "b", title: "Il caso", ...o.b }),
@@ -139,26 +146,27 @@ const three = (o: Partial<Record<"a" | "b" | "c", Partial<CourseActivity>>> = {}
 ];
 
 test("«Adesso» before the lesson: «Scarica i materiali», one file downloads at once with its steps, several open the fold", () => {
-  const one = nowCard({ session: session(), now: START - 60 * MIN, activities: three(), beforeMaterials: [material({ id: "m1", description: "1. Scarica il file\n2) Aprilo con un doppio clic\n- Trascina la cartella" })], base: BASE, courseOpen: true });
+  const one = nowCard({ session: session(), now: START - 60 * MIN, activities: three(), beforeMaterials: [material({ id: "m1", description: "1. Scarica il file\n2) Aprilo con un doppio clic\n- Trascina la cartella" })], base: BASE, courseOpen: true, completion: C0 });
   assert.equal(one.phase, "before");
   assert.equal(one.line, T.now.before);
   assert.deepEqual(one.action, { kind: "download", label: "Scarica i materiali", href: "/api/learning/materials/m1", fileName: "m1.zip" });
   assert.deepEqual(one.steps, ["Scarica il file", "Aprilo con un doppio clic", "Trascina la cartella"]);
-  const two = nowCard({ session: session(), now: START - 60 * MIN, activities: three(), beforeMaterials: [material({ id: "m1" }), material({ id: "m2" })], base: BASE, courseOpen: true });
+  const two = nowCard({ session: session(), now: START - 60 * MIN, activities: three(), beforeMaterials: [material({ id: "m1" }), material({ id: "m2" })], base: BASE, courseOpen: true, completion: C0 });
   assert.deepEqual(two.action, { kind: "materials", label: "Scarica i materiali", href: "#materiali" });
   assert.deepEqual(two.steps, []);
-  const locked = nowCard({ session: session(), now: START - 60 * MIN, activities: three(), beforeMaterials: [material({ id: "m1", access: { downloadable: false, reason: "Si apre a fine lezione." } })], base: BASE, courseOpen: true });
+  const locked = nowCard({ session: session(), now: START - 60 * MIN, activities: three(), beforeMaterials: [material({ id: "m1", access: { downloadable: false, reason: "Si apre a fine lezione." } })], base: BASE, courseOpen: true, completion: C0 });
   assert.equal(locked.action, null, "un materiale non ancora scaricabile non è un passo");
-  const none = nowCard({ session: session(), now: START - 60 * MIN, activities: three(), beforeMaterials: [], base: BASE, courseOpen: true });
+  const none = nowCard({ session: session(), now: START - 60 * MIN, activities: three(), beforeMaterials: [], base: BASE, courseOpen: true, completion: C0 });
   assert.equal(none.line, T.now.beforeNoMaterials);
   assert.equal(none.action, null);
 });
 
 test("«Adesso» in the lesson: «Inizia» or «Continua» on the open exercise; the next opening; a suspension; the materials until the first opening", () => {
   const now = START + 35 * MIN;
-  const formative = nowCard({ session: session(), now, activities: three({ a: { status: "available", availability: openAvailability } }), beforeMaterials: [], base: BASE, courseOpen: true });
+  const formative = nowCard({ session: session(), now, activities: three({ a: { status: "available", availability: openAvailability } }), beforeMaterials: [], base: BASE, courseOpen: true, completion: C0 });
   assert.equal(formative.line, T.now.live);
-  assert.deepEqual(formative.action, { kind: "start", label: "Inizia: Ripasso", href: `${BASE}/activities/a` }, "in lezione anche il ripasso del momento");
+  assert.deepEqual(formative.action, { kind: "start", label: "Inizia l'esercizio", href: `${BASE}/activities/a` }, "in lezione anche il ripasso del momento");
+  assert.equal(formative.subject, "Ripasso", "il titolo sopra il pulsante, il verbo nel pulsante");
   const resume = nowCard({
     session: session(),
     now,
@@ -166,51 +174,74 @@ test("«Adesso» in the lesson: «Inizia» or «Continua» on the open exercise;
     beforeMaterials: [],
     base: BASE,
     courseOpen: true,
+    completion: C0,
   });
-  assert.deepEqual(resume.action, { kind: "resume", label: "Continua: Il caso", href: `${BASE}/attempts/t9` }, "prima l'esercizio obbligatorio iniziato");
-  const waiting = nowCard({ session: session(), now: START + 5 * MIN, activities: three(), beforeMaterials: [material({ id: "m1" })], base: BASE, courseOpen: true });
+  assert.deepEqual(resume.action, { kind: "resume", label: "Continua l'esercizio", href: `${BASE}/attempts/t9` }, "prima l'esercizio obbligatorio iniziato");
+  assert.equal(resume.subject, "Il caso");
+  const waiting = nowCard({ session: session(), now: START + 5 * MIN, activities: three(), beforeMaterials: [material({ id: "m1" })], base: BASE, courseOpen: true, completion: C0 });
   assert.equal(waiting.note, "Il prossimo esercizio si apre alle 15:00.");
   assert.equal(waiting.action?.kind, "download", "finché nessun esercizio è aperto, i materiali");
-  const suspended = nowCard({ session: session("closed"), now, activities: three(), beforeMaterials: [material({ id: "m1" })], base: BASE, courseOpen: true });
+  const suspended = nowCard({ session: session("closed"), now, activities: three(), beforeMaterials: [material({ id: "m1" })], base: BASE, courseOpen: true, completion: C0 });
   assert.equal(suspended.note, T.now.suspended);
   assert.equal(suspended.action, null);
   const submitted = { status: "submitted", attemptId: "t1", result: { correct: 5, total: 5, status: "consolidated" }, availability: openAvailability };
-  const allDone = nowCard({ session: session(), now, activities: three({ a: { ...submitted, result: { correct: 3, total: 3, status: "formative_completed" } }, b: submitted, c: submitted }), beforeMaterials: [], base: BASE, courseOpen: true });
+  const allDone = nowCard({ session: session(), now, activities: three({ a: { ...submitted, result: { correct: 3, total: 3, status: "formative_completed" } }, b: submitted, c: submitted }), beforeMaterials: [], base: BASE, courseOpen: true, completion: C0 });
   assert.equal(allDone.note, T.now.allDone);
   assert.equal(allDone.action, null);
-  const between = nowCard({ session: session(), now, activities: three({ a: { ...submitted, result: { correct: 3, total: 3, status: "formative_completed" } } }), beforeMaterials: [material({ id: "m1" })], base: BASE, courseOpen: true });
+  const between = nowCard({ session: session(), now, activities: three({ a: { ...submitted, result: { correct: 3, total: 3, status: "formative_completed" } } }), beforeMaterials: [material({ id: "m1" })], base: BASE, courseOpen: true, completion: C0 });
   assert.equal(between.note, "Il prossimo esercizio si apre alle 15:00.");
   assert.equal(between.action, null, "dopo il primo esercizio i materiali non sono più il passo");
 });
 
-test("«Adesso» after the lesson: one number, the outcome, and the step that is left («Inizia» or «Rifai»)", () => {
+test("«Adesso» after the lesson: the module's number and outcome from the server, and the step that is left («Inizia» or «Rifai»)", () => {
   const now = END + 60 * MIN;
   const ok = { status: "submitted", attemptId: "t1", result: { correct: 5, total: 5, status: "consolidated" }, availability: openAvailability };
-  const homework = nowCard({ session: session(), now, activities: three({ b: ok, c: { status: "available", availability: openAvailability } }), beforeMaterials: [material({ id: "m1" })], base: BASE, courseOpen: true });
+  const homework = nowCard({ session: session(), now, activities: three({ b: ok, c: { status: "available", availability: openAvailability } }), beforeMaterials: [material({ id: "m1" })], base: BASE, courseOpen: true, completion: completion(1) });
   assert.equal(homework.line, "1 di 2 esercizi fatti");
   assert.equal(homework.note, null);
-  assert.deepEqual(homework.action, { kind: "start", label: "Inizia: La verifica", href: `${BASE}/activities/c` });
-  const practice = nowCard({
-    session: session(),
-    now,
-    activities: three({ b: ok, c: { status: "submitted", attemptId: "t7", result: { correct: 2, total: 5, status: "needs_practice" }, availability: openAvailability } }),
-    beforeMaterials: [],
-    base: BASE,
-    courseOpen: true,
-  });
+  assert.deepEqual(homework.action, { kind: "start", label: "Inizia l'esercizio", href: `${BASE}/activities/c` });
+  assert.equal(homework.subject, "La verifica");
+  const practiceActivities = three({ b: ok, c: { status: "submitted", attemptId: "t7", result: { correct: 2, total: 5, status: "needs_practice" }, availability: openAvailability } });
+  const practice = nowCard({ session: session(), now, activities: practiceActivities, beforeMaterials: [], base: BASE, courseOpen: true, completion: completion(2, "needs_practice") });
   assert.equal(practice.line, "2 di 2 esercizi fatti");
   assert.equal(practice.note, "Alcuni punti da ripassare.");
-  assert.deepEqual(practice.action, { kind: "redo", label: "Rifai: La verifica", href: `${BASE}/attempts/t7` });
-  const achieved = nowCard({ session: session(), now, activities: three({ b: ok, c: ok }), beforeMaterials: [], base: BASE, courseOpen: true });
+  assert.deepEqual(practice.action, { kind: "redo", label: "Rifai l'esercizio", href: `${BASE}/attempts/t7` });
+  assert.equal(practice.subject, "La verifica");
+  const achieved = nowCard({ session: session(), now, activities: three({ b: ok, c: ok }), beforeMaterials: [], base: BASE, courseOpen: true, completion: completion(2, "consolidated") });
   assert.equal(achieved.note, "Obiettivo raggiunto.");
   assert.equal(achieved.action, null);
-  const untouched = nowCard({ session: session(), now, activities: three(), beforeMaterials: [], base: BASE, courseOpen: true });
+  assert.equal(achieved.subject, null);
+  const untouched = nowCard({ session: session(), now, activities: three(), beforeMaterials: [], base: BASE, courseOpen: true, completion: C0 });
   assert.equal(untouched.line, "2 esercizi da fare", "lo zero non si mostra");
-  const closed = nowCard({ session: session(), now, activities: three({ b: ok }), beforeMaterials: [], base: BASE, courseOpen: false });
+  const closed = nowCard({ session: session(), now, activities: three({ b: ok }), beforeMaterials: [], base: BASE, courseOpen: false, completion: completion(1) });
   assert.equal(closed.line, T.now.closed);
   assert.equal(closed.action, null);
-  const noLesson = nowCard({ session: null, now, activities: three(), beforeMaterials: [], base: BASE, courseOpen: true });
+  const noLesson = nowCard({ session: null, now, activities: three(), beforeMaterials: [], base: BASE, courseOpen: true, completion: C0 });
   assert.equal(noLesson.line, T.now.noLesson);
+  for (const label of [T.now.start, T.now.resume, T.now.redo]) assert.ok(label.length <= 22, `«${label}»: un pulsante pieno non va a capo, il verbo resta corto`);
+});
+
+test("after «Riprova» a new draft does not undo the exercise: the count, the outcome and the row keep the last sent result", () => {
+  const now = END + 60 * MIN;
+  const ok = { status: "submitted", attemptId: "t1", result: { correct: 5, total: 5, status: "consolidated" }, availability: openAvailability };
+  // La verifica (c) era «Da ripassare» (t7); «Riprova» ha aperto la prova nuova t8 sul recupero (c-retake), ancora bozza.
+  const activities = three({ b: ok, c: { status: "draft", attemptId: "t8", result: null, availability: openAvailability } });
+  const history = [
+    { id: "t1", activityId: "b", activityTitle: "Il caso", attemptNumber: 1, status: "submitted", result: { correct: 5, total: 5, status: "consolidated" } },
+    { id: "t7", activityId: "c", activityTitle: "La verifica", attemptNumber: 1, status: "submitted", result: { correct: 2, total: 5, status: "needs_practice" } },
+    { id: "t8", activityId: "c-retake", activityTitle: "La verifica (recupero)", attemptNumber: 1, status: "draft", result: null },
+  ];
+  // Il server conta la verifica come consegnata (l'ultima consegna, anche sul recupero): il numero resta «2 di 2».
+  const card = nowCard({ session: session(), now, activities, beforeMaterials: [], base: BASE, courseOpen: true, completion: completion(2, "needs_practice") });
+  assert.equal(card.line, "2 di 2 esercizi fatti");
+  assert.equal(card.note, "Alcuni punti da ripassare.");
+  assert.deepEqual(card.action, { kind: "resume", label: "Continua l'esercizio", href: `${BASE}/attempts/t8` }, "il passo è finire la prova nuova");
+  assert.equal(card.subject, "La verifica");
+  assert.deepEqual(lastSentResult(activities[2], history), { result: { correct: 2, total: 5, status: "needs_practice" }, attemptId: "t7" });
+  const row = exerciseRow(activities[2], BASE, now, history);
+  assert.deepEqual(row, { id: "c", title: "La verifica", tone: "giallo", state: "Da ripassare", fact: "2 di 5 giuste · nuova prova in corso", href: `${BASE}/attempts/t8` });
+  // Senza consegne prima, una bozza resta «In corso».
+  assert.equal(exerciseRow(activities[2], BASE, now, []).state, "In corso");
 });
 
 test("the agenda with real times, «Siamo qui» on the current block; minutes for whoever runs the course without a lesson", () => {

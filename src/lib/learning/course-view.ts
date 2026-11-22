@@ -127,12 +127,35 @@ export type ExerciseRow = {
   href: string | null;
 };
 
+/**
+ * L'ultima consegna di un esercizio, anche quando dopo è cominciata una prova nuova («Riprova»), non ancora inviata:
+ * l'esito da dire resta quello consegnato. Valgono le consegne dell'esercizio e del suo recupero, come nel
+ * completamento del modulo (`module-completion.ts`).
+ */
+export function lastSentResult(activity: Pick<CourseActivity, "id" | "attemptId">, history: readonly CourseHistoryRow[]): { result: CourseResult; attemptId: string } | null {
+  const linked = new Set([activity.id, ...history.filter((entry) => entry.id === activity.attemptId).map((entry) => entry.activityId)]);
+  const row = history.filter((entry) => entry.status === "submitted" && entry.result && linked.has(entry.activityId)).at(-1);
+  return row?.result ? { result: row.result, attemptId: row.id } : null;
+}
+
 /** La riga di un esercizio: lo stato in parole, un fatto, dove porta. */
-export function exerciseRow(activity: CourseActivity, base: string, now: number): ExerciseRow {
+export function exerciseRow(activity: CourseActivity, base: string, now: number, history: readonly CourseHistoryRow[] = []): ExerciseRow {
   const T = LEARNING_TEXT.course.exercises;
   const attemptHref = activity.attemptId ? `${base}/attempts/${activity.attemptId}` : null;
   const optional = activity.required ? null : T.notCounted;
   const join = (...parts: Array<string | null>) => parts.filter(Boolean).join(" · ") || null;
+  // Una prova nuova dopo «Riprova»: l'esito resta quello consegnato, e la riga porta alla prova in corso.
+  const sent = activity.status === "draft" ? lastSentResult(activity, history) : null;
+  if (sent) {
+    return {
+      id: activity.id,
+      title: activity.title,
+      tone: outcomeTone(sent.result.status),
+      state: outcomeWord(sent.result.status),
+      fact: join(T.score(sent.result.correct, sent.result.total), activity.availability.writeAccess ? T.newAttempt : null, optional),
+      href: attemptHref,
+    };
+  }
   if (activity.status === "submitted") {
     const result = activity.result;
     return {
@@ -174,6 +197,11 @@ export type NowCard = {
   phase: LessonPhase;
   /** La frase della card; dopo la lezione, il solo numero della pagina. */
   line: string;
+  /**
+   * L'esercizio del pulsante, scritto sopra: il pulsante dice solo il verbo («Inizia l'esercizio»), perché un pulsante
+   * pieno non va a capo e al telefono un titolo lungo uscirebbe dallo schermo.
+   */
+  subject: string | null;
   /** Una seconda riga breve (l'esito, l'apertura del prossimo esercizio), facoltativa. */
   note: string | null;
   /** Il solo pulsante pieno della pagina; null: niente da fare adesso. */
@@ -207,19 +235,23 @@ export function nowCard(input: {
   beforeMaterials: readonly CourseMaterial[];
   base: string;
   courseOpen: boolean;
+  /**
+   * Il completamento del modulo calcolato dal server (`moduleCompletion`): il numero e l'esito vengono da qui, così una
+   * prova nuova dopo «Riprova» non toglie l'esercizio dai fatti.
+   */
+  completion: { required: number; submitted: number; status: string; outcome: string | null };
 }): NowCard {
   const T = LEARNING_TEXT.course.now;
   const phase = lessonPhase(input.session, input.now);
-  const { activities, base } = input;
+  const { activities, base, completion } = input;
   const required = activities.filter((activity) => activity.required);
-  const doneRequired = required.filter((activity) => activity.status === "submitted").length;
 
   const open = (list: readonly CourseActivity[]) => list.filter((activity) => activity.availability.writeAccess && activity.status !== "submitted");
   const pick = (list: readonly CourseActivity[]) => list.find((activity) => activity.status === "draft") ?? list[0] ?? null;
   const startOf = (activity: CourseActivity): NowAction =>
     activity.status === "draft" && activity.attemptId
-      ? { kind: "resume", label: T.resume(activity.title), href: `${base}/attempts/${activity.attemptId}` }
-      : { kind: "start", label: T.start(activity.title), href: `${base}/activities/${activity.id}` };
+      ? { kind: "resume", label: T.resume, href: `${base}/attempts/${activity.attemptId}` }
+      : { kind: "start", label: T.start, href: `${base}/activities/${activity.id}` };
   const openRequired = open(required);
   const openAny = phase === "live" ? open(activities) : [];
   const next = pick(openRequired) ?? pick(openAny);
@@ -234,36 +266,37 @@ export function nowCard(input: {
         ? { kind: "materials", label: T.download, href: "#materiali" }
         : null;
 
-  if (!input.courseOpen) return { phase, line: T.closed, note: null, action: null, steps: [] };
-  if (phase === "none") return { phase, line: T.noLesson, note: null, action: next ? startOf(next) : materialsAction, steps: next ? [] : steps };
+  const redoOf = (activity: CourseActivity): NowAction => ({ kind: "redo", label: T.redo, href: `${base}/attempts/${activity.attemptId}` });
+
+  if (!input.courseOpen) return { phase, line: T.closed, subject: null, note: null, action: null, steps: [] };
+  if (phase === "none") return { phase, line: T.noLesson, subject: next?.title ?? null, note: null, action: next ? startOf(next) : materialsAction, steps: next ? [] : steps };
 
   if (phase === "before") {
-    return { phase, line: downloadable.length ? T.before : T.beforeNoMaterials, note: null, action: next ? startOf(next) : materialsAction, steps: next ? [] : steps };
+    return { phase, line: downloadable.length ? T.before : T.beforeNoMaterials, subject: next?.title ?? null, note: null, action: next ? startOf(next) : materialsAction, steps: next ? [] : steps };
   }
 
   if (phase === "live") {
-    if (next) return { phase, line: T.live, note: null, action: startOf(next), steps: [] };
-    if (input.session?.status === "closed") return { phase, line: T.live, note: T.suspended, action: null, steps: [] };
+    if (next) return { phase, line: T.live, subject: next.title, note: null, action: startOf(next), steps: [] };
+    if (input.session?.status === "closed") return { phase, line: T.live, subject: null, note: T.suspended, action: null, steps: [] };
     const upcoming = activities
       .filter((activity) => activity.availability.state === "scheduled" && activity.availability.opensAt)
       .map((activity) => activity.availability.opensAt!)
       .sort()[0];
     const nothingOpened = !activities.some((activity) => activity.availability.writeAccess || activity.status === "submitted" || activity.status === "draft");
     const note = upcoming ? T.nextOpens(clockLabel(upcoming)) : activities.some((activity) => activity.status !== "submitted") && nothingOpened ? T.nextOpensLater : null;
-    if (redo) return { phase, line: T.live, note, action: { kind: "redo", label: T.redo(redo.title), href: `${base}/attempts/${redo.attemptId}` }, steps: [] };
-    if (nothingOpened && materialsAction) return { phase, line: T.live, note, action: materialsAction, steps };
+    if (redo) return { phase, line: T.live, subject: redo.title, note, action: redoOf(redo), steps: [] };
+    if (nothingOpened && materialsAction) return { phase, line: T.live, subject: null, note, action: materialsAction, steps };
     const allSubmitted = activities.length > 0 && activities.every((activity) => activity.status === "submitted");
-    return { phase, line: T.live, note: note ?? (allSubmitted ? T.allDone : activities.length ? T.allOpenDone : null), action: null, steps: [] };
+    return { phase, line: T.live, subject: null, note: note ?? (allSubmitted ? T.allDone : activities.length ? T.allOpenDone : null), action: null, steps: [] };
   }
 
-  // Dopo la lezione: il numero, l'esito, e il passo che resta.
-  const line = required.length === 0 ? T.allDone : doneRequired === 0 ? T.toDo(required.length) : T.done(doneRequired, required.length);
-  const complete = required.length > 0 && doneRequired === required.length;
-  const practice = required.some((activity) => activity.status === "submitted" && activity.result?.status === "needs_practice");
-  const note = complete ? (practice ? T.practice : T.achieved) : null;
-  if (next) return { phase, line, note, action: startOf(next), steps: [] };
-  if (redo) return { phase, line, note, action: { kind: "redo", label: T.redo(redo.title), href: `${base}/attempts/${redo.attemptId}` }, steps: [] };
-  return { phase, line, note, action: null, steps: [] };
+  // Dopo la lezione: il numero e l'esito del modulo, dal server, e il passo che resta.
+  const total = completion.required || required.length;
+  const line = total === 0 ? T.allDone : completion.submitted === 0 ? T.toDo(total) : T.done(completion.submitted, total);
+  const note = completion.status === "completed" ? (completion.outcome === "needs_practice" ? T.practice : T.achieved) : null;
+  if (next) return { phase, line, subject: next.title, note, action: startOf(next), steps: [] };
+  if (redo) return { phase, line, subject: redo.title, note, action: redoOf(redo), steps: [] };
+  return { phase, line, subject: null, note, action: null, steps: [] };
 }
 
 export type AgendaBlockView = {

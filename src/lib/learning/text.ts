@@ -50,9 +50,10 @@ export const LEARNING_TEXT = Object.freeze({
       title: "Adesso",
       /** Il «?» accanto al pulsante. */
       why: "È il passo che serve adesso, secondo l'ora della lezione e gli esercizi già fatti.",
-      start: (title: string) => `Inizia: ${title}`,
-      resume: (title: string) => `Continua: ${title}`,
-      redo: (title: string) => `Rifai: ${title}`,
+      /** Solo il verbo: il titolo dell'esercizio sta nella riga sopra il pulsante. */
+      start: "Inizia l'esercizio",
+      resume: "Continua l'esercizio",
+      redo: "Rifai l'esercizio",
       download: "Scarica i materiali",
       /** Prima della lezione. */
       before: "Gli esercizi si aprono durante la lezione.",
@@ -90,6 +91,8 @@ export const LEARNING_TEXT = Object.freeze({
       todo: "Da fare",
       inProgress: "In corso",
       saved: "Risposte salvate",
+      /** Dopo «Riprova»: l'esito di prima resta, con la prova nuova in corso. */
+      newAttempt: "nuova prova in corso",
       submitted: "Consegnato",
       opensAt: (time: string) => `Si apre alle ${time}`,
       opensOn: (when: string) => `Si apre ${when}`,
