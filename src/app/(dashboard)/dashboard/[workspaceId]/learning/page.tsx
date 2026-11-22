@@ -22,7 +22,8 @@ export default async function LearningHome({ params }: { params: Promise<{ works
   const admin = await getLearningAdminCatalog(workspaceId);
   const manages = admin.canCreate || admin.canManage;
   const base = `/dashboard/${workspaceId}/learning`;
-  // Un corso solo, e niente da gestire: si entra diretti nel corso (un 307: dipende dai corsi di chi guarda).
+  // Un corso solo, e niente da gestire: si entra diretti nel corso (un 307: dipende dai corsi di chi guarda). È un 307
+  // vero anche a pagina intera: l'attesa (`loading.tsx`) sta nelle cartelle sotto, non sopra questa pagina.
   if (!manages && home.programs.length === 1) redirect(`${base}/${home.programs[0].id}`);
 
   // La prossima lezione di ogni corso. Un corso che non si legge resta in elenco, senza la riga.

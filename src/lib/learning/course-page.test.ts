@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import * as nodeModule from "node:module";
 import { pathToFileURL } from "node:url";
 import { installAppModules } from "../ai/claude-test-kit.ts";
@@ -324,4 +324,16 @@ test("«Il mio risultato» is a 308 route to the course on «Tutte le prove», k
   const [code, , target, status] = String((thrown as { digest?: unknown }).digest).split(";");
   assert.deepEqual([code, target, status], ["NEXT_REDIRECT", `${BASE}?da=email#prove`, "308"]);
   assert.throws(() => read("src/app/(dashboard)/dashboard/[workspaceId]/learning/[programId]/progress/page.tsx"), /ENOENT/);
+});
+
+test("the single-course redirect is a real 307: no loading boundary above the entrance, the skeleton lives in the folders below", () => {
+  const W = "src/app/(dashboard)/dashboard/[workspaceId]";
+  // Un `loading.tsx` sopra l'ingresso lo metterebbe in streaming: il redirect diventerebbe un 200 con una «meta refresh».
+  for (const above of ["src/app", "src/app/(dashboard)", "src/app/(dashboard)/dashboard", W, `${W}/learning`]) {
+    assert.equal(existsSync(new URL(`${above}/loading.tsx`, ROOT)), false, `${above}/loading.tsx`);
+  }
+  for (const below of ["[programId]", "admin", "register"]) {
+    assert.match(read(`${W}/learning/${below}/loading.tsx`), /return <LearningLoading \/>;/, below);
+  }
+  assert.match(read(`${W}/learning/page.tsx`), /if \(!manages && home\.programs\.length === 1\) redirect\(`\$\{base\}\/\$\{home\.programs\[0\]\.id\}`\);/);
 });
