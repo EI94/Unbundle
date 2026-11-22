@@ -42,10 +42,13 @@ test("0.6 · no words of one industry: «Personale operativo», «a pezzo», no 
 });
 
 test("0.7 · the Agent Factory page never says «fabbrica»; the queue is «Repository da aggiornare»", () => {
-  const page = read("src/app/(dashboard)/dashboard/[workspaceId]/agent-factory/page.tsx");
-  assert.doesNotMatch(page, /fabbrica/i);
-  assert.match(page, /title="Repository da aggiornare"/);
-  assert.ok(page.includes("un caso entra nell&apos;Agent Factory con «Avvia la realizzazione»"));
+  // (Rilascio 10, ondata 6b) La pagina disegna `FactoryScreen`; i testi stanno nel modulo dell'Agent Factory.
+  for (const file of ["src/app/(dashboard)/dashboard/[workspaceId]/agent-factory/page.tsx", "src/components/agent-factory/factory-screen.tsx", "src/components/agent-factory/factory-text.ts"]) {
+    assert.doesNotMatch(read(file), /fabbrica/i, file);
+  }
+  const text = read("src/components/agent-factory/factory-text.ts");
+  assert.match(text, /queue: "Repository da aggiornare"/);
+  assert.ok(text.includes("Nessun caso ancora: entra con «Avvia la realizzazione» dalla scheda."));
 });
 
 test("0.8 · a Slack error is a sentence, never its key", async () => {

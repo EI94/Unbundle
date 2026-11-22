@@ -5,8 +5,8 @@
  * - La stazione si ricava da dossier, progetto e compiti. La fase del dossier resta una decisione delle persone:
  *   qui si legge soltanto.
  * - Le famiglie sono i repository: un caso senza repository è «da avviare».
- * - La coda della fabbrica, al posto dei turni, è il lavoro sulla fabbrica stessa: per ora i repository rimasti
- *   indietro con il modello. La prende chi ci lavora.
+ * - «Repository da aggiornare» (prima «la coda»), al posto dei turni: per ora i repository rimasti indietro con il
+ *   modello. Lo prende chi ci lavora.
  * - Mai una cifra per persona: i compiti si contano per caso.
  * - (8.2a) Le evals e il banco di prova del caso in un frammento breve: «evals 96%», «evals 80%, sotto soglia»,
  *   «evals 62% su tj-0049/t-3, sotto soglia» (il ramo, quando non è main), «il banco consiglia Claude Haiku 5.5 per
@@ -72,16 +72,19 @@ export function stationOf(c: LineCase): Station {
   return "dossier";
 }
 
-/** Il prossimo passo di un caso, in una frase breve. */
+/**
+ * Il prossimo passo di un caso, in poche parole e senza punto: sta in grigio nella riga della pagina (prototipo S5).
+ * (Rilascio 10, ondata 6b) Il comando della CLI non sta nella riga: lo dice il pannello del caso.
+ */
 export function nextStepOf(c: LineCase): string {
   const station = stationOf(c);
-  if (station === "esercizio") return "Tutto in ordine.";
-  if (station === "collaudo") return c.dossierStatus === "collaudo" || c.dossierStatus === "backtest" || c.dossierStatus === "stabilizzazione" ? "Prova con il cliente." : "Compiti fatti: pronto per la prova.";
-  if (station === "dossier") return "Impostare il progetto.";
-  if (station === "impostazione") return c.projectStatus === "da_approvare" ? "Il progetto aspetta l'approvazione." : "Finire l'impostazione e mandarla in approvazione.";
-  if (station === "approvato") return "Portare i compiti in Unbundle («compiti importa»).";
-  if (c.tasks.open > 0) return c.tasks.open === 1 ? "1 compito da prendere." : `${c.tasks.open} compiti da prendere.`;
-  return c.tasks.inReview > 0 ? "Compiti in revisione." : "Compiti in corso.";
+  if (station === "esercizio") return "Tutto in ordine";
+  if (station === "collaudo") return c.dossierStatus === "collaudo" || c.dossierStatus === "backtest" || c.dossierStatus === "stabilizzazione" ? "Prova con il cliente" : "Compiti fatti: pronto per la prova";
+  if (station === "dossier") return "Imposta il progetto";
+  if (station === "impostazione") return c.projectStatus === "da_approvare" ? "Il progetto aspetta l'approvazione" : "Finisci l'impostazione e mandala in approvazione";
+  if (station === "approvato") return "Porta i compiti in Unbundle";
+  if (c.tasks.open > 0) return c.tasks.open === 1 ? "1 compito da prendere" : `${c.tasks.open} compiti da prendere`;
+  return c.tasks.inReview > 0 ? "Compiti in revisione" : "Compiti in corso";
 }
 
 /**
@@ -118,7 +121,7 @@ export function factoryQueue(repos: readonly FactoryRepoState[], latest: string 
       repo: r.repo,
       text: r.templateVersion
         ? `Ha il modello ${r.templateVersion}, c'è il ${latest}: «unbundle aggiorna» apre la pull request.`
-        : `Non so ancora che versione del modello abbia: la dice il prossimo «unbundle start», oppure «unbundle aggiorna».`,
+        : `Versione del modello non ancora nota: la dice il prossimo «unbundle start», oppure «unbundle aggiorna».`,
     }))
     .sort((a, b) => a.repo.localeCompare(b.repo));
 }

@@ -351,6 +351,16 @@ async function selectPaletteRows(workspaceId: string) {
 export async function workspaceAgentToneOf(workspaceId: string, title: string, now: Date = new Date()): Promise<AgentTone | null> {
   const agent = agentOfTitle(title);
   if (!agent || !isUuid(workspaceId)) return null;
+  return agentToneOf(await workspaceAgentPaletteOf(workspaceId, now), agent);
+}
+
+/**
+ * (Rilascio 10, ondata 6b) La tavolozza degli agenti di tutto il workspace, una volta per pagina: la stessa di
+ * `workspaceAgentToneOf` e delle card della Panoramica, per una pagina con tanti titoli (l'Agent Factory). Vuota con un
+ * workspace che non è un UUID.
+ */
+export async function workspaceAgentPaletteOf(workspaceId: string, now: Date = new Date()): Promise<AgentPalette> {
+  if (!isUuid(workspaceId)) return { tones: {} };
   await ensureDbSchema();
   const rows = await selectPaletteRows(workspaceId);
   const dossiers = await readDossiers(
@@ -358,8 +368,7 @@ export async function workspaceAgentToneOf(workspaceId: string, title: string, n
     rows.map((row) => row.id),
   );
   const today = romeToday(now);
-  const palette = workspaceAgentPalette(rows.map((row) => ({ title: row.title, phase: phaseOfUseCase(phaseInputOf(row, dossiers.of(row.id), today)).phase })));
-  return agentToneOf(palette, agent);
+  return workspaceAgentPalette(rows.map((row) => ({ title: row.title, phase: phaseOfUseCase(phaseInputOf(row, dossiers.of(row.id), today)).phase })));
 }
 
 // ═══ Scheda (§6) ═════════════════════════════════════════════════════
