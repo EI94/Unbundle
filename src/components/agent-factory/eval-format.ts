@@ -28,10 +28,10 @@
  *   del repository) o «dalla CLI» (una persona). Per chi costruisce «dalla CI» porta all'esecuzione su GitHub; il
  *   cliente lo legge senza link (`ciRunHref`).
  * - **(Casi senza AI, docs/rilascio-8/CASI-SENZA-AI.md §6)** Quando le evals che fanno lo stato del caso sono senza AI
- *   (`EvalRunView.withoutAi`), la riga di «Qualità» e lo stato delle evals dicono «caso senza AI: nessun modello» al
- *   posto dei modelli per ruolo; niente costi né token, niente invito al banco né comandi del banco, e una riga lo
- *   dice. I banchi di prima restano come storia, superati dalle evals senza AI di main. Senza una misura la pagina non
- *   sa se un caso è senza AI, e non lo dice.
+ *   (`EvalRunView.withoutAi`), la riga di «Qualità» (su una riga a parte) e lo stato delle evals dicono «caso senza AI:
+ *   nessun modello» al posto dei modelli per ruolo; niente costi né token, niente invito al banco né comandi del banco,
+ *   e una riga lo dice. I banchi di prima restano come storia, superati dalle evals senza AI di main. Senza una misura
+ *   la pagina non sa se un caso è senza AI, e non lo dice.
  *
  * Per caso e per ruolo, mai per persona: niente qui sa chi ha lanciato il banco o le evals (art. 15.4).
  * Modulo puro: solo import relativi `.ts`, lo usano il server e il browser con gli stessi testi.
@@ -601,8 +601,8 @@ export interface QualityAdvice {
 
 export interface QualitySummary {
   /**
-   * «96,4% · soglie rispettate»; per chi costruisce, con i modelli finti, «… · modelli finti»; (casi senza AI) a tutti
-   * «… · caso senza AI: nessun modello». null senza le evals con i modelli di oggi (solo banchi).
+   * «96,4% · soglie rispettate»; per chi costruisce, con i modelli finti, «… · modelli finti». null senza le
+   * evals con i modelli di oggi (solo banchi).
    */
   line: string | null;
   /**
@@ -618,6 +618,11 @@ export interface QualitySummary {
   alert: string | null;
   /** Per ogni ruolo con un banco ancora valido (non superato), la sola raccomandazione: solo per chi costruisce. */
   advice: QualityAdvice[];
+  /**
+   * (Casi senza AI) Le evals della riga sono di un caso senza AI: sotto la riga, a parte e a tutti, «caso senza AI:
+   * nessun modello» (`EVAL_TEXT.withoutAi`). La riga del puntino resta quella di sempre. Manca per gli altri casi.
+   */
+  withoutAi?: true;
 }
 
 /**
@@ -626,17 +631,17 @@ export interface QualitySummary {
  * nei dettagli). Ai ruoli del cliente (`builder` falso) la sola riga, niente ramo, comandi né modelli, e nessuna riga
  * se le evals sono girate con i modelli finti (misurano il codice, non l'agente); chi costruisce lo legge nella riga
  * («· modelli finti»). In costruzione (versione 0.x) il puntino è grigio: sotto soglia non dà avvisi. Null senza misure.
- * (Casi senza AI) La riga lo dice a tutti: «· caso senza AI: nessun modello». Dopo le evals senza AI di main ogni banco
- * è superato, e nessuna raccomandazione resta.
+ * (Casi senza AI) Il segno «caso senza AI: nessun modello» sta su una riga a parte, che al telefono va a capo
+ * (`withoutAi`). Dopo le evals senza AI di main ogni banco è superato, e nessuna raccomandazione resta.
  */
 export function qualitySummary(overview: EvalOverview | null, o: { builder: boolean }): QualitySummary | null {
   if (!hasMeasures(overview)) return null;
   const latest = overview.evals.latest;
   const result = latest ? evalsResult(latest) : null;
-  const measured = latest && result ? qualityLine(result.quality, result.thresholdsMet) : null;
-  const shown = latest && measured ? { line: latest.withoutAi === true ? `${measured} · ${EVAL_TEXT.withoutAi}` : measured, fake: latest.fakeModels } : null;
+  const shown = latest && result ? { line: qualityLine(result.quality, result.thresholdsMet), fake: latest.fakeModels } : null;
   const tone = latest && result ? (latest.inConstruction ? "grigio" : result.thresholdsMet ? "verde" : "rosso") : null;
-  if (!o.builder) return shown && !shown.fake ? { line: shown.line, tone, runId: null, meta: null, alert: null, advice: [] } : null;
+  const withoutAi = shown && latest?.withoutAi === true ? ({ withoutAi: true } as const) : {};
+  if (!o.builder) return shown && !shown.fake ? { line: shown.line, tone, runId: null, meta: null, alert: null, advice: [], ...withoutAi } : null;
   const line = shown ? (shown.fake ? `${shown.line} · ${QUALITY_TEXT.fakeModels}` : shown.line) : null;
   const meta = latest ? [dayText(latest.createdAt), latest.branch && latest.branch !== EVALS_MAIN ? `ramo ${latest.branch}` : null].filter(Boolean).join(" · ") || null : null;
   const advice = overview.benches
@@ -649,6 +654,7 @@ export function qualitySummary(overview: EvalOverview | null, o: { builder: bool
     meta: result ? meta : null,
     alert: result ? evalsAlertText(latestEvalsAlert(overview.evals)) : null,
     advice,
+    ...withoutAi,
   };
 }
 

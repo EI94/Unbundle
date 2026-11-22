@@ -147,24 +147,33 @@ test("in construction (version 0.x) the dot is neutral: below the thresholds is 
 const noAi = (over: Partial<BenchResult> = {}) =>
   run({ models: {}, withoutAi: true, results: [result("senza-ai", 1, null, { current: true, passed: 48, total: 48, tokensInAvg: null, tokensOutAvg: null, ...over })] });
 
-test("(cases without AI) the row says «caso senza AI: nessun modello» to everyone; the benches of before no longer advise", () => {
+test("(cases without AI) the dot keeps today's label; «caso senza AI: nessun modello» goes on its own wrapping line, to everyone", () => {
   // The bench of 13/11 advised Haiku for «lettura»; main's evals of 14/11 are without AI.
   const overview: EvalOverview = { evals: { latest: noAi(), trend: [] }, benches: [bench("lettura", LETTURA)] };
   const s = qualitySummary(overview, { builder: true })!;
-  assert.equal(s.line, "100% · soglie rispettate · caso senza AI: nessun modello");
-  assert.equal(s.tone, "verde");
+  assert.deepEqual([s.line, s.tone, s.withoutAi], ["100% · soglie rispettate", "verde", true], "the label of the dot is today's: it truncates on a phone");
   assert.deepEqual(s.advice, [], "every bench is superseded by main's evals without AI");
-  const text = textOf(render(s));
-  assert.ok(text.includes("caso senza AI: nessun modello"));
-  assert.doesNotMatch(text, /USD|token|npm run|banco|modelli finti/i, "no cost, tokens, bench or command in the row");
+  const html = render(s);
+  const dot = html.slice(html.indexOf('data-slot="status-dot"'), html.indexOf("</p>", html.indexOf('data-slot="status-dot"')));
+  assert.ok(textOf(dot).includes("100% · soglie rispettate"));
+  assert.doesNotMatch(textOf(dot), /senza AI/, "the mark is not in the truncating label");
+  assert.match(html, /<p data-slot="eval-without-ai" class="[^"]*text-xs[^"]*">caso senza AI: nessun modello<\/p>/, "its own muted line, which wraps");
+  assert.match(html, /data-slot="eval-without-ai" class="[^"]*text-muted-foreground/);
+  assert.doesNotMatch(html, /data-slot="eval-without-ai" class="[^"]*(truncate|whitespace-nowrap)/);
+  assert.doesNotMatch(textOf(html), /USD|token|npm run|banco|modelli finti/i, "no cost, tokens, bench or command in the row");
+  // The client's roles: the same dot and the same separate line, nothing else.
   const client = qualitySummary(overview, { builder: false })!;
-  assert.deepEqual(client, { line: "100% · soglie rispettate · caso senza AI: nessun modello", tone: "verde", runId: null, meta: null, alert: null, advice: [] });
-  assert.equal(textOf(render(client)), "100% · soglie rispettate · caso senza AI: nessun modello");
+  assert.deepEqual(client, { line: "100% · soglie rispettate", tone: "verde", runId: null, meta: null, alert: null, advice: [], withoutAi: true });
+  assert.equal(textOf(render(client)), "100% · soglie rispettate caso senza AI: nessun modello");
   assert.deepEqual(findForbidden(textOf(render(client)), "cliente"), []);
+  // The other cases: no mark, no separate line.
+  assert.equal(Object.hasOwn(qualitySummary(FULL, { builder: true })!, "withoutAi"), false);
+  assert.doesNotMatch(render(qualitySummary(FULL, { builder: false })), /eval-without-ai/);
   // Below the thresholds: red, and the alert for who builds, as for the other cases.
   const low = qualitySummary({ evals: { latest: noAi({ quality: 0.8, passed: 40, total: 50, thresholdsMet: false }), trend: [] }, benches: [] }, { builder: true })!;
-  assert.deepEqual([low.line, low.tone], ["80% · sotto soglia · caso senza AI: nessun modello", "rosso"]);
+  assert.deepEqual([low.line, low.tone, low.withoutAi], ["80% · sotto soglia", "rosso", true]);
   assert.ok(low.alert?.startsWith("Sotto soglia"));
   // Without a measure the page does not know: nothing about AI.
-  assert.equal(qualitySummary({ evals: { latest: null, trend: [] }, benches: [bench("lettura", LETTURA)] }, { builder: true })!.line, null);
+  const benchesOnly = qualitySummary({ evals: { latest: null, trend: [] }, benches: [bench("lettura", LETTURA)] }, { builder: true })!;
+  assert.deepEqual([benchesOnly.line, Object.hasOwn(benchesOnly, "withoutAi")], [null, false]);
 });
