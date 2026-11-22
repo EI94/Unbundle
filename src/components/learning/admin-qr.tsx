@@ -27,6 +27,8 @@ export function AdminQrFullscreen({ qrSvg, lesson, doorOpen, busy, onDoor, onClo
 
   useEffect(() => {
     const node = dialog.current;
+    // Il fuoco torna dov'era (su «Mostra il QR») quando lo schermo intero si chiude.
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const listener = (event: KeyboardEvent) => onKey(event);
     const onFullscreen = () => { if (!document.fullscreenElement) onLeave(); };
     const onPopState = () => onLeave();
@@ -49,6 +51,7 @@ export function AdminQrFullscreen({ qrSvg, lesson, doorOpen, busy, onDoor, onClo
       document.body.style.overflow = overflow;
       for (const element of muted) element.inert = false;
       try { if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined); } catch { /* già uscito */ }
+      if (opener?.isConnected) opener.focus();
     };
   }, []);
 
@@ -63,7 +66,8 @@ export function AdminQrFullscreen({ qrSvg, lesson, doorOpen, busy, onDoor, onClo
   >
     <header className="flex items-center gap-3 border-b px-4 py-3 sm:px-8">
       <p className="min-w-0 flex-1 truncate text-sm font-medium sm:text-base">{lesson}</p>
-      <ResultsToggle checked={doorOpen} onChange={(open) => { if (!busy) onDoor(open); }} label={doorOpen ? "Ingresso aperto" : "Ingresso chiuso"} testId="qr-door" />
+      {/* Un nome che non cambia, «Ingresso aperto»: lo stato lo dice l'interruttore (aria-checked), non l'etichetta. */}
+      <ResultsToggle checked={doorOpen} onChange={(open) => { if (!busy) onDoor(open); }} label={L.doorSwitch} testId="qr-door" />
       <Button type="button" variant="outline" className="min-h-11 gap-2 px-3 sm:min-h-9" onClick={onClose}>
         <X aria-hidden /> {L.exit}
       </Button>

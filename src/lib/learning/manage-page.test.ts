@@ -85,7 +85,14 @@ test("«Lezioni» (the start tab): the course title as H1, the state in a line, 
   assert.match(html, new RegExp(`data-testid="admin-results-link"[^>]*class="[^"]*border-border`), "«Risultati» bordato");
   assert.match(html, /aria-label="Altre azioni"/, "il «⋯»");
   assert.deepEqual([...html.matchAll(/data-testid="admin-tab-([a-z]+)"/g)].map((m) => m[1]), ["lezioni", "materiali", "persone", "impostazioni"]);
-  assert.match(html, /aria-pressed="true"[^>]*data-testid="admin-tab-lezioni"/);
+  // Un tablist vero: la scheda aperta ha aria-selected e il fuoco (tabindex 0), il pannello porta il suo nome.
+  assert.match(html, /<div role="tablist" aria-label="Gestione del corso"/);
+  const tabs = [...html.matchAll(/<button [^>]*role="tab"[^>]*>/g)].map((m) => m[0]);
+  assert.equal(tabs.length, 4);
+  assert.ok(tabs[0].includes('aria-selected="true"') && tabs[0].includes('tabindex="0"') && tabs[0].includes('aria-controls="gestisci-pannello"'));
+  assert.ok(tabs.slice(1).every((tab) => tab.includes('aria-selected="false"') && tab.includes('tabindex="-1"')));
+  assert.match(html, /role="tabpanel" id="gestisci-pannello" aria-labelledby="gestisci-scheda-lezioni"/);
+  assert.doesNotMatch(html, /aria-pressed/);
   const filled = filledButtons(html);
   assert.equal(filled.length, 1, "un solo pulsante pieno");
   assert.match(filled[0], /data-testid="join-link-create"/);
@@ -150,7 +157,12 @@ test("the console keeps its server operations and its guards", () => {
   assert.match(lessons, /<AdminQrFullscreen/);
   const qr = read("src/components/learning/admin-qr.tsx");
   assert.match(qr, /className="fixed inset-0 z-50/, "a tutto schermo");
-  assert.match(qr, /<ResultsToggle checked=\{doorOpen\}/, "con l'interruttore dell'ingresso");
+  assert.match(qr, /<ResultsToggle checked=\{doorOpen\}[^\n]*label=\{L\.doorSwitch\}/, "con l'interruttore dell'ingresso, dal nome stabile");
+  assert.equal(M.lessons.doorSwitch, "Ingresso aperto");
+  assert.match(qr, /const opener = document\.activeElement instanceof HTMLElement \? document\.activeElement : null;/);
+  assert.match(qr, /if \(opener\?\.isConnected\) opener\.focus\(\);/, "il fuoco torna su «Mostra il QR»");
+  assert.match(read("src/components/learning/results-toggle.tsx"), /className="inline-flex min-h-11 [^"]*sm:min-h-10"/, "44 px al telefono");
+  assert.match(program, /onKeyDown=\{\(event\) => moveTab\(event, index\)\}/, "le frecce fra le schede");
   assert.match(qr, /survey-light rounded-2xl bg-card/, "il margine bianco attorno al QR nei due temi");
 });
 

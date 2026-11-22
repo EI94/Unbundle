@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useRef, useState, type KeyboardEvent } from "react";
 import { ChartColumn } from "lucide-react";
 import type { AdminDetailDTO, LearningAdminRequest } from "@/lib/learning/admin-contract";
 import { learningAdminRequest } from "@/lib/learning/admin-client";
@@ -111,6 +111,17 @@ export function LearningAdminProgram({ workspaceId, initial, initialTab, initial
     catch { setError(false); setMessage(M.copyFailed(url)); }
   }
 
+  /** Le frecce, Inizio e Fine spostano il fuoco fra le schede; Invio o Spazio le aprono (attivazione manuale). */
+  function moveTab(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    const last = ADMIN_TABS.length - 1;
+    const next = event.key === "ArrowRight" ? (index === last ? 0 : index + 1)
+      : event.key === "ArrowLeft" ? (index === 0 ? last : index - 1)
+        : event.key === "Home" ? 0 : event.key === "End" ? last : null;
+    if (next === null) return;
+    event.preventDefault();
+    document.getElementById(`gestisci-scheda-${ADMIN_TABS[next]}`)?.focus();
+  }
+
   function openTab(key: AdminTab) {
     const open = () => {
       setSection(key); setMessage("");
@@ -145,19 +156,17 @@ export function LearningAdminProgram({ workspaceId, initial, initialTab, initial
     <AdminNotice message={message} error={error} />
     {busy && <p role="status" className="text-sm text-muted-foreground">Operazione in corso. Attendi la conferma prima di lasciare la pagina.</p>}
     {!accessLost && <>
-      <nav aria-label={M.tabs.label} className="max-w-full min-w-0">
-        <ul className="grid grid-cols-2 gap-1 rounded-2xl border bg-muted/60 p-1 sm:inline-flex sm:grid-cols-none">
-          {ADMIN_TABS.map((key) => <li key={key} className="min-w-0">
-            <button type="button" aria-pressed={section === key} disabled={busy} data-testid={`admin-tab-${key}`}
-              onClick={() => openTab(key)}
-              className={cn("flex min-h-11 w-full items-center justify-center rounded-xl px-3 text-sm font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-60 sm:min-h-9",
-                section === key ? "bg-background text-foreground shadow-sm ring-1 ring-border" : "text-muted-foreground hover:bg-background/50 hover:text-foreground")}>
-              {M.tabs[key]}
-            </button>
-          </li>)}
-        </ul>
-      </nav>
-      <div key={formVersion}>
+      {/* Le schede: un tablist vero (le frecce spostano il fuoco, Invio apre), la scheda aperta nell'indirizzo. */}
+      <div role="tablist" aria-label={M.tabs.label} className="grid max-w-full min-w-0 grid-cols-2 gap-1 rounded-2xl border bg-muted/60 p-1 sm:inline-grid sm:grid-flow-col sm:grid-cols-none">
+        {ADMIN_TABS.map((key, index) => <button key={key} type="button" role="tab" id={`gestisci-scheda-${key}`} aria-selected={section === key} aria-controls="gestisci-pannello"
+          tabIndex={section === key ? 0 : -1} disabled={busy} data-testid={`admin-tab-${key}`}
+          onClick={() => openTab(key)} onKeyDown={(event) => moveTab(event, index)}
+          className={cn("flex min-h-11 w-full min-w-0 items-center justify-center rounded-xl px-3 text-sm font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-60 sm:min-h-9",
+            section === key ? "bg-background text-foreground shadow-sm ring-1 ring-border" : "text-muted-foreground hover:bg-background/50 hover:text-foreground")}>
+          {M.tabs[key]}
+        </button>)}
+      </div>
+      <div key={formVersion} role="tabpanel" id="gestisci-pannello" aria-labelledby={`gestisci-scheda-${section}`} tabIndex={0} className="outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
         {section === "lezioni" && <AdminLessons workspaceId={workspaceId} data={data} busy={busy} mutate={mutate} now={now} />}
         {section === "materiali" && <AdminMaterials workspaceId={workspaceId} data={data} busy={busy} mutate={mutate} onUploaded={reloadDetail} />}
         {section === "persone" && <div className="space-y-6">

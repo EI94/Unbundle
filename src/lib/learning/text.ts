@@ -314,6 +314,8 @@ export const LEARNING_TEXT = Object.freeze({
       copyError: "Copia non riuscita: seleziona l'indirizzo e copialo a mano.",
       showQr: "Mostra il QR",
       qrTitle: "Inquadra il QR per entrare nel corso",
+      /** L'interruttore dell'ingresso sul QR a schermo intero: un nome stabile, lo stato nell'interruttore. */
+      doorSwitch: "Ingresso aperto",
       exit: "Esci",
       openDoor: "Apri l'ingresso",
       closeDoor: "Chiudi l'ingresso",
