@@ -14,7 +14,7 @@
  */
 import Link from "next/link";
 import { useRef, type JSX, type KeyboardEvent, type ReactNode } from "react";
-import { BOARD_TEXT, pillText } from "../../../lib/mappatura/text.ts";
+import { BOARD_TEXT, pillShortText, pillText } from "../../../lib/mappatura/text.ts";
 import type { PillState } from "../store/board-client.ts";
 
 const cx = (...names: Array<string | false | null | undefined>) => names.filter(Boolean).join(" ");
@@ -58,33 +58,36 @@ function BrandMark(): JSX.Element {
 }
 
 /**
- * La riga del marchio: il segno, «lateral space», `×`, il nome del workspace, `·` e l'etichetta in mono «Activity
- * mapping», che porta all'elenco delle unità (l'artifact ha una pagina sola; l'app ha bisogno della strada indietro).
- * Il nome del link è la sua etichetta, che è anche il titolo della pagina dove porta. Senza nome del workspace (la
- * cornice di caricamento) la riga lo salta.
+ * (Rilascio 10, §3.7) La prima riga della testata di un'unità: il segno della board e il percorso «Contesto › Processi
+ * › {Unità}», nella forma del marchio (l'etichetta in mono). Le prime due voci sono link; l'ultima è la pagina, con
+ * `aria-current`. Il nome del workspace sta già nella barra laterale. `processes={false}`: una pagina di «Contesto» che
+ * non sta nei Processi (l'Intervista iniziale, «Contesto › Intervista iniziale»).
  */
-export function BoardBrand(p: { workspaceName: string; areaHref: string }): JSX.Element {
-  const [first, ...rest] = BOARD_TEXT.brand.company.split(" ");
-  const name = p.workspaceName.trim();
+export function BoardPath(p: { workspaceId: string; unitName: string; processes?: boolean }): JSX.Element {
+  const base = `/dashboard/${p.workspaceId}/contesto`;
   return (
-    <div className="b-brand" data-b="brand">
+    <nav className="b-brand b-path" aria-label={BOARD_TEXT.path.label} data-b="path">
       <BrandMark />
-      <b>
-        {first} <span className="b-mute">{rest.join(" ")}</span>
-      </b>
-      {name ? (
+      <Link href={base}>{BOARD_TEXT.path.context}</Link>
+      {p.processes === false ? null : (
         <>
           <span className="b-x" aria-hidden="true">
-            {BOARD_TEXT.brand.times}
+            {BOARD_TEXT.path.separator}
           </span>
-          <span>{name}</span>
+          <Link href={`${base}?vista=processi`}>{BOARD_TEXT.path.processes}</Link>
+        </>
+      )}
+      {p.unitName ? (
+        <>
+          <span className="b-x" aria-hidden="true">
+            {BOARD_TEXT.path.separator}
+          </span>
+          <span className="b-path-here" aria-current="page">
+            {p.unitName}
+          </span>
         </>
       ) : null}
-      <span className="b-x" aria-hidden="true">
-        {BOARD_TEXT.brand.dot}
-      </span>
-      <Link href={p.areaHref}>{BOARD_TEXT.brand.area}</Link>
-    </div>
+    </nav>
   );
 }
 
@@ -113,9 +116,6 @@ export function BoardTitle(p: { plain: string; accent: string; accentFirst?: boo
 export const boardTabId = (id: string) => `b-tab-${id}`;
 export const boardPanelId = (id: string) => `b-panel-${id}`;
 
-/** Il numero d'ordine di una scheda, su due cifre (P3): «01». */
-export const tabOrdinal = (index: number) => String(index + 1).padStart(2, "0");
-
 /**
  * La scheda che un tasto sceglie, partendo da quella con il fuoco (P6): frecce a destra e a sinistra con il giro in
  * fondo, Home e End. null per ogni altro tasto.
@@ -138,8 +138,8 @@ export function tabAfterKey<T extends string>(ids: readonly T[], current: T, key
 }
 
 /**
- * Le schede (P3, P6): un `tablist` con il numero d'ordine in mono, la scheda scelta con il testo in inchiostro e la
- * riga dell'accento, nessun conteggio. Le frecce scelgono e mettono il fuoco sulla vicina, con il giro; solo la scheda
+ * Le schede (P3, P6): un `tablist`, la scheda scelta con il testo in inchiostro e la riga dell'accento, nessun
+ * conteggio e (rilascio 10, §3.7) nessun numero d'ordine: con due schede non serve. Le frecce scelgono e mettono il fuoco sulla vicina, con il giro; solo la scheda
  * scelta entra nel giro del Tab. `aside`: a destra della riga, solo sul telefono (la pillola a punto e il bottone
  * dell'assistente). `inert`: la riga c'è ma non si usa ancora (la board che si apre).
  */
@@ -163,7 +163,7 @@ export function BoardTabs<T extends string>(p: {
   return (
     <div className="b-tabbar" inert={p.inert || undefined} data-b="tabs">
       <div className="b-tabs" role="tablist" aria-label={p.label} ref={list}>
-        {p.tabs.map((tab, index) => {
+        {p.tabs.map((tab) => {
           const selected = tab.id === p.selected;
           return (
             <button
@@ -179,9 +179,6 @@ export function BoardTabs<T extends string>(p: {
               onClick={() => p.onSelect(tab.id)}
               onKeyDown={(event) => onKeyDown(event, tab.id)}
             >
-              <span className="b-n" aria-hidden="true">
-                {tabOrdinal(index)}
-              </span>
               {tab.label}
             </button>
           );
@@ -196,22 +193,32 @@ export function BoardTabs<T extends string>(p: {
 
 /**
  * La pillola dello stato (P70–P75, BOARD-SPEC §3.4): il punto (verde salvato, ambra da salvare o in salvataggio, grigio
- * altrimenti) e la scritta; «Salva ora» accanto solo con modifiche da salvare. È una regione viva educata (P85).
- * `compact`: solo il punto, con la scritta per gli screen reader (la riga delle schede sul telefono). «Salva ora» sparisce
- * appena il salvataggio parte: prima porta il fuoco sulla pillola (che lo prende senza entrare nel giro del Tab), che
- * dice «Salvataggio…» e poi «Salvato» (F1).
+ * altrimenti) e la scritta. È una regione viva educata (P85). `compact`: la riga delle schede sul telefono, con la parola
+ * corta («Salvato», «Da salvare»): (rilascio 10, §3.7) lo stato non è mai solo un colore.
+ * «Salva ora» (rilascio 10, §3.7) compare solo quando serve: un salvataggio non riuscito (`failed`) o fuori linea; il
+ * salvataggio parte da solo. Sparisce appena il salvataggio parte: prima porta il fuoco sulla pillola (che lo prende
+ * senza entrare nel giro del Tab), che dice «Salvataggio…» e poi «Salvato» (F1).
  */
-export function StatusPill(p: { state: PillState | "loading"; savedAt: string | null; compact?: boolean; onSaveNow?: () => void }): JSX.Element {
+export function StatusPill(p: { state: PillState | "loading"; savedAt: string | null; compact?: boolean; failed?: boolean; onSaveNow?: () => void }): JSX.Element {
   const text = pillText(p.state, p.savedAt);
   const pill = useRef<HTMLSpanElement>(null);
-  const saves = Boolean(p.onSaveNow) && !p.compact;
+  // (Rilascio 10, §3.7) Anche la pillola corta del telefono, che lì è la sola, porta «Salva ora» quando serve.
+  const saves = Boolean(p.onSaveNow);
+  const stuck = (p.failed === true && p.state === "dirty") || p.state === "local";
   return (
     <>
-      <span ref={pill} className={cx("b-status", p.compact && "b-compact")} data-s={p.state} role="status" aria-live="polite" tabIndex={saves ? -1 : undefined} data-b="pill">
+      <span ref={pill} className={cx("b-status", p.compact && "b-compact b-word")} data-s={p.state} role="status" aria-live="polite" tabIndex={saves ? -1 : undefined} data-b="pill">
         <span className="b-dot" aria-hidden="true" />
-        <span className={p.compact ? "b-sr" : undefined}>{text}</span>
+        {p.compact ? (
+          <>
+            <span aria-hidden="true">{pillShortText(p.state, p.savedAt)}</span>
+            <span className="b-sr">{text}</span>
+          </>
+        ) : (
+          <span>{text}</span>
+        )}
       </span>
-      {saves && p.state === "dirty" ? (
+      {saves && stuck ? (
         <button
           type="button"
           className="b-btn b-small"
@@ -244,13 +251,16 @@ export function BoardMain(p: { children: ReactNode }): JSX.Element {
   );
 }
 
-/** La testa di ogni vista (P7): l'occhiello in mono, il titolo in serif, la frase; a destra l'unico bottone pieno. */
-export function ViewHead(p: { eyebrow: string; title: ReactNode; lede?: ReactNode; action?: ReactNode }): JSX.Element {
+/**
+ * La testa di ogni vista (P7): l'occhiello in mono, il titolo in serif, la frase; a destra l'unico bottone pieno.
+ * (Rilascio 10, §3.7) Occhiello e titolo solo quando dicono qualcosa che la scheda non dice già.
+ */
+export function ViewHead(p: { eyebrow?: string; title?: ReactNode; lede?: ReactNode; action?: ReactNode }): JSX.Element {
   return (
     <div className="b-head" data-b="view-head">
       <div>
-        <p className="b-eyebrow">{p.eyebrow}</p>
-        <h2 className="b-h">{p.title}</h2>
+        {p.eyebrow ? <p className="b-eyebrow">{p.eyebrow}</p> : null}
+        {p.title ? <h2 className="b-h">{p.title}</h2> : null}
         {p.lede ? <p className="b-lede">{p.lede}</p> : null}
       </div>
       {p.action ? <div className="b-head-action">{p.action}</div> : null}

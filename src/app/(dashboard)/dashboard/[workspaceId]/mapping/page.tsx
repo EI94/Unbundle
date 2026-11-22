@@ -1,17 +1,21 @@
-import { UnitsView } from "@/components/mappatura/board/units-view";
+import { permanentRedirect } from "next/navigation";
+import { processesRedirect } from "@/components/context/view-model";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
-import { getAppUcExecutor } from "@/lib/db/uc-executor";
-import { listUnitBoards } from "@/lib/mappatura/units";
-import { getUnitTerm } from "@/lib/utils/unit-terminology";
 
 /**
- * L'activity mapping, S1 · Le unità (docs/mappatura/MAPPATURA-BOARD-PIANO.md §1.2, §4.10): una riga per unità, con i
- * numeri della sua board, in una lettura sola. Chi segue solo un corso resta fuori (`requireWorkspacePage`).
+ * Il vecchio elenco delle unità (rilascio 10, docs/ui-10/PROPOSTA-10.md §2.4, §8.2): è la vista «Processi» di
+ * «Contesto». Un 308 vero, con la query di prima dopo `vista=processi` (l'ancora la tiene il browser): sopra questa
+ * pagina non c'è un `loading.tsx` (quello della board sta in `[deptId]`), così la risposta non parte in streaming. Chi
+ * segue solo un corso resta fuori, come prima (`requireWorkspacePage`).
  */
-export default async function MappingPage({ params }: { params: Promise<{ workspaceId: string }> }) {
+export default async function MappingPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ workspaceId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { workspaceId } = await params;
-  const { access } = await requireWorkspacePage(workspaceId);
-  const executor = await getAppUcExecutor();
-  const units = await listUnitBoards(executor, workspaceId);
-  return <UnitsView workspaceId={workspaceId} workspaceName={access.workspace.name} unitTerm={getUnitTerm(access.workspace)} units={units} />;
+  await requireWorkspacePage(workspaceId);
+  permanentRedirect(processesRedirect(workspaceId, await searchParams));
 }

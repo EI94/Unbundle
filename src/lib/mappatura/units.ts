@@ -10,7 +10,7 @@ import "server-only";
 import type { UcExecutor } from "@/lib/db/uc-executor";
 import type { UnitBoardSummary } from "./board-model";
 import { text, unitSummaryFromRow } from "./board-rows";
-import { unitBoards, unitDocuments, unitNameRead, type BoardScope } from "./board-sql";
+import { unitAdd, unitAddLock, unitBoards, unitDocuments, unitNameRead, type BoardScope } from "./board-sql";
 import { mappingStoreReady } from "./board-store";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -41,4 +41,20 @@ export async function unitName(executor: UcExecutor, scope: BoardScope): Promise
   if (!UUID.test(scope.workspaceId) || !UUID.test(scope.departmentId)) return null;
   const [rows] = await executor.batch([unitNameRead(scope)]);
   return rows.length > 0 ? (text(rows[0].name) ?? "") : null;
+}
+
+export type AddUnitOutcome = { ok: true; departmentId: string } | { ok: false; reason: "duplicate" | "full" };
+
+/**
+ * (Rilascio 10, §3.7, F-160) Un'unità nuova del workspace, con il solo nome (già pulito e controllato da chi chiama, con
+ * i permessi): una transazione con il lucchetto del workspace, il controllo del nome uguale e il tetto delle unità
+ * (`unitAdd` in board-sql.ts). Nessun modello, nessuna e-mail.
+ */
+export async function addUnit(executor: UcExecutor, workspaceId: string, name: string): Promise<AddUnitOutcome> {
+  if (!UUID.test(workspaceId)) throw new Error("workspace non valido");
+  const [, rows] = await executor.batch([unitAddLock(workspaceId), unitAdd(workspaceId, name)]);
+  const row = rows[0];
+  const id = text(row?.id);
+  if (id) return { ok: true, departmentId: id };
+  return { ok: false, reason: row?.same === true ? "duplicate" : "full" };
 }

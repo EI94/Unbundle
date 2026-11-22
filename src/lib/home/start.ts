@@ -71,8 +71,8 @@ export function startChecklist(facts: StartFacts, ctx: StartContext): StartCheck
   const t = HOME_TEXT.start;
   const rows: StartRow[] = [
     { key: "racconta", label: t.rows.racconta, done: facts.discovery, mine: true, href: `${base}/setup/leadership` },
-    { key: "appunti", label: t.rows.appunti, done: facts.notes, mine: ctx.isLateralSpace, href: `${base}/contesto?vista=appunti` },
-    { key: "processi", label: ctx.defaultUnitTerm ? t.rows.processi : t.rows.processiOther, done: facts.mappedUnits > 0, mine: true, href: `${base}/mapping` },
+    { key: "appunti", label: t.rows.appunti, done: facts.notes, mine: ctx.isLateralSpace, href: `${base}/contesto?vista=fonti` },
+    { key: "processi", label: ctx.defaultUnitTerm ? t.rows.processi : t.rows.processiOther, done: facts.mappedUnits > 0, mine: true, href: `${base}/contesto?vista=processi` },
     { key: "obiettivi", label: t.rows.obiettivi, done: facts.goals > 0, mine: true, href: `${base}/strategy` },
     { key: "decidi", label: t.rows.decidi, done: false, mine: true, href: facts.toDecide > 0 ? `${base}/use-cases?vista=da-decidere` : `${base}/use-cases` },
   ];

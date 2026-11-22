@@ -49,6 +49,7 @@ import {
   proposedTitle,
   readOutcomeMessage,
   reconfirmable,
+  reconfirmations,
   reconfirmationsToChoose,
   responseMessage,
   rowErrors,
@@ -143,14 +144,13 @@ test("preselezione: spuntate le «detto»; «dedotto», conflitti e proposte da 
   const selection = initialSelection(open([said, inferred, conflict, named, forcedConflict, forcedIssue]));
   assert.equal(selection.checked[said.id], true);
   for (const p of [inferred, conflict, named, forcedConflict, forcedIssue]) assert.equal(selection.checked[p.id], false, p.kind);
-  assert.equal(selection.reconfirm, true);
   assert.deepEqual(selection.resolutions, {}, "nessun conflitto ha una scelta di partenza");
   assert.equal(isCheckable(conflict), false);
   assert.equal(isCheckable(named), false);
   assert.equal(isCheckable(inferred), true, "una «dedotto» si spunta a mano");
 });
 
-test("«Conferma (n)»: le righe spuntate, i conflitti con una scelta, le riconferme se la riga è spuntata", () => {
+test("«Conferma (n)»: le righe spuntate, i conflitti con una scelta, le riconferme spuntate una per una", () => {
   const said = proposal();
   const inferred = proposal({ basis: "dedotto", preselected: false });
   const conflict = proposal({ kind: "conflitto", preselected: false, version: 3 });
@@ -173,33 +173,38 @@ test("«Conferma (n)»: le righe spuntate, i conflitti con una scelta, le riconf
     { id: conflict.id, version: 3, resolution: "ora" },
   );
   assert.equal(items.some((item) => item.id === named.id), false);
-  // La riga delle riconferme tolta: restano le altre.
-  assert.equal(confirmCount(data, { ...chosen, reconfirm: false }), 3);
-  // Niente spuntato, nessuna scelta, riconferme tolte: zero (il pulsante è spento).
-  assert.equal(confirmCount(data, { checked: {}, resolutions: {}, reconfirm: false }), 0);
+  // (Rilascio 10, §3.7) Le due riconferme tolte una per una: restano le altre.
+  const [first, second] = reconfirmable(data);
+  assert.equal(confirmCount(data, { ...chosen, checked: { ...chosen.checked, [first.id]: false, [second.id]: false } }), 3);
+  // Niente spuntato e nessuna scelta: zero (il pulsante è spento).
+  assert.equal(confirmCount(data, { checked: {}, resolutions: {} }), 0);
 });
 
-test("riconferme: solo le «detto» partono spuntate, nella riga; le «dedotto» si scelgono una per una, come nell'MCP", () => {
+test("(rilascio 10, §3.7) riconferme: una casella per fatto; solo le «detto» partono spuntate, le «dedotto» si scelgono, come nell'MCP", () => {
   const said = proposal({ kind: "conferma" });
   const inferred = proposal({ kind: "conferma", basis: "dedotto", preselected: false });
   const fromClient = proposal({ kind: "conferma", preselected: false });
-  const data = open([], [said, inferred, fromClient]);
+  const broken = proposal({ kind: "conferma", issue: "lungo" });
+  const data = open([], [said, inferred, fromClient, broken]);
+  assert.deepEqual(reconfirmations(data).map((p) => p.id), [said.id, inferred.id, fromClient.id], "una da correggere non entra nel blocco");
   assert.deepEqual(reconfirmable(data).map((p) => p.id), [said.id]);
   assert.deepEqual(reconfirmationsToChoose(data).map((p) => p.id), [inferred.id, fromClient.id]);
   const start = initialSelection(data);
-  assert.deepEqual([start.reconfirm, start.checked[inferred.id], start.checked[fromClient.id]], [true, false, false]);
+  assert.deepEqual([start.checked[said.id], start.checked[inferred.id], start.checked[fromClient.id], start.checked[broken.id]], [true, false, false, false]);
   assert.deepEqual(selectedItems(data, start), [{ id: said.id, version: 1 }]);
-  // Spuntata a mano, la «dedotto» entra; la riga tolta, le «detto» no.
-  const picked = selectionFrom(data, { overrides: { [inferred.id]: true }, resolutions: {}, reconfirm: false });
+  // Spuntata a mano, la «dedotto» entra; la «detto» tolta a mano, no.
+  const picked = selectionFrom(data, { overrides: { [inferred.id]: true, [said.id]: false }, resolutions: {} });
   assert.deepEqual(selectedItems(data, picked), [{ id: inferred.id, version: 1 }]);
-  assert.equal(confirmCount(data, selectionFrom(data, { overrides: { [inferred.id]: true }, resolutions: {}, reconfirm: true })), 2);
+  assert.equal(confirmCount(data, selectionFrom(data, { overrides: { [inferred.id]: true }, resolutions: {} })), 2);
+  // Quella da correggere non entra nemmeno spuntata a mano.
+  assert.equal(confirmCount(data, selectionFrom(data, { overrides: { [broken.id]: true }, resolutions: {} })), 1);
 });
 
 test("le scelte a mano restano sopra le proposte del server: una correzione o un aggiornamento non le cancellano", () => {
   const named = proposal({ issue: "nome_persona", preselected: false });
   const said = proposal();
   const inferred = proposal({ basis: "dedotto", preselected: false });
-  const choices = { overrides: { [said.id]: false, [inferred.id]: true, [named.id]: true }, resolutions: {}, reconfirm: true };
+  const choices = { overrides: { [said.id]: false, [inferred.id]: true, [named.id]: true }, resolutions: {} };
   // Da correggere: non si spunta, anche se la persona l'aveva spuntata.
   let selection = selectionFrom(open([named, said, inferred]), choices);
   assert.deepEqual([selection.checked[named.id], selection.checked[said.id], selection.checked[inferred.id]], [false, false, true]);
@@ -211,10 +216,10 @@ test("le scelte a mano restano sopra le proposte del server: una correzione o un
   assert.equal(selectionFrom(open([fixed]), { ...choices, overrides: {} }).checked[named.id], true);
   // Una correzione che introduce un problema toglie la spunta.
   assert.equal(selectionFrom(open([{ ...inferred, issue: "lungo" }]), choices).checked[inferred.id], false);
-  // Le scelte dei conflitti e la riga delle riconferme passano com'erano.
+  // Le scelte dei conflitti passano com'erano.
   const conflict = proposal({ kind: "conflitto", preselected: false });
-  const withConflict = selectionFrom(open([conflict]), { overrides: { [conflict.id]: true }, resolutions: { [conflict.id]: "prima" }, reconfirm: false });
-  assert.deepEqual(withConflict, { checked: { [conflict.id]: false }, resolutions: { [conflict.id]: "prima" }, reconfirm: false });
+  const withConflict = selectionFrom(open([conflict]), { overrides: { [conflict.id]: true }, resolutions: { [conflict.id]: "prima" } });
+  assert.deepEqual(withConflict, { checked: { [conflict.id]: false }, resolutions: { [conflict.id]: "prima" } });
 });
 
 test("dopo una conferma: si resta se restano righe, si passa a tutte se l'appunto è finito, si torna alla Memoria se non resta niente", () => {
@@ -663,4 +668,97 @@ test("il messaggio di una risposta d'errore: la frase della rotta, mai un codice
   assert.equal(responseMessage({ error: "file_troppo_grande" }), T.errors.retry);
   assert.equal(responseMessage(null, "Riprova"), "Riprova");
   assert.equal(responseMessage("testo"), T.errors.retry);
+});
+
+// ─── (Rilascio 10, §3.7) Le viste, la testata comune e la Memoria ────
+
+const WS_ID = "44444444-4444-4444-8444-444444444444";
+
+test("(rilascio 10) le viste: «processi», «fonti» e il vecchio «appunti»; il resto è la Memoria", async () => {
+  const { contextViewOf, contextViewHref, CONTEXT_VIEWS } = await import("./view-model.ts");
+  assert.deepEqual([...CONTEXT_VIEWS], ["memoria", "processi", "fonti"]);
+  assert.equal(contextViewOf(undefined), "memoria");
+  assert.equal(contextViewOf("memoria"), "memoria");
+  assert.equal(contextViewOf("processi"), "processi");
+  assert.equal(contextViewOf("fonti"), "fonti");
+  assert.equal(contextViewOf("appunti"), "fonti");
+  assert.equal(contextViewOf(["fonti", "processi"]), "fonti");
+  assert.equal(contextViewOf("<script>"), "memoria");
+  assert.equal(contextViewHref(WS_ID, "memoria"), `/dashboard/${WS_ID}/contesto`);
+  assert.equal(contextViewHref(WS_ID, "fonti"), `/dashboard/${WS_ID}/contesto?vista=fonti`);
+});
+
+test("(rilascio 10) «Altro» di «Aggiungi appunti» si apre da sé solo per un errore di «Con chi» o «Link»", async () => {
+  const { notesMoreOnError } = await import("./view-model.ts");
+  assert.equal(notesMoreOnError({}), false);
+  const bodyOnly: { body?: string; participants?: string; link?: string } = { body: "Scrivi gli appunti." };
+  assert.equal(notesMoreOnError(bodyOnly), false);
+  assert.equal(notesMoreOnError({ link: "Il link non è valido." }), true);
+  assert.equal(notesMoreOnError({ participants: "Troppo lungo." }), true);
+});
+
+test("(rilascio 10) `?apri=` e `?fonte=`: solo un id che sembra un uuid apre il pannello", async () => {
+  const { sheetIdParam } = await import("./view-model.ts");
+  const id = "9F0C2A4B-1D2E-4F3A-8B4C-5D6E7F8A9B0C";
+  assert.equal(sheetIdParam(id), id.toLowerCase());
+  assert.equal(sheetIdParam(` ${id} `), id.toLowerCase());
+  assert.equal(sheetIdParam([id]), id.toLowerCase());
+  for (const bad of [undefined, null, "", "fatto", "1234", "javascript:alert(1)", 42]) assert.equal(sheetIdParam(bad), null, String(bad));
+});
+
+test("(rilascio 10, §3.7) il passo della testata: «Conferma N proposte» solo per Lateral Space e solo con proposte", async () => {
+  const { confirmStep, contextMenu } = await import("./view-model.ts");
+  assert.deepEqual(confirmStep({ lateralSpace: true, openProposals: 3, workspaceId: WS_ID }), {
+    label: "Conferma 3 proposte",
+    why: "Unbundle le ha lette dalle fonti: confermale, correggile o scartale.",
+    href: `/dashboard/${WS_ID}/contesto/conferma`,
+  });
+  assert.equal(confirmStep({ lateralSpace: true, openProposals: 1, workspaceId: WS_ID })?.label, "Conferma 1 proposta");
+  assert.equal(confirmStep({ lateralSpace: true, openProposals: 0, workspaceId: WS_ID }), null);
+  assert.equal(confirmStep({ lateralSpace: false, openProposals: 5, workspaceId: WS_ID }), null);
+  // Il «⋯»: l'Intervista iniziale ai revisori, i fatti da verificare a Lateral Space quando ci sono.
+  assert.deepEqual(contextMenu({ workspaceId: WS_ID, reviewer: true, toCheck: 2, lateralSpace: true }).map((i) => [i.label, i.href]), [
+    ["Intervista iniziale", `/dashboard/${WS_ID}/setup/leadership`],
+    ["2 fatti da verificare", `/dashboard/${WS_ID}/contesto/verifica`],
+  ]);
+  assert.deepEqual(contextMenu({ workspaceId: WS_ID, reviewer: false, toCheck: 2, lateralSpace: false }), []);
+  assert.deepEqual(contextMenu({ workspaceId: WS_ID, reviewer: true, toCheck: 0, lateralSpace: true }).map((i) => i.key), ["intervista"]);
+});
+
+test("(rilascio 10, §3.7) «Impegni» in una lista: gli scaduti, poi per scadenza, i senza data in fondo; al massimo tre in vista", async () => {
+  const { memoryCommitments, commitmentParty, firstRows } = await import("./view-model.ts");
+  const c = (id: string, party: "nostra" | "cliente", dueOn: string | null, overdue = false): CommitmentView => ({ id, version: 1, statement: id, party, roleLabel: null, dueOn, overdue, visibility: "tutti" });
+  const ordered = memoryCommitments([c("a", "nostra", null), c("b", "nostra", "2026-11-30")], [c("c", "cliente", "2026-11-02", true), c("d", "cliente", "2026-11-20"), c("e", "cliente", "2026-11-30")]);
+  assert.deepEqual(ordered.map((x) => x.id), ["c", "d", "b", "e", "a"]);
+  assert.deepEqual([commitmentParty(c("x", "nostra", null)), commitmentParty(c("y", "cliente", null))], ["Nostri", "Del cliente"]);
+  assert.deepEqual(firstRows(ordered), { shown: ordered.slice(0, 3), rest: 2 });
+  assert.deepEqual(firstRows([1]), { shown: [1], rest: 0 });
+});
+
+test("(rilascio 10, §3.7) le sezioni chiuse: il conteggio, «Come lavorano» in unità; le righe della Discovery che portano da qualche parte", async () => {
+  const { sectionSummary, liveRowHref, noveltySource, noveltyRows } = await import("./view-model.ts");
+  const unit = "33333333-3333-4333-8333-333333333333";
+  const live = (key: string, section: MemorySection["section"] = "lavoro") => ({ key, section, text: key, tag: null });
+  assert.equal(sectionSummary({ section: "azienda", live: [live("tesi", "azienda")], facts: [fact(), fact()] }), "3");
+  assert.equal(sectionSummary({ section: "lavoro", live: [live(`unita:${unit}`)], facts: [] }), "1 unità");
+  assert.equal(sectionSummary({ section: "lavoro", live: [live(`unita:${unit}`), live(`unita:${unit.replace("3333-4", "3333-5")}`)], facts: [fact()] }), "2 unità · 1");
+  assert.equal(sectionSummary({ section: "lavoro", live: [], facts: [fact()] }), "1");
+  assert.equal(liveRowHref(WS_ID, { key: `unita:${unit.toUpperCase()}` }), `/dashboard/${WS_ID}/mapping/${unit}`);
+  assert.equal(liveRowHref(WS_ID, { key: "obiettivo:g1" }), `/dashboard/${WS_ID}/strategy`);
+  assert.equal(liveRowHref(WS_ID, { key: "tesi:proposta" }), null);
+  assert.equal(liveRowHref(WS_ID, { key: "unita:non-un-id" }), null);
+  // La fonte di una novità dal suo fatto; senza, la sezione.
+  const sections = [{ facts: [fact({ id: "f1", sourceLabel: "Documento 12 nov" })] }];
+  assert.equal(noveltySource({ factId: "f1", section: "sistemi" }, sections), "Documento 12 nov");
+  assert.equal(noveltySource({ factId: "f9", section: "sistemi" }, sections), "Sistemi e dati");
+  const item = (i: number) => ({ factId: `n${i}`, statement: `n${i}`, section: "sistemi" as const, tag: "nuovo" as const });
+  assert.deepEqual(noveltyRows({ items: [1, 2, 3, 4, 5].map(item), more: 2 }), { shown: [1, 2, 3].map(item), more: 4 });
+  assert.deepEqual(noveltyRows(null), { shown: [], more: 0 });
+});
+
+test("(rilascio 10, §2.4) `/mapping` porta a `/contesto?vista=processi`, con la query di prima dopo la vista", async () => {
+  const { processesRedirect, contextViewHref } = await import("./view-model.ts");
+  assert.equal(processesRedirect(WS_ID, {}), `/dashboard/${WS_ID}/contesto?vista=processi`);
+  assert.equal(processesRedirect(WS_ID, { a: "1", vista: "x", b: ["2", "3"] }), `/dashboard/${WS_ID}/contesto?vista=processi&a=1&b=2&b=3`);
+  assert.equal(contextViewHref(WS_ID, "processi"), `/dashboard/${WS_ID}/contesto?vista=processi`);
 });

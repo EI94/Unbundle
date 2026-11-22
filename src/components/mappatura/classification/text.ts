@@ -21,7 +21,7 @@ export const CLASSIFICATION_TEXT = Object.freeze({
   reset: "Usa le categorie proposte",
   resetDone: "Categorie riportate alla proposta.",
   exposureTile: "Esposizione all'AI, media",
-  legend: Object.freeze({ unclassified: "da classificare", decides: "decide una persona" }),
+  legend: Object.freeze({ unclassified: "da classificare", decides: "decide una persona", button: "Che cosa vuol dire" }),
   filters: Object.freeze({ label: "Mostra i passi", all: "Tutti", unclassified: "Da classificare" }),
   card: Object.freeze({ unclassified: "da classificare" }),
   before: Object.freeze({
@@ -50,17 +50,15 @@ export const CLASSIFICATION_TEXT = Object.freeze({
     none: "—",
     noneLabel: "Nessuna categoria",
     proposed: "Proposto dall'assistente",
+    // (Rilascio 10, §3.7) L'esposizione all'AI, il codice O*NET e l'affidabilità: dettagli tecnici, per Lateral Space.
+    technical: "Dettagli tecnici",
+    onet: "Mansione O*NET",
+    reliability: "Affidabilità",
   }),
 });
 
 /** Il riquadro di uno stream: «Automatizzare · 12,5 h a settimana». */
 export const streamTileLabel = (stream: Stream, hoursWeek: number): string => `${STREAM_LABEL[stream]} · ${formatHours(hoursWeek)} h a settimana`;
-
-/** La media dell'esposizione all'AI, o «—» se nessun passo ha il match O*NET. */
-export const exposureTileValue = (pct: number | null): string => (pct === null ? "—" : `${formatCount(pct)}%`);
-
-/** «3 passi da classificare.», «1 passo da classificare.». */
-export const toClassifyLine = (n: number): string => `${counted(n, "passo", "passi")} da classificare.`;
 
 /** Il bottone che classifica quello che resta: «Classifica 3 passi», «Classifica 1 passo». */
 export const classifyButtonLabel = (n: number): string => `Classifica ${counted(n, "passo", "passi")}`;

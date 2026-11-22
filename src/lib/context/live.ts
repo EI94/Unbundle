@@ -56,13 +56,39 @@ export function compactEuro(amount: number): string {
   return formatEuro(amount);
 }
 
-/** Le righe della Discovery, nell'ordine delle sezioni della pagina. */
-export function buildLiveRows(data: LiveDiscoveryData): LiveRow[] {
+/** Le etichette delle righe della Discovery. */
+export type LiveLabels = typeof CONTEXT_TEXT.live;
+
+/**
+ * Le etichette con cui i dati della Discovery entrano nell'impronta di «In breve» (`briefFactsHash`, `facts_hash`):
+ * quelle del rilascio 9a, ferme. Le parole a schermo possono cambiare (il rilascio 10 dice «Dove fa la differenza» al
+ * posto di «Nodi strategici»); l'impronta no, finché i dati sono gli stessi: «In breve» non si riscrive, e il modello non
+ * si chiama, solo perché è cambiata un'etichetta. Non si toccano: cambiarle riscrive «In breve» di ogni workspace.
+ */
+export const LIVE_HASH_LABELS: LiveLabels = Object.freeze({
+  strategicNodes: (items: string) => `Nodi strategici: ${items}`,
+  commodityNodes: (items: string) => `Nodi commodity: ${items}`,
+  marginDrivers: (items: string) => `Motori di margine: ${items}`,
+  risks: (items: string) => `Rischi: ${items}`,
+  aiReadiness: (level: string) => `Maturità AI: ${level}`,
+  employees: (count: string) => `Dipendenti: ${count}`,
+  revenue: (amount: string) => `Ricavo dell'ultimo anno: ${amount}`,
+  people: (n: number) => (n === 1 ? "1 persona" : `${n} persone`),
+  activities: (n: number) => (n === 1 ? "1 attività mappata" : `${n} attività mappate`),
+  boundaryIncluded: (items: string) => `incluse ${items}`,
+  boundaryExcluded: (items: string) => `escluse ${items}`,
+  boundary: (parts: string) => `Perimetro: ${parts}`,
+  horizon: (value: string) => `Orizzonte: ${value}`,
+  goalTag: Object.freeze({ goal: "Obiettivo", objective: "Obiettivo", key_result: "Risultato chiave" }),
+});
+
+/** Le righe della Discovery, nell'ordine delle sezioni della pagina. `labels`: le parole a schermo, se non è detto altro. */
+export function buildLiveRows(data: LiveDiscoveryData, labels: LiveLabels = CONTEXT_TEXT.live): LiveRow[] {
   const rows: LiveRow[] = [];
   const push = (key: string, section: ContextSection, text: string, tag: string | null = null) => {
     if (text) rows.push({ key, section, text, tag });
   };
-  const t = CONTEXT_TEXT.live;
+  const t = labels;
 
   // Azienda: la tesi del valore, e per i revisori dipendenti e ricavo.
   push("tesi:proposta", "azienda", line(field(data.thesis, "coreValueProposition")));
@@ -112,4 +138,9 @@ export function buildLiveRows(data: LiveDiscoveryData): LiveRow[] {
 /** Le righe come le riceve il modello: una riga l'una, con l'etichetta davanti. */
 export function liveLines(rows: readonly LiveRow[]): string[] {
   return rows.map((row) => (row.tag ? `${row.tag}: ${row.text}` : row.text));
+}
+
+/** Le righe come entrano nell'impronta di «In breve»: gli stessi dati, con le etichette ferme (`LIVE_HASH_LABELS`). */
+export function liveHashLines(data: LiveDiscoveryData): string[] {
+  return liveLines(buildLiveRows(data, LIVE_HASH_LABELS));
 }

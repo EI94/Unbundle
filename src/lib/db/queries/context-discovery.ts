@@ -8,7 +8,7 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { getWorkspaceValueThesis } from "@/lib/db/queries/value-thesis";
 import { activities, departments, strategicGoals, type Workspace } from "@/lib/db/schema";
-import { buildLiveRows, type LiveRow } from "@/lib/context/live";
+import { buildLiveRows, type LiveDiscoveryData, type LiveRow } from "@/lib/context/live";
 import { contextAbilities, type ContextActor } from "@/lib/context/visibility";
 import { logSafeError } from "@/lib/log/safe-error";
 
@@ -28,8 +28,17 @@ async function companyFigures(workspaceId: string): Promise<{ employees: number 
 
 /** I dati della Discovery come righe (§7.2): tesi del valore, perimetro, unità con le attività, obiettivi; dipendenti e ricavo solo ai revisori. */
 export async function loadLiveDiscovery(workspace: Workspace, viewer: Pick<ContextActor, "role" | "isLateralSpace">): Promise<LiveRow[]> {
+  const data = await loadLiveDiscoveryData(workspace, viewer);
+  return data ? buildLiveRows(data) : [];
+}
+
+/**
+ * I dati della Discovery come sono, prima delle righe: per «In breve», che ne fa le righe del prompt e quelle della sua
+ * impronta (con le etichette ferme, `liveHashLines`). null per chi non apre «Contesto».
+ */
+export async function loadLiveDiscoveryData(workspace: Workspace, viewer: Pick<ContextActor, "role" | "isLateralSpace">): Promise<LiveDiscoveryData | null> {
   const abilities = contextAbilities(viewer);
-  if (!abilities.canOpen) return [];
+  if (!abilities.canOpen) return null;
   const [thesis, units, counts, goals, figures] = await Promise.all([
     getWorkspaceValueThesis(workspace.id),
     db
@@ -49,7 +58,7 @@ export async function loadLiveDiscovery(workspace: Workspace, viewer: Pick<Conte
       .orderBy(strategicGoals.createdAt),
     abilities.canSeeCompanyFigures ? companyFigures(workspace.id) : Promise.resolve({ employees: null, revenueEur: null }),
   ]);
-  return buildLiveRows({
+  return {
     thesis,
     boundary: workspace.systemBoundary,
     departments: units,
@@ -57,5 +66,5 @@ export async function loadLiveDiscovery(workspace: Workspace, viewer: Pick<Conte
     goals,
     employees: figures.employees,
     revenueEur: figures.revenueEur,
-  });
+  };
 }

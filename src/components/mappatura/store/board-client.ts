@@ -43,6 +43,8 @@ export interface BoardClientState {
   savedAt: string | null;
   pending: number;
   toast: BoardToast | null;
+  /** (Rilascio 10, §3.7) L'ultimo salvataggio non è riuscito: «Salva ora» compare solo allora (o fuori linea). */
+  failed: boolean;
 }
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
@@ -170,6 +172,7 @@ export function createBoardClient(deps: BoardClientDeps): BoardClient {
       savedAt: base.savedAt,
       pending: pending.length,
       toast,
+      failed,
     };
   }
 

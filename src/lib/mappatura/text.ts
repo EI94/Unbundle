@@ -32,6 +32,12 @@ export const BOARD_TEXT = Object.freeze({
   tabsLabel: "Sezioni dell'unità",
   // (Rilascio 10, §3.7) Le schede «Oggi» e «Con l'AI», senza numeri.
   tabs: Object.freeze({ oggi: "Oggi", classificazione: "Con l'AI" } satisfies Record<BoardTab, string>),
+  // (Rilascio 10, §3.7) La prima riga della testata: il percorso «Contesto › Processi › {Unità}».
+  path: Object.freeze({ label: "Percorso", context: "Contesto", processes: "Processi", separator: "›" }),
+  /** Il «⋯» della testata della board. */
+  menu: "Altre azioni",
+  /** (Rilascio 10, §3.7) La pillola dice la sua parola anche al telefono: la forma corta. */
+  pillShort: Object.freeze({ loading: "Caricamento", ready: "Pronto", saved: "Salvato", dirty: "Da salvare", saving: "Salvo…", readonly: "Sola lettura", local: "Solo qui" }),
   pill: Object.freeze({
     loading: "Caricamento",
     ready: "Pronto",
@@ -79,7 +85,13 @@ export const BOARD_TEXT = Object.freeze({
   /** I segni della mappa come testo (P62). */
   marks: Object.freeze({ toValidate: "[da validare]", hypothesis: "[ipotesi]" }),
   /** La card di un passo. */
-  card: Object.freeze({ who: "Chi:", toValidate: "da validare", decides: "Decide una persona" }),
+  card: Object.freeze({
+    who: "Chi:",
+    toValidate: "da validare",
+    decides: "Decide una persona",
+    /** (Rilascio 10, §3.7) L'attrito sulla card non è solo il colore del bordo: la parola per i lettori di schermo. */
+    friction: (level: string) => `Attrito: ${level.toLowerCase()}`,
+  }),
   /**
    * I due controlli di una nota e la sua spunta. Tolta la spunta, una nota scritta sulla board torna «ipotesi», una
    * venuta dalla chat, dai documenti o da prima della board torna «da fonti» (P56): per lei «Togli la spunta».
@@ -96,12 +108,33 @@ export const BOARD_TEXT = Object.freeze({
   votes: Object.freeze({ less: "Togli un tuo voto", more: "Aggiungi un voto" }),
 });
 
+/**
+ * (Rilascio 10, §3.7) «Aggiungi un'unità», che prima mancava (le unità nascevano solo dall'Intervista iniziale): la
+ * finestra e l'azione del server. La parola è sempre «unità», che non chiede accordi (vale per ogni workspace).
+ */
+export const UNIT_TEXT = Object.freeze({
+  add: "Aggiungi un'unità",
+  title: "Aggiungi un'unità",
+  nameLabel: "Nome dell'unità",
+  namePlaceholder: "Per esempio: Acquisti",
+  submit: "Aggiungi",
+  cancel: "Annulla",
+  saving: "Aggiungo…",
+  added: "Unità aggiunta: l'assistente aiuta a mappare il lavoro.",
+  nameMissing: "Scrivi il nome.",
+  nameTooLong: (max: number) => `Al massimo ${max} caratteri.`,
+  duplicate: "C'è già un'unità con questo nome.",
+  full: (max: number) => `Ci sono già ${max} unità: è il massimo.`,
+  denied: "Non hai i permessi per farlo.",
+  failed: "Non è riuscito. Riprova tra poco.",
+});
+/** Quanto può essere lungo il nome di un'unità (lo stesso limite del nome di un processo). */
+export const UNIT_NAME_MAX = 120;
+
 /** L'etichetta del gruppo dei voti: il totale e quelli di chi guarda. */
 export const votesLabel = (total: number, mine: number): string => `Voti: ${formatCount(total)}. Tuoi: ${formatCount(mine)}.`;
 /** L'etichetta della × di un ruolo o di uno strumento. */
 export const removeChipLabel = (name: string): string => `Togli ${name}`;
-/** Il badge grigio dell'esposizione all'AI di un passo. */
-export const exposureBadgeLabel = (pct: number): string => `AI ${formatCount(Math.round(pct))}%`;
 
 // ─── Il vocabolario, in parole ───────────────────────────────────────
 
@@ -236,6 +269,12 @@ export function pillText(state: PillTextState, savedAt: string | null): string {
   return BOARD_TEXT.pill[state];
 }
 
+/** (Rilascio 10, §3.7) La parola della pillola sulla riga delle schede del telefono: «Salvato», «Da salvare», «Salvo…». */
+export function pillShortText(state: PillTextState, savedAt: string | null): string {
+  if (state === "saved") return savedAtLabel(savedAt) ? BOARD_TEXT.pillShort.saved : BOARD_TEXT.pillShort.ready;
+  return BOARD_TEXT.pillShort[state];
+}
+
 // ─── La riga della campanella (la scrive il server, §7.6) ────────────
 
 export const MAPPING_COMPLETED_SIGNAL = "mapping_completed";
@@ -247,3 +286,9 @@ export function mappingCompletedSignal(unitName: string, steps: number, hoursWee
     description: `${counted(steps, "passo", "passi")}, ${hours} ${hours === "1" ? "ora" : "ore"} a settimana.`,
   };
 }
+
+/**
+ * (Rilascio 10, §4) Il codice di un passo («A2») nella riga del contesto del drawer, dopo il nome del processo: solo per
+ * lo screen reader (niente codici a schermo), che così distingue due passi con lo stesso titolo.
+ */
+export const drawerCodeText = (code: string): string => ` · ${code}`;

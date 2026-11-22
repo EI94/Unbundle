@@ -60,7 +60,9 @@ export function cleanBriefLines(lines: unknown): string[] {
 
 /**
  * L'impronta di ciò che «In breve» riassume (`context_briefs.facts_hash`): sha256 di id e versione dei fatti «Per
- * tutti» attivi, in ordine, più il testo dei dati della Discovery. Se non cambia, «In breve» non si riscrive.
+ * tutti» attivi, in ordine, più il testo dei dati della Discovery. Se non cambia, «In breve» non si riscrive. (Rilascio
+ * 10) Il testo dei dati arriva con le etichette ferme (`liveHashLines` di ../live.ts): una parola nuova a schermo non
+ * cambia l'impronta.
  */
 export function briefFactsHash(facts: ReadonlyArray<{ id: string; version: number }>, live: readonly string[]): string {
   const hash = createHash("sha256");

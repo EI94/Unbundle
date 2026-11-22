@@ -64,6 +64,8 @@ export const MAPPING_LIMITS = Object.freeze({
   owner: 200,
   headline: 300,
   processes: 26,
+  /** (Rilascio 10, §3.7) Le unità di un workspace che «Aggiungi un'unità» accetta. */
+  units: 40,
   stepsPerProcess: 40,
   stepsPerUnit: 200,
   hoursWeek: 168,
@@ -78,8 +80,12 @@ export const MAPPING_LIMITS = Object.freeze({
  */
 export const ACTIVITY_COLUMNS = Object.freeze({ title: 500, frequency: 100, quality: 100 });
 
-/** I tempi della board di riferimento (BOARD-SPEC §3.3, §1.4.15). */
-export const AUTOSAVE = Object.freeze({ quietMs: 5_000, minGapMs: 15_000, undoMs: 6_000, toastMs: 4_200 });
+/**
+ * I tempi della board di riferimento (BOARD-SPEC §3.3, §1.4.15). (Rilascio 10, §5.4) Gli avvisi durano quanto quelli del
+ * resto dell'app (`TOAST_MS`, `TOAST_UNDO_MS` di src/components/ui-10/toast.ts): 4 secondi, 10 con «Annulla»; un
+ * eliminazione aspetta il suo «Annulla» per gli stessi 10 secondi prima di partire.
+ */
+export const AUTOSAVE = Object.freeze({ quietMs: 5_000, minGapMs: 15_000, undoMs: 10_000, toastMs: 4_000 });
 
 /**
  * Quanto vive una modifica non salvata. La bozza sul dispositivo dura 7 giorni (poi si lascia: chi riapre la board

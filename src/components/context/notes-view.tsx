@@ -1,28 +1,39 @@
 "use client";
 
 import { useState, useTransition, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
-import { FileText } from "lucide-react";
+import { FileText, Globe, MessageSquareReply, NotebookPen, Sparkles, SquareTerminal, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
+import { EmptyState } from "@/components/ui-10/empty-state";
+import { useSheetParam } from "@/components/ui-10/side-sheet";
 import { Button } from "@/components/ui/button";
 import { removeSourceAction } from "@/lib/actions/context";
 import { CONTEXT_TEXT } from "@/lib/context/text";
+import type { SourceOrigin } from "@/lib/context/vocab";
 import type { SourceListItem } from "@/lib/db/queries/context-sources";
+import { LsLock } from "./fact-row";
 import { PeopleSearch } from "./people-search";
 import { SourceSheet } from "./source-sheet";
-import { UploadDocumentButton } from "./upload-document";
-import { sourceMeta } from "./view-model";
+import { sheetIdParam, sourceMeta, sourceOriginLabel, sourceRowMeta } from "./view-model";
 
 const T = CONTEXT_TEXT;
 
+/** Il pannello di una fonte, nell'indirizzo come oggi: `?fonte=<id>` (i link della CLI). Una funzione del modulo. */
+const acceptSource = (raw: string | null) => sheetIdParam(raw);
+
+/** L'icona dell'origine di una fonte (rilascio 10, §3.7): un documento è sempre un foglio. */
+const ORIGIN_ICON: Readonly<Record<SourceOrigin, LucideIcon>> = { granola: NotebookPen, web: Globe, claude: Sparkles, cli: SquareTerminal, rispondi: MessageSquareReply };
+const originIcon = (item: Pick<SourceListItem, "kind" | "origin">): LucideIcon => (item.kind === "documento" ? FileText : (ORIGIN_ICON[item.origin] ?? NotebookPen));
+
 /**
- * La vista «Appunti» (rilascio 9a, docs/contesto/RILASCIO-9a-COSTRUZIONE.md §7.5), per il cliente «Documenti».
+ * La vista «Fonti» (rilascio 9a, docs/contesto/RILASCIO-9a-COSTRUZIONE.md §7.5; rilascio 10, §3.7: «Appunti» per Lateral
+ * Space e «Documenti» per il cliente diventano «Fonti» per tutti).
  *
- * - Lateral Space: in alto Granola (lo stato, «Aggiorna da Granola», «Da smistare»); poi l'elenco dal più recente:
- *   titolo, data, da dove viene, a che punto è la lettura e, per un documento, chi lo vede. Un tocco apre il pannello.
- *   (9b) In fondo il link «Cerca una persona» (RILASCIO-9b-COSTRUZIONE.md §2.13): un documento trovato apre qui il suo
- *   pannello, dove c'è «Togli».
- * - Il cliente: i documenti «Per tutti» (nome, data, dimensione), «Togli» a chi può, e «Carica documento».
+ * - Lateral Space: in alto Granola (lo stato, «Aggiorna da Granola», «Da smistare» e, chiuse, le regole delle call di
+ *   questo cliente); poi l'elenco dal più recente: l'icona dell'origine, il titolo, la data e a che punto è la lettura,
+ *   il lucchetto solo per «Solo Lateral Space». Un tocco apre il pannello della fonte, con il suo indirizzo
+ *   (`?fonte=<id>`): «Indietro» lo chiude. (9b) In fondo «Cerca una persona» (RILASCIO-9b-COSTRUZIONE.md §2.13).
+ * - Il cliente: i documenti «Per tutti» (nome, data, dimensione) e «Togli» a chi può; si aggiungono da «Aggiungi un
+ *   file», nella testata.
  */
 export function NotesView({
   workspaceId,
@@ -41,30 +52,17 @@ export function NotesView({
   /** `?fonte=<id>`: il pannello di quella fonte, aperto. */
   initialSourceId: string | null;
 }) {
-  const router = useRouter();
-  const [openSource, setOpenSource] = useState<string | null>(lateralSpace ? initialSourceId : null);
-  const closeSource = () => {
-    setOpenSource(null);
-    // Aperto da un link (`?fonte=`): chiuso, l'indirizzo torna quello della vista.
-    if (initialSourceId) router.replace(`/dashboard/${workspaceId}/contesto?vista=appunti`, { scroll: false });
-  };
+  const [openSource, showSource] = useSheetParam({ initial: lateralSpace ? initialSourceId : null, accept: acceptSource, param: "fonte" });
 
   if (!lateralSpace) {
-    return (
-      <div className="space-y-4">
-        <div className="flex justify-end">
-          <UploadDocumentButton workspaceId={workspaceId} className="min-h-11 w-full px-4 sm:w-auto" />
-        </div>
-        {sources.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">{T.documents.empty}</p>
-        ) : (
-          <ul className="divide-y rounded-xl border">
-            {sources.map((source) => (
-              <ClientDocumentRow key={source.id} workspaceId={workspaceId} today={today} source={source} />
-            ))}
-          </ul>
-        )}
-      </div>
+    return sources.length === 0 ? (
+      <EmptyState text={T.documents.empty} />
+    ) : (
+      <ul className="divide-y rounded-xl border">
+        {sources.map((source) => (
+          <ClientDocumentRow key={source.id} workspaceId={workspaceId} today={today} source={source} />
+        ))}
+      </ul>
     );
   }
 
@@ -72,43 +70,52 @@ export function NotesView({
     <div className="space-y-4">
       {granola ?? null}
       {sources.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground">{T.notes.empty}</p>
+        <EmptyState text={T.notes.empty} />
       ) : (
         <ul className="divide-y rounded-xl border">
-          {sources.map((source) => (
-            <li key={source.id}>
-              <button
-                type="button"
-                onClick={() => setOpenSource(source.id)}
-                className="flex min-h-11 w-full items-start gap-3 px-3 py-2.5 text-left outline-none transition-colors hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50"
-              >
-                {source.kind === "documento" ? <FileText aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" /> : null}
-                <span className="min-w-0 flex-1 space-y-0.5">
-                  <span className="block text-sm break-words">{source.title}</span>
-                  <span className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-                    {sourceMeta(source, today, true).map((part, index) => (
-                      <span key={`${part}-${index}`}>{part}</span>
-                    ))}
+          {sources.map((source) => {
+            const Icon = originIcon(source);
+            return (
+              <li key={source.id}>
+                <button
+                  type="button"
+                  onClick={() => showSource(source.id)}
+                  aria-haspopup="dialog"
+                  className="flex min-h-11 w-full items-start gap-3 px-3 py-2.5 text-left outline-none transition-colors hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50"
+                >
+                  <Icon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1 space-y-0.5">
+                    <span className="block text-sm break-words">
+                      <span className="sr-only">{sourceOriginLabel(source)}: </span>
+                      {source.title}
+                    </span>
+                    <span className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                      {sourceRowMeta(source, today).map((part, index) => (
+                        <span key={`${part}-${index}`}>{part}</span>
+                      ))}
+                      {source.visibility === "ls" ? <LsLock /> : null}
+                    </span>
                   </span>
-                </span>
-              </button>
-            </li>
-          ))}
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
       <div className="flex justify-end">
-        <PeopleSearch workspaceId={workspaceId} today={today} onOpenSource={setOpenSource} />
+        <PeopleSearch workspaceId={workspaceId} today={today} onOpenSource={(id) => showSource(id)} />
       </div>
-      <SourceSheet workspaceId={workspaceId} sourceId={openSource} today={today} onClose={closeSource} />
+      <SourceSheet workspaceId={workspaceId} sourceId={openSource} today={today} onClose={() => showSource(null)} />
     </div>
   );
 }
 
-/** Un documento nell'elenco del cliente: nome, data, dimensione; «Togli» a chi può, con la conferma. */
+/** Un documento nell'elenco del cliente: nome, data, dimensione; «Togli» a chi può (con il nome per i lettori di schermo), con la conferma. */
 function ClientDocumentRow({ workspaceId, today, source }: { workspaceId: string; today: string; source: SourceListItem }) {
   const [asking, setAsking] = useState(false);
   const [removed, setRemoved] = useState(false);
   const [pending, startTransition] = useTransition();
+  const name = source.document?.fileName || source.title;
   const remove = () =>
     startTransition(async () => {
       const result = await removeSourceAction(workspaceId, source.id);
@@ -126,13 +133,14 @@ function ClientDocumentRow({ workspaceId, today, source }: { workspaceId: string
         <div className="flex min-w-0 items-start gap-3">
           <FileText aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           <div className="min-w-0 space-y-0.5">
-            <p className="text-sm break-words">{source.document?.fileName || source.title}</p>
+            <p className="text-sm break-words">{name}</p>
             <p className="text-xs text-muted-foreground">{sourceMeta(source, today, false).join(" · ")}</p>
           </div>
         </div>
         {source.canRemove && !asking ? (
-          <Button type="button" variant="outline" className="min-h-11 shrink-0 sm:min-h-8" disabled={pending} onClick={() => setAsking(true)}>
+          <Button type="button" variant="ghost" className="min-h-11 shrink-0 sm:min-h-8" disabled={pending} onClick={() => setAsking(true)}>
             {T.documents.remove}
+            <span className="sr-only"> {name}</span>
           </Button>
         ) : null}
       </div>

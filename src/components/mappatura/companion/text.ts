@@ -11,18 +11,16 @@ import { counted, formatCount } from "../../../lib/mappatura/text.ts";
 
 export const COMPANION_TEXT = Object.freeze({
   panel: Object.freeze({ title: "Assistente", close: "Chiudi" }),
-  /** Il benvenuto, prima del nome dell'unità e dopo (in grassetto: `**{unità}**`). */
+  /**
+   * Il benvenuto, prima del nome dell'unità e dopo (in grassetto: `**{unità}**`). (Rilascio 10, §3.7) Una riga sola, e
+   * tre suggerimenti.
+   */
   welcome: Object.freeze({
     lead: "Mappiamo il lavoro di",
-    rest: "Racconta una settimana tipo: su cosa va più tempo? Salvo ogni passo sulla board mentre parliamo.",
-    documents: "Ho già i documenti caricati: li uso per fare domande più precise.",
+    rest: "su cosa va più tempo in una settimana tipo?",
+    documents: "Uso anche i documenti caricati.",
   }),
-  suggestions: Object.freeze([
-    "Le attività principali sono quattro o cinque",
-    "Molto tempo va in report e controlli",
-    "Il lavoro è frammentato",
-    "Tanti passaggi si fanno a mano",
-  ]),
+  suggestions: Object.freeze(["Le attività principali sono quattro o cinque", "Molto tempo va in report e controlli", "Tanti passaggi si fanno a mano"]),
   field: Object.freeze({ label: "Messaggio per l'assistente", placeholder: "Scrivi qui…", waiting: "Attendi la risposta…", send: "Invia" }),
   nudge: "Rispondi per continuare la mappatura.",
   errors: Object.freeze({
@@ -32,7 +30,8 @@ export const COMPANION_TEXT = Object.freeze({
     rate: "Troppe richieste. Attendi qualche secondo.",
     other: "Qualcosa non ha funzionato. Riprova.",
   }),
-  documents: Object.freeze({ upload: "Carica documenti", uploading: "Carico…", uploaded: "Documento caricato.", failed: "Caricamento non riuscito. Riprova." }),
+  // (Rilascio 10, §3.7) Un solo «Documenti ▾», con «Carica documenti» e «Proponi passi dai documenti».
+  documents: Object.freeze({ menu: "Documenti", upload: "Carica documenti", uploading: "Carico…", uploaded: "Documento caricato.", failed: "Caricamento non riuscito. Riprova." }),
   proposals: Object.freeze({
     propose: "Proponi passi dai documenti",
     reading: "Leggo i documenti…",
@@ -43,11 +42,11 @@ export const COMPANION_TEXT = Object.freeze({
   }),
 });
 
-/** Il benvenuto della chat di un'unità: il suo nome in grassetto; con i documenti, una frase in più. */
+/** Il benvenuto della chat di un'unità, in una riga: il suo nome in grassetto; con i documenti, una frase in più. */
 export function welcomeText(unitName: string, hasDocuments: boolean): string {
   const W = COMPANION_TEXT.welcome;
   const name = unitName.replace(/\*/g, "").trim();
-  return [`${W.lead} **${name}**.`, W.rest, hasDocuments ? W.documents : ""].filter(Boolean).join(" ");
+  return [`${W.lead} **${name}**: ${W.rest}`, hasDocuments ? W.documents : ""].filter(Boolean).join(" ");
 }
 
 /** L'attesa della risposta, secondo i secondi passati. */

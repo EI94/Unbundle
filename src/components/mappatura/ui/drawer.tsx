@@ -16,7 +16,7 @@
  */
 import { Dialog } from "@base-ui/react/dialog";
 import { useId, useRef, useSyncExternalStore, type JSX, type ReactNode, type RefObject } from "react";
-import { BOARD_TEXT } from "../../../lib/mappatura/text.ts";
+import { BOARD_TEXT, drawerCodeText } from "../../../lib/mappatura/text.ts";
 import { useClaimToastHost } from "../store/use-board.tsx";
 import { BoardToastView } from "./edit.tsx";
 
@@ -50,7 +50,7 @@ export function drawerInitialFocus(
 }
 
 interface DrawerFrameProps {
-  context: string;
+  context: ReactNode;
   title: ReactNode;
   titleId: string;
   toastHost: string;
@@ -98,7 +98,7 @@ export function Drawer(p: {
   open: boolean;
   onClose(): void;
   wide?: boolean;
-  context: string;
+  context: ReactNode;
   title: ReactNode;
   initialFocus?: DrawerFocus;
   finalFocus?: () => HTMLElement | null;
@@ -138,7 +138,7 @@ export function Drawer(p: {
 }
 
 /** Il drawer aperto, senza dialogo: per la vetrina statica e per i test. Stessa testa, stesso corpo, stesse classi. */
-export function DrawerStatic(p: { wide?: boolean; context: string; title: ReactNode; children: ReactNode }): JSX.Element {
+export function DrawerStatic(p: { wide?: boolean; context: ReactNode; title: ReactNode; children: ReactNode }): JSX.Element {
   const titleId = useId();
   const toastHost = useId();
   return (
@@ -149,6 +149,19 @@ export function DrawerStatic(p: { wide?: boolean; context: string; title: ReactN
           {p.children}
         </DrawerFrame>
       </div>
+    </>
+  );
+}
+
+/**
+ * La riga del contesto del drawer di un passo: il nome del processo; il codice del passo («A2») solo per lo screen
+ * reader (rilascio 10, §4: niente codici a schermo).
+ */
+export function StepContext(p: { processName: string; code: string }): JSX.Element {
+  return (
+    <>
+      {p.processName}
+      <span className="b-sr">{drawerCodeText(p.code)}</span>
     </>
   );
 }

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Fold } from "@/components/ui-10/fold";
 import { Checkbox } from "@/components/ui/checkbox";
 import { confirmProposalsAction } from "@/lib/actions/context";
 import { CONTEXT_TEXT } from "@/lib/context/text";
@@ -21,7 +22,7 @@ import {
   notReportedLines,
   NO_CHOICES,
   proposalSource,
-  reconfirmable,
+  reconfirmations,
   reconfirmationsToChoose,
   rowErrors,
   selectedItems,
@@ -33,9 +34,9 @@ import {
 const T = CONTEXT_TEXT;
 
 /**
- * «Da confermare» (rilascio 9a, docs/contesto/RILASCIO-9a-COSTRUZIONE.md §7.4): una pagina sua, con un solo pulsante
- * pieno, «Conferma (n)», fisso in fondo. I gruppi nell'ordine: Nuovi, Cambiano, Conflitti, Impegni, Domande; poi la
- * riga delle riconferme e i passaggi non riportati. «Dedotto» e conflitti non sono mai spuntati da soli; un conflitto
+ * «Da confermare» (rilascio 9a, docs/contesto/RILASCIO-9a-COSTRUZIONE.md §7.4; rilascio 10, §3.7): una pagina sua, con
+ * un solo pulsante pieno, «Conferma (n)», fisso in fondo. I gruppi nell'ordine: Nuovi, Cambiati, In conflitto, Impegni,
+ * Domande; poi un solo blocco di riconferme (una casella per fatto; aperto quando qualcuna va scelta) e i passaggi non riportati. «Dedotto» e conflitti non sono mai spuntati da soli; un conflitto
  * entra solo con la scelta della persona. Le proposte arrivano sempre dal server: le scelte della persona restano
  * sopra (una correzione, uno scarto o un aggiornamento non le cancellano).
  * (9b) Con una fonte sola nata dal lavoro la testata dice da dove vengono («Dalle risposte del referente per …», «Da chi
@@ -66,8 +67,10 @@ export function ConfirmView({
   const selection = selectionFrom(open, choices);
   const items = selectedItems(open, selection);
   const groups = confirmGroups(open.proposals);
-  const again = reconfirmable(open);
-  const toChoose = reconfirmationsToChoose(open);
+  const again = reconfirmations(open);
+  // Le riconferme che partono senza spunta (dedotte, da un documento del cliente, «Solo Lateral Space») aprono il blocco.
+  const againToChoose = reconfirmationsToChoose(open).length;
+  const againTicked = again.filter((proposal) => selection.checked[proposal.id] === true).length;
   const notReported = notReportedLines(sources.map((source) => source.skipped));
   const subtitle = confirmHeading(sources, today, confirmSubtitle(sources, today));
   const memoryHref = `/dashboard/${workspaceId}/contesto`;
@@ -155,13 +158,13 @@ export function ConfirmView({
         </section>
       ))}
 
-      {toChoose.length > 0 ? (
-        <section aria-labelledby="conferma-riconferme-da-scegliere" className="space-y-1 rounded-xl border p-3">
-          <p id="conferma-riconferme-da-scegliere" className="text-sm">
-            {T.confirm.reconfirmedToChoose(toChoose.length)}
-          </p>
+      {again.length > 0 ? (
+        // (Rilascio 10, §3.7) Un solo blocco di riconferme, una casella per fatto. Le «detto» partono spuntate e il blocco
+        // resta chiuso; se qualcuna va scelta (non parte spuntata) il blocco è aperto, perché la scelta si veda. Il
+        // riepilogo conta le spuntate.
+        <Fold id="conferma-riconferme" title={T.confirm.reconfirmedTitle} summary={T.confirm.reconfirmedSummary(againTicked, again.length)} defaultOpen={againToChoose > 0}>
           <ul className="space-y-1">
-            {toChoose.map((proposal) => (
+            {again.map((proposal) => (
               <li key={`${proposal.id}:${proposal.version}`}>
                 <label className="flex min-h-11 cursor-pointer items-start gap-3 py-1 text-sm sm:min-h-0">
                   <span className="flex min-w-11 shrink-0 items-start justify-center pt-0.5 sm:min-w-0">
@@ -180,28 +183,7 @@ export function ConfirmView({
               </li>
             ))}
           </ul>
-        </section>
-      ) : null}
-
-      {again.length > 0 ? (
-        <div className="flex gap-3 rounded-xl border p-3">
-          {/* Sul telefono la casella si tocca in un'area di 44 × 44 px. */}
-          <label className="flex min-h-11 min-w-11 shrink-0 cursor-pointer items-start justify-center pt-1 sm:min-h-0 sm:min-w-0 sm:justify-start">
-            <Checkbox checked={choices.reconfirm} disabled={pending} onCheckedChange={(next) => setChoices((c) => ({ ...c, reconfirm: next === true }))} aria-labelledby="conferma-riconferme" />
-          </label>
-          <details className="min-w-0 flex-1">
-            <summary id="conferma-riconferme" className="flex min-h-11 cursor-pointer items-center text-sm sm:min-h-0">
-              {T.confirm.reconfirmed(again.length)}
-            </summary>
-            <ul className="mt-2 space-y-1.5 text-sm text-muted-foreground">
-              {again.map((proposal) => (
-                <li key={proposal.id} className="break-words">
-                  {proposal.before?.statement ?? proposal.statement}
-                </li>
-              ))}
-            </ul>
-          </details>
-        </div>
+        </Fold>
       ) : null}
 
       {notReported.length > 0 ? (

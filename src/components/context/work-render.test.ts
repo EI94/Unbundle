@@ -206,10 +206,11 @@ function memory(toCheck: number): MemoryData {
 }
 const memoryProps = (over: Record<string, unknown>) => ({ workspaceId: WS, today: TODAY, lateralSpace: true, canEditMemory: true, memory: memory(3), useCaseOptions: [], consentNotice: null, ...over });
 
-test("la Memoria: «3 fatti da verificare» con «Apri» per Lateral Space; niente per il cliente e niente senza fatti da verificare", () => {
+test("la Memoria: la riga di stato «3 fatti da verificare ›» per Lateral Space; niente per il cliente e niente senza fatti da verificare", () => {
   const ls = render(createElement(MemoryView, memoryProps({})));
   assert.ok(textOf(ls).includes("3 fatti da verificare"));
-  assert.match(ls, new RegExp(`<a href="/dashboard/${WS}/contesto/verifica"[^>]*>Apri`));
+  // (Rilascio 10, §3.7) Tutta la riga è il link, con la freccia.
+  assert.match(ls, new RegExp(`<a href="/dashboard/${WS}/contesto/verifica"[^>]*><span>3 fatti da verificare</span>`));
   const one = textOf(render(createElement(MemoryView, memoryProps({ memory: memory(1) }))));
   assert.ok(one.includes("1 fatto da verificare"));
   const none = render(createElement(MemoryView, memoryProps({ memory: memory(0) })));

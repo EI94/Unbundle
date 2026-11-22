@@ -95,6 +95,11 @@ test("ogni funzione con un numero risponde al singolare e al plurale", () => {
   assert.equal(CONTEXT_TEXT.novelties.more(3), "e altre 3");
   assert.equal(CONTEXT_TEXT.confirm.reconfirmed(1), "1 fatto riconfermato: si aggiorna la data");
   assert.equal(CONTEXT_TEXT.confirm.reconfirmed(6), "6 fatti riconfermati: si aggiorna la data");
+  // (Rilascio 10) Il riepilogo del blocco delle riconferme conta le spuntate; senza spunte, quante sono da scegliere.
+  assert.deepEqual(
+    [CONTEXT_TEXT.confirm.reconfirmedSummary(2, 2), CONTEXT_TEXT.confirm.reconfirmedSummary(1, 3), CONTEXT_TEXT.confirm.reconfirmedSummary(0, 2)],
+    ["2 · si aggiorna la data", "1 di 3 · si aggiorna la data", "2 da scegliere"],
+  );
   assert.equal(CONTEXT_TEXT.confirm.done(1), "1 proposta confermata.");
   assert.equal(CONTEXT_TEXT.confirm.done(12), "12 proposte confermate.");
   assert.equal(CONTEXT_TEXT.confirm.notReported(1), "1 passaggio non riportato");

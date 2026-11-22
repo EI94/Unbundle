@@ -1,27 +1,30 @@
 "use client";
 
 /**
- * «Mappatura board»: la vista «Processi di oggi», S2 (docs/mappatura/MAPPATURA-BOARD-PIANO.md §1.3; P7, P11–P21,
- * P34, P35, P37, P38, P53–P62; BOARD-SPEC §2.2).
+ * «Mappatura board»: la vista «Oggi» (prima «Processi di oggi»), S2 (docs/mappatura/MAPPATURA-BOARD-PIANO.md §1.3; P7,
+ * P11–P21, P34, P35, P37, P38, P53–P62; BOARD-SPEC §2.2; rilascio 10, docs/ui-10/PROPOSTA-10.md §3.7).
  *
- * Dall'alto: la testa (occhiello, la scoperta in una frase o «Come lavora oggi *{unità}*», la descrizione dell'unità,
- * a destra l'unico bottone pieno: lo slot `headAction` del compagno); i quattro riquadri dei numeri; i punti di
- * analisi, ognuno una nota che si scrive sul posto («+ punto»); «Chi fa cosa e con quali strumenti», chiuso; «I
- * processi, uno per uno»: la legenda, la riga dei conteggi, «Evidenzia attriti», «Copia la mappa come testo», la
- * mappa. Un clic su un passo apre il suo drawer. Un'unità senza processi mostra «Nessun passo, per ora» con «Inizia
- * con l'assistente» (pieno) e «Aggiungi un passo». Una board in sola lettura disegna i suoi controlli spenti, o non li
- * disegna, dal primo disegno (F9).
+ * Dall'alto: la testa (la scoperta in una frase, quando c'è; la descrizione dell'unità; a destra l'unico bottone pieno,
+ * lo slot `headAction` del compagno); un riquadro solo con i numeri («25 passi», le ore e le decisioni di una persona);
+ * i punti di analisi, ognuno una nota che si scrive sul posto («+ punto»); «Chi fa cosa e con quali strumenti», chiuso;
+ * «I processi, uno per uno»: i chip che filtrano («7 attriti», «5 da validare», solo se non sono a zero), la legenda
+ * dietro il «?», la mappa. Un clic su un passo apre il suo drawer, con il suo indirizzo (`?apri=<passo>`): «Indietro»
+ * lo chiude e il passo ha un link. Un'unità senza processi mostra «Nessun passo, per ora» con «Inizia con
+ * l'assistente» (pieno) e «Aggiungi un passo». Una board in sola lettura disegna i suoi controlli spenti, o non li
+ * disegna, dal primo disegno (F9). «Copia la mappa come testo» sta nel «⋯» della testata.
  *
- * `TodayContent` non ha stato (lo provano i test con Node, chiamando i suoi controlli); `TodayView` tiene il drawer,
- * «Evidenzia attriti», la nota o il punto che si sta scrivendo, e legge la board dallo store.
+ * `TodayContent` non ha stato (lo provano i test con Node, chiamando i suoi controlli); `TodayView` tiene il drawer, il
+ * chip acceso, la legenda, la nota o il punto che si sta scrivendo, e legge la board dallo store.
  */
-import { useRef, useState, type JSX, type ReactNode } from "react";
-import { boardAsText, rolesTable, toolsTable, type BoardNote, type MappingBoard } from "../../../lib/mappatura/board-model.ts";
+import { useEffect, useRef, useState, type JSX, type ReactNode } from "react";
+import { locateStep, rolesTable, toolsTable, type BoardNote, type MappingBoard } from "../../../lib/mappatura/board-model.ts";
 import { BOARD_TEXT, noteCaption } from "../../../lib/mappatura/text.ts";
 import { MAPPING_LIMITS, type StepLane } from "../../../lib/mappatura/vocab.ts";
 import type { OpInput } from "../store/board-client.ts";
 import { useBoard, useBoardClient } from "../store/use-board.tsx";
-import { AddButton, BoardButton, Dot, FilterChip, Kpis, Legend, LegendItem, RemoveIcon, Section, StackTable } from "../ui/atoms.tsx";
+import { useSheetParam } from "../../ui-10/side-sheet.tsx";
+import { sheetIdParam } from "../../context/view-model.ts";
+import { AddButton, BoardButton, Dot, FilterChip, Kpis, Legend, LegendItem, RemoveIcon, Section, StackTable, Tag } from "../ui/atoms.tsx";
 import { Drawer } from "../ui/drawer.tsx";
 import { EmptyBlock, noteToggleLabel } from "../ui/edit.tsx";
 import { focusBeforeRemoving, type FocusNode } from "../ui/focus.ts";
@@ -30,6 +33,7 @@ import { DraftPoint, LineInPlace, TextWithMore } from "./in-place.tsx";
 import { ProcessMapEditor, type MapActions } from "./process-map.tsx";
 import { StepDrawer, type DrawerTarget, type StepActions } from "./step-drawer.tsx";
 import { VIEW_TEXT, rolesToolsHint, stepRefText } from "./text.ts";
+import { useArrivalStep } from "./arrival.tsx";
 import {
   analysisShown,
   boardEditable,
@@ -38,16 +42,22 @@ import {
   focusAfterRemoval,
   headlineOp,
   laneFull,
-  mapCounts,
+  mapFilterChips,
   newProcessOp,
   noteTextOps,
   noteTitleOp,
   noteToggleOp,
   pointAddOp,
   stepCodes,
-  todayTiles,
+  todaySummary,
+  type MapFilter,
   type MapFocus,
 } from "./view-model.ts";
+
+/** Il passo aperto (`?apri=<passo>`): un id che sembra un uuid. Una funzione del modulo. */
+const acceptStep = (raw: string | null) => sheetIdParam(raw);
+/** Che cosa mostra il drawer, in una parola: per tenere l'ultimo mentre si chiude. */
+const targetKey = (target: DrawerTarget | null): string => (!target ? "" : target.kind === "step" ? `passo:${target.stepId}:${target.created === true}` : `nuovo:${target.processId ?? ""}`);
 
 const L = MAPPING_LIMITS;
 
@@ -55,8 +65,10 @@ const L = MAPPING_LIMITS;
 export interface TodayActions extends MapActions {
   addStep(processId: string | null): void;
   startAssistant(): void;
-  toggleDim(): void;
-  copyMap(): void;
+  /** Accende un chip della mappa (null: nessuno). */
+  setFilter(filter: MapFilter | null): void;
+  /** Apre e chiude la legenda dietro il «?». */
+  toggleLegend(): void;
   newId(): string;
   setAddingPoint(adding: boolean): void;
 }
@@ -121,7 +133,10 @@ export function AnalysisPoint(p: { note: BoardNote; editable: boolean; actions: 
 
 export interface TodayContentProps {
   board: MappingBoard;
-  dim: boolean;
+  /** Il chip acceso: «N attriti» o «N da validare». */
+  filter: MapFilter | null;
+  /** La legenda dietro il «?» è aperta. */
+  legend: boolean;
   addingPoint: boolean;
   focusProcessId: string | null;
   /** Lo slot del compagno: «Completa la mappatura» o «Classifica {n} passi», l'unico bottone pieno della vista. */
@@ -137,18 +152,16 @@ export function TodayContent(p: TodayContentProps): JSX.Element {
   const run = (op: OpInput | null) => {
     if (op) actions.dispatch(op);
   };
+  // (Rilascio 10, §3.7) Niente occhiello né «Come lavora oggi {unità}»: la scheda e il titolo della board lo dicono già.
+  // Resta la scoperta in una frase, quando c'è.
   const title = board.headline ? (
     editable ? (
       <LineInPlace value={board.headline} label={VIEW_TEXT.today.headlineLabel} placeholder={VIEW_TEXT.today.headlinePlaceholder} maxLength={L.headline} onCommit={(next, base) => run(headlineOp(next, base))} />
     ) : (
       board.headline
     )
-  ) : (
-    <>
-      {VIEW_TEXT.today.titlePlain} <i>{board.unit.name}</i>
-    </>
-  );
-  const head = <ViewHead eyebrow={BOARD_TEXT.tabs.oggi} title={title} lede={board.unit.description} action={empty ? undefined : p.headAction} />;
+  ) : null;
+  const head = <ViewHead title={title} lede={board.unit.description} action={empty ? undefined : p.headAction} />;
   const notice = board.store === "mancante" ? <p className="b-notice">{BOARD_TEXT.storeMissing}</p> : null;
 
   if (empty) {
@@ -185,12 +198,14 @@ export function TodayContent(p: TodayContentProps): JSX.Element {
   const roles = rolesTable(board);
   const tools = toolsTable(board);
   const R = VIEW_TEXT.roles;
+  const chips = mapFilterChips(board);
+  const legendId = "b-legenda-oggi";
 
   return (
     <>
       {head}
       {notice}
-      <Kpis items={todayTiles(board)} />
+      <Kpis items={[todaySummary(board)]} single />
 
       {analysisShown(board) && (board.analysis.length > 0 || editable) ? (
         <Block title={VIEW_TEXT.points.title}>
@@ -232,26 +247,35 @@ export function TodayContent(p: TodayContentProps): JSX.Element {
         </div>
       ) : null}
 
-      <Block title={VIEW_TEXT.map.title} hint={VIEW_TEXT.map.hint}>
-        <Legend>
-          <LegendItem dot={<Dot tone="crit" />}>{VIEW_TEXT.legend.strong}</LegendItem>
-          <LegendItem dot={<Dot tone="amber" />}>{VIEW_TEXT.legend.medium}</LegendItem>
-          <LegendItem dot={<Dot tone="neutral" />}>{VIEW_TEXT.legend.light}</LegendItem>
-          <LegendItem dot={<Dot tone="amber" diamond />}>{VIEW_TEXT.legend.decides}</LegendItem>
-          <span className="b-legend-note">{VIEW_TEXT.legend.toValidate}</span>
-        </Legend>
-        {/* Il toast non copre mai gli strumenti della mappa («Evidenzia attriti»): ci sale sopra (data-toast-avoid). */}
+      <Block title={VIEW_TEXT.map.title}>
+        {/* Il toast non copre mai gli strumenti della mappa (i chip): ci sale sopra (data-toast-avoid). */}
         <div className="b-ctrl b-map-tools" data-b="map-tools" data-toast-avoid="">
-          <span className="b-counts">{mapCounts(board)}</span>
+          {chips.length > 0 ? (
+            <span className="b-map-chips" role="group" aria-label={VIEW_TEXT.map.chipsLabel}>
+              {chips.map((chip) => (
+                <FilterChip key={chip.filter} pressed={p.filter === chip.filter} onToggle={() => actions.setFilter(p.filter === chip.filter ? null : chip.filter)} dot={chip.filter === "attriti" ? <Dot tone="crit" /> : undefined}>
+                  {chip.label}
+                </FilterChip>
+              ))}
+            </span>
+          ) : null}
           <span className="b-spacer" />
-          <FilterChip pressed={p.dim} onToggle={() => actions.toggleDim()}>
-            {VIEW_TEXT.map.dim}
-          </FilterChip>
-          <BoardButton variant="ghost" onClick={() => actions.copyMap()}>
-            {VIEW_TEXT.map.copy}
-          </BoardButton>
+          <button type="button" className="b-iconbtn b-legend-btn" aria-label={VIEW_TEXT.map.legendButton} title={VIEW_TEXT.map.legendButton} aria-expanded={p.legend} aria-controls={legendId} onClick={() => actions.toggleLegend()} data-b="legend-toggle">
+            ?
+          </button>
         </div>
-        <ProcessMapEditor board={board} editable={editable} dim={p.dim} focusProcessId={p.focusProcessId} actions={actions} />
+        <div id={legendId} hidden={!p.legend}>
+          <Legend>
+            <LegendItem dot={<Dot tone="crit" />}>{VIEW_TEXT.legend.strong}</LegendItem>
+            <LegendItem dot={<Dot tone="amber" />}>{VIEW_TEXT.legend.medium}</LegendItem>
+            <LegendItem dot={<Dot tone="neutral" />}>{VIEW_TEXT.legend.light}</LegendItem>
+            <LegendItem dot={<Dot tone="amber" diamond />}>{VIEW_TEXT.legend.decides}</LegendItem>
+            <span className="b-legend-note">
+              <Tag tone="line">{BOARD_TEXT.card.toValidate}</Tag>
+            </span>
+          </Legend>
+        </div>
+        <ProcessMapEditor board={board} editable={editable} filter={p.filter} focusProcessId={p.focusProcessId} actions={actions} />
       </Block>
     </>
   );
@@ -269,38 +293,64 @@ export function CopyDrawer(p: { text: string | null; onClose(): void }): JSX.Ele
   );
 }
 
-/** La vista con il suo stato. `onStartAssistant`: «Inizia con l'assistente» apre il pannello, con il cursore nel suo campo. */
+/**
+ * La vista con il suo stato. `onStartAssistant`: «Inizia con l'assistente» apre il pannello, con il cursore nel suo campo.
+ * (Rilascio 10, §8.2) Il drawer di un passo ha un indirizzo, `?apri=<passo>` (`useSheetParam`): aprirlo aggiunge un passo
+ * alla cronologia, «Indietro» lo chiude, il link lo riapre. Un passo nuovo nasce in un drawer senza indirizzo; appena ha
+ * il titolo, il drawer prende quello del passo.
+ */
 export function TodayView(p: { headAction: ReactNode; onStartAssistant(): void }): JSX.Element {
   const board = useBoard((state) => state.board);
   const client = useBoardClient();
   const editable = boardEditable(board);
-  const [dim, setDim] = useState(false);
-  const [drawer, setDrawer] = useState<{ open: boolean; target: DrawerTarget | null }>({ open: false, target: null });
+  const [filter, setFilter] = useState<MapFilter | null>(null);
+  const [legend, setLegend] = useState(false);
+  const [openStep, showStep] = useSheetParam({ initial: useArrivalStep(), accept: acceptStep });
+  const [draft, setDraft] = useState<{ processId: string | null } | null>(null);
+  const [created, setCreated] = useState<string | null>(null);
   const [addingLane, setAddingLane] = useState<StepLane | null>(null);
   const [addingPoint, setAddingPoint] = useState(false);
   const [focusProcessId, setFocusProcessId] = useState<string | null>(null);
-  const [copyText, setCopyText] = useState<string | null>(null);
   // Chi ha aperto il drawer (la card, «+ passo», «Aggiungi un passo») e il posto deciso dopo «Elimina il passo»: alla
   // chiusura il fuoco non cade sulla pagina se chi l'ha aperto non c'è più (F1).
   const opener = useRef<Element | null>(null);
   const afterRemoval = useRef<MapFocus | null>(null);
 
-  const open = (target: DrawerTarget) => {
+  const target: DrawerTarget | null = draft ? { kind: "draft", processId: draft.processId } : openStep ? { kind: "step", stepId: openStep, created: created === openStep } : null;
+  // Mentre il drawer si chiude (0,26 s) resta l'ultimo passo, come il riferimento.
+  const [last, setLast] = useState<DrawerTarget | null>(target);
+  if (target && targetKey(target) !== targetKey(last)) setLast(target);
+
+  // Un indirizzo con un passo che non c'è (eliminato, o di un'altra unità): il drawer resta chiuso e l'indirizzo torna pulito.
+  const missing = openStep !== null && locateStep(board, openStep) === null;
+  useEffect(() => {
+    if (missing) showStep(null);
+  }, [missing, showStep]);
+
+  const remember = () => {
     opener.current = typeof document === "undefined" ? null : document.activeElement;
     afterRemoval.current = null;
     setAddingLane(null);
-    setDrawer({ open: true, target });
   };
   const close = () => {
     setAddingLane(null);
-    setDrawer((current) => ({ ...current, open: false }));
+    setCreated(null);
+    if (draft) setDraft(null);
+    else showStep(null);
   };
   const actions: TodayActions & StepActions = {
     dispatch: (ops, options) => client.dispatch(ops, options),
     notify: (text) => client.notify(text),
     newId: () => client.newId(),
-    openStep: (stepId) => open({ kind: "step", stepId }),
-    addStep: (processId) => open({ kind: "draft", processId }),
+    openStep: (stepId) => {
+      if (!draft && !openStep) remember();
+      setDraft(null);
+      showStep(stepId);
+    },
+    addStep: (processId) => {
+      remember();
+      setDraft({ processId });
+    },
     addProcess: () => {
       const processId = client.newId();
       client.dispatch(newProcessOp(processId));
@@ -315,40 +365,33 @@ export function TodayView(p: { headAction: ReactNode; onStartAssistant(): void }
     setAdding: setAddingLane,
     setAddingPoint,
     startAssistant: () => p.onStartAssistant(),
-    toggleDim: () => setDim((current) => !current),
-    copyMap: () => {
-      const text = boardAsText(board);
-      const clipboard = typeof navigator === "undefined" ? undefined : navigator.clipboard;
-      if (!clipboard?.writeText) {
-        setCopyText(text);
-        return;
-      }
-      clipboard.writeText(text).then(
-        () => client.notify(BOARD_TEXT.toast.copied),
-        () => setCopyText(text),
-      );
-    },
+    setFilter,
+    toggleLegend: () => setLegend((current) => !current),
   };
 
   return (
     <>
-      <TodayContent board={board} dim={dim} addingPoint={addingPoint} focusProcessId={focusProcessId} headAction={p.headAction} actions={actions} />
+      <TodayContent board={board} filter={filter} legend={legend} addingPoint={addingPoint} focusProcessId={focusProcessId} headAction={p.headAction} actions={actions} />
       <StepDrawer
         board={board}
-        open={drawer.open}
-        target={drawer.target}
+        open={target !== null && !missing}
+        target={target ?? last}
         editable={editable}
         addingLane={addingLane}
         actions={actions}
-        onCreated={(stepId) => setDrawer({ open: true, target: { kind: "step", stepId, created: true } })}
+        onCreated={(stepId) => {
+          setCreated(stepId);
+          setDraft(null);
+          showStep(stepId);
+        }}
         finalFocus={() => {
           const planned = afterRemoval.current;
           afterRemoval.current = null;
           const view = document.querySelector<HTMLElement>('[data-b="view-oggi"]');
-          return drawerReturnFocus({ view, planned, opener: opener.current, stepId: drawer.target?.kind === "step" ? drawer.target.stepId : null });
+          const shown = last;
+          return drawerReturnFocus({ view, planned, opener: opener.current, stepId: shown?.kind === "step" ? shown.stepId : null });
         }}
       />
-      <CopyDrawer text={copyText} onClose={() => setCopyText(null)} />
     </>
   );
 }

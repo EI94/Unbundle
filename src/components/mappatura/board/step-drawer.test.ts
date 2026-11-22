@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { createElement, type FunctionComponent, type ReactNode } from "react";
+import { createElement, type FunctionComponent, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { enableTsxImports } from "../../use-cases/detail/referent/tsx-test-loader.ts";
 import { FIXTURE_IDS, fixtureBoard } from "../../../lib/mappatura/board-fixture.ts";
@@ -174,13 +174,27 @@ test("i collegamenti aprono gli altri passi; senza collegamenti la sezione non c
   assert.doesNotMatch(html(body(board, I.ordine).tree), /Collegamenti/);
 });
 
-test("l'ordine del drawer: descrizione, chip, «Entra» ed «Esce», le quattro corsie, «Decide una persona», «Eccezioni», «Collegamenti», «Altri dettagli», il fondo (P20)", () => {
+test("(rilascio 10, §3.7) il drawer in tre gruppi: «Il passo» (descrizione, chip, «Entra» ed «Esce»), «Note» (le quattro corsie), «Altro» chiuso; il fondo", () => {
   const out = html(body(fixtureBoard(), I.richieste).tree);
   const labels = [...out.matchAll(/<p class="b-k">([^<]+)<\/p>|<div class="b-human" data-b="human"><b>([^<]+)<\/b>|<summary>([^<]+)<small>|<summary>([^<]+)<\/summary>/g)].map((match) => match[1] ?? match[2] ?? match[3] ?? match[4]);
-  assert.deepEqual(labels, ["Entra", "Esce", "Cosa si fa", "Attriti", "Dati e documenti", "Tempi e volumi", "Decide una persona", "Eccezioni", "Collegamenti", "Altri dettagli"]);
+  assert.deepEqual(labels, ["Il passo", "Entra", "Esce", "Note", "Cosa si fa", "Attriti", "Dati e documenti", "Tempi e volumi", "Altro", "Decide una persona", "Eccezioni", "Collegamenti"]);
   assert.ok(out.indexOf('data-b="step-description"') < out.indexOf('data-b="step-chips"'));
   assert.ok(out.indexOf('data-b="step-chips"') < out.indexOf(">Entra<"));
-  assert.ok(out.indexOf("Altri dettagli") < out.indexOf('data-b="step-foot"'));
+  assert.ok(out.indexOf('data-b="group-step"') < out.indexOf('data-b="group-notes"') && out.indexOf('data-b="group-notes"') < out.indexOf('data-b="group-more"'));
+  assert.ok(out.indexOf('data-b="group-more"') < out.indexOf('data-b="step-foot"'));
+  // Le corsie si aprono da sole quando hanno qualcosa (note, il livello d'attrito, frequenza o ore); «Altro» è chiuso, con il conteggio.
+  const sections = (markup: string) => [...markup.matchAll(/<details class="b-sec"( open="")? data-b="section"><summary>([^<]+)(?:<small>([^<]+)<\/small>)?<\/summary>/g)].map((match) => [match[2], match[1] === ' open=""', match[3] ?? null]);
+  assert.deepEqual(sections(out), [
+    ["Cosa si fa", true, "2"],
+    ["Attriti", true, "2"],
+    ["Dati e documenti", true, "1"],
+    ["Tempi e volumi", true, "1"],
+    ["Altro", false, "5"],
+  ]);
+  // Una corsia senza niente resta chiusa, senza conteggio.
+  const board = fixtureBoard();
+  const bare = { ...board, processes: board.processes.map((process) => ({ ...process, steps: process.steps.map((step) => (step.id === I.richieste ? { ...step, notes: { ...step.notes, dati: [] } } : step)) })) };
+  assert.deepEqual(sections(html(body(bare, I.richieste).tree))[2], ["Dati e documenti", false, null]);
   // Ruoli e strumenti come chip, con «+ ruolo» e «+ strumento»; le note con la loro didascalia.
   assert.match(out, /<span class="b-chip" data-b="chip">Buyer<button type="button" aria-label="Togli Buyer"/);
   assert.match(out, /<span class="b-chip b-tool" data-b="chip">E-mail<button/);
@@ -213,7 +227,8 @@ test("un passo nuovo nasce dal suo titolo, con il cursore dentro; senza titolo n
   let seq = 0;
   const newId = () => `f0000000-0000-4000-8000-${String(++seq).padStart(12, "0")}`;
   const head = draftDrawerHead({ board, processId: I.processB, actions: { dispatch: log.record("dispatch"), newId }, onCreated: log.record("created") });
-  assert.equal(head.context, "Dall'ordine alla consegna · B3");
+  // (Rilascio 10, §4) Il codice del passo solo per lo screen reader.
+  assert.equal(renderToStaticMarkup(head.context as ReactElement), 'Dall&#x27;ordine alla consegna<span class="b-sr"> · B3</span>');
   const title = head.title as AnyElement;
   assert.equal(title.type, LineInPlace);
   // Il cursore nel titolo lo mette il dialogo (initialFocus «title», sotto), non autoFocus: così il dialogo ricorda «+
@@ -244,7 +259,7 @@ test("la testa di un passo: la riga del contesto e il titolo sul posto, che non 
   const board = fixtureBoard();
   const log = recorder();
   const head = stepDrawerHead({ place: locateStep(board, I.scelta)!, editable: true, actions: { dispatch: log.record("dispatch") } });
-  assert.equal(head.context, "Dalla richiesta all'ordine · A3");
+  assert.equal(renderToStaticMarkup(head.context as ReactElement), 'Dalla richiesta all&#x27;ordine<span class="b-sr"> · A3</span>');
   const title = head.title as AnyElement;
   (title.props.onCommit as (next: string, base: string) => void)("", "Scelta del fornitore");
   (title.props.onCommit as (next: string, base: string) => void)("Scelta dell'offerta", "Scelta del fornitore");

@@ -1,14 +1,15 @@
 "use client";
 
 /**
- * «Mappatura board»: il drawer della classificazione, S2c sulla scheda «Classificazione» (docs/mappatura/MAPPATURA-BOARD-PIANO.md
- * §1.4; P27, P44, P25, P21).
+ * «Mappatura board»: il drawer della scheda «Con l'AI», S2c (docs/mappatura/MAPPATURA-BOARD-PIANO.md §1.4; P27, P44,
+ * P25, P21; rilascio 10, docs/ui-10/PROPOSTA-10.md §3.7).
  *
- * Il drawer largo che confronta, come quello del processo con gli agenti del riferimento: i badge del passo; «Oggi»
- * (la riga grigia, il passo com'è) accanto a «Classificazione» (la riga dell'accento, il motivo del classificatore);
- * per chi rivede il selettore dello stream `Automate | Differentiate | Innovate | —`, con il punto ambra sulla proposta
- * dell'assistente (per gli altri è spento); «Potenziale con l'AI»; «Decide una persona»; «AI exposure» con il match
- * O*NET; gli strumenti; gli attriti di oggi; le idee del team, che si scrivono qui («+ idea»); gli use case del passo.
+ * Il drawer largo che confronta, come quello del processo con gli agenti del riferimento: il badge della categoria;
+ * «Oggi» (la riga grigia, il passo com'è) accanto a «Con l'AI» (la riga dell'accento, il motivo del classificatore);
+ * per chi rivede il selettore `Automatizzare | Differenziare | Innovare | —`, con il punto ambra sulla proposta
+ * dell'assistente (per gli altri è spento); «Potenziale con l'AI»; «Decide una persona»; gli strumenti; gli attriti di
+ * oggi; le idee del team, che si scrivono qui («+ idea»); gli use case del passo. (Rilascio 10) L'esposizione all'AI,
+ * il codice O*NET e l'affidabilità del classificatore stanno nei «Dettagli tecnici», chiusi, solo per Lateral Space.
  *
  * `ClassificationDetails` è il corpo, senza dialogo: lo usano il drawer e i test.
  */
@@ -19,8 +20,8 @@ import { BOARD_TEXT, STREAM_LABEL, formatCount } from "../../../lib/mappatura/te
 import { STREAMS, type Stream } from "../../../lib/mappatura/vocab.ts";
 import type { OpInput } from "../store/board-client.ts";
 import { useBoard, useBoardClient } from "../store/use-board.tsx";
-import { AddButton, Chip, ExposureBadge, StreamBadge } from "../ui/atoms.tsx";
-import { Compare, Drawer, DrawerColumns, DrawerList, Human } from "../ui/drawer.tsx";
+import { AddButton, Chip, Section, StreamBadge } from "../ui/atoms.tsx";
+import { Compare, Drawer, DrawerColumns, DrawerList, Human, StepContext } from "../ui/drawer.tsx";
 import { NoteItem, Segmented } from "../ui/edit.tsx";
 import { CLASSIFICATION_TEXT, onetLine, reliabilityText } from "./text.ts";
 
@@ -63,7 +64,14 @@ const EMPTY = <p className="b-muted">{BOARD_TEXT.empty}</p>;
 /** Una nota scritta qui nasce validata (P54); vuota non si salva (P55). */
 const DRAFT: BoardNote = { id: "nuova-idea", lane: "idee", title: null, text: "", status: "validato", origin: "board" };
 
-export function ClassificationDetails(p: { board: MappingBoard; place: StepPlace; dispatch(ops: OpInput | OpInput[], options?: { undo?: string }): void; newId(): string }): JSX.Element {
+export function ClassificationDetails(p: {
+  board: MappingBoard;
+  place: StepPlace;
+  dispatch(ops: OpInput | OpInput[], options?: { undo?: string }): void;
+  newId(): string;
+  /** Chi guarda è di Lateral Space: i «Dettagli tecnici» (esposizione all'AI, O*NET, affidabilità). */
+  technical?: boolean;
+}): JSX.Element {
   const { board, place, dispatch } = p;
   const { step } = place;
   const T = CLASSIFICATION_TEXT.drawer;
@@ -80,10 +88,9 @@ export function ClassificationDetails(p: { board: MappingBoard; place: StepPlace
 
   return (
     <>
-      {step.stream || exposure !== null ? (
+      {step.stream ? (
         <div className="b-ag" data-b="badges">
-          {step.stream ? <StreamBadge stream={step.stream} /> : null}
-          {exposure !== null ? <ExposureBadge pct={exposure} /> : null}
+          <StreamBadge stream={step.stream} />
         </div>
       ) : null}
       <Compare
@@ -92,10 +99,7 @@ export function ClassificationDetails(p: { board: MappingBoard; place: StepPlace
         nowLabel={T.classification}
         now={
           step.stream ? (
-            <>
-              <p>{step.reason?.trim() || BOARD_TEXT.empty}</p>
-              {typeof step.confidence === "number" ? <p className="b-muted">{reliabilityText(step.confidence)}</p> : null}
-            </>
+            <p>{step.reason?.trim() || BOARD_TEXT.empty}</p>
           ) : (
             <p>{T.unclassified}</p>
           )
@@ -121,16 +125,6 @@ export function ClassificationDetails(p: { board: MappingBoard; place: StepPlace
             <Human label={step.decisionLabel}>{step.decision?.trim() || null}</Human>
           </DrawerList>
         ) : null}
-        <DrawerList label={T.exposure}>
-          {exposure !== null || step.onetCode ? (
-            <>
-              {exposure !== null ? <p className="b-cls-big">{`${formatCount(exposure)}%`}</p> : null}
-              {step.onetCode ? <p className="b-muted">{onetLine(step.onetCode, step.onetTitle)}</p> : null}
-            </>
-          ) : (
-            EMPTY
-          )}
-        </DrawerList>
         <DrawerList label={T.tools}>
           {step.tools.length > 0 ? (
             <div className="b-chips">
@@ -210,6 +204,27 @@ export function ClassificationDetails(p: { board: MappingBoard; place: StepPlace
           )}
         </DrawerList>
       </DrawerColumns>
+      {p.technical && (exposure !== null || step.onetCode || typeof step.confidence === "number") ? (
+        <Section title={T.technical}>
+          <div className="b-dr-cols" data-b="technical">
+            {exposure !== null ? (
+              <DrawerList label={T.exposure}>
+                <p className="b-cls-big">{`${formatCount(exposure)}%`}</p>
+              </DrawerList>
+            ) : null}
+            {step.onetCode ? (
+              <DrawerList label={T.onet}>
+                <p className="b-muted">{onetLine(step.onetCode, step.onetTitle)}</p>
+              </DrawerList>
+            ) : null}
+            {typeof step.confidence === "number" ? (
+              <DrawerList label={T.reliability}>
+                <p className="b-muted">{reliabilityText(step.confidence)}</p>
+              </DrawerList>
+            ) : null}
+          </div>
+        </Section>
+      ) : null}
     </>
   );
 }
@@ -218,7 +233,7 @@ export function ClassificationDetails(p: { board: MappingBoard; place: StepPlace
  * Il drawer di un passo della classificazione: si apre con l'id del passo, si chiude se il passo non c'è più. Mentre si
  * chiude (0,26 s) mostra ancora l'ultimo passo, come il riferimento.
  */
-export function ClassificationDrawer(p: { stepId: string | null; onClose(): void }): JSX.Element {
+export function ClassificationDrawer(p: { stepId: string | null; technical?: boolean; onClose(): void }): JSX.Element {
   const board = useBoard((state) => state.board);
   const client = useBoardClient();
   const place = p.stepId ? locateStep(board, p.stepId) : null;
@@ -227,8 +242,8 @@ export function ClassificationDrawer(p: { stepId: string | null; onClose(): void
   if (p.stepId && p.stepId !== lastId) setLastId(p.stepId);
   const shown = place ?? (lastId ? locateStep(board, lastId) : null);
   return (
-    <Drawer open={place !== null} onClose={p.onClose} wide context={shown ? `${shown.process.name} · ${shown.code}` : ""} title={shown?.step.title ?? ""}>
-      {shown ? <ClassificationDetails key={shown.step.id} board={board} place={shown} dispatch={(ops, options) => client.dispatch(ops, options)} newId={() => client.newId()} /> : null}
+    <Drawer open={place !== null} onClose={p.onClose} wide context={shown ? <StepContext processName={shown.process.name} code={shown.code} /> : ""} title={shown?.step.title ?? ""}>
+      {shown ? <ClassificationDetails key={shown.step.id} board={board} place={shown} technical={p.technical} dispatch={(ops, options) => client.dispatch(ops, options)} newId={() => client.newId()} /> : null}
     </Drawer>
   );
 }
