@@ -103,17 +103,14 @@ test("chi segue solo un corso: «Formazione», voce unica, con l'area accesa o s
   }
 });
 
-test("«Realizzazioni» finché non ogni realizzazione ha la sua scheda (P0-16): prima degli strumenti, e tiene /casi-duso", () => {
+test("(rilascio 10, D9 (a)) area accesa: la lista delle realizzazioni è in ritiro, /casi-duso è di «Use case»", () => {
+  for (const role of ["analyst", "contributor"] as const) {
+    const nav = workspaceNav(viewer({ role, casesAvailable: true }));
+    assert.ok(!topLevelItems(nav).some((item) => item.href === at("/casi-duso") || item.title === "Realizzazioni"), role);
+  }
   const nav = workspaceNav(viewer({ role: "analyst", casesAvailable: true }));
-  assert.deepEqual(titles(nav.tools), ["Realizzazioni", ...TOOLS]);
-  assert.equal(nav.tools[0].href, at("/casi-duso"));
-  const useCase = nav.main[1];
-  assert.equal(isNavItemActive(at("/casi-duso/00000000-0000-4000-8000-000000000c01/domande"), base, useCase), false);
-  assert.equal(activeNavItem(nav, at("/casi-duso/00000000-0000-4000-8000-000000000c01/domande"), base)?.item.title, "Realizzazioni");
-  // Il contributore che vede una realizzazione: la sola voce sotto la linea.
-  assert.deepEqual(titles(workspaceNav(viewer({ role: "contributor", casesAvailable: true })).tools), ["Realizzazioni"]);
-  // Senza la voce, /casi-duso è di «Use case».
-  assert.equal(activeNavItem(workspaceNav(viewer({ role: "analyst" })), at("/casi-duso/00000000-0000-4000-8000-000000000c01"), base)?.item.title, "Use case");
+  assert.deepEqual(titles(nav.tools), TOOLS);
+  for (const rest of ["/casi-duso", "/casi-duso/00000000-0000-4000-8000-000000000c01/domande"]) assert.equal(activeNavItem(nav, at(rest), base)?.item.title, "Use case", rest);
 });
 
 test("area «Use case» spenta: la barra di prima, voce per voce, accesa come prima, con le parole di §4", () => {

@@ -9,18 +9,27 @@
  * - `documenti` e `domande/documenti` → Domande con il pannello «File» aperto e il filtro «Documenti» (rilascio 10,
  *   §3.5): `domande?vista=tutte&indispensabili=no&mostra=documenti&apri=file`;
  * - `verifica` → `domande?vista=da-verificare`;
- * - `mappa`, `regole`, `modello-dati` → `soluzione/{mappa,regole,dati}`;
+ * - `mappa` → `soluzione/mappa` (la «Vista di analisi», che legge ancora `?vista=`), `modello-dati` → `soluzione/dati`
+ *   (il «Modello dati»);
+ * - (rilascio 10, ondata 5b, F-090) `regole` e `soluzione/regole` → il pannello «Regole» della Soluzione,
+ *   `soluzione?apri=regole`: l'`apri=<id>` di ieri è la regola aperta (`regola=<id>`); ricerca, filtri, vincoli e
+ *   pagina restano;
  * - `kpi` → `valore/kpi`, `roi` → `valore`, `avanzamento` → la sezione «Via
  *   allo sviluppo» della Panoramica (`#via`, rilascio 10: senza passare da `/via`);
- * - `registro` → `attivita`, `registro/csv` → `attivita/csv`.
+ * - `registro` → `attivita`, `registro/csv` → `attivita/csv`;
+ * - (rilascio 10, ondata 5b, §8.2) `progetto` → `costruzione`, con tutta la query: le ancore (`#banco`, `#compiti`,
+ *   `#contesto`) non arrivano al server e il browser le tiene, perché l'indirizzo nuovo non ne ha; la Costruzione ha
+ *   ancora quegli id (`#banco` è la piega dei dettagli della «Qualità»).
  *
  * Un parametro che la tabella non nomina si lascia cadere. Modulo puro.
  */
 
+import { legacyRulesHref } from "./solution-panels.ts";
+
 export type LegacySearchParams = URLSearchParams | Readonly<Record<string, string | readonly string[] | undefined>>;
 
 /** I vecchi segmenti (primo livello sotto il caso) che hanno una pagina-stub. */
-export const LEGACY_CASE_SEGMENTS = ["voci", "verifica", "documenti", "mappa", "regole", "modello-dati", "kpi", "roi", "avanzamento", "registro"] as const;
+export const LEGACY_CASE_SEGMENTS = ["voci", "verifica", "documenti", "mappa", "regole", "modello-dati", "kpi", "roi", "avanzamento", "registro", "progetto"] as const;
 export type LegacyCaseSegment = (typeof LEGACY_CASE_SEGMENTS)[number];
 
 /** `preset` del vecchio catalogo → `vista` (e altri parametri) di Domande. */
@@ -132,7 +141,10 @@ export function legacyCaseRoute(base: string, segments: readonly string[], searc
     case "mappa":
       return rest.length === 0 ? withQuery(`${root}/soluzione/mappa`, pick(sp, ["vista"])) : null;
     case "regole":
-      return rest.length === 0 ? withQuery(`${root}/soluzione/regole`, pick(sp, ["apri"])) : null;
+      return rest.length === 0 ? legacyRulesHref(root, new URLSearchParams([...sp.entries()])) : null;
+    case "soluzione":
+      // Solo la pagina Regole di ieri: le altre pagine di Soluzione restano dove sono.
+      return rest.length === 1 && rest[0] === "regole" ? legacyRulesHref(root, new URLSearchParams([...sp.entries()])) : null;
     case "modello-dati":
       return rest.length === 0 ? withQuery(`${root}/soluzione/dati`, pick(sp, ["vista", "entita", "apri"], { entita: "apri" })) : null;
     case "kpi":
@@ -145,6 +157,8 @@ export function legacyCaseRoute(base: string, segments: readonly string[], searc
       if (rest.length === 0) return withQuery(`${root}/attivita`, pick(sp, ["tipo", "chi", "attore", "dal", "al", "pagina"]));
       if (rest.length === 1 && rest[0] === "csv") return withQuery(`${root}/attivita/csv`, all());
       return null;
+    case "progetto":
+      return rest.length === 0 ? withQuery(`${root}/costruzione`, all()) : null;
     default:
       return null;
   }

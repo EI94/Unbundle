@@ -97,6 +97,21 @@ test("(8.2a) le evals e il banco nella riga del caso: «evals 96%», «sotto sog
   }
 });
 
+test("(casi senza AI) la riga del caso: «evals 100%, senza AI», mai «modelli finti»; nessun consiglio dei banchi superati", () => {
+  assert.equal(evalsFact({ quality: 1, thresholdsMet: true, fakeModels: false, branch: "main", withoutAi: true }), "evals 100%, senza AI");
+  assert.equal(evalsFact({ quality: 0.8, thresholdsMet: false, fakeModels: false, branch: "main", withoutAi: true }), "evals 80%, sotto soglia, senza AI");
+  assert.equal(evalsFact({ quality: 0.9, thresholdsMet: true, fakeModels: false, branch: "xx-0007/prova", withoutAi: true }), "evals 90% su xx-0007/prova, senza AI");
+  assert.equal(evalsFact({ quality: 1, thresholdsMet: true, fakeModels: true, branch: "main", withoutAi: true }), "evals 100%, senza AI", "mai «modelli finti»");
+  assert.equal(evalsFact({ quality: 1, thresholdsMet: true, fakeModels: false, branch: "main", withoutAi: false }), "evals 100%", "con i modelli: come prima");
+  // Dopo le evals senza AI di main ogni banco del caso è superato: nessun consiglio nella riga.
+  const r = (model: string, quality: number, cost: number, current = false): BenchResult => ({
+    model, current, quality, passed: Math.round(quality * 28), total: 28, thresholdsMet: true, groups: {}, costPer1000Usd: cost,
+    latencyP50Ms: null, latencyP95Ms: null, tokensInAvg: null, tokensOutAvg: null, errors: 0,
+  });
+  const change = analyzeBench([r("anthropic/claude-sonnet-5-5", 0.96, 1.8, true), r("anthropic/claude-haiku-5-5", 0.95, 0.12)], { role: "lettura", fakeModels: false }).verdict;
+  assert.deepEqual(benchFacts([{ role: "lettura", verdict: change, superseded: true }]), []);
+});
+
 test("(8.0c) il repository modello si riconosce con ogni maiuscola e con .git; un repository di un cliente no", () => {
   assert.equal(AGENT_FACTORY_TEMPLATE_REPO, "Voltaen/agent-factory-modello");
   for (const repo of ["Voltaen/agent-factory-modello", "voltaen/AGENT-FACTORY-MODELLO", "Voltaen/agent-factory-modello.git", " Voltaen/agent-factory-modello "]) assert.equal(isTemplateRepo(repo), true, repo);

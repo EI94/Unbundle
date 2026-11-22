@@ -289,8 +289,8 @@ export interface CaseReadTokenItem {
  * fuso del processo né da quello della sessione.
  */
 /**
- * (Rilascio 10, §3.5) Gli accessi di Claude di un caso come istruzione, per metterla nel batch di una pagina (la
- * Panoramica: `loadOverviewWithVia`); le righe si leggono con `toCaseReadTokens`. Id già controllati (UUID).
+ * (Rilascio 10, §3.5) Gli accessi di Claude di un caso come istruzione, per metterla nel batch di una lettura
+ * (`listCaseReadTokens`, la Costruzione); le righe si leggono con `toCaseReadTokens`. Id già controllati (UUID).
  */
 export function caseReadTokensSql(workspaceId: string, caseId: string): UcStatement {
   return toStatement(ucSql`SELECT id, label, token_prefix, scopes,

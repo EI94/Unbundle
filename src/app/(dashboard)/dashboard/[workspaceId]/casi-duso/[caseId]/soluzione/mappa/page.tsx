@@ -13,10 +13,10 @@ import { SolutionGraph } from "@/components/uc/map/solution-graph";
 import { EmptyState } from "@/components/uc/ui/empty-state";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { loadSolutionMap } from "@/lib/db/queries/uc-solution";
-import { MAP_EXAMPLE_LINK, MAP_PAGE_VIEW_LABEL, hasAgentProcess, mapItemTitles, mapPageViews, resolveMapPageView } from "@/lib/uc/views/map";
+import { MAP_EXAMPLE_LINK, MAP_PAGE_VIEW_LABEL, hasAgentProcess, mapItemTitles, mapPageViews, mapSwitchViews, resolveMapPageView } from "@/lib/uc/views/map";
 import { flowOrder, layoutGraph } from "@/lib/uc/views/map-layout";
 import { audienceFor, isLsViewer } from "@/lib/uc/views/status-groups";
-import { SolutionNav } from "../_parts/solution-nav";
+import { SOLUTION_TEXT, solutionViewHref } from "@/lib/uc/views/solution";
 
 function first(v: string | string[] | undefined): string | null {
   const s = Array.isArray(v) ? v[0] : v;
@@ -24,13 +24,12 @@ function first(v: string | string[] | undefined): string | null {
 }
 
 /**
- * Soluzione › Mappa (DESIGN §3.7.2), l'unica pagina `wide`: si apre su «Con
- * l'agente» (il processo con l'agente, o i passi della mappa della soluzione),
- * «Oggi» se c'è il processo di oggi, e «Segui un esempio dall'inizio alla fine
- * ›» se c'è l'esempio. Le viste che non esistono (o non hanno passi) non
- * compaiono. «Vista di analisi» (Lateral Space e sviluppatore, da 768 px)
- * mostra il grafo; sotto i 768 px si vedono sempre il controllo delle viste e
- * l'elenco della vista scelta, anche da un link con `?analisi=1`.
+ * (Rilascio 10, §3.5, F-088) «Vista di analisi», una pagina senza scheda: ci si arriva da «Vista di analisi ›» in fondo
+ * alla Soluzione (Lateral Space e lo sviluppo), con «‹ Soluzione» per tornare. Per Lateral Space, da 768 px, il grafo
+ * della soluzione con zoom, tastiera e pannello del passo, acceso da sé (`?analisi=0` lo spegne); sotto i 768 px, e per
+ * chi arriva da un vecchio link senza il grafo, i passi della vista scelta come prima («Con l'AI», «Oggi», l'esempio:
+ * gli stessi di «Come funziona» nella Soluzione). L'unica pagina `wide`. Il controllo «Descrizione · Mappa · Regole ·
+ * Dati» non c'è più; la legenda resta, sopra i passi.
  *
  * Un giro solo (`loadSolutionMap`): mappe e domande citate insieme.
  */
@@ -54,11 +53,15 @@ export default async function SolutionMapPage({
   const view = resolveMapPageView(first(sp.vista), views);
   const base = casePath(workspaceId, caseId, "soluzione/mappa");
   const canAnalyze = isLsViewer(viewer.roles) && maps.solution !== null && maps.solution.nodes.length > 0;
-  const analysis = canAnalyze && first(sp.analisi) === "1" && view !== "esempio";
+  // (Rilascio 10) Il grafo è la ragione della pagina: acceso da sé per chi lo vede.
+  const analysis = canAnalyze && first(sp.analisi) !== "0" && view !== "esempio";
   const solutionSteps = maps.solution ? flowOrder(maps.solution.nodes, maps.solution.edges) : [];
   const titles = mapItemTitles(maps);
   const layout = analysis && maps.solution ? layoutGraph(maps.solution.nodes, maps.solution.edges) : null;
-  const segments = views.filter((v) => v !== "esempio").map((v) => ({ key: v, label: MAP_PAGE_VIEW_LABEL[v as "con-agente" | "oggi"], href: v === "con-agente" ? base : `${base}?vista=${v}` }));
+  // Le parole e l'ordine della Soluzione e della board: «Oggi · Con l'AI».
+  const segments = mapSwitchViews(views).map((v) => ({ key: v, label: MAP_PAGE_VIEW_LABEL[v], href: v === "con-agente" ? base : `${base}?vista=${v}` }));
+  const ls = isLsViewer(viewer.roles);
+  const solution = casePath(workspaceId, caseId, "soluzione");
 
   const list =
     view === "con-agente" ? (
@@ -75,9 +78,15 @@ export default async function SolutionMapPage({
 
   return (
     <PageContainer size="wide">
-      <SolutionNav workspaceId={workspaceId} caseId={caseId} roles={viewer.roles} active="mappa" />
+      <div className="mb-6 space-y-1">
+        <Link href={solutionViewHref(solution, "con-agente")} className="inline-flex min-h-11 items-center gap-0.5 text-sm text-muted-foreground hover:text-foreground sm:min-h-0">
+          <ChevronLeft className="size-4" aria-hidden />
+          {SOLUTION_TEXT.backToSolution}
+        </Link>
+        <h2 className="text-base font-semibold">{ls ? SOLUTION_TEXT.analysis : SOLUTION_TEXT.howTitle}</h2>
+      </div>
       {view === null ? (
-        <EmptyState variant="page" icon={Waypoints} title="Questo caso non ha ancora una mappa." />
+        <EmptyState variant="page" icon={Waypoints} title="Questa realizzazione non ha ancora una mappa." />
       ) : (
         <div className="min-w-0 space-y-5">
           {view === "esempio" ? (

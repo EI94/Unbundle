@@ -11,9 +11,9 @@
 //
 // Workspace «a» of the fixtures has the area on, «b» off. Checks, each one printed:
 // - casi-duso/loading.tsx is there (the 307s below must not come from a page under it);
-// - /casi-duso: 307 to /use-cases?vista=panoramica when dossierLinksReady is true for «a» (read
-//   here from the database: the unique index and no complete dossier without a card), otherwise
-//   the list stays (no redirect); with the area off it never goes to the hub;
+// - (release 10, D9 (a)) /casi-duso: with the area on the list is retired, src/proxy.ts answers 307
+//   to /use-cases?vista=panoramica whatever dossierLinksReady says (still read here from the
+//   database: the unique index and no complete dossier without a card); with the area off it stays;
 // - /casi-duso/nuovo without useCaseId: 307 to /use-cases?vista=panoramica (src/proxy.ts), and an
 //   empty or invalid useCaseId too; with the area off it stays;
 // - /casi-duso/nuovo?useCaseId=<a uuid not in the workspace>: the page sends to the Panoramica (under
@@ -72,7 +72,7 @@ try {
 }
 const ready = links.index_ok === true && links.orphans === 0;
 console.log(`dossierLinksReady(«a») = ${ready} (index ${links.index_ok ? "present" : "missing"}, ${links.dossiers} complete dossier(s), ${links.orphans} without a card)`);
-if (!ready) console.log("  To check the /casi-duso redirect too: use-case-admin dossier-links --workspace <«a»> --apply on this harness database.");
+if (!ready) console.log("  Orphan dossiers are no longer listed anywhere with the area on: use-case-admin dossier-links --workspace <«a»> --apply on this harness database.");
 
 // ─── Session and requests ────────────────────────────────────────────
 
@@ -104,11 +104,9 @@ const panoramica = (ws) => `/dashboard/${ws}/use-cases?vista=panoramica`;
 {
   const res = await get(`/dashboard/${on}/casi-duso`);
   const failures = [];
-  if (ready) {
-    if (res.status !== 307) failures.push(`status ${res.status}, expected 307`);
-    if (res.location !== panoramica(on)) failures.push(`Location ${res.location}, expected ${panoramica(on)}`);
-  } else if (res.location) failures.push(`redirected to ${res.location} without dossierLinksReady`);
-  record(`area on   ${res.status} /casi-duso ${ready ? "→ Panoramica" : "stays (dossierLinksReady false)"}`, failures);
+  if (res.status !== 307) failures.push(`status ${res.status}, expected 307`);
+  if (res.location !== panoramica(on)) failures.push(`Location ${res.location}, expected ${panoramica(on)}`);
+  record(`area on   ${res.status} /casi-duso → Panoramica (the list is retired)`, failures);
 }
 for (const query of ["", "?useCaseId=", "?useCaseId=non-valido", "?altro=1"]) {
   const res = await get(`/dashboard/${on}/casi-duso/nuovo${query}`);

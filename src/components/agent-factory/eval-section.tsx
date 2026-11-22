@@ -1,9 +1,13 @@
 import { Lightbulb, TriangleAlert } from "lucide-react";
+import type { EvalRunOrigin } from "@/lib/db/queries/use-case-eval-origins";
 import { formatCost, formatQuality, type BenchVerdict, type EvalOverview, type EvalRunView } from "@/lib/use-cases/factory/benchmark";
 import { cn } from "@/lib/utils";
 import { BenchChart } from "./bench-chart";
 import {
   EVAL_TEXT,
+  ciRunHref,
+  evalSourceText,
+  originOf,
   benchCommand,
   benchHeading,
   benchMetaLine,
@@ -48,14 +52,34 @@ import {
  *   stimato per 1.000 · tempo p95 · segni), la raccomandazione (in evidenza quando conviene cambiare, con la riga di
  *   `agent.yaml`) e il comando per rifarlo con gli stessi modelli; un banco superato dalle evals di `main` (il ruolo
  *   usa un altro modello, o non c'è più) resta come storia, con una riga neutra al posto della raccomandazione;
- * - senza misure, i due comandi e a cosa servono.
+ * - senza misure, i due comandi e a cosa servono, e (8.2b) che con la CI collegata le evals di main arrivano da sole;
+ * - (8.2b) in fondo alla riga di ogni esecuzione la fonte, «dalla CI» o «dalla CLI» (`origins`, letti con
+ *   `readEvalOrigins`; null: non si sa, e la riga non la dice). `ciLinks`: chi guarda costruisce il caso o è di Lateral
+ *   Space, e «dalla CI» porta all'esecuzione su GitHub; il cliente lo legge senza link;
+ * - (casi senza AI, docs/rilascio-8/CASI-SENZA-AI.md §6) quando le evals che fanno lo stato del caso sono senza AI, al
+ *   posto dei modelli per ruolo il segno neutro «caso senza AI: nessun modello»; niente invito al banco né comandi del
+ *   banco, ma una riga che dice perché; i banchi di prima restano come storia (superati dalle evals senza AI di `main`).
  *
  * Solo presentazione: legge quello che la pagina le passa (`readEvalOverview`). Per caso e per ruolo, mai per persona.
  */
-export function EvalSection({ overview, caseCode, unavailable = false }: { overview: EvalOverview | null; caseCode: string; unavailable?: boolean }) {
+export function EvalSection({
+  overview,
+  caseCode,
+  unavailable = false,
+  origins = null,
+  ciLinks = false,
+}: {
+  overview: EvalOverview | null;
+  caseCode: string;
+  unavailable?: boolean;
+  origins?: ReadonlyMap<string, EvalRunOrigin> | null;
+  ciLinks?: boolean;
+}) {
   const measured = hasMeasures(overview);
+  // (Casi senza AI) Le evals che fanno lo stato del caso sono senza AI: nessun banco da lanciare, nessun comando del banco.
+  const withoutAi = measured && overview.evals.latest?.withoutAi === true;
   // I ruoli delle evals di oggi senza un banco: il comando per cominciare, ruolo per ruolo.
-  const missing = measured ? rolesWithoutBench(overview) : [];
+  const missing = measured && !withoutAi ? rolesWithoutBench(overview) : [];
   return (
     <div data-slot="eval-section" className="space-y-6">
       {unavailable ? (
@@ -65,17 +89,26 @@ export function EvalSection({ overview, caseCode, unavailable = false }: { overv
       ) : null}
       {measured ? (
         <>
-          <EvalsBlock evals={overview.evals} caseCode={caseCode} />
+          <EvalsBlock evals={overview.evals} caseCode={caseCode} origin={overview.evals.latest ? originOf(origins, overview.evals.latest.id) : null} ciLinks={ciLinks} />
+          {withoutAi ? <NoAiBench /> : null}
           {overview.benches.length ? (
             <>
               {overview.benches.map((bench) => (
-                <BenchCard key={bench.role} bench={bench} latest={overview.evals.latest} caseCode={caseCode} />
+                <BenchCard
+                  key={bench.role}
+                  bench={bench}
+                  latest={overview.evals.latest}
+                  caseCode={caseCode}
+                  origin={originOf(origins, bench.run.id)}
+                  ciLinks={ciLinks}
+                  commands={!withoutAi}
+                />
               ))}
               {missing.map((role) => (
                 <Command key={role} label={benchMissingText(role)} command={benchCommand(caseCode, role)} />
               ))}
             </>
-          ) : (
+          ) : withoutAi ? null : (
             <NoBench caseCode={caseCode} roles={missing} />
           )}
         </>
@@ -98,8 +131,49 @@ function Command({ label, command }: { label?: string; command: string }) {
   );
 }
 
+/**
+ * (8.2b) « · dalla CI» o « · dalla CLI», in fondo alla riga di un'esecuzione. Per chi costruisce «dalla CI» porta
+ * all'esecuzione su GitHub, con un bersaglio di 44 px al telefono che non allarga la riga; senza fonte, niente.
+ * (Rilascio 10) La usa anche la riga di «Qualità» della Costruzione (`EvalSummary`).
+ */
+export function RunSource({ origin, ciLinks }: { origin: EvalRunOrigin | null; ciLinks: boolean }) {
+  if (!origin) return null;
+  const href = ciRunHref(origin, ciLinks);
+  return (
+    <>
+      {" · "}
+      {href ? (
+        <a
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          data-slot="eval-source"
+          data-source={origin.source}
+          className="-my-3.5 inline-block py-3.5 text-foreground underline underline-offset-2 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:my-0 sm:py-0"
+        >
+          {evalSourceText(origin.source)}
+          <span className="sr-only">, {EVAL_TEXT.fromCiLink}</span>
+        </a>
+      ) : (
+        <span data-slot="eval-source" data-source={origin.source}>
+          {evalSourceText(origin.source)}
+        </span>
+      )}
+    </>
+  );
+}
+
 function FakeBadge() {
   return <p className="inline-flex rounded-full border border-uc-giallo bg-uc-giallo-bg px-2 py-0.5 text-xs">{EVAL_TEXT.fakeModels}</p>;
+}
+
+/** (Casi senza AI) Il segno neutro al posto dei modelli per ruolo. */
+function NoAiBadge() {
+  return (
+    <p data-slot="eval-without-ai" className="inline-flex rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
+      {EVAL_TEXT.withoutAi}
+    </p>
+  );
 }
 
 /** ✓ o ✗, con il colore del semaforo; il testo accanto dice cosa vuol dire. */
@@ -111,7 +185,7 @@ function ThresholdMark({ ok }: { ok: boolean }) {
   );
 }
 
-function EvalsBlock({ evals, caseCode }: { evals: EvalOverview["evals"]; caseCode: string }) {
+function EvalsBlock({ evals, caseCode, origin, ciLinks }: { evals: EvalOverview["evals"]; caseCode: string; origin: EvalRunOrigin | null; ciLinks: boolean }) {
   const latest = evals.latest;
   const result = latest ? evalsResult(latest) : null;
   if (!latest || !result) {
@@ -135,7 +209,10 @@ function EvalsBlock({ evals, caseCode }: { evals: EvalOverview["evals"]; caseCod
         <h3 id="banco-evals" className="text-sm font-medium">
           {EVAL_TEXT.evalsHeading}
         </h3>
-        <p className="text-xs text-muted-foreground">{evalsMetaLine(latest)}</p>
+        <p className="text-xs text-muted-foreground">
+          {evalsMetaLine(latest)}
+          <RunSource origin={origin} ciLinks={ciLinks} />
+        </p>
       </div>
       <p className="sr-only">{evalsStatusLine(latest, ", ")}.</p>
       <div aria-hidden className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -147,7 +224,9 @@ function EvalsBlock({ evals, caseCode }: { evals: EvalOverview["evals"]; caseCod
       </div>
       <Trend points={points} branch={latest.branch} />
       {groups ? <p className="text-xs text-muted-foreground">{groups}</p> : null}
-      {models.length ? (
+      {latest.withoutAi ? (
+        <NoAiBadge />
+      ) : models.length ? (
         <p className="text-xs text-muted-foreground">
           {EVAL_TEXT.models}: {models.map((m) => `${m.role} · ${m.label}`).join(", ")}
         </p>
@@ -194,9 +273,24 @@ function headingId(role: string): string {
 /**
  * L'ultimo banco di un ruolo. Superato (dopo di lui le evals di `main` usano un altro modello per il ruolo, o non lo
  * hanno più): grafico e tabella restano come storia, senza «oggi», e una riga neutra prende il posto della
- * raccomandazione e della riga di `agent.yaml`; il comando per rifarlo solo se il ruolo c'è ancora.
+ * raccomandazione e della riga di `agent.yaml`; il comando per rifarlo solo se il ruolo c'è ancora. (Casi senza AI)
+ * `commands` falso: il caso è senza AI, e il comando non c'è mai.
  */
-function BenchCard({ bench, latest, caseCode }: { bench: EvalOverview["benches"][number]; latest: EvalRunView | null; caseCode: string }) {
+function BenchCard({
+  bench,
+  latest,
+  caseCode,
+  origin,
+  ciLinks,
+  commands = true,
+}: {
+  bench: EvalOverview["benches"][number];
+  latest: EvalRunView | null;
+  caseCode: string;
+  origin: EvalRunOrigin | null;
+  ciLinks: boolean;
+  commands?: boolean;
+}) {
   const { role, run, analysis } = bench;
   const superseded = benchSupersededBy(bench, latest);
   const rows = benchRows(run.results, analysis, { superseded: superseded !== null });
@@ -207,7 +301,10 @@ function BenchCard({ bench, latest, caseCode }: { bench: EvalOverview["benches"]
         <h3 id={id} className="text-sm font-medium">
           {benchHeading(role)}
         </h3>
-        <p className="text-xs text-muted-foreground">{benchMetaLine(run)}</p>
+        <p className="text-xs text-muted-foreground">
+          {benchMetaLine(run)}
+          <RunSource origin={origin} ciLinks={ciLinks} />
+        </p>
       </div>
       {run.fakeModels ? <FakeBadge /> : null}
       <BenchChart role={role} rows={rows} />
@@ -219,7 +316,19 @@ function BenchCard({ bench, latest, caseCode }: { bench: EvalOverview["benches"]
       ) : (
         <Verdict role={role} verdict={analysis.verdict} />
       )}
-      {superseded?.now === null ? null : <Command label={EVAL_TEXT.benchRerun} command={benchCommand(caseCode, role, run.level, benchRerunModels(run.results))} />}
+      {!commands || superseded?.now === null ? null : <Command label={EVAL_TEXT.benchRerun} command={benchCommand(caseCode, role, run.level, benchRerunModels(run.results))} />}
+    </section>
+  );
+}
+
+/** (Casi senza AI) Al posto del banco di prova: una riga che dice perché non c'è, senza inviti né comandi. */
+function NoAiBench() {
+  return (
+    <section aria-labelledby="banco-senza-ai" data-slot="bench-without-ai" className="space-y-2">
+      <h3 id="banco-senza-ai" className="text-sm font-medium">
+        {EVAL_TEXT.benchHeading}
+      </h3>
+      <p className="text-sm text-muted-foreground">{EVAL_TEXT.benchWithoutAi}</p>
     </section>
   );
 }
@@ -360,6 +469,9 @@ function EmptyState({ caseCode, unavailable }: { caseCode: string; unavailable: 
           <Command command={benchCommand(caseCode, null)} />
         </li>
       </ul>
+      <p data-slot="eval-empty-ci" className="text-xs text-muted-foreground">
+        {EVAL_TEXT.emptyCi}
+      </p>
     </div>
   );
 }

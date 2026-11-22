@@ -10,6 +10,7 @@ import { formatDayInYear } from "@/lib/use-cases/format";
 import type { HubDossier, UseCaseDetail } from "@/lib/use-cases/views";
 import { cn } from "@/lib/utils";
 import { MarkInProgressButton } from "../decision-buttons";
+import { StartRealizationButton } from "./start-realization-context";
 
 /** I testi del capitolo (§6.5, §14.3). (Rilascio 10, §4, D4) A schermo «Realizzazione», mai «dossier». */
 export const SECTION_REALIZATION_TEXT = Object.freeze({
@@ -139,14 +140,8 @@ export function SectionRealization({
           </div>
           {boxOwnsStart ? null : (
             <div className="space-y-1.5">
-              <Button
-                render={<Link href={`/dashboard/${workspaceId}/casi-duso/nuovo?useCaseId=${item.id}`} />}
-                nativeButton={false}
-                variant="outline"
-                className="min-h-11 shrink-0 sm:min-h-8"
-              >
-                {SECTION_REALIZATION_TEXT.start}
-              </Button>
+              {/* (Rilascio 10, §3.5) Apre il dialogo «Avvia la realizzazione»; senza i suoi dati, la pagina di ripiego. */}
+              <StartRealizationButton href={`/dashboard/${workspaceId}/casi-duso/nuovo?useCaseId=${item.id}`} label={SECTION_REALIZATION_TEXT.start} className="min-h-11 shrink-0 sm:min-h-8" />
               <p className="text-sm text-muted-foreground">{hint}</p>
             </div>
           )}

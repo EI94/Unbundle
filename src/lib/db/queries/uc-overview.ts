@@ -376,20 +376,15 @@ export async function loadVia(executor: UcExecutor, i: ViaInput): Promise<ViaDat
 }
 
 /**
- * (Rilascio 10, §3.5) La Panoramica con il via dentro, in un giro solo: le istruzioni di `loadOverview`, di `loadVia`
- * e quelle in più del chiamante (`extra`: gli accessi di Claude) in un batch, poi le righe divise. Lo stesso risultato
- * delle due letture separate; `extra` restituisce le righe delle istruzioni in più, nell'ordine.
+ * (Rilascio 10, §3.5) La Panoramica con il via dentro, in un giro solo: le istruzioni di `loadOverview` e di `loadVia`
+ * in un batch, poi le righe divise. Lo stesso risultato delle due letture separate. (Gli accessi di Claude, che prima
+ * viaggiavano qui, stanno nella Costruzione.)
  */
-export async function loadOverviewWithVia(
-  executor: UcExecutor,
-  i: { overview: OverviewInput; via: ViaInput; extra?: readonly UcStatement[] },
-): Promise<{ overview: OverviewData | null; via: ViaData | null; extra: Row[][] }> {
+export async function loadOverviewWithVia(executor: UcExecutor, i: { overview: OverviewInput; via: ViaInput }): Promise<{ overview: OverviewData | null; via: ViaData | null }> {
   const overview = prepareOverview(i.overview);
   const via = prepareVia(i.via);
-  if (!overview || !via) return { overview: null, via: null, extra: [] };
-  const extra = i.extra ?? [];
-  const rows = await executor.batch([...overview.statements, ...via.statements, ...extra]);
+  if (!overview || !via) return { overview: null, via: null };
+  const rows = await executor.batch([...overview.statements, ...via.statements]);
   const a = overview.statements.length;
-  const b = a + via.statements.length;
-  return { overview: overview.parse(rows.slice(0, a)), via: via.parse(rows.slice(a, b)), extra: rows.slice(b, b + extra.length) };
+  return { overview: overview.parse(rows.slice(0, a)), via: via.parse(rows.slice(a, a + via.statements.length)) };
 }

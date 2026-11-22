@@ -15,17 +15,23 @@
  * - Attività: il responsabile Lateral Space; il cliente filtrato.
  * - Firme: chi firma (responsabile Lateral Space, del cliente, approvatore privacy).
  * - Impostazioni del caso: solo il responsabile Lateral Space.
+ * - Costruzione (il progetto dell'agente, rilascio 8.0a): il team del caso e l'AI Board.
+ *
+ * (Rilascio 10, §3.5, D9 (a)) Le 5 schede seguono la fase: dopo il via allo sviluppo «Costruzione» prende il posto di
+ * «Domande», che resta a un tocco da «Catalogo ›» (in Costruzione e nella Panoramica). Prima del via la Costruzione si
+ * apre dal «⋯», come il progetto dell'agente di prima.
  *
  * Modulo puro e senza dipendenze di Node: si usa anche nei componenti client.
  */
+import { isCasePastG1 } from "../case-state.ts";
 import { CASE_ACTION_ROLES } from "../permissions.ts";
 import { statusHint } from "./case-settings.ts";
 import { LS_CASE_ROLES, type CaseRole, type CaseStatus, type SemaforoColor } from "../vocab.ts";
 import { CASE_STATUS_TONE as STATUS_TONE } from "./labels.ts";
-import type { NextStep, NextStepId } from "./next-step.ts";
+import { resolveStepHref, type NextStep, type NextStepId } from "./next-step.ts";
 import { canOpenPage } from "./page-access.ts";
 
-export type UcShellPage = "panoramica" | "via" | "descrizione" | "persone" | "privacy" | "registro" | "firme" | "impostazioni" | "progetto";
+export type UcShellPage = "panoramica" | "via" | "descrizione" | "persone" | "privacy" | "registro" | "firme" | "impostazioni" | "costruzione";
 
 const unique = (roles: readonly CaseRole[]): readonly CaseRole[] => [...new Set(roles)];
 const SYNTHESIS_AND_DEV = unique([...CASE_ACTION_ROLES.vedere_sintesi, "ls_sviluppatore"]);
@@ -40,8 +46,9 @@ export const UC_SHELL_PAGE_ROLES: Readonly<Record<UcShellPage, readonly CaseRole
   registro: unique([...CASE_ACTION_ROLES.registro, ...CASE_ACTION_ROLES.registro_filtrato]),
   firme: unique([...CASE_ACTION_ROLES.firma_ls, ...CASE_ACTION_ROLES.firma_cliente, ...CASE_ACTION_ROLES.firmare_a8]),
   impostazioni: CASE_ACTION_ROLES.gestire_membri,
-  // (Rilascio 8.0a) Il progetto dell'agente: lo legge il team del caso; l'AI Board ci dà l'ok agli strumenti nuovi.
-  progetto: ["ls_lead", "ls_analista", "ls_sviluppatore", "owner_cliente", "ai_board", "osservatore"],
+  // (Rilascio 8.0a) Il progetto dell'agente, oggi la Costruzione (rilascio 10, §3.5): lo legge il team del caso (chi
+  // costruisce da fuori è osservatore); l'AI Board ci dà l'ok agli strumenti nuovi.
+  costruzione: ["ls_lead", "ls_analista", "ls_sviluppatore", "owner_cliente", "ai_board", "osservatore"],
 };
 
 export function canOpenShellPage(page: UcShellPage, roles: readonly CaseRole[]): boolean {
@@ -57,9 +64,9 @@ function isLs(roles: readonly CaseRole[]): boolean {
   return roles.some((r) => (LS_CASE_ROLES as readonly CaseRole[]).includes(r));
 }
 
-// ── Schede ────────────────────────────────────────────────────────────
+// ── Schede ──────────────────────────────────────────────────────────────
 
-export type CaseTabKey = "panoramica" | "domande" | "soluzione" | "valore" | "persone";
+export type CaseTabKey = "panoramica" | "domande" | "costruzione" | "soluzione" | "valore" | "persone";
 
 export interface CaseTab {
   key: CaseTabKey;
@@ -70,18 +77,43 @@ export interface CaseTab {
 
 type TabDef = CaseTab & { allowed: (roles: readonly CaseRole[]) => boolean };
 
-/** Le 5 schede, nell'ordine di DESIGN §2.2. */
-const TABS: readonly TabDef[] = [
-  { key: "panoramica", segment: null, label: "Panoramica", allowed: (r) => canOpenShellPage("panoramica", r) },
-  { key: "domande", segment: "domande", label: "Domande", allowed: (r) => canOpenPage("voci", r) },
+const PANORAMICA_TAB: TabDef = { key: "panoramica", segment: null, label: "Panoramica", allowed: (r) => canOpenShellPage("panoramica", r) };
+const DOMANDE_TAB: TabDef = { key: "domande", segment: "domande", label: "Domande", allowed: (r) => canOpenPage("voci", r) };
+const COSTRUZIONE_TAB: TabDef = { key: "costruzione", segment: "costruzione", label: "Costruzione", allowed: (r) => canOpenShellPage("costruzione", r) };
+const REST_TABS: readonly TabDef[] = [
   { key: "soluzione", segment: "soluzione", label: "Soluzione", allowed: (r) => canOpenShellPage("descrizione", r) },
   { key: "valore", segment: "valore", label: "Valore", allowed: (r) => canOpenPage("roi", r) },
   { key: "persone", segment: "persone", label: "Persone", allowed: (r) => canOpenShellPage("persone", r) },
 ];
+const ALL_TABS: readonly TabDef[] = [PANORAMICA_TAB, DOMANDE_TAB, COSTRUZIONE_TAB, ...REST_TABS];
 
-/** Schede che chi guarda può aprire, nell'ordine fisso. L'approvatore privacy non ne ha: niente barra. */
-export function caseTabsFor(roles: readonly CaseRole[]): CaseTab[] {
-  return TABS.filter((t) => t.allowed(roles)).map(({ key, segment, label }) => ({ key, segment, label }));
+/**
+ * (Rilascio 10, §3.5, D9 (a)) La fase delle schede: dopo il via allo sviluppo. Vale anche in pausa (lo stato di prima)
+ * e a realizzazione chiusa, se il via era stato approvato (il catalogo congelato, `catalogVersion` ≥ 1): la storia non
+ * torna indietro.
+ */
+export function pastViaPhase(i: { status: CaseStatus; statusBeforeSuspension?: CaseStatus | null; catalogVersion?: number | null }): boolean {
+  return isCasePastG1(i.status, i.statusBeforeSuspension ?? null) || (i.catalogVersion ?? 0) > 0;
+}
+
+export interface CaseTabsInput {
+  /** Il via allo sviluppo c'è stato (`pastViaPhase`): la seconda scheda è «Costruzione». */
+  pastVia?: boolean;
+  /**
+   * La realizzazione ha la scheda del suo use case (`header.parent`): il progetto dell'agente è dello use case, e senza
+   * scheda la Costruzione non si apre (404). Allora né la scheda né la voce del «⋯». Di default sì.
+   */
+  construction?: boolean;
+}
+
+/**
+ * Schede che chi guarda può aprire, nell'ordine fisso, al massimo 5. L'approvatore privacy non ne ha: niente barra.
+ * (Rilascio 10, D9 (a)) La seconda è «Domande» prima del via e «Costruzione» dopo, per chi apre la Costruzione; chi non
+ * la apre tiene «Domande» (e chi non apre Domande, come l'AI Board, prima del via non ha la seconda scheda).
+ */
+export function caseTabsFor(roles: readonly CaseRole[], i: CaseTabsInput = {}): CaseTab[] {
+  const second = i.pastVia && i.construction !== false && COSTRUZIONE_TAB.allowed(roles) ? COSTRUZIONE_TAB : DOMANDE_TAB;
+  return [PANORAMICA_TAB, second, ...REST_TABS].filter((t) => t.allowed(roles)).map(({ key, segment, label }) => ({ key, segment, label }));
 }
 
 /**
@@ -101,27 +133,27 @@ export function landingSegment(roles: readonly CaseRole[]): string | null | unde
  * Scheda attiva dal primo segmento sotto il dossier: `domande/<id>` resta
  * Domande, `soluzione/mappa` resta Soluzione. Le pagine senza scheda (`via`,
  * `firme`, `privacy`, `attivita`, `impostazioni`) non ne accendono nessuna.
+ * (Rilascio 10, D9 (a)) Con le schede di chi guarda (`tabs`): dopo il via Domande si apre da «Catalogo ›» della
+ * Costruzione, e accende «Costruzione»; la Costruzione aperta dal «⋯» prima del via non ne accende nessuna.
  */
-export function activeTabKey(segment: string | null): CaseTabKey | null {
-  const t = TABS.find((x) => x.segment === segment);
-  return t ? t.key : null;
+export function activeTabKey(segment: string | null, tabs?: readonly Pick<CaseTab, "key">[]): CaseTabKey | null {
+  const t = ALL_TABS.find((x) => x.segment === segment);
+  if (!t || !tabs) return t ? t.key : null;
+  if (tabs.some((x) => x.key === t.key)) return t.key;
+  return t.key === "domande" && tabs.some((x) => x.key === "costruzione") ? "costruzione" : null;
 }
 
-/** I segmenti di Soluzione per ruolo (DESIGN §2.3): Dati solo per Lateral Space. */
-export type SolutionSegment = "descrizione" | "mappa" | "regole" | "dati";
-
-export function solutionSegmentsFor(roles: readonly CaseRole[]): { key: SolutionSegment; label: string; segment: string }[] {
-  const out: { key: SolutionSegment; label: string; segment: string }[] = [];
-  if (canOpenShellPage("descrizione", roles)) out.push({ key: "descrizione", label: "Descrizione", segment: "soluzione" });
-  if (canOpenPage("mappa", roles)) out.push({ key: "mappa", label: "Mappa", segment: "soluzione/mappa" });
-  if (canOpenPage("regole", roles)) out.push({ key: "regole", label: "Regole", segment: "soluzione/regole" });
-  if (canOpenPage("modello_dati", roles) && isLs(roles)) out.push({ key: "dati", label: "Dati", segment: "soluzione/dati" });
-  return out;
+/**
+ * (Rilascio 10, D9 (a)) `aria-current` della scheda accesa: «page» sulla sua pagina (e sotto, `domande/<id>`); «true»
+ * quando la accende un'altra pagina, Domande dopo il via con «Costruzione»: la pagina aperta non è la sua.
+ */
+export function tabAriaCurrent(segment: string | null, tab: Pick<CaseTab, "segment">): "page" | "true" {
+  return tab.segment === segment ? "page" : "true";
 }
 
 // ── Menu «⋯» ──────────────────────────────────────────────────────────
 
-export type CaseMenuKey = "privacy" | "attivita" | "esporta" | "progetto" | "impostazioni";
+export type CaseMenuKey = "privacy" | "attivita" | "esporta" | "costruzione" | "impostazioni";
 
 export interface CaseMenuItem {
   key: CaseMenuKey;
@@ -133,6 +165,10 @@ export interface CaseMenuItem {
 export interface CaseMenuInput {
   /** C'è qualcosa da scaricare per chi guarda (`exportChoices`). */
   exportable: boolean;
+  /** Il via allo sviluppo c'è stato (`pastViaPhase`): la Costruzione è una scheda e lascia il menu. */
+  pastVia?: boolean;
+  /** Come per le schede: senza la scheda dello use case la Costruzione non c'è (`CaseTabsInput.construction`). */
+  construction?: boolean;
 }
 
 /**
@@ -143,18 +179,16 @@ export interface CaseMenuInput {
  *
  * - «Da firmare (n)» non c'è più: la firma è il pulsante pieno «Firma …» e il
  *   pannello delle firme (F-006).
- * - «Sviluppo con Claude» sta nella sezione «Via allo sviluppo» della
- *   Panoramica, dove era in `/via` (F-010, F-042), finché l'ondata 5b non lo
- *   porta in Costruzione.
- * - «Progetto dell'agente» resta qui finché l'ondata 5b non ne fa la scheda
- *   «Costruzione» (F-011): niente si perde nel frattempo.
+ * - «Sviluppo con Claude» sta in Costruzione › «Per il coding agent» (F-010, F-042).
+ * - (Rilascio 10, D9 (a)) «Progetto dell'agente» è la Costruzione (F-011): dopo il via è una scheda; prima del via si
+ *   apre da qui, «Costruzione», perché il progetto si imposta anche durante la raccolta. Così niente si perde.
  */
 export function caseMenuFor(roles: readonly CaseRole[], i: CaseMenuInput): CaseMenuItem[] {
   const out: CaseMenuItem[] = [];
   if (canOpenShellPage("privacy", roles) && landingSegment(roles) !== "privacy") out.push({ key: "privacy", label: "Privacy", segment: "privacy" });
   if (canOpenShellPage("registro", roles)) out.push({ key: "attivita", label: "Attività", segment: "attivita" });
   if (i.exportable) out.push({ key: "esporta", label: isLs(roles) ? "Esporta…" : "Scarica in Excel", segment: null });
-  if (canOpenShellPage("progetto", roles)) out.push({ key: "progetto", label: "Progetto dell'agente", segment: "progetto" });
+  if (!i.pastVia && i.construction !== false && canOpenShellPage("costruzione", roles)) out.push({ key: "costruzione", label: "Costruzione", segment: "costruzione" });
   if (canOpenShellPage("impostazioni", roles)) out.push({ key: "impostazioni", label: "Impostazioni", segment: "impostazioni" });
   return out;
 }
@@ -166,6 +200,11 @@ export interface CaseTrailInput {
   caseBase: string;
   /** La scheda madre (`use_cases`), con il suo codice se la colonna esiste. */
   parent: { id: string; code: string | null; title: string } | null;
+  /**
+   * L'area «Use case» è accesa per il workspace (`isUseCaseHubWorkspace`): la lista delle realizzazioni è in ritiro e
+   * il ritorno porta a Use case › Panoramica. Spenta, la lista di ripiego.
+   */
+  useCaseHub?: boolean;
 }
 
 export type CaseTrail =
@@ -175,12 +214,16 @@ export type CaseTrail =
 /**
  * Il percorso sopra il titolo (DESIGN §3.3): «Use case › XX-0012 ›
  * Realizzazione». Senza codice (ramo senza la colonna `code`) al posto del
- * codice c'è il titolo della scheda; senza scheda madre «‹ Realizzazioni».
+ * codice c'è il titolo della scheda; senza scheda madre il ritorno alla casa delle
+ * realizzazioni: (rilascio 10, D9 (a)) «‹ Use case», la Panoramica con «In
+ * realizzazione», con l'area accesa; «‹ Realizzazioni», la lista di ripiego, con l'area spenta.
  */
 export function caseTrail(i: CaseTrailInput): CaseTrail {
   const ws = `/dashboard/${i.workspaceId}`;
   // (Rilascio 10, §4) Mai «Casi d'uso» a schermo: la lista è «Realizzazioni», come nella barra del telefono.
-  if (!i.parent) return { kind: "lista", back: { label: "Realizzazioni", href: `${ws}/casi-duso` } };
+  if (!i.parent) {
+    return { kind: "lista", back: i.useCaseHub ? { label: "Use case", href: `${ws}/use-cases?vista=panoramica` } : { label: "Realizzazioni", href: `${ws}/casi-duso` } };
+  }
   const code = i.parent.code?.trim() || null;
   return {
     kind: "use_case",
@@ -291,9 +334,11 @@ export function caseHeadAlert(i: {
 /**
  * Pagine del dossier che hanno i loro comandi e il loro pulsante pieno: lì il
  * primario della testata non c'è mai (DESIGN §8.1 c, un solo pulsante pieno).
- * Impostazioni: «Aggiungi» di «Accesso al caso».
+ * Impostazioni: «Aggiungi» di «Accesso al caso». (Rilascio 10, §3.5) La Costruzione no: è una scheda, e il passo
+ * della testata (riconfermare il via, firmare, riprendere) resta; l'azione del progetto allora è bordata, come su
+ * Persone e Domande (`headerStepShownOn`).
  */
-export const PAGES_WITHOUT_PRIMARY: readonly string[] = ["impostazioni", "progetto"];
+export const PAGES_WITHOUT_PRIMARY: readonly string[] = ["impostazioni"];
 
 /**
  * (Rilascio 10, §3.5) I passi il cui comando sta nella sezione «Via allo sviluppo» della Panoramica («Proponi il via
@@ -304,6 +349,18 @@ export const STEPS_WITH_PAGE_COMMAND: readonly NextStepId[] = ["proponi_via", "m
 
 export function stepHasPageCommand(id: NextStepId): boolean {
   return STEPS_WITH_PAGE_COMMAND.includes(id);
+}
+
+/**
+ * (Rilascio 10, §3.5) Il primo passo della testata (`nextStepFor`) si vede su `pagePath`? Le regole del guscio
+ * (`layout.tsx`): solo se chi guarda lo può fare (`canExport` per «Scarica il catalogo validato», altrimenti
+ * `writable`) e non sulla pagina in cui porta (`stepHiddenOn`). Lo usano le pagine con un loro comando (la
+ * Costruzione), che lo fanno bordato quando la testata ha già il pulsante pieno.
+ */
+export function headerStepVisible(next: Pick<NextStep, "id" | "href" | "transition" | "panel"> | null, i: { canExport: boolean; writable: boolean; caseBase: string; pagePath: string }): boolean {
+  if (!next) return false;
+  if (!(next.id === "scarica_catalogo" ? i.canExport : i.writable)) return false;
+  return !stepHiddenOn({ href: resolveStepHref(i.caseBase, next.href), caseBase: i.caseBase, panel: stepPanelOf(next) !== undefined, pageCommand: stepHasPageCommand(next.id) }, i.pagePath);
 }
 
 /** Il pannello che apre il passo della testata: il dialogo di conferma, «Esporta…», le firme o il pannello della pagina d'arrivo. */

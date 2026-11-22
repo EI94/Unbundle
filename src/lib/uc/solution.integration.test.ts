@@ -180,7 +180,7 @@ test("map: one round-trip with the cited questions; the client sees roles, never
   assert.equal(await loadSolutionMap(exec!, await viewerFor(ids.lead, ["ls_lead"], ids.otherWs)), null);
 });
 
-test("rules: one round-trip, pages of 100 grouped by who confirms them, counts of every page", opts, async () => {
+test("rules: one round-trip, (rilascio 10) pages of 50 grouped by who confirms them, counts of every page", opts, async () => {
   const viewer = await viewerFor(ids.lead, ["ls_lead"]);
   const c = counting();
   const page1 = await loadSolutionRules(c.executor, viewer, parseRulesQuery({}));
@@ -189,28 +189,39 @@ test("rules: one round-trip, pages of 100 grouped by who confirms them, counts o
   assert.equal(page1.hasRules, true);
   assert.equal(page1.hasConstraints, true);
   assert.equal(page1.total, EXTRA_RULES + 2);
-  assert.equal(page1.pages, 2);
+  assert.equal(SOLUTION_PAGE_SIZE, 50);
+  assert.equal(page1.pages, 3);
   const rows1 = page1.groups.flatMap((g) => g.rows);
   assert.equal(rows1.length, SOLUTION_PAGE_SIZE);
   assert.deepEqual(
     page1.groups.map((g) => [g.label, g.total, g.rows.length]),
     [
       ["Responsabile del servizio clienti", 44, 44],
-      ["Controllo di gestione", 44, 44],
-      ["Approvatore della scheda privacy", 1, 1],
-      ["da indicare", 43, 11],
+      ["Controllo di gestione", 44, 6],
     ],
-    "groups in the order of the template roles, rules without a confirmer last, counts of every page",
+    "groups in the order of the template roles, counts of every page",
   );
   for (const row of rows1) assert.deepEqual(Object.keys(row).sort(), ["id", "kind", "roleKey", "status", "title"], "a row carries no link arrays");
   const page2 = await loadSolutionRules(exec!, viewer, parseRulesQuery({ pagina: "2" }));
   const rows2 = page2!.groups.flatMap((g) => g.rows);
-  assert.equal(rows2.length, EXTRA_RULES + 2 - SOLUTION_PAGE_SIZE);
+  assert.equal(rows2.length, SOLUTION_PAGE_SIZE);
   assert.deepEqual(
     page2!.groups.map((g) => [g.label, g.total, g.rows.length]),
+    [
+      ["Controllo di gestione", 44, 38],
+      ["Approvatore della scheda privacy", 1, 1],
+      ["da indicare", 43, 11],
+    ],
+    "rules without a confirmer last",
+  );
+  const page3 = await loadSolutionRules(exec!, viewer, parseRulesQuery({ pagina: "3" }));
+  const rows3 = page3!.groups.flatMap((g) => g.rows);
+  assert.equal(rows3.length, EXTRA_RULES + 2 - 2 * SOLUTION_PAGE_SIZE);
+  assert.deepEqual(
+    page3!.groups.map((g) => [g.label, g.total, g.rows.length]),
     [["da indicare", 43, 32]],
   );
-  assert.equal(new Set([...rows1, ...rows2].map((r) => r.id)).size, EXTRA_RULES + 2, "no rule on two pages");
+  assert.equal(new Set([...rows1, ...rows2, ...rows3].map((r) => r.id)).size, EXTRA_RULES + 2, "no rule on two pages");
 });
 
 test("rules: search by key or words, filters, the constraints switch", opts, async () => {
@@ -254,7 +265,7 @@ test("rules: the open rule comes in the same round-trip with its links and its c
   assert.equal(other!.open, null, "the panel opens rules and constraints only");
 });
 
-test("data: pages of 100, groups by kind, entities by domain, the old ?entita= link opens the panel", opts, async () => {
+test("data: (rilascio 10) pages of 50, groups by kind, entities by domain, the old ?entita= link opens the panel", opts, async () => {
   const lead = await viewerFor(ids.lead, ["ls_lead"]);
   const c = counting();
   const variables = await loadSolutionData(c.executor, lead, parseDataQuery({ vista: "variabili" }));
@@ -262,12 +273,14 @@ test("data: pages of 100, groups by kind, entities by domain, the old ?entita= l
   // Variabili del modello dello schema d'esempio: 1 decisione, 3 parametri, 2 vincoli, 1 obiettivo, 1 incertezza, 1 uscita.
   const templateVariables = 9;
   assert.equal(variables!.total, EXTRA_PARAMETERS + templateVariables);
-  assert.equal(variables!.pages, 2);
+  assert.equal(variables!.pages, 3);
   assert.equal(variables!.rows.length, SOLUTION_PAGE_SIZE);
   assert.equal(variables!.rows[0].group, "Decisioni", "the kinds in the order of the model");
   for (const row of variables!.rows) assert.deepEqual(Object.keys(row).sort(), ["group", "id", "kind", "line", "locked", "status", "title"]);
   const second = await loadSolutionData(exec!, lead, parseDataQuery({ vista: "variabili", pagina: "2" }));
-  assert.equal(second!.rows.length, EXTRA_PARAMETERS + templateVariables - SOLUTION_PAGE_SIZE);
+  assert.equal(second!.rows.length, SOLUTION_PAGE_SIZE);
+  const third = await loadSolutionData(exec!, lead, parseDataQuery({ vista: "variabili", pagina: "3" }));
+  assert.equal(third!.rows.length, EXTRA_PARAMETERS + templateVariables - 2 * SOLUTION_PAGE_SIZE);
   const search = await loadSolutionData(exec!, lead, parseDataQuery({ vista: "variabili", q: "par.prova_10" }));
   assert.equal(search!.total, 6, "par.prova_100 to par.prova_105");
 

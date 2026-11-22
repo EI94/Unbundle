@@ -144,7 +144,8 @@ test("(8.2a) il consiglio del banco: nella coda, nel motore e nella campanella d
   assert.equal(noticeHref(WS, { kind, useCaseId: UC }), `/dashboard/${WS}/use-cases/${UC}/progetto#banco`);
   const text = noticeTextOf({ kind, answers: 0, unknowns: 0, documents: 0, followUp: null });
   assert.equal(text.title, "Il banco di prova consiglia un altro modello");
-  assert.match(text.description, /«Evals e banco di prova», nel progetto\.$/);
+  // (Rilascio 10) La sezione si chiama «Qualità», nella Costruzione.
+  assert.match(text.description, /«Qualità», nel progetto\.$/);
   const payload = { useCase: UC, role: "lettura", model: "anthropic/claude-haiku-5-5", label: modelLabel("anthropic/claude-haiku-5-5") };
   const plan = planDelivery(claimed(kind, payload), facts(), OPTS);
   assert.equal(plan.action, "send");
@@ -203,7 +204,7 @@ test("(8.2a) le evals scese: sotto soglia o giù di 5 punti, con la qualità; ne
   // Il titolo vale per tutti e due gli avvisi: sotto soglia, o in calo.
   const bellText = noticeTextOf({ kind, answers: 0, unknowns: 0, documents: 0, followUp: null });
   assert.equal(bellText.title, "Le evals di main sono sotto soglia o in calo");
-  assert.match(bellText.description, /Guarda quali gruppi non passano in «Evals e banco di prova», nel progetto\.$/);
+  assert.match(bellText.description, /Guarda quali gruppi non passano in «Qualità», nel progetto\.$/);
   const below = planDelivery(claimed(kind, evalPayload({ useCase: UC, alert: "sotto_soglia", qualityText: formatQuality(0.8) })), facts(), OPTS);
   assert.equal(below.action, "send");
   if (below.action !== "send") return;
@@ -211,7 +212,7 @@ test("(8.2a) le evals scese: sotto soglia o giù di 5 punti, con la qualità; ne
   assert.match(belowEmail.subject, /^Cliente prova: evals sotto soglia «Smistamento.*»$/);
   assert.match(belowEmail.text, /le evals di main del caso d'uso «Smistamento di prova» sono sotto soglia: 80%\./);
   // (Rilascio 10, §3.12) La metà delle parole: i gruppi e l'andamento sono nel progetto.
-  assert.match(belowEmail.text, /guarda quali gruppi non passano: sono nel progetto, in «Evals e banco di prova»\./);
+  assert.match(belowEmail.text, /guarda quali gruppi non passano: sono nel progetto, in «Qualità»\./);
   assert.ok(!/<id>|&lt;id&gt;/.test(belowEmail.text + belowEmail.html), "un comando vero, senza segnaposto");
   assert.doesNotMatch(belowEmail.text, /quali prove non passano/);
   assert.ok(belowEmail.text.includes(`https://app.unbundle.test/dashboard/${WS}/use-cases/${UC}/progetto`));

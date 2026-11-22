@@ -7,27 +7,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useUcAction } from "@/components/uc/catalog/use-uc-action";
+import type { StartTemplate } from "@/components/uc/realization/start-data";
 import { startRealizationAction } from "@/lib/actions/uc-realization";
-import { formatCountIt } from "@/lib/uc/views/format";
 import { REALIZATION_TEXT } from "@/lib/uc/views/realization";
-
-export interface StartTemplate {
-  id: string;
-  name: string;
-  questions: number;
-  /** Riservato a questo workspace: viene prima nell'elenco. */
-  restricted: boolean;
-}
-
-function templateLabel(t: StartTemplate): string {
-  return `${t.name} · ${t.questions === 1 ? "1 domanda" : `${formatCountIt(t.questions)} domande`}`;
-}
+import { START_DIALOG_TEXT, startTemplateLabel as templateLabel } from "@/lib/uc/views/start-dialog";
 
 /**
- * «Avvia la realizzazione» in una schermata (DESIGN §3.2): use case (non si
- * cambia), nome, frase e schema di partenza. Il modulo non manda il codice: il
- * server lo prende dallo use case, insieme ai testi della descrizione. Il
- * dossier nasce in bozza e chi lo avvia ne è il responsabile; poi si apre la
+ * «Avvia la realizzazione» in una schermata (DESIGN §3.2), la pagina di ripiego del dialogo della scheda (rilascio 10,
+ * §3.5): use case, frase e schema di partenza. (F-020) Niente campo «Nome»: il nome è il titolo dello use case, e si
+ * cambia nelle Impostazioni della realizzazione. Il modulo non manda il codice: il server lo prende dallo use case,
+ * insieme ai testi della descrizione. Il dossier nasce in bozza e chi lo avvia ne è il responsabile; poi si apre la
  * sua Panoramica.
  */
 export function StartRealizationForm({
@@ -43,7 +32,7 @@ export function StartRealizationForm({
 }) {
   const router = useRouter();
   const { pending, run } = useUcAction();
-  const [title, setTitle] = useState(defaults.title);
+  const title = defaults.title;
   const [oneLiner, setOneLiner] = useState(defaults.oneLiner);
   const [templateId, setTemplateId] = useState<string | null>(templates[0]?.id ?? null);
   const [choosing, setChoosing] = useState(false);
@@ -74,14 +63,7 @@ export function StartRealizationForm({
           <p className="min-w-0 text-sm break-words">
             {useCase.code && <span className="font-mono font-medium">{useCase.code} · </span>}
             {useCase.title}
-            <span className="ml-2 text-xs text-muted-foreground">non si cambia</span>
           </p>
-        </div>
-        <div className={row}>
-          <Label htmlFor="realizzazione-nome" className="text-muted-foreground">
-            Nome
-          </Label>
-          <Input id="realizzazione-nome" value={title} maxLength={255} onChange={(e) => setTitle(e.target.value)} disabled={pending} className="h-11 text-base sm:h-9 sm:text-sm" aria-invalid={!titleOk} />
         </div>
         <div className={row}>
           <Label htmlFor="realizzazione-frase" className="text-muted-foreground">
@@ -116,7 +98,7 @@ export function StartRealizationForm({
               <p className="min-w-0 text-sm break-words">{template ? templateLabel(template) : ""}</p>
               {templates.length > 1 && (
                 <Button type="button" variant="ghost" className="h-11 px-2 sm:h-8" onClick={() => setChoosing(true)} disabled={pending}>
-                  Cambia
+                  {START_DIALOG_TEXT.change}
                 </Button>
               )}
             </div>
@@ -133,8 +115,7 @@ export function StartRealizationForm({
         </div>
       )}
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs text-muted-foreground sm:max-w-sm">{REALIZATION_TEXT.footnote}</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
         <Button type="submit" className="h-11 shrink-0 sm:h-9" disabled={!template || !titleOk || pending}>
           {REALIZATION_TEXT.start}
         </Button>

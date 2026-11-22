@@ -381,7 +381,7 @@ export function rowsToKindCounts(rows: readonly Row[]): Map<ItemKind, Record<Ite
  * stato, una riga di testo, il lucchetto), mai gli array dei collegamenti. I
  * collegamenti arrivano solo per la voce aperta nel pannello (`?apri=`).
  */
-export const SOLUTION_PAGE_SIZE = 100;
+export const SOLUTION_PAGE_SIZE = 50;
 
 /** Lunghezza massima della ricerca. */
 export const SOLUTION_Q_MAX = 100;

@@ -6,7 +6,7 @@ import { notBuilderMessage } from "@/lib/use-cases/cli/case-errors";
 
 /**
  * `unbundle start <ID>` (rilascio 8.0b): i tre file dell'ultima versione del pacchetto, per `casi/<id>/unbundle/`.
- * Solo a chi costruisce il caso (dalla 8.0c anche da fuori Lateral Space), come nella pagina «Progetto dell'agente». Il
+ * Solo a chi costruisce il caso (dalla 8.0c anche da fuori Lateral Space), come nella pagina «Costruzione». Il
  * pacchetto non ha nomi.
  */
 export const runtime = "nodejs";
@@ -21,6 +21,6 @@ export async function GET(request: Request): Promise<Response> {
   const read = await readFactory(opened.value.executor, c.target, c.actor);
   if (!read.ok) return cliError(404, "non_trovato", read.message);
   const latest = read.value.latestPackage;
-  if (!latest) return cliError(404, "senza_pacchetto", "Nessun pacchetto ancora: si genera dalla pagina «Progetto dell'agente».");
+  if (!latest) return cliError(404, "senza_pacchetto", "Nessun pacchetto ancora: si genera dalla pagina «Costruzione».");
   return cliJson({ caso: c.useCase.code, versione: latest.version, creatoIl: latest.createdAt, fonte: latest.source, file: latest.files });
 }

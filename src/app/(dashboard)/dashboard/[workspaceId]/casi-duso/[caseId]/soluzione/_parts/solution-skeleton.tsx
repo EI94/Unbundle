@@ -2,9 +2,9 @@ import { PageContainer } from "@/components/dashboard/page-container";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
- * Caricamento delle pagine di Soluzione (DESIGN §3.14): solo `Skeleton`, il
- * controllo segmentato e 8 righe `h-14`, con «Caricamento…» per i lettori di
- * schermo. Testata e schede del dossier restano sopra.
+ * Caricamento delle pagine di Soluzione (DESIGN §3.14): solo `Skeleton`, una riga per il titolo e 8 righe `h-14`, con
+ * «Caricamento…» per i lettori di schermo. Testata e schede del dossier restano sopra. (Rilascio 10) Niente più
+ * controllo segmentato «Descrizione · Mappa · Regole · Dati».
  */
 export function SolutionSkeleton({ wide = false, column = false }: { wide?: boolean; column?: boolean }) {
   return (
@@ -13,7 +13,7 @@ export function SolutionSkeleton({ wide = false, column = false }: { wide?: bool
         Caricamento…
       </p>
       <div aria-hidden className={column ? "max-w-3xl" : undefined}>
-        <Skeleton className="mb-6 h-11 w-full max-w-92 rounded-2xl sm:h-10" />
+        <Skeleton className="mb-6 h-6 w-40" />
         <div className="space-y-3">
           {Array.from({ length: 8 }, (_, i) => (
             <Skeleton key={i} className="h-14 w-full rounded-xl" />

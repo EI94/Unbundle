@@ -185,9 +185,9 @@ function sidebarEntries(page: string): Array<{ title: string; href: string; acti
 }
 
 /**
- * La barra laterale resa per `pathname`, con tutte le sezioni accese, per il responsabile della trasformazione. Con
- * l'area accesa il layout chiede la voce delle realizzazioni solo finché `dossierLinksReady` non è vero (P0-16):
- * `casesAvailable`.
+ * La barra laterale resa per `pathname`, con tutte le sezioni accese, per il responsabile della trasformazione. La voce
+ * della lista delle realizzazioni (`casesAvailable`) c'è solo nella barra di prima: (rilascio 10, D9 (a)) con l'area
+ * accesa la lista è in ritiro.
  */
 function renderSidebar(workspaceId: string, pathname: string, useCaseHub: boolean, casesAvailable = !useCaseHub) {
   const nav = workspaceNav({ workspaceId, role: roles.lead, useCaseHub, learningAvailable: true, casesAvailable, factoryAvailable: false });
@@ -423,16 +423,12 @@ test("barra, area accesa: le voci del rilascio 10 e «Use case» accesa su use-c
   }
 });
 
-test("barra, area accesa prima di P0-16: «Realizzazioni» apre gli strumenti e tiene /casi-duso", opts, () => {
+test("(rilascio 10, D9 (a)) barra, area accesa: la lista delle realizzazioni è in ritiro, anche con la voce chiesta", opts, () => {
   const base = `/dashboard/${ids.on}`;
   const entries = renderSidebar(ids.on, `${base}/use-cases`, true, true);
-  const expected = [...HUB_ENTRIES];
-  expected.splice(expected.indexOf("Value map"), 0, "Realizzazioni");
-  assert.deepEqual(entries.map((entry) => entry.title), expected);
-  assert.equal(entries.find((entry) => entry.title === "Realizzazioni")?.href, `${base}/casi-duso`);
+  assert.deepEqual(entries.map((entry) => entry.title), HUB_ENTRIES);
   const activeAt = (rest: string) => renderSidebar(ids.on, `${base}${rest}`, true, true).filter((e) => e.active).map((e) => e.title);
-  for (const rest of ["/use-cases", `/use-cases/${cards.top.id}`, "/portfolio", "/plan"]) assert.deepEqual(activeAt(rest), ["Use case"], rest);
-  for (const rest of ["/casi-duso", `/casi-duso/${randomUUID()}/domande`]) assert.deepEqual(activeAt(rest), ["Realizzazioni"], rest);
+  for (const rest of ["/casi-duso", `/casi-duso/${randomUUID()}/domande`]) assert.deepEqual(activeAt(rest), ["Use case"], rest);
 });
 
 test("barra, area spenta: le 17 voci di oggi, accese come oggi", opts, () => {

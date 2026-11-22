@@ -1,10 +1,23 @@
 // Il corpo di `POST /api/cli/evals` (rilascio 8.2a, docs/rilascio-8/BANCO-DI-PROVA.md §2): controllato con le regole dei
 // CHECK della 0036, la qualità ricalcolata, il banco con il ruolo e un solo «attuale», le evals con un solo risultato;
-// e le risposte alla CLI con le chiavi italiane, senza persone.
+// e le risposte alla CLI con le chiavi italiane, senza persone. (Casi senza AI, docs/rilascio-8/CASI-SENZA-AI.md §4, §9)
+// `senzaAi`: le sue regole, l'id riservato, i corpi di oggi identici, `senzaAi` nelle letture. Dati inventati.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { evalOverviewForCli, parseEvalRun, QUALITY_TOLERANCE, recommendationOf, resultForCli, runForCli } from "./benchmark-input.ts";
-import { analyzeBench, type EvalOverview, type EvalRunView } from "./benchmark.ts";
+import {
+  EVALS_MODELS_MESSAGE,
+  NO_AI_MESSAGES,
+  evalOverviewForCli,
+  evalRunFingerprint,
+  evalRunReply,
+  noAiMarkConsistent,
+  parseEvalRun,
+  QUALITY_TOLERANCE,
+  recommendationOf,
+  resultForCli,
+  runForCli,
+} from "./benchmark-input.ts";
+import { analyzeBench, NO_AI_MODEL, type EvalOverview, type EvalRunView } from "./benchmark.ts";
 import { EVAL_LIMITS } from "../../db/use-case-hub-evals-ddl.ts";
 
 const HAIKU = "anthropic/claude-haiku-5-5";
@@ -136,8 +149,9 @@ test("i modelli di oggi: un ruolo per chiave, un id valido, al massimo 20; il ba
   // Un ruolo con il nome di una proprietà degli oggetti non la trova per caso.
   assert.match(message(banco({ ruolo: "constructor", modelli: { lettura: SONNET } })), /^modelli\.constructor: il modello di oggi del ruolo del banco/);
   assert.ok(parseEvalRun(banco({ ruolo: "constructor", modelli: { constructor: SONNET } })).ok);
-  // Le evals li dicono tutti, come la CLI: senza, un banco già seguito non si riconoscerebbe più.
-  const none = /^modelli: per le evals, ogni ruolo di agent\.yaml con il suo modello di oggi \(almeno uno\)\.$/;
+  // Le evals li dicono tutti, come la CLI: senza, un banco già seguito non si riconoscerebbe più. (Casi senza AI) Con il
+  // suggerimento per un caso che non usa modelli.
+  const none = /^modelli: per le evals, ogni ruolo di agent\.yaml con il suo modello di oggi \(almeno uno\)\. Se il caso non usa modelli, manda senzaAi: true \(senza_ai: true in agent\.yaml, modello 1\.7\.0 o successivo\)\.$/;
   for (const modelli of [undefined, null, {}]) assert.match(message(evals({ modelli })), none, JSON.stringify(modelli));
   assert.ok(parseEvalRun(evals({ modelli: { scrittura: HAIKU } })).ok);
 });
@@ -247,7 +261,8 @@ test("la panoramica per la CLI: chiavi italiane, l'andamento così com'è, il ba
   const cli = evalOverviewForCli("TJ-0049", overview);
   assert.equal(cli.caso, "TJ-0049");
   assert.deepEqual(cli.evals.andamento, [{ quando: "2026-11-13T10:00:00.000Z", qualita: 0.9, soglieRispettate: true, modelliFinti: false }]);
-  assert.deepEqual(Object.keys(cli.evals.ultime ?? {}), ["id", "tipo", "ruolo", "livello", "ramo", "commit", "versioneModello", "modelli", "modelliFinti", "inCostruzione", "prove", "quando", "risultati"]);
+  // (Casi senza AI) `senzaAi` è il solo campo in più.
+  assert.deepEqual(Object.keys(cli.evals.ultime ?? {}), ["id", "tipo", "ruolo", "livello", "ramo", "commit", "versioneModello", "modelli", "modelliFinti", "senzaAi", "inCostruzione", "prove", "quando", "risultati", "fonte", "ci"]);
   const [b] = cli.banchi;
   // Stessa qualità: il più bravo è il più economico, e Sonnet è battuto su tutti e due.
   assert.deepEqual([b.ruolo, b.piuBravo, b.piuEconomico, b.piuEfficiente, b.raccomandazione?.tipo], ["lettura", HAIKU, HAIKU, HAIKU, "cambia"]);
@@ -272,4 +287,193 @@ test("la panoramica per la CLI: chiavi italiane, l'andamento così com'è, il ba
   assert.equal(runForCli(run("evals")).ruolo, null);
   const empty = evalOverviewForCli("TJ-0049", { evals: { latest: null, trend: [] }, benches: [] });
   assert.deepEqual(empty, { caso: "TJ-0049", evals: { ultime: null, andamento: [] }, banchi: [] });
+});
+
+// ─── (Casi senza AI) docs/rilascio-8/CASI-SENZA-AI.md §4 ─────────────
+
+/** Il corpo del §4: le evals di un caso senza AI, senza modello, costi né token. `result`: i campi del risultato. */
+const noAi = (over: Record<string, unknown> = {}, result: Record<string, unknown> = {}) => ({
+  caso: "XX-0007",
+  tipo: "evals",
+  senzaAi: true,
+  livello: "pull_request",
+  ramo: "main",
+  commit: "3ffb2ae",
+  versioneModello: "1.7.1",
+  modelliFinti: false,
+  inCostruzione: false,
+  modelli: {},
+  risultati: [
+    {
+      attuale: true,
+      superati: 48,
+      totali: 48,
+      qualita: 1,
+      soglieRispettate: true,
+      gruppi: { regole: { passati: 30, totali: 30, soglia: 1, ok: true }, avversari: { passati: 18, totali: 18, soglia: 0.95, ok: true } },
+      latenzaP50Ms: 120,
+      latenzaP95Ms: 410,
+      errori: 0,
+      ...result,
+    },
+  ],
+  ...over,
+});
+
+test("(casi senza AI) le evals con senzaAi: true, modelli {} e il risultato senza modello passano, con l'id riservato senza-ai", () => {
+  assert.equal(NO_AI_MODEL, "senza-ai");
+  const r = parseEvalRun(noAi());
+  assert.ok(r.ok, JSON.stringify(r));
+  if (!r.ok) return;
+  const v = r.value;
+  assert.deepEqual([v.kind, v.role, v.withoutAi, v.fakeModels, v.inConstruction, v.level, v.branch, v.commit, v.templateVersion, v.casesTotal], ["evals", null, true, false, false, "pull_request", "main", "3ffb2ae", "1.7.1", 48]);
+  assert.deepEqual(v.models, {});
+  assert.equal(v.results.length, 1);
+  const [x] = v.results;
+  assert.deepEqual([x.model, x.current, x.quality, x.passed, x.total, x.thresholdsMet], [NO_AI_MODEL, true, 1, 48, 48, true]);
+  assert.deepEqual([x.costPer1000Usd, x.tokensInAvg, x.tokensOutAvg], [null, null, null], "nessun costo, nessun token");
+  assert.deepEqual([x.latencyP50Ms, x.latencyP95Ms, x.errors], [120, 410, 0], "tempi ed errori come oggi");
+  assert.deepEqual(x.groups.avversari, { passati: 18, totali: 18, soglia: 0.95, ok: true });
+  // Anche con `modelli` assente, con `senza-ai` scritto, con costi e token null, su un ramo, veloci, in costruzione.
+  const variants: [Record<string, unknown>, Record<string, unknown>][] = [
+    [{ modelli: undefined }, {}],
+    [{ modelli: null }, {}],
+    [{}, { modello: "senza-ai" }],
+    [{}, { modello: null, costoPer1000Usd: null, tokenIngressoMedi: null, tokenUscitaMedi: undefined }],
+    [{ ramo: "xx-0007/prova", commit: undefined, versioneModello: undefined, inCostruzione: true, livello: "veloce" }, { qualita: undefined, gruppi: undefined }],
+  ];
+  for (const [over, result] of variants) {
+    const again = parseEvalRun(noAi(over, result));
+    assert.ok(again.ok, JSON.stringify([over, result]));
+    if (!again.ok) continue;
+    assert.deepEqual([again.value.withoutAi, again.value.results[0].model, again.value.models], [true, NO_AI_MODEL, {}], JSON.stringify([over, result]));
+  }
+});
+
+test("(casi senza AI) con senzaAi: true sono rifiutati il banco, i ruoli, i modelli finti, costi e token, due risultati, un altro modello", () => {
+  assert.equal(message(noAi({ tipo: "banco", ruolo: "lettura", modelli: { lettura: HAIKU } })), "Un caso senza AI non ha un banco di prova: non ci sono modelli da confrontare.");
+  assert.equal(message(noAi({ tipo: "banco" })), NO_AI_MESSAGES.bench);
+  for (const modelli of [{ lettura: HAIKU }, { lettura: "senza-ai" }, [], "nessuno"]) {
+    assert.equal(message(noAi({ modelli })), "modelli: un caso senza AI non ha ruoli né modelli (senza_ai: true e modelli: {} in agent.yaml).", JSON.stringify(modelli));
+  }
+  assert.equal(message(noAi({ modelliFinti: true })), "modelliFinti: un caso senza AI non ha modelli da sostituire, quindi false.");
+  assert.match(message(noAi({ modelliFinti: undefined })), /^modelliFinti: true o false\.$/, "si dice sempre, come oggi");
+  for (const field of ["costoPer1000Usd", "tokenIngressoMedi", "tokenUscitaMedi"]) {
+    for (const value of [0.42, 0, -1, "0,42"]) {
+      assert.equal(message(noAi({}, { [field]: value })), `risultati[0].${field}: un caso senza AI non ha costi né token dei modelli.`, `${field} ${value}`);
+    }
+  }
+  const [only] = noAi().risultati;
+  assert.match(message(noAi({ risultati: [only, { ...only, attuale: false }] })), /^risultati: le evals hanno un solo risultato/);
+  assert.match(message(noAi({}, { attuale: false })), /«attuale»: true/);
+  for (const modello of [HAIKU, "Senza-AI", "", 12]) {
+    assert.equal(message(noAi({}, { modello })), "risultati[0].modello: un caso senza AI non ha modello (lascialo vuoto).", JSON.stringify(modello));
+  }
+  assert.match(message(noAi({ senzaAi: "sì" })), /^senzaAi: true o false\.$/);
+  // Le altre regole restano quelle di oggi: livello, gruppi, prove, tempi.
+  assert.match(message(noAi({ livello: "PR" })), /^livello:/);
+  assert.match(message(noAi({}, { superati: 49 })), /superate non possono essere più delle totali/);
+  assert.match(message(noAi({}, { latenzaP50Ms: 500, latenzaP95Ms: 400 })), /^risultati\[0\]: la latenza p50 non può superare la p95\.$/);
+  assert.match(message(noAi({}, { gruppi: { "Regole Base": { passati: 1, totali: 1, soglia: 1, ok: true } } })), /^risultati\[0\]\.gruppi: il nome di un gruppo/);
+});
+
+test("(casi senza AI) senza senzaAi: modelli {} resta rifiutato con il suggerimento, senza-ai è riservato, i corpi di oggi passano identici", () => {
+  for (const over of [{}, { senzaAi: false }, { senzaAi: null }]) assert.equal(message(evals({ ...over, modelli: {} })), EVALS_MODELS_MESSAGE, JSON.stringify(over));
+  // Il corpo del §4 senza senzaAi: il risultato senza modello si ferma prima (l'ordine dei controlli di oggi); con un
+  // modello, il suggerimento.
+  assert.match(message(noAi({ senzaAi: undefined })), /^risultati\[0\]\.modello: l'id di un modello/);
+  assert.equal(message(noAi({ senzaAi: undefined }, { modello: HAIKU })), EVALS_MODELS_MESSAGE);
+  // `senza-ai` è riservato: nei modelli e nei risultati, delle evals e del banco, in qualunque modo scritto.
+  const reserved = "senza-ai è riservato ai casi senza AI: dichiaralo con senzaAi: true.";
+  assert.equal(NO_AI_MESSAGES.reserved, reserved);
+  assert.equal(message(evals({ modelli: { lettura: "senza-ai" } })), reserved);
+  assert.equal(message(evals({ modelli: { lettura: HAIKU, scrittura: "Senza-AI" } })), reserved);
+  assert.equal(message(evals({ risultati: [result({ modello: "senza-ai" })] })), reserved);
+  assert.equal(message(evals({ senzaAi: false, risultati: [result({ modello: "SENZA-AI" })] })), reserved);
+  assert.equal(message(banco({ modelli: { lettura: "senza-ai" }, risultati: [result({ modello: "senza-ai" })] })), reserved);
+  assert.equal(message(banco({ risultati: [result({ modello: SONNET }), result({ modello: "senza-ai", attuale: false })] })), reserved);
+  // Un id con il fornitore non è quello riservato.
+  assert.ok(parseEvalRun(evals({ modelli: { lettura: "fornitore/senza-ai" }, risultati: [result({ modello: "fornitore/senza-ai" })] })).ok);
+  // I corpi di oggi: l'invio di prima con `withoutAi` falso; l'impronta dell'idempotenza è quella di prima (le stesse chiavi,
+  // niente `withoutAi`), così una ripresa a cavallo del rilascio risponde ancora «ripetuta».
+  const BEFORE = ["branch", "casesTotal", "commit", "fakeModels", "inConstruction", "kind", "level", "models", "results", "role", "templateVersion"];
+  for (const body of [banco(), evals(), banco({ senzaAi: false }), evals({ senzaAi: null })]) {
+    const r = parseEvalRun(body);
+    assert.ok(r.ok, JSON.stringify(body).slice(0, 120));
+    if (!r.ok) continue;
+    assert.equal(r.value.withoutAi, false);
+    assert.deepEqual(Object.keys(evalRunFingerprint(r.value)).sort(), BEFORE);
+    assert.deepEqual({ ...evalRunFingerprint(r.value), withoutAi: false }, r.value);
+    assert.equal(noAiMarkConsistent(r.value), true);
+  }
+  const plain = parseEvalRun(evals());
+  const explicit = parseEvalRun(evals({ senzaAi: false }));
+  assert.ok(plain.ok && explicit.ok);
+  if (plain.ok && explicit.ok) assert.deepEqual(evalRunFingerprint(plain.value), evalRunFingerprint(explicit.value), "con o senza senzaAi: false");
+  // Le evals di un caso senza AI hanno la loro impronta, con il segno.
+  const marked = parseEvalRun(noAi());
+  assert.ok(marked.ok);
+  if (marked.ok) assert.deepEqual([evalRunFingerprint(marked.value).withoutAi, Object.keys(evalRunFingerprint(marked.value)).sort()], [true, [...BEFORE, "withoutAi"].sort()]);
+});
+
+test("(casi senza AI) runForCli riporta senzaAi; la risposta a un invio lo dice solo per un caso senza AI, le altre restano parola per parola", () => {
+  const parsed = parseEvalRun(noAi());
+  assert.ok(parsed.ok);
+  if (!parsed.ok) return;
+  const view: EvalRunView = {
+    id: "22222222-2222-4222-8222-222222222222",
+    kind: "evals",
+    role: null,
+    level: "pull_request",
+    branch: "main",
+    commit: "3ffb2ae",
+    templateVersion: "1.7.1",
+    models: {},
+    fakeModels: false,
+    inConstruction: false,
+    casesTotal: 48,
+    createdAt: "2026-11-22T10:00:00.000Z",
+    results: parsed.value.results,
+    withoutAi: true,
+  };
+  const cli = runForCli(view);
+  assert.equal(cli.senzaAi, true);
+  assert.deepEqual([cli.modelli, cli.modelliFinti, cli.ruolo], [{}, false, null]);
+  const [x] = cli.risultati;
+  assert.deepEqual([x.modello, x.costoPer1000Usd, x.tokenIngressoMedi, x.tokenUscitaMedi, x.latenzaP95Ms], [NO_AI_MODEL, null, null, null, 410]);
+  assert.equal(runForCli({ ...view, withoutAi: false }).senzaAi, false);
+  assert.equal(runForCli({ ...view, withoutAi: undefined }).senzaAi, false, "dove manca, no");
+  // La panoramica: l'esecuzione lo dice; l'andamento resta com'era.
+  const read = evalOverviewForCli("XX-0007", { evals: { latest: view, trend: [{ at: view.createdAt, quality: 1, thresholdsMet: true, fakeModels: false, withoutAi: true }] }, benches: [] });
+  assert.equal(read.evals.ultime?.senzaAi, true);
+  assert.deepEqual(read.evals.andamento, [{ quando: view.createdAt, qualita: 1, soglieRispettate: true, modelliFinti: false }]);
+  // La risposta a un invio: per un caso senza AI con `senzaAi: true` (e senza raccomandazione).
+  const id = "33333333-3333-4333-8333-333333333333";
+  const link = "https://app.example.test/dashboard/ws/use-cases/uc/progetto#banco";
+  assert.deepEqual(evalRunReply({ id, analysis: null, alert: { kind: "sotto_soglia", drop: null } }, parsed.value, link), { id, raccomandazione: null, avviso: "sotto_soglia", link, senzaAi: true });
+  // Per gli invii di oggi la stessa risposta di prima, byte per byte.
+  const today = parseEvalRun(evals());
+  const bench = parseEvalRun(banco());
+  assert.ok(today.ok && bench.ok);
+  if (!today.ok || !bench.ok) return;
+  assert.equal(JSON.stringify(evalRunReply({ id, analysis: null, alert: { kind: "in_calo", drop: 0.06 } }, today.value, link)), JSON.stringify({ id, raccomandazione: null, avviso: "in_calo", link }));
+  const analysis = analyzeBench(bench.value.results, { role: "lettura", fakeModels: false });
+  assert.equal(JSON.stringify(evalRunReply({ id, analysis, alert: null }, bench.value, link)), JSON.stringify({ id, raccomandazione: recommendationOf(analysis), avviso: null, link }));
+});
+
+test("(casi senza AI) chi scrive ricontrolla il segno: senza-ai solo nelle evals di un caso senza AI, senza modelli, costi né token", () => {
+  const n = parseEvalRun(noAi());
+  const e = parseEvalRun(evals());
+  const b = parseEvalRun(banco());
+  assert.ok(n.ok && e.ok && b.ok);
+  if (!n.ok || !e.ok || !b.ok) return;
+  assert.equal(noAiMarkConsistent(n.value), true);
+  assert.equal(noAiMarkConsistent(b.value), true);
+  assert.equal(noAiMarkConsistent({ ...n.value, withoutAi: false }), false, "il risultato senza-ai senza il segno");
+  assert.equal(noAiMarkConsistent({ ...e.value, withoutAi: true }), false, "il segno con un modello vero");
+  assert.equal(noAiMarkConsistent({ ...e.value, models: { lettura: "Senza-AI" } }), false, "senza-ai nei modelli");
+  assert.equal(noAiMarkConsistent({ ...n.value, models: { lettura: HAIKU } }), false);
+  assert.equal(noAiMarkConsistent({ ...n.value, fakeModels: true }), false);
+  assert.equal(noAiMarkConsistent({ ...n.value, kind: "banco" }), false);
+  assert.equal(noAiMarkConsistent({ ...n.value, results: [{ ...n.value.results[0], tokensInAvg: 10 }] }), false);
 });

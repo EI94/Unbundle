@@ -189,17 +189,20 @@ test("the Panoramica page: the via section inside, its anchor, folds closed, the
   assert.doesNotMatch(source, /defaultOpen|<details[^>]*open/, "folds closed unless a link opens them");
   assert.match(source, /filled=\{!headerPrimary\}/);
   assert.match(source, /pageCommand: stepHasPageCommand\(primary\.id\)/, "the same rule as the header");
-  // (Medio of the review) Two round-trips: the header's batch, then one batch for overview, via and Claude's accesses.
+  // (Medio of the review) Two round-trips: the header's batch, then one batch for overview and via. (Wave 5b) Claude's
+  // accesses live in Costruzione › «Per il coding agent».
   assert.match(source, /await loadOverviewWithVia\(executor, \{/);
-  assert.match(source, /extra: withTokens \? \[caseReadTokensSql\(/);
-  assert.doesNotMatch(source, /Promise\.all|listCaseReadTokens|loadFilesToCheck|await loadOverview\(|await loadVia\(/);
+  assert.doesNotMatch(source, /caseReadTokensSql|ClaudeDevPanel|Promise\.all|listCaseReadTokens|loadFilesToCheck|await loadOverview\(|await loadVia\(/);
   assert.match(source, /<DetailSheet title=\{T\.allMilestones\}/);
   // (Rilascio 10) The words live in the text module: no visible literal is left in the page.
   assert.doesNotMatch(source, /title="[A-Z]|>\s*(Vedi tutte|Il piano|Il percorso|Chi lo scioglie|Vai alla scheda privacy)\s*</);
   assert.match(source, /<CasePhases phases=\{casePhaseGroups\(/, "the 11 states of «Come funziona» are in the path of the panel");
-  assert.match(source, /<div id="sviluppo-con-claude"/, "«Sviluppo con Claude» stays where /via had it");
+  // (Wave 5b, F-010, F-042) «Sviluppo con Claude» moved to Costruzione › «Per il coding agent», with its anchor.
+  assert.doesNotMatch(source, /sviluppo-con-claude/);
+  const construction = readFileSync(new URL("../../../app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/costruzione/page.tsx", import.meta.url), "utf8");
+  assert.match(construction, /<div id="sviluppo-con-claude"/, "«Sviluppo con Claude» lives in «Per il coding agent»");
   const anchor = /export const CLAUDE_PANEL_ANCHOR = "([^"]+)"/.exec(readFileSync(new URL("../mcp/claude-dev-panel.tsx", import.meta.url), "utf8"))?.[1];
   assert.equal(anchor, "sviluppo-con-claude", "the anchor the panel opens itself on");
-  assert.doesNotMatch(source, /import \{[^}]*CLAUDE_PANEL_ANCHOR/, "a value of a client module is not a string on the server");
+  assert.doesNotMatch(construction, /import \{[^}]*CLAUDE_PANEL_ANCHOR/, "a value of a client module is not a string on the server");
   assert.doesNotMatch(source, /casePath\(workspaceId, caseId, "via"\)|"Dettagli"|Il caso"|SignatureCallout|ApprovedNote/);
 });

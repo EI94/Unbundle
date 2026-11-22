@@ -806,3 +806,71 @@ Progetto: `docs/contesto/RILASCIO-9-CONTESTO.md` (la riga 9b del §13). Piano di
 11. AI: un referente di prova con l'informativa nuova, una risposta, la fonte «Risposte del referente · …», le proposte non preselezionate; poi «Cancella i dati di questa persona» e le citazioni spariscono.
 12. AI: `unbundle contesto <ID> "…"` e `ask_context`: la risposta con le fonti; nel workspace senza l'ok, solo i brani. La chat della Discovery non richiede quello che il contesto sa già.
 13. Telefono e tema «Chiaro»: la piega, la riga di «Cosa serve», «Da verificare», «Cerca una persona».
+
+### 10.23 Rilascio 8.2b: «Le evals dalla CI» (0042)
+
+Specifica: `docs/rilascio-8/RILASCIO-8.2b-SPEC.md`. Dopo ogni unione su main la CI di GitHub manda a Unbundle le evals dei casi del repository con la **chiave della CI**: è del repository, non di una persona. Lateral Space la crea, la ruota e la revoca dall'Agent Factory; Unbundle la controlla a ogni invio. Il modello dell'Agent Factory che la usa è il 1.7.0 (`unbundle ci casi`, `unbundle ci evals`, `unbundle ci banco`, `unbundle banco --pr`).
+
+**Che cosa cambia:**
+
+- **Agent Factory**: sotto i casi di ogni famiglia, la riga della CI, con lo stato («CI non collegata», «CI collegata il …», «CI collegata · ultimo invio …», «La chiave della CI scade il …», «Chiave nuova da mettere su GitHub…», «La chiave della CI è scaduta il …»). «Collega la CI», «Ruota la chiave» e «Revoca la chiave» solo a chi gestisce le chiavi: Lateral Space, chi gestisce il workspace o chi è responsabile di un caso aperto del repository (D6); chi costruisce, anche da fuori, vede lo stato. La chiave si vede una volta, con i passi per GitHub (segreto `UNBUNDLE_CI_TOKEN` del repository); in Unbundle restano l'impronta e il prefisso (`ub_ci_ab12`). 180 giorni; la rotazione lascia alla vecchia al massimo 7 giorni e il primo invio con la nuova la revoca.
+- **«Da fare per te»**, solo a chi gestisce le chiavi: «Collega la CI di …» (con un caso dal progetto approvato in poi), «Ruota la chiave della CI di …: scade il …», «Metti su GitHub la chiave nuova della CI di …».
+- **API della CI**: `GET /api/ci/casi` e `POST /api/ci/evals`, con `Authorization: Bearer ub_ci_…`, solo le evals e il banco di `main`, solo i casi registrati sul repository della chiave nel suo workspace. Le difese della CLI (mai la chiave nell'indirizzo, niente `Origin`, solo JSON, 64 KB), 600 letture e 120 scritture l'ora per chiave, l'idempotenza della CLI con `ci:<workspace>:<repository>`.
+- **«Evals e banco di prova»**: ogni esecuzione dice da dove arriva, «dalla CI» (a chi costruisce con il link all'esecuzione su GitHub) o «dalla CLI». Lo stato del caso segue le regole della 8.2a; le evals di una persona restano.
+- **E-mail** interne di Lateral Space, senza caso, a chi gestisce le chiavi del repository: `chiave_ci_creata` (tranne chi l'ha creata), `chiave_ci_scade` (a 14 giorni, una volta), `chiave_ci_bloccata` (la chiave trovata in un indirizzo). `evals_in_calo` arrivate dalla CI ha una riga in più. Nessun tipo nuovo nella campanella.
+- **Revoche automatiche**: la chiave vista nell'indirizzo di una rotta della CLI, della CI o dei MCP (`esposta`); le chiavi di un repository che non ha più casi registrati (`senza_casi`, nel cron e in `repo-unregister`); tutto, con il workspace cancellato.
+- **Cron `uc-reminders`** (giorni feriali, nella finestra d'invio, prima dell'invio della coda): le revoche `senza_casi`, l'avviso a 14 giorni, la cancellazione delle chiavi finite da più di 12 mesi. La risposta ha in più `ciKeys`.
+- **Operatore**: `use-case-admin ci-keys --workspace <id>` (sola lettura: repository, prefisso, date, stato; mai la chiave, mai chi) e `use-case-admin ci-key-revoke --workspace <id> --repo owner/nome` (a secco, poi `--apply` con le conferme).
+- **I log** dicono solo codici, nell'area `ci`: mai la chiave, mai il corpo.
+
+**Migrazione 0042 (la applica l'app, al primo avvio dopo il deploy):**
+
+1. `ENSURE_VERSION` 36. Al primo avvio a freddo il self-heal trova falsa la sonda della 0042 e applica gli stessi statement di `drizzle/0042_chiavi_ci.sql` (`CI_KEYS_DDL`), in una transazione con l'advisory lock del file e `lock_timeout` 3s: si ferma se manca la 0036, crea `use_case_ci_keys` con i suoi tre indici, aggiunge a `use_case_eval_runs` `source` (`cli` per tutte le righe di oggi, oppure `ci`), `ci_key_id` (ON DELETE SET NULL) e `ci_run_url`, con i quattro vincoli cercati per nome in un blocco `DO`, e l'indice delle esecuzioni di una chiave. Non scrive dati, non cambia colonne, non restringe niente. Il vincolo nuovo su `use_case_eval_runs` legge la tabella sotto un lock esclusivo: tabella piccola, e al massimo 3 secondi di attesa.
+2. Subito dopo il deploy: aprire una pagina, poi `use-case-admin doctor` deve dire `migrazione0042: true` (oppure, in sola lettura, `SELECT <CI_KEYS_PROBE_SQL>` da `src/lib/db/use-case-hub-ci-keys-ddl.ts` dà `true`); `migrazione0036` resta `true`.
+3. Se la sonda resta `false` (nel log «0042 self-heal failed…»): `/api/ci/*` risponde 503 «Unbundle non riceve ancora le evals dalla CI: riprova tra qualche minuto», la riga della famiglia dice «Non ancora disponibile: riprova tra qualche minuto.», le letture delle evals non chiedono le colonne nuove (tutto «dalla CLI»); il resto dell'app funziona. Il self-heal riprova al massimo ogni 5 minuti. Solo allora, a mano: `psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 -f drizzle/0042_chiavi_ci.sql`. Mai drizzle-kit, mai `db:push`.
+4. Prima del deploy: un restore point su Neon (la 0042 è additiva). Nessuna variabile nuova su Vercel.
+5. Il ramo non si pubblica: le anteprime usano il database di produzione. Il self-heal della 0042 non parte da un'anteprima (`VERCEL_ENV=preview`), ma la regola resta.
+
+**Ritorno indietro:**
+
+1. Promote del deploy di prima, un passo su Vercel. Niente sul database.
+2. Che cosa resta: `use_case_ci_keys` e le tre colonne di `use_case_eval_runs`. Il codice di prima non le legge e scrive le evals con la fonte di default, `cli`, che vale anche per lui. Le righe `ci` restano e la pagina di prima le mostra come le altre.
+3. Le e-mail in coda con i modelli nuovi (`chiave_ci_creata`, `chiave_ci_scade`, `chiave_ci_bloccata`) il codice di prima le annulla da sé («modello_non_previsto»). Nessun tipo nuovo nella campanella: niente da cancellare a mano.
+4. Le chiavi restano in tabella e continuano a scadere; al ritorno in avanti valgono come prima. Il registro dell'idempotenza tiene le righe `ci:…`, che il codice di prima non legge.
+5. Il modello 1.7.0 con l'Unbundle di prima: `/api/ci/*` risponde 404, il job «unbundle» dice «Questo Unbundle non riceve ancora le evals dalla CI (8.2b): restano qui.» ed esce con 0; la CI non diventa rossa. Se sbaglia la 1.7.0: una PR sul modello che torna alla 1.6.0, poi `unbundle aggiorna` nelle famiglie. Senza il segreto `UNBUNDLE_CI_TOKEN` il job «unbundle» non fa niente.
+
+**Dopo il deploy, a mano** (su un repository di prova, privato, in un workspace di prova, registrato su un caso di prova: mai il repository modello):
+
+1. `doctor`: `migrazione0042: true`. `use-case-admin ci-keys --workspace <id>`: nessuna chiave.
+2. «Evals e banco di prova» di un caso con le evals della 8.2a si apre uguale, con «dalla CLI»; `unbundle eval --invia` di una persona funziona; la riga della famiglia dice «CI non collegata».
+3. «Collega la CI» › «Crea la chiave»: la chiave si vede una volta (ricaricando non c'è più); l'e-mail «nuova chiave della CI» arriva a chi gestisce le chiavi, tranne chi l'ha creata. Il segreto su GitHub, un'unione su main: le evals arrivano «dalla CI», con il link all'esecuzione; la riga dice «CI collegata · ultimo invio oggi …».
+4. «Ruota la chiave»: «Chiave nuova da mettere su GitHub…»; con il segreto nuovo e un'unione la vecchia si revoca al primo invio (`ci-keys`: `ruotata`).
+5. «Revoca la chiave»: la riga dice «CI non collegata» e il job «unbundle» dell'unione dopo diventa rosso (401).
+6. Con un account di chi costruisce da fuori: lo stato della riga senza pulsanti; con un account del cliente: «dalla CI» senza link.
+7. Si chiede di ricaricare le schede aperte; main resta fermo circa 24 ore.
+
+### 10.24 Rilascio 8.2a: «Banco di prova ed evals» (0036), la nota che mancava
+
+Contratto: `docs/rilascio-8/BANCO-DI-PROVA.md`. La 8.2a è in produzione dal 15/11 (main 6360e6f5, insieme alla 8.1a e alla 8.1b: il self-heal ha applicato dalla 0032 alla 0036); questa nota la scrive la 8.2b, perché il §10 passava dalla 0030 (§10.17) alla 0037 (§10.18). `unbundle banco` rifà le evals di un ruolo con ogni modello approvato; `unbundle eval --invia` manda le evals con i modelli di oggi. Unbundle tiene l'esito per caso e per ruolo, mai per persona.
+
+**Che cosa cambia:**
+
+- **Progetto dell'agente**, sezione «Evals e banco di prova» (`#banco`): lo stato delle evals del caso (`main` prima, poi i modelli veri, poi il livello completo `pull_request`, poi le più recenti) con l'andamento delle ultime 12; per ogni ruolo l'ultimo banco (qualità contro costo per 1.000 esecuzioni, la tabella, la raccomandazione, il comando per rifarlo); il banco «superato» quando le evals vere di `main` usano già un altro modello.
+- **Agent Factory**: «evals 96 %», «sotto soglia», «il banco consiglia …»; in «Da fare per te», a chi costruisce il caso, il consiglio del banco e le evals di `main` vere sotto soglia.
+- **Campanella ed e-mail** al team che costruisce, tranne chi ha lanciato, una al giorno per caso: `banco_consiglio` e `evals_in_calo` (mai con i modelli finti; `evals_in_calo` mai per un caso in costruzione).
+
+**Migrazione 0036 (la applica l'app, al primo avvio dopo il deploy):**
+
+1. `ENSURE_VERSION` 30. Il self-heal applica gli stessi statement di `drizzle/0036_evals.sql` (`EVALS_DDL`), con l'advisory lock del file e `lock_timeout` 3s: si ferma se manca la 0035, crea `use_case_eval_runs` e `use_case_eval_results` (nessuna colonna sulla persona) e, sotto il lock della 0025, allarga il CHECK dei tipi della campanella con `banco_consiglio` ed `evals_in_calo`. Non scrive dati e non restringe niente.
+2. `use-case-admin doctor` deve dire `migrazione0036: true`. Se resta `false` (nel log «0036 self-heal failed…»): la CLI risponde «non ancora disponibile» al banco e alle evals e le pagine non le mostrano; il self-heal riprova al massimo ogni 5 minuti. Solo allora, a mano: `psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 -f drizzle/0036_evals.sql`. Mai drizzle-kit, mai `db:push`.
+
+**Ritorno indietro:**
+
+1. Promote del deploy di prima, poi `EVALS_ROLLBACK_SWEEP_SQL` (in `src/lib/db/use-case-hub-evals-ddl.ts`), idempotente:
+
+   ```sql
+   DELETE FROM use_case_notifications WHERE kind IN ('banco_consiglio', 'evals_in_calo');
+   ```
+
+   Il codice di prima non conosce i due tipi e li mostrerebbe senza testo nella campanella. Le e-mail in coda dei due tipi le annulla da sé («modello_non_previsto»).
+2. Le tabelle della 0036 restano: il codice di prima le ignora. Finché il deploy della 8.2a non torna, `unbundle banco --invia` e `unbundle eval --invia` non trovano dove mandare: gli esiti restano nel terminale.

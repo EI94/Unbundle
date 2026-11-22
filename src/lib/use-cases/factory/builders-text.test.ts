@@ -89,6 +89,21 @@ test("«Togli»: la conferma con i casi e i repository, e il messaggio dopo", ()
   assert.match(externalRemovedText({ left: [], skipped: [{ code: "NM-0010", reason: "attore_non_ammesso" }], repos: [] }), /In NM-0010 resta nella realizzazione da osservatore, senza poteri: lì non sei responsabile\.$/);
 });
 
+test("(8.2b) «Togli»: con una chiave della CI viva nei suoi repository, in fondo chiede di ruotarla", () => {
+  assert.deepEqual(externalRemoveConfirm({ name: "Sandro Neri", openCases: 2, repos: ["Voltaen/esempio-rosa"], ciRepos: ["Voltaen/esempio-rosa"] }), {
+    title: "Togliere Sandro Neri da chi costruisce?",
+    text: "Da subito non scrive più nei casi del cliente e non entra in quelli nuovi. Esce da 2 casi e i compiti che ha in corso tornano da prendere. Su GitHub togli anche il suo accesso a Voltaen/esempio-rosa. Ruota anche la chiave della CI di Voltaen/esempio-rosa.",
+  });
+  assert.match(
+    externalRemoveConfirm({ name: "Prova Esterno", openCases: 0, repos: ["Voltaen/esempio-rosa", "Voltaen/esempio-blu"], ciRepos: ["Voltaen/esempio-rosa", "Voltaen/esempio-blu"] }).text,
+    / Ruota anche le chiavi della CI di Voltaen\/esempio-rosa, Voltaen\/esempio-blu\.$/,
+  );
+  // Senza chiavi vive (o senza saperlo) la conferma resta quella di prima.
+  for (const ciRepos of [[], undefined]) {
+    assert.doesNotMatch(externalRemoveConfirm({ name: "Prova Esterno", openCases: 1, repos: ["Voltaen/esempio-rosa"], ciRepos }).text, /chiav[ei] della CI/);
+  }
+});
+
 test("la riga: «CLI collegata», «CLI da collegare», o perché da fuori oggi non costruisce; dove", () => {
   assert.equal(builderStateText({ cli: true, blocked: null }), "CLI collegata");
   assert.equal(builderStateText({ cli: false, blocked: null }), "CLI da collegare");
@@ -115,6 +130,7 @@ test("i testi di «Chi costruisce» non dicono il genere della persona: niente �
     externalAddedText({ where: ALL, entered: [], already: [], left: [], skipped: ALL_SKIPS, repos: [], released: 0 }),
     externalRemovedText({ left: codes(3), skipped: ALL_SKIPS, repos: ["Voltaen/alfa-esploso"] }),
     externalRemoveConfirm({ name: "Prova Esterno", openCases: 3, repos: ["Voltaen/alfa-esploso"] }).text,
+    externalRemoveConfirm({ name: "Prova Esterno", openCases: 3, repos: ["Voltaen/alfa-esploso"], ciRepos: ["Voltaen/alfa-esploso"] }).text,
     lsAddedText({ done: codes(1), unchanged: codes(1), skipped: ALL_SKIPS }),
     lsRemovedText({ done: codes(1), skipped: ALL_SKIPS, released: 2 }),
     ...["ruolo_workspace", "email_non_verificata", "di_lateral_space", null].flatMap((blocked) => [builderStateText({ cli: true, blocked }), builderStateText({ cli: false, blocked })]),

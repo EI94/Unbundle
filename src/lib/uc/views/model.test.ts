@@ -122,13 +122,14 @@ test("rules: search, filters, constraints switch, page and panel come from the a
   assert.deepEqual(statusesOfGroup("a_posto"), ["validata", "non_applicabile"]);
 });
 
-test("pages of 100 rows on the server", () => {
-  assert.equal(SOLUTION_PAGE_SIZE, 100);
+test("(rilascio 10, §3.5) pages of 50 rows on the server, for the rules and the data model", () => {
+  assert.equal(SOLUTION_PAGE_SIZE, 50);
   assert.equal(pageCount(0), 1);
-  assert.equal(pageCount(100), 1);
-  assert.equal(pageCount(261), 3);
+  assert.equal(pageCount(50), 1);
+  assert.equal(pageCount(51), 2);
+  assert.equal(pageCount(261), 6);
   assert.equal(pageOffset(1), 0);
-  assert.equal(pageOffset(3), 200);
+  assert.equal(pageOffset(3), 100);
   assert.equal(parsePage("2"), 2);
   assert.equal(parsePage("0"), 1);
   assert.equal(parsePage("abc"), 1);

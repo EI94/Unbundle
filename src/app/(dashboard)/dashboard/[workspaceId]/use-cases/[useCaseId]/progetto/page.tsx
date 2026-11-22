@@ -5,15 +5,16 @@ import { RedirectKeepingHash } from "@/components/use-cases/redirect-keeping-has
 
 /**
  * L'indirizzo breve di «Progetto dell'agente» per uno use case (rilascio 8.0a): lo usano le notifiche della
- * campanella e la CLI, che conoscono lo use case e non il dossier. Porta al progetto del suo dossier tenendo l'ancora
- * (`#compiti`, `#banco`), che `redirect()` qui perderebbe: la pagina è in streaming per il `loading.tsx` dello use
- * case. Senza dossier, o con la sezione «Casi d'uso» spenta, «non trovata». I permessi li controlla la pagina del
- * dossier.
+ * campanella, la CLI e il MCP (`…/progetto#banco` delle evals), che conoscono lo use case e non il dossier. Porta alla
+ * Costruzione della sua realizzazione (rilascio 10, §3.5: il progetto dell'agente è la Costruzione) tenendo l'ancora
+ * (`#compiti`, `#banco`, `#contesto`: la Costruzione ha ancora quegli id), che `redirect()` qui perderebbe: la pagina
+ * è in streaming per il `loading.tsx` dello use case. Dritto alla Costruzione, senza passare dal 308 di `/progetto`.
+ * Senza dossier, o con la sezione «Casi d'uso» spenta, «non trovata». I permessi li controlla la Costruzione.
  */
 export default async function UseCaseAgentProjectRedirect({ params }: { params: Promise<{ workspaceId: string; useCaseId: string }> }) {
   const { workspaceId, useCaseId } = await params;
   await requireWorkspacePage(workspaceId);
   const read = await dossierStateForUseCase(workspaceId, useCaseId);
   if (!read.ok || !read.dossier) notFound();
-  return <RedirectKeepingHash href={`/dashboard/${encodeURIComponent(workspaceId)}/casi-duso/${encodeURIComponent(read.dossier.caseId)}/progetto`} label="Apri il progetto dell'agente" />;
+  return <RedirectKeepingHash href={`/dashboard/${encodeURIComponent(workspaceId)}/casi-duso/${encodeURIComponent(read.dossier.caseId)}/costruzione`} label="Apri la costruzione" />;
 }

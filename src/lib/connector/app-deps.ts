@@ -13,6 +13,7 @@ import {
   getConnectorConfigBySlug,
   markIntegrationTokenExposed,
 } from "@/lib/db/queries/workspace-integrations";
+import { ciKeyCandidates } from "@/lib/use-cases/ci/keys";
 import { alertExposedToken, type ExposedTokenAlertDeps } from "./exposed-token-alert";
 import type { ConnectorGateDeps } from "./gate";
 import type { SqlExecutor } from "./rate-limit";
@@ -38,6 +39,17 @@ export const appExposedTokenAlertDeps: ExposedTokenAlertDeps = {
 };
 
 /**
+ * (8.2b) Le chiavi della CI trovate nell'indirizzo di una rotta MCP (il connettore, il MCP del team): revocate come nelle
+ * rotte della CLI (`revokeCiKeysInUrl`: `esposta`, e `chiave_ci_bloccata` dopo la risposta). Il modulo della CLI si
+ * carica solo quando nell'indirizzo c'è davvero una chiave della CI.
+ */
+export async function revokeCiKeysFoundInUrl(candidates: readonly string[]): Promise<void> {
+  if (ciKeyCandidates(candidates).length === 0) return;
+  const { revokeCiKeysInUrl } = await import("@/lib/use-cases/cli/route-kit");
+  await revokeCiKeysInUrl(candidates);
+}
+
+/**
  * Dipendenze di `gateConnectorRequest`; l'ambiente è quello del processo. Un token
  * nell'indirizzo, se valido, si segna «esposto» sulla sua riga e, solo la prima
  * volta, si avvisa Lateral Space nel canale admin di Slack.
@@ -55,6 +67,7 @@ export function appConnectorGateDeps(
       if (exposed) await alertExposedToken(exposed, alertDeps);
       return exposed;
     },
+    revokeCiKeys: revokeCiKeysFoundInUrl,
   };
 }
 

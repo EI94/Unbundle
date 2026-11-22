@@ -75,7 +75,7 @@ test("ogni link verso la pagina «Use case» porta a una vista di HUB_VIEWS", ()
     ["campanella, nuovo trimestre", hubSignalHref(WS, "use_case_quarter")],
     ["ricevuta del modulo", receiptPath(WS, UC)],
     ["/plan", hubRedirectFor(`/dashboard/${WS}/plan`)],
-    ["/casi-duso", hubRedirectFor(`/dashboard/${WS}/casi-duso`, undefined, { dossierLinksReady: true })],
+    ["/casi-duso", hubRedirectFor(`/dashboard/${WS}/casi-duso`)],
     ["/casi-duso/nuovo", hubRedirectFor(`/dashboard/${WS}/casi-duso/nuovo`)],
     ["campanella del dossier, riepilogo", bellHref({ workspaceId: WS, caseId: null, templateKey: "riepilogo_settimanale", payload: {} })],
     ["percorso del dossier", trail.kind === "use_case" ? trail.root.href : null],

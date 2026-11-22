@@ -16,7 +16,9 @@
 // - area off: the same addresses answer 200 with today's page;
 // - still reachable with the area on: /portfolio/export, /share/portfolio/** (members go to
 //   the card), /casi-duso/<caseId>, /r/<token>, /api/r/** (the route's own 4xx for an unknown
-//   token); /casi-duso itself goes to the Panoramica only with dossierLinksReady (H6a);
+//   token); (release 10) with the area on /casi-duso itself answers 307 to the Panoramica (the list
+//   is retired), and the realization's moved addresses (/progetto, /soluzione/regole, /regole, /via)
+//   answer 308;
 // - not-found under use-cases/loading.tsx (/use-cases/nuovo with the area off): 200, judged by
 //   the content (the noindex meta, and the area's not-found page as Chrome shows it, through
 //   scripts/uc-test/cdp.mjs), never by the status;
@@ -169,17 +171,31 @@ if (caseId) {
   record("area on   200 /casi-duso/{caseId}", res.status === 200 ? [] : [`status ${res.status}${res.location ? ` → ${res.location}` : ""}`]);
 }
 {
-  // /casi-duso itself redirects only with dossierLinksReady, from the workspace layout (H6a):
-  // 307 to the Panoramica when every dossier has its card, otherwise the list stays. This script
-  // has no database: either answer is right, never a 308 or another Location (acceptance-hub.mjs
-  // checks the 307 on a harness where dossierLinksReady is true).
-  const res = await get(`/dashboard/${on}/casi-duso`);
+  // (Release 10, D9 (a)) With the area on the /casi-duso list is retired: src/proxy.ts answers 307 to
+  // the Panoramica (temporary, as for the modules being retired: the area can be switched off), with a
+  // stub log line (§6 below), whatever dossierLinksReady says.
+  const res = await get(`/dashboard/${on}/casi-duso?x=1`);
   const failures = [];
   const panoramica = `/dashboard/${on}/use-cases?vista=panoramica`;
-  if (res.status === 307 && res.location !== panoramica) failures.push(`Location ${res.location}, expected ${panoramica}`);
-  if (res.status !== 307 && res.location) failures.push(`status ${res.status} → ${res.location}`);
-  if (res.status >= 500) failures.push(`status ${res.status}`);
-  record(`area on   ${res.status} /casi-duso (307 to the Panoramica only with dossierLinksReady)`, failures);
+  if (res.status !== 307) failures.push(`status ${res.status}, expected 307`);
+  if (res.location !== panoramica) failures.push(`Location ${res.location}, expected ${panoramica}`);
+  record(`area on   ${res.status} /casi-duso (307 to the Panoramica: the list is retired)`, failures);
+}
+if (caseId) {
+  // (Release 10, wave 5b, §8.2) The realization's moved addresses: real 308s, query kept, never a 200 + meta refresh.
+  const root = `/dashboard/${on}/casi-duso/${caseId}`;
+  for (const [from, to] of [
+    [`${root}/progetto?da=email`, `${root}/costruzione?da=email`],
+    [`${root}/soluzione/regole?q=sconto`, `${root}/soluzione?apri=regole&q=sconto`],
+    [`${root}/regole`, `${root}/soluzione?apri=regole`],
+    [`${root}/via`, `${root}#via`],
+  ]) {
+    const res = await get(from);
+    const failures = [];
+    if (res.status !== 308) failures.push(`status ${res.status}, expected 308`);
+    if (res.location !== to) failures.push(`Location ${res.location}, expected ${to}`);
+    record(`area on   ${res.status} ${from.replace(root, "{case}")}`, failures);
+  }
 }
 {
   const res = await get("/r/0000000000000000000000");

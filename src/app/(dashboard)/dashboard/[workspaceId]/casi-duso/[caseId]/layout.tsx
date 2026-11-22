@@ -21,6 +21,7 @@ import {
   caseMenuFor,
   caseTabsFor,
   caseTrail,
+  pastViaPhase,
   realizationTitle,
   showsHeaderProgress,
   stepHasPageCommand,
@@ -29,6 +30,7 @@ import {
 } from "@/lib/uc/views/case-shell";
 import { NEXT_STEP_ICON, nextStepFor, resolveStepHref, type NextStep } from "@/lib/uc/views/next-step";
 import { isLsViewer } from "@/lib/uc/views/status-groups";
+import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
 
 /** Il blocco testata più schede: lo misura `screens.mjs` (≤ 260 px a 1440) e lo guarda la barra fissa. */
@@ -100,7 +102,11 @@ export default async function CaseLayout({ children, params }: { children: React
         }
       : null;
 
-  const menu: CaseMenuEntry[] = caseMenuFor(roles, { exportable: canExport }).map((m) => ({ key: m.key, label: m.label, href: m.segment === null ? null : at(m.segment) }));
+  // (Rilascio 10, §3.5, D9 (a)) Dopo il via la Costruzione è una scheda, al posto di Domande; prima si apre dal «⋯».
+  // Senza la scheda dello use case il progetto dell'agente non c'è: niente Costruzione.
+  const pastVia = pastViaPhase(c);
+  const construction = header.parent !== null;
+  const menu: CaseMenuEntry[] = caseMenuFor(roles, { exportable: canExport, pastVia, construction }).map((m) => ({ key: m.key, label: m.label, href: m.segment === null ? null : at(m.segment) }));
 
   // (Rilascio 10, §3.5) Un segnale per stato: l'avviso non c'è quando il pulsante pieno dice già la stessa cosa.
   // La configurazione incompleta (F-005): nel log e, fino all'ondata 6b, un avviso solo per chi gestisce il workspace.
@@ -112,7 +118,7 @@ export default async function CaseLayout({ children, params }: { children: React
     lsConfigured: caseAccess.lsConfigured,
     workspaceAdmin: canManageWorkspaceSettings(access.role),
   });
-  const tabs = caseTabsFor(roles);
+  const tabs = caseTabsFor(roles, { pastVia, construction });
   const status = { tone: CASE_STATUS_TONE[c.status], label: CASE_STATUS_LABEL[c.status] };
   const ls = isLsViewer(roles);
   // (Rilascio 10, §3.5) Il titolo è sempre quello dello use case, in testata e nella barra fissa.
@@ -124,7 +130,7 @@ export default async function CaseLayout({ children, params }: { children: React
       <div id={CASE_HEAD_ID} data-uc-case-head="" className="border-b border-border">
         <div className={`mx-auto w-full max-w-6xl min-w-0 px-4 sm:px-6 lg:px-8 ${tabs.length === 0 ? "pb-4" : ""}`}>
           <CaseHeader
-            trail={caseTrail({ workspaceId, caseBase: base, parent: header.parent })}
+            trail={caseTrail({ workspaceId, caseBase: base, parent: header.parent, useCaseHub: isUseCaseHubWorkspace(workspaceId) })}
             title={title}
             status={status}
             alert={alert ? { ...alert, action: alert.action ? { label: alert.action.label, href: resolveStepHref(base, alert.action.href) } : null } : null}

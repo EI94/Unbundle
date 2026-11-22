@@ -7,8 +7,9 @@ import { analyzeBench, type BenchResult, type EvalOverview, type EvalRunView } f
 import { findHubForbiddenIn } from "../../lib/use-cases/copy-guard.ts";
 import { enableTsxImports } from "../use-cases/detail/referent/tsx-test-loader.ts";
 import { EVAL_TEXT } from "./eval-format.ts";
+import type { EvalRunOrigin } from "../../lib/db/queries/use-case-eval-origins.ts";
 
-let render: (overview: EvalOverview | null, extra?: { unavailable?: boolean; caseCode?: string }) => string;
+let render: (overview: EvalOverview | null, extra?: { unavailable?: boolean; caseCode?: string; origins?: ReadonlyMap<string, EvalRunOrigin> | null; ciLinks?: boolean }) => string;
 before(async () => {
   await enableTsxImports();
   const { EvalSection } = await import("./eval-section.tsx");
@@ -312,4 +313,148 @@ test("i testi resi: «use case» nella dashboard, nessuna parola vietata, nessun
     assert.deepEqual(findHubForbiddenIn([text], "area"), []);
     assert.doesNotMatch(text, /@|lanciato da|eseguito da|autore/i);
   }
+});
+
+// ─── (8.2b) Da dove arriva un'esecuzione ─────────────────────────────
+
+const EVALS_ID = "00000000-0000-4000-8000-000000000001";
+const BENCH_ID = "00000000-0000-4000-8000-0000000000b1";
+const RUN_URL = "https://github.com/Voltaen/esempio-rosa/actions/runs/12345678901";
+const SOURCED: EvalOverview = { ...FULL, benches: [benchOf("lettura", LETTURA, { id: BENCH_ID })] };
+const ORIGINS = new Map<string, EvalRunOrigin>([
+  [EVALS_ID, { source: "ci", ciRunUrl: RUN_URL }],
+  [BENCH_ID, { source: "cli", ciRunUrl: null }],
+]);
+
+/** Il tag di apertura dell'elemento con `data-slot="eval-source"` dopo `after`. */
+function sourceTag(html: string, after: string): string {
+  const from = html.indexOf(after);
+  assert.ok(from >= 0, after);
+  return /<(a|span) [^>]*data-slot="eval-source"[^>]*>/.exec(html.slice(from))?.[0] ?? "";
+}
+
+test("(8.2b) la fonte in fondo alla riga: «dalla CI» porta all'esecuzione su GitHub per chi costruisce; il banco «dalla CLI»", () => {
+  const html = render(SOURCED, { origins: ORIGINS, ciLinks: true });
+  const text = textOf(html);
+  assert.ok(text.includes("14/11/2026 · ramo main · livello pull request · commit a1b2c3d · dalla CI"), "le evals, dalla CI");
+  assert.ok(text.includes("14/11/2026 · livello pull request · 4 modelli · ramo main · dalla CLI"), "il banco, dalla CLI");
+  const link = sourceTag(html, 'data-slot="eval-latest"');
+  assert.match(link, /^<a /);
+  assert.match(link, new RegExp(`href="${RUN_URL}"`));
+  assert.match(link, /target="_blank"/);
+  assert.match(link, /rel="noreferrer"/);
+  assert.match(link, /data-source="ci"/);
+  // 44 px al telefono senza allargare la riga: il bersaglio cresce, la riga no.
+  assert.match(link, /-my-3\.5 inline-block py-3\.5/);
+  assert.match(html, /dalla CI<span class="sr-only">, l&#x27;esecuzione su GitHub<\/span><\/a>/);
+  const bench = sourceTag(html, 'data-slot="bench-card"');
+  assert.match(bench, /^<span [^>]*data-source="cli"/, "«dalla CLI» non porta da nessuna parte");
+  assert.equal(count(html, /data-slot="eval-source"/), 2);
+});
+
+test("(8.2b) il cliente legge «dalla CI» senza link; un indirizzo che non è un'esecuzione di GitHub non diventa un link", () => {
+  const client = render(SOURCED, { origins: ORIGINS, ciLinks: false });
+  assert.ok(textOf(client).includes("commit a1b2c3d · dalla CI"));
+  assert.match(sourceTag(client, 'data-slot="eval-latest"'), /^<span [^>]*data-source="ci"/);
+  assert.doesNotMatch(client, /github\.com/, "nessun link all'esecuzione per il cliente");
+  for (const url of ["https://github.com/Voltaen/esempio-rosa/pull/3", "javascript:alert(1)", "https://example.test/actions/runs/1", null]) {
+    const html = render(SOURCED, { origins: new Map([[EVALS_ID, { source: "ci", ciRunUrl: url }]]), ciLinks: true });
+    assert.ok(textOf(html).includes("commit a1b2c3d · dalla CI"), String(url));
+    assert.doesNotMatch(html, /<a [^>]*data-slot="eval-source"/, String(url));
+  }
+  // Gli id si confrontano senza badare alle maiuscole: la lettura li dà in minuscolo.
+  const upper: EvalOverview = { ...SOURCED, evals: { ...SOURCED.evals, latest: run({ id: EVALS_ID.toUpperCase() }) } };
+  assert.match(sourceTag(render(upper, { origins: ORIGINS, ciLinks: true }), 'data-slot="eval-latest"'), /^<a /);
+});
+
+test("(8.2b) la fonte che non si è letta non si dice; senza misure, la CI collegata manda le evals di main da sola", () => {
+  for (const origins of [null, new Map<string, EvalRunOrigin>()]) {
+    const html = render(SOURCED, { origins, ciLinks: true });
+    assert.ok(textOf(html).includes("14/11/2026 · ramo main · livello pull request · commit a1b2c3d"));
+    assert.equal(count(html, /data-slot="eval-source"/), 0);
+    assert.doesNotMatch(textOf(html), /dalla CL?I/);
+  }
+  for (const html of [render(null), render(null, { unavailable: true })]) {
+    assert.match(html, /<p data-slot="eval-empty-ci" class="text-xs text-muted-foreground">Con la CI collegata, le evals di main arrivano da sole dopo ogni unione\.<\/p>/);
+  }
+  assert.doesNotMatch(render(FULL), /eval-empty-ci/, "con le misure, la riga non serve");
+  assert.deepEqual(findHubForbiddenIn([textOf(render(SOURCED, { origins: ORIGINS, ciLinks: true })), EVAL_TEXT.emptyCi], "area"), []);
+});
+
+// ─── (Casi senza AI) docs/rilascio-8/CASI-SENZA-AI.md §6 ─────────────
+
+/** Le evals di main di un caso senza AI: il risultato `senza-ai`, senza costi né token. Codice del caso inventato. */
+const NO_AI_RESULT = result("senza-ai", 1, null, {
+  current: true,
+  passed: 48,
+  total: 48,
+  tokensInAvg: null,
+  tokensOutAvg: null,
+  latencyP50Ms: 120,
+  latencyP95Ms: 410,
+  groups: { regole: { passati: 30, totali: 30, soglia: 1, ok: true }, avversari: { passati: 18, totali: 18, soglia: 0.95, ok: true } },
+});
+const NO_AI: EvalOverview = {
+  evals: {
+    latest: run({ models: {}, templateVersion: "1.7.1", results: [NO_AI_RESULT], withoutAi: true }),
+    trend: [
+      { at: "2026-11-12T10:00:00.000Z", quality: 0.98, thresholdsMet: true, fakeModels: false, withoutAi: true },
+      { at: "2026-11-14T10:00:00.000Z", quality: 1, thresholdsMet: true, fakeModels: false, withoutAi: true },
+    ],
+  },
+  benches: [],
+};
+const renderNoAi = (overview: EvalOverview) => render(overview, { caseCode: "XX-0007" });
+
+test("(casi senza AI) lo stato delle evals: «caso senza AI: nessun modello» al posto dei modelli; qualità, gruppi, prove, ramo, livello e andamento come oggi", () => {
+  const html = renderNoAi(NO_AI);
+  const text = textOf(html);
+  assert.equal(EVAL_TEXT.withoutAi, "caso senza AI: nessun modello");
+  assert.match(html, /data-slot="eval-without-ai"/);
+  assert.ok(text.includes(EVAL_TEXT.withoutAi));
+  assert.ok(!text.includes(`${EVAL_TEXT.models}:`), "nessun modello per ruolo");
+  for (const shown of ["100%", "soglie rispettate", "48 di 48 prove", "regole 30 di 30 · avversari 18 di 18", "ramo main", "livello pull request", "Ultime 2: da 98% a 100%"]) {
+    assert.ok(text.includes(shown), shown);
+  }
+  assert.match(html, /data-slot="eval-trend"/);
+  // Le evals si rifanno come oggi; niente costi né token, niente modelli finti, niente «modelli di oggi».
+  assert.ok(text.includes("Per rifarle: npm run unbundle -- eval XX-0007 --invia"));
+  assert.doesNotMatch(text, /USD|token|costo|modelli finti|modelli di oggi/i);
+  assert.deepEqual(findHubForbiddenIn([text], "area"), []);
+});
+
+test("(casi senza AI) niente banco di prova: una riga lo dice, nessun invito e nessun comando del banco", () => {
+  const html = renderNoAi(NO_AI);
+  const text = textOf(html);
+  assert.equal(EVAL_TEXT.benchWithoutAi, "Caso senza AI: non c'è un modello da scegliere, quindi niente banco di prova.");
+  assert.match(html, /data-slot="bench-without-ai"/);
+  assert.ok(text.includes(EVAL_TEXT.benchWithoutAi));
+  assert.ok(!text.includes(EVAL_TEXT.benchNone) && !text.includes(EVAL_TEXT.benchStart), "nessun invito a lanciarlo");
+  assert.doesNotMatch(text, /unbundle -- banco/, "nessun comando del banco");
+  assert.equal(count(html, /data-slot="eval-command"/), 1, "solo il comando delle evals");
+  // Le stesse evals con un modello: com'era, con i modelli per ruolo e i comandi del banco.
+  const withModels = textOf(render(FULL));
+  assert.ok(!withModels.includes(EVAL_TEXT.withoutAi) && !withModels.includes(EVAL_TEXT.benchWithoutAi));
+});
+
+test("(casi senza AI) i banchi di prima restano come storia: superati dalle evals di main, senza «oggi», raccomandazione né comando", () => {
+  // Il banco del 10/11 consigliava Haiku per «lettura»; le evals di main del 14/11 sono senza AI.
+  const old = benchOf("lettura", LETTURA, { createdAt: "2026-11-10T10:00:00.000Z" });
+  const html = renderNoAi({ ...NO_AI, benches: [old] });
+  const card = html.slice(html.indexOf('data-slot="bench-card"'));
+  const text = textOf(card);
+  assert.match(html, /data-slot="bench-without-ai"/, "la riga del banco c'è anche con la storia");
+  assert.match(card, /data-slot="bench-superseded"/);
+  assert.ok(text.includes("Dopo questo banco il ruolo «lettura» non c'è più in agent.yaml: resta il confronto di allora."));
+  assert.doesNotMatch(card, /data-slot="bench-verdict"/, "nessun consiglio");
+  assert.doesNotMatch(card, /data-slot="bench-current"/);
+  assert.doesNotMatch(text, /\boggi\b/i);
+  assert.match(card, /data-slot="bench-plot"/, "il grafico resta: è la storia");
+  assert.equal(count(card, /<tr data-model="/), 4);
+  assert.doesNotMatch(textOf(html), /unbundle -- banco|Ancora nessun banco/);
+  // Evals senza AI solo su un ramo: la regola di main non supera il banco, ma la pagina non dà comandi del banco.
+  const branchOnly = renderNoAi({ ...NO_AI, evals: { latest: run({ ...NO_AI.evals.latest, branch: "xx-0007/prova" }), trend: [] }, benches: [old] });
+  assert.doesNotMatch(branchOnly, /data-slot="bench-superseded"/);
+  assert.doesNotMatch(textOf(branchOnly), /unbundle -- banco/);
+  assert.match(branchOnly, /data-slot="bench-without-ai"/);
 });

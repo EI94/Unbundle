@@ -20,6 +20,9 @@ import { loadMemberCandidates } from "@/lib/db/queries/uc-shell";
 import { ROLE_LABEL } from "@/lib/uc/views/labels";
 import { builderStateText, builderWhereText, externalRemoveConfirm } from "@/lib/use-cases/factory/builders-text";
 import { BuilderFacts } from "@/components/agent-factory/builder-facts";
+import { readCiFamilies } from "@/components/agent-factory/ci-load";
+import { CiRow } from "@/components/agent-factory/ci-row";
+import { ciRepoShortName, familyAnchor } from "@/components/agent-factory/ci-text";
 import { AddBuilder, RemoveBuilder } from "./team-forms";
 
 /**
@@ -36,7 +39,13 @@ import { AddBuilder, RemoveBuilder } from "./team-forms";
  *   riga dice se la CLI è collegata, o perché da fuori oggi non costruisce. «Togli» chiede conferma con i casi e i
  *   repository di GitHub (da togliere a mano).
  * - (8.2a) Per ogni caso le evals («evals 96%», «sotto soglia») e il consiglio del banco di prova; in «Da fare per te»,
- *   a chi costruisce il caso, il consiglio del banco e le evals sotto soglia, con il link a «Evals e banco di prova».
+ *   a chi costruisce il caso, il consiglio del banco e le evals sotto soglia, con il link a «Qualità» della Costruzione
+ *   (rilascio 10).
+ * - (8.2b) Sotto i casi di ogni famiglia la riga della CI: lo stato della chiave con cui la CI di GitHub manda le evals
+ *   di main, per tutti quelli che vedono la famiglia; «Collega la CI», «Ruota» e «Revoca» solo a chi gestisce le chiavi
+ *   del repository (D6), con le finestre dell'app e la chiave che si vede una volta. In «Da fare per te», solo a loro,
+ *   la chiave nuova da mettere su GitHub, quella in scadenza e la CI da collegare, con il link alla famiglia. La
+ *   conferma di «Togli» per chi costruisce da fuori chiede di ruotare le chiavi vive dei suoi repository.
  *
  * La vede chi costruisce (ruolo di Lateral Space nel team di un caso o, 8.0c, da fuori con il predicato unico), con i
  * suoi casi, e il manager del workspace di Lateral Space, con tutti. Agli altri: 404.
@@ -77,8 +86,9 @@ function todoHref(workspaceId: string, t: FactoryTodo): string {
   if (t.href) return t.href;
   if (t.kind === "collega") return `/dashboard/${workspaceId}/settings#cli`;
   if (t.kind === "domande") return `/dashboard/${workspaceId}/use-cases/${t.useCaseId}/proposte`;
-  if (t.kind === "banco" || t.kind === "evals") return `/dashboard/${workspaceId}/casi-duso/${t.caseId}/progetto#banco`;
-  return `/dashboard/${workspaceId}/casi-duso/${t.caseId}/progetto${t.kind === "approva" ? "" : "#compiti"}`;
+  // (Rilascio 10) Dritti alla Costruzione: passando dal 308 di `/progetto` la navigazione nell'app perderebbe l'ancora.
+  if (t.kind === "banco" || t.kind === "evals") return `/dashboard/${workspaceId}/casi-duso/${t.caseId}/costruzione#banco`;
+  return `/dashboard/${workspaceId}/casi-duso/${t.caseId}/costruzione${t.kind === "approva" ? "" : "#compiti"}`;
 }
 
 function CaseRow({ workspaceId, c }: { workspaceId: string; c: FactoryCaseRow }) {
@@ -92,7 +102,7 @@ function CaseRow({ workspaceId, c }: { workspaceId: string; c: FactoryCaseRow })
   ].filter(Boolean);
   return (
     <li>
-      <Link href={`/dashboard/${workspaceId}/casi-duso/${c.caseId}/progetto`} className="flex min-h-11 items-start justify-between gap-3 py-3 hover:bg-muted/40 sm:-mx-2 sm:rounded-md sm:px-2">
+      <Link href={`/dashboard/${workspaceId}/casi-duso/${c.caseId}/costruzione`} className="flex min-h-11 items-start justify-between gap-3 py-3 hover:bg-muted/40 sm:-mx-2 sm:rounded-md sm:px-2">
         <div className="min-w-0">
           <p className="text-sm">
             <span className="font-medium tabular-nums">{c.code}</span> · {c.title}
@@ -109,12 +119,15 @@ function CaseRow({ workspaceId, c }: { workspaceId: string; c: FactoryCaseRow })
   );
 }
 
-/** Una persona di «Chi costruisce»: nome, da fuori o no, ruolo, dove, la CLI (o perché da fuori oggi non costruisce). */
-function BuilderLine({ workspaceId, m }: { workspaceId: string; m: BuilderRow }) {
+/**
+ * Una persona di «Chi costruisce»: nome, da fuori o no, ruolo, dove, la CLI (o perché da fuori oggi non costruisce).
+ * (8.2b) `ciLive`: i repository (in minuscolo) con una chiave della CI viva, che la conferma di «Togli» chiede di ruotare.
+ */
+function BuilderLine({ workspaceId, m, ciLive }: { workspaceId: string; m: BuilderRow; ciLive: ReadonlySet<string> }) {
   const role = m.external ? "Sviluppatore" : ROLE_LABEL[m.role as keyof typeof ROLE_LABEL];
   const facts = [...(m.external ? ["esterno"] : []), role, builderWhereText(m.where, m.whereCodes), builderStateText(m)];
   const confirm = m.external
-    ? externalRemoveConfirm({ name: m.name, openCases: m.openCases, repos: m.repos })
+    ? externalRemoveConfirm({ name: m.name, openCases: m.openCases, repos: m.repos, ciRepos: m.repos.filter((repo) => ciLive.has(repo.toLowerCase())) })
     : {
         title: `Togliere ${m.name} da chi costruisce?`,
         text: `Esce da tutti i casi aperti dove è ${role.toLowerCase()} e non entra in quelli nuovi; i compiti che ha lì tornano da prendere. I ruoli dati caso per caso restano; l'unico responsabile di un caso non si toglie.`,
@@ -162,6 +175,15 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
         lsDomains,
       )
     : new Map<string, string>();
+  // (8.2b) La CI delle famiglie: lo stato per tutti, i pulsanti e «Da fare per te» solo a chi gestisce le chiavi. Una
+  // lettura che non riesce non fa cadere la pagina: la riga dice «Non ancora disponibile».
+  const ci = await readCiFamilies(executor, {
+    workspaceId,
+    userId: session.user.id,
+    isLateralSpace: viewer.isLateralSpace,
+    lsDomains,
+    families: view.families.flatMap((f) => (f.repo ? [f.repo] : [])),
+  });
   // (Rilascio 10, §1 regola 5) «La linea» senza gli zeri: solo le stazioni con almeno un caso.
   const counts = STATIONS.map((station) => ({ station, n: view.cases.filter((c) => c.station === station).length })).filter(({ n }) => n > 0);
 
@@ -174,7 +196,7 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
         </p>
       </header>
 
-      {view.todos.length ? (
+      {view.todos.length || ci.todos.length ? (
         <section aria-labelledby="per-te" className="mt-6 rounded-md border p-4">
           <h2 id="per-te" className="text-sm font-semibold">
             Da fare per te
@@ -203,6 +225,15 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
                 )}
               </li>
             ))}
+            {/* (8.2b) La CI delle famiglie, solo a chi gestisce le chiavi: il link porta alla riga della famiglia. */}
+            {ci.todos.map((t) => (
+              <li key={`ci-${t.kind}-${t.repo}`} data-ci-todo={t.kind}>
+                <a href={t.href} className="flex min-h-11 items-center justify-between gap-3 py-2 text-sm hover:underline">
+                  <span className="min-w-0 break-words">{t.text}</span>
+                  <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                </a>
+              </li>
+            ))}
           </ul>
         </section>
       ) : null}
@@ -225,9 +256,9 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
           view.families.map((f) => (
             <SettingsSection
               key={f.repo ?? "senza"}
-              id={f.repo ? `famiglia-${f.repo.split("/")[1]}` : "da-avviare"}
+              id={f.repo ? familyAnchor(f.repo) : "da-avviare"}
               icon={f.repo ? Factory : Inbox}
-              title={f.repo ? f.repo.split("/")[1] : "Senza repository"}
+              title={f.repo ? ciRepoShortName(f.repo) : "Senza repository"}
               description={
                 f.repo
                   ? `${f.repo}${f.templateVersion ? ` · modello ${f.templateVersion}${compareVersions(f.templateVersion, AGENT_FACTORY_TEMPLATE_VERSION) < 0 ? " (indietro)" : ""}` : ""}${f.commonVersion ? ` · comune ${f.commonVersion}` : ""}`
@@ -239,6 +270,7 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
                   <CaseRow key={c.caseId} workspaceId={workspaceId} c={c} />
                 ))}
               </ul>
+              <CiRow workspaceId={workspaceId} row={f.repo ? ci.rows.get(f.repo.toLowerCase()) : undefined} />
             </SettingsSection>
           ))
         )}
@@ -253,7 +285,7 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
             {builders.length ? (
               <ul className="divide-y">
                 {builders.map((m) => (
-                  <BuilderLine key={m.userId} workspaceId={workspaceId} m={m} />
+                  <BuilderLine key={m.userId} workspaceId={workspaceId} m={m} ciLive={ci.liveRepos} />
                 ))}
               </ul>
             ) : (

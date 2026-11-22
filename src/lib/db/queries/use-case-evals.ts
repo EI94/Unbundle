@@ -27,13 +27,34 @@ import "server-only";
  *
  * Mai chi lancia il banco o manda le evals, né nelle tabelle né nelle letture (art. 15.4): la persona serve solo a non
  * avvisare chi ha agito, dentro la stessa istruzione, e non si scrive.
+ *
+ * (8.2b, RILASCIO-8.2b-SPEC.md §2.3) **Le evals dalla CI:** con `o.source` l'esecuzione arriva dalla CI di `main`, con la
+ * chiave del repository: si scrive con la fonte `ci`, la chiave e l'indirizzo dell'esecuzione su GitHub, senza persona
+ * (gli avvisi vanno a tutto il team che costruisce, chi viene da fuori compreso). Le regole della 8.2a non cambiano: lo
+ * stesso lock per caso, lo stesso confronto, lo stesso stato del caso. Nella stessa transazione la versione del modello
+ * del repository diventa quella di main (`use_case_factory_repos`). Senza `o.source`, come prima: le istruzioni non
+ * nominano le colonne della 0042, che può non esserci ancora. Le letture chiedono la fonte solo con la 0042 pronta.
+ *
+ * (Casi senza AI, docs/rilascio-8/CASI-SENZA-AI.md §3, §5) **Le evals di un caso che non chiama modelli** si scrivono
+ * con le stesse istruzioni: `models '{}'`, `fake_models false` e il risultato con l'id riservato `senza-ai`, senza costi
+ * né token. Nessuna migrazione: il segno sta nel risultato, e un'esecuzione è «senza AI» se è di evals e il suo
+ * risultato «attuale» ha `model = 'senza-ai'` (`withoutAiSql`, `evalRunWithoutAi`); le evals con i modelli vuoti
+ * mandate a mano prima del 14/11 non lo hanno, e si leggono come prima.
+ * - Sono evals vere: lo stato del caso (`statusOrderSql`) non cambia, e con main e il livello completo lo fanno come le
+ *   altre; l'avviso al team parte con le stesse regole (`evalsNoticeApplies`).
+ * - Il confronto (`previousEvalsSql`) e l'andamento della pagina tengono la stessa natura, come veri con veri e finti con
+ *   finti: senza AI con senza AI. Un caso che passa all'automazione senza AI non riceve un falso «in calo».
+ * - Dopo evals senza AI di main ogni banco del caso è superato (`benchSuperseded`): i ruoli non ci sono più.
  */
 import { randomUUID } from "node:crypto";
 import type { UcExecutor, UcRow } from "@/lib/db/uc-executor";
 import type { FactoryTarget } from "@/lib/db/queries/use-case-factory";
 import { EVALS_PROBE_SQL } from "@/lib/db/use-case-hub-evals-ddl";
-import { NOBODY, notifyTask } from "@/lib/db/queries/use-case-tasks-notices";
+import { CI_RUN_URL_RE } from "@/lib/db/use-case-hub-ci-keys-ddl";
+import { NOBODY, notifyTask, tasksTablesReady } from "@/lib/db/queries/use-case-tasks-notices";
 import { loadBuilderScope } from "@/lib/db/queries/use-case-builders";
+import { ciKeysStoreReady } from "@/lib/db/queries/use-case-ci-keys";
+import { checkCiRunSource, type CiRunSource } from "@/lib/use-cases/ci/api";
 import { cast, jsonb, raw, ref, toStatement, ucSql, type SqlFragment, type UcStatement } from "@/lib/uc/sql/statement";
 import { rowDate } from "@/lib/uc/sql/readiness";
 import { fail, ok, type Result } from "@/lib/uc/types";
@@ -42,8 +63,10 @@ import {
   benchSuperseded,
   catalogueModelName,
   EVALS_MAIN,
+  evalRunWithoutAi,
   evalsAlert,
   formatQuality,
+  NO_AI_MODEL,
   type BenchAnalysis,
   type BenchResult,
   type BenchVerdict,
@@ -54,7 +77,7 @@ import {
   type EvalRunView,
   type EvalsAlert,
 } from "@/lib/use-cases/factory/benchmark";
-import type { EvalRunInput } from "@/lib/use-cases/factory/benchmark-input";
+import { noAiMarkConsistent, type EvalRunInput } from "@/lib/use-cases/factory/benchmark-input";
 
 /** Il ramo delle evals che contano per il team: la pagina, l'andamento, gli avvisi, «Da fare per te». */
 export const EVALS_MAIN_BRANCH = EVALS_MAIN;
@@ -98,6 +121,11 @@ const RESULT_COLUMNS = raw(
 );
 /** Le colonne di un risultato che servono alla lettura del banco (`analyzeBench`): niente gruppi, tempi né token. */
 const VERDICT_RESULT_COLUMNS = raw("x.model, x.current, x.passed, x.total, x.thresholds_met, x.cost_per_1000_usd");
+/**
+ * (8.2b) La fonte di un'esecuzione (`r`) e il suo link a GitHub: solo con la 0042 pronta. Senza, le stesse colonne con il
+ * valore delle righe di prima: «dalla CLI», nessun link.
+ */
+const sourceColumns = (ciReady: boolean) => (ciReady ? raw("r.source, r.ci_run_url") : raw("'cli'::text AS source, NULL::text AS ci_run_url"));
 
 const numberOrNull = (v: unknown): number | null => {
   if (v === null || v === undefined) return null;
@@ -151,9 +179,10 @@ function resultOf(r: UcRow): BenchResult {
 }
 
 function runViewOf(r: UcRow, results: BenchResult[]): EvalRunView {
+  const kind = String(r.kind) as EvalRunKind;
   return {
     id: String(r.id),
-    kind: String(r.kind) as EvalRunKind,
+    kind,
     role: text(r.role),
     level: String(r.level),
     branch: text(r.branch),
@@ -165,7 +194,26 @@ function runViewOf(r: UcRow, results: BenchResult[]): EvalRunView {
     casesTotal: count(r.cases_total),
     createdAt: isoOf(r.created_at),
     results,
+    // (Casi senza AI, §3) Dal risultato «attuale», dove si leggono i modelli finti e il caso in costruzione.
+    withoutAi: evalRunWithoutAi(kind, results),
+    // (8.2b) Solo dove la lettura ha chiesto la fonte (`sourceColumns`).
+    ...(Object.hasOwn(r, "source") ? sourceOf(r) : {}),
   };
+}
+
+/**
+ * (Casi senza AI, §3) Vero se le evals `alias` sono di un caso senza AI: il loro risultato «attuale» ha l'id riservato.
+ * La regola di `evalRunWithoutAi` nel database; chi la usa legge già solo le evals (`kind = 'evals'`).
+ */
+function withoutAiSql(alias: "p" | "q" | "me"): SqlFragment {
+  return ucSql`EXISTS (SELECT 1 FROM use_case_eval_results n WHERE n.run_id = ${ref(`${alias}.id`)} AND n.current AND n.model = ${cast(NO_AI_MODEL, "text")})`;
+}
+
+/** (8.2b) La fonte letta: `ci` con il suo link (se vale), altrimenti «dalla CLI» senza link. */
+function sourceOf(r: UcRow): Pick<EvalRunView, "source" | "ciRunUrl"> {
+  if (r.source !== "ci") return { source: "cli", ciRunUrl: null };
+  const url = typeof r.ci_run_url === "string" && CI_RUN_URL_RE.test(r.ci_run_url) ? r.ci_run_url : null;
+  return { source: "ci", ciRunUrl: url };
 }
 
 /** Le righe esecuzione × risultato, raggruppate per esecuzione, nell'ordine in cui arrivano. */
@@ -230,14 +278,41 @@ export function evalsNoticeApplies(input: Pick<EvalRunInput, "fakeModels" | "inC
   return !input.fakeModels && !input.inConstruction && input.branch === EVALS_MAIN_BRANCH;
 }
 
-function insertRunSql(target: FactoryTarget, id: string, input: EvalRunInput, guard: SqlFragment): UcStatement {
-  return toStatement(ucSql`INSERT INTO use_case_eval_runs (id, use_case_id, workspace_id, kind, role, level, branch, commit_sha, template_version, models, fake_models, in_construction, cases_total)
+/**
+ * L'esecuzione. (8.2b) Dalla CI, con la fonte `ci`, la chiave e l'indirizzo dell'esecuzione su GitHub; dalla CLI
+ * l'istruzione di prima, senza le colonne della 0042 (la fonte di default è `cli`).
+ */
+function insertRunSql(target: FactoryTarget, id: string, input: EvalRunInput, guard: SqlFragment, ci: CiRunSource | null): UcStatement {
+  const ciColumns = ci ? raw(", source, ci_key_id, ci_run_url") : raw("");
+  const ciValues = ci ? ucSql`, 'ci', ${cast(ci.keyId, "uuid")}, ${cast(ci.runUrl, "text")}` : raw("");
+  return toStatement(ucSql`INSERT INTO use_case_eval_runs (id, use_case_id, workspace_id, kind, role, level, branch, commit_sha, template_version, models, fake_models, in_construction, cases_total${ciColumns})
 SELECT ${cast(id, "uuid")}, u.id, u.workspace_id, ${cast(input.kind, "text")}, ${cast(input.role, "text")}, ${cast(input.level, "text")}, ${cast(input.branch, "text")},
   ${cast(input.commit, "text")}, ${cast(input.templateVersion, "text")}, ${jsonb(input.models)}, ${cast(input.fakeModels, "boolean")}, ${cast(input.inConstruction, "boolean")},
-  ${cast(input.casesTotal, "int")}
+  ${cast(input.casesTotal, "int")}${ciValues}
 FROM use_cases u WHERE u.id = ${cast(target.useCaseId, "uuid")} AND u.workspace_id = ${cast(target.workspaceId, "uuid")} AND ${guard}
 ON CONFLICT (id) DO NOTHING
 RETURNING id`);
+}
+
+/**
+ * (8.2b) La versione del modello del repository la dicono le evals di main della CI (§2.3): nella stessa transazione
+ * dell'esecuzione, solo se è nata adesso (una ripresa non riscrive niente), per il repository della chiave come è
+ * registrato per il caso. La riga della famiglia e la coda della fabbrica guardano main, non il computer di qualcuno
+ * (`reportRepoVersion` non la cambia per `CI_VERSION_WINDOW_DAYS` giorni). Senza versione, o senza le tabelle della
+ * 0032, niente.
+ */
+async function repoVersionFromCiSql(executor: UcExecutor, target: FactoryTarget, id: string, input: EvalRunInput, ci: CiRunSource): Promise<UcStatement[]> {
+  if (!input.templateVersion || input.branch !== EVALS_MAIN_BRANCH || !(await tasksTablesReady(executor))) return [];
+  return [
+    toStatement(ucSql`INSERT INTO use_case_factory_repos (workspace_id, repo, kind, template_version, reported_at)
+SELECT r.workspace_id, r.repo, 'famiglia', ${cast(input.templateVersion, "text")}, now()
+FROM use_case_repos r
+WHERE r.workspace_id = ${cast(target.workspaceId, "uuid")} AND r.use_case_id = ${cast(target.useCaseId, "uuid")} AND lower(r.repo) = lower(${cast(ci.repo, "text")})
+  AND ${insertedNow(id)}
+ORDER BY r.created_at, r.id
+LIMIT 1
+ON CONFLICT (workspace_id, repo) DO UPDATE SET template_version = EXCLUDED.template_version, reported_at = now(), updated_at = now()`),
+  ];
 }
 
 /** I risultati, solo se l'esecuzione è nata in questa transazione: nel suo caso e nel suo workspace. */
@@ -297,17 +372,22 @@ function precheckSql(target: FactoryTarget, id: string): UcStatement[] {
 /**
  * Le ultime evals prima di quelle che si scrivono: stesso caso, stesso ramo, stesso livello, stesso tipo di modelli. Le
  * evals «veloce» fanno un pezzo delle prove (le regole, gli avversari, i primi 20 casi d'oro): con quelle complete non
- * si confrontano mai. `before`: l'id di un'esecuzione già scritta (si guarda prima di lei); senza, l'ultima che c'è,
- * tranne `exclude`.
+ * si confrontano mai. (Casi senza AI) La stessa natura: senza AI con senza AI, con i modelli con i modelli.
+ * `before`: l'id di un'esecuzione già scritta (si guarda prima di lei); senza, l'ultima che c'è, tranne `exclude`.
  */
-function previousEvalsSql(target: FactoryTarget, run: { branch: string | null; fakeModels: boolean; level: string }, o: { before?: string; exclude?: string }): SqlFragment {
+function previousEvalsSql(
+  target: FactoryTarget,
+  run: { branch: string | null; fakeModels: boolean; level: string; withoutAi?: boolean },
+  o: { before?: string; exclude?: string },
+): SqlFragment {
   const ws = cast(target.workspaceId, "uuid");
   const uc = cast(target.useCaseId, "uuid");
   const order = o.before ? ucSql` AND (p.created_at, p.id) < (SELECT me.created_at, me.id FROM use_case_eval_runs me WHERE me.id = ${cast(o.before, "uuid")})` : raw("");
   const exclude = o.exclude ? ucSql` AND p.id <> ${cast(o.exclude, "uuid")}` : raw("");
   return ucSql`(SELECT p.id FROM use_case_eval_runs p
   WHERE p.workspace_id = ${ws} AND p.use_case_id = ${uc} AND p.kind = 'evals' AND p.branch IS NOT DISTINCT FROM ${cast(run.branch, "text")}
-    AND p.fake_models = ${cast(run.fakeModels, "boolean")} AND p.level = ${cast(run.level, "text")}${order}${exclude}
+    AND p.fake_models = ${cast(run.fakeModels, "boolean")} AND p.level = ${cast(run.level, "text")}
+    AND ${withoutAiSql("p")} = ${cast(run.withoutAi === true, "boolean")}${order}${exclude}
   ORDER BY p.created_at DESC, p.id DESC LIMIT 1)`;
 }
 
@@ -344,10 +424,14 @@ ORDER BY x.current DESC, x.model`),
   return ok({ id: run.id, analysis: null, alert: evalsAlert(previousPoint(previous[0])?.point ?? null, pointOf(run, current)), notified: false });
 }
 
+/** (8.2b) La 0042 non c'è ancora: la CI non può scrivere la fonte (la rotta risponde 503 prima di arrivare qui). */
+export const CI_SOURCE_UNAVAILABLE_MESSAGE = "Unbundle non riceve ancora le evals dalla CI: riprova tra qualche minuto.";
+
 /**
  * Scrive un banco o delle evals dello use case, già controllati (`parseEvalRun`). I permessi li controlla chi chiama.
  * `id`: quello riservato dal registro dell'idempotenza (una ripresa lo ritrova); `actorUserId`: chi ha mandato, per non
- * avvisarlo (mai scritto).
+ * avvisarlo (mai scritto). (8.2b) `source`: l'esecuzione arriva dalla CI di main (la chiave, l'esecuzione su GitHub):
+ * nessuna persona, quindi nessuno escluso dagli avvisi, e la versione del modello del repository diventa quella di main.
  */
 export async function recordEvalRun(
   executor: UcExecutor,
@@ -359,6 +443,8 @@ export async function recordEvalRun(
     now?: Date;
     /** (8.0c) I domini di Lateral Space, per avvisare anche chi costruisce il caso da fuori; senza, solo Lateral Space. */
     lsDomains?: readonly string[];
+    /** (8.2b) Dalla CI: la fonte `ci`, la chiave e l'esecuzione su GitHub. Senza, dalla CLI di una persona. */
+    source?: CiRunSource | null;
   },
 ): Promise<Result<EvalRunRecorded>> {
   const id = o.id ?? randomUUID();
@@ -366,9 +452,19 @@ export async function recordEvalRun(
   if (input.kind === "banco" ? input.role === null : input.role !== null) return fail("dati_non_validi", "Il ruolo c'è solo per il banco.");
   const current = input.results.filter((r) => r.current);
   if (current.length !== 1 || (input.kind === "evals" && input.results.length !== 1)) return fail("dati_non_validi", "Serve un solo risultato «attuale».");
+  // (Casi senza AI) Il segno sta nel risultato: un invio che non lo rispetta si leggerebbe per quello che non è.
+  if (!noAiMarkConsistent(input)) return fail("dati_non_validi", "senza-ai solo per le evals di un caso senza AI, senza modelli, costi né token.");
+  const ci = o.source ?? null;
+  if (ci) {
+    const refused = checkCiRunSource(ci, input);
+    if (refused) return fail("dati_non_validi", refused);
+  }
   if (!(await evalsStoreReady(executor))) return fail("non_disponibile", "Il banco e le evals non sono ancora disponibili: riprova tra qualche minuto.");
-  const actor = o.actorUserId ?? NOBODY;
+  if (ci && !(await ciKeysStoreReady(executor))) return fail("non_disponibile", CI_SOURCE_UNAVAILABLE_MESSAGE);
+  // La CI non è una persona: nessuno è escluso dagli avvisi, tutto il team che costruisce lo sa.
+  const actor = ci ? NOBODY : (o.actorUserId ?? NOBODY);
   const now = o.now ?? new Date();
+  const version = ci ? await repoVersionFromCiSql(executor, target, id, input, ci) : [];
 
   if (input.kind === "banco") {
     const role = input.role as string;
@@ -387,7 +483,13 @@ export async function recordEvalRun(
         : [];
     // In fila per caso, e il posto per il ruolo si conta dentro la scrittura: due banchi di ruoli nuovi insieme non
     // superano il tetto.
-    const written = await executor.batch([caseWriteLockSql(target), insertRunSql(target, id, input, benchRoomSql(target, role)), insertResultsSql(id, input.results), ...notices]);
+    const written = await executor.batch([
+      caseWriteLockSql(target),
+      insertRunSql(target, id, input, benchRoomSql(target, role), ci),
+      insertResultsSql(id, input.results),
+      ...notices,
+      ...version,
+    ]);
     if (written[1][0]) return ok({ id, analysis, alert: null, notified: notices.length > 0 });
     // Non scritto: la stessa esecuzione arrivata insieme (si risponde come lei), lo use case che non c'è più, o i ruoli
     // del caso riempiti nel frattempo.
@@ -410,15 +512,18 @@ export async function recordEvalRun(
             alert: alert.kind,
             qualityText: formatQuality(point.quality),
             ...(alert.kind === "in_calo" ? { drop: alert.drop } : {}),
+            // (8.2b) «Le ha mandate la CI di main, commit a1b2c3d.»: le 40 cifre del commit, l'e-mail ne mostra 7.
+            ...(ci && input.commit ? { fromCi: { commit: input.commit } } : {}),
           })
         : [];
     // In fila per use case; si scrive solo se le ultime evals confrontate sono ancora le ultime.
     const still = ucSql`${previousEvalsSql(target, input, { exclude: id })} IS NOT DISTINCT FROM ${cast(previous?.id ?? null, "uuid")}`;
     const results = await executor.batch([
       caseWriteLockSql(target),
-      insertRunSql(target, id, input, still),
+      insertRunSql(target, id, input, still, ci),
       insertResultsSql(id, input.results),
       ...notices,
+      ...version,
     ]);
     if (results[1][0]) return ok({ id, analysis: null, alert, notified: notices.length > 0 });
   }
@@ -430,7 +535,8 @@ export async function recordEvalRun(
 /**
  * L'ordine delle evals che fanno lo stato del caso (la pagina, la CLI, l'Agent Factory, «Da fare per te»): quelle di
  * `main` prima, poi quelle con i modelli veri, poi quelle del livello completo, poi le più recenti. Così né le evals con
- * i modelli finti né quelle «veloce» prendono il posto delle evals vere e complete di `main`.
+ * i modelli finti né quelle «veloce» prendono il posto delle evals vere e complete di `main`. (Casi senza AI) Le evals
+ * senza AI sono vere (`fake_models` falso): con main e il livello completo fanno lo stato come le altre.
  */
 function statusOrderSql(alias: "l" | "r"): SqlFragment {
   const a = ref(alias);
@@ -440,23 +546,25 @@ function statusOrderSql(alias: "l" | "r"): SqlFragment {
 /**
  * Quello che la sezione «Evals e banco di prova» mostra di un caso: le evals che fanno lo stato del caso
  * ({@link statusOrderSql}) con l'andamento delle ultime {@link EVALS_TREND_MAX} della stessa serie (stesso ramo, stessi
- * modelli veri o finti, stesso livello), dalla più vecchia (l'ultima compresa); l'ultimo banco di ogni ruolo, in ordine
- * di ruolo, con la sua lettura. Null se la 0036 non c'è.
+ * modelli veri o finti, stesso livello; senza AI con senza AI), dalla più vecchia (l'ultima compresa); l'ultimo banco di
+ * ogni ruolo, in ordine di ruolo, con la sua lettura. Null se la 0036 non c'è. (8.2b) Ogni esecuzione dice la sua fonte
+ * (`source`, `ciRunUrl`): con la 0042 non ancora pronta le colonne nuove non si chiedono, e tutto è «dalla CLI».
  */
 export async function loadEvalOverview(executor: UcExecutor, target: FactoryTarget): Promise<EvalOverview | null> {
   if (!(await evalsStoreReady(executor))) return null;
+  const source = sourceColumns(await ciKeysStoreReady(executor));
   const ws = cast(target.workspaceId, "uuid");
   const uc = cast(target.useCaseId, "uuid");
   const latest = ucSql`(SELECT l.id FROM use_case_eval_runs l WHERE l.workspace_id = ${ws} AND l.use_case_id = ${uc} AND l.kind = 'evals'
   ORDER BY ${statusOrderSql("l")} LIMIT 1)`;
   // Le evals hanno un solo risultato, quello «attuale»: l'andamento porta tutta l'esecuzione, e l'ultima è la sua fine.
   // L'andamento è quello delle evals che fanno lo stato: lo stesso ramo, gli stessi modelli (veri o finti), lo stesso
-  // livello. Sono le più recenti di quella serie, quindi l'ultimo punto.
+  // livello, la stessa natura (senza AI con senza AI). Sono le più recenti di quella serie, quindi l'ultimo punto.
   const [trendRows, benchRows] = await executor.batch([
-    toStatement(ucSql`SELECT ${RUN_COLUMNS}, ${RESULT_COLUMNS} FROM (
+    toStatement(ucSql`SELECT ${RUN_COLUMNS}, ${source}, ${RESULT_COLUMNS} FROM (
   SELECT q.id FROM use_case_eval_runs q JOIN use_case_eval_runs me ON me.id = ${latest}
   WHERE q.workspace_id = ${ws} AND q.use_case_id = ${uc} AND q.kind = 'evals' AND q.branch IS NOT DISTINCT FROM me.branch
-    AND q.fake_models = me.fake_models AND q.level = me.level
+    AND q.fake_models = me.fake_models AND q.level = me.level AND ${withoutAiSql("q")} = ${withoutAiSql("me")}
   ORDER BY q.created_at DESC, q.id DESC
   LIMIT ${cast(EVALS_TREND_MAX, "int")}) t
 JOIN use_case_eval_runs r ON r.id = t.id
@@ -469,11 +577,17 @@ ORDER BY r.created_at, r.id`),
     ORDER BY q.role, q.created_at DESC, q.id DESC) b
   ORDER BY b.created_at DESC, b.id DESC
   LIMIT ${cast(BENCH_ROLES_MAX, "int")})
-SELECT ${RUN_COLUMNS}, ${RESULT_COLUMNS} FROM latest l JOIN use_case_eval_runs r ON r.id = l.id JOIN use_case_eval_results x ON x.run_id = r.id
+SELECT ${RUN_COLUMNS}, ${source}, ${RESULT_COLUMNS} FROM latest l JOIN use_case_eval_runs r ON r.id = l.id JOIN use_case_eval_results x ON x.run_id = r.id
 ORDER BY r.role, x.current DESC, x.model`),
   ]);
   const runs = trendRows.map((row) => runViewOf(row, [resultOf(row)]));
-  const trend = runs.map((run) => ({ at: run.createdAt, quality: run.results[0].quality, thresholdsMet: run.results[0].thresholdsMet, fakeModels: run.fakeModels }));
+  const trend = runs.map((run) => ({
+    at: run.createdAt,
+    quality: run.results[0].quality,
+    thresholdsMet: run.results[0].thresholdsMet,
+    fakeModels: run.fakeModels,
+    withoutAi: run.withoutAi === true,
+  }));
   const benches = runsOf(benchRows).map((run) => ({ role: run.role ?? "", run, analysis: benchAnalysis(run) }));
   return { evals: { latest: runs.at(-1) ?? null, trend }, benches };
 }
@@ -482,13 +596,15 @@ ORDER BY r.role, x.current DESC, x.model`),
 export interface CaseEvalFacts {
   /**
    * Le evals che fanno lo stato del caso: `main` prima, poi i modelli veri, poi il livello completo, poi le più recenti.
-   * Con il livello e i modelli di oggi per ruolo (dicono se un banco è superato).
+   * Con il livello e i modelli di oggi per ruolo (dicono se un banco è superato). (Casi senza AI) `withoutAi`: le evals
+   * di un caso senza AI («evals 100%, senza AI»); dopo quelle di main ogni banco del caso è superato.
    */
   evals: {
     quality: number;
     thresholdsMet: boolean;
     fakeModels: boolean;
     inConstruction: boolean;
+    withoutAi: boolean;
     branch: string | null;
     level: string;
     models: Record<string, string>;
@@ -513,7 +629,7 @@ export async function loadEvalFacts(executor: UcExecutor, workspaceId: string, u
   const ids = cast([...new Set(useCaseIds)], "uuid[]");
   const [evalsRows, benchRows] = await executor.batch([
     toStatement(ucSql`SELECT DISTINCT ON (r.use_case_id) r.use_case_id, r.branch, r.level, r.models, r.fake_models, r.in_construction, r.created_at,
-  x.passed, x.total, x.thresholds_met
+  x.model, x.current, x.passed, x.total, x.thresholds_met
 FROM use_case_eval_runs r JOIN use_case_eval_results x ON x.run_id = r.id AND x.current
 WHERE r.workspace_id = ${ws} AND r.use_case_id = ANY (${ids}) AND r.kind = 'evals'
 ORDER BY r.use_case_id, ${statusOrderSql("r")}`),
@@ -541,6 +657,8 @@ ORDER BY r.use_case_id, r.role, x.current DESC, x.model`),
       thresholdsMet: result.thresholdsMet,
       fakeModels: row.fake_models === true,
       inConstruction: row.in_construction === true,
+      // (Casi senza AI, §5) Il risultato «attuale» delle evals dice se il caso è senza AI.
+      withoutAi: evalRunWithoutAi("evals", [result]),
       branch: text(row.branch),
       level: String(row.level),
       models: modelsOf(row.models),
@@ -555,7 +673,7 @@ ORDER BY r.use_case_id, r.role, x.current DESC, x.model`),
     entry(useCaseId).benches.push({ role: run.role, verdict: benchAnalysis(run).verdict, at: run.createdAt, currentModel, superseded: false });
   }
   // Un banco superato: le evals che fanno lo stato del caso sono arrivate dopo, vere, di main, con un altro modello per il
-  // ruolo (o senza il ruolo).
+  // ruolo (o senza il ruolo, o senza AI).
   for (const facts of out.values()) {
     for (const bench of facts.benches) bench.superseded = benchSuperseded(bench, facts.evals);
   }

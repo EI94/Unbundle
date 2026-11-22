@@ -35,7 +35,9 @@ import type { Json, Result } from "../types.ts";
 import type { CaseStatus, RequestPurpose, RequestStatus } from "../vocab.ts";
 import {
   WEEKLY_CONTEXT_COMMITMENTS_MAX,
+  renderCiKeyEmail,
   renderEmail,
+  type CiKeyEmailInput,
   type EmailInput,
   type RenderedEmail,
   type WeeklyCaseSummary,
@@ -103,8 +105,22 @@ export const EMAIL_TEMPLATES = [
   // l'ok ai sub-responsabili del cliente.
   "team_aggiunto",
   "team_tolto",
+  // (8.2b) Le chiavi della CI: creata, in scadenza, bloccata. Interne, senza caso, a chi gestisce le chiavi del repository
+  // (Lateral Space, riletto all'invio), con il link all'Agent Factory.
+  "chiave_ci_creata",
+  "chiave_ci_scade",
+  "chiave_ci_bloccata",
 ] as const;
 export type EmailTemplateKey = (typeof EMAIL_TEMPLATES)[number];
+
+/** (8.2b) Le e-mail della chiave della CI (`renderCiKeyEmail`). */
+export const CI_KEY_EMAIL_TEMPLATES = ["chiave_ci_creata", "chiave_ci_scade", "chiave_ci_bloccata"] as const satisfies readonly EmailTemplateKey[];
+export type CiKeyEmailTemplateKey = (typeof CI_KEY_EMAIL_TEMPLATES)[number];
+
+/** Vero per le e-mail della chiave della CI. */
+export function isCiKeyEmailTemplate(key: string): key is CiKeyEmailTemplateKey {
+  return (CI_KEY_EMAIL_TEMPLATES as readonly string[]).includes(key);
+}
 
 /**
  * (8.2a) Le regole dei campi del banco e delle evals che arrivano dalla coda: le stesse del modulo del banco
@@ -428,6 +444,12 @@ export interface DeliveryFacts {
    * dicono niente e l'e-mail aspetta ({@link HOLD_BUILDERS_UNREAD}).
    */
   builder?: { ready: boolean; buildsCase: boolean; workspaceAck: boolean; grant: boolean };
+  /**
+   * (8.2b) Le e-mail della chiave della CI: la chiave della riga (`payload.keyId`, solo nel workspace della riga), se chi
+   * riceve gestisce ancora le chiavi del repository (D6, riletto adesso) e se una chiave più nuova l'ha superata. Null:
+   * la chiave non c'è più.
+   */
+  ciKey?: { repo: string; createdAt: Date; expiresAt: Date; revokedAt: Date | null; recipientManages: boolean; superseded: boolean } | null;
 }
 
 export type AfterSent = { kind: "promemoria"; reminder: 1 | 2; nextReminderAt: Date | null } | { kind: "segnalazione" } | null;
@@ -492,6 +514,8 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
   if (tpl === "riepilogo_settimanale") return planWeekly(n, f, recipient, to, o);
   if (tpl === "cli_collegata") return planCliConnected(n, f, recipient, to, o);
   if (tpl === "team_aggiunto" || tpl === "team_tolto") return planTeamChange(tpl, n, f, recipient, to, o);
+  // (8.2b) Le e-mail della chiave della CI le decide `planCiKeyDelivery`, con il loro modello: qui non partono mai.
+  if (isCiKeyEmailTemplate(tpl)) return cancel("modello_della_chiave_ci");
 
   const c = f.case;
   if (!c) return cancel("caso_assente");
@@ -649,7 +673,15 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
       const drop = typeof n.payload.drop === "number" && Number.isFinite(n.payload.drop) && n.payload.drop > 0 && n.payload.drop <= 1 ? n.payload.drop : null;
       if (!alert || quality === null || (alert === "in_calo" && drop === null)) return cancel("avviso_assente");
       const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/use-cases/${useCase}/progetto`;
-      return { action: "send", to, link: null, build: () => ({ ...base, template: "evals_in_calo", alert, quality, drop: alert === "in_calo" ? drop : null, link, external: externalBuilder(recipient) }), after: null };
+      // (8.2b) Le ha mandate la CI di main: la riga in più, con il commit (controllato: le 40 cifre).
+      const fromCi = n.payload.source === "ci" && typeof n.payload.commit === "string" && /^[0-9a-f]{40}$/.test(n.payload.commit) ? { commit: n.payload.commit } : null;
+      return {
+        action: "send",
+        to,
+        link: null,
+        build: () => ({ ...base, template: "evals_in_calo", alert, quality, drop: alert === "in_calo" ? drop : null, link, external: externalBuilder(recipient), ...(fromCi ? { fromCi } : {}) }),
+        after: null,
+      };
     }
     case "compito_chiesto":
     case "compito_passato":
@@ -878,6 +910,36 @@ function planCliConnected(
   };
 }
 
+/** (8.2b) Che cosa fare di un'e-mail della chiave della CI: inviarla (già composta dai fatti), tenerla, annullarla. */
+export type CiKeyDeliveryPlan = { action: "send"; to: string; email: CiKeyEmailInput } | { action: "hold"; reason: string } | { action: "cancel"; reason: string };
+
+/**
+ * (8.2b) Le e-mail della chiave della CI (`chiave_ci_creata`, `chiave_ci_scade`, `chiave_ci_bloccata`): solo a persone di
+ * Lateral Space (e-mail verificata) che gestiscono ancora le chiavi del repository (D6, riletto all'invio), senza caso.
+ * L'avviso di scadenza si annulla se la chiave è già stata revocata, ruotata (una più nuova è viva) o è scaduta: non c'è
+ * più niente da fare. Il link porta all'Agent Factory del workspace. Funzione pura, come `planDelivery`.
+ */
+export function planCiKeyDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { origin: string; now: Date }): CiKeyDeliveryPlan {
+  const tpl = n.templateKey;
+  if (!isCiKeyEmailTemplate(tpl)) return { action: "cancel", reason: "modello_non_previsto" };
+  const recipient = f.recipient;
+  if (!recipient || !recipient.reachable || !isPlainAddress(recipient.email)) return { action: "cancel", reason: "destinatario_non_raggiungibile" };
+  if (recipient.kind !== "user") return { action: "cancel", reason: "destinatario_non_utente" };
+  if (!recipient.lateralSpace) return { action: "cancel", reason: "destinatario_non_lateral_space" };
+  const key = f.ciKey;
+  if (!key) return { action: "cancel", reason: "chiave_assente" };
+  if (!key.recipientManages) return { action: "cancel", reason: "non_gestisce_le_chiavi" };
+  if (tpl === "chiave_ci_scade" && (key.revokedAt !== null || key.superseded || key.expiresAt.getTime() <= o.now.getTime())) return { action: "cancel", reason: "chiave_cambiata" };
+  const base = { clientName: f.clientName, repo: key.repo, link: `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/agent-factory` };
+  const email: CiKeyEmailInput =
+    tpl === "chiave_ci_creata"
+      ? { ...base, template: tpl, createdAt: key.createdAt }
+      : tpl === "chiave_ci_scade"
+        ? { ...base, template: tpl, expiresAt: key.expiresAt }
+        : { ...base, template: tpl };
+  return { action: "send", to: recipient.email.trim().toLowerCase(), email };
+}
+
 function summaryCore(c: WeeklyCaseSummary): WeeklyCaseSummary {
   return { code: c.code, title: c.title, total: c.total, counts: c.counts, greenPct: c.greenPct, g1: c.g1, nextMilestone: c.nextMilestone ?? null };
 }
@@ -1011,9 +1073,11 @@ async function deliverOne(
   n: ClaimedNotification,
   o: { lsDomains: readonly string[]; now: Date },
 ): Promise<Delivered> {
-  let plan: DeliveryPlan;
+  let plan: DeliveryPlan | CiKeyDeliveryPlan;
   try {
-    plan = planDelivery(n, await store.loadFacts(n), { origin: config.origin, lsDomains: o.lsDomains, now: o.now });
+    const facts = await store.loadFacts(n);
+    // (8.2b) Le e-mail della chiave della CI hanno il loro piano e il loro modello (`renderCiKeyEmail`).
+    plan = isCiKeyEmailTemplate(n.templateKey) ? planCiKeyDelivery(n, facts, { origin: config.origin, now: o.now }) : planDelivery(n, facts, { origin: config.origin, lsDomains: o.lsDomains, now: o.now });
   } catch {
     await store.markFailed(n, "dati_non_letti");
     return "failed";
@@ -1026,6 +1090,8 @@ async function deliverOne(
     await store.markHeld(n, code(plan.reason));
     return "held";
   }
+
+  if ("email" in plan) return deliverCiKeyMail(store, mailer, config, n, plan);
 
   let issued: { token: string; tokenId: string } | null = null;
   if (plan.link) {
@@ -1065,6 +1131,27 @@ async function deliverOne(
     return "sent";
   }
   if (issued && n.caseId && !result.ambiguous) await store.revokeToken({ caseId: n.caseId, tokenId: issued.tokenId });
+  await store.markFailed(n, code(result.code));
+  return result.code === RATE_LIMIT_CODE ? "rate_limited" : "failed";
+}
+
+/** (8.2b) L'invio di un'e-mail della chiave della CI: già composta dai fatti, senza link dei referenti né passi dopo. */
+async function deliverCiKeyMail(store: DispatchStore, mailer: UcMailer, config: UcEmailConfig, n: ClaimedNotification, plan: Extract<CiKeyDeliveryPlan, { action: "send" }>): Promise<Delivered> {
+  let rendered: RenderedEmail;
+  try {
+    rendered = renderCiKeyEmail(plan.email, emailBrand(config.origin));
+  } catch {
+    await store.markFailed(n, "testo_non_valido");
+    return "failed";
+  }
+  const result = await mailer.send(
+    { from: config.from, to: plan.to, subject: rendered.subject, text: rendered.text, html: rendered.html, ...(config.replyTo ? { replyTo: config.replyTo } : {}) },
+    { idempotencyKey: idempotencyKeyFor(n.dedupeKey, n.attempts + 1) },
+  );
+  if (result.ok) {
+    await store.markSent(n, null);
+    return "sent";
+  }
   await store.markFailed(n, code(result.code));
   return result.code === RATE_LIMIT_CODE ? "rate_limited" : "failed";
 }

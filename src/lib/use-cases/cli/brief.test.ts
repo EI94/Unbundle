@@ -176,6 +176,8 @@ test("il prossimo passo segue il progetto", () => {
   assert.equal(nextStep({ ...base, open: project({ status: "da_approvare" }) }), "aspettare l'approvazione del responsabile del caso.");
   assert.match(nextStep({ ...base, open: project({ status: "da_approvare", aiBoardOkAt: null, changeRequest: "Solo in UE" }) }), /chiede una modifica/);
   assert.match(nextStep({ ...base, approved: project(), open: null }), /generare il pacchetto/);
+  // (Rilascio 10) La pagina del progetto è la Costruzione.
+  assert.equal(nextStep({ ...base, approved: project(), open: null }), "generare il pacchetto dalla pagina «Costruzione».");
 });
 
 test("dal: che cosa è cambiato; senza novità lo dice", () => {
@@ -191,6 +193,13 @@ test("lo strato progetto: i 10 argomenti nell'ordine, «Da scegliere» dove manc
   assert.match(text, /Costruzione: circa 90 ore\. Costo al mese: circa 60 €\./);
   assert.equal(composeProjectLayer(input({ approved: null })), "PX-0001: il progetto non è ancora impostato.");
   for (const topic of SETUP_TOPICS) assert.ok(SETUP_GUIDE[topic].endsWith("."), topic);
+});
+
+test("(casi senza AI) la guida di «Modelli» dice come si sceglie nessun modello: senza_ai: true in agent.yaml", () => {
+  assert.equal(
+    SETUP_GUIDE.modelli,
+    'Quali ruoli (lettura, scrittura, giudizio) e per ognuno il modello più piccolo che basta tra quelli approvati dal cliente, con la riserva. Se il caso non usa l\'AI: "Nessun modello: automazione senza AI" (senza_ai: true in agent.yaml).',
+  );
 });
 
 test("lo strato domande: le proposte a chi vede «Cosa serve», senza nomi; per gli altri solo che ci sono altrove", () => {

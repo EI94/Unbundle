@@ -10,10 +10,11 @@ import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
 
 /**
  * Lista di ripiego dei dossier (DESIGN §2.1, §3.1, «La pagina /casi-duso di
- * oggi»): non si ridisegna e resta raggiungibile dalla barra di ripiego finché
- * manca P0-16; poi il layout del workspace la reindirizza alla Panoramica (H6a,
- * non qui). Usa la stessa card della colonna «In realizzazione», senza «Nuovo
- * caso»: un dossier parte solo dalla scheda di uno use case.
+ * oggi»), solo per i workspace con l'area «Use case» spenta: è la loro voce di
+ * barra. (Rilascio 10, D9 (a)) Con l'area accesa la lista è in ritiro: `src/proxy.ts`
+ * risponde 307 verso Use case › Panoramica prima di questa pagina, e le
+ * realizzazioni stanno in «In realizzazione». Usa la stessa card della colonna «In
+ * realizzazione», senza «Nuovo caso»: un dossier parte solo dalla scheda di uno use case.
  *
  * Mostra i dossier che chi guarda apre (membro, o chi gestisce il workspace in
  * sola lettura). Sezione spenta per il workspace: 404; chi partecipa solo ai

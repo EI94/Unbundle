@@ -62,6 +62,8 @@ import { SectionNeeds } from "./section-needs";
 import { AgentProposals } from "./agent-proposals";
 import type { AgentProposalView } from "@/lib/db/queries/use-case-agent-questions";
 import { SectionRealization, realizationVariant } from "./section-realization";
+import { StartRealizationHost } from "./start-realization-dialog";
+import type { StartFormData } from "@/components/uc/realization/start-data";
 import { SectionValuation, aiSuggestionShown, valuationKpiGroups } from "./section-valuation";
 import { DetailsFields, detailsFieldRows, hasFieldText } from "./section-what";
 import { UseCasePath } from "./use-case-path";
@@ -235,6 +237,11 @@ export interface UseCaseDetailViewProps {
    * a chi modifica le esigenze (`canEditNeeds`).
    */
   needLinks?: Readonly<Record<string, NeedLinkView>> | null;
+  /**
+   * (Rilascio 10, §3.5) I dati del dialogo «Avvia la realizzazione» (`loadStartDialog`), solo quando chi guarda può
+   * avviare adesso; null: il pulsante porta alla pagina di ripiego `/casi-duso/nuovo`.
+   */
+  startDialog?: StartFormData | null;
   className?: string;
 }
 
@@ -280,6 +287,7 @@ export function UseCaseDetailView({
   contributorReferentState = null,
   context = null,
   needLinks = null,
+  startDialog = null,
   className,
 }: UseCaseDetailViewProps) {
   if (result.projection === "contributore") {
@@ -430,6 +438,8 @@ export function UseCaseDetailView({
         <Arrival initial={arrival} chapter={chapter ?? null} ids={targets} startInBox={startInBox}>
           {/* Un solo pulsante pieno per pagina: il passo. */}
           <PagePrimaryProvider>
+            {/* (Rilascio 10, §3.5) «Avvia la realizzazione» è un dialogo sulla scheda: lo aprono il passo e la piega. */}
+            <StartRealizationHost workspaceId={workspaceId} data={startDialog}>
             <ReferentDialogHost
               workspaceId={workspaceId}
               useCaseId={detail.id}
@@ -549,6 +559,7 @@ export function UseCaseDetailView({
                 </div>
               </NotePlacement>
             </ReferentDialogHost>
+            </StartRealizationHost>
           </PagePrimaryProvider>
         </Arrival>
       </PublicNoteDraftProvider>

@@ -232,7 +232,7 @@ export function buildMaps(maps: readonly MapRowParsed[], ctx: MapItemsContext): 
 // ── Soluzione › Mappa (DESIGN §3.7.2) ─────────────────────────────────
 
 /**
- * Le viste della Mappa: «Con l'agente» (il processo con l'agente, oppure i
+ * Le viste della Mappa: «Con l'AI» (il processo con l'agente, oppure i
  * passi della mappa della soluzione se il processo non c'è), «Oggi» (il
  * processo di oggi) ed «esempio» (dall'inizio alla fine). Le viste che non
  * esistono non compaiono.
@@ -240,12 +240,21 @@ export function buildMaps(maps: readonly MapRowParsed[], ctx: MapItemsContext): 
 export const MAP_PAGE_VIEWS = ["con-agente", "oggi", "esempio"] as const;
 export type MapPageView = (typeof MAP_PAGE_VIEWS)[number];
 
-export const MAP_PAGE_VIEW_LABEL: Readonly<Record<Exclude<MapPageView, "esempio">, string>> = { "con-agente": "Con l'agente", oggi: "Oggi" };
+/** (Rilascio 10, §3.7) Le parole dell'interruttore, come le schede della board: «Oggi», «Con l'AI». */
+export const MAP_PAGE_VIEW_LABEL: Readonly<Record<Exclude<MapPageView, "esempio">, string>> = Object.freeze({ oggi: "Oggi", "con-agente": "Con l'AI" });
+
+/**
+ * (Rilascio 10, §3.7) L'interruttore «Oggi · Con l'AI» nell'ordine delle schede della board: prima «Oggi». Solo le viste
+ * che il caso ha; la pagina si apre sempre su «Con l'AI» (`resolveMapPageView`).
+ */
+export function mapSwitchViews(views: readonly MapPageView[]): Exclude<MapPageView, "esempio">[] {
+  return (["oggi", "con-agente"] as const).filter((v) => views.includes(v));
+}
 
 /** Testo del link all'esempio (era «Esempio completo»). */
 export const MAP_EXAMPLE_LINK = "Segui un esempio dall'inizio alla fine";
 
-/** Il processo con l'agente ha passi: allora «Con l'agente» lo mostra al posto della mappa della soluzione. */
+/** Il processo con l'agente ha passi: allora «Con l'AI» lo mostra al posto della mappa della soluzione. */
 export function hasAgentProcess(maps: Pick<MapsView, "toBe">): boolean {
   return (maps.toBe?.steps.length ?? 0) > 0;
 }
@@ -266,7 +275,7 @@ export function mapPageViews(maps: Pick<MapsView, "solution" | "toBe" | "asIs" |
 /** Valori di `?vista=` di ieri (`soluzione`, `to_be`, `as_is`): i vecchi link restano buoni. */
 const LEGACY_VIEW: Readonly<Record<string, MapPageView>> = { soluzione: "con-agente", to_be: "con-agente", as_is: "oggi" };
 
-/** La vista da mostrare: quella chiesta se esiste, altrimenti la prima («Con l'agente»). Null se il caso non ha mappe. */
+/** La vista da mostrare: quella chiesta se esiste, altrimenti la prima («Con l'AI»). Null se il caso non ha mappe. */
 export function resolveMapPageView(raw: string | null | undefined, available: readonly MapPageView[]): MapPageView | null {
   const asked = raw ? ((MAP_PAGE_VIEWS as readonly string[]).includes(raw) ? (raw as MapPageView) : (LEGACY_VIEW[raw] ?? null)) : null;
   if (asked && available.includes(asked)) return asked;

@@ -9,11 +9,10 @@ import { EmptyState } from "@/components/uc/ui/empty-state";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { UcAccessError, ensureUcAvailable, getUcUserContext, isUcEnabledFor } from "@/lib/db/queries/uc-access";
 import { readStartContext } from "@/lib/db/queries/uc-realization";
-import { listTemplatesForWorkspace } from "@/lib/db/queries/uc-templates";
-import { realizationPrefillOf } from "@/lib/db/queries/use-case-dossiers";
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
+import { startFormData } from "@/components/uc/realization/start-data";
 import { checkCaseCreator } from "@/lib/uc/permissions";
-import { REALIZATION_TEXT, startDefaults } from "@/lib/uc/views/realization";
+import { REALIZATION_TEXT } from "@/lib/uc/views/realization";
 import { HUB_VIEWS, HUB_VIEW_PARAM, stubLogEntry } from "@/lib/use-cases/legacy-routes";
 import { PREFILL_TEXT, type PrefillRow } from "@/lib/use-cases/realization-prefill";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
@@ -21,8 +20,9 @@ import { canManageWorkspaceSettings, canReviewWorkspacePortfolio } from "@/lib/w
 import { UUID } from "@/lib/uc/ids";
 
 /**
- * «Avvia la realizzazione» (DESIGN §3.2): una schermata, raggiunta dal capitolo
- * «Realizzazione» della scheda dello use case con `?useCaseId=`. Solo Lateral
+ * «Avvia la realizzazione» (DESIGN §3.2): una schermata con `?useCaseId=`. (Rilascio 10, §3.5) Dalla scheda dello use
+ * case si avvia con un dialogo; questa pagina resta il ripiego (senza JavaScript, o se i dati del dialogo non sono
+ * arrivati), con le stesse letture (`startFormData`) e senza il campo «Nome» (F-020). Solo Lateral
  * Space (`checkCaseCreator` più `canReviewWorkspacePortfolio`), solo per uno
  * use case «Da costruire» approvato e senza dossier:
  * - con il dossier già avviato rimanda al dossier chi lo può aprire (membro, o
@@ -95,12 +95,8 @@ export default async function StartRealizationPage({
   const creator = user ? checkCaseCreator({ user, canReviewWorkspacePortfolio: canReviewWorkspacePortfolio(access.role) }) : null;
   if (!creator?.ok || context.kind !== "use_case_ai" || context.status !== "accepted") redirect(scheda);
 
-  const codeMissing = context.hasCodeColumn && !context.code;
-  const [templates, prefill] = await Promise.all([
-    codeMissing ? [] : listTemplatesForWorkspace(executor, workspaceId),
-    realizationPrefillOf(workspaceId, context.useCaseId),
-  ]);
-  const defaults = prefill ? { ...startDefaults(context.texts), oneLiner: prefill.oneLiner } : startDefaults(context.texts);
+  const form = await startFormData(executor, workspaceId, context);
+  const codeMissing = form.codeMissing;
   const crumb = context.code ?? context.title;
 
   return (
@@ -129,16 +125,9 @@ export default async function StartRealizationPage({
           }
         />
       ) : (
-        <StartRealizationForm
-          workspaceId={workspaceId}
-          useCase={{ id: context.useCaseId, code: context.code, title: context.title }}
-          defaults={defaults}
-          templates={[...templates]
-            .sort((a, b) => Number(b.restricted) - Number(a.restricted) || a.name.localeCompare(b.name, "it"))
-            .map((t) => ({ id: t.id, name: t.name, questions: t.questions, restricted: t.restricted }))}
-        />
+        <StartRealizationForm workspaceId={workspaceId} useCase={form.useCase} defaults={form.defaults} templates={form.templates} />
       )}
-      {!codeMissing && prefill && prefill.rows.length > 0 ? <CollectedByClaude rows={prefill.rows} /> : null}
+      {form.prefillRows.length > 0 ? <CollectedByClaude rows={form.prefillRows} /> : null}
     </PageContainer>
   );
 }

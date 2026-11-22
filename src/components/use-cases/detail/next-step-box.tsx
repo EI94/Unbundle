@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 import { DecisionButtons, MarkInProgressButton } from "../decision-buttons";
 import { InPageLink } from "./arrival";
 import { useReferentDialog } from "./referent/dialog-host";
+import { startClickHandler, useStartRealization } from "./start-realization-context";
 
 // ─── Un solo pulsante pieno per pagina ───────────────────────────────
 
@@ -157,6 +158,7 @@ export interface NextStepRowProps {
  */
 export function NextStepRow({ workspaceId, step, item, today, canDecide, candidates, canMarkInProgress, filled, targetOf, whyId, decisionsMenu = true, wide = false }: NextStepRowProps) {
   const openReferent = useReferentDialog();
+  const openStart = useStartRealization();
   const variant = filled ? "default" : "outline";
   const action = step.action;
   const touch = cn("min-h-11 sm:min-h-8", wide && "max-sm:flex-1");
@@ -201,9 +203,23 @@ export function NextStepRow({ workspaceId, step, item, today, canDecide, candida
       ) : null;
       break;
     case "impostazioni":
-    case "avvia":
       primary = (
         <Button render={<Link href={action.href} aria-describedby={describedBy} />} nativeButton={false} variant={variant} className={touch}>
+          {icon}
+          {step.cta}
+        </Button>
+      );
+      break;
+    case "avvia":
+      // (Rilascio 10, §3.5) Il link alla pagina di ripiego, che con i dati del dialogo apre «Avvia la realizzazione» sulla scheda.
+      primary = (
+        <Button
+          render={<Link href={action.href} aria-describedby={describedBy} onClick={startClickHandler(openStart)} />}
+          nativeButton={false}
+          variant={variant}
+          className={touch}
+          data-action={openStart ? "next-step-start" : undefined}
+        >
           {icon}
           {step.cta}
         </Button>

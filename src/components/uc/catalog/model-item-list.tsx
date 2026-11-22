@@ -19,16 +19,23 @@ import { cn } from "@/lib/utils";
  * `useTransition`, la pagina vecchia resta finché arriva la nuova).
  */
 
-/** Cambia alcuni parametri dell'indirizzo; la pagina e il pannello aperto si azzerano. */
-export function useUrlParams(): { pending: boolean; set: (patch: Record<string, string | null>) => void } {
+/** I parametri che si azzerano cambiando ricerca o filtri: la pagina e il pannello aperto. */
+const RESET_PAGE: readonly string[] = ["pagina", "apri"];
+/**
+ * (Rilascio 10, ondata 5b) Dentro il pannello delle regole della Soluzione (`?apri=regole`) il pannello resta aperto:
+ * si azzerano la pagina e la regola aperta (`regola`).
+ */
+export const RESET_IN_RULES_PANEL: readonly string[] = ["pagina", "regola"];
+
+/** Cambia alcuni parametri dell'indirizzo; la pagina e il pannello aperto si azzerano (`reset`). */
+export function useUrlParams(reset: readonly string[] = RESET_PAGE): { pending: boolean; set: (patch: Record<string, string | null>) => void } {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
   const set = (patch: Record<string, string | null>) => {
     const next = new URLSearchParams(searchParams.toString());
-    next.delete("pagina");
-    next.delete("apri");
+    for (const key of reset) next.delete(key);
     for (const [key, value] of Object.entries(patch)) {
       if (value === null || value === "") next.delete(key);
       else next.set(key, value);
@@ -43,8 +50,8 @@ export function useUrlParams(): { pending: boolean; set: (patch: Record<string, 
  * La ricerca lato server (`?q=`): parte dopo una breve pausa nella scrittura,
  * o subito con Invio; Esc la svuota. Incollare una chiave funziona.
  */
-export function SolutionSearch({ value, label, className }: { value: string | null; label: string; className?: string }) {
-  const { pending, set } = useUrlParams();
+export function SolutionSearch({ value, label, className, reset }: { value: string | null; label: string; className?: string; reset?: readonly string[] }) {
+  const { pending, set } = useUrlParams(reset);
   const [text, setText] = useState(value ?? "");
   // L'ultima ricerca mandata: se l'indirizzo cambia da fuori («Togli i filtri»), il campo si allinea.
   const [lastSent, setLastSent] = useState(value ?? "");

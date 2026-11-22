@@ -132,8 +132,8 @@ export type EmailInput =
   // `model`: il nome del catalogo («Claude Haiku 5.5»); null per un modello fuori dal catalogo, che non si scrive mai.
   | (CaseRef & { template: "banco_consiglio"; role: string; model: string | null; link: string })
   // (8.2a) Le evals di main sono sotto soglia o giù di almeno 5 punti (`drop`, 0..1): al team che costruisce, tranne chi
-  // le ha mandate. `quality`: già scritta («80%»).
-  | (CaseRef & { template: "evals_in_calo"; alert: "sotto_soglia" | "in_calo"; quality: string; drop: number | null; link: string })
+  // le ha mandate. `quality`: già scritta («80%»). (8.2b) `fromCi`: le ha mandate la CI di main (`evalsFromCiLine`).
+  | (CaseRef & { template: "evals_in_calo"; alert: "sotto_soglia" | "in_calo"; quality: string; drop: number | null; link: string; fromCi?: { commit: string } | null })
   // (8.0c) A chi entra tra chi costruisce i casi di un cliente da fuori Lateral Space, e a chi ne esce: senza caso, solo
   // con l'ok ai sub-responsabili del cliente. `cases`: null per «tutti, anche quelli che si apriranno».
   | { template: "team_aggiunto"; clientName: string; cases: number | null; link: string }
@@ -563,7 +563,7 @@ export function renderEmail(input: EmailInput, brand?: EmailBrand, options: Emai
         { p: "Buongiorno," },
         { p: `per il ruolo «${oneLine(input.role, 40)}» dell'agente del caso d'uso «${oneLine(input.caseTitle, 120)}», il banco di prova ${advice}` },
         // (Rilascio 10, §3.12) La metà delle parole: il resto sta nel progetto.
-        { p: "Il confronto e il comando per la pull request sono nel progetto, in «Evals e banco di prova». Il modello lo cambia una persona del team." },
+        { p: "Il confronto e il comando per la pull request sono nel progetto, in «Qualità». Il modello lo cambia una persona del team." },
         { link: { href: link, label: "Apri il progetto" } },
         builderFooter(input),
       ]);
@@ -580,7 +580,8 @@ export function renderEmail(input: EmailInput, brand?: EmailBrand, options: Emai
             ? `le evals di main ${caso} sono scese di ${points} rispetto alle precedenti: ora sono ${atPercent(oneLine(input.quality, 8))}.`
             : `le evals di main ${caso} sono sotto soglia: ${oneLine(input.quality, 8)}.`,
         },
-        { p: "Prima di cambiare altro, guarda quali gruppi non passano: sono nel progetto, in «Evals e banco di prova»." },
+        ...(input.fromCi ? [{ p: evalsFromCiLine(input.fromCi.commit) }] : []),
+        { p: "Prima di cambiare altro, guarda quali gruppi non passano: sono nel progetto, in «Qualità»." },
         { link: { href: link, label: "Apri il progetto" } },
         builderFooter(input),
       ]);
@@ -635,4 +636,88 @@ export function renderEmail(input: EmailInput, brand?: EmailBrand, options: Emai
       ]);
     }
   }
+}
+
+// ── (8.2b) Le chiavi della CI ─────────────────────────────────────────
+// Un blocco a parte, in fondo al file (RILASCIO-8.2b-SPEC.md §2.6): le e-mail della chiave della CI sono interne di Lateral
+// Space e senza caso, a chi gestisce le chiavi del repository (`chiave_ci_creata` tranne chi l'ha creata). Il modello del
+// rilascio 10 (§3.12): l'oggetto al massimo di 55 caratteri, «{Cliente}: {cosa} «{nome}»»; il corpo corto; un pulsante
+// con un verbo; il testo semplice con l'indirizzo in chiaro. Mai la chiave, il suo prefisso o chi l'ha creata: la chiave è
+// del repository, non di una persona.
+
+/** I tre modelli della chiave della CI (gli stessi di `CI_KEY_EMAIL_TEMPLATES` del modulo delle chiavi). */
+export const CI_KEY_EMAIL_TEMPLATE_KEYS = ["chiave_ci_creata", "chiave_ci_scade", "chiave_ci_bloccata"] as const;
+
+/** Le e-mail della chiave della CI. `repo`: `owner/nome`, come è registrato; il link porta all'Agent Factory del workspace. */
+export type CiKeyEmailInput =
+  | { template: "chiave_ci_creata"; clientName: string; repo: string; createdAt: Date; link: string }
+  | { template: "chiave_ci_scade"; clientName: string; repo: string; expiresAt: Date; link: string }
+  | { template: "chiave_ci_bloccata"; clientName: string; repo: string; link: string };
+
+const CI_REPO_TEXT = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/;
+
+/** Il repository nei testi: intero nel corpo, senza l'organizzazione nell'oggetto. Solo `owner/nome`: mai un testo libero. */
+function ciRepoText(repo: string): { full: string; name: string } {
+  const full = repo.trim();
+  if (!CI_REPO_TEXT.test(full)) throw new Error("Repository dell'email non valido");
+  return { full, name: full.slice(full.indexOf("/") + 1) };
+}
+
+/** L'e-mail di una chiave della CI, con l'intestazione come le altre (`brand`). */
+export function renderCiKeyEmail(input: CiKeyEmailInput, brand?: EmailBrand): RenderedEmail {
+  const link = checkEmailLink(input.link, "dashboard");
+  const client = oneLine(input.clientName, 80);
+  const repo = ciRepoText(input.repo);
+  const open: Block = { link: { href: link, label: "Apri l'Agent Factory" } };
+  switch (input.template) {
+    case "chiave_ci_creata":
+      return render(
+        emailSubject(client, "nuova chiave della CI", repo.name),
+        [
+          { p: "Buongiorno," },
+          { p: `${onDate(input.createdAt, "il")} alle ${TIME_IT.format(input.createdAt)} è stata creata una chiave con cui la CI di ${repo.full} manda a Unbundle le evals di main.` },
+          { p: "Se sai chi l'ha creata, non serve fare niente. Se no, revocala dall'Agent Factory." },
+          open,
+          { small: "Email automatica di Unbundle: arriva a ogni nuova chiave della CI." },
+        ],
+        brand,
+      );
+    case "chiave_ci_scade":
+      return render(
+        emailSubject(client, "chiave della CI in scadenza", repo.name),
+        [
+          { p: "Buongiorno," },
+          { p: `${onDate(input.expiresAt, "il")} scade la chiave con cui la CI di ${repo.full} manda a Unbundle le evals di main. Da quel giorno il job «unbundle» si ferma con un errore.` },
+          { p: "Ruotala dall'Agent Factory e metti la chiave nuova nel segreto UNBUNDLE_CI_TOKEN su GitHub." },
+          open,
+          { small: "Email interna di Lateral Space." },
+        ],
+        brand,
+      );
+    case "chiave_ci_bloccata":
+      return render(
+        emailSubject(client, "chiave della CI bloccata", repo.name),
+        [
+          { p: "Buongiorno," },
+          { p: `Unbundle ha trovato la chiave della CI di ${repo.full} dentro un indirizzo web e l'ha revocata.` },
+          { p: "Crea una chiave nuova dall'Agent Factory e mettila nel segreto UNBUNDLE_CI_TOKEN su GitHub. Fino ad allora le evals di main restano su GitHub." },
+          open,
+          { small: "Email interna di Lateral Space." },
+        ],
+        brand,
+      );
+  }
+}
+
+// ── (8.2b) Le evals arrivate dalla CI ─────────────────────────────────
+// Un blocco a parte, in fondo al file (RILASCIO-8.2b-SPEC.md §2.6): nell'e-mail `evals_in_calo` delle evals mandate dalla
+// CI di main una riga in più, con il commit corto. Mai la chiave né chi ha unito: la CI non è una persona.
+
+const CI_EVALS_COMMIT = /^[0-9a-f]{7,40}$/;
+
+/** «Le ha mandate la CI di main, commit a1b2c3d.»: il commit di 40 cifre (o già corto) diventa di 7. */
+export function evalsFromCiLine(commit: string): string {
+  const sha = commit.trim().toLowerCase();
+  if (!CI_EVALS_COMMIT.test(sha)) throw new Error("Commit dell'email non valido");
+  return `Le ha mandate la CI di main, commit ${sha.slice(0, 7)}.`;
 }

@@ -23,7 +23,6 @@ import {
   costPer1000Text,
   costScale,
   dayText,
-  evalSectionDescription,
   evalsAlertText,
   evalsCommand,
   evalsMetaLine,
@@ -143,7 +142,6 @@ test("la riga di agent.yaml per cambiare modello, e le note fisse", () => {
   assert.equal(changeHint("lettura", HAIKU), "Per cambiarlo: in agent.yaml, modelli.lettura.modello: anthropic/claude-haiku-5-5, poi la pull request.");
   assert.deepEqual(changeHintParts("scrittura", SONNET), { file: "agent.yaml", line: "modelli.scrittura.modello: anthropic/claude-sonnet-5-5" });
   assert.equal(EVAL_TEXT.fakeModels, "modelli finti: misurano il codice, non i modelli");
-  assert.equal(EVAL_TEXT.title, "Evals e banco di prova");
   assert.equal(benchHeading("lettura"), "Banco di prova · ruolo «lettura»");
   assert.equal(benchMissingText("scrittura"), "Ancora nessun banco per il ruolo «scrittura»:");
 });
@@ -198,14 +196,11 @@ test("i modelli per ruolo e i gruppi di prove, in un ordine fisso", () => {
   assert.equal(groupsLine({}), null);
 });
 
-test("la descrizione della sezione: cosa c'è, o come si comincia", () => {
+test("ci sono misure: le evals o almeno un banco", () => {
   const empty: EvalOverview = { evals: { latest: null, trend: [] }, benches: [] };
-  assert.equal(evalSectionDescription(null), EVAL_TEXT.descriptionEmpty);
-  assert.equal(evalSectionDescription(empty), EVAL_TEXT.descriptionEmpty);
+  assert.equal(hasMeasures(null), false);
   assert.equal(hasMeasures(empty), false);
   const withEvals: EvalOverview = { evals: { latest: run(), trend: [] }, benches: [] };
-  assert.equal(evalSectionDescription(withEvals), EVAL_TEXT.description);
-  assert.equal(evalSectionDescription(null, true), EVAL_TEXT.description, "lettura non riuscita: non si dice «ancora nessuna misura»");
   assert.equal(hasMeasures(withEvals), true);
 });
 
@@ -809,4 +804,52 @@ test("nella dashboard «use case», mai «caso d'uso», e nessuna parola vietata
   assert.deepEqual(findHubForbiddenIn(texts, "area"), []);
   // E nessun riferimento a chi ha lanciato il banco (art. 15.4).
   for (const text of texts) assert.doesNotMatch(text, /lanciato da|autore|eseguito da/i);
+});
+
+// ─── (Casi senza AI) docs/rilascio-8/CASI-SENZA-AI.md §5, §6 ─────────
+
+/** Le evals di main di un caso senza AI: il risultato `senza-ai`, senza costi né token. */
+const noAiRun = (over: Partial<EvalRunView> = {}) =>
+  run({ models: {}, withoutAi: true, results: [result("senza-ai", 1, null, { current: true, passed: 48, total: 48, tokensInAvg: null, tokensOutAvg: null })], ...over });
+
+test("(casi senza AI) l'andamento e l'avviso tengono solo le evals senza AI; il banco di prima è superato dalle evals di main", () => {
+  const latest = noAiRun();
+  const trend = [point(10, 0.9), { ...point(11, 0.97), withoutAi: true }, { ...point(12, 0.5), withoutAi: true }, point(13, 0.99)];
+  assert.deepEqual(trendPoints({ latest, trend }).map((p) => p.quality), [0.97, 0.5, 1]);
+  assert.deepEqual(trendPoints({ latest: run(), trend }).map((p) => p.quality), [0.9, 0.99, 0.9643], "e le evals con i modelli non prendono le senza AI");
+  // L'avviso confronta con le senza AI di prima (97%), non con le evals con i modelli (92%).
+  const lower = noAiRun({ results: [result("senza-ai", 0.9, null, { current: true, passed: 90, total: 100 })] });
+  const alert = latestEvalsAlert({ latest: lower, trend: [{ ...point(12, 0.97), withoutAi: true }, point(13, 0.92)] });
+  assert.equal(alert?.kind, "in_calo");
+  assert.ok(alert?.kind === "in_calo" && Math.abs(alert.drop - 0.07) < 1e-9);
+  assert.equal(latestEvalsAlert({ latest: lower, trend: [point(13, 0.99)] }), null, "nessuna senza AI prima: nessun falso «in calo»");
+  // Il banco di prima: superato dalle evals senza AI di main, il ruolo non c'è più; nessun ruolo senza banco.
+  const results = [result(SONNET, 0.96, 1.8, { current: true }), result(HAIKU, 0.95, 0.12)];
+  const theBench = { role: "lettura", run: bench(results, { createdAt: "2026-11-10T10:00:00.000Z" }) };
+  assert.deepEqual(benchSupersededBy(theBench, latest), { now: null });
+  assert.equal(benchSupersededBy(theBench, noAiRun({ branch: "xx-0007/prova" })), null, "solo main");
+  assert.equal(benchSupersededBy(theBench, run({ models: {} })), null, "i modelli vuoti senza il segno: come oggi");
+  assert.deepEqual(rolesWithoutBench({ evals: { latest, trend: [] }, benches: [] }), []);
+});
+
+test("(casi senza AI) la lettura prudente ritrova il segno dal risultato «attuale»; le altre esecuzioni si leggono come prima", () => {
+  const raw = {
+    evals: { latest: { ...noAiRun(), withoutAi: undefined }, trend: [{ ...point(13, 0.98), withoutAi: true }, point(12, 0.9)] },
+    benches: [{ role: "lettura", run: bench([result(SONNET, 0.96, 1.8, { current: true })]) }],
+  };
+  const read = normalizeEvalOverview(raw);
+  assert.ok(read);
+  if (!read) return;
+  assert.equal(read.overview.evals.latest?.withoutAi, true, "dal risultato senza-ai, anche se la lettura non lo dice");
+  assert.deepEqual(read.overview.evals.trend.map((p) => p.withoutAi), [true, undefined]);
+  assert.equal(Object.hasOwn(read.overview.benches[0].run, "withoutAi"), false, "un banco si legge come prima");
+  // Le evals con i modelli si leggono come prima, senza campi in più; un `withoutAi` senza il risultato senza-ai non vale.
+  const withModel = normalizeEvalOverview({ evals: { latest: { ...run(), withoutAi: true }, trend: [point(12, 0.9)] }, benches: [] });
+  assert.ok(withModel);
+  if (!withModel) return;
+  assert.equal(Object.hasOwn(withModel.overview.evals.latest ?? {}, "withoutAi"), false);
+  assert.equal(Object.hasOwn(withModel.overview.evals.trend[0], "withoutAi"), false);
+  // Il risultato senza-ai che non è «attuale»: nessun segno.
+  const notCurrent = normalizeEvalOverview({ evals: { latest: run({ results: [result(HAIKU, 0.9, null, { current: true }), result("senza-ai", 1, null)] }), trend: [] }, benches: [] });
+  assert.equal(notCurrent?.overview.evals.latest?.withoutAi, undefined);
 });

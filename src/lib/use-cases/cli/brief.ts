@@ -134,7 +134,7 @@ export function nextStep(input: Pick<BriefInput, "open" | "approved" | "latestPa
     return "aspettare l'approvazione del responsabile del caso.";
   }
   if (!approved) return `impostare il caso («unbundle setup ${input.code}»).`;
-  if (!input.latestPackage) return "generare il pacchetto dalla pagina «Progetto dell'agente».";
+  if (!input.latestPackage) return "generare il pacchetto dalla pagina «Costruzione».";
   return `costruire secondo il progetto approvato (versione ${approved.version}).`;
 }
 
@@ -249,7 +249,10 @@ export function composeDecisionsLayer(input: Pick<BriefInput, "code" | "decision
   return lines.join("\n");
 }
 
-/** La guida di un argomento dell'impostazione: la domanda da fare al team, in una frase. */
+/**
+ * La guida di un argomento dell'impostazione: la domanda da fare al team, in una frase. (Casi senza AI) «Modelli» dice
+ * anche come si sceglie «nessun modello» (docs/rilascio-8/CASI-SENZA-AI.md §6).
+ */
 export const SETUP_GUIDE: Readonly<Record<SetupTopic, string>> = Object.freeze({
   funzionalita: "Che cosa fa l'agente, in una frase, e che cosa non fa mai? Parti dal «Come cambia» della scheda.",
   journey: "Come arriva il lavoro all'agente e come ne esce: chi vede cosa, e da quale gradino di autonomia si parte (0 in ombra, 1 con un tocco umano, 2 da solo con controlli a campione).",
@@ -258,7 +261,7 @@ export const SETUP_GUIDE: Readonly<Record<SetupTopic, string>> = Object.freeze({
   backend: "Dove gira (funzioni Vercel, istanza del cliente, n8n), con quali tempi e limiti.",
   frontend: "Quale interfaccia serve, se serve: il pannello comune, uno strumento che il cliente usa già, nessuna.",
   integrazioni: "Quali sistemi tocca, in lettura o in scrittura, con gli accessi minimi.",
-  modelli: "Quali ruoli (lettura, scrittura, giudizio) e per ognuno il modello più piccolo che basta tra quelli approvati dal cliente, con la riserva.",
+  modelli: "Quali ruoli (lettura, scrittura, giudizio) e per ognuno il modello più piccolo che basta tra quelli approvati dal cliente, con la riserva. Se il caso non usa l'AI: \"Nessun modello: automazione senza AI\" (senza_ai: true in agent.yaml).",
   osservabilita: "Dove vanno le tracce (Langfuse in UE se non c'è una preferenza) e che cosa si misura.",
   evals_autonomia: "Le regole fisse al 100 %, i casi d'oro e le soglie per salire di gradino.",
 });
@@ -295,7 +298,7 @@ export function composeQuestionsLayer(input: {
 
 /** Lo strato «pacchetto»: le versioni, dalla più recente; i file li porta «unbundle start». */
 export function composePackageLayer(input: { code: string; packages: { version: number; createdAt: string; source: "generato" | "importato"; contentHash: string }[] }): string {
-  if (!input.packages.length) return `${input.code}: nessun pacchetto ancora. Si genera dalla pagina «Progetto dell'agente».`;
+  if (!input.packages.length) return `${input.code}: nessun pacchetto ancora. Si genera dalla pagina «Costruzione».`;
   const lines = [`${input.code} · pacchetto (${input.packages.length} versioni)`];
   for (const p of input.packages.slice(0, 10)) {
     lines.push(`- k${p.version} · ${day(p.createdAt)} · ${p.source === "importato" ? "preparato a mano" : "generato dalla scheda"} · impronta ${p.contentHash.slice(0, 12)}`);

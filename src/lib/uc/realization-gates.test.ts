@@ -14,6 +14,8 @@ const START_PAGE = "src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/nuovo/
 const C10_FILES = [
   LIST_PAGE,
   START_PAGE,
+  // (Rilascio 10, §3.5) I dati del dialogo «Avvia la realizzazione» e della pagina di ripiego.
+  "src/components/uc/realization/start-data.ts",
   "src/components/uc/shell/create-wizard.tsx",
   "src/components/uc/shell/case-card.tsx",
   "src/components/uc/realization/realization-summary.tsx",
@@ -74,6 +76,8 @@ test("every read for the Use case page and the fallback sidebar goes through the
  */
 const H6A_MOUNTS: Readonly<Record<string, readonly string[]>> = {
   [START_PAGE]: ["@/lib/use-cases/legacy-routes", "@/lib/use-cases/realization-prefill", "@/lib/use-cases/rollout"],
+  // (Rilascio 10) Il dialogo «Avvia la realizzazione» e la pagina di ripiego leggono gli stessi dati, con i testi del connettore.
+  "src/components/uc/realization/start-data.ts": ["@/lib/use-cases/realization-prefill"],
   "src/lib/actions/uc-realization.ts": ["@/lib/use-cases/service", "@/lib/use-cases/rollout"],
 };
 const HUB_OR_CONNECTOR_IMPORT = /from ["']((?:@\/lib\/use-cases|@\/lib\/connector|@\/components\/use-cases|[./]*(?:lib\/)?use-cases\/|[./]*(?:lib\/)?connector\/)[^"']*)["']/g;
