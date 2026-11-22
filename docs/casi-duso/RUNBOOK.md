@@ -809,7 +809,7 @@ Progetto: `docs/contesto/RILASCIO-9-CONTESTO.md` (la riga 9b del §13). Piano di
 
 ### 10.23 Rilascio 8.2b: «Le evals dalla CI» (0042)
 
-Specifica: `docs/rilascio-8/RILASCIO-8.2b-SPEC.md`. Dopo ogni unione su main la CI di GitHub manda a Unbundle le evals dei casi del repository con la **chiave della CI**: è del repository, non di una persona. Lateral Space la crea, la ruota e la revoca dall'Agent Factory; Unbundle la controlla a ogni invio. Il modello dell'Agent Factory che la usa è il 1.7.0 (`unbundle ci casi`, `unbundle ci evals`, `unbundle ci banco`, `unbundle banco --pr`).
+Specifica: `docs/rilascio-8/RILASCIO-8.2b-SPEC.md`. Dopo ogni unione su main la CI di GitHub manda a Unbundle le evals dei casi del repository con la **chiave della CI**: è del repository, non di una persona. Lateral Space la crea, la ruota e la revoca dall'Agent Factory; Unbundle la controlla a ogni invio. Il modello dell'Agent Factory che la usa è il 1.8.0, dopo la 1.7.0 dei casi senza AI (`unbundle ci casi`, `unbundle ci evals`, `unbundle ci banco`, `unbundle banco --pr`).
 
 **Che cosa cambia:**
 
@@ -837,7 +837,7 @@ Specifica: `docs/rilascio-8/RILASCIO-8.2b-SPEC.md`. Dopo ogni unione su main la 
 2. Che cosa resta: `use_case_ci_keys` e le tre colonne di `use_case_eval_runs`. Il codice di prima non le legge e scrive le evals con la fonte di default, `cli`, che vale anche per lui. Le righe `ci` restano e la pagina di prima le mostra come le altre.
 3. Le e-mail in coda con i modelli nuovi (`chiave_ci_creata`, `chiave_ci_scade`, `chiave_ci_bloccata`) il codice di prima le annulla da sé («modello_non_previsto»). Nessun tipo nuovo nella campanella: niente da cancellare a mano.
 4. Le chiavi restano in tabella e continuano a scadere; al ritorno in avanti valgono come prima. Il registro dell'idempotenza tiene le righe `ci:…`, che il codice di prima non legge.
-5. Il modello 1.7.0 con l'Unbundle di prima: `/api/ci/*` risponde 404, il job «unbundle» dice «Questo Unbundle non riceve ancora le evals dalla CI (8.2b): restano qui.» ed esce con 0; la CI non diventa rossa. Se sbaglia la 1.7.0: una PR sul modello che torna alla 1.6.0, poi `unbundle aggiorna` nelle famiglie. Senza il segreto `UNBUNDLE_CI_TOKEN` il job «unbundle» non fa niente.
+5. Il modello 1.8.0 con l'Unbundle di prima: `/api/ci/*` risponde 404, il job «unbundle» dice «Questo Unbundle non riceve ancora le evals dalla CI (8.2b): restano qui.» ed esce con 0; la CI non diventa rossa. Se sbaglia la 1.8.0: una PR sul modello che torna alla versione di prima, poi `unbundle aggiorna` nelle famiglie. Senza il segreto `UNBUNDLE_CI_TOKEN` il job «unbundle» non fa niente.
 
 **Dopo il deploy, a mano** (su un repository di prova, privato, in un workspace di prova, registrato su un caso di prova: mai il repository modello):
 

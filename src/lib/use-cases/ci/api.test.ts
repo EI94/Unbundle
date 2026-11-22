@@ -39,7 +39,7 @@ const body = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
   livello: "pull_request",
   ramo: "main",
   commit: SHA,
-  versioneModello: "1.7.0",
+  versioneModello: "1.8.0",
   modelliFinti: true,
   inCostruzione: false,
   modelli: { lettura: HAIKU },
@@ -56,7 +56,7 @@ test("il corpo dell'esempio della specifica passa: le evals di main, con l'esecu
   assert.equal(parsed.value.input.kind, "evals");
   assert.equal(parsed.value.input.branch, "main");
   assert.equal(parsed.value.input.commit, SHA);
-  assert.equal(parsed.value.input.templateVersion, "1.7.0");
+  assert.equal(parsed.value.input.templateVersion, "1.8.0");
   assert.equal(parsed.value.input.fakeModels, true);
   // Il numero come numero, il tentativo che manca vale 1; il repository senza badare alle maiuscole (GitHub non ci bada).
   const numeric = parseCiEvals(body({ ci: { esecuzione: Number(RUN), url: RUN_URL } }), REPO.toLowerCase());
@@ -234,7 +234,7 @@ test("la lettura della CLI: ogni esecuzione dice fonte e ci; il link solo a chi 
     level: "pull_request",
     branch: "main",
     commit: SHA,
-    templateVersion: "1.7.0",
+    templateVersion: "1.8.0",
     models: { lettura: HAIKU },
     fakeModels: true,
     inConstruction: false,

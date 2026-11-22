@@ -7,7 +7,7 @@
  * - Nella dashboard «casi» e «use case», mai «caso d'uso»; testi senza genere.
  * - `{nome}` è il repository senza l'organizzazione, `{repo}` quello intero.
  * - Le date come le altre della pagina: «17/05/2027», a Roma.
- * - Il passo su GitHub è quello dei segreti del repository (GitHub Free, D10): il job «unbundle» del modello 1.7.0 non
+ * - Il passo su GitHub è quello dei segreti del repository (GitHub Free, D10): il job «unbundle» del modello 1.8.0 non
  *   usa ancora l'ambiente `unbundle`, quindi un segreto d'ambiente oggi non lo leggerebbe.
  *
  * Modulo puro e senza import: lo usano la pagina (sul server) e i pulsanti della riga (nel browser), che non devono
