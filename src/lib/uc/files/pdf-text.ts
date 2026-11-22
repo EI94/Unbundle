@@ -15,7 +15,10 @@
  *   (`Do`), con i font: `ToUnicode`, codifiche standard e `Differences`.
  *   Poi i testi di annotazioni, campi e segnalibri, e i flussi di contenuto
  *   che nessuna pagina usa (testo nascosto).
- * - Rifiutati: PDF cifrati, con script o azioni di avvio, con file allegati.
+ * - Rifiutati: PDF cifrati, con script o azioni di avvio, con file allegati, e
+ *   PDF incompleti, senza il segno di fine `%%EOF` in coda (un file tagliato
+ *   prima di arrivare: il testo che resta è poco e il PDF finirebbe in revisione
+ *   a mano invece di essere ricaricato).
  *
  * **Testo scarso** (`lowText`, revisione manuale): meno di 200 lettere, più
  * del 30% di caratteri non stampabili, glifi senza mappa Unicode, flussi di
@@ -90,6 +93,7 @@ export const PDF_MESSAGES = {
   pdf_bomba: "Il PDF ha un rapporto di compressione anomalo e non possiamo controllarlo.",
   contenuto_attivo: "Il PDF contiene script o azioni automatiche: esportalo di nuovo in PDF senza script.",
   oggetto_incorporato: "Il PDF contiene file allegati che non possiamo controllare: caricali a parte.",
+  pdf_incompleto: "Il PDF è incompleto: manca la fine del file. Scaricalo o esportalo di nuovo, poi caricalo.",
 } as const;
 export type PdfErrorCode = keyof typeof PDF_MESSAGES;
 
@@ -1748,13 +1752,27 @@ function nonPrintableRatio(text: string): number {
 }
 
 /**
+ * Dove cercare il segno di fine `%%EOF`: negli ultimi byte del file. Lo standard lo vuole nell'ultima
+ * riga e i lettori lo cercano nell'ultimo KB; qui 4 KB, per non rifiutare un PDF valido con qualche
+ * byte in più in coda (spazi, zeri di uno scanner).
+ */
+export const PDF_EOF_WINDOW = 4096;
+
+/** Vero se il PDF finisce con il segno di fine: un file tagliato a metà non lo ha. */
+export function hasPdfEndMarker(buf: Buffer): boolean {
+  const from = Math.max(0, buf.length - PDF_EOF_WINDOW);
+  return buf.subarray(from).includes("%%EOF", 0, "latin1");
+}
+
+/**
  * Estrae il testo di un PDF per i controlli. Fallisce su PDF non validi,
- * cifrati, con script, con allegati o oltre i limiti; altrimenti restituisce
+ * incompleti, cifrati, con script, con allegati o oltre i limiti; altrimenti restituisce
  * il testo e il segnale `lowText` per la revisione a mano.
  */
 export function extractPdfText(bytes: Uint8Array, limits: PdfLimits = PDF_LIMITS): Result<PdfText> {
   const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (!looksLikePdf(buf)) return fail("pdf_non_valido", PDF_MESSAGES.pdf_non_valido);
+  if (!hasPdfEndMarker(buf)) return fail("pdf_incompleto", PDF_MESSAGES.pdf_incompleto);
   try {
     const doc = new PdfDocument(buf, limits);
     doc.parse();
