@@ -1,9 +1,13 @@
 import "server-only";
+import { after } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { learningIdeaDrafts } from "./schema";
 import { requireLearningEnrollment, learningWriteGuard, LearningError } from "./server";
-import { createLearningPortfolioUseCase } from "@/lib/db/queries/use-cases";
+import { createLearningPortfolioUseCase, getUseCaseById } from "@/lib/db/queries/use-cases";
+import { dispatchNewPortfolioNotifications, wasPortfolioItemAnnounced } from "@/lib/notifications/portfolio-dispatch";
+import { logSafeError } from "@/lib/log/safe-error";
+import { announceLearningIdea, type IdeaAnnounceDeps } from "./idea-notify";
 import { emptyIdeaFields, ideaFieldsSchema, ideaPortfolioFields, validateIdeaSubmission } from "./idea-contract";
 import type { IdeaFields, IdeaSaveRequest, IdeaSubmitRequest } from "./idea-contract";
 
@@ -62,7 +66,18 @@ export async function submitMyLearningIdea(input: IdeaSubmitRequest) {
   await createLearningPortfolioUseCase({ id: before.id, workspaceId, ...ideaPortfolioFields(fields), proposedBy: context.userId, submittedAt: new Date() }, learningWriteGuard(context));
   const [existing] = await db.select().from(learningIdeaDrafts).where(scoped).limit(1);
   if (existing?.status !== "submitted") throw new Error("technical");
+  // (Rilascio 10, ondata 7b) L'idea è diventata uno use case: gli avvisi di ogni proposta nuova, una volta sola, dopo la
+  // risposta (`idea-notify.ts`).
+  const useCaseId = existing.resultingUseCaseId ?? existing.id;
+  after(() => announceLearningIdea(IDEA_ANNOUNCE_DEPS, { workspaceId, useCaseId }));
   return dto(existing);
 }
+
+const IDEA_ANNOUNCE_DEPS: IdeaAnnounceDeps = {
+  getUseCase: getUseCaseById,
+  wasAnnounced: wasPortfolioItemAnnounced,
+  notify: (params) => dispatchNewPortfolioNotifications(params),
+  logError: (event, error, extra) => logSafeError("learning", event, error, extra),
+};
 
 export { emptyIdeaFields };
