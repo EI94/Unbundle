@@ -195,6 +195,13 @@ test("lo strato progetto: i 10 argomenti nell'ordine, «Da scegliere» dove manc
   for (const topic of SETUP_TOPICS) assert.ok(SETUP_GUIDE[topic].endsWith("."), topic);
 });
 
+test("(casi senza AI) la guida di «Modelli» dice come si sceglie nessun modello: senza_ai: true in agent.yaml", () => {
+  assert.equal(
+    SETUP_GUIDE.modelli,
+    'Quali ruoli (lettura, scrittura, giudizio) e per ognuno il modello più piccolo che basta tra quelli approvati dal cliente, con la riserva. Se il caso non usa l\'AI: "Nessun modello: automazione senza AI" (senza_ai: true in agent.yaml).',
+  );
+});
+
 test("lo strato domande: le proposte a chi vede «Cosa serve», senza nomi; per gli altri solo che ci sono altrove", () => {
   const proposals = [{ question: "Le richieste di Olga vanno prima?", reason: null, createdAt: "2026-11-11T10:00:00.000Z" }];
   const seen = composeQuestionsLayer({ code: "PX-0042", openNeeds: [], proposals, namesToHide: ["Olga Cliente"] });
