@@ -11,15 +11,13 @@ import { SETTINGS_TEXT } from "./settings-text";
 const T = SETTINGS_TEXT.links.alerts;
 const INITIAL: ActionState = { ok: true };
 
-/** Le parole di questa scheda al posto di quelle del server («Webhook salvato.», «Deve essere un URL http(s) valido.»). */
-const SAVED = "Salvato.";
-const INVALID = "Scrivi un indirizzo che comincia con https://.";
 
 /**
  * Collegamenti › «Altri avvisi» (rilascio 10, ondata 6b, §3.10; prima la sezione «WhatsApp»): l'indirizzo del servizio
  * esterno che avvisa il gruppo WhatsApp del team a ogni nuovo use case, in parole semplici; come funziona per chi lo
  * configura in «Dettagli tecnici». «Salva» compare solo dopo una modifica, bordato. Lo stesso controllo di prima sul
- * server (`updateWhatsappWebhookAction`: chi gestisce il workspace, un indirizzo http(s)).
+ * server (`updateWhatsappWebhookAction`: chi gestisce il workspace, un indirizzo http o https); le frasi del server
+ * («Webhook salvato.») qui sono quelle della scheda (`SETTINGS_TEXT.links.alerts`).
  */
 export function AlertsForm({ workspaceId, initialUrl }: { workspaceId: string; initialUrl: string }) {
   const [state, formAction, pending] = useActionState(updateWhatsappWebhookAction.bind(null, workspaceId), INITIAL);
@@ -51,7 +49,7 @@ export function AlertsForm({ workspaceId, initialUrl }: { workspaceId: string; i
         />
         {invalid ? (
           <p id="settings-alerts-hint" role="alert" className="text-xs text-destructive">
-            {INVALID}
+            {T.invalid}
           </p>
         ) : (
           <p id="settings-alerts-hint" className="sr-only">
@@ -70,7 +68,7 @@ export function AlertsForm({ workspaceId, initialUrl }: { workspaceId: string; i
       ) : null}
       {state.ok && state.message && !dirty ? (
         <p role="status" className="text-xs text-uc-verde">
-          {SAVED}
+          {T.saved}
         </p>
       ) : null}
       {!state.ok && !invalid && state.message ? (

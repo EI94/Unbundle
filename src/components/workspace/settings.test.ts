@@ -74,7 +74,6 @@ test("le ancore di prima portano alla loro scheda; `#cli` e `#granola` le apre i
     persone: "team",
     integrazioni: "collegamenti",
     "connettore-claude": "collegamenti",
-    "claude-per-il-team": "collegamenti",
     valutazione: "valutazione",
     "valutazione-use-case": "valutazione",
     "sub-responsabili": "privacy",
@@ -87,6 +86,7 @@ test("le ancore di prima portano alla loro scheda; `#cli` e `#granola` le apre i
   assert.equal(at("#persone", "privacy"), `/dashboard/${WS}/settings#persone`);
   assert.equal(at("#persone"), null, "già nella scheda giusta: niente");
   assert.equal(at("#cli"), null, "il foglio «Il tuo account»");
+  assert.equal(at("#claude-per-il-team"), null, "il foglio «Il tuo account»: il proprio accesso a Claude sta lì");
   assert.equal(at("#granola"), null, "il foglio «Il tuo account»");
   assert.equal(at("#granola-regole"), `/dashboard/${WS}/contesto?vista=fonti#granola-regole-cliente`);
   assert.equal(at(""), null);

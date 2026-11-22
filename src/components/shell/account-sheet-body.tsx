@@ -75,6 +75,8 @@ export function accessRows(claude: AccountClaude | null, terminal: { links: read
     id: link.id,
     label: link.label,
     facts: [
+      // (F-227) L'inizio del collegamento, per riconoscerlo dal computer: mai il resto.
+      C.linkPrefix(link.prefix),
       link.caseCode ? C.onlyCase(link.caseCode) : C.allCases,
       link.lastUsedAt ? C.usedOn(day(link.lastUsedAt)) : C.neverUsed,
       link.expiresAt ? C.expiresOn(day(link.expiresAt)) : null,
@@ -383,13 +385,13 @@ function ClaudeSection({
   );
 }
 
-/** I toni della riga che dice com'è andato il ritorno da Granola, come nel blocco di Impostazioni. */
+/** I toni della riga che dice com'è andato il ritorno da Granola. */
 const LINE_TONE: Record<Line["tone"], string> = { ok: "text-uc-verde", info: "text-muted-foreground", error: "text-destructive" };
 
 /**
  * «Granola» (Lateral Space): collegare, scollegare, il piano. Dopo il ritorno da Granola (`?granola=…`) la riga che dice
- * com'è andata (`granolaFlashLine`, la stessa del blocco di Impostazioni). Le regole delle call stanno nelle
- * Impostazioni: con un collegamento, «Regole delle call ›» ci porta, anche chi non gestisce il workspace.
+ * com'è andata (`granolaFlashLine`). Le regole delle call stanno in Contesto › Fonti (ondata 6b): con un collegamento,
+ * «Regole delle call ›» ci porta, anche chi non gestisce il workspace.
  */
 function GranolaSection({
   granola,

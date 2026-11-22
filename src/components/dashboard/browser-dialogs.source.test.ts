@@ -109,7 +109,6 @@ const CONVERTED = [
   "src/components/ai-readiness/question-editor.tsx",
   "src/components/ai-readiness/open-link-form.tsx",
   "src/components/ai-readiness/assessment-actions.tsx",
-  "src/components/context/granola/granola-card-panel.tsx",
   "src/components/workspace/claude-mcp-card.tsx",
   "src/components/workspace/team-mcp-card.tsx",
   "src/components/workspace/connector-card-panel.tsx",

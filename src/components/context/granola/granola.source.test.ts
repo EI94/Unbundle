@@ -11,12 +11,12 @@ const FILES = (readdirSync(DIR) as string[]).filter((name) => name.endsWith(".ts
 /** Il codice senza commenti. */
 const code = (source: string) => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/.*$/gm, "$1").replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, "");
 
-test("i file del blocco: due componenti server, i loro due pannelli client e le regole delle call, comuni ai due", () => {
-  assert.deepEqual(FILES.sort(), ["granola-card-panel.tsx", "granola-card.tsx", "granola-inbox-panel.tsx", "granola-inbox.tsx", "granola-rules.tsx"]);
-  for (const server of ["granola-card.tsx", "granola-inbox.tsx"]) assert.doesNotMatch(read(server), /^"use client"/m, server);
-  for (const client of ["granola-card-panel.tsx", "granola-inbox-panel.tsx", "granola-rules.tsx"]) assert.match(read(client), /^"use client";/, client);
-  // (Rilascio 10, §3.7) Le regole delle call: in Impostazioni (con l'ancora) e nelle Fonti, sotto Granola, chiuse.
-  assert.match(code(read("granola-card-panel.tsx")), /<GranolaRulesFields workspaceId=\{workspaceId\} rules=\{rules\} \/>/);
+test("i file del blocco: il componente server, il suo pannello client e le regole delle call", () => {
+  // (Rilascio 10, ondata 6b) Il blocco delle Impostazioni (`granola-card*.tsx`) non c'è più: il collegamento sta nel
+  // foglio «Il tuo account», le regole delle call nelle Fonti, sotto Granola, chiuse.
+  assert.deepEqual(FILES.sort(), ["granola-inbox-panel.tsx", "granola-inbox.tsx", "granola-rules.tsx"]);
+  assert.doesNotMatch(read("granola-inbox.tsx"), /^"use client"/m, "granola-inbox.tsx");
+  for (const client of ["granola-inbox-panel.tsx", "granola-rules.tsx"]) assert.match(read(client), /^"use client";/, client);
   assert.match(code(read("granola-inbox-panel.tsx")), /<Fold id="granola-regole-cliente" title=\{T\.rulesTitle\(workspaceName\)\}[^>]*>\s*<GranolaRulesFields workspaceId=\{workspaceId\} rules=\{rules\} \/>/);
   // Le regole si leggono solo nel blocco intero e con un collegamento attivo, dopo il controllo di chi guarda.
   const inbox = code(read("granola-inbox.tsx"));
@@ -24,17 +24,12 @@ test("i file del blocco: due componenti server, i loro due pannelli client e le 
 });
 
 test("a chi non è di Lateral Space il blocco non c'è: il controllo viene prima di ogni lettura", () => {
-  for (const [file, load] of [
-    ["granola-card.tsx", "loadGranolaStatus("],
-    ["granola-inbox.tsx", "loadGranolaStatus("],
-  ] as const) {
+  for (const [file, load] of [["granola-inbox.tsx", "loadGranolaStatus("]] as const) {
     const source = code(read(file));
     const gate = source.search(/if \([^)]*!contextAbilities\([^)]*\)\.canUseGranola\) return null;/);
     assert.ok(gate > 0, `${file}: senza canUseGranola il componente risponde null`);
     assert.ok(source.indexOf(load) > gate, `${file}: lo stato si legge solo dopo il controllo`);
   }
-  // La persona del blocco in Impostazioni è quella della sessione, mai un'altra.
-  assert.match(code(read("granola-card.tsx")), /session\.user\.id !== props\.userId\) return null;/);
   // La pagina passa da contextActorFromSession: senza sessione o senza accesso, niente.
   assert.match(code(read("granola-inbox.tsx")), /const who = await contextActorFromSession\(workspaceId\);\s*\/?\/?[^\n]*\n?\s*if \(!who\.ok \|\|/);
 });
@@ -83,8 +78,8 @@ test("«Da smistare» sul telefono: i due pulsanti vanno a capo, e «Assegna a �
   assert.match(row, /\bmin-h-11\b/, "e resta alto almeno 44 px");
 });
 
-test("Impostazioni ha un solo pulsante pieno: nel blocco di Granola ogni pulsante è «outline» o «ghost», anche «Salva»", () => {
-  for (const file of ["granola-card-panel.tsx", "granola-inbox-panel.tsx", "granola-rules.tsx"]) {
+test("nel blocco di Granola ogni pulsante è «outline» o «ghost», anche «Salva»", () => {
+  for (const file of ["granola-inbox-panel.tsx", "granola-rules.tsx"]) {
     const buttons = [...code(read(file)).matchAll(/<Button\b[^>]*>/g)].map((m) => m[0]);
     assert.ok(buttons.length > 0, file);
     for (const button of buttons) assert.match(button, /\bvariant="(?:outline|ghost)"/, `${file}: ${button}`);

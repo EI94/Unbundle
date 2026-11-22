@@ -122,6 +122,9 @@ export const SETTINGS_TEXT = Object.freeze({
       technical: "Unbundle manda una richiesta POST con il testo, il link e il tipo di avviso (text, link, event). Va bene un servizio come Make, Zapier o Twilio.",
       save: "Salva",
       saving: "Salvo…",
+      /** Le parole della scheda al posto di quelle del server («Webhook salvato.», «Deve essere un URL http(s) valido.»). */
+      saved: "Salvato.",
+      invalid: "Scrivi un indirizzo che comincia con http:// o https://.",
     }),
   }),
 

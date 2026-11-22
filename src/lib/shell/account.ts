@@ -32,6 +32,8 @@ export function accountPartForSettingsHash(pathname: string, hash: string, works
   const path = pathname.replace(/\/+$/, "");
   if (path !== `/dashboard/${workspaceId}/settings`) return null;
   if (hash === "#cli") return "claude";
+  // (Ondata 6b) La card «Claude per il team» delle Impostazioni: il proprio accesso ora sta nel foglio.
+  if (hash === "#claude-per-il-team") return "claude";
   if (hash === "#granola") return "granola";
   return null;
 }

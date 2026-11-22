@@ -5,11 +5,11 @@
  * | Ancora di prima | Porta a |
  * |---|---|
  * | `#persone` | Team |
- * | `#integrazioni`, `#connettore-claude`, `#claude-per-il-team` | Collegamenti |
+ * | `#integrazioni`, `#connettore-claude` | Collegamenti |
  * | `#valutazione`, `#valutazione-use-case` | Valutazione |
  * | `#sub-responsabili` | Privacy |
  * | `#zona-pericolosa` | Zona pericolosa |
- * | `#cli`, `#granola` | «Il tuo account» (le apre il foglio, `src/lib/shell/account.ts`) |
+ * | `#cli`, `#claude-per-il-team`, `#granola` | «Il tuo account» (le apre il foglio, `src/lib/shell/account.ts`) |
  * | `#granola-regole` | Contesto › Fonti, le regole delle call del cliente |
  *
  * Modulo puro: import relativi `.ts`.
@@ -28,7 +28,6 @@ export const SETTINGS_ANCHOR_TAB: Readonly<Record<string, SettingsTab>> = Object
   persone: "team",
   integrazioni: "collegamenti",
   "connettore-claude": "collegamenti",
-  "claude-per-il-team": "collegamenti",
   valutazione: "valutazione",
   [USE_CASE_VALUATION_ANCHOR]: "valutazione",
   "sub-responsabili": "privacy",
@@ -36,7 +35,7 @@ export const SETTINGS_ANCHOR_TAB: Readonly<Record<string, SettingsTab>> = Object
 });
 
 /** Le ancore che apre il foglio «Il tuo account»: qui non si toccano. */
-export const ACCOUNT_ANCHORS: readonly string[] = Object.freeze(["cli", "granola"]);
+export const ACCOUNT_ANCHORS: readonly string[] = Object.freeze(["cli", "claude-per-il-team", "granola"]);
 
 /** `#granola-regole` (le regole delle call, prima in Impostazioni): ora in Contesto › Fonti, sotto Granola. */
 export const GRANOLA_RULES_OLD_ANCHOR = OLD_GRANOLA_RULES_ANCHOR;

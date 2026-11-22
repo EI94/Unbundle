@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 
 // «Contesto» sulla piattaforma (rilascio 9a, RILASCIO-9a-COSTRUZIONE.md §11.2): il cron della notte in vercel.json e
 // nessuna anteprima del ramo, gli script dei test, e i punti dove la fondazione lascia il posto al pacchetto
@@ -184,13 +184,13 @@ test("context-granola.ts esporta le funzioni e i tipi del piano (§3.4.12): chi 
   assert.match(source, /export type GranolaSyncStatus = "fatto" \| "recente" \| "in_corso" \| "non_collegato" \| "da_ricollegare" \| "limite" \| "non_riuscito";/);
 });
 
-test("i due componenti di Granola hanno le proprietà del piano e sono componenti server asincroni", () => {
-  const card = read("src/components/context/granola/granola-card.tsx");
+test("il componente di Granola ha le proprietà del piano ed è un componente server asincrono", () => {
+  // (Rilascio 10, ondata 6b) Il blocco delle Impostazioni (`GranolaCard`) non c'è più: il collegamento sta nel foglio
+  // «Il tuo account», le regole in Contesto › Fonti, dentro `GranolaInbox`.
+  assert.equal(existsSync(new URL("../../components/context/granola/granola-card.tsx", import.meta.url)), false);
   const inbox = read("src/components/context/granola/granola-inbox.tsx");
-  for (const source of [card, inbox]) assert.doesNotMatch(source, /^"use client"/m, "componenti server: leggono da sé lo stato");
-  assert.match(card, /export async function GranolaCard\(/);
+  assert.doesNotMatch(inbox, /^"use client"/m, "componente server: legge da sé lo stato");
   assert.match(inbox, /export async function GranolaInbox\(/);
-  for (const prop of ["workspaceId: string;", "workspaceName: string;", "userId: string;", "role: string;", "flash?: string;"]) assert.ok(card.includes(prop), `GranolaCard: ${prop}`);
   for (const prop of ["workspaceId: string;", "workspaceName: string;", "compact?: boolean;"]) assert.ok(inbox.includes(prop), `GranolaInbox: ${prop}`);
 });
 

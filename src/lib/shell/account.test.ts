@@ -68,8 +68,10 @@ test("le ancore personali delle Impostazioni aprono il foglio sulla parte giusta
   const ws = "00000000-0000-4000-8000-0000000000f1";
   const settings = `/dashboard/${ws}/settings`;
   assert.equal(accountPartForSettingsHash(settings, "#cli", ws), "claude");
+  // (Ondata 6b) L'ancora della card «Claude per il team»: il proprio accesso ora sta nel foglio.
+  assert.equal(accountPartForSettingsHash(settings, "#claude-per-il-team", ws), "claude");
   assert.equal(accountPartForSettingsHash(`${settings}/`, "#granola", ws), "granola");
-  for (const hash of ["", "#integrazioni", "#persone", "#sub-responsabili", "#zona-pericolosa", "#valutazione-use-case"]) {
+  for (const hash of ["", "#integrazioni", "#persone", "#sub-responsabili", "#zona-pericolosa", "#valutazione-use-case", "#connettore-claude"]) {
     assert.equal(accountPartForSettingsHash(settings, hash, ws), null, hash);
   }
   // Solo la pagina delle Impostazioni di questo workspace.

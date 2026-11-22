@@ -108,6 +108,8 @@ export const SHELL_TEXT = Object.freeze({
       usedOn: (day: string) => `usato il ${day}`,
       neverUsed: "mai usato",
       onlyCase: (code: string) => `solo ${code}`,
+      /** (F-227) L'inizio di un collegamento del terminale: «ubc_cd34…». */
+      linkPrefix: (prefix: string) => `${prefix}…`,
       allCases: "tutti i tuoi use case",
       exposed: "esposto: revocalo",
       revoke: "Revoca",

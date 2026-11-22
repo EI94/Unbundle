@@ -106,7 +106,8 @@ test("revisore di Lateral Space con tutto: le quattro parti, nell'ordine del fog
   const list = /<ul aria-label="I tuoi accessi"[\s\S]*?<\/ul>/.exec(html)?.[0] ?? "";
   assert.equal((list.match(/<li /g) ?? []).length, 2);
   assert.ok(text(list).includes("Claude · Claude Code sul portatile lettura e scrittura · scade il 08/02/2027 · usato il 15/11/2026"), text(list));
-  assert.ok(text(list).includes("Terminale · MacBook di prova solo XX-0012 · usato il 16/11/2026 · scade il 30/01/2027"), text(list));
+  // (F-227) L'inizio del collegamento, per riconoscerlo: «ubc_cd34…», mai il resto.
+  assert.ok(text(list).includes("Terminale · MacBook di prova ubc_cd34… · solo XX-0012 · usato il 16/11/2026 · scade il 30/01/2027"), text(list));
   assert.ok(!list.includes("Vecchio"), "un accesso revocato non è nella lista");
   assert.equal((list.match(/>Revoca</g) ?? []).length, 2);
   // La guida a due scelte, con Claude scelto: il nome, «Solo lettura», «Crea l'accesso».
@@ -145,7 +146,7 @@ test("chi costruisce con la sola CLI: il collegamento del terminale e la sua rig
   assert.doesNotMatch(html, new RegExp(T.claude.create));
   // Una CLI per tutti i casi e mai usata.
   const all = render({ status: "ready", account: { email: null, claude: null, terminal: { links: [{ ...TERMINAL.links[0], caseCode: null, lastUsedAt: null, expiresAt: null }] }, granola: null } });
-  assert.ok(text(all).includes("Terminale · MacBook di prova tutti i tuoi use case · mai usato"), text(all));
+  assert.ok(text(all).includes("Terminale · MacBook di prova ubc_cd34… · tutti i tuoi use case · mai usato"), text(all));
 });
 
 test("contributore: niente da mostrare se non il tema (lo zero non si vede)", () => {
