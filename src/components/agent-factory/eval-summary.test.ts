@@ -99,7 +99,7 @@ test("a bench superseded by main's evals does not advise any more: it stays in t
 
 test("the client's roles: one sentence, no date, branch, source, model or command", () => {
   const s = qualitySummary(FULL, { builder: false })!;
-  assert.deepEqual(s, { line: "Qualità 96,4% · soglie rispettate", met: true, runId: null, meta: null, alert: null, advice: [] });
+  assert.deepEqual(s, { line: "Qualità 96,4% · soglie rispettate", tone: "verde", runId: null, meta: null, alert: null, advice: [] });
   const html = render(s, { origins: new Map([[RUN_ID, { source: "ci", ciRunUrl: "https://github.com/acme/agente/actions/runs/42" }]]) });
   assert.equal(textOf(html), "Qualità 96,4% · soglie rispettate");
   assert.deepEqual(findForbidden(textOf(html), "cliente"), []);
@@ -108,10 +108,34 @@ test("the client's roles: one sentence, no date, branch, source, model or comman
 
 test("below the thresholds the dot is red and the row says it; the read that failed says so to who builds", () => {
   const low = qualitySummary({ evals: { latest: run({ results: [result(SONNET, 0.8, 1.8, { current: true, thresholdsMet: false })] }), trend: [] }, benches: [] }, { builder: true })!;
-  assert.equal(low.met, false);
+  assert.equal(low.tone, "rosso");
   assert.ok(low.alert?.startsWith("Sotto soglia"));
   assert.match(render(low), /bg-uc-rosso/);
   assert.match(render(null, { unavailable: true }), /role="status"/);
   assert.equal(render(null), "");
   assert.equal(QUALITY_TEXT.details, "Dettagli per chi costruisce");
+});
+
+test("evals with the fake models: who builds reads «modelli finti» in the row, the client's roles get no row", () => {
+  const fake: EvalOverview = { evals: { latest: run({ fakeModels: true }), trend: [] }, benches: [] };
+  const s = qualitySummary(fake, { builder: true })!;
+  assert.equal(s.line, "Qualità 96,4% · soglie rispettate · modelli finti");
+  assert.equal(s.tone, "verde", "the thresholds still say how the code does");
+  assert.ok(textOf(render(s)).includes("· modelli finti"));
+  assert.equal(qualitySummary(fake, { builder: false }), null, "they measure the code, not the agent: nothing for the client");
+  assert.equal(qualitySummary({ ...fake, benches: [bench("lettura", LETTURA)] }, { builder: false }), null);
+  assert.equal(qualitySummary(FULL, { builder: true })!.line, "Qualità 96,4% · soglie rispettate", "real models: no mark");
+});
+
+test("in construction (version 0.x) the dot is neutral: below the thresholds is no alarm yet", () => {
+  const below = (over: Partial<EvalRunView>) => ({ evals: { latest: run({ results: [result(SONNET, 0.8, 1.8, { current: true, thresholdsMet: false })], ...over }), trend: [] }, benches: [] });
+  const building = qualitySummary(below({ inConstruction: true }), { builder: true })!;
+  assert.equal(building.tone, "grigio");
+  assert.equal(building.line, "Qualità 80% · sotto soglia");
+  assert.equal(building.alert, null, "no «Sotto soglia» alert in construction (8.2a)");
+  assert.match(render(building), /bg-uc-grigio/);
+  assert.doesNotMatch(render(building), /bg-uc-rosso/);
+  assert.equal(qualitySummary(below({ inConstruction: true }), { builder: false })!.tone, "grigio", "the client's row too");
+  assert.equal(qualitySummary({ evals: { latest: run({ inConstruction: true }), trend: [] }, benches: [] }, { builder: true })!.tone, "grigio");
+  assert.equal(qualitySummary(below({}), { builder: true })!.tone, "rosso", "out of construction it is red");
 });

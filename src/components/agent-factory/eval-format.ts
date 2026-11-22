@@ -575,6 +575,8 @@ export function verdictTone(verdict: BenchVerdict): "cambia" | "attenzione" | "n
  */
 export const QUALITY_TEXT = Object.freeze({
   heading: "Qualità",
+  /** Il segno nella riga di chi costruisce quando le evals sono girate con i modelli finti (8.2a). */
+  fakeModels: "modelli finti",
   details: "Dettagli per chi costruisce",
   none: "Ancora nessuna misura: si lanciano dal repository, con la CLI.",
   start: "I comandi per cominciare",
@@ -597,10 +599,16 @@ export interface QualityAdvice {
 }
 
 export interface QualitySummary {
-  /** «Qualità 96,4% · soglie rispettate»; null senza le evals con i modelli di oggi (solo banchi). */
+  /**
+   * «Qualità 96,4% · soglie rispettate»; per chi costruisce, con i modelli finti, «… · modelli finti». null senza le
+   * evals con i modelli di oggi (solo banchi).
+   */
   line: string | null;
-  /** Le evals rispettano le soglie (il tono del puntino); null senza la riga. */
-  met: boolean | null;
+  /**
+   * Il puntino: verde con le soglie rispettate, rosso sotto soglia, grigio in costruzione (versione 0.x: sotto soglia
+   * non dà avvisi, 8.2a). null senza la riga.
+   */
+  tone: "verde" | "rosso" | "grigio" | null;
   /** Il run delle evals della riga: data e fonte («dalla CI»). */
   runId: string | null;
   /** «14/11/2026», con il ramo quando non è main («14/11/2026 · ramo tj-0049/t-3»): solo per chi costruisce. */
@@ -614,21 +622,25 @@ export interface QualitySummary {
 /**
  * La «Qualità» della Costruzione in una riga (§3.5): qualità e soglie delle evals che fanno lo stato del caso e, per ogni
  * ruolo, la sola raccomandazione del suo ultimo banco (un banco superato dalle evals di main non consiglia più: resta
- * nei dettagli). Ai ruoli del cliente (`builder` falso) la sola riga, niente ramo, comandi né modelli. Null senza misure.
+ * nei dettagli). Ai ruoli del cliente (`builder` falso) la sola riga, niente ramo, comandi né modelli, e nessuna riga
+ * se le evals sono girate con i modelli finti (misurano il codice, non l'agente); chi costruisce lo legge nella riga
+ * («· modelli finti»). In costruzione (versione 0.x) il puntino è grigio: sotto soglia non dà avvisi. Null senza misure.
  */
 export function qualitySummary(overview: EvalOverview | null, o: { builder: boolean }): QualitySummary | null {
   if (!hasMeasures(overview)) return null;
   const latest = overview.evals.latest;
   const result = latest ? evalsResult(latest) : null;
-  const line = result ? qualityLine(result.quality, result.thresholdsMet) : null;
-  if (!o.builder) return line ? { line, met: result!.thresholdsMet, runId: null, meta: null, alert: null, advice: [] } : null;
+  const shown = latest && result ? { line: qualityLine(result.quality, result.thresholdsMet), fake: latest.fakeModels } : null;
+  const tone = latest && result ? (latest.inConstruction ? "grigio" : result.thresholdsMet ? "verde" : "rosso") : null;
+  if (!o.builder) return shown && !shown.fake ? { line: shown.line, tone, runId: null, meta: null, alert: null, advice: [] } : null;
+  const line = shown ? (shown.fake ? `${shown.line} · ${QUALITY_TEXT.fakeModels}` : shown.line) : null;
   const meta = latest ? [dayText(latest.createdAt), latest.branch && latest.branch !== EVALS_MAIN ? `ramo ${latest.branch}` : null].filter(Boolean).join(" · ") || null : null;
   const advice = overview.benches
     .filter((bench) => benchSupersededBy(bench, latest) === null)
     .map((bench) => ({ role: bench.role, text: bench.analysis.verdict.text, tone: verdictTone(bench.analysis.verdict) }));
   return {
     line,
-    met: result ? result.thresholdsMet : null,
+    tone,
     runId: latest && result ? latest.id : null,
     meta: result ? meta : null,
     alert: result ? evalsAlertText(latestEvalsAlert(overview.evals)) : null,
