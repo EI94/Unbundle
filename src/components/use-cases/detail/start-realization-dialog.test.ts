@@ -76,6 +76,8 @@ test("the dialog: no «Nome», «Cambia schema» only with more than one templat
   const source = read("./start-realization-dialog.tsx");
   assert.doesNotMatch(source, /realizzazione-nome|>\s*Nome\s*</, "the name is the use case's title (F-020)");
   assert.match(source, /data\.templates\.length > 1 \?/, "«Cambia schema» only with more than one");
+  assert.match(source, /if \(choosing\) chooserRef\.current\?\.focus\(\);/, "after «Cambia schema» the focus goes to the choice");
+  assert.match(source, /<SelectTrigger ref=\{chooserRef\}/);
   assert.match(source, /startRealizationAction\(workspaceId, \{ useCaseId: data\.useCase\.id, templateId: template\.id, title: data\.defaults\.title, oneLiner:/);
   assert.match(source, /router\.push\(`\/dashboard\/\$\{workspaceId\}\/casi-duso\/\$\{created\.caseId\}`\)/, "then the Panoramica of the realization");
   assert.match(source, /<summary [^>]*>\{PREFILL_TEXT\.title\}<\/summary>/, "«Dati raccolti da Claude» in a closed fold (F-022)");

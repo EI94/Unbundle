@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -40,6 +40,11 @@ function StartRealizationDialog({ workspaceId, data, open, onOpenChange }: { wor
   const { pending, run } = useUcAction();
   const [templateId, setTemplateId] = useState<string | null>(data.templates[0]?.id ?? null);
   const [choosing, setChoosing] = useState(false);
+  // «Cambia schema» lascia il posto alla scelta: il fuoco passa lì, non torna in cima al dialogo.
+  const chooserRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (choosing) chooserRef.current?.focus();
+  }, [choosing]);
   const template: StartTemplate | null = data.templates.find((t) => t.id === templateId) ?? null;
   const items = data.templates.map((t) => ({ value: t.id, label: startTemplateLabel(t) }));
   const ready = !data.codeMissing && template !== null;
@@ -68,7 +73,7 @@ function StartRealizationDialog({ workspaceId, data, open, onOpenChange }: { wor
         {!data.codeMissing && data.templates.length > 1 ? (
           choosing ? (
             <Select items={items} value={templateId} onValueChange={(v) => setTemplateId(typeof v === "string" ? v : null)}>
-              <SelectTrigger aria-label={T.chooseLabel} className="min-h-11 w-full text-base sm:min-h-8 sm:text-sm">
+              <SelectTrigger ref={chooserRef} aria-label={T.chooseLabel} className="min-h-11 w-full text-base sm:min-h-8 sm:text-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
