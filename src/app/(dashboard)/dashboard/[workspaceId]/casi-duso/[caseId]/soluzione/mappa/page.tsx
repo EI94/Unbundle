@@ -13,7 +13,7 @@ import { SolutionGraph } from "@/components/uc/map/solution-graph";
 import { EmptyState } from "@/components/uc/ui/empty-state";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { loadSolutionMap } from "@/lib/db/queries/uc-solution";
-import { MAP_EXAMPLE_LINK, MAP_PAGE_VIEW_LABEL, hasAgentProcess, mapItemTitles, mapPageViews, resolveMapPageView } from "@/lib/uc/views/map";
+import { MAP_EXAMPLE_LINK, MAP_PAGE_VIEW_LABEL, hasAgentProcess, mapItemTitles, mapPageViews, mapSwitchViews, resolveMapPageView } from "@/lib/uc/views/map";
 import { flowOrder, layoutGraph } from "@/lib/uc/views/map-layout";
 import { audienceFor, isLsViewer } from "@/lib/uc/views/status-groups";
 import { SOLUTION_TEXT, solutionViewHref } from "@/lib/uc/views/solution";
@@ -58,7 +58,8 @@ export default async function SolutionMapPage({
   const solutionSteps = maps.solution ? flowOrder(maps.solution.nodes, maps.solution.edges) : [];
   const titles = mapItemTitles(maps);
   const layout = analysis && maps.solution ? layoutGraph(maps.solution.nodes, maps.solution.edges) : null;
-  const segments = views.filter((v) => v !== "esempio").map((v) => ({ key: v, label: MAP_PAGE_VIEW_LABEL[v as "con-agente" | "oggi"], href: v === "con-agente" ? base : `${base}?vista=${v}` }));
+  // Le parole e l'ordine della Soluzione e della board: «Oggi · Con l'AI».
+  const segments = mapSwitchViews(views).map((v) => ({ key: v, label: MAP_PAGE_VIEW_LABEL[v], href: v === "con-agente" ? base : `${base}?vista=${v}` }));
   const ls = isLsViewer(viewer.roles);
   const solution = casePath(workspaceId, caseId, "soluzione");
 

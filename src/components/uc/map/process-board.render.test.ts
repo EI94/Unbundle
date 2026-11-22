@@ -71,6 +71,7 @@ test("the Soluzione is one reading page: no segmented control, the panels in the
   assert.doesNotMatch(source, /SolutionNav|solution-nav|solutionSegmentsFor/);
   assert.match(source, /<ProcessBoard steps=\{steps\}/);
   assert.match(source, /<SegmentedNav size="sm" ariaLabel=\{T\.viewsLabel\}/, "«Oggi | Con l'AI»");
+  assert.match(source, /const segments = mapSwitchViews\(views\)/, "in the board's order: «Oggi» first");
   assert.match(source, /<Why id="come-funziona-legenda"/, "the legend behind a «?» (F-086)");
   assert.match(source, /<RulesPanel /, "the rules panel, `?apri=regole`");
   assert.match(source, /<StepPanelContent /, "the step panel, `?apri=passo-<id>`");
@@ -81,4 +82,6 @@ test("the Soluzione is one reading page: no segmented control, the panels in the
     assert.doesNotMatch(other, /SolutionNav/, page);
     assert.match(other, /SOLUTION_TEXT\.backToSolution/, `${page}: «‹ Soluzione»`);
   }
+  const analysis = readFileSync(new URL("../../../app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/soluzione/mappa/page.tsx", import.meta.url), "utf8");
+  assert.match(analysis, /const segments = mapSwitchViews\(views\)\.map\(\(v\) => \(\{ key: v, label: MAP_PAGE_VIEW_LABEL\[v\]/, "the Vista di analisi: the same words and order");
 });

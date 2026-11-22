@@ -10,7 +10,7 @@
  * Qui i testi e le regole pure della pagina e del pannello delle regole. Modulo puro.
  */
 import type { CaseRole } from "../vocab.ts";
-import { stepTone, type MapPageView, type MapTone, type ProcessStepView, type SolutionNodeView } from "./map.ts";
+import { MAP_PAGE_VIEW_LABEL, stepTone, type MapPageView, type MapTone, type ProcessStepView, type SolutionNodeView } from "./map.ts";
 import { formatCountIt } from "./format.ts";
 import { canOpenPage } from "./page-access.ts";
 import { RULES_PANEL, RULES_PANEL_PARAMS, RULE_PARAM } from "./solution-panels.ts";
@@ -29,8 +29,8 @@ function firstParam(v: string | string[] | undefined): string | null {
 export const SOLUTION_TEXT = Object.freeze({
   howTitle: "Come funziona",
   howId: "come-funziona",
-  /** L'interruttore del processo: «Oggi | Con l'AI», come le schede della board. */
-  views: Object.freeze({ oggi: "Oggi", "con-agente": "Con l'AI" } satisfies Record<Exclude<MapPageView, "esempio">, string>),
+  /** L'interruttore del processo: «Oggi | Con l'AI», come le schede della board (le parole della Vista di analisi). */
+  views: MAP_PAGE_VIEW_LABEL,
   viewsLabel: "Il processo, oggi e con l'AI",
   legendLabel: "Che cosa dicono le card",
   legend: (audience: Audience) =>

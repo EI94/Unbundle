@@ -31,7 +31,7 @@ import {
   type DescriptionBlockView,
 } from "@/lib/uc/views/description";
 import { formatDayIt, formatLongDayIt } from "@/lib/uc/views/format";
-import { hasAgentProcess, mapItemTitles, mapPageViews, resolveMapPageView, type MapPageView, type ProcessStepView, type SolutionNodeView } from "@/lib/uc/views/map";
+import { hasAgentProcess, mapItemTitles, mapPageViews, mapSwitchViews, resolveMapPageView, type MapPageView, type ProcessStepView, type SolutionNodeView } from "@/lib/uc/views/map";
 import { flowOrder } from "@/lib/uc/views/map-layout";
 import { parseRulesQuery } from "@/lib/uc/views/model";
 import { canOpenPage } from "@/lib/uc/views/page-access";
@@ -156,7 +156,8 @@ export default async function SolutionPage({
   const rawSteps = mapView ? stepsOf(mapView) : [];
   const steps = mapView ? boardSteps(mapView, rawSteps) : [];
   const drawn = mapView !== null && steps.length > 0;
-  const segments = views.filter((v): v is Exclude<MapPageView, "esempio"> => v !== "esempio").map((v) => ({ key: v, label: T.views[v], href: solutionViewHref(base, v) }));
+  // «Oggi · Con l'AI» nell'ordine delle schede della board; la pagina si apre su «Con l'AI».
+  const segments = mapSwitchViews(views).map((v) => ({ key: v, label: T.views[v], href: solutionViewHref(base, v) }));
   const openStepId = mapView ? stepFromPanel(apri) : null;
   const openStep = openStepId ? (rawSteps.find((s) => s.id === openStepId) ?? null) : null;
   const titles = maps ? mapItemTitles(maps) : new Map<string, string>();

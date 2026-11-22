@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { findForbidden } from "./copy-guard.ts";
 import {
+  MAP_PAGE_VIEW_LABEL,
   MAP_TONE_COLOR,
   buildMaps,
   catalogItems,
@@ -11,6 +12,7 @@ import {
   mapItemTitles,
   mapLegend,
   mapPageViews,
+  mapSwitchViews,
   mapTone,
   parseMapRows,
   questionCountText,
@@ -192,7 +194,16 @@ test("step and edge texts are clean for every view: the list and the analysis gr
 
 const ref = (key: string, status: MapItemRef["status"], id: string | null = key): MapItemRef => ({ key, id, title: `Titolo ${key}`, kind: status ? "domanda" : null, status, owner: null, canOpen: true });
 
-test("the map opens on «Con l'agente»; views that do not exist do not appear; old links still work", () => {
+test("the switch «Oggi · Con l'AI» uses the board's words and order; the page still opens on «Con l'AI»", () => {
+  assert.deepEqual(MAP_PAGE_VIEW_LABEL, { oggi: "Oggi", "con-agente": "Con l'AI" });
+  assert.deepEqual(Object.keys(MAP_PAGE_VIEW_LABEL), ["oggi", "con-agente"]);
+  assert.deepEqual(mapSwitchViews(["con-agente", "oggi", "esempio"]), ["oggi", "con-agente"], "«Oggi» first, as on the board");
+  assert.deepEqual(mapSwitchViews(["con-agente", "esempio"]), ["con-agente"]);
+  assert.deepEqual(mapSwitchViews([]), []);
+  assert.equal(resolveMapPageView(null, ["con-agente", "oggi"]), "con-agente");
+});
+
+test("the map opens on «Con l'AI»; views that do not exist do not appear; old links still work", () => {
   const none = { solution: null, toBe: null, asIs: null, example: null };
   const parsed = buildMaps(parseMapRows(mapRows), { items, contacts, roleLabels: {}, roles: ["ls_lead"] });
   assert.deepEqual(mapPageViews(none), []);
