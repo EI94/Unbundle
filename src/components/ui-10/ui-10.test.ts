@@ -150,7 +150,9 @@ test("SideSheet: fino a 32 rem da 640 px, a tutto schermo al telefono, ✕ «Chi
   assert.match(source, /<span className="sr-only">\{UI10_TEXT\.sheet\.close\}<\/span>/);
   assert.equal(text.UI10_TEXT.sheet.close, "Chiudi");
   // Aprire da chiuso aggiunge un passo; chiudere dopo un'apertura torna indietro; il «popstate» rilegge l'indirizzo.
-  assert.match(source, /if \(next && !wasOpen\) \{\s*window\.history\.pushState\(window\.history\.state, "", target\);/);
+  // (Ondata 6b) La mossa nella cronologia sta in `sheetHistoryMove`: aprire da chiuso aggiunge un passo.
+  assert.match(source, /if \(i\.next && !i\.wasOpen\) return "push";/);
+  assert.match(source, /if \(move === "push"\) \{\s*window\.history\.pushState\(window\.history\.state, "", target\);/);
   assert.match(source, /window\.history\.back\(\);/);
   assert.match(source, /window\.addEventListener\("popstate", onPop\);/);
   // Il piede porta il suo pulsante pieno.

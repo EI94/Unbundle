@@ -59,13 +59,18 @@ export interface FactoryTodoView {
   row: string;
   /** Il verbo del pulsante pieno, quando la voce è la prima. */
   button: string;
-  /** Il codice del caso, in grigio; vuoto per le voci del workspace. */
+  /** Il grigio della voce: il codice del caso e, se c'è, il compito («XX-0007 · T-3»); vuoto per le voci del workspace. */
   code: string;
   /** Il perché, nel «?». */
   why: string;
   href: string;
   /** Una modifica su GitHub: si apre in una nuova scheda, e lo si dice. */
   external: boolean;
+  /**
+   * (Revisione 6b) Porta a un punto di questa stessa pagina (la famiglia di una voce della CI): da un pannello, il
+   * pannello si chiude prima, sostituendo il suo passo della cronologia invece di tornare indietro.
+   */
+  samePage: boolean;
 }
 
 /** Il numero all'inizio di un testo («3 domande…»), 1 se non c'è. */
@@ -93,17 +98,17 @@ export function factoryTodoView(workspaceId: string, t: FactoryTodo, index: numb
   const ref = t.ref ?? taskRefOf(t.text);
   const n = t.count ?? leadingCount(t.text);
   const href = factoryTodoHref(workspaceId, t);
-  const base = { key: `${t.kind}-${t.useCaseId || "ws"}-${index}`, kind: t.kind, code: t.code, href, external: Boolean(t.href) };
+  // Il verbo nel pulsante e nella riga; il compito accanto al codice del caso, in grigio.
+  const withRef = t.kind === "chiesto" || t.kind === "fermo" || t.kind === "rivedi";
+  const base = { key: `${t.kind}-${t.useCaseId || "ws"}-${index}`, kind: t.kind, code: T.todo.grey(t.code, withRef ? ref || null : null), href, external: Boolean(t.href), samePage: false };
   switch (t.kind) {
     case "collega":
-      return { ...base, row: T.todo.collega, button: T.todo.collega, why: T.todo.collegaWhy(clientName || "questo workspace") };
+      return { ...base, row: T.todo.collega, button: T.todo.collega, why: T.todo.collegaWhy(clientName || T.todo.thisWorkspace) };
     case "chiesto":
-      return { ...base, row: ref ? T.todo.chiesto(ref) : t.text, button: ref ? T.todo.chiesto(ref) : t.text, why: t.text };
-    case "fermo": {
-      const label = ref ? T.todo.fermo(ref) : t.text;
+      return { ...base, row: T.todo.chiesto, button: T.todo.chiesto, why: t.text };
+    case "fermo":
       // Il comando resta nella pagina del progetto: qui la frase senza.
-      return { ...base, row: label, button: label, why: ref ? `${ref} è fermo da giorni: riprendilo o lascialo con una nota.` : t.text };
-    }
+      return { ...base, row: T.todo.fermo, button: T.todo.fermo, why: ref ? T.todo.fermoWhy(ref) : t.text };
     case "approva":
       return { ...base, row: T.todo.approva, button: T.todo.approva, why: t.text };
     case "domande":
@@ -120,7 +125,7 @@ export function factoryTodoView(workspaceId: string, t: FactoryTodo, index: numb
 }
 
 /** Il verbo breve di una voce della CI, per il pulsante pieno (la frase della 8.2b resta nella riga e nel «?»). */
-const CI_BUTTON: Readonly<Record<CiTodo["kind"], string>> = { metti: "Metti la chiave su GitHub", ruota: CI_TEXT.action.rotate, collega: CI_TEXT.action.connect };
+const CI_BUTTON: Readonly<Record<CiTodo["kind"], string>> = { metti: T.todo.ciPut, ruota: CI_TEXT.action.rotate, collega: CI_TEXT.action.connect };
 
 /** Una voce della CI (8.2b): la sua frase nella riga, il link alla famiglia nella pagina (anche con un filtro acceso). */
 export function ciTodoView(workspaceId: string, t: CiTodo): FactoryTodoView {
@@ -133,7 +138,45 @@ export function ciTodoView(workspaceId: string, t: CiTodo): FactoryTodoView {
     why: t.text,
     href: `/dashboard/${workspaceId}/agent-factory${t.href}`,
     external: false,
+    samePage: true,
   };
+}
+
+/**
+ * (Revisione 6b) L'urgenza di una voce di «Da fare per te», per l'ordine: 0 qualcosa è fermo o qualcuno aspetta (la
+ * chiave nuova della CI da mettere su GitHub, quella in scadenza, Claude Code da collegare, una richiesta, il progetto da
+ * approvare, una modifica da rivedere); 1 da decidere (domande, proposte, un compito fermo); 2 da migliorare (evals,
+ * banco, la CI da collegare).
+ */
+const TODO_URGENCY: Readonly<Record<string, number>> = {
+  "ci-metti": 0,
+  "ci-ruota": 0,
+  collega: 0,
+  chiesto: 0,
+  approva: 0,
+  rivedi: 0,
+  domande: 1,
+  proposte: 1,
+  fermo: 1,
+  evals: 2,
+  banco: 2,
+  "ci-collega": 2,
+};
+
+/**
+ * Le voci di «Da fare per te» in ordine: prima le più urgenti; a parità d'urgenza prima quelle della CI (8.2b), poi
+ * nell'ordine della lettura. Così la chiave nuova o in scadenza non finisce mai in fondo, dentro «Altre N».
+ */
+export function orderTodos(todos: readonly FactoryTodoView[]): FactoryTodoView[] {
+  return todos
+    .map((todo, index) => ({ todo, index }))
+    .sort(
+      (a, b) =>
+        (TODO_URGENCY[a.todo.kind] ?? 1) - (TODO_URGENCY[b.todo.kind] ?? 1) ||
+        Number(!a.todo.kind.startsWith("ci-")) - Number(!b.todo.kind.startsWith("ci-")) ||
+        a.index - b.index,
+    )
+    .map(({ todo }) => todo);
 }
 
 /** Un nome di parole per una famiglia: il repository senza l'organizzazione, senza trattini, con la maiuscola. */
@@ -159,7 +202,7 @@ export function caseHealth(evals: FactoryCaseRow["evals"]): FactoryHealth | null
 export function sinceText(iso: string | null, now: Date): string | null {
   if (!iso) return null;
   const days = Math.floor((now.getTime() - new Date(iso).getTime()) / 86_400_000);
-  return days <= 0 ? "oggi" : days === 1 ? "ieri" : `${days} giorni fa`;
+  return days <= 0 ? T.since.today : days === 1 ? T.since.yesterday : T.since.daysAgo(days);
 }
 
 const COUNT = new Intl.NumberFormat("it-IT", { useGrouping: "always" });
@@ -190,17 +233,21 @@ export interface FactoryCaseView {
   how: string[];
 }
 
-/** Il caso per la riga e per il suo pannello. */
-export function factoryCaseView(workspaceId: string, c: FactoryCaseRow, palette: AgentPalette | null, now: Date): FactoryCaseView {
+/**
+ * Il caso per la riga e per il suo pannello. (Revisione 6b) Il costo totale delle sessioni del caso lo vede solo il
+ * manager (prototipo S5): con una persona sola che costruisce sarebbe la spesa di quella persona. Agli altri la media per
+ * modifica unita, che la lettura dà solo da 3 modifiche unite in su.
+ */
+export function factoryCaseView(workspaceId: string, c: FactoryCaseRow, palette: AgentPalette | null, now: Date, manager = false): FactoryCaseView {
   const agent = titleAgent(c.title);
   const live = c.tasks.total - c.tasks.cancelled;
   const going = c.tasks.inProgress + c.tasks.inReview;
   const changes = T.panel.changesLine(c.prs.open, c.prs.merged);
   const timing =
-    c.prs.medianDays === null ? null : c.prs.medianDays < 1 ? "di solito in meno di un giorno dalla presa all'unione" : `di solito ${DAYS.format(c.prs.medianDays)} giorni dalla presa all'unione`;
+    c.prs.medianDays === null ? null : c.prs.medianDays < 1 ? T.panel.timingUnderDay : T.panel.timingDays(DAYS.format(c.prs.medianDays));
   const perChange =
     c.prs.costPerPrUsd !== null || c.prs.tokensPerPr !== null
-      ? `in media ${[c.prs.costPerPrUsd !== null ? formatCost(c.prs.costPerPrUsd) : null, c.prs.tokensPerPr !== null ? `${COUNT.format(c.prs.tokensPerPr)} token` : null].filter(Boolean).join(" e ")} per modifica unita`
+      ? T.panel.perChange([c.prs.costPerPrUsd !== null ? formatCost(c.prs.costPerPrUsd) : null, c.prs.tokensPerPr !== null ? T.panel.tokens(COUNT.format(c.prs.tokensPerPr)) : null].filter((p): p is string => Boolean(p)))
       : null;
   const facts: FactoryFact[] = [
     { label: T.panel.station, value: STATION_LABEL[c.station] },
@@ -208,8 +255,8 @@ export function factoryCaseView(workspaceId: string, c: FactoryCaseRow, palette:
     { label: T.panel.tasks, value: live > 0 ? T.panel.tasksLine(c.tasks.done, live, going) : T.panel.noTasks },
     ...(changes ? [{ label: T.panel.changes, value: [changes, timing].filter(Boolean).join(", ") }] : []),
     ...(c.sessions.count ? [{ label: T.panel.sessions, value: T.panel.sessionsLine(c.sessions.count, sinceText(c.sessions.lastAt, now)) }] : []),
-    ...(c.sessions.costUsd > 0 || perChange
-      ? [{ label: T.panel.cost, value: [c.sessions.costUsd > 0 ? `${formatCost(c.sessions.costUsd)}, ${COUNT.format(c.sessions.tokens)} token` : null, perChange].filter(Boolean).join(" · ") }]
+    ...((manager && c.sessions.costUsd > 0) || perChange
+      ? [{ label: T.panel.cost, value: [manager && c.sessions.costUsd > 0 ? T.panel.total(formatCost(c.sessions.costUsd), COUNT.format(c.sessions.tokens)) : null, perChange].filter(Boolean).join(" · ") }]
       : []),
     ...(c.evals ? [{ label: T.panel.quality, value: evalsFact(c.evals) ?? "" }] : []),
     ...benchFacts(c.benches).map((value) => ({ label: T.panel.bench, value })),
@@ -285,7 +332,7 @@ export function factoryScreenModel(input: {
 }): FactoryScreenModel {
   const { workspaceId, overview, now } = input;
   const base = `/dashboard/${workspaceId}/agent-factory`;
-  const cases = overview.cases.map((c) => factoryCaseView(workspaceId, c, input.palette, now));
+  const cases = overview.cases.map((c) => factoryCaseView(workspaceId, c, input.palette, now, input.manager));
   const byId = new Map(cases.map((c) => [c.caseId, c]));
   const counts = STATIONS.map((station) => ({ station, count: overview.cases.filter((c) => c.station === station).length })).filter((s) => s.count > 0);
   const station = input.station && counts.some((s) => s.station === input.station) ? input.station : null;
@@ -304,6 +351,8 @@ export function factoryScreenModel(input: {
             { label: T.family.repo, value: f.repo },
             { label: T.family.template, value: f.templateVersion ? `${f.templateVersion}${behind ? ` · ${T.family.behind(AGENT_FACTORY_TEMPLATE_VERSION)}` : ""}` : T.family.unknownVersion },
             ...(f.commonVersion ? [{ label: T.family.common, value: f.commonVersion }] : []),
+            // (Revisione 6b) Come si aggiorna, per chi ci lavora: «Repository da aggiornare» è solo del manager.
+            ...(behind ? [{ label: T.family.update, value: T.family.updateHow }] : f.templateVersion ? [] : [{ label: T.family.update, value: T.family.unknownHow }]),
           ]
         : [];
       return {
@@ -320,10 +369,10 @@ export function factoryScreenModel(input: {
       };
     })
     .filter((f) => f.cases.length > 0);
-  const todos = [
+  const todos = orderTodos([
     ...overview.todos.map((t, i) => factoryTodoView(workspaceId, t, i, input.clientName)),
     ...input.ciTodos.map((t) => ciTodoView(workspaceId, t)),
-  ];
+  ]);
   const shown = station ? cases.filter((c) => c.station === station).length : cases.length;
   return {
     workspaceId,

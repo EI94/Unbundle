@@ -22,11 +22,14 @@ import {
   FACTORY_PANELS,
   STATION_PARAM,
   caseHealth,
+  ciTodoView,
+  factoryCaseView,
   factoryPanelKeys,
   factoryPanelOf,
   factoryScreenModel,
   factoryTodoView,
   familyName,
+  orderTodos,
   stationOfParam,
   type FactoryScreenModel,
 } from "./factory-view.ts";
@@ -43,7 +46,8 @@ await installAppModules({
 });
 await enableTsxImports();
 const { FactoryScreen } = await import("./factory-screen.tsx");
-const { BuildersPanelBody, AddBuilder } = await import("./builders-panel.tsx");
+const { BuildersPanelBody, AddBuilder, builderPersonGroups, inviteNewBuilder, NEW_PERSON } = await import("./builders-panel.tsx");
+const { sheetHistoryMove } = await import("../ui-10/side-sheet.tsx");
 
 const WS = "11111111-1111-4111-8111-111111111111";
 const NOW = new Date("2026-11-22T10:00:00.000Z");
@@ -133,16 +137,20 @@ function screen(m: FactoryScreenModel, o: { builders?: boolean; ciRows?: Record<
 
 test("«Da fare per te»: un verbo breve, il codice a parte, il perché senza comandi; «Collega Claude Code» porta a «Il tuo account»", () => {
   const views = TODOS.map((t, i) => factoryTodoView(WS, t, i, "Cliente Demo"));
+  // (Revisione 6b) Nel pulsante e nella riga solo il verbo; il compito sta nel grigio, accanto al codice del caso.
   assert.deepEqual(
     views.map((v) => [v.kind, v.row, v.code]),
     [
-      ["rivedi", "Rivedi una modifica", "XX-0007"],
+      ["rivedi", "Rivedi una modifica", "XX-0007 · T-3"],
       ["domande", "Decidi 2 domande sul codice", "XX-0007"],
       ["approva", "Approva il progetto", "XX-0012"],
-      ["fermo", "Riprendi T-5", "XX-0007"],
+      ["fermo", "Riprendi un compito fermo", "XX-0007 · T-5"],
       ["proposte", "Decidi 2 proposte di compito", "XX-0007"],
     ],
   );
+  for (const v of views) assert.doesNotMatch(v.button, /\bT-\d+\b/, `${v.kind}: niente codice nel pulsante`);
+  const asked = factoryTodoView(WS, todo({ kind: "chiesto", text: "Qualcuno del team chiede T-3, che hai tu: passaglielo o rispondigli.", ref: "T-3" }), 0, "Cliente Demo");
+  assert.deepEqual([asked.button, asked.code], ["Rispondi a una richiesta", "XX-0007 · T-3"]);
   assert.equal(views[0].external, true, "la modifica si apre su GitHub");
   assert.equal(views[0].why, "La modifica #12 di T-3 aspetta una revisione. Si apre su GitHub.");
   assert.equal(views[3].why, "T-5 è fermo da giorni: riprendilo o lascialo con una nota.");
@@ -195,6 +203,7 @@ test("le famiglie: un nome di parole; repository, modello (e se è indietro) e c
     { label: "Repository", value: B },
     { label: "Modello", value: "1.5.0 · indietro: c'è il 1.6.0" },
     { label: "Comune", value: "1.2.0" },
+    { label: "Aggiornamento", value: "«unbundle aggiorna» apre la pull request." },
   ]);
   assert.deepEqual(vendite.details.map((d) => d.value), [C, "1.6.0"]);
   assert.equal(senza.anchor, "da-avviare");
@@ -313,4 +322,89 @@ test("i testi e la pagina: niente «fabbrica», niente `SettingsSection` nella p
   assert.deepEqual(Object.values(STATION_LABEL), ["Da impostare", "In impostazione", "Da costruire", "In costruzione", "In prova", "In uso"]);
   const texts = JSON.stringify(FACTORY_TEXT);
   assert.doesNotMatch(texts, /fabbrica|caso d'uso/i);
+});
+
+// ─── La revisione dell'ondata 6b ──────────────────────────────────────
+
+test("(revisione) le voci della CI non finiscono in fondo: prima le più urgenti e, a pari urgenza, quelle della CI", () => {
+  const metti = { kind: "metti" as const, repo: B, text: "Metti su GitHub la chiave nuova della CI di cliente-demo-contabilita.", href: "#famiglia-cliente-demo-contabilita" };
+  const collegaCi = { kind: "collega" as const, repo: C, text: "Collega la CI di cliente-demo-vendite: le evals di main arriveranno da sole.", href: "#famiglia-cliente-demo-vendite" };
+  const banco = todo({ kind: "banco", text: "Per lettura il più conveniente che rispetta le soglie è Claude Haiku 5.5." });
+  const m = model({ ciTodos: [collegaCi, metti], over: { todos: [...TODOS, banco] } });
+  assert.deepEqual(
+    m.todos.map((t) => t.kind),
+    ["ci-metti", "rivedi", "approva", "domande", "fermo", "proposte", "ci-collega", "banco"],
+  );
+  // La chiave nuova da mettere su GitHub è il pulsante pieno, non una riga dentro «Altre N».
+  assert.match(screen(m), /data-action="next-step"[^>]*>[\s\S]*?Metti la chiave su GitHub/);
+  // L'ordine della lettura resta, a parità d'urgenza e di tipo.
+  assert.deepEqual(orderTodos([]), []);
+});
+
+test("(revisione) una voce della stessa pagina, da un pannello: il pannello si chiude sostituendo il suo passo, non tornando indietro", () => {
+  const ci = ciTodoView(WS, { kind: "collega", repo: B, text: "Collega la CI di cliente-demo-contabilita: le evals di main arriveranno da sole.", href: "#famiglia-cliente-demo-contabilita" });
+  assert.equal(ci.samePage, true);
+  assert.equal(ci.href, `${BASE}#famiglia-cliente-demo-contabilita`);
+  assert.ok(TODOS.every((t, i) => factoryTodoView(WS, t, i, "Cliente Demo").samePage === false));
+  // La mossa nella cronologia: aprire aggiunge un passo; chiudere torna indietro di quello, tranne con `replace`.
+  assert.equal(sheetHistoryMove({ next: true, wasOpen: false, pushed: false }), "push");
+  assert.equal(sheetHistoryMove({ next: false, wasOpen: true, pushed: true }), "back");
+  assert.equal(sheetHistoryMove({ next: false, wasOpen: true, pushed: true, replace: true }), "replace", "poi il link va all'ancora: ✕ non riapre il pannello");
+  assert.equal(sheetHistoryMove({ next: true, wasOpen: true, pushed: true }), "replace", "da un pannello all'altro");
+  assert.equal(sheetHistoryMove({ next: false, wasOpen: true, pushed: false }), "replace", "aperto da un link: si chiude sostituendo");
+  // Il pannello «Da fare per te» passa la chiusura con `replace` alle righe della stessa pagina, che la chiamano prima di andare.
+  const source = readFileSync(new URL("./factory-screen.tsx", import.meta.url), "utf8");
+  assert.match(source, /<TodoRow key=\{t\.key\} todo=\{t\} onSamePage=\{\(\) => setPanel\(null, \{ replace: true \}\)\} \/>/);
+  assert.match(source, /<Link href=\{todo\.href\} className=\{ROW_CLASS\} onClick=\{todo\.samePage && onSamePage \? onSamePage : undefined\}/);
+  const sheet = readFileSync(new URL("../ui-10/side-sheet.tsx", import.meta.url), "utf8");
+  assert.match(sheet, /const move = sheetHistoryMove\(\{ next: next !== null, wasOpen, pushed: pushed\.current, replace: opts\.replace \}\);/);
+});
+
+test("(revisione) il costo totale delle sessioni solo al manager; agli altri la media per modifica unita, da 3 in su", () => {
+  const cost = (manager: boolean, c = XX7) => factoryCaseView(WS, c, PALETTE, NOW, manager).facts.find((f) => f.label === "Costo delle sessioni")?.value ?? null;
+  assert.match(cost(true) ?? "", /^140,00\s?USD, 1\.200\.000 token · in media 3,20\s?USD e 120\.000 token per modifica unita$/);
+  assert.match(cost(false) ?? "", /^in media 3,20\s?USD e 120\.000 token per modifica unita$/, "chi costruisce: mai il totale");
+  // Sotto le 3 modifiche unite la lettura non dà la media: a chi costruisce niente costo.
+  const few = { ...XX7, prs: { ...XX7.prs, merged: 2, costPerPrUsd: null, tokensPerPr: null } };
+  assert.equal(cost(false, few), null);
+  assert.match(cost(true, few) ?? "", /^140,00\s?USD, 1\.200\.000 token$/);
+  assert.equal(model({ manager: false }).cases.find((c) => c.code === "XX-0007")?.facts.find((f) => f.label === "Costo delle sessioni")?.value.includes("1.200.000"), false);
+});
+
+test("(revisione) i «Dettagli» di una famiglia indietro dicono come aggiornarla, anche a chi costruisce senza la coda", () => {
+  const families = model({ manager: false }).families;
+  const contabilita = families.find((f) => f.repo === B);
+  assert.deepEqual(contabilita?.details.find((d) => d.label === "Aggiornamento"), { label: "Aggiornamento", value: "«unbundle aggiorna» apre la pull request." });
+  assert.equal(families.find((f) => f.repo === C)?.details.some((d) => d.label === "Aggiornamento"), false, "aggiornata: niente");
+  const unknown = model({ over: { families: [{ repo: B, templateVersion: null, commonVersion: null, cases: [XX7] }] } }).families[0];
+  assert.deepEqual(unknown.details.map((d) => d.value), [B, "non ancora nota", "la dice il prossimo «unbundle start», oppure «unbundle aggiorna»."]);
+});
+
+test("(revisione) a11y: il pulsante verso GitHub dice che apre una nuova scheda; ogni «Dettagli» ha il nome della sua famiglia; il codice in grigio", () => {
+  const html = screen(model());
+  assert.match(html, /<a href="https:\/\/github\.com\/[^"]*" target="_blank" rel="noreferrer" aria-label="Rivedi una modifica \(si apre in una nuova scheda\)"/);
+  assert.match(html, /aria-label="Dettagli di Cliente demo contabilita"/);
+  assert.match(html, /aria-label="Dettagli di Cliente demo vendite"/);
+  assert.match(html, /<p data-slot="next-step-code"[^>]*>XX-0007 · T-3<\/p>/);
+});
+
+test("(revisione) una persona nuova: l'invito come Analista, con l'e-mail ripulita; la voce solo a chi può invitare", async () => {
+  const sent: Array<{ ws: string; email: unknown; role: unknown }> = [];
+  const fake = (async (ws: string, _prev: unknown, form: FormData) => {
+    sent.push({ ws, email: form.get("email"), role: form.get("role") });
+    return { ok: true, message: "Link creato.", fieldErrors: {}, data: { inviteUrl: "https://esempio.test/invite/abc" } };
+  }) as never;
+  assert.deepEqual(await inviteNewBuilder(WS, "  nuova@cliente.test ", fake), { ok: true, url: "https://esempio.test/invite/abc" });
+  assert.deepEqual(sent, [{ ws: WS, email: "nuova@cliente.test", role: "analyst" }]);
+  const refused = (async () => ({ ok: false, message: "Controlla i campi evidenziati.", fieldErrors: { email: "Email non valida." } })) as never;
+  assert.deepEqual(await inviteNewBuilder(WS, "x", refused), { ok: false, error: "Email non valida." });
+  const broken = (async () => {
+    throw new Error("rete");
+  }) as never;
+  assert.deepEqual(await inviteNewBuilder(WS, "x@y.test", broken), { ok: false, error: FACTORY_TEXT.builders.inviteFailed });
+  const candidates = [{ userId: "u2", name: "Altra Persona", isLateralSpace: false, blocked: null }];
+  const values = (canInvite: boolean) => builderPersonGroups({ candidates, canInvite }).flatMap((g) => g.options.map((o) => o.value));
+  assert.ok(values(true).includes(NEW_PERSON));
+  assert.ok(!values(false).includes(NEW_PERSON), "senza il permesso di invitare la voce non c'è");
+  assert.match(FACTORY_TEXT.builders.emailHint, /da mandare tu/, "Unbundle non manda l'invito: lo dice");
 });

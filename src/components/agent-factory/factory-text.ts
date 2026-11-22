@@ -28,10 +28,16 @@ export const FACTORY_TEXT = Object.freeze({
     allTitle: "Da fare per te",
     /** Accanto a una modifica che si apre su GitHub, per i lettori di schermo. */
     external: "si apre su GitHub, in una nuova scheda",
+    /** (Revisione 6b) Il pulsante pieno che porta a GitHub, per i lettori di schermo: «Rivedi una modifica (si apre in una nuova scheda)». */
+    newTab: (label: string) => `${label} (si apre in una nuova scheda)`,
     collega: "Collega Claude Code",
     collegaWhy: (client: string) => `Serve per lavorare ai casi di ${client} dal terminale: la guida è in «Il tuo account».`,
-    chiesto: (ref: string) => `Rispondi su ${ref}`,
-    fermo: (ref: string) => `Riprendi ${ref}`,
+    /** (Revisione 6b) Solo il verbo: il compito («T-3») sta nel grigio, accanto al codice del caso. */
+    chiesto: "Rispondi a una richiesta",
+    fermo: "Riprendi un compito fermo",
+    fermoWhy: (ref: string) => `${ref} è fermo da giorni: riprendilo o lascialo con una nota.`,
+    /** Il grigio della voce: il codice del caso e, se c'è, il compito. */
+    grey: (code: string, ref: string | null) => [code, ref].filter(Boolean).join(" · "),
     approva: "Approva il progetto",
     domande: (n: number) => (n === 1 ? "Decidi una domanda sul codice" : `Decidi ${n} domande sul codice`),
     proposte: (n: number) => (n === 1 ? "Decidi una proposta di compito" : `Decidi ${n} proposte di compito`),
@@ -39,6 +45,16 @@ export const FACTORY_TEXT = Object.freeze({
     rivediWhy: (what: string) => `${what} Si apre su GitHub.`,
     banco: "Guarda il banco di prova",
     evals: "Guarda le evals",
+    /** Senza il nome del cliente: «questo workspace». */
+    thisWorkspace: "questo workspace",
+    /** Il verbo del pulsante pieno per la chiave nuova della CI da mettere su GitHub (la frase della 8.2b resta nella riga). */
+    ciPut: "Metti la chiave su GitHub",
+  }),
+  /** Quanto fa, nel pannello di un caso e nella riga di «oggi», «ieri», «N giorni fa». */
+  since: Object.freeze({
+    today: "oggi",
+    yesterday: "ieri",
+    daysAgo: (n: number) => `${n} giorni fa`,
   }),
 
   /** «La linea»: i filtri per stazione, senza zeri. */
@@ -58,6 +74,12 @@ export const FACTORY_TEXT = Object.freeze({
     common: "Comune",
     behind: (latest: string) => `indietro: c'è il ${latest}`,
     unknownVersion: "non ancora nota",
+    /** (Revisione 6b) I «Dettagli» di una famiglia indietro: come si aggiorna, per chi ci lavora (prima la coda). */
+    update: "Aggiornamento",
+    updateHow: "«unbundle aggiorna» apre la pull request.",
+    unknownHow: "la dice il prossimo «unbundle start», oppure «unbundle aggiorna».",
+    /** Il nome del pulsante dei «Dettagli» di una famiglia, per i lettori di schermo. */
+    detailsOf: (family: string) => `Dettagli di ${family}`,
   }),
   quality: Object.freeze({
     ok: (q: string) => `Qualità ${q}`,
@@ -79,6 +101,14 @@ export const FACTORY_TEXT = Object.freeze({
     changes: "Modifiche",
     changesLine: (open: number, merged: number) =>
       [open ? `${open} ${open === 1 ? "aperta" : "aperte"}` : null, merged ? `${merged} ${merged === 1 ? "unita" : "unite"}` : null].filter(Boolean).join(" · "),
+    /** Quanto passa di solito dalla presa di un compito all'unione della sua modifica (da 3 modifiche unite in su). */
+    timingUnderDay: "di solito in meno di un giorno dalla presa all'unione",
+    timingDays: (days: string) => `di solito ${days} giorni dalla presa all'unione`,
+    /** La media per modifica unita (da 3 modifiche unite in su): «in media 3,20 USD e 120.000 token per modifica unita». */
+    perChange: (parts: readonly string[]) => `in media ${parts.join(" e ")} per modifica unita`,
+    tokens: (n: string) => `${n} token`,
+    /** Il totale del caso, solo al manager: «140,00 USD, 1.200.000 token». */
+    total: (cost: string, tokens: string) => `${cost}, ${tokens} token`,
     sessions: "Sessioni dei coding agent",
     sessionsLine: (n: number, last: string | null) => `${n === 1 ? "1 sessione" : `${n} sessioni`}${last ? `, l'ultima ${last}` : ""}`,
     cost: "Costo delle sessioni",
@@ -102,7 +132,9 @@ export const FACTORY_TEXT = Object.freeze({
     /** Nell'elenco di «Persona»: una persona che non è ancora nel workspace. */
     newEmail: "Una persona nuova, per e-mail",
     emailLabel: "E-mail",
-    emailHint: "Riceve un link di invito come Analista: quando entra, la aggiungi qui.",
+    /** (Revisione 6b) Unbundle non manda l'invito: crea il link, che manda chi aggiunge. */
+    emailHint: "Ti diamo un link di invito come Analista, da mandare tu alla persona: quando entra, la aggiungi qui.",
+    inviteFailed: "Non è riuscito. Riprova tra poco.",
     invite: "Crea l'invito",
     inviteReady: "Invito pronto: manda il link alla persona. Vale per una persona sola.",
     copyLink: "Copia il link",

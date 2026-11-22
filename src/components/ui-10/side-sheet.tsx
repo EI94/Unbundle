@@ -21,13 +21,29 @@ export function sheetHref(href: string, value: string | null, param: string = SH
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
+/** Che cosa fa `show` con la cronologia: aggiunge un passo, torna indietro di quello aggiunto, o sostituisce. */
+export type SheetHistoryMove = "push" | "back" | "replace";
+
+/**
+ * La mossa nella cronologia di un'apertura o di una chiusura (vedi `useSheetParam`). `replace`: chiudere sostituendo il
+ * passo invece di tornare indietro, perché subito dopo si va altrove nella stessa pagina (un link a un'ancora): tornare
+ * indietro, in quel momento, riporterebbe all'indirizzo con il pannello aperto.
+ */
+export function sheetHistoryMove(i: { next: boolean; wasOpen: boolean; pushed: boolean; replace?: boolean }): SheetHistoryMove {
+  if (i.next && !i.wasOpen) return "push";
+  if (!i.next && i.pushed && !i.replace) return "back";
+  return "replace";
+}
+
 /**
  * Il pannello aperto, sempre nell'indirizzo (`?apri=<pannello>`), senza ricaricare la pagina:
  * - `initial`: il valore di `?apri=` che la pagina ha letto sul server (un link condiviso apre il pannello);
  * - `accept`: i valori validi (un vecchio nome può tornare quello nuovo); un valore sconosciuto vale chiuso. Una
  *   funzione del modulo, sempre la stessa;
  * - aprire da chiuso aggiunge un passo alla cronologia, così «Indietro» (anche il gesto del telefono) lo chiude;
- *   passare da un pannello all'altro sostituisce il passo; chiudere dopo un'apertura torna indietro di quel passo.
+ *   passare da un pannello all'altro sostituisce il passo; chiudere dopo un'apertura torna indietro di quel passo;
+ * - (ondata 6b) `show(null, { replace: true })` chiude sostituendo il passo: per un link del pannello che porta a
+ *   un'ancora della stessa pagina, che poi aggiunge il suo passo.
  */
 export function useSheetParam<T extends string>(o: { initial: string | null; accept: (raw: string | null) => T | null; param?: string }) {
   const param = o.param ?? SHEET_PARAM;
@@ -35,18 +51,20 @@ export function useSheetParam<T extends string>(o: { initial: string | null; acc
   const pushed = useRef(false);
   const [open, setOpen] = useState<T | null>(() => accept(o.initial));
   const show = useCallback(
-    (next: T | null) => {
+    (next: T | null, opts: { replace?: boolean } = {}) => {
       setOpen(next);
       const target = sheetHref(window.location.href, next, param);
       const wasOpen = new URL(window.location.href).searchParams.has(param);
-      if (next && !wasOpen) {
+      const move = sheetHistoryMove({ next: next !== null, wasOpen, pushed: pushed.current, replace: opts.replace });
+      if (move === "push") {
         window.history.pushState(window.history.state, "", target);
         pushed.current = true;
-      } else if (!next && pushed.current) {
+      } else if (move === "back") {
         // L'apertura aveva aggiunto un passo: chiudere è tornare indietro (il «popstate» lo conferma).
         pushed.current = false;
         window.history.back();
       } else {
+        if (!next) pushed.current = false;
         window.history.replaceState(window.history.state, "", target);
       }
     },

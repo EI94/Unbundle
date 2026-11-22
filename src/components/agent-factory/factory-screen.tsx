@@ -61,8 +61,12 @@ function External({ children }: { children: ReactNode }) {
 const ROW_CLASS =
   "group flex min-h-11 w-full min-w-0 items-center gap-3 px-4 py-3 text-left text-sm outline-none transition-colors hover:bg-muted/40 focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/50 sm:min-h-12";
 
-/** Una riga di «Da fare per te»: il verbo, il codice in grigio, la freccia; una modifica si apre su GitHub. */
-function TodoRow({ todo }: { todo: FactoryTodoView }) {
+/**
+ * Una riga di «Da fare per te»: il verbo, il codice (e il compito) in grigio, la freccia; una modifica si apre su GitHub.
+ * (Revisione 6b) `onSamePage`: dentro un pannello, una voce che porta a un punto di questa pagina (la famiglia di una
+ * voce della CI) chiude prima il pannello, sostituendo il suo passo della cronologia; poi il link va all'ancora.
+ */
+function TodoRow({ todo, onSamePage }: { todo: FactoryTodoView; onSamePage?: () => void }) {
   const body = (
     <>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-6">
@@ -79,7 +83,7 @@ function TodoRow({ todo }: { todo: FactoryTodoView }) {
           {body}
         </a>
       ) : (
-        <Link href={todo.href} className={ROW_CLASS}>
+        <Link href={todo.href} className={ROW_CLASS} onClick={todo.samePage && onSamePage ? onSamePage : undefined} data-same-page={todo.samePage ? "" : undefined}>
           {body}
         </Link>
       )}
@@ -94,7 +98,15 @@ function FamilyDetails({ family }: { family: FactoryFamilyView }) {
   if (!family.details.length) return null;
   return (
     <div className="min-w-0">
-      <Button type="button" variant="ghost" className="-mr-2 min-h-11 text-muted-foreground sm:min-h-8" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>
+      <Button
+        type="button"
+        variant="ghost"
+        className="-mr-2 min-h-11 text-muted-foreground sm:min-h-8"
+        aria-expanded={open}
+        aria-controls={id}
+        aria-label={T.family.detailsOf(family.name)}
+        onClick={() => setOpen(!open)}
+      >
         {T.family.details}
         <ChevronRight aria-hidden className={cn("transition-transform duration-150 motion-reduce:transition-none", open && "rotate-90")} />
       </Button>
@@ -215,20 +227,28 @@ export function FactoryScreen({ model, initialPanel, builders, ciRows }: Factory
           {model.manager ? null : <p className="text-sm text-muted-foreground">{T.mine}</p>}
         </header>
 
-        <NextStep
-          id="agent-factory-passo"
-          step={
-            first
-              ? {
-                  label: first.button,
-                  icon: first.kind.startsWith("ci-") ? KeyRound : TODO_ICON[first.kind],
-                  why: first.code ? `${first.code} · ${first.why}` : first.why,
-                  mine: true,
-                  ...(first.external ? { link: <a href={first.href} target="_blank" rel="noreferrer" /> } : { href: first.href }),
-                }
-              : null
-          }
-        />
+        <div className="space-y-1">
+          <NextStep
+            id="agent-factory-passo"
+            step={
+              first
+                ? {
+                    label: first.button,
+                    icon: first.kind.startsWith("ci-") ? KeyRound : TODO_ICON[first.kind],
+                    why: first.why,
+                    mine: true,
+                    ...(first.external ? { link: <a href={first.href} target="_blank" rel="noreferrer" aria-label={T.todo.newTab(first.button)} /> } : { href: first.href }),
+                  }
+                : null
+            }
+          />
+          {/* (Revisione 6b) Il codice del caso (e il compito) in grigio, accanto al verbo del pulsante (prototipo S5). */}
+          {first?.code ? (
+            <p data-slot="next-step-code" className="text-xs text-muted-foreground tabular-nums">
+              {first.code}
+            </p>
+          ) : null}
+        </div>
 
         {shown.length ? (
           <section aria-labelledby="per-te" className="space-y-2">
@@ -321,7 +341,7 @@ export function FactoryScreen({ model, initialPanel, builders, ciRows }: Factory
         {panel === FACTORY_PANELS.todos ? (
           <RowList>
             {model.todos.map((t) => (
-              <TodoRow key={t.key} todo={t} />
+              <TodoRow key={t.key} todo={t} onSamePage={() => setPanel(null, { replace: true })} />
             ))}
           </RowList>
         ) : null}

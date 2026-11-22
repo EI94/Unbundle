@@ -129,6 +129,34 @@ function InviteReady({ url }: { url: string }) {
 }
 
 /**
+ * I gruppi di «Persona»: «Lateral Space» ed «Esterni» e, a chi può invitare nel workspace, «Una persona nuova, per
+ * e-mail». Senza `canInvite` quella voce non c'è: l'invito lo rifiuterebbe il server.
+ */
+export function builderPersonGroups(data: Pick<FactoryBuildersData, "candidates" | "canInvite">) {
+  return [...builderCandidateGroups(data.candidates), ...(data.canInvite ? [{ options: [{ value: NEW_PERSON, label: T.newEmail }] }] : [])];
+}
+
+/** L'azione dell'invito, come la chiama il modulo (nei test, finta). */
+export type InviteAction = typeof createWorkspaceInvitationAction;
+
+/**
+ * (Revisione 6b) L'invito di una persona nuova: il link d'invito del workspace per la sua e-mail, sempre come Analista
+ * (il ruolo che serve per costruire). Unbundle non lo manda: lo manda chi aggiunge. Il server rifà i suoi controlli.
+ */
+export async function inviteNewBuilder(workspaceId: string, email: string, create: InviteAction = createWorkspaceInvitationAction): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  const form = new FormData();
+  form.set("email", email.trim());
+  form.set("role", "analyst");
+  try {
+    const result = await create(workspaceId, { ok: true }, form);
+    if (result.ok && result.data) return { ok: true, url: result.data.inviteUrl };
+    return { ok: false, error: result.fieldErrors?.email ?? result.message ?? T.inviteFailed };
+  } catch {
+    return { ok: false, error: T.inviteFailed };
+  }
+}
+
+/**
  * (8.0c, rilascio 10 §3.6) «Aggiungi» a chi costruisce: la persona tra i collaboratori del workspace, in due gruppi
  * («Lateral Space» ed «Esterni»), il ruolo, e per chi viene da fuori il «Dove». Per una persona già presente da fuori
  * cambia il «Dove». (Ondata 6b) A chi può invitare nel workspace anche «Una persona nuova, per e-mail»: crea l'invito
@@ -150,26 +178,16 @@ export function AddBuilder({ workspaceId, data, onDone }: { workspaceId: string;
   const external = candidate !== null && !candidate.isLateralSpace;
   const roles = external ? [EXTERNAL_ROLE] : LS_ROLES;
   const ready = Boolean(candidate && role && (!external || where === "tutti" || picked.size > 0));
-  const groups = [
-    ...builderCandidateGroups(candidates),
-    ...(data.canInvite ? [{ options: [{ value: NEW_PERSON, label: T.newEmail }] }] : []),
-  ];
+  const groups = builderPersonGroups(data);
 
   const invite = () => {
     setEmailError(null);
     startInvite(async () => {
-      const form = new FormData();
-      form.set("email", email.trim());
-      form.set("role", "analyst");
-      try {
-        const result = await createWorkspaceInvitationAction(workspaceId, { ok: true }, form);
-        if (result.ok && result.data) {
-          setInviteUrl(result.data.inviteUrl);
-          setEmail("");
-        } else setEmailError(result.fieldErrors?.email ?? result.message ?? FACTORY_TEXT.notReady);
-      } catch {
-        setEmailError("Non è riuscito. Riprova tra poco.");
-      }
+      const result = await inviteNewBuilder(workspaceId, email);
+      if (result.ok) {
+        setInviteUrl(result.url);
+        setEmail("");
+      } else setEmailError(result.error);
     });
   };
 
