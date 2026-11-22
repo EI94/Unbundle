@@ -228,7 +228,7 @@ test("use-case-admin doctor dice migrazione0042, solo da leggere", () => {
   assert.match(doctor, /migrazione0042: m0042,/);
 });
 
-test("RUNBOOK §10.23: la 0042 la applica l'app, a mano solo di riserva, il ritorno indietro e il modello 1.7.0; §10.24 la nota della 0036", () => {
+test("RUNBOOK §10.23: la 0042 la applica l'app, a mano solo di riserva, il ritorno indietro e il modello 1.8.0; §10.24 la nota della 0036", () => {
   const runbook = readFileSync(new URL("../../../docs/casi-duso/RUNBOOK.md", import.meta.url), "utf8");
   const heading = "### 10.23 Rilascio 8.2b: «Le evals dalla CI» (0042)";
   assert.ok(runbook.includes(heading), "manca §10.23");
@@ -241,7 +241,7 @@ test("RUNBOOK §10.23: la 0042 la applica l'app, a mano solo di riserva, il rito
   assert.match(section, /\*\*Ritorno indietro:\*\*/);
   assert.match(section, /Promote del deploy di prima, un passo su Vercel\. Niente sul database\./);
   assert.match(section, /il codice di prima le annulla da sé \(«modello_non_previsto»\)/);
-  assert.match(section, /Il modello 1\.7\.0 con l'Unbundle di prima: `\/api\/ci\/\*` risponde 404/);
+  assert.match(section, /Il modello 1\.8\.0 con l'Unbundle di prima: `\/api\/ci\/\*` risponde 404/);
   assert.ok(section.includes(`\`${CI_KEYS_TABLE}\``));
   for (const column of CI_EVAL_RUN_COLUMNS) assert.ok(section.includes(`\`${column}\``), column);
   // Il numero del codice non torna mai sotto quello del documento.

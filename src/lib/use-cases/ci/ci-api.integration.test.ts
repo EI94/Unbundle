@@ -127,7 +127,7 @@ function ciBody(over: Record<string, unknown> = {}, run = newRun()): Row {
     livello: "pull_request",
     ramo: "main",
     commit: SHA,
-    versioneModello: "1.7.0",
+    versioneModello: "1.8.0",
     modelliFinti: true,
     inCostruzione: false,
     modelli: { lettura: HAIKU },
@@ -504,7 +504,7 @@ test("la riga dell'esecuzione: fonte ci, la chiave, il link, nessuna persona; la
     kind: "evals",
     branch: "main",
     commit_sha: SHA,
-    template_version: "1.7.0",
+    template_version: "1.8.0",
     fake_models: true,
     source: "ci",
     ci_key_id: keyId,
@@ -520,13 +520,13 @@ test("la riga dell'esecuzione: fonte ci, la chiave, il link, nessuna persona; la
 
   // La versione del modello del repository: quella di main.
   const repo = await factoryRepo();
-  assert.equal(repo?.template_version, "1.7.0");
+  assert.equal(repo?.template_version, "1.8.0");
   assert.ok(repo?.reported_at);
   // `unbundle start` di una persona (magari da un ramo) non la cambia finché la CI manda; il comune sì.
   const report = (version: string) =>
     call(cliRepository.POST, "cli/repository", { method: "POST", key: tokens.lead!, body: { caso: "XX-0001", azione: "versione", repository: REPO, versioneModello: version, versioneComune: "1.1.0" } });
   assert.equal((await report("1.8.0")).status, 200);
-  assert.deepEqual([(await factoryRepo())?.template_version, (await factoryRepo())?.common_version], ["1.7.0", "1.1.0"]);
+  assert.deepEqual([(await factoryRepo())?.template_version, (await factoryRepo())?.common_version], ["1.8.0", "1.1.0"]);
   // Una CI ferma da più di un mese non tiene la versione bloccata.
   await q(`UPDATE use_case_eval_runs SET created_at = created_at - interval '31 days' WHERE workspace_id = $1 AND source = 'ci'`, [ids.ws]);
   try {
