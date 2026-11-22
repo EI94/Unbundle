@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ADMIN_TABS, activitiesState, adminTab, adminTabHref, lessonsNextStep, linkState, linkUsable, moduleLabel } from "./manage-view.ts";
+import { activityAvailability } from "./availability.ts";
+import { LEARNING_TEXT } from "./text.ts";
 
 // (Rilascio 10, ondata 7a «Formazione», docs/ui-10/PROPOSTA-10.md §3.9, audit Fuori §4.11) Le regole pure di
 // «Gestisci»: le quattro schede e il loro indirizzo, il prossimo passo di «Lezioni» (il solo pulsante pieno), lo stato
@@ -50,4 +52,26 @@ test("a module in words, never its code", () => {
   assert.equal(moduleLabel("M12"), "Modulo 12");
   assert.equal(moduleLabel(null), "Tutto il corso");
   assert.equal(moduleLabel("extra"), "extra");
+});
+
+test("the three activity buttons say what availability really does (activityAvailability)", () => {
+  const L = LEARNING_TEXT.manage.lessons;
+  const start = Date.parse("2026-11-23T13:30:00.000Z");
+  const exercise = { module_id: "m1", type: "knowledge_check", purpose: "formative", opens_after_minutes: 30 };
+  const at = (status: string, minutes: number) => activityAvailability({ enabled: true, programStatus: "published", activity: exercise, session: { startsAt: new Date(start).toISOString(), status }, now: start + minutes * 60_000 });
+  // «Apri le attività ora»: aperto subito, senza aspettare la scaletta.
+  assert.equal(at("open", 5).writeAccess, true);
+  assert.match(L.openNowAsk, /da adesso, senza aspettare la scaletta/);
+  // «Torna alla scaletta»: aperto in anticipo → si richiude fino alla sua ora (chi lo sta facendo non salva); arrivato
+  // all'ora → resta aperto.
+  assert.equal(at("scheduled", 5).writeAccess, false);
+  assert.equal(at("scheduled", 5).state, "scheduled");
+  assert.equal(at("scheduled", 30).writeAccess, true);
+  assert.match(L.backToPlanAsk, /aperti in anticipo si richiudono fino ad allora/);
+  assert.match(L.backToPlanAsk, /non può salvare né inviare finché non si riaprono/);
+  assert.match(L.backToPlanAsk, /Quelli già arrivati alla loro ora restano aperti\./);
+  assert.doesNotMatch(L.backToPlanAsk, /quelli già aperti restano aperti/, "la frase di prima era falsa");
+  // «Sospendi le risposte»: salvataggi e consegne fermi, a ogni ora.
+  for (const minutes of [5, 40, 200]) assert.equal(at("closed", minutes).writeAccess, false);
+  assert.match(L.suspendAsk, /Salvataggi e consegne si fermano/);
 });

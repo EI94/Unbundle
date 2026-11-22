@@ -284,11 +284,15 @@ export const LEARNING_TEXT = Object.freeze({
     lessons: Object.freeze({
       enrolled: (n: number) => (n === 1 ? "1 iscritto" : `${n} iscritti`),
       openNow: "Apri le attività ora",
-      openNowAsk: "Aprire subito tutte le attività della lezione? Chi è iscritto può rispondere da adesso, senza aspettare la scaletta.",
+      openNowAsk: "Aprire subito tutte le attività della lezione? Chi segue la lezione può rispondere da adesso, senza aspettare la scaletta.",
       suspend: "Sospendi le risposte",
       suspendAsk: "Sospendere le risposte della lezione? Salvataggi e consegne si fermano finché non le riapri; le risposte già salvate restano.",
       backToPlan: "Torna alla scaletta",
-      backToPlanAsk: "Tornare alla scaletta? Gli esercizi si aprono alle loro ore; quelli già aperti restano aperti.",
+      /**
+       * Vero per `activityAvailability` (availability.ts): con la lezione «secondo la scaletta» un esercizio prima della sua
+       * ora è chiuso, anche se era stato aperto prima; chi lo sta facendo riceve «chiuso» al salvataggio e all'invio.
+       */
+      backToPlanAsk: "Tornare alla scaletta? Ogni esercizio si apre alla sua ora: quelli aperti in anticipo si richiudono fino ad allora, e chi li sta facendo non può salvare né inviare finché non si riaprono. Quelli già arrivati alla loro ora restano aperti.",
       createLink: "Crea il link",
       creating: "Creazione…",
       createFailed: "Link non creato: controlla la connessione e riprova.",
