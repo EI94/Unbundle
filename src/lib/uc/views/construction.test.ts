@@ -58,6 +58,11 @@ test("one action for the project, the rules of 8.0a: who sets up, sends, approve
   assert.equal(projectAction({ ...base, openStatus: "da_approvare", needsBoard: true, boardAllowed: true }).action, "ok_board", "the AI Board");
   assert.equal(projectAction({ ...base, openStatus: "da_approvare", writer: true }).action, null, "who writes does not approve alone");
   assert.deepEqual(projectAction({ ...base, writer: true }), { action: "rivedi", reopenAside: false, filled: false }, "«Rivedi il progetto» is not urgent: outlined");
+  // (Review fix 2) The Costruzione is a tab: when the header shows its own filled step here (reconfirm the via, sign,
+  // resume…), the project's action is outlined. One filled button per screen.
+  assert.deepEqual(projectAction({ ...base, openStatus: "in_corso", writer: true, headerStep: true }), { action: "manda", reopenAside: false, filled: false });
+  assert.equal(projectAction({ ...base, openStatus: "da_approvare", approver: true, needsBoard: true, changeRequested: true, headerStep: true }).filled, false);
+  assert.equal(projectAction({ ...base, openStatus: "in_corso", writer: true, headerStep: false }).filled, true);
 });
 
 test("tasks: the tally hides zeros, the rows start from the ones in progress, three at most in view", () => {
@@ -103,9 +108,12 @@ test("the Costruzione page: no second H1, closed folds, one action, the client w
   assert.doesNotMatch(source, /<h1\b|PAGE_TITLE_CLASS|SettingsSection/, "the realization's header has the H1; no settings frames on a work page");
   assert.doesNotMatch(source, /defaultOpen/, "folds closed unless a link opens them");
   for (const fold of ["T.choicesId", "T.decisionsId", "T.contextId", "T.agentId", "QUALITY_ANCHORS.details"]) assert.match(source, new RegExp(`<Fold id=\\{${fold.replace(".", "\\.")}\\}`), fold);
-  // One action for the project; the header's own primary never shows here (PAGES_WITHOUT_PRIMARY).
+  // One action for the project, outlined when the header shows its own step here (the Persone/Domande pattern).
   assert.equal((source.match(/<ProjectPrimaryAction /g) ?? []).length, 1);
-  assert.match(source, /const \{ action, reopenAside \} = projectAction\(\{/);
+  assert.match(source, /const headerStep = headerStepShownOn\(caseAccess, header, \{ caseBase: casePath\(workspaceId, caseId\), pagePath: base \}\);/);
+  assert.match(source, /const \{ action, reopenAside, filled \} = projectAction\(\{[\s\S]*?headerStep,\s*\}\);/);
+  assert.match(source, /blocked=\{missing\.length > 0\} filled=\{filled\} \/>/);
+  assert.match(source, /primary=\{action === "riapri" && filled\}/);
   // Every 8.2b element stays: the whole evals section, with «dalla CI» and its link for who builds.
   assert.match(source, /<EvalSection overview=\{evals\.overview\} caseCode=\{caseCode\} unavailable=\{evals\.unavailable\} origins=\{evals\.origins\} ciLinks=\{ciLinks\} \/>/);
   assert.match(source, /readEvalOrigins\(executor, target, r\.overview\)/);

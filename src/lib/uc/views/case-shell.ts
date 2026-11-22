@@ -28,7 +28,7 @@ import { CASE_ACTION_ROLES } from "../permissions.ts";
 import { statusHint } from "./case-settings.ts";
 import { LS_CASE_ROLES, type CaseRole, type CaseStatus, type SemaforoColor } from "../vocab.ts";
 import { CASE_STATUS_TONE as STATUS_TONE } from "./labels.ts";
-import type { NextStep, NextStepId } from "./next-step.ts";
+import { resolveStepHref, type NextStep, type NextStepId } from "./next-step.ts";
 import { canOpenPage } from "./page-access.ts";
 
 export type UcShellPage = "panoramica" | "via" | "descrizione" | "persone" | "privacy" | "registro" | "firme" | "impostazioni" | "costruzione";
@@ -326,9 +326,11 @@ export function caseHeadAlert(i: {
 /**
  * Pagine del dossier che hanno i loro comandi e il loro pulsante pieno: lì il
  * primario della testata non c'è mai (DESIGN §8.1 c, un solo pulsante pieno).
- * Impostazioni: «Aggiungi» di «Accesso al caso». (Rilascio 10, §3.5) Costruzione: l'azione del progetto.
+ * Impostazioni: «Aggiungi» di «Accesso al caso». (Rilascio 10, §3.5) La Costruzione no: è una scheda, e il passo
+ * della testata (riconfermare il via, firmare, riprendere) resta; l'azione del progetto allora è bordata, come su
+ * Persone e Domande (`headerStepShownOn`).
  */
-export const PAGES_WITHOUT_PRIMARY: readonly string[] = ["impostazioni", "costruzione"];
+export const PAGES_WITHOUT_PRIMARY: readonly string[] = ["impostazioni"];
 
 /**
  * (Rilascio 10, §3.5) I passi il cui comando sta nella sezione «Via allo sviluppo» della Panoramica («Proponi il via
@@ -339,6 +341,18 @@ export const STEPS_WITH_PAGE_COMMAND: readonly NextStepId[] = ["proponi_via", "m
 
 export function stepHasPageCommand(id: NextStepId): boolean {
   return STEPS_WITH_PAGE_COMMAND.includes(id);
+}
+
+/**
+ * (Rilascio 10, §3.5) Il primo passo della testata (`nextStepFor`) si vede su `pagePath`? Le regole del guscio
+ * (`layout.tsx`): solo se chi guarda lo può fare (`canExport` per «Scarica il catalogo validato», altrimenti
+ * `writable`) e non sulla pagina in cui porta (`stepHiddenOn`). Lo usano le pagine con un loro comando (la
+ * Costruzione), che lo fanno bordato quando la testata ha già il pulsante pieno.
+ */
+export function headerStepVisible(next: Pick<NextStep, "id" | "href" | "transition" | "panel"> | null, i: { canExport: boolean; writable: boolean; caseBase: string; pagePath: string }): boolean {
+  if (!next) return false;
+  if (!(next.id === "scarica_catalogo" ? i.canExport : i.writable)) return false;
+  return !stepHiddenOn({ href: resolveStepHref(i.caseBase, next.href), caseBase: i.caseBase, panel: stepPanelOf(next) !== undefined, pageCommand: stepHasPageCommand(next.id) }, i.pagePath);
 }
 
 /** Il pannello che apre il passo della testata: il dialogo di conferma, «Esporta…», le firme o il pannello della pagina d'arrivo. */

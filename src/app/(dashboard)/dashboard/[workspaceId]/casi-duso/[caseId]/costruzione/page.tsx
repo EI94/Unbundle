@@ -11,7 +11,7 @@ import { PageContainer } from "@/components/dashboard/page-container";
 import { Fold } from "@/components/ui-10/fold";
 import { casePath } from "@/components/uc/catalog/paths";
 import { ClaudeDevPanel } from "@/components/uc/mcp/claude-dev-panel";
-import { canWrite, loadCaseHead } from "@/components/uc/shell/case-data";
+import { canWrite, headerStepShownOn, loadCaseHead } from "@/components/uc/shell/case-data";
 import { StatusDot } from "@/components/uc/ui/status-dot";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { contextActorFor, type ContextActor } from "@/lib/context/server/actor";
@@ -60,8 +60,9 @@ import { AiBoardOk, DecisionForm, DetailsEditor, PackageButton, ProjectPrimaryAc
  * `#contesto`).
  *
  * - In vista: lo stato del progetto («Approvato · versione 2 · 10 di 10 scelte»), la sua sola azione (il pulsante pieno
- *   della pagina: la testata qui non ha il suo), i Compiti (al massimo 3 righe, poi «Vedi tutti (N)»; le proposte con
- *   «Accetta» bordato) e «Qualità» in una riga, con per ogni ruolo la sola raccomandazione del banco.
+ *   della pagina; bordata quando la testata mostra qui il suo passo: riconfermare il via, firmare, riprendere), i
+ *   Compiti (al massimo 3 righe, poi «Vedi tutti (N)»; le proposte con «Accetta» bordato) e «Qualità» in una riga,
+ *   con per ogni ruolo la sola raccomandazione del banco.
  * - In piega, chiuse finché un link non le apre: Scelte (i 10 argomenti, gli strumenti nuovi e la stima, la versione
  *   approvata di prima) · Decisioni · Contesto (9b, l'ancora di «Il contesto è cambiato») · «Per il coding agent»
  *   (pacchetto, comandi e gli accessi di Claude, che prima stavano nel via).
@@ -254,7 +255,10 @@ export default async function ConstructionPage({
   const pending = open?.status === "da_approvare" ? open : null;
   const needsBoard = pending !== null && pending.newTools.length > 0 && !pending.aiBoardOkAt;
   const changeRequest = open?.changeRequest ? { text: open.changeRequest, on: open.changeRequestedAt } : null;
-  const { action, reopenAside } = projectAction({
+  // (Rilascio 10, §3.5) La Costruzione è una scheda: il passo della testata resta (riconfermare il via, firmare,
+  // riprendere), e allora l'azione del progetto è bordata. Un solo pulsante pieno per schermata.
+  const headerStep = headerStepShownOn(caseAccess, header, { caseBase: casePath(workspaceId, caseId), pagePath: base });
+  const { action, reopenAside, filled } = projectAction({
     hasProject: project !== null,
     openStatus: open?.status === "in_corso" || open?.status === "da_approvare" ? open.status : null,
     writer,
@@ -262,6 +266,7 @@ export default async function ConstructionPage({
     needsBoard,
     boardAllowed: board.allowed,
     changeRequested: changeRequest !== null,
+    headerStep,
   });
   const missing = open?.status === "in_corso" ? missingChoices(open.topics) : [];
   const hint = missing.length > 0 && writer ? T.missing(missing) : needsBoard && !changeRequest ? T.boardOkNeeded : null;
@@ -277,11 +282,12 @@ export default async function ConstructionPage({
       tools={pending.newTools}
       noteMin={AI_BOARD_NOTE_MIN}
       noteMax={FACTORY_LIMITS.aiBoardNote}
+      filled={filled}
     />
   ) : null;
-  const reopen = pending ? <ReopenProject workspaceId={workspaceId} caseId={caseId} revision={pending.revision} boardOkOn={pending.aiBoardOkAt ? day(pending.aiBoardOkAt) : null} primary={action === "riapri"} /> : null;
+  const reopen = pending ? <ReopenProject workspaceId={workspaceId} caseId={caseId} revision={pending.revision} boardOkOn={pending.aiBoardOkAt ? day(pending.aiBoardOkAt) : null} primary={action === "riapri" && filled} /> : null;
   const primaryAction =
-    action === "ok_board" ? okBoard : action === "riapri" ? reopen : action ? <ProjectPrimaryAction workspaceId={workspaceId} caseId={caseId} action={action} revision={open?.revision ?? null} blocked={missing.length > 0} /> : null;
+    action === "ok_board" ? okBoard : action === "riapri" ? reopen : action ? <ProjectPrimaryAction workspaceId={workspaceId} caseId={caseId} action={action} revision={open?.revision ?? null} blocked={missing.length > 0} filled={filled} /> : null;
 
   const teamDecisions = view.decisions.filter((d) => d.source !== "impostazione" && d.supersededOn === null);
   const replaced = view.decisions.filter((d) => d.supersededOn !== null).length;

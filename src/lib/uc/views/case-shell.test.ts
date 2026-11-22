@@ -14,6 +14,7 @@ import {
   caseTabsFor,
   caseTrail,
   checksFiles,
+  headerStepVisible,
   landingSegment,
   pastViaPhase,
   realizationTitle,
@@ -26,7 +27,7 @@ import {
   transitionNeedsReason,
   viaRedirect,
 } from "./case-shell.ts";
-import { VIA_HREF } from "./next-step.ts";
+import { VIA_HREF, caseNextSteps, nextStepFor, type NextStepInput } from "./next-step.ts";
 import { CASE_STATUS_TONE as LABELS_TONE } from "./labels.ts";
 import { CASE_ROLES, CASE_STATUSES, type CaseRole } from "../vocab.ts";
 
@@ -269,12 +270,45 @@ test("(rilascio 10, §3.5) the panel of a step: the header's dialogs, «Esporta�
 
 test("the primary never shows on Impostazioni, panels included: one filled button there", () => {
   const base = "/dashboard/w1/casi-duso/c1";
-  assert.deepEqual(PAGES_WITHOUT_PRIMARY, ["impostazioni", "costruzione"], "(8.0a) il progetto dell'agente, oggi la Costruzione, ha la sua azione principale");
+  assert.deepEqual(PAGES_WITHOUT_PRIMARY, ["impostazioni"]);
+  // (Rilascio 10, §3.5) The Costruzione is a tab: the header's step stays there (the project's action is then outlined).
+  for (const href of [`${base}/persone?invia=1`, `${base}#via`, `${base}/impostazioni#stato`]) assert.equal(stepHiddenOn({ href, caseBase: base }, `${base}/costruzione`), false, href);
+  assert.equal(stepHiddenOn({ href: base, caseBase: base, panel: true }, `${base}/costruzione`), false, "«Firma …» opens its panel there");
   assert.equal(stepHiddenOn({ href: `${base}/persone?invia=1`, caseBase: base }, `${base}/impostazioni`), true);
   assert.equal(stepHiddenOn({ href: `${base}/persone?nuovo=1`, caseBase: base }, `${base}/impostazioni/`), true);
   assert.equal(stepHiddenOn({ href: base, caseBase: base, panel: true }, `${base}/impostazioni`), true, "«Avvia lo sviluppo» opens its dialog from the other pages");
   assert.equal(stepHiddenOn({ href: base, caseBase: base, panel: true }, `${base}/via`), false);
   assert.equal(stepHiddenOn({ href: `${base}/persone?invia=1`, caseBase: `${base}/` }, `${base}/impostazioni`), true, "a trailing slash on the base changes nothing");
+});
+
+test("(rilascio 10, §3.5) the header's own step on the Costruzione: shown when it can be done, so the project action goes outlined", () => {
+  const base = "/dashboard/w1/casi-duso/c1";
+  const page = `${base}/costruzione`;
+  const quiet: NextStepInput = {
+    now: new Date("2026-11-20T10:00:00Z"), status: "in_sviluppo", statusBeforeSuspension: null, statusChangedAt: null, gateReconfirm: false,
+    g1: { required: 10, ok: 10, ready: true, byGroup: {} }, pendingGateReview: null, referents: 2, unassignedMust: 0, unsentMust: 0,
+    toVerifyForMe: 0, toVerifyMust: 0, oldestToVerifyAt: null, toVerifyTotal: 0, waitingOnReferents: 0, blockersActive: 0, blockedMust: 0,
+    privacyBlockerActive: false, mySignaturesPending: [], privacySignerMissing: false, forwardTransition: null, nextMilestone: null, catalog: null,
+  };
+  const head = (over: Partial<NextStepInput>, roles: CaseRole[] = ["ls_lead"]) => nextStepFor(caseNextSteps({ ...quiet, ...over }, { roles }));
+  const open = { canExport: false, writable: true, caseBase: base, pagePath: page };
+  const reconfirm = head({ gateReconfirm: true, g1: { required: 10, ok: 9, ready: false, byGroup: {} } });
+  assert.equal(reconfirm?.label, "Riconferma il via allo sviluppo");
+  assert.equal(headerStepVisible(reconfirm, open), true, "it leads to the via section of the Panoramica");
+  assert.equal(headerStepVisible(reconfirm, { ...open, pagePath: `${page}/` }), true);
+  const sign = head({ mySignaturesPending: [{ kind: "altro", otherSideSigned: false }] }, ["owner_cliente"]);
+  assert.equal(sign?.id, "firma");
+  assert.equal(headerStepVisible(sign, open), true, "«Firma …» opens its panel on the Costruzione");
+  const resume = head({ status: "sospeso", statusBeforeSuspension: "in_sviluppo" });
+  assert.equal(resume?.id, "riprendi");
+  assert.equal(headerStepVisible(resume, open), true);
+  assert.equal(headerStepVisible(resume, { ...open, pagePath: `${base}/impostazioni` }), false, "never on Impostazioni");
+  assert.equal(headerStepVisible(reconfirm, { ...open, writable: false }), false, "read-only: no step, the project action stays filled");
+  assert.equal(headerStepVisible(head({ status: "chiuso" }), open), false, "no step");
+  assert.equal(headerStepVisible(null, open), false);
+  const download = { id: "scarica_catalogo" as const, href: "?esporta=1" };
+  assert.equal(headerStepVisible(download, { ...open, writable: false, canExport: true }), true, "downloading the catalogue needs the export, not writing");
+  assert.equal(headerStepVisible(download, { ...open, canExport: false }), false);
 });
 
 test("the case status tone comes from the vocabulary: a pause is grey", () => {

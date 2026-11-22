@@ -9,8 +9,9 @@ import { caseHeaderFromRows, type CaseHeaderData } from "@/lib/db/queries/uc-hea
 import { getAppUcExecutor, type UcExecutor, type UcRow } from "@/lib/db/uc-executor";
 import { timeUc } from "@/lib/uc/log";
 import type { CaseRole } from "@/lib/uc/vocab";
-import { UC_SHELL_PAGE_ROLES, checksFiles, type UcShellPage } from "@/lib/uc/views/case-shell";
-import { caseNextSteps, type NextStep } from "@/lib/uc/views/next-step";
+import { exportChoices } from "@/lib/uc/export/request";
+import { UC_SHELL_PAGE_ROLES, checksFiles, headerStepVisible, type UcShellPage } from "@/lib/uc/views/case-shell";
+import { caseNextSteps, nextStepFor, type NextStep } from "@/lib/uc/views/next-step";
 import type { WorkspaceAccess } from "@/lib/workspace-access";
 
 /**
@@ -130,6 +131,26 @@ export function filesToCheckFor(caseAccess: Pick<CaseAccess, "roles" | "readOnly
  */
 export function headerNextSteps(caseAccess: Pick<CaseAccess, "roles" | "readOnly" | "status" | "user">, header: Pick<CaseHeaderData, "filesToCheck" | "nextStep">): NextStep[] {
   return caseNextSteps({ ...header.nextStep, filesToCheck: filesToCheckFor(caseAccess, header) }, { roles: caseAccess.roles });
+}
+
+/**
+ * (Rilascio 10, §3.5) Il passo della testata si vede su `pagePath`? Le stesse regole del guscio (`layout.tsx`): il
+ * primo passo (`nextStepFor`), solo se chi guarda lo può fare (scrivere, o scaricare per «Scarica il catalogo
+ * validato»), e non sulla pagina in cui porta (`stepHiddenOn`). Una pagina con un suo comando (la Costruzione) lo
+ * fa bordato quando la testata ha già il pulsante pieno: uno solo per schermata.
+ */
+export function headerStepShownOn(
+  caseAccess: Pick<CaseAccess, "roles" | "readOnly" | "status" | "user">,
+  header: Pick<CaseHeaderData, "filesToCheck" | "nextStep"> & { case: Pick<CaseHeaderData["case"], "status" | "catalogVersion"> },
+  i: { caseBase: string; pagePath: string },
+): boolean {
+  const exportable = exportChoices(caseAccess.roles, header.case.catalogVersion);
+  return headerStepVisible(nextStepFor(headerNextSteps(caseAccess, header)), {
+    canExport: exportable.validated || exportable.draft,
+    writable: !caseAccess.readOnly && header.case.status !== "chiuso",
+    caseBase: i.caseBase,
+    pagePath: i.pagePath,
+  });
 }
 
 /** Una pagina del guscio: 404 se il ruolo di caso non basta (`UC_SHELL_PAGE_ROLES`). */

@@ -168,12 +168,18 @@ export interface ProjectActionInput {
   boardAllowed: boolean;
   /** L'AI Board ha chiesto una modifica. */
   changeRequested: boolean;
+  /**
+   * La testata della realizzazione mostra qui il suo passo, pieno (riconfermare il via, firmare, riprendere…:
+   * `headerStepShownOn`): allora l'azione del progetto è bordata. Un solo pulsante pieno per schermata.
+   */
+  headerStep?: boolean;
 }
 
 /**
  * L'azione del progetto, una sola, e se «Riapri per cambiarlo» sta accanto (8.0a, invariata): impostare, mandare in
  * approvazione, l'ok dell'AI Board, approvare, rivedere; «riapri» al posto dell'ok quando l'AI Board ha chiesto una
- * modifica. «Rivedi il progetto» non è urgente: bordato (`filled` falso).
+ * modifica. «Rivedi il progetto» non è urgente: bordato (`filled` falso); bordata anche ogni azione quando la testata
+ * ha qui il suo passo pieno (`headerStep`).
  */
 export function projectAction(i: ProjectActionInput): { action: ProjectAction | null; reopenAside: boolean; filled: boolean } {
   let action: ProjectAction | null = null;
@@ -189,7 +195,7 @@ export function projectAction(i: ProjectActionInput): { action: ProjectAction | 
       }
     } else if (i.needsBoard && i.boardAllowed) action = "ok_board";
   } else action = i.writer ? "rivedi" : null;
-  return { action, reopenAside, filled: action !== null && action !== "rivedi" };
+  return { action, reopenAside, filled: action !== null && action !== "rivedi" && !i.headerStep };
 }
 
 /** «3 da prendere · 2 in corso · 4 fatti»: lo zero non si vede; "" senza compiti vivi. */

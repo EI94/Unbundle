@@ -49,7 +49,7 @@ function focusTitle() {
 
 /**
  * L'azione principale della Costruzione, una sola, secondo lo stato del progetto e chi guarda (`projectAction`). È il
- * solo pulsante pieno della pagina: la testata qui non ha il suo (`PAGES_WITHOUT_PRIMARY`).
+ * pulsante pieno della pagina, bordata quando la testata ha qui il suo passo (`headerStepShownOn`).
  */
 export function ProjectPrimaryAction({
   workspaceId,
@@ -57,7 +57,14 @@ export function ProjectPrimaryAction({
   action,
   revision,
   blocked = false,
-}: Ids & { action: "imposta" | "manda" | "approva" | "rivedi" | null; revision: number | null; blocked?: boolean }) {
+  filled = true,
+}: Ids & {
+  action: "imposta" | "manda" | "approva" | "rivedi" | null;
+  revision: number | null;
+  blocked?: boolean;
+  /** (Rilascio 10) Bordata quando la testata ha qui il suo passo pieno (`projectAction`). */
+  filled?: boolean;
+}) {
   const { pending, run } = useUcAction();
   if (!action) return null;
   const label = T.primary[action];
@@ -71,7 +78,7 @@ export function ProjectPrimaryAction({
   // «Rivedi il progetto» non è urgente: secondario, accanto all'azione principale del dossier. «Manda in
   // approvazione» aspetta le 10 scelte: la pagina dice quali mancano.
   return (
-    <Button variant={action === "rivedi" ? "outline" : "default"} className={BUTTON} disabled={pending || (action === "manda" && blocked)} onClick={() => run(call, { onSuccess: focusTitle })}>
+    <Button variant={action === "rivedi" || !filled ? "outline" : "default"} className={BUTTON} disabled={pending || (action === "manda" && blocked)} onClick={() => run(call, { onSuccess: focusTitle })}>
       {label}
     </Button>
   );
@@ -318,7 +325,17 @@ export function AiBoardOk({
   tools,
   noteMin,
   noteMax,
-}: Ids & { noteRequired: boolean; canAskChange: boolean; revision: number; tools: { nome: string; perche: string | null }[]; noteMin: number; noteMax: number }) {
+  filled = true,
+}: Ids & {
+  noteRequired: boolean;
+  canAskChange: boolean;
+  revision: number;
+  tools: { nome: string; perche: string | null }[];
+  noteMin: number;
+  noteMax: number;
+  /** (Rilascio 10) Bordato quando la testata ha qui il suo passo pieno. Il dialogo ha sempre il suo «Dai l'ok». */
+  filled?: boolean;
+}) {
   const { pending, run } = useUcAction();
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState("");
@@ -331,7 +348,7 @@ export function AiBoardOk({
   const trigger = noteRequired ? "Registra l'ok dell'AI Board" : "Dai l'ok agli strumenti nuovi";
   return (
     <>
-      <Button className={BUTTON} onClick={() => setOpen(true)}>
+      <Button variant={filled ? "default" : "outline"} className={BUTTON} onClick={() => setOpen(true)}>
         {trigger}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
