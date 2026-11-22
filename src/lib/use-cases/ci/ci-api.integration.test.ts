@@ -23,6 +23,7 @@ const { registerHooks } = nodeModule as unknown as {
 //   stesso caso scritti uno alla volta;
 // - 503 con la 0042 non pronta, e il ritorno indietro: le istruzioni del codice di prima su un database con la 0042 e
 //   righe `ci` (pagine, CLI ed evals funzionano);
+// - (casi senza AI) `senzaAi` dalla CI: le evals di main senza AI, le regole della CLI, `senzaAi` nelle letture;
 // - mai `ub_ci_` nei log né nelle risposte.
 //
 // - Con scripts/use-case-test/run-db-tests.mjs (HUB_TEST_ISOLATED=true, database hub_<id> su 127.0.0.1).
@@ -697,6 +698,46 @@ test("due invii insieme dello stesso caso si scrivono uno alla volta (il lock de
   assert.ok(pair.some((p) => p.status === 200 && p.json.ripetuta === undefined), pair.map((p) => p.text).join(" | "));
   for (const p of pair) assert.ok((p.status === 200) || (p.status === 409 && codeOf(p) === "in_corso"), p.text);
   assert.equal(await ciRuns(ids.uc6), 3);
+});
+
+test("(casi senza AI) senzaAi dalla CI: le evals di main senza AI con la fonte ci e senza-ai; le regole della CLI; senzaAi nelle letture", opts, async () => {
+  await clearKeys();
+  const { key, keyId } = await issue();
+  await q(`DELETE FROM use_case_eval_runs WHERE use_case_id = $1`, [ids.uc6]);
+  const noAiResult = (over: Record<string, unknown> = {}) => [{ attuale: true, superati: 48, totali: 48, soglieRispettate: true, latenzaP95Ms: 410, ...over }];
+  const noAi = (over: Record<string, unknown> = {}, run = newRun()) => ciBody({ caso: "XX-0006", senzaAi: true, modelliFinti: false, modelli: {}, risultati: noAiResult(), ...over }, run);
+  const run = newRun();
+  const body = noAi({}, run);
+  const r = await send(key, body);
+  assert.equal(r.status, 200, r.text);
+  assert.deepEqual(Object.keys(r.json).sort(), ["avviso", "id", "link", "raccomandazione", "senzaAi"]);
+  assert.deepEqual([r.json.senzaAi, r.json.raccomandazione, r.json.avviso], [true, null, null]);
+  const [row] = await q(`SELECT models, fake_models, source, ci_key_id, ci_run_url FROM use_case_eval_runs WHERE id = $1`, [r.json.id]);
+  assert.deepEqual(row, { models: {}, fake_models: false, source: "ci", ci_key_id: keyId, ci_run_url: runUrl(run) });
+  const results = await q(`SELECT model, cost_per_1000_usd, tokens_in_avg, tokens_out_avg FROM use_case_eval_results WHERE run_id = $1`, [r.json.id]);
+  assert.deepEqual(results, [{ model: "senza-ai", cost_per_1000_usd: null, tokens_in_avg: null, tokens_out_avg: null }]);
+  // Il job rilanciato con le stesse evals: «ripetuta», la stessa risposta.
+  const repeated = await send(key, { ...body, ci: { esecuzione: run, tentativo: 2, url: runUrl(run) } });
+  assert.deepEqual([repeated.status, repeated.json.ripetuta, repeated.json.id, repeated.json.senzaAi], [200, true, r.json.id, true]);
+  // Le letture: la pagina e la CLI dicono senza AI, con la fonte.
+  const page = await evals.loadEvalOverview(exec, { workspaceId: ids.ws, useCaseId: ids.uc6 });
+  assert.deepEqual([page?.evals.latest?.withoutAi, page?.evals.latest?.source], [true, "ci"]);
+  const overview = await cliOverview("lead", "XX-0006");
+  assert.equal(overview.status, 200, overview.text);
+  const latest = (overview.json.evals as Row).ultime as Row;
+  assert.deepEqual([latest.senzaAi, latest.fonte, latest.modelli], [true, "ci", {}]);
+  // Le regole della CLI anche dalla CI: 400 con il messaggio, niente scritto.
+  const refused: [Row, string, string][] = [
+    [noAi({ tipo: "banco", ruolo: "lettura" }), "Un caso senza AI non ha un banco di prova: non ci sono modelli da confrontare.", "-lettura"],
+    [noAi({ risultati: noAiResult({ costoPer1000Usd: 0.1 }) }), "risultati[0].costoPer1000Usd: un caso senza AI non ha costi né token dei modelli.", ""],
+    [noAi({ modelli: { lettura: HAIKU } }), "modelli: un caso senza AI non ha ruoli né modelli (senza_ai: true e modelli: {} in agent.yaml).", ""],
+    [ciBody({ caso: "XX-0006", modelli: { lettura: "senza-ai" } }), "senza-ai è riservato ai casi senza AI: dichiaralo con senzaAi: true.", ""],
+  ];
+  for (const [refusedBody, message, suffix] of refused) {
+    const answer = await send(key, refusedBody, `${idemOf(refusedBody)}${suffix}`);
+    assert.deepEqual([answer.status, codeOf(answer), messageOf(answer)], [400, "dati_non_validi", message]);
+  }
+  assert.equal(await ciRuns(ids.uc6), 1, "niente scritto dai 400");
 });
 
 test("la 0042 non pronta: /api/ci/* 503; il ritorno indietro: le istruzioni del codice di prima su un database con la 0042 e righe ci", opts, async () => {

@@ -19,7 +19,10 @@ const { registerHooks } = nodeModule as unknown as {
 //   finti no; le evals di main sotto soglia o giù di 5 punti avvisano, in costruzione, finte o su un altro ramo no;
 // - la panoramica per la CLI e per la pagina (l'andamento dalla più vecchia, lo stesso ramo, main prima), la pagina
 //   «Agent Factory» (i fatti e «Da fare per te»), le evals insieme una alla volta, la ripresa con lo stesso id;
-// - mai un nome o un indirizzo in una risposta, mai una colonna sulla persona.
+// - mai un nome o un indirizzo in una risposta, mai una colonna sulla persona;
+// - (casi senza AI, docs/rilascio-8/CASI-SENZA-AI.md §9) le evals senza AI di main: salvate con `senza-ai`, fanno lo
+//   stato del caso, l'andamento e il confronto a parte da quelli con i modelli, l'avviso al team, il banco vecchio
+//   superato; le evals con i modelli vuoti mandate a mano si leggono come prima.
 //
 // - Con scripts/use-case-test/run-db-tests.mjs (HUB_TEST_ISOLATED=true, database hub_<id> su 127.0.0.1).
 //   Dati sintetici, creati e cancellati qui. I token non si stampano mai.
@@ -56,10 +59,12 @@ const ids = {
   other: randomUUID(),
   third: randomUUID(),
   fourth: randomUUID(),
+  fifth: randomUUID(),
   dossier: randomUUID(),
   dossierOther: randomUUID(),
   dossierThird: randomUUID(),
   dossierFourth: randomUUID(),
+  dossierFifth: randomUUID(),
   lead: randomUUID(),
   analyst: randomUUID(),
   dev: randomUUID(),
@@ -167,8 +172,8 @@ const bell = async (kind: string, useCaseId = ids.useCase) =>
 const mails = async (template: string, caseId = ids.dossier) =>
   q(`SELECT recipient_user_id, payload, status, hold_reason FROM uc_notifications WHERE case_id = $1 AND template_key = $2 ORDER BY recipient_user_id`, [caseId, template]);
 const clearNotices = async (kind: string) => {
-  await q(`DELETE FROM use_case_notifications WHERE use_case_id = ANY($1::uuid[]) AND kind = $2`, [[ids.useCase, ids.other, ids.third, ids.fourth], kind]);
-  await q(`DELETE FROM uc_notifications WHERE case_id = ANY($1::uuid[]) AND template_key = $2`, [[ids.dossier, ids.dossierOther, ids.dossierThird, ids.dossierFourth], kind]);
+  await q(`DELETE FROM use_case_notifications WHERE use_case_id = ANY($1::uuid[]) AND kind = $2`, [[ids.useCase, ids.other, ids.third, ids.fourth, ids.fifth], kind]);
+  await q(`DELETE FROM uc_notifications WHERE case_id = ANY($1::uuid[]) AND template_key = $2`, [[ids.dossier, ids.dossierOther, ids.dossierThird, ids.dossierFourth, ids.dossierFifth], kind]);
 };
 const sorted = (...people: Person[]) => people.map((p) => ids[p]).sort();
 const afterQueue = () => ((globalThis as { __evalsAfter?: (() => Promise<void>)[] }).__evalsAfter ??= []);
@@ -229,8 +234,8 @@ before(async () => {
   }
   await q(
     `INSERT INTO use_cases (id, workspace_id, title, code) VALUES ($1, $4, 'Smistamento di prova', 'EV-0001'), ($2, $4, 'Lettura dei contratti', 'EV-0002'),
-       ($3, $4, 'Risposte ai fornitori', 'EV-0003'), ($5, $4, 'Note spese', 'EV-0004')`,
-    [ids.useCase, ids.other, ids.third, ids.ws, ids.fourth],
+       ($3, $4, 'Risposte ai fornitori', 'EV-0003'), ($5, $4, 'Note spese', 'EV-0004'), ($6, $4, 'Consegna dei moduli', 'EV-0005')`,
+    [ids.useCase, ids.other, ids.third, ids.ws, ids.fourth, ids.fifth],
   );
   await q(
     `INSERT INTO uc_templates (id, key, version, name, archetype, definition, definition_hash, restricted_to_workspace_id)
@@ -242,6 +247,7 @@ before(async () => {
     [ids.dossierOther, ids.other, "2"],
     [ids.dossierThird, ids.third, "3"],
     [ids.dossierFourth, ids.fourth, "4"],
+    [ids.dossierFifth, ids.fifth, "5"],
   ] as const) {
     await q(
       `INSERT INTO uc_cases (id, workspace_id, organization_id, portfolio_use_case_id, template_id, template_version, code, title, status, setup_completed_at)
@@ -928,4 +934,105 @@ test("i ruoli del banco hanno un tetto: un ruolo nuovo oltre il ventesimo è un 
   const page = await evals.loadEvalOverview(exec, target);
   assert.deepEqual(page?.benches.map((b) => b.role).sort(), facts?.benches.map((b) => b.role).sort(), "la pagina e l'Agent Factory, gli stessi ruoli");
   await q(`DELETE FROM use_case_eval_runs WHERE use_case_id = $1`, [ids.third]);
+});
+
+test("(casi senza AI) le evals senza AI di main: salvate con senza-ai, fanno lo stato, l'andamento a parte, l'avviso al team, il banco vecchio superato", opts, async () => {
+  // EV-0005: prima con i modelli (un banco «lettura» che consiglia Haiku, evals di main 99 su 100), poi un'automazione
+  // senza AI. La soglia è 85%.
+  const target = { workspaceId: ids.ws, useCaseId: ids.fifth };
+  const line = await import("../../db/queries/use-case-factory-line.ts");
+  const { benchFacts, evalsFact } = await import("./line.ts");
+  const { parseEvalRun } = await import("./benchmark-input.ts");
+  const code = "EV-0005";
+  const noAi = (passed: number, total = 48) => ({
+    caso: code,
+    tipo: "evals",
+    senzaAi: true,
+    livello: "pull_request",
+    ramo: "main",
+    commit: "3ffb2ae",
+    versioneModello: "1.7.1",
+    modelliFinti: false,
+    inCostruzione: false,
+    modelli: {},
+    risultati: [{ attuale: true, superati: passed, totali: total, soglieRispettate: passed / total >= 0.85, latenzaP50Ms: 120, latenzaP95Ms: 410, errori: 0 }],
+  });
+  await clearNotices("evals_in_calo");
+  assert.equal(((await post(tokens.lead!, { ...banco(), caso: code })).json.raccomandazione as Row).tipo, "cambia");
+  assert.equal((await post(tokens.lead!, { ...evalsBody(99), caso: code })).status, 200);
+
+  // 44 su 48 (91,7%): 7 punti sotto le evals con i modelli, ma non sono le stesse evals. Nessun falso «in calo».
+  const first = await post(tokens.analyst!, noAi(44));
+  assert.equal(first.status, 200, first.text);
+  assert.deepEqual(Object.keys(first.json).sort(), ["avviso", "id", "link", "raccomandazione", "senzaAi"]);
+  assert.deepEqual([first.json.senzaAi, first.json.raccomandazione, first.json.avviso], [true, null, null]);
+  // Le righe: nessun modello per ruolo, modelli veri (non finti), il risultato senza-ai senza costi né token.
+  const [run] = await q(`SELECT kind, role, models, fake_models, in_construction, branch, level, template_version, cases_total FROM use_case_eval_runs WHERE id = $1`, [first.json.id]);
+  assert.deepEqual(run, { kind: "evals", role: null, models: {}, fake_models: false, in_construction: false, branch: "main", level: "pull_request", template_version: "1.7.1", cases_total: 48 });
+  const results = await q(`SELECT model, current, passed, total, cost_per_1000_usd, tokens_in_avg, tokens_out_avg, latency_p95_ms FROM use_case_eval_results WHERE run_id = $1`, [first.json.id]);
+  assert.deepEqual(results, [{ model: "senza-ai", current: true, passed: 44, total: 48, cost_per_1000_usd: null, tokens_in_avg: null, tokens_out_avg: null, latency_p95_ms: 410 }]);
+  // Fanno lo stato del caso, con il loro andamento; la CLI lo dice (`senzaAi`), il banco no.
+  let page = await evals.loadEvalOverview(exec, target);
+  assert.deepEqual([page?.evals.latest?.id, page?.evals.latest?.withoutAi, page?.evals.trend.map((t) => t.withoutAi)], [first.json.id, true, [true]]);
+  const cli = await overview(tokens.owner!, code);
+  const latest = (cli.json.evals as Row).ultime as Row;
+  const [result0] = latest.risultati as Row[];
+  assert.deepEqual([latest.senzaAi, latest.modelli, latest.modelliFinti, result0.modello, result0.costoPer1000Usd, result0.tokenIngressoMedi], [true, {}, false, "senza-ai", null, null]);
+  assert.deepEqual([((cli.json.evals as Row).andamento as Row[]).length, (cli.json.banchi as Row[])[0].senzaAi], [1, false]);
+
+  // Su a 48 su 48, poi giù sotto soglia (40 su 48): l'avviso al team che costruisce, tranne chi le ha mandate.
+  assert.equal((await post(tokens.analyst!, noAi(48))).json.avviso, null);
+  const below = await post(tokens.analyst!, noAi(40));
+  assert.deepEqual([below.status, below.json.avviso, below.json.senzaAi], [200, "sotto_soglia", true]);
+  assert.deepEqual(await bell("evals_in_calo", ids.fifth), sorted("dev", "lead"));
+  const [mail] = await mails("evals_in_calo", ids.dossierFifth);
+  assert.deepEqual(mail.payload, { useCase: ids.fifth, alert: "sotto_soglia", qualityText: "83,3%" });
+  page = await evals.loadEvalOverview(exec, target);
+  assert.deepEqual(page?.evals.trend.map((t) => [t.withoutAi, Math.round(t.quality * 1000)]), [[true, 917], [true, 1000], [true, 833]], "solo le senza AI");
+  assert.deepEqual(page?.benches.map((b) => [b.role, b.analysis.verdict.kind, b.run.withoutAi]), [["lettura", "cambia", false]]);
+
+  // L'Agent Factory: la riga lo dice, il banco di prima è superato (nessun consiglio), «Da fare per te» le evals.
+  const view = await line.loadFactoryOverview(exec, { workspaceId: ids.ws, userId: ids.dev, seeAll: false, canSeeNeeds: true });
+  const row = view.cases.find((c) => c.useCaseId === ids.fifth)!;
+  assert.deepEqual([row.evals?.withoutAi, row.evals?.fakeModels, row.evals?.models], [true, false, {}]);
+  assert.equal(evalsFact(row.evals), "evals 83,3%, sotto soglia, senza AI");
+  assert.deepEqual([row.benches.map((b) => b.superseded), benchFacts(row.benches)], [[true], []]);
+  assert.deepEqual(view.todos.filter((t) => t.useCaseId === ids.fifth).map((t) => t.kind), ["evals"]);
+
+  // Una ripresa con lo stesso id confronta con le senza AI (83,3% → 85,4%: niente), non con quelle con i modelli (99%).
+  const again = parseEvalRun(noAi(41));
+  assert.ok(again.ok);
+  if (!again.ok) return;
+  const id = randomUUID();
+  const once = await evals.recordEvalRun(exec, target, again.value, { id, actorUserId: ids.lead });
+  const twice = await evals.recordEvalRun(exec, target, again.value, { id, actorUserId: ids.lead });
+  assert.ok(once.ok && twice.ok);
+  if (once.ok && twice.ok) assert.deepEqual([once.value.alert, twice.value.alert, twice.value.notified], [null, null, false]);
+
+  // Il caso torna ai modelli: le evals con i modelli si confrontano con le loro (99% → 93%: in calo), e il banco torna
+  // a valere (lo stesso modello per «lettura»).
+  const back = await post(tokens.analyst!, { ...evalsBody(93), caso: code });
+  assert.deepEqual([back.status, back.json.avviso, Object.hasOwn(back.json, "senzaAi")], [200, "in_calo", false]);
+  page = await evals.loadEvalOverview(exec, target);
+  assert.deepEqual([page?.evals.latest?.withoutAi, page?.evals.trend.map((t) => [t.withoutAi, Math.round(t.quality * 100)])], [false, [[false, 99], [false, 93]]]);
+  assert.deepEqual(benchFacts((await evals.loadEvalFacts(exec, ids.ws, [ids.fifth])).get(ids.fifth)?.benches ?? []), ["il banco consiglia Claude Haiku 5.5 per «lettura»"]);
+
+  // Le evals con i modelli vuoti mandate a mano (prima del 14/11) non sono senza AI: si leggono come prima.
+  const [hand] = await q(
+    `INSERT INTO use_case_eval_runs (use_case_id, workspace_id, kind, level, branch, models, cases_total, created_at)
+     VALUES ($1, $2, 'evals', 'pull_request', 'main', '{}'::jsonb, 28, now() + interval '1 minute') RETURNING id`,
+    [ids.fifth, ids.ws],
+  );
+  await q(
+    `INSERT INTO use_case_eval_results (run_id, use_case_id, workspace_id, model, current, quality, passed, total, thresholds_met, groups)
+     VALUES ($1, $2, $3, $4, true, $5, 27, 28, true, '{}'::jsonb)`,
+    [hand.id, ids.fifth, ids.ws, HAIKU, 27 / 28],
+  );
+  const facts = (await evals.loadEvalFacts(exec, ids.ws, [ids.fifth])).get(ids.fifth);
+  assert.deepEqual([facts?.evals?.withoutAi, facts?.evals?.models, facts?.benches.map((b) => b.superseded)], [false, {}, [false]]);
+  page = await evals.loadEvalOverview(exec, target);
+  assert.deepEqual([page?.evals.latest?.id, page?.evals.latest?.withoutAi], [hand.id, false]);
+  const read = await overview(tokens.lead!, code);
+  assert.equal(((read.json.evals as Row).ultime as Row).senzaAi, false);
+  await clearNotices("evals_in_calo");
 });
