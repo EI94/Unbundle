@@ -185,6 +185,11 @@ export interface CaseTrailInput {
   caseBase: string;
   /** La scheda madre (`use_cases`), con il suo codice se la colonna esiste. */
   parent: { id: string; code: string | null; title: string } | null;
+  /**
+   * L'area «Use case» è accesa per il workspace (`isUseCaseHubWorkspace`): la lista delle realizzazioni è in ritiro e
+   * il ritorno porta a Use case › Panoramica. Spenta, la lista di ripiego.
+   */
+  useCaseHub?: boolean;
 }
 
 export type CaseTrail =
@@ -194,12 +199,16 @@ export type CaseTrail =
 /**
  * Il percorso sopra il titolo (DESIGN §3.3): «Use case › XX-0012 ›
  * Realizzazione». Senza codice (ramo senza la colonna `code`) al posto del
- * codice c'è il titolo della scheda; senza scheda madre «‹ Realizzazioni».
+ * codice c'è il titolo della scheda; senza scheda madre il ritorno alla casa delle
+ * realizzazioni: (rilascio 10, D9 (a)) «‹ Use case», la Panoramica con «In
+ * realizzazione», con l'area accesa; «‹ Realizzazioni», la lista di ripiego, con l'area spenta.
  */
 export function caseTrail(i: CaseTrailInput): CaseTrail {
   const ws = `/dashboard/${i.workspaceId}`;
   // (Rilascio 10, §4) Mai «Casi d'uso» a schermo: la lista è «Realizzazioni», come nella barra del telefono.
-  if (!i.parent) return { kind: "lista", back: { label: "Realizzazioni", href: `${ws}/casi-duso` } };
+  if (!i.parent) {
+    return { kind: "lista", back: i.useCaseHub ? { label: "Use case", href: `${ws}/use-cases?vista=panoramica` } : { label: "Realizzazioni", href: `${ws}/casi-duso` } };
+  }
   const code = i.parent.code?.trim() || null;
   return {
     kind: "use_case",

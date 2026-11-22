@@ -166,7 +166,9 @@ test("the trail: use case, code, Realizzazione; the title without a code; the ol
   const noCode = caseTrail({ workspaceId: ws, caseBase, parent: { id: "u1", code: "  ", title: "Smistamento richieste" } });
   assert.equal(noCode.kind === "use_case" && noCode.parent.label, "Smistamento richieste");
   assert.equal(noCode.kind === "use_case" && noCode.parent.isCode, false);
-  assert.deepEqual(caseTrail({ workspaceId: ws, caseBase, parent: null }), { kind: "lista", back: { label: "Realizzazioni", href: "/dashboard/w1/casi-duso" } });
+  assert.deepEqual(caseTrail({ workspaceId: ws, caseBase, parent: null }), { kind: "lista", back: { label: "Realizzazioni", href: "/dashboard/w1/casi-duso" } }, "area off: the fallback list");
+  // (Rilascio 10, D9 (a)) Area on: the list is retired, the way back is the Use case Panoramica with «In realizzazione».
+  assert.deepEqual(caseTrail({ workspaceId: ws, caseBase, parent: null, useCaseHub: true }), { kind: "lista", back: { label: "Use case", href: "/dashboard/w1/use-cases?vista=panoramica" } });
 });
 
 test("one alert at most, in the order of DESIGN §3.3; (rilascio 10) not when the filled button already says it", () => {

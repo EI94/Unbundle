@@ -30,6 +30,7 @@ import {
 } from "@/lib/uc/views/case-shell";
 import { NEXT_STEP_ICON, nextStepFor, resolveStepHref, type NextStep } from "@/lib/uc/views/next-step";
 import { isLsViewer } from "@/lib/uc/views/status-groups";
+import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
 
 /** Il blocco testata più schede: lo misura `screens.mjs` (≤ 260 px a 1440) e lo guarda la barra fissa. */
@@ -127,7 +128,7 @@ export default async function CaseLayout({ children, params }: { children: React
       <div id={CASE_HEAD_ID} data-uc-case-head="" className="border-b border-border">
         <div className={`mx-auto w-full max-w-6xl min-w-0 px-4 sm:px-6 lg:px-8 ${tabs.length === 0 ? "pb-4" : ""}`}>
           <CaseHeader
-            trail={caseTrail({ workspaceId, caseBase: base, parent: header.parent })}
+            trail={caseTrail({ workspaceId, caseBase: base, parent: header.parent, useCaseHub: isUseCaseHubWorkspace(workspaceId) })}
             title={title}
             status={status}
             alert={alert ? { ...alert, action: alert.action ? { label: alert.action.label, href: resolveStepHref(base, alert.action.href) } : null } : null}
