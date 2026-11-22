@@ -56,8 +56,13 @@ export function LearningSessionBoundary({ workspaceId, expectedUserId, children 
     const recheck = () => { void check(); };
     const softRecheck = () => { void check(false, true); };
     const visibility = () => { if (document.visibilityState === "visible") softRecheck(); };
+    // (Rilascio 10, ondata 7a) «Indietro» che cambia solo la query della stessa pagina (un pannello `?apri=` che si
+    // chiude con `history.back()`) resta sulla pagina già verificata e a schermo: controllo morbido, senza nasconderla.
+    // Un'altra pagina della cronologia resta un controllo duro. Uscire dall'area (l'accesso, un altro account) smonta
+    // questo confine: al ritorno il controllo è sempre duro.
+    const onPopState = () => { if (window.location.pathname === pathname) softRecheck(); else recheck(); };
     window.addEventListener("focus", softRecheck);
-    window.addEventListener("popstate", recheck);
+    window.addEventListener("popstate", onPopState);
     window.addEventListener("pageshow", recheck);
     document.addEventListener("visibilitychange", visibility);
     // Voluto: il controllo nasconde subito i contenuti («checking», senza aspettare la risposta),
@@ -67,10 +72,10 @@ export function LearningSessionBoundary({ workspaceId, expectedUserId, children 
     const invalidatePendingCheck = () => { ++sequence.current; controller.current?.abort(); };
     return () => {
       invalidatePendingCheck(); changes?.close(); channel.current = null;
-      window.removeEventListener("focus", softRecheck); window.removeEventListener("popstate", recheck); window.removeEventListener("pageshow", recheck);
+      window.removeEventListener("focus", softRecheck); window.removeEventListener("popstate", onPopState); window.removeEventListener("pageshow", recheck);
       document.removeEventListener("visibilitychange", visibility);
     };
-  }, [check, expectedUserId]);
+  }, [check, expectedUserId, pathname]);
 
   const phase = state.path === pathname ? state.phase : "checking";
   // Activity suspends the forms' effects while their edits remain in memory.

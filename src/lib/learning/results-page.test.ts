@@ -188,3 +188,14 @@ test("the old addresses still open their tab: /live → ?vista=gruppo, /manage �
   assert.match(read("src/app/(dashboard)/dashboard/[workspaceId]/learning/[programId]/manage/page.tsx"), /results\?vista=individuali`\);/);
   assert.match(read("src/app/(dashboard)/dashboard/[workspaceId]/learning/[programId]/manage/[attemptId]/page.tsx"), /back=\{\{ href: resultsHref\(base, "individuali", turno\), label: LEARNING_TEXT\.results\.tabs\.people \}\}/);
 });
+
+test("closing the «Scarica» panel goes back one step without blanking the page: a same-page popstate is a soft session check", () => {
+  // Il pannello si chiude con `history.back()` (useSheetParam): prima il confine della sessione lo trattava come un ritorno
+  // nella cronologia e nascondeva la pagina con «Verifica dell'accesso…».
+  const boundary = read("src/components/learning/session-boundary.tsx");
+  assert.match(boundary, /const onPopState = \(\) => \{ if \(window\.location\.pathname === pathname\) softRecheck\(\); else recheck\(\); \};/);
+  assert.match(boundary, /window\.addEventListener\("popstate", onPopState\);/);
+  assert.match(boundary, /window\.removeEventListener\("popstate", onPopState\);/);
+  assert.match(boundary, /window\.addEventListener\("pageshow", recheck\);/, "una pagina ripresa dalla cache del browser resta un controllo duro");
+  assert.match(boundary, /setState\(\(previous\) => soft && previous\.path === pathname && previous\.phase === "verified" \? previous :/, "il controllo morbido lascia a schermo la pagina verificata");
+});
