@@ -9,7 +9,6 @@ import { learnerRedirect } from "@/lib/learning/learner-scope";
 import { WorkspaceBell } from "@/components/portfolio/workspace-topbar";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
-import { legacyRouteRedirect, stubLogEntry } from "@/lib/use-cases/legacy-routes";
 
 export default async function WorkspaceLayout({
   children,
@@ -53,33 +52,19 @@ export default async function WorkspaceLayout({
     });
   }
 
-  // P0-16 (docs/casi-duso/RUNBOOK.md §1): con l'area accesa «Casi d'uso» esce dalla barra e
-  // `/casi-duso` esatto va alla Panoramica solo quando ogni dossier completo ha la sua scheda
-  // (`dossierLinksReady`). Finché no, o se la lettura non riesce, la voce resta: un dossier
-  // senza scheda non sta né su una scheda né nella Panoramica. Il redirect sta qui e non in
-  // pagina: sotto `casi-duso/loading.tsx` risponderebbe 200 con una meta refresh (H6a).
+  // (Rilascio 10, D9 (a), si chiude P0-16) Con l'area accesa la lista `/casi-duso` è in ritiro: le realizzazioni
+  // stanno in Use case › Panoramica › «In realizzazione», e `src/proxy.ts` risponde 307 verso la Panoramica. La voce
+  // «Casi d'uso» resta solo nella barra di prima, con l'area spenta, dove la lista c'è ancora.
   const ucOn = process.env.UC_ENABLED === "true";
-  let dossierLinksAreReady = false;
-  if (useCaseHub && ucOn && !learnerOnly) {
-    const { dossierLinksReady } = await import("@/lib/db/queries/use-case-dossiers");
-    const links = await dossierLinksReady(workspaceId);
-    dossierLinksAreReady = links.ok && links.ready;
-    const legacy = dossierLinksAreReady && /^\/dashboard\/[^/]+\/casi-duso\/?$/.test(pathname)
-      ? legacyRouteRedirect(`/dashboard/${workspaceId}/casi-duso`, undefined, { dossierLinksReady: true })
-      : null;
-    if (legacy) {
-      console.info(JSON.stringify(stubLogEntry(legacy.from)));
-      redirect(legacy.to);
-    }
-  }
 
   // Off by default: existing workspaces do not query the additive training tables.
   const learningAvailable = process.env.LEARNING_ENABLED === "true"
     ? await (await import("@/lib/learning/server")).hasLearningForWorkspace(workspaceId)
     : false;
 
-  // Off by default (UC_ENABLED): the uc tables are read only when the section is on, behind to_regclass.
-  const casesAvailable = ucOn && !learnerOnly && !(useCaseHub && dossierLinksAreReady)
+  // Off by default (UC_ENABLED): the uc tables are read only when the section is on, behind to_regclass. Only the
+  // old sidebar (area off) has the list's entry.
+  const casesAvailable = ucOn && !learnerOnly && !useCaseHub
     ? await (await import("@/lib/db/queries/uc-nav")).ucCasesNavVisible({ userId: session.user.id, workspaceId, role: access.role })
     : false;
 

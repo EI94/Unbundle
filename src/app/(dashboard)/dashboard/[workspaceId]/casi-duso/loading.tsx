@@ -2,8 +2,9 @@ import { PageContainer } from "@/components/dashboard/page-container";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
- * Una realizzazione si carica (DESIGN §3.14): lo scheletro riserva l'altezza della testata e delle schede, poi 8 righe.
- * (Rilascio 10, D9 (a)) La lista `/casi-duso` non c'è più: l'indirizzo risponde 308 dalla sua route.
+ * Una realizzazione (o la lista di ripiego, con l'area «Use case» spenta) si carica (DESIGN §3.14): lo scheletro
+ * riserva l'altezza della testata e delle schede, poi 8 righe. (Rilascio 10, D9 (a)) Con l'area accesa la lista è in
+ * ritiro: `src/proxy.ts` risponde 307 verso la Panoramica prima della pagina.
  */
 export default function CasesLoading() {
   return (

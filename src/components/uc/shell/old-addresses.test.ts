@@ -55,19 +55,36 @@ test("/soluzione/regole and /regole: 308 to the «Regole» panel of the Soluzion
   assert.deepEqual(redirectOf(older, `${ROOT}/regole?apri=${RULE}`), { target: `${ROOT}/soluzione?apri=regole&regola=${RULE}`, status: "308" }, "the oldest address, in one hop");
 });
 
-test("(D9 (a), F-016, F-018) the /casi-duso list is retired: 308 to Use case › Panoramica, with the stub log line", async () => {
-  const list = (await import("../../../app/(dashboard)/dashboard/[workspaceId]/casi-duso/route.ts")) as Route;
-  const lines: string[] = [];
+test("(D9 (a), F-016, F-018) with the area on the /casi-duso list is retired: a 307 in the proxy; with the area off the list stays", async () => {
+  const { NextRequest } = await import("next/server");
+  const { proxy } = await import("../../../proxy.ts");
+  const exp = Math.floor(Date.now() / 1000) + 3600;
+  const cookie = `__session=h.${Buffer.from(JSON.stringify({ exp })).toString("base64url")}.s`;
+  const env = process.env.USE_CASE_HUB_WORKSPACES;
   const info = console.info;
+  const lines: string[] = [];
   console.info = (line: string) => void lines.push(line);
   try {
-    assert.deepEqual(redirectOf(list, `/dashboard/${WS}/casi-duso`), { target: `/dashboard/${WS}/use-cases?vista=panoramica`, status: "308" });
-    assert.deepEqual(redirectOf(list, `/dashboard/${WS}/casi-duso/?x=1`), { target: `/dashboard/${WS}/use-cases?vista=panoramica`, status: "308" }, "the list had no parameters");
+    process.env.USE_CASE_HUB_WORKSPACES = WS;
+    for (const path of [`/dashboard/${WS}/casi-duso`, `/dashboard/${WS}/casi-duso/?x=1`]) {
+      const res = proxy(new NextRequest(`http://localhost${path}`, { headers: { cookie } }));
+      assert.equal(res.status, 307, "temporary, as for the modules being retired (§8.2 rule 3): the area can be switched off");
+      assert.equal(res.headers.get("location"), `http://localhost/dashboard/${WS}/use-cases?vista=panoramica`, path);
+    }
+    assert.deepEqual(lines.map((l) => JSON.parse(l)), [{ area: "use-case-hub", op: "stub", from: "/casi-duso" }, { area: "use-case-hub", op: "stub", from: "/casi-duso" }], "no id, no query");
+    const realization = proxy(new NextRequest(`http://localhost${ROOT}`, { headers: { cookie } }));
+    assert.equal(realization.headers.get("location"), null, "a realization opens");
+    process.env.USE_CASE_HUB_WORKSPACES = "";
+    const off = proxy(new NextRequest(`http://localhost/dashboard/${WS}/casi-duso`, { headers: { cookie } }));
+    assert.equal(off.headers.get("location"), null, "area off: the list page");
+    assert.equal(off.headers.get("x-middleware-next"), "1");
   } finally {
     console.info = info;
+    if (env === undefined) delete process.env.USE_CASE_HUB_WORKSPACES;
+    else process.env.USE_CASE_HUB_WORKSPACES = env;
   }
-  assert.deepEqual(lines.map((l) => JSON.parse(l)), [{ area: "use-case-hub", op: "stub", from: "/casi-duso" }, { area: "use-case-hub", op: "stub", from: "/casi-duso" }], "no id, no query");
-  assert.equal(existsSync(new URL("../../../app/(dashboard)/dashboard/[workspaceId]/casi-duso/page.tsx", import.meta.url)), false, "the list page is gone");
+  assert.ok(existsSync(new URL("../../../app/(dashboard)/dashboard/[workspaceId]/casi-duso/page.tsx", import.meta.url)), "the list of the area off");
+  assert.equal(existsSync(new URL("../../../app/(dashboard)/dashboard/[workspaceId]/casi-duso/route.ts", import.meta.url)), false);
   assert.ok(existsSync(new URL("../../../app/(dashboard)/dashboard/[workspaceId]/casi-duso/nuovo/page.tsx", import.meta.url)), "/casi-duso/nuovo stays as the fallback");
 });
 

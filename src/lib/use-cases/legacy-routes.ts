@@ -2,7 +2,7 @@
  * Vecchi indirizzi dell'area «Use case» e dove portano (docs/use-case/DESIGN.md §2.3, §2.4;
  * PIANO-LAVORI §5.5; D1).
  *
- * `hubRedirectFor(pathname, searchParams, opts)` dice dove reindirizzare un vecchio
+ * `hubRedirectFor(pathname, searchParams)` dice dove reindirizzare un vecchio
  * indirizzo **con l'area accesa** per il workspace; `null` vuol dire «resta com'è». Il
  * controllo dell'interruttore (`isUseCaseHubWorkspace`) lo fa chi chiama, prima di ogni
  * lettura del database:
@@ -17,9 +17,12 @@
  *   `waveDurationMonths`.
  * - `/portfolio/review/<id>` → `/use-cases/<id>`; `/portfolio/submit` → `/use-cases/nuovo`;
  *   `/plan` → `/use-cases?vista=panoramica`. Senza query.
- * - `/casi-duso` → `/use-cases?vista=panoramica` solo con `dossierLinksReady` vero (§10.4).
- *   Il redirect sta nel layout del workspace: sotto `casi-duso/loading.tsx` una pagina
- *   risponderebbe 200 con una meta refresh.
+ * - (Rilascio 10, D9 (a)) `/casi-duso` → `/use-cases?vista=panoramica`: con l'area accesa la
+ *   lista delle realizzazioni non c'è più (si chiude P0-16), le realizzazioni stanno in Use case ›
+ *   Panoramica › «In realizzazione». In `src/proxy.ts`, con un 307 come i moduli in ritiro
+ *   (PROPOSTA-10 §8.2, regola 3: l'area si può spegnere, e allora la lista torna); con l'area
+ *   spenta la lista resta. Sotto `casi-duso/loading.tsx` una pagina risponderebbe 200 con una
+ *   meta refresh.
  * - `/casi-duso/nuovo` senza `useCaseId` → `/use-cases?vista=panoramica`, in `src/proxy.ts`.
  *   Come per la pagina, conta solo il primo `useCaseId` e solo se è un UUID: un valore
  *   vuoto, non valido o ripetuto dopo un vuoto porterebbe alla procedura senza scheda.
@@ -42,11 +45,6 @@ export interface HubRedirect {
   from: LegacyRoute;
   /** Percorso assoluto dentro l'app, query compresa. */
   to: string;
-}
-
-export interface HubRedirectOptions {
-  /** `dossierLinksReady(workspaceId)`: ogni dossier completo ha una scheda e l'indice unico esiste (§10.4). */
-  dossierLinksReady?: boolean;
 }
 
 /**
@@ -110,7 +108,7 @@ function withQuery(path: string, params: Array<[string, string]>): string {
  * l'indirizzo resta com'è. `pathname` è il percorso intero (`/dashboard/<ws>/portfolio`);
  * una query attaccata al percorso vale solo se `searchParams` non c'è.
  */
-export function legacyRouteRedirect(pathname: string, searchParams?: SearchParamsInput, opts: HubRedirectOptions = {}): HubRedirect | null {
+export function legacyRouteRedirect(pathname: string, searchParams?: SearchParamsInput): HubRedirect | null {
   if (typeof pathname !== "string") return null;
   const cut = pathname.search(/[?#]/);
   const path = (cut === -1 ? pathname : pathname.slice(0, cut)).replace(/\/+$/, "");
@@ -135,7 +133,8 @@ export function legacyRouteRedirect(pathname: string, searchParams?: SearchParam
     case "plan":
       return { from: "/plan", to: withQuery(hub, [[HUB_VIEW_PARAM, HUB_VIEWS.panoramica]]) };
     case "casi-duso":
-      return opts.dossierLinksReady === true ? { from: "/casi-duso", to: withQuery(hub, [[HUB_VIEW_PARAM, HUB_VIEWS.panoramica]]) } : null;
+      // (Rilascio 10, D9 (a)) La lista è in ritiro: la sua query (non ne aveva) cade.
+      return { from: "/casi-duso", to: withQuery(hub, [[HUB_VIEW_PARAM, HUB_VIEWS.panoramica]]) };
     case "casi-duso/nuovo": {
       // La stessa regola della pagina: conta solo il primo `useCaseId`, e solo se è un UUID.
       const first = params.find(([key]) => key === START_REALIZATION_PARAM)?.[1];
@@ -151,8 +150,8 @@ export function legacyRouteRedirect(pathname: string, searchParams?: SearchParam
 }
 
 /** Solo la destinazione di `legacyRouteRedirect`, oppure null. */
-export function hubRedirectFor(pathname: string, searchParams?: SearchParamsInput, opts: HubRedirectOptions = {}): string | null {
-  return legacyRouteRedirect(pathname, searchParams, opts)?.to ?? null;
+export function hubRedirectFor(pathname: string, searchParams?: SearchParamsInput): string | null {
+  return legacyRouteRedirect(pathname, searchParams)?.to ?? null;
 }
 
 /** La riga di log di un redirect: conta le visite prima della pulizia, senza id né query (§2.4). */

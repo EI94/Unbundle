@@ -9,11 +9,12 @@ import { readFileSync } from "node:fs";
 const root = new URL("../../../", import.meta.url);
 const source = (path: string) => readFileSync(new URL(path, root), "utf8");
 
-// (Rilascio 10, D9 (a)) La lista `/casi-duso` non c'è più: la sua route risponde 308 verso la Panoramica.
-const LIST_ROUTE = "src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/route.ts";
+const LIST_PAGE = "src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/page.tsx";
 const START_PAGE = "src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/nuovo/page.tsx";
 const C10_FILES = [
+  LIST_PAGE,
   START_PAGE,
+  // (Rilascio 10, §3.5) I dati del dialogo «Avvia la realizzazione» e della pagina di ripiego.
   "src/components/uc/realization/start-data.ts",
   "src/components/uc/shell/create-wizard.tsx",
   "src/components/uc/shell/case-card.tsx",
@@ -32,11 +33,8 @@ const C10_FILES = [
   "src/lib/uc/views/realization.ts",
 ];
 
-test("the start page is 404 for a workspace outside UC_WORKSPACE_IDS; the retired list reads nothing", () => {
-  const list = source(LIST_ROUTE);
-  assert.doesNotMatch(list, /getAppUcExecutor|dossierCardsForWorkspace|db\./, "a redirect without database");
-  assert.match(list, /legacyRouteRedirect\(request\.nextUrl\.pathname, undefined, \{ dossierLinksReady: true \}\)/);
-  for (const page of [START_PAGE]) {
+test("the fallback list and the start page are 404 for a workspace outside UC_WORKSPACE_IDS", () => {
+  for (const page of [LIST_PAGE, START_PAGE]) {
     const text = source(page);
     assert.match(text, /if \(!isUcEnabledFor\(workspaceId\)\) notFound\(\);/, page);
     assert.match(text, /await ensureUcAvailable\(workspaceId\);/, page);
@@ -78,7 +76,7 @@ test("every read for the Use case page and the fallback sidebar goes through the
  */
 const H6A_MOUNTS: Readonly<Record<string, readonly string[]>> = {
   [START_PAGE]: ["@/lib/use-cases/legacy-routes", "@/lib/use-cases/realization-prefill", "@/lib/use-cases/rollout"],
-  // (Rilascio 10) Il dialogo «Avvia la realizzazione» e la pagina di ripiego leggono gli stessi dati: con i testi del connettore.
+  // (Rilascio 10) Il dialogo «Avvia la realizzazione» e la pagina di ripiego leggono gli stessi dati, con i testi del connettore.
   "src/components/uc/realization/start-data.ts": ["@/lib/use-cases/realization-prefill"],
   "src/lib/actions/uc-realization.ts": ["@/lib/use-cases/service", "@/lib/use-cases/rollout"],
 };

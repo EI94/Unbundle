@@ -80,11 +80,10 @@ test("§2.3 /use-cases e /use-cases/[id]: stesso indirizzo, con vista, filtri e 
   assert.equal(hubRedirectFor(`${hub}/nuovo`), null);
 });
 
-test("§2.3 /casi-duso → /use-cases?vista=panoramica solo con dossierLinksReady vero", () => {
-  assert.deepEqual(legacyRouteRedirect(`${base}/casi-duso`, undefined, { dossierLinksReady: true }), { from: "/casi-duso", to: `${hub}?vista=panoramica` });
-  assert.equal(hubRedirectFor(`${base}/casi-duso`, undefined, { dossierLinksReady: false }), null);
-  assert.equal(hubRedirectFor(`${base}/casi-duso`), null, "senza la lettura la lista dei casi resta");
-  assert.equal(hubRedirectFor(`${base}/casi-duso`, { stato: "aperti" }, { dossierLinksReady: true }), `${hub}?vista=panoramica`);
+test("(rilascio 10, D9 (a)) /casi-duso → /use-cases?vista=panoramica, sempre: con l'area accesa la lista è in ritiro", () => {
+  assert.deepEqual(legacyRouteRedirect(`${base}/casi-duso`), { from: "/casi-duso", to: `${hub}?vista=panoramica` });
+  assert.equal(hubRedirectFor(`${base}/casi-duso/`), `${hub}?vista=panoramica`);
+  assert.equal(hubRedirectFor(`${base}/casi-duso`, { stato: "aperti" }), `${hub}?vista=panoramica`, "la lista non aveva parametri: cadono");
 });
 
 test("§2.3 /casi-duso/nuovo senza useCaseId → /use-cases?vista=panoramica, sempre", () => {
@@ -92,8 +91,6 @@ test("§2.3 /casi-duso/nuovo senza useCaseId → /use-cases?vista=panoramica, se
   assert.equal(hubRedirectFor(`${base}/casi-duso/nuovo`, new URLSearchParams("template=x")), `${hub}?vista=panoramica`);
   assert.equal(hubRedirectFor(`${base}/casi-duso/nuovo`, { useCaseId: "" }), `${hub}?vista=panoramica`, "useCaseId vuoto = assente");
   assert.equal(hubRedirectFor(`${base}/casi-duso/nuovo`, { useCaseId: "  " }), `${hub}?vista=panoramica`);
-  // Non dipende da dossierLinksReady: un dossier nasce solo da uno use case (§6.5).
-  assert.equal(hubRedirectFor(`${base}/casi-duso/nuovo`, undefined, { dossierLinksReady: false }), `${hub}?vista=panoramica`);
 });
 
 test("§2.3 /casi-duso/nuovo?useCaseId=: stesso indirizzo (è «Avvia la realizzazione»)", () => {
@@ -122,13 +119,13 @@ test("§2.3 /casi-duso/nuovo: conta solo il primo useCaseId, e solo se è un UUI
 
 test("§2.3 /casi-duso/[caseId]/*: invariati", () => {
   for (const rest of ["", "/domande", "/roi", "/voci/abc", "/export"]) {
-    assert.equal(hubRedirectFor(`${base}/casi-duso/${CASE}${rest}`, undefined, { dossierLinksReady: true }), null, rest);
+    assert.equal(hubRedirectFor(`${base}/casi-duso/${CASE}${rest}`, undefined), null, rest);
   }
 });
 
 test("§2.3 /r/[token], /api/r/**, /share/portfolio/**: invariati", () => {
   for (const path of ["/r/tok-123", "/api/r/tok-123/answer", `/share/portfolio/${WS}/${UC}`, `/share/portfolio/${WS}`]) {
-    assert.equal(hubRedirectFor(path, { joined: "1" }, { dossierLinksReady: true }), null, path);
+    assert.equal(hubRedirectFor(path, { joined: "1" }), null, path);
   }
 });
 
@@ -145,7 +142,7 @@ test("le altre pagine del workspace e gli indirizzi fuori forma restano com'eran
     "/portfolio",
     "",
   ]) {
-    assert.equal(hubRedirectFor(path, undefined, { dossierLinksReady: true }), null, path);
+    assert.equal(hubRedirectFor(path), null, path);
   }
 });
 
