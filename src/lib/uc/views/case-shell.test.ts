@@ -58,6 +58,10 @@ test("(rilascio 10, D9 (a)) after the via «Costruzione» takes the place of «D
     assert.ok(!(after.some((t) => t.key === "domande") && after.some((t) => t.key === "costruzione")), `${role}: never both`);
   }
   assert.equal(caseTabsFor(["ls_lead"], { pastVia: true })[1]?.segment, "costruzione");
+  // Without the use case's card the agent's project does not exist: no Costruzione tab, no «⋯» entry (it would be a 404).
+  assert.deepEqual(caseTabsFor(["ls_lead"], { pastVia: true, construction: false }).map((t) => t.label), ["Panoramica", "Domande", "Soluzione", "Valore", "Persone"]);
+  assert.ok(!caseMenuFor(["ls_lead"], { exportable: false, construction: false }).some((m) => m.key === "costruzione"));
+  assert.ok(caseMenuFor(["ls_lead"], { exportable: false }).some((m) => m.key === "costruzione"), "with the card (the default) it is there");
 });
 
 test("(rilascio 10, D9 (a)) the phase: after the via, in a pause after it, and closed after an approved via", () => {

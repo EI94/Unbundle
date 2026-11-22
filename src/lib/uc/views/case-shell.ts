@@ -99,6 +99,11 @@ export function pastViaPhase(i: { status: CaseStatus; statusBeforeSuspension?: C
 export interface CaseTabsInput {
   /** Il via allo sviluppo c'è stato (`pastViaPhase`): la seconda scheda è «Costruzione». */
   pastVia?: boolean;
+  /**
+   * La realizzazione ha la scheda del suo use case (`header.parent`): il progetto dell'agente è dello use case, e senza
+   * scheda la Costruzione non si apre (404). Allora né la scheda né la voce del «⋯». Di default sì.
+   */
+  construction?: boolean;
 }
 
 /**
@@ -107,7 +112,7 @@ export interface CaseTabsInput {
  * la apre tiene «Domande» (e chi non apre Domande, come l'AI Board, prima del via non ha la seconda scheda).
  */
 export function caseTabsFor(roles: readonly CaseRole[], i: CaseTabsInput = {}): CaseTab[] {
-  const second = i.pastVia && COSTRUZIONE_TAB.allowed(roles) ? COSTRUZIONE_TAB : DOMANDE_TAB;
+  const second = i.pastVia && i.construction !== false && COSTRUZIONE_TAB.allowed(roles) ? COSTRUZIONE_TAB : DOMANDE_TAB;
   return [PANORAMICA_TAB, second, ...REST_TABS].filter((t) => t.allowed(roles)).map(({ key, segment, label }) => ({ key, segment, label }));
 }
 
@@ -154,6 +159,8 @@ export interface CaseMenuInput {
   exportable: boolean;
   /** Il via allo sviluppo c'è stato (`pastViaPhase`): la Costruzione è una scheda e lascia il menu. */
   pastVia?: boolean;
+  /** Come per le schede: senza la scheda dello use case la Costruzione non c'è (`CaseTabsInput.construction`). */
+  construction?: boolean;
 }
 
 /**
@@ -173,7 +180,7 @@ export function caseMenuFor(roles: readonly CaseRole[], i: CaseMenuInput): CaseM
   if (canOpenShellPage("privacy", roles) && landingSegment(roles) !== "privacy") out.push({ key: "privacy", label: "Privacy", segment: "privacy" });
   if (canOpenShellPage("registro", roles)) out.push({ key: "attivita", label: "Attività", segment: "attivita" });
   if (i.exportable) out.push({ key: "esporta", label: isLs(roles) ? "Esporta…" : "Scarica in Excel", segment: null });
-  if (!i.pastVia && canOpenShellPage("costruzione", roles)) out.push({ key: "costruzione", label: "Costruzione", segment: "costruzione" });
+  if (!i.pastVia && i.construction !== false && canOpenShellPage("costruzione", roles)) out.push({ key: "costruzione", label: "Costruzione", segment: "costruzione" });
   if (canOpenShellPage("impostazioni", roles)) out.push({ key: "impostazioni", label: "Impostazioni", segment: "impostazioni" });
   return out;
 }
