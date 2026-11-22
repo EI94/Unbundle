@@ -17,6 +17,7 @@
  */
 import type { Session } from "@/lib/auth";
 import { requireWorkspaceAccess } from "@/lib/auth/require-workspace";
+import { isCaseOnly } from "@/lib/auth/case-only";
 import { getUseCaseDetail, viewerFromSession } from "@/lib/db/queries/use-case-hub";
 import {
   addTeamDecision,
@@ -51,6 +52,16 @@ import type { WorkspaceAccess } from "@/lib/workspace-access";
 import { finishUcCommand, fromResult, openUcCase, ucFailure, type OpenedUcCase, type UcActionResult } from "./uc-action-context";
 
 const NOT_READY = ucFailure("non_disponibile", "L'impostazione non è ancora disponibile: riprova tra qualche minuto.");
+
+/**
+ * (8.0d) Le 7 azioni di chi costruisce sono porte di «Solo questo use case» (`CASE_ONLY_SURFACES`): `onFactoryBuild` poi
+ * vuole il predicato per il caso (`openUcCase` → `caseAccessPrecheck`), e un caso fuori risponde «non trovato».
+ * Approvare, riaprire, l'ok dell'AI Board e la modifica restano chiuse: passano da `requireWorkspaceAccess` senza opzioni.
+ */
+const CASE_ONLY_BUILDER = { allowCaseOnly: true } as const;
+
+/** (8.0d, D7) Con che occhi «Solo questo use case» legge la scheda del suo caso per il pacchetto: di chi la valuta. */
+const CASE_ONLY_PACKAGE_READER = "analyst";
 
 interface Opened {
   o: OpenedUcCase;
@@ -127,9 +138,15 @@ async function runOnCase<T>(
   return fromResult(result, undefined, result.ok ? message?.(result.value) : undefined);
 }
 
-/** Quello che il pacchetto prende dalla scheda, letto con i permessi di chi lo genera. */
+/**
+ * Quello che il pacchetto prende dalla scheda, letto con i permessi di chi lo genera. (8.0d, D7) «Solo questo use case»
+ * non apre la scheda del portafoglio, ma il pacchetto del suo caso porta tutto quello che riguarda il caso, cifre in euro
+ * e «Cosa serve» compresi: la scheda di questo use case (e solo questa: il predicato l'ha già controllato
+ * `onFactoryBuild`) si legge come la legge chi la valuta, e finisce solo nel pacchetto.
+ */
 async function packageCard(session: Session, access: WorkspaceAccess, target: FactoryTarget): Promise<{ card: PackageCard; canSeeNeeds: boolean } | null> {
-  const viewer = viewerFromSession({ id: session.user.id, email: session.user.email ?? null, emailVerified: session.user.emailVerified === true }, access.role);
+  const readerRole = isCaseOnly(access.role) ? CASE_ONLY_PACKAGE_READER : access.role;
+  const viewer = viewerFromSession({ id: session.user.id, email: session.user.email ?? null, emailVerified: session.user.emailVerified === true }, readerRole);
   const canSeeNeeds = abilitiesForUseCase(viewer).canSeeNeeds;
   const detail = await getUseCaseDetail(target.workspaceId, target.useCaseId, viewer);
   if (!detail || detail.projection === "contributore") return null;
@@ -153,7 +170,7 @@ async function packageCard(session: Session, access: WorkspaceAccess, target: Fa
 /** «Aggiorna il pacchetto»: una versione nuova solo se la scheda è cambiata. */
 export async function generatePackageAction(workspaceId: string, caseId: string): Promise<UcActionResult<{ version: number; created: boolean }>> {
   return onFactoryBuild(
-    await requireWorkspaceAccess(workspaceId),
+    await requireWorkspaceAccess(workspaceId, CASE_ONLY_BUILDER),
     workspaceId,
     caseId,
     async ({ o, actor, target, session, access }) => {
@@ -168,7 +185,7 @@ export async function generatePackageAction(workspaceId: string, caseId: string)
 /** (8.1b) Una proposta di compito: «Accetta come compito» (nasce T-n, da prendere) o «Scarta». Solo chi costruisce il caso. */
 export async function decideTaskProposalAction(workspaceId: string, caseId: string, proposalId: string, decision: "accetta" | "scarta"): Promise<UcActionResult<{ ref: string | null }>> {
   return onFactoryBuild(
-    await requireWorkspaceAccess(workspaceId),
+    await requireWorkspaceAccess(workspaceId, CASE_ONLY_BUILDER),
     workspaceId,
     caseId,
     ({ o, session, target }) => decideProposal(o.executor, target, { id: proposalId, decision, actorId: session.user.id }),
@@ -178,7 +195,7 @@ export async function decideTaskProposalAction(workspaceId: string, caseId: stri
 
 /** «Imposta il caso» o «Rivedi il progetto»: una versione nuova, con le scelte dell'ultima. */
 export async function startProjectAction(workspaceId: string, caseId: string): Promise<UcActionResult<{ version: number; created: boolean }>> {
-  return onFactoryBuild(await requireWorkspaceAccess(workspaceId), workspaceId, caseId, ({ o, actor, target }) => startProject(o.executor, actor, target), (v) =>
+  return onFactoryBuild(await requireWorkspaceAccess(workspaceId, CASE_ONLY_BUILDER), workspaceId, caseId, ({ o, actor, target }) => startProject(o.executor, actor, target), (v) =>
     v.created ? (v.version === 1 ? "Versione 1 aperta: scegli i 10 argomenti." : `Versione ${v.version} aperta: le scelte partono da quelle di prima.`) : `La versione ${v.version} è già aperta.`,
   );
 }
@@ -186,7 +203,7 @@ export async function startProjectAction(workspaceId: string, caseId: string): P
 /** La scelta di un argomento (scelta, perché, alternativa scartata). */
 export async function saveProjectTopicAction(workspaceId: string, caseId: string, input: unknown): Promise<UcActionResult<{ version: number }>> {
   const i = (input ?? {}) as Record<string, unknown>;
-  return onFactoryBuild(await requireWorkspaceAccess(workspaceId), workspaceId, caseId, ({ o, actor, target }) =>
+  return onFactoryBuild(await requireWorkspaceAccess(workspaceId, CASE_ONLY_BUILDER), workspaceId, caseId, ({ o, actor, target }) =>
     saveProjectTopic(o.executor, actor, target, { topic: i.topic, scelta: i.scelta, perche: i.perche, alternativa: i.alternativa }),
   () => "Scelta salvata.");
 }
@@ -194,7 +211,7 @@ export async function saveProjectTopicAction(workspaceId: string, caseId: string
 /** Framework, strumenti nuovi, stima. */
 export async function saveProjectDetailsAction(workspaceId: string, caseId: string, input: unknown): Promise<UcActionResult<{ version: number }>> {
   const i = (input ?? {}) as Record<string, unknown>;
-  return onFactoryBuild(await requireWorkspaceAccess(workspaceId), workspaceId, caseId, ({ o, actor, target }) =>
+  return onFactoryBuild(await requireWorkspaceAccess(workspaceId, CASE_ONLY_BUILDER), workspaceId, caseId, ({ o, actor, target }) =>
     saveProjectDetails(o.executor, actor, target, { framework: i.framework, newTools: i.newTools, estimateHours: i.estimateHours, monthlyCostEur: i.monthlyCostEur }),
   () => "Salvato.");
 }
@@ -202,7 +219,7 @@ export async function saveProjectDetailsAction(workspaceId: string, caseId: stri
 /** «Manda in approvazione». */
 export async function submitProjectAction(workspaceId: string, caseId: string, input: unknown): Promise<UcActionResult<{ version: number; newTools: number }>> {
   const i = (input ?? {}) as Record<string, unknown>;
-  return onFactoryBuild(await requireWorkspaceAccess(workspaceId), workspaceId, caseId, ({ o, actor, target }) => submitProject(o.executor, actor, target, { revision: i.revision }), (v) =>
+  return onFactoryBuild(await requireWorkspaceAccess(workspaceId, CASE_ONLY_BUILDER), workspaceId, caseId, ({ o, actor, target }) => submitProject(o.executor, actor, target, { revision: i.revision }), (v) =>
     v.newTools > 0 ? "Progetto da approvare. Serve anche l'ok dell'AI Board agli strumenti nuovi." : "Progetto da approvare.",
   );
 }
@@ -258,7 +275,7 @@ export async function approveProjectAction(workspaceId: string, caseId: string, 
 /** Una decisione del team. */
 export async function addDecisionAction(workspaceId: string, caseId: string, input: unknown): Promise<UcActionResult<{ id: string }>> {
   const i = (input ?? {}) as Record<string, unknown>;
-  return onFactoryBuild(await requireWorkspaceAccess(workspaceId), workspaceId, caseId, ({ o, actor, target }) =>
+  return onFactoryBuild(await requireWorkspaceAccess(workspaceId, CASE_ONLY_BUILDER), workspaceId, caseId, ({ o, actor, target }) =>
     addTeamDecision(o.executor, actor, target, { topic: i.topic, choice: i.choice, reason: i.reason, rejected: i.rejected, topicKey: i.topicKey }),
   () => "Decisione registrata.");
 }

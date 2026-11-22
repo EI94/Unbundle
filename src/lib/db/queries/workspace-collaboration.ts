@@ -18,6 +18,9 @@ import {
   WORKSPACE_INVITE_MAX_USES,
   type InviteRejection,
 } from "@/lib/workspace-invite-token";
+import type { CaseOnlyRole } from "@/lib/auth/case-only";
+import { CASE_ONLY_INVITE_GRANT_CTE } from "./use-case-builders";
+import { CASE_ONLY_PROBE_SQL } from "../use-case-hub-case-only-ddl";
 
 export const WORKSPACE_COLLABORATOR_ROLES = [
   "transformation_lead",
@@ -36,8 +39,10 @@ export type WorkspaceCollaboratorRole =
  * elenchi, quindi va mostrato per quello che e'. Non e' l'insieme assegnabile
  * da un invito, che resta WORKSPACE_COLLABORATOR_ROLES: nessuna interfaccia
  * umana deve poter conferire `learner`, e nessun invito deve poterlo togliere.
+ * (8.0d) Anche «Solo questo use case» (`esterno_caso`): compare in Persone con
+ * il suo nome, e nessun invito da Persone lo conferisce.
  */
-export type WorkspaceMemberRole = WorkspaceCollaboratorRole | "learner";
+export type WorkspaceMemberRole = WorkspaceCollaboratorRole | "learner" | CaseOnlyRole;
 
 
 export async function createWorkspaceInvitation(params: {
@@ -436,8 +441,27 @@ export type AcceptWorkspaceInvitationResult =
       /** joined: nuovo accesso; upgraded: era partecipante a un corso; already_member: era già dentro, ruolo invariato. */
       outcome: "joined" | "upgraded" | "already_member";
       role: string;
+      /** (8.0d) Lo use case di un invito «Solo questo use case» accettato: la sua concessione è scritta. */
+      caseOnlyUseCaseId?: string;
     }
-  | { ok: false; reason: "invalid" | InviteRejection };
+  | { ok: false; reason: "invalid" | InviteRejection | "non_disponibile" | "caso_assente" };
+
+/**
+ * (8.0d) Lo use case di un invito «Solo questo use case», se è ancora del workspace dell'invito; null se non c'è più (lo use
+ * case cancellato porta via la riga) o la 0043 non è pronta. `ready`: la sonda della 0043; finché è falsa si chiude, non
+ * si apre (l'accettazione risponde «riprova tra qualche minuto»).
+ */
+async function caseOnlyInviteCase(invitationId: string): Promise<{ ready: boolean; useCaseId: string | null }> {
+  const { rows: probe } = await db.execute(sql`SELECT ${sql.raw(CASE_ONLY_PROBE_SQL)} AS ok`);
+  if ((probe[0] as { ok?: unknown } | undefined)?.ok !== true) return { ready: false, useCaseId: null };
+  const { rows } = await db.execute(sql`
+    SELECT bi.use_case_id FROM use_case_builder_invites bi
+    JOIN workspace_invitations i ON i.id = bi.invitation_id
+    JOIN use_cases u ON u.id = bi.use_case_id AND u.workspace_id = i.workspace_id
+    WHERE bi.invitation_id = ${invitationId}::uuid`);
+  const useCaseId = (rows[0] as { use_case_id?: unknown } | undefined)?.use_case_id;
+  return { ready: true, useCaseId: typeof useCaseId === "string" ? useCaseId : null };
+}
 
 export async function acceptWorkspaceInvitation(params: {
   token: string;
@@ -464,6 +488,14 @@ export async function acceptWorkspaceInvitation(params: {
     return { ok: true, workspaceId: invitation.workspaceId, outcome: "already_member", role: decision.role };
   }
   if (decision.kind === "reject") return { ok: false, reason: decision.reason };
+  // (8.0d) Un invito «Solo questo use case»: prima la 0043 (senza, «riprova»), poi il suo caso, che deve esserci ancora.
+  let caseOnlyUseCaseId: string | undefined;
+  if (decision.caseOnly) {
+    const target = await caseOnlyInviteCase(invitation.id);
+    if (!target.ready) return { ok: false, reason: "non_disponibile" };
+    if (!target.useCaseId) return { ok: false, reason: "caso_assente" };
+    caseOnlyUseCaseId = target.useCaseId;
+  }
 
   // Accesso al workspace, consumo del link e registro dell'accettazione in
   // un'unica istruzione: o tutto o niente (il driver HTTP di Neon non ha
@@ -473,22 +505,46 @@ export async function acceptWorkspaceInvitation(params: {
   // nel frattempo diventata membro con un ruolo da collaboratore (la riga di
   // un partecipante a un corso si aggiorna), e il link si consuma solo se
   // l'accesso è stato davvero scritto.
+  // (8.0d) Per elenco, con i ruoli confrontati come testo: si aggiornano solo le
+  // righe `learner` (con un invito da collaboratore) ed `esterno_caso` (sale con
+  // un invito da collaboratore; con un altro invito «Solo questo use case» resta
+  // com'è e riceve il caso). Un invito «Solo questo use case» non va mai a chi
+  // segue un corso, e vuole il suo caso ancora nel workspace; la sua concessione
+  // nasce nella stessa istruzione (`CASE_ONLY_INVITE_GRANT_CTE`). Le parti della
+  // 0043 entrano solo nell'istruzione di un invito «Solo questo use case»: un
+  // invito da collaboratore si accetta anche prima della 0043, e mai senza il
+  // suo ruolo da collaboratore (`i.role::text <> 'esterno_caso'`).
+  const caseOnlyInvite = decision.caseOnly === true;
+  const inviteKind = caseOnlyInvite
+    ? sql`AND i.role::text = 'esterno_caso'
+        AND NOT EXISTS (SELECT 1 FROM workspace_memberships w WHERE w.workspace_id = i.workspace_id
+          AND w.user_id = ${params.userId}::uuid AND w.role::text = 'learner')
+        AND EXISTS (SELECT 1 FROM use_case_builder_invites bi JOIN use_cases u ON u.id = bi.use_case_id AND u.workspace_id = i.workspace_id
+          WHERE bi.invitation_id = i.id)`
+    : sql`AND i.role::text <> 'esterno_caso'`;
+  const grantCte = caseOnlyInvite ? sql`, ${sql.raw(CASE_ONLY_INVITE_GRANT_CTE)}` : sql``;
+  const grantCount = caseOnlyInvite ? sql`(SELECT count(*) FROM granted)::int` : sql`0`;
   const { rows } = await db.execute(sql`
     WITH valid AS (
       SELECT i.id, i.workspace_id, i.role, i.created_by_user_id FROM workspace_invitations i
       WHERE i.id = ${invitation.id}::uuid AND i.revoked_at IS NULL AND i.expires_at > now() AND i.used_count < i.max_uses
         AND NOT EXISTS (SELECT 1 FROM memberships m WHERE m.organization_id = i.organization_id AND m.user_id = ${params.userId}::uuid)
         AND NOT EXISTS (SELECT 1 FROM workspace_memberships w WHERE w.workspace_id = i.workspace_id
-          AND w.user_id = ${params.userId}::uuid AND w.role <> 'learner')
+          AND w.user_id = ${params.userId}::uuid AND w.role::text NOT IN ('learner', 'esterno_caso'))
+        ${inviteKind}
       FOR UPDATE
     ), member AS (
       INSERT INTO workspace_memberships (workspace_id, user_id, role, source, invited_by_user_id)
       SELECT workspace_id, ${params.userId}::uuid, role, 'invite_link', created_by_user_id FROM valid
-      ON CONFLICT (workspace_id, user_id) DO UPDATE SET role = EXCLUDED.role, source = EXCLUDED.source,
-        invited_by_user_id = EXCLUDED.invited_by_user_id, updated_at = now()
-        WHERE workspace_memberships.role = 'learner'
-      RETURNING role
-    ), claimed AS (
+      ON CONFLICT (workspace_id, user_id) DO UPDATE SET
+        role = CASE WHEN EXCLUDED.role::text = 'esterno_caso' THEN workspace_memberships.role ELSE EXCLUDED.role END,
+        source = CASE WHEN EXCLUDED.role::text = 'esterno_caso' THEN workspace_memberships.source ELSE EXCLUDED.source END,
+        invited_by_user_id = CASE WHEN EXCLUDED.role::text = 'esterno_caso' THEN workspace_memberships.invited_by_user_id ELSE EXCLUDED.invited_by_user_id END,
+        updated_at = now()
+        WHERE (workspace_memberships.role::text = 'learner' AND EXCLUDED.role::text <> 'esterno_caso')
+          OR workspace_memberships.role::text = 'esterno_caso'
+      RETURNING role, user_id
+    )${grantCte}, claimed AS (
       UPDATE workspace_invitations i SET used_count = i.used_count + 1, updated_at = now()
       FROM valid v WHERE i.id = v.id AND EXISTS (SELECT 1 FROM member)
       RETURNING i.id, i.workspace_id
@@ -498,14 +554,15 @@ export async function acceptWorkspaceInvitation(params: {
       ON CONFLICT (invitation_id, user_id) DO NOTHING
       RETURNING id
     )
-    SELECT (SELECT count(*) FROM claimed)::int AS claimed, (SELECT role FROM member LIMIT 1) AS role`);
+    SELECT (SELECT count(*) FROM claimed)::int AS claimed, (SELECT role FROM member LIMIT 1) AS role, ${grantCount} AS granted`);
   const row = rows[0] as { claimed: number; role: string | null } | undefined;
   if (row?.claimed && row.role) {
     return {
       ok: true,
       workspaceId: invitation.workspaceId,
-      outcome: decision.upgradesLearner ? "upgraded" : "joined",
+      outcome: decision.upgradesLearner || decision.upgradesCaseOnly ? "upgraded" : "joined",
       role: row.role,
+      ...(caseOnlyUseCaseId ? { caseOnlyUseCaseId } : {}),
     };
   }
 
@@ -529,5 +586,8 @@ export async function acceptWorkspaceInvitation(params: {
     return { ok: true, workspaceId: invitation.workspaceId, outcome: "already_member", role: retry.role };
   }
   if (!fresh) return { ok: false, reason: "invalid" };
-  return { ok: false, reason: retry?.kind === "reject" ? retry.reason : "used" };
+  if (retry?.kind === "reject") return { ok: false, reason: retry.reason };
+  // (8.0d) Lo use case dell'invito cancellato nel frattempo: lo si dice, invece di «già usato».
+  if (caseOnlyInvite && !(await caseOnlyInviteCase(invitation.id)).useCaseId) return { ok: false, reason: "caso_assente" };
+  return { ok: false, reason: "used" };
 }

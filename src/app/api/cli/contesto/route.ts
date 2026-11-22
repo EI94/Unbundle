@@ -3,8 +3,8 @@ import { CONTEXT_TEXT } from "@/lib/context/text";
 import { askContext } from "@/lib/db/queries/context-ask";
 import { contextStoreReady } from "@/lib/db/queries/context-store";
 import { namesToHide } from "@/lib/db/queries/use-case-factory";
-import { resolveCliCase } from "@/lib/use-cases/cli/case";
-import { CLI_CONTEXT_UNAVAILABLE } from "@/lib/use-cases/cli/case-errors";
+import { caseOnlyContextOf, resolveCliCase } from "@/lib/use-cases/cli/case";
+import { CLI_CASE_ONLY_ASK, CLI_CASE_ONLY_BUILT_ASK, CLI_CONTEXT_UNAVAILABLE } from "@/lib/use-cases/cli/case-errors";
 import { askLimitFailure, askResponse, askTimeoutMs, cliContextFailure, type CliFailureSpec } from "@/lib/use-cases/cli/context-commands";
 import { cliError, cliJson, openCli, readCliBody } from "@/lib/use-cases/cli/route-kit";
 import { givenNames, nameTokens, redact } from "@/lib/use-cases/factory/package";
@@ -36,6 +36,12 @@ export async function POST(request: Request): Promise<Response> {
   const resolved = await resolveCliCase(opened.value, read.body.caso);
   if (!resolved.ok) return resolved.response;
   const c = resolved.value;
+  // (8.0d, D7) «Solo questo use case» non fa domande sulla memoria del cliente (cerca in tutta l'azienda): legge i fatti
+  // legati al suo caso con lo strato `contesto`.
+  if (c.caseOnly) return cliError(403, "solo_questo_caso", CLI_CASE_ONLY_ASK(c.useCase.code));
+  // (8.0d, D7) Né, per nessuno, su un caso che costruisce qualcuno «Solo questo use case»: la CLI lavora nel repository
+  // del caso, che chi viene da fuori legge su GitHub.
+  if (await caseOnlyContextOf(opened.value.executor, c)) return cliError(403, "solo_questo_caso", CLI_CASE_ONLY_BUILT_ASK(c.useCase.code));
   if (!(await contextStoreReady())) return failure(CLI_CONTEXT_UNAVAILABLE);
   const { principal, executor } = opened.value;
   // D1: la persona del token, ma con gli occhi di chi non è di Lateral Space. I limiti restano i suoi.

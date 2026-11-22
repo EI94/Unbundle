@@ -5,6 +5,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { isCollaboratorRole } from "@/lib/workspace-permissions";
 import { LearningError, learningEnabled } from "./server";
 import type { PrivateTrainingPack } from "./types";
 import {
@@ -57,7 +58,8 @@ export async function requireRegisterAccess(workspaceId: string) {
   if (!session?.user?.id) throw new LearningError("unauthenticated", "Accedi di nuovo per consultare il registro.");
   const userId = session.user.id;
   const access = await getWorkspaceAccessForUser(userId, workspaceId);
-  if (!access || access.role === "learner") throw forbidden();
+  // (8.0d-1) Solo i collaboratori, per elenco: mai chi segue un corso, «Solo questo use case» o un ruolo sconosciuto.
+  if (!access || !isCollaboratorRole(access.role)) throw forbidden();
   const admin = BOOTSTRAP_ROLES.includes(access.role);
   let programIds: string[] | null = null;
   if (!admin) {

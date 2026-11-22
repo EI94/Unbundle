@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { isCollaboratorRole } from "@/lib/workspace-permissions";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { getUseCaseById } from "@/lib/db/queries/use-cases";
 import { dossierStateForUseCase } from "@/lib/db/queries/use-case-dossiers";
@@ -77,8 +78,9 @@ export default async function PublicPortfolioSharePage({
   if (session?.user?.id) {
     const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
     // Chi collabora apre la scheda vera; un partecipante a un corso non può,
-    // e vede la stessa vista ridotta di chi non ha un account.
-    if (access && access.role !== "learner") {
+    // e vede la stessa vista ridotta di chi non ha un account. (8.0d) Per
+    // elenco: anche «Solo questo use case» e un ruolo sconosciuto restano qui.
+    if (access && isCollaboratorRole(access.role)) {
       redirect(memberCardPath(workspaceId, useCaseId));
     }
   }

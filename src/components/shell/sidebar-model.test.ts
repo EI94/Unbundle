@@ -151,7 +151,7 @@ test("area «Use case» spenta: la barra di prima, voce per voce, accesa come pr
 });
 
 test("mai più di cinque voci in alto, chiavi uniche, ogni indirizzo dentro il workspace", () => {
-  const roles = ["exec_sponsor", "transformation_lead", "function_lead", "analyst", "contributor", "learner", null, "sconosciuto"];
+  const roles = ["exec_sponsor", "transformation_lead", "function_lead", "analyst", "contributor", "learner", "esterno_caso", null, "sconosciuto"];
   for (const role of roles) {
     for (const flags of [0, 1, 2, 3, 4, 5, 6, 7]) {
       const nav = workspaceNav(viewer({ role, learningAvailable: Boolean(flags & 1), casesAvailable: Boolean(flags & 2), factoryAvailable: Boolean(flags & 4) }));
@@ -162,9 +162,29 @@ test("mai più di cinque voci in alto, chiavi uniche, ogni indirizzo dentro il w
       for (const item of nav.main) assert.ok((item.children ?? []).length !== 1 || item.children?.[0].href !== item.href, "una vista sola uguale alla voce non serve");
     }
   }
-  // Un ruolo sconosciuto vede quanto un contributore, mai di più.
-  assert.deepEqual(workspaceNav(viewer({ role: "sconosciuto" })), workspaceNav(viewer({ role: "contributor" })));
-  assert.deepEqual(workspaceNav(viewer({ role: null })), workspaceNav(viewer({ role: "contributor" })));
+  // (8.0d) Le porte chiuse per default: un ruolo sconosciuto (o nessun ruolo) non vede nessuna voce, con l'area accesa o
+  // spenta. Prima vedeva quanto un contributore.
+  for (const useCaseHub of [true, false]) {
+    for (const role of ["sconosciuto", null, "", "LEARNER"]) {
+      const nav = workspaceNav(viewer({ role, useCaseHub, learningAvailable: true, casesAvailable: true, factoryAvailable: true }));
+      assert.deepEqual([nav.main.length, nav.tools.length, nav.settings], [0, 0, null], String(role));
+    }
+  }
+});
+
+test("(8.0d) «Solo questo use case»: una voce, «Agent Factory», sempre; accesa anche nel progetto dell'agente", () => {
+  for (const useCaseHub of [true, false]) {
+    for (const flags of [0, 1, 2, 3, 4, 5, 6, 7]) {
+      const nav = workspaceNav(viewer({ role: "esterno_caso", useCaseHub, learningAvailable: Boolean(flags & 1), casesAvailable: Boolean(flags & 2), factoryAvailable: Boolean(flags & 4) }));
+      assert.deepEqual(titles(nav.main), ["Agent Factory"]);
+      assert.equal(nav.main[0].href, `${base}/agent-factory`);
+      assert.deepEqual([nav.tools.length, nav.settings, nav.main[0].children], [0, null, undefined]);
+    }
+  }
+  const nav = workspaceNav(viewer({ role: "esterno_caso" }));
+  for (const path of ["/agent-factory", "/casi-duso/00000000-0000-4000-8000-000000000c01/progetto", "/use-cases/00000000-0000-4000-8000-000000000e01/progetto"]) {
+    assert.equal(activeNavItem(nav, at(path), base)?.item.title, "Agent Factory", path);
+  }
 });
 
 /** Ogni rotta di oggi (§2.4) accende una voce sola, quella della sua casa nuova. */

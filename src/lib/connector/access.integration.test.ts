@@ -314,9 +314,10 @@ test("token nell'indirizzo: 400 senza eco; un token valido diventa «esposto» s
 });
 
 test("token esposto: nessun segnale in campanella o Intelligence, per nessun membro; chi segna letto non spegne lo stato", opts, async () => {
-  // La campanella e Intelligence leggono getSignalsByWorkspace per ogni membro (tranne chi segue solo i corsi).
+  // La campanella e Intelligence leggono getSignalsByWorkspace per ogni membro (tranne chi segue solo i corsi), con il suo
+  // ruolo: senza ruolo l'elenco è vuoto per costruzione (8.0d-1), quindi si guarda con gli occhi di chi vede di più.
   for (const workspaceId of [ids.wsA, ids.wsB]) {
-    const feed = await app.signals.getSignalsByWorkspace(workspaceId, 50);
+    const feed = await app.signals.getSignalsByWorkspace(workspaceId, 50, "transformation_lead");
     assert.deepEqual(feed.filter((s) => s.signalType === "connector_token_exposed" || s.relatedEntityId === tokens.leakA.id), []);
   }
   const rows = await one(`SELECT count(*)::int AS n FROM weekly_signals WHERE workspace_id = ANY($1::uuid[])`, [[ids.wsA, ids.wsB]]);

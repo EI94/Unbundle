@@ -19,6 +19,7 @@ import { CONTEXT_TEXT } from "@/lib/context/text";
 import { loadAgentContext, loadUseCaseContext, type UseCaseContext } from "@/lib/db/queries/context-work";
 import { listCaseReadTokens } from "@/lib/db/queries/uc-mcp";
 import { factoryStoreReady, readFactory, findUseCaseOfCase, namesToHide, type DecisionView, type FactoryTarget, type FactoryView, type ProjectView } from "@/lib/db/queries/use-case-factory";
+import { hasCaseOnlyBuilder } from "@/lib/db/queries/use-case-builders";
 import { FACTORY_LIMITS, SETUP_TOPICS } from "@/lib/db/use-case-hub-factory-ddl";
 import { listTasks, tasksStoreReady, type TaskView } from "@/lib/db/queries/use-case-tasks";
 import { listOpenProposals, proposalsStoreReady, type ProposalView } from "@/lib/db/queries/use-case-task-proposals";
@@ -45,7 +46,8 @@ import { canOpenPage } from "@/lib/uc/views/page-access";
 import { isLsViewer } from "@/lib/uc/views/status-groups";
 import type { SemaforoColor } from "@/lib/uc/vocab";
 import { loadFactoryAccess } from "@/lib/use-cases/factory/access";
-import { packageContextDelta } from "@/lib/use-cases/factory/package";
+import { caseOnlyPackageFiles, packageContextDelta } from "@/lib/use-cases/factory/package";
+import { isCaseOnly } from "@/lib/auth/case-only";
 import { aiBoardOkRule, AI_BOARD_NOTE_MIN, canApproveProject, canRequestProjectChange, canWriteFactory } from "@/lib/use-cases/factory/permissions";
 import { romeToday } from "@/lib/use-cases/quarter";
 import { cn } from "@/lib/utils";
@@ -70,6 +72,11 @@ import { AiBoardOk, DecisionForm, DetailsEditor, PackageButton, ProjectPrimaryAc
  *   scrive, approva e dà l'ok dell'AI Board è quello di prima (`loadFactoryAccess`, i permessi della fabbrica).
  *
  * Una lettura che non riesce (evals, contesto, novità del pacchetto) non fa cadere la pagina.
+ *
+ * (8.0d) È anche la pagina di «Solo questo use case» (`esterno_caso`), una porta di `CASE_ONLY_SURFACES`: «Progetto
+ * dell'agente» della specifica, con la sua «Qualità» (evals e banco). Il caso poi vuole il predicato (`loadCaseHead` →
+ * `caseAccessPrecheck`: un caso fuori risponde 404); il pacchetto ha `CONTESTO.md` con i soli fatti del caso (D7), e il
+ * contesto dell'azienda non si legge (`contextAbilities` non apre a chi non è collaboratore).
  */
 
 const day = (iso: string | null) => (iso ? new Intl.DateTimeFormat("it-IT", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/Rome" }).format(new Date(iso)) : "");
@@ -192,11 +199,22 @@ async function readContextSection(actor: ContextActor, useCaseId: string): Promi
   }
 }
 
-/** (9b) Le novità del contesto dopo l'ultimo pacchetto (`packageContextDelta`); zero se la lettura non riesce. */
-async function readContextDelta(executor: UcExecutor, target: FactoryTarget, code: string, latest: NonNullable<FactoryView["latestPackage"]>): Promise<number> {
+/**
+ * (8.0d, D7) Il progetto come lo legge «Solo questo use case», e chiunque legga un caso che costruisce qualcuno «Solo
+ * questo use case»: `CONTESTO.md` del pacchetto con i soli fatti del caso (quello che si copia finisce nel repository).
+ */
+function caseOnlyView(view: FactoryView): FactoryView {
+  return view.latestPackage ? { ...view, latestPackage: { ...view.latestPackage, files: caseOnlyPackageFiles(view.latestPackage.files) } } : view;
+}
+
+/**
+ * (9b) Le novità del contesto dopo l'ultimo pacchetto (`packageContextDelta`); zero se la lettura non riesce. (8.0d, D7)
+ * Con `caseOnlyContext`, sui soli fatti del caso.
+ */
+async function readContextDelta(executor: UcExecutor, target: FactoryTarget, code: string, latest: NonNullable<FactoryView["latestPackage"]>, caseOnlyContext: boolean): Promise<number> {
   try {
-    const [context, names] = await Promise.all([loadAgentContext(target), namesToHide(executor, target)]);
-    return packageContextDelta({ context, namesToHide: names, code, latest });
+    const [context, names] = await Promise.all([loadAgentContext({ ...target, caseOnly: caseOnlyContext }), namesToHide(executor, target)]);
+    return packageContextDelta({ context, namesToHide: names, code, latest, caseOnly: caseOnlyContext });
   } catch (error) {
     console.error("[costruzione] context_delta_failed", { error: { name: error instanceof Error ? error.name : "Error" } });
     return 0;
@@ -219,7 +237,10 @@ export default async function ConstructionPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { workspaceId, caseId } = await params;
-  const { session, access } = await requireWorkspacePage(workspaceId);
+  // (8.0d) Una porta di «Solo questo use case» (`CASE_ONLY_SURFACES`): il dossier poi vuole il predicato per questo caso
+  // (`caseAccessPrecheck`), e un caso fuori risponde 404. Della memoria del cliente legge solo i fatti del suo caso (D7).
+  const { session, access } = await requireWorkspacePage(workspaceId, { allowCaseOnly: true });
+  const caseOnly = isCaseOnly(access.role);
   const { caseAccess, executor, header } = await loadCaseHead(workspaceId, caseId, session.user.id, access.role);
   const roles = caseAccess.roles;
   if (!canOpenShellPage("costruzione", roles)) notFound();
@@ -233,7 +254,10 @@ export default async function ConstructionPage({
   if (factory.blocked === "non_disponibile") return <NotYet />;
   const read = await readFactory(executor, target, { kind: "persona", userId: session.user.id, roles: factory.roles });
   if (!read.ok) notFound();
-  const view = read.value;
+  // (8.0d, D7) «Solo questo use case», e chiunque legga un caso che costruisce qualcuno «Solo questo use case», legge il
+  // pacchetto con `CONTESTO.md` ridotto ai fatti del caso.
+  const caseOnlyContext = caseOnly || (await hasCaseOnlyBuilder(executor, target));
+  const view = caseOnlyContext ? caseOnlyView(read.value) : read.value;
 
   const c = header.case;
   const base = casePath(workspaceId, caseId, "costruzione");
@@ -299,7 +323,7 @@ export default async function ConstructionPage({
     tasksReady ? listTasks(executor, target) : Promise.resolve<TaskView[]>([]),
     readEvalOverview(executor, target).then(async (r) => ({ ...r, origins: await readEvalOrigins(executor, target, r.overview) })),
     readContextSection(contextActorFor(session.user, access, workspaceId), useCase.useCaseId),
-    builder && view.latestPackage ? readContextDelta(executor, target, useCase.code ?? "", view.latestPackage) : Promise.resolve(0),
+    builder && view.latestPackage ? readContextDelta(executor, target, useCase.code ?? "", view.latestPackage, caseOnlyContext) : Promise.resolve(0),
     claudeShown ? listCaseReadTokens(executor, workspaceId, caseId) : Promise.resolve([]),
   ]);
   const deltaLine = packageDeltaLine(contextDelta);

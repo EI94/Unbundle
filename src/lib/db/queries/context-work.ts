@@ -167,7 +167,7 @@ function agentFactOf(row: AgentFactRow, today: string): AgentFact {
  * `sezione_cambiata` dopo `since` dicono com'era il fatto (`da`), la prima `use_case_aggiunto` o `use_case_tolto` per
  * questo use case se era legato; senza storia, com'è adesso (un legame nato dopo `since` non c'era).
  */
-function perimeterAt(workspaceId: string, useCaseId: string, since: string): SQL {
+function perimeterAt(workspaceId: string, useCaseId: string, since: string, caseOnly = false): SQL {
   const at = sql`${since}::timestamptz`;
   const firstChange = (action: "visibilita_cambiata" | "sezione_cambiata") => sql`(
     SELECT e.detail->>'da' FROM context_events e
@@ -180,13 +180,17 @@ function perimeterAt(workspaceId: string, useCaseId: string, since: string): SQL
     ORDER BY e.at, e.id LIMIT 1)`;
   const linkedThen = sql`CASE ${linkChange} WHEN 'use_case_tolto' THEN true WHEN 'use_case_aggiunto' THEN false
     ELSE EXISTS (SELECT 1 FROM context_fact_links l WHERE l.fact_id = f.id AND l.workspace_id = ${workspaceId}::uuid AND l.use_case_id = ${useCaseId}::uuid AND l.created_at < ${at}) END`;
+  // (8.0d, D7) Per «Solo questo use case» il perimetro è solo dei fatti legati allo use case: niente regole né parole
+  // dell'azienda.
+  const sections = caseOnly ? sql`false` : sql`coalesce(${firstChange("sezione_cambiata")}, f.section) IN ('regole', 'parole')`;
   return sql`(f.created_at < ${at} AND (f.status = 'attivo' OR f.ended_at >= ${at})
     AND coalesce(${firstChange("visibilita_cambiata")}, f.visibility) = 'tutti'
-    AND (coalesce(${firstChange("sezione_cambiata")}, f.section) IN ('regole', 'parole') OR ${linkedThen}))`;
+    AND (${sections} OR ${linkedThen}))`;
 }
 
 /** Il fatto `f` è adesso nel perimetro di `CONTESTO.md` dello use case: attivo, «Per tutti», legato o tra regole e parole. */
-function perimeterNow(workspaceId: string, useCaseId: string): SQL {
+function perimeterNow(workspaceId: string, useCaseId: string, caseOnly = false): SQL {
+  if (caseOnly) return sql`(f.status = 'attivo' AND f.visibility = 'tutti' AND ${linkedTo(workspaceId, useCaseId)})`;
   return sql`(f.status = 'attivo' AND f.visibility = 'tutti' AND (f.section IN ('regole', 'parole') OR ${linkedTo(workspaceId, useCaseId)}))`;
 }
 
@@ -196,13 +200,13 @@ function perimeterNow(workspaceId: string, useCaseId: string): SQL {
  * non fa una versione nuova del pacchetto. Con `since`, solo quelli nuovi o cambiati per chi legge il caso: nati da quella
  * data, o entrati nel perimetro sul posto (allargati a «Per tutti», legati allo use case, spostati tra le regole).
  */
-async function agentFacts(workspaceId: string, useCaseId: string, where: SQL, since: string | null, limit: number, today: string): Promise<AgentFact[]> {
+async function agentFacts(workspaceId: string, useCaseId: string, where: SQL, since: string | null, limit: number, today: string, caseOnly = false): Promise<AgentFact[]> {
   const rows = rowsOf<AgentFactRow>(
     await db.execute(sql`
       SELECT f.section, f.statement, f.origin, f.last_confirmed_at, s.kind AS source_kind, s.origin AS source_origin, s.external_id AS source_external_id, s.occurred_on AS source_day
       FROM context_facts f LEFT JOIN context_sources s ON s.id = f.source_id
       WHERE f.workspace_id = ${workspaceId}::uuid AND f.status = 'attivo' AND f.visibility = 'tutti' AND ${where}
-        ${since ? sql`AND (f.created_at >= ${since}::timestamptz OR NOT ${perimeterAt(workspaceId, useCaseId, since)})` : sql``}
+        ${since ? sql`AND (f.created_at >= ${since}::timestamptz OR NOT ${perimeterAt(workspaceId, useCaseId, since, caseOnly)})` : sql``}
       ORDER BY array_position(${SECTION_ORDER}, f.section::text), f.created_at DESC, f.id
       LIMIT ${limit}`),
   );
@@ -216,10 +220,10 @@ async function agentFacts(workspaceId: string, useCaseId: string, where: SQL, si
  * sono più (ritirati, ristretti a «Solo Lateral Space», slegati, spostati fuori). Un fatto nato e tolto dopo `since` non
  * conta: chi legge il caso non l'ha mai visto.
  */
-async function perimeterCounts(workspaceId: string, useCaseId: string, since: string): Promise<{ added: number; changed: number; retired: number }> {
+async function perimeterCounts(workspaceId: string, useCaseId: string, since: string, caseOnly = false): Promise<{ added: number; changed: number; retired: number }> {
   const after = sql`${since}::timestamptz`;
-  const now = perimeterNow(workspaceId, useCaseId);
-  const then = perimeterAt(workspaceId, useCaseId, since);
+  const now = perimeterNow(workspaceId, useCaseId, caseOnly);
+  const then = perimeterAt(workspaceId, useCaseId, since, caseOnly);
   const [row] = rowsOf<{ added: number; changed: number; retired: number }>(
     await db.execute(sql`
       SELECT
@@ -241,20 +245,26 @@ const isoOf = (value: Date | null | undefined): string | null => (value instance
  * l'MCP del caso, chi genera il pacchetto). Con `since`: nei fatti solo quelli nuovi o cambiati da quella data (anche
  * sul posto: allargati, legati), e i conti di nuovi, cambiati e tolti (anche ristretti e slegati). null senza archivio o
  * con uno use case di un altro workspace.
+ *
+ * (8.0d, D7) Con `caseOnly` (chi legge è «Solo questo use case»): solo i fatti legati allo use case, gli impegni e le
+ * domande che lo nominano; mai «In breve», le «Regole e vincoli» e le «Parole del cliente» dell'azienda, e i conti di
+ * `since` solo su quei fatti.
  */
-export async function loadAgentContext(i: { workspaceId: string; useCaseId: string; since?: Date | null; now?: Date }): Promise<AgentContext | null> {
+export async function loadAgentContext(i: { workspaceId: string; useCaseId: string; since?: Date | null; now?: Date; caseOnly?: boolean }): Promise<AgentContext | null> {
   if (!isUuid(i.workspaceId) || !isUuid(i.useCaseId) || !(await contextStoreReady())) return null;
   const ws = i.workspaceId;
   const today = romeToday(i.now ?? new Date());
   const since = isoOf(i.since);
+  const caseOnly = i.caseOnly === true;
   try {
     if (!(await workspaceHasUseCase(ws, i.useCaseId))) return null;
     const linked = linkedTo(ws, i.useCaseId);
+    const none = Promise.resolve<AgentFact[]>([]);
     const [brief, caseFacts, rules, words, commitmentRows, questionRows, counts] = await Promise.all([
-      briefLines(ws),
-      agentFacts(ws, i.useCaseId, linked, since, CONTEXT_LIMITS.caseFactsMax, today),
-      agentFacts(ws, i.useCaseId, sql`f.section = 'regole' AND NOT ${linked}`, since, CONTEXT_LIMITS.agentRulesMax, today),
-      agentFacts(ws, i.useCaseId, sql`f.section = 'parole' AND NOT ${linked}`, since, CONTEXT_LIMITS.agentWordsMax, today),
+      caseOnly ? Promise.resolve<string[]>([]) : briefLines(ws),
+      agentFacts(ws, i.useCaseId, linked, since, CONTEXT_LIMITS.caseFactsMax, today, caseOnly),
+      caseOnly ? none : agentFacts(ws, i.useCaseId, sql`f.section = 'regole' AND NOT ${linked}`, since, CONTEXT_LIMITS.agentRulesMax, today),
+      caseOnly ? none : agentFacts(ws, i.useCaseId, sql`f.section = 'parole' AND NOT ${linked}`, since, CONTEXT_LIMITS.agentWordsMax, today),
       db.execute(sql`
         SELECT statement, party, role_label, due_on FROM context_commitments
         WHERE workspace_id = ${ws}::uuid AND status = 'aperto' AND visibility = 'tutti' AND ${i.useCaseId}::uuid = ANY (use_case_ids)
@@ -263,7 +273,7 @@ export async function loadAgentContext(i: { workspaceId: string; useCaseId: stri
         SELECT question, ask_whom FROM context_questions
         WHERE workspace_id = ${ws}::uuid AND status = 'aperta' AND visibility = 'tutti' AND ${i.useCaseId}::uuid = ANY (use_case_ids)
         ORDER BY created_at, id LIMIT 50`),
-      since ? perimeterCounts(ws, i.useCaseId, since) : Promise.resolve(null),
+      since ? perimeterCounts(ws, i.useCaseId, since, caseOnly) : Promise.resolve(null),
     ]);
     return {
       brief,

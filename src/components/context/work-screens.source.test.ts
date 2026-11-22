@@ -157,10 +157,13 @@ test("il dossier: «Contesto» dopo «Decisioni» e prima di «Per il coding age
   assert.match(functionBody(source, "readContextSection"), /try \{\s*return await loadUseCaseContext\(actor, useCaseId\);\s*\} catch \(error\) \{[\s\S]*return null;\s*\}/);
   // La riga del pacchetto: solo a chi vede «Pacchetto» e con una versione; le novità sono le righe di CONTESTO.md che
   // cambierebbero, dal file salvato nella versione a quello di adesso con gli stessi nomi coperti (`packageContextDelta`).
-  assert.match(source, /builder && view\.latestPackage \? readContextDelta\(executor, target, useCase\.code \?\? "", view\.latestPackage\) : Promise\.resolve\(0\)/);
+  // (8.0d, D7) Per «Solo questo use case», e per chiunque legga un caso che costruisce qualcuno «Solo questo use case», le
+  // novità contano solo i fatti legati al caso (`caseOnlyContext`), e il pacchetto si legge ridotto.
+  assert.match(source, /const caseOnlyContext = caseOnly \|\| \(await hasCaseOnlyBuilder\(executor, target\)\);\s*const view = caseOnlyContext \? caseOnlyView\(read\.value\) : read\.value;/);
+  assert.match(source, /builder && view\.latestPackage \? readContextDelta\(executor, target, useCase\.code \?\? "", view\.latestPackage, caseOnlyContext\) : Promise\.resolve\(0\)/);
   const delta = functionBody(source, "readContextDelta");
-  assert.match(delta, /const \[context, names\] = await Promise\.all\(\[loadAgentContext\(target\), namesToHide\(executor, target\)\]\);/);
-  assert.match(delta, /return packageContextDelta\(\{ context, namesToHide: names, code, latest \}\);/);
+  assert.match(delta, /const \[context, names\] = await Promise\.all\(\[loadAgentContext\(\{ \.\.\.target, caseOnly: caseOnlyContext \}\), namesToHide\(executor, target\)\]\);/);
+  assert.match(delta, /return packageContextDelta\(\{ context, namesToHide: names, code, latest, caseOnly: caseOnlyContext \}\);/);
   assert.match(delta, /\} catch \(error\) \{[\s\S]*return 0;/);
   assert.match(source, /const deltaLine = packageDeltaLine\(contextDelta\);/);
   const pack = source.slice(at('<section aria-labelledby="pacchetto-titolo"'), source.indexOf("</section>", at('<section aria-labelledby="pacchetto-titolo"')));

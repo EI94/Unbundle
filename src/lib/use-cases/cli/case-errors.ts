@@ -25,6 +25,20 @@ export function notBuilderMessage(blocked: string | null, fallback: string): str
 }
 export const CLI_CASE_UNAVAILABLE = "Unbundle non risponde per questo caso: riprova tra qualche minuto.";
 
+/**
+ * (8.0d, D7) `unbundle contesto` a chi costruisce solo questo caso: la domanda cercherebbe in tutta la memoria del
+ * cliente; i fatti del suo caso li legge con lo strato `contesto`.
+ */
+export const CLI_CASE_ONLY_ASK = (code: string) =>
+  `Le domande sulla memoria del cliente non sono per chi costruisce solo questo caso: i fatti del caso li leggi con «unbundle context ${code} --contesto».`;
+
+/**
+ * (8.0d, D7) `unbundle contesto` su un caso che costruisce, o costruirà, qualcuno «Solo questo use case»: le risposte
+ * (dall'azienda intera) finirebbero nel repository del caso, che chi viene da fuori legge su GitHub.
+ */
+export const CLI_CASE_ONLY_BUILT_ASK = (code: string) =>
+  `Questo caso lo costruisce anche chi viene da un'altra azienda: dalla CLI niente domande sulla memoria del cliente, le risposte finirebbero nel repository del caso. Chiedi da Unbundle, in «Contesto»; i fatti del caso li leggi con «unbundle context ${code} --contesto».`;
+
 export interface CliCaseAccessFailure {
   status: 404 | 503;
   code: "non_trovato" | "non_disponibile";

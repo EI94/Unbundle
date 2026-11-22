@@ -71,6 +71,8 @@ export interface FactoryTodoView {
    * pannello si chiude prima, sostituendo il suo passo della cronologia invece di tornare indietro.
    */
   samePage: boolean;
+  /** (8.0d) Apre un pannello di questa pagina (`?apri=`) invece di un link: «Togli …» apre «Chi costruisce». */
+  panel: string | null;
 }
 
 /** Il numero all'inizio di un testo («3 domande…»), 1 se non c'è. */
@@ -84,10 +86,16 @@ function taskRefOf(text: string): string {
   return /\bT-\d+\b/.exec(text)?.[0] ?? "";
 }
 
-/** Dove porta una voce che non è della CI (la stessa regola di prima, `todoHref`). */
-export function factoryTodoHref(workspaceId: string, t: FactoryTodo): string {
+/**
+ * Dove porta una voce che non è della CI (la stessa regola di prima, `todoHref`). (8.0d) `caseOnly`: «Solo questo use
+ * case» non apre «Il tuo account» dalla Home, fuori dal suo perimetro: il testo dice già come si collega la CLI.
+ */
+export function factoryTodoHref(workspaceId: string, t: FactoryTodo, caseOnly = false): string {
   if (t.href) return t.href;
-  if (t.kind === "collega") return accountHref(workspaceId, "claude");
+  if (t.kind === "collega") return caseOnly ? `/dashboard/${workspaceId}/agent-factory` : accountHref(workspaceId, "claude");
+  // (8.0d) «Togli …» apre «Chi costruisce» (il pannello del «⋯»); «Aggiungi … al team» porta al team del dossier.
+  if (t.kind === "togli_esterno") return `/dashboard/${workspaceId}/agent-factory?apri=${FACTORY_PANELS.builders}`;
+  if (t.kind === "aggiungi_esterno") return `/dashboard/${workspaceId}/casi-duso/${t.caseId}/persone`;
   if (t.kind === "domande") return `/dashboard/${workspaceId}/use-cases/${t.useCaseId}/proposte`;
   // (Rilascio 10) Dritti alla Costruzione: passando dal 308 di `/progetto` la navigazione nell'app perderebbe l'ancora.
   if (t.kind === "banco" || t.kind === "evals") return `/dashboard/${workspaceId}/casi-duso/${t.caseId}/costruzione#banco`;
@@ -95,13 +103,21 @@ export function factoryTodoHref(workspaceId: string, t: FactoryTodo): string {
 }
 
 /** Una voce di «Da fare per te» della linea: verbo breve nella riga e nel pulsante, la frase di prima nel «?». */
-export function factoryTodoView(workspaceId: string, t: FactoryTodo, index: number, clientName: string): FactoryTodoView {
+export function factoryTodoView(workspaceId: string, t: FactoryTodo, index: number, clientName: string, caseOnly = false): FactoryTodoView {
   const ref = t.ref ?? taskRefOf(t.text);
   const n = t.count ?? leadingCount(t.text);
-  const href = factoryTodoHref(workspaceId, t);
+  const href = factoryTodoHref(workspaceId, t, caseOnly);
   // Il verbo nel pulsante e nella riga; il compito accanto al codice del caso, in grigio.
   const withRef = t.kind === "chiesto" || t.kind === "fermo" || t.kind === "rivedi";
-  const base = { key: `${t.kind}-${t.useCaseId || "ws"}-${index}`, kind: t.kind, code: T.todo.grey(t.code, withRef ? ref || null : null), href, external: Boolean(t.href), samePage: false };
+  const base = {
+    key: `${t.kind}-${t.useCaseId || "ws"}-${index}`,
+    kind: t.kind,
+    code: T.todo.grey(t.code, withRef ? ref || null : null),
+    href,
+    external: Boolean(t.href),
+    samePage: false,
+    panel: t.kind === "togli_esterno" ? FACTORY_PANELS.builders : null,
+  };
   switch (t.kind) {
     case "collega":
       return { ...base, row: T.todo.collega, button: T.todo.collega, why: T.todo.collegaWhy(clientName || T.todo.thisWorkspace) };
@@ -122,6 +138,10 @@ export function factoryTodoView(workspaceId: string, t: FactoryTodo, index: numb
       return { ...base, row: T.todo.banco, button: T.todo.banco, why: t.text };
     case "evals":
       return { ...base, row: T.todo.evals, button: T.todo.evals, why: t.text };
+    case "togli_esterno":
+      return { ...base, row: T.todo.togliEsterno(t.person ?? ""), button: T.todo.togliEsterno(t.person ?? ""), why: t.text };
+    case "aggiungi_esterno":
+      return { ...base, row: T.todo.aggiungiEsterno(t.person ?? ""), button: T.todo.aggiungiEsterno(t.person ?? ""), why: t.text };
   }
 }
 
@@ -140,6 +160,7 @@ export function ciTodoView(workspaceId: string, t: CiTodo): FactoryTodoView {
     href: `/dashboard/${workspaceId}/agent-factory${t.href}`,
     external: false,
     samePage: true,
+    panel: null,
   };
 }
 
@@ -153,6 +174,9 @@ const TODO_URGENCY: Readonly<Record<string, number>> = {
   "ci-metti": 0,
   "ci-ruota": 0,
   collega: 0,
+  // (8.0d) Chi costruisce da fuori un caso chiuso ha ancora l'accesso; chi è stato invitato aspetta la riga del team.
+  togli_esterno: 0,
+  aggiungi_esterno: 0,
   chiesto: 0,
   approva: 0,
   rivedi: 0,
@@ -306,6 +330,8 @@ export interface FactoryScreenModel {
   workspaceId: string;
   /** Il manager di Lateral Space: vede tutti i casi, «Chi costruisce» e «Repository da aggiornare». */
   manager: boolean;
+  /** (8.0d) «Solo questo use case»: i suoi casi, mai un link fuori dal suo perimetro. */
+  caseOnly: boolean;
   todos: FactoryTodoView[];
   chips: FactoryChip[];
   /** Il filtro acceso, a parole («2 casi · In costruzione»); null senza. */
@@ -324,6 +350,8 @@ export interface FactoryScreenModel {
 export function factoryScreenModel(input: {
   workspaceId: string;
   manager: boolean;
+  /** (8.0d) «Solo questo use case» (mai insieme a `manager`). */
+  caseOnly?: boolean;
   overview: Pick<FactoryOverview, "cases" | "families" | "todos" | "queue">;
   ciTodos: readonly CiTodo[];
   palette: AgentPalette | null;
@@ -371,13 +399,14 @@ export function factoryScreenModel(input: {
     })
     .filter((f) => f.cases.length > 0);
   const todos = orderTodos([
-    ...overview.todos.map((t, i) => factoryTodoView(workspaceId, t, i, input.clientName)),
+    ...overview.todos.map((t, i) => factoryTodoView(workspaceId, t, i, input.clientName, input.caseOnly === true)),
     ...input.ciTodos.map((t) => ciTodoView(workspaceId, t)),
   ]);
   const shown = station ? cases.filter((c) => c.station === station).length : cases.length;
   return {
     workspaceId,
     manager: input.manager,
+    caseOnly: input.caseOnly === true,
     todos,
     chips,
     filter: station ? { station, label: T.line.filtered(shown, STATION_LABEL[station]) } : null,

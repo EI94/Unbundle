@@ -119,8 +119,8 @@ function overview(o: Partial<FactoryOverview> = {}): Pick<FactoryOverview, "case
 
 const PALETTE = agentPalette([XX7, XX19, XX12].map((c) => ({ title: c.title })));
 
-function model(o: { manager?: boolean; station?: Station | null; ciTodos?: CiTodo[]; over?: Partial<FactoryOverview> } = {}): FactoryScreenModel {
-  return factoryScreenModel({ workspaceId: WS, manager: o.manager ?? true, overview: overview(o.over), ciTodos: o.ciTodos ?? [], palette: PALETTE, station: o.station ?? null, clientName: "Cliente Demo", now: NOW });
+function model(o: { manager?: boolean; caseOnly?: boolean; station?: Station | null; ciTodos?: CiTodo[]; over?: Partial<FactoryOverview> } = {}): FactoryScreenModel {
+  return factoryScreenModel({ workspaceId: WS, manager: o.manager ?? true, caseOnly: o.caseOnly, overview: overview(o.over), ciTodos: o.ciTodos ?? [], palette: PALETTE, station: o.station ?? null, clientName: "Cliente Demo", now: NOW });
 }
 
 const CI_ROW: CiFamilyRow = { repo: B, kind: "usata", manages: false, tone: "verde", text: "CI collegata · ultimo invio oggi · la chiave scade il 17/05/2027", primary: null, menu: [] };
@@ -362,7 +362,7 @@ test("(revisione) una voce della stessa pagina, da un pannello: il pannello si c
   assert.equal(sheetHistoryMove({ next: false, wasOpen: true, pushed: false }), "replace", "aperto da un link: si chiude sostituendo");
   // Il pannello «Da fare per te» passa la chiusura con `replace` alle righe della stessa pagina, che la chiamano prima di andare.
   const source = readFileSync(new URL("./factory-screen.tsx", import.meta.url), "utf8");
-  assert.match(source, /<TodoRow key=\{t\.key\} todo=\{t\} onSamePage=\{\(\) => setPanel\(null, \{ replace: true \}\)\} \/>/);
+  assert.match(source, /<TodoRow key=\{t\.key\} todo=\{t\} onSamePage=\{\(\) => setPanel\(null, \{ replace: true \}\)\} onPanel=\{\(key\) => setPanel\(key, \{ replace: true \}\)\} \/>/);
   assert.match(source, /<Link href=\{todo\.href\} className=\{ROW_CLASS\} onClick=\{todo\.samePage && onSamePage \? onSamePage : undefined\}/);
   const sheet = readFileSync(new URL("../ui-10/side-sheet.tsx", import.meta.url), "utf8");
   assert.match(sheet, /const move = sheetHistoryMove\(\{ next: next !== null, wasOpen, pushed: pushed\.current, replace: opts\.replace \}\);/);
@@ -415,4 +415,35 @@ test("(revisione) una persona nuova: l'invito come Analista, con l'e-mail ripuli
   assert.ok(values(true).includes(NEW_PERSON));
   assert.ok(!values(false).includes(NEW_PERSON), "senza il permesso di invitare la voce non c'è");
   assert.match(FACTORY_TEXT.builders.emailHint, /da mandare tu/, "Unbundle non manda l'invito: lo dice");
+});
+
+test("(8.0d) «Togli …» e «Aggiungi … al team»: il verbo con la persona, il codice in grigio, la frase della specifica nel «?»; «Togli» apre «Chi costruisce»", () => {
+  const remove = todo({ kind: "togli_esterno", code: "XX-0012", person: "Esterna Prova", text: "Togli Esterna Prova: XX-0012 è chiuso." });
+  const add = todo({ kind: "aggiungi_esterno", code: "XX-0012", caseId: XX12.caseId, person: "Esterna Prova", text: "Aggiungi Esterna Prova al team di XX-0012: lo costruisce da fuori." });
+  const [r, a] = [remove, add].map((t, i) => factoryTodoView(WS, t, i, "Cliente Demo"));
+  assert.deepEqual([r.row, r.button, r.code, r.why, r.panel], ["Togli Esterna Prova", "Togli Esterna Prova", "XX-0012", "Togli Esterna Prova: XX-0012 è chiuso.", FACTORY_PANELS.builders]);
+  assert.equal(r.href, `${BASE}?apri=${FACTORY_PANELS.builders}`);
+  assert.deepEqual([a.row, a.code, a.panel, a.href], ["Aggiungi Esterna Prova al team", "XX-0012", null, `/dashboard/${WS}/casi-duso/${XX12.caseId}/persone`]);
+  assert.equal(factoryTodoView(WS, { ...remove, person: " " }, 0, "").row, "Togli questa persona");
+  // Urgenti: qualcuno ha ancora l'accesso a un caso chiuso, o aspetta la riga del team.
+  const m = model({ over: { todos: [...TODOS, remove, add] } });
+  assert.deepEqual(m.todos.slice(0, 4).map((t) => t.kind).sort(), ["aggiungi_esterno", "approva", "rivedi", "togli_esterno"]);
+  // Il pulsante pieno e la riga aprono il pannello invece di un link (la pagina non si ricarica).
+  const html = screen(model({ over: { todos: [remove, add] } }));
+  assert.match(html, /<button[^>]*data-action="next-step"[^>]*>[\s\S]*?Togli Esterna Prova<\/button>/);
+  const source = readFileSync(new URL("./factory-screen.tsx", import.meta.url), "utf8");
+  assert.match(source, /\.\.\.\(first\.panel\s*\? \{ onClick: \(\) => open\(first\.panel as string\) \}/);
+  assert.match(source, /\{todo\.panel && onPanel \? \(\s*<button type="button" className=\{ROW_CLASS\} aria-haspopup="dialog" onClick=\{\(\) => onPanel\(todo\.panel as string\)\}>/);
+});
+
+test("(8.0d) «Solo questo use case»: mai un link fuori dal perimetro (né «Il tuo account» dalla Home, né «Vai agli use case»)", () => {
+  const collega = todo({ kind: "collega", useCaseId: "", caseId: "", code: "", text: "Collega Claude Code: nel terminale «unbundle login», poi scegli Cliente Demo." });
+  const mine = model({ manager: false, caseOnly: true, over: { todos: [collega] } });
+  assert.equal(mine.caseOnly, true);
+  assert.ok(mine.todos[0].href.startsWith(`${BASE}`), mine.todos[0].href);
+  assert.equal(model({ manager: false, over: { todos: [collega] } }).todos[0].href, `/dashboard/${WS}?account=claude`, "gli altri: il foglio sulla Home, come prima");
+  const empty = screen(model({ manager: false, caseOnly: true, over: { cases: [], families: [], todos: [] } }));
+  assert.ok(!empty.includes(`href="/dashboard/${WS}/use-cases"`), "niente «Vai agli use case»");
+  assert.ok(empty.includes(FACTORY_TEXT.empty.caseOnly));
+  assert.ok(screen(model({ manager: false, over: { cases: [], families: [], todos: [] } })).includes(`href="/dashboard/${WS}/use-cases"`));
 });

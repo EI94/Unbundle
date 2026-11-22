@@ -7,7 +7,7 @@
  *
  * Modulo puro: lo usano il server (`board-store.ts`, `board-access.ts`) e i test con Node.
  */
-import { canReviewWorkspacePortfolio } from "../workspace-permissions.ts";
+import { canReviewWorkspacePortfolio, isCollaboratorRole } from "../workspace-permissions.ts";
 
 export interface BoardAbilities {
   /** Modificare processi, passi e note, e votare. */
@@ -21,7 +21,7 @@ export interface BoardAbilities {
 export const NO_BOARD_ABILITIES: BoardAbilities = Object.freeze({ edit: false, setStream: false, complete: false });
 
 export function boardAbilities(role: string | null | undefined): BoardAbilities {
-  const collaborator = typeof role === "string" && role !== "" && role !== "learner";
-  if (!collaborator) return NO_BOARD_ABILITIES;
+  // (8.0d) Per elenco: i cinque collaboratori. Chi segue un corso, «Solo questo use case» e un ruolo sconosciuto no.
+  if (!isCollaboratorRole(role)) return NO_BOARD_ABILITIES;
   return { edit: true, setStream: canReviewWorkspacePortfolio(role), complete: true };
 }

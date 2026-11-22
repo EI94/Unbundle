@@ -29,7 +29,10 @@ import { revokeTeamMcpTokensOfOwner } from "@/lib/db/queries/team-mcp-tokens";
 import { logSafeError } from "@/lib/log/safe-error";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canManageWorkspaceCollaborators, canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
-import { roleLabel } from "@/lib/workspace-roles";
+import { CASE_ONLY_ROLE_NOTE, roleLabel } from "@/lib/workspace-roles";
+import { caseOnlyHomePath, isCaseOnly } from "@/lib/auth/case-only";
+import { isLearnerOnly } from "@/lib/learning/learner-scope";
+import { joinCaseOnlyDossier as joinCaseOnlyDossierWith } from "@/lib/db/queries/use-case-workspace-team";
 import {
   WORKSPACE_INVITE_EXPIRES_IN_DAYS,
   WORKSPACE_INVITE_MAX_USES,
@@ -225,6 +228,10 @@ export async function recreateWorkspaceInvitationAction(
   if (previous.usedCount >= previous.maxUses) {
     return errorState("Questo link è già stato usato: la persona è già entrata. Per invitare qualcun altro crea un nuovo link.");
   }
+  // (8.0d) Un invito «Solo questo use case» non si rifà da Persone: senza il suo caso non varrebbe, e lo dà Lateral Space.
+  if (isCaseOnly(previous.role)) {
+    return errorState("Questo invito è per un solo use case: lo rimanda Lateral Space dall'Agent Factory.");
+  }
 
   await revokeWorkspaceInvitation({ workspaceId, invitationId });
   const { invitation, token } = await createWorkspaceInvitation({
@@ -288,12 +295,17 @@ export async function updateWorkspaceMemberRoleAction(
       "Questo membro fa parte dell'organizzazione: il suo ruolo si gestisce a livello organizzazione, non di workspace."
     );
   }
-  if (membership.role === "learner") {
+  if (isLearnerOnly(membership.role)) {
     // Un partecipante a un corso diventa collaboratore solo accettando un
     // invito: un cambio di ruolo per sbaglio gli aprirebbe tutto il workspace.
     return errorState(
       "Questa persona partecipa a un corso. Per farla diventare collaboratore mandale un link di invito."
     );
+  }
+  if (isCaseOnly(membership.role)) {
+    // (8.0d) Lo stesso per «Solo questo use case»: lavora a un solo use case, e
+    // per aprirle il workspace serve un invito da collaboratore.
+    return errorState(CASE_ONLY_ROLE_NOTE);
   }
 
   const updated = await updateWorkspaceMembershipRole({
@@ -345,7 +357,7 @@ export async function removeWorkspaceMemberAction(
     );
   }
 
-  if (membership.role === "learner") {
+  if (isLearnerOnly(membership.role)) {
     return errorState(
       "Questa persona partecipa solo ai corsi: la sua iscrizione si gestisce da Formazione."
     );
@@ -421,7 +433,33 @@ async function removeFromUseCaseSection(params: { workspaceId: string; userId: s
   }
 }
 
-export type AcceptInviteFailure = "invalid" | "revoked" | "expired" | "used" | "email_mismatch" | "email_unverified";
+/**
+ * (8.0d) Dopo l'accettazione di un invito «Solo questo use case»: la riga `osservatore` nel dossier del suo caso
+ * (`joinCaseOnlyDossier`). Solo con la sezione dei casi accesa; un errore non ferma l'accettazione (la riga si ripete
+ * riaprendo il link o l'Agent Factory, oppure la aggiunge il responsabile).
+ */
+async function joinCaseOnlyDossier(params: { workspaceId: string; userId: string; useCaseId: string }): Promise<void> {
+  if (process.env.UC_ENABLED !== "true") return;
+  try {
+    const executor = await getAppUcExecutor();
+    if (!(await ucMemberTablesPresent(executor))) return;
+    await joinCaseOnlyDossierWith(executor, { ...params, lsDomains: ucLsDomains() });
+  } catch (error) {
+    logSafeError("uc", "solo_caso_riga_non_aggiunta", error);
+  }
+}
+
+export type AcceptInviteFailure =
+  | "invalid"
+  | "revoked"
+  | "expired"
+  | "used"
+  | "email_mismatch"
+  | "email_unverified"
+  | "learner_case_only"
+  | "case_only_email"
+  | "non_disponibile"
+  | "caso_assente";
 
 const ACCEPT_MESSAGES: Record<AcceptInviteFailure, string> = {
   invalid: "Questo link di invito non è valido. Controlla di averlo copiato per intero.",
@@ -430,6 +468,11 @@ const ACCEPT_MESSAGES: Record<AcceptInviteFailure, string> = {
   used: "Questo link è già stato usato da un'altra persona: ogni link vale per una sola persona. Chiedi a chi ti ha invitato di crearne uno per te.",
   email_mismatch: "Questo invito è riservato a un'altra email: accedi con l'account giusto o chiedi un nuovo link.",
   email_unverified: "Per usare un invito riservato alla tua email devi prima confermarla.",
+  // (8.0d) Gli inviti «Solo questo use case» (fuori dalla dashboard: «caso d'uso»).
+  learner_case_only: "Segui già un corso in questo workspace: per costruire serve un invito da collaboratore. Chiedilo a chi ti ha invitato.",
+  case_only_email: "Questo link di invito non è valido. Chiedi a chi ti ha invitato di crearne uno nuovo.",
+  non_disponibile: "Unbundle si sta aggiornando: riprova tra qualche minuto.",
+  caso_assente: "Il caso d'uso di questo invito non c'è più. Chiedi a chi ti ha invitato.",
 };
 
 export async function acceptWorkspaceInvitationAction(
@@ -454,6 +497,12 @@ export async function acceptWorkspaceInvitationAction(
 
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/${result.workspaceId}`);
+  // (8.0d) «Solo questo use case» arriva nell'Agent Factory: il resto del workspace non è per lui. Prima la riga
+  // `osservatore` del suo caso, con chi ha invitato come attore, se ne è ancora responsabile (si ripete senza danni).
+  if (isCaseOnly(result.role)) {
+    if (result.caseOnlyUseCaseId) await joinCaseOnlyDossier({ workspaceId: result.workspaceId, userId: session.user.id, useCaseId: result.caseOnlyUseCaseId });
+    redirect(caseOnlyHomePath(result.workspaceId));
+  }
   const flag = result.outcome === "joined" ? "1" : result.outcome === "upgraded" ? "upgraded" : "already";
   redirect(`/dashboard/${result.workspaceId}/portfolio?joined=${flag}`);
 }

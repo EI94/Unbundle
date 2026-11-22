@@ -12,7 +12,9 @@ import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { abilitiesForUseCase } from "@/lib/use-cases/permissions";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { canManageWorkspaceCollaborators, canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
-import { externalRefusals, listBuilders, listWhereChoices } from "@/lib/db/queries/use-case-workspace-team";
+import { externalRefusals, joinCaseOnlyDossier, listBuilders, listWhereChoices } from "@/lib/db/queries/use-case-workspace-team";
+import { readExternalGrant } from "@/lib/db/queries/use-case-builders";
+import { isCaseOnly } from "@/lib/auth/case-only";
 import { loadMemberCandidates } from "@/lib/db/queries/uc-shell";
 import { logSafeError } from "@/lib/log/safe-error";
 import type { FactoryBuildersData } from "@/components/agent-factory/builders-panel";
@@ -20,6 +22,7 @@ import { readCiFamilies } from "@/components/agent-factory/ci-load";
 import type { CiFamilyRow } from "@/components/agent-factory/ci-view";
 import { FactoryScreen } from "@/components/agent-factory/factory-screen";
 import { FACTORY_TEXT } from "@/components/agent-factory/factory-text";
+import { CASE_ONLY_WAITING_TEXT } from "@/lib/use-cases/factory/builders-text";
 import { factoryScreenModel, stationOfParam } from "@/components/agent-factory/factory-view";
 
 /**
@@ -47,9 +50,24 @@ import { factoryScreenModel, stationOfParam } from "@/components/agent-factory/f
  *
  * La vede chi costruisce (ruolo di Lateral Space nel team di un caso o, 8.0c, da fuori con il predicato unico), con i
  * suoi casi, e il manager del workspace di Lateral Space, con tutti. Agli altri: 404.
+ *
+ * (8.0d) È la casa di «Solo questo use case» (`esterno_caso`) nel workspace, una porta di `CASE_ONLY_SURFACES`: solo i
+ * casi che costruisce adesso (il predicato, mai una concessione «tutti»), i suoi «Da fare per te», la riga della CI senza
+ * pulsanti; mai «Chi costruisce» né «Repository da aggiornare». Prima della riga del dossier la pagina lo dice.
  */
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Agent Factory" };
+
+/** (8.0d) Le righe `osservatore` dei casi di «Solo questo use case» (per caso, mai «tutti»); un errore non ferma la pagina. */
+async function joinCaseOnlyDossiers(executor: Awaited<ReturnType<typeof getAppUcExecutor>>, i: { workspaceId: string; userId: string; lsDomains: readonly string[] }): Promise<void> {
+  try {
+    const grant = await readExternalGrant(executor, i.workspaceId, i.userId);
+    if (!grant || grant.all) return;
+    for (const useCaseId of grant.useCaseIds) await joinCaseOnlyDossier(executor, { ...i, useCaseId });
+  } catch (error) {
+    console.error("[agent-factory] solo_caso_riga", error instanceof Error ? error.name : "errore");
+  }
+}
 
 export default async function AgentFactoryPage({
   params,
@@ -59,13 +77,28 @@ export default async function AgentFactoryPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { workspaceId } = await params;
-  const { session, access } = await requireWorkspacePage(workspaceId);
+  // (8.0d) Una porta di «Solo questo use case» (`CASE_ONLY_SURFACES`): la sua casa nel workspace. Vede solo i casi che
+  // costruisce adesso (il predicato), mai «Chi costruisce», mai i casi degli altri.
+  const { session, access } = await requireWorkspacePage(workspaceId, { allowCaseOnly: true });
   if (!isUseCaseHubWorkspace(workspaceId) || process.env.UC_ENABLED !== "true") notFound();
+  const caseOnly = isCaseOnly(access.role);
   const viewer = viewerFromSession(session.user, access.role);
-  const lsManager = viewer.isLateralSpace && canReviewWorkspacePortfolio(access.role);
+  const lsManager = !caseOnly && viewer.isLateralSpace && canReviewWorkspacePortfolio(access.role);
   const executor = await getAppUcExecutor();
   const lsDomains = ucLsDomains();
-  if (!(await factoryNavVisible(executor, { workspaceId, userId: session.user.id, lsManager, lsDomains }))) notFound();
+  // (8.0d) La riga `osservatore` dei suoi casi, se manca, con chi ha invitato come attore (se ne è ancora responsabile):
+  // si ripete senza danni a ogni visita, come riaprendo il link dell'invito.
+  if (caseOnly) await joinCaseOnlyDossiers(executor, { workspaceId, userId: session.user.id, lsDomains });
+  if (!(await factoryNavVisible(executor, { workspaceId, userId: session.user.id, lsManager, lsDomains }))) {
+    if (!caseOnly) notFound();
+    // (8.0d) «Solo questo use case» ha sempre la sua voce: prima della riga del dossier la pagina lo dice.
+    return (
+      <PageContainer>
+        <h1 className={PAGE_TITLE_CLASS}>{FACTORY_TEXT.title}</h1>
+        <p className="mt-2 text-sm text-muted-foreground">{CASE_ONLY_WAITING_TEXT}</p>
+      </PageContainer>
+    );
+  }
   // La pagina legge le tabelle della 0030 e della 0031: finché non ci sono (il primo avvio dopo un rilascio), lo dice.
   const [factoryReady, cliReady] = await Promise.all([factoryStoreReady(executor), cliStoreReady(executor)]);
   if (!factoryReady || !cliReady) {
@@ -78,7 +111,7 @@ export default async function AgentFactoryPage({
   }
   const search = await searchParams;
   const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? null;
-  const view = await loadFactoryOverview(executor, { workspaceId, userId: session.user.id, seeAll: lsManager, canSeeNeeds: abilitiesForUseCase(viewer).canSeeNeeds, lsDomains });
+  const view = await loadFactoryOverview(executor, { workspaceId, userId: session.user.id, seeAll: lsManager, canSeeNeeds: abilitiesForUseCase(viewer).canSeeNeeds, lsDomains, caseOnly });
   const [builders, candidates, choices, workspace, palette] = await Promise.all([
     lsManager ? listBuilders(executor, workspaceId, lsDomains) : Promise.resolve(null),
     lsManager ? loadMemberCandidates(executor, { workspaceId, lsDomains }) : Promise.resolve([]),
@@ -111,6 +144,7 @@ export default async function AgentFactoryPage({
   const model = factoryScreenModel({
     workspaceId,
     manager: lsManager,
+    caseOnly,
     overview: view,
     ciTodos: ci.todos,
     palette,

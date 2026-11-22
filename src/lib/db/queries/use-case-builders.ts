@@ -11,7 +11,8 @@
  *   - nel caso solo la riga `osservatore` (la riga serve, ma non basta; con un altro ruolo non costruisce);
  *   - e-mail verificata, fuori dai domini di Lateral Space, con i domini configurati (`isClientUser`);
  *   - un ruolo da revisore, prima nell'organizzazione poi nel workspace (`getWorkspaceAccessForUser`,
- *     `PORTFOLIO_REVIEWER_ROLES`).
+ *     `PORTFOLIO_REVIEWER_ROLES`); **oppure** (8.0d) «Solo questo use case» (`esterno_caso`, solo nel workspace, mai
+ *     un membro dell'organizzazione) con una concessione **per quel caso**: mai «tutti», nemmeno scritta a mano.
  *   Si rilegge a ogni richiesta: chi scende a Contributore o perde la verifica dell'e-mail smette di costruire subito.
  * - **Senza la 0037** il frammento vale `false`: si chiude, non si apre (`BuilderScope.externalReady`). Alle porte chi ha
  *   una concessione riceve però «riprova» (503), non «non hai un ruolo» (`externalBuilderGate`).
@@ -20,6 +21,7 @@
  * notifiche dei compiti e il cron. I domini di Lateral Space li passa chi chiama.
  */
 import { EXTERNAL_BUILDERS_PROBE_SQL, EXTERNAL_BUILDERS_TABLE } from "../use-case-hub-builders-ddl.ts";
+import { CASE_ONLY_PROBE_SQL } from "../use-case-hub-case-only-ddl.ts";
 import { cast, raw, ref, toStatement, ucSql, type SqlFragment, type UcStatement } from "../../uc/sql/statement.ts";
 import { EXTERNAL_BUILDER_ROLE, FACTORY_BUILDER_ROLES, type ExternalBuilderBlock, type FactoryRole } from "../../use-cases/factory/builders.ts";
 import { CLIENT_CASE_ROLES } from "../../uc/vocab.ts";
@@ -78,6 +80,16 @@ function grantCoversSql(c: SqlFragment, g: SqlFragment): SqlFragment {
       AND (${g}.use_case_id IS NULL OR ${g}.use_case_id = ${c}.portfolio_use_case_id)`;
 }
 
+/**
+ * (8.0d) `user` è «Solo questo use case» nel workspace: la riga del workspace con il ruolo `esterno_caso` (come testo), e
+ * nessuna riga nell'organizzazione (un membro dell'organizzazione non è mai «Solo questo use case»).
+ */
+function caseOnlyMemberSql(workspace: SqlFragment, user: SqlFragment): SqlFragment {
+  return ucSql`(EXISTS (SELECT 1 FROM workspace_memberships xb_cw WHERE xb_cw.workspace_id = ${workspace} AND xb_cw.user_id = ${user} AND xb_cw.role::text = 'esterno_caso')
+    AND NOT EXISTS (SELECT 1 FROM memberships xb_co JOIN workspaces xb_cow ON xb_cow.organization_id = xb_co.organization_id
+      WHERE xb_cow.id = ${workspace} AND xb_co.user_id = ${user}))`;
+}
+
 /** Il ruolo nel workspace di `u`, come `getWorkspaceAccessForUser`: prima l'organizzazione, poi il workspace. */
 function workspaceRoleSql(workspace: SqlFragment, user: SqlFragment): SqlFragment {
   return ucSql`coalesce(
@@ -90,6 +102,11 @@ function workspaceRoleSql(workspace: SqlFragment, user: SqlFragment): SqlFragmen
  * Chi è sviluppatore esterno del caso `c` (una riga di `uc_cases`), per la persona `u` (una riga di `users`), adesso.
  * Senza la 0037, o senza domini di Lateral Space, vale `false`. `anyWorkspaceRole`: tutto il predicato tranne il ruolo
  * da revisore nel workspace, solo per dire alle porte perché una persona scesa a Contributore non costruisce più.
+ *
+ * (8.0d) Due strade, con la riga `osservatore`, nessun altro ruolo nel caso, l'e-mail verificata fuori da Lateral Space:
+ * - un ruolo da revisore nel workspace e una concessione che copre il caso (per caso o «tutti»), come nella 8.0c;
+ * - «Solo questo use case» (`esterno_caso` nel workspace, mai nell'organizzazione) e una concessione **per questo
+ *   caso**: una riga «tutti» non conta mai, nemmeno scritta a mano.
  */
 export function externalBuilderSql(scope: BuilderScope, aliases: { c?: string; u?: string } = {}, opts: { anyWorkspaceRole?: boolean } = {}): SqlFragment {
   if (!scope.externalReady || scope.lsDomains.length === 0) return raw("false");
@@ -98,13 +115,19 @@ export function externalBuilderSql(scope: BuilderScope, aliases: { c?: string; u
   const c = ref(caseAlias);
   const u = ref(userAlias);
   const domains = cast([...scope.lsDomains], "text[]");
-  return ucSql`(EXISTS (SELECT 1 FROM use_case_external_builders xb_g WHERE ${grantCoversSql(c, ref("xb_g"))} AND xb_g.user_id = ${u}.id)
-  AND EXISTS (SELECT 1 FROM uc_case_members xb_m WHERE xb_m.case_id = ${c}.id AND xb_m.user_id = ${u}.id AND xb_m.role = 'osservatore')
+  const workspace = ref(`${caseAlias}.workspace_id`);
+  const user = ref(`${userAlias}.id`);
+  const reviewer = ucSql`(EXISTS (SELECT 1 FROM use_case_external_builders xb_g WHERE ${grantCoversSql(c, ref("xb_g"))} AND xb_g.user_id = ${u}.id)
+    AND ${opts.anyWorkspaceRole ? raw("true") : ucSql`${workspaceRoleSql(workspace, user)} IN (${REVIEWER_ROLES_SQL})`})`;
+  const caseOnly = ucSql`(EXISTS (SELECT 1 FROM use_case_external_builders xb_gc WHERE xb_gc.workspace_id = ${c}.workspace_id AND xb_gc.user_id = ${u}.id
+      AND ${c}.portfolio_use_case_id IS NOT NULL AND xb_gc.use_case_id = ${c}.portfolio_use_case_id)
+    AND ${caseOnlyMemberSql(workspace, user)})`;
+  return ucSql`(EXISTS (SELECT 1 FROM uc_case_members xb_m WHERE xb_m.case_id = ${c}.id AND xb_m.user_id = ${u}.id AND xb_m.role = 'osservatore')
   AND NOT EXISTS (SELECT 1 FROM uc_case_members xb_m WHERE xb_m.case_id = ${c}.id AND xb_m.user_id = ${u}.id AND xb_m.role <> 'osservatore')
   AND ${u}.email_verified IS NOT NULL
   AND cardinality(${domains}) > 0
   AND coalesce(lower(substring(btrim(${u}.email) FROM '@([^@]*)$')), '') <> ALL (${domains})
-  AND ${opts.anyWorkspaceRole ? raw("true") : ucSql`${workspaceRoleSql(ref(`${caseAlias}.workspace_id`), ref(`${userAlias}.id`))} IN (${REVIEWER_ROLES_SQL})`})`;
+  AND (${reviewer} OR ${caseOnly}))`;
 }
 
 /** È sviluppatore esterno di questo caso, adesso? Falso senza la 0037 o senza domini di Lateral Space. */
@@ -403,10 +426,16 @@ export async function caseBuilderEmails(executor: UcExecutor, caseId: string): P
   const state = await grantsForChecks(executor);
   if (state !== "pronta") return state === "assente" ? [] : null;
   try {
+    // (8.0d) Anche chi è «Solo questo use case» nel workspace del caso, in qualunque caso costruisca: mai firmatario né
+    // referente del cliente, nemmeno in un altro caso (§2.5, «Elenchi di persone»).
     const [rows] = await executor.batch([
       toStatement(ucSql`SELECT DISTINCT lower(u.email) AS email FROM uc_cases c JOIN use_case_external_builders g ON ${grantCoversSql(ref("c"), ref("g"))}
 JOIN users u ON u.id = g.user_id
-WHERE c.id = ${cast(caseId, "uuid")} AND u.email IS NOT NULL AND NOT ${clientRoleInCaseSql(raw("u.id"))}`),
+WHERE c.id = ${cast(caseId, "uuid")} AND u.email IS NOT NULL AND NOT ${clientRoleInCaseSql(raw("u.id"))}
+UNION
+SELECT lower(u.email) AS email FROM uc_cases c JOIN workspace_memberships wm ON wm.workspace_id = c.workspace_id AND wm.role::text = 'esterno_caso'
+JOIN users u ON u.id = wm.user_id
+WHERE c.id = ${cast(caseId, "uuid")} AND u.email IS NOT NULL`),
     ]);
     return rows.map((r) => String(r.email));
   } catch {
@@ -423,9 +452,13 @@ export async function workspaceBuilderEmails(executor: UcExecutor, workspaceId: 
   const state = await grantsForChecks(executor);
   if (state !== "pronta") return state === "assente" ? [] : null;
   try {
+    // (8.0d) Anche «Solo questo use case», con o senza concessione: mai referente del cliente.
     const [rows] = await executor.batch([
       toStatement(ucSql`SELECT DISTINCT lower(u.email) AS email FROM use_case_external_builders g JOIN users u ON u.id = g.user_id
-WHERE g.workspace_id = ${cast(workspaceId, "uuid")} AND u.email IS NOT NULL`),
+WHERE g.workspace_id = ${cast(workspaceId, "uuid")} AND u.email IS NOT NULL
+UNION
+SELECT lower(u.email) AS email FROM workspace_memberships wm JOIN users u ON u.id = wm.user_id
+WHERE wm.workspace_id = ${cast(workspaceId, "uuid")} AND wm.role::text = 'esterno_caso' AND u.email IS NOT NULL`),
     ]);
     return rows.map((r) => String(r.email));
   } catch {
@@ -438,6 +471,228 @@ export function grantedOpenCasesSql(workspaceId: string, userId: string) {
   return toStatement(ucSql`SELECT c.id, coalesce(u.code, c.code) AS code, c.portfolio_use_case_id AS use_case_id FROM uc_cases c LEFT JOIN use_cases u ON u.id = c.portfolio_use_case_id
 WHERE c.workspace_id = ${cast(workspaceId, "uuid")} AND c.status <> 'chiuso' AND c.setup_completed_at IS NOT NULL AND ${grantCoversCaseSql(cast(userId, "uuid"))}
 ORDER BY coalesce(u.code, c.code)`);
+}
+
+/**
+ * (8.0d) La concessione di un invito «Solo questo use case», dentro l'istruzione unica dell'accettazione
+ * (`acceptWorkspaceInvitation`, src/lib/db/queries/workspace-collaboration.ts): una CTE `granted` che legge le CTE
+ * `valid` (l'invito, con `id`, `workspace_id`, `role`, `created_by_user_id`) e `member` (la membership scritta, con
+ * `user_id`). Per caso, mai «tutti»: lo use case dell'invito (`use_case_builder_invites`), se è ancora del workspace.
+ * Così membership e concessione nascono insieme o per niente, e questo resta l'unico modulo che scrive le concessioni.
+ * Testo fisso, senza valori: i valori stanno nelle CTE di chi la usa.
+ */
+export const CASE_ONLY_INVITE_GRANT_CTE = `granted AS (
+      INSERT INTO use_case_external_builders (workspace_id, user_id, use_case_id, added_by_user_id)
+      SELECT v.workspace_id, m.user_id, bi.use_case_id, v.created_by_user_id
+      FROM valid v
+      JOIN use_case_builder_invites bi ON bi.invitation_id = v.id
+      JOIN use_cases xb_uc ON xb_uc.id = bi.use_case_id AND xb_uc.workspace_id = v.workspace_id
+      JOIN member m ON true
+      WHERE v.role::text = 'esterno_caso'
+      ON CONFLICT DO NOTHING
+      RETURNING id
+    )`;
+
+/**
+ * (8.0d) Il dossier aperto dello use case di una concessione per caso (mai «tutti»), e chi l'ha data se ne è ancora
+ * responsabile (`ls_lead` salvato): l'attore della riga `osservatore` dopo l'accettazione di un invito «Solo questo use
+ * case». null senza la concessione per quel caso o senza un dossier aperto; `actorUserId` null se chi ha invitato non è
+ * più responsabile (allora la riga la aggiunge il responsabile di adesso).
+ */
+export async function caseOnlyDossierTarget(
+  executor: UcExecutor,
+  i: { workspaceId: string; userId: string; useCaseId: string },
+): Promise<{ caseId: string; actorUserId: string | null } | null> {
+  if (!UUID_RE.test(i.workspaceId) || !UUID_RE.test(i.userId) || !UUID_RE.test(i.useCaseId)) return null;
+  const [rows] = await executor.batch([
+    toStatement(ucSql`SELECT c.id AS case_id,
+  (SELECT g.added_by_user_id FROM use_case_external_builders g
+    WHERE g.workspace_id = c.workspace_id AND g.user_id = ${cast(i.userId, "uuid")} AND g.use_case_id = c.portfolio_use_case_id
+      AND EXISTS (SELECT 1 FROM uc_case_members l WHERE l.case_id = c.id AND l.user_id = g.added_by_user_id AND l.role = 'ls_lead')
+    LIMIT 1) AS actor
+FROM uc_cases c
+WHERE c.workspace_id = ${cast(i.workspaceId, "uuid")} AND c.portfolio_use_case_id = ${cast(i.useCaseId, "uuid")}
+  AND c.status <> 'chiuso' AND c.setup_completed_at IS NOT NULL
+  AND EXISTS (SELECT 1 FROM use_case_external_builders h WHERE h.workspace_id = c.workspace_id AND h.user_id = ${cast(i.userId, "uuid")}
+    AND h.use_case_id = c.portfolio_use_case_id)
+ORDER BY c.created_at LIMIT 1`),
+  ]);
+  if (!rows[0]?.case_id) return null;
+  return { caseId: String(rows[0].case_id), actorUserId: rows[0].actor ? String(rows[0].actor) : null };
+}
+
+/**
+ * (8.0d) Gli use case che la persona costruisce da fuori adesso nel workspace (il predicato, dossier aperti): per la
+ * campanella e l'Agent Factory di «Solo questo use case», che vedono solo i loro casi. Vuoto senza la 0037 o senza domini
+ * di Lateral Space.
+ */
+export async function builtUseCaseIds(executor: UcExecutor, i: { workspaceId: string; userId: string; lsDomains: readonly string[] }): Promise<string[]> {
+  if (!UUID_RE.test(i.workspaceId) || !UUID_RE.test(i.userId)) return [];
+  const scope = await loadBuilderScope(executor, i.lsDomains);
+  if (!scope.externalReady) return [];
+  const [rows] = await executor.batch([
+    toStatement(ucSql`SELECT DISTINCT c.portfolio_use_case_id AS use_case_id FROM uc_cases c JOIN users u ON u.id = ${cast(i.userId, "uuid")}
+WHERE c.workspace_id = ${cast(i.workspaceId, "uuid")} AND c.portfolio_use_case_id IS NOT NULL AND c.setup_completed_at IS NOT NULL
+  AND ${externalBuilderSql(scope)}`),
+  ]);
+  return rows.map((r) => String(r.use_case_id).toLowerCase());
+}
+
+/**
+ * (8.0d, D4) Chi dice se uno use case lo costruisce (o lo costruirà) «Solo questo use case»: una concessione per quello use
+ * case di una persona che nel workspace è `esterno_caso` (come testo), oppure, con la 0043, un suo invito ancora valido.
+ * Un caso così sta in un repository suo: `registerCaseRepo` non lo mette in un repository con altri casi, e non aggiunge
+ * altri casi al suo. Senza la 0037 vale `false` per ogni use case.
+ */
+export async function caseOnlyUseCaseFragment(executor: UcExecutor): Promise<(useCase: SqlFragment) => SqlFragment> {
+  if (!(await externalBuildersReady(executor))) return () => raw("false");
+  let invites = false;
+  try {
+    const [rows] = await executor.batch([toStatement(ucSql`SELECT ${raw(CASE_ONLY_PROBE_SQL)} AS ready`)]);
+    invites = rows[0]?.ready === true;
+  } catch {
+    invites = false;
+  }
+  return caseOnlyFragment(invites);
+}
+
+/**
+ * (8.0d, D7) Lo use case lo costruisce, o lo costruirà (un invito valido), qualcuno «Solo questo use case»
+ * (`caseOnlyUseCaseFragment`). Allora il suo contesto è quello di «Solo questo use case» per **chiunque** lo legga: il
+ * pacchetto si genera con i soli fatti del caso, e la CLI, l'MCP del caso e la pagina portano solo quelli. Quello che legge
+ * chi costruisce (anche Lateral Space, con `unbundle start`) finisce nel repository del caso, che chi viene da fuori legge
+ * su GitHub. Senza la 0037 falso; una sonda o una lettura che non riesce vale sì (un contesto più stretto, mai più largo).
+ */
+export async function hasCaseOnlyBuilder(executor: UcExecutor, target: { useCaseId: string }): Promise<boolean> {
+  if (!UUID_RE.test(target.useCaseId)) return true;
+  const probe = await probeExternalBuilders(executor);
+  if (probe === "assente") return false;
+  if (probe === "guasta") return true;
+  try {
+    const [ready] = await executor.batch([toStatement(ucSql`SELECT ${raw(CASE_ONLY_PROBE_SQL)} AS ready`)]);
+    const builtByCaseOnly = caseOnlyFragment(ready[0]?.ready === true);
+    const [rows] = await executor.batch([toStatement(ucSql`SELECT ${builtByCaseOnly(cast(target.useCaseId, "uuid"))} AS yes`)]);
+    return rows[0]?.yes !== false;
+  } catch {
+    return true;
+  }
+}
+
+/** La condizione di `caseOnlyUseCaseFragment`, con o senza gli inviti della 0043. */
+function caseOnlyFragment(invites: boolean): (useCase: SqlFragment) => SqlFragment {
+  return (useCase) => ucSql`(EXISTS (SELECT 1 FROM use_case_external_builders xb_co
+      JOIN workspace_memberships xb_cow ON xb_cow.workspace_id = xb_co.workspace_id AND xb_cow.user_id = xb_co.user_id AND xb_cow.role::text = 'esterno_caso'
+      WHERE xb_co.use_case_id = ${useCase})${
+    invites
+      ? ucSql`
+    OR EXISTS (SELECT 1 FROM use_case_builder_invites xb_bi JOIN workspace_invitations xb_i ON xb_i.id = xb_bi.invitation_id
+      WHERE xb_bi.use_case_id = ${useCase} AND xb_i.revoked_at IS NULL AND xb_i.expires_at > now() AND xb_i.used_count < xb_i.max_uses)`
+      : raw("")
+  })`;
+}
+
+/**
+ * (8.0d) La persona è «Solo questo use case» nel workspace del caso e ha una concessione **per questo caso** (mai
+ * «tutti»): la sola strada perché la sua riga `osservatore` entri nel team del dossier (`addCaseMember`). Falso senza la
+ * 0037 o se la lettura non riesce (si chiude, non si apre).
+ */
+export async function caseOnlyGranteeOfCase(executor: UcExecutor, i: { caseId: string; userId: string }): Promise<boolean> {
+  if (!UUID_RE.test(i.caseId) || !UUID_RE.test(i.userId)) return false;
+  try {
+    if (!(await externalBuildersReady(executor))) return false;
+    const user = cast(i.userId, "uuid");
+    const [rows] = await executor.batch([
+      toStatement(ucSql`SELECT (${caseOnlyMemberSql(raw("c.workspace_id"), user)}
+  AND EXISTS (SELECT 1 FROM use_case_external_builders g WHERE g.workspace_id = c.workspace_id AND g.user_id = ${user}
+    AND c.portfolio_use_case_id IS NOT NULL AND g.use_case_id = c.portfolio_use_case_id)) AS ok
+FROM uc_cases c WHERE c.id = ${cast(i.caseId, "uuid")}`),
+    ]);
+    return rows[0]?.ok === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * (8.0d) Il responsabile toglie la riga `osservatore` di «Solo questo use case» dal team del dossier: esce da quel caso
+ * (la concessione per il suo use case) e, senza altri casi, anche dal workspace (i token della CLI revocati, la membership
+ * `esterno_caso` cancellata). Le istruzioni vanno nella transazione della riga tolta (`removeCaseMember`, `after`): o tutto
+ * o niente. Per chi non è `esterno_caso` non fanno niente (la concessione della 8.0c resta, come prima). `cliProvider`: il
+ * provider dei token della CLI.
+ */
+export function caseOnlyLeaveCaseStatements(i: { workspaceId: string; caseId: string; userId: string; cliProvider: string }): UcStatement[] {
+  const ws = cast(i.workspaceId, "uuid");
+  const user = cast(i.userId, "uuid");
+  const isCaseOnly = ucSql`EXISTS (SELECT 1 FROM workspace_memberships xb_lw WHERE xb_lw.workspace_id = ${ws} AND xb_lw.user_id = ${user} AND xb_lw.role::text = 'esterno_caso')`;
+  const noGrantLeft = ucSql`NOT EXISTS (SELECT 1 FROM use_case_external_builders xb_lg WHERE xb_lg.workspace_id = ${ws} AND xb_lg.user_id = ${user})`;
+  return [
+    grantLockSql(i.workspaceId, i.userId),
+    toStatement(ucSql`DELETE FROM use_case_external_builders g USING uc_cases c
+WHERE c.id = ${cast(i.caseId, "uuid")} AND c.workspace_id = ${ws} AND g.workspace_id = ${ws} AND g.user_id = ${user}
+  AND c.portfolio_use_case_id IS NOT NULL AND g.use_case_id = c.portfolio_use_case_id AND ${isCaseOnly}
+RETURNING g.id`),
+    toStatement(ucSql`UPDATE workspace_integration_tokens SET revoked_at = now(), updated_at = now()
+WHERE workspace_id = ${ws} AND owner_user_id = ${user} AND provider = ${cast(i.cliProvider, "text")} AND revoked_at IS NULL AND ${isCaseOnly} AND ${noGrantLeft}
+RETURNING id`),
+    toStatement(ucSql`DELETE FROM workspace_memberships WHERE workspace_id = ${ws} AND user_id = ${user} AND role::text = 'esterno_caso' AND ${noGrantLeft}
+RETURNING id`),
+  ];
+}
+
+/** (8.0d) Una persona «Solo questo use case» da togliere, o da aggiungere al team di un dossier («Da fare per te»). */
+export interface CaseOnlyChore {
+  userId: string;
+  name: string;
+  /** Il codice dello use case (null: lo use case non c'è più, o la persona non ne ha più nessuno). */
+  code: string | null;
+  caseId: string | null;
+  useCaseId: string | null;
+}
+
+/**
+ * (8.0d) «Da fare per te» su «Solo questo use case» (RILASCIO-8.0d-ESTERNI-FASE-2.md §2.3, §2.4, D10):
+ * - `remove`, al manager di Lateral Space: chi lavorava a un caso chiuso («Togli {nome}: XX-0012 è chiuso.»), o non ha più
+ *   nessuna concessione (lo use case cancellato): l'accesso non cade da solo;
+ * - `add`, al responsabile del dossier (`ls_lead` salvato): chi ha la concessione per il caso ma non ancora la riga
+ *   `osservatore` («Aggiungi {nome} al team di XX-0012: lo costruisce da fuori.»).
+ * Vuoto senza la 0037. Nessun nome di chi invita; i nomi di chi costruisce, come nel team del caso.
+ */
+export async function caseOnlyChores(executor: UcExecutor, i: { workspaceId: string; viewerUserId: string; lsManager: boolean }): Promise<{ remove: CaseOnlyChore[]; add: CaseOnlyChore[] }> {
+  const out: { remove: CaseOnlyChore[]; add: CaseOnlyChore[] } = { remove: [], add: [] };
+  if (!UUID_RE.test(i.workspaceId) || !UUID_RE.test(i.viewerUserId) || !(await externalBuildersReady(executor))) return out;
+  const ws = cast(i.workspaceId, "uuid");
+  const name = raw("coalesce(nullif(btrim(p.name), ''), split_part(p.email, '@', 1))");
+  const caseOnlyPeople = ucSql`SELECT wm.user_id FROM workspace_memberships wm WHERE wm.workspace_id = ${ws} AND wm.role::text = 'esterno_caso'`;
+  const [removeRows, addRows] = await executor.batch([
+    i.lsManager
+      ? toStatement(ucSql`SELECT p.id AS user_id, ${name} AS name, u.code, c.id AS case_id, u.id AS use_case_id
+FROM users p
+LEFT JOIN use_case_external_builders g ON g.workspace_id = ${ws} AND g.user_id = p.id AND g.use_case_id IS NOT NULL
+LEFT JOIN use_cases u ON u.id = g.use_case_id AND u.workspace_id = ${ws}
+LEFT JOIN uc_cases c ON c.workspace_id = ${ws} AND c.portfolio_use_case_id = u.id AND c.setup_completed_at IS NOT NULL
+WHERE p.id IN (${caseOnlyPeople}) AND (c.status = 'chiuso' OR g.id IS NULL)
+ORDER BY ${name}, u.code`)
+      : toStatement(ucSql`SELECT NULL::uuid AS user_id WHERE false`),
+    toStatement(ucSql`SELECT p.id AS user_id, ${name} AS name, u.code, c.id AS case_id, u.id AS use_case_id
+FROM use_case_external_builders g
+JOIN users p ON p.id = g.user_id
+JOIN use_cases u ON u.id = g.use_case_id AND u.workspace_id = g.workspace_id
+JOIN uc_cases c ON c.workspace_id = g.workspace_id AND c.portfolio_use_case_id = u.id AND c.setup_completed_at IS NOT NULL AND c.status <> 'chiuso'
+WHERE g.workspace_id = ${ws} AND g.user_id IN (${caseOnlyPeople})
+  AND EXISTS (SELECT 1 FROM uc_case_members l WHERE l.case_id = c.id AND l.user_id = ${cast(i.viewerUserId, "uuid")} AND l.role = 'ls_lead')
+  AND NOT EXISTS (SELECT 1 FROM uc_case_members o WHERE o.case_id = c.id AND o.user_id = g.user_id)
+ORDER BY u.code, ${name}`),
+  ]);
+  const chore = (r: Record<string, unknown>): CaseOnlyChore => ({
+    userId: String(r.user_id),
+    name: String(r.name ?? ""),
+    code: r.code ? String(r.code) : null,
+    caseId: r.case_id ? String(r.case_id) : null,
+    useCaseId: r.use_case_id ? String(r.use_case_id) : null,
+  });
+  out.remove = removeRows.filter((r) => r.user_id).map(chore);
+  out.add = addRows.map(chore);
+  return out;
 }
 
 /** I workspace dove la persona ha una concessione (per «Collega questa CLI»). Vuoto senza la 0037. */

@@ -11,8 +11,8 @@ import {
   BELL_SIGNALS_LIMIT,
   BELL_USE_CASE_DAYS,
   BELL_USE_CASE_LIMIT,
+  bellSourcesFor,
   dossierEntry,
-  CASE_TEAM_BELL_KINDS,
   mergeBell,
   noticeEntry,
   signalEntry,
@@ -38,6 +38,17 @@ async function source<T>(name: string, read: () => Promise<T>, fallback: T): Pro
   }
 }
 
+/** (8.0d) Gli use case che «Solo questo use case» costruisce adesso (il predicato); nessuno se la lettura non riesce. */
+async function caseOnlyUseCaseIds(workspaceId: string, userId: string): Promise<string[]> {
+  if (!isUcEnabledFor(workspaceId)) return [];
+  const [{ builtUseCaseIds }, { getAppUcExecutor }, { ucLsDomains }] = await Promise.all([
+    import("@/lib/db/queries/use-case-builders"),
+    import("@/lib/db/uc-executor"),
+    import("@/lib/db/queries/uc-access"),
+  ]);
+  return builtUseCaseIds(await getAppUcExecutor(), { workspaceId, userId, lsDomains: ucLsDomains() });
+}
+
 export async function loadBellPayload(i: {
   workspaceId: string;
   userId: string | null;
@@ -50,6 +61,9 @@ export async function loadBellPayload(i: {
   const env = i.env ?? process.env;
   const userId = i.userId && UUID.test(i.userId) ? i.userId.toLowerCase() : null;
   const reviewer = canReviewWorkspacePortfolio(i.role);
+  // (8.0d) Per elenco (`bellSourcesFor`): «Solo questo use case» ha solo i tipi di chi costruisce (`CASE_TEAM_BELL_KINDS`)
+  // dei casi che costruisce adesso; niente segnali del workspace, niente righe dei dossier. Un ruolo sconosciuto, niente.
+  const sources = bellSourcesFor(i.role);
   const noState: BellState = { seenAt: null, referentEmails: true, hasRequested: false };
 
   const [signals, dossier, useCase, state] = await Promise.all([
@@ -61,7 +75,7 @@ export async function loadBellPayload(i: {
     source<BellEntry[]>(
       "dossier",
       async () => {
-        if (!userId || !isUcEnabledFor(i.workspaceId)) return [];
+        if (!userId || !sources.dossier || !isUcEnabledFor(i.workspaceId)) return [];
         const { unreadForUser } = await import("@/lib/db/queries/uc-notifications-dispatch");
         return (await unreadForUser(userId, { workspaceId: i.workspaceId, limit: BELL_DOSSIER_LIMIT, now })).map((item) => dossierEntry(item, i.useCaseHub));
       },
@@ -73,7 +87,9 @@ export async function loadBellPayload(i: {
         if (!i.useCaseHub || !userId) return [];
         // (8.0a) Chi non rivede il portafoglio vede solo le righe dell'Agent Factory: arrivano per il ruolo nel team
         // del caso (il responsabile del cliente, l'AI Board, uno sviluppatore), non per il ruolo nel workspace.
-        const rows = await listUseCaseBellRows({ userId, workspaceId: i.workspaceId, limit: BELL_USE_CASE_LIMIT, days: BELL_USE_CASE_DAYS, now, kinds: reviewer ? undefined : CASE_TEAM_BELL_KINDS });
+        if (sources.useCaseKinds !== null && sources.useCaseKinds.length === 0) return [];
+        const useCaseIds = sources.onlyOwnCases ? await caseOnlyUseCaseIds(i.workspaceId, userId) : undefined;
+        const rows = await listUseCaseBellRows({ userId, workspaceId: i.workspaceId, limit: BELL_USE_CASE_LIMIT, days: BELL_USE_CASE_DAYS, now, kinds: sources.useCaseKinds ?? undefined, useCaseIds });
         return rows.map((n) => noticeEntry(i.workspaceId, n, now));
       },
       [],

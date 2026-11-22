@@ -27,6 +27,24 @@ export interface ExternalRemovedFacts {
 
 export const casesText = (n: number) => (n === 1 ? "1 caso" : `${n} casi`);
 
+/**
+ * (8.0d) L'Agent Factory di «Solo questo use case» prima della riga del dossier (RILASCIO-8.0d-ESTERNI-FASE-2.md §2.9):
+ * la concessione c'è, la riga `osservatore` la aggiunge il responsabile del caso.
+ */
+export const CASE_ONLY_WAITING_TEXT = "Il tuo use case si apre appena il responsabile ti aggiunge al team.";
+
+/** (8.0d) «Da fare per te», al manager di Lateral Space: l'accesso di «Solo questo use case» non cade da solo (D10). */
+export function caseOnlyRemoveTodoText(name: string, code: string | null): string {
+  const who = name.replace(/\s+/g, " ").trim() || "questa persona";
+  return code ? `Togli ${who}: ${code} è chiuso.` : `Togli ${who}: il suo use case non c'è più.`;
+}
+
+/** (8.0d) «Da fare per te», al responsabile del caso: la riga `osservatore` che manca dopo l'invito. */
+export function caseOnlyAddTodoText(name: string, code: string): string {
+  const who = name.replace(/\s+/g, " ").trim() || "questa persona";
+  return `Aggiungi ${who} al team di ${code}: lo costruisce da fuori.`;
+}
+
 /** Perché un caso si è saltato, a parole. */
 export const SKIP_REASON: Readonly<Record<string, string>> = {
   attore_non_ammesso: "lì non sei responsabile",

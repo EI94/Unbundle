@@ -26,7 +26,9 @@ import {
   USE_CASE_NAV_MATCH,
   isNavItemActive,
 } from "../dashboard/nav-active.ts";
-import { PORTFOLIO_REVIEWER_ROLES, canManageWorkspaceSettings } from "../../lib/workspace-permissions.ts";
+import { PORTFOLIO_REVIEWER_ROLES, canManageWorkspaceSettings, isCollaboratorRole } from "../../lib/workspace-permissions.ts";
+import { isCaseOnly } from "../../lib/auth/case-only.ts";
+import { isLearnerOnly } from "../../lib/learning/learner-scope.ts";
 import { SHELL_TEXT } from "../../lib/shell/text.ts";
 
 /** Le icone della barra, per nome: la barra le traduce nelle icone di lucide. */
@@ -108,6 +110,17 @@ function learnerNav(base: string): ShellNav {
   return freeze({ main: [{ key: "learning", title: N.learning, href: `${base}/learning`, icon: "learning", match: ["learning"] }], tools: [], settings: null });
 }
 
+/**
+ * (8.0d) La barra di «Solo questo use case»: «Agent Factory», voce unica, sempre (anche prima della riga del dossier, e con
+ * l'area «Use case» spenta). Resta accesa anche nel progetto dell'agente, che si apre dall'Agent Factory.
+ */
+function caseOnlyNav(base: string): ShellNav {
+  return freeze({ main: [{ key: "factory", title: N.factory, href: `${base}/agent-factory`, icon: "factory", match: ["agent-factory", "casi-duso", "use-cases"] }], tools: [], settings: null });
+}
+
+/** Nessuna voce: un ruolo che il codice non conosce non apre niente (8.0d, le porte chiuse per default). */
+const NO_NAV: ShellNav = Object.freeze({ main: Object.freeze([]), tools: Object.freeze([]), settings: null });
+
 /** La barra di prima, con l'area «Use case» spenta: le stesse voci, nello stesso ordine, accese come prima. */
 export function legacyWorkspaceNav(viewer: Pick<ShellViewer, "workspaceId" | "learningAvailable" | "casesAvailable">): ShellNav {
   const base = `/dashboard/${viewer.workspaceId}`;
@@ -136,7 +149,10 @@ export function legacyWorkspaceNav(viewer: Pick<ShellViewer, "workspaceId" | "le
 /** La barra di un workspace, per chi guarda (§2.2). */
 export function workspaceNav(viewer: ShellViewer): ShellNav {
   const base = `/dashboard/${viewer.workspaceId}`;
-  if (viewer.role === "learner") return learnerNav(base);
+  if (isLearnerOnly(viewer.role)) return learnerNav(base);
+  if (isCaseOnly(viewer.role)) return caseOnlyNav(base);
+  // (8.0d) Per elenco: oltre a chi segue un corso e a «Solo questo use case», solo i cinque collaboratori hanno una barra.
+  if (!isCollaboratorRole(viewer.role)) return NO_NAV;
   if (!viewer.useCaseHub) return legacyWorkspaceNav(viewer);
 
   const reviewer = isReviewer(viewer.role);

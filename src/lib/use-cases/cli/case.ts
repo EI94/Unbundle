@@ -27,6 +27,8 @@ import {
 } from "@/lib/db/queries/team-mcp-requests";
 import { resolveCaseAccess, UcAccessError, type CaseAccess } from "@/lib/db/queries/uc-access";
 import { factoryStoreReady, type FactoryActor, type FactoryTarget } from "@/lib/db/queries/use-case-factory";
+import { hasCaseOnlyBuilder } from "@/lib/db/queries/use-case-builders";
+import type { UcExecutor } from "@/lib/db/uc-executor";
 import { viewerFromSession } from "@/lib/db/queries/use-case-hub";
 import { logSafeError } from "@/lib/log/safe-error";
 import { cast, toStatement, ucSql } from "@/lib/uc/sql/statement";
@@ -37,6 +39,7 @@ import { canReadFactory, canWriteFactory } from "@/lib/use-cases/factory/permiss
 import { decideExistingTeamRequest } from "@/lib/use-cases/mcp/idempotency";
 import { abilitiesForUseCase } from "@/lib/use-cases/permissions";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
+import { isCaseOnly } from "@/lib/auth/case-only";
 import { cliError, cliJson, type OpenedCli } from "./route-kit";
 import { CLI_CASE_NOT_FOUND, CLI_CASE_UNAVAILABLE, cliCaseAccessFailure, notBuilderMessage } from "./case-errors";
 
@@ -52,9 +55,25 @@ export interface CliCase {
   target: FactoryTarget;
   /** Chi vede «Cosa serve» sulla scheda (`abilitiesForUseCase`): per le esigenze e il pacchetto. */
   canSeeNeeds: boolean;
+  /**
+   * (8.0d) La persona è «Solo questo use case» nel workspace: costruisce questo caso con il predicato (la porta l'ha già
+   * controllato, `caseAccessPrecheck`). Della memoria del cliente riceve solo i fatti legati al caso (D7), mai «In breve»,
+   * regole e parole dell'azienda; registra solo il repository del suo caso (D4).
+   */
+  caseOnly: boolean;
 }
 
 const NOT_FOUND = CLI_CASE_NOT_FOUND;
+
+/**
+ * (8.0d, D7) Il contesto del caso è quello di «Solo questo use case» (i soli fatti legati al caso, il pacchetto con
+ * `CONTESTO.md` ridotto): per chi lo è, e per **chiunque** legga un caso che costruisce, o costruirà, qualcuno «Solo
+ * questo use case» (`hasCaseOnlyBuilder`). Quello che la CLI e l'MCP del caso portano finisce nel repository del
+ * caso, che chi viene da fuori legge su GitHub. Lo chiedono solo i comandi che portano il contesto: una lettura in più.
+ */
+export async function caseOnlyContextOf(executor: UcExecutor, c: CliCase): Promise<boolean> {
+  return c.caseOnly || (await hasCaseOnlyBuilder(executor, c.target));
+}
 
 /** Il caso della richiesta, dal codice dello use case; la risposta d'errore se non si può. */
 export async function resolveCliCase(opened: OpenedCli, ref: unknown): Promise<{ ok: true; value: CliCase } | { ok: false; response: Response }> {
@@ -75,6 +94,7 @@ LIMIT 1`),
   if (!row || (principal.caseUseCaseId !== null && principal.caseUseCaseId !== String(row.id))) return { ok: false, response: cliError(404, "non_trovato", NOT_FOUND) };
   const viewer = viewerFromSession({ id: principal.userId, email: row.email ? String(row.email) : null, emailVerified: row.email_verified === true }, access.role);
   const abilities = abilitiesForUseCase(viewer);
+  const caseOnly = isCaseOnly(access.role);
   if (!row.case_id) {
     // Che il codice esista lo dice solo a chi vede tutti i codici nella pagina: per gli altri è «non trovato».
     if (!abilities.canSeeAllCodes) return { ok: false, response: cliError(404, "non_trovato", NOT_FOUND) };
@@ -104,7 +124,9 @@ LIMIT 1`),
       factory,
       actor: { kind: "persona", userId: principal.userId, roles: factory.roles },
       target: { workspaceId: principal.workspaceId, useCaseId: String(row.id) },
-      canSeeNeeds: abilities.canSeeNeeds,
+      // (8.0d, D7) «Solo questo use case» riceve tutto quello che riguarda il suo caso, «Cosa serve» compreso: è del caso.
+      canSeeNeeds: abilities.canSeeNeeds || caseOnly,
+      caseOnly,
     },
   };
 }
@@ -173,6 +195,8 @@ const STATUS_OF: Readonly<Record<string, number>> = {
   repo_di_altro_cliente: 409,
   repo_non_del_cliente: 403,
   repo_modello: 400,
+  // (8.0d, D4) Un caso di «Solo questo use case» sta in un repository suo, mai condiviso con altri casi.
+  repo_condiviso: 409,
 };
 
 /** Una chiave di idempotenza valida: quella che la CLI genera (un UUID) o una del chiamante, 8-128 caratteri. */

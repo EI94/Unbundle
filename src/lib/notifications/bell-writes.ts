@@ -5,6 +5,7 @@ import { markSignalsReadForUser } from "@/lib/db/queries/signals";
 import { isUcEnabledFor } from "@/lib/db/queries/uc-access";
 import { markUseCaseNotificationsRead } from "@/lib/db/queries/use-case-notifications";
 import type { BellReadRef } from "./bell";
+import { isCaseOnly } from "@/lib/auth/case-only";
 
 /**
  * Le due scritture frequenti della campanella (SPEC §P2.3.8): «l'ho aperta» e «ho aperto questa
@@ -29,8 +30,9 @@ export async function writeBellRead(i: { workspaceId: string; userId: string; ro
     await markSignalsReadForUser({ workspaceId: i.workspaceId, userId: i.userId, role: i.role, signalIds: [ref.id] });
     return "ok";
   }
-  // dossier: solo con la sezione accesa (la campanella mostra quelle righe con lo stesso controllo).
-  if (!isUcEnabledFor(i.workspaceId)) return "non_disponibile";
+  // dossier: solo con la sezione accesa (la campanella mostra quelle righe con lo stesso controllo). (8.0d) Mai per «Solo
+  // questo use case»: la sua campanella non ha righe dei dossier.
+  if (isCaseOnly(i.role) || !isUcEnabledFor(i.workspaceId)) return "non_disponibile";
   const { markBellRead } = await import("@/lib/db/queries/uc-notifications-dispatch");
   await markBellRead(await getAppUcExecutor(), { userId: i.userId, workspaceId: i.workspaceId, notificationId: ref.id });
   return "ok";

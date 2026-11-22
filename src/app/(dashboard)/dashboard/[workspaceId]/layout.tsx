@@ -5,10 +5,11 @@ import { redirect, notFound } from "next/navigation";
 import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
 import { WorkspaceShell } from "@/components/shell/workspace-shell";
 import { workspaceNav } from "@/components/shell/sidebar-model";
-import { learnerRedirect } from "@/lib/learning/learner-scope";
+import { isLearnerOnly, learnerRedirect } from "@/lib/learning/learner-scope";
+import { caseOnlyRedirect, isCaseOnly, workspaceDoor } from "@/lib/auth/case-only";
 import { WorkspaceBell } from "@/components/portfolio/workspace-topbar";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
-import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
+import { canReviewWorkspacePortfolio, isCollaboratorRole } from "@/lib/workspace-permissions";
 
 export default async function WorkspaceLayout({
   children,
@@ -25,6 +26,9 @@ export default async function WorkspaceLayout({
 
   const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
   if (!access) notFound();
+  // (8.0d-1) Per elenco, come le porte (`workspaceDoor`): i collaboratori, chi segue un corso e «Solo questo use case»,
+  // ognuno nel suo perimetro; un ruolo che il codice non conosce riceve 404.
+  if (workspaceDoor(access.role, { allowLearner: true, allowCaseOnly: true }) !== "aperta") notFound();
   const { workspace } = access;
 
   // Chi entra da un link di corso ha il solo ruolo `learner`: va tenuto dentro
@@ -38,7 +42,13 @@ export default async function WorkspaceLayout({
     workspaceId,
   });
   if (learnerDestination) redirect(learnerDestination);
-  const learnerOnly = access.role === "learner";
+  const learnerOnly = isLearnerOnly(access.role);
+  // (8.0d-1) «Solo questo use case» resta dentro l'Agent Factory e il progetto del suo caso (`caseOnlyRedirect`, per
+  // segmenti): fuori torna all'Agent Factory. Ogni pagina del perimetro ricontrolla da sé (porta e predicato).
+  const caseOnlyDestination = caseOnlyRedirect({ role: access.role, pathname, workspaceId });
+  if (caseOnlyDestination) redirect(caseOnlyDestination);
+  const caseOnly = isCaseOnly(access.role);
+  const collaborator = isCollaboratorRole(access.role);
 
   // Area «Use case» (docs/use-case/DESIGN.md §2.1, §12.1): una voce sola al posto di quattro.
   const useCaseHub = isUseCaseHubWorkspace(workspaceId);
@@ -58,20 +68,22 @@ export default async function WorkspaceLayout({
   const ucOn = process.env.UC_ENABLED === "true";
 
   // Off by default: existing workspaces do not query the additive training tables.
-  const learningAvailable = process.env.LEARNING_ENABLED === "true"
+  const learningAvailable = process.env.LEARNING_ENABLED === "true" && !caseOnly
     ? await (await import("@/lib/learning/server")).hasLearningForWorkspace(workspaceId)
     : false;
 
   // Off by default (UC_ENABLED): the uc tables are read only when the section is on, behind to_regclass. Only the
-  // old sidebar (area off) has the list's entry.
-  const casesAvailable = ucOn && !learnerOnly && !useCaseHub
+  // old sidebar (area off) has the list's entry. (8.0d-1) Only the five collaborator roles: not a learner, not
+  // «Solo questo use case», not a role the code does not know.
+  const casesAvailable = ucOn && collaborator && !useCaseHub
     ? await (await import("@/lib/db/queries/uc-nav")).ucCasesNavVisible({ userId: session.user.id, workspaceId, role: access.role })
     : false;
 
   // (8.1a) «Agent Factory»: chi costruisce in un caso del workspace, o il manager di Lateral Space. (8.0c) Anche chi
   // costruisce da fuori Lateral Space e oggi lo può fare: il predicato unico, con i domini di Lateral Space.
+  // (8.0d) «Solo questo use case» ha sempre la sua voce sola (`workspaceNav`): qui non serve leggere niente.
   let factoryAvailable = false;
-  if (useCaseHub && ucOn && !learnerOnly) {
+  if (useCaseHub && ucOn && collaborator) {
     const [{ factoryNavVisible }, { viewerFromSession }, { getAppUcExecutor }, { ucLsDomains }] = await Promise.all([
       import("@/lib/db/queries/use-case-factory-line"),
       import("@/lib/db/queries/use-case-hub"),
@@ -87,6 +99,7 @@ export default async function WorkspaceLayout({
   // testata della barra su desktop e nella barra in alto del telefono. La campanella è un elemento del server: si legge
   // insieme alla pagina, e la cornice non la aspetta.
   const nav = workspaceNav({ workspaceId: workspace.id, role: access.role, useCaseHub, learningAvailable, casesAvailable, factoryAvailable });
+  // (8.0d) La campanella di «Solo questo use case» ha solo i tipi di chi costruisce, dei suoi casi (`loadBellPayload`).
   const bell = learnerOnly ? null : <WorkspaceBell workspaceId={workspaceId} role={access.role} userId={session.user.id} useCaseHub={useCaseHub} />;
 
   return (
@@ -100,7 +113,7 @@ export default async function WorkspaceLayout({
         image: session.user.image,
       }}
       bell={bell}
-      accountData={!learnerOnly}
+      accountData={collaborator}
     >
       {children}
     </WorkspaceShell>

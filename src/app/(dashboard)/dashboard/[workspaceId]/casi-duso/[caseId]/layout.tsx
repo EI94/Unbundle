@@ -32,6 +32,8 @@ import { NEXT_STEP_ICON, nextStepFor, resolveStepHref, type NextStep } from "@/l
 import { isLsViewer } from "@/lib/uc/views/status-groups";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
+import { caseOnlyHomePath, isCaseOnly } from "@/lib/auth/case-only";
+import { SHELL_TEXT } from "@/lib/shell/text";
 
 /** Il blocco testata più schede: lo misura `screens.mjs` (≤ 260 px a 1440) e lo guarda la barra fissa. */
 const CASE_HEAD_ID = "uc-case-head";
@@ -54,7 +56,11 @@ const CASE_HEAD_ID = "uc-case-head";
  */
 export default async function CaseLayout({ children, params }: { children: React.ReactNode; params: Promise<{ workspaceId: string; caseId: string }> }) {
   const { workspaceId, caseId } = await params;
-  const { session, access } = await requireWorkspacePage(workspaceId);
+  // (8.0d) Una porta di «Solo questo use case» (`CASE_ONLY_SURFACES`): il caso poi vuole il predicato (`loadCaseHead` →
+  // `caseAccessPrecheck`, 404 per un caso fuori). Per lui solo la testata, senza schede, menu «⋯», passi, avvisi, firme
+  // né esportazioni: la sua pagina è la Costruzione («Progetto dell'agente»), e il percorso torna all'Agent Factory.
+  const { session, access } = await requireWorkspacePage(workspaceId, { allowCaseOnly: true });
+  const caseOnly = isCaseOnly(access.role);
   let head: Awaited<ReturnType<typeof loadCaseHead>>;
   try {
     head = await loadCaseHead(workspaceId, caseId, session.user.id, access.role);
@@ -76,7 +82,7 @@ export default async function CaseLayout({ children, params }: { children: React
   const steps = headerNextSteps(caseAccess, header);
   const usable = (s: NextStep) => (s.id === "scarica_catalogo" ? canExport : writable);
   const next = nextStepFor(steps);
-  const primary = next && usable(next) ? next : null;
+  const primary = !caseOnly && next && usable(next) ? next : null;
   const stepView: CaseStepView | null = primary
     ? {
         label: primary.label,
@@ -91,7 +97,7 @@ export default async function CaseLayout({ children, params }: { children: React
         pageCommand: stepHasPageCommand(primary.id),
       }
     : null;
-  const transitionStep = steps.find((s) => s.owner === "me" && s.transition && usable(s));
+  const transitionStep = caseOnly ? undefined : steps.find((s) => s.owner === "me" && s.transition && usable(s));
   const transition: CaseTransitionView | null =
     transitionStep?.transition !== undefined
       ? {
@@ -106,23 +112,31 @@ export default async function CaseLayout({ children, params }: { children: React
   // Senza la scheda dello use case il progetto dell'agente non c'è: niente Costruzione.
   const pastVia = pastViaPhase(c);
   const construction = header.parent !== null;
-  const menu: CaseMenuEntry[] = caseMenuFor(roles, { exportable: canExport, pastVia, construction }).map((m) => ({ key: m.key, label: m.label, href: m.segment === null ? null : at(m.segment) }));
+  const menu: CaseMenuEntry[] = caseOnly
+    ? []
+    : caseMenuFor(roles, { exportable: canExport, pastVia, construction }).map((m) => ({ key: m.key, label: m.label, href: m.segment === null ? null : at(m.segment) }));
 
   // (Rilascio 10, §3.5) Un segnale per stato: l'avviso non c'è quando il pulsante pieno dice già la stessa cosa.
   // La configurazione incompleta (F-005): nel log e, fino all'ondata 6b, un avviso solo per chi gestisce il workspace.
-  const alert = caseHeadAlert({
-    status: c.status,
-    gateReconfirm: header.readiness?.gate_reconfirm === true,
-    canOpenVia: canOpenShellPage("via", roles),
-    primary: primary?.id ?? null,
-    lsConfigured: caseAccess.lsConfigured,
-    workspaceAdmin: canManageWorkspaceSettings(access.role),
-  });
-  const tabs = caseTabsFor(roles, { pastVia, construction });
+  const alert = caseOnly
+    ? null
+    : caseHeadAlert({
+        status: c.status,
+        gateReconfirm: header.readiness?.gate_reconfirm === true,
+        canOpenVia: canOpenShellPage("via", roles),
+        primary: primary?.id ?? null,
+        lsConfigured: caseAccess.lsConfigured,
+        workspaceAdmin: canManageWorkspaceSettings(access.role),
+      });
+  const tabs = caseOnly ? [] : caseTabsFor(roles, { pastVia, construction });
   const status = { tone: CASE_STATUS_TONE[c.status], label: CASE_STATUS_LABEL[c.status] };
   const ls = isLsViewer(roles);
   // (Rilascio 10, §3.5) Il titolo è sempre quello dello use case, in testata e nella barra fissa.
   const title = realizationTitle({ caseTitle: c.title, parent: header.parent });
+  const progress = caseOnly ? null : header.progress;
+  const trail = caseOnly
+    ? ({ kind: "lista", back: { label: SHELL_TEXT.nav.factory, href: caseOnlyHomePath(workspaceId) } } as const)
+    : caseTrail({ workspaceId, caseBase: base, parent: header.parent, useCaseHub: isUseCaseHubWorkspace(workspaceId) });
 
   return (
     <div data-uc-case-root="" className="flex min-w-0 flex-1 flex-col">
@@ -130,27 +144,27 @@ export default async function CaseLayout({ children, params }: { children: React
       <div id={CASE_HEAD_ID} data-uc-case-head="" className="border-b border-border">
         <div className={`mx-auto w-full max-w-6xl min-w-0 px-4 sm:px-6 lg:px-8 ${tabs.length === 0 ? "pb-4" : ""}`}>
           <CaseHeader
-            trail={caseTrail({ workspaceId, caseBase: base, parent: header.parent, useCaseHub: isUseCaseHubWorkspace(workspaceId) })}
+            trail={trail}
             title={title}
             status={status}
             alert={alert ? { ...alert, action: alert.action ? { label: alert.action.label, href: resolveStepHref(base, alert.action.href) } : null } : null}
-            progress={header.progress && showsHeaderProgress(roles) ? { ...header.progress, audience: ls ? "ls" : "cliente" } : null}
+            progress={progress && showsHeaderProgress(roles) ? { ...progress, audience: ls ? "ls" : "cliente" } : null}
             step={stepView}
             menu={menu}
           />
           <CaseTabs basePath={base} tabs={tabs} />
         </div>
       </div>
-      <CaseStickyBar basePath={base} tabs={tabs} headId={CASE_HEAD_ID} title={title} status={status} progress={header.progress} step={stepView} />
+      <CaseStickyBar basePath={base} tabs={tabs} headId={CASE_HEAD_ID} title={title} status={status} progress={progress} step={stepView} />
       {/* (Rilascio 10, §3.5) Il pannello delle firme (`?firma=1`): su ogni pagina della realizzazione, così il passo «Firma»
           e `/firme` lo aprono dove si è. */}
-      <CaseSignaturesPanel workspaceId={workspaceId} caseId={caseId} roles={roles} status={c.status} readOnly={caseAccess.readOnly} />
+      {caseOnly ? null : <CaseSignaturesPanel workspaceId={workspaceId} caseId={caseId} roles={roles} status={c.status} readOnly={caseAccess.readOnly} />}
       <CaseUrlPanels
         workspaceId={workspaceId}
         caseId={caseId}
         transition={writable ? transition : null}
         exportPanel={
-          canExport
+          canExport && !caseOnly
             ? {
                 title: ls ? "Esporta il catalogo" : "Scarica in Excel",
                 note: "Ogni download resta in Attività.",

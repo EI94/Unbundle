@@ -11,6 +11,9 @@ import { getCollaboratorAccess } from "@/lib/workspace-access";
  * La campanella di chi guarda (SPEC §P2.3.9). GET: il payload, senza scrivere niente. POST: le due
  * scritture frequenti, «l'ho aperta» e «ho aperto questa riga»; mai una server action, così non
  * aspettano dietro le altre action della pagina e non le ritardano. Nessun `revalidatePath`.
+ *
+ * (8.0d) Apre anche a «Solo questo use case» (`allowCaseOnly`, una porta di `CASE_ONLY_SURFACES`): il payload ha solo i
+ * tipi di chi costruisce dei suoi casi (`loadBellPayload`), e «letta» tocca solo righe sue.
  */
 
 export const runtime = "nodejs";
@@ -35,7 +38,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ workspaceId: s
   if (!userId) return json({ ok: false, code: "non_autenticato" }, 401);
   if (!UUID.test(workspaceId)) return json({ ok: false, code: "non_trovato" }, 404);
   try {
-    const access = await getCollaboratorAccess(userId, workspaceId);
+    const access = await getCollaboratorAccess(userId, workspaceId, { allowCaseOnly: true });
     if (!access) return json({ ok: false, code: "non_trovato" }, 404);
     const payload = await loadBellPayload({ workspaceId, userId, role: access.role ?? null, useCaseHub: isUseCaseHubWorkspace(workspaceId) });
     return json({ ok: true, payload });
@@ -69,7 +72,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ workspaceId: s
   if (!UUID.test(workspaceId)) return failure("non_disponibile", BELL_TEXT.errors.unavailable, 404);
   const op = body.op === "seen" ? "visto" : "letta";
   try {
-    const access = await getCollaboratorAccess(userId, workspaceId);
+    const access = await getCollaboratorAccess(userId, workspaceId, { allowCaseOnly: true });
     if (!access) return failure("non_disponibile", BELL_TEXT.errors.unavailable, 404);
     if (body.op === "seen") {
       const seenAt = await writeBellSeen({ workspaceId, userId });

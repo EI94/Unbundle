@@ -49,6 +49,12 @@ export const FACTORY_TEXT = Object.freeze({
     thisWorkspace: "questo workspace",
     /** Il verbo del pulsante pieno per la chiave nuova della CI da mettere su GitHub (la frase della 8.2b resta nella riga). */
     ciPut: "Metti la chiave su GitHub",
+    /**
+     * (8.0d) «Solo questo use case»: al manager «Togli …» quando il suo caso è chiuso (apre «Chi costruisce»), al
+     * responsabile «Aggiungi … al team» (il team del dossier). La frase della specifica resta nel «?».
+     */
+    togliEsterno: (who: string) => `Togli ${who.trim() || "questa persona"}`,
+    aggiungiEsterno: (who: string) => `Aggiungi ${who.trim() || "questa persona"} al team`,
   }),
   /** Quanto fa, nel pannello di un caso e nella riga di «oggi», «ieri», «N giorni fa». */
   since: Object.freeze({
@@ -89,6 +95,8 @@ export const FACTORY_TEXT = Object.freeze({
   empty: Object.freeze({
     text: "Nessun caso ancora: entra con «Avvia la realizzazione» dalla scheda.",
     action: "Vai agli use case",
+    /** (8.0d) «Solo questo use case», quando il suo caso non è (più) da costruire: niente link fuori dal suo perimetro. */
+    caseOnly: "Nessun use case da costruire, per ora.",
   }),
 
   /** Il pannello di un caso (`?apri=<codice>`). */

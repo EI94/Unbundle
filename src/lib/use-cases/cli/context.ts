@@ -20,7 +20,7 @@ import type { UcExecutor } from "@/lib/db/uc-executor";
 import { packageContextDelta, redactAgentContext } from "@/lib/use-cases/factory/package";
 import { canWriteFactory } from "@/lib/use-cases/factory/permissions";
 import { cliKnowsContextLayer, composeBrief, composeDecisionsLayer, composePackageLayer, composeProjectLayer, composeQuestionsLayer, nextStep, type ContextLayer } from "./brief";
-import { CLI_NOT_A_BUILDER, type CliCase } from "./case";
+import { CLI_NOT_A_BUILDER, caseOnlyContextOf, type CliCase } from "./case";
 import { notBuilderMessage } from "./case-errors";
 
 export { CONTEXT_LAYERS, type ContextLayer } from "./brief";
@@ -72,21 +72,25 @@ export async function loadCliContext(executor: UcExecutor, c: CliCase, input: { 
   // con il CONTESTO.md dell'ultimo pacchetto.
   const knowsContext = cliKnowsContextLayer(input.userAgent);
   const contextLine = input.layer === null && knowsContext;
+  // (8.0d, D7) I soli fatti legati al caso per «Solo questo use case», e per chiunque legga un caso che costruisce
+  // qualcuno «Solo questo use case» (`caseOnlyContextOf`); per tutti gli altri la lettura resta quella di sempre.
+  const caseOnlyReader = (contextLayer || contextLine) && (await caseOnlyContextOf(executor, c)) ? ({ caseOnly: true } as const) : {};
   const [extras, names, tasks, agent] = await Promise.all([
     cliCaseExtras(executor, c.target, { canSeeNeeds: c.canSeeNeeds }),
     namesToHide(executor, c.target),
     tasksStoreReady(executor).then((ready) => (ready ? listTasks(executor, c.target) : [])),
     // (9b) Lo strato `contesto` (con `since`) e la riga del brief (senza): solo «Per tutti», per chiunque chieda (D1).
+    // (8.0d, D7) A «Solo questo use case» solo i fatti legati al suo caso, mai quelli dell'azienda.
     contextLayer
-      ? loadAgentContext({ workspaceId: c.target.workspaceId, useCaseId: c.target.useCaseId, since: input.since })
+      ? loadAgentContext({ workspaceId: c.target.workspaceId, useCaseId: c.target.useCaseId, since: input.since, ...caseOnlyReader })
       : contextLine
-        ? loadAgentContext({ workspaceId: c.target.workspaceId, useCaseId: c.target.useCaseId })
+        ? loadAgentContext({ workspaceId: c.target.workspaceId, useCaseId: c.target.useCaseId, ...caseOnlyReader })
         : Promise.resolve(null),
   ]);
   if (contextLayer && agent === null) return { ok: false, code: "non_disponibile" };
   // Le novità del brief: le righe di CONTESTO.md che il prossimo «Aggiorna il pacchetto» cambierebbe; senza pacchetto,
   // quanti fatti ci sono. Senza archivio (agent null) nessuna riga.
-  const contextDelta = contextLine ? packageContextDelta({ context: agent, namesToHide: names, code: c.useCase.code, latest: view.latestPackage }) : 0;
+  const contextDelta = contextLine ? packageContextDelta({ context: agent, namesToHide: names, code: c.useCase.code, latest: view.latestPackage, ...caseOnlyReader }) : 0;
   const shared = contextLayer && agent ? redactAgentContext(agent, names) : null;
   const viewerId = c.actor.kind === "persona" ? c.actor.userId : "";
   const base = {

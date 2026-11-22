@@ -30,7 +30,8 @@ import { factoryQueue, nextStepOf, stationOf, type LineCase, type Station } from
 import { pullRequestUrl } from "@/lib/use-cases/factory/github";
 import { EVALS_MAIN_BRANCH, loadEvalFacts, type CaseEvalFacts } from "@/lib/db/queries/use-case-evals";
 import { evalsTodoText } from "@/lib/use-cases/factory/line";
-import { buildsCaseSql, externalBuilderSql, loadBuilderScope, lsStoredBuilderSql, NO_EXTERNAL_BUILDERS, type BuilderScope } from "@/lib/db/queries/use-case-builders";
+import { buildsCaseSql, caseOnlyChores, externalBuilderSql, loadBuilderScope, lsStoredBuilderSql, NO_EXTERNAL_BUILDERS, type BuilderScope } from "@/lib/db/queries/use-case-builders";
+import { caseOnlyAddTodoText, caseOnlyRemoveTodoText } from "@/lib/use-cases/factory/builders-text";
 import { CLI_TOKEN_PROVIDER } from "@/lib/use-cases/cli/codes";
 import { ciKeysStoreReady } from "@/lib/db/queries/use-case-ci-keys";
 import { CI_VERSION_WINDOW_DAYS } from "@/lib/use-cases/ci/api";
@@ -83,7 +84,7 @@ export interface FactoryCaseRow {
 }
 
 export interface FactoryTodo {
-  kind: "domande" | "chiesto" | "fermo" | "approva" | "rivedi" | "proposte" | "banco" | "evals" | "collega";
+  kind: "domande" | "chiesto" | "fermo" | "approva" | "rivedi" | "proposte" | "banco" | "evals" | "collega" | "togli_esterno" | "aggiungi_esterno";
   /** Vuoti per «Collega Claude Code», che è del workspace e non di un caso. */
   useCaseId: string;
   caseId: string;
@@ -95,6 +96,8 @@ export interface FactoryTodo {
   ref?: string;
   /** (Rilascio 10, ondata 6b) Quante cose chiede la voce (domande, proposte), per il verbo breve della pagina. */
   count?: number;
+  /** (8.0d) La persona «Solo questo use case» di «Togli …» e «Aggiungi … al team», per il verbo breve della pagina. */
+  person?: string;
 }
 
 export interface FactoryOverview {
@@ -123,7 +126,7 @@ export function connectCliTodoText(clientName: string): string {
  */
 export async function loadFactoryOverview(
   executor: UcExecutor,
-  input: { workspaceId: string; userId: string; seeAll: boolean; canSeeNeeds: boolean; lsDomains?: readonly string[] },
+  input: { workspaceId: string; userId: string; seeAll: boolean; canSeeNeeds: boolean; lsDomains?: readonly string[]; caseOnly?: boolean },
 ): Promise<FactoryOverview> {
   const ws = cast(input.workspaceId, "uuid");
   const me = cast(input.userId, "uuid");
@@ -150,7 +153,12 @@ export async function loadFactoryOverview(
       EXISTS (SELECT 1 FROM use_case_pull_requests m WHERE m.use_case_id = u.id AND m.state = 'unita' AND lower(s.pr_url) = lower('https://github.com/' || m.repo || '/pull/' || m.number))
       OR EXISTS (SELECT 1 FROM use_case_pull_requests m JOIN use_case_tasks mt ON mt.id = m.task_id WHERE m.use_case_id = u.id AND m.state = 'unita' AND s.task_ref = mt.ref)))`
     : raw("NULL::jsonb");
-  const visible = input.seeAll ? raw("true") : ucSql`EXISTS (SELECT 1 FROM uc_case_members m WHERE m.case_id = c.id AND m.user_id = ${me})`;
+  // (8.0d) «Solo questo use case» vede solo i casi che costruisce adesso (il predicato), mai quelli dove ha solo una riga.
+  const visible = input.seeAll
+    ? raw("true")
+    : input.caseOnly
+      ? buildsCaseSql(builders, me)
+      : ucSql`EXISTS (SELECT 1 FROM uc_case_members m WHERE m.case_id = c.id AND m.user_id = ${me})`;
   const [rows] = await executor.batch([
     toStatement(ucSql`SELECT u.id AS use_case_id, c.id AS case_id, coalesce(u.code, c.code) AS code, u.title, c.status AS dossier_status,
   EXISTS (SELECT 1 FROM uc_case_members m WHERE m.case_id = c.id AND m.user_id = ${me}) AS mine,
@@ -299,6 +307,17 @@ FROM workspaces w WHERE w.id = ${ws}`),
     const e = c.evals;
     if (e && !e.thresholdsMet && !e.inConstruction && !e.fakeModels && e.branch === EVALS_MAIN_BRANCH) {
       todos.push({ kind: "evals", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, text: evalsTodoText(e.quality) });
+    }
+  }
+  // (8.0d) «Solo questo use case»: al manager «Togli …» (caso chiuso, o use case che non c'è più), al responsabile del caso
+  // «Aggiungi … al team» (la riga che manca dopo l'invito). Mai a «Solo questo use case» stesso.
+  if (!input.caseOnly) {
+    const chores = await caseOnlyChores(executor, { workspaceId: input.workspaceId, viewerUserId: input.userId, lsManager: input.seeAll });
+    for (const c of chores.remove) {
+      todos.push({ kind: "togli_esterno", useCaseId: c.useCaseId ?? "", caseId: c.caseId ?? "", code: c.code ?? "", person: c.name, text: caseOnlyRemoveTodoText(c.name, c.code) });
+    }
+    for (const c of chores.add) {
+      if (c.code && c.caseId && c.useCaseId) todos.push({ kind: "aggiungi_esterno", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, person: c.name, text: caseOnlyAddTodoText(c.name, c.code) });
     }
   }
   return { cases, families, todos, queue, tasksReady };

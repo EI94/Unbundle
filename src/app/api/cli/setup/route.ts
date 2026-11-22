@@ -2,7 +2,7 @@ import { SETUP_TOPICS, SETUP_TOPIC_LABELS, FACTORY_FRAMEWORKS } from "@/lib/db/u
 import { familyChoices, namesToHide, readFactory, saveProjectDetails, saveProjectTopic, startProject, submitProject } from "@/lib/db/queries/use-case-factory";
 import { givenNames, nameTokens, redact } from "@/lib/use-cases/factory/package";
 import { SETUP_GUIDE } from "@/lib/use-cases/cli/brief";
-import { requireCliWrite, resolveCliCase, runCliWrite } from "@/lib/use-cases/cli/case";
+import { caseOnlyContextOf, requireCliWrite, resolveCliCase, runCliWrite } from "@/lib/use-cases/cli/case";
 import { canWriteFactory } from "@/lib/use-cases/factory/permissions";
 import { cliError, cliJson, openCli, readCliBody } from "@/lib/use-cases/cli/route-kit";
 import { notBuilderMessage } from "@/lib/use-cases/cli/case-errors";
@@ -13,7 +13,9 @@ import { notBuilderMessage } from "@/lib/use-cases/cli/case-errors";
  *
  * - GET (chi costruisce il caso, anche da fuori Lateral Space): la guida dei 10 argomenti con le scelte di adesso, il catalogo dei
  *   framework, le scelte approvate degli altri casi della famiglia dove la persona è nel team (mai con il token di
- *   un caso solo), la revisione del progetto aperto. Ogni testo passa dai nomi da nascondere.
+ *   un caso solo; (8.0d) mai a «Solo questo use case», né a nessuno su un caso che costruisce qualcuno «Solo questo use
+ *   case», `caseOnlyContextOf`: la CLI lavora nel repository del caso), la revisione del progetto aperto. Ogni testo
+ *   passa dai nomi da nascondere.
  * - POST `azione`: `apri` (una versione nuova, con le scelte dell'ultima), `scelta` (un argomento: diventa anche
  *   una decisione), `dettagli` (framework, strumenti nuovi, stima), `invia` (in approvazione, con la revisione
  *   vista). Le stesse regole della pagina «Progetto dell'agente».
@@ -30,10 +32,8 @@ export async function GET(request: Request): Promise<Response> {
   const { executor, principal } = opened.value;
   const read = await readFactory(executor, c.target, c.actor);
   if (!read.ok) return cliError(404, "non_trovato", read.message);
-  const [family, names] = await Promise.all([
-    principal.caseUseCaseId === null ? familyChoices(executor, c.target, principal.userId) : Promise.resolve([]),
-    namesToHide(executor, c.target),
-  ]);
+  const withFamily = principal.caseUseCaseId === null && !(await caseOnlyContextOf(executor, c));
+  const [family, names] = await Promise.all([withFamily ? familyChoices(executor, c.target, principal.userId) : Promise.resolve([]), namesToHide(executor, c.target)]);
   const tokens = nameTokens(names);
   const given = givenNames(names);
   const hide = (text: string) => redact(text, tokens, given);

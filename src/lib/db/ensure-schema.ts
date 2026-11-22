@@ -24,6 +24,7 @@ import { MAPPING_BOARD_DDL, MAPPING_BOARD_PROBE_SQL } from "./mapping-board-ddl.
 import { TEMPLATE_FILES_ADVISORY_LOCK, TEMPLATE_FILES_DDL, TEMPLATE_FILES_PROBE_SQL } from "./use-case-hub-template-files-ddl.ts";
 import { CONTEXT_WORK_ADVISORY_LOCK, CONTEXT_WORK_DDL, CONTEXT_WORK_PROBE_SQL } from "./context-work-ddl.ts";
 import { CI_KEYS_ADVISORY_LOCK, CI_KEYS_DDL, CI_KEYS_PROBE_SQL } from "./use-case-hub-ci-keys-ddl.ts";
+import { CASE_ONLY_ADVISORY_LOCK, CASE_ONLY_DDL, CASE_ONLY_PROBE_SQL } from "./use-case-hub-case-only-ddl.ts";
 
 /**
  * Self-heal dello schema.
@@ -43,7 +44,7 @@ import { CI_KEYS_ADVISORY_LOCK, CI_KEYS_DDL, CI_KEYS_PROBE_SQL } from "./use-cas
  */
 
 /** Incrementa ad ogni modifica a `runOnce`: così i worker warm ri-eseguono il catch-up. */
-const ENSURE_VERSION = 36;
+const ENSURE_VERSION = 37;
 
 let ensurePromise: Promise<void> | null = null;
 let ensureVersionApplied = 0;
@@ -750,6 +751,12 @@ async function runOnce(): Promise<void> {
   // Dopo la 0041, ma dipende solo dalla 0036. Non blocca il resto dell'app: senza la 0042 `/api/ci/*` risponde 503, la riga
   // della famiglia dice «Non ancora disponibile» e le letture delle evals non chiedono le colonne nuove (`ciKeysStoreReady`).
   await runCiKeysDdlSafely();
+
+  // «Solo questo use case»: il valore `esterno_caso` dell'enum dei ruoli e il caso degli inviti (drizzle/0043_solo_questo_use_case.sql)
+  // Dopo la 0042, ma dipende solo dalla 0037. Non blocca il resto dell'app: senza la 0043 nessuno è «Solo questo use case»
+  // e l'accettazione di un suo invito risponde «riprova» (`caseOnlyReady`). Il valore dell'enum non si toglie più: mai da
+  // un'anteprima.
+  await runCaseOnlyDdlSafely();
 }
 
 /** Dopo un errore della 0024, un nuovo tentativo al massimo ogni 5 minuti per processo, mai a ogni richiesta. */
@@ -1029,6 +1036,26 @@ async function runCiKeysDdlSafely(): Promise<void> {
   } catch (err) {
     ciKeysDdlFailedAt = Date.now();
     console.error("[db/ensure-schema] 0042 self-heal failed, the app keeps serving without the CI keys (apply drizzle/0042 by hand):", err);
+  }
+}
+
+/** Dopo un errore della 0043, come la 0024: un nuovo tentativo al massimo ogni 5 minuti per processo. */
+let caseOnlyDdlFailedAt: number | null = null;
+
+/**
+ * La 0043 senza far fallire `ensureDbSchema()`, come `runUseCaseReferentsDdlSafely`. Mai da un'anteprima di Vercel, come la
+ * 0038, la 0040, la 0041 e la 0042, e qui conta di più: le anteprime usano il database di produzione, e il valore
+ * `esterno_caso` dell'enum non si toglie più. La 0043 la applica solo il deploy di produzione (o il file a mano). Senza,
+ * l'anteprima serve come prima: nessuno è «Solo questo use case».
+ */
+async function runCaseOnlyDdlSafely(): Promise<void> {
+  if (process.env.VERCEL_ENV === "preview") return;
+  try {
+    await runCaseOnlyDdl();
+    caseOnlyDdlFailedAt = null;
+  } catch (err) {
+    caseOnlyDdlFailedAt = Date.now();
+    console.error("[db/ensure-schema] 0043 self-heal failed, the app keeps serving without «Solo questo use case» (apply drizzle/0043 by hand):", err);
   }
 }
 
@@ -1373,6 +1400,20 @@ export async function runCiKeysDdl(statements: readonly string[] = CI_KEYS_DDL):
   ]);
 }
 
+/**
+ * Applica il DDL della 0043 in una sola transazione, con lo stesso advisory lock del file e `lock_timeout` di 3s, come la
+ * 0042. Il valore nuovo dell'enum non si usa nella stessa transazione (PostgreSQL non lo permette): qui non si usa. In
+ * produzione la applica questo self-heal, al primo avvio dopo il deploy; il file a mano resta la strada di riserva.
+ */
+export async function runCaseOnlyDdl(statements: readonly string[] = CASE_ONLY_DDL): Promise<void> {
+  const client = db.$client;
+  await client.transaction([
+    client.query("SELECT set_config('lock_timeout', '3s', true)"),
+    client.query(`SELECT pg_advisory_xact_lock(hashtext('${CASE_ONLY_ADVISORY_LOCK}'))`),
+    ...statements.map((statement) => client.query(statement)),
+  ]);
+}
+
 async function schemaLooksCurrent(): Promise<boolean> {
   try {
     const result = (await db.execute(sql`
@@ -1502,6 +1543,7 @@ async function schemaLooksCurrent(): Promise<boolean> {
         AND ${sql.raw(TEMPLATE_FILES_PROBE_SQL)}
         AND ${sql.raw(CONTEXT_WORK_PROBE_SQL)}
         AND ${sql.raw(CI_KEYS_PROBE_SQL)}
+        AND ${sql.raw(CASE_ONLY_PROBE_SQL)}
       ) AS current;
     `)) as unknown as { rows?: Array<{ current?: unknown }> };
     return result.rows?.[0]?.current === true;
@@ -1616,6 +1658,11 @@ export async function ensureDbSchema(): Promise<void> {
     if (ciKeysDdlFailedAt !== null && Date.now() - ciKeysDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
       ciKeysDdlFailedAt = Date.now();
       ensurePromise = ensurePromise.then(runCiKeysDdlSafely);
+    }
+    // La 0043 era fallita (non fatale): come la 0024, un tentativo alla volta, dopo la pausa.
+    if (caseOnlyDdlFailedAt !== null && Date.now() - caseOnlyDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
+      caseOnlyDdlFailedAt = Date.now();
+      ensurePromise = ensurePromise.then(runCaseOnlyDdlSafely);
     }
     return ensurePromise;
   }

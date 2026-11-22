@@ -8,9 +8,11 @@ import { getWorkspaceInvitationByToken } from "@/lib/db/queries/workspace-collab
 import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
 import {
   getWorkspaceInvitationLifecycle,
+  keepsCurrentRole,
   maskInviteEmail,
   normalizeInviteEmail,
 } from "@/lib/workspace-invite-token";
+import { isLearnerOnly } from "@/lib/learning/learner-scope";
 import { ROLE_INFO_OUTSIDE, roleLabel } from "@/lib/workspace-roles";
 import { INVITE_TEXT, fillInvite, inviteDay } from "@/lib/public/invite";
 import { Button } from "@/components/ui/button";
@@ -70,8 +72,11 @@ export default async function WorkspaceInvitePage({ params }: { params: Promise<
   // l'invito è per un'altra email, prima si dice che l'account è sbagliato:
   // su un computer condiviso chi apre il proprio invito non deve leggere
   // «sei già dentro» riferito a un altro.
+  // (8.0d) «Già dentro» per elenco, come la decisione dell'accettazione (`keepsCurrentRole`): un collaboratore, o un
+  // ruolo che il codice non conosce. Chi segue un corso o è «Solo questo use case» può ancora accettare (e salire).
   const access = session ? await getWorkspaceAccessForUser(session.user.id, workspace.id) : null;
-  if (access && access.role !== "learner" && !wrongAccount) {
+  const alreadyInside = access ? keepsCurrentRole({ orgRole: access.source === "organization" ? access.role : null, workspaceRole: access.source === "workspace" ? access.role : null }) : false;
+  if (access && alreadyInside && !wrongAccount) {
     return (
       <PublicShell>
         <div data-testid="invite-already">
@@ -122,7 +127,7 @@ export default async function WorkspaceInvitePage({ params }: { params: Promise<
       )}
 
       <div className="mt-6 space-y-3">
-        {access?.role === "learner" && !wrongAccount && (
+        {isLearnerOnly(access?.role) && !wrongAccount && (
           <p className="rounded-xl bg-muted px-4 py-3">{fillInvite(T.learner, { Ruolo: role?.label ?? T.collaborator })}</p>
         )}
 
@@ -143,7 +148,7 @@ export default async function WorkspaceInvitePage({ params }: { params: Promise<
               {fillInvite(T.wrongAccount, { Sessione: session.user.email ?? "", Invito: maskInviteEmail(invitedEmail!) })}
             </p>
             <SwitchAccountButton loginHref={switchHref} className={PUBLIC_PRIMARY} />
-            {access && access.role !== "learner" ? (
+            {access && alreadyInside ? (
               <p className="text-center text-sm text-muted-foreground">
                 {fillInvite(T.alreadyThere, ws)}{" "}
                 <Link className={PUBLIC_LINK} href={`/dashboard/${workspace.id}/portfolio`}>

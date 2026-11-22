@@ -11,7 +11,7 @@
  * Senza `UC_LS_EMAIL_DOMAINS` nessuno è Lateral Space: la pagina si legge e basta.
  * Modulo puro.
  */
-import { PORTFOLIO_REVIEWER_ROLES, canManageWorkspaceSettings } from "../workspace-permissions.ts";
+import { PORTFOLIO_REVIEWER_ROLES, canManageWorkspaceSettings, isCollaboratorRole } from "../workspace-permissions.ts";
 import { LEARNED_SOURCE_PREFIX, type ContextChannel, type ContextVisibility, type SourceKind, type SourceOrigin } from "./vocab.ts";
 
 /** Chi agisce, con il ruolo appena riletto. `isLateralSpace`: e-mail verificata in `UC_LS_EMAIL_DOMAINS`. */
@@ -41,9 +41,6 @@ export interface ContextAbilities {
   canSeeReviewerSources: boolean;
   canUseGranola: boolean;
 }
-
-/** I ruoli di chi lavora nel workspace: tutti tranne chi segue solo un corso. Un ruolo sconosciuto non apre niente. */
-const COLLABORATOR_ROLES: readonly string[] = Object.freeze(["exec_sponsor", "transformation_lead", "function_lead", "analyst", "contributor"]);
 
 const NOTHING: ContextAbilities = Object.freeze({
   canOpen: false,
@@ -96,7 +93,10 @@ export const AGENT_VIEWER: Readonly<Pick<ContextActor, "role" | "isLateralSpace"
 /** Che cosa può fare chi guarda: la tabella del §5.1. */
 export function contextAbilities(viewer: Pick<ContextActor, "role" | "isLateralSpace">): ContextAbilities {
   const role = viewer.role;
-  if (typeof role !== "string" || !COLLABORATOR_ROLES.includes(role)) return NOTHING;
+  // I cinque ruoli da collaboratore (`COLLABORATOR_ROLES`): chi segue solo un corso, «Solo questo use case» (8.0d) e un
+  // ruolo sconosciuto non aprono niente. «Solo questo use case» legge solo i fatti legati al suo caso, dal progetto e
+  // dalla CLI (`loadAgentContext` con `caseOnly`), mai la pagina «Contesto».
+  if (typeof role !== "string" || !isCollaboratorRole(role)) return NOTHING;
   const lateralSpace = viewer.isLateralSpace === true;
   const reviewer = (PORTFOLIO_REVIEWER_ROLES as readonly string[]).includes(role);
   return {

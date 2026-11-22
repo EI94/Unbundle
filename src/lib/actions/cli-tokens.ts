@@ -11,7 +11,8 @@ import { cliStoreReady, revokeOwnCliToken } from "@/lib/db/queries/use-case-cli-
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
 
 export async function revokeOwnCliTokenAction(workspaceId: string, tokenId: string): Promise<{ ok: boolean; message: string }> {
-  const { session } = await requireWorkspaceAccess(workspaceId);
+  // (8.0d) «Scollega», anche per «Solo questo use case» (`CASE_ONLY_SURFACES`): solo un collegamento suo, nel workspace.
+  const { session } = await requireWorkspaceAccess(workspaceId, { allowCaseOnly: true });
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tokenId)) return { ok: false, message: "Collegamento non valido." };
   await ensureDbSchema();
   const executor = await getAppUcExecutor();

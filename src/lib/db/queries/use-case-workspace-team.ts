@@ -37,6 +37,8 @@
 import { WORKSPACE_TEAM_PROBE_SQL, WORKSPACE_TEAM_ROLES, type WorkspaceTeamRole } from "../use-case-hub-team-ddl.ts";
 import { addCaseMember, loadCaseRoles, loadUserContext, removeCaseMember, type UcCommandContext } from "./uc-cases.ts";
 import {
+  caseOnlyDossierTarget,
+  caseOnlyLeaveCaseStatements,
   deleteGrantsStatements,
   externalBuilderSql,
   externalBuildersReady,
@@ -57,7 +59,8 @@ import { fail, ok, type Result } from "../../uc/types.ts";
 import { CLIENT_CASE_ROLES, type CaseRole } from "../../uc/vocab.ts";
 import { userContextFrom } from "../../uc/lateral-space.ts";
 import { CLI_TOKEN_PROVIDER } from "../../use-cases/cli/codes.ts";
-import { PORTFOLIO_REVIEWER_ROLES } from "../../workspace-permissions.ts";
+import { COLLABORATOR_ROLES_SQL, PORTFOLIO_REVIEWER_ROLES, isCollaboratorRole } from "../../workspace-permissions.ts";
+import { isCaseOnly } from "../../auth/case-only.ts";
 import type { UcExecutor, UcRow } from "../uc-executor.ts";
 
 const LS_ROLES: readonly CaseRole[] = WORKSPACE_TEAM_ROLES;
@@ -90,10 +93,13 @@ ORDER BY lower(coalesce(nullif(btrim(u.name), ''), u.email))`),
   return rows.map((r) => ({ userId: String(r.user_id), name: String(r.name), email: String(r.email), role: String(r.role) as WorkspaceTeamRole }));
 }
 
-/** Collaboratore del workspace `w` (non solo partecipante ai corsi), come per i membri dei casi. */
+/**
+ * Collaboratore del workspace `w` (non solo partecipante ai corsi), come per i membri dei casi. (8.0d) Per elenco, come
+ * testo: i cinque ruoli da collaboratore, mai «Solo questo use case» né un ruolo che il codice non conosce.
+ */
 const collaboratorOf = (user: SqlFragment) => ucSql`(
-  EXISTS (SELECT 1 FROM memberships m WHERE m.organization_id = w.organization_id AND m.user_id = ${user} AND m.role::text <> 'learner')
-  OR EXISTS (SELECT 1 FROM workspace_memberships wm WHERE wm.workspace_id = w.id AND wm.user_id = ${user} AND wm.role::text <> 'learner'))`;
+  EXISTS (SELECT 1 FROM memberships m WHERE m.organization_id = w.organization_id AND m.user_id = ${user} AND m.role::text IN (${raw(COLLABORATOR_ROLES_SQL)}))
+  OR EXISTS (SELECT 1 FROM workspace_memberships wm WHERE wm.workspace_id = w.id AND wm.user_id = ${user} AND wm.role::text IN (${raw(COLLABORATOR_ROLES_SQL)})))`;
 
 /** I dossier aperti del workspace (non chiusi, creati per intero), con il codice. */
 async function openCases(executor: UcExecutor, workspaceId: string): Promise<{ id: string; code: string }[]> {
@@ -255,8 +261,11 @@ export async function applyWorkspaceTeamToCase(
 
 // ─── Chi costruisce da fuori Lateral Space (8.0c) ────────────────────
 
-/** I motivi per cui una persona non può costruire da fuori: i codici delle azioni e della pagina. */
-export type ExternalRefusal = "non_collaboratore" | "email_non_verificata" | "di_lateral_space" | "ruolo_workspace";
+/**
+ * I motivi per cui una persona non può costruire da fuori: i codici delle azioni e della pagina. (8.0d)
+ * `solo_questo_use_case`: «Aggiungi» (la 8.0c) non vale per «Solo questo use case», che entra in un caso con il suo invito.
+ */
+export type ExternalRefusal = "non_collaboratore" | "email_non_verificata" | "di_lateral_space" | "ruolo_workspace" | "solo_questo_use_case";
 
 interface PersonFacts {
   userId: string;
@@ -294,12 +303,17 @@ FROM users u JOIN workspaces w ON w.id = ${cast(workspaceId, "uuid")} WHERE u.id
   return out;
 }
 
-/** Perché la persona non può costruire da fuori, nell'ordine dei controlli; null se può. */
+/**
+ * Perché la persona non può costruire da fuori, nell'ordine dei controlli; null se può. (8.0d) Per elenco: un
+ * collaboratore (da revisore, la 8.0c) o «Solo questo use case» (con la sua concessione per caso: il predicato non conta
+ * mai «tutti»); chi segue un corso e un ruolo che il codice non conosce no.
+ */
 function externalRefusal(p: PersonFacts | undefined): ExternalRefusal | null {
-  if (!p || p.role === null || p.role === "learner") return "non_collaboratore";
+  if (!p || !(isCollaboratorRole(p.role) || isCaseOnly(p.role))) return "non_collaboratore";
   if (!p.verified) return "email_non_verificata";
   if (p.lateralSpace) return "di_lateral_space";
-  if (!(PORTFOLIO_REVIEWER_ROLES as readonly string[]).includes(p.role)) return "ruolo_workspace";
+  if (isCaseOnly(p.role)) return null;
+  if (!(PORTFOLIO_REVIEWER_ROLES as readonly string[]).includes(p.role ?? "")) return "ruolo_workspace";
   return null;
 }
 
@@ -322,6 +336,7 @@ const EXTERNAL_REFUSAL_MESSAGE: Readonly<Record<ExternalRefusal, string>> = {
   email_non_verificata: "Prima deve confermare la sua e-mail in Unbundle.",
   di_lateral_space: "È una persona di Lateral Space: scegli Sviluppatore, Analista o Responsabile.",
   ruolo_workspace: "Per costruire serve almeno il ruolo di Analista nel workspace: cambialo da Impostazioni › Team.",
+  solo_questo_use_case: "Lavora solo al use case del suo invito: per ora non si aggiunge ad altri casi da qui.",
 };
 
 /** Il «Dove» da un modulo: `"tutti"`, oppure gli use case scelti. */
@@ -414,7 +429,9 @@ export async function addExternalBuilder(
   const asked = parseWhere(i.where);
   if (!asked) return fail("dati_non_validi", "Scegli dove costruisce: in tutti i casi, oppure almeno un caso.");
   if (!(await externalBuildersReady(executor))) return fail("non_disponibile", "Non ancora disponibile: riprova tra qualche minuto.");
-  const refusal = externalRefusal((await personFacts(executor, i.workspaceId, [userId], i.lsDomains)).get(userId));
+  const person = (await personFacts(executor, i.workspaceId, [userId], i.lsDomains)).get(userId);
+  // (8.0d) «Solo questo use case» non entra con «Aggiungi»: mai «tutti», e un caso solo arriva con l'invito (8.0d-2).
+  const refusal = isCaseOnly(person?.role) ? "solo_questo_use_case" : externalRefusal(person);
   if (refusal) return fail(refusal, EXTERNAL_REFUSAL_MESSAGE[refusal]);
   let where: BuilderWhere = { all: true };
   if (!asked.all) {
@@ -511,6 +528,12 @@ export interface ExternalRemoveResult {
   noticeId: string | null;
 }
 
+/** (8.0d) L'uscita dal workspace di «Solo questo use case» («Togli»): la sua membership `esterno_caso`, e nient'altro. */
+function exitCaseOnlyStatement(workspaceId: string, userId: string): UcStatement {
+  return toStatement(ucSql`DELETE FROM workspace_memberships WHERE workspace_id = ${cast(workspaceId, "uuid")} AND user_id = ${cast(userId, "uuid")} AND role::text = 'esterno_caso'
+RETURNING id`);
+}
+
 /** La revoca dei token della CLI della persona nel workspace (quelli di tutti i casi e quelli di un caso solo). */
 export function revokeCliTokensStatement(workspaceId: string, userId: string): UcStatement {
   return toStatement(ucSql`UPDATE workspace_integration_tokens SET revoked_at = now(), updated_at = now()
@@ -536,7 +559,8 @@ export async function removeExternalBuilder(
   // I casi si leggono dopo il lock della persona, nella transazione che toglie le concessioni: c'è anche il dossier dove
   // la riga `osservatore` è entrata un attimo prima, e dopo non ne entra più nessuna (`observeCase`).
   const removal = removeGrantsStatements(i.workspaceId, userId);
-  const first = [...removal.statements, revoke];
+  // (8.0d) «Solo questo use case» esce anche dal workspace, nella stessa transazione dei poteri: lavorava solo lì.
+  const first = [...removal.statements, exitCaseOnlyStatement(i.workspaceId, userId), revoke];
   const released = await releaseTasksOfFormerBuilder(executor, { workspaceId: i.workspaceId, userId, lsDomains: i.lsDomains, first });
   const cases = (released.firstRows[removal.casesAt] ?? []).map((r) => ({ id: String(r.id), code: String(r.code) }));
   const out: ExternalRemoveResult = { left: [], skipped: [], repos, released: released.released, revokedTokens: released.firstRows[first.length - 1]?.length ?? 0, noticeId: null };
@@ -569,7 +593,8 @@ export async function applyExternalBuildersToCase(
   const covered = [...grants.entries()].filter(([, where]) => where.all || where.useCaseIds.includes(useCaseId)).map(([userId]) => userId);
   const facts = await personFacts(executor, i.workspaceId, covered, i.lsDomains);
   for (const userId of covered) {
-    if (externalRefusal(facts.get(userId))) {
+    // (8.0d) «Solo questo use case» entra solo con una concessione per questo caso, mai con «tutti».
+    if (externalRefusal(facts.get(userId)) || (isCaseOnly(facts.get(userId)?.role) && grants.get(userId)?.all !== false)) {
       out.unchanged.push(userId);
       continue;
     }
@@ -579,6 +604,27 @@ export async function applyExternalBuildersToCase(
     else out.skipped.push({ code: userId, reason: applied });
   }
   return out;
+}
+
+/**
+ * (8.0d) Dopo l'accettazione di un invito «Solo questo use case»: la riga `osservatore` nel dossier aperto del suo use
+ * case, con chi ha dato la concessione (chi ha invitato) come attore, se ne è ancora responsabile. Si ripete senza danni
+ * (riaprendo il link o l'Agent Factory). Se chi ha invitato non è più responsabile, niente: il responsabile di adesso
+ * trova «Aggiungi … al team» in «Da fare per te». Mai «tutti»: solo il caso della concessione. Non lancia.
+ */
+export async function joinCaseOnlyDossier(
+  executor: UcExecutor,
+  i: { workspaceId: string; userId: string; useCaseId: string; lsDomains: readonly string[] },
+): Promise<"aggiunto" | "gia_dentro" | "senza_dossier" | string> {
+  try {
+    if (!(await externalBuildersReady(executor))) return "non_disponibile";
+    const target = await caseOnlyDossierTarget(executor, i);
+    if (!target) return "senza_dossier";
+    if (!target.actorUserId) return "attore_non_ammesso";
+    return await observeCase(executor, { workspaceId: i.workspaceId, caseId: target.caseId, actorUserId: target.actorUserId, userId: i.userId, lsDomains: i.lsDomains });
+  } catch {
+    return "non_riuscito";
+  }
 }
 
 // ─── I compiti di chi non costruisce più ─────────────────────────────
@@ -661,7 +707,14 @@ RETURNING task_id`);
  */
 export async function removeCaseMemberReleasingTasks(executor: UcExecutor, ctx: UcCommandContext, input: unknown): Promise<Result<{ userId: string; role: CaseRole }>> {
   return removeCaseMember(executor, ctx, input, {
-    after: async ({ userId }) => (await taskReleaseStatements(executor, { workspaceId: ctx.workspaceId, userId, lsDomains: ctx.lsDomains, caseId: ctx.caseId })) ?? [],
+    after: async ({ userId, role }) => [
+      ...((await taskReleaseStatements(executor, { workspaceId: ctx.workspaceId, userId, lsDomains: ctx.lsDomains, caseId: ctx.caseId })) ?? []),
+      // (8.0d) La riga `osservatore` di «Solo questo use case»: esce da quel caso e, senza altri casi, dal workspace. Per
+      // chi non è `esterno_caso` queste istruzioni non toccano niente.
+      ...(role === "osservatore" && (await externalBuildersReady(executor))
+        ? caseOnlyLeaveCaseStatements({ workspaceId: ctx.workspaceId, caseId: ctx.caseId, userId, cliProvider: CLI_TOKEN_PROVIDER })
+        : []),
+    ],
   });
 }
 

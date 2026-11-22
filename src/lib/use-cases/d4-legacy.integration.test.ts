@@ -435,13 +435,16 @@ test("getSignalsByWorkspace: i segnali delle schede solo ai revisori, di ogni ru
   for (const person of REVIEWERS) {
     assert.deepEqual(types(await signals.getSignalsByWorkspace(ids.ws, 50, roles[person])), [...ALL_TYPES].sort(), person);
   }
-  for (const role of ["contributor", "learner", null, "", "ruolo_sconosciuto"]) {
-    const rows = await signals.getSignalsByWorkspace(ids.ws, 50, role);
-    assert.deepEqual(types(rows), [...OTHER_TYPES].sort(), `ruolo ${role}`);
-    for (const row of rows) assert.ok(!CASE_TYPES.includes(row.signalType));
+  const rows = await signals.getSignalsByWorkspace(ids.ws, 50, "contributor");
+  assert.deepEqual(types(rows), [...OTHER_TYPES].sort(), "ruolo contributor");
+  for (const row of rows) assert.ok(!CASE_TYPES.includes(row.signalType));
+  // (8.0d, U6) Per elenco: a chi non è revisore solo se è Contributore; chi segue un corso, «Solo questo use case», un
+  // ruolo sconosciuto e chi non ha ruolo non vedono niente (prima avevano la vista del Contributore).
+  for (const role of ["learner", "esterno_caso", null, "", "ruolo_sconosciuto"]) {
+    assert.deepEqual(types(await signals.getSignalsByWorkspace(ids.ws, 50, role)), [], `ruolo ${role}`);
   }
-  // Senza ruolo, la query sceglie la forma ridotta: chi la chiama senza dirlo non vede le schede.
-  assert.deepEqual(types(await signals.getSignalsByWorkspace(ids.ws)), [...OTHER_TYPES].sort());
+  // Senza ruolo, niente: chi la chiama senza dirlo non vede nessun segnale.
+  assert.deepEqual(types(await signals.getSignalsByWorkspace(ids.ws)), []);
   // Mai i segnali di un altro workspace.
   for (const role of ["exec_sponsor", "contributor"]) {
     for (const row of await signals.getSignalsByWorkspace(ids.ws, 50, role)) assert.notEqual(row.title, `ALTRO-WORKSPACE-${suffix}`);
@@ -468,10 +471,11 @@ test("getUnreadSignals: stessa regola, solo i non letti", opts, async () => {
       person,
     );
   }
-  for (const role of ["contributor", "learner", null]) {
-    assert.deepEqual(types(await signals.getUnreadSignals(ids.ws, role)), ["risk_alert"], `ruolo ${role}`);
+  assert.deepEqual(types(await signals.getUnreadSignals(ids.ws, "contributor")), ["risk_alert"], "ruolo contributor");
+  for (const role of ["learner", "esterno_caso", null]) {
+    assert.deepEqual(types(await signals.getUnreadSignals(ids.ws, role)), [], `ruolo ${role}`);
   }
-  assert.deepEqual(types(await signals.getUnreadSignals(ids.ws)), ["risk_alert"]);
+  assert.deepEqual(types(await signals.getUnreadSignals(ids.ws)), []);
 });
 
 test("campanella: la cornice passa alla campanella solo i segnali che il ruolo vede", opts, async () => {

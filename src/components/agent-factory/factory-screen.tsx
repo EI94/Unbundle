@@ -14,6 +14,8 @@ import {
   MessageCircleQuestion,
   Play,
   Terminal,
+  UserMinus,
+  UserPlus,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -46,6 +48,8 @@ const TODO_ICON: Readonly<Record<string, LucideIcon>> = {
   rivedi: Eye,
   banco: FlaskConical,
   evals: Gauge,
+  togli_esterno: UserMinus,
+  aggiungi_esterno: UserPlus,
 };
 
 /** Una modifica su GitHub: si apre in una nuova scheda, e lo dice ai lettori di schermo. */
@@ -65,8 +69,9 @@ const ROW_CLASS =
  * Una riga di «Da fare per te»: il verbo, il codice (e il compito) in grigio, la freccia; una modifica si apre su GitHub.
  * (Revisione 6b) `onSamePage`: dentro un pannello, una voce che porta a un punto di questa pagina (la famiglia di una
  * voce della CI) chiude prima il pannello, sostituendo il suo passo della cronologia; poi il link va all'ancora.
+ * (8.0d) `onPanel`: una voce che apre un pannello di questa pagina («Togli …» apre «Chi costruisce») è un pulsante.
  */
-function TodoRow({ todo, onSamePage }: { todo: FactoryTodoView; onSamePage?: () => void }) {
+function TodoRow({ todo, onSamePage, onPanel }: { todo: FactoryTodoView; onSamePage?: () => void; onPanel?: (panel: string) => void }) {
   const body = (
     <>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-6">
@@ -78,7 +83,11 @@ function TodoRow({ todo, onSamePage }: { todo: FactoryTodoView; onSamePage?: () 
   );
   return (
     <li data-todo={todo.kind}>
-      {todo.external ? (
+      {todo.panel && onPanel ? (
+        <button type="button" className={ROW_CLASS} aria-haspopup="dialog" onClick={() => onPanel(todo.panel as string)}>
+          {body}
+        </button>
+      ) : todo.external ? (
         <a href={todo.href} target="_blank" rel="noreferrer" className={ROW_CLASS}>
           {body}
         </a>
@@ -237,7 +246,11 @@ export function FactoryScreen({ model, initialPanel, builders, ciRows }: Factory
                     icon: first.kind.startsWith("ci-") ? KeyRound : TODO_ICON[first.kind],
                     why: first.why,
                     mine: true,
-                    ...(first.external ? { link: <a href={first.href} target="_blank" rel="noreferrer" aria-label={T.todo.newTab(first.button)} /> } : { href: first.href }),
+                    ...(first.panel
+                      ? { onClick: () => open(first.panel as string) }
+                      : first.external
+                        ? { link: <a href={first.href} target="_blank" rel="noreferrer" aria-label={T.todo.newTab(first.button)} /> }
+                        : { href: first.href }),
                   }
                 : null
             }
@@ -257,7 +270,7 @@ export function FactoryScreen({ model, initialPanel, builders, ciRows }: Factory
             </h2>
             <RowList>
               {shown.map((t) => (
-                <TodoRow key={t.key} todo={t} />
+                <TodoRow key={t.key} todo={t} onPanel={open} />
               ))}
             </RowList>
             {more > 0 ? (
@@ -269,7 +282,12 @@ export function FactoryScreen({ model, initialPanel, builders, ciRows }: Factory
         ) : null}
 
         {model.totalCases === 0 ? (
-          <EmptyState text={T.empty.text} action={{ label: T.empty.action, href: `/dashboard/${model.workspaceId}/use-cases` }} />
+          // (8.0d) «Solo questo use case» non ha link fuori dal suo perimetro.
+          model.caseOnly ? (
+            <EmptyState text={T.empty.caseOnly} />
+          ) : (
+            <EmptyState text={T.empty.text} action={{ label: T.empty.action, href: `/dashboard/${model.workspaceId}/use-cases` }} />
+          )
         ) : (
           <>
             {model.chips.length > 1 || model.filter ? (
@@ -341,7 +359,7 @@ export function FactoryScreen({ model, initialPanel, builders, ciRows }: Factory
         {panel === FACTORY_PANELS.todos ? (
           <RowList>
             {model.todos.map((t) => (
-              <TodoRow key={t.key} todo={t} onSamePage={() => setPanel(null, { replace: true })} />
+              <TodoRow key={t.key} todo={t} onSamePage={() => setPanel(null, { replace: true })} onPanel={(key) => setPanel(key, { replace: true })} />
             ))}
           </RowList>
         ) : null}
