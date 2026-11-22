@@ -304,7 +304,7 @@ test("i passi di §8.2: appunti, elenco, conferma, creazione con conferma e chia
   assert.ok(readOnlyRow, "riga di permesso_mancante");
   assert.match(readOnlyRow, /sola lettura/);
   assert.match(readOnlyRow, /un token senza «Solo lettura»/);
-  assert.match(readOnlyRow, /Impostazioni › Integrazioni › Claude per il team/);
+  assert.match(readOnlyRow, /da «Il tuo account» › Claude e terminale/);
   assert.doesNotMatch(readOnlyRow, /ruolo/, "il ruolo e l'appartenenza sono il 401, non questo errore");
   // Frasi brevi, niente emoji, niente trattini lunghi.
   assert.doesNotMatch(skill, /[–—]/);

@@ -38,7 +38,7 @@ Questa skill crea e basta: non modifica, non decide, non cancella. Per valutare,
 
 ## Passo 0. Controlla il collegamento
 
-Se i tool di Unbundle Use case non ci sono in questa chat, il connettore non è collegato. Di' in una frase: «Il connettore Unbundle Use case non è attivo in questa chat. Crea il tuo token in Unbundle, in Impostazioni › Integrazioni › Claude per il team, e segui «Come collegare Claude».» Poi continua in modalità senza connettore (in fondo).
+Se i tool di Unbundle Use case non ci sono in questa chat, il connettore non è collegato. Di' in una frase: «Il connettore Unbundle Use case non è attivo in questa chat. Crea il tuo token in Unbundle, da «Il tuo account» › Claude e terminale, e segui «Come collegare Claude».» Poi continua in modalità senza connettore (in fondo).
 
 ## Passo 1. Leggi gli appunti
 
@@ -123,14 +123,14 @@ Ogni tool può rispondere con `isError` e `error`, `message`, `fieldErrors` (i c
 | `error` | Cosa fare |
 |---|---|
 | `invalid_payload` | Correggi solo i campi di `fieldErrors` (lunghezze, tipo) e richiama con la stessa chiave. Se la sostanza non cambia, non serve un nuovo sì. |
-| `permesso_mancante` | Il token collegato a Claude è in sola lettura: cerca, ma non crea. Di' di creare in Impostazioni › Integrazioni › Claude per il team un token senza «Solo lettura» e di sostituirlo in Claude. Poi passa alla modalità senza connettore. |
+| `permesso_mancante` | Il token collegato a Claude è in sola lettura: cerca, ma non crea. Di' di creare da «Il tuo account» › Claude e terminale un token senza «Solo lettura» e di sostituirlo in Claude. Poi passa alla modalità senza connettore. |
 | `area_spenta` | L'area «Use case» non è accesa per questo workspace. Dillo e passa alla modalità senza connettore. |
 | `rate_limited`, `idempotency_in_progress` | Aspetta i secondi di `retryAfterSeconds` e riprova con la stessa chiave. |
 | `idempotency_conflict` | La chiave era già usata per un altro elenco: crea una chiave nuova e richiama. |
 | `riprova`, `internal_error` | Riprova una volta con la stessa chiave. Al secondo errore passa alla modalità senza connettore. |
 | `not_found`, `version_conflict`, `transizione_non_ammessa` | Non dovrebbero arrivare: questa skill non legge una scheda per codice, non modifica e non decide. Se arrivano, fermati e dillo in una frase. |
 
-Se il connettore risponde che non sei autorizzato (per esempio un errore 401), il token è scaduto, revocato, oppure la persona non ha più un ruolo da revisore. Di' di creare un token nuovo in Impostazioni › Integrazioni › Claude per il team e di sostituirlo in Claude.
+Se il connettore risponde che non sei autorizzato (per esempio un errore 401), il token è scaduto, revocato, oppure la persona non ha più un ruolo da revisore. Di' di creare un token nuovo da «Il tuo account» › Claude e terminale e di sostituirlo in Claude.
 
 ## Modalità senza connettore
 
