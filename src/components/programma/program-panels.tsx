@@ -40,14 +40,16 @@ const T = PROGRAM_TEXT;
 const H = HOME_TEXT;
 
 /**
- * I pannelli della Home dei revisori (rilascio 10; prima della pagina «Programma», rilascio 7), per `?apri=`. I
- * quattordici di prima restano tutti, con i loro indirizzi (la campanella apre `?apri=rivedere`); in più «Tutti i
- * numeri» (i quattro risultati e la curva), «Iniziative» (la tabella) e «Impostazioni del programma». Unirne due
- * (`in-uso` con `in_uso`, `formazione` con `persone`) è dell'ondata 6b.
+ * I pannelli della Home dei revisori (rilascio 10; prima della pagina «Programma», rilascio 7), per `?apri=`. (Ondata
+ * 6b, audit §3.27, F-156) I quattordici di prima diventano dodici: «Valore già in uso» (`in-uso`) e la fase «In uso»
+ * (`in_uso`) erano quasi uguali, «Formazione» (`formazione`) e «Persone» (`persone`) lo stesso pannello con due titoli.
+ * Gli indirizzi di prima restano tutti (`PROGRAM_PANEL_ALIASES`: `?apri=in-uso` e `?apri=formazione` aprono il pannello
+ * unito; la campanella apre `?apri=rivedere`). In più «Tutti i numeri» (i quattro risultati e la curva), «Iniziative»
+ * (la tabella) e «Impostazioni del programma» (dipendenti e ricavo; per Lateral Space canone, percentuale di sviluppo,
+ * sviluppo per caso e pesi dell'indice, prima sparsi in quattro pannelli).
  */
 export const PROGRAM_PANELS = [
   "valore",
-  "in-uso",
   "dipendente",
   "indice",
   "curva",
@@ -55,7 +57,6 @@ export const PROGRAM_PANELS = [
   "in_realizzazione",
   "da_avviare",
   "supporto",
-  "formazione",
   "rivedere",
   "persone",
   "obiettivi",
@@ -66,8 +67,14 @@ export const PROGRAM_PANELS = [
 ] as const;
 export type ProgramPanel = (typeof PROGRAM_PANELS)[number];
 
-/** I nomi nuovi che portano a un pannello di oggi: `?apri=scenari` è la curva con gli scenari (§2.4). */
-export const PROGRAM_PANEL_ALIASES: Readonly<Record<string, ProgramPanel>> = Object.freeze({ scenari: "curva" });
+/** I dodici pannelli del Programma dopo l'unione (i tre della Home sono a parte): per i test e per chi li conta. */
+export const PROGRAM_CORE_PANELS: readonly ProgramPanel[] = Object.freeze(PROGRAM_PANELS.filter((p) => p !== "numeri" && p !== "iniziative" && p !== "impostazioni"));
+
+/**
+ * I nomi che portano a un pannello di oggi: `?apri=scenari` è la curva con gli scenari (§2.4); (ondata 6b) i due
+ * pannelli uniti, `?apri=in-uso` e `?apri=formazione`, aprono quello in cui sono entrati.
+ */
+export const PROGRAM_PANEL_ALIASES: Readonly<Record<string, ProgramPanel>> = Object.freeze({ scenari: "curva", "in-uso": "in_uso", formazione: "persone" });
 
 export function isProgramPanel(value: string | null | undefined): value is ProgramPanel {
   return typeof value === "string" && (PROGRAM_PANELS as readonly string[]).includes(value);
@@ -81,7 +88,6 @@ export function programPanelOf(value: string | null | undefined): ProgramPanel |
 
 const PANEL_TITLE: Record<ProgramPanel, string> = {
   valore: T.estimated,
-  "in-uso": T.inUse,
   dipendente: T.perEmployee,
   indice: T.index,
   curva: T.chart,
@@ -89,7 +95,6 @@ const PANEL_TITLE: Record<ProgramPanel, string> = {
   in_realizzazione: T.stage.in_realizzazione,
   da_avviare: T.stage.da_avviare,
   supporto: T.support,
-  formazione: T.training,
   rivedere: "Use case da rivedere",
   persone: H.rows.people,
   obiettivi: H.rows.goals,
@@ -167,9 +172,11 @@ function deltaOf(now: number | null, then: number | null | undefined, kind: "eur
 /** Le parti di un fatto, senza quelle vuote: «412.000 € · su 20 use case». */
 const joinFact = (...parts: Array<string | null | undefined | false>) => parts.filter(Boolean).join(" · ");
 
-/** La riga di uno use case nei pannelli: codice e titolo che aprono la scheda, poi le cifre su colonne separate. */
-function CardRow({ card, view, withDev }: { card: ViewCard; view: ProgramView; withDev: boolean }) {
-  const dev = view.ls?.caseDev.find((d) => d.id === card.id);
+/**
+ * La riga di uno use case nei pannelli: codice e titolo che aprono la scheda, poi le cifre su colonne separate. (Ondata
+ * 6b) Lo sviluppo di Lateral Space del singolo use case si cambia in «Impostazioni del programma».
+ */
+function CardRow({ card, view }: { card: ViewCard; view: ProgramView }) {
   return (
     <li className="space-y-1.5 px-3 py-2.5">
       <Link href={card.href} className="block text-sm font-medium break-words hover:underline">
@@ -206,15 +213,23 @@ function CardRow({ card, view, withDev }: { card: ViewCard; view: ProgramView; w
           </span>
         ) : null}
       </div>
-      {withDev && dev ? <CaseDevControl workspaceId={view.workspaceId} item={dev} devPct={view.ls?.devPct ?? null} /> : null}
     </li>
   );
 }
 
-function StagePanel({ view, stage }: { view: ProgramView; stage: "in_uso" | "in_realizzazione" | "da_avviare" }) {
+/** (Ondata 6b) Dove si cambiano i costi di Lateral Space, a chi li cambia: un tocco, al posto dei moduli di prima. */
+function SettingsLink({ view, open }: { view: ProgramView; open?: Open }) {
+  if (!view.ls || !open) return null;
+  return (
+    <TextAction onClick={() => open("impostazioni")} opensPanel>
+      {H.panels.settings}
+    </TextAction>
+  );
+}
+
+function StagePanel({ view, stage, open }: { view: ProgramView; stage: "in_uso" | "in_realizzazione" | "da_avviare"; open?: Open }) {
   const row = view.initiatives.find((r) => r.stage === stage);
   if (!row) return <p className="text-sm text-muted-foreground">Nessuno use case.</p>;
-  const withDev = Boolean(view.ls);
   const groups =
     stage === "da_avviare"
       ? [...new Set(row.cards.map((c) => c.quarter ?? ""))].sort((a, b) => (a === "" ? 1 : b === "" ? -1 : a.localeCompare(b))).map((q) => ({ label: q ? quarterLabel(q) : "Più avanti", cards: row.cards.filter((c) => (c.quarter ?? "") === q) }))
@@ -234,12 +249,13 @@ function StagePanel({ view, stage }: { view: ProgramView; stage: "in_uso" | "in_
         <Section key={g.label ?? "tutti"} title={g.label ? `${g.label} · ${formatInteger(g.cards.length)}` : undefined}>
           <ul className="divide-y rounded-lg border">
             {g.cards.map((c) => (
-              <CardRow key={c.id} card={c} view={view} withDev={withDev} />
+              <CardRow key={c.id} card={c} view={view} />
             ))}
           </ul>
         </Section>
       ))}
       <Source>Valore e costi dalle schede degli use case. Il costo di realizzazione conta per gli use case da costruire.</Source>
+      <SettingsLink view={view} open={open} />
     </div>
   );
 }
@@ -318,7 +334,7 @@ function CurvePanel({ view }: { view: ProgramView }) {
   );
 }
 
-function SupportPanel({ view }: { view: ProgramView }) {
+function SupportPanel({ view, open }: { view: ProgramView; open?: Open }) {
   const s = view.costs.support;
   return (
     <div className="space-y-4">
@@ -334,18 +350,13 @@ function SupportPanel({ view }: { view: ProgramView }) {
       ) : (
         <p className="text-sm text-muted-foreground">Nessun canone di supporto.</p>
       )}
-      {view.ls ? (
-        <Section title="Costi di Lateral Space">
-          <Source>{"Solo Lateral Space vede questa parte. Il canone di ogni mese si divide tra gli use case in realizzazione o in uso quel mese, in proporzione al loro valore all'anno: la parte di ognuno è nei pannelli delle iniziative."}</Source>
-          <LsCostsForm view={view} />
-          <Source>{"Lo sviluppo di un singolo use case si accende nel pannello della sua iniziativa e prende il posto del suo costo di realizzazione, tranne le ore interne."}</Source>
-        </Section>
-      ) : null}
+      {view.ls ? <Source>{H.panels.settingsLsShare}</Source> : null}
+      <SettingsLink view={view} open={open} />
     </div>
   );
 }
 
-function IndexPanel({ view }: { view: ProgramView }) {
+function IndexPanel({ view, open }: { view: ProgramView; open?: Open }) {
   return (
     <div className="space-y-4">
       <p className="text-3xl font-semibold tabular-nums">
@@ -374,11 +385,7 @@ function IndexPanel({ view }: { view: ProgramView }) {
         ))}
       </ul>
       <Source>{"L'indice è la media pesata dei pilastri che contano."}</Source>
-      {view.ls ? (
-        <Section title="Pesi">
-          <WeightsForm workspaceId={view.workspaceId} weights={view.ls.weights} />
-        </Section>
-      ) : null}
+      <SettingsLink view={view} open={open} />
     </div>
   );
 }
@@ -540,7 +547,7 @@ function GoalsPanel({ view }: { view: ProgramView }) {
                   <span className="text-sm font-medium tabular-nums">{kpiValueText(k.now, k.unit)}</span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {k.source === "automatico" ? "Calcolato da Unbundle." : k.source === "formula" ? (view.viewer.canEdit ? `Formula: ${k.formula}.` : "Calcolato con una formula.") : k.lastPeriod ? `A mano, ultimo valore di ${monthLongLabel(k.lastPeriod)}${k.lastSource === "brain" ? " (dal Brain)" : ""}.` : "A mano: nessun valore ancora."}
+                  {k.source === "automatico" ? "Calcolato da Unbundle." : k.source === "formula" ? (view.viewer.canEdit ? `Formula: ${k.formula}.` : "Calcolato con una formula.") : k.lastPeriod ? `${k.lastSource === "brain" ? "Automatico" : "A mano"}, ultimo valore di ${monthLongLabel(k.lastPeriod)}.` : "A mano: nessun valore ancora."}
                   {k.target !== null ? ` Obiettivo ${kpiValueText(k.target, k.unit)}.` : ""}
                   {k.broken ? " La formula usa un KPI che non c'è più." : ""}
                 </p>
@@ -658,7 +665,7 @@ function NumbersPanel({ view, open, pendingValue = null }: { view: ProgramView; 
             data-row="in-uso"
             title={T.inUse}
             fact={keepTogether(r.inUseCount ? joinFact(formatEuro(r.inUse), deltaOf(r.inUse, sal?.inUse, "euro", sal?.on) ?? T.onUseCases(r.inUseCount)) : joinFact(T.noneInUse, r.firstGoLive ? T.firstGoLive(r.firstGoLive) : null))}
-            onClick={() => open("in-uso")}
+            onClick={() => open("in_uso")}
           />
         </li>
         <li>
@@ -753,7 +760,7 @@ function InitiativesPanel({ view, open }: { view: ProgramView; open: Open }) {
         <ul className="divide-y">
           {people.training ? (
             <li>
-              <InitiativeRow name={T.training} sub={T.trainingLine(people.training.trained, people.training.hours)} value={null} oneoff={null} run={null} onClick={() => open("formazione")} />
+              <InitiativeRow name={T.training} sub={T.trainingLine(people.training.trained, people.training.hours)} value={null} oneoff={null} run={null} onClick={() => open("persone")} />
             </li>
           ) : null}
           {view.initiatives.map((row) => (
@@ -793,7 +800,11 @@ function InitiativesPanel({ view, open }: { view: ProgramView; open: Open }) {
   );
 }
 
-/** «Impostazioni del programma»: dipendenti e ricavo; per Lateral Space anche canone, sviluppo e pesi dell'indice. */
+/**
+ * «Impostazioni del programma» (ondata 6b, audit §3.27, F-146, F-149), per chi modifica: dipendenti e ricavo; per
+ * Lateral Space anche canone e percentuale di sviluppo, lo sviluppo di ogni use case e i pesi dell'indice, che prima
+ * stavano in «Supporto», nei pannelli delle fasi e in «Indice».
+ */
 function SettingsPanel({ view }: { view: ProgramView }) {
   return (
     <div className="space-y-6">
@@ -807,9 +818,25 @@ function SettingsPanel({ view }: { view: ProgramView }) {
       {view.ls ? (
         <>
           <Section title={H.panels.settingsLsCosts}>
+            <Source>{H.panels.settingsLsShare}</Source>
             <LsCostsForm view={view} />
-            <Source>{H.panels.settingsCaseDev}</Source>
           </Section>
+          {view.ls.caseDev.length ? (
+            <Section title={H.panels.settingsCaseDevTitle}>
+              <Source>{H.panels.settingsCaseDevHow}</Source>
+              <ul className="divide-y rounded-lg border" data-slot="program-case-dev">
+                {view.ls.caseDev.map((dev) => (
+                  <li key={dev.id} className="space-y-1.5 px-3 py-2.5">
+                    <p className="text-sm font-medium break-words">
+                      {dev.code ? <span className="mr-1 font-mono text-xs text-muted-foreground">{dev.code}</span> : null}
+                      {dev.title}
+                    </p>
+                    <CaseDevControl workspaceId={view.workspaceId} item={dev} devPct={view.ls?.devPct ?? null} />
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          ) : null}
           <Section title={H.panels.settingsWeights}>
             <WeightsForm workspaceId={view.workspaceId} weights={view.ls.weights} />
           </Section>
@@ -838,11 +865,12 @@ export function PanelBody({ panel, view, open, extras = {} }: { panel: ProgramPa
           <Source>Le cifre delle schede degli use case approvati, in realizzazione e in uso, {T.onUseCases(r.estimatedCount)}.</Source>
         </div>
       );
-    case "in-uso":
+    case "in_uso":
+      // (Ondata 6b) «Valore già in uso» e la fase «In uso» sono un pannello solo: l'andamento, poi gli use case.
       return (
         <div className="space-y-4">
           <Trend rows={view.trend.map((t) => [t.period, t.inUse === null ? "—" : formatEuro(t.inUse)])} />
-          <StagePanel view={view} stage="in_uso" />
+          <StagePanel view={view} stage="in_uso" open={open} />
         </div>
       );
     case "dipendente":
@@ -861,19 +889,16 @@ export function PanelBody({ panel, view, open, extras = {} }: { panel: ProgramPa
         </div>
       );
     case "indice":
-      return <IndexPanel view={view} />;
+      return <IndexPanel view={view} open={open} />;
     case "curva":
       return <CurvePanel view={view} />;
-    case "in_uso":
     case "in_realizzazione":
     case "da_avviare":
-      return <StagePanel view={view} stage={panel} />;
+      return <StagePanel view={view} stage={panel} open={open} />;
     case "supporto":
-      return <SupportPanel view={view} />;
-    case "formazione":
-      return <PeoplePanel view={view} />;
+      return <SupportPanel view={view} open={open} />;
     case "persone":
-      // «Chi propone, per area» solo in «Persone»: «Formazione» resta com'era.
+      // (Ondata 6b) «Formazione» e «Persone» sono un pannello solo: formazione, livelli, AI Readiness, chi propone.
       return <PeoplePanel view={view} participation={extras.participation ?? null} />;
     case "rivedere":
       return (

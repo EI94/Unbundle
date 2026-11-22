@@ -6,8 +6,9 @@ export const metadata = { title: HOME_TEXT.title };
 
 /**
  * `/programma` (rilascio 7) è un alias della Home (rilascio 10, docs/ui-10/PROPOSTA-10.md §2.4 e §8.2): la stessa
- * pagina, con i suoi quattordici `?apri=` che aprono gli stessi pannelli (la campanella apre `?apri=rivedere`), e i
- * link, i segnalibri e le e-mail di prima continuano a funzionare. La barra laterale accende «Home».
+ * pagina, con i suoi `?apri=` che aprono gli stessi pannelli (la campanella apre `?apri=rivedere`; dall'ondata 6b i
+ * quattordici pannelli sono dodici e `?apri=in-uso` e `?apri=formazione` aprono quello unito), e i link, i segnalibri e
+ * le e-mail di prima continuano a funzionare. La barra laterale accende «Home».
  */
 export default async function ProgramAliasPage({
   params,

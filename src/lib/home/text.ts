@@ -111,8 +111,13 @@ export const HOME_TEXT = Object.freeze({
     /** Nel pannello «Impostazioni del programma», solo Lateral Space. */
     settingsLsCosts: "Costi di Lateral Space",
     settingsWeights: "Pesi dell'indice",
-    /** Nel pannello «Impostazioni del programma»: le altre impostazioni, dove stanno. */
-    settingsCaseDev: "Lo sviluppo di un singolo use case si cambia nel pannello della sua iniziativa.",
+    /**
+     * (Ondata 6b) Nel pannello «Impostazioni del programma», solo Lateral Space: come si divide il canone (prima la nota
+     * del pannello «Supporto»), lo sviluppo di ogni use case (prima nei pannelli delle fasi).
+     */
+    settingsLsShare: "Solo Lateral Space vede questa parte. Il canone di ogni mese si divide tra gli use case in realizzazione o in uso, in proporzione al loro valore all'anno.",
+    settingsCaseDevTitle: "Sviluppo per use case",
+    settingsCaseDevHow: "Lo sviluppo di Lateral Space di uno use case prende il posto del suo costo di realizzazione, tranne le ore interne.",
     /** (Rilascio 10) In «Tutti i numeri»: il tetto delle voci da misurare di «Benefici e costi» (prima sulla Panoramica). */
     pending: "Valore da misurare all'anno",
     /** «fino a 23.400 € · su 9 use case». */
