@@ -140,3 +140,31 @@ test("in construction (version 0.x) the dot is neutral: below the thresholds is 
   assert.equal(qualitySummary({ evals: { latest: run({ inConstruction: true }), trend: [] }, benches: [] }, { builder: true })!.tone, "grigio");
   assert.equal(qualitySummary(below({}), { builder: true })!.tone, "rosso", "out of construction it is red");
 });
+
+// ─── (Cases without AI) docs/rilascio-8/CASI-SENZA-AI.md §6 ──────────
+
+/** main's evals of a case without AI: the reserved result `senza-ai`, no cost, no tokens. */
+const noAi = (over: Partial<BenchResult> = {}) =>
+  run({ models: {}, withoutAi: true, results: [result("senza-ai", 1, null, { current: true, passed: 48, total: 48, tokensInAvg: null, tokensOutAvg: null, ...over })] });
+
+test("(cases without AI) the row says «caso senza AI: nessun modello» to everyone; the benches of before no longer advise", () => {
+  // The bench of 13/11 advised Haiku for «lettura»; main's evals of 14/11 are without AI.
+  const overview: EvalOverview = { evals: { latest: noAi(), trend: [] }, benches: [bench("lettura", LETTURA)] };
+  const s = qualitySummary(overview, { builder: true })!;
+  assert.equal(s.line, "100% · soglie rispettate · caso senza AI: nessun modello");
+  assert.equal(s.tone, "verde");
+  assert.deepEqual(s.advice, [], "every bench is superseded by main's evals without AI");
+  const text = textOf(render(s));
+  assert.ok(text.includes("caso senza AI: nessun modello"));
+  assert.doesNotMatch(text, /USD|token|npm run|banco|modelli finti/i, "no cost, tokens, bench or command in the row");
+  const client = qualitySummary(overview, { builder: false })!;
+  assert.deepEqual(client, { line: "100% · soglie rispettate · caso senza AI: nessun modello", tone: "verde", runId: null, meta: null, alert: null, advice: [] });
+  assert.equal(textOf(render(client)), "100% · soglie rispettate · caso senza AI: nessun modello");
+  assert.deepEqual(findForbidden(textOf(render(client)), "cliente"), []);
+  // Below the thresholds: red, and the alert for who builds, as for the other cases.
+  const low = qualitySummary({ evals: { latest: noAi({ quality: 0.8, passed: 40, total: 50, thresholdsMet: false }), trend: [] }, benches: [] }, { builder: true })!;
+  assert.deepEqual([low.line, low.tone], ["80% · sotto soglia · caso senza AI: nessun modello", "rosso"]);
+  assert.ok(low.alert?.startsWith("Sotto soglia"));
+  // Without a measure the page does not know: nothing about AI.
+  assert.equal(qualitySummary({ evals: { latest: null, trend: [] }, benches: [bench("lettura", LETTURA)] }, { builder: true })!.line, null);
+});

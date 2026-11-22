@@ -380,3 +380,81 @@ test("(8.2b) la fonte che non si è letta non si dice; senza misure, la CI colle
   assert.doesNotMatch(render(FULL), /eval-empty-ci/, "con le misure, la riga non serve");
   assert.deepEqual(findHubForbiddenIn([textOf(render(SOURCED, { origins: ORIGINS, ciLinks: true })), EVAL_TEXT.emptyCi], "area"), []);
 });
+
+// ─── (Casi senza AI) docs/rilascio-8/CASI-SENZA-AI.md §6 ─────────────
+
+/** Le evals di main di un caso senza AI: il risultato `senza-ai`, senza costi né token. Codice del caso inventato. */
+const NO_AI_RESULT = result("senza-ai", 1, null, {
+  current: true,
+  passed: 48,
+  total: 48,
+  tokensInAvg: null,
+  tokensOutAvg: null,
+  latencyP50Ms: 120,
+  latencyP95Ms: 410,
+  groups: { regole: { passati: 30, totali: 30, soglia: 1, ok: true }, avversari: { passati: 18, totali: 18, soglia: 0.95, ok: true } },
+});
+const NO_AI: EvalOverview = {
+  evals: {
+    latest: run({ models: {}, templateVersion: "1.7.1", results: [NO_AI_RESULT], withoutAi: true }),
+    trend: [
+      { at: "2026-11-12T10:00:00.000Z", quality: 0.98, thresholdsMet: true, fakeModels: false, withoutAi: true },
+      { at: "2026-11-14T10:00:00.000Z", quality: 1, thresholdsMet: true, fakeModels: false, withoutAi: true },
+    ],
+  },
+  benches: [],
+};
+const renderNoAi = (overview: EvalOverview) => render(overview, { caseCode: "XX-0007" });
+
+test("(casi senza AI) lo stato delle evals: «caso senza AI: nessun modello» al posto dei modelli; qualità, gruppi, prove, ramo, livello e andamento come oggi", () => {
+  const html = renderNoAi(NO_AI);
+  const text = textOf(html);
+  assert.equal(EVAL_TEXT.withoutAi, "caso senza AI: nessun modello");
+  assert.match(html, /data-slot="eval-without-ai"/);
+  assert.ok(text.includes(EVAL_TEXT.withoutAi));
+  assert.ok(!text.includes(`${EVAL_TEXT.models}:`), "nessun modello per ruolo");
+  for (const shown of ["100%", "soglie rispettate", "48 di 48 prove", "regole 30 di 30 · avversari 18 di 18", "ramo main", "livello pull request", "Ultime 2: da 98% a 100%"]) {
+    assert.ok(text.includes(shown), shown);
+  }
+  assert.match(html, /data-slot="eval-trend"/);
+  // Le evals si rifanno come oggi; niente costi né token, niente modelli finti, niente «modelli di oggi».
+  assert.ok(text.includes("Per rifarle: npm run unbundle -- eval XX-0007 --invia"));
+  assert.doesNotMatch(text, /USD|token|costo|modelli finti|modelli di oggi/i);
+  assert.deepEqual(findHubForbiddenIn([text], "area"), []);
+});
+
+test("(casi senza AI) niente banco di prova: una riga lo dice, nessun invito e nessun comando del banco", () => {
+  const html = renderNoAi(NO_AI);
+  const text = textOf(html);
+  assert.equal(EVAL_TEXT.benchWithoutAi, "Caso senza AI: non c'è un modello da scegliere, quindi niente banco di prova.");
+  assert.match(html, /data-slot="bench-without-ai"/);
+  assert.ok(text.includes(EVAL_TEXT.benchWithoutAi));
+  assert.ok(!text.includes(EVAL_TEXT.benchNone) && !text.includes(EVAL_TEXT.benchStart), "nessun invito a lanciarlo");
+  assert.doesNotMatch(text, /unbundle -- banco/, "nessun comando del banco");
+  assert.equal(count(html, /data-slot="eval-command"/), 1, "solo il comando delle evals");
+  // Le stesse evals con un modello: com'era, con i modelli per ruolo e i comandi del banco.
+  const withModels = textOf(render(FULL));
+  assert.ok(!withModels.includes(EVAL_TEXT.withoutAi) && !withModels.includes(EVAL_TEXT.benchWithoutAi));
+});
+
+test("(casi senza AI) i banchi di prima restano come storia: superati dalle evals di main, senza «oggi», raccomandazione né comando", () => {
+  // Il banco del 10/11 consigliava Haiku per «lettura»; le evals di main del 14/11 sono senza AI.
+  const old = benchOf("lettura", LETTURA, { createdAt: "2026-11-10T10:00:00.000Z" });
+  const html = renderNoAi({ ...NO_AI, benches: [old] });
+  const card = html.slice(html.indexOf('data-slot="bench-card"'));
+  const text = textOf(card);
+  assert.match(html, /data-slot="bench-without-ai"/, "la riga del banco c'è anche con la storia");
+  assert.match(card, /data-slot="bench-superseded"/);
+  assert.ok(text.includes("Dopo questo banco il ruolo «lettura» non c'è più in agent.yaml: resta il confronto di allora."));
+  assert.doesNotMatch(card, /data-slot="bench-verdict"/, "nessun consiglio");
+  assert.doesNotMatch(card, /data-slot="bench-current"/);
+  assert.doesNotMatch(text, /\boggi\b/i);
+  assert.match(card, /data-slot="bench-plot"/, "il grafico resta: è la storia");
+  assert.equal(count(card, /<tr data-model="/), 4);
+  assert.doesNotMatch(textOf(html), /unbundle -- banco|Ancora nessun banco/);
+  // Evals senza AI solo su un ramo: la regola di main non supera il banco, ma la pagina non dà comandi del banco.
+  const branchOnly = renderNoAi({ ...NO_AI, evals: { latest: run({ ...NO_AI.evals.latest, branch: "xx-0007/prova" }), trend: [] }, benches: [old] });
+  assert.doesNotMatch(branchOnly, /data-slot="bench-superseded"/);
+  assert.doesNotMatch(textOf(branchOnly), /unbundle -- banco/);
+  assert.match(branchOnly, /data-slot="bench-without-ai"/);
+});

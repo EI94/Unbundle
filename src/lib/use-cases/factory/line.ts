@@ -10,7 +10,8 @@
  * - Mai una cifra per persona: i compiti si contano per caso.
  * - (8.2a) Le evals e il banco di prova del caso in un frammento breve: «evals 96%», «evals 80%, sotto soglia»,
  *   «evals 62% su tj-0049/t-3, sotto soglia» (il ramo, quando non è main), «il banco consiglia Claude Haiku 5.5 per
- *   «lettura»».
+ *   «lettura»». (Casi senza AI) «evals 100%, senza AI»: mai «modelli finti», e nessun consiglio del banco (dopo le evals
+ *   senza AI di main ogni banco del caso è superato).
  *
  * Modulo puro.
  */
@@ -130,16 +131,20 @@ export interface LineEvals {
   fakeModels: boolean;
   /** Il ramo delle evals: un caso senza evals di main mostra quelle di un altro ramo, e la riga lo dice. */
   branch: string | null;
+  /** (Casi senza AI) Le evals di un caso senza AI; dove manca vale no. */
+  withoutAi?: boolean;
 }
 
 /**
  * (8.2a) Le evals in un frammento: «evals 96%», «evals 80%, sotto soglia»; il ramo quando non è main («evals 62% su
- * tj-0049/t-3, sotto soglia», «senza ramo» se non si sa); con i modelli finti lo dice.
+ * tj-0049/t-3, sotto soglia», «senza ramo» se non si sa); con i modelli finti lo dice. (Casi senza AI) «evals 100%,
+ * senza AI», mai con «modelli finti».
  */
 export function evalsFact(e: LineEvals | null): string | null {
   if (!e) return null;
   const branch = e.branch === EVALS_MAIN ? "" : e.branch ? ` su ${e.branch}` : " senza ramo";
-  return `evals ${formatQuality(e.quality)}${branch}${e.thresholdsMet ? "" : ", sotto soglia"}${e.fakeModels ? ", modelli finti" : ""}`;
+  const kind = e.withoutAi === true ? ", senza AI" : e.fakeModels ? ", modelli finti" : "";
+  return `evals ${formatQuality(e.quality)}${branch}${e.thresholdsMet ? "" : ", sotto soglia"}${kind}`;
 }
 
 /**

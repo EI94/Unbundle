@@ -27,6 +27,11 @@
  * - **(8.2b) La fonte:** la riga di un'esecuzione finisce con «dalla CI» (le ha mandate la CI di main, con la chiave
  *   del repository) o «dalla CLI» (una persona). Per chi costruisce «dalla CI» porta all'esecuzione su GitHub; il
  *   cliente lo legge senza link (`ciRunHref`).
+ * - **(Casi senza AI, docs/rilascio-8/CASI-SENZA-AI.md §6)** Quando le evals che fanno lo stato del caso sono senza AI
+ *   (`EvalRunView.withoutAi`), la riga di «Qualità» e lo stato delle evals dicono «caso senza AI: nessun modello» al
+ *   posto dei modelli per ruolo; niente costi né token, niente invito al banco né comandi del banco, e una riga lo
+ *   dice. I banchi di prima restano come storia, superati dalle evals senza AI di main. Senza una misura la pagina non
+ *   sa se un caso è senza AI, e non lo dice.
  *
  * Per caso e per ruolo, mai per persona: niente qui sa chi ha lanciato il banco o le evals (art. 15.4).
  * Modulo puro: solo import relativi `.ts`, lo usano il server e il browser con gli stessi testi.
@@ -36,6 +41,7 @@ import {
   benchSuperseded,
   EVALS_DROP,
   EVALS_MAIN,
+  evalRunWithoutAi,
   evalsAlert,
   formatCost,
   formatQuality,
@@ -101,6 +107,10 @@ export const EVAL_TEXT = Object.freeze({
   fromCiLink: "l'esecuzione su GitHub",
   /** (8.2b) Senza misure, una riga in più. */
   emptyCi: "Con la CI collegata, le evals di main arrivano da sole dopo ogni unione.",
+  /** (Casi senza AI) Il segno neutro al posto dei modelli per ruolo, nello stato delle evals e nella riga di «Qualità». */
+  withoutAi: "caso senza AI: nessun modello",
+  /** (Casi senza AI) Al posto del banco di prova, dei suoi inviti e dei suoi comandi. */
+  benchWithoutAi: "Caso senza AI: non c'è un modello da scegliere, quindi niente banco di prova.",
 });
 
 /** (8.2b) «dalla CI» o «dalla CLI», in fondo alla riga di un'esecuzione. */
@@ -292,15 +302,16 @@ export const TREND_MAX = 12;
 
 /**
  * L'andamento da mostrare: le evals dello stesso ramo dell'ultima e con lo stesso tipo di modelli (veri con veri,
- * finti con finti: i finti misurano il codice), dalla più vecchia, al massimo 12, l'ultima compresa anche se la
- * lettura non l'ha messa nell'elenco.
+ * finti con finti: i finti misurano il codice; senza AI con senza AI), dalla più vecchia, al massimo 12, l'ultima
+ * compresa anche se la lettura non l'ha messa nell'elenco.
  */
 export function trendPoints(evals: EvalOverview["evals"]): TrendPoint[] {
   const latest = evals.latest;
   if (!latest) return [];
   const time = (at: string) => new Date(at).getTime();
+  const withoutAi = latest.withoutAi === true;
   const points = evals.trend
-    .filter((p) => p.fakeModels === latest.fakeModels && Number.isFinite(time(p.at)) && Number.isFinite(p.quality))
+    .filter((p) => p.fakeModels === latest.fakeModels && (p.withoutAi === true) === withoutAi && Number.isFinite(time(p.at)) && Number.isFinite(p.quality))
     .map((p) => ({ at: p.at, quality: clamp01(p.quality), thresholdsMet: p.thresholdsMet }))
     .sort((a, b) => time(a.at) - time(b.at));
   const result = evalsResult(latest);
@@ -521,13 +532,14 @@ export function benchSummary(role: string, rows: readonly BenchRow[]): string {
 /**
  * Il banco superato: dopo di lui sono arrivate le evals vere di `main` (quelle della pagina, `latest`) e lì il ruolo usa
  * un altro modello (il consiglio è stato seguito) o non c'è più. È la regola dell'Agent Factory e di «Da fare per te»
- * (`benchSuperseded`). `now`: il modello del ruolo in quelle evals, null se il ruolo non c'è più. Null se il banco vale
- * ancora: evals più vecchie del banco, di un altro ramo, con i modelli finti, senza `modelli`, o con lo stesso modello.
+ * (`benchSuperseded`). `now`: il modello del ruolo in quelle evals, null se il ruolo non c'è più (anche perché il caso è
+ * senza AI). Null se il banco vale ancora: evals più vecchie del banco, di un altro ramo, con i modelli finti, senza
+ * `modelli` e senza il segno dei casi senza AI, o con lo stesso modello.
  */
 export function benchSupersededBy(bench: Pick<EvalOverview["benches"][number], "role" | "run">, latest: EvalRunView | null): { now: string | null } | null {
   if (!latest) return null;
   const currentModel = bench.run.results.find((r) => r.current)?.model ?? null;
-  const evals = { at: latest.createdAt, branch: latest.branch, fakeModels: latest.fakeModels, models: latest.models };
+  const evals = { at: latest.createdAt, branch: latest.branch, fakeModels: latest.fakeModels, models: latest.models, withoutAi: latest.withoutAi === true };
   if (!benchSuperseded({ role: bench.role, at: bench.run.createdAt, currentModel }, evals)) return null;
   return { now: Object.hasOwn(latest.models, bench.role) ? latest.models[bench.role] : null };
 }
@@ -589,8 +601,8 @@ export interface QualityAdvice {
 
 export interface QualitySummary {
   /**
-   * «96,4% · soglie rispettate»; per chi costruisce, con i modelli finti, «… · modelli finti». null senza le
-   * evals con i modelli di oggi (solo banchi).
+   * «96,4% · soglie rispettate»; per chi costruisce, con i modelli finti, «… · modelli finti»; (casi senza AI) a tutti
+   * «… · caso senza AI: nessun modello». null senza le evals con i modelli di oggi (solo banchi).
    */
   line: string | null;
   /**
@@ -614,12 +626,15 @@ export interface QualitySummary {
  * nei dettagli). Ai ruoli del cliente (`builder` falso) la sola riga, niente ramo, comandi né modelli, e nessuna riga
  * se le evals sono girate con i modelli finti (misurano il codice, non l'agente); chi costruisce lo legge nella riga
  * («· modelli finti»). In costruzione (versione 0.x) il puntino è grigio: sotto soglia non dà avvisi. Null senza misure.
+ * (Casi senza AI) La riga lo dice a tutti: «· caso senza AI: nessun modello». Dopo le evals senza AI di main ogni banco
+ * è superato, e nessuna raccomandazione resta.
  */
 export function qualitySummary(overview: EvalOverview | null, o: { builder: boolean }): QualitySummary | null {
   if (!hasMeasures(overview)) return null;
   const latest = overview.evals.latest;
   const result = latest ? evalsResult(latest) : null;
-  const shown = latest && result ? { line: qualityLine(result.quality, result.thresholdsMet), fake: latest.fakeModels } : null;
+  const measured = latest && result ? qualityLine(result.quality, result.thresholdsMet) : null;
+  const shown = latest && measured ? { line: latest.withoutAi === true ? `${measured} · ${EVAL_TEXT.withoutAi}` : measured, fake: latest.fakeModels } : null;
   const tone = latest && result ? (latest.inConstruction ? "grigio" : result.thresholdsMet ? "verde" : "rosso") : null;
   if (!o.builder) return shown && !shown.fake ? { line: shown.line, tone, runId: null, meta: null, alert: null, advice: [] } : null;
   const line = shown ? (shown.fake ? `${shown.line} · ${QUALITY_TEXT.fakeModels}` : shown.line) : null;
@@ -1073,6 +1088,9 @@ function readRun(raw: unknown, kind: EvalRunKind): { run: EvalRunView; dropped: 
       casesTotal: count(raw.casesTotal) ?? 0,
       createdAt,
       results,
+      // (Casi senza AI) Dai risultati letti, con la regola delle letture: il segno sta nel risultato «attuale». Solo se
+      // vale: le altre esecuzioni si leggono come prima.
+      ...(evalRunWithoutAi(kind, results) ? { withoutAi: true } : {}),
     },
     dropped: raw.results.length - results.length,
   };
@@ -1113,7 +1131,7 @@ export function normalizeEvalOverview(raw: unknown): { overview: EvalOverview; d
     const at = isObject(p) ? instant(p.at, true) : null;
     const quality = isObject(p) ? finite(p.quality) : null;
     if (!isObject(p) || at === null || quality === null || typeof p.thresholdsMet !== "boolean") return [];
-    return [{ at, quality: clamp01(quality), thresholdsMet: p.thresholdsMet, fakeModels: p.fakeModels === true }];
+    return [{ at, quality: clamp01(quality), thresholdsMet: p.thresholdsMet, fakeModels: p.fakeModels === true, ...(p.withoutAi === true ? { withoutAi: true } : {}) }];
   });
   dropped += rawTrend.length - trend.length;
   const rawBenches = Array.isArray(raw.benches) ? raw.benches : [];
