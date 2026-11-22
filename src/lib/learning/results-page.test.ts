@@ -20,13 +20,14 @@ const { registerHooks } = nodeModule as unknown as {
   registerHooks(hooks: { resolve?(specifier: string, context: { parentURL?: string }, nextResolve: (specifier: string, context: object) => ResolveResult): ResolveResult }): void;
 };
 
-type Fake = { results: unknown; live: Array<{ from: number; seconds?: number }>; download: Array<Record<string, unknown>> };
-const fake: Fake = { results: null, live: [], download: [] };
+type Fake = { results: unknown; error: unknown; live: Array<{ from: number; seconds?: number }>; download: Array<Record<string, unknown>> };
+const fake: Fake = { results: null, error: null, live: [], download: [] };
 (globalThis as { __resultsFake?: Fake }).__resultsFake = fake;
 
 await installAppModules({
   "@/lib/learning/server": `export class LearningError extends Error { constructor(code, message) { super(message); this.code = code; } }
-  export async function getLearningResults() { return globalThis.__resultsFake.results; }`,
+  export async function getLearningResults() { const f = globalThis.__resultsFake; if (f.error) throw f.error; return f.results; }
+  export async function getLearningReviewAttempt() { const f = globalThis.__resultsFake; if (f.error) throw f.error; throw new Error("not in this test"); }`,
   "@/lib/learning/admin-client": "export async function learningAdminRequest() { return { ok: true, data: {} }; }",
   "@/lib/learning/client": "export async function exportLearningCsv() { return { ok: true, data: { csv: '', filename: 'x.csv' } }; }",
 });
@@ -52,6 +53,8 @@ registerHooks({
 const ROOT = new URL("../../../", import.meta.url);
 const resultsPage = (await import(pathToFileURL(new URL("src/app/(dashboard)/dashboard/[workspaceId]/learning/[programId]/results/page.tsx", ROOT).pathname).href)) as { default: (props: unknown) => Promise<unknown> };
 const { ResultsExportBody } = await import("../../components/learning/results-export.tsx");
+const reviewPage = (await import(pathToFileURL(new URL("src/app/(dashboard)/dashboard/[workspaceId]/learning/[programId]/manage/[attemptId]/page.tsx", ROOT).pathname).href)) as { default: (props: unknown) => Promise<unknown> };
+const { LearningError } = (await import("@/lib/learning/server")) as unknown as { LearningError: new (code: string, message: string) => Error };
 const react = await import("react");
 const { renderToStaticMarkup } = (await import("react-dom/server")) as unknown as { renderToStaticMarkup: (element: unknown) => string };
 const read = (path: string) => readFileSync(new URL(path, ROOT), "utf8");
@@ -198,4 +201,31 @@ test("closing the «Scarica» panel goes back one step without blanking the page
   assert.match(boundary, /window\.removeEventListener\("popstate", onPopState\);/);
   assert.match(boundary, /window\.addEventListener\("pageshow", recheck\);/, "una pagina ripresa dalla cache del browser resta un controllo duro");
   assert.match(boundary, /setState\(\(previous\) => soft && previous\.path === pathname && previous\.phase === "verified" \? previous :/, "il controllo morbido lascia a schermo la pagina verificata");
+});
+
+test("an exec_sponsor without a course permission opens Risultati: the explanation in the Formazione frame, never the error page (was React #441)", async () => {
+  // In produzione (aad6f549) la lettura lanciava `forbidden` e la pagina cadeva su «Questa pagina non si è caricata».
+  fake.error = new LearningError("forbidden", "Non sei autorizzato a vedere i risultati di questo corso.");
+  try {
+    const html = await page(null);
+    const text = textOf(html);
+    assert.match(html, /<h1 [^>]*>Risultati<\/h1>/);
+    assert.match(html, /data-slot="empty-state"/);
+    assert.ok(text.includes(LEARNING_TEXT.forbidden.results), text);
+    assert.match(html, new RegExp(`<a [^>]*href="/dashboard/${WS}/learning"[^>]*>.*${LEARNING_TEXT.backToLearning}</a>`), "il ritorno alla Formazione");
+    assert.doesNotMatch(text, /Riprova|non si è caricata|Presenta in aula|In aula Persone/);
+    assert.equal(filledButtons(html).length, 0);
+    assert.equal(fake.live.length, 0, "niente aggiornamento da solo su una pagina senza dati");
+    // Chi non ha il permesso di leggere le risposte con i nomi, sulla pagina di una persona: la stessa spiegazione.
+    const review = renderToStaticMarkup(await reviewPage.default({ params: Promise.resolve({ workspaceId: WS, programId: PROGRAM, attemptId: "00000000-0000-4000-8000-0000000000b1" }), searchParams: Promise.resolve({}) }));
+    assert.ok(textOf(review).includes(LEARNING_TEXT.forbidden.review));
+    assert.doesNotMatch(textOf(review), /Riprova|non si è caricata/);
+    // Gli errori veri non si nascondono: restano a learning/error.tsx.
+    for (const error of [new LearningError("technical", "Errore tecnico."), new LearningError("unavailable", "Spenta."), new Error("rete")]) {
+      fake.error = error;
+      await assert.rejects(page(null), (thrown) => thrown === error);
+    }
+  } finally {
+    fake.error = null;
+  }
 });

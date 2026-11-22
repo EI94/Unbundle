@@ -19,6 +19,15 @@ export const LEARNING_TEXT = Object.freeze({
   }),
   /** Il ritorno alla Formazione del workspace, dalle pagine che non hanno un corso. */
   backToLearning: "Formazione",
+  /**
+   * Una pagina del corso che questo account non può aprire (`forbidden`): chi amministra il workspace ma non ha un
+   * permesso del corso, o ne ha un altro. La spiegazione, al posto della pagina che non si è caricata.
+   */
+  forbidden: Object.freeze({
+    results: "Per vedere i risultati del corso serve un permesso: chiedilo a chi gestisce il corso.",
+    manage: "Per gestire il corso serve un permesso: chiedilo a chi gestisce il corso.",
+    review: "Le risposte con i nomi le legge chi ha il permesso del corso: chiedilo a chi lo gestisce.",
+  }),
   /** Il ritorno al corso, dalle pagine dentro un corso (esercizio, prova, idea, risultati, Gestisci). */
   backToCourse: "Torna al corso",
   /** L'attesa di una pagina della Formazione (`learning/loading.tsx`): vale per il corso, i risultati, Gestisci e il registro. */
@@ -195,6 +204,8 @@ export const LEARNING_TEXT = Object.freeze({
    * pulsante pieno; «Scarica» bordato in testata, con il suo pannello; le lezioni da scegliere solo se sono più d'una.
    */
   results: Object.freeze({
+    /** Il titolo della pagina quando il corso non si legge (manca il permesso): di norma l'H1 è il titolo del corso. */
+    title: "Risultati",
     tabs: Object.freeze({ label: "Sezioni dei risultati", group: "In aula", people: "Persone", locked: "serve un permesso" }),
     closed: "Chiuso alle nuove risposte",
     lessons: "Lezione",

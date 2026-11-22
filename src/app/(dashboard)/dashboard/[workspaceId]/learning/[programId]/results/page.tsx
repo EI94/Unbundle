@@ -4,6 +4,7 @@ import { getLearningResults } from "@/lib/learning/server";
 import { LEARNING_TEXT } from "@/lib/learning/text";
 import { Button } from "@/components/ui/button";
 import { LearningShell } from "@/components/learning/learning-shell";
+import { LearningForbidden, isLearningForbidden } from "@/components/learning/learning-forbidden";
 import { LiveRefresh } from "@/components/learning/live-refresh";
 import { ResultsGroup } from "@/components/learning/results-group";
 import { ResultsIndividual } from "@/components/learning/results-individual";
@@ -43,7 +44,14 @@ export default async function LearningResultsPage({ params, searchParams }: {
 }) {
   const [{ workspaceId, programId }, query] = await Promise.all([params, searchParams]);
   const requestedTurno = single(query.turno);
-  const data = await loadResults(workspaceId, programId, requestedTurno);
+  let data: Awaited<ReturnType<typeof loadResults>>;
+  try {
+    data = await loadResults(workspaceId, programId, requestedTurno);
+  } catch (error) {
+    // Nessun permesso del corso (per esempio chi amministra il workspace senza averne uno): la spiegazione, non l'errore.
+    if (isLearningForbidden(error)) return <LearningForbidden workspaceId={workspaceId} title={R.title} message={LEARNING_TEXT.forbidden.results} />;
+    throw error;
+  }
   const base = `/dashboard/${workspaceId}/learning/${programId}`;
 
   const requestedView = single(query.vista);

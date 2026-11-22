@@ -6,6 +6,7 @@ import { dateTimeLabel, modeLabel, outcomeTone } from "@/components/learning/res
 import { resultsHref } from "@/components/learning/results-nav";
 import { cn } from "@/lib/utils";
 import { LEARNING_TEXT } from "@/lib/learning/text";
+import { LearningForbidden, isLearningForbidden } from "@/components/learning/learning-forbidden";
 
 /**
  * Le risposte consegnate da una persona: domanda per domanda, che cosa ha
@@ -21,7 +22,15 @@ export default async function ReviewAttemptPage({ params, searchParams }: {
   // Il turno scelto nei Risultati, per tornare alla stessa lista.
   const turnoParam = Array.isArray(query.turno) ? query.turno[0] : query.turno;
   const turno = turnoParam ? turnoParam.slice(0, 100) : null;
-  const { participant, attempt } = await getLearningReviewAttempt(workspaceId, programId, attemptId);
+  let review: Awaited<ReturnType<typeof getLearningReviewAttempt>>;
+  try {
+    review = await getLearningReviewAttempt(workspaceId, programId, attemptId);
+  } catch (error) {
+    // Senza il permesso di leggere le risposte con i nomi, o una consegna fuori dalle sue lezioni: la spiegazione.
+    if (isLearningForbidden(error)) return <LearningForbidden workspaceId={workspaceId} title={LEARNING_TEXT.results.tabs.people} message={LEARNING_TEXT.forbidden.review} />;
+    throw error;
+  }
+  const { participant, attempt } = review;
   const base = `/dashboard/${workspaceId}/learning/${programId}`;
   const result = attempt.result;
   const itemOf = (itemId: string) => attempt.activity.items.find((item) => item.id === itemId);

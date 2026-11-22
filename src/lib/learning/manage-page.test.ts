@@ -19,14 +19,14 @@ const { registerHooks } = nodeModule as unknown as {
   registerHooks(hooks: { resolve?(specifier: string, context: { parentURL?: string }, nextResolve: (specifier: string, context: object) => ResolveResult): ResolveResult }): void;
 };
 
-type Fake = { detail: unknown; catalog: unknown };
-const fake: Fake = { detail: null, catalog: null };
+type Fake = { detail: unknown; catalog: unknown; error: unknown };
+const fake: Fake = { detail: null, catalog: null, error: null };
 (globalThis as { __manageFake?: Fake }).__manageFake = fake;
 
 await installAppModules({
-  "@/lib/learning/admin": "export async function getLearningAdminDetail() { return globalThis.__manageFake.detail; } export async function getLearningAdminCatalog() { return globalThis.__manageFake.catalog; }",
+  "@/lib/learning/admin": "export async function getLearningAdminDetail() { const f = globalThis.__manageFake; if (f.error) throw f.error; return f.detail; } export async function getLearningAdminCatalog() { return globalThis.__manageFake.catalog; }",
   "@/lib/learning/admin-client": "export async function learningAdminRequest() { return { ok: true, data: {} }; }",
-  "@/lib/learning/server": "export class LearningError extends Error {} export function learningEnabled() { return true; }",
+  "@/lib/learning/server": "export class LearningError extends Error { constructor(code, message) { super(message); this.code = code; } } export function learningEnabled() { return true; }",
 });
 await enableTsxImports();
 const routerStub = `data:text/javascript,${encodeURIComponent("export function useRouter() { return { push() {}, refresh() {}, replace() {}, back() {}, prefetch() {} }; } export function usePathname() { return '/'; }")}`;
@@ -211,4 +211,21 @@ test("copy: no zero counters, neutral words, a role hint that says which choice 
   };
   collect(LEARNING_TEXT);
   assert.deepEqual(words.filter((text) => /\biscritt[oi]\b|\bnessun iscritto\b/i.test(text)), [], "«persone iscritte», non «iscritti»");
+});
+
+test("Gestisci opened without the permission to manage the course (an exec_sponsor, a reviewer): the explanation, not the error page", async () => {
+  const { LearningError } = (await import("@/lib/learning/server")) as unknown as { LearningError: new (code: string, message: string) => Error };
+  fake.error = new LearningError("forbidden", "Gestione non disponibile per questo account o ambito.");
+  try {
+    const html = await admin(detail());
+    assert.match(html, /<h1 [^>]*>Gestisci corso<\/h1>/);
+    assert.ok(textOf(html).includes(LEARNING_TEXT.forbidden.manage));
+    assert.doesNotMatch(textOf(html), /Riprova|non si è caricata/);
+    assert.equal(filledButtons(html).length, 0);
+    const real = new LearningError("technical", "Errore tecnico.");
+    fake.error = real;
+    await assert.rejects(admin(detail()), (thrown) => thrown === real, "gli errori veri restano a learning/error.tsx");
+  } finally {
+    fake.error = null;
+  }
 });
