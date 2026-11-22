@@ -41,7 +41,8 @@ export const LEARNING_TEXT = Object.freeze({
     /** Sotto il titolo: «La tua lezione: lunedì 24 novembre, 14:30–16:30». */
     lesson: (when: string) => `La tua lezione: ${when}`,
     /** Sotto il titolo, per chi tiene il corso e non lo segue. */
-    trainerLine: "Vedi il corso come chi lo tiene: tutte le scalette e tutti i materiali.",
+    /** Per chi tiene il corso e non lo segue: la scaletta di un modulo alla volta; gli altri da «Altri moduli». */
+    trainerLine: "Vedi il corso come chi lo tiene: gli altri moduli si aprono da «Altri moduli».",
     results: "Risultati",
     manage: "Gestisci",
 
@@ -124,6 +125,8 @@ export const LEARNING_TEXT = Object.freeze({
 
     nextModules: Object.freeze({
       title: (n: number) => `Prossimi moduli (${n})`,
+      /** Per chi tiene il corso: ogni modulo, prima o dopo, con il titolo che apre la sua pagina (scaletta ed esercizi). */
+      titleOthers: (n: number) => `Altri moduli (${n})`,
       dates: "Date",
       planned: "In programma: gli esercizi si aprono nella lezione di questo modulo.",
     }),

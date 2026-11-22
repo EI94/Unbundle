@@ -13,6 +13,7 @@ import {
   nowCard,
   outcomeWord,
   sizeLabel,
+  MODULE_PAGE_IDS,
   type CourseActivity,
   type NowAction,
 } from "@/lib/learning/course-view";
@@ -179,14 +180,21 @@ function Takeaways({ module }: { module: ModuleView }) {
   </Fold>;
 }
 
-function NextModules({ program, modules, open }: { program: Program; modules: ModuleView[]; open: boolean }) {
+/**
+ * «Prossimi moduli», chiusa. Per chi tiene il corso «Altri moduli»: il titolo di ogni modulo apre la sua pagina
+ * (`…/<corso>/m2`), con la sua scaletta e i suoi esercizi.
+ */
+function NextModules({ program, modules, open, base, runs }: { program: Program; modules: ModuleView[]; open: boolean; base: string; runs: boolean }) {
   if (!modules.length) return null;
-  return <Fold id="prossimi-moduli" title={T.nextModules.title(modules.length)} defaultOpen={open}>
+  return <Fold id="prossimi-moduli" title={runs ? T.nextModules.titleOthers(modules.length) : T.nextModules.title(modules.length)} defaultOpen={open}>
     {modules.map((module) => {
       const sessions = program.sessions.filter((session) => session.moduleId === module.id);
       const materials = program.materials.filter((material) => material.moduleId === module.id);
+      const linked = runs && MODULE_PAGE_IDS.includes(module.id);
       return <div key={module.id} className="space-y-2">
-        <h3 className="font-medium">{module.title}</h3>
+        <h3 className="font-medium">{linked
+          ? <Link className="inline-flex min-h-11 items-center underline decoration-foreground/40 underline-offset-4 hover:decoration-foreground sm:min-h-8" href={`${base}/${module.id}`} data-testid="learning-module-link">{module.title}</Link>
+          : module.title}</h3>
         {module.subtitle ? <p className="text-sm text-muted-foreground">{module.subtitle}</p> : null}
         {module.objective ? <p className="text-sm">{module.objective}</p> : null}
         {sessions.length ? <div className="text-sm">
@@ -268,7 +276,7 @@ export async function ProgramOverview({ workspaceId, programId, moduleId, arriva
             <RowList label={T.materials.title}>{ownMaterials.map((material) => <MaterialRow key={material.id} material={material} />)}</RowList>
           </Fold> : null}
           {!participant || ended ? <Takeaways module={focus} /> : null}
-          <NextModules program={program} modules={others} open={askedOther} />
+          <NextModules program={program} modules={others} open={askedOther} base={base} runs={!participant || showResults} />
           {participant ? <Fold id="chi-vede" title={T.privacy.title}>
             <div className="space-y-3 text-sm">
               {program.visibilityPolicy ? <p className="whitespace-pre-wrap">{program.visibilityPolicy}</p> : null}

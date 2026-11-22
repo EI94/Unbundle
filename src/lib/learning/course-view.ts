@@ -35,6 +35,9 @@ function sameDay(a: string | number, b: string | number): boolean {
 }
 
 export type LessonSession = { startsAt: string; endsAt: string; status: string };
+
+/** I moduli che hanno una pagina loro (`…/learning/<corso>/<modulo>`): la rotta risponde «non trovato» agli altri. */
+export const MODULE_PAGE_IDS: readonly string[] = Object.freeze(["m1", "m2", "m3"]);
 /** «none»: nessuna lezione in calendario; «before»: prima; «live»: in lezione; «after»: finita o chiusa. */
 export type LessonPhase = "none" | "before" | "live" | "after";
 

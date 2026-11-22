@@ -232,6 +232,12 @@ test("whoever runs the course: no «Adesso», «Risultati» filled and «Gestisc
   assert.ok(folds(html).some((fold) => fold.id === "da-portare-a-casa"));
   assert.ok(text.includes("solo per chi tiene il corso"));
   assert.ok(text.includes("30 min"), "la scaletta in minuti, senza una lezione");
+  // Gli altri moduli a un tocco: il titolo apre la pagina del modulo, con la sua scaletta e i suoi esercizi.
+  assert.ok(visibleText(html).includes("Altri moduli (1)"));
+  const moduleLink = (markup: string, id: string) => [...markup.matchAll(/<a [^>]*>[^<]*<\/a>/g)].map((m) => m[0]).find((tag) => tag.includes(`href="${BASE}/${id}"`) && tag.includes('data-testid="learning-module-link"'));
+  assert.match(moduleLink(html, "m2") ?? "", />Modulo 2<\/a>$/);
+  const m2 = await page(program({ now: START + 40 * MIN, participant: false, manage: true, materials: [trainerMaterial] }), "m2");
+  assert.match(moduleLink(m2, "m1") ?? "", />Modulo 1<\/a>$/, "da /m2 si torna al primo modulo");
   assert.doesNotMatch(html, new RegExp(`href="${BASE}/(activities|attempts)/`));
   assert.equal(fake.live.length, 0);
 });
@@ -243,6 +249,7 @@ test("a participant who also runs the course keeps «Risultati» and «Gestisci�
   assert.match(filled[0], new RegExp(`href="${BASE}/activities/a"`));
   assert.match(html, new RegExp(`<a [^>]*href="${BASE}/results"`));
   assert.match(html, new RegExp(`<a [^>]*href="${BASE}/admin"`));
+  assert.match(html, /data-testid="learning-module-link"/, "chi tiene il corso apre gli altri moduli");
 });
 
 test("the lesson address (/m2) opens «Prossimi moduli»; the arrival from a link says how the enrolment went", async () => {
@@ -250,6 +257,8 @@ test("the lesson address (/m2) opens «Prossimi moduli»; the arrival from a lin
   assert.deepEqual(folds(html).find((fold) => fold.id === "prossimi-moduli"), { id: "prossimi-moduli", open: true });
   assert.match(html, /data-testid="join-arrival"[^>]*>Iscrizione fatta: il corso è qui sotto\.</);
   assert.ok(textOf(html).includes("lunedì 30 novembre, 14:30–16:30"), "le date degli altri moduli nella piega");
+  assert.ok(visibleText(html).includes("Prossimi moduli (1)"));
+  assert.doesNotMatch(html, /data-testid="learning-module-link"/, "chi segue soltanto il corso non apre gli altri moduli");
   const m1 = await page(program({ now: START - 2 * 60 * MIN }), "m1");
   assert.ok(folds(m1).every((fold) => !fold.open));
 });
