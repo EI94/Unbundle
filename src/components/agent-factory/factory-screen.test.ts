@@ -440,7 +440,7 @@ test("(8.0d) «Solo questo use case»: mai un link fuori dal perimetro (né «Il
   const collega = todo({ kind: "collega", useCaseId: "", caseId: "", code: "", text: "Collega Claude Code: nel terminale «unbundle login», poi scegli Cliente Demo." });
   const mine = model({ manager: false, caseOnly: true, over: { todos: [collega] } });
   assert.equal(mine.caseOnly, true);
-  assert.ok(mine.todos[0].href.startsWith(`${BASE}`), mine.todos[0].href);
+  assert.equal(mine.todos[0].href, `${BASE}?account=claude`, "il foglio sull'Agent Factory, nel suo perimetro");
   assert.equal(model({ manager: false, over: { todos: [collega] } }).todos[0].href, `/dashboard/${WS}?account=claude`, "gli altri: il foglio sulla Home, come prima");
   const empty = screen(model({ manager: false, caseOnly: true, over: { cases: [], families: [], todos: [] } }));
   assert.ok(!empty.includes(`href="/dashboard/${WS}/use-cases"`), "niente «Vai agli use case»");

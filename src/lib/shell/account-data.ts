@@ -14,6 +14,7 @@ import { isLateralSpaceEmail } from "@/lib/uc/lateral-space";
 import { referentAskEnabled } from "@/lib/use-cases/referent/availability";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
+import { isCaseOnly } from "@/lib/auth/case-only";
 import { referentEmailChoice, type AccountSheetData } from "./account";
 
 /**
@@ -32,6 +33,21 @@ export async function loadAccountSheet(i: {
   const useCaseHub = isUseCaseHubWorkspace(i.workspaceId, env);
   const lateralSpace = isLateralSpaceEmail({ email: i.user.email, emailVerified: i.user.emailVerified === true }, ucLsDomains());
   const actor = contextActorFor(i.user, { role: i.role }, i.workspaceId);
+  const readCli = () =>
+    ensureDbSchema()
+      .then(() => getAppUcExecutor())
+      .then((executor) => loadCliCard(executor, { userId: i.user.id, workspaceId: i.workspaceId, lateralSpace }))
+      .catch((error) => {
+        logSafeError("account", "cli_non_letta", error, { workspaceId: i.workspaceId });
+        return null;
+      });
+
+  // (8.0d) «Solo questo use case»: solo «Claude e terminale», con i collegamenti della sua CLI («CLI collegata ·
+  // Scollega»). Niente del workspace: né le e-mail sulle richieste al referente, né il MCP del team, né Granola.
+  if (isCaseOnly(i.role)) {
+    const cli = await readCli();
+    return { email: null, claude: null, terminal: cli ? { links: cli.tokens } : null, granola: null };
+  }
 
   const [bell, team, cli, granola] = await Promise.all([
     getBellState(i.workspaceId, i.user.id).catch((error) => {
@@ -40,13 +56,7 @@ export async function loadAccountSheet(i: {
     }),
     // Decide da sé: area accesa e un ruolo da revisore; un errore diventa `status: "errore"`.
     loadTeamMcpCard({ workspaceId: i.workspaceId, user: i.user, role: i.role }),
-    ensureDbSchema()
-      .then(() => getAppUcExecutor())
-      .then((executor) => loadCliCard(executor, { userId: i.user.id, workspaceId: i.workspaceId, lateralSpace }))
-      .catch((error) => {
-        logSafeError("account", "cli_non_letta", error, { workspaceId: i.workspaceId });
-        return null;
-      }),
+    readCli(),
     contextAbilities(actor).canUseGranola ? loadGranolaStatus({ userId: i.user.id, workspaceId: i.workspaceId }) : Promise.resolve(null),
   ]);
 

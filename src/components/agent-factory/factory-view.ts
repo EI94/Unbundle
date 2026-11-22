@@ -22,7 +22,7 @@ import type { FactoryCaseRow, FactoryOverview, FactoryTodo } from "../../lib/db/
 import { agentToneOf, titleAgent, type AgentPalette, type AgentTone } from "../../lib/use-cases/agents.ts";
 import { formatCost, formatQuality } from "../../lib/use-cases/factory/benchmark.ts";
 import { AGENT_FACTORY_TEMPLATE_VERSION, STATIONS, STATION_LABEL, benchFacts, compareVersions, evalsFact, type Station } from "../../lib/use-cases/factory/line.ts";
-import { accountHref } from "../../lib/shell/account.ts";
+import { accountHref, caseOnlyAccountHref } from "../../lib/shell/account.ts";
 import { CI_TEXT, ciRepoShortName, familyAnchor } from "./ci-text.ts";
 import type { CiTodo } from "./ci-view.ts";
 import { FACTORY_TEXT } from "./factory-text.ts";
@@ -88,11 +88,11 @@ function taskRefOf(text: string): string {
 
 /**
  * Dove porta una voce che non è della CI (la stessa regola di prima, `todoHref`). (8.0d) `caseOnly`: «Solo questo use
- * case» non apre «Il tuo account» dalla Home, fuori dal suo perimetro: il testo dice già come si collega la CLI.
+ * case» apre «Il tuo account» sull'Agent Factory, nel suo perimetro (la Home lo riporterebbe qui senza il foglio).
  */
 export function factoryTodoHref(workspaceId: string, t: FactoryTodo, caseOnly = false): string {
   if (t.href) return t.href;
-  if (t.kind === "collega") return caseOnly ? `/dashboard/${workspaceId}/agent-factory` : accountHref(workspaceId, "claude");
+  if (t.kind === "collega") return caseOnly ? caseOnlyAccountHref(workspaceId, "claude") : accountHref(workspaceId, "claude");
   // (8.0d) «Togli …» apre «Chi costruisce» (il pannello del «⋯»); «Aggiungi … al team» porta al team del dossier.
   if (t.kind === "togli_esterno") return `/dashboard/${workspaceId}/agent-factory?apri=${FACTORY_PANELS.builders}`;
   if (t.kind === "aggiungi_esterno") return `/dashboard/${workspaceId}/casi-duso/${t.caseId}/persone`;

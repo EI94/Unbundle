@@ -115,3 +115,14 @@ test("una parte che non si legge resta fuori, e il foglio non si ferma: niente t
   assert.ok(prova.asked.includes("log:account:email_non_letta") && prova.asked.includes("log:account:cli_non_letta"));
   assert.doesNotMatch(JSON.stringify(account), /segreto/);
 });
+
+test("(8.0d) «Solo questo use case»: solo «Claude e terminale», con i collegamenti della sua CLI; niente del workspace, e niente si legge", async () => {
+  reset({ team: TEAM, cli: { tokens: [{ id: "c9", caseCode: "XX-0012" }] }, granola: { available: true, connected: true, status: "attiva" } });
+  const account = await loadAccountSheet({ workspaceId: WS, user: CLIENT, role: "esterno_caso", env: ENV });
+  assert.deepEqual(account, { email: null, claude: null, terminal: { links: [{ id: "c9", caseCode: "XX-0012" }] }, granola: null });
+  // Né le e-mail sulle richieste al referente, né il MCP del team, né Granola: nemmeno le letture.
+  assert.deepEqual(prova.asked, ["cli:false"]);
+  // Senza la CLI letta (errore): il foglio ha il solo tema, come per un contributore.
+  reset({ cli: new Error("segreto") });
+  assert.deepEqual(await loadAccountSheet({ workspaceId: WS, user: CLIENT, role: "esterno_caso", env: ENV }), { email: null, claude: null, terminal: null, granola: null });
+});

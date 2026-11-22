@@ -27,8 +27,10 @@ export async function GET(_req: Request, ctx: { params: Promise<{ workspaceId: s
   if (!user?.id) return json({ ok: false, code: "non_autenticato" }, 401);
   if (!UUID.test(workspaceId)) return json({ ok: false, code: "non_trovato" }, 404);
   try {
-    // Chi segue solo un corso non ha preferenze né accessi qui: il foglio gli mostra il solo tema.
-    const access = await getCollaboratorAccess(user.id, workspaceId);
+    // Chi segue solo un corso non ha preferenze né accessi qui: il foglio gli mostra il solo tema. (8.0d) Una porta di
+    // «Solo questo use case» (`CASE_ONLY_SURFACES`): il foglio gli dà solo «Claude e terminale», con i collegamenti della
+    // sua CLI (`loadAccountSheet`), niente del workspace.
+    const access = await getCollaboratorAccess(user.id, workspaceId, { allowCaseOnly: true });
     if (!access) return json({ ok: false, code: "non_trovato" }, 404);
     const account = await loadAccountSheet({
       workspaceId,

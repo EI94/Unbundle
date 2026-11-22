@@ -10,6 +10,7 @@
 import type { TeamMcpTokenView } from "../db/queries/team-mcp-tokens.ts";
 import type { CliTokenView } from "../db/queries/use-case-cli-auth.ts";
 import { GRANOLA_RULES_ANCHOR, type GranolaCardState } from "../context/granola/view.ts";
+import { caseOnlyHomePath } from "../auth/case-only.ts";
 
 export const ACCOUNT_PARAM = "account";
 
@@ -46,6 +47,15 @@ export function accountPartForSettingsHash(pathname: string, hash: string, works
  */
 export function accountHref(workspaceId: string, part?: AccountPart): string {
   return withAccount(`/dashboard/${encodeURIComponent(workspaceId)}`, part);
+}
+
+/**
+ * (8.0d) Il foglio per «Solo questo use case», che resta nel suo perimetro: aperto sull'Agent Factory, la sua casa nel
+ * workspace (la Home lo riporterebbe lì, senza il foglio). Lo stesso indirizzo di `caseOnlyAccountPath` per
+ * «Claude e terminale», la sola parte che vede.
+ */
+export function caseOnlyAccountHref(workspaceId: string, part?: AccountPart): string {
+  return withAccount(caseOnlyHomePath(workspaceId), part);
 }
 
 /**

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { CLI_PAGE_TEXT } from "../../app/cli/collega/text.ts";
-import { accountHref } from "../shell/account.ts";
+import { accountHref, caseOnlyAccountHref } from "../shell/account.ts";
 
 // (Rilascio 10, ondata 4 «Fuori», docs/ui-10/PROPOSTA-10.md §3.11, audit Realizzazione §3.44 e F-238) «Collega la CLI»:
 // il guscio unico delle pagine pubbliche; in fondo un link a «Il tuo account › Claude e terminale» e uno all'Agent
@@ -18,11 +18,12 @@ const code = (path: string) =>
 
 test("the two links at the bottom: «Il tuo account › Claude e terminale» and the Agent Factory of the workspace the page proposes", () => {
   const page = code("src/app/cli/collega/page.tsx");
-  assert.match(page, /<PublicLink href=\{workspaceId \? accountHref\(workspaceId, "claude"\) : "\/dashboard"\}>\{workspaceId \? T\.account : T\.workspaces\}<\/PublicLink>/);
+  // (8.0d) A «Solo questo use case» il foglio si apre sull'Agent Factory: la Home sta fuori dal suo perimetro.
+  assert.match(page, /<PublicLink href=\{workspaceId \? \(caseOnly \? caseOnlyAccountHref\(workspaceId, "claude"\) : accountHref\(workspaceId, "claude"\)\) : "\/dashboard"\}>\{workspaceId \? T\.account : T\.workspaces\}<\/PublicLink>/);
   // L'Agent Factory solo a chi la può aprire: la regola della pagina e della barra (`factoryNavVisible`).
   assert.match(page, /\{workspaceId && factory \? <PublicLink href=\{`\/dashboard\/\$\{workspaceId\}\/agent-factory`\}>\{T\.factory\}<\/PublicLink> : null\}/);
   assert.match(page, /const first = workspaces\[0\]\?\.id \?\? null;/, "il workspace che la scelta propone per primo");
-  assert.match(page, /<LinksFooter workspaceId=\{first\} factory=\{first \? await factoryOpens\(session\.user, first, roles\.get\(first\)\) : false\} \/>/);
+  assert.match(page, /<LinksFooter workspaceId=\{first\} factory=\{first \? await factoryOpens\(session\.user, first, roles\.get\(first\)\) : false\} caseOnly=\{first \? isCaseOnly\(roles\.get\(first\)\) : false\} \/>/);
   // (8.0d) Per elenco: i collaboratori e «Solo questo use case», come la porta della pagina; mai chi segue un corso.
   assert.match(page, /if \(!role \|\| workspaceDoor\(role, \{ allowCaseOnly: true \}\) !== "aperta" \|\| !isUseCaseHubWorkspace\(workspaceId\) \|\| process\.env\.UC_ENABLED !== "true"\) return false;/);
   assert.match(page, /const lsManager = viewerFromSession\(user, role\)\.isLateralSpace && canReviewWorkspacePortfolio\(role\);/);
@@ -32,6 +33,7 @@ test("the two links at the bottom: «Il tuo account › Claude e terminale» and
   // (8.0d) Senza la voce, 404; «Solo questo use case» ha sempre la sua voce, e prima della riga del dossier la pagina lo dice.
   assert.match(factoryPage, /if \(!\(await factoryNavVisible\(executor, \{ workspaceId, userId: session\.user\.id, lsManager, lsDomains \}\)\)\) \{\s+if \(!caseOnly\) notFound\(\);/);
   assert.equal(accountHref("00000000-0000-4000-8000-0000000000a1", "claude"), "/dashboard/00000000-0000-4000-8000-0000000000a1?account=claude");
+  assert.equal(caseOnlyAccountHref("00000000-0000-4000-8000-0000000000a1", "claude"), "/dashboard/00000000-0000-4000-8000-0000000000a1/agent-factory?account=claude");
   assert.equal(CLI_PAGE_TEXT.account, "Il tuo account › Claude e terminale");
   assert.equal(CLI_PAGE_TEXT.factory, "Agent Factory");
 });

@@ -113,7 +113,7 @@ export default async function WorkspaceLayout({
         image: session.user.image,
       }}
       bell={bell}
-      accountData={collaborator}
+      accountData={collaborator || caseOnly}
     >
       {children}
     </WorkspaceShell>

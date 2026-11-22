@@ -7,7 +7,7 @@ import { PublicFooterLine, PublicLink, PublicShell } from "@/components/public/p
 import { PublicCard, PublicCardText } from "@/components/public/state-card";
 import { Button } from "@/components/ui/button";
 import { auth } from "@/lib/auth";
-import { workspaceDoor } from "@/lib/auth/case-only";
+import { isCaseOnly, workspaceDoor } from "@/lib/auth/case-only";
 import { loginPathForMissingSession, SESSION_COOKIE_NAME } from "@/lib/auth/session-signal";
 import { ensureDbSchema } from "@/lib/db/ensure-schema";
 import { cliCaseWorkspaceIds, cliStoreReady, findCliLogin } from "@/lib/db/queries/use-case-cli-auth";
@@ -16,7 +16,7 @@ import { viewerFromSession } from "@/lib/db/queries/use-case-hub";
 import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { getWorkspaceGroupsForUser } from "@/lib/db/queries/workspaces";
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
-import { accountHref } from "@/lib/shell/account";
+import { accountHref, caseOnlyAccountHref } from "@/lib/shell/account";
 import { normalizeUserCode } from "@/lib/use-cases/cli/codes";
 import { cliWorkspaceChoices, type CliWorkspaceChoice } from "@/lib/use-cases/cli/workspace-choices";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
@@ -43,12 +43,13 @@ const T = CLI_PAGE_TEXT;
 
 /**
  * I due link in fondo, del workspace proposto per primo: «Il tuo account › Claude e terminale» e l'Agent Factory, solo se
- * la persona la può aprire (`factory`). Senza un workspace, l'elenco dei workspace.
+ * la persona la può aprire (`factory`). Senza un workspace, l'elenco dei workspace. (8.0d) A «Solo questo use case» il
+ * foglio si apre sull'Agent Factory, nel suo perimetro (`caseOnly`).
  */
-function LinksFooter({ workspaceId, factory }: { workspaceId: string | null; factory: boolean }) {
+function LinksFooter({ workspaceId, factory, caseOnly }: { workspaceId: string | null; factory: boolean; caseOnly: boolean }) {
   return (
     <PublicFooterLine className="flex flex-wrap gap-x-5">
-      <PublicLink href={workspaceId ? accountHref(workspaceId, "claude") : "/dashboard"}>{workspaceId ? T.account : T.workspaces}</PublicLink>
+      <PublicLink href={workspaceId ? (caseOnly ? caseOnlyAccountHref(workspaceId, "claude") : accountHref(workspaceId, "claude")) : "/dashboard"}>{workspaceId ? T.account : T.workspaces}</PublicLink>
       {workspaceId && factory ? <PublicLink href={`/dashboard/${workspaceId}/agent-factory`}>{T.factory}</PublicLink> : null}
     </PublicFooterLine>
   );
@@ -120,7 +121,7 @@ export default async function CliConnectPage({ searchParams }: { searchParams: P
   await ensureDbSchema();
   const { choices: workspaces, roles } = await workspaceChoices(session.user.id);
   const first = workspaces[0]?.id ?? null;
-  const footer = <LinksFooter workspaceId={first} factory={first ? await factoryOpens(session.user, first, roles.get(first)) : false} />;
+  const footer = <LinksFooter workspaceId={first} factory={first ? await factoryOpens(session.user, first, roles.get(first)) : false} caseOnly={first ? isCaseOnly(roles.get(first)) : false} />;
 
   if (!userCode) {
     return (

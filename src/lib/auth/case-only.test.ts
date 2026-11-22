@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   CASE_ONLY_ROLE,
   CASE_ONLY_SURFACES,
+  caseOnlyAccountPath,
   caseOnlyHomePath,
   caseOnlyRedirect,
   isCaseOnly,
@@ -10,6 +11,7 @@ import {
   workspaceDoor,
 } from "./case-only.ts";
 import { learnerRedirect } from "../learning/learner-scope.ts";
+import { caseOnlyAccountHref } from "../shell/account.ts";
 import { COLLABORATOR_ROLES, PORTFOLIO_REVIEWER_ROLES, isCollaboratorRole } from "../workspace-permissions.ts";
 
 // «Solo questo use case» (rilascio 8.0d-1 «Porte», RILASCIO-8.0d-ESTERNI-FASE-2.md §2.5, §2.10 U1-U2): la regola delle
@@ -106,7 +108,7 @@ test("U2: fuori agent-factory-x, casi-duso/<id>, casi-duso/<id>/costruzione/altr
     `/dashboard/${W}/programma`,
     `/dashboard/${W}/portfolio`,
     `/dashboard/${W}/mapping`,
-    `/dashboard/${W}/account`,
+    `/dashboard/${W}/account/altro`,
     `/dashboard/${W}`,
     `/dashboard/${W}agent-factory`,
     `/dashboard/${OTHER}/agent-factory`,
@@ -121,6 +123,17 @@ test("U2: fuori agent-factory-x, casi-duso/<id>, casi-duso/<id>/costruzione/altr
   assert.equal(caseOnlyHomePath(W), `/dashboard/${W}/agent-factory`);
 });
 
+test("U2: l'indirizzo delle e-mail «CLI collegata» (`/account`) porta all'Agent Factory con «Il tuo account › Claude e terminale»", () => {
+  for (const path of [`/dashboard/${W}/account`, `/dashboard/${W}/account/`]) {
+    assert.equal(isWithinCaseOnlyScope(path, W), false, path);
+    assert.equal(caseOnlyRedirect({ role: "esterno_caso", pathname: path, workspaceId: W }), `/dashboard/${W}/agent-factory?account=claude`, path);
+  }
+  // Lo stesso indirizzo del foglio (`withAccount`), e solo per esterno_caso: un altro workspace torna all'Agent Factory.
+  assert.equal(caseOnlyAccountPath(W), caseOnlyAccountHref(W, "claude"));
+  assert.equal(caseOnlyRedirect({ role: "esterno_caso", pathname: `/dashboard/${OTHER}/account`, workspaceId: W }), caseOnlyHomePath(W));
+  assert.equal(caseOnlyRedirect({ role: "analyst", pathname: `/dashboard/${W}/account`, workspaceId: W }), null);
+});
+
 test("U2: il perimetro vale solo per esterno_caso; chi segue un corso resta nel suo", () => {
   for (const role of [...COLLABORATOR_ROLES, "learner", ...ODD]) {
     assert.equal(caseOnlyRedirect({ role, pathname: `/dashboard/${W}/settings`, workspaceId: W }), null, String(role));
@@ -133,5 +146,6 @@ test("U2: il perimetro vale solo per esterno_caso; chi segue un corso resta nel 
 test("le porte che aprono a esterno_caso sono un elenco fisso, senza doppioni", () => {
   assert.equal(new Set(CASE_ONLY_SURFACES).size, CASE_ONLY_SURFACES.length);
   assert.ok(Object.isFrozen(CASE_ONLY_SURFACES));
-  assert.equal(CASE_ONLY_SURFACES.length, 13);
+  // (Rilascio 10) La Costruzione al posto di «Progetto dell'agente»; la rotta di «Il tuo account» per il solo terminale.
+  assert.equal(CASE_ONLY_SURFACES.length, 14);
 });
