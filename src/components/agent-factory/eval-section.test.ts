@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { analyzeBench, type BenchResult, type EvalOverview, type EvalRunView } from "../../lib/use-cases/factory/benchmark.ts";
 import { findHubForbiddenIn } from "../../lib/use-cases/copy-guard.ts";
 import { enableTsxImports } from "../use-cases/detail/referent/tsx-test-loader.ts";
-import { EVAL_TEXT } from "./eval-format.ts";
+import { EVAL_TEXT, benchSupersededBy } from "./eval-format.ts";
 import type { EvalRunOrigin } from "../../lib/db/queries/use-case-eval-origins.ts";
 
 let render: (overview: EvalOverview | null, extra?: { unavailable?: boolean; caseCode?: string; origins?: ReadonlyMap<string, EvalRunOrigin> | null; ciLinks?: boolean }) => string;
@@ -452,9 +452,29 @@ test("(casi senza AI) i banchi di prima restano come storia: superati dalle eval
   assert.match(card, /data-slot="bench-plot"/, "il grafico resta: è la storia");
   assert.equal(count(card, /<tr data-model="/), 4);
   assert.doesNotMatch(textOf(html), /unbundle -- banco|Ancora nessun banco/);
-  // Evals senza AI solo su un ramo: la regola di main non supera il banco, ma la pagina non dà comandi del banco.
-  const branchOnly = renderNoAi({ ...NO_AI, evals: { latest: run({ ...NO_AI.evals.latest, branch: "xx-0007/prova" }), trend: [] }, benches: [old] });
-  assert.doesNotMatch(branchOnly, /data-slot="bench-superseded"/);
-  assert.doesNotMatch(textOf(branchOnly), /unbundle -- banco/);
-  assert.match(branchOnly, /data-slot="bench-without-ai"/);
+});
+
+test("(casi senza AI) evals senza AI solo su un ramo: il banco di main resta valido per la regola, ma la pagina lo mostra come storia", () => {
+  // «lettura» con il banco su main (10/11); le sole evals sono senza AI, su un ramo (14/11).
+  const old = benchOf("lettura", LETTURA, { createdAt: "2026-11-10T10:00:00.000Z" });
+  const latest = run({ ...NO_AI.evals.latest, branch: "xx-0007/prova" });
+  assert.equal(benchSupersededBy(old, latest), null, "la regola del §5: solo le evals di main superano un banco (la linea e «Da fare per te»)");
+  const html = renderNoAi({ evals: { latest, trend: [] }, benches: [old] });
+  const card = html.slice(html.indexOf('data-slot="bench-card"'));
+  const text = textOf(card);
+  assert.match(html, /data-slot="bench-without-ai"/);
+  assert.ok(textOf(html).includes(EVAL_TEXT.benchWithoutAi));
+  assert.doesNotMatch(card, /data-slot="bench-verdict"/, "nessun consiglio sotto «Caso senza AI»");
+  assert.doesNotMatch(card, /data-slot="bench-change-hint"/, "nessuna riga di agent.yaml da cambiare");
+  assert.doesNotMatch(card, /data-slot="bench-superseded"/, "la riga del banco superato solo quando lo dice la regola");
+  assert.doesNotMatch(card, /data-slot="bench-current"/);
+  assert.doesNotMatch(text, /\boggi\b|Conviene|Per cambiarlo|Per rifarlo|unbundle -- banco/i);
+  // La storia resta: il grafico e la tabella con i loro segni.
+  assert.match(card, /data-slot="bench-plot"/);
+  assert.equal(count(card, /<tr data-model="/), 4);
+  assert.match(text, /Claude Haiku 5\.5 più efficiente più economico 95%/);
+  // Le stesse evals con i modelli su quel ramo: il banco vale e consiglia, come prima.
+  const withModels = render({ evals: { latest: run({ branch: "xx-0007/prova", models: { lettura: SONNET } }), trend: [] }, benches: [old] }, { caseCode: "XX-0007" });
+  assert.match(withModels, /data-slot="bench-verdict" data-verdict="cambia"/);
+  assert.match(withModels, /data-slot="bench-change-hint"/);
 });

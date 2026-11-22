@@ -12,6 +12,8 @@ import { RunSource } from "./eval-section";
  * fonte («dalla CI», che porta all'esecuzione su GitHub, 8.2b), l'avviso se le evals calano e, per ogni ruolo, la sola
  * raccomandazione del banco. Tutto il resto (andamento, gruppi, modelli, grafici, tabelle, comandi) sta nella piega
  * «Dettagli per chi costruisce», con `EvalSection` com'era. Ai ruoli del cliente la sola riga (`qualitySummary`).
+ * (Casi senza AI) Sotto la riga, a tutti, «caso senza AI: nessun modello» su una riga sua, che va a capo: la riga del
+ * puntino non si taglia al telefono.
  *
  * Solo presentazione, senza stato: si rende anche sul server.
  */
@@ -49,6 +51,11 @@ export function EvalSummary({
             </p>
           ) : null}
         </div>
+      ) : null}
+      {summary.withoutAi ? (
+        <p data-slot="eval-without-ai" className="text-xs break-words text-muted-foreground">
+          {EVAL_TEXT.withoutAi}
+        </p>
       ) : null}
       {summary.alert ? (
         <p data-slot="eval-alert" className="flex items-start gap-2 text-sm">
