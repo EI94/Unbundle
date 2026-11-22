@@ -12,6 +12,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { LEARNING_TEXT } from "@/lib/learning/text";
 import { Row, RowList } from "@/components/ui-10/row";
+import { notifyDone } from "@/components/ui-10/toast";
+import { ActionMenu } from "@/components/uc/ui/action-menu";
 import { AdminNotice, AdminSection, AdminUnsavedNotice, adminDate } from "./admin-shared";
 
 import { useLearningUnsavedChanges } from "./use-unsaved-changes";
@@ -86,13 +88,23 @@ export function LearningAdminCatalog({ workspaceId, initial }: { workspaceId: st
     finally { inFlight.current = false; setBusy(false); }
   }
 
+  /** Il link della Formazione del workspace (prima un riquadro da copiare): negli appunti, o scritto qui se non si può. */
+  async function copyLearningLink() {
+    const url = new URL(base, window.location.origin).href;
+    try { await navigator.clipboard.writeText(url); notifyDone(C.copied); }
+    catch { setError(false); setMessage(C.copyFailed(url)); }
+  }
+
   return <div className="space-y-6" aria-busy={busy}>
+    <div className="flex items-start gap-2">
+      {catalog.canCreate && !creating ? <Button type="button" className="min-h-11 min-w-0 flex-1 sm:min-h-9 sm:flex-none" onClick={() => setCreating(true)} data-testid="catalog-new-course">
+        <Plus aria-hidden data-icon="inline-start" />{C.newCourse}
+      </Button> : null}
+      <ActionMenu label={C.more} className="ml-auto" items={[{ label: C.copyLink, onSelect: () => void copyLearningLink() }]} />
+    </div>
     <AdminNotice message={message} error={error} />
     <AdminUnsavedNotice dirty={dirty} onDiscard={confirmDiscard} />
     {busy && <p role="status" className="text-sm text-muted-foreground">Operazione in corso. Attendi la conferma prima di lasciare la pagina.</p>}
-    {catalog.canCreate && !creating && <Button type="button" className="min-h-11 w-full sm:min-h-9 sm:w-auto" onClick={() => setCreating(true)} data-testid="catalog-new-course">
-      <Plus aria-hidden data-icon="inline-start" />{C.newCourse}
-    </Button>}
     {catalog.programs.length ? <section aria-labelledby="corsi-titolo" className="space-y-3">
       <h2 id="corsi-titolo" className="text-base font-semibold">{C.courses(catalog.programs.length)}</h2>
       <RowList label={C.courses(catalog.programs.length)}>

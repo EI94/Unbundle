@@ -210,15 +210,15 @@ export const LEARNING_TEXT = Object.freeze({
     noNames: "Qui non ci sono nomi: si può proiettare.",
     withNames: "Con i nomi: non proiettarla.",
     allNumbers: "Tutti i numeri",
-    enrolled: "Iscritti",
+    enrolled: "Persone iscritte",
     started: "Hanno iniziato",
     completed: "Hanno finito gli esercizi",
     achieved: "Obiettivo raggiunto",
     leftOut: (turns: number, minimum: number) =>
       turns === 1
-        ? `Una lezione con meno di ${minimum} iscritti non è contata qui: i suoi risultati restano privati.`
-        : `${turns} lezioni con meno di ${minimum} iscritti non sono contate qui: i loro risultati restano privati.`,
-    suppressed: (minimum: number) => `I risultati di gruppo compaiono quando nella lezione ci sono almeno ${minimum} iscritti.`,
+        ? `Una lezione con meno di ${minimum} persone iscritte non è contata qui: i suoi risultati restano privati.`
+        : `${turns} lezioni con meno di ${minimum} persone iscritte non sono contate qui: i loro risultati restano privati.`,
+    suppressed: (minimum: number) => `I risultati di gruppo compaiono quando nella lezione ci sono almeno ${minimum} persone iscritte.`,
     refreshesItself: "La pagina si aggiorna da sola.",
     noExercises: "Questo corso non ha ancora esercizi.",
     submitted: (n: number, total: number) => `${n} su ${total} hanno consegnato`,
@@ -226,7 +226,7 @@ export const LEARNING_TEXT = Object.freeze({
     optional: "facoltativo",
     hiddenUntil: (minimum: number, now: number) => `Le risposte compaiono da ${minimum} consegne (ora ${now}).`,
     hiddenAllLessons: (minimum: number) => `Con tutte le lezioni insieme, le risposte compaiono quando ogni lezione ha almeno ${minimum} consegne. Scegli una lezione per vederle.`,
-    noPeople: "Ancora nessun iscritto in questa lezione.",
+    noPeople: "Nessuna persona iscritta a questa lezione, per ora.",
     peopleArrive: "Le persone compaiono qui appena entrano nel corso.",
     openAnswers: "Tocca un risultato per leggere le risposte.",
     /** «Scarica»: il pannello, con le colonne in una piega. */
@@ -264,6 +264,15 @@ export const LEARNING_TEXT = Object.freeze({
     cancel: "Annulla",
     summary: "Riepilogo del corso",
     import: "Importa il corso",
+    /** Il «⋯» del catalogo (§8.3): il link della Formazione del workspace, prima in un riquadro da copiare. */
+    more: "Altre azioni",
+    copyLink: "Copia il link della formazione",
+    copied: "Link della formazione copiato: non dà nuovi permessi e non invia email.",
+    copyFailed: (url: string) => `Copia automatica non disponibile. Il link della formazione è ${url}`,
+    materialDownloads: (downloads: number, enrolled: number) =>
+      downloads
+        ? `Scaricato da ${downloads} ${downloads === 1 ? "persona" : "persone"}${enrolled ? ` su ${enrolled} ${enrolled === 1 ? "persona iscritta" : "persone iscritte"}` : ""}`
+        : "Non ancora scaricato",
   }),
 
   /**
@@ -281,14 +290,14 @@ export const LEARNING_TEXT = Object.freeze({
     results: "Risultati",
     more: "Altre azioni",
     copyLink: "Copia link del corso",
-    copied: "Link del corso copiato: apre il corso a chi è già iscritto.",
+    copied: "Link del corso copiato: apre il corso alle persone già iscritte.",
     copyFailed: (url: string) => `Copia automatica non disponibile. Il link del corso è ${url}`,
     asParticipant: "Vedi come partecipante",
     refresh: "Aggiorna",
     noEmail: "L'assegnazione di un corso non invia email.",
     tabs: Object.freeze({ label: "Gestione del corso", lezioni: "Lezioni", materiali: "Materiali", persone: "Persone", impostazioni: "Impostazioni" }),
     lessons: Object.freeze({
-      enrolled: (n: number) => (n === 1 ? "1 iscritto" : `${n} iscritti`),
+      enrolled: (n: number) => (n === 1 ? "1 persona iscritta" : `${n} persone iscritte`),
       openNow: "Apri le attività ora",
       openNowAsk: "Aprire subito tutte le attività della lezione? Chi segue la lezione può rispondere da adesso, senza aspettare la scaletta.",
       suspend: "Sospendi le risposte",
@@ -321,9 +330,13 @@ export const LEARNING_TEXT = Object.freeze({
       closeDoor: "Chiudi l'ingresso",
       addSeats: "Aggiungi 20 posti",
       revoke: "Disattiva il link",
-      revokeAsk: (lesson: string) => `Disattivare questo link per la ${lesson}? Chi è già entrato mantiene l'accesso al corso; chi riceve il link da ora non può più iscriversi.`,
+      revokeAsk: (lesson: string) => `Disattivare questo link per la ${lesson}? Le persone già entrate mantengono l'accesso al corso; con questo link nessun altro può più iscriversi.`,
+      /** I posti del link, senza zeri: «8 persone entrate · 22 posti liberi su 30», «30 posti liberi su 30», «tutti i 30 posti occupati». */
       seatsLine: (joined: number, left: number, max: number) =>
-        `${joined} ${joined === 1 ? "persona entrata" : "persone entrate"} · ${left} ${left === 1 ? "posto libero" : "posti liberi"} su ${max}`,
+        [
+          joined ? `${joined} ${joined === 1 ? "persona entrata" : "persone entrate"}` : null,
+          left ? `${left} ${left === 1 ? "posto libero" : "posti liberi"} su ${max}` : `tutti i ${max} posti occupati`,
+        ].filter(Boolean).join(" · "),
       validUntil: (when: string) => `valido fino al ${when}`,
       closedLinks: (n: number) => `Link non più validi (${n})`,
       reopen: (n: number, lessons: string) =>
@@ -360,7 +373,8 @@ export const LEARNING_TEXT = Object.freeze({
     fingerprint: "Mostra impronta",
     code: "Codice",
     fingerprintLabel: "Impronta",
-    participants: (n: number) => `Partecipanti (${n})`,
+    /** Senza zeri: «Partecipanti» quando non ce n'è ancora nessuno. */
+    participants: (n: number) => (n ? `Partecipanti (${n})` : "Partecipanti"),
     record: "Registra una presenza",
     lessons: (n: number) => `Lezioni (${n})`,
     company2: "Dati dell'azienda",
@@ -396,7 +410,7 @@ export const LEARNING_TEXT = Object.freeze({
     roleDeployer: "Usa sistemi di AI (deployer)",
     roleProvider: "Sviluppa o immette sistemi di AI (fornitore)",
     roleBoth: "Tutti e due",
-    roleHint: "Lo dichiara l'azienda. Chi usa strumenti come Copilot o ChatGPT nel lavoro di norma li usa (deployer).",
+    roleHint: "Lo dichiara l'azienda. Chi lavora con strumenti come Copilot o ChatGPT di norma sceglie «Usa sistemi di AI».",
     systems: "Sistemi di AI in uso",
     systemsHint: "Uno per riga, fino a 30: nome, fornitore, a cosa serve, livello di rischio secondo l'azienda.",
     otherHint: "Es. policy interna sull'uso dell'AI del 1° settembre 2026, comunicata a tutto il personale.",

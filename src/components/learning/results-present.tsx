@@ -146,7 +146,7 @@ export function ResultsPresent({ activities, enrolled, minimum, suppressed, cont
             <h2 className="text-3xl font-semibold leading-tight sm:text-5xl lg:text-6xl">{slide.activity.title}</h2>
           </div>
           <div className="grid gap-4 sm:grid-cols-3 sm:gap-6">
-            <BigStat value={String(slide.activity.submitted)} label="consegne" detail={`su ${enrolled} iscritti`} />
+            <BigStat value={String(slide.activity.submitted)} label="consegne" detail={`su ${enrolled} persone iscritte`} />
             <BigStat value={average(slide.activity)} label="risposte giuste in media" detail={`su ${slide.activity.totalItems} domande`} />
             {slide.activity.required && slide.activity.achieved !== null
               ? <BigStat value={String(slide.activity.achieved)} label="obiettivo raggiunto" detail={`su ${slide.activity.submitted} consegne`} good />

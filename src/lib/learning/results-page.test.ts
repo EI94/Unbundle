@@ -121,7 +121,7 @@ test("«In aula»: the course title as H1, one number, «Presenta in aula» the 
 test("one lesson only: no lesson chips; nobody finished yet: the number is the enrolled, never a zero", async () => {
   const html = await page(results({ cohorts: 1, completed: 0 }));
   assert.doesNotMatch(html, /data-testid="results-turns"/);
-  assert.match(html, /data-slot="big-number-value"[^>]*>20<\/p><p data-slot="big-number-label"[^>]*>Iscritti/);
+  assert.match(html, /data-slot="big-number-value"[^>]*>20<\/p><p data-slot="big-number-label"[^>]*>Persone iscritte/);
   assert.doesNotMatch(textOf(html), /\b0 su 20\b/);
 });
 

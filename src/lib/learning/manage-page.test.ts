@@ -99,7 +99,7 @@ test("«Lezioni» (the start tab): the course title as H1, the state in a line, 
   assert.equal([...html.matchAll(/data-testid="admin-lesson"/g)].length, 2, "una card per lezione del primo modulo");
   assert.ok(text.includes("Attività secondo la scaletta"));
   assert.ok(text.includes(M.lessons.openNow) && text.includes(M.lessons.suspend), "le attività nella stessa card dell'ingresso");
-  assert.ok(text.includes("2 iscritti"));
+  assert.ok(text.includes("2 persone iscritte"));
   assert.ok(visibleText(html).includes(M.lessons.otherModules(1)), "gli altri moduli, chiusi");
   noCodes(html);
   assert.deepEqual(findHubForbiddenIn([visibleText(html)], "area").map((m) => m.match), []);
@@ -180,4 +180,35 @@ test("«Gestisci formazione»: course rows, the register as a row, «Nuovo corso
   assert.ok(text.includes("Registro della formazione AI"));
   assert.doesNotMatch(text, /AI Readiness|survey|JSON|art\. 4|AI Act|\bIA\b|Gestisci Corso di prova|Versione/);
   assert.equal((text.match(/non invia email/g) ?? []).length, 1);
+  // (§8.3) Il link della Formazione del workspace, prima un riquadro da copiare: una voce del «⋯».
+  assert.match(html, /aria-label="Altre azioni"/);
+  const catalog = read("src/components/learning/admin-catalog.tsx");
+  assert.match(catalog, /items=\{\[\{ label: C\.copyLink, onSelect: \(\) => void copyLearningLink\(\) \}\]\}/);
+  assert.match(catalog, /const url = new URL\(base, window\.location\.origin\)\.href;/, "il link è quello della Formazione del workspace");
+  assert.equal(LEARNING_TEXT.catalog.copyLink, "Copia il link della formazione");
+});
+
+test("copy: no zero counters, neutral words, a role hint that says which choice to make", () => {
+  const L = M.lessons;
+  assert.equal(L.seatsLine(0, 30, 30), "30 posti liberi su 30");
+  assert.equal(L.seatsLine(8, 22, 30), "8 persone entrate · 22 posti liberi su 30");
+  assert.equal(L.seatsLine(30, 0, 30), "30 persone entrate · tutti i 30 posti occupati");
+  assert.equal(L.enrolled(1), "1 persona iscritta");
+  assert.equal(L.enrolled(12), "12 persone iscritte");
+  assert.equal(LEARNING_TEXT.register.participants(0), "Partecipanti");
+  assert.equal(LEARNING_TEXT.register.participants(4), "Partecipanti (4)");
+  assert.equal(LEARNING_TEXT.catalog.materialDownloads(0, 20), "Non ancora scaricato");
+  assert.equal(LEARNING_TEXT.catalog.materialDownloads(3, 20), "Scaricato da 3 persone su 20 persone iscritte");
+  assert.equal(LEARNING_TEXT.results.enrolled, "Persone iscritte");
+  const hint = LEARNING_TEXT.register.roleHint;
+  assert.ok(hint.includes(`«${LEARNING_TEXT.register.roleDeployer.replace(/ \(deployer\)$/, "")}»`), "il suggerimento nomina la voce da scegliere");
+  assert.doesNotMatch(hint, /li usa/, "non più circolare");
+  const words: string[] = [];
+  const collect = (value: unknown): void => {
+    if (typeof value === "string") words.push(value);
+    else if (typeof value === "function") { for (const args of [[0, 1, 2], [1, 1, 1], [3, 20, 30]]) { try { collect((value as (...a: unknown[]) => unknown)(...args)); } catch { /* altri argomenti */ } } }
+    else if (value && typeof value === "object") Object.values(value).forEach(collect);
+  };
+  collect(LEARNING_TEXT);
+  assert.deepEqual(words.filter((text) => /\biscritt[oi]\b|\bnessun iscritto\b/i.test(text)), [], "«persone iscritte», non «iscritti»");
 });

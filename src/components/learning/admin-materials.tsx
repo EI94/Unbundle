@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { moduleLabel } from "@/lib/learning/manage-view";
+import { LEARNING_TEXT } from "@/lib/learning/text";
 import { AdminSection, AdminSelect, ConfirmAdminAction } from "./admin-shared";
 
 /**
@@ -163,8 +164,7 @@ export function AdminMaterials({ workspaceId, data, busy, mutate, onUploaded }: 
                 <p className="mt-1 text-sm">{timingLabel(material)}</p>
                 {material.audience === "learners" && (
                   <p className="text-sm text-muted-foreground" data-testid="material-downloads">
-                    Scaricato da {material.downloads} {material.downloads === 1 ? "persona" : "persone"}
-                    {material.enrolled > 0 ? ` su ${material.enrolled} iscritti` : ""}
+                    {LEARNING_TEXT.catalog.materialDownloads(material.downloads, material.enrolled)}
                   </p>
                 )}
               </div>

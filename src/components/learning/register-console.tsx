@@ -254,7 +254,7 @@ function Lessons({ register }: { register: TrainingRegister }) {
         <div className="min-w-0"><p className="font-medium">{sessionLabel(s)}</p><p className="text-muted-foreground">{s.moduleTitle} · {s.programTitle} · {s.durationMinutes} min</p></div>
         <div className="min-w-0">
           <p>{sessionStateLabel[s.state]}</p>
-          <p className="text-muted-foreground">{s.state === "in_programma" ? `${s.enrolled} iscritti` : `${s.participants + s.manualParticipants} partecipanti`}</p>
+          <p className="text-muted-foreground">{s.state === "in_programma" ? `${s.enrolled} ${s.enrolled === 1 ? "persona iscritta" : "persone iscritte"}` : `${s.participants + s.manualParticipants} partecipanti`}</p>
           {s.manualParticipants > 0 && <span className="block text-xs text-muted-foreground">di cui {s.manualParticipants} registrati dal formatore</span>}
           {s.undocumented > 0 && <span className="block text-xs text-uc-giallo">+ {s.undocumented} senza partecipazione documentata</span>}
         </div>

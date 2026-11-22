@@ -117,7 +117,8 @@ function Kpi({ label, value, total }: { label: string; value: number; total?: nu
 
 function ActivityResults({ activity, enrolled, minimum, showAnswers }: { activity: GroupActivity; enrolled: number; minimum: number; showAnswers: boolean }) {
   const answering = Math.max(0, activity.started - activity.submitted);
-  const summary = [R.submitted(activity.submitted, enrolled), activity.required ? null : R.optional].filter(Boolean).join(" · ");
+  // Lo zero non si mostra: senza consegne la piega non ha la riga «0 su 20».
+  const summary = [activity.submitted ? R.submitted(activity.submitted, enrolled) : null, activity.required ? null : R.optional].filter(Boolean).join(" · ") || null;
   return <Fold id={`esercizio-${activity.id}`} title={activity.title} summary={summary}>
     <section data-testid="group-activity" aria-label={activity.title} className="space-y-4">
       {answering > 0 && <p className="text-sm text-muted-foreground">{R.answering(answering)}</p>}
