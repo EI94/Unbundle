@@ -39,7 +39,8 @@ import { AddBuilder, RemoveBuilder } from "./team-forms";
  *   riga dice se la CLI è collegata, o perché da fuori oggi non costruisce. «Togli» chiede conferma con i casi e i
  *   repository di GitHub (da togliere a mano).
  * - (8.2a) Per ogni caso le evals («evals 96%», «sotto soglia») e il consiglio del banco di prova; in «Da fare per te»,
- *   a chi costruisce il caso, il consiglio del banco e le evals sotto soglia, con il link a «Evals e banco di prova».
+ *   a chi costruisce il caso, il consiglio del banco e le evals sotto soglia, con il link a «Qualità» della Costruzione
+ *   (rilascio 10).
  * - (8.2b) Sotto i casi di ogni famiglia la riga della CI: lo stato della chiave con cui la CI di GitHub manda le evals
  *   di main, per tutti quelli che vedono la famiglia; «Collega la CI», «Ruota» e «Revoca» solo a chi gestisce le chiavi
  *   del repository (D6), con le finestre dell'app e la chiave che si vede una volta. In «Da fare per te», solo a loro,
@@ -85,8 +86,9 @@ function todoHref(workspaceId: string, t: FactoryTodo): string {
   if (t.href) return t.href;
   if (t.kind === "collega") return `/dashboard/${workspaceId}/settings#cli`;
   if (t.kind === "domande") return `/dashboard/${workspaceId}/use-cases/${t.useCaseId}/proposte`;
-  if (t.kind === "banco" || t.kind === "evals") return `/dashboard/${workspaceId}/casi-duso/${t.caseId}/progetto#banco`;
-  return `/dashboard/${workspaceId}/casi-duso/${t.caseId}/progetto${t.kind === "approva" ? "" : "#compiti"}`;
+  // (Rilascio 10) Dritti alla Costruzione: passando dal 308 di `/progetto` la navigazione nell'app perderebbe l'ancora.
+  if (t.kind === "banco" || t.kind === "evals") return `/dashboard/${workspaceId}/casi-duso/${t.caseId}/costruzione#banco`;
+  return `/dashboard/${workspaceId}/casi-duso/${t.caseId}/costruzione${t.kind === "approva" ? "" : "#compiti"}`;
 }
 
 function CaseRow({ workspaceId, c }: { workspaceId: string; c: FactoryCaseRow }) {
@@ -100,7 +102,7 @@ function CaseRow({ workspaceId, c }: { workspaceId: string; c: FactoryCaseRow })
   ].filter(Boolean);
   return (
     <li>
-      <Link href={`/dashboard/${workspaceId}/casi-duso/${c.caseId}/progetto`} className="flex min-h-11 items-start justify-between gap-3 py-3 hover:bg-muted/40 sm:-mx-2 sm:rounded-md sm:px-2">
+      <Link href={`/dashboard/${workspaceId}/casi-duso/${c.caseId}/costruzione`} className="flex min-h-11 items-start justify-between gap-3 py-3 hover:bg-muted/40 sm:-mx-2 sm:rounded-md sm:px-2">
         <div className="min-w-0">
           <p className="text-sm">
             <span className="font-medium tabular-nums">{c.code}</span> · {c.title}
