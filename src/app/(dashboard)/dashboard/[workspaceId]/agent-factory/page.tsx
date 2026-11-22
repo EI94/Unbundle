@@ -1,51 +1,49 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronRight, ExternalLink, Factory, Inbox, Users, Wrench } from "lucide-react";
 import { PAGE_TITLE_CLASS, PageContainer } from "@/components/dashboard/page-container";
-import { SettingsSection } from "@/components/dashboard/settings-section";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
-import { factoryNavVisible, loadFactoryOverview, type FactoryCaseRow, type FactoryTodo } from "@/lib/db/queries/use-case-factory-line";
+import { factoryNavVisible, loadFactoryOverview } from "@/lib/db/queries/use-case-factory-line";
 import { factoryStoreReady } from "@/lib/db/queries/use-case-factory";
 import { cliStoreReady } from "@/lib/db/queries/use-case-cli-auth";
-import { viewerFromSession } from "@/lib/db/queries/use-case-hub";
+import { viewerFromSession, workspaceAgentPaletteOf } from "@/lib/db/queries/use-case-hub";
 import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
-import { AGENT_FACTORY_TEMPLATE_VERSION, benchFacts, compareVersions, evalsFact, STATION_LABEL, STATIONS, type Station } from "@/lib/use-cases/factory/line";
+import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { abilitiesForUseCase } from "@/lib/use-cases/permissions";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
-import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
-import { externalRefusals, listBuilders, listWhereChoices, type BuilderRow } from "@/lib/db/queries/use-case-workspace-team";
+import { canManageWorkspaceCollaborators, canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
+import { externalRefusals, listBuilders, listWhereChoices } from "@/lib/db/queries/use-case-workspace-team";
 import { loadMemberCandidates } from "@/lib/db/queries/uc-shell";
-import { ROLE_LABEL } from "@/lib/uc/views/labels";
-import { builderStateText, builderWhereText, externalRemoveConfirm } from "@/lib/use-cases/factory/builders-text";
-import { BuilderFacts } from "@/components/agent-factory/builder-facts";
+import { logSafeError } from "@/lib/log/safe-error";
+import type { FactoryBuildersData } from "@/components/agent-factory/builders-panel";
 import { readCiFamilies } from "@/components/agent-factory/ci-load";
-import { CiRow } from "@/components/agent-factory/ci-row";
-import { ciRepoShortName, familyAnchor } from "@/components/agent-factory/ci-text";
-import { AddBuilder, RemoveBuilder } from "./team-forms";
+import type { CiFamilyRow } from "@/components/agent-factory/ci-view";
+import { FactoryScreen } from "@/components/agent-factory/factory-screen";
+import { FACTORY_TEXT } from "@/components/agent-factory/factory-text";
+import { factoryScreenModel, stationOfParam } from "@/components/agent-factory/factory-view";
 
 /**
- * «Agent Factory» (rilascio 8.1a, docs/rilascio-8/RILASCIO-8.1-COSTRUZIONE.md §2): i casi di un cliente
- * dall'impostazione all'esercizio, con lo stesso contesto per tutti quelli che ci lavorano.
+ * «Agent Factory» (rilascio 8.1a, docs/rilascio-8/RILASCIO-8.1-COSTRUZIONE.md §2; rilascio 10, ondata 6b,
+ * docs/ui-10/PROPOSTA-10.md §3.6 e prototipo S5): i casi di un cliente dall'impostazione all'uso, con lo stesso contesto
+ * per tutti quelli che ci lavorano.
  *
- * - «Da fare per te» in alto: solo le tue cose, con il link dove si agisce.
- * - La linea: quanti casi in ogni stazione.
- * - Le famiglie (i repository): ogni caso con la stazione, il prossimo passo, i compiti e le sessioni dei coding
- *   agent. Mai una cifra per persona.
- * - (Ondata 0) «Repository da aggiornare», al posto dei turni: chi ci lavora lo prende.
- * - (8.1b, 8.0c) «Chi costruisce», solo per il manager di Lateral Space: il team di Lateral Space del cliente (in tutti
- *   i casi, anche in quelli che si apriranno) e chi costruisce da fuori, «Sviluppatore esterno», con il suo «Dove». Ogni
- *   riga dice se la CLI è collegata, o perché da fuori oggi non costruisce. «Togli» chiede conferma con i casi e i
- *   repository di GitHub (da togliere a mano).
- * - (8.2a) Per ogni caso le evals («evals 96%», «sotto soglia») e il consiglio del banco di prova; in «Da fare per te»,
- *   a chi costruisce il caso, il consiglio del banco e le evals sotto soglia, con il link a «Qualità» della Costruzione
- *   (rilascio 10).
- * - (8.2b) Sotto i casi di ogni famiglia la riga della CI: lo stato della chiave con cui la CI di GitHub manda le evals
- *   di main, per tutti quelli che vedono la famiglia; «Collega la CI», «Ruota» e «Revoca» solo a chi gestisce le chiavi
- *   del repository (D6), con le finestre dell'app e la chiave che si vede una volta. In «Da fare per te», solo a loro,
- *   la chiave nuova da mettere su GitHub, quella in scadenza e la CI da collegare, con il link alla famiglia. La
- *   conferma di «Togli» per chi costruisce da fuori chiede di ruotare le chiavi vive dei suoi repository.
+ * - Il prossimo passo è la prima voce di «Da fare per te», il solo pulsante pieno; sotto, al massimo tre voci e «Altre
+ *   N». Solo le tue cose, con il link dove si agisce; i comandi della CLI stanno lì, non nella riga.
+ * - «La linea»: un filtro per stazione (`?stazione=`), senza zeri.
+ * - Le famiglie (i repository), con un nome di parole e repository e versioni nei «Dettagli»; una riga per caso, con
+ *   il tag dell'agente, la stazione, il prossimo passo e la qualità delle evals. Mai una cifra per persona.
+ * - Il pannello del caso (`?apri=<codice>`): compiti, modifiche, sessioni, costi, evals e banco (8.1b, 8.2a); senza
+ *   repository il comando che lo crea.
+ * - (8.1b, 8.0c) «Chi costruisce», un pannello dal «⋯», solo per il manager di Lateral Space: il team di Lateral Space
+ *   del cliente e chi costruisce da fuori, «Sviluppatore esterno», con il suo «Dove»; «Togli» chiede conferma con i
+ *   casi e i repository di GitHub (da togliere a mano). (Ondata 6b) «Aggiungi» accetta anche un'e-mail nuova, a chi
+ *   può invitare nel workspace: crea l'invito come Analista.
+ * - «Repository da aggiornare» (prima «la coda»), un pannello dal «⋯», solo per il manager.
+ * - (8.2b) Sotto i casi di ogni famiglia la riga della CI: lo stato della chiave per tutti quelli che vedono la
+ *   famiglia; «Collega la CI», «Ruota» e «Revoca» solo a chi gestisce le chiavi del repository (D6), con le finestre
+ *   dell'app e la chiave che si vede una volta. In «Da fare per te», solo a loro, la chiave nuova da mettere su GitHub,
+ *   quella in scadenza e la CI da collegare, con il link alla famiglia. La conferma di «Togli» per chi costruisce da
+ *   fuori chiede di ruotare le chiavi vive dei suoi repository.
  *
  * La vede chi costruisce (ruolo di Lateral Space nel team di un caso o, 8.0c, da fuori con il predicato unico), con i
  * suoi casi, e il manager del workspace di Lateral Space, con tutti. Agli altri: 404.
@@ -53,97 +51,13 @@ import { AddBuilder, RemoveBuilder } from "./team-forms";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Agent Factory" };
 
-const STATION_TONE: Record<Station, string> = {
-  dossier: "border-border text-muted-foreground",
-  impostazione: "border-uc-giallo bg-uc-giallo-bg",
-  approvato: "border-primary/40",
-  costruzione: "border-primary bg-primary/10",
-  collaudo: "border-uc-verde bg-uc-verde-bg",
-  esercizio: "border-uc-verde bg-uc-verde-bg",
-};
-
-const count = (n: number) => new Intl.NumberFormat("it-IT", { useGrouping: "always" }).format(n);
-
-function since(iso: string | null): string | null {
-  if (!iso) return null;
-  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
-  return days <= 0 ? "oggi" : days === 1 ? "ieri" : `${days} giorni fa`;
-}
-
-/** (8.1b) Le PR del caso in una riga: aperte, unite, e di solito quanto dalla presa all'unione. */
-function prLine(p: FactoryCaseRow["prs"]): string | null {
-  if (!p.open && !p.merged) return null;
-  const parts = [p.open ? `${count(p.open)} PR ${p.open === 1 ? "aperta" : "aperte"}` : null, p.merged ? `${count(p.merged)} ${p.merged === 1 ? "unita" : "unite"}` : null].filter(Boolean);
-  const days = p.medianDays === null ? null : p.medianDays < 1 ? "di solito in meno di un giorno dalla presa all'unione" : `di solito ${new Intl.NumberFormat("it-IT", { maximumFractionDigits: 1 }).format(p.medianDays)} giorni dalla presa all'unione`;
-  const spend =
-    p.costPerPrUsd !== null || p.tokensPerPr !== null
-      ? `in media ${[p.costPerPrUsd !== null ? new Intl.NumberFormat("it-IT", { style: "currency", currency: "USD" }).format(p.costPerPrUsd) : null, p.tokensPerPr !== null ? `${count(p.tokensPerPr)} token` : null].filter(Boolean).join(" e ")} per PR unita`
-      : null;
-  return [parts.join(" e "), days, spend].filter(Boolean).join(", ");
-}
-
-function todoHref(workspaceId: string, t: FactoryTodo): string {
-  if (t.href) return t.href;
-  if (t.kind === "collega") return `/dashboard/${workspaceId}/settings#cli`;
-  if (t.kind === "domande") return `/dashboard/${workspaceId}/use-cases/${t.useCaseId}/proposte`;
-  // (Rilascio 10) Dritti alla Costruzione: passando dal 308 di `/progetto` la navigazione nell'app perderebbe l'ancora.
-  if (t.kind === "banco" || t.kind === "evals") return `/dashboard/${workspaceId}/casi-duso/${t.caseId}/costruzione#banco`;
-  return `/dashboard/${workspaceId}/casi-duso/${t.caseId}/costruzione${t.kind === "approva" ? "" : "#compiti"}`;
-}
-
-function CaseRow({ workspaceId, c }: { workspaceId: string; c: FactoryCaseRow }) {
-  const live = c.tasks.total - c.tasks.cancelled;
-  const facts = [
-    live > 0 ? `${c.tasks.done}/${live} compiti fatti${c.tasks.inProgress + c.tasks.inReview ? ` · ${c.tasks.inProgress + c.tasks.inReview} in corso` : ""}` : null,
-    c.sessions.count ? `${count(c.sessions.count)} ${c.sessions.count === 1 ? "sessione" : "sessioni"} dei coding agent, l'ultima ${since(c.sessions.lastAt)}` : null,
-    prLine(c.prs),
-    evalsFact(c.evals),
-    ...benchFacts(c.benches),
-  ].filter(Boolean);
-  return (
-    <li>
-      <Link href={`/dashboard/${workspaceId}/casi-duso/${c.caseId}/costruzione`} className="flex min-h-11 items-start justify-between gap-3 py-3 hover:bg-muted/40 sm:-mx-2 sm:rounded-md sm:px-2">
-        <div className="min-w-0">
-          <p className="text-sm">
-            <span className="font-medium tabular-nums">{c.code}</span> · {c.title}
-          </p>
-          <p className="mt-0.5 text-sm text-muted-foreground">{c.nextStep}</p>
-          {facts.length ? <p className="mt-0.5 text-xs text-muted-foreground">{facts.join(" · ")}</p> : null}
-        </div>
-        <span className="flex shrink-0 items-center gap-1">
-          <span className={`rounded-full border px-2 py-0.5 text-xs ${STATION_TONE[c.station]}`}>{STATION_LABEL[c.station]}</span>
-          <ChevronRight aria-hidden className="size-4 text-muted-foreground" />
-        </span>
-      </Link>
-    </li>
-  );
-}
-
-/**
- * Una persona di «Chi costruisce»: nome, da fuori o no, ruolo, dove, la CLI (o perché da fuori oggi non costruisce).
- * (8.2b) `ciLive`: i repository (in minuscolo) con una chiave della CI viva, che la conferma di «Togli» chiede di ruotare.
- */
-function BuilderLine({ workspaceId, m, ciLive }: { workspaceId: string; m: BuilderRow; ciLive: ReadonlySet<string> }) {
-  const role = m.external ? "Sviluppatore" : ROLE_LABEL[m.role as keyof typeof ROLE_LABEL];
-  const facts = [...(m.external ? ["esterno"] : []), role, builderWhereText(m.where, m.whereCodes), builderStateText(m)];
-  const confirm = m.external
-    ? externalRemoveConfirm({ name: m.name, openCases: m.openCases, repos: m.repos, ciRepos: m.repos.filter((repo) => ciLive.has(repo.toLowerCase())) })
-    : {
-        title: `Togliere ${m.name} da chi costruisce?`,
-        text: `Esce da tutti i casi aperti dove è ${role.toLowerCase()} e non entra in quelli nuovi; i compiti che ha lì tornano da prendere. I ruoli dati caso per caso restano; l'unico responsabile di un caso non si toglie.`,
-      };
-  return (
-    <li className="flex min-h-11 items-center justify-between gap-3 py-2 text-sm">
-      <span className="min-w-0">
-        <span className="font-medium break-words">{m.name}</span>
-        <BuilderFacts email={m.external ? null : m.email} facts={facts} />
-      </span>
-      <RemoveBuilder workspaceId={workspaceId} userId={m.userId} name={m.name} title={confirm.title} text={confirm.text} />
-    </li>
-  );
-}
-
-export default async function AgentFactoryPage({ params }: { params: Promise<{ workspaceId: string }> }) {
+export default async function AgentFactoryPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ workspaceId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { workspaceId } = await params;
   const { session, access } = await requireWorkspacePage(workspaceId);
   if (!isUseCaseHubWorkspace(workspaceId) || process.env.UC_ENABLED !== "true") notFound();
@@ -157,15 +71,25 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
   if (!factoryReady || !cliReady) {
     return (
       <PageContainer>
-        <h1 className={PAGE_TITLE_CLASS}>Agent Factory</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Non ancora disponibile: riprova tra qualche minuto.</p>
+        <h1 className={PAGE_TITLE_CLASS}>{FACTORY_TEXT.title}</h1>
+        <p className="mt-2 text-sm text-muted-foreground">{FACTORY_TEXT.notReady}</p>
       </PageContainer>
     );
   }
+  const search = await searchParams;
+  const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? null;
   const view = await loadFactoryOverview(executor, { workspaceId, userId: session.user.id, seeAll: lsManager, canSeeNeeds: abilitiesForUseCase(viewer).canSeeNeeds, lsDomains });
-  const [builders, candidates, choices] = lsManager
-    ? await Promise.all([listBuilders(executor, workspaceId, lsDomains), loadMemberCandidates(executor, { workspaceId, lsDomains }), listWhereChoices(executor, workspaceId)])
-    : [null, [], []];
+  const [builders, candidates, choices, workspace, palette] = await Promise.all([
+    lsManager ? listBuilders(executor, workspaceId, lsDomains) : Promise.resolve(null),
+    lsManager ? loadMemberCandidates(executor, { workspaceId, lsDomains }) : Promise.resolve([]),
+    lsManager ? listWhereChoices(executor, workspaceId) : Promise.resolve([]),
+    getWorkspaceById(workspaceId),
+    // I toni degli agenti: gli stessi delle card degli use case. Senza, i tag restano neutri.
+    workspaceAgentPaletteOf(workspaceId).catch((error) => {
+      logSafeError("agent-factory", "tavolozza_non_letta", error, { workspaceId });
+      return null;
+    }),
+  ]);
   // (8.0c) Chi da fuori oggi «Aggiungi» rifiuterebbe (Contributore, e-mail da verificare): si vede, non si sceglie.
   const refused = lsManager
     ? await externalRefusals(
@@ -184,133 +108,26 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
     lsDomains,
     families: view.families.flatMap((f) => (f.repo ? [f.repo] : [])),
   });
-  // (Rilascio 10, §1 regola 5) «La linea» senza gli zeri: solo le stazioni con almeno un caso.
-  const counts = STATIONS.map((station) => ({ station, n: view.cases.filter((c) => c.station === station).length })).filter(({ n }) => n > 0);
+  const model = factoryScreenModel({
+    workspaceId,
+    manager: lsManager,
+    overview: view,
+    ciTodos: ci.todos,
+    palette,
+    station: stationOfParam(one(search.stazione)),
+    clientName: workspace?.name ?? "",
+    now: new Date(),
+  });
+  const buildersData: FactoryBuildersData | null = builders
+    ? {
+        rows: builders,
+        candidates: candidates.map((c) => ({ userId: c.userId, name: c.name, isLateralSpace: c.isLateralSpace, blocked: c.isLateralSpace ? null : (refused.get(c.userId) ?? null) })),
+        choices,
+        ciLive: [...ci.liveRepos],
+        canInvite: canManageWorkspaceCollaborators(access.role),
+      }
+    : null;
+  const ciRows: Record<string, CiFamilyRow> = Object.fromEntries(ci.rows);
 
-  return (
-    <PageContainer>
-      <header>
-        <h1 className={PAGE_TITLE_CLASS}>Agent Factory</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {view.cases.length === 1 ? "1 caso" : `${view.cases.length} casi`} dall&apos;impostazione all&apos;uso{lsManager ? "" : ", quelli dove sei nel team"}.
-        </p>
-      </header>
-
-      {view.todos.length || ci.todos.length ? (
-        <section aria-labelledby="per-te" className="mt-6 rounded-md border p-4">
-          <h2 id="per-te" className="text-sm font-semibold">
-            Da fare per te
-          </h2>
-          <ul className="mt-2 divide-y">
-            {view.todos.map((t, i) => (
-              <li key={`${t.kind}-${t.useCaseId}-${i}`}>
-                {t.href ? (
-                  <a href={t.href} target="_blank" rel="noreferrer" className="flex min-h-11 items-center justify-between gap-3 py-2 text-sm hover:underline">
-                    <span>
-                      <span className="font-medium tabular-nums">{t.code}</span> · {t.text}
-                    </span>
-                    <ExternalLink aria-label="Su GitHub" className="size-4 shrink-0 text-muted-foreground" />
-                  </a>
-                ) : (
-                  <Link href={todoHref(workspaceId, t)} className="flex min-h-11 items-center justify-between gap-3 py-2 text-sm hover:underline">
-                    {t.code ? (
-                      <span>
-                        <span className="font-medium tabular-nums">{t.code}</span> · {t.text}
-                      </span>
-                    ) : (
-                      <span>{t.text}</span>
-                    )}
-                    <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-                  </Link>
-                )}
-              </li>
-            ))}
-            {/* (8.2b) La CI delle famiglie, solo a chi gestisce le chiavi: il link porta alla riga della famiglia. */}
-            {ci.todos.map((t) => (
-              <li key={`ci-${t.kind}-${t.repo}`} data-ci-todo={t.kind}>
-                <a href={t.href} className="flex min-h-11 items-center justify-between gap-3 py-2 text-sm hover:underline">
-                  <span className="min-w-0 break-words">{t.text}</span>
-                  <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-                </a>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      {counts.length > 0 ? (
-        <section aria-label="La linea" className="mt-6 grid grid-cols-3 gap-2 sm:grid-cols-6">
-          {counts.map(({ station, n }) => (
-            <div key={station} className="rounded-md border p-3">
-              <p className="text-2xl font-semibold tabular-nums">{n}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">{STATION_LABEL[station]}</p>
-            </div>
-          ))}
-        </section>
-      ) : null}
-
-      <div className="mt-6 space-y-6">
-        {view.cases.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nessun caso ancora: un caso entra nell&apos;Agent Factory con «Avvia la realizzazione», dalla pagina del suo use case.</p>
-        ) : (
-          view.families.map((f) => (
-            <SettingsSection
-              key={f.repo ?? "senza"}
-              id={f.repo ? familyAnchor(f.repo) : "da-avviare"}
-              icon={f.repo ? Factory : Inbox}
-              title={f.repo ? ciRepoShortName(f.repo) : "Senza repository"}
-              description={
-                f.repo
-                  ? `${f.repo}${f.templateVersion ? ` · modello ${f.templateVersion}${compareVersions(f.templateVersion, AGENT_FACTORY_TEMPLATE_VERSION) < 0 ? " (indietro)" : ""}` : ""}${f.commonVersion ? ` · comune ${f.commonVersion}` : ""}`
-                  : "Ancora senza repository: «unbundle repo create <ID>» crea quello della famiglia, o aggiunge la cartella del caso."
-              }
-            >
-              <ul className="divide-y">
-                {f.cases.map((c) => (
-                  <CaseRow key={c.caseId} workspaceId={workspaceId} c={c} />
-                ))}
-              </ul>
-              <CiRow workspaceId={workspaceId} row={f.repo ? ci.rows.get(f.repo.toLowerCase()) : undefined} />
-            </SettingsSection>
-          ))
-        )}
-
-        {builders ? (
-          <SettingsSection
-            id="team"
-            icon={Users}
-            title="Chi costruisce"
-            description="Lavorano ai casi del cliente da Unbundle e con Claude Code. Chi è in tutti i casi entra anche in quelli nuovi. Il progetto di ogni caso lo approva il suo responsabile."
-          >
-            {builders.length ? (
-              <ul className="divide-y">
-                {builders.map((m) => (
-                  <BuilderLine key={m.userId} workspaceId={workspaceId} m={m} ciLive={ci.liveRepos} />
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-muted-foreground">Ancora nessuno: chi aggiungi qui lavora ai casi del cliente.</p>
-            )}
-            <AddBuilder
-              workspaceId={workspaceId}
-              candidates={candidates.map((c) => ({ userId: c.userId, name: c.name, isLateralSpace: c.isLateralSpace, blocked: c.isLateralSpace ? null : (refused.get(c.userId) ?? null) }))}
-              choices={choices}
-            />
-          </SettingsSection>
-        ) : null}
-
-        {view.queue.length ? (
-          <SettingsSection id="coda" icon={Wrench} title="Repository da aggiornare" description="Hanno un modello più vecchio dell'ultimo. Chi ci lavora li prende: niente turni.">
-            <ul className="divide-y">
-              {view.queue.map((q) => (
-                <li key={q.repo} className="py-2.5 text-sm">
-                  <span className="font-medium">{q.repo}</span> · {q.text}
-                </li>
-              ))}
-            </ul>
-          </SettingsSection>
-        ) : null}
-      </div>
-    </PageContainer>
-  );
+  return <FactoryScreen model={model} initialPanel={one(search.apri)} builders={buildersData} ciRows={ciRows} />;
 }

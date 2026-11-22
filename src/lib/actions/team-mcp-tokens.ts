@@ -20,8 +20,9 @@
  *
  * Nessuna azione riceve lo stato precedente della card: dopo una creazione quello stato ha il
  * token in chiaro, e React lo manderebbe al server come argomento (Next scrive gli argomenti
- * delle server function nel terminale in sviluppo). La card chiama le azioni con i soli dati
- * del modulo (`cardAction` in `team-mcp-card.tsx`).
+ * delle server function nel terminale in sviluppo). (Rilascio 10, ondata 6b) Il foglio «Il tuo account»
+ * crea e revoca con i soli dati del modulo (`account-sheet.tsx`); «Revoca tutti» di Impostazioni › Collegamenti
+ * chiama la sua azione con il solo workspace (`team-mcp-card.tsx`).
  */
 import { revalidatePath } from "next/cache";
 import { z } from "zod";

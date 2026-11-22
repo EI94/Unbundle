@@ -38,7 +38,7 @@
     "test:programma": "node --no-warnings --test \"src/lib/programma/**/*.test.ts\" \"src/components/programma/**/*.test.ts\" \"src/lib/home/**/*.test.ts\" \"src/components/home/**/*.test.ts\" \"src/components/ui-10/**/*.test.ts\"",
     "test:contesto": "node --no-warnings --test \"src/lib/context/**/*.test.ts\" \"src/components/context/**/*.test.ts\" src/lib/db/context-ddl.test.ts src/lib/db/context-work-ddl.test.ts",
     "test:mappatura": "node --no-warnings --test \"src/lib/mappatura/**/*.test.ts\" \"src/components/mappatura/**/*.test.ts\" src/lib/db/mapping-board-ddl.test.ts",
-    "test:shell": "node --no-warnings --test \"src/components/shell/**/*.test.ts\" \"src/lib/shell/**/*.test.ts\" \"src/components/public/**/*.test.ts\" \"src/lib/public/**/*.test.ts\"",
+    "test:shell": "node --no-warnings --test \"src/components/shell/**/*.test.ts\" \"src/lib/shell/**/*.test.ts\" \"src/components/public/**/*.test.ts\" \"src/lib/public/**/*.test.ts\" \"src/components/workspace/**/*.test.ts\"",
     "test": "npm run test:portfolio && npm run test:mcp && npm run test:slack && npm run test:workspace-collaboration && npm run test:auth && npm run test:ai-readiness && npm run test:learning && npm run test:uc && npm run test:connector && npm run test:use-cases && npm run test:theme && npm run test:programma && npm run test:contesto && npm run test:mappatura && npm run test:shell"
   },
   "dependencies": {

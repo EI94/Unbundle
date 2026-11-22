@@ -48,7 +48,11 @@ const APP = `http://${CONNECTOR_APP_HOST}:${CONNECTOR_APP_PORT}`;
 const AUTH = `http://${CONNECTOR_AUTH_HOST}:${CONNECTOR_AUTH_PORT}`;
 const PASSWORD = `Synthetic-only-conn-${randomBytes(4).toString("hex")}`;
 const outDir = join(ucTestRoot(), "conn-evidence", "k7r");
-const CARD = "#connettore-claude";
+// (Release 10, wave 6b) The connector is Settings › Collegamenti › «Claude per l'organizzazione»: its panel
+// (`?scheda=collegamenti&apri=organizzazione`), with the configuration and limits in «Dettagli tecnici», opened here.
+const CARD = '[data-slot="connector-panel"]';
+const ROW = '[data-connection="organizzazione"]';
+const ROW_NAME = "Claude per l'organizzazione";
 
 const pg = new Client({ host: "127.0.0.1", port: Number(port), user: "uc_test", database });
 await pg.connect();
@@ -233,8 +237,13 @@ async function cardText(page) {
 }
 
 async function settings(page, workspaceId) {
-  const landed = await navigate(page, `${APP}/dashboard/${workspaceId}/settings`);
+  const landed = await navigate(page, `${APP}/dashboard/${workspaceId}/settings?scheda=collegamenti&apri=organizzazione`);
   await waitIdle(page, { quietMs: 600 });
+  // The configuration and the limits sit in the closed «Dettagli tecnici» of the panel: open it before reading.
+  await evaluate(page, () => {
+    const details = document.querySelector('[data-slot="connector-technical"]');
+    if (details) details.open = true;
+  });
   return landed;
 }
 
@@ -351,7 +360,7 @@ try {
         for (const who of ["colleague", "guest"]) {
           await signIn(page, data.accounts[who]);
           const other = await settings(page, data.ids.ws);
-          const hidden = await evaluate(page, (sel) => !document.querySelector(sel) && !document.body.innerText.includes("Connettore Claude"), CARD);
+          const hidden = await evaluate(page, ([sel, row, name]) => !document.querySelector(sel) && !document.querySelector(row) && !document.body.innerText.includes(name), [CARD, ROW, ROW_NAME]);
           check(`${tag}: ${who === "colleague" ? "contributor of the organization" : "lead invited to the workspace only"} does not see the card`, other.status === 200 && hidden, `status ${other.status}`);
         }
 
@@ -361,7 +370,7 @@ try {
         await q(`UPDATE workspace_connector_configs SET enabled = false, guide = NULL, guide_version = NULL WHERE workspace_id = $1`, [data.ids.ws]);
         await signIn(page, data.accounts.lead);
         const d6 = await settings(page, data.ids.ws);
-        const noCard = await evaluate(page, (sel) => !document.querySelector(sel) && !document.body.innerText.includes("Connettore Claude"), CARD);
+        const noCard = await evaluate(page, ([sel, row, name]) => !document.querySelector(sel) && !document.querySelector(row) && !document.body.innerText.includes(name), [CARD, ROW, ROW_NAME]);
         check(`${tag}: no card where the connector is not set up (D6 row, no guide)`, d6.status === 200 && noCard, `status ${d6.status}`);
       }
     } finally {

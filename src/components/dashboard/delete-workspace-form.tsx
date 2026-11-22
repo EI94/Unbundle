@@ -73,7 +73,7 @@ export function DeleteWorkspaceForm({
         <Button
           type="button"
           variant="destructive"
-          className="h-10 self-start sm:h-8"
+          className="min-h-11 self-start sm:min-h-9"
           onClick={() => setOpen(true)}
           disabled={!canDelete}
         >

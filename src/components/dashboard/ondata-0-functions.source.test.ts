@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 // (Ondata 0, docs/ui-10/PROPOSTA-10.md §6.3) Funzioni rotte o a metà, controllate sul sorgente: i menu e le finestre
 // di base-ui si aprono solo nel browser, e il client di Firebase non si carica sotto Node.
@@ -25,13 +25,16 @@ test("0.17 · the user menu items act themselves: items with onClick, links as m
 });
 
 test("0.19 · revoking a CLI connection asks first, in a dialog of the app", () => {
-  const card = read("src/components/workspace/cli-card.tsx");
-  assert.match(card, /onClick=\{\(\) => setRevoking\(t\)\}>\s*Revoca/, "il pulsante della riga apre la finestra");
-  assert.match(card, /<Dialog open=\{revoking !== null\}/);
-  assert.match(card, /<DialogTitle>Revocare «\{revoking\.label\}»\?<\/DialogTitle>/);
-  assert.match(card, /variant="destructive"[^>]*onClick=\{\(\) => revoke\(revoking\)\}/, "si revoca solo dalla finestra");
-  assert.equal(card.match(/revokeOwnCliTokenAction\(/g)?.length, 1);
-  assert.doesNotMatch(card, /window\.confirm/);
+  // (Rilascio 10, ondata 6b) La CLI sta in «Il tuo account › Claude e terminale»: la riga apre la finestra, la revoca
+  // parte solo dalla finestra. La card «CLI di Unbundle» delle Impostazioni non c'è più.
+  const sheet = read("src/components/shell/account-sheet-body.tsx");
+  assert.match(sheet, /onClick=\{\(\) => setRevoking\(row\)\}>\s*\{C\.revoke\}/, "il pulsante della riga apre la finestra");
+  assert.match(sheet, /<Dialog open=\{revoking !== null\}/);
+  assert.match(sheet, /<DialogTitle>\{C\.revokeTitle\(revoking\.label\)\}<\/DialogTitle>/);
+  assert.match(sheet, /<Button variant="destructive" disabled=\{pending\} onClick=\{\(\) => revoke\(revoking\)\}>/, "si revoca solo dalla finestra");
+  assert.match(sheet, /const run = row\.kind === "claude" \? actions\.revokeClaudeAccess : actions\.revokeTerminalLink;/);
+  assert.doesNotMatch(sheet, /window\.confirm/);
+  assert.equal(existsSync(new URL("../workspace/cli-card.tsx", import.meta.url)), false, "niente seconda casa per la CLI");
 });
 
 test("0.20 · the share page has no button inside a link: the button renders the link", () => {

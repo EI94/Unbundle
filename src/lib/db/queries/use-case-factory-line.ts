@@ -91,6 +91,10 @@ export interface FactoryTodo {
   text: string;
   /** (8.1b) Un indirizzo fuori da Unbundle: la PR su GitHub. */
   href?: string;
+  /** (Rilascio 10, ondata 6b) Il compito della voce («T-3»), per il verbo breve della pagina. */
+  ref?: string;
+  /** (Rilascio 10, ondata 6b) Quante cose chiede la voce (domande, proposte), per il verbo breve della pagina. */
+  count?: number;
 }
 
 export interface FactoryOverview {
@@ -260,8 +264,8 @@ FROM workspaces w WHERE w.id = ${ws}`),
   for (const r of mineRows) {
     const c = byCase.get(String(r.use_case_id));
     if (!c) continue;
-    if (num(r.requests) > 0) todos.push({ kind: "chiesto", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, text: `Qualcuno del team chiede ${r.ref}, che hai tu: passaglielo o rispondigli.` });
-    if (r.stale === true) todos.push({ kind: "fermo", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, text: `${r.ref} è fermo da giorni: riprendilo con «unbundle take» o lascialo con una nota.` });
+    if (num(r.requests) > 0) todos.push({ kind: "chiesto", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, ref: String(r.ref), text: `Qualcuno del team chiede ${r.ref}, che hai tu: passaglielo o rispondigli.` });
+    if (r.stale === true) todos.push({ kind: "fermo", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, ref: String(r.ref), text: `${r.ref} è fermo da giorni: riprendilo con «unbundle take» o lascialo con una nota.` });
   }
   for (const r of approveRows) {
     const c = byCase.get(String(r.use_case_id));
@@ -270,12 +274,12 @@ FROM workspaces w WHERE w.id = ${ws}`),
   for (const r of questionRows) {
     const c = byCase.get(String(r.use_case_id));
     const n = num(r.n);
-    if (c && n > 0) todos.push({ kind: "domande", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, text: n === 1 ? "Un coding agent propone una domanda: decidila in «Cosa serve»." : `${n} domande proposte dai coding agent da decidere in «Cosa serve».` });
+    if (c && n > 0) todos.push({ kind: "domande", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, count: n, text: n === 1 ? "Un coding agent propone una domanda: decidila in «Cosa serve»." : `${n} domande proposte dai coding agent da decidere in «Cosa serve».` });
   }
   for (const r of proposalRows) {
     const c = byCase.get(String(r.use_case_id));
     const n = num(r.n);
-    if (c && n > 0) todos.push({ kind: "proposte", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, text: n === 1 ? "Una proposta di compito da decidere." : `${n} proposte di compito da decidere.` });
+    if (c && n > 0) todos.push({ kind: "proposte", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, count: n, text: n === 1 ? "Una proposta di compito da decidere." : `${n} proposte di compito da decidere.` });
   }
   for (const r of reviewRows) {
     const c = byCase.get(String(r.use_case_id));
@@ -283,7 +287,7 @@ FROM workspaces w WHERE w.id = ${ws}`),
     const repo = String(r.repo);
     const number = num(r.number);
     const text = r.ref ? `La PR #${number} di ${r.ref} aspetta una revisione.` : `La PR #${number} in ${repo} aspetta una revisione.`;
-    todos.push({ kind: "rivedi", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, text, href: pullRequestUrl(repo, number) });
+    todos.push({ kind: "rivedi", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, ref: r.ref ? String(r.ref) : undefined, text, href: pullRequestUrl(repo, number) });
   }
   // (8.2a) A chi costruisce il caso: il consiglio del banco, per ruolo, tranne quello di un banco superato (seguito, o il
   // ruolo non c'è più); le evals di main sotto soglia (modelli veri, mai in costruzione), come la campanella.

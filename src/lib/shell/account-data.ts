@@ -62,7 +62,7 @@ export async function loadAccountSheet(i: {
 
   return {
     email: email?.shown ? { on: email.on } : null,
-    // Solo la parte personale: «Revoca tutti» e il conto dei token del workspace restano in Impostazioni.
+    // Solo la parte personale: «Revoca tutti» e il conto dei token del workspace restano in Impostazioni › Collegamenti.
     claude: team
       ? {
           status: team.status,
@@ -73,6 +73,8 @@ export async function loadAccountSheet(i: {
           url: team.url,
           connectorName: team.connectorName,
           claudeCodeName: team.claudeCodeName,
+          warningDays: team.warningDays,
+          skillName: team.skillName,
         }
       : null,
     terminal: cli ? { links: cli.tokens } : null,

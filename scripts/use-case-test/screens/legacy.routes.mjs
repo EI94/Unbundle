@@ -30,6 +30,8 @@ const CONTRIBUTOR = ["osservatore"];
 const OLD_ENTRIES = ["Raccolta & ranking", "Use cases", "Casi d'uso", "Piano"];
 /** What only who manages the workspace sees in Settings with the area on. */
 const MANAGER_SETTINGS = ["Nome del team che valuta", "Codici degli use case", "Fasce del costo", "Modello di valutazione", "Webhook WhatsApp del team"];
+/** (Wave 6b) The valuation tab, as its sections say (the WhatsApp alerts moved to «Collegamenti» › «Altri avvisi»). */
+const VALUATION_SETTINGS = ["Nome del team che valuta", "Codici degli use case", "Fasce del costo", "Modello di valutazione"];
 /** The card signals' keys: Intelligence names them («Nuovo use case», «Use case», «Panoramica»). */
 const RAW_SIGNAL_KEYS = ["new_portfolio_item", "use_case_digest", "use_case_quarter"];
 
@@ -38,12 +40,14 @@ const routes = [
   { name: "overview", path: "/dashboard/{ws:a}", present: ["Home", "Use case"], absent: [...OLD_ENTRIES, "Percorso", "Three streams"] },
   { name: "overview", path: "/dashboard/{ws:b}", as: ["ls-lead", "osservatore"], present: ["Raccolta & ranking", "Use case", "Piano"], absent: ["Use cases", "Casi d'uso", "Activity mapping"] },
 
-  // Settings with the area on: «Valutazione» and WhatsApp in «Integrazioni» for managers only.
-  // The screenshot is the whole page: «Integrazioni» with the webhook, then «Valutazione».
-  { name: "impostazioni", path: "/dashboard/{ws:a}/settings", as: MANAGERS, present: ["Integrazioni", "WhatsApp", "Valutazione", "Criteri ESG", ...MANAGER_SETTINGS], absent: OLD_ENTRIES },
-  { name: "impostazioni", path: "/dashboard/{ws:a}/settings", as: NOT_MANAGERS, present: ["Criteri ESG"], absent: [...MANAGER_SETTINGS, ...OLD_ENTRIES] },
-  // Area off: today's Settings, also for who manages the workspace.
-  { name: "impostazioni", path: "/dashboard/{ws:b}/settings", as: ["ls-lead"], present: ["Criteri ESG"], absent: MANAGER_SETTINGS },
+  // Settings (release 10, wave 6b: five tabs at `?scheda=`, panels at `?apri=`) with the area on: «Valutazione» (ESG inside
+  // «Modello di valutazione») and «Altri avvisi» (WhatsApp) in «Collegamenti», for managers only. One screenshot per tab.
+  { name: "impostazioni-valutazione", path: "/dashboard/{ws:a}/settings?scheda=valutazione", as: MANAGERS, present: ["Valutazione", ...VALUATION_SETTINGS], absent: OLD_ENTRIES },
+  { name: "impostazioni-collegamenti", path: "/dashboard/{ws:a}/settings?scheda=collegamenti&apri=avvisi", as: MANAGERS, present: ["Collegamenti", "Altri avvisi", "Avvisa un gruppo WhatsApp tramite un servizio esterno"], absent: ["Integrazioni", ...OLD_ENTRIES] },
+  // Who does not manage the workspace: «Chi ha accesso», no valuation, no alerts, no ESG (it lives in the valuation model).
+  { name: "impostazioni", path: "/dashboard/{ws:a}/settings?scheda=valutazione", as: NOT_MANAGERS, present: ["Chi ha accesso"], absent: [...MANAGER_SETTINGS, "Altri avvisi", "Criteri ESG", ...OLD_ENTRIES] },
+  // Area off: no use case valuation, the ESG criteria in «Valutazione» for who manages the workspace.
+  { name: "impostazioni", path: "/dashboard/{ws:b}/settings?scheda=valutazione", as: ["ls-lead"], present: ["Criteri ESG"], absent: MANAGER_SETTINGS },
 
   // Intelligence: card signals only for reviewers (D4), with their names.
   { name: "intelligence", path: "/dashboard/{ws:a}/intelligence", as: REVIEWERS, absent: [...RAW_SIGNAL_KEYS, ...OLD_ENTRIES] },

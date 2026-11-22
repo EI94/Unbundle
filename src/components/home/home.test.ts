@@ -273,7 +273,8 @@ test("(rilascio 10) «Tutti i numeri» ha il valore da misurare; «Persone» ha 
   const people = body("persone", { participation });
   assert.ok(textOf(people).includes("Chi propone, per area") && textOf(people).includes("Amministrazione 4") && textOf(people).includes("di cui 1 da diffondere"), textOf(people));
   assert.ok(people.includes('data-slot="participation"'));
-  assert.ok(!body("formazione", { participation }).includes("Chi propone, per area"));
+  // (Ondata 6b) «Formazione» è entrata in «Persone»: `?apri=formazione` apre lo stesso pannello.
+  assert.equal(panels.programPanelOf("formazione"), "persone");
   assert.ok(!body("persone", { participation: { rows: [], companies: [] } }).includes("Chi propone, per area"), "senza aree niente");
   // La Home passa ai pannelli quello che legge, a ogni revisore.
   const home = readFileSync(new URL("../programma/program-home.tsx", import.meta.url), "utf8");
@@ -291,9 +292,13 @@ test("`/programma` è un alias della Home: la stessa pagina, con i suoi `?apri=`
   assert.match(alias, /const \{ session, access \} = await requireWorkspacePage\(workspaceId\);\s*return homePage\(\{ session, access, searchParams: await searchParams \}\);/, "il learner va ai suoi corsi");
   assert.match(alias, /import \{ homePage \} from "@\/components\/home\/home-route";/);
   assert.match(readFileSync(new URL("./home-route.tsx", import.meta.url), "utf8"), /export async function HomeRoute\([\s\S]*?\) \{\s*return homePage\(\{ session, access, searchParams: await searchParams \}\);\s*\}/);
-  // I quattordici pannelli di prima restano tutti, con il loro nome; `scenari` porta alla curva.
+  // (Ondata 6b, F-156) I quattordici pannelli di prima diventano dodici: ogni indirizzo di prima apre ancora il suo
+  // contenuto, i due uniti con un alias; `scenari` porta alla curva.
   const before = ["valore", "in-uso", "dipendente", "indice", "curva", "in_uso", "in_realizzazione", "da_avviare", "supporto", "formazione", "rivedere", "persone", "obiettivi", "sal"];
-  for (const name of before) assert.equal(panels.programPanelOf(name), name, name);
+  const merged: Record<string, string> = { "in-uso": "in_uso", formazione: "persone" };
+  for (const name of before) assert.equal(panels.programPanelOf(name), merged[name] ?? name, name);
+  assert.equal(new Set(before.map((name) => panels.programPanelOf(name))).size, 12, "dodici pannelli");
+  assert.deepEqual([...panels.PROGRAM_CORE_PANELS], ["valore", "dipendente", "indice", "curva", "in_uso", "in_realizzazione", "da_avviare", "supporto", "rivedere", "persone", "obiettivi", "sal"]);
   assert.equal(panels.programPanelOf("scenari"), "curva");
   for (const name of ["numeri", "iniziative", "impostazioni"]) assert.equal(panels.programPanelOf(name), name);
   assert.equal(panels.programPanelOf("sconosciuto"), null);
@@ -316,4 +321,36 @@ test("la Home sceglie per ruolo: i revisori il Programma, gli altri «I tuoi use
   assert.match(loader, /decided \|\| \(legacy \?\? 0\) > 0 \? Promise\.resolve\(null\) : startFacts\(workspace, items, legacy\)/);
   assert.ok(loader.indexOf("startFacts(workspace, items, legacy)") > loader.indexOf("async function loadReviewerHome"));
   assert.equal(loader.slice(loader.indexOf("async function loadContributorHome")).includes("startFacts("), false);
+});
+
+// ─── I pannelli del Programma dopo l'ondata 6b ────────────────────────
+
+test("(ondata 6b) «Impostazioni del programma»: dipendenti e ricavo; a Lateral Space canone, sviluppo per use case e pesi, in un posto solo", () => {
+  const open = () => {};
+  const body = (panel: string, v: ProgramView) => render(h(panels.PanelBody, { panel, view: v, open }));
+  const ls = view();
+  const settings = body("impostazioni", ls);
+  const text = textOf(settings);
+  for (const title of ["Costi di Lateral Space", "Sviluppo per use case", "Pesi dell'indice"]) assert.ok(text.includes(title), title);
+  assert.match(settings, /<ul class="[^"]*" data-slot="program-case-dev">/, "lo sviluppo di ogni use case, prima nei pannelli delle fasi");
+  assert.ok(text.includes("Dipendenti 120"), text);
+  // Chi modifica senza essere di Lateral Space: i soli dipendenti e ricavo.
+  const client = view(() => ({ ls: null, viewer: { isLateralSpace: false, canEdit: true } }));
+  const clientText = textOf(body("impostazioni", client));
+  assert.ok(!clientText.includes("Costi di Lateral Space") && !clientText.includes("Pesi dell'indice") && !clientText.includes("Sviluppo per use case"), clientText);
+  // I pannelli di prima non hanno più i moduli: a Lateral Space un tocco porta alle impostazioni.
+  for (const panel of ["supporto", "indice", "in_uso"]) {
+    const html = body(panel, ls);
+    assert.match(html, /data-slot="text-action"[^>]*>Impostazioni del programma/, panel);
+    assert.doesNotMatch(html, /program-case-dev/, panel);
+    assert.doesNotMatch(body(panel, client), /Impostazioni del programma/, `${panel}: solo a Lateral Space`);
+  }
+  // Il pannello unito «In uso» ha l'andamento del valore in uso e gli use case; «Tutti i numeri» porta lì.
+  const numbers = body("numeri", ls);
+  assert.match(numbers, /data-row="in-uso"/);
+  const program = readFileSync(new URL("../programma/program-panels.tsx", import.meta.url), "utf8");
+  assert.match(program, /onClick=\{\(\) => open\("in_uso"\)\}/);
+  assert.match(program, /onClick=\{\(\) => open\("persone"\)\}/);
+  assert.doesNotMatch(program, /open\("in-uso"\)|open\("formazione"\)/);
+  assert.equal(panels.programPanelTitle("in_uso"), "In uso");
 });

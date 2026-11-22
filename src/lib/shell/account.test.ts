@@ -68,8 +68,10 @@ test("le ancore personali delle Impostazioni aprono il foglio sulla parte giusta
   const ws = "00000000-0000-4000-8000-0000000000f1";
   const settings = `/dashboard/${ws}/settings`;
   assert.equal(accountPartForSettingsHash(settings, "#cli", ws), "claude");
+  // (Ondata 6b) L'ancora della card «Claude per il team»: il proprio accesso ora sta nel foglio.
+  assert.equal(accountPartForSettingsHash(settings, "#claude-per-il-team", ws), "claude");
   assert.equal(accountPartForSettingsHash(`${settings}/`, "#granola", ws), "granola");
-  for (const hash of ["", "#integrazioni", "#persone", "#sub-responsabili", "#zona-pericolosa", "#valutazione-use-case"]) {
+  for (const hash of ["", "#integrazioni", "#persone", "#sub-responsabili", "#zona-pericolosa", "#valutazione-use-case", "#connettore-claude"]) {
     assert.equal(accountPartForSettingsHash(settings, hash, ws), null, hash);
   }
   // Solo la pagina delle Impostazioni di questo workspace.
@@ -91,24 +93,24 @@ test("(§3.12) l'indirizzo delle e-mail porta alla Home con il foglio su «Claud
   assert.equal(accountPartForSettingsHash(settings, "#granola", ws), "granola");
 });
 
-test("«Regole delle call ›» porta alle regole di Impostazioni, a un'ancora che il foglio non intercetta", () => {
+test("(ondata 6b) «Regole delle call ›» porta alle regole in Contesto › Fonti; la vecchia ancora delle Impostazioni ci porta", () => {
   const ws = "00000000-0000-4000-8000-0000000000f1";
   const href = granolaRulesHref(ws);
-  assert.equal(href, `/dashboard/${ws}/settings#granola-regole`);
+  assert.equal(href, `/dashboard/${ws}/contesto?vista=fonti#granola-regole-cliente`);
   const url = new URL(href, "http://unbundle.test");
   assert.equal(accountPartForSettingsHash(url.pathname, url.hash, ws), null, "non riapre il foglio");
   assert.equal(url.searchParams.has("account"), false, "e lo chiude");
-  // L'ancora è quella del blocco delle regole in Impostazioni.
-  const panel = read("src/components/context/granola/granola-card-panel.tsx");
-  const rules = panel.slice(panel.indexOf("function GranolaRulesForm("));
-  assert.match(rules, /return \(\s*<div id="granola-regole" className="scroll-mt-28 [^"]*">\s*<h3 className="text-sm font-semibold">\{T\.rulesTitle\(workspaceName\)\}<\/h3>/);
+  // L'ancora è quella della piega delle regole in Fonti (ondata 6a), che si apre all'arrivo.
+  assert.match(read("src/components/context/granola/granola-inbox-panel.tsx"), /<Fold id="granola-regole-cliente" title=\{T\.rulesTitle\(workspaceName\)\}/);
   assert.match(read("src/lib/context/granola/view.ts"), /export const GRANOLA_RULES_ANCHOR = "granola-regole";/);
-  assert.equal(panel.match(/id="granola-regole"/g)?.length, 1);
+  // `settings#granola-regole` (i segnalibri di prima) porta lì.
+  assert.match(read("src/components/workspace/settings-view.ts"), /if \(anchor === GRANOLA_RULES_OLD_ANCHOR\) return granolaRulesHref\(i\.workspaceId\);/);
 });
 
 test("le regole delle call restano aperte, come prima, a chi è di Lateral Space e non gestisce il workspace", () => {
-  // Senza «Impostazioni» nella barra (solo chi gestisce), il foglio è la loro strada: Granola lo usa ogni ruolo di
-  // Lateral Space, e la pagina delle Impostazioni si apre a chiunque sia nel workspace, senza un controllo di ruolo.
+  // Granola lo usa ogni ruolo di Lateral Space: il collegamento sta nel foglio «Il tuo account», le regole in Contesto ›
+  // Fonti; la pagina delle Impostazioni si apre a chiunque sia nel workspace, senza un controllo di ruolo, e il ritorno
+  // da Granola (`settings?granola=…#granola`) apre il foglio anche lì.
   for (const role of ["function_lead", "analyst", "contributor"]) {
     assert.equal(canManageWorkspaceSettings(role), false, role);
     assert.equal(contextAbilities({ role, isLateralSpace: true }).canUseGranola, true, role);
@@ -117,7 +119,6 @@ test("le regole delle call restano aperte, come prima, a chi è di Lateral Space
   const page = read("src/app/(dashboard)/dashboard/[workspaceId]/settings/page.tsx");
   assert.match(page, /const \{ session, access \} = await requireWorkspacePage\(workspaceId\);/);
   assert.doesNotMatch(page, /if \(!can[A-Za-z]+\) (?:notFound|redirect)\(/, "nessun ruolo chiude la pagina");
-  // Il blocco di Granola sta fuori da ogni condizione sul ruolo: decide da sé (solo Lateral Space).
-  assert.match(page, /<div id="granola" className="scroll-mt-28 empty:hidden">\s*<GranolaCard workspaceId=\{workspaceId\} workspaceName=\{workspace\.name\} userId=\{session\.user\.id\} role=\{access\.role\} flash=\{search\.granola\} \/>/);
-  assert.doesNotMatch(page, /can[A-Za-z]+ && \(?\s*<div id="granola"/);
+  // (Ondata 6b) Il blocco di Granola non è più in Impostazioni: il foglio ha «Collega · Scollega · piano».
+  assert.doesNotMatch(page, /GranolaCard/);
 });

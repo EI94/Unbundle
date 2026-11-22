@@ -936,8 +936,8 @@ test("il responsabile toglie un ruolo di Lateral Space dal team del dossier: chi
 
 // ─── Togliere ────────────────────────────────────────────────────────
 
-test("D9: la discesa a Contributore ferma le scritture subito, senza revoca, e il no dice che il ruolo si cambia da Impostazioni › Persone; tornato Analista ricomincia", opts, async () => {
-  const role = "Per costruire serve almeno il ruolo di Analista nel workspace: lo cambia chi gestisce il workspace, da Impostazioni › Persone.";
+test("D9: la discesa a Contributore ferma le scritture subito, senza revoca, e il no dice che il ruolo si cambia da Impostazioni › Team; tornato Analista ricomincia", opts, async () => {
+  const role = "Per costruire serve almeno il ruolo di Analista nel workspace: lo cambia chi gestisce il workspace, da Impostazioni › Team.";
   await q(`UPDATE workspace_memberships SET role = 'contributor' WHERE workspace_id = $1 AND user_id = $2`, [ids.wsA, ids.e3]);
   const denied = await post("decisioni", tokens.e3!, { caso: "NM-0002", argomento: "Prova", decisione: "Non dovrebbe passare" });
   assert.deepEqual([denied.status, codeOf(denied), (denied.json.errore as Row | undefined)?.messaggio], [403, "permesso_negato", role]);

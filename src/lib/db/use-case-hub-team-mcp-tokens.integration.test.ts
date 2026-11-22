@@ -46,7 +46,10 @@ const opts = { skip: !enabled };
 type Actions = typeof import("../actions/team-mcp-tokens.ts");
 type Queries = typeof import("./queries/team-mcp-tokens.ts");
 type Integrations = typeof import("./queries/workspace-integrations.ts");
+// (Rilascio 10, ondata 6b) La card «Claude per il team» delle Impostazioni non c'è più: il proprio accesso sta nel foglio
+// «Il tuo account» (`AccountSheetBody`), «Revoca tutti» in Impostazioni › Collegamenti (`TeamTokensRevokeAll`).
 type Card = typeof import("../../components/workspace/team-mcp-card.tsx");
+type Sheet = typeof import("../../components/shell/account-sheet-body.tsx");
 type Hygiene = typeof import("../connector/http-hygiene.ts");
 type State<D> = import("../actions/team-mcp-tokens.ts").TeamMcpActionState<D>;
 type Created = import("../actions/team-mcp-tokens.ts").CreateTeamMcpTokenData;
@@ -55,6 +58,7 @@ let actions: Actions;
 let queries: Queries;
 let integrations: Integrations;
 let card: Card;
+let sheet: Sheet;
 let hygiene: Hygiene;
 let renderToStaticMarkup: (element: unknown) => string;
 let createElement: typeof import("react").createElement;
@@ -103,6 +107,35 @@ function revalidated(): string[] {
 
 function user(person: Person) {
   return { id: ids[person], email: emails[person], emailVerified: true };
+}
+
+/** Il foglio «Il tuo account» con la sola parte «Claude e terminale», dai dati della lettura (come `loadAccountSheet`). */
+function sheetHtml(view: NonNullable<Awaited<ReturnType<Queries["loadTeamMcpCard"]>>>): string {
+  const claude = {
+    status: view.status,
+    tokens: view.tokens,
+    routeEnabled: view.routeEnabled,
+    ttlDays: view.ttlDays,
+    defaultLabel: view.defaultLabel,
+    url: view.url,
+    connectorName: view.connectorName,
+    claudeCodeName: view.claudeCodeName,
+    warningDays: view.warningDays,
+    skillName: view.skillName,
+  };
+  const unused = async () => {
+    throw new Error("non chiamata");
+  };
+  const html = renderToStaticMarkup(
+    createElement(sheet.AccountSheetBody, {
+      user: { name: "Persona", email: null, image: null },
+      state: { status: "ready", account: { email: null, claude, terminal: null, granola: null } },
+      actions: { setEmailAlerts: unused, createClaudeAccess: unused, revokeClaudeAccess: unused, revokeTerminalLink: unused, connectGranola: unused, disconnectGranola: unused },
+      onRetry() {},
+      onChanged() {},
+    }),
+  );
+  return html.replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
 }
 
 function form(fields: Record<string, string>): FormData {
@@ -174,6 +207,7 @@ before(async () => {
   queries = await import("./queries/team-mcp-tokens.ts");
   integrations = await import("./queries/workspace-integrations.ts");
   card = await import("../../components/workspace/team-mcp-card.tsx");
+  sheet = await import("../../components/shell/account-sheet-body.tsx");
   hygiene = await import("../connector/http-hygiene.ts");
   const react = await import("react");
   createElement = react.createElement;
@@ -306,7 +340,7 @@ test("token: prefisso del team, solo hash in tabella, mostrato una volta, 90 gio
   assert.equal(own?.tokenPrefix, data.tokenPrefix, "resta solo l'inizio");
   assert.equal(own?.state, "attivo");
   assert.equal(own?.readOnly, false);
-  const html = renderToStaticMarkup(createElement(card.TeamMcpCard, { workspaceId: ids.ws, data: view }));
+  const html = sheetHtml(view);
   assert.ok(!html.includes(data.token) && !html.includes(String(row.token_hash)));
 
   const readOnly = created(await create("builder", { label: "Solo lettura", readOnly: "on" }), "solo lettura");
@@ -404,11 +438,13 @@ test("«Revoca tutti»: solo chi gestisce il workspace; tutti i token del team d
   assert.equal(none.message, "Nessun token attivo da revocare.");
   const empty = await queries.loadTeamMcpCard({ workspaceId: ids.ws, user: user("manager"), role: "exec_sponsor" });
   assert.equal(empty?.workspaceActiveCount, 0);
-  const emptyHtml = renderToStaticMarkup(createElement(card.TeamMcpCard, { workspaceId: ids.ws, data: empty! }));
-  // Zero token attivi: solo «Nessun token attivo.» dei propri, senza una seconda riga vuota per il workspace.
-  assert.equal(emptyHtml.split("Nessun token attivo").length - 1, 1, "lo stato vuoto una volta sola");
-  assert.ok(!emptyHtml.includes("nel workspace") && !emptyHtml.includes("Di tutte le persone che valutano"), "niente riga del workspace a zero");
-  assert.ok(!emptyHtml.includes("Revoca tutti"), "niente «Revoca tutti» senza token attivi");
+  const emptyHtml = sheetHtml(empty!);
+  // Zero accessi attivi: il foglio non ha una lista vuota, né il conto del workspace né «Revoca tutti» (in Collegamenti la
+  // riga «Accessi del team…» compare solo con almeno un accesso attivo).
+  assert.ok(!emptyHtml.includes("I tuoi accessi"), "niente lista vuota");
+  assert.ok(!emptyHtml.includes("nel workspace") && !emptyHtml.includes("Revoca tutti"), "niente riga del workspace a zero");
+  const page = readFileSync(new URL("../../app/(dashboard)/dashboard/[workspaceId]/settings/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /\{teamActive > 0 \? <TeamTokensRevokeAll workspaceId=\{workspaceId\} activeCount=\{teamActive\} \/> : null\}/);
   // Revocare va bene anche con l'area spenta: togliere un accesso non chiede l'interruttore.
   const offAll = await actions.revokeAllTeamMcpTokensAction(ids.wsOff);
   assert.equal(offAll.data?.revoked, 1);
@@ -439,10 +475,13 @@ test("la card: ognuno vede solo i propri token; chi gestisce vede quanti sono at
   assert.ok(manager.workspaceActiveCount! >= 3);
   assert.equal(manager.canRevokeAll, true);
 
-  const managerHtml = renderToStaticMarkup(createElement(card.TeamMcpCard, { workspaceId: ids.ws, data: manager }));
-  for (const text of ["Claude per il team", "Crea il tuo token", "Solo lettura", "Revoca tutti", `${manager.workspaceActiveCount} token attivi nel workspace`, "Etichetta di chi gestisce"]) {
-    assert.ok(managerHtml.includes(text), `chi gestisce vede «${text}»`);
+  const managerHtml = sheetHtml(manager);
+  for (const text of ["Claude e terminale", "Crea l'accesso", "Solo lettura", "Etichetta di chi gestisce"]) {
+    assert.ok(managerHtml.includes(text), `chi gestisce vede «${text}» nel suo foglio`);
   }
+  // Il conto del workspace e «Revoca tutti»: in Impostazioni › Collegamenti, solo a chi gestisce.
+  const workspaceHtml = renderToStaticMarkup(createElement(card.TeamTokensRevokeAll, { workspaceId: ids.ws, activeCount: manager.workspaceActiveCount! }));
+  for (const text of ["Revoca tutti", `${manager.workspaceActiveCount} accessi personali a Claude attivi nel workspace.`]) assert.ok(workspaceHtml.includes(text), text);
   assert.ok(!managerHtml.includes("Etichetta del builder") && !managerHtml.includes("Etichetta di Lateral Space"), "niente etichette degli altri");
   // Istruzioni per Claude Code e claude.ai, con il nome del connettore che la skill usa.
   assert.ok(managerHtml.includes(queries.TEAM_MCP_PUBLIC_URL));
@@ -452,11 +491,11 @@ test("la card: ognuno vede solo i propri token; chi gestisce vede quanti sono at
   const prefixes = new Set([...skill.matchAll(/`([^`:]+):[a-z_]+`/g)].map((m) => m[1]));
   assert.deepEqual([...prefixes], [queries.TEAM_MCP_CONNECTOR_NAME], "la skill cita i tool con il nome del connettore della card");
   assert.ok(managerHtml.includes("claude mcp add --transport http unbundle-use-case"));
-  assert.ok(!/bg-primary/.test(managerHtml.replace(/data-checked:bg-primary|dark:data-checked:bg-primary|aria-invalid:aria-checked:border-primary/g, "")), "nessun pulsante pieno nella card");
+  assert.ok(!/bg-primary/.test(managerHtml.replace(/data-checked:bg-primary|dark:data-checked:bg-primary|aria-invalid:aria-checked:border-primary/g, "")), "nessun pulsante pieno nel foglio");
 
-  const builderHtml = renderToStaticMarkup(createElement(card.TeamMcpCard, { workspaceId: ids.ws, data: builder }));
-  assert.ok(builderHtml.includes("Crea il tuo token"));
-  assert.ok(!builderHtml.includes("Revoca tutti") && !builderHtml.includes("token attivi nel workspace"), "il revisore non vede il conteggio né «Revoca tutti»");
+  const builderHtml = sheetHtml(builder);
+  assert.ok(builderHtml.includes("Crea l'accesso"));
+  assert.ok(!builderHtml.includes("Revoca tutti") && !builderHtml.includes("attivi nel workspace"), "il revisore non vede il conteggio né «Revoca tutti»");
 
   // La card v1 «Claude per Unbundle» e la scheda del connettore non ricevono i token del team
   // (DESIGN §9.7): chi gestisce il workspace non vede i token personali degli altri lì.
@@ -476,61 +515,40 @@ test("la card: ognuno vede solo i propri token; chi gestisce vede quanti sono at
   try {
     const routeOff = await queries.loadTeamMcpCard({ workspaceId: ids.ws, user: user("builder"), role: "function_lead" });
     assert.equal(routeOff?.routeEnabled, false);
-    const html = renderToStaticMarkup(createElement(card.TeamMcpCard, { workspaceId: ids.ws, data: routeOff! }));
+    const html = sheetHtml(routeOff!);
     assert.ok(html.includes("Il collegamento con Claude non è ancora acceso"));
   } finally {
     process.env.MCP_TEAM_ENABLED = "true";
   }
 });
 
-test("la card chiama le azioni senza lo stato precedente e mostra solo il risultato dell'ultima", opts, async () => {
+test("il foglio chiama le azioni senza lo stato precedente: il token di prima non torna mai al server", opts, async () => {
   // Nessuna server action ha un parametro per lo stato precedente: dopo una creazione quello
   // stato ha il token in chiaro, e React lo manderebbe al server come argomento.
   assert.equal(actions.createTeamMcpTokenAction.length, 2, "solo workspace e dati del modulo");
   assert.equal(actions.revokeTeamMcpTokenAction.length, 2, "solo workspace e dati del modulo");
   assert.equal(actions.revokeAllTeamMcpTokensAction.length, 1, "solo il workspace");
+  // (Ondata 6b) Il foglio crea con i soli dati del modulo (niente `useActionState`); «Revoca tutti» con il solo workspace.
+  const sheetSource = readFileSync(new URL("../../components/shell/account-sheet.tsx", import.meta.url), "utf8");
+  assert.match(sheetSource, /createClaudeAccess: \(form\) => createTeamMcpTokenAction\(workspaceId, form\),/);
+  const cardSource = readFileSync(new URL("../../components/workspace/team-mcp-card.tsx", import.meta.url), "utf8");
+  assert.match(cardSource, /useActionState\(async \(\) => revokeAllTeamMcpTokensAction\(workspaceId\), INITIAL\)/);
 
-  // Una seconda creazione dalla card: lo stato di prima, con il token, resta nel browser.
+  // Due creazioni di seguito: ognuna manda solo il modulo, e il token di prima non c'è.
   const first = created(await create("analyst", { label: "Prima creazione" }));
-  const sent: unknown[][] = [];
-  const done: boolean[] = [];
-  signIn("analyst");
-  const createFromCard = card.cardAction(
-    (...args: [FormData]) => {
-      sent.push(args);
-      return actions.createTeamMcpTokenAction(ids.ws, args[0]);
-    },
-    (result) => done.push(result.ok),
-  );
-  const second = await createFromCard({ ok: true, seq: 1, data: first }, form({ label: "Seconda creazione" }));
-  assert.equal(second.ok, true, second.message ?? "");
-  assert.notEqual(second.data?.token, first.token);
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0].length, 1, "un solo argomento: i dati del modulo");
-  assert.ok(sent[0][0] instanceof FormData);
-  assert.ok(!JSON.stringify([...(sent[0][0] as FormData).entries()]).includes(first.token), "il token di prima non torna al server");
-  assert.deepEqual(done, [true], "la card sa che la creazione è riuscita (e spegne «Solo lettura»)");
-
-  // Ogni risultato ha un numero d'ordine più alto: la card mostra solo quello dell'ultima azione.
-  const revokeFromCard = card.cardAction(async () => ({ ok: true, message: "Token revocato. Claude non può più usarlo." }));
-  const revoked = await revokeFromCard({ ok: true, seq: 0 }, form({}));
-  assert.ok(revoked.seq > second.seq);
-  assert.equal(card.latestCardAction({ create: second.seq, revoke: revoked.seq, revokeAll: 0 }), "revoke");
-  const third = await createFromCard(second, form({ label: "Terza creazione" }));
-  assert.equal(card.latestCardAction({ create: third.seq, revoke: revoked.seq, revokeAll: 0 }), "create", "un token nuovo toglie il «Token revocato» di prima");
-  assert.equal(card.latestCardAction({ create: third.seq, revoke: revoked.seq, revokeAll: third.seq + 1 }), "revokeAll");
-  assert.equal(card.latestCardAction({ create: 0, revoke: 0, revokeAll: 0 }), null, "nessun messaggio prima di ogni azione");
-  assert.equal(sent.length, 2);
-  assert.ok(!JSON.stringify([...(sent[1][0] as FormData).entries()]).includes(second.data!.token), "nemmeno il secondo token");
+  const data = form({ label: "Seconda creazione" });
+  const second = created(await create("analyst", { label: "Seconda creazione" }));
+  assert.notEqual(second.token, first.token);
+  assert.ok(!JSON.stringify([...data.entries()]).includes(first.token), "il token di prima non torna al server");
 });
 
 test("il pannello del token appena creato sparisce quando il token è revocato, anche senza «Nascondi il token»", opts, async () => {
   const fresh = created(await create("manager", { label: "Appena creato" }));
   const load = async () => (await queries.loadTeamMcpCard({ workspaceId: ids.ws, user: user("manager"), role: "exec_sponsor" }))!;
-  assert.equal(card.newTokenToShow(fresh, null, (await load()).tokens), fresh, "attivo: il pannello c'è");
-  assert.equal(card.newTokenToShow(fresh, fresh.tokenId, (await load()).tokens), null, "nascosto da chi guarda");
-  assert.equal(card.newTokenToShow(fresh, null, []), fresh, "elenco non letto: il pannello resta, il token esiste");
-  assert.equal(card.newTokenToShow(undefined, null, []), null);
+  assert.equal(sheet.newTokenToShow(fresh, null, (await load()).tokens), fresh, "attivo: il pannello c'è");
+  assert.equal(sheet.newTokenToShow(fresh, fresh.tokenId, (await load()).tokens), null, "nascosto da chi guarda");
+  assert.equal(sheet.newTokenToShow(fresh, null, []), fresh, "elenco non letto: il pannello resta, il token esiste");
+  assert.equal(sheet.newTokenToShow(undefined, null, []), null);
 
   // «Revoca» sul token appena creato: l'elenco lo dà revocato e il pannello non lo offre più.
   signIn("manager");
@@ -538,15 +556,15 @@ test("il pannello del token appena creato sparisce quando il token è revocato, 
   assert.equal(revoked.ok, true, revoked.message ?? "");
   const afterRevoke = await load();
   assert.equal(afterRevoke.tokens.find((t) => t.id === fresh.tokenId)?.active, false);
-  assert.equal(card.newTokenToShow(fresh, null, afterRevoke.tokens), null, "revocato: niente token da copiare");
+  assert.equal(sheet.newTokenToShow(fresh, null, afterRevoke.tokens), null, "revocato: niente token da copiare");
 
   // «Revoca tutti» su un altro token appena creato.
   const other = created(await create("manager", { label: "Appena creato, poi tutti" }));
-  assert.equal(card.newTokenToShow(other, null, (await load()).tokens), other);
+  assert.equal(sheet.newTokenToShow(other, null, (await load()).tokens), other);
   signIn("manager");
   const all = await actions.revokeAllTeamMcpTokensAction(ids.ws);
   assert.equal(all.ok, true, all.message ?? "");
-  assert.equal(card.newTokenToShow(other, null, (await load()).tokens), null, "revocati tutti: niente token da copiare");
+  assert.equal(sheet.newTokenToShow(other, null, (await load()).tokens), null, "revocati tutti: niente token da copiare");
 });
 
 test("scadenza: avviso da 14 giorni prima, poi scaduto e fuori dal conteggio; token esposto; ogni dato una volta", opts, async () => {
@@ -569,20 +587,19 @@ test("scadenza: avviso da 14 giorni prima, poi scaduto e fuori dal conteggio; to
   assert.equal(byId.get(exposed.tokenId)?.exposed, true);
   assert.equal(await integrations.authenticateWorkspaceIntegrationToken(expired.token), null, "scaduto non autentica");
 
-  const html = renderToStaticMarkup(createElement(card.TeamMcpCard, { workspaceId: ids.ws, data: view }));
-  assert.ok(html.includes("Token in scadenza"), "avviso di scadenza");
-  assert.match(html, /«Scade presto» scade tra (9|10) giorni\. Crea un token nuovo/, "l'avviso dice quanto manca");
-  assert.ok(html.includes("Token esposto, da revocare"), "avviso del token esposto");
-  // Un dato, un posto: la scadenza vicina e l'esposizione nell'avviso, la data nella riga del token.
+  const html = sheetHtml(view);
+  assert.match(html, /data-slot="account-expiring"[^>]*>«Scade presto» scade tra (9|10) giorni: crea un accesso nuovo/, "l'avviso dice quanto manca");
+  assert.match(html, /data-slot="account-exposed"[^>]*>«Finito in un indirizzo» è arrivato dentro un indirizzo web il /, "avviso dell'accesso esposto");
+  // Un dato, un posto: la scadenza vicina e l'esposizione nell'avviso, la data nella riga dell'accesso.
   const occurrences = (text: string) => html.split(text).length - 1;
-  assert.equal(occurrences("esposto"), 1, "niente etichetta «esposto» in più nella riga");
+  assert.equal(occurrences("è arrivato dentro un indirizzo web"), 1, "niente etichetta in più nella riga");
   assert.ok(!html.includes("Scade tra"), "niente etichetta «Scade tra…» nella riga");
   const soonDay = byId.get(soon.tokenId)?.expiresOn ?? "?";
   assert.equal(occurrences(soonDay), 1, "la data di scadenza una volta sola");
   assert.ok(html.includes(`scade il ${soonDay}`), "nella riga del token");
   const inactiveCount = view.tokens.filter((t) => !t.active).length;
-  assert.ok(inactiveCount >= 1 && html.includes(`Token non più attivi (${inactiveCount})`), "lo scaduto sta tra i non più attivi");
-  assert.ok(html.includes("Già scaduto") && html.includes("Scaduto"));
+  assert.ok(inactiveCount >= 1 && html.includes(`Non più attivi (${inactiveCount})`), "lo scaduto sta tra i non più attivi");
+  assert.ok(html.includes("Già scaduto") && html.includes("scaduto il"));
 
   // Il conteggio del workspace non conta lo scaduto.
   const [{ n }] = await q(
@@ -637,15 +654,15 @@ test("H7: un token di chi non valuta più non conta e si revoca; il modulo si ch
   created(await create("builder", { label: "Token del builder" }));
   const builder = await queries.loadTeamMcpCard({ workspaceId: ids.ws, user: user("builder"), role: "function_lead" });
   assert.ok(builder && builder.tokens.some((t) => t.active));
-  const withToken = renderToStaticMarkup(createElement(card.TeamMcpCard, { workspaceId: ids.ws, data: builder }));
-  assert.match(withToken, /<details[^>]*data-team-mcp-create-more[^>]*>[\s\S]*Crea un altro token[\s\S]*data-team-mcp-create/);
-  const empty = renderToStaticMarkup(createElement(card.TeamMcpCard, { workspaceId: ids.ws, data: { ...builder, tokens: [] } }));
-  assert.ok(!empty.includes("Crea un altro token") && empty.includes("data-team-mcp-create"), "senza token il modulo è aperto");
+  const withToken = sheetHtml(builder);
+  assert.match(withToken, /<details[^>]*data-slot="account-create-more"[^>]*>[\s\S]*Crea un altro accesso[\s\S]*data-slot="account-create-access"/);
+  const empty = sheetHtml({ ...builder, tokens: [] });
+  assert.ok(!empty.includes("Crea un altro accesso") && empty.includes('data-slot="account-create-access"'), "senza accessi il modulo è aperto");
 
   // La skill «registra-ai-lab» la nomina solo a Lateral Space, che conduce gli AI Lab.
   assert.equal(builder.skillName, null);
   assert.ok(!withToken.includes("registra-ai-lab"));
   const ls = await queries.loadTeamMcpCard({ workspaceId: ids.ws, user: user("ls"), role: "transformation_lead" });
   assert.equal(ls?.skillName, "registra-ai-lab");
-  assert.ok(renderToStaticMarkup(createElement(card.TeamMcpCard, { workspaceId: ids.ws, data: ls! })).includes("la skill «registra-ai-lab»"));
+  assert.ok(sheetHtml(ls!).includes("la skill «registra-ai-lab»"));
 });

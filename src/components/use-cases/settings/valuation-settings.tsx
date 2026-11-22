@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { ChevronRight, Scale } from "lucide-react";
 import { SettingsSection } from "@/components/dashboard/settings-section";
 import { ScoringModelForm } from "@/components/portfolio/scoring-model-form";
@@ -27,7 +28,7 @@ const TEXT = VALUATION_SETTINGS_TEXT;
  * vale ancora il pannello di oggi) né a chi non gestisce il workspace. Le action rifanno gli
  * stessi controlli. Un guasto della lettura non ferma il resto delle impostazioni.
  */
-export async function ValuationSettings({ workspaceId, id }: { workspaceId: string; id?: string }) {
+export async function ValuationSettings({ workspaceId, id, modelExtra }: { workspaceId: string; id?: string; modelExtra?: ReactNode }) {
   if (!isUseCaseHubWorkspace(workspaceId)) return null;
   const session = await requireSession();
   const access = await getCollaboratorAccess(session.user.id, workspaceId);
@@ -101,7 +102,9 @@ export async function ValuationSettings({ workspaceId, id }: { workspaceId: stri
               <span className="text-xs text-muted-foreground">{TEXT.model.hint}</span>
             </span>
           </summary>
-          <div className="mt-4">
+          <div className="mt-4 space-y-4">
+            {/* (Rilascio 10, ondata 6b) I criteri ESG, dentro il modello: solo a chi gestisce, come tutta la scheda. */}
+            {modelExtra}
             <ScoringModelForm
               workspaceId={workspaceId}
               initialConfig={data.scoringConfig}

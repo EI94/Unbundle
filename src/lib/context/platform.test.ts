@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 
 // «Contesto» sulla piattaforma (rilascio 9a, RILASCIO-9a-COSTRUZIONE.md §11.2): il cron della notte in vercel.json e
 // nessuna anteprima del ramo, gli script dei test, e i punti dove la fondazione lascia il posto al pacchetto
@@ -184,26 +184,24 @@ test("context-granola.ts esporta le funzioni e i tipi del piano (§3.4.12): chi 
   assert.match(source, /export type GranolaSyncStatus = "fatto" \| "recente" \| "in_corso" \| "non_collegato" \| "da_ricollegare" \| "limite" \| "non_riuscito";/);
 });
 
-test("i due componenti di Granola hanno le proprietà del piano e sono componenti server asincroni", () => {
-  const card = read("src/components/context/granola/granola-card.tsx");
+test("il componente di Granola ha le proprietà del piano ed è un componente server asincrono", () => {
+  // (Rilascio 10, ondata 6b) Il blocco delle Impostazioni (`GranolaCard`) non c'è più: il collegamento sta nel foglio
+  // «Il tuo account», le regole in Contesto › Fonti, dentro `GranolaInbox`.
+  assert.equal(existsSync(new URL("../../components/context/granola/granola-card.tsx", import.meta.url)), false);
   const inbox = read("src/components/context/granola/granola-inbox.tsx");
-  for (const source of [card, inbox]) assert.doesNotMatch(source, /^"use client"/m, "componenti server: leggono da sé lo stato");
-  assert.match(card, /export async function GranolaCard\(/);
+  assert.doesNotMatch(inbox, /^"use client"/m, "componente server: legge da sé lo stato");
   assert.match(inbox, /export async function GranolaInbox\(/);
-  for (const prop of ["workspaceId: string;", "workspaceName: string;", "userId: string;", "role: string;", "flash?: string;"]) assert.ok(card.includes(prop), `GranolaCard: ${prop}`);
   for (const prop of ["workspaceId: string;", "workspaceName: string;", "compact?: boolean;"]) assert.ok(inbox.includes(prop), `GranolaInbox: ${prop}`);
 });
 
-test("Impostazioni monta il blocco di Granola dentro «Integrazioni», all'ancora #granola, con il ritorno dal collegamento", () => {
+test("(rilascio 10, ondata 6b) Granola: il collegamento in «Il tuo account», le regole in Contesto › Fonti; il ritorno in Impostazioni apre il foglio", () => {
   const page = read("src/app/(dashboard)/dashboard/[workspaceId]/settings/page.tsx");
-  assert.match(page, /import \{ GranolaCard \} from "@\/components\/context\/granola\/granola-card";/);
-  assert.match(page, /searchParams: Promise<\{ slack\?: string; slack_error\?: string; granola\?: string \}>;/);
-  const integrations = page.slice(page.indexOf('<div id="integrazioni"'), page.indexOf("{useCaseSettings && <ValuationSettings"));
-  assert.ok(integrations.length > 0, "la sezione «Integrazioni»");
-  assert.match(
-    integrations,
-    /<div id="granola" className="scroll-mt-28 empty:hidden">\s*<GranolaCard workspaceId=\{workspaceId\} workspaceName=\{workspace\.name\} userId=\{session\.user\.id\} role=\{access\.role\} flash=\{search\.granola\} \/>\s*<\/div>/,
-  );
-  assert.equal(page.match(/<GranolaCard\b/g)?.length, 1);
-  assert.equal(page.match(/id="granola"/g)?.length, 1);
+  // Le Impostazioni non montano più il blocco: «Collega · Scollega · piano» stanno nel foglio, che `#granola` apre.
+  assert.doesNotMatch(page, /GranolaCard/);
+  assert.match(page, /searchParams: Promise<\{ slack\?: string; slack_error\?: string; granola\?: string; scheda\?: string; apri\?: string \}>;/);
+  const sheet = read("src/components/shell/account-sheet-body.tsx");
+  assert.match(sheet, /function GranolaSection\(/);
+  assert.match(read("src/lib/shell/account.ts"), /if \(hash === "#granola"\) return "granola";/);
+  // Il ritorno da Granola porta ancora a `settings#granola`, con l'esito nell'indirizzo.
+  assert.match(read("src/app/api/granola/callback/route.ts"), /const target = new URL\(`\/dashboard\/\$\{outcome\.workspaceId\}\/settings`, url\.origin\);/);
 });

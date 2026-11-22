@@ -631,9 +631,17 @@ test("(rilascio 10, §4) le parole della dashboard anche nella Home, nel Program
   // Le ondate 2a «Cornice» e 2b «Home» hanno scritto questi testi accanto all'ondata 1: le stesse regole, come i moduli
   // dei testi delle altre aree. La card di Claude in Impostazioni resta nel controllo del vecchio nome (H6i); qui si
   // controllano le altre parole della dashboard («dossier», «Discovery»…).
-  const files = [...walk("src/components/home"), ...walk("src/components/programma"), ...walk("src/components/shell"), "src/components/workspace/claude-mcp-card.tsx"].filter(
-    (file) => /\.(?:ts|tsx)$/.test(file) && !/\.test\./.test(file),
-  );
+  // (Ondata 6b) Anche le Impostazioni in cinque schede e i loro pezzi (tranne le due pagine dell'invito, che sono fuori).
+  const files = [
+    ...walk("src/components/home"),
+    ...walk("src/components/programma"),
+    ...walk("src/components/shell"),
+    ...walk("src/components/workspace").filter((file) => copyScopeOfFile(file) !== "esterno"),
+    ...walk("src/app/(dashboard)/dashboard/[workspaceId]/settings"),
+  ].filter((file) => /\.(?:ts|tsx)$/.test(file) && !/\.test\./.test(file));
+  for (const piece of ["src/components/workspace/settings-text.ts", "src/components/workspace/connections-tab.tsx", "src/app/(dashboard)/dashboard/[workspaceId]/settings/page.tsx"]) {
+    assert.ok(files.includes(piece), `${piece} si controlla`);
+  }
   for (const piece of ["src/components/programma/program-panels.tsx", "src/components/home/home-route.tsx", "src/components/shell/workspace-shell.tsx"]) {
     assert.ok(files.includes(piece), `${piece} si controlla`);
   }

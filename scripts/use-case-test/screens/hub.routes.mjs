@@ -205,25 +205,20 @@ const routes = [
   // Filters without results (§4.9).
   { name: "filtri-vuoti", path: `${DECIDE}&q=nessun-risultato-zz`, present: ["Nessuno use case con questi filtri.", "Togli i filtri"] },
 
-  // H7, Settings › Integrazioni with the area on and no v1 token: one Claude card for the team,
-  // no old name; the «registra-ai-lab» skill only for Lateral Space, which runs the AI Labs.
+  // H7, then release 10 wave 6b: Settings in five tabs. The personal Claude access (and the «registra-ai-lab» skill
+  // note for Lateral Space) moved to the «Il tuo account» sheet, which loads in the browser: the server page has no
+  // personal token card, no v1 card with the area on and no v1 token, no role badge.
   {
     name: "impostazioni-claude",
     path: "/dashboard/{ws:a}/settings",
-    as: ["ls-lead"],
+    as: ["ls-lead", "function-lead", "sponsor-cliente"],
     copyGuard: "vecchio_nome",
-    present: ["Claude per il team", "Crea il tuo token", "registra-ai-lab"],
-    absent: ["Claude per Unbundle", "Crea setup Claude per il team"],
+    present: ["Impostazioni", "Chi ha accesso"],
+    absent: ["Claude per il team", "Crea il tuo token", "Claude per Unbundle", "Crea setup Claude per il team", "Il tuo ruolo"],
   },
-  {
-    name: "impostazioni-claude",
-    path: "/dashboard/{ws:a}/settings",
-    as: ["function-lead", "sponsor-cliente"],
-    copyGuard: "vecchio_nome",
-    present: ["Claude per il team", "Crea il tuo token"],
-    absent: ["Claude per Unbundle", "Crea setup Claude per il team", "registra-ai-lab"],
-  },
-  { name: "impostazioni-claude", path: "/dashboard/{ws:a}/settings", as: CONTRIBUTOR, copyGuard: "vecchio_nome", absent: ["Claude per il team", "Claude per Unbundle"] },
+  { name: "impostazioni-claude", path: "/dashboard/{ws:a}/settings", as: CONTRIBUTOR, copyGuard: "vecchio_nome", present: ["Chi ha accesso"], absent: ["Claude per il team", "Claude per Unbundle", "Invita"] },
+  // Wave 6b: the old anchors still open their tab (client side); the tab addresses themselves.
+  { name: "impostazioni-privacy", path: "/dashboard/{ws:a}/settings?scheda=privacy", as: ["sponsor-cliente"], copyGuard: "area", present: ["Fornitori dei dati"], absent: ["Sub-responsabili"] },
 ];
 
 const emptyWorkspace = process.env.HUB_EMPTY_WORKSPACE_ID?.trim();

@@ -15,7 +15,7 @@ import {
   buildClaudeInstallCommand,
   buildClaudeStarterPrompt,
 } from "@/lib/integrations/claude-onboarding";
-import { CASE_SCOPES, UC_CASE_SCOPE_PREFIX } from "@/lib/uc/mcp-access";
+import { isCaseToken } from "./claude-tokens";
 import { CONFIRM_TEXT } from "@/lib/confirm-text";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -81,12 +81,6 @@ function tokenFromAction(data: CreateClaudeMcpTokenData): TokenItem {
   };
 }
 
-/** Token di un dossier (PIANO §5.8): scope `cases:*` e il marcatore `uc:case:<id>`. */
-function isCaseToken(token: TokenItem) {
-  return token.scopes.some(
-    (scope) => scope.startsWith(UC_CASE_SCOPE_PREFIX) || CASE_SCOPES.includes(scope)
-  );
-}
 
 const CASE_MARKER =
   /^uc:case:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;

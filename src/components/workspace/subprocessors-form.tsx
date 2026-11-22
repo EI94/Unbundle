@@ -54,7 +54,7 @@ export function SubprocessorsForm({
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <p className="max-w-3xl text-sm leading-relaxed">{statement}</p>
+      <p className="max-w-3xl text-sm leading-relaxed whitespace-pre-line">{statement}</p>
       {oneClick ? null : (
         <div className="flex min-h-11 items-start gap-3">
           <Checkbox
@@ -74,7 +74,7 @@ export function SubprocessorsForm({
           {error}
         </p>
       )}
-      <Button type="submit" size="lg" variant={oneClick ? "outline" : "default"} className="px-4" disabled={!confirmed || pending}>
+      <Button type="submit" variant={oneClick ? "outline" : "default"} className="min-h-11 px-4 sm:min-h-9" disabled={!confirmed || pending}>
         {pending ? "Salvataggio…" : (oneClickLabel ?? "Autorizza")}
       </Button>
     </form>

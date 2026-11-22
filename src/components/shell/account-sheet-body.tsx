@@ -18,7 +18,7 @@ import { granolaFlashLine, type Line } from "@/lib/context/granola/view";
 import { CONTEXT_TEXT } from "@/lib/context/text";
 import type { CliTokenView } from "@/lib/db/queries/use-case-cli-auth";
 import type { TeamMcpTokenView } from "@/lib/db/queries/team-mcp-tokens";
-import { accountSectionId, claudeAiHeader, claudeCodeCommand, type AccountClaude, type AccountPart, type AccountSheetData } from "@/lib/shell/account";
+import { ACCESS_PLACEHOLDER, accountSectionId, claudeAiHeader, claudeCodeCommand, type AccountClaude, type AccountPart, type AccountSheetData } from "@/lib/shell/account";
 import { SHELL_TEXT } from "@/lib/shell/text";
 import { cn } from "@/lib/utils";
 
@@ -64,7 +64,8 @@ export function accessRows(claude: AccountClaude | null, terminal: { links: read
       label: token.label,
       facts: [
         token.readOnly ? C.readOnly : C.readWrite,
-        token.state === "in_scadenza" && token.expiresIn ? C.expiresIn(token.expiresIn) : token.expiresOn ? C.expiresOn(token.expiresOn) : null,
+        // Un dato, un posto: la data nella riga; «tra N giorni» e l'esposizione negli avvisi sopra l'elenco.
+        token.expiresOn ? C.expiresOn(token.expiresOn) : null,
         token.lastUsedOn ? C.usedOn(token.lastUsedOn) : C.neverUsed,
       ].filter((fact): fact is string => Boolean(fact)),
       exposed: token.exposed,
@@ -74,6 +75,8 @@ export function accessRows(claude: AccountClaude | null, terminal: { links: read
     id: link.id,
     label: link.label,
     facts: [
+      // (F-227) L'inizio del collegamento, per riconoscerlo dal computer: mai il resto.
+      C.linkPrefix(link.prefix),
       link.caseCode ? C.onlyCase(link.caseCode) : C.allCases,
       link.lastUsedAt ? C.usedOn(day(link.lastUsedAt)) : C.neverUsed,
       link.expiresAt ? C.expiresOn(day(link.expiresAt)) : null,
@@ -81,6 +84,19 @@ export function accessRows(claude: AccountClaude | null, terminal: { links: read
     exposed: false,
   }));
   return [...claudeRows, ...terminalRows];
+}
+
+/**
+ * L'accesso appena creato, da copiare: finché chi guarda non lo nasconde e finché è attivo. Revocato (da «Revoca» o da
+ * «Revoca tutti» in Impostazioni) non si offre più; con l'elenco non ancora riletto resta, perché esiste.
+ */
+export function newTokenToShow(
+  created: CreateTeamMcpTokenData | null | undefined,
+  hiddenTokenId: string | null,
+  tokens: readonly Pick<TeamMcpTokenView, "id" | "active">[],
+): CreateTeamMcpTokenData | null {
+  if (!created || created.tokenId === hiddenTokenId) return null;
+  return tokens.some((token) => token.id === created.tokenId && !token.active) ? null : created;
 }
 
 function Section({ part, title, children }: { part: AccountPart; title: string; children: ReactNode }) {
@@ -153,6 +169,7 @@ function EmailSection({ on: initial, actions }: { on: boolean; actions: AccountA
 
 function ClaudeGuide({ claude, actions, onChanged }: { claude: AccountClaude; actions: AccountActions; onChanged: () => void }) {
   const [created, setCreated] = useState<CreateTeamMcpTokenData | null>(null);
+  const [hidden, setHidden] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [readOnly, setReadOnly] = useState(false);
   const [pending, start] = useTransition();
@@ -170,41 +187,74 @@ function ClaudeGuide({ claude, actions, onChanged }: { claude: AccountClaude; ac
       } else setError(result.fieldErrors?.label ?? result.message ?? C.failed);
     });
   if (claude.status === "errore") return <p className="text-sm text-muted-foreground">{C.claudeLoadFailed}</p>;
+  const shown = newTokenToShow(created, hidden, claude.tokens);
+  const hasActive = claude.tokens.some((token) => token.active);
+  const form = (
+    <form action={submit} className="space-y-3" data-slot="account-create-access">
+      <div className="space-y-1.5">
+        <Label htmlFor={nameId}>{C.nameLabel}</Label>
+        <Input id={nameId} name="label" defaultValue={claude.defaultLabel} maxLength={80} className="h-11 text-base sm:h-9 sm:text-sm" aria-describedby={`${nameId}-hint`} />
+        <p id={`${nameId}-hint`} className={cn("text-xs", error ? "text-destructive" : "text-muted-foreground")}>
+          {error ?? C.nameHint}
+        </p>
+      </div>
+      <div className="flex min-h-11 items-start gap-2.5">
+        <Checkbox id={readOnlyId} className="mt-0.5" checked={readOnly} onCheckedChange={(checked) => setReadOnly(checked === true)} />
+        <div className="min-w-0">
+          <Label htmlFor={readOnlyId}>{C.readOnlyLabel}</Label>
+          <p className="text-xs text-muted-foreground">{C.readOnlyHint}</p>
+        </div>
+      </div>
+      <Button type="submit" variant="outline" disabled={pending}>
+        {pending ? C.creating : C.create}
+      </Button>
+    </form>
+  );
   return (
     <div className="space-y-3">
-      <p className="text-sm text-muted-foreground">{C.claudeLead(claude.ttlDays)}</p>
+      <p className="text-sm text-muted-foreground">
+        {C.claudeLead(claude.ttlDays)} {C.expiringHint(claude.warningDays)}
+      </p>
       {!claude.routeEnabled ? <p className="text-sm text-muted-foreground">{C.claudeOff}</p> : null}
-      {created ? (
+      {shown ? (
         <div className="space-y-3 rounded-lg border p-3" data-slot="account-new-access">
-          <p className="text-sm font-medium">{C.createdTitle}</p>
-          <CopyLine value={created.token} label={C.copy} />
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-sm font-medium">{C.createdTitle}</p>
+            <Button type="button" variant="ghost" className="-mt-1 shrink-0" onClick={() => setHidden(shown.tokenId)}>
+              {C.hide}
+            </Button>
+          </div>
+          <CopyLine value={shown.token} label={C.copy} />
           <p className="text-xs text-muted-foreground">{C.claudeCode}</p>
-          <CopyLine value={claudeCodeCommand(claude, created.token)} label={C.copyCommand} />
+          <CopyLine value={claudeCodeCommand(claude, shown.token)} label={C.copyCommand} />
           <p className="text-xs text-muted-foreground">{C.claudeAi(claude.connectorName, claude.url)}</p>
-          <CopyLine value={claudeAiHeader(created.token)} label={C.copy} />
+          <CopyLine value={claudeAiHeader(shown.token)} label={C.copy} />
           <p className="text-xs text-muted-foreground">{C.secret}</p>
         </div>
+      ) : hasActive ? (
+        // Con un accesso già attivo il modulo resta chiuso: di solito ne basta uno.
+        <details className="group rounded-lg border" data-slot="account-create-more">
+          <summary className="flex min-h-11 cursor-pointer items-center px-3 text-sm font-medium sm:min-h-9">{C.createAnother}</summary>
+          <div className="border-t p-3">{form}</div>
+        </details>
       ) : (
-        <form action={submit} className="space-y-3">
-          <div className="space-y-1.5">
-            <Label htmlFor={nameId}>{C.nameLabel}</Label>
-            <Input id={nameId} name="label" defaultValue={claude.defaultLabel} maxLength={80} className="h-11 text-base sm:h-9 sm:text-sm" aria-describedby={`${nameId}-hint`} />
-            <p id={`${nameId}-hint`} className={cn("text-xs", error ? "text-destructive" : "text-muted-foreground")}>
-              {error ?? C.nameHint}
-            </p>
-          </div>
-          <div className="flex min-h-11 items-start gap-2.5">
-            <Checkbox id={readOnlyId} className="mt-0.5" checked={readOnly} onCheckedChange={(checked) => setReadOnly(checked === true)} />
-            <div className="min-w-0">
-              <Label htmlFor={readOnlyId}>{C.readOnlyLabel}</Label>
-              <p className="text-xs text-muted-foreground">{C.readOnlyHint}</p>
-            </div>
-          </div>
-          <Button type="submit" variant="outline" disabled={pending}>
-            {pending ? C.creating : C.create}
-          </Button>
-        </form>
+        form
       )}
+      <details className="group rounded-lg border" data-slot="account-connect-guide">
+        <summary className="flex min-h-11 cursor-pointer items-center px-3 text-sm font-medium sm:min-h-9">{C.guide}</summary>
+        <div className="space-y-3 border-t p-3">
+          <p className="text-xs text-muted-foreground">{C.guideClaudeCode}</p>
+          <CopyLine value={claudeCodeCommand(claude, ACCESS_PLACEHOLDER)} label={C.copyCommand} />
+          <p className="text-xs text-muted-foreground">{C.guideClaudeAi(claude.connectorName, claude.url)}</p>
+          <CopyLine value={claudeAiHeader(ACCESS_PLACEHOLDER)} label={C.copy} />
+          <p className="text-xs text-muted-foreground">{C.guideOnlyYou}</p>
+        </div>
+      </details>
+      {claude.skillName ? (
+        <p className="text-xs text-muted-foreground" data-slot="account-skill">
+          {C.skill(claude.skillName)}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -237,9 +287,23 @@ function ClaudeSection({
       setRevoking(null);
     });
   const shown = choices.includes(choice) ? choice : choices[0];
+  const activeClaude = (claude?.tokens ?? []).filter((token) => token.active);
+  const inactive = (claude?.tokens ?? []).filter((token) => !token.active);
+  const exposed = activeClaude.filter((token) => token.exposed);
+  const expiring = activeClaude.filter((token) => token.state === "in_scadenza" && token.expiresIn);
 
   return (
     <Section part="claude" title={C.title}>
+      {exposed.map((token) => (
+        <p key={`exposed-${token.id}`} role="alert" className="text-sm text-destructive" data-slot="account-exposed">
+          {C.exposedNotice(token.label, token.exposedOn ?? "")}
+        </p>
+      ))}
+      {expiring.map((token) => (
+        <p key={`expiring-${token.id}`} role="status" className="text-sm" data-slot="account-expiring">
+          {C.expiringNotice(token.label, token.expiresIn ?? "")}
+        </p>
+      ))}
       {rows.length > 0 ? (
         <ul aria-label={C.listLabel} className="divide-y rounded-lg border">
           {rows.map((row) => (
@@ -250,10 +314,7 @@ function ClaudeSection({
                   <span className="text-muted-foreground"> · </span>
                   {row.label}
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  {row.facts.join(" · ")}
-                  {row.exposed ? <span className="text-destructive">{` · ${C.exposed}`}</span> : null}
-                </p>
+                <p className="text-xs text-muted-foreground">{row.facts.join(" · ")}</p>
               </div>
               <Button type="button" variant="ghost" className="shrink-0" disabled={pending} onClick={() => setRevoking(row)}>
                 {C.revoke}
@@ -261,6 +322,24 @@ function ClaudeSection({
             </li>
           ))}
         </ul>
+      ) : null}
+
+      {inactive.length > 0 ? (
+        <details className="group rounded-lg border" data-slot="account-inactive">
+          <summary className="flex min-h-11 cursor-pointer items-center px-3 text-sm text-muted-foreground sm:min-h-9">{C.inactive(inactive.length)}</summary>
+          <ul className="divide-y border-t">
+            {inactive.map((token) => (
+              <li key={token.id} className="px-3 py-2 text-sm">
+                <span className="font-medium">{token.label}</span>
+                <span className="text-xs text-muted-foreground">
+                  {" · "}
+                  {token.state === "revocato" ? C.revokedState : C.expiredState}
+                  {token.state === "revocato" && token.revokedOn ? ` il ${token.revokedOn}` : token.expiresOn ? ` il ${token.expiresOn}` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
       ) : null}
 
       {choices.length > 1 ? (
@@ -306,13 +385,13 @@ function ClaudeSection({
   );
 }
 
-/** I toni della riga che dice com'è andato il ritorno da Granola, come nel blocco di Impostazioni. */
+/** I toni della riga che dice com'è andato il ritorno da Granola. */
 const LINE_TONE: Record<Line["tone"], string> = { ok: "text-uc-verde", info: "text-muted-foreground", error: "text-destructive" };
 
 /**
  * «Granola» (Lateral Space): collegare, scollegare, il piano. Dopo il ritorno da Granola (`?granola=…`) la riga che dice
- * com'è andata (`granolaFlashLine`, la stessa del blocco di Impostazioni). Le regole delle call stanno nelle
- * Impostazioni: con un collegamento, «Regole delle call ›» ci porta, anche chi non gestisce il workspace.
+ * com'è andata (`granolaFlashLine`). Le regole delle call stanno in Contesto › Fonti (ondata 6b): con un collegamento,
+ * «Regole delle call ›» ci porta, anche chi non gestisce il workspace.
  */
 function GranolaSection({
   granola,
