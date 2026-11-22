@@ -19,9 +19,6 @@
   "src/app/(dashboard)/dashboard/[workspaceId]/reports/page.tsx": {
     "palette": 5
   },
-  "src/app/(dashboard)/dashboard/[workspaceId]/settings/page.tsx": {
-    "palette": 26
-  },
   "src/app/(dashboard)/dashboard/[workspaceId]/strategy/page.tsx": {
     "palette": 2
   },
@@ -253,24 +250,12 @@
     "colorFunction": 1
   },
   "src/components/workspace/connector-card-panel.tsx": {
-    "palette": 16
-  },
-  "src/components/workspace/connector-card.tsx": {
-    "palette": 2
+    "palette": 14
   },
   "src/components/workspace/disable-share-links-button.tsx": {
     "palette": 2
   },
-  "src/components/workspace/subprocessors-card.tsx": {
-    "palette": 3
-  },
   "src/components/workspace/subprocessors-form.tsx": {
     "palette": 1
-  },
-  "src/components/workspace/team-mcp-card.tsx": {
-    "palette": 14
-  },
-  "src/components/workspace/workspace-collaboration-card.tsx": {
-    "palette": 13
   }
 }

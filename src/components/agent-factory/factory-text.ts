@@ -44,7 +44,6 @@ export const FACTORY_TEXT = Object.freeze({
   /** «La linea»: i filtri per stazione, senza zeri. */
   line: Object.freeze({
     title: "La linea",
-    all: "Tutte le stazioni",
     /** Il chip acceso, per i lettori di schermo: toccarlo toglie il filtro. */
     remove: (station: string) => `Togli il filtro ${station}`,
     filtered: (n: number, station: string) => `${n === 1 ? "1 caso" : `${n} casi`} · ${station}`,
@@ -58,7 +57,6 @@ export const FACTORY_TEXT = Object.freeze({
     template: "Modello",
     common: "Comune",
     behind: (latest: string) => `indietro: c'è il ${latest}`,
-    openRepo: "Apri su GitHub",
     unknownVersion: "non ancora nota",
   }),
   quality: Object.freeze({

@@ -154,10 +154,12 @@ test("l'azione: con i dossier accesi passa ancora dal controllo della sezione; c
 test("la scheda «Sub-responsabili» si mostra in ogni workspace, se la tabella dell'ok c'è", () => {
   const card = readFileSync(new URL("../../components/workspace/subprocessors-card.tsx", import.meta.url), "utf8");
   assert.match(card, /import \{ subprocessorAcksReady \} from "@\/lib\/db\/queries\/context-consent";/);
+  // (Rilascio 10, ondata 6b) La regola sta in `subprocessorsShown`, che anche le Impostazioni usano per la scheda «Privacy».
   assert.match(
     card,
-    /if \(!dossiers && !\(referentAskEnabled\(workspaceId, process\.env\) && \(await referentStoreReady\(\)\)\) && !\(await subprocessorAcksReady\(\)\)\) return null;/,
+    /export async function subprocessorsShown\(workspaceId: string\): Promise<boolean> \{\s*if \(isUcEnabledFor\(workspaceId\)\) return true;\s*if \(referentAskEnabled\(workspaceId, process\.env\) && \(await referentStoreReady\(\)\)\) return true;\s*return subprocessorAcksReady\(\);\s*\}/,
   );
+  assert.match(card, /if \(!\(await subprocessorsShown\(workspaceId\)\)\) return null;/);
   // Chi può dare l'ok e il testo non cambiano.
   assert.match(card, /const declarer = ack \? null : subprocessorDeclarerOf\(user, workspaceRole, ucLsDomains\(\)\);/);
 });
