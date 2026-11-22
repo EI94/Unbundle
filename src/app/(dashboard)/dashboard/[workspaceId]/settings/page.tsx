@@ -1,408 +1,307 @@
-import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { notFound } from "next/navigation";
+import { CheckCircle } from "lucide-react";
+import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { getSlackInstallationByWorkspace } from "@/lib/db/queries/slack";
-import {
-  getWorkspaceCollaborators,
-  getWorkspaceInvitationsForWorkspace,
-} from "@/lib/db/queries/workspace-collaboration";
+import { getWorkspaceCollaborators, getWorkspaceInvitationsForWorkspace } from "@/lib/db/queries/workspace-collaboration";
 import { CLAUDE_MCP_PROVIDER, getWorkspaceIntegrationTokens } from "@/lib/db/queries/workspace-integrations";
-import { Badge } from "@/components/ui/badge";
-import { EsgToggle } from "@/components/dashboard/esg-toggle";
-import { SlackInstallButton } from "@/components/dashboard/slack-install-button";
-import { SlackNotifyChannelForm } from "@/components/dashboard/slack-notify-channel-form";
-import { DeleteWorkspaceForm } from "@/components/dashboard/delete-workspace-form";
-import {
-  canDeleteWorkspace,
-  canManageWorkspaceCollaborators,
-  canManageWorkspaceSettings,
-} from "@/lib/workspace-permissions";
-import { WorkspaceCollaborationCard } from "@/components/workspace/workspace-collaboration-card";
-import { ClaudeMcpCard } from "@/components/workspace/claude-mcp-card";
-import { ConnectorCard } from "@/components/workspace/connector-card";
-import { TeamMcpCard } from "@/components/workspace/team-mcp-card";
 import { loadTeamMcpCard } from "@/lib/db/queries/team-mcp-tokens";
-import { loadCliCard } from "@/lib/db/queries/use-case-cli-auth";
-import { getAppUcExecutor } from "@/lib/db/uc-executor";
-import { ensureDbSchema } from "@/lib/db/ensure-schema";
-import { ucLsDomains } from "@/lib/db/queries/uc-access";
+import { isUcEnabledFor, isUcLsConfigured, ucLsDomains } from "@/lib/db/queries/uc-access";
 import { isLateralSpaceEmail } from "@/lib/uc/lateral-space";
-import { CliCard } from "@/components/workspace/cli-card";
-import { SubprocessorsCard } from "@/components/workspace/subprocessors-card";
-import { GranolaCard } from "@/components/context/granola/granola-card";
-import { MessageSquare, MessageCircle, CheckCircle, Leaf, Lock, AlertTriangle } from "lucide-react";
-import { PAGE_TITLE_CLASS, PageContainer } from "@/components/dashboard/page-container";
-import { SettingsSection } from "@/components/dashboard/settings-section";
-import { DisableShareLinksButton } from "@/components/workspace/disable-share-links-button";
-import { roleLabel } from "@/lib/workspace-roles";
+import { canDeleteWorkspace, canManageWorkspaceCollaborators, canManageWorkspaceSettings } from "@/lib/workspace-permissions";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
-import { ValuationSettings } from "@/components/use-cases/settings/valuation-settings";
 import { USE_CASE_VALUATION_ANCHOR } from "@/lib/use-cases/settings";
-import { WhatsappWebhookForm } from "@/components/portfolio/team-settings-form";
+import { PAGE_TITLE_CLASS, PageContainer } from "@/components/dashboard/page-container";
+import { SegmentedNav } from "@/components/dashboard/segmented-nav";
+import { DeleteWorkspaceForm } from "@/components/dashboard/delete-workspace-form";
+import { EsgToggle } from "@/components/dashboard/esg-toggle";
+import { SlackNotifyChannelForm } from "@/components/dashboard/slack-notify-channel-form";
+import { ValuationSettings } from "@/components/use-cases/settings/valuation-settings";
+import { AlertsForm } from "@/components/workspace/alerts-form";
+import { ClaudeMcpCard } from "@/components/workspace/claude-mcp-card";
+import { countClaudeAccesses } from "@/components/workspace/claude-tokens";
+import { ConnectionsTab, type ConnectionKey, type ConnectionRowView } from "@/components/workspace/connections-tab";
+import { ConnectorPanel, loadConnectorRow } from "@/components/workspace/connector-card";
+import { DisableShareLinksButton } from "@/components/workspace/disable-share-links-button";
+import { SETTINGS_TEXT } from "@/components/workspace/settings-text";
+import { SettingsAnchor } from "@/components/workspace/settings-anchor";
+import { SETTINGS_TAB_PARAM, settingsTabHref, settingsTabOf, visibleSettingsTabs, type SettingsTab } from "@/components/workspace/settings-view";
+import { decodeSlackErrorParam, slackInstallErrorHint } from "@/components/workspace/slack-errors";
+import { SubprocessorsCard, subprocessorsShown } from "@/components/workspace/subprocessors-card";
+import { TeamTokensRevokeAll } from "@/components/workspace/team-mcp-card";
+import { TeamTab } from "@/components/workspace/workspace-collaboration-card";
 
-function decodeSlackErrorParam(raw: string | undefined): string {
-  if (!raw) return "";
-  try {
-    return decodeURIComponent(raw.replace(/\+/g, " "));
-  } catch {
-    return raw;
-  }
-}
+const T = SETTINGS_TEXT;
 
-function slackInstallErrorHint(decoded: string): string | null {
-  const t = decoded.toLowerCase();
-  if (t.includes("bad_client_secret")) {
-    return (
-      "Il valore di SLACK_CLIENT_SECRET su Vercel non corrisponde al Client Secret dell’app Slack " +
-      "(oppure è vuoto o di un’altra app). Apri https://api.slack.com/apps → seleziona l’app Unbundle → " +
-      "Basic Information → App Credentials → copia «Client Secret» e in Vercel (Project → Settings → " +
-      "Environment Variables) imposta SLACK_CLIENT_SECRET per Production, salva e fai Redeploy. " +
-      "Se hai rigenerato il secret in Slack, il vecchio su Vercel non funziona più."
-    );
-  }
-  if (
-    t.includes("did not match any configured") ||
-    t.includes("bad_redirect_uri") ||
-    t.includes("redirect_uri")
-  ) {
-    return (
-      "L’URL di callback non è nella lista Slack. Vai su api.slack.com/apps → la tua app → OAuth & Permissions → " +
-      "Redirect URLs e aggiungi **esattamente** l’URL che vedi nell’errore (host + `/api/slack/oauth`). " +
-      "Se installi da un deploy Vercel preview (es. `*.vercel.app`), quell’host va aggiunto **in aggiunta** a " +
-      "produzione (`www.theunbundle.com` / `theunbundle.com`). Slack non accetta wildcard: ogni dominio preview usato va elencato, oppure testa Slack solo da produzione."
-    );
-  }
-  return null;
-}
-
+/**
+ * Impostazioni del workspace (rilascio 10, ondata 6b, docs/ui-10/PROPOSTA-10.md §3.10, §2.4): cinque schede, Team ·
+ * Collegamenti · Valutazione · Privacy · Zona pericolosa, ognuna al suo indirizzo (`?scheda=`). Si vede solo quello che
+ * chi guarda può fare: Team (chi ha accesso) a ogni membro, che invita solo chi gestisce; i Collegamenti a chi ne usa o
+ * ne gestisce uno; la Valutazione a chi gestisce il workspace; la Privacy a chi vede i fornitori dei dati o gestisce i
+ * link condivisi; la Zona pericolosa a chi può eliminare il workspace. Ciò che è personale (le e-mail, Claude e il
+ * terminale, Granola) sta nel foglio «Il tuo account». La pagina si apre a chiunque sia nel workspace, senza un
+ * controllo di ruolo: le azioni ricontrollano tutto sul server.
+ *
+ * Le ancore di prima portano alla loro scheda (`SettingsAnchor`); `#cli` e `#granola` aprono «Il tuo account».
+ */
 export default async function SettingsPage({
   params,
   searchParams,
 }: {
   params: Promise<{ workspaceId: string }>;
-  searchParams: Promise<{ slack?: string; slack_error?: string; granola?: string }>;
+  searchParams: Promise<{ slack?: string; slack_error?: string; granola?: string; scheda?: string; apri?: string }>;
 }) {
-
   const { workspaceId } = await params;
 
   const { session, access } = await requireWorkspacePage(workspaceId);
   const workspace = await getWorkspaceById(workspaceId);
   if (!workspace) notFound();
-
   const search = await searchParams;
-  const [slackInstallation, collaborators, invitations, integrationTokens, teamMcpCard, cliCard] = await Promise.all([
-    getSlackInstallationByWorkspace(workspaceId),
-    getWorkspaceCollaborators(workspaceId),
-    getWorkspaceInvitationsForWorkspace(workspaceId),
-    // Card v1 «Claude per Unbundle»: solo `provider = 'claude_mcp'` (D11, DESIGN §9.7).
-    getWorkspaceIntegrationTokens(workspaceId, { providers: [CLAUDE_MCP_PROVIDER] }),
-    loadTeamMcpCard({ workspaceId, user: session.user, role: access.role }),
-    ensureDbSchema()
-      .then(() => getAppUcExecutor())
-      .then((executor) =>
-        loadCliCard(executor, {
-          userId: session.user.id,
-          workspaceId,
-          lateralSpace: isLateralSpaceEmail({ email: session.user.email ?? null, emailVerified: session.user.emailVerified === true }, ucLsDomains()),
-        }),
-      )
-      .catch(() => null),
-  ]);
-  const isSlackInstalled = !!slackInstallation;
-  const canDelete =
-    access.source === "organization" && canDeleteWorkspace(access.role);
+
+  const lateralSpace = isLateralSpaceEmail({ email: session.user.email ?? null, emailVerified: session.user.emailVerified === true }, ucLsDomains());
+  const canDelete = access.source === "organization" && canDeleteWorkspace(access.role);
   const canManageCollaborators = canManageWorkspaceCollaborators(access.role);
-  const canManageIntegrations =
-    access.source === "organization" && canManageWorkspaceSettings(access.role);
+  const canManageIntegrations = access.source === "organization" && canManageWorkspaceSettings(access.role);
   const canManageSettings = canManageWorkspaceSettings(access.role);
-  // Area «Use case» accesa (DESIGN §12.1, §13): /portfolio reindirizza e con lui sparisce il
-  // pannello «Team e ranking». Nome del team, codici, soglie, fasce e modello stanno in
-  // «Valutazione»; il webhook WhatsApp, che si modificava solo lì, in «Integrazioni». Solo per
-  // chi gestisce il workspace, come le action. Spenta: la pagina di oggi.
+  // Area «Use case» accesa (DESIGN §12.1, §13): nome del team, codici, soglie, fasce e modello stanno in «Valutazione»;
+  // il webhook WhatsApp in «Altri avvisi». Solo per chi gestisce il workspace, come le action.
   const useCaseHub = isUseCaseHubWorkspace(workspaceId);
   const useCaseSettings = useCaseHub && canManageSettings;
-  const slackErrDecoded = decodeSlackErrorParam(search.slack_error);
-  const slackErrHint = slackErrDecoded ? slackInstallErrorHint(slackErrDecoded) : null;
 
-  const roleName = roleLabel(access.role);
-  const sections = [
-    { id: "persone", label: "Persone" },
-    { id: "integrazioni", label: "Integrazioni" },
-    { id: useCaseSettings ? USE_CASE_VALUATION_ANCHOR : "valutazione", label: "Valutazione" },
-    { id: "zona-pericolosa", label: "Zona pericolosa" },
-  ];
+  const [slackInstallation, suppliers] = await Promise.all([getSlackInstallationByWorkspace(workspaceId), subprocessorsShown(workspaceId).catch(() => false)]);
+  const visible = visibleSettingsTabs({
+    manages: canManageSettings,
+    links: canManageIntegrations || useCaseSettings || Boolean(slackInstallation),
+    privacy: suppliers || canManageCollaborators,
+    canDelete,
+  });
+  const tab = settingsTabOf(search[SETTINGS_TAB_PARAM], visible, { slackReturn: Boolean(search.slack || search.slack_error) });
+  const panel = search.apri ?? null;
+
+  let body: React.ReactNode;
+  if (tab === "team") {
+    const [collaborators, invitations] = await Promise.all([getWorkspaceCollaborators(workspaceId), canManageCollaborators ? getWorkspaceInvitationsForWorkspace(workspaceId) : Promise.resolve([])]);
+    body = (
+      <TeamTab
+        workspaceId={workspaceId}
+        workspaceName={workspace.name}
+        canManage={canManageCollaborators}
+        currentUserId={session.user.id}
+        initialPanel={panel}
+        members={collaborators.map((member) => ({
+          userId: member.userId,
+          name: member.name,
+          email: member.email,
+          role: member.role,
+          source: member.source,
+          createdAt: member.createdAt.toISOString(),
+        }))}
+        invitations={invitations.map((invitation) => ({
+          id: invitation.id,
+          email: invitation.email,
+          role: invitation.role,
+          maxUses: invitation.maxUses,
+          usedCount: invitation.usedCount,
+          expiresAt: invitation.expiresAt.toISOString(),
+          revokedAt: invitation.revokedAt?.toISOString() ?? null,
+          createdAt: invitation.createdAt.toISOString(),
+          createdByName: invitation.createdByName,
+          acceptedByEmail: invitation.acceptedByEmail,
+        }))}
+      />
+    );
+  } else if (tab === "collegamenti") {
+    body = await connectionsBody({ workspaceId, workspace, session, access, search, panel, lateralSpace, slackInstallation, canManageIntegrations, useCaseHub, useCaseSettings });
+  } else if (tab === "valutazione") {
+    const esg = (
+      <div id="valutazione" className="flex min-h-11 scroll-mt-28 items-start justify-between gap-4 rounded-lg border p-3" data-slot="settings-esg">
+        <div className="min-w-0">
+          <p className="text-sm font-medium">{T.esg.title}</p>
+          <p className="text-xs text-muted-foreground">{T.esg.lead}</p>
+        </div>
+        <EsgToggle workspaceId={workspaceId} initialEnabled={workspace.esgEnabled === true} canManage={canManageSettings} />
+      </div>
+    );
+    body = useCaseSettings ? <ValuationSettings workspaceId={workspaceId} id={USE_CASE_VALUATION_ANCHOR} modelExtra={esg} /> : esg;
+  } else if (tab === "privacy") {
+    body = (
+      <div className="space-y-8">
+        <SubprocessorsCard workspaceId={workspaceId} workspaceName={workspace.name} userId={session.user.id} workspaceRole={access.role} initialPanel={panel} />
+        {canManageCollaborators ? (
+          <section id="link-condivisi" aria-labelledby="link-condivisi-titolo" className="scroll-mt-28 space-y-3" data-slot="settings-share-links">
+            <h2 id="link-condivisi-titolo" className="text-base font-semibold">
+              {T.privacy.links}
+            </h2>
+            <p className="text-sm text-muted-foreground">{T.privacy.linksLead}</p>
+            <DisableShareLinksButton workspaceId={workspaceId} />
+          </section>
+        ) : null}
+      </div>
+    );
+  } else {
+    body = (
+      <section id="zona-pericolosa" aria-label={T.danger.title} className="scroll-mt-28 rounded-xl p-4 ring-1 ring-uc-rosso/40 sm:p-6">
+        <DeleteWorkspaceForm workspaceId={workspaceId} workspaceName={workspace.name} canDelete={canDelete} />
+      </section>
+    );
+  }
 
   return (
     <PageContainer>
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0">
-          <h1 className={PAGE_TITLE_CLASS}>Impostazioni</h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Chi ha accesso, le integrazioni e i criteri di valutazione di questo workspace.
+      <header className="space-y-3">
+        <h1 className={PAGE_TITLE_CLASS}>{T.title}</h1>
+        {/* (F-005) La configurazione di Lateral Space che manca: le realizzazioni sono in sola lettura. A chi gestisce. */}
+        {canManageSettings && isUcEnabledFor(workspaceId) && !isUcLsConfigured() ? (
+          <p role="status" data-slot="settings-config-incomplete" className="flex items-start gap-2 rounded-lg bg-uc-giallo-bg px-3 py-2 text-sm">
+            <span aria-hidden className="mt-1.5 size-2 shrink-0 rounded-full bg-uc-giallo" />
+            {T.configIncomplete}
           </p>
-        </div>
-        <Badge variant="outline" className="h-7 self-start px-3 sm:self-auto" data-testid="settings-role">
-          Il tuo ruolo: {roleName}
-        </Badge>
+        ) : null}
       </header>
-
-      <nav
-        aria-label="Sezioni delle impostazioni"
-        className="-mx-4 mt-6 overflow-x-auto border-b px-4 sm:-mx-6 sm:px-6 md:sticky md:top-0 md:z-10 md:bg-background/90 md:backdrop-blur lg:-mx-8 lg:px-8"
-      >
-        <ul className="flex gap-1 py-2">
-          {sections.map((section) => (
-            <li key={section.id}>
-              <a
-                href={`#${section.id}`}
-                className="inline-flex h-10 items-center whitespace-nowrap rounded-lg px-3 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                {section.label}
-              </a>
-            </li>
-          ))}
-        </ul>
-      </nav>
-
-      {search.slack === "installed" && isSlackInstalled && (
-        <div className="mt-6 flex items-center gap-2 rounded-lg border border-green-500/20 bg-green-500/5 px-4 py-3 text-sm text-green-300" role="status">
-          <CheckCircle className="h-4 w-4 shrink-0" aria-hidden />
-          Slack collegato.
-        </div>
-      )}
-
-      {search.slack === "installed" && !isSlackInstalled && (
-        <div className="mt-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100" role="alert">
-          <p className="font-medium text-amber-50">Slack ha dato l&apos;ok, ma questo workspace non risulta collegato</p>
-          <p className="mt-1 leading-relaxed">
-            Controlla di essere nel workspace giusto e premi di nuovo «Collega Slack».
-          </p>
-          <details className="mt-2 text-xs text-amber-100/80">
-            <summary className="cursor-pointer">Dettagli tecnici</summary>
-            <p className="mt-1 leading-relaxed">
-              Succede se l&apos;URL contiene <code>?slack=installed</code> ma sei in un altro workspace, oppure se
-              l&apos;installazione è finita su un database diverso (per esempio un deploy di anteprima).
-            </p>
-          </details>
-        </div>
-      )}
-
-      {search.slack_error && (
-        <div className="mt-6 rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-300" role="alert">
-          <p className="font-medium">Non siamo riusciti a collegare Slack</p>
-          <p className="mt-1 text-red-200/90">
-            Riprova tra qualche minuto. Se succede ancora, scrivi al supporto indicando il codice qui sotto.
-          </p>
-          <p className="mt-2 break-words font-mono text-xs text-red-300/80">{slackErrDecoded}</p>
-          {slackErrHint ? (
-            <details className="mt-2 text-xs text-red-200/90">
-              <summary className="cursor-pointer">Dettagli tecnici per chi gestisce l&apos;app Slack</summary>
-              <p className="mt-1 leading-relaxed">{slackErrHint}</p>
-            </details>
-          ) : null}
-        </div>
-      )}
-
-      <div className="mt-8 space-y-10">
-        <WorkspaceCollaborationCard
-          workspaceId={workspaceId}
-          workspaceName={workspace.name}
-          canManage={canManageCollaborators}
-          currentUserId={session.user.id}
-          members={collaborators.map((member) => ({
-            userId: member.userId,
-            name: member.name,
-            email: member.email,
-            role: member.role,
-            source: member.source,
-            createdAt: member.createdAt.toISOString(),
-          }))}
-          invitations={
-            canManageCollaborators
-              ? invitations.map((invitation) => ({
-                  id: invitation.id,
-                  email: invitation.email,
-                  role: invitation.role,
-                  maxUses: invitation.maxUses,
-                  usedCount: invitation.usedCount,
-                  expiresAt: invitation.expiresAt.toISOString(),
-                  revokedAt: invitation.revokedAt?.toISOString() ?? null,
-                  createdAt: invitation.createdAt.toISOString(),
-                  createdByName: invitation.createdByName,
-                  acceptedByEmail: invitation.acceptedByEmail,
-                }))
-              : []
-          }
+      {visible.length > 1 ? (
+        <SegmentedNav
+          className="mt-6"
+          ariaLabel={T.tabsLabel}
+          active={tab}
+          gridOnPhone
+          items={visible.map((key: SettingsTab) => ({ key, label: T.tabs[key], href: settingsTabHref(workspaceId, key) }))}
         />
-
-        <div id="integrazioni" className="scroll-mt-28 space-y-6">
-          <SettingsSection
-            icon={MessageSquare}
-            iconClassName="bg-purple-500/10 text-purple-400"
-            title="Slack"
-            description="I colleghi propongono use case scrivendo al bot, e chi gestisce il workspace riceve le notifiche."
-            aside={
-              isSlackInstalled ? (
-                <Badge variant="outline" className="border-green-500/30 text-green-400">
-                  <CheckCircle className="mr-1 h-3 w-3" aria-hidden />
-                  Connesso
-                </Badge>
-              ) : !canManageIntegrations ? (
-                <Badge variant="outline" className="text-muted-foreground">
-                  <Lock className="mr-1 h-3 w-3" aria-hidden />
-                  Solo amministratori
-                </Badge>
-              ) : (
-                <SlackInstallButton workspaceId={workspaceId} />
-              )
-            }
-          >
-            <div className="grid gap-6 @3xl:grid-cols-2">
-              <div className="space-y-3 text-sm leading-relaxed text-muted-foreground">
-                {isSlackInstalled ? (
-                  <>
-                    <p>
-                      Collegato a{" "}
-                      <span className="font-medium text-foreground">
-                        {slackInstallation.slackTeamName ?? slackInstallation.slackTeamId}
-                      </span>
-                      .
-                    </p>
-                    <p>
-                      Per usarlo in un canale aggiungi il bot con{" "}
-                      <code className="font-mono text-purple-300">/invite @Unbundle</code> e poi menzionalo; puoi anche
-                      scrivergli in privato. Nei canali condivisi con altre aziende, ogni contributo va al workspace
-                      dell&apos;azienda di chi scrive.
-                    </p>
-                  </>
-                ) : (
-                  <p>
-                    Dopo il collegamento aggiungi il bot ai canali in cui vuoi usarlo scrivendo{" "}
-                    <code className="font-mono text-purple-300">/invite @Unbundle</code>. Potrai anche scegliere un
-                    canale per le notifiche agli amministratori.
-                  </p>
-                )}
-                {canManageIntegrations && (
-                  <details className="text-xs">
-                    <summary className="cursor-pointer">Dettagli tecnici per chi gestisce l&apos;app Slack</summary>
-                    <p className="mt-2">
-                      Se nei messaggi diretti compare «invio messaggi disattivato», in{" "}
-                      <a className="underline" href="https://api.slack.com/apps" target="_blank" rel="noopener noreferrer">
-                        api.slack.com/apps
-                      </a>{" "}
-                      → App Home abilita la scheda Messaggi. Le menzioni richiedono che Event Subscriptions punti a{" "}
-                      <code>…/api/slack/events</code> sullo stesso deploy che ha salvato l&apos;installazione.
-                    </p>
-                  </details>
-                )}
-              </div>
-              <div className="space-y-6">
-                {isSlackInstalled &&
-                  (canManageIntegrations ? (
-                    <SlackNotifyChannelForm workspaceId={workspaceId} initialChannelId={slackInstallation.notifyChannelId} />
-                  ) : (
-                    <p className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
-                      Il canale per le notifiche lo sceglie un amministratore dell&apos;organizzazione.
-                    </p>
-                  ))}
-                <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
-                  <p className="text-sm font-medium">Link pubblici al portfolio</p>
-                  <p className="text-xs leading-relaxed text-muted-foreground">
-                    Le notifiche su Slack portano a una copia in sola lettura del portfolio, valida 30 giorni. Si
-                    disattivano da sole quando rimuovi una persona; puoi farlo anche ora.
-                  </p>
-                  {canManageCollaborators ? <DisableShareLinksButton workspaceId={workspaceId} /> : null}
-                </div>
-              </div>
-            </div>
-          </SettingsSection>
-
-          {useCaseSettings && (
-            <SettingsSection
-              icon={MessageCircle}
-              iconClassName="bg-emerald-500/10 text-emerald-400"
-              title="WhatsApp"
-              description="Avvisa anche il gruppo WhatsApp del team quando arriva un nuovo use case."
-            >
-              <WhatsappWebhookForm
-                key={`whatsapp-${workspace.whatsappWebhookUrl ?? ""}`}
-                workspaceId={workspaceId}
-                initialUrl={workspace.whatsappWebhookUrl ?? ""}
-              />
-            </SettingsSection>
-          )}
-
-          {/* (Rilascio 9a) Granola: il blocco decide da sé che cosa mostrare; a chi non è di Lateral Space niente, e
-              allora il contenitore, vuoto, non occupa spazio. */}
-          <div id="granola" className="scroll-mt-28 empty:hidden">
-            <GranolaCard workspaceId={workspaceId} workspaceName={workspace.name} userId={session.user.id} role={access.role} flash={search.granola} />
-          </div>
-
-          {teamMcpCard && <TeamMcpCard workspaceId={workspaceId} data={teamMcpCard} />}
-          {cliCard && <CliCard workspaceId={workspaceId} tokens={cliCard.tokens} />}
-
-          <ClaudeMcpCard
-            workspaceId={workspaceId}
-            workspaceName={workspace.name}
-            canManage={canManageIntegrations}
-            useCaseHub={useCaseHub}
-            tokens={integrationTokens.map((token) => ({
-              id: token.id,
-              label: token.label,
-              provider: token.provider,
-              tokenPrefix: token.tokenPrefix,
-              scopes: token.scopes,
-              lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
-              expiresAt: token.expiresAt?.toISOString() ?? null,
-              revokedAt: token.revokedAt?.toISOString() ?? null,
-              createdAt: token.createdAt.toISOString(),
-            }))}
-          />
-          <ConnectorCard workspaceId={workspaceId} />
-        </div>
-
-        {useCaseSettings && <ValuationSettings workspaceId={workspaceId} id={USE_CASE_VALUATION_ANCHOR} />}
-
-        <SettingsSection
-          id="valutazione"
-          icon={Leaf}
-          iconClassName="bg-green-500/10 text-green-400"
-          title="Criteri ESG"
-          description={
-            <>
-              Aggiunge ambiente, impatto sociale e governance ai criteri con cui valuti gli use case.
-              {!canManageSettings && (
-                <span className="mt-1 block text-xs">Solo chi amministra il workspace può cambiarlo.</span>
-              )}
-            </>
-          }
-          aside={
-            <EsgToggle
-              workspaceId={workspaceId}
-              initialEnabled={workspace.esgEnabled === true}
-              canManage={canManageSettings}
-            />
-          }
-        />
-
-        <SubprocessorsCard
-          workspaceId={workspaceId}
-          workspaceName={workspace.name}
-          userId={session.user.id}
-          workspaceRole={access.role}
-        />
-
-        <SettingsSection
-          id="zona-pericolosa"
-          tone="danger"
-          icon={AlertTriangle}
-          iconClassName="bg-red-500/10 text-red-400"
-          title="Zona pericolosa"
-          description="Azioni definitive: non si possono annullare."
-        >
-          <DeleteWorkspaceForm workspaceId={workspaceId} workspaceName={workspace.name} canDelete={canDelete} />
-        </SettingsSection>
+      ) : null}
+      <SettingsAnchor workspaceId={workspaceId} current={tab} visible={visible} />
+      <div className="mt-8" data-settings-tab={tab}>
+        {body}
       </div>
     </PageContainer>
   );
+}
+
+/** La scheda «Collegamenti»: le righe che chi guarda può usare, e il contenuto dei loro pannelli. */
+async function connectionsBody(i: {
+  workspaceId: string;
+  workspace: { name: string; whatsappWebhookUrl: string | null };
+  session: { user: { id: string; email?: string | null; emailVerified?: boolean | null } };
+  access: { role: string; source: "organization" | "workspace" };
+  search: { slack?: string; slack_error?: string };
+  panel: string | null;
+  lateralSpace: boolean;
+  slackInstallation: Awaited<ReturnType<typeof getSlackInstallationByWorkspace>>;
+  canManageIntegrations: boolean;
+  useCaseHub: boolean;
+  useCaseSettings: boolean;
+}) {
+  const L = T.links;
+  const { workspaceId, slackInstallation } = i;
+  const [connector, teamCard, integrationTokens] = await Promise.all([
+    loadConnectorRow(workspaceId, i.access),
+    loadTeamMcpCard({ workspaceId, user: { id: i.session.user.id, email: i.session.user.email ?? null, emailVerified: i.session.user.emailVerified === true }, role: i.access.role }),
+    // La card v1 «Claude per Unbundle» e le realizzazioni: solo `provider = 'claude_mcp'` (D11, DESIGN §9.7).
+    i.canManageIntegrations ? getWorkspaceIntegrationTokens(workspaceId, { providers: [CLAUDE_MCP_PROVIDER] }) : Promise.resolve([]),
+  ]);
+  const tokens = integrationTokens.map((token) => ({
+    id: token.id,
+    label: token.label,
+    provider: token.provider,
+    tokenPrefix: token.tokenPrefix,
+    scopes: token.scopes,
+    lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
+    expiresAt: token.expiresAt?.toISOString() ?? null,
+    revokedAt: token.revokedAt?.toISOString() ?? null,
+    createdAt: token.createdAt.toISOString(),
+  }));
+  const claude = countClaudeAccesses(tokens);
+  const teamActive = teamCard?.canRevokeAll ? (teamCard.workspaceActiveCount ?? 0) : 0;
+  const showClaudeCard = i.canManageIntegrations && (!i.useCaseHub || claude.v1 > 0 || claude.realizations > 0);
+
+  const rows: ConnectionRowView[] = [];
+  const panels: Partial<Record<ConnectionKey, React.ReactNode>> = {};
+  const team = slackInstallation ? (slackInstallation.slackTeamName ?? slackInstallation.slackTeamId) : null;
+  if (slackInstallation || i.canManageIntegrations) {
+    rows.push({
+      key: "slack",
+      name: L.slack.name,
+      state: slackInstallation ? { tone: "verde", label: L.slack.on } : { tone: "grigio", label: L.slack.off },
+      fact: team ? (i.canManageIntegrations ? L.slack.onTeam(team) : `${L.slack.onTeam(team)} · ${L.slack.howTo}`) : L.slack.howToBefore,
+      action: !i.canManageIntegrations ? null : slackInstallation ? { kind: "panel", label: L.manage } : { kind: "slack", label: L.connect },
+    });
+    if (slackInstallation && i.canManageIntegrations) {
+      panels.slack = (
+        <div className="space-y-5" data-slot="slack-panel">
+          <div className="space-y-2 text-sm">
+            {team ? <p className="font-medium">{L.slack.onTeam(team)}</p> : null}
+            <p className="text-muted-foreground">{L.slack.howTo}</p>
+            <p className="text-muted-foreground">{L.slack.shared}</p>
+          </div>
+          <SlackNotifyChannelForm workspaceId={workspaceId} initialChannelId={slackInstallation.notifyChannelId} />
+          {i.lateralSpace ? (
+            <details className="text-xs text-muted-foreground">
+              <summary className="inline-flex min-h-11 cursor-pointer items-center sm:min-h-8">{T.technical}</summary>
+              <p className="mt-1">{L.slack.technicalApp}</p>
+            </details>
+          ) : null}
+        </div>
+      );
+    }
+  }
+  if (connector.kind !== "hidden") {
+    const status = connector.kind === "ready" ? connector.view.status : null;
+    rows.push({
+      key: "organizzazione",
+      name: L.organization.name,
+      state: status ? { tone: status === "attivo" ? "verde" : status === "non_configurato" ? "grigio" : "giallo", label: L.organization.state[status] } : null,
+      fact: connector.kind === "error" ? L.organization.loadFailed : null,
+      action: connector.kind === "ready" ? { kind: "panel", label: L.manage } : null,
+    });
+    if (connector.kind === "ready") panels.organizzazione = <ConnectorPanel workspaceId={workspaceId} view={connector.view} lead={L.organization.lead} />;
+  }
+  if (teamActive > 0 || showClaudeCard) {
+    const active = teamActive + (i.canManageIntegrations ? claude.v1 + claude.realizations : 0);
+    rows.push({ key: "accessi", name: L.accesses.name, state: { tone: active > 0 ? "verde" : "grigio", label: L.accesses.state(active) }, action: { kind: "panel", label: L.manage } });
+    panels.accessi = (
+      <div className="space-y-6" data-slot="accesses-panel">
+        {teamActive > 0 ? <TeamTokensRevokeAll workspaceId={workspaceId} activeCount={teamActive} /> : null}
+        {showClaudeCard ? <ClaudeMcpCard workspaceId={workspaceId} workspaceName={i.workspace.name} canManage={i.canManageIntegrations} useCaseHub={i.useCaseHub} tokens={tokens} /> : null}
+      </div>
+    );
+  }
+  if (i.useCaseSettings) {
+    const on = Boolean(i.workspace.whatsappWebhookUrl);
+    rows.push({ key: "avvisi", name: L.alerts.name, state: on ? { tone: "verde", label: L.alerts.on } : { tone: "grigio", label: L.alerts.off }, action: { kind: "panel", label: L.manage } });
+    panels.avvisi = <AlertsForm key={`avvisi-${i.workspace.whatsappWebhookUrl ?? ""}`} workspaceId={workspaceId} initialUrl={i.workspace.whatsappWebhookUrl ?? ""} />;
+  }
+
+  // Il ritorno da Slack: l'esito in una frase; il codice e che cosa fare li vede solo Lateral Space.
+  const slackError = decodeSlackErrorParam(i.search.slack_error);
+  const hint = slackError ? slackInstallErrorHint(slackError) : null;
+  const banner =
+    i.search.slack === "installed" && slackInstallation ? (
+      <p role="status" className="flex items-center gap-2 rounded-lg bg-uc-verde-bg px-3 py-2 text-sm">
+        <CheckCircle aria-hidden className="size-4 shrink-0 text-uc-verde" />
+        {L.slack.installed}
+      </p>
+    ) : i.search.slack === "installed" ? (
+      <div role="alert" className="space-y-1 rounded-lg bg-uc-giallo-bg px-3 py-2 text-sm">
+        <p className="font-medium">{L.slack.mismatchTitle}</p>
+        <p>{L.slack.mismatchBody}</p>
+        {i.lateralSpace ? (
+          <details className="text-xs text-muted-foreground">
+            <summary className="inline-flex min-h-11 cursor-pointer items-center sm:min-h-8">{T.technical}</summary>
+            <p className="mt-1">{L.slack.mismatchTechnical}</p>
+          </details>
+        ) : null}
+      </div>
+    ) : slackError ? (
+      <div role="alert" className="space-y-1 rounded-lg bg-uc-rosso-bg px-3 py-2 text-sm">
+        <p className="font-medium">{L.slack.errorTitle}</p>
+        <p>{L.slack.errorBody}</p>
+        {i.lateralSpace ? (
+          <details className="text-xs text-muted-foreground">
+            <summary className="inline-flex min-h-11 cursor-pointer items-center sm:min-h-8">{T.technical}</summary>
+            <p className="mt-1 font-mono break-words">{slackError}</p>
+            {hint ? <p className="mt-1">{hint}</p> : null}
+          </details>
+        ) : null}
+      </div>
+    ) : null;
+
+  return <ConnectionsTab workspaceId={workspaceId} rows={rows} panels={panels} banner={banner} initialPanel={i.panel} />;
 }

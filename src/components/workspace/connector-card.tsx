@@ -1,6 +1,4 @@
-import { Cable } from "lucide-react";
-import { requireSession } from "@/lib/auth/redirect-to-login";
-import { getCollaboratorAccess } from "@/lib/workspace-access";
+import "server-only";
 import { getConnectorIntegrationTokens, getConnectorSettings } from "@/lib/db/queries/workspace-integrations";
 import { CONNECTOR_TOKEN_ROTATION_NOTE, CONNECTOR_TOKEN_TTL_DAYS, CONNECTOR_TOKEN_WARNING_DAYS } from "@/lib/connector/auth";
 import { isConnectorRouteEnabled } from "@/lib/connector/config";
@@ -9,53 +7,45 @@ import {
   canManageConnectorSettings,
   connectorSettingsView,
   shouldShowConnectorCard,
+  type ConnectorSettingsAccess,
   type ConnectorSettingsView,
 } from "@/lib/connector/settings-view";
 import { logSafeError } from "@/lib/log/safe-error";
-import { SettingsSection } from "@/components/dashboard/settings-section";
 import { ConnectorCardPanel } from "./connector-card-panel";
 
 /**
- * Impostazioni › Integrazioni › «Connettore Claude» (PIANO-LAVORI §3.5, K7r; prompt WP7
- * ridotto): slug, prefisso, nome visualizzato, versione della guida, interruttore di
- * sospensione, indirizzo da copiare, regole d'accesso in sola lettura e token del
+ * Collegamenti › «Claude per l'organizzazione» (prima «Connettore Claude», PIANO-LAVORI §3.5, K7r; rilascio 10, ondata
+ * 6b): la riga e il suo pannello. Slug, prefisso, nome visualizzato, versione della guida, regole d'accesso e limiti
+ * stanno nei «Dettagli tecnici» del pannello; in vista l'interruttore di sospensione, gli avvisi e i token del
  * connettore (crea, revoca, scadenza con avviso, «esposto, da revocare»).
  *
- * Componente server, montato con una riga nella pagina delle impostazioni: controlla da
- * sé chi guarda e non mostra nulla a chi non gestisce le integrazioni del workspace, né
- * dove il connettore non è configurato (una riga di D6 senza guida non basta) e non
- * restano token attivi da revocare.
- * Le parti della scheda dello use case (nota pubblica, nascondi, doppione, oscura) sono
- * dell'hub (H3b, H4b).
+ * Solo a chi gestisce le integrazioni del workspace (`canManageConnectorSettings`), e solo dove il connettore è
+ * configurato o restano token attivi da revocare. Le parti della scheda dello use case (nota pubblica, nascondi,
+ * doppione, oscura) sono dell'hub (H3b, H4b).
  */
-export async function ConnectorCard({ workspaceId }: { workspaceId: string }) {
-  const session = await requireSession();
-  const access = await getCollaboratorAccess(session.user.id, workspaceId);
-  if (!canManageConnectorSettings(access)) return null;
+export type ConnectorRow = { kind: "hidden" } | { kind: "error" } | { kind: "ready"; view: ConnectorSettingsView };
 
-  let view: ConnectorSettingsView;
+/** Lo stato del connettore per chi guarda: nascosto, non leggibile (lo dice la riga), o pronto. */
+export async function loadConnectorRow(workspaceId: string, access: ConnectorSettingsAccess | null | undefined): Promise<ConnectorRow> {
+  if (!canManageConnectorSettings(access)) return { kind: "hidden" };
   try {
     const [settings, tokens] = await Promise.all([getConnectorSettings(workspaceId), getConnectorIntegrationTokens(workspaceId)]);
-    view = connectorSettingsView(settings, tokens);
+    const view = connectorSettingsView(settings, tokens);
+    return shouldShowConnectorCard(view) ? { kind: "ready", view } : { kind: "hidden" };
   } catch (error) {
     // Un guasto della scheda non deve fermare il resto delle impostazioni.
     logSafeError("connector-settings", "load_failed", error);
-    return (
-      <SettingsSection
-        id="connettore-claude"
-        icon={Cable}
-        iconClassName="bg-orange-500/10 text-orange-400"
-        title="Connettore Claude"
-        description="Non riesco a leggere la configurazione del connettore. Ricarica la pagina tra poco."
-      />
-    );
+    return { kind: "error" };
   }
-  if (!shouldShowConnectorCard(view)) return null;
+}
 
+/** Il pannello del connettore, pronto: la parte interattiva con le regole del server e dell'ambiente. */
+export function ConnectorPanel({ workspaceId, view, lead }: { workspaceId: string; view: ConnectorSettingsView; lead: string }) {
   return (
     <ConnectorCardPanel
       workspaceId={workspaceId}
       view={view}
+      lead={lead}
       routeEnabled={isConnectorRouteEnabled(process.env)}
       policy={{ ttlDays: CONNECTOR_TOKEN_TTL_DAYS, warningDays: CONNECTOR_TOKEN_WARNING_DAYS, rotationNote: CONNECTOR_TOKEN_ROTATION_NOTE }}
       defaultLabel={CONNECTOR_TOKEN_DEFAULT_LABEL}

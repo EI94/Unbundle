@@ -47,11 +47,20 @@ export function accountHref(workspaceId: string, part?: AccountPart): string {
 }
 
 /**
- * «Regole delle call ›» (Granola, Lateral Space): le regole di questo cliente stanno nel blocco di Granola delle
- * Impostazioni, che ogni persona di Lateral Space apre anche senza gestire il workspace (senza la voce nella barra).
- * L'ancora non è `#granola`: quella riapre il foglio.
+ * L'ancora delle regole delle call di questo cliente in Contesto › Fonti, sotto Granola (la piega dell'ondata 6a,
+ * `granola-inbox-panel.tsx`): un test la tiene uguale.
  */
-export const granolaRulesHref = (workspaceId: string) => `/dashboard/${workspaceId}/settings#${GRANOLA_RULES_ANCHOR}`;
+export const GRANOLA_SOURCES_RULES_ANCHOR = "granola-regole-cliente";
+
+/**
+ * «Regole delle call ›» (Granola, Lateral Space). (Rilascio 10, ondata 6b) Le regole di questo cliente stanno in
+ * Contesto › Fonti, sotto Granola, che ogni persona di Lateral Space apre anche senza gestire il workspace: le
+ * Impostazioni non le hanno più. La vecchia ancora, `settings#granola-regole` (`GRANOLA_RULES_ANCHOR`), porta qui.
+ */
+export const granolaRulesHref = (workspaceId: string) => `/dashboard/${workspaceId}/contesto?vista=fonti#${GRANOLA_SOURCES_RULES_ANCHOR}`;
+
+/** La vecchia ancora delle regole nelle Impostazioni, che ora porta a `granolaRulesHref`. */
+export const OLD_GRANOLA_RULES_ANCHOR = GRANOLA_RULES_ANCHOR;
 
 /** L'`id` della sezione di una parte: il foglio ci porta il fuoco quando si apre su di lei. */
 export const accountSectionId = (part: AccountPart) => `account-${part}`;
@@ -92,6 +101,10 @@ export interface AccountClaude {
   url: string;
   connectorName: string;
   claudeCodeName: string;
+  /** (Ondata 6b) Da quanti giorni prima della scadenza c'è l'avviso. */
+  warningDays: number;
+  /** (Ondata 6b) La skill «registra-ai-lab», solo a Lateral Space (che conduce gli AI Lab): null per gli altri. */
+  skillName: string | null;
 }
 
 /** Quello che il foglio riceve: una parte è null quando chi guarda non la vede (lo zero non si vede). */
@@ -109,7 +122,10 @@ export type AccountSheetResponse = { ok: true; account: AccountSheetData } | { o
 /** La rotta che il foglio legge quando si apre. */
 export const accountApiPath = (workspaceId: string) => `/api/workspaces/${encodeURIComponent(workspaceId)}/account`;
 
-/** Il comando per Claude Code, con il token appena creato (lo stesso della card «Claude per il team»). */
+/** Al posto dell'accesso, nella guida «Come collegare Claude»: chi la segue ci mette il suo. */
+export const ACCESS_PLACEHOLDER = "IL_TUO_ACCESSO";
+
+/** Il comando per Claude Code, con l'accesso appena creato (o il segnaposto della guida). */
 export function claudeCodeCommand(claude: Pick<AccountClaude, "claudeCodeName" | "url">, token: string): string {
   return `claude mcp add --transport http ${claude.claudeCodeName} ${claude.url} --header "Authorization: Bearer ${token}"`;
 }

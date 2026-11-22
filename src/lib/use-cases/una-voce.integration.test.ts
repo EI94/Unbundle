@@ -638,39 +638,48 @@ test("Campanella, «ho aperto questa riga»: per persona, e non spegne ai reviso
 
 // ─── Impostazioni (DESIGN §13, §14.3; PIANO-LAVORI H4i) ───────────────
 
-test("Impostazioni: «Valutazione» e WhatsApp solo con l'area accesa e solo a chi gestisce il workspace", opts, async () => {
+test("Impostazioni: «Valutazione» e «Altri avvisi» (WhatsApp) solo con l'area accesa e solo a chi gestisce il workspace", opts, async () => {
   areaOn();
   await q(`UPDATE workspaces SET whatsapp_webhook_url = $2 WHERE id = ANY($1::uuid[])`, [[ids.on, ids.off], "https://relay.example.test/hook"]);
-  const settings = async (person: Person, workspaceId: string) => {
-    const result = await open(pages.settings, person, { workspaceId });
+  // (Rilascio 10, ondata 6b) Cinque schede, ognuna al suo indirizzo (`?scheda=`): la pagina rende solo la scheda aperta.
+  const settings = async (person: Person, workspaceId: string, scheda?: string) => {
+    const result = await open(pages.settings, person, { workspaceId }, scheda ? { scheda } : {});
     assert.equal(result.digest, null);
     const elements = elementsOf(result.element);
+    const links = elements.find((element) => typeName(element) === "ConnectionsTab")?.props as { rows: Array<{ key: string }>; panels: Record<string, { props: Record<string, unknown> }> } | undefined;
+    const tabs = elements.find((element) => typeName(element) === "SegmentedNav")?.props.items as Array<{ key: string; href: string }> | undefined;
     return {
-      valuation: elements.filter((element) => typeName(element) === "ValuationSettings").map((element) => element.props),
-      whatsapp: elements.filter((element) => typeName(element) === "WhatsappWebhookForm").map((element) => element.props),
-      anchors: elements.map((element) => element.props.href).filter((href): href is string => typeof href === "string" && href.startsWith("#")),
+      valuation: elements.filter((element) => typeName(element) === "ValuationSettings").map(({ props }) => ({ workspaceId: props.workspaceId, id: props.id })),
+      rows: links?.rows.map((row) => row.key) ?? [],
+      alerts: links?.panels.avvisi?.props ?? null,
+      tabs: tabs?.map((item) => item.key) ?? [],
+      open: elements.find((element) => typeof element.props["data-settings-tab"] === "string")?.props["data-settings-tab"],
       ids: elements.map((element) => element.props.id).filter((id): id is string => typeof id === "string"),
     };
   };
 
   for (const person of ["lead", "manager"] as const) {
-    const on = await settings(person, ids.on);
-    assert.deepEqual(on.valuation, [{ workspaceId: ids.on, id: "valutazione-use-case" }], `${person}: Valutazione`);
-    assert.equal(on.whatsapp.length, 1, `${person}: WhatsApp`);
-    assert.equal(on.whatsapp[0].initialUrl, "https://relay.example.test/hook");
-    assert.equal(on.whatsapp[0].workspaceId, ids.on);
-    assert.deepEqual(on.anchors, ["#persone", "#integrazioni", "#valutazione-use-case", "#zona-pericolosa"]);
-    assert.ok(on.ids.includes("valutazione"), "«Criteri ESG» tiene la sua ancora");
+    const valuation = await settings(person, ids.on, "valutazione");
+    assert.equal(valuation.open, "valutazione", person);
+    assert.deepEqual(valuation.valuation, [{ workspaceId: ids.on, id: "valutazione-use-case" }], `${person}: Valutazione`);
+    assert.ok(valuation.ids.includes("valutazione"), "«Criteri ESG» tiene la sua ancora, dentro il modello");
+    assert.ok(valuation.tabs.includes("team") && valuation.tabs.includes("collegamenti") && valuation.tabs.includes("valutazione"), `${person}: ${valuation.tabs.join(",")}`);
+    const links = await settings(person, ids.on, "collegamenti");
+    assert.ok(links.rows.includes("avvisi"), `${person}: «Altri avvisi»`);
+    assert.equal(links.alerts?.initialUrl, "https://relay.example.test/hook");
+    assert.equal(links.alerts?.workspaceId, ids.on);
   }
   for (const person of ["builder", "contributor"] as const) {
-    const on = await settings(person, ids.on);
-    assert.deepEqual([on.valuation.length, on.whatsapp.length], [0, 0], `${person}: niente`);
-    assert.deepEqual(on.anchors, ["#persone", "#integrazioni", "#valutazione", "#zona-pericolosa"]);
+    const on = await settings(person, ids.on, "valutazione");
+    assert.equal(on.open, "team", `${person}: la scheda che non ha porta a Team`);
+    assert.deepEqual(on.valuation, [], `${person}: niente`);
+    assert.ok(!on.tabs.includes("valutazione") && !on.tabs.includes("collegamenti"), `${person}: ${on.tabs.join(",")}`);
   }
-  // Area spenta: le impostazioni di oggi, anche per chi gestisce il workspace.
-  const off = await settings("lead", ids.off);
-  assert.deepEqual([off.valuation.length, off.whatsapp.length], [0, 0]);
-  assert.deepEqual(off.anchors, ["#persone", "#integrazioni", "#valutazione", "#zona-pericolosa"]);
+  // Area spenta: niente «Valutazione» degli use case né «Altri avvisi», anche per chi gestisce il workspace; i criteri ESG sì.
+  const off = await settings("lead", ids.off, "valutazione");
+  assert.deepEqual(off.valuation, []);
+  assert.ok(off.ids.includes("valutazione"));
+  assert.ok(!off.tabs.includes("collegamenti"), off.tabs.join(","));
 });
 
 // ─── Home (rilascio 10, ondata 2b; al posto dell'Overview, DESIGN §2.5) ─

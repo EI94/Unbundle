@@ -62,7 +62,7 @@ test("revisore di Lateral Space che ha chiesto al referente: email, Claude (solo
   reset({ team: TEAM, cli: { tokens: [{ id: "c1" }] }, granola: { available: true, connected: true, status: "attiva", accountEmail: "persona@ls.test", plan: "Business" } });
   const account = await loadAccountSheet({ workspaceId: WS, user: LS, role: "transformation_lead", env: ENV });
   assert.deepEqual(account.email, { on: false });
-  // Mai il conto dei token degli altri né «Revoca tutti»: restano in Impostazioni.
+  // Mai il conto dei token degli altri né «Revoca tutti»: restano in Impostazioni › Collegamenti.
   assert.deepEqual(account.claude, {
     status: "pronta",
     tokens: [{ id: "t1", label: "Claude Code", active: true }],
@@ -72,6 +72,8 @@ test("revisore di Lateral Space che ha chiesto al referente: email, Claude (solo
     url: "https://esempio.test/api/mcp/team",
     connectorName: "Unbundle Use case",
     claudeCodeName: "unbundle-use-case",
+    warningDays: 14,
+    skillName: "registra-ai-lab",
   });
   assert.deepEqual(account.terminal, { links: [{ id: "c1" }] });
   assert.deepEqual(account.granola, { state: "collegato", accountEmail: "persona@ls.test", plan: "Business" });

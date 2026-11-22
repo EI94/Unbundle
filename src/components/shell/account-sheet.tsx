@@ -31,8 +31,8 @@ async function readAccount(workspaceId: string): Promise<AccountSheetState> {
  * sotto il nome, o da un link che lo porta, anche su una parte: `?account=claude`), a destra su desktop e a tutto
  * schermo al telefono; «Indietro» e ✕ lo chiudono. Quando si apre legge preferenze e accessi di chi guarda dalla rotta
  * del workspace, e li rilegge dopo ogni sua azione. Il ritorno da Granola (`settings?granola=…#granola`) lo apre su
- * «Granola», che dice com'è andata (`?granola=`); le regole delle call restano in Impostazioni, a un'ancora che il
- * foglio non intercetta (`granolaRulesHref`), e anche chi non gestisce il workspace ci arriva da qui.
+ * «Granola», che dice com'è andata (`?granola=`); le regole delle call stanno in Contesto › Fonti (`granolaRulesHref`),
+ * e anche chi non gestisce il workspace ci arriva da qui.
  */
 export function AccountSheet({
   workspaceId,

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { startTransition, useActionState, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Copy, GraduationCap, Link2, MessageSquareText, RotateCcw, Share2, UserPlus } from "lucide-react";
 import {
   createWorkspaceInvitationAction,
   recreateWorkspaceInvitationAction,
@@ -16,22 +17,26 @@ import {
 import { CONFIRM_TEXT } from "@/lib/confirm-text";
 import { WORKSPACE_INVITE_EXPIRES_IN_DAYS } from "@/lib/workspace-invite-config";
 import { INVITABLE_ROLES, ROLE_INFO, roleLabel } from "@/lib/workspace-roles";
+import { Fold } from "@/components/ui-10/fold";
+import { SideSheet, useSheetParam } from "@/components/ui-10/side-sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog, useSubmitConfirmation } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { SettingsSection } from "@/components/dashboard/settings-section";
-import { Users, Link2, Copy, Share2, RotateCcw, GraduationCap, MessageSquareText } from "lucide-react";
+import { SETTINGS_TEXT } from "./settings-text";
 
 const ASK = CONFIRM_TEXT.people;
+const T = SETTINGS_TEXT.team;
 
 /**
- * Persone del workspace: chi ha accesso e i link per invitarne altre.
+ * Impostazioni › Team (rilascio 10, ondata 6b, docs/ui-10/PROPOSTA-10.md §3.10; prima la sezione «Persone»): chi ha
+ * accesso, con «(tu)» e il ruolo; a chi gestisce il workspace il ruolo da cambiare e «Rimuovi», con la conferma
+ * dell'app; «Invita», bordato, apre il pannello dell'invito (`?apri=invita`: e-mail, ruolo, il link da copiare o
+ * condividere); gli inviti aperti e quelli passati in due pieghe chiuse; i partecipanti ai corsi.
  *
- * Due cose da non far sbagliare a chi la usa: ogni link vale per UNA persona
- * (WORKSPACE_INVITE_MAX_USES = 1), e i partecipanti ai corsi non sono
- * collaboratori (si gestiscono da Formazione, non da qui).
+ * Due cose da non far sbagliare a chi la usa: ogni link vale per UNA persona (WORKSPACE_INVITE_MAX_USES = 1), e i
+ * partecipanti ai corsi non sono collaboratori (si gestiscono da Formazione, non da qui).
  */
 
 type Member = {
@@ -62,15 +67,11 @@ const INITIAL_CREATE: WorkspaceCollaborationActionState<CreateWorkspaceInviteDat
 const INITIAL_MUTATION: WorkspaceCollaborationActionState<WorkspaceInvitationMutationData> = { ok: true };
 const INITIAL_MEMBER: WorkspaceCollaborationActionState<WorkspaceMemberMutationData> = { ok: true };
 
-const statusLabels: Record<InviteStatus, string> = {
-  active: "In attesa",
-  expired: "Scaduto",
-  used: "Usato",
-  revoked: "Disattivato",
-};
+/** Il pannello dell'invito (`?apri=invita`). */
+export const INVITE_PANEL = "invita";
+const acceptInvitePanel = (raw: string | null) => (raw === INVITE_PANEL ? INVITE_PANEL : null);
 
-const SELECT_CLASS =
-  "h-10 w-full rounded-lg border border-input bg-background px-2 text-base sm:h-8 sm:text-sm";
+const SELECT_CLASS = "h-11 w-full rounded-lg border border-input bg-background px-2 text-base sm:h-8 sm:text-sm";
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("it-IT", {
@@ -109,25 +110,22 @@ function useCanShare() {
   return useSyncExternalStore(
     subscribeNothing,
     () => typeof navigator.share === "function",
-    () => false
+    () => false,
   );
 }
 
 function inviteMessage(workspaceName: string, invite: CreateWorkspaceInviteData) {
-  const who = invite.email ? "" : " (vale solo per te)";
-  return (
-    `Ciao! Ti invito a collaborare su «${workspaceName}» in Unbundle come ${roleLabel(invite.role)}.\n` +
-    `Apri il link entro il ${formatDate(invite.expiresAt)}${who}:\n${invite.inviteUrl}`
-  );
+  return `${T.message(workspaceName, roleLabel(invite.role), formatDate(invite.expiresAt), !invite.email)}${invite.inviteUrl}`;
 }
 
-export function WorkspaceCollaborationCard({
+export function TeamTab({
   workspaceId,
   workspaceName,
   members,
   invitations,
   canManage,
   currentUserId,
+  initialPanel = null,
 }: {
   workspaceId: string;
   workspaceName: string;
@@ -135,12 +133,15 @@ export function WorkspaceCollaborationCard({
   invitations: Invitation[];
   canManage: boolean;
   currentUserId?: string;
+  /** `?apri=` letto sul server: `invita` apre il pannello dell'invito. */
+  initialPanel?: string | null;
 }) {
   const createAction = createWorkspaceInvitationAction.bind(null, workspaceId);
   const recreateAction = recreateWorkspaceInvitationAction.bind(null, workspaceId);
   const revokeAction = revokeWorkspaceInvitationAction.bind(null, workspaceId);
   const memberRoleAction = updateWorkspaceMemberRoleAction.bind(null, workspaceId);
   const memberRemoveAction = removeWorkspaceMemberAction.bind(null, workspaceId);
+  const [panel, setPanel] = useSheetParam<string>({ initial: canManage ? initialPanel : null, accept: acceptInvitePanel });
 
   // Campi controllati: React 19 svuota i moduli dopo ogni azione, anche quando
   // fallisce, e l'email rifiutata o il ruolo scelto non devono sparire.
@@ -159,7 +160,7 @@ export function WorkspaceCollaborationCard({
       }
       return result;
     },
-    INITIAL_CREATE
+    INITIAL_CREATE,
   );
   const [recreateState, recreateFormAction, recreatePending] = useActionState(
     async (previous: WorkspaceCollaborationActionState<CreateWorkspaceInviteData>, formData: FormData) => {
@@ -170,7 +171,7 @@ export function WorkspaceCollaborationCard({
       }
       return result;
     },
-    INITIAL_CREATE
+    INITIAL_CREATE,
   );
   const [revokeState, revokeFormAction, revokePending] = useActionState(revokeAction, INITIAL_MUTATION);
   const [memberRoleState, memberRoleFormAction, memberRolePending] = useActionState(memberRoleAction, INITIAL_MEMBER);
@@ -186,15 +187,11 @@ export function WorkspaceCollaborationCard({
   const canShare = useCanShare();
   const linkBoxRef = useRef<HTMLDivElement>(null);
 
-  const revokedId = revokeState.ok ? revokeState.data?.invitationId ?? null : null;
+  const revokedId = revokeState.ok ? (revokeState.data?.invitationId ?? null) : null;
   const localInvitations = useMemo(() => {
-    const extra = createdLinks
-      .filter((data) => !invitations.some((invite) => invite.id === data.invitationId))
-      .map(invitationFromAction);
+    const extra = createdLinks.filter((data) => !invitations.some((invite) => invite.id === data.invitationId)).map(invitationFromAction);
     const replaced = new Set([...createdLinks.map((data) => data.replacedInvitationId), revokedId].filter(Boolean));
-    return [...extra, ...invitations].map((invite) =>
-      replaced.has(invite.id) && !invite.revokedAt ? { ...invite, revokedAt: new Date(now).toISOString() } : invite
-    );
+    return [...extra, ...invitations].map((invite) => (replaced.has(invite.id) && !invite.revokedAt ? { ...invite, revokedAt: new Date(now).toISOString() } : invite));
   }, [createdLinks, invitations, revokedId, now]);
 
   // Il riquadro mostra il link più recente creato qui, solo se è ancora
@@ -207,19 +204,19 @@ export function WorkspaceCollaborationCard({
 
   useEffect(() => {
     if (lastAction !== "recreate" || !recreateState.ok || !recreateState.data) return;
-    // Il nuovo link compare in cima alla colonna: lo si porta in vista, perché
-    // il pulsante premuto può essere molto più in basso.
-    linkBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-    linkBoxRef.current?.querySelector("input")?.focus();
-  }, [lastAction, recreateState.ok, recreateState.data]);
+    // «Nuovo link» di un invito aperto: il link nuovo si vede nel pannello dell'invito.
+    setPanel(INVITE_PANEL);
+  }, [lastAction, recreateState.ok, recreateState.data, setPanel]);
+  useEffect(() => {
+    if (!latestInvite) return;
+    linkBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [latestInvite]);
 
   const collaborators = members.filter((member) => member.role !== "learner");
   const learnerCount = members.length - collaborators.length;
 
   const { open, history } = useMemo(() => {
-    const sorted = [...localInvitations].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+    const sorted = [...localInvitations].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     return {
       open: sorted.filter((invite) => getInviteStatus(invite, now) === "active"),
       history: sorted.filter((invite) => getInviteStatus(invite, now) !== "active"),
@@ -228,105 +225,230 @@ export function WorkspaceCollaborationCard({
 
   const feedbackState = lastAction === "recreate" ? recreateState : lastAction === "revoke" ? revokeState : createState;
   // «Link creato» è già detto dal riquadro del link: si mostrano solo errori e conferme di revoca.
-  const feedback =
-    feedbackState.message && (!feedbackState.ok || lastAction === "revoke") ? feedbackState.message : null;
-
+  const feedback = feedbackState.message && (!feedbackState.ok || lastAction === "revoke") ? feedbackState.message : null;
   const memberMessage = lastMemberAction === "remove" ? memberRemoveState : lastMemberAction === "role" ? memberRoleState : null;
 
-  return (
-    <SettingsSection
-      id="persone"
-      icon={Users}
-      iconClassName="bg-emerald-500/10 text-emerald-400"
-      title="Persone"
-      description="Invita colleghi a lavorare solo su questo workspace, con il ruolo che scegli tu. Non vedranno gli altri workspace dell'organizzazione."
-      aside={
-        <Badge variant="secondary" data-testid="collaborator-count">
-          {collaborators.length} {collaborators.length === 1 ? "persona" : "persone"} con accesso
-        </Badge>
-      }
-    >
-      <div className="grid gap-8 @4xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] @4xl:items-start">
-        <div className="space-y-4 @4xl:sticky @4xl:top-32">
-          {canManage ? (
-            <form
-              method="post"
-              className="@container rounded-xl border bg-muted/20 p-4"
-              data-testid="workspace-invite-create-form"
-              onSubmit={(event) => {
-                // Invio senza il reset automatico di React: azzererebbe il menu
-                // del ruolo nel DOM lasciando lo stato com'era.
-                event.preventDefault();
-                setLastAction("create");
-                const formData = new FormData(event.currentTarget);
-                startTransition(() => createFormAction(formData));
-              }}
-            >
-              <div className="mb-4 flex items-center gap-2 text-sm font-medium">
-                <Link2 className="h-4 w-4" aria-hidden />
-                Invita un collega
-              </div>
-              <div className="grid gap-4 @lg:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="invite-email">Email del collega (facoltativa)</Label>
-                  <Input
-                    id="invite-email"
-                    name="email"
-                    type="email"
-                    value={inviteEmail}
-                    onChange={(event) => setInviteEmail(event.target.value)}
-                    autoComplete="off"
-                    placeholder="collega@azienda.it"
-                    className="h-10 text-base sm:h-8 sm:text-sm"
-                    aria-invalid={!!createState.fieldErrors?.email}
-                    aria-describedby="invite-email-hint"
-                  />
-                  <p id="invite-email-hint" className={`text-xs ${createState.fieldErrors?.email ? "text-red-300" : "text-muted-foreground"}`}>
-                    {createState.fieldErrors?.email ?? "Se la indichi, solo chi entra con questa email potrà usare il link."}
-                  </p>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="invite-role">Ruolo</Label>
-                  <select
-                    id="invite-role"
-                    name="role"
-                    value={inviteRole}
-                    onChange={(event) => setInviteRole(event.target.value)}
-                    className={SELECT_CLASS}
-                  >
-                    {INVITABLE_ROLES.map((role) => (
-                      <option key={role} value={role}>
-                        {ROLE_INFO[role].label} – {ROLE_INFO[role].summary}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <p className="mt-4 rounded-lg bg-background/60 px-3 py-2 text-xs text-muted-foreground" data-testid="single-use-note">
-                <span className="font-medium text-foreground">Ogni link vale per una sola persona</span> e scade tra{" "}
-                {WORKSPACE_INVITE_EXPIRES_IN_DAYS} giorni. Per più colleghi, crea un link per ciascuno.
-              </p>
-              <Button type="submit" variant="outline" className="mt-4 h-11 w-full sm:h-8 @lg:w-auto" disabled={createPending}>
-                {createPending ? "Creo il link…" : "Crea link"}
-              </Button>
-              {feedback ? (
-                <div
-                  className={`mt-4 rounded-lg border px-3 py-2 text-sm ${
-                    feedbackState.ok ? "border-green-500/30 bg-green-500/10 text-green-300" : "border-red-500/30 bg-red-500/10 text-red-300"
-                  }`}
-                  role={feedbackState.ok ? "status" : "alert"}
-                >
-                  {feedback}
-                </div>
-              ) : null}
-            </form>
-          ) : (
-            <div className="rounded-xl border bg-muted/20 p-4 text-sm text-muted-foreground">
-              Puoi vedere chi ha accesso. Per invitare qualcuno chiedi a chi amministra il workspace.
-            </div>
-          )}
+  const rowProps = { revokeFormAction, recreateFormAction, revokePending, recreatePending, onRevoke: () => setLastAction("revoke"), onRecreate: () => setLastAction("recreate") };
 
-          {canManage && latestInvite?.inviteUrl ? (
+  return (
+    <div id="persone" className="scroll-mt-28 space-y-8" data-slot="settings-team">
+      <section className="space-y-3" aria-labelledby="who-has-access">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 id="who-has-access" className="text-base font-semibold" data-testid="collaborator-count">
+            {T.who(collaborators.length)}
+          </h2>
+          {canManage ? (
+            <Button type="button" variant="outline" className="min-h-11 sm:min-h-9" aria-haspopup="dialog" onClick={() => setPanel(INVITE_PANEL)} data-testid="workspace-invite-open">
+              <UserPlus aria-hidden />
+              {T.invite}
+            </Button>
+          ) : null}
+        </div>
+        <ul className="divide-y rounded-xl border">
+          {collaborators.map((member) => {
+            const isManageable = canManage && member.source === "workspace" && member.userId !== currentUserId;
+            const knownRole = (INVITABLE_ROLES as readonly string[]).includes(member.role);
+            return (
+              <li key={member.userId} className="flex min-h-11 flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between" data-testid="workspace-member-row" data-member-email={member.email}>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium" title={member.name ?? member.email}>
+                    {member.name ?? member.email}
+                    {member.userId === currentUserId && <span className="font-normal text-muted-foreground"> {T.you}</span>}
+                  </div>
+                  <div className="truncate text-xs text-muted-foreground" title={member.email}>
+                    {member.email} · {member.source === "organization" ? T.fromOrganization : T.invited}
+                  </div>
+                </div>
+                <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+                  {isManageable ? (
+                    <>
+                      <form action={memberRoleFormAction} className="min-w-0 flex-1 sm:flex-none">
+                        <input type="hidden" name="userId" value={member.userId} />
+                        <select
+                          key={`${member.userId}-${member.role}`}
+                          name="role"
+                          defaultValue={member.role}
+                          disabled={memberRolePending}
+                          aria-label={T.roleOf(member.email)}
+                          data-testid="workspace-member-role-select"
+                          className={`${SELECT_CLASS} sm:w-56`}
+                          onChange={(event) => {
+                            const nextRole = event.target.value;
+                            event.target.value = member.role;
+                            roleSelect.current = event.target;
+                            setRoleChange({ email: member.email, role: nextRole });
+                          }}
+                        >
+                          {!knownRole && (
+                            <option value={member.role} disabled>
+                              {roleLabel(member.role)}
+                            </option>
+                          )}
+                          {INVITABLE_ROLES.map((role) => (
+                            <option key={role} value={role}>
+                              {ROLE_INFO[role].label}
+                            </option>
+                          ))}
+                        </select>
+                      </form>
+                      <form
+                        action={memberRemoveFormAction}
+                        onSubmit={(event) => {
+                          if (!removal.ask(event, member)) return;
+                          setLastMemberAction("remove");
+                        }}
+                      >
+                        <input type="hidden" name="userId" value={member.userId} />
+                        <Button type="submit" variant="ghost" className="h-11 sm:h-8" disabled={memberRemovePending} aria-label={T.removeOf(member.email)} data-testid="workspace-member-remove">
+                          {T.remove}
+                        </Button>
+                      </form>
+                    </>
+                  ) : (
+                    <Badge variant="outline">{roleLabel(member.role)}</Badge>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+        {roleChange ? (
+          <ConfirmDialog
+            open
+            onOpenChange={(isOpen) => {
+              if (!isOpen) setRoleChange(null);
+            }}
+            title={ASK.roleTitle(roleChange.email, roleLabel(roleChange.role))}
+            description={ASK.roleBody}
+            confirmLabel={ASK.roleConfirm}
+            onConfirm={() => {
+              const select = roleSelect.current;
+              setRoleChange(null);
+              if (!select) return;
+              select.value = roleChange.role;
+              setLastMemberAction("role");
+              select.form?.requestSubmit();
+            }}
+          />
+        ) : null}
+        {removal.target ? (
+          <ConfirmDialog open onOpenChange={removal.onOpenChange} title={ASK.removeTitle(removal.target.email)} description={ASK.removeBody} confirmLabel={ASK.removeConfirm} destructive onConfirm={removal.confirm} />
+        ) : null}
+        {memberMessage?.message ? (
+          <p className={`text-sm ${memberMessage.ok ? "text-uc-verde" : "text-destructive"}`} role={memberMessage.ok ? "status" : "alert"}>
+            {memberMessage.message}
+          </p>
+        ) : null}
+        {learnerCount > 0 ? (
+          <div className="flex flex-col gap-2 rounded-xl border border-dashed p-3 text-sm sm:flex-row sm:items-center sm:justify-between" data-testid="learner-summary">
+            <p className="flex items-start gap-2 text-muted-foreground">
+              <GraduationCap className="mt-0.5 size-4 shrink-0" aria-hidden />
+              <span>{T.learners(learnerCount)}</span>
+            </p>
+            {canManage ? (
+              <Link href={`/dashboard/${workspaceId}/learning/admin`} className="inline-flex min-h-11 shrink-0 items-center text-sm font-medium underline underline-offset-4 sm:min-h-0">
+                {T.learnersLink}
+              </Link>
+            ) : null}
+          </div>
+        ) : null}
+      </section>
+
+      {canManage && (open.length > 0 || history.length > 0 || feedback) ? (
+        <div>
+          {feedback ? (
+            <p className={`mb-3 text-sm ${feedbackState.ok ? "text-uc-verde" : "text-destructive"}`} role={feedbackState.ok ? "status" : "alert"}>
+              {feedback}
+            </p>
+          ) : null}
+          {open.length > 0 ? (
+            <Fold id="inviti" title={T.invites(open.length)}>
+              <ul className="divide-y rounded-xl border">
+                {open.map((invite) => (
+                  <InviteRow key={invite.id} invite={invite} status="active" {...rowProps} />
+                ))}
+              </ul>
+            </Fold>
+          ) : null}
+          {history.length > 0 ? (
+            <Fold id="inviti-passati" title={T.history(history.length)}>
+              <ul className="divide-y rounded-xl border" data-testid="invite-history">
+                {history.map((invite) => (
+                  <InviteRow key={invite.id} invite={invite} status={getInviteStatus(invite, now)} {...rowProps} />
+                ))}
+              </ul>
+            </Fold>
+          ) : null}
+        </div>
+      ) : null}
+
+      {canManage ? (
+        <SideSheet
+          open={panel === INVITE_PANEL}
+          onClose={() => setPanel(null)}
+          title={T.inviteTitle}
+          footer={
+            <Button type="submit" form="workspace-invite-create-form" className="min-h-11 sm:min-h-9" disabled={createPending}>
+              <Link2 aria-hidden />
+              {createPending ? T.creating : T.create}
+            </Button>
+          }
+        >
+          <form
+            id="workspace-invite-create-form"
+            method="post"
+            className="space-y-4"
+            data-testid="workspace-invite-create-form"
+            onSubmit={(event) => {
+              // Invio senza il reset automatico di React: azzererebbe il menu
+              // del ruolo nel DOM lasciando lo stato com'era.
+              event.preventDefault();
+              setLastAction("create");
+              const formData = new FormData(event.currentTarget);
+              startTransition(() => createFormAction(formData));
+            }}
+          >
+            <div className="space-y-1.5">
+              <Label htmlFor="invite-email">{T.email}</Label>
+              <Input
+                id="invite-email"
+                name="email"
+                type="email"
+                value={inviteEmail}
+                onChange={(event) => setInviteEmail(event.target.value)}
+                autoComplete="off"
+                placeholder="collega@azienda.it"
+                className="h-11 text-base sm:h-9 sm:text-sm"
+                aria-invalid={!!createState.fieldErrors?.email}
+                aria-describedby="invite-email-hint"
+              />
+              <p id="invite-email-hint" className={`text-xs ${createState.fieldErrors?.email ? "text-destructive" : "text-muted-foreground"}`}>
+                {createState.fieldErrors?.email ?? T.emailHint}
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="invite-role">{T.role}</Label>
+              <select id="invite-role" name="role" value={inviteRole} onChange={(event) => setInviteRole(event.target.value)} className={SELECT_CLASS} aria-describedby="invite-role-hint">
+                {INVITABLE_ROLES.map((role) => (
+                  <option key={role} value={role}>
+                    {ROLE_INFO[role].label}
+                  </option>
+                ))}
+              </select>
+              <p id="invite-role-hint" className="text-xs text-muted-foreground">
+                {ROLE_INFO[inviteRole as (typeof INVITABLE_ROLES)[number]]?.summary ?? ""}
+              </p>
+            </div>
+            <p className="text-xs text-muted-foreground" data-testid="single-use-note">
+              {T.oneLink(WORKSPACE_INVITE_EXPIRES_IN_DAYS)}
+            </p>
+            {lastAction === "create" && !createState.ok && createState.message && !createState.fieldErrors?.email ? (
+              <p className="text-sm text-destructive" role="alert">
+                {createState.message}
+              </p>
+            ) : null}
+          </form>
+          {latestInvite?.inviteUrl ? (
             <div ref={linkBoxRef}>
               <InviteLinkBox
                 key={latestInvite.invitationId}
@@ -339,201 +461,9 @@ export function WorkspaceCollaborationCard({
               />
             </div>
           ) : null}
-        </div>
-
-        <div className="min-w-0 space-y-8">
-          <section className="@container space-y-3" aria-labelledby="who-has-access">
-            <div className="flex items-baseline justify-between gap-3">
-              <h3 id="who-has-access" className="text-sm font-semibold">Chi ha accesso</h3>
-              <span className="text-xs text-muted-foreground">Dall&apos;organizzazione o su invito</span>
-            </div>
-            <ul className="divide-y rounded-xl border">
-              {collaborators.map((member) => {
-                const isManageable = canManage && member.source === "workspace" && member.userId !== currentUserId;
-                const knownRole = (INVITABLE_ROLES as readonly string[]).includes(member.role);
-                return (
-                  <li
-                    key={member.userId}
-                    className="flex flex-col gap-3 p-3 @xl:flex-row @xl:items-center @xl:justify-between"
-                    data-testid="workspace-member-row"
-                    data-member-email={member.email}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium" title={member.name ?? member.email}>
-                        {member.name ?? member.email}
-                        {member.userId === currentUserId && <span className="font-normal text-muted-foreground"> (tu)</span>}
-                      </div>
-                      <div className="truncate text-xs text-muted-foreground" title={member.email}>{member.email}</div>
-                    </div>
-                    <div className="flex w-full flex-wrap items-center gap-2 @xl:w-auto">
-                      {isManageable ? (
-                        <>
-                          <form action={memberRoleFormAction} className="min-w-0 flex-1 @xl:flex-none">
-                            <input type="hidden" name="userId" value={member.userId} />
-                            <select
-                              key={`${member.userId}-${member.role}`}
-                              name="role"
-                              defaultValue={member.role}
-                              disabled={memberRolePending}
-                              aria-label={`Ruolo di ${member.email}`}
-                              data-testid="workspace-member-role-select"
-                              className={`${SELECT_CLASS} @xl:w-56`}
-                              onChange={(event) => {
-                                const nextRole = event.target.value;
-                                event.target.value = member.role;
-                                roleSelect.current = event.target;
-                                setRoleChange({ email: member.email, role: nextRole });
-                              }}
-                            >
-                              {!knownRole && (
-                                <option value={member.role} disabled>
-                                  {roleLabel(member.role)}
-                                </option>
-                              )}
-                              {INVITABLE_ROLES.map((role) => (
-                                <option key={role} value={role}>
-                                  {ROLE_INFO[role].label}
-                                </option>
-                              ))}
-                            </select>
-                          </form>
-                          <form
-                            action={memberRemoveFormAction}
-                            onSubmit={(event) => {
-                              if (!removal.ask(event, member)) return;
-                              setLastMemberAction("remove");
-                            }}
-                          >
-                            <input type="hidden" name="userId" value={member.userId} />
-                            <Button
-                              type="submit"
-                              variant="ghost"
-                              className="h-11 text-destructive hover:text-destructive sm:h-8"
-                              disabled={memberRemovePending}
-                              aria-label={`Rimuovi ${member.email}`}
-                              data-testid="workspace-member-remove"
-                            >
-                              Rimuovi
-                            </Button>
-                          </form>
-                        </>
-                      ) : (
-                        <Badge variant="outline">{roleLabel(member.role)}</Badge>
-                      )}
-                      <Badge variant="secondary">{member.source === "organization" ? "Organizzazione" : "Invitato"}</Badge>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-            {roleChange ? (
-              <ConfirmDialog
-                open
-                onOpenChange={(open) => {
-                  if (!open) setRoleChange(null);
-                }}
-                title={ASK.roleTitle(roleChange.email, roleLabel(roleChange.role))}
-                description={ASK.roleBody}
-                confirmLabel={ASK.roleConfirm}
-                onConfirm={() => {
-                  const select = roleSelect.current;
-                  setRoleChange(null);
-                  if (!select) return;
-                  select.value = roleChange.role;
-                  setLastMemberAction("role");
-                  select.form?.requestSubmit();
-                }}
-              />
-            ) : null}
-            {removal.target ? (
-              <ConfirmDialog
-                open
-                onOpenChange={removal.onOpenChange}
-                title={ASK.removeTitle(removal.target.email)}
-                description={ASK.removeBody}
-                confirmLabel={ASK.removeConfirm}
-                destructive
-                onConfirm={removal.confirm}
-              />
-            ) : null}
-            {memberMessage?.message ? (
-              <p className={`text-sm ${memberMessage.ok ? "text-emerald-400" : "text-red-300"}`} role={memberMessage.ok ? "status" : "alert"}>
-                {memberMessage.message}
-              </p>
-            ) : null}
-            {learnerCount > 0 && (
-              <div className="flex flex-col gap-2 rounded-xl border border-dashed p-3 text-sm sm:flex-row sm:items-center sm:justify-between" data-testid="learner-summary">
-                <p className="flex items-start gap-2 text-muted-foreground">
-                  <GraduationCap className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-                  <span>
-                    {learnerCount} {learnerCount === 1 ? "partecipante" : "partecipanti"} ai corsi: vedono solo i propri
-                    corsi e non contano come collaboratori.
-                  </span>
-                </p>
-                {canManage && (
-                  <Link href={`/dashboard/${workspaceId}/learning/admin`} className="shrink-0 text-sm font-medium underline underline-offset-4">
-                    Gestisci da Formazione
-                  </Link>
-                )}
-              </div>
-            )}
-          </section>
-
-          {canManage && (
-            <section className="@container space-y-3" aria-labelledby="open-invites">
-              <div className="flex items-baseline justify-between gap-3">
-                <h3 id="open-invites" className="text-sm font-semibold">Link di invito aperti</h3>
-                <span className="text-xs text-muted-foreground">{open.length} in attesa</span>
-              </div>
-              {open.length === 0 ? (
-                <p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                  Nessun link aperto. Crea un link quando vuoi invitare un collega.
-                </p>
-              ) : (
-                <ul className="divide-y rounded-xl border">
-                  {open.map((invite) => (
-                    <InviteRow
-                      key={invite.id}
-                      invite={invite}
-                      status="active"
-                      revokeFormAction={revokeFormAction}
-                      recreateFormAction={recreateFormAction}
-                      revokePending={revokePending}
-                      recreatePending={recreatePending}
-                      onRevoke={() => setLastAction("revoke")}
-                      onRecreate={() => setLastAction("recreate")}
-                    />
-                  ))}
-                </ul>
-              )}
-              {history.length > 0 && (
-                <details className="group rounded-xl border" data-testid="invite-history">
-                  <summary className="flex cursor-pointer items-center justify-between gap-3 p-3 text-sm">
-                    <span className="font-medium">Storico dei link</span>
-                    <span className="text-xs text-muted-foreground">{history.length}</span>
-                  </summary>
-                  <ul className="divide-y border-t">
-                    {history.map((invite) => (
-                      <InviteRow
-                        key={invite.id}
-                        invite={invite}
-                        status={getInviteStatus(invite, now)}
-                        revokeFormAction={revokeFormAction}
-                        recreateFormAction={recreateFormAction}
-                        revokePending={revokePending}
-                        recreatePending={recreatePending}
-                        onRevoke={() => setLastAction("revoke")}
-                        onRecreate={() => setLastAction("recreate")}
-                      />
-                    ))}
-                  </ul>
-                </details>
-              )}
-            </section>
-          )}
-        </div>
-      </div>
-    </SettingsSection>
+        </SideSheet>
+      ) : null}
+    </div>
   );
 }
 
@@ -557,34 +487,23 @@ function InviteRow({
   onRecreate: () => void;
 }) {
   const detail =
-    status === "used"
-      ? `Usato${invite.acceptedByEmail ? ` da ${invite.acceptedByEmail}` : ""}`
-      : status === "revoked"
-        ? "Non funziona più"
-        : status === "expired"
-          ? `Scaduto il ${formatDate(invite.expiresAt)}`
-          : `Scade il ${formatDate(invite.expiresAt)}`;
+    status === "used" ? T.usedBy(invite.acceptedByEmail) : status === "revoked" ? T.stopped : status === "expired" ? T.expiredOn(formatDate(invite.expiresAt)) : T.expiresOn(formatDate(invite.expiresAt));
   const revoking = useSubmitConfirmation();
   const recreating = useSubmitConfirmation();
   return (
-    <li
-      className="flex flex-col gap-3 p-3 @xl:flex-row @xl:items-center @xl:justify-between"
-      data-invite-email={invite.email ?? ""}
-      data-invite-status={status}
-      data-testid="workspace-invite-row"
-    >
+    <li className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between" data-invite-email={invite.email ?? ""} data-invite-status={status} data-testid="workspace-invite-row">
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <span className="truncate text-sm font-medium" title={invite.email ?? undefined}>
-            {invite.email ?? "Link senza email"}
+            {invite.email ?? T.noEmail}
           </span>
           <Badge variant={status === "active" ? "secondary" : "outline"} className="shrink-0">
-            {statusLabels[status]}
+            {T.status[status]}
           </Badge>
         </div>
         <div className="mt-1 text-xs text-muted-foreground">
           {roleLabel(invite.role)} · {detail}
-          {invite.createdByName ? ` · creato da ${invite.createdByName}` : ""}
+          {invite.createdByName ? ` · ${T.createdBy(invite.createdByName)}` : ""}
         </div>
       </div>
       {status === "active" || status === "expired" ? (
@@ -598,15 +517,8 @@ function InviteRow({
               }}
             >
               <input type="hidden" name="invitationId" value={invite.id} />
-              <Button
-                type="submit"
-                variant="outline"
-                className="h-11 sm:h-8"
-                disabled={revokePending}
-                aria-label={`Disattiva il link ${invite.email ? `per ${invite.email}` : "senza email"}`}
-                data-testid="workspace-invite-revoke"
-              >
-                Disattiva
+              <Button type="submit" variant="outline" className="h-11 sm:h-8" disabled={revokePending} aria-label={T.revokeOf(invite.email)} data-testid="workspace-invite-revoke">
+                {T.revoke}
               </Button>
             </form>
           )}
@@ -618,16 +530,9 @@ function InviteRow({
             }}
           >
             <input type="hidden" name="invitationId" value={invite.id} />
-            <Button
-              type="submit"
-              variant="outline"
-              className="h-11 sm:h-8"
-              disabled={recreatePending}
-              aria-label={`Nuovo link ${invite.email ? `per ${invite.email}` : "senza email"}`}
-              data-testid="workspace-invite-recreate"
-            >
-              <RotateCcw className="mr-1 h-3.5 w-3.5" aria-hidden />
-              Nuovo link
+            <Button type="submit" variant="outline" className="h-11 sm:h-8" disabled={recreatePending} aria-label={T.recreateOf(invite.email)} data-testid="workspace-invite-recreate">
+              <RotateCcw aria-hidden />
+              {T.recreate}
             </Button>
           </form>
           <ConfirmDialog
@@ -687,57 +592,53 @@ function InviteLinkBox({
     try {
       await navigator.share({ title: `Invito a ${workspaceName}`, text: inviteMessage(workspaceName, invite) });
     } catch {
-      // annullato dall'utente: nessun messaggio
+      // annullato da chi guarda: nessun messaggio
     }
   }
 
   return (
-    <div className="@container rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4" data-testid="invite-link-ready">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="text-sm font-medium">Link pronto per {invite.email ?? "una persona"}</p>
-        <span className="text-xs text-muted-foreground">
-          {roleLabel(invite.role)} · scade il {formatDate(invite.expiresAt)}
-        </span>
+    <div className="space-y-3 rounded-xl border p-4" data-testid="invite-link-ready">
+      <div className="space-y-0.5">
+        <p className="text-sm font-medium">{T.ready(invite.email)}</p>
+        <p className="text-xs text-muted-foreground">{T.readyFact(roleLabel(invite.role), formatDate(invite.expiresAt))}</p>
       </div>
-      <div className="mt-3 flex flex-col gap-2 @sm:flex-row">
+      <div className="flex flex-col gap-2 sm:flex-row">
         <Input
           ref={inputRef}
           readOnly
           value={invite.inviteUrl}
-          aria-label="Link di invito"
-          className="h-10 min-w-0 flex-1 font-mono text-xs sm:h-8"
+          aria-label={T.linkLabel}
+          className="h-11 min-w-0 flex-1 font-mono text-base sm:h-9 sm:text-xs"
           onFocus={(event) => event.currentTarget.select()}
           data-testid="invite-link-input"
         />
-        <Button type="button" variant="outline" className="h-10 sm:h-8" onClick={() => copy(invite.inviteUrl, "link")}>
-          <Copy className="mr-1 h-3.5 w-3.5" aria-hidden />
-          {copyState === "link" ? "Copiato" : "Copia link"}
+        <Button type="button" variant="outline" className="h-11 sm:h-9" onClick={() => copy(invite.inviteUrl, "link")}>
+          <Copy aria-hidden />
+          {copyState === "link" ? T.copied : T.copyLink}
         </Button>
       </div>
-      <div className="mt-2 flex flex-wrap gap-2">
-        <Button type="button" variant="ghost" className="h-10 px-2 text-xs sm:h-8" onClick={() => copy(inviteMessage(workspaceName, invite), "message")}>
-          <MessageSquareText className="mr-1 h-3.5 w-3.5" aria-hidden />
-          {copyState === "message" ? "Messaggio copiato" : "Copia un messaggio pronto"}
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="ghost" className="h-11 px-2 sm:h-8" onClick={() => copy(inviteMessage(workspaceName, invite), "message")}>
+          <MessageSquareText aria-hidden />
+          {copyState === "message" ? T.messageCopied : T.copyMessage}
         </Button>
         {canShare && (
-          <Button type="button" variant="ghost" className="h-10 px-2 text-xs sm:h-8" onClick={share}>
-            <Share2 className="mr-1 h-3.5 w-3.5" aria-hidden />
-            Condividi
+          <Button type="button" variant="ghost" className="h-11 px-2 sm:h-8" onClick={share}>
+            <Share2 aria-hidden />
+            {T.share}
           </Button>
         )}
         <form action={createAnotherAction} onSubmit={onCreateAnother}>
           <input type="hidden" name="email" value="" />
           <input type="hidden" name="role" value={invite.role} />
-          <Button type="submit" variant="ghost" className="h-10 px-2 text-xs sm:h-8" disabled={creating} data-testid="invite-create-another">
-            <Link2 className="mr-1 h-3.5 w-3.5" aria-hidden />
-            Crea un altro link ({roleLabel(invite.role)})
+          <Button type="submit" variant="ghost" className="h-11 px-2 sm:h-8" disabled={creating} data-testid="invite-create-another">
+            <Link2 aria-hidden />
+            {T.another(roleLabel(invite.role))}
           </Button>
         </form>
       </div>
-      <p className="mt-2 text-xs text-muted-foreground" role="status" aria-live="polite">
-        {copyState === "manual"
-          ? "Copia automatica non disponibile: il link è selezionato, copialo con Cmd/Ctrl+C."
-          : "Per sicurezza il link si vede solo adesso: copialo e mandalo in privato (mail o chat). Unbundle non invia email."}
+      <p className="text-xs text-muted-foreground" role="status" aria-live="polite">
+        {copyState === "manual" ? T.manual : T.once}
       </p>
     </div>
   );

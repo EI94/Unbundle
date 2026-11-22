@@ -154,8 +154,11 @@ test("revokes in the lists are outlined, the red only inside the dialog; «Crea 
     }
     assert.match(source, /destructive\s+onConfirm=\{revoking\.confirm\}/, `${path}: the red is the dialog's`);
   }
+  // (Rilascio 10, ondata 6b) Impostazioni › Team: «Invita» è bordato nella pagina; «Crea il link» è il pulsante del
+  // pannello dell'invito (un pannello ha il suo pulsante pieno).
   const people = read("src/components/workspace/workspace-collaboration-card.tsx");
-  assert.match(people, /<Button type="submit" variant="outline" className="mt-4 h-11 w-full sm:h-8 @lg:w-auto" disabled=\{createPending\}>\s*\{createPending \? "Creo il link…" : "Crea link"\}/);
+  assert.match(people, /<Button type="button" variant="outline" className="min-h-11 sm:min-h-9" aria-haspopup="dialog" onClick=\{\(\) => setPanel\(INVITE_PANEL\)\}/);
+  assert.match(people, /<SideSheet\s+open=\{panel === INVITE_PANEL\}[\s\S]*?footer=\{\s*<Button type="submit" form="workspace-invite-create-form" className="min-h-11 sm:min-h-9" disabled=\{createPending\}>/);
   const slack = read("src/components/dashboard/slack-notify-channel-form.tsx");
   assert.match(slack, /<Button type="button" variant="outline" className="h-11 sm:h-8" disabled=\{pending\} onClick=\{save\}>/);
 });

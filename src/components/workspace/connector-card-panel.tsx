@@ -2,7 +2,7 @@
 
 import { useActionState, useOptimistic, useState, useTransition, type ReactNode } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, Cable, Check, Copy, KeyRound, ShieldAlert } from "lucide-react";
+import { AlertTriangle, Check, Copy, KeyRound, ShieldAlert } from "lucide-react";
 import {
   createConnectorTokenAction,
   revokeConnectorTokenAction,
@@ -13,7 +13,6 @@ import {
 } from "@/lib/actions/connector-settings";
 import type { ConnectorConfigView, ConnectorSettingsView, ConnectorTokenView } from "@/lib/connector/settings-view";
 import { CONFIRM_TEXT } from "@/lib/confirm-text";
-import { SettingsSection } from "@/components/dashboard/settings-section";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog, useSubmitConfirmation } from "@/components/ui/confirm-dialog";
@@ -447,6 +446,7 @@ export function ConnectorCardPanel({
   routeEnabled,
   policy,
   defaultLabel,
+  lead = "Le persone dell'organizzazione propongono use case dialogando con Claude: ogni proposta arriva qui con un codice.",
 }: {
   workspaceId: string;
   view: ConnectorSettingsView;
@@ -454,42 +454,37 @@ export function ConnectorCardPanel({
   routeEnabled: boolean;
   policy: ConnectorTokenPolicy;
   defaultLabel: string;
+  /** La frase in alto del pannello. */
+  lead?: string;
 }) {
   const { config, status, tokens } = view;
   const exposed = tokens.filter((t) => t.exposed && t.active);
   const expiring = tokens.filter((t) => t.state === "in_scadenza");
 
   return (
-    <SettingsSection
-      id="connettore-claude"
-      icon={Cable}
-      iconClassName="bg-orange-500/10 text-orange-400"
-      title="Connettore Claude"
-      description="Le persone dell'organizzazione propongono use case e best practice dialogando con Claude. Ogni segnalazione arriva in questo workspace con un codice e uno stato."
-      aside={
-        config ? (
+    // (Rilascio 10, ondata 6b) Il pannello «Claude per l'organizzazione» di Collegamenti: la frase e l'interruttore in
+    // alto, gli avvisi, la configurazione e i limiti in «Dettagli tecnici» (chiusi), poi i token.
+    <div className="@container space-y-6" data-slot="connector-panel">
+      <div className="flex flex-col gap-3 @sm:flex-row @sm:items-start @sm:justify-between">
+        <p className="text-sm text-muted-foreground">{lead}</p>
+        {config ? (
           <EnabledSwitch workspaceId={workspaceId} enabled={config.enabled} canEnable={config.canActivate} />
         ) : (
-          <Badge variant="outline" className="text-muted-foreground">
+          <Badge variant="outline" className="shrink-0 text-muted-foreground">
             Non configurato
           </Badge>
-        )
-      }
-    >
+        )}
+      </div>
       <div className="space-y-6">
         {(config && !routeEnabled) || (config && !config.profileReady) || status !== "attivo" || exposed.length || expiring.length ? (
           <div className="space-y-2">
             {config && !routeEnabled ? (
-              <Notice tone="muted">
-                In questo ambiente l&apos;interruttore generale è spento (<code className="font-mono">MCP_CONNECTOR_ENABLED</code>):
-                l&apos;indirizzo risponde 404 a tutti, qualunque sia lo stato qui sotto.
-              </Notice>
+              <Notice tone="muted">In questo ambiente il connettore è spento per tutti: l&apos;indirizzo non risponde, qualunque sia lo stato qui sotto.</Notice>
             ) : null}
             {config && !config.profileReady ? (
               <Notice tone="danger" icon={<AlertTriangle className="size-4" />} title="Profilo del cliente mancante">
-                Mancano il profilo del cliente o il modello delle istruzioni del server: ogni richiesta di Claude riceve un
-                errore. Li carica Lateral Space con lo script operatore; fino ad allora il connettore non si accende e non
-                riceve token nuovi.
+                Mancano il profilo del cliente o le istruzioni del server: ogni richiesta di Claude riceve un errore. Li carica
+                Lateral Space; fino ad allora il connettore non si accende e non riceve token nuovi.
               </Notice>
             ) : null}
             {status === "non_configurato" ? (
@@ -521,8 +516,6 @@ export function ConnectorCardPanel({
           </div>
         ) : null}
 
-        {config ? <ConfigDetails config={config} /> : null}
-
         {config || tokens.length ? (
           <TokensSection
             workspaceId={workspaceId}
@@ -532,7 +525,16 @@ export function ConnectorCardPanel({
             defaultLabel={defaultLabel}
           />
         ) : null}
+
+        {config ? (
+          <details className="group rounded-lg border" data-slot="connector-technical">
+            <summary className="flex min-h-11 cursor-pointer items-center px-3 text-sm font-medium sm:min-h-9">Dettagli tecnici</summary>
+            <div className="border-t p-3">
+              <ConfigDetails config={config} />
+            </div>
+          </details>
+        ) : null}
       </div>
-    </SettingsSection>
+    </div>
   );
 }

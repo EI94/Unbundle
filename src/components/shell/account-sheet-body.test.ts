@@ -69,6 +69,8 @@ const CLAUDE = {
   url: "https://esempio.test/api/mcp/team",
   connectorName: "Unbundle Use case",
   claudeCodeName: "unbundle-use-case",
+  warningDays: 14,
+  skillName: null,
 };
 
 const TERMINAL = {
@@ -168,11 +170,15 @@ test("mentre legge e se non riesce: «Caricamento…», poi la frase e «Riprova
   assert.deepEqual(sectionsIn(failed), ["tema"]);
 });
 
-test("un accesso in scadenza o esposto lo dice nella sua riga; il collegamento spento lo dice una volta", () => {
-  const claude = { ...CLAUDE, routeEnabled: false, tokens: [token({ state: "in_scadenza", expiresIn: "tra 3 giorni", readOnly: true, lastUsedOn: null, exposed: true })] };
+test("(ondata 6b) un accesso in scadenza o esposto lo dice in un avviso sopra l'elenco; la riga ha la data; il collegamento spento una volta", () => {
+  const claude = { ...CLAUDE, routeEnabled: false, tokens: [token({ state: "in_scadenza", expiresIn: "tra 3 giorni", readOnly: true, lastUsedOn: null, exposed: true, exposedOn: "18/11/2026" })] };
   const html = render({ status: "ready", account: { email: null, claude, terminal: null, granola: null } });
   const row = text(/<ul aria-label="I tuoi accessi"[\s\S]*?<\/ul>/.exec(html)?.[0] ?? "");
-  assert.ok(row.includes("solo lettura · scade tra 3 giorni · mai usato · esposto: revocalo"), row);
+  // Un dato, un posto (come la card «Claude per il team» delle Impostazioni, che qui è arrivata).
+  assert.ok(row.includes("solo lettura · scade il 08/02/2027 · mai usato"), row);
+  assert.ok(!row.includes("tra 3 giorni") && !row.includes("esposto"), row);
+  assert.match(html, /<p role="alert"[^>]*data-slot="account-exposed"[^>]*>«Claude Code sul portatile» è arrivato dentro un indirizzo web il 18\/11\/2026: revocalo e creane uno nuovo\.<\/p>/);
+  assert.match(html, /<p role="status"[^>]*data-slot="account-expiring"[^>]*>«Claude Code sul portatile» scade tra 3 giorni: crea un accesso nuovo e sostituiscilo in Claude\.<\/p>/);
   assert.equal(html.split(T.claude.claudeOff).length - 1, 1);
   // Gli accessi non si leggono: una frase, niente modulo.
   const broken = render({ status: "ready", account: { email: null, claude: { ...CLAUDE, status: "errore", tokens: [] }, terminal: null, granola: null } });
@@ -197,9 +203,9 @@ test("le parole del foglio: niente chiavi, niente «token» nel testo, «use cas
 
 // ─── Granola per chi non gestisce il workspace (rifiniture dell'ondata 2a) ──
 // Il ritorno da Granola (`settings?granola=…#granola`) apre il foglio: la riga che dice com'è andata sta nel foglio. Le
-// regole delle call restano in Impostazioni, che senza la voce nella barra si raggiungono da qui.
+// regole delle call (ondata 6b) stanno in Contesto › Fonti, che si raggiunge anche da qui.
 
-const RULES = "/dashboard/00000000-0000-4000-8000-0000000000f1/settings#granola-regole";
+const RULES = "/dashboard/00000000-0000-4000-8000-0000000000f1/contesto?vista=fonti#granola-regole-cliente";
 const granolaIn = (state: string) => ({ status: "ready", account: { email: null, claude: null, terminal: null, granola: { state, accountEmail: state === "collegato" ? "persona@esempio.test" : null, plan: null } } });
 
 test("il ritorno da Granola: il foglio dice com'è andata, con la stessa riga del blocco di Impostazioni", () => {
@@ -218,14 +224,44 @@ test("il ritorno da Granola: il foglio dice com'è andata, con la stessa riga de
   assert.ok(section.indexOf("granola-outcome") > 0 && section.indexOf("granola-outcome") < section.indexOf(">Collega Granola</button>"));
 });
 
-test("«Regole delle call ›»: con un collegamento, alle regole di Impostazioni, a un'ancora che non riapre il foglio", () => {
+test("«Regole delle call ›»: con un collegamento, alle regole in Contesto › Fonti", () => {
   const html = render(granolaIn("collegato"), { flash: null, rulesHref: RULES });
   assert.match(html, new RegExp(`<a data-slot="text-action"[^>]*href="${RULES.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"[^>]*>${T.granola.rules}<svg`));
-  // Senza collegamento le regole non ci sono (nemmeno in Impostazioni): niente link.
+  // Senza collegamento le regole non ci sono (nemmeno in Fonti): niente link.
   for (const state of ["non_collegato", "da_ricollegare", "non_disponibile"]) assert.doesNotMatch(render(granolaIn(state), { flash: null, rulesHref: RULES }), /Regole delle call/, state);
   // Mai un pulsante pieno: il link è tranquillo.
   assert.doesNotMatch(html, /class="[^"]*(?<![\w:-])bg-primary text-primary-foreground/);
   // Il foglio passa `?granola=` dell'indirizzo e l'indirizzo delle regole di questo workspace.
   const sheet = readFileSync(new URL("./account-sheet.tsx", import.meta.url), "utf8");
   assert.match(sheet, /granola=\{\{ flash: params\?\.get\("granola"\) \?\? null, rulesHref: granolaRulesHref\(workspaceId\) \}\}/);
+});
+
+// ─── «Il tuo account» completo (ondata 6b): quello che la card «Claude per il team» delle Impostazioni faceva ──
+
+test("(ondata 6b) gli accessi non più attivi, chiusi; il modulo dietro «Crea un altro accesso» con un accesso attivo; la guida «Come collegare Claude»", () => {
+  const html = render({ status: "ready", account: { email: null, claude: CLAUDE, terminal: null, granola: null } });
+  assert.match(html, /<details class="[^"]*" data-slot="account-inactive">\s*<summary[^>]*>Non più attivi \(1\)<\/summary>[\s\S]*?Vecchio[\s\S]*?revocato/);
+  assert.match(html, /<details class="[^"]*" data-slot="account-create-more"><summary[^>]*>Crea un altro accesso<\/summary>/);
+  const guide = /<details class="[^"]*" data-slot="account-connect-guide">[\s\S]*?<\/details>/.exec(html)?.[0] ?? "";
+  assert.ok(guide.includes("Come collegare Claude"));
+  assert.ok(guide.includes("claude mcp add --transport http unbundle-use-case https://esempio.test/api/mcp/team --header \"Authorization: Bearer IL_TUO_ACCESSO\""), guide);
+  assert.ok(guide.includes("Authorization: Bearer IL_TUO_ACCESSO"));
+  // Senza accessi attivi il modulo è aperto.
+  const none = render({ status: "ready", account: { email: null, claude: { ...CLAUDE, tokens: [] }, terminal: null, granola: null } });
+  assert.doesNotMatch(none, /Crea un altro accesso/);
+  assert.match(none, /data-slot="account-create-access"/);
+  // La skill «registra-ai-lab» solo a chi la riceve (Lateral Space).
+  assert.doesNotMatch(html, /registra-ai-lab/);
+  const ls = render({ status: "ready", account: { email: null, claude: { ...CLAUDE, skillName: "registra-ai-lab" }, terminal: null, granola: null } });
+  assert.match(ls, /data-slot="account-skill"[^>]*>Dopo un AI Lab, la skill «registra-ai-lab» trasforma gli appunti in use case/);
+});
+
+test("(ondata 6b) l'accesso appena creato si offre finché è attivo e finché chi guarda non lo nasconde", async () => {
+  const { newTokenToShow } = await import("./account-sheet-body.tsx");
+  const fresh = { tokenId: "t9", token: "ubt_segreto", label: "Nuovo", readOnly: false, expiresOn: "01/02/2027" } as never;
+  assert.equal(newTokenToShow(fresh, null, [{ id: "t9", active: true }]), fresh);
+  assert.equal(newTokenToShow(fresh, "t9", [{ id: "t9", active: true }]), null, "nascosto");
+  assert.equal(newTokenToShow(fresh, null, []), fresh, "elenco non ancora riletto: resta, l'accesso esiste");
+  assert.equal(newTokenToShow(fresh, null, [{ id: "t9", active: false }]), null, "revocato: niente da copiare");
+  assert.equal(newTokenToShow(undefined, null, []), null);
 });

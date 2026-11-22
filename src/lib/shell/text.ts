@@ -138,10 +138,24 @@ export const SHELL_TEXT = Object.freeze({
       claudeAi: (connector: string, url: string) => `Per claude.ai: un connettore personalizzato «${connector}», indirizzo ${url}, con questa intestazione:`,
       secret: "Vale come te: non mandarlo in chat o per email.",
       terminalLead: "Nel repository del caso scrivi «unbundle login»: il browser apre una pagina per confermare. Vale 90 giorni.",
+      /** (Ondata 6b) Quello che la card «Claude per il team» delle Impostazioni diceva, ora qui. */
+      exposedNotice: (label: string, day: string) => `«${label}» è arrivato dentro un indirizzo web il ${day}: revocalo e creane uno nuovo.`,
+      expiringNotice: (label: string, when: string) => `«${label}» scade ${when}: crea un accesso nuovo e sostituiscilo in Claude.`,
+      expiringHint: (days: number) => `Da ${days} giorni prima della scadenza qui compare un avviso.`,
+      inactive: (n: number) => `Non più attivi (${n})`,
+      revokedState: "revocato",
+      expiredState: "scaduto",
+      createAnother: "Crea un altro accesso",
+      hide: "Nascondi",
+      guide: "Come collegare Claude",
+      guideClaudeCode: "Claude Code: nel terminale, con il tuo accesso al posto di IL_TUO_ACCESSO.",
+      guideClaudeAi: (connector: string, url: string) => `claude.ai: aggiungi un connettore personalizzato «${connector}», indirizzo ${url}, con questa intestazione.`,
+      guideOnlyYou: "Aggiungilo solo per te, mai come connettore dell'organizzazione: chi lo usa agisce con il tuo nome e i tuoi permessi.",
+      skill: (name: string) => `Dopo un AI Lab, la skill «${name}» trasforma gli appunti in use case con questo collegamento: carica il suo zip in Claude, in Impostazioni › Funzionalità.`,
     }),
     granola: Object.freeze({
       title: "Granola",
-      /** Il link alle regole di questo cliente («Quali call sono di …»), che stanno in Impostazioni. */
+      /** Il link alle regole di questo cliente («Quali call sono di …»), che stanno in Contesto › Fonti. */
       rules: "Regole delle call",
     }),
     theme: Object.freeze({
