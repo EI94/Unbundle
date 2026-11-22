@@ -89,8 +89,8 @@ function row(o: Partial<FactoryCaseRow> & { station: Station; nextStep: string; 
 
 const B = "Voltaen/cliente-demo-contabilita";
 const C = "Voltaen/cliente-demo-vendite";
-const XX7 = row({ code: "XX-0007", title: "BETA · Registrazione fatture passive", station: "costruzione", nextStep: "1 compito da prendere", repo: B, evals: { quality: 0.96, thresholdsMet: true, fakeModels: false, inConstruction: false, branch: "main", level: "pull_request", models: {}, at: "2026-11-20T10:00:00.000Z" } });
-const XX19 = row({ code: "XX-0019", title: "GAMMA · Ordini dal sito", station: "collaudo", nextStep: "Prova con il cliente", repo: C, evals: { quality: 0.8, thresholdsMet: false, fakeModels: false, inConstruction: false, branch: "main", level: "pull_request", models: {}, at: "2026-11-20T10:00:00.000Z" } });
+const XX7 = row({ code: "XX-0007", title: "BETA · Registrazione fatture passive", station: "costruzione", nextStep: "1 compito da prendere", repo: B, evals: { quality: 0.96, thresholdsMet: true, fakeModels: false, inConstruction: false, withoutAi: false, branch: "main", level: "pull_request", models: {}, at: "2026-11-20T10:00:00.000Z" } });
+const XX19 = row({ code: "XX-0019", title: "GAMMA · Ordini dal sito", station: "collaudo", nextStep: "Prova con il cliente", repo: C, evals: { quality: 0.8, thresholdsMet: false, fakeModels: false, inConstruction: false, withoutAi: false, branch: "main", level: "pull_request", models: {}, at: "2026-11-20T10:00:00.000Z" } });
 const XX12 = row({ code: "XX-0012", title: "ALFA · Smistamento delle richieste", station: "dossier", nextStep: "Imposta il progetto", repo: null, tasks: { total: 0, open: 0, inProgress: 0, inReview: 0, done: 0, cancelled: 0 }, sessions: { count: 0, tokens: 0, costUsd: 0, lastAt: null }, prs: { open: 0, merged: 0, medianDays: null, costPerPrUsd: null, tokensPerPr: null } });
 const XX3 = row({ code: "XX-0003", title: "BETA · Riconciliazione incassi", station: "esercizio", nextStep: "Tutto in ordine", repo: B });
 
@@ -325,6 +325,14 @@ test("i testi e la pagina: niente «fabbrica», niente `SettingsSection` nella p
 });
 
 // ─── La revisione dell'ondata 6b ──────────────────────────────────────
+
+test("(casi senza AI) la riga dice la qualità come per gli altri; il pannello del caso dice «evals 100%, senza AI»", () => {
+  const xx21 = row({ code: "XX-0021", title: "BETA · Consegna dei cedolini", station: "costruzione", nextStep: "1 compito da prendere", repo: B, evals: { quality: 1, thresholdsMet: true, fakeModels: false, inConstruction: false, withoutAi: true, branch: "main", level: "pull_request", models: {}, at: "2026-11-20T10:00:00.000Z" } });
+  assert.deepEqual(caseHealth(xx21.evals), { tone: "verde", label: "Qualità 100%" });
+  const view = factoryCaseView(WS, xx21, PALETTE, NOW, true);
+  assert.equal(view.facts.find((f) => f.label === "Qualità")?.value, "evals 100%, senza AI");
+  assert.equal(factoryCaseView(WS, XX7, PALETTE, NOW, true).facts.find((f) => f.label === "Qualità")?.value, "evals 96%");
+});
 
 test("(revisione) le voci della CI non finiscono in fondo: prima le più urgenti e, a pari urgenza, quelle della CI", () => {
   const metti = { kind: "metti" as const, repo: B, text: "Metti su GitHub la chiave nuova della CI di cliente-demo-contabilita.", href: "#famiglia-cliente-demo-contabilita" };
