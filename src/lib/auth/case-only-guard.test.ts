@@ -229,7 +229,9 @@ function handlers(text: string): Array<{ method: string; body: string }> {
   return parts.map((part) => ({ method: /function (\w+)/.exec(part)?.[1] ?? "?", body: part.split(/\nexport /)[0] }));
 }
 
-const WORKSPACE_DOOR = /\b(?:requireWorkspaceAccess|getCollaboratorAccess|openFileRoute|openReferentFileRoute|boardRequest|contextActorFromSession)\(/;
+// (Rilascio 10) Anche `requireWorkspacePage` in una rotta (`firme`, il pannello delle firme dal vecchio indirizzo): la stessa
+// porta chiusa delle pagine (`esterno_caso` all'Agent Factory, un ruolo sconosciuto 404).
+const WORKSPACE_DOOR = /\b(?:requireWorkspaceAccess|requireWorkspacePage|getCollaboratorAccess|openFileRoute|openReferentFileRoute|boardRequest|contextActorFromSession)\(/;
 /**
  * Ogni rotta dell'app ha una classe (la prima che le corrisponde, in quest'ordine): dove sta e il controllo con cui si
  * apre. Una rotta nuova fuori da ogni classe fa fallire la prova: va classificata, con una revisione delle porte. Le rotte
@@ -238,10 +240,18 @@ const WORKSPACE_DOOR = /\b(?:requireWorkspaceAccess|getCollaboratorAccess|openFi
 const ROUTE_CLASSES: ReadonlyArray<{ name: string; path: RegExp; check: RegExp; perHandler?: boolean; noDb?: boolean }> = [
   {
     // (Rilascio 10, ondata 5b) Anche `progetto`: «Progetto dell'agente» è la Costruzione, e il vecchio indirizzo un 308
-    // che non legge niente (fuori dai layout: il perimetro e le porte li incontra la Costruzione).
+    // che non legge niente (fuori dai layout: il perimetro e le porte li incontra la Costruzione). E le schede diventate
+    // pannelli o sezioni: `domande/documenti`, `soluzione/regole`, `via` (la sezione `#via` della Panoramica).
     name: "vecchio indirizzo del dossier (308)",
-    path: /^src\/app\/\(dashboard\)\/dashboard\/\[workspaceId\]\/casi-duso\/\[caseId\]\/(?:avanzamento|documenti|kpi|mappa|modello-dati|progetto|registro|registro\/csv|regole|roi|verifica|voci|voci\/\[itemId\])\/route\.ts$/,
-    check: /\blegacyCaseRouteFromPath\(/,
+    path: /^src\/app\/\(dashboard\)\/dashboard\/\[workspaceId\]\/casi-duso\/\[caseId\]\/(?:avanzamento|documenti|domande\/documenti|kpi|mappa|modello-dati|progetto|registro|registro\/csv|regole|roi|soluzione\/regole|verifica|via|voci|voci\/\[itemId\])\/route\.ts$/,
+    check: /\b(?:legacyCaseRouteFromPath|viaRedirect)\(/,
+    noDb: true,
+  },
+  {
+    // (Rilascio 10, ondata 7a) «Avanzamento» di un corso è una sezione dei risultati: un 308 che non legge niente.
+    name: "vecchio indirizzo della Formazione (308)",
+    path: /^src\/app\/\(dashboard\)\/dashboard\/\[workspaceId\]\/learning\/\[programId\]\/progress\/route\.ts$/,
+    check: /\bprogressTarget\(/,
     noDb: true,
   },
   {
