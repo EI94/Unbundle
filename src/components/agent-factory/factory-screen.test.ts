@@ -89,8 +89,8 @@ function row(o: Partial<FactoryCaseRow> & { station: Station; nextStep: string; 
 
 const B = "Voltaen/cliente-demo-contabilita";
 const C = "Voltaen/cliente-demo-vendite";
-const XX7 = row({ code: "XX-0007", title: "BETA · Registrazione fatture passive", station: "costruzione", nextStep: "1 compito da prendere", repo: B, evals: { quality: 0.96, thresholdsMet: true, fakeModels: false, inConstruction: false, branch: "main", level: "pull_request", models: {}, at: "2026-11-20T10:00:00.000Z" } });
-const XX19 = row({ code: "XX-0019", title: "GAMMA · Ordini dal sito", station: "collaudo", nextStep: "Prova con il cliente", repo: C, evals: { quality: 0.8, thresholdsMet: false, fakeModels: false, inConstruction: false, branch: "main", level: "pull_request", models: {}, at: "2026-11-20T10:00:00.000Z" } });
+const XX7 = row({ code: "XX-0007", title: "BETA · Registrazione fatture passive", station: "costruzione", nextStep: "1 compito da prendere", repo: B, evals: { quality: 0.96, thresholdsMet: true, fakeModels: false, inConstruction: false, withoutAi: false, branch: "main", level: "pull_request", models: {}, at: "2026-11-20T10:00:00.000Z" } });
+const XX19 = row({ code: "XX-0019", title: "GAMMA · Ordini dal sito", station: "collaudo", nextStep: "Prova con il cliente", repo: C, evals: { quality: 0.8, thresholdsMet: false, fakeModels: false, inConstruction: false, withoutAi: false, branch: "main", level: "pull_request", models: {}, at: "2026-11-20T10:00:00.000Z" } });
 const XX12 = row({ code: "XX-0012", title: "ALFA · Smistamento delle richieste", station: "dossier", nextStep: "Imposta il progetto", repo: null, tasks: { total: 0, open: 0, inProgress: 0, inReview: 0, done: 0, cancelled: 0 }, sessions: { count: 0, tokens: 0, costUsd: 0, lastAt: null }, prs: { open: 0, merged: 0, medianDays: null, costPerPrUsd: null, tokensPerPr: null } });
 const XX3 = row({ code: "XX-0003", title: "BETA · Riconciliazione incassi", station: "esercizio", nextStep: "Tutto in ordine", repo: B });
 
