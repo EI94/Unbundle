@@ -7,7 +7,7 @@ import { analyzeBench, type BenchResult, type EvalOverview, type EvalRunView } f
 import { findForbidden } from "../../lib/uc/views/copy-guard.ts";
 import type { EvalRunOrigin } from "../../lib/db/queries/use-case-eval-origins.ts";
 import { enableTsxImports } from "../use-cases/detail/referent/tsx-test-loader.ts";
-import { QUALITY_ANCHORS, QUALITY_TEXT, qualityLine, qualitySummary, type QualitySummary } from "./eval-format.ts";
+import { QUALITY_ANCHORS, QUALITY_TEXT, benchSupersededBy, qualityLine, qualitySummary, type QualitySummary } from "./eval-format.ts";
 
 let render: (summary: QualitySummary | null, extra?: { origins?: ReadonlyMap<string, EvalRunOrigin> | null; ciLinks?: boolean; unavailable?: boolean }) => string;
 before(async () => {
@@ -176,4 +176,16 @@ test("(cases without AI) the dot keeps today's label; «caso senza AI: nessun mo
   // Without a measure the page does not know: nothing about AI.
   const benchesOnly = qualitySummary({ evals: { latest: null, trend: [] }, benches: [bench("lettura", LETTURA)] }, { builder: true })!;
   assert.deepEqual([benchesOnly.line, Object.hasOwn(benchesOnly, "withoutAi")], [null, false]);
+});
+
+test("(cases without AI) evals without AI only on a branch: no model advice in the row, though main's rule keeps the bench", () => {
+  // «lettura» benched on main (13/11); the only evals are without AI, on a branch (14/11).
+  const branchOnly = run({ ...noAi(), branch: "xx-0007/prova" });
+  const theBench = bench("lettura", LETTURA);
+  assert.equal(benchSupersededBy(theBench, branchOnly), null, "the §5 rule: only main's evals supersede (the factory line and «Da fare per te»)");
+  const s = qualitySummary({ evals: { latest: branchOnly, trend: [] }, benches: [theBench] }, { builder: true })!;
+  assert.deepEqual([s.line, s.withoutAi, s.meta, s.advice], ["100% · soglie rispettate", true, "14/11/2026 · ramo xx-0007/prova", []]);
+  const text = textOf(render(s));
+  assert.ok(text.includes("caso senza AI: nessun modello"));
+  assert.doesNotMatch(text, /Conviene|Claude Haiku/, "no live advice next to «caso senza AI»");
 });

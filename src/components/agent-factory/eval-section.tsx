@@ -58,7 +58,8 @@ import {
  *   Space, e «dalla CI» porta all'esecuzione su GitHub; il cliente lo legge senza link;
  * - (casi senza AI, docs/rilascio-8/CASI-SENZA-AI.md §6) quando le evals che fanno lo stato del caso sono senza AI, al
  *   posto dei modelli per ruolo il segno neutro «caso senza AI: nessun modello»; niente invito al banco né comandi del
- *   banco, ma una riga che dice perché; i banchi di prima restano come storia (superati dalle evals senza AI di `main`).
+ *   banco, ma una riga che dice perché; i banchi di prima restano come storia, senza consiglio (superati dalle evals
+ *   senza AI di `main`; sulla pagina anche quando queste sono solo di un ramo).
  *
  * Solo presentazione: legge quello che la pagina le passa (`readEvalOverview`). Per caso e per ruolo, mai per persona.
  */
@@ -101,7 +102,7 @@ export function EvalSection({
                   caseCode={caseCode}
                   origin={originOf(origins, bench.run.id)}
                   ciLinks={ciLinks}
-                  commands={!withoutAi}
+                  withoutAi={withoutAi}
                 />
               ))}
               {missing.map((role) => (
@@ -274,7 +275,9 @@ function headingId(role: string): string {
  * L'ultimo banco di un ruolo. Superato (dopo di lui le evals di `main` usano un altro modello per il ruolo, o non lo
  * hanno più): grafico e tabella restano come storia, senza «oggi», e una riga neutra prende il posto della
  * raccomandazione e della riga di `agent.yaml`; il comando per rifarlo solo se il ruolo c'è ancora. (Casi senza AI)
- * `commands` falso: il caso è senza AI, e il comando non c'è mai.
+ * `withoutAi`: le evals della pagina sono senza AI, e il banco è sempre storia: senza «oggi», raccomandazione, riga di
+ * `agent.yaml` né comando, anche se la regola di main lo tiene valido (evals senza AI solo su un ramo); la riga del
+ * banco superato solo quando lo dice la regola.
  */
 function BenchCard({
   bench,
@@ -282,18 +285,18 @@ function BenchCard({
   caseCode,
   origin,
   ciLinks,
-  commands = true,
+  withoutAi = false,
 }: {
   bench: EvalOverview["benches"][number];
   latest: EvalRunView | null;
   caseCode: string;
   origin: EvalRunOrigin | null;
   ciLinks: boolean;
-  commands?: boolean;
+  withoutAi?: boolean;
 }) {
   const { role, run, analysis } = bench;
   const superseded = benchSupersededBy(bench, latest);
-  const rows = benchRows(run.results, analysis, { superseded: superseded !== null });
+  const rows = benchRows(run.results, analysis, { superseded: superseded !== null || withoutAi });
   const id = headingId(role);
   return (
     <section aria-labelledby={id} data-slot="bench-card" data-role={role} className="min-w-0 space-y-3 border-t pt-4 sm:rounded-lg sm:border sm:p-4">
@@ -313,10 +316,10 @@ function BenchCard({
         <p data-slot="bench-superseded" className="text-sm break-words">
           {benchSupersededText(role, superseded.now)}
         </p>
-      ) : (
+      ) : withoutAi ? null : (
         <Verdict role={role} verdict={analysis.verdict} />
       )}
-      {!commands || superseded?.now === null ? null : <Command label={EVAL_TEXT.benchRerun} command={benchCommand(caseCode, role, run.level, benchRerunModels(run.results))} />}
+      {withoutAi || superseded?.now === null ? null : <Command label={EVAL_TEXT.benchRerun} command={benchCommand(caseCode, role, run.level, benchRerunModels(run.results))} />}
     </section>
   );
 }

@@ -30,8 +30,9 @@
  * - **(Casi senza AI, docs/rilascio-8/CASI-SENZA-AI.md §6)** Quando le evals che fanno lo stato del caso sono senza AI
  *   (`EvalRunView.withoutAi`), la riga di «Qualità» (su una riga a parte) e lo stato delle evals dicono «caso senza AI:
  *   nessun modello» al posto dei modelli per ruolo; niente costi né token, niente invito al banco né comandi del banco,
- *   e una riga lo dice. I banchi di prima restano come storia, superati dalle evals senza AI di main. Senza una misura
- *   la pagina non sa se un caso è senza AI, e non lo dice.
+ *   e una riga lo dice. I banchi di prima restano come storia, senza consiglio: superati dalle evals senza AI di main e,
+ *   sulla pagina, anche quando queste sono solo di un ramo. Senza una misura la pagina non sa se un caso è senza AI, e
+ *   non lo dice.
  *
  * Per caso e per ruolo, mai per persona: niente qui sa chi ha lanciato il banco o le evals (art. 15.4).
  * Modulo puro: solo import relativi `.ts`, lo usano il server e il browser con gli stessi testi.
@@ -632,7 +633,8 @@ export interface QualitySummary {
  * se le evals sono girate con i modelli finti (misurano il codice, non l'agente); chi costruisce lo legge nella riga
  * («· modelli finti»). In costruzione (versione 0.x) il puntino è grigio: sotto soglia non dà avvisi. Null senza misure.
  * (Casi senza AI) Il segno «caso senza AI: nessun modello» sta su una riga a parte, che al telefono va a capo
- * (`withoutAi`). Dopo le evals senza AI di main ogni banco è superato, e nessuna raccomandazione resta.
+ * (`withoutAi`); e nessuna raccomandazione di modello, nemmeno da un banco che la regola di main tiene ancora valido
+ * (evals senza AI solo su un ramo): la linea dell'Agent Factory e «Da fare per te» seguono la regola.
  */
 export function qualitySummary(overview: EvalOverview | null, o: { builder: boolean }): QualitySummary | null {
   if (!hasMeasures(overview)) return null;
@@ -644,9 +646,12 @@ export function qualitySummary(overview: EvalOverview | null, o: { builder: bool
   if (!o.builder) return shown && !shown.fake ? { line: shown.line, tone, runId: null, meta: null, alert: null, advice: [], ...withoutAi } : null;
   const line = shown ? (shown.fake ? `${shown.line} · ${QUALITY_TEXT.fakeModels}` : shown.line) : null;
   const meta = latest ? [dayText(latest.createdAt), latest.branch && latest.branch !== EVALS_MAIN ? `ramo ${latest.branch}` : null].filter(Boolean).join(" · ") || null : null;
-  const advice = overview.benches
-    .filter((bench) => benchSupersededBy(bench, latest) === null)
-    .map((bench) => ({ role: bench.role, text: bench.analysis.verdict.text, tone: verdictTone(bench.analysis.verdict) }));
+  const advice =
+    latest?.withoutAi === true
+      ? []
+      : overview.benches
+          .filter((bench) => benchSupersededBy(bench, latest) === null)
+          .map((bench) => ({ role: bench.role, text: bench.analysis.verdict.text, tone: verdictTone(bench.analysis.verdict) }));
   return {
     line,
     tone,
