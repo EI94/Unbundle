@@ -48,7 +48,7 @@ export function exposedTokenAlertText(provider: string): string {
     return (
       ":warning: *Token del connettore Claude esposto, da revocare.* " +
       "Il token è arrivato dentro un indirizzo web, dove i log lo registrano: consideralo compromesso. " +
-      "Lo trovi segnato in Impostazioni › Integrazioni › Connettore Claude. " +
+      "Lo trovi segnato in Impostazioni › Collegamenti › Claude per l'organizzazione. " +
       "Nessuna revoca automatica: revocarlo ferma il connettore per tutta l'organizzazione; " +
       "con il token nuovo l'Owner rimuove e riaggiunge il connettore e tutti rifanno «Connetti»."
     );
@@ -56,7 +56,7 @@ export function exposedTokenAlertText(provider: string): string {
   return (
     ":warning: *Token di Claude esposto, da revocare.* " +
     "Un token di accesso di Claude a Unbundle è arrivato dentro un indirizzo web, dove i log lo registrano: consideralo compromesso. " +
-    "Revocalo in Impostazioni › Integrazioni e creane uno nuovo."
+    "Chi l'ha creato lo revoca in «Il tuo account › Claude e terminale» (chi gestisce il workspace anche in Impostazioni › Collegamenti) e ne crea uno nuovo."
   );
 }
 

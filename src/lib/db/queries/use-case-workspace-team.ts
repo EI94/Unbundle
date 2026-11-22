@@ -318,10 +318,10 @@ export async function externalRefusals(executor: UcExecutor, workspaceId: string
 }
 
 const EXTERNAL_REFUSAL_MESSAGE: Readonly<Record<ExternalRefusal, string>> = {
-  non_collaboratore: "Questa persona non fa parte del workspace: invitala prima, da Impostazioni › Persone, come Analista.",
+  non_collaboratore: "Questa persona non fa parte del workspace: invitala prima, da Impostazioni › Team, come Analista.",
   email_non_verificata: "Prima deve confermare la sua e-mail in Unbundle.",
   di_lateral_space: "È una persona di Lateral Space: scegli Sviluppatore, Analista o Responsabile.",
-  ruolo_workspace: "Per costruire serve almeno il ruolo di Analista nel workspace: cambialo da Impostazioni › Persone.",
+  ruolo_workspace: "Per costruire serve almeno il ruolo di Analista nel workspace: cambialo da Impostazioni › Team.",
 };
 
 /** Il «Dove» da un modulo: `"tutti"`, oppure gli use case scelti. */
