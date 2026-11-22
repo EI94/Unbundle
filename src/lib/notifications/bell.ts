@@ -25,6 +25,7 @@ import { PROPOSAL_NOTICE_KINDS } from "../db/use-case-hub-proposals-ddl.ts";
 import { EVAL_NOTICE_KINDS } from "../db/use-case-hub-evals-ddl.ts";
 import { hubSignalHref } from "../use-cases/digest.ts";
 import { MAPPING_COMPLETED_SIGNAL } from "../mappatura/text.ts";
+import { isReadinessSignalType, readinessSignalHref } from "../ai-readiness/notify.ts";
 import { noticeContextOf, noticeTextOf } from "../use-cases/notices.ts";
 import { cosaServeHref, realizzazioneHref, richiesteHref, subprocessorsSettingsHref } from "../use-cases/referent/contract.ts";
 
@@ -187,6 +188,7 @@ export interface BellUseCaseInput {
  * «Use case» accesa un nuovo use case apre la sua scheda e i riepiloghi dell'area la loro vista;
  * spenta, solo il nuovo contributo, verso la pagina di revisione. Una mappatura completata apre la
  * board dell'unità sulla scheda «Classificazione», in ogni workspace (docs/mappatura/MAPPATURA-BOARD-PIANO.md §4.6).
+ * (Ondata 7b) Le righe dell'AI Readiness aprono la rilevazione, sulla scheda giusta (`readinessSignalHref`).
  */
 export function signalHref(
   workspaceId: string,
@@ -196,6 +198,8 @@ export function signalHref(
   if (s.signalType === MAPPING_COMPLETED_SIGNAL && s.relatedEntityType === "department" && s.relatedEntityId) {
     return `/dashboard/${workspaceId}/mapping/${encodeURIComponent(s.relatedEntityId)}#classificazione`;
   }
+  // (Rilascio 10, ondata 7b) L'AI Readiness, in ogni workspace: le risposte nuove a «Raccolta», la soglia a «Risultati».
+  if (isReadinessSignalType(s.signalType)) return readinessSignalHref(workspaceId, s);
   if (s.signalType === "new_portfolio_item" && s.relatedEntityType === "use_case" && s.relatedEntityId) {
     const id = encodeURIComponent(s.relatedEntityId);
     return useCaseHub ? `/dashboard/${workspaceId}/use-cases/${id}` : `/dashboard/${workspaceId}/portfolio/review/${id}`;

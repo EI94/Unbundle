@@ -83,15 +83,7 @@ export async function setAssessmentTemplateOverrides(
   assessmentId: string,
   overrides: AiReadinessTemplateOverrides
 ) {
-  await ensureDbSchema();
-  const bundle = await getAssessmentBundleById(assessmentId);
-  if (!bundle) return null;
-  return updateAiReadinessAssessment(assessmentId, {
-    scoringConfig: {
-      ...(bundle.assessment.scoringConfig ?? {}),
-      templateOverrides: overrides,
-    },
-  });
+  return mergeAssessmentScoringConfig(assessmentId, { templateOverrides: overrides });
 }
 
 export async function ensureAiReadinessSystemTemplate() {
@@ -204,21 +196,65 @@ export async function updateAiReadinessAssessment(
 }
 
 
-/** Link condivisibile: l'hash del token è salvato in scoringConfig (mai reso al client). */
+/**
+ * (Rilascio 10, ondata 7b) Alcune chiavi di `scoringConfig` in una sola istruzione (`||` di jsonb): le altre chiavi
+ * restano quelle del database in quell'istante. Prima ogni modifica riscriveva tutto `scoringConfig` letto un momento
+ * prima: una copia del link per tutti salvata nel frattempo si sarebbe persa.
+ */
+export async function mergeAssessmentScoringConfig(assessmentId: string, patch: Record<string, unknown>) {
+  await ensureDbSchema();
+  const [updated] = await db
+    .update(aiReadinessAssessments)
+    .set({
+      scoringConfig: sql`coalesce(${aiReadinessAssessments.scoringConfig}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
+      updatedAt: new Date(),
+    })
+    .where(eq(aiReadinessAssessments.id, assessmentId))
+    .returning();
+  return updated ?? null;
+}
+
+/**
+ * Link per tutti: l'hash del token è salvato in scoringConfig (mai reso al client). Un link nuovo prende il posto di
+ * quello di prima e delle sue copie (`openLinkTokenHashes` torna vuoto).
+ */
 export async function setAssessmentOpenLinkTokenHash(
   assessmentId: string,
   tokenHash: string,
   questionScope?: AiReadinessQuestionScope | null
 ) {
-  await ensureDbSchema();
-  const bundle = await getAssessmentBundleById(assessmentId);
-  if (!bundle) return null;
-  const scoringConfig = {
-    ...(bundle.assessment.scoringConfig ?? {}),
+  return mergeAssessmentScoringConfig(assessmentId, {
     openLinkTokenHash: tokenHash,
     openLinkQuestionScope: questionScope ?? null,
-  };
-  return updateAiReadinessAssessment(assessmentId, { scoringConfig });
+    openLinkTokenHashes: [],
+  });
+}
+
+/** Le copie del link per tutti che restano valide insieme: oltre, la più vecchia smette di funzionare. */
+export const OPEN_LINK_COPIES_MAX = 100;
+
+/**
+ * (Rilascio 10, ondata 7b) «Copia il link per tutti»: il token in chiaro non si salva mai, quindi ogni copia è un token
+ * nuovo con le stesse domande, che vale insieme agli altri finché non si crea un link nuovo o si chiude la raccolta (come
+ * «Copia link» dei referenti). Solo se il link c'è; l'aggiunta è una sola istruzione. Restituisce false senza link.
+ */
+export async function addAssessmentOpenLinkTokenHash(assessmentId: string, tokenHash: string): Promise<boolean> {
+  await ensureDbSchema();
+  const config = aiReadinessAssessments.scoringConfig;
+  const rows = await db
+    .update(aiReadinessAssessments)
+    .set({
+      scoringConfig: sql`jsonb_set(coalesce(${config}, '{}'::jsonb), '{openLinkTokenHashes}', (
+        SELECT coalesce(jsonb_agg(kept.h ORDER BY kept.n), '[]'::jsonb) FROM (
+          SELECT t.h, t.n FROM jsonb_array_elements_text(coalesce(${config} -> 'openLinkTokenHashes', '[]'::jsonb) || jsonb_build_array(${tokenHash}::text))
+            WITH ORDINALITY AS t(h, n)
+          ORDER BY t.n DESC LIMIT ${OPEN_LINK_COPIES_MAX}
+        ) kept))`,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(aiReadinessAssessments.id, assessmentId), sql`(${config} ->> 'openLinkTokenHash') IS NOT NULL`))
+    .returning({ id: aiReadinessAssessments.id });
+  return rows.length > 0;
 }
 
 export async function getAssessmentByOpenLinkTokenHash(tokenHash: string) {
@@ -234,7 +270,8 @@ export async function getAssessmentByOpenLinkTokenHash(tokenHash: string) {
       eq(aiReadinessAssessmentTemplates.id, aiReadinessAssessments.templateId)
     )
     .where(
-      sql`${aiReadinessAssessments.scoringConfig}->>'openLinkTokenHash' = ${tokenHash}`
+      sql`(${aiReadinessAssessments.scoringConfig}->>'openLinkTokenHash' = ${tokenHash}
+        OR coalesce(${aiReadinessAssessments.scoringConfig} -> 'openLinkTokenHashes', '[]'::jsonb) @> jsonb_build_array(${tokenHash}::text))`
     )
     .limit(1);
   if (!row) return null;

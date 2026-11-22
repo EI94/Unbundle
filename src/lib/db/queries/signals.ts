@@ -2,8 +2,9 @@ import { eq, desc, and, notInArray, sql, getTableColumns, type SQL } from "drizz
 import { db } from "..";
 import { weeklySignals } from "../schema";
 import { ensureDbSchema } from "../ensure-schema";
-import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
+import { canManageWorkspaceSettings, canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import type { BellSignalInput } from "@/lib/notifications/bell";
+import { READINESS_SIGNAL_TYPES } from "@/lib/ai-readiness/notify";
 
 /**
  * I segnali delle schede: `new_portfolio_item` porta il titolo e 220 caratteri del
@@ -18,16 +19,27 @@ import type { BellSignalInput } from "@/lib/notifications/bell";
  */
 export const USE_CASE_SIGNAL_TYPES = ["new_portfolio_item", "use_case_digest", "use_case_quarter"] as const;
 
+/**
+ * (Rilascio 10, ondata 7b) Le righe dell'AI Readiness (`src/lib/ai-readiness/notify.ts`): risposte nuove e soglia dei
+ * risultati di una rilevazione. Le vede solo chi gestisce la rilevazione, cioè chi gestisce il workspace.
+ */
+export const MANAGER_SIGNAL_TYPES: readonly string[] = READINESS_SIGNAL_TYPES;
+
+/** I tipi che `role` non vede: quelli delle schede a chi non valuta, quelli dell'AI Readiness a chi non gestisce. */
+export function hiddenSignalTypes(role: string | null | undefined): string[] {
+  return [...(canReviewWorkspacePortfolio(role) ? [] : USE_CASE_SIGNAL_TYPES), ...(canManageWorkspaceSettings(role) ? [] : MANAGER_SIGNAL_TYPES)];
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * I segnali del workspace che `role` può vedere. I revisori tutti; chiunque altro, anche
- * senza ruolo, senza i segnali delle schede.
+ * I segnali del workspace che `role` può vedere. I revisori tutti quelli delle schede; chiunque altro, anche senza
+ * ruolo, senza i segnali delle schede. (Ondata 7b) Quelli dell'AI Readiness solo chi gestisce il workspace.
  */
 function visibleTo(workspaceId: string, role: string | null | undefined) {
   const ofWorkspace = eq(weeklySignals.workspaceId, workspaceId);
-  if (canReviewWorkspacePortfolio(role)) return ofWorkspace;
-  return and(ofWorkspace, notInArray(weeklySignals.signalType, [...USE_CASE_SIGNAL_TYPES]));
+  const hidden = hiddenSignalTypes(role);
+  return hidden.length ? and(ofWorkspace, notInArray(weeklySignals.signalType, hidden)) : ofWorkspace;
 }
 
 /** Letto per `userId` (o, senza persona, il solo `is_read` di sempre). */
@@ -109,7 +121,8 @@ export async function markSignalsReadForUser(i: { workspaceId: string; userId: s
   const ids = i.signalIds === null ? null : [...new Set(i.signalIds.filter((x) => UUID.test(x)).map((x) => x.toLowerCase()))];
   if (ids !== null && ids.length === 0) return 0;
   await ensureDbSchema();
-  const hidden = canReviewWorkspacePortfolio(i.role) ? sql`` : sql` AND s.signal_type <> ALL(${`{${USE_CASE_SIGNAL_TYPES.join(",")}}`}::text[])`;
+  const hiddenTypes = hiddenSignalTypes(i.role);
+  const hidden = hiddenTypes.length ? sql` AND s.signal_type <> ALL(${`{${hiddenTypes.join(",")}}`}::text[])` : sql``;
   const only = ids === null ? sql`` : sql` AND s.id = ANY(${`{${ids.join(",")}}`}::uuid[])`;
   const upTo =
     i.upTo instanceof Date && !Number.isNaN(i.upTo.getTime())
