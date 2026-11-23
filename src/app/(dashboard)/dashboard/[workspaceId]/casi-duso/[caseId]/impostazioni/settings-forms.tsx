@@ -10,7 +10,7 @@ import { useUcAction } from "@/components/uc/catalog/use-uc-action";
 import { updateCaseSettingsAction } from "@/lib/actions/uc-cases";
 import { revokeAllLinksAction } from "@/lib/actions/uc-people";
 import { changeStartingSchemaAction } from "@/lib/actions/uc-reschema";
-import { SCHEMA_CHANGE_TEXT as S, SETTINGS_TEXT as T, schemaBlockReasons, schemaBlockersShown, type SchemaBlockReason } from "@/lib/uc/views/case-settings";
+import { SCHEMA_CHANGE_TEXT as S, SETTINGS_TEXT as T, schemaBlockReasons, schemaBlockersShown, type SchemaBlockReason, schemaChangeLargeConfirm } from "@/lib/uc/views/case-settings";
 import { START_TEMPLATE_TEXT, type StartTemplateOption } from "@/lib/uc/views/start-templates";
 
 const FIELD = "h-11 text-base sm:h-9 sm:text-sm";
@@ -155,9 +155,13 @@ export function ChangeStartingSchema({
   const blocked = blockers.length > 0;
   const same = chosen !== null && chosen.id === currentId;
   const { shown, more } = schemaBlockersShown(blockers);
+  // Sopra le 50 domande, prima di cambiare, la stessa domanda dello wizard.
+  const large = same ? null : schemaChangeLargeConfirm(chosen);
+  const [asking, setAsking] = useState(false);
 
   function close(next: boolean) {
     setOpen(next);
+    setAsking(false);
     if (!next) {
       setTemplateId(initial?.id ?? null);
       setShowOthers(proposed.length === 0 || others.some((t) => t.id === currentId));
@@ -171,6 +175,10 @@ export function ChangeStartingSchema({
 
   function confirm() {
     if (!chosen || same || blocked || pending) return;
+    if (large && !asking) {
+      setAsking(true);
+      return;
+    }
     run(() => changeStartingSchemaAction(workspaceId, caseId, chosen.fromUseCase ? { to: "dal_caso" } : { templateId: chosen.id }), { onSuccess: () => close(false) });
   }
 
@@ -184,7 +192,10 @@ export function ChangeStartingSchema({
         name="uc-settings-schema"
         value={t.id}
         checked={templateId === t.id}
-        onChange={() => setTemplateId(t.id)}
+        onChange={() => {
+          setTemplateId(t.id);
+          setAsking(false);
+        }}
         disabled={pending}
         className="mt-0.5 size-4 shrink-0 accent-uc-blu"
       />
@@ -239,7 +250,12 @@ export function ChangeStartingSchema({
                   {showOthers ? START_TEMPLATE_TEXT.hideOthers(others.length) : START_TEMPLATE_TEXT.showOthers(others.length)}
                 </Button>
               )}
-              {!chosen ? (
+              {asking && large ? (
+                <div role="alert" className="space-y-1 rounded-lg border border-border p-3 text-sm">
+                  <p className="font-medium">{large.title}</p>
+                  <p className="text-muted-foreground">{large.body}</p>
+                </div>
+              ) : !chosen ? (
                 <p className="text-sm text-muted-foreground">{S.invalid}</p>
               ) : same ? (
                 <p className="text-sm" role="status">
@@ -254,16 +270,22 @@ export function ChangeStartingSchema({
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" className="h-11 sm:h-8" onClick={() => close(false)}>
-              {S.cancel}
-            </Button>
+            {asking && large ? (
+              <Button variant="outline" className="h-11 sm:h-8" onClick={() => setAsking(false)} disabled={pending}>
+                {large.cancel}
+              </Button>
+            ) : (
+              <Button variant="outline" className="h-11 sm:h-8" onClick={() => close(false)}>
+                {S.cancel}
+              </Button>
+            )}
             {blocked ? (
               <Button className="h-11 sm:h-8" disabled>
                 {S.confirm}
               </Button>
             ) : chosen && !same ? (
               <Button className="h-11 sm:h-8" onClick={confirm} disabled={pending}>
-                {S.confirm}
+                {asking && large ? large.confirm : S.confirm}
               </Button>
             ) : null}
           </DialogFooter>

@@ -8,6 +8,7 @@
  */
 import type { CaseStatus } from "../vocab.ts";
 import { formatCountIt } from "./format.ts";
+import { START_TEMPLATE_TEXT, needsLargeTemplateConfirm } from "./start-templates.ts";
 
 export const SETTINGS_TEXT = {
   title: "Impostazioni",
@@ -137,4 +138,19 @@ export function statusHint(from: CaseStatus, to: CaseStatus): string {
 /** L'avviso dopo un cambio: «La realizzazione ora è «In pausa».». */
 export function statusDoneText(label: string): string {
   return `La realizzazione ora è «${label}».`;
+}
+
+/**
+ * «Cambia schema di partenza»: la stessa conferma dello wizard sopra le 50 domande
+ * («Questo schema porta N domande: è quello giusto per questo caso?»), con gli stessi testi.
+ * Null quando lo schema scelto non la chiede.
+ */
+export function schemaChangeLargeConfirm(option: { questions: number } | null): { title: string; body: string; confirm: string; cancel: string } | null {
+  if (!option || !needsLargeTemplateConfirm(option.questions)) return null;
+  return {
+    title: START_TEMPLATE_TEXT.largeTitle(option.questions),
+    body: START_TEMPLATE_TEXT.largeBody,
+    confirm: START_TEMPLATE_TEXT.largeConfirm,
+    cancel: START_TEMPLATE_TEXT.largeCancel,
+  };
 }

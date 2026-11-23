@@ -86,3 +86,18 @@ test("(R1) map and rules without content read «Da disegnare», from the text mo
   assert.equal(rules.match(/RULES_EMPTY\.title/g)?.length, 2);
   assert.doesNotMatch(rules, /non ha regole/);
 });
+
+test("«Cambia schema di partenza»: above 50 questions the dialog asks the wizard's question before changing", async () => {
+  const { schemaChangeLargeConfirm } = await import("./case-settings.ts");
+  assert.equal(schemaChangeLargeConfirm(null), null);
+  assert.equal(schemaChangeLargeConfirm({ questions: 50 }), null, "50 or fewer: no extra question");
+  const ask = schemaChangeLargeConfirm({ questions: 2812 });
+  assert.ok(ask);
+  assert.equal(ask.title, "Questo schema porta 2.812 domande: è quello giusto per questo caso?");
+  assert.ok(ask.confirm.length > 0 && ask.cancel.length > 0);
+  // The dialog uses it: the first click on «Cambia schema» asks, the second (the confirm label) changes.
+  const source = strip(read(`${SETTINGS}settings-forms.tsx`));
+  assert.match(source, /schemaChangeLargeConfirm\(chosen\)/);
+  assert.match(source, /if \(large && !asking\) \{\s*setAsking\(true\);\s*return;/);
+  assert.match(source, /asking && large \? large\.confirm : S\.confirm/);
+});
