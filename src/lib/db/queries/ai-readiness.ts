@@ -247,9 +247,9 @@ export interface OpenLinkCopy {
 /**
  * (Rilascio 10, ondata 7b) «Copia il link per tutti»: il token in chiaro non si salva mai, quindi una copia è un token in
  * più con le stesse domande, che vale insieme al link creato finché non se ne crea uno nuovo o si chiude la raccolta
- * (come «Copia link» dei referenti). Il browser che copia la riusa (`open-link-cache.ts`): se ne emette una per browser
- * e per versione del link. Solo se il link c'è; l'aggiunta, con l'uscita della meno usata oltre il massimo, è una sola
- * istruzione. Restituisce false senza link.
+ * (come «Copia link» dei referenti). Ogni «Copia» ne emette una, e il browser non la tiene: si salva solo l'hash. Solo
+ * se il link c'è; l'aggiunta, con l'uscita della meno usata oltre il massimo, è una sola istruzione. Restituisce false
+ * senza link.
  */
 export async function addAssessmentOpenLinkTokenHash(assessmentId: string, tokenHash: string, now: Date = new Date()): Promise<boolean> {
   await ensureDbSchema();

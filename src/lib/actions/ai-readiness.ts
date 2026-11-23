@@ -49,7 +49,6 @@ import {
 } from "@/lib/db/queries/ai-readiness";
 import { deleteReadinessBell, notifyReadinessResponse } from "@/lib/db/queries/ai-readiness-notify";
 import { expectedRespondentsOf, trackLabel } from "@/lib/ai-readiness/dashboard-view";
-import { openLinkVersion } from "@/lib/ai-readiness/open-link-version";
 import { logSafeError } from "@/lib/log/safe-error";
 import { createUseCase } from "@/lib/db/queries/use-cases";
 import { generateAiReadinessIntelligence } from "@/lib/ai-readiness/intelligence";
@@ -652,9 +651,9 @@ export async function customizeAssessmentQuestionAction(
 export async function generateAiReadinessOpenLinkAction(
   workspaceId: string,
   assessmentId: string,
-  _prev: AiReadinessActionState<{ openUrl: string; linkVersion?: string | null }>,
+  _prev: AiReadinessActionState<{ openUrl: string }>,
   formData: FormData
-): Promise<AiReadinessActionState<{ openUrl: string; linkVersion?: string | null }>> {
+): Promise<AiReadinessActionState<{ openUrl: string }>> {
   void _prev;
   const manager = await assertAssessmentManager(workspaceId);
   if (!manager.ok) return manager.state;
@@ -685,8 +684,7 @@ export async function generateAiReadinessOpenLinkAction(
     ok: true,
     message: "Link per tutti pronto.",
     fieldErrors: {},
-    // (Ondata 7b) La versione del link: il browser tiene questo link per lei, e non copia più quello ritirato.
-    data: { openUrl: `${baseUrl}/s/${encodeURIComponent(token)}`, linkVersion: openLinkVersion(tokenHash) },
+    data: { openUrl: `${baseUrl}/s/${encodeURIComponent(token)}` },
   };
 }
 

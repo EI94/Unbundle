@@ -27,7 +27,7 @@ export interface CollectionTabProps {
   status: string;
   /** Il pannello aperto all'arrivo (`?apri=invita`). */
   initialPanel: string | null;
-  link: { active: boolean; scopeIds: readonly string[] | null; version: string | null };
+  link: { active: boolean; scopeIds: readonly string[] | null };
   everyoneSections: ReadonlyArray<{ id: string; title: string; area: string }>;
   sections: ReadonlyArray<{ id: string; title: string; audience?: "everyone" | "internal"; area: string }>;
   useCaseBlocks: ReadonlyArray<{ id: string; title: string; subtitle: string }>;
@@ -51,7 +51,7 @@ export function CollectionTab(p: CollectionTabProps) {
   return (
     <div className="space-y-8" data-slot="readiness-collection">
       {p.manages ? (
-        <OpenLinkForm workspaceId={p.workspaceId} assessmentId={p.assessmentId} active={p.link.active} status={p.status} sections={p.everyoneSections} scopeIds={p.link.scopeIds} linkVersion={p.link.version} />
+        <OpenLinkForm workspaceId={p.workspaceId} assessmentId={p.assessmentId} active={p.link.active} status={p.status} sections={p.everyoneSections} scopeIds={p.link.scopeIds} />
       ) : null}
 
       {p.manages ? (

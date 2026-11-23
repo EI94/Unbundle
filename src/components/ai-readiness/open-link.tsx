@@ -4,7 +4,6 @@ import { useEffect, useId, useState, useTransition } from "react";
 import { Check, Copy } from "lucide-react";
 import { copyAiReadinessOpenLinkAction, generateAiReadinessOpenLinkAction } from "@/lib/actions/ai-readiness";
 import { READINESS_TEXT } from "@/lib/ai-readiness/dashboard-text";
-import { browserLinkStorage, cachedOpenLink, rememberOpenLink } from "@/lib/ai-readiness/open-link-cache";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -15,53 +14,45 @@ const T = READINESS_TEXT;
 
 /**
  * Il link per tutti (rilascio 10, ondata 7b, §3.9): «Crea il link per tutti» e «Copia il link per tutti». Il token in
- * chiaro non si salva mai sul server: «Crea» emette il link (con le domande scelte, o tutte), «Copia» un token in più
- * per lo stesso link (`copyAiReadinessOpenLinkAction`). Il browser tiene la sua copia per la rilevazione e per la
- * versione del link che la pagina gli passa (`open-link-cache.ts`): la copia successiva la riusa, e un link ritirato
- * («Crea un link nuovo», anche dall'altra parte della pagina) o di un'altra rilevazione non si copia più. Nessuna copia
- * resta in memoria fuori da lì. Il link si vede in una finestra con «Copia il link»; lo si copia anche da sé, quando il
- * browser lo permette subito.
+ * chiaro non si salva mai: «Crea» emette il link (con le domande scelte, o tutte), «Copia» chiede ogni volta al server
+ * un token in più per il link di adesso (`copyAiReadinessOpenLinkAction`, che ne salva solo l'hash). (Revisione 7b) Nel
+ * browser il link sta solo nella finestra e negli appunti: nessuna memoria del browser, niente che resti dopo «Esci» su
+ * un computer condiviso, e mai un link ritirato o di un altro manager. Chiudendo la finestra il link si dimentica. Lo
+ * si copia anche da sé, quando il browser lo permette subito.
  */
-export function useOpenLink({ workspaceId, assessmentId, linkVersion }: { workspaceId: string; assessmentId: string; linkVersion: string | null }) {
+export function useOpenLink({ workspaceId, assessmentId }: { workspaceId: string; assessmentId: string }) {
   const [url, setUrl] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-
-  function show(next: string) {
-    setUrl(next);
-    setError(null);
-    setOpen(true);
-  }
 
   function create(formData?: FormData) {
     setError(null);
     startTransition(async () => {
       const result = await generateAiReadinessOpenLinkAction(workspaceId, assessmentId, { ok: true }, formData ?? new FormData());
-      if (result.ok && result.data?.openUrl) {
-        rememberOpenLink(browserLinkStorage(), assessmentId, result.data.linkVersion ?? null, result.data.openUrl);
-        show(result.data.openUrl);
-      } else setError(result.message ?? T.step.failed);
+      if (result.ok && result.data?.openUrl) setUrl(result.data.openUrl);
+      else setError(result.message ?? T.step.failed);
     });
   }
 
   function copy() {
-    const cached = cachedOpenLink(browserLinkStorage(), assessmentId, linkVersion);
-    if (cached) {
-      show(cached);
-      return;
-    }
     setError(null);
     startTransition(async () => {
       const result = await copyAiReadinessOpenLinkAction(workspaceId, assessmentId);
-      if (result.ok && result.data?.openUrl) {
-        rememberOpenLink(browserLinkStorage(), assessmentId, linkVersion, result.data.openUrl);
-        show(result.data.openUrl);
-      } else setError(result.message ?? T.step.failed);
+      if (result.ok && result.data?.openUrl) setUrl(result.data.openUrl);
+      else setError(result.message ?? T.step.failed);
     });
   }
 
-  const dialog = <OpenLinkDialog open={open} url={url} onOpenChange={setOpen} />;
+  // La finestra è aperta finché c'è un link da mostrare; chiuderla lo dimentica.
+  const dialog = (
+    <OpenLinkDialog
+      open={url !== null}
+      url={url}
+      onOpenChange={(open) => {
+        if (!open) setUrl(null);
+      }}
+    />
+  );
   return { create, copy, pending, error, dialog };
 }
 

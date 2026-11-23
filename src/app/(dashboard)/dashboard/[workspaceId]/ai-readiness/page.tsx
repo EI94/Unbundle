@@ -37,7 +37,6 @@ import {
   synthesisOf,
   visibleReadinessTabs,
 } from "@/lib/ai-readiness/dashboard-view";
-import { openLinkVersionOf } from "@/lib/ai-readiness/open-link-version";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { AssessmentCreateForm } from "@/components/ai-readiness/assessment-create-form";
 import { AssessmentSwitcher, type AssessmentOption } from "@/components/ai-readiness/assessment-switcher";
@@ -136,7 +135,6 @@ export default async function AiReadinessPage({
   const expected = expectedRespondentsOf(assessment.scoringConfig);
   const scoring = record(assessment.scoringConfig);
   const hasOpenLink = typeof scoring.openLinkTokenHash === "string";
-  const linkVersion = openLinkVersionOf(assessment.scoringConfig);
   const draftInsights = insights.filter((insight) => insight.validationStatus === "draft").length;
   const stage = readinessStage({
     status: assessment.status,
@@ -211,7 +209,7 @@ export default async function AiReadinessPage({
         manages={manages}
         status={assessment.status}
         initialPanel={search.apri ?? null}
-        link={{ active: hasOpenLink, scopeIds: scope?.sectionIds?.length ? scope.sectionIds : null, version: linkVersion }}
+        link={{ active: hasOpenLink, scopeIds: scope?.sectionIds?.length ? scope.sectionIds : null }}
         everyoneSections={sectionOptions.filter((s) => s.audience !== "internal").map(({ id, title, area }) => ({ id, title, area }))}
         sections={sectionOptions.map(({ id, title, audience, area }) => ({ id, title, audience, area }))}
         useCaseBlocks={USE_CASE_FORM_BLOCKS.map((block) => ({ id: block.id, title: block.title, subtitle: block.subtitle }))}
@@ -277,7 +275,7 @@ export default async function AiReadinessPage({
       <ReadinessAnchor workspaceId={workspaceId} assessmentId={assessment.id} current={tab} visible={tabs} />
       {deletedNotice}
       {/* (Revisione 7b) Una rilevazione, uno stato: cambiando rilevazione dal menu (stessa pagina, solo `?assessment=`)
-          la testata e la scheda ripartono da capo, senza portarsi dietro il link copiato o le pieghe di quella di prima. */}
+          la testata e la scheda ripartono da capo, senza portarsi dietro la finestra del link o le pieghe di prima. */}
       <ReadinessHeader
         key={assessment.id}
         workspaceId={workspaceId}
@@ -291,7 +289,6 @@ export default async function AiReadinessPage({
         step={step}
         insightsHref={href("insight")}
         reportHref={exportHref(assessment.id, "pdf")}
-        linkVersion={linkVersion}
         menu={{
           status: assessment.status,
           respondentCount: respondents.length,
