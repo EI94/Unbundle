@@ -37,6 +37,7 @@ import {
   synthesisOf,
   visibleReadinessTabs,
 } from "@/lib/ai-readiness/dashboard-view";
+import { exportTypeLabel } from "@/lib/ai-readiness/export-types";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { AssessmentCreateForm } from "@/components/ai-readiness/assessment-create-form";
 import { AssessmentSwitcher, type AssessmentOption } from "@/components/ai-readiness/assessment-switcher";
@@ -261,7 +262,7 @@ export default async function AiReadinessPage({
         controller={text(privacy.controllerName) || access.workspace.name}
         exports={exports.map((item) => ({
           id: item.id,
-          label: item.exportType === "pdf" ? T.settings.exportPdf : T.settings.exportExcel,
+          label: exportTypeLabel(item.exportType),
           when: DATE_TIME.format(item.createdAt),
           personal: item.includedPersonalData,
         }))}

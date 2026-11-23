@@ -217,6 +217,7 @@ export const READINESS_TEXT = Object.freeze({
     exportsSummary: (n: number) => (n === 1 ? "1 file" : `${formatCount(n)} file`),
     exportPdf: "Report in PDF",
     exportExcel: "Dati in Excel",
+    exportOther: "File scaricato",
     exportPersonal: "con dati personali",
     exportAnonymous: "dati anonimi",
   }),

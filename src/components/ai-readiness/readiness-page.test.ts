@@ -140,7 +140,7 @@ function setUp(s: Scenario = {}) {
     listRespondentsByAssessment: async () => people,
     listUseCaseSubmissionsByAssessment: async () =>
       Array.from({ length: s.proposals ?? 0 }, (_, i) => ({ id: `u${i}`, title: `Idea di prova ${i + 1}`, riskLevel: "Alta", frequency: "Ogni settimana", linkedUseCaseId: i === 0 ? "00000000-0000-4000-8000-0000000000c1" : null })),
-    listAiReadinessExports: async () => Array.from({ length: s.exports ?? 0 }, (_, i) => ({ id: `e${i}`, exportType: i ? "excel" : "pdf", createdAt: now, includedPersonalData: false })),
+    listAiReadinessExports: async () => Array.from({ length: s.exports ?? 0 }, (_, i) => ({ id: `e${i}`, exportType: i ? "excel_aggregated" : "executive_pdf", createdAt: now, includedPersonalData: false })),
     listAiReadinessInsights: async () =>
       (s.insights ?? []).map((insight, i) => ({
         id: `i${i}`,
@@ -271,6 +271,9 @@ test("Impostazioni: two labelled fields, the privacy said once in Italian, the f
   assert.ok(text.includes("Le risposte si leggono solo insieme"));
   assert.ok(text.includes("Titolare del trattamento: Cliente Demo"));
   assert.deepEqual(folds(html), [{ id: "file-scaricati", open: false }]);
+  // (Revisione 7b) I tipi che la rotta scrive davvero: il PDF si chiama PDF, l'Excel Excel.
+  assert.ok(html.includes(">Report in PDF<") && html.includes(">Dati in Excel<"));
+  assert.doesNotMatch(html, /executive_pdf|excel_aggregated/);
   const analyst = await render({ role: "analyst", responses: 6, people: 6 }, { scheda: "impostazioni" });
   assert.doesNotMatch(analyst, /data-testid="threshold-form"/, "la soglia la cambia chi gestisce");
   assert.ok(visibleText(analyst).includes("Risultati da 5 risposte"));

@@ -16,6 +16,7 @@ import {
   buildAiReadinessPdfBuffer,
   canIncludeRawResponses,
 } from "@/lib/ai-readiness/export";
+import { AI_READINESS_EXPORT_TYPES } from "@/lib/ai-readiness/export-types";
 
 function safeFilename(input: string) {
   return input
@@ -149,7 +150,7 @@ export async function GET(
   await createAiReadinessExport({
     assessmentId,
     workspaceId: bundle.assessment.workspaceId,
-    exportType: type === "pdf" ? "executive_pdf" : "excel_aggregated",
+    exportType: type === "pdf" ? AI_READINESS_EXPORT_TYPES.pdf : AI_READINESS_EXPORT_TYPES.excel,
     requestedByUserId: session.user.id,
     includedPersonalData: includeRawResponses,
     anonymized: !includeRawResponses,
