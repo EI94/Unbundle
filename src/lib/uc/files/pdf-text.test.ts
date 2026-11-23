@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { deflateSync } from "node:zlib";
 import { buildPdf, buildRawPdf, pdfPage, pdfString, pdfTextContent, type PdfStreamEncoding, type RawPdfObject } from "./fixtures.ts";
-import { PDF_LIMITS, extractPdfText, glyphToUnicode, looksLikePdf, type PdfText } from "./pdf-text.ts";
+import { PDF_EOF_WINDOW, PDF_LIMITS, PDF_MESSAGES, extractPdfText, glyphToUnicode, hasPdfEndMarker, looksLikePdf, type PdfText } from "./pdf-text.ts";
 
 // Invented text only: no client data.
 const PARAGRAPH = "Il documento descrive le regole di pianificazione dei voli e il calcolo dei margini per ogni tratta prevista";
@@ -37,6 +37,27 @@ test("only bytes starting with %PDF- are PDFs", () => {
   assert.equal(looksLikePdf(Buffer.from("%!PS-Adobe")), false);
   assert.equal(code(Buffer.from("not a pdf")), "pdf_non_valido");
   assert.equal(code(Buffer.from("%PDF-1.7\n%%EOF\n")), "pdf_non_valido");
+});
+
+test("a PDF cut before its end marker is incomplete, not «little text»: it goes back to the uploader", () => {
+  const whole = buildPdf([{ content: pdfTextContent(LONG_LINES) }, { content: pdfTextContent(LONG_LINES) }]);
+  assert.equal(hasPdfEndMarker(whole), true);
+  extract(whole);
+  // Come il PDF del 16/11/2026 (TJ-0011): tagliato prima di arrivare, a un numero tondo di byte.
+  for (const cut of [Math.floor(whole.length / 2), whole.length - 6, 1024]) {
+    const truncated = whole.subarray(0, cut);
+    assert.equal(hasPdfEndMarker(truncated), false, `taglio a ${cut}`);
+    const result = extractPdfText(truncated);
+    assert.equal(result.ok ? "ok" : result.code, "pdf_incompleto", `taglio a ${cut}`);
+    assert.equal(result.ok ? "" : result.message, PDF_MESSAGES.pdf_incompleto);
+  }
+});
+
+test("a valid PDF with a few bytes after %%EOF still passes; past the window it is incomplete", () => {
+  const whole = buildPdf([{ content: pdfTextContent(LONG_LINES) }]);
+  extract(Buffer.concat([whole, Buffer.from("\r\n  \n")]));
+  extract(Buffer.concat([whole, Buffer.alloc(PDF_EOF_WINDOW - 16)]));
+  assert.equal(code(Buffer.concat([whole, Buffer.alloc(PDF_EOF_WINDOW + 1)])), "pdf_incompleto");
 });
 
 test("text in FlateDecode content streams is extracted line by line", () => {
@@ -301,9 +322,10 @@ test("the text limit truncates instead of growing without bounds", () => {
 test("unterminated strings cannot make the structure scan quadratic", () => {
   // Every object is followed by a string that never closes: before the work budget each
   // object re-read the rest of the file (seconds at 200 KB, hours at 4 MB).
+  // Con il segno di fine in coda, perché il controllo dei PDF incompleti non li fermi prima del parser.
   const cases = [
-    `%PDF-1.4\n${"1 0 obj 1 (\n".repeat(400_000)}`,
-    `%PDF-1.4\n1 0 obj << >> endobj\n${"trailer (\n".repeat(400_000)}`,
+    `%PDF-1.4\n${"1 0 obj 1 (\n".repeat(400_000)}%%EOF\n`,
+    `%PDF-1.4\n1 0 obj << >> endobj\n${"trailer (\n".repeat(400_000)}%%EOF\n`,
   ];
   for (const source of cases) {
     const started = Date.now();

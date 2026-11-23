@@ -154,6 +154,11 @@ test("type and readability failures carry the technical code", () => {
   const encrypted = inspectFile(buildPdf([{ content: pdfTextContent(LINES) }], { encrypt: true }), "protetto.pdf", STANDARD);
   assert.equal(encrypted.reason, "file_non_leggibile");
   assert.equal(encrypted.code, "pdf_cifrato");
+  const pdf = buildPdf([{ content: pdfTextContent(LINES) }]);
+  const cut = inspectFile(pdf.subarray(0, Math.floor(pdf.length / 2)), "tagliato.pdf", STANDARD);
+  assert.equal(cut.status, "rifiutato");
+  assert.equal(cut.reason, "file_non_leggibile");
+  assert.equal(cut.code, "pdf_incompleto");
 });
 
 test("the personal zone takes at most 4 MB (server upload)", () => {

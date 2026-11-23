@@ -40,7 +40,8 @@
       "feat/9b-mcp": false,
       "feat/9b-ai": false,
       "feat/9b-riepilogo": false,
-      "feat/9b-persone": false
+      "feat/9b-persone": false,
+      "pdf-incompleto": false
     }
   }
 }
