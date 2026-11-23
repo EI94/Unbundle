@@ -13,7 +13,7 @@ import { SolutionGraph } from "@/components/uc/map/solution-graph";
 import { EmptyState } from "@/components/uc/ui/empty-state";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { loadSolutionMap } from "@/lib/db/queries/uc-solution";
-import { MAP_EXAMPLE_LINK, MAP_PAGE_VIEW_LABEL, hasAgentProcess, mapItemTitles, mapPageViews, resolveMapPageView } from "@/lib/uc/views/map";
+import { MAP_EMPTY, MAP_EXAMPLE_LINK, MAP_PAGE_VIEW_LABEL, hasAgentProcess, mapItemTitles, mapPageViews, resolveMapPageView } from "@/lib/uc/views/map";
 import { flowOrder, layoutGraph } from "@/lib/uc/views/map-layout";
 import { audienceFor, isLsViewer } from "@/lib/uc/views/status-groups";
 import { SolutionNav } from "../_parts/solution-nav";
@@ -77,7 +77,9 @@ export default async function SolutionMapPage({
     <PageContainer size="wide">
       <SolutionNav workspaceId={workspaceId} caseId={caseId} roles={viewer.roles} active="mappa" />
       {view === null ? (
-        <EmptyState variant="page" icon={Waypoints} title="Questo caso non ha ancora una mappa." />
+        <EmptyState variant="page" icon={Waypoints} title={MAP_EMPTY.title}>
+          {MAP_EMPTY.hint}
+        </EmptyState>
       ) : (
         <div className="min-w-0 space-y-5">
           {view === "esempio" ? (

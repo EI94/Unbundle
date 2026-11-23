@@ -90,6 +90,25 @@ export interface QuestionDetailModel {
   linked: { id: string; title: string; tone: SemaforoColor; label: string; href: string | null }[];
   side: { assignee: string | null; roleLabel: string | null; due: string | null };
   fullHref: string;
+  /** Nata da «Cosa serve» (schema «Dal caso d'uso»): si aggiorna lì; il link solo per chi apre «Cosa serve». */
+  cosaServe?: { href: string | null } | null;
+}
+
+/** Al posto delle azioni, per una domanda nata da «Cosa serve»: lì si aggiorna, qui nessun secondo editor. */
+function FromNeedsLine({ cosaServe }: { cosaServe: { href: string | null } }) {
+  return (
+    <p data-slot="from-needs" className="text-sm text-muted-foreground">
+      {DOMANDE_TEXT.panel.fromNeeds}
+      {cosaServe.href && (
+        <>
+          {" "}
+          <Link href={cosaServe.href} className="inline-flex min-h-11 items-center font-medium text-foreground underline-offset-4 hover:underline sm:min-h-0">
+            {DOMANDE_TEXT.panel.fromNeedsLink}
+          </Link>
+        </>
+      )}
+    </p>
+  );
 }
 
 /** (Rilascio 10, §3.5) Uno stato solo: il più preciso («Chiesta, in attesa»), non «Da fare · Chiesta, in attesa». */
@@ -323,6 +342,7 @@ export function QuestionPanelBody({ model }: { model: QuestionDetailModel }) {
         <QuestionAnswerBlock answer={model.answer} files={model.files} workspaceId={model.workspaceId} caseId={model.caseId} client={model.client} />
       </Section>
       {model.actions && <QuestionActionBar key={model.itemId} {...model.actions} filledFirst />}
+      {model.cosaServe && <FromNeedsLine cosaServe={model.cosaServe} />}
       <QuestionNotices model={model} />
       <div className="min-w-0">
         <PanelFold id={`domanda-${model.itemId}`} title={DOMANDE_TEXT.panel.question} defaultOpen={model.answer === null}>
@@ -369,6 +389,7 @@ export function QuestionPageBody({ model, upload, backHref }: { model: QuestionD
           <QuestionActionBar key={model.itemId} {...model.actions} filledFirst={false} />
         </div>
       )}
+      {model.cosaServe && <FromNeedsLine cosaServe={model.cosaServe} />}
       <QuestionNotices model={model} />
       <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,16rem)]">
         <div className="min-w-0 space-y-8">

@@ -245,6 +245,12 @@ export const MAP_PAGE_VIEW_LABEL: Readonly<Record<Exclude<MapPageView, "esempio"
 /** Testo del link all'esempio (era «Esempio completo»). */
 export const MAP_EXAMPLE_LINK = "Segui un esempio dall'inizio alla fine";
 
+/**
+ * La pagina senza mappa (R1 di `docs/dossier/SCHEMA-DI-PARTENZA.md`): lo schema «Dal caso d'uso» non porta una mappa,
+ * che si disegna poi dal Progetto dell'agente.
+ */
+export const MAP_EMPTY = { title: "Da disegnare", hint: "La mappa si disegna dal Progetto dell'agente, quando c'è." } as const;
+
 /** Il processo con l'agente ha passi: allora «Con l'agente» lo mostra al posto della mappa della soluzione. */
 export function hasAgentProcess(maps: Pick<MapsView, "toBe">): boolean {
   return (maps.toBe?.steps.length ?? 0) > 0;
@@ -253,7 +259,7 @@ export function hasAgentProcess(maps: Pick<MapsView, "toBe">): boolean {
 /**
  * Le viste che il caso ha: solo le mappe con dei passi. Una mappa vuota (il
  * caso nasce sempre con una mappa della soluzione, anche senza nodi) non conta,
- * così la pagina dice «Questo caso non ha ancora una mappa.».
+ * così la pagina dice «Da disegnare» (`MAP_EMPTY`).
  */
 export function mapPageViews(maps: Pick<MapsView, "solution" | "toBe" | "asIs" | "example">): MapPageView[] {
   const out: MapPageView[] = [];

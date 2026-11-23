@@ -12,7 +12,7 @@ import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { loadSolutionRules } from "@/lib/db/queries/uc-solution";
 import { readableTitle } from "@/lib/uc/views/description";
 import { KIND_LABEL } from "@/lib/uc/views/labels";
-import { PERIMETER_PARAM, parseRulesQuery, ruleGroupHeading, rulesFiltered, solutionHref, solutionPageHrefs } from "@/lib/uc/views/model";
+import { PERIMETER_PARAM, RULES_EMPTY, parseRulesQuery, ruleGroupHeading, rulesFiltered, solutionHref, solutionPageHrefs } from "@/lib/uc/views/model";
 import { STATUS_GROUP_SLUG, audienceFor, statusView } from "@/lib/uc/views/status-groups";
 import { SolutionNav } from "../_parts/solution-nav";
 
@@ -57,7 +57,9 @@ export default async function SolutionRulesPage({
     <PageContainer>
       <SolutionNav workspaceId={workspaceId} caseId={caseId} roles={viewer.roles} active="regole" />
       {!data.hasRules && !data.hasConstraints ? (
-        <EmptyState variant="page" icon={Scale} title="Lo schema di partenza non ha regole." />
+        <EmptyState variant="page" icon={Scale} title={RULES_EMPTY.title}>
+          {RULES_EMPTY.hint}
+        </EmptyState>
       ) : (
         <div className="min-w-0">
           <RulesToolbar
@@ -79,7 +81,7 @@ export default async function SolutionRulesPage({
                 }
               />
             ) : (
-              <EmptyState title="Lo schema di partenza non ha regole." />
+              <EmptyState title={RULES_EMPTY.title}>{RULES_EMPTY.hint}</EmptyState>
             )
           ) : groups.length === 0 ? (
             <EmptyState
