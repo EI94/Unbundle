@@ -9,11 +9,14 @@ import { EmptyState } from "@/components/uc/ui/empty-state";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { UcAccessError, ensureUcAvailable, getUcUserContext, isUcEnabledFor } from "@/lib/db/queries/uc-access";
 import { readStartContext } from "@/lib/db/queries/uc-realization";
-import { listTemplatesForWorkspace } from "@/lib/db/queries/uc-templates";
+import { countFromUseCaseQuestions, ensureFromUseCaseTemplate, listTemplatesForWorkspace } from "@/lib/db/queries/uc-templates";
 import { realizationPrefillOf } from "@/lib/db/queries/use-case-dossiers";
-import { getAppUcExecutor } from "@/lib/db/uc-executor";
+import { getAppUcExecutor, type UcExecutor } from "@/lib/db/uc-executor";
+import { errorCodeOf, ucLog } from "@/lib/uc/log";
 import { checkCaseCreator } from "@/lib/uc/permissions";
+import { isFromUseCaseTemplateKey } from "@/lib/uc/template/from-use-case";
 import { REALIZATION_TEXT, startDefaults } from "@/lib/uc/views/realization";
+import { startTemplateOptions } from "@/lib/uc/views/start-templates";
 import { HUB_VIEWS, HUB_VIEW_PARAM, stubLogEntry } from "@/lib/use-cases/legacy-routes";
 import { PREFILL_TEXT, type PrefillRow } from "@/lib/use-cases/realization-prefill";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
@@ -39,6 +42,12 @@ import { UUID } from "@/lib/uc/ids";
  * 19/10/2026) parte precompilata: «In una frase» con il problema (al massimo 500
  * caratteri) e, accanto, in sola lettura, i dati raccolti da Claude che entrano
  * nel dossier (`realizationPrefillOf`).
+ *
+ * Lo schema di partenza (R2 di `docs/dossier/SCHEMA-DI-PARTENZA.md`): «Dal caso
+ * d'uso» c'è in ogni workspace (la riga si crea alla prima apertura, sempre la
+ * stessa) e le sue domande sono le voci di «Cosa serve» dello use case; gli
+ * schemi di settore si propongono solo se combaciano con lo use case
+ * (`startTemplateOptions`), gli altri restano a richiesta.
  */
 export default async function StartRealizationPage({
   params,
@@ -96,10 +105,25 @@ export default async function StartRealizationPage({
   if (!creator?.ok || context.kind !== "use_case_ai" || context.status !== "accepted") redirect(scheda);
 
   const codeMissing = context.hasCodeColumn && !context.code;
-  const [templates, prefill] = await Promise.all([
-    codeMissing ? [] : listTemplatesForWorkspace(executor, workspaceId),
+  const [templates, prefill, fromUseCaseQuestions] = await Promise.all([
+    codeMissing ? [] : readStartTemplates(executor, workspaceId),
     realizationPrefillOf(workspaceId, context.useCaseId),
+    codeMissing ? 0 : readFromUseCaseQuestions(executor, workspaceId, context.useCaseId),
   ]);
+  const choice = startTemplateOptions(
+    templates.map((t) => ({
+      id: t.id,
+      key: t.key,
+      name: t.name,
+      archetype: t.archetype,
+      industry: t.industry,
+      functionArea: t.functionArea,
+      restricted: t.restricted,
+      questions: t.questions,
+      fromUseCase: isFromUseCaseTemplateKey(t.key),
+    })),
+    { fromUseCaseQuestions, useCase: { title: context.title, problem: context.texts.problem, flow: context.texts.flow } },
+  );
   const defaults = prefill ? { ...startDefaults(context.texts), oneLiner: prefill.oneLiner } : startDefaults(context.texts);
   const crumb = context.code ?? context.title;
 
@@ -133,14 +157,39 @@ export default async function StartRealizationPage({
           workspaceId={workspaceId}
           useCase={{ id: context.useCaseId, code: context.code, title: context.title }}
           defaults={defaults}
-          templates={[...templates]
-            .sort((a, b) => Number(b.restricted) - Number(a.restricted) || a.name.localeCompare(b.name, "it"))
-            .map((t) => ({ id: t.id, name: t.name, questions: t.questions, restricted: t.restricted }))}
+          templates={choice.proposed}
+          otherTemplates={choice.others}
+          preselectedId={choice.preselectedId}
         />
       )}
       {!codeMissing && prefill && prefill.rows.length > 0 ? <CollectedByClaude rows={prefill.rows} /> : null}
     </PageContainer>
   );
+}
+
+/**
+ * Gli schemi visibili al workspace, con «Dal caso d'uso»: la riga si crea qui la
+ * prima volta (idempotente). Se non riesce si va avanti con gli altri schemi,
+ * nessuno scelto all'apertura.
+ */
+async function readStartTemplates(executor: UcExecutor, workspaceId: string) {
+  try {
+    const ensured = await ensureFromUseCaseTemplate(executor);
+    if (!ensured.ok) ucLog({ level: "warn", area: "uc", op: "start.dal_caso", code: ensured.code, workspaceId });
+  } catch (error) {
+    ucLog({ level: "warn", area: "uc", op: "start.dal_caso", code: errorCodeOf(error), workspaceId });
+  }
+  return listTemplatesForWorkspace(executor, workspaceId);
+}
+
+/** Le domande di «Dal caso d'uso»: le voci di «Cosa serve» dello use case. Senza lettura, 0 (il dossier le rilegge). */
+async function readFromUseCaseQuestions(executor: UcExecutor, workspaceId: string, useCaseId: string): Promise<number> {
+  try {
+    return await countFromUseCaseQuestions(executor, workspaceId, useCaseId);
+  } catch (error) {
+    ucLog({ level: "warn", area: "uc", op: "start.dal_caso_count", code: errorCodeOf(error), workspaceId });
+    return 0;
+  }
 }
 
 /** «Dati raccolti da Claude», in sola lettura accanto a «In una frase»: entrano così nel dossier. */
