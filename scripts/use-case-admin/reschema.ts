@@ -13,6 +13,7 @@
 import { AdminStop, DRY_RUN_NOTE, done, type AdminCommand, type AdminContext } from "../../src/lib/use-cases/admin/cli.ts";
 import { planReschema, reschemaCase, type ReschemaPlan, type ReschemaTarget } from "../../src/lib/db/queries/uc-reschema.ts";
 import { FROM_USE_CASE_ALIAS } from "../../src/lib/uc/template/from-use-case.ts";
+import { schemaBlockReasons } from "../../src/lib/uc/views/case-settings.ts";
 import type { UcExecutor } from "../../src/lib/db/uc-executor.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -40,7 +41,7 @@ function report(plan: ReschemaPlan) {
     stessoSchema: plan.same,
     vociAdesso: plan.itemsNow,
     vociDopo: plan.itemsAfter,
-    bloccano: plan.blockers.map((b) => ({ itemId: b.itemId, key: b.key, motivi: b.reasons })),
+    bloccano: plan.blockers.map((b) => ({ itemId: b.itemId, key: b.key, motivi: b.reasons, perche: schemaBlockReasons(b.reasons) })),
   };
 }
 

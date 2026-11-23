@@ -6,8 +6,10 @@
  *
  * - Quando: dossier completo, in «Bozza», e nessuna voce dello schema attuale con risposte
  *   (escluse le risposte di sistema delle voci collegate a «Cosa serve», che restano là), misure
- *   dei KPI, file, voci in richieste al referente, assegnazioni o commenti. Altrimenti `bloccato`
- *   con l'elenco delle voci.
+ *   dei KPI, file, voci in richieste al referente, assegnazioni, commenti, «non si applica»
+ *   proposti o firmati, deroghe, soluzioni provvisorie, «non si applica» in parte, scadenze, voci
+ *   aggiunte a mano (`template_item_key` vuoto) o modificate da una persona (eventi della voce con
+ *   un attore che non è il sistema). Altrimenti `bloccato` con l'elenco delle voci.
  * - Cosa ricostruisce: voci (entità e regole comprese), collegamenti tra voci, legami con i blocchi
  *   e mappa. I blocchi del dossier restano (con firme ed evidenze): si aggiungono solo quelli che il
  *   nuovo schema porta e il dossier non ha.
@@ -24,7 +26,7 @@ import { fail, ok, type Json, type Result } from "../../uc/types.ts";
 import { cast, jsonb, raw, toStatement, ucSql, type SqlFragment, type UcStatement } from "../../uc/sql/statement.ts";
 import { buildCaseRows, resolveGatePolicy, type CaseBuild, type CaseGatePolicy } from "../../uc/template/case-build.ts";
 import { FROM_USE_CASE_ALIAS, buildCaseRowsFromNeeds, isFromUseCaseTemplateKey } from "../../uc/template/from-use-case.ts";
-import { needItemsUpdateSql } from "../../uc/sql/need-items.ts";
+import { needItemsSyncStatements } from "../../uc/sql/need-items.ts";
 import { eventInsertSql } from "./uc-events.ts";
 import { ensureFromUseCaseTemplate, findFromUseCaseTemplate, getTemplateForCase, readNeedsForCase, type VisibleTemplate } from "./uc-templates.ts";
 import { refreshReadinessCache } from "./uc-cases.ts";
@@ -33,7 +35,21 @@ import { isUuid } from "../../uc/ids.ts";
 
 export type ReschemaTarget = { templateId: string } | typeof FROM_USE_CASE_ALIAS;
 
-export type ReschemaBlockReason = "risposte" | "file" | "richieste" | "assegnazione" | "commenti";
+export type ReschemaBlockReason =
+  | "risposte"
+  | "file"
+  | "richieste"
+  | "assegnazione"
+  | "commenti"
+  /** «Non si applica» proposto o firmato. */
+  | "non_applicabile"
+  /** Deroga, soluzione provvisoria o «non si applica» in parte. */
+  | "eccezione"
+  | "scadenza"
+  /** Domanda aggiunta a mano (non viene dallo schema). */
+  | "aggiunta"
+  /** Modificata da una persona (eventi della voce non di sistema). */
+  | "modifiche";
 
 export interface ReschemaBlocker {
   itemId: string;
@@ -63,7 +79,7 @@ export const RESCHEMA_BLOCKERS_MAX = 200;
 export const RESCHEMA_MESSAGES = {
   caso_non_trovato: "Realizzazione non trovata.",
   non_in_bozza: "Lo schema di partenza si cambia solo in «Bozza».",
-  bloccato: "Non si può cambiare lo schema: alcune domande hanno già risposte, file, richieste o assegnazioni.",
+  bloccato: "Non si può cambiare lo schema: alcune domande hanno già risposte, file, richieste, assegnazioni, decisioni o modifiche.",
   scheda_mancante: "Lo schema «Dal caso d'uso» parte da uno use case: questa realizzazione non ne ha.",
   template_non_trovato: "Schema di partenza non trovato.",
 } as const;
@@ -93,20 +109,34 @@ function blockersFragment(c: SqlFragment): SqlFragment {
   SELECT DISTINCT item_id FROM uc_request_items WHERE case_id = ${c}
 ), m AS (
   SELECT DISTINCT item_id FROM uc_comments WHERE case_id = ${c} AND item_id IS NOT NULL
+), e AS (
+  SELECT DISTINCT target_id AS item_id FROM uc_events
+  WHERE case_id = ${c} AND target_type = 'voce' AND target_id IS NOT NULL AND actor_type <> 'sistema'
+), x AS (
+  SELECT i.id, i.key, i.title, i.sort_order,
+    a.item_id IS NOT NULL AS has_answers, f.item_id IS NOT NULL AS has_files, r.item_id IS NOT NULL AS in_requests,
+    (i.assignee_contact_id IS NOT NULL OR i.ls_owner_user_id IS NOT NULL) AS assigned, m.item_id IS NOT NULL AS has_comments,
+    (i.na_proposed_at IS NOT NULL OR i.na_approved_at IS NOT NULL OR i.na_reason IS NOT NULL OR i.na_client_approved_by_user_id IS NOT NULL
+      OR i.na_proposed_by_user_id IS NOT NULL OR i.na_proposed_by_contact_id IS NOT NULL OR i.na_approved_by_user_id IS NOT NULL
+      OR i.na_approved_by_contact_id IS NOT NULL) AS has_na,
+    (i.waiver IS NOT NULL OR i.waiver_approved_at IS NOT NULL OR i.fallback IS NOT NULL OR i.fallback_approved_at IS NOT NULL
+      OR i.partial_na IS NOT NULL) AS has_exception,
+    i.due_at IS NOT NULL AS has_due,
+    i.template_item_key IS NULL AS added_by_hand,
+    e.item_id IS NOT NULL AS edited
+  FROM uc_items i
+  LEFT JOIN a ON a.item_id = i.id LEFT JOIN f ON f.item_id = i.id LEFT JOIN r ON r.item_id = i.id LEFT JOIN m ON m.item_id = i.id
+  LEFT JOIN e ON e.item_id = i.id
+  WHERE i.case_id = ${c}
 )
-SELECT i.id, i.key, i.title, i.sort_order,
-  a.item_id IS NOT NULL AS has_answers, f.item_id IS NOT NULL AS has_files, r.item_id IS NOT NULL AS in_requests,
-  (i.assignee_contact_id IS NOT NULL OR i.ls_owner_user_id IS NOT NULL) AS assigned, m.item_id IS NOT NULL AS has_comments
-FROM uc_items i
-LEFT JOIN a ON a.item_id = i.id LEFT JOIN f ON f.item_id = i.id LEFT JOIN r ON r.item_id = i.id LEFT JOIN m ON m.item_id = i.id
-WHERE i.case_id = ${c}
-  AND (a.item_id IS NOT NULL OR f.item_id IS NOT NULL OR r.item_id IS NOT NULL OR m.item_id IS NOT NULL
-    OR i.assignee_contact_id IS NOT NULL OR i.ls_owner_user_id IS NOT NULL)`;
+SELECT x.* FROM x
+WHERE x.has_answers OR x.has_files OR x.in_requests OR x.assigned OR x.has_comments OR x.has_na OR x.has_exception OR x.has_due
+  OR x.added_by_hand OR x.edited`;
 }
 
 function blockersSql(caseId: string): UcStatement {
   return toStatement(ucSql`${blockersFragment(uuid(caseId))}
-ORDER BY i.sort_order, i.key
+ORDER BY x.sort_order, x.key
 LIMIT ${cast(RESCHEMA_BLOCKERS_MAX, "int")}`);
 }
 
@@ -161,6 +191,11 @@ async function load(executor: UcExecutor, i: { workspaceId: string; caseId: stri
       ...(b.in_requests === true ? (["richieste"] as const) : []),
       ...(b.assigned === true ? (["assegnazione"] as const) : []),
       ...(b.has_comments === true ? (["commenti"] as const) : []),
+      ...(b.has_na === true ? (["non_applicabile"] as const) : []),
+      ...(b.has_exception === true ? (["eccezione"] as const) : []),
+      ...(b.has_due === true ? (["scadenza"] as const) : []),
+      ...(b.added_by_hand === true ? (["aggiunta"] as const) : []),
+      ...(b.edited === true ? (["modifiche"] as const) : []),
     ],
   }));
   const settings = (typeof row.settings === "string" ? JSON.parse(row.settings) : (row.settings ?? {})) as Record<string, Json>;
@@ -283,7 +318,8 @@ VALUES (${c}, 1, ${cast(map.kind, "text")}, ${cast(map.title.slice(0, 255), "tex
   catalog_revision = catalog_revision + 1, updated_at = now()
 WHERE id = ${c} AND workspace_id = ${ws}`),
   );
-  if (i.fromUseCase) out.push(needItemsUpdateSql({ workspaceId: i.workspaceId, caseId: i.caseId, actorUserId: i.actorUserId }));
+  // Anche le informazioni collegate dopo la lettura del piano: prima le voci nuove, poi lo stato di tutte.
+  if (i.fromUseCase) out.push(...needItemsSyncStatements({ workspaceId: i.workspaceId, caseId: i.caseId, actorUserId: i.actorUserId }));
   out.push(
     toStatement(
       eventInsertSql({

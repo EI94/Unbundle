@@ -47,7 +47,7 @@ import {
   isFromUseCaseTemplateKey,
   type NeedForCase,
 } from "../../uc/template/from-use-case.ts";
-import { needItemsUpdateSql } from "../../uc/sql/need-items.ts";
+import { needItemsSyncStatements } from "../../uc/sql/need-items.ts";
 
 // ── Elenco e lettura ──────────────────────────────────────────────────
 
@@ -543,7 +543,8 @@ export async function createCaseFromTemplate(executor: UcExecutor, input: Create
   };
   const batches = caseCreateBatches(header, build, initialReadiness(build, now()));
   // Lo stato vero delle voci collegate (con la risposta di sistema per le validate), nell'ultimo batch.
-  if (fromUseCase) batches[batches.length - 1].push(needItemsUpdateSql({ workspaceId: v.workspaceId, caseId, actorUserId: v.actorUserId }));
+  // Anche le informazioni collegate tra la lettura e l'ultimo batch (dopo il controllo dei conteggi).
+  if (fromUseCase) batches[batches.length - 1].push(...needItemsSyncStatements({ workspaceId: v.workspaceId, caseId, actorUserId: v.actorUserId }));
   // Nella transazione dell'INSERT: le righe incomplete ferme sulla stessa scheda, con un altro codice.
   if (header.portfolioUseCaseId) batches[0] = [deleteStaleIncompleteCardCasesSql(v.workspaceId, header.portfolioUseCaseId), ...batches[0]];
 

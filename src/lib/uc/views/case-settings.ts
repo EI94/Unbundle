@@ -41,7 +41,17 @@ export const SETTINGS_TEXT = {
 // ── «Cambia schema di partenza» (R3 di docs/dossier/SCHEMA-DI-PARTENZA.md) ──
 
 /** Perché una domanda impedisce il cambio di schema (`ReschemaBlockReason` di `uc-reschema.ts`). */
-export type SchemaBlockReason = "risposte" | "file" | "richieste" | "assegnazione" | "commenti";
+export type SchemaBlockReason =
+  | "risposte"
+  | "file"
+  | "richieste"
+  | "assegnazione"
+  | "commenti"
+  | "non_applicabile"
+  | "eccezione"
+  | "scadenza"
+  | "aggiunta"
+  | "modifiche";
 
 /** Quante domande che bloccano si elencano nel dialogo; le altre diventano «e altre N». */
 export const SCHEMA_BLOCKERS_SHOWN = 20;
@@ -64,7 +74,7 @@ export const SCHEMA_CHANGE_TEXT = {
   cancel: "Annulla",
   /** La riga muta sotto il pulsante, senza aprire il dialogo. */
   blockedLine: (n: number) =>
-    `Non si può cambiare: ${n === 1 ? "1 domanda ha" : `${formatCountIt(n)} domande hanno`} già risposte, file, richieste o assegnazioni.`,
+    `Non si può cambiare: ${n === 1 ? "1 domanda ha" : `${formatCountIt(n)} domande hanno`} già risposte, file, richieste, assegnazioni, decisioni o modifiche.`,
   blockedTitle: (n: number) => (n === 1 ? "Questa domanda lo impedisce" : "Queste domande lo impediscono"),
   blockedMore: (n: number) => (n === 1 ? "e un'altra" : `e altre ${formatCountIt(n)}`),
   untitled: "Domanda senza titolo",
@@ -74,6 +84,11 @@ export const SCHEMA_CHANGE_TEXT = {
     richieste: "è in una richiesta al referente",
     assegnazione: "è assegnata",
     commenti: "ha commenti",
+    non_applicabile: "ha un «non si applica» proposto o firmato",
+    eccezione: "ha una deroga o una soluzione provvisoria",
+    scadenza: "ha una scadenza",
+    aggiunta: "è stata aggiunta a mano",
+    modifiche: "è stata modificata",
   } satisfies Record<SchemaBlockReason, string>,
   /** Dopo il comando (toast). */
   changed: (name: string) => `Lo schema di partenza ora è «${name}».`,
@@ -82,7 +97,7 @@ export const SCHEMA_CHANGE_TEXT = {
   /** Esiti di `reschemaCase`, in italiano semplice. */
   failures: {
     non_in_bozza: "Lo schema di partenza si cambia solo con la realizzazione in «Bozza».",
-    bloccato: "Alcune domande hanno già risposte, file, richieste o assegnazioni: lo schema non si cambia.",
+    bloccato: "Alcune domande hanno già risposte, file, richieste, assegnazioni, decisioni o modifiche: lo schema non si cambia.",
     template_non_trovato: "Schema di partenza non trovato: scegline un altro.",
     caso_non_trovato: "Realizzazione non trovata.",
   } as Readonly<Record<string, string>>,

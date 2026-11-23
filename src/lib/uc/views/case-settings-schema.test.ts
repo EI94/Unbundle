@@ -36,8 +36,8 @@ test("the schema-change texts say «realizzazione» and «use case», never «ca
 });
 
 test("the blocked line counts in Italian and every reason is plain", () => {
-  assert.equal(S.blockedLine(1), "Non si può cambiare: 1 domanda ha già risposte, file, richieste o assegnazioni.");
-  assert.equal(S.blockedLine(1234), "Non si può cambiare: 1.234 domande hanno già risposte, file, richieste o assegnazioni.");
+  assert.equal(S.blockedLine(1), "Non si può cambiare: 1 domanda ha già risposte, file, richieste, assegnazioni, decisioni o modifiche.");
+  assert.equal(S.blockedLine(1234), "Non si può cambiare: 1.234 domande hanno già risposte, file, richieste, assegnazioni, decisioni o modifiche.");
   assert.equal(S.blockedMore(1), "e un'altra");
   assert.equal(S.blockedMore(5), "e altre 5");
   assert.equal(schemaBlockReasons(["risposte", "file", "risposte"]), "ha risposte, ha file");
@@ -91,13 +91,21 @@ test("«Cambia schema di partenza»: above 50 questions the dialog asks the wiza
   const { schemaChangeLargeConfirm } = await import("./case-settings.ts");
   assert.equal(schemaChangeLargeConfirm(null), null);
   assert.equal(schemaChangeLargeConfirm({ questions: 50 }), null, "50 or fewer: no extra question");
-  const ask = schemaChangeLargeConfirm({ questions: 2812 });
+  const ask = schemaChangeLargeConfirm({ questions: 1234 });
   assert.ok(ask);
-  assert.equal(ask.title, "Questo schema porta 2.812 domande: è quello giusto per questo caso?");
+  assert.equal(ask.title, "Questo schema porta 1.234 domande: è quello giusto per questo caso?");
   assert.ok(ask.confirm.length > 0 && ask.cancel.length > 0);
   // The dialog uses it: the first click on «Cambia schema» asks, the second (the confirm label) changes.
   const source = strip(read(`${SETTINGS}settings-forms.tsx`));
   assert.match(source, /schemaChangeLargeConfirm\(chosen\)/);
   assert.match(source, /if \(large && !asking\) \{\s*setAsking\(true\);\s*return;/);
   assert.match(source, /asking && large \? large\.confirm : S\.confirm/);
+});
+
+test("every reason that stops «Cambia schema di partenza» has a plain label, the new ones included", async () => {
+  const { schemaBlockReasons } = await import("./case-settings.ts");
+  assert.equal(
+    schemaBlockReasons(["non_applicabile", "eccezione", "scadenza", "aggiunta", "modifiche"]),
+    "ha un «non si applica» proposto o firmato, ha una deroga o una soluzione provvisoria, ha una scadenza, è stata aggiunta a mano, è stata modificata",
+  );
 });
