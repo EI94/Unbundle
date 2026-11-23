@@ -304,18 +304,22 @@ export function trackLabel(track: string | null | undefined): string {
   return track === "internal" || track === "use_case_expert" ? READINESS_TRACKS[track].label : READINESS_TRACKS.everyone.label;
 }
 
-/** Una riga di «Persone»: il nome (o l'email; dal link per tutti, senza nome, «Dal link per tutti»), il percorso e l'area. */
+/**
+ * Una riga di «Persone»: il nome (o l'email; dal link per tutti, senza nome, «Dal link per tutti»), il percorso, l'area e
+ * il ruolo quando c'è. Mai l'id pseudonimo.
+ */
 export function personRowView(p: {
   name: string | null;
   surname: string | null;
   email: string | null;
   organizationUnit: string | null;
+  role?: string | null;
   surveyTrack: string | null;
   inviteStatus: string;
 }): { title: string; fact: string; status: { label: string; tone: SemaforoColor } } {
   const fullName = [p.name, p.surname].map((part) => part?.trim()).filter(Boolean).join(" ");
   const title = fullName || p.email?.trim() || T.collection.personFromLink;
-  const fact = [trackLabel(p.surveyTrack), p.organizationUnit?.trim() || T.collection.areaMissing].join(" · ");
+  const fact = [trackLabel(p.surveyTrack), p.organizationUnit?.trim() || T.collection.areaMissing, p.role?.trim() || null].filter(Boolean).join(" · ");
   return { title, fact, status: inviteStatusView(p.inviteStatus) };
 }
 

@@ -96,6 +96,8 @@ const TABLE_FILES = new Set([
   "src/lib/db/queries/use-case-info-progress.ts",
   "src/lib/db/queries/bell-state.ts",
   "src/lib/db/queries/signals.ts",
+  // (Rilascio 10, ondata 7b) Le righe dell'AI Readiness in campanella: aggiornate sul posto, tornano non lette per tutti.
+  "src/lib/db/queries/ai-readiness-notify.ts",
   // I costruttori SQL condivisi, la cancellazione e il suo comando dell'operatore.
   "src/lib/use-cases/referent/sql.ts",
   "src/lib/use-cases/referent/erase.ts",

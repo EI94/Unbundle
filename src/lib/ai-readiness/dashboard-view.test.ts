@@ -185,6 +185,7 @@ test("a person: the name, or the e-mail, or «Dal link per tutti»; never the ps
   const anonymous = personRowView({ name: null, surname: null, email: null, organizationUnit: " ", surveyTrack: "everyone", inviteStatus: "opened" });
   assert.equal(anonymous.title, "Dal link per tutti");
   assert.equal(anonymous.fact, "Questionario per tutti · area non indicata");
+  assert.equal(personRowView({ name: "Prova", surname: null, email: null, organizationUnit: "IT", role: "Responsabile dei sistemi", surveyTrack: "internal", inviteStatus: "started" }).fact, "Scheda per i referenti · IT · Responsabile dei sistemi");
   assert.equal(proposalFact({ riskLevel: "Alta", frequency: "Ogni settimana" }), "priorità alta · Ogni settimana");
   assert.equal(proposalFact({ riskLevel: null, frequency: null }), null);
 });
