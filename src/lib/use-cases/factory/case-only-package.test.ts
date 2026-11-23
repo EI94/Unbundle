@@ -49,6 +49,15 @@ test("D7: CONTESTO.md di una versione salvata, per «Solo questo use case»: tit
   assert.equal(caseOnlyContestoMd(formatContestoMd({ ...CTX, caseFacts: [] }, { code: "XX-0012", version: 1, day: "2026-11-10" })), null);
   assert.equal(caseOnlyContestoMd("Regole: tutto quello che c'è"), null);
   assert.equal(caseOnlyContestoMd(null), null);
+  // (Revisione di sicurezza) La riga d'apertura resta solo se è quella di Unbundle: un secondo blocco diverso, per esempio
+  // «In breve» dell'azienda, si toglie anche quando sta al posto della riga d'apertura.
+  const title = "# Contesto del cliente per XX-0012 (k4)";
+  const caseFacts = `${AGENT_CONTEXT_TEXT.file.caseFacts}\n- Le quotazioni le firma una persona.`;
+  const briefSecond = [title, "## In breve\n- Cliente Demo fa logistica per l'industria.", caseFacts].join("\n\n") + "\n";
+  assert.equal(caseOnlyContestoMd(briefSecond), `${title}\n\n${caseFacts}\n`);
+  const otherLead = [title, "Tutto quello che sappiamo dell'azienda: Cliente Demo fa logistica.", caseFacts].join("\n\n") + "\n";
+  assert.doesNotMatch(caseOnlyContestoMd(otherLead) ?? "", COMPANY);
+  assert.equal(caseOnlyContestoMd(`${title}\n`), null);
 });
 
 test("D7: i file del pacchetto per «Solo questo use case»: gli stessi, con CONTESTO.md ridotto o tolto", () => {

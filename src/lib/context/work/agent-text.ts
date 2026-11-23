@@ -223,11 +223,17 @@ export function caseOnlyAgentContext(ctx: AgentContext): AgentContext {
 export function caseOnlyContestoMd(file: string | null | undefined): string | null {
   if (typeof file !== "string") return null;
   const blocks = file.replace(/\n$/, "").split("\n\n");
-  if (blocks.length < 3 || !blocks[0].startsWith("# ")) return null;
-  const kept = blocks.slice(2).filter((block) => block.startsWith(`${T.file.caseFacts}\n- `));
+  if (blocks.length < 2 || !blocks[0].startsWith("# ")) return null;
+  // La riga d'apertura resta solo se è quella che scrive Unbundle: qualunque altro secondo blocco (per esempio «In
+  // breve» dell'azienda) si toglie, come le altre sezioni.
+  const lead = blocks[1].startsWith(CONTESTO_LEAD_START) && !blocks[1].includes("\n") ? [blocks[1]] : [];
+  const kept = blocks.slice(1 + lead.length).filter((block) => block.startsWith(`${T.file.caseFacts}\n- `));
   if (kept.length === 0) return null;
-  return `${[blocks[0], blocks[1], ...kept].join("\n\n")}\n`;
+  return `${[blocks[0], ...lead, ...kept].join("\n\n")}\n`;
 }
+
+/** L'inizio fisso della riga d'apertura di `CONTESTO.md` (`T.file.lead`), senza il giorno. */
+const CONTESTO_LEAD_START = T.file.lead("\u0000").split("\u0000")[0];
 
 /** Un impegno: «Inviare l'esportazione · del cliente · Responsabile amministrativo · entro il 25/11/2026». */
 function commitmentLine(c: AgentContext["commitments"][number]): string {
