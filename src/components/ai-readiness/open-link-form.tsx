@@ -29,6 +29,7 @@ export function OpenLinkForm({
   status,
   sections,
   scopeIds,
+  linkVersion,
 }: {
   workspaceId: string;
   assessmentId: string;
@@ -38,8 +39,10 @@ export function OpenLinkForm({
   sections: readonly SectionOption[];
   /** Le aree del link di adesso; null: tutte. */
   scopeIds: readonly string[] | null;
+  /** La versione del link (`open-link-version.ts`): la copia tenuta dal browser vale solo per lei. */
+  linkVersion: string | null;
 }) {
-  const link = useOpenLink({ workspaceId, assessmentId });
+  const link = useOpenLink({ workspaceId, assessmentId, linkVersion });
   const [selected, setSelected] = useState<string[]>(() => (scopeIds?.length ? sections.filter((s) => scopeIds.includes(s.id)).map((s) => s.id) : sections.map((s) => s.id)));
   const [asking, setAsking] = useState<FormData | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);

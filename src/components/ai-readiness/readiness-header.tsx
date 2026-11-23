@@ -44,6 +44,8 @@ export interface ReadinessHeaderProps {
   insightsHref: string;
   /** Il report in PDF (la rotta dell'export di oggi). */
   reportHref: string;
+  /** La versione del link per tutti (`open-link-version.ts`), null senza link: la copia del browser vale per lei. */
+  linkVersion: string | null;
   menu: {
     status: string;
     respondentCount: number;
@@ -65,7 +67,7 @@ export function ReadinessHeader(p: ReadinessHeaderProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const link = useOpenLink({ workspaceId: p.workspaceId, assessmentId: p.assessmentId });
+  const link = useOpenLink({ workspaceId: p.workspaceId, assessmentId: p.assessmentId, linkVersion: p.linkVersion });
   const busy = pending || link.pending;
 
   function run(task: () => Promise<AiReadinessActionState<unknown>>, then?: () => void) {

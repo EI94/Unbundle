@@ -30,6 +30,7 @@ import {
   saveAiReadinessDraftResponse,
   setAssessmentOpenLinkTokenHash,
   addAssessmentOpenLinkTokenHash,
+  touchAssessmentOpenLinkCopy,
   mergeAssessmentScoringConfig,
   setAssessmentTemplateOverrides,
   deleteAiReadinessAssessment,
@@ -48,6 +49,7 @@ import {
 } from "@/lib/db/queries/ai-readiness";
 import { deleteReadinessBell, notifyReadinessResponse } from "@/lib/db/queries/ai-readiness-notify";
 import { expectedRespondentsOf, trackLabel } from "@/lib/ai-readiness/dashboard-view";
+import { openLinkVersion } from "@/lib/ai-readiness/open-link-version";
 import { logSafeError } from "@/lib/log/safe-error";
 import { createUseCase } from "@/lib/db/queries/use-cases";
 import { generateAiReadinessIntelligence } from "@/lib/ai-readiness/intelligence";
@@ -650,9 +652,9 @@ export async function customizeAssessmentQuestionAction(
 export async function generateAiReadinessOpenLinkAction(
   workspaceId: string,
   assessmentId: string,
-  _prev: AiReadinessActionState<{ openUrl: string }>,
+  _prev: AiReadinessActionState<{ openUrl: string; linkVersion?: string | null }>,
   formData: FormData
-): Promise<AiReadinessActionState<{ openUrl: string }>> {
+): Promise<AiReadinessActionState<{ openUrl: string; linkVersion?: string | null }>> {
   void _prev;
   const manager = await assertAssessmentManager(workspaceId);
   if (!manager.ok) return manager.state;
@@ -667,11 +669,8 @@ export async function generateAiReadinessOpenLinkAction(
   });
   if (!scope.ok) return scope.state;
   const token = createInviteToken();
-  await setAssessmentOpenLinkTokenHash(
-    assessmentId,
-    hashInviteToken(token),
-    scope.scope
-  );
+  const tokenHash = hashInviteToken(token);
+  await setAssessmentOpenLinkTokenHash(assessmentId, tokenHash, scope.scope);
   const baseUrl = await getBaseUrl();
   await createAiReadinessAuditEvent({
     organizationId: manager.access.workspace.organizationId,
@@ -686,7 +685,8 @@ export async function generateAiReadinessOpenLinkAction(
     ok: true,
     message: "Link per tutti pronto.",
     fieldErrors: {},
-    data: { openUrl: `${baseUrl}/s/${encodeURIComponent(token)}` },
+    // (Ondata 7b) La versione del link: il browser tiene questo link per lei, e non copia più quello ritirato.
+    data: { openUrl: `${baseUrl}/s/${encodeURIComponent(token)}`, linkVersion: openLinkVersion(tokenHash) },
   };
 }
 
@@ -740,11 +740,20 @@ export async function startOpenSurveyAction(
   formData: FormData
 ): Promise<AiReadinessActionState<{ personalUrl: string }>> {
   void _prev;
-  const found = await getAssessmentByOpenLinkTokenHash(hashInviteToken(openToken));
+  const openHash = hashInviteToken(openToken);
+  const found = await getAssessmentByOpenLinkTokenHash(openHash);
   if (!found) return errorState("Link non valido o revocato.");
   if (found.assessment.status !== "open") {
     return errorState("La raccolta non è aperta in questo momento.");
   }
+  // (Rilascio 10, ondata 7b) Una copia del link per tutti che serve a qualcuno resta valida: l'ultimo uso si aggiorna,
+  // dopo la risposta, e la copia non esce più per far posto a quelle nuove.
+  const usedAssessmentId = found.assessment.id;
+  after(() =>
+    touchAssessmentOpenLinkCopy(usedAssessmentId, openHash).catch((error: unknown) =>
+      logSafeError("ai-readiness", "open_link_touch_failed", error, { assessmentId: usedAssessmentId })
+    )
+  );
   const openScope = questionScopeFromUnknown(
     found.assessment.scoringConfig?.openLinkQuestionScope
   );
