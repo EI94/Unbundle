@@ -31,7 +31,7 @@ const RESERVED_SHIFTS: StartTemplateSource = {
   industry: "logistica",
   functionArea: "turni degli equipaggi",
   restricted: true,
-  questions: 2812,
+  questions: 1234,
   fromUseCase: false,
 };
 
@@ -59,7 +59,7 @@ const NO_AREA: StartTemplateSource = {
   fromUseCase: false,
 };
 
-const SALES_CASE = { title: "Ricerca settimanale di nuovi clienti e invio della presentazione", problem: "Oggi la lista dei potenziali clienti si fa a mano ogni lunedì.", flow: null };
+const SALES_CASE = { title: "Elenco mensile di contatti per una fiera inventata", problem: "Oggi l'elenco si compila a mano ogni mese.", flow: null };
 const SHIFTS_CASE = { title: "Proposta dei turni per gli equipaggi di reparto", problem: "Il turno si compone a mano.", flow: "Si leggono le disponibilità, si propone il turno." };
 
 test("«Dal caso d'uso» viene per primo ed è scelto all'apertura, anche con uno schema riservato che combacia", () => {
@@ -100,7 +100,7 @@ test("la riga di ogni schema dice per che tipo di caso è e quante domande porta
   const choice = startTemplateOptions([PUBLIC_SERVICE, FROM_USE_CASE, RESERVED_SHIFTS, NO_AREA], { fromUseCaseQuestions: 6, useCase: SALES_CASE });
   const line = (id: string) => [...choice.proposed, ...choice.others].find((o) => o.id === id)?.line;
   assert.equal(line(FROM_USE_CASE.id), "per ogni use case · 6 domande");
-  assert.equal(line(RESERVED_SHIFTS.id), "per turni degli equipaggi · 2.812 domande");
+  assert.equal(line(RESERVED_SHIFTS.id), "per turni degli equipaggi · 1.234 domande");
   assert.equal(line(PUBLIC_SERVICE.id), "per assistenza clienti · 12 domande");
   // Senza area di funzione, il settore.
   assert.equal(line(NO_AREA.id), "per servizi · 30 domande");
@@ -117,7 +117,7 @@ test("oltre 50 domande si chiede conferma, con la domanda esatta", () => {
   assert.equal(needsLargeTemplateConfirm(6), false);
   assert.equal(needsLargeTemplateConfirm(Number.NaN), false);
   assert.equal(START_TEMPLATE_TEXT.largeTitle(245), "Questo schema porta 245 domande: è quello giusto per questo caso?");
-  assert.equal(START_TEMPLATE_TEXT.largeTitle(2812), "Questo schema porta 2.812 domande: è quello giusto per questo caso?");
+  assert.equal(START_TEMPLATE_TEXT.largeTitle(1234), "Questo schema porta 1.234 domande: è quello giusto per questo caso?");
 });
 
 test("regola di proposta: combacia quando ogni parola dell'area di funzione è nello use case", () => {

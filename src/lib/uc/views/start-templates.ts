@@ -19,8 +19,8 @@
  *   finali, di almeno 3 lettere: «turno» e «turni», «equipaggio» ed
  *   «equipaggi», mai «regole» e «regolamento». Senza area di funzione, o con
  *   un'area senza parole significative, lo schema non si propone mai. Settore
- *   (`industry`) e archetipo non bastano: sono troppo larghi (un caso di vendita
- *   di un cliente del trasporto aereo non è un caso di turni).
+ *   (`industry`) e archetipo non bastano: sono troppo larghi (in uno stesso
+ *   settore un caso di vendita non è un caso di turni).
  * - Gli schemi che non si propongono restano dietro «Mostra anche gli altri
  *   schemi», nello stesso ordine: riservati prima, poi per nome.
  * - Oltre `LARGE_TEMPLATE_QUESTIONS` domande, prima di avviare si chiede
@@ -40,7 +40,7 @@ export function needsLargeTemplateConfirm(questions: number): boolean {
   return Number.isFinite(questions) && questions > LARGE_TEMPLATE_QUESTIONS;
 }
 
-/** «1 domanda», «6 domande», «2.812 domande». */
+/** «1 domanda», «6 domande», «1.234 domande». */
 function questionsLabel(n: number): string {
   const count = Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
   return count === 1 ? "1 domanda" : `${formatCountIt(count)} domande`;
