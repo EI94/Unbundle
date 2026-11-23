@@ -98,16 +98,16 @@ export const CONFIRM_TEXT = Object.freeze({
 
   /** AI Readiness: per chi gestisce la rilevazione. */
   aiReadiness: Object.freeze({
-    thresholdTitle: "Cambiare la soglia di aggregazione?",
-    thresholdBody: "Vale per tutto il team: punteggi e insight si ricalcolano con la nuova soglia.",
+    thresholdTitle: "Cambiare la soglia dei risultati?",
+    thresholdBody: "Vale per tutto il team: punteggi e sintesi si ricalcolano con la nuova soglia.",
     threshold: "Cambia soglia",
     removeQuestionTitle: "Rimuovere questa domanda dal questionario?",
     removeQuestionBody: "Chi risponde non la vede più; puoi ripristinarla dalle domande rimosse.",
     removeQuestion: "Rimuovi",
-    newLinkTitle: "Generare un nuovo link condivisibile?",
-    newLinkBody: "Quello di prima smette di funzionare per chi non ha ancora iniziato.",
-    newLink: "Rigenera il link",
-    closeTitle: "Chiudere la rilevazione?",
+    newLinkTitle: "Creare un link nuovo per tutti?",
+    newLinkBody: "Il link di prima, e le sue copie, smettono di funzionare per chi non ha ancora cominciato.",
+    newLink: "Crea il link nuovo",
+    closeTitle: "Chiudere la raccolta?",
     closeBody: "Chi risponde non può più inviare risposte né riprendere le bozze finché non la riapri.",
     close: "Chiudi",
     deleteTitle: (name: string) => (name.trim() ? `Eliminare la rilevazione «${name.trim()}»?` : "Eliminare questa rilevazione?"),

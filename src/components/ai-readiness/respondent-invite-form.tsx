@@ -1,414 +1,201 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useId, useState } from "react";
+import { ChevronRight } from "lucide-react";
 import {
   createAiReadinessRespondentInviteAction,
   type AiReadinessActionState,
   type CreateRespondentInviteData,
 } from "@/lib/actions/ai-readiness";
-import {
-  AI_READINESS_SURVEY_TRACKS,
-  DEFAULT_TARGETED_SURVEY_TRACK,
-  type AiReadinessSurveyTrack,
-} from "@/lib/ai-readiness/survey-track";
-import { Button } from "@/components/ui/button";
+import { READINESS_TEXT } from "@/lib/ai-readiness/dashboard-text";
+import { READINESS_TRACKS, type ReadinessTrack } from "@/lib/ai-readiness/dashboard-view";
+import { CopyButton } from "@/components/uc/ui/copy-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ContactRound } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-const INITIAL: AiReadinessActionState<CreateRespondentInviteData> = {
-  ok: true,
-};
+const INITIAL: AiReadinessActionState<CreateRespondentInviteData> = { ok: true };
+const V = READINESS_TEXT.invite;
+const TRACK_ORDER: readonly ReadinessTrack[] = ["internal", "use_case_expert", "everyone"];
 
-type SectionOption = {
-  id: string;
-  title: string;
-  description?: string;
-  audience?: "everyone" | "internal";
-  pillarTitle: string;
-};
+type SectionOption = { id: string; title: string; audience?: "everyone" | "internal"; area: string };
+type UseCaseBlockOption = { id: string; title: string; subtitle: string };
 
-type UseCaseBlockOption = {
-  id: string;
-  title: string;
-  subtitle: string;
-};
+const FIELD = "h-11 text-base sm:h-9 sm:text-sm";
+const CHOICE = "flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm has-checked:border-foreground/60 has-checked:bg-muted/60";
 
+/**
+ * «Invita una persona» (rilascio 10, ondata 7b, §3.9; audit «Fuori» AD-10): il modulo del pannello. In vista l'email,
+ * che cosa riceve (i tre percorsi di oggi, in un `fieldset`) e l'area; nome, cognome, ruolo, anzianità e le domande da
+ * includere in «Altri dettagli», chiusi. Il pulsante pieno è quello del pannello (`form={formId}`). Il link personale si
+ * vede una volta, appena creato, con «Copia»: nessuna email parte da qui. L'azione è quella di oggi.
+ */
 export function RespondentInviteForm({
+  formId,
   workspaceId,
   assessmentId,
   sections,
   useCaseBlocks,
+  onPendingChange,
 }: {
+  formId: string;
   workspaceId: string;
   assessmentId: string;
-  sections: SectionOption[];
-  useCaseBlocks: UseCaseBlockOption[];
+  sections: readonly SectionOption[];
+  useCaseBlocks: readonly UseCaseBlockOption[];
+  onPendingChange?: (pending: boolean) => void;
 }) {
-  const action = createAiReadinessRespondentInviteAction.bind(
-    null,
-    workspaceId,
-    assessmentId
-  );
+  const action = createAiReadinessRespondentInviteAction.bind(null, workspaceId, assessmentId);
   const [state, formAction, pending] = useActionState(action, INITIAL);
-  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
-  const [track, setTrack] = useState<AiReadinessSurveyTrack>(
-    DEFAULT_TARGETED_SURVEY_TRACK
-  );
-  const [selectedSectionIds, setSelectedSectionIds] = useState(() =>
-    sections
-      .filter((section) => section.audience === "internal")
-      .map((section) => section.id)
-  );
-  const [selectedBlockIds, setSelectedBlockIds] = useState(() =>
-    useCaseBlocks.map((block) => block.id)
-  );
-  const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
+  useEffect(() => {
+    onPendingChange?.(pending);
+  }, [onPendingChange, pending]);
+  const [track, setTrack] = useState<ReadinessTrack>("internal");
+  const [details, setDetails] = useState(false);
+  const sectionsOf = (t: ReadinessTrack) => sections.filter((s) => (t === "internal" ? s.audience === "internal" : s.audience !== "internal")).map((s) => s.id);
+  const [sectionIds, setSectionIds] = useState<string[]>(() => sectionsOf("internal"));
+  const [blockIds, setBlockIds] = useState<string[]>(() => useCaseBlocks.map((b) => b.id));
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const ids = { email: useId(), unit: useId(), name: useId(), surname: useId(), role: useId(), seniority: useId(), details: useId() };
+  const visibleSections = sections.filter((s) => (track === "internal" ? s.audience === "internal" : s.audience !== "internal"));
+  const scopeCount = track === "use_case_expert" ? blockIds.length : sectionIds.length;
+  const fieldError = (name: string) => errors[name] ?? state.fieldErrors?.[name] ?? null;
 
-  const visibleSections = sections.filter((section) =>
-    track === "internal"
-      ? section.audience === "internal"
-      : section.audience !== "internal"
-  );
-  const selectedAreaCount =
-    track === "use_case_expert" ? selectedBlockIds.length : selectedSectionIds.length;
-  const selectedTrackMeta = AI_READINESS_SURVEY_TRACKS[track];
-  const createdTrackMeta = state.data?.surveyTrack
-    ? AI_READINESS_SURVEY_TRACKS[state.data.surveyTrack]
-    : null;
-
-  function clearLocalError(name: string) {
-    setLocalErrors((current) => {
-      if (!current[name]) return current;
-      const next = { ...current };
-      delete next[name];
-      return next;
-    });
-  }
-
-  function resetTrack(next: AiReadinessSurveyTrack) {
+  function chooseTrack(next: ReadinessTrack) {
     setTrack(next);
-    setLocalErrors({});
-    if (next === "use_case_expert") {
-      setSelectedBlockIds(useCaseBlocks.map((block) => block.id));
-      return;
-    }
-    setSelectedSectionIds(
-      sections
-        .filter((section) =>
-          next === "internal"
-            ? section.audience === "internal"
-            : section.audience !== "internal"
-        )
-        .map((section) => section.id)
-    );
+    setErrors({});
+    if (next === "use_case_expert") setBlockIds(useCaseBlocks.map((b) => b.id));
+    else setSectionIds(sectionsOf(next));
   }
+
+  const toggle = (list: string[], id: string, on: boolean) => (on ? [...new Set([...list, id])] : list.filter((x) => x !== id));
 
   return (
     <form
+      id={formId}
       action={formAction}
-      className="space-y-5 rounded-[28px] border border-sky-500/25 bg-sky-500/5 p-5"
+      noValidate
+      className="space-y-5"
       data-testid="targeted-invite-form"
       data-survey-track={track}
-      noValidate
       onSubmit={(event) => {
-        const form = event.currentTarget;
-        const nextErrors: Record<string, string> = {};
-        const email = new FormData(form).get("email");
-        const unit = new FormData(form).get("organizationUnit");
-        if (typeof email !== "string" || !email.trim()) {
-          nextErrors.email = "Inserisci l'email della persona.";
+        const data = new FormData(event.currentTarget);
+        const next: Record<string, string> = {};
+        if (!String(data.get("email") ?? "").trim()) next.email = V.errors.email;
+        if (String(data.get("organizationUnit") ?? "").trim().length < 2) next.organizationUnit = V.errors.unit;
+        if (scopeCount === 0) {
+          next.scope = V.errors.scope;
+          setDetails(true);
         }
-        if (typeof unit !== "string" || unit.trim().length < 2) {
-          nextErrors.organizationUnit = "Indica area o team.";
-        }
-        if (selectedAreaCount === 0) {
-          nextErrors.scope =
-            track === "use_case_expert"
-              ? "Scegli almeno un'area del modulo use case."
-              : "Scegli almeno un'area da mostrare.";
-        }
-        if (Object.keys(nextErrors).length > 0) {
+        if (Object.keys(next).length) {
           event.preventDefault();
-          setLocalErrors(nextErrors);
+          setErrors(next);
         }
       }}
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-2xl border border-sky-500/25 bg-background text-sky-600">
-            <ContactRound className="size-4" />
-          </span>
-          <div>
-            <div className="text-xs font-medium uppercase tracking-[0.18em] text-sky-700 dark:text-sky-400">
-              Percorso 2 · Link personale
-            </div>
-            <div className="mt-1 text-base font-semibold">
-              Schede mirate e raccolta use case
-            </div>
-          </div>
-        </div>
-        <span className="rounded-full border border-sky-500/25 bg-background px-2.5 py-1 text-xs font-medium">
-          1 persona
-        </span>
+      <p className="text-sm text-muted-foreground">{V.description}</p>
+
+      <div className="grid gap-1.5">
+        <Label htmlFor={ids.email}>{V.email}</Label>
+        <Input id={ids.email} name="email" type="email" autoComplete="off" aria-invalid={fieldError("email") ? true : undefined} className={FIELD} onChange={() => setErrors((e) => ({ ...e, email: "" }))} />
+        {fieldError("email") ? <p className="text-xs text-destructive">{fieldError("email")}</p> : null}
       </div>
-      <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-        Scegli prima il risultato che vuoi alimentare. La scheda tecnica è il
-        percorso corretto per Context e Workflow.
-      </p>
-      <div className="grid gap-3 md:grid-cols-2">
-        <div className="space-y-1.5">
-          <Label htmlFor="email">Email di chi risponde</Label>
-          <Input
-            id="email"
-            name="email"
-            type="email"
-            placeholder="persona@azienda.com"
-            aria-invalid={Boolean(localErrors.email || state.fieldErrors?.email)}
-            onChange={() => clearLocalError("email")}
-          />
-          {(localErrors.email || state.fieldErrors?.email) && (
-            <p className="text-xs text-destructive">
-              {localErrors.email || state.fieldErrors?.email}
-            </p>
-          )}
-        </div>
-        <div className="space-y-1.5">
-          <Label>Quale percorso deve ricevere?</Label>
-          <div className="grid gap-2">
-            <label className="flex cursor-pointer items-start gap-2 rounded-2xl border p-3 text-sm has-checked:border-emerald-500 has-checked:bg-emerald-500/5">
-              <input
-                type="radio"
-                name="surveyTrack"
-                value="internal"
-                checked={track === "internal"}
-                onChange={() => resetTrack("internal")}
-                className="mt-0.5"
-              />
-              <span>
-                <span className="font-medium">
-                  {AI_READINESS_SURVEY_TRACKS.internal.label}
-                </span>
-                <span className="mt-0.5 block text-xs text-muted-foreground">
-                  {AI_READINESS_SURVEY_TRACKS.internal.description}
-                </span>
-              </span>
-            </label>
-            <label className="flex cursor-pointer items-start gap-2 rounded-2xl border p-3 text-sm has-checked:border-emerald-500 has-checked:bg-emerald-500/5">
-              <input
-                type="radio"
-                name="surveyTrack"
-                value="use_case_expert"
-                checked={track === "use_case_expert"}
-                onChange={() => resetTrack("use_case_expert")}
-                className="mt-0.5"
-              />
-              <span>
-                <span className="font-medium">
-                  {AI_READINESS_SURVEY_TRACKS.use_case_expert.label}
-                </span>
-                <span className="mt-0.5 block text-xs text-muted-foreground">
-                  {AI_READINESS_SURVEY_TRACKS.use_case_expert.description}
-                </span>
-              </span>
-            </label>
-            <label className="flex cursor-pointer items-start gap-2 rounded-2xl border p-3 text-sm has-checked:border-emerald-500 has-checked:bg-emerald-500/5">
-              <input
-                type="radio"
-                name="surveyTrack"
-                value="everyone"
-                checked={track === "everyone"}
-                onChange={() => resetTrack("everyone")}
-                className="mt-0.5"
-              />
-              <span>
-                <span className="font-medium">
-                  {AI_READINESS_SURVEY_TRACKS.everyone.label} individuale
-                </span>
-                <span className="mt-0.5 block text-xs text-muted-foreground">
-                  {AI_READINESS_SURVEY_TRACKS.everyone.description}
-                </span>
-              </span>
-            </label>
-          </div>
-          <div
-            className={`rounded-2xl border p-3 text-xs leading-5 ${
-              track === "internal"
-                ? "border-sky-500/30 bg-sky-500/10"
-                : "bg-background/70"
-            }`}
-            data-testid="selected-track-impact"
-          >
-            <span className="font-medium">Alimenta: {selectedTrackMeta.feeds}.</span>
-            {track === "everyone" && (
-              <span className="text-muted-foreground">
-                {" "}
-                Non alimenta Context o Workflow.
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="space-y-1.5 md:col-span-2">
-          <input type="hidden" name="scopeConfigured" value="1" />
-          <Label>
-            Domande da includere
-            <span className="ml-2 text-xs font-normal text-muted-foreground">
-              {selectedAreaCount} selezionate
+
+      <fieldset className="grid gap-2">
+        <legend className="mb-1.5 text-sm font-medium">{V.track}</legend>
+        {TRACK_ORDER.map((key) => (
+          <label key={key} className={CHOICE}>
+            <input type="radio" name="surveyTrack" value={key} checked={track === key} onChange={() => chooseTrack(key)} className="mt-0.5 size-4" />
+            <span className="min-w-0">
+              <span className="font-medium">{READINESS_TRACKS[key].label}</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">{READINESS_TRACKS[key].hint}</span>
             </span>
-          </Label>
-          <div className="rounded-2xl border bg-muted/20 p-3">
-            <p className="text-xs leading-5 text-muted-foreground">
-              Scegli solo ciò che questa persona può compilare bene. Per un HR
-              manager, ad esempio, puoi lasciare solo “Persone, ruoli e processi”.
-            </p>
-            {track === "use_case_expert" ? (
-              <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                {useCaseBlocks.map((block) => (
-                  <label
-                    key={block.id}
-                    className="flex cursor-pointer gap-2 rounded-2xl border bg-background/70 p-3 text-sm has-checked:border-emerald-500 has-checked:bg-emerald-500/5"
-                  >
-                    <input
-                      type="checkbox"
-                      name="useCaseBlockIds"
-                      value={block.id}
-                      checked={selectedBlockIds.includes(block.id)}
-                      onChange={(event) => {
-                        clearLocalError("scope");
-                        setSelectedBlockIds((current) =>
-                          event.target.checked
-                            ? [...new Set([...current, block.id])]
-                            : current.filter((id) => id !== block.id)
-                        );
-                      }}
-                      className="mt-1"
-                    />
-                    <span>
-                      <span className="font-medium">{block.title}</span>
-                      <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                        {block.subtitle}
-                      </span>
-                    </span>
-                  </label>
-                ))}
-              </div>
-            ) : (
-              <div className="mt-3 grid gap-2">
-                {visibleSections.map((section) => (
-                  <label
-                    key={`${track}-${section.id}`}
-                    className="flex cursor-pointer gap-3 rounded-2xl border bg-background/70 p-3 text-sm has-checked:border-emerald-500 has-checked:bg-emerald-500/5"
-                  >
-                    <input
-                      type="checkbox"
-                      name="sectionIds"
-                      value={section.id}
-                      checked={selectedSectionIds.includes(section.id)}
-                      onChange={(event) => {
-                        clearLocalError("scope");
-                        setSelectedSectionIds((current) =>
-                          event.target.checked
-                            ? [...new Set([...current, section.id])]
-                            : current.filter((id) => id !== section.id)
-                        );
-                      }}
-                      className="mt-1"
-                    />
-                    <span>
-                      <span className="font-medium">{section.title}</span>
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        {section.pillarTitle}
-                      </span>
-                      {section.description && (
-                        <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                          {section.description}
-                        </span>
-                      )}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            )}
-            {(localErrors.scope ||
-              state.fieldErrors?.sectionIds ||
-              state.fieldErrors?.useCaseBlockIds) && (
-              <p className="mt-2 text-xs text-destructive" role="alert">
-                {localErrors.scope ||
-                  state.fieldErrors?.sectionIds ||
-                  state.fieldErrors?.useCaseBlockIds}
-              </p>
-            )}
+          </label>
+        ))}
+      </fieldset>
+
+      <div className="grid gap-1.5">
+        <Label htmlFor={ids.unit}>{V.unit}</Label>
+        <Input id={ids.unit} name="organizationUnit" placeholder={V.unitPlaceholder} aria-invalid={fieldError("organizationUnit") ? true : undefined} className={FIELD} onChange={() => setErrors((e) => ({ ...e, organizationUnit: "" }))} />
+        {fieldError("organizationUnit") ? <p className="text-xs text-destructive">{fieldError("organizationUnit")}</p> : null}
+      </div>
+
+      <div className="border-t pt-2">
+        <button
+          type="button"
+          aria-expanded={details}
+          aria-controls={ids.details}
+          onClick={() => setDetails(!details)}
+          className="flex min-h-11 w-full items-center justify-between gap-3 rounded-md text-left text-sm font-medium outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-9"
+        >
+          {V.details}
+          <ChevronRight aria-hidden className={cn("size-4 text-muted-foreground transition-transform duration-150 motion-reduce:transition-none", details && "rotate-90")} />
+        </button>
+        <div id={ids.details} hidden={!details} className="space-y-4 pt-2">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-1.5">
+              <Label htmlFor={ids.name}>{V.name}</Label>
+              <Input id={ids.name} name="name" autoComplete="off" className={FIELD} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor={ids.surname}>{V.surname}</Label>
+              <Input id={ids.surname} name="surname" autoComplete="off" className={FIELD} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor={ids.role}>{V.role}</Label>
+              <Input id={ids.role} name="role" autoComplete="off" className={FIELD} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor={ids.seniority}>{V.seniority}</Label>
+              <Input id={ids.seniority} name="seniority" autoComplete="off" className={FIELD} />
+            </div>
           </div>
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="organizationUnit">Area / team</Label>
-          <Input
-            id="organizationUnit"
-            name="organizationUnit"
-            placeholder="Marketing, Operations..."
-            aria-invalid={Boolean(
-              localErrors.organizationUnit || state.fieldErrors?.organizationUnit
-            )}
-            onChange={() => clearLocalError("organizationUnit")}
-          />
-          {(localErrors.organizationUnit || state.fieldErrors?.organizationUnit) && (
-            <p className="text-xs text-destructive">
-              {localErrors.organizationUnit || state.fieldErrors?.organizationUnit}
-            </p>
-          )}
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="name">Nome</Label>
-          <Input id="name" name="name" placeholder="Nome" />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="surname">Cognome</Label>
-          <Input id="surname" name="surname" placeholder="Cognome" />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="role">Ruolo</Label>
-          <Input id="role" name="role" placeholder="Es. Project Manager" />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="seniority">Seniority</Label>
-          <Input id="seniority" name="seniority" placeholder="Es. Senior, Manager, Director" />
+          <input type="hidden" name="scopeConfigured" value="1" />
+          <fieldset className="grid gap-2">
+            <legend className="mb-1 text-sm font-medium">{V.questions}</legend>
+            <p className="text-xs text-muted-foreground">{V.questionsHint}</p>
+            {track === "use_case_expert"
+              ? useCaseBlocks.map((block) => (
+                  <label key={block.id} className={CHOICE}>
+                    <input type="checkbox" name="useCaseBlockIds" value={block.id} checked={blockIds.includes(block.id)} onChange={(e) => setBlockIds((list) => toggle(list, block.id, e.target.checked))} className="mt-0.5 size-4" />
+                    <span className="min-w-0">
+                      <span className="font-medium">{block.title}</span>
+                      <span className="mt-0.5 block text-xs text-muted-foreground">{block.subtitle}</span>
+                    </span>
+                  </label>
+                ))
+              : visibleSections.map((section) => (
+                  <label key={`${track}-${section.id}`} className={CHOICE}>
+                    <input type="checkbox" name="sectionIds" value={section.id} checked={sectionIds.includes(section.id)} onChange={(e) => setSectionIds((list) => toggle(list, section.id, e.target.checked))} className="mt-0.5 size-4" />
+                    <span className="min-w-0">
+                      <span className="font-medium">{section.title}</span>
+                      <span className="ml-2 text-xs text-muted-foreground">{section.area}</span>
+                    </span>
+                  </label>
+                ))}
+            {fieldError("scope") || state.fieldErrors?.sectionIds || state.fieldErrors?.useCaseBlockIds ? (
+              <p role="alert" className="text-xs text-destructive">
+                {fieldError("scope") || state.fieldErrors?.sectionIds || state.fieldErrors?.useCaseBlockIds}
+              </p>
+            ) : null}
+          </fieldset>
         </div>
       </div>
-      {state.message && (
-        <p className={`text-sm ${state.ok ? "text-emerald-600" : "text-destructive"}`}>
+
+      {state.message && !state.ok ? (
+        <p role="alert" className="text-sm text-destructive">
           {state.message}
         </p>
-      )}
-      {state.data?.inviteUrl && (
-        <div className="rounded-2xl border bg-muted/30 p-3">
-          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-            Link · {createdTrackMeta?.label ?? selectedTrackMeta.label}
-          </div>
-          {createdTrackMeta && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Alimenta: {createdTrackMeta.feeds}
-            </p>
-          )}
-          <div className="mt-2 flex flex-col gap-2 md:flex-row md:items-center">
-            <code className="flex-1 overflow-hidden text-ellipsis rounded-lg bg-background px-3 py-2 text-xs">
-              {state.data.inviteUrl}
-            </code>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={async () => {
-                await navigator.clipboard.writeText(state.data?.inviteUrl ?? "");
-                setCopiedUrl(state.data?.inviteUrl ?? null);
-              }}
-            >
-              {copiedUrl === state.data.inviteUrl ? "Copiato" : "Copia"}
-            </Button>
-          </div>
+      ) : null}
+      {state.ok && state.data?.inviteUrl ? (
+        <div className="space-y-2 rounded-lg border p-3" data-slot="invite-created">
+          <p className="text-sm font-medium">{V.created}</p>
+          <p className="text-xs text-muted-foreground">{V.createdHint}</p>
+          <Input readOnly value={state.data.inviteUrl} aria-label={V.created} onFocus={(e) => e.currentTarget.select()} className="h-11 font-mono text-base sm:h-9 sm:text-xs" />
+          <CopyButton value={state.data.inviteUrl} label={READINESS_TEXT.collection.copy} />
         </div>
-      )}
-      <Button type="submit" disabled={pending}>
-        {pending ? "Creo invito..." : `Crea link · ${selectedTrackMeta.shortLabel}`}
-      </Button>
+      ) : null}
+      {pending ? <span className="sr-only" aria-live="polite">{V.pending}</span> : null}
     </form>
   );
 }

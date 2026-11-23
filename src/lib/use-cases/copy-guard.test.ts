@@ -529,6 +529,31 @@ test("copy-guard verde sui testi dei componenti dell'area (src/components/use-ca
   assert.ok(costTexts.includes("Non sai l'importo? Scegli una fascia"));
 });
 
+test("(rilascio 10, ondata 7b) la dashboard AI Readiness e «Domande» parlano come la dashboard; il questionario resta fra le pagine di fuori", async () => {
+  const files = AREA_SOURCE_DIRS.flatMap(walk).filter((file) => copyScopeOfFile(file) === "area");
+  for (const piece of [
+    "src/app/(dashboard)/dashboard/[workspaceId]/ai-readiness/page.tsx",
+    "src/app/(dashboard)/dashboard/[workspaceId]/ai-readiness/questions/[assessmentId]/page.tsx",
+    "src/components/ai-readiness/readiness-header.tsx",
+    "src/components/ai-readiness/collection-tab.tsx",
+    "src/components/ai-readiness/question-editor.tsx",
+    "src/lib/ai-readiness/dashboard-text.ts",
+    "src/lib/ai-readiness/notify.ts",
+  ]) {
+    assert.ok(files.includes(piece), `${piece} si controlla`);
+  }
+  // Le pagine del questionario per chi risponde restano «fuori»: «caso d'uso», mai «use case».
+  for (const piece of ["src/components/ai-readiness/respondent-survey-form.tsx", "src/components/ai-readiness/open-survey-start-form.tsx"]) {
+    assert.equal(copyScopeOfFile(piece), "esterno", piece);
+  }
+  const found = files.filter((file) => file.includes("ai-readiness")).flatMap((file) => matchesOf(file, "area").map((m) => `${file}: «${m.match}» in «${m.text}»`));
+  assert.deepEqual(found, []);
+  const { READINESS_TEXT } = await import("../ai-readiness/dashboard-text.ts");
+  const texts = exportedStrings({ READINESS_TEXT }).filter((t) => !CODE_LIKE.test(t));
+  assert.ok(texts.length > 100, `${texts.length} testi controllati`);
+  assert.deepEqual(findHubForbiddenIn(texts, "area").map((m) => `«${m.match}» in «${m.text}»`), []);
+});
+
 // ─── Il vecchio nome fuori dall'area (si accende in H7) ──────────────
 
 /** Acceso da H7 in poi (c'è il file che crea solo H7), oppure prima con la variabile. */
@@ -682,7 +707,7 @@ test("(rilascio 10, ondata 4) le parole di fuori anche nel guscio unico, nel cor
   ];
   for (const piece of pieces) assert.equal(copyScopeOfFile(piece), "esterno", piece);
   assert.equal(copyScopeOfFile("src/lib/public/survey.test.ts"), null, "i test non sono testi visibili");
-  assert.equal(copyScopeOfFile("src/components/ai-readiness/assessment-actions.tsx"), null, "la dashboard di AI Readiness è dell'ondata 7");
+  assert.equal(copyScopeOfFile("src/components/ai-readiness/assessment-actions.tsx"), "area", "(ondata 7b) la dashboard di AI Readiness parla come la dashboard");
   const found = pieces.flatMap((file) => matchesOf(file, "esterno").map((m) => `${file}: «${m.match}» in «${m.text}»`));
   assert.deepEqual(found, []);
   // I testi esportati dei moduli, anche quelli che i componenti leggono per chiave.

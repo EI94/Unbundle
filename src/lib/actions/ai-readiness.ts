@@ -47,7 +47,7 @@ import {
   withdrawAiReadinessBenchmarkConsentByTokenHash,
 } from "@/lib/db/queries/ai-readiness";
 import { deleteReadinessBell, notifyReadinessResponse } from "@/lib/db/queries/ai-readiness-notify";
-import { expectedRespondentsOf } from "@/lib/ai-readiness/dashboard-view";
+import { expectedRespondentsOf, trackLabel } from "@/lib/ai-readiness/dashboard-view";
 import { logSafeError } from "@/lib/log/safe-error";
 import { createUseCase } from "@/lib/db/queries/use-cases";
 import { generateAiReadinessIntelligence } from "@/lib/ai-readiness/intelligence";
@@ -71,10 +71,7 @@ import {
   getUseCaseFieldIdsForBlocks,
   validateUseCaseValues,
 } from "@/lib/ai-readiness/use-case-form";
-import {
-  surveyTrackMeta,
-  type AiReadinessSurveyTrack,
-} from "@/lib/ai-readiness/survey-track";
+import { type AiReadinessSurveyTrack } from "@/lib/ai-readiness/survey-track";
 import { randomUUID } from "node:crypto";
 import type { AiReadinessAnswer } from "@/lib/ai-readiness/types";
 
@@ -881,10 +878,9 @@ export async function createAiReadinessRespondentInviteAction(
   });
 
   revalidatePath(`/dashboard/${workspaceId}/ai-readiness`);
-  const track = surveyTrackMeta(parsed.data.surveyTrack);
   return {
     ok: true,
-    message: `Link personale pronto (${track.label.toLowerCase()}): copialo e mandalo solo a questa persona.`,
+    message: `Link personale pronto (${trackLabel(parsed.data.surveyTrack).toLowerCase()}): copialo e mandalo solo a questa persona.`,
     fieldErrors: {},
     data: {
       respondentId: respondent.id,

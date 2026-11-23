@@ -1,8 +1,4 @@
 {
-  "src/app/(dashboard)/dashboard/[workspaceId]/ai-readiness/page.tsx": {
-    "palette": 22,
-    "whiteBlack": 1
-  },
   "src/app/(dashboard)/dashboard/[workspaceId]/intelligence/page.tsx": {
     "palette": 3
   },
@@ -30,36 +26,6 @@
     "palette": 1,
     "fadedText": 2,
     "light": 3
-  },
-  "src/components/ai-readiness/assessment-actions.tsx": {
-    "palette": 1
-  },
-  "src/components/ai-readiness/assessment-create-form.tsx": {
-    "palette": 9
-  },
-  "src/components/ai-readiness/insight-validation-actions.tsx": {
-    "palette": 1
-  },
-  "src/components/ai-readiness/intelligence-actions.tsx": {
-    "palette": 1
-  },
-  "src/components/ai-readiness/open-link-form.tsx": {
-    "palette": 10,
-    "dark": 1
-  },
-  "src/components/ai-readiness/question-editor.tsx": {
-    "palette": 5,
-    "fadedText": 2
-  },
-  "src/components/ai-readiness/respondent-invite-form.tsx": {
-    "palette": 19,
-    "dark": 1
-  },
-  "src/components/ai-readiness/threshold-form.tsx": {
-    "palette": 1
-  },
-  "src/components/ai-readiness/use-case-promote-button.tsx": {
-    "palette": 1
   },
   "src/components/auth/login-form.tsx": {
     "hex": 4

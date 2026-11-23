@@ -164,7 +164,10 @@ test("revokes in the lists are outlined, the red only inside the dialog; «Crea 
 
 test("«Elimina» of AI Readiness is one dialog: the summary, the word to type, and the same word for the server", () => {
   const source = read("src/components/ai-readiness/assessment-actions.tsx");
-  assert.equal(source.match(/<ConfirmDialog\b/g)?.length, 2, "«Chiudi survey» and «Elimina»");
+  assert.equal(source.match(/<ConfirmDialog\b/g)?.length, 2, "«Chiudi la raccolta» and «Elimina»");
+  // (Ondata 7b) Dal «⋯»: la finestra si apre dalla voce rossa, e la conferma manda il modulo con la parola scritta.
+  assert.match(source, /label: M\.remove, destructive: true, disabled: deletePending, onSelect: \(\) => setDeleting\(true\)/);
+  assert.match(source, /deleteForm\.current\?\.requestSubmit\(\);/);
   assert.match(source, /<input type="hidden" name="confirmation" value=\{deleteWordTyped \? DELETE_WORD : ""\} \/>/);
   assert.match(source, /description=\{ASK\.deleteBody\(respondentCount, completedCount\)\}/);
   assert.match(source, /confirmDisabled=\{!deleteWordTyped\}/);

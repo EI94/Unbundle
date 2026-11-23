@@ -42,6 +42,8 @@ export const READINESS_TEXT = Object.freeze({
     answers,
     ofExpected: (n: number, expected: number) => `${answers(n)} su ${formatCount(expected)} attese`,
     threshold: (t: number) => (t === 1 ? "basta 1 per i risultati" : `bastano ${formatCount(t)} per i risultati`),
+    /** Con la raccolta aperta la pagina si aggiorna da sola ogni 30 secondi: l'ora dell'ultimo aggiornamento. */
+    updated: (time: string) => `aggiornato alle ${time}`,
   }),
   deleted: "Rilevazione eliminata, con inviti, risposte e punteggi.",
   /** Il prossimo passo, stato per stato (§3.9): il verbo del pulsante e il perché nel «?». */
@@ -67,6 +69,7 @@ export const READINESS_TEXT = Object.freeze({
     turnManager: "Tocca a chi gestisce la rilevazione",
     turnReviewer: "Tocca a chi valuta gli use case",
     pending: "Un momento…",
+    failed: "Non è andata: riprova.",
   }),
   /** Il «⋯» della testata. */
   menu: Object.freeze({
@@ -111,7 +114,7 @@ export const READINESS_TEXT = Object.freeze({
     indexNote: (maturity: string | null, weakest: string | null) =>
       [maturity, weakest ? `più debole: ${weakest}` : null].filter(Boolean).join(" · "),
     radarLabel: "Punteggio per area, da 0 a 5",
-    belowThreshold: (t: number) => `Il profilo usa le risposte arrivate finora; aree e team si vedono da ${formatCount(t)} risposte.`,
+    belowThreshold: (t: number) => `Il profilo usa le risposte arrivate finora: aree, team e confronto si vedono da ${formatCount(t)} risposte.`,
     strengths: "Punti di forza",
     attention: "Punti di attenzione",
     missingInternal: (areas: string) => `Mancano le schede dei referenti per ${areas}.`,
@@ -141,8 +144,6 @@ export const READINESS_TEXT = Object.freeze({
     selectAll: "Tutte",
     selectNone: "Nessuna",
     regenerate: "Crea un link nuovo",
-    regenerateTitle: "Creare un link nuovo per tutti?",
-    regenerateBody: "Il link di prima, e le sue copie, smettono di funzionare per chi non ha ancora cominciato.",
     invite: "Invita una persona",
     people: (n: number) => `Persone (${formatCount(n)})`,
     peopleNone: "Ancora nessuna persona invitata.",
@@ -194,6 +195,7 @@ export const READINESS_TEXT = Object.freeze({
     discard: "Scarta",
     roadmap: "Tappe",
     roadmapSummary: (n: number) => (n === 1 ? "1 tappa" : `${formatCount(n)} tappe`),
+    metric: (text: string) => `Come si misura: ${text}`,
     groups: "Gruppi di use case",
     groupsSummary: (n: number) => (n === 1 ? "1 gruppo" : `${formatCount(n)} gruppi`),
     groupCount: (n: number) => (n === 1 ? "1 use case" : `${formatCount(n)} use case`),
@@ -214,8 +216,8 @@ export const READINESS_TEXT = Object.freeze({
     privacyBody: (t: number) =>
       `Le risposte si leggono solo insieme: aree e team compaiono da ${formatCount(t)} risposte, mai la risposta di una persona. Chi risponde può scaricare i suoi dati, togliere il consenso al confronto e rendere anonime le sue risposte dal suo link.`,
     controller: (name: string) => `Titolare del trattamento: ${name}`,
-    anonymous: "Questionario anonimo",
-    named: "Questionario con nome e cognome",
+    anonymous: "Chi risponde non scrive nome e cognome",
+    named: "Chi risponde scrive nome e cognome",
     exportsTitle: "File scaricati",
     exportsSummary: (n: number) => (n === 1 ? "1 file" : `${formatCount(n)} file`),
     exportPdf: "Report in PDF",
@@ -232,7 +234,7 @@ export const READINESS_TEXT = Object.freeze({
     areas: "Aree da misurare",
     mode: "Modalità",
     anonymous: "Anonima",
-    anonymousHint: "Nessun nome: si leggono solo i dati insieme. Consigliata.",
+    anonymousHint: "Chi risponde non scrive il nome; i risultati si leggono solo insieme. Consigliata.",
     named: "Con nome e cognome",
     namedHint: "Chi risponde scrive nome e cognome, senza account.",
     privacyFold: "Privacy e soglie (già compilate)",

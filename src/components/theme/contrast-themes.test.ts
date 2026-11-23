@@ -396,8 +396,8 @@ test("tema chiaro: il punteggio sotto i pilastri del radar di AI Readiness si le
   const opacity = Number(/opacity: ([\d.]+);/.exec(rule.body)?.[1]);
   const radar = readRepo("src/components/ai-readiness/pillar-radar.tsx");
   assert.match(radar, /className="fill-current"\s*fontSize=\{10\}\s*opacity=\{0\.55\}\s*data-slot="pillar-radar-score"/);
-  // Il radar scrive nel colore del testo della sua card (`text-foreground`, ai-readiness/page.tsx).
-  assert.match(readRepo("src/app/(dashboard)/dashboard/[workspaceId]/ai-readiness/page.tsx"), /<CardContent className="text-foreground">\s*<PillarRadar/);
+  // Il radar scrive nel colore del testo della sua card (`bg-card text-foreground`; ondata 7b: la scheda Risultati).
+  assert.match(readRepo("src/components/ai-readiness/results-tab.tsx"), /<div data-slot="readiness-radar" className="[^"]*\bbg-card\b[^"]*\btext-foreground\b[^"]*">\s*<PillarRadar/);
   atLeast(contrast(light.foreground, light.card.rgb, opacity), 4.5, "punteggio del radar, tema chiaro");
   assert.ok(contrast(light.foreground, light.card.rgb, 0.55) < 4.5, "al 55% non basterebbe nel tema chiaro");
   // Nel tema scuro resta al 55%, 5,6:1.

@@ -1,214 +1,153 @@
 "use client";
 
-import { useActionState, useState } from "react";
-import {
-  generateAiReadinessOpenLinkAction,
-  type AiReadinessActionState,
-} from "@/lib/actions/ai-readiness";
-import { AI_READINESS_SURVEY_TRACKS } from "@/lib/ai-readiness/survey-track";
+import { useId, useState } from "react";
+import { Copy, Link2 } from "lucide-react";
+import { READINESS_TEXT } from "@/lib/ai-readiness/dashboard-text";
+import { READINESS_ANCHORS } from "@/lib/ai-readiness/dashboard-view";
 import { CONFIRM_TEXT } from "@/lib/confirm-text";
+import { StatusDot } from "@/components/uc/ui/status-dot";
 import { Button } from "@/components/ui/button";
-import { ConfirmDialog, useSubmitConfirmation } from "@/components/ui/confirm-dialog";
-import { Input } from "@/components/ui/input";
-import { Building2, Copy, Link2 } from "lucide-react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Fold } from "@/components/ui-10/fold";
+import { useOpenLink } from "./open-link";
 
-const INITIAL: AiReadinessActionState<{ openUrl: string }> = { ok: true };
 const ASK = CONFIRM_TEXT.aiReadiness;
+const C = READINESS_TEXT.collection;
 
-type SectionOption = {
-  id: string;
-  title: string;
-  description?: string;
-  pillarTitle: string;
-};
+type SectionOption = { id: string; title: string; area: string };
 
+/**
+ * «Link per tutti» nella scheda Raccolta (rilascio 10, ondata 7b, §3.9; audit «Fuori» AD-10): lo stato in una parola,
+ * le domande che il link mostra, «Copia il link» (bordato: quando è il prossimo passo il pieno sta nella testata).
+ * «Domande da mostrare» è una piega chiusa con le aree del questionario per tutti e «Crea un link nuovo» (che chiede
+ * prima: il link di prima e le sue copie smettono di funzionare) o, senza link, «Crea il link per tutti».
+ */
 export function OpenLinkForm({
   workspaceId,
   assessmentId,
-  hasExisting,
+  active,
+  status,
   sections,
+  scopeIds,
 }: {
   workspaceId: string;
   assessmentId: string;
-  hasExisting: boolean;
-  sections: SectionOption[];
+  /** C'è un link per tutti (`openLinkTokenHash`). */
+  active: boolean;
+  status: string;
+  sections: readonly SectionOption[];
+  /** Le aree del link di adesso; null: tutte. */
+  scopeIds: readonly string[] | null;
 }) {
-  const action = generateAiReadinessOpenLinkAction.bind(null, workspaceId, assessmentId);
-  const [state, formAction, pending] = useActionState(action, INITIAL);
-  const [copied, setCopied] = useState(false);
-  const [selectedSectionIds, setSelectedSectionIds] = useState(() =>
-    sections.map((section) => section.id)
-  );
+  const link = useOpenLink({ workspaceId, assessmentId });
+  const [selected, setSelected] = useState<string[]>(() => (scopeIds?.length ? sections.filter((s) => scopeIds.includes(s.id)).map((s) => s.id) : sections.map((s) => s.id)));
+  const [asking, setAsking] = useState<FormData | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
-  // Con un link già attivo, «Rigenera» chiede prima nella finestra dell'app.
-  const confirmation = useSubmitConfirmation();
-  const url = state.ok ? state.data?.openUrl : undefined;
-  const allSelected =
-    sections.length > 0 && selectedSectionIds.length === sections.length;
-  const track = AI_READINESS_SURVEY_TRACKS.everyone;
+  const titleId = useId();
+  const shown = scopeIds?.length ? sections.filter((s) => scopeIds.includes(s.id)).length : sections.length;
+  const note = status === "draft" ? C.linkDraftNote : status === "open" ? null : C.linkClosedNote;
 
   return (
-    <div
-      className="rounded-[28px] border border-emerald-500/25 bg-emerald-500/5 p-5"
-      data-testid="open-link-form"
-      data-survey-track="everyone"
-    >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/25 bg-background text-emerald-600">
-            <Building2 className="size-4" />
-          </span>
-          <div>
-            <div className="text-xs font-medium uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-400">
-              Percorso 1 · {track.audience}
-            </div>
-            <div className="mt-1 text-base font-semibold">{track.label}</div>
-          </div>
-        </div>
-        <span className="rounded-full border border-emerald-500/25 bg-background px-2.5 py-1 text-xs font-medium">
-          Link condivisibile
-        </span>
+    <section id={READINESS_ANCHORS.link} aria-labelledby={titleId} className="scroll-mt-20 space-y-3" data-testid="open-link-form" data-survey-track="everyone">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 id={titleId} className="flex items-center gap-3 text-base font-semibold">
+          {C.linkTitle}
+          <StatusDot tone={active ? "verde" : "grigio"} label={active ? C.linkActive : C.linkNone} />
+        </h2>
+        {active ? (
+          <Button type="button" variant="outline" className="min-h-11 sm:min-h-9" disabled={link.pending} onClick={() => link.copy()}>
+            <Copy aria-hidden data-icon="inline-start" />
+            {C.copy}
+          </Button>
+        ) : null}
       </div>
-      <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-        Un unico link da girare in chat, email o intranet: chi lo apre inserisce
-        la propria area e riceve il questionario generale, che si salva da solo.
+      <p className="text-sm text-muted-foreground">
+        {[shown < sections.length ? C.linkScopeSome(shown, sections.length) : C.linkScopeAll, note].filter(Boolean).join(" · ")}
       </p>
-      <div className="mt-3 rounded-2xl border border-emerald-500/20 bg-background/80 p-3 text-xs leading-5">
-        <span className="font-medium">Alimenta: {track.feeds}.</span>{" "}
-        <span className="text-muted-foreground">
-          Non raccoglie infrastruttura, dati aziendali o processi interni: per
-          Context e Workflow usa la scheda referenti qui sotto.
-        </span>
-      </div>
-      <form
-        action={formAction}
-        className="mt-4 space-y-4"
-        noValidate
-        onSubmit={(event) => {
-          if (selectedSectionIds.length === 0) {
-            event.preventDefault();
-            setLocalError("Scegli almeno un'area da mostrare nel questionario.");
-            return;
-          }
-          if (hasExisting) confirmation.ask(event, true);
-        }}
-      >
-        <input type="hidden" name="scopeConfigured" value="1" />
-        <div className="rounded-2xl border bg-background/70 p-3">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <div className="text-sm font-medium">Domande da mostrare</div>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                Qui ci sono solo le aree del questionario per l&apos;organizzazione.
-                Puoi partire da tutte e alleggerirlo.
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setLocalError(null);
-                setSelectedSectionIds(
-                  allSelected ? [] : sections.map((section) => section.id)
-                );
-              }}
-            >
-              {allSelected ? "Deseleziona tutto" : "Seleziona tutto"}
-            </Button>
-          </div>
-          <div className="mt-3 grid gap-2">
-            {sections.map((section) => {
-              const checked = selectedSectionIds.includes(section.id);
-              return (
-                <label
-                  key={section.id}
-                  className="flex cursor-pointer gap-3 rounded-2xl border p-3 text-sm has-checked:border-emerald-500 has-checked:bg-emerald-500/5"
-                >
+      {link.error ? (
+        <p role="alert" className="text-sm text-destructive">
+          {link.error}
+        </p>
+      ) : null}
+      <div>
+        <Fold id="domande-del-link" title={C.areasFold} summary={C.linkScopeSome(selected.length, sections.length)}>
+          <form
+            className="space-y-3 pb-4"
+            noValidate
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (selected.length === 0) {
+                setLocalError(C.areasNone);
+                return;
+              }
+              const data = new FormData(event.currentTarget);
+              if (active) setAsking(data);
+              else link.create(data);
+            }}
+          >
+            <input type="hidden" name="scopeConfigured" value="1" />
+            <fieldset className="space-y-2">
+              <legend className="sr-only">{C.areasFold}</legend>
+              <p className="text-sm text-muted-foreground">{C.areasHint}</p>
+              <div className="flex gap-2">
+                <Button type="button" variant="ghost" className="min-h-11 sm:min-h-8" onClick={() => {
+                    setLocalError(null);
+                    setSelected(sections.map((s) => s.id));
+                  }}>
+                  {C.selectAll}
+                </Button>
+                <Button type="button" variant="ghost" className="min-h-11 sm:min-h-8" onClick={() => setSelected([])}>
+                  {C.selectNone}
+                </Button>
+              </div>
+              {sections.map((section) => (
+                <label key={section.id} className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm has-checked:border-foreground/60 has-checked:bg-muted/60">
                   <input
                     type="checkbox"
                     name="sectionIds"
                     value={section.id}
-                    checked={checked}
+                    checked={selected.includes(section.id)}
                     onChange={(event) => {
                       setLocalError(null);
-                      setSelectedSectionIds((current) =>
-                        event.target.checked
-                          ? [...new Set([...current, section.id])]
-                          : current.filter((id) => id !== section.id)
-                      );
+                      setSelected((list) => (event.target.checked ? [...new Set([...list, section.id])] : list.filter((id) => id !== section.id)));
                     }}
-                    className="mt-1"
+                    className="mt-0.5 size-4"
                   />
-                  <span>
+                  <span className="min-w-0">
                     <span className="font-medium">{section.title}</span>
-                    <span className="ml-2 text-xs text-muted-foreground">
-                      {section.pillarTitle}
-                    </span>
-                    {section.description && (
-                      <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                        {section.description}
-                      </span>
-                    )}
+                    <span className="ml-2 text-xs text-muted-foreground">{section.area}</span>
                   </span>
                 </label>
-              );
-            })}
-          </div>
-          {(localError || state.fieldErrors?.sectionIds) && (
-            <p className="mt-2 text-xs text-destructive" role="alert">
-              {localError ?? state.fieldErrors?.sectionIds}
-            </p>
-          )}
-        </div>
-        <Button type="submit" variant="outline" size="sm" disabled={pending}>
-          <Link2 className="size-4" />
-          {pending
-            ? "Genero..."
-            : hasExisting || url
-              ? "Rigenera link organizzazione"
-              : "Genera link organizzazione"}
-        </Button>
-      </form>
+              ))}
+            </fieldset>
+            {localError ? (
+              <p role="alert" className="text-xs text-destructive">
+                {localError}
+              </p>
+            ) : null}
+            <Button type="submit" variant="outline" className="min-h-11 sm:min-h-9" disabled={link.pending}>
+              <Link2 aria-hidden data-icon="inline-start" />
+              {active ? C.regenerate : C.create}
+            </Button>
+          </form>
+        </Fold>
+      </div>
       <ConfirmDialog
-        open={confirmation.open}
-        onOpenChange={confirmation.onOpenChange}
+        open={asking !== null}
+        onOpenChange={(open) => {
+          if (!open) setAsking(null);
+        }}
         title={ASK.newLinkTitle}
         description={ASK.newLinkBody}
         confirmLabel={ASK.newLink}
-        onConfirm={confirmation.confirm}
+        pending={link.pending}
+        onConfirm={() => {
+          const data = asking;
+          setAsking(null);
+          if (data) link.create(data);
+        }}
       />
-      {url && (
-        <div className="mt-4 rounded-2xl border bg-background/80 p-3">
-          <div className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-            Link del questionario per l&apos;organizzazione
-          </div>
-          <div className="flex gap-2">
-            <Input readOnly value={url} className="text-xs" />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={async () => {
-                await navigator.clipboard.writeText(url);
-                setCopied(true);
-              }}
-            >
-              <Copy className="mr-1 size-3.5" /> {copied ? "Copiato" : "Copia"}
-            </Button>
-          </div>
-        </div>
-      )}
-      {state.message && (
-        <p className={`mt-2 text-xs ${state.ok ? "text-emerald-600" : "text-destructive"}`} role="status">
-          {state.message}
-        </p>
-      )}
-      {hasExisting && !url && (
-        <p className="mt-2 text-xs text-muted-foreground">
-          Un link è già attivo: per motivi di sicurezza è visibile solo appena generato.
-        </p>
-      )}
-    </div>
+      {link.dialog}
+    </section>
   );
 }
