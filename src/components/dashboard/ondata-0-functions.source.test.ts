@@ -50,7 +50,8 @@ test("0.21 · on /cli/collega the way out goes to the workspaces, never to «/»
   const page = read("src/app/cli/collega/page.tsx");
   // (Rilascio 10, ondata 4) Il marchio del guscio pubblico non è un link: si torna con i link in fondo, a «Il tuo
   // account › Claude e terminale» e all'Agent Factory del workspace (senza workspace, all'elenco dei workspace).
-  assert.match(page, /<PublicLink href=\{workspaceId \? accountHref\(workspaceId, "claude"\) : "\/dashboard"\}>/);
+  // (8.0d) A «Solo questo use case» il foglio si apre sull'Agent Factory, nel suo perimetro; senza workspace, l'elenco.
+  assert.match(page, /<PublicLink href=\{workspaceId \? \(caseOnly \? caseOnlyAccountHref\(workspaceId, "claude"\) : accountHref\(workspaceId, "claude"\)\) : "\/dashboard"\}>/);
   assert.match(page, /<PublicLink href=\{`\/dashboard\/\$\{workspaceId\}\/agent-factory`\}>/);
   assert.doesNotMatch(page, /<Link href="\/"|href="\/"/);
 });
