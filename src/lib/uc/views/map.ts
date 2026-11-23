@@ -256,9 +256,9 @@ export const MAP_EXAMPLE_LINK = "Segui un esempio dall'inizio alla fine";
 
 /**
  * La pagina senza mappa (R1 di `docs/dossier/SCHEMA-DI-PARTENZA.md`): lo schema «Dal caso d'uso» non porta una mappa,
- * che si disegna poi dal Progetto dell'agente.
+ * che si disegna poi dalla Costruzione (rilascio 10: la pagina che era «Progetto dell'agente»).
  */
-export const MAP_EMPTY = { title: "Da disegnare", hint: "La mappa si disegna dal Progetto dell'agente, quando c'è." } as const;
+export const MAP_EMPTY = { title: "Da disegnare", hint: "La mappa si disegna dalla Costruzione, quando c'è." } as const;
 
 /** Il processo con l'agente ha passi: allora «Con l'AI» lo mostra al posto della mappa della soluzione. */
 export function hasAgentProcess(maps: Pick<MapsView, "toBe">): boolean {

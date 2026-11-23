@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { SCHEMA_BLOCKERS_SHOWN, SCHEMA_CHANGE_TEXT as S, schemaBlockReasons, schemaBlockersShown } from "./case-settings.ts";
 import { findForbiddenIn } from "./copy-guard.ts";
+import { fromUseCaseDefinition } from "../template/from-use-case.ts";
+import { canonicalDefinition, templateDefinitionHash } from "../template/load.ts";
+import { validateTemplate } from "../template/schema.ts";
 import { MAP_EMPTY } from "./map.ts";
 import { RULES_EMPTY } from "./model.ts";
 
@@ -77,8 +80,10 @@ test("the action checks the same role as the other settings and goes through res
 test("(R1) map and rules without content read «Da disegnare», from the text modules", () => {
   assert.equal(MAP_EMPTY.title, "Da disegnare");
   assert.equal(RULES_EMPTY.title, "Da disegnare");
-  assert.match(MAP_EMPTY.hint, /Progetto dell'agente/);
-  assert.match(RULES_EMPTY.hint, /Progetto dell'agente/);
+  // (Rilascio 10) The agent's project is the «Costruzione»: the dashboard never names the old page.
+  assert.equal(MAP_EMPTY.hint, "La mappa si disegna dalla Costruzione, quando c'è.");
+  assert.equal(RULES_EMPTY.hint, "Le regole si scrivono dalla Costruzione, quando c'è.");
+  for (const hint of [MAP_EMPTY.hint, RULES_EMPTY.hint]) assert.doesNotMatch(hint, /Progetto dell'agente/);
   const map = strip(read("src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/soluzione/mappa/page.tsx"));
   // (Rilascio 10) The rules are the Soluzione's «Regole» panel (`?apri=regole`): `/soluzione/regole` answers 308 to it.
   const rules = strip(read("src/components/uc/catalog/rules-panel.tsx"));
@@ -111,4 +116,13 @@ test("every reason that stops «Cambia schema di partenza» has a plain label, t
     schemaBlockReasons(["non_applicabile", "eccezione", "scadenza", "aggiunta", "modifiche"]),
     "ha un «non si applica» proposto o firmato, ha una deroga o una soluzione provvisoria, ha una scadenza, è stata aggiunta a mano, è stata modificata",
   );
+});
+
+test("the stored «Dal caso d'uso» definition is never edited: its hash identifies the row in uc_templates", () => {
+  // `ensureFromUseCaseTemplate` refuses a row with the same key and another hash (`stessa_versione_diversa`): a new text
+  // here (the description still says «Progetto dell'agente») would need a new version, never an edit.
+  const validation = validateTemplate(fromUseCaseDefinition());
+  assert.ok(validation.ok);
+  assert.equal(templateDefinitionHash(canonicalDefinition(validation.template)), "682b7ac41049e3729a6edb16a4cd9482541b4109bd76a009f5aeee05c9cd995f");
+  assert.match(String(fromUseCaseDefinition().description), /dal Progetto dell'agente quando c'è\.$/);
 });
