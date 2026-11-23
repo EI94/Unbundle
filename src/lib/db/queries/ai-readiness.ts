@@ -235,7 +235,7 @@ export async function setAssessmentOpenLinkTokenHash(
  * nessuno ha mai usato (la più vecchia per prima), poi quelle usate da più tempo. La copia appena emessa e il link
  * creato non escono mai.
  */
-export const OPEN_LINK_COPIES_MAX = 100;
+export const OPEN_LINK_COPIES_MAX = 500;
 
 /** Una copia del link per tutti in `scoringConfig.openLinkCopies`: l'hash, quando è nata, l'ultima volta che è servita. */
 export interface OpenLinkCopy {

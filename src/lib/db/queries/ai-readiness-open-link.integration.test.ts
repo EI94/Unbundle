@@ -86,7 +86,8 @@ test("copies, the expected answers and the edited questions written at the same 
   for (const h of [hash(20), hash(31), hash(32), hash(33)]) assert.ok(await valid(h), h.slice(-2));
 });
 
-test("(revisione 7b) the day-1 copy that respondents use survives many new copies; the unused ones go first", opts, async () => {
+test("(revisione 7b) the day-1 copy that respondents use survives more than 500 newer copies; the unused ones go first", opts, async () => {
+  assert.equal(air.OPEN_LINK_COPIES_MAX, 500);
   await air.setAssessmentOpenLinkTokenHash(assessmentId, hash(1000), null);
   // Giorno 1: la copia mandata a tutti, e una copia che nessuno usa.
   await air.addAssessmentOpenLinkTokenHash(assessmentId, hash(1001), day(1));
@@ -94,7 +95,8 @@ test("(revisione 7b) the day-1 copy that respondents use survives many new copie
   assert.equal(await air.touchAssessmentOpenLinkCopy(assessmentId, hash(1001), day(1)), true);
   assert.equal(await air.touchAssessmentOpenLinkCopy(assessmentId, hash(1000), day(1)), false, "il link creato non è una copia: non esce mai");
   assert.equal(await air.touchAssessmentOpenLinkCopy(assessmentId, hash(9999), day(1)), false, "un hash che non c'è non scrive niente");
-  // Poi, per settimane, molte copie nuove che nessuno usa; la copia del primo giorno serve una volta sola, all'inizio.
+  // Poi, per settimane, più di 500 copie nuove che nessuno usa (ogni «Copia» ne emette una); la copia del primo giorno
+  // serve una volta sola, all'inizio.
   for (let i = 0; i < air.OPEN_LINK_COPIES_MAX + 30; i++) {
     await air.addAssessmentOpenLinkTokenHash(assessmentId, hash(2000 + i), new Date(day(2).getTime() + i * 3_600_000));
   }
@@ -105,6 +107,8 @@ test("(revisione 7b) the day-1 copy that respondents use survives many new copie
   assert.equal(await valid(hash(1002)), false, "la copia mai usata del primo giorno è uscita per prima");
   assert.equal(await valid(hash(2000)), false, "poi le copie mai usate più vecchie");
   assert.ok(await valid(hash(2000 + air.OPEN_LINK_COPIES_MAX + 29)), "l'ultima copia c'è");
+  assert.ok(await valid(hash(2000 + 31)), "delle copie nuove restano le più recenti");
+  assert.equal(await valid(hash(2000 + 29)), false);
   assert.equal(list.find((c) => c.h === hash(1001))?.u, day(1).toISOString());
 });
 
