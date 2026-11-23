@@ -44,13 +44,13 @@ test("a short list has no fold", () => {
 test("(ondata 7b) the four AI Readiness lists fold behind «Mostra tutti (N)» after three rows instead of cutting them", () => {
   const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
   const collection = read("./collection-tab.tsx");
-  assert.ok(collection.includes("<ShowAll items={p.people} visible={3} inList>"), "persone");
+  assert.ok(collection.includes("<ShowAll items={m.people} visible={3} inList>"), "persone");
   assert.ok(collection.includes("<ShowAll items={p.proposals} visible={3} inList>"), "use case proposti");
   assert.ok(read("./insights-tab.tsx").includes("<ShowAll items={p.insights} visible={3}>"), "insight");
   assert.ok(read("./settings-tab.tsx").includes("<ShowAll items={p.exports} visible={3}>"), "file scaricati");
   // La pagina passa le liste intere: nessuna riga tagliata.
   const page = read("../../app/(dashboard)/dashboard/[workspaceId]/ai-readiness/page.tsx");
-  for (const list of ["people={respondents.map(", "proposals={useCases.map(", "insights={ordered.map(", "exports={exports.map("]) assert.ok(page.includes(list), list);
+  for (const list of ["people: respondents.map(", "proposals={useCases.map(", "insights={ordered.map(", "exports={exports.map("]) assert.ok(page.includes(list), list);
   assert.doesNotMatch(page, /(?:respondents|useCases|insights|exports)\.slice\(0, \d+\)/, "niente righe tagliate");
   // Il campo `riskLevel` è la priorità, e si chiama così.
   assert.doesNotMatch(read("../../lib/ai-readiness/dashboard-view.ts"), /rischio n\/d/);
