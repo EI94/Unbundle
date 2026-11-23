@@ -10,6 +10,8 @@
  *   id dell'informazione, `template_item_key` (e `key`) = `need.<id>`,
  *   `source_refs` = `["use_case_need:<id>"]`. Lo stato della voce segue quello
  *   dell'informazione (`src/lib/uc/sql/need-items.ts`).
+ * - Il dettaglio dell'informazione (`use_case_needs.detail`) non si copia mai nella voce: lo
+ *   leggono solo i revisori di «Cosa serve», non i ruoli del cliente del dossier.
  * - Indispensabili: le voci non facoltative. Una voce è facoltativa se il titolo
  *   comincia con «Facoltativa:» o se l'ordine è tra 500 e 900.
  * - La riga di `uc_templates` (pubblica, chiave stabile) si crea alla prima
@@ -168,7 +170,8 @@ export function needItemRow(need: NeedForCase, index: number, id: string): CaseI
     section: "documenti_dataset",
     parent_item_id: null,
     title: need.title.slice(0, 600),
-    explanation: need.detail?.trim() ? need.detail : null,
+    // Il dettaglio dell'informazione resta in «Cosa serve»: lo leggono solo i revisori (come nel flusso del referente).
+    explanation: null,
     why: null,
     example: null,
     help: null,

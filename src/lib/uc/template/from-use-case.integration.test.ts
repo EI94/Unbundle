@@ -66,7 +66,7 @@ before(async () => {
   await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'Prova schema di partenza')`, [ids.ws, ids.org]);
   await q(`INSERT INTO users (id, email, email_verified) VALUES ($1::uuid, $2, now())`, [ids.lead, `schema-lead-${suffix.toLowerCase()}@ls.test`]);
   await q(`INSERT INTO memberships (user_id, organization_id, role) VALUES ($1::uuid, $2::uuid, 'transformation_lead')`, [ids.lead, ids.org]);
-  await useCase(ids.ucA, "Ricerca settimanale di contatti per una fiera inventata");
+  await useCase(ids.ucA, "Elenco mensile di contatti per una fiera inventata");
   await useCase(ids.ucB, "Riepilogo inventato delle richieste del mese");
   await useCase(ids.ucC, "Controllo inventato delle bozze di contratto");
   await useCase(ids.ucD, "Prova inventata del comando operatore");
@@ -102,6 +102,7 @@ test("«Dal caso d'uso» is a public, published row created once (idempotent) an
 
 test("createCaseFromTemplate with «Dal caso d'uso»: items = non-archived needs with their statuses, 6 di 6, no map or rules", opts, async () => {
   for (let k = 1; k <= 6; k++) await need(ids.ucA, `Informazione inventata ${k}`, "validata", k * 10);
+  await q(`UPDATE use_case_needs SET detail = 'Dettaglio inventato che resta in «Cosa serve»' WHERE workspace_id = $1::uuid`, [ids.ws]);
   await need(ids.ucA, "Facoltativa: un esempio inventato in più", "da_chiedere", 20);
   await need(ids.ucA, "Voce archiviata inventata", "chiesta", 30, { archived: true });
   await need(ids.ucA, "Passo inventato", "proposta", 40, { type: "passo" });
@@ -114,6 +115,8 @@ test("createCaseFromTemplate with «Dal caso d'uso»: items = non-archived needs
   assert.ok(items.every((i) => i.kind === "domanda" && i.deleted_at === null && i.shared_item_id !== null && String(i.template_item_key).startsWith("need.")));
   assert.equal(items.filter((i) => i.status === "validata" && i.validated_answer_id !== null).length, 6);
   assert.equal(items.filter((i) => i.priority === "must").length, 6, "indispensabili: not «Facoltativa:» and not sort 500-900");
+  const explanations = await q(`SELECT count(*) AS n FROM uc_items WHERE case_id = $1::uuid AND explanation IS NOT NULL`, [caseId]);
+  assert.equal(Number(explanations[0].n), 0, "the need's detail is never copied into the dossier");
   assert.equal(Number((await one(`SELECT count(*) AS n FROM uc_maps WHERE case_id = $1::uuid`, [caseId])).n), 0, "map: «Da disegnare»");
   assert.equal(Number((await one(`SELECT count(*) AS n FROM uc_items WHERE case_id = $1::uuid AND kind <> 'domanda'`, [caseId])).n), 0, "no entities, rules, formulas or sources");
 
@@ -130,7 +133,8 @@ test("a need change reaches its linked item through the need write path's sync (
   const t = await ensureFromUseCaseTemplate(exec!);
   assert.ok(t.ok);
   const caseId = await create(ids.ucB, `XX-${suffix}2`, t.value.id);
-  const item = async () => one(`SELECT status, deleted_at, validated_answer_id, status_reason FROM uc_items WHERE case_id = $1::uuid AND shared_item_id = $2::uuid`, [caseId, needId]);
+  const item = async () =>
+    one(`SELECT status, deleted_at, validated_answer_id, current_answer_id, status_reason, explanation FROM uc_items WHERE case_id = $1::uuid AND shared_item_id = $2::uuid`, [caseId, needId]);
   assert.equal((await item()).status, "validata");
   const revision = Number((await one(`SELECT catalog_revision FROM uc_cases WHERE id = $1::uuid`, [caseId])).catalog_revision);
 
@@ -140,11 +144,14 @@ test("a need change reaches its linked item through the need write path's sync (
   const now = await item();
   assert.equal(now.status, "mancante");
   assert.equal(now.validated_answer_id, null);
+  assert.equal(now.current_answer_id, null, "no «Validata in «Cosa serve»» answer left on a question that is no longer validated");
   assert.ok(String(now.status_reason).length > 0);
   assert.ok(Number((await one(`SELECT catalog_revision FROM uc_cases WHERE id = $1::uuid`, [caseId])).catalog_revision) > revision, "the readiness cache becomes stale");
 
-  await exec!.batch([{ text: `UPDATE use_case_needs SET status = 'validata' WHERE id = $1::uuid`, params: [needId] }, ...sync()]);
+  await exec!.batch([{ text: `UPDATE use_case_needs SET status = 'validata', detail = 'Dettaglio inventato' WHERE id = $1::uuid`, params: [needId] }, ...sync()]);
   assert.equal((await item()).status, "validata");
+  assert.notEqual((await item()).current_answer_id, null);
+  assert.equal((await item()).explanation, null, "a detail written later is not copied either");
 
   await exec!.batch([{ text: `UPDATE use_case_needs SET archived_at = now() WHERE id = $1::uuid`, params: [needId] }, ...sync()]);
   assert.notEqual((await item()).deleted_at, null, "archived needs stay out");
@@ -209,11 +216,28 @@ test("reschema is blocked and names the items with answers, files, requests or a
     ids.lead,
   ]);
   await q(`UPDATE uc_items SET ls_owner_user_id = $2::uuid WHERE id = $1::uuid`, [second.id, ids.lead]);
+  // Decisions and edits that a rebuild would erase (review of 23/11): «non si applica», exceptions, due dates,
+  // questions added by hand, questions edited by a person.
+  const more = await q(`SELECT id, key FROM uc_items WHERE case_id = $1::uuid AND kind = 'domanda' ORDER BY sort_order OFFSET 2 LIMIT 4`, [caseId]);
+  await q(`UPDATE uc_items SET na_proposed_at = now(), na_reason = 'Motivo inventato', na_proposed_by_user_id = $2::uuid WHERE id = $1::uuid`, [more[0].id, ids.lead]);
+  await q(`UPDATE uc_items SET waiver = '{"motivo":"inventato"}'::jsonb WHERE id = $1::uuid`, [more[1].id]);
+  await q(`UPDATE uc_items SET due_at = now() + interval '7 days' WHERE id = $1::uuid`, [more[2].id]);
+  await q(
+    `INSERT INTO uc_events (workspace_id, case_id, actor_type, actor_user_id, event_type, target_type, target_id, payload)
+     VALUES ($1::uuid, $2::uuid, 'utente', $3::uuid, 'voce.modificata', 'voce', $4::uuid, '{}'::jsonb)`,
+    [ids.ws, caseId, ids.lead, more[3].id],
+  );
+  await q(`INSERT INTO uc_items (case_id, key, kind, section, title) VALUES ($1::uuid, 'q.a_mano.01', 'domanda', 'documenti_dataset', 'Domanda inventata aggiunta a mano')`, [caseId]);
   const plan = await planReschema(exec!, { workspaceId: ids.ws, caseId, to: "dal_caso" });
   assert.ok(plan.ok);
   const byKey = new Map(plan.value.blockers.map((b) => [b.key, b.reasons]));
   assert.deepEqual(byKey.get(String(first.key)), ["risposte"]);
   assert.deepEqual(byKey.get(String(second.key)), ["assegnazione"]);
+  assert.deepEqual(byKey.get(String(more[0].key)), ["non_applicabile"]);
+  assert.deepEqual(byKey.get(String(more[1].key)), ["eccezione"]);
+  assert.deepEqual(byKey.get(String(more[2].key)), ["scadenza"]);
+  assert.deepEqual(byKey.get(String(more[3].key)), ["modifiche"]);
+  assert.deepEqual(byKey.get("q.a_mano.01"), ["aggiunta"]);
   const refused = await reschemaCase(exec!, { workspaceId: ids.ws, caseId, actorUserId: ids.lead, to: "dal_caso" });
   assert.equal(refused.ok, false);
   assert.equal(refused.ok ? "" : refused.code, "bloccato");
@@ -269,4 +293,53 @@ test("operator command `reschema`: the dry run prints the plan and writes nothin
   assert.equal((await one(`SELECT t.key FROM uc_cases c JOIN uc_templates t ON t.id = c.template_id WHERE c.id = $1::uuid`, [caseId])).key, FROM_USE_CASE_TEMPLATE.key);
   const again = await reschemaCommand.run(ctxFor(true, { case: code, to: "dal_caso", actor: ids.lead }));
   assert.deepEqual((again.output.risultati as { esito: string }[]).map((r) => r.esito), ["già_così"]);
+});
+
+test("a need linked while the dossier is being created or rebuilt still gets its item (insert and update in the last batch)", opts, async () => {
+  const uc = randomUUID();
+  await useCase(uc, "Use case inventato con un'informazione in arrivo");
+  await need(uc, "Informazione inventata di partenza", "da_chiedere", 10);
+  let late = "";
+  /** Links a new need right before the batch that completes the creation (or the rebuild). */
+  const sneaky = (marker: RegExp): UcExecutor => ({
+    async batch(statements) {
+      if (!late && statements.some((s) => marker.test(s.text))) late = await need(uc, "Informazione inventata arrivata nel mezzo", "chiesta", 20);
+      return exec!.batch(statements);
+    },
+  });
+  const t = await ensureFromUseCaseTemplate(exec!);
+  assert.ok(t.ok);
+  const created = await createCaseFromTemplate(sneaky(/SET setup_completed_at = now\(\)/), {
+    workspaceId: ids.ws,
+    template: { templateId: t.value.id },
+    actorUserId: ids.lead,
+    code: `XX-${suffix}6`,
+    title: "Prova informazione in arrivo",
+    portfolioUseCaseId: uc,
+  });
+  assert.ok(created.ok, created.ok ? "" : created.message);
+  assert.ok(late);
+  const status = async (caseId: string, needId: string) => (await one(`SELECT status FROM uc_items WHERE case_id = $1::uuid AND shared_item_id = $2::uuid`, [caseId, needId])).status;
+  assert.equal(await status(created.value.caseId, late), "chiesta");
+
+  // The same for a rebuild: a sector dossier on another use case, a need linked during «Cambia schema di partenza».
+  const uc2 = randomUUID();
+  await useCase(uc2, "Use case inventato da ricostruire");
+  await need(uc2, "Informazione inventata da ricostruire", "da_chiedere", 10);
+  const caseId = await create(uc2, `XX-${suffix}7`, sectorTemplateId);
+  late = "";
+  const rebuilt = await reschemaCase(
+    {
+      async batch(statements) {
+        if (!late && statements.some((s) => /'caso\.schema_cambiato'|caso\.schema_cambiato/.test(s.text) || s.params.includes("caso.schema_cambiato"))) {
+          late = await need(uc2, "Informazione inventata arrivata durante il cambio", "parziale", 20);
+        }
+        return exec!.batch(statements);
+      },
+    },
+    { workspaceId: ids.ws, caseId, actorUserId: ids.lead, to: "dal_caso" },
+  );
+  assert.ok(rebuilt.ok, rebuilt.ok ? "" : rebuilt.message);
+  assert.ok(late);
+  assert.equal(await status(caseId, late), "parziale");
 });

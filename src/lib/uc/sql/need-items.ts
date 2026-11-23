@@ -3,7 +3,8 @@
  *
  * Una voce collegata ha `shared_item_id` = id dell'informazione e `template_item_key` = `need.<id>`
  * (`src/lib/uc/template/from-use-case.ts`). Queste istruzioni la tengono uguale all'informazione:
- * titolo, dettaglio, argomento (il tipo), indispensabile o facoltativa, ordine e stato. Si eseguono
+ * titolo, argomento (il tipo), indispensabile o facoltativa, ordine e stato. Il dettaglio no: resta
+ * in «Cosa serve» (la spiegazione della voce è sempre vuota). Si eseguono
  * in coda a ogni scrittura di «Cosa serve» (`cardSyncStatements`, nella stessa transazione), alla
  * creazione del dossier e al cambio di schema.
  *
@@ -71,7 +72,7 @@ function scopeCtes(s: NeedItemsScope): SqlFragment {
   WHERE c.workspace_id = ${cast(s.workspaceId.toLowerCase(), "uuid")} AND c.portfolio_use_case_id IS NOT NULL AND c.status <> 'chiuso'
     AND ${scopeFilter(s)}
 ), src AS (
-  SELECT cs.id AS case_id, n.id AS need_id, n.title, n.detail, n.kind, n.status, n.sort_order, n.archived_at,
+  SELECT cs.id AS case_id, n.id AS need_id, n.title, n.kind, n.status, n.sort_order, n.archived_at,
     (n.title ~* '^\\s*facoltativ[ao]\\s*:' OR n.sort_order BETWEEN 500 AND 900) AS optional,
     'cs.' || CASE WHEN n.kind = ANY(${cast(TOPIC_KINDS, "text[]")}) THEN n.kind ELSE 'altro' END AS topic
   FROM cs
@@ -88,7 +89,7 @@ INSERT INTO uc_items (id, case_id, key, template_item_key, kind, section, title,
   privacy_class, availability, perimeter, levers, response_config, request_module_key, in_gate_scope, status, source_refs,
   shared_item_id, sort_order, created_by_user_id)
 SELECT gen_random_uuid(), src.case_id, 'need.' || src.need_id::text, 'need.' || src.need_id::text, 'domanda', 'documenti_dataset',
-  left(src.title, 600), nullif(btrim(coalesce(src.detail, '')), ''),
+  left(src.title, 600), NULL,
   jsonb_build_object('need_id', src.need_id::text, 'from', 'cosa_serve'),
   CASE WHEN src.optional THEN 'could' ELSE 'must' END, '["modello"]'::jsonb, 'riservato_azienda', '[]'::jsonb, 'in_contratto',
   '[]'::jsonb, '{}'::jsonb, src.topic, true, 'da_chiedere', jsonb_build_array('use_case_need:' || src.need_id::text),
@@ -119,7 +120,7 @@ export function needItemsUpdateSql(s: NeedItemsScope): UcStatement {
 ), want AS (
   SELECT cur.id AS item_id, cur.case_id, cur.need_id, cur.status AS cur_status, cur.validated_answer_id AS cur_answer, cur.validator,
     (src.need_id IS NULL OR src.archived_at IS NOT NULL OR src.status = 'non_applicabile') AS gone,
-    left(src.title, 600) AS title, nullif(btrim(coalesce(src.detail, '')), '') AS detail, src.topic, src.sort_order,
+    left(src.title, 600) AS title, src.topic, src.sort_order,
     CASE WHEN src.optional THEN 'could' ELSE 'must' END AS priority,
     CASE
       WHEN src.status = 'validata' AND cur.validator IS NOT NULL THEN 'validata'
@@ -138,14 +139,14 @@ export function needItemsUpdateSql(s: NeedItemsScope): UcStatement {
 ), upd AS (
   UPDATE uc_items i SET
     title = CASE WHEN w.gone THEN i.title ELSE w.title END,
-    explanation = CASE WHEN w.gone THEN i.explanation ELSE w.detail END,
+    explanation = NULL,
     priority = CASE WHEN w.gone THEN i.priority ELSE w.priority END,
     request_module_key = CASE WHEN w.gone THEN i.request_module_key ELSE w.topic END,
     sort_order = CASE WHEN w.gone THEN i.sort_order ELSE w.sort_order END,
     status = CASE WHEN w.gone THEN i.status ELSE w.status END,
     status_reason = CASE WHEN w.gone THEN i.status_reason WHEN w.status = 'mancante' THEN ${cast(NEED_MISSING_REASON, "text")} ELSE NULL END,
     status_changed_at = CASE WHEN NOT w.gone AND w.status <> i.status THEN now() ELSE i.status_changed_at END,
-    current_answer_id = CASE WHEN NOT w.gone AND w.status = 'validata' THEN coalesce(ans.id, i.current_answer_id) ELSE i.current_answer_id END,
+    current_answer_id = CASE WHEN w.gone THEN i.current_answer_id WHEN w.status = 'validata' THEN coalesce(ans.id, i.current_answer_id) ELSE NULL END,
     validated_answer_id = CASE WHEN w.gone THEN i.validated_answer_id WHEN w.status = 'validata' THEN coalesce(ans.id, i.validated_answer_id) ELSE NULL END,
     validated_by_user_id = CASE WHEN w.gone THEN i.validated_by_user_id
       WHEN w.status = 'validata' THEN CASE WHEN ans.id IS NULL THEN coalesce(i.validated_by_user_id, w.validator) ELSE w.validator END
@@ -160,9 +161,9 @@ export function needItemsUpdateSql(s: NeedItemsScope): UcStatement {
     (w.gone AND i.deleted_at IS NULL)
     OR (NOT w.gone AND (
       i.deleted_at IS NOT NULL OR ans.id IS NOT NULL OR i.status IS DISTINCT FROM w.status
-      OR i.title IS DISTINCT FROM w.title OR i.explanation IS DISTINCT FROM w.detail OR i.priority IS DISTINCT FROM w.priority
+      OR i.title IS DISTINCT FROM w.title OR i.explanation IS NOT NULL OR i.priority IS DISTINCT FROM w.priority
       OR i.request_module_key IS DISTINCT FROM w.topic OR i.sort_order IS DISTINCT FROM w.sort_order
-      OR (w.status <> 'validata' AND i.validated_answer_id IS NOT NULL)
+      OR (w.status <> 'validata' AND (i.validated_answer_id IS NOT NULL OR i.current_answer_id IS NOT NULL))
       OR (w.status = 'mancante' AND i.status_reason IS DISTINCT FROM ${cast(NEED_MISSING_REASON, "text")}))))
   RETURNING i.case_id
 ), bump AS (
