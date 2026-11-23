@@ -1,11 +1,11 @@
 # Le porte della 8.0d-1 «Porte»: l'inventario
 
-20/11/2026, ramo `feat/rilascio-8-0d` (da `62200ff6`). Ogni ingresso dell'app (pagine, layout, rotte, server action, CLI e MCP, letture dirette del ruolo, SQL con confronti di ruolo) e la sua decisione per `esterno_caso` («Solo questo use case»). La regola: chiuso per default, aperto per elenco (`workspaceDoor`, `src/lib/auth/case-only.ts`); le porte aperte sono `CASE_ONLY_SURFACES`, tenute ferme da `src/lib/auth/case-only-guard.test.ts`. Generato dai sorgenti e riletto a mano.
+20/11/2026, ramo `feat/rilascio-8-0d` (da `62200ff6`); aggiornato il 23/11/2026 sul ramo `rilascio/25-11-80d`, la 8.0d-1 sopra il rilascio 10 (`bd8d6c55`: ondate 5a, 5b, 6a, 6b, 7a, la 8.2b e i casi senza AI; la revisione delle porte nuove è in fondo, «Il rilascio 10 sopra la 8.0d-1»). Ogni ingresso dell'app (pagine, layout, rotte, server action, CLI e MCP, letture dirette del ruolo, SQL con confronti di ruolo) e la sua decisione per `esterno_caso` («Solo questo use case»). La regola: chiuso per default, aperto per elenco (`workspaceDoor`, `src/lib/auth/case-only.ts`); le porte aperte sono `CASE_ONLY_SURFACES`, tenute ferme da `src/lib/auth/case-only-guard.test.ts`. Generato dai sorgenti e riletto a mano.
 
 ## In breve
 
-- **80 pagine, 18 layout, 141 rotte, 247 server action** (52 file `"use server"`).
-- **Aperte a `esterno_caso`, sempre con il predicato per il caso:** 4 pagine, 2 layout, 16 rotte (la campanella e le 15 della CLI e dell'MCP del caso, dietro `openCli`), 10 azioni (le 7 di chi costruisce, la conferma della CLI, «Scollega», «Segna tutte come lette»). Fuori dalla dashboard: «Collega questa CLI» e la pagina dell'invito.
+- **75 pagine, 19 layout, 147 rotte, 248 server action** (53 file `"use server"`). Il rilascio 10 ha tolto 6 pagine (diventate rimandi 308: `progetto`, `via`, `firme`, `domande/documenti`, `soluzione/regole`, l'avanzamento di un corso) e aggiunto la Costruzione.
+- **Aperte a `esterno_caso`, sempre con il predicato per il caso:** 4 pagine (l'Agent Factory, la Costruzione, l'indirizzo breve del progetto, «Collega questa CLI»), 2 layout, 17 rotte (la campanella, «Il tuo account» per il solo terminale e le 15 della CLI e dell'MCP del caso, dietro `openCli`), 10 azioni (le 7 di chi costruisce, la conferma della CLI, «Scollega», «Segna tutte come lette»). Fuori dalla dashboard: «Collega questa CLI» e la pagina dell'invito. `CASE_ONLY_SURFACES`: 14 file.
 - **Tutto il resto è chiuso:** le tre porte (`getCollaboratorAccess`, `requireWorkspaceAccess`, `requireWorkspacePage`) senza opzione fanno passare solo i cinque collaboratori; `learner` solo con `allowLearner`; un ruolo sconosciuto mai. Le pagine riportano `esterno_caso` all'Agent Factory, le azioni e le rotte lo rifiutano.
 - **Letture dirette di `getWorkspaceAccessForUser`: 10 file**, rilette una per una, ognuna con un elenco (sotto).
 - **Confronti con `learner`:** 25 nel codice e 10 SQL «tutti tranne learner» diventati elenchi; nel SQL il ruolo si confronta come testo (`role::text`).
@@ -15,12 +15,13 @@
 
 | File | Che cosa apre | Il controllo dopo la porta |
 |---|---|---|
-| `src/app/(dashboard)/dashboard/[workspaceId]/layout.tsx` | il guscio del workspace | `caseOnlyRedirect` per segmenti: dentro solo `agent-factory`, `casi-duso/<id>/progetto`, `use-cases/<id>/progetto`; una voce nella barra; la campanella sua; un ruolo sconosciuto 404 |
-| `…/agent-factory/page.tsx` | «Agent Factory» | solo i casi che costruisce (il predicato); niente «Chi costruisce»; prima della riga del dossier, il testo di attesa; ripete la riga `osservatore` |
-| `…/casi-duso/[caseId]/layout.tsx` | il guscio del dossier | `loadCaseHead` → `caseAccessPrecheck` con il predicato (404 fuori); solo la testata: niente schede, «⋯», passi, avvisi, export |
-| `…/casi-duso/[caseId]/progetto/page.tsx` | «Progetto dell'agente» | `openShellPage` con il predicato; il pacchetto con `CONTESTO.md` ridotto (D7); il contesto dell'azienda no |
-| `…/use-cases/[useCaseId]/progetto/page.tsx` | l'indirizzo breve della campanella e della CLI | il predicato per il dossier prima del rimando (404 fuori, senza dire quale dossier) |
+| `src/app/(dashboard)/dashboard/[workspaceId]/layout.tsx` | il guscio del workspace | `caseOnlyRedirect` per segmenti: dentro solo `agent-factory`, `casi-duso/<id>/costruzione`, `use-cases/<id>/progetto` (`/account` va all'Agent Factory con il foglio); una voce nella barra; la campanella sua; il foglio dell'account con il solo terminale; un ruolo sconosciuto 404 |
+| `…/agent-factory/page.tsx` | «Agent Factory» | solo i casi che costruisce (il predicato), anche nel pannello del caso (`?apri=`); niente «Chi costruisce» né «Repository da aggiornare»; la riga della CI senza pulsanti; nessun link fuori dal perimetro; prima della riga del dossier, il testo di attesa; ripete la riga `osservatore` |
+| `…/casi-duso/[caseId]/layout.tsx` | il guscio del dossier | `loadCaseHead` → `caseAccessPrecheck` con il predicato (404 fuori); solo la testata, con il percorso verso l'Agent Factory: niente schede, «⋯», passi, avvisi, avanzamento, firme, export |
+| `…/casi-duso/[caseId]/costruzione/page.tsx` | la Costruzione: «Progetto dell'agente» (scelte, decisioni, compiti, «Qualità» con evals e banco, pacchetto) | `loadCaseHead` con il predicato, poi `canOpenShellPage("costruzione")` (osservatore); il pacchetto con `CONTESTO.md` ridotto (D7); il contesto dell'azienda no (`contextAbilities`); accessi di Claude, catalogo e prova sui dati no (solo Lateral Space o chi vede il catalogo) |
+| `…/use-cases/[useCaseId]/progetto/page.tsx` | l'indirizzo breve della campanella e della CLI | il predicato per il dossier prima del rimando alla Costruzione (404 fuori, senza dire quale dossier) |
 | `src/app/api/workspaces/[workspaceId]/bell/route.ts` | la campanella (GET, POST) | `bellSourcesFor`: niente segnali, niente righe dei dossier, solo `CASE_ONLY_BELL_KINDS` dei casi che costruisce |
+| `src/app/api/workspaces/[workspaceId]/account/route.ts` | «Il tuo account» (rilascio 10) | `loadAccountSheet`: solo «Claude e terminale» con i collegamenti della sua CLI («CLI collegata · Scollega»); niente e-mail del referente, MCP del team, Granola; il foglio si apre sull'Agent Factory (`caseOnlyAccountHref`, e `/account` delle e-mail lo porta lì) |
 | `src/lib/actions/notifications.ts` | «Segna tutte come lette» | solo righe sue; i segnali per lui sono nessuno |
 | `src/lib/actions/use-case-factory.ts` | le 7 azioni di chi costruisce | `onFactoryBuild` → `caseAccessPrecheck` con il predicato; approvare, riaprire, AI Board e modifica restano senza opzione |
 | `src/lib/actions/cli-login.ts` | la conferma della CLI | `cliCaseWorkspaceIds` (una concessione o un caso) |
@@ -80,23 +81,19 @@ Tutti i nuovi confronti con `'esterno_caso'` sono `::text` (prova di guardia).
 | `src/app/(dashboard)/dashboard/[workspaceId]/blueprints/page.tsx` | chiusa: requireWorkspacePage senza opzione (esterno_caso → Agent Factory, ruolo sconosciuto → 404) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/[...resto]/page.tsx` | chiusa: requireWorkspacePage senza opzione (esterno_caso → Agent Factory, ruolo sconosciuto → 404) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/attivita/page.tsx` | chiusa: requireWorkspacePage senza opzione (esterno_caso → Agent Factory, ruolo sconosciuto → 404) |
+| `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/costruzione/page.tsx` | APERTA a esterno_caso (allowCaseOnly), poi il predicato per il caso (la Costruzione, rilascio 10: «Progetto dell'agente») |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/domande/[itemId]/page.tsx` | chiusa: requireWorkspacePage senza opzione (esterno_caso → Agent Factory, ruolo sconosciuto → 404) |
-| `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/domande/documenti/page.tsx` | chiusa: requireWorkspacePage senza opzione (esterno_caso → Agent Factory, ruolo sconosciuto → 404) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/domande/page.tsx` | chiusa: requireWorkspacePage senza opzione (esterno_caso → Agent Factory, ruolo sconosciuto → 404) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/domande/verifica/page.tsx` | chiusa: requireWorkspacePage senza opzione (esterno_caso → Agent Factory, ruolo sconosciuto → 404) |
-| `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/firme/page.tsx` | chiusa: requireWorkspacePage senza opzione (esterno_caso → Agent Factory, ruolo sconosciuto → 404) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/impostazioni/page.tsx` | chiusa: requireWorkspacePage senza opzione (esterno_caso → Agent Factory, ruolo sconosciuto → 404) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/page.tsx` | chiusa: requireWorkspacePage senza opzione (esterno_caso → Agent Factory, ruolo sconosciuto → 404) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/persone/page.tsx` | chiusa: requireWorkspacePage senza opzione (esterno_caso → Agent Factory, ruolo sconosciuto → 404) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/privacy/page.tsx` | chiusa: requireWorkspacePage senza opzione (esterno_caso → Agent Factory, ruolo sconosciuto → 404) |
-| `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/progetto/page.tsx` | APERTA a esterno_caso (allowCaseOnly), poi il predicato per il caso |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/soluzione/dati/page.tsx` | chiusa: requireWorkspacePage senza opzione (esterno_caso → Agent Factory, ruolo sconosciuto → 404) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/soluzione/mappa/page.tsx` | chiusa: requireWorkspacePage senza opzione (esterno_caso → Agent Factory, ruolo sconosciuto → 404) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/soluzione/page.tsx` | chiusa: requireWorkspacePage senza opzione (esterno_caso → Agent Factory, ruolo sconosciuto → 404) |
-| `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/soluzione/regole/page.tsx` | chiusa: requireWorkspacePage senza opzione (esterno_caso → Agent Factory, ruolo sconosciuto → 404) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/valore/kpi/page.tsx` | chiusa: requireWorkspacePage senza opzione (esterno_caso → Agent Factory, ruolo sconosciuto → 404) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/valore/page.tsx` | chiusa: requireWorkspacePage senza opzione (esterno_caso → Agent Factory, ruolo sconosciuto → 404) |
-| `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/via/page.tsx` | chiusa: requireWorkspacePage senza opzione (esterno_caso → Agent Factory, ruolo sconosciuto → 404) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/nuovo/page.tsx` | chiusa: requireWorkspacePage senza opzione (esterno_caso → Agent Factory, ruolo sconosciuto → 404) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/page.tsx` | chiusa: requireWorkspacePage senza opzione (esterno_caso → Agent Factory, ruolo sconosciuto → 404) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/contesto/conferma/page.tsx` | chiusa: requireWorkspacePage senza opzione (esterno_caso → Agent Factory, ruolo sconosciuto → 404) |
@@ -112,7 +109,6 @@ Tutti i nuovi confronti con `'esterno_caso'` sono `::text` (prova di guardia).
 | `src/app/(dashboard)/dashboard/[workspaceId]/learning/[programId]/manage/[attemptId]/page.tsx` | chiusa: porta della Formazione (requireWorkspace, per elenco: collaboratori e learner) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/learning/[programId]/manage/page.tsx` | nessun dato: solo un rimando (il layout porta esterno_caso all'Agent Factory) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/learning/[programId]/page.tsx` | chiusa: porta della Formazione (requireWorkspace, per elenco: collaboratori e learner) |
-| `src/app/(dashboard)/dashboard/[workspaceId]/learning/[programId]/progress/page.tsx` | chiusa: porta della Formazione (requireWorkspace, per elenco: collaboratori e learner) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/learning/[programId]/results/page.tsx` | chiusa: porta della Formazione (requireWorkspace, per elenco: collaboratori e learner) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/learning/admin/page.tsx` | chiusa: porta della Formazione (requireWorkspace, per elenco: collaboratori e learner) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/learning/page.tsx` | chiusa: porta della Formazione (requireWorkspace, per elenco: collaboratori e learner) |
@@ -157,11 +153,12 @@ Tutti i nuovi confronti con `'esterno_caso'` sono `::text` (prova di guardia).
 | Layout | Decisione |
 |---|---|
 | `src/app/(auth)/layout.tsx` | nessun dato (involucro) |
-| `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/layout.tsx` | APERTA a esterno_caso: il perimetro (caseOnlyRedirect per segmenti), la barra con una voce, la campanella sua; un ruolo sconosciuto 404 |
+| `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/layout.tsx` | APERTA a esterno_caso: il predicato per il caso (loadCaseHead); solo la testata, senza schede, «⋯», passi, avvisi, firme ed export |
 | `src/app/(dashboard)/dashboard/[workspaceId]/layout.tsx` | APERTA a esterno_caso: il perimetro (caseOnlyRedirect per segmenti), la barra con una voce, la campanella sua; un ruolo sconosciuto 404 |
 | `src/app/(dashboard)/dashboard/[workspaceId]/learning/layout.tsx` | nessun dato (involucro) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/mapping/[deptId]/layout.tsx` | chiusa: requireWorkspacePage senza opzione |
 | `src/app/(dashboard)/dashboard/[workspaceId]/mapping/layout.tsx` | nessun dato (involucro) |
+| `src/app/(dashboard)/dashboard/[workspaceId]/setup/leadership/layout.tsx` | nessun dato (involucro: i fogli e il font della board, rilascio 10) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/use-cases/layout.tsx` | nessun dato (involucro) |
 | `src/app/(dashboard)/layout.tsx` | nessun dato (involucro) |
 | `src/app/a/layout.tsx` | nessun dato (involucro) |
@@ -182,22 +179,28 @@ Tutti i nuovi confronti con `'esterno_caso'` sono `::text` (prova di guardia).
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/attivita/csv/route.ts` | chiusa: porta senza opzione (requireWorkspaceAccess / getCollaboratorAccess / aiuto che la usa) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/avanzamento/route.ts` | nessun dato: vecchio indirizzo, 308 |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/documenti/route.ts` | nessun dato: vecchio indirizzo, 308 |
+| `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/domande/documenti/route.ts` | nessun dato: vecchio indirizzo, 308 (rilascio 10; fuori dai layout, il perimetro lo incontra la pagina d'arrivo) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/export/route.ts` | chiusa: porta senza opzione (requireWorkspaceAccess / getCollaboratorAccess / aiuto che la usa) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/files/[fileId]/route.ts` | chiusa: porta senza opzione (requireWorkspaceAccess / getCollaboratorAccess / aiuto che la usa) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/files/upload-complete/route.ts` | chiusa: porta senza opzione (requireWorkspaceAccess / getCollaboratorAccess / aiuto che la usa) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/files/upload-token/route.ts` | chiusa: porta senza opzione (requireWorkspaceAccess / getCollaboratorAccess / aiuto che la usa) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/files/upload/route.ts` | chiusa: porta senza opzione (requireWorkspaceAccess / getCollaboratorAccess / aiuto che la usa) |
+| `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/firme/route.ts` | chiusa: requireWorkspacePage senza opzione (esterno_caso → Agent Factory, ruolo sconosciuto → 404), poi il ruolo di caso per le firme; 308 al pannello delle firme (rilascio 10) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/kpi/route.ts` | nessun dato: vecchio indirizzo, 308 |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/mappa/route.ts` | nessun dato: vecchio indirizzo, 308 |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/modello-dati/route.ts` | nessun dato: vecchio indirizzo, 308 |
+| `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/progetto/route.ts` | nessun dato: vecchio indirizzo di «Progetto dell'agente», 308 alla Costruzione (rilascio 10; fuori dai layout: il perimetro, la porta e il predicato li incontra la Costruzione) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/registro/csv/route.ts` | nessun dato: vecchio indirizzo, 308 |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/registro/route.ts` | nessun dato: vecchio indirizzo, 308 |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/regole/route.ts` | nessun dato: vecchio indirizzo, 308 |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/roi/route.ts` | nessun dato: vecchio indirizzo, 308 |
+| `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/soluzione/regole/route.ts` | nessun dato: vecchio indirizzo, 308 (rilascio 10; fuori dai layout, il perimetro lo incontra la pagina d'arrivo) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/test-cases/import/route.ts` | chiusa: porta senza opzione (requireWorkspaceAccess / getCollaboratorAccess / aiuto che la usa) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/verifica/route.ts` | nessun dato: vecchio indirizzo, 308 |
+| `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/via/route.ts` | nessun dato: vecchio indirizzo, 308 alla sezione `#via` della Panoramica (rilascio 10) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/voci/[itemId]/route.ts` | nessun dato: vecchio indirizzo, 308 |
 | `src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/voci/route.ts` | nessun dato: vecchio indirizzo, 308 |
+| `src/app/(dashboard)/dashboard/[workspaceId]/learning/[programId]/progress/route.ts` | nessun dato: vecchio indirizzo della Formazione, 308 ai risultati (rilascio 10) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/portfolio/export/route.ts` | chiusa: porta senza opzione (requireWorkspaceAccess / getCollaboratorAccess / aiuto che la usa) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/use-cases/[useCaseId]/allegati/[fileId]/route.ts` | chiusa: porta senza opzione (requireWorkspaceAccess / getCollaboratorAccess / aiuto che la usa) |
 | `src/app/(dashboard)/dashboard/[workspaceId]/use-cases/[useCaseId]/allegati/upload-complete/route.ts` | chiusa: porta senza opzione (requireWorkspaceAccess / getCollaboratorAccess / aiuto che la usa) |
@@ -306,7 +309,7 @@ Tutti i nuovi confronti con `'esterno_caso'` sono `::text` (prova di guardia).
 | `src/app/api/slack/interactivity/route.ts` | webhook o installazione: firma, o membership dell'organizzazione |
 | `src/app/api/slack/oauth/route.ts` | webhook o installazione: firma, o membership dell'organizzazione |
 | `src/app/api/slack/webhooks/route.ts` | webhook o installazione: firma, o membership dell'organizzazione |
-| `src/app/api/workspaces/[workspaceId]/account/route.ts` | chiusa: porta senza opzione (requireWorkspaceAccess / getCollaboratorAccess / aiuto che la usa) |
+| `src/app/api/workspaces/[workspaceId]/account/route.ts` | APERTA a esterno_caso (allowCaseOnly, rilascio 10): solo i collegamenti della sua CLI, niente del workspace |
 | `src/app/api/workspaces/[workspaceId]/bell/route.ts` | APERTA a esterno_caso (allowCaseOnly): solo le sue righe |
 | `src/app/api/workspaces/[workspaceId]/mapping/[deptId]/board/route.ts` | chiusa: porta senza opzione (requireWorkspaceAccess / getCollaboratorAccess / aiuto che la usa) |
 | `src/app/api/workspaces/[workspaceId]/mapping/[deptId]/complete/route.ts` | chiusa: porta senza opzione (requireWorkspaceAccess / getCollaboratorAccess / aiuto che la usa) |
@@ -386,6 +389,7 @@ Tutti i nuovi confronti con `'esterno_caso'` sono `::text` (prova di guardia).
 | `src/lib/actions/learning-ideas.ts :: submitLearningIdea` | chiusa: porta della Formazione per elenco |
 | `src/lib/actions/learning-join.ts :: joinCourseByLinkAction` | token del corso: scrive learner, mai cambia un esterno_caso; la Formazione poi lo chiude |
 | `src/lib/actions/learning-join.ts :: requestCohortReopenAction` | token del corso: scrive learner, mai cambia un esterno_caso; la Formazione poi lo chiude |
+| `src/lib/actions/mappatura-units.ts :: addUnitAction` | chiusa: porta senza opzione (getCollaboratorAccess), poi boardAbilities per elenco (rilascio 10) |
 | `src/lib/actions/learning.ts :: startLearningAttempt` | chiusa: porta della Formazione per elenco |
 | `src/lib/actions/learning.ts :: saveLearningDraft` | chiusa: porta della Formazione per elenco |
 | `src/lib/actions/learning.ts :: submitLearningAttempt` | chiusa: porta della Formazione per elenco |
@@ -572,3 +576,24 @@ Tutti i nuovi confronti con `'esterno_caso'` sono `::text` (prova di guardia).
 | `src/lib/actions/workspace-integrations.ts :: revokeClaudeMcpTokenAction` | chiusa: porta senza opzione |
 | `src/lib/actions/workspace.ts :: createWorkspaceWithTeamAction` | organizzazione: getUserMembership (esterno_caso mai nell'organizzazione) |
 | `src/lib/actions/workspace.ts :: deleteWorkspaceAction` | organizzazione: getUserMembership (esterno_caso mai nell'organizzazione) |
+
+## Il rilascio 10 sopra la 8.0d-1 (23/11/2026)
+
+La 8.0d-1 è nata su `62200ff6`; il rilascio del 23-24/11 (`bd8d6c55`) ha cambiato pagine, pannelli, rotte e azioni senza la regola della 8.0d. Qui ogni superficie aggiunta o cambiata da allora, con la sua decisione e la prova che la tiene. «Progetto dell'agente» della specifica è ora la **Costruzione** (`casi-duso/<id>/costruzione`), con dentro la sua «Qualità» (evals e banco): una pagina sola, nessuna pagina «Qualità» a parte.
+
+| Superficie (dal 62200ff6) | Per `esterno_caso` | Prova |
+|---|---|---|
+| La Costruzione (5b), con «Qualità», compiti, decisioni, pacchetto | porta + predicato (`allowCaseOnly`, poi `loadCaseHead` → `caseAccessPrecheck`); `CONTESTO.md` ridotto (D7); contesto dell'azienda chiuso (`contextAbilities`); accessi di Claude, catalogo e prova sui dati no | `case-only-guard` («il perimetro dentro le porte»), U2, B5-B6, D7 |
+| `casi-duso/<id>/progetto` (5b): un 308 alla Costruzione | nessun dato, fuori dai layout; il perimetro, la porta e il predicato li incontra la Costruzione | `case-only-guard` (vecchi indirizzi 308), U2 (`/progetto` fuori) |
+| Il guscio del dossier (5a: firme, passi, avviso, avanzamento) | porta + predicato; solo la testata, con il percorso verso l'Agent Factory | `case-only-guard`, `signatures-mount` |
+| L'Agent Factory (6b): righe, pannello del caso (`?apri=`), «Chi costruisce», «Repository da aggiornare», righe della CI | porta + predicato: solo i suoi casi; i pannelli del manager no; la CI senza pulsanti; nessun link fuori dal perimetro | `factory-screen.test` (8.0d), database («rilascio 10, dentro il perimetro») |
+| Le azioni delle chiavi della CI (8.2b) | chiuse (`requireWorkspaceAccess` senza opzione; `ciKeyManagedRepos` per elenco) | U4 (azioni), database |
+| «Il tuo account» (6b: «Claude e terminale») | porta: solo i collegamenti della sua CLI; niente del workspace; si apre sull'Agent Factory | `account-route.test`, `account-data.test`, U2 (`/account`), database |
+| Impostazioni (6b: Team, Collegamenti, Fornitori, Avvisi) e Persone del workspace | chiuse (pagina e azioni senza opzione); in «Team» la riga «Solo questo use case» senza cambio di ruolo | U4, `workspace-collaboration.test`, B11 |
+| «Aggiungi» di «Chi costruisce» con l'invito da Analista (6b) | mai tra i candidati (`loadMemberCandidates` per elenco); un invito da Analista lo fa salire | B7, B11 |
+| Contesto (6a), mappatura e «Aggiungi un'unità» (`addUnitAction`) | chiusi (porte senza opzione, `contextAbilities` e `boardAbilities` per elenco) | `case-only-guard` (pagine, rotte, azioni) |
+| Formazione (7a) e il 308 dell'avanzamento | chiusi (la porta della Formazione per elenco; il 308 non legge) | `case-only-guard` (pagine, rotte, letture dirette) |
+| Il dossier (5a): Panoramica, Domande, Soluzione, Valore, Persone, Privacy, Attività e CSV, Impostazioni; i 308 di `via`, `domande/documenti`, `soluzione/regole`, `firme` | chiusi (porta della pagina; i 308 non leggono; `firme` dietro `requireWorkspacePage`) | `case-only-guard`, U2 |
+| Programma, scheda dello use case, `casi-duso/nuovo`, Intervista iniziale (`setup/leadership` e il suo layout) | chiusi (`requireWorkspacePage`; il layout non ha dati) | `case-only-guard` |
+| CLI `evals` e `pacchetto` (casi senza AI), CI `evals` | CLI: porta + predicato (`openCli`, `resolveCliCase`); CI: la chiave di un repository, nessuna persona | `case-only-guard` («la CLI…»), B4 |
+| Campanella e barra (rilascio 10) | solo i tipi di chi costruisce, verso l'indirizzo breve del progetto; una voce, accesa anche nella Costruzione | U5, `sidebar-model.test` |

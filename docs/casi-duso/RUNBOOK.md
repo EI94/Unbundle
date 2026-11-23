@@ -881,6 +881,8 @@ Specifica: `docs/rilascio-8/RILASCIO-8.0d-ESTERNI-FASE-2.md`; l'inventario delle
 
 **Che cosa cambia:** per Lateral Space, i clienti, i Contributori e chi segue un corso, niente a schermo. Le porte del workspace (`getCollaboratorAccess`, `requireWorkspaceAccess`, `requireWorkspacePage`) fanno passare solo i cinque ruoli da collaboratore; `learner` solo dove la porta lo dichiara, `esterno_caso` solo nelle porte di `CASE_ONLY_SURFACES` e poi con il predicato per il caso; un ruolo che il codice non conosce mai (prima passava come un collaboratore). I segnali della campanella a chi non è revisore solo se è Contributore.
 
+**Sopra il rilascio 10** (ramo `rilascio/25-11-80d`, 23/11): il perimetro di «Solo questo use case» è l'Agent Factory, la Costruzione (`casi-duso/<id>/costruzione`: «Progetto dell'agente», con la «Qualità») e l'indirizzo breve del progetto (`use-cases/<id>/progetto`); `casi-duso/<id>/progetto` è un 308 alla Costruzione che non legge niente. «Il tuo account» gli dà solo «Claude e terminale» (i collegamenti della sua CLI), aperto sull'Agent Factory. `CASE_ONLY_SURFACES` ha 14 file; ogni superficie del rilascio 10 e la sua decisione: `docs/casi-duso/DOORS-8.0d.md`, «Il rilascio 10 sopra la 8.0d-1».
+
 **Migrazione 0043 (la applica l'app, al primo avvio dopo il deploy):**
 
 1. `ENSURE_VERSION` 37. Il self-heal applica gli stessi statement di `drizzle/0043_solo_questo_use_case.sql` (`CASE_ONLY_DDL`), in una transazione con l'advisory lock del file e `lock_timeout` 3s: il valore `esterno_caso` in coda a `member_role` e la tabella `use_case_builder_invites` con il suo indice. Solo il catalogo cambia: nessun dato, nessuna colonna, nessun CHECK; `workspace_memberships` non si tocca.
