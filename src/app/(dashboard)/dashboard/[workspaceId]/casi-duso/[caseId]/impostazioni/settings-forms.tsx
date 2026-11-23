@@ -9,7 +9,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { useUcAction } from "@/components/uc/catalog/use-uc-action";
 import { updateCaseSettingsAction } from "@/lib/actions/uc-cases";
 import { revokeAllLinksAction } from "@/lib/actions/uc-people";
-import { SETTINGS_TEXT as T } from "@/lib/uc/views/case-settings";
+import { changeStartingSchemaAction } from "@/lib/actions/uc-reschema";
+import { SCHEMA_CHANGE_TEXT as S, SETTINGS_TEXT as T, schemaBlockReasons, schemaBlockersShown, type SchemaBlockReason } from "@/lib/uc/views/case-settings";
+import { START_TEMPLATE_TEXT, type StartTemplateOption } from "@/lib/uc/views/start-templates";
 
 const FIELD = "h-11 text-base sm:h-9 sm:text-sm";
 
@@ -110,5 +112,163 @@ export function RevokeAllLinks({ workspaceId, caseId }: { workspaceId: string; c
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/** Una domanda che impedisce il cambio di schema, con i suoi motivi. */
+export interface SchemaBlocker {
+  itemId: string;
+  title: string;
+  reasons: SchemaBlockReason[];
+}
+
+/**
+ * «Cambia schema di partenza…» (R3 di `docs/dossier/SCHEMA-DI-PARTENZA.md`), in «La realizzazione», solo in «Bozza» e
+ * per chi modifica le impostazioni. Un pulsante secondario apre il dialogo: con domande che bloccano le elenca e non
+ * conferma; altrimenti si sceglie lo schema («Dal caso d'uso» per primo, gli schemi di settore che combaciano, gli
+ * altri a richiesta), con quello che si rifà e quello che resta. Lo schema di adesso non ha niente da confermare.
+ */
+export function ChangeStartingSchema({
+  workspaceId,
+  caseId,
+  currentId,
+  proposed,
+  others,
+  preselectedId,
+  blockers,
+}: {
+  workspaceId: string;
+  caseId: string;
+  currentId: string;
+  proposed: readonly StartTemplateOption[];
+  others: readonly StartTemplateOption[];
+  preselectedId: string | null;
+  blockers: readonly SchemaBlocker[];
+}) {
+  const { pending, run } = useUcAction();
+  const [open, setOpen] = useState(false);
+  const all = [...proposed, ...others];
+  const initial = all.find((t) => t.id === preselectedId && !t.restricted) ?? null;
+  const [templateId, setTemplateId] = useState<string | null>(initial?.id ?? null);
+  const [showOthers, setShowOthers] = useState(proposed.length === 0 || others.some((t) => t.id === currentId));
+  const chosen = all.find((t) => t.id === templateId) ?? null;
+  const blocked = blockers.length > 0;
+  const same = chosen !== null && chosen.id === currentId;
+  const { shown, more } = schemaBlockersShown(blockers);
+
+  function close(next: boolean) {
+    setOpen(next);
+    if (!next) {
+      setTemplateId(initial?.id ?? null);
+      setShowOthers(proposed.length === 0 || others.some((t) => t.id === currentId));
+    }
+  }
+
+  function toggleOthers() {
+    if (showOthers && others.some((t) => t.id === templateId)) setTemplateId(initial?.id ?? null);
+    setShowOthers(!showOthers);
+  }
+
+  function confirm() {
+    if (!chosen || same || blocked || pending) return;
+    run(() => changeStartingSchemaAction(workspaceId, caseId, chosen.fromUseCase ? { to: "dal_caso" } : { templateId: chosen.id }), { onSuccess: () => close(false) });
+  }
+
+  const option = (t: StartTemplateOption) => (
+    <label
+      key={t.id}
+      className="flex min-h-11 min-w-0 cursor-pointer items-start gap-3 rounded-lg border border-border p-3 hover:bg-muted has-checked:border-uc-blu has-checked:bg-uc-blu-bg has-disabled:cursor-not-allowed has-disabled:opacity-70"
+    >
+      <input
+        type="radio"
+        name="uc-settings-schema"
+        value={t.id}
+        checked={templateId === t.id}
+        onChange={() => setTemplateId(t.id)}
+        disabled={pending}
+        className="mt-0.5 size-4 shrink-0 accent-uc-blu"
+      />
+      <span className="grid min-w-0 gap-0.5">
+        <span className="text-sm break-words">{t.name}</span>
+        <span className="text-xs text-muted-foreground">{t.line}</span>
+      </span>
+    </label>
+  );
+
+  return (
+    <div className="min-w-0 space-y-2">
+      <Button variant="outline" className="min-h-11 sm:min-h-8" onClick={() => setOpen(true)}>
+        {S.open}
+      </Button>
+      {blocked && <p className="text-sm text-muted-foreground">{S.blockedLine(blockers.length)}</p>}
+      <Dialog open={open} onOpenChange={close}>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{S.dialogTitle}</DialogTitle>
+            <DialogDescription>{blocked ? S.blockedLine(blockers.length) : S.dialogBody}</DialogDescription>
+          </DialogHeader>
+          {blocked ? (
+            <div className="min-w-0 space-y-2">
+              <p className="text-sm font-medium">{S.blockedTitle(blockers.length)}</p>
+              <ul className="grid min-w-0 gap-1.5 text-sm">
+                {shown.map((b) => (
+                  <li key={b.itemId} className="min-w-0 break-words">
+                    {b.title || S.untitled}
+                    <span className="text-muted-foreground"> · {schemaBlockReasons(b.reasons)}</span>
+                  </li>
+                ))}
+              </ul>
+              {more > 0 && <p className="text-sm text-muted-foreground">{S.blockedMore(more)}</p>}
+            </div>
+          ) : (
+            <div className="min-w-0 space-y-3">
+              <p id="uc-settings-schema-label" className="text-sm font-medium">
+                {S.choose}
+              </p>
+              <div role="radiogroup" aria-labelledby="uc-settings-schema-label" className="grid min-w-0 gap-2">
+                {proposed.map(option)}
+                {showOthers && others.length > 0 && (
+                  <>
+                    {proposed.length > 0 && <p className="pt-1 text-xs text-muted-foreground">{START_TEMPLATE_TEXT.othersHint}</p>}
+                    {others.map(option)}
+                  </>
+                )}
+              </div>
+              {others.length > 0 && proposed.length > 0 && (
+                <Button type="button" variant="ghost" className="h-11 px-2 sm:h-8" onClick={toggleOthers} disabled={pending} aria-expanded={showOthers}>
+                  {showOthers ? START_TEMPLATE_TEXT.hideOthers(others.length) : START_TEMPLATE_TEXT.showOthers(others.length)}
+                </Button>
+              )}
+              {!chosen ? (
+                <p className="text-sm text-muted-foreground">{S.invalid}</p>
+              ) : same ? (
+                <p className="text-sm" role="status">
+                  {S.same}
+                </p>
+              ) : (
+                <div className="space-y-1 text-sm">
+                  <p>{S.rebuilt}</p>
+                  <p className="text-muted-foreground">{S.kept}</p>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" className="h-11 sm:h-8" onClick={() => close(false)}>
+              {S.cancel}
+            </Button>
+            {blocked ? (
+              <Button className="h-11 sm:h-8" disabled>
+                {S.confirm}
+              </Button>
+            ) : chosen && !same ? (
+              <Button className="h-11 sm:h-8" onClick={confirm} disabled={pending}>
+                {S.confirm}
+              </Button>
+            ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
