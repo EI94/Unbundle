@@ -28,7 +28,6 @@ export const READINESS_TEXT = Object.freeze({
   switcher: Object.freeze({
     label: (name: string) => `Rilevazione «${name}»: cambia rilevazione`,
     newOne: "Nuova rilevazione",
-    current: "aperta ora",
   }),
   status: Object.freeze({
     draft: "Bozza",
@@ -84,9 +83,6 @@ export const READINESS_TEXT = Object.freeze({
   }),
   /** Gli esiti delle azioni, in un avviso breve. */
   done: Object.freeze({
-    opened: "Raccolta aperta.",
-    closed: "Raccolta chiusa.",
-    reopened: "Raccolta riaperta.",
     recomputed: "Punteggi ricalcolati.",
     synthesis: (n: number) => (n === 1 ? "Sintesi pronta: 1 punto da rivedere." : `Sintesi pronta: ${formatCount(n)} punti da rivedere.`),
     copied: "Link copiato.",
@@ -146,7 +142,6 @@ export const READINESS_TEXT = Object.freeze({
     regenerate: "Crea un link nuovo",
     invite: "Invita una persona",
     people: (n: number) => `Persone (${formatCount(n)})`,
-    peopleNone: "Ancora nessuna persona invitata.",
     proposals: (n: number) => `Use case proposti (${formatCount(n)})`,
     showAll: (n: number) => `Mostra tutti (${formatCount(n)})`,
     showLess: "Mostra meno",
@@ -296,6 +291,5 @@ export const READINESS_TEXT = Object.freeze({
     newPlaceholder: "Per esempio: quanto è chiaro chi approva un acquisto?",
     removed: (n: number) => `Domande rimosse (${formatCount(n)})`,
     restore: "Ripristina",
-    open: (n: number) => `Domanda ${n}: apri`,
   }),
 });

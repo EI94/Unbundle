@@ -41,14 +41,11 @@ export function AssessmentSwitcher({ title, currentId, options, newHref }: { tit
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-auto min-w-64 max-w-[min(24rem,calc(100vw-2rem))]">
           {options.map((o) => (
-            <DropdownMenuLinkItem key={o.id} render={<Link href={o.href} />} className={ITEM}>
+            <DropdownMenuLinkItem key={o.id} render={<Link href={o.href} aria-current={o.id === currentId ? "page" : undefined} />} className={ITEM}>
               {o.id === currentId ? <Check aria-hidden /> : <span aria-hidden className="size-4" />}
               <span className="flex min-w-0 flex-col">
                 <span className="break-words text-sm font-medium">{o.name}</span>
-                <span className="text-xs text-muted-foreground">
-                  {o.status}
-                  {o.id === currentId ? ` · ${T.current}` : ""}
-                </span>
+                <span className="text-xs text-muted-foreground">{o.status}</span>
               </span>
             </DropdownMenuLinkItem>
           ))}

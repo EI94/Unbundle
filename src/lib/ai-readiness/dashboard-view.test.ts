@@ -254,3 +254,15 @@ test("every text of the dashboard speaks the dashboard's words: no «caso d'uso�
   assert.deepEqual(texts.filter((t) => english.test(t.replace(/AI Readiness/g, ""))), []);
 });
 
+test("(revisione 7b) the title menu marks the current rilevazione with the check only; no dead text keys", async () => {
+  const { readFileSync } = await import("node:fs");
+  const switcher = readFileSync(new URL("../../components/ai-readiness/assessment-switcher.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(switcher, /T\.current|aperta ora/);
+  assert.match(switcher, /\{o\.id === currentId \? <Check aria-hidden \/> : <span aria-hidden className="size-4" \/>\}/);
+  assert.match(switcher, /aria-current=\{o\.id === currentId \? "page" : undefined\}/, "chi usa un lettore di schermo sa qual è aperta");
+  assert.match(switcher, /<span className="text-xs text-muted-foreground">\{o\.status\}<\/span>/, "lo stato da solo: «Chiusa», non «Chiusa · aperta ora»");
+  assert.equal(Object.hasOwn(READINESS_TEXT.switcher, "current"), false);
+  assert.equal(Object.hasOwn(READINESS_TEXT.collection, "peopleNone"), false);
+  for (const key of ["opened", "closed", "reopened"]) assert.equal(Object.hasOwn(READINESS_TEXT.done, key), false, key);
+  assert.equal(Object.hasOwn(READINESS_TEXT.questions, "open"), false);
+});
