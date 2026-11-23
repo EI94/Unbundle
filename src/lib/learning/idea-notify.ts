@@ -6,6 +6,7 @@
  * destinatario nuovo, nessun testo nuovo: chi li riceveva per le altre proposte li riceve anche per le idee dei corsi.
  *
  * Una volta sola per idea: se la proposta è già annunciata (`wasAnnounced`, la riga della campanella) non riparte.
+ * Mai l'id di una persona negli avvisi: chi ha proposto l'idea resta «Contributore».
  * Mai un errore per chi ha inviato l'idea: l'avviso parte dopo la risposta, e un errore finisce nel log.
  *
  * Modulo puro: le letture e gli invii arrivano da fuori (`ideas.ts`), così si prova con dipendenze finte.
@@ -27,7 +28,9 @@ export async function announceLearningIdea(deps: IdeaAnnounceDeps, i: { workspac
     // Solo la proposta nata dal corso, in questo workspace.
     if (!useCase || useCase.workspaceId !== i.workspaceId || useCase.source !== "learning") return "assente";
     if (await deps.wasAnnounced({ workspaceId: i.workspaceId, useCaseId: useCase.id })) return "gia_annunciata";
-    await deps.notify({ useCase, workspaceId: i.workspaceId, source: "web" });
+    // (Revisione 7b) `proposedBy` di un'idea è l'id interno di chi segue il corso: nel canale Slack del cliente e nel
+    // webhook non va. Senza, il messaggio dice «Compilato da: Contributore», come per le proposte senza nome.
+    await deps.notify({ useCase: { ...useCase, proposedBy: null }, workspaceId: i.workspaceId, source: "web" });
     return "annunciata";
   } catch (error) {
     deps.logError("idea_notify_failed", error, { useCaseId: i.useCaseId });
