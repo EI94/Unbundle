@@ -112,7 +112,7 @@ function learnerNav(base: string): ShellNav {
 
 /**
  * (8.0d) La barra di «Solo questo use case»: «Agent Factory», voce unica, sempre (anche prima della riga del dossier, e con
- * l'area «Use case» spenta). Resta accesa anche nel progetto dell'agente, che si apre dall'Agent Factory.
+ * l'area «Use case» spenta). Resta accesa anche nella Costruzione (il progetto dell'agente), che si apre dall'Agent Factory.
  */
 function caseOnlyNav(base: string): ShellNav {
   return freeze({ main: [{ key: "factory", title: N.factory, href: `${base}/agent-factory`, icon: "factory", match: ["agent-factory", "casi-duso", "use-cases"] }], tools: [], settings: null });

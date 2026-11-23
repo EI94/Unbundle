@@ -182,7 +182,8 @@ test("(8.0d) «Solo questo use case»: una voce, «Agent Factory», sempre; acce
     }
   }
   const nav = workspaceNav(viewer({ role: "esterno_caso" }));
-  for (const path of ["/agent-factory", "/casi-duso/00000000-0000-4000-8000-000000000c01/progetto", "/use-cases/00000000-0000-4000-8000-000000000e01/progetto"]) {
+  // (Rilascio 10) «Progetto dell'agente» è la Costruzione.
+  for (const path of ["/agent-factory", "/casi-duso/00000000-0000-4000-8000-000000000c01/costruzione", "/use-cases/00000000-0000-4000-8000-000000000e01/progetto"]) {
     assert.equal(activeNavItem(nav, at(path), base)?.item.title, "Agent Factory", path);
   }
 });
