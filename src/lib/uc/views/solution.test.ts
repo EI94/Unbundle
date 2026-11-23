@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { findForbiddenIn } from "./copy-guard.ts";
-import type { MapItemRef, ProcessStepView, SolutionNodeView } from "./map.ts";
+import { MAP_EMPTY, type MapItemRef, type ProcessStepView, type SolutionNodeView } from "./map.ts";
 import { RULES_EMPTY } from "./model.ts";
 import {
   RULES_PANEL,
@@ -11,6 +11,7 @@ import {
   boardSteps,
   rulesPanelHref,
   solutionLinksFor,
+  solutionPartsToDraw,
   solutionViewHref,
   stepFromPanel,
   stepPanelHref,
@@ -96,8 +97,21 @@ test("copy guard: the words of the reading page and of the rules panel the clien
     T.howTitle, ...Object.values(T.views), T.viewsLabel, T.legendLabel, T.legend("cliente"), T.example, T.exampleTitle, T.backToProcess, T.decides, T.who, T.step(3),
     T.agentStep, T.stepPanelWho, T.stepPanelTool, T.stepPanelTime, T.friction, T.decidesWhat, T.enters, T.exits, T.questions, T.noQuestions, T.noDescription,
     T.more, T.rules(40), T.partsLabel, T.backToSolution, RULES_TEXT.title, RULES_TEXT.count(40), RULES_EMPTY.title, RULES_EMPTY.hint, RULES_TEXT.noFilterMatch,
-    RULES_TEXT.clear, RULES_TEXT.back,
+    RULES_TEXT.clear, RULES_TEXT.back, T.mapPart, ...solutionPartsToDraw({ mapMissing: true, rulesMissing: true }).flatMap((p) => [p.label, p.hint]),
   ];
   assert.deepEqual(findForbiddenIn(client, "cliente"), []);
   for (const text of client) assert.doesNotMatch(text, /schema di partenza|\bvincol|\bcaso\b|\bdossier\b/i, text);
+});
+
+test("(R1) a missing map and missing rules read «Da disegnare» at the bottom of the page, with the texts of the map page and of the panel", () => {
+  assert.deepEqual(solutionPartsToDraw({ mapMissing: false, rulesMissing: false }), []);
+  assert.deepEqual(solutionPartsToDraw({ mapMissing: true, rulesMissing: false }), [{ key: "mappa", label: "Mappa · Da disegnare", hint: MAP_EMPTY.hint }]);
+  assert.deepEqual(solutionPartsToDraw({ mapMissing: false, rulesMissing: true }), [{ key: "regole", label: "Regole · Da disegnare", hint: RULES_EMPTY.hint }]);
+  // Both missing (a «Dal caso d'uso» dossier): the map first, then the rules, one line each.
+  const both = solutionPartsToDraw({ mapMissing: true, rulesMissing: true });
+  assert.deepEqual(
+    both.map((p) => p.key),
+    ["mappa", "regole"],
+  );
+  for (const p of both) assert.match(p.hint, /dalla Costruzione, quando c'è\.$/);
 });

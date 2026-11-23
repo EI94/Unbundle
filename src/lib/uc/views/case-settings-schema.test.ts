@@ -118,6 +118,20 @@ test("every reason that stops «Cambia schema di partenza» has a plain label, t
   );
 });
 
+test("(R1) the Soluzione reading page says «Da disegnare» where the map and the rules would be: muted lines, never links", () => {
+  const page = strip(read("src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/soluzione/page.tsx"));
+  // The map when who can open it has nothing to draw; the rules when «Regole ›» is not there.
+  assert.match(page, /const toDraw = solutionPartsToDraw\(\{ mapMissing: maps !== null && views\.length === 0, rulesMissing: rulesCount !== null && !rulesShown \}\);/);
+  assert.match(page, /\{\(bottom\.length > 0 \|\| toDraw\.length > 0\) && \(\s*<ul aria-label=\{T\.partsLabel\}/);
+  const line = /\{toDraw\.map\(\(p\) => \(\s*(<li key=\{p\.key\} data-slot="da-disegnare" className="[^"]*text-muted-foreground[^"]*">[\s\S]*?<\/li>)/.exec(page);
+  assert.ok(line, "one muted line per missing part");
+  assert.match(line[1], /<span className="font-medium">\{p\.label\}\.<\/span> \{p\.hint\}/);
+  assert.doesNotMatch(line[1], /<Link|<Button|href=/, "no link to an empty page, no button");
+  // The hidden links stay hidden: «Regole ›» only with rules (or constraints for Lateral Space), «Vista di analisi ›» only with a map.
+  assert.match(page, /const rulesShown = rulesCount !== null && \(rulesCount\.rules > 0 \|\| \(ls && rulesCount\.constraints > 0\)\);/);
+  assert.match(page, /const analysisShown = links\.analysis && \(maps\?\.solution\?\.nodes\.length \?\? 0\) > 0;/);
+});
+
 test("the stored «Dal caso d'uso» definition is never edited: its hash identifies the row in uc_templates", () => {
   // `ensureFromUseCaseTemplate` refuses a row with the same key and another hash (`stessa_versione_diversa`): a new text
   // here (the description still says «Progetto dell'agente») would need a new version, never an edit.
