@@ -60,6 +60,8 @@ export const UC_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   valore_personale_in_chiaro: "Un dato personale si salva solo cifrato.",
   valore_sanitario: "I dati sanitari non si registrano.",
   blocco_attivo: "La voce è ancora bloccata: prima va sciolto il blocco.",
+  // (Schema di partenza) Domande nate da «Cosa serve»: si chiedono, si assegnano e si rispondono solo lì.
+  voce_da_cosa_serve: "Questa domanda si aggiorna in «Cosa serve» dello use case.",
 };
 
 /** Codice `uc:<codice>` da un errore del database, oppure null. */

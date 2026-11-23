@@ -173,6 +173,30 @@ export function needItemsUpdateSql(s: NeedItemsScope): UcStatement {
 SELECT (SELECT count(*) FROM upd)::int AS items, (SELECT count(*) FROM bump)::int AS cases`);
 }
 
+// ── Le voci collegate si gestiscono solo in «Cosa serve» ────────────────
+
+/** Codice uc (e di `Result`) di un comando del dossier su una voce collegata a «Cosa serve». */
+export const LINKED_ITEM_CODE = "voce_da_cosa_serve";
+
+/** Voce collegata (alias `li`): l'informazione è in `shared_item_id`, la chiave è `need.<id>`. */
+const LINKED = raw("li.shared_item_id IS NOT NULL AND li.template_item_key LIKE 'need.%'");
+
+/**
+ * Guardia per la SELECT finale di un'istruzione che chiede, assegna o risponde (prima del controllo
+ * del conteggio, così vince il messaggio giusto): nessuna delle voci `ids` (un frammento che
+ * restituisce uuid) del caso è collegata a «Cosa serve», altrimenti `uc:voce_da_cosa_serve` e
+ * l'istruzione intera non scrive. Non dipende dalle righe: si valuta sempre, una volta.
+ */
+export function linkedItemsGuard(caseId: SqlFragment, ids: SqlFragment): SqlFragment {
+  return ucSql`uc_require(NOT EXISTS (SELECT 1 FROM uc_items li WHERE li.case_id = ${caseId} AND li.id IN (${ids}) AND ${LINKED}), ${raw(`'${LINKED_ITEM_CODE}'`)})`;
+}
+
+/** Quali tra queste voci del caso sono collegate a «Cosa serve» (per rifiutare prima, con il messaggio giusto). */
+export function linkedItemIdsSql(caseId: string, itemIds: readonly string[]): UcStatement {
+  return toStatement(ucSql`SELECT li.id FROM uc_items li
+WHERE li.case_id = ${cast(caseId.toLowerCase(), "uuid")} AND li.id = ANY(${cast(uuids(itemIds), "uuid[]")}) AND ${LINKED}`);
+}
+
 /** Prima le voci nuove, poi lo stato di tutte (la seconda istruzione vede le righe della prima). */
 export function needItemsSyncStatements(s: NeedItemsScope): UcStatement[] {
   return [needItemsInsertSql(s), needItemsUpdateSql(s)];
