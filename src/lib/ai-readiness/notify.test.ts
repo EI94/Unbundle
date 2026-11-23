@@ -34,9 +34,10 @@ test("one fixed row per assessment and type: the same id every time, a different
 });
 
 test("aggregated, never one per answer: the answers row carries today's number; the threshold row starts at the threshold", () => {
-  assert.deepEqual(readinessBellPlan({ assessmentId: AS, name: "Rilevazione di prova", responses: 0, expected: 120, threshold: 5 }), { answers: null, threshold: null });
+  assert.deepEqual(readinessBellPlan({ assessmentId: AS, name: "Rilevazione di prova", responses: 0, expected: 120, threshold: 5 }), { responses: 0, answers: null, threshold: null });
   const below = readinessBellPlan({ assessmentId: AS, name: "Rilevazione di prova", responses: 4, expected: 120, threshold: 5 });
   assert.equal(below.threshold, null);
+  assert.equal(below.responses, 4, "il numero per cui le righe sono scritte: il database le scrive solo se è quello contato");
   assert.deepEqual(below.answers, {
     id: readinessSignalId(READINESS_ANSWERS_SIGNAL, AS),
     type: READINESS_ANSWERS_SIGNAL,
@@ -101,6 +102,11 @@ test("the hook: after a submitted questionnaire, after the answer (`after`), nev
   assert.match(submit, /after\(\(\) => notifyReadinessResponse\(notice\)\);/);
   const writer = readFileSync(new URL("../db/queries/ai-readiness-notify.ts", import.meta.url), "utf8");
   assert.match(writer, /catch \(error\) \{\s*logSafeError\("ai-readiness", "bell_failed"/, "un errore della campanella non arriva a chi risponde");
+  // (Revisione 7b) Una scrittura alla volta per rilevazione, con il numero ricontato nella stessa istruzione.
+  assert.match(writer, /pg_advisory_xact_lock\(hashtext\(\$\{`unbundle:ai-readiness:bell:\$\{i\.assessmentId\}`\}\)\)/);
+  assert.match(writer, /r\.status = 'submitted'\) = \$\{responses\}::int/);
+  assert.match(writer, /await db\.batch\(\[lock, \.\.\.statements\]\);/);
   // Una rilevazione eliminata porta via le sue righe.
   assert.match(actions, /await deleteReadinessBell\(\{ workspaceId, assessmentId \}\);/);
 });
+

@@ -21,6 +21,11 @@ export function readinessSignalId(type: ReadinessSignalType, assessmentId: strin
 }
 
 export interface ReadinessBellPlan {
+  /**
+   * Le risposte per cui le righe sono scritte. Il database le scrive solo se sono quelle che conta in quel momento
+   * (`queries/ai-readiness-notify.ts`): un invio arrivato prima, con un numero già vecchio, non scrive niente.
+   */
+  responses: number;
   /** La riga delle risposte, aggiornata sul posto; null senza risposte. */
   answers: ReadinessBellRow | null;
   /** La riga della soglia, scritta una volta sola; null sotto la soglia. */
@@ -33,9 +38,10 @@ export interface ReadinessBellPlan {
  */
 export function readinessBellPlan(i: { assessmentId: string; name: string; responses: number; expected: number | null; threshold: number }): ReadinessBellPlan {
   const n = Math.max(0, Math.trunc(i.responses));
-  if (n === 0) return { answers: null, threshold: null };
+  if (n === 0) return { responses: 0, answers: null, threshold: null };
   const T = READINESS_BELL_TEXT;
   return {
+    responses: n,
     answers: { id: readinessSignalId(READINESS_ANSWERS_SIGNAL, i.assessmentId), type: READINESS_ANSWERS_SIGNAL, title: T.answersTitle, description: T.answers(i.name, n, i.expected) },
     threshold:
       n >= Math.max(1, i.threshold)
