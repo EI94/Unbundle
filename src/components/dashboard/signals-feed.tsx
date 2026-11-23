@@ -18,10 +18,12 @@ import {
   Clock,
   Inbox,
   CalendarClock,
+  ClipboardList,
 } from "lucide-react";
 import { markSignalAsRead, markAllSignalsRead } from "@/lib/actions/intelligence";
 import type { WeeklySignal } from "@/lib/db/schema";
 import { HUB_SIGNAL_LABEL, hubSignalHref } from "@/lib/use-cases/digest";
+import { READINESS_SIGNAL_LABEL, readinessSignalHref } from "@/lib/ai-readiness/notify";
 import { formatDistanceToNow } from "date-fns";
 import { it } from "date-fns/locale";
 
@@ -77,7 +79,23 @@ const signalConfig: Record<
     color: "text-sky-500",
     label: HUB_SIGNAL_LABEL.use_case_quarter,
   },
+  // (Rilascio 10, ondata 7b) L'AI Readiness: solo a chi gestisce il workspace; aprono la rilevazione, sulla sua scheda.
+  ai_readiness_risposte: {
+    icon: ClipboardList,
+    color: "text-muted-foreground",
+    label: READINESS_SIGNAL_LABEL.ai_readiness_risposte,
+  },
+  ai_readiness_soglia: {
+    icon: ClipboardList,
+    color: "text-muted-foreground",
+    label: READINESS_SIGNAL_LABEL.ai_readiness_soglia,
+  },
 };
+
+/** Dove porta un segnale: la rilevazione dell'AI Readiness, oppure la vista dei riepiloghi dell'area. */
+function feedHref(workspaceId: string, signal: WeeklySignal): string | null {
+  return readinessSignalHref(workspaceId, signal) ?? hubSignalHref(workspaceId, signal.signalType);
+}
 
 /** Il messaggio quando la scrittura non parte (rete assente): lo stesso delle action. */
 const READ_FAILED = "Non riesco a segnarlo come letto. Riprova.";
@@ -171,7 +189,7 @@ export function SignalsFeed({ signals: initialSignals, workspaceId }: SignalsFee
                   label: signal.signalType,
                 };
                 const Icon = config.icon;
-                const href = hubSignalHref(workspaceId, signal.signalType);
+                const href = feedHref(workspaceId, signal);
 
                 return (
                   <div

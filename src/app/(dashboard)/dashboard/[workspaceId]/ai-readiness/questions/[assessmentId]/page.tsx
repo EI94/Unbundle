@@ -1,7 +1,7 @@
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Download, ListChecks } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
 import {
   getAssessmentBundleById,
@@ -13,20 +13,27 @@ import {
   includedPillarsFromScoringConfig,
   templateOverridesFromScoringConfig,
 } from "@/lib/ai-readiness/template-scope";
-import { QuestionEditor } from "@/components/ai-readiness/question-editor";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { READINESS_TEXT } from "@/lib/ai-readiness/dashboard-text";
+import { questionAudienceOf, questionsHref, readinessHref } from "@/lib/ai-readiness/dashboard-view";
+import { readinessPillarText } from "@/lib/programma/text";
+import { QuestionDownloads, QuestionEditor } from "@/components/ai-readiness/question-editor";
 import { PAGE_TITLE_CLASS, PageContainer } from "@/components/dashboard/page-container";
+import { SegmentedNav } from "@/components/dashboard/segmented-nav";
+
+const Q = READINESS_TEXT.questions;
 
 /**
- * Editor domande: partendo dalla base core, ogni assessment può rimuovere,
- * modificare o aggiungere singole domande. Pensato per l'incontro live di
- * setup con il referente del cliente.
+ * «Domande» di una rilevazione (rilascio 10, ondata 7b, §3.9; audit «Fuori» §5.3, AD-13, AD-14): le domande in righe
+ * chiuse, divise in «Per tutti (N)» e «Referenti (N)» (`?per=referenti`), e «Scarica ▾» con i cinque file di oggi.
+ * Partendo dalla base, ogni rilevazione toglie, modifica o aggiunge domande. Solo per chi gestisce il workspace, come
+ * oggi; `/preview/<id>` porta qui.
  */
 export default async function AiReadinessQuestionsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ workspaceId: string; assessmentId: string }>;
+  searchParams: Promise<{ per?: string }>;
 }) {
   const { workspaceId, assessmentId } = await params;
   const { access } = await requireWorkspacePage(workspaceId);
@@ -34,6 +41,7 @@ export default async function AiReadinessQuestionsPage({
 
   const bundle = await getAssessmentBundleById(assessmentId);
   if (!bundle || bundle.assessment.workspaceId !== workspaceId) notFound();
+  const asked = questionAudienceOf((await searchParams).per);
 
   const responses = await listResponsesByAssessment(assessmentId);
   const hasResponses = responses.some((r) => r.status === "submitted");
@@ -43,168 +51,58 @@ export default async function AiReadinessQuestionsPage({
     templateDefinitionFromRow(bundle.template),
     includedPillarsFromScoringConfig(bundle.assessment.scoringConfig)
   );
-  const overrides = templateOverridesFromScoringConfig(
-    bundle.assessment.scoringConfig
-  );
+  const overrides = templateOverridesFromScoringConfig(bundle.assessment.scoringConfig);
   const removedIds = new Set(overrides.removed ?? []);
-  const removedQuestions = baseDefinition.questions.filter((q) =>
-    removedIds.has(q.id)
-  );
 
-  const pillarById = new Map(
-    bundle.templateDefinition.pillars.map((p) => [p.id, p.title])
-  );
-  const sections = bundle.templateDefinition.sections.map((section) => ({
+  const sectionAudience = new Map([...baseDefinition.sections, ...bundle.templateDefinition.sections].map((s) => [s.id, s.audience]));
+  const allSections = bundle.templateDefinition.sections.map((section) => ({
     id: section.id,
     title: section.title,
     description: section.description,
-    pillarTitle: pillarById.get(section.pillarId) ?? section.pillarId,
+    area: readinessPillarText(section.pillarId),
     audience: section.audience,
   }));
-  const scored = bundle.templateDefinition.questions.filter(
-    (q) => q.answerType !== "text"
-  ).length;
+  const count = (wanted: "tutti" | "referenti") =>
+    bundle.templateDefinition.questions.filter((q) => {
+      const a = sectionAudience.get(q.sectionId);
+      return wanted === "referenti" ? a === "internal" : a !== "internal";
+    }).length;
+  // Lo zero non si vede: una parte senza domande non ha la sua scheda, e chi la chiede vede l'altra.
+  const counts = { tutti: count("tutti"), referenti: count("referenti") };
+  const audience = counts[asked] > 0 || counts[asked === "tutti" ? "referenti" : "tutti"] === 0 ? asked : asked === "tutti" ? "referenti" : "tutti";
+  const inAudience = (sectionAudienceOf: string | undefined) => (audience === "referenti" ? sectionAudienceOf === "internal" : sectionAudienceOf !== "internal");
+  const tabs = [
+    { key: "tutti", label: Q.everyone(counts.tutti), href: questionsHref(workspaceId, assessmentId, "tutti"), count: counts.tutti },
+    { key: "referenti", label: Q.internal(counts.referenti), href: questionsHref(workspaceId, assessmentId, "referenti"), count: counts.referenti },
+  ].filter((tab) => tab.count > 0);
+  const sections = allSections.filter((s) => inAudience(s.audience));
+  const questions = bundle.templateDefinition.questions.filter((q) => inAudience(sectionAudience.get(q.sectionId)));
+  const removedQuestions = baseDefinition.questions.filter((q) => removedIds.has(q.id) && inAudience(sectionAudience.get(q.sectionId)));
 
   return (
     <PageContainer className="space-y-6">
-      <div>
-        <Button
-          variant="ghost"
-          size="sm"
-          render={
-            <Link
-              href={`/dashboard/${workspaceId}/ai-readiness?assessment=${assessmentId}`}
-            />
-          }
-          nativeButton={false}
+      <header className="space-y-3">
+        <Link
+          href={readinessHref(workspaceId, { assessmentId })}
+          className="-ml-1 inline-flex min-h-11 items-center gap-1 rounded-md px-1 text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-8"
         >
-          <ArrowLeft className="mr-1 size-4" /> Torna alla rilevazione
-        </Button>
-      </div>
-
-      <header className="rounded-[32px] border bg-card p-6">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="secondary" className="gap-1">
-            <ListChecks className="size-3" /> Editor domande
-          </Badge>
-          <Badge variant="outline">{bundle.assessment.name}</Badge>
-          <Badge variant="outline">{scored} domande a punteggio</Badge>
-        </div>
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <h1 className={PAGE_TITLE_CLASS}>
-            Domande e anteprima
-          </h1>
-        </div>
-        {/* Download separati: file distinti da inviare al cliente.
-            Anchor nativi: il prefetch di un Link eseguirebbe la GET. */}
-        <div className="mt-4 grid gap-3 sm:grid-cols-3" data-testid="question-downloads">
-          <div className="rounded-2xl border bg-muted/20 p-4">
-            <div className="text-sm font-semibold">Questionario per l&apos;organizzazione</div>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Il questionario per tutte le persone.
-            </p>
-            <div className="mt-3 flex gap-2">
-              <Button
-                size="sm"
-                render={
-                  <a
-                    href={`/api/ai-readiness/assessments/${assessmentId}/questions-export?track=everyone&format=pdf`}
-                    download
-                  />
-                }
-                nativeButton={false}
-                data-testid="dl-survey-pdf"
-              >
-                <Download className="mr-1 size-3.5" /> PDF
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                render={
-                  <a
-                    href={`/api/ai-readiness/assessments/${assessmentId}/questions-export?track=everyone&format=xlsx`}
-                    download
-                  />
-                }
-                nativeButton={false}
-                data-testid="dl-survey-xlsx"
-              >
-                <Download className="mr-1 size-3.5" /> Excel
-              </Button>
-            </div>
+          <ChevronLeft aria-hidden className="size-4" />
+          {Q.back}
+        </Link>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 space-y-1">
+            <h1 className={PAGE_TITLE_CLASS}>{Q.title}</h1>
+            <p className="text-sm text-muted-foreground break-words">{bundle.assessment.name}</p>
           </div>
-          <div className="rounded-2xl border bg-muted/20 p-4">
-            <div className="text-sm font-semibold">Schede per i referenti</div>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Le schede per IT, HR e business.
-            </p>
-            <div className="mt-3 flex gap-2">
-              <Button
-                size="sm"
-                render={
-                  <a
-                    href={`/api/ai-readiness/assessments/${assessmentId}/questions-export?track=internal&format=pdf`}
-                    download
-                  />
-                }
-                nativeButton={false}
-                data-testid="dl-internal-pdf"
-              >
-                <Download className="mr-1 size-3.5" /> PDF
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                render={
-                  <a
-                    href={`/api/ai-readiness/assessments/${assessmentId}/questions-export?track=internal&format=xlsx`}
-                    download
-                  />
-                }
-                nativeButton={false}
-                data-testid="dl-internal-xlsx"
-              >
-                <Download className="mr-1 size-3.5" /> Excel
-              </Button>
-            </div>
-          </div>
-          <div className="rounded-2xl border bg-muted/20 p-4">
-            <div className="text-sm font-semibold">Modulo use case</div>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Il form OPIT-style per gli esperti di business.
-            </p>
-            <div className="mt-3 flex gap-2">
-              <Button
-                size="sm"
-                render={
-                  <a
-                    href={`/api/ai-readiness/assessments/${assessmentId}/questions-export?track=use_case&format=pdf`}
-                    download
-                  />
-                }
-                nativeButton={false}
-                data-testid="dl-usecase-pdf"
-              >
-                <Download className="mr-1 size-3.5" /> PDF
-              </Button>
-            </div>
-          </div>
+          <QuestionDownloads assessmentId={assessmentId} />
         </div>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-          Questo è esattamente ciò che riceveranno le persone, diviso in due
-          binari: il <span className="font-medium text-foreground">questionario per tutta
-          l&apos;organizzazione</span> e le <span className="font-medium text-foreground">schede
-          per i referenti</span> (IT, HR, business). Modifica il testo, i livelli
-          1–5, rimuovi o aggiungi domande: le modifiche valgono solo per questa
-          rilevazione e il punteggio resta sempre da 0 a 5 per area.
-        </p>
       </header>
-
+      {tabs.length > 1 ? <SegmentedNav ariaLabel={Q.audienceLabel} active={audience} items={tabs.map(({ key, label, href }) => ({ key, label, href }))} /> : null}
       <QuestionEditor
         workspaceId={workspaceId}
         assessmentId={assessmentId}
         sections={sections}
-        questions={bundle.templateDefinition.questions}
+        questions={questions}
         removedQuestions={removedQuestions}
         editedIds={Object.keys(overrides.edited ?? {})}
         hasResponses={hasResponses}

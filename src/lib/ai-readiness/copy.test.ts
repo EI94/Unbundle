@@ -95,26 +95,34 @@ test("no missing accent in what people read: «non è», «più», «già», «p
   assert.deepEqual(found, []);
 });
 
-test("the radar sentence is true: the profile uses every answer, the threshold is for areas and the comparison", () => {
-  const page = read("src/app/(dashboard)/dashboard/[workspaceId]/ai-readiness/page.tsx").replace(/\s+/g, " ");
-  assert.doesNotMatch(page, /Il radar si popola/);
-  assert.ok(page.includes("Il profilo usa le risposte arrivate finora. Punteggi per area e confronto partono da {bundle.assessment.aggregationThreshold} risposte."));
+test("the radar sentence is true: the profile uses every answer, the threshold is for areas, teams and the comparison", async () => {
+  // (Ondata 7b) La frase sta nei testi della dashboard; la scheda Risultati la scrive sotto il radar, sotto la soglia.
+  const { READINESS_TEXT } = await import("./dashboard-text.ts");
+  assert.equal(READINESS_TEXT.results.belowThreshold(5), "Il profilo usa le risposte arrivate finora: aree, team e confronto si vedono da 5 risposte.");
+  const results = read("src/components/ai-readiness/results-tab.tsx").replace(/\s+/g, " ");
+  assert.ok(results.includes("{!p.thresholdMet ? <p className=\"mt-2 text-center text-xs text-muted-foreground\">{R.belowThreshold(p.threshold)}</p> : null}"));
+  assert.doesNotMatch(results, /Il radar si popola/);
 });
 
-test("(rilascio 10) what the page says about anonymity is true: no «anonymous questionnaire» in the header, and the privacy box names «Cancella le mie risposte»", () => {
-  const page = read("src/app/(dashboard)/dashboard/[workspaceId]/ai-readiness/page.tsx").replace(/\s+/g, " ");
-  // Una rilevazione può essere nominativa: la testata non promette l'anonimato. (Rilascio 10, ondata 4) I testi di chi
-  // risponde stanno in src/lib/public/survey.ts.
+test("(rilascio 10) what the page says about anonymity is true: no «anonymous questionnaire» promise, and the privacy names what the person can do from the link", async () => {
+  // Una rilevazione può essere nominativa, e chi gestisce può creare link personali con l'email: la dashboard non
+  // promette l'anonimato. (Rilascio 10, ondata 4) I testi di chi risponde stanno in src/lib/public/survey.ts.
   const survey = read("src/lib/public/survey.ts");
   assert.match(survey, /identityText: "Questo questionario è nominativo/);
   assert.match(read("src/components/ai-readiness/respondent-survey-form.tsx"), /\{F\.identityText\}/);
-  assert.ok(page.includes("Una rilevazione su come l&apos;azienda usa l&apos;AI: inviti, questionario, punteggi e report."));
   // Dal link personale chi risponde cancella le sue risposte (le rende anonime: «Cancella le mie risposte»), non resta
   // anonimo.
   assert.match(survey, /erase: "Cancella le mie risposte",/);
   assert.match(read("src/components/ai-readiness/respondent-privacy-controls.tsx"), /\{D\.erase\}/);
-  assert.ok(page.includes("togliere il consenso al confronto e rendere anonime le sue risposte dal suo link personale."));
-  assert.doesNotMatch(page, /questionario anonimo|restare anonim/);
+  const { READINESS_TEXT } = await import("./dashboard-text.ts");
+  assert.ok(READINESS_TEXT.settings.privacyBody(5).includes("togliere il consenso al confronto e rendere anonime le sue risposte dal suo link."));
+  const dashboard = [
+    "src/app/(dashboard)/dashboard/[workspaceId]/ai-readiness/page.tsx",
+    "src/lib/ai-readiness/dashboard-text.ts",
+    "src/components/ai-readiness/settings-tab.tsx",
+    "src/components/ai-readiness/readiness-header.tsx",
+  ].map((file) => read(file)).join(" ");
+  assert.doesNotMatch(dashboard, /questionario anonimo|restare anonim|risposte anonime\b(?! dal suo link)/i);
 });
 
 test("(rilascio 10, §4) the respondent pages say «questionario», never Survey or Assessment, with their accents", () => {

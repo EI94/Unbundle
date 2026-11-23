@@ -1,7 +1,7 @@
 /* Generato da scripts/theme/palette-roles.mjs: non modificare a mano (node scripts/theme/palette-roles.mjs
    lo riscrive, --check dice se è allineato ai sorgenti). I colori fissi di Tailwind scelti per il
    fondo scuro: nel tema scuro il valore di sempre, nel tema «Chiaro» del dashboard un passo più
-   scuro della stessa tinta. 55 voci. */
+   scuro della stessa tinta. 54 voci. */
 @theme inline {
   --text-color-red-200: var(--palette-text-red-200, oklch(88.5% 0.062 18.334));
   --text-color-red-300: var(--palette-text-red-300, oklch(80.8% 0.114 19.571));
@@ -19,7 +19,6 @@
   --text-color-green-600: var(--palette-text-green-600, oklch(62.7% 0.194 149.214));
   --text-color-emerald-300: var(--palette-text-emerald-300, oklch(84.5% 0.143 164.978));
   --text-color-emerald-500: var(--palette-text-emerald-500, oklch(69.6% 0.17 162.48));
-  --text-color-emerald-600: var(--palette-text-emerald-600, oklch(59.6% 0.145 163.225));
   --text-color-sky-200: var(--palette-text-sky-200, oklch(90.1% 0.058 230.902));
   --text-color-sky-300: var(--palette-text-sky-300, oklch(82.8% 0.111 230.318));
   --text-color-sky-400: var(--palette-text-sky-400, oklch(74.6% 0.16 232.661));
@@ -77,7 +76,6 @@
   --palette-text-green-600: oklch(44.8% 0.119 151.328); /* green-800 */
   --palette-text-emerald-300: oklch(43.2% 0.095 166.913); /* emerald-800 */
   --palette-text-emerald-500: oklch(43.2% 0.095 166.913); /* emerald-800 */
-  --palette-text-emerald-600: oklch(43.2% 0.095 166.913); /* emerald-800 */
   --palette-text-sky-200: oklch(44.3% 0.11 240.79); /* sky-800 */
   --palette-text-sky-300: oklch(44.3% 0.11 240.79); /* sky-800 */
   --palette-text-sky-400: oklch(44.3% 0.11 240.79); /* sky-800 */

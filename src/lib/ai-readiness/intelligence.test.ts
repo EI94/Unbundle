@@ -139,3 +139,35 @@ test("full intelligence includes roadmap, clusters, and human review metadata", 
   assert.equal(useCaseInsight.humanValidated, false);
   assert.equal(useCaseInsight.promptVersion, "ai-readiness-intelligence-v1");
 });
+
+test("(rilascio 10, ondata 7b) the synthesis speaks Italian, with the dashboard's words: no wave, bottleneck or readiness index", () => {
+  const insights = generateAiReadinessIntelligence({
+    assessmentId: "assessment",
+    workspaceId: "workspace",
+    template: AI_READINESS_SYSTEM_TEMPLATE,
+    dashboard,
+    useCases,
+    privacyConfig: { allowBenchmarking: true },
+    aggregationThreshold: 5,
+    benchmarkConsentCount: 8,
+  });
+  const below = generateAiReadinessIntelligence({
+    assessmentId: "assessment",
+    workspaceId: "workspace",
+    template: AI_READINESS_SYSTEM_TEMPLATE,
+    dashboard: { ...dashboard, responseCount: 2, aggregationThresholdMet: false },
+    useCases: [],
+    privacyConfig: null,
+    aggregationThreshold: 5,
+    benchmarkConsentCount: 0,
+  });
+  const shown = [...insights, ...below].flatMap((insight) => {
+    const waves = Array.isArray(insight.evidence.waves) ? (insight.evidence.waves as Array<Record<string, string>>) : [];
+    return [insight.title, insight.body, ...waves.flatMap((w) => [w.title, w.horizon, w.focus, w.successMetric])];
+  });
+  const english = /\b(?:wave|bottleneck|readiness|quick win|portfolio|cluster|benchmark|delta|overall|survey|respondent|pillar|roadmap|capability|playbook|owner|backlog|effort|outcome|heatmap)\b/i;
+  assert.deepEqual(shown.filter((t) => english.test(t)), []);
+  assert.ok(shown.includes("Area più debole: Contesto"), "l'area in italiano");
+  assert.ok(shown.some((t) => t.startsWith("Indice di prontezza 3,1 su 5.")));
+  assert.deepEqual(insights.find((i) => i.insightType === "roadmap")?.evidence.waves && (insights.find((i) => i.insightType === "roadmap")!.evidence.waves as Array<{ title: string }>).map((w) => w.title), ["Prima tappa: le basi", "Seconda tappa: i primi risultati", "Terza tappa: estendere"]);
+});

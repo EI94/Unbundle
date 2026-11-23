@@ -3,6 +3,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth/redirect-to-login";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
@@ -28,6 +29,9 @@ import {
   markRespondentStarted,
   saveAiReadinessDraftResponse,
   setAssessmentOpenLinkTokenHash,
+  addAssessmentOpenLinkTokenHash,
+  touchAssessmentOpenLinkCopy,
+  mergeAssessmentScoringConfig,
   setAssessmentTemplateOverrides,
   deleteAiReadinessAssessment,
   listResponsesByAssessment,
@@ -43,6 +47,9 @@ import {
   upsertAiReadinessResponse,
   withdrawAiReadinessBenchmarkConsentByTokenHash,
 } from "@/lib/db/queries/ai-readiness";
+import { deleteReadinessBell, notifyReadinessResponse } from "@/lib/db/queries/ai-readiness-notify";
+import { expectedRespondentsOf, trackLabel } from "@/lib/ai-readiness/dashboard-view";
+import { logSafeError } from "@/lib/log/safe-error";
 import { createUseCase } from "@/lib/db/queries/use-cases";
 import { generateAiReadinessIntelligence } from "@/lib/ai-readiness/intelligence";
 import { createInviteToken, createPseudonymousId, hashInviteToken } from "@/lib/ai-readiness/token";
@@ -65,10 +72,7 @@ import {
   getUseCaseFieldIdsForBlocks,
   validateUseCaseValues,
 } from "@/lib/ai-readiness/use-case-form";
-import {
-  surveyTrackMeta,
-  type AiReadinessSurveyTrack,
-} from "@/lib/ai-readiness/survey-track";
+import { type AiReadinessSurveyTrack } from "@/lib/ai-readiness/survey-track";
 import { randomUUID } from "node:crypto";
 import type { AiReadinessAnswer } from "@/lib/ai-readiness/types";
 
@@ -88,16 +92,16 @@ export type CreateRespondentInviteData = {
 };
 
 const createAssessmentSchema = z.object({
-  name: z.string().trim().min(3, "Dai un nome all'assessment."),
+  name: z.string().trim().min(3, "Dai un nome alla rilevazione."),
   description: z.string().trim().optional(),
   displayName: z.string().trim().optional(),
   introCopy: z.string().trim().optional(),
   completionCopy: z.string().trim().optional(),
   controllerName: z.string().trim().min(2, "Indica il titolare del trattamento."),
-  processorName: z.string().trim().min(2, "Indica il responsabile/processore."),
+  processorName: z.string().trim().min(2, "Indica il responsabile del trattamento."),
   legalBasis: z.string().trim().min(2, "Indica la base giuridica."),
   privacyNoticeUrl: z.string().trim().optional(),
-  supportEmail: z.string().trim().email("Email supporto non valida."),
+  supportEmail: z.string().trim().email("Scrivi un'email valida per le domande di chi risponde."),
   dpoEmail: z.string().trim().optional(),
   dataRetentionDays: z.coerce.number().int().min(30).max(3650),
   aggregationThreshold: z.coerce.number().int().min(3).max(50),
@@ -109,12 +113,12 @@ const inviteRespondentSchema = z.object({
     .string()
     .trim()
     .transform((value) => value.toLowerCase())
-    .pipe(z.string().email("Email non valida.")),
+    .pipe(z.string().email("Scrivi un'email valida.")),
   name: z.string().trim().optional(),
   surname: z.string().trim().optional(),
   role: z.string().trim().optional(),
   seniority: z.string().trim().optional(),
-  organizationUnit: z.string().trim().min(2, "Indica l'area/team."),
+  organizationUnit: z.string().trim().min(2, "Scrivi l'area o il team."),
   country: z.string().trim().optional(),
   locale: z.string().trim().optional(),
   surveyTrack: z.enum(["everyone", "internal", "use_case_expert"]).default("internal"),
@@ -190,7 +194,7 @@ function buildQuestionScopeFromForm(params: {
     if (!useCaseFieldIds?.length) {
       return {
         ok: false,
-        state: errorState("Scegli almeno un'area del modulo use case.", {
+        state: errorState("Scegli almeno una parte del modulo degli use case.", {
           useCaseBlockIds: "Seleziona almeno un'area.",
         }),
       };
@@ -226,7 +230,7 @@ async function assertAssessmentManager(workspaceId: string) {
   if (!canManageWorkspaceSettings(access.role)) {
     return {
       ok: false as const,
-      state: errorState("Non hai i permessi per gestire l'assessment."),
+      state: errorState("Non hai i permessi per gestire la rilevazione."),
     };
   }
   return { ok: true as const, session, access };
@@ -292,7 +296,7 @@ export async function createAiReadinessAssessmentAction(
     .filter((value): value is string => typeof value === "string")
     .filter((value) => templatePillarIds.includes(value));
   if (formData.has("pillars") && requestedPillars.length === 0) {
-    return errorState("Seleziona almeno un'area da misurare.", {
+    return errorState("Scegli almeno un'area da misurare.", {
       pillars: "Seleziona almeno un'area.",
     });
   }
@@ -367,7 +371,7 @@ export async function createAiReadinessAssessmentAction(
   revalidatePath(`/dashboard/${workspaceId}/ai-readiness`);
   return {
     ok: true,
-    message: "Assessment creato. Ora puoi aprirlo e invitare i respondent.",
+    message: "Rilevazione creata: ora puoi aprire la raccolta.",
     data: { assessmentId: assessment.id },
     fieldErrors: {},
   };
@@ -386,8 +390,9 @@ export async function updateAiReadinessAssessmentStatusAction(
   if (!manager.ok) return manager.state;
   const bundle = await getAssessmentBundleById(assessmentId);
   if (!bundle || bundle.assessment.workspaceId !== workspaceId) {
-    return errorState("Assessment non trovato.");
+    return errorState("Rilevazione non trovata.");
   }
+  const previous = bundle.assessment.status;
   const updated = await updateAiReadinessAssessment(assessmentId, {
     status,
     opensAt: status === "open" ? new Date() : bundle.assessment.opensAt,
@@ -402,7 +407,10 @@ export async function updateAiReadinessAssessmentStatusAction(
     eventPayload: { status: updated?.status ?? status },
   });
   revalidatePath(`/dashboard/${workspaceId}/ai-readiness`);
-  return { ok: true, message: `Assessment ${status}.`, fieldErrors: {} };
+  // (Rilascio 10, ondata 7b) L'esito in italiano, mai lo stato salvato («Assessment open.»).
+  const message =
+    status === "open" ? (previous === "draft" ? "Raccolta aperta." : "Raccolta riaperta.") : status === "closed" ? "Raccolta chiusa." : "Rilevazione archiviata.";
+  return { ok: true, message, fieldErrors: {} };
 }
 
 export async function deleteAiReadinessAssessmentAction(
@@ -416,7 +424,7 @@ export async function deleteAiReadinessAssessmentAction(
   if (!manager.ok) return manager.state;
   const bundle = await getAssessmentBundleById(assessmentId);
   if (!bundle || bundle.assessment.workspaceId !== workspaceId) {
-    return errorState("Assessment non trovato.");
+    return errorState("Rilevazione non trovata.");
   }
   if (formString(formData, "confirmation").toUpperCase() !== "ELIMINA") {
     return errorState("Conferma non valida: scrivi ELIMINA per procedere.");
@@ -444,6 +452,12 @@ export async function deleteAiReadinessAssessmentAction(
 
   const deleted = await deleteAiReadinessAssessment(assessmentId, workspaceId);
   if (!deleted) return errorState("Eliminazione non riuscita: riprova.");
+  // (Ondata 7b) Le sue righe in campanella vanno via con lei.
+  try {
+    await deleteReadinessBell({ workspaceId, assessmentId });
+  } catch (error) {
+    logSafeError("ai-readiness", "bell_delete_failed", error, { assessmentId });
+  }
 
   revalidatePath(`/dashboard/${workspaceId}/ai-readiness`);
   redirect(`/dashboard/${workspaceId}/ai-readiness?deleted=1`);
@@ -460,7 +474,7 @@ export async function updateAiReadinessThresholdAction(
   if (!manager.ok) return manager.state;
   const bundle = await getAssessmentBundleById(assessmentId);
   if (!bundle || bundle.assessment.workspaceId !== workspaceId) {
-    return errorState("Assessment non trovato.");
+    return errorState("Rilevazione non trovata.");
   }
   // Privacy by design: in modalita anonima la soglia minima resta 3;
   // in modalita nominativa si puo scendere fino a 1 (pilot piccoli).
@@ -468,28 +482,20 @@ export async function updateAiReadinessThresholdAction(
   const raw = Number(formString(formData, "aggregationThreshold"));
   if (!Number.isInteger(raw) || raw < min || raw > 50) {
     return errorState(
-      `Soglia non valida: inserisci un numero tra ${min} e 50.`,
+      `Scrivi un numero da ${min} a 50.`,
       { aggregationThreshold: `Da ${min} a 50.` }
     );
   }
   const expectedRaw = formString(formData, "expectedRespondents");
   const expected = expectedRaw ? Number(expectedRaw) : null;
   if (expected != null && (!Number.isInteger(expected) || expected < 1 || expected > 100000)) {
-    return errorState("Risposte attese non valide.", {
-      expectedRespondents: "Numero intero positivo.",
+    return errorState("Le risposte attese sono un numero intero, da 1 in su.", {
+      expectedRespondents: "Un numero intero, da 1 in su.",
     });
   }
-  await updateAiReadinessAssessment(assessmentId, {
-    aggregationThreshold: raw,
-    ...(expected != null
-      ? {
-          scoringConfig: {
-            ...(bundle.assessment.scoringConfig ?? {}),
-            expectedRespondents: expected,
-          },
-        }
-      : {}),
-  });
+  await updateAiReadinessAssessment(assessmentId, { aggregationThreshold: raw });
+  // (Ondata 7b) Solo la chiave delle risposte attese: le altre di `scoringConfig` (le copie del link) restano.
+  if (expected != null) await mergeAssessmentScoringConfig(assessmentId, { expectedRespondents: expected });
   await recomputeAiReadinessScores(assessmentId);
   await createAiReadinessAuditEvent({
     organizationId: manager.access.workspace.organizationId,
@@ -502,7 +508,7 @@ export async function updateAiReadinessThresholdAction(
   revalidatePath(`/dashboard/${workspaceId}/ai-readiness`);
   return {
     ok: true,
-    message: `Soglia aggiornata a ${raw}. Score ricalcolati.`,
+    message: `Salvato: risultati da ${raw} risposte. Punteggi ricalcolati.`,
     fieldErrors: {},
   };
 }
@@ -529,7 +535,7 @@ export async function customizeAssessmentQuestionAction(
   if (!manager.ok) return manager.state;
   const bundle = await getAssessmentBundleById(assessmentId);
   if (!bundle || bundle.assessment.workspaceId !== workspaceId) {
-    return errorState("Assessment non trovato.");
+    return errorState("Rilevazione non trovata.");
   }
 
   const op = formString(formData, "op");
@@ -557,8 +563,8 @@ export async function customizeAssessmentQuestionAction(
     const questionId = formString(formData, "questionId");
     const label = formString(formData, "label");
     if (!questionId || label.length < 5) {
-      return errorState("Testo domanda troppo corto (minimo 5 caratteri).", {
-        label: "Minimo 5 caratteri.",
+      return errorState("La domanda è troppo corta: almeno 5 caratteri.", {
+        label: "Almeno 5 caratteri.",
       });
     }
     const description = formString(formData, "description");
@@ -566,7 +572,7 @@ export async function customizeAssessmentQuestionAction(
     const levels = parseLevels(formData);
     if (levels === null) {
       return errorState(
-        "Compila la descrizione di tutti e 5 i livelli (o lasciali tutti vuoti).",
+        "Scrivi tutti e cinque i livelli, oppure lasciali tutti vuoti.",
         { level1: "Tutti i livelli o nessuno." }
       );
     }
@@ -584,8 +590,8 @@ export async function customizeAssessmentQuestionAction(
     const label = formString(formData, "label");
     const answerType = formString(formData, "answerType") === "text" ? "text" : "scale";
     if (!sectionId || label.length < 5) {
-      return errorState("Testo domanda troppo corto (minimo 5 caratteri).", {
-        label: "Minimo 5 caratteri.",
+      return errorState("La domanda è troppo corta: almeno 5 caratteri.", {
+        label: "Almeno 5 caratteri.",
       });
     }
     if (!bundle.templateDefinition.sections.some((s) => s.id === sectionId)) {
@@ -594,7 +600,7 @@ export async function customizeAssessmentQuestionAction(
     const addLevels = parseLevels(formData);
     if (addLevels === null) {
       return errorState(
-        "Compila la descrizione di tutti e 5 i livelli (o lasciali tutti vuoti per usare quelli generici).",
+        "Scrivi tutti e cinque i livelli, oppure lasciali tutti vuoti.",
         { level1: "Tutti i livelli o nessuno." }
       );
     }
@@ -636,8 +642,8 @@ export async function customizeAssessmentQuestionAction(
     ok: true,
     message:
       submitted > 0
-        ? "Domande aggiornate. Attenzione: ci sono già risposte inviate, gli score sono stati ricalcolati sulle domande attuali."
-        : "Domande aggiornate.",
+        ? "Domande salvate. I punteggi delle risposte già arrivate sono ricalcolati sulle domande di adesso."
+        : "Domande salvate.",
     fieldErrors: {},
   };
 }
@@ -653,7 +659,7 @@ export async function generateAiReadinessOpenLinkAction(
   if (!manager.ok) return manager.state;
   const bundle = await getAssessmentBundleById(assessmentId);
   if (!bundle || bundle.assessment.workspaceId !== workspaceId) {
-    return errorState("Assessment non trovato.");
+    return errorState("Rilevazione non trovata.");
   }
   const scope = buildQuestionScopeFromForm({
     formData,
@@ -662,11 +668,8 @@ export async function generateAiReadinessOpenLinkAction(
   });
   if (!scope.ok) return scope.state;
   const token = createInviteToken();
-  await setAssessmentOpenLinkTokenHash(
-    assessmentId,
-    hashInviteToken(token),
-    scope.scope
-  );
+  const tokenHash = hashInviteToken(token);
+  await setAssessmentOpenLinkTokenHash(assessmentId, tokenHash, scope.scope);
   const baseUrl = await getBaseUrl();
   await createAiReadinessAuditEvent({
     organizationId: manager.access.workspace.organizationId,
@@ -679,10 +682,40 @@ export async function generateAiReadinessOpenLinkAction(
   revalidatePath(`/dashboard/${workspaceId}/ai-readiness`);
   return {
     ok: true,
-    message: "Link condivisibile pronto: chiunque lo riceve può iniziare la survey.",
+    message: "Link per tutti pronto.",
     fieldErrors: {},
     data: { openUrl: `${baseUrl}/s/${encodeURIComponent(token)}` },
   };
+}
+
+/**
+ * (Rilascio 10, ondata 7b) «Copia il link per tutti»: un token nuovo per lo stesso link (le stesse domande), che vale
+ * insieme a quelli di prima. Il token in chiaro non si salva mai: come «Copia link» dei referenti, ogni copia ne emette
+ * uno. Solo con un link già creato; «Crea un link nuovo» li ritira tutti.
+ */
+export async function copyAiReadinessOpenLinkAction(
+  workspaceId: string,
+  assessmentId: string
+): Promise<AiReadinessActionState<{ openUrl: string }>> {
+  const manager = await assertAssessmentManager(workspaceId);
+  if (!manager.ok) return manager.state;
+  const bundle = await getAssessmentBundleById(assessmentId);
+  if (!bundle || bundle.assessment.workspaceId !== workspaceId) {
+    return errorState("Rilevazione non trovata.");
+  }
+  const token = createInviteToken();
+  const added = await addAssessmentOpenLinkTokenHash(assessmentId, hashInviteToken(token));
+  if (!added) return errorState("Il link per tutti non c'è ancora: crealo prima.");
+  await createAiReadinessAuditEvent({
+    organizationId: manager.access.workspace.organizationId,
+    workspaceId,
+    assessmentId,
+    actorUserId: manager.session.user.id,
+    eventType: "open_link_copied",
+    eventPayload: {},
+  });
+  const baseUrl = await getBaseUrl();
+  return { ok: true, message: null, fieldErrors: {}, data: { openUrl: `${baseUrl}/s/${encodeURIComponent(token)}` } };
 }
 
 const openStartSchema = z.object({
@@ -705,11 +738,20 @@ export async function startOpenSurveyAction(
   formData: FormData
 ): Promise<AiReadinessActionState<{ personalUrl: string }>> {
   void _prev;
-  const found = await getAssessmentByOpenLinkTokenHash(hashInviteToken(openToken));
+  const openHash = hashInviteToken(openToken);
+  const found = await getAssessmentByOpenLinkTokenHash(openHash);
   if (!found) return errorState("Link non valido o revocato.");
   if (found.assessment.status !== "open") {
     return errorState("La raccolta non è aperta in questo momento.");
   }
+  // (Rilascio 10, ondata 7b) Una copia del link per tutti che serve a qualcuno resta valida: l'ultimo uso si aggiorna,
+  // dopo la risposta, e la copia non esce più per far posto a quelle nuove.
+  const usedAssessmentId = found.assessment.id;
+  after(() =>
+    touchAssessmentOpenLinkCopy(usedAssessmentId, openHash).catch((error: unknown) =>
+      logSafeError("ai-readiness", "open_link_touch_failed", error, { assessmentId: usedAssessmentId })
+    )
+  );
   const openScope = questionScopeFromUnknown(
     found.assessment.scoringConfig?.openLinkQuestionScope
   );
@@ -778,7 +820,7 @@ export async function createAiReadinessRespondentInviteAction(
   if (!manager.ok) return manager.state;
   const bundle = await getAssessmentBundleById(assessmentId);
   if (!bundle || bundle.assessment.workspaceId !== workspaceId) {
-    return errorState("Assessment non trovato.");
+    return errorState("Rilevazione non trovata.");
   }
 
   const parsed = inviteRespondentSchema.safeParse({
@@ -843,10 +885,9 @@ export async function createAiReadinessRespondentInviteAction(
   });
 
   revalidatePath(`/dashboard/${workspaceId}/ai-readiness`);
-  const track = surveyTrackMeta(parsed.data.surveyTrack);
   return {
     ok: true,
-    message: `${track.label} pronta. Copia il link e invialo alla persona corretta.`,
+    message: `Link personale pronto (${trackLabel(parsed.data.surveyTrack).toLowerCase()}): copialo e mandalo solo a questa persona.`,
     fieldErrors: {},
     data: {
       respondentId: respondent.id,
@@ -995,7 +1036,7 @@ export async function saveAiReadinessSurveyDraftAction(
     return errorState("Le risposte sono già state inviate.");
   }
   if (assessment.status !== "open") {
-    return errorState("L'assessment non è aperto.");
+    return errorState("La raccolta non è aperta in questo momento.");
   }
 
   const normalized = normalizeDraftPayload(found.templateDefinition, payload);
@@ -1054,7 +1095,7 @@ export async function submitAiReadinessResponseAction(
     };
   }
   if (assessment.status !== "open") {
-    return errorState("L'assessment non è aperto. Contatta il team Unbundle.");
+    return errorState("La raccolta non è aperta in questo momento.");
   }
 
   const acceptedPrivacy = formData.get("privacyAccepted") === "on";
@@ -1145,7 +1186,20 @@ export async function submitAiReadinessResponseAction(
     });
   }
 
-  await recomputeAiReadinessScores(assessment.id);
+  const dashboard = await recomputeAiReadinessScores(assessment.id);
+  // (Rilascio 10, ondata 7b) La campanella di chi gestisce la rilevazione: una riga per rilevazione, aggiornata sul
+  // posto, e una quando le risposte arrivano alla soglia. Dopo la risposta: chi ha risposto non aspetta.
+  if (dashboard) {
+    const notice = {
+      workspaceId: assessment.workspaceId,
+      assessmentId: assessment.id,
+      name: assessment.name,
+      responses: dashboard.responseCount,
+      expected: expectedRespondentsOf(assessment.scoringConfig),
+      threshold: assessment.aggregationThreshold,
+    };
+    after(() => notifyReadinessResponse(notice));
+  }
   await createAiReadinessAuditEvent({
     organizationId: respondent.organizationId,
     workspaceId: respondent.workspaceId,
@@ -1180,7 +1234,7 @@ export async function recomputeAiReadinessScoresAction(
   if (!reviewer.ok) return reviewer.state;
   const bundle = await getAssessmentBundleById(assessmentId);
   if (!bundle || bundle.assessment.workspaceId !== workspaceId) {
-    return errorState("Assessment non trovato.");
+    return errorState("Rilevazione non trovata.");
   }
   const dashboard = await recomputeAiReadinessScores(assessmentId);
   await createAiReadinessAuditEvent({
@@ -1195,7 +1249,7 @@ export async function recomputeAiReadinessScoresAction(
     },
   });
   revalidatePath(`/dashboard/${workspaceId}/ai-readiness`);
-  return { ok: true, message: "Score ricalcolati.", fieldErrors: {} };
+  return { ok: true, message: "Punteggi ricalcolati.", fieldErrors: {} };
 }
 
 export async function generateAiReadinessInsightsAction(
@@ -1210,7 +1264,7 @@ export async function generateAiReadinessInsightsAction(
   if (!reviewer.ok) return reviewer.state;
   const bundle = await getAssessmentBundleById(assessmentId);
   if (!bundle || bundle.assessment.workspaceId !== workspaceId) {
-    return errorState("Assessment non trovato.");
+    return errorState("Rilevazione non trovata.");
   }
 
   const [dashboard, respondents, useCases] = await Promise.all([
@@ -1218,7 +1272,7 @@ export async function generateAiReadinessInsightsAction(
     listRespondentsByAssessment(assessmentId),
     listUseCaseSubmissionsByAssessment(assessmentId),
   ]);
-  if (!dashboard) return errorState("Dashboard non disponibile.");
+  if (!dashboard) return errorState("I risultati non si leggono adesso: riprova.");
 
   const generated = generateAiReadinessIntelligence({
     assessmentId,
@@ -1282,7 +1336,7 @@ export async function generateAiReadinessInsightsAction(
   revalidatePath(`/dashboard/${workspaceId}/ai-readiness`);
   return {
     ok: true,
-    message: `Intelligence generata: ${generated.length} insight.`,
+    message: generated.length === 1 ? "Sintesi pronta: 1 punto da rivedere." : `Sintesi pronta: ${generated.length} punti da rivedere.`,
     fieldErrors: {},
     data: { generated: generated.length },
   };
@@ -1302,7 +1356,7 @@ export async function updateAiReadinessInsightStatusAction(
   if (!reviewer.ok) return reviewer.state;
   const bundle = await getAssessmentBundleById(assessmentId);
   if (!bundle || bundle.assessment.workspaceId !== workspaceId) {
-    return errorState("Assessment non trovato.");
+    return errorState("Rilevazione non trovata.");
   }
   const updated = await updateAiReadinessInsightValidation({
     insightId,
@@ -1325,7 +1379,7 @@ export async function updateAiReadinessInsightStatusAction(
     },
   });
   revalidatePath(`/dashboard/${workspaceId}/ai-readiness`);
-  return { ok: true, message: "Stato insight aggiornato.", fieldErrors: {} };
+  return { ok: true, message: status === "approved" ? "Insight approvato." : status === "rejected" ? "Insight scartato." : "Insight segnato come visto.", fieldErrors: {} };
 }
 
 export async function promoteAiReadinessUseCaseToPortfolioAction(
@@ -1344,19 +1398,19 @@ export async function promoteAiReadinessUseCaseToPortfolioAction(
     getUseCaseSubmissionById(submissionId),
   ]);
   if (!bundle || bundle.assessment.workspaceId !== workspaceId) {
-    return errorState("Assessment non trovato.");
+    return errorState("Rilevazione non trovata.");
   }
   if (
     !submission ||
     submission.assessmentId !== assessmentId ||
     submission.workspaceId !== workspaceId
   ) {
-    return errorState("Use case assessment non trovato.");
+    return errorState("Use case proposto non trovato.");
   }
   if (submission.linkedUseCaseId) {
     return {
       ok: true,
-      message: "Questo use case è già collegato al Portfolio.",
+      message: "Questo use case è già tra gli use case.",
       fieldErrors: {},
       data: { useCaseId: submission.linkedUseCaseId },
     };
@@ -1413,7 +1467,7 @@ export async function promoteAiReadinessUseCaseToPortfolioAction(
   revalidatePath(`/dashboard/${workspaceId}/portfolio`);
   return {
     ok: true,
-    message: "Use case collegato al Portfolio.",
+    message: "Aggiunto agli use case.",
     fieldErrors: {},
     data: { useCaseId: created.id },
   };

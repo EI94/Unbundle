@@ -211,6 +211,13 @@ export const AREA_SOURCE_DIRS: readonly string[] = [
   // Registro. Il modulo del link del corso (`join-course-form.tsx`) resta fra le pagine di fuori.
   "src/components/learning/",
   "src/app/(dashboard)/dashboard/[workspaceId]/learning/",
+  // (Rilascio 10, ondata 7b «AI Readiness») La dashboard AI Readiness, la pagina «Domande» e i loro testi. Le pagine del
+  // questionario per chi risponde (`/a`, `/s`) e i loro pezzi restano fra quelle di fuori, che si controllano prima.
+  "src/components/ai-readiness/",
+  "src/app/(dashboard)/dashboard/[workspaceId]/ai-readiness/",
+  "src/lib/ai-readiness/dashboard-text.ts",
+  "src/lib/ai-readiness/dashboard-view.ts",
+  "src/lib/ai-readiness/notify.ts",
 ];
 
 /**

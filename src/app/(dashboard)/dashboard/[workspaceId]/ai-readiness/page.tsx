@@ -1,21 +1,6 @@
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import {
-  AlertTriangle,
-  BarChart3,
-  Brain,
-  Eye,
-  Download,
-  GitBranch,
-  Lock,
-  Mail,
-  Network,
-  ShieldCheck,
-  Sparkles,
-  Users,
-} from "lucide-react";
-import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
+import { canManageWorkspaceSettings, canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import {
   ensureAiReadinessSystemTemplate,
   getAiReadinessDashboard,
@@ -26,1009 +11,302 @@ import {
   listRespondentsByAssessment,
   listUseCaseSubmissionsByAssessment,
 } from "@/lib/db/queries/ai-readiness";
-import { getMaturityLevel } from "@/lib/ai-readiness/scoring";
 import { readinessPillarText } from "@/lib/programma/text";
 import { questionScopeFromUnknown } from "@/lib/ai-readiness/template-scope";
-import {
-  findUncoveredInternalPillarIds,
-  surveyTrackMeta,
-} from "@/lib/ai-readiness/survey-track";
+import { findUncoveredInternalPillarIds } from "@/lib/ai-readiness/survey-track";
 import { USE_CASE_FORM_BLOCKS } from "@/lib/ai-readiness/use-case-form";
+import { READINESS_TEXT, formatScore } from "@/lib/ai-readiness/dashboard-text";
+import {
+  INVITE_PANEL,
+  READINESS_TAB_PARAM,
+  expectedRespondentsOf,
+  exportHref,
+  insightStatusView,
+  insightTypeLabel,
+  personRowView,
+  proposalFact,
+  questionsHref,
+  readinessHref,
+  readinessIndexView,
+  readinessNextStep,
+  readinessStage,
+  readinessStatusView,
+  readinessSummary,
+  readinessTabOf,
+  strengthsAndAttention,
+  synthesisOf,
+  visibleReadinessTabs,
+} from "@/lib/ai-readiness/dashboard-view";
+import { exportTypeLabel } from "@/lib/ai-readiness/export-types";
+import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { AssessmentCreateForm } from "@/components/ai-readiness/assessment-create-form";
-import { AssessmentActions } from "@/components/ai-readiness/assessment-actions";
-import { InsightValidationActions } from "@/components/ai-readiness/insight-validation-actions";
-import { IntelligenceActions } from "@/components/ai-readiness/intelligence-actions";
-import { RespondentInviteForm } from "@/components/ai-readiness/respondent-invite-form";
-import { ThresholdForm } from "@/components/ai-readiness/threshold-form";
-import { OpenLinkForm } from "@/components/ai-readiness/open-link-form";
+import { AssessmentSwitcher, type AssessmentOption } from "@/components/ai-readiness/assessment-switcher";
 import { AutoRefresh } from "@/components/ai-readiness/auto-refresh";
-import { PillarRadar } from "@/components/ai-readiness/pillar-radar";
-import { ShowAll } from "@/components/ai-readiness/show-all";
-import { UseCasePromoteButton } from "@/components/ai-readiness/use-case-promote-button";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { PAGE_TITLE_CLASS, PageContainer } from "@/components/dashboard/page-container";
+import { CollectionTab } from "@/components/ai-readiness/collection-tab";
+import { InsightsTab } from "@/components/ai-readiness/insights-tab";
+import { ReadinessAnchor } from "@/components/ai-readiness/readiness-anchor";
+import { ReadinessHeader } from "@/components/ai-readiness/readiness-header";
+import { ResultsTab } from "@/components/ai-readiness/results-tab";
+import { SettingsTab } from "@/components/ai-readiness/settings-tab";
+import { PageContainer } from "@/components/dashboard/page-container";
+import { SegmentedNav } from "@/components/dashboard/segmented-nav";
+import { EmptyState } from "@/components/ui-10/empty-state";
 
-function scoreLabel(score: number | null | undefined) {
-  return typeof score === "number" && Number.isFinite(score)
-    ? score.toFixed(2)
-    : "N/D";
+const T = READINESS_TEXT;
+const DATE = new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "short", timeZone: "Europe/Rome" });
+const CLOCK = new Intl.DateTimeFormat("it-IT", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Rome" });
+const DATE_TIME = new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Rome" });
+
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-function statusBadge(status: string) {
-  const label: Record<string, string> = {
-    draft: "Draft",
-    open: "Open",
-    closed: "Closed",
-    archived: "Archived",
-  };
-  return label[status] ?? status;
+function records(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => item !== null && typeof item === "object" && !Array.isArray(item)) : [];
 }
 
-function configString(config: Record<string, unknown> | null | undefined, key: string, fallback = "") {
-  const value = config?.[key];
-  return typeof value === "string" ? value : fallback;
-}
+const text = (value: unknown) => (typeof value === "string" ? value : "");
 
-function evidenceRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
-function evidenceArray(value: unknown): Array<Record<string, unknown>> {
-  return Array.isArray(value)
-    ? value.filter(
-        (item): item is Record<string, unknown> =>
-          item !== null && typeof item === "object" && !Array.isArray(item)
-      )
-    : [];
-}
-
-function textValue(value: unknown, fallback = "") {
-  return typeof value === "string" ? value : fallback;
-}
-
-function scoreFromUnknown(value: unknown) {
-  return typeof value === "number" ? scoreLabel(value) : "N/D";
-}
-
-/** (Rilascio 10, §7.4) Lo stato dell'invito in italiano, mai la chiave salvata («invited», «opened»…). */
-const INVITE_STATUS_LABEL: Readonly<Record<string, string>> = {
-  invited: "Invito inviato",
-  opened: "Link aperto",
-  started: "In corso",
-  completed: "Ha risposto",
-  privacy_deleted: "Dati cancellati",
-};
-
+/**
+ * AI Readiness (rilascio 10, ondata 7b, docs/ui-10/PROPOSTA-10.md §3.9; audit «Fuori» §5.1-5.4, §8.4). Una testata
+ * (il titolo è il menu delle rilevazioni, il «⋯», lo stato in italiano, «46 risposte su 120 attese · bastano 5 per i
+ * risultati» e un solo pulsante pieno che segue lo stato) e quattro schede al loro indirizzo (`?scheda=`): Risultati ·
+ * Raccolta · Insight · Impostazioni. Prima erano sedici blocchi uno sotto l'altro.
+ *
+ * Gli indirizzi di prima valgono tutti: `?assessment=`, `?new=1`, `?deleted=1`, le ancore `#respondents` e
+ * `#intelligence` (`ReadinessAnchor`); `?apri=invita` apre il pannello «Invita una persona». Chi vede che cosa non
+ * cambia: la pagina si apre a ogni membro del workspace; ogni controllo solo a chi può usarlo, con i permessi delle
+ * azioni di oggi (gestire per la raccolta, valutare per la sintesi e i file).
+ */
 export default async function AiReadinessPage({
   params,
   searchParams,
 }: {
   params: Promise<{ workspaceId: string }>;
-  searchParams: Promise<{ assessment?: string; new?: string; deleted?: string }>;
+  searchParams: Promise<{ assessment?: string; new?: string; deleted?: string; scheda?: string; apri?: string }>;
 }) {
   const { workspaceId } = await params;
   const { access } = await requireWorkspacePage(workspaceId);
   const search = await searchParams;
 
   await ensureAiReadinessSystemTemplate();
-  const canManage = canManageWorkspaceSettings(access.role);
+  const manages = canManageWorkspaceSettings(access.role);
+  const reviews = canReviewWorkspacePortfolio(access.role);
   const assessments = await listAssessmentsByWorkspace(workspaceId);
-  const selectedRow =
-    assessments.find((row) => row.assessment.id === search.assessment) ??
-    assessments[0] ??
-    null;
-  const showCreateForm =
-    (search.new === "1" && canManage) || assessments.length === 0;
-  const bundle =
-    !showCreateForm && selectedRow
-      ? await getAssessmentBundleById(selectedRow.assessment.id)
-      : null;
-
-  const assessmentSwitcher =
-    assessments.length > 0 ? (
-      <div className="flex flex-wrap items-center gap-2" data-testid="assessment-switcher">
-        {assessments.map((row) => {
-          const isActive =
-            !showCreateForm && row.assessment.id === selectedRow?.assessment.id;
-          return (
-            <Link
-              key={row.assessment.id}
-              href={`/dashboard/${workspaceId}/ai-readiness?assessment=${row.assessment.id}`}
-              className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
-                isActive
-                  ? "border-emerald-500 bg-emerald-500/10 font-medium"
-                  : "hover:bg-muted"
-              }`}
-            >
-              {row.assessment.name}
-              <span className="ml-2 text-xs text-muted-foreground">
-                {statusBadge(row.assessment.status)}
-              </span>
-            </Link>
-          );
-        })}
-        {canManage && (
-          <Link
-            href={`/dashboard/${workspaceId}/ai-readiness?new=1`}
-            className="rounded-full border border-dashed px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted"
-            data-testid="assessment-new-link"
-          >
-            + Nuova rilevazione
-          </Link>
-        )}
-      </div>
+  const selectedRow = assessments.find((row) => row.assessment.id === search.assessment) ?? assessments[0] ?? null;
+  const showCreateForm = (search.new === "1" && manages) || assessments.length === 0;
+  const options: AssessmentOption[] = assessments.map((row) => ({
+    id: row.assessment.id,
+    name: row.assessment.name,
+    status: readinessStatusView(row.assessment.status).label,
+    href: readinessHref(workspaceId, { assessmentId: row.assessment.id }),
+  }));
+  const newHref = manages ? `/dashboard/${workspaceId}/ai-readiness?new=1` : null;
+  const deletedNotice =
+    search.deleted === "1" ? (
+      <p className="text-sm text-muted-foreground" role="status">
+        {T.deleted}
+      </p>
     ) : null;
 
   if (showCreateForm) {
     return (
-      <PageContainer className="space-y-8">
-        <div className="rounded-[32px] border bg-linear-to-br from-emerald-500/10 via-background to-sky-500/10 p-8">
-          <Badge variant="secondary">AI Readiness</Badge>
-          <h1 className={`${PAGE_TITLE_CLASS} mt-4 max-w-3xl`}>
-            AI Readiness
-          </h1>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
-            Una rilevazione su come l&apos;azienda usa l&apos;AI: inviti, questionario, punteggi e report.
-          </p>
-        </div>
-        {search.deleted === "1" && (
-          <p className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-sm" role="status">
-            Rilevazione eliminata: inviti, risposte e punteggi sono stati tolti per sempre.
-          </p>
-        )}
-        {assessmentSwitcher}
-        {canManage ? (
-          <AssessmentCreateForm
-            workspaceId={workspaceId}
-            workspaceName={access.workspace.name}
-          />
-        ) : (
-          <Card>
-            <CardContent className="p-6 text-sm text-muted-foreground">
-              Serve uno Sponsor esecutivo o un Responsabile della trasformazione per creare la
-              prima rilevazione.
-            </CardContent>
-          </Card>
-        )}
+      <PageContainer className="space-y-6">
+        <header className="space-y-1">
+          <AssessmentSwitcher title={manages ? T.create.title : T.pageTitle} currentId={null} options={options} newHref={null} />
+        </header>
+        {deletedNotice}
+        {manages ? <AssessmentCreateForm workspaceId={workspaceId} workspaceName={access.workspace.name} /> : <EmptyState text={T.create.noManager} />}
       </PageContainer>
     );
   }
 
+  const bundle = selectedRow ? await getAssessmentBundleById(selectedRow.assessment.id) : null;
   if (!bundle) notFound();
+  const assessment = bundle.assessment;
 
   const [dashboard, respondents, useCases, exports, insights] = await Promise.all([
-    getAiReadinessDashboard(bundle.assessment.id),
-    listRespondentsByAssessment(bundle.assessment.id),
-    listUseCaseSubmissionsByAssessment(bundle.assessment.id),
-    listAiReadinessExports(bundle.assessment.id),
-    listAiReadinessInsights(bundle.assessment.id),
+    getAiReadinessDashboard(assessment.id),
+    listRespondentsByAssessment(assessment.id),
+    listUseCaseSubmissionsByAssessment(assessment.id),
+    listAiReadinessExports(assessment.id),
+    listAiReadinessInsights(assessment.id),
   ]);
-  const maturity = getMaturityLevel(dashboard?.overallScore);
-  const completion =
-    dashboard && dashboard.invitedCount > 0
-      ? Math.round((dashboard.completedCount / dashboard.invitedCount) * 100)
-      : 0;
-  const privacyConfig = bundle.assessment.privacyConfig ?? {};
-  const roadmapInsight = insights.find((insight) => insight.insightType === "roadmap");
-  const roadmapEvidence = evidenceRecord(roadmapInsight?.evidence);
-  const roadmapWaves = evidenceArray(roadmapEvidence.waves);
-  const useCaseInsight = insights.find((insight) => insight.insightType === "use_case");
-  const useCaseEvidence = evidenceRecord(useCaseInsight?.evidence);
-  const clusters = evidenceArray(useCaseEvidence.clusters);
-  const benchmarkInsight = insights.find((insight) => insight.insightType === "benchmark");
-  const benchmark = evidenceRecord(evidenceRecord(benchmarkInsight?.evidence).benchmark);
+  const responses = dashboard?.responseCount ?? 0;
+  const expected = expectedRespondentsOf(assessment.scoringConfig);
+  const scoring = record(assessment.scoringConfig);
+  const hasOpenLink = typeof scoring.openLinkTokenHash === "string";
+  const draftInsights = insights.filter((insight) => insight.validationStatus === "draft").length;
+  const stage = readinessStage({
+    status: assessment.status,
+    hasOpenLink,
+    completed: responses,
+    threshold: assessment.aggregationThreshold,
+    draftInsights,
+    synthesis: synthesisOf(insights),
+  });
+  const step = readinessNextStep(stage, { manages, reviews, draftInsights });
+
+  const tabs = visibleReadinessTabs({ manages, reviews, proposals: useCases.length, insights: insights.length });
+  const tab = readinessTabOf(search[READINESS_TAB_PARAM], tabs);
+  const href = (t: (typeof tabs)[number], panel?: string) => readinessHref(workspaceId, { assessmentId: assessment.id, tab: t, panel });
+
+  // Le aree: il nome in italiano, mai il titolo inglese salvato nel modello («Technology») né l'id del pilastro.
   const sectionOptions = bundle.templateDefinition.sections.map((section) => ({
     id: section.id,
     title: section.title,
-    description: section.description,
     audience: section.audience,
     pillarId: section.pillarId,
-    pillarTitle:
-      bundle.templateDefinition.pillars.find((pillar) => pillar.id === section.pillarId)
-        ?.title ?? section.pillarId,
-  }));
-  const everyoneSectionOptions = sectionOptions.filter(
-    (section) => section.audience !== "internal"
-  );
-  const useCaseBlockOptions = USE_CASE_FORM_BLOCKS.map((block) => ({
-    id: block.id,
-    title: block.title,
-    subtitle: block.subtitle,
+    area: readinessPillarText(section.pillarId),
   }));
 
-  const includedPillarTitles = bundle.templateDefinition.pillars
-    .map((pillar) => pillar.title)
-    .join(", ");
-  const missingInternalPillarIds = findUncoveredInternalPillarIds({
-    pillarIds: bundle.templateDefinition.pillars.map((pillar) => pillar.id),
-    sections: sectionOptions,
-    respondents,
-  });
-  const missingInternalPillars = bundle.templateDefinition.pillars.filter(
-    (pillar) => missingInternalPillarIds.includes(pillar.id)
-  );
+  let body: React.ReactNode;
+  if (tab === "risultati") {
+    const sectionScores = bundle.templateDefinition.sections.flatMap((section) => {
+      const score = dashboard?.sectionScores[section.id];
+      return typeof score === "number" && Number.isFinite(score) ? [{ title: section.title, score }] : [];
+    });
+    const { strengths, attention } = strengthsAndAttention(sectionScores);
+    const missing = findUncoveredInternalPillarIds({
+      pillarIds: bundle.templateDefinition.pillars.map((pillar) => pillar.id),
+      sections: sectionOptions,
+      respondents,
+    });
+    const weakest = dashboard?.bottleneckPillar ? readinessPillarText(dashboard.bottleneckPillar) : null;
+    body = (
+      <ResultsTab
+        responses={responses}
+        threshold={assessment.aggregationThreshold}
+        thresholdMet={dashboard?.aggregationThresholdMet ?? false}
+        index={readinessIndexView(dashboard?.overallScore, weakest)}
+        areas={bundle.templateDefinition.pillars.map((pillar) => ({
+          id: pillar.id,
+          title: readinessPillarText(pillar.id),
+          description: pillar.description,
+          score: typeof dashboard?.pillarScores[pillar.id] === "number" ? (dashboard.pillarScores[pillar.id] as number) : null,
+        }))}
+        strengths={strengths}
+        attention={attention}
+        missingInternal={missing.map((id) => readinessPillarText(id))}
+        inviteHref={manages ? href("raccolta", INVITE_PANEL) : null}
+        teams={(dashboard?.units ?? [])
+          .filter((unit) => unit.respondentCount > 0)
+          .map((unit) => ({
+            unit: unit.unit,
+            responses: unit.respondentCount,
+            thresholdMet: unit.aggregationThresholdMet,
+            score: unit.overallScore,
+            weakest: unit.bottleneckPillar ? readinessPillarText(unit.bottleneckPillar) : null,
+          }))}
+      />
+    );
+  } else if (tab === "raccolta") {
+    const scope = questionScopeFromUnknown(scoring.openLinkQuestionScope);
+    const hub = isUseCaseHubWorkspace(workspaceId);
+    body = (
+      <CollectionTab
+        workspaceId={workspaceId}
+        assessmentId={assessment.id}
+        manages={manages}
+        status={assessment.status}
+        initialPanel={search.apri ?? null}
+        link={{ active: hasOpenLink, scopeIds: scope?.sectionIds?.length ? scope.sectionIds : null }}
+        everyoneSections={sectionOptions.filter((s) => s.audience !== "internal").map(({ id, title, area }) => ({ id, title, area }))}
+        sections={sectionOptions.map(({ id, title, audience, area }) => ({ id, title, audience, area }))}
+        useCaseBlocks={USE_CASE_FORM_BLOCKS.map((block) => ({ id: block.id, title: block.title, subtitle: block.subtitle }))}
+        people={respondents.map((r) => ({ id: r.id, ...personRowView(r) }))}
+        proposals={useCases.map((item) => ({ id: item.id, title: item.title, fact: proposalFact(item), linkedUseCaseId: item.linkedUseCaseId }))}
+        useCaseBase={hub ? `/dashboard/${workspaceId}/use-cases/` : `/dashboard/${workspaceId}/portfolio/review/`}
+      />
+    );
+  } else if (tab === "insight") {
+    const roadmap = records(record(insights.find((i) => i.insightType === "roadmap")?.evidence).waves);
+    const clusters = records(record(insights.find((i) => i.insightType === "use_case")?.evidence).clusters);
+    const benchmark = record(record(insights.find((i) => i.insightType === "benchmark")?.evidence).benchmark);
+    const delta = typeof benchmark.overallDelta === "number" ? formatScore(benchmark.overallDelta) : null;
+    // Prima quelli da rivedere, poi gli altri; dentro, dal più recente.
+    const ordered = [...insights].sort((a, b) => Number(b.validationStatus === "draft") - Number(a.validationStatus === "draft"));
+    body = (
+      <InsightsTab
+        workspaceId={workspaceId}
+        assessmentId={assessment.id}
+        manages={manages}
+        canGenerate={reviews && responses >= Math.max(1, assessment.aggregationThreshold)}
+        threshold={assessment.aggregationThreshold}
+        drafts={draftInsights}
+        insights={ordered.map((insight) => ({
+          id: insight.id,
+          type: insightTypeLabel(insight.insightType),
+          title: insight.title,
+          body: insight.body,
+          status: insightStatusView(insight.validationStatus),
+          rawStatus: insight.validationStatus,
+          date: DATE.format(insight.generatedAt),
+        }))}
+        roadmap={roadmap.map((wave, index) => ({ id: text(wave.id) || String(index), horizon: text(wave.horizon), title: text(wave.title), focus: text(wave.focus), metric: text(wave.successMetric) }))}
+        groups={clusters.slice(0, 4).map((cluster, index) => ({ id: text(cluster.id) || String(index), label: text(cluster.label), description: text(cluster.description), count: typeof cluster.count === "number" ? cluster.count : 0 }))}
+        comparison={benchmark.enabled === true && delta ? T.insights.comparisonValue(delta) : null}
+      />
+    );
+  } else {
+    const privacy = record(assessment.privacyConfig);
+    body = (
+      <SettingsTab
+        workspaceId={workspaceId}
+        assessmentId={assessment.id}
+        manages={manages}
+        threshold={assessment.aggregationThreshold}
+        minThreshold={assessment.anonymousMode !== false ? 3 : 1}
+        expected={expected}
+        anonymous={assessment.anonymousMode !== false}
+        controller={text(privacy.controllerName) || access.workspace.name}
+        exports={exports.map((item) => ({
+          id: item.id,
+          label: exportTypeLabel(item.exportType),
+          when: DATE_TIME.format(item.createdAt),
+          personal: item.includedPersonalData,
+        }))}
+      />
+    );
+  }
 
   return (
     <PageContainer className="space-y-6">
-      {bundle.assessment.status === "open" && <AutoRefresh seconds={30} />}
-      {search.deleted === "1" && (
-        <p className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-sm" role="status">
-          Rilevazione eliminata: inviti, risposte e punteggi sono stati tolti per sempre.
-        </p>
-      )}
-      {assessmentSwitcher}
-      <header className="rounded-[32px] border bg-card p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="secondary">AI Readiness OS</Badge>
-              <Badge variant="outline">Fase 2 - Intelligence Layer</Badge>
-              <Badge variant="outline">{statusBadge(bundle.assessment.status)}</Badge>
-              {bundle.assessment.anonymousMode ? (
-                <Badge variant="outline" className="gap-1">
-                  <Lock className="size-3" /> Anonima
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="gap-1">
-                  <Users className="size-3" /> Nominativa
-                </Badge>
-              )}
-            </div>
-            <h1 className={`${PAGE_TITLE_CLASS} mt-4`}>
-              {bundle.assessment.name}
-            </h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Diagnostic layer per misurare readiness su: {includedPillarTitles}.
-              I risultati per team vengono mostrati solo sopra soglia
-              aggregazione.
-            </p>
-          </div>
-          <div className="space-y-2">
-            {canManage && (
-              <AssessmentActions
-                workspaceId={workspaceId}
-                assessmentId={bundle.assessment.id}
-                status={bundle.assessment.status}
-                assessmentName={bundle.assessment.name}
-                respondentCount={respondents.length}
-                completedCount={dashboard?.completedCount ?? 0}
-              />
-            )}
-            <IntelligenceActions
-              workspaceId={workspaceId}
-              assessmentId={bundle.assessment.id}
-            />
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                render={
-                  <Link
-                    href={`/dashboard/${workspaceId}/ai-readiness/questions/${bundle.assessment.id}`}
-                  />
-                }
-                nativeButton={false}
-                data-testid="question-editor-link"
-              >
-                <Eye className="mr-1 size-4" /> Domande e anteprima
-              </Button>
-              <Button
-                render={<a href="#respondents" />}
-                nativeButton={false}
-                data-testid="invite-respondents-cta"
-              >
-                <Mail className="mr-1 size-4" /> Invita una persona
-              </Button>
-              {/* Anchor nativi (non <Link>): il prefetch di Next eseguirebbe
-                  la GET di export a ogni visita, generando file e audit finti. */}
-              <Button
-                variant="outline"
-                render={
-                  <a
-                    href={`/api/ai-readiness/assessments/${bundle.assessment.id}/export?type=excel`}
-                    download
-                  />
-                }
-                nativeButton={false}
-              >
-                <Download className="mr-1 size-4" /> Excel
-              </Button>
-              <Button
-                variant="outline"
-                render={
-                  <a
-                    href={`/api/ai-readiness/assessments/${bundle.assessment.id}/export?type=pdf`}
-                    download
-                  />
-                }
-                nativeButton={false}
-              >
-                <Download className="mr-1 size-4" /> PDF
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-
-      <section className="rounded-[32px] border bg-linear-to-br from-emerald-500/5 via-card to-sky-500/5 p-5" data-testid="journey-steps">
-        <div className="grid gap-3 md:grid-cols-4">
-          {[
-            {
-              n: 1,
-              title: "Personalizza le domande",
-              desc: "Parti dalla base core, modifica/aggiungi/rimuovi domande e guarda l'anteprima.",
-              done: true,
-              href: `/dashboard/${workspaceId}/ai-readiness/questions/${bundle.assessment.id}`,
-              cta: "Apri anteprima",
-            },
-            {
-              n: 2,
-              title: "Invita le persone",
-              desc: "Crea un link personale per ogni persona e invialo via email o chat.",
-              done: respondents.length > 0,
-              href: "#respondents",
-              cta: "Crea link",
-            },
-            {
-              n: 3,
-              title: "Raccogli le risposte",
-              desc: "Ognuno compila dal proprio link: salvataggio automatico e ripresa inclusi.",
-              done: (dashboard?.completedCount ?? 0) > 0,
-              href: "#respondents",
-              cta: "Stato inviti",
-            },
-            {
-              n: 4,
-              title: "Analizza ed esporta",
-              desc: "Genera intelligence, valida gli insight e scarica Excel/PDF.",
-              done: insights.length > 0,
-              href: "#intelligence",
-              cta: "Vai agli insight",
-            },
-          ].map((step) => (
-            <a
-              key={step.n}
-              href={step.href}
-              className="group rounded-2xl border bg-background/60 p-4 transition-colors hover:bg-muted/50"
-            >
-              <div className="flex items-center gap-2">
-                <span
-                  className={`flex size-6 items-center justify-center rounded-full text-xs font-semibold ${
-                    step.done
-                      ? "bg-emerald-500 text-white"
-                      : "border text-muted-foreground"
-                  }`}
-                >
-                  {step.done ? "✓" : step.n}
-                </span>
-                <span className="text-sm font-medium">{step.title}</span>
-              </div>
-              <p className="mt-2 text-xs leading-5 text-muted-foreground">{step.desc}</p>
-              <span className="mt-2 inline-block text-xs font-medium text-emerald-600 group-hover:underline">
-                {step.cta} →
-              </span>
-            </a>
-          ))}
-        </div>
-      </section>
-
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card>
-          <CardContent className="p-5">
-            <Users className="mb-3 size-5 text-primary" />
-            <div className="text-2xl font-semibold">{dashboard?.completedCount ?? 0}</div>
-            <p className="text-xs text-muted-foreground">
-              risposte completate su {dashboard?.invitedCount ?? 0} inviti{(() => {
-                const exp = (bundle.assessment.scoringConfig as Record<string, unknown> | null)?.expectedRespondents;
-                return typeof exp === "number" ? ` · ${exp} attese` : "";
-              })()}
-            </p>
-            <Progress className="mt-4" value={completion} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-5">
-            <BarChart3 className="mb-3 size-5 text-primary" />
-            <div className="text-2xl font-semibold">
-              {scoreLabel(dashboard?.overallScore)}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              indice di prontezza · {maturity?.label ?? "dati insufficienti"}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-5">
-            <AlertTriangle className="mb-3 size-5 text-amber-500" />
-            <div className="text-2xl font-semibold">
-              {dashboard?.bottleneckPillar ? readinessPillarText(dashboard.bottleneckPillar) : "N/D"}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {"l'area più debole"}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-5">
-            <Sparkles className="mb-3 size-5 text-primary" />
-            <div className="text-2xl font-semibold">{useCases.length}</div>
-            <p className="text-xs text-muted-foreground">use case proposti dal questionario</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]" data-testid="radar-section">
-        <Card className="rounded-[28px]">
-          <CardHeader>
-            <CardTitle>Profilo di maturità</CardTitle>
-          </CardHeader>
-          <CardContent className="text-foreground">
-            <PillarRadar
-              pillars={bundle.templateDefinition.pillars.map((pillar) => ({
-                title: pillar.title,
-                score:
-                  typeof dashboard?.pillarScores[pillar.id] === "number"
-                    ? (dashboard!.pillarScores[pillar.id] as number)
-                    : null,
-              }))}
-            />
-            {!dashboard?.aggregationThresholdMet && (
-              <p className="mt-2 text-center text-xs text-muted-foreground">
-                {/* (Ondata 0) Il profilo usa ogni risposta da subito: la soglia vale per le aree e il confronto. */}
-                Il profilo usa le risposte arrivate finora. Punteggi per area e
-                confronto partono da {bundle.assessment.aggregationThreshold} risposte.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-        <Card className="rounded-[28px]">
-          <CardHeader>
-            <CardTitle>Punti di forza e di attenzione</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {(() => {
-              const sectionScores = bundle.templateDefinition.sections
-                .map((section) => ({
-                  title: section.title,
-                  audience: section.audience,
-                  score: dashboard?.sectionScores[section.id],
-                }))
-                .flatMap((item) =>
-                  typeof item.score === "number" && Number.isFinite(item.score)
-                    ? [{ title: item.title, score: item.score }]
-                    : []
-                )
-                .sort((a, b) => b.score - a.score);
-              if (sectionScores.length === 0) {
-                return (
-                  <p className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
-                    Appena arrivano abbastanza risposte, qui compaiono le aree
-                    più solide e quelle su cui lavorare per prime.
-                  </p>
-                );
-              }
-              const strengths = sectionScores.slice(0, 2);
-              const attention = sectionScores.slice(-2).reverse();
-              return (
-                <>
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-wide text-emerald-600">
-                      Punti di forza
-                    </div>
-                    <div className="mt-2 space-y-2">
-                      {strengths.map((item) => (
-                        <div key={item.title} className="flex items-center justify-between rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm">
-                          <span>{item.title}</span>
-                          <span className="font-semibold">{item.score.toFixed(1)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-wide text-amber-600">
-                      Punti di attenzione
-                    </div>
-                    <div className="mt-2 space-y-2">
-                      {attention.map((item) => (
-                        <div key={item.title} className="flex items-center justify-between rounded-2xl border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
-                          <span>{item.title}</span>
-                          <span className="font-semibold">{item.score.toFixed(1)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Calcolati sui punteggi medi delle sezioni (0–5), su tutte le
-                    risposte raccolte finora.
-                  </p>
-                </>
-              );
-            })()}
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <Card className="rounded-[28px]">
-          <CardHeader>
-            <CardTitle>Punteggi per area</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {missingInternalPillars.length > 0 && (
-              <div
-                className="rounded-2xl border border-sky-500/30 bg-sky-500/10 p-4 text-sm"
-                data-testid="missing-internal-pillars-notice"
-              >
-                <div className="font-medium">
-                  Mancano le risposte dei referenti per{" "}
-                  {missingInternalPillars
-                    .map((pillar) => pillar.title)
-                    .join(" e ")}.
-                </div>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  Il questionario per tutti non raccoglie dati, infrastruttura o
-                  processi interni. Crea una Scheda tecnica e organizzativa per
-                  completare questi punteggi.
-                </p>
-                {canManage && (
-                  <Button
-                    className="mt-3"
-                    variant="outline"
-                    size="sm"
-                    render={<a href="#respondents" />}
-                    nativeButton={false}
-                  >
-                    Crea scheda referenti
-                  </Button>
-                )}
-              </div>
-            )}
-            {bundle.templateDefinition.pillars.map((pillar) => {
-              const score = dashboard?.pillarScores[pillar.id] ?? null;
-              const percentage = typeof score === "number" ? (score / 5) * 100 : 0;
-              return (
-                <div key={pillar.id} className="space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="font-medium">{pillar.title}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {pillar.description}
-                      </div>
-                    </div>
-                    <div className="font-mono text-sm">{scoreLabel(score)}</div>
-                  </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className="h-full rounded-full bg-primary"
-                      style={{ width: `${percentage}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-[28px]">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ShieldCheck className="size-5 text-emerald-500" />
-              Privacy guardrails
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <div className="rounded-2xl border p-3">
-              <div className="text-xs text-muted-foreground">Soglia aggregazione</div>
-              <div className="mt-1 font-medium">
-                {bundle.assessment.aggregationThreshold} risposte minime
-              </div>
-              {canManage && (
-                <ThresholdForm
-                  workspaceId={workspaceId}
-                  assessmentId={bundle.assessment.id}
-                  current={bundle.assessment.aggregationThreshold}
-                  min={bundle.assessment.anonymousMode !== false ? 3 : 1}
-                  expectedRespondents={
-                    typeof (bundle.assessment.scoringConfig as Record<string, unknown> | null)
-                      ?.expectedRespondents === "number"
-                      ? ((bundle.assessment.scoringConfig as Record<string, unknown>)
-                          .expectedRespondents as number)
-                      : null
-                  }
-                />
-              )}
-            </div>
-            <div className="rounded-2xl border p-3">
-              <div className="text-xs text-muted-foreground">Titolare del trattamento</div>
-              <div className="mt-1 font-medium">
-                {configString(privacyConfig, "controllerName", access.workspace.name)}
-              </div>
-            </div>
-            <div className="rounded-2xl border p-3">
-              <div className="text-xs text-muted-foreground">Raw individual data</div>
-              <div className="mt-1 font-medium">
-                {privacyConfig.allowIndividualView === true ? "Permesso" : "Disabilitato"}
-              </div>
-            </div>
-            <div className="rounded-2xl border p-3">
-              <div className="text-xs text-muted-foreground">Privacy</div>
-              <div className="mt-1 font-medium">
-                Chi risponde può scaricare i suoi dati, togliere il consenso al confronto e rendere anonime le sue risposte dal suo link personale.
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Valutazione d&apos;impatto, avvisi sui dati particolari e confronto restano scritti e verificabili.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-        <Card className="rounded-[28px] scroll-mt-24" id="intelligence">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Brain className="size-5" />
-              Sintesi da rivedere
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {insights.length === 0 ? (
-              <p className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
-                Genera la sintesi per avere riepilogo, rischi, gruppi di use case,
-                tappe e confronto. Ogni punto nasce in bozza e lo rivede una persona.
-              </p>
-            ) : (
-              <ShowAll items={insights} visible={8}>
-                {(insight) => (
-                  <div key={insight.id} className="rounded-2xl border p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant="outline">{insight.insightType}</Badge>
-                          <Badge
-                            variant={
-                              insight.validationStatus === "approved"
-                                ? "secondary"
-                                : insight.validationStatus === "rejected"
-                                  ? "destructive"
-                                  : "outline"
-                            }
-                          >
-                            {insight.validationStatus === "draft"
-                              ? "AI suggested"
-                              : insight.validationStatus}
-                          </Badge>
-                        </div>
-                        <h3 className="mt-2 font-medium">{insight.title}</h3>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {insight.generatedAt.toLocaleDateString("it-IT")}
-                      </div>
-                    </div>
-                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                      {insight.body}
-                    </p>
-                    <div className="mt-3 rounded-xl bg-muted/40 p-3 text-xs text-muted-foreground">
-                      Evidence: {textValue(evidenceRecord(insight.evidence).privacyGuardrail, "aggregated only")}
-                    </div>
-                    {canManage && (
-                      <div className="mt-3">
-                        <InsightValidationActions
-                          workspaceId={workspaceId}
-                          assessmentId={bundle.assessment.id}
-                          insightId={insight.id}
-                          status={insight.validationStatus}
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
-              </ShowAll>
-            )}
-          </CardContent>
-        </Card>
-
-        <div className="space-y-6">
-          <Card className="rounded-[28px]">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <GitBranch className="size-5" />
-                Roadmap waves
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {roadmapWaves.length === 0 ? (
-                <p className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
-                  Genera intelligence per vedere le waves 0-90 giorni, 3-6 mesi
-                  e 6-12 mesi.
-                </p>
-              ) : (
-                roadmapWaves.map((wave) => (
-                  <div key={textValue(wave.id)} className="rounded-2xl border p-4">
-                    <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                      {textValue(wave.horizon)}
-                    </div>
-                    <div className="mt-1 font-medium">{textValue(wave.title)}</div>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      {textValue(wave.focus)}
-                    </p>
-                    <div className="mt-3 rounded-xl bg-muted/40 p-3 text-xs text-muted-foreground">
-                      Success metric: {textValue(wave.successMetric)}
-                    </div>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-[28px]">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Network className="size-5" />
-                Cluster e benchmark
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="rounded-2xl border p-4">
-                <div className="text-xs text-muted-foreground">Benchmark</div>
-                <div className="mt-1 font-medium">
-                  {benchmark.enabled === true
-                    ? `Delta overall ${scoreFromUnknown(benchmark.overallDelta)}`
-                    : textValue(benchmark.reason, "Non ancora disponibile")}
-                </div>
-              </div>
-              {clusters.slice(0, 4).map((cluster) => (
-                <div key={textValue(cluster.id)} className="rounded-2xl border p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="font-medium">{textValue(cluster.label)}</div>
-                    <Badge variant="outline">{String(cluster.count ?? 0)} casi</Badge>
-                  </div>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {textValue(cluster.description)}
-                  </p>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      <Card className="rounded-[28px]">
-        <CardHeader>
-          <CardTitle>Team heatmap</CardTitle>
-        </CardHeader>
-        <CardContent className="overflow-x-auto">
-          <table className="w-full min-w-[680px] text-sm">
-            <thead className="text-left text-xs uppercase tracking-[0.16em] text-muted-foreground">
-              <tr>
-                <th className="py-2">Area</th>
-                <th>Risposte</th>
-                <th>Soglia di riservatezza</th>
-                <th>Punteggio</th>
-                <th>Area più debole</th>
-              </tr>
-            </thead>
-            <tbody>
-              {dashboard?.units.map((unit) => (
-                <tr key={unit.unit} className="border-t">
-                  <td className="py-3 font-medium">{unit.unit}</td>
-                  <td>{unit.respondentCount}</td>
-                  <td>
-                    {unit.aggregationThresholdMet ? (
-                      <Badge variant="secondary">Raggiunta</Badge>
-                    ) : (
-                      <Badge variant="outline">Dati insufficienti</Badge>
-                    )}
-                  </td>
-                  <td>{unit.aggregationThresholdMet ? scoreLabel(unit.overallScore) : "-"}</td>
-                  <td>{unit.aggregationThresholdMet && unit.bottleneckPillar ? readinessPillarText(unit.bottleneckPillar) : "-"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </CardContent>
-      </Card>
-
-      {canManage && (
-        <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-          <Card className="rounded-[28px] scroll-mt-24" id="respondents">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Mail className="size-5" /> Raccogli le risposte
-              </CardTitle>
-              <p className="text-sm leading-6 text-muted-foreground">
-                I due percorsi alimentano aree diverse della diagnostica.
-                Scegli il link in base a chi deve rispondere e al risultato che
-                vuoi ottenere.
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              {canManage && (
-                <OpenLinkForm
-                  workspaceId={workspaceId}
-                  assessmentId={bundle.assessment.id}
-                  sections={everyoneSectionOptions}
-                  hasExisting={Boolean(
-                    (bundle.assessment.scoringConfig as Record<string, unknown> | null)
-                      ?.openLinkTokenHash
-                  )}
-                />
-              )}
-              <div className="flex items-center gap-3" aria-hidden="true">
-                <div className="h-px flex-1 bg-border" />
-                <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                  oppure
-                </span>
-                <div className="h-px flex-1 bg-border" />
-              </div>
-              <RespondentInviteForm
-                workspaceId={workspaceId}
-                assessmentId={bundle.assessment.id}
-                sections={sectionOptions}
-                useCaseBlocks={useCaseBlockOptions}
-              />
-            </CardContent>
-          </Card>
-          <Card className="rounded-[28px]">
-            <CardHeader>
-              <CardTitle>Persone</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {respondents.length === 0 ? (
-                <p className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
-                  Nessun invito creato.
-                </p>
-              ) : (
-                <ShowAll items={respondents} visible={12}>
-                  {(respondent) => {
-                    const track = surveyTrackMeta(respondent.surveyTrack);
-                    const scope = questionScopeFromUnknown(respondent.questionScope);
-                    const availableSections = sectionOptions.filter((section) =>
-                      respondent.surveyTrack === "internal"
-                        ? section.audience === "internal"
-                        : section.audience !== "internal"
-                    );
-                    const selectedSections = scope?.sectionIds?.length
-                      ? availableSections.filter((section) =>
-                          scope.sectionIds?.includes(section.id)
-                        )
-                      : availableSections;
-                    const pillarTitles =
-                      respondent.surveyTrack === "use_case_expert"
-                        ? ["Use Cases"]
-                        : [
-                            ...new Set(
-                              selectedSections.map((section) => section.pillarTitle)
-                            ),
-                          ];
-
-                    return (
-                      <div
-                        key={respondent.id}
-                        className="rounded-2xl border p-3 text-sm"
-                        data-respondent-track={respondent.surveyTrack}
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <div className="font-medium">
-                              {[respondent.name, respondent.surname]
-                                .filter(Boolean)
-                                .join(" ") ||
-                                respondent.email ||
-                                respondent.pseudonymousId}
-                            </div>
-                            <div className="mt-0.5 text-xs text-muted-foreground">
-                              {respondent.email &&
-                              (respondent.name || respondent.surname)
-                                ? `${respondent.email} · `
-                                : ""}
-                              {respondent.organizationUnit ?? "Area non indicata"} ·{" "}
-                              {respondent.role ?? "ruolo n/d"}
-                            </div>
-                          </div>
-                          <Badge
-                            variant={
-                              respondent.inviteStatus === "completed"
-                                ? "secondary"
-                                : "outline"
-                            }
-                          >
-                            {INVITE_STATUS_LABEL[respondent.inviteStatus] ?? "Invito inviato"}
-                          </Badge>
-                        </div>
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
-                          <Badge variant="outline">{track.label}</Badge>
-                          <span className="text-xs text-muted-foreground">
-                            Alimenta: {pillarTitles.join(", ") || track.feeds}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  }}
-                </ShowAll>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      <div className="grid gap-6 xl:grid-cols-2">
-        <Card className="rounded-[28px]">
-          <CardHeader>
-            <CardTitle>Use case intake</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {useCases.length === 0 ? (
-              <p className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
-                Qui compaiono gli use case proposti da chi risponde.
-              </p>
-            ) : (
-              <ShowAll items={useCases} visible={8}>
-                {(item) => (
-                  <div key={item.id} className="rounded-2xl border p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <div className="font-medium">{item.title}</div>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {item.linkedUseCaseId ? "Collegato al Portfolio" : "Da valutare"}
-                        </div>
-                      </div>
-                      {canManage && (
-                        <UseCasePromoteButton
-                          workspaceId={workspaceId}
-                          assessmentId={bundle.assessment.id}
-                          submissionId={item.id}
-                          linkedUseCaseId={item.linkedUseCaseId}
-                        />
-                      )}
-                    </div>
-                    <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                      {item.desiredOutcome || item.painPoint || item.currentProcess}
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                      <span>{item.frequency ?? "frequenza n/d"}</span>
-                      {/* (Ondata 0) Il campo `riskLevel` raccoglie «Quanto è prioritario per te?»: è la priorità. */}
-                      <span>{item.riskLevel ? `Priorità: ${item.riskLevel.toLowerCase()}` : "Priorità non indicata"}</span>
-                    </div>
-                  </div>
-                )}
-              </ShowAll>
-            )}
-          </CardContent>
-        </Card>
-        <Card className="rounded-[28px]">
-          <CardHeader>
-            <CardTitle>Export audit</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {exports.length === 0 ? (
-              <p className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
-                Nessun export generato.
-              </p>
-            ) : (
-              <ShowAll items={exports} visible={8}>
-                {(item) => (
-                  <div key={item.id} className="flex items-center justify-between rounded-2xl border p-3 text-sm">
-                    <div>
-                      <div className="font-medium">{item.exportType}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {item.createdAt.toLocaleString("it-IT")}
-                      </div>
-                    </div>
-                    <Badge variant={item.includedPersonalData ? "destructive" : "secondary"}>
-                      {item.includedPersonalData ? "personal data" : "anonymized"}
-                    </Badge>
-                  </div>
-                )}
-              </ShowAll>
-            )}
-          </CardContent>
-        </Card>
+      {assessment.status === "open" ? <AutoRefresh seconds={30} /> : null}
+      <ReadinessAnchor workspaceId={workspaceId} assessmentId={assessment.id} current={tab} visible={tabs} />
+      {deletedNotice}
+      {/* (Revisione 7b) Una rilevazione, uno stato: cambiando rilevazione dal menu (stessa pagina, solo `?assessment=`)
+          la testata e la scheda ripartono da capo, senza portarsi dietro la finestra del link o le pieghe di prima.
+          Le due chiavi sono diverse: con la stessa chiave fra fratelli, a ogni aggiornamento nel browser (un'ancora di
+          prima, una scheda, l'aggiornamento ogni 30 secondi) React lasciava in pagina la testata vecchia accanto alla
+          nuova. */}
+      <ReadinessHeader
+        key={`testata-${assessment.id}`}
+        workspaceId={workspaceId}
+        assessmentId={assessment.id}
+        title={assessment.name}
+        options={options}
+        newHref={newHref}
+        status={readinessStatusView(assessment.status)}
+        summary={readinessSummary({ completed: responses, expected, threshold: assessment.aggregationThreshold })}
+        updated={assessment.status === "open" ? T.summary.updated(CLOCK.format(new Date())) : null}
+        step={step}
+        insightsHref={href("insight")}
+        reportHref={exportHref(assessment.id, "pdf")}
+        menu={{
+          status: assessment.status,
+          respondentCount: respondents.length,
+          completedCount: dashboard?.completedCount ?? 0,
+          manages,
+          reviews,
+          questionsHref: questionsHref(workspaceId, assessment.id),
+        }}
+      />
+      {tabs.length > 1 ? (
+        <SegmentedNav ariaLabel={T.tabs.label} active={tab} gridOnPhone items={tabs.map((key) => ({ key, label: T.tabs[key], href: href(key) }))} />
+      ) : null}
+      <div key={`scheda-${assessment.id}`} data-readiness-tab={tab}>
+        {body}
       </div>
     </PageContainer>
   );

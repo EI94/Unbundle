@@ -1,74 +1,74 @@
 "use client";
 
-import { useActionState, useCallback, useEffect, useRef } from "react";
+import { useActionState, useCallback, useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ChevronRight } from "lucide-react";
 import { createAiReadinessAssessmentAction, type AiReadinessActionState } from "@/lib/actions/ai-readiness";
 import { AI_READINESS_DEFAULT_COPY } from "@/lib/ai-readiness/copy";
+import { READINESS_TEXT } from "@/lib/ai-readiness/dashboard-text";
 import { AI_READINESS_SYSTEM_TEMPLATE } from "@/lib/ai-readiness/default-template";
+import { readinessPillarText } from "@/lib/programma/text";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 
 const INITIAL: AiReadinessActionState<{ assessmentId: string }> = { ok: true };
 
 
+const C = READINESS_TEXT.create;
+
 const FIELD_LABELS: Record<string, string> = {
-  name: "Nome della rilevazione",
-  controllerName: "Titolare del trattamento",
-  processorName: "Responsabile / processore",
-  legalBasis: "Base giuridica",
-  supportEmail: "Email supporto",
-  dataRetentionDays: "Conservazione dei dati",
-  aggregationThreshold: "Soglia aggregazione",
-  pillars: "Aree da misurare",
+  name: C.name,
+  controllerName: C.controller,
+  processorName: C.processor,
+  legalBasis: C.legalBasis,
+  supportEmail: C.supportEmail,
+  dataRetentionDays: C.retention,
+  aggregationThreshold: C.threshold,
+  pillars: C.areas,
 };
 
-function draftKey(workspaceId: string) {
-  return `unbundle-air-create:${workspaceId}`;
+/** I campi che stanno nella piega «Privacy e soglie», tutti già compilati: con un errore lì, la piega si apre. */
+export const FOLDED_FIELDS: readonly string[] = ["displayName", "description", "introCopy", "controllerName", "processorName", "legalBasis", "privacyNoticeUrl", "dpoEmail", "dataRetentionDays", "aggregationThreshold"];
+
+/** L'ultimo invio ha un errore in un campo della piega: allora, e solo allora, la piega si apre da sola. */
+export function foldedErrorIn(state: { ok: boolean; fieldErrors?: Record<string, string> }): boolean {
+  return !state.ok && Object.keys(state.fieldErrors ?? {}).some((key) => FOLDED_FIELDS.includes(key));
 }
 
-function collectFormValues(form: HTMLFormElement) {
-  const values: Record<string, string> = {};
-  for (const el of Array.from(form.elements)) {
-    const input = el as HTMLInputElement;
-    if (!input.name || input.name.startsWith("$")) continue;
-    if (input.type === "radio" || input.type === "checkbox") {
-      if (input.checked) values[`${input.name}__${input.value}`] = "1";
-      else values[`${input.name}__${input.value}`] = "";
-    } else {
-      values[input.name] = input.value;
-    }
-  }
-  return values;
-}
-
-function applyFormValues(form: HTMLFormElement, values: Record<string, string>) {
-  for (const el of Array.from(form.elements)) {
-    const input = el as HTMLInputElement;
-    if (!input.name || input.name.startsWith("$")) continue;
-    if (input.type === "radio" || input.type === "checkbox") {
-      const saved = values[`${input.name}__${input.value}`];
-      if (saved != null) input.checked = saved === "1";
-    } else if (values[input.name] != null) {
-      input.value = values[input.name];
-    }
-  }
-}
-
-const PILLAR_HINTS: Record<string, string> = {
-  technology: "Stack, strumenti approvati, governance tecnica. Tipico per IT o poche persone.",
-  context: "Conoscenza condivisa, documentazione, contesto organizzativo.",
-  workflow: "Processi, automazioni, flussi operativi dei team.",
-  adoption: "Uso reale dell'AI da parte delle persone. Tipico per tutta l'organizzazione.",
-  use_cases: "Raccolta di use case concreti proposti dai dipendenti.",
+/** Che cosa misura ogni area, in una riga. */
+const AREA_HINTS: Record<string, string> = {
+  technology: "Sistemi, strumenti approvati e regole d'uso. Di solito per l'IT.",
+  context: "Dati e conoscenza aziendale: dove stanno e quanto sono affidabili.",
+  workflow: "Persone, ruoli e processi dei team.",
+  adoption: "Quanto le persone conoscono e usano l'AI. Di solito per tutti.",
+  use_cases: "Idee concrete proposte dalle persone.",
 };
 
+const FIELD = "h-11 text-base sm:h-9 sm:text-sm";
+const CHOICE = "flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm has-checked:border-foreground/60 has-checked:bg-muted/60";
+
+/**
+ * Nuova rilevazione (rilascio 10, ondata 7b; audit «Fuori» AD-2, §8.4): in vista il nome, le aree e la modalità; la
+ * privacy e la soglia in «Privacy e soglie (già compilate)», chiusa: si apre da sola solo se un suo campo non passa la
+ * verifica. (Revisione 7b) L'email per le domande di chi risponde sta in vista, sopra la piega, vuota e obbligatoria:
+ * chi risponde la legge nel questionario e nell'informativa, ed è il contatto del cliente, mai quello di chi crea la
+ * rilevazione (una persona di Lateral Space). Un invio senza email lo dice lì e porta lì il cursore. Un solo pulsante
+ * pieno, «Crea la rilevazione». Quello che si scrive resta sul dispositivo finché la rilevazione non nasce. L'azione è
+ * quella di oggi.
+ */
 export function AssessmentCreateForm({ workspaceId, workspaceName }: { workspaceId: string; workspaceName: string }) {
   const router = useRouter();
   const action = createAiReadinessAssessmentAction.bind(null, workspaceId);
   const [state, formAction, pending] = useActionState(action, INITIAL);
+  // La piega è chiusa; si apre da sola quando l'ultimo invio ha un errore in uno dei suoi campi; poi la apre e la chiude
+  // chi scrive.
+  const [privacyToggle, setPrivacyToggle] = useState<{ open: boolean; at: AiReadinessActionState<{ assessmentId: string }> } | null>(null);
+  const [missingContact, setMissingContact] = useState<string | null>(null);
+  const privacyOpen = privacyToggle && privacyToggle.at === state ? privacyToggle.open : foldedErrorIn(state) || (privacyToggle?.open ?? false);
+  const foldId = useId();
 
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -118,170 +118,206 @@ export function AssessmentCreateForm({ workspaceId, workspaceName }: { workspace
   const errorFields = !state.ok
     ? Object.keys(state.fieldErrors ?? {}).map((key) => FIELD_LABELS[key] ?? key)
     : [];
+  const err = (key: string) => (state.fieldErrors?.[key] ? <p className="text-xs text-destructive">{state.fieldErrors[key]}</p> : null);
 
   return (
-    <Card className="overflow-hidden rounded-[28px]">
-      <CardHeader className="border-b bg-linear-to-br from-emerald-500/10 via-background to-sky-500/10">
-        <CardTitle>Setup cliente</CardTitle>
-        <p className="max-w-2xl text-sm text-muted-foreground">
-          Crea la diagnosi AI Readiness OS dentro questo workspace. Il template
-          core misura Technology, Context, Workflow, Adoption e Use Cases.
-        </p>
-      </CardHeader>
-      <CardContent className="p-6">
-        <form ref={formRef} action={formAction} onChange={persistDraft} className="grid gap-5 lg:grid-cols-2">
-          {!state.ok && state.message && (
-            <div
-              className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm lg:col-span-2"
-              role="alert"
-              data-testid="create-error-summary"
-            >
-              <p className="font-medium">{state.message}</p>
-              {errorFields.length > 0 && (
-                <ul className="mt-2 list-inside list-disc text-xs">
-                  {errorFields.map((label) => (
-                    <li key={label}>{label}</li>
-                  ))}
-                </ul>
-              )}
-              <p className="mt-2 text-xs text-muted-foreground">
-                I dati inseriti sono stati conservati: correggi solo i campi indicati.
-              </p>
-            </div>
-          )}
-          <div className="space-y-2">
-            <Label htmlFor="name">Nome della rilevazione</Label>
-            <Input id="name" name="name" defaultValue={`AI Readiness - ${workspaceName}`} />
-            {state.fieldErrors?.name && <p className="text-xs text-destructive">{state.fieldErrors.name}</p>}
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="displayName">Nome visibile a chi risponde</Label>
-            <Input id="displayName" name="displayName" defaultValue={workspaceName} />
-          </div>
-          <div className="space-y-2 lg:col-span-2">
-            <Label htmlFor="description">Descrizione interna</Label>
-            <Textarea id="description" name="description" placeholder="Es. Prima rilevazione per misurare la readiness e dare le priorità alla roadmap AI." />
-          </div>
-          <fieldset className="space-y-2 lg:col-span-2">
-            <legend className="text-sm font-medium">Aree da misurare</legend>
-            <p className="text-xs text-muted-foreground">
-              Scegli le aree di questa rilevazione: puoi creare rilevazioni
-              mirate (es. solo Adoption per tutta l&apos;organizzazione, solo
-              Technology per l&apos;IT) e inviarle a persone diverse.
-            </p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {AI_READINESS_SYSTEM_TEMPLATE.pillars.map((pillar) => (
-                <label
-                  key={pillar.id}
-                  className="flex cursor-pointer items-start gap-3 rounded-2xl border p-3 text-sm has-checked:border-emerald-500 has-checked:bg-emerald-500/5"
-                >
-                  <input
-                    type="checkbox"
-                    name="pillars"
-                    value={pillar.id}
-                    defaultChecked
-                    className="mt-1"
-                  />
-                  <span>
-                    <span className="font-medium">{pillar.title}</span>
-                    <span className="mt-0.5 block text-xs text-muted-foreground">
-                      {PILLAR_HINTS[pillar.id] ?? pillar.description}
-                    </span>
-                  </span>
-                </label>
+    <form
+      ref={formRef}
+      action={formAction}
+      onChange={persistDraft}
+      // Le verifiche le fanno la pagina e il server, con le loro parole: il browser non ferma l'invio su un campo nascosto
+      // nella piega, dove non potrebbe portare il cursore.
+      noValidate
+      onSubmit={(event) => {
+        const field = event.currentTarget.elements.namedItem("supportEmail");
+        if (field instanceof HTMLInputElement && !field.value.trim()) {
+          event.preventDefault();
+          setMissingContact(C.supportEmailMissing);
+          field.focus();
+          return;
+        }
+        setMissingContact(null);
+      }}
+      className="space-y-6"
+      data-slot="readiness-create"
+    >
+      <p className="text-sm text-muted-foreground">{C.lead}</p>
+      {!state.ok && state.message ? (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm" role="alert" data-testid="create-error-summary">
+          <p className="font-medium">{state.message}</p>
+          {errorFields.length > 0 ? (
+            <ul className="mt-2 list-inside list-disc text-xs">
+              {errorFields.map((label) => (
+                <li key={label}>{label}</li>
               ))}
-            </div>
-            {state.fieldErrors?.pillars && (
-              <p className="text-xs text-destructive">{state.fieldErrors.pillars}</p>
-            )}
-          </fieldset>
-          <fieldset className="space-y-2 lg:col-span-2">
-            <legend className="text-sm font-medium">Modalità del questionario</legend>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="flex cursor-pointer items-start gap-3 rounded-2xl border p-4 text-sm has-checked:border-emerald-500 has-checked:bg-emerald-500/5">
-                <input
-                  type="radio"
-                  name="surveyMode"
-                  value="anonymous"
-                  defaultChecked
-                  className="mt-1"
-                />
-                <span>
-                  <span className="font-medium">Anonima (consigliata)</span>
-                  <span className="mt-1 block text-xs text-muted-foreground">
-                    Le risposte restano pseudonime: massima sincerità dei
-                    dipendenti, solo dati aggregati.
-                  </span>
-                </span>
-              </label>
-              <label className="flex cursor-pointer items-start gap-3 rounded-2xl border p-4 text-sm has-checked:border-emerald-500 has-checked:bg-emerald-500/5">
-                <input type="radio" name="surveyMode" value="named" className="mt-1" />
-                <span>
-                  <span className="font-medium">Nominativa</span>
-                  <span className="mt-1 block text-xs text-muted-foreground">
-                    A ogni dipendente vengono chiesti nome e cognome (senza
-                    registrazione né account).
-                  </span>
-                </span>
-              </label>
-            </div>
-          </fieldset>
-          <div className="space-y-2 lg:col-span-2">
-            <Label htmlFor="introCopy">Introduzione al questionario</Label>
-            <Textarea
-              id="introCopy"
-              name="introCopy"
-              defaultValue={AI_READINESS_DEFAULT_COPY.intro}
-            />
+            </ul>
+          ) : null}
+          <p className="mt-2 text-xs text-muted-foreground">{C.errorsKept}</p>
+        </div>
+      ) : null}
+      <div className="grid gap-1.5">
+        <Label htmlFor="name">{C.name}</Label>
+        <Input id="name" name="name" defaultValue={C.nameDefault(workspaceName)} className={FIELD} />
+        {err("name")}
+      </div>
+      <fieldset className="grid gap-2">
+        <legend className="mb-1.5 text-sm font-medium">{C.areas}</legend>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {AI_READINESS_SYSTEM_TEMPLATE.pillars.map((pillar) => (
+            <label key={pillar.id} className={CHOICE}>
+              <input type="checkbox" name="pillars" value={pillar.id} defaultChecked className="mt-0.5 size-4" />
+              <span className="min-w-0">
+                <span className="font-medium">{readinessPillarText(pillar.id)}</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">{AREA_HINTS[pillar.id] ?? pillar.description}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+        {err("pillars")}
+      </fieldset>
+      <fieldset className="grid gap-2">
+        <legend className="mb-1.5 text-sm font-medium">{C.mode}</legend>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className={CHOICE}>
+            <input type="radio" name="surveyMode" value="anonymous" defaultChecked className="mt-0.5 size-4" />
+            <span className="min-w-0">
+              <span className="font-medium">{C.anonymous}</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">{C.anonymousHint}</span>
+            </span>
+          </label>
+          <label className={CHOICE}>
+            <input type="radio" name="surveyMode" value="named" className="mt-0.5 size-4" />
+            <span className="min-w-0">
+              <span className="font-medium">{C.named}</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">{C.namedHint}</span>
+            </span>
+          </label>
+        </div>
+      </fieldset>
+
+      <div className="grid gap-1.5">
+        <Label htmlFor="supportEmail">{C.supportEmail}</Label>
+        <Input
+          id="supportEmail"
+          name="supportEmail"
+          type="email"
+          required
+          aria-required="true"
+          autoComplete="off"
+          aria-describedby="supportEmail-aiuto"
+          aria-invalid={missingContact || state.fieldErrors?.supportEmail ? true : undefined}
+          onChange={() => setMissingContact(null)}
+          className={FIELD}
+        />
+        <p id="supportEmail-aiuto" className="text-xs text-muted-foreground">
+          {C.supportEmailHint}
+        </p>
+        {missingContact ? (
+          <p role="alert" className="text-xs text-destructive">
+            {missingContact}
+          </p>
+        ) : (
+          err("supportEmail")
+        )}
+      </div>
+
+      <div className="border-t pt-2">
+        <button
+          type="button"
+          aria-expanded={privacyOpen}
+          aria-controls={foldId}
+          onClick={() => setPrivacyToggle({ open: !privacyOpen, at: state })}
+          className="flex min-h-11 w-full items-center justify-between gap-3 rounded-md text-left text-sm font-medium outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-9"
+        >
+          {C.privacyFold}
+          <ChevronRight aria-hidden className={cn("size-4 text-muted-foreground transition-transform duration-150 motion-reduce:transition-none", privacyOpen && "rotate-90")} />
+        </button>
+        <div id={foldId} hidden={!privacyOpen} className="grid gap-4 pt-3 sm:grid-cols-2">
+          <div className="grid gap-1.5">
+            <Label htmlFor="displayName">{C.displayName}</Label>
+            <Input id="displayName" name="displayName" defaultValue={workspaceName} className={FIELD} />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="controllerName">Titolare del trattamento</Label>
-            <Input id="controllerName" name="controllerName" defaultValue={workspaceName} />
-            {state.fieldErrors?.controllerName && <p className="text-xs text-destructive">{state.fieldErrors.controllerName}</p>}
+          <div className="grid gap-1.5">
+            <Label htmlFor="aggregationThreshold">{C.threshold}</Label>
+            <Input id="aggregationThreshold" name="aggregationThreshold" type="number" inputMode="numeric" min={3} max={50} defaultValue={5} className={FIELD} />
+            {err("aggregationThreshold")}
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="processorName">Responsabile / processore</Label>
-            <Input id="processorName" name="processorName" defaultValue="Unbundle / Lateral Space" />
-            {state.fieldErrors?.processorName && <p className="text-xs text-destructive">{state.fieldErrors.processorName}</p>}
+          <div className="grid gap-1.5 sm:col-span-2">
+            <Label htmlFor="description">{C.description}</Label>
+            <Textarea id="description" name="description" className="text-base sm:text-sm" />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="legalBasis">Base giuridica</Label>
-            <Input id="legalBasis" name="legalBasis" defaultValue="Legittimo interesse / misurazione organizzativa" />
-            {state.fieldErrors?.legalBasis && <p className="text-xs text-destructive">{state.fieldErrors.legalBasis}</p>}
+          <div className="grid gap-1.5 sm:col-span-2">
+            <Label htmlFor="introCopy">{C.intro}</Label>
+            <Textarea id="introCopy" name="introCopy" defaultValue={AI_READINESS_DEFAULT_COPY.intro} className="text-base sm:text-sm" />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="privacyNoticeUrl">Privacy notice URL</Label>
-            <Input id="privacyNoticeUrl" name="privacyNoticeUrl" placeholder="https://..." />
+          <div className="grid gap-1.5">
+            <Label htmlFor="controllerName">{C.controller}</Label>
+            <Input id="controllerName" name="controllerName" defaultValue={workspaceName} className={FIELD} />
+            {err("controllerName")}
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="supportEmail">Email supporto</Label>
-            <Input id="supportEmail" name="supportEmail" type="email" placeholder="ai-readiness@azienda.com" />
-            {state.fieldErrors?.supportEmail && <p className="text-xs text-destructive">{state.fieldErrors.supportEmail}</p>}
+          <div className="grid gap-1.5">
+            <Label htmlFor="processorName">{C.processor}</Label>
+            <Input id="processorName" name="processorName" defaultValue="Unbundle / Lateral Space" className={FIELD} />
+            {err("processorName")}
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="dpoEmail">DPO email opzionale</Label>
-            <Input id="dpoEmail" name="dpoEmail" type="email" placeholder="privacy@azienda.com" />
+          <div className="grid gap-1.5">
+            <Label htmlFor="legalBasis">{C.legalBasis}</Label>
+            <Input id="legalBasis" name="legalBasis" defaultValue="Legittimo interesse / misurazione organizzativa" className={FIELD} />
+            {err("legalBasis")}
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="dataRetentionDays">Conservazione dei dati</Label>
-            <Input id="dataRetentionDays" name="dataRetentionDays" type="number" min={30} max={3650} defaultValue={365} />
+          <div className="grid gap-1.5">
+            <Label htmlFor="privacyNoticeUrl">{C.noticeUrl}</Label>
+            <Input id="privacyNoticeUrl" name="privacyNoticeUrl" type="url" placeholder="https://" className={FIELD} />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="aggregationThreshold">Soglia aggregazione minima</Label>
-            <Input id="aggregationThreshold" name="aggregationThreshold" type="number" min={3} max={50} defaultValue={5} />
+          <div className="grid gap-1.5">
+            <Label htmlFor="dpoEmail">{C.dpoEmail}</Label>
+            <Input id="dpoEmail" name="dpoEmail" type="email" className={FIELD} />
           </div>
-          <div className="lg:col-span-2">
-            {state.message && (
-              <p className={`mb-3 text-sm ${state.ok ? "text-emerald-600" : "text-destructive"}`}>
-                {state.message}
-              </p>
-            )}
-            <Button type="submit" disabled={pending}>
-              {pending ? "Creo la rilevazione…" : "Crea la rilevazione"}
-            </Button>
+          <div className="grid gap-1.5">
+            <Label htmlFor="dataRetentionDays">{C.retention}</Label>
+            <Input id="dataRetentionDays" name="dataRetentionDays" type="number" inputMode="numeric" min={30} max={3650} defaultValue={365} className={FIELD} />
+            {err("dataRetentionDays")}
           </div>
-        </form>
-      </CardContent>
-    </Card>
+        </div>
+      </div>
+
+      <Button type="submit" className="min-h-11 sm:min-h-9" disabled={pending}>
+        {pending ? C.pending : C.submit}
+      </Button>
+    </form>
   );
 }
+
+
+function draftKey(workspaceId: string) {
+  return `unbundle-air-create:${workspaceId}`;
+}
+
+function collectFormValues(form: HTMLFormElement) {
+  const values: Record<string, string> = {};
+  for (const el of Array.from(form.elements)) {
+    const input = el as HTMLInputElement;
+    if (!input.name || input.name.startsWith("$")) continue;
+    if (input.type === "radio" || input.type === "checkbox") {
+      if (input.checked) values[`${input.name}__${input.value}`] = "1";
+      else values[`${input.name}__${input.value}`] = "";
+    } else {
+      values[input.name] = input.value;
+    }
+  }
+  return values;
+}
+
+function applyFormValues(form: HTMLFormElement, values: Record<string, string>) {
+  for (const el of Array.from(form.elements)) {
+    const input = el as HTMLInputElement;
+    if (!input.name || input.name.startsWith("$")) continue;
+    if (input.type === "radio" || input.type === "checkbox") {
+      const saved = values[`${input.name}__${input.value}`];
+      if (saved != null) input.checked = saved === "1";
+    } else if (values[input.name] != null) {
+      input.value = values[input.name];
+    }
+  }
+}
+
