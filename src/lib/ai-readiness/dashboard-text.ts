@@ -232,7 +232,7 @@ export const READINESS_TEXT = Object.freeze({
     anonymousHint: "Chi risponde non scrive il nome; i risultati si leggono solo insieme. Consigliata.",
     named: "Con nome e cognome",
     namedHint: "Chi risponde scrive nome e cognome, senza account.",
-    privacyFold: "Privacy e soglie",
+    privacyFold: "Privacy e soglie (già compilate)",
     displayName: "Nome mostrato a chi risponde",
     description: "Nota interna",
     intro: "Introduzione al questionario",

@@ -30,8 +30,13 @@ const FIELD_LABELS: Record<string, string> = {
   pillars: C.areas,
 };
 
-/** I campi che stanno nella piega «Privacy e soglie»: con un errore lì, la piega si apre. */
-const FOLDED_FIELDS = ["displayName", "description", "introCopy", "controllerName", "processorName", "legalBasis", "privacyNoticeUrl", "supportEmail", "dpoEmail", "dataRetentionDays", "aggregationThreshold"];
+/** I campi che stanno nella piega «Privacy e soglie», tutti già compilati: con un errore lì, la piega si apre. */
+export const FOLDED_FIELDS: readonly string[] = ["displayName", "description", "introCopy", "controllerName", "processorName", "legalBasis", "privacyNoticeUrl", "dpoEmail", "dataRetentionDays", "aggregationThreshold"];
+
+/** L'ultimo invio ha un errore in un campo della piega: allora, e solo allora, la piega si apre da sola. */
+export function foldedErrorIn(state: { ok: boolean; fieldErrors?: Record<string, string> }): boolean {
+  return !state.ok && Object.keys(state.fieldErrors ?? {}).some((key) => FOLDED_FIELDS.includes(key));
+}
 
 /** Che cosa misura ogni area, in una riga. */
 const AREA_HINTS: Record<string, string> = {
@@ -47,23 +52,22 @@ const CHOICE = "flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border
 
 /**
  * Nuova rilevazione (rilascio 10, ondata 7b; audit «Fuori» AD-2, §8.4): in vista il nome, le aree e la modalità; la
- * privacy e la soglia in «Privacy e soglie». (Revisione 7b) L'email per le domande di chi risponde non si compila da sé:
+ * privacy e la soglia in «Privacy e soglie (già compilate)», chiusa: si apre da sola solo se un suo campo non passa la
+ * verifica. (Revisione 7b) L'email per le domande di chi risponde sta in vista, sopra la piega, vuota e obbligatoria:
  * chi risponde la legge nel questionario e nell'informativa, ed è il contatto del cliente, mai quello di chi crea la
- * rilevazione (una persona di Lateral Space). Finché manca, la piega è aperta, con l'email per prima; un invio senza
- * email la riapre e porta lì il cursore. Si apre da sola anche con un errore del server in uno dei suoi campi. Un solo
- * pulsante pieno, «Crea la rilevazione». Quello che si scrive resta sul dispositivo finché la rilevazione non nasce.
- * L'azione è quella di oggi.
+ * rilevazione (una persona di Lateral Space). Un invio senza email lo dice lì e porta lì il cursore. Un solo pulsante
+ * pieno, «Crea la rilevazione». Quello che si scrive resta sul dispositivo finché la rilevazione non nasce. L'azione è
+ * quella di oggi.
  */
 export function AssessmentCreateForm({ workspaceId, workspaceName }: { workspaceId: string; workspaceName: string }) {
   const router = useRouter();
   const action = createAiReadinessAssessmentAction.bind(null, workspaceId);
   const [state, formAction, pending] = useActionState(action, INITIAL);
-  // La piega è aperta finché manca l'email per le domande (all'inizio manca sempre: non si compila da sé) e quando
-  // l'ultimo invio ha un errore in uno dei suoi campi; poi la apre e la chiude chi scrive.
+  // La piega è chiusa; si apre da sola quando l'ultimo invio ha un errore in uno dei suoi campi; poi la apre e la chiude
+  // chi scrive.
   const [privacyToggle, setPrivacyToggle] = useState<{ open: boolean; at: AiReadinessActionState<{ assessmentId: string }> } | null>(null);
   const [missingContact, setMissingContact] = useState<string | null>(null);
-  const foldedError = !state.ok && Object.keys(state.fieldErrors ?? {}).some((key) => FOLDED_FIELDS.includes(key));
-  const privacyOpen = privacyToggle && privacyToggle.at === state ? privacyToggle.open : foldedError || (privacyToggle?.open ?? true);
+  const privacyOpen = privacyToggle && privacyToggle.at === state ? privacyToggle.open : foldedErrorIn(state) || (privacyToggle?.open ?? false);
   const foldId = useId();
 
   const formRef = useRef<HTMLFormElement>(null);
@@ -121,14 +125,15 @@ export function AssessmentCreateForm({ workspaceId, workspaceName }: { workspace
       ref={formRef}
       action={formAction}
       onChange={persistDraft}
+      // Le verifiche le fanno la pagina e il server, con le loro parole: il browser non ferma l'invio su un campo nascosto
+      // nella piega, dove non potrebbe portare il cursore.
+      noValidate
       onSubmit={(event) => {
         const field = event.currentTarget.elements.namedItem("supportEmail");
         if (field instanceof HTMLInputElement && !field.value.trim()) {
           event.preventDefault();
           setMissingContact(C.supportEmailMissing);
-          setPrivacyToggle({ open: true, at: state });
-          // Dopo che la piega si è aperta: il cursore sull'email che manca.
-          window.requestAnimationFrame(() => field.focus());
+          field.focus();
           return;
         }
         setMissingContact(null);
@@ -190,6 +195,32 @@ export function AssessmentCreateForm({ workspaceId, workspaceName }: { workspace
         </div>
       </fieldset>
 
+      <div className="grid gap-1.5">
+        <Label htmlFor="supportEmail">{C.supportEmail}</Label>
+        <Input
+          id="supportEmail"
+          name="supportEmail"
+          type="email"
+          required
+          aria-required="true"
+          autoComplete="off"
+          aria-describedby="supportEmail-aiuto"
+          aria-invalid={missingContact || state.fieldErrors?.supportEmail ? true : undefined}
+          onChange={() => setMissingContact(null)}
+          className={FIELD}
+        />
+        <p id="supportEmail-aiuto" className="text-xs text-muted-foreground">
+          {C.supportEmailHint}
+        </p>
+        {missingContact ? (
+          <p role="alert" className="text-xs text-destructive">
+            {missingContact}
+          </p>
+        ) : (
+          err("supportEmail")
+        )}
+      </div>
+
       <div className="border-t pt-2">
         <button
           type="button"
@@ -202,29 +233,6 @@ export function AssessmentCreateForm({ workspaceId, workspaceName }: { workspace
           <ChevronRight aria-hidden className={cn("size-4 text-muted-foreground transition-transform duration-150 motion-reduce:transition-none", privacyOpen && "rotate-90")} />
         </button>
         <div id={foldId} hidden={!privacyOpen} className="grid gap-4 pt-3 sm:grid-cols-2">
-          <div className="grid gap-1.5 sm:col-span-2">
-            <Label htmlFor="supportEmail">{C.supportEmail}</Label>
-            <Input
-              id="supportEmail"
-              name="supportEmail"
-              type="email"
-              autoComplete="off"
-              aria-describedby="supportEmail-aiuto"
-              aria-invalid={missingContact || state.fieldErrors?.supportEmail ? true : undefined}
-              onChange={() => setMissingContact(null)}
-              className={FIELD}
-            />
-            <p id="supportEmail-aiuto" className="text-xs text-muted-foreground">
-              {C.supportEmailHint}
-            </p>
-            {missingContact ? (
-              <p role="alert" className="text-xs text-destructive">
-                {missingContact}
-              </p>
-            ) : (
-              err("supportEmail")
-            )}
-          </div>
           <div className="grid gap-1.5">
             <Label htmlFor="displayName">{C.displayName}</Label>
             <Input id="displayName" name="displayName" defaultValue={workspaceName} className={FIELD} />

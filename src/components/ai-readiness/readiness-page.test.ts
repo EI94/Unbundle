@@ -281,15 +281,27 @@ test("the old addresses keep working: ?new=1, ?deleted=1, an unknown tab, the ol
   assert.ok(visibleText(created).includes("Nuova rilevazione"));
   assert.equal(filledButtons(created).length, 1, "«Crea la rilevazione»");
   assert.ok(visibleText(created).includes("Crea la rilevazione"));
-  // (Revisione 7b) L'email per le domande è il contatto del cliente che chi risponde vede: non si compila da sé con quella
-  // di chi crea. Finché manca la piega è aperta, con l'email per prima.
+  // (Revisione 7b) L'email per le domande è il contatto del cliente che chi risponde vede: in vista sopra la piega, vuota
+  // e obbligatoria, mai quella di chi crea. La piega «Privacy e soglie (già compilate)» resta chiusa (audit AD-2).
   assert.doesNotMatch(created, /responsabile@cliente\.test/, "mai l'email di chi crea");
   const contact = /<input[^>]*id="supportEmail"[^>]*>/.exec(created)?.[0] ?? "";
   assert.ok(contact && !/\svalue="[^"]+"/.test(contact), `campo vuoto: ${contact}`);
-  assert.match(created, /aria-expanded="true"[^>]*>Privacy e soglie/);
+  assert.match(contact, /\srequired=""/);
+  assert.match(contact, /aria-required="true"/);
+  assert.match(created, /<label[^>]*for="supportEmail"[^>]*>Email per le domande di chi risponde<\/label>/);
+  assert.match(created, /aria-expanded="false"[^>]*>Privacy e soglie \(già compilate\)/);
   const text = visibleText(created);
   assert.ok(text.includes("Email per le domande di chi risponde") && text.includes("scrivi il contatto dell'azienda"));
-  assert.ok(text.indexOf("Email per le domande di chi risponde") < text.indexOf("Titolare del trattamento"), "l'email per prima");
+  assert.doesNotMatch(text, /Base giuridica|Titolare del trattamento|Responsabile del trattamento|Conservazione dei dati/, "i campi legali stanno nella piega chiusa");
+  assert.ok(created.indexOf('id="supportEmail"') < created.indexOf("Privacy e soglie (già compilate)"), "sopra la piega");
+  assert.match(created, /<form[^>]*novalidate=""[^>]*data-slot="readiness-create"/i, "le verifiche le fa la pagina, con le sue parole");
+  // La piega si apre da sola solo per un errore in uno dei suoi campi; l'email non è uno di questi.
+  const form = (await import(app("src/components/ai-readiness/assessment-create-form.tsx"))) as typeof import("./assessment-create-form.tsx");
+  assert.equal(form.foldedErrorIn({ ok: true }), false);
+  assert.equal(form.foldedErrorIn({ ok: false, fieldErrors: { supportEmail: "Scrivi un'email valida." } }), false);
+  assert.equal(form.foldedErrorIn({ ok: false, fieldErrors: { legalBasis: "Indica la base giuridica." } }), true);
+  assert.equal(form.foldedErrorIn({ ok: false, fieldErrors: { aggregationThreshold: "Da 3 a 50." } }), true);
+  assert.ok(!form.FOLDED_FIELDS.includes("supportEmail"));
   assert.ok(visibleText(await render({}, { deleted: "1" })).includes("Rilevazione eliminata"));
   assert.match(await render({}, { scheda: "respondents" }), /data-readiness-tab="risultati"/);
   // `#respondents` e `#intelligence` le porta alla loro scheda `ReadinessAnchor` (provato in dashboard-view.test.ts).
