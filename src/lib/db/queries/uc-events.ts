@@ -40,6 +40,7 @@ import { caseViewContextReader } from "./uc-views.ts";
 
 export const UC_EVENT_TYPES = [
   "caso.creato",
+  "caso.schema_cambiato",
   "caso.importato",
   "caso.stato_cambiato",
   "caso.descrizione_modificata",
@@ -208,6 +209,7 @@ const NOTIFICATION = F("template_key", "channel", "attempts", "error_code");
 /** Per ogni tipo, i soli campi ammessi nel payload. */
 export const EVENT_PAYLOAD_FIELDS: Readonly<Record<UcEventType, readonly UcEventField[]>> = {
   "caso.creato": F("code", "template_key", "template_version", "items", "links", "blockers"),
+  "caso.schema_cambiato": F("from", "template_key", "template_version", "items", "links", "blockers"),
   "caso.importato": F("code", "items", "counts"),
   "caso.stato_cambiato": F("from", "to", "reason"),
   "caso.descrizione_modificata": F("blocks", "version"),

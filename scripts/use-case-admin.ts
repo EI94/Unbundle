@@ -26,6 +26,8 @@
  *   factory-import --use-case <codice> --from <dir> l'impostazione della settimana zero (con --workspace)
  *   repo-unregister --repo owner/nome [--use-case <codice>]
  *                                                  la registrazione di un repository tolta dai casi (con --workspace)
+ *   reschema --case <codice>[,<codice>…] --to dal_caso|<templateId> [--actor <userId>]
+ *                                                  lo schema di partenza di dossier in Bozza (con --workspace; --actor con --apply)
  *
  * Regole (sul modello di `scripts/uc-case-admin.ts`):
  * - il database è solo `USE_CASE_ADMIN_DATABASE_URL`: lo script non legge file d'ambiente né

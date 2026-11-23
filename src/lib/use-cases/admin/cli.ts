@@ -35,6 +35,8 @@ export const ADMIN_COMMANDS = [
   "factory-import",
   // (Rilascio 8.0c) La registrazione sbagliata di un repository, tolta dai casi di un workspace (solo Lateral Space).
   "repo-unregister",
+  // (Schema di partenza, R4) Un dossier in Bozza passa a un altro schema di partenza, di solito «Dal caso d'uso».
+  "reschema",
 ] as const;
 export type AdminCommandName = (typeof ADMIN_COMMANDS)[number];
 
