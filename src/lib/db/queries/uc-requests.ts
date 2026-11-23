@@ -117,7 +117,7 @@ import { fail, ok, type Result, type UserContext } from "../../uc/types.ts";
 import { isVocab, ITEM_STATUSES, REQUEST_STATUSES, RESPONSE_TYPES, type ItemStatus, type RequestChannel, type RequestStatus, type ResponseType } from "../../uc/vocab.ts";
 import { eventActorFrom } from "./uc-events.ts";
 import { enqueueSql } from "./uc-notifications.ts";
-import { actorRoles, actorUserId, checkLsText, isUuid, loadCaseCore, loadSignatureContext, loadUserContext, runCommand, type UcCommandContext } from "./uc-cases.ts";
+import { actorRoles, actorUserId, checkLsText, isUuid, loadCaseCore, loadSignatureContext, loadUserContext, refuseLinkedItems, runCommand, type UcCommandContext } from "./uc-cases.ts";
 import { applyItemTransitions, loadItems, type AppliedTransitions, type LoadedItem } from "./uc-items.ts";
 import type { UcExecutor } from "../uc-executor.ts";
 import { UUID } from "../../uc/ids.ts";
@@ -557,6 +557,8 @@ export async function assignItems(executor: UcExecutor, ctx: UcCommandContext, i
   const opened = await openCase(executor, ctx);
   if (!opened.ok) return opened;
   const core = opened.value;
+  const linked = await refuseLinkedItems(executor, ctx.caseId, data.itemIds);
+  if (!linked.ok) return linked;
   const items = await lightItems(executor, {
     caseId: ctx.caseId,
     itemIds: data.itemIds ?? null,
@@ -680,6 +682,8 @@ export async function createRequest(executor: UcExecutor, ctx: UcCommandContext,
   if (!opened.ok) return opened;
   const core = opened.value;
   const { contactId } = parsed.data;
+  const linked = await refuseLinkedItems(executor, ctx.caseId, parsed.data.itemIds);
+  if (!linked.ok) return linked;
   const contact = (await loadContacts(executor, ctx.workspaceId, [contactId])).get(contactId);
   if (!contact) return fail("contatto_non_trovato", CONTACT_NOT_FOUND);
   const allowed = await assignable(executor, contact, ctx, await lsMemberEmails(executor, core, ctx.lsDomains));
@@ -824,6 +828,8 @@ export async function sendRequests(executor: UcExecutor, ctx: UcCommandContext, 
   if (!opened.ok) return opened;
   const core = opened.value;
   const explicit = parsed.data.itemIds;
+  const linked = await refuseLinkedItems(executor, ctx.caseId, explicit);
+  if (!linked.ok) return linked;
   const candidates = await lightItems(executor, { caseId: ctx.caseId, contactIds: parsed.data.contactIds ?? null, itemIds: explicit ?? null });
   if (explicit && !parsed.data.contactIds && candidates.length !== new Set(explicit).size) return fail("voce_non_trovata", "Domanda non trovata in questa realizzazione.");
   // Senza scelta esplicita si considerano solo le voci che si possono chiedere: le altre non sono «saltate».
@@ -909,6 +915,8 @@ export async function requestConfirmation(executor: UcExecutor, ctx: UcCommandCo
   const opened = await openCase(executor, ctx, { sending: true });
   if (!opened.ok) return opened;
   const core = opened.value;
+  const linked = await refuseLinkedItems(executor, ctx.caseId, parsed.data.itemIds);
+  if (!linked.ok) return linked;
   const loaded = await loadItems(executor, ctx.workspaceId, ctx.caseId, parsed.data.itemIds);
   if (!loaded) return fail("non_trovato", CASE_NOT_FOUND);
   const list = [...new Set(parsed.data.itemIds)].map((id) => loaded.items.get(id));

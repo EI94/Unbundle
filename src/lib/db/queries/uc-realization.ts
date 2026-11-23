@@ -48,7 +48,7 @@ import {
 } from "../../uc/views/realization.ts";
 import { CASE_ROLES, CASE_STATUSES, isVocab, type CaseRole } from "../../uc/vocab.ts";
 import type { UcExecutor } from "../uc-executor.ts";
-import { checkLsText } from "./uc-cases.ts";
+import { checkLsText, refreshReadinessCache } from "./uc-cases.ts";
 import { loadNextStepInput, parseNextStepRows } from "./uc-next-step.ts";
 import { PENDING_SIGNATURE_STATEMENTS } from "./uc-signatures.ts";
 import { createCaseFromTemplate } from "./uc-templates.ts";
@@ -630,7 +630,17 @@ export async function startRealization(
       if (!code.ok) return fail("codice_mancante", START_MESSAGES.codice_mancante);
     }
     const created = await create(code.code);
-    if (created.ok) return ok({ caseId: created.value.caseId, code: created.value.code, useCaseId: context.useCaseId });
+    if (created.ok) {
+      // «Dal caso d'uso»: alcune voci nascono già validate (da «Cosa serve»), la prontezza in cache si riscrive subito.
+      if (created.value.fromUseCase) {
+        try {
+          await refreshReadinessCache(executor, i.workspaceId, created.value.caseId, i.now?.());
+        } catch {
+          // Resta la cache vecchia: la testata la ricalcola dal vivo (revisione alzata).
+        }
+      }
+      return ok({ caseId: created.value.caseId, code: created.value.code, useCaseId: context.useCaseId });
+    }
     if (created.code === "template_non_trovato") return fail("template_non_trovato", "Schema di partenza non trovato: scegline un altro.");
     if (!CODE_CLASHES.has(created.code)) return created;
     // Di chi è il dossier con quel codice? Solo se è di questo use case lo si dice.

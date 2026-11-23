@@ -58,6 +58,11 @@ function read(file: string): string {
 const TABLES = /\b(use_case_needs|use_case_need_links|useCaseNeeds|useCaseNeedLinks)\b/;
 const TABLE_FILES = new Set([
   "src/lib/db/schema.ts",
+  // (Schema «Dal caso d'uso», 23/11) Il dossier nasce dalle voci di «Cosa serve» del suo use case: la creazione le legge
+  // (solo i requisiti non archiviati, collegati con `use_case_need_links`), e la sincronizzazione le riporta sulle
+  // domande collegate dentro la stessa transazione di ogni scrittura delle esigenze. Nessuna lettura per una pagina.
+  "src/lib/db/queries/uc-templates.ts",
+  "src/lib/uc/sql/need-items.ts",
   "src/lib/db/use-case-hub-value-ddl.ts",
   "src/lib/db/use-case-hub-referents-ddl.ts",
   "src/lib/db/queries/use-case-needs.ts",

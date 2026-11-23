@@ -5,7 +5,7 @@ import { EmptyState } from "@/components/uc/ui/empty-state";
 import type { SolutionRulesData } from "@/lib/db/queries/uc-solution";
 import { readableTitle } from "@/lib/uc/views/description";
 import { KIND_LABEL } from "@/lib/uc/views/labels";
-import { PERIMETER_PARAM, pageOffset, rulesFiltered, type RulesQuery } from "@/lib/uc/views/model";
+import { PERIMETER_PARAM, RULES_EMPTY, pageOffset, rulesFiltered, type RulesQuery } from "@/lib/uc/views/model";
 import { clientPlainText } from "@/lib/uc/views/rows";
 import { RULES_TEXT, RULE_PARAM, rulesPanelHref } from "@/lib/uc/views/solution";
 import { STATUS_GROUP_SLUG, statusView, type Audience } from "@/lib/uc/views/status-groups";
@@ -71,7 +71,7 @@ export function RulesPanel({
   return (
     <DetailSheet title={RULES_TEXT.title} description={data.total > 0 ? RULES_TEXT.count(data.total) : undefined} closeHref={base} size="xl">
       {!data.hasRules && !(ls && data.hasConstraints) ? (
-        <EmptyState title={RULES_TEXT.none(audience)} />
+        <EmptyState title={RULES_EMPTY.title}>{RULES_EMPTY.hint}</EmptyState>
       ) : (
         <div className="min-w-0">
           <RulesToolbar
@@ -85,7 +85,7 @@ export function RulesPanel({
           />
           {data.total === 0 ? (
             <EmptyState
-              title={filtered ? (query.q ? RULES_TEXT.noMatch(query.q) : RULES_TEXT.noFilterMatch) : RULES_TEXT.none(audience)}
+              title={filtered ? (query.q ? RULES_TEXT.noMatch(query.q) : RULES_TEXT.noFilterMatch) : RULES_EMPTY.title}
               action={
                 filtered ? (
                   <Link href={rulesPanelHref(base, {}, { vincoli: query.vincoli ? "1" : null })} scroll={false} className="inline-flex min-h-11 items-center text-sm font-medium underline-offset-4 hover:underline sm:min-h-8">
@@ -93,7 +93,9 @@ export function RulesPanel({
                   </Link>
                 ) : undefined
               }
-            />
+            >
+              {filtered ? null : RULES_EMPTY.hint}
+            </EmptyState>
           ) : groups.length === 0 ? (
             <EmptyState
               title={RULES_TEXT.emptyPage}

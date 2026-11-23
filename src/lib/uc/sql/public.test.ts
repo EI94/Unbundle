@@ -148,7 +148,8 @@ test("answers: append-only insert from the referent with the next version; the e
   assert.match(text, /^WITH ins AS \( INSERT INTO uc_answers/);
   assert.match(text, /coalesce\(\(SELECT max\(x\.version\) FROM uc_answers x WHERE x\.item_id = i\.id\), 0\) \+ 1/);
   assert.match(text, /'referente', \$\d+::text, \$\d+::uuid, \$\d+::uuid/, "source kind is always the referent");
-  assert.match(text, /SELECT uc_require\(count\(\*\) = 1, 'conflitto'\) AS ok FROM ins$/);
+  // (Schema di partenza) Prima del conteggio, la guardia sulle domande nate da «Cosa serve».
+  assert.match(text, /SELECT uc_require\(NOT EXISTS \(SELECT 1 FROM uc_items li WHERE .*'voce_da_cosa_serve'\) AND uc_require\(count\(\*\) = 1, 'conflitto'\) AS ok FROM ins$/);
   assert.ok(st.params.includes("x".repeat(300)), "user agent truncated to 300");
   const eventPayload = st.params.find((p) => typeof p === "string" && p.includes('"source_kind"'));
   assert.ok(eventPayload, "event payload present");

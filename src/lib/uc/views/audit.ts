@@ -109,6 +109,7 @@ export function auditWhoFor(clientView: boolean): { key: AuditWho; label: string
 /** Etichette degli eventi in italiano semplice (CSV, registro degli accessi della Privacy). */
 export const AUDIT_EVENT_LABEL: Readonly<Record<string, string>> = {
   "caso.creato": "Realizzazione creata",
+  "caso.schema_cambiato": "Schema di partenza cambiato",
   "caso.importato": "Realizzazione importata",
   "caso.stato_cambiato": "Stato della realizzazione cambiato",
   "caso.descrizione_modificata": "Descrizione modificata",
@@ -614,6 +615,9 @@ function phraseOf(row: ActivityRow, audience: Audience): Phrase {
   switch (row.type) {
     case "caso.creato":
       return { one: "ha creato la realizzazione" };
+    case "caso.schema_cambiato":
+      // La chiave e il nome dello schema non si mostrano (il nome può essere del cliente).
+      return { one: "ha cambiato lo schema di partenza" };
     case "caso.importato":
       return { one: "ha importato la realizzazione" };
     case "caso.stato_cambiato": {

@@ -120,6 +120,12 @@ export const DOMANDE_TEXT = Object.freeze({
     linked: (count: number) => `Collegata a ${questions(count)}`,
     /** Il link al pannello «File» dalla domanda che chiede un file. */
     manageFiles: "Tutti i file",
+    /**
+     * Una domanda nata da «Cosa serve» (schema «Dal caso d'uso»): stato e risposte stanno lì, la realizzazione li
+     * segue. Al posto delle azioni, questa riga; il link solo per chi apre «Cosa serve».
+     */
+    fromNeeds: "Si aggiorna in «Cosa serve» dello use case.",
+    fromNeedsLink: "Apri «Cosa serve»",
   }),
 
   /** Le azioni della domanda: le stesse parole nella selezione e in Persone (§4: «Affida a…», «Chiedi al referente»). */

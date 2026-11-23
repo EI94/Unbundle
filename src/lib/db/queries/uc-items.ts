@@ -73,7 +73,7 @@ import {
 import { bellPrefix, dedupeKey } from "../../uc/notify/dedupe.ts";
 import { eventActorFrom, eventInsertSql } from "./uc-events.ts";
 import { enqueueForLsMembersSql, enqueueSql } from "./uc-notifications.ts";
-import { accountSigner, actorRoles, actorUserId, checkLsText, isUuid, loadCaseReadiness, loadSignatureContext, runCommand, type UcCommandContext } from "./uc-cases.ts";
+import { accountSigner, actorRoles, actorUserId, checkLsText, isUuid, loadCaseReadiness, loadSignatureContext, refuseLinkedItems, runCommand, type UcCommandContext } from "./uc-cases.ts";
 import type { UcExecutor } from "../uc-executor.ts";
 import { UUID } from "../../uc/ids.ts";
 import { naApprovalHash } from "../../uc/views/approvals.ts";
@@ -796,6 +796,8 @@ export async function recordLsAnswer(executor: UcExecutor, ctx: UcCommandContext
   const v = parsed.data;
   const userId = actorUserId(ctx);
   if (!userId) return fail("attore_non_ammesso", "Serve un account.");
+  const linked = await refuseLinkedItems(executor, ctx.caseId, [v.itemId]);
+  if (!linked.ok) return linked;
   const one = await loadOne(executor, ctx, v.itemId);
   if (!one.ok) return one;
   const { item } = one.value;

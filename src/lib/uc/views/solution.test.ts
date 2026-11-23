@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { findForbiddenIn } from "./copy-guard.ts";
 import type { MapItemRef, ProcessStepView, SolutionNodeView } from "./map.ts";
+import { RULES_EMPTY } from "./model.ts";
 import {
   RULES_PANEL,
   RULES_TEXT,
@@ -94,10 +95,9 @@ test("copy guard: the words of the reading page and of the rules panel the clien
   const client = [
     T.howTitle, ...Object.values(T.views), T.viewsLabel, T.legendLabel, T.legend("cliente"), T.example, T.exampleTitle, T.backToProcess, T.decides, T.who, T.step(3),
     T.agentStep, T.stepPanelWho, T.stepPanelTool, T.stepPanelTime, T.friction, T.decidesWhat, T.enters, T.exits, T.questions, T.noQuestions, T.noDescription,
-    T.more, T.rules(40), T.partsLabel, T.backToSolution, RULES_TEXT.title, RULES_TEXT.count(40), RULES_TEXT.none("cliente"), RULES_TEXT.noFilterMatch, RULES_TEXT.clear,
-    RULES_TEXT.back,
+    T.more, T.rules(40), T.partsLabel, T.backToSolution, RULES_TEXT.title, RULES_TEXT.count(40), RULES_EMPTY.title, RULES_EMPTY.hint, RULES_TEXT.noFilterMatch,
+    RULES_TEXT.clear, RULES_TEXT.back,
   ];
   assert.deepEqual(findForbiddenIn(client, "cliente"), []);
   for (const text of client) assert.doesNotMatch(text, /schema di partenza|\bvincol|\bcaso\b|\bdossier\b/i, text);
-  assert.match(RULES_TEXT.none("ls"), /schema di partenza/, "Lateral Space keeps its word");
 });

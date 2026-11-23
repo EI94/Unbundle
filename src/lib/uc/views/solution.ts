@@ -72,11 +72,13 @@ export const SOLUTION_TEXT = Object.freeze({
   backToSolution: "Soluzione",
 });
 
-/** I testi del pannello «Regole» (F-090). «Lo schema di partenza» è una parola di Lateral Space. */
+/**
+ * I testi del pannello «Regole» (F-090). Senza regole il pannello dice «Da disegnare» a tutti (`RULES_EMPTY` di
+ * `model.ts`, R1 di `docs/dossier/SCHEMA-DI-PARTENZA.md`).
+ */
 export const RULES_TEXT = Object.freeze({
   title: "Regole",
   count: (n: number) => `${formatCountIt(n)} ${n === 1 ? "regola" : "regole"}`,
-  none: (audience: Audience) => (audience === "ls" ? "Lo schema di partenza non ha regole." : "Nessuna regola ancora."),
   noMatch: (q: string) => `Nessuna regola trovata per “${q}”.`,
   noFilterMatch: "Nessuna regola con questi filtri.",
   clear: "Togli i filtri",

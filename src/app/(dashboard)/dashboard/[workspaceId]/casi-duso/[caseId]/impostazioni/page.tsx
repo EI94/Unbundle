@@ -5,11 +5,18 @@ import { CaseStatusControl, type StatusOption } from "@/components/uc/shell/case
 import { TechDetails } from "@/components/uc/ui/tech-details";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { loadCaseSettings, loadStatusOptions } from "@/lib/db/queries/uc-people-view";
+import { readStartContext } from "@/lib/db/queries/uc-realization";
+import { planReschema } from "@/lib/db/queries/uc-reschema";
+import { countFromUseCaseQuestions, ensureFromUseCaseTemplate, listTemplatesForWorkspace } from "@/lib/db/queries/uc-templates";
+import type { UcExecutor } from "@/lib/db/uc-executor";
 import { CASE_STATUS_LABEL } from "@/lib/uc/case-state";
-import { SETTINGS_TEXT, statusHint } from "@/lib/uc/views/case-settings";
+import { errorCodeOf, ucLog } from "@/lib/uc/log";
+import { isFromUseCaseTemplateKey } from "@/lib/uc/template/from-use-case";
+import { SCHEMA_CHANGE_TEXT, SETTINGS_TEXT, statusHint } from "@/lib/uc/views/case-settings";
 import { settingsTransitions, transitionNeedsReason } from "@/lib/uc/views/case-shell";
+import { startTemplateOptions, type StartTemplateChoice } from "@/lib/uc/views/start-templates";
 import type { CaseStatus } from "@/lib/uc/vocab";
-import { CaseIdentityForm, RevokeAllLinks } from "./settings-forms";
+import { CaseIdentityForm, ChangeStartingSchema, RevokeAllLinks, type SchemaBlocker } from "./settings-forms";
 
 const SECTION_TITLE = "text-sm font-semibold";
 
@@ -17,7 +24,8 @@ const SECTION_TITLE = "text-sm font-semibold";
  * Impostazioni della realizzazione (rilascio 10, §3.5; §3.21 dell'audit): solo il responsabile Lateral Space, gli
  * altri ricevono 404. Il titolo è un H2, sotto l'H1 della testata. Tre sezioni:
  *
- * - «La realizzazione»: nome, frase e perimetro, con un «Salva»; codice, schema di partenza e codice precedente in
+ * - «La realizzazione»: nome, frase e perimetro, con un «Salva»; lo schema di partenza e, in «Bozza», «Cambia schema
+ *   di partenza…» (R3 di `docs/dossier/SCHEMA-DI-PARTENZA.md`); codice, versione dello schema e codice precedente in
  *   «Dettagli tecnici».
  * - «Pausa» (`#pausa`; la vecchia ancora `#stato` porta qui): «Metti in pausa…», «Riprendi», «Torna allo sviluppo…».
  * - «Zona pericolosa»: «Revoca i link…» e «Chiudi la realizzazione…», una volta sola.
@@ -36,6 +44,8 @@ export default async function CaseSettingsPage({ params }: { params: Promise<{ w
   const current = settings.status;
   const paused = current === "sospeso";
   const editable = write && !paused;
+  // Lo schema si cambia solo in «Bozza»; senza la lettura (errore, nessuno schema) il pulsante non c'è.
+  const schemaChange = editable && current === "bozza" ? await loadSchemaChange(executor, { workspaceId, caseId, useCaseId: settings.useCaseId }) : null;
   const option = (to: CaseStatus): StatusOption => ({ to, label: CASE_STATUS_LABEL[to], hint: statusHint(current, to), needsReason: transitionNeedsReason(to) });
   // Il passo avanti è il primario della testata; qui pausa, ripresa e il ritorno allo sviluppo, la chiusura in «Zona pericolosa».
   const transitions = settingsTransitions(current, status?.allowed ?? []);
@@ -74,6 +84,23 @@ export default async function CaseSettingsPage({ params }: { params: Promise<{ w
               )}
             </dl>
           )}
+          <div className="min-w-0 space-y-2">
+            <p className="text-sm break-words">
+              <span className="text-muted-foreground">{SCHEMA_CHANGE_TEXT.label}: </span>
+              {settings.templateName}
+            </p>
+            {schemaChange && (
+              <ChangeStartingSchema
+                workspaceId={workspaceId}
+                caseId={caseId}
+                currentId={schemaChange.currentId}
+                proposed={schemaChange.choice.proposed}
+                others={schemaChange.choice.others}
+                preselectedId={schemaChange.choice.preselectedId}
+                blockers={schemaChange.blockers}
+              />
+            )}
+          </div>
           <TechDetails roles={caseAccess.roles} copyValue={settings.displayCode}>
             <p>{T.code(settings.displayCode)}</p>
             <p>{T.template(settings.templateName, settings.templateVersion)}</p>
@@ -111,4 +138,62 @@ export default async function CaseSettingsPage({ params }: { params: Promise<{ w
       </div>
     </PageContainer>
   );
+}
+
+interface SchemaChangeData {
+  currentId: string;
+  choice: StartTemplateChoice;
+  blockers: SchemaBlocker[];
+}
+
+/**
+ * Le scelte di «Cambia schema di partenza» e le domande che lo impediscono (R3). «Dal caso d'uso» c'è in ogni
+ * workspace (la riga si crea alla prima lettura, sempre la stessa) e ha senso solo con uno use case; gli schemi di
+ * settore si propongono come in «Avvia la realizzazione» (`startTemplateOptions`). Le domande che bloccano non
+ * dipendono dallo schema scelto: si leggono una volta, con il piano verso il primo schema proposto. Un errore toglie
+ * solo il pulsante, mai la pagina.
+ */
+async function loadSchemaChange(executor: UcExecutor, i: { workspaceId: string; caseId: string; useCaseId: string | null }): Promise<SchemaChangeData | null> {
+  try {
+    const ensured = await ensureFromUseCaseTemplate(executor);
+    if (!ensured.ok) ucLog({ level: "warn", area: "uc", op: "impostazioni.dal_caso", code: ensured.code, workspaceId: i.workspaceId, caseId: i.caseId });
+    const [templates, context, fromUseCaseQuestions] = await Promise.all([
+      listTemplatesForWorkspace(executor, i.workspaceId),
+      i.useCaseId ? readStartContext(executor, { workspaceId: i.workspaceId, useCaseId: i.useCaseId }) : Promise.resolve(null),
+      i.useCaseId ? countFromUseCaseQuestions(executor, i.workspaceId, i.useCaseId) : Promise.resolve(0),
+    ]);
+    const sources = templates
+      .map((t) => ({
+        id: t.id,
+        key: t.key,
+        name: t.name,
+        archetype: t.archetype,
+        industry: t.industry,
+        functionArea: t.functionArea,
+        restricted: t.restricted,
+        questions: t.questions,
+        fromUseCase: isFromUseCaseTemplateKey(t.key),
+      }))
+      // Senza use case non ci sono voci di «Cosa serve» da cui partire.
+      .filter((t) => i.useCaseId !== null || !t.fromUseCase);
+    const choice = startTemplateOptions(sources, {
+      fromUseCaseQuestions,
+      useCase: { title: context?.title ?? "", problem: context?.texts.problem ?? null, flow: context?.texts.flow ?? null },
+    });
+    const target = choice.proposed[0] ?? choice.others[0];
+    if (!target) return null;
+    const plan = await planReschema(executor, { workspaceId: i.workspaceId, caseId: i.caseId, to: target.fromUseCase ? "dal_caso" : { templateId: target.id } });
+    if (!plan.ok) {
+      ucLog({ level: "warn", area: "uc", op: "impostazioni.schema", code: plan.code, workspaceId: i.workspaceId, caseId: i.caseId });
+      return null;
+    }
+    return {
+      currentId: plan.value.from.id,
+      choice,
+      blockers: plan.value.blockers.map((b) => ({ itemId: b.itemId, title: b.title, reasons: [...b.reasons] })),
+    };
+  } catch (error) {
+    ucLog({ level: "warn", area: "uc", op: "impostazioni.schema", code: errorCodeOf(error), workspaceId: i.workspaceId, caseId: i.caseId });
+    return null;
+  }
 }
