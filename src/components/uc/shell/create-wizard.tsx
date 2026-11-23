@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type Ref } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog, useSubmitConfirmation } from "@/components/ui/confirm-dialog";
@@ -11,6 +11,101 @@ import type { StartTemplate } from "@/components/uc/realization/start-data";
 import { startRealizationAction } from "@/lib/actions/uc-realization";
 import { REALIZATION_TEXT } from "@/lib/uc/views/realization";
 import { START_TEMPLATE_TEXT, needsLargeTemplateConfirm } from "@/lib/uc/views/start-templates";
+
+/**
+ * La scelta dello schema di partenza (R2 di `docs/dossier/SCHEMA-DI-PARTENZA.md`), la stessa nella pagina di ripiego
+ * e nel dialogo della scheda: scelto all'apertura solo `preselectedId` («Dal caso d'uso»), mai uno schema riservato;
+ * gli altri schemi si aprono da soli solo se non c'è niente da proporre; nasconderli non lascia scelto uno che non si
+ * vede più (si torna a quello dell'apertura).
+ */
+export function useStartTemplatePicker(templates: readonly StartTemplate[], otherTemplates: readonly StartTemplate[], preselectedId: string | null) {
+  const all = [...templates, ...otherTemplates];
+  const initial = all.find((t) => t.id === preselectedId && !t.restricted) ?? null;
+  const [templateId, setTemplateId] = useState<string | null>(initial?.id ?? null);
+  const [showOthers, setShowOthers] = useState(templates.length === 0);
+  const template = all.find((t) => t.id === templateId) ?? null;
+
+  function toggleOthers() {
+    if (showOthers && otherTemplates.some((t) => t.id === templateId)) setTemplateId(initial?.id ?? null);
+    setShowOthers(!showOthers);
+  }
+
+  return { all, initial, template, templateId, setTemplateId, showOthers, toggleOthers };
+}
+
+/**
+ * Gli schemi tra cui scegliere (R2): i proposti («Dal caso d'uso» per primo, poi gli schemi di settore che combaciano
+ * con lo use case), gli altri dietro «Mostra anche gli altri schemi», con la loro avvertenza. Ogni scelta ha la sua
+ * riga «per che tipo di caso · N domande». `focusRef` va sulla scelta fatta, altrimenti sulla prima che si vede.
+ */
+export function StartTemplatePicker({
+  name,
+  labelledBy,
+  label,
+  templates,
+  otherTemplates,
+  templateId,
+  onChoose,
+  showOthers,
+  onToggleOthers,
+  disabled,
+  focusRef,
+}: {
+  /** Il nome del gruppo di radio. */
+  name: string;
+  labelledBy?: string;
+  label?: string;
+  templates: readonly StartTemplate[];
+  otherTemplates: readonly StartTemplate[];
+  templateId: string | null;
+  onChoose: (id: string) => void;
+  showOthers: boolean;
+  onToggleOthers: () => void;
+  disabled: boolean;
+  focusRef?: Ref<HTMLInputElement>;
+}) {
+  const visible = showOthers ? [...templates, ...otherTemplates] : templates;
+  const focusId = visible.some((t) => t.id === templateId) ? templateId : (visible[0]?.id ?? null);
+  const option = (t: StartTemplate) => (
+    <label
+      key={t.id}
+      className="flex min-h-11 min-w-0 cursor-pointer items-start gap-3 rounded-lg border border-border p-3 hover:bg-muted has-checked:border-uc-blu has-checked:bg-uc-blu-bg has-disabled:cursor-not-allowed has-disabled:opacity-70"
+    >
+      <input
+        ref={t.id === focusId ? focusRef : undefined}
+        type="radio"
+        name={name}
+        value={t.id}
+        checked={templateId === t.id}
+        onChange={() => onChoose(t.id)}
+        disabled={disabled}
+        className="mt-0.5 size-4 shrink-0 accent-uc-blu"
+      />
+      <span className="grid min-w-0 gap-0.5">
+        <span className="text-sm break-words">{t.name}</span>
+        <span className="text-xs text-muted-foreground">{t.line}</span>
+      </span>
+    </label>
+  );
+  return (
+    <>
+      <div role="radiogroup" aria-labelledby={labelledBy} aria-label={labelledBy ? undefined : label} className="grid min-w-0 gap-2">
+        {templates.map(option)}
+        {showOthers && otherTemplates.length > 0 && (
+          <>
+            {templates.length > 0 && <p className="pt-1 text-xs text-muted-foreground">{START_TEMPLATE_TEXT.othersHint}</p>}
+            {otherTemplates.map(option)}
+          </>
+        )}
+      </div>
+      {otherTemplates.length > 0 && templates.length > 0 && (
+        <Button type="button" variant="ghost" className="h-11 px-2 sm:h-8" onClick={onToggleOthers} disabled={disabled} aria-expanded={showOthers}>
+          {showOthers ? START_TEMPLATE_TEXT.hideOthers(otherTemplates.length) : START_TEMPLATE_TEXT.showOthers(otherTemplates.length)}
+        </Button>
+      )}
+    </>
+  );
+}
 
 /**
  * «Avvia la realizzazione» in una schermata (DESIGN §3.2), la pagina di ripiego del dialogo della scheda (rilascio 10,
@@ -47,21 +142,11 @@ export function StartRealizationForm({
   const router = useRouter();
   const { pending, run } = useUcAction();
   const confirmation = useSubmitConfirmation<StartTemplate>();
-  const all = [...templates, ...otherTemplates];
-  const initial = all.find((t) => t.id === preselectedId && !t.restricted) ?? null;
+  const choice = useStartTemplatePicker(templates, otherTemplates, preselectedId);
+  const { all, template } = choice;
   const title = defaults.title;
   const [oneLiner, setOneLiner] = useState(defaults.oneLiner);
-  const [templateId, setTemplateId] = useState<string | null>(initial?.id ?? null);
-  // Gli altri schemi si aprono da soli solo se non c'è niente da proporre.
-  const [showOthers, setShowOthers] = useState(templates.length === 0);
-  const template = all.find((t) => t.id === templateId) ?? null;
   const titleOk = title.trim().length >= 3;
-
-  /** Nascondere gli altri schemi non lascia scelto uno che non si vede più: si torna a quello dell'apertura. */
-  function toggleOthers() {
-    if (showOthers && otherTemplates.some((t) => t.id === templateId)) setTemplateId(initial?.id ?? null);
-    setShowOthers(!showOthers);
-  }
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -79,26 +164,6 @@ export function StartRealizationForm({
   }
 
   const row = "grid min-w-0 gap-1.5 sm:grid-cols-[10rem_minmax(0,1fr)] sm:items-baseline sm:gap-4";
-  const option = (t: StartTemplate) => (
-    <label
-      key={t.id}
-      className="flex min-h-11 min-w-0 cursor-pointer items-start gap-3 rounded-lg border border-border p-3 hover:bg-muted has-checked:border-uc-blu has-checked:bg-uc-blu-bg has-disabled:cursor-not-allowed has-disabled:opacity-70"
-    >
-      <input
-        type="radio"
-        name="realizzazione-schema"
-        value={t.id}
-        checked={templateId === t.id}
-        onChange={() => setTemplateId(t.id)}
-        disabled={pending}
-        className="mt-0.5 size-4 shrink-0 accent-uc-blu"
-      />
-      <span className="grid min-w-0 gap-0.5">
-        <span className="text-sm break-words">{t.name}</span>
-        <span className="text-xs text-muted-foreground">{t.line}</span>
-      </span>
-    </label>
-  );
 
   return (
     <>
@@ -128,20 +193,17 @@ export function StartRealizationForm({
               <p className="text-sm">{REALIZATION_TEXT.noTemplates}</p>
             ) : (
               <div className="min-w-0 space-y-2">
-                <div role="radiogroup" aria-labelledby="realizzazione-schema-label" className="grid min-w-0 gap-2">
-                  {templates.map(option)}
-                  {showOthers && otherTemplates.length > 0 && (
-                    <>
-                      {templates.length > 0 && <p className="pt-1 text-xs text-muted-foreground">{START_TEMPLATE_TEXT.othersHint}</p>}
-                      {otherTemplates.map(option)}
-                    </>
-                  )}
-                </div>
-                {otherTemplates.length > 0 && templates.length > 0 && (
-                  <Button type="button" variant="ghost" className="h-11 px-2 sm:h-8" onClick={toggleOthers} disabled={pending} aria-expanded={showOthers}>
-                    {showOthers ? START_TEMPLATE_TEXT.hideOthers(otherTemplates.length) : START_TEMPLATE_TEXT.showOthers(otherTemplates.length)}
-                  </Button>
-                )}
+                <StartTemplatePicker
+                  name="realizzazione-schema"
+                  labelledBy="realizzazione-schema-label"
+                  templates={templates}
+                  otherTemplates={otherTemplates}
+                  templateId={choice.templateId}
+                  onChoose={choice.setTemplateId}
+                  showOthers={choice.showOthers}
+                  onToggleOthers={choice.toggleOthers}
+                  disabled={pending}
+                />
                 {!template && <p className="text-xs text-muted-foreground">{START_TEMPLATE_TEXT.chooseOne}</p>}
                 {template?.fromUseCase && template.questions === 0 && <p className="text-xs text-muted-foreground">{START_TEMPLATE_TEXT.fromUseCaseEmpty}</p>}
               </div>
