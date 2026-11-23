@@ -558,6 +558,42 @@ test("«Da fare per te»: al responsabile «Aggiungi … al team», al manager �
   await q(`DELETE FROM use_case_external_builders WHERE user_id = $1 AND use_case_id = $2`, [ids.e5, ids.ucA4]);
 });
 
+test("(rilascio 10) dentro il perimetro: l'Agent Factory di E3 ha solo A1 e niente «Da fare» degli altri; «Il tuo account» solo il suo terminale", opts, async () => {
+  const line = await import("../../db/queries/use-case-factory-line.ts");
+  // La voce c'è (E3 ha la riga di A1), e la pagina legge solo i casi che costruisce: A1, mai A2 (la riga senza concessione).
+  assert.equal(await line.factoryNavVisible(exec, { workspaceId: ids.wsA, userId: ids.e3, lsManager: false, lsDomains: [LS] }), true);
+  const mine = await line.loadFactoryOverview(exec, { workspaceId: ids.wsA, userId: ids.e3, seeAll: false, canSeeNeeds: false, lsDomains: [LS], caseOnly: true });
+  assert.deepEqual(mine.cases.map((c) => c.code), [CODE.A1]);
+  assert.ok(!mine.todos.some((t) => t.kind === "togli_esterno" || t.kind === "aggiungi_esterno"), "le pulizie degli altri mai a E3");
+  // Al responsabile e manager: «Aggiungi … al team» per E5 (concessione per A2, senza riga), con il codice e la persona.
+  const lead = await line.loadFactoryOverview(exec, { workspaceId: ids.wsA, userId: ids.lead, seeAll: true, canSeeNeeds: true, lsDomains: [LS] });
+  const add = lead.todos.find((t) => t.kind === "aggiungi_esterno");
+  assert.deepEqual([add?.code, add?.person, add?.caseId], [CODE.A2, "Prova e5", ids.caseA2]);
+  // La riga della CI: E3 non gestisce le chiavi del suo repository (i pulsanti e «Da fare» della CI mai).
+  const { readCiFamilies } = await import("../../../components/agent-factory/ci-load.ts");
+  const ci = await readCiFamilies(exec, { workspaceId: ids.wsA, userId: ids.e3, isLateralSpace: false, lsDomains: [LS], families: ["Voltaen/xo-solo-prova"] });
+  assert.deepEqual([ci.todos.length, [...ci.rows.values()].some((r) => r.manages)], [0, false]);
+
+  // «Il tuo account», la rotta vera con le porte vere: E3 in A solo il terminale, i suoi collegamenti; in B (Contributore)
+  // il foglio di tutti; chi segue un corso 404.
+  const { GET } = await import("../../../app/api/workspaces/[workspaceId]/account/route.ts");
+  const sheet = (person: Person, workspaceId: string) =>
+    as(person, async () => {
+      const response = await GET(new Request(`http://127.0.0.1:53110/api/workspaces/${workspaceId}/account`), { params: Promise.resolve({ workspaceId }) });
+      return { status: response.status, json: (await response.json()) as Row };
+    });
+  const a = await sheet("e3", ids.wsA);
+  assert.equal(a.status, 200, JSON.stringify(a.json));
+  const account = a.json.account as { email: unknown; claude: unknown; granola: unknown; terminal: { links: Array<{ caseCode: string | null }> } | null };
+  assert.deepEqual([account.email, account.claude, account.granola], [null, null, null]);
+  assert.ok(account.terminal && account.terminal.links.length > 0, "i suoi collegamenti della CLI");
+  assert.ok(account.terminal.links.every((link) => link.caseCode === null || link.caseCode === CODE.A1));
+  assert.equal((await sheet("p", ids.wsA)).status, 404, "chi segue un corso");
+  const b = await sheet("e3", ids.wsB);
+  assert.equal(b.status, 200);
+  assert.equal((b.json.account as { terminal: unknown }).terminal, null, "in B è Contributore: nessun collegamento lì");
+});
+
 /** Un invito di prova, con il token in memoria (mai nel database: solo l'impronta). */
 async function invite(role: string, email: string | null, useCaseId: string | null, patch: { expired?: boolean; revoked?: boolean } = {}): Promise<string> {
   const { createInviteToken, hashInviteToken } = await import("../../workspace-invite-token.ts");
