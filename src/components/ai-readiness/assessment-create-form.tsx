@@ -46,19 +46,24 @@ const FIELD = "h-11 text-base sm:h-9 sm:text-sm";
 const CHOICE = "flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm has-checked:border-foreground/60 has-checked:bg-muted/60";
 
 /**
- * Nuova rilevazione (rilascio 10, ondata 7b; audit «Fuori» AD-2, §8.4): in vista il nome, le aree e la modalità; i
- * campi della privacy, già compilati, e la soglia in «Privacy e soglie (già compilate)», chiusa (si apre da sola con un
- * errore lì dentro). Un solo pulsante pieno, «Crea la rilevazione». Quello che si scrive resta sul dispositivo finché
- * la rilevazione non nasce. L'azione è quella di oggi.
+ * Nuova rilevazione (rilascio 10, ondata 7b; audit «Fuori» AD-2, §8.4): in vista il nome, le aree e la modalità; la
+ * privacy e la soglia in «Privacy e soglie». (Revisione 7b) L'email per le domande di chi risponde non si compila da sé:
+ * chi risponde la legge nel questionario e nell'informativa, ed è il contatto del cliente, mai quello di chi crea la
+ * rilevazione (una persona di Lateral Space). Finché manca, la piega è aperta, con l'email per prima; un invio senza
+ * email la riapre e porta lì il cursore. Si apre da sola anche con un errore del server in uno dei suoi campi. Un solo
+ * pulsante pieno, «Crea la rilevazione». Quello che si scrive resta sul dispositivo finché la rilevazione non nasce.
+ * L'azione è quella di oggi.
  */
-export function AssessmentCreateForm({ workspaceId, workspaceName, supportEmail }: { workspaceId: string; workspaceName: string; supportEmail?: string | null }) {
+export function AssessmentCreateForm({ workspaceId, workspaceName }: { workspaceId: string; workspaceName: string }) {
   const router = useRouter();
   const action = createAiReadinessAssessmentAction.bind(null, workspaceId);
   const [state, formAction, pending] = useActionState(action, INITIAL);
-  // La piega si apre da sola quando l'ultimo invio ha un errore in uno dei suoi campi; poi la apre e la chiude chi scrive.
+  // La piega è aperta finché manca l'email per le domande (all'inizio manca sempre: non si compila da sé) e quando
+  // l'ultimo invio ha un errore in uno dei suoi campi; poi la apre e la chiude chi scrive.
   const [privacyToggle, setPrivacyToggle] = useState<{ open: boolean; at: AiReadinessActionState<{ assessmentId: string }> } | null>(null);
+  const [missingContact, setMissingContact] = useState<string | null>(null);
   const foldedError = !state.ok && Object.keys(state.fieldErrors ?? {}).some((key) => FOLDED_FIELDS.includes(key));
-  const privacyOpen = privacyToggle && privacyToggle.at === state ? privacyToggle.open : foldedError || (privacyToggle?.open ?? false);
+  const privacyOpen = privacyToggle && privacyToggle.at === state ? privacyToggle.open : foldedError || (privacyToggle?.open ?? true);
   const foldId = useId();
 
   const formRef = useRef<HTMLFormElement>(null);
@@ -112,7 +117,25 @@ export function AssessmentCreateForm({ workspaceId, workspaceName, supportEmail 
   const err = (key: string) => (state.fieldErrors?.[key] ? <p className="text-xs text-destructive">{state.fieldErrors[key]}</p> : null);
 
   return (
-    <form ref={formRef} action={formAction} onChange={persistDraft} className="space-y-6" data-slot="readiness-create">
+    <form
+      ref={formRef}
+      action={formAction}
+      onChange={persistDraft}
+      onSubmit={(event) => {
+        const field = event.currentTarget.elements.namedItem("supportEmail");
+        if (field instanceof HTMLInputElement && !field.value.trim()) {
+          event.preventDefault();
+          setMissingContact(C.supportEmailMissing);
+          setPrivacyToggle({ open: true, at: state });
+          // Dopo che la piega si è aperta: il cursore sull'email che manca.
+          window.requestAnimationFrame(() => field.focus());
+          return;
+        }
+        setMissingContact(null);
+      }}
+      className="space-y-6"
+      data-slot="readiness-create"
+    >
       <p className="text-sm text-muted-foreground">{C.lead}</p>
       {!state.ok && state.message ? (
         <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm" role="alert" data-testid="create-error-summary">
@@ -179,6 +202,29 @@ export function AssessmentCreateForm({ workspaceId, workspaceName, supportEmail 
           <ChevronRight aria-hidden className={cn("size-4 text-muted-foreground transition-transform duration-150 motion-reduce:transition-none", privacyOpen && "rotate-90")} />
         </button>
         <div id={foldId} hidden={!privacyOpen} className="grid gap-4 pt-3 sm:grid-cols-2">
+          <div className="grid gap-1.5 sm:col-span-2">
+            <Label htmlFor="supportEmail">{C.supportEmail}</Label>
+            <Input
+              id="supportEmail"
+              name="supportEmail"
+              type="email"
+              autoComplete="off"
+              aria-describedby="supportEmail-aiuto"
+              aria-invalid={missingContact || state.fieldErrors?.supportEmail ? true : undefined}
+              onChange={() => setMissingContact(null)}
+              className={FIELD}
+            />
+            <p id="supportEmail-aiuto" className="text-xs text-muted-foreground">
+              {C.supportEmailHint}
+            </p>
+            {missingContact ? (
+              <p role="alert" className="text-xs text-destructive">
+                {missingContact}
+              </p>
+            ) : (
+              err("supportEmail")
+            )}
+          </div>
           <div className="grid gap-1.5">
             <Label htmlFor="displayName">{C.displayName}</Label>
             <Input id="displayName" name="displayName" defaultValue={workspaceName} className={FIELD} />
@@ -214,11 +260,6 @@ export function AssessmentCreateForm({ workspaceId, workspaceName, supportEmail 
           <div className="grid gap-1.5">
             <Label htmlFor="privacyNoticeUrl">{C.noticeUrl}</Label>
             <Input id="privacyNoticeUrl" name="privacyNoticeUrl" type="url" placeholder="https://" className={FIELD} />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="supportEmail">{C.supportEmail}</Label>
-            <Input id="supportEmail" name="supportEmail" type="email" defaultValue={supportEmail ?? ""} className={FIELD} />
-            {err("supportEmail")}
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="dpoEmail">{C.dpoEmail}</Label>

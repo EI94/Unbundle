@@ -86,7 +86,7 @@ export default async function AiReadinessPage({
   searchParams: Promise<{ assessment?: string; new?: string; deleted?: string; scheda?: string; apri?: string }>;
 }) {
   const { workspaceId } = await params;
-  const { session, access } = await requireWorkspacePage(workspaceId);
+  const { access } = await requireWorkspacePage(workspaceId);
   const search = await searchParams;
 
   await ensureAiReadinessSystemTemplate();
@@ -116,7 +116,7 @@ export default async function AiReadinessPage({
           <AssessmentSwitcher title={manages ? T.create.title : T.pageTitle} currentId={null} options={options} newHref={null} />
         </header>
         {deletedNotice}
-        {manages ? <AssessmentCreateForm workspaceId={workspaceId} workspaceName={access.workspace.name} supportEmail={session.user.email ?? null} /> : <EmptyState text={T.create.noManager} />}
+        {manages ? <AssessmentCreateForm workspaceId={workspaceId} workspaceName={access.workspace.name} /> : <EmptyState text={T.create.noManager} />}
       </PageContainer>
     );
   }

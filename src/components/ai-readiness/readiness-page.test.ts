@@ -281,8 +281,15 @@ test("the old addresses keep working: ?new=1, ?deleted=1, an unknown tab, the ol
   assert.ok(visibleText(created).includes("Nuova rilevazione"));
   assert.equal(filledButtons(created).length, 1, "«Crea la rilevazione»");
   assert.ok(visibleText(created).includes("Crea la rilevazione"));
-  assert.doesNotMatch(visibleText(created), /Base giuridica|Titolare del trattamento/, "la privacy, già compilata, sta nella piega chiusa");
-  assert.match(created, /value="responsabile@cliente.test"/, "l'email per le domande è già quella di chi crea");
+  // (Revisione 7b) L'email per le domande è il contatto del cliente che chi risponde vede: non si compila da sé con quella
+  // di chi crea. Finché manca la piega è aperta, con l'email per prima.
+  assert.doesNotMatch(created, /responsabile@cliente\.test/, "mai l'email di chi crea");
+  const contact = /<input[^>]*id="supportEmail"[^>]*>/.exec(created)?.[0] ?? "";
+  assert.ok(contact && !/\svalue="[^"]+"/.test(contact), `campo vuoto: ${contact}`);
+  assert.match(created, /aria-expanded="true"[^>]*>Privacy e soglie/);
+  const text = visibleText(created);
+  assert.ok(text.includes("Email per le domande di chi risponde") && text.includes("scrivi il contatto dell'azienda"));
+  assert.ok(text.indexOf("Email per le domande di chi risponde") < text.indexOf("Titolare del trattamento"), "l'email per prima");
   assert.ok(visibleText(await render({}, { deleted: "1" })).includes("Rilevazione eliminata"));
   assert.match(await render({}, { scheda: "respondents" }), /data-readiness-tab="risultati"/);
   // `#respondents` e `#intelligence` le porta alla loro scheda `ReadinessAnchor` (provato in dashboard-view.test.ts).
