@@ -152,6 +152,8 @@ export interface CaseItemRow {
   freshness_days: number | null;
   source_refs: string[];
   sort_order: number;
+  /** (Schema di partenza «Dal caso d'uso») L'informazione di «Cosa serve» che la voce segue; assente per le voci di un template. */
+  shared_item_id?: string | null;
 }
 
 export interface CaseLinkRow {

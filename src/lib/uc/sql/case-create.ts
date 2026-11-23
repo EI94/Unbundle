@@ -144,17 +144,17 @@ FROM jsonb_to_recordset(${jsonb(build.blockers)}) AS r(id uuid, key text, label 
 }
 
 const ITEM_COLUMNS =
-  "id uuid, key text, template_item_key text, kind text, section text, parent_item_id uuid, title text, explanation text, why text, example text, help text, spec jsonb, priority text, serves_for jsonb, privacy_class text, availability jsonb, perimeter text, levers jsonb, response_type text, response_config jsonb, request_module_key text, in_gate_scope boolean, status text, owner_role_key text, requires_validity_period boolean, freshness_days integer, source_refs jsonb, sort_order integer";
+  "id uuid, key text, template_item_key text, kind text, section text, parent_item_id uuid, title text, explanation text, why text, example text, help text, spec jsonb, priority text, serves_for jsonb, privacy_class text, availability jsonb, perimeter text, levers jsonb, response_type text, response_config jsonb, request_module_key text, in_gate_scope boolean, status text, owner_role_key text, requires_validity_period boolean, freshness_days integer, source_refs jsonb, sort_order integer, shared_item_id uuid";
 
 function itemsInsert(caseId: string, actorUserId: string, rows: CaseBuild["items"]): UcStatement {
   return toStatement(ucSql`INSERT INTO uc_items (id, case_id, key, template_item_key, kind, section, parent_item_id, title, explanation, why,
   example, help, spec, priority, serves_for, privacy_class, availability, perimeter, levers, response_type, response_config,
   request_module_key, in_gate_scope, status, owner_role_key, requires_validity_period, freshness_days, source_refs, sort_order,
-  created_by_user_id)
+  shared_item_id, created_by_user_id)
 SELECT r.id, ${cast(caseId, "uuid")}, r.key, r.template_item_key, r.kind, r.section, r.parent_item_id, r.title, r.explanation, r.why,
   r.example, r.help, r.spec, r.priority, r.serves_for, r.privacy_class, r.availability, r.perimeter, r.levers, r.response_type,
   r.response_config, r.request_module_key, r.in_gate_scope, r.status, r.owner_role_key, r.requires_validity_period,
-  r.freshness_days, r.source_refs, r.sort_order, ${cast(actorUserId, "uuid")}
+  r.freshness_days, r.source_refs, r.sort_order, r.shared_item_id, ${cast(actorUserId, "uuid")}
 FROM jsonb_to_recordset(${jsonb(rows)}) AS r(${raw(ITEM_COLUMNS)})`);
 }
 
