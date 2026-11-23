@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { installAppModules } from "../../lib/ai/claude-test-kit.ts";
 import { enableTsxImports } from "../use-cases/detail/referent/tsx-test-loader.ts";
 import { filledButtons, folds, visibleText, wordCount } from "../../lib/learning/render-test-kit.ts";
+import { mountClient } from "../../lib/learning/client-render-test-kit.ts";
 import { findHubForbiddenIn } from "../../lib/use-cases/copy-guard.ts";
 import { AI_READINESS_SYSTEM_TEMPLATE } from "../../lib/ai-readiness/default-template.ts";
 
@@ -62,7 +63,10 @@ await installAppModules({
     .join("\n"),
 });
 await enableTsxImports();
-const routerStub = `data:text/javascript,${encodeURIComponent("export function useRouter() { return { push() {}, refresh() {}, replace() {}, back() {}, prefetch() {} }; } export function usePathname() { return '/'; }")}`;
+// Il router finto: `replace` e `push` li racconta a `fake.onNavigate`, per seguire le ancore di prima nel browser.
+const routerStub = `data:text/javascript,${encodeURIComponent(
+  "const go = (kind) => (href) => globalThis.__readinessFake.onNavigate?.(kind, href); const router = { push: go('push'), replace: go('replace'), refresh() {}, back() {}, prefetch() {} }; export function useRouter() { return router; } export function usePathname() { return '/'; }",
+)}`;
 registerHooks({
   resolve(specifier, context, nextResolve) {
     if (specifier === "next/navigation" && context.parentURL?.includes("/components/ai-readiness/")) return { url: routerStub, shortCircuit: true };
@@ -307,9 +311,49 @@ test("the old addresses keep working: ?new=1, ?deleted=1, an unknown tab, the ol
   assert.ok(!form.FOLDED_FIELDS.includes("supportEmail"));
   assert.ok(visibleText(await render({}, { deleted: "1" })).includes("Rilevazione eliminata"));
   assert.match(await render({}, { scheda: "respondents" }), /data-readiness-tab="risultati"/);
-  // `#respondents` e `#intelligence` le porta alla loro scheda `ReadinessAnchor` (provato in dashboard-view.test.ts).
+  // `#respondents` e `#intelligence` le porta alla loro scheda `ReadinessAnchor` (provato in dashboard-view.test.ts e, nel
+  // browser, nel test qui sotto).
   const source = readFileSync(new URL("src/app/(dashboard)/dashboard/[workspaceId]/ai-readiness/page.tsx", ROOT), "utf8");
   assert.match(source, /<ReadinessAnchor workspaceId=\{workspaceId\} assessmentId=\{assessment\.id\} current=\{tab\} visible=\{tabs\} \/>/);
+});
+
+// (Harness 7b) Da `#respondents` e `#intelligence` la testata compariva due volte: la pagina dava la stessa chiave alla
+// testata e alla scheda, e React, ridisegnando nel browser dopo `router.replace`, lasciava la testata vecchia accanto
+// alla nuova (e ne aggiungeva una a ogni aggiornamento). Qui la pagina si monta nel browser come la apre l'ancora, si
+// ridisegna all'indirizzo nuovo, poi si aggiorna come fa la raccolta aperta ogni 30 secondi.
+test("the old anchors in the browser: one header, one filled button, the right tab and section, also after a refresh", async () => {
+  const cases: Array<{ hash: string; scenario: Scenario; target: string; tab: string; section: string }> = [
+    { hash: "#respondents", scenario: { responses: 3, people: 6, proposals: 1 }, target: `?assessment=${AS}&scheda=raccolta#persone`, tab: "raccolta", section: "persone" },
+    { hash: "#intelligence", scenario: { responses: 46, people: 50, insights: [{ status: "draft" }] }, target: `?assessment=${AS}&scheda=insight#da-rivedere`, tab: "insight", section: "da-rivedere" },
+  ];
+  for (const c of cases) {
+    setUp(c.scenario);
+    const moves: string[] = [];
+    fake.onNavigate = (kind: string, href: string) => moves.push(`${kind} ${href}`);
+    const base = `/dashboard/${WS}/ai-readiness`;
+    const client = await mountClient(`https://app.test${base}${c.hash}`);
+    const at = async (search: Record<string, string>) => page.default({ params: Promise.resolve({ workspaceId: WS }), searchParams: Promise.resolve(search) });
+    try {
+      client.render(await at({}));
+      assert.deepEqual(moves, [`replace ${base}${c.target}`], `${c.hash}: l'ancora porta alla sua scheda, al posto dell'indirizzo`);
+      const target = new URL(moves[0].slice("replace ".length), "https://app.test");
+      client.navigate(target.href);
+      const search = Object.fromEntries(target.searchParams);
+      for (const moment of ["dopo l'ancora", "dopo l'aggiornamento"]) {
+        client.render(await at(search));
+        const html = client.html();
+        assert.equal(html.split('data-slot="readiness-header"').length - 1, 1, `${c.hash}, ${moment}: una sola testata`);
+        assert.equal(filledButtons(html).length, 1, `${c.hash}, ${moment}: un solo pulsante pieno (${filledButtons(html).join(" | ")})`);
+        assert.match(html, new RegExp(`data-readiness-tab="${c.tab}"`), `${c.hash}, ${moment}: la scheda`);
+        assert.match(html, new RegExp(`<section id="${c.section}"`), `${c.hash}, ${moment}: la sezione dell'ancora`);
+      }
+      assert.equal(moves.length, 1, `${c.hash}: all'indirizzo nuovo l'ancora non porta altrove`);
+      assert.deepEqual(client.errors, [], `${c.hash}: React non segnala niente (prima: «Encountered two children with the same key»)`);
+    } finally {
+      client.unmount();
+      delete fake.onNavigate;
+    }
+  }
 });
 
 test("«Domande»: closed rows, «Per tutti (N) | Referenti (N)», «Scarica»; only for whoever manages", async () => {

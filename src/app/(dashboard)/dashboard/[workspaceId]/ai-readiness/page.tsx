@@ -276,9 +276,12 @@ export default async function AiReadinessPage({
       <ReadinessAnchor workspaceId={workspaceId} assessmentId={assessment.id} current={tab} visible={tabs} />
       {deletedNotice}
       {/* (Revisione 7b) Una rilevazione, uno stato: cambiando rilevazione dal menu (stessa pagina, solo `?assessment=`)
-          la testata e la scheda ripartono da capo, senza portarsi dietro la finestra del link o le pieghe di prima. */}
+          la testata e la scheda ripartono da capo, senza portarsi dietro la finestra del link o le pieghe di prima.
+          Le due chiavi sono diverse: con la stessa chiave fra fratelli, a ogni aggiornamento nel browser (un'ancora di
+          prima, una scheda, l'aggiornamento ogni 30 secondi) React lasciava in pagina la testata vecchia accanto alla
+          nuova. */}
       <ReadinessHeader
-        key={assessment.id}
+        key={`testata-${assessment.id}`}
         workspaceId={workspaceId}
         assessmentId={assessment.id}
         title={assessment.name}
@@ -302,7 +305,7 @@ export default async function AiReadinessPage({
       {tabs.length > 1 ? (
         <SegmentedNav ariaLabel={T.tabs.label} active={tab} gridOnPhone items={tabs.map((key) => ({ key, label: T.tabs[key], href: href(key) }))} />
       ) : null}
-      <div key={assessment.id} data-readiness-tab={tab}>
+      <div key={`scheda-${assessment.id}`} data-readiness-tab={tab}>
         {body}
       </div>
     </PageContainer>

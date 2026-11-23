@@ -46,8 +46,10 @@ test("«Copia il link per tutti» asks the server every time; the dialog forgets
 
 test("one rilevazione, one state: the header and the tab body are keyed per rilevazione; a copy in use is kept alive", () => {
   const page = read("src/app/(dashboard)/dashboard/[workspaceId]/ai-readiness/page.tsx");
-  assert.match(page, /<ReadinessHeader\s+key=\{assessment\.id\}/);
-  assert.match(page, /<div key=\{assessment\.id\} data-readiness-tab=\{tab\}>/);
+  // (Harness 7b) Due chiavi diverse: con la stessa chiave fra fratelli la testata si raddoppiava a ogni aggiornamento
+  // nel browser (provato con React vero in readiness-page.test.ts).
+  assert.match(page, /<ReadinessHeader\s+key=\{`testata-\$\{assessment\.id\}`\}/);
+  assert.match(page, /<div key=\{`scheda-\$\{assessment\.id\}`\} data-readiness-tab=\{tab\}>/);
   // Chi comincia il questionario da una copia la tiene viva: l'ultimo uso si aggiorna dopo la risposta.
   const action = read("src/lib/actions/ai-readiness.ts");
   const start = action.slice(action.indexOf("export async function startOpenSurveyAction"), action.indexOf("export async function createAiReadinessRespondentInviteAction"));
