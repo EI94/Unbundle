@@ -110,7 +110,8 @@ test("the Costruzione page: no second H1, closed folds, one action, the client w
   for (const fold of ["T.choicesId", "T.decisionsId", "T.contextId", "T.agentId", "QUALITY_ANCHORS.details"]) assert.match(source, new RegExp(`<Fold id=\\{${fold.replace(".", "\\.")}\\}`), fold);
   // One action for the project, outlined when the header shows its own step here (the Persone/Domande pattern).
   assert.equal((source.match(/<ProjectPrimaryAction /g) ?? []).length, 1);
-  assert.match(source, /const headerStep = headerStepShownOn\(caseAccess, header, \{ caseBase: casePath\(workspaceId, caseId\), pagePath: base \}\);/);
+  // (8.0d) A «Solo questo use case» la testata non mostra passi: il pulsante pieno resta quello del progetto.
+  assert.match(source, /const headerStep = !caseOnly && headerStepShownOn\(caseAccess, header, \{ caseBase: casePath\(workspaceId, caseId\), pagePath: base \}\);/);
   assert.match(source, /const \{ action, reopenAside, filled \} = projectAction\(\{[\s\S]*?headerStep,\s*\}\);/);
   assert.match(source, /blocked=\{missing\.length > 0\} filled=\{filled\} \/>/);
   assert.match(source, /primary=\{action === "riapri" && filled\}/);

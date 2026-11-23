@@ -280,8 +280,9 @@ export default async function ConstructionPage({
   const needsBoard = pending !== null && pending.newTools.length > 0 && !pending.aiBoardOkAt;
   const changeRequest = open?.changeRequest ? { text: open.changeRequest, on: open.changeRequestedAt } : null;
   // (Rilascio 10, §3.5) La Costruzione è una scheda: il passo della testata resta (riconfermare il via, firmare,
-  // riprendere), e allora l'azione del progetto è bordata. Un solo pulsante pieno per schermata.
-  const headerStep = headerStepShownOn(caseAccess, header, { caseBase: casePath(workspaceId, caseId), pagePath: base });
+  // riprendere), e allora l'azione del progetto è bordata. Un solo pulsante pieno per schermata. (8.0d) A «Solo questo
+  // use case» la testata non mostra passi: il pulsante pieno è quello del progetto.
+  const headerStep = !caseOnly && headerStepShownOn(caseAccess, header, { caseBase: casePath(workspaceId, caseId), pagePath: base });
   const { action, reopenAside, filled } = projectAction({
     hasProject: project !== null,
     openStatus: open?.status === "in_corso" || open?.status === "da_approvare" ? open.status : null,

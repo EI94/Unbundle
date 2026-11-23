@@ -357,3 +357,46 @@ test("la CLI: ogni rotta chiede il caso con il predicato (`resolveCliCase`) in o
     for (const file of walk(join(root, dir))) assert.doesNotMatch(code(readFileSync(file, "utf8")), /allowCaseOnly|esterno_caso|isCaseOnly/, rel(file));
   }
 });
+
+/**
+ * (Rilascio 10) Le pagine del perimetro dopo le ondate 5a, 5b e 6b: che cosa «Solo questo use case» vede dentro le porte
+ * che lo dichiarano. Il guscio del dossier ha solo la testata; la Costruzione («Progetto dell'agente») il caso con il
+ * predicato e `CONTESTO.md` ridotto (D7); l'Agent Factory solo i suoi casi, senza i pannelli del manager.
+ */
+test("il perimetro dentro le porte: il guscio del dossier con la sola testata, la Costruzione, l'Agent Factory", () => {
+  const shell = code(read(`${WORKSPACE_PAGES}/casi-duso/[caseId]/layout.tsx`));
+  assert.match(shell, /const \{ session, access \} = await requireWorkspacePage\(workspaceId, \{ allowCaseOnly: true \}\);\s*const caseOnly = isCaseOnly\(access\.role\);/);
+  // Niente schede, «⋯», passo, conferme di transizione, avvisi, avanzamento, firme né esportazioni.
+  assert.match(shell, /const primary = !caseOnly && next && usable\(next\) \? next : null;/);
+  assert.match(shell, /const transitionStep = caseOnly \? undefined : /);
+  assert.match(shell, /const menu: CaseMenuEntry\[\] = caseOnly\s*\? \[\]/);
+  assert.match(shell, /const alert = caseOnly\s*\? null/);
+  assert.match(shell, /const tabs = caseOnly \? \[\] : caseTabsFor\(/);
+  assert.match(shell, /const progress = caseOnly \? null : header\.progress;/);
+  assert.match(shell, /\{caseOnly \? null : <CaseSignaturesPanel /);
+  assert.match(shell, /canExport && !caseOnly/);
+  // Il percorso torna all'Agent Factory, mai agli use case.
+  assert.match(shell, /const trail = caseOnly\s*\? \(\{ kind: "lista", back: \{ label: SHELL_TEXT\.nav\.factory, href: caseOnlyHomePath\(workspaceId\) \} \} as const\)/);
+  assert.doesNotMatch(shell, /header\.progress \?/, "l'avanzamento passa solo da `progress`");
+
+  const build = code(read(`${WORKSPACE_PAGES}/casi-duso/[caseId]/costruzione/page.tsx`));
+  assert.match(build, /const \{ session, access \} = await requireWorkspacePage\(workspaceId, \{ allowCaseOnly: true \}\);\s*const caseOnly = isCaseOnly\(access\.role\);\s*const \{ caseAccess, executor, header \} = await loadCaseHead\(/);
+  assert.match(build, /if \(!canOpenShellPage\("costruzione", roles\)\) notFound\(\);/);
+  assert.match(build, /const caseOnlyContext = caseOnly \|\| \(await hasCaseOnlyBuilder\(executor, target\)\);\s*const view = caseOnlyContext \? caseOnlyView\(read\.value\) : read\.value;/);
+  assert.match(build, /const headerStep = !caseOnly && headerStepShownOn\(/);
+  // Il contesto dell'azienda non si legge: la piega «Contesto» passa da `contextAbilities`, chiusa a chi non è collaboratore.
+  assert.match(build, /readContextSection\(contextActorFor\(session\.user, access, workspaceId\), useCase\.useCaseId\)/);
+  assert.match(code(read("src/lib/context/visibility.ts")), /if \(typeof role !== "string" \|\| !isCollaboratorRole\(role\)\) return NOTHING;/);
+  // Gli accessi di Claude (i token dei dossier) e i link fuori dal perimetro restano a chi li apre.
+  assert.match(build, /const claudeShown = ls && pastVia;/);
+  assert.match(build, /const catalogHref = pastVia && canOpenPage\("voci", roles\)/);
+  assert.match(build, /const backtestHref = details && canOpenPage\("modello_dati", roles\)/);
+
+  const factory = code(read(`${WORKSPACE_PAGES}/agent-factory/page.tsx`));
+  assert.match(factory, /const lsManager = !caseOnly && viewer\.isLateralSpace && canReviewWorkspacePortfolio\(access\.role\);/);
+  assert.match(factory, /if \(caseOnly\) await joinCaseOnlyDossiers\(/);
+  assert.match(factory, /seeAll: lsManager, canSeeNeeds: abilitiesForUseCase\(viewer\)\.canSeeNeeds, lsDomains, caseOnly \}\);/);
+  // «Chi costruisce» e «Repository da aggiornare» solo al manager: per «Solo questo use case» non si leggono nemmeno.
+  assert.match(factory, /lsManager \? listBuilders\(executor, workspaceId, lsDomains\) : Promise\.resolve\(null\)/);
+  assert.match(factory, /manager: lsManager,\s*caseOnly,/);
+});
