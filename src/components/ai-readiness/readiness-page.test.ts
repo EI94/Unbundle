@@ -7,6 +7,7 @@ import { installAppModules } from "../../lib/ai/claude-test-kit.ts";
 import { enableTsxImports } from "../use-cases/detail/referent/tsx-test-loader.ts";
 import { filledButtons, folds, visibleText, wordCount } from "../../lib/learning/render-test-kit.ts";
 import { mountClient } from "../../lib/learning/client-render-test-kit.ts";
+import { serverPayload, trackAppComponents, trackedServerComponents } from "../../lib/learning/server-payload-test-kit.ts";
 import { findHubForbiddenIn } from "../../lib/use-cases/copy-guard.ts";
 import { AI_READINESS_SYSTEM_TEMPLATE } from "../../lib/ai-readiness/default-template.ts";
 
@@ -74,6 +75,9 @@ registerHooks({
   },
 });
 
+// Prima di importare la pagina: i componenti server si riconoscono, per leggere il payload come lo scrive Next.
+trackAppComponents();
+
 const ROOT = new URL("../../../", import.meta.url);
 const app = (path: string) => pathToFileURL(new URL(path, ROOT).pathname).href;
 const page = (await import(app("src/app/(dashboard)/dashboard/[workspaceId]/ai-readiness/page.tsx"))) as { default: (props: unknown) => Promise<unknown> };
@@ -106,15 +110,20 @@ function setUp(s: Scenario = {}) {
     status: s.status ?? "open",
     aggregationThreshold: 5,
     anonymousMode: true,
-    privacyConfig: { controllerName: "Cliente Demo" },
-    scoringConfig: { ...(s.link === false ? {} : { openLinkTokenHash: "h".repeat(64) }), ...(s.expected === null ? {} : { expectedRespondents: s.expected ?? 120 }) },
+    privacyConfig: { controllerName: "Cliente Demo", supportEmail: "privacy@cliente.test" },
+    scoringConfig: {
+      ...(s.link === false ? {} : { openLinkTokenHash: "h".repeat(64), openLinkCopies: [{ h: "copia-hash-1", at: now.toISOString() }] }),
+      ...(s.expected === null ? {} : { expectedRespondents: s.expected ?? 120 }),
+    },
   };
   const people = Array.from({ length: s.people ?? 0 }, (_, i) => ({
     id: `p${i}`,
     name: i === 0 ? "Persona" : null,
     surname: i === 0 ? "Prova" : null,
     email: i === 1 ? "prova@cliente.test" : null,
+    role: i === 0 ? "Capoturno magazzino" : null,
     organizationUnit: i % 2 ? "Amministrazione" : "Vendite",
+    inviteTokenHash: `invito-hash-${i}`,
     surveyTrack: i === 0 ? "internal" : "everyone",
     inviteStatus: i < responses ? "completed" : "opened",
     completedAt: i < responses ? new Date(now.getTime() - 3_600_000) : null,
@@ -353,6 +362,37 @@ test("the old anchors in the browser: one header, one filled button, the right t
       client.unmount();
       delete fake.onNavigate;
     }
+  }
+});
+
+// (Revisione 7b, sicurezza) Next scrive nella pagina ogni prop di un componente client, anche quelle che il componente
+// non mostra: «Raccolta» si apre a chi non gestisce se ci sono use case proposti, e la lista delle persone partiva
+// comunque. Qui si legge il payload come lo scrive Next (i componenti server eseguiti, quelli client con tutte le loro
+// props), in ogni scheda, per chi non gestisce: niente nomi, email, ruoli, stati degli inviti; a nessuno i token, i loro
+// hash o l'email per le domande.
+test("the page payload: people, invites and the link only to whoever manages; tokens and contacts to nobody", async () => {
+  assert.ok(trackedServerComponents() > 5, "i componenti server sono riconosciuti");
+  const scenario: Scenario = { responses: 6, people: 6, proposals: 2, insights: [{ status: "draft" }], exports: 2 };
+  const payload = async (role: string, scheda: string) => {
+    setUp({ ...scenario, role });
+    return serverPayload(await page.default({ params: Promise.resolve({ workspaceId: WS }), searchParams: Promise.resolve({ assessment: AS, scheda }) }));
+  };
+  const toNobody = ["invito-hash-", "h".repeat(64), "copia-hash-", "privacy@cliente.test"];
+  const people = ["Persona Prova", "prova@cliente.test", "Capoturno magazzino", "pseudo-0-", '"Ha risposto"', '"Link aperto"', '"In corso"', '"Link creato"'];
+  for (const role of ["contributor", "analyst", "function_lead"]) {
+    for (const scheda of ["risultati", "raccolta", "insight", "impostazioni"]) {
+      const json = await payload(role, scheda);
+      for (const secret of [...people, ...toNobody]) assert.ok(!json.includes(secret), `${role}, ${scheda}: ${secret} nella pagina`);
+    }
+    // La scheda si apre davvero, con gli use case proposti, ma senza il link per tutti e senza gli inviti.
+    const collection = await payload(role, "raccolta");
+    assert.ok(collection.includes('"manager":null') && collection.includes("Idea di prova 1"), `${role}: solo gli use case proposti`);
+  }
+  // Il controllo legge davvero le props: a chi gestisce le persone arrivano, i token e l'email per le domande no.
+  for (const scheda of ["risultati", "raccolta", "insight", "impostazioni"]) {
+    const json = await payload("transformation_lead", scheda);
+    if (scheda === "raccolta") assert.ok(people.slice(0, 3).every((piece) => json.includes(piece)), "chi gestisce vede le persone");
+    for (const secret of toNobody) assert.ok(!json.includes(secret), `chi gestisce, ${scheda}: ${secret} nella pagina`);
   }
 });
 

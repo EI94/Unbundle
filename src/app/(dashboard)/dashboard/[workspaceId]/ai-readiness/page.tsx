@@ -191,32 +191,42 @@ export default async function AiReadinessPage({
         inviteHref={manages ? href("raccolta", INVITE_PANEL) : null}
         teams={(dashboard?.units ?? [])
           .filter((unit) => unit.respondentCount > 0)
+          // Sotto la soglia un team non ha punteggi: il calcolo non li fa, e la pagina non li passa comunque.
           .map((unit) => ({
             unit: unit.unit,
             responses: unit.respondentCount,
             thresholdMet: unit.aggregationThresholdMet,
-            score: unit.overallScore,
-            weakest: unit.bottleneckPillar ? readinessPillarText(unit.bottleneckPillar) : null,
+            score: unit.aggregationThresholdMet ? unit.overallScore : null,
+            weakest: unit.aggregationThresholdMet && unit.bottleneckPillar ? readinessPillarText(unit.bottleneckPillar) : null,
           }))}
       />
     );
   } else if (tab === "raccolta") {
+    // (Revisione 7b, sicurezza) «Raccolta» si apre anche a chi non gestisce, se ci sono use case proposti. Next scrive
+    // nella pagina ogni prop di un componente client, anche quelle che non mostra: le persone (nome o email, area,
+    // ruolo, stato dell'invito), il link e gli inviti partono solo per chi gestisce. Prima della 7b la lista si
+    // disegnava sul server, solo per chi gestisce.
     const scope = questionScopeFromUnknown(scoring.openLinkQuestionScope);
     const hub = isUseCaseHubWorkspace(workspaceId);
     body = (
       <CollectionTab
         workspaceId={workspaceId}
         assessmentId={assessment.id}
-        manages={manages}
-        status={assessment.status}
         initialPanel={search.apri ?? null}
-        link={{ active: hasOpenLink, scopeIds: scope?.sectionIds?.length ? scope.sectionIds : null }}
-        everyoneSections={sectionOptions.filter((s) => s.audience !== "internal").map(({ id, title, area }) => ({ id, title, area }))}
-        sections={sectionOptions.map(({ id, title, audience, area }) => ({ id, title, audience, area }))}
-        useCaseBlocks={USE_CASE_FORM_BLOCKS.map((block) => ({ id: block.id, title: block.title, subtitle: block.subtitle }))}
-        people={respondents.map((r) => ({ id: r.id, ...personRowView(r) }))}
         proposals={useCases.map((item) => ({ id: item.id, title: item.title, fact: proposalFact(item), linkedUseCaseId: item.linkedUseCaseId }))}
-        useCaseBase={hub ? `/dashboard/${workspaceId}/use-cases/` : `/dashboard/${workspaceId}/portfolio/review/`}
+        manager={
+          manages
+            ? {
+                status: assessment.status,
+                link: { active: hasOpenLink, scopeIds: scope?.sectionIds?.length ? scope.sectionIds : null },
+                everyoneSections: sectionOptions.filter((s) => s.audience !== "internal").map(({ id, title, area }) => ({ id, title, area })),
+                sections: sectionOptions.map(({ id, title, audience, area }) => ({ id, title, audience, area })),
+                useCaseBlocks: USE_CASE_FORM_BLOCKS.map((block) => ({ id: block.id, title: block.title, subtitle: block.subtitle })),
+                people: respondents.map((r) => ({ id: r.id, ...personRowView(r) })),
+                useCaseBase: hub ? `/dashboard/${workspaceId}/use-cases/` : `/dashboard/${workspaceId}/portfolio/review/`,
+              }
+            : null
+        }
       />
     );
   } else if (tab === "insight") {
@@ -295,8 +305,9 @@ export default async function AiReadinessPage({
         reportHref={exportHref(assessment.id, "pdf")}
         menu={{
           status: assessment.status,
-          respondentCount: respondents.length,
-          completedCount: dashboard?.completedCount ?? 0,
+          // Le cifre della conferma «Elimina», che vede solo chi gestisce.
+          respondentCount: manages ? respondents.length : 0,
+          completedCount: manages ? (dashboard?.completedCount ?? 0) : 0,
           manages,
           reviews,
           questionsHref: questionsHref(workspaceId, assessment.id),
