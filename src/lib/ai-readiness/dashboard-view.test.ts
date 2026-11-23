@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   READINESS_ANCHOR_TAB,
   READINESS_TABS,
+  SYNTHESIS_STEP,
   expectedRespondentsOf,
   insightStatusView,
   insightTypeLabel,
@@ -21,6 +22,7 @@ import {
   readinessSummary,
   readinessTabOf,
   strengthsAndAttention,
+  synthesisOf,
   trackLabel,
   visibleReadinessTabs,
   type ReadinessStageInput,
@@ -37,7 +39,7 @@ const AS = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
 const T0 = new Date("2026-11-20T10:00:00Z");
 const T1 = new Date("2026-11-21T10:00:00Z");
 
-const base: ReadinessStageInput = { status: "open", hasOpenLink: true, completed: 0, threshold: 5, draftInsights: 0, lastSynthesisAt: null, lastAnswerAt: null };
+const base: ReadinessStageInput = { status: "open", hasOpenLink: true, completed: 0, threshold: 5, draftInsights: 0, synthesis: null };
 const manager = { manages: true, reviews: true, draftInsights: 0 };
 
 test("the state → filled button table of §3.9, for whoever manages the assessment", () => {
@@ -45,10 +47,10 @@ test("the state → filled button table of §3.9, for whoever manages the assess
     [{ status: "draft", hasOpenLink: false }, "bozza", "Apri la raccolta"],
     [{ hasOpenLink: false }, "senza_link", "Crea il link per tutti"],
     [{}, "aperta", "Copia il link per tutti"],
-    [{ completed: 4, lastAnswerAt: T0 }, "aperta", "Copia il link per tutti"],
-    [{ completed: 5, lastAnswerAt: T0 }, "sopra_soglia", "Genera la sintesi"],
-    [{ completed: 5, lastAnswerAt: T0, hasOpenLink: false }, "sopra_soglia", "Genera la sintesi"],
-    [{ completed: 6, draftInsights: 6, lastSynthesisAt: T1, lastAnswerAt: T0 }, "da_rivedere", "Rivedi 6 insight"],
+    [{ completed: 4 }, "aperta", "Copia il link per tutti"],
+    [{ completed: 5 }, "sopra_soglia", "Genera la sintesi"],
+    [{ completed: 5, hasOpenLink: false }, "sopra_soglia", "Genera la sintesi"],
+    [{ completed: 6, draftInsights: 6, synthesis: { responses: 6 } }, "da_rivedere", "Rivedi 6 insight"],
     [{ status: "closed" }, "chiusa", "Scarica il report"],
     [{ status: "archived" }, "chiusa", "Scarica il report"],
   ];
@@ -64,15 +66,43 @@ test("the state → filled button table of §3.9, for whoever manages the assess
   }
 });
 
-test("a synthesis older than the last answer is generated again; an up-to-date one is reviewed", () => {
-  assert.equal(readinessStage({ ...base, completed: 8, draftInsights: 3, lastSynthesisAt: T0, lastAnswerAt: T1 }), "sopra_soglia");
-  assert.equal(readinessStage({ ...base, completed: 8, draftInsights: 3, lastSynthesisAt: T1, lastAnswerAt: T0 }), "da_rivedere");
-  // Tutto rivisto e nessuna risposta dopo la sintesi: si torna a raccogliere.
-  assert.equal(readinessStage({ ...base, completed: 8, draftInsights: 0, lastSynthesisAt: T1, lastAnswerAt: T0 }), "aperta");
+test(`(revisione 7b) the synthesis is due when there is none, when it was made below the threshold, or after ${SYNTHESIS_STEP} new answers`, () => {
+  assert.equal(SYNTHESIS_STEP, 20);
+  // Una sintesi a 46 risposte: fino a 65 il passo resta copiare il link (o rivedere gli insight), da 66 si rigenera.
+  for (const [completed, stage] of [
+    [47, "aperta"],
+    [65, "aperta"],
+    [66, "sopra_soglia"],
+    [120, "sopra_soglia"],
+  ] as const) {
+    assert.equal(readinessStage({ ...base, completed, synthesis: { responses: 46 } }), stage, String(completed));
+  }
+  // Ogni risposta nuova non rimette in testa «Genera la sintesi»: con bozze aperte si rivedono, poi si torna al link.
+  assert.equal(readinessStage({ ...base, completed: 50, draftInsights: 3, synthesis: { responses: 46 } }), "da_rivedere");
+  assert.equal(readinessStage({ ...base, completed: 50, synthesis: { responses: 46 }, hasOpenLink: false }), "senza_link");
+  // Con 20 risposte nuove si rigenera anche con le bozze di prima (la sintesi nuova le sostituisce).
+  assert.equal(readinessStage({ ...base, completed: 66, draftInsights: 3, synthesis: { responses: 46 } }), "sopra_soglia");
+  // Una sintesi nata sotto la soglia (il punto «servono più risposte») torna dovuta appena le risposte bastano.
+  assert.equal(readinessStage({ ...base, completed: 5, synthesis: { responses: 2 } }), "sopra_soglia");
+  // Una sintesi di cui non si sa il numero non torna dovuta da sola.
+  assert.equal(readinessStage({ ...base, completed: 90, synthesis: { responses: null } }), "aperta");
   // Chiusa con insight in bozza: prima la revisione, poi il report.
   assert.equal(readinessStage({ ...base, status: "closed", draftInsights: 2 }), "da_rivedere");
   // Una soglia a 0 vale 1: senza risposte niente sintesi.
   assert.equal(readinessStage({ ...base, threshold: 0 }), "aperta");
+});
+
+test("the last synthesis is the latest generated insight, with the answers it was made from", () => {
+  assert.equal(synthesisOf([]), null);
+  assert.deepEqual(
+    synthesisOf([
+      { generatedAt: T0, inputScope: { responseCount: 12 } },
+      { generatedAt: T1, inputScope: { responseCount: 30 } },
+    ]),
+    { responses: 30 },
+  );
+  assert.deepEqual(synthesisOf([{ generatedAt: T1, inputScope: null }]), { responses: null });
+  assert.deepEqual(synthesisOf([{ generatedAt: T1, inputScope: { responseCount: "30" } }]), { responses: null });
 });
 
 test("whoever cannot take the step sees the state, never a filled button; «Tocca a …» only when the step is someone's", () => {
@@ -223,3 +253,4 @@ test("every text of the dashboard speaks the dashboard's words: no «caso d'uso�
   const english = /\b(?:survey|assessment|respondent|intelligence|readiness index|roadmap|waves?|bottleneck|pillar|score|guardrails?|draft|open|closed|portfolio|export audit|heatmap)\b/i;
   assert.deepEqual(texts.filter((t) => english.test(t.replace(/AI Readiness/g, ""))), []);
 });
+

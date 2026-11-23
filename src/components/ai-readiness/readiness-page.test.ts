@@ -86,6 +86,8 @@ interface Scenario {
   expected?: number | null;
   link?: boolean;
   insights?: Array<{ status: string; type?: string; at?: Date }>;
+  /** Le risposte contate all'ultima sintesi (`inputScope.responseCount`); di base, quelle di adesso. */
+  synthesisAt?: number;
   people?: number;
   proposals?: number;
   exports?: number;
@@ -147,6 +149,7 @@ function setUp(s: Scenario = {}) {
         body: "Una frase di prova della sintesi.",
         validationStatus: insight.status,
         generatedAt: insight.at ?? now,
+        inputScope: { responseCount: s.synthesisAt ?? responses },
         evidence: insight.type === "roadmap" ? { waves: [{ id: "w1", horizon: "0-90 giorni", title: "Prima tappa", focus: "Mettere ordine." }] } : {},
       })),
     listResponsesByAssessment: async () => Array.from({ length: responses }, () => ({ status: "submitted" })),
@@ -176,6 +179,10 @@ test("the filled button follows the state (§3.9): one per screen, and it is the
     [{}, "Copia il link per tutti"],
     [{ responses: 46, people: 50 }, "Genera la sintesi"],
     [{ responses: 46, people: 50, insights: [{ status: "draft" }, { status: "draft" }, { status: "approved" }] }, "Rivedi 2 insight"],
+    // (Revisione 7b) Dopo la sintesi, ogni risposta nuova non la rimette in testa: si torna a copiare il link…
+    [{ responses: 46, people: 50, insights: [{ status: "approved" }], synthesisAt: 30 }, "Copia il link per tutti"],
+    // …fino a 20 risposte in più.
+    [{ responses: 50, people: 50, insights: [{ status: "approved" }], synthesisAt: 30 }, "Genera la sintesi"],
     [{ status: "closed", responses: 46, people: 50 }, "Scarica il report"],
   ];
   for (const [scenario, label] of cases) {

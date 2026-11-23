@@ -23,7 +23,6 @@ import {
   exportHref,
   insightStatusView,
   insightTypeLabel,
-  latestOf,
   personRowView,
   proposalFact,
   questionsHref,
@@ -35,6 +34,7 @@ import {
   readinessSummary,
   readinessTabOf,
   strengthsAndAttention,
+  synthesisOf,
   visibleReadinessTabs,
 } from "@/lib/ai-readiness/dashboard-view";
 import { openLinkVersionOf } from "@/lib/ai-readiness/open-link-version";
@@ -144,8 +144,7 @@ export default async function AiReadinessPage({
     completed: responses,
     threshold: assessment.aggregationThreshold,
     draftInsights,
-    lastSynthesisAt: latestOf(insights.map((insight) => insight.generatedAt)),
-    lastAnswerAt: latestOf(respondents.filter((r) => r.inviteStatus === "completed" && r.surveyTrack !== "use_case_expert").map((r) => r.completedAt)),
+    synthesis: synthesisOf(insights),
   });
   const step = readinessNextStep(stage, { manages, reviews, draftInsights });
 

@@ -8,7 +8,7 @@
  * | Bozza | «Apri la raccolta» | chi gestisce la rilevazione |
  * | Aperta, senza link | «Crea il link per tutti» | chi gestisce la rilevazione |
  * | Aperta | «Copia il link per tutti» | chi gestisce la rilevazione |
- * | Sopra la soglia, sintesi da fare o vecchia | «Genera la sintesi» | chi valuta gli use case |
+ * | Sopra la soglia, senza sintesi o con 20 risposte in più | «Genera la sintesi» | chi valuta gli use case |
  * | Insight da rivedere | «Rivedi N insight» | chi gestisce la rilevazione |
  * | Chiusa | «Scarica il report» | chi valuta gli use case |
  *
@@ -162,6 +162,30 @@ export function expectedRespondentsOf(scoringConfig: unknown): number | null {
 
 export type ReadinessStage = "bozza" | "senza_link" | "aperta" | "sopra_soglia" | "da_rivedere" | "chiusa";
 
+/**
+ * (Revisione 7b) Dopo una sintesi, quante risposte nuove la rendono di nuovo il prossimo passo: venti. Con meno, mentre
+ * la raccolta va avanti, il passo resta copiare il link (o rivedere gli insight): rigenerare a ogni risposta aggiungeva
+ * bozze uguali e toglieva di vista il link. Si può sempre rigenerare prima dalla scheda Insight.
+ */
+export const SYNTHESIS_STEP = 20;
+
+/** L'ultima sintesi: le risposte che c'erano quando è nata (`inputScope.responseCount`), null se non si sa. */
+export interface SynthesisFacts {
+  responses: number | null;
+}
+
+/** L'ultima sintesi tra gli insight (quello generato per ultimo), o null senza insight. */
+export function synthesisOf(insights: ReadonlyArray<{ generatedAt: Date; inputScope?: unknown }>): SynthesisFacts | null {
+  let latest: { generatedAt: Date; inputScope?: unknown } | null = null;
+  for (const insight of insights) {
+    if (insight.generatedAt instanceof Date && !Number.isNaN(insight.generatedAt.getTime()) && (latest === null || insight.generatedAt.getTime() > latest.generatedAt.getTime())) latest = insight;
+  }
+  if (!latest) return null;
+  const scope = latest.inputScope && typeof latest.inputScope === "object" ? (latest.inputScope as Record<string, unknown>) : {};
+  const responses = scope.responseCount;
+  return { responses: typeof responses === "number" && Number.isInteger(responses) && responses >= 0 ? responses : null };
+}
+
 export interface ReadinessStageInput {
   status: string;
   hasOpenLink: boolean;
@@ -171,23 +195,24 @@ export interface ReadinessStageInput {
   threshold: number;
   /** Gli insight ancora in bozza. */
   draftInsights: number;
-  /** La sintesi più recente (il `generatedAt` più recente degli insight), o null. */
-  lastSynthesisAt: Date | null;
-  /** L'ultima risposta (il `completedAt` più recente), o null. */
-  lastAnswerAt: Date | null;
+  /** L'ultima sintesi (`synthesisOf`), o null se non c'è. */
+  synthesis: SynthesisFacts | null;
 }
 
 /**
- * Lo stato che decide il passo. Con la raccolta aperta: la sintesi, quando le risposte bastano e la sintesi non c'è o
- * è più vecchia dell'ultima risposta (rigenerarla sostituisce le bozze); poi gli insight da rivedere; poi il link per
- * tutti, da creare o da copiare. Chiusa o archiviata: gli insight da rivedere, poi il report.
+ * Lo stato che decide il passo. Con la raccolta aperta: la sintesi, quando le risposte bastano e la sintesi non c'è,
+ * è nata sotto la soglia o ha alle spalle `SYNTHESIS_STEP` risposte nuove (una sintesi di cui non si sa il numero non
+ * torna dovuta); poi gli insight da rivedere; poi il link per tutti, da creare o da copiare. Chiusa o archiviata: gli
+ * insight da rivedere, poi il report.
  */
 export function readinessStage(i: ReadinessStageInput): ReadinessStage {
   if (i.status === "draft") return "bozza";
   if (i.status !== "open") return i.draftInsights > 0 ? "da_rivedere" : "chiusa";
-  const enough = i.completed > 0 && i.completed >= Math.max(1, i.threshold);
-  const stale = i.lastSynthesisAt === null || (i.lastAnswerAt !== null && i.lastAnswerAt.getTime() > i.lastSynthesisAt.getTime());
-  if (enough && stale) return "sopra_soglia";
+  const threshold = Math.max(1, i.threshold);
+  const enough = i.completed > 0 && i.completed >= threshold;
+  const last = i.synthesis;
+  const due = last === null || (last.responses !== null && (last.responses < threshold || i.completed - last.responses >= SYNTHESIS_STEP));
+  if (enough && due) return "sopra_soglia";
   if (i.draftInsights > 0) return "da_rivedere";
   return i.hasOpenLink ? "aperta" : "senza_link";
 }
@@ -338,13 +363,4 @@ export function strengthsAndAttention<S extends { title: string; score: number }
     .reverse()
     .slice(0, 2);
   return { strengths, attention };
-}
-
-/** Il momento più recente di una lista di date (o null). */
-export function latestOf(values: ReadonlyArray<Date | null | undefined>): Date | null {
-  let latest: Date | null = null;
-  for (const value of values) {
-    if (value instanceof Date && !Number.isNaN(value.getTime()) && (latest === null || value.getTime() > latest.getTime())) latest = value;
-  }
-  return latest;
 }
