@@ -336,7 +336,7 @@ const EXTERNAL_REFUSAL_MESSAGE: Readonly<Record<ExternalRefusal, string>> = {
   email_non_verificata: "Prima deve confermare la sua e-mail in Unbundle.",
   di_lateral_space: "È una persona di Lateral Space: scegli Sviluppatore, Analista o Responsabile.",
   ruolo_workspace: "Per costruire serve almeno il ruolo di Analista nel workspace: cambialo da Impostazioni › Team.",
-  solo_questo_use_case: "Lavora solo al use case del suo invito: per ora non si aggiunge ad altri casi da qui.",
+  solo_questo_use_case: "Lavora solo allo use case del suo invito: per ora non si aggiunge ad altri casi da qui.",
 };
 
 /** Il «Dove» da un modulo: `"tutti"`, oppure gli use case scelti. */

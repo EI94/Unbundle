@@ -96,7 +96,7 @@ export const FACTORY_TEXT = Object.freeze({
     text: "Nessun caso ancora: entra con «Avvia la realizzazione» dalla scheda.",
     action: "Vai agli use case",
     /** (8.0d) «Solo questo use case», quando il suo caso non è (più) da costruire: niente link fuori dal suo perimetro. */
-    caseOnly: "Nessun use case da costruire, per ora.",
+    caseOnly: "Nessuno use case da costruire, per ora.",
   }),
 
   /** Il pannello di un caso (`?apri=<codice>`). */
