@@ -47,6 +47,12 @@ export const READINESS_BELL_TEXT = Object.freeze({
   threshold: (name: string, n: number) => `${named(name)}: ${answers(n)}, abbastanza per i risultati per area e per la sintesi.`,
 });
 
+/** Il nome di ogni riga nell'etichetta di Intelligence (`signals-feed.tsx`), al posto della chiave. */
+export const READINESS_SIGNAL_LABEL: Readonly<Record<ReadinessSignalType, string>> = Object.freeze({
+  ai_readiness_risposte: "AI Readiness · risposte",
+  ai_readiness_soglia: "AI Readiness · risultati",
+});
+
 export interface ReadinessBellRow {
   id: string;
   type: ReadinessSignalType;

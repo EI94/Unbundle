@@ -5,6 +5,7 @@ import {
   READINESS_ANSWERS_SIGNAL,
   READINESS_BELL_TEXT,
   READINESS_SIGNAL_ENTITY,
+  READINESS_SIGNAL_LABEL,
   READINESS_SIGNAL_TYPES,
   READINESS_THRESHOLD_SIGNAL,
   isReadinessSignalType,
@@ -110,3 +111,13 @@ test("the hook: after a submitted questionnaire, after the answer (`after`), nev
   assert.match(actions, /await deleteReadinessBell\(\{ workspaceId, assessmentId \}\);/);
 });
 
+test("(revisione 7b) Intelligence names and links the AI Readiness rows instead of showing their key", () => {
+  assert.deepEqual(READINESS_SIGNAL_LABEL, { ai_readiness_risposte: "AI Readiness · risposte", ai_readiness_soglia: "AI Readiness · risultati" });
+  assert.deepEqual(findHubForbiddenIn(Object.values(READINESS_SIGNAL_LABEL), "area"), []);
+  const feed = readFileSync(new URL("../../components/dashboard/signals-feed.tsx", import.meta.url), "utf8");
+  for (const type of READINESS_SIGNAL_TYPES) {
+    assert.match(feed, new RegExp(`${type}: \\{\\s*icon: ClipboardList,\\s*color: "text-muted-foreground",\\s*label: READINESS_SIGNAL_LABEL\\.${type},`), type);
+  }
+  assert.match(feed, /return readinessSignalHref\(workspaceId, signal\) \?\? hubSignalHref\(workspaceId, signal\.signalType\);/);
+  assert.match(feed, /const href = feedHref\(workspaceId, signal\);/);
+});
