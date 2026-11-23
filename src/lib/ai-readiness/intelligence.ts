@@ -1,3 +1,4 @@
+import { readinessPillarText } from "../programma/text.ts";
 import type {
   AiReadinessBenchmarkComparison,
   AiReadinessDashboard,
@@ -72,18 +73,20 @@ function round(value: number | null | undefined) {
   return Math.round(value * 100) / 100;
 }
 
+/** (Rilascio 10, ondata 7b) Un punteggio come lo scrive la dashboard: una cifra decimale, con la virgola. */
 function scoreText(value: number | null | undefined) {
   const score = round(value);
-  return score == null ? "N/D" : score.toFixed(2);
+  return score == null ? "non ancora calcolato" : score.toFixed(1).replace(".", ",");
 }
 
 function safeLower(...values: Array<string | null | undefined>) {
   return values.filter(Boolean).join(" ").toLowerCase();
 }
 
+/** (Ondata 7b) Il nome dell'area in italiano («Contesto»), mai il titolo inglese salvato nel modello. */
 function getPillarTitle(template: AiReadinessTemplateDefinition, id: string | null) {
-  if (!id) return "N/D";
-  return template.pillars.find((pillar) => pillar.id === id)?.title ?? id;
+  void template;
+  return id ? readinessPillarText(id) : "da capire";
 }
 
 function getWeakestPillars(
@@ -114,31 +117,31 @@ function clusterForUseCase(item: AiReadinessIntelligenceUseCase) {
     {
       id: "commercial",
       label: "Commerciale e clienti",
-      description: "Proposte, vendite, customer operations e personalizzazione cliente.",
+      description: "Proposte, vendite, assistenza e servizi su misura per i clienti.",
       keywords: ["cliente", "clienti", "sales", "vend", "proposal", "proposta", "offerta", "marketing", "crm"],
     },
     {
       id: "operations",
-      label: "Operations e delivery",
-      description: "Processi operativi, handoff, pianificazione, delivery e project tracking.",
+      label: "Attività operative e consegne",
+      description: "Processi operativi, passaggi di mano, pianificazione, consegne e avanzamento dei progetti.",
       keywords: ["process", "tracking", "project", "delivery", "operat", "flusso", "pianific", "task", "ticket"],
     },
     {
       id: "reporting",
-      label: "Reporting e knowledge work",
+      label: "Report e documenti",
       description: "Report, sintesi, documenti, analisi e contenuti ricorrenti.",
       keywords: ["report", "document", "word", "slide", "present", "analisi", "knowledge", "contenut", "ricerca"],
     },
     {
       id: "risk_compliance",
-      label: "Risk, compliance e controllo",
-      description: "Controlli, policy, privacy, sicurezza, qualità e compliance.",
+      label: "Rischi, conformità e controlli",
+      description: "Controlli, regole, privacy, sicurezza, qualità e conformità.",
       keywords: ["risk", "compliance", "privacy", "sicurezza", "controll", "qualita", "policy", "legal"],
     },
     {
       id: "people",
-      label: "People e adoption",
-      description: "HR, formazione, onboarding, change management e collaborazione.",
+      label: "Persone e adozione",
+      description: "Personale, formazione, inserimento dei nuovi, cambiamento e collaborazione.",
       keywords: ["hr", "people", "formazione", "training", "onboarding", "adoption", "collabor", "dipendent"],
     },
   ];
@@ -146,7 +149,7 @@ function clusterForUseCase(item: AiReadinessIntelligenceUseCase) {
     rules.find((rule) => rule.keywords.some((keyword) => text.includes(keyword))) ??
     {
       id: "productivity",
-      label: "Produttivita generale",
+      label: "Produttività generale",
       description: "Automazioni trasversali e miglioramento del lavoro quotidiano.",
       keywords: [],
     }
@@ -224,17 +227,17 @@ export function buildUseCaseClusters(
 function bottleneckAction(pillarId: string | null) {
   const actions: Record<string, string> = {
     technology:
-      "Rendere esplicito il target stack AI: dati accessibili, security review e ambiente sicuro per sperimentare.",
+      "Dire quali strumenti AI si usano e dove: dati raggiungibili, controlli di sicurezza, un ambiente sicuro per provare.",
     context:
-      "Creare una libreria di contesto riusabile: processi, policy, knowledge base e ownership dei dati critici.",
+      "Mettere in un posto solo il contesto che serve: processi, regole, documenti e chi è responsabile dei dati importanti.",
     workflow:
-      "Ridisegnare 2-3 workflow pilota con handoff, controllo umano e criteri di accettazione misurabili.",
+      "Ridisegnare due o tre processi pilota, con i passaggi, il controllo umano e criteri chiari per dire che funzionano.",
     adoption:
-      "Avviare enablement guidato per champion di funzione, con rituali settimanali e raccolta delle frizioni.",
+      "Accompagnare un referente per funzione, con un appuntamento fisso ogni settimana e la raccolta di ciò che frena.",
     use_cases:
-      "Normalizzare intake, scoring e review del portfolio use case per evitare iniziative isolate.",
+      "Raccogliere, valutare e decidere gli use case in un modo solo, per non avere iniziative isolate.",
   };
-  return actions[pillarId ?? ""] ?? "Completare il campione dati e definire il primo backlog operativo.";
+  return actions[pillarId ?? ""] ?? "Raccogliere più risposte e scegliere le prime cose da fare.";
 }
 
 export function buildAiReadinessRoadmap(params: {
@@ -249,47 +252,47 @@ export function buildAiReadinessRoadmap(params: {
   return [
     {
       id: "wave-1-foundation",
-      title: "Wave 1 - Stabilizzare la readiness",
-      horizon: "0-90 giorni",
-      focus: `Sbloccare il pillar più debole: ${bottleneckTitle}.`,
+      title: "Prima tappa: le basi",
+      horizon: "Primi 90 giorni",
+      focus: `Rafforzare l'area più debole: ${bottleneckTitle}.`,
       actions: [
         bottleneckAction(params.dashboard.bottleneckPillar),
-        "Definire owner, guardrail privacy e criteri minimi per approvare sperimentazioni AI.",
-        "Ricalcolare la dashboard ogni 2 settimane fino a superare la soglia dati.",
+        "Indicare chi decide, le regole sulla privacy e i criteri minimi per approvare una prova con l'AI.",
+        "Ricalcolare i risultati ogni due settimane, finché le risposte non bastano.",
       ],
-      successMetric: "Readiness index +0.3 e soglia aggregazione rispettata.",
+      successMetric: "Indice di prontezza più alto di 0,3 e risposte sopra la soglia.",
       linkedClusterIds: [],
     },
     {
       id: "wave-2-quick-wins",
-      title: "Wave 2 - Quick win misurabili",
-      horizon: "3-6 mesi",
+      title: "Seconda tappa: i primi risultati",
+      horizon: "Da 3 a 6 mesi",
       focus:
         quickClusters.length > 0
-          ? `Portare in produzione ${quickClusters.slice(0, 2).map((cluster) => cluster.label).join(" e ")}.`
-          : "Selezionare 2 use case ad alta fattibilità dal portfolio.",
+          ? `Mettere in uso ${quickClusters.slice(0, 2).map((cluster) => cluster.label.toLowerCase()).join(" e ")}.`
+          : "Scegliere due use case facili da realizzare.",
       actions: [
-        "Trasformare i migliori use case in backlog con owner, effort, rischi e metriche di outcome.",
-        "Connettere i use case selezionati al Portfolio Unbundle per review e wave planning.",
-        "Misurare adoption reale: utenti attivi, tempo risparmiato dichiarato, qualità output e incidenti.",
+        "Per i migliori use case: chi li segue, quanto lavoro chiedono, i rischi e come si misura il risultato.",
+        "Portare gli use case scelti in Unbundle, per valutarli e pianificarli.",
+        "Misurare l'uso vero: persone attive, tempo risparmiato, qualità del risultato e problemi.",
       ],
-      successMetric: "2 use case validati, almeno 1 live pilot e metriche di impatto tracciate.",
+      successMetric: "Due use case approvati, almeno uno in prova e il risultato misurato.",
       linkedClusterIds: quickClusters.slice(0, 3).map((cluster) => cluster.id),
     },
     {
       id: "wave-3-scale",
-      title: "Wave 3 - Scalare capability",
-      horizon: "6-12 mesi",
+      title: "Terza tappa: estendere",
+      horizon: "Da 6 a 12 mesi",
       focus:
         strategicClusters.length > 0
-          ? `Scalare capability su ${strategicClusters.slice(0, 2).map((cluster) => cluster.label).join(" e ")}.`
-          : "Trasformare i pattern validati in capability riusabili.",
+          ? `Estendere a ${strategicClusters.slice(0, 2).map((cluster) => cluster.label.toLowerCase()).join(" e ")}.`
+          : "Rendere riutilizzabile quello che ha funzionato.",
       actions: [
-        "Creare playbook replicabili: prompt, policy, dati, ruoli, controlli e change plan.",
-        "Collegare Discovery, Mapping e Portfolio per dare priorità ai flussi con maggiore leva strategica.",
-        "Portare gli insight approvati nel piano di AI Transformation e nel report executive.",
+        "Scrivere guide ripetibili: istruzioni, regole, dati, ruoli, controlli e piano del cambiamento.",
+        "Usare il contesto, i processi e gli use case per scegliere i flussi che contano di più.",
+        "Portare gli insight approvati nel programma e nel report per la direzione.",
       ],
-      successMetric: "Roadmap approvata dal team, portfolio prioritizzato e governance operativa ricorrente.",
+      successMetric: "Tappe approvate, use case in ordine di priorità e revisioni a cadenza fissa.",
       linkedClusterIds: strategicClusters.slice(0, 3).map((cluster) => cluster.id),
     },
   ];
@@ -304,7 +307,7 @@ export function buildBenchmarkComparison(params: {
   if (params.privacyConfig?.allowBenchmarking !== true) {
     return {
       enabled: false,
-      reason: "Benchmark disabilitato nella configurazione privacy dell'assessment.",
+      reason: "Il confronto è spento nelle impostazioni della rilevazione.",
       referenceName: REFERENCE_BENCHMARK.name,
       overallDelta: null,
       pillarDeltas: {},
@@ -313,7 +316,7 @@ export function buildBenchmarkComparison(params: {
   if (!params.dashboard.aggregationThresholdMet) {
     return {
       enabled: false,
-      reason: "Servono più risposte aggregate prima di mostrare un benchmark.",
+      reason: "Servono più risposte prima del confronto.",
       referenceName: REFERENCE_BENCHMARK.name,
       overallDelta: null,
       pillarDeltas: {},
@@ -322,7 +325,7 @@ export function buildBenchmarkComparison(params: {
   if (params.benchmarkConsentCount < params.aggregationThreshold) {
     return {
       enabled: false,
-      reason: "Consenso benchmark insufficiente rispetto alla soglia configurata.",
+      reason: "Troppo poche persone hanno dato il consenso al confronto.",
       referenceName: REFERENCE_BENCHMARK.name,
       overallDelta: null,
       pillarDeltas: {},
@@ -389,7 +392,7 @@ export function generateAiReadinessIntelligence(
       ...evidence,
       generatedAt,
       privacyGuardrail:
-        "No individual respondent answer, email, name, or pseudonymous identifier is included.",
+        "Nessuna risposta di una persona, nessuna email, nessun nome e nessun identificativo pseudonimo.",
     },
     aiGenerated: true,
     humanValidated: false,
@@ -403,8 +406,8 @@ export function generateAiReadinessIntelligence(
     return [
       insightBase(
         "risk",
-        "Servono più risposte prima degli insight completi",
-        `Il campione attuale è ${input.dashboard.responseCount}/${input.aggregationThreshold}. Unbundle mantiene visibili solo segnali aggregati affidabili: invita altri respondent prima di usare benchmark, heatmap o diagnosi per area.`,
+        "Servono più risposte per la sintesi",
+        `Le risposte sono ${input.dashboard.responseCount} su ${input.aggregationThreshold} necessarie. Si leggono solo dati insieme e affidabili: servono altre risposte prima del confronto, dei team e dei risultati per area.`,
         {
           status: "needs_data",
           responseCount: input.dashboard.responseCount,
@@ -417,8 +420,8 @@ export function generateAiReadinessIntelligence(
   return [
     insightBase(
       "executive_summary",
-      "Sintesi readiness AI",
-      `Readiness index ${scoreText(input.dashboard.overallScore)}. Il principale vincolo è ${bottleneckTitle}; la priorità è trasformare il portfolio use case in wave operative senza perdere governance, privacy e controllo umano.`,
+      "Sintesi",
+      `Indice di prontezza ${scoreText(input.dashboard.overallScore)} su 5. Il vincolo principale è ${bottleneckTitle}: la priorità è portare gli use case in tappe concrete, con regole chiare, privacy e controllo umano.`,
       {
         overallScore: input.dashboard.overallScore,
         maturitySignal: scoreText(input.dashboard.overallScore),
@@ -429,8 +432,8 @@ export function generateAiReadinessIntelligence(
     ),
     insightBase(
       "bottleneck",
-      `Bottleneck: ${bottleneckTitle}`,
-      `${bottleneckTitle} è il fattore da trattare per primo. Se non viene sbloccato, anche i use case ad alto potenziale rischiano di restare proof of concept isolate.`,
+      `Area più debole: ${bottleneckTitle}`,
+      `${bottleneckTitle} è l'area da affrontare per prima: senza, anche gli use case più promettenti rischiano di restare prove isolate.`,
       {
         weakestPillars: weakest,
         recommendedAction: bottleneckAction(input.dashboard.bottleneckPillar),
@@ -438,10 +441,10 @@ export function generateAiReadinessIntelligence(
     ),
     insightBase(
       "use_case",
-      "Cluster use case emersi",
+      "Gruppi di use case",
       clusters.length > 0
-        ? `Sono emersi ${clusters.length} cluster di opportunità. Il cluster più ricorrente è ${clusters[0]?.label}, con ${clusters[0]?.count ?? 0} proposte.`
-        : "Non sono ancora emersi use case dal survey. Il prossimo passo è attivare intake guidato da survey, Slack o Portfolio.",
+        ? `Gli use case proposti formano ${clusters.length === 1 ? "un gruppo" : `${clusters.length} gruppi`}. Il più frequente è «${clusters[0]?.label}», con ${clusters[0]?.count === 1 ? "uno use case" : `${clusters[0]?.count ?? 0} use case`}.`
+        : "Il questionario non ha ancora proposto use case: si raccolgono anche dalla dashboard o da Slack.",
       {
         clusters,
         unlinkedUseCaseCount: input.useCases.filter((item) => !item.linkedUseCaseId).length,
@@ -449,26 +452,26 @@ export function generateAiReadinessIntelligence(
     ),
     insightBase(
       "roadmap",
-      "Roadmap AI Transformation suggerita",
-      "La roadmap proposta parte da readiness e governance, passa da quick win misurabili e arriva a capability scalabili collegate al portfolio.",
+      "Tappe suggerite",
+      "Tre tappe: prima le basi e le regole, poi i primi risultati misurabili, infine quello che ha funzionato esteso agli altri team.",
       { waves: roadmap }
     ),
     insightBase(
       "adoption",
-      "Adoption: passare da interesse a rituali",
-      "La readiness cresce quando i team vedono casi concreti, metriche chiare e un percorso di supporto. Usa champion di funzione e review cadenzate per evitare iniziative scollegate.",
+      "Adozione: dall'interesse alle abitudini",
+      "La prontezza cresce quando i team vedono casi concreti, misure chiare e un aiuto: servono un referente per funzione e revisioni a cadenza fissa.",
       {
         teamCount: input.dashboard.units.length,
         unitsAboveThreshold: input.dashboard.units.filter((unit) => unit.aggregationThresholdMet).length,
-        suggestedCadence: "weekly portfolio review + bi-weekly readiness recalibration",
+        suggestedCadence: "revisione settimanale degli use case e ricalcolo ogni due settimane",
       }
     ),
     insightBase(
       "benchmark",
-      benchmark.enabled ? "Benchmark disponibile" : "Benchmark non ancora disponibile",
+      benchmark.enabled ? "Confronto disponibile" : "Confronto non ancora disponibile",
       benchmark.enabled
-        ? `Il confronto con ${benchmark.referenceName} è attivo. Delta overall: ${scoreText(benchmark.overallDelta)}.`
-        : benchmark.reason ?? "Benchmark non disponibile.",
+        ? `Il confronto con il riferimento è attivo: differenza complessiva ${scoreText(benchmark.overallDelta)}.`
+        : benchmark.reason ?? "Confronto non disponibile.",
       { benchmark }
     ),
   ];
