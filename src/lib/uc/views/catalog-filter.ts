@@ -18,6 +18,7 @@
  */
 import { effectiveCaseStatus } from "../case-state.ts";
 import { cast, join, jsonb, raw, toStatement, ucSql, type SqlFragment, type UcStatement } from "../sql/statement.ts";
+import { clientVisibleItemSql } from "../sql/need-items.ts";
 import { templateKeyListSql } from "../sql/template-parts.ts";
 import {
   ITEM_KINDS,
@@ -157,6 +158,8 @@ export interface CatalogWhereContext {
   userId: string;
   /** Solo voci verdi o blu (sviluppatore). */
   validatedOnly: boolean;
+  /** Una persona del cliente: niente voci solo per Lateral Space (`clientVisibleItemSql`). */
+  clientView?: boolean;
 }
 
 /** Filtri con un conteggio per opzione; il conteggio di un filtro si fa senza quel filtro. */
@@ -197,6 +200,7 @@ export function presetConditionSql(preset: CatalogPreset, ctx: CatalogWhereConte
 export function catalogWhereSql(caseId: string, filter: CatalogFilter, ctx: CatalogWhereContext, without?: CatalogFacet): SqlFragment {
   const parts: SqlFragment[] = [ucSql`i.case_id = ${cast(caseId, "uuid")}`, raw("i.deleted_at IS NULL")];
   if (ctx.validatedOnly) parts.push(ucSql`i.status = ANY(${cast([...VALIDATED_STATUSES], "text[]")})`);
+  if (ctx.clientView) parts.push(clientVisibleItemSql("i"));
   if (filter.tipo && without !== "tipo") parts.push(ucSql`i.kind = ${cast(filter.tipo, "text")}`);
   if (filter.stato && without !== "stato") parts.push(ucSql`i.status = ${cast(filter.stato, "text")}`);
   if (without !== "referente") {
@@ -474,6 +478,8 @@ export interface QuestionWhereContext {
   /** Chi guarda: i quattro occhi di «Da verificare». */
   userId: string;
   audience: QuestionAudience;
+  /** (Correzione del 24/11) Una persona del cliente (`seesLsOnlyItems` falso): niente domande solo per Lateral Space. */
+  clientView?: boolean;
 }
 
 /** La fase del via allo sviluppo (G1) in `serves_for`: `GATE_PHASE.G1` di `gates.ts` (il test lo controlla). */
@@ -523,6 +529,8 @@ export function segmentConditionSql(segment: QuestionSegment, ctx: QuestionWhere
 export function questionBaseWhereSql(caseId: string, filter: QuestionFilter, ctx: QuestionWhereContext, without?: "tipo"): SqlFragment {
   const parts: SqlFragment[] = [ucSql`i.case_id = ${cast(caseId, "uuid")}`, raw("i.deleted_at IS NULL")];
   if (ctx.audience === "sviluppatore") parts.push(statusIn(VALIDATED_STATUSES));
+  // (Correzione del 24/11) Il cliente vede solo le domande del suo lavoro: mai quelle di Lateral Space o dei fornitori.
+  if (ctx.clientView) parts.push(clientVisibleItemSql("i"));
   if (filter.documenti) parts.push(raw(REQUIRED_DOCUMENT));
   else if (!filter.catalogo) parts.push(raw(`i.kind = '${DEFAULT_KIND}'`));
   else if (filter.tipo && without !== "tipo") parts.push(ucSql`i.kind = ${cast(filter.tipo, "text")}`);
