@@ -174,6 +174,40 @@ export function needItemsUpdateSql(s: NeedItemsScope): UcStatement {
 SELECT (SELECT count(*) FROM upd)::int AS items, (SELECT count(*) FROM bump)::int AS cases`);
 }
 
+// ── Chi vede le voci collegate (correzione del titolare, 24/11) ──────────
+
+/**
+ * Le parti di «Cosa serve» che il cliente non vede: informazioni di Lateral Space e dei fornitori.
+ * Le voci di queste informazioni sono solo per Lateral Space; quelle del cliente, «insieme» o
+ * senza parte le vedono tutti. La parte si legge dall'informazione a ogni lettura: quando cambia
+ * in «Cosa serve» il dossier la segue da solo, senza copie da riallineare.
+ */
+export const LS_ONLY_NEED_SIDES = ["lateral_space", "fornitore"] as const;
+
+const ALIAS_RE = /^[a-z][a-z0-9_]{0,30}$/;
+
+/** Voce (alias `alias` su `uc_items`) solo per Lateral Space: collegata a un'informazione di Lateral Space o di un fornitore. */
+export function lsOnlyItemSql(alias = "i"): SqlFragment {
+  if (!ALIAS_RE.test(alias)) throw new Error("Alias non valido");
+  return ucSql`(${raw(`${alias}.shared_item_id IS NOT NULL AND ${alias}.template_item_key LIKE 'need.%'`)} AND EXISTS (
+    SELECT 1 FROM use_case_needs lsn WHERE lsn.id = ${raw(`${alias}.shared_item_id`)} AND lsn.owner_side = ANY(${cast([...LS_ONLY_NEED_SIDES], "text[]")})))`;
+}
+
+/** Voce (alias `alias`) che una persona del cliente vede: tutte tranne quelle solo per Lateral Space. */
+export function clientVisibleItemSql(alias = "i"): SqlFragment {
+  return ucSql`NOT ${lsOnlyItemSql(alias)}`;
+}
+
+/** Il caso (`caseId`, un frammento uuid) ha voci solo per Lateral Space? Allora i conteggi del cliente si fanno a parte. */
+export function hasLsOnlyItemsSql(caseId: SqlFragment): SqlFragment {
+  return ucSql`EXISTS (SELECT 1 FROM uc_items lsi WHERE lsi.case_id = ${caseId} AND lsi.deleted_at IS NULL AND ${lsOnlyItemSql("lsi")})`;
+}
+
+/** Le chiavi delle voci solo per Lateral Space del caso, adesso (per togliere le voci da un export del cliente). */
+export function lsOnlyItemKeysSql(caseId: string): UcStatement {
+  return toStatement(ucSql`SELECT i.key FROM uc_items i WHERE i.case_id = ${cast(caseId.toLowerCase(), "uuid")} AND ${lsOnlyItemSql("i")}`);
+}
+
 // ── Le voci collegate si gestiscono solo in «Cosa serve» ────────────────
 
 /** Codice uc (e di `Result`) di un comando del dossier su una voce collegata a «Cosa serve». */
