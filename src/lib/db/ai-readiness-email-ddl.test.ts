@@ -79,10 +79,17 @@ test("solo aggiunte: nessuna riscrittura, nessun dato, nessun CHECK di prima toc
   assert.match(AIR_EMAIL_DDL[0], /to_regclass\('public\.workspace_bell_state'\) IS NULL OR to_regclass\('public\.ai_readiness_assessments'\) IS NULL/);
   assert.match(AIR_EMAIL_DDL[0], /RAISE EXCEPTION '[^']*';/, "un solo letterale, chiuso: nessun apostrofo dentro");
   // Un solo ALTER, la colonna della scelta, con un default costante: nessuna riscrittura della tabella.
+  const alter = `ALTER TABLE workspace_bell_state ADD COLUMN IF NOT EXISTS ${AIR_EMAIL_SWITCH_COLUMN} boolean NOT NULL DEFAULT true;`;
   assert.deepEqual(
     AIR_EMAIL_DDL.filter((s) => /^ALTER\b/.test(s)),
-    [`ALTER TABLE workspace_bell_state ADD COLUMN IF NOT EXISTS ${AIR_EMAIL_SWITCH_COLUMN} boolean NOT NULL DEFAULT true;`],
+    [alter],
   );
+  // (Revisione) Per ultimo: il lock esclusivo sulla campanella di tutti si prende dopo le attese per le tabelle delle
+  // chiavi esterne della coda, e dura un istante fino al commit. Lo stesso ordine nel file.
+  assert.equal(AIR_EMAIL_DDL.at(-1), alter);
+  const body = normalize(migration);
+  assert.ok(body.endsWith(normalize(alter)), "nel file è l'ultima istruzione");
+  assert.ok(body.indexOf("CREATE TABLE IF NOT EXISTS ai_readiness_alert_emails") < body.indexOf("ALTER TABLE workspace_bell_state"));
   assert.deepEqual(AIR_EMAIL_ADDED_COLUMNS, { workspace_bell_state: [AIR_EMAIL_SWITCH_COLUMN] });
 });
 

@@ -4,10 +4,12 @@
 -- chi non le ha spente in «Il tuo account» › «Notifiche via email».
 --
 -- Questa migrazione aggiunge:
---   - workspace_bell_state.ai_readiness_emails: la scelta «Avvisami per email sull'AI Readiness», accesa per default,
---     accanto a referent_emails (0024). Un valore di default costante: PostgreSQL non riscrive la tabella;
 --   - ai_readiness_alert_emails: la coda delle email, sorella di use_case_alert_emails (0025), con la rilevazione. Una
---     sola riga in attesa per rilevazione, persona e tipo; «i risultati ci sono» una volta sola per rilevazione e persona.
+--     sola riga in attesa per rilevazione, persona e tipo; «i risultati ci sono» una volta sola per rilevazione e persona;
+--   - per ultima, workspace_bell_state.ai_readiness_emails: la scelta «Avvisami per email sull'AI Readiness», accesa per
+--     default, accanto a referent_emails (0024). Un valore di default costante: PostgreSQL non riscrive la tabella. Per
+--     ultima perché il suo lock esclusivo sulla campanella di tutti dura fino al commit: prima le attese delle chiavi
+--     esterne della coda, poi la campanella bloccata un istante.
 -- Solo aggiunte: nessuna riscrittura, nessun dato scritto, nessuna colonna cambiata, nessun CHECK toccato. Il codice di
 -- prima ignora la colonna (scrive workspace_bell_state nominando le colonne: la nuova prende il default) e la tabella
 -- (nessun cron di prima la legge, quindi non manda né annulla le sue righe: le annulla il codice nuovo, troppo vecchie).
@@ -24,8 +26,6 @@ DO $$ BEGIN
     RAISE EXCEPTION 'ai_readiness_alert_emails: mancano la 0024 o le tabelle AI Readiness. Applica prima drizzle/0024_use_case_referents.sql e drizzle/0009_ai_readiness_core.sql.';
   END IF;
 END $$;
-
-ALTER TABLE workspace_bell_state ADD COLUMN IF NOT EXISTS ai_readiness_emails boolean NOT NULL DEFAULT true;
 
 CREATE TABLE IF NOT EXISTS ai_readiness_alert_emails (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -69,3 +69,5 @@ CREATE INDEX IF NOT EXISTS ai_readiness_alert_emails_workspace_idx
 
 CREATE INDEX IF NOT EXISTS ai_readiness_alert_emails_gc_idx
   ON ai_readiness_alert_emails (created_at);
+
+ALTER TABLE workspace_bell_state ADD COLUMN IF NOT EXISTS ai_readiness_emails boolean NOT NULL DEFAULT true;
