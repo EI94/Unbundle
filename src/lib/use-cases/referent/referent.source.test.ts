@@ -121,6 +121,10 @@ const TABLE_FILES = new Set([
   // (Rilascio 9b) Le risposte del referente come fonte di «Contesto»: la fonte nasce e torna da leggere nei batch del
   // referente, il testo si compone dal vivo dalle risposte inviate, la conservazione e la cancellazione la svuotano.
   "src/lib/db/queries/context-referent.ts",
+  // (0044) Le email dell'AI Readiness: la scelta «Avvisami per email sull'AI Readiness» in `workspace_bell_state` (il DDL
+  // della colonna e le istruzioni che la leggono e la scrivono, con la coda).
+  "src/lib/db/ai-readiness-email-ddl.ts",
+  "src/lib/ai-readiness/email-sql.ts",
 ]);
 
 test("le tabelle nuove si nominano solo nei moduli della funzione", () => {

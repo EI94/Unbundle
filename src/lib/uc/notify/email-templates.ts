@@ -143,7 +143,8 @@ export type EmailInput =
 
 const LOCAL_HOSTS = /^(localhost|127\.0\.0\.1|\[::1\]|[a-z0-9-]+\.localhost)$/;
 const REQUEST_PATH = /^\/r\/ucr_[A-Za-z0-9_-]{32}$/;
-const DASHBOARD_PATH = /^\/dashboard\/[0-9a-f-]{36}\/(casi-duso(\/[0-9a-f-]{36}(\/progetto)?)?|use-cases\/[0-9a-f-]{36}\/(proposte|progetto)|settings|account|agent-factory|contesto)$/;
+const DASHBOARD_PATH =
+  /^\/dashboard\/[0-9a-f-]{36}\/(casi-duso(\/[0-9a-f-]{36}(\/progetto)?)?|use-cases\/[0-9a-f-]{36}\/(proposte|progetto)|settings|account|agent-factory|contesto|ai-readiness\/aggiornamenti\/[0-9a-f-]{36}(\/risultati)?)$/;
 
 /**
  * Il link è pulito? https (http solo in locale), nessuna credenziale, nessun
@@ -151,6 +152,8 @@ const DASHBOARD_PATH = /^\/dashboard\/[0-9a-f-]{36}\/(casi-duso(\/[0-9a-f-]{36}(
  * la pagina del caso per Lateral Space. (9b) Anche la pagina «Contesto» del
  * workspace (`/dashboard/<ws>/contesto`), e niente sotto di lei. (Rilascio 10) E
  * `/dashboard/<ws>/account`, «Il tuo account › Claude e terminale» della persona.
+ * (0044) E le email dell'AI Readiness: `/dashboard/<ws>/ai-readiness/aggiornamenti/<rilevazione>` (le risposte) e
+ * `…/<rilevazione>/risultati`, che controllano l'accesso e portano alla scheda giusta.
  */
 export function checkEmailLink(link: string, kind: "referente" | "dashboard"): string {
   let url: URL;

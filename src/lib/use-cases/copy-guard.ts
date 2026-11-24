@@ -249,6 +249,8 @@ export const OUTSIDE_SOURCE_DIRS: readonly string[] = [
   "src/components/ai-readiness/respondent-survey-form.tsx",
   "src/components/ai-readiness/use-case-expert-form.tsx",
   "src/components/ai-readiness/respondent-privacy-controls.tsx",
+  // (0044) Le email dell'AI Readiness: testi fuori dalla dashboard, con le parole delle altre email.
+  "src/lib/ai-readiness/email.ts",
   "src/components/auth/login-form.tsx",
   "src/components/workspace/workspace-invite-accept-form.tsx",
   "src/components/workspace/verify-invite-email.tsx",
