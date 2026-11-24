@@ -32,8 +32,8 @@ const ROLE_SQL = raw(`coalesce(
   )`);
 
 /**
- * Le persone del workspace con il ruolo di adesso, l'email, se è verificata e la loro scelta: chi riceve lo decide
- * `airEmailBlock` (chi gestisce, con l'email verificata e, per il cliente, l'ok sui sub-responsabili) più la scelta.
+ * Le persone del workspace con il ruolo di adesso, l'email, se è verificata (`users.email_verified`) e la loro scelta:
+ * chi riceve lo decide `airEmailBlock` (chi gestisce, con l'email verificata) più la scelta, con l'ok del cliente.
  */
 export function airEmailMembersSql(workspaceId: string): UcStatement {
   return toStatement(ucSql`SELECT u.id AS user_id, lower(u.email) AS email, u.email_verified IS NOT NULL AS verified,
@@ -248,9 +248,14 @@ WHERE created_at < ${cast(new Date(now.getTime() - days * 86_400_000).toISOStrin
 RETURNING id`);
 }
 
-/** «Avvisami per email sull'AI Readiness» di una persona in un workspace: accesa senza riga. */
-export function airEmailSwitchSql(workspaceId: string, userId: string): UcStatement {
-  return toStatement(ucSql`SELECT coalesce((SELECT b.${SWITCH} FROM workspace_bell_state b WHERE b.workspace_id = ${id(workspaceId)} AND b.user_id = ${id(userId)}), true) AS switch_on`);
+/**
+ * Per l'interruttore, le stesse letture della coda e dell'invio: l'email, se è verificata (`users.email_verified`, mai
+ * la sessione) e la scelta della persona in un workspace (accesa senza riga).
+ */
+export function airEmailPersonSql(workspaceId: string, userId: string): UcStatement {
+  return toStatement(ucSql`SELECT lower(u.email) AS email, u.email_verified IS NOT NULL AS verified,
+  coalesce((SELECT b.${SWITCH} FROM workspace_bell_state b WHERE b.workspace_id = ${id(workspaceId)} AND b.user_id = u.id), true) AS switch_on
+FROM users u WHERE u.id = ${id(userId)}`);
 }
 
 /** La scelta della persona: la riga di `workspace_bell_state` nasce o cambia solo in questa colonna. */

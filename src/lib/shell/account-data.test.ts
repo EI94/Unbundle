@@ -22,7 +22,7 @@ await installAppModules({
     const p = globalThis.__accountProva; p.asked.push("bell:" + ws + ":" + user);
     if (p.bell instanceof Error) throw p.bell; return p.bell; }`,
   "@/lib/db/queries/ai-readiness-email": `export async function readinessEmailChoice(i) {
-    const p = globalThis.__accountProva; p.asked.push("air:" + i.role + ":" + i.user.id); return p.readiness; }`,
+    const p = globalThis.__accountProva; p.asked.push("air:" + i.role + ":" + i.userId); return p.readiness; }`,
   "@/lib/db/queries/team-mcp-tokens": `export async function loadTeamMcpCard(i) {
     const p = globalThis.__accountProva; p.asked.push("team:" + i.role); return p.team; }`,
   "@/lib/db/queries/use-case-cli-auth": `export async function loadCliCard(executor, i) {

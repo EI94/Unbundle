@@ -60,7 +60,7 @@ export async function loadAccountSheet(i: {
     readCli(),
     contextAbilities(actor).canUseGranola ? loadGranolaStatus({ userId: i.user.id, workspaceId: i.workspaceId }) : Promise.resolve(null),
     // (0044) Solo a chi potrebbe ricevere le email dell'AI Readiness: decide da sé e non lancia mai.
-    readinessEmailChoice({ workspaceId: i.workspaceId, user: i.user, role: i.role, env }),
+    readinessEmailChoice({ workspaceId: i.workspaceId, userId: i.user.id, role: i.role }),
   ]);
 
   const email = bell

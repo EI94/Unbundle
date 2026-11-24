@@ -5,9 +5,10 @@
  * - **Chi le riceve:** le stesse persone delle righe in campanella, cioè chi gestisce il workspace
  *   (`canManageWorkspaceSettings`, il ruolo di adesso), con un'email verificata. Mai nessun altro: né «Solo questo use
  *   case», né chi segue un corso, né un ruolo che il codice non conosce (il permesso è chiuso per default). Ognuno le
- *   spegne da sé («Avvisami per email sull'AI Readiness», accesa per default). Alle persone del cliente partono solo con
- *   l'ok del cliente sui sub-responsabili della versione di oggi, come le altre email alle persone del cliente (Resend è
- *   uno dei sub-responsabili); senza, la riga si annulla e resta la campanella.
+ *   spegne da sé («Avvisami per email sull'AI Readiness», accesa per default). Partono solo con l'ok del cliente sui
+ *   sub-responsabili della versione di oggi, a tutti, Lateral Space compreso, come gli avvisi a chi ha chiesto al
+ *   referente e «Pronto da avviare» (Resend è uno dei sub-responsabili, e l'email porta il nome del cliente e della
+ *   rilevazione): senza, niente entra in coda, l'interruttore non si vede e all'invio la riga aspetta.
  * - **Che cosa:** le risposte nuove, al massimo un'email al giorno per rilevazione e persona, solo conteggi (le risposte
  *   nuove dall'ultima email, il totale, le attese), mai una persona; i risultati disponibili, un'email una volta, quando
  *   nasce la riga «i risultati ci sono» della campanella. Nel giorno in cui partono tutte e due, parte quella dei
@@ -38,25 +39,24 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // ── Chi le riceve ─────────────────────────────────────────────────────
 
 /** Perché una persona non riceve le email dell'AI Readiness di un workspace (la scelta della persona a parte). */
-export type AirEmailBlock = "non_gestisce" | "email_non_verificata" | "sub_responsabili_mancanti";
+export type AirEmailBlock = "non_gestisce" | "email_non_verificata";
 
 export interface AirEmailPerson {
   /** Il ruolo di adesso nel workspace (quello dell'organizzazione, o del workspace), o null. */
   role: string | null;
   email: string | null;
+  /** `users.email_verified`: la stessa lettura per la coda, l'interruttore e l'invio. */
   verified: boolean;
-  /** Email verificata di un dominio di Lateral Space (`UC_LS_EMAIL_DOMAINS`). */
-  lateralSpace: boolean;
 }
 
 /**
  * null quando la persona può ricevere le email dell'AI Readiness del workspace, adesso; altrimenti il motivo. La scelta
- * della persona non conta qui: decide chi vede l'interruttore, e l'interruttore decide il resto.
+ * della persona non conta qui: decide chi vede l'interruttore, e l'interruttore decide il resto. L'ok del cliente sui
+ * sub-responsabili è del workspace e vale per tutti: lo controlla chi chiama.
  */
-export function airEmailBlock(p: AirEmailPerson, workspaceAck: boolean): AirEmailBlock | null {
+export function airEmailBlock(p: AirEmailPerson): AirEmailBlock | null {
   if (!canManageWorkspaceSettings(p.role)) return "non_gestisce";
   if (!p.verified || !isPlainAddress(p.email?.trim().toLowerCase())) return "email_non_verificata";
-  if (!p.lateralSpace && !workspaceAck) return "sub_responsabili_mancanti";
   return null;
 }
 
@@ -163,7 +163,7 @@ export interface AirEmailFacts {
   assessment: { name: string; expected: number | null; threshold: number } | null;
   /** null quando la persona non c'è più. `switchOn`: «Avvisami per email sull'AI Readiness». */
   recipient: (AirEmailPerson & { switchOn: boolean }) | null;
-  /** L'ok del cliente sui sub-responsabili della versione di oggi. */
+  /** L'ok del cliente sui sub-responsabili della versione di oggi: senza, l'email non parte per nessuno. */
   workspaceAck: boolean;
   /** Le risposte inviate arrivate dall'ultima email della persona per la rilevazione (o dalla prima di questa riga). */
   newAnswers: number;
@@ -184,20 +184,22 @@ export type AirEmailCancelReason =
 
 export type AirEmailPlan =
   | { action: "send"; to: string; rendered: RenderedEmail; countedUntil: Date }
-  | { action: "hold"; reason: "email_non_configurata" }
+  | { action: "hold"; reason: "email_non_configurata" | "sub_responsabili_mancanti" }
   | { action: "cancel"; reason: AirEmailCancelReason };
 
 /**
- * Il piano di una riga, in quest'ordine: configurazione, età, rilevazione, destinatario (chi gestisce adesso, con
- * l'email verificata e, per il cliente, l'ok sui sub-responsabili), la sua scelta, poi il contenuto.
+ * Il piano di una riga, in quest'ordine: configurazione, l'ok del cliente sui sub-responsabili (senza, la riga aspetta,
+ * come gli avvisi a chi ha chiesto al referente e «Pronto da avviare»), età, rilevazione, destinatario (chi gestisce
+ * adesso, con l'email verificata), la sua scelta, poi il contenuto.
  */
 export function planAirEmail(e: ClaimedAirEmail, f: AirEmailFacts, o: { env: DispatchEnv; origin: string; now: Date }): AirEmailPlan {
   if (!ucEmailConfig(o.env).ok) return { action: "hold", reason: "email_non_configurata" };
+  if (!f.workspaceAck) return { action: "hold", reason: "sub_responsabili_mancanti" };
   if (isStaleAlert(e.createdAt, o.now)) return { action: "cancel", reason: "troppo_vecchia" };
   if (!f.assessment) return { action: "cancel", reason: "rilevazione_assente" };
   const r = f.recipient;
   if (!r) return { action: "cancel", reason: "destinatario_non_valido" };
-  const block = airEmailBlock(r, f.workspaceAck);
+  const block = airEmailBlock(r);
   if (block) return { action: "cancel", reason: block };
   if (!r.switchOn) return { action: "cancel", reason: "email_spenta" };
   const to = (r.email ?? "").trim().toLowerCase();
