@@ -127,7 +127,10 @@ test("i testi: le risposte nuove, solo numeri, in italiano, con calma; l'oggetto
   );
   const one = renderAirAnswersEmail({ company: "Cliente Demo", assessment: "Questionario per tutti", newAnswers: 1, total: 1, expected: null, link });
   assert.equal(one.subject, "Cliente Demo: 1 nuova risposta all'AI Readiness");
-  assert.ok(one.text.includes("«Questionario per tutti» ha 1 nuova risposta: ora sono 1 in tutto."));
+  assert.ok(one.text.includes("«Questionario per tutti» ha 1 nuova risposta: è la prima."), one.text);
+  const firstOf = renderAirAnswersEmail({ company: "Cliente Demo", assessment: "Q", newAnswers: 1, total: 1, expected: 40, link });
+  assert.ok(firstOf.text.includes("«Q» ha 1 nuova risposta: è la prima delle 40 attese."), firstOf.text);
+  assert.ok(renderAirAnswersEmail({ company: "Cliente Demo", assessment: "Q", newAnswers: 2, total: 9, expected: null, link }).text.includes("«Q» ha 2 nuove risposte: ora sono 9 in tutto."));
   assert.ok(renderAirAnswersEmail({ company: "Cliente Demo", assessment: "Q", newAnswers: 1200, total: 1500, expected: null, link }).text.includes("1.200 nuove risposte: ora sono 1.500 in tutto."));
   assert.throws(() => renderAirAnswersEmail({ company: "Cliente Demo", assessment: "Q", newAnswers: 0, total: 3, expected: null, link }), "mai un'email senza risposte nuove");
   const long = renderAirAnswersEmail({ company: LONG, assessment: "Q", newAnswers: 12, total: 46, expected: 120, link });

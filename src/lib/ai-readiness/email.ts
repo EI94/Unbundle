@@ -103,8 +103,11 @@ export interface AirResultsEmailInput {
 
 const newAnswersText = (n: number) => (n === 1 ? "1 nuova risposta" : `${formatCount(n)} nuove risposte`);
 const named = (name: string) => `«${oneLine(name, 120) || "AI Readiness"}»`;
+/** Il totale dopo le risposte nuove: «ora sono 46 su 120 attese», «ora sono 46 in tutto», «è la prima delle 40 attese». */
 const totalText = (total: number, expected: number | null) =>
-  expected && expected > 0 ? `${formatCount(total)} su ${formatCount(expected)} attese` : total === 1 ? "1 in tutto" : `${formatCount(total)} in tutto`;
+  total === 1
+    ? `è la prima${expected && expected > 1 ? ` delle ${formatCount(expected)} attese` : ""}`
+    : `ora sono ${formatCount(total)}${expected && expected > 0 ? ` su ${formatCount(expected)} attese` : " in tutto"}`;
 
 /** «5 risposte su 40 attese», «1 risposta». */
 const answersText = (total: number, expected: number | null) =>
@@ -120,7 +123,7 @@ export function renderAirAnswersEmail(i: AirAnswersEmailInput, brand?: EmailBran
   const company = oneLine(companyLabel(i.company), 80);
   const blocks: Block[] = [
     { p: "Buongiorno," },
-    { p: `${named(i.assessment)} ha ${newAnswersText(i.newAnswers)}: ora sono ${totalText(i.total, i.expected)}.` },
+    { p: `${named(i.assessment)} ha ${newAnswersText(i.newAnswers)}: ${totalText(i.total, i.expected)}.` },
     { link: { href: i.link, label: "Apri la raccolta" } },
     { small: footer(company, "Al massimo una al giorno, solo con i numeri: mai chi ha risposto.") },
   ];
