@@ -49,7 +49,7 @@ import {
 import { CASE_ROLES, CASE_STATUSES, isVocab, type CaseRole } from "../../uc/vocab.ts";
 import type { UcExecutor } from "../uc-executor.ts";
 import { checkLsText, loadCaseReadiness, refreshReadinessCache } from "./uc-cases.ts";
-import { hasLsOnlyItemsSql } from "../../uc/sql/need-items.ts";
+import { clientVisibleItemSql, hasLsOnlyItemsSql } from "../../uc/sql/need-items.ts";
 import { seesLsOnlyItems } from "../../uc/views/page-access.ts";
 import type { Readiness } from "../../uc/semaforo.ts";
 import { loadNextStepInput, parseNextStepRows } from "./uc-next-step.ts";
@@ -280,6 +280,7 @@ GROUP BY b.case_id, b.key`);
  * Le firme in attesa di tutti i dossier, nell'ordine di `pendingSignatureStatements`
  * (`uc-signatures.ts`), con `case_id` e le stesse colonne delle istruzioni per un caso:
  * `parsePendingSignatures` usa il costruttore della pagina `/firme`, che le legge tutte.
+ * Come `uc-signatures.ts` e `sql/public.ts`, mai le domande solo per Lateral Space (correzione del 24/11).
  */
 function scopedPendingSignatureStatements(scope: SqlFragment): UcStatement[] {
   return [
@@ -293,6 +294,7 @@ ORDER BY g.case_id, g.created_at`),
 FROM uc_items i JOIN uc_cases c ON c.id = i.case_id
 WHERE i.case_id IN (${scope}) AND i.deleted_at IS NULL AND i.na_proposed_at IS NOT NULL
   AND i.na_approved_at IS NULL AND i.na_reason IS NOT NULL
+  AND ${clientVisibleItemSql("i")}
 ORDER BY i.case_id, i.sort_order, i.key`),
     toStatement(ucSql`SELECT i.case_id, i.id, i.key, i.title,
   CASE WHEN i.waiver IS NOT NULL AND i.waiver_approved_at IS NULL THEN i.waiver END AS waiver,
@@ -300,6 +302,7 @@ ORDER BY i.case_id, i.sort_order, i.key`),
 FROM uc_items i
 WHERE i.case_id IN (${scope}) AND i.deleted_at IS NULL
   AND ((i.waiver IS NOT NULL AND i.waiver_approved_at IS NULL) OR (i.fallback IS NOT NULL AND i.fallback_approved_at IS NULL))
+  AND ${clientVisibleItemSql("i")}
 ORDER BY i.case_id, i.sort_order, i.key`),
     toStatement(ucSql`SELECT b.case_id, b.id, b.key, b.evidence, b.approvals,
   coalesce((SELECT jsonb_agg(coalesce(nullif(trim(u.name), ''), 'Persona di Lateral Space') ORDER BY u.name)

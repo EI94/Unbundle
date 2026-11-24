@@ -405,6 +405,9 @@ export async function proposeNa(executor: UcExecutor, ctx: UcCommandContext, inp
   if (!parsed.success) return fail("dati_non_validi", parsed.error.issues[0]?.message ?? "Scrivi il motivo.");
   const text = checkLsText({ reason: parsed.data.reason });
   if (!text.ok) return text;
+  // Le domande di «Cosa serve» si decidono lì: nessun «non si applica» dal dossier.
+  const linked = await refuseLinkedItems(executor, ctx.caseId, [parsed.data.itemId]);
+  if (!linked.ok) return linked;
   const one = await loadOne(executor, ctx, parsed.data.itemId);
   if (!one.ok) return one;
   const { core, item } = one.value;
@@ -589,6 +592,9 @@ export async function proposeWaiver(executor: UcExecutor, ctx: UcCommandContext,
   const { itemId, motivo, piano, scadenza } = parsed.data;
   const text = checkLsText({ motivo, piano });
   if (!text.ok) return text;
+  // Le domande di «Cosa serve» si decidono lì: nessuna deroga dal dossier.
+  const linked = await refuseLinkedItems(executor, ctx.caseId, [itemId]);
+  if (!linked.ok) return linked;
   const one = await loadOne(executor, ctx, itemId);
   if (!one.ok) return one;
   const { core, item } = one.value;
@@ -697,6 +703,9 @@ export async function proposeFallback(executor: UcExecutor, ctx: UcCommandContex
   const { itemId, descrizione, daSostituireEntro } = parsed.data;
   const text = checkLsText({ descrizione });
   if (!text.ok) return text;
+  // Le domande di «Cosa serve» si decidono lì: nessuna soluzione provvisoria dal dossier.
+  const linked = await refuseLinkedItems(executor, ctx.caseId, [itemId]);
+  if (!linked.ok) return linked;
   const one = await loadOne(executor, ctx, itemId);
   if (!one.ok) return one;
   const { core, item } = one.value;
