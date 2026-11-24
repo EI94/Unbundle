@@ -39,6 +39,12 @@ import { UUID } from "@/lib/uc/ids";
  * 19/10/2026) parte precompilata: «In una frase» con il problema (al massimo 500
  * caratteri) e, accanto, in sola lettura, i dati raccolti da Claude che entrano
  * nel dossier (`realizationPrefillOf`).
+ *
+ * Lo schema di partenza (R2 di `docs/dossier/SCHEMA-DI-PARTENZA.md`): «Dal caso
+ * d'uso» c'è in ogni workspace (la riga si crea alla prima apertura, sempre la
+ * stessa) e le sue domande sono le voci di «Cosa serve» dello use case; gli
+ * schemi di settore si propongono solo se combaciano con lo use case
+ * (`startTemplateOptions`, in `startFormData`), gli altri restano a richiesta.
  */
 export default async function StartRealizationPage({
   params,
@@ -125,7 +131,14 @@ export default async function StartRealizationPage({
           }
         />
       ) : (
-        <StartRealizationForm workspaceId={workspaceId} useCase={form.useCase} defaults={form.defaults} templates={form.templates} />
+        <StartRealizationForm
+          workspaceId={workspaceId}
+          useCase={form.useCase}
+          defaults={form.defaults}
+          templates={form.templates}
+          otherTemplates={form.otherTemplates}
+          preselectedId={form.preselectedId}
+        />
       )}
       {form.prefillRows.length > 0 ? <CollectedByClaude rows={form.prefillRows} /> : null}
     </PageContainer>

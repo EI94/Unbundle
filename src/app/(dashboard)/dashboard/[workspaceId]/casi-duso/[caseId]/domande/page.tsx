@@ -13,6 +13,7 @@ import { loadQuestionDocuments, loadQuestionsPage } from "@/lib/db/queries/uc-qu
 import { loadItemDetail } from "@/lib/db/queries/uc-views";
 import { UUID } from "@/lib/uc/ids";
 import { can } from "@/lib/uc/permissions";
+import { isFromUseCaseTemplateKey } from "@/lib/uc/template/from-use-case";
 import { questionQuery, withoutQuestionFilters } from "@/lib/uc/views/catalog-filter";
 import { caseFileRows, datasetsWithoutFile } from "@/lib/uc/views/documents";
 import { nextStepFor } from "@/lib/uc/views/next-step";
@@ -82,12 +83,14 @@ export default async function QuestionsPage({
   // Argomenti e ruoli del template come li legge il cliente: senza articoli, sigle o chiavi (DESIGN §6.2).
   const plain = (t: string) => (audience === "cliente" ? clientPlainText(t) || t : t);
   const listWritable = writable && audience !== "sviluppatore";
+  // (Schema di partenza) Nel dossier «Dal caso d'uso» ogni domanda nasce da «Cosa serve» e si gestisce lì: niente selezione.
+  const bulkWritable = listWritable && !isFromUseCaseTemplateKey(data.ctx.templateKey);
   const permissions = {
-    assign: listWritable && (roles.includes("ls_lead") || roles.includes("owner_cliente")),
-    setDue: listWritable && can(roles, "assegnare"),
-    outcomes: listWritable && can(roles, "esiti_verifica"),
-    proposeNa: listWritable && can(roles, "proporre_na"),
-    send: listWritable && can(roles, "inviare_richieste"),
+    assign: bulkWritable && (roles.includes("ls_lead") || roles.includes("owner_cliente")),
+    setDue: bulkWritable && can(roles, "assegnare"),
+    outcomes: bulkWritable && can(roles, "esiti_verifica"),
+    proposeNa: bulkWritable && can(roles, "proporre_na"),
+    send: bulkWritable && can(roles, "inviare_richieste"),
   };
   const basePath = casePath(workspaceId, caseId, "domande");
   // «Apri a tutta pagina» porta i filtri e la pagina della lista: «‹ Domande» ci torna.

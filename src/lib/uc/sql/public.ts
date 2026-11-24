@@ -29,6 +29,7 @@ import {
 import { VISIBLE_REQUEST_ITEM_STATES } from "../public-view.ts";
 import { REQUEST_LINK_TTL_DAYS, requestLiveSql, requestVisibleSql } from "./requests.ts";
 import { cast, jsonb, raw, requireRows, toStatement, ucSql, type SqlFragment, type UcStatement } from "./statement.ts";
+import { linkedItemsGuard } from "./need-items.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HEX64 = /^[0-9a-f]{64}$/;
@@ -416,7 +417,7 @@ export function publicAnswerInsertSql(a: PublicAnswerInsert): UcStatement {
   FROM uc_items i WHERE i.id = ${cast(uuid(a.itemId, "voce"), "uuid")} AND i.case_id = ${cast(uuid(a.caseId, "caso"), "uuid")} AND i.deleted_at IS NULL
   RETURNING id, version, (SELECT key FROM uc_items WHERE id = ${cast(a.itemId, "uuid")}) AS key
 ), ev AS (${event})
-SELECT uc_require(count(*) = 1, 'conflitto') AS ok FROM ins`);
+SELECT ${linkedItemsGuard(cast(uuid(a.caseId, "caso"), "uuid"), ucSql`SELECT ${cast(uuid(a.itemId, "voce"), "uuid")}`)} AND uc_require(count(*) = 1, 'conflitto') AS ok FROM ins`);
 }
 
 /**
@@ -559,7 +560,7 @@ export function delegationItemsInsertSql(i: { caseId: string; requestId: string;
   ON CONFLICT DO NOTHING
   RETURNING item_id
 )
-SELECT uc_require(count(*) = ${cast(items.length, "int")}, 'conflitto') AS ok FROM ins`);
+SELECT ${linkedItemsGuard(cast(uuid(i.caseId, "caso"), "uuid"), ucSql`SELECT unnest(${cast(items, "uuid[]")})`)} AND uc_require(count(*) = ${cast(items.length, "int")}, 'conflitto') AS ok FROM ins`);
 }
 
 /** Al massimo `max` deleghe al giorno dalla stessa richiesta (contando quella appena creata). */

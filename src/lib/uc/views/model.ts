@@ -388,6 +388,12 @@ export const SOLUTION_Q_MAX = 100;
 
 /** Le regole; i vincoli solo con «Mostra anche i vincoli». */
 export const RULE_KINDS: readonly ItemKind[] = ["regola"];
+
+/**
+ * Regole senza voci (R1 di `docs/dossier/SCHEMA-DI-PARTENZA.md`): lo schema «Dal caso d'uso» non porta regole, che si
+ * scrivono poi dalla Costruzione (rilascio 10: la pagina che era «Progetto dell'agente»).
+ */
+export const RULES_EMPTY = { title: "Da disegnare", hint: "Le regole si scrivono dalla Costruzione, quando c'è." } as const;
 export const CONSTRAINT_KINDS: readonly ItemKind[] = ["vincolo_rigido", "vincolo_morbido"];
 
 type SearchParams = Readonly<Record<string, string | string[] | undefined>>;

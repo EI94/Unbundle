@@ -55,6 +55,7 @@ import {
 } from "../vocab.ts";
 import { rowBool, rowDate, rowIsoDate, rowJson, rowNumber, rowObject, rowString, rowStringArray, rowVocab, type Row } from "./readiness.ts";
 import { cast, join, jsonb, raw, ref, requireRows, toStatement, ucSql, type SqlFragment, type UcStatement } from "./statement.ts";
+import { linkedItemsGuard } from "./need-items.ts";
 
 const ACTIVE_STATES_SQL = ACTIVE_REQUEST_ITEM_STATES.map((s) => `'${s}'`).join(", ");
 const CODE = /^[a-z0-9_]{1,60}$/;
@@ -602,7 +603,7 @@ export function answerInsertSql(a: AnswerInsert): UcStatement {
   FROM uc_items i WHERE i.id = ${cast(a.itemId, "uuid")} AND i.case_id = ${cast(a.caseId, "uuid")} AND i.deleted_at IS NULL
   RETURNING id, version, (SELECT key FROM uc_items WHERE id = ${cast(a.itemId, "uuid")}) AS key
 ), ev AS (${event})
-SELECT ${requireCount(1)} AS ok FROM ins`);
+SELECT ${linkedItemsGuard(cast(a.caseId, "uuid"), ucSql`SELECT ${cast(a.itemId, "uuid")}`)} AND ${requireCount(1)} AS ok FROM ins`);
 }
 
 export function commentInsertSql(c: {

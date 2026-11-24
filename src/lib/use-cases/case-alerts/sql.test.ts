@@ -16,6 +16,7 @@ import {
   type ReadinessSync,
 } from "./sql.ts";
 import { raw } from "../../uc/sql/statement.ts";
+import { needItemsSyncStatements } from "../../uc/sql/need-items.ts";
 
 // I costruttori SQL di «Pronto da avviare» (0025), senza database. UUID inventati.
 const WS = "3f2a9c1e-0000-4000-8000-0000000000a1";
@@ -26,13 +27,15 @@ const readiness: ReadinessSync = { lsDomains: ["lateralspace.ai", "voltaenergy.x
 
 test("senza la 0025 (readiness null) le scritture mandano esattamente «Informazioni complete» di prima", () => {
   const before = infoCompleteSyncStatements({ workspaceId: WS, useCaseIds: [UC], actorUserId: ACTOR });
-  assert.deepEqual(cardSyncStatements({ workspaceId: WS, useCaseIds: [UC], actorUserId: ACTOR, readiness: null }), before);
+  // (Schema di partenza, R1) in coda, le voci dei dossier «Dal caso d'uso» che seguono «Cosa serve».
+  const needItems = needItemsSyncStatements({ workspaceId: WS, useCaseIds: [UC], actorUserId: ACTOR });
+  assert.deepEqual(cardSyncStatements({ workspaceId: WS, useCaseIds: [UC], actorUserId: ACTOR, readiness: null }), [...before, ...needItems]);
   assert.doesNotMatch(before[1].text, /pronto/);
 });
 
 test("con la 0025: il lock per scheda, poi il passaggio a «pronto», poi «Informazioni complete» senza doppioni per Lateral Space", () => {
   const [lock, ready, info, ...rest] = cardSyncStatements({ workspaceId: WS, useCaseIds: [UC], actorUserId: ACTOR, readiness });
-  assert.equal(rest.length, 0);
+  assert.deepEqual(rest, needItemsSyncStatements({ workspaceId: WS, useCaseIds: [UC], actorUserId: ACTOR }), "dopo, solo le voci dei dossier «Dal caso d'uso»");
   assert.equal(lock.text, infoCompleteSyncStatements({ workspaceId: WS, useCaseIds: [UC], actorUserId: ACTOR })[0].text, "lo stesso lock di «Informazioni complete»");
   assert.match(lock.text, /pg_advisory_xact_lock\(hashtext\('use-case-info:' \|\| u\.id::text\)\)/);
   assert.match(ready.text, /INSERT INTO use_case_ready_state/);

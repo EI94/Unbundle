@@ -94,6 +94,7 @@ import { enqueueForLsMembersSql } from "./uc-notifications.ts";
 import { bellPrefix } from "../../uc/notify/dedupe.ts";
 import { createCaseFromTemplate, type TemplateRef } from "./uc-templates.ts";
 import { UC_ERROR_MESSAGES, runUcBatch, type UcExecutor, type UcRow } from "../uc-executor.ts";
+import { LINKED_ITEM_CODE, linkedItemIdsSql } from "../../uc/sql/need-items.ts";
 
 /** (8.0d) Un altro ruolo nel caso a «Solo questo use case» (RILASCIO-8.0d-ESTERNI-FASE-2.md §2.9). */
 export const CASE_ONLY_OBSERVER_MESSAGE = "Lavora solo a questo use case: nel team resta osservatore.";
@@ -156,6 +157,17 @@ export async function runCommand(executor: UcExecutor, statements: readonly UcSt
     if (pgCode(error) === UNIQUE_VIOLATION) return fail("conflitto", UC_ERROR_MESSAGES.conflitto);
     throw error;
   }
+}
+
+/**
+ * (Schema di partenza) Le domande nate da «Cosa serve» (`need.<id>`) si chiedono, si assegnano e si
+ * rispondono solo in «Cosa serve»: una scelta che ne contiene una si rifiuta, con il messaggio giusto.
+ * Le istruzioni lo ricontrollano (`linkedItemsGuard`).
+ */
+export async function refuseLinkedItems(executor: UcExecutor, caseId: string, itemIds: readonly string[] | null | undefined): Promise<Result<void>> {
+  if (!itemIds || itemIds.length === 0) return ok(undefined);
+  const [rows] = await executor.batch([linkedItemIdsSql(caseId, itemIds)]);
+  return rows.length > 0 ? fail(LINKED_ITEM_CODE, UC_ERROR_MESSAGES[LINKED_ITEM_CODE]) : ok(undefined);
 }
 
 /** Testi scritti da Lateral Space (descrizione, ROI, commenti, voci): niente dati sanitari, discriminatori o personali. */

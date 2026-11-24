@@ -7,6 +7,8 @@
  * Modulo puro, senza dipendenze di Node: lo usano la pagina, i suoi componenti client e i test.
  */
 import type { CaseStatus } from "../vocab.ts";
+import { formatCountIt } from "./format.ts";
+import { START_TEMPLATE_TEXT, needsLargeTemplateConfirm } from "./start-templates.ts";
 
 export const SETTINGS_TEXT = {
   title: "Impostazioni",
@@ -35,6 +37,82 @@ export const SETTINGS_TEXT = {
   reasonOptional: "Motivo (facoltativo)",
   reasonPlaceholder: "Scrivilo in poche parole, senza nomi di persone.",
 } as const;
+
+// ── «Cambia schema di partenza» (R3 di docs/dossier/SCHEMA-DI-PARTENZA.md) ──
+
+/** Perché una domanda impedisce il cambio di schema (`ReschemaBlockReason` di `uc-reschema.ts`). */
+export type SchemaBlockReason =
+  | "risposte"
+  | "file"
+  | "richieste"
+  | "assegnazione"
+  | "commenti"
+  | "non_applicabile"
+  | "eccezione"
+  | "scadenza"
+  | "aggiunta"
+  | "modifiche";
+
+/** Quante domande che bloccano si elencano nel dialogo; le altre diventano «e altre N». */
+export const SCHEMA_BLOCKERS_SHOWN = 20;
+
+/**
+ * I testi del cambio dello schema di partenza, in «La realizzazione»: solo in «Bozza», solo per chi modifica le
+ * impostazioni. Fuori da `SETTINGS_TEXT` perché ha funzioni con numeri e un elenco di motivi.
+ */
+export const SCHEMA_CHANGE_TEXT = {
+  /** La riga sempre visibile: «Schema di partenza: Dal caso d'uso». */
+  label: "Schema di partenza",
+  open: "Cambia schema di partenza…",
+  dialogTitle: "Cambiare lo schema di partenza?",
+  dialogBody: "Le domande della realizzazione ripartono dallo schema che scegli.",
+  choose: "Schema",
+  rebuilt: "Si rifanno da capo: domande, regole, mappa ed entità.",
+  kept: "Restano come sono: codice, nome, persone, Progetto dell'agente, pacchetti, compiti, collegamento al repository e storico.",
+  same: "È già lo schema di partenza.",
+  confirm: "Cambia schema",
+  cancel: "Annulla",
+  /** La riga muta sotto il pulsante, senza aprire il dialogo. */
+  blockedLine: (n: number) =>
+    `Non si può cambiare: ${n === 1 ? "1 domanda ha" : `${formatCountIt(n)} domande hanno`} già risposte, file, richieste, assegnazioni, decisioni o modifiche.`,
+  blockedTitle: (n: number) => (n === 1 ? "Questa domanda lo impedisce" : "Queste domande lo impediscono"),
+  blockedMore: (n: number) => (n === 1 ? "e un'altra" : `e altre ${formatCountIt(n)}`),
+  untitled: "Domanda senza titolo",
+  reasons: {
+    risposte: "ha risposte",
+    file: "ha file",
+    richieste: "è in una richiesta al referente",
+    assegnazione: "è assegnata",
+    commenti: "ha commenti",
+    non_applicabile: "ha un «non si applica» proposto o firmato",
+    eccezione: "ha una deroga o una soluzione provvisoria",
+    scadenza: "ha una scadenza",
+    aggiunta: "è stata aggiunta a mano",
+    modifiche: "è stata modificata",
+  } satisfies Record<SchemaBlockReason, string>,
+  /** Dopo il comando (toast). */
+  changed: (name: string) => `Lo schema di partenza ora è «${name}».`,
+  unchanged: "Lo schema di partenza era già questo: non è cambiato nulla.",
+  invalid: "Scegli lo schema di partenza.",
+  /** Esiti di `reschemaCase`, in italiano semplice. */
+  failures: {
+    non_in_bozza: "Lo schema di partenza si cambia solo con la realizzazione in «Bozza».",
+    bloccato: "Alcune domande hanno già risposte, file, richieste, assegnazioni, decisioni o modifiche: lo schema non si cambia.",
+    template_non_trovato: "Schema di partenza non trovato: scegline un altro.",
+    caso_non_trovato: "Realizzazione non trovata.",
+  } as Readonly<Record<string, string>>,
+} as const;
+
+/** «ha risposte, ha file»: i motivi di una domanda che blocca, nell'ordine dato, senza ripetizioni. */
+export function schemaBlockReasons(reasons: readonly SchemaBlockReason[]): string {
+  return [...new Set(reasons)].map((r) => SCHEMA_CHANGE_TEXT.reasons[r] ?? r).join(", ");
+}
+
+/** Le domande che bloccano da mostrare (al massimo `SCHEMA_BLOCKERS_SHOWN`) e quante restano fuori. */
+export function schemaBlockersShown<T>(blockers: readonly T[], max = SCHEMA_BLOCKERS_SHOWN): { shown: T[]; more: number } {
+  const shown = blockers.slice(0, Math.max(0, max));
+  return { shown, more: Math.max(0, blockers.length - shown.length) };
+}
 
 /** Il pulsante di ogni cambio di stato: «Metti in pausa…», «Riprendi», «Torna allo sviluppo…», «Chiudi la realizzazione…». */
 export function statusActionLabel(from: CaseStatus, to: CaseStatus): string {
@@ -75,4 +153,19 @@ export function statusHint(from: CaseStatus, to: CaseStatus): string {
 /** L'avviso dopo un cambio: «La realizzazione ora è «In pausa».». */
 export function statusDoneText(label: string): string {
   return `La realizzazione ora è «${label}».`;
+}
+
+/**
+ * «Cambia schema di partenza»: la stessa conferma dello wizard sopra le 50 domande
+ * («Questo schema porta N domande: è quello giusto per questo caso?»), con gli stessi testi.
+ * Null quando lo schema scelto non la chiede.
+ */
+export function schemaChangeLargeConfirm(option: { questions: number } | null): { title: string; body: string; confirm: string; cancel: string } | null {
+  if (!option || !needsLargeTemplateConfirm(option.questions)) return null;
+  return {
+    title: START_TEMPLATE_TEXT.largeTitle(option.questions),
+    body: START_TEMPLATE_TEXT.largeBody,
+    confirm: START_TEMPLATE_TEXT.largeConfirm,
+    cancel: START_TEMPLATE_TEXT.largeCancel,
+  };
 }

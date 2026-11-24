@@ -33,6 +33,7 @@ import { READINESS_LATER_RULE } from "../readiness.ts";
 import { ASKABLE_STATUSES } from "../referent/questions.ts";
 import type { AlertSchedule } from "../referent/alerts.ts";
 import { infoCompleteSyncStatements, uuidOf } from "../referent/sql.ts";
+import { needItemsSyncStatements } from "../../uc/sql/need-items.ts";
 
 const ALIAS = /^[a-z][a-z0-9_]{0,20}$/;
 const DOMAIN = /^[a-z0-9.-]{1,253}$/;
@@ -242,7 +243,11 @@ export function cardSyncStatements(i: {
   });
   const out: UcStatement[] = [lock];
   if (i.readiness) out.push(readinessSyncSql({ workspaceId: i.workspaceId, useCaseIds: i.useCaseIds, needId: i.needId, actorUserId: i.actorUserId, readiness: i.readiness }));
-  if (i.info !== false) out.push(info);
+  if (i.info !== false) {
+    out.push(info);
+    // (Schema di partenza, R1) Le voci dei dossier «Dal caso d'uso» seguono «Cosa serve», nella stessa transazione.
+    out.push(...needItemsSyncStatements({ workspaceId: i.workspaceId, useCaseIds: i.useCaseIds, needId: i.needId, actorUserId: i.actorUserId }));
+  }
   return out;
 }
 

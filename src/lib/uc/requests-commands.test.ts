@@ -211,6 +211,8 @@ class FakeDb implements UcExecutor {
         },
       ];
     }
+    // (Schema di partenza) Le voci collegate a «Cosa serve» della scelta: nessuna, nel caso finto.
+    if (/^SELECT li\.id FROM uc_items li/.test(text)) return [];
     if (/^SELECT EXISTS \(SELECT 1 FROM uc_notifications WHERE dedupe_key/.test(text)) return [{ found: s.notificationExists }];
     if (/^SELECT EXISTS \(SELECT 1 FROM uc_contacts WHERE workspace_id/.test(text)) return [{ taken: false }];
     if (/^SELECT id FROM uc_cases WHERE workspace_id/.test(text)) return [];

@@ -38,6 +38,8 @@ export const ADMIN_COMMANDS = [
   // (Rilascio 8.2b) Le chiavi della CI di un workspace (sola lettura), e la revoca a mano di quelle di un repository.
   "ci-keys",
   "ci-key-revoke",
+  // (Schema di partenza, R4) Un dossier in Bozza passa a un altro schema di partenza, di solito «Dal caso d'uso».
+  "reschema",
 ] as const;
 export type AdminCommandName = (typeof ADMIN_COMMANDS)[number];
 

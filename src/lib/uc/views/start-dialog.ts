@@ -1,6 +1,7 @@
 /**
  * (Rilascio 10, docs/ui-10/PROPOSTA-10.md §3.5, F-019…F-024) I testi del dialogo «Avvia la realizzazione» della scheda
- * dello use case e della pagina di ripiego `/casi-duso/nuovo`: al più 25 parole, un clic. Modulo puro.
+ * dello use case: al più 25 parole, un clic. Modulo puro. La scelta dello schema, qui e nella pagina di ripiego
+ * `/casi-duso/nuovo`, usa i testi di `start-templates.ts` (la riga «per ogni use case · 6 domande» di ogni schema).
  */
 import { formatCountIt } from "./format.ts";
 
@@ -19,9 +20,4 @@ export const START_DIALOG_TEXT = Object.freeze({
 
 function questionsText(n: number): string {
   return n === 1 ? "1 domanda" : `${formatCountIt(n)} domande`;
-}
-
-/** «Smistamento richieste · 245 domande», nell'elenco degli schemi. */
-export function startTemplateLabel(t: { name: string; questions: number }): string {
-  return `${t.name} · ${questionsText(t.questions)}`;
 }

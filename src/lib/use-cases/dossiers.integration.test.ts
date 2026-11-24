@@ -376,3 +376,17 @@ test("UC_WORKSPACE_IDS: fuori elenco ogni lettura risponde «spenta», senza log
 
   assert.equal(log.mock.callCount(), 0);
 });
+
+test("Roadmap card: a cache of another catalog revision gives no «N di M» instead of an old one", opts, async () => {
+  switchOn();
+  const card = async () => {
+    const r = await reads.dossierSummaries(ids.wsA, [ids.ucComplete]);
+    assert.equal(r.ok, true);
+    return r.ok ? (r.summaries.get(ids.ucComplete)?.readiness ?? null) : null;
+  };
+  await q(`UPDATE uc_cases SET catalog_revision = 4, readiness = '{"catalog_revision": 4, "G1": {"required": 6, "ok": 6}}'::jsonb WHERE id = $1::uuid`, [ids.caseComplete]);
+  assert.deepEqual(await card(), { required: 6, ok: 6 });
+  // A need write bumps the revision of a «Dal caso d'uso» dossier: the cached numbers are now old.
+  await q(`UPDATE uc_cases SET catalog_revision = 5 WHERE id = $1::uuid`, [ids.caseComplete]);
+  assert.equal(await card(), null);
+});

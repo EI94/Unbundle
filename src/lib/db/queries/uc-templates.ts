@@ -27,6 +27,7 @@ import {
 } from "../../uc/sql/case-create.ts";
 import {
   buildCaseRows,
+  resolveGatePolicy,
   descriptionFromTemplate,
   initialCaseSettings,
   initialReadiness,
@@ -39,6 +40,14 @@ import { validateTemplate } from "../../uc/template/schema.ts";
 import { eventInsertFromSql } from "./uc-events.ts";
 import { runUcBatch, type UcExecutor, type UcRow } from "../uc-executor.ts";
 import { UUID, isUuid } from "../../uc/ids.ts";
+import {
+  FROM_USE_CASE_TEMPLATE,
+  buildCaseRowsFromNeeds,
+  fromUseCaseDefinition,
+  isFromUseCaseTemplateKey,
+  type NeedForCase,
+} from "../../uc/template/from-use-case.ts";
+import { needItemsSyncStatements } from "../../uc/sql/need-items.ts";
 
 // ── Elenco e lettura ──────────────────────────────────────────────────
 
@@ -201,6 +210,93 @@ export async function getTemplateForCase(executor: UcExecutor, workspaceId: stri
     restricted: row.restricted === true,
     definition: canonical,
   });
+}
+
+// ── Lo schema «Dal caso d'uso» (docs/dossier/SCHEMA-DI-PARTENZA.md, R1) ─
+
+/** Definizione canonica e impronta della riga «Dal caso d'uso» (fisse: calcolate una volta). */
+let fromUseCasePlan: { definition: CanonicalDefinition; hash: string } | null = null;
+/** L'id della riga, una volta letta o creata in questo processo. */
+let fromUseCaseTemplateId: string | null = null;
+
+function fromUseCaseTemplatePlan(): { definition: CanonicalDefinition; hash: string } {
+  if (fromUseCasePlan) return fromUseCasePlan;
+  const validation = validateTemplate(fromUseCaseDefinition());
+  if (!validation.ok) throw new Error(`Schema «${FROM_USE_CASE_TEMPLATE.name}» non valido: ${validation.errors.map((e) => e.message).join("; ")}`);
+  const definition = canonicalDefinition(validation.template);
+  fromUseCasePlan = { definition, hash: templateDefinitionHash(definition) };
+  return fromUseCasePlan;
+}
+
+/**
+ * La riga pubblica di «Dal caso d'uso» in `uc_templates`, creata alla prima occasione e mai più
+ * cambiata (chiave e versione stabili, `ON CONFLICT DO NOTHING`): idempotente, senza SQL a mano.
+ * Una riga con la stessa chiave e un'impronta diversa è un errore (`stessa_versione_diversa`).
+ */
+export async function ensureFromUseCaseTemplate(executor: UcExecutor): Promise<Result<{ id: string }>> {
+  if (fromUseCaseTemplateId) return ok({ id: fromUseCaseTemplateId });
+  const plan = fromUseCaseTemplatePlan();
+  const t = FROM_USE_CASE_TEMPLATE;
+  const def = plan.definition as unknown as { archetype: string; function_area?: string; name: string };
+  const [rows] = await executor.batch([
+    toStatement(ucSql`WITH ins AS (
+  INSERT INTO uc_templates (key, version, language, name, archetype, industry, function_area, status, definition, definition_hash, published_at)
+  VALUES (${cast(t.key, "text")}, ${cast(t.version, "text")}, 'it', ${cast(def.name, "text")}, ${cast(def.archetype, "text")}, NULL,
+    ${cast(def.function_area ?? null, "text")}, 'pubblicato', ${jsonb(plan.definition as unknown as Json)}, ${cast(plan.hash, "text")}, now())
+  ON CONFLICT (key, version, language) DO NOTHING
+  RETURNING id, definition_hash, status, restricted_to_workspace_id
+)
+SELECT id, definition_hash, status, restricted_to_workspace_id FROM ins
+UNION ALL
+SELECT id, definition_hash, status, restricted_to_workspace_id FROM uc_templates
+WHERE key = ${cast(t.key, "text")} AND version = ${cast(t.version, "text")} AND language = 'it' AND NOT EXISTS (SELECT 1 FROM ins)`),
+  ]);
+  const row = rows[0];
+  if (!row) return fail("conflitto", "Schema «Dal caso d'uso» non disponibile: riprova.");
+  if (String(row.definition_hash).trim() !== plan.hash) return fail("stessa_versione_diversa", "Lo schema «Dal caso d'uso» salvato ha un contenuto diverso.");
+  if (row.status !== "pubblicato" || row.restricted_to_workspace_id) return fail("template_non_disponibile", "Lo schema «Dal caso d'uso» salvato non è pubblico.");
+  fromUseCaseTemplateId = String(row.id);
+  return ok({ id: fromUseCaseTemplateId });
+}
+
+/**
+ * Sola lettura (prova a secco dell'operatore): l'id della riga «Dal caso d'uso» se c'è già, con la
+ * definizione fissa di questo modulo. Senza riga, `id` è null: la crea il primo `--apply`.
+ */
+export async function findFromUseCaseTemplate(executor: UcExecutor): Promise<Omit<VisibleTemplate, "id"> & { id: string | null }> {
+  const plan = fromUseCaseTemplatePlan();
+  const t = FROM_USE_CASE_TEMPLATE;
+  const [rows] = await executor.batch([templateLookupSql(t.key, t.version, "it")]);
+  const row = rows[0];
+  return { id: row ? String(row.id) : null, key: t.key, version: t.version, hash: plan.hash, restricted: false, definition: plan.definition };
+}
+
+/** Le informazioni di «Cosa serve» che diventano domande: requisiti collegati, non archiviati, che si applicano. */
+function needsForCaseSql(workspaceId: string, useCaseId: string): UcStatement {
+  return toStatement(ucSql`SELECT n.id, n.title, n.detail, n.kind, n.status, n.sort_order
+FROM use_case_needs n
+JOIN use_case_need_links l ON l.need_id = n.id AND l.use_case_id = ${cast(useCaseId, "uuid")}
+JOIN use_cases u ON u.id = l.use_case_id AND u.workspace_id = n.workspace_id
+WHERE n.workspace_id = ${cast(workspaceId, "uuid")} AND n.type = 'requisito' AND n.archived_at IS NULL AND n.status <> 'non_applicabile'
+ORDER BY n.sort_order, n.created_at, n.id`);
+}
+
+export async function readNeedsForCase(executor: UcExecutor, workspaceId: string, useCaseId: string): Promise<NeedForCase[]> {
+  if (!isUuid(workspaceId) || !isUuid(useCaseId)) return [];
+  const [rows] = await executor.batch([needsForCaseSql(workspaceId, useCaseId)]);
+  return rows.map((r) => ({
+    id: String(r.id).toLowerCase(),
+    title: String(r.title ?? ""),
+    detail: (r.detail as string | null) ?? null,
+    kind: (r.kind as string | null) ?? null,
+    status: String(r.status ?? "da_chiedere"),
+    sortOrder: Number(r.sort_order ?? 0),
+  }));
+}
+
+/** Quante domande porta «Dal caso d'uso» per questo use case (per lo wizard). */
+export async function countFromUseCaseQuestions(executor: UcExecutor, workspaceId: string, useCaseId: string): Promise<number> {
+  return (await readNeedsForCase(executor, workspaceId, useCaseId)).length;
 }
 
 // ── Caricamento (scripts/uc-load-template.ts) ─────────────────────────
@@ -376,6 +472,8 @@ export interface CreatedCase {
   counts: CaseBuildCounts;
   /** Un caso incompleto più vecchio di 10 minuti con lo stesso codice è stato cancellato prima. */
   replacedIncompleteCaseId: string | null;
+  /** Creato da «Dal caso d'uso»: le voci seguono «Cosa serve» (la prontezza in cache va riletta). */
+  fromUseCase: boolean;
 }
 
 /**
@@ -399,11 +497,19 @@ export async function createCaseFromTemplate(executor: UcExecutor, input: Create
   if (!template.ok) return template;
   const def = template.value.definition;
 
-  const build = buildCaseRows(def, {
-    newId,
-    policy: v.gatePolicyScope ? { scope: v.gatePolicyScope } : undefined,
-    blockerMatcher: input.blockerMatcher,
-  });
+  // «Dal caso d'uso»: le domande sono le voci di «Cosa serve» della scheda, nessuna mappa né regola.
+  const fromUseCase = isFromUseCaseTemplateKey(template.value.key);
+  if (fromUseCase && !v.portfolioUseCaseId) return fail("scheda_mancante", "Lo schema «Dal caso d'uso» parte da uno use case.");
+  const build = fromUseCase
+    ? buildCaseRowsFromNeeds(await readNeedsForCase(executor, v.workspaceId, v.portfolioUseCaseId!), {
+        newId,
+        policy: resolveGatePolicy(def, v.gatePolicyScope ? { scope: v.gatePolicyScope } : undefined),
+      })
+    : buildCaseRows(def, {
+        newId,
+        policy: v.gatePolicyScope ? { scope: v.gatePolicyScope } : undefined,
+        blockerMatcher: input.blockerMatcher,
+      });
 
   // Codice già usato?
   const [state] = await executor.batch([caseCodeStateSql(v.workspaceId, v.code)]);
@@ -436,6 +542,9 @@ export async function createCaseFromTemplate(executor: UcExecutor, input: Create
     actorUserId: v.actorUserId,
   };
   const batches = caseCreateBatches(header, build, initialReadiness(build, now()));
+  // Lo stato vero delle voci collegate (con la risposta di sistema per le validate), nell'ultimo batch.
+  // Anche le informazioni collegate tra la lettura e l'ultimo batch (dopo il controllo dei conteggi).
+  if (fromUseCase) batches[batches.length - 1].push(...needItemsSyncStatements({ workspaceId: v.workspaceId, caseId, actorUserId: v.actorUserId }));
   // Nella transazione dell'INSERT: le righe incomplete ferme sulla stessa scheda, con un altro codice.
   if (header.portfolioUseCaseId) batches[0] = [deleteStaleIncompleteCardCasesSql(v.workspaceId, header.portfolioUseCaseId), ...batches[0]];
 
@@ -452,7 +561,7 @@ export async function createCaseFromTemplate(executor: UcExecutor, input: Create
       return fail(result.code, CREATE_MESSAGES[result.code] ?? result.message);
     }
   }
-  return ok({ caseId, code: v.code, templateId: template.value.id, policy: build.policy, counts: build.counts, replacedIncompleteCaseId: replaced });
+  return ok({ caseId, code: v.code, templateId: template.value.id, policy: build.policy, counts: build.counts, replacedIncompleteCaseId: replaced, fromUseCase });
 }
 
 const CREATE_MESSAGES: Readonly<Record<string, string>> = {

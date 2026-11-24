@@ -3,12 +3,14 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { installAppModules } from "../../../lib/ai/claude-test-kit.ts";
 import { findHubForbiddenIn } from "../../../lib/use-cases/copy-guard.ts";
-import { START_DIALOG_TEXT as T, startTemplateLabel } from "../../../lib/uc/views/start-dialog.ts";
+import { START_DIALOG_TEXT as T } from "../../../lib/uc/views/start-dialog.ts";
+import { START_TEMPLATE_TEXT } from "../../../lib/uc/views/start-templates.ts";
 import { enableTsxImports } from "./referent/tsx-test-loader.ts";
 
 // (Rilascio 10, docs/ui-10/PROPOSTA-10.md §3.5, F-019…F-024) «Avvia la realizzazione» è un dialogo sulla scheda dello
 // use case: «Parte la realizzazione di XX-0012», «Cambia schema» solo con più di uno schema, «Avvia»; niente «Nome».
 // Lo aprono il passo della scheda e la piega «Realizzazione»; senza i dati del dialogo, la pagina di ripiego.
+// Lo schema di partenza segue R2 di docs/dossier/SCHEMA-DI-PARTENZA.md, come la pagina di ripiego. Dati inventati.
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 
@@ -16,6 +18,7 @@ type Render = (element: unknown) => string;
 let render: Render;
 let h: (type: unknown, props?: object | null, ...children: unknown[]) => unknown;
 let D: { StartRealizationButton: (props: never) => unknown; StartRealizationHost: (props: never) => unknown };
+let W: { StartRealizationForm: (props: never) => unknown };
 let C: { StartRealizationButton: (props: never) => unknown; startClickHandler: (open: (() => void) | null) => ((event: never) => void) | undefined };
 
 before(async () => {
@@ -30,12 +33,19 @@ before(async () => {
   render = (element) => renderToStaticMarkup(react.createElement(AppRouterContext.Provider, { value: router }, element as never)).replace(/&#x27;/g, "'");
   C = (await import("./start-realization-context.tsx")) as never;
   D = { ...((await import("./start-realization-dialog.tsx")) as object), StartRealizationButton: C.StartRealizationButton } as never;
+  W = (await import("../../uc/shell/create-wizard.tsx")) as never;
 });
+
+const FROM_USE_CASE = { id: "00000000-0000-4000-8000-0000000000b1", key: "unbundle.dal_caso", name: "Dal caso d'uso", questions: 6, line: "per ogni use case · 6 domande", restricted: false, fromUseCase: true };
+const RESERVED = { id: "00000000-0000-4000-8000-0000000000b2", key: "settore.smistamento", name: "Smistamento richieste", questions: 245, line: "per smistamento richieste · 245 domande", restricted: true, fromUseCase: false };
+const OTHER = { id: "00000000-0000-4000-8000-0000000000b3", key: "esempio.minimo", name: "Esempio · Turni", questions: 12, line: "per turni di reparto · 12 domande", restricted: false, fromUseCase: false };
 
 const DATA = {
   useCase: { id: "00000000-0000-4000-8000-0000000000a1", code: "XX-0012", title: "Smistamento delle richieste" },
   defaults: { title: "Smistamento delle richieste", oneLiner: "Le richieste arrivano da tre canali." },
-  templates: [{ id: "00000000-0000-4000-8000-0000000000b1", name: "Smistamento richieste", questions: 245, restricted: true }],
+  templates: [FROM_USE_CASE, RESERVED],
+  otherTemplates: [OTHER],
+  preselectedId: FROM_USE_CASE.id,
   codeMissing: false,
   prefillRows: [],
 };
@@ -44,7 +54,6 @@ test("the dialog's words: who starts what, with which template; at most 25 words
   assert.equal(T.title("XX-0012", "Smistamento delle richieste"), "Parte la realizzazione di XX-0012");
   assert.equal(T.title(null, "Smistamento delle richieste"), "Parte la realizzazione di «Smistamento delle richieste»");
   assert.equal(T.template({ name: "Smistamento richieste", questions: 245 }), "Con lo schema «Smistamento richieste», 245 domande.");
-  assert.equal(startTemplateLabel({ name: "Base", questions: 1 }), "Base · 1 domanda");
   const words = [T.title("XX-0012", ""), T.template({ name: "Smistamento richieste", questions: 245 }), T.change, T.cancel, T.start].join(" ").split(/\s+/).filter(Boolean);
   assert.ok(words.length <= 25, `${words.length} words`);
   assert.deepEqual(findHubForbiddenIn([T.title("XX-0012", "x"), T.template({ name: "x", questions: 2 }), T.change, T.chooseLabel, T.cancel, T.start, T.settings], "area"), []);
@@ -75,9 +84,9 @@ test("the buttons are links to the fallback page; with the dialog's data a click
 test("the dialog: no «Nome», «Cambia schema» only with more than one template, its own filled «Avvia», the same action", () => {
   const source = read("./start-realization-dialog.tsx");
   assert.doesNotMatch(source, /realizzazione-nome|>\s*Nome\s*</, "the name is the use case's title (F-020)");
-  assert.match(source, /data\.templates\.length > 1 \?/, "«Cambia schema» only with more than one");
+  assert.match(source, /\) : all\.length > 1 \? \(/, "«Cambia schema» only with more than one");
   assert.match(source, /if \(choosing\) chooserRef\.current\?\.focus\(\);/, "after «Cambia schema» the focus goes to the choice");
-  assert.match(source, /<SelectTrigger ref=\{chooserRef\}/);
+  assert.match(source, /focusRef=\{chooserRef\}/);
   assert.match(source, /startRealizationAction\(workspaceId, \{ useCaseId: data\.useCase\.id, templateId: template\.id, title: data\.defaults\.title, oneLiner:/);
   assert.match(source, /router\.push\(`\/dashboard\/\$\{workspaceId\}\/casi-duso\/\$\{created\.caseId\}`\)/, "then the Panoramica of the realization");
   assert.match(source, /<summary [^>]*>\{PREFILL_TEXT\.title\}<\/summary>/, "«Dati raccolti da Claude» in a closed fold (F-022)");
@@ -96,4 +105,39 @@ test("the dialog: no «Nome», «Cambia schema» only with more than one templat
   const fallback = read("../../../app/(dashboard)/dashboard/[workspaceId]/casi-duso/nuovo/page.tsx");
   assert.match(fallback, /const form = await startFormData\(executor, workspaceId, context\);/, "the fallback page reads the same data");
   assert.doesNotMatch(read("../../uc/shell/create-wizard.tsx"), /realizzazione-nome/);
+});
+
+test("(R2) the dialog chooses the schema as the fallback page does: «Dal caso d'uso» preselected, never a reserved one, >50 asked", () => {
+  const source = read("./start-realization-dialog.tsx");
+  // The same choice and the same rule as the fallback page: what is preselected comes from `preselectedId`, never from the order.
+  assert.match(source, /useStartTemplatePicker\(data\.templates, data\.otherTemplates, data\.preselectedId\)/);
+  assert.doesNotMatch(source, /templates\[0\]/, "the first schema is never chosen by its place in the list");
+  assert.match(source, /<StartTemplatePicker\s[^>]*otherTemplates=\{data\.otherTemplates\}/, "the others behind «Mostra anche gli altri schemi»");
+  assert.match(source, /useState\(choice\.initial === null\)/, "nothing preselected: the choice is open from the start");
+  // Above 50 questions the first «Avvia» asks inside the dialog, the second (the confirm label) starts.
+  assert.match(source, /if \(large && !asking\) \{\s*setAsking\(true\);\s*return;/);
+  assert.match(source, /asking && large \? START_TEMPLATE_TEXT\.largeConfirm : T\.start/);
+  assert.match(source, /START_TEMPLATE_TEXT\.largeTitle\(template\.questions\)/);
+  const wizard = read("../../uc/shell/create-wizard.tsx");
+  assert.match(wizard, /const initial = all\.find\(\(t\) => t\.id === preselectedId && !t\.restricted\) \?\? null;/, "a reserved schema is never preselected");
+  assert.match(wizard, /const choice = useStartTemplatePicker\(templates, otherTemplates, preselectedId\);/, "the fallback page uses the same choice");
+  assert.equal((wizard.match(/<StartTemplatePicker\s/g) ?? []).length, 1);
+});
+
+test("(R2) the fallback page: «Dal caso d'uso» first and checked with its line, the others hidden, a reserved schema never checked", () => {
+  const props = { workspaceId: "w", useCase: DATA.useCase, defaults: DATA.defaults, templates: DATA.templates, otherTemplates: DATA.otherTemplates };
+  const html = render(h(W.StartRealizationForm, { ...props, preselectedId: FROM_USE_CASE.id }));
+  const checked = [...html.matchAll(/<input [^>]*type="radio"[^>]*>/g)].map((m) => m[0]).filter((tag) => /\schecked=""/.test(tag));
+  assert.equal(checked.length, 1);
+  assert.match(checked[0], new RegExp(`value="${FROM_USE_CASE.id}"`));
+  assert.ok(html.indexOf(FROM_USE_CASE.name) >= 0 && html.indexOf(FROM_USE_CASE.name) < html.indexOf(RESERVED.name), "«Dal caso d'uso» first");
+  assert.match(html, /per ogni use case · 6 domande/);
+  assert.match(html, /per smistamento richieste · 245 domande/);
+  assert.doesNotMatch(html, new RegExp(OTHER.name), "the others only on request");
+  assert.match(html, new RegExp(START_TEMPLATE_TEXT.showOthers(1)));
+  assert.doesNotMatch(html, /realizzazione-nome/);
+  // Asked to preselect a reserved schema, nobody is chosen: the choice is by hand.
+  const reserved = render(h(W.StartRealizationForm, { ...props, preselectedId: RESERVED.id }));
+  assert.doesNotMatch(reserved, /<input [^>]*type="radio"[^>]*checked=""/);
+  assert.match(reserved, new RegExp(START_TEMPLATE_TEXT.chooseOne.replace(".", "\\.")));
 });

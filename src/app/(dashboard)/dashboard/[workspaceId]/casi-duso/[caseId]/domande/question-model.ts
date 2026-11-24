@@ -18,8 +18,10 @@ import { PRIVACY_LABEL, blockerLabel } from "@/lib/uc/views/labels";
 import { canOpenItem } from "@/lib/uc/views/page-access";
 import { clientPlainText, oneQuestionStateLabel } from "@/lib/uc/views/rows";
 import { isLsViewer, statusView } from "@/lib/uc/views/status-groups";
+import { needIdOfItemKey } from "@/lib/uc/template/from-use-case";
 import type { Json } from "@/lib/uc/types";
 import type { CaseRole } from "@/lib/uc/vocab";
+import { cosaServeHref } from "@/lib/use-cases/referent/contract";
 
 /** Al cliente una domanda senza titolo non mostra la chiave (§6.2). */
 const UNTITLED = "Domanda senza titolo";
@@ -57,7 +59,10 @@ export function expectsFile(data: Pick<ItemDetailData, "loaded">): boolean {
  * ruolo di chi risponde e in quelli delle altre persone a cui affidarla;
  * niente autore né data delle risposte, niente scadenza accanto al nome di
  * chi risponde (art. 15.4); una sola azione, «Affida a…». In pausa, a caso
- * chiuso e in sola lettura le azioni non ci sono.
+ * chiuso e in sola lettura le azioni non ci sono. Una domanda nata da «Cosa
+ * serve» (schema «Dal caso d'uso», `template_item_key` = `need.<id>`) non ha
+ * azioni né commenti nuovi: si aggiorna in «Cosa serve», e al loro posto c'è il
+ * link (solo per Lateral Space, che apre «Cosa serve»).
  */
 export function questionDetailModel(
   data: ItemDetailData,
@@ -77,7 +82,9 @@ export function questionDetailModel(
   const client = !ls;
   const plain = (t: string | null) => (t && client ? clientPlainText(t) : t);
   const view = statusView(s.status, client ? "cliente" : "ls");
-  const writable = !i.readOnly && data.core.status !== "chiuso" && data.core.status !== "sospeso";
+  // Nata da «Cosa serve»: lì si aggiorna, qui nessun secondo editor.
+  const fromNeeds = needIdOfItemKey(data.header.templateItemKey) !== null;
+  const writable = !fromNeeds && !i.readOnly && data.core.status !== "chiuso" && data.core.status !== "sospeso";
   const askAgain = canAskAgain({ status: s.status, hasAssignee: s.assigneeContactId !== null, roles: i.roles, writable });
   const reassign =
     client && writable && can(i.roles, "riassegnare") && s.status !== "validata" && s.status !== "non_applicabile"
@@ -145,5 +152,6 @@ export function questionDetailModel(
       due: ls && x.dueAt ? `${formatLongDayIt(x.dueAt)}${x.dueIsProposal ? " (proposta)" : ""}` : null,
     },
     fullHref: `${itemPath(i.workspaceId, i.caseId, s.id)}${i.listQuery ?? ""}`,
+    cosaServe: fromNeeds ? { href: ls && data.core.portfolioUseCaseId ? cosaServeHref(i.workspaceId, data.core.portfolioUseCaseId) : null } : null,
   };
 }

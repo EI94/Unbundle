@@ -106,7 +106,7 @@ export interface DossierSummary extends DossierState {
   readiness: { required: number; ok: number } | null;
 }
 
-type DossierRow = { useCaseId: unknown; caseId: unknown; code: unknown; status: unknown; required?: unknown; readyOk?: unknown };
+type DossierRow = { useCaseId: unknown; caseId: unknown; code: unknown; status: unknown; required?: unknown; readyOk?: unknown; revision?: unknown; cachedRevision?: unknown };
 
 /** Un conteggio della cache: intero non negativo, altrimenti null. */
 function count(value: unknown): number | null {
@@ -135,7 +135,8 @@ async function readDossiers(
     if (ids.length === 0) return { ok: true, found };
     const { rows } = await db.execute(sql`SELECT DISTINCT ON (c.portfolio_use_case_id)
         c.portfolio_use_case_id AS "useCaseId", c.id AS "caseId", c.code, c.status,
-        c.readiness -> 'G1' ->> 'required' AS "required", c.readiness -> 'G1' ->> 'ok' AS "readyOk"
+        c.readiness -> 'G1' ->> 'required' AS "required", c.readiness -> 'G1' ->> 'ok' AS "readyOk",
+        c.catalog_revision AS "revision", c.readiness ->> 'catalog_revision' AS "cachedRevision"
       FROM uc_cases c
       WHERE c.workspace_id = ${workspaceId}::uuid
         AND c.portfolio_use_case_id = ANY(${sql.param(ids)}::uuid[])
@@ -143,8 +144,13 @@ async function readDossiers(
       ORDER BY c.portfolio_use_case_id, c.created_at, c.id`);
     for (const row of rows as DossierRow[]) {
       if (!isVocab(CASE_STATUSES, row.status)) throw new TypeError("Stato del dossier fuori vocabolario");
-      const required = count(row.required);
-      const ok = count(row.readyOk);
+      // Come la testata (`uc-header.ts`): una cache di un'altra revisione del catalogo (per esempio dopo una scrittura
+      // di «Cosa serve» su un dossier «Dal caso d'uso») non dà il numero, invece di darne uno vecchio.
+      const revision = count(row.revision);
+      const cachedRevision = count(row.cachedRevision);
+      const stale = revision !== null && cachedRevision !== null && revision !== cachedRevision;
+      const required = stale ? null : count(row.required);
+      const ok = stale ? null : count(row.readyOk);
       found.set(String(row.useCaseId).toLowerCase(), {
         caseId: String(row.caseId),
         code: String(row.code),

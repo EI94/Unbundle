@@ -10,8 +10,9 @@
  * Qui i testi e le regole pure della pagina e del pannello delle regole. Modulo puro.
  */
 import type { CaseRole } from "../vocab.ts";
-import { MAP_PAGE_VIEW_LABEL, stepTone, type MapPageView, type MapTone, type ProcessStepView, type SolutionNodeView } from "./map.ts";
+import { MAP_EMPTY, MAP_PAGE_VIEW_LABEL, stepTone, type MapPageView, type MapTone, type ProcessStepView, type SolutionNodeView } from "./map.ts";
 import { formatCountIt } from "./format.ts";
+import { RULES_EMPTY } from "./model.ts";
 import { canOpenPage } from "./page-access.ts";
 import { RULES_PANEL, RULES_PANEL_PARAMS, RULE_PARAM } from "./solution-panels.ts";
 import type { Audience } from "./status-groups.ts";
@@ -68,15 +69,19 @@ export const SOLUTION_TEXT = Object.freeze({
   dataModel: "Modello dati",
   /** L'elenco in fondo: le regole e le due pagine senza scheda. */
   partsLabel: "Le altre parti della soluzione",
+  /** La riga «Mappa · Da disegnare.» in fondo, quando la mappa non c'è (`solutionPartsToDraw`). */
+  mapPart: "Mappa",
   /** Le pagine senza scheda: il ritorno alla Soluzione. */
   backToSolution: "Soluzione",
 });
 
-/** I testi del pannello «Regole» (F-090). «Lo schema di partenza» è una parola di Lateral Space. */
+/**
+ * I testi del pannello «Regole» (F-090). Senza regole il pannello dice «Da disegnare» a tutti (`RULES_EMPTY` di
+ * `model.ts`, R1 di `docs/dossier/SCHEMA-DI-PARTENZA.md`).
+ */
 export const RULES_TEXT = Object.freeze({
   title: "Regole",
   count: (n: number) => `${formatCountIt(n)} ${n === 1 ? "regola" : "regole"}`,
-  none: (audience: Audience) => (audience === "ls" ? "Lo schema di partenza non ha regole." : "Nessuna regola ancora."),
   noMatch: (q: string) => `Nessuna regola trovata per “${q}”.`,
   noFilterMatch: "Nessuna regola con questi filtri.",
   clear: "Togli i filtri",
@@ -84,6 +89,27 @@ export const RULES_TEXT = Object.freeze({
   firstPage: "Torna alla prima pagina",
   back: "Tutte le regole",
 });
+
+/** Una parte della soluzione ancora vuota: «Mappa · Da disegnare» e il suggerimento, in una riga in grigio. */
+export interface SolutionPartToDraw {
+  key: "mappa" | "regole";
+  label: string;
+  hint: string;
+}
+
+/**
+ * (R1 di `docs/dossier/SCHEMA-DI-PARTENZA.md`: mappa e regole vuote, «con lo stato «Da disegnare»») Le parti della
+ * soluzione ancora vuote, in fondo alla pagina: una riga in grigio per ognuna, al posto del link che non c'è; mai un
+ * link a una pagina vuota, mai un pulsante. La mappa quando chi la può aprire non ha niente da disegnare (nessuna
+ * vista), le regole quando «Regole ›» non c'è. Gli stessi testi della pagina della mappa (`MAP_EMPTY`) e del pannello
+ * delle regole (`RULES_EMPTY`).
+ */
+export function solutionPartsToDraw(i: { mapMissing: boolean; rulesMissing: boolean }): SolutionPartToDraw[] {
+  const out: SolutionPartToDraw[] = [];
+  if (i.mapMissing) out.push({ key: "mappa", label: `${SOLUTION_TEXT.mapPart} · ${MAP_EMPTY.title}`, hint: MAP_EMPTY.hint });
+  if (i.rulesMissing) out.push({ key: "regole", label: `${RULES_TEXT.title} · ${RULES_EMPTY.title}`, hint: RULES_EMPTY.hint });
+  return out;
+}
 
 /** Il pannello di un passo: `?apri=passo-<id>` (l'id del nodo della mappa, codificato). */
 export const STEP_PANEL_PREFIX = "passo-";

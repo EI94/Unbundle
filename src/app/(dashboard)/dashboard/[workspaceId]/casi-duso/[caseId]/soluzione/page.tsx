@@ -35,7 +35,7 @@ import { hasAgentProcess, mapItemTitles, mapPageViews, mapSwitchViews, resolveMa
 import { flowOrder } from "@/lib/uc/views/map-layout";
 import { parseRulesQuery } from "@/lib/uc/views/model";
 import { canOpenPage } from "@/lib/uc/views/page-access";
-import { RULES_PANEL, SOLUTION_TEXT as T, boardSteps, solutionLinksFor, solutionViewHref, stepFromPanel, stepPanelHref } from "@/lib/uc/views/solution";
+import { RULES_PANEL, SOLUTION_TEXT as T, boardSteps, solutionLinksFor, solutionPartsToDraw, solutionViewHref, stepFromPanel, stepPanelHref } from "@/lib/uc/views/solution";
 import { audienceFor, isLsViewer } from "@/lib/uc/views/status-groups";
 import type { AgentTone } from "@/lib/use-cases/agents";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
@@ -63,7 +63,8 @@ async function agentToneOf(workspaceId: string, title: string | null, reviewer: 
  * passo si apre nel suo pannello (`?apri=passo-<id>`). Senza mappa, «Come funziona» è l'elenco dei passi della
  * descrizione; con la mappa quell'elenco si vede solo a chi modifica. In fondo «Regole · N ›» (il pannello
  * `?apri=regole`, dove sono finite le regole) e, per Lateral Space e lo sviluppo, «Vista di analisi ›» e «Modello dati
- * ›», le due pagine senza scheda. Il controllo «Descrizione · Mappa · Regole · Dati» non c'è più.
+ * ›», le due pagine senza scheda. Il controllo «Descrizione · Mappa · Regole · Dati» non c'è più. Senza mappa o senza
+ * regole (lo schema «Dal caso d'uso»), lì una riga in grigio dice «Da disegnare» (`solutionPartsToDraw`).
  *
  * Il responsabile Lateral Space modifica i blocchi (`?modifica=1`, «Completa la descrizione»); Lateral Space legge le
  * versioni (`?apri=versioni`, `?versione=N`). Letture in parallelo: descrizione, mappe (per chi apre la mappa), il
@@ -180,6 +181,9 @@ export default async function SolutionPage({
     analysisShown ? { key: "analisi", label: T.analysis, href: casePath(workspaceId, caseId, "soluzione/mappa") } : null,
     links.dataModel ? { key: "dati", label: T.dataModel, href: casePath(workspaceId, caseId, "soluzione/dati") } : null,
   ].filter((l): l is { key: string; label: string; href: string } => l !== null);
+  // (R1 di `docs/dossier/SCHEMA-DI-PARTENZA.md`) Mappa e regole vuote dicono «Da disegnare»: una riga ciascuna, al posto
+  // dei link che non ci sono, a chi le potrebbe aprire.
+  const toDraw = solutionPartsToDraw({ mapMissing: maps !== null && views.length === 0, rulesMissing: rulesCount !== null && !rulesShown });
 
   return (
     <PageContainer>
@@ -263,7 +267,7 @@ export default async function SolutionPage({
           </>
         )}
 
-        {bottom.length > 0 && (
+        {(bottom.length > 0 || toDraw.length > 0) && (
           <ul aria-label={T.partsLabel} className="divide-y divide-border border-y border-border">
             {bottom.map((l) => (
               <li key={l.key}>
@@ -271,6 +275,11 @@ export default async function SolutionPage({
                   <span>{l.label}</span>
                   <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
                 </Link>
+              </li>
+            ))}
+            {toDraw.map((p) => (
+              <li key={p.key} data-slot="da-disegnare" className="py-2.5 text-sm text-muted-foreground">
+                <span className="font-medium">{p.label}.</span> {p.hint}
               </li>
             ))}
           </ul>

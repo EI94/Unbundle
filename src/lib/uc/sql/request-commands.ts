@@ -43,6 +43,7 @@ import {
 import { rowBool, rowDate, rowJson, rowNumber, rowString, rowStringArray, type Row } from "./readiness.ts";
 import { REQUEST_LINK_TTL_DAYS, requestLiveSql, requestVisibleSql } from "./requests.ts";
 import { cast, join, jsonb, raw, requireRows, toStatement, ucSql, type SqlFragment, type UcStatement } from "./statement.ts";
+import { linkedItemsGuard } from "./need-items.ts";
 import type { TemplateParts } from "./template-parts.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -546,7 +547,7 @@ export function assignItemsSql(i: {
     AND NOT EXISTS (SELECT 1 FROM uc_request_items ri WHERE ri.item_id = i.id AND ri.state IN (${raw(ACTIVE_STATES_SQL)}))
   RETURNING i.id, i.key
 ), ev AS (${event})
-SELECT uc_require(count(*) = ${cast(rows.length, "int")}, 'conflitto') AS ok FROM u`);
+SELECT ${linkedItemsGuard(cast(uuid(i.caseId, "caso"), "uuid"), raw("SELECT x.id FROM x"))} AND uc_require(count(*) = ${cast(rows.length, "int")}, 'conflitto') AS ok FROM u`);
 }
 
 /** Ruolo del template dato al referente che ancora non ne ha uno (assegnazione per ruolo). */
@@ -779,7 +780,7 @@ export function requestItemsInsertSql(i: { caseId: string; requestId: string; co
   ON CONFLICT DO NOTHING
   RETURNING item_id
 )
-SELECT uc_require(count(*) = ${cast(items.length, "int")}, 'conflitto') AS ok FROM ins`);
+SELECT ${linkedItemsGuard(cast(uuid(i.caseId, "caso"), "uuid"), raw("SELECT x.id FROM x"))} AND uc_require(count(*) = ${cast(items.length, "int")}, 'conflitto') AS ok FROM ins`);
 }
 
 /**
@@ -1161,7 +1162,7 @@ export function alignAssigneeSql(i: { workspaceId: string; caseId: string; itemI
     AND i.deleted_at IS NULL AND i.assignee_contact_id IS DISTINCT FROM ${cast(i.contactId, "uuid")}
   RETURNING i.id, i.key
 ), ev AS (${event})
-SELECT count(*)::int AS aligned FROM u`);
+SELECT count(*)::int AS aligned, ${linkedItemsGuard(cast(uuid(i.caseId, "caso"), "uuid"), ucSql`SELECT unnest(${cast(uuids(i.itemIds, "voce"), "uuid[]")})`)} AS linked_ok FROM u`);
 }
 
 /** Le voci della richiesta sono ancora tutte `chiesta` e nella richiesta (guardia dell'approvazione della delega). */
