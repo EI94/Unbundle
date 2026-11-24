@@ -45,6 +45,8 @@ export const READINESS_TEXT = Object.freeze({
     updated: (time: string) => `aggiornato alle ${time}`,
   }),
   deleted: "Rilevazione eliminata, con inviti, risposte e punteggi.",
+  /** (0044) Il link di un'email per una rilevazione che non c'è (più), o non è di questo workspace: lo stesso per tutti. */
+  gone: "Questa rilevazione non c'è più.",
   /** Il prossimo passo, stato per stato (§3.9): il verbo del pulsante e il perché nel «?». */
   step: Object.freeze({
     open: "Apri la raccolta",

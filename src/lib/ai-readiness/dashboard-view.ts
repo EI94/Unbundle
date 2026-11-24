@@ -97,6 +97,18 @@ export function readinessHref(
   return `/dashboard/${workspaceId}/ai-readiness${query ? `?${query}` : ""}${o.anchor ? `#${o.anchor}` : ""}`;
 }
 
+/** (0044) Il parametro della pagina quando il link di un'email porta a una rilevazione che non c'è (più). */
+export const READINESS_GONE_PARAM = "assente";
+
+/**
+ * (0044) La pagina dell'AI Readiness con «Questa rilevazione non c'è più.»: dove porta il link di un'email per una
+ * rilevazione eliminata, sconosciuta o di un altro workspace. Lo stesso indirizzo in tutti e tre i casi: non dice mai se
+ * la rilevazione esiste altrove.
+ */
+export function readinessGoneHref(workspaceId: string): string {
+  return `${readinessHref(workspaceId)}?${READINESS_GONE_PARAM}=1`;
+}
+
 /** La pagina «Domande» di una rilevazione (con `?per=referenti` per le schede dei referenti). */
 export function questionsHref(workspaceId: string, assessmentId: string, audience: QuestionAudience = "tutti"): string {
   const base = `/dashboard/${workspaceId}/ai-readiness/questions/${assessmentId}`;

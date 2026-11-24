@@ -18,6 +18,7 @@ import { USE_CASE_FORM_BLOCKS } from "@/lib/ai-readiness/use-case-form";
 import { READINESS_TEXT, formatScore } from "@/lib/ai-readiness/dashboard-text";
 import {
   INVITE_PANEL,
+  READINESS_GONE_PARAM,
   READINESS_TAB_PARAM,
   expectedRespondentsOf,
   exportHref,
@@ -74,7 +75,8 @@ const text = (value: unknown) => (typeof value === "string" ? value : "");
  * Raccolta · Insight · Impostazioni. Prima erano sedici blocchi uno sotto l'altro.
  *
  * Gli indirizzi di prima valgono tutti: `?assessment=`, `?new=1`, `?deleted=1`, le ancore `#respondents` e
- * `#intelligence` (`ReadinessAnchor`); `?apri=invita` apre il pannello «Invita una persona». Chi vede che cosa non
+ * `#intelligence` (`ReadinessAnchor`); `?apri=invita` apre il pannello «Invita una persona»; (0044) `?assente=1` dice
+ * «Questa rilevazione non c'è più.» (il link di un'email per una rilevazione che non c'è). Chi vede che cosa non
  * cambia: la pagina si apre a ogni membro del workspace; ogni controllo solo a chi può usarlo, con i permessi delle
  * azioni di oggi (gestire per la raccolta, valutare per la sintesi e i file).
  */
@@ -83,7 +85,7 @@ export default async function AiReadinessPage({
   searchParams,
 }: {
   params: Promise<{ workspaceId: string }>;
-  searchParams: Promise<{ assessment?: string; new?: string; deleted?: string; scheda?: string; apri?: string }>;
+  searchParams: Promise<{ assessment?: string; new?: string; deleted?: string; scheda?: string; apri?: string; assente?: string }>;
 }) {
   const { workspaceId } = await params;
   const { access } = await requireWorkspacePage(workspaceId);
@@ -102,12 +104,13 @@ export default async function AiReadinessPage({
     href: readinessHref(workspaceId, { assessmentId: row.assessment.id }),
   }));
   const newHref = manages ? `/dashboard/${workspaceId}/ai-readiness?new=1` : null;
-  const deletedNotice =
-    search.deleted === "1" ? (
-      <p className="text-sm text-muted-foreground" role="status">
-        {T.deleted}
-      </p>
-    ) : null;
+  // Dopo un'eliminazione, o (0044) dal link di un'email per una rilevazione che non c'è più: una riga, con calma.
+  const noticeText = search.deleted === "1" ? T.deleted : search[READINESS_GONE_PARAM] === "1" ? T.gone : null;
+  const notice = noticeText ? (
+    <p className="text-sm text-muted-foreground" role="status">
+      {noticeText}
+    </p>
+  ) : null;
 
   if (showCreateForm) {
     return (
@@ -115,7 +118,7 @@ export default async function AiReadinessPage({
         <header className="space-y-1">
           <AssessmentSwitcher title={manages ? T.create.title : T.pageTitle} currentId={null} options={options} newHref={null} />
         </header>
-        {deletedNotice}
+        {notice}
         {manages ? <AssessmentCreateForm workspaceId={workspaceId} workspaceName={access.workspace.name} /> : <EmptyState text={T.create.noManager} />}
       </PageContainer>
     );
@@ -284,7 +287,7 @@ export default async function AiReadinessPage({
     <PageContainer className="space-y-6">
       {assessment.status === "open" ? <AutoRefresh seconds={30} /> : null}
       <ReadinessAnchor workspaceId={workspaceId} assessmentId={assessment.id} current={tab} visible={tabs} />
-      {deletedNotice}
+      {notice}
       {/* (Revisione 7b) Una rilevazione, uno stato: cambiando rilevazione dal menu (stessa pagina, solo `?assessment=`)
           la testata e la scheda ripartono da capo, senza portarsi dietro la finestra del link o le pieghe di prima.
           Le due chiavi sono diverse: con la stessa chiave fra fratelli, a ogni aggiornamento nel browser (un'ancora di
