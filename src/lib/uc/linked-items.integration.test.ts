@@ -6,8 +6,11 @@ import { createUcExecutor, type UcExecutor } from "../db/uc-executor.ts";
 import { commandContextFor, type UcCommandContext } from "../db/queries/uc-cases.ts";
 import { createCaseFromTemplate, ensureFromUseCaseTemplate } from "../db/queries/uc-templates.ts";
 import { assignItems, createContact, createRequest, sendRequests } from "../db/queries/uc-requests.ts";
-import { recordLsAnswer } from "../db/queries/uc-items.ts";
+import { proposeFallback, proposeNa, proposeWaiver, recordLsAnswer } from "../db/queries/uc-items.ts";
 import { requestItemsInsertSql } from "./sql/request-commands.ts";
+import { needItemsSyncStatements } from "./sql/need-items.ts";
+import { scopedNextStepStatements } from "../db/queries/uc-realization.ts";
+import { raw } from "./sql/statement.ts";
 
 // Opt-in suite (docs/dossier/SCHEMA-DI-PARTENZA.md R1): questions born from «Cosa serve» are managed only there.
 // Requests, assignments and answers on a linked dossier item are refused with one clear message. Local harness only:
@@ -95,4 +98,34 @@ test("assigning or answering a linked item is refused with the same message; the
     /uc:voce_da_cosa_serve/,
   );
   assert.equal(await requestItems(), 0);
+});
+
+test("«non si applica», deroga and soluzione provvisoria on a linked question are refused with the same message", opts, async () => {
+  const ctx = await lead();
+  const na = await proposeNa(exec!, ctx, { itemId: state.itemId, reason: "Motivo inventato per la prova" });
+  assert.equal(na.ok ? "" : na.message, MESSAGE);
+  const waiver = await proposeWaiver(exec!, ctx, { itemId: state.itemId, motivo: "Motivo inventato per la prova", piano: "Piano inventato per la prova", scadenza: "2026-12-31" });
+  assert.equal(waiver.ok ? "" : waiver.message, MESSAGE);
+  const fallback = await proposeFallback(exec!, ctx, { itemId: state.itemId, descrizione: "Soluzione inventata per la prova", daSostituireEntro: "2026-12-31" });
+  assert.equal(fallback.ok ? "" : fallback.message, MESSAGE);
+  const row = (await q(`SELECT na_proposed_at, waiver, fallback FROM uc_items WHERE id = $1::uuid`, [state.itemId]))[0];
+  assert.deepEqual([row.na_proposed_at, row.waiver, row.fallback], [null, null, null]);
+});
+
+test("the use case chapter's pending signatures never list a Lateral Space-only question, even one forced in the database", opts, async () => {
+  // A need on the Lateral Space side, linked to the same use case, and proposals written straight into the database.
+  const [n] = await q(
+    `INSERT INTO use_case_needs (workspace_id, type, kind, title, status, owner_side, sort_order) VALUES ($1::uuid, 'requisito', 'accesso', 'Informazione inventata di Lateral Space', 'da_chiedere', 'lateral_space', 20) RETURNING id`,
+    [ids.ws],
+  );
+  await q(`INSERT INTO use_case_need_links (need_id, use_case_id) VALUES ($1::uuid, $2::uuid)`, [n.id, ids.uc]);
+  await exec!.batch(needItemsSyncStatements({ workspaceId: ids.ws, useCaseIds: [ids.uc], actorUserId: ids.lead }));
+  await q(`UPDATE uc_items SET na_proposed_at = now(), na_reason = 'Motivo inventato', waiver = '{"motivo":"inventato"}'::jsonb WHERE case_id = $1::uuid AND shared_item_id = $2::uuid`, [
+    state.caseId,
+    n.id,
+  ]);
+  const forced = await q(`SELECT count(*) AS n FROM uc_items WHERE case_id = $1::uuid AND na_proposed_at IS NOT NULL`, [state.caseId]);
+  assert.equal(Number(forced[0].n), 1, "the forced proposal is there");
+  const rows = await exec!.batch(scopedNextStepStatements(raw(`SELECT '${state.caseId}'::uuid`), ids.lead));
+  assert.doesNotMatch(JSON.stringify(rows), /Informazione inventata di Lateral Space/);
 });
