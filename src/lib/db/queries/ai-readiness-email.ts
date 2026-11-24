@@ -5,6 +5,8 @@ import { ensureDbSchema } from "@/lib/db/ensure-schema";
 import { loadSubprocessorAck } from "@/lib/db/queries/uc-subprocessors";
 import { getAppUcExecutor, type UcExecutor, type UcRow } from "@/lib/db/uc-executor";
 import { expectedRespondentsOf } from "@/lib/ai-readiness/dashboard-view";
+import { READINESS_THRESHOLD_SIGNAL } from "@/lib/ai-readiness/notify";
+import { readinessSignalId } from "@/lib/ai-readiness/notify-plan";
 import { airEmailBlock, runAirEmailDispatch, type AirEmailFacts, type AirEmailStore, type AirEmailSummary, type ClaimedAirEmail } from "@/lib/ai-readiness/email";
 import {
   airEmailFactsSql,
@@ -76,7 +78,10 @@ export async function airEmailStoreReady(executor?: UcExecutor): Promise<boolean
   return storeReady;
 }
 
-/** L'ok del cliente sui sub-responsabili della versione di oggi; senza la tabella delle autorizzazioni, no. */
+/**
+ * L'ok del cliente sui sub-responsabili della versione di oggi; senza la tabella delle autorizzazioni, no. Una lettura
+ * mancata lancia: chi chiama riprova, mai la scambia per un «no».
+ */
 async function workspaceAckOf(executor: UcExecutor, workspaceId: string): Promise<boolean> {
   if (!acksPresent) {
     const [[row]] = await executor.batch([toStatement(ucSql`SELECT to_regclass('public.uc_subprocessor_acks') IS NOT NULL AS ok`)]);
@@ -91,13 +96,10 @@ async function workspaceAckOf(executor: UcExecutor, workspaceId: string): Promis
 /**
  * Le righe in coda dopo un questionario inviato, solo con l'ok del cliente sui sub-responsabili (per tutti, Lateral
  * Space compreso), per chi può riceverle adesso (chi gestisce il workspace, con l'email verificata e la sua scelta
- * accesa): le risposte nuove e, se questo invio ha fatto nascere la riga della soglia in campanella (`resultsReady`), i
- * risultati. Mai in un'anteprima di Vercel (usa il database di produzione). Non lancia mai.
+ * accesa): le risposte nuove e, finché c'è la riga della soglia in campanella, i risultati (una volta per persona:
+ * l'indice unico). Mai in un'anteprima di Vercel (usa il database di produzione). Non lancia mai.
  */
-export async function queueReadinessEmails(
-  i: { workspaceId: string; assessmentId: string; submittedAt: Date; resultsReady: boolean },
-  env: Env = process.env,
-): Promise<void> {
+export async function queueReadinessEmails(i: { workspaceId: string; assessmentId: string; submittedAt: Date }, env: Env = process.env): Promise<void> {
   if (env.VERCEL_ENV === "preview" || !isUuid(i.workspaceId) || !isUuid(i.assessmentId)) return;
   try {
     const executor = await getAppUcExecutor();
@@ -110,7 +112,8 @@ export async function queueReadinessEmails(
       return airEmailBlock({ role: rowString(m.role), email: rowString(m.email), verified: rowBool(m.verified) }) === null ? [userId] : [];
     });
     const submittedAt = Number.isNaN(i.submittedAt.getTime()) ? new Date() : i.submittedAt;
-    const statements = queueAirEmailStatements({ workspaceId: i.workspaceId, assessmentId: i.assessmentId, recipients, countsFrom: submittedAt, resultsReady: i.resultsReady });
+    const resultsSignalId = readinessSignalId(READINESS_THRESHOLD_SIGNAL, i.assessmentId);
+    const statements = queueAirEmailStatements({ workspaceId: i.workspaceId, assessmentId: i.assessmentId, recipients, countsFrom: submittedAt, resultsSignalId });
     if (statements.length) await executor.batch(statements);
   } catch (error) {
     logAirEmailError("coda", error, i);
@@ -168,8 +171,8 @@ export function createAirEmailStore(executor: UcExecutor): AirEmailStore {
           ? { name: rowString(row.assessment_name) ?? "", expected: expectedRespondentsOf(row.scoring_config), threshold: rowNumber(row.aggregation_threshold) ?? 5 }
           : null,
         recipient: rowString(row.user_id) ? { role: rowString(row.role), email: rowString(row.email), verified: rowBool(row.verified), switchOn: rowBool(row.switch_on) } : null,
-        // Per tutti, Lateral Space compreso.
-        workspaceAck: await workspaceAckOf(executor, e.workspaceId).catch(() => false),
+        // Per tutti, Lateral Space compreso. Una lettura mancata lancia: la riga si riprova, mai si annulla per questo.
+        workspaceAck: await workspaceAckOf(executor, e.workspaceId),
         newAnswers: rowNumber(row.new_answers) ?? 0,
         total: rowNumber(row.total) ?? 0,
         countedUntil,

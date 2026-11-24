@@ -36,14 +36,18 @@ test("chi: il ruolo di adesso come la porta del workspace (l'organizzazione, mai
   assert.deepEqual(s.params, [WS]);
 });
 
-test("in coda: «risultati» solo quando nasce la soglia, poi «risposte»; un doppione non scrive niente; mai fuori dal workspace", () => {
+test("in coda: «risultati» a ogni invio finché c'è la riga della soglia, poi «risposte»; un doppione non scrive niente; mai fuori dal workspace", () => {
   const countsFrom = new Date("2026-11-24T09:00:00Z");
-  assert.deepEqual(queueAirEmailStatements({ workspaceId: WS, assessmentId: AS, recipients: [], countsFrom, resultsReady: true }), [], "nessuno: niente");
-  const answers = queueAirEmailStatements({ workspaceId: WS, assessmentId: AS, recipients: [U1, U2], countsFrom, resultsReady: false });
-  assert.equal(answers.length, 1);
-  assert.deepEqual(answers[0].params, ["risposte", countsFrom.toISOString(), [U1, U2], AS, WS]);
-  const both = queueAirEmailStatements({ workspaceId: WS, assessmentId: AS, recipients: [U1], countsFrom, resultsReady: true });
+  const SIGNAL = "3f2a9c1e-0000-5000-8000-0000000000f9";
+  assert.deepEqual(queueAirEmailStatements({ workspaceId: WS, assessmentId: AS, recipients: [], countsFrom, resultsSignalId: SIGNAL }), [], "nessuno: niente");
+  const both = queueAirEmailStatements({ workspaceId: WS, assessmentId: AS, recipients: [U1, U2], countsFrom, resultsSignalId: SIGNAL });
   assert.deepEqual(both.map((s) => s.params[0]), ["risultati", "risposte"]);
+  assert.deepEqual(both[1].params, ["risposte", countsFrom.toISOString(), [U1, U2], AS, WS]);
+  // (Revisione) I risultati a ogni invio, solo se c'è la riga della soglia in campanella: un errore passeggero non li
+  // perde; l'indice unico li tiene a uno per rilevazione e persona.
+  assert.match(flat(both[0].text), /WHERE EXISTS \(SELECT 1 FROM weekly_signals s WHERE s\.id = \$6::uuid AND s\.workspace_id = a\.workspace_id\) ON CONFLICT DO NOTHING$/);
+  assert.deepEqual(both[0].params, ["risultati", countsFrom.toISOString(), [U1, U2], AS, WS, SIGNAL]);
+  assert.doesNotMatch(flat(both[1].text), /weekly_signals/, "le risposte non aspettano la soglia");
   for (const s of both) {
     const text = flat(s.text);
     assert.match(text, /ON CONFLICT DO NOTHING$/, "una riga in attesa per tipo, i risultati una volta: gli indici unici decidono");

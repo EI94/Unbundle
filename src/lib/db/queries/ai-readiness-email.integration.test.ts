@@ -230,7 +230,7 @@ test("(revisione) la coda dalle risposte: senza l'ok del cliente sui sub-respons
   assert.deepEqual(await choice("sponsor", "exec_sponsor"), { on: true });
 });
 
-test("(revisione) all'invio: senza l'ok della versione di oggi la riga aspetta, per tutti; con l'ok parte", opts, async () => {
+test("(revisione) all'invio: senza l'ok la riga aspetta, per tutti; una lettura mancata dell'ok si riprova, mai annulla la riga", opts, async () => {
   // Righe messe in coda quando l'ok valeva, poi l'elenco dei sub-responsabili è cambiato (l'ok resta solo per la versione
   // di prima; le autorizzazioni non si cancellano mai): un secondo workspace dello stesso cliente.
   const ws2 = randomUUID();
@@ -272,8 +272,19 @@ test("(revisione) all'invio: senza l'ok della versione di oggi la riga aspetta, 
       `INSERT INTO uc_subprocessor_acks (workspace_id, list_version, statement_text, declared_by_user_id, declared_by_role) VALUES ($1, $2, 'Autorizzazione di prova.', $3, 'exec_sponsor')`,
       [ws2, SUBPROCESSORS_VERSION, userIds.sponsor],
     );
+    // L'ok non si legge (la tabella sparisce per un momento): la riga si riprova dopo 15 minuti, mai annullata.
+    await q(`ALTER TABLE uc_subprocessor_acks RENAME TO uc_subprocessor_acks_prova_air`);
+    try {
+      const failed = fakeMailer();
+      await dispatch(failed);
+      assert.equal(ours(failed.outbox).filter(named).length, 0);
+      const retried = await states();
+      assert.ok(retried.length === 2 && retried.every((r) => r.status === "errore" && r.last_error_code === "errore_lettura" && r.cancel_reason === null && r.attempts === 0), JSON.stringify(retried));
+    } finally {
+      await q(`ALTER TABLE uc_subprocessor_acks_prova_air RENAME TO uc_subprocessor_acks`);
+    }
     const later = fakeMailer();
-    await dispatch(later);
+    await dispatch(later, new Date(windowNow().getTime() + 20 * 60_000));
     assert.deepEqual(ours(later.outbox).filter(named).map((o) => o.mail.to).sort(), [to("lead"), to("sponsor")].sort(), "con l'ok parte a tutti");
   } finally {
     await q(`DELETE FROM workspaces WHERE id = $1`, [ws2]);
@@ -335,8 +346,12 @@ test("i risultati: un'email, una volta, quando nasce la soglia; nel giorno della
   await answer(a, 3);
   const results = async () => (await rows(a)).filter((r) => r.kind === "risultati");
   assert.deepEqual(people(await results()), ["lead", "sponsor", "wsLead"]);
+  // (Revisione) Una scrittura persa (un errore passeggero all'invio che ha fatto nascere la soglia): la risposta dopo la
+  // rimette, finché c'è la riga della soglia in campanella.
+  await q(`DELETE FROM ai_readiness_alert_emails WHERE assessment_id = $1 AND kind = 'risultati'`, [a]);
   await answer(a, 3);
-  assert.equal((await results()).length, 3, "la quarta risposta non ne aggiunge");
+  assert.deepEqual(people(await results()), ["lead", "sponsor", "wsLead"], "di nuovo in coda, una a testa");
+  assert.equal((await results()).length, 3, "e la quarta risposta non ne aggiunge altre");
   const day = fakeMailer();
   await dispatch(day);
   const named = (o: { mail: Mail }) => o.mail.text.includes("«Rilevazione di prova, la soglia»");
