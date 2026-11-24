@@ -48,6 +48,7 @@ import {
   type Phase,
 } from "../vocab.ts";
 import { cast, jsonb, raw, toStatement, ucSql, type UcStatement } from "./statement.ts";
+import { lsOnlyItemSql } from "./need-items.ts";
 
 // ── Lettura delle righe ───────────────────────────────────────────────
 
@@ -231,7 +232,7 @@ SELECT i.id, i.key, i.kind, i.status, i.status_reason, i.priority, i.perimeter, 
   i.spec -> 'defaults_applied' AS defaults_applied, coalesce(i.spec ->> 'health_rule_question', 'false') = 'true' AS health_rule_question,
   i.privacy_class, i.response_type, i.request_module_key, i.owner_role_key, i.assignee_contact_id, i.stale_at, i.na_approved_at,
   i.waiver, i.waiver_approved_at, i.fallback, i.fallback_approved_at,
-  coalesce(ab.keys, '[]'::jsonb) AS active_blocker_keys, oc.item_id IS NOT NULL AS open_clarification,
+  coalesce(ab.keys, '[]'::jsonb) AS active_blocker_keys, oc.item_id IS NOT NULL AS open_clarification, ${lsOnlyItemSql("i")} AS ls_only,
   ref.text_hash AS answer_text_hash, ref.version AS answer_version, r.acting_role_key AS responder_role_key,
   CASE WHEN i.confirmed_by_contact_id IS NULL THEN NULL ELSE (
     SELECT r2.acting_role_key FROM uc_answers ca JOIN uc_requests r2 ON r2.id = ca.request_id
@@ -250,7 +251,7 @@ ORDER BY i.sort_order, i.key`);
 const GATE_DEFAULT_FIELDS: readonly GateDefaultField[] = ["serves_for", "perimeter"];
 
 /** Riga di `gateItemsSql` → `GateItem` (con il referente assegnato per i conteggi). */
-export function rowToGateItem(row: Row): GateItem & { assigneeContactId: string | null } {
+export function rowToGateItem(row: Row): GateItem & { assigneeContactId: string | null; lsOnly: boolean } {
   const waiver = rowJson<Waiver>(row.waiver);
   const fallback = rowJson<Fallback>(row.fallback);
   return {
@@ -282,6 +283,7 @@ export function rowToGateItem(row: Row): GateItem & { assigneeContactId: string 
     openClarification: rowBool(row.open_clarification),
     healthRuleQuestion: rowBool(row.health_rule_question),
     assigneeContactId: rowString(row.assignee_contact_id),
+    lsOnly: rowBool(row.ls_only),
   };
 }
 
@@ -360,10 +362,19 @@ export function readinessReadStatements(workspaceId: string, caseId: string): Uc
 
 export interface ReadinessInput {
   core: CaseCore;
-  items: (GateItem & { assigneeContactId: string | null })[];
+  /** `lsOnly`: voce solo per Lateral Space (`lsOnlyItemSql`); `readinessForClient` la toglie. */
+  items: (GateItem & { assigneeContactId: string | null; lsOnly?: boolean })[];
   links: CoverageLink[];
   datasets: DatasetMeta[];
   blockers: CaseBlockerRow[];
+}
+
+/**
+ * (Correzione del 24/11) Gli ingressi come li conta una persona del cliente: senza le voci solo per
+ * Lateral Space (informazioni di Lateral Space o dei fornitori). Lateral Space conta tutto, come prima.
+ */
+export function readinessForClient(input: ReadinessInput): ReadinessInput {
+  return input.items.some((i) => i.lsOnly) ? { ...input, items: input.items.filter((i) => !i.lsOnly) } : input;
 }
 
 /** Righe di `readinessReadStatements` → ingressi del calcolo; null se il caso non c'è. */

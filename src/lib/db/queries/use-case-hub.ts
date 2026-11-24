@@ -123,8 +123,9 @@ interface DossierLookup {
   of(useCaseId: string): HubDossier | null;
 }
 
-async function readDossiers(workspaceId: string, useCaseIds: readonly string[]): Promise<DossierLookup> {
-  const read = await dossierSummaries(workspaceId, useCaseIds);
+async function readDossiers(workspaceId: string, useCaseIds: readonly string[], viewer?: Pick<UseCaseViewer, "isLateralSpace">): Promise<DossierLookup> {
+  // (Correzione del 24/11) Il «N di M» del cliente conta solo le domande che vede; Lateral Space tutto.
+  const read = await dossierSummaries(workspaceId, useCaseIds, { clientView: viewer ? !viewer.isLateralSpace : false });
   const found: ReadonlyMap<string, DossierSummary> = read.ok ? read.summaries : new Map();
   return {
     status: read.ok ? "ok" : read.motivo,
@@ -283,6 +284,7 @@ export async function listHubItems(workspaceId: string, viewer: UseCaseViewer, o
   const dossiers = await readDossiers(
     workspaceId,
     rows.map((row) => row.id),
+    viewer,
   );
   const base: Omit<HubListBase, "agents"> = { today: ctx.today as IsoDate, dossierRead: dossiers.status, receipt: receiptOf(viewer, rows, opts.createdId) };
 
@@ -417,7 +419,7 @@ export async function getUseCaseDetail(
     readContext(workspaceId, opts.now ?? new Date()),
   ]);
   if (!row) return null;
-  const dossiers = await readDossiers(workspaceId, [row.id]);
+  const dossiers = await readDossiers(workspaceId, [row.id], viewer);
   const dossier = dossiers.of(row.id);
   const base: DetailBase = { today: ctx.today as IsoDate, dossierRead: dossiers.status };
 
@@ -496,6 +498,7 @@ export async function exportUseCaseRows(workspaceId: string, viewer: UseCaseView
   const dossiers = await readDossiers(
     workspaceId,
     rows.map((row) => row.id),
+    viewer,
   );
   const items = rows.map((row) => ({ row, item: projectHubItem(row, ctx, dossiers.of(row.id)) }));
   items.sort((a, b) => byCode(a.item, b.item));

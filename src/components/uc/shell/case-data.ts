@@ -111,7 +111,7 @@ export const loadCaseHead = cache(async function loadCaseHead(
   workspaceRole: string,
 ): Promise<{ caseAccess: CaseAccess; executor: UcExecutor; header: CaseHeaderData }> {
   const { caseAccess, executor, headerRows } = await dossierBase(workspaceId, caseId, userId, workspaceRole);
-  const header = await caseHeaderFromRows(executor, headerRows, { workspaceId, caseId, roles: caseAccess.roles });
+  const header = await caseHeaderFromRows(executor, headerRows, { workspaceId, caseId, roles: caseAccess.roles, viewerIsLs: caseAccess.user.isLateralSpace });
   if (!header) notFound();
   return { caseAccess, executor, header };
 });

@@ -47,8 +47,7 @@ import {
   type CaseBlockerRow,
   type CaseCore,
   type ReadinessInput,
-  type Row,
-} from "../../uc/sql/readiness.ts";
+  type Row, readinessForClient } from "../../uc/sql/readiness.ts";
 import { cast, jsonb, raw, requireRows, toStatement, ucSql, type UcStatement } from "../../uc/sql/statement.ts";
 import { templatePartsReader } from "../../uc/sql/template-parts.ts";
 import {
@@ -260,11 +259,19 @@ export interface LoadedReadiness {
 }
 
 /** Prontezza dal vivo (revisione letta per prima, nella stessa transazione). */
-export async function loadCaseReadiness(executor: UcExecutor, workspaceId: string, caseId: string, now = new Date()): Promise<LoadedReadiness | null> {
+export async function loadCaseReadiness(
+  executor: UcExecutor,
+  workspaceId: string,
+  caseId: string,
+  now = new Date(),
+  opts: { clientView?: boolean } = {},
+): Promise<LoadedReadiness | null> {
   if (!isUuid(workspaceId) || !isUuid(caseId)) return null;
   const rows = await executor.batch(readinessReadStatements(workspaceId, caseId));
-  const input = parseReadinessRows(rows);
-  if (!input) return null;
+  const parsed = parseReadinessRows(rows);
+  if (!parsed) return null;
+  // Per una persona del cliente i conteggi sono solo sulle domande che vede (correzione del 24/11).
+  const input = opts.clientView ? readinessForClient(parsed) : parsed;
   return { input, ...computeCaseReadiness(input, now) };
 }
 
