@@ -25,6 +25,7 @@ import { TEMPLATE_FILES_ADVISORY_LOCK, TEMPLATE_FILES_DDL, TEMPLATE_FILES_PROBE_
 import { CONTEXT_WORK_ADVISORY_LOCK, CONTEXT_WORK_DDL, CONTEXT_WORK_PROBE_SQL } from "./context-work-ddl.ts";
 import { CI_KEYS_ADVISORY_LOCK, CI_KEYS_DDL, CI_KEYS_PROBE_SQL } from "./use-case-hub-ci-keys-ddl.ts";
 import { CASE_ONLY_ADVISORY_LOCK, CASE_ONLY_DDL, CASE_ONLY_PROBE_SQL } from "./use-case-hub-case-only-ddl.ts";
+import { AIR_EMAIL_ADVISORY_LOCK, AIR_EMAIL_DDL, AIR_EMAIL_PROBE_SQL } from "./ai-readiness-email-ddl.ts";
 
 /**
  * Self-heal dello schema.
@@ -44,7 +45,7 @@ import { CASE_ONLY_ADVISORY_LOCK, CASE_ONLY_DDL, CASE_ONLY_PROBE_SQL } from "./u
  */
 
 /** Incrementa ad ogni modifica a `runOnce`: così i worker warm ri-eseguono il catch-up. */
-const ENSURE_VERSION = 37;
+const ENSURE_VERSION = 38;
 
 let ensurePromise: Promise<void> | null = null;
 let ensureVersionApplied = 0;
@@ -757,6 +758,12 @@ async function runOnce(): Promise<void> {
   // e l'accettazione di un suo invito risponde «riprova» (`caseOnlyReady`). Il valore dell'enum non si toglie più: mai da
   // un'anteprima.
   await runCaseOnlyDdlSafely();
+
+  // Le email dell'AI Readiness: la scelta della persona e la coda (drizzle/0044_avvisi_ai_readiness.sql). Dopo la 0043, ma
+  // dipende solo dalla 0024 e dalle tabelle dell'AI Readiness. Non blocca il resto dell'app: senza la 0044 nessuna email
+  // dell'AI Readiness si mette in coda, l'interruttore non si vede e la campanella va avanti come prima
+  // (`airEmailStoreReady`).
+  await runAirEmailDdlSafely();
 }
 
 /** Dopo un errore della 0024, un nuovo tentativo al massimo ogni 5 minuti per processo, mai a ogni richiesta. */
@@ -1056,6 +1063,25 @@ async function runCaseOnlyDdlSafely(): Promise<void> {
   } catch (err) {
     caseOnlyDdlFailedAt = Date.now();
     console.error("[db/ensure-schema] 0043 self-heal failed, the app keeps serving without «Solo questo use case» (apply drizzle/0043 by hand):", err);
+  }
+}
+
+/** Dopo un errore della 0044, come la 0024: un nuovo tentativo al massimo ogni 5 minuti per processo. */
+let airEmailDdlFailedAt: number | null = null;
+
+/**
+ * La 0044 senza far fallire `ensureDbSchema()`, come `runUseCaseReferentsDdlSafely`. Mai da un'anteprima di Vercel, come
+ * la 0043: le anteprime usano il database di produzione, e la 0044 la applica solo il deploy di produzione (o il file a
+ * mano). Senza, l'anteprima serve come prima: nessuna email dell'AI Readiness, nessun interruttore.
+ */
+async function runAirEmailDdlSafely(): Promise<void> {
+  if (process.env.VERCEL_ENV === "preview") return;
+  try {
+    await runAirEmailDdl();
+    airEmailDdlFailedAt = null;
+  } catch (err) {
+    airEmailDdlFailedAt = Date.now();
+    console.error("[db/ensure-schema] 0044 self-heal failed, the app keeps serving without the AI Readiness e-mails (apply drizzle/0044 by hand):", err);
   }
 }
 
@@ -1414,6 +1440,20 @@ export async function runCaseOnlyDdl(statements: readonly string[] = CASE_ONLY_D
   ]);
 }
 
+/**
+ * Applica il DDL della 0044 in una sola transazione, con lo stesso advisory lock del file e `lock_timeout` di 3s, come la
+ * 0043. In produzione la applica questo self-heal, al primo avvio dopo il deploy; il file a mano resta la strada di
+ * riserva.
+ */
+export async function runAirEmailDdl(statements: readonly string[] = AIR_EMAIL_DDL): Promise<void> {
+  const client = db.$client;
+  await client.transaction([
+    client.query("SELECT set_config('lock_timeout', '3s', true)"),
+    client.query(`SELECT pg_advisory_xact_lock(hashtext('${AIR_EMAIL_ADVISORY_LOCK}'))`),
+    ...statements.map((statement) => client.query(statement)),
+  ]);
+}
+
 async function schemaLooksCurrent(): Promise<boolean> {
   try {
     const result = (await db.execute(sql`
@@ -1544,6 +1584,7 @@ async function schemaLooksCurrent(): Promise<boolean> {
         AND ${sql.raw(CONTEXT_WORK_PROBE_SQL)}
         AND ${sql.raw(CI_KEYS_PROBE_SQL)}
         AND ${sql.raw(CASE_ONLY_PROBE_SQL)}
+        AND ${sql.raw(AIR_EMAIL_PROBE_SQL)}
       ) AS current;
     `)) as unknown as { rows?: Array<{ current?: unknown }> };
     return result.rows?.[0]?.current === true;
@@ -1663,6 +1704,11 @@ export async function ensureDbSchema(): Promise<void> {
     if (caseOnlyDdlFailedAt !== null && Date.now() - caseOnlyDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
       caseOnlyDdlFailedAt = Date.now();
       ensurePromise = ensurePromise.then(runCaseOnlyDdlSafely);
+    }
+    // La 0044 era fallita (non fatale): come la 0024, un tentativo alla volta, dopo la pausa.
+    if (airEmailDdlFailedAt !== null && Date.now() - airEmailDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
+      airEmailDdlFailedAt = Date.now();
+      ensurePromise = ensurePromise.then(runAirEmailDdlSafely);
     }
     return ensurePromise;
   }
