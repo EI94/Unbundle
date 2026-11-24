@@ -34,6 +34,7 @@ const unused = async () => {
 };
 const actions = {
   setEmailAlerts: unused,
+  setReadinessEmails: unused,
   createClaudeAccess: unused,
   revokeClaudeAccess: unused,
   revokeTerminalLink: unused,
@@ -122,6 +123,20 @@ test("revisore di Lateral Space con tutto: le quattro parti, nell'ordine del fog
   assert.deepEqual(radios.map((match) => match[1]), ["dark", "light", "system"]);
   assert.match(radios[0][0], /checked=""/);
   for (const label of ["Scuro", "Chiaro", "Come il sistema"]) assert.ok(html.includes(label), label);
+});
+
+test("(0044) «Notifiche via email»: l'interruttore dell'AI Readiness a chi gestisce, accanto a quello del referente o da solo", () => {
+  const both = render({ status: "ready", account: { ...everything, readinessEmail: { on: false } } });
+  assert.ok(both.includes(`>${T.email.toggle}</label>`) && both.includes(`>${T.email.readinessToggle}</label>`));
+  assert.equal(T.email.readinessToggle, "Avvisami per email sull'AI Readiness");
+  assert.equal((both.match(/role="switch"/g) ?? []).length, 2, "due interruttori, ognuno con la sua etichetta");
+  assert.equal(sectionsIn(both).filter((part) => part === "email").length, 1, "una sezione sola");
+  const alone = render({ status: "ready", account: { email: null, readinessEmail: { on: true }, claude: null, terminal: null, granola: null } });
+  assert.deepEqual(sectionsIn(alone), ["email", "tema"]);
+  assert.ok(alone.includes(`>${T.email.readinessToggle}</label>`) && !alone.includes(`>${T.email.toggle}</label>`));
+  assert.match(alone, /role="switch"[^>]*aria-checked="true"|aria-checked="true"[^>]*role="switch"/);
+  const none = render({ status: "ready", account: { email: null, readinessEmail: null, claude: null, terminal: null, granola: null } });
+  assert.deepEqual(sectionsIn(none), ["tema"], "chi non riceve email non vede la sezione");
 });
 
 test("un pannello ha i suoi pulsanti, mai uno pieno: il foglio non è il prossimo passo", () => {

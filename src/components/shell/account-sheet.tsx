@@ -5,7 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { setBellEmailAlertsAction } from "@/lib/actions/notifications";
+import { setBellEmailAlertsAction, setReadinessEmailsAction } from "@/lib/actions/notifications";
 import { createTeamMcpTokenAction, revokeTeamMcpTokenAction } from "@/lib/actions/team-mcp-tokens";
 import { revokeOwnCliTokenAction } from "@/lib/actions/cli-tokens";
 import { disconnectGranolaAction, startGranolaConnectAction } from "@/lib/actions/context-granola";
@@ -89,6 +89,7 @@ export function AccountSheet({
         const result = await setBellEmailAlertsAction(workspaceId, on);
         return result.ok ? { ok: true, on: result.payload.emailAlerts.on } : { ok: false, message: result.message };
       },
+      setReadinessEmails: (on) => setReadinessEmailsAction(workspaceId, on),
       createClaudeAccess: (form) => createTeamMcpTokenAction(workspaceId, form),
       async revokeClaudeAccess(tokenId) {
         const form = new FormData();

@@ -29,6 +29,8 @@ const G = CONTEXT_TEXT.granola;
 /** Le azioni del foglio, con il workspace già dentro (le passa `AccountSheet`; nei test, finte). */
 export interface AccountActions {
   setEmailAlerts(on: boolean): Promise<{ ok: true; on: boolean } | { ok: false; message: string }>;
+  /** (0044) «Avvisami per email sull'AI Readiness». */
+  setReadinessEmails(on: boolean): Promise<{ ok: true; on: boolean } | { ok: false; message: string }>;
   createClaudeAccess(form: FormData): Promise<TeamMcpActionState<CreateTeamMcpTokenData>>;
   revokeClaudeAccess(tokenId: string): Promise<{ ok: boolean; message: string }>;
   revokeTerminalLink(tokenId: string): Promise<{ ok: boolean; message: string }>;
@@ -133,8 +135,10 @@ function CopyLine({ value, label }: { value: string; label: string }) {
   );
 }
 
-/** «Notifiche via email»: l'interruttore che prima stava in fondo alla campanella. */
-function EmailSection({ on: initial, actions }: { on: boolean; actions: AccountActions }) {
+type SaveChoice = (on: boolean) => Promise<{ ok: true; on: boolean } | { ok: false; message: string }>;
+
+/** Un interruttore di «Notifiche via email», con la sua frase come etichetta. */
+function EmailSwitch({ label, on: initial, save }: { label: string; on: boolean; save: SaveChoice }) {
   const [on, setOn] = useState(initial);
   // Un valore nuovo dal server (il foglio si è riletto) vince su quello di prima, come nel pannello degli use case.
   const [seen, setSeen] = useState(initial);
@@ -147,7 +151,7 @@ function EmailSection({ on: initial, actions }: { on: boolean; actions: AccountA
   const change = (next: boolean) => {
     setOn(next);
     start(async () => {
-      const result = await actions.setEmailAlerts(next).catch(() => ({ ok: false as const, message: T.email.saveFailed }));
+      const result = await save(next).catch(() => ({ ok: false as const, message: T.email.saveFailed }));
       if (result.ok) setOn(result.on);
       else {
         setOn(!next);
@@ -156,13 +160,24 @@ function EmailSection({ on: initial, actions }: { on: boolean; actions: AccountA
     });
   };
   return (
+    <div className="flex min-h-11 items-center justify-between gap-4">
+      <Label htmlFor={id} className="font-normal leading-snug">
+        {label}
+      </Label>
+      <Switch id={id} checked={on} disabled={pending} onCheckedChange={(checked) => change(checked === true)} />
+    </div>
+  );
+}
+
+/**
+ * «Notifiche via email»: l'interruttore che prima stava in fondo alla campanella (le richieste al referente) e, a chi
+ * gestisce il workspace, (0044) quello dell'AI Readiness. Ognuno solo a chi lo può usare.
+ */
+function EmailSection({ referent, readiness, actions }: { referent: { on: boolean } | null; readiness: { on: boolean } | null; actions: AccountActions }) {
+  return (
     <Section part="email" title={T.email.title}>
-      <div className="flex min-h-11 items-center justify-between gap-4">
-        <Label htmlFor={id} className="font-normal leading-snug">
-          {T.email.toggle}
-        </Label>
-        <Switch id={id} checked={on} disabled={pending} onCheckedChange={(checked) => change(checked === true)} />
-      </div>
+      {referent ? <EmailSwitch label={T.email.toggle} on={referent.on} save={actions.setEmailAlerts} /> : null}
+      {readiness ? <EmailSwitch label={T.email.readinessToggle} on={readiness.on} save={actions.setReadinessEmails} /> : null}
     </Section>
   );
 }
@@ -563,7 +578,7 @@ export function AccountSheetBody({
             </Button>
           </div>
         ) : null}
-        {account?.email ? <EmailSection on={account.email.on} actions={actions} /> : null}
+        {account && (account.email || account.readinessEmail) ? <EmailSection referent={account.email} readiness={account.readinessEmail ?? null} actions={actions} /> : null}
         {account && (account.claude || account.terminal) ? <ClaudeSection claude={account.claude} terminal={account.terminal} actions={actions} onChanged={onChanged} /> : null}
         {account?.granola ? (
           <GranolaSection granola={account.granola} flash={granola?.flash ?? null} rulesHref={granola?.rulesHref ?? null} actions={actions} onChanged={onChanged} />
