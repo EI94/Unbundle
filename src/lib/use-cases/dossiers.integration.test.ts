@@ -390,3 +390,32 @@ test("Roadmap card: a cache of another catalog revision gives no «N di M» inst
   await q(`UPDATE uc_cases SET catalog_revision = 5 WHERE id = $1::uuid`, [ids.caseComplete]);
   assert.equal(await card(), null);
 });
+
+test("Roadmap card for a client person: «N di M» only on the questions they see; Lateral Space keeps the cached numbers", opts, async () => {
+  switchOn();
+  // Two linked questions on the complete dossier: one of the client, one of Lateral Space (owner's correction, 24/11).
+  const needs = await q(
+    `INSERT INTO use_case_needs (workspace_id, type, kind, title, status, owner_side) VALUES
+       ($1::uuid, 'requisito', 'dato', 'Informazione inventata del cliente', 'validata', 'cliente'),
+       ($1::uuid, 'requisito', 'accesso', 'Informazione inventata di Lateral Space', 'da_chiedere', 'lateral_space')
+     RETURNING id`,
+    [ids.wsA],
+  );
+  for (const [k, n] of needs.entries()) {
+    await q(
+      `INSERT INTO uc_items (case_id, key, template_item_key, kind, section, title, priority, serves_for, perimeter, in_gate_scope, status, shared_item_id)
+       VALUES ($1::uuid, $2, $2, 'domanda', 'documenti_dataset', 'Domanda inventata', 'must', '["modello"]'::jsonb, 'in_contratto', true, 'da_chiedere', $3::uuid)`,
+      [ids.caseComplete, `need.${n.id}`, n.id],
+    );
+    if (k === 0) await q(`UPDATE uc_items SET status = 'in_verifica' WHERE shared_item_id = $1::uuid`, [n.id]);
+  }
+  await q(`UPDATE uc_cases SET catalog_revision = 7, readiness = '{"catalog_revision": 7, "G1": {"required": 9, "ok": 4}}'::jsonb WHERE id = $1::uuid`, [ids.caseComplete]);
+  const card = async (clientView: boolean) => {
+    const r = await reads.dossierSummaries(ids.wsA, [ids.ucComplete], { clientView });
+    assert.equal(r.ok, true);
+    return r.ok ? (r.summaries.get(ids.ucComplete)?.readiness ?? null) : null;
+  };
+  assert.deepEqual(await card(false), { required: 9, ok: 4 }, "Lateral Space: the cache, as before");
+  assert.deepEqual(await card(true), { required: 1, ok: 0 }, "client: only the client's question, not yet a posto");
+  await q(`DELETE FROM uc_items WHERE case_id = $1::uuid AND shared_item_id IS NOT NULL`, [ids.caseComplete]);
+});

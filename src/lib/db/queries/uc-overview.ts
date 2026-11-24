@@ -41,8 +41,10 @@ import {
   rowVocab,
   type CaseCore,
   type Row,
+  readinessForClient,
 } from "../../uc/sql/readiness.ts";
-import { cast, jsonb, toStatement, ucSql, type SqlFragment, type UcStatement } from "../../uc/sql/statement.ts";
+import { cast, jsonb, raw, toStatement, ucSql, type SqlFragment, type UcStatement } from "../../uc/sql/statement.ts";
+import { clientVisibleItemSql } from "../../uc/sql/need-items.ts";
 import type { Approval, Json } from "../../uc/types.ts";
 import { descriptionBlockDef, readBlock, readableContent, type DescriptionRecord } from "../../uc/views/description.ts";
 import { blockerView } from "../../uc/views/privacy.ts";
@@ -70,7 +72,7 @@ function requiredForVia(): SqlFragment {
  * stato, scadenza, «non si applica» firmato, deroga e ripiego con le firme,
  * blocchi attivi. Le colonne mancanti di `GateItem` restano vuote.
  */
-function requiredItemsSql(c: SqlFragment): UcStatement {
+function requiredItemsSql(c: SqlFragment, clientView = false): UcStatement {
   return toStatement(ucSql`WITH ab AS (
   SELECT ib.item_id, jsonb_agg(b.key ORDER BY b.key) AS keys
   FROM uc_item_blockers ib JOIN uc_blockers b ON b.id = ib.blocker_id
@@ -83,7 +85,7 @@ SELECT i.id, i.key, i.kind, i.status, i.status_reason, i.privacy_class, i.reques
   coalesce(ab.keys, '[]'::jsonb) AS active_blocker_keys
 FROM uc_items i
 LEFT JOIN ab ON ab.item_id = i.id
-WHERE i.case_id = ${c} AND i.deleted_at IS NULL AND ${requiredForVia()}
+WHERE i.case_id = ${c} AND i.deleted_at IS NULL AND ${requiredForVia()}${clientView ? ucSql` AND ${clientVisibleItemSql("i")}` : raw("")}
 ORDER BY i.sort_order, i.key`);
 }
 
@@ -113,10 +115,10 @@ function descriptionPartsSql(c: SqlFragment): UcStatement {
 }
 
 /** Le prime domande collegate a un blocco, per titolo, nell'ordine del caso. */
-function blockerQuestionsSql(c: SqlFragment, blockerId: string, limit: number): UcStatement {
+function blockerQuestionsSql(c: SqlFragment, blockerId: string, limit: number, clientView = false): UcStatement {
   return toStatement(ucSql`SELECT i.id, i.title FROM uc_item_blockers ib
 JOIN uc_items i ON i.id = ib.item_id AND i.deleted_at IS NULL
-WHERE ib.blocker_id = ${uuid(blockerId)} AND i.case_id = ${c}
+WHERE ib.blocker_id = ${uuid(blockerId)} AND i.case_id = ${c}${clientView ? ucSql` AND ${clientVisibleItemSql("i")}` : raw("")}
 ORDER BY i.sort_order, i.key LIMIT ${cast(limit, "int")}`);
 }
 
@@ -191,7 +193,17 @@ interface PreparedRead<T> {
   parse: (rows: readonly Row[][]) => T | null;
 }
 
-export type OverviewInput = { workspaceId: string; caseId: string; now?: Date; blockerId?: string | null; blockerQuestions?: number; withFiles?: boolean; audience?: Audience };
+export type OverviewInput = {
+  workspaceId: string;
+  caseId: string;
+  now?: Date;
+  blockerId?: string | null;
+  blockerQuestions?: number;
+  withFiles?: boolean;
+  audience?: Audience;
+  /** (Correzione del 24/11) Una persona del cliente: indispensabili e argomenti solo sulle domande che vede. */
+  clientView?: boolean;
+};
 
 function prepareOverview(i: OverviewInput): PreparedRead<OverviewData> | null {
   if (!UUID.test(i.workspaceId) || !UUID.test(i.caseId)) return null;
@@ -201,12 +213,12 @@ function prepareOverview(i: OverviewInput): PreparedRead<OverviewData> | null {
   const context = caseViewContextReader(i.workspaceId.toLowerCase(), i.caseId.toLowerCase());
   const statements: UcStatement[] = [
     context.statement,
-    requiredItemsSql(c),
+    requiredItemsSql(c, i.clientView === true),
     activeBlockersSql(c),
     milestonesSql(c),
     descriptionPartsSql(c),
   ];
-  if (blockerId) statements.push(activeBlockersSql(c, blockerId), blockerQuestionsSql(c, blockerId, Math.max(1, Math.min(50, i.blockerQuestions ?? 10))));
+  if (blockerId) statements.push(activeBlockersSql(c, blockerId), blockerQuestionsSql(c, blockerId, Math.max(1, Math.min(50, i.blockerQuestions ?? 10)), i.clientView === true));
   if (i.withFiles) statements.push(usableFilesSql(c));
   const parse = (rows: readonly Row[][]): OverviewData | null => {
     const ctx = context.parse(rows[0]);
@@ -328,7 +340,14 @@ function toReview(r: Row): ViaReview {
   };
 }
 
-export type ViaInput = { workspaceId: string; caseId: string; now?: Date; withFiles?: boolean };
+export type ViaInput = {
+  workspaceId: string;
+  caseId: string;
+  now?: Date;
+  withFiles?: boolean;
+  /** (Correzione del 24/11) Una persona del cliente: il via conta solo le domande che vede. */
+  clientView?: boolean;
+};
 
 function prepareVia(i: ViaInput): PreparedRead<ViaData> | null {
   if (!UUID.test(i.workspaceId) || !UUID.test(i.caseId)) return null;
@@ -338,8 +357,9 @@ function prepareVia(i: ViaInput): PreparedRead<ViaData> | null {
   const readiness = readinessReadStatements(workspaceId, caseId);
   const statements = [...readiness, reviewsSql(c), versionsSql(c), ...(i.withFiles ? [usableFilesSql(c)] : [])];
   const parse = (rows: readonly Row[][]): ViaData | null => {
-    const input = parseReadinessRows(rows.slice(0, readiness.length));
-    if (!input) return null;
+    const parsed = parseReadinessRows(rows.slice(0, readiness.length));
+    if (!parsed) return null;
+    const input = i.clientView ? readinessForClient(parsed) : parsed;
     const live = computeCaseReadiness(input, now);
     const reviews = (rows[readiness.length] ?? []).map(toReview);
     const versions = (rows[readiness.length + 1] ?? []).map(

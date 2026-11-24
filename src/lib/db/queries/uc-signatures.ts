@@ -20,6 +20,7 @@
 import { pendingA8Sql, pendingGateSql, pendingWaiversAndFallbacksSql, pendingZoneGrantsSql } from "../../uc/sql/public.ts";
 import type { Row } from "../../uc/sql/readiness.ts";
 import { cast, toStatement, ucSql, type UcStatement } from "../../uc/sql/statement.ts";
+import { clientVisibleItemSql } from "../../uc/sql/need-items.ts";
 import type { ApprovalKind } from "../../uc/public-view.ts";
 import { buildCaseApprovals, type ApprovalStep, type PendingApprovalRows, type SignerSide } from "../../uc/views/approvals.ts";
 import type { PendingSignature } from "../../uc/views/next-step.ts";
@@ -47,6 +48,8 @@ export interface CaseSignature {
  * Proposte «non applicabile» aperte, come `pendingNaSql` di `sql/public.ts`,
  * più `client_link_signed`: la firma dal link conta solo se viene dal
  * responsabile del cliente designato adesso (come `naSignatures` dei comandi).
+ * (Correzione del 24/11) Mai le domande solo per Lateral Space: il cliente le firmerebbe senza vederle
+ * (non nascono dall'interfaccia: le domande di «Cosa serve» non hanno azioni nel dossier).
  */
 function pendingNaForAccountsSql(caseId: string): UcStatement {
   return toStatement(ucSql`SELECT i.id, i.key, i.title, i.na_reason, i.na_proposed_at, i.na_proposed_by_contact_id IS NOT NULL AS by_referent,
@@ -56,6 +59,7 @@ function pendingNaForAccountsSql(caseId: string): UcStatement {
 FROM uc_items i JOIN uc_cases c ON c.id = i.case_id
 WHERE i.case_id = ${cast(caseId, "uuid")} AND i.deleted_at IS NULL AND i.na_proposed_at IS NOT NULL
   AND i.na_approved_at IS NULL AND i.na_reason IS NOT NULL
+  AND ${clientVisibleItemSql("i")}
 ORDER BY i.sort_order, i.key`);
 }
 

@@ -21,9 +21,11 @@
  * Modulo senza import dell'app, come `uc-cases.ts`.
  */
 import type { Readiness } from "../../uc/semaforo.ts";
-import { rowNumber, rowString, rowVocab } from "../../uc/sql/readiness.ts";
+import { rowBool, rowNumber, rowString, rowVocab } from "../../uc/sql/readiness.ts";
+import { hasLsOnlyItemsSql } from "../../uc/sql/need-items.ts";
+import { seesLsOnlyItems } from "../../uc/views/page-access.ts";
 import { filesToCheckCountSql } from "../../uc/sql/files.ts";
-import { cast, toStatement, ucSql, type UcStatement } from "../../uc/sql/statement.ts";
+import { cast, raw, toStatement, ucSql, type UcStatement } from "../../uc/sql/statement.ts";
 import type { NextStepInput } from "../../uc/views/next-step.ts";
 import { CASE_STATUSES, type CaseRole, type CaseStatus } from "../../uc/vocab.ts";
 import type { UcExecutor, UcRow } from "../uc-executor.ts";
@@ -61,7 +63,8 @@ export interface CaseHeaderData {
 /** Caso e scheda madre, nel workspace. */
 export function caseHeaderSql(workspaceId: string, caseId: string): UcStatement {
   return toStatement(ucSql`SELECT c.id, c.code, c.title, c.one_liner, c.status, c.status_before_suspension, c.catalog_version,
-  u.id AS parent_id, to_jsonb(u) ->> 'code' AS parent_code, u.title AS parent_title
+  u.id AS parent_id, to_jsonb(u) ->> 'code' AS parent_code, u.title AS parent_title,
+  ${hasLsOnlyItemsSql(raw("c.id"))} AS has_ls_only
 FROM uc_cases c
 LEFT JOIN use_cases u ON u.id = c.portfolio_use_case_id AND u.workspace_id = c.workspace_id
 WHERE c.id = ${cast(caseId, "uuid")} AND c.workspace_id = ${cast(workspaceId, "uuid")} AND c.setup_completed_at IS NOT NULL`);
@@ -84,7 +87,7 @@ export function caseHeaderStatements(i: { workspaceId: string; caseId: string; u
  */
 export async function loadCaseHeader(
   executor: UcExecutor,
-  i: { workspaceId: string; caseId: string; userId: string; roles: readonly CaseRole[]; now?: Date },
+  i: { workspaceId: string; caseId: string; userId: string; roles: readonly CaseRole[]; now?: Date; viewerIsLs?: boolean },
 ): Promise<CaseHeaderData | null> {
   if (!UUID.test(i.workspaceId) || !UUID.test(i.caseId) || !UUID.test(i.userId)) return null;
   return caseHeaderFromRows(executor, await executor.batch(caseHeaderStatements(i)), i);
@@ -97,7 +100,7 @@ export async function loadCaseHeader(
 export async function caseHeaderFromRows(
   executor: UcExecutor,
   rows: UcRow[][],
-  i: { workspaceId: string; caseId: string; roles: readonly CaseRole[]; now?: Date },
+  i: { workspaceId: string; caseId: string; roles: readonly CaseRole[]; now?: Date; viewerIsLs?: boolean },
 ): Promise<CaseHeaderData | null> {
   const now = i.now ?? new Date();
   const [workspaceId, caseId] = [lowerId(i.workspaceId), lowerId(i.caseId)];
@@ -109,12 +112,15 @@ export async function caseHeaderFromRows(
   const status = row ? rowVocab(CASE_STATUSES, row.status) : null;
   if (!row || !status) return null;
   const parse = (live?: Readiness) =>
-    parseNextStepRows(rest, { caseIds: [caseId], rolesByCase: new Map([[caseId, i.roles]]), now, liveReadiness: live ? new Map([[caseId, live]]) : undefined }).get(caseId);
+    parseNextStepRows(rest, { caseIds: [caseId], rolesByCase: new Map([[caseId, i.roles]]), now, viewerIsLs: i.viewerIsLs, liveReadiness: live ? new Map([[caseId, live]]) : undefined }).get(caseId);
   let read = parse();
   if (!read) return null;
-  if (read.stale) {
+  // (Correzione del 24/11) La cache conta tutte le domande, come le vede Lateral Space: una persona del cliente su un
+  // dossier con domande solo per Lateral Space ha i suoi conteggi, dal vivo, sulle sole domande che vede.
+  const clientNarrow = !seesLsOnlyItems(i.roles, { isLateralSpace: i.viewerIsLs }) && rowBool(row.has_ls_only);
+  if (read.stale || clientNarrow) {
     // Il comando appena fatto ha cambiato il catalogo e la cache non c'è ancora: avanzamento, via pronto e riconferma dal vivo.
-    const live = await loadCaseReadiness(executor, workspaceId, caseId, now);
+    const live = await loadCaseReadiness(executor, workspaceId, caseId, now, { clientView: clientNarrow });
     if (live) read = parse(live.readiness) ?? read;
   }
   const parentId = rowString(row.parent_id);

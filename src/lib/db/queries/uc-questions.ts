@@ -56,7 +56,7 @@ import {
   type QuestionTopicGroup,
 } from "../../uc/views/rows.ts";
 import { rowsToCaseFiles, rowsToDatasets, rowsToRequiredDocuments, type CaseFileView, type DatasetView, type RequiredDocumentView } from "../../uc/views/documents.ts";
-import { seesPersonalZoneMetadata, seesValidatedOnly } from "../../uc/views/page-access.ts";
+import { seesLsOnlyItems, seesPersonalZoneMetadata, seesValidatedOnly } from "../../uc/views/page-access.ts";
 import { caseFilesSql, contactsSql, requiredDocumentsSql } from "../../uc/views/sql.ts";
 import { rowsToReviewQueue } from "../../uc/views/verification.ts";
 import { CASE_STATUSES, isVocab, type CaseStatus, type ItemStatus } from "../../uc/vocab.ts";
@@ -113,7 +113,7 @@ export interface QuestionsPageData {
 }
 
 function whereContext(v: UcViewer, audience: QuestionAudience): QuestionWhereContext {
-  return { userId: v.user.userId, audience };
+  return { userId: v.user.userId, audience, clientView: !seesLsOnlyItems(v.roles, v.user) };
 }
 
 /**

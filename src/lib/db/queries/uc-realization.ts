@@ -48,7 +48,10 @@ import {
 } from "../../uc/views/realization.ts";
 import { CASE_ROLES, CASE_STATUSES, isVocab, type CaseRole } from "../../uc/vocab.ts";
 import type { UcExecutor } from "../uc-executor.ts";
-import { checkLsText, refreshReadinessCache } from "./uc-cases.ts";
+import { checkLsText, loadCaseReadiness, refreshReadinessCache } from "./uc-cases.ts";
+import { hasLsOnlyItemsSql } from "../../uc/sql/need-items.ts";
+import { seesLsOnlyItems } from "../../uc/views/page-access.ts";
+import type { Readiness } from "../../uc/semaforo.ts";
 import { loadNextStepInput, parseNextStepRows } from "./uc-next-step.ts";
 import { PENDING_SIGNATURE_STATEMENTS } from "./uc-signatures.ts";
 import { createCaseFromTemplate } from "./uc-templates.ts";
@@ -104,6 +107,7 @@ export function realizationSql(i: { workspaceId: string; useCaseId: string; user
   return toStatement(ucSql`SELECT u.id, u.status::text AS status, coalesce(u.portfolio_kind, 'use_case_ai') AS kind,
   to_jsonb(u) ->> 'code' AS use_case_code, u.title AS use_case_title,
   d.id AS case_id, d.code AS case_code, d.title AS case_title, d.status AS case_status, d.updated_at AS case_updated_at, d.roles,
+  CASE WHEN d.id IS NULL THEN false ELSE ${hasLsOnlyItemsSql(raw("d.id"))} END AS has_ls_only,
   r.implementation_cost, r.annual_benefit, r.break_even_months, r.cost_lines, r.benefit_lines, r.discount_rate, r.adoption_rate, r.horizon_years, r.content
 FROM use_cases u
 LEFT JOIN LATERAL (
@@ -147,7 +151,10 @@ export async function readRealization(
     return { state: "da_avviare", canStart, startHref: canStart ? `/dashboard/${workspaceId}/casi-duso/nuovo?useCaseId=${lower(i.useCaseId)}` : null };
   }
   const viewer = viewerOnCase(storedRoles(row.roles), user, i.lsDomains, i.viewer.canManage);
-  const nextStep = await loadNextStepInput(executor, { workspaceId, caseId, userId: i.viewer.userId, roles: viewer.roles, now: i.now });
+  // (Correzione del 24/11) Il cliente conta solo le domande che vede: con domande solo per Lateral Space, dal vivo.
+  const viewerIsLs = user?.isLateralSpace === true;
+  const live = !seesLsOnlyItems(viewer.roles, user) && rowBool(row.has_ls_only) ? await loadCaseReadiness(executor, workspaceId, caseId, i.now, { clientView: true }) : null;
+  const nextStep = await loadNextStepInput(executor, { workspaceId, caseId, userId: i.viewer.userId, roles: viewer.roles, now: i.now, liveReadiness: live?.readiness ?? null, viewerIsLs });
   const facts: DossierFacts = {
     workspaceId,
     caseId,
@@ -180,7 +187,7 @@ export function dossierCardsSql(i: { workspaceId: string; userId: string; useCas
         : ucSql`AND EXISTS (SELECT 1 FROM uc_case_members m WHERE m.case_id = c.id AND m.user_id = ${cast(i.userId, "uuid")})`;
   return toStatement(ucSql`SELECT c.id, c.code, c.title, c.status, c.updated_at, c.created_at, c.portfolio_use_case_id,
   u.id AS use_case_id, to_jsonb(u) ->> 'code' AS use_case_code, u.title AS use_case_title,
-  ${memberRolesSql(i.userId)} AS roles
+  ${memberRolesSql(i.userId)} AS roles, ${hasLsOnlyItemsSql(raw("c.id"))} AS has_ls_only
 FROM uc_cases c
 LEFT JOIN use_cases u ON u.id = c.portfolio_use_case_id AND u.workspace_id = c.workspace_id
 WHERE c.workspace_id = ${cast(i.workspaceId, "uuid")} AND c.setup_completed_at IS NOT NULL ${filter}
@@ -324,7 +331,7 @@ export const SCOPED_NEXT_STEP_STATEMENTS = 3 + PENDING_SIGNATURE_STATEMENTS;
  */
 export function parseScopedNextStepRows(
   rows: readonly (readonly Row[])[],
-  i: { caseIds: readonly string[]; rolesByCase: ReadonlyMap<string, readonly CaseRole[]>; now: Date },
+  i: { caseIds: readonly string[]; rolesByCase: ReadonlyMap<string, readonly CaseRole[]>; now: Date; liveReadiness?: ReadonlyMap<string, Readiness>; viewerIsLs?: boolean },
 ): Map<string, NextStepInput> {
   const [cases = [], counts = [], blockers = [], ...signatures] = rows;
   const caseIds = [...new Set(i.caseIds.filter(isUuid).map(lower))];
@@ -340,7 +347,7 @@ export function parseScopedNextStepRows(
   });
   while (byCase.length < PENDING_SIGNATURE_STATEMENTS) byCase.push(new Map());
   const layout: (readonly Row[])[] = [cases, counts, blockers, ...caseIds.flatMap((id) => byCase.map((grouped) => grouped.get(id) ?? []))];
-  const parsed = parseNextStepRows(layout, { caseIds, rolesByCase: i.rolesByCase, now: i.now });
+  const parsed = parseNextStepRows(layout, { caseIds, rolesByCase: i.rolesByCase, now: i.now, liveReadiness: i.liveReadiness, viewerIsLs: i.viewerIsLs });
   return new Map([...parsed].map(([id, r]) => [id, r.input]));
 }
 
@@ -373,6 +380,8 @@ export async function readDossierCards(
   const user = userFrom(userRow, i.lsDomains);
   const seenUseCase = new Set<string>();
   const facts: DossierFacts[] = [];
+  /** Dossier con domande solo per Lateral Space guardati da una persona del cliente: conteggi suoi, dal vivo. */
+  const clientNarrow: string[] = [];
   for (const r of rows) {
     const status = rowVocab(CASE_STATUSES, r.status);
     if (!isUuid(r.id) || !status) continue;
@@ -385,6 +394,7 @@ export async function readDossierCards(
     }
     const viewer = viewerOnCase(storedRoles(r.roles), user, i.lsDomains, i.viewer.canManage);
     if (ids === null && !viewer.canOpen) continue;
+    if (!seesLsOnlyItems(viewer.roles, user) && rowBool(r.has_ls_only)) clientNarrow.push(lower(String(r.id)));
     facts.push({
       workspaceId,
       caseId: lower(String(r.id)),
@@ -399,10 +409,18 @@ export async function readDossierCards(
     });
   }
   if (facts.length === 0) return empty;
+  const now = i.now ?? new Date();
+  const liveReadiness = new Map<string, Readiness>();
+  for (const caseId of clientNarrow) {
+    const live = await loadCaseReadiness(executor, workspaceId, caseId, now, { clientView: true });
+    if (live) liveReadiness.set(caseId, live.readiness);
+  }
   const inputs = parseScopedNextStepRows(nextStepRows, {
     caseIds: facts.map((f) => f.caseId),
     rolesByCase: new Map(facts.map((f) => [f.caseId, f.roles])),
-    now: i.now ?? new Date(),
+    now,
+    liveReadiness,
+    viewerIsLs: user?.isLateralSpace === true,
   });
   const cards = sortDossierCards(facts.map((f) => dossierCardView({ ...f, nextStep: inputs.get(f.caseId) ?? null })));
   const byUseCase = new Map<string, DossierCardView>();

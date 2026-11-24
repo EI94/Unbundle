@@ -30,7 +30,7 @@ import { exportChoices } from "@/lib/uc/export/request";
 import { VIA_SECTION_ID, canOpenShellPage, landingSegment, stepHasPageCommand, stepHiddenOn, stepPanelOf } from "@/lib/uc/views/case-shell";
 import { readableText } from "@/lib/uc/views/description";
 import { FILES_HREF, NEXT_STEP_ICON, SIGN_HREF, caseNextSteps, nextStepFor, overviewTodo, resolveStepHref, stepFact, turnRow, type NextStep } from "@/lib/uc/views/next-step";
-import { canOpenPage, seesValidatedOnly } from "@/lib/uc/views/page-access";
+import { canOpenPage, seesLsOnlyItems, seesValidatedOnly } from "@/lib/uc/views/page-access";
 import {
   BLOCKER_PANEL_ITEMS,
   OVERVIEW_SIDE_SECTIONS,
@@ -129,9 +129,11 @@ export default async function OverviewPage({
   const blockerPanel = panel?.kind === "blocco" && layout.sections.includes("blocchi") ? panel.blockerId : null;
 
   // Un giro solo: Panoramica e via nello stesso batch.
+  // Il cliente conta e vede solo le domande del suo lavoro (correzione del 24/11); Lateral Space tutto, come prima.
+  const lsOnlyVisible = seesLsOnlyItems(roles, caseAccess.user);
   const read = await loadOverviewWithVia(executor, {
-    overview: { workspaceId, caseId, now, blockerId: blockerPanel, blockerQuestions: BLOCKER_PANEL_ITEMS, withFiles: blockerPanel !== null && isLead && signable, audience: layout.audience },
-    via: { workspaceId, caseId, now, withFiles: signable && (isLead || isOwner) },
+    overview: { workspaceId, caseId, now, blockerId: blockerPanel, blockerQuestions: BLOCKER_PANEL_ITEMS, withFiles: blockerPanel !== null && isLead && signable, audience: layout.audience, clientView: !lsOnlyVisible },
+    via: { workspaceId, caseId, now, withFiles: signable && (isLead || isOwner), clientView: !lsOnlyVisible },
   });
   const { overview: data, via } = read;
   if (!data || !via) notFound();

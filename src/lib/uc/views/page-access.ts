@@ -56,6 +56,15 @@ export function canOpenItem(roles: readonly CaseRole[], status: ItemStatus): boo
 }
 
 /**
+ * (Correzione del 24/11) Vede le domande solo per Lateral Space (informazioni di Lateral Space o dei fornitori in «Cosa
+ * serve»)? Chi ha un ruolo di Lateral Space nel caso, o è una persona di Lateral Space (dominio email, già in
+ * `UserContext.isLateralSpace`). Tutti gli altri che aprono il dossier sono persone del cliente.
+ */
+export function seesLsOnlyItems(roles: readonly CaseRole[], user?: { isLateralSpace?: boolean } | null): boolean {
+  return roles.some((r) => (LS_CASE_ROLES as readonly string[]).includes(r)) || user?.isLateralSpace === true;
+}
+
+/**
  * Ruoli del cliente (art. 15.4): niente date né nomi accanto a ciò che ha fatto
  * un referente, niente eventi dei referenti nella cronologia. Chi ha anche un
  * ruolo di Lateral Space non è un ruolo del cliente (i due non convivono).

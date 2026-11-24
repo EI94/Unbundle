@@ -48,6 +48,7 @@ import { caseModulesRow, caseModulesSql } from "../../uc/sql/request-commands.ts
 import { rowBool, rowDate, rowJson, rowNumber, rowObject, rowString, rowVocab, type Row } from "../../uc/sql/readiness.ts";
 import { requestLiveSql } from "../../uc/sql/requests.ts";
 import { cast, join, raw, toStatement, ucSql, type SqlFragment, type UcStatement } from "../../uc/sql/statement.ts";
+import { clientVisibleItemSql, hasLsOnlyItemsSql } from "../../uc/sql/need-items.ts";
 import { templatePartsReader } from "../../uc/sql/template-parts.ts";
 import type { Json } from "../../uc/types.ts";
 import { CASE_STATUSES, ITEM_STATUSES, LS_CASE_ROLES, REQUEST_PURPOSES, REQUEST_STATUSES, type ItemStatus } from "../../uc/vocab.ts";
@@ -320,13 +321,16 @@ function weeklyCasesSql(i: { workspaceId: string; recipient: { contactId: string
     "contactId" in i.recipient
       ? ucSql`c.status NOT IN ('bozza', 'chiuso', 'sospeso') AND ${CASE_OWNER_SQL} = ${cast(i.recipient.contactId, "uuid")}`
       : ucSql`c.status <> 'chiuso' AND EXISTS (SELECT 1 FROM uc_case_members m WHERE m.case_id = c.id AND m.user_id = ${cast(i.recipient.userId, "uuid")} AND m.role IN (${LS_ROLES_SQL}))`;
+  // (Correzione del 24/11) All'Owner del cliente solo le domande che vede: mai quelle di Lateral Space o dei fornitori.
   const red =
     "contactId" in i.recipient
-      ? raw(`coalesce((SELECT jsonb_agg(jsonb_build_object('key', x.key, 'title', x.title)) FROM (
+      ? ucSql`coalesce((SELECT jsonb_agg(jsonb_build_object('key', x.key, 'title', x.title)) FROM (
       SELECT it.key, it.title FROM uc_items it WHERE it.case_id = c.id AND it.status = 'mancante' AND it.request_module_key IS NOT NULL AND it.deleted_at IS NULL
-      ORDER BY it.sort_order, it.key LIMIT 10) x), '[]'::jsonb)`)
+        AND ${clientVisibleItemSql("it")}
+      ORDER BY it.sort_order, it.key LIMIT 10) x), '[]'::jsonb)`
       : raw("'[]'::jsonb");
-  return toStatement(ucSql`SELECT c.id, c.code, c.title, c.readiness, ${NEXT_MILESTONE_SQL} AS next_milestone, ${red} AS red_items
+  const narrow = "contactId" in i.recipient ? hasLsOnlyItemsSql(raw("c.id")) : raw("false");
+  return toStatement(ucSql`SELECT c.id, c.code, c.title, c.readiness, ${NEXT_MILESTONE_SQL} AS next_milestone, ${red} AS red_items, ${narrow} AS has_ls_only
 FROM uc_cases c
 WHERE c.workspace_id = ${cast(i.workspaceId, "uuid")} AND c.setup_completed_at IS NOT NULL AND ${who}
 ORDER BY c.code
@@ -347,8 +351,10 @@ async function weeklyCases(executor: UcExecutor, n: ClaimedNotification, now: Da
   for (const row of rows) {
     const caseId = String(row.id);
     let readiness = rowObject(row.readiness);
-    if (!readiness.per_stato) {
-      const live = await loadCaseReadiness(executor, n.workspaceId, caseId, now);
+    // Il cliente (un referente: l'Owner) su un dossier con domande solo per Lateral Space: i suoi conteggi, dal vivo.
+    const clientView = "contactId" in recipient && rowBool(row.has_ls_only);
+    if (!readiness.per_stato || clientView) {
+      const live = await loadCaseReadiness(executor, n.workspaceId, caseId, now, { clientView });
       readiness = live ? (live.readiness as unknown as Record<string, Json>) : {};
     }
     const perStato = rowObject(readiness.per_stato);

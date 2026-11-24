@@ -28,7 +28,9 @@ import {
   snapshotCaseSql,
   snapshotItemsSql,
   snapshotLinksSql,
+  readinessForClient,
 } from "../../uc/sql/readiness.ts";
+import { lsOnlyItemKeysSql } from "../../uc/sql/need-items.ts";
 import { cast, raw, toStatement, ucSql } from "../../uc/sql/statement.ts";
 import { fail, type Result } from "../../uc/types.ts";
 import { eventInsertSql, type EventActor } from "./uc-events.ts";
@@ -71,13 +73,15 @@ LIMIT 1`),
  * stesso giro delle voci, così un via che arriva a metà non lascia passare la
  * bozza di dopo il via.
  */
-async function loadDraftSnapshot(executor: UcExecutor, workspaceId: string, caseId: string, now: Date, requireBeforeVia: boolean): Promise<Result<CatalogSnapshot>> {
+async function loadDraftSnapshot(executor: UcExecutor, workspaceId: string, caseId: string, now: Date, requireBeforeVia: boolean, clientView: boolean): Promise<Result<CatalogSnapshot>> {
   const readinessStatements = readinessReadStatements(workspaceId, caseId);
   const rows = await executor.batch([...readinessStatements, snapshotCaseSql(workspaceId, caseId), snapshotItemsSql(caseId), snapshotLinksSql(caseId)]);
-  const input = parseReadinessRows(rows.slice(0, readinessStatements.length));
+  const parsed = parseReadinessRows(rows.slice(0, readinessStatements.length));
   const n = readinessStatements.length;
   const caseRow = rows[n]?.[0];
-  if (!input || !caseRow) return fail("non_trovato", CASE_NOT_FOUND);
+  if (!parsed || !caseRow) return fail("non_trovato", CASE_NOT_FOUND);
+  // Il riquadro del via del cliente conta solo le domande che vede (le voci le toglie `snapshotForViewer`).
+  const input = clientView ? readinessForClient(parsed) : parsed;
   if (requireBeforeVia && input.core.catalogVersion > 0) return fail("bozza_non_ammessa", DRAFT_AFTER_VIA_MESSAGE);
   const { g1 } = computeCaseReadiness(input, now);
   const core = input.core;
@@ -117,11 +121,21 @@ async function loadDraftSnapshot(executor: UcExecutor, workspaceId: string, case
  */
 export async function loadExportSnapshot(
   executor: UcExecutor,
-  i: { workspaceId: string; caseId: string; version: ExportVersion; now?: Date; requireBeforeVia?: boolean },
+  i: { workspaceId: string; caseId: string; version: ExportVersion; now?: Date; requireBeforeVia?: boolean; clientView?: boolean },
 ): Promise<Result<CatalogSnapshot>> {
   if (!isUuid(i.workspaceId) || !isUuid(i.caseId)) return fail("non_trovato", CASE_NOT_FOUND);
-  if (i.version.kind === "bozza") return loadDraftSnapshot(executor, i.workspaceId, i.caseId, i.now ?? new Date(), i.requireBeforeVia === true);
+  if (i.version.kind === "bozza") return loadDraftSnapshot(executor, i.workspaceId, i.caseId, i.now ?? new Date(), i.requireBeforeVia === true, i.clientView === true);
   return loadFrozenSnapshot(executor, i.workspaceId, i.caseId, i.version.kind === "numero" ? i.version.version : null);
+}
+
+/**
+ * (Correzione del 24/11) Le chiavi delle domande solo per Lateral Space del caso, adesso: `snapshotForViewer` le toglie
+ * dall'export di una persona del cliente (anche da una versione congelata, che le ha con le altre).
+ */
+export async function lsOnlyItemKeys(executor: UcExecutor, caseId: string): Promise<Set<string>> {
+  if (!isUuid(caseId)) return new Set();
+  const [rows] = await executor.batch([lsOnlyItemKeysSql(caseId)]);
+  return new Set(rows.map((r) => String(r.key)));
 }
 
 /** Evento di audit del download: formato e versione, nient'altro. */

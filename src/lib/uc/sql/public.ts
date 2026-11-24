@@ -29,7 +29,7 @@ import {
 import { VISIBLE_REQUEST_ITEM_STATES } from "../public-view.ts";
 import { REQUEST_LINK_TTL_DAYS, requestLiveSql, requestVisibleSql } from "./requests.ts";
 import { cast, jsonb, raw, requireRows, toStatement, ucSql, type SqlFragment, type UcStatement } from "./statement.ts";
-import { linkedItemsGuard } from "./need-items.ts";
+import { clientVisibleItemSql, linkedItemsGuard } from "./need-items.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HEX64 = /^[0-9a-f]{64}$/;
@@ -611,6 +611,7 @@ export function pendingNaSql(caseId: string): UcStatement {
 FROM uc_items i
 WHERE i.case_id = ${cast(uuid(caseId, "caso"), "uuid")} AND i.deleted_at IS NULL AND i.na_proposed_at IS NOT NULL
   AND i.na_approved_at IS NULL AND i.na_reason IS NOT NULL
+  AND ${clientVisibleItemSql("i")}
 ORDER BY i.sort_order, i.key`);
 }
 
@@ -622,6 +623,7 @@ export function pendingWaiversAndFallbacksSql(caseId: string): UcStatement {
 FROM uc_items i
 WHERE i.case_id = ${cast(uuid(caseId, "caso"), "uuid")} AND i.deleted_at IS NULL
   AND ((i.waiver IS NOT NULL AND i.waiver_approved_at IS NULL) OR (i.fallback IS NOT NULL AND i.fallback_approved_at IS NULL))
+  AND ${clientVisibleItemSql("i")}
 ORDER BY i.sort_order, i.key`);
 }
 

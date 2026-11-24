@@ -24,7 +24,7 @@ import { templatePartsReader, type TemplateParts } from "../../uc/sql/template-p
 import { itemSnapshotsSql, rowToLoadedItem, type LoadedItem } from "../../uc/sql/transitions.ts";
 import type { Json, UserContext } from "../../uc/types.ts";
 import type { CaseRole, ItemStatus } from "../../uc/vocab.ts";
-import type { UcStatement } from "../../uc/sql/statement.ts";
+import { cast, toStatement, ucSql, type UcStatement } from "../../uc/sql/statement.ts";
 import { catalogWhereSql, type CatalogFilter } from "../../uc/views/catalog-filter.ts";
 import {
   itemActions,
@@ -49,7 +49,7 @@ import {
   type SpecEntry,
   type ValidationView,
 } from "../../uc/views/item-detail.ts";
-import { isClientViewer, seesInternalComments, seesPersonalZoneMetadata, seesValidatedOnly } from "../../uc/views/page-access.ts";
+import { isClientViewer, seesInternalComments, seesLsOnlyItems, seesPersonalZoneMetadata, seesValidatedOnly } from "../../uc/views/page-access.ts";
 import { parseCaseViewContext, rowToContact, rowsToSelection, type CaseViewContext, type ContactOption } from "../../uc/views/rows.ts";
 import {
   caseViewContextSql,
@@ -66,6 +66,7 @@ import {
   roleGroupItemsSql,
 } from "../../uc/views/sql.ts";
 import type { UcExecutor, UcRow } from "../uc-executor.ts";
+import { lsOnlyItemSql } from "../../uc/sql/need-items.ts";
 
 /** Chi guarda: ruoli che valgono adesso (da `requireCaseRole`) e contesto utente. */
 export interface UcViewer {
@@ -150,7 +151,7 @@ export async function loadCatalogSelection(executor: UcExecutor, v: UcViewer, sp
   if (spec.kind === "ruolo" && validatedOnly) return { total: 0, truncated: false, byStatus: {} };
   const statement =
     spec.kind === "filtro"
-      ? catalogSelectionSql(catalogWhereSql(v.caseId, spec.filter, { userId: v.user.userId, validatedOnly }))
+      ? catalogSelectionSql(catalogWhereSql(v.caseId, spec.filter, { userId: v.user.userId, validatedOnly, clientView: !seesLsOnlyItems(v.roles, v.user) }))
       : roleGroupItemsSql(v.caseId, spec.roleKey, spec.includeAssigned);
   const [rows] = await executor.batch([statement]);
   return rowsToSelection(rows, CATALOG_SELECTION_MAX);
@@ -178,6 +179,11 @@ export interface ItemDetailData extends CaseViewBase {
   clientViewer: boolean;
 }
 
+/** La voce è solo per Lateral Space (collegata a un'informazione di Lateral Space o di un fornitore)? */
+function itemLsOnlySql(caseId: string, itemId: string): UcStatement {
+  return toStatement(ucSql`SELECT ${lsOnlyItemSql("i")} AS ls_only FROM uc_items i WHERE i.case_id = ${cast(caseId, "uuid")} AND i.id = ${cast(itemId, "uuid")}`);
+}
+
 export async function loadItemDetail(executor: UcExecutor, v: UcViewer, itemId: string): Promise<ItemDetailData | null> {
   const clientViewer = isClientViewer(v.roles);
   const context = caseViewContextReader(v.workspaceId, v.caseId);
@@ -193,12 +199,15 @@ export async function loadItemDetail(executor: UcExecutor, v: UcViewer, itemId: 
     itemLinksSql(v.caseId, itemId),
     itemEventsSql(v.caseId, itemId, clientViewer),
     caseBlockersSql(v.caseId),
+    itemLsOnlySql(v.caseId, itemId),
   ]);
   const base = baseFrom(context, rows[0], rows[1]);
   const core = parseCaseCore(rows[2][0]);
   const loadedRow = rows[3][0];
   const header = parseItemDetailRow(rows[4][0], v.roles);
   if (!base || !core || !loadedRow || !header) return null;
+  // (Correzione del 24/11) Una domanda solo per Lateral Space non arriva al cliente: né pannello né pagina.
+  if (!seesLsOnlyItems(v.roles, v.user) && rows[12]?.[0]?.ls_only === true) return null;
   const loaded = rowToLoadedItem(loadedRow);
   const s = loaded.snapshot;
   const labels = new Map(rows[11].map(rowToCaseBlocker).map((b) => [b.key, b.label]));

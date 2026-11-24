@@ -4,12 +4,13 @@ import { auth } from "@/lib/auth";
 import { requireWorkspaceAccess } from "@/lib/auth/require-workspace";
 import { openUcCase } from "@/lib/actions/uc-action-context";
 import { isUcEnabled } from "@/lib/db/queries/uc-access";
-import { loadExportSnapshot, recordCatalogExport } from "@/lib/db/queries/uc-export";
+import { loadExportSnapshot, lsOnlyItemKeys, recordCatalogExport } from "@/lib/db/queries/uc-export";
 import { isPrefetchRequest } from "@/lib/http/prefetch";
 import { renderClientCatalogExport } from "@/lib/uc/export/client-catalog";
 import { attachmentDisposition, clientDraftBeforeVia, exportAllowed, exportFormatAllowed, parseExportQuery } from "@/lib/uc/export/request";
 import { fileForTransfer, renderCatalogExport } from "@/lib/uc/export/render";
 import { snapshotForViewer } from "@/lib/uc/snapshot";
+import { seesLsOnlyItems } from "@/lib/uc/views/page-access";
 import { isLsViewer } from "@/lib/uc/views/status-groups";
 
 /**
@@ -75,13 +76,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const allowed = exportAllowed(roles, query.value.version, beforeVia ? 0 : undefined);
     if (!allowed.ok) return text(403, allowed.message);
 
-    const loaded = await loadExportSnapshot(executor, { workspaceId, caseId: caseAccess.caseId, version: query.value.version, requireBeforeVia: beforeVia });
+    // (Correzione del 24/11) Il cliente non riceve le domande solo per Lateral Space, né i loro conteggi nella bozza.
+    const clientView = !seesLsOnlyItems(roles, caseAccess.user);
+    const loaded = await loadExportSnapshot(executor, { workspaceId, caseId: caseAccess.caseId, version: query.value.version, requireBeforeVia: beforeVia, clientView });
     if (!loaded.ok) {
       if (loaded.code === "bozza_non_ammessa") return text(403, loaded.message);
       const status = loaded.code === "nessuna_versione" || loaded.code === "versione_assente" || loaded.code === "non_trovato" ? 404 : 500;
       return text(status, loaded.message);
     }
-    const snapshot = snapshotForViewer(loaded.value, { roles });
+    const lsOnlyKeys = clientView ? await lsOnlyItemKeys(executor, caseAccess.caseId) : undefined;
+    const snapshot = snapshotForViewer(loaded.value, { roles, lsOnlyKeys });
     file = isLsViewer(roles) ? renderCatalogExport(snapshot, query.value.format) : renderClientCatalogExport(snapshot);
 
     // Senza audit niente file: l'evento si scrive prima di servire il download.

@@ -3,6 +3,9 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { useCases, workspaceConnectorConfigs } from "@/lib/db/schema";
 import { isUcEnabled } from "@/lib/db/queries/uc-access";
+import { ucToDrizzle } from "@/lib/db/use-case-hub-uc-drizzle";
+import { clientVisibleItemSql, hasLsOnlyItemsSql } from "@/lib/uc/sql/need-items";
+import { cast, raw, toStatement, ucSql, type SqlFragment } from "@/lib/uc/sql/statement";
 import type { DossierColumn } from "@/lib/db/queries/uc-nav";
 import { isUcWorkspaceEnabled } from "@/lib/uc/rollout";
 import type { UseCaseRealization } from "@/lib/uc/views/realization";
@@ -106,7 +109,35 @@ export interface DossierSummary extends DossierState {
   readiness: { required: number; ok: number } | null;
 }
 
-type DossierRow = { useCaseId: unknown; caseId: unknown; code: unknown; status: unknown; required?: unknown; readyOk?: unknown; revision?: unknown; cachedRevision?: unknown };
+type DossierRow = {
+  useCaseId: unknown;
+  caseId: unknown;
+  code: unknown;
+  status: unknown;
+  required?: unknown;
+  readyOk?: unknown;
+  revision?: unknown;
+  cachedRevision?: unknown;
+  clientNarrow?: unknown;
+  clientRequired?: unknown;
+  clientOk?: unknown;
+};
+
+/**
+ * (Correzione del 24/11) I conteggi del cliente su un dossier con domande solo per Lateral Space: le
+ * indispensabili che vede e quelle a posto (validate e non scadute, o «non si applica» firmato). Solo
+ * i dossier «Dal caso d'uso» hanno queste domande, e lì deroghe e soluzioni provvisorie non ci sono:
+ * il conto è quello di `isItemOk`. Per gli altri dossier resta la cache, uguale per tutti.
+ */
+function clientCountsSql(clientView: boolean): SqlFragment {
+  if (!clientView) return raw(`false AS "clientNarrow", NULL::int AS "clientRequired", NULL::int AS "clientOk"`);
+  const visibleRequired = ucSql`ci.case_id = c.id AND ci.deleted_at IS NULL AND ci.in_gate_scope AND ci.priority = 'must' AND ci.perimeter = 'in_contratto'
+    AND ci.serves_for @> '["modello"]'::jsonb AND ${clientVisibleItemSql("ci")}`;
+  return ucSql`${hasLsOnlyItemsSql(raw("c.id"))} AS "clientNarrow",
+  (SELECT count(*) FROM uc_items ci WHERE ${visibleRequired})::int AS "clientRequired",
+  (SELECT count(*) FROM uc_items ci WHERE ${visibleRequired}
+    AND ((ci.status = 'validata' AND (ci.stale_at IS NULL OR ci.stale_at > now())) OR (ci.status = 'non_applicabile' AND ci.na_approved_at IS NOT NULL)))::int AS "clientOk"`;
+}
 
 /** Un conteggio della cache: intero non negativo, altrimenti null. */
 function count(value: unknown): number | null {
@@ -126,6 +157,7 @@ async function readDossiers(
   op: string,
   workspaceId: string,
   useCaseIds: readonly string[],
+  clientView = false,
 ): Promise<DossierRead<{ found: ReadonlyMap<string, DossierSummary> }>> {
   if (!sectionOn(workspaceId)) return SPENTA;
   const ids = [...new Set(useCaseIds.filter(isUuid).map((id) => id.toLowerCase()))];
@@ -133,15 +165,20 @@ async function readDossiers(
     if (!(await ucTablesPresent())) return SPENTA;
     const found = new Map<string, DossierSummary>();
     if (ids.length === 0) return { ok: true, found };
-    const { rows } = await db.execute(sql`SELECT DISTINCT ON (c.portfolio_use_case_id)
+    const { rows } = await db.execute(
+      ucToDrizzle(
+        toStatement(ucSql`SELECT DISTINCT ON (c.portfolio_use_case_id)
         c.portfolio_use_case_id AS "useCaseId", c.id AS "caseId", c.code, c.status,
         c.readiness -> 'G1' ->> 'required' AS "required", c.readiness -> 'G1' ->> 'ok' AS "readyOk",
-        c.catalog_revision AS "revision", c.readiness ->> 'catalog_revision' AS "cachedRevision"
+        c.catalog_revision AS "revision", c.readiness ->> 'catalog_revision' AS "cachedRevision",
+        ${clientCountsSql(clientView)}
       FROM uc_cases c
-      WHERE c.workspace_id = ${workspaceId}::uuid
-        AND c.portfolio_use_case_id = ANY(${sql.param(ids)}::uuid[])
+      WHERE c.workspace_id = ${cast(workspaceId, "uuid")}
+        AND c.portfolio_use_case_id = ANY(${cast(ids, "uuid[]")})
         AND c.setup_completed_at IS NOT NULL
-      ORDER BY c.portfolio_use_case_id, c.created_at, c.id`);
+      ORDER BY c.portfolio_use_case_id, c.created_at, c.id`),
+      ),
+    );
     for (const row of rows as DossierRow[]) {
       if (!isVocab(CASE_STATUSES, row.status)) throw new TypeError("Stato del dossier fuori vocabolario");
       // Come la testata (`uc-header.ts`): una cache di un'altra revisione del catalogo (per esempio dopo una scrittura
@@ -149,8 +186,10 @@ async function readDossiers(
       const revision = count(row.revision);
       const cachedRevision = count(row.cachedRevision);
       const stale = revision !== null && cachedRevision !== null && revision !== cachedRevision;
-      const required = stale ? null : count(row.required);
-      const ok = stale ? null : count(row.readyOk);
+      // Una persona del cliente su un dossier con domande solo per Lateral Space: i suoi conteggi, dal vivo.
+      const narrow = clientView && row.clientNarrow === true;
+      const required = narrow ? count(row.clientRequired) : stale ? null : count(row.required);
+      const ok = narrow ? count(row.clientOk) : stale ? null : count(row.readyOk);
       found.set(String(row.useCaseId).toLowerCase(), {
         caseId: String(row.caseId),
         code: String(row.code),
@@ -194,8 +233,9 @@ export async function dossierStates(
 export async function dossierSummaries(
   workspaceId: string,
   useCaseIds: readonly string[],
+  opts: { clientView?: boolean } = {},
 ): Promise<DossierRead<{ summaries: ReadonlyMap<string, DossierSummary> }>> {
-  const read = await readDossiers("dossier_summaries", workspaceId, useCaseIds);
+  const read = await readDossiers("dossier_summaries", workspaceId, useCaseIds, opts.clientView === true);
   return read.ok ? { ok: true, summaries: read.found } : read;
 }
 

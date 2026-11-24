@@ -26,6 +26,8 @@ import { cast, jsonb, toStatement, ucSql, type SqlFragment, type UcStatement } f
 import type { Approval } from "../../uc/types.ts";
 import type { NextStepInput } from "../../uc/views/next-step.ts";
 import type { StatusGroup } from "../../uc/views/status-groups.ts";
+import { seesLsOnlyItems } from "../../uc/views/page-access.ts";
+import { clientVisibleItemSql } from "../../uc/sql/need-items.ts";
 import { CASE_STATUSES, type CaseRole, type CaseStatus } from "../../uc/vocab.ts";
 import type { UcExecutor } from "../uc-executor.ts";
 import { PENDING_SIGNATURE_STATEMENTS, parsePendingSignatures, pendingSignatureStatements, toPendingSignatures, type CaseSignature } from "./uc-signatures.ts";
@@ -74,7 +76,17 @@ WHERE c.id = ANY(${cast([...caseIds], "uuid[]")}) AND c.workspace_id = ${cast(wo
 function itemCountsSql(caseIds: readonly string[], userId: string): UcStatement {
   const req = requiredForVia();
   const mine = notMine(userId);
+  // (Correzione del 24/11) Gli stessi conteggi come li fa una persona del cliente: senza le domande solo per Lateral
+  // Space. Le statement non sa chi guarda (va nel batch con l'accesso): li legge tutti e due, sceglie il parser.
+  const cv = clientVisibleItemSql("i");
   return toStatement(ucSql`SELECT i.case_id,
+  count(*) FILTER (WHERE ${req} AND i.status IN ('da_chiedere', 'chiesta', 'mancante', 'parziale') AND ${cv})::int AS g_da_fare_client,
+  count(*) FILTER (WHERE ${req} AND i.status = 'in_verifica' AND ${cv})::int AS g_da_verificare_client,
+  count(*) FILTER (WHERE ${req} AND i.status = 'bloccata' AND ${cv})::int AS g_bloccate_client,
+  count(*) FILTER (WHERE ${req} AND i.status IN ('validata', 'non_applicabile') AND ${cv})::int AS g_a_posto_client,
+  count(*) FILTER (WHERE ${req} AND i.status = 'da_chiedere' AND i.assignee_contact_id IS NULL AND ${cv})::int AS unassigned_must_client,
+  count(*) FILTER (WHERE ${req} AND i.status = 'da_chiedere' AND ${cv})::int AS unsent_must_client,
+  count(*) FILTER (WHERE i.request_module_key IS NOT NULL AND i.status = 'chiesta' AND ${cv})::int AS waiting_on_referents_client,
   count(*) FILTER (WHERE ${req} AND i.status IN ('da_chiedere', 'chiesta', 'mancante', 'parziale'))::int AS g_da_fare,
   count(*) FILTER (WHERE ${req} AND i.status = 'in_verifica')::int AS g_da_verificare,
   count(*) FILTER (WHERE ${req} AND i.status = 'bloccata')::int AS g_bloccate,
@@ -166,7 +178,14 @@ export interface NextStepRead {
  */
 export function parseNextStepRows(
   rows: readonly (readonly Row[])[],
-  i: { caseIds: readonly string[]; rolesByCase: ReadonlyMap<string, readonly CaseRole[]>; now: Date; liveReadiness?: ReadonlyMap<string, Readiness> },
+  i: {
+    caseIds: readonly string[];
+    rolesByCase: ReadonlyMap<string, readonly CaseRole[]>;
+    now: Date;
+    liveReadiness?: ReadonlyMap<string, Readiness>;
+    /** Chi guarda è una persona di Lateral Space (dominio email): conta tutte le domande anche senza un ruolo di Lateral Space. */
+    viewerIsLs?: boolean;
+  },
 ): Map<string, NextStepRead> {
   const [cases = [], counts = [], blockers = []] = rows;
   // Postgres restituisce gli uuid in minuscolo; chi chiama può averli scritti in maiuscolo (l'URL li accetta).
@@ -184,7 +203,21 @@ export function parseNextStepRows(
     const roles = rolesByCase.get(id) ?? [];
     const sigStart = 3 + index * PENDING_SIGNATURE_STATEMENTS;
     const signatures = parsePendingSignatures(rows.slice(sigStart, sigStart + PENDING_SIGNATURE_STATEMENTS), roles);
-    const n = countsBy.get(id) ?? {};
+    const all = countsBy.get(id) ?? {};
+    // Una persona del cliente conta solo le domande che vede (colonne `_client`); Lateral Space tutte, come prima.
+    const client = !seesLsOnlyItems(roles, { isLateralSpace: i.viewerIsLs });
+    const n: Record<string, unknown> = client
+      ? {
+          ...all,
+          g_da_fare: all.g_da_fare_client,
+          g_da_verificare: all.g_da_verificare_client,
+          g_bloccate: all.g_bloccate_client,
+          g_a_posto: all.g_a_posto_client,
+          unassigned_must: all.unassigned_must_client,
+          unsent_must: all.unsent_must_client,
+          waiting_on_referents: all.waiting_on_referents_client,
+        }
+      : all;
     const num = (v: unknown) => rowNumber(v) ?? 0;
     const byGroup: Partial<Record<StatusGroup, number>> = {
       da_fare: num(n.g_da_fare),
@@ -249,13 +282,15 @@ export function parseNextStepRows(
 /** Il prossimo passo di un dossier per chi guarda, in un solo giro. Null se il dossier non è del workspace. */
 export async function loadNextStepInput(
   executor: UcExecutor,
-  i: { workspaceId: string; caseId: string; userId: string; roles: readonly CaseRole[]; now?: Date },
+  i: { workspaceId: string; caseId: string; userId: string; roles: readonly CaseRole[]; now?: Date; liveReadiness?: Readiness | null; viewerIsLs?: boolean },
 ): Promise<NextStepInput | null> {
   if (!UUID.test(i.workspaceId) || !UUID.test(i.caseId) || !UUID.test(i.userId)) return null;
   const now = i.now ?? new Date();
   const [workspaceId, caseId, userId] = [lowerId(i.workspaceId), lowerId(i.caseId), lowerId(i.userId)];
   const rows = await executor.batch(nextStepStatements({ workspaceId, caseIds: [caseId], userId }));
-  return parseNextStepRows(rows, { caseIds: [caseId], rolesByCase: new Map([[caseId, i.roles]]), now }).get(caseId)?.input ?? null;
+  // (Correzione del 24/11) Chi chiama può dare la prontezza dal vivo: quella del cliente, sulle sole domande che vede.
+  const live = i.liveReadiness ? new Map([[caseId, i.liveReadiness]]) : undefined;
+  return parseNextStepRows(rows, { caseIds: [caseId], rolesByCase: new Map([[caseId, i.roles]]), now, liveReadiness: live, viewerIsLs: i.viewerIsLs }).get(caseId)?.input ?? null;
 }
 
 /**
