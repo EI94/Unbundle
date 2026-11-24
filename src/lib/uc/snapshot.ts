@@ -17,6 +17,7 @@
 import { createHash } from "node:crypto";
 import type { Fallback, Json, Result, Waiver } from "./types.ts";
 import { fail, ok } from "./types.ts";
+import { isLsViewer } from "./views/status-groups.ts";
 import {
   HEALTH_PRIVACY_CLASS,
   ITEM_STATUSES,
@@ -493,10 +494,15 @@ export function snapshotValueVisible(visibility: ValueVisibility, roles: readonl
 }
 
 /** Copia della fotografia senza i valori che i ruoli non possono vedere. */
-export function snapshotForViewer(snapshot: CatalogSnapshot, viewer: { roles: readonly CaseRole[] }): CatalogSnapshot {
+export function snapshotForViewer(snapshot: CatalogSnapshot, viewer: { roles: readonly CaseRole[]; lsOnlyKeys?: ReadonlySet<string> }): CatalogSnapshot {
+  // (Correzione del 24/11) Una persona del cliente non riceve le domande solo per Lateral Space (informazioni di Lateral
+  // Space o dei fornitori in «Cosa serve»), né i collegamenti che le toccano: le chiavi le passa chi chiama, solo per
+  // il cliente (`seesLsOnlyItems`); per un ruolo di Lateral Space non valgono mai.
+  const hidden = !isLsViewer(viewer.roles) && viewer.lsOnlyKeys && viewer.lsOnlyKeys.size > 0 ? viewer.lsOnlyKeys : null;
   return {
     ...snapshot,
-    items: snapshot.items.map((item) => {
+    links: hidden ? snapshot.links.filter((l) => !hidden.has(l.from) && !hidden.has(l.to)) : snapshot.links,
+    items: (hidden ? snapshot.items.filter((item) => !hidden.has(item.key)) : snapshot.items).map((item) => {
       if (!item.answer || item.answer.value_hidden || snapshotValueVisible(item.value_visibility, viewer.roles)) return item;
       return { ...item, answer: { ...item.answer, value: null, value_normalized: null, value_hidden: "visibilita" } };
     }),
