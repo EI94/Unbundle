@@ -4,6 +4,7 @@ import { ensureDbSchema } from "../ensure-schema";
 import { READINESS_SIGNAL_ENTITY, READINESS_SIGNAL_TYPES } from "@/lib/ai-readiness/notify";
 import { readinessBellPlan, type ReadinessBellPlan } from "@/lib/ai-readiness/notify-plan";
 import { logSafeError } from "@/lib/log/safe-error";
+import { queueReadinessEmails } from "./ai-readiness-email";
 
 /**
  * Le righe dell'AI Readiness in campanella (rilascio 10, ondata 7b; `src/lib/ai-readiness/notify.ts` e `notify-plan.ts`), in
@@ -15,10 +16,11 @@ import { logSafeError } from "@/lib/log/safe-error";
  * della transazione, per rilevazione) e ognuna riconta i questionari inviati nella sua istruzione; scrive solo se il suo
  * numero è quello contato. Un invio con il numero già superato non scrive niente: «9 risposte» non copre mai «10».
  * Chi le vede lo decide `signals.ts` (solo chi gestisce il workspace).
+ * (0044) Dice se questa scrittura ha fatto nascere la riga della soglia: è il momento dell'email «i risultati ci sono».
  */
-export async function writeReadinessBell(i: { workspaceId: string; assessmentId: string; plan: ReadinessBellPlan }): Promise<void> {
+export async function writeReadinessBell(i: { workspaceId: string; assessmentId: string; plan: ReadinessBellPlan }): Promise<{ thresholdCreated: boolean }> {
   const { answers, threshold, responses } = i.plan;
-  if (!answers && !threshold) return;
+  if (!answers && !threshold) return { thresholdCreated: false };
   await ensureDbSchema();
   const counted = sql`(SELECT count(*)::int FROM ai_readiness_responses r WHERE r.assessment_id = ${i.assessmentId}::uuid AND r.status = 'submitted') = ${responses}::int`;
   const lock = db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`unbundle:ai-readiness:bell:${i.assessmentId}`}))`);
@@ -36,25 +38,45 @@ export async function writeReadinessBell(i: { workspaceId: string; assessmentId:
 DELETE FROM weekly_signal_reads r USING s WHERE r.signal_id = s.id`),
     );
   }
+  const thresholdAt = threshold ? statements.length + 1 : -1;
   if (threshold) {
     statements.push(
       db.execute(sql`INSERT INTO weekly_signals (id, workspace_id, signal_type, title, description, related_entity_type, related_entity_id, is_read, created_at)
   SELECT ${threshold.id}::uuid, ${i.workspaceId}::uuid, ${threshold.type}, left(${threshold.title}, 500), ${threshold.description}, ${READINESS_SIGNAL_ENTITY}, ${i.assessmentId}::uuid, false, now()
   WHERE ${counted}
-  ON CONFLICT (id) DO NOTHING`),
+  ON CONFLICT (id) DO NOTHING
+  RETURNING id`),
     );
   }
   // Una transazione: il lock tiene fuori le altre scritture della rilevazione fino alla fine; ogni istruzione dopo il
   // lock vede i questionari inviati fino a quel momento.
-  await db.batch([lock, ...statements]);
+  const results = (await db.batch([lock, ...statements])) as unknown as Array<{ rows?: unknown[] } | undefined>;
+  return { thresholdCreated: thresholdAt > 0 && (results[thresholdAt]?.rows?.length ?? 0) > 0 };
 }
 
-/** Dopo un questionario inviato: la campanella di chi gestisce. Mai un errore per chi ha risposto: si scrive nel log. */
-export async function notifyReadinessResponse(i: { workspaceId: string; assessmentId: string; name: string; responses: number; expected: number | null; threshold: number }): Promise<void> {
+/**
+ * Dopo un questionario inviato: la campanella di chi gestisce, poi (0044) le email in coda per chi gestisce e può
+ * riceverle (`queueReadinessEmails`): le risposte nuove sempre, i risultati solo se questo invio ha fatto nascere la
+ * riga della soglia. Mai un errore per chi ha risposto: si scrive nel log.
+ */
+export async function notifyReadinessResponse(i: {
+  workspaceId: string;
+  assessmentId: string;
+  name: string;
+  responses: number;
+  expected: number | null;
+  threshold: number;
+  /** L'invio del questionario: le risposte nuove dell'email si contano da qui. */
+  submittedAt?: Date;
+}): Promise<void> {
+  let thresholdCreated = false;
   try {
-    await writeReadinessBell({ workspaceId: i.workspaceId, assessmentId: i.assessmentId, plan: readinessBellPlan(i) });
+    ({ thresholdCreated } = await writeReadinessBell({ workspaceId: i.workspaceId, assessmentId: i.assessmentId, plan: readinessBellPlan(i) }));
   } catch (error) {
     logSafeError("ai-readiness", "bell_failed", error, { assessmentId: i.assessmentId });
+  }
+  if (i.responses > 0) {
+    await queueReadinessEmails({ workspaceId: i.workspaceId, assessmentId: i.assessmentId, submittedAt: i.submittedAt ?? new Date(), resultsReady: thresholdCreated });
   }
 }
 
