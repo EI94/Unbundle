@@ -27,7 +27,6 @@ import {
   setAirEmailSwitchSql,
 } from "@/lib/ai-readiness/email-sql";
 import { logSafeError } from "@/lib/log/safe-error";
-import { romeDate, romeLocalToUtc } from "@/lib/uc/calendar";
 import { isLateralSpaceEmail, parseLsDomains } from "@/lib/uc/lateral-space";
 import type { DispatchEnv, UcMailer } from "@/lib/uc/notify/dispatch";
 import { rowBool, rowDate, rowNumber, rowString } from "@/lib/uc/sql/readiness";
@@ -141,11 +140,6 @@ function claimedOf(r: UcRow): ClaimedAirEmail | null {
   return { id, workspaceId, assessmentId, recipientUserId, kind, scheduledAt, createdAt, attempts: rowNumber(r.attempts) ?? 0 };
 }
 
-/** La mezzanotte di oggi a Roma: un'email al giorno per rilevazione e persona si conta da qui. */
-function romeDayStart(now: Date): Date {
-  return romeLocalToUtc(romeDate(now), 0);
-}
-
 /** Lo store delle email dell'AI Readiness sul database. */
 export function createAirEmailStore(executor: UcExecutor, o: { env: DispatchEnv }): AirEmailStore {
   const env = o.env as Env;
@@ -158,7 +152,7 @@ export function createAirEmailStore(executor: UcExecutor, o: { env: DispatchEnv 
       return rows.length;
     },
     async cancelStale(now) {
-      const [interrupted] = await executor.batch([cancelInterruptedAirEmailsSql(now)]);
+      const [interrupted] = await executor.batch([cancelInterruptedAirEmailsSql()]);
       const [pending] = await executor.batch([pendingAirEmailsSql()]);
       const stale = pending.flatMap((r) => {
         const createdAt = rowDate(r.created_at);
@@ -170,7 +164,7 @@ export function createAirEmailStore(executor: UcExecutor, o: { env: DispatchEnv 
       return interrupted.length + cancelled.length;
     },
     async claimDue(i) {
-      const [, rows] = await executor.batch(claimAirEmailsStatements({ now: i.now, dayStart: romeDayStart(i.now), limit: i.limit }));
+      const [, rows] = await executor.batch(claimAirEmailsStatements({ now: i.now, limit: i.limit }));
       return rows.map(claimedOf).filter((x): x is ClaimedAirEmail => x !== null);
     },
     async loadFacts(e) {

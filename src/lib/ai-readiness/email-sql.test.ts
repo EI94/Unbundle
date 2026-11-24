@@ -54,22 +54,24 @@ test("in coda: «risultati» solo quando nasce la soglia, poi «risposte»; un d
 
 test("il giro: uno alla volta (advisory lock), una riga per rilevazione e persona (prima i risultati), mai due email nello stesso giorno", () => {
   const now = new Date("2026-11-24T09:30:00Z");
-  const dayStart = new Date("2026-11-23T23:00:00Z");
-  const [lock, claim] = claimAirEmailsStatements({ now, dayStart, limit: 50 });
+  const [lock, claim] = claimAirEmailsStatements({ now, limit: 50 });
   assert.equal(flat(lock.text), "SELECT pg_advisory_xact_lock(hashtext($1::text))");
   assert.deepEqual(lock.params, [AIR_EMAIL_CLAIM_LOCK]);
   const text = flat(claim.text);
   assert.match(text, /row_number\(\) OVER \(PARTITION BY e\.assessment_id, e\.recipient_user_id ORDER BY \(e\.kind = 'risultati'\) DESC, e\.scheduled_at, e\.id\) AS n/);
   assert.match(text, /JOIN ranked r ON r\.id = e\.id AND r\.n = 1/, "una sola per coppia");
-  // Il limite del giorno: un'email partita oggi, o dall'esito incerto oggi, ferma la coppia fino a domani.
-  assert.match(text, /\(x\.status = 'inviata' AND x\.sent_at >= \$\d+::timestamptz\)/);
-  assert.match(text, /\(x\.cancel_reason = 'esito_incerto' AND x\.counted_until >= \$\d+::timestamptz\)/);
+  // Il limite del giorno: un'email partita oggi (la mezzanotte di Roma, dall'orologio del database), o dall'esito incerto
+  // oggi, ferma la coppia fino a domani.
+  const today = "(date_trunc('day', now() AT TIME ZONE 'Europe/Rome') AT TIME ZONE 'Europe/Rome')";
+  assert.ok(text.includes(`(x.status = 'inviata' AND x.sent_at >= ${today})`));
+  assert.ok(text.includes(`(x.cancel_reason = 'esito_incerto' AND x.counted_until >= ${today})`));
   // Una riga della stessa coppia presa o con un tentativo segnato: la coppia aspetta.
-  assert.match(text, /x\.status IN \('in_coda', 'errore'\) AND \(x\.lease_until > \$\d+::timestamptz OR x\.attempt_started_at IS NOT NULL\)/);
+  assert.match(text, /x\.status IN \('in_coda', 'errore'\) AND \(x\.lease_until > now\(\) OR x\.attempt_started_at IS NOT NULL\)/);
+  assert.match(text, /e\.scheduled_at <= \$\d+::timestamptz/, "dovuta entro l'istante del giro");
   assert.match(text, /e\.attempt_started_at IS NULL/);
   assert.match(text, /\(e\.status = 'in_coda' OR \(e\.status = 'errore' AND e\.attempts < 3\)\)/);
   assert.match(text, /FOR UPDATE OF e SKIP LOCKED/);
-  assert.ok(claim.params.includes(dayStart.toISOString()) && claim.params.includes(now.toISOString()) && claim.params.includes(50));
+  assert.ok(claim.params.includes(now.toISOString()) && claim.params.includes(50));
 });
 
 test("il conteggio: le risposte inviate dall'ultima email (partita o dall'esito incerto) o dall'invio della riga, fino all'orologio del database", () => {
@@ -92,7 +94,7 @@ test("mai due volte: il segno del tentativo su una riga ancora in attesa, una vo
   assert.match(failed, /status = CASE WHEN attempts >= 3 THEN 'annullata' ELSE 'errore' END/);
   assert.match(failed, /cancel_reason = CASE WHEN attempts >= 3 THEN 'tentativi_finiti' ELSE cancel_reason END/);
   assert.match(failed, /attempt_started_at = NULL/, "un errore certo: l'email non è partita, si può riprovare");
-  assert.match(flat(cancelInterruptedAirEmailsSql(new Date()).text), /attempt_started_at IS NOT NULL AND \(lease_until IS NULL OR lease_until <= \$1::timestamptz\)/, "un processo interrotto a metà: mai ripetuto");
+  assert.match(flat(cancelInterruptedAirEmailsSql().text), /attempt_started_at IS NOT NULL AND \(lease_until IS NULL OR lease_until <= now\(\)\)/, "un processo interrotto a metà: mai ripetuto");
   assert.match(flat(markAirEmailCancelledSql(ROW, "email_spenta").text), /AND attempt_started_at IS NULL$/, "il piano non annulla una riga con un tentativo in corso");
 });
 

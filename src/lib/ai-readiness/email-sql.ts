@@ -72,14 +72,18 @@ ON CONFLICT DO NOTHING`);
   return i.resultsReady ? [insert("risultati"), insert("risposte")] : [insert("risposte")];
 }
 
+/** La mezzanotte di oggi a Roma, dall'orologio del database: un'email al giorno per rilevazione e persona si conta da qui. */
+export const ROME_DAY_START_SQL = `(date_trunc('day', now() AT TIME ZONE 'Europe/Rome') AT TIME ZONE 'Europe/Rome')`;
+
 /**
- * Le righe dovute di un giro, prese con un lease: una per rilevazione e persona (prima «risultati»), mai per una coppia
- * che oggi (`dayStart`, la mezzanotte di Roma) ha già avuto un'email, anche dall'esito incerto, o che ha un'altra riga
- * presa o con un tentativo segnato. I giri passano uno alla volta (un advisory lock nella stessa transazione).
+ * Le righe dovute di un giro (`scheduled_at` entro `now`), prese con un lease: una per rilevazione e persona (prima
+ * «risultati»), mai per una coppia che oggi (la mezzanotte di Roma, dall'orologio del database) ha già avuto un'email,
+ * anche dall'esito incerto, o che ha un'altra riga presa o con un tentativo segnato. I giri passano uno alla volta (un
+ * advisory lock nella stessa transazione). Il lease, le email partite e i conteggi usano l'orologio del database.
  */
-export function claimAirEmailsStatements(i: { now: Date; dayStart: Date; limit: number }): UcStatement[] {
+export function claimAirEmailsStatements(i: { now: Date; limit: number }): UcStatement[] {
   const now = cast(i.now.toISOString(), "timestamptz");
-  const dayStart = cast(i.dayStart.toISOString(), "timestamptz");
+  const dayStart = raw(ROME_DAY_START_SQL);
   return [
     toStatement(ucSql`SELECT pg_advisory_xact_lock(hashtext(${cast(AIR_EMAIL_CLAIM_LOCK, "text")}))`),
     toStatement(ucSql`WITH ranked AS MATERIALIZED (
@@ -88,12 +92,12 @@ export function claimAirEmailsStatements(i: { now: Date; dayStart: Date; limit: 
   FROM ${T} e
   WHERE (e.status = 'in_coda' OR (e.status = 'errore' AND e.attempts < 3))
     AND e.scheduled_at <= ${now} AND e.attempt_started_at IS NULL
-    AND (e.lease_until IS NULL OR e.lease_until <= ${now})
+    AND (e.lease_until IS NULL OR e.lease_until <= now())
     AND NOT EXISTS (
       SELECT 1 FROM ${T} x
       WHERE x.assessment_id = e.assessment_id AND x.recipient_user_id = e.recipient_user_id AND x.id <> e.id
         AND (
-          (x.${PENDING} AND (x.lease_until > ${now} OR x.attempt_started_at IS NOT NULL))
+          (x.${PENDING} AND (x.lease_until > now() OR x.attempt_started_at IS NOT NULL))
           OR (x.status = 'inviata' AND x.sent_at >= ${dayStart})
           OR (x.cancel_reason = 'esito_incerto' AND x.counted_until >= ${dayStart})
         )
@@ -105,7 +109,7 @@ c AS (
   LIMIT ${cast(i.limit, "int")}
   FOR UPDATE OF e SKIP LOCKED
 )
-UPDATE ${T} e SET lease_until = ${now} + make_interval(mins => ${cast(AIR_EMAIL_LEASE_MINUTES, "int")}), updated_at = now()
+UPDATE ${T} e SET lease_until = now() + make_interval(mins => ${cast(AIR_EMAIL_LEASE_MINUTES, "int")}), updated_at = now()
 FROM c WHERE e.id = c.id
 RETURNING e.id, e.workspace_id, e.assessment_id, e.recipient_user_id, e.kind, e.scheduled_at, e.created_at, e.attempts`),
   ];
@@ -231,9 +235,9 @@ RETURNING id`);
  * I tentativi interrotti a metà (il processo si è fermato dopo il segno e prima dell'esito, il lease è finito): l'email
  * può essere partita, quindi non si ripete mai («esito_incerto»).
  */
-export function cancelInterruptedAirEmailsSql(now: Date): UcStatement {
+export function cancelInterruptedAirEmailsSql(): UcStatement {
   return toStatement(ucSql`UPDATE ${T} SET status = 'annullata', cancel_reason = 'esito_incerto', lease_until = NULL, attempt_started_at = NULL, updated_at = now()
-WHERE ${PENDING} AND attempt_started_at IS NOT NULL AND (lease_until IS NULL OR lease_until <= ${cast(now.toISOString(), "timestamptz")})
+WHERE ${PENDING} AND attempt_started_at IS NOT NULL AND (lease_until IS NULL OR lease_until <= now())
 RETURNING id`);
 }
 
