@@ -130,7 +130,7 @@ function sheetHtml(view: NonNullable<Awaited<ReturnType<Queries["loadTeamMcpCard
     createElement(sheet.AccountSheetBody, {
       user: { name: "Persona", email: null, image: null },
       state: { status: "ready", account: { email: null, claude, terminal: null, granola: null } },
-      actions: { setEmailAlerts: unused, createClaudeAccess: unused, revokeClaudeAccess: unused, revokeTerminalLink: unused, connectGranola: unused, disconnectGranola: unused },
+      actions: { setEmailAlerts: unused, setReadinessEmails: unused, createClaudeAccess: unused, revokeClaudeAccess: unused, revokeTerminalLink: unused, connectGranola: unused, disconnectGranola: unused },
       onRetry() {},
       onChanged() {},
     }),

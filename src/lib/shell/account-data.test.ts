@@ -7,18 +7,22 @@ import { installAppModules } from "../ai/claude-test-kit.ts";
 
 type Prova = {
   bell: { seenAt: null; referentEmails: boolean; hasRequested: boolean } | Error;
+  /** (0044) La risposta finta di `readinessEmailChoice`. */
+  readiness: { on: boolean } | null;
   team: Record<string, unknown> | null;
   cli: { tokens: unknown[] } | null | Error;
   granola: Record<string, unknown>;
   asked: string[];
 };
-const prova: Prova = { bell: { seenAt: null, referentEmails: false, hasRequested: true }, team: null, cli: null, granola: {}, asked: [] };
+const prova: Prova = { bell: { seenAt: null, referentEmails: false, hasRequested: true }, readiness: null, team: null, cli: null, granola: {}, asked: [] };
 (globalThis as { __accountProva?: Prova }).__accountProva = prova;
 
 await installAppModules({
   "@/lib/db/queries/bell-state": `export async function getBellState(ws, user) {
     const p = globalThis.__accountProva; p.asked.push("bell:" + ws + ":" + user);
     if (p.bell instanceof Error) throw p.bell; return p.bell; }`,
+  "@/lib/db/queries/ai-readiness-email": `export async function readinessEmailChoice(i) {
+    const p = globalThis.__accountProva; p.asked.push("air:" + i.role + ":" + i.user.id); return p.readiness; }`,
   "@/lib/db/queries/team-mcp-tokens": `export async function loadTeamMcpCard(i) {
     const p = globalThis.__accountProva; p.asked.push("team:" + i.role); return p.team; }`,
   "@/lib/db/queries/use-case-cli-auth": `export async function loadCliCard(executor, i) {
@@ -55,7 +59,7 @@ const TEAM = {
 };
 
 function reset(over: Partial<Prova> = {}) {
-  Object.assign(prova, { bell: { seenAt: null, referentEmails: false, hasRequested: true }, team: null, cli: null, granola: {}, asked: [] }, over);
+  Object.assign(prova, { bell: { seenAt: null, referentEmails: false, hasRequested: true }, readiness: null, team: null, cli: null, granola: {}, asked: [] }, over);
 }
 
 test("revisore di Lateral Space che ha chiesto al referente: email, Claude (solo la parte sua), terminale, Granola", async () => {
@@ -103,7 +107,16 @@ test("le email: solo a chi valuta, con l'area e le richieste accese, e dopo aver
 test("contributore senza accessi: ogni parte vuota, e il foglio mostra il solo tema", async () => {
   reset();
   const account = await loadAccountSheet({ workspaceId: WS, user: CLIENT, role: "contributor", env: ENV });
-  assert.deepEqual(account, { email: null, claude: null, terminal: null, granola: null });
+  assert.deepEqual(account, { email: null, readinessEmail: null, claude: null, terminal: null, granola: null });
+});
+
+test("(0044) l'AI Readiness: la scelta arriva com'è da chi decide chi la vede (chi gestisce, l'email, l'ok del cliente)", async () => {
+  reset({ readiness: { on: false } });
+  const account = await loadAccountSheet({ workspaceId: WS, user: LS, role: "transformation_lead", env: ENV });
+  assert.deepEqual(account.readinessEmail, { on: false });
+  assert.ok(prova.asked.includes(`air:transformation_lead:${LS.id}`), "con il ruolo di adesso e la persona");
+  reset({ readiness: null });
+  assert.equal((await loadAccountSheet({ workspaceId: WS, user: CLIENT, role: "exec_sponsor", env: ENV })).readinessEmail, null, "non la vede: l'interruttore non c'è");
 });
 
 test("una parte che non si legge resta fuori, e il foglio non si ferma: niente testo dell'errore", async () => {
@@ -119,10 +132,10 @@ test("una parte che non si legge resta fuori, e il foglio non si ferma: niente t
 test("(8.0d) «Solo questo use case»: solo «Claude e terminale», con i collegamenti della sua CLI; niente del workspace, e niente si legge", async () => {
   reset({ team: TEAM, cli: { tokens: [{ id: "c9", caseCode: "XX-0012" }] }, granola: { available: true, connected: true, status: "attiva" } });
   const account = await loadAccountSheet({ workspaceId: WS, user: CLIENT, role: "esterno_caso", env: ENV });
-  assert.deepEqual(account, { email: null, claude: null, terminal: { links: [{ id: "c9", caseCode: "XX-0012" }] }, granola: null });
+  assert.deepEqual(account, { email: null, readinessEmail: null, claude: null, terminal: { links: [{ id: "c9", caseCode: "XX-0012" }] }, granola: null });
   // Né le e-mail sulle richieste al referente, né il MCP del team, né Granola: nemmeno le letture.
   assert.deepEqual(prova.asked, ["cli:false"]);
   // Senza la CLI letta (errore): il foglio ha il solo tema, come per un contributore.
   reset({ cli: new Error("segreto") });
-  assert.deepEqual(await loadAccountSheet({ workspaceId: WS, user: CLIENT, role: "esterno_caso", env: ENV }), { email: null, claude: null, terminal: null, granola: null });
+  assert.deepEqual(await loadAccountSheet({ workspaceId: WS, user: CLIENT, role: "esterno_caso", env: ENV }), { email: null, readinessEmail: null, claude: null, terminal: null, granola: null });
 });

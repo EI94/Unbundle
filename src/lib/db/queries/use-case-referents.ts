@@ -48,6 +48,7 @@ import {
   syncReadyCards,
   syncSubprocessorsNotices,
 } from "@/lib/db/queries/use-case-alerts";
+import { dispatchReadinessEmails, purgeOldReadinessEmails } from "@/lib/db/queries/ai-readiness-email";
 import { cardSyncStatements, subprocessorsWaitNoticeStatements } from "@/lib/use-cases/case-alerts/sql";
 import { clientNoticesEnabled } from "@/lib/use-cases/client-notices";
 import { inRomeSendWindow, romeDate } from "@/lib/uc/calendar";
@@ -2279,6 +2280,10 @@ export interface ReferentCronCounts {
   /** (0029, rilascio 7) Fotografie del mese di «Programma» scritte, e righe «Da rivedere» nella campanella. */
   programSnapshots: number;
   programReviewNotices: number;
+  /** (0044) Email dell'AI Readiness (risposte nuove, risultati disponibili) partite, in attesa, annullate. */
+  readinessAlertsSent: number;
+  readinessAlertsHeld: number;
+  readinessAlertsCancelled: number;
 }
 
 async function eachBatch(executor: UcExecutor, groups: readonly (readonly UcStatement[])[], counts: ReferentCronCounts, op: string): Promise<number> {
@@ -2351,6 +2356,9 @@ export async function runReferentCron(o: { env: Env; now?: Date; mailer?: UcMail
     caseAlertsCancelled: 0,
     programSnapshots: 0,
     programReviewNotices: 0,
+    readinessAlertsSent: 0,
+    readinessAlertsHeld: 0,
+    readinessAlertsCancelled: 0,
   };
   const executor = await getAppUcExecutor();
   const store = createReferentDispatchStore(executor, { env, now });
@@ -2551,10 +2559,20 @@ LIMIT 200`),
     counts.caseAlertsCancelled += alerts.cancelled;
     counts.failed += alerts.failed;
   });
+  // 11d-bis (0044). Le email dell'AI Readiness (risposte nuove e risultati disponibili) a chi gestisce il workspace: la
+  // stessa finestra di Roma degli avvisi della 0025, un'email al giorno per rilevazione e persona.
+  await step("cron_avvisi_ai_readiness", async () => {
+    const air = await dispatchReadinessEmails({ env, now, limit: 50, mailer: o.mailer });
+    counts.readinessAlertsSent += air.sent;
+    counts.readinessAlertsHeld += air.held + air.notConfigured;
+    counts.readinessAlertsCancelled += air.cancelled;
+    counts.failed += air.failed;
+  });
   await step("cron_notifiche_vecchie", async () => {
     const purged = await purgeOldNotifications(now);
     counts.notificationsPurged += purged.notifications;
     await purgeOldCaseAlerts(now);
+    await purgeOldReadinessEmails(now);
   });
   // 11e (rilascio 7). «Programma»: la fotografia del mese di ogni workspace e «Da rivedere» a Lateral Space,
   // con un tetto di tempo suo; prima dell'AI, che ha il suo.

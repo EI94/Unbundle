@@ -2,6 +2,7 @@ import "server-only";
 import { granolaCardState } from "@/lib/context/granola/view";
 import { contextActorFor } from "@/lib/context/server/actor";
 import { contextAbilities } from "@/lib/context/visibility";
+import { readinessEmailChoice } from "@/lib/db/queries/ai-readiness-email";
 import { getBellState } from "@/lib/db/queries/bell-state";
 import { loadGranolaStatus } from "@/lib/db/queries/context-granola";
 import { loadTeamMcpCard } from "@/lib/db/queries/team-mcp-tokens";
@@ -46,10 +47,10 @@ export async function loadAccountSheet(i: {
   // Scollega»). Niente del workspace: né le e-mail sulle richieste al referente, né il MCP del team, né Granola.
   if (isCaseOnly(i.role)) {
     const cli = await readCli();
-    return { email: null, claude: null, terminal: cli ? { links: cli.tokens } : null, granola: null };
+    return { email: null, readinessEmail: null, claude: null, terminal: cli ? { links: cli.tokens } : null, granola: null };
   }
 
-  const [bell, team, cli, granola] = await Promise.all([
+  const [bell, team, cli, granola, readinessEmail] = await Promise.all([
     getBellState(i.workspaceId, i.user.id).catch((error) => {
       logSafeError("account", "email_non_letta", error, { workspaceId: i.workspaceId });
       return null;
@@ -58,6 +59,8 @@ export async function loadAccountSheet(i: {
     loadTeamMcpCard({ workspaceId: i.workspaceId, user: i.user, role: i.role }),
     readCli(),
     contextAbilities(actor).canUseGranola ? loadGranolaStatus({ userId: i.user.id, workspaceId: i.workspaceId }) : Promise.resolve(null),
+    // (0044) Solo a chi potrebbe ricevere le email dell'AI Readiness: decide da sé e non lancia mai.
+    readinessEmailChoice({ workspaceId: i.workspaceId, user: i.user, role: i.role, env }),
   ]);
 
   const email = bell
@@ -72,6 +75,7 @@ export async function loadAccountSheet(i: {
 
   return {
     email: email?.shown ? { on: email.on } : null,
+    readinessEmail,
     // Solo la parte personale: «Revoca tutti» e il conto dei token del workspace restano in Impostazioni › Collegamenti.
     claude: team
       ? {

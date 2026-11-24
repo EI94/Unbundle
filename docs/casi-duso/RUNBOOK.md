@@ -910,3 +910,33 @@ Specifica: `docs/rilascio-8/RILASCIO-8.0d-ESTERNI-FASE-2.md`; l'inventario delle
    I compiti che avevano restano a loro nome: li passa il responsabile. Le righe `osservatore` restano, senza poteri e senza accesso al workspace.
 
 **Dopo il deploy, a mano:** `doctor` con `migrazione0043: true`; una pagina di Lateral Space, una del cliente, una di un Contributore e la Formazione di chi segue un corso, come prima.
+
+### 10.26 Le email dell'AI Readiness (0044)
+
+La metà email di «ogni funzione arriva con le sue notifiche» per l'AI Readiness, dopo la campanella dell'ondata 7b del rilascio 10. Due avvisi, solo a chi gestisce il workspace (Executive Sponsor e Transformation Lead, `canManageWorkspaceSettings`, il ruolo di adesso) con un'email verificata, e mai a «Solo questo use case», a chi segue un corso o a un ruolo che il codice non conosce:
+
+- **le risposte nuove:** al massimo un'email al giorno per rilevazione e persona, solo conteggi («12 nuove risposte all'AI Readiness», con il totale e le risposte attese), mai una persona;
+- **i risultati disponibili:** un'email, una volta, quando le risposte arrivano alla soglia (quando nasce la riga «i risultati ci sono» della campanella).
+
+Ognuno le spegne da sé: «Il tuo account» › «Notifiche via email» › «Avvisami per email sull'AI Readiness», accesa per default, visibile solo a chi le potrebbe ricevere. Alle persone del cliente partono solo con l'ok del cliente sui sub-responsabili della versione di oggi (Resend è uno di loro), come le altre email alle persone del cliente; senza, la riga si annulla e resta la campanella. Le email partono con il cron `use-case-referents` (9:00 UTC dei giorni feriali, il cron delle email della 0025), nella finestra lun–ven 9–18 di Roma, feste escluse; con `USE_CASE_REFERENTS=off` o in un'anteprima non partono e resta la campanella. Il link dell'email è `/dashboard/<ws>/ai-readiness/aggiornamenti/<rilevazione>` (le risposte: «Raccolta» › «Persone») o `…/<rilevazione>/risultati` («Risultati»): controlla l'accesso come la pagina e risponde 307.
+
+**Una sola volta, mai due:** una riga in attesa per rilevazione, persona e tipo (indice unico parziale); «risultati» una volta per rilevazione e persona (indice unico parziale); prima dell'invio la riga segna il tentativo (`attempt_started_at`) e un tentativo dall'esito incerto (rete, 5xx, un processo interrotto) non si ripete mai: si annulla («esito_incerto»). Un errore certo (l'invio non è partito) si riprova, al massimo tre volte. Le righe in attesa da più di due giorni lavorativi si annullano («troppo_vecchia»).
+
+**Migrazione 0044 (la applica l'app, al primo avvio dopo il deploy):**
+
+1. `ENSURE_VERSION` 38. Il self-heal applica gli stessi statement di `drizzle/0044_avvisi_ai_readiness.sql` (`AIR_EMAIL_DDL`), in una transazione con l'advisory lock del file e `lock_timeout` 3s: la colonna `ai_readiness_emails` in fondo a `workspace_bell_state` (`boolean NOT NULL DEFAULT true`: un default costante, nessuna riscrittura) e la tabella `ai_readiness_alert_emails` con i suoi indici. Solo aggiunte: nessun dato, nessuna colonna cambiata, nessun CHECK toccato; la 0025 (`use_case_alert_emails`) resta com'è.
+2. Il self-heal della 0044 non parte da un'anteprima (`VERCEL_ENV=preview`): le anteprime usano il database di produzione.
+3. Subito dopo il deploy: aprire una pagina, poi `use-case-admin doctor` deve dire `migrazione0044: true`. Se resta `false` (nel log «0044 self-heal failed…»), nessuna email dell'AI Readiness si mette in coda e l'interruttore non si vede; la campanella va avanti come prima; il self-heal riprova al massimo ogni 5 minuti. Solo allora, a mano: `psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 -f drizzle/0044_avvisi_ai_readiness.sql`. Mai drizzle-kit, mai `db:push`.
+4. Prima del deploy: un restore point su Neon (la 0044 è additiva). Nessuna variabile nuova su Vercel: le email usano `RESEND_API_KEY`, `UC_EMAIL_FROM`, `UC_EMAIL_REPLY_TO`, `NEXT_PUBLIC_APP_URL` e `UC_LS_EMAIL_DOMAINS` come le altre.
+
+**Ritorno indietro:**
+
+1. Promote del deploy di prima, un passo su Vercel. Niente sul database: la colonna e la tabella restano e il codice di prima le ignora (scrive `workspace_bell_state` nominando le colonne, e la nuova prende il default; nessun suo cron legge la tabella). Le scelte delle persone restano salvate.
+2. Le email in coda: il codice di prima non le manda e non le annulla, perché non conosce la tabella. Quando il codice nuovo torna, il primo giro annulla quelle in attesa da più di due giorni lavorativi («troppo_vecchia») prima di mandarne una. Per un ritorno indietro lungo si possono annullare subito, solo quelle in attesa:
+
+   ```sql
+   UPDATE ai_readiness_alert_emails SET status = 'annullata', cancel_reason = 'ritorno_indietro', lease_until = NULL, attempt_started_at = NULL, updated_at = now()
+   WHERE status IN ('in_coda', 'errore');
+   ```
+
+**Dopo il deploy, a mano:** `doctor` con `migrazione0044: true`; «Il tuo account» di chi gestisce il workspace mostra «Avvisami per email sull'AI Readiness», quello di un Contributore no; una risposta a una rilevazione di prova mette una riga in coda per chi gestisce, e il prossimo giro del cron la manda.

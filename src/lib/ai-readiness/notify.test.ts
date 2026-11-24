@@ -106,7 +106,13 @@ test("the hook: after a submitted questionnaire, after the answer (`after`), nev
   // (Revisione 7b) Una scrittura alla volta per rilevazione, con il numero ricontato nella stessa istruzione.
   assert.match(writer, /pg_advisory_xact_lock\(hashtext\(\$\{`unbundle:ai-readiness:bell:\$\{i\.assessmentId\}`\}\)\)/);
   assert.match(writer, /r\.status = 'submitted'\) = \$\{responses\}::int/);
-  assert.match(writer, /await db\.batch\(\[lock, \.\.\.statements\]\);/);
+  assert.match(writer, /const results = \(await db\.batch\(\[lock, \.\.\.statements\]\)\)/);
+  // (0044) Poi le email in coda: le risposte nuove sempre, i risultati solo se questa scrittura ha fatto nascere la riga
+  // della soglia; le risposte nuove si contano dall'invio del questionario.
+  assert.match(writer, /ON CONFLICT \(id\) DO NOTHING\n  RETURNING id`\)/);
+  assert.match(writer, /await queueReadinessEmails\(\{ workspaceId: i\.workspaceId, assessmentId: i\.assessmentId, submittedAt: i\.submittedAt \?\? new Date\(\), resultsReady: thresholdCreated \}\);/);
+  assert.match(submit, /const submitted = await upsertAiReadinessResponse\(\{/);
+  assert.match(submit, /submittedAt: submitted\?\.submittedAt \?\? new Date\(\),/);
   // Una rilevazione eliminata porta via le sue righe.
   assert.match(actions, /await deleteReadinessBell\(\{ workspaceId, assessmentId \}\);/);
 });

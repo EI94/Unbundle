@@ -92,6 +92,8 @@ export const SHELL_TEXT = Object.freeze({
     email: Object.freeze({
       title: "Notifiche via email",
       toggle: "Avvisami per email sulle mie richieste al referente",
+      /** (0044) Le risposte nuove e i risultati dell'AI Readiness, a chi gestisce il workspace. */
+      readinessToggle: "Avvisami per email sull'AI Readiness",
       saveFailed: "Non è stato possibile salvare. Riprova tra poco.",
     }),
     claude: Object.freeze({

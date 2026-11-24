@@ -3,6 +3,7 @@
 import { refresh } from "next/cache";
 import { auth } from "@/lib/auth";
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
+import { setReadinessEmails } from "@/lib/db/queries/ai-readiness-email";
 import { markBellSeen, setReferentEmails } from "@/lib/db/queries/bell-state";
 import { markSignalsReadForUser } from "@/lib/db/queries/signals";
 import { isUcEnabledFor } from "@/lib/db/queries/uc-access";
@@ -13,6 +14,7 @@ import { loadBellPayload } from "@/lib/notifications/bell-data";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { getCollaboratorAccess, type WorkspaceAccess } from "@/lib/workspace-access";
 import { isCaseOnly } from "@/lib/auth/case-only";
+import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
 
 /**
  * Le due azioni rare ed esplicite della campanella (SPEC §P2.3.8): «Segna tutte come lette» e la
@@ -90,4 +92,22 @@ export async function setBellEmailAlertsAction(workspaceId: string, on: boolean)
     return { ok: false, code: "riprova", message: BELL_TEXT.errors.preference };
   }
   return { ok: true, payload: await payloadFor(workspaceId, c) };
+}
+
+/**
+ * (0044) «Avvisami per email sull'AI Readiness», dal foglio «Il tuo account». Solo chi gestisce il workspace la cambia
+ * (le email vanno solo a loro); restituisce la scelta salvata. Senza la 0044 dice di riprovare.
+ */
+export async function setReadinessEmailsAction(workspaceId: string, on: boolean): Promise<{ ok: true; on: boolean } | { ok: false; message: string }> {
+  const s = await signedIn(workspaceId, typeof on === "boolean");
+  if (!s.ok) return { ok: false, message: s.message };
+  const c = withAccess(s, await getCollaboratorAccess(s.userId, workspaceId));
+  if (!c.ok) return { ok: false, message: c.message };
+  if (!canManageWorkspaceSettings(c.role)) return { ok: false, message: BELL_TEXT.errors.unavailable };
+  try {
+    return { ok: true, on: await setReadinessEmails(workspaceId, c.userId, on) };
+  } catch (error) {
+    logSafeError("bell", "email_ai_readiness", error, { workspaceId });
+    return { ok: false, message: BELL_TEXT.errors.preference };
+  }
 }

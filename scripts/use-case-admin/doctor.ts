@@ -28,6 +28,7 @@
  * (0042) `migrazione0042`: la sonda della 0042 («Le evals dalla CI»: le chiavi della CI e la fonte delle evals), come la 0041.
  * (0043) `migrazione0043`: la sonda della 0043 («Solo questo use case»: il valore `esterno_caso` dell'enum dei ruoli e il caso
  * degli inviti), come la 0042.
+ * (0044) `migrazione0044`: la sonda della 0044 (le email dell'AI Readiness: la scelta della persona e la coda), come la 0043.
  */
 import { parseLsDomains } from "../../src/lib/uc/lateral-space.ts";
 import { done, scopeQuery, stopped, type AdminCommand } from "../../src/lib/use-cases/admin/cli.ts";
@@ -54,6 +55,7 @@ import { TEMPLATE_FILES_PROBE_SQL } from "../../src/lib/db/use-case-hub-template
 import { CONTEXT_WORK_PROBE_SQL } from "../../src/lib/db/context-work-ddl.ts";
 import { CI_KEYS_PROBE_SQL } from "../../src/lib/db/use-case-hub-ci-keys-ddl.ts";
 import { CASE_ONLY_PROBE_SQL } from "../../src/lib/db/use-case-hub-case-only-ddl.ts";
+import { AIR_EMAIL_PROBE_SQL } from "../../src/lib/db/ai-readiness-email-ddl.ts";
 import { cast, toStatement, ucSql } from "../../src/lib/uc/sql/statement.ts";
 import { declarerRecipientsSql } from "../../src/lib/use-cases/case-alerts/sql.ts";
 import { clientNoticesEnabled } from "../../src/lib/use-cases/client-notices.ts";
@@ -150,6 +152,7 @@ export const command: AdminCommand = {
     const m0041 = (await ctx.db.read(`SELECT ${CONTEXT_WORK_PROBE_SQL} AS ok`))[0]?.ok === true;
     const m0042 = (await ctx.db.read(`SELECT ${CI_KEYS_PROBE_SQL} AS ok`))[0]?.ok === true;
     const m0043 = (await ctx.db.read(`SELECT ${CASE_ONLY_PROBE_SQL} AS ok`))[0]?.ok === true;
+    const m0044 = (await ctx.db.read(`SELECT ${AIR_EMAIL_PROBE_SQL} AS ok`))[0]?.ok === true;
     const lsDomains = parseLsDomains(ctx.lsEmailDomains);
     const declarers = new Map<string, boolean>();
     for (const ws of perWorkspace) {
@@ -204,6 +207,7 @@ export const command: AdminCommand = {
       migrazione0041: m0041,
       migrazione0042: m0042,
       migrazione0043: m0043,
+      migrazione0044: m0044,
     };
     return result.green ? done(output) : stopped(output);
   },

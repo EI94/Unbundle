@@ -122,6 +122,11 @@ export interface AccountClaude {
 /** Quello che il foglio riceve: una parte è null quando chi guarda non la vede (lo zero non si vede). */
 export interface AccountSheetData {
   email: { on: boolean } | null;
+  /**
+   * (0044) «Avvisami per email sull'AI Readiness»: solo a chi potrebbe riceverle (chi gestisce il workspace, con l'email
+   * verificata e, per una persona del cliente, l'ok sui sub-responsabili). Assente o null: l'interruttore non c'è.
+   */
+  readinessEmail?: { on: boolean } | null;
   claude: AccountClaude | null;
   /** I collegamenti della CLI di chi guarda in questo workspace (Lateral Space, chi costruisce da fuori, chi ne ha). */
   terminal: { links: readonly CliTokenView[] } | null;

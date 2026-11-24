@@ -51,6 +51,7 @@ import type {
   RequesterEmailStatus,
 } from "./use-case-hub-referents-ddl.ts";
 import type { CaseAlertEmailStatus, CaseAlertKind } from "./use-case-hub-alerts-ddl.ts";
+import type { AirEmailKind, AirEmailStatus } from "./ai-readiness-email-ddl.ts";
 import type { ReferentSuggestionStatus, ReferentThreadAnchor, ReferentThreadKind, ReferentThreadRemoveReason, ReferentThreadSide } from "./use-case-hub-referent-thread-ddl.ts";
 import type {
   GoalCheckinKind,
@@ -2008,6 +2009,8 @@ export const workspaceBellState = pgTable(
     seenAt: tz("seen_at"),
     referentEmails: boolean("referent_emails").notNull().default(true),
     updatedAt: tz("updated_at").defaultNow().notNull(),
+    /** (0044) «Avvisami per email sull'AI Readiness»: accesa per default. */
+    aiReadinessEmails: boolean("ai_readiness_emails").notNull().default(true),
   },
   (t) => [primaryKey({ name: "workspace_bell_state_pkey", columns: [t.workspaceId, t.userId] })]
 );
@@ -3184,6 +3187,41 @@ export const aiReadinessInsights = pgTable(
     index("ai_readiness_insights_workspace_idx").on(t.workspaceId),
     index("ai_readiness_insights_scope_idx").on(t.assessmentId, t.scopeType, t.scopeKey),
     index("ai_readiness_insights_type_idx").on(t.assessmentId, t.insightType),
+  ]
+);
+
+/**
+ * (0044) La coda delle email dell'AI Readiness, sorella di `use_case_alert_emails`: le risposte nuove (al massimo
+ * un'email al giorno per rilevazione e persona, solo conteggi) e i risultati disponibili (una volta). I due indici unici
+ * parziali (una riga in attesa per rilevazione, persona e tipo; «risultati» una volta per rilevazione e persona) stanno
+ * nella migrazione e in ai-readiness-email-ddl.ts.
+ */
+export const aiReadinessAlertEmails = pgTable(
+  "ai_readiness_alert_emails",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    assessmentId: uuid("assessment_id").notNull().references(() => aiReadinessAssessments.id, { onDelete: "cascade" }),
+    recipientUserId: uuid("recipient_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    kind: varchar("kind", { length: 10 }).$type<AirEmailKind>().notNull(),
+    status: varchar("status", { length: 10 }).$type<AirEmailStatus>().notNull().default("in_coda"),
+    holdReason: varchar("hold_reason", { length: 40 }),
+    cancelReason: varchar("cancel_reason", { length: 40 }),
+    lastErrorCode: varchar("last_error_code", { length: 60 }),
+    attempts: smallint("attempts").notNull().default(0),
+    countsFrom: tz("counts_from").notNull(),
+    countedUntil: tz("counted_until"),
+    scheduledAt: tz("scheduled_at").notNull(),
+    leaseUntil: tz("lease_until"),
+    attemptStartedAt: tz("attempt_started_at"),
+    sentAt: tz("sent_at"),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [
+    index("ai_readiness_alert_emails_pair_idx").on(t.assessmentId, t.recipientUserId, t.createdAt),
+    index("ai_readiness_alert_emails_workspace_idx").on(t.workspaceId, t.createdAt),
+    index("ai_readiness_alert_emails_gc_idx").on(t.createdAt),
   ]
 );
 

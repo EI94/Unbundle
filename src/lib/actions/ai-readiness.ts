@@ -1133,7 +1133,7 @@ export async function submitAiReadinessResponseAction(
     }
   }
   const headerStore = await headers();
-  await upsertAiReadinessResponse({
+  const submitted = await upsertAiReadinessResponse({
     respondent,
     answers: collected.answers,
     derivedScores,
@@ -1197,6 +1197,8 @@ export async function submitAiReadinessResponseAction(
       responses: dashboard.responseCount,
       expected: expectedRespondentsOf(assessment.scoringConfig),
       threshold: assessment.aggregationThreshold,
+      // (0044) Le risposte nuove dell'email si contano dall'invio di questo questionario.
+      submittedAt: submitted?.submittedAt ?? new Date(),
     };
     after(() => notifyReadinessResponse(notice));
   }
