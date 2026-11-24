@@ -319,6 +319,11 @@ test("the old addresses keep working: ?new=1, ?deleted=1, an unknown tab, the ol
   assert.equal(form.foldedErrorIn({ ok: false, fieldErrors: { aggregationThreshold: "Da 3 a 50." } }), true);
   assert.ok(!form.FOLDED_FIELDS.includes("supportEmail"));
   assert.ok(visibleText(await render({}, { deleted: "1" })).includes("Rilevazione eliminata"));
+  // (0044, revisione) Il link di un'email per una rilevazione che non c'è più arriva qui, con una riga e la pagina di sempre.
+  const gone = await render({}, { assente: "1" });
+  assert.match(gone, /<p class="text-sm text-muted-foreground" role="status">Questa rilevazione non c&#x27;è più\.<\/p>/);
+  assert.equal(filledButtons(gone).length, 1, "il resto della pagina come sempre");
+  assert.doesNotMatch(visibleText(await render({})), /non c'è più/, "senza il parametro, niente avviso");
   assert.match(await render({}, { scheda: "respondents" }), /data-readiness-tab="risultati"/);
   // `#respondents` e `#intelligence` le porta alla loro scheda `ReadinessAnchor` (provato in dashboard-view.test.ts e, nel
   // browser, nel test qui sotto).

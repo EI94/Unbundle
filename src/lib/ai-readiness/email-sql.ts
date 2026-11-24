@@ -32,8 +32,8 @@ const ROLE_SQL = raw(`coalesce(
   )`);
 
 /**
- * Le persone del workspace con il ruolo di adesso, l'email, se è verificata e la loro scelta: chi riceve lo decide
- * `airEmailBlock` (chi gestisce, con l'email verificata e, per il cliente, l'ok sui sub-responsabili) più la scelta.
+ * Le persone del workspace con il ruolo di adesso, l'email, se è verificata (`users.email_verified`) e la loro scelta:
+ * chi riceve lo decide `airEmailBlock` (chi gestisce, con l'email verificata) più la scelta, con l'ok del cliente.
  */
 export function airEmailMembersSql(workspaceId: string): UcStatement {
   return toStatement(ucSql`SELECT u.id AS user_id, lower(u.email) AS email, u.email_verified IS NOT NULL AS verified,
@@ -50,26 +50,29 @@ ORDER BY u.id`);
 }
 
 /**
- * Le righe in coda dopo un questionario inviato, per le persone scelte: «risultati» quando nasce la riga della soglia in
- * campanella (una volta per rilevazione e persona), «risposte» sempre (una sola in attesa per rilevazione e persona). Un
- * doppione non scrive niente (`ON CONFLICT DO NOTHING` su tutti e due gli indici unici). Le risposte nuove si contano da
- * `countsFrom` (l'invio del questionario), mai da un istante dopo l'orologio del database.
+ * Le righe in coda dopo un questionario inviato, per le persone scelte: «risultati» a ogni invio finché c'è la riga della
+ * soglia in campanella (`resultsSignalId`, l'id fisso della rilevazione), così un errore passeggero non la perde mai;
+ * l'indice unico la tiene a una per rilevazione e persona. «risposte» sempre (una sola in attesa per rilevazione e
+ * persona). Un doppione non scrive niente (`ON CONFLICT DO NOTHING` su tutti e due gli indici unici). Le risposte nuove si
+ * contano da `countsFrom` (l'invio del questionario), mai da un istante dopo l'orologio del database.
  */
 export function queueAirEmailStatements(i: {
   workspaceId: string;
   assessmentId: string;
   recipients: readonly string[];
   countsFrom: Date;
-  resultsReady: boolean;
+  resultsSignalId: string;
 }): UcStatement[] {
   if (i.recipients.length === 0) return [];
-  const insert = (kind: AirEmailKind) =>
+  const insert = (kind: AirEmailKind, when: SqlFragment) =>
     toStatement(ucSql`INSERT INTO ${T} (workspace_id, assessment_id, recipient_user_id, kind, counts_from, scheduled_at)
 SELECT a.workspace_id, a.id, r.id, ${cast(kind, "text")}, least(${cast(i.countsFrom.toISOString(), "timestamptz")}, now()), now()
 FROM unnest(${cast([...i.recipients], "uuid[]")}) AS r(id)
-JOIN ai_readiness_assessments a ON a.id = ${cast(i.assessmentId, "uuid")} AND a.workspace_id = ${cast(i.workspaceId, "uuid")}
+JOIN ai_readiness_assessments a ON a.id = ${cast(i.assessmentId, "uuid")} AND a.workspace_id = ${cast(i.workspaceId, "uuid")}${when}
 ON CONFLICT DO NOTHING`);
-  return i.resultsReady ? [insert("risultati"), insert("risposte")] : [insert("risposte")];
+  const thresholdRow = ucSql`
+WHERE EXISTS (SELECT 1 FROM weekly_signals s WHERE s.id = ${cast(i.resultsSignalId, "uuid")} AND s.workspace_id = a.workspace_id)`;
+  return [insert("risultati", thresholdRow), insert("risposte", ucSql``)];
 }
 
 /** La mezzanotte di oggi a Roma, dall'orologio del database: un'email al giorno per rilevazione e persona si conta da qui. */
@@ -248,9 +251,14 @@ WHERE created_at < ${cast(new Date(now.getTime() - days * 86_400_000).toISOStrin
 RETURNING id`);
 }
 
-/** «Avvisami per email sull'AI Readiness» di una persona in un workspace: accesa senza riga. */
-export function airEmailSwitchSql(workspaceId: string, userId: string): UcStatement {
-  return toStatement(ucSql`SELECT coalesce((SELECT b.${SWITCH} FROM workspace_bell_state b WHERE b.workspace_id = ${id(workspaceId)} AND b.user_id = ${id(userId)}), true) AS switch_on`);
+/**
+ * Per l'interruttore, le stesse letture della coda e dell'invio: l'email, se è verificata (`users.email_verified`, mai
+ * la sessione) e la scelta della persona in un workspace (accesa senza riga).
+ */
+export function airEmailPersonSql(workspaceId: string, userId: string): UcStatement {
+  return toStatement(ucSql`SELECT lower(u.email) AS email, u.email_verified IS NOT NULL AS verified,
+  coalesce((SELECT b.${SWITCH} FROM workspace_bell_state b WHERE b.workspace_id = ${id(workspaceId)} AND b.user_id = u.id), true) AS switch_on
+FROM users u WHERE u.id = ${id(userId)}`);
 }
 
 /** La scelta della persona: la riga di `workspace_bell_state` nasce o cambia solo in questa colonna. */

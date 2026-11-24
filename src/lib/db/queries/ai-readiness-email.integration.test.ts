@@ -202,33 +202,108 @@ test("0044: il file due volte e il self-heal due volte non cambiano niente; la s
   }
 });
 
-test("la coda dalle risposte: una riga per chi gestisce e può riceverle, mai per nessun altro; molte risposte, una sola riga in attesa", opts, async () => {
-  const a = await assessment("Rilevazione di prova, la coda", 50);
-  for (let i = 0; i < 3; i++) await answer(a, 50);
-  // Chi gestisce dall'organizzazione e dal solo workspace, con l'email verificata di Lateral Space.
-  assert.deepEqual(people(await pending(a)), ["lead", "wsLead"]);
-  assert.ok((await pending(a)).every((r) => r.kind === "risposte"), "sotto la soglia: solo le risposte");
-  assert.equal((await rows(a)).length, 2, "tre risposte, una riga per persona");
-  // Mai: il cliente senza l'ok, l'email non verificata, chi le ha spente, chi valuta, chi contribuisce, chi segue un
-  // corso, «Solo questo use case», chi non è nel workspace.
-  for (const person of ["sponsor", "unverified", "off", "analyst", "functionLead", "contributor", "learner", "caseOnly", "outsider"] as Person[]) {
-    assert.ok(!(await rows(a)).some((r) => r.person === person), person);
-  }
-});
+const choice = (person: Person, role: string | null) => mail.readinessEmailChoice({ workspaceId: ids.ws, userId: userIds[person], role });
 
-test("l'ok del cliente sui sub-responsabili: le persone del cliente che gestiscono entrano solo con l'ok; l'interruttore lo segue", opts, async () => {
-  const a = await assessment("Rilevazione di prova, l'ok del cliente", 50);
+test("(revisione) la coda dalle risposte: senza l'ok del cliente sui sub-responsabili nessuno, Lateral Space compreso; con l'ok chi gestisce e può riceverle, mai nessun altro", opts, async () => {
+  const a = await assessment("Rilevazione di prova, la coda", 50);
   await answer(a, 50);
-  assert.ok(!(await rows(a)).some((r) => r.person === "sponsor"));
-  assert.equal(await mail.readinessEmailChoice({ workspaceId: ids.ws, user: { id: userIds.sponsor, email: to("sponsor"), emailVerified: true }, role: "exec_sponsor", env: SEND_ENV }), null);
+  assert.deepEqual(await rows(a), [], "senza l'ok: nessuna riga, per nessuno");
+  for (const [person, role] of [["lead", "transformation_lead"], ["sponsor", "exec_sponsor"]] as Array<[Person, string]>) {
+    assert.equal(await choice(person, role), null, `${person}: senza l'ok l'interruttore non si vede`);
+  }
   const { SUBPROCESSORS_VERSION } = await import("../../uc/legal/subprocessors.ts");
   await q(
     `INSERT INTO uc_subprocessor_acks (workspace_id, list_version, statement_text, declared_by_user_id, declared_by_role) VALUES ($1, $2, 'Autorizzazione di prova.', $3, 'exec_sponsor')`,
     [ids.ws, SUBPROCESSORS_VERSION, userIds.sponsor],
   );
-  await answer(a, 50);
+  for (let i = 0; i < 3; i++) await answer(a, 50);
+  // Chi gestisce dall'organizzazione e dal solo workspace, di Lateral Space o del cliente, con l'email verificata.
   assert.deepEqual(people(await pending(a)), ["lead", "sponsor", "wsLead"]);
-  assert.deepEqual(await mail.readinessEmailChoice({ workspaceId: ids.ws, user: { id: userIds.sponsor, email: to("sponsor"), emailVerified: true }, role: "exec_sponsor", env: SEND_ENV }), { on: true });
+  assert.ok((await pending(a)).every((r) => r.kind === "risposte"), "sotto la soglia: solo le risposte");
+  assert.equal((await rows(a)).length, 3, "tre risposte, una riga per persona");
+  // Mai: l'email non verificata, chi le ha spente, chi valuta, chi contribuisce, chi segue un corso, «Solo questo use
+  // case», chi non è nel workspace.
+  for (const person of ["unverified", "off", "analyst", "functionLead", "contributor", "learner", "caseOnly", "outsider"] as Person[]) {
+    assert.ok(!(await rows(a)).some((r) => r.person === person), person);
+  }
+  assert.deepEqual(await choice("lead", "transformation_lead"), { on: true });
+  assert.deepEqual(await choice("sponsor", "exec_sponsor"), { on: true });
+});
+
+test("(revisione) all'invio: senza l'ok la riga aspetta, per tutti; una lettura mancata dell'ok si riprova, mai annulla la riga", opts, async () => {
+  // Righe messe in coda quando l'ok valeva, poi l'elenco dei sub-responsabili è cambiato (l'ok resta solo per la versione
+  // di prima; le autorizzazioni non si cancellano mai): un secondo workspace dello stesso cliente.
+  const ws2 = randomUUID();
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1, $2, 'Cliente Demo')`, [ws2, ids.org]);
+  try {
+    await q(
+      `INSERT INTO uc_subprocessor_acks (workspace_id, list_version, statement_text, declared_by_user_id, declared_by_role) VALUES ($1, '2000-01', 'Autorizzazione di prova, elenco di prima.', $2, 'exec_sponsor')`,
+      [ws2, userIds.sponsor],
+    );
+    const a = (await air.createAiReadinessAssessment({ organizationId: ids.org, workspaceId: ws2, templateId, name: "Rilevazione di prova, l'ok all'invio", status: "open", aggregationThreshold: 50 })).id;
+    // Una risposta inviata, come la scrive l'app.
+    const pseudo = randomBytes(12).toString("hex");
+    const [respondent] = await q(
+      `INSERT INTO ai_readiness_respondents (assessment_id, organization_id, workspace_id, invite_token_hash, invite_status, survey_track, pseudonymous_id)
+       VALUES ($1, $2, $3, $4, 'completed', 'everyone', $5) RETURNING id`,
+      [a, ids.org, ws2, randomBytes(32).toString("hex"), pseudo],
+    );
+    await q(`INSERT INTO ai_readiness_responses (assessment_id, respondent_id, pseudonymous_id, status, answers, submitted_at) VALUES ($1, $2, $3, 'submitted', '[]'::jsonb, now() AT TIME ZONE 'UTC')`, [
+      a,
+      respondent.id,
+      pseudo,
+    ]);
+    await q(
+      `INSERT INTO ai_readiness_alert_emails (workspace_id, assessment_id, recipient_user_id, kind, counts_from, scheduled_at)
+       SELECT $1, $2, u, 'risposte', now() - interval '1 minute', now() FROM unnest($3::uuid[]) AS u`,
+      [ws2, a, [userIds.lead, userIds.sponsor]],
+    );
+    const named = (o: { mail: Mail }) => o.mail.text.includes("«Rilevazione di prova, l'ok all'invio»");
+    const states = () => q(`SELECT status, hold_reason, cancel_reason, last_error_code, attempts FROM ai_readiness_alert_emails WHERE assessment_id = $1`, [a]);
+
+    const waiting = fakeMailer();
+    await dispatch(waiting);
+    assert.equal(ours(waiting.outbox).filter(named).length, 0, "senza l'ok della versione di oggi non parte niente, nemmeno a Lateral Space");
+    const held = await states();
+    assert.ok(held.length === 2 && held.every((r) => r.status === "in_coda" && r.hold_reason === "sub_responsabili_mancanti" && r.cancel_reason === null), JSON.stringify(held));
+
+    const { SUBPROCESSORS_VERSION } = await import("../../uc/legal/subprocessors.ts");
+    await q(
+      `INSERT INTO uc_subprocessor_acks (workspace_id, list_version, statement_text, declared_by_user_id, declared_by_role) VALUES ($1, $2, 'Autorizzazione di prova.', $3, 'exec_sponsor')`,
+      [ws2, SUBPROCESSORS_VERSION, userIds.sponsor],
+    );
+    // L'ok non si legge (la tabella sparisce per un momento): la riga si riprova dopo 15 minuti, mai annullata.
+    await q(`ALTER TABLE uc_subprocessor_acks RENAME TO uc_subprocessor_acks_prova_air`);
+    try {
+      const failed = fakeMailer();
+      await dispatch(failed);
+      assert.equal(ours(failed.outbox).filter(named).length, 0);
+      const retried = await states();
+      assert.ok(retried.length === 2 && retried.every((r) => r.status === "errore" && r.last_error_code === "errore_lettura" && r.cancel_reason === null && r.attempts === 0), JSON.stringify(retried));
+    } finally {
+      await q(`ALTER TABLE uc_subprocessor_acks_prova_air RENAME TO uc_subprocessor_acks`);
+    }
+    const later = fakeMailer();
+    await dispatch(later, new Date(windowNow().getTime() + 20 * 60_000));
+    assert.deepEqual(ours(later.outbox).filter(named).map((o) => o.mail.to).sort(), [to("lead"), to("sponsor")].sort(), "con l'ok parte a tutti");
+  } finally {
+    await q(`DELETE FROM workspaces WHERE id = $1`, [ws2]);
+  }
+});
+
+test("(revisione) l'interruttore legge `users.email_verified`, come la coda e l'invio, mai la sessione", opts, async () => {
+  assert.deepEqual(await choice("lead", "transformation_lead"), { on: true });
+  await q(`UPDATE users SET email_verified = NULL WHERE id = $1`, [userIds.lead]);
+  try {
+    assert.equal(await choice("lead", "transformation_lead"), null, "non verificata nel database: niente interruttore, e niente email");
+    const a = await assessment("Rilevazione di prova, l'email da verificare", 50);
+    await answer(a, 50);
+    assert.ok(!(await rows(a)).some((r) => r.person === "lead"), "la coda legge la stessa colonna");
+  } finally {
+    await q(`UPDATE users SET email_verified = now() WHERE id = $1`, [userIds.lead]);
+  }
+  assert.deepEqual(await choice("lead", "transformation_lead"), { on: true });
+  assert.deepEqual(await choice("unverified", "transformation_lead"), null);
 });
 
 test("un'email al giorno per rilevazione e persona, solo conteggi; le risposte del giorno dopo nella prossima", opts, async () => {
@@ -271,8 +346,12 @@ test("i risultati: un'email, una volta, quando nasce la soglia; nel giorno della
   await answer(a, 3);
   const results = async () => (await rows(a)).filter((r) => r.kind === "risultati");
   assert.deepEqual(people(await results()), ["lead", "sponsor", "wsLead"]);
+  // (Revisione) Una scrittura persa (un errore passeggero all'invio che ha fatto nascere la soglia): la risposta dopo la
+  // rimette, finché c'è la riga della soglia in campanella.
+  await q(`DELETE FROM ai_readiness_alert_emails WHERE assessment_id = $1 AND kind = 'risultati'`, [a]);
   await answer(a, 3);
-  assert.equal((await results()).length, 3, "la quarta risposta non ne aggiunge");
+  assert.deepEqual(people(await results()), ["lead", "sponsor", "wsLead"], "di nuovo in coda, una a testa");
+  assert.equal((await results()).length, 3, "e la quarta risposta non ne aggiunge altre");
   const day = fakeMailer();
   await dispatch(day);
   const named = (o: { mail: Mail }) => o.mail.text.includes("«Rilevazione di prova, la soglia»");
@@ -300,8 +379,7 @@ test("la scelta: spenta dopo la coda, la riga si annulla e niente parte; si riac
   await answer(a, 50);
   assert.ok((await pending(a)).some((r) => r.person === "lead"));
   assert.equal(await mail.setReadinessEmails(ids.ws, userIds.lead, false), false);
-  const lead = { id: userIds.lead, email: to("lead"), emailVerified: true };
-  assert.deepEqual(await mail.readinessEmailChoice({ workspaceId: ids.ws, user: lead, role: "transformation_lead", env: SEND_ENV }), { on: false });
+  assert.deepEqual(await choice("lead", "transformation_lead"), { on: false });
   const run = fakeMailer();
   await dispatch(run);
   assert.ok(!ours(run.outbox).some((o) => o.mail.to === to("lead")));
@@ -312,9 +390,9 @@ test("la scelta: spenta dopo la coda, la riga si annulla e niente parte; si riac
   assert.equal(await mail.setReadinessEmails(ids.ws, userIds.lead, true), true);
   // Chi non le riceverebbe non vede l'interruttore.
   for (const [person, role] of [["analyst", "analyst"], ["contributor", "contributor"], ["caseOnly", "esterno_caso"], ["learner", "learner"]] as Array<[Person, string]>) {
-    assert.equal(await mail.readinessEmailChoice({ workspaceId: ids.ws, user: { id: userIds[person], email: to(person), emailVerified: true }, role, env: SEND_ENV }), null, person);
+    assert.equal(await choice(person, role), null, person);
   }
-  assert.equal(await mail.readinessEmailChoice({ workspaceId: ids.ws, user: { id: userIds.unverified, email: to("unverified"), emailVerified: false }, role: "transformation_lead", env: SEND_ENV }), null);
+  assert.equal(await choice("unverified", "transformation_lead"), null);
 });
 
 test("mai due volte: un esito incerto e un tentativo interrotto non si ripetono; un errore certo si riprova con una chiave nuova", opts, async () => {

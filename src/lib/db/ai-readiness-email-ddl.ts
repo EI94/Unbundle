@@ -6,14 +6,15 @@
  * apertura del file (`lock_timeout` e l'advisory lock {@link AIR_EMAIL_ADVISORY_LOCK}, che il self-heal prende da sé in
  * `runAirEmailDdl`):
  * 1. il controllo che ci siano la 0024 (`workspace_bell_state`) e le tabelle dell'AI Readiness;
- * 2. la scelta della persona, «Avvisami per email sull'AI Readiness»: una colonna in `workspace_bell_state`, accanto a
- *    quella delle email delle richieste al referente, accesa per default (`NOT NULL DEFAULT true` con un valore
- *    costante: PostgreSQL non riscrive la tabella);
- * 3. la coda delle email (`ai_readiness_alert_emails`), una tabella sorella di `use_case_alert_emails` (0025): i due
+ * 2. la coda delle email (`ai_readiness_alert_emails`), una tabella sorella di `use_case_alert_emails` (0025): i due
  *    tipi dell'AI Readiness hanno bisogno della rilevazione, e la 0025 ha un CHECK dei tipi e una chiave del giorno
  *    senza rilevazione, che restano come sono;
- * 4. gli indici: una sola riga in attesa per rilevazione, persona e tipo; la riga «i risultati ci sono» una volta sola
- *    per rilevazione e persona; l'invio, la coppia rilevazione-persona, la pulizia.
+ * 3. gli indici: una sola riga in attesa per rilevazione, persona e tipo; la riga «i risultati ci sono» una volta sola
+ *    per rilevazione e persona; l'invio, la coppia rilevazione-persona, la pulizia;
+ * 4. per ultima, la scelta della persona, «Avvisami per email sull'AI Readiness»: una colonna in `workspace_bell_state`,
+ *    accanto a quella delle email delle richieste al referente, accesa per default (`NOT NULL DEFAULT true` con un valore
+ *    costante: PostgreSQL non riscrive la tabella). Per ultima perché il suo lock esclusivo sulla campanella di tutti
+ *    dura fino al commit: prima si aspettano le tabelle delle chiavi esterne della coda, poi la si blocca un istante.
  *
  * Solo aggiunte: nessuna riscrittura, nessun dato scritto, nessuna colonna cambiata, nessun CHECK toccato. Il codice di
  * prima ignora la colonna (le sue scritture di `workspace_bell_state` nominano le colonne, e la nuova prende il valore
@@ -65,7 +66,6 @@ export const AIR_EMAIL_DDL: readonly string[] = Object.freeze([
     RAISE EXCEPTION '${AIR_EMAIL_MISSING_MESSAGE}';
   END IF;
 END $$;`,
-  `ALTER TABLE workspace_bell_state ADD COLUMN IF NOT EXISTS ${AIR_EMAIL_SWITCH_COLUMN} boolean NOT NULL DEFAULT true;`,
   `CREATE TABLE IF NOT EXISTS ${AIR_EMAIL_TABLE} (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -102,6 +102,9 @@ END $$;`,
   ON ${AIR_EMAIL_TABLE} (workspace_id, created_at);`,
   `CREATE INDEX IF NOT EXISTS ai_readiness_alert_emails_gc_idx
   ON ${AIR_EMAIL_TABLE} (created_at);`,
+  // Per ultima: il lock esclusivo su `workspace_bell_state` (la campanella di tutti) si prende solo qui, dopo le attese
+  // per le tabelle delle chiavi esterne, e dura fino al commit, un istante.
+  `ALTER TABLE workspace_bell_state ADD COLUMN IF NOT EXISTS ${AIR_EMAIL_SWITCH_COLUMN} boolean NOT NULL DEFAULT true;`,
 ]);
 
 // ─── Sonda ───────────────────────────────────────────────────────────

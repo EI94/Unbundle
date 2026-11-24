@@ -12,7 +12,9 @@ const { registerHooks } = nodeModule as unknown as {
 // (0044) L'indirizzo pulito delle email dell'AI Readiness con l'accesso vero, sul database del pacchetto: le due rotte
 // rispondono 307 alla scheda giusta solo a chi entra nella pagina dell'AI Readiness di quel workspace (le stesse porte
 // di `requireWorkspacePage`), e solo per una rilevazione di quel workspace. Chi segue un corso va ai suoi corsi, «Solo
-// questo use case» all'Agent Factory, chi non è nel workspace e la rilevazione di un altro workspace: «non trovata».
+// questo use case» all'Agent Factory, chi non è nel workspace: «non trovata». (Revisione) Un link morto (la rilevazione
+// eliminata, sconosciuta o di un altro workspace) porta alla pagina con «Questa rilevazione non c'è più.», sempre allo
+// stesso indirizzo: non dice mai se la rilevazione esiste in un altro workspace.
 // La sessione è quella della prova (`@/lib/auth`); ruolo e accesso si leggono dal database.
 // Con scripts/use-case-test/run-db-tests.mjs. Dati inventati, creati e cancellati qui.
 
@@ -119,12 +121,21 @@ test("le porte della pagina: un collaboratore entra; chi segue un corso va ai co
   }
 });
 
-test("la rilevazione deve essere di quel workspace: un'altra, o un id che non c'è, «non trovata»", opts, async () => {
+test("(revisione) un link morto: 307 alla pagina con l'avviso, uguale per una rilevazione di un altro workspace, sconosciuta, eliminata o un id sbagliato", opts, async () => {
+  const gone = redirectTo(`/dashboard/${ids.ws}/ai-readiness?assente=1`);
+  const deleted = (await q(`INSERT INTO ai_readiness_assessments (organization_id, workspace_id, template_id, name, status)
+    SELECT organization_id, workspace_id, template_id, 'Rilevazione da eliminare', 'open' FROM ai_readiness_assessments WHERE id = $1 RETURNING id`, [ids.assessment]))[0].id as string;
+  await q(`DELETE FROM ai_readiness_assessments WHERE id = $1`, [deleted]);
   for (const route of [answers, results]) {
-    assert.equal(await open(route, "lead", ids.ws, ids.otherAssessment), NOT_FOUND, "di un altro cliente");
-    assert.equal(await open(route, "lead", ids.ws, randomUUID()), NOT_FOUND, "che non c'è");
-    assert.equal(await open(route, "lead", ids.ws, "non-un-id"), NOT_FOUND, "non è un id");
-    // Chi gestisce l'altro workspace non arriva alla rilevazione di questo.
-    assert.equal(await open(route, "outsider", ids.otherWs, ids.assessment), NOT_FOUND);
+    for (const [what, assessmentId] of [
+      ["di un altro cliente", ids.otherAssessment],
+      ["che non c'è", randomUUID()],
+      ["eliminata", deleted],
+      ["non è un id", "non-un-id"],
+    ] as Array<[string, string]>) {
+      assert.equal(await open(route, "lead", ids.ws, assessmentId), gone, what);
+    }
+    // Chi gestisce l'altro workspace, dal suo workspace: lo stesso avviso, mai la rilevazione di questo.
+    assert.equal(await open(route, "outsider", ids.otherWs, ids.assessment), redirectTo(`/dashboard/${ids.otherWs}/ai-readiness?assente=1`));
   }
 });

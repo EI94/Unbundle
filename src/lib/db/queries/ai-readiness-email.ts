@@ -5,11 +5,13 @@ import { ensureDbSchema } from "@/lib/db/ensure-schema";
 import { loadSubprocessorAck } from "@/lib/db/queries/uc-subprocessors";
 import { getAppUcExecutor, type UcExecutor, type UcRow } from "@/lib/db/uc-executor";
 import { expectedRespondentsOf } from "@/lib/ai-readiness/dashboard-view";
+import { READINESS_THRESHOLD_SIGNAL } from "@/lib/ai-readiness/notify";
+import { readinessSignalId } from "@/lib/ai-readiness/notify-plan";
 import { airEmailBlock, runAirEmailDispatch, type AirEmailFacts, type AirEmailStore, type AirEmailSummary, type ClaimedAirEmail } from "@/lib/ai-readiness/email";
 import {
   airEmailFactsSql,
   airEmailMembersSql,
-  airEmailSwitchSql,
+  airEmailPersonSql,
   beginAirEmailAttemptSql,
   cancelInterruptedAirEmailsSql,
   cancelStaleAirEmailsSql,
@@ -27,10 +29,10 @@ import {
   setAirEmailSwitchSql,
 } from "@/lib/ai-readiness/email-sql";
 import { logSafeError } from "@/lib/log/safe-error";
-import { isLateralSpaceEmail, parseLsDomains } from "@/lib/uc/lateral-space";
 import type { DispatchEnv, UcMailer } from "@/lib/uc/notify/dispatch";
 import { rowBool, rowDate, rowNumber, rowString } from "@/lib/uc/sql/readiness";
 import { cast, raw, toStatement, ucSql } from "@/lib/uc/sql/statement";
+import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
 import { isStaleAlert } from "@/lib/use-cases/referent/alerts";
 
 /**
@@ -76,7 +78,10 @@ export async function airEmailStoreReady(executor?: UcExecutor): Promise<boolean
   return storeReady;
 }
 
-/** L'ok del cliente sui sub-responsabili della versione di oggi; senza la tabella delle autorizzazioni, no. */
+/**
+ * L'ok del cliente sui sub-responsabili della versione di oggi; senza la tabella delle autorizzazioni, no. Una lettura
+ * mancata lancia: chi chiama riprova, mai la scambia per un «no».
+ */
 async function workspaceAckOf(executor: UcExecutor, workspaceId: string): Promise<boolean> {
   if (!acksPresent) {
     const [[row]] = await executor.batch([toStatement(ucSql`SELECT to_regclass('public.uc_subprocessor_acks') IS NOT NULL AS ok`)]);
@@ -86,40 +91,29 @@ async function workspaceAckOf(executor: UcExecutor, workspaceId: string): Promis
   return (await loadSubprocessorAck(executor, workspaceId)) !== null;
 }
 
-const lsDomainsOf = (env: Env) => parseLsDomains(env.UC_LS_EMAIL_DOMAINS);
-
 // ─── In coda, dopo un questionario inviato ───────────────────────────
 
 /**
- * Le righe in coda dopo un questionario inviato: le risposte nuove per chi può riceverle adesso (chi gestisce il
- * workspace, con l'email verificata, la sua scelta accesa e, per il cliente, l'ok sui sub-responsabili) e, se questo
- * invio ha fatto nascere la riga della soglia in campanella (`resultsReady`), i risultati. Mai in un'anteprima di Vercel
- * (usa il database di produzione). Non lancia mai.
+ * Le righe in coda dopo un questionario inviato, solo con l'ok del cliente sui sub-responsabili (per tutti, Lateral
+ * Space compreso), per chi può riceverle adesso (chi gestisce il workspace, con l'email verificata e la sua scelta
+ * accesa): le risposte nuove e, finché c'è la riga della soglia in campanella, i risultati (una volta per persona:
+ * l'indice unico). Mai in un'anteprima di Vercel (usa il database di produzione). Non lancia mai.
  */
-export async function queueReadinessEmails(
-  i: { workspaceId: string; assessmentId: string; submittedAt: Date; resultsReady: boolean },
-  env: Env = process.env,
-): Promise<void> {
+export async function queueReadinessEmails(i: { workspaceId: string; assessmentId: string; submittedAt: Date }, env: Env = process.env): Promise<void> {
   if (env.VERCEL_ENV === "preview" || !isUuid(i.workspaceId) || !isUuid(i.assessmentId)) return;
   try {
     const executor = await getAppUcExecutor();
     if (!(await airEmailStoreReady(executor))) return;
+    if (!(await workspaceAckOf(executor, i.workspaceId))) return;
     const [members] = await executor.batch([airEmailMembersSql(i.workspaceId)]);
-    const lsDomains = lsDomainsOf(env);
-    let ack: boolean | null = null;
-    const recipients: string[] = [];
-    for (const m of members) {
+    const recipients = members.flatMap((m) => {
       const userId = rowString(m.user_id);
-      if (!userId || !rowBool(m.switch_on)) continue;
-      const email = rowString(m.email);
-      const verified = rowBool(m.verified);
-      const lateralSpace = isLateralSpaceEmail({ email, emailVerified: verified }, lsDomains);
-      // L'ok del cliente si legge una volta, e solo se serve.
-      if (!lateralSpace && ack === null) ack = await workspaceAckOf(executor, i.workspaceId);
-      if (airEmailBlock({ role: rowString(m.role), email, verified, lateralSpace }, ack === true) === null) recipients.push(userId);
-    }
+      if (!userId || !rowBool(m.switch_on)) return [];
+      return airEmailBlock({ role: rowString(m.role), email: rowString(m.email), verified: rowBool(m.verified) }) === null ? [userId] : [];
+    });
     const submittedAt = Number.isNaN(i.submittedAt.getTime()) ? new Date() : i.submittedAt;
-    const statements = queueAirEmailStatements({ workspaceId: i.workspaceId, assessmentId: i.assessmentId, recipients, countsFrom: submittedAt, resultsReady: i.resultsReady });
+    const resultsSignalId = readinessSignalId(READINESS_THRESHOLD_SIGNAL, i.assessmentId);
+    const statements = queueAirEmailStatements({ workspaceId: i.workspaceId, assessmentId: i.assessmentId, recipients, countsFrom: submittedAt, resultsSignalId });
     if (statements.length) await executor.batch(statements);
   } catch (error) {
     logAirEmailError("coda", error, i);
@@ -141,8 +135,7 @@ function claimedOf(r: UcRow): ClaimedAirEmail | null {
 }
 
 /** Lo store delle email dell'AI Readiness sul database. */
-export function createAirEmailStore(executor: UcExecutor, o: { env: DispatchEnv }): AirEmailStore {
-  const env = o.env as Env;
+export function createAirEmailStore(executor: UcExecutor): AirEmailStore {
   const one = async (statement: ReturnType<typeof toStatement>) => {
     await executor.batch([statement]);
   };
@@ -171,18 +164,15 @@ export function createAirEmailStore(executor: UcExecutor, o: { env: DispatchEnv 
       const [[row]] = await executor.batch([airEmailFactsSql(e.id)]);
       const countedUntil = rowDate(row?.counted_until);
       if (!row || !countedUntil) throw new Error("Riga dell'email non trovata");
-      const email = rowString(row.email);
-      const verified = rowBool(row.verified);
-      const lateralSpace = isLateralSpaceEmail({ email, emailVerified: verified }, lsDomainsOf(env));
       const assessmentId = rowString(row.assessment_id);
       const facts: AirEmailFacts = {
         company: rowString(row.company) ?? "",
         assessment: assessmentId
           ? { name: rowString(row.assessment_name) ?? "", expected: expectedRespondentsOf(row.scoring_config), threshold: rowNumber(row.aggregation_threshold) ?? 5 }
           : null,
-        recipient: rowString(row.user_id) ? { role: rowString(row.role), email, verified, lateralSpace, switchOn: rowBool(row.switch_on) } : null,
-        // L'ok si legge solo per una persona del cliente: Lateral Space non ne ha bisogno.
-        workspaceAck: lateralSpace ? false : await workspaceAckOf(executor, e.workspaceId).catch(() => false),
+        recipient: rowString(row.user_id) ? { role: rowString(row.role), email: rowString(row.email), verified: rowBool(row.verified), switchOn: rowBool(row.switch_on) } : null,
+        // Per tutti, Lateral Space compreso. Una lettura mancata lancia: la riga si riprova, mai si annulla per questo.
+        workspaceAck: await workspaceAckOf(executor, e.workspaceId),
         newAnswers: rowNumber(row.new_answers) ?? 0,
         total: rowNumber(row.total) ?? 0,
         countedUntil,
@@ -226,7 +216,7 @@ export async function dispatchReadinessEmails(o: { limit?: number; env?: Dispatc
   const now = o.now ?? new Date();
   const executor = await getAppUcExecutor();
   if (!(await airEmailStoreReady(executor))) return { ...ZERO };
-  return runAirEmailDispatch(createAirEmailStore(executor, { env }), { env, now, limit: o.limit, mailer: o.mailer, sendIntervalMs: o.sendIntervalMs });
+  return runAirEmailDispatch(createAirEmailStore(executor), { env, now, limit: o.limit, mailer: o.mailer, sendIntervalMs: o.sendIntervalMs });
 }
 
 /** Le email dell'AI Readiness finite più vecchie di 90 giorni (cron, con le notifiche vecchie). */
@@ -253,29 +243,21 @@ export async function assessmentInWorkspace(workspaceId: string, assessmentId: s
 // ─── «Avvisami per email sull'AI Readiness» ──────────────────────────
 
 /**
- * La scelta di chi guarda, solo se potrebbe ricevere le email dell'AI Readiness di questo workspace (chi gestisce, con
- * l'email verificata e, per il cliente, l'ok sui sub-responsabili): `{ on }`, oppure null (l'interruttore non si vede).
- * Senza la 0044, null. Non lancia mai.
+ * La scelta di chi guarda, solo se potrebbe ricevere le email dell'AI Readiness di questo workspace: chi gestisce, con
+ * l'ok del cliente sui sub-responsabili e l'email verificata, letta in `users.email_verified` come la leggono la coda e
+ * l'invio (mai la sessione). `{ on }`, oppure null (l'interruttore non si vede). Senza la 0044, null. Non lancia mai.
  */
-export async function readinessEmailChoice(i: {
-  workspaceId: string;
-  user: { id: string; email: string | null; emailVerified: boolean };
-  role: string | null;
-  env?: Env;
-}): Promise<{ on: boolean } | null> {
-  if (!isUuid(i.workspaceId) || !isUuid(i.user.id)) return null;
-  const env = i.env ?? process.env;
+export async function readinessEmailChoice(i: { workspaceId: string; userId: string; role: string | null }): Promise<{ on: boolean } | null> {
+  if (!isUuid(i.workspaceId) || !isUuid(i.userId)) return null;
+  // Prima la regola che non legge niente: solo chi gestisce (lo stesso permesso di `airEmailBlock`).
+  if (!canManageWorkspaceSettings(i.role)) return null;
   try {
     const executor = await getAppUcExecutor();
     if (!(await airEmailStoreReady(executor))) return null;
-    const email = i.user.email?.trim().toLowerCase() ?? null;
-    const verified = i.user.emailVerified === true;
-    const lateralSpace = isLateralSpaceEmail({ email, emailVerified: verified }, lsDomainsOf(env));
-    // Prima le regole che non leggono niente; l'ok del cliente solo per una persona del cliente che gestisce.
-    if (airEmailBlock({ role: i.role, email, verified, lateralSpace }, true) !== null) return null;
-    if (!lateralSpace && !(await workspaceAckOf(executor, i.workspaceId))) return null;
-    const [[row]] = await executor.batch([airEmailSwitchSql(i.workspaceId, i.user.id)]);
-    return { on: row?.switch_on !== false };
+    if (!(await workspaceAckOf(executor, i.workspaceId))) return null;
+    const [[row]] = await executor.batch([airEmailPersonSql(i.workspaceId, i.userId)]);
+    if (!row || airEmailBlock({ role: i.role, email: rowString(row.email), verified: rowBool(row.verified) }) !== null) return null;
+    return { on: row.switch_on !== false };
   } catch (error) {
     logAirEmailError("scelta", error, { workspaceId: i.workspaceId });
     return null;

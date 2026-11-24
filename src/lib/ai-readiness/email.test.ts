@@ -40,8 +40,8 @@ const USER = "3f2a9c1e-0000-4000-8000-0000000000d1";
 // Martedì 24 novembre 2026, nella finestra di Roma.
 const NOW = at("2026-11-24", 10);
 
-const LS = { role: "transformation_lead", email: "lead@ls.test", verified: true, lateralSpace: true };
-const CLIENT = { role: "exec_sponsor", email: "sponsor@cliente.test", verified: true, lateralSpace: false };
+const LS = { role: "transformation_lead", email: "lead@ls.test", verified: true };
+const CLIENT = { role: "exec_sponsor", email: "sponsor@cliente.test", verified: true };
 
 const row = (over: Partial<ClaimedAirEmail> = {}): ClaimedAirEmail => ({
   id: "3f2a9c1e-0000-4000-8000-0000000000e1",
@@ -59,7 +59,7 @@ const facts = (over: Partial<AirEmailFacts> = {}): AirEmailFacts => ({
   company: "Cliente Demo",
   assessment: { name: "Questionario per tutti", expected: 120, threshold: 5 },
   recipient: { ...LS, switchOn: true },
-  workspaceAck: false,
+  workspaceAck: true,
   newAnswers: 12,
   total: 46,
   countedUntil: NOW,
@@ -69,22 +69,25 @@ const facts = (over: Partial<AirEmailFacts> = {}): AirEmailFacts => ({
 const plan = (e: ClaimedAirEmail, f: AirEmailFacts, env: Record<string, string | undefined> = ENV) => planAirEmail(e, f, { env, origin: ORIGIN, now: NOW });
 
 test("chi le riceve: solo chi gestisce il workspace, adesso, con l'email verificata; mai nessun altro ruolo", () => {
-  for (const role of ["exec_sponsor", "transformation_lead"]) assert.equal(airEmailBlock({ ...LS, role }, false), null, role);
+  for (const role of ["exec_sponsor", "transformation_lead"]) assert.equal(airEmailBlock({ ...LS, role }), null, role);
   for (const role of ["function_lead", "analyst", "contributor", "learner", "esterno_caso", "osservatore", "admin", "", null]) {
-    assert.equal(airEmailBlock({ ...LS, role }, true), "non_gestisce", String(role));
+    assert.equal(airEmailBlock({ ...LS, role }), "non_gestisce", String(role));
   }
-  assert.equal(airEmailBlock({ ...LS, verified: false }, true), "email_non_verificata");
-  assert.equal(airEmailBlock({ ...LS, email: null }, true), "email_non_verificata");
-  assert.equal(airEmailBlock({ ...LS, email: "Nome <lead@ls.test>" }, true), "email_non_verificata", "solo un indirizzo semplice");
+  assert.equal(airEmailBlock({ ...LS, verified: false }), "email_non_verificata");
+  assert.equal(airEmailBlock({ ...LS, email: null }), "email_non_verificata");
+  assert.equal(airEmailBlock({ ...LS, email: "Nome <lead@ls.test>" }), "email_non_verificata", "solo un indirizzo semplice");
 });
 
-test("il cancello del cliente: alle persone del cliente solo con l'ok sui sub-responsabili; a Lateral Space sempre", () => {
-  assert.equal(airEmailBlock(CLIENT, false), "sub_responsabili_mancanti");
-  assert.equal(airEmailBlock(CLIENT, true), null);
-  assert.equal(airEmailBlock(LS, false), null);
-  // Nel piano: senza l'ok la riga del cliente si annulla, e resta la campanella.
-  assert.deepEqual(plan(row(), facts({ recipient: { ...CLIENT, switchOn: true }, workspaceAck: false })), { action: "cancel", reason: "sub_responsabili_mancanti" });
-  assert.equal(plan(row(), facts({ recipient: { ...CLIENT, switchOn: true }, workspaceAck: true })).action, "send");
+test("(revisione) l'ok del cliente sui sub-responsabili vale per tutti, Lateral Space compreso: senza, la riga aspetta", () => {
+  // Come gli avvisi a chi ha chiesto al referente e «Pronto da avviare»: nessuna eccezione per Lateral Space.
+  for (const person of [LS, CLIENT]) {
+    for (const kind of ["risposte", "risultati"] as const) {
+      assert.deepEqual(plan(row({ kind }), facts({ recipient: { ...person, switchOn: true }, workspaceAck: false, total: 5 })), { action: "hold", reason: "sub_responsabili_mancanti" }, `${person.email} ${kind}`);
+      assert.equal(plan(row({ kind }), facts({ recipient: { ...person, switchOn: true }, workspaceAck: true, total: 5 })).action, "send", `${person.email} ${kind}`);
+    }
+  }
+  // Prima dell'età: una riga che aspetta l'ok non diventa «troppo vecchia» nel piano (la annulla il giro, come le altre).
+  assert.deepEqual(plan(row({ createdAt: at("2026-11-10", 15) }), facts({ workspaceAck: false })), { action: "hold", reason: "sub_responsabili_mancanti" });
 });
 
 test("la scelta della persona: spenta, la riga si annulla; accesa, parte", () => {
@@ -173,6 +176,7 @@ test("i testi: brevi, senza codici né persone, neutri, con le parole delle emai
 
 test("il piano: configurazione, età, rilevazione, destinatario, scelta, poi il contenuto", () => {
   assert.deepEqual(plan(row(), facts(), { ...ENV, RESEND_API_KEY: undefined }), { action: "hold", reason: "email_non_configurata" });
+  assert.deepEqual(plan(row(), facts({ workspaceAck: false })), { action: "hold", reason: "sub_responsabili_mancanti" });
   // Più di due giorni lavorativi in attesa: troppo vecchia (lunedì → venerdì).
   assert.deepEqual(plan(row({ createdAt: at("2026-11-18", 15) }), facts()), { action: "cancel", reason: "troppo_vecchia" });
   assert.equal(plan(row({ createdAt: at("2026-11-20", 15) }), facts()).action, "send", "venerdì → martedì: un giorno lavorativo in mezzo");

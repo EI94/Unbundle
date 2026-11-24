@@ -124,7 +124,8 @@ export interface AccountSheetData {
   email: { on: boolean } | null;
   /**
    * (0044) «Avvisami per email sull'AI Readiness»: solo a chi potrebbe riceverle (chi gestisce il workspace, con l'email
-   * verificata e, per una persona del cliente, l'ok sui sub-responsabili). Assente o null: l'interruttore non c'è.
+   * verificata in `users.email_verified`, e con l'ok del cliente sui sub-responsabili). Assente o null: l'interruttore non
+   * c'è.
    */
   readinessEmail?: { on: boolean } | null;
   claude: AccountClaude | null;

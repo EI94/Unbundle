@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { installAppModules } from "../ai/claude-test-kit.ts";
 
 // (0044) L'indirizzo pulito delle email dell'AI Readiness: le due rotte vere con il redirect vero di Next, l'accesso e
-// la rilevazione finti. Prima l'accesso come la pagina, poi la rilevazione di questo workspace, poi 307 alla scheda
-// giusta. La prova con l'accesso vero sul database: src/lib/db/queries/ai-readiness-email-route.integration.test.ts.
-// Id inventati.
+// la rilevazione finti. Prima l'accesso come la pagina, poi 307 alla scheda giusta; (revisione) un link morto porta alla
+// pagina con «Questa rilevazione non c'è più.», sempre allo stesso indirizzo. La prova con l'accesso vero sul database:
+// src/lib/db/queries/ai-readiness-email-route.integration.test.ts. Id inventati.
 
 type Prova = { asked: string[]; refuse: Error | null; inWorkspace: boolean };
 const prova: Prova = { asked: [], refuse: null, inWorkspace: true };
@@ -61,9 +61,11 @@ test("chi non può entrare non arriva mai alla rilevazione: decide l'accesso, pr
   }
 });
 
-test("una rilevazione di un altro workspace: «non trovata», mai un redirect", async () => {
+test("(revisione) un link morto (rilevazione eliminata, sconosciuta o di un altro workspace): 307 alla pagina con l'avviso, sempre uguale", async () => {
   for (const route of [answers, results]) {
     reset({ inWorkspace: false });
-    assert.equal(await call(route), "NEXT_HTTP_ERROR_FALLBACK;404");
+    assert.equal(await call(route), `NEXT_REDIRECT;replace;/dashboard/${WS}/ai-readiness?assente=1;307;`, "mai una pagina vuota, mai «esiste altrove»");
   }
+  const { READINESS_TEXT } = await import("./dashboard-text.ts");
+  assert.equal(READINESS_TEXT.gone, "Questa rilevazione non c'è più.");
 });
